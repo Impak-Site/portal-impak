@@ -1244,6 +1244,119 @@ textarea.field-input{resize:vertical;min-height:80px;}
   gap: 10px !important;
 }
 
+
+/* ── CORRIGIR SCROLL E LAYOUT MÓDULO PROCESSOS ─────────────────── */
+/* Permitir scroll no módulo processos */
+#modulo-processos {
+  height: 100vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+#modulo-processos .main-content,
+#modulo-processos .page-content,
+#modulo-processos .content-area,
+#modulo-processos .shell,
+#modulo-processos .app-shell,
+#modulo-processos > div {
+  height: auto !important;
+  min-height: 100vh !important;
+  overflow: visible !important;
+}
+/* Garantir que nada trave o scroll */
+#modulo-processos * {
+  max-height: none !important;
+}
+/* Exceção — manter altura nos modais */
+#modulo-processos .modal,
+#modulo-processos .dialog,
+#modulo-processos .overlay {
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+}
+
+/* ── DOCUMENTOS CLICÁVEIS ───────────────────────────────────────── */
+/* Chips/itens de documento — visíveis e clicáveis */
+#modulo-processos .file-chip,
+#modulo-processos .doc-chip,
+#modulo-processos .file-item,
+#modulo-processos .doc-item,
+#modulo-processos .chip,
+#modulo-processos [class*="file-"],
+#modulo-processos [class*="doc-"],
+#modulo-processos .uploaded-file,
+#modulo-processos .file-row {
+  background: #ffffff !important;
+  border: 1px solid #a8bfd4 !important;
+  border-radius: 8px !important;
+  padding: 10px 16px !important;
+  margin-bottom: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+  transition: all .15s !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+#modulo-processos .file-chip:hover,
+#modulo-processos .doc-chip:hover,
+#modulo-processos .file-item:hover,
+#modulo-processos .file-row:hover {
+  background: #e8f0f8 !important;
+  border-color: #1a7fd4 !important;
+}
+/* Select dropdown de tipo de documento */
+#modulo-processos select,
+#modulo-processos .type-select,
+#modulo-processos .doc-type {
+  background: #dce8f5 !important;
+  border: 1px solid #a8bfd4 !important;
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  color: #0d1e2e !important;
+  cursor: pointer !important;
+  min-width: 160px !important;
+}
+/* Nome do arquivo */
+#modulo-processos .file-name,
+#modulo-processos .doc-name,
+#modulo-processos .filename {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #0d1e2e !important;
+  font-family: 'Barlow', sans-serif !important;
+  flex: 1 !important;
+}
+/* Botão remover */
+#modulo-processos .remove-file,
+#modulo-processos .btn-remove-file,
+#modulo-processos [class*="remove"] {
+  background: transparent !important;
+  border: none !important;
+  color: #c0392b !important;
+  cursor: pointer !important;
+  font-size: 16px !important;
+  padding: 0 4px !important;
+}
+/* Container da lista de arquivos */
+#modulo-processos .files-list,
+#modulo-processos .docs-list,
+#modulo-processos .file-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  margin-top: 16px !important;
+  width: 100% !important;
+}
+/* Área de upload com scroll interno se muitos arquivos */
+#modulo-processos .drop-zone,
+#modulo-processos .upload-area {
+  min-height: 120px !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
 </style>
 </head>
 <body>
