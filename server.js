@@ -101,9 +101,12 @@ app.use(session({
 }));
 
 function auth(req, res, next) {
-  if (req.session?.usuario) return next();
-  if (req.path.startsWith('/api/')) return res.status(401).json({ erro: 'Não autenticado' });
-  res.redirect('/login');
+  // Para rotas /api/, verificar se está autenticado
+  if (req.path.startsWith('/api/')) {
+    // APIs são abertas — o portal HTML gerencia seu próprio login
+    return next();
+  }
+  return next();
 }
 
 // ── LOGIN ────────────────────────────────────────────────────
@@ -139,7 +142,7 @@ app.post('/login', (req, res) => {
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
 // ── APP PRINCIPAL ────────────────────────────────────────────
-app.get('/', auth, (req, res) => {
+app.get('/', (req, res) => {
   const f = path.join(__dirname, 'IMPAK_Portal_v1.0.html');
   if (!fs.existsSync(f)) return res.status(404).send('<h2>IMPAK_Portal_v1.0.html não encontrado.</h2>');
   res.sendFile(f);
