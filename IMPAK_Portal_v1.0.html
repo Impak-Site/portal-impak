@@ -1176,6 +1176,74 @@ textarea.field-input{resize:vertical;min-height:80px;}
   border-color: #1a7fd4 !important;
 }
 
+
+/* ── CAMPOS COM FUNDO VISÍVEL — MÓDULO PROCESSOS ───────────────── */
+#modulo-processos input[type=text],
+#modulo-processos input[type=email],
+#modulo-processos input[type=number],
+#modulo-processos input[type=search],
+#modulo-processos input:not([type=file]):not([type=checkbox]):not([type=radio]),
+#modulo-processos textarea,
+#modulo-processos select,
+#modulo-processos .field-input,
+#modulo-processos .input-field,
+#modulo-processos [contenteditable] {
+  background: #dce8f5 !important;
+  border: 1px solid #a8bfd4 !important;
+  border-radius: 7px !important;
+  color: #0d1e2e !important;
+  padding: 10px 14px !important;
+  font-family: 'Barlow', sans-serif !important;
+  font-size: 13px !important;
+  width: 100% !important;
+  transition: all .15s !important;
+}
+#modulo-processos input:focus,
+#modulo-processos textarea:focus,
+#modulo-processos select:focus {
+  background: #c8ddf0 !important;
+  border-color: #1a7fd4 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(26,127,212,.12) !important;
+}
+/* Placeholders visíveis */
+#modulo-processos input::placeholder,
+#modulo-processos textarea::placeholder {
+  color: #7a9ab8 !important;
+}
+/* Cards de identificação do processo */
+#modulo-processos .identification-grid,
+#modulo-processos .proc-fields,
+#modulo-processos .form-row,
+#modulo-processos .field-group,
+#modulo-processos .fields-grid {
+  background: #ffffff !important;
+  border: 1px solid #c8d8e8 !important;
+  border-radius: 10px !important;
+  padding: 16px !important;
+  box-shadow: 0 1px 4px rgba(26,127,212,.06) !important;
+}
+/* Célula individual de campo */
+#modulo-processos .field-cell,
+#modulo-processos .form-field,
+#modulo-processos .input-group {
+  background: transparent !important;
+  padding: 8px !important;
+}
+/* Lista de arquivos */
+#modulo-processos .file-item,
+#modulo-processos .doc-item,
+#modulo-processos .file-row {
+  background: #ffffff !important;
+  border: 1px solid #c8d8e8 !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  margin-bottom: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
 </style>
 </head>
 <body>
@@ -2622,42 +2690,94 @@ function dbClear(store) {
 
 // Salvar cotações importadas
 async function salvarCotacoes(fornecedor, itens) {
+  // 1. Salvar no IndexedDB (local — rápido)
   try {
     await dbPut('cotacoes', { id: fornecedor, itens, data: new Date().toISOString() });
-    console.log('Cotações salvas para', fornecedor);
-  } catch(e) { console.warn('Erro ao salvar cotações:', e); }
+  } catch(e) { console.warn('IndexedDB erro:', e); }
+  // 2. Salvar no Google Drive (persistente — via servidor)
+  try {
+    const resp = await fetch('/api/drive/salvar', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ fornecedor, itens })
+    });
+    const r = await resp.json();
+    if(r.ok) console.log('✓ Drive salvo:', fornecedor);
+    else console.warn('Drive erro:', r);
+  } catch(e) { console.warn('Drive fetch erro:', e); }
 }
 
 // Carregar cotações salvas (sobrescrever base original)
 async function carregarCotacoesSalvas() {
+  // 1. Tentar buscar do Drive (fonte principal)
+  try {
+    const resp = await fetch('/api/drive/tudo');
+    const data = await resp.json();
+    if(data.cotacoes && data.cotacoes.length) {
+      data.cotacoes.forEach(reg => {
+        COTACOES = COTACOES.filter(c => c.f !== reg.fornecedor);
+        COTACOES = [...COTACOES, ...reg.itens];
+      });
+      const nomes = data.cotacoes.map(r=>r.fornecedor).join(', ');
+      console.log('✓ Cotações restauradas do Drive:', nomes);
+      toast('Base atualizada: ' + nomes);
+      return;
+    }
+  } catch(e) { console.warn('Drive não disponível, usando IndexedDB local'); }
+  // 2. Fallback: IndexedDB local
   try {
     const salvas = await dbGetAll('cotacoes');
     salvas.forEach(reg => {
       COTACOES = COTACOES.filter(c => c.f !== reg.id);
       COTACOES = [...COTACOES, ...reg.itens];
     });
-    if (salvas.length) {
-      console.log('Cotações restauradas:', salvas.map(r=>r.id).join(', '));
-      toast('Base restaurada: ' + salvas.map(r=>r.id).join(', '));
+    if(salvas.length) {
+      console.log('Cotações restauradas (local):', salvas.map(r=>r.id).join(', '));
+      toast('Base local restaurada: ' + salvas.map(r=>r.id).join(', '));
     }
   } catch(e) { console.warn('Erro ao carregar cotações:', e); }
 }
 
 // ── HISTÓRICO DE E-MAILS ─────────────────────────────────────────────
 async function gravarHistorico(forn, tipo, lang) {
+  const entry = { fornecedor: forn.nome, email: forn.email, tipo, lang,
+    data: new Date().toISOString(), usuario: _portalUser ? _portalUser.nome : 'Sistema' };
+  // 1. IndexedDB local
+  try { await dbPut('historico', {...entry, id: Date.now()}); } catch(e){}
+  // 2. Google Drive via servidor
   try {
-    await dbPut('historico', {
-      fornecedor: forn.nome,
-      email: forn.email,
-      tipo, lang,
-      data: new Date().toISOString(),
-      usuario: 'Jean'
+    await fetch('/api/drive/historico', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(entry)
     });
-  } catch(e) { console.warn('Erro histórico:', e); }
+  } catch(e) { console.warn('Drive histórico erro:', e); }
 }
 
 async function renderHistorico() {
   try {
+    // Tentar buscar do Drive primeiro (dados mais completos)
+    try {
+      const resp = await fetch('/api/drive/historico');
+      const driveData = await resp.json();
+      if(driveData.historico && driveData.historico.length) {
+        const el = document.getElementById('hist-list');
+        const items = driveData.historico;
+        document.getElementById('hist-total').textContent = items.length + ' registros';
+        items.sort((a,b) => new Date(b.data) - new Date(a.data));
+        el.innerHTML = items.map(h => {
+          const dt = new Date(h.data);
+          const dtStr = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          const tipoNome = {PCR:'PCR — Passeio',TBR:'TBR — Carga',AGR:'AGR — Agrícola',OTR:'OTR — Industrial'}[h.tipo]||h.tipo;
+          return `<div class="hist-item"><div class="hist-dot"></div>
+            <div class="hist-info"><div class="hist-nome">${h.fornecedor||''}</div>
+            <div class="hist-sub">📧 ${h.email||''} · ${tipoNome} · ${h.lang==='pt'?'Português':'English'} · ${h.usuario||''}</div></div>
+            <div class="hist-data">${dtStr}</div></div>`;
+        }).join('');
+        return;
+      }
+    } catch(e) { console.warn('Drive histórico não disponível, usando local'); }
+    // Fallback: IndexedDB local
     const items = await dbGetAll('historico');
     const el = document.getElementById('hist-list');
     document.getElementById('hist-total').textContent = items.length + ' registros';
