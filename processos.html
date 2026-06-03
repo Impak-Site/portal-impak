@@ -2381,21 +2381,76 @@ function _renderProcessModal(p){
 var _paginaAnterior = 'processos';
 
 function aceitarDivHistorico(procId, ownerUser, divKey){
-  var nota = prompt('Motivo para aceitar esta divergência:');
-  if(nota === null) return; // cancelou
-  if(!nota.trim()){ showToast('Informe um motivo para aceitar.','err'); return; }
-  dbGetProcess(ownerUser, parseInt(procId), function(p){
-    if(!p){ showToast('Processo não encontrado','err'); return; }
-    p._divResolvedMap = p._divResolvedMap || {};
-    p._divResolvedMap[divKey] = {
-      nota: nota.trim(),
-      time: new Date().toLocaleString('pt-BR'),
-      por: _currentUser ? _currentUser.displayName : '?'
-    };
-    dbSaveProcess(ownerUser, p);
-    showToast('Divergência aceita: ' + nota.substring(0,40),'ok');
-    // Recarregar o detalhe
-    setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 400);
+  var quemAceitou = _currentUser ? (_currentUser.displayName||_currentUser.username) : '?';
+  var overlay = document.createElement('div');
+  overlay.id = 'aceiteOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+  
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:14px;font-weight:700;color:#e6edf4;margin-bottom:6px;';
+  title.textContent = 'Aceitar Divergência';
+  
+  var sub = document.createElement('div');
+  sub.style.cssText = 'font-size:11px;color:#6b8aaa;margin-bottom:16px;';
+  sub.innerHTML = 'Aceito por: <strong style="color:#1a7fd4">' + quemAceitou + '</strong>';
+  
+  var lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:12px;color:#6b8aaa;margin-bottom:8px;';
+  lbl.textContent = 'Motivo (obrigatório):';
+  
+  var textarea = document.createElement('textarea');
+  textarea.id = 'aceiteNota';
+  textarea.rows = 3;
+  textarea.placeholder = 'Descreva o motivo para aceitar esta divergência...';
+  textarea.style.cssText = 'width:100%;background:#0d1e2e;border:1px solid #2a3d55;border-radius:7px;color:#e6edf4;font-size:13px;padding:10px 12px;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;';
+  
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px;margin-top:16px;justify-content:flex-end;';
+  
+  var btnCancel = document.createElement('button');
+  btnCancel.style.cssText = 'background:transparent;border:1px solid #2a3d55;border-radius:7px;color:#6b8aaa;padding:8px 18px;cursor:pointer;font-size:13px;';
+  btnCancel.textContent = 'Cancelar';
+  btnCancel.onclick = function(){ overlay.remove(); };
+  
+  var btnOk = document.createElement('button');
+  btnOk.style.cssText = 'background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:600;';
+  btnOk.textContent = '✓ Confirmar';
+  btnOk.onclick = function(){
+    var nota = (textarea.value||'').trim();
+    if(!nota){ showToast('Informe o motivo para aceitar.','err'); return; }
+    overlay.remove();
+    dbGetProcess(ownerUser, parseInt(procId), function(p){
+      if(!p){ showToast('Processo não encontrado','err'); return; }
+      p._divResolvedMap = p._divResolvedMap || {};
+      p._divResolvedMap[divKey] = {
+        nota: nota,
+        time: new Date().toLocaleString('pt-BR'),
+        por: quemAceitou
+      };
+      p._updatedAt = Date.now();
+      dbSaveProcess(ownerUser, p);
+      showToast('Divergência aceita por ' + quemAceitou,'ok');
+      setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 400);
+    });
+  };
+  
+  btnRow.appendChild(btnCancel);
+  btnRow.appendChild(btnOk);
+  box.appendChild(title);
+  box.appendChild(sub);
+  box.appendChild(lbl);
+  box.appendChild(textarea);
+  box.appendChild(btnRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  textarea.focus();
+  
+  overlay.addEventListener('keydown', function(e){
+    if(e.key==='Escape') overlay.remove();
+    if(e.key==='Enter' && e.ctrlKey) btnOk.click();
   });
 }
 
