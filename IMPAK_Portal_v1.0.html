@@ -9,7 +9,69 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#f0f4f8;}
-#portal-login{position:fixed;inset:0;z-index:99999;background:#e8f0f8;display:flex;align-items:center;justify-content:center;}#portal-login.hidden{display:none!important}.portal-login-box{background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:40px 36px;width:400px;max-width:94vw;box-shadow:0 8px 32px rgba(26,127,212,.12);}.p-logo-row{display:flex;align-items:center;gap:10px;margin-bottom:28px;justify-content:center}.p-logo-box{background:#1a7fd4;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px}.p-logo-sub{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase}.p-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;text-align:center;color:#0d1e2e;margin-bottom:4px;text-transform:uppercase}.p-versao{font-size:10px;color:#1a7fd4;font-weight:700;letter-spacing:1px;text-align:center;margin-bottom:8px;text-transform:uppercase}.p-sub{font-size:12px;color:#4a6480;text-align:center;margin-bottom:24px;font-weight:500}.p-label{font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block}.p-input{width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'Barlow',sans-serif;font-size:14px;padding:11px 14px;outline:none;transition:all .15s;margin-bottom:16px}.p-input:focus{border-color:#1a7fd4;background:#c8ddf0}.p-btn{width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s}.p-btn:hover{background:#1567b8}.p-err{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;margin-bottom:14px;text-align:center;display:none}.p-footer{text-align:center;margin-top:20px;font-size:10px;color:#a8bfd4}.p-sidebar{position:fixed;top:0;left:0;bottom:0;width:56px;background:#0d1e2e;z-index:9000;display:none;flex-direction:column;align-items:center;padding:12px 0;gap:4px;border-right:1px solid #1e3a55;transition:width .2s;}.p-sidebar.visible{display:flex}.p-sidebar:hover{width:200px}.p-sidebar-logo{width:40px;height:40px;background:#1a7fd4;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:800;color:#fff;margin-bottom:14px;flex-shrink:0;}.p-nav-btn{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;padding:0 10px;gap:12px;cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,.5);font-size:18px;transition:all .15s;flex-shrink:0;}.p-nav-btn:hover{background:rgba(26,127,212,.2);color:#fff}.p-nav-btn.active{background:#1a7fd4;color:#fff}.p-nav-label{display:none;font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;color:#e6edf4;white-space:nowrap;}.p-sidebar:hover .p-nav-btn{width:176px;}.p-sidebar:hover .p-nav-label{display:block}.p-spacer{flex:1}.p-divider{width:30px;height:1px;background:#1e3a55;margin:6px 0;flex-shrink:0}.p-modulo{display:none;margin-left:56px;}.p-modulo.active{display:block}#modulo-processos{height:100vh;overflow-y:auto;overflow-x:hidden;}#modulo-tyredesk{min-height:100vh;}
+
+/* PORTAL */
+#portal-login{position:fixed;inset:0;z-index:99999;background:#e8f0f8;
+  display:flex;align-items:center;justify-content:center;}
+#portal-login.hidden{display:none!important}
+.portal-login-box{background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;
+  border-radius:14px;padding:40px 36px;width:400px;max-width:94vw;
+  box-shadow:0 8px 32px rgba(26,127,212,.12);}
+.p-logo-row{display:flex;align-items:center;gap:10px;margin-bottom:28px;justify-content:center}
+.p-logo-box{background:#1a7fd4;color:#fff;font-family:'Barlow Condensed',sans-serif;
+  font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px}
+.p-logo-sub{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;
+  color:#4a6480;letter-spacing:2px;text-transform:uppercase}
+.p-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;
+  text-align:center;color:#0d1e2e;margin-bottom:4px;text-transform:uppercase}
+.p-versao{font-size:10px;color:#1a7fd4;font-weight:700;letter-spacing:1px;
+  text-align:center;margin-bottom:8px;text-transform:uppercase}
+.p-sub{font-size:12px;color:#4a6480;text-align:center;margin-bottom:24px;font-weight:500}
+.p-label{font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:6px;display:block}
+.p-input{width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;
+  color:#0d1e2e;font-family:'Barlow',sans-serif;font-size:14px;
+  padding:11px 14px;outline:none;transition:all .15s;margin-bottom:16px}
+.p-input:focus{border-color:#1a7fd4;background:#c8ddf0}
+.p-btn{width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;
+  font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;
+  padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;
+  transition:background .15s}
+.p-btn:hover{background:#1567b8}
+.p-err{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);
+  border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;
+  font-weight:600;margin-bottom:14px;text-align:center;display:none}
+.p-footer{text-align:center;margin-top:20px;font-size:10px;color:#a8bfd4}
+/* Sidebar portal */
+.p-sidebar{position:fixed;top:0;left:0;bottom:0;width:52px;background:#0d1e2e;
+  z-index:8000;display:none;flex-direction:column;align-items:center;
+  padding:10px 0;gap:4px;border-right:1px solid #1e3a55;transition:width .2s;}
+.p-sidebar.visible{display:flex}
+.p-sidebar:hover{width:190px}
+.p-sidebar-logo{width:38px;height:38px;background:#1a7fd4;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Barlow Condensed',sans-serif;font-size:13px;
+  font-weight:800;color:#fff;margin-bottom:12px;flex-shrink:0;}
+.p-nav-btn{width:38px;height:38px;border-radius:8px;display:flex;
+  align-items:center;padding:0 9px;gap:10px;cursor:pointer;border:none;
+  background:transparent;color:rgba(255,255,255,.5);font-size:17px;
+  transition:all .15s;flex-shrink:0;}
+.p-nav-btn:hover{background:rgba(26,127,212,.2);color:#fff}
+.p-nav-btn.active{background:#1a7fd4;color:#fff}
+.p-nav-label{display:none;font-family:'Barlow',sans-serif;font-size:12px;
+  font-weight:600;color:#e6edf4;white-space:nowrap;}
+.p-sidebar:hover .p-nav-btn{width:170px;}
+.p-sidebar:hover .p-nav-label{display:block}
+.p-spacer{flex:1}
+.p-divider{width:28px;height:1px;background:#1e3a55;margin:5px 0;flex-shrink:0}
+/* Módulos */
+.p-modulo{display:none;}
+.p-modulo.active{display:block}
+#modulo-tyredesk{margin-left:52px;min-height:100vh;}
+#modulo-processos{margin-left:52px;}
+#modulo-processos .shell{height:100vh;overflow:hidden;}
+#modulo-processos .main{overflow-y:auto;}
+
 
 :root{
   --bg:#f0f4f8;
@@ -370,24 +432,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 
 
 
-:root {
-  --bg: #f0f4f8;
-  --bg2: #e8edf2;
-  --surface: #ffffff;
-  --surface2: #f5f8fb;
-  --border: #dce3ea;
-  --border2: #c5d0db;
-  --accent: #0a2d5e;
-  --accent2: #1a4a8a;
-  --accent-dim: rgba(10,45,94,0.08);
-  --warn: #d97706;
-  --danger: #dc2626;
-  --ok: #16a34a;
-  --text: #1e2d3d;
-  --text-dim: #64748b;
-  --text-bright: #0a1929;
-  --text-mid: #334155;
-}
+
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 body{
@@ -883,8 +928,28 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </style>
 </head>
 <body>
-<div id="portal-login"><div class="portal-login-box"><div class="p-logo-row"><div class="p-logo-box">IMPAK</div><div class="p-logo-sub">Portal</div></div><div class="p-title">Acesso ao Sistema</div><div class="p-versao">TyreDesk + Gestao de Processos</div><div class="p-sub">IMPAK Comercial Importadora</div><div id="p-err" class="p-err">Usuario ou senha incorretos.</div><label class="p-label">Usuario</label><input class="p-input" id="p-usr" type="text" placeholder="seu usuario" autocomplete="username"><label class="p-label">Senha</label><input class="p-input" id="p-pwd" type="password" placeholder="sua senha" autocomplete="current-password"><button class="p-btn" onclick="portalDoLogin()">Entrar</button><div class="p-footer">IMPAK Comercial Importadora - Portal v1.0 - Confidencial</div></div></div>
-<nav class="p-sidebar"><div class="p-sidebar-logo">IMP</div><div id="p-sidebar-nav" style="display:flex;flex-direction:column;gap:4px;width:100%;padding:0 8px"></div></nav>
+
+<div id="portal-login">
+  <div class="portal-login-box">
+    <div class="p-logo-row"><div class="p-logo-box">IMPAK</div><div class="p-logo-sub">Portal</div></div>
+    <div class="p-title">Acesso ao Sistema</div>
+    <div class="p-versao">TyreDesk + Gestao de Processos</div>
+    <div class="p-sub">IMPAK Comercial Importadora</div>
+    <div id="p-err" class="p-err">Usuario ou senha incorretos.</div>
+    <label class="p-label">Usuario</label>
+    <input class="p-input" id="p-usr" type="text" placeholder="seu usuario" autocomplete="username">
+    <label class="p-label">Senha</label>
+    <input class="p-input" id="p-pwd" type="password" placeholder="sua senha" autocomplete="current-password">
+    <button class="p-btn" onclick="portalDoLogin()">Entrar</button>
+    <div class="p-footer">IMPAK Comercial Importadora - Portal v1.0 - Confidencial</div>
+  </div>
+</div>
+
+<nav class="p-sidebar">
+  <div class="p-sidebar-logo">IMP</div>
+  <div id="p-sidebar-nav" style="display:flex;flex-direction:column;gap:4px;width:100%;padding:0 6px"></div>
+</nav>
+
 <div class="p-modulo" id="modulo-tyredesk">
 
 
@@ -1215,28 +1280,9 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 
 </div>
+
 <div class="p-modulo" id="modulo-processos">
 
-
-<!-- LOGIN SCREEN -->
-<div id="loginScreen" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 40px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.12);">
-    <div style="text-align:center;margin-bottom:32px;">
-      <div style="font-size:32px;font-weight:900;color:var(--accent);font-family:monospace;letter-spacing:-1px;">IMPAK</div>
-      <div style="font-size:13px;color:var(--text-dim);margin-top:4px;">Conferência Documental de Importação</div>
-    </div>
-    <div class="field-group">
-      <label class="field-label">Usuário</label>
-      <input class="field-input" id="loginUser" placeholder="Seu nome de usuário" oninput="loginClearErr()">
-    </div>
-    <div class="field-group">
-      <label class="field-label">Senha</label>
-      <input class="field-input" id="loginPass" type="password" placeholder="Sua senha" oninput="loginClearErr()" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <div id="loginErr" style="display:none;color:var(--danger);font-size:12px;margin-bottom:12px;text-align:center;"></div>
-    <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="doLogin()">Entrar</button>
-  </div>
-</div>
 
 <div class="shell">
 <!-- Sidebar -->
@@ -1556,75 +1602,144 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <!-- v1779232115 -->
 
 </div>
+
 <script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var _portalUser=null,_currentUser=null;
-var PORTAL_USERS=[
-  {nome:'Narcelio',usuario:'narcelio',senha:'Narcelio@2026',modulos:['tyredesk','processos']},
-  {nome:'Jean',usuario:'jean',senha:'Jeanimpak2026',modulos:['tyredesk','processos']},
-  {nome:'Paula',usuario:'paula',senha:'Paula@2026',modulos:['processos'],role:'gerente',displayName:'Paula'},
-  {nome:'Emanuelly',usuario:'emanuelly',senha:'EmanuellyImpak2026',modulos:['processos'],role:'analista',displayName:'Emanuelly'},
+
+var _portalUser = null;
+
+var PORTAL_USERS = [
+  { nome:'Narcelio',  usuario:'narcelio',  senha:'Narcelio@2026',
+    modulos:['tyredesk','processos'] },
+  { nome:'Jean',      usuario:'jean',      senha:'Jeanimpak2026',
+    modulos:['tyredesk','processos'] },
+  { nome:'Paula',     usuario:'paula',     senha:'Paula@2026',
+    modulos:['processos'], role:'gerente', displayName:'Paula' },
+  { nome:'Emanuelly', usuario:'emanuelly', senha:'EmanuellyImpak2026',
+    modulos:['processos'], role:'analista', displayName:'Emanuelly' },
 ];
-var TYREDESK_SENHAS={narcelio:'Narcelio@2026',jean:'Jeanimpak2026',paula:'Jeanimpak2026',emanuelly:'Jeanimpak2026'};
-function portalDoLogin(){
-  var usr=document.getElementById('p-usr').value.trim().toLowerCase();
-  var pwd=document.getElementById('p-pwd').value;
-  var err=document.getElementById('p-err');
-  var user=PORTAL_USERS.find(function(u){return u.usuario===usr;});
-  if(!user||user.senha!==pwd){err.style.display='block';document.getElementById('p-pwd').value='';return;}
-  err.style.display='none';_portalUser=user;
-  if(user.role)_currentUser={username:user.usuario,role:user.role,displayName:user.displayName||user.nome};
+
+var TYREDESK_SENHAS = {
+  narcelio: 'Narcelio@2026',
+  jean:     'Jeanimpak2026',
+  paula:    'Jeanimpak2026',
+  emanuelly:'Jeanimpak2026'
+};
+
+function portalDoLogin() {
+  var usr  = document.getElementById('p-usr').value.trim().toLowerCase();
+  var pwd  = document.getElementById('p-pwd').value;
+  var err  = document.getElementById('p-err');
+  var user = PORTAL_USERS.find(function(u){ return u.usuario === usr; });
+
+  if (!user || user.senha !== pwd) {
+    err.style.display = 'block';
+    document.getElementById('p-pwd').value = '';
+    return;
+  }
+
+  err.style.display = 'none';
+  _portalUser = user;
+
+  // Configurar _currentUser para o módulo Processos
+  if (user.role) {
+    _currentUser = {
+      username: user.usuario,
+      role: user.role,
+      displayName: user.displayName || user.nome
+    };
+  }
+
+  // Esconder login portal
   document.getElementById('portal-login').classList.add('hidden');
+
+  // Mostrar sidebar
   document.querySelector('.p-sidebar').classList.add('visible');
-  var nav=document.getElementById('p-sidebar-nav');var items='';
-  if(user.modulos.includes('tyredesk'))items+='<button class="p-nav-btn" id="pnav-tyredesk" onclick="portalSwitch('tyredesk')" title="TyreDesk">&#x1F6DE;<span class="p-nav-label">TyreDesk</span></button>';
-  if(user.modulos.includes('processos'))items+='<button class="p-nav-btn" id="pnav-processos" onclick="portalSwitch('processos')" title="Processos">&#x1F6A2;<span class="p-nav-label">Gestao de Processos</span></button>';
-  nav.innerHTML=items+'<div class="p-spacer"></div><div class="p-divider"></div><button class="p-nav-btn" onclick="portalLogout()" title="Sair">&#x23FB;<span class="p-nav-label" style="color:#f05c5c">Sair</span></button>';
+
+  // Montar botões da sidebar
+  var nav = document.getElementById('p-sidebar-nav');
+  var items = '';
+  if (user.modulos.includes('tyredesk'))
+    items += '<button class="p-nav-btn" id="pnav-tyredesk" onclick="portalSwitch(this.dataset.m)" data-m="tyredesk" title="TyreDesk">&#x1F6DE;<span class="p-nav-label">TyreDesk</span></button>';
+  if (user.modulos.includes('processos'))
+    items += '<button class="p-nav-btn" id="pnav-processos" onclick="portalSwitch(this.dataset.m)" data-m="processos" title="Processos">&#x1F6A2;<span class="p-nav-label">Gestao de Processos</span></button>';
+  nav.innerHTML = items
+    + '<div class="p-spacer"></div><div class="p-divider"></div>'
+    + '<button class="p-nav-btn" onclick="portalLogout()" title="Sair">&#x23FB;<span class="p-nav-label" style="color:#f05c5c">Sair</span></button>';
+
+  // Abrir primeiro módulo
   portalSwitch(user.modulos[0]);
-  if(user.modulos.includes('tyredesk'))portalInitTyreDesk();
+
+  // Inicializar TyreDesk
+  if (user.modulos.includes('tyredesk')) portalInitTyreDesk();
 }
-function portalSwitch(m){
-  document.querySelectorAll('.p-modulo').forEach(function(el){el.classList.remove('active');});
-  document.querySelectorAll('.p-nav-btn').forEach(function(b){b.classList.remove('active');});
-  var el=document.getElementById('modulo-'+m);if(el)el.classList.add('active');
-  var btn=document.getElementById('pnav-'+m);if(btn)btn.classList.add('active');
-  if(m==='processos'&&typeof renderProcessos==='function')setTimeout(function(){renderProcessos('');},150);
+
+function portalSwitch(m) {
+  document.querySelectorAll('.p-modulo').forEach(function(el){ el.classList.remove('active'); });
+  document.querySelectorAll('.p-nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  var el  = document.getElementById('modulo-' + m); if (el)  el.classList.add('active');
+  var btn = document.getElementById('pnav-' + m);   if (btn) btn.classList.add('active');
+  if (m === 'processos' && typeof renderProcessos === 'function')
+    setTimeout(function(){ renderProcessos(''); }, 200);
 }
-async function portalInitTyreDesk(){
-  var ls=document.getElementById('login-screen');
-  if(ls){ls.style.display='none';ls.classList.add('hidden');}
-  var senha=TYREDESK_SENHAS[_portalUser.usuario]||'impak2026';
-  try{
-    var raw=atob(ENCRYPTED_DATA),bytes=new Uint8Array(raw.length);
-    for(var i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
-    var salt=bytes.slice(0,16),iv=bytes.slice(16,28),ct=bytes.slice(28);
-    var km=await crypto.subtle.importKey('raw',new TextEncoder().encode(senha),'PBKDF2',false,['deriveKey']);
-    var key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
-    var plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
-    var data=JSON.parse(new TextDecoder().decode(plain));
-    window._BASE_ORIGINAL=data.map(function(c){return Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',moq:c.moq||null});});
-    COTACOES=window._BASE_ORIGINAL.slice();
-    await initDB();await carregarCotacoesSalvas();init();
-  }catch(e){
-    console.warn('TyreDesk:',e.message);window._BASE_ORIGINAL=[];COTACOES=[];
-    try{await initDB();}catch(e2){}init();
+
+async function portalInitTyreDesk() {
+  // Esconder tela de senha do TyreDesk
+  var ls = document.getElementById('login-screen');
+  if (ls) { ls.style.display = 'none'; ls.classList.add('hidden'); }
+
+  var senha = TYREDESK_SENHAS[_portalUser.usuario] || 'impak2026';
+  try {
+    var raw = atob(ENCRYPTED_DATA);
+    var bytes = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    var salt = bytes.slice(0,16), iv = bytes.slice(16,28), ct = bytes.slice(28);
+    var km = await crypto.subtle.importKey('raw',
+      new TextEncoder().encode(senha), 'PBKDF2', false, ['deriveKey']);
+    var key = await crypto.subtle.deriveKey(
+      { name:'PBKDF2', salt, iterations:100000, hash:'SHA-256' },
+      km, { name:'AES-GCM', length:256 }, false, ['decrypt']);
+    var plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+    var data = JSON.parse(new TextDecoder().decode(plain));
+    window._BASE_ORIGINAL = data.map(function(c) {
+      return Object.assign({}, c, {
+        cur: c.cur||'USD', orig: c.orig||'', pat: c.pat||'',
+        bor: c.bor||'liso', moq: c.moq||null
+      });
+    });
+    COTACOES = window._BASE_ORIGINAL.slice();
+    await initDB();
+    await carregarCotacoesSalvas();
+    init();
+  } catch(e) {
+    console.warn('TyreDesk init:', e.message);
+    window._BASE_ORIGINAL = []; COTACOES = [];
+    try { await initDB(); } catch(e2) {}
+    init();
   }
 }
-function portalLogout(){
-  _portalUser=null;_currentUser=null;
+
+function portalLogout() {
+  _portalUser = null; _currentUser = null;
   document.getElementById('portal-login').classList.remove('hidden');
   document.querySelector('.p-sidebar').classList.remove('visible');
-  document.querySelectorAll('.p-modulo').forEach(function(m){m.classList.remove('active');});
-  document.getElementById('p-usr').value='';document.getElementById('p-pwd').value='';
+  document.querySelectorAll('.p-modulo').forEach(function(m){ m.classList.remove('active'); });
+  document.getElementById('p-usr').value = '';
+  document.getElementById('p-pwd').value = '';
 }
-window.addEventListener('load',function(){
-  var el=document.getElementById('p-usr');if(el)el.focus();
-  ['p-usr','p-pwd'].forEach(function(id){
-    var inp=document.getElementById(id);
-    if(inp)inp.addEventListener('keydown',function(e){if(e.key==='Enter')portalDoLogin();});
+
+window.addEventListener('load', function() {
+  var el = document.getElementById('p-usr');
+  if (el) el.focus();
+  ['p-usr','p-pwd'].forEach(function(id) {
+    var inp = document.getElementById(id);
+    if (inp) inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') portalDoLogin();
+    });
   });
 });
+
 </script>
 <script>
 
@@ -3188,30 +3303,37 @@ function initFirebase(){ _firebaseReady=false; }
 function dbSaveProcess(username,proc){
   var key='impak_processes_'+(username||'x');
   try{var p=JSON.parse(localStorage.getItem(key)||'[]');
-  var i=p.findIndex(function(x){return x.id===proc.id;});
-  if(i>=0)p[i]=proc;else p.unshift(proc);
+  var idx=p.findIndex(function(x){return x.id===proc.id;});
+  if(idx>=0)p[idx]=proc;else p.unshift(proc);
   localStorage.setItem(key,JSON.stringify(p));}catch(e){}
-  fetch('/api/processos/salvar',{method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({username:username,processo:proc})}).catch(function(e){});
+  fetch('/api/processos/salvar',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:username,processo:proc})
+  }).catch(function(e){console.warn('Drive save:',e);});
 }
 
 // Busca processos de um usuário — Firebase primeiro, cache como fallback
 function dbGetProcesses(username,callback){
   var key='impak_processes_'+(username||'x');
-  var local=[];try{local=JSON.parse(localStorage.getItem(key)||'[]');}catch(e){}
+  var local=[];
+  try{local=JSON.parse(localStorage.getItem(key)||'[]');}catch(e){}
   if(local.length)callback(local);
   fetch('/api/processos?usuario='+encodeURIComponent(username))
   .then(function(r){return r.json();})
-  .then(function(d){if(d.processos&&d.processos.length){
-    try{localStorage.setItem(key,JSON.stringify(d.processos));}catch(e){}
-    callback(d.processos);}else if(!local.length)callback([]);})
-  .catch(function(){if(!local.length)callback([]);});
+  .then(function(d){
+    if(d.processos&&d.processos.length){
+      try{localStorage.setItem(key,JSON.stringify(d.processos));}catch(e){}
+      callback(d.processos);
+    }else if(!local.length)callback([]);
+  }).catch(function(){if(!local.length)callback([]);});
 }
 
 // Busca TODOS os processos — Firebase (sem filtro de usuário)
 function dbGetAllProcesses(callback){
-  fetch('/api/processos/todos').then(function(r){return r.json();})
-  .then(function(d){callback(d.processos||[]);}).catch(function(){callback([]);});
+  fetch('/api/processos/todos')
+  .then(function(r){return r.json();})
+  .then(function(d){callback(d.processos||[]);})
+  .catch(function(){callback([]);});
 }
 
 // Deleta processo do Firebase e cache
@@ -3219,8 +3341,10 @@ function dbDeleteProcess(username,id){
   var key='impak_processes_'+(username||'x');
   try{var p=JSON.parse(localStorage.getItem(key)||'[]');
   localStorage.setItem(key,JSON.stringify(p.filter(function(x){return x.id!==id;})));}catch(e){}
-  fetch('/api/processos/'+encodeURIComponent(id),{method:'DELETE',
-  headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username})}).catch(function(e){});
+  fetch('/api/processos/'+encodeURIComponent(id),{
+    method:'DELETE',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:username})
+  }).catch(function(e){});
 }
 
 // Busca processo específico do Firebase
@@ -3229,7 +3353,8 @@ function dbGetProcess(username,id,callback){
   try{var p=JSON.parse(localStorage.getItem(key)||'[]').find(function(x){return x.id===id;});
   if(p){callback(p);return;}}catch(e){}
   fetch('/api/processos/'+encodeURIComponent(id)+'?usuario='+encodeURIComponent(username))
-  .then(function(r){return r.json();}).then(function(d){callback(d.processo||null);})
+  .then(function(r){return r.json();})
+  .then(function(d){callback(d.processo||null);})
   .catch(function(){callback(null);});
 }
 
@@ -4720,7 +4845,225 @@ function exportPDF(){
   ${alertRows?`<div class="section"><h2>${L.alertas}</h2><div class="alerts"><ul>${alertRows}</ul></div></div>`:''}
   <div class="footer">IMPAK · ${L.geradoEm}: ${new Date().toLocaleString('pt-BR')}</div>
   <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),500);<\/script>
-  
+  </body></html>`);
+  win.document.close();
+}
+
+function printReport(){ exportPDF(); }
+
+// ─── MESSAGE GENERATOR ───────────────────────────────────────────────
+let currentMsgType = 'agent';
+
+function buildMsgText(type, lang, ref, divs, alerts) {
+  var date = new Date().toLocaleDateString('pt-BR');
+  var msg = '';
+
+  if(type === 'agent') {
+    if(lang === 'pt') {
+      msg = 'Prezado Agente de Cargas,\n\nEstamos verificando o draft do Bill of Lading referente ao processo *' + ref + '* e identificamos os seguintes pontos que precisam de correcao antes da emissao final:\n\n';
+      var blDivs = divs.filter(function(d){ return d.doc1_label==='BILL OF LADING (BL)' || d.doc2_label==='BILL OF LADING (BL)'; });
+      var items = blDivs.length ? blDivs : divs.slice(0,5);
+      msg += '*CORRECOES NECESSARIAS NO BL:*\n\n';
+      items.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Consta no BL: '+(d.doc1_label==='BILL OF LADING (BL)'?d.doc1_valor:d.doc2_valor||'N/A')+'\n   Deve ser: '+(d.doc1_label==='BILL OF LADING (BL)'?d.doc2_valor:d.doc1_valor||'N/A')+'\n\n'; });
+      if(alerts.length){ msg += '*ALERTAS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+      msg += '\nPor favor, enviar o BL corrigido para nossa analise.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else if(lang === 'en') {
+      msg = 'Dear Freight Agent,\n\nWe are reviewing the Bill of Lading draft for process *' + ref + '* and identified the following corrections needed before final issuance:\n\n';
+      var blDivs2 = divs.filter(function(d){ return d.doc1_label==='BILL OF LADING (BL)' || d.doc2_label==='BILL OF LADING (BL)'; });
+      var items2 = blDivs2.length ? blDivs2 : divs.slice(0,5);
+      msg += '*CORRECTIONS REQUIRED:*\n\n';
+      items2.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Current (BL): '+(d.doc1_valor||'N/A')+'\n   Should be: '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPlease send the corrected BL for our review.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else {
+      msg = 'Estimado Agente de Carga,\n\nEstamos revisando el borrador del Bill of Lading para el proceso *' + ref + '*:\n\n';
+      divs.slice(0,5).forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Actual: '+(d.doc1_valor||'N/A')+'\n   Debe ser: '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPor favor, enviar el BL corregido.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    }
+  } else if(type === 'supplier') {
+    if(lang === 'pt') {
+      msg = 'Prezado Fornecedor,\n\nEm relacao ao processo *' + ref + '*, identificamos divergencias nos documentos (CI/PL/PI) que precisam ser corrigidas:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Obs: '+d.observacao+'\n':'')+'\n'; });
+      msg += '\nPor favor, emitir documentos corrigidos com urgencia.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else if(lang === 'en') {
+      msg = 'Dear Supplier,\n\nRegarding process *' + ref + '*, we have identified discrepancies in the shipping documents (CI/PL/PI) that require correction:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Note: '+d.observacao+'\n':'')+'\n'; });
+      if(alerts.length){ msg += '*ADDITIONAL ALERTS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+      msg += '\nPlease issue corrected documents as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else {
+      msg = 'Estimado Proveedor,\n\nEn relacion al proceso *' + ref + '*, hemos identificado discrepancias en los documentos:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPor favor, emita documentos corregidos a la brevedad.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    }
+  } else {
+    if(lang === 'pt') {
+      msg = '*RELATORIO DE CONFERENCIA DOCUMENTAL*\nProcesso: ' + ref + ' | Data: ' + date + '\n\n';
+      msg += 'RESUMO: ' + divs.length + ' divergencia(s) | ' + alerts.length + ' alerta(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCIAS:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+      if(alerts.length){ msg += '*ALERTAS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+    } else if(lang === 'en') {
+      msg = '*DOCUMENTARY REVIEW REPORT*\nProcess: ' + ref + ' | Date: ' + date + '\n\n';
+      msg += 'SUMMARY: ' + divs.length + ' divergence(s) | ' + alerts.length + ' alert(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCES:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+      if(alerts.length){ msg += '*ALERTS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+    } else {
+      msg = '*INFORME DE REVISION DOCUMENTAL*\nProceso: ' + ref + ' | Fecha: ' + date + '\n\n';
+      msg += 'RESUMEN: ' + divs.length + ' divergencia(s) | ' + alerts.length + ' alerta(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCIAS:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+    }
+  }
+  return msg;
+}
+
+const MSG_TEMPLATES = {
+  agent: {
+    pt: function(ref,divs,alerts){ return buildMsgText('agent','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('agent','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('agent','es',ref,divs,alerts); }
+  },
+  supplier: {
+    pt: function(ref,divs,alerts){ return buildMsgText('supplier','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('supplier','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('supplier','es',ref,divs,alerts); }
+  },
+  all: {
+    pt: function(ref,divs,alerts){ return buildMsgText('all','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('all','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('all','es',ref,divs,alerts); }
+  }
+};
+
+
+function openMsgModal(type, lang){
+  currentMsgType = type;
+  const titles = { agent:'🚢 Agente de Cargas — Correção do BL', supplier:'🏭 Fornecedor — Invoice & Packing List', all:'📋 Relatório Completo' };
+  const subs = { agent:'Mensagem para solicitar correções no Bill of Lading', supplier:'Mensagem para solicitar correções na Invoice e Packing List', all:'Relatório com todas as divergências' };
+  document.getElementById('msgModalTitle').textContent = titles[type];
+  document.getElementById('msgModalSub').textContent = subs[type];
+  document.getElementById('msgLangSelect').value = lang;
+  updateMsgContent();
+  document.getElementById('msgModalBg').style.display = 'flex';
+}
+
+function updateMsgContent(){
+  const lang = document.getElementById('msgLangSelect').value;
+  const ref = document.getElementById('procRef')?.value || 'N/A';
+  const divs = getDivergencias();
+  const alerts = currentResult?.alertas || [];
+  const fn = MSG_TEMPLATES[currentMsgType]?.[lang];
+  if(fn) document.getElementById('msgContent').value = fn(ref, divs, alerts);
+}
+
+function copyMsg(){
+  const txt = document.getElementById('msgContent').value;
+  navigator.clipboard.writeText(txt).then(()=>showToast('Copiado! Cole no WhatsApp ou e-mail.','ok')).catch(()=>{ document.getElementById('msgContent').select(); document.execCommand('copy'); showToast('Copiado!','ok'); });
+}
+
+function exportMsgPDF(){
+  const txt = document.getElementById('msgContent').value;
+  const ref = document.getElementById('procRef')?.value || '';
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mensagem - ${ref}</title>
+  <style>body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;color:#1c1a16;line-height:1.7;}
+  .header{background:#1a3a2a;color:#fff;padding:20px 28px;border-radius:8px;margin-bottom:24px;}
+  .header h1{margin:0;font-size:18px;} .header p{margin:4px 0 0;font-size:12px;opacity:.7;}
+  pre{white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;background:#f4f1eb;padding:20px;border-radius:6px;border-left:4px solid #1a3a2a;}
+  @media print{body{margin:20px;}}</style></head><body>
+  <div class="header"><h1>IMPAK — Comunicação de Processo</h1><p>Referência: ${ref} · ${new Date().toLocaleDateString('pt-BR')}</p></div>
+  <pre>${txt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+  <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+function closeMsgModal(e){
+  if(e.target===document.getElementById('msgModalBg')) document.getElementById('msgModalBg').style.display='none';
+}
+
+// ─── SECTION COPY/EMAIL ──────────────────────────────────────────────
+var SECTION_LABELS = {
+  bl: {pt:'Bill of Lading (BL)', en:'Bill of Lading (BL)', es:'Bill of Lading (BL)'},
+  docs: {pt:'Commercial Invoice / Packing List / Proforma', en:'Commercial Invoice / Packing List / Proforma', es:'Commercial Invoice / Packing List / Proforma'}
+};
+
+var SECTION_INTRO = {
+  bl:{
+    pt: function(ref){ return 'Prezado Agente de Cargas,\n\nIdentificamos divergencias no Bill of Lading do processo *'+ref+'* que precisam ser corrigidas antes da emissao final:\n'; },
+    en: function(ref){ return 'Dear Freight Agent,\n\nWe have identified discrepancies in the Bill of Lading for process *'+ref+'* that require correction before final issuance:\n'; },
+    es: function(ref){ return 'Estimado Agente de Carga,\n\nHemos identificado discrepancias en el Bill of Lading del proceso *'+ref+'* que requieren correccion:\n'; }
+  },
+  docs:{
+    pt: function(ref){ return 'Prezado Fornecedor,\n\nIdentificamos divergencias nos documentos (Commercial Invoice / Packing List / Proforma) do processo *'+ref+'* que precisam ser corrigidas:\n'; },
+    en: function(ref){ return 'Dear Supplier,\n\nWe have identified discrepancies in the shipping documents (Commercial Invoice / Packing List / Proforma) for process *'+ref+'* that require correction:\n'; },
+    es: function(ref){ return 'Estimado Proveedor,\n\nHemos identificado discrepancias en los documentos (Commercial Invoice / Packing List / Proforma) del proceso *'+ref+'* que requieren correccion:\n'; }
+  },
+  ce:{
+    pt: function(ref){ return 'Prezado responsavel,\n\nIdentificamos divergencias no CE Mercante do processo *'+ref+'* em relacao aos demais documentos (BL, Invoice, Packing List). Os itens abaixo precisam ser verificados:\n'; },
+    en: function(ref){ return 'Dear responsible,\n\nWe have identified discrepancies in the CE Mercante (Brazilian cargo manifest) for process *'+ref+'* when compared to BL, Invoice and Packing List:\n'; },
+    es: function(ref){ return 'Estimado responsable,\n\nHemos identificado discrepancias en el CE Mercante del proceso *'+ref+'* en relacion a los demas documentos:\n'; }
+  }
+};
+
+var SECTION_CLOSING = {
+  pt: '\nPor favor, corrigir e reemitir os documentos com urgencia.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda',
+  en: '\nPlease correct and reissue the documents as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda',
+  es: '\nPor favor, corrija y reemita los documentos a la brevedad.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda'
+};
+
+var FIELD_LABELS = {
+  pt:{field:'Campo', doc1:'Documento', doc2:'Divergencia', note:'Obs'},
+  en:{field:'Field', doc1:'Document', doc2:'Discrepancy', note:'Note'},
+  es:{field:'Campo', doc1:'Documento', doc2:'Discrepancia', note:'Obs'}
+};
+
+function copySectionText(sectionDivs, ref, lang){
+  if(!sectionDivs.length){ showToast('Nenhuma divergencia nesta secao','err'); return; }
+  var firstD=sectionDivs[0];
+  var sk='docs';
+  if(firstD){
+    var fg=firstD.grupo.toLowerCase();
+    var fl1=firstD.doc1_label||'';
+    var fl2=firstD.doc2_label||'';
+    if(fl1==='CE MERCANTE'||fl2==='CE MERCANTE'||fg.includes('ce mercante')) sk='ce';
+    else if(fl1==='BILL OF LADING (BL)'||fl2==='BILL OF LADING (BL)'||fg.includes('logistic')||fg.includes('bill of lading')) sk='bl';
+  }
+  var L=FIELD_LABELS[lang];
+  var date=new Date().toLocaleDateString('pt-BR');
+  var text=SECTION_INTRO[sk][lang](ref);
+  text+='\n';
+  sectionDivs.forEach(function(d,i){
+    var resolved=divergResolved[d.grupo+'-'+d.campo];
+    text+=(i+1)+'. *'+d.campo+'*\n';
+    text+='   '+L.doc1+' ('+d.doc1_label+'): '+(d.doc1_valor||'N/A')+'\n';
+    text+='   '+L.doc2+' ('+d.doc2_label+'): '+(d.doc2_valor||'N/A')+'\n';
+    if(d.observacao) text+='   '+L.note+': '+d.observacao+'\n';
+    if(resolved&&resolved.nota) text+='   Status: Resolvido - '+resolved.nota+'\n';
+    text+='\n';
+  });
+  text+=SECTION_CLOSING[lang];
+  navigator.clipboard.writeText(text)
+    .then(function(){showToast('Copiado em '+lang.toUpperCase()+'!','ok');})
+    .catch(function(){prompt('Copie o texto:',text);});
+}
+
+function emailSection(sectionDivs, sectionKey, ref){
+  var subjectPT='Divergencias Documentais - Processo '+ref+' - '+(sectionKey==='bl'?'BL':'Invoice/Packing List');
+  var subject=encodeURIComponent(subjectPT);
+  var bodyPT=SECTION_INTRO[sectionKey].pt(ref)+'\n';
+  var bodyEN=SECTION_INTRO[sectionKey].en(ref)+'\n';
+  sectionDivs.forEach(function(d,i){
+    var line=(i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Obs: '+d.observacao+'\n':'')+'\n';
+    bodyPT+=line; bodyEN+=line;
+  });
+  bodyPT+=SECTION_CLOSING.pt;
+  bodyEN+=SECTION_CLOSING.en;
+  var body=encodeURIComponent(bodyPT+'\n\n---\n\n'+bodyEN);
+  window.open('mailto:?subject='+subject+'&body='+body);
+}
+
+// Legacy single-div functions kept for compatibility
+function copyOneDivPT(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','pt'); }
+function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','en'); }
+function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
 </script>
 </body>
 </html>
