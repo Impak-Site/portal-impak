@@ -810,6 +810,20 @@ textarea.field-input{resize:vertical;min-height:80px;}
   </div>
 </div>
 
+
+<div class="page" id="page-detalhe-processo">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+    <div>
+      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text-bright);letter-spacing:-0.02em;" id="detalheProcTitle">Processo</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:3px;" id="detalheProcSub"></div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-danger btn-sm" id="detalheProcDeleteBtn">Excluir</button>
+      <button class="btn btn-ghost" onclick="fecharDetalheProcesso()">← Voltar</button>
+    </div>
+  </div>
+  <div id="detalheProcBody"></div>
+</div>
 </main>
 </div>
 
@@ -827,19 +841,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </div>
 
 <!-- Página de detalhe do processo (tela cheia) -->
-<div class="page" id="page-detalhe-processo">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);">
-    <div>
-      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text-bright);letter-spacing:-0.02em;" id="detalheProcTitle">Processo</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-top:3px;" id="detalheProcSub"></div>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-danger btn-sm" id="detalheProcDeleteBtn">Excluir</button>
-      <button class="btn btn-ghost" onclick="fecharDetalheProcesso()">← Voltar</button>
-    </div>
-  </div>
-  <div id="detalheProcBody"></div>
-</div>
+
 
 <!-- Message Modal -->
 <div class="modal-bg" id="msgModalBg" onclick="closeMsgModal(event)" style="display:none;align-items:center;justify-content:center;">
