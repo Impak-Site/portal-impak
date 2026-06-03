@@ -376,7 +376,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 <div class="page" id="page-historico">
   <div class="sh">
     <h2>Histórico de <span>Solicitações</span></h2>
-    <button class="btn bg2 bsm" onclick="limparHistorico()" style="color:#c0392b;border-color:rgba(192,57,43,.3)">🗑 Limpar histórico</button>
+    
   </div>
   <div class="card" style="margin-bottom:14px">
     <div class="ch"><h3>Todas as solicitações de cotação enviadas</h3>
@@ -1862,21 +1862,42 @@ async function carregarCotacoesSalvas() {
 }
 
 // ── HISTÓRICO DE E-MAILS ─────────────────────────────────────────────
-async function gravarHistorico(forn, tipo, lang) {
+async async function gravarHistorico(forn, tipo, lang) {
+  const entrada = {
+    id: Date.now(),
+    fornecedor: forn.nome,
+    email: forn.email,
+    tipo, lang,
+    data: new Date().toISOString(),
+    usuario: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'Sistema'
+  };
+  // Salvar local
+  try { await dbPut('historico', entrada); } catch(e) { console.warn('Histórico local:', e); }
+  // Salvar no Drive (persistente entre usuários e dispositivos)
   try {
-    await dbPut('historico', {
-      fornecedor: forn.nome,
-      email: forn.email,
-      tipo, lang,
-      data: new Date().toISOString(),
-      usuario: 'Jean'
+    await fetch('/api/drive/historico', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({entrada})
     });
-  } catch(e) { console.warn('Erro histórico:', e); }
+  } catch(e) { console.warn('Histórico Drive:', e); }
 }
 
 async function renderHistorico() {
   try {
-    const items = await dbGetAll('historico');
+    // Tentar carregar do Drive primeiro (fonte de verdade)
+    let items = [];
+    try {
+      const r = await fetch('/api/drive/historico');
+      const d = await r.json();
+      if (d.historico && d.historico.length) {
+        items = d.historico;
+        // Sincronizar local
+        for (const it of items) { try { await dbPut('historico', it); } catch(e) {} }
+      }
+    } catch(e) {}
+    // Fallback: local
+    if (!items.length) items = await dbGetAll('historico');
     const el = document.getElementById('hist-list');
     document.getElementById('hist-total').textContent = items.length + ' registros';
     if (!items.length) {
@@ -1927,11 +1948,10 @@ function exportarExcel() {
     const forn = rank.forn;
     const rows = [];
 
-    // Cabeçalho linha 1: labels
+    // Cabeçalho linha 1: labels (igual ao modelo IMPAK)
     rows.push([
-      '', forn.toUpperCase(), 'Size', 'L.I./ S.R.', 'P.R.', 'Pattern',
-      'CNT 40HC', 'Pedido', '% 40HC', 'Weight (Kgs.)', 'Peso Total',
-      'FOB', '', 'TOTAL'
+      'Tipo', forn.toUpperCase(), 'Size', 'L.I./ S.R.', 'P.R.', 'Pattern',
+      'Pedido', 'Weight (Kgs.)', 'Peso Total', 'FOB', 'TOTAL'
     ]);
 
     let totalPedido = 0, totalPesoTotal = 0, totalFOB = 0;
@@ -1950,31 +1970,24 @@ function exportarExcel() {
       totalFOB += subtotal;
 
       rows.push([
-        'Pneu',
+        'Pneu Automóvel',
         `PNEU ${forn} ${m.medida} ${cot.li||''} ${cot.pat||''} - Cod.Prod ${idx+1}`,
         m.medida,
         cot.li || '-',
         cot.pr || '-',
         cot.pat || '-',
-        moq || '-',
         qtde,
-        moq > 0 ? pct : '-',
         peso || '-',
         pesoTotal || '-',
         cot.preco,
-        '',
         subtotal,
       ]);
     });
 
     // Linha de totais
     rows.push([
-      '', '', '', '', '', '', '',
-      totalPedido,
-      totalPedido > 0 && cots.find(c=>c.forn===forn)?.moq > 0
-        ? totalPedido / (cots.find(c=>c.forn===forn)?.moq||1)
-        : '',
-      '', totalPesoTotal, '', '', totalFOB
+      '', '', '', '', '', '',
+      totalPedido, '', totalPesoTotal, '', totalFOB
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -1982,24 +1995,17 @@ function exportarExcel() {
     // Larguras das colunas
     ws['!cols'] = [
       {wch:14},{wch:55},{wch:12},{wch:10},{wch:8},{wch:14},
-      {wch:10},{wch:10},{wch:9},{wch:13},{wch:12},{wch:10},{wch:4},{wch:14}
+      {wch:10},{wch:13},{wch:12},{wch:10},{wch:14}
     ];
 
-    // Formatar % e moeda via fmt
-    const range = XLSX.utils.decode_range(ws['!ref']);
+    // Formatar moeda e peso
     for (let R = 1; R <= rows.length - 1; R++) {
-      const pctCell = ws[XLSX.utils.encode_cell({r:R, c:8})];
-      if (pctCell && typeof pctCell.v === 'number')
-        pctCell.z = '0.00%';
-      const fobCell = ws[XLSX.utils.encode_cell({r:R, c:11})];
-      if (fobCell && typeof fobCell.v === 'number')
-        fobCell.z = '"$"#,##0.00';
-      const totCell = ws[XLSX.utils.encode_cell({r:R, c:13})];
-      if (totCell && typeof totCell.v === 'number')
-        totCell.z = '"$"#,##0.00';
-      const psoCell = ws[XLSX.utils.encode_cell({r:R, c:10})];
-      if (psoCell && typeof psoCell.v === 'number')
-        psoCell.z = '#,##0.00';
+      const fobCell = ws[XLSX.utils.encode_cell({r:R, c:9})];
+      if (fobCell && typeof fobCell.v === 'number') fobCell.z = '"$"#,##0.00';
+      const totCell = ws[XLSX.utils.encode_cell({r:R, c:10})];
+      if (totCell && typeof totCell.v === 'number') totCell.z = '"$"#,##0.00';
+      const psoCell = ws[XLSX.utils.encode_cell({r:R, c:8})];
+      if (psoCell && typeof psoCell.v === 'number') psoCell.z = '#,##0.00';
     }
 
     const sheetName = forn.slice(0, 28).replace(/[\\/:*?[\]]/g,'_');
@@ -2008,7 +2014,7 @@ function exportarExcel() {
 
   // Aba Mix Otimizado
   const rowsOtim = [];
-  rowsOtim.push(['Size','L.I./S.R.','P.R.','Pattern','Melhor Fornecedor','Pedido','CNT 40HC','% 40HC','Weight (Kgs.)','Peso Total','FOB','TOTAL']);
+  rowsOtim.push(['Size','L.I./S.R.','P.R.','Pattern','Melhor Fornecedor','Pedido','Weight (Kgs.)','Peso Total','FOB','TOTAL']);
   let totOtPed=0,totOtPeso=0,totOtFob=0;
   otim.forEach(o => {
     if (!o.melhor) return;
@@ -2018,13 +2024,12 @@ function exportarExcel() {
     totOtPed+=o.qtde; totOtPeso+=pesoT; totOtFob+=(o.sub||0);
     rowsOtim.push([
       o.medida, o.li||'-', o.pr||'-', o.pat||'-', o.melhor,
-      o.qtde, moq||'-', moq>0?pct:'-',
-      o.peso||'-', pesoT||'-', o.preco, o.sub
+      o.qtde, o.peso||'-', pesoT||'-', o.preco, o.sub
     ]);
   });
-  rowsOtim.push(['','','','','TOTAL',totOtPed,'','','',totOtPeso,'',totOtFob]);
+  rowsOtim.push(['','','','','TOTAL',totOtPed,'',totOtPeso,'',totOtFob]);
   const wsOtim = XLSX.utils.aoa_to_sheet(rowsOtim);
-  wsOtim['!cols']=[{wch:12},{wch:10},{wch:8},{wch:14},{wch:22},{wch:8},{wch:10},{wch:9},{wch:13},{wch:12},{wch:10},{wch:14}];
+  wsOtim['!cols']=[{wch:12},{wch:10},{wch:8},{wch:14},{wch:22},{wch:8},{wch:13},{wch:12},{wch:10},{wch:14}];
   XLSX.utils.book_append_sheet(wb, wsOtim, 'Mix Otimizado');
 
   const data = hoje.replace(/\//g,'-');
