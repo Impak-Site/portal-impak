@@ -866,6 +866,40 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
 <script>
+
+// ── AUTO-LOGIN via sessão do servidor ──────────────────────
+window.addEventListener('DOMContentLoaded', function(){
+  fetch('/api/me').then(function(r){return r.json();}).then(function(d){
+    if(!d.logado) return; // servidor não autenticado, usar login manual
+    var found = USERS.find(function(x){ return x.username===d.usuario; });
+    if(!found){
+      // usuário autenticado mas não na lista local — criar entrada
+      found = { username: d.usuario, password: '', role: d.role||'analista', displayName: d.displayName||d.nome };
+    }
+    _currentUser = found;
+    var ls = document.getElementById('loginScreen');
+    if(ls) ls.style.display='none';
+    renderDashboard();
+    renderProcessos('');
+    // Sincronizar processos do Drive
+    if(_currentUser.role==='gerente'){
+      dbGetAllProcesses(function(all){
+        _processes = all;
+        renderDashboard();
+        renderProcessos('');
+      });
+    } else {
+      dbGetProcesses(_currentUser.username, function(list){
+        _processes = list;
+        renderDashboard();
+        renderProcessos('');
+      });
+    }
+  }).catch(function(){
+    // Se /api/me falhar, mostrar login manual normalmente
+  });
+});
+
 // ─── EARLY FUNCTION DECLARATIONS (needed by HTML onload) ─────────────
 function showToast(msg,type){
   const t=document.getElementById('toast');
@@ -1137,7 +1171,7 @@ function initFirebase(){ _firebaseReady=false; }
 
 // Salva processo no Firestore + atualiza cache local
 function dbSaveProcess(username,proc){
-  var key='impak_proc_'+username;
+  var key='impak_processes_'+username;
   try{var p=JSON.parse(localStorage.getItem(key)||'[]');
   var i=p.findIndex(function(x){return x.id===proc.id;});
   if(i>=0)p[i]=proc;else p.unshift(proc);
@@ -1145,12 +1179,12 @@ function dbSaveProcess(username,proc){
   fetch('/api/processos/salvar',{method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({username:username,processo:proc})
-  }).catch(function(e){console.warn('Drive:',e);});
+  }).catch(function(e){console.warn('Drive save:',e);});
 }
 
 // Busca processos de um usuário — Firebase primeiro, cache como fallback
 function dbGetProcesses(username,callback){
-  var key='impak_proc_'+username;
+  var key='impak_processes_'+username;
   var local=[];try{local=JSON.parse(localStorage.getItem(key)||'[]');}catch(e){}
   if(local.length)callback(local);
   fetch('/api/processos?usuario='+encodeURIComponent(username))
@@ -1171,7 +1205,7 @@ function dbGetAllProcesses(callback){
 
 // Deleta processo do Firebase e cache
 function dbDeleteProcess(username,id){
-  var key='impak_proc_'+username;
+  var key='impak_processes_'+username;
   try{var p=JSON.parse(localStorage.getItem(key)||'[]');
   localStorage.setItem(key,JSON.stringify(p.filter(function(x){return x.id!==id;})));}catch(e){}
   fetch('/api/processos/'+encodeURIComponent(id),{
@@ -1182,7 +1216,7 @@ function dbDeleteProcess(username,id){
 
 // Busca processo específico do Firebase
 function dbGetProcess(username,id,callback){
-  var key='impak_proc_'+username;
+  var key='impak_processes_'+username;
   try{var p=JSON.parse(localStorage.getItem(key)||'[]').find(function(x){return x.id===id;});
   if(p){callback(p);return;}}catch(e){}
   fetch('/api/processos/'+encodeURIComponent(id)+'?usuario='+encodeURIComponent(username))
