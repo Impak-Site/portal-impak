@@ -24,6 +24,8 @@
   --bl:#1a7fd4;
   --pu:#5b7fa8;
   --am:#b07800;
+  --or:#1a7fd4;
+  --or2:#1567b8;
   --mono:'Barlow',monospace;
   --sans:'Barlow',sans-serif;
   --cond:'Barlow Condensed',sans-serif;
@@ -702,8 +704,8 @@ let fornecedores = [
   {id:'f1',nome:'EUDEMON',contato:'Alexia',email:'zhangwj@jinyutyres.com',tipos:['TBR'],ultimaCot:null},
   {id:'f2',nome:'ROVELO',contato:'Mirian',email:'mirian.silva@sailuntire.com',tipos:['TBR'],ultimaCot:null},
   {id:'f3',nome:'DELMAX',contato:'Alice',email:'alice@sunwidetyre.com',tipos:['PCR'],ultimaCot:null},
-  {id:'f4',nome:'SUNWIDE / INVOVIC',contato:'Vivian',email:'vivian.meng@landspidertire.com',tipos:['PCR'],ultimaCot:null},
-  {id:'f5',nome:'TRACMAX / WINDFORCE',contato:'Carol Xiu',email:'info32@chinese-tyres.com',tipos:['PCR'],ultimaCot:null},
+  {id:'f4',nome:'SUNWIDE/INVOVIC',contato:'Vivian',email:'vivian.meng@landspidertire.com',tipos:['PCR'],ultimaCot:null},
+  {id:'f5',nome:'TRACMAX/WINDFORCE',contato:'Carol Xiu',email:'info32@chinese-tyres.com',tipos:['PCR'],ultimaCot:null},
 ];
 let mixRows=[],cotRows=[],tipoAtivo='PCR',emailLang='pt',emailFornId=null,editFornId=null;
 let ultimaAnalise=null;
@@ -782,15 +784,15 @@ function detectFornecedor(filename,data){
   if(fn.includes('ROVELO'))return'ROVELO';
   if(fn.includes('EUDEMON'))return'EUDEMON';
   if(fn.includes('DELMAX'))return'DELMAX';
-  if(fn.includes('TRACMAX')||fn.includes('WINDFORCE'))return'TRACMAX / WINDFORCE';
-  if(fn.includes('INVOVIC')||fn.includes('SUNWIDE'))return'SUNWIDE / INVOVIC';
+  if(fn.includes('TRACMAX')||fn.includes('WINDFORCE'))return'TRACMAX/WINDFORCE';
+  if(fn.includes('INVOVIC')||fn.includes('SUNWIDE'))return'SUNWIDE/INVOVIC';
   // tentar pelo conteúdo
   const flat=JSON.stringify(data).toUpperCase();
   if(flat.includes('ROVELO'))return'ROVELO';
   if(flat.includes('EUDEMON'))return'EUDEMON';
   if(flat.includes('DELMAX'))return'DELMAX';
-  if(flat.includes('TRACMAX'))return'TRACMAX / WINDFORCE';
-  if(flat.includes('INVOVIC'))return'SUNWIDE / INVOVIC';
+  if(flat.includes('TRACMAX'))return'TRACMAX/WINDFORCE';
+  if(flat.includes('INVOVIC'))return'SUNWIDE/INVOVIC';
   return null;
 }
 
@@ -879,7 +881,7 @@ function parsePCR_TRACMAX(rows){
     if(!size||size.length<5||size==='Description')continue;
     const preco=iPrice>=0?parseFloat(r[iPrice]):0;
     if(!preco||preco<=0)continue;
-    items.push({f:'TRACMAX / WINDFORCE',s:size,m:'TRACMAX',md:(r[iName]||'').toString(),cur:'USD',pe:null,
+    items.push({f:'TRACMAX/WINDFORCE',s:size,m:'TRACMAX',md:(r[iName]||'').toString(),cur:'USD',pe:null,
       li:iSpd>=0?(r[iSpd]||'').toString():'',pr:iRat>=0?(r[iRat]||'').toString():'',
       moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,p:Math.round(preco*100)/100,t:'PCR'});
   }
@@ -907,7 +909,7 @@ function parsePCR_INVOVIC(rows){
     if(!size||size.length<5)continue;
     const preco=iFob>=0?parseFloat(r[iFob]):0;
     if(!preco||preco<=0)continue;
-    items.push({f:'SUNWIDE / INVOVIC',s:size,m:'INVOVIC',md:(r[iPat]||'').toString(),cur:'USD',
+    items.push({f:'SUNWIDE/INVOVIC',s:size,m:'INVOVIC',md:(r[iPat]||'').toString(),cur:'USD',
       pe:iPeso>=0&&r[iPeso]?parseFloat(r[iPeso]):null,
       li:iLoad>=0?(r[iLoad]||'').toString():'',pr:'',
       moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,p:Math.round(preco*100)/100,t:'PCR'});
@@ -943,8 +945,8 @@ async function handleImport(files){
       let novos=[];
       if(forn==='ROVELO'||forn==='EUDEMON') novos=parseTBR(rows,forn);
       else if(forn==='DELMAX') novos=parsePCR_DELMAX(rows);
-      else if(forn==='TRACMAX / WINDFORCE') novos=parsePCR_TRACMAX(rows);
-      else if(forn==='SUNWIDE / INVOVIC') novos=parsePCR_INVOVIC(rows);
+      else if(forn==='TRACMAX/WINDFORCE') novos=parsePCR_TRACMAX(rows);
+      else if(forn==='SUNWIDE/INVOVIC') novos=parsePCR_INVOVIC(rows);
 
       if(!novos.length){logImport(`⚠ Nenhum produto encontrado em ${file.name}`,'err');totalErros++;continue;}
 
