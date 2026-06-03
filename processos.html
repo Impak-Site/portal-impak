@@ -1058,9 +1058,8 @@ function doLogin(){
   document.getElementById('userBadgeName').textContent = found.displayName;
   document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
   // Show gestao tab for manager
-  if(found.role==='gerente'){
-    document.getElementById('navGestao').style.display='flex';
-  }
+  // Aba Gestão removida — tudo em Processos
+  // if(found.role==='gerente'){ document.getElementById('navGestao').style.display='flex'; }
   // Load user processes (Firebase async, localStorage como cache imediato)
   _processes = loadUserProcesses(); // cache local imediato
   _processes = migrateAlerts(_processes);
@@ -1562,6 +1561,9 @@ async function runAnalysis(){
     } else {
       proc = {
         id: Date.now(),
+        _user: _currentUser ? _currentUser.username : 'desconhecido',
+        _userName: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'Desconhecido',
+        _updatedAt: Date.now(),
         ref,
         exportador: exp || extrairExportador(result),
         obs,
