@@ -13,22 +13,22 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
 :root {
-  --bg: #f0f4f8;
-  --bg2: #e8edf2;
-  --surface: #ffffff;
-  --surface2: #f5f8fb;
-  --border: #dce3ea;
-  --border2: #c5d0db;
-  --accent: #0a2d5e;
-  --accent2: #1a4a8a;
-  --accent-dim: rgba(10,45,94,0.08);
-  --warn: #d97706;
-  --danger: #dc2626;
-  --ok: #16a34a;
-  --text: #1e2d3d;
-  --text-dim: #64748b;
-  --text-bright: #0a1929;
-  --text-mid: #334155;
+  --bg:        #e8f0f8;
+  --bg2:       #dce8f5;
+  --surface:   #ffffff;
+  --surface2:  #f4f8fc;
+  --border:    #c8d8e8;
+  --border2:   #b0c8e0;
+  --accent:    #1a7fd4;
+  --accent2:   #1567b8;
+  --accent-dim:rgba(26,127,212,.10);
+  --warn:      #d97706;
+  --danger:    #c0392b;
+  --ok:        #16a34a;
+  --text:      #0d1e2e;
+  --text-dim:  #4a6480;
+  --text-bright:#0d1e2e;
+  --text-mid:  #2a4060;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -52,8 +52,8 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 /* Sidebar */
 .sidebar{
   width:220px;
-  background:var(--surface);
-  border-right:1px solid var(--border);
+  background:#0a2d5e;
+  border-right:none;
   display:flex;
   flex-direction:column;
   position:fixed;
@@ -62,8 +62,8 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 }
 .sidebar-logo{
   padding:20px 20px 16px;
-  border-bottom:1px solid var(--border);
-  background:var(--accent);
+  border-bottom:1px solid rgba(255,255,255,.1);
+  margin-bottom:8px;
 }
 .sidebar-logo .logo-tag{
   font-family:'DM Mono',monospace;
@@ -90,17 +90,20 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   display:flex;align-items:center;gap:10px;
   padding:10px 20px;
   font-size:13px;
-  color:var(--text-dim);
+  color:rgba(255,255,255,.65);
   cursor:pointer;
   border-left:2px solid transparent;
   transition:all 0.15s;
   user-select:none;
 }
-.nav-item:hover{color:var(--text);background:var(--surface);}
+.nav-item:hover{
+  color:#fff;
+  background:rgba(255,255,255,.08);
+}
 .nav-item.active{
-  color:var(--accent);
-  border-left-color:var(--accent);
-  background:var(--accent-dim);
+  color:#fff;
+  background:rgba(255,255,255,.12);
+  border-left-color:#1a7fd4;
   font-weight:600;
 }
 .nav-item .nav-icon{font-size:15px;width:20px;text-align:center;}
@@ -108,30 +111,23 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 
 .sidebar-api{
   padding:16px 20px;
-  border-top:1px solid var(--border);
-  background:var(--surface2);
+  border-top:1px solid rgba(255,255,255,.1);
 }
 .api-label{
-  font-family:'DM Mono',monospace;
-  font-size:9px;
-  color:var(--text-dim);
-  letter-spacing:0.15em;
-  text-transform:uppercase;
-  margin-bottom:8px;
+  font-size:9px;font-weight:700;
+  color:rgba(255,255,255,.4);
+  letter-spacing:1.5px;text-transform:uppercase;
+  margin-bottom:6px;
 }
 .api-input-wrap{position:relative;}
 .api-input{
-  width:100%;
-  background:var(--surface);
-  border:1px solid var(--border2);
-  border-radius:4px;
-  padding:8px 32px 8px 10px;
-  font-family:'DM Mono',monospace;
-  font-size:10px;
-  color:var(--text);
-  outline:none;
-  transition:border-color 0.15s;
+  width:100%;background:rgba(0,0,0,.2);
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:6px;
+  color:#fff;font-size:12px;font-family:'DM Mono',monospace;
+  padding:7px 10px;outline:none;
 }
+.api-input:focus{border-color:#1a7fd4;}
 .api-input:focus{border-color:var(--accent);}
 .api-input::placeholder{color:var(--text-dim);}
 .api-toggle{
@@ -533,29 +529,29 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 
 <!-- LOGIN SCREEN -->
-<div id="loginScreen" style="position:fixed;inset:0;background:#0d1e2e;display:flex;align-items:center;justify-content:center;z-index:9999;">
-  <div style="width:380px;max-width:94vw;">
-    <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:32px;">
-      <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;padding:7px 16px;border-radius:7px;letter-spacing:1px;">IMPAK</div>
-      <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#6b8aaa;letter-spacing:3px;text-transform:uppercase;">Portal</div>
+<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="width:400px;max-width:94vw;">
+    <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;">
+      <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;">Portal</div>
     </div>
-    <div style="background:#132438;border:1px solid #1e3a55;border-radius:14px;padding:32px 28px;">
-      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#e6edf4;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Acesso ao Sistema</div>
+    <div style="background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:36px 32px;box-shadow:0 8px 32px rgba(26,127,212,.1);">
+      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0d1e2e;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Acesso ao Sistema</div>
       <div style="font-size:11px;color:#1a7fd4;text-align:center;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:28px;">Gestão de Processos</div>
-      <div id="loginErr" style="display:none;background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.3);border-radius:7px;padding:10px 14px;font-size:12px;color:#e05c5c;font-weight:600;text-align:center;margin-bottom:16px;"></div>
-      <div style="font-size:10px;font-weight:700;color:#6b8aaa;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:7px;">Usuário</div>
+      <div id="loginErr" style="display:none;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;text-align:center;margin-bottom:16px;"></div>
+      <div style="font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Usuário</div>
       <input id="loginUser" type="text" placeholder="seu usuário" autocomplete="username"
-        style="width:100%;background:#0d1e2e;border:1px solid #1e3a55;border-radius:7px;color:#e6edf4;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:16px;box-sizing:border-box;"
-        onfocus="this.style.borderColor='#1a7fd4'" onblur="this.style.borderColor='#1e3a55'">
-      <div style="font-size:10px;font-weight:700;color:#6b8aaa;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:7px;">Senha</div>
-      <input id="loginPass" type="password" placeholder="••••••••••" autocomplete="current-password"
-        style="width:100%;background:#0d1e2e;border:1px solid #1e3a55;border-radius:7px;color:#e6edf4;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:20px;box-sizing:border-box;"
-        onfocus="this.style.borderColor='#1a7fd4'" onblur="this.style.borderColor='#1e3a55'"
+        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:16px;box-sizing:border-box;transition:border .15s;"
+        onfocus="this.style.borderColor='#1a7fd4';this.style.background='#c8ddf0'" onblur="this.style.borderColor='#c8d8e8';this.style.background='#dce8f5'">
+      <div style="font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Senha</div>
+      <input id="loginPass" type="password" placeholder="sua senha" autocomplete="current-password"
+        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:20px;box-sizing:border-box;transition:border .15s;"
+        onfocus="this.style.borderColor='#1a7fd4';this.style.background='#c8ddf0'" onblur="this.style.borderColor='#c8d8e8';this.style.background='#dce8f5'"
         onkeydown="if(event.key==='Enter')doLogin()">
       <button onclick="doLogin()"
-        style="width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;"
+        style="width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;"
         onmouseover="this.style.background='#1567b8'" onmouseout="this.style.background='#1a7fd4'">Entrar</button>
-      <div style="text-align:center;margin-top:16px;font-size:10px;color:#2a4060;font-family:'DM Mono',monospace;">IMPAK Comercial Importadora · Confidencial</div>
+      <div style="text-align:center;margin-top:18px;font-size:10px;color:#a8bfd4;">IMPAK Comercial Importadora · Confidencial</div>
     </div>
   </div>
 </div>
