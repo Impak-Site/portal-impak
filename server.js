@@ -100,123 +100,24 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IMPAK — Acesso</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0d1e2e;
-  --surface:#132438;
-  --border:#1e3a55;
-  --accent:#1a7fd4;
-  --accent2:#1567b8;
-  --text:#e6edf4;
-  --text-dim:#6b8aaa;
-  --danger:#e05c5c;
-}
-body{
-  background:var(--bg);
-  display:flex;align-items:center;justify-content:center;
-  min-height:100vh;
-  font-family:'DM Sans',sans-serif;
-}
-.wrap{
-  width:400px;max-width:94vw;
-}
-.logo-row{
-  display:flex;align-items:center;gap:12px;
-  justify-content:center;
-  margin-bottom:36px;
-}
-.logo-badge{
-  background:var(--accent);
-  color:#fff;
-  font-family:'Syne',sans-serif;
-  font-size:20px;font-weight:800;
-  padding:7px 16px;border-radius:7px;
-  letter-spacing:1px;
-}
-.logo-sub{
-  font-family:'Syne',sans-serif;
-  font-size:11px;font-weight:700;
-  color:var(--text-dim);
-  letter-spacing:3px;text-transform:uppercase;
-}
-.box{
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:36px 32px;
-}
-h1{
-  font-family:'Syne',sans-serif;
-  font-size:17px;font-weight:700;
-  color:var(--text);
-  text-align:center;
-  text-transform:uppercase;
-  letter-spacing:.5px;
-  margin-bottom:4px;
-}
-.sub{
-  font-size:11px;color:var(--accent);
-  text-align:center;font-weight:600;
-  letter-spacing:1px;text-transform:uppercase;
-  margin-bottom:28px;
-}
-label{
-  display:block;
-  font-size:10px;font-weight:700;
-  color:var(--text-dim);letter-spacing:1.5px;
-  text-transform:uppercase;margin-bottom:7px;
-}
-input{
-  width:100%;
-  background:#0d1e2e;
-  border:1px solid var(--border);
-  border-radius:7px;
-  color:var(--text);
-  font-family:'DM Sans',sans-serif;
-  font-size:14px;
-  padding:11px 14px;
-  outline:none;
-  transition:border .15s;
-  margin-bottom:18px;
-}
-input:focus{border-color:var(--accent);}
-button{
-  width:100%;
-  background:var(--accent);
-  border:none;border-radius:7px;
-  color:#fff;
-  font-family:'Syne',sans-serif;
-  font-size:15px;font-weight:700;
-  padding:12px;
-  cursor:pointer;
-  letter-spacing:.5px;
-  text-transform:uppercase;
-  transition:background .15s;
-  margin-top:4px;
-}
-button:hover{background:var(--accent2);}
-.err{
-  background:rgba(224,92,92,.1);
-  border:1px solid rgba(224,92,92,.3);
-  border-radius:7px;
-  padding:10px 14px;
-  font-size:12px;color:var(--danger);
-  font-weight:600;text-align:center;
-  margin-bottom:16px;
-}
-.footer{
-  text-align:center;
-  margin-top:20px;
-  font-size:10px;
-  color:#2a4060;
-  font-family:'DM Mono',monospace;
-}
-.divider{
-  height:1px;background:var(--border);
-  margin:24px 0;
-}
+body{background:#e8f0f8;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'DM Sans',sans-serif;}
+.wrap{width:400px;max-width:94vw;}
+.logo-row{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;}
+.logo-badge{background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;}
+.logo-sub{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;}
+.box{background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:36px 32px;box-shadow:0 8px 32px rgba(26,127,212,.1);}
+h1{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0d1e2e;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.sub{font-size:11px;color:#1a7fd4;text-align:center;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:28px;}
+label{display:block;font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+input{width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;transition:all .15s;margin-bottom:16px;}
+input:focus{border-color:#1a7fd4;background:#c8ddf0;}
+button{width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;margin-top:4px;}
+button:hover{background:#1567b8;}
+.err{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;text-align:center;margin-bottom:16px;}
+.footer{text-align:center;margin-top:18px;font-size:10px;color:#a8bfd4;}
 </style>
 </head>
 <body>
@@ -233,7 +134,7 @@ button:hover{background:var(--accent2);}
       <label>Usuário</label>
       <input name="usuario" type="text" placeholder="seu usuário" autocomplete="username" required autofocus>
       <label>Senha</label>
-      <input name="senha" type="password" placeholder="••••••••••" autocomplete="current-password" required>
+      <input name="senha" type="password" placeholder="sua senha" autocomplete="current-password" required>
       <input type="hidden" name="destino" value="DESTINO_PLACEHOLDER">
       <button type="submit">Entrar</button>
     </form>
