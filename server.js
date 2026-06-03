@@ -1,15 +1,18 @@
 /**
- * IMPAK TyreDesk v1.0 — Servidor com Google Drive
- * Variáveis no Railway:
- *   GOOGLE_CREDENTIALS  → conteúdo completo do JSON da conta de serviço
- *   DRIVE_FOLDER_ID     → ID da pasta TyreDesk no Drive
- *   SESSION_SECRET      → texto aleatório longo (opcional)
+ * IMPAK Portal — Servidor
+ * Dois módulos separados:
+ *   GET /            → tyredesk.html  (narcelio, jean)
+ *   GET /processos   → processos.html (todos)
+ *
+ * Variáveis Railway:
+ *   GOOGLE_CREDENTIALS  → JSON da conta de serviço
+ *   DRIVE_FOLDER_ID     → ID pasta Drive
+ *   SESSION_SECRET      → texto aleatório
  *   NODE_ENV            → production
  */
 
 const express    = require('express');
 const session    = require('express-session');
-const bcrypt     = require('bcryptjs');
 const path       = require('path');
 const fs         = require('fs');
 const { google } = require('googleapis');
@@ -17,18 +20,15 @@ const { google } = require('googleapis');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ── USUÁRIOS ────────────────────────────────────────────────
+// ── USUÁRIOS ─────────────────────────────────────────────────
 const USUARIOS = [
-  { nome: 'Narcelio',  usuario: 'narcelio',  email: 'narcelio@impak.com.br',    senha: 'Narcelio@2026',      modulos: ['tyredesk','processos'] },
-  { nome: 'Emanuelly', usuario: 'emanuelly', email: 'importacao1@impak.com.br', senha: 'EmanuellyImpak2026', modulos: ['processos'], role: 'analista', displayName: 'Emanuelly' },
-  { nome: 'Paula',     usuario: 'paula',     email: 'paula@impak.com.br',       senha: 'Paula@2026',         modulos: ['processos'], role: 'gerente',  displayName: 'Paula'     },
-  { nome: 'Jean',      usuario: 'jean',      email: 'jean@impak.com.br',        senha: 'Jeanimpak2026',      modulos: ['tyredesk','processos'] },
+  { usuario: 'narcelio',  senha: 'Narcelio@2026',      modulos: ['tyredesk','processos'], nome: 'Narcelio' },
+  { usuario: 'jean',      senha: 'Jeanimpak2026',      modulos: ['tyredesk','processos'], nome: 'Jean'     },
+  { usuario: 'paula',     senha: 'Paula@2026',         modulos: ['processos'],            nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
+  { usuario: 'emanuelly', senha: 'EmanuellyImpak2026', modulos: ['processos'],            nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
 ];
-const usuarios = USUARIOS.map(u => ({
-  nome: u.nome, usuario: u.usuario, hash: bcrypt.hashSync(u.senha, 10),
-}));
 
-// ── GOOGLE DRIVE ─────────────────────────────────────────────
+// ── GOOGLE DRIVE ──────────────────────────────────────────────
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '';
 let driveClient = null;
 
@@ -69,217 +69,241 @@ async function driveRead(nome) {
   try {
     const { data: lista } = await driveClient.files.list({
       q: `name='${nome}' and '${FOLDER_ID}' in parents and trashed=false`,
-      fields: 'files(id,modifiedTime)',
+      fields: 'files(id)',
     });
     if (!lista.files.length) return null;
     const { data } = await driveClient.files.get(
-      { fileId: lista.files[0].id, alt: 'media' }, { responseType: 'text' }
+      { fileId: lista.files[0].id, alt: 'media' },
+      { responseType: 'text' }
     );
-    return { conteudo: data, modificado: lista.files[0].modifiedTime };
-  } catch (e) { return null; }
+    return typeof data === 'string' ? JSON.parse(data) : data;
+  } catch (e) { console.error('Drive read error:', e.message); return null; }
 }
 
-async function driveList() {
-  if (!driveClient || !FOLDER_ID) return [];
-  try {
-    const { data } = await driveClient.files.list({
-      q: `'${FOLDER_ID}' in parents and trashed=false`,
-      fields: 'files(id,name,modifiedTime)',
-      orderBy: 'modifiedTime desc',
-    });
-    return data.files || [];
-  } catch (e) { return []; }
-}
-
-// ── MIDDLEWARES ──────────────────────────────────────────────
-app.use(express.json({ limit: '30mb' }));
+// ── MIDDLEWARE ────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'impak-tyredesk-2026',
-  resave: false, saveUninitialized: false,
-  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 8 * 60 * 60 * 1000 },
+  secret: process.env.SESSION_SECRET || 'impak-secret-2026',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false, maxAge: 8 * 60 * 60 * 1000 },
 }));
 
-function auth(req, res, next) {
-  // Para rotas /api/, verificar se está autenticado
-  if (req.path.startsWith('/api/')) {
-    // APIs são abertas — o portal HTML gerencia seu próprio login
-    return next();
-  }
-  return next();
+// Servir arquivos estáticos da pasta atual
+app.use(express.static(__dirname));
+
+// ── LOGIN PAGE ────────────────────────────────────────────────
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Acesso</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#e8f0f8;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Barlow',sans-serif;}
+.box{background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:40px 36px;width:400px;max-width:94vw;box-shadow:0 8px 32px rgba(26,127,212,.12);}
+.logo-row{display:flex;align-items:center;gap:10px;margin-bottom:28px;justify-content:center}
+.logo{background:#1a7fd4;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px}
+.sub{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase}
+h1{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;text-align:center;color:#0d1e2e;margin-bottom:4px;text-transform:uppercase}
+.versao{font-size:10px;color:#1a7fd4;font-weight:700;letter-spacing:1px;text-align:center;margin-bottom:24px;text-transform:uppercase}
+label{font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block}
+input{width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'Barlow',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:16px;}
+input:focus{border-color:#1a7fd4;background:#c8ddf0}
+button{width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;}
+button:hover{background:#1567b8}
+.err{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;margin-bottom:14px;text-align:center;}
+.footer{text-align:center;margin-top:20px;font-size:10px;color:#a8bfd4}
+.modulos{display:flex;gap:8px;justify-content:center;margin-top:16px;}
+.mod-btn{flex:1;background:#f0f6ff;border:1px solid #c8d8e8;border-radius:7px;color:#1a7fd4;font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;padding:10px;cursor:pointer;text-align:center;text-decoration:none;display:block;}
+.mod-btn:hover{background:#dce8f5}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo-row"><div class="logo">IMPAK</div><div class="sub">Portal</div></div>
+  <h1>Acesso ao Sistema</h1>
+  <div class="versao">TyreDesk + Gestão de Processos</div>
+  ERRO_PLACEHOLDER
+  <form method="POST" action="/login">
+    <label>Usuário</label>
+    <input name="usuario" type="text" placeholder="seu usuário" autocomplete="username" required>
+    <label>Senha</label>
+    <input name="senha" type="password" placeholder="sua senha" autocomplete="current-password" required>
+    <input type="hidden" name="destino" value="DESTINO_PLACEHOLDER">
+    <button type="submit">Entrar</button>
+  </form>
+  <div class="footer">IMPAK Comercial Importadora · Portal v1.0 · Confidencial</div>
+</div>
+</body>
+</html>`;
+
+function loginPage(erro, destino) {
+  return LOGIN_HTML
+    .replace('ERRO_PLACEHOLDER', erro ? `<div class="err">${erro}</div>` : '')
+    .replace('DESTINO_PLACEHOLDER', destino || '/');
 }
 
-// ── LOGIN ────────────────────────────────────────────────────
+// ── ROTAS DE AUTENTICAÇÃO ─────────────────────────────────────
 app.get('/login', (req, res) => {
-  if (req.session?.usuario) return res.redirect('/');
-  res.send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>IMPAK TyreDesk</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@700;800&display=swap" rel="stylesheet">
-<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#e8f0f8;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Barlow',sans-serif}.box{background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:40px 36px;width:380px;max-width:92vw;box-shadow:0 8px 32px rgba(26,127,212,.1)}.logo-row{display:flex;align-items:center;gap:10px;margin-bottom:28px;justify-content:center}.lb{background:#1a7fd4;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px}.ls{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase}h1{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;text-align:center;color:#0d1e2e;margin-bottom:4px;text-transform:uppercase}.v{font-size:10px;color:#1a7fd4;font-weight:700;letter-spacing:1px;text-align:center;margin-bottom:8px}.sub{font-size:12px;color:#4a6480;text-align:center;margin-bottom:24px}label{font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block}input{width:100%;background:#f0f4f8;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-size:14px;padding:11px 14px;outline:none;transition:border-color .15s;margin-bottom:16px}input:focus{border-color:#1a7fd4;background:#fff}button{width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase}button:hover{background:#1567b8}.erro{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;margin-bottom:14px;text-align:center}.ft{text-align:center;margin-top:20px;font-size:10px;color:#a8bfd4}</style>
-</head><body><div class="box">
-<div class="logo-row"><div class="lb">IMPAK</div><div class="ls">TyreDesk</div></div>
-<h1>Acesso Restrito</h1><div class="v">Versão 1.0</div>
-<div class="sub">Sistema interno — IMPAK Comercial Importadora</div>
-${req.query.erro ? '<div class="erro">Usuário ou senha incorretos.</div>' : ''}
-<form method="POST" action="/login">
-  <label>Usuário</label><input type="text" name="usuario" placeholder="seu usuário" autocomplete="username" required autofocus>
-  <label>Senha</label><input type="password" name="senha" placeholder="sua senha" autocomplete="current-password" required>
-  <button type="submit">Entrar</button>
-</form>
-<div class="ft">IMPAK Comercial Importadora · TyreDesk v1.0</div>
-</div></body></html>`);
+  if (req.session.usuario) return res.redirect(req.query.destino || '/');
+  res.send(loginPage('', req.query.destino || '/'));
 });
 
 app.post('/login', (req, res) => {
-  const { usuario, senha } = req.body;
-  const user = usuarios.find(u => u.usuario === (usuario||'').trim().toLowerCase());
-  if (!user || !bcrypt.compareSync(senha||'', user.hash)) return res.redirect('/login?erro=1');
-  req.session.usuario = { nome: user.nome, usuario: user.usuario };
-  res.redirect('/');
-});
-
-app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
-
-// ── APP PRINCIPAL ────────────────────────────────────────────
-app.get('/', (req, res) => {
-  const f = path.join(__dirname, 'IMPAK_Portal_v1.0.html');
-  if (!fs.existsSync(f)) return res.status(404).send('<h2>IMPAK_Portal_v1.0.html não encontrado.</h2>');
-  res.sendFile(f);
-});
-
-// ── API ME ───────────────────────────────────────────────────
-app.get('/api/me', auth, (req, res) => res.json(req.session.usuario));
-
-// ── API DRIVE: SALVAR COTAÇÕES ───────────────────────────────
-app.post('/api/drive/salvar', auth, async (req, res) => {
-  const { fornecedor, itens } = req.body;
-  if (!fornecedor || !itens) return res.status(400).json({ erro: 'Dados inválidos' });
-  const nome = `cotacoes_${fornecedor.replace(/[^a-zA-Z0-9]/g,'_')}.json`;
-  const id = await driveUpsert(nome, { fornecedor, itens, atualizado: new Date().toISOString() });
-  res.json({ ok: true, arquivo: nome, id });
-});
-
-// ── API DRIVE: CARREGAR TODAS AS COTAÇÕES ────────────────────
-app.get('/api/drive/tudo', auth, async (req, res) => {
-  const arquivos = await driveList();
-  const cotFiles = arquivos.filter(f => f.name.startsWith('cotacoes_'));
-  const resultado = [];
-  for (const arq of cotFiles) {
-    try {
-      const { data } = await driveClient.files.get(
-        { fileId: arq.id, alt: 'media' }, { responseType: 'text' }
-      );
-      const p = JSON.parse(data);
-      resultado.push({ fornecedor: p.fornecedor, itens: p.itens, atualizado: p.atualizado });
-    } catch (e) { /* pular */ }
+  const { usuario, senha, destino } = req.body;
+  const u = USUARIOS.find(x => x.usuario === (usuario||'').trim().toLowerCase() && x.senha === senha);
+  if (!u) {
+    return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
   }
-  res.json({ cotacoes: resultado });
+  req.session.usuario = u.usuario;
+  req.session.nome    = u.nome;
+  req.session.modulos = u.modulos;
+  req.session.role    = u.role || null;
+  req.session.displayName = u.displayName || u.nome;
+  // Senha para descriptografar TyreDesk
+  req.session.senha = u.senha;
+  res.redirect(destino || '/');
 });
 
-// ── API DRIVE: HISTÓRICO ─────────────────────────────────────
-app.post('/api/drive/historico', auth, async (req, res) => {
-  const { fornecedor, email, tipo, lang } = req.body;
-  const existente = await driveRead('historico_emails.json');
-  const historico = existente ? JSON.parse(existente.conteudo) : [];
-  historico.push({ fornecedor, email, tipo, lang, usuario: req.session.usuario.nome, data: new Date().toISOString() });
-  await driveUpsert('historico_emails.json', historico);
-  res.json({ ok: true, total: historico.length });
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login'));
 });
 
-app.get('/api/drive/historico', auth, async (req, res) => {
-  const r = await driveRead('historico_emails.json');
-  res.json({ historico: r ? JSON.parse(r.conteudo) : [] });
+// ── MIDDLEWARE DE AUTENTICAÇÃO ────────────────────────────────
+function auth(modulo) {
+  return (req, res, next) => {
+    if (!req.session.usuario) {
+      return res.redirect('/login?destino=' + req.path);
+    }
+    if (modulo && !req.session.modulos.includes(modulo)) {
+      return res.status(403).send('<h2>Acesso negado</h2>');
+    }
+    next();
+  };
+}
+
+// ── PÁGINAS ───────────────────────────────────────────────────
+app.get('/', auth('tyredesk'), (req, res) => {
+  res.sendFile(path.join(__dirname, 'tyredesk.html'));
 });
 
-// ── API DRIVE: STATUS ────────────────────────────────────────
-app.get('/api/drive/status', auth, async (req, res) => {
-  if (!driveClient) return res.json({ conectado: false });
+app.get('/processos', auth('processos'), (req, res) => {
+  res.sendFile(path.join(__dirname, 'processos.html'));
+});
+
+// ── API: SESSÃO ───────────────────────────────────────────────
+app.get('/api/me', (req, res) => {
+  if (!req.session.usuario) return res.json({ logado: false });
+  res.json({
+    logado:      true,
+    usuario:     req.session.usuario,
+    nome:        req.session.nome,
+    modulos:     req.session.modulos,
+    role:        req.session.role,
+    displayName: req.session.displayName,
+    senha:       req.session.senha,  // para decrypt TyreDesk
+  });
+});
+
+// ── API: DRIVE TYREDESK ───────────────────────────────────────
+app.post('/api/drive/salvar', auth(), async (req, res) => {
   try {
-    const arqs = await driveList();
-    res.json({ conectado: true, arquivos: arqs.length });
-  } catch (e) { res.json({ conectado: false, erro: e.message }); }
+    const { cotacoes } = req.body;
+    await driveUpsert(`cotacoes_${req.session.usuario}.json`, cotacoes);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// ── HEALTH ───────────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ status: 'ok', versao: '1.0', drive: !!driveClient }));
+app.get('/api/drive/tudo', auth(), async (req, res) => {
+  try {
+    const cotacoes = await driveRead(`cotacoes_${req.session.usuario}.json`) || [];
+    res.json({ cotacoes });
+  } catch (e) { res.json({ cotacoes: [] }); }
+});
 
-// ── INICIAR ──────────────────────────────────────────────────
-initDrive();
-app.listen(PORT, () => console.log(`IMPAK TyreDesk v1.0 | Porta ${PORT} | Drive: ${driveClient?'✓':'✗'}`));
+app.post('/api/drive/historico', auth(), async (req, res) => {
+  try {
+    const { entrada } = req.body;
+    let hist = await driveRead('historico_emails.json') || [];
+    hist.unshift(entrada);
+    if (hist.length > 200) hist = hist.slice(0, 200);
+    await driveUpsert('historico_emails.json', hist);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.get('/api/drive/historico', auth(), async (req, res) => {
+  try {
+    const historico = await driveRead('historico_emails.json') || [];
+    res.json({ historico });
+  } catch (e) { res.json({ historico: [] }); }
+});
+
+app.get('/api/drive/status', auth(), (req, res) => {
+  res.json({ conectado: !!driveClient, folder: FOLDER_ID || null });
+});
 
 // ── API: PROCESSOS ────────────────────────────────────────────
-// Salvar processo
-app.post('/api/processos/salvar', auth, async (req, res) => {
-  const { username, processo } = req.body;
-  if (!username || !processo) return res.status(400).json({ erro: 'Dados inválidos' });
-
-  // Carregar lista atual do usuário
-  const nome = `processos_${username.replace(/[^a-zA-Z0-9]/g,'_')}.json`;
-  const existente = await driveRead(nome);
-  let lista = existente ? JSON.parse(existente.conteudo) : [];
-
-  const idx = lista.findIndex(p => p.id === processo.id);
-  if (idx >= 0) lista[idx] = processo;
-  else lista.unshift(processo);
-
-  await driveUpsert(nome, lista);
-  res.json({ ok: true });
+app.post('/api/processos/salvar', auth(), async (req, res) => {
+  try {
+    const { username, processo } = req.body;
+    const nome = `processos_${username}.json`;
+    let lista = await driveRead(nome) || [];
+    const i = lista.findIndex(p => p.id === processo.id);
+    if (i >= 0) lista[i] = processo; else lista.unshift(processo);
+    await driveUpsert(nome, lista);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-// Buscar processos de um usuário
-app.get('/api/processos', auth, async (req, res) => {
-  const { usuario } = req.query;
-  if (!usuario) return res.status(400).json({ erro: 'Usuário não informado' });
-
-  const nome = `processos_${usuario.replace(/[^a-zA-Z0-9]/g,'_')}.json`;
-  const resultado = await driveRead(nome);
-  res.json({ processos: resultado ? JSON.parse(resultado.conteudo) : [] });
+app.get('/api/processos', auth(), async (req, res) => {
+  try {
+    const username = req.query.usuario || req.session.usuario;
+    const processos = await driveRead(`processos_${username}.json`) || [];
+    res.json({ processos });
+  } catch (e) { res.json({ processos: [] }); }
 });
 
-// Buscar TODOS os processos (gerente)
-app.get('/api/processos/todos', auth, async (req, res) => {
-  const arquivos = await driveList();
-  const procFiles = arquivos.filter(f => f.name.startsWith('processos_'));
-  const todos = [];
-  for (const arq of procFiles) {
-    try {
-      const { data } = await driveClient.files.get(
-        { fileId: arq.id, alt: 'media' }, { responseType: 'text' }
-      );
-      const lista = JSON.parse(data);
-      todos.push(...(Array.isArray(lista) ? lista : []));
-    } catch(e) { /* pular */ }
-  }
-  res.json({ processos: todos });
+app.get('/api/processos/todos', auth('processos'), async (req, res) => {
+  try {
+    // Gerentes veem todos
+    const todos = [];
+    for (const u of USUARIOS.filter(x => x.modulos.includes('processos'))) {
+      const lista = await driveRead(`processos_${u.usuario}.json`) || [];
+      todos.push(...lista);
+    }
+    todos.sort((a, b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
+    res.json({ processos: todos });
+  } catch (e) { res.json({ processos: [] }); }
 });
 
-// Buscar processo por id
-app.get('/api/processos/:id', auth, async (req, res) => {
-  const { id } = req.params;
-  const { usuario } = req.query;
-  if (!usuario) return res.status(400).json({ erro: 'Usuário não informado' });
-
-  const nome = `processos_${usuario.replace(/[^a-zA-Z0-9]/g,'_')}.json`;
-  const resultado = await driveRead(nome);
-  if (!resultado) return res.json({ processo: null });
-
-  const lista = JSON.parse(resultado.conteudo);
-  const proc = lista.find(p => p.id === id) || null;
-  res.json({ processo: proc });
+app.get('/api/processos/:id', auth(), async (req, res) => {
+  try {
+    const username = req.query.usuario || req.session.usuario;
+    const lista = await driveRead(`processos_${username}.json`) || [];
+    const processo = lista.find(p => p.id === req.params.id) || null;
+    res.json({ processo });
+  } catch (e) { res.json({ processo: null }); }
 });
 
-// Deletar processo
-app.delete('/api/processos/:id', auth, async (req, res) => {
-  const { id } = req.params;
-  const { username } = req.body;
-  if (!username) return res.status(400).json({ erro: 'Username não informado' });
-
-  const nome = `processos_${username.replace(/[^a-zA-Z0-9]/g,'_')}.json`;
-  const resultado = await driveRead(nome);
-  if (!resultado) return res.json({ ok: true });
-
-  const lista = JSON.parse(resultado.conteudo).filter(p => p.id !== id);
-  await driveUpsert(nome, lista);
-  res.json({ ok: true });
+app.delete('/api/processos/:id', auth(), async (req, res) => {
+  try {
+    const username = req.body.username || req.session.usuario;
+    const nome = `processos_${username}.json`;
+    let lista = await driveRead(nome) || [];
+    lista = lista.filter(p => p.id !== req.params.id);
+    await driveUpsert(nome, lista);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
+
+// ── HEALTH ────────────────────────────────────────────────────
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+// ── START ─────────────────────────────────────────────────────
+initDrive();
+app.listen(PORT, () => console.log(`IMPAK Portal rodando na porta ${PORT}`));
