@@ -1185,8 +1185,24 @@ function dbGetProcesses(username,callback){
 
 // Busca TODOS os processos — Firebase (sem filtro de usuário)
 function dbGetAllProcesses(callback){
+  // Primeiro: juntar localStorage de todos os usuários (resposta imediata)
+  var USERS_LOCAL = ['narcelio','jean','paula','emanuelly'];
+  var localAll = [];
+  USERS_LOCAL.forEach(function(u){
+    try{
+      var p = JSON.parse(localStorage.getItem('impak_processes_'+u)||'[]');
+      localAll = localAll.concat(p);
+    }catch(e){}
+  });
+  // Ordenar por data
+  localAll.sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); });
+  if(localAll.length) callback(localAll);
+  // Depois: tentar Drive
   fetch('/api/processos/todos').then(function(r){return r.json();})
-  .then(function(d){callback(d.processos||[]);}).catch(function(){callback([]);});
+  .then(function(d){
+    if(d.processos&&d.processos.length) callback(d.processos);
+    else if(!localAll.length) callback([]);
+  }).catch(function(){ if(!localAll.length) callback([]); });
 }
 
 // Deleta processo do Firebase e cache
