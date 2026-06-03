@@ -829,6 +829,21 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </div>
 
 <!-- Página de detalhe do processo (tela cheia) -->
+<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
+  <div style="min-height:100vh;">
+    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+      </div>
+    </div>
+    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
+  </div>
+</div>
 
 
 <!-- Message Modal -->
@@ -2387,7 +2402,7 @@ function _renderProcessModal(p){
     mt.textContent = 'Processo ' + (p.ref||'');
     ms.textContent = (p.exportador||'') + ' · ' + (p.data||'') + (p._userName ? ' · ' + p._userName : '');
     mb.innerHTML = html;
-    document.getElementById('modalDetalheExcluir').onclick = function(){ deleteProcess(id); };
+    var excBtn = document.getElementById('modalDetalheExcluir'); if(excBtn) excBtn.onclick = function(){ deleteProcess(id); };
     m.style.display = 'block';
     document.body.style.overflow = 'hidden';
     m.scrollTop = 0;
