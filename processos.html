@@ -2378,6 +2378,18 @@ function _renderProcessModal(p){
     m.style.display = 'block';
     document.body.style.overflow = 'hidden';
     m.scrollTop = 0;
+    // Event delegation para botões dentro do modal
+    mb.addEventListener('click', function(e){
+      var btn = e.target.closest('button[data-action]');
+      if(!btn) return;
+      var action = btn.getAttribute('data-action');
+      var key = btn.getAttribute('data-key');
+      var pid = btn.getAttribute('data-pid') || id;
+      var puser = btn.getAttribute('data-user') || ownerUser;
+      if(action==='aceitar-div') aceitarDivHistorico(pid, puser, key);
+      if(action==='add-log') addLog(pid, puser);
+      if(action==='nova-analise') document.getElementById('btnNovaAnalise') && document.getElementById('btnNovaAnalise').click();
+    });
   }
 }
 
@@ -2930,24 +2942,6 @@ function exportMsgPDF(){
   <pre>${txt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
   <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),400);<\/script>
   
-<!-- MODAL FULLSCREEN DETALHE PROCESSO -->
-<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
-  <div style="min-height:100vh;padding:0;">
-    <!-- Header fixo do modal -->
-    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
-      <div>
-        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
-        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
-      </div>
-      <div style="display:flex;gap:10px;">
-        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
-        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
-      </div>
-    </div>
-    <!-- Conteúdo -->
-    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
-  </div>
-</div>
 
 </body></html>`);
   win.document.close();
@@ -3044,24 +3038,6 @@ function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],
 function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
 </script>
 
-<!-- MODAL FULLSCREEN DETALHE PROCESSO -->
-<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
-  <div style="min-height:100vh;padding:0;">
-    <!-- Header fixo do modal -->
-    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
-      <div>
-        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
-        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
-      </div>
-      <div style="display:flex;gap:10px;">
-        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
-        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
-      </div>
-    </div>
-    <!-- Conteúdo -->
-    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
-  </div>
-</div>
 
 </body>
 </html>
