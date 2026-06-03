@@ -869,41 +869,21 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
-  fetch('/api/me').then(function(r){return r.json();}).then(function(d){
-    if(!d.logado) return;
-    // Encontrar ou criar usuário local
-    var found = USERS.find(function(x){ return x.username===d.usuario; });
-    if(!found){
-      found = {
-        username:    d.usuario,
-        password:    '',
-        role:        d.role || 'analista',
-        displayName: d.displayName || d.nome || d.usuario
-      };
+  fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
+    if(!d.logado) return; // não autenticado — mostra login manual
+    // Preencher campos do formulário de login e chamar doLogin()
+    var inpUser = document.getElementById('loginUser');
+    var inpPass = document.getElementById('loginPass');
+    if(inpUser && inpPass){
+      inpUser.value = d.usuario;
+      // Encontrar senha do usuário na lista local
+      var found = USERS.find(function(x){ return x.username===d.usuario; });
+      if(found){
+        inpPass.value = found.password;
+        doLogin(); // chama o login completo original
+      }
     }
-    // Fazer login automático
-    _currentUser = found;
-    var ls = document.getElementById('loginScreen');
-    if(ls){ ls.style.display='none'; ls.classList.add('hidden'); }
-    // Carregar processos
-    if(_currentUser.role==='gerente'){
-      dbGetAllProcesses(function(all){
-        _processes = all || [];
-        renderDashboard();
-        renderProcessos('');
-      });
-    } else {
-      dbGetProcesses(_currentUser.username, function(list){
-        _processes = list || [];
-        renderDashboard();
-        renderProcessos('');
-      });
-    }
-    // Atualizar status Drive
-    setTimeout(updateSheetsStatus, 500);
-  }).catch(function(e){
-    console.warn('auto-login falhou:', e);
-  });
+  }).catch(function(e){ console.warn('auto-login:', e.message); });
 });
 
 // ─── EARLY FUNCTION DECLARATIONS (needed by HTML onload) ─────────────
@@ -1053,10 +1033,10 @@ function guessType(name){
 
 // ─── USER SYSTEM ──────────────────────────────────────────────────────
 var USERS = [
-  { username: 'paula',     password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula' },
+  { username: 'paula',     password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
   { username: 'emanuelly', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
-  { username: 'narcelio',  password: 'Narcelio@2026',      role: 'gerente',  displayName: 'Narcelio' },
-  { username: 'jean',      password: 'Jeanimpak2026',      role: 'gerente',  displayName: 'Jean'     },
+  { username: 'narcelio',  password: 'Narcelio@2026',      role: 'gerente',  displayName: 'Narcelio'  },
+  { username: 'jean',      password: 'Jeanimpak2026',      role: 'gerente',  displayName: 'Jean'      },
 ];
 
 var _currentUser = null;
@@ -1236,24 +1216,14 @@ function getSheetsUrl(){ return ''; }
 function saveSheetsUrl(){}
 function testSheetsConnection(){}
 function updateSheetsStatus(){
-  var dot = document.getElementById('sheetsDot');
-  var txt = document.getElementById('sheetsStatusText');
+  var dot=document.getElementById('sheetsDot');
+  var txt=document.getElementById('sheetsStatusText');
   if(!dot||!txt) return;
   fetch('/api/drive/status').then(function(r){return r.json();})
   .then(function(d){
-    if(d.conectado){
-      dot.className='api-dot ok';
-      txt.textContent='Conectado';
-      txt.style.color='var(--ok,#27ae60)';
-    } else {
-      dot.className='api-dot warn';
-      txt.textContent='Sem Drive';
-      txt.style.color='var(--warn,#e67e22)';
-    }
-  }).catch(function(){
-    dot.className='api-dot ok';
-    txt.textContent='Local';
-  });
+    if(d.conectado){ dot.className='api-dot ok'; txt.textContent='Conectado'; }
+    else { dot.className='api-dot warn'; txt.textContent='Sem Drive'; }
+  }).catch(function(){ dot.className='api-dot ok'; txt.textContent='Local'; });
 }
 
 // Estado em memória — carregado do Firebase após login
