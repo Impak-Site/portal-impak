@@ -22,10 +22,10 @@ const PORT = process.env.PORT || 3000;
 
 // ── USUÁRIOS ─────────────────────────────────────────────────
 const USUARIOS = [
-  { usuario: 'narcelio',  senha: 'Narcelio@2026',      modulos: ['tyredesk','processos'], nome: 'Narcelio' },
-  { usuario: 'jean',      senha: 'Jeanimpak2026',      modulos: ['tyredesk','processos'], nome: 'Jean'     },
-  { usuario: 'paula',     senha: 'Paula@2026',         modulos: ['processos'],            nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
-  { usuario: 'emanuelly', senha: 'EmanuellyImpak2026', modulos: ['processos'],            nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
+  { usuario: 'narcelio',  email: 'Narcelio@impak.com.br',    senha: 'Narcelio@2026',      modulos: ['tyredesk','processos'], nome: 'Narcelio', role: 'gerente',  displayName: 'Narcelio'  },
+  { usuario: 'jean',      email: 'Jean@impak.com.br',        senha: 'Jeanimpak2026',      modulos: ['tyredesk','processos'], nome: 'Jean',     role: 'gerente',  displayName: 'Jean'      },
+  { usuario: 'paula',     email: 'Paula@impak.com.br',       senha: 'Paula@2026',         modulos: ['processos'],            nome: 'Paula',    role: 'gerente',  displayName: 'Paula'     },
+  { usuario: 'emanuelly', email: 'importacao1@impak.com.br', senha: 'EmanuellyImpak2026', modulos: ['processos'],            nome: 'Emanuelly',role: 'analista', displayName: 'Emanuelly' },
 ];
 
 // ── GOOGLE DRIVE ──────────────────────────────────────────────
@@ -158,7 +158,8 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { usuario, senha, destino } = req.body;
-  const u = USUARIOS.find(x => x.usuario === (usuario||'').trim().toLowerCase() && x.senha === senha);
+  const login = (usuario||'').trim().toLowerCase();
+  const u = USUARIOS.find(x => (x.usuario === login || x.email.toLowerCase() === login) && x.senha === senha);
   if (!u) {
     return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
   }
@@ -302,6 +303,25 @@ app.delete('/api/processos/:id', auth(), async (req, res) => {
     await driveUpsert(nome, lista);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+
+// ── API: BASE GLOBAL TYREDESK ─────────────────────────────
+app.post('/api/base/salvar', auth('tyredesk'), async (req, res) => {
+  try {
+    const { base } = req.body;
+    await driveUpsert('tyredesk_base_global.json', base);
+    console.log(`Base global salva por ${req.session.usuario}: ${base.length} itens`);
+    res.json({ ok: true, total: base.length });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.get('/api/base/carregar', auth(), async (req, res) => {
+  try {
+    const base = await driveRead('tyredesk_base_global.json');
+    if (base) res.json({ ok: true, base, total: base.length });
+    else res.json({ ok: false, base: null });
+  } catch (e) { res.json({ ok: false, base: null }); }
 });
 
 // ── HEALTH ────────────────────────────────────────────────────
