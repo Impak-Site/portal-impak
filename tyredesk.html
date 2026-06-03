@@ -1455,7 +1455,7 @@ window.addEventListener('load', async function(){
       const ls = document.getElementById('login-screen');
       if(ls){ ls.style.display='none'; ls.classList.add('hidden'); }
       // descriptografar com senha padrão da sessão
-      const senha = d.senha || 'impak2026';
+      const senha = 'impak2026';
       try {
         const raw=atob(ENCRYPTED_DATA),bytes=new Uint8Array(raw.length);
         for(let i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i);
