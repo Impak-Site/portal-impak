@@ -811,19 +811,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </div>
 
 
-<div class="page" id="page-detalhe-processo">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);">
-    <div>
-      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text-bright);letter-spacing:-0.02em;" id="detalheProcTitle">Processo</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-top:3px;" id="detalheProcSub"></div>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-danger btn-sm" id="detalheProcDeleteBtn">Excluir</button>
-      <button class="btn btn-ghost" onclick="fecharDetalheProcesso()">← Voltar</button>
-    </div>
-  </div>
-  <div id="detalheProcBody"></div>
-</div>
+
 </main>
 </div>
 
@@ -2197,9 +2185,9 @@ function _renderProcessModal(p){
   var id = p.id;
   var ownerUser = p._ownerUser;
 
-  document.getElementById('detalheProcTitle').textContent = 'Processo ' + p.ref;
-  document.getElementById('detalheProcSub').textContent = (p.exportador||'') + ' · ' + p.data + (p._userName ? ' · ' + p._userName : '');
-  document.getElementById('detalheProcDeleteBtn').onclick = function(){ deleteProcess(id); };
+  // titulo setado no modal
+  // sub setado no modal
+  // delete btn setado no modal
 
   var analises=p.analises||[];
   // Backwards compat: if no analises array, create one from existing data
@@ -2357,7 +2345,7 @@ function _renderProcessModal(p){
   html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+id+', \''+(p._ownerUser||'')+'\')">+ Adicionar</button>';
   html+='</div></div>';
 
-  document.getElementById('detalheProcBody').innerHTML=html;
+  // html setado no modal acima
 
   // Event delegation
   document.getElementById('detalheProcBody').onclick=function(e){
@@ -2377,12 +2365,20 @@ function _renderProcessModal(p){
   };
 
   // Navegar para a página de detalhe — sempre no topo
-  _paginaAnterior = document.querySelector('.page.active')?.id?.replace('page-','') || 'processos';
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  var det = document.getElementById('page-detalhe-processo');
-  if(det) det.classList.add('active');
-  document.documentElement.scrollTop=0; document.body.scrollTop=0; document.documentElement.scrollTop=0; document.body.scrollTop=0;
+  // Abrir modal fullscreen
+  var m = document.getElementById('modalDetalhe');
+  var mb = document.getElementById('modalDetalheBody');
+  var mt = document.getElementById('modalDetalheTitulo');
+  var ms = document.getElementById('modalDetalheSub');
+  if(m && mb){
+    mt.textContent = 'Processo ' + (p.ref||'');
+    ms.textContent = (p.exportador||'') + ' · ' + (p.data||'') + (p._userName ? ' · ' + p._userName : '');
+    mb.innerHTML = html;
+    document.getElementById('modalDetalheExcluir').onclick = function(){ deleteProcess(id); };
+    m.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    m.scrollTop = 0;
+  }
 }
 
 var _paginaAnterior = 'processos';
@@ -2461,8 +2457,9 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
   });
 }
 
+function fecharModalDetalhe(){ document.getElementById('modalDetalhe').style.display='none'; document.body.style.overflow=''; }
 function fecharDetalheProcesso(){
-  showPage(_paginaAnterior || 'processos');
+  fecharModalDetalhe();
 }
 
 function toggleAnalise(id){
@@ -2786,7 +2783,27 @@ function exportPDF(){
   ${alertRows?`<div class="section"><h2>${L.alertas}</h2><div class="alerts"><ul>${alertRows}</ul></div></div>`:''}
   <div class="footer">IMPAK · ${L.geradoEm}: ${new Date().toLocaleString('pt-BR')}</div>
   <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),500);<\/script>
-  </body></html>`);
+  
+<!-- MODAL FULLSCREEN DETALHE PROCESSO -->
+<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
+  <div style="min-height:100vh;padding:0;">
+    <!-- Header fixo do modal -->
+    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+      </div>
+    </div>
+    <!-- Conteúdo -->
+    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
+  </div>
+</div>
+
+</body></html>`);
   win.document.close();
 }
 
@@ -2912,7 +2929,27 @@ function exportMsgPDF(){
   <div class="header"><h1>IMPAK — Comunicação de Processo</h1><p>Referência: ${ref} · ${new Date().toLocaleDateString('pt-BR')}</p></div>
   <pre>${txt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
   <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),400);<\/script>
-  </body></html>`);
+  
+<!-- MODAL FULLSCREEN DETALHE PROCESSO -->
+<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
+  <div style="min-height:100vh;padding:0;">
+    <!-- Header fixo do modal -->
+    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+      </div>
+    </div>
+    <!-- Conteúdo -->
+    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
+  </div>
+</div>
+
+</body></html>`);
   win.document.close();
 }
 
@@ -3006,5 +3043,25 @@ function copyOneDivPT(i){ var divs=getDivergencias(); copySectionText([divs[i]],
 function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','en'); }
 function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
 </script>
+
+<!-- MODAL FULLSCREEN DETALHE PROCESSO -->
+<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
+  <div style="min-height:100vh;padding:0;">
+    <!-- Header fixo do modal -->
+    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+      </div>
+    </div>
+    <!-- Conteúdo -->
+    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
+  </div>
+</div>
+
 </body>
 </html>
