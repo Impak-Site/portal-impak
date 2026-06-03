@@ -47,7 +47,7 @@ body{
 body{box-shadow:inset 0 0 0 1px transparent;}
 
 /* Layout */
-.shell{display:flex;min-height:100vh;}
+.shell{min-height:100vh;}
 
 /* Sidebar */
 .sidebar{
@@ -145,7 +145,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 .api-dot.err{background:var(--danger);}
 
 /* Main */
-.main,main.main{padding-left:220px;min-height:100vh;}
+.main,main.main{margin-left:220px;min-height:100vh;}
 .page{display:none;padding:28px 32px 60px;}
 .page.active{display:block;}
 
@@ -611,7 +611,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </aside>
 
 <!-- Main -->
-<main class="main" style="padding-left:220px;min-height:100vh;">
+<main class="main" style="margin-left:220px;min-height:100vh;">
 
 <!-- DASHBOARD -->
 <div class="page" id="page-dashboard">
@@ -1343,7 +1343,7 @@ function showPage(id){
     if(ra2) ra2.style.display='none';
     setupDropZone();
   }
-  window.scrollTo(0,0);
+  document.documentElement.scrollTop=0; document.body.scrollTop=0;
 }
 
 // ─── API STATUS ───────────────────────────────────────────────────────
@@ -2382,7 +2382,7 @@ function _renderProcessModal(p){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   var det = document.getElementById('page-detalhe-processo');
   if(det) det.classList.add('active');
-  window.scrollTo({top:0, behavior:'instant'});
+  document.documentElement.scrollTop=0; document.body.scrollTop=0; document.documentElement.scrollTop=0; document.body.scrollTop=0;
 }
 
 var _paginaAnterior = 'processos';
