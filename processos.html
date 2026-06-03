@@ -867,36 +867,42 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
 <script>
 
-// ── AUTO-LOGIN via sessão do servidor ──────────────────────
+// ── AUTO-LOGIN via sessão do servidor ──────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){return r.json();}).then(function(d){
-    if(!d.logado) return; // servidor não autenticado, usar login manual
+    if(!d.logado) return;
+    // Encontrar ou criar usuário local
     var found = USERS.find(function(x){ return x.username===d.usuario; });
     if(!found){
-      // usuário autenticado mas não na lista local — criar entrada
-      found = { username: d.usuario, password: '', role: d.role||'analista', displayName: d.displayName||d.nome };
+      found = {
+        username:    d.usuario,
+        password:    '',
+        role:        d.role || 'analista',
+        displayName: d.displayName || d.nome || d.usuario
+      };
     }
+    // Fazer login automático
     _currentUser = found;
     var ls = document.getElementById('loginScreen');
-    if(ls) ls.style.display='none';
-    renderDashboard();
-    renderProcessos('');
-    // Sincronizar processos do Drive
+    if(ls){ ls.style.display='none'; ls.classList.add('hidden'); }
+    // Carregar processos
     if(_currentUser.role==='gerente'){
       dbGetAllProcesses(function(all){
-        _processes = all;
+        _processes = all || [];
         renderDashboard();
         renderProcessos('');
       });
     } else {
       dbGetProcesses(_currentUser.username, function(list){
-        _processes = list;
+        _processes = list || [];
         renderDashboard();
         renderProcessos('');
       });
     }
-  }).catch(function(){
-    // Se /api/me falhar, mostrar login manual normalmente
+    // Atualizar status Drive
+    setTimeout(updateSheetsStatus, 500);
+  }).catch(function(e){
+    console.warn('auto-login falhou:', e);
   });
 });
 
@@ -1172,10 +1178,10 @@ function initFirebase(){ _firebaseReady=false; }
 // Salva processo no Firestore + atualiza cache local
 function dbSaveProcess(username,proc){
   var key='impak_processes_'+username;
-  try{var p=JSON.parse(localStorage.getItem(key)||'[]');
-  var i=p.findIndex(function(x){return x.id===proc.id;});
-  if(i>=0)p[i]=proc;else p.unshift(proc);
-  localStorage.setItem(key,JSON.stringify(p));}catch(e){}
+  try{var arr=JSON.parse(localStorage.getItem(key)||'[]');
+  var i=arr.findIndex(function(x){return x.id===proc.id;});
+  if(i>=0)arr[i]=proc;else arr.unshift(proc);
+  localStorage.setItem(key,JSON.stringify(arr));}catch(e){}
   fetch('/api/processos/salvar',{method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({username:username,processo:proc})
@@ -1206,12 +1212,12 @@ function dbGetAllProcesses(callback){
 // Deleta processo do Firebase e cache
 function dbDeleteProcess(username,id){
   var key='impak_processes_'+username;
-  try{var p=JSON.parse(localStorage.getItem(key)||'[]');
-  localStorage.setItem(key,JSON.stringify(p.filter(function(x){return x.id!==id;})));}catch(e){}
+  try{var arr=JSON.parse(localStorage.getItem(key)||'[]');
+  localStorage.setItem(key,JSON.stringify(arr.filter(function(x){return x.id!==id;})));}catch(e){}
   fetch('/api/processos/'+encodeURIComponent(id),{
     method:'DELETE',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({username:username})
-  }).catch(function(e){});
+  }).catch(function(){});
 }
 
 // Busca processo específico do Firebase
@@ -1229,7 +1235,26 @@ var _sheetsUrl = '';
 function getSheetsUrl(){ return ''; }
 function saveSheetsUrl(){}
 function testSheetsConnection(){}
-function updateSheetsStatus(){}
+function updateSheetsStatus(){
+  var dot = document.getElementById('sheetsDot');
+  var txt = document.getElementById('sheetsStatusText');
+  if(!dot||!txt) return;
+  fetch('/api/drive/status').then(function(r){return r.json();})
+  .then(function(d){
+    if(d.conectado){
+      dot.className='api-dot ok';
+      txt.textContent='Conectado';
+      txt.style.color='var(--ok,#27ae60)';
+    } else {
+      dot.className='api-dot warn';
+      txt.textContent='Sem Drive';
+      txt.style.color='var(--warn,#e67e22)';
+    }
+  }).catch(function(){
+    dot.className='api-dot ok';
+    txt.textContent='Local';
+  });
+}
 
 // Estado em memória — carregado do Firebase após login
 let _processes = [];
