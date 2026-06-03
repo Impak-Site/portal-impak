@@ -2376,7 +2376,7 @@ function _renderProcessModal(p){
   // html setado no modal acima
 
   // Event delegation
-  document.getElementById('detalheProcBody').onclick=function(e){
+  var _dpb = document.getElementById('modalDetalheBody') || (document.getElementById('modalDetalheBody')||document.getElementById('detalheProcBody')||{innerHTML:'',addEventListener:function(){},onclick:null}); if(_dpb) _dpb.onclick=function(e){
     var tog=e.target.closest('[data-toggle]');
     if(tog){ toggleAnalise(tog.getAttribute('data-toggle')); return; }
     var btn=e.target.closest('[data-ref]');
