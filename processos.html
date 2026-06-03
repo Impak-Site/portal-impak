@@ -509,19 +509,15 @@ textarea.field-input{resize:vertical;min-height:80px;}
 .toast.err{border-left:3px solid var(--danger);}
 
 /* Responsive */
-@media(max-width:768px){
+@media(max-width:600px){
   .sidebar{width:100%;height:auto;position:relative;flex-direction:row;flex-wrap:wrap;}
-  .main{margin-left:0;}
-  .process-row{grid-template-columns:1fr 1fr;}
+  .process-row{grid-template-columns:1fr;}
   .c-row,.col-head{grid-template-columns:1fr;}
   .col-head{display:none;}
-  .page{padding:20px 16px 60px;}
+  .page{padding:16px 12px 40px;}
 }
 
 
-/* ── Correções de layout ────────────────────────── */
-.shell{overflow-x:hidden;}
-.main{overflow-x:hidden;}
 </style>
 
 </head>
@@ -615,7 +611,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </aside>
 
 <!-- Main -->
-<main class="main">
+<main class="main" style="margin-left:220px;flex:1;min-height:100vh;">
 
 <!-- DASHBOARD -->
 <div class="page" id="page-dashboard">
