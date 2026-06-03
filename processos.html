@@ -145,8 +145,8 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 .api-dot.err{background:var(--danger);}
 
 /* Main */
-.main{margin-left:220px;flex:1;min-height:100vh;}
-.page{display:none;padding:40px 40px 80px;}
+.main,main.main{margin-left:220px;flex:1;min-height:100vh;overflow-x:hidden;}
+.page{display:none;padding:28px 32px 60px;}
 .page.active{display:block;}
 
 /* Page header */
@@ -831,7 +831,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </div>
 
 <!-- Página de detalhe do processo (tela cheia) -->
-<div class="page" id="page-detalhe-processo" style="padding-top:24px;">
+<div class="page" id="page-detalhe-processo">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);">
     <div>
       <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text-bright);letter-spacing:-0.02em;" id="detalheProcTitle">Processo</div>
