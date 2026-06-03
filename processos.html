@@ -521,6 +521,11 @@ textarea.field-input{resize:vertical;min-height:80px;}
   .col-head{display:none;}
   .page{padding:20px 16px 60px;}
 }
+
+
+/* ── Correções de layout ────────────────────────── */
+.shell{overflow-x:hidden;}
+.main{overflow-x:hidden;}
 </style>
 
 </head>
@@ -528,22 +533,30 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 
 <!-- LOGIN SCREEN -->
-<div id="loginScreen" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 40px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.12);">
-    <div style="text-align:center;margin-bottom:32px;">
-      <div style="font-size:32px;font-weight:900;color:var(--accent);font-family:monospace;letter-spacing:-1px;">IMPAK</div>
-      <div style="font-size:13px;color:var(--text-dim);margin-top:4px;">Conferência Documental de Importação</div>
+<div id="loginScreen" style="position:fixed;inset:0;background:#0d1e2e;display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="width:380px;max-width:94vw;">
+    <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:32px;">
+      <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;padding:7px 16px;border-radius:7px;letter-spacing:1px;">IMPAK</div>
+      <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#6b8aaa;letter-spacing:3px;text-transform:uppercase;">Portal</div>
     </div>
-    <div class="field-group">
-      <label class="field-label">Usuário</label>
-      <input class="field-input" id="loginUser" placeholder="Seu nome de usuário" oninput="loginClearErr()">
+    <div style="background:#132438;border:1px solid #1e3a55;border-radius:14px;padding:32px 28px;">
+      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#e6edf4;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Acesso ao Sistema</div>
+      <div style="font-size:11px;color:#1a7fd4;text-align:center;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:28px;">Gestão de Processos</div>
+      <div id="loginErr" style="display:none;background:rgba(224,92,92,.1);border:1px solid rgba(224,92,92,.3);border-radius:7px;padding:10px 14px;font-size:12px;color:#e05c5c;font-weight:600;text-align:center;margin-bottom:16px;"></div>
+      <div style="font-size:10px;font-weight:700;color:#6b8aaa;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:7px;">Usuário</div>
+      <input id="loginUser" type="text" placeholder="seu usuário" autocomplete="username"
+        style="width:100%;background:#0d1e2e;border:1px solid #1e3a55;border-radius:7px;color:#e6edf4;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:16px;box-sizing:border-box;"
+        onfocus="this.style.borderColor='#1a7fd4'" onblur="this.style.borderColor='#1e3a55'">
+      <div style="font-size:10px;font-weight:700;color:#6b8aaa;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:7px;">Senha</div>
+      <input id="loginPass" type="password" placeholder="••••••••••" autocomplete="current-password"
+        style="width:100%;background:#0d1e2e;border:1px solid #1e3a55;border-radius:7px;color:#e6edf4;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:20px;box-sizing:border-box;"
+        onfocus="this.style.borderColor='#1a7fd4'" onblur="this.style.borderColor='#1e3a55'"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <button onclick="doLogin()"
+        style="width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;"
+        onmouseover="this.style.background='#1567b8'" onmouseout="this.style.background='#1a7fd4'">Entrar</button>
+      <div style="text-align:center;margin-top:16px;font-size:10px;color:#2a4060;font-family:'DM Mono',monospace;">IMPAK Comercial Importadora · Confidencial</div>
     </div>
-    <div class="field-group">
-      <label class="field-label">Senha</label>
-      <input class="field-input" id="loginPass" type="password" placeholder="Sua senha" oninput="loginClearErr()" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <div id="loginErr" style="display:none;color:var(--danger);font-size:12px;margin-bottom:12px;text-align:center;"></div>
-    <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="doLogin()">Entrar</button>
   </div>
 </div>
 
@@ -609,7 +622,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <main class="main">
 
 <!-- DASHBOARD -->
-<div class="page active" id="page-dashboard">
+<div class="page" id="page-dashboard">
   <div class="page-header">
     <div>
       <div class="page-title">Bem-vindo ao <span>IMPAK</span></div>
