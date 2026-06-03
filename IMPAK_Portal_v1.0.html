@@ -925,6 +925,62 @@ textarea.field-input{resize:vertical;min-height:80px;}
   .page{padding:20px 16px 60px;}
 }
 
+
+/* ── CORRIGIR LAYOUT MÓDULO PROCESSOS DENTRO DO PORTAL ──── */
+
+/* Esconder sidebar interna do Processos (usamos a sidebar do portal) */
+#modulo-processos .sidebar,
+#modulo-processos aside.sidebar {
+  display: none !important;
+}
+
+/* O shell do Processos ocupa tela toda, corrigir para não ter sidebar */
+#modulo-processos .shell {
+  display: block !important;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+/* Main content do Processos ocupa toda a largura */
+#modulo-processos .main,
+#modulo-processos main.main {
+  margin-left: 0 !important;
+  width: 100% !important;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+/* Módulo processos ocupa o espaço correto */
+#modulo-processos {
+  margin-left: 0 !important;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* TyreDesk também sem margin extra */
+#modulo-tyredesk {
+  margin-left: 0 !important;
+}
+
+/* Sidebar do portal sempre visível e correta */
+.p-sidebar {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  z-index: 9000 !important;
+}
+
+/* Módulos com margem para não ficarem atrás da sidebar do portal */
+.p-modulo.active {
+  margin-left: 52px !important;
+}
+
+/* Login screen do Processos sempre escondido */
+#loginScreen {
+  display: none !important;
+}
+
 </style>
 </head>
 <body>
