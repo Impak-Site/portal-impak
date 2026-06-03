@@ -562,7 +562,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
       <div class="card">
         <div class="ch"><h3>Cotações</h3><span class="cm ml" style="font-size:11px;font-weight:500" id="cot-count">0 linhas</span></div>
         <div class="ctw" style="border:none;border-radius:0">
-          <div class="cth"><span>Fornecedor</span><span>Medida</span><span>Preço/un</span><span>Peso(kg)</span><span>MOQ</span><span></span></div>
+          <div class="cth"><span>Fornecedor</span><span>Medida</span><span>Preço/un</span><span>Peso(kg)</span></div>
           <div id="cot-list"></div>
           <button class="badc" onclick="addCot()">+ adicionar linha</button>
         </div>
@@ -608,7 +608,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
             <th onclick="sortCat('md')">Modelo ↕</th>
             <th onclick="sortCat('li')">LI/SR</th>
             <th onclick="sortCat('pe')">Peso ↕</th>
-            <th onclick="sortCat('moq')">MOQ ↕</th>
+            
             <th onclick="sortCat('p')">FOB USD ↕</th>
             <th onclick="sortCat('pkg')">USD/kg ↕</th>
             <th onclick="sortCat('orig')">Origem ↕</th>
@@ -1171,7 +1171,7 @@ function renderCot(){
     <input class="ci" type="text" placeholder="295/80R22.5" value="${r.medida}" oninput="updC('${r.id}','medida',this.value)" list="size-dl">
     <input class="ci" type="number" placeholder="0.00" value="${r.preco}" step="0.01" oninput="updC('${r.id}','preco',this.value)">
     <input class="ci" type="number" placeholder="kg" value="${r.peso}" step="0.1" oninput="updC('${r.id}','peso',this.value)">
-    <input class="ci" type="number" placeholder="MOQ" value="${r.moq}" oninput="updC('${r.id}','moq',this.value)">
+    <input class="ci" type="number" placeholder=">
     <button class="brem" style="width:24px;height:24px;font-size:12px" onclick="removeCot('${r.id}')">×</button>`;
     el.appendChild(d);
   });
@@ -1275,14 +1275,14 @@ function analisar(){
 
   const c1=document.createElement('div');c1.className='card';
   c1.innerHTML=`<div class="ch"><h3>Ranking de Fornecedores</h3><span class="cm ml" style="font-size:11px;font-weight:600">${moeda} · ${tp}</span></div>
-  <table class="rtable"><thead><tr><th>#</th><th>Fornecedor</th><th>Total mix</th><th>Cobertura</th><th></th><th>MOQ</th></tr></thead><tbody>
+  <table class="rtable"><thead><tr><th>#</th><th>Fornecedor</th><th>Total mix</th><th>Cobertura</th><th></th><th></tr></thead><tbody>
   ${sorted.map((r,i)=>`<tr class="${i===0&&r.total!==null?'brow':''}">
     <td class="cm" style="font-size:10px">${i+1}</td>
     <td class="fw7">${r.forn}${i===0&&r.total!==null?' <span class="cg" style="font-size:10px">✓</span>':''}</td>
     <td class="cor fw7">${r.total!==null?getMoeda(r.forn)+' '+fmtP(r.total):`<span class="cm">~${r.curMoeda||moeda} ${fmtP(r.parcial)}</span>`}</td>
     <td class="${r.pct===100?'cg':r.pct>=50?'cor':'cr'}" style="font-size:10px">${r.pct}% (${r.cob}/${mix.length})</td>
     <td><div class="bw"><div class="bf ${i>0?'dm':''}" style="width:${maxT>0?Math.round((r.parcial/maxT)*100):0}%"></div></div></td>
-    <td style="font-size:10px" class="${r.moqOk?'cg':'cr'}">${r.moqOk?'OK':'baixo'}</td>
+    
   </tr>`).join('')}</tbody></table>`;
   // Botão exportar
   const btnExp=document.createElement('div');
@@ -1378,7 +1378,7 @@ function analisar(){
     <div>${ops.map((o,i)=>{
       const ppu=o.peso>0?o.preco/o.peso:null;
       const ppuBadge=ppu?`<span class="pkg-badge pkg-info" title="USD/kg">${fmtPkg(ppu)}</span>`:'';
-      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipClass}">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}${o.moq?` · ${o.moq}un/40HQ`:''}</span>${patSpan}${borBdg}${origBdg}${alertBadge}</div>`;
+      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipClass}">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patSpan}${borBdg}${origBdg}${alertBadge}</div>`;
     }).join('')}</div></div>`;
   });
   c4.innerHTML=`<div class="ch"><h3>Todas as Cotações por Medida</h3>
@@ -1436,7 +1436,7 @@ function renderCat(){
     <td class="cm">${c.pat||c.md||'—'}</td>
     <td class="cm">${c.li||'—'}</td>
     <td class="cm">${c.pe!=null?c.pe:'—'}</td>
-    <td class="cm">${c.moq!=null?c.moq:'—'}</td>
+    <td class="cm">—</td>
     <td class="cor fw7">${c.cur||'USD'} ${fmtP(c.p)}</td>
     <td>${(()=>{const pkg=c.p&&c.pe&&c.pe>0?c.p/c.pe:null;if(!pkg)return '<span class="peso-missing">—</span>';return `<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`;})()}</td>
     <td>${c.orig?`<span class="badge-orig">${c.orig}</span>`:'<span class="cm">—</span>'}</td>
@@ -1676,9 +1676,14 @@ function renderSelTable() {
     const prSpan = row.pr && row.pr!=='PCR' ? ` <span style="font-size:10px;color:var(--mu)">· ${row.pr}</span>` : '';
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
-    const catBdg = row.cat ? `<span style="font-size:10px;font-weight:700;background:#dce8f5;color:#1a7fd4;border-radius:4px;padding:2px 6px;margin-left:4px;">${row.cat}</span>` : '';
+    const catBdg = row.cat ? `<span style="font-size:10px;font-weight:700;background:#dce8f5;color:#1a7fd4;border-radius:4px;padding:2px 6px;">${row.cat}</span>` : '';
+    // Para TBR mostrar categoria como título, padrão como código secundário
+    const isTBR = tipoAtivo === 'TBR';
+    const mainLabel = isTBR && row.cat ? row.cat : (row.pat && row.pat !== '—' ? row.pat : row.cat || '—');
+    const subLabel  = isTBR && row.cat && row.pat && row.pat !== '—' ? `<span style="font-size:10px;color:var(--mu);">${row.pat}</span>` : '';
     t += `<td class="spec-col">
-      <div class="spec-pat">${row.pat}${prSpan}${catBdg}</div>
+      <div class="spec-pat">${mainLabel}${prSpan}</div>
+      ${subLabel ? `<div style="margin-top:2px">${subLabel}</div>` : ''}
       <div class="spec-li">${row.li}</div>
       <div class="spec-bor" style="margin-top:4px">${borBdg}</div>
     </td>`;
@@ -1694,7 +1699,6 @@ function renderSelTable() {
         t += `<td><div class="cmp-cell-yes ${picked?'picked':''}" onclick="toggleCmpSel(this,'${key}')">
           <span class="cmp-price">${item.cur||'USD'} ${fmtP(item.p)}</span>
           ${item.pe ? `<span class="cmp-info">${fmtKg(item.pe)} kg${pkg?' · '+pkg+' $/kg':''}</span>` : ''}
-          ${item.moq ? `<span class="cmp-info">${item.moq} un/40HQ</span>` : ''}
         </div></td>`;
       }
     });
