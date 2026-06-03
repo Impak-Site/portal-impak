@@ -970,8 +970,20 @@ async function handleImport(files){
   toast(`✓ ${totalNovos} produtos importados!`);
   renderDash();
   updateSizeDl();
-  // Salvar base atual
+  // Salvar base atual por fornecedor
   if(totalNovos>0){const fm={};COTACOES.forEach(c=>{if(!fm[c.f])fm[c.f]=[];fm[c.f].push(c);});for(const [fn,its] of Object.entries(fm)){await salvarCotacoes(fn,its);}}
+  // Salvar base GLOBAL no Drive (todos os usuários vão carregar isso)
+  if(totalNovos>0){
+    try{
+      const r = await fetch('/api/base/salvar',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({base: COTACOES})
+      });
+      const d = await r.json();
+      if(d.ok) logImport(`✓ Base global salva no Drive (${d.total} itens)`, 'ok');
+    } catch(e){ logImport('⚠ Base salva localmente (Drive offline)', 'warn'); }
+  }
 }
 
 function resetBase(){
@@ -1456,22 +1468,36 @@ window.addEventListener('load', async function(){
       if(ls){ ls.style.display='none'; ls.classList.add('hidden'); }
       // descriptografar com senha padrão da sessão
       const senha = 'impak2026';
+      // Tentar carregar base global do Drive primeiro
+      let baseCarregada = false;
       try {
-        const raw=atob(ENCRYPTED_DATA),bytes=new Uint8Array(raw.length);
-        for(let i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i);
-        const salt=bytes.slice(0,16),iv=bytes.slice(16,28),ct=bytes.slice(28);
-        const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(senha),'PBKDF2',false,['deriveKey']);
-        const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
-        const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
-        const data=JSON.parse(new TextDecoder().decode(plain));
-        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',moq:c.moq||null}));
-        COTACOES=window._BASE_ORIGINAL.slice();
-        await initDB(); await carregarCotacoesSalvas(); init();
-      } catch(e) {
-        console.warn('Decrypt auto:', e.message);
-        window._BASE_ORIGINAL=[]; COTACOES=[];
-        await initDB(); init();
+        const br = await fetch('/api/base/carregar');
+        const bd = await br.json();
+        if(bd.ok && bd.base && bd.base.length > 0){
+          window._BASE_ORIGINAL = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',moq:c.moq||null}));
+          COTACOES = window._BASE_ORIGINAL.slice();
+          baseCarregada = true;
+          console.log('Base carregada do Drive:', COTACOES.length, 'itens');
+        }
+      } catch(e){ console.warn('Drive base:', e.message); }
+      // Se não veio do Drive, usar base embutida no HTML
+      if(!baseCarregada){
+        try {
+          const raw=atob(ENCRYPTED_DATA),bytes=new Uint8Array(raw.length);
+          for(let i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i);
+          const salt=bytes.slice(0,16),iv=bytes.slice(16,28),ct=bytes.slice(28);
+          const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(senha),'PBKDF2',false,['deriveKey']);
+          const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
+          const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+          const data=JSON.parse(new TextDecoder().decode(plain));
+          window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',moq:c.moq||null}));
+          COTACOES=window._BASE_ORIGINAL.slice();
+        } catch(e) {
+          console.warn('Decrypt:', e.message);
+          window._BASE_ORIGINAL=[]; COTACOES=[];
+        }
       }
+      await initDB(); await carregarCotacoesSalvas(); init();
       return;
     }
   } catch(e) {}
