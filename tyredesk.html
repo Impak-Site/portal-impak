@@ -952,7 +952,7 @@ async function handleImport(files){
 
       // remover entradas antigas deste fornecedor e adicionar novas
       COTACOES=COTACOES.filter(c=>c.f!==forn);
-      COTACOES=[...COTACOES,...novos];
+      COTACOES=[...COTACOES,...novos.map(c=>Object.assign({},c,{pat:c.pat||c.md||''}))];
 
       // marcar fornecedor como atualizado
       const fo=fornecedores.find(x=>x.nome===forn);
@@ -1390,12 +1390,7 @@ function analisar(){
     <div>${ops.map((o,i)=>{
       const ppu=o.peso>0?o.preco/o.peso:null;
       const ppuBadge=ppu?`<span class="pkg-badge pkg-info" title="USD/kg">${fmtPkg(ppu)}</span>`:'';
-      const _chipClass = i===0?'chip chip-best':'chip chip-alt';
-      const _patSpan = o.pat?`<span class="pkg-badge" style="background:rgba(26,127,212,.10);color:var(--ac);border:1px solid rgba(26,127,212,.25);font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${o.pat}</span>`:'';
-      const _borBdg = o.bor&&o.bor!=='liso'?`<span class="pkg-badge pkg-warn" style="font-size:10px">${o.bor}</span>`:'';
-      const _origBdg = o.orig?`<span class="pkg-badge pkg-info" style="font-size:10px">${o.orig}</span>`:'';
-      const _alertBadge = o.moq&&o.moq>0?`<span class="pkg-badge pkg-warn" style="font-size:10px">MOQ ${o.moq}</span>`:'';
-      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${_chipClass}">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${_patSpan}${_borBdg}${_origBdg}${_alertBadge}${ppuBadge}</div>`;
+      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipClass}">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patSpan}${borBdg}${origBdg}${alertBadge}</div>`;
     }).join('')}</div></div>`;
   });
   c4.innerHTML=`<div class="ch"><h3>Todas as Cotações por Medida</h3>
@@ -1496,7 +1491,7 @@ window.addEventListener('load', async function(){
         const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
         const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
         const data=JSON.parse(new TextDecoder().decode(plain));
-        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
+        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
         COTACOES=window._BASE_ORIGINAL.slice();
       } catch(e) {
         console.warn('Decrypt:', e.message);
@@ -1507,7 +1502,7 @@ window.addEventListener('load', async function(){
         const br = await fetch('/api/base/carregar');
         const bd = await br.json();
         if(bd.ok && bd.base && bd.base.length > 0){
-          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
+          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
           if(driveBase.length > 100){
             window._BASE_ORIGINAL = driveBase;
             COTACOES = window._BASE_ORIGINAL.slice();
@@ -1662,12 +1657,13 @@ function renderSelTable() {
   const rowOrder = [];
   filtered.forEach(c => {
     const prKey = tipoAtivo === 'TBR' ? (c.pr||'') : '';
-    // Agrupa por pat + li + bor para ambos PCR e TBR
-    const rkPat = c.pat||'—';
+    // TBR: agrupa por categoria + PR (sem li -- varia por fornecedor)
+    // PCR: agrupa por padrão + li + bor
+    const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
     const rkLi  = tipoAtivo==='TBR' ? '' : (c.li||'—');
-    const rk = [rkPat, rkLi, prKey, c.bor||'liso'].join('||');
+    const rk = [rkCat, rkLi, prKey, c.bor||'liso'].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
@@ -1702,11 +1698,12 @@ function renderSelTable() {
     const catBdg = row.cat ? `<span style="font-size:10px;font-weight:700;background:#dce8f5;color:#1a7fd4;border-radius:4px;padding:2px 6px;">${row.cat}</span>` : '';
     // Para TBR mostrar categoria como título, padrão como código secundário
     const isTBR = tipoAtivo === 'TBR';
-    const mainLabel = row.pat !== '—' ? row.pat : (row.cat || '—');
-    const liDisplay = isTBR ? (row.li !== '—' ? row.li : '') : row.li;
+    const mainLabel = isTBR ? (row.cat || row.pat || '—') : (row.pat || '—');
+    const subLabel  = '';
     t += `<td class="spec-col">
       <div class="spec-pat">${mainLabel}${prSpan}</div>
-      ${liDisplay ? `<div class="spec-li">${liDisplay}</div>` : ''}
+      ${subLabel ? `<div style="margin-top:2px">${subLabel}</div>` : ''}
+      <div class="spec-li">${row.li}</div>
       <div class="spec-bor" style="margin-top:4px">${borBdg}</div>
     </td>`;
 
@@ -1881,7 +1878,7 @@ async function carregarCotacoesSalvas() {
       const fNorm = normalizar(reg.id);
       if(reg.itens && reg.itens.length > 0){
         COTACOES = COTACOES.filter(c => c.f !== fNorm && c.f !== reg.id);
-        COTACOES = [...COTACOES, ...reg.itens.map(c=>Object.assign({},c,{f:fNorm}))];
+        COTACOES = [...COTACOES, ...reg.itens.map(c=>Object.assign({},c,{f:fNorm,pat:c.pat||c.md||''}))];
       }
     });
     if (salvas.length) {
