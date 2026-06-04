@@ -1109,10 +1109,35 @@ async function marcarEnv(){
     f.ultimaCot=new Date().toISOString();
     const tipo=document.getElementById('em-tipo').value;
     await gravarHistorico(f, tipo, emailLang);
+    await salvarFornecedores();
     renderForn();
     toast('Marcado — próximo em 30 dias · histórico salvo');
   }
   closeM('modal-email');
+}
+
+async function salvarFornecedores(){
+  try{
+    const payload = fornecedores.map(f=>({id:f.id, nome:f.nome, ultimaCot:f.ultimaCot||null}));
+    await fetch('/api/base/salvar-fornecedores',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({fornecedores: payload})
+    });
+  }catch(e){ console.warn('Salvar fornecedores:', e); }
+}
+
+async function carregarFornecedores(){
+  try{
+    const r = await fetch('/api/base/carregar-fornecedores');
+    const d = await r.json();
+    if(d.ok && d.fornecedores){
+      d.fornecedores.forEach(function(saved){
+        const f = fornecedores.find(x=>x.id===saved.id||x.nome===saved.nome);
+        if(f && saved.ultimaCot) f.ultimaCot = saved.ultimaCot;
+      });
+    }
+  }catch(e){ console.warn('Carregar fornecedores:', e); }
 }
 
 // ── ALERTAS ───────────────────────────────────────────
@@ -1981,7 +2006,8 @@ function exportarExcel() {
 }
 
 // ── INIT ──────────────────────────────────────────────
-function init(){
+async function init(){
+  await carregarFornecedores();
   renderForn();renderDash();updateSizeDl();
   document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
   addMix('295/80R22.5','200');addMix('275/80R22.5','100');
