@@ -1668,7 +1668,19 @@ function renderResult(r){
   aa.innerHTML=r.alertas&&r.alertas.length?`
     <div class="alerts-box">
       <h4>⚠ Alertas e Recomendações</h4>
-      <ul>${r.alertas.map(a=>`<li>${a}</li>`).join('')}</ul>
+      <ul>${r.alertas.map(a=>{
+        var txt = typeof a==='string' ? a : (a.descricao||a.mensagem||String(a));
+        var key = 'alerta-' + txt;
+        var aceito = divergResolved[key];
+        return '<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
+          + '<span style="flex:1;'+(aceito?'text-decoration:line-through;opacity:.5;':'')+'">'+txt+'</span>'
+          + (aceito
+            ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
+              + '<button onclick="aceitarAlerta('+JSON.stringify(key)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+            : '<button onclick="aceitarAlerta('+JSON.stringify(key)+')" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+            )
+          + '</li>';
+      }).join('')}</ul>
     </div>`:'' ;
 
   // Doc cards
@@ -2474,7 +2486,10 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
         por: quemAceitou
       };
       p._updatedAt = Date.now();
+      recalcularStatusProcesso(p);
       dbSaveProcess(ownerUser, p);
+      renderDashboard();
+      renderProcessos();
       showToast('Divergência aceita por ' + quemAceitou,'ok');
       setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 400);
     });
@@ -2500,6 +2515,56 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
 function fecharModalDetalhe(){ document.getElementById('modalDetalhe').style.display='none'; document.body.style.overflow=''; }
 function fecharDetalheProcesso(){
   fecharModalDetalhe();
+}
+
+// ── RECÁLCULO CENTRAL DE STATUS ──────────────────────────────────────────
+function recalcularStatusProcesso(proc) {
+  if (!proc) return;
+  var resolvedMap = proc._divResolvedMap || {};
+  var ultimaAnalise = null;
+  if (proc.analises && proc.analises.length) {
+    ultimaAnalise = proc.analises[proc.analises.length - 1];
+  }
+  var grupos  = ultimaAnalise ? ultimaAnalise.grupos  : (proc.grupos  || []);
+  var alertas = ultimaAnalise ? ultimaAnalise.alertas : (proc.alertas || []);
+
+  var divsPendentes = 0;
+  (grupos || []).forEach(function(g) {
+    (g.campos || []).forEach(function(c) {
+      if (c.status === 'DIVERGENCIA') {
+        var key = g.titulo + '-' + c.campo;
+        if (!resolvedMap[key]) divsPendentes++;
+      }
+    });
+  });
+
+  var alertasPendentes = 0;
+  (alertas || []).forEach(function(al) {
+    var alText = typeof al === 'string' ? al : (al.texto || al.text || String(al));
+    var key = 'alerta-' + alText;
+    if (!resolvedMap[key]) alertasPendentes++;
+  });
+
+  var novoStatus;
+  if (divsPendentes > 0)         novoStatus = 'err';
+  else if (alertasPendentes > 0) novoStatus = 'warn';
+  else                           novoStatus = 'ok';
+
+  var statusAnterior = proc.status;
+  proc.status = novoStatus;
+
+  if (proc.log && novoStatus !== statusAnterior) {
+    var quem = typeof _currentUser !== 'undefined' && _currentUser
+      ? (_currentUser.displayName || _currentUser.username) : 'Sistema';
+    var msgs = {
+      'ok':   'Todas divergencias/alertas aceitos — status OK',
+      'warn': alertasPendentes + ' alerta(s) pendente(s)',
+      'err':  divsPendentes + ' divergencia(s) pendente(s)'
+    };
+    proc.log.push({ msg: msgs[novoStatus], time: new Date().toLocaleString('pt-BR'), type: novoStatus });
+  }
+
+  return novoStatus;
 }
 
 function toggleAnalise(id){
@@ -2684,7 +2749,7 @@ function renderDivPanel(){
 if(action==='resolve'){
 var nota=panel.querySelector('.div-nota-'+i).value.trim();
 if(divergResolved[key]){
-  // Undo
+  // Undo aceite — recalcular status
   delete divergResolved[key];
   var s=panel.querySelector('.div-status-'+i);
   if(s){s.textContent='Pendente';s.style.color='#94a3b8';}
@@ -2692,6 +2757,20 @@ if(divergResolved[key]){
   btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
   var notaEl=panel.querySelector('.div-nota-'+i);
   if(notaEl) notaEl.style.borderColor='var(--border2)';
+  try{
+    var refUn = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(refUn && currentResult){
+      var procsUn = getProcesses();
+      var procUn = procsUn.find(function(p){ return p.ref===refUn; });
+      if(procUn){
+        if(procUn._divResolvedMap) delete procUn._divResolvedMap[key];
+        recalcularStatusProcesso(procUn);
+        saveProcesses(procsUn, procUn);
+        renderDashboard();
+        renderProcessos();
+      }
+    }
+  }catch(e){}
 } else {
   if(!nota){
     // Highlight nota field and prompt
@@ -2708,40 +2787,17 @@ if(divergResolved[key]){
   var notaEl3=panel.querySelector('.div-nota-'+i);
   if(notaEl3) notaEl3.style.borderColor='#16a34a';
   showToast('Aceito: '+nota.substring(0,40),'ok');
-  // Salvar motivo aceito no processo (persiste no localStorage e Firebase)
+  // Salvar aceite e recalcular status via função central
   try{
-    var ref2a = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
-    if(ref2a && currentResult){
-      var procs2a = getProcesses();
-      var proc2a = procs2a.find(function(p){ return p.ref===ref2a; });
-      if(proc2a){
-        proc2a._divResolvedMap = proc2a._divResolvedMap || {};
-        proc2a._divResolvedMap[key] = {nota:nota, time:new Date().toLocaleString('pt-BR'), por: _currentUser ? _currentUser.displayName : ''};
-        saveProcesses(procs2a, proc2a);
-      }
-    }
-  }catch(e){}
-  // Recalculate process status after accepting
-  try{
-    var allDivs = getDivergencias();
-    var pending = allDivs.filter(function(d){
-      var k = d.grupo+'-'+d.campo;
-      return !divergResolved[k];
-    });
-    // Update process status in storage
-    var ref2 = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
-    if(ref2 && currentResult){
-      var procs2 = getProcesses();
-      var proc2 = procs2.find(function(p){ return p.ref===ref2; });
-      if(proc2){
-        proc2.status = pending.length===0 ? 'ok' : (proc2.resumo&&proc2.resumo.alertas>0 ? 'warn' : 'err');
-        // Update badge in result pills
-        var pills = document.getElementById('resultPills');
-        if(pills && pending.length===0){
-          var badge = pills.querySelector('.pill-err');
-          if(badge) badge.textContent='✓ 0 Divergências';
-        }
-        saveProcesses(procs2, proc2);
+    var refAc = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(refAc && currentResult){
+      var procsAc = getProcesses();
+      var procAc = procsAc.find(function(p){ return p.ref===refAc; });
+      if(procAc){
+        procAc._divResolvedMap = procAc._divResolvedMap || {};
+        procAc._divResolvedMap[key] = {nota:nota, time:new Date().toLocaleString('pt-BR'), por: _currentUser ? (_currentUser.displayName||_currentUser.username) : ''};
+        recalcularStatusProcesso(procAc);
+        saveProcesses(procsAc, procAc);
         renderDashboard();
         renderProcessos();
       }
@@ -2750,6 +2806,58 @@ if(divergResolved[key]){
 }
 }
 }
+}
+
+function aceitarAlerta(key){
+  if(divergResolved[key]){
+    // Desfazer
+    delete divergResolved[key];
+    showToast('Aceite desfeito','warn');
+  } else {
+    divergResolved[key] = { nota:'Alerta aceito', time:new Date().toLocaleString('pt-BR'), por: _currentUser ? (_currentUser.displayName||_currentUser.username) : '' };
+    showToast('Alerta aceito','ok');
+  }
+  // Recalcular status no processo
+  try{
+    var ref = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(ref && currentResult){
+      var procs = getProcesses();
+      var proc = procs.find(function(p){ return p.ref===ref; });
+      if(proc){
+        proc._divResolvedMap = proc._divResolvedMap || {};
+        if(divergResolved[key]) proc._divResolvedMap[key] = divergResolved[key];
+        else delete proc._divResolvedMap[key];
+        recalcularStatusProcesso(proc);
+        saveProcesses(procs, proc);
+        renderDashboard();
+        renderProcessos();
+      }
+    }
+  }catch(e){}
+  // Re-renderizar alertas
+  if(currentResult) {
+    var aa = document.getElementById('alertas-area');
+    if(aa) {
+      var r = currentResult;
+      aa.innerHTML=r.alertas&&r.alertas.length?`
+    <div class="alerts-box">
+      <h4>⚠ Alertas e Recomendações</h4>
+      <ul>`+r.alertas.map(function(a){
+        var txt = typeof a==='string' ? a : (a.descricao||a.mensagem||String(a));
+        var k = 'alerta-' + txt;
+        var ac2 = divergResolved[k];
+        return '<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
+          + '<span style="flex:1;'+(ac2?'text-decoration:line-through;opacity:.5;':'')+'">'+txt+'</span>'
+          + (ac2
+            ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
+              + '<button onclick="aceitarAlerta('+JSON.stringify(k)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+            : '<button onclick="aceitarAlerta('+JSON.stringify(k)+')" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+            )
+          + '</li>';
+      }).join('')+`</ul>
+    </div>`:'';
+    }
+  }
 }
 
 function copyDivergencias(){
