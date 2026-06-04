@@ -972,9 +972,7 @@ async function handleImport(files){
   toast(`✓ ${totalNovos} produtos importados!`);
   renderDash();
   updateSizeDl();
-  // Salvar base atual por fornecedor
-  if(totalNovos>0){const fm={};COTACOES.forEach(c=>{if(!fm[c.f])fm[c.f]=[];fm[c.f].push(c);});for(const [fn,its] of Object.entries(fm)){await salvarCotacoes(fn,its);}}
-  // Salvar base GLOBAL no Drive (todos os usuários vão carregar isso)
+  // Salvar base no Drive (fonte de verdade para todos os usuários)
   if(totalNovos>0){
     try{
       const r = await fetch('/api/base/salvar',{
@@ -1510,7 +1508,7 @@ window.addEventListener('load', async function(){
           }
         }
       } catch(e){ console.warn('Drive:', e.message); }
-      await initDB(); await carregarCotacoesSalvas(); init();
+      init();
       return;
     }
   } catch(e) {
@@ -1813,79 +1811,6 @@ function calcContainer(cots, mix) {
 }
 
 
-// ══ STORAGE PERSISTENTE (IndexedDB) ═════════════════════════════════
-const DB_NAME = 'TyreDesk', DB_VER = 1;
-let db = null;
-
-function initDB() {
-  return new Promise((res, rej) => {
-    const req = indexedDB.open(DB_NAME, DB_VER);
-    req.onupgradeneeded = e => {
-      const d = e.target.result;
-      if (!d.objectStoreNames.contains('cotacoes'))
-        d.createObjectStore('cotacoes', {keyPath:'id'});
-      if (!d.objectStoreNames.contains('historico'))
-        d.createObjectStore('historico', {keyPath:'id', autoIncrement:true});
-      if (!d.objectStoreNames.contains('fornecedores'))
-        d.createObjectStore('fornecedores', {keyPath:'id'});
-    };
-    req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror = () => rej(req.error);
-  });
-}
-
-function dbPut(store, data) {
-  return new Promise((res,rej) => {
-    const tx = db.transaction(store,'readwrite');
-    tx.objectStore(store).put(data);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-}
-
-function dbGetAll(store) {
-  return new Promise((res,rej) => {
-    const tx = db.transaction(store,'readonly');
-    const req = tx.objectStore(store).getAll();
-    req.onsuccess = () => res(req.result);
-    req.onerror = () => rej(req.error);
-  });
-}
-
-function dbClear(store) {
-  return new Promise((res,rej) => {
-    const tx = db.transaction(store,'readwrite');
-    tx.objectStore(store).clear();
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-}
-
-// Salvar cotações importadas
-async function salvarCotacoes(fornecedor, itens) {
-  try {
-    await dbPut('cotacoes', { id: fornecedor, itens, data: new Date().toISOString() });
-    console.log('Cotações salvas para', fornecedor);
-  } catch(e) { console.warn('Erro ao salvar cotações:', e); }
-}
-
-// Carregar cotações salvas (sobrescrever base original)
-async function carregarCotacoesSalvas() {
-  try {
-    const salvas = await dbGetAll('cotacoes');
-    // Normalizar nomes antigos com espaço
-    const normalizar = id => id.replace('SUNWIDE / INVOVIC','SUNWIDE/INVOVIC')
-                                .replace('TRACMAX / WINDFORCE','TRACMAX/WINDFORCE');
-    salvas.forEach(reg => {
-      const fNorm = normalizar(reg.id);
-      if(reg.itens && reg.itens.length > 0){
-        COTACOES = COTACOES.filter(c => c.f !== fNorm && c.f !== reg.id);
-        COTACOES = [...COTACOES, ...reg.itens.map(c=>Object.assign({},c,{f:fNorm,pat:c.pat||c.md||''}))];
-      }
-    });
-    if (salvas.length) {
-      console.log('Cotações restauradas:', salvas.map(r=>normalizar(r.id)).join(', '));
-    }
-  } catch(e) { console.warn('Erro ao carregar cotações:', e); }
-}
 
 // ── HISTÓRICO DE E-MAILS ─────────────────────────────────────────────
 async function gravarHistorico(forn, tipo, lang) {
@@ -1897,9 +1822,7 @@ async function gravarHistorico(forn, tipo, lang) {
     data: new Date().toISOString(),
     usuario: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'Sistema'
   };
-  // Salvar local
-  try { await dbPut('historico', entrada); } catch(e) { console.warn('Histórico local:', e); }
-  // Salvar no Drive (persistente entre usuários e dispositivos)
+  // Salvar no Drive
   try {
     await fetch('/api/drive/historico', {
       method: 'POST',
@@ -1918,12 +1841,8 @@ async function renderHistorico() {
       const d = await r.json();
       if (d.historico && d.historico.length) {
         items = d.historico;
-        // Sincronizar local
-        for (const it of items) { try { await dbPut('historico', it); } catch(e) {} }
       }
     } catch(e) {}
-    // Fallback: local
-    if (!items.length) items = await dbGetAll('historico');
     const el = document.getElementById('hist-list');
     document.getElementById('hist-total').textContent = items.length + ' registros';
     if (!items.length) {
@@ -1950,7 +1869,9 @@ async function renderHistorico() {
 
 async function limparHistorico() {
   if (!confirm('Apagar todo o histórico de solicitações?')) return;
-  await dbClear('historico');
+  try {
+    await fetch('/api/drive/historico/limpar', { method: 'POST' });
+  } catch(e) {}
   renderHistorico();
   toast('Histórico apagado');
 }
@@ -2060,9 +1981,7 @@ function exportarExcel() {
 }
 
 // ── INIT ──────────────────────────────────────────────
-async function init(){
-  await initDB();
-  await carregarCotacoesSalvas();
+function init(){
   renderForn();renderDash();updateSizeDl();
   document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
   addMix('295/80R22.5','200');addMix('275/80R22.5','100');
