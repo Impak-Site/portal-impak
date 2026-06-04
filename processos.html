@@ -2675,14 +2675,34 @@ function deleteProcess(id){
   if(!confirm('Excluir este processo? Esta ação não pode ser desfeita.')) return;
   var user = _currentUser ? _currentUser.username : null;
   if(!user) return;
-  dbDeleteProcess(user, id);
-  var procs = getProcesses().filter(function(p){ return p.id!==id; });
-  _processes = procs;
-  try{ localStorage.setItem(getUserKey(), JSON.stringify(procs)); }catch(e){}
-  fecharDetalheProcesso();
-  renderProcessos();
-  renderDashboard();
-  showToast('Processo excluído.','ok');
+
+  showToast('Excluindo...','ok');
+
+  // Deletar do Drive primeiro, depois atualizar UI
+  fetch('/api/processos/'+encodeURIComponent(id), {
+    method:'DELETE',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username: user})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    // Remover de _processes e localStorage após confirmação do Drive
+    _processes = _processes.filter(function(p){ return p.id!==id; });
+    try{ localStorage.setItem(getUserKey(), JSON.stringify(_processes)); }catch(e){}
+    fecharDetalheProcesso();
+    renderProcessos();
+    renderDashboard();
+    showToast('Processo excluído.','ok');
+  })
+  .catch(function(){
+    // Drive offline — remover só localmente
+    _processes = _processes.filter(function(p){ return p.id!==id; });
+    try{ localStorage.setItem(getUserKey(), JSON.stringify(_processes)); }catch(e){}
+    fecharDetalheProcesso();
+    renderProcessos();
+    renderDashboard();
+    showToast('Excluído localmente (Drive offline).','ok');
+  });
 }
 
 function closeModal(e){
