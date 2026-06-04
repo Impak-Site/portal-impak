@@ -1390,12 +1390,7 @@ function analisar(){
     <div>${ops.map((o,i)=>{
       const ppu=o.peso>0?o.preco/o.peso:null;
       const ppuBadge=ppu?`<span class="pkg-badge pkg-info" title="USD/kg">${fmtPkg(ppu)}</span>`:'';
-      const _chipClass = i===0?'chip chip-best':'chip chip-alt';
-      const _patSpan = o.pat?`<span class="pkg-badge" style="background:rgba(26,127,212,.10);color:var(--ac);border:1px solid rgba(26,127,212,.25);font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${o.pat}</span>`:'';
-      const _borBdg = o.bor&&o.bor!=='liso'?`<span class="pkg-badge pkg-warn" style="font-size:10px">${o.bor}</span>`:'';
-      const _origBdg = o.orig?`<span class="pkg-badge pkg-info" style="font-size:10px">${o.orig}</span>`:'';
-      const _alertBadge = o.moq&&o.moq>0?`<span class="pkg-badge pkg-warn" style="font-size:10px">MOQ ${o.moq}</span>`:'';
-      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${_chipClass}">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${_patSpan}${_borBdg}${_origBdg}${_alertBadge}${ppuBadge}</div>`;
+      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipClass}">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patSpan}${borBdg}${origBdg}${alertBadge}</div>`;
     }).join('')}</div></div>`;
   });
   c4.innerHTML=`<div class="ch"><h3>Todas as Cotações por Medida</h3>
@@ -1663,13 +1658,13 @@ function renderSelTable() {
   const rowOrder = [];
   filtered.forEach(c => {
     const prKey = tipoAtivo === 'TBR' ? (c.pr||'') : '';
-    // TBR: agrupa por categoria + PR (sem li -- varia por fornecedor)
+    // TBR: agrupa por pattern + PR + bor (pat é o campo real da base)
     // PCR: agrupa por padrão + li + bor
-    const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
+    const rkPat = c.pat||'—';
     const rkLi  = tipoAtivo==='TBR' ? '' : (c.li||'—');
-    const rk = [rkCat, rkLi, prKey, c.bor||'liso'].join('||');
+    const rk = [rkPat, rkLi, prKey, c.bor||'liso'].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
@@ -1702,14 +1697,14 @@ function renderSelTable() {
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
     const catBdg = row.cat ? `<span style="font-size:10px;font-weight:700;background:#dce8f5;color:#1a7fd4;border-radius:4px;padding:2px 6px;">${row.cat}</span>` : '';
-    // Para TBR mostrar categoria como título, padrão como código secundário
+    // Para TBR mostrar pattern como título principal; LI abaixo se existir
     const isTBR = tipoAtivo === 'TBR';
-    const mainLabel = isTBR ? (row.cat || row.pat || '—') : (row.pat || '—');
-    const subLabel  = '';
+    const mainLabel = row.pat !== '—' ? row.pat : (row.cat || '—');
+    // Para TBR: mostrar LI/SR embaixo do pattern quando disponível
+    const liDisplay = isTBR ? (row.li !== '—' ? row.li : '') : row.li;
     t += `<td class="spec-col">
       <div class="spec-pat">${mainLabel}${prSpan}</div>
-      ${subLabel ? `<div style="margin-top:2px">${subLabel}</div>` : ''}
-      <div class="spec-li">${row.li}</div>
+      ${liDisplay ? `<div class="spec-li">${liDisplay}</div>` : ''}
       <div class="spec-bor" style="margin-top:4px">${borBdg}</div>
     </td>`;
 
