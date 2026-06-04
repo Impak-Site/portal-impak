@@ -1711,7 +1711,7 @@ function renderSelTable() {
         const key = getSelKey(item).replace(/'/g,"\\'");
         const picked = !!selPicked[getSelKey(item)];
         const pkg = item.p&&item.pe&&item.pe>0 ? (item.p/item.pe).toFixed(2) : null;
-        const patLabel = isTBR && item.pat ? `<span class="cmp-info" style="font-weight:600;color:#1a7fd4;">${item.pat}</span>` : '';
+        const patLabel = item.pat ? `<span class="cmp-info" style="font-weight:600;color:#1a7fd4;">${item.pat}</span>` : '';
         t += `<td><div class="cmp-cell-yes ${picked?'picked':''}" onclick="toggleCmpSel(this,'${key}')">
           <span class="cmp-price">${item.cur||'USD'} ${fmtP(item.p)}</span>
           ${patLabel}
