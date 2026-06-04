@@ -1642,9 +1642,12 @@ function renderSelTable() {
   const rowOrder = [];
   filtered.forEach(c => {
     const prKey = tipoAtivo === 'TBR' ? (c.pr||'') : '';
-    const rk = [c.pat||'—', c.li||'—', prKey, c.bor||'liso', c.cat||''].join('||');
+    // TBR: agrupa por categoria (LISO/TRAÇÃO) -- cada fornecedor usa código de padrão diferente
+    // PCR: agrupa por padrão exato
+    const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
+    const rk = [rkCat, c.li||'—', prKey, c.bor||'liso'].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.pat||'—', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.cat||c.pat||'—', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
