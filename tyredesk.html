@@ -1368,6 +1368,18 @@ function analisar(){
 
   // Salvar para exportação
   ultimaAnalise={mix,cots,sorted,otim,moeda,tp};
+  // Construir pkgPorMedida: USD/kg médio por medida
+  const pkgPorMedida={};
+  cots.forEach(c=>{
+    if(c.preco>0&&c.peso>0){
+      if(!pkgPorMedida[c.medida]) pkgPorMedida[c.medida]={sum:0,n:0};
+      pkgPorMedida[c.medida].sum+=c.preco/c.peso;
+      pkgPorMedida[c.medida].n++;
+    }
+  });
+  Object.keys(pkgPorMedida).forEach(k=>{
+    pkgPorMedida[k]=pkgPorMedida[k].sum/pkgPorMedida[k].n;
+  });
   const c4=document.createElement('div');c4.className='card';
   let dh='';
   mix.forEach(m=>{
