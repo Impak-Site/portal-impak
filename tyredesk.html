@@ -1499,7 +1499,7 @@ window.addEventListener('load', async function(){
           }
         }
       } catch(e){ console.warn('Drive:', e.message); }
-      await initDB(); await carregarCotacoesSalvas(); init();
+      await initDB(); await limparDBantigo(); await carregarCotacoesSalvas(); init();
       return;
     }
   } catch(e) {
@@ -1860,13 +1860,20 @@ async function salvarCotacoes(fornecedor, itens) {
 async function carregarCotacoesSalvas() {
   try {
     const salvas = await dbGetAll('cotacoes');
+    // Normalizar nomes antigos com espaço
+    const normalizar = id => id.replace('SUNWIDE / INVOVIC','SUNWIDE/INVOVIC')
+                                .replace('TRACMAX / WINDFORCE','TRACMAX/WINDFORCE');
     salvas.forEach(reg => {
-      COTACOES = COTACOES.filter(c => c.f !== reg.id);
-      COTACOES = [...COTACOES, ...reg.itens];
+      const fNorm = normalizar(reg.id);
+      // Só restaurar se os itens tiverem pat preenchido (base nova)
+      const temPat = reg.itens && reg.itens.filter(c=>c.pat && c.pat.length>2).length;
+      if(temPat > 0){
+        COTACOES = COTACOES.filter(c => c.f !== fNorm && c.f !== reg.id);
+        COTACOES = [...COTACOES, ...reg.itens.map(c=>Object.assign({},c,{f:fNorm}))];
+      }
     });
     if (salvas.length) {
-      console.log('Cotações restauradas:', salvas.map(r=>r.id).join(', '));
-      toast('Base restaurada: ' + salvas.map(r=>r.id).join(', '));
+      console.log('Cotações restauradas:', salvas.map(r=>normalizar(r.id)).join(', '));
     }
   } catch(e) { console.warn('Erro ao carregar cotações:', e); }
 }
