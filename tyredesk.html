@@ -1503,15 +1503,15 @@ window.addEventListener('load', async function(){
         const bd = await br.json();
         if(bd.ok && bd.base && bd.base.length > 0){
           const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
-          const temPat = driveBase.filter(c=>c.pat && c.pat.length > 2).length;
-          if(temPat > 500){
+          // Usar base do Drive sempre que tiver itens suficientes
+          if(driveBase.length > 100){
             window._BASE_ORIGINAL = driveBase;
             COTACOES = window._BASE_ORIGINAL.slice();
             console.log('Base Drive usada:', COTACOES.length, 'itens');
           }
         }
       } catch(e){ console.warn('Drive:', e.message); }
-      await initDB(); await limparDBantigo(); await carregarCotacoesSalvas(); init();
+      await initDB(); await carregarCotacoesSalvas(); init();
       return;
     }
   } catch(e) {
@@ -1658,13 +1658,13 @@ function renderSelTable() {
   const rowOrder = [];
   filtered.forEach(c => {
     const prKey = tipoAtivo === 'TBR' ? (c.pr||'') : '';
-    // TBR: agrupa por pattern + PR + bor (pat é o campo real da base)
+    // TBR: agrupa por categoria + PR (sem li -- varia por fornecedor)
     // PCR: agrupa por padrão + li + bor
-    const rkPat = c.pat||'—';
+    const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
     const rkLi  = tipoAtivo==='TBR' ? '' : (c.li||'—');
-    const rk = [rkPat, rkLi, prKey, c.bor||'liso'].join('||');
+    const rk = [rkCat, rkLi, prKey, c.bor||'liso'].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
@@ -1697,14 +1697,14 @@ function renderSelTable() {
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
     const catBdg = row.cat ? `<span style="font-size:10px;font-weight:700;background:#dce8f5;color:#1a7fd4;border-radius:4px;padding:2px 6px;">${row.cat}</span>` : '';
-    // Para TBR mostrar pattern como título principal; LI abaixo se existir
+    // Para TBR mostrar categoria como título, padrão como código secundário
     const isTBR = tipoAtivo === 'TBR';
-    const mainLabel = row.pat !== '—' ? row.pat : (row.cat || '—');
-    // Para TBR: mostrar LI/SR embaixo do pattern quando disponível
-    const liDisplay = isTBR ? (row.li !== '—' ? row.li : '') : row.li;
+    const mainLabel = isTBR ? (row.cat || row.pat || '—') : (row.pat || '—');
+    const subLabel  = '';
     t += `<td class="spec-col">
       <div class="spec-pat">${mainLabel}${prSpan}</div>
-      ${liDisplay ? `<div class="spec-li">${liDisplay}</div>` : ''}
+      ${subLabel ? `<div style="margin-top:2px">${subLabel}</div>` : ''}
+      <div class="spec-li">${row.li}</div>
       <div class="spec-bor" style="margin-top:4px">${borBdg}</div>
     </td>`;
 
@@ -1877,9 +1877,8 @@ async function carregarCotacoesSalvas() {
                                 .replace('TRACMAX / WINDFORCE','TRACMAX/WINDFORCE');
     salvas.forEach(reg => {
       const fNorm = normalizar(reg.id);
-      // Só restaurar se os itens tiverem pat preenchido (base nova)
-      const temPat = reg.itens && reg.itens.filter(c=>c.pat && c.pat.length>2).length;
-      if(temPat > 0){
+      // Restaurar sempre — PCR pode não ter pat, isso é normal
+      if(reg.itens && reg.itens.length > 0){
         COTACOES = COTACOES.filter(c => c.f !== fNorm && c.f !== reg.id);
         COTACOES = [...COTACOES, ...reg.itens.map(c=>Object.assign({},c,{f:fNorm}))];
       }
