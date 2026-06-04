@@ -1647,7 +1647,7 @@ function renderSelTable() {
     const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
     const rk = [rkCat, c.li||'—', prKey, c.bor||'liso'].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.cat||c.pat||'—', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
@@ -1682,8 +1682,8 @@ function renderSelTable() {
     const catBdg = row.cat ? `<span style="font-size:10px;font-weight:700;background:#dce8f5;color:#1a7fd4;border-radius:4px;padding:2px 6px;">${row.cat}</span>` : '';
     // Para TBR mostrar categoria como título, padrão como código secundário
     const isTBR = tipoAtivo === 'TBR';
-    const mainLabel = isTBR && row.cat ? row.cat : (row.pat && row.pat !== '—' ? row.pat : row.cat || '—');
-    const subLabel  = isTBR && row.cat && row.pat && row.pat !== '—' ? `<span style="font-size:10px;color:var(--mu);">${row.pat}</span>` : '';
+    const mainLabel = row.pat || '—';
+    const subLabel  = isTBR && row.patCode && row.patCode !== row.pat ? `<span style="font-size:10px;color:var(--mu);">Padrão: ${row.patCode}</span>` : '';
     t += `<td class="spec-col">
       <div class="spec-pat">${mainLabel}${prSpan}</div>
       ${subLabel ? `<div style="margin-top:2px">${subLabel}</div>` : ''}
