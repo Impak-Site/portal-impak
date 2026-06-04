@@ -432,7 +432,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 <!-- ════════════════════════════════════════════════════════════════════ -->
 
 <!-- ══ TELA DE LOGIN ══════════════════════════════════════════════════════ -->
-<div id="login-screen">
+<div id="login-screen" style="display:none;">
   <div class="login-box">
     <div class="login-logo">
       <div class="login-logo-box">IMPAK</div>
@@ -1509,7 +1509,11 @@ window.addEventListener('load', async function(){
       await initDB(); await carregarCotacoesSalvas(); init();
       return;
     }
-  } catch(e) {}
+  } catch(e) {
+    // Se falhar, mostrar login manual
+    var ls = document.getElementById('login-screen');
+    if(ls) ls.style.display='';
+  }
 });
 
 async function doLogin(){
