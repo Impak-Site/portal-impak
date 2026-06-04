@@ -1963,8 +1963,6 @@ function exportarExcel() {
       const cot = cots.find(c => c.forn === forn && c.medida === m.medida);
       if (!cot) return;
       const qtde = m.qtde;
-      const moq = cot.moq || 0;
-      const pct = moq > 0 ? qtde / moq : 0;
       const peso = cot.peso || 0;
       const pesoTotal = peso * qtde;
       const subtotal = cot.preco * qtde;
@@ -2021,8 +2019,6 @@ function exportarExcel() {
   let totOtPed=0,totOtPeso=0,totOtFob=0;
   otim.forEach(o => {
     if (!o.melhor) return;
-    const moq = o.moq || 0;
-    const pct = moq>0 ? o.qtde/moq : 0;
     const pesoT = (o.peso||0)*o.qtde;
     totOtPed+=o.qtde; totOtPeso+=pesoT; totOtFob+=(o.sub||0);
     rowsOtim.push([
