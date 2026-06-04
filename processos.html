@@ -2318,7 +2318,18 @@ function _renderProcessModal(p){
       var alertTexts=(a.alertas||[]).map(extractAlert).filter(function(x){return x;});
       if(alertTexts.length){
         html+='<div style="margin-top:10px;" class="alerts-box"><ul>';
-        alertTexts.forEach(function(at){ html+='<li>'+at+'</li>'; });
+        alertTexts.forEach(function(at){
+          var aKey = 'alerta-' + at;
+          var aAceito = p._divResolvedMap && p._divResolvedMap[aKey];
+          html+='<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
+            +'<span style="flex:1;'+(aAceito?'text-decoration:line-through;opacity:.5;':'')+'">'+at+'</span>'
+            +(aAceito
+              ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
+                +'<button data-action="aceitar-alerta" data-key="'+aKey.replace(/"/g,'&quot;')+'" data-pid="'+p.id+'" data-puser="'+(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+              : '<button data-action="aceitar-alerta" data-key="'+aKey.replace(/"/g,'&quot;')+'" data-pid="'+p.id+'" data-puser="'+(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+            )
+            +'</li>';
+        });
         html+='</ul></div>';
       }
 
@@ -2427,10 +2438,79 @@ function _renderProcessModal(p){
       var pid = btn.getAttribute('data-pid') || id;
       var puser = btn.getAttribute('data-user') || ownerUser;
       if(action==='aceitar-div') aceitarDivHistorico(pid, puser, key);
+      if(action==='aceitar-alerta') aceitarAlertaHistorico(pid, puser, key);
       if(action==='add-log') addLog(pid, puser);
       if(action==='nova-analise') document.getElementById('btnNovaAnalise') && document.getElementById('btnNovaAnalise').click();
     });
   }
+}
+
+function aceitarAlertaHistorico(procId, ownerUser, alertKey){
+  var quemAceitou = _currentUser ? (_currentUser.displayName||_currentUser.username) : '?';
+
+  // Se já aceito, desfazer direto sem overlay
+  var procs0 = getProcesses();
+  var proc0 = procs0.find(function(p){ return p.id===parseInt(procId)||p.id===procId; });
+  if(proc0 && proc0._divResolvedMap && proc0._divResolvedMap[alertKey]){
+    delete proc0._divResolvedMap[alertKey];
+    proc0._updatedAt = Date.now();
+    recalcularStatusProcesso(proc0);
+    dbSaveProcess(ownerUser, proc0);
+    renderDashboard(); renderProcessos();
+    showToast('Aceite desfeito','warn');
+    setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 300);
+    return;
+  }
+
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:14px;font-weight:700;color:#e6edf4;margin-bottom:6px;';
+  title.textContent = 'Aceitar Alerta';
+  var sub = document.createElement('div');
+  sub.style.cssText = 'font-size:11px;color:#6b8aaa;margin-bottom:16px;';
+  sub.innerHTML = 'Aceito por: <strong style="color:#d97706">' + quemAceitou + '</strong>';
+  var lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:12px;color:#6b8aaa;margin-bottom:8px;';
+  lbl.textContent = 'Motivo (obrigatório):';
+  var textarea = document.createElement('textarea');
+  textarea.rows = 3;
+  textarea.placeholder = 'Descreva o motivo para aceitar este alerta...';
+  textarea.style.cssText = 'width:100%;background:#0d1e2e;border:1px solid #2a3d55;border-radius:7px;color:#e6edf4;font-size:13px;padding:10px 12px;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;';
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px;margin-top:16px;justify-content:flex-end;';
+  var btnCancel = document.createElement('button');
+  btnCancel.style.cssText = 'background:transparent;border:1px solid #2a3d55;border-radius:7px;color:#6b8aaa;padding:8px 18px;cursor:pointer;font-size:13px;';
+  btnCancel.textContent = 'Cancelar';
+  btnCancel.onclick = function(){ overlay.remove(); };
+  var btnOk = document.createElement('button');
+  btnOk.style.cssText = 'background:#d97706;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:600;';
+  btnOk.textContent = '✓ Confirmar';
+  btnOk.onclick = function(){
+    var nota = (textarea.value||'').trim();
+    if(!nota){ showToast('Informe o motivo para aceitar.','err'); return; }
+    overlay.remove();
+    dbGetProcess(ownerUser, parseInt(procId), function(p){
+      if(!p){ showToast('Processo não encontrado','err'); return; }
+      p._divResolvedMap = p._divResolvedMap || {};
+      p._divResolvedMap[alertKey] = { nota:nota, time:new Date().toLocaleString('pt-BR'), por:quemAceitou };
+      p._updatedAt = Date.now();
+      recalcularStatusProcesso(p);
+      dbSaveProcess(ownerUser, p);
+      renderDashboard(); renderProcessos();
+      showToast('Alerta aceito por ' + quemAceitou,'ok');
+      setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 400);
+    });
+  };
+  btnRow.appendChild(btnCancel); btnRow.appendChild(btnOk);
+  box.appendChild(title); box.appendChild(sub); box.appendChild(lbl); box.appendChild(textarea); box.appendChild(btnRow);
+  overlay.appendChild(box); document.body.appendChild(overlay); textarea.focus();
+  overlay.addEventListener('keydown', function(e){
+    if(e.key==='Escape') overlay.remove();
+    if(e.key==='Enter' && e.ctrlKey) btnOk.click();
+  });
 }
 
 var _paginaAnterior = 'processos';
