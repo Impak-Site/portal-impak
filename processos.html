@@ -2720,7 +2720,7 @@ const LANG = {
 function getLang(){ var s=document.getElementById('langSelect2')||document.getElementById('langSelect'); return s?s.value:'pt'; }
 function t(key){ return LANG[getLang()][key]||LANG['pt'][key]; }
 
-const divergResolved = {};
+let divergResolved = {};
 
 function getDivergencias(){
   if(!currentResult) return [];
