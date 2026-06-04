@@ -1642,10 +1642,11 @@ function renderSelTable() {
   const rowOrder = [];
   filtered.forEach(c => {
     const prKey = tipoAtivo === 'TBR' ? (c.pr||'') : '';
-    // TBR: agrupa por categoria (LISO/TRAÇÃO) -- cada fornecedor usa código de padrão diferente
-    // PCR: agrupa por padrão exato
+    // TBR: agrupa por categoria + PR (sem li -- varia por fornecedor)
+    // PCR: agrupa por padrão + li + bor
     const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
-    const rk = [rkCat, c.li||'—', prKey, c.bor||'liso'].join('||');
+    const rkLi  = tipoAtivo==='TBR' ? '' : (c.li||'—');
+    const rk = [rkCat, rkLi, prKey, c.bor||'liso'].join('||');
     if (!rowMap[rk]) {
       rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
