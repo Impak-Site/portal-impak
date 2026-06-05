@@ -1606,7 +1606,7 @@ async function doLogin(){
     await new Promise(r=>setTimeout(r,300));
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('login-pass').value = '';
-    init();
+    await init();
 
   } catch(e) {
     clearInterval(timer); lpbar.style.width='0%';
