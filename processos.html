@@ -1736,7 +1736,7 @@ function renderResult(r){
 // ─── DASHBOARD ────────────────────────────────────────────────────────
 function renderDashboard(){
   if(!_currentUser) return;
-  var fetchFn = _currentUser.role === 'gerente' ? dbGetAllProcesses : function(cb){ dbGetProcesses(_currentUser.username, cb); };
+  var fetchFn = dbGetAllProcesses; // todos os usuários veem todos os processos
   fetchFn(function(procs){
     _processes = procs;
     var total=procs.length;
@@ -2130,16 +2130,11 @@ function clearAllHistory(){
 
 
 function renderProcessos(filter){
-  if(_currentUser && _currentUser.role === 'gerente'){
-    // Gerente vê todos — busca do Firebase
+  if(_currentUser){
+    // Todos os usuários veem todos os processos
     dbGetAllProcesses(function(all){
+      _processes = all;
       _renderProcessosList(all, filter);
-    });
-  } else if(_currentUser){
-    // Analista vê só os dela — busca do Firebase filtrado
-    dbGetProcesses(_currentUser.username, function(procs){
-      _processes = procs; // atualiza estado local
-      _renderProcessosList(procs, filter);
     });
   } else {
     _renderProcessosList([], filter);
