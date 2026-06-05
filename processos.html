@@ -1077,10 +1077,23 @@ function doLogin(){
   renderDashboard();
   renderProcessos();
   showPage('dashboard');
-  // Sincronizar do Firebase em background
-  dbGetProcesses(found.username, function(firebaseProcs){
-    if(firebaseProcs.length > 0 || _firebaseReady){
-      _processes = migrateAlerts(firebaseProcs);
+  // Sincronizar: busca do Drive e faz upload de processos locais que não estão lá
+  dbGetProcesses(found.username, function(driveProcs){
+    var driveIds = driveProcs.map(function(p){ return p.id; });
+    // Processos locais que ainda não estão no Drive — enviar agora
+    var locais = [];
+    try{ locais = JSON.parse(localStorage.getItem(getUserKey())||'[]'); }catch(e){}
+    locais.forEach(function(proc){
+      if(!driveIds.includes(proc.id)){
+        fetch('/api/processos/salvar',{method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({username:found.username, processo:proc})
+        }).catch(function(){});
+      }
+    });
+    // Atualizar _processes com dados do Drive
+    if(driveProcs.length > 0){
+      _processes = migrateAlerts(driveProcs);
       try{ localStorage.setItem(getUserKey(), JSON.stringify(_processes)); }catch(e){}
       renderDashboard();
       renderProcessos();
