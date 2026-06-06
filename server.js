@@ -199,6 +199,10 @@ app.get('/processos', auth('processos'), (req, res) => {
   res.sendFile(path.join(__dirname, 'processos.html'));
 });
 
+app.get('/controle', auth('processos'), (req, res) => {
+  res.sendFile(path.join(__dirname, 'controle.html'));
+});
+
 // ── API: SESSÃO ───────────────────────────────────────────────
 app.get('/api/me', (req, res) => {
   if (!req.session.usuario) return res.json({ logado: false });
@@ -322,6 +326,23 @@ app.get('/api/base/carregar', auth(), async (req, res) => {
     if (base) res.json({ ok: true, base, total: base.length });
     else res.json({ ok: false, base: null });
   } catch (e) { res.json({ ok: false, base: null }); }
+});
+
+// ── API: CONTROLE DE PROCESSOS ───────────────────────────────
+app.post('/api/controle/salvar', auth('processos'), async (req, res) => {
+  try {
+    const { processos } = req.body;
+    await driveUpsert('controle_processos.json', processos);
+    res.json({ ok: true, total: processos.length });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.get('/api/controle/carregar', auth('processos'), async (req, res) => {
+  try {
+    const processos = await driveRead('controle_processos.json');
+    if (processos) res.json({ ok: true, processos });
+    else res.json({ ok: true, processos: [] });
+  } catch (e) { res.json({ ok: true, processos: [] }); }
 });
 
 // ── HEALTH ────────────────────────────────────────────────────
