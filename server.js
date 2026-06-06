@@ -81,8 +81,9 @@ async function driveRead(nome) {
 }
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'impak-secret-2026',
   resave: false,
@@ -201,6 +202,10 @@ app.get('/processos', auth('processos'), (req, res) => {
 
 app.get('/controle', auth('processos'), (req, res) => {
   res.sendFile(path.join(__dirname, 'controle.html'));
+});
+
+app.get('/importar', auth('processos'), (req, res) => {
+  res.sendFile(path.join(__dirname, 'importar.html'));
 });
 
 // ── API: SESSÃO ───────────────────────────────────────────────
