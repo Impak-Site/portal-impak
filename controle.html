@@ -498,12 +498,27 @@ function save(cb){
   }).catch(()=>toast('Sem conexão.','err'));
 }
 function load(){
-  fetch('/api/controle/carregar').then(r=>r.json()).then(d=>{
-    if(d.processos&&d.processos.length) _processos=d.processos;
-    renderAll();
-    document.getElementById('lastSync').textContent=
-      new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  }).catch(()=>{toast('Erro ao carregar dados.','err');renderAll();});
+  // Verificar sessão primeiro
+  fetch('/api/me').then(r=>r.json()).then(me=>{
+    if(!me.logado){ window.location.href='/login?destino=/controle'; return; }
+    // Carregar processos
+    fetch('/api/controle/carregar').then(r=>{
+      if(!r.ok){ toast('Erro ao carregar ('+r.status+').','err'); renderAll(); return; }
+      return r.json();
+    }).then(d=>{
+      if(!d) return;
+      if(d.processos && d.processos.length){
+        _processos = d.processos;
+      }
+      renderAll();
+      const el=document.getElementById('lastSync');
+      if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    }).catch(e=>{
+      console.error('Erro carregar processos:', e);
+      toast('Erro ao carregar dados.','err');
+      renderAll();
+    });
+  }).catch(()=>{ window.location.href='/login?destino=/controle'; });
 }
 
 // ══ UTILS ════════════════════════════════════════════════════
