@@ -21,16 +21,22 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ── USUÁRIOS ─────────────────────────────────────────────────
+// Senhas lidas de variáveis de ambiente no Railway (mais seguro)
+// Se não configuradas, usa os valores padrão abaixo
+function getSenha(envKey, fallback) {
+  return process.env[envKey] || fallback;
+}
+
 const USUARIOS = [
-  { usuario: 'narcelio',  email: 'Narcelio@impak.com.br',    senha: 'Narcelio@2026',      modulos: ['tyredesk','processos'], nome: 'Narcelio', role: 'gerente',  displayName: 'Narcelio'  },
-  { usuario: 'jean',      email: 'Jean@impak.com.br',        senha: 'Jeanimpak2026',      modulos: ['tyredesk','processos'], nome: 'Jean',     role: 'gerente',  displayName: 'Jean'      },
-  { usuario: 'paula',     email: 'Paula@impak.com.br',       senha: 'Paula@2026',         modulos: ['processos'],            nome: 'Paula',    role: 'gerente',  displayName: 'Paula'     },
-  { usuario: 'bianca',    email: 'Bianca@impak.com.br',      senha: 'Bianca@2026',        modulos: ['processos'],            nome: 'Bianca',   role: 'gerente',  displayName: 'Bianca'    },
-  { usuario: 'emanuelly', email: 'importacao1@impak.com.br', senha: 'EmanuellyImpak2026', modulos: ['processos'],            nome: 'Emanuelly',role: 'analista', displayName: 'Emanuelly' },
-  { usuario: 'italo',     email: 'Italo@impak.com.br',       senha: 'Italo@2026',         modulos: ['processos'],            nome: 'Italo',    role: 'analista', displayName: 'Italo'     },
-  { usuario: 'maria',     email: 'Maria@impak.com.br',       senha: 'Maria@2026',         modulos: ['processos'],            nome: 'Maria',    role: 'analista', displayName: 'Maria'     },
-  { usuario: 'joyce',     email: 'Joyce@impak.com.br',       senha: 'Joyce@2026',         modulos: ['processos'],            nome: 'Joyce',    role: 'analista', displayName: 'Joyce'     },
-  { usuario: 'neide',     email: 'Neide@impak.com.br',       senha: 'Neide@2026',         modulos: ['processos'],            nome: 'Neide',    role: 'analista', displayName: 'Neide'     },
+  { usuario: 'narcelio',  email: 'Narcelio@impak.com.br',    senha: getSenha('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio', role: 'gerente',  displayName: 'Narcelio'  },
+  { usuario: 'jean',      email: 'Jean@impak.com.br',        senha: getSenha('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',     role: 'gerente',  displayName: 'Jean'      },
+  { usuario: 'paula',     email: 'Paula@impak.com.br',       senha: getSenha('SENHA_PAULA',     'Paula@2026'),         modulos: ['processos'],            nome: 'Paula',    role: 'gerente',  displayName: 'Paula'     },
+  { usuario: 'bianca',    email: 'Bianca@impak.com.br',      senha: getSenha('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['processos'],            nome: 'Bianca',   role: 'gerente',  displayName: 'Bianca'    },
+  { usuario: 'emanuelly', email: 'importacao1@impak.com.br', senha: getSenha('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['processos'],            nome: 'Emanuelly',role: 'analista', displayName: 'Emanuelly' },
+  { usuario: 'italo',     email: 'Italo@impak.com.br',       senha: getSenha('SENHA_ITALO',     'Italo@2026'),         modulos: ['processos'],            nome: 'Italo',    role: 'analista', displayName: 'Italo'     },
+  { usuario: 'maria',     email: 'Maria@impak.com.br',       senha: getSenha('SENHA_MARIA',     'Maria@2026'),         modulos: ['processos'],            nome: 'Maria',    role: 'analista', displayName: 'Maria'     },
+  { usuario: 'joyce',     email: 'Joyce@impak.com.br',       senha: getSenha('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['processos'],            nome: 'Joyce',    role: 'analista', displayName: 'Joyce'     },
+  { usuario: 'neide',     email: 'Neide@impak.com.br',       senha: getSenha('SENHA_NEIDE',     'Neide@2026'),         modulos: ['processos'],            nome: 'Neide',    role: 'analista', displayName: 'Neide'     },
 ];
 
 // ── GOOGLE DRIVE ──────────────────────────────────────────────
@@ -353,21 +359,197 @@ app.get('/api/base/carregar', auth(), async (req, res) => {
   } catch (e) { res.json({ ok: false, base: null }); }
 });
 
-// ── API: CONTROLE DE PROCESSOS ───────────────────────────────
-app.post('/api/controle/salvar', auth('processos'), async (req, res) => {
+// ── API: CONTROLE DE PROCESSOS (arquitetura por arquivo) ─────
+// Cada processo é salvo em arquivo individual no Drive
+// controle_index.json = índice leve para a tabela
+// controle_proc_ID.json = dados completos de cada processo
+
+// Atualizar índice com base em um processo
+async function atualizarIndice(processo, remover) {
+  let index = await driveRead('controle_index.json') || [];
+  index = index.filter(p => p.id !== processo.id);
+  if (!remover) {
+    index.unshift({
+      id:          processo.id,
+      referencia:  processo.referencia || '',
+      cliente:     processo.cliente    || '',
+      produtos:    processo.produtos   || '',
+      fase:        processo.fase       || 'PRODUCAO',
+      eta:         processo.eta        || '',
+      data_chegada:processo.data_chegada || '',
+      free_time:   processo.free_time  || 21,
+      porto:       processo.porto      || '',
+      canal_parametrizacao: processo.canal_parametrizacao || '',
+      status_lpco: processo.status_lpco || '',
+      anuencia:    processo.anuencia   || '',
+      pendencia_processo: processo.pendencia_processo || '',
+      data_retirada: processo.data_retirada || '',
+      data_ric:    processo.data_ric   || '',
+      updatedAt:   processo._updatedAt || Date.now(),
+    });
+  }
+  await driveUpsert('controle_index.json', index);
+  return index;
+}
+
+// ── MIGRAÇÃO AUTOMÁTICA ──────────────────────────────────────
+// Se existir controle_processos.json (formato antigo), migrar automaticamente
+async function migrarDadosAntigos() {
   try {
-    const { processos } = req.body;
-    await driveUpsert('controle_processos.json', processos);
-    res.json({ ok: true, total: processos.length });
+    const indexExistente = await driveRead('controle_index.json');
+    if (indexExistente && indexExistente.length > 0) return; // já migrado
+
+    const dadosAntigos = await driveRead('controle_processos.json');
+    if (!dadosAntigos || !dadosAntigos.length) return;
+
+    console.log(`Migrando ${dadosAntigos.length} processos do formato antigo...`);
+    const LOTE = 10;
+    for (let i = 0; i < dadosAntigos.length; i += LOTE) {
+      const lote = dadosAntigos.slice(i, i + LOTE);
+      await Promise.all(lote.map(p => driveUpsert(`controle_proc_${p.id}.json`, p)));
+    }
+    const novoIndex = dadosAntigos.map(p => ({
+      id: p.id, referencia: p.referencia || '', cliente: p.cliente || '',
+      produtos: p.produtos || '', fase: p.fase || 'PRODUCAO',
+      eta: p.eta || '', data_chegada: p.data_chegada || '', free_time: p.free_time || 21,
+      porto: p.porto || '', canal_parametrizacao: p.canal_parametrizacao || '',
+      status_lpco: p.status_lpco || '', anuencia: p.anuencia || '',
+      pendencia_processo: p.pendencia_processo || '',
+      data_retirada: p.data_retirada || '', data_ric: p.data_ric || '',
+      updatedAt: p._updatedAt || Date.now(),
+    }));
+    await driveUpsert('controle_index.json', novoIndex);
+    console.log(`✓ Migração concluída: ${novoIndex.length} processos`);
+  } catch (e) {
+    console.error('Erro na migração:', e.message);
+  }
+}
+
+// Carregar índice (tabela principal) — com migração automática
+app.get('/api/controle/index', auth('processos'), async (req, res) => {
+  try {
+    await migrarDadosAntigos(); // Migra silenciosamente se necessário
+    const index = await driveRead('controle_index.json') || [];
+    res.json({ ok: true, index, total: index.length });
+  } catch (e) { res.json({ ok: true, index: [], total: 0 }); }
+});
+
+// Carregar processo individual completo
+app.get('/api/controle/processo/:id', auth('processos'), async (req, res) => {
+  try {
+    const proc = await driveRead(`controle_proc_${req.params.id}.json`);
+    res.json({ ok: true, processo: proc });
+  } catch (e) { res.json({ ok: false, processo: null }); }
+});
+
+// Salvar processo individual
+app.post('/api/controle/processo', auth('processos'), async (req, res) => {
+  try {
+    const { processo } = req.body;
+    if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
+    processo._updatedAt = Date.now();
+    await driveUpsert(`controle_proc_${processo.id}.json`, processo);
+    await atualizarIndice(processo, false);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// Excluir processo
+app.delete('/api/controle/processo/:id', auth('processos'), async (req, res) => {
+  try {
+    const id = req.params.id;
+    // Remover arquivo individual
+    const { data: lista } = await driveClient.files.list({
+      q: `name='controle_proc_${id}.json' and '${FOLDER_ID}' in parents and trashed=false`,
+      fields: 'files(id)',
+    });
+    if (lista.files.length) {
+      await driveClient.files.delete({ fileId: lista.files[0].id });
+    }
+    // Remover do índice
+    await atualizarIndice({ id: parseInt(id) || id }, true);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Importação em lote (só no primeiro upload das planilhas)
+app.post('/api/controle/importar', auth('processos'), async (req, res) => {
+  try {
+    const { processos } = req.body;
+    if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
+
+    // Carregar índice existente para evitar duplicações
+    const indexExistente = await driveRead('controle_index.json') || [];
+    const idsExistentes = new Set(indexExistente.map(p => p.referencia));
+
+    const novos = processos.filter(p => !idsExistentes.has(p.referencia));
+    console.log(`Importação: ${novos.length} novos de ${processos.length} enviados`);
+
+    // Salvar cada processo individual em paralelo (lotes de 10)
+    const LOTE = 10;
+    for (let i = 0; i < novos.length; i += LOTE) {
+      const lote = novos.slice(i, i + LOTE);
+      await Promise.all(lote.map(p => driveUpsert(`controle_proc_${p.id}.json`, p)));
+    }
+
+    // Reconstruir índice completo
+    const indexNovo = [...indexExistente];
+    for (const p of novos) {
+      indexNovo.unshift({
+        id: p.id, referencia: p.referencia || '', cliente: p.cliente || '',
+        produtos: p.produtos || '', fase: p.fase || 'PRODUCAO',
+        eta: p.eta || '', data_chegada: p.data_chegada || '', free_time: p.free_time || 21,
+        porto: p.porto || '', canal_parametrizacao: p.canal_parametrizacao || '',
+        status_lpco: p.status_lpco || '', anuencia: p.anuencia || '',
+        pendencia_processo: p.pendencia_processo || '',
+        data_retirada: p.data_retirada || '', data_ric: p.data_ric || '',
+        updatedAt: p._updatedAt || Date.now(),
+      });
+    }
+    await driveUpsert('controle_index.json', indexNovo);
+
+    res.json({ ok: true, total: novos.length, existentes: indexExistente.length });
+  } catch (e) {
+    console.error('Importação erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// Manter rota antiga de carregar para compatibilidade
 app.get('/api/controle/carregar', auth('processos'), async (req, res) => {
   try {
-    const processos = await driveRead('controle_processos.json');
-    if (processos) res.json({ ok: true, processos });
-    else res.json({ ok: true, processos: [] });
+    const index = await driveRead('controle_index.json') || [];
+    res.json({ ok: true, processos: index });
   } catch (e) { res.json({ ok: true, processos: [] }); }
+});
+
+// Manter rota antiga de salvar (redireciona para nova)
+app.post('/api/controle/salvar', auth('processos'), async (req, res) => {
+  try {
+    const { processos } = req.body;
+    if (!processos) return res.json({ ok: true });
+    // Usar rota de importação
+    req.body.processos = processos;
+    const indexExistente = await driveRead('controle_index.json') || [];
+    const idsExistentes = new Set(indexExistente.map(p => String(p.id)));
+    const novos = processos.filter(p => !idsExistentes.has(String(p.id)));
+    const LOTE = 10;
+    for (let i = 0; i < novos.length; i += LOTE) {
+      await Promise.all(novos.slice(i,i+LOTE).map(p => driveUpsert(`controle_proc_${p.id}.json`, p)));
+    }
+    const indexNovo = [...indexExistente];
+    for (const p of novos) {
+      indexNovo.unshift({ id:p.id, referencia:p.referencia||'', cliente:p.cliente||'',
+        produtos:p.produtos||'', fase:p.fase||'PRODUCAO', eta:p.eta||'',
+        data_chegada:p.data_chegada||'', free_time:p.free_time||21, porto:p.porto||'',
+        canal_parametrizacao:p.canal_parametrizacao||'', status_lpco:p.status_lpco||'',
+        anuencia:p.anuencia||'', pendencia_processo:p.pendencia_processo||'',
+        data_retirada:p.data_retirada||'', data_ric:p.data_ric||'',
+        updatedAt:p._updatedAt||Date.now() });
+    }
+    await driveUpsert('controle_index.json', indexNovo);
+    res.json({ ok: true, total: processos.length });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
 // ── HEALTH ────────────────────────────────────────────────────
@@ -375,4 +557,9 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 // ── START ─────────────────────────────────────────────────────
 initDrive();
-app.listen(PORT, () => console.log(`IMPAK Portal rodando na porta ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`IMPAK Portal rodando na porta ${PORT}`);
+  // Comentário no header do arquivo para orientar Railway
+  // Variáveis de ambiente opcionais: SENHA_NARCELIO, SENHA_JEAN, SENHA_PAULA,
+  // SENHA_BIANCA, SENHA_EMANUELLY, SENHA_ITALO, SENHA_MARIA, SENHA_JOYCE, SENHA_NEIDE
+});
