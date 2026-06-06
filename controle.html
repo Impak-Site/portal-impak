@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IMPAK — Controle de Processos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -248,6 +249,10 @@ input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowe
     <div class="ptitle">Controle de <span>Processos</span></div>
     <div class="ph-right">
       <button class="btn btn-p" onclick="abrirNovo()">+ Novo Processo</button>
+    <label class="btn" style="background:var(--ok);cursor:pointer" title="Importar planilhas Excel">
+      📥 Importar Excel
+      <input type="file" accept=".xlsx" multiple style="display:none" onchange="importarExcel(this.files)">
+    </label>
     </div>
   </div>
 
@@ -1031,6 +1036,250 @@ setInterval(()=>{
     }
   }).catch(()=>{});
 },60000);
+
+// ══ IMPORTAR EXCEL ═══════════════════════════════════════════
+function importarExcel(files){
+  if(!files.length) return;
+  
+  // Modal de progresso
+  const ov = document.createElement('div');
+  ov.id = 'importOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,30,60,.55);z-index:9000;display:flex;align-items:center;justify-content:center;';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:28px 32px;width:500px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text-bright);margin-bottom:4px">📥 Importar Planilhas</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:18px">Lendo os arquivos Excel...</div>
+      <div style="background:var(--bg2);border-radius:4px;height:8px;overflow:hidden;margin-bottom:12px">
+        <div id="impBar" style="background:var(--accent);height:100%;border-radius:4px;width:0;transition:width .3s"></div>
+      </div>
+      <div id="impStatus" style="font-size:12px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-bottom:16px">Aguardando...</div>
+      <div id="impResult" style="display:none"></div>
+      <div style="text-align:right;margin-top:12px">
+        <button id="impClose" class="btn btn-s btn-sm" onclick="document.getElementById('importOv').remove()" style="display:none">Fechar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  setTimeout(()=>processarExcels(files), 100);
+}
+
+async function processarExcels(files){
+  const setBar = p => document.getElementById('impBar').style.width = p+'%';
+  const setStatus = t => { const el=document.getElementById('impStatus'); if(el) el.textContent=t; };
+  const fileArr = Array.from(files);
+  
+  let controleWB = null, followUpWB = null;
+  
+  // Identificar qual arquivo é qual
+  for(const f of fileArr){
+    const buf = await f.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    const sheetNames = wb.SheetNames.join(',').toLowerCase();
+    if(sheetNames.includes('controle') || sheetNames.includes('relatório')){
+      controleWB = wb;
+      setStatus('Planilha Controle identificada: ' + f.name);
+    } else if(sheetNames.includes('andamento') || sheetNames.includes('finalizados')){
+      followUpWB = wb;
+      setStatus('Planilha Follow Up identificada: ' + f.name);
+    } else {
+      // Tentar identificar pelo conteúdo
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      const header = (rows[0]||[]).join(',').toLowerCase();
+      if(header.includes('processos') && header.includes('cliente')){
+        controleWB = wb;
+      } else if(header.includes('referência') && header.includes('hbl')){
+        followUpWB = wb;
+      }
+    }
+  }
+
+  setBar(20);
+
+  function fmtDate(v){
+    if(!v) return '';
+    if(v instanceof Date) return v.toISOString().slice(0,10);
+    const s = String(v).trim();
+    // DD/MM/YY ou DD/MM/YYYY
+    const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if(m1){
+      const y = m1[3].length===2 ? '20'+m1[3] : m1[3];
+      return `${y}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+    }
+    // YYYY-MM-DD
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    return '';
+  }
+
+  function clean(v){ return v===null||v===undefined?'':String(v).trim(); }
+
+  function faseFromDados(p){
+    if(p.data_ric) return 'FINALIZADO';
+    if(p.data_retirada) return 'RETIRADO';
+    if(p.numero_di || p.canal_parametrizacao) return 'LIBERACAO';
+    if(p.data_chegada || p.data_presenca) return 'PORTO';
+    if(p.data_embarque || p.hbl) return 'EMBARCADO';
+    return 'PRODUCAO';
+  }
+
+  const processos = {};
+  const agora = new Date().toLocaleString('pt-BR');
+
+  // ── Processar Controle ──
+  if(controleWB){
+    setStatus('Processando planilha Controle...');
+    const ws = controleWB.Sheets['CONTROLE'] || controleWB.Sheets[controleWB.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+    const header = rows[0]||[];
+    
+    for(let i=1;i<rows.length;i++){
+      const row = rows[i];
+      const ref = clean(row[1]);
+      if(!ref) continue;
+      
+      const p = {
+        id: Date.now() + i,
+        referencia: ref,
+        cliente: clean(row[2]),
+        produtos: clean(row[3]),
+        finalidade: clean(row[4]),
+        pendencia_processo: clean(row[5]),
+        quant_containers: clean(row[6]),
+        agente: clean(row[7]),
+        porto: clean(row[8]),
+        marca: clean(row[9]),
+        data_pedido: fmtDate(row[10]),
+        data_prontidao: fmtDate(row[11]),
+        data_embarque: fmtDate(row[12]),
+        data_chegada: fmtDate(row[13]),
+        data_presenca: fmtDate(row[14]),
+        anuencia: clean(row[15]),
+        bl_provado: clean(row[16]),
+        pagamento_entrada: fmtDate(row[17])||clean(row[17]),
+        data_retirada: fmtDate(row[19]),
+        horario_retirada: clean(row[20]),
+        frete: clean(row[21]),
+        data_ric: fmtDate(row[22]),
+        status_ric: clean(row[23]),
+        armador: clean(row[24]),
+        nf_processo: clean(row[28]),
+        previsao_prontidao: fmtDate(row[30]),
+        free_time: 21,
+        _meta: {},
+        log: [{time:agora, user:'Importação Excel', msg:'Importado da planilha Controle', fields:[]}],
+      };
+      p.fase = faseFromDados(p);
+      processos[ref] = p;
+    }
+    setStatus('Controle: ' + Object.keys(processos).length + ' processos lidos');
+  }
+
+  setBar(50);
+
+  // ── Processar Follow Up ──
+  if(followUpWB){
+    setStatus('Processando planilha Follow Up...');
+    const sheetName = followUpWB.SheetNames.find(s=>s.toLowerCase().includes('andamento')) || followUpWB.SheetNames[0];
+    const ws = followUpWB.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+    
+    let enriq = 0;
+    for(let i=1;i<rows.length;i++){
+      const row = rows[i];
+      const ref = clean(row[0]);
+      if(!ref) continue;
+      
+      // HBL/MBL separados por quebra de linha
+      const hblMbl = clean(row[3]).split(/\n|\r/);
+      const ceMasterHouse = clean(row[7]).split(/\n|\r/);
+      const armAg = clean(row[13]).split(/\n|\r/);
+      
+      const extra = {
+        hbl: clean(hblMbl[0]),
+        mbl: clean(hblMbl[1]||''),
+        navio: clean(row[5]),
+        container: clean(row[11]),
+        numero_di: clean(row[8]),
+        data_di: fmtDate(row[9]),
+        data_ci: fmtDate(row[10]),
+        ce_master: clean(ceMasterHouse[0]),
+        ce_house: clean(ceMasterHouse[1]||''),
+        status_mapa: clean(row[6]||'').slice(0,80),
+        demanda_impak: clean(row[14]||'').slice(0,200),
+      };
+      
+      if(processos[ref]){
+        // Enriquecer sem sobrescrever campos já preenchidos
+        Object.keys(extra).forEach(k=>{ if(extra[k]&&!processos[ref][k]) processos[ref][k]=extra[k]; });
+        enriq++;
+      } else {
+        // Criar novo processo com dados do Follow Up
+        const chegadaInfo = clean(row[4]).split(/\n|\r/);
+        processos[ref] = {
+          id: Date.now() + i + 10000,
+          referencia: ref,
+          agente: clean(armAg[1]||''),
+          armador: clean(armAg[0]||''),
+          fase: 'EMBARCADO',
+          free_time: 21, _meta: {},
+          log: [{time:agora, user:'Importação Excel', msg:'Importado do Follow Up', fields:[]}],
+          ...extra,
+        };
+      }
+    }
+    setStatus('Follow Up: ' + enriq + ' processos enriquecidos');
+  }
+
+  setBar(75);
+
+  // ── Mesclar com existentes no sistema ──
+  setStatus('Verificando processos já cadastrados...');
+  let existentes = [];
+  try{
+    const resp = await fetch('/api/controle/carregar');
+    const d = await resp.json();
+    existentes = d.processos||[];
+  }catch(e){}
+
+  const existentesRefs = new Set(existentes.map(p=>p.referencia));
+  const novos = Object.values(processos).filter(p=>!existentesRefs.has(p.referencia));
+  const total = [...existentes, ...novos];
+
+  setStatus('Salvando ' + total.length + ' processos no Drive...');
+  setBar(88);
+
+  try{
+    const resp = await fetch('/api/controle/salvar',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({processos: total})
+    });
+    const d = await resp.json();
+    setBar(100);
+
+    const el = document.getElementById('impResult');
+    if(el){
+      if(d.ok){
+        el.innerHTML = '<div style="background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.2);border-radius:7px;padding:12px;font-size:13px;color:var(--ok);font-weight:600">'
+          + '✓ Importação concluída!<br>'
+          + '<span style="font-weight:400;font-size:12px">'
+          + novos.length + ' novos · ' + existentes.length + ' já existiam · ' + total.length + ' total</span></div>';
+        // Atualizar lista
+        _processos = total;
+        renderAll();
+      } else {
+        el.innerHTML = '<div style="color:var(--err);font-size:13px">Erro ao salvar. Tente novamente.</div>';
+      }
+      el.style.display = 'block';
+    }
+  }catch(e){
+    const el = document.getElementById('impResult');
+    if(el){ el.innerHTML = '<div style="color:var(--err);font-size:13px">Erro: '+e.message+'</div>'; el.style.display='block'; }
+  }
+
+  const closeBtn = document.getElementById('impClose');
+  if(closeBtn) closeBtn.style.display = 'inline-flex';
+  setStatus('Concluído.');
+}
 
 // ESC / clique fora
 document.addEventListener('keydown',e=>{if(e.key==='Escape')fechar();});
