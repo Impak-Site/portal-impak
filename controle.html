@@ -209,6 +209,60 @@ input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowe
 .ai-dismiss:hover{opacity:.8;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 
+/* ── STATUS BAR ── */
+.status-bar{position:fixed;bottom:0;left:0;right:0;height:28px;background:var(--text-bright);display:flex;align-items:center;padding:0 16px;gap:12px;z-index:300;font-size:11px;font-family:'DM Mono',monospace;}
+.sb-item{display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.5);}
+.sb-item span{color:rgba(255,255,255,.8);}
+.sb-save{display:flex;align-items:center;gap:5px;margin-left:auto;}
+.sb-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0;}
+.sb-dot.saving{background:var(--warn);animation:pulse .8s infinite;}
+.sb-dot.error{background:var(--err);}
+.sb-dot.offline{background:#64748b;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sb-text{font-size:10px;color:rgba(255,255,255,.6);}
+body{padding-bottom:28px;}
+
+/* ── PAGINAÇÃO ── */
+.pagination{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-top:1px solid var(--border);}
+.pg-btn{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--text-dim);font-family:'DM Mono',monospace;min-width:34px;text-align:center;}
+.pg-btn:hover{border-color:var(--accent);color:var(--accent);}
+.pg-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.pg-btn:disabled{opacity:.4;cursor:not-allowed;}
+.pg-info{font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;padding:0 8px;}
+
+/* ── MODAL DIRTY ── */
+.dirty-badge{display:inline-block;background:var(--warn);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:8px;}
+
+/* ── SESSÃO AVISO ── */
+.session-warn{position:fixed;top:60px;right:16px;background:#fff;border:2px solid var(--warn);border-radius:10px;padding:14px 18px;z-index:8000;display:none;box-shadow:0 8px 24px rgba(0,0,0,.15);max-width:300px;}
+.sw-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px;}
+.sw-text{font-size:12px;color:var(--text-dim);margin-bottom:10px;}
+
+/* ── MOBILE ── */
+@media(max-width:768px){
+  .wrap{padding:12px;}
+  .stats{overflow-x:auto;flex-wrap:nowrap;}
+  .scard{min-width:90px;flex-shrink:0;}
+  .fbar{flex-direction:column;gap:8px;}
+  .fi input,.fi select{width:100%;}
+  table{font-size:11px;}
+  td,th{padding:6px 7px;}
+  .topbar{padding:0 12px;gap:8px;}
+  .cambio-bar{display:none;}
+  .tnav{padding:4px 8px;font-size:10px;}
+  .modal{border-radius:0;}
+  .ov{padding:0;}
+  .mtc{padding:12px;}
+  .grid.g3,.grid.g4{grid-template-columns:1fr 1fr;}
+  .grid.g2{grid-template-columns:1fr;}
+}
+@media(max-width:480px){
+  .grid.g3,.grid.g4,.grid.g2{grid-template-columns:1fr;}
+  .ph{flex-direction:column;align-items:flex-start;}
+  .ph-right{width:100%;}
+  .ph-right .btn{width:100%;justify-content:center;}
+}
+
 /* ── LOGIN ── */
 .login-wrap{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;}
 .login-box{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:14px;padding:36px 32px;width:340px;}
@@ -307,6 +361,24 @@ input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowe
       </table>
     </div>
   </div>
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar" id="statusBar">
+  <div class="sb-item">🔗 <span id="sbUser">—</span></div>
+  <div class="sb-item">📋 <span id="sbTotal">0</span> processos</div>
+  <div class="sb-item">🕐 <span id="sbSync">—</span></div>
+  <div class="sb-save">
+    <div class="sb-dot" id="sbDot"></div>
+    <div class="sb-text" id="sbText">Pronto</div>
+  </div>
+</div>
+
+<!-- AVISO SESSÃO -->
+<div class="session-warn" id="sessionWarn">
+  <div class="sw-title">⏰ Sessão expirando</div>
+  <div class="sw-text">Sua sessão expira em <strong id="sessionMins">5</strong> minutos. Salve seu trabalho.</div>
+  <button class="btn btn-p btn-sm" onclick="renovarSessao()">Renovar sessão</button>
 </div>
 
 <!-- MODAL -->
@@ -424,6 +496,10 @@ const COLS = [
 // ══ ESTADO ═══════════════════════════════════════════════════
 let _u=null, _processos=[], _edit=null, _files={}, _apiKey='';
 let _sortK='eta', _sortD=1, _filtStat='';
+let _paginaAtual=1, _porPagina=50;
+let _dirty=false; // Modal tem alterações não salvas
+let _sessionTimer=null, _sessionStart=Date.now();
+const SESSION_TIMEOUT = 8*60*60*1000; // 8 horas
 
 // ══ AUTH ══════════════════════════════════════════════════════
 function doLogin(){
@@ -435,10 +511,14 @@ function doLogin(){
 }
 function entrar(f){
   _u=f;
+  _sessionStart=Date.now();
   document.getElementById('loginWrap').style.display='none';
   document.getElementById('topbar').style.display='flex';
   document.getElementById('wrap').style.display='block';
+  document.getElementById('statusBar').style.display='flex';
   document.getElementById('ubadge').textContent=f.n;
+  document.getElementById('sbUser').textContent=f.n;
+  iniciarTimerSessao();
   // Carregar API key salva
   try{
     const saved=localStorage.getItem('impak_apikey')||'';
@@ -471,56 +551,172 @@ fetch('/api/me').then(r=>r.json()).then(d=>{
   }
 }).catch(()=>{});
 
+// ══ STATUS BAR ════════════════════════════════════════════════
+function sbStatus(estado, texto){
+  // estado: 'ok' | 'saving' | 'error' | 'offline'
+  const dot = document.getElementById('sbDot');
+  const txt = document.getElementById('sbText');
+  if(!dot||!txt) return;
+  dot.className = 'sb-dot' + (estado==='saving'?' saving':estado==='error'?' error':estado==='offline'?' offline':'');
+  txt.textContent = texto;
+}
+function sbTotal(n){
+  const el=document.getElementById('sbTotal');
+  if(el) el.textContent=n;
+}
+function sbSync(){
+  const el=document.getElementById('sbSync');
+  if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const el2=document.getElementById('lastSync');
+  if(el2) el2.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
+// ══ SESSÃO ═════════════════════════════════════════════════════
+function iniciarTimerSessao(){
+  if(_sessionTimer) clearInterval(_sessionTimer);
+  _sessionStart = Date.now();
+  _sessionTimer = setInterval(()=>{
+    const elapsed = Date.now()-_sessionStart;
+    const restante = SESSION_TIMEOUT - elapsed;
+    if(restante <= 5*60*1000 && restante > 0){
+      // Aviso 5 min antes
+      document.getElementById('sessionWarn').style.display='block';
+      document.getElementById('sessionMins').textContent = Math.ceil(restante/60000);
+    }
+    if(restante <= 0){
+      clearInterval(_sessionTimer);
+      alert('Sua sessão expirou. Faça login novamente.');
+      doLogout();
+    }
+  }, 30000);
+}
+function renovarSessao(){
+  fetch('/api/me').then(r=>r.json()).then(d=>{
+    if(d.logado){
+      _sessionStart=Date.now();
+      document.getElementById('sessionWarn').style.display='none';
+      toast('Sessão renovada ✓','ok');
+    } else {
+      doLogout();
+    }
+  }).catch(()=>toast('Sem conexão','err'));
+}
+
 // ══ CÂMBIO ════════════════════════════════════════════════════
+let _ultimoCambio = null;
 function carregarCambio(){
   fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL')
   .then(r=>r.json())
   .then(d=>{
     const bar=document.getElementById('cambioBar');
-    const usd=parseFloat(d.USDBRL?.bid||0).toFixed(2);
-    const eur=parseFloat(d.EURBRL?.bid||0).toFixed(2);
-    const cny=parseFloat(d.CNYBRL?.bid||0).toFixed(2);
-    bar.innerHTML=`
-      <div class="cambio-item">USD <span>R$ ${usd}</span></div>
-      <div class="cambio-item">EUR <span>R$ ${eur}</span></div>
-      <div class="cambio-item">CNY <span>R$ ${cny}</span></div>`;
-  }).catch(()=>{});
-  // Atualiza a cada 5 minutos
+    if(!bar) return;
+    const usd=parseFloat(d.USDBRL?.bid||0);
+    const eur=parseFloat(d.EURBRL?.bid||0);
+    const cny=parseFloat(d.CNYBRL?.bid||0);
+    if(usd>0){
+      _ultimoCambio={usd,eur,cny,at:new Date()};
+      const hora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      bar.innerHTML=`
+        <div class="cambio-item">USD <span>R$ ${usd.toFixed(2)}</span></div>
+        <div class="cambio-item">EUR <span>R$ ${eur.toFixed(2)}</span></div>
+        <div class="cambio-item">CNY <span>R$ ${cny.toFixed(4)}</span></div>
+        <div class="cambio-item" style="font-size:9px;opacity:.5">${hora}</div>`;
+    }
+  }).catch(()=>{
+    // Fallback silencioso — manter último valor se existir
+    const bar=document.getElementById('cambioBar');
+    if(bar&&_ultimoCambio){
+      bar.style.opacity='0.5';
+      bar.title='Câmbio desatualizado — sem conexão';
+    }
+  });
   setTimeout(carregarCambio, 5*60*1000);
 }
 
 // ══ STORAGE ══════════════════════════════════════════════════
-function save(cb){
-  toast('Salvando...','ok');
-  fetch('/api/controle/salvar',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({processos:_processos})})
-  .then(r=>r.json())
-  .then(d=>{
-    if(d.ok){toast('Salvo ✓','ok');if(cb)cb();}
-    else toast('Erro ao salvar no servidor.','err');
-  }).catch(()=>toast('Sem conexão com servidor.','err'));
+// Cache de processos completos já carregados nesta sessão
+const _cache = {};
+
+// Salvar UM processo no Drive (arquivo individual)
+function saveProcesso(processo, cb){
+  if(!processo||!processo.id) return;
+  processo._updatedAt = Date.now();
+
+  // Atualizar índice local
+  const entrada = {
+    id:processo.id, referencia:processo.referencia||'', cliente:processo.cliente||'',
+    produtos:processo.produtos||'', fase:processo.fase||'PRODUCAO', eta:processo.eta||'',
+    data_chegada:processo.data_chegada||'', free_time:processo.free_time||21,
+    porto:processo.porto||'', canal_parametrizacao:processo.canal_parametrizacao||'',
+    status_lpco:processo.status_lpco||'', anuencia:processo.anuencia||'',
+    pendencia_processo:processo.pendencia_processo||'',
+    data_retirada:processo.data_retirada||'', data_ric:processo.data_ric||'',
+    updatedAt:processo._updatedAt,
+  };
+  const idx = _processos.findIndex(p=>p.id===processo.id);
+  if(idx>=0) _processos[idx]=entrada; else _processos.unshift(entrada);
+  _cache[processo.id] = processo;
+
+  sbStatus('saving','Salvando...');
+  fetch('/api/controle/processo',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({processo})
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok){
+      sbStatus('ok','Salvo ✓  '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+      if(cb) cb();
+    } else {
+      sbStatus('error','Erro ao salvar — tente novamente');
+      toast('Erro ao salvar.','err');
+    }
+  }).catch(()=>{
+    sbStatus('error','Sem conexão — não foi salvo');
+    toast('Sem conexão com servidor.','err');
+  });
 }
 
+// Carregar índice leve (só campos da tabela)
 function load(){
-  fetch('/api/controle/carregar').then(r=>{
+  sbStatus('saving','Carregando...');
+  fetch('/api/controle/index').then(r=>{
     if(!r.ok){
-      if(r.status===401||r.status===403){
-        window.location.href='/login?destino=/controle';
-        return null;
-      }
-      toast('Erro ao carregar dados ('+r.status+').','err');
-      return null;
+      if(r.status===401||r.status===403){ window.location.href='/login?destino=/controle'; return null; }
+      return fetch('/api/controle/carregar').then(r2=>r2.json());
     }
     return r.json();
   }).then(d=>{
     if(!d) return;
-    if(d.processos && d.processos.length) _processos=d.processos;
+    _processos = d.index || d.processos || [];
+    sbTotal(_processos.length);
+    sbSync();
+    sbStatus('ok', _processos.length+' processos carregados');
     renderAll();
-    const el=document.getElementById('lastSync');
-    if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   }).catch(e=>{
     console.error('Erro carregar:', e);
+    sbStatus('error','Erro ao carregar dados');
     toast('Erro ao carregar dados.','err');
+  });
+}
+
+// Carregar processo completo ao abrir modal
+function carregarProcessoCompleto(id, cb){
+  // 1. Se está no cache, usar imediatamente
+  if(_cache[id]){ cb(_cache[id]); return; }
+
+  // 2. Buscar do Drive
+  fetch('/api/controle/processo/'+id).then(r=>r.json()).then(d=>{
+    if(d.processo){
+      _cache[id] = d.processo;
+      cb(d.processo);
+    } else {
+      // Fallback: usar dados do índice
+      const idx = _processos.find(p=>p.id===id);
+      cb(idx||null);
+    }
+  }).catch(()=>{
+    const idx = _processos.find(p=>p.id===id);
+    cb(idx||null);
   });
 }
 
@@ -558,6 +754,7 @@ function toast(msg,t='ok'){
 function limparFiltros(){
   ['fq','ff','fc','fp','fa'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   _filtStat='';
+  _paginaAtual=1;
   render();
 }
 
@@ -601,6 +798,7 @@ function renderStats(){
 
 function setFiltro(v){
   _filtStat=v;
+  _paginaAtual=1;
   document.getElementById('ff').value='';
   renderStats();
   render();
@@ -633,8 +831,17 @@ function filtrar(){
 }
 
 function render(){
-  const procs=filtrar();
-  document.getElementById('tcount').textContent=`${procs.length} de ${_processos.length} processo(s)`;
+  const todosProcs=filtrar();
+
+  // Paginação
+  const totalPags = Math.max(1, Math.ceil(todosProcs.length/_porPagina));
+  if(_paginaAtual > totalPags) _paginaAtual=1;
+  const inicio = (_paginaAtual-1)*_porPagina;
+  const procs = todosProcs.slice(inicio, inicio+_porPagina);
+
+  document.getElementById('tcount').textContent=
+    `${todosProcs.length} de ${_processos.length} processo(s) · página ${_paginaAtual}/${totalPags}`;
+  sbTotal(_processos.length);
 
   document.getElementById('thead').innerHTML='<tr>'+COLS.map(c=>
     `<th class="${_sortK===c.k?(_sortD>0?'asc':'desc'):''}" onclick="sortBy('${c.k}')">${c.l}</th>`
@@ -666,6 +873,51 @@ function render(){
       <td><button class="btn btn-s btn-sm" onclick="event.stopPropagation();abrir(${p.id})">Abrir</button></td>
     </tr>`;
   }).join('');
+
+  // Renderizar paginação
+  renderPaginacao(todosProcs.length, totalPags);
+}
+
+function renderPaginacao(total, totalPags){
+  // Remover paginação antiga se existir
+  const old = document.getElementById('paginacaoEl');
+  if(old) old.remove();
+  if(totalPags<=1) return;
+
+  const el = document.createElement('div');
+  el.id='paginacaoEl';
+  el.className='pagination';
+
+  let btns = `<button class="pg-btn" onclick="irPagina(${_paginaAtual-1})" ${_paginaAtual<=1?'disabled':''}>‹</button>`;
+
+  // Mostrar no máx 7 páginas
+  let inicio=Math.max(1,_paginaAtual-3), fim=Math.min(totalPags,inicio+6);
+  if(fim-inicio<6) inicio=Math.max(1,fim-6);
+
+  if(inicio>1) btns+=`<button class="pg-btn" onclick="irPagina(1)">1</button><span class="pg-info">…</span>`;
+  for(let i=inicio;i<=fim;i++){
+    btns+=`<button class="pg-btn${_paginaAtual===i?' active':''}" onclick="irPagina(${i})">${i}</button>`;
+  }
+  if(fim<totalPags) btns+=`<span class="pg-info">…</span><button class="pg-btn" onclick="irPagina(${totalPags})">${totalPags}</button>`;
+  btns+=`<button class="pg-btn" onclick="irPagina(${_paginaAtual+1})" ${_paginaAtual>=totalPags?'disabled':''}>›</button>`;
+  btns+=`<span class="pg-info">${total} processos · <select onchange="mudarPorPagina(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface)">
+    ${[25,50,100,200].map(n=>`<option value="${n}" ${_porPagina===n?'selected':''}>${n}/pág</option>`).join('')}
+  </select></span>`;
+
+  el.innerHTML=btns;
+  document.querySelector('.tw').appendChild(el);
+}
+
+function irPagina(p){
+  _paginaAtual=p;
+  render();
+  document.querySelector('.tscroll').scrollTop=0;
+}
+
+function mudarPorPagina(v){
+  _porPagina=parseInt(v);
+  _paginaAtual=1;
+  render();
 }
 
 function demurCell(d){
@@ -682,6 +934,7 @@ function sortBy(k){
 
 // ══ MODAL ═════════════════════════════════════════════════════
 function abrirNovo(){
+  _dirty=false;
   _edit={id:Date.now(),fase:'PRODUCAO',free_time:21,log:[],_meta:{}};
   _files={};
   renderModal(true);
@@ -697,7 +950,11 @@ function abrir(id){
   document.getElementById('ov').classList.add('on');
   tab('dados');
 }
-function fechar(){
+function fechar(forcar){
+  if(!forcar && _dirty){
+    if(!confirm('Você tem alterações não salvas. Deseja sair sem salvar?')) return;
+  }
+  _dirty=false;
   document.getElementById('ov').classList.remove('on');
   _edit=null;_files={};
 }
@@ -860,6 +1117,15 @@ function renderField(id,p){
 function markChange(id){
   const el=document.getElementById('f_'+id);
   if(el) el.classList.add('changed');
+  _dirty=true;
+  // Mostrar badge no título do modal
+  const title=document.getElementById('mh-title');
+  if(title && !title.querySelector('.dirty-badge')){
+    const badge=document.createElement('span');
+    badge.className='dirty-badge';
+    badge.textContent='não salvo';
+    title.appendChild(badge);
+  }
 }
 
 function coletar(){
@@ -895,18 +1161,22 @@ function salvar(){
   _edit._updatedAt=Date.now();
   const isNovo=!_processos.find(p=>p.id===_edit.id);
   _edit.log.push({time:now,user:quem,msg:isNovo?'Processo criado':`${changed.length} campo(s) atualizado(s)`,fields:changed});
-  if(isNovo) _processos.unshift(_edit);
-  else{const i=_processos.findIndex(p=>p.id===_edit.id);if(i>=0)_processos[i]=_edit;}
-  fechar();
+  const procCompleto=JSON.parse(JSON.stringify(_edit));
+  _dirty=false;
+  fechar(true);
   renderAll();
-  save(()=>toast(isNovo?'Processo criado!':'Salvo!','ok'));
+  saveProcesso(procCompleto,()=>toast(isNovo?'Processo criado!':'Salvo!','ok'));
 }
 
 function excluir(id){
   if(!confirm('Excluir este processo? Esta ação não pode ser desfeita.'))return;
   _processos=_processos.filter(p=>p.id!==id);
+  delete _cache[id];
   fechar();renderAll();
-  save(()=>toast('Processo excluído.','ok'));
+  fetch('/api/controle/processo/'+id,{method:'DELETE'})
+    .then(r=>r.json())
+    .then(d=>toast(d.ok?'Processo excluído.':'Erro ao excluir.',d.ok?'ok':'err'))
+    .catch(()=>toast('Erro ao excluir.','err'));
 }
 
 function renderLog(){
@@ -1317,7 +1587,8 @@ function salvarConfirmacao(id, campo, valor, btn){
   const idx = _processos.findIndex(x=>x.id===id);
   if(idx>=0) _processos[idx] = p;
 
-  save(()=>toast('Confirmado e salvo!','ok'));
+  const procSnap = JSON.parse(JSON.stringify(p));
+  saveProcesso(procSnap, ()=>toast('Confirmado e salvo!','ok'));
   renderAll();
   gerarAlertas();
 }
@@ -1335,19 +1606,22 @@ function calcularFase(p){
 setInterval(()=>{
   if(!_u)return;
   if(document.getElementById('ov').classList.contains('on'))return;
-  fetch('/api/controle/carregar').then(r=>{
+  fetch('/api/controle/index').then(r=>{
     if(!r.ok) return null;
     return r.json();
   }).then(d=>{
-    if(!d||!d.processos) return;
-    if(d.processos.length){
-      _processos=d.processos;
+    if(!d||!(d.index||d.processos)) return;
+    const lista=d.index||d.processos||[];
+    if(lista.length){
+      _processos=lista;
+      sbTotal(_processos.length);
+      sbSync();
       renderAll();
       gerarAlertas();
-      const el=document.getElementById('lastSync');
-      if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     }
-  }).catch(()=>{});
+  }).catch(()=>{
+    sbStatus('offline','Sem conexão');
+  });
 },60000);
 
 // ══ IMPORTAR EXCEL ═══════════════════════════════════════════
@@ -1562,7 +1836,7 @@ async function processarExcels(files){
   setBar(88);
 
   try{
-    const resp = await fetch('/api/controle/salvar',{
+    const resp = await fetch('/api/controle/importar',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({processos: total})
     });
@@ -1598,6 +1872,14 @@ async function processarExcels(files){
 document.addEventListener('keydown',e=>{if(e.key==='Escape')fechar();});
 document.getElementById('ov').addEventListener('click',e=>{
   if(e.target===document.getElementById('ov'))fechar();
+});
+
+// Aviso ao fechar aba/janela com alterações não salvas
+window.addEventListener('beforeunload',e=>{
+  if(_dirty){
+    e.preventDefault();
+    e.returnValue='Você tem alterações não salvas.';
+  }
 });
 </script>
 </body>
