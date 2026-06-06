@@ -922,9 +922,21 @@ Responda SOMENTE JSON válido, sem markdown. Omita campos não encontrados.`});
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,
         messages:[{role:'user',content:parts}]})
     });
-    const data=await r.json();
+    const raw=await r.text();
+    if(!r.ok){
+      document.getElementById('eres').innerHTML=
+        `<div style="color:var(--err);padding:12px;font-size:13px">Erro da API (${r.status}): ${raw.slice(0,300)}</div>`;
+      return;
+    }
+    const data=JSON.parse(raw);
     const txt=(data.content||[]).map(x=>x.text||'').join('');
-    const ex=JSON.parse(txt.replace(/```json|```/g,'').trim());
+    const clean=txt.replace(/```json|```/g,'').trim();
+    if(!clean){
+      document.getElementById('eres').innerHTML=
+        `<div style="color:var(--err);padding:12px;font-size:13px">A IA não retornou dados. Tente com outro documento.</div>`;
+      return;
+    }
+    const ex=JSON.parse(clean);
     mostrarExtracao(ex);
   }catch(e){
     document.getElementById('eres').innerHTML=
