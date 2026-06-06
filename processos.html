@@ -913,6 +913,59 @@ var ETAPA_HINTS = {
   '4': {icon:'🏛️', text:'Etapa 4 — Envie o CE Mercante com todos os documentos para conferência final.'}
 };
 
+function getGuiaUpload(fase){
+  var guias = {
+    'PRODUCAO': {
+      docs: [{nome:'PI (Proforma Invoice)', icone:'📋', obrig:true, desc:'Documento de pedido com valores, produtos e condições'}],
+      dica: 'Para análise completa envie a PI do fornecedor'
+    },
+    'EMBARCADO': {
+      docs: [
+        {nome:'CI (Commercial Invoice)', icone:'💰', obrig:true, desc:'Fatura comercial final'},
+        {nome:'PL (Packing List)', icone:'📦', obrig:true, desc:'Lista de embalagem com pesos e volumes'},
+        {nome:'HBL (House Bill of Lading)', icone:'🚢', obrig:true, desc:'Conhecimento de embarque'},
+        {nome:'PI (Proforma Invoice)', icone:'📋', obrig:false, desc:'Para comparar com CI'},
+      ],
+      dica: 'Envie CI + PL + HBL para análise completa de divergências'
+    },
+    'PORTO': {
+      docs: [
+        {nome:'CE Master/House', icone:'🔢', obrig:true, desc:'Conhecimento de embarque eletrônico'},
+        {nome:'BL (Bill of Lading)', icone:'🚢', obrig:false, desc:'Para cruzar com CE'},
+      ],
+      dica: 'Envie o CE para verificar dados aduaneiros'
+    },
+    'LIBERACAO': {
+      docs: [
+        {nome:'DI (Declaração de Importação)', icone:'📋', obrig:true, desc:'Declaração para desembaraço'},
+        {nome:'MAPA/LPCO', icone:'🌿', obrig:false, desc:'Licenças sanitárias se aplicável'},
+      ],
+      dica: 'Envie a DI para verificar parametrização'
+    }
+  };
+  return guias[fase] || guias['EMBARCADO'];
+}
+
+function renderGuiaUpload(){
+  var fase = 'EMBARCADO'; // default
+  if(currentResult && currentResult.ref){
+    // Tentar pegar fase do processo no Controle via processo atual
+    fase = 'EMBARCADO';
+  }
+  var guia = getGuiaUpload(fase);
+  var el = document.getElementById('upload-guia');
+  if(!el) return;
+  el.innerHTML = '<div style="font-size:11px;color:#4a6480;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Documentos recomendados:</div>'+
+    guia.docs.map(function(d){
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;">'+
+        '<span>'+d.icone+'</span>'+
+        '<span style="font-weight:600;color:#0d1e2e">'+(d.obrig?'<span style="color:#dc2626;font-size:10px;margin-right:3px">*</span>':'')+d.nome+'</span>'+
+        '<span style="color:#4a6480;font-size:11px">'+d.desc+'</span>'+
+      '</div>';
+    }).join('')+
+    '<div style="font-size:11px;color:#1a7fd4;margin-top:6px;padding:6px 8px;background:rgba(26,127,212,.06);border-radius:5px">💡 '+guia.dica+'</div>';
+}
+
 function updateEtapaHint(){
   var sel=document.getElementById('etapaSelect');
   var icon=document.getElementById('etapaHintIcon');
@@ -1278,6 +1331,86 @@ function migrateAlerts(procs){
     return p;
   });
 }
+// ── SINCRONIZAÇÃO COM MÓDULO CONTROLE ────────────────────────
+function sincronizarComControle(proc, result, analise) {
+  try {
+    var ref = proc.ref;
+    if(!ref) return;
+
+    // Extrair campos relevantes da análise para o Controle
+    var camposControle = {};
+    (result.grupos||[]).forEach(function(g){
+      (g.campos||[]).forEach(function(c){
+        var v = c.doc1_valor||c.doc2_valor||'';
+        if(!v||c.status==='DIVERGENCIA') return;
+        var campo = c.campo.toLowerCase();
+        // Mapear campos da análise para campos do Controle
+        if(campo.includes('navio')) camposControle.navio = v;
+        if(campo.includes('container')) camposControle.container = v;
+        if(campo.includes('hbl')||campo.includes('house bill')) camposControle.hbl = v;
+        if(campo.includes('mbl')||campo.includes('master bill')) camposControle.mbl = v;
+        if(campo.includes('canal')) camposControle.canal_parametrizacao = v;
+        if(campo.includes('armador')) camposControle.armador = v;
+        if(campo.includes('porto destino')) camposControle.porto = v;
+        if(campo.includes('exportador')) camposControle.fornecedor = v;
+      });
+    });
+
+    if(!Object.keys(camposControle).length) return;
+
+    // Buscar processo no Controle via API
+    fetch('/api/controle/index').then(function(r){return r.json();}).then(function(d){
+      var idx = (d.index||d.processos||[]).find(function(p){
+        return p.referencia && (
+          p.referencia.toUpperCase()===ref.toUpperCase() ||
+          ref.toUpperCase().includes(p.referencia.toUpperCase())
+        );
+      });
+      if(!idx) return; // Processo não encontrado no Controle
+
+      // Carregar processo completo e atualizar campos
+      fetch('/api/controle/processo/'+idx.id).then(function(r){return r.json();}).then(function(d2){
+        var procCtrl = d2.processo;
+        if(!procCtrl) return;
+
+        var atualizado = false;
+        var agora = new Date().toLocaleString('pt-BR');
+        var quem = (_currentUser?(_currentUser.displayName||_currentUser.username):'Conferência')
+                 + ' (via análise documental)';
+
+        Object.keys(camposControle).forEach(function(k){
+          var novoVal = camposControle[k];
+          if(novoVal && !procCtrl[k]){ // Só preenche campos vazios
+            procCtrl[k] = novoVal;
+            if(!procCtrl._meta) procCtrl._meta = {};
+            procCtrl._meta[k] = {n:quem, t:agora};
+            atualizado = true;
+          }
+        });
+
+        if(atualizado){
+          if(!procCtrl.log) procCtrl.log = [];
+          procCtrl.log.push({
+            time: agora,
+            user: quem,
+            msg: 'Campos atualizados automaticamente via Conferência de Documentos',
+            fields: Object.keys(camposControle).filter(function(k){return camposControle[k]&&!d2.processo[k];}).map(function(k){return {c:k,de:'',para:camposControle[k]};})
+          });
+          fetch('/api/controle/processo',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({processo:procCtrl})
+          }).then(function(){
+            showToast('Controle atualizado automaticamente: '+ref,'ok');
+          }).catch(function(){});
+        }
+      }).catch(function(){});
+    }).catch(function(){});
+  } catch(e) {
+    console.warn('Erro ao sincronizar com Controle:', e.message);
+  }
+}
+
 function saveProcesses(p, procModificado){
   _processes = p;
   var user = _currentUser ? _currentUser.username : null;
@@ -1338,6 +1471,68 @@ window.onload = function(){
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────
+// ── ESTATÍSTICAS POR FORNECEDOR ──────────────────────────────
+function abrirEstatisticas(){
+  var procs = getProcesses();
+  if(!procs.length){ showToast('Nenhum processo encontrado','err'); return; }
+
+  // Agrupar por exportador
+  var stats = {};
+  procs.forEach(function(p){
+    var exp = p.exportador||'Desconhecido';
+    if(!stats[exp]) stats[exp] = {total:0, divTotal:0, alertaTotal:0, tempoResolucao:[], analises:0};
+    stats[exp].total++;
+    (p.analises||[]).forEach(function(a){
+      stats[exp].analises++;
+      stats[exp].divTotal += (a.resumo&&a.resumo.divergencias)||0;
+      stats[exp].alertaTotal += (a.resumo&&a.resumo.alertas)||0;
+    });
+  });
+
+  var linhas = Object.keys(stats).sort(function(a,b){
+    return stats[b].divTotal - stats[a].divTotal;
+  }).map(function(exp){
+    var s = stats[exp];
+    var mediaDivs = s.analises>0 ? (s.divTotal/s.analises).toFixed(1) : '0';
+    var qualidade = s.analises===0 ? '—' :
+      s.divTotal===0 ? '<span style="color:#16a34a;font-weight:700">✓ Ótimo</span>' :
+      parseFloat(mediaDivs)<2 ? '<span style="color:#d97706;font-weight:700">⚠ Regular</span>' :
+      '<span style="color:#dc2626;font-weight:700">✗ Crítico</span>';
+    return '<tr>'+
+      '<td style="padding:10px 12px;font-weight:600">'+exp+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+s.total+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+s.analises+'</td>'+
+      '<td style="padding:10px 12px;text-align:center;color:#dc2626;font-weight:600">'+s.divTotal+'</td>'+
+      '<td style="padding:10px 12px;text-align:center;color:#d97706">'+s.alertaTotal+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+mediaDivs+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+qualidade+'</td>'+
+    '</tr>';
+  }).join('');
+
+  var win = window.open('','_blank','width=900,height=600');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+    '<title>IMPAK — Estatísticas por Fornecedor</title>'+
+    '<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">'+
+    '<style>body{font-family:"DM Sans",sans-serif;background:#e8f0f8;margin:0;padding:24px}'+
+    '.hd{background:#0a2d5e;color:#fff;padding:20px 28px;border-radius:10px;margin-bottom:20px;font-family:"Syne",sans-serif}'+
+    '.hd h1{margin:0;font-size:20px;font-weight:800}.hd p{margin:4px 0 0;font-size:12px;opacity:.6}'+
+    '.card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)}'+
+    'table{width:100%;border-collapse:collapse;font-size:13px}'+
+    'th{background:#f0f6fc;padding:10px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#4a6480;border-bottom:1px solid #c8d8e8}'+
+    'tr:nth-child(even)td{background:#f8fbfe}'+
+    '@media print{body{background:#fff}.hd{background:#0a2d5e!important;-webkit-print-color-adjust:exact}}</style>'+
+    '</head><body>'+
+    '<div class="hd"><h1>IMPAK — Estatísticas por Fornecedor</h1><p>Gerado em '+new Date().toLocaleString('pt-BR')+'</p></div>'+
+    '<div class="card">'+
+    '<table><thead><tr>'+
+    '<th>Fornecedor/Exportador</th><th>Processos</th><th>Análises</th>'+
+    '<th>Total Diverg.</th><th>Total Alertas</th><th>Média Diverg./Análise</th><th>Qualidade</th>'+
+    '</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+    '<script>setTimeout(function(){window.print();},500);<\/script>'+
+    '</body></html>');
+  win.document.close();
+}
+
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -1501,7 +1696,7 @@ async function runAnalysis(){
 
     const prompt = 'JSON ONLY. No markdown. Especialista em conferencia documental importacao pneus Brasil. '
       + 'Docs: '+docList+'. '
-      + 'Schema: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"","campos":[{"campo":"","doc1_label":"","doc1_valor":"","doc2_label":"","doc2_valor":"","status":"OK","observacao":null}]}],"alertas":[""]}. '
+      + 'Schema: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"","campos":[{"campo":"","doc1_label":"","doc1_valor":"","doc2_label":"","doc2_valor":"","status":"OK","observacao":null,"confianca":100}]}],"alertas":[""]}. O campo confianca (0-100) indica certeza da IA: 100=certeza absoluta, 80-99=alta, 50-79=media (verificar), 0-49=baixa (rever manualmente). Campos com confianca<70 devem ter status ALERTA mesmo sem divergencia. '
       + 'REGRA GERAL: Mostrar APENAS erros. Usar nome real do doc (CI,PL,BL,PI,CE). Nunca "Documento 1". '
       + 'PASSO 1 - CAMPOS OBRIGATORIOS: '
       + 'CI/PI: exportador(nome+end), importador(nome+end), encomendante(se houver), forma+moeda pagamento, porto origem, porto destino, descricao itens, marca+ref volumes, qtd+especie volumes, valores unit+total, peso bruto+liquido, INCOTERM(obrigatorio na CI - se ausente=DIVERGENCIA, valores aceitos: FOB/CIF/CFR/EXW/DDP/DAP/FCA), pais origem+aquisicao+procedencia, dados bancarios. SE incoterm!=FOB: frete internacional obrigatorio. PI e CI devem ser identicas - qualquer diferenca=DIVERGENCIA com doc1_label=PI doc2_label=CI. '
@@ -1512,7 +1707,8 @@ async function runAnalysis(){
       + 'Grupos: Identificacao|Importador|Comprador Final(buyer!=importador=normal)|Exportador|Mercadoria|Valores|Pesos|Logistica|CE Mercante|Pais Origem. '
       + 'PASSO 3 - EUDEMON: Se marca EUDEMON verificar codigo em CI/PI/PL: 3301000094ab=275/80R22.5 UD188 149/146L 18PR|3302001532eu=275/80R22.5 UF195 149/146L 18PR|3302002217=295/80R22.5 UD188 154/149L 18PR|3302002218=295/80R22.5 UF195 154/149M 18PR|3302002429=295/80R22.5 UD223 154/149K 18PR|3302001815ab=235/75R17.5 UD188 143/141L 18PR|3302001861ab=215/75R17.5 UD188 135/133L 16PR|3302001609ab=215/75R17.5 UF195 135/133L 16PR|3302001608ab=235/75R17.5 UF195 143/141L 18PR. '
       + 'REGRA PESO: Para pneus sem embalagem o peso liquido=bruto e aceitavel ter apenas um campo de peso. EXCECAO: fabricante NAKANKG exige peso bruto E liquido separados — se NAKANKG e peso liquido ausente = DIVERGENCIA. Se fabricante NAO for NAKANKG e peso tiver apenas um valor (G.W/N.W ou similar) = OK, nao alertar. '
-      + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL.';
+      + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL. '
+      + 'REGRAS POR FORNECEDOR: ROVELO/SAILUN: peso liquido=bruto aceitavel. TRACMAX/WINDFORCE: modelo pode vir como codigo alfanumerico, nao alertar. DELMAX: volumes podem usar caixas em vez de pallets, aceitavel. ';
 
     content.push({type:'text',text:prompt});
 
@@ -1563,9 +1759,18 @@ async function runAnalysis(){
       data: new Date().toLocaleString('pt-BR'),
       docs: docsUsados,
       docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
+      docNomes: Object.keys(uploadedFiles), // nomes dos arquivos para rastreabilidade
+      analisadoPor: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'desconhecido',
       resumo: result.resumo,
       grupos: result.grupos,
       alertas: (result.alertas||[]).map(extractAlert),
+      // Estatísticas de confiança
+      confMedia: (function(){
+        var campos = (result.grupos||[]).flatMap(function(g){return g.campos||[];});
+        if(!campos.length) return 100;
+        var soma = campos.reduce(function(s,c){return s+(c.confianca||100);},0);
+        return Math.round(soma/campos.length);
+      })(),
     };
 
     const processes = getProcesses();
@@ -1608,6 +1813,10 @@ async function runAnalysis(){
     if(proc._divResolvedMap){
       Object.assign(divergResolved, proc._divResolvedMap);
     }
+
+    // ── VINCULAR COM MÓDULO CONTROLE ──────────────────────────
+    // Atualizar campos no Controle baseado nos dados extraídos pela IA
+    sincronizarComControle(proc, result, novaAnalise);
 
     document.getElementById('loadingBox').classList.remove('show');
     renderResult(result);
@@ -1734,6 +1943,25 @@ function renderResult(r){
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────
+function verificarDivergenciasCriticas(){
+  var procs = getProcesses();
+  var criticos = procs.filter(function(p){ return p.status==='err'; });
+  if(!criticos.length) return;
+
+  // Mostrar notificação se há processos críticos não resolvidos
+  var naoBloqueado = !sessionStorage.getItem('divNotifBloqueada');
+  if(naoBloqueado && criticos.length>0){
+    var notif = document.getElementById('divNotif');
+    if(notif){
+      notif.style.display='flex';
+      notif.innerHTML = '<span style="font-size:16px">🔴</span>'+
+        '<span style="flex:1"><strong>'+criticos.length+' processo(s)</strong> com divergências não resolvidas: '+
+        criticos.slice(0,3).map(function(p){return p.ref;}).join(', ')+(criticos.length>3?'...':'')+'</span>'+
+        '<button onclick="sessionStorage.setItem(\'divNotifBloqueada\',\'1\');this.parentNode.style.display=\'none\'" style="background:transparent;border:none;cursor:pointer;font-size:16px;opacity:.6">✕</button>';
+    }
+  }
+}
+
 function renderDashboard(){
   if(!_currentUser) return;
   var fetchFn = dbGetAllProcesses; // todos os usuários veem todos os processos
@@ -1991,8 +2219,13 @@ function _renderGestaoModal(p, username){
           var aceito = p._divResolvedMap && p._divResolvedMap[divKey];
           if(aceito) color = '#16a34a';
           body += '<div style="padding:8px;border-radius:6px;background:'+(aceito?'rgba(22,163,74,0.04)':'rgba(220,38,38,0.04)')+';border-left:3px solid '+color+';margin-bottom:6px;">';
+          var confBadge='';
+          if(c.confianca!==undefined && c.confianca<85){
+            var confColor=c.confianca<70?'#dc2626':'#d97706';
+            confBadge='<span style="font-size:9px;font-weight:700;color:'+confColor+';background:'+confColor+'18;padding:1px 5px;border-radius:3px;margin-left:4px" title="Confiança da IA: '+c.confianca+'%">IA '+c.confianca+'%</span>';
+          }
           body += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
-          body += '<span style="font-size:12px;font-weight:600;">'+c.campo+'</span>';
+          body += '<span style="font-size:12px;font-weight:600;">'+c.campo+confBadge+'</span>';
           body += '<span style="font-size:10px;font-weight:700;color:'+color+';">'+(aceito?'✓ ACEITO':c.status)+'</span>';
           body += '</div>';
           body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
@@ -2256,6 +2489,11 @@ function _renderProcessModal(p){
       var alertCount=(a.resumo&&a.resumo.alertas)||0;
       var okCount=(a.resumo&&a.resumo.campos_ok)||0;
       var isLast=idx===analises.length-1;
+      var confIndicator='';
+      if(a.confMedia!==undefined){
+        var confColor=a.confMedia>=90?'#16a34a':a.confMedia>=70?'#d97706':'#dc2626';
+        confIndicator=' · <span style="color:'+confColor+';font-weight:700;font-size:11px;">IA '+a.confMedia+'%</span>';
+      }
       var statusColor=divCount>0?'var(--danger)':alertCount>0?'var(--warn)':'var(--ok)';
       var statusIcon=divCount>0?'❌':'✓';
 
@@ -2349,6 +2587,11 @@ function _renderProcessModal(p){
     if(analises.length>=2){
       var prev=analises[analises.length-2];
       var curr=analises[analises.length-1];
+      // Calcular diferenças entre análises
+      var divsPrev = (prev.grupos||[]).flatMap(function(g){return (g.campos||[]).filter(function(c){return c.status==='DIVERGENCIA';}).map(function(c){return g.titulo+'-'+c.campo;});});
+      var divsCurr = (curr.grupos||[]).flatMap(function(g){return (g.campos||[]).filter(function(c){return c.status==='DIVERGENCIA';}).map(function(c){return g.titulo+'-'+c.campo;});});
+      var resolvidas = divsPrev.filter(function(k){return !divsCurr.includes(k);});
+      var novas = divsCurr.filter(function(k){return !divsPrev.includes(k);});
       var prevDivs={};
       (prev.grupos||[]).forEach(function(g){ (g.campos||[]).forEach(function(c){ if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') prevDivs[c.campo]=c; }); });
       var currDivs={};
@@ -3008,36 +3251,77 @@ function exportPDF(){
   const ref=document.getElementById('procRef')?.value||'';
   const exp=document.getElementById('procExp')?.value||'';
   const date=new Date().toLocaleDateString('pt-BR');
+  const hora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const analista=_currentUser?(_currentUser.displayName||_currentUser.username):'—';
+
+  // Docs usados nesta análise
+  const docsUsados=Object.keys(uploadedFiles).length
+    ? Object.keys(uploadedFiles).join(', ')
+    : (currentResult&&currentResult.analises&&currentResult.analises.length
+        ? currentResult.analises[currentResult.analises.length-1].docNomes?.join(', ')||'—'
+        : '—');
+
+  // Confiança média
+  const confMedia = currentResult&&currentResult.analises&&currentResult.analises.length
+    ? (currentResult.analises[currentResult.analises.length-1].confMedia||100) : 100;
+  const confColor = confMedia>=90?'#16a34a':confMedia>=70?'#d97706':'#dc2626';
+
   const rows=!divs.length
-    ?`<tr><td colspan="5" style="text-align:center;color:green;padding:20px">${L.semDiv}</td></tr>`
+    ?`<tr><td colspan="6" style="text-align:center;color:green;padding:20px">✓ Sem divergências</td></tr>`
     :divs.map((d,i)=>{
       const resolved=divergResolved[`${d.grupo}-${d.campo}`];
+      const confCell=d.confianca&&d.confianca<85
+        ?`<span style="color:${d.confianca<70?'#dc2626':'#d97706'};font-size:10px;font-weight:700">${d.confianca}%</span>`
+        :'—';
       return `<tr style="background:${i%2===0?'#fff':'#fafafa'}">
         <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:600">${d.campo}</td>
         <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#666;font-size:12px">${d.grupo}</td>
         <td style="padding:10px 12px;border-bottom:1px solid #eee">${d.doc1_valor||'—'}<br><small style="color:#999">${d.doc1_label||''}</small></td>
         <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#e84040">${d.doc2_valor||'—'}<br><small style="color:#999">${d.doc2_label||''}</small></td>
-        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${resolved?'<span style="color:green">✅</span>':'<span style="color:orange">⚠️</span>'}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${resolved?`<span style="color:green">✅ ${resolved.por||''}</span>`:'<span style="color:orange">⚠️ Pendente</span>'}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${confCell}</td>
       </tr>`;
     }).join('');
   const alertRows=(currentResult?.alertas||[]).map(a=>`<li style="padding:6px 0;border-bottom:1px solid #fde;">${a}</li>`).join('');
   const win=window.open('','_blank');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${L.relatorio}</title>
-  <style>body{font-family:Arial,sans-serif;margin:0}.header{background:#1a3a2a;color:#fff;padding:28px 40px}.header h1{margin:0;font-size:22px}.header p{margin:6px 0 0;font-size:13px;opacity:.7}.meta{display:flex;gap:24px;padding:20px 40px;background:#f4f1eb;border-bottom:2px solid #d4cfc4}.meta-item{font-size:13px}.meta-item strong{display:block;font-size:11px;color:#7a7267;text-transform:uppercase;margin-bottom:2px}.section{padding:24px 40px}.section h2{font-size:14px;text-transform:uppercase;letter-spacing:.15em;color:#7a7267;margin:0 0 16px;padding-bottom:8px;border-bottom:1px solid #d4cfc4}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#1a3a2a;color:#fff;padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase}.alerts{background:#fff8f6;border:1px solid #f0c9be;border-left:4px solid #b5451b;border-radius:6px;padding:16px 20px}.alerts ul{margin:0;padding:0;list-style:none}.footer{padding:20px 40px;font-size:11px;color:#7a7267;border-top:1px solid #d4cfc4}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;color:#0d1e2e}
+    .header{background:#0a2d5e;color:#fff;padding:24px 36px;display:flex;justify-content:space-between;align-items:flex-end}
+    .header h1{margin:0;font-size:20px;font-weight:800}
+    .header p{margin:4px 0 0;font-size:12px;opacity:.6}
+    .conf-badge{background:${confColor};color:#fff;padding:4px 10px;border-radius:5px;font-size:12px;font-weight:700}
+    .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:2px solid #c8d8e8}
+    .meta-item{padding:14px 18px;font-size:12px;border-right:1px solid #c8d8e8}
+    .meta-item:last-child{border-right:none}
+    .meta-item strong{display:block;font-size:10px;color:#7a7267;text-transform:uppercase;margin-bottom:3px;letter-spacing:.05em}
+    .docs-row{padding:10px 18px;background:#f0f6fc;border-bottom:1px solid #c8d8e8;font-size:11px;color:#4a6480}
+    .section{padding:20px 36px}
+    .section h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#4a6480;margin:0 0 12px;padding-bottom:6px;border-bottom:1px solid #c8d8e8}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th{background:#0a2d5e;color:#fff;padding:9px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+    .alerts{background:#fff8f6;border:1px solid #f0c9be;border-left:4px solid #b5451b;border-radius:6px;padding:14px 18px}
+    .alerts ul{margin:0;padding:0;list-style:none}
+    .footer{padding:16px 36px;font-size:10px;color:#7a7267;border-top:1px solid #c8d8e8;display:flex;justify-content:space-between}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
   </head><body>
-  <div class="header"><h1>IMPAK — ${L.relatorio}</h1><p>${L.geradoEm} ${date}</p></div>
-  <div class="meta">
-    <div class="meta-item"><strong>${L.processo}</strong>${ref}</div>
-    <div class="meta-item"><strong>${L.exportador}</strong>${exp||'—'}</div>
-    <div class="meta-item"><strong>${L.data}</strong>${date}</div>
-    <div class="meta-item"><strong>${L.divergencias}</strong>${divs.length}</div>
+  <div class="header">
+    <div><h1>IMPAK — Relatório de Conferência Documental</h1><p>Gerado em ${date} às ${hora} por ${analista}</p></div>
+    <div class="conf-badge">IA ${confMedia}% confiança</div>
   </div>
-  <div class="section"><h2>${L.divergencias}</h2>
-    <table><thead><tr><th>${L.campo}</th><th>Grupo</th><th>${L.doc1}</th><th>${L.doc2}</th><th>${L.status}</th></tr></thead>
+  <div class="meta">
+    <div class="meta-item"><strong>Processo</strong>${ref}</div>
+    <div class="meta-item"><strong>Exportador</strong>${exp||'—'}</div>
+    <div class="meta-item"><strong>Divergências</strong><span style="color:${divs.length?'#dc2626':'#16a34a'};font-weight:700">${divs.length}</span></div>
+  </div>
+  <div class="docs-row">📎 Documentos analisados: <strong>${docsUsados}</strong></div>
+  <div class="section"><h2>Divergências encontradas</h2>
+    <table><thead><tr><th>Campo</th><th>Grupo</th><th>Doc 1</th><th>Doc 2 (divergente)</th><th>Status</th><th>Conf. IA</th></tr></thead>
     <tbody>${rows}</tbody></table>
   </div>
-  ${alertRows?`<div class="section"><h2>${L.alertas}</h2><div class="alerts"><ul>${alertRows}</ul></div></div>`:''}
-  <div class="footer">IMPAK · ${L.geradoEm}: ${new Date().toLocaleString('pt-BR')}</div>
+  ${alertRows?`<div class="section"><h2>Alertas</h2><div class="alerts"><ul>${alertRows}</ul></div></div>`:''}
+  <div class="footer"><span>IMPAK Comercial Importadora · Conferência Documental v2.0</span><span>${new Date().toLocaleString('pt-BR')}</span></div>
   <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),500);<\/script>
   
 <!-- MODAL FULLSCREEN DETALHE PROCESSO -->
