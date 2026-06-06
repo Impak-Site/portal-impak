@@ -465,7 +465,10 @@ function doLogout(){
   document.getElementById('wrap').style.display='none';
 }
 fetch('/api/me').then(r=>r.json()).then(d=>{
-  if(d.logado){const f=USERS.find(x=>x.u===d.usuario);if(f){entrar(f);}}
+  if(d.logado && !_u){
+    const f=USERS.find(x=>x.u===d.usuario);
+    if(f) entrar(f);
+  }
 }).catch(()=>{});
 
 // ══ CÂMBIO ════════════════════════════════════════════════════
@@ -498,27 +501,30 @@ function save(cb){
   }).catch(()=>toast('Sem conexão.','err'));
 }
 function load(){
-  // Verificar sessão primeiro
-  fetch('/api/me').then(r=>r.json()).then(me=>{
-    if(!me.logado){ window.location.href='/login?destino=/controle'; return; }
-    // Carregar processos
-    fetch('/api/controle/carregar').then(r=>{
-      if(!r.ok){ toast('Erro ao carregar ('+r.status+').','err'); renderAll(); return; }
-      return r.json();
-    }).then(d=>{
-      if(!d) return;
-      if(d.processos && d.processos.length){
-        _processos = d.processos;
+  // Carregar processos direto — login local já foi feito
+  fetch('/api/controle/carregar').then(r=>{
+    if(!r.ok){
+      // Sessão expirou — redirecionar para login do portal
+      if(r.status===401||r.status===302||r.status===403){
+        window.location.href='/login?destino=/controle';
+        return;
       }
+      toast('Erro ao carregar ('+r.status+').','err');
       renderAll();
-      const el=document.getElementById('lastSync');
-      if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-    }).catch(e=>{
-      console.error('Erro carregar processos:', e);
-      toast('Erro ao carregar dados.','err');
-      renderAll();
-    });
-  }).catch(()=>{ window.location.href='/login?destino=/controle'; });
+      return;
+    }
+    return r.json();
+  }).then(d=>{
+    if(!d) return;
+    if(d.processos && d.processos.length) _processos=d.processos;
+    renderAll();
+    const el=document.getElementById('lastSync');
+    if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  }).catch(e=>{
+    console.error('Erro carregar:', e);
+    toast('Erro ao carregar dados — verifique sua conexão.','err');
+    renderAll();
+  });
 }
 
 // ══ UTILS ════════════════════════════════════════════════════
@@ -1331,20 +1337,17 @@ function calcularFase(p){
 setInterval(()=>{
   if(!_u)return;
   if(document.getElementById('ov').classList.contains('on'))return;
-  fetch('/api/controle/carregar').then(r=>r.json()).then(d=>{
-    if(d.processos&&d.processos.length){
+  fetch('/api/controle/carregar').then(r=>{
+    if(!r.ok) return null;
+    return r.json();
+  }).then(d=>{
+    if(!d||!d.processos) return;
+    if(d.processos.length){
       _processos=d.processos;
       renderAll();
       gerarAlertas();
-      document.getElementById('lastSync').textContent=
-        new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      // Alertas demurrage 5 dias
-      const alertas=_processos.filter(p=>{
-        const d=demurDias(p);return d!==null&&d===5;
-      });
-      if(alertas.length){
-        toast(`⚠ ${alertas.length} processo(s) com demurrage em 5 dias!`,'warn');
-      }
+      const el=document.getElementById('lastSync');
+      if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     }
   }).catch(()=>{});
 },60000);
