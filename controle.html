@@ -194,6 +194,21 @@ input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowe
 .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(26,127,212,.2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;}
 @keyframes sp{to{transform:rotate(360deg)}}
 
+/* ── ALERTAS INTELIGENTES ── */
+.ai-strip{display:flex;flex-direction:column;gap:6px;}
+.ai-alert{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:12px;border:1px solid;animation:fadeIn .3s ease;}
+.ai-alert.warn{background:rgba(217,119,6,.07);border-color:rgba(217,119,6,.25);color:#92400e;}
+.ai-alert.err{background:rgba(220,38,38,.07);border-color:rgba(220,38,38,.25);color:#991b1b;}
+.ai-alert.info{background:rgba(26,127,212,.07);border-color:rgba(26,127,212,.25);color:#1e3a5f;}
+.ai-icon{font-size:16px;flex-shrink:0;}
+.ai-text{flex:1;line-height:1.4;}
+.ai-ref{font-family:'DM Mono',monospace;font-weight:700;color:inherit;}
+.ai-btn{background:var(--surface);border:1px solid currentColor;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;color:inherit;white-space:nowrap;font-family:'Syne',sans-serif;transition:all .15s;}
+.ai-btn:hover{opacity:.8;}
+.ai-dismiss{background:transparent;border:none;color:inherit;opacity:.4;cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0;}
+.ai-dismiss:hover{opacity:.8;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
 /* ── LOGIN ── */
 .login-wrap{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;}
 .login-box{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:14px;padding:36px 32px;width:340px;}
@@ -255,6 +270,9 @@ input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowe
     </label>
     </div>
   </div>
+
+  <!-- ALERTAS INTELIGENTES -->
+  <div id="alertasInteligentes" style="margin-bottom:12px"></div>
 
   <div class="stats" id="statsEl"></div>
 
@@ -514,6 +532,7 @@ function limparFiltros(){
 
 // ══ RENDER ALL ════════════════════════════════════════════════
 function renderAll(){
+  gerarAlertas();
   // Popular selects
   const cls=[...new Set(_processos.map(p=>p.cliente).filter(Boolean))].sort();
   const pts=[...new Set(_processos.map(p=>p.porto).filter(Boolean))].sort();
@@ -1016,6 +1035,270 @@ async function toB64(f){
   });
 }
 
+// ══ ALERTAS INTELIGENTES ═════════════════════════════════════
+const _alertasDismissed = new Set(); // alertas dispensados nesta sessão
+
+function diasDiff(isoDate){
+  if(!isoDate) return null;
+  const d = new Date(isoDate);
+  d.setHours(0,0,0,0);
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  return Math.floor((hoje - d) / 86400000); // positivo = passou, negativo = futuro
+}
+
+function gerarAlertas(){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const alertas = [];
+
+  _processos.forEach(p => {
+    if(p.fase === 'FINALIZADO') return;
+
+    const diffEmbarque    = diasDiff(p.data_embarque);
+    const diffEta         = diasDiff(p.eta);
+    const diffChegada     = diasDiff(p.data_chegada);
+    const diffPresenca    = diasDiff(p.data_presenca);
+    const diffProntidao   = diasDiff(p.previsao_prontidao);
+    const diffDi          = diasDiff(p.data_di);
+    const demurDias_      = demurDias(p);
+    const ref = p.referencia;
+
+    // 1. ETD passou — não está embarcado
+    if(diffEmbarque !== null && diffEmbarque >= 0 && (p.fase === 'PRODUCAO' || p.fase === 'EMBARCADO') && !p.data_chegada){
+      const key = ref+'-embarque';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'warn', ref,
+          icon:'🚢',
+          texto: `<span class="ai-ref">${ref}</span> — Data de embarque foi <strong>${fmtDateFull(p.data_embarque)}</strong>. Confirmou que embarcou?`,
+          acao: 'Confirmar embarque',
+          fn: `confirmarFase(${p.id},'EMBARCADO','data_embarque')`,
+        });
+      }
+    }
+
+    // 2. ETA passou — não confirmou chegada
+    if(diffEta !== null && diffEta >= 0 && p.fase === 'EMBARCADO' && !p.data_chegada){
+      const key = ref+'-eta';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'err', ref,
+          icon:'⚓',
+          texto: `<span class="ai-ref">${ref}</span> — ETA foi <strong>${fmtDateFull(p.eta)}</strong>. Chegou ao porto? Confirme a data de chegada.`,
+          acao: 'Registrar chegada',
+          fn: `confirmarChegada(${p.id})`,
+        });
+      }
+    }
+
+    // 3. Previsão de prontidão passou sem prontidão
+    if(diffProntidao !== null && diffProntidao >= 0 && !p.data_prontidao && p.fase === 'PRODUCAO'){
+      const key = ref+'-prontidao';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'warn', ref,
+          icon:'🏭',
+          texto: `<span class="ai-ref">${ref}</span> — Prev. prontidão foi <strong>${fmtDateFull(p.previsao_prontidao)}</strong>. Ficou pronto?`,
+          acao: 'Confirmar prontidão',
+          fn: `confirmarCampo(${p.id},'data_prontidao','Data de Prontidão')`,
+        });
+      }
+    }
+
+    // 4. Chegada há mais de 2 dias sem presença de carga
+    if(diffChegada !== null && diffChegada >= 2 && !p.data_presenca && p.fase === 'PORTO'){
+      const key = ref+'-presenca';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'warn', ref,
+          icon:'📦',
+          texto: `<span class="ai-ref">${ref}</span> — Chegou há <strong>${diffChegada} dias</strong> sem presença de carga confirmada.`,
+          acao: 'Registrar presença',
+          fn: `confirmarCampo(${p.id},'data_presenca','Presença de Carga')`,
+        });
+      }
+    }
+
+    // 5. Presença há mais de 3 dias sem DI
+    if(diffPresenca !== null && diffPresenca >= 3 && !p.numero_di && (p.fase === 'PORTO' || p.fase === 'LIBERACAO')){
+      const key = ref+'-di';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'warn', ref,
+          icon:'📋',
+          texto: `<span class="ai-ref">${ref}</span> — Presença há <strong>${diffPresenca} dias</strong> e DI ainda não registrada.`,
+          acao: 'Registrar DI',
+          fn: `confirmarCampo(${p.id},'numero_di','Número da DI')`,
+        });
+      }
+    }
+
+    // 6. DI registrada há mais de 10 dias sem retirada
+    if(diffDi !== null && diffDi >= 10 && !p.data_retirada && (p.fase === 'LIBERACAO' || p.fase === 'PORTO')){
+      const key = ref+'-retirada-di';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'warn', ref,
+          icon:'🚛',
+          texto: `<span class="ai-ref">${ref}</span> — DI registrada há <strong>${diffDi} dias</strong> sem retirada. O que está pendente?`,
+          acao: 'Abrir processo',
+          fn: `abrir(${p.id})`,
+        });
+      }
+    }
+
+    // 7. Demurrage crítico (≤ 5 dias)
+    if(demurDias_ !== null && demurDias_ <= 5 && demurDias_ >= 0 && !p.data_retirada){
+      const key = ref+'-demur-crit';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'err', ref,
+          icon:'🔴',
+          texto: `<span class="ai-ref">${ref}</span> — Demurrage vence em <strong>${demurDias_} dia(s)</strong>! Container retirado?`,
+          acao: 'Registrar retirada',
+          fn: `confirmarCampo(${p.id},'data_retirada','Data de Retirada')`,
+        });
+      }
+    }
+
+    // 8. Demurrage passou (< 0) sem retirada
+    if(demurDias_ !== null && demurDias_ < 0 && !p.data_retirada){
+      const key = ref+'-demur-vencido';
+      if(!_alertasDismissed.has(key)){
+        alertas.push({
+          key, tipo:'err', ref,
+          icon:'💸',
+          texto: `<span class="ai-ref">${ref}</span> — Demurrage <strong>VENCEU há ${Math.abs(demurDias_)} dia(s)</strong>! Container ainda não retirado.`,
+          acao: 'Registrar retirada',
+          fn: `confirmarCampo(${p.id},'data_retirada','Data de Retirada')`,
+        });
+      }
+    }
+  });
+
+  // Ordenar: erros primeiro
+  alertas.sort((a,b) => (a.tipo === 'err' ? -1 : 1));
+
+  renderAlertasInteligentes(alertas);
+}
+
+function fmtDateFull(iso){
+  if(!iso) return '—';
+  try{ return new Date(iso).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+  catch(e){ return iso; }
+}
+
+function renderAlertasInteligentes(alertas){
+  const el = document.getElementById('alertasInteligentes');
+  if(!el) return;
+  if(!alertas.length){ el.innerHTML=''; return; }
+
+  // Limitar a 8 alertas visíveis
+  const visiveis = alertas.slice(0,8);
+  const resto = alertas.length - visiveis.length;
+
+  el.innerHTML = `<div class="ai-strip">
+    ${visiveis.map(a=>`
+      <div class="ai-alert ${a.tipo}" id="ai-${a.key.replace(/[^a-z0-9]/gi,'_')}">
+        <span class="ai-icon">${a.icon}</span>
+        <span class="ai-text">${a.texto}</span>
+        <button class="ai-btn" onclick="${a.fn}">${a.acao}</button>
+        <button class="ai-dismiss" onclick="dispensarAlerta('${a.key}')" title="Dispensar">✕</button>
+      </div>`).join('')}
+    ${resto>0?`<div style="font-size:11px;color:var(--text-dim);text-align:center;padding:4px">+ ${resto} alertas adicionais — resolva os acima para ver os próximos</div>`:''}
+  </div>`;
+}
+
+function dispensarAlerta(key){
+  _alertasDismissed.add(key);
+  gerarAlertas();
+}
+
+// ── AÇÕES DE CONFIRMAÇÃO ──
+function confirmarFase(id, novaFase, campo){
+  const p = _processos.find(x=>x.id===id);
+  if(!p) return;
+  // Abrir modal com campo de data em destaque
+  abrir(id);
+  setTimeout(()=>{
+    tab('dados');
+    const el = document.getElementById('f_'+campo);
+    if(el){ el.focus(); el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.06)'; }
+  }, 200);
+}
+
+function confirmarChegada(id){
+  confirmarFase(id, 'PORTO', 'data_chegada');
+}
+
+function confirmarCampo(id, campo, labelHuman){
+  const p = _processos.find(x=>x.id===id);
+  if(!p) return;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,30,60,.5);z-index:900;display:flex;align-items:center;justify-content:center;';
+  const now = new Date().toISOString().slice(0,10);
+  const isDate = ['data_prontidao','data_chegada','data_presenca','data_retirada','data_di','data_ci','eta'].includes(campo);
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:24px 28px;width:380px;box-shadow:0 16px 48px rgba(0,0,0,.2)">
+      <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text-bright);margin-bottom:4px">Confirmar — ${labelHuman}</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;font-family:'DM Mono',monospace">${p.referencia}</div>
+      <div class="field" style="margin-bottom:16px">
+        <label>${labelHuman}</label>
+        <input id="confirm-input" type="${isDate?'date':'text'}" value="${isDate?now:''}" style="font-size:14px">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-s btn-sm" onclick="this.closest('div[style]').remove()">Cancelar</button>
+        <button class="btn btn-p btn-sm" onclick="salvarConfirmacao(${id},'${campo}',document.getElementById('confirm-input').value,this)">✓ Confirmar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(()=>{ const el=document.getElementById('confirm-input'); if(el)el.focus(); },100);
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+}
+
+function salvarConfirmacao(id, campo, valor, btn){
+  if(!valor){ alert('Informe o valor.'); return; }
+  const p = _processos.find(x=>x.id===id);
+  if(!p) return;
+
+  const agora = new Date().toLocaleString('pt-BR');
+  const quem = _u ? _u.n : 'Sistema';
+  p[campo] = valor;
+
+  // Recalcular fase automaticamente
+  const novaFase = calcularFase(p);
+  if(novaFase !== p.fase){
+    p.log = p.log||[];
+    p.log.push({time:agora, user:quem, msg:`Fase avançada: ${p.fase} → ${novaFase}`, fields:[]});
+    p.fase = novaFase;
+  }
+
+  if(!p._meta) p._meta = {};
+  p._meta[campo] = {n:quem, t:agora};
+  p.log = p.log||[];
+  p.log.push({time:agora, user:quem, msg:`Confirmação: ${FLABELS[campo]||campo} = ${valor}`, fields:[]});
+  p._updatedAt = Date.now();
+
+  // Fechar overlay
+  btn.closest('div[style]').remove();
+
+  const idx = _processos.findIndex(x=>x.id===id);
+  if(idx>=0) _processos[idx] = p;
+
+  save(()=>toast('Confirmado e salvo!','ok'));
+  renderAll();
+  gerarAlertas();
+}
+
+function calcularFase(p){
+  if(p.data_ric) return 'FINALIZADO';
+  if(p.data_retirada) return 'RETIRADO';
+  if(p.numero_di || p.canal_parametrizacao) return 'LIBERACAO';
+  if(p.data_chegada || p.data_presenca) return 'PORTO';
+  if(p.data_embarque || p.hbl) return 'EMBARCADO';
+  return 'PRODUCAO';
+}
+
 // ══ AUTO REFRESH + ALERTAS DEMURRAGE ════════════════════════
 setInterval(()=>{
   if(!_u)return;
@@ -1024,6 +1307,7 @@ setInterval(()=>{
     if(d.processos&&d.processos.length){
       _processos=d.processos;
       renderAll();
+      gerarAlertas();
       document.getElementById('lastSync').textContent=
         new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       // Alertas demurrage 5 dias
