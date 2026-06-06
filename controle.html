@@ -328,7 +328,7 @@ const FASES = [
 
 // Campos por fase — o que aparece em cada etapa
 const FASE_CAMPOS = {
-  PRODUCAO:  ['referencia','cliente','produtos','finalidade','agente','porto','marca','quant_containers','data_pedido','previsao_prontidao','observacoes','pendencia_processo','demanda_impak'],
+  PRODUCAO:  ['produtos','quant_containers','data_pedido','previsao_prontidao','observacoes'],
   EMBARCADO: ['data_prontidao','data_embarque','eta','navio','armador','container','hbl','mbl','bl_provado','data_ci'],
   PORTO:     ['data_chegada','data_presenca','free_time','ce_master','ce_house'],
   LIBERACAO: ['anuencia','numero_di','data_di','canal_parametrizacao','status_mapa','status_lpco'],
@@ -660,8 +660,27 @@ function renderModal(isNovo){
       <div class="step-lbl">${f.label}</div>
     </div>`).join('')}</div>`;
 
+  // Campos de identificação SEMPRE no topo
+  const secIdentificacao=`<div class="sec">
+    <div class="sec-hd">📌 Identificação</div>
+    <div class="grid g3">
+      ${renderField('referencia',p)}
+      ${renderField('cliente',p)}
+      ${renderField('agente',p)}
+      ${renderField('porto',p)}
+      ${renderField('marca',p)}
+      ${renderField('finalidade',p)}
+    </div>
+    <div style="margin-top:9px">
+      <div class="grid g2">
+        ${renderField('pendencia_processo',p)}
+        ${renderField('demanda_impak',p)}
+      </div>
+    </div>
+  </div>`;
+
   // Seções de campos
-  let secs='';
+  let secs=secIdentificacao;
   for(let i=0;i<=faseIdx;i++){
     const fase=FASES[i];
     const campos=FASE_CAMPOS[fase.id]||[];
@@ -682,14 +701,7 @@ function renderModal(isNovo){
     secs+='</div>';
   }
 
-  // Pendências e Demanda — sempre visíveis
-  secs+=`<div class="sec">
-    <div class="sec-hd">⚑ Controle Operacional</div>
-    <div class="grid g2">
-      ${renderField('pendencia_processo',p)}
-      ${renderField('demanda_impak',p)}
-    </div>
-  </div>`;
+
 
   document.getElementById('tc-dados').innerHTML=stepper+secs;
 
