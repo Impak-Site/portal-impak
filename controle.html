@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IMPAK — Controle</title>
+<title>IMPAK — Controle de Processos</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -15,27 +15,29 @@
 }
 body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;}
 
-/* TOPBAR */
-.topbar{background:var(--text-bright);height:52px;display:flex;align-items:center;padding:0 20px;gap:16px;border-bottom:2px solid var(--accent);position:sticky;top:0;z-index:200;}
+/* ── TOPBAR ── */
+.topbar{background:var(--text-bright);height:52px;display:flex;align-items:center;padding:0 20px;gap:14px;border-bottom:2px solid var(--accent);position:sticky;top:0;z-index:200;}
 .brand{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;color:#fff;letter-spacing:1px;}
 .brand span{color:var(--accent);}
-.tnav{padding:5px 12px;border-radius:5px;font-size:11px;font-weight:700;color:rgba(255,255,255,.55);cursor:pointer;text-decoration:none;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;}
+.tnav{padding:5px 12px;border-radius:5px;font-size:11px;font-weight:700;color:rgba(255,255,255,.55);text-decoration:none;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;}
 .tnav:hover,.tnav.on{background:rgba(26,127,212,.25);color:#fff;}
-.ml{margin-left:auto;}
+.ml{margin-left:auto;display:flex;align-items:center;gap:10px;}
 .ubadge{font-size:11px;color:rgba(255,255,255,.55);font-family:'DM Mono',monospace;}
 .btn-out{background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:5px;color:rgba(255,255,255,.5);padding:4px 10px;font-size:11px;cursor:pointer;}
 .btn-out:hover{border-color:rgba(255,255,255,.5);color:#fff;}
+.cambio-bar{display:flex;gap:10px;align-items:center;margin-left:16px;}
+.cambio-item{font-size:11px;color:rgba(255,255,255,.7);font-family:'DM Mono',monospace;background:rgba(255,255,255,.06);padding:3px 8px;border-radius:4px;}
+.cambio-item span{color:#7dd3fc;font-weight:700;}
 
-/* MAIN */
-.wrap{padding:20px 24px;}
-
-/* HEADER */
-.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:10px;flex-wrap:wrap;}
+/* ── MAIN ── */
+.wrap{padding:18px 22px;}
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;}
 .ptitle{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text-bright);}
 .ptitle span{color:var(--accent);}
+.ph-right{display:flex;gap:8px;align-items:center;}
 
-/* BTN */
-.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 16px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;border:none;font-family:'Syne',sans-serif;transition:all .15s;}
+/* ── BTN ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 15px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;border:none;font-family:'Syne',sans-serif;transition:all .15s;}
 .btn-p{background:var(--accent);color:#fff;}
 .btn-p:hover{background:var(--accent2);}
 .btn-s{background:transparent;border:1px solid var(--border);color:var(--text-dim);}
@@ -44,148 +46,154 @@ body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min
 .btn-d:hover{background:rgba(220,38,38,.06);}
 .btn-sm{padding:5px 10px;font-size:11px;}
 
-/* ALERTAS RÁPIDOS */
-.alerts-strip{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
-.alert-pill{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:2px solid transparent;transition:all .15s;background:var(--surface);}
-.alert-pill.on{border-color:currentColor;}
-.ap-n{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;}
-.ap-total{color:var(--accent);}
-.ap-andamento{color:var(--ok);}
-.ap-warn{color:var(--warn);}
-.ap-err{color:var(--err);}
-.ap-label{font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+/* ── STATS ── */
+.stats{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.scard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 14px;cursor:pointer;transition:border-color .15s;display:flex;align-items:center;gap:10px;}
+.scard:hover,.scard.on{border-color:var(--accent);}
+.scard.on{background:rgba(26,127,212,.04);}
+.sn{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;}
+.sl{font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.blue{color:var(--accent);}
+.ok{color:var(--ok);}
+.warn{color:var(--warn);}
+.err{color:var(--err);}
+.dim{color:var(--text-dim);}
 
-/* FILTROS */
-.fbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end;}
+/* ── FILTROS ── */
+.fbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 14px;}
 .fi{display:flex;flex-direction:column;gap:3px;}
 .fi label{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;}
-.fi input,.fi select{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;}
+.fi input,.fi select{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s;}
 .fi input:focus,.fi select:focus{border-color:var(--accent);}
-.fi input{width:210px;}
-.fi select{min-width:130px;}
-.btn-clr{background:none;border:none;font-size:11px;color:var(--text-dim);cursor:pointer;text-decoration:underline;padding:0 2px;align-self:flex-end;margin-bottom:2px;}
+.fi input{width:200px;}
+.fi select{min-width:120px;}
+.btn-clr{background:none;border:none;font-size:11px;color:var(--text-dim);cursor:pointer;text-decoration:underline;padding:0;align-self:flex-end;margin-bottom:1px;}
 .btn-clr:hover{color:var(--accent);}
 
-/* TABELA */
+/* ── TABELA ── */
 .tw{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
-.ttop{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface2);}
+.ttop{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--surface2);}
 .tcount{font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;}
-.tscroll{overflow-x:auto;}
+.tscroll{overflow-x:auto;max-height:calc(100vh - 320px);overflow-y:auto;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
-thead th{background:var(--surface2);padding:8px 11px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:52px;}
+thead th{background:var(--surface2);padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0;z-index:5;}
 th:hover{color:var(--accent);}
-th.asc::after{content:' ↑';}th.desc::after{content:' ↓';}
-td{padding:8px 11px;border-bottom:1px solid var(--bg2);vertical-align:middle;}
-tr:last-child td{border-bottom:none;}
+th.asc::after{content:' ↑';}
+th.desc::after{content:' ↓';}
+td{padding:7px 10px;border-bottom:1px solid var(--bg2);vertical-align:middle;white-space:nowrap;}
 tr.trow:hover td{background:rgba(26,127,212,.03);cursor:pointer;}
+tr.trow.demur-crit td{background:rgba(220,38,38,.03);}
+tr.trow.demur-warn td{background:rgba(217,119,6,.025);}
 .empty{text-align:center;padding:48px;color:var(--text-dim);}
-.empty-icon{font-size:32px;opacity:.3;margin-bottom:8px;}
 
-/* CÉLULAS */
-.ref{font-family:'DM Mono',monospace;font-weight:500;color:var(--accent);font-size:12px;}
-.fase-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap;}
-.f-PRODUCAO{background:rgba(99,102,241,.1);color:#6366f1;}
-.f-EMBARCADO{background:rgba(14,165,233,.1);color:#0ea5e9;}
-.f-PORTO{background:rgba(245,158,11,.1);color:#d97706;}
-.f-LIBERACAO{background:rgba(239,68,68,.1);color:#dc2626;}
-.f-RETIRADO{background:rgba(16,185,129,.1);color:#10b981;}
-.f-FINALIZADO{background:rgba(139,92,246,.1);color:#8b5cf6;}
-.demur{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap;}
-.d-ok{background:rgba(22,163,74,.1);color:var(--ok);}
-.d-w{background:rgba(217,119,6,.1);color:var(--warn);}
-.d-e{background:rgba(220,38,38,.1);color:var(--err);}
-.d-n{color:var(--text-dim);}
-.canal{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
-.c-VERDE{background:rgba(22,163,74,.1);color:var(--ok);}
-.c-AMARELO{background:rgba(217,119,6,.1);color:var(--warn);}
-.c-VERMELHO{background:rgba(220,38,38,.1);color:var(--err);}
-.c-CINZA{background:rgba(100,116,128,.1);color:#64748b;}
-.pend-cell{max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-dim);font-size:11px;}
+/* ── CÉLULAS ── */
+.ref{font-family:'DM Mono',monospace;font-weight:500;color:var(--accent);}
 .mono{font-family:'DM Mono',monospace;}
+.status-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;}
+.s-PRODUCAO{background:rgba(99,102,241,.1);color:#6366f1;}
+.s-EMBARCADO{background:rgba(14,165,233,.1);color:#0ea5e9;}
+.s-PORTO{background:rgba(245,158,11,.1);color:#d97706;}
+.s-LIBERACAO{background:rgba(239,68,68,.1);color:#dc2626;}
+.s-RETIRADO{background:rgba(16,185,129,.1);color:#10b981;}
+.s-FINALIZADO{background:rgba(139,92,246,.1);color:#8b5cf6;}
+.demur-chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap;}
+.dc-ok{background:rgba(22,163,74,.1);color:var(--ok);}
+.dc-w{background:rgba(217,119,6,.1);color:var(--warn);}
+.dc-e{background:rgba(220,38,38,.12);color:var(--err);}
+.dc-n{color:var(--text-dim);}
+.canal-chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
+.cc-VERDE{background:rgba(22,163,74,.1);color:var(--ok);}
+.cc-AMARELO{background:rgba(217,119,6,.1);color:var(--warn);}
+.cc-VERMELHO{background:rgba(220,38,38,.1);color:var(--err);}
+.cc-CINZA{background:rgba(100,116,128,.1);color:#64748b;}
+.pend-cell{max-width:190px;overflow:hidden;text-overflow:ellipsis;color:var(--text-dim);font-size:11px;}
 
-/* MODAL */
-.ov{position:fixed;inset:0;background:rgba(10,30,60,.5);z-index:500;display:none;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;}
+/* ── MODAL ── */
+.ov{position:fixed;inset:0;background:rgba(10,30,60,.5);z-index:500;display:none;align-items:flex-start;justify-content:center;padding:14px;overflow-y:auto;}
 .ov.on{display:flex;}
-.modal{background:var(--surface);border-radius:14px;width:100%;max-width:880px;margin:auto;box-shadow:0 20px 60px rgba(10,30,60,.25);overflow:hidden;}
-.mh{background:var(--text-bright);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;}
+.modal{background:var(--surface);border-radius:14px;width:100%;max-width:920px;margin:auto;box-shadow:0 20px 60px rgba(10,30,60,.25);overflow:hidden;}
+.mh{background:var(--text-bright);padding:15px 20px;display:flex;align-items:center;gap:12px;justify-content:space-between;}
+.mh-left{display:flex;align-items:center;gap:12px;}
 .mh-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#fff;}
 .mh-title span{color:var(--accent);}
+.mh-demur{font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;}
 .mh-close{background:none;border:none;color:rgba(255,255,255,.5);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:3px;}
 .mh-close:hover{color:#fff;}
 
-/* TABS */
+/* ── MODAL TABS ── */
 .mtabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface2);}
 .mtab{padding:10px 18px;font-size:11px;font-weight:700;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;}
 .mtab.on{color:var(--accent);border-bottom-color:var(--accent);}
-.mtc{display:none;padding:20px;}
+.mtc{display:none;padding:18px 20px;}
 .mtc.on{display:block;}
-.mfoot{padding:12px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2);}
+.mfoot{padding:11px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2);}
 
-/* FASE STEPPER */
-.stepper{display:flex;margin-bottom:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
-.step{flex:1;padding:10px 6px;text-align:center;cursor:pointer;border-right:1px solid var(--border);transition:all .15s;background:var(--surface2);}
+/* ── STEPPER ── */
+.stepper{display:flex;margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.step{flex:1;padding:9px 4px;text-align:center;cursor:pointer;border-right:1px solid var(--border);transition:all .15s;background:var(--surface2);}
 .step:last-child{border-right:none;}
 .step:hover{background:var(--bg2);}
 .step.done{background:rgba(22,163,74,.06);}
 .step.active{background:rgba(26,127,212,.08);}
-.step-icon{font-size:16px;margin-bottom:3px;}
-.step-label{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;}
-.step.done .step-label{color:var(--ok);}
-.step.active .step-label{color:var(--accent);}
+.step-icon{font-size:15px;margin-bottom:3px;}
+.step-lbl{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;}
+.step.done .step-lbl{color:var(--ok);}
+.step.active .step-lbl{color:var(--accent);}
 
-/* SECTION */
-.sec{margin-bottom:18px;}
-.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-dim);margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;}
-.sec-title .sec-tag{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(26,127,212,.08);color:var(--accent);font-weight:700;}
-.grid{display:grid;gap:10px;}
+/* ── FORM ── */
+.sec{margin-bottom:16px;}
+.sec-hd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-dim);margin-bottom:9px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;}
+.sec-tag{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(26,127,212,.08);color:var(--accent);font-weight:700;}
+.sec-restricted{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(220,38,38,.08);color:var(--err);font-weight:700;}
+.grid{display:grid;gap:9px;}
 .g2{grid-template-columns:1fr 1fr;}
 .g3{grid-template-columns:1fr 1fr 1fr;}
 .g4{grid-template-columns:1fr 1fr 1fr 1fr;}
 .full{grid-column:1/-1;}
-.field{display:flex;flex-direction:column;gap:3px;position:relative;}
-.field label{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px;}
-.field label .edited-by{font-size:9px;font-weight:400;color:var(--accent);text-transform:none;letter-spacing:0;font-style:italic;}
+.field{display:flex;flex-direction:column;gap:3px;}
+.field label{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.by{font-size:9px;font-weight:400;color:var(--accent);text-transform:none;letter-spacing:0;font-style:italic;}
 input,select,textarea{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:all .15s;width:100%;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);background:#fff;}
-input.edited,select.edited,textarea.edited{border-color:rgba(22,163,74,.4);background:rgba(22,163,74,.03);}
-textarea{resize:vertical;min-height:60px;}
+input.changed,select.changed,textarea.changed{border-color:rgba(22,163,74,.5);background:rgba(22,163,74,.02);}
+textarea{resize:vertical;min-height:58px;}
+input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowed;}
 
-/* UPLOAD */
-.upload-box{border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2);}
+/* ── UPLOAD / IA ── */
+.upload-box{border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;cursor:pointer;background:var(--bg2);transition:all .2s;}
 .upload-box:hover,.upload-box.drag{border-color:var(--accent);background:rgba(26,127,212,.04);}
 .upload-box input{display:none;}
-.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
 .chip{background:rgba(26,127,212,.08);border:1px solid rgba(26,127,212,.2);border-radius:4px;padding:3px 8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:4px;font-family:'DM Mono',monospace;}
 .cx{cursor:pointer;opacity:.6;line-height:1;}
 .cx:hover{opacity:1;}
-
-/* EXTRACT */
-.ebox{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:12px;}
+.ebox{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:13px;margin-top:11px;}
 .erow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);}
 .erow:last-child{border-bottom:none;}
-.elbl{font-size:11px;font-weight:600;color:var(--text-dim);min-width:155px;}
+.elbl{font-size:11px;font-weight:600;color:var(--text-dim);min-width:150px;}
 .eval{font-size:12px;color:var(--text);font-family:'DM Mono',monospace;flex:1;}
-.ebadge{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;white-space:nowrap;}
-.eb-new{background:rgba(22,163,74,.1);color:var(--ok);}
-.eb-chg{background:rgba(217,119,6,.1);color:var(--warn);}
+.eb{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;white-space:nowrap;}
+.eb-n{background:rgba(22,163,74,.1);color:var(--ok);}
+.eb-c{background:rgba(217,119,6,.1);color:var(--warn);}
 
-/* LOG */
+/* ── LOG ── */
 .log-row{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);}
 .log-row:last-child{border-bottom:none;}
-.log-time{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);white-space:nowrap;min-width:130px;}
+.log-time{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);white-space:nowrap;min-width:125px;}
 .log-user{font-weight:600;color:var(--accent);}
-.log-field{font-size:11px;color:var(--text-dim);}
-.log-val{font-size:11px;color:var(--text);font-family:'DM Mono',monospace;}
+.log-chg{font-size:11px;color:var(--text-dim);margin-top:2px;}
+.log-val{font-family:'DM Mono',monospace;color:var(--text);}
 
-/* TOAST / SPINNER */
+/* ── TOAST / SPINNER ── */
 .toast{position:fixed;bottom:20px;right:20px;background:var(--text-bright);color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;display:none;box-shadow:0 4px 16px rgba(0,0,0,.2);}
 .toast.on{display:block;}
 .toast.ok{border-left:3px solid var(--ok);}
 .toast.err{border-left:3px solid var(--err);}
-.spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(26,127,212,.2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;}
+.toast.warn{border-left:3px solid var(--warn);}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(26,127,212,.2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-/* LOGIN */
+/* ── LOGIN ── */
 .login-wrap{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;}
 .login-box{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:14px;padding:36px 32px;width:340px;}
 .login-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text-bright);text-align:center;margin-bottom:4px;}
@@ -220,7 +228,8 @@ textarea{resize:vertical;min-height:60px;}
   <a class="tnav" href="/">TyreDesk</a>
   <a class="tnav" href="/processos">Conferência</a>
   <a class="tnav on" href="/controle">Controle</a>
-  <div class="ml" style="display:flex;align-items:center;gap:10px">
+  <div class="cambio-bar" id="cambioBar"></div>
+  <div class="ml">
     <span class="ubadge" id="ubadge"></span>
     <button class="btn-out" onclick="doLogout()">Sair</button>
   </div>
@@ -230,22 +239,18 @@ textarea{resize:vertical;min-height:60px;}
 <div class="wrap" id="wrap" style="display:none">
   <div class="ph">
     <div class="ptitle">Controle de <span>Processos</span></div>
-    <button class="btn btn-p" onclick="abrirNovo()">+ Novo Processo</button>
+    <div class="ph-right">
+      <button class="btn btn-p" onclick="abrirNovo()">+ Novo Processo</button>
+    </div>
   </div>
 
-  <!-- ALERTAS / STATS -->
-  <div class="alerts-strip" id="alertsStrip"></div>
+  <div class="stats" id="statsEl"></div>
 
-  <!-- FILTROS -->
   <div class="fbar">
-    <div class="fi">
-      <label>Buscar</label>
-      <input id="fq" placeholder="Referência, cliente, navio..." oninput="render()">
-    </div>
-    <div class="fi">
-      <label>Fase</label>
+    <div class="fi"><label>Buscar</label><input id="fq" placeholder="Ref., cliente, container, navio..." oninput="render()"></div>
+    <div class="fi"><label>Status</label>
       <select id="ff" onchange="render()">
-        <option value="">Todas</option>
+        <option value="">Todos</option>
         <option value="PRODUCAO">Em Produção</option>
         <option value="EMBARCADO">Embarcado</option>
         <option value="PORTO">No Porto</option>
@@ -254,22 +259,16 @@ textarea{resize:vertical;min-height:60px;}
         <option value="FINALIZADO">Finalizado</option>
       </select>
     </div>
-    <div class="fi">
-      <label>Cliente</label>
-      <select id="fc" onchange="render()"><option value="">Todos</option></select>
-    </div>
-    <div class="fi">
-      <label>Porto</label>
-      <select id="fp" onchange="render()"><option value="">Todos</option></select>
-    </div>
+    <div class="fi"><label>Cliente</label><select id="fc" onchange="render()"><option value="">Todos</option></select></div>
+    <div class="fi"><label>Porto</label><select id="fp" onchange="render()"><option value="">Todos</option></select></div>
+    <div class="fi"><label>Agente</label><select id="fa" onchange="render()"><option value="">Todos</option></select></div>
     <button class="btn-clr" onclick="limparFiltros()">✕ Limpar</button>
   </div>
 
-  <!-- TABELA -->
   <div class="tw">
     <div class="ttop">
       <span class="tcount" id="tcount"></span>
-      <span style="font-size:11px;color:var(--text-dim)">Clique em um processo para abrir</span>
+      <span style="font-size:11px;color:var(--text-dim)">Clique para abrir · última atualização: <span id="lastSync">—</span></span>
     </div>
     <div class="tscroll">
       <table>
@@ -284,13 +283,16 @@ textarea{resize:vertical;min-height:60px;}
 <div class="ov" id="ov">
   <div class="modal">
     <div class="mh">
-      <div class="mh-title" id="mh-title">Processo</div>
+      <div class="mh-left">
+        <div class="mh-title" id="mh-title">Processo</div>
+        <div id="mh-demur"></div>
+      </div>
       <button class="mh-close" onclick="fechar()">✕</button>
     </div>
     <div class="mtabs">
-      <div class="mtab on" onclick="tab('dados')">Dados</div>
+      <div class="mtab on" onclick="tab('dados')">📋 Dados</div>
       <div class="mtab" onclick="tab('ia')">📄 Extrair com IA</div>
-      <div class="mtab" onclick="tab('log')">Histórico</div>
+      <div class="mtab" onclick="tab('log')">📝 Histórico</div>
     </div>
     <div class="mtc on" id="tc-dados"></div>
     <div class="mtc" id="tc-ia"></div>
@@ -302,42 +304,68 @@ textarea{resize:vertical;min-height:60px;}
 <div class="toast" id="toast"></div>
 
 <script>
-// ══ CONSTANTES ══════════════════════════════════════════════
+// ══ CONFIG ════════════════════════════════════════════════════
 const USERS = [
-  {u:'narcelio', p:'Narcelio@2026', n:'Narcelio', r:'gerente'},
-  {u:'jean',     p:'Jeanimpak2026', n:'Jean',     r:'gerente'},
-  {u:'paula',    p:'Paula@2026',    n:'Paula',    r:'gerente'},
-  {u:'emanuelly',p:'EmanuellyImpak2026',n:'Emanuelly',r:'analista'},
+  {u:'narcelio', p:'Narcelio@2026', n:'Narcelio', fin:true},
+  {u:'jean',     p:'Jeanimpak2026', n:'Jean',     fin:true},
+  {u:'paula',    p:'Paula@2026',    n:'Paula',    fin:true},
+  {u:'bianca',   p:'Bianca@2026',   n:'Bianca',   fin:true},
+  {u:'emanuelly',p:'EmanuellyImpak2026',n:'Emanuelly',fin:false},
+  {u:'italo',    p:'Italo@2026',    n:'Italo',    fin:false},
+  {u:'maria',    p:'Maria@2026',    n:'Maria',    fin:false},
+  {u:'joyce',    p:'Joyce@2026',    n:'Joyce',    fin:false},
+  {u:'neide',    p:'Neide@2026',    n:'Neide',    fin:false},
 ];
 
 const FASES = [
-  {id:'PRODUCAO',  label:'Em Produção', icon:'🔵', campos:['referencia','cliente','fornecedor','marca','numero_conexos','agente','data_pedido','previsao_prontidao','valor_pi','finalidade','observacoes']},
-  {id:'EMBARCADO', label:'Embarcado',   icon:'🚢', campos:['data_prontidao','data_embarque','eta','navio','armador','porto','container','hbl','mbl','valor_ci','peso_bruto','quantidade']},
-  {id:'PORTO',     label:'No Porto',    icon:'⚓', campos:['data_chegada','data_presenca','ce_master','ce_house','free_time']},
-  {id:'LIBERACAO', label:'Liberação',   icon:'📋', campos:['numero_di','data_di','canal_parametrizacao','status_mapa','status_lpco','anuencia']},
-  {id:'RETIRADO',  label:'Retirado',    icon:'🚛', campos:['data_retirada','horario_retirada','frete','numero_nf','data_nf']},
-  {id:'FINALIZADO',label:'Finalizado',  icon:'✅', campos:['data_ric','status_ric','observacoes_finais']},
+  {id:'PRODUCAO',  label:'Em Produção', icon:'🔵'},
+  {id:'EMBARCADO', label:'Embarcado',   icon:'🚢'},
+  {id:'PORTO',     label:'No Porto',    icon:'⚓'},
+  {id:'LIBERACAO', label:'Liberação',   icon:'📋'},
+  {id:'RETIRADO',  label:'Retirado',    icon:'🚛'},
+  {id:'FINALIZADO',label:'Finalizado',  icon:'✅'},
 ];
 
-const FLABELS = {
-  referencia:'Referência',cliente:'Cliente',fornecedor:'Fornecedor',marca:'Marca',
-  numero_conexos:'Nº Conexos',agente:'Agente',porto:'Porto',armador:'Armador',
-  navio:'Navio',container:'Container',hbl:'HBL',mbl:'MBL',
-  data_pedido:'Data Pedido',previsao_prontidao:'Prev. Prontidão',
-  data_prontidao:'Data Prontidão',data_embarque:'Data Embarque',
-  eta:'ETA',data_chegada:'Data Chegada',data_presenca:'Presença de Carga',
-  data_retirada:'Data Retirada',horario_retirada:'Horário Retirada',free_time:'Free Time (dias)',
-  ce_master:'CE Master',ce_house:'CE House',numero_di:'Nº DI',data_di:'Data DI',
-  canal_parametrizacao:'Canal',status_mapa:'Status MAPA',status_lpco:'Status LPCO',
-  anuencia:'Anuência',valor_pi:'Valor PI',valor_ci:'Valor CI',
-  peso_bruto:'Peso Bruto (kg)',quantidade:'Quantidade',frete:'Frete (R$)',
-  numero_nf:'Nº NF',data_nf:'Data NF',finalidade:'Finalidade',
-  data_ric:'Data RIC',status_ric:'Status RIC',
-  pendencias:'Pendências',observacoes:'Observações',observacoes_finais:'Obs. Finais',
+// Campos por fase — o que aparece em cada etapa
+const FASE_CAMPOS = {
+  PRODUCAO:  ['referencia','cliente','produtos','finalidade','agente','porto','marca','quant_containers','data_pedido','previsao_prontidao','observacoes','pendencia_processo','demanda_impak'],
+  EMBARCADO: ['data_prontidao','data_embarque','eta','navio','armador','container','hbl','mbl','bl_provado','data_ci'],
+  PORTO:     ['data_chegada','data_presenca','free_time','ce_master','ce_house'],
+  LIBERACAO: ['anuencia','numero_di','data_di','canal_parametrizacao','status_mapa','status_lpco'],
+  RETIRADO:  ['data_retirada','horario_retirada'],
+  FINALIZADO:['data_ric','status_ric','nf_processo'],
 };
 
-const DATE_FIELDS = ['data_pedido','previsao_prontidao','data_prontidao','data_embarque',
-  'eta','data_chegada','data_presenca','data_retirada','data_di','data_nf','data_ric'];
+const FASE_CAMPOS_FIN = {
+  PRODUCAO:  ['pagamento_entrada','pagamento_saldo'],
+  EMBARCADO: [],
+  PORTO:     [],
+  LIBERACAO: [],
+  RETIRADO:  ['frete'],
+  FINALIZADO:[],
+};
+
+const FLABELS = {
+  referencia:'Referência',cliente:'Cliente',produtos:'Produto / Navio BL',finalidade:'Finalidade',
+  agente:'Agente',porto:'Porto',marca:'Marca',quant_containers:'Qtd. Containers',
+  data_pedido:'Data Pedido',previsao_prontidao:'Prev. Prontidão',
+  data_prontidao:'Data Prontidão',data_embarque:'Data Embarque',
+  eta:'ETA (Chegada Prevista)',data_chegada:'Data Chegada Real',
+  data_presenca:'Presença de Carga',free_time:'Free Time (dias)',
+  navio:'Navio',armador:'Armador / Depot',container:'Container(s)',
+  hbl:'HBL',mbl:'MBL',bl_provado:'BL Provado',data_ci:'Data CI',
+  ce_master:'CE Master',ce_house:'CE House',
+  anuencia:'Anuência',numero_di:'Nº DI',data_di:'Data DI',
+  canal_parametrizacao:'Canal Parametrização',status_mapa:'Status MAPA',status_lpco:'Status LPCO',
+  data_retirada:'Data Retirada',horario_retirada:'Horário Retirada',
+  data_ric:'Data RIC',status_ric:'Status RIC',nf_processo:'NF do Processo',
+  frete:'Frete (R$)',pagamento_entrada:'1° Pagamento (Entrada)',pagamento_saldo:'Saldo Pagamento',
+  pendencia_processo:'Pendência do Processo',demanda_impak:'Demanda IMPAK',
+  observacoes:'Observações',
+};
+
+const DATE_FIELDS = new Set(['data_pedido','previsao_prontidao','data_prontidao','data_embarque',
+  'eta','data_chegada','data_presenca','data_retirada','data_di','data_ci','data_ric']);
 
 const SELECT_FIELDS = {
   canal_parametrizacao:['','VERDE','AMARELO','VERMELHO','CINZA'],
@@ -345,26 +373,43 @@ const SELECT_FIELDS = {
   status_lpco:['','AG. ANALISE','DEFERIDA','EXIGÊNCIA','FAZER LPCO'],
   anuencia:['','SEM LI','DEFERIDA','PENDENTE'],
   status_ric:['','LIMPO','LAVAÇÃO','PENDENTE'],
+  bl_provado:['','OHBL','SIM','NÃO'],
+  finalidade:['','DIRETO','LCL','DUIMP'],
 };
 
-// ══ ESTADO ══════════════════════════════════════════════════
-let _u = null, _processos = [], _edit = null, _files = {}, _apiKey = '';
-let _sortK = 'eta', _sortD = 1, _filtStat = '';
+const COLS = [
+  {k:'referencia', l:'Referência'},
+  {k:'cliente',    l:'Cliente'},
+  {k:'produtos',   l:'Produto/Navio'},
+  {k:'fase',       l:'Status'},
+  {k:'eta',        l:'ETA'},
+  {k:'demurrage',  l:'Demurrage'},
+  {k:'porto',      l:'Porto'},
+  {k:'canal_parametrizacao', l:'Canal'},
+  {k:'status_lpco',l:'LPCO'},
+  {k:'anuencia',   l:'Anuência'},
+  {k:'pendencia_processo', l:'Pendência'},
+];
 
-// ══ AUTH ════════════════════════════════════════════════════
+// ══ ESTADO ═══════════════════════════════════════════════════
+let _u=null, _processos=[], _edit=null, _files={}, _apiKey='';
+let _sortK='eta', _sortD=1, _filtStat='';
+
+// ══ AUTH ══════════════════════════════════════════════════════
 function doLogin(){
   const u=(document.getElementById('lu').value||'').trim().toLowerCase();
   const p=(document.getElementById('lp').value||'').trim();
-  const found=USERS.find(x=>x.u===u&&x.p===p);
-  if(!found){document.getElementById('lerr').style.display='block';return;}
-  entrar(found);
+  const f=USERS.find(x=>x.u===u&&x.p===p);
+  if(!f){document.getElementById('lerr').style.display='block';return;}
+  entrar(f);
 }
-function entrar(found){
-  _u=found;
+function entrar(f){
+  _u=f;
   document.getElementById('loginWrap').style.display='none';
   document.getElementById('topbar').style.display='flex';
   document.getElementById('wrap').style.display='block';
-  document.getElementById('ubadge').textContent=found.n;
+  document.getElementById('ubadge').textContent=f.n;
+  carregarCambio();
   load();
 }
 function doLogout(){
@@ -377,27 +422,49 @@ fetch('/api/me').then(r=>r.json()).then(d=>{
   if(d.logado){const f=USERS.find(x=>x.u===d.usuario);if(f){_apiKey=d.senha||'';entrar(f);}}
 }).catch(()=>{});
 
-// ══ STORAGE ═════════════════════════════════════════════════
-function save(){
-  try{localStorage.setItem('impak_ctrl2',JSON.stringify(_processos));}catch(e){}
-  fetch('/api/controle/salvar',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({processos:_processos})}).catch(()=>{});
-}
-function load(){
-  try{const l=JSON.parse(localStorage.getItem('impak_ctrl2')||'[]');if(l.length){_processos=l;renderAll();}}catch(e){}
-  fetch('/api/controle/carregar').then(r=>r.json()).then(d=>{
-    if(d.processos&&d.processos.length){
-      _processos=d.processos;
-      try{localStorage.setItem('impak_ctrl2',JSON.stringify(_processos));}catch(e){}
-      renderAll();
-    } else if(!_processos.length) renderAll();
-  }).catch(()=>{if(!_processos.length)renderAll();});
+// ══ CÂMBIO ════════════════════════════════════════════════════
+function carregarCambio(){
+  fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL')
+  .then(r=>r.json())
+  .then(d=>{
+    const bar=document.getElementById('cambioBar');
+    const usd=parseFloat(d.USDBRL?.bid||0).toFixed(2);
+    const eur=parseFloat(d.EURBRL?.bid||0).toFixed(2);
+    const cny=parseFloat(d.CNYBRL?.bid||0).toFixed(2);
+    bar.innerHTML=`
+      <div class="cambio-item">USD <span>R$ ${usd}</span></div>
+      <div class="cambio-item">EUR <span>R$ ${eur}</span></div>
+      <div class="cambio-item">CNY <span>R$ ${cny}</span></div>`;
+  }).catch(()=>{});
+  // Atualiza a cada 5 minutos
+  setTimeout(carregarCambio, 5*60*1000);
 }
 
-// ══ UTILS ═══════════════════════════════════════════════════
+// ══ STORAGE ══════════════════════════════════════════════════
+function save(cb){
+  toast('Salvando...','ok');
+  fetch('/api/controle/salvar',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({processos:_processos})})
+  .then(r=>r.json())
+  .then(d=>{
+    if(d.ok){toast('Salvo ✓','ok');if(cb)cb();}
+    else toast('Erro ao salvar.','err');
+  }).catch(()=>toast('Sem conexão.','err'));
+}
+function load(){
+  fetch('/api/controle/carregar').then(r=>r.json()).then(d=>{
+    if(d.processos&&d.processos.length) _processos=d.processos;
+    renderAll();
+    document.getElementById('lastSync').textContent=
+      new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  }).catch(()=>{toast('Erro ao carregar dados.','err');renderAll();});
+}
+
+// ══ UTILS ════════════════════════════════════════════════════
 function fd(iso){
-  if(!iso||iso==='-')return'—';
-  try{const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});}catch(e){return iso;}
+  if(!iso)return'—';
+  try{return new Date(iso).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});}
+  catch(e){return iso;}
 }
 function demurDias(p){
   if(!p.data_chegada)return null;
@@ -408,50 +475,50 @@ function demurDias(p){
 function toast(msg,t='ok'){
   const el=document.getElementById('toast');
   el.textContent=msg;el.className='toast on '+t;
-  setTimeout(()=>el.classList.remove('on'),3000);
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('on'),3000);
 }
 function limparFiltros(){
-  ['fq','ff','fc','fp'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['fq','ff','fc','fp','fa'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   _filtStat='';
   render();
 }
 
-// ══ RENDER ALL ══════════════════════════════════════════════
+// ══ RENDER ALL ════════════════════════════════════════════════
 function renderAll(){
-  // Popular selects de filtro
+  // Popular selects
   const cls=[...new Set(_processos.map(p=>p.cliente).filter(Boolean))].sort();
   const pts=[...new Set(_processos.map(p=>p.porto).filter(Boolean))].sort();
-  const sc=document.getElementById('fc'), sp=document.getElementById('fp');
-  const vc=sc.value, vp=sp.value;
-  sc.innerHTML='<option value="">Todos</option>'+cls.map(c=>`<option>${c}</option>`).join('');
-  sp.innerHTML='<option value="">Todos</option>'+pts.map(p=>`<option>${p}</option>`).join('');
-  sc.value=vc; sp.value=vp;
+  const ags=[...new Set(_processos.map(p=>p.agente).filter(Boolean))].sort();
+  ['fc','fp','fa'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    const arr=[cls,pts,ags][i];
+    const v=el.value;
+    el.innerHTML='<option value="">Todos</option>'+arr.map(x=>`<option>${x}</option>`).join('');
+    el.value=v;
+  });
   renderStats();
   render();
 }
 
 function renderStats(){
-  const total=_processos.length;
+  const t=_processos.length;
   const and=_processos.filter(p=>p.fase!=='FINALIZADO').length;
-  const crit=_processos.filter(p=>{const d=demurDias(p);return d!==null&&d<=3;}).length;
-  const warn=_processos.filter(p=>{const d=demurDias(p);return d!==null&&d>3&&d<=7;}).length;
+  const crit=_processos.filter(p=>{const d=demurDias(p);return d!==null&&d<=5;}).length;
+  const warn=_processos.filter(p=>{const d=demurDias(p);return d!==null&&d>5&&d<=10;}).length;
 
-  const pill=(id,n,label,cls,filtVal)=>`
-    <div class="alert-pill ${cls} ${_filtStat===filtVal?'on':''}" onclick="setFiltro('${filtVal}')">
-      <div><div class="ap-n ap-${cls}">${n}</div><div class="ap-label">${label}</div></div>
+  const pill=(v,n,lbl,cls)=>`
+    <div class="scard ${_filtStat===v?'on':''}" onclick="setFiltro('${v}')">
+      <div class="sn ${cls}">${n}</div>
+      <div class="sl">${lbl}</div>
     </div>`;
 
-  document.getElementById('alertsStrip').innerHTML=
-    pill('total',total,'Total','total','')+
-    pill('and',and,'Em Andamento','andamento','andamento')+
-    pill('warn',warn,'⚠ Demur 7d','warn','warn')+
-    pill('crit',crit,'🔴 Demur Crítico','err','critico')+
-    FASES.map(f=>{
-      const n=_processos.filter(p=>p.fase===f.id).length;
-      return `<div class="alert-pill ${_filtStat===f.id?'on':''}" onclick="setFiltro('${f.id}')">
-        <div><div class="ap-n" style="font-size:16px">${n}</div><div class="ap-label">${f.icon} ${f.label}</div></div>
-      </div>`;
-    }).join('');
+  document.getElementById('statsEl').innerHTML=
+    pill('',t,'Total','blue')+
+    pill('andamento',and,'Em Andamento','ok')+
+    pill('warn',warn,'⚠ Demur 10d','warn')+
+    pill('critico',crit,'🔴 Demur 5d','err')+
+    FASES.map(f=>pill(f.id,_processos.filter(p=>p.fase===f.id).length,f.icon+' '+f.label,'dim')).join('');
 }
 
 function setFiltro(v){
@@ -461,39 +528,28 @@ function setFiltro(v){
   render();
 }
 
-// ══ TABELA ══════════════════════════════════════════════════
-const COLS = [
-  {k:'referencia',  l:'Referência'},
-  {k:'cliente',     l:'Cliente'},
-  {k:'fornecedor',  l:'Fornecedor'},
-  {k:'fase',        l:'Fase'},
-  {k:'eta',         l:'ETA'},
-  {k:'demurrage',   l:'Demurrage'},
-  {k:'porto',       l:'Porto'},
-  {k:'canal',       l:'Canal'},
-  {k:'status_lpco', l:'LPCO'},
-  {k:'pendencias',  l:'Pendências'},
-];
-
+// ══ TABELA ════════════════════════════════════════════════════
 function filtrar(){
   const q=(document.getElementById('fq').value||'').toLowerCase();
   const ff=document.getElementById('ff').value;
   const fc=document.getElementById('fc').value;
   const fp=document.getElementById('fp').value;
+  const fa=document.getElementById('fa').value;
   return _processos.filter(p=>{
-    if(q&&![(p.referencia||''),(p.cliente||''),(p.fornecedor||''),(p.navio||''),(p.container||'')]
+    if(q&&![(p.referencia||''),(p.cliente||''),(p.produtos||''),(p.container||''),(p.navio||'')]
       .some(v=>v.toLowerCase().includes(q)))return false;
     if(ff&&p.fase!==ff)return false;
     if(fc&&p.cliente!==fc)return false;
     if(fp&&p.porto!==fp)return false;
+    if(fa&&p.agente!==fa)return false;
     if(_filtStat==='andamento'&&p.fase==='FINALIZADO')return false;
-    if(_filtStat==='critico'){const d=demurDias(p);if(d===null||d>3)return false;}
-    if(_filtStat==='warn'){const d=demurDias(p);if(d===null||d<=3||d>7)return false;}
-    if(['PRODUCAO','EMBARCADO','PORTO','LIBERACAO','RETIRADO','FINALIZADO'].includes(_filtStat)&&p.fase!==_filtStat)return false;
+    if(_filtStat==='critico'){const d=demurDias(p);if(d===null||d>5)return false;}
+    if(_filtStat==='warn'){const d=demurDias(p);if(d===null||d<=5||d>10)return false;}
+    if(FASES.map(f=>f.id).includes(_filtStat)&&p.fase!==_filtStat)return false;
     return true;
   }).sort((a,b)=>{
-    let va=_sortK==='demurrage'?demurDias(a)??9999:a[_sortK]||'';
-    let vb=_sortK==='demurrage'?demurDias(b)??9999:b[_sortK]||'';
+    const va=_sortK==='demurrage'?demurDias(a)??9999:a[_sortK]||'';
+    const vb=_sortK==='demurrage'?demurDias(b)??9999:b[_sortK]||'';
     return va<vb?-_sortD:va>vb?_sortD:0;
   });
 }
@@ -502,41 +558,43 @@ function render(){
   const procs=filtrar();
   document.getElementById('tcount').textContent=`${procs.length} de ${_processos.length} processo(s)`;
 
-  // Head
   document.getElementById('thead').innerHTML='<tr>'+COLS.map(c=>
     `<th class="${_sortK===c.k?(_sortD>0?'asc':'desc'):''}" onclick="sortBy('${c.k}')">${c.l}</th>`
   ).join('')+'<th></th></tr>';
 
   if(!procs.length){
     document.getElementById('tbody').innerHTML=`<tr><td colspan="${COLS.length+1}">
-      <div class="empty"><div class="empty-icon">📋</div>Nenhum processo encontrado
-      <div style="margin-top:8px"><button class="btn-clr" onclick="limparFiltros()">Limpar filtros</button></div>
+      <div class="empty">📋 Nenhum processo encontrado
+        <div style="margin-top:8px"><button class="btn-clr" onclick="limparFiltros()">Limpar filtros</button></div>
       </div></td></tr>`;
     return;
   }
 
-  document.getElementById('tbody').innerHTML=procs.map(p=>`
-    <tr class="trow" onclick="abrir(${p.id})">
+  document.getElementById('tbody').innerHTML=procs.map(p=>{
+    const d=demurDias(p);
+    const rowCls=d!==null?(d<=5?'trow demur-crit':d<=10?'trow demur-warn':'trow'):'trow';
+    return `<tr class="${rowCls}" onclick="abrir(${p.id})">
       <td><span class="ref">${p.referencia||'—'}</span></td>
-      <td>${p.cliente||'—'}</td>
-      <td style="font-size:11px;color:var(--text-dim)">${p.fornecedor||'—'}</td>
-      <td><span class="fase-chip f-${p.fase||'PRODUCAO'}">${FASES.find(f=>f.id===p.fase)?.icon||''} ${FASES.find(f=>f.id===p.fase)?.label||p.fase||'—'}</span></td>
+      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${p.cliente||'—'}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--text-dim)">${p.produtos||'—'}</td>
+      <td><span class="status-chip s-${p.fase||'PRODUCAO'}">${FASES.find(f=>f.id===p.fase)?.icon||''} ${FASES.find(f=>f.id===p.fase)?.label||p.fase||'—'}</span></td>
       <td class="mono">${fd(p.eta)}</td>
-      <td>${demurCell(p)}</td>
+      <td>${demurCell(d)}</td>
       <td style="font-size:11px">${p.porto||'—'}</td>
-      <td>${p.canal_parametrizacao?`<span class="canal c-${p.canal_parametrizacao}">${p.canal_parametrizacao}</span>`:'<span style="color:var(--text-dim)">—</span>'}</td>
+      <td>${p.canal_parametrizacao?`<span class="canal-chip cc-${p.canal_parametrizacao}">${p.canal_parametrizacao}</span>`:'<span style="color:var(--text-dim)">—</span>'}</td>
       <td style="font-size:11px;color:${p.status_lpco==='DEFERIDA'?'var(--ok)':p.status_lpco?'var(--warn)':'var(--text-dim)'}">${p.status_lpco||'—'}</td>
-      <td><div class="pend-cell" title="${p.pendencias||''}">${p.pendencias||'—'}</div></td>
+      <td style="font-size:11px;color:${p.anuencia==='DEFERIDA'?'var(--ok)':p.anuencia?'var(--warn)':'var(--text-dim)'}">${p.anuencia||'—'}</td>
+      <td><div class="pend-cell" title="${p.pendencia_processo||''}">${p.pendencia_processo||'—'}</div></td>
       <td><button class="btn btn-s btn-sm" onclick="event.stopPropagation();abrir(${p.id})">Abrir</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
-function demurCell(p){
-  const d=demurDias(p);
-  if(d===null)return'<span class="d-n">—</span>';
-  const cls=d<=3?'d-e':d<=7?'d-w':'d-ok';
-  const icon=d<=3?'🔴':d<=7?'⚠':'✓';
-  return`<span class="demur ${cls}">${icon} ${d}d</span>`;
+function demurCell(d){
+  if(d===null)return'<span class="dc-n">—</span>';
+  const cls=d<=5?'dc-e':d<=10?'dc-w':'dc-ok';
+  const icon=d<=5?'🔴':d<=10?'⚠':'✓';
+  return`<span class="demur-chip ${cls}">${icon} ${d}d</span>`;
 }
 
 function sortBy(k){
@@ -544,9 +602,9 @@ function sortBy(k){
   render();
 }
 
-// ══ MODAL ═══════════════════════════════════════════════════
+// ══ MODAL ═════════════════════════════════════════════════════
 function abrirNovo(){
-  _edit={id:Date.now(),fase:'PRODUCAO',free_time:21,log:[],_camposMeta:{}};
+  _edit={id:Date.now(),fase:'PRODUCAO',free_time:21,log:[],_meta:{}};
   _files={};
   renderModal(true);
   document.getElementById('ov').classList.add('on');
@@ -570,175 +628,195 @@ function tab(t){
   document.querySelectorAll('.mtc').forEach(el=>el.classList.remove('on'));
   document.getElementById('tc-'+t).classList.add('on');
 }
+function mudarFase(fid){
+  if(!_edit)return;
+  _edit.fase=fid;
+  renderModal(!_processos.find(p=>p.id===_edit.id));
+  tab('dados');
+}
 
 function renderModal(isNovo){
   const p=_edit;
-  document.getElementById('mh-title').innerHTML=isNovo?'Novo Processo':`<span>${p.referencia||'Processo'}</span>`;
-
-  // ── TAB DADOS ──
   const faseIdx=FASES.findIndex(f=>f.id===p.fase);
+  const d=demurDias(p);
+
+  // Header
+  document.getElementById('mh-title').innerHTML=
+    isNovo?'Novo Processo':`<span>${p.referencia||'Processo'}</span>`;
+
+  // Demurrage badge no header
+  if(d!==null){
+    const cls=d<=5?'background:rgba(220,38,38,.15);color:#dc2626':d<=10?'background:rgba(217,119,6,.15);color:#d97706':'background:rgba(22,163,74,.12);color:#16a34a';
+    document.getElementById('mh-demur').innerHTML=
+      `<div class="mh-demur" style="${cls}">${d<=5?'🔴':d<=10?'⚠':'✓'} Demurrage: ${d} dias</div>`;
+  } else {
+    document.getElementById('mh-demur').innerHTML='';
+  }
 
   // Stepper
   const stepper=`<div class="stepper">${FASES.map((f,i)=>`
     <div class="step ${i<faseIdx?'done':i===faseIdx?'active':''}" onclick="mudarFase('${f.id}')">
       <div class="step-icon">${i<faseIdx?'✓':f.icon}</div>
-      <div class="step-label">${f.label}</div>
+      <div class="step-lbl">${f.label}</div>
     </div>`).join('')}</div>`;
 
-  // Campos por fase — mostra todos da fase atual + todas anteriores
-  let secoes = '';
+  // Seções de campos
+  let secs='';
   for(let i=0;i<=faseIdx;i++){
     const fase=FASES[i];
-    const campos=fase.campos;
+    const campos=FASE_CAMPOS[fase.id]||[];
+    const camposFin=FASE_CAMPOS_FIN[fase.id]||[];
     const isAtual=i===faseIdx;
-    secoes+=`<div class="sec">
-      <div class="sec-title">${fase.icon} ${fase.label} ${isAtual?'<span class="sec-tag">Fase atual</span>':''}</div>
-      <div class="grid g3">${campos.map(c=>renderField(c,p)).join('')}</div>
-    </div>`;
+
+    secs+=`<div class="sec">
+      <div class="sec-hd">${fase.icon} ${fase.label} ${isAtual?'<span class="sec-tag">fase atual</span>':''}
+      </div>
+      <div class="grid g3">${campos.map(c=>renderField(c,p)).join('')}</div>`;
+
+    if(camposFin.length&&_u&&_u.fin){
+      secs+=`<div style="margin-top:10px">
+        <div class="sec-hd" style="color:var(--err)">💰 Financeiro <span class="sec-restricted">restrito</span></div>
+        <div class="grid g3">${camposFin.map(c=>renderField(c,p)).join('')}</div>
+      </div>`;
+    }
+    secs+='</div>';
   }
 
-  // Pendências sempre visível
-  secoes+=`<div class="sec">
-    <div class="sec-title">⚑ Pendências</div>
+  // Pendências e Demanda — sempre visíveis
+  secs+=`<div class="sec">
+    <div class="sec-hd">⚑ Controle Operacional</div>
     <div class="grid g2">
-      ${renderField('pendencias',p)}
-      ${renderField('observacoes',p)}
+      ${renderField('pendencia_processo',p)}
+      ${renderField('demanda_impak',p)}
     </div>
   </div>`;
 
-  document.getElementById('tc-dados').innerHTML=stepper+secoes;
+  document.getElementById('tc-dados').innerHTML=stepper+secs;
 
-  // ── TAB IA ──
+  // IA tab
   document.getElementById('tc-ia').innerHTML=`
-    <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px">
-      Anexe os documentos e a IA preenche os campos automaticamente.
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+      Anexe os documentos. A IA extrai os dados e preenche os campos automaticamente.
     </p>
     <div class="upload-box" id="ubox" onclick="document.getElementById('uinput').click()"
          ondragover="event.preventDefault();this.classList.add('drag')"
          ondragleave="this.classList.remove('drag')"
          ondrop="dropDoc(event)">
       <input type="file" id="uinput" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="addFiles(this.files)">
-      <div style="font-size:24px;margin-bottom:6px">📎</div>
+      <div style="font-size:22px;margin-bottom:5px">📎</div>
       <div style="font-size:13px;color:var(--text-dim)">Clique ou arraste os documentos</div>
       <div style="font-size:11px;color:var(--text-dim);margin-top:3px">PI · CI · PL · HBL · CE · DI · MAPA · LPCO · NF</div>
     </div>
     <div class="chips" id="chips"></div>
     <div id="eres"></div>`;
 
-  // ── TAB LOG ──
+  // Log tab
   renderLog();
 
-  // ── FOOTER ──
+  // Footer
+  const isNovo2=!_processos.find(p=>p.id===_edit.id);
   document.getElementById('mfoot').innerHTML=`
-    ${!isNovo?`<button class="btn btn-d btn-sm" onclick="excluir(${p.id})">Excluir</button>`:''}
+    ${!isNovo2?`<button class="btn btn-d btn-sm" onclick="excluir(${p.id})">Excluir</button>`:''}
     <div style="flex:1"></div>
     <button class="btn btn-s" onclick="fechar()">Cancelar</button>
     <button class="btn btn-p" onclick="salvar()">💾 Salvar</button>`;
 }
 
-function renderField(id, p){
+function renderField(id,p){
   const label=FLABELS[id]||id;
   const val=p[id]||'';
-  const meta=(p._camposMeta||{})[id];
-  const editedBy=meta?`<span class="edited-by">${meta.n} · ${meta.t}</span>`:'';
-  const isEdited=!!meta;
+  const meta=(p._meta||{})[id];
+  const editedBy=meta?`<span class="by">${meta.n} · ${meta.t}</span>`:'';
+  const changed=!!meta;
 
-  if(DATE_FIELDS.includes(id)){
+  if(DATE_FIELDS.has(id)){
     return`<div class="field">
       <label>${label} ${editedBy}</label>
-      <input type="date" id="f_${id}" value="${val}" class="${isEdited?'edited':''}" onchange="trackChange('${id}')">
+      <input type="date" id="f_${id}" value="${val}" class="${changed?'changed':''}" oninput="markChange('${id}')">
     </div>`;
   }
   if(SELECT_FIELDS[id]){
-    const opts=SELECT_FIELDS[id].map(o=>`<option value="${o}" ${val===o?'selected':''}>${o||'—'}</option>`).join('');
     return`<div class="field">
       <label>${label} ${editedBy}</label>
-      <select id="f_${id}" class="${isEdited?'edited':''}" onchange="trackChange('${id}')">${opts}</select>
+      <select id="f_${id}" class="${changed?'changed':''}" onchange="markChange('${id}')">
+        ${SELECT_FIELDS[id].map(o=>`<option value="${o}" ${val===o?'selected':''}>${o||'—'}</option>`).join('')}
+      </select>
     </div>`;
   }
-  if(id==='pendencias'||id==='observacoes'||id==='observacoes_finais'){
+  if(id==='pendencia_processo'||id==='demanda_impak'||id==='observacoes'){
     return`<div class="field full">
       <label>${label} ${editedBy}</label>
-      <textarea id="f_${id}" class="${isEdited?'edited':''}" oninput="trackChange('${id}')">${val}</textarea>
+      <textarea id="f_${id}" class="${changed?'changed':''}" oninput="markChange('${id}')">${val}</textarea>
+    </div>`;
+  }
+  if(id==='quant_containers'){
+    return`<div class="field">
+      <label>${label} ${editedBy}</label>
+      <input type="number" min="1" max="20" id="f_${id}" value="${val||1}" class="${changed?'changed':''}" oninput="markChange('${id}')">
+    </div>`;
+  }
+  if(id==='free_time'){
+    return`<div class="field">
+      <label>${label} ${editedBy}</label>
+      <input type="number" min="1" max="90" id="f_${id}" value="${val||21}" class="${changed?'changed':''}" oninput="markChange('${id}')">
     </div>`;
   }
   return`<div class="field">
     <label>${label} ${editedBy}</label>
-    <input id="f_${id}" value="${val}" class="${isEdited?'edited':''}" oninput="trackChange('${id}')">
+    <input id="f_${id}" value="${val}" class="${changed?'changed':''}" oninput="markChange('${id}')">
   </div>`;
 }
 
-function trackChange(id){
-  // Só registrar no meta para mostrar quem editou no próximo save
-  if(!_edit._pendingChanges) _edit._pendingChanges={};
-  _edit._pendingChanges[id]=true;
-}
-
-function mudarFase(faseId){
-  if(!_edit)return;
-  _edit.fase=faseId;
-  renderModal(!_processos.find(p=>p.id===_edit.id));
-  tab('dados');
+function markChange(id){
+  const el=document.getElementById('f_'+id);
+  if(el) el.classList.add('changed');
 }
 
 function coletar(){
-  const todos=FASES.flatMap(f=>f.campos).concat(['pendencias','observacoes','observacoes_finais']);
+  const ids=['referencia','cliente','produtos','finalidade','agente','porto','marca','quant_containers',
+    'data_pedido','previsao_prontidao','data_prontidao','data_embarque','eta',
+    'data_chegada','data_presenca','free_time','navio','armador','container',
+    'hbl','mbl','bl_provado','data_ci','ce_master','ce_house',
+    'anuencia','numero_di','data_di','canal_parametrizacao','status_mapa','status_lpco',
+    'data_retirada','horario_retirada','data_ric','status_ric','nf_processo',
+    'frete','pagamento_entrada','pagamento_saldo',
+    'pendencia_processo','demanda_impak','observacoes','fase'];
   const obj={};
-  todos.forEach(id=>{
-    const el=document.getElementById('f_'+id);
-    if(el) obj[id]=(el.value||'').trim();
-  });
+  ids.forEach(id=>{const el=document.getElementById('f_'+id);if(el)obj[id]=(el.value||'').trim();});
   return obj;
 }
 
 function salvar(){
   const dados=coletar();
-  if(!dados.referencia&&!_edit.referencia){toast('Informe a referência.','err');return;}
-
+  if(!dados.referencia){toast('Informe a referência.','err');return;}
   const now=new Date().toLocaleString('pt-BR');
   const quem=_u.n;
-  if(!_edit._camposMeta)_edit._camposMeta={};
+  if(!_edit._meta)_edit._meta={};
   if(!_edit.log)_edit.log=[];
-
-  // Registrar quais campos mudaram
   const changed=[];
   Object.keys(dados).forEach(id=>{
-    const novo=dados[id];
-    const antigo=_edit[id]||'';
-    if(novo!==antigo&&novo!==''){
-      _edit._camposMeta[id]={n:quem,t:now};
-      changed.push({campo:FLABELS[id]||id,de:antigo,para:novo});
+    const novo=dados[id]; const ant=_edit[id]||'';
+    if(novo!==ant&&novo!==''){
+      _edit._meta[id]={n:quem,t:now};
+      changed.push({c:FLABELS[id]||id,de:ant,para:novo});
     }
-    _edit[id]=novo;
+    if(novo!==''||_edit[id]!==undefined) _edit[id]=novo;
   });
-
   _edit._updatedAt=Date.now();
-  _edit._updatedBy=quem;
-
-  // Log de alterações
   const isNovo=!_processos.find(p=>p.id===_edit.id);
-  if(isNovo){
-    _edit.log.push({time:now,user:quem,msg:'Processo criado',fields:[]});
-  } else if(changed.length){
-    _edit.log.push({time:now,user:quem,msg:`${changed.length} campo(s) atualizado(s)`,fields:changed});
-  }
-
+  _edit.log.push({time:now,user:quem,msg:isNovo?'Processo criado':`${changed.length} campo(s) atualizado(s)`,fields:changed});
   if(isNovo) _processos.unshift(_edit);
-  else{ const i=_processos.findIndex(p=>p.id===_edit.id);if(i>=0)_processos[i]=_edit;}
-
-  save();
+  else{const i=_processos.findIndex(p=>p.id===_edit.id);if(i>=0)_processos[i]=_edit;}
   fechar();
   renderAll();
-  toast(isNovo?'Processo criado!':'Salvo com sucesso!','ok');
+  save(()=>toast(isNovo?'Processo criado!':'Salvo!','ok'));
 }
 
 function excluir(id){
-  if(!confirm('Excluir este processo?'))return;
-  fetch('/api/processos/'+encodeURIComponent(id),{method:'DELETE',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({username:_u.u})}).catch(()=>{});
+  if(!confirm('Excluir este processo? Esta ação não pode ser desfeita.'))return;
   _processos=_processos.filter(p=>p.id!==id);
-  save();fechar();renderAll();
-  toast('Processo excluído.','ok');
+  fechar();renderAll();
+  save(()=>toast('Processo excluído.','ok'));
 }
 
 function renderLog(){
@@ -753,32 +831,22 @@ function renderLog(){
         <div class="log-row">
           <div class="log-time">${l.time}</div>
           <div style="flex:1">
-            <div style="margin-bottom:3px"><span class="log-user">${l.user||''}</span>${l.user?' · ':''}<span style="font-size:12px">${l.msg}</span></div>
+            <div><span class="log-user">${l.user||''}</span>${l.user?' · ':''}<span style="font-size:12px">${l.msg}</span></div>
             ${(l.fields||[]).map(f=>`
-              <div class="log-row" style="padding:2px 0;border:none;margin-left:8px">
-                <div class="log-field">${f.campo}:</div>
-                <div class="log-val">${f.de||'—'} → ${f.para}</div>
+              <div class="log-chg">
+                ${f.c}: <span class="log-val">${f.de||'—'} → ${f.para}</span>
               </div>`).join('')}
           </div>
         </div>`).join('')}
     </div>`;
 }
 
-// ══ UPLOAD + IA ═════════════════════════════════════════════
-function dropDoc(e){
-  e.preventDefault();
-  document.getElementById('ubox').classList.remove('drag');
-  addFiles(e.dataTransfer.files);
-}
-function addFiles(files){
-  Array.from(files).forEach(f=>{_files[f.name]=f;});
-  renderChips();
-}
+// ══ UPLOAD + IA ═══════════════════════════════════════════════
+function dropDoc(e){e.preventDefault();document.getElementById('ubox').classList.remove('drag');addFiles(e.dataTransfer.files);}
+function addFiles(files){Array.from(files).forEach(f=>{_files[f.name]=f;});renderChips();}
 function renderChips(){
-  const el=document.getElementById('chips');
-  if(!el)return;
-  el.innerHTML=Object.keys(_files).map(n=>
-    `<div class="chip">${n}<span class="cx" onclick="rmFile('${n}')">×</span></div>`).join('');
+  const el=document.getElementById('chips');if(!el)return;
+  el.innerHTML=Object.keys(_files).map(n=>`<div class="chip">${n}<span class="cx" onclick="rmFile('${n}')">×</span></div>`).join('');
   if(Object.keys(_files).length)
     el.innerHTML+=`<button class="btn btn-p btn-sm" onclick="extrair()" style="margin-left:6px">✨ Extrair com IA</button>`;
 }
@@ -787,7 +855,7 @@ function rmFile(n){delete _files[n];renderChips();document.getElementById('eres'
 async function extrair(){
   if(!_apiKey){toast('Sessão expirada. Faça login novamente.','err');return;}
   const files=Object.values(_files);
-  if(!files.length){toast('Nenhum arquivo selecionado.','err');return;}
+  if(!files.length){toast('Nenhum arquivo.','err');return;}
   document.getElementById('eres').innerHTML=
     `<div style="text-align:center;padding:20px;color:var(--text-dim)"><span class="spin"></span><div style="margin-top:8px;font-size:13px">Analisando documentos...</div></div>`;
   try{
@@ -797,26 +865,30 @@ async function extrair(){
         ?{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}}
         :{type:'image',source:{type:'base64',media_type:f.type,data:b64}};
     }));
-    parts.push({type:'text',text:`Você é especialista em documentos de importação brasileira.
-Analise os documentos e extraia todos os campos que encontrar:
-referencia, cliente, fornecedor, marca, navio, eta (YYYY-MM-DD), container, armador, porto, agente,
-hbl, mbl, ce_master, ce_house, numero_di, data_di (YYYY-MM-DD),
+    parts.push({type:'text',text:`Você é especialista em documentos de importação brasileira de pneus.
+Analise os documentos (PI, CI, PL, HBL, CE, DI, MAPA, LPCO, NF) e extraia:
+referencia, cliente, produtos (nome do produto/pneu), marca, agente, porto, armador, navio,
+container (número do container), quant_containers (quantidade de containers, número inteiro),
+hbl, mbl, eta (YYYY-MM-DD), data_embarque (YYYY-MM-DD), data_chegada (YYYY-MM-DD),
+data_presenca (YYYY-MM-DD), data_prontidao (YYYY-MM-DD), data_pedido (YYYY-MM-DD),
+ce_master, ce_house, numero_di, data_di (YYYY-MM-DD),
 canal_parametrizacao (VERDE/AMARELO/VERMELHO/CINZA),
 status_mapa (AG. ANALISE/LIBERADO/EXIGÊNCIA),
 status_lpco (AG. ANALISE/DEFERIDA/EXIGÊNCIA/FAZER LPCO),
-data_embarque (YYYY-MM-DD), data_chegada (YYYY-MM-DD), data_presenca (YYYY-MM-DD),
-valor_pi (com moeda), valor_ci (com moeda), quantidade, peso_bruto,
-numero_nf, data_nf (YYYY-MM-DD), data_pedido (YYYY-MM-DD),
-previsao_prontidao (YYYY-MM-DD), data_prontidao (YYYY-MM-DD).
-Responda SOMENTE JSON válido, sem markdown, sem texto extra. Omita campos não encontrados.`});
+anuencia (SEM LI/DEFERIDA/PENDENTE),
+data_retirada (YYYY-MM-DD), horario_retirada,
+nf_processo, data_ci (YYYY-MM-DD),
+pagamento_entrada (data ou valor), pagamento_saldo (data ou valor),
+finalidade (DIRETO/LCL/DUIMP).
+Responda SOMENTE JSON válido, sem markdown. Omita campos não encontrados.`});
 
     const r=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,
         messages:[{role:'user',content:parts}]})
     });
-    const d=await r.json();
-    const txt=(d.content||[]).map(x=>x.text||'').join('');
+    const data=await r.json();
+    const txt=(data.content||[]).map(x=>x.text||'').join('');
     const ex=JSON.parse(txt.replace(/```json|```/g,'').trim());
     mostrarExtracao(ex);
   }catch(e){
@@ -833,17 +905,17 @@ function mostrarExtracao(ex){
   }
   const rows=campos.map(k=>{
     const atual=(_edit||{})[k]||'';const novo=ex[k]||'';
-    const badge=atual?(atual!==novo?'<span class="ebadge eb-chg">ALTERADO</span>':''):'<span class="ebadge eb-new">NOVO</span>';
+    const badge=atual?(atual!==novo?'<span class="eb eb-c">ALTERADO</span>':''):'<span class="eb eb-n">NOVO</span>';
     return`<div class="erow"><div class="elbl">${FLABELS[k]}</div><div class="eval">${novo}</div>${badge}</div>`;
   }).join('');
   const enc=encodeURIComponent(JSON.stringify(ex));
   document.getElementById('eres').innerHTML=`
     <div class="ebox">
-      <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px">
-        ✨ ${campos.length} campo(s) encontrado(s)
+      <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.7px;margin-bottom:9px">
+        ✨ ${campos.length} campo(s) identificado(s)
       </div>
       ${rows}
-      <div style="margin-top:12px;display:flex;gap:8px">
+      <div style="margin-top:11px;display:flex;gap:8px">
         <button class="btn btn-p btn-sm" onclick="aplicar('${enc}')">✓ Aplicar e revisar</button>
         <button class="btn btn-s btn-sm" onclick="document.getElementById('eres').innerHTML=''">Cancelar</button>
       </div>
@@ -852,7 +924,6 @@ function mostrarExtracao(ex){
 
 function aplicar(enc){
   const ex=JSON.parse(decodeURIComponent(enc));
-  // Aplicar nos campos de _edit para depois renderizar na aba Dados
   Object.keys(ex).forEach(k=>{if(ex[k])_edit[k]=ex[k];});
   renderModal(!_processos.find(p=>p.id===_edit.id));
   tab('dados');
@@ -868,9 +939,32 @@ async function toB64(f){
   });
 }
 
-// FECHAR COM ESC / CLIQUE FORA
+// ══ AUTO REFRESH + ALERTAS DEMURRAGE ════════════════════════
+setInterval(()=>{
+  if(!_u)return;
+  if(document.getElementById('ov').classList.contains('on'))return;
+  fetch('/api/controle/carregar').then(r=>r.json()).then(d=>{
+    if(d.processos&&d.processos.length){
+      _processos=d.processos;
+      renderAll();
+      document.getElementById('lastSync').textContent=
+        new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      // Alertas demurrage 5 dias
+      const alertas=_processos.filter(p=>{
+        const d=demurDias(p);return d!==null&&d===5;
+      });
+      if(alertas.length){
+        toast(`⚠ ${alertas.length} processo(s) com demurrage em 5 dias!`,'warn');
+      }
+    }
+  }).catch(()=>{});
+},60000);
+
+// ESC / clique fora
 document.addEventListener('keydown',e=>{if(e.key==='Escape')fechar();});
-document.getElementById('ov').addEventListener('click',e=>{if(e.target===document.getElementById('ov'))fechar();});
+document.getElementById('ov').addEventListener('click',e=>{
+  if(e.target===document.getElementById('ov'))fechar();
+});
 </script>
 </body>
 </html>
