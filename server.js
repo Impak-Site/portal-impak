@@ -53,18 +53,33 @@ function initDrive() {
 async function driveUpsert(nome, conteudo) {
   if (!driveClient || !FOLDER_ID) return null;
   try {
+    const conteudoStr = typeof conteudo === 'string' ? conteudo : JSON.stringify(conteudo);
+    const { Readable } = require('stream');
+    const stream = Readable.from([conteudoStr]);
+    const media = { mimeType: 'application/json', body: stream };
+
     const { data: lista } = await driveClient.files.list({
       q: `name='${nome}' and '${FOLDER_ID}' in parents and trashed=false`,
       fields: 'files(id)',
     });
-    const media = { mimeType: 'application/json', body: typeof conteudo === 'string' ? conteudo : JSON.stringify(conteudo) };
+
     if (lista.files.length) {
-      await driveClient.files.update({ fileId: lista.files[0].id, media });
+      const stream2 = Readable.from([conteudoStr]);
+      await driveClient.files.update({
+        fileId: lista.files[0].id,
+        media: { mimeType: 'application/json', body: stream2 },
+      });
+      console.log(`Drive: ${nome} atualizado (${(conteudoStr.length/1024).toFixed(0)} KB)`);
       return lista.files[0].id;
     }
+
+    const stream3 = Readable.from([conteudoStr]);
     const { data: f } = await driveClient.files.create({
-      requestBody: { name: nome, parents: [FOLDER_ID] }, media, fields: 'id',
+      requestBody: { name: nome, parents: [FOLDER_ID] },
+      media: { mimeType: 'application/json', body: stream3 },
+      fields: 'id',
     });
+    console.log(`Drive: ${nome} criado (${(conteudoStr.length/1024).toFixed(0)} KB)`);
     return f.id;
   } catch (e) { console.error('Drive upsert error:', e.message); return null; }
 }
