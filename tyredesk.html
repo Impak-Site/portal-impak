@@ -212,6 +212,14 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 /* MISC */
 .empty{text-align:center;padding:40px;color:var(--mu);font-size:13px;font-weight:500}
 .cor{color:var(--or)}.cg{color:#1a9c5b}.cr{color:#c0392b}.cm{color:#4a6480}.cbl{color:#1a7fd4}
+.cambio-chip{background:rgba(26,127,212,.1);border:1px solid rgba(26,127,212,.2);border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;color:var(--ac);cursor:default;white-space:nowrap;}
+.cambio-chip.stale{opacity:.55;border-color:rgba(100,100,100,.2);}
+.imposto-box{background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:8px;padding:14px 16px;margin-top:12px;}
+.imp-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid rgba(26,127,212,.08);}
+.imp-row:last-child{border-bottom:none;font-weight:700;font-size:13px;color:var(--ac);}
+.imp-label{color:var(--mu);}
+.imp-val{font-family:'DM Mono',monospace;font-weight:600;}
+.vbadge{font-size:9px;background:rgba(26,127,212,.08);color:var(--ac);border:1px solid rgba(26,127,212,.2);border-radius:3px;padding:1px 5px;font-weight:700;margin-left:4px;}
 .fw7{font-weight:700}.mono{font-family:var(--sans)}.ml{margin-left:auto}
 .flex{display:flex;align-items:center}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.mb10{margin-bottom:10px}.mb14{margin-bottom:14px}
 .divider{height:1px;background:var(--b1);margin:14px 0}
@@ -440,7 +448,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
     </div>
     <div class="login-title">Acesso Restrito</div>
     <div class="login-sub">Sistema interno — IMPAK Comercial Importadora</div>
-    <div style="font-size:10px;color:#1a7fd4;font-weight:600;letter-spacing:1px;text-align:center;margin-top:-14px;margin-bottom:10px;text-transform:uppercase">Versão 1.0</div>
+    <div style="font-size:10px;color:#1a7fd4;font-weight:600;letter-spacing:1px;text-align:center;margin-top:-14px;margin-bottom:10px;text-transform:uppercase">v2.0 — Câmbio · Impostos · Versões</div>
     <div class="login-error" id="login-error">Senha incorreta. Tente novamente.</div>
     <label class="login-label">Senha</label>
     <input class="login-input" type="password" id="login-pass"
@@ -458,7 +466,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <div class="nl">
     <div class="logo">
       <div class="logo-box">IMPAK</div>
-      <div class="logo-sub">TyreDesk <span style="font-size:10px;opacity:.6">v1.0</span></div>
+      <div class="logo-sub">TyreDesk <span class="vbadge">v2.0</span></div>
     </div>
   </div>
   <button class="nt active" onclick="pg('dash',this)">Dashboard</button>
@@ -467,7 +475,8 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <button class="nt" onclick="pg('catalogo',this)">Catálogo</button>
   <button class="nt" onclick="pg('alertas',this)">Alertas</button>
   <button class="nt" onclick="pg('historico',this)">Histórico</button>
-  <div class="nr">
+  <div class="nr" style="display:flex;align-items:center;gap:10px">
+    <div id="cambio-bar" style="display:flex;gap:6px;align-items:center"></div>
     <div class="abadge" id="abadge" onclick="pg('alertas',document.querySelectorAll('.nt')[4])"></div>
   </div>
 </nav>
@@ -486,7 +495,10 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <div class="card">
     <div class="ch">
       <h3>Importar planilha de preços <span class="badge-novo">NOVO</span></h3>
-      <span class="cm ml" style="font-size:11px;font-weight:500" id="import-status">Base atual: <span id="import-date">carregada na inicialização</span></span>
+      <span class="cm ml" style="font-size:11px;font-weight:500" id="import-status">
+        Base: <span id="import-date" style="font-weight:700;color:var(--ac)">—</span>
+        &nbsp;·&nbsp;<span id="import-fonte" style="font-size:10px;color:var(--mu)">—</span>
+      </span>
     </div>
     <div class="cb">
       <p style="font-size:12px;color:var(--mu);font-weight:500;margin-bottom:14px">
@@ -505,6 +517,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn bor bsm" onclick="document.getElementById('import-file').click()">📤 Selecionar arquivo</button>
         <button class="btn bg2 bsm" onclick="resetBase()">↺ Restaurar base original</button>
+        <button class="btn bor bsm" onclick="abrirVersions()">📋 Versões salvas</button>
         <span style="font-size:11px;color:var(--mu);font-weight:500" id="import-count"></span>
       </div>
     </div>
@@ -660,6 +673,14 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 </div>
 
 <!-- MODAL EMAIL -->
+<!-- MODAL VERSÕES -->
+<div class="mbg" id="modal-versions">
+  <div class="modal" style="max-width:560px">
+    <div class="mh"><h3>📋 Versões da Base</h3><button class="mc" onclick="closeM('modal-versions')">×</button></div>
+    <div class="mb" id="versions-list" style="padding:16px;min-height:80px"></div>
+  </div>
+</div>
+
 <div class="mbg" id="modal-email">
   <div class="modal">
     <div class="mh"><h3>Solicitar Cotação</h3><button class="mc" onclick="closeM('modal-email')">×</button></div>
@@ -708,6 +729,128 @@ let fornecedores = [
   {id:'f5',nome:'TRACMAX/WINDFORCE',contato:'Carol Xiu',email:'info32@chinese-tyres.com',tipos:['PCR'],ultimaCot:null},
 ];
 let mixRows=[],cotRows=[],tipoAtivo='PCR',emailLang='pt',emailFornId=null,editFornId=null;
+
+// ── CÂMBIO ──────────────────────────────────────────────────
+let _cambio = {USD:1, EUR:1, CNY:1, BRL:1, at:null, stale:false};
+
+async function carregarCambio(){
+  try{
+    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL');
+    const d = await r.json();
+    _cambio = {
+      USD: parseFloat(d.USDBRL?.bid||0)||1,
+      EUR: parseFloat(d.EURBRL?.bid||0)||1,
+      CNY: parseFloat(d.CNYBRL?.bid||0)||1,
+      BRL: 1,
+      at: new Date(),
+      stale: false,
+    };
+    renderCambioBar();
+  } catch(e){
+    _cambio.stale = true;
+    renderCambioBar();
+  }
+  setTimeout(carregarCambio, 5*60*1000);
+}
+
+function renderCambioBar(){
+  const bar = document.getElementById('cambio-bar');
+  if(!bar) return;
+  const hora = _cambio.at ? _cambio.at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—';
+  const cls = _cambio.stale ? 'cambio-chip stale' : 'cambio-chip';
+  bar.innerHTML = `
+    <span class="${cls}" title="USD/BRL · ${hora}">USD R$ ${_cambio.USD.toFixed(2)}</span>
+    <span class="${cls}" title="EUR/BRL · ${hora}">EUR R$ ${_cambio.EUR.toFixed(2)}</span>
+    <span class="${cls}" title="CNY/BRL · ${hora}">CNY R$ ${_cambio.CNY.toFixed(4)}</span>`;
+}
+
+function toBRL(valor, moeda){
+  if(!valor||!moeda) return 0;
+  const taxa = _cambio[moeda] || 1;
+  return valor * taxa;
+}
+
+// ── IMPOSTOS BRASILEIROS ─────────────────────────────────────
+// Tabela de alíquotas por NCM de pneus (valores típicos 2026)
+const ALIQUOTAS = {
+  // PCR (pneus de passeio)
+  PCR: { II:16, IPI:0, PIS:2.1, COFINS:9.65, ICMS:12 },
+  // TBR (pneus de carga)
+  TBR: { II:16, IPI:0, PIS:2.1, COFINS:9.65, ICMS:12 },
+};
+
+function calcImpostosBR(precoCIF_BRL, tipo){
+  const al = ALIQUOTAS[tipo] || ALIQUOTAS.PCR;
+  const II    = precoCIF_BRL * (al.II/100);
+  const IPI   = (precoCIF_BRL + II) * (al.IPI/100);
+  const base_pis = precoCIF_BRL + II + IPI;
+  const PIS   = base_pis * (al.PIS/100);
+  const COF   = base_pis * (al.COFINS/100);
+  const base_icms = precoCIF_BRL + II + IPI + PIS + COF;
+  const ICMS  = base_icms / (1 - al.ICMS/100) * (al.ICMS/100);
+  const total = precoCIF_BRL + II + IPI + PIS + COF + ICMS;
+  return {II, IPI, PIS, COFINS:COF, ICMS, total, aliquotas:al};
+}
+
+function renderImpostoBox(precoBRL_unit, tipo, containerId){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  const imp = calcImpostosBR(precoBRL_unit, tipo||tipoAtivo);
+  el.innerHTML = `<div class="imposto-box">
+    <div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
+      Custo estimado DDP (R$/pneu)
+    </div>
+    <div class="imp-row"><span class="imp-label">FOB + Frete CIF</span><span class="imp-val">R$ ${fmt(precoBRL_unit)}</span></div>
+    <div class="imp-row"><span class="imp-label">II (${imp.aliquotas.II}%)</span><span class="imp-val">R$ ${fmt(imp.II)}</span></div>
+    <div class="imp-row"><span class="imp-label">IPI (${imp.aliquotas.IPI}%)</span><span class="imp-val">R$ ${fmt(imp.IPI)}</span></div>
+    <div class="imp-row"><span class="imp-label">PIS (${imp.aliquotas.PIS}%)</span><span class="imp-val">R$ ${fmt(imp.PIS)}</span></div>
+    <div class="imp-row"><span class="imp-label">COFINS (${imp.aliquotas.COFINS}%)</span><span class="imp-val">R$ ${fmt(imp.COFINS)}</span></div>
+    <div class="imp-row"><span class="imp-label">ICMS (${imp.aliquotas.ICMS}%)</span><span class="imp-val">R$ ${fmt(imp.ICMS)}</span></div>
+    <div class="imp-row" style="margin-top:4px;padding-top:6px;border-top:2px solid rgba(26,127,212,.15)">
+      <span>Total DDP</span><span class="imp-val">R$ ${fmt(imp.total)}</span>
+    </div>
+  </div>`;
+}
+
+// ── INDICADOR DE BASE ────────────────────────────────────────
+function atualizarStatusBase(fonte, total){
+  const dateEl = document.getElementById('import-date');
+  const fonteEl = document.getElementById('import-fonte');
+  if(dateEl) dateEl.textContent = total + ' itens · ' + new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  if(fonteEl){
+    if(fonte==='drive'){
+      fonteEl.innerHTML = '<span style="color:#16a34a;font-weight:700">● Drive</span>';
+    } else if(fonte==='upload'){
+      fonteEl.innerHTML = '<span style="color:var(--ac);font-weight:700">● Upload</span>';
+    } else {
+      fonteEl.innerHTML = '<span style="color:var(--or);font-weight:700">● Base embutida</span>';
+    }
+  }
+}
+
+// ── VERSIONAMENTO DA BASE ────────────────────────────────────
+const MAX_SNAPSHOTS = 5;
+let _snapshots = []; // [{label, data, ts}]
+
+function salvarSnapshot(label){
+  _snapshots.unshift({
+    label: label || 'Backup ' + new Date().toLocaleString('pt-BR'),
+    data: JSON.parse(JSON.stringify(COTACOES)),
+    ts: Date.now(),
+    total: COTACOES.length,
+  });
+  if(_snapshots.length > MAX_SNAPSHOTS) _snapshots.pop();
+  toast('Versão salva: ' + label);
+}
+
+function restaurarSnapshot(idx){
+  const snap = _snapshots[idx];
+  if(!snap) return;
+  if(!confirm('Restaurar versão "' + snap.label + '" com ' + snap.total + ' itens?')) return;
+  COTACOES = JSON.parse(JSON.stringify(snap.data));
+  renderDash(); renderCat();
+  toast('Base restaurada: ' + snap.label);
+}
 let ultimaAnalise=null;
 let catFiltered=[],catSortKey='f',catSortAsc=true,catPage=0;
 const CAT_PER = 50;
@@ -918,6 +1061,10 @@ function parsePCR_INVOVIC(rows){
 }
 
 async function handleImport(files){
+  // Salvar versão anterior antes de importar (máximo 5 versões)
+  if(COTACOES.length > 0){
+    salvarSnapshot('Antes de importar ' + Array.from(files).map(f=>f.name.split('.')[0]).join(', '));
+  }
   if(!files||!files.length)return;
   const prog=document.getElementById('import-progress');
   prog.style.display='block';
@@ -953,6 +1100,7 @@ async function handleImport(files){
       // remover entradas antigas deste fornecedor e adicionar novas
       COTACOES=COTACOES.filter(c=>c.f!==forn);
       COTACOES=[...COTACOES,...novos.map(c=>Object.assign({},c,{pat:c.pat||c.md||''}))];
+      atualizarStatusBase('upload', COTACOES.length);
 
       // marcar fornecedor como atualizado
       const fo=fornecedores.find(x=>x.nome===forn);
@@ -1077,6 +1225,23 @@ function syncC(t){
 }
 
 // ── EMAIL ─────────────────────────────────────────────
+function abrirVersions(){
+  const el = document.getElementById('versions-list');
+  if(!_snapshots.length){
+    el.innerHTML='<div style="text-align:center;padding:20px;color:var(--mu)">Nenhuma versão salva.<br><small>Versões são salvas automaticamente antes de cada importação.</small></div>';
+  } else {
+    el.innerHTML = _snapshots.map((s,i)=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd)">
+        <div>
+          <div style="font-weight:600;font-size:13px">${s.label}</div>
+          <div style="font-size:11px;color:var(--mu)">${s.total} itens · ${new Date(s.ts).toLocaleString('pt-BR')}</div>
+        </div>
+        <button class="btn bor bsm" onclick="restaurarSnapshot(${i});closeM('modal-versions')">Restaurar</button>
+      </div>`).join('');
+  }
+  document.getElementById('modal-versions').style.display='flex';
+}
+
 function openEmail(fid){
   emailFornId=fid;const f=fornecedores.find(x=>x.id===fid);
   document.getElementById('em-dest').textContent=`${f.nome} <${f.email}>`;
@@ -1095,9 +1260,29 @@ function renderEmail(){
   const f=fornecedores.find(x=>x.id===emailFornId);if(!f)return;
   const tipo=document.getElementById('em-tipo').value;
   const tn={PCR:'PCR (Passeio)',TBR:'TBR (Carga)',AGR:'AGR (Agrícola)',OTR:'OTR (Industrial)'}[tipo];
-  const txt=emailLang==='pt'
-    ?`Bom dia, ${f.contato}! Tudo bem?\n\nFavor atualizar a tabela de preço dos pneus ${tn}.\n\nAtenciosamente,\nJean\nIMPAK Importadora`
-    :`Good morning, ${f.contato}! Hope you are well.\n\nPlease send the updated price list for ${tn} tyres.\n\nBest regards,\nJean\nIMPAK Importadora`;
+
+  // Pegar medidas do mix atual para incluir no email
+  const medidasMix = mixRows.filter(r=>r.medida).map(r=>r.medida.trim());
+  // Pegar medidas do fornecedor na base
+  const medidasForn = [...new Set(
+    COTACOES.filter(c=>c.f&&c.f.toUpperCase().includes(f.nome.split('/')[0].toUpperCase()))
+    .map(c=>c.s||c.medida||'').filter(Boolean)
+  )].slice(0,20);
+
+  const temMedidas = medidasMix.length > 0;
+  const listaMedidas = temMedidas ? medidasMix : medidasForn;
+
+  const medidasStr_pt = listaMedidas.length
+    ? '\n\nMedidas de interesse:\n' + listaMedidas.map(m=>'  • ' + m).join('\n')
+    : '';
+  const medidasStr_en = listaMedidas.length
+    ? '\n\nSizes of interest:\n' + listaMedidas.map(m=>'  • ' + m).join('\n')
+    : '';
+
+  const txt = emailLang==='pt'
+    ? `Bom dia, ${f.contato}! Tudo bem?\n\nFavor enviar tabela de preços atualizada para pneus ${tn}.${medidasStr_pt}\n\nAtenciosamente,\nJean\nIMPAK Comercial Importadora\nimpak@impak.com.br`
+    : `Good morning, ${f.contato}! Hope you are well.\n\nPlease send the updated price list for ${tn} tyres.${medidasStr_en}\n\nBest regards,\nJean\nIMPAK Comercial Importadora\nimpak@impak.com.br`;
+
   document.getElementById('email-prev').textContent=txt;
 }
 function copiarEmail(){
@@ -1291,13 +1476,22 @@ function analisar(){
     return{...m,melhor:ops[0].forn,preco:ops[0].preco,peso:ops[0].peso,sub:ops[0].preco*m.qtde,moq:ops[0].moq||0,li:ops[0].li||'',pr:ops[0].pr||'',pat:ops[0].pat||'',todas:ops};
   });
   const totOtim=otim.reduce((s,o)=>s+(o.sub||0),0);
+  const totOtimBRL = _cambio.USD > 1
+    ? otim.reduce((s,o)=>{ if(!o.sub||!o.melhor) return s; const t=_cambio[getMoeda(o.melhor)]||_cambio.USD||1; return s+o.sub*t; },0)
+    : 0;
   const econ=comp[0]?comp[0].total-totOtim:0;
   const maxT=Math.max(...sorted.map(r=>r.parcial));
 
   const area=document.getElementById('results-area');area.innerHTML='';
 
+  const cambioInfo = _cambio.at
+    ? `USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${_cambio.EUR.toFixed(2)}`
+    : 'câmbio não carregado';
   const c1=document.createElement('div');c1.className='card';
-  c1.innerHTML=`<div class="ch"><h3>Ranking de Fornecedores</h3><span class="cm ml" style="font-size:11px;font-weight:600">${moeda} · ${tp}</span></div>
+  c1.innerHTML=`<div class="ch"><h3>Ranking de Fornecedores</h3>
+    <span class="cm ml" style="font-size:11px;font-weight:600">${moeda} · ${tp}</span>
+    <span class="cambio-chip ${_cambio.stale?'stale':''}" style="margin-left:8px" title="Câmbio em tempo real">${cambioInfo}</span>
+  </div>
   <table class="rtable"><thead><tr><th>#</th><th>Fornecedor</th><th>Total mix</th><th>Cobertura</th><th></th><th></tr></thead><tbody>
   ${sorted.map((r,i)=>`<tr class="${i===0&&r.total!==null?'brow':''}">
     <td class="cm" style="font-size:10px">${i+1}</td>
@@ -1310,8 +1504,9 @@ function analisar(){
   // Botão exportar
   const btnExp=document.createElement('div');
   btnExp.style.cssText='display:flex;justify-content:flex-end;margin-bottom:12px';
-  btnExp.innerHTML=`<button class="btn bp" onclick="exportarExcel()" style="gap:6px;display:flex;align-items:center">
-    📥 Exportar Excel</button>`;
+  btnExp.innerHTML=`
+    <button class="btn bp" onclick="exportarExcel()" style="gap:6px;display:flex;align-items:center">📥 Exportar Excel</button>
+    <button class="btn bor" onclick="exportarComImpostos()" style="gap:6px;display:flex;align-items:center;margin-left:8px">🇧🇷 Exportar c/ Impostos BRL</button>`;
   area.appendChild(btnExp);
 
   area.appendChild(c1);
@@ -1384,7 +1579,10 @@ function analisar(){
       const pkgCellO=pkg?`<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`:'<span class="peso-missing">—</span>';
       return `<tr><td><span class="mpill">${o.medida}</span></td><td class="cm">${o.qtde}</td><td class="cg fw7">${o.melhor||'<span class="cr">sem cot.</span>'}</td><td class="cor">${o.preco?getMoeda(o.melhor||'')+' '+fmtP(o.preco):'—'}</td><td class="cm">${o.peso?fmtKg(o.peso)+'kg':'—'}</td><td>${pkgCellO}</td><td>${o.sub?getMoeda(o.forn||'')+' '+fmtP(o.sub):'—'}</td></tr>`;
     }).join('')}
-    <tr style="background:rgba(26,127,212,.07)"><td colspan="5" class="cm fw7">TOTAL OTIMIZADO</td><td class="cor fw7">${getMoeda(otim.find(o=>o.melhor)?.melhor||'')} ${fmtP(totOtim)}</td></tr>
+    <tr style="background:rgba(26,127,212,.07)"><td colspan="5" class="cm fw7">TOTAL OTIMIZADO</td>
+      <td class="cor fw7">${getMoeda(otim.find(o=>o.melhor)?.melhor||'')} ${fmtP(totOtim)}
+        ${totOtimBRL>0?`<span style="font-size:10px;color:var(--mu);font-weight:400;margin-left:6px">≈ R$ ${fmtP(totOtimBRL)}</span>`:''}
+      </td></tr>
     </tbody></table>`;
     area.appendChild(c3);
   }
@@ -1530,6 +1728,7 @@ window.addEventListener('load', async function(){
             window._BASE_ORIGINAL = driveBase;
             COTACOES = window._BASE_ORIGINAL.slice();
             console.log('Base Drive usada:', COTACOES.length, 'itens');
+            atualizarStatusBase('drive', COTACOES.length);
           }
         }
       } catch(e){ console.warn('Drive:', e.message); }
@@ -1904,6 +2103,61 @@ async function limparHistorico() {
 
 
 // ══ EXPORTAR PARA EXCEL ══════════════════════════════════════════════
+function exportarComImpostos(){
+  if(!ultimaAnalise){ toast('Faça uma análise primeiro'); return; }
+  const { mix, cots, otim, moeda } = ultimaAnalise;
+  if(!_cambio.USD || _cambio.USD===1){
+    toast('⚠ Câmbio não carregado — abra a análise com câmbio atualizado');
+  }
+  const taxa = _cambio[moeda] || _cambio.USD || 1;
+  const tipo = tipoAtivo;
+
+  const rows = [
+    ['Medida','Qtde','Melhor Fornecedor','Preço FOB USD/un','Preço FOB BRL/un',
+     'II','IPI','PIS','COFINS','ICMS','Total DDP BRL/un','Total DDP BRL mix',
+     'Câmbio '+moeda+'/BRL','Data']
+  ];
+
+  otim.forEach(o=>{
+    if(!o.preco) return;
+    const fobBRL = o.preco * taxa;
+    const imp = calcImpostosBR(fobBRL, tipo);
+    rows.push([
+      o.medida, o.qtde,
+      o.melhor||'—',
+      o.preco.toFixed(2),
+      fobBRL.toFixed(2),
+      imp.II.toFixed(2), imp.IPI.toFixed(2), imp.PIS.toFixed(2),
+      imp.COFINS.toFixed(2), imp.ICMS.toFixed(2),
+      imp.total.toFixed(2),
+      (imp.total * o.qtde).toFixed(2),
+      taxa.toFixed(4),
+      new Date().toLocaleDateString('pt-BR')
+    ]);
+  });
+
+  // Total
+  const totalDDP = otim.reduce((s,o)=>{
+    if(!o.preco) return s;
+    return s + calcImpostosBR(o.preco*taxa, tipo).total * o.qtde;
+  }, 0);
+  rows.push(['TOTAL DDP','','','','','','','','','','',totalDDP.toFixed(2),'','']);
+
+  // Exportar via SheetJS se disponível, senão CSV
+  if(typeof XLSX !== 'undefined'){
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Análise com Impostos');
+    XLSX.writeFile(wb, 'IMPAK_Analise_Impostos_'+new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')+'.xlsx');
+  } else {
+    const csv = rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+    a.download='IMPAK_Impostos.csv'; a.click();
+  }
+  toast('✓ Exportado com impostos BRL!');
+}
+
 function exportarExcel() {
   if (!ultimaAnalise) { toast('Faça uma análise primeiro'); return; }
   const { mix, cots, sorted, otim, moeda, tp } = ultimaAnalise;
@@ -2008,11 +2262,14 @@ function exportarExcel() {
 // ── INIT ──────────────────────────────────────────────
 async function init(){
   await carregarFornecedores();
+  carregarCambio(); // Câmbio em tempo real
+  atualizarStatusBase('embed', COTACOES.length);
   renderForn();renderDash();updateSizeDl();
   document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
   addMix('295/80R22.5','200');addMix('275/80R22.5','100');
 }
 // init() é chamado pelo doLogin() após descriptografia
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </body>
 </html>
