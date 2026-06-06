@@ -25,7 +25,12 @@ const USUARIOS = [
   { usuario: 'narcelio',  email: 'Narcelio@impak.com.br',    senha: 'Narcelio@2026',      modulos: ['tyredesk','processos'], nome: 'Narcelio', role: 'gerente',  displayName: 'Narcelio'  },
   { usuario: 'jean',      email: 'Jean@impak.com.br',        senha: 'Jeanimpak2026',      modulos: ['tyredesk','processos'], nome: 'Jean',     role: 'gerente',  displayName: 'Jean'      },
   { usuario: 'paula',     email: 'Paula@impak.com.br',       senha: 'Paula@2026',         modulos: ['processos'],            nome: 'Paula',    role: 'gerente',  displayName: 'Paula'     },
+  { usuario: 'bianca',    email: 'Bianca@impak.com.br',      senha: 'Bianca@2026',        modulos: ['processos'],            nome: 'Bianca',   role: 'gerente',  displayName: 'Bianca'    },
   { usuario: 'emanuelly', email: 'importacao1@impak.com.br', senha: 'EmanuellyImpak2026', modulos: ['processos'],            nome: 'Emanuelly',role: 'analista', displayName: 'Emanuelly' },
+  { usuario: 'italo',     email: 'Italo@impak.com.br',       senha: 'Italo@2026',         modulos: ['processos'],            nome: 'Italo',    role: 'analista', displayName: 'Italo'     },
+  { usuario: 'maria',     email: 'Maria@impak.com.br',       senha: 'Maria@2026',         modulos: ['processos'],            nome: 'Maria',    role: 'analista', displayName: 'Maria'     },
+  { usuario: 'joyce',     email: 'Joyce@impak.com.br',       senha: 'Joyce@2026',         modulos: ['processos'],            nome: 'Joyce',    role: 'analista', displayName: 'Joyce'     },
+  { usuario: 'neide',     email: 'Neide@impak.com.br',       senha: 'Neide@2026',         modulos: ['processos'],            nome: 'Neide',    role: 'analista', displayName: 'Neide'     },
 ];
 
 // ── GOOGLE DRIVE ──────────────────────────────────────────────
