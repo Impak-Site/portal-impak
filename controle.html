@@ -231,6 +231,13 @@ input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowe
   <div class="cambio-bar" id="cambioBar"></div>
   <div class="ml">
     <span class="ubadge" id="ubadge"></span>
+    <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:3px 8px;">
+      <span style="font-size:10px;color:rgba(255,255,255,.5);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">API Key</span>
+      <input id="apiKeyInput" type="password" placeholder="sk-ant-..." 
+        style="background:transparent;border:none;color:#fff;font-family:'DM Mono',monospace;font-size:11px;outline:none;width:140px;"
+        oninput="saveApiKey(this.value)">
+      <span id="apiStatus" style="font-size:14px">⚪</span>
+    </div>
     <button class="btn-out" onclick="doLogout()">Sair</button>
   </div>
 </div>
@@ -409,8 +416,24 @@ function entrar(f){
   document.getElementById('topbar').style.display='flex';
   document.getElementById('wrap').style.display='block';
   document.getElementById('ubadge').textContent=f.n;
+  // Carregar API key salva
+  try{
+    const saved=localStorage.getItem('impak_apikey')||'';
+    if(saved){_apiKey=saved;document.getElementById('apiKeyInput').value=saved;}
+  }catch(e){}
+  updateApiStatus();
   carregarCambio();
   load();
+}
+function saveApiKey(v){
+  _apiKey=v.trim();
+  try{localStorage.setItem('impak_apikey',v.trim());}catch(e){}
+  updateApiStatus();
+}
+function updateApiStatus(){
+  const el=document.getElementById('apiStatus');
+  if(!el)return;
+  el.textContent=_apiKey&&_apiKey.length>20?'🟢':'⚪';
 }
 function doLogout(){
   _u=null;
@@ -419,7 +442,7 @@ function doLogout(){
   document.getElementById('wrap').style.display='none';
 }
 fetch('/api/me').then(r=>r.json()).then(d=>{
-  if(d.logado){const f=USERS.find(x=>x.u===d.usuario);if(f){_apiKey=d.senha||'';entrar(f);}}
+  if(d.logado){const f=USERS.find(x=>x.u===d.usuario);if(f){entrar(f);}}
 }).catch(()=>{});
 
 // ══ CÂMBIO ════════════════════════════════════════════════════
@@ -895,7 +918,7 @@ finalidade (DIRETO/LCL/DUIMP).
 Responda SOMENTE JSON válido, sem markdown. Omita campos não encontrados.`});
 
     const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',headers:{'Content-Type':'application/json'},
+      method:'POST',headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,
         messages:[{role:'user',content:parts}]})
     });
