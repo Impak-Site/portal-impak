@@ -902,7 +902,8 @@ async function extrair(){
     }));
     parts.push({type:'text',text:`Você é especialista em documentos de importação brasileira de pneus.
 Analise os documentos (PI, CI, PL, HBL, CE, DI, MAPA, LPCO, NF) e extraia:
-referencia, cliente, produtos (nome do produto/pneu), marca, agente, porto, armador, navio,
+referencia (apenas o código, ex: UD25-340, sem parênteses ou números extras),
+cliente, produtos (APENAS UMA STRING com o nome do produto/pneu, ex: "PNEU TBR 295/80R22.5"), marca, agente, porto, armador, navio,
 container (número do container), quant_containers (quantidade de containers, número inteiro),
 hbl, mbl, eta (YYYY-MM-DD), data_embarque (YYYY-MM-DD), data_chegada (YYYY-MM-DD),
 data_presenca (YYYY-MM-DD), data_prontidao (YYYY-MM-DD), data_pedido (YYYY-MM-DD),
@@ -945,6 +946,19 @@ Responda SOMENTE JSON válido, sem markdown. Omita campos não encontrados.`});
 }
 
 function mostrarExtracao(ex){
+  // Normalizar valores — converter objetos/arrays para string
+  Object.keys(ex).forEach(k=>{
+    if(ex[k]===null||ex[k]===undefined){ delete ex[k]; return; }
+    if(typeof ex[k]==='object'){
+      // Array de strings — juntar com vírgula
+      if(Array.isArray(ex[k])) ex[k]=ex[k].join(', ');
+      else ex[k]=Object.values(ex[k]).filter(Boolean).join(' ');
+    }
+    ex[k]=String(ex[k]).trim();
+    if(!ex[k]) delete ex[k];
+  });
+  // Limpar referência
+  if(ex.referencia) ex.referencia=ex.referencia.replace(/\s*\(\d+\)\s*/g,'').trim();
   const campos=Object.keys(ex).filter(k=>FLABELS[k]);
   if(!campos.length){
     document.getElementById('eres').innerHTML=`<div style="color:var(--text-dim);padding:12px;font-size:13px">Nenhum campo identificado.</div>`;
@@ -971,8 +985,19 @@ function mostrarExtracao(ex){
 
 function aplicar(enc){
   const ex=JSON.parse(decodeURIComponent(enc));
-  Object.keys(ex).forEach(k=>{if(ex[k])_edit[k]=ex[k];});
-  renderModal(!_processos.find(p=>p.id===_edit.id));
+  Object.keys(ex).forEach(k=>{
+    if(ex[k]===null||ex[k]===undefined) return;
+    // Converter objetos para string
+    const v = typeof ex[k]==='object' ? JSON.stringify(ex[k]) : String(ex[k]);
+    // Limpar referência (remover números entre parênteses)
+    if(k==='referencia'){
+      _edit[k] = v.replace(/\s*\(\d+\)\s*/g,'').trim();
+    } else {
+      _edit[k] = v;
+    }
+  });
+  const isNovo=!_processos.find(p=>p.id===_edit.id);
+  renderModal(isNovo);
   tab('dados');
   toast(`${Object.keys(ex).length} campo(s) preenchidos — revise e salve.`,'ok');
 }
