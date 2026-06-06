@@ -497,21 +497,19 @@ function save(cb){
   .then(r=>r.json())
   .then(d=>{
     if(d.ok){toast('Salvo ✓','ok');if(cb)cb();}
-    else toast('Erro ao salvar.','err');
-  }).catch(()=>toast('Sem conexão.','err'));
+    else toast('Erro ao salvar no servidor.','err');
+  }).catch(()=>toast('Sem conexão com servidor.','err'));
 }
+
 function load(){
-  // Carregar processos direto — login local já foi feito
   fetch('/api/controle/carregar').then(r=>{
     if(!r.ok){
-      // Sessão expirou — redirecionar para login do portal
-      if(r.status===401||r.status===302||r.status===403){
+      if(r.status===401||r.status===403){
         window.location.href='/login?destino=/controle';
-        return;
+        return null;
       }
-      toast('Erro ao carregar ('+r.status+').','err');
-      renderAll();
-      return;
+      toast('Erro ao carregar dados ('+r.status+').','err');
+      return null;
     }
     return r.json();
   }).then(d=>{
@@ -522,8 +520,7 @@ function load(){
     if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   }).catch(e=>{
     console.error('Erro carregar:', e);
-    toast('Erro ao carregar dados — verifique sua conexão.','err');
-    renderAll();
+    toast('Erro ao carregar dados.','err');
   });
 }
 
@@ -549,7 +546,8 @@ function demurDias(p){
   if(!chegada)return null;
   const ft=parseInt(p.free_time)||21;
   const venc=new Date(chegada.getTime()+ft*86400000);
-  return Math.ceil((venc-new Date())/86400000);
+  const diff=Math.ceil((venc-new Date())/86400000);
+  return isNaN(diff)?null:diff;
 }
 function toast(msg,t='ok'){
   const el=document.getElementById('toast');
@@ -671,7 +669,7 @@ function render(){
 }
 
 function demurCell(d){
-  if(d===null)return'<span class="dc-n">—</span>';
+  if(d===null||d===undefined||isNaN(d))return'<span class="dc-n">N/D</span>';
   const cls=d<=5?'dc-e':d<=10?'dc-w':'dc-ok';
   const icon=d<=5?'🔴':d<=10?'⚠':'✓';
   return`<span class="demur-chip ${cls}">${icon} ${d}d</span>`;
