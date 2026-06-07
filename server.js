@@ -605,9 +605,17 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
       return res.status(400).json({ erro: 'Conteúdo inválido' });
     }
 
-    // Usar API key do ambiente Railway ou a enviada pelo cliente
-    const key = process.env.ANTHROPIC_API_KEY || apiKey;
-    if (!key) return res.status(400).json({ erro: 'API key não configurada' });
+    // Prioridade: key do cliente (digitada pelo usuário) > env Railway
+    // A key do cliente tem prioridade pois é a que o usuário configurou
+    const keyCliente = (apiKey || '').trim();
+    const keyEnv     = (process.env.ANTHROPIC_API_KEY || '').trim();
+    const key        = keyCliente.length > 20 ? keyCliente : keyEnv;
+
+    console.log(`/api/analisar: key presente=${!!key}, tamanho=${key.length}, fonte=${keyCliente.length>20?'cliente':'env'}`);
+
+    if (!key || key.length < 20) {
+      return res.status(400).json({ erro: 'API key não configurada. Configure a API Key no sistema.' });
+    }
 
     // Timeout de 120s no servidor (documentos grandes podem demorar)
     const controller = new AbortController();
