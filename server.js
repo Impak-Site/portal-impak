@@ -552,6 +552,39 @@ app.post('/api/controle/salvar', auth('processos'), async (req, res) => {
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// ── API: SNAPSHOTS DA BASE ────────────────────────────────────
+app.post('/api/base/salvar-snapshots', auth('tyredesk'), async (req, res) => {
+  try {
+    const { snapshots } = req.body;
+    await driveUpsert('tyredesk_snapshots.json', snapshots);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
+  try {
+    const snapshots = await driveRead('tyredesk_snapshots.json');
+    res.json({ ok: true, snapshots: snapshots || [] });
+  } catch (e) { res.json({ ok: true, snapshots: [] }); }
+});
+
+// ── API: FORNECEDORES (datas de cotação) ──────────────────────
+app.post('/api/base/salvar-fornecedores', auth('tyredesk'), async (req, res) => {
+  try {
+    const { fornecedores } = req.body;
+    await driveUpsert('tyredesk_fornecedores.json', fornecedores);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.get('/api/base/carregar-fornecedores', auth(), async (req, res) => {
+  try {
+    const fornecedores = await driveRead('tyredesk_fornecedores.json');
+    if (fornecedores) res.json({ ok: true, fornecedores });
+    else res.json({ ok: false, fornecedores: null });
+  } catch (e) { res.json({ ok: false, fornecedores: null }); }
+});
+
 // ── HEALTH ────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ ok: true }));
 
