@@ -1165,6 +1165,22 @@ function coletar(){
 function salvar(){
   const dados=coletar();
   if(!dados.referencia){toast('Informe a referência.','err');return;}
+  // Detectar duplicata (só para processos novos)
+  const isNovoPre = !_processos.find(p=>p.id===_edit.id);
+  if(isNovoPre){
+    const duplicata = _processos.find(p=>
+      p.referencia && dados.referencia &&
+      p.referencia.trim().toUpperCase()===dados.referencia.trim().toUpperCase() &&
+      p.id !== _edit.id
+    );
+    if(duplicata){
+      if(!confirm(`Já existe processo "${duplicata.referencia}" (${duplicata.cliente||'—'}, fase: ${duplicata.fase||'—'}).
+
+Deseja criar mesmo assim?`)){
+        return;
+      }
+    }
+  }
   const now=new Date().toLocaleString('pt-BR');
   const quem=_u.n;
   if(!_edit._meta)_edit._meta={};
@@ -1860,7 +1876,11 @@ async function processarExcels(files){
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({processos: total})
     });
-    const d = await resp.json();
+    const d = await safeJson(resp);
+    if(!d){
+      setStatus('Sessão expirada. Faça login novamente.');
+      return;
+    }
     setBar(100);
 
     const el = document.getElementById('impResult');
