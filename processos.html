@@ -1759,23 +1759,23 @@ async function runAnalysis(){
 
     setStep(3);
 
-    // Timeout via Promise.race — sem signal que causa conflito com extensões do Chrome
-    const fetchPromise = fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,messages:[{role:'user',content}]}),
+    // Chamada via servidor (proxy) — sem CORS, sem erro de channel, API key segura
+    const resp = await fetch('/api/analisar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, apiKey: _apiKey }),
     });
-    const timeoutPromise = new Promise((_,reject)=>
-      setTimeout(()=>reject(new Error('A análise demorou mais de 90 segundos. Tente com menos documentos ou documentos menores.')), 90000)
-    );
-    const resp = await Promise.race([fetchPromise, timeoutPromise]);
 
     if(!resp.ok){
-      const e=await resp.json().catch(()=>({}));
-      throw new Error('API erro '+resp.status+': '+(e?.error?.message||resp.statusText));
+      let errMsg = 'Erro ' + resp.status;
+      try{ const e = await resp.json(); errMsg = e.erro || errMsg; }catch(e){}
+      throw new Error(errMsg);
     }
 
-    const data=await resp.json();
+    const proxy = await resp.json();
+    if(!proxy.ok) throw new Error(proxy.erro || 'Erro desconhecido na análise');
+
+    const data = proxy.data;
     const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
 
     let result;
