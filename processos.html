@@ -1467,7 +1467,13 @@ window.onload = function(){
       _apiKey = saved.trim();
       var inp = document.getElementById('apiKeyInput');
       if(inp) inp.value = saved.trim();
-  // Close modals on ESC key
+      // Atualizar indicador visual e habilitar botão
+      updateApiStatus();
+      checkReady();
+    }
+  }catch(e){}
+
+  // Fechar modais com ESC
   document.addEventListener('keydown', function(e){
     if(e.key === 'Escape'){
       var mb = document.getElementById('modalBg');
@@ -1476,8 +1482,6 @@ window.onload = function(){
       if(gmb && gmb.style.display !== 'none') gmb.style.display = 'none';
     }
   });
-    }
-  }catch(e){}
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────
@@ -1567,6 +1571,9 @@ function showPage(id){
     var ra2=document.getElementById('resultArea');
     if(ra2) ra2.style.display='none';
     setupDropZone();
+    // Garantir que API key salva é lida e botão habilitado
+    updateApiStatus();
+    checkReady();
   }
   document.documentElement.scrollTop=0; document.body.scrollTop=0;
 }
@@ -1709,7 +1716,7 @@ function setStep(n){
 
 async function runAnalysis(){
   const apiKey = getApiKey();
-  if(!apiKey.startsWith('sk-ant-')){ showToast('Configure sua API Key primeiro!','err'); return; }
+  if(!apiKey || apiKey.length < 20){ showToast('Configure sua API Key primeiro!','err'); return; }
 
   document.getElementById('btnAnalyze').disabled=true;
   document.getElementById('loadingBox').classList.add('show');
