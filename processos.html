@@ -1759,23 +1759,16 @@ async function runAnalysis(){
 
     setStep(3);
 
-    // Timeout de 90s — documentos grandes podem demorar
-    const _ctrl = new AbortController();
-    const _timeout = setTimeout(()=>_ctrl.abort(), 90000);
-    let resp;
-    try {
-      resp = await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,messages:[{role:'user',content}]}),
-        signal: _ctrl.signal,
-      });
-    } catch(fetchErr) {
-      clearTimeout(_timeout);
-      if(fetchErr.name==='AbortError') throw new Error('A análise demorou mais de 90 segundos. Tente com menos documentos ou documentos menores.');
-      throw fetchErr;
-    }
-    clearTimeout(_timeout);
+    // Timeout via Promise.race — sem signal que causa conflito com extensões do Chrome
+    const fetchPromise = fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,messages:[{role:'user',content}]}),
+    });
+    const timeoutPromise = new Promise((_,reject)=>
+      setTimeout(()=>reject(new Error('A análise demorou mais de 90 segundos. Tente com menos documentos ou documentos menores.')), 90000)
+    );
+    const resp = await Promise.race([fetchPromise, timeoutPromise]);
 
     if(!resp.ok){
       const e=await resp.json().catch(()=>({}));
