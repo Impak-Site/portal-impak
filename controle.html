@@ -677,14 +677,34 @@ function saveProcesso(processo, cb){
 }
 
 // Carregar índice leve (só campos da tabela)
+// Parsear resposta HTTP com segurança — detecta HTML de redirect de sessão
+async function safeJson(r){
+  const ct = r.headers.get('content-type')||'';
+  if(!ct.includes('application/json')){
+    // Servidor retornou HTML — provavelmente redirect de login
+    const text = await r.text();
+    if(text.includes('<!DOCTYPE')||text.includes('<html')){
+      window.location.href='/login?destino=/controle';
+      return null;
+    }
+    throw new Error('Resposta inesperada do servidor');
+  }
+  return r.json();
+}
+
 function load(){
   sbStatus('saving','Carregando...');
-  fetch('/api/controle/index').then(r=>{
+  fetch('/api/controle/index').then(async r=>{
     if(!r.ok){
-      if(r.status===401||r.status===403){ window.location.href='/login?destino=/controle'; return null; }
-      return fetch('/api/controle/carregar').then(r2=>r2.json());
+      if(r.status===401||r.status===403||r.status===302){
+        window.location.href='/login?destino=/controle';
+        return null;
+      }
+      // Fallback para rota antiga
+      const r2 = await fetch('/api/controle/carregar');
+      return safeJson(r2);
     }
-    return r.json();
+    return safeJson(r);
   }).then(d=>{
     if(!d) return;
     _processos = d.index || d.processos || [];
@@ -705,7 +725,7 @@ function carregarProcessoCompleto(id, cb){
   if(_cache[id]){ cb(_cache[id]); return; }
 
   // 2. Buscar do Drive
-  fetch('/api/controle/processo/'+id).then(r=>r.json()).then(d=>{
+  fetch('/api/controle/processo/'+id).then(async r=>safeJson(r)).then(d=>{
     if(d.processo){
       _cache[id] = d.processo;
       cb(d.processo);
@@ -1606,9 +1626,9 @@ function calcularFase(p){
 setInterval(()=>{
   if(!_u)return;
   if(document.getElementById('ov').classList.contains('on'))return;
-  fetch('/api/controle/index').then(r=>{
+  fetch('/api/controle/index').then(async r=>{
     if(!r.ok) return null;
-    return r.json();
+    return safeJson(r);
   }).then(d=>{
     if(!d||!(d.index||d.processos)) return;
     const lista=d.index||d.processos||[];
