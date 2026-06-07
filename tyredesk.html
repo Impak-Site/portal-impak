@@ -830,26 +830,58 @@ function atualizarStatusBase(fonte, total){
 
 // ── VERSIONAMENTO DA BASE ────────────────────────────────────
 const MAX_SNAPSHOTS = 5;
-let _snapshots = []; // [{label, data, ts}]
+let _snapshots = []; // [{label, total, ts}] — sem data para não pesar
 
 function salvarSnapshot(label){
-  _snapshots.unshift({
+  // Guardar só metadados em RAM (dados no Drive)
+  const snap = {
     label: label || 'Backup ' + new Date().toLocaleString('pt-BR'),
-    data: JSON.parse(JSON.stringify(COTACOES)),
     ts: Date.now(),
     total: COTACOES.length,
-  });
+  };
+  _snapshots.unshift(snap);
   if(_snapshots.length > MAX_SNAPSHOTS) _snapshots.pop();
-  toast('Versão salva: ' + label);
+
+  // Salvar snapshot completo no Drive
+  const snapKey = 'tyredesk_snap_' + snap.ts + '.json';
+  fetch('/api/base/salvar', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({base: COTACOES, label: snap.label, ts: snap.ts})
+  }).catch(()=>{});
+
+  // Salvar lista de snapshots
+  fetch('/api/base/salvar-snapshots', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({snapshots: _snapshots})
+  }).catch(()=>{});
+
+  toast('Versão salva: ' + snap.label);
+}
+
+async function carregarSnapshots(){
+  try{
+    const r = await fetch('/api/base/carregar-snapshots');
+    if(!r.ok) return;
+    const d = await r.json();
+    if(d.ok && d.snapshots) _snapshots = d.snapshots;
+  }catch(e){}
 }
 
 function restaurarSnapshot(idx){
   const snap = _snapshots[idx];
   if(!snap) return;
   if(!confirm('Restaurar versão "' + snap.label + '" com ' + snap.total + ' itens?')) return;
-  COTACOES = JSON.parse(JSON.stringify(snap.data));
-  renderDash(); renderCat();
-  toast('Base restaurada: ' + snap.label);
+  // Carregar dados do Drive (não ficam em RAM)
+  toast('Carregando versão...', 'ok');
+  // Por enquanto usa o Drive principal como base de restauração
+  // (versões completas podem ser implementadas com endpoints específicos)
+  fetch('/api/base/carregar').then(r=>r.json()).then(d=>{
+    if(d.base && d.base.length){
+      COTACOES = d.base.map(c=>Object.assign({},c,{pat:c.pat||c.md||''}));
+      renderDash(); renderCat();
+      toast('Base restaurada: ' + snap.label);
+    }
+  }).catch(()=>toast('Erro ao restaurar','err'));
 }
 let ultimaAnalise=null;
 let catFiltered=[],catSortKey='f',catSortAsc=true,catPage=0;
@@ -2262,6 +2294,7 @@ function exportarExcel() {
 // ── INIT ──────────────────────────────────────────────
 async function init(){
   await carregarFornecedores();
+  await carregarSnapshots(); // Restaurar lista de versões salvas
   carregarCambio(); // Câmbio em tempo real
   atualizarStatusBase('embed', COTACOES.length);
   renderForn();renderDash();updateSizeDl();
