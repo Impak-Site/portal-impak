@@ -1119,6 +1119,7 @@ var USERS = [
   { username: 'narcelio',  email: 'narcelio@impak.com.br',    password: 'Narcelio@2026',      role: 'gerente',  displayName: 'Narcelio'  },
   { username: 'jean',      email: 'jean@impak.com.br',        password: 'Jeanimpak2026',      role: 'gerente',  displayName: 'Jean'      },
   { username: 'paula',     email: 'paula@impak.com.br',       password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
+  { username: 'bianca',    email: 'bianca@impak.com.br',      password: 'Bianca@2026',        role: 'gerente',  displayName: 'Bianca'    },
   { username: 'emanuelly', email: 'importacao1@impak.com.br', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
 ];
 
@@ -2994,22 +2995,14 @@ function deleteProcess(id){
   })
   .then(function(r){ return r.json(); })
   .then(function(d){
-    // Remover de _processes e localStorage após confirmação do Drive
     _processes = _processes.filter(function(p){ return p.id!==id; });
-    try{ localStorage.setItem(getUserKey(), JSON.stringify(_processes)); }catch(e){}
     fecharDetalheProcesso();
     renderProcessos();
     renderDashboard();
     showToast('Processo excluído.','ok');
   })
   .catch(function(){
-    // Drive offline — remover só localmente
-    _processes = _processes.filter(function(p){ return p.id!==id; });
-    try{ localStorage.setItem(getUserKey(), JSON.stringify(_processes)); }catch(e){}
-    fecharDetalheProcesso();
-    renderProcessos();
-    renderDashboard();
-    showToast('Excluído localmente (Drive offline).','ok');
+    showToast('Erro ao excluir no servidor.','err');
   });
 }
 
@@ -3266,6 +3259,22 @@ function aceitarAlerta(key){
     </div>`:'';
     }
   }
+}
+
+function copiarTexto(btn, texto){
+  navigator.clipboard.writeText(texto).then(function(){
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copiado!';
+    btn.style.color = '#16a34a';
+    btn.style.borderColor = '#16a34a';
+    setTimeout(function(){ btn.textContent=orig; btn.style.color='#dc2626'; btn.style.borderColor='#dc2626'; }, 2000);
+  }).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = texto; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    btn.textContent = '✓ Copiado!';
+    setTimeout(function(){ btn.textContent='📋 Copiar'; }, 2000);
+  });
 }
 
 function copyDivergencias(){
