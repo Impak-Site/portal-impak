@@ -17,6 +17,16 @@ const path       = require('path');
 const fs         = require('fs');
 const { google } = require('googleapis');
 
+// Garantir fetch disponível (Node 18+ tem nativo, versões anteriores precisam de import)
+if (typeof fetch === 'undefined') {
+  try {
+    global.fetch = require('node-fetch');
+    console.log('node-fetch carregado como fallback');
+  } catch(e) {
+    console.warn('fetch não disponível — instale node-fetch se necessário');
+  }
+}
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
@@ -583,6 +593,64 @@ app.get('/api/base/carregar-fornecedores', auth(), async (req, res) => {
     if (fornecedores) res.json({ ok: true, fornecedores });
     else res.json({ ok: false, fornecedores: null });
   } catch (e) { res.json({ ok: false, fornecedores: null }); }
+});
+
+// ── API: ANÁLISE DOCUMENTAL (proxy para Anthropic) ───────────
+// Recebe documentos em base64 e chama a API Anthropic no servidor
+// Vantagens: API key segura, sem CORS, timeout real, sem erro de channel
+app.post('/api/analisar', auth('processos'), async (req, res) => {
+  try {
+    const { content, apiKey } = req.body;
+    if (!content || !Array.isArray(content)) {
+      return res.status(400).json({ erro: 'Conteúdo inválido' });
+    }
+
+    // Usar API key do ambiente Railway ou a enviada pelo cliente
+    const key = process.env.ANTHROPIC_API_KEY || apiKey;
+    if (!key) return res.status(400).json({ erro: 'API key não configurada' });
+
+    // Timeout de 120s no servidor (documentos grandes podem demorar)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+
+    let respData;
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 16000,
+          messages: [{ role: 'user', content }],
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        return res.status(resp.status).json({
+          erro: `API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}`
+        });
+      }
+      respData = await resp.json();
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (fetchErr.name === 'AbortError') {
+        return res.status(504).json({ erro: 'A análise demorou mais de 120 segundos. Tente com menos documentos.' });
+      }
+      throw fetchErr;
+    }
+
+    res.json({ ok: true, data: respData });
+  } catch (e) {
+    console.error('Erro /api/analisar:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 // ── HEALTH ────────────────────────────────────────────────────
