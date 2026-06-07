@@ -517,6 +517,13 @@ textarea.field-input{resize:vertical;min-height:80px;}
   .page{padding:16px 12px 40px;}
 }
 
+/* ── MELHORIAS IA ── */
+.sev-bloc{display:inline-block;font-size:9px;font-weight:700;background:rgba(220,38,38,.1);color:#dc2626;padding:1px 6px;border-radius:3px;margin-left:4px;vertical-align:middle;}
+.sev-info{display:inline-block;font-size:9px;font-weight:700;background:rgba(217,119,6,.1);color:#d97706;padding:1px 6px;border-radius:3px;margin-left:4px;vertical-align:middle;}
+.email-sugestao{margin:4px 12px 8px;padding:8px 12px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.15);border-radius:6px;font-size:11px;}
+.motivo-sugestao{padding:8px 12px;background:rgba(26,127,212,.08);border:1px solid rgba(26,127,212,.2);border-radius:6px;margin-bottom:8px;font-size:12px;color:#1a7fd4;cursor:pointer;line-height:1.4;transition:background .15s;}
+.motivo-sugestao:hover{background:rgba(26,127,212,.14);}
+.docs-identificados{margin-bottom:10px;padding:7px 12px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.15);border-radius:8px;font-size:12px;color:#1a7fd4;}
 
 </style>
 
@@ -1161,6 +1168,8 @@ function loginClearErr(){
 function doLogout(){
   _currentUser=null;
   _processes=[];
+  // Limpar estado de sessão para próximo login
+  try{ sessionStorage.removeItem('divNotifBloqueada'); }catch(e){}
   document.getElementById('loginUser').value='';
   document.getElementById('loginPass').value='';
   document.getElementById('loginScreen').style.display='flex';
@@ -1323,6 +1332,7 @@ try{ _processes = JSON.parse(localStorage.getItem('impak_processes')||'[]'); }ca
 
 function getProcesses(){ return _processes; }
 function migrateAlerts(procs){
+  if(!procs||!Array.isArray(procs)) return [];
   // Fix any saved processes that have object alerts
   return procs.map(function(p){
     if(p.alertas&&p.alertas.length){
@@ -1510,6 +1520,10 @@ function abrirEstatisticas(){
   }).join('');
 
   var win = window.open('','_blank','width=900,height=600');
+  if(!win){
+    showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
+    return;
+  }
   win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'+
     '<title>IMPAK — Estatísticas por Fornecedor</title>'+
     '<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">'+
@@ -1621,6 +1635,28 @@ function renderChips(){
       }
     }
   };
+  // Feedback de completude
+  var hint = document.getElementById('docHint');
+  if(hint){
+    var tipos = new Set(Object.values(uploadedFiles).map(function(f){return f.type;}));
+    var faltando = [];
+    if(!tipos.has('invoice')&&!tipos.has('proforma')) faltando.push('CI ou PI');
+    if(!tipos.has('packing')) faltando.push('PL');
+    if(!tipos.has('bl')&&!tipos.has('bl_draft')&&!tipos.has('bl_original')) faltando.push('BL');
+    if(Object.keys(uploadedFiles).length>0&&faltando.length>0){
+      hint.style.display='block';
+      hint.innerHTML='💡 Análise mais completa com: <strong>'+faltando.join(', ')+'</strong>';
+    } else if(Object.keys(uploadedFiles).length>0){
+      hint.style.display='block';
+      hint.innerHTML='✅ Conjunto de documentos completo para análise';
+      hint.style.color='#16a34a';
+      hint.style.background='rgba(22,163,74,.06)';
+      hint.style.borderColor='rgba(22,163,74,.2)';
+    } else {
+      hint.style.display='none';
+    }
+  }
+
   c.onclick=function(e){
     var btn=e.target.closest('[data-remove]');
     if(btn){
@@ -1696,7 +1732,14 @@ async function runAnalysis(){
 
     const prompt = 'JSON ONLY. No markdown. Especialista em conferencia documental importacao pneus Brasil. '
       + 'Docs: '+docList+'. '
-      + 'Schema: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"","campos":[{"campo":"","doc1_label":"","doc1_valor":"","doc2_label":"","doc2_valor":"","status":"OK","observacao":null,"confianca":100}]}],"alertas":[""]}. O campo confianca (0-100) indica certeza da IA: 100=certeza absoluta, 80-99=alta, 50-79=media (verificar), 0-49=baixa (rever manualmente). Campos com confianca<70 devem ter status ALERTA mesmo sem divergencia. '
+      + 'IDENTIFICACAO AUTOMATICA: Ao analisar cada documento identifique seu tipo real (PI/CI/PL/BL/CE/DI/MAPA/LPCO/NF) pelo conteudo, nao pelo nome do arquivo. Inclua no resumo o campo "docs_identificados": ["CI","PL","BL"] com os tipos detectados. '
+      + 'Schema: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0,"docs_identificados":[]},"grupos":[{"titulo":"","campos":[{"campo":"","doc1_label":"","doc1_valor":"","doc2_label":"","doc2_valor":"","status":"OK","observacao":null,"confianca":100,"severidade":"INFORMATIVA","motivo_sugerido":"","email_fornecedor":""}]}],"alertas":[""]}. '
+      + 'CAMPO severidade: Para cada DIVERGENCIA classifique: '
+      + '"BLOQUEANTE" = impede registro da DI ou liberacao aduaneira (ex: valor diferente entre CI e PI, INCOTERM ausente, NCM incorreto, exportador diferente, dados bancarios divergentes, peso com diferenca >2%, quantidade diferente). '
+      + '"INFORMATIVA" = nao impede liberacao mas deve ser documentada (ex: endereco abreviado, data com formato diferente, referencia de container ausente em um doc, diferenca de peso <2%). '
+      + 'CAMPO motivo_sugerido: Sugira um motivo curto para aceitar esta divergencia (ex: "Diferenca de arredondamento dentro da tolerancia comercial", "Abreviacao do endereco - dado correto", "Padrao do fornecedor ROVELO"). '
+      + 'CAMPO email_fornecedor: Para divergencias BLOQUEANTES, escreva em ingles o texto para solicitar correcao ao fornecedor (ex: "Please send an amended CI with the correct gross weight: PL states 18,720 kg while CI states 18,500 kg."). Para INFORMATIVAS deixe vazio. '
+      + 'CAMPO confianca (0-100): 100=certeza absoluta, 80-99=alta, 50-79=media (verificar), 0-49=baixa (rever manualmente). Campos com confianca<70 devem ter status ALERTA. '
       + 'REGRA GERAL: Mostrar APENAS erros. Usar nome real do doc (CI,PL,BL,PI,CE). Nunca "Documento 1". '
       + 'PASSO 1 - CAMPOS OBRIGATORIOS: '
       + 'CI/PI: exportador(nome+end), importador(nome+end), encomendante(se houver), forma+moeda pagamento, porto origem, porto destino, descricao itens, marca+ref volumes, qtd+especie volumes, valores unit+total, peso bruto+liquido, INCOTERM(obrigatorio na CI - se ausente=DIVERGENCIA, valores aceitos: FOB/CIF/CFR/EXW/DDP/DAP/FCA), pais origem+aquisicao+procedencia, dados bancarios. SE incoterm!=FOB: frete internacional obrigatorio. PI e CI devem ser identicas - qualquer diferenca=DIVERGENCIA com doc1_label=PI doc2_label=CI. '
@@ -1716,11 +1759,23 @@ async function runAnalysis(){
 
     setStep(3);
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,messages:[{role:'user',content}]})
-    });
+    // Timeout de 90s — documentos grandes podem demorar
+    const _ctrl = new AbortController();
+    const _timeout = setTimeout(()=>_ctrl.abort(), 90000);
+    let resp;
+    try {
+      resp = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,messages:[{role:'user',content}]}),
+        signal: _ctrl.signal,
+      });
+    } catch(fetchErr) {
+      clearTimeout(_timeout);
+      if(fetchErr.name==='AbortError') throw new Error('A análise demorou mais de 90 segundos. Tente com menos documentos ou documentos menores.');
+      throw fetchErr;
+    }
+    clearTimeout(_timeout);
 
     if(!resp.ok){
       const e=await resp.json().catch(()=>({}));
@@ -1853,33 +1908,85 @@ function renderResult(r){
 
   // Groups
   const cg=document.getElementById('checkGroups');
+  // Ordenar grupos: BLOQUEANTE primeiro
+  const gruposOrdenados=(r.grupos||[]).slice().sort((a,b)=>{
+    const aTemBloc=a.campos.some(c=>c.status==='DIVERGENCIA'&&c.severidade==='BLOQUEANTE');
+    const bTemBloc=b.campos.some(c=>c.status==='DIVERGENCIA'&&c.severidade==='BLOQUEANTE');
+    return (bTemBloc?1:0)-(aTemBloc?1:0);
+  });
+
+  // Exibir documentos identificados automaticamente
+  if(r.resumo&&r.resumo.docs_identificados&&r.resumo.docs_identificados.length){
+    const docsEl=document.getElementById('docCards');
+    const docsIdentEl=document.createElement('div');
+    docsIdentEl.style.cssText='margin-bottom:10px;padding:8px 12px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.15);border-radius:8px;font-size:12px;color:#1a7fd4;';
+    docsIdentEl.innerHTML='🔍 Documentos identificados pela IA: <strong>'+r.resumo.docs_identificados.join(' · ')+'</strong>';
+    if(docsEl) docsEl.prepend(docsIdentEl);
+  }
+
   cg.innerHTML='';
-  for(const grupo of (r.grupos||[])){
-    const hasDiv=grupo.campos.some(c=>c.status==='DIVERGENCIA');
+  for(const grupo of gruposOrdenados){
+    const divs=grupo.campos.filter(c=>c.status==='DIVERGENCIA');
+    const temBloc=divs.some(c=>c.severidade==='BLOQUEANTE');
+    const temInfo=divs.some(c=>c.severidade==='INFORMATIVA'||!c.severidade);
+    const hasDiv=divs.length>0;
+
+    // Badge do grupo
+    let grupoBadge='<span class="pill pill-ok" style="font-size:9px">OK</span>';
+    if(temBloc) grupoBadge='<span class="pill pill-err" style="font-size:9px">🔴 BLOQUEANTE</span>';
+    else if(temInfo) grupoBadge='<span class="pill" style="font-size:9px;background:rgba(217,119,6,.1);color:#d97706;border:1px solid rgba(217,119,6,.3)">🟡 INFORMATIVA</span>';
+
     const el=document.createElement('div');
     el.className='check-group';
     el.innerHTML=`
       <div class="cg-head">
         <span class="cg-title">${grupo.titulo}</span>
-        <span class="pill ${hasDiv?'pill-err':'pill-ok'}" style="font-size:9px">${hasDiv?'Divergência':'OK'}</span>
+        ${grupoBadge}
       </div>
       <div class="col-head"><span>Campo</span><span>Documento 1</span><span>Documento 2</span><span></span></div>`;
+
     for(const c of grupo.campos){
-      const icon=c.status==='OK'?'✅':c.status==='DIVERGENCIA'?'❌':'⚠️';
+      const isDiv=c.status==='DIVERGENCIA';
+      const isBloc=isDiv&&c.severidade==='BLOQUEANTE';
+      const isInfo=isDiv&&(c.severidade==='INFORMATIVA'||!c.severidade);
+      const icon=c.status==='OK'?'✅':isBloc?'🔴':isInfo?'🟡':'⚠️';
+
       const row=document.createElement('div');
-      row.className='c-row'+(c.status==='DIVERGENCIA'?' div':'');
+      row.className='c-row'+(isBloc?' div':(isInfo?' div':''));
+      if(isBloc) row.style.borderLeft='3px solid #dc2626';
+      else if(isInfo) row.style.borderLeft='3px solid #d97706';
+
+      // Badge de severidade
+      const sevBadge=isBloc
+        ?'<span style="font-size:9px;font-weight:700;background:rgba(220,38,38,.1);color:#dc2626;padding:1px 6px;border-radius:3px;margin-left:4px">BLOQUEANTE</span>'
+        :isInfo
+        ?'<span style="font-size:9px;font-weight:700;background:rgba(217,119,6,.1);color:#d97706;padding:1px 6px;border-radius:3px;margin-left:4px">INFORMATIVA</span>'
+        :'';
+
       row.innerHTML=`
-        <div class="c-label">${c.campo}</div>
+        <div class="c-label">${c.campo}${sevBadge}</div>
         <div class="c-val"><span class="c-tag">${c.doc1_label||''}</span>${c.doc1_valor||'<em style="color:var(--text-dim)">—</em>'}</div>
         <div class="c-val"><span class="c-tag">${c.doc2_label||''}</span>${c.doc2_valor||'<em style="color:var(--text-dim)">—</em>'}</div>
         <div class="c-icon">${icon}</div>`;
       el.appendChild(row);
+
       if(c.observacao){
         const obs=document.createElement('div');
         obs.className='c-obs';
         obs.style.padding='0 18px 8px';
         obs.textContent='↳ '+c.observacao;
         el.appendChild(obs);
+      }
+
+      // Mostrar email sugerido para BLOQUEANTES
+      if(isBloc&&c.email_fornecedor){
+        const emailBox=document.createElement('div');
+        emailBox.style.cssText='margin:0 12px 8px;padding:8px 12px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.15);border-radius:6px;font-size:11px;';
+        emailBox.innerHTML=
+          '<div style="font-size:10px;font-weight:700;color:#dc2626;margin-bottom:4px">📧 Texto sugerido para o fornecedor:</div>'+
+          '<div style="color:#4a6480;font-style:italic;line-height:1.5">'+c.email_fornecedor+'</div>'+
+          '<button onclick="copiarTexto(this,'+JSON.stringify(c.email_fornecedor)+')" style="margin-top:6px;font-size:10px;padding:2px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;">📋 Copiar</button>';
+        el.appendChild(emailBox);
       }
     }
     cg.appendChild(el);
@@ -2756,7 +2863,7 @@ function aceitarAlertaHistorico(procId, ownerUser, alertKey){
     });
   };
   btnRow.appendChild(btnCancel); btnRow.appendChild(btnOk);
-  box.appendChild(title); box.appendChild(sub); box.appendChild(lbl); box.appendChild(textarea); box.appendChild(btnRow);
+  box.appendChild(textarea); box.appendChild(btnRow);
   overlay.appendChild(box); document.body.appendChild(overlay); textarea.focus();
   overlay.addEventListener('keydown', function(e){
     if(e.key==='Escape') overlay.remove();
@@ -2786,7 +2893,17 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
   var lbl = document.createElement('div');
   lbl.style.cssText = 'font-size:12px;color:#6b8aaa;margin-bottom:8px;';
   lbl.textContent = 'Motivo (obrigatório):';
-  
+  box.appendChild(title); box.appendChild(sub); box.appendChild(lbl);
+
+  // Sugestão de motivo da IA ou histórico
+  if(motivoSugerido){
+    var sugestaoEl = document.createElement('div');
+    sugestaoEl.style.cssText = 'padding:8px 12px;background:rgba(26,127,212,.08);border:1px solid rgba(26,127,212,.2);border-radius:6px;margin-bottom:8px;font-size:12px;color:#1a7fd4;cursor:pointer;line-height:1.4;';
+    sugestaoEl.innerHTML = '💡 <strong>Sugestão:</strong> '+motivoSugerido+'<br><span style="font-size:10px;opacity:.7">↑ Clique para usar</span>';
+    sugestaoEl.onclick = function(){ textarea.value = motivoSugerido; textarea.focus(); };
+    box.appendChild(sugestaoEl);
+  }
+
   var textarea = document.createElement('textarea');
   textarea.id = 'aceiteNota';
   textarea.rows = 3;
@@ -2817,6 +2934,7 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
         por: quemAceitou
       };
       p._updatedAt = Date.now();
+      salvarMotivoHistorico(divKey, nota);
       recalcularStatusProcesso(p);
       dbSaveProcess(ownerUser, p);
       renderDashboard();
@@ -3284,6 +3402,10 @@ function exportPDF(){
     }).join('');
   const alertRows=(currentResult?.alertas||[]).map(a=>`<li style="padding:6px 0;border-bottom:1px solid #fde;">${a}</li>`).join('');
   const win=window.open('','_blank');
+  if(!win){
+    showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
+    return;
+  }
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${L.relatorio}</title>
   <style>
     body{font-family:Arial,sans-serif;margin:0;color:#0d1e2e}
@@ -3460,6 +3582,10 @@ function exportMsgPDF(){
   const txt = document.getElementById('msgContent').value;
   const ref = document.getElementById('procRef')?.value || '';
   const win = window.open('','_blank');
+  if(!win){
+    showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
+    return;
+  }
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mensagem - ${ref}</title>
   <style>body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;color:#1c1a16;line-height:1.7;}
   .header{background:#1a3a2a;color:#fff;padding:20px 28px;border-radius:8px;margin-bottom:24px;}
