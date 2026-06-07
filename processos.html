@@ -1672,6 +1672,13 @@ function setStep(n){
 }
 
 async function runAnalysis(){
+  // Garantir que _apiKey está atualizado do localStorage
+  if(!_apiKey || _apiKey.length < 20){
+    try{
+      var saved = localStorage.getItem('impak_apikey');
+      if(saved && saved.length > 20){ _apiKey = saved.trim(); updateApiStatus(); }
+    }catch(e){}
+  }
   const apiKey = getApiKey();
   if(!apiKey || apiKey.length < 20){ showToast('Configure sua API Key primeiro!','err'); return; }
 
