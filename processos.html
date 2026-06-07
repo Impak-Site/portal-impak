@@ -887,21 +887,34 @@ textarea.field-input{resize:vertical;min-height:80px;}
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
-    if(!d.logado) return; // não autenticado — mostra login manual
-    // Preencher campos do formulário de login e chamar doLogin()
-    var inpUser = document.getElementById('loginUser');
-    var inpPass = document.getElementById('loginPass');
-    if(inpUser && inpPass){
-      inpUser.value = d.usuario;
-      // Encontrar senha do usuário na lista local
-      var found = USERS.find(function(x){ return x.username===d.usuario; });
-      if(found){
-        inpPass.value = found.password;
-        doLogin(); // chama o login completo original
-      }
-    }
+    if(!d.logado) return;
+    var found = USERS.find(function(x){ return x.username===d.usuario; });
+    if(found) entrarDireto(found);
   }).catch(function(e){ console.warn('auto-login:', e.message); });
 });
+
+// Login direto sem passar por campos de formulário
+// Evita "The string did not match the expected pattern"
+function entrarDireto(found){
+  _currentUser = found;
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('userBadgeName').textContent = found.displayName;
+  document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
+  _processes = migrateAlerts(loadUserProcesses());
+  updateApiStatus();
+  checkReady();
+  renderDashboard();
+  renderProcessos();
+  showPage('dashboard');
+  // Carregar TODOS do Drive (compartilhado entre usuários)
+  dbGetAllProcesses(function(todos){
+    if(todos && todos.length){
+      _processes = migrateAlerts(todos);
+      renderDashboard();
+      renderProcessos();
+    }
+  });
+}
 
 // ─── EARLY FUNCTION DECLARATIONS (needed by HTML onload) ─────────────
 function showToast(msg,type){
@@ -1138,25 +1151,13 @@ function doLogin(){
   renderProcessos();
   showPage('dashboard');
   // Sincronizar: busca do Drive e faz upload de processos locais que não estão lá
-  dbGetProcesses(found.username, function(driveProcs){
-    var driveIds = driveProcs.map(function(p){ return p.id; });
-    // Processos locais que ainda não estão no Drive — enviar agora
-    var locais = [];
-    try{ locais = JSON.parse(localStorage.getItem(getUserKey())||'[]'); }catch(e){}
-    locais.forEach(function(proc){
-      if(!driveIds.includes(proc.id)){
-        fetch('/api/processos/salvar',{method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({username:found.username, processo:proc})
-        }).catch(function(){});
-      }
-    });
-    // Atualizar _processes com dados do Drive
-    if(driveProcs.length > 0){
-      _processes = migrateAlerts(driveProcs);
-      try{ localStorage.setItem(getUserKey(), JSON.stringify(_processes)); }catch(e){}
+  // Carregar TODOS os processos do Drive — compartilhado entre todos os usuários
+  dbGetAllProcesses(function(todos){
+    if(todos && todos.length){
+      _processes = migrateAlerts(todos);
       renderDashboard();
       renderProcessos();
+      verificarDivergenciasCriticas();
     }
   });
 }
@@ -1182,35 +1183,13 @@ function getUserKey(){
 }
 
 function loadUserProcesses(){
-  // Returns local copy - Sheets sync happens separately
-  try{
-    var raw = localStorage.getItem(getUserKey());
-    return JSON.parse(raw||'[]');
-  }catch(e){ return []; }
+  // Retorna _processes em memória — Drive é a fonte, carregado no login
+  return _processes || [];
 }
 
 function getAllProcesses(){
-  // Returns all processes from all users with user info
-  var all = [];
-  USERS.forEach(function(u){
-    try{
-      var procs = JSON.parse(localStorage.getItem('impak_processes_'+u.username)||'[]');
-      procs.forEach(function(p){
-        all.push(Object.assign({}, p, {_user: u.username, _userName: u.displayName}));
-      });
-    }catch(e){}
-  });
-  // Also legacy key
-  try{
-    var legacy = JSON.parse(localStorage.getItem('impak_processes')||'[]');
-    legacy.forEach(function(p){
-      if(!all.find(function(x){return x.id===p.id;})){
-        all.push(Object.assign({}, p, {_user:'?', _userName:'Legado'}));
-      }
-    });
-  }catch(e){}
-  all.sort(function(a,b){return (b.id||0)-(a.id||0);});
-  return all;
+  // Todos os processos já estão em _processes carregados do Drive no login
+  return _processes || [];
 }
 
 
@@ -1240,74 +1219,52 @@ function initFirebase(){ _firebaseReady=false; }
 // localStorage apenas como cache offline para carregamento rápido
 
 // Salva processo no Firestore + atualiza cache local
-function dbSaveProcess(username,proc){
-  var key='impak_processes_'+username;
-  try{var arr=JSON.parse(localStorage.getItem(key)||'[]');
-  var i=arr.findIndex(function(x){return x.id===proc.id;});
-  if(i>=0)arr[i]=proc;else arr.unshift(proc);
-  localStorage.setItem(key,JSON.stringify(arr));}catch(e){}
-  fetch('/api/processos/salvar',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username:username,processo:proc})
-  }).catch(function(e){console.warn('Drive save:',e);});
+function dbSaveProcess(username, proc){
+  proc._updatedAt = Date.now();
+  proc._savedBy = username;
+  fetch('/api/processos/salvar', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: username, processo: proc})
+  }).then(function(r){ return r.json(); })
+    .then(function(d){ if(!d.ok) console.warn('Drive save erro:', d); })
+    .catch(function(e){ console.warn('Drive save falhou:', e.message); });
 }
 
-// Busca processos de um usuário — Firebase primeiro, cache como fallback
-function dbGetProcesses(username,callback){
-  var key='impak_processes_'+username;
-  var local=[];try{local=JSON.parse(localStorage.getItem(key)||'[]');}catch(e){}
-  if(local.length)callback(local);
-  fetch('/api/processos?usuario='+encodeURIComponent(username))
-  .then(function(r){return r.json();})
-  .then(function(d){
-    if(d.processos&&d.processos.length){
-      try{localStorage.setItem(key,JSON.stringify(d.processos));}catch(e){}
-      callback(d.processos);
-    }else if(!local.length)callback([]);
-  }).catch(function(){if(!local.length)callback([]);});
+// Carregar processos de um usuário do Drive
+function dbGetProcesses(username, callback){
+  fetch('/api/processos?usuario=' + encodeURIComponent(username))
+  .then(function(r){ return r.json(); })
+  .then(function(d){ callback(d.processos || []); })
+  .catch(function(){ callback([]); });
 }
 
-// Busca TODOS os processos — Firebase (sem filtro de usuário)
+// Carregar TODOS os processos — todos os usuários veem todos
 function dbGetAllProcesses(callback){
-  // Primeiro: juntar localStorage de todos os usuários (resposta imediata)
-  var USERS_LOCAL = ['narcelio','jean','paula','emanuelly'];
-  var localAll = [];
-  USERS_LOCAL.forEach(function(u){
-    try{
-      var p = JSON.parse(localStorage.getItem('impak_processes_'+u)||'[]');
-      localAll = localAll.concat(p);
-    }catch(e){}
+  fetch('/api/processos/todos')
+  .then(function(r){ return r.json(); })
+  .then(function(d){ callback(d.processos || []); })
+  .catch(function(e){
+    console.warn('dbGetAllProcesses erro:', e.message);
+    callback([]);
   });
-  // Ordenar por data
-  localAll.sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); });
-  if(localAll.length) callback(localAll);
-  // Depois: tentar Drive
-  fetch('/api/processos/todos').then(function(r){return r.json();})
-  .then(function(d){
-    if(d.processos&&d.processos.length) callback(d.processos);
-    else if(!localAll.length) callback([]);
-  }).catch(function(){ if(!localAll.length) callback([]); });
 }
 
-// Deleta processo do Firebase e cache
-function dbDeleteProcess(username,id){
-  var key='impak_processes_'+username;
-  try{var arr=JSON.parse(localStorage.getItem(key)||'[]');
-  localStorage.setItem(key,JSON.stringify(arr.filter(function(x){return x.id!==id;})));}catch(e){}
-  fetch('/api/processos/'+encodeURIComponent(id),{
-    method:'DELETE',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username:username})
-  }).catch(function(){});
+// Excluir processo do Drive
+function dbDeleteProcess(username, id){
+  fetch('/api/processos/' + encodeURIComponent(id), {
+    method: 'DELETE',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: username})
+  }).catch(function(e){ console.warn('Drive delete erro:', e.message); });
 }
 
-// Busca processo específico do Firebase
-function dbGetProcess(username,id,callback){
-  var key='impak_processes_'+username;
-  try{var p=JSON.parse(localStorage.getItem(key)||'[]').find(function(x){return x.id==id;});
-  if(p){callback(p);return;}}catch(e){}
-  fetch('/api/processos/'+encodeURIComponent(id)+'?usuario='+encodeURIComponent(username))
-  .then(function(r){return r.json();}).then(function(d){callback(d.processo||null);})
-  .catch(function(){callback(null);});
+// Buscar processo específico do Drive
+function dbGetProcess(username, id, callback){
+  fetch('/api/processos/' + encodeURIComponent(id) + '?usuario=' + encodeURIComponent(username))
+  .then(function(r){ return r.json(); })
+  .then(function(d){ callback(d.processo || null); })
+  .catch(function(){ callback(null); });
 }
 
 // Legacy stubs
@@ -1328,7 +1285,7 @@ function updateSheetsStatus(){
 
 // Estado em memória — carregado do Firebase após login
 let _processes = [];
-try{ _processes = JSON.parse(localStorage.getItem('impak_processes')||'[]'); }catch(e){ _processes=[]; }
+// _processes carregado do Drive no login — não usar localStorage
 
 function getProcesses(){ return _processes; }
 function migrateAlerts(procs){
@@ -1425,8 +1382,7 @@ function saveProcesses(p, procModificado){
   _processes = p;
   var user = _currentUser ? _currentUser.username : null;
   // Cache local
-  try{ localStorage.setItem(getUserKey(), JSON.stringify(p)); }catch(e){}
-  // Firebase — salva o processo modificado (ou o mais recente)
+    // Firebase — salva o processo modificado (ou o mais recente)
   if(user && p.length > 0){
     var toSync = procModificado || p[0];
     if(toSync) dbSaveProcess(user, toSync);
@@ -2249,12 +2205,8 @@ function renderGestao(){
 
 function openGestaoModal(id, username){
   if(!username){ showToast('Usuário não identificado','err'); return; }
-  // Busca do Firebase diretamente
+  // Busca do Drive diretamente
   dbGetProcess(username, id, function(p){
-    if(!p){
-      // fallback cache
-      try{ var procs=JSON.parse(localStorage.getItem('impak_processes_'+username)||'[]'); p=procs.find(function(x){return x.id===id;}); }catch(e){}
-    }
     if(!p){ showToast('Processo não encontrado','err'); return; }
     _renderGestaoModal(p, username);
   });
@@ -2454,9 +2406,7 @@ function clearAllHistory(){
         return batch.commit();
       }).catch(function(e){ console.warn('Erro ao limpar Firebase:', e); });
     }
-    localStorage.removeItem('impak_processes_paula');
-    localStorage.removeItem('impak_processes_emanuelly');
-    localStorage.removeItem('impak_processes');
+    // Dados removidos do Drive via API
     _processes = [];
     currentResult = null;
     divergResolved = {};
@@ -2540,28 +2490,17 @@ function _renderProcessosList(procs, filter){
 function openProcess(id, procUser){
   var ownerUser = procUser || (_currentUser ? _currentUser.username : null);
   if(!ownerUser){
-    // Tentar encontrar em todos os usuários do localStorage
-    var found = null;
-    ['narcelio','jean','paula','emanuelly'].forEach(function(u){
-      if(found) return;
-      try{
-        var arr = JSON.parse(localStorage.getItem('impak_processes_'+u)||'[]');
-        var p = arr.find(function(x){ return x.id==id; });
-        if(p){ found = p; ownerUser = u; }
-      }catch(e){}
-    });
-    if(found){ found._ownerUser=ownerUser; _renderProcessModal(found); return; }
-    showToast('Usuário não identificado','err'); return;
+    // Buscar em _processes (já carregado do Drive)
+    var found = _processes.find(function(x){ return x.id==id; });
+    if(found){ ownerUser = found._savedBy || found._user || _currentUser.username; }
+    else { showToast('Processo não encontrado','err'); return; }
   }
 
-  // Busca do Firebase (fonte de verdade)
+  // Busca do Drive (fonte única de verdade)
   dbGetProcess(ownerUser, id, function(p){
     if(!p){
-      // Fallback: tenta cache local
-      try{
-        var procs = JSON.parse(localStorage.getItem('impak_processes_'+ownerUser)||'[]');
-        p = procs.find(function(x){return x.id===id;});
-      }catch(e){}
+      // Tentar em _processes em memória
+      p = _processes.find(function(x){ return x.id==id; });
     }
     if(!p){ showToast('Processo não encontrado','err'); return; }
     p._ownerUser = ownerUser;
