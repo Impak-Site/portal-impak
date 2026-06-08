@@ -1217,55 +1217,103 @@ var _firebaseReady = false;
 function initFirebase(){ _firebaseReady=false; }
 
 // ─── DB — Firebase como fonte única de verdade ────────────────
-// localStorage apenas como cache offline para carregamento rápido
+// ════════════════════════════════════════════════════════════════
+// CAMADA DE DADOS — mesma arquitetura do módulo Controle
+// 1 arquivo por processo no Drive: conferencia_proc_ID.json
+// 1 índice leve: conferencia_index.json
+// Todos os usuários veem todos os processos em tempo real
+// ════════════════════════════════════════════════════════════════
 
-// Salva processo no Firestore + atualiza cache local
+// Cache em memória de processos já abertos (evita re-fetch desnecessário)
+var _procCache = {};
+
+// Verificar resposta HTTP — detecta HTML de redirect de sessão expirada
+function safeJsonConf(r){
+  var ct = r.headers.get('content-type')||'';
+  if(!ct.includes('application/json')){
+    return r.text().then(function(text){
+      if(text.includes('<!DOCTYPE')||text.includes('<html')){
+        window.location.href = '/login';
+        return null;
+      }
+      throw new Error('Resposta inesperada do servidor');
+    });
+  }
+  return r.json();
+}
+
+// Salvar processo no Drive (arquivo individual)
 function dbSaveProcess(username, proc){
   proc._updatedAt = Date.now();
-  proc._savedBy = username;
-  fetch('/api/processos/salvar', {
+  proc._user = username;
+  _procCache[proc.id] = proc; // atualizar cache imediatamente
+  showToast('Salvando...', 'ok');
+  fetch('/api/conferencia/processo', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username: username, processo: proc})
-  }).then(function(r){ return r.json(); })
-    .then(function(d){ if(!d.ok) console.warn('Drive save erro:', d); })
-    .catch(function(e){ console.warn('Drive save falhou:', e.message); });
+    body: JSON.stringify({processo: proc})
+  }).then(function(r){ return safeJsonConf(r); })
+    .then(function(d){
+      if(!d) return;
+      if(d.ok){
+        showToast('✓ Salvo', 'ok');
+      } else {
+        showToast('Erro ao salvar — tente novamente', 'err');
+        console.warn('Drive save erro:', d);
+      }
+    })
+    .catch(function(e){
+      showToast('Sem conexão — NÃO foi salvo!', 'err');
+      console.warn('Drive save falhou:', e.message);
+    });
 }
 
-// Carregar processos de um usuário do Drive
-function dbGetProcesses(username, callback){
-  fetch('/api/processos?usuario=' + encodeURIComponent(username))
-  .then(function(r){ return r.json(); })
-  .then(function(d){ callback(d.processos || []); })
-  .catch(function(){ callback([]); });
-}
-
-// Carregar TODOS os processos — todos os usuários veem todos
+// Carregar índice leve (lista da tela principal)
 function dbGetAllProcesses(callback){
-  fetch('/api/processos/todos')
-  .then(function(r){ return r.json(); })
-  .then(function(d){ callback(d.processos || []); })
+  fetch('/api/conferencia/index')
+  .then(function(r){ return safeJsonConf(r); })
+  .then(function(d){
+    if(!d) return callback([]);
+    callback(d.index || []);
+  })
   .catch(function(e){
     console.warn('dbGetAllProcesses erro:', e.message);
     callback([]);
   });
 }
 
+// Compatibilidade — usa dbGetAllProcesses
+function dbGetProcesses(username, callback){
+  dbGetAllProcesses(callback);
+}
+
+// Carregar processo completo (ao abrir modal)
+function dbGetProcess(username, id, callback){
+  // Cache primeiro
+  if(_procCache[id]){ callback(_procCache[id]); return; }
+  // Drive
+  fetch('/api/conferencia/processo/' + encodeURIComponent(id))
+  .then(function(r){ return safeJsonConf(r); })
+  .then(function(d){
+    if(!d) return callback(null);
+    if(d.processo){
+      _procCache[id] = d.processo;
+      callback(d.processo);
+    } else {
+      callback(null);
+    }
+  })
+  .catch(function(){ callback(null); });
+}
+
 // Excluir processo do Drive
 function dbDeleteProcess(username, id){
-  fetch('/api/processos/' + encodeURIComponent(id), {
+  delete _procCache[id];
+  fetch('/api/conferencia/processo/' + encodeURIComponent(id), {
     method: 'DELETE',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({username: username})
   }).catch(function(e){ console.warn('Drive delete erro:', e.message); });
-}
-
-// Buscar processo específico do Drive
-function dbGetProcess(username, id, callback){
-  fetch('/api/processos/' + encodeURIComponent(id) + '?usuario=' + encodeURIComponent(username))
-  .then(function(r){ return r.json(); })
-  .then(function(d){ callback(d.processo || null); })
-  .catch(function(){ callback(null); });
 }
 
 // Legacy stubs
@@ -1382,11 +1430,13 @@ function sincronizarComControle(proc, result, analise) {
 function saveProcesses(p, procModificado){
   _processes = p;
   var user = _currentUser ? _currentUser.username : null;
-  // Cache local
-    // Firebase — salva o processo modificado (ou o mais recente)
   if(user && p.length > 0){
     var toSync = procModificado || p[0];
-    if(toSync) dbSaveProcess(user, toSync);
+    if(toSync){
+      // Mostrar feedback visual que está salvando
+      showToast('Salvando no servidor...', 'ok');
+      dbSaveProcess(user, toSync);
+    }
   }
 }
 // _saveProcesses_placeholder
@@ -1723,11 +1773,19 @@ async function runAnalysis(){
 
     setStep(3);
 
+    // Verificar tamanho antes de enviar
+    const bodyStr = JSON.stringify({ content, apiKey: _apiKey });
+    const sizeMB = (bodyStr.length / 1024 / 1024).toFixed(1);
+    console.log(`Payload: ${sizeMB} MB, ${content.length} partes`);
+    if(parseFloat(sizeMB) > 80){
+      throw new Error(`Documentos muito grandes (${sizeMB} MB). Use no máximo 4-5 PDFs por análise ou PDFs menores.`);
+    }
+
     // Chamada via servidor (proxy) — sem CORS, sem erro de channel, API key segura
     const resp = await fetch('/api/analisar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, apiKey: _apiKey }),
+      body: bodyStr,
     });
 
     if(!resp.ok){
@@ -2343,12 +2401,7 @@ function approveProcess(id, username){
     _approved: true, _approvedBy: aprovadoPor, _approvedAt: now, _updatedAt: Date.now()
   }).then(function(){
     // Atualiza cache local
-    try{
-      var key = 'impak_processes_'+username;
-      var procs = JSON.parse(localStorage.getItem(key)||'[]');
-      var p = procs.find(function(x){return x.id===id;});
-      if(p){ p._approved=true; p._approvedBy=aprovadoPor; p._approvedAt=now; localStorage.setItem(key, JSON.stringify(procs)); }
-    }catch(e){}
+    // (localStorage removido — Drive é fonte única)
     closeGestaoModal();
     renderGestao();
     showToast('Processo aprovado!','ok');
@@ -2361,12 +2414,7 @@ function revokeApproval(id, username){
   _db.collection('processos').doc(docId).update({
     _approved: false, _approvedBy: null, _approvedAt: null, _updatedAt: Date.now()
   }).then(function(){
-    try{
-      var key = 'impak_processes_'+username;
-      var procs = JSON.parse(localStorage.getItem(key)||'[]');
-      var p = procs.find(function(x){return x.id===id;});
-      if(p){ delete p._approved; delete p._approvedBy; delete p._approvedAt; localStorage.setItem(key, JSON.stringify(procs)); }
-    }catch(e){}
+    // (localStorage removido — Drive é fonte única)
     closeGestaoModal(); renderGestao();
     showToast('Aprovação revogada','ok');
   }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
@@ -2380,12 +2428,7 @@ function saveGestaoComment(id, username, comment){
   _db.collection('processos').doc(docId).update({
     _managerComment: comment||'', _managerCommentBy: by, _managerCommentAt: at, _updatedAt: Date.now()
   }).then(function(){
-    try{
-      var key = 'impak_processes_'+username;
-      var procs = JSON.parse(localStorage.getItem(key)||'[]');
-      var p = procs.find(function(x){return x.id===id;});
-      if(p){ p._managerComment=comment; p._managerCommentBy=by; p._managerCommentAt=at; localStorage.setItem(key, JSON.stringify(procs)); }
-    }catch(e){}
+    // (localStorage removido — Drive é fonte única)
     renderGestao(); showToast('Comentário salvo!','ok');
   }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
 }
