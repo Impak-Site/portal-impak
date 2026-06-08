@@ -1246,26 +1246,14 @@ function safeJsonConf(r){
 function dbSaveProcess(username, proc){
   proc._updatedAt = Date.now();
   proc._user = username;
-  _procCache[proc.id] = proc; // atualizar cache imediatamente
-  showToast('Salvando...', 'ok');
+  _procCache[proc.id] = proc;
   fetch('/api/conferencia/processo', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({processo: proc})
   }).then(function(r){ return safeJsonConf(r); })
-    .then(function(d){
-      if(!d) return;
-      if(d.ok){
-        showToast('✓ Salvo', 'ok');
-      } else {
-        showToast('Erro ao salvar — tente novamente', 'err');
-        console.warn('Drive save erro:', d);
-      }
-    })
-    .catch(function(e){
-      showToast('Sem conexão — NÃO foi salvo!', 'err');
-      console.warn('Drive save falhou:', e.message);
-    });
+    .then(function(d){ if(d && !d.ok) console.warn('Drive save erro:', d); })
+    .catch(function(e){ console.warn('Drive save falhou:', e.message); });
 }
 
 // Carregar índice leve (lista da tela principal)
@@ -1430,19 +1418,37 @@ function sincronizarComControle(proc, result, analise) {
 function saveProcesses(p, procModificado){
   _processes = p;
   var user = _currentUser ? _currentUser.username : null;
-  if(user && procModificado){
-    dbSaveProcess(user, procModificado);
-    // Atualizar dashboard após salvar
-    setTimeout(function(){
+  if(!user || !procModificado) return;
+
+  procModificado._updatedAt = Date.now();
+  procModificado._user = user;
+  procModificado._userName = _currentUser.displayName || user;
+
+  showToast('Salvando...', 'ok');
+  fetch('/api/conferencia/processo', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({processo: procModificado})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if(d && d.ok){
+      showToast('✓ Salvo', 'ok');
+      // Atualizar _processes e re-renderizar com dados frescos do Drive
       dbGetAllProcesses(function(todos){
-        if(todos && todos.length){
-          _processes = migrateAlerts(todos);
-        }
+        _processes = migrateAlerts(todos);
         renderDashboard();
         renderProcessos();
       });
-    }, 1500); // aguardar Drive confirmar
-  }
+    } else {
+      showToast('Erro ao salvar — tente novamente', 'err');
+      console.warn('Drive save erro:', d);
+    }
+  })
+  .catch(function(e){
+    showToast('Sem conexão — NÃO foi salvo!', 'err');
+    console.warn('Drive save falhou:', e.message);
+  });
 }
 // _saveProcesses_placeholder
 function getApiKey(){ return _apiKey; }
