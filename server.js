@@ -319,15 +319,19 @@ app.get('/api/processos', auth(), async (req, res) => {
 
 app.get('/api/processos/todos', auth('processos'), async (req, res) => {
   try {
-    // Gerentes veem todos
     const todos = [];
     for (const u of USUARIOS.filter(x => x.modulos.includes('processos'))) {
       const lista = await driveRead(`processos_${u.usuario}.json`) || [];
       todos.push(...lista);
     }
-    todos.sort((a, b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
+    // Ordenar pelo campo correto (_updatedAt com underscore)
+    todos.sort((a, b) => (b._updatedAt||b.updatedAt||0) - (a._updatedAt||a.updatedAt||0));
+    console.log(`/api/processos/todos: ${todos.length} processos retornados`);
     res.json({ processos: todos });
-  } catch (e) { res.json({ processos: [] }); }
+  } catch (e) {
+    console.error('/api/processos/todos erro:', e.message);
+    res.json({ processos: [] });
+  }
 });
 
 app.get('/api/processos/:id', auth(), async (req, res) => {
@@ -595,6 +599,108 @@ app.get('/api/base/carregar-fornecedores', auth(), async (req, res) => {
   } catch (e) { res.json({ ok: false, fornecedores: null }); }
 });
 
+// ── API: CONFERÊNCIA DE PROCESSOS (mesma arquitetura do Controle) ──
+// 1 arquivo por processo: conferencia_proc_ID.json
+// 1 índice leve: conferencia_index.json
+
+async function atualizarIndiceConferencia(proc, remover) {
+  let index = await driveRead('conferencia_index.json') || [];
+  index = index.filter(p => String(p.id) !== String(proc.id));
+  if (!remover) {
+    index.unshift({
+      id:       proc.id,
+      ref:      proc.ref      || '',
+      exportador: proc.exportador || '',
+      status:   proc.status   || 'ok',
+      updatedAt: proc._updatedAt || Date.now(),
+      analises: (proc.analises || []).length,
+      _user:    proc._user    || '',
+    });
+  }
+  await driveUpsert('conferencia_index.json', index);
+  return index;
+}
+
+// Carregar índice leve (lista de processos) — com migração automática
+app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
+  try {
+    await migrarConferenciaAntiga();
+    const index = await driveRead('conferencia_index.json') || [];
+    res.json({ ok: true, index, total: index.length });
+  } catch (e) { res.json({ ok: true, index: [], total: 0 }); }
+});
+
+// Carregar processo individual completo
+app.get('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
+  try {
+    const proc = await driveRead(`conferencia_proc_${req.params.id}.json`);
+    res.json({ ok: true, processo: proc });
+  } catch (e) { res.json({ ok: false, processo: null }); }
+});
+
+// Salvar processo individual
+app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
+  try {
+    const { processo } = req.body;
+    if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
+    processo._updatedAt = Date.now();
+    await driveUpsert(`conferencia_proc_${processo.id}.json`, processo);
+    await atualizarIndiceConferencia(processo, false);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('conferencia/processo POST erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// Excluir processo
+app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { data: lista } = await driveClient.files.list({
+      q: `name='conferencia_proc_${id}.json' and '${FOLDER_ID}' in parents and trashed=false`,
+      fields: 'files(id)',
+    });
+    if (lista.files.length) {
+      await driveClient.files.delete({ fileId: lista.files[0].id });
+    }
+    await atualizarIndiceConferencia({ id }, true);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Migração automática do formato antigo (processos_usuario.json → arquivos individuais)
+async function migrarConferenciaAntiga() {
+  try {
+    const indexExiste = await driveRead('conferencia_index.json');
+    if (indexExiste && indexExiste.length > 0) return; // já migrado
+
+    const todos = [];
+    for (const u of USUARIOS.filter(x => x.modulos.includes('processos'))) {
+      const lista = await driveRead(`processos_${u.usuario}.json`) || [];
+      lista.forEach(p => { if(!todos.find(x => x.id === p.id)) todos.push(p); });
+    }
+    if (!todos.length) return;
+
+    console.log(`Migrando ${todos.length} processos do Conferência para novo formato...`);
+    const LOTE = 5;
+    for (let i = 0; i < todos.length; i += LOTE) {
+      await Promise.all(todos.slice(i, i+LOTE).map(p =>
+        driveUpsert(`conferencia_proc_${p.id}.json`, p)
+      ));
+    }
+    const index = todos.map(p => ({
+      id: p.id, ref: p.ref || '', exportador: p.exportador || '',
+      status: p.status || 'ok', updatedAt: p._updatedAt || Date.now(),
+      analises: (p.analises || []).length, _user: p._user || '',
+    }));
+    await driveUpsert('conferencia_index.json', index);
+    console.log(`✓ Migração Conferência concluída: ${index.length} processos`);
+  } catch (e) {
+    console.error('Erro migração Conferência:', e.message);
+  }
+}
+
 // ── API: ANÁLISE DOCUMENTAL (proxy para Anthropic) ───────────
 // Recebe documentos em base64 e chama a API Anthropic no servidor
 // Vantagens: API key segura, sem CORS, timeout real, sem erro de channel
@@ -611,7 +717,7 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
     const keyEnv     = (process.env.ANTHROPIC_API_KEY || '').trim();
     const key        = keyCliente.length > 20 ? keyCliente : keyEnv;
 
-    console.log(`/api/analisar: key presente=${!!key}, tamanho=${key.length}, fonte=${keyCliente.length>20?'cliente':'env'}`);
+    console.log(`/api/analisar: keyCliente=${keyCliente.length}chars inicio="${keyCliente.slice(0,10)}" keyEnv=${keyEnv.length}chars key_usada=${key.slice(0,10)}...`);
 
     if (!key || key.length < 20) {
       return res.status(400).json({ erro: 'API key não configurada. Configure a API Key no sistema.' });
@@ -619,7 +725,7 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
 
     // Timeout de 120s no servidor (documentos grandes podem demorar)
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const timeout = setTimeout(() => controller.abort(), 180000); // 3 minutos
 
     let respData;
     try {
