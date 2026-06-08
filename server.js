@@ -53,6 +53,14 @@ const USUARIOS = [
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '';
 let driveClient = null;
 
+// Validar variáveis críticas na inicialização
+if (!process.env.GOOGLE_CREDENTIALS) {
+  console.error('❌ FATAL: GOOGLE_CREDENTIALS não configurado no Railway');
+}
+if (!process.env.DRIVE_FOLDER_ID) {
+  console.error('❌ FATAL: DRIVE_FOLDER_ID não configurado no Railway');
+}
+
 function initDrive() {
   try {
     const creds = process.env.GOOGLE_CREDENTIALS;
@@ -62,12 +70,13 @@ function initDrive() {
       scopes: ['https://www.googleapis.com/auth/drive'],
     });
     driveClient = google.drive({ version: 'v3', auth });
-    console.log('✓ Google Drive conectado');
+    console.log('✓ Google Drive conectado, pasta:', FOLDER_ID || 'NÃO CONFIGURADA');
   } catch (e) { console.error('✗ Drive error:', e.message); }
 }
 
 async function driveUpsert(nome, conteudo) {
-  if (!driveClient || !FOLDER_ID) return null;
+  if (!driveClient) throw new Error('Drive não inicializado — verificar GOOGLE_CREDENTIALS no Railway');
+  if (!FOLDER_ID)   throw new Error('DRIVE_FOLDER_ID não configurado no Railway — impossível salvar');
   try {
     const conteudoStr = typeof conteudo === 'string' ? conteudo : JSON.stringify(conteudo);
     const { Readable } = require('stream');
@@ -97,11 +106,15 @@ async function driveUpsert(nome, conteudo) {
     });
     console.log(`Drive: ${nome} criado (${(conteudoStr.length/1024).toFixed(0)} KB)`);
     return f.id;
-  } catch (e) { console.error('Drive upsert error:', e.message); return null; }
+  } catch (e) {
+    console.error(`Drive upsert ERRO (${nome}):`, e.message);
+    throw e; // propagar erro — não engolir silenciosamente
+  }
 }
 
 async function driveRead(nome) {
-  if (!driveClient || !FOLDER_ID) return null;
+  if (!driveClient) throw new Error('Drive não inicializado — verificar GOOGLE_CREDENTIALS no Railway');
+  if (!FOLDER_ID)   throw new Error('DRIVE_FOLDER_ID não configurado no Railway');
   try {
     const { data: lista } = await driveClient.files.list({
       q: `name='${nome}' and '${FOLDER_ID}' in parents and trashed=false`,
@@ -113,7 +126,10 @@ async function driveRead(nome) {
       { responseType: 'text' }
     );
     return typeof data === 'string' ? JSON.parse(data) : data;
-  } catch (e) { console.error('Drive read error:', e.message); return null; }
+  } catch (e) {
+    console.error(`Drive read ERRO (${nome}):`, e.message);
+    throw e; // propagar erro — não engolir silenciosamente
+  }
 }
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
@@ -780,8 +796,15 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
   }
 });
 
-// ── HEALTH ────────────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ ok: true }));
+// ── HEALTH — mostra estado real do Drive ──────────────────────
+app.get('/health', (req, res) => res.json({
+  ok: true,
+  drive: !!driveClient,
+  folder: !!FOLDER_ID,
+  folder_id: FOLDER_ID ? FOLDER_ID.slice(0,8)+'...' : 'NÃO CONFIGURADO',
+  credentials: !!process.env.GOOGLE_CREDENTIALS,
+  node: process.version,
+}));
 
 // ── START ─────────────────────────────────────────────────────
 initDrive();
