@@ -1430,13 +1430,18 @@ function sincronizarComControle(proc, result, analise) {
 function saveProcesses(p, procModificado){
   _processes = p;
   var user = _currentUser ? _currentUser.username : null;
-  if(user && p.length > 0){
-    var toSync = procModificado || p[0];
-    if(toSync){
-      // Mostrar feedback visual que está salvando
-      showToast('Salvando no servidor...', 'ok');
-      dbSaveProcess(user, toSync);
-    }
+  if(user && procModificado){
+    dbSaveProcess(user, procModificado);
+    // Atualizar dashboard após salvar
+    setTimeout(function(){
+      dbGetAllProcesses(function(todos){
+        if(todos && todos.length){
+          _processes = migrateAlerts(todos);
+        }
+        renderDashboard();
+        renderProcessos();
+      });
+    }, 1500); // aguardar Drive confirmar
   }
 }
 // _saveProcesses_placeholder
