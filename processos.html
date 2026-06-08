@@ -1218,90 +1218,91 @@ function initFirebase(){ _firebaseReady=false; }
 
 // ─── DB — Firebase como fonte única de verdade ────────────────
 // ════════════════════════════════════════════════════════════════
-// CAMADA DE DADOS — mesma arquitetura do módulo Controle
-// 1 arquivo por processo no Drive: conferencia_proc_ID.json
-// 1 índice leve: conferencia_index.json
-// Todos os usuários veem todos os processos em tempo real
+// CAMADA DE DADOS — idêntica ao Controle de Processos
+// Drive é a ÚNICA fonte de verdade. Zero localStorage.
+// conferencia_index.json  → lista leve (id, ref, status, resumo)
+// conferencia_proc_ID.json → processo completo
 // ════════════════════════════════════════════════════════════════
 
-// Cache em memória de processos já abertos (evita re-fetch desnecessário)
-var _procCache = {};
+var _procCache = {}; // cache em memória por sessão
 
-// Verificar resposta HTTP — detecta HTML de redirect de sessão expirada
+// Detecta HTML de redirect (sessão expirada) e redireciona para login
 function safeJsonConf(r){
   var ct = r.headers.get('content-type')||'';
   if(!ct.includes('application/json')){
-    return r.text().then(function(text){
-      if(text.includes('<!DOCTYPE')||text.includes('<html')){
-        window.location.href = '/login';
-        return null;
+    return r.text().then(function(t){
+      if(t.includes('<!DOCTYPE')||t.includes('<html')){
+        window.location.href='/login'; return null;
       }
-      throw new Error('Resposta inesperada do servidor');
+      throw new Error('Resposta inválida do servidor');
     });
   }
   return r.json();
 }
 
-// Salvar processo no Drive (arquivo individual)
-function dbSaveProcess(username, proc){
+// Salvar processo completo no Drive
+function dbSaveProcess(username, proc, onSuccess, onError){
   proc._updatedAt = Date.now();
-  proc._user = username;
+  proc._user      = username;
+  proc._userName  = _currentUser ? (_currentUser.displayName||username) : username;
   _procCache[proc.id] = proc;
-  fetch('/api/conferencia/processo', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({processo: proc})
-  }).then(function(r){ return safeJsonConf(r); })
-    .then(function(d){ if(d && !d.ok) console.warn('Drive save erro:', d); })
-    .catch(function(e){ console.warn('Drive save falhou:', e.message); });
-}
 
-// Carregar índice leve (lista da tela principal)
-function dbGetAllProcesses(callback){
-  fetch('/api/conferencia/index')
+  showToast('Salvando...','ok');
+  fetch('/api/conferencia/processo',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({processo: proc})
+  })
   .then(function(r){ return safeJsonConf(r); })
   .then(function(d){
-    if(!d) return callback([]);
-    callback(d.index || []);
+    if(!d) return;
+    if(d.ok){
+      showToast('✓ Salvo','ok');
+      if(onSuccess) onSuccess();
+    } else {
+      showToast('Erro ao salvar: '+(d.erro||'?'),'err');
+      if(onError) onError(d.erro);
+    }
   })
   .catch(function(e){
-    console.warn('dbGetAllProcesses erro:', e.message);
-    callback([]);
+    showToast('Sem conexão — não foi salvo!','err');
+    console.error('dbSaveProcess erro:',e.message);
+    if(onError) onError(e.message);
   });
 }
 
-// Compatibilidade — usa dbGetAllProcesses
-function dbGetProcesses(username, callback){
-  dbGetAllProcesses(callback);
+// Carregar índice leve — lista de todos os processos
+function dbGetAllProcesses(callback){
+  fetch('/api/conferencia/index')
+  .then(function(r){ return safeJsonConf(r); })
+  .then(function(d){ callback(d && d.index ? d.index : []); })
+  .catch(function(e){ console.warn('dbGetAllProcesses:',e.message); callback([]); });
 }
 
-// Carregar processo completo (ao abrir modal)
+// Alias para compatibilidade
+function dbGetProcesses(username, callback){ dbGetAllProcesses(callback); }
+
+// Carregar processo COMPLETO do Drive (ao abrir)
 function dbGetProcess(username, id, callback){
-  // Cache primeiro
-  if(_procCache[id]){ callback(_procCache[id]); return; }
-  // Drive
-  fetch('/api/conferencia/processo/' + encodeURIComponent(id))
+  var cid = String(id);
+  if(_procCache[cid]){ callback(_procCache[cid]); return; }
+  fetch('/api/conferencia/processo/'+encodeURIComponent(id))
   .then(function(r){ return safeJsonConf(r); })
   .then(function(d){
-    if(!d) return callback(null);
-    if(d.processo){
-      _procCache[id] = d.processo;
-      callback(d.processo);
-    } else {
-      callback(null);
-    }
+    if(d && d.processo){ _procCache[cid]=d.processo; callback(d.processo); }
+    else callback(null);
   })
   .catch(function(){ callback(null); });
 }
 
 // Excluir processo do Drive
 function dbDeleteProcess(username, id){
-  delete _procCache[id];
-  fetch('/api/conferencia/processo/' + encodeURIComponent(id), {
-    method: 'DELETE',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username: username})
-  }).catch(function(e){ console.warn('Drive delete erro:', e.message); });
+  delete _procCache[String(id)];
+  fetch('/api/conferencia/processo/'+encodeURIComponent(id),{
+    method:'DELETE',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username:username})
+  }).catch(function(e){ console.warn('dbDeleteProcess:',e.message); });
 }
 
 // Legacy stubs
@@ -1415,39 +1416,17 @@ function sincronizarComControle(proc, result, analise) {
   }
 }
 
-function saveProcesses(p, procModificado){
-  _processes = p;
-  var user = _currentUser ? _currentUser.username : null;
-  if(!user || !procModificado) return;
+function saveProcesses(processos, proc){
+  if(!proc || !proc.id){ console.warn('saveProcesses: proc inválido'); return; }
+  var user = _currentUser ? _currentUser.username : 'desconhecido';
 
-  procModificado._updatedAt = Date.now();
-  procModificado._user = user;
-  procModificado._userName = _currentUser.displayName || user;
-
-  showToast('Salvando...', 'ok');
-  fetch('/api/conferencia/processo', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({processo: procModificado})
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    if(d && d.ok){
-      showToast('✓ Salvo', 'ok');
-      // Atualizar _processes e re-renderizar com dados frescos do Drive
-      dbGetAllProcesses(function(todos){
-        _processes = migrateAlerts(todos);
-        renderDashboard();
-        renderProcessos();
-      });
-    } else {
-      showToast('Erro ao salvar — tente novamente', 'err');
-      console.warn('Drive save erro:', d);
-    }
-  })
-  .catch(function(e){
-    showToast('Sem conexão — NÃO foi salvo!', 'err');
-    console.warn('Drive save falhou:', e.message);
+  dbSaveProcess(user, proc, function(){
+    // Após confirmação do Drive — atualizar lista e dashboard
+    dbGetAllProcesses(function(index){
+      _processes = migrateAlerts(index);
+      renderDashboard();
+      renderProcessos();
+    });
   });
 }
 // _saveProcesses_placeholder
@@ -1854,54 +1833,58 @@ async function runAnalysis(){
       })(),
     };
 
-    const processes = getProcesses();
-    let proc = processes.find(function(p){ return p.ref===ref; });
+    var user = _currentUser ? _currentUser.username : 'desconhecido';
+    var procExistente = _processes.find(function(p){ return p.ref===ref; });
 
-    if(proc){
+    function aplicarAnalise(proc){
+      // Adicionar nova análise ao histórico
       proc.analises = proc.analises||[];
       proc.analises.push(novaAnalise);
-      proc.status = status;
-      proc.resumo = result.resumo;
-      proc.grupos = result.grupos;
-      proc.alertas = novaAnalise.alertas;
-      proc.log = proc.log||[];
-      var docList2 = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||'doc';}).join(', ');
-      proc.log.push({msg:'Nova análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',time:new Date().toLocaleString('pt-BR'),type:result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok'});
+      proc.status   = status;
+      proc.resumo   = result.resumo;
+      proc.grupos   = result.grupos;
+      proc.alertas  = novaAnalise.alertas;
+      proc.log      = proc.log||[];
+      var docList2  = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||f.file.name;}).join(', ');
+      proc.log.push({
+        msg:'Análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',
+        time:new Date().toLocaleString('pt-BR'),
+        type:status
+      });
+
+      currentResult = proc;
+      if(proc._divResolvedMap) Object.assign(divergResolved, proc._divResolvedMap);
+      document.getElementById('loadingBox').classList.remove('show');
+      renderResult(result);
+      sincronizarComControle(proc, result, novaAnalise);
+
+      // Salvar no Drive e atualizar lista
+      saveProcesses(_processes, proc);
+    }
+
+    if(procExistente){
+      // Buscar versão COMPLETA do Drive (índice só tem campos leves)
+      dbGetProcess(user, procExistente.id, function(procCompleto){
+        aplicarAnalise(procCompleto || procExistente);
+      });
     } else {
-      proc = {
+      // Novo processo
+      aplicarAnalise({
         id: Date.now(),
-        _user: _currentUser ? _currentUser.username : 'desconhecido',
-        _userName: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'Desconhecido',
-        _updatedAt: Date.now(),
-        ref,
+        ref: ref,
         exportador: exp || extrairExportador(result),
-        obs,
+        obs: obs,
         data: new Date().toLocaleDateString('pt-BR'),
-        status,
+        status: status,
         resumo: result.resumo,
         grupos: result.grupos,
-        alertas: novaAnalise.alertas,
+        alertas: [],
         documentos: result.documentos||[],
-        analises: [novaAnalise],
-        log:[{msg:'Primeira análise ('+docsUsados+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',time:new Date().toLocaleString('pt-BR'),type:result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok'}]
-      };
-      processes.unshift(proc);
+        analises: [],
+        log: [],
+        _divResolvedMap: {},
+      });
     }
-    saveProcesses(processes, proc);
-    currentResult = proc;
-
-    // Restaurar divergências aceitas salvas no processo
-    if(proc._divResolvedMap){
-      Object.assign(divergResolved, proc._divResolvedMap);
-    }
-
-    // ── VINCULAR COM MÓDULO CONTROLE ──────────────────────────
-    // Atualizar campos no Controle baseado nos dados extraídos pela IA
-    sincronizarComControle(proc, result, novaAnalise);
-
-    document.getElementById('loadingBox').classList.remove('show');
-    renderResult(result);
-    showToast('Conferência salva no histórico!','ok');
 
   } catch(err){
     document.getElementById('loadingBox').classList.remove('show');
@@ -2097,13 +2080,12 @@ function verificarDivergenciasCriticas(){
 
 function renderDashboard(){
   if(!_currentUser) return;
-  var fetchFn = dbGetAllProcesses; // todos os usuários veem todos os processos
-  fetchFn(function(procs){
-    _processes = procs;
-    var total=procs.length;
-    var ok=procs.filter(function(p){return p.status==='ok';}).length;
-    var warn=procs.filter(function(p){return p.status==='warn';}).length;
-    var err=procs.filter(function(p){return p.status==='err';}).length;
+  dbGetAllProcesses(function(procs){
+    _processes = migrateAlerts(procs);
+    var total = procs.length;
+    var ok    = procs.filter(function(p){return p.status==='ok';}).length;
+    var warn  = procs.filter(function(p){return p.status==='warn';}).length;
+    var err   = procs.filter(function(p){return p.status==='err';}).length;
 
     var s1=document.getElementById('statTotal');
     var s2=document.getElementById('statOk');
@@ -2475,15 +2457,14 @@ function clearAllHistory(){
 
 
 function renderProcessos(filter){
-  if(_currentUser){
-    // Todos os usuários veem todos os processos
-    dbGetAllProcesses(function(all){
-      _processes = all;
-      _renderProcessosList(all, filter);
-    });
-  } else {
-    _renderProcessosList([], filter);
-  }
+  if(!_currentUser){ _renderProcessosList([], filter); return; }
+  // Aplicar filtro do dashboard se existir
+  var f = filter !== undefined ? filter : (_dashFilter ? '__status:'+_dashFilter : '');
+  _dashFilter = ''; // limpar após usar
+  dbGetAllProcesses(function(all){
+    _processes = migrateAlerts(all);
+    _renderProcessosList(all, f);
+  });
 }
 
 function _renderProcessosList(procs, filter){
@@ -2930,11 +2911,11 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
       p._updatedAt = Date.now();
       salvarMotivoHistorico(divKey, nota);
       recalcularStatusProcesso(p);
-      dbSaveProcess(ownerUser, p);
-      renderDashboard();
-      renderProcessos();
+      dbSaveProcess(ownerUser, p, function(){
+        dbGetAllProcesses(function(all){ _processes=migrateAlerts(all); renderDashboard(); renderProcessos(); });
+      });
       showToast('Divergência aceita por ' + quemAceitou,'ok');
-      setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 400);
+      setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 800);
     });
   };
   
