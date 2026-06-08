@@ -607,14 +607,27 @@ async function atualizarIndiceConferencia(proc, remover) {
   let index = await driveRead('conferencia_index.json') || [];
   index = index.filter(p => String(p.id) !== String(proc.id));
   if (!remover) {
+    const ultimaAnalise = (proc.analises && proc.analises.length)
+      ? proc.analises[proc.analises.length - 1] : null;
     index.unshift({
-      id:       proc.id,
-      ref:      proc.ref      || '',
-      exportador: proc.exportador || '',
-      status:   proc.status   || 'ok',
-      updatedAt: proc._updatedAt || Date.now(),
-      analises: (proc.analises || []).length,
-      _user:    proc._user    || '',
+      id:          proc.id,
+      ref:         proc.ref         || '',
+      exportador:  proc.exportador  || '',
+      obs:         proc.obs         || '',
+      status:      proc.status      || 'ok',
+      data:        proc.data        || new Date().toLocaleDateString('pt-BR'),
+      _user:       proc._user       || '',
+      _userName:   proc._userName   || '',
+      _updatedAt:  proc._updatedAt  || Date.now(),
+      // Campos necessários para renderizar a lista sem buscar o arquivo completo
+      analises:    (proc.analises || []).map(function(a) {
+        return {
+          id:     a.id,
+          data:   a.data,
+          docs:   a.docs,
+          resumo: a.resumo,
+        };
+      }),
     });
   }
   await driveUpsert('conferencia_index.json', index);
