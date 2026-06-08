@@ -1391,22 +1391,15 @@ function saveProcesses(p, procModificado){
 }
 // _saveProcesses_placeholder
 function getApiKey(){ return _apiKey; }
-function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); }
+function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); checkReady(); }
 function saveApiKeyBtn(){
   const input = document.getElementById('apiKeyInput');
   const v = input.value.trim();
   if(!v){ alert('Por favor, cole sua API Key no campo antes de confirmar.'); return; }
-  _apiKey = v;
-  // Force update DOM directly
-  const dot = document.getElementById('apiDot');
-  const txt = document.getElementById('apiStatusText');
-  dot.style.background = '#40c878';
-  dot.className = 'api-dot ok';
-  txt.textContent = 'Configurada';
-  txt.style.color = '#40c878';
+  // Salvar via saveApiKey — garante localStorage + _apiKey + status
+  saveApiKey(v);
+  updateApiStatus();
   checkReady();
-  // Try save to localStorage
-  try{ localStorage.setItem('impak_apikey', v); }catch(e){}
   alert('API Key salva com sucesso! ' + v.length + ' caracteres.');
 }
 
