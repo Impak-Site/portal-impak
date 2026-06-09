@@ -505,16 +505,34 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
 
 // ── HEALTH ────────────────────────────────────────────────────
 app.get('/health', async (req, res) => {
-  let supabaseOk = false;
+  const url = process.env.SUPABASE_URL || '';
+  const key = process.env.SUPABASE_KEY || '';
+
+  // Decodificar role da key sem dependência externa
+  let keyRole = 'desconhecido';
   try {
-    const { error } = await sb().from('conferencia_processos').select('id').limit(1);
+    const payload = JSON.parse(Buffer.from(key.split('.')[1], 'base64').toString());
+    keyRole = payload.role || 'desconhecido';
+  } catch(e) {}
+
+  let supabaseOk = false;
+  let supabaseErro = null;
+  try {
+    const { data, error } = await sb().from('conferencia_processos').select('id').limit(1);
     supabaseOk = !error;
-  } catch (e) { supabaseOk = false; }
+    supabaseErro = error ? (error.message + ' | code: ' + error.code + ' | hint: ' + error.hint) : null;
+  } catch (e) {
+    supabaseErro = e.message;
+  }
+
   res.json({
     ok: true,
     supabase: supabaseOk,
+    supabase_erro: supabaseErro,
+    key_role: keyRole,
+    key_len: key.length,
+    url_ok: url.includes('supabase.co'),
     node: process.version,
-    env: process.env.NODE_ENV || 'development',
   });
 });
 
