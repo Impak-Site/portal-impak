@@ -1,64 +1,59 @@
 /**
  * IMPAK Portal — Servidor v2.0
- * Drive → Supabase PostgreSQL
+ * Banco de dados: Supabase PostgreSQL
  *
- * Variáveis Railway:
- *   SUPABASE_URL        → URL do projeto Supabase
- *   SUPABASE_KEY        → service_role key
- *   ANTHROPIC_API_KEY   → opcional (usuário pode digitar no sistema)
- *   SESSION_SECRET      → texto aleatório
- *   SENHA_*             → senhas dos usuários (opcional)
+ * Variáveis Railway obrigatórias:
+ *   SUPABASE_URL  → URL do projeto Supabase
+ *   SUPABASE_KEY  → service_role key
+ *
+ * Variáveis Railway opcionais:
+ *   ANTHROPIC_API_KEY → chave da API Anthropic
+ *   SESSION_SECRET    → segredo da sessão
+ *   SENHA_*           → senhas dos usuários
  */
 
-const express    = require('express');
-const session    = require('express-session');
-const path       = require('path');
-const { createClient } = require('@db()/db()-js');
+const express = require('express');
+const session = require('express-session');
+const path    = require('path');
+const { createClient } = require('@supabase/supabase-js');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ── SUPABASE — inicialização lazy ─────────────────────────────
-// Não inicializar no topo — variáveis de ambiente podem não estar
-// disponíveis ainda. Usar função getter que inicializa na primeira chamada.
-let _supabase = null;
-function getSupabase() {
-  if (_supabase) return _supabase;
-  const url = process.env.SUPABASE_URL || '';
-  const key = process.env.SUPABASE_KEY || '';
-  if (!url || !key) {
-    throw new Error('SUPABASE_URL ou SUPABASE_KEY não configurados no Railway');
-  }
-  _supabase = createClient(url, key, { auth: { persistSession: false } });
+// ── SUPABASE ──────────────────────────────────────────────────
+// Inicialização lazy — variáveis de ambiente disponíveis somente
+// após o processo iniciar, não no momento do require()
+let _sb = null;
+function sb() {
+  if (_sb) return _sb;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL ou SUPABASE_KEY não configurados no Railway');
+  _sb = createClient(url, key, { auth: { persistSession: false } });
   console.log('✓ Supabase conectado:', url.slice(0, 40) + '...');
-  return _supabase;
+  return _sb;
 }
-
-// Alias curto para usar nas rotas
-const db = () => getSupabase();
 
 // ── USUÁRIOS ──────────────────────────────────────────────────
-function getSenha(envKey, fallback) {
-  return process.env[envKey] || fallback;
-}
+function env(key, fallback) { return process.env[key] || fallback; }
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senha: getSenha('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio'  },
-  { usuario: 'jean',      senha: getSenha('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean'      },
-  { usuario: 'paula',     senha: getSenha('SENHA_PAULA',     'Paula@2026'),         modulos: ['processos'],            nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
-  { usuario: 'bianca',    senha: getSenha('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['processos'],            nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
-  { usuario: 'emanuelly', senha: getSenha('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['processos'],            nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
-  { usuario: 'italo',     senha: getSenha('SENHA_ITALO',     'Italo@2026'),         modulos: ['processos'],            nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
-  { usuario: 'maria',     senha: getSenha('SENHA_MARIA',     'Maria@2026'),         modulos: ['processos'],            nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
-  { usuario: 'joyce',     senha: getSenha('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['processos'],            nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
-  { usuario: 'neide',     senha: getSenha('SENHA_NEIDE',     'Neide@2026'),         modulos: ['processos'],            nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
+  { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio'  },
+  { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean'      },
+  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['processos'],            nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
+  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['processos'],            nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
+  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['processos'],            nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
+  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['processos'],            nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
+  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['processos'],            nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
+  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['processos'],            nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
+  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['processos'],            nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
 ];
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'impak-secret-2026',
+  secret: env('SESSION_SECRET', 'impak-secret-2026'),
   resave: false,
   saveUninitialized: false,
   cookie: { secure: false, maxAge: 8 * 60 * 60 * 1000 },
@@ -130,7 +125,7 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { usuario, senha, destino } = req.body;
-  const login = (usuario||'').trim().toLowerCase();
+  const login = (usuario || '').trim().toLowerCase();
   const u = USUARIOS.find(x => x.usuario === login && x.senha === senha);
   if (!u) return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
   req.session.usuario     = u.usuario;
@@ -142,9 +137,7 @@ app.post('/login', (req, res) => {
   res.redirect(destino || '/');
 });
 
-app.get('/logout', (req, res) => {
-  req.session.destroy(() => res.redirect('/login'));
-});
+app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
 function auth(modulo) {
   return (req, res, next) => {
@@ -155,10 +148,10 @@ function auth(modulo) {
 }
 
 // ── PÁGINAS ───────────────────────────────────────────────────
-app.get('/',         auth('tyredesk'),  (req, res) => res.sendFile(path.join(__dirname, 'tyredesk.html')));
-app.get('/processos',auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
-app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle.html')));
-app.get('/importar', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'importar.html')));
+app.get('/',          auth('tyredesk'),  (req, res) => res.sendFile(path.join(__dirname, 'tyredesk.html')));
+app.get('/processos', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
+app.get('/controle',  auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle.html')));
+app.get('/importar',  auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'importar.html')));
 
 // ── API: SESSÃO ───────────────────────────────────────────────
 app.get('/api/me', (req, res) => {
@@ -174,21 +167,14 @@ app.get('/api/me', (req, res) => {
   });
 });
 
-// ── API: CONFERÊNCIA DE DOCUMENTOS ───────────────────────────
-// Tabela: conferencia_processos
-// Colunas: id, ref, exportador, obs, status, data, created_by,
-//          created_at, updated_by, updated_at, dados (jsonb)
-
+// ── API: CONFERÊNCIA ──────────────────────────────────────────
 app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('conferencia_processos')
-      .select('id, ref, exportador, obs, status, data, created_by, updated_at, dados->analises')
+      .select('id, ref, exportador, obs, status, data, created_by, updated_at, dados')
       .order('updated_at', { ascending: false });
-
     if (error) throw new Error(error.message);
-
-    // Montar índice leve com campos necessários para a lista
     const index = (data || []).map(p => ({
       id:         p.id,
       ref:        p.ref        || '',
@@ -198,9 +184,10 @@ app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
       data:       p.data       || '',
       _user:      p.created_by || '',
       _updatedAt: new Date(p.updated_at).getTime(),
-      analises:   p.analises   || [],
+      analises:   (p.dados && p.dados.analises) ? p.dados.analises.map(a => ({
+        id: a.id, data: a.data, docs: a.docs, resumo: a.resumo,
+      })) : [],
     }));
-
     console.log(`/api/conferencia/index: ${index.length} processos`);
     res.json({ ok: true, index, total: index.length });
   } catch (e) {
@@ -211,21 +198,18 @@ app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
 
 app.get('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('conferencia_processos')
       .select('*')
       .eq('id', req.params.id)
       .single();
-
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
-
-    // Mesclar campos da tabela com dados jsonb
-    const processo = data ? { ...data.dados, id: data.id, ref: data.ref,
+    if (!data) return res.json({ ok: false, processo: null });
+    const proc = { ...data.dados, id: data.id, ref: data.ref,
       exportador: data.exportador, obs: data.obs, status: data.status,
       data: data.data, _user: data.created_by,
-      _updatedAt: new Date(data.updated_at).getTime() } : null;
-
-    res.json({ ok: true, processo });
+      _updatedAt: new Date(data.updated_at).getTime() };
+    res.json({ ok: true, processo: proc });
   } catch (e) {
     console.error('conferencia/processo GET erro:', e.message);
     res.json({ ok: false, processo: null });
@@ -236,27 +220,23 @@ app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
-
     const row = {
-      id:          processo.id,
-      ref:         processo.ref        || '',
-      exportador:  processo.exportador || '',
-      obs:         processo.obs        || '',
-      status:      processo.status     || 'ok',
-      data:        processo.data       || new Date().toLocaleDateString('pt-BR'),
-      created_by:  processo._user      || req.session.usuario,
-      updated_by:  req.session.usuario,
-      updated_at:  new Date().toISOString(),
-      dados:       processo,
+      id:         processo.id,
+      ref:        processo.ref        || '',
+      exportador: processo.exportador || '',
+      obs:        processo.obs        || '',
+      status:     processo.status     || 'ok',
+      data:       processo.data       || new Date().toLocaleDateString('pt-BR'),
+      created_by: processo._user      || req.session.usuario,
+      updated_by: req.session.usuario,
+      updated_at: new Date().toISOString(),
+      dados:      processo,
     };
-
-    const { error } = await db()
+    const { error } = await sb()
       .from('conferencia_processos')
       .upsert(row, { onConflict: 'id' });
-
     if (error) throw new Error(error.message);
-
-    console.log(`conferencia/processo salvo: ${processo.ref} por ${req.session.usuario}`);
+    console.log(`conferencia salvo: ${processo.ref} por ${req.session.usuario}`);
     res.json({ ok: true });
   } catch (e) {
     console.error('conferencia/processo POST erro:', e.message);
@@ -266,11 +246,10 @@ app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
 
 app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { error } = await db()
+    const { error } = await sb()
       .from('conferencia_processos')
       .delete()
       .eq('id', req.params.id);
-
     if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch (e) {
@@ -279,30 +258,24 @@ app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) 
   }
 });
 
-// ── API: CONTROLE DE PROCESSOS ────────────────────────────────
-// Tabela: controle_processos
-// Colunas: id, referencia, cliente, fase, status, dados (jsonb)
-
+// ── API: CONTROLE ─────────────────────────────────────────────
 app.get('/api/controle/index', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('controle_processos')
       .select('id, referencia, cliente, fase, status, updated_at, dados')
       .order('updated_at', { ascending: false });
-
     if (error) throw new Error(error.message);
-
-    // Montar índice com campos da tabela + campos do dados jsonb necessários para tabela
     const index = (data || []).map(p => {
       const d = p.dados || {};
       return {
         id: p.id, referencia: p.referencia, cliente: p.cliente,
         fase: p.fase, status: p.status,
-        // Campos necessários para a tabela do controle
-        exportador: d.exportador||'', eta: d.eta||'', data_chegada: d.data_chegada||'',
-        data_embarque: d.data_embarque||'', porto: d.porto||'', armador: d.armador||'',
-        free_time: d.free_time||21, canal_parametrizacao: d.canal_parametrizacao||'',
-        hbl: d.hbl||'', numero_di: d.numero_di||'', data_presenca: d.data_presenca||'',
+        exportador: d.exportador||'', eta: d.eta||'',
+        data_chegada: d.data_chegada||'', data_embarque: d.data_embarque||'',
+        porto: d.porto||'', armador: d.armador||'', free_time: d.free_time||21,
+        canal_parametrizacao: d.canal_parametrizacao||'', hbl: d.hbl||'',
+        numero_di: d.numero_di||'', data_presenca: d.data_presenca||'',
         data_retirada: d.data_retirada||'', data_ric: d.data_ric||'',
         navio: d.navio||'', previsao_prontidao: d.previsao_prontidao||'',
         agente: d.agente||'', despachante: d.despachante||'',
@@ -310,7 +283,6 @@ app.get('/api/controle/index', auth('processos'), async (req, res) => {
         _updatedAt: new Date(p.updated_at).getTime(),
       };
     });
-
     res.json({ ok: true, index, processos: index, total: index.length });
   } catch (e) {
     console.error('controle/index erro:', e.message);
@@ -320,19 +292,16 @@ app.get('/api/controle/index', auth('processos'), async (req, res) => {
 
 app.get('/api/controle/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('controle_processos')
       .select('*')
       .eq('id', req.params.id)
       .single();
-
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
-
-    const processo = data ? { ...data.dados, id: data.id,
-      referencia: data.referencia, cliente: data.cliente,
-      fase: data.fase } : null;
-
-    res.json({ ok: true, processo });
+    if (!data) return res.json({ ok: false, processo: null });
+    const proc = { ...data.dados, id: data.id, referencia: data.referencia,
+      cliente: data.cliente, fase: data.fase };
+    res.json({ ok: true, processo: proc });
   } catch (e) {
     console.error('controle/processo GET erro:', e.message);
     res.json({ ok: false, processo: null });
@@ -343,7 +312,6 @@ app.post('/api/controle/processo', auth('processos'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
-
     const row = {
       id:         processo.id,
       referencia: processo.referencia || '',
@@ -354,14 +322,11 @@ app.post('/api/controle/processo', auth('processos'), async (req, res) => {
       updated_at: new Date().toISOString(),
       dados:      processo,
     };
-
-    const { error } = await db()
+    const { error } = await sb()
       .from('controle_processos')
       .upsert(row, { onConflict: 'id' });
-
     if (error) throw new Error(error.message);
-
-    console.log(`controle/processo salvo: ${processo.referencia} por ${req.session.usuario}`);
+    console.log(`controle salvo: ${processo.referencia} por ${req.session.usuario}`);
     res.json({ ok: true });
   } catch (e) {
     console.error('controle/processo POST erro:', e.message);
@@ -371,11 +336,10 @@ app.post('/api/controle/processo', auth('processos'), async (req, res) => {
 
 app.delete('/api/controle/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { error } = await db()
+    const { error } = await sb()
       .from('controle_processos')
       .delete()
       .eq('id', req.params.id);
-
     if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch (e) {
@@ -384,12 +348,10 @@ app.delete('/api/controle/processo/:id', auth('processos'), async (req, res) => 
   }
 });
 
-// Importação em lote do Controle
 app.post('/api/controle/importar', auth('processos'), async (req, res) => {
   try {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
-
     const rows = processos.map(p => ({
       id:         p.id || String(Date.now() + Math.random()),
       referencia: p.referencia || '',
@@ -400,17 +362,13 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
       updated_at: new Date().toISOString(),
       dados:      p,
     }));
-
-    // Upsert em lotes de 100
-    const LOTE = 100;
-    for (let i = 0; i < rows.length; i += LOTE) {
-      const { error } = await db()
+    for (let i = 0; i < rows.length; i += 100) {
+      const { error } = await sb()
         .from('controle_processos')
-        .upsert(rows.slice(i, i + LOTE), { onConflict: 'id' });
+        .upsert(rows.slice(i, i + 100), { onConflict: 'id' });
       if (error) throw new Error(error.message);
     }
-
-    console.log(`controle/importar: ${processos.length} processos importados por ${req.session.usuario}`);
+    console.log(`controle/importar: ${processos.length} processos por ${req.session.usuario}`);
     res.json({ ok: true, total: processos.length });
   } catch (e) {
     console.error('controle/importar erro:', e.message);
@@ -418,26 +376,22 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
   }
 });
 
-// Compatibilidade com rota antiga
 app.get('/api/controle/carregar', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('controle_processos')
       .select('dados')
       .order('updated_at', { ascending: false });
     if (error) throw new Error(error.message);
-    res.json({ ok: true, processos: (data||[]).map(r => r.dados) });
+    res.json({ ok: true, processos: (data || []).map(r => r.dados) });
   } catch (e) { res.json({ ok: true, processos: [] }); }
 });
 
 // ── API: TYREDESK ─────────────────────────────────────────────
-// Tabela: tyredesk_base (1 linha com todos os dados)
-// Tabela: tyredesk_fornecedores (1 linha)
-
 app.post('/api/base/salvar', auth('tyredesk'), async (req, res) => {
   try {
     const { base } = req.body;
-    const { error } = await db()
+    const { error } = await sb()
       .from('tyredesk_base')
       .upsert({ id: 1, dados: base, updated_by: req.session.usuario, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw new Error(error.message);
@@ -448,21 +402,21 @@ app.post('/api/base/salvar', auth('tyredesk'), async (req, res) => {
 
 app.get('/api/base/carregar', auth(), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('tyredesk_base')
       .select('dados')
       .eq('id', 1)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
-    const base = data?.dados || null;
-    res.json({ ok: !!base, base, total: base?.length || 0 });
+    const base = data ? data.dados : null;
+    res.json({ ok: !!base, base, total: base ? base.length : 0 });
   } catch (e) { res.json({ ok: false, base: null }); }
 });
 
 app.post('/api/base/salvar-fornecedores', auth('tyredesk'), async (req, res) => {
   try {
     const { fornecedores } = req.body;
-    const { error } = await db()
+    const { error } = await sb()
       .from('tyredesk_fornecedores')
       .upsert({ id: 1, dados: fornecedores, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw new Error(error.message);
@@ -472,20 +426,20 @@ app.post('/api/base/salvar-fornecedores', auth('tyredesk'), async (req, res) => 
 
 app.get('/api/base/carregar-fornecedores', auth(), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('tyredesk_fornecedores')
       .select('dados')
       .eq('id', 1)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
-    res.json({ ok: true, fornecedores: data?.dados || null });
+    res.json({ ok: true, fornecedores: data ? data.dados : null });
   } catch (e) { res.json({ ok: false, fornecedores: null }); }
 });
 
 app.post('/api/base/salvar-snapshots', auth('tyredesk'), async (req, res) => {
   try {
     const { snapshots } = req.body;
-    const { error } = await db()
+    const { error } = await sb()
       .from('tyredesk_fornecedores')
       .upsert({ id: 2, dados: snapshots, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw new Error(error.message);
@@ -495,60 +449,44 @@ app.post('/api/base/salvar-snapshots', auth('tyredesk'), async (req, res) => {
 
 app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
   try {
-    const { data, error } = await db()
+    const { data, error } = await sb()
       .from('tyredesk_fornecedores')
       .select('dados')
       .eq('id', 2)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
-    res.json({ ok: true, snapshots: data?.dados || [] });
+    res.json({ ok: true, snapshots: data ? data.dados : [] });
   } catch (e) { res.json({ ok: true, snapshots: [] }); }
 });
 
-// ── API: ANÁLISE DOCUMENTAL (proxy Anthropic) ─────────────────
+// ── API: ANÁLISE DOCUMENTAL ───────────────────────────────────
 app.post('/api/analisar', auth('processos'), async (req, res) => {
   try {
     const { content, apiKey } = req.body;
     if (!content || !Array.isArray(content)) {
       return res.status(400).json({ erro: 'Conteúdo inválido' });
     }
-
     const keyCliente = (apiKey || '').trim();
     const keyEnv     = (process.env.ANTHROPIC_API_KEY || '').trim();
     const key        = keyCliente.length > 20 ? keyCliente : keyEnv;
-
-    console.log(`/api/analisar: key=${key.length}chars fonte=${keyCliente.length>20?'cliente':'env'}`);
-
     if (!key || key.length < 20) {
-      return res.status(400).json({ erro: 'API key não configurada. Configure a API Key no sistema.' });
+      return res.status(400).json({ erro: 'API key não configurada.' });
     }
-
+    console.log(`/api/analisar: key=${key.length}chars fonte=${keyCliente.length > 20 ? 'cliente' : 'env'}`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 180000);
-
     let respData;
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 16000,
-          messages: [{ role: 'user', content }],
-        }),
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 16000, messages: [{ role: 'user', content }] }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
-
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        return res.status(resp.status).json({
-          erro: `API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}`
-        });
+        return res.status(resp.status).json({ erro: `API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}` });
       }
       respData = await resp.json();
     } catch (fetchErr) {
@@ -558,7 +496,6 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
       }
       throw fetchErr;
     }
-
     res.json({ ok: true, data: respData });
   } catch (e) {
     console.error('Erro /api/analisar:', e.message);
@@ -570,14 +507,12 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
 app.get('/health', async (req, res) => {
   let supabaseOk = false;
   try {
-    const { error } = await db().from('conferencia_processos').select('id').limit(1);
+    const { error } = await sb().from('conferencia_processos').select('id').limit(1);
     supabaseOk = !error;
-  } catch(e) {}
-
+  } catch (e) { supabaseOk = false; }
   res.json({
     ok: true,
     supabase: supabaseOk,
-    supabase_url: SUPA_URL ? SUPA_URL.slice(0,40)+'...' : 'NÃO CONFIGURADO',
     node: process.version,
     env: process.env.NODE_ENV || 'development',
   });
@@ -585,6 +520,5 @@ app.get('/health', async (req, res) => {
 
 // ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`IMPAK Portal v2.0 rodando na porta ${PORT}`);
-  console.log(`Supabase: ${SUPA_URL ? 'configurado' : 'NÃO CONFIGURADO'}`);
+  console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
 });
