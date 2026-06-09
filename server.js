@@ -13,23 +13,29 @@
 const express    = require('express');
 const session    = require('express-session');
 const path       = require('path');
-const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require('@db()/db()-js');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ── SUPABASE ──────────────────────────────────────────────────
-const SUPA_URL = process.env.SUPABASE_URL || '';
-const SUPA_KEY = process.env.SUPABASE_KEY || '';
+// ── SUPABASE — inicialização lazy ─────────────────────────────
+// Não inicializar no topo — variáveis de ambiente podem não estar
+// disponíveis ainda. Usar função getter que inicializa na primeira chamada.
+let _supabase = null;
+function getSupabase() {
+  if (_supabase) return _supabase;
+  const url = process.env.SUPABASE_URL || '';
+  const key = process.env.SUPABASE_KEY || '';
+  if (!url || !key) {
+    throw new Error('SUPABASE_URL ou SUPABASE_KEY não configurados no Railway');
+  }
+  _supabase = createClient(url, key, { auth: { persistSession: false } });
+  console.log('✓ Supabase conectado:', url.slice(0, 40) + '...');
+  return _supabase;
+}
 
-if (!SUPA_URL) console.error('❌ FATAL: SUPABASE_URL não configurado no Railway');
-if (!SUPA_KEY) console.error('❌ FATAL: SUPABASE_KEY não configurado no Railway');
-
-const supabase = createClient(SUPA_URL, SUPA_KEY, {
-  auth: { persistSession: false }
-});
-
-console.log('✓ Supabase client inicializado:', SUPA_URL ? SUPA_URL.slice(0,40)+'...' : 'NÃO CONFIGURADO');
+// Alias curto para usar nas rotas
+const db = () => getSupabase();
 
 // ── USUÁRIOS ──────────────────────────────────────────────────
 function getSenha(envKey, fallback) {
@@ -175,7 +181,7 @@ app.get('/api/me', (req, res) => {
 
 app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('conferencia_processos')
       .select('id, ref, exportador, obs, status, data, created_by, updated_at, dados->analises')
       .order('updated_at', { ascending: false });
@@ -205,7 +211,7 @@ app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
 
 app.get('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('conferencia_processos')
       .select('*')
       .eq('id', req.params.id)
@@ -244,7 +250,7 @@ app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
       dados:       processo,
     };
 
-    const { error } = await supabase
+    const { error } = await db()
       .from('conferencia_processos')
       .upsert(row, { onConflict: 'id' });
 
@@ -260,7 +266,7 @@ app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
 
 app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { error } = await supabase
+    const { error } = await db()
       .from('conferencia_processos')
       .delete()
       .eq('id', req.params.id);
@@ -279,7 +285,7 @@ app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) 
 
 app.get('/api/controle/index', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('controle_processos')
       .select('id, referencia, cliente, fase, status, updated_at, dados')
       .order('updated_at', { ascending: false });
@@ -314,7 +320,7 @@ app.get('/api/controle/index', auth('processos'), async (req, res) => {
 
 app.get('/api/controle/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('controle_processos')
       .select('*')
       .eq('id', req.params.id)
@@ -349,7 +355,7 @@ app.post('/api/controle/processo', auth('processos'), async (req, res) => {
       dados:      processo,
     };
 
-    const { error } = await supabase
+    const { error } = await db()
       .from('controle_processos')
       .upsert(row, { onConflict: 'id' });
 
@@ -365,7 +371,7 @@ app.post('/api/controle/processo', auth('processos'), async (req, res) => {
 
 app.delete('/api/controle/processo/:id', auth('processos'), async (req, res) => {
   try {
-    const { error } = await supabase
+    const { error } = await db()
       .from('controle_processos')
       .delete()
       .eq('id', req.params.id);
@@ -398,7 +404,7 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
     // Upsert em lotes de 100
     const LOTE = 100;
     for (let i = 0; i < rows.length; i += LOTE) {
-      const { error } = await supabase
+      const { error } = await db()
         .from('controle_processos')
         .upsert(rows.slice(i, i + LOTE), { onConflict: 'id' });
       if (error) throw new Error(error.message);
@@ -415,7 +421,7 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
 // Compatibilidade com rota antiga
 app.get('/api/controle/carregar', auth('processos'), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('controle_processos')
       .select('dados')
       .order('updated_at', { ascending: false });
@@ -431,7 +437,7 @@ app.get('/api/controle/carregar', auth('processos'), async (req, res) => {
 app.post('/api/base/salvar', auth('tyredesk'), async (req, res) => {
   try {
     const { base } = req.body;
-    const { error } = await supabase
+    const { error } = await db()
       .from('tyredesk_base')
       .upsert({ id: 1, dados: base, updated_by: req.session.usuario, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw new Error(error.message);
@@ -442,7 +448,7 @@ app.post('/api/base/salvar', auth('tyredesk'), async (req, res) => {
 
 app.get('/api/base/carregar', auth(), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('tyredesk_base')
       .select('dados')
       .eq('id', 1)
@@ -456,7 +462,7 @@ app.get('/api/base/carregar', auth(), async (req, res) => {
 app.post('/api/base/salvar-fornecedores', auth('tyredesk'), async (req, res) => {
   try {
     const { fornecedores } = req.body;
-    const { error } = await supabase
+    const { error } = await db()
       .from('tyredesk_fornecedores')
       .upsert({ id: 1, dados: fornecedores, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw new Error(error.message);
@@ -466,7 +472,7 @@ app.post('/api/base/salvar-fornecedores', auth('tyredesk'), async (req, res) => 
 
 app.get('/api/base/carregar-fornecedores', auth(), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('tyredesk_fornecedores')
       .select('dados')
       .eq('id', 1)
@@ -479,7 +485,7 @@ app.get('/api/base/carregar-fornecedores', auth(), async (req, res) => {
 app.post('/api/base/salvar-snapshots', auth('tyredesk'), async (req, res) => {
   try {
     const { snapshots } = req.body;
-    const { error } = await supabase
+    const { error } = await db()
       .from('tyredesk_fornecedores')
       .upsert({ id: 2, dados: snapshots, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw new Error(error.message);
@@ -489,7 +495,7 @@ app.post('/api/base/salvar-snapshots', auth('tyredesk'), async (req, res) => {
 
 app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('tyredesk_fornecedores')
       .select('dados')
       .eq('id', 2)
@@ -564,7 +570,7 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
 app.get('/health', async (req, res) => {
   let supabaseOk = false;
   try {
-    const { error } = await supabase.from('conferencia_processos').select('id').limit(1);
+    const { error } = await db().from('conferencia_processos').select('id').limit(1);
     supabaseOk = !error;
   } catch(e) {}
 
