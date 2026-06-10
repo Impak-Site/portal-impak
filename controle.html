@@ -265,6 +265,7 @@ select.form-input{cursor:pointer;}
   <div class="sidebar-section">
     <div class="sidebar-label">Dashboard</div>
     <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💵 Visão financeira</div>
+    <div class="sidebar-item" id="menu-armadores" onclick="toggleDashArmadores()">🚢 Armadores</div>
   </div>
   <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
     <div class="sidebar-label">API Key Anthropic</div>
@@ -313,6 +314,14 @@ select.form-input{cursor:pointer;}
   <!-- FASE FILTER -->
   <div class="fase-filter" id="fase-filter"></div>
 
+  <!-- DASHBOARD ARMADORES -->
+  <div id="dash-armadores" style="display:none;margin-bottom:20px;">
+    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">🚢 Histórico de Atraso por Armador</div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;">
+      <div id="dash-arm-content"></div>
+    </div>
+  </div>
+
   <!-- DASHBOARD FINANCEIRO -->
   <div id="dash-financeiro" style="display:none;margin-bottom:20px;">
     <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">💵 Visão Financeira do Mês</div>
@@ -342,8 +351,11 @@ select.form-input{cursor:pointer;}
 <!-- PAINEL NOTIFICAÇÕES -->
 <div class="notif-panel" id="notif-panel">
   <div class="notif-header">
-    🔔 Notificações
-    <button onclick="toggleNotif()" style="background:none;border:none;cursor:pointer;font-size:18px;">×</button>
+    <span>🔔 Notificações</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button onclick="marcarTodasLidas()" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);padding:3px 8px;" title="Marcar todas como lidas">✓ Todas lidas</button>
+      <button onclick="toggleNotif()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">×</button>
+    </div>
   </div>
   <div id="notif-list" style="padding:8px 0;"></div>
 </div>
@@ -648,10 +660,85 @@ async function marcarLida(id){
   }).then(()=>carregarNotificacoes()).catch(()=>{});
 }
 
+async function marcarTodasLidas(){
+  try{
+    const r = await fetch('/api/controle/v2/notificacoes');
+    const d = await r.json();
+    if(!d.ok) return;
+    const naoLidas = (d.notificacoes||[]).filter(n=>!n.lida_por||!n.lida_por.includes(_user.usuario));
+    await Promise.all(naoLidas.map(n=>
+      fetch('/api/controle/v2/notificacao/'+n.id+'/lida',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({usuario:_user.usuario})
+      })
+    ));
+    await carregarNotificacoes();
+    showToast('Todas as notificações marcadas como lidas','ok');
+  }catch(e){ showToast('Erro ao marcar notificações','err'); }
+}
+
 function toggleNotif(){
   _notifAberto = !_notifAberto;
   document.getElementById('notif-panel').classList.toggle('open', _notifAberto);
   if(_notifAberto) carregarNotificacoes();
+}
+
+// ════════════════════════════════════════════════════════════════
+// PREVISÃO DE ATRASO POR ARMADOR
+// Calcula média de atraso (ETA previsto vs chegada real)
+// ════════════════════════════════════════════════════════════════
+function calcularHistoricoArmadores(){
+  const hist = {};
+  _processos.forEach(p=>{
+    if(!p.armador || !p.eta || !p.data_chegada) return;
+    const arm = (p.armador||'').toUpperCase().trim();
+    const eta     = new Date(p.eta);      eta.setHours(0,0,0,0);
+    const chegada = new Date(p.data_chegada); chegada.setHours(0,0,0,0);
+    const diff = Math.ceil((chegada - eta)/86400000); // dias de diferença (+atraso, -adiantado)
+    if(!hist[arm]) hist[arm] = { total:0, count:0, processos:[] };
+    hist[arm].total   += diff;
+    hist[arm].count   += 1;
+    hist[arm].processos.push({ ref:p.referencia, eta:p.eta, chegada:p.data_chegada, diff });
+  });
+  // Calcular média
+  Object.keys(hist).forEach(arm=>{
+    hist[arm].media = Math.round(hist[arm].total / hist[arm].count);
+  });
+  return hist;
+}
+
+function previsaoChegada(proc){
+  if(!proc.eta || !proc.armador) return null;
+  const hist = calcularHistoricoArmadores();
+  const arm  = (proc.armador||'').toUpperCase().trim();
+  if(!hist[arm] || hist[arm].count < 2) return null; // mínimo 2 amostras
+  const etaBase = new Date(proc.eta);
+  const previsao = new Date(etaBase);
+  previsao.setDate(etaBase.getDate() + hist[arm].media);
+  return { previsao, mediaDias: hist[arm].media, amostras: hist[arm].count };
+}
+
+function renderHistoricoArmadores(){
+  const hist = calcularHistoricoArmadores();
+  const entries = Object.entries(hist)
+    .filter(([,v])=>v.count >= 1)
+    .sort((a,b)=>b[1].count - a[1].count);
+  if(!entries.length) return '<div style="color:var(--muted);font-size:13px;">Nenhum dado histórico ainda. Preencha ETA e Data de Chegada nos processos.</div>';
+
+  return entries.map(([arm, v])=>{
+    const cor = v.media > 3 ? 'var(--err)' : v.media > 0 ? 'var(--warn)' : v.media < 0 ? 'var(--ok)' : 'var(--muted)';
+    const label = v.media > 0 ? `+${v.media}d de atraso` : v.media < 0 ? `${v.media}d adiantado` : 'pontual';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-weight:700;font-size:13px;">${arm}</div>
+        <div style="font-size:11px;color:var(--muted);">${v.count} processo${v.count!==1?'s':''} com dados</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:800;color:${cor}">${label}</div>
+        <div style="font-size:10px;color:var(--muted);">média histórica</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function tempoRelativo(isoDate){
@@ -911,15 +998,37 @@ function renderModal(){
 
   // Confirmação visual demurrage
   let demurInfo = '';
-  if(p.data_chegada && p.free_time){
-    const chegada = new Date(p.data_chegada);
-    const venc = new Date(chegada); venc.setDate(venc.getDate() + parseInt(p.free_time||21));
+  if(p.data_chegada || p.demurrage_vencimento){
+    const chegada   = p.data_chegada   ? new Date(p.data_chegada)   : null;
+    const freeTime  = parseInt(p.free_time||21);
+    const vencCalc  = chegada ? new Date(chegada) : null;
+    if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime);
+    const vencReal  = p.demurrage_vencimento ? new Date(p.demurrage_vencimento) : vencCalc;
     const dias = demurrageDias(p);
-    const cor = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
-    demurInfo = `<div style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;margin-top:8px;">
-      📅 Chegada <strong>${chegada.toLocaleDateString('pt-BR')}</strong> + ${p.free_time||21} dias free time = 
-      vence <strong style="color:${cor}">${venc.toLocaleDateString('pt-BR')}</strong>
-      ${dias!==null ? `<span style="color:${cor};font-weight:700;"> (${dias<0?'vencido há '+Math.abs(dias)+'d':dias+'d restantes'})</span>` : ''}
+    const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+    // Linha do tempo do demurrage
+    let statusTxt = '', statusIcon = '';
+    if(p.data_devolucao_vazio){
+      statusIcon = '✅'; statusTxt = `Container devolvido em ${new Date(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
+    } else if(dias !== null && dias < 0){
+      statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — custos acumulando!`;
+    } else if(dias !== null && dias <= 5){
+      statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
+    } else if(dias !== null){
+      statusIcon = '🟢'; statusTxt = `${dias} dias restantes`;
+    }
+
+    demurInfo = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">📊 Cálculo do Demurrage</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+        ${chegada ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 Data de chegada</span><strong>${chegada.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time</span><strong>${freeTime} dias</strong></div>
+        ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+        ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
+        ${p.demurrage_valor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">💸 Valor registrado</span><strong>R$ ${parseFloat(p.demurrage_valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>` : ''}
+      </div>
     </div>`;
   }
 
@@ -1047,7 +1156,9 @@ function renderModal(){
           <div class="form-group"><label class="form-label">ETD</label>
             <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}"></div>
           <div class="form-group"><label class="form-label">ETA</label>
-            <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}"></div>
+            <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
+            ${(()=>{ const pv=previsaoChegada(p); return pv ? `<div style="font-size:10px;color:var(--warn);margin-top:3px;">⚠ Histórico ${p.armador}: média ${pv.mediaDias>0?'+':''}${pv.mediaDias}d → prev. ${pv.previsao.toLocaleDateString('pt-BR')}</div>` : ''; })()}
+          </div>
           <div class="form-group"><label class="form-label">Data Embarque</label>
             <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
@@ -1662,6 +1773,18 @@ function inlineEditFase(id, el){
 // ════════════════════════════════════════════════════════════════
 // DASHBOARD FINANCEIRO
 // ════════════════════════════════════════════════════════════════
+function toggleDashArmadores(){
+  const el = document.getElementById('dash-armadores');
+  if(!el) return;
+  const visivel = el.style.display !== 'none';
+  el.style.display = visivel ? 'none' : 'block';
+  document.getElementById('menu-armadores')?.classList.toggle('active', !visivel);
+  if(!visivel){
+    const content = document.getElementById('dash-arm-content');
+    if(content) content.innerHTML = renderHistoricoArmadores();
+  }
+}
+
 function toggleDashFinanceiro(){
   const el = document.getElementById('dash-financeiro');
   if(!el) return;
@@ -1711,7 +1834,31 @@ function renderDashFinanceiro(){
   const fmt = v => `USD ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const fmtBRL = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
+  // NF emitidas no mês
+  const nfEntradaMes = ativos.filter(p=>{
+    if(!p.nf_entrada_data) return false;
+    const d = new Date(p.nf_entrada_data);
+    return d >= mesIni && d <= mesFim;
+  });
+  const nfSaidaMes = ativos.filter(p=>{
+    if(!p.nf_saida_data) return false;
+    const d = new Date(p.nf_saida_data);
+    return d >= mesIni && d <= mesFim;
+  });
+  const totalNfEntrada = nfEntradaMes.reduce((s,p)=>s+(parseFloat(p.nf_entrada_valor)||0),0);
+  const totalNfSaida   = nfSaidaMes.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
+
+  // Demurrage em aberto
+  const demurAberto = _processos.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento);
+  const totalDemur  = demurAberto.reduce((s,p)=>s+(parseFloat(p.demurrage_valor)||0),0);
+  const demurVencidos = demurAberto.filter(p=>demurrageDias(p)<0);
+
   el.innerHTML = `
+    <!-- Cabeçalho mês -->
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:12px;">
+      📅 Referência: ${hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})} · 
+      Câmbio atual: USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${(_cambio.EUR||0).toFixed(2)} · CNY R$ ${(_cambio.CNY||0).toFixed(4)}
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Provisionado</div>
@@ -1750,12 +1897,81 @@ function renderDashFinanceiro(){
         <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — vence ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
       </div>`).join('')}
     </div>` : ''}
-    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;">
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Entrada (mês)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--info);">${nfEntradaMes.length} NF${nfEntradaMes.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfEntrada)}</div>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Saída (mês)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--ok);">${nfSaidaMes.length} NF${nfSaidaMes.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfSaida)}</div>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Demurrage em aberto</div>
+        <div style="font-size:20px;font-weight:800;color:var(--err);">${demurVencidos.length} vencido${demurVencidos.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${demurAberto.length} container${demurAberto.length!==1?'s':''} pendentes</div>
+      </div>
+    </div>
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Por forma de pagamento (em aberto)</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;">
         <div><span class="fin-badge fin-VISTA">VISTA</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.VISTA)}</span></div>
         <div><span class="fin-badge fin-PRAZO">PRAZO</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.PRAZO)}</span></div>
         <div><span class="fin-badge fin-ENTRADA_SALDO">ENT+SLD</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.ENTRADA_SALDO)}</span></div>
+      </div>
+    </div>
+    <!-- Tabela consolidada por processo -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">
+        Todos os processos em aberto — visão financeira
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:var(--bg);">
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Pagamento</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor USD</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor BRL</th>
+              <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Vencimento</th>
+              <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ativos.filter(p=>p.pi_valor_usd).map(p=>{
+              const vencData = p.pi_data_saldo||p.pi_data_entrada||'';
+              const valUSD   = parseFloat(p.pi_valor_usd)||0;
+              const cambio   = parseFloat(p.pi_cambio)||_cambio.USD;
+              const valBRL   = valUSD * cambio;
+              const vencido  = vencData && new Date(vencData) < hoje && !p.pi_pago;
+              const vcSemana = vencData && new Date(vencData)>=hoje && new Date(vencData)<=semFim && !p.pi_pago;
+              const statusHtml = p.pi_pago
+                ? '<span style="color:var(--ok);font-weight:700;">✓ Pago</span>'
+                : vencido  ? '<span style="color:var(--err);font-weight:700;">⚠ Vencido</span>'
+                : vcSemana ? '<span style="color:var(--warn);font-weight:700;">⏰ Vence em breve</span>'
+                : '<span style="color:var(--muted);">Em aberto</span>';
+              return `<tr style="border-top:1px solid var(--border);${vencido?'background:rgba(220,38,38,.03)':''}">
+                <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${p.referencia}</td>
+                <td style="padding:8px 12px;">${p.fornecedor||'—'}</td>
+                <td style="padding:8px 12px;"><span class="fin-badge fin-${p.pi_pagamento||'VISTA'}">${p.pi_pagamento||'—'}</span></td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmt(valUSD)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmtBRL(valBRL)}</td>
+                <td style="padding:8px 12px;text-align:center;">${vencData?new Date(vencData).toLocaleDateString('pt-BR'):'—'}</td>
+                <td style="padding:8px 12px;text-align:center;">${statusHtml}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--border);background:var(--bg);">
+              <td colspan="3" style="padding:10px 12px;font-weight:700;font-size:13px;">TOTAL</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;font-family:DM Mono,monospace;color:var(--ac);">${fmt(totalProvUSD)}</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;font-family:DM Mono,monospace;color:var(--ac);">${fmtBRL(totalProvBRL)}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   `;
