@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Calculador de Importação</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#e8f0f8;--card:#fff;--border:#c8d8e8;--ac:#1a7fd4;--ac2:#1567b8;
+  --text:#0d1e2e;--muted:#4a6480;--dim:#7a9ab8;
+  --ok:#16a34a;--warn:#d97706;--err:#dc2626;
+  --shadow:0 2px 12px rgba(26,127,212,.1);
+}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;}
+
+/* TOPBAR */
+.topbar{background:#0a2d5e;color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;}
+.topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+.user-badge{font-size:12px;opacity:.7;}
+.btn-topbar{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Syne',sans-serif;}
+.btn-topbar:hover{background:rgba(255,255,255,.2);}
+
+/* LAYOUT */
+.main{display:flex;gap:0;min-height:calc(100vh - 52px);}
+.sidebar-calc{width:320px;background:var(--card);border-right:1px solid var(--border);padding:20px;overflow-y:auto;flex-shrink:0;}
+.content-calc{flex:1;padding:20px;overflow-y:auto;}
+
+/* FORM */
+.section{margin-bottom:20px;}
+.section-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;}
+.form-group{display:flex;flex-direction:column;gap:3px;margin-bottom:10px;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+input[type=number],input[type=text],input[type=date],select{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:7px 10px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);
+  outline:none;transition:border .15s;width:100%;
+}
+input:focus,select:focus{border-color:var(--ac);background:#fff;}
+input.highlighted{border-color:var(--ac);background:rgba(26,127,212,.04);font-weight:600;}
+.dolar-row{display:flex;gap:6px;align-items:center;}
+.dolar-row input{flex:1;}
+.dolar-row button{padding:7px 10px;background:var(--ac);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600;}
+
+/* MIX IMPORTADO */
+.mix-badge{background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.3);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;}
+.mix-badge .mix-title{font-weight:700;color:var(--ok);margin-bottom:4px;}
+.mix-items{max-height:120px;overflow-y:auto;}
+.mix-item{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px solid rgba(22,163,74,.1);}
+
+/* CALC BUTTON */
+.btn-calc{width:100%;background:var(--ac);color:#fff;border:none;border-radius:8px;padding:12px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;margin-top:8px;}
+.btn-calc:hover{background:var(--ac2);}
+.btn-export{width:100%;background:#15803d;color:#fff;border:none;border-radius:8px;padding:10px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-top:6px;transition:background .15s;}
+.btn-export:hover{background:#166534;}
+.btn-export:disabled{opacity:.4;cursor:not-allowed;}
+
+/* RESULTADO */
+.resultado{background:var(--card);border-radius:12px;border:1px solid var(--border);overflow:hidden;}
+.resultado-header{background:#0a2d5e;color:#fff;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;}
+.resultado-header h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;}
+.resultado-body{padding:20px;}
+
+/* CARDS */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;}
+.card-num{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center;}
+.card-num.destaque{border-color:var(--ac);background:rgba(26,127,212,.05);}
+.card-num.ok{border-color:var(--ok);background:rgba(22,163,74,.05);}
+.card-num.warn{border-color:var(--warn);background:rgba(217,119,6,.05);}
+.card-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.card-value{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--ac);}
+.card-value.ok{color:var(--ok);}
+.card-value.warn{color:var(--warn);}
+.card-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+
+/* TABELA DETALHE */
+.detail-section{margin-bottom:20px;}
+.detail-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--border);}
+.detail-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(200,216,232,.5);font-size:13px;}
+.detail-row:last-child{border-bottom:none;}
+.detail-row.total{font-weight:700;font-size:14px;border-top:2px solid var(--border);padding-top:8px;margin-top:4px;}
+.detail-row.total .val{color:var(--ac);font-family:'Syne',sans-serif;}
+.detail-row .lbl{color:var(--muted);}
+.detail-row .val{font-family:'DM Mono',monospace;text-align:right;}
+.detail-row .pct{font-size:11px;color:var(--dim);margin-left:8px;}
+.detail-row.neg .val{color:var(--err);}
+.detail-row.pos .val{color:var(--ok);}
+
+/* MIX RESULTADO */
+.mix-result-table{width:100%;border-collapse:collapse;font-size:12px;}
+.mix-result-table th{background:#f0f6fc;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);}
+.mix-result-table td{padding:7px 10px;border-bottom:1px solid rgba(200,216,232,.4);}
+.mix-result-table tr:hover td{background:#f8fbfe;}
+.mix-result-table td.num{font-family:'DM Mono',monospace;text-align:right;}
+.mix-result-table td.ref{font-family:'DM Mono',monospace;font-weight:600;color:var(--ac);}
+.mix-result-table tfoot td{font-weight:700;border-top:2px solid var(--border);background:#f0f6fc;}
+
+/* CENARIOS */
+.cenarios{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.cenario-btn{background:var(--bg);border:2px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;text-align:center;transition:all .15s;}
+.cenario-btn:hover{border-color:var(--ac);}
+.cenario-btn.active{border-color:var(--ac);background:rgba(26,127,212,.05);}
+.cenario-btn .cen-icon{font-size:20px;margin-bottom:4px;}
+.cenario-btn .cen-label{font-size:11px;font-weight:700;color:var(--muted);}
+.cenario-btn.active .cen-label{color:var(--ac);}
+
+/* COMISSAO */
+.comissao-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:6px;}
+.toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.toggle-row label{flex:1;font-size:12px;font-weight:600;color:var(--text);text-transform:none;letter-spacing:0;}
+.toggle-row select{width:auto;padding:4px 8px;font-size:12px;}
+
+/* TOAST */
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:#0a2d5e;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;animation:slideIn .2s ease;max-width:320px;}
+.toast.ok{background:#15803d;}
+.toast.err{background:#b91c1c;}
+.toast.warn{background:#b45309;}
+@keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* EMPTY */
+.empty-state{text-align:center;padding:60px 20px;color:var(--muted);}
+.empty-icon{font-size:56px;margin-bottom:12px;}
+.empty-text{font-size:15px;font-weight:500;margin-bottom:6px;}
+.empty-sub{font-size:13px;color:var(--dim);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">IMPAK</div>
+  <span style="font-size:12px;opacity:.6;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Calculador de Importação</span>
+  <div class="topbar-right">
+    <div class="user-badge" id="user-badge">—</div>
+    <button class="btn-topbar" onclick="location.href='/'">← TyreDesk</button>
+    <button class="btn-topbar" onclick="location.href='/logout'">Sair</button>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- SIDEBAR: PARÂMETROS -->
+<div class="sidebar-calc">
+
+  <!-- MIX IMPORTADO -->
+  <div id="mix-badge-area"></div>
+
+  <!-- CÂMBIO -->
+  <div class="section">
+    <div class="section-title">💵 Câmbio</div>
+    <div class="form-group">
+      <label>Dólar para cálculo (R$)</label>
+      <div class="dolar-row">
+        <input type="number" id="dolar" value="5.10" step="0.0001" min="1" class="highlighted">
+        <button onclick="buscarPTAX()">PTAX</button>
+      </div>
+      <span id="ptax-ref" style="font-size:10px;color:var(--dim);margin-top:2px;"></span>
+    </div>
+  </div>
+
+  <!-- PEDIDO -->
+  <div class="section">
+    <div class="section-title">📦 Dados do Pedido</div>
+    <div class="form-group">
+      <label>Cliente</label>
+      <input type="text" id="cliente" placeholder="Nome do cliente">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Tipo de Pneu</label>
+        <select id="tipo_pneu" onchange="atualizarNCM()">
+          <option value="TBR">TBR — Caminhão</option>
+          <option value="PCR">PCR — Automóvel</option>
+          <option value="AGR">AGR — Agrícola</option>
+          <option value="OTR">OTR — Máquina</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>NCM</label>
+        <input type="text" id="ncm" value="40112090" readonly style="background:#f0f6fc;font-family:'DM Mono',monospace;font-size:12px;">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>UF Destino</label>
+        <select id="uf_destino" onchange="calcular()">
+          <option value="SC">SC — Santa Catarina</option>
+          <option value="SP">SP — São Paulo</option>
+          <option value="MG">MG — Minas Gerais</option>
+          <option value="PR">PR — Paraná</option>
+          <option value="RS">RS — Rio Grande do Sul</option>
+          <option value="RJ">RJ — Rio de Janeiro</option>
+          <option value="GO">GO — Goiás</option>
+          <option value="BA">BA — Bahia</option>
+          <option value="MA">MA — Maranhão</option>
+          <option value="MS">MS — Mato Grosso do Sul</option>
+          <option value="MT">MT — Mato Grosso</option>
+          <option value="PA">PA — Pará</option>
+          <option value="CE">CE — Ceará</option>
+          <option value="PE">PE — Pernambuco</option>
+          <option value="AL">AL — Alagoas</option>
+          <option value="AM">AM — Amazonas</option>
+          <option value="AP">AP — Amapá</option>
+          <option value="AC">AC — Acre</option>
+          <option value="RO">RO — Rondônia</option>
+          <option value="RR">RR — Roraima</option>
+          <option value="RN">RN — Rio Grande do Norte</option>
+          <option value="PI">PI — Piauí</option>
+          <option value="PB">PB — Paraíba</option>
+          <option value="SE">SE — Sergipe</option>
+          <option value="TO">TO — Tocantins</option>
+          <option value="DF">DF — Distrito Federal</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipo Importação</label>
+        <select id="tipo_importacao">
+          <option value="ENCOMENDA">Encomenda</option>
+          <option value="PROPRIA">Importação Própria</option>
+          <option value="IMPLEMENTOS">Implementos</option>
+          <option value="TRANSPORTADORA">Transportadora</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Tem ICMS ST ou TTD?</label>
+      <select id="tem_st" onchange="calcular()">
+        <option value="NAO">NÃO — Sem Substituição Tributária</option>
+        <option value="SIM">SIM — Com Substituição Tributária</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- VALORES FOB -->
+  <div class="section">
+    <div class="section-title">🚢 Custos de Importação (USD)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>FOB Total (USD)</label>
+        <input type="number" id="fob_usd" placeholder="0.00" step="0.01" oninput="calcular()">
+      </div>
+      <div class="form-group">
+        <label>Qtd Pneus</label>
+        <input type="number" id="qtd_pneus" placeholder="264" oninput="calcular()">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Frete (USD)</label>
+        <input type="number" id="frete_usd" value="3650" step="0.01" oninput="calcular()">
+      </div>
+      <div class="form-group">
+        <label>Qtd Containers</label>
+        <input type="number" id="qtd_containers" value="1" min="1" oninput="calcular()">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Taxa C.E. (USD)</label>
+        <input type="number" id="taxa_ce" value="360" oninput="calcular()">
+      </div>
+      <div class="form-group">
+        <label>Custos Diversos (R$)</label>
+        <input type="number" id="custos_diversos" value="500" oninput="calcular()">
+      </div>
+    </div>
+  </div>
+
+  <!-- CENÁRIO DE MARGEM -->
+  <div class="section">
+    <div class="section-title">📊 Margem</div>
+    <div class="cenarios">
+      <div class="cenario-btn active" id="cen-0" onclick="setCenario(0)">
+        <div class="cen-icon">%</div>
+        <div class="cen-label">Lucro Bruto %</div>
+      </div>
+      <div class="cenario-btn" id="cen-1" onclick="setCenario(1)">
+        <div class="cen-icon">🎯</div>
+        <div class="cen-label">Lucro Alvo %</div>
+      </div>
+      <div class="cenario-btn" id="cen-2" onclick="setCenario(2)">
+        <div class="cen-icon">R$</div>
+        <div class="cen-label">Lucro Alvo R$</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label id="margem-label">Lucro Bruto % desejado</label>
+      <input type="number" id="margem_valor" value="4" step="0.1" oninput="calcular()">
+    </div>
+  </div>
+
+  <!-- COMISSÕES -->
+  <div class="section">
+    <div class="section-title">🤝 Comissões</div>
+    <div class="comissao-box">
+      <div class="toggle-row">
+        <label>Comissão BR</label>
+        <select id="com_br_ativo" onchange="calcular()">
+          <option value="NAO">NÃO</option>
+          <option value="SIM">SIM</option>
+        </select>
+      </div>
+      <div id="com_br_detalhe" style="display:none;">
+        <div class="form-row">
+          <div class="form-group">
+            <label>% Comissão</label>
+            <input type="number" id="com_br_pct" value="0.5" step="0.1" oninput="calcular()">
+          </div>
+          <div class="form-group">
+            <label>Representante</label>
+            <input type="text" id="com_br_nome" value="THIAGO">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="comissao-box" style="margin-top:8px;">
+      <div class="toggle-row">
+        <label>Comissão China/Boss/Lopes</label>
+        <select id="com_china_ativo" onchange="toggleComChina()">
+          <option value="NAO">NÃO</option>
+          <option value="SIM">SIM</option>
+        </select>
+      </div>
+      <div id="com_china_detalhe" style="display:none;">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo</label>
+            <select id="com_china_tipo" onchange="calcular()">
+              <option value="FORA_CHINA">China — Fora (NF serviço DABRURA)</option>
+              <option value="DENTRO_CHINA">China — Dentro (desconta margem)</option>
+              <option value="FORA_BOSS">Boss — Fora</option>
+              <option value="FORA_LOPES">Lopes — Fora</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>% Comissão</label>
+            <input type="number" id="com_china_pct" value="3" step="0.1" oninput="calcular()">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-calc" onclick="calcular()">⚡ Calcular</button>
+  <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
+
+</div>
+
+<!-- RESULTADO -->
+<div class="content-calc">
+
+  <div id="resultado-area">
+    <div class="empty-state">
+      <div class="empty-icon">📊</div>
+      <div class="empty-text">Preencha os parâmetros e clique em Calcular</div>
+      <div class="empty-sub">O resultado aparecerá aqui com todos os detalhes de custo, impostos e margem</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// ESTADO
+// ════════════════════════════════════════════════════════════════
+let _user = null;
+let _mix = null;        // mix importado do TyreDesk
+let _cenario = 0;       // 0=lucrobruto%, 1=lucroalvo%, 2=lucroalvoR$
+let _resultado = null;  // último cálculo
+
+// ── TABELA NCM por tipo + UF ─────────────────────────────────
+// Impostos de ENTRADA variam por NCM e UF destino
+// Gerado da planilha SANTA HELENA
+const NCM_MAP = {
+  TBR: { ncm: 40112090, ii: 0.16,  ipi: 0.013  },
+  PCR: { ncm: 40111000, ii: 0.25,  ipi: 0.0975 },
+  AGR: { ncm: 40117090, ii: 0.16,  ipi: 0.013  },
+  OTR: { ncm: 40118090, ii: 0.16,  ipi: 0.013  },
+};
+
+// MVA e Alíquota Interna por NCM+UF (extraído da planilha)
+const ST_TABLE = {
+  // TBR (40112090)
+  TBR: {
+    BA:{mva:0.594, aliq:0.205}, ES:{mva:0.5267,aliq:0.17},  GO:{mva:0.5644,aliq:0.19},
+    MG:{mva:0.5454,aliq:0.18},  PR:{mva:0.5626,aliq:0.195}, RJ:{mva:0.6246,aliq:0.22},
+    RS:{mva:0.5984,aliq:0.17},  SC:{mva:0.5267,aliq:0.17,rbc:0},
+    SP:{mva:0.5904,aliq:0.18},  AC:{mva:0.5644,aliq:0.19},  AL:{mva:0.584, aliq:0.20},
+    AP:{mva:0.5454,aliq:0.18},  AM:{mva:0.584, aliq:0.20},  CE:{mva:0.584, aliq:0.20},
+    DF:{mva:0.584, aliq:0.20},  MA:{mva:0.6457,aliq:0.23},  MS:{mva:0.5267,aliq:0.17},
+    MT:{mva:0.7879,aliq:0.17},  PB:{mva:0.584, aliq:0.20},  PE:{mva:0.594, aliq:0.205},
+    PI:{mva:0.6351,aliq:0.225}, PA:{mva:0.5644,aliq:0.19},  RO:{mva:0,    aliq:0.195},
+    RR:{mva:0.584, aliq:0.20},  RN:{mva:0.5454,aliq:0.18},  SE:{mva:0.584, aliq:0.20},
+    TO:{mva:0.584, aliq:0.20},
+  },
+  // PCR (40111000)
+  PCR: {
+    BA:{mva:0.7147,aliq:0.205}, ES:{mva:0.6424,aliq:0.17},  GO:{mva:0.683, aliq:0.19},
+    MG:{mva:0.6624,aliq:0.18},  PR:{mva:0.6783,aliq:0.195}, RJ:{mva:0.7477,aliq:0.22},
+    RS:{mva:0.8833,aliq:0.17},  SC:{mva:0.6424,aliq:0.17,rbc:0},
+    SP:{mva:0.7172,aliq:0.18},  AC:{mva:0.683, aliq:0.19},  AL:{mva:0.704, aliq:0.20},
+    AP:{mva:0.6624,aliq:0.18},  AM:{mva:0.704, aliq:0.20},  CE:{mva:0.704, aliq:0.20},
+    DF:{mva:0.704, aliq:0.20},  MA:{mva:0.7704,aliq:0.23},  MS:{mva:0.6424,aliq:0.17},
+    MT:{mva:0.7879,aliq:0.17},  PB:{mva:0.704, aliq:0.20},  PE:{mva:0.7147,aliq:0.205},
+    PI:{mva:0.759, aliq:0.225}, PA:{mva:0.683, aliq:0.19},  RO:{mva:0,    aliq:0.195},
+    RR:{mva:0.704, aliq:0.20},  RN:{mva:0.6624,aliq:0.18},  SE:{mva:0.704, aliq:0.20},
+    TO:{mva:0.704, aliq:0.20},
+  },
+  // AGR (40117090) — usando mesmos valores do TBR onde disponível
+  AGR: {
+    BA:{mva:0.594,aliq:0.205},  ES:{mva:0.5267,aliq:0.17},  GO:{mva:0.5644,aliq:0.19},
+    MG:{mva:0.5454,aliq:0.18},  MS:{mva:0.5267,aliq:0.17},  SC:{mva:0.5267,aliq:0.17,rbc:0},
+    SP:{mva:0.5904,aliq:0.18},
+  },
+};
+
+// Taxas de saída (fixas)
+const SAIDA = { pis:0.02, cofins:0.095, ipi:0.013, icms_proprio:0.014, ibs:0.001, cbs:0.009 };
+
+// Alíq interestadual SC→outros = 4%, SC→SC = 12%
+function getAliqInter(uf){ return uf==='SC' ? 0.12 : 0.04; }
+
+// RBC = 8,5% (zero para SC→SC)
+function getRBC(uf){ return uf==='SC' ? 0 : 0.085; }
+
+// ════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async function(){
+  const r = await fetch('/api/me');
+  const d = await r.json();
+  if(!d.logado){ location.href='/login?destino=/calculador'; return; }
+  _user = d;
+  document.getElementById('user-badge').textContent = d.displayName||d.usuario;
+
+  // Carregar mix do sessionStorage (passado pelo TyreDesk)
+  try{
+    const mixStr = sessionStorage.getItem('impak_mix_calc');
+    if(mixStr){
+      _mix = JSON.parse(mixStr);
+      renderMixBadge();
+      // Preencher FOB e qtd automaticamente
+      if(_mix.totalFob) document.getElementById('fob_usd').value = _mix.totalFob.toFixed(2);
+      if(_mix.qtdTotal) document.getElementById('qtd_pneus').value = _mix.qtdTotal;
+      if(_mix.tipo)     document.getElementById('tipo_pneu').value = _mix.tipo;
+      atualizarNCM();
+    }
+  }catch(e){}
+
+  // Buscar PTAX automaticamente
+  buscarPTAX();
+
+  // Toggle comissão BR
+  document.getElementById('com_br_ativo').addEventListener('change', function(){
+    document.getElementById('com_br_detalhe').style.display = this.value==='SIM'?'block':'none';
+    calcular();
+  });
+});
+
+function toggleComChina(){
+  const v = document.getElementById('com_china_ativo').value;
+  document.getElementById('com_china_detalhe').style.display = v==='SIM'?'block':'none';
+  calcular();
+}
+
+// ════════════════════════════════════════════════════════════════
+// PTAX BCB
+// ════════════════════════════════════════════════════════════════
+async function buscarPTAX(){
+  try{
+    showToast('Buscando PTAX...','info');
+    // API BCB — cotação mais recente do dólar
+    const hoje = new Date();
+    const data1 = formatarDataBCB(new Date(hoje.setDate(hoje.getDate()-7)));
+    const data2 = formatarDataBCB(new Date());
+    const url = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='${data1}'&@dataFinalCotacao='${data2}'&$top=2&$orderby=dataHoraCotacao%20desc&$format=json`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if(d.value && d.value.length){
+      const cotacao = d.value[0];
+      const venda = parseFloat(cotacao.cotacaoVenda).toFixed(4);
+      document.getElementById('dolar').value = venda;
+      const dataHora = new Date(cotacao.dataHoraCotacao);
+      document.getElementById('ptax-ref').textContent = `PTAX BCB: ${venda} — ${dataHora.toLocaleDateString('pt-BR')} ${dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+      showToast(`PTAX: R$ ${venda}`,'ok');
+      calcular();
+    }
+  }catch(e){
+    showToast('PTAX indisponível — use valor manual','warn');
+  }
+}
+function formatarDataBCB(d){
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${m}-${dd}-${d.getFullYear()}`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// CENÁRIOS
+// ════════════════════════════════════════════════════════════════
+function setCenario(n){
+  _cenario = n;
+  document.querySelectorAll('.cenario-btn').forEach((el,i)=>el.classList.toggle('active',i===n));
+  const labels = ['Lucro Bruto % desejado','Lucro Alvo % (margem limpa)','Lucro Alvo em R$'];
+  const defaults = [4, 4, 14000];
+  document.getElementById('margem-label').textContent = labels[n];
+  document.getElementById('margem_valor').value = defaults[n];
+  calcular();
+}
+
+function atualizarNCM(){
+  const tipo = document.getElementById('tipo_pneu').value;
+  document.getElementById('ncm').value = NCM_MAP[tipo]?.ncm || 40112090;
+  calcular();
+}
+
+// ════════════════════════════════════════════════════════════════
+// MIX BADGE
+// ════════════════════════════════════════════════════════════════
+function renderMixBadge(){
+  if(!_mix) return;
+  const el = document.getElementById('mix-badge-area');
+  const itens = (_mix.itens||[]).slice(0,5).map(i=>
+    `<div class="mix-item"><span>${i.size||i.s}</span><span>${i.qtd||i.q} un</span></div>`
+  ).join('');
+  el.innerHTML = `<div class="mix-badge">
+    <div class="mix-title">✓ Mix importado do TyreDesk (${(_mix.itens||[]).length} itens)</div>
+    <div class="mix-items">${itens}${(_mix.itens||[]).length>5?'<div style="font-size:10px;color:var(--dim);padding-top:4px;">...e mais '+(_mix.itens.length-5)+' itens</div>':''}</div>
+  </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// CÁLCULO PRINCIPAL
+// ════════════════════════════════════════════════════════════════
+function calcular(){
+  const dolar       = parseFloat(document.getElementById('dolar').value)||0;
+  const fob_usd     = parseFloat(document.getElementById('fob_usd').value)||0;
+  const frete_usd   = parseFloat(document.getElementById('frete_usd').value)||0;
+  const taxa_ce_usd = parseFloat(document.getElementById('taxa_ce').value)||0;
+  const qtd_cont    = parseInt(document.getElementById('qtd_containers').value)||1;
+  const qtd_pneus   = parseInt(document.getElementById('qtd_pneus').value)||1;
+  const tipo        = document.getElementById('tipo_pneu').value;
+  const uf          = document.getElementById('uf_destino').value;
+  const tem_st      = document.getElementById('tem_st').value === 'SIM';
+  const margem_in   = parseFloat(document.getElementById('margem_valor').value)||4;
+  const custos_div  = parseFloat(document.getElementById('custos_diversos').value)||0;
+
+  if(!fob_usd || !dolar){ return; }
+
+  const ncmInfo = NCM_MAP[tipo];
+  const stInfo  = (ST_TABLE[tipo]||{})[uf] || {mva:0.5,aliq:0.17};
+  const rbc     = getRBC(uf);
+  const aliqInter = getAliqInter(uf);
+
+  // ── 1. CIF ─────────────────────────────────────────────────
+  const seguro_usd   = fob_usd * 0.003;  // 0,3% do FOB
+  const cif_usd      = fob_usd + frete_usd + seguro_usd;
+  const cif_brl      = cif_usd * dolar;
+  const fob_brl      = fob_usd * dolar;
+  const frete_brl    = frete_usd * dolar;
+
+  // ── 2. Impostos de ENTRADA ──────────────────────────────────
+  const ii_val       = cif_usd * ncmInfo.ii * dolar;
+  const base_ipi     = (cif_usd * dolar) + ii_val;
+  const ipi_val      = base_ipi * ncmInfo.ipi;
+  const rbc_val      = cif_brl * rbc;
+  const pis_e_val    = cif_brl * 0.0268;
+  const cof_e_val    = cif_brl * 0.1235;
+  // ICMS entrada por dentro: aliq / (1 - aliq)
+  const icms_aliq    = aliqInter;
+  const base_icms_e  = cif_brl + ii_val + ipi_val + pis_e_val + cof_e_val;
+  const icms_e_pct   = icms_aliq / (1 - icms_aliq);
+  const icms_e_val   = cif_brl * (icms_aliq/(1-icms_aliq));
+  const ibs_e_val    = cif_brl * 0.001;
+  const cbs_e_val    = cif_brl * 0.009;
+
+  const total_impostos_entrada = ii_val + ipi_val + rbc_val + pis_e_val + cof_e_val + icms_e_val + ibs_e_val + cbs_e_val;
+
+  // ── 3. Taxas fixas (por container) ─────────────────────────
+  const n = qtd_cont;
+  const taxa_ce_brl  = taxa_ce_usd * dolar;
+  const taxa_siscomex = 480 * n;
+  const marinha      = 1712 * n;
+  const armazenagem  = 2088 * n;
+  const capatazia    = 1100 * n;
+  const lib_bl       = 650 * n;
+  const add_costs    = 95 * dolar * n;
+  const logistic     = 32.157 * dolar * n;
+  const trs          = 19.608 * dolar * n;
+  const tsc          = 35 * dolar * n;
+  const drop_off     = 25 * dolar * n;
+  const isps         = 25 * dolar * n;
+  const iof          = 138.662 * dolar * n;
+  const descons      = 408 * n;
+  const taxa_agente  = 476 * n;
+  const lavacao      = 550 * n;
+  const admin        = 300 * n;
+  const despachante  = 1650 * n;
+  const sda          = 650 * n;
+  const emissao_li   = 153.53 * n;
+
+  const total_taxas = taxa_ce_brl + taxa_siscomex + marinha + armazenagem + capatazia +
+    lib_bl + add_costs + logistic + trs + tsc + drop_off + isps + iof + descons +
+    taxa_agente + lavacao + admin + despachante + sda + emissao_li + custos_div;
+
+  const custo_total = cif_brl + total_impostos_entrada + total_taxas;
+
+  // ── 4. Comissões ────────────────────────────────────────────
+  const com_br_ativo  = document.getElementById('com_br_ativo').value === 'SIM';
+  const com_br_pct    = com_br_ativo ? (parseFloat(document.getElementById('com_br_pct').value)||0)/100 : 0;
+  const com_china_ativo = document.getElementById('com_china_ativo').value === 'SIM';
+  const com_china_tipo  = document.getElementById('com_china_tipo')?.value||'';
+  const com_china_pct   = com_china_ativo ? (parseFloat(document.getElementById('com_china_pct').value)||0)/100 : 0;
+  const com_china_dentro = com_china_ativo && com_china_tipo === 'DENTRO_CHINA';
+  const com_pct_total   = com_br_pct + (com_china_dentro ? com_china_pct : 0);
+
+  // ── 5. Faturamento por cenário ──────────────────────────────
+  const impostos_saida_pct = SAIDA.pis + SAIDA.cofins + SAIDA.ipi + SAIDA.icms_proprio;
+  const deducoes_pct = impostos_saida_pct + com_pct_total;
+
+  let faturamento = 0;
+  if(_cenario === 0){
+    // Lucro Bruto %: fat * (1 - deducoes - lucro) = custo
+    const lucro_pct = margem_in/100;
+    faturamento = custo_total / (1 - deducoes_pct - lucro_pct);
+  } else if(_cenario === 1){
+    // Lucro Alvo % (margem limpa antes de IRPJ/CSLL)
+    const lucro_pct = margem_in/100;
+    faturamento = custo_total / (1 - deducoes_pct - lucro_pct);
+  } else {
+    // Lucro Alvo R$
+    faturamento = custo_total + margem_in + (custo_total * deducoes_pct);
+  }
+
+  // ── 6. Impostos de SAÍDA ───────────────────────────────────
+  const pis_s_val    = faturamento * SAIDA.pis;
+  const cof_s_val    = faturamento * SAIDA.cofins;
+  const ipi_s_val    = faturamento * SAIDA.ipi;
+  const icms_p_val   = faturamento * SAIDA.icms_proprio;
+  const com_br_val   = faturamento * com_br_pct;
+  const com_china_val = faturamento * (com_china_dentro ? com_china_pct : 0);
+  const total_deducoes = pis_s_val + cof_s_val + ipi_s_val + icms_p_val + com_br_val + com_china_val;
+
+  // ── 7. Com S.T. ────────────────────────────────────────────
+  let icms_st_val = 0, base_st = 0;
+  if(tem_st && stInfo.mva > 0){
+    base_st    = faturamento * (1 + stInfo.mva);
+    const icms_proprio_nf = faturamento * aliqInter;
+    icms_st_val = (base_st * stInfo.aliq) - icms_proprio_nf;
+  }
+
+  // ── 8. Lucro ───────────────────────────────────────────────
+  const receita_liq  = faturamento - total_deducoes;
+  const lucro_val    = receita_liq - custo_total;
+  const lucro_pct    = lucro_val / faturamento * 100;
+
+  // ── 9. Por unidade ─────────────────────────────────────────
+  const preco_unit   = faturamento / qtd_pneus;
+  const custo_unit   = custo_total / qtd_pneus;
+  const fat_com_st   = faturamento + icms_st_val;
+
+  // ── 10. Fator (para referência) ───────────────────────────
+  const fator = fob_brl > 0 ? faturamento / fob_brl : 0;
+
+  _resultado = {
+    dolar, fob_usd, fob_brl, frete_usd, frete_brl, seguro_usd,
+    cif_usd, cif_brl, tipo, uf, tem_st, ncmInfo, stInfo,
+    ii_val, ipi_val, rbc_val, pis_e_val, cof_e_val, icms_e_val, ibs_e_val, cbs_e_val,
+    total_impostos_entrada,
+    taxa_ce_brl, taxa_siscomex, marinha, armazenagem, capatazia, lib_bl,
+    add_costs, logistic, trs, tsc, drop_off, isps, iof, descons,
+    taxa_agente, lavacao, admin, despachante, sda, emissao_li, custos_div,
+    total_taxas, custo_total,
+    pis_s_val, cof_s_val, ipi_s_val, icms_p_val, com_br_val, com_china_val,
+    total_deducoes, faturamento, receita_liq, lucro_val, lucro_pct,
+    icms_st_val, base_st, fat_com_st,
+    preco_unit, custo_unit, qtd_pneus, fator,
+    com_br_pct, com_br_ativo, com_china_ativo, com_china_tipo, com_china_pct,
+    cliente: document.getElementById('cliente').value,
+    tipo_importacao: document.getElementById('tipo_importacao').value,
+  };
+
+  renderResultado(_resultado);
+  document.getElementById('btn-export').disabled = false;
+}
+
+// ════════════════════════════════════════════════════════════════
+// RENDER RESULTADO
+// ════════════════════════════════════════════════════════════════
+function renderResultado(r){
+  const brl = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const usd = v => `USD ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const pct = v => `${v.toFixed(2)}%`;
+
+  const lucroColor = r.lucro_pct>=4?'ok':r.lucro_pct>=2?'warn':'err';
+
+  document.getElementById('resultado-area').innerHTML = `
+  <div class="resultado">
+    <div class="resultado-header">
+      <h2>📊 ${r.cliente||'Resultado do Cálculo'}</h2>
+      <span style="font-size:12px;opacity:.7;">${r.tipo} → ${r.uf} ${r.tem_st?'· COM S.T.':'· SEM S.T.'} · ${new Date().toLocaleDateString('pt-BR')}</span>
+    </div>
+    <div class="resultado-body">
+
+      <!-- CARDS PRINCIPAIS -->
+      <div class="cards-grid">
+        <div class="card-num destaque">
+          <div class="card-label">Faturamento Total</div>
+          <div class="card-value">${brl(r.faturamento)}</div>
+          <div class="card-sub">${r.tem_st&&r.icms_st_val>0?'com S.T: '+brl(r.fat_com_st):''}</div>
+        </div>
+        <div class="card-num destaque">
+          <div class="card-label">Preço por Unidade</div>
+          <div class="card-value">${brl(r.preco_unit)}</div>
+          <div class="card-sub">custo unit: ${brl(r.custo_unit)}</div>
+        </div>
+        <div class="card-num ${lucroColor}">
+          <div class="card-label">Lucro Bruto</div>
+          <div class="card-value ${lucroColor}">${brl(r.lucro_val)}</div>
+          <div class="card-sub">${pct(r.lucro_pct)} sobre faturamento</div>
+        </div>
+        <div class="card-num">
+          <div class="card-label">Custo Total</div>
+          <div class="card-value" style="color:var(--err)">${brl(r.custo_total)}</div>
+          <div class="card-sub">CIF + impostos + taxas</div>
+        </div>
+        <div class="card-num">
+          <div class="card-label">Fator</div>
+          <div class="card-value" style="font-size:22px;">${r.fator.toFixed(5)}</div>
+          <div class="card-sub">faturamento / FOB BRL</div>
+        </div>
+        <div class="card-num">
+          <div class="card-label">Câmbio</div>
+          <div class="card-value" style="font-size:22px;">R$ ${r.dolar.toFixed(4)}</div>
+          <div class="card-sub">FOB: ${usd(r.fob_usd)} = ${brl(r.fob_brl)}</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+        <!-- CUSTO DETALHADO -->
+        <div>
+          <div class="detail-section">
+            <div class="detail-title">📥 Importação — CIF</div>
+            <div class="detail-row"><span class="lbl">FOB</span><span class="val">${usd(r.fob_usd)} = ${brl(r.fob_brl)}</span></div>
+            <div class="detail-row"><span class="lbl">Frete</span><span class="val">${usd(r.frete_usd)} = ${brl(r.frete_brl)}</span></div>
+            <div class="detail-row"><span class="lbl">Seguro (0,3%)</span><span class="val">${usd(r.seguro_usd)} = ${brl(r.seguro_usd*r.dolar)}</span></div>
+            <div class="detail-row total"><span>Total CIF</span><span class="val">${brl(r.cif_brl)}</span></div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-title">🧾 Impostos de Entrada</div>
+            <div class="detail-row neg"><span class="lbl">II (${(r.ncmInfo.ii*100).toFixed(0)}%)</span><span class="val">${brl(r.ii_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">IPI (${(r.ncmInfo.ipi*100).toFixed(2)}%)</span><span class="val">${brl(r.ipi_val)}</span></div>
+            ${r.rbc_val>0?`<div class="detail-row neg"><span class="lbl">RBC 8,5%</span><span class="val">${brl(r.rbc_val)}</span></div>`:''}
+            <div class="detail-row neg"><span class="lbl">PIS entrada 2,68%</span><span class="val">${brl(r.pis_e_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">COFINS entrada 12,35%</span><span class="val">${brl(r.cof_e_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">ICMS ${(getAliqInter(r.uf)*100).toFixed(0)}% (interestadual)</span><span class="val">${brl(r.icms_e_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">IBS 0,1%</span><span class="val">${brl(r.ibs_e_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">CBS 0,9%</span><span class="val">${brl(r.cbs_e_val)}</span></div>
+            <div class="detail-row total"><span>Total Impostos Entrada</span><span class="val">${brl(r.total_impostos_entrada)}</span></div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-title">💼 Taxas e Despesas</div>
+            <div class="detail-row"><span class="lbl">Taxa C.E.</span><span class="val">${brl(r.taxa_ce_brl)}</span></div>
+            <div class="detail-row"><span class="lbl">Siscomex</span><span class="val">${brl(r.taxa_siscomex)}</span></div>
+            <div class="detail-row"><span class="lbl">Marinha Mercante (AFRMM)</span><span class="val">${brl(r.marinha)}</span></div>
+            <div class="detail-row"><span class="lbl">Armazenagem</span><span class="val">${brl(r.armazenagem)}</span></div>
+            <div class="detail-row"><span class="lbl">Capatazia (THC)</span><span class="val">${brl(r.capatazia)}</span></div>
+            <div class="detail-row"><span class="lbl">Liberação BL</span><span class="val">${brl(r.lib_bl)}</span></div>
+            <div class="detail-row"><span class="lbl">Despachante + SDA</span><span class="val">${brl(r.despachante+r.sda)}</span></div>
+            <div class="detail-row"><span class="lbl">Taxas logísticas (USD)</span><span class="val">${brl(r.add_costs+r.logistic+r.trs+r.tsc+r.drop_off+r.isps+r.iof)}</span></div>
+            <div class="detail-row"><span class="lbl">Taxas portuárias</span><span class="val">${brl(r.descons+r.taxa_agente)}</span></div>
+            <div class="detail-row"><span class="lbl">Outros (lavação, adm, etc)</span><span class="val">${brl(r.lavacao+r.admin+r.emissao_li+r.custos_div)}</span></div>
+            <div class="detail-row total"><span>Total Taxas</span><span class="val">${brl(r.total_taxas)}</span></div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-title" style="color:var(--err)">💰 Custo Total de Importação</div>
+            <div class="detail-row total"><span>CUSTO TOTAL</span><span class="val">${brl(r.custo_total)}</span></div>
+          </div>
+        </div>
+
+        <!-- FATURAMENTO -->
+        <div>
+          <div class="detail-section">
+            <div class="detail-title">📤 Venda ao Cliente (Faturamento)</div>
+            <div class="detail-row"><span class="lbl">Faturamento bruto</span><span class="val">${brl(r.faturamento)}</span></div>
+            <div class="detail-row neg"><span class="lbl">PIS saída 2%</span><span class="val">- ${brl(r.pis_s_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">COFINS saída 9,5%</span><span class="val">- ${brl(r.cof_s_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">IPI saída 1,3%</span><span class="val">- ${brl(r.ipi_s_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">ICMS próprio 1,4%</span><span class="val">- ${brl(r.icms_p_val)}</span></div>
+            ${r.com_br_val>0?`<div class="detail-row neg"><span class="lbl">Comissão BR ${(r.com_br_pct*100).toFixed(1)}%</span><span class="val">- ${brl(r.com_br_val)}</span></div>`:''}
+            ${r.com_china_val>0?`<div class="detail-row neg"><span class="lbl">Comissão China ${(r.com_china_pct*100).toFixed(1)}% (dentro)</span><span class="val">- ${brl(r.com_china_val)}</span></div>`:''}
+            <div class="detail-row total"><span>Receita Líquida</span><span class="val">${brl(r.receita_liq)}</span></div>
+            <div class="detail-row total"><span>(-) Custo Total</span><span class="val" style="color:var(--err)">- ${brl(r.custo_total)}</span></div>
+            <div class="detail-row total ${lucroColor}"><span>Lucro Bruto IMPAK</span><span class="val ${lucroColor}">${brl(r.lucro_val)} (${pct(r.lucro_pct)})</span></div>
+          </div>
+
+          ${r.tem_st?`
+          <div class="detail-section">
+            <div class="detail-title">🔄 Substituição Tributária (S.T.)</div>
+            <div class="detail-row"><span class="lbl">MVA ${r.uf}</span><span class="val">${(r.stInfo.mva*100).toFixed(2)}%</span></div>
+            <div class="detail-row"><span class="lbl">Base ICMS S.T.</span><span class="val">${brl(r.base_st)}</span></div>
+            <div class="detail-row"><span class="lbl">Alíq. Interna ${r.uf}</span><span class="val">${(r.stInfo.aliq*100).toFixed(1)}%</span></div>
+            <div class="detail-row neg"><span class="lbl">ICMS S.T. a recolher</span><span class="val">- ${brl(r.icms_st_val)}</span></div>
+            <div class="detail-row total"><span>Faturamento c/ S.T.</span><span class="val">${brl(r.fat_com_st)}</span></div>
+          </div>`:``}
+
+          ${r.com_china_ativo&&r.com_china_tipo!=='DENTRO_CHINA'?`
+          <div class="detail-section">
+            <div class="detail-title">🔔 Nota de Serviço — ${r.com_china_tipo.includes('BOSS')?'BOSS':r.com_china_tipo.includes('LOPES')?'LOPES':'DABRURA'}</div>
+            <div class="detail-row warn"><span class="lbl">Emitir NF serviço ao cliente</span><span class="val">${brl(r.faturamento*r.com_china_pct)}</span></div>
+            <div class="detail-row"><span class="lbl">${(r.com_china_pct*100).toFixed(1)}% sobre ${brl(r.faturamento)}</span></div>
+          </div>`:``}
+
+          <div class="detail-section" style="background:var(--bg);border-radius:8px;padding:14px;border:1px solid var(--border);">
+            <div class="detail-title">📌 Resumo por Unidade</div>
+            <div class="detail-row"><span class="lbl">Qtd. pneus</span><span class="val">${r.qtd_pneus} unidades</span></div>
+            <div class="detail-row"><span class="lbl">Custo por pneu</span><span class="val">${brl(r.custo_unit)}</span></div>
+            <div class="detail-row"><span class="lbl">Preço de venda (c/ margem)</span><span class="val" style="font-weight:700;color:var(--ac)">${brl(r.preco_unit)}</span></div>
+            <div class="detail-row"><span class="lbl">NCM</span><span class="val" style="font-family:'DM Mono',monospace">${r.ncmInfo.ncm}</span></div>
+            <div class="detail-row"><span class="lbl">Tipo importação</span><span class="val">${r.tipo_importacao}</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// EXPORTAR EXCEL
+// ════════════════════════════════════════════════════════════════
+async function exportarExcel(){
+  if(!_resultado){ showToast('Calcule primeiro','warn'); return; }
+  showToast('Gerando Excel...','info');
+  try{
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    const r = _resultado;
+    const brl = v => parseFloat(v.toFixed(2));
+    const pct = v => parseFloat((v*100).toFixed(4));
+    const wb = XLSX.utils.book_new();
+
+    // ── ABA 1: DADOS ───────────────────────────────────────
+    const dadosData = [
+      ['IMPAK COMERCIAL IMPORTADORA', '', '', '', '', ''],
+      ['CALCULADOR DE IMPORTAÇÃO — '+new Date().toLocaleDateString('pt-BR'), '', '', '', '', ''],
+      [''],
+      ['PARÂMETRO', '', 'VALOR', '', 'REFERÊNCIA', ''],
+      ['Dólar utilizado', '', brl(r.dolar), '', 'PTAX BCB', ''],
+      ['FOB (USD)', '', brl(r.fob_usd), '', '', ''],
+      ['FOB (R$)', '', brl(r.fob_brl), '', '', ''],
+      ['Frete (USD)', '', brl(r.frete_usd), '', '', ''],
+      ['CIF Total (R$)', '', brl(r.cif_brl), '', '', ''],
+      ['Cliente', '', r.cliente||'—', '', '', ''],
+      ['Tipo Pneu', '', r.tipo, '', 'NCM: '+r.ncmInfo.ncm, ''],
+      ['UF Destino', '', r.uf, '', '', ''],
+      ['Tipo Importação', '', r.tipo_importacao, '', '', ''],
+      ['Tem ST/TTD', '', r.tem_st?'SIM':'NÃO', '', '', ''],
+      ['Qtd. Pneus', '', r.qtd_pneus, '', '', ''],
+      [''],
+      ['IMPOSTOS DE ENTRADA', '', '', '', '', ''],
+      ['II', '', brl(r.ii_val), '', pct(r.ncmInfo.ii)+'%', ''],
+      ['IPI', '', brl(r.ipi_val), '', pct(r.ncmInfo.ipi)+'%', ''],
+      ['RBC', '', brl(r.rbc_val), '', r.uf==='SC'?'0% (SC→SC)':'8,5%', ''],
+      ['PIS Entrada', '', brl(r.pis_e_val), '', '2,68%', ''],
+      ['COFINS Entrada', '', brl(r.cof_e_val), '', '12,35%', ''],
+      ['ICMS Entrada', '', brl(r.icms_e_val), '', getAliqInter(r.uf)*100+'%', ''],
+      ['IBS', '', brl(r.ibs_e_val), '', '0,1%', ''],
+      ['CBS', '', brl(r.cbs_e_val), '', '0,9%', ''],
+      ['TOTAL IMPOSTOS ENTRADA', '', brl(r.total_impostos_entrada), '', '', ''],
+      [''],
+      ['TAXAS E DESPESAS', '', brl(r.total_taxas), '', '', ''],
+      [''],
+      ['CUSTO TOTAL', '', brl(r.custo_total), '', '', ''],
+      [''],
+      ['FATURAMENTO', '', brl(r.faturamento), '', '', ''],
+      ['PIS Saída', '', brl(r.pis_s_val), '', '2%', ''],
+      ['COFINS Saída', '', brl(r.cof_s_val), '', '9,5%', ''],
+      ['IPI Saída', '', brl(r.ipi_s_val), '', '1,3%', ''],
+      ['ICMS Próprio', '', brl(r.icms_p_val), '', '1,4%', ''],
+      r.com_br_val>0?['Comissão BR', '', brl(r.com_br_val), '', pct(r.com_br_pct)+'%', r.com_br_ativo?document.getElementById('com_br_nome').value:'']:null,
+      [''],
+      ['LUCRO BRUTO', '', brl(r.lucro_val), '', pct(r.lucro_pct/100)+'%', ''],
+      ['PREÇO UNITÁRIO', '', brl(r.preco_unit), '', 'por pneu', ''],
+      r.tem_st?['ICMS S.T.', '', brl(r.icms_st_val), '', r.uf+' MVA '+pct(r.stInfo.mva)+'%', '']:null,
+      r.tem_st?['FATURAMENTO COM S.T.', '', brl(r.fat_com_st), '', '', '']:null,
+      [''],
+      ['FATOR', '', brl(r.fator), '', 'faturamento / FOB BRL', ''],
+    ].filter(Boolean);
+
+    const ws1 = XLSX.utils.aoa_to_sheet(dadosData);
+    ws1['!cols'] = [{wch:35},{wch:5},{wch:18},{wch:5},{wch:25},{wch:20}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'DADOS');
+
+    // ── ABA 2: MODELO (resumo visual) ─────────────────────
+    const modeloData = [
+      ['IMPAK COMERCIAL IMPORTADORA LTDA', '', '', '', '', ''],
+      ['CÁLCULO DE IMPORTAÇÃO', '', '', '', '', ''],
+      [''],
+      ['Cliente:', r.cliente||'—', '', 'Data:', new Date().toLocaleDateString('pt-BR'), ''],
+      ['Tipo:', r.tipo, '', 'UF Destino:', r.uf, ''],
+      ['Importação:', r.tipo_importacao, '', 'S.T./TTD:', r.tem_st?'SIM':'NÃO', ''],
+      [''],
+      ['ENTRADA', '', 'USD', 'Câmbio', 'R$', ''],
+      ['FOB', '', brl(r.fob_usd), brl(r.dolar), brl(r.fob_brl), ''],
+      ['Frete', '', brl(r.frete_usd), brl(r.dolar), brl(r.frete_brl), ''],
+      ['Seguro', '', brl(r.seguro_usd), brl(r.dolar), brl(r.seguro_usd*r.dolar), ''],
+      ['TOTAL CIF', '', brl(r.cif_usd), '', brl(r.cif_brl), ''],
+      [''],
+      ['IMPOSTOS ENTRADA', '', '%', '', 'R$', ''],
+      ['II', '', pct(r.ncmInfo.ii)+'%', '', brl(r.ii_val), ''],
+      ['IPI', '', pct(r.ncmInfo.ipi)+'%', '', brl(r.ipi_val), ''],
+      r.rbc_val>0?['RBC', '', '8,5%', '', brl(r.rbc_val), '']:null,
+      ['PIS Entrada', '', '2,68%', '', brl(r.pis_e_val), ''],
+      ['COFINS Entrada', '', '12,35%', '', brl(r.cof_e_val), ''],
+      ['ICMS', '', getAliqInter(r.uf)*100+'%', '', brl(r.icms_e_val), ''],
+      ['IBS', '', '0,1%', '', brl(r.ibs_e_val), ''],
+      ['CBS', '', '0,9%', '', brl(r.cbs_e_val), ''],
+      ['TOTAL IMPOSTOS', '', '', '', brl(r.total_impostos_entrada), ''],
+      [''],
+      ['TAXAS E DESPESAS', '', '', '', brl(r.total_taxas), ''],
+      [''],
+      ['CUSTO TOTAL', '', '', '', brl(r.custo_total), ''],
+      [''],
+      ['VENDA AO CLIENTE', '', '%', '', 'R$', ''],
+      ['Faturamento', '', '', '', brl(r.faturamento), ''],
+      ['(-) PIS Saída', '', '2,0%', '', brl(r.pis_s_val), ''],
+      ['(-) COFINS Saída', '', '9,5%', '', brl(r.cof_s_val), ''],
+      ['(-) IPI Saída', '', '1,3%', '', brl(r.ipi_s_val), ''],
+      ['(-) ICMS Próprio', '', '1,4%', '', brl(r.icms_p_val), ''],
+      r.com_br_val>0?['(-) Comissão BR', '', pct(r.com_br_pct)+'%', '', brl(r.com_br_val), '']:null,
+      r.icms_st_val>0?['(-) ICMS S.T.', '', '', '', brl(r.icms_st_val), '']:null,
+      [''],
+      ['LUCRO BRUTO IMPAK', '', pct(r.lucro_pct/100)+'%', '', brl(r.lucro_val), ''],
+      [''],
+      ['PREÇO UNITÁRIO', '', '', '', brl(r.preco_unit), ''],
+      ['Qtd. Pneus', '', '', '', r.qtd_pneus, ''],
+      ['NCM', '', '', '', r.ncmInfo.ncm, ''],
+      ['FATOR', '', '', '', brl(r.fator), ''],
+    ].filter(Boolean);
+
+    const ws2 = XLSX.utils.aoa_to_sheet(modeloData);
+    ws2['!cols'] = [{wch:30},{wch:15},{wch:10},{wch:10},{wch:18},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'MODELO');
+
+    // ── ABA 3: MIX (se tiver) ─────────────────────────────
+    if(_mix && _mix.itens && _mix.itens.length){
+      const mixHeader = [['Medida','Marca','Pattern','Tipo','NCM','Qtd','FOB Unit','FOB Total']];
+      const mixRows = _mix.itens.map(i=>[
+        i.size||i.s, i.marca||i.m, i.pattern||i.md, r.tipo,
+        r.ncmInfo.ncm, i.qtd||i.q,
+        brl(i.preco||i.p), brl((i.qtd||i.q)*(i.preco||i.p))
+      ]);
+      mixRows.push(['','','','','','TOTAL','',brl(r.fob_usd)]);
+      const ws3 = XLSX.utils.aoa_to_sheet([...mixHeader,...mixRows]);
+      ws3['!cols'] = [{wch:15},{wch:12},{wch:12},{wch:6},{wch:12},{wch:6},{wch:12},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, ws3, 'MIX');
+    }
+
+    const data = new Date().toISOString().split('T')[0];
+    const nomeCliente = (r.cliente||'CALCULO').replace(/[^a-zA-Z0-9]/g,'_');
+    XLSX.writeFile(wb, `IMPAK_${nomeCliente}_${data}.xlsx`);
+    showToast('✓ Excel exportado','ok');
+  }catch(e){
+    showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════════
+function showToast(msg, tipo){
+  const wrap = document.getElementById('toast-wrap');
+  if(!wrap) return;
+  const t = document.createElement('div');
+  t.className = 'toast '+(tipo||'');
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(()=>t.remove(), 3000);
+}
+</script>
+</body>
+</html>
