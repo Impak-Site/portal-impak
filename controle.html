@@ -248,6 +248,15 @@ select.form-input{cursor:pointer;}
     <div class="sidebar-item" onclick="setFaseFilter('DEVOLUCAO_VAZIO')">📦 Dev. Vazio</div>
     <div class="sidebar-item" onclick="setFaseFilter('FINALIZADO')">✅ Finalizado</div>
   </div>
+  <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
+    <div class="sidebar-label">API Key Anthropic</div>
+    <div style="padding:0 8px;">
+      <input id="sidebar-apikey" type="password" placeholder="sk-ant-..." 
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;font-family:'DM Mono',monospace;color:var(--text);outline:none;"
+        oninput="salvarApiKey(this.value)">
+      <div id="sidebar-apikey-status" style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center;">Não configurada</div>
+    </div>
+  </div>
 </div>
 
 <!-- CONTENT -->
@@ -350,6 +359,12 @@ window.addEventListener('DOMContentLoaded', function(){
     _user = d;
     document.getElementById('user-badge').textContent = d.displayName || d.usuario;
     carregarCambio();
+  // Carregar API key salva
+  const savedKey = localStorage.getItem('impak_apikey')||'';
+  const keyInput = document.getElementById('sidebar-apikey');
+  const keyStatus = document.getElementById('sidebar-apikey-status');
+  if(keyInput && savedKey){ keyInput.value=savedKey; }
+  if(keyStatus){ keyStatus.textContent=savedKey.length>20?'✓ Configurada':'Não configurada'; keyStatus.style.color=savedKey.length>20?'var(--ok)':'var(--muted)'; }
     carregarProcessos();
     renderFaseFilter();
     // Auto-refresh a cada 30s
@@ -362,12 +377,19 @@ window.addEventListener('DOMContentLoaded', function(){
 // ════════════════════════════════════════════════════════════════
 async function carregarCambio(){
   try{
-    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL');
+    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL');
     const d = await r.json();
     _cambio.USD = parseFloat(d.USDBRL?.bid||5.2)||5.2;
+    _cambio.EUR = parseFloat(d.EURBRL?.bid||5.7)||5.7;
+    _cambio.CNY = parseFloat(d.CNYBRL?.bid||0.72)||0.72;
+    const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const bar = document.getElementById('cambio-bar');
-    if(bar) bar.innerHTML = `<span style="font-size:11px;opacity:.7;font-family:'DM Mono',monospace">USD R$ ${_cambio.USD.toFixed(2)}</span>`;
-  }catch(e){}
+    if(bar) bar.innerHTML = [
+      `USD R$ ${_cambio.USD.toFixed(2)}`,
+      `EUR R$ ${_cambio.EUR.toFixed(2)}`,
+      `CNY R$ ${_cambio.CNY.toFixed(4)}`,
+    ].map(t=>`<span style="font-size:11px;font-family:'DM Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="Atualizado ${hora}">${t}</span>`).join('');
+  }catch(e){ console.warn('Câmbio erro:',e.message); }
   setTimeout(carregarCambio, 5*60*1000);
 }
 
@@ -1190,6 +1212,16 @@ function coletarESalvar(){
 // ════════════════════════════════════════════════════════════════
 // UTILS
 // ════════════════════════════════════════════════════════════════
+function salvarApiKey(v){
+  const key = (v||'').trim();
+  try{ localStorage.setItem('impak_apikey', key); }catch(e){}
+  const status = document.getElementById('sidebar-apikey-status');
+  if(status){
+    status.textContent = key.length>20 ? '✓ Configurada' : 'Não configurada';
+    status.style.color = key.length>20 ? 'var(--ok)' : 'var(--muted)';
+  }
+}
+
 function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
 
 // ════════════════════════════════════════════════════════════════
