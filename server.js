@@ -258,7 +258,123 @@ app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) 
   }
 });
 
-// ── API: CONTROLE ─────────────────────────────────────────────
+// ── API: CONTROLE v2 ──────────────────────────────────────────
+app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+
+app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_processos')
+      .select('*')
+      .order('updated_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, processos: data || [] });
+  } catch (e) {
+    console.error('controle v2 GET erro:', e.message);
+    res.json({ ok: true, processos: [] });
+  }
+});
+
+app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
+  try {
+    const { processo } = req.body;
+    if (!processo || !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
+    if (!processo.id) processo.id = crypto.randomUUID();
+    processo.updated_at = new Date().toISOString();
+
+    // Log de auditoria no banco
+    const logEntries = (processo.log || []).filter(l => !l._saved);
+    if (logEntries.length) {
+      const rows = logEntries.map(l => ({
+        processo_id: processo.id,
+        usuario: l.usuario || req.session.usuario,
+        campo: l.campo || '',
+        valor_antes: String(l.valor_antes || ''),
+        valor_depois: String(l.valor_depois || ''),
+        created_at: l.created_at || new Date().toISOString(),
+      }));
+      await sb().from('controle_log').insert(rows).catch(e => console.warn('log erro:', e.message));
+      processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
+    }
+
+    const { error } = await sb()
+      .from('controle_processos')
+      .upsert(processo, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+
+    // Criar notificação de demurrage se necessário
+    if (processo.demurrage_vencimento) {
+      const venc = new Date(processo.demurrage_vencimento);
+      const dias = Math.ceil((venc - new Date()) / 86400000);
+      if (dias <= 5 && dias >= 0 && !processo.data_devolucao_vazio) {
+        await sb().from('controle_notificacoes').insert({
+          processo_id: processo.id,
+          tipo: 'urgente',
+          titulo: `Demurrage: ${processo.referencia}`,
+          mensagem: `Container vence em ${dias} dia(s)!`,
+          created_by: req.session.usuario,
+        }).catch(() => {});
+      }
+    }
+
+    console.log(`controle v2 salvo: ${processo.referencia} por ${req.session.usuario}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('controle v2 POST erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.delete('/api/controle/v2/processo/:id', auth('processos'), async (req, res) => {
+  try {
+    const { error } = await sb().from('controle_processos').delete().eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.get('/api/controle/v2/notificacoes', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_notificacoes')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, notificacoes: data || [] });
+  } catch (e) {
+    res.json({ ok: true, notificacoes: [] });
+  }
+});
+
+app.post('/api/controle/v2/notificacao', auth('processos'), async (req, res) => {
+  try {
+    const { processo_id, tipo, titulo, mensagem } = req.body;
+    await sb().from('controle_notificacoes').insert({
+      processo_id, tipo, titulo, mensagem, created_by: req.session.usuario,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.post('/api/controle/v2/notificacao/:id/lida', auth('processos'), async (req, res) => {
+  try {
+    const { usuario } = req.body;
+    const { data } = await sb().from('controle_notificacoes').select('lida_por').eq('id', req.params.id).single();
+    const lidaPor = [...(data?.lida_por || [])];
+    if (!lidaPor.includes(usuario)) lidaPor.push(usuario);
+    await sb().from('controle_notificacoes').update({ lida_por: lidaPor }).eq('id', req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+
 app.get('/api/controle/index', auth('processos'), async (req, res) => {
   try {
     const { data, error } = await sb()
