@@ -976,30 +976,57 @@ function parseTBR(rows, fornecedor){
   let hi=-1;
   for(let i=0;i<rows.length;i++){
     const r=rows[i].map(c=>(c||'').toString().toUpperCase());
-    if(r.includes('SIZE')){hi=i;break;}
+    if(r.some(c=>c==='SIZE'||c==='SIZE COMPLETE')){hi=i;break;}
   }
   if(hi<0)return[];
   const hdr=rows[hi].map(c=>(c||'').toString());
-  const iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE');
+
+  // Preferir SIZE COMPLETE (tem medida + índice) mas usar SIZE se não tiver COMPLETE
+  let iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE COMPLETE');
+  if(iSize<0) iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE');
+
   const iBrand=hdr.findIndex(c=>c.toUpperCase()==='BRAND');
-  const iPat=hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
-  const iWgt=hdr.findIndex(c=>c.toUpperCase()==='WEIGHT');
-  const iLi=hdr.findIndex(c=>c.toUpperCase().includes('LI'));
-  const iPr=hdr.findIndex(c=>c.toUpperCase()==='PR');
-  const iMoq=hdr.findIndex(c=>c.includes('40'));
-  const iFob=hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
-  const iSpc=hdr.findIndex(c=>c.toUpperCase().includes('SPECIAL'));
+  const iPat  =hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
+  const iWgt  =hdr.findIndex(c=>c.toUpperCase().includes('WEIGHT'));
+  const iLi   =hdr.findIndex(c=>c.toUpperCase().includes('LI'));
+  const iPr   =hdr.findIndex(c=>c.toUpperCase()==='PR');
+  const iMoq  =hdr.findIndex(c=>c.toString().includes('40'));
+  const iFob  =hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
+  const iSpc  =hdr.findIndex(c=>c.toUpperCase().includes('SPECIAL'));
+  const iCat  =hdr.findIndex(c=>c.toUpperCase()==='CATEGORY');
+
   const items=[];
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i];
-    const size=(r[iSize]||'').toString().trim().replace(/\s+/g,'');
-    if(!size||size.length<5)continue;
-    const preco=iSpc>=0&&r[iSpc]?parseFloat(r[iSpc]):iFob>=0?parseFloat(r[iFob]):0;
-    if(!preco||preco<=0)continue;
-    items.push({f:fornecedor,s:size,m:(r[iBrand]||fornecedor).toString(),md:(r[iPat]||'').toString(),cur:'USD',
-      pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,li:iLi>=0?(r[iLi]||'').toString():'',
-      pr:iPr>=0?(r[iPr]||'').toString():'',moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
-      p:Math.round(preco*100)/100,t:'TBR'});
+    const sizeRaw=(r[iSize]||'').toString().trim();
+    if(!sizeRaw||sizeRaw.length<5) continue;
+
+    // Extrair só a medida (ex: "165/70R14 81T" → "165/70R14")
+    const size = sizeRaw.replace(/\s+.*$/,'').trim();
+    if(!size||size.length<5) continue;
+
+    const preco = iSpc>=0&&r[iSpc]&&parseFloat(r[iSpc])>0
+      ? parseFloat(r[iSpc])
+      : iFob>=0 ? parseFloat(r[iFob]) : 0;
+    if(!preco||preco<=0) continue;
+
+    // Detectar tipo PCR ou TBR pela medida ou coluna CATEGORY
+    const cat = iCat>=0 ? (r[iCat]||'').toString().toUpperCase() : '';
+    const tipo = cat.includes('TBR') ? 'TBR'
+      : cat.includes('PCR') ? 'PCR'
+      : /^(1[0-9]{2}\/|2[0-9]{2}\/)/.test(size) ? 'PCR'  // medidas PCR: 165/, 195/, 225/ etc
+      : /^(7\.50|8\.25|9\.00|10\.00|11\.00|12\.00|13\.00|295\/80|315\/80|385\/|425\/)/.test(size) ? 'TBR'
+      : 'PCR'; // default PCR para ROVELO
+
+    items.push({
+      f:fornecedor, s:size, m:(r[iBrand]||fornecedor).toString(),
+      md:(r[iPat]||'').toString(), cur:'USD',
+      pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,
+      li:iLi>=0?(r[iLi]||'').toString():'',
+      pr:iPr>=0?(r[iPr]||'').toString():'',
+      moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
+      p:Math.round(preco*100)/100, t:tipo
+    });
   }
   return items;
 }
@@ -1163,6 +1190,10 @@ async function handleImport(files){
       const d = await r.json();
       if(d.ok) logImport(`✓ Base global salva no Drive (${d.total} itens)`, 'ok');
     } catch(e){ logImport('⚠ Base salva localmente (Drive offline)', 'warn'); }
+
+    // Salvar datas de cotação dos fornecedores
+    await salvarFornecedores();
+    renderForn();
   }
 }
 
@@ -1474,7 +1505,7 @@ function analisar(){
   const cots=cotRows.filter(r=>r.forn&&r.medida&&r.preco>0).map(r=>({
     forn:r.forn.trim(),medida:norm(r.medida),preco:parseFloat(r.preco)||0,
     peso:parseFloat(r.peso)||0,moq:parseInt(r.moq)||0,
-    orig:r.orig||'',pat:r.pat||'',bor:r.bor||'liso',
+    orig:r.orig||'',pat:r.pat||'',bor:r.bor||'',
     li:r.li||'',pr:r.pr||'',
     ctnr:r.ctnr||r.moq||0, cur:r.cur||moeda
   }));
@@ -1538,7 +1569,8 @@ function analisar(){
   btnExp.style.cssText='display:flex;justify-content:flex-end;margin-bottom:12px';
   btnExp.innerHTML=`
     <button class="btn bp" onclick="exportarExcel()" style="gap:6px;display:flex;align-items:center">📥 Exportar Excel</button>
-    <button class="btn bor" onclick="exportarComImpostos()" style="gap:6px;display:flex;align-items:center;margin-left:8px">🇧🇷 Exportar c/ Impostos BRL</button>`;
+    <button class="btn bor" onclick="exportarComImpostos()" style="gap:6px;display:flex;align-items:center;margin-left:8px">🇧🇷 Exportar c/ Impostos BRL</button>
+    <button class="btn" onclick="abrirCalculador()" style="gap:6px;display:flex;align-items:center;margin-left:8px;background:#0a2d5e;color:#fff;border:none;">⚡ Calcular Importação</button>`;
   area.appendChild(btnExp);
 
   area.appendChild(c1);
@@ -1744,7 +1776,7 @@ window.addEventListener('load', async function(){
         const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
         const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
         const data=JSON.parse(new TextDecoder().decode(plain));
-        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
+        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'',moq:c.moq||null,cat:c.cat||''}));
         COTACOES=window._BASE_ORIGINAL.slice();
       } catch(e) {
         console.warn('Decrypt:', e.message);
@@ -1755,7 +1787,7 @@ window.addEventListener('load', async function(){
         const br = await fetch('/api/base/carregar');
         const bd = await br.json();
         if(bd.ok && bd.base && bd.base.length > 0){
-          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
+          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'',moq:c.moq||null,cat:c.cat||''}));
           if(driveBase.length > 100){
             window._BASE_ORIGINAL = driveBase;
             COTACOES = window._BASE_ORIGINAL.slice();
@@ -1828,7 +1860,7 @@ async function doLogin(){
       cur: c.cur||'USD',
       orig: c.orig||'',
       pat: c.pat||'',
-      bor: c.bor||'liso',
+      bor: c.bor||'',
       moq: c.moq||null,
       ctnr: c.moq||null,
     }));
@@ -1915,9 +1947,9 @@ function renderSelTable() {
     // PCR: agrupa por padrão + li + bor
     const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
     const rkLi  = tipoAtivo==='TBR' ? '' : (c.li||'—');
-    const rk = [rkCat, rkLi, prKey, c.bor||'liso'].join('||');
+    const rk = [rkCat, rkLi, prKey, (c.bor||'')].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
@@ -1943,9 +1975,12 @@ function renderSelTable() {
   rowOrder.forEach(rk => {
     const row = rowMap[rk];
     const sel = forns.some(f => row.cells[f] && selPicked[getSelKey(row.cells[f])]);
+    // Badge só aparece se bor tiver valor real (não default vazio)
     const borBdg = row.bor==='borrachudo'
       ? '<span class="badge-borr">BORRACHUDO</span>'
-      : '<span class="badge-liso">LISO</span>';
+      : row.bor==='liso'
+        ? '<span class="badge-liso">LISO</span>'
+        : '';
     const prSpan = row.pr && row.pr!=='PCR' ? ` <span style="font-size:10px;color:var(--mu)">· ${row.pr}</span>` : '';
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
@@ -2188,6 +2223,58 @@ function exportarComImpostos(){
     a.download='IMPAK_Impostos.csv'; a.click();
   }
   toast('✓ Exportado com impostos BRL!');
+}
+
+// ── CALCULADOR DE IMPORTAÇÃO ──────────────────────────────────
+function abrirCalculador(){
+  if(!ultimaAnalise){ toast('Faça uma análise primeiro'); return; }
+  const { mix, cots, sorted, tp } = ultimaAnalise;
+
+  // Montar mix para passar ao calculador
+  // Usar o fornecedor com melhor total (primeiro do ranking)
+  const melhorForn = sorted.filter(r=>r.total!==null)[0];
+  if(!melhorForn){ toast('Selecione pelo menos um fornecedor na análise'); return; }
+
+  const forn = melhorForn.forn;
+  const itens = [];
+  let totalFob = 0, qtdTotal = 0;
+
+  mix.forEach(m=>{
+    const cot = cots.find(c=>c.forn===forn && c.medida===m.medida);
+    if(!cot) return;
+    const qtd = parseInt(m.qtde)||0;
+    if(!qtd) return;
+    const subtotal = cot.preco * qtd;
+    totalFob += subtotal;
+    qtdTotal += qtd;
+    itens.push({
+      size: m.medida,
+      marca: cot.marca||forn,
+      pattern: cot.pattern||'',
+      qtd, preco: cot.preco,
+      subtotal,
+    });
+  });
+
+  // Detectar tipo automaticamente pelo primeiro item
+  const primeiroTipo = (cots.find(c=>c.forn===forn)?.tipo)||'TBR';
+
+  const mixData = {
+    itens,
+    totalFob,
+    qtdTotal,
+    tipo: primeiroTipo,
+    fornecedor: forn,
+    data: new Date().toISOString(),
+  };
+
+  // Salvar no sessionStorage para o calculador ler
+  try{
+    sessionStorage.setItem('impak_mix_calc', JSON.stringify(mixData));
+    window.open('/calculador', '_blank');
+  }catch(e){
+    toast('Erro ao abrir calculador: '+e.message);
+  }
 }
 
 function exportarExcel() {
