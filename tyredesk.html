@@ -976,30 +976,57 @@ function parseTBR(rows, fornecedor){
   let hi=-1;
   for(let i=0;i<rows.length;i++){
     const r=rows[i].map(c=>(c||'').toString().toUpperCase());
-    if(r.includes('SIZE')){hi=i;break;}
+    if(r.some(c=>c==='SIZE'||c==='SIZE COMPLETE')){hi=i;break;}
   }
   if(hi<0)return[];
   const hdr=rows[hi].map(c=>(c||'').toString());
-  const iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE');
+
+  // Preferir SIZE COMPLETE (tem medida + índice) mas usar SIZE se não tiver COMPLETE
+  let iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE COMPLETE');
+  if(iSize<0) iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE');
+
   const iBrand=hdr.findIndex(c=>c.toUpperCase()==='BRAND');
-  const iPat=hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
-  const iWgt=hdr.findIndex(c=>c.toUpperCase()==='WEIGHT');
-  const iLi=hdr.findIndex(c=>c.toUpperCase().includes('LI'));
-  const iPr=hdr.findIndex(c=>c.toUpperCase()==='PR');
-  const iMoq=hdr.findIndex(c=>c.includes('40'));
-  const iFob=hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
-  const iSpc=hdr.findIndex(c=>c.toUpperCase().includes('SPECIAL'));
+  const iPat  =hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
+  const iWgt  =hdr.findIndex(c=>c.toUpperCase().includes('WEIGHT'));
+  const iLi   =hdr.findIndex(c=>c.toUpperCase().includes('LI'));
+  const iPr   =hdr.findIndex(c=>c.toUpperCase()==='PR');
+  const iMoq  =hdr.findIndex(c=>c.toString().includes('40'));
+  const iFob  =hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
+  const iSpc  =hdr.findIndex(c=>c.toUpperCase().includes('SPECIAL'));
+  const iCat  =hdr.findIndex(c=>c.toUpperCase()==='CATEGORY');
+
   const items=[];
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i];
-    const size=(r[iSize]||'').toString().trim().replace(/\s+/g,'');
-    if(!size||size.length<5)continue;
-    const preco=iSpc>=0&&r[iSpc]?parseFloat(r[iSpc]):iFob>=0?parseFloat(r[iFob]):0;
-    if(!preco||preco<=0)continue;
-    items.push({f:fornecedor,s:size,m:(r[iBrand]||fornecedor).toString(),md:(r[iPat]||'').toString(),cur:'USD',
-      pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,li:iLi>=0?(r[iLi]||'').toString():'',
-      pr:iPr>=0?(r[iPr]||'').toString():'',moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
-      p:Math.round(preco*100)/100,t:'TBR'});
+    const sizeRaw=(r[iSize]||'').toString().trim();
+    if(!sizeRaw||sizeRaw.length<5) continue;
+
+    // Extrair só a medida (ex: "165/70R14 81T" → "165/70R14")
+    const size = sizeRaw.replace(/\s+.*$/,'').trim();
+    if(!size||size.length<5) continue;
+
+    const preco = iSpc>=0&&r[iSpc]&&parseFloat(r[iSpc])>0
+      ? parseFloat(r[iSpc])
+      : iFob>=0 ? parseFloat(r[iFob]) : 0;
+    if(!preco||preco<=0) continue;
+
+    // Detectar tipo PCR ou TBR pela medida ou coluna CATEGORY
+    const cat = iCat>=0 ? (r[iCat]||'').toString().toUpperCase() : '';
+    const tipo = cat.includes('TBR') ? 'TBR'
+      : cat.includes('PCR') ? 'PCR'
+      : /^(1[0-9]{2}\/|2[0-9]{2}\/)/.test(size) ? 'PCR'  // medidas PCR: 165/, 195/, 225/ etc
+      : /^(7\.50|8\.25|9\.00|10\.00|11\.00|12\.00|13\.00|295\/80|315\/80|385\/|425\/)/.test(size) ? 'TBR'
+      : 'PCR'; // default PCR para ROVELO
+
+    items.push({
+      f:fornecedor, s:size, m:(r[iBrand]||fornecedor).toString(),
+      md:(r[iPat]||'').toString(), cur:'USD',
+      pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,
+      li:iLi>=0?(r[iLi]||'').toString():'',
+      pr:iPr>=0?(r[iPr]||'').toString():'',
+      moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
+      p:Math.round(preco*100)/100, t:tipo
+    });
   }
   return items;
 }
