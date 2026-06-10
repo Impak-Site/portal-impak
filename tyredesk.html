@@ -1190,6 +1190,10 @@ async function handleImport(files){
       const d = await r.json();
       if(d.ok) logImport(`✓ Base global salva no Drive (${d.total} itens)`, 'ok');
     } catch(e){ logImport('⚠ Base salva localmente (Drive offline)', 'warn'); }
+
+    // Salvar datas de cotação dos fornecedores
+    await salvarFornecedores();
+    renderForn();
   }
 }
 
@@ -1501,7 +1505,7 @@ function analisar(){
   const cots=cotRows.filter(r=>r.forn&&r.medida&&r.preco>0).map(r=>({
     forn:r.forn.trim(),medida:norm(r.medida),preco:parseFloat(r.preco)||0,
     peso:parseFloat(r.peso)||0,moq:parseInt(r.moq)||0,
-    orig:r.orig||'',pat:r.pat||'',bor:r.bor||'liso',
+    orig:r.orig||'',pat:r.pat||'',bor:r.bor||'',
     li:r.li||'',pr:r.pr||'',
     ctnr:r.ctnr||r.moq||0, cur:r.cur||moeda
   }));
@@ -1771,7 +1775,7 @@ window.addEventListener('load', async function(){
         const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
         const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
         const data=JSON.parse(new TextDecoder().decode(plain));
-        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
+        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'',moq:c.moq||null,cat:c.cat||''}));
         COTACOES=window._BASE_ORIGINAL.slice();
       } catch(e) {
         console.warn('Decrypt:', e.message);
@@ -1782,7 +1786,7 @@ window.addEventListener('load', async function(){
         const br = await fetch('/api/base/carregar');
         const bd = await br.json();
         if(bd.ok && bd.base && bd.base.length > 0){
-          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
+          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'',moq:c.moq||null,cat:c.cat||''}));
           if(driveBase.length > 100){
             window._BASE_ORIGINAL = driveBase;
             COTACOES = window._BASE_ORIGINAL.slice();
@@ -1855,7 +1859,7 @@ async function doLogin(){
       cur: c.cur||'USD',
       orig: c.orig||'',
       pat: c.pat||'',
-      bor: c.bor||'liso',
+      bor: c.bor||'',
       moq: c.moq||null,
       ctnr: c.moq||null,
     }));
@@ -1942,9 +1946,9 @@ function renderSelTable() {
     // PCR: agrupa por padrão + li + bor
     const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
     const rkLi  = tipoAtivo==='TBR' ? '' : (c.li||'—');
-    const rk = [rkCat, rkLi, prKey, c.bor||'liso'].join('||');
+    const rk = [rkCat, rkLi, prKey, (c.bor||'')].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
@@ -1970,9 +1974,12 @@ function renderSelTable() {
   rowOrder.forEach(rk => {
     const row = rowMap[rk];
     const sel = forns.some(f => row.cells[f] && selPicked[getSelKey(row.cells[f])]);
+    // Badge só aparece se bor tiver valor real (não default vazio)
     const borBdg = row.bor==='borrachudo'
       ? '<span class="badge-borr">BORRACHUDO</span>'
-      : '<span class="badge-liso">LISO</span>';
+      : row.bor==='liso'
+        ? '<span class="badge-liso">LISO</span>'
+        : '';
     const prSpan = row.pr && row.pr!=='PCR' ? ` <span style="font-size:10px;color:var(--mu)">· ${row.pr}</span>` : '';
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
