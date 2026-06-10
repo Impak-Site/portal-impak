@@ -260,6 +260,8 @@ select.form-input{cursor:pointer;}
   <div class="toolbar">
     <input class="search-box" id="search" placeholder="🔍 Buscar referência, fornecedor, container..." oninput="render()">
     <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
+    <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar Planilha</button>
+    <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
   </div>
 
   <!-- FASE FILTER -->
@@ -756,6 +758,17 @@ function renderModal(){
 
     ${alertasHtml}
 
+    <!-- EXTRAÇÃO POR IA -->
+    <div class="form-section" style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;">
+      <div class="form-section-title" style="border:none;margin-bottom:8px;">🤖 Extração com IA</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Envie uma PI, CI, BL ou qualquer documento para preencher os campos automaticamente</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extrairComIA(this)">
+        <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">📎 Selecionar documento</button>
+        <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
+      </div>
+    </div>
+
     <!-- 01 IDENTIFICAÇÃO -->
     <div class="form-section">
       <div class="form-section-title">📄 01 — Identificação</div>
@@ -1178,6 +1191,234 @@ function coletarESalvar(){
 // UTILS
 // ════════════════════════════════════════════════════════════════
 function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
+
+// ════════════════════════════════════════════════════════════════
+// IMPORTAR PLANILHA EXCEL
+// ════════════════════════════════════════════════════════════════
+async function importarPlanilha(input){
+  const file = input.files[0];
+  if(!file) return;
+  showToast('Lendo planilha...','info');
+  input.value = '';
+
+  const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+
+  const processos = [];
+  const refs = new Set(_processos.map(p=>p.referencia));
+
+  // Detectar tipo de planilha pelo nome
+  const nome = file.name.toLowerCase();
+  const isFollowUp = nome.includes('follow') || wb.SheetNames.some(s=>s.includes('ANDAMENTO'));
+  const isControle = nome.includes('controle') || wb.SheetNames.some(s=>s===('CONTROLE'));
+
+  function parseDate(v){
+    if(!v) return null;
+    if(v instanceof Date){ if(v.getFullYear()<1950) return null; return v.toISOString().split('T')[0]; }
+    const s = String(v).trim().split('\n')[0];
+    if(!s||s==='—'||s.includes('PRODUÇÃO')) return null;
+    for(const fmt of [/^(\d{4})-(\d{2})-(\d{2})/, /^(\d{2})\/(\d{2})\/(\d{4})/]){
+      const m = s.match(fmt);
+      if(m){
+        const [,a,b,c] = m;
+        const year = a.length===4 ? parseInt(a) : parseInt(c);
+        if(year < 1950) return null;
+        const iso = a.length===4 ? `${a}-${b}-${c}` : `${c}-${b}-${a}`;
+        return iso;
+      }
+    }
+    return null;
+  }
+  function pStr(v){ const s=String(v||'').trim(); return s&&s!=='—'&&s!=='.'?s:null; }
+
+  if(isControle && wb.SheetNames.includes('CONTROLE')){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets['CONTROLE'], {header:1, defval:null, raw:false});
+    for(let i=1;i<rows.length;i++){
+      const r = rows[i];
+      const ref = pStr(r[1]); if(!ref) continue;
+      if(refs.has(ref)) continue; refs.add(ref);
+
+      const prontidao   = parseDate(r[11]);
+      const embarque    = parseDate(r[12]);
+      const chegada     = parseDate(r[13]);
+      const presenca    = parseDate(r[14]);
+      const retirada    = parseDate(r[19]);
+      const dataRic     = parseDate(r[22]);
+      const prevPront   = parseDate(r[30]);
+      const demurVenc   = parseDate(r[18]);
+
+      let fase='PI';
+      if(dataRic) fase='FINALIZADO';
+      else if(retirada) fase='FATURAMENTO';
+      else if(presenca||chegada) fase='DESEMBARCADO';
+      else if(embarque) fase='EMBARCADO';
+      else if(prevPront||prontidao) fase='AGUARDANDO_EMBARQUE';
+
+      processos.push({
+        referencia:pStr(r[1]), cliente:pStr(r[2]), produto:pStr(r[3]),
+        agente:pStr(r[7]), porto_destino:pStr(r[8]), fornecedor:pStr(r[9]),
+        pi_data:parseDate(r[10]), data_prontidao:prontidao,
+        previsao_prontidao:prevPront, data_embarque:embarque,
+        data_chegada:chegada, data_presenca:presenca,
+        armador:pStr(r[24]), demurrage_vencimento:demurVenc,
+        obs:pStr(r[5]), fase, created_by:'importacao',
+      });
+    }
+  }
+
+  if(isFollowUp){
+    for(const sheetName of ['EM ANDAMENTO','FINALIZADOS']){
+      if(!wb.SheetNames.includes(sheetName)) continue;
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:false});
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i];
+        const ref = pStr(r[0]); if(!ref) continue;
+        if(refs.has(ref)) continue; refs.add(ref);
+
+        const hblMbl = pStr(r[3]);
+        const hbl = hblMbl ? hblMbl.split('\n')[0] : null;
+        const mbl = hblMbl && hblMbl.includes('\n') ? hblMbl.split('\n')[1] : null;
+        const chegada = parseDate((pStr(r[4])||'').split('\n')[0]);
+        const armAg = pStr(r[13]);
+        const armador = armAg ? armAg.split('\n')[0] : null;
+        const di = pStr(r[8]);
+        const status = pStr(r[14])||'';
+        let fase = 'EMBARCADO';
+        if(status.toLowerCase().includes('finaliz')) fase='FINALIZADO';
+        else if(di) fase='REGISTRO_DI';
+        else if(chegada) fase='DESEMBARCADO';
+
+        processos.push({
+          referencia:ref, fornecedor:pStr(r[2]), hbl, mbl,
+          data_chegada:chegada, navio:pStr(r[5]),
+          numero_di:di, data_registro_di:parseDate(r[9]),
+          container:pStr(r[11]), armador, fase, obs:status.slice(0,200),
+          created_by:'importacao_followup',
+        });
+      }
+    }
+  }
+
+  if(!processos.length){ showToast('Nenhum processo novo encontrado','warn'); return; }
+
+  showToast(`Importando ${processos.length} processos...`,'info');
+
+  // Enviar em lotes de 100
+  let total = 0;
+  for(let i=0;i<processos.length;i+=100){
+    const lote = processos.slice(i,i+100);
+    const r = await fetch('/api/controle/v2/importar',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({processos:lote})
+    });
+    const d = await r.json();
+    if(d.ok) total += lote.length;
+  }
+
+  showToast(`✓ ${total} processos importados`,'ok');
+  await carregarProcessos(true);
+}
+
+// ════════════════════════════════════════════════════════════════
+// EXTRAÇÃO COM IA
+// ════════════════════════════════════════════════════════════════
+async function extrairComIA(input){
+  const file = input.files[0];
+  if(!file) return;
+  input.value='';
+
+  const status = document.getElementById('ia-status');
+  if(status) status.textContent = '⏳ Analisando documento...';
+
+  try{
+    // Converter para base64
+    const base64 = await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=()=>res(r.result.split(',')[1]);
+      r.onerror=rej;
+      r.readAsDataURL(file);
+    });
+
+    const isImg = file.type.startsWith('image/');
+    const apiKey = localStorage.getItem('impak_apikey')||'';
+
+    const content = [{
+      type: isImg ? 'image' : 'document',
+      source: { type:'base64', media_type: file.type, data: base64 }
+    },{
+      type:'text',
+      text:`Extraia os dados deste documento de importação e retorne SOMENTE JSON com os campos disponíveis:
+{
+  "referencia": "",
+  "fornecedor": "",
+  "pi_numero": "",
+  "pi_data": "YYYY-MM-DD",
+  "pi_valor_usd": 0,
+  "pi_incoterm": "",
+  "pi_pagamento": "VISTA|PRAZO|ENTRADA_SALDO",
+  "etd": "YYYY-MM-DD",
+  "eta": "YYYY-MM-DD",
+  "armador": "",
+  "navio": "",
+  "porto_origem": "",
+  "porto_destino": "",
+  "hbl": "",
+  "mbl": "",
+  "container": "",
+  "numero_di": "",
+  "data_registro_di": "YYYY-MM-DD",
+  "canal": "VERDE|AMARELO|VERMELHO",
+  "ci_numero": "",
+  "ci_valor_usd": 0,
+  "ci_data": "YYYY-MM-DD",
+  "data_chegada": "YYYY-MM-DD",
+  "free_time": 21
+}
+Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`
+    }];
+
+    const resp = await fetch('/api/analisar',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({content, apiKey})
+    });
+    const d = await resp.json();
+    if(!d.ok) throw new Error(d.erro||'Erro na IA');
+
+    const raw = (d.data.content||[]).map(c=>c.text||'').join('');
+    let extracted;
+    try{
+      const clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+      extracted = JSON.parse(clean);
+    } catch(e){ throw new Error('Resposta da IA inválida'); }
+
+    // Preencher campos do formulário
+    let preenchidos = 0;
+    Object.keys(extracted).forEach(campo=>{
+      const val = extracted[campo];
+      if(!val) return;
+      const el = document.getElementById('f_'+campo);
+      if(el && !el.value){
+        el.value = val;
+        el.style.borderColor='var(--ok)';
+        el.style.background='rgba(22,163,74,.04)';
+        preenchidos++;
+        setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+      }
+    });
+
+    if(status) status.textContent = `✓ ${preenchidos} campos preenchidos`;
+    showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
+
+    // Atualizar _editando com os valores extraídos
+    if(_editando) Object.assign(_editando, extracted);
+
+  } catch(e){
+    if(status) status.textContent = '❌ Erro: '+e.message;
+    showToast('Erro na extração: '+e.message,'err');
+  }
+}
 
 function showToast(msg, tipo){
   const wrap = document.getElementById('toast-wrap');
