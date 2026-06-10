@@ -4,1923 +4,1190 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IMPAK — Controle de Processos</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#e8f0f8;--bg2:#dce8f5;--surface:#fff;--surface2:#f0f6fc;
-  --border:#c8d8e8;--text:#0d1e2e;--text-dim:#4a6480;--text-bright:#0a2d5e;
-  --accent:#1a7fd4;--accent2:#1567b8;
-  --ok:#16a34a;--warn:#d97706;--err:#dc2626;
+  --bg:#e8f0f8;--card:#fff;--border:#c8d8e8;--ac:#1a7fd4;--ac2:#1567b8;
+  --text:#0d1e2e;--muted:#4a6480;--dim:#7a9ab8;
+  --ok:#16a34a;--warn:#d97706;--err:#dc2626;--info:#0891b2;
+  --ok-bg:rgba(22,163,74,.08);--warn-bg:rgba(217,119,6,.08);
+  --err-bg:rgba(220,38,38,.08);--info-bg:rgba(8,145,178,.08);
+  --shadow:0 2px 12px rgba(26,127,212,.1);
 }
 body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;}
 
-/* ── TOPBAR ── */
-.topbar{background:var(--text-bright);height:52px;display:flex;align-items:center;padding:0 20px;gap:14px;border-bottom:2px solid var(--accent);position:sticky;top:0;z-index:200;}
-.brand{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;color:#fff;letter-spacing:1px;}
-.brand span{color:var(--accent);}
-.tnav{padding:5px 12px;border-radius:5px;font-size:11px;font-weight:700;color:rgba(255,255,255,.55);text-decoration:none;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;}
-.tnav:hover,.tnav.on{background:rgba(26,127,212,.25);color:#fff;}
-.ml{margin-left:auto;display:flex;align-items:center;gap:10px;}
-.ubadge{font-size:11px;color:rgba(255,255,255,.55);font-family:'DM Mono',monospace;}
-.btn-out{background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:5px;color:rgba(255,255,255,.5);padding:4px 10px;font-size:11px;cursor:pointer;}
-.btn-out:hover{border-color:rgba(255,255,255,.5);color:#fff;}
-.cambio-bar{display:flex;gap:10px;align-items:center;margin-left:16px;}
-.cambio-item{font-size:11px;color:rgba(255,255,255,.7);font-family:'DM Mono',monospace;background:rgba(255,255,255,.06);padding:3px 8px;border-radius:4px;}
-.cambio-item span{color:#7dd3fc;font-weight:700;}
+/* ── LAYOUT ── */
+.app{display:flex;flex-direction:column;min-height:100vh;}
+.topbar{background:#0a2d5e;color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;}
+.topbar-title{font-size:12px;opacity:.6;font-weight:600;letter-spacing:1px;text-transform:uppercase;}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+.user-badge{font-size:12px;opacity:.7;}
+.notif-btn{position:relative;background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;}
+.notif-btn:hover{opacity:1;}
+.notif-count{position:absolute;top:-2px;right:-2px;background:var(--err);color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:1px 4px;min-width:16px;text-align:center;}
+.main{display:flex;flex:1;}
 
-/* ── MAIN ── */
-.wrap{padding:18px 22px;}
-.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;}
-.ptitle{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text-bright);}
-.ptitle span{color:var(--accent);}
-.ph-right{display:flex;gap:8px;align-items:center;}
+/* ── SIDEBAR ── */
+.sidebar{width:220px;background:#fff;border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;position:sticky;top:52px;height:calc(100vh - 52px);overflow-y:auto;}
+.sidebar-section{padding:0 12px;margin-bottom:4px;}
+.sidebar-label{font-size:9px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;padding:8px 8px 4px;}
+.sidebar-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;margin-bottom:2px;}
+.sidebar-item:hover{background:var(--bg);color:var(--ac);}
+.sidebar-item.active{background:rgba(26,127,212,.1);color:var(--ac);font-weight:600;}
+.sidebar-item .badge{margin-left:auto;background:var(--err);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;}
+.sidebar-item .badge.warn{background:var(--warn);}
+.sidebar-item .badge.ok{background:var(--ok);}
 
-/* ── BTN ── */
-.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 15px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;border:none;font-family:'Syne',sans-serif;transition:all .15s;}
-.btn-p{background:var(--accent);color:#fff;}
-.btn-p:hover{background:var(--accent2);}
-.btn-s{background:transparent;border:1px solid var(--border);color:var(--text-dim);}
-.btn-s:hover{border-color:var(--accent);color:var(--accent);}
-.btn-d{background:transparent;border:1px solid rgba(220,38,38,.3);color:var(--err);}
-.btn-d:hover{background:rgba(220,38,38,.06);}
+/* ── CONTENT ── */
+.content{flex:1;padding:20px;overflow-y:auto;}
+
+/* ── CARDS STATS ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all .15s;}
+.stat-card:hover{border-color:var(--ac);transform:translateY(-1px);box-shadow:var(--shadow);}
+.stat-card.active{border-color:var(--ac);background:rgba(26,127,212,.05);}
+.stat-num{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--ac);}
+.stat-label{font-size:11px;color:var(--muted);font-weight:600;margin-top:4px;}
+
+/* ── TOOLBAR ── */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.search-box{flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;}
+.search-box:focus{border-color:var(--ac);}
+.btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:'Syne',sans-serif;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.btn-primary{background:var(--ac);color:#fff;}
+.btn-primary:hover{background:var(--ac2);}
+.btn-outline{background:#fff;color:var(--ac);border:1px solid var(--ac);}
+.btn-outline:hover{background:rgba(26,127,212,.05);}
 .btn-sm{padding:5px 10px;font-size:11px;}
 
-/* ── STATS ── */
-.stats{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
-.scard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 14px;cursor:pointer;transition:border-color .15s;display:flex;align-items:center;gap:10px;}
-.scard:hover,.scard.on{border-color:var(--accent);}
-.scard.on{background:rgba(26,127,212,.04);}
-.sn{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;}
-.sl{font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
-.blue{color:var(--accent);}
-.ok{color:var(--ok);}
-.warn{color:var(--warn);}
-.err{color:var(--err);}
-.dim{color:var(--text-dim);}
-
-/* ── FILTROS ── */
-.fbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 14px;}
-.fi{display:flex;flex-direction:column;gap:3px;}
-.fi label{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;}
-.fi input,.fi select{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s;}
-.fi input:focus,.fi select:focus{border-color:var(--accent);}
-.fi input{width:200px;}
-.fi select{min-width:120px;}
-.btn-clr{background:none;border:none;font-size:11px;color:var(--text-dim);cursor:pointer;text-decoration:underline;padding:0;align-self:flex-end;margin-bottom:1px;}
-.btn-clr:hover{color:var(--accent);}
+/* ── FASE PILLS ── */
+.fase-filter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
+.fase-pill{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--muted);transition:all .15s;white-space:nowrap;}
+.fase-pill:hover{border-color:var(--ac);color:var(--ac);}
+.fase-pill.active{background:var(--ac);color:#fff;border-color:var(--ac);}
 
 /* ── TABELA ── */
-.tw{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
-.ttop{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--surface2);}
-.tcount{font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;}
-.tscroll{overflow-x:auto;max-height:calc(100vh - 320px);overflow-y:auto;}
-table{width:100%;border-collapse:collapse;font-size:12px;}
-thead th{background:var(--surface2);padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0;z-index:5;}
-th:hover{color:var(--accent);}
-th.asc::after{content:' ↑';}
-th.desc::after{content:' ↓';}
-td{padding:7px 10px;border-bottom:1px solid var(--bg2);vertical-align:middle;white-space:nowrap;}
-tr.trow:hover td{background:rgba(26,127,212,.03);cursor:pointer;}
-tr.trow.demur-crit td{background:rgba(220,38,38,.03);}
-tr.trow.demur-warn td{background:rgba(217,119,6,.025);}
-.empty{text-align:center;padding:48px;color:var(--text-dim);}
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.table-header{display:grid;grid-template-columns:120px 140px 100px 1fr 100px 90px 90px;gap:0;background:#f0f6fc;border-bottom:1px solid var(--border);}
+.th{padding:10px 12px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.table-row{display:grid;grid-template-columns:120px 140px 100px 1fr 100px 90px 90px;gap:0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.table-row:hover{background:#f8fbfe;}
+.table-row:last-child{border-bottom:none;}
+.td{padding:10px 12px;font-size:13px;display:flex;align-items:center;}
+.td-ref{font-family:'DM Mono',monospace;font-weight:600;color:var(--ac);font-size:12px;}
+.td-forn{font-size:12px;font-weight:500;}
+.td-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
 
-/* ── CÉLULAS ── */
-.ref{font-family:'DM Mono',monospace;font-weight:500;color:var(--accent);}
-.mono{font-family:'DM Mono',monospace;}
-.status-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;}
-.s-PRODUCAO{background:rgba(99,102,241,.1);color:#6366f1;}
-.s-EMBARCADO{background:rgba(14,165,233,.1);color:#0ea5e9;}
-.s-PORTO{background:rgba(245,158,11,.1);color:#d97706;}
-.s-LIBERACAO{background:rgba(239,68,68,.1);color:#dc2626;}
-.s-RETIRADO{background:rgba(16,185,129,.1);color:#10b981;}
-.s-FINALIZADO{background:rgba(139,92,246,.1);color:#8b5cf6;}
-.demur-chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap;}
-.dc-ok{background:rgba(22,163,74,.1);color:var(--ok);}
-.dc-w{background:rgba(217,119,6,.1);color:var(--warn);}
-.dc-e{background:rgba(220,38,38,.12);color:var(--err);}
-.dc-n{color:var(--text-dim);}
-.canal-chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
-.cc-VERDE{background:rgba(22,163,74,.1);color:var(--ok);}
-.cc-AMARELO{background:rgba(217,119,6,.1);color:var(--warn);}
-.cc-VERMELHO{background:rgba(220,38,38,.1);color:var(--err);}
-.cc-CINZA{background:rgba(100,116,128,.1);color:#64748b;}
-.pend-cell{max-width:190px;overflow:hidden;text-overflow:ellipsis;color:var(--text-dim);font-size:11px;}
+/* ── FASE BADGE ── */
+.fase-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;}
+.fase-PI{background:#f0f6fc;color:#1a7fd4;border:1px solid #c8d8e8;}
+.fase-AGUARDANDO_EMBARQUE{background:#fef3c7;color:#92400e;border:1px solid #fde68a;}
+.fase-EMBARCADO{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;}
+.fase-DESEMBARCADO{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}
+.fase-REGISTRO_DI{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;}
+.fase-PARAMETRIZACAO{background:#fce7f3;color:#9d174d;border:1px solid #f9a8d4;}
+.fase-CARREGAMENTO{background:#ecfdf5;color:#064e3b;border:1px solid #a7f3d0;}
+.fase-FATURAMENTO{background:#f0fdf4;color:#14532d;border:1px solid #86efac;}
+.fase-DEVOLUCAO_VAZIO{background:#fff7ed;color:#7c2d12;border:1px solid #fdba74;}
+.fase-FINALIZADO{background:#f0fdf4;color:var(--ok);border:1px solid #86efac;}
+
+/* ── DEMURRAGE ALERT ── */
+.demur-ok{color:var(--ok);}
+.demur-warn{color:var(--warn);font-weight:700;}
+.demur-err{color:var(--err);font-weight:700;}
 
 /* ── MODAL ── */
-.ov{position:fixed;inset:0;background:rgba(10,30,60,.5);z-index:500;display:none;align-items:flex-start;justify-content:center;padding:14px;overflow-y:auto;}
-.ov.on{display:flex;}
-.modal{background:var(--surface);border-radius:14px;width:100%;max-width:920px;margin:auto;box-shadow:0 20px 60px rgba(10,30,60,.25);overflow:hidden;}
-.mh{background:var(--text-bright);padding:15px 20px;display:flex;align-items:center;gap:12px;justify-content:space-between;}
-.mh-left{display:flex;align-items:center;gap:12px;}
-.mh-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#fff;}
-.mh-title span{color:var(--accent);}
-.mh-demur{font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;}
-.mh-close{background:none;border:none;color:rgba(255,255,255,.5);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:3px;}
-.mh-close:hover{color:#fff;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;}
+.modal-bg.open{display:flex;}
+.modal{background:var(--card);border-radius:16px;width:100%;max-width:860px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--card);z-index:10;}
+.modal-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;flex:1;}
+.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:4px 8px;border-radius:6px;}
+.modal-close:hover{background:var(--bg);}
+.modal-body{padding:24px;}
 
-/* ── MODAL TABS ── */
-.mtabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface2);}
-.mtab{padding:10px 18px;font-size:11px;font-weight:700;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;}
-.mtab.on{color:var(--accent);border-bottom-color:var(--accent);}
-.mtc{display:none;padding:18px 20px;}
-.mtc.on{display:block;}
-.mfoot{padding:11px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2);}
+/* ── FORM SECTIONS ── */
+.form-section{margin-bottom:24px;}
+.form-section-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+.form-group{display:flex;flex-direction:column;gap:4px;}
+.form-group.full{grid-column:1/-1;}
+.form-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.form-input{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;transition:all .15s;}
+.form-input:focus{border-color:var(--ac);background:#fff;}
+.form-input:disabled{opacity:.5;cursor:not-allowed;}
+select.form-input{cursor:pointer;}
+.form-input.highlight{border-color:var(--ac);background:rgba(26,127,212,.04);}
 
-/* ── STEPPER ── */
-.stepper{display:flex;margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
-.step{flex:1;padding:9px 4px;text-align:center;cursor:pointer;border-right:1px solid var(--border);transition:all .15s;background:var(--surface2);}
-.step:last-child{border-right:none;}
-.step:hover{background:var(--bg2);}
-.step.done{background:rgba(22,163,74,.06);}
-.step.active{background:rgba(26,127,212,.08);}
-.step-icon{font-size:15px;margin-bottom:3px;}
-.step-lbl{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;}
-.step.done .step-lbl{color:var(--ok);}
-.step.active .step-lbl{color:var(--accent);}
+/* ── PAGAMENTO ── */
+.pagamento-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px;}
+.pagamento-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);}
+.pagamento-row:last-child{border-bottom:none;font-weight:700;font-size:13px;color:var(--ac);}
 
-/* ── FORM ── */
-.sec{margin-bottom:16px;}
-.sec-hd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-dim);margin-bottom:9px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;}
-.sec-tag{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(26,127,212,.08);color:var(--accent);font-weight:700;}
-.sec-restricted{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(220,38,38,.08);color:var(--err);font-weight:700;}
-.grid{display:grid;gap:9px;}
-.g2{grid-template-columns:1fr 1fr;}
-.g3{grid-template-columns:1fr 1fr 1fr;}
-.g4{grid-template-columns:1fr 1fr 1fr 1fr;}
-.full{grid-column:1/-1;}
-.field{display:flex;flex-direction:column;gap:3px;}
-.field label{font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
-.by{font-size:9px;font-weight:400;color:var(--accent);text-transform:none;letter-spacing:0;font-style:italic;}
-input,select,textarea{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;transition:all .15s;width:100%;}
-input:focus,select:focus,textarea:focus{border-color:var(--accent);background:#fff;}
-input.changed,select.changed,textarea.changed{border-color:rgba(22,163,74,.5);background:rgba(22,163,74,.02);}
-textarea{resize:vertical;min-height:58px;}
-input[disabled],select[disabled],textarea[disabled]{opacity:.5;cursor:not-allowed;}
+/* ── TIMELINE ── */
+.timeline{display:flex;align-items:center;gap:0;margin-bottom:24px;overflow-x:auto;padding-bottom:4px;}
+.tl-step{display:flex;flex-direction:column;align-items:center;flex:1;min-width:80px;}
+.tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid var(--border);background:var(--card);color:var(--muted);position:relative;z-index:1;transition:all .2s;cursor:default;}
+.tl-dot.done{background:var(--ok);border-color:var(--ok);color:#fff;}
+.tl-dot.active{background:var(--ac);border-color:var(--ac);color:#fff;box-shadow:0 0 0 4px rgba(26,127,212,.2);}
+.tl-dot.warn{background:var(--warn);border-color:var(--warn);color:#fff;}
+.tl-label{font-size:9px;font-weight:600;color:var(--muted);text-align:center;margin-top:4px;max-width:70px;line-height:1.2;}
+.tl-line{flex:1;height:2px;background:var(--border);margin-top:-14px;}
+.tl-line.done{background:var(--ok);}
 
-/* ── UPLOAD / IA ── */
-.upload-box{border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;cursor:pointer;background:var(--bg2);transition:all .2s;}
-.upload-box:hover,.upload-box.drag{border-color:var(--accent);background:rgba(26,127,212,.04);}
-.upload-box input{display:none;}
-.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
-.chip{background:rgba(26,127,212,.08);border:1px solid rgba(26,127,212,.2);border-radius:4px;padding:3px 8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:4px;font-family:'DM Mono',monospace;}
-.cx{cursor:pointer;opacity:.6;line-height:1;}
-.cx:hover{opacity:1;}
-.ebox{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:13px;margin-top:11px;}
-.erow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);}
-.erow:last-child{border-bottom:none;}
-.elbl{font-size:11px;font-weight:600;color:var(--text-dim);min-width:150px;}
-.eval{font-size:12px;color:var(--text);font-family:'DM Mono',monospace;flex:1;}
-.eb{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;white-space:nowrap;}
-.eb-n{background:rgba(22,163,74,.1);color:var(--ok);}
-.eb-c{background:rgba(217,119,6,.1);color:var(--warn);}
+/* ── NOTIFICAÇÕES ── */
+.notif-panel{position:fixed;top:52px;right:0;width:340px;height:calc(100vh - 52px);background:var(--card);border-left:1px solid var(--border);z-index:150;transform:translateX(100%);transition:transform .25s;overflow-y:auto;}
+.notif-panel.open{transform:translateX(0);}
+.notif-header{padding:16px 20px;border-bottom:1px solid var(--border);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between;}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.notif-item:hover{background:var(--bg);}
+.notif-item.unread{background:rgba(26,127,212,.04);border-left:3px solid var(--ac);}
+.notif-item.urgente{border-left:3px solid var(--err);}
+.notif-avatar{width:36px;height:36px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;}
+.notif-content{flex:1;}
+.notif-title{font-size:13px;font-weight:600;margin-bottom:2px;}
+.notif-msg{font-size:12px;color:var(--muted);line-height:1.4;}
+.notif-time{font-size:10px;color:var(--dim);margin-top:4px;}
+.notif-row{display:flex;gap:10px;align-items:flex-start;}
 
 /* ── LOG ── */
-.log-row{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);}
-.log-row:last-child{border-bottom:none;}
-.log-time{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);white-space:nowrap;min-width:125px;}
-.log-user{font-weight:600;color:var(--accent);}
-.log-chg{font-size:11px;color:var(--text-dim);margin-top:2px;}
-.log-val{font-family:'DM Mono',monospace;color:var(--text);}
+.log-list{display:flex;flex-direction:column;gap:8px;}
+.log-item{display:flex;gap:10px;align-items:flex-start;font-size:12px;}
+.log-avatar{width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
+.log-content{flex:1;}
+.log-user{font-weight:600;}
+.log-text{color:var(--muted);}
+.log-time{font-size:10px;color:var(--dim);}
 
-/* ── TOAST / SPINNER ── */
-.toast{position:fixed;bottom:20px;right:20px;background:var(--text-bright);color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;display:none;box-shadow:0 4px 16px rgba(0,0,0,.2);}
-.toast.on{display:block;}
-.toast.ok{border-left:3px solid var(--ok);}
-.toast.err{border-left:3px solid var(--err);}
-.toast.warn{border-left:3px solid var(--warn);}
-.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(26,127,212,.2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;}
-@keyframes sp{to{transform:rotate(360deg)}}
+/* ── CANAL ── */
+.canal-verde{color:var(--ok);font-weight:700;}
+.canal-amarelo{color:var(--warn);font-weight:700;}
+.canal-vermelho{color:var(--err);font-weight:700;}
 
-/* ── ALERTAS INTELIGENTES ── */
-.ai-strip{display:flex;flex-direction:column;gap:6px;}
-.ai-alert{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:12px;border:1px solid;animation:fadeIn .3s ease;}
-.ai-alert.warn{background:rgba(217,119,6,.07);border-color:rgba(217,119,6,.25);color:#92400e;}
-.ai-alert.err{background:rgba(220,38,38,.07);border-color:rgba(220,38,38,.25);color:#991b1b;}
-.ai-alert.info{background:rgba(26,127,212,.07);border-color:rgba(26,127,212,.25);color:#1e3a5f;}
-.ai-icon{font-size:16px;flex-shrink:0;}
-.ai-text{flex:1;line-height:1.4;}
-.ai-ref{font-family:'DM Mono',monospace;font-weight:700;color:inherit;}
-.ai-btn{background:var(--surface);border:1px solid currentColor;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;color:inherit;white-space:nowrap;font-family:'Syne',sans-serif;transition:all .15s;}
-.ai-btn:hover{opacity:.8;}
-.ai-dismiss{background:transparent;border:none;color:inherit;opacity:.4;cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0;}
-.ai-dismiss:hover{opacity:.8;}
-@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+/* ── TOAST ── */
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:#0a2d5e;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:slideIn .2s ease;max-width:320px;}
+.toast.ok{background:#15803d;}
+.toast.err{background:#b91c1c;}
+.toast.warn{background:#b45309;}
+@keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
-/* ── STATUS BAR ── */
-.status-bar{position:fixed;bottom:0;left:0;right:0;height:28px;background:var(--text-bright);display:flex;align-items:center;padding:0 16px;gap:12px;z-index:300;font-size:11px;font-family:'DM Mono',monospace;}
-.sb-item{display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.5);}
-.sb-item span{color:rgba(255,255,255,.8);}
-.sb-save{display:flex;align-items:center;gap:5px;margin-left:auto;}
-.sb-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0;}
-.sb-dot.saving{background:var(--warn);animation:pulse .8s infinite;}
-.sb-dot.error{background:var(--err);}
-.sb-dot.offline{background:#64748b;}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.sb-text{font-size:10px;color:rgba(255,255,255,.6);}
-body{padding-bottom:28px;}
+/* ── EMPTY ── */
+.empty{text-align:center;padding:60px 20px;color:var(--muted);}
+.empty-icon{font-size:48px;margin-bottom:12px;}
+.empty-text{font-size:14px;font-weight:500;}
 
 /* ── PAGINAÇÃO ── */
-.pagination{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-top:1px solid var(--border);}
-.pg-btn{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--text-dim);font-family:'DM Mono',monospace;min-width:34px;text-align:center;}
-.pg-btn:hover{border-color:var(--accent);color:var(--accent);}
-.pg-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
-.pg-btn:disabled{opacity:.4;cursor:not-allowed;}
-.pg-info{font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;padding:0 8px;}
+.pag{display:flex;align-items:center;gap:8px;justify-content:center;padding:16px;}
+.pag-btn{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);}
+.pag-btn:hover:not(:disabled){border-color:var(--ac);color:var(--ac);}
+.pag-btn:disabled{opacity:.4;cursor:not-allowed;}
+.pag-btn.active{background:var(--ac);color:#fff;border-color:var(--ac);}
+.pag-info{font-size:12px;color:var(--muted);}
 
-/* ── MODAL DIRTY ── */
-.dirty-badge{display:inline-block;background:var(--warn);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:8px;}
+/* ── FINANCEIRO ── */
+.fin-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
+.fin-VISTA{background:#dbeafe;color:#1e40af;}
+.fin-PRAZO{background:#fef3c7;color:#92400e;}
+.fin-ENTRADA_SALDO{background:#d1fae5;color:#065f46;}
 
-/* ── SESSÃO AVISO ── */
-.session-warn{position:fixed;top:60px;right:16px;background:#fff;border:2px solid var(--warn);border-radius:10px;padding:14px 18px;z-index:8000;display:none;box-shadow:0 8px 24px rgba(0,0,0,.15);max-width:300px;}
-.sw-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px;}
-.sw-text{font-size:12px;color:var(--text-dim);margin-bottom:10px;}
-
-/* ── MOBILE ── */
+/* ── RESPONSIVE ── */
 @media(max-width:768px){
-  .wrap{padding:12px;}
-  .stats{overflow-x:auto;flex-wrap:nowrap;}
-  .scard{min-width:90px;flex-shrink:0;}
-  .fbar{flex-direction:column;gap:8px;}
-  .fi input,.fi select{width:100%;}
-  table{font-size:11px;}
-  td,th{padding:6px 7px;}
-  .topbar{padding:0 12px;gap:8px;}
-  .cambio-bar{display:none;}
-  .tnav{padding:4px 8px;font-size:10px;}
-  .modal{border-radius:0;}
-  .ov{padding:0;}
-  .mtc{padding:12px;}
-  .grid.g3,.grid.g4{grid-template-columns:1fr 1fr;}
-  .grid.g2{grid-template-columns:1fr;}
+  .sidebar{display:none;}
+  .table-header,.table-row{grid-template-columns:100px 1fr 80px 70px;}
+  .th:nth-child(2),.td:nth-child(2),
+  .th:nth-child(5),.td:nth-child(5){display:none;}
 }
-@media(max-width:480px){
-  .grid.g3,.grid.g4,.grid.g2{grid-template-columns:1fr;}
-  .ph{flex-direction:column;align-items:flex-start;}
-  .ph-right{width:100%;}
-  .ph-right .btn{width:100%;justify-content:center;}
-}
-
-/* ── LOGIN ── */
-.login-wrap{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;}
-.login-box{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:14px;padding:36px 32px;width:340px;}
-.login-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text-bright);text-align:center;margin-bottom:4px;}
-.login-logo span{color:var(--accent);}
-.login-sub{font-size:11px;color:var(--text-dim);text-align:center;margin-bottom:22px;text-transform:uppercase;letter-spacing:1px;}
-.lerr{background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.2);border-radius:5px;padding:7px 11px;font-size:12px;color:var(--err);margin-bottom:12px;display:none;}
 </style>
 </head>
 <body>
-
-<!-- LOGIN -->
-<div class="login-wrap" id="loginWrap">
-  <div class="login-box">
-    <div class="login-logo">IMP<span>AK</span></div>
-    <div class="login-sub">Controle de Processos</div>
-    <div class="lerr" id="lerr">Usuário ou senha incorretos.</div>
-    <div class="field" style="margin-bottom:10px">
-      <label>Usuário</label>
-      <input id="lu" type="text" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <div class="field" style="margin-bottom:16px">
-      <label>Senha</label>
-      <input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <button class="btn btn-p" style="width:100%;justify-content:center" onclick="doLogin()">Entrar</button>
-  </div>
-</div>
+<div class="app">
 
 <!-- TOPBAR -->
-<div class="topbar" id="topbar" style="display:none">
-  <div class="brand">IMP<span>AK</span></div>
-  <a class="tnav" href="/">TyreDesk</a>
-  <a class="tnav" href="/processos">Conferência</a>
-  <a class="tnav on" href="/controle">Controle</a>
-  <div class="cambio-bar" id="cambioBar"></div>
-  <div class="ml">
-    <span class="ubadge" id="ubadge"></span>
-    <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:3px 8px;">
-      <span style="font-size:10px;color:rgba(255,255,255,.5);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">API Key</span>
-      <input id="apiKeyInput" type="password" placeholder="sk-ant-..." 
-        style="background:transparent;border:none;color:#fff;font-family:'DM Mono',monospace;font-size:11px;outline:none;width:140px;"
-        oninput="saveApiKey(this.value)">
-      <span id="apiStatus" style="font-size:14px">⚪</span>
-    </div>
-    <button class="btn-out" onclick="doLogout()">Sair</button>
+<div class="topbar">
+  <div class="topbar-logo">IMPAK</div>
+  <div class="topbar-title">Controle de Processos</div>
+  <div class="topbar-right">
+    <div id="cambio-bar" style="display:flex;gap:6px;"></div>
+    <button class="notif-btn" onclick="toggleNotif()" title="Notificações">
+      🔔
+      <span class="notif-count" id="notif-count" style="display:none">0</span>
+    </button>
+    <div class="user-badge" id="user-badge">—</div>
+    <button class="btn btn-sm" onclick="location.href='/logout'" style="background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);">Sair</button>
   </div>
 </div>
 
-<!-- CONTEÚDO -->
-<div class="wrap" id="wrap" style="display:none">
-  <div class="ph">
-    <div class="ptitle">Controle de <span>Processos</span></div>
-    <div class="ph-right">
-      <button class="btn btn-p" onclick="abrirNovo()">+ Novo Processo</button>
-    <label class="btn" style="background:var(--ok);cursor:pointer" title="Importar planilhas Excel">
-      📥 Importar Excel
-      <input type="file" accept=".xlsx" multiple style="display:none" onchange="importarExcel(this.files)">
-    </label>
+<div class="main">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-label">Visão</div>
+    <div class="sidebar-item active" id="menu-todos" onclick="setFaseFilter('')">
+      📋 Todos os processos
+      <span class="badge ok" id="badge-total">0</span>
+    </div>
+    <div class="sidebar-item" id="menu-alertas" onclick="setFaseFilter('__alertas')">
+      🔴 Com alertas
+      <span class="badge" id="badge-alertas" style="display:none">0</span>
     </div>
   </div>
-
-  <!-- ALERTAS INTELIGENTES -->
-  <div id="alertasInteligentes" style="margin-bottom:12px"></div>
-
-  <div class="stats" id="statsEl"></div>
-
-  <div class="fbar">
-    <div class="fi"><label>Buscar</label><input id="fq" placeholder="Ref., cliente, container, navio..." oninput="render()"></div>
-    <div class="fi"><label>Status</label>
-      <select id="ff" onchange="render()">
-        <option value="">Todos</option>
-        <option value="PRODUCAO">Em Produção</option>
-        <option value="EMBARCADO">Embarcado</option>
-        <option value="PORTO">No Porto</option>
-        <option value="LIBERACAO">Liberação</option>
-        <option value="RETIRADO">Retirado</option>
-        <option value="FINALIZADO">Finalizado</option>
-      </select>
-    </div>
-    <div class="fi"><label>Cliente</label><select id="fc" onchange="render()"><option value="">Todos</option></select></div>
-    <div class="fi"><label>Porto</label><select id="fp" onchange="render()"><option value="">Todos</option></select></div>
-    <div class="fi"><label>Agente</label><select id="fa" onchange="render()"><option value="">Todos</option></select></div>
-    <button class="btn-clr" onclick="limparFiltros()">✕ Limpar</button>
-  </div>
-
-  <div class="tw">
-    <div class="ttop">
-      <span class="tcount" id="tcount"></span>
-      <span style="font-size:11px;color:var(--text-dim)">Clique para abrir · última atualização: <span id="lastSync">—</span></span>
-    </div>
-    <div class="tscroll">
-      <table>
-        <thead id="thead"></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Por fase</div>
+    <div class="sidebar-item" onclick="setFaseFilter('PI')">📄 PI recebida</div>
+    <div class="sidebar-item" onclick="setFaseFilter('AGUARDANDO_EMBARQUE')">⏳ Ag. Embarque</div>
+    <div class="sidebar-item" onclick="setFaseFilter('EMBARCADO')">🚢 Embarcado</div>
+    <div class="sidebar-item" onclick="setFaseFilter('DESEMBARCADO')">⚓ Desembarcado</div>
+    <div class="sidebar-item" onclick="setFaseFilter('REGISTRO_DI')">📋 Registro DI</div>
+    <div class="sidebar-item" onclick="setFaseFilter('PARAMETRIZACAO')">🔍 Parametrização</div>
+    <div class="sidebar-item" onclick="setFaseFilter('CARREGAMENTO')">🚛 Carregamento</div>
+    <div class="sidebar-item" onclick="setFaseFilter('FATURAMENTO')">💰 Faturamento</div>
+    <div class="sidebar-item" onclick="setFaseFilter('DEVOLUCAO_VAZIO')">📦 Dev. Vazio</div>
+    <div class="sidebar-item" onclick="setFaseFilter('FINALIZADO')">✅ Finalizado</div>
   </div>
 </div>
 
-<!-- STATUS BAR -->
-<div class="status-bar" id="statusBar">
-  <div class="sb-item">🔗 <span id="sbUser">—</span></div>
-  <div class="sb-item">📋 <span id="sbTotal">0</span> processos</div>
-  <div class="sb-item">🕐 <span id="sbSync">—</span></div>
-  <div class="sb-save">
-    <div class="sb-dot" id="sbDot"></div>
-    <div class="sb-text" id="sbText">Pronto</div>
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- STATS -->
+  <div class="stats-grid" id="stats-grid"></div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <input class="search-box" id="search" placeholder="🔍 Buscar referência, fornecedor, container..." oninput="render()">
+    <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
   </div>
+
+  <!-- FASE FILTER -->
+  <div class="fase-filter" id="fase-filter"></div>
+
+  <!-- TABELA -->
+  <div class="table-wrap">
+    <div class="table-header">
+      <div class="th">Referência</div>
+      <div class="th">Fornecedor</div>
+      <div class="th">Fase</div>
+      <div class="th">ETA / Chegada</div>
+      <div class="th">Demurrage</div>
+      <div class="th">Financeiro</div>
+      <div class="th">Ações</div>
+    </div>
+    <div id="table-body"></div>
+  </div>
+
+  <!-- PAGINAÇÃO -->
+  <div class="pag" id="paginacao"></div>
+</div>
+</div>
 </div>
 
-<!-- AVISO SESSÃO -->
-<div class="session-warn" id="sessionWarn">
-  <div class="sw-title">⏰ Sessão expirando</div>
-  <div class="sw-text">Sua sessão expira em <strong id="sessionMins">5</strong> minutos. Salve seu trabalho.</div>
-  <button class="btn btn-p btn-sm" onclick="renovarSessao()">Renovar sessão</button>
+<!-- PAINEL NOTIFICAÇÕES -->
+<div class="notif-panel" id="notif-panel">
+  <div class="notif-header">
+    🔔 Notificações
+    <button onclick="toggleNotif()" style="background:none;border:none;cursor:pointer;font-size:18px;">×</button>
+  </div>
+  <div id="notif-list" style="padding:8px 0;"></div>
 </div>
 
-<!-- MODAL -->
-<div class="ov" id="ov">
+<!-- TOAST -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<!-- MODAL PROCESSO -->
+<div class="modal-bg" id="modal-bg">
   <div class="modal">
-    <div class="mh">
-      <div class="mh-left">
-        <div class="mh-title" id="mh-title">Processo</div>
-        <div id="mh-demur"></div>
-      </div>
-      <button class="mh-close" onclick="fechar()">✕</button>
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Novo Processo</div>
+      <div id="modal-fase-badge"></div>
+      <button class="modal-close" onclick="fecharModal()">×</button>
     </div>
-    <div class="mtabs">
-      <div class="mtab on" onclick="tab('dados')">📋 Dados</div>
-      <div class="mtab" onclick="tab('ia')">📄 Extrair com IA</div>
-      <div class="mtab" onclick="tab('log')">📝 Histórico</div>
-    </div>
-    <div class="mtc on" id="tc-dados"></div>
-    <div class="mtc" id="tc-ia"></div>
-    <div class="mtc" id="tc-log"></div>
-    <div class="mfoot" id="mfoot"></div>
+    <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
-
-<div class="toast" id="toast"></div>
 
 <script>
-// ══ CONFIG ════════════════════════════════════════════════════
-const USERS = [
-  {u:'narcelio', p:'Narcelio@2026', n:'Narcelio', fin:true},
-  {u:'jean',     p:'Jeanimpak2026', n:'Jean',     fin:true},
-  {u:'paula',    p:'Paula@2026',    n:'Paula',    fin:true},
-  {u:'bianca',   p:'Bianca@2026',   n:'Bianca',   fin:true},
-  {u:'emanuelly',p:'EmanuellyImpak2026',n:'Emanuelly',fin:false},
-  {u:'italo',    p:'Italo@2026',    n:'Italo',    fin:false},
-  {u:'maria',    p:'Maria@2026',    n:'Maria',    fin:false},
-  {u:'joyce',    p:'Joyce@2026',    n:'Joyce',    fin:false},
-  {u:'neide',    p:'Neide@2026',    n:'Neide',    fin:false},
-];
+// ════════════════════════════════════════════════════════════════
+// ESTADO
+// ════════════════════════════════════════════════════════════════
+let _user = null;
+let _processos = [];
+let _faseFilter = '';
+let _searchText = '';
+let _pagina = 1;
+const POR_PAGINA = 50;
+let _editando = null; // processo sendo editado
+let _notifAberto = false;
+let _cambio = { USD: 1, BRL: 1 };
 
 const FASES = [
-  {id:'PRODUCAO',  label:'Em Produção', icon:'🔵'},
-  {id:'EMBARCADO', label:'Embarcado',   icon:'🚢'},
-  {id:'PORTO',     label:'No Porto',    icon:'⚓'},
-  {id:'LIBERACAO', label:'Liberação',   icon:'📋'},
-  {id:'RETIRADO',  label:'Retirado',    icon:'🚛'},
-  {id:'FINALIZADO',label:'Finalizado',  icon:'✅'},
+  { id:'PI',                label:'PI Recebida',       icon:'📄' },
+  { id:'AGUARDANDO_EMBARQUE',label:'Ag. Embarque',      icon:'⏳' },
+  { id:'EMBARCADO',          label:'Embarcado',          icon:'🚢' },
+  { id:'DESEMBARCADO',       label:'Desembarcado',       icon:'⚓' },
+  { id:'REGISTRO_DI',        label:'Registro DI',        icon:'📋' },
+  { id:'PARAMETRIZACAO',     label:'Parametrização',     icon:'🔍' },
+  { id:'CARREGAMENTO',       label:'Carregamento',       icon:'🚛' },
+  { id:'FATURAMENTO',        label:'Faturamento',        icon:'💰' },
+  { id:'DEVOLUCAO_VAZIO',    label:'Dev. Vazio',         icon:'📦' },
+  { id:'FINALIZADO',         label:'Finalizado',         icon:'✅' },
 ];
 
-// Campos por fase — o que aparece em cada etapa
-const FASE_CAMPOS = {
-  PRODUCAO:  ['produtos','quant_containers','data_pedido','previsao_prontidao','observacoes'],
-  EMBARCADO: ['data_prontidao','data_embarque','eta','navio','armador','container','hbl','mbl','bl_provado','data_ci'],
-  PORTO:     ['data_chegada','data_presenca','free_time','ce_master','ce_house'],
-  LIBERACAO: ['anuencia','numero_di','data_di','canal_parametrizacao','status_mapa','status_lpco'],
-  RETIRADO:  ['data_retirada','horario_retirada'],
-  FINALIZADO:['data_ric','status_ric','nf_processo'],
-};
+const FASE_LABEL = Object.fromEntries(FASES.map(f=>[f.id, f.label]));
+const FASE_ICON  = Object.fromEntries(FASES.map(f=>[f.id, f.icon]));
 
-const FASE_CAMPOS_FIN = {
-  PRODUCAO:  ['pagamento_entrada','pagamento_saldo'],
-  EMBARCADO: [],
-  PORTO:     [],
-  LIBERACAO: [],
-  RETIRADO:  ['frete'],
-  FINALIZADO:[],
-};
-
-const FLABELS = {
-  referencia:'Referência',cliente:'Cliente',produtos:'Produto / Navio BL',finalidade:'Finalidade',
-  agente:'Agente',porto:'Porto',marca:'Marca',quant_containers:'Qtd. Containers',
-  data_pedido:'Data Pedido',previsao_prontidao:'Prev. Prontidão',
-  data_prontidao:'Data Prontidão',data_embarque:'Data Embarque',
-  eta:'ETA (Chegada Prevista)',data_chegada:'Data Chegada Real',
-  data_presenca:'Presença de Carga',free_time:'Free Time (dias)',
-  navio:'Navio',armador:'Armador / Depot',container:'Container(s)',
-  hbl:'HBL',mbl:'MBL',bl_provado:'BL Provado',data_ci:'Data CI',
-  ce_master:'CE Master',ce_house:'CE House',
-  anuencia:'Anuência',numero_di:'Nº DI',data_di:'Data DI',
-  canal_parametrizacao:'Canal Parametrização',status_mapa:'Status MAPA',status_lpco:'Status LPCO',
-  data_retirada:'Data Retirada',horario_retirada:'Horário Retirada',
-  data_ric:'Data RIC',status_ric:'Status RIC',nf_processo:'NF do Processo',
-  frete:'Frete (R$)',pagamento_entrada:'1° Pagamento (Entrada)',pagamento_saldo:'Saldo Pagamento',
-  pendencia_processo:'Pendência do Processo',demanda_impak:'Demanda IMPAK',
-  observacoes:'Observações',
-};
-
-const DATE_FIELDS = new Set(['data_pedido','previsao_prontidao','data_prontidao','data_embarque',
-  'eta','data_chegada','data_presenca','data_retirada','data_di','data_ci','data_ric']);
-
-const SELECT_FIELDS = {
-  canal_parametrizacao:['','VERDE','AMARELO','VERMELHO','CINZA'],
-  status_mapa:['','AG. ANALISE','LIBERADO','EXIGÊNCIA'],
-  status_lpco:['','AG. ANALISE','DEFERIDA','EXIGÊNCIA','FAZER LPCO'],
-  anuencia:['','SEM LI','DEFERIDA','PENDENTE'],
-  status_ric:['','LIMPO','LAVAÇÃO','PENDENTE'],
-  bl_provado:['','OHBL','SIM','NÃO'],
-  finalidade:['','DIRETO','LCL','DUIMP'],
-};
-
-const COLS = [
-  {k:'referencia', l:'Referência'},
-  {k:'cliente',    l:'Cliente'},
-  {k:'produtos',   l:'Produto/Navio'},
-  {k:'fase',       l:'Status'},
-  {k:'eta',        l:'ETA'},
-  {k:'demurrage',  l:'Demurrage'},
-  {k:'porto',      l:'Porto'},
-  {k:'canal_parametrizacao', l:'Canal'},
-  {k:'status_lpco',l:'LPCO'},
-  {k:'anuencia',   l:'Anuência'},
-  {k:'pendencia_processo', l:'Pendência'},
-];
-
-// ══ ESTADO ═══════════════════════════════════════════════════
-let _u=null, _processos=[], _edit=null, _files={}, _apiKey='';
-let _sortK='eta', _sortD=1, _filtStat='';
-let _paginaAtual=1, _porPagina=50;
-let _dirty=false; // Modal tem alterações não salvas
-let _sessionTimer=null, _sessionStart=Date.now();
-const SESSION_TIMEOUT = 8*60*60*1000; // 8 horas
-
-// ══ AUTH ══════════════════════════════════════════════════════
-function doLogin(){
-  const u=(document.getElementById('lu').value||'').trim().toLowerCase();
-  const p=(document.getElementById('lp').value||'').trim();
-  const f=USERS.find(x=>x.u===u&&x.p===p);
-  if(!f){document.getElementById('lerr').style.display='block';return;}
-  entrar(f);
-}
-function entrar(f){
-  _u=f;
-  _sessionStart=Date.now();
-  document.getElementById('loginWrap').style.display='none';
-  document.getElementById('topbar').style.display='flex';
-  document.getElementById('wrap').style.display='block';
-  document.getElementById('statusBar').style.display='flex';
-  document.getElementById('ubadge').textContent=f.n;
-  document.getElementById('sbUser').textContent=f.n;
-  iniciarTimerSessao();
-  // Carregar API key salva
-  try{
-    const saved=localStorage.getItem('impak_apikey')||'';
-    if(saved){_apiKey=saved;document.getElementById('apiKeyInput').value=saved;}
-  }catch(e){}
-  updateApiStatus();
-  carregarCambio();
-  load();
-}
-function saveApiKey(v){
-  _apiKey=v.trim();
-  try{localStorage.setItem('impak_apikey',v.trim());}catch(e){}
-  updateApiStatus();
-}
-function updateApiStatus(){
-  const el=document.getElementById('apiStatus');
-  if(!el)return;
-  el.textContent=_apiKey&&_apiKey.length>20?'🟢':'⚪';
-}
-function doLogout(){
-  _u=null;
-  document.getElementById('loginWrap').style.display='flex';
-  document.getElementById('topbar').style.display='none';
-  document.getElementById('wrap').style.display='none';
-}
-fetch('/api/me').then(r=>r.json()).then(d=>{
-  if(d.logado && !_u){
-    const f=USERS.find(x=>x.u===d.usuario);
-    if(f) entrar(f);
-  }
-}).catch(()=>{});
-
-// ══ STATUS BAR ════════════════════════════════════════════════
-function sbStatus(estado, texto){
-  // estado: 'ok' | 'saving' | 'error' | 'offline'
-  const dot = document.getElementById('sbDot');
-  const txt = document.getElementById('sbText');
-  if(!dot||!txt) return;
-  dot.className = 'sb-dot' + (estado==='saving'?' saving':estado==='error'?' error':estado==='offline'?' offline':'');
-  txt.textContent = texto;
-}
-function sbTotal(n){
-  const el=document.getElementById('sbTotal');
-  if(el) el.textContent=n;
-}
-function sbSync(){
-  const el=document.getElementById('sbSync');
-  if(el) el.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const el2=document.getElementById('lastSync');
-  if(el2) el2.textContent=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-}
-
-// ══ SESSÃO ═════════════════════════════════════════════════════
-function iniciarTimerSessao(){
-  if(_sessionTimer) clearInterval(_sessionTimer);
-  _sessionStart = Date.now();
-  _sessionTimer = setInterval(()=>{
-    const elapsed = Date.now()-_sessionStart;
-    const restante = SESSION_TIMEOUT - elapsed;
-    if(restante <= 5*60*1000 && restante > 0){
-      // Aviso 5 min antes
-      document.getElementById('sessionWarn').style.display='block';
-      document.getElementById('sessionMins').textContent = Math.ceil(restante/60000);
-    }
-    if(restante <= 0){
-      clearInterval(_sessionTimer);
-      alert('Sua sessão expirou. Faça login novamente.');
-      doLogout();
-    }
-  }, 30000);
-}
-function renovarSessao(){
+// ════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(r=>r.json()).then(d=>{
-    if(d.logado){
-      _sessionStart=Date.now();
-      document.getElementById('sessionWarn').style.display='none';
-      toast('Sessão renovada ✓','ok');
-    } else {
-      doLogout();
-    }
-  }).catch(()=>toast('Sem conexão','err'));
-}
-
-// ══ CÂMBIO ════════════════════════════════════════════════════
-let _ultimoCambio = null;
-function carregarCambio(){
-  fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL')
-  .then(r=>r.json())
-  .then(d=>{
-    const bar=document.getElementById('cambioBar');
-    if(!bar) return;
-    const usd=parseFloat(d.USDBRL?.bid||0);
-    const eur=parseFloat(d.EURBRL?.bid||0);
-    const cny=parseFloat(d.CNYBRL?.bid||0);
-    if(usd>0){
-      _ultimoCambio={usd,eur,cny,at:new Date()};
-      const hora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      bar.innerHTML=`
-        <div class="cambio-item">USD <span>R$ ${usd.toFixed(2)}</span></div>
-        <div class="cambio-item">EUR <span>R$ ${eur.toFixed(2)}</span></div>
-        <div class="cambio-item">CNY <span>R$ ${cny.toFixed(4)}</span></div>
-        <div class="cambio-item" style="font-size:9px;opacity:.5">${hora}</div>`;
-    }
-  }).catch(()=>{
-    // Fallback silencioso — manter último valor se existir
-    const bar=document.getElementById('cambioBar');
-    if(bar&&_ultimoCambio){
-      bar.style.opacity='0.5';
-      bar.title='Câmbio desatualizado — sem conexão';
-    }
+    if(!d.logado){ location.href='/login?destino=/controle'; return; }
+    _user = d;
+    document.getElementById('user-badge').textContent = d.displayName || d.usuario;
+    carregarCambio();
+    carregarProcessos();
+    renderFaseFilter();
+    // Auto-refresh a cada 30s
+    setInterval(function(){ if(!document.getElementById('modal-bg').classList.contains('open')) carregarProcessos(true); }, 30000);
   });
+});
+
+// ════════════════════════════════════════════════════════════════
+// CÂMBIO
+// ════════════════════════════════════════════════════════════════
+async function carregarCambio(){
+  try{
+    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL');
+    const d = await r.json();
+    _cambio.USD = parseFloat(d.USDBRL?.bid||5.2)||5.2;
+    const bar = document.getElementById('cambio-bar');
+    if(bar) bar.innerHTML = `<span style="font-size:11px;opacity:.7;font-family:'DM Mono',monospace">USD R$ ${_cambio.USD.toFixed(2)}</span>`;
+  }catch(e){}
   setTimeout(carregarCambio, 5*60*1000);
 }
 
-// ══ STORAGE ══════════════════════════════════════════════════
-// Cache de processos completos já carregados nesta sessão
-const _cache = {};
+// ════════════════════════════════════════════════════════════════
+// DADOS
+// ════════════════════════════════════════════════════════════════
+async function carregarProcessos(silencioso){
+  if(!silencioso) showToast('Carregando...','info');
+  try{
+    const r = await fetch('/api/controle/v2/processos');
+    const d = await r.json();
+    if(d.ok){
+      _processos = d.processos || [];
+      render();
+      renderStats();
+      carregarNotificacoes();
+      if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
+    }
+  }catch(e){
+    showToast('Erro ao carregar processos','err');
+  }
+}
 
-// Salvar UM processo no Drive (arquivo individual)
-function saveProcesso(processo, cb){
-  if(!processo||!processo.id) return;
-  processo._updatedAt = Date.now();
+async function salvarProcesso(proc){
+  const isNovo = !proc.id;
+  if(isNovo) proc.id = crypto.randomUUID();
+  proc.updated_by = _user.usuario;
+  proc.updated_at = new Date().toISOString();
+  if(isNovo){ proc.created_by = _user.usuario; proc.created_at = new Date().toISOString(); }
 
-  // Atualizar índice local
-  const entrada = {
-    id:processo.id, referencia:processo.referencia||'', cliente:processo.cliente||'',
-    produtos:processo.produtos||'', fase:processo.fase||'PRODUCAO', eta:processo.eta||'',
-    data_chegada:processo.data_chegada||'', free_time:processo.free_time||21,
-    porto:processo.porto||'', canal_parametrizacao:processo.canal_parametrizacao||'',
-    status_lpco:processo.status_lpco||'', anuencia:processo.anuencia||'',
-    pendencia_processo:processo.pendencia_processo||'',
-    data_retirada:processo.data_retirada||'', data_ric:processo.data_ric||'',
-    updatedAt:processo._updatedAt,
-  };
-  const idx = _processos.findIndex(p=>p.id===processo.id);
-  if(idx>=0) _processos[idx]=entrada; else _processos.unshift(entrada);
-  _cache[processo.id] = processo;
+  // Calcular vencimento demurrage automaticamente
+  if(proc.data_chegada && proc.free_time){
+    const chegada = new Date(proc.data_chegada);
+    chegada.setDate(chegada.getDate() + parseInt(proc.free_time||21));
+    proc.demurrage_vencimento = chegada.toISOString().split('T')[0];
+  }
 
-  sbStatus('saving','Salvando...');
-  fetch('/api/controle/processo',{
+  // Avançar fase automaticamente
+  proc.fase = calcularFase(proc);
+
+  showToast('Salvando...','info');
+  const r = await fetch('/api/controle/v2/processo', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({processo})
-  }).then(r=>r.json()).then(d=>{
-    if(d.ok){
-      sbStatus('ok','Salvo ✓  '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
-      if(cb) cb();
-    } else {
-      sbStatus('error','Erro ao salvar — tente novamente');
-      toast('Erro ao salvar.','err');
-    }
-  }).catch(()=>{
-    sbStatus('error','Sem conexão — não foi salvo');
-    toast('Sem conexão com servidor.','err');
+    body: JSON.stringify({ processo: proc })
   });
-}
-
-// Carregar índice leve (só campos da tabela)
-// Parsear resposta HTTP com segurança — detecta HTML de redirect de sessão
-async function safeJson(r){
-  const ct = r.headers.get('content-type')||'';
-  if(!ct.includes('application/json')){
-    // Servidor retornou HTML — provavelmente redirect de login
-    const text = await r.text();
-    if(text.includes('<!DOCTYPE')||text.includes('<html')){
-      window.location.href='/login?destino=/controle';
-      return null;
-    }
-    throw new Error('Resposta inesperada do servidor');
+  const d = await r.json();
+  if(d.ok){
+    showToast('✓ Salvo','ok');
+    // Criar notificação se houver alerta
+    verificarAlertas(proc, true);
+    await carregarProcessos(true);
+    return true;
+  } else {
+    showToast('Erro ao salvar: '+(d.erro||''),'err');
+    return false;
   }
-  return r.json();
 }
 
-function load(){
-  sbStatus('saving','Carregando...');
-  fetch('/api/controle/index').then(async r=>{
-    if(!r.ok){
-      if(r.status===401||r.status===403||r.status===302){
-        window.location.href='/login?destino=/controle';
-        return null;
-      }
-      // Fallback para rota antiga
-      const r2 = await fetch('/api/controle/carregar');
-      return safeJson(r2);
+async function excluirProcesso(id){
+  if(!confirm('Excluir este processo?')) return;
+  const r = await fetch('/api/controle/v2/processo/'+id, {method:'DELETE'});
+  const d = await r.json();
+  if(d.ok){ showToast('Processo excluído','ok'); fecharModal(); carregarProcessos(true); }
+  else showToast('Erro ao excluir','err');
+}
+
+// ════════════════════════════════════════════════════════════════
+// FASE AUTOMÁTICA
+// ════════════════════════════════════════════════════════════════
+function calcularFase(p){
+  if(p.data_devolucao_vazio) return 'FINALIZADO';
+  if(p.nf_saida_numero || p.nf_entrada_numero) return 'FATURAMENTO';
+  if(p.data_carregamento || p.data_agendamento) return 'CARREGAMENTO';
+  if(p.data_liberacao || (p.canal === 'VERDE' && p.data_parametrizacao)) return 'CARREGAMENTO';
+  if(p.canal || p.data_parametrizacao) return 'PARAMETRIZACAO';
+  if(p.numero_di || p.data_registro_di) return 'REGISTRO_DI';
+  if(p.data_presenca || p.data_chegada) return 'DESEMBARCADO';
+  if(p.data_embarque || p.hbl) return 'EMBARCADO';
+  if(p.etd || p.booking_numero) return 'AGUARDANDO_EMBARQUE';
+  return 'PI';
+}
+
+// ════════════════════════════════════════════════════════════════
+// DEMURRAGE
+// ════════════════════════════════════════════════════════════════
+function demurrageDias(proc){
+  if(!proc.demurrage_vencimento) return null;
+  const venc = new Date(proc.demurrage_vencimento);
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  return Math.ceil((venc-hoje)/86400000);
+}
+
+function demurrageDisplay(proc){
+  if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
+  const dias = demurrageDias(proc);
+  if(dias === null) return '<span style="color:var(--dim)">—</span>';
+  if(dias < 0) return `<span class="demur-err">Vencido há ${Math.abs(dias)}d</span>`;
+  if(dias <= 5) return `<span class="demur-warn">⚠ ${dias}d</span>`;
+  return `<span class="demur-ok">${dias}d</span>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ALERTAS E NOTIFICAÇÕES
+// ════════════════════════════════════════════════════════════════
+function verificarAlertas(proc, criarNotif){
+  const alertas = [];
+  const dias = demurrageDias(proc);
+  if(dias !== null && dias <= 5 && dias >= 0 && !proc.data_devolucao_vazio){
+    alertas.push({tipo:'urgente', titulo:`Demurrage: ${proc.referencia}`, mensagem:`Vence em ${dias} dia(s)! Container ainda não devolvido.`});
+  }
+  if(dias !== null && dias < 0 && !proc.data_devolucao_vazio){
+    alertas.push({tipo:'urgente', titulo:`Demurrage VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(dias)} dia(s). Custos em andamento.`});
+  }
+  if(criarNotif && alertas.length){
+    alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
+  }
+  return alertas;
+}
+
+async function criarNotificacao(processoId, tipo, titulo, mensagem){
+  fetch('/api/controle/v2/notificacao', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({processo_id: processoId, tipo, titulo, mensagem})
+  }).catch(()=>{});
+}
+
+async function carregarNotificacoes(){
+  try{
+    const r = await fetch('/api/controle/v2/notificacoes');
+    const d = await r.json();
+    if(!d.ok) return;
+    const notifs = d.notificacoes || [];
+    const naoLidas = notifs.filter(n => !n.lida_por || !n.lida_por.includes(_user.usuario));
+    const count = naoLidas.length;
+    const el = document.getElementById('notif-count');
+    if(el){
+      el.textContent = count;
+      el.style.display = count > 0 ? 'block' : 'none';
     }
-    return safeJson(r);
-  }).then(d=>{
-    if(!d) return;
-    _processos = d.index || d.processos || [];
-    sbTotal(_processos.length);
-    sbSync();
-    sbStatus('ok', _processos.length+' processos carregados');
-    renderAll();
-  }).catch(e=>{
-    console.error('Erro carregar:', e);
-    sbStatus('error','Erro ao carregar dados');
-    toast('Erro ao carregar dados.','err');
-  });
-}
-
-// Carregar processo completo ao abrir modal
-function carregarProcessoCompleto(id, cb){
-  // 1. Se está no cache, usar imediatamente
-  if(_cache[id]){ cb(_cache[id]); return; }
-
-  // 2. Buscar do Drive
-  fetch('/api/controle/processo/'+id).then(async r=>safeJson(r)).then(d=>{
-    if(d.processo){
-      _cache[id] = d.processo;
-      cb(d.processo);
-    } else {
-      // Fallback: usar dados do índice
-      const idx = _processos.find(p=>p.id===id);
-      cb(idx||null);
+    // Renderizar lista
+    const list = document.getElementById('notif-list');
+    if(!list) return;
+    if(!notifs.length){
+      list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Nenhuma notificação</div>';
+      return;
     }
-  }).catch(()=>{
-    const idx = _processos.find(p=>p.id===id);
-    cb(idx||null);
-  });
+    list.innerHTML = notifs.slice(0,30).map(n => {
+      const naoLida = !n.lida_por || !n.lida_por.includes(_user.usuario);
+      const cor = n.tipo==='urgente'?'var(--err)':n.tipo==='alerta'?'var(--warn)':'var(--ac)';
+      const iniciais = (n.created_by||'?').slice(0,2).toUpperCase();
+      const tempo = n.created_at ? tempoRelativo(n.created_at) : '';
+      return `<div class="notif-item ${naoLida?'unread':''} ${n.tipo}" onclick="marcarLida(${n.id})">
+        <div class="notif-row">
+          <div class="notif-avatar" style="background:${cor}">${iniciais}</div>
+          <div class="notif-content">
+            <div class="notif-title">${n.titulo||''}</div>
+            <div class="notif-msg">${n.mensagem||''}</div>
+            <div class="notif-time">${tempo}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){}
 }
 
-// ══ UTILS ════════════════════════════════════════════════════
-function parseData(v){
-  if(!v) return null;
-  const s=String(v).trim();
-  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return new Date(s.slice(0,10)+'T12:00:00');
-  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if(m){const y=m[3].length===2?'20'+m[3]:m[3];return new Date(`${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}T12:00:00`);}
-  const d=new Date(v);
-  return isNaN(d.getTime())?null:d;
-}
-function fd(iso){
-  if(!iso)return'—';
-  const d=parseData(iso);
-  if(!d)return String(iso).slice(0,10);
-  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
-}
-function demurDias(p){
-  if(!p.data_chegada)return null;
-  const chegada=parseData(p.data_chegada);
-  if(!chegada)return null;
-  const ft=parseInt(p.free_time)||21;
-  const venc=new Date(chegada.getTime()+ft*86400000);
-  const diff=Math.ceil((venc-new Date())/86400000);
-  return isNaN(diff)?null:diff;
-}
-function toast(msg,t='ok'){
-  const el=document.getElementById('toast');
-  el.textContent=msg;el.className='toast on '+t;
-  clearTimeout(el._t);
-  el._t=setTimeout(()=>el.classList.remove('on'),3000);
-}
-function limparFiltros(){
-  ['fq','ff','fc','fp','fa'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  _filtStat='';
-  _paginaAtual=1;
-  render();
+async function marcarLida(id){
+  fetch('/api/controle/v2/notificacao/'+id+'/lida', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({usuario: _user.usuario})
+  }).then(()=>carregarNotificacoes()).catch(()=>{});
 }
 
-// ══ RENDER ALL ════════════════════════════════════════════════
-function renderAll(){
-  gerarAlertas();
-  // Popular selects
-  const cls=[...new Set(_processos.map(p=>p.cliente).filter(Boolean))].sort();
-  const pts=[...new Set(_processos.map(p=>p.porto).filter(Boolean))].sort();
-  const ags=[...new Set(_processos.map(p=>p.agente).filter(Boolean))].sort();
-  ['fc','fp','fa'].forEach((id,i)=>{
-    const el=document.getElementById(id);
-    const arr=[cls,pts,ags][i];
-    const v=el.value;
-    el.innerHTML='<option value="">Todos</option>'+arr.map(x=>`<option>${x}</option>`).join('');
-    el.value=v;
-  });
-  renderStats();
+function toggleNotif(){
+  _notifAberto = !_notifAberto;
+  document.getElementById('notif-panel').classList.toggle('open', _notifAberto);
+  if(_notifAberto) carregarNotificacoes();
+}
+
+function tempoRelativo(isoDate){
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const min = Math.floor(diff/60000);
+  if(min < 1) return 'agora';
+  if(min < 60) return `${min}min atrás`;
+  const h = Math.floor(min/60);
+  if(h < 24) return `${h}h atrás`;
+  const d = Math.floor(h/24);
+  return `${d}d atrás`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════════
+function renderFaseFilter(){
+  const el = document.getElementById('fase-filter');
+  if(!el) return;
+  el.innerHTML = `<div class="fase-pill ${_faseFilter===''?'active':''}" onclick="setFaseFilter('')">Todos</div>` +
+    FASES.map(f=>`<div class="fase-pill ${_faseFilter===f.id?'active':''}" onclick="setFaseFilter('${f.id}')">${f.icon} ${f.label}</div>`).join('');
+}
+
+function setFaseFilter(fase){
+  _faseFilter = fase;
+  _pagina = 1;
+  renderFaseFilter();
   render();
+  // Atualizar sidebar
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  if(fase==='') document.getElementById('menu-todos')?.classList.add('active');
+  else if(fase==='__alertas') document.getElementById('menu-alertas')?.classList.add('active');
 }
 
 function renderStats(){
-  const t=_processos.length;
-  const and=_processos.filter(p=>p.fase!=='FINALIZADO').length;
-  const crit=_processos.filter(p=>{const d=demurDias(p);return d!==null&&d<=5;}).length;
-  const warn=_processos.filter(p=>{const d=demurDias(p);return d!==null&&d>5&&d<=10;}).length;
+  const el = document.getElementById('stats-grid');
+  if(!el) return;
+  const total = _processos.length;
+  const comAlerta = _processos.filter(p => verificarAlertas(p,false).length > 0).length;
+  const emAndamento = _processos.filter(p => p.fase !== 'FINALIZADO').length;
+  const finalizados = _processos.filter(p => p.fase === 'FINALIZADO').length;
+  // Demurrage crítico
+  const demurCrit = _processos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
 
-  const pill=(v,n,lbl,cls)=>`
-    <div class="scard ${_filtStat===v?'on':''}" onclick="setFiltro('${v}')">
-      <div class="sn ${cls}">${n}</div>
-      <div class="sl">${lbl}</div>
-    </div>`;
+  const stats = [
+    {num:total,       label:'Total',          cor:'var(--ac)',  filtro:''},
+    {num:emAndamento, label:'Em andamento',    cor:'var(--warn)',filtro:'__andamento'},
+    {num:comAlerta,   label:'Com alertas',     cor:'var(--err)', filtro:'__alertas'},
+    {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur'},
+    {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
+  ];
 
-  document.getElementById('statsEl').innerHTML=
-    pill('',t,'Total','blue')+
-    pill('andamento',and,'Em Andamento','ok')+
-    pill('warn',warn,'⚠ Demur 10d','warn')+
-    pill('critico',crit,'🔴 Demur 5d','err')+
-    FASES.map(f=>pill(f.id,_processos.filter(p=>p.fase===f.id).length,f.icon+' '+f.label,'dim')).join('');
+  // Badge sidebar
+  const badgeAlerta = document.getElementById('badge-alertas');
+  if(badgeAlerta){ badgeAlerta.textContent=comAlerta; badgeAlerta.style.display=comAlerta>0?'block':'none'; }
+  document.getElementById('badge-total').textContent = total;
+
+  el.innerHTML = stats.map(s=>`
+    <div class="stat-card" onclick="setFaseFilter('${s.filtro}')">
+      <div class="stat-num" style="color:${s.cor}">${s.num}</div>
+      <div class="stat-label">${s.label}</div>
+    </div>`).join('');
 }
 
-function setFiltro(v){
-  _filtStat=v;
-  _paginaAtual=1;
-  document.getElementById('ff').value='';
-  renderStats();
-  render();
-}
-
-// ══ TABELA ════════════════════════════════════════════════════
-function filtrar(){
-  const q=(document.getElementById('fq').value||'').toLowerCase();
-  const ff=document.getElementById('ff').value;
-  const fc=document.getElementById('fc').value;
-  const fp=document.getElementById('fp').value;
-  const fa=document.getElementById('fa').value;
-  return _processos.filter(p=>{
-    if(q&&![(p.referencia||''),(p.cliente||''),(p.produtos||''),(p.container||''),(p.navio||'')]
-      .some(v=>v.toLowerCase().includes(q)))return false;
-    if(ff&&p.fase!==ff)return false;
-    if(fc&&p.cliente!==fc)return false;
-    if(fp&&p.porto!==fp)return false;
-    if(fa&&p.agente!==fa)return false;
-    if(_filtStat==='andamento'&&p.fase==='FINALIZADO')return false;
-    if(_filtStat==='critico'){const d=demurDias(p);if(d===null||d>5)return false;}
-    if(_filtStat==='warn'){const d=demurDias(p);if(d===null||d<=5||d>10)return false;}
-    if(FASES.map(f=>f.id).includes(_filtStat)&&p.fase!==_filtStat)return false;
-    return true;
-  }).sort((a,b)=>{
-    const va=_sortK==='demurrage'?demurDias(a)??9999:a[_sortK]||'';
-    const vb=_sortK==='demurrage'?demurDias(b)??9999:b[_sortK]||'';
-    return va<vb?-_sortD:va>vb?_sortD:0;
-  });
+function filtrarProcessos(){
+  let lista = [..._processos];
+  const q = (document.getElementById('search')?.value||'').toLowerCase().trim();
+  if(q) lista = lista.filter(p=>
+    (p.referencia||'').toLowerCase().includes(q)||
+    (p.fornecedor||'').toLowerCase().includes(q)||
+    (p.container||'').toLowerCase().includes(q)||
+    (p.hbl||'').toLowerCase().includes(q)||
+    (p.numero_di||'').toLowerCase().includes(q)
+  );
+  if(_faseFilter==='__alertas') lista = lista.filter(p=>verificarAlertas(p,false).length>0);
+  else if(_faseFilter==='__andamento') lista = lista.filter(p=>p.fase!=='FINALIZADO');
+  else if(_faseFilter==='__demur') lista = lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
+  else if(_faseFilter) lista = lista.filter(p=>p.fase===_faseFilter);
+  return lista;
 }
 
 function render(){
-  const todosProcs=filtrar();
+  const lista = filtrarProcessos();
+  const total = lista.length;
+  const totalPags = Math.max(1, Math.ceil(total/POR_PAGINA));
+  _pagina = Math.min(_pagina, totalPags);
+  const inicio = (_pagina-1)*POR_PAGINA;
+  const pagina = lista.slice(inicio, inicio+POR_PAGINA);
+
+  const tbody = document.getElementById('table-body');
+  if(!tbody) return;
+
+  if(!pagina.length){
+    tbody.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
+  } else {
+    tbody.innerHTML = pagina.map(p=>{
+      const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
+      const etaDate = p.eta ? new Date(p.eta).toLocaleDateString('pt-BR') : '—';
+      const chegadaDate = p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '';
+      const dataDisplay = chegadaDate || etaDate;
+      const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
+      return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
+        <div class="td td-ref">${p.referencia||'—'}</div>
+        <div class="td td-forn">${p.fornecedor||'—'}</div>
+        <div class="td"><span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span></div>
+        <div class="td td-date">${dataDisplay}</div>
+        <div class="td">${demurrageDisplay(p)}</div>
+        <div class="td">${finBadge}</div>
+        <div class="td">
+          <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();abrirProcesso('${p.id}')">Abrir</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
 
   // Paginação
-  const totalPags = Math.max(1, Math.ceil(todosProcs.length/_porPagina));
-  if(_paginaAtual > totalPags) _paginaAtual=1;
-  const inicio = (_paginaAtual-1)*_porPagina;
-  const procs = todosProcs.slice(inicio, inicio+_porPagina);
-
-  document.getElementById('tcount').textContent=
-    `${todosProcs.length} de ${_processos.length} processo(s) · página ${_paginaAtual}/${totalPags}`;
-  sbTotal(_processos.length);
-
-  document.getElementById('thead').innerHTML='<tr>'+COLS.map(c=>
-    `<th class="${_sortK===c.k?(_sortD>0?'asc':'desc'):''}" onclick="sortBy('${c.k}')">${c.l}</th>`
-  ).join('')+'<th></th></tr>';
-
-  if(!procs.length){
-    document.getElementById('tbody').innerHTML=`<tr><td colspan="${COLS.length+1}">
-      <div class="empty">📋 Nenhum processo encontrado
-        <div style="margin-top:8px"><button class="btn-clr" onclick="limparFiltros()">Limpar filtros</button></div>
-      </div></td></tr>`;
-    return;
+  const pag = document.getElementById('paginacao');
+  if(pag){
+    if(totalPags <= 1){ pag.innerHTML=''; return; }
+    let html = `<button class="pag-btn" onclick="_pagina--;render()" ${_pagina<=1?'disabled':''}>‹</button>`;
+    for(let i=1;i<=totalPags;i++){
+      if(i===1||i===totalPags||Math.abs(i-_pagina)<=1)
+        html+=`<button class="pag-btn ${i===_pagina?'active':''}" onclick="_pagina=${i};render()">${i}</button>`;
+      else if(Math.abs(i-_pagina)===2)
+        html+=`<span class="pag-info">…</span>`;
+    }
+    html+=`<button class="pag-btn" onclick="_pagina++;render()" ${_pagina>=totalPags?'disabled':''}>›</button>`;
+    html+=`<span class="pag-info">${total} processos</span>`;
+    pag.innerHTML = html;
   }
-
-  document.getElementById('tbody').innerHTML=procs.map(p=>{
-    const d=demurDias(p);
-    const rowCls=d!==null?(d<=5?'trow demur-crit':d<=10?'trow demur-warn':'trow'):'trow';
-    return `<tr class="${rowCls}" onclick="abrir(${p.id})">
-      <td><span class="ref">${p.referencia||'—'}</span></td>
-      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${p.cliente||'—'}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--text-dim)">${p.produtos||'—'}</td>
-      <td><span class="status-chip s-${p.fase||'PRODUCAO'}">${FASES.find(f=>f.id===p.fase)?.icon||''} ${FASES.find(f=>f.id===p.fase)?.label||p.fase||'—'}</span></td>
-      <td class="mono">${fd(p.eta)}</td>
-      <td>${demurCell(d)}</td>
-      <td style="font-size:11px">${p.porto||'—'}</td>
-      <td>${p.canal_parametrizacao?`<span class="canal-chip cc-${p.canal_parametrizacao}">${p.canal_parametrizacao}</span>`:'<span style="color:var(--text-dim)">—</span>'}</td>
-      <td style="font-size:11px;color:${p.status_lpco==='DEFERIDA'?'var(--ok)':p.status_lpco?'var(--warn)':'var(--text-dim)'}">${p.status_lpco||'—'}</td>
-      <td style="font-size:11px;color:${p.anuencia==='DEFERIDA'?'var(--ok)':p.anuencia?'var(--warn)':'var(--text-dim)'}">${p.anuencia||'—'}</td>
-      <td><div class="pend-cell" title="${p.pendencia_processo||''}">${p.pendencia_processo||'—'}</div></td>
-      <td><button class="btn btn-s btn-sm" onclick="event.stopPropagation();abrir(${p.id})">Abrir</button></td>
-    </tr>`;
-  }).join('');
-
-  // Renderizar paginação
-  renderPaginacao(todosProcs.length, totalPags);
 }
 
-function renderPaginacao(total, totalPags){
-  // Remover paginação antiga se existir
-  const old = document.getElementById('paginacaoEl');
-  if(old) old.remove();
-  if(totalPags<=1) return;
-
-  const el = document.createElement('div');
-  el.id='paginacaoEl';
-  el.className='pagination';
-
-  let btns = `<button class="pg-btn" onclick="irPagina(${_paginaAtual-1})" ${_paginaAtual<=1?'disabled':''}>‹</button>`;
-
-  // Mostrar no máx 7 páginas
-  let inicio=Math.max(1,_paginaAtual-3), fim=Math.min(totalPags,inicio+6);
-  if(fim-inicio<6) inicio=Math.max(1,fim-6);
-
-  if(inicio>1) btns+=`<button class="pg-btn" onclick="irPagina(1)">1</button><span class="pg-info">…</span>`;
-  for(let i=inicio;i<=fim;i++){
-    btns+=`<button class="pg-btn${_paginaAtual===i?' active':''}" onclick="irPagina(${i})">${i}</button>`;
-  }
-  if(fim<totalPags) btns+=`<span class="pg-info">…</span><button class="pg-btn" onclick="irPagina(${totalPags})">${totalPags}</button>`;
-  btns+=`<button class="pg-btn" onclick="irPagina(${_paginaAtual+1})" ${_paginaAtual>=totalPags?'disabled':''}>›</button>`;
-  btns+=`<span class="pg-info">${total} processos · <select onchange="mudarPorPagina(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface)">
-    ${[25,50,100,200].map(n=>`<option value="${n}" ${_porPagina===n?'selected':''}>${n}/pág</option>`).join('')}
-  </select></span>`;
-
-  el.innerHTML=btns;
-  document.querySelector('.tw').appendChild(el);
-}
-
-function irPagina(p){
-  _paginaAtual=p;
-  render();
-  document.querySelector('.tscroll').scrollTop=0;
-}
-
-function mudarPorPagina(v){
-  _porPagina=parseInt(v);
-  _paginaAtual=1;
-  render();
-}
-
-function demurCell(d){
-  if(d===null||d===undefined||isNaN(d))return'<span class="dc-n">N/D</span>';
-  const cls=d<=5?'dc-e':d<=10?'dc-w':'dc-ok';
-  const icon=d<=5?'🔴':d<=10?'⚠':'✓';
-  return`<span class="demur-chip ${cls}">${icon} ${d}d</span>`;
-}
-
-function sortBy(k){
-  if(_sortK===k)_sortD*=-1;else{_sortK=k;_sortD=1;}
-  render();
-}
-
-// ══ MODAL ═════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// MODAL — ABRIR / NOVO
+// ════════════════════════════════════════════════════════════════
 function abrirNovo(){
-  _dirty=false;
-  _edit={id:Date.now(),fase:'PRODUCAO',free_time:21,log:[],_meta:{}};
-  _files={};
-  renderModal(true);
-  document.getElementById('ov').classList.add('on');
-  tab('dados');
-}
-function abrir(id){
-  const p=_processos.find(x=>x.id===id);
-  if(!p)return;
-  _edit=JSON.parse(JSON.stringify(p));
-  _files={};
-  renderModal(false);
-  document.getElementById('ov').classList.add('on');
-  tab('dados');
-}
-function fechar(forcar){
-  if(!forcar && _dirty){
-    if(!confirm('Você tem alterações não salvas. Deseja sair sem salvar?')) return;
-  }
-  _dirty=false;
-  document.getElementById('ov').classList.remove('on');
-  _edit=null;_files={};
-}
-function tab(t){
-  document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('on',['dados','ia','log'][i]===t));
-  document.querySelectorAll('.mtc').forEach(el=>el.classList.remove('on'));
-  document.getElementById('tc-'+t).classList.add('on');
-}
-function mudarFase(fid){
-  if(!_edit)return;
-  _edit.fase=fid;
-  renderModal(!_processos.find(p=>p.id===_edit.id));
-  tab('dados');
+  _editando = { fase:'PI', free_time:21, cliente:'UNICAP' };
+  renderModal();
 }
 
-function renderModal(isNovo){
-  const p=_edit;
-  const faseIdx=FASES.findIndex(f=>f.id===p.fase);
-  const d=demurDias(p);
+async function abrirProcesso(id){
+  const proc = _processos.find(p=>p.id===id);
+  if(!proc) return;
+  _editando = {...proc};
+  renderModal();
+}
 
-  // Header
-  document.getElementById('mh-title').innerHTML=
-    isNovo?'Novo Processo':`<span>${p.referencia||'Processo'}</span>`;
+function fecharModal(){
+  _editando = null;
+  document.getElementById('modal-bg').classList.remove('open');
+}
 
-  // Demurrage badge no header
-  if(d!==null){
-    const cls=d<=5?'background:rgba(220,38,38,.15);color:#dc2626':d<=10?'background:rgba(217,119,6,.15);color:#d97706':'background:rgba(22,163,74,.12);color:#16a34a';
-    document.getElementById('mh-demur').innerHTML=
-      `<div class="mh-demur" style="${cls}">${d<=5?'🔴':d<=10?'⚠':'✓'} Demurrage: ${d} dias</div>`;
-  } else {
-    document.getElementById('mh-demur').innerHTML='';
-  }
+// ════════════════════════════════════════════════════════════════
+// MODAL — RENDER
+// ════════════════════════════════════════════════════════════════
+function renderModal(){
+  const p = _editando;
+  const isNovo = !p.id;
+  const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
 
-  // Stepper
-  const stepper=`<div class="stepper">${FASES.map((f,i)=>`
-    <div class="step ${i<faseIdx?'done':i===faseIdx?'active':''}" onclick="mudarFase('${f.id}')">
-      <div class="step-icon">${i<faseIdx?'✓':f.icon}</div>
-      <div class="step-lbl">${f.label}</div>
-    </div>`).join('')}</div>`;
+  document.getElementById('modal-title').textContent = isNovo ? 'Novo Processo' : p.referencia;
+  document.getElementById('modal-fase-badge').innerHTML = `<span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>`;
+  document.getElementById('modal-bg').classList.add('open');
 
-  // Campos de identificação SEMPRE no topo
-  const secIdentificacao=`<div class="sec">
-    <div class="sec-hd">📌 Identificação</div>
-    <div class="grid g3">
-      ${renderField('referencia',p)}
-      ${renderField('cliente',p)}
-      ${renderField('agente',p)}
-      ${renderField('porto',p)}
-      ${renderField('marca',p)}
-      ${renderField('finalidade',p)}
-    </div>
-    <div style="margin-top:9px">
-      <div class="grid g2">
-        ${renderField('pendencia_processo',p)}
-        ${renderField('demanda_impak',p)}
-      </div>
-    </div>
-  </div>`;
-
-  // Seções de campos
-  let secs=secIdentificacao;
-  for(let i=0;i<=faseIdx;i++){
-    const fase=FASES[i];
-    const campos=FASE_CAMPOS[fase.id]||[];
-    const camposFin=FASE_CAMPOS_FIN[fase.id]||[];
-    const isAtual=i===faseIdx;
-
-    secs+=`<div class="sec">
-      <div class="sec-hd">${fase.icon} ${fase.label} ${isAtual?'<span class="sec-tag">fase atual</span>':''}
-      </div>
-      <div class="grid g3">${campos.map(c=>renderField(c,p)).join('')}</div>`;
-
-    if(camposFin.length&&_u&&_u.fin){
-      secs+=`<div style="margin-top:10px">
-        <div class="sec-hd" style="color:var(--err)">💰 Financeiro <span class="sec-restricted">restrito</span></div>
-        <div class="grid g3">${camposFin.map(c=>renderField(c,p)).join('')}</div>
+  // Timeline
+  const faseIdx = FASES.findIndex(f=>f.id===p.fase);
+  const timeline = FASES.map((f,i)=>{
+    const done = i < faseIdx;
+    const active = i === faseIdx;
+    const cls = done?'done':active?'active':'';
+    return `
+      ${i>0?`<div class="tl-line ${done?'done':''}"></div>`:''}
+      <div class="tl-step">
+        <div class="tl-dot ${cls}">${done?'✓':f.icon}</div>
+        <div class="tl-label">${f.label}</div>
       </div>`;
-    }
-    secs+='</div>';
-  }
-
-
-
-  document.getElementById('tc-dados').innerHTML=stepper+secs;
-
-  // IA tab
-  document.getElementById('tc-ia').innerHTML=`
-    <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
-      Anexe os documentos. A IA extrai os dados e preenche os campos automaticamente.
-    </p>
-    <div class="upload-box" id="ubox" onclick="document.getElementById('uinput').click()"
-         ondragover="event.preventDefault();this.classList.add('drag')"
-         ondragleave="this.classList.remove('drag')"
-         ondrop="dropDoc(event)">
-      <input type="file" id="uinput" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="addFiles(this.files)">
-      <div style="font-size:22px;margin-bottom:5px">📎</div>
-      <div style="font-size:13px;color:var(--text-dim)">Clique ou arraste os documentos</div>
-      <div style="font-size:11px;color:var(--text-dim);margin-top:3px">PI · CI · PL · HBL · CE · DI · MAPA · LPCO · NF</div>
-    </div>
-    <div class="chips" id="chips"></div>
-    <div id="eres"></div>`;
-
-  // Log tab
-  renderLog();
-
-  // Footer
-  const isNovo2=!_processos.find(p=>p.id===_edit.id);
-  document.getElementById('mfoot').innerHTML=`
-    ${!isNovo2?`<button class="btn btn-d btn-sm" onclick="excluir(${p.id})">Excluir</button>`:''}
-    <div style="flex:1"></div>
-    <button class="btn btn-s" onclick="fechar()">Cancelar</button>
-    <button class="btn btn-p" onclick="salvar()">💾 Salvar</button>`;
-}
-
-function renderField(id,p){
-  const label=FLABELS[id]||id;
-  const val=p[id]||'';
-  const meta=(p._meta||{})[id];
-  const editedBy=meta?`<span class="by">${meta.n} · ${meta.t}</span>`:'';
-  const changed=!!meta;
-
-  if(DATE_FIELDS.has(id)){
-    return`<div class="field">
-      <label>${label} ${editedBy}</label>
-      <input type="date" id="f_${id}" value="${val}" class="${changed?'changed':''}" oninput="markChange('${id}')">
-    </div>`;
-  }
-  if(SELECT_FIELDS[id]){
-    return`<div class="field">
-      <label>${label} ${editedBy}</label>
-      <select id="f_${id}" class="${changed?'changed':''}" onchange="markChange('${id}')">
-        ${SELECT_FIELDS[id].map(o=>`<option value="${o}" ${val===o?'selected':''}>${o||'—'}</option>`).join('')}
-      </select>
-    </div>`;
-  }
-  if(id==='pendencia_processo'||id==='demanda_impak'||id==='observacoes'){
-    return`<div class="field full">
-      <label>${label} ${editedBy}</label>
-      <textarea id="f_${id}" class="${changed?'changed':''}" oninput="markChange('${id}')">${val}</textarea>
-    </div>`;
-  }
-  if(id==='quant_containers'){
-    return`<div class="field">
-      <label>${label} ${editedBy}</label>
-      <input type="number" min="1" max="20" id="f_${id}" value="${val||1}" class="${changed?'changed':''}" oninput="markChange('${id}')">
-    </div>`;
-  }
-  if(id==='free_time'){
-    return`<div class="field">
-      <label>${label} ${editedBy}</label>
-      <input type="number" min="1" max="90" id="f_${id}" value="${val||21}" class="${changed?'changed':''}" oninput="markChange('${id}')">
-    </div>`;
-  }
-  return`<div class="field">
-    <label>${label} ${editedBy}</label>
-    <input id="f_${id}" value="${val}" class="${changed?'changed':''}" oninput="markChange('${id}')">
-  </div>`;
-}
-
-function markChange(id){
-  const el=document.getElementById('f_'+id);
-  if(el) el.classList.add('changed');
-  _dirty=true;
-  // Mostrar badge no título do modal
-  const title=document.getElementById('mh-title');
-  if(title && !title.querySelector('.dirty-badge')){
-    const badge=document.createElement('span');
-    badge.className='dirty-badge';
-    badge.textContent='não salvo';
-    title.appendChild(badge);
-  }
-}
-
-function coletar(){
-  const ids=['referencia','cliente','produtos','finalidade','agente','porto','marca','quant_containers',
-    'data_pedido','previsao_prontidao','data_prontidao','data_embarque','eta',
-    'data_chegada','data_presenca','free_time','navio','armador','container',
-    'hbl','mbl','bl_provado','data_ci','ce_master','ce_house',
-    'anuencia','numero_di','data_di','canal_parametrizacao','status_mapa','status_lpco',
-    'data_retirada','horario_retirada','data_ric','status_ric','nf_processo',
-    'frete','pagamento_entrada','pagamento_saldo',
-    'pendencia_processo','demanda_impak','observacoes','fase'];
-  const obj={};
-  ids.forEach(id=>{const el=document.getElementById('f_'+id);if(el)obj[id]=(el.value||'').trim();});
-  return obj;
-}
-
-function salvar(){
-  const dados=coletar();
-  if(!dados.referencia){toast('Informe a referência.','err');return;}
-  // Detectar duplicata (só para processos novos)
-  const isNovoPre = !_processos.find(p=>p.id===_edit.id);
-  if(isNovoPre){
-    const duplicata = _processos.find(p=>
-      p.referencia && dados.referencia &&
-      p.referencia.trim().toUpperCase()===dados.referencia.trim().toUpperCase() &&
-      p.id !== _edit.id
-    );
-    if(duplicata){
-      if(!confirm(`Já existe processo "${duplicata.referencia}" (${duplicata.cliente||'—'}, fase: ${duplicata.fase||'—'}).
-
-Deseja criar mesmo assim?`)){
-        return;
-      }
-    }
-  }
-  const now=new Date().toLocaleString('pt-BR');
-  const quem=_u.n;
-  if(!_edit._meta)_edit._meta={};
-  if(!_edit.log)_edit.log=[];
-  const changed=[];
-  Object.keys(dados).forEach(id=>{
-    const novo=dados[id]; const ant=_edit[id]||'';
-    if(novo!==ant&&novo!==''){
-      _edit._meta[id]={n:quem,t:now};
-      changed.push({c:FLABELS[id]||id,de:ant,para:novo});
-    }
-    if(novo!==''||_edit[id]!==undefined) _edit[id]=novo;
-  });
-  _edit._updatedAt=Date.now();
-  const isNovo=!_processos.find(p=>p.id===_edit.id);
-  _edit.log.push({time:now,user:quem,msg:isNovo?'Processo criado':`${changed.length} campo(s) atualizado(s)`,fields:changed});
-  const procCompleto=JSON.parse(JSON.stringify(_edit));
-  _dirty=false;
-  fechar(true);
-  renderAll();
-  saveProcesso(procCompleto,()=>toast(isNovo?'Processo criado!':'Salvo!','ok'));
-}
-
-function excluir(id){
-  if(!confirm('Excluir este processo? Esta ação não pode ser desfeita.'))return;
-  _processos=_processos.filter(p=>p.id!==id);
-  delete _cache[id];
-  fechar();renderAll();
-  fetch('/api/controle/processo/'+id,{method:'DELETE'})
-    .then(r=>r.json())
-    .then(d=>toast(d.ok?'Processo excluído.':'Erro ao excluir.',d.ok?'ok':'err'))
-    .catch(()=>toast('Erro ao excluir.','err'));
-}
-
-function renderLog(){
-  const log=(_edit&&_edit.log)||[];
-  if(!log.length){
-    document.getElementById('tc-log').innerHTML=`<div style="text-align:center;padding:32px;color:var(--text-dim)">Sem histórico ainda.</div>`;
-    return;
-  }
-  document.getElementById('tc-log').innerHTML=`
-    <div style="max-height:420px;overflow-y:auto">
-      ${log.slice().reverse().map(l=>`
-        <div class="log-row">
-          <div class="log-time">${l.time}</div>
-          <div style="flex:1">
-            <div><span class="log-user">${l.user||''}</span>${l.user?' · ':''}<span style="font-size:12px">${l.msg}</span></div>
-            ${(l.fields||[]).map(f=>`
-              <div class="log-chg">
-                ${f.c}: <span class="log-val">${f.de||'—'} → ${f.para}</span>
-              </div>`).join('')}
-          </div>
-        </div>`).join('')}
-    </div>`;
-}
-
-// ══ UPLOAD + IA ═══════════════════════════════════════════════
-function dropDoc(e){e.preventDefault();document.getElementById('ubox').classList.remove('drag');addFiles(e.dataTransfer.files);}
-function addFiles(files){Array.from(files).forEach(f=>{_files[f.name]=f;});renderChips();}
-function renderChips(){
-  const el=document.getElementById('chips');if(!el)return;
-  el.innerHTML=Object.keys(_files).map(n=>`<div class="chip">${n}<span class="cx" onclick="rmFile('${n}')">×</span></div>`).join('');
-  if(Object.keys(_files).length)
-    el.innerHTML+=`<button class="btn btn-p btn-sm" onclick="extrair()" style="margin-left:6px">✨ Extrair com IA</button>`;
-}
-function rmFile(n){delete _files[n];renderChips();document.getElementById('eres').innerHTML='';}
-
-async function extrair(){
-  if(!_apiKey){toast('Sessão expirada. Faça login novamente.','err');return;}
-  const files=Object.values(_files);
-  if(!files.length){toast('Nenhum arquivo.','err');return;}
-  document.getElementById('eres').innerHTML=
-    `<div style="text-align:center;padding:20px;color:var(--text-dim)"><span class="spin"></span><div style="margin-top:8px;font-size:13px">Analisando documentos...</div></div>`;
-  try{
-    const parts=await Promise.all(files.map(async f=>{
-      const b64=await toB64(f);
-      return f.type==='application/pdf'
-        ?{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}}
-        :{type:'image',source:{type:'base64',media_type:f.type,data:b64}};
-    }));
-    parts.push({type:'text',text:`Você é especialista em documentos de importação brasileira de pneus.
-Analise os documentos (PI, CI, PL, HBL, CE, DI, MAPA, LPCO, NF) e extraia:
-referencia (apenas o código, ex: UD25-340, sem parênteses ou números extras),
-cliente, produtos (APENAS UMA STRING com o nome do produto/pneu, ex: "PNEU TBR 295/80R22.5"), marca, agente, porto, armador, navio,
-container (número do container), quant_containers (quantidade de containers, número inteiro),
-hbl, mbl, eta (YYYY-MM-DD), data_embarque (YYYY-MM-DD), data_chegada (YYYY-MM-DD),
-data_presenca (YYYY-MM-DD), data_prontidao (YYYY-MM-DD), data_pedido (YYYY-MM-DD),
-ce_master, ce_house, numero_di, data_di (YYYY-MM-DD),
-canal_parametrizacao (VERDE/AMARELO/VERMELHO/CINZA),
-status_mapa (AG. ANALISE/LIBERADO/EXIGÊNCIA),
-status_lpco (AG. ANALISE/DEFERIDA/EXIGÊNCIA/FAZER LPCO),
-anuencia (SEM LI/DEFERIDA/PENDENTE),
-data_retirada (YYYY-MM-DD), horario_retirada,
-nf_processo, data_ci (YYYY-MM-DD),
-pagamento_entrada (data ou valor), pagamento_saldo (data ou valor),
-finalidade (DIRETO/LCL/DUIMP).
-Responda SOMENTE JSON válido, sem markdown. Omita campos não encontrados.`});
-
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:2000,
-        messages:[{role:'user',content:parts}]})
-    });
-    const raw=await r.text();
-    if(!r.ok){
-      document.getElementById('eres').innerHTML=
-        `<div style="color:var(--err);padding:12px;font-size:13px">Erro da API (${r.status}): ${raw.slice(0,300)}</div>`;
-      return;
-    }
-    const data=JSON.parse(raw);
-    const txt=(data.content||[]).map(x=>x.text||'').join('');
-    const clean=txt.replace(/```json|```/g,'').trim();
-    if(!clean){
-      document.getElementById('eres').innerHTML=
-        `<div style="color:var(--err);padding:12px;font-size:13px">A IA não retornou dados. Tente com outro documento.</div>`;
-      return;
-    }
-    const ex=JSON.parse(clean);
-    mostrarExtracao(ex);
-  }catch(e){
-    document.getElementById('eres').innerHTML=
-      `<div style="color:var(--err);padding:12px;font-size:13px">Erro: ${e.message}</div>`;
-  }
-}
-
-function mostrarExtracao(ex){
-  // Normalizar valores — converter objetos/arrays para string
-  Object.keys(ex).forEach(k=>{
-    if(ex[k]===null||ex[k]===undefined){ delete ex[k]; return; }
-    if(typeof ex[k]==='object'){
-      // Array de strings — juntar com vírgula
-      if(Array.isArray(ex[k])) ex[k]=ex[k].join(', ');
-      else ex[k]=Object.values(ex[k]).filter(Boolean).join(' ');
-    }
-    ex[k]=String(ex[k]).trim();
-    if(!ex[k]) delete ex[k];
-  });
-  // Limpar referência
-  if(ex.referencia) ex.referencia=ex.referencia.replace(/\s*\(\d+\)\s*/g,'').trim();
-  const campos=Object.keys(ex).filter(k=>FLABELS[k]);
-  if(!campos.length){
-    document.getElementById('eres').innerHTML=`<div style="color:var(--text-dim);padding:12px;font-size:13px">Nenhum campo identificado.</div>`;
-    return;
-  }
-  const rows=campos.map(k=>{
-    const atual=(_edit||{})[k]||'';const novo=ex[k]||'';
-    const badge=atual?(atual!==novo?'<span class="eb eb-c">ALTERADO</span>':''):'<span class="eb eb-n">NOVO</span>';
-    return`<div class="erow"><div class="elbl">${FLABELS[k]}</div><div class="eval">${novo}</div>${badge}</div>`;
   }).join('');
-  const enc=encodeURIComponent(JSON.stringify(ex));
-  document.getElementById('eres').innerHTML=`
-    <div class="ebox">
-      <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.7px;margin-bottom:9px">
-        ✨ ${campos.length} campo(s) identificado(s)
+
+  // Alertas do processo
+  const alertas = verificarAlertas(p, false);
+  const alertasHtml = alertas.map(a=>
+    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">
+      🚨 ${a.titulo}: ${a.mensagem}
+    </div>`
+  ).join('');
+
+  // Pagamento info
+  const finInfo = p.pi_pagamento ? renderPagamentoInfo(p) : '';
+
+  // Log
+  const logHtml = (p.log||[]).length
+    ? `<div class="form-section">
+        <div class="form-section-title">📜 Histórico de alterações</div>
+        <div class="log-list">${(p.log||[]).slice(-10).reverse().map(l=>`
+          <div class="log-item">
+            <div class="log-avatar">${(l.usuario||'?').slice(0,2).toUpperCase()}</div>
+            <div class="log-content">
+              <span class="log-user">${l.usuario||'?'}</span>
+              <span class="log-text"> alterou <strong>${l.campo||''}</strong>: ${l.valor_antes||'—'} → ${l.valor_depois||'—'}</span>
+              <div class="log-time">${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : ''}</div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>` : '';
+
+  document.getElementById('modal-body').innerHTML = `
+    <!-- Timeline -->
+    <div class="timeline">${timeline}</div>
+
+    ${alertasHtml}
+
+    <!-- 01 IDENTIFICAÇÃO -->
+    <div class="form-section">
+      <div class="form-section-title">📄 01 — Identificação</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Referência *</label>
+          <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fornecedor</label>
+          <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cliente</label>
+          <input class="form-input" id="f_cliente" value="${esc(p.cliente||'UNICAP')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Produto</label>
+          <input class="form-input" id="f_produto" value="${esc(p.produto)}" placeholder="Ex: Pneus TBR">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observações</label>
+          <input class="form-input" id="f_obs" value="${esc(p.obs)}">
+        </div>
       </div>
-      ${rows}
-      <div style="margin-top:11px;display:flex;gap:8px">
-        <button class="btn btn-p btn-sm" onclick="aplicar('${enc}')">✓ Aplicar e revisar</button>
-        <button class="btn btn-s btn-sm" onclick="document.getElementById('eres').innerHTML=''">Cancelar</button>
+    </div>
+
+    <!-- 02 PI E FINANCEIRO -->
+    <div class="form-section">
+      <div class="form-section-title">💰 02 — Proforma Invoice (PI) & Financeiro</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Nº PI</label>
+          <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data PI</label>
+          <input class="form-input" type="date" id="f_pi_data" value="${esc(p.pi_data)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor USD</label>
+          <input class="form-input" type="number" id="f_pi_valor_usd" value="${p.pi_valor_usd||''}" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Incoterm</label>
+          <select class="form-input" id="f_pi_incoterm">
+            <option value="">—</option>
+            <option value="FOB" ${p.pi_incoterm==='FOB'?'selected':''}>FOB</option>
+            <option value="CIF" ${p.pi_incoterm==='CIF'?'selected':''}>CIF</option>
+            <option value="CFR" ${p.pi_incoterm==='CFR'?'selected':''}>CFR</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Forma de Pagamento</label>
+          <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()">
+            <option value="">—</option>
+            <option value="VISTA" ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
+            <option value="PRAZO" ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
+            <option value="ENTRADA_SALDO" ${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}>Entrada + Saldo</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">PI Paga?</label>
+          <select class="form-input" id="f_pi_pago">
+            <option value="false" ${!p.pi_pago?'selected':''}>Não</option>
+            <option value="true" ${p.pi_pago?'selected':''}>Sim ✓</option>
+          </select>
+        </div>
       </div>
-    </div>`;
+      <div id="pagamento-campos"></div>
+      ${finInfo}
+    </div>
+
+    <!-- 03 PRONTIDÃO -->
+    <div class="form-section">
+      <div class="form-section-title">🏭 03 — Prontidão</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Previsão de Prontidão</label>
+          <input class="form-input" type="date" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Prontidão Real</label>
+          <input class="form-input" type="date" id="f_data_prontidao" value="${esc(p.data_prontidao)}">
+        </div>
+      </div>
+    </div>
+
+    <!-- 04 BOOKING -->
+    <div class="form-section">
+      <div class="form-section-title">📦 04 — Booking / Embarque</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Nº Booking</label>
+          <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Armador</label>
+          <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Navio</label>
+          <input class="form-input" id="f_navio" value="${esc(p.navio)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Porto Origem</label>
+          <input class="form-input" id="f_porto_origem" value="${esc(p.porto_origem)}" placeholder="Ex: SHANGHAI">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Porto Destino</label>
+          <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino||'ITAJAI')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ETD</label>
+          <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ETA</label>
+          <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Free Time (dias)</label>
+          <input class="form-input" type="number" id="f_free_time" value="${p.free_time||21}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Embarque</label>
+          <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">HBL</label>
+          <input class="form-input" id="f_hbl" value="${esc(p.hbl)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">MBL</label>
+          <input class="form-input" id="f_mbl" value="${esc(p.mbl)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Container</label>
+          <input class="form-input" id="f_container" value="${esc(p.container)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo Container</label>
+          <select class="form-input" id="f_tipo_container">
+            <option value="20GP" ${p.tipo_container==='20GP'?'selected':''}>20GP</option>
+            <option value="40GP" ${p.tipo_container==='40GP'?'selected':''}>40GP</option>
+            <option value="40HC" ${(!p.tipo_container||p.tipo_container==='40HC')?'selected':''}>40HC</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 05 CHEGADA -->
+    <div class="form-section">
+      <div class="form-section-title">⚓ 05 — Chegada</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Data Chegada</label>
+          <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Presença de Carga</label>
+          <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Demurrage Vence</label>
+          <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="font-weight:600;color:var(--err);">
+        </div>
+      </div>
+    </div>
+
+    <!-- 06 DI E PARAMETRIZAÇÃO -->
+    <div class="form-section">
+      <div class="form-section-title">📋 06 — DI e Parametrização</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Data Registro DI</label>
+          <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Número DI</label>
+          <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Canal</label>
+          <select class="form-input" id="f_canal">
+            <option value="">—</option>
+            <option value="VERDE" ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
+            <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
+            <option value="VERMELHO" ${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Parametrização</label>
+          <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Liberação</label>
+          <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}">
+        </div>
+      </div>
+    </div>
+
+    <!-- 07 CI -->
+    <div class="form-section">
+      <div class="form-section-title">💵 07 — Commercial Invoice (CI)</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Nº CI</label>
+          <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data CI</label>
+          <input class="form-input" type="date" id="f_ci_data" value="${esc(p.ci_data)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor CI (USD)</label>
+          <input class="form-input" type="number" id="f_ci_valor_usd" value="${p.ci_valor_usd||''}" placeholder="0.00">
+        </div>
+      </div>
+    </div>
+
+    <!-- 08 CARREGAMENTO -->
+    <div class="form-section">
+      <div class="form-section-title">🚛 08 — Carregamento</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Agendamento</label>
+          <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Carregamento</label>
+          <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Transportadora</label>
+          <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Placa</label>
+          <input class="form-input" id="f_placa" value="${esc(p.placa)}">
+        </div>
+      </div>
+    </div>
+
+    <!-- 09 FATURAMENTO -->
+    <div class="form-section">
+      <div class="form-section-title">🧾 09 — Faturamento</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">NF Entrada Nº</label>
+          <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">NF Entrada Data</label>
+          <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">NF Entrada Valor</label>
+          <input class="form-input" type="number" id="f_nf_entrada_valor" value="${p.nf_entrada_valor||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">NF Saída Nº</label>
+          <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">NF Saída Data</label>
+          <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">NF Saída Valor</label>
+          <input class="form-input" type="number" id="f_nf_saida_valor" value="${p.nf_saida_valor||''}">
+        </div>
+      </div>
+    </div>
+
+    <!-- 10 DEVOLUÇÃO VAZIO -->
+    <div class="form-section">
+      <div class="form-section-title">📦 10 — Devolução do Vazio (Demurrage)</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Data Devolução</label>
+          <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor Demurrage (R$)</label>
+          <input class="form-input" type="number" id="f_demurrage_valor" value="${p.demurrage_valor||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Demurrage Pago?</label>
+          <select class="form-input" id="f_demurrage_pago">
+            <option value="false" ${!p.demurrage_pago?'selected':''}>Não</option>
+            <option value="true" ${p.demurrage_pago?'selected':''}>Sim ✓</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    ${logHtml}
+
+    <!-- AÇÕES -->
+    <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
+      <div>
+        ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+      </div>
+    </div>
+  `;
+
+  renderPagamentoCampos();
 }
 
-function aplicar(enc){
-  const ex=JSON.parse(decodeURIComponent(enc));
-  Object.keys(ex).forEach(k=>{
-    if(ex[k]===null||ex[k]===undefined) return;
-    // Converter objetos para string
-    const v = typeof ex[k]==='object' ? JSON.stringify(ex[k]) : String(ex[k]);
-    // Limpar referência (remover números entre parênteses)
-    if(k==='referencia'){
-      _edit[k] = v.replace(/\s*\(\d+\)\s*/g,'').trim();
-    } else {
-      _edit[k] = v;
-    }
-  });
-  const isNovo=!_processos.find(p=>p.id===_edit.id);
-  renderModal(isNovo);
-  tab('dados');
-  toast(`${Object.keys(ex).length} campo(s) preenchidos — revise e salve.`,'ok');
-}
-
-async function toB64(f){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=()=>res(r.result.split(',')[1]);
-    r.onerror=()=>rej(new Error('Falha ao ler arquivo'));
-    r.readAsDataURL(f);
-  });
-}
-
-// ══ ALERTAS INTELIGENTES ═════════════════════════════════════
-const _alertasDismissed = new Set(); // alertas dispensados nesta sessão
-
-function diasDiff(isoDate){
-  if(!isoDate) return null;
-  const d = new Date(isoDate);
-  d.setHours(0,0,0,0);
-  const hoje = new Date(); hoje.setHours(0,0,0,0);
-  return Math.floor((hoje - d) / 86400000); // positivo = passou, negativo = futuro
-}
-
-function gerarAlertas(){
-  const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const alertas = [];
-
-  _processos.forEach(p => {
-    if(p.fase === 'FINALIZADO') return;
-
-    const diffEmbarque    = diasDiff(p.data_embarque);
-    const diffEta         = diasDiff(p.eta);
-    const diffChegada     = diasDiff(p.data_chegada);
-    const diffPresenca    = diasDiff(p.data_presenca);
-    const diffProntidao   = diasDiff(p.previsao_prontidao);
-    const diffDi          = diasDiff(p.data_di);
-    const demurDias_      = demurDias(p);
-    const ref = p.referencia;
-
-    // 1. ETD passou — não está embarcado
-    if(diffEmbarque !== null && diffEmbarque >= 0 && (p.fase === 'PRODUCAO' || p.fase === 'EMBARCADO') && !p.data_chegada){
-      const key = ref+'-embarque';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'warn', ref,
-          icon:'🚢',
-          texto: `<span class="ai-ref">${ref}</span> — Data de embarque foi <strong>${fmtDateFull(p.data_embarque)}</strong>. Confirmou que embarcou?`,
-          acao: 'Confirmar embarque',
-          fn: `confirmarFase(${p.id},'EMBARCADO','data_embarque')`,
-        });
-      }
-    }
-
-    // 2. ETA passou — não confirmou chegada
-    if(diffEta !== null && diffEta >= 0 && p.fase === 'EMBARCADO' && !p.data_chegada){
-      const key = ref+'-eta';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'err', ref,
-          icon:'⚓',
-          texto: `<span class="ai-ref">${ref}</span> — ETA foi <strong>${fmtDateFull(p.eta)}</strong>. Chegou ao porto? Confirme a data de chegada.`,
-          acao: 'Registrar chegada',
-          fn: `confirmarChegada(${p.id})`,
-        });
-      }
-    }
-
-    // 3. Previsão de prontidão passou sem prontidão
-    if(diffProntidao !== null && diffProntidao >= 0 && !p.data_prontidao && p.fase === 'PRODUCAO'){
-      const key = ref+'-prontidao';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'warn', ref,
-          icon:'🏭',
-          texto: `<span class="ai-ref">${ref}</span> — Prev. prontidão foi <strong>${fmtDateFull(p.previsao_prontidao)}</strong>. Ficou pronto?`,
-          acao: 'Confirmar prontidão',
-          fn: `confirmarCampo(${p.id},'data_prontidao','Data de Prontidão')`,
-        });
-      }
-    }
-
-    // 4. Chegada há mais de 2 dias sem presença de carga
-    if(diffChegada !== null && diffChegada >= 2 && !p.data_presenca && p.fase === 'PORTO'){
-      const key = ref+'-presenca';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'warn', ref,
-          icon:'📦',
-          texto: `<span class="ai-ref">${ref}</span> — Chegou há <strong>${diffChegada} dias</strong> sem presença de carga confirmada.`,
-          acao: 'Registrar presença',
-          fn: `confirmarCampo(${p.id},'data_presenca','Presença de Carga')`,
-        });
-      }
-    }
-
-    // 5. Presença há mais de 3 dias sem DI
-    if(diffPresenca !== null && diffPresenca >= 3 && !p.numero_di && (p.fase === 'PORTO' || p.fase === 'LIBERACAO')){
-      const key = ref+'-di';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'warn', ref,
-          icon:'📋',
-          texto: `<span class="ai-ref">${ref}</span> — Presença há <strong>${diffPresenca} dias</strong> e DI ainda não registrada.`,
-          acao: 'Registrar DI',
-          fn: `confirmarCampo(${p.id},'numero_di','Número da DI')`,
-        });
-      }
-    }
-
-    // 6. DI registrada há mais de 10 dias sem retirada
-    if(diffDi !== null && diffDi >= 10 && !p.data_retirada && (p.fase === 'LIBERACAO' || p.fase === 'PORTO')){
-      const key = ref+'-retirada-di';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'warn', ref,
-          icon:'🚛',
-          texto: `<span class="ai-ref">${ref}</span> — DI registrada há <strong>${diffDi} dias</strong> sem retirada. O que está pendente?`,
-          acao: 'Abrir processo',
-          fn: `abrir(${p.id})`,
-        });
-      }
-    }
-
-    // 7. Demurrage crítico (≤ 5 dias)
-    if(demurDias_ !== null && demurDias_ <= 5 && demurDias_ >= 0 && !p.data_retirada){
-      const key = ref+'-demur-crit';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'err', ref,
-          icon:'🔴',
-          texto: `<span class="ai-ref">${ref}</span> — Demurrage vence em <strong>${demurDias_} dia(s)</strong>! Container retirado?`,
-          acao: 'Registrar retirada',
-          fn: `confirmarCampo(${p.id},'data_retirada','Data de Retirada')`,
-        });
-      }
-    }
-
-    // 8. Demurrage passou (< 0) sem retirada
-    if(demurDias_ !== null && demurDias_ < 0 && !p.data_retirada){
-      const key = ref+'-demur-vencido';
-      if(!_alertasDismissed.has(key)){
-        alertas.push({
-          key, tipo:'err', ref,
-          icon:'💸',
-          texto: `<span class="ai-ref">${ref}</span> — Demurrage <strong>VENCEU há ${Math.abs(demurDias_)} dia(s)</strong>! Container ainda não retirado.`,
-          acao: 'Registrar retirada',
-          fn: `confirmarCampo(${p.id},'data_retirada','Data de Retirada')`,
-        });
-      }
-    }
-  });
-
-  // Ordenar: erros primeiro
-  alertas.sort((a,b) => (a.tipo === 'err' ? -1 : 1));
-
-  renderAlertasInteligentes(alertas);
-}
-
-function fmtDateFull(iso){
-  if(!iso) return '—';
-  const d=parseData(iso);
-  if(!d) return String(iso).slice(0,10);
-  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
-}
-
-function renderAlertasInteligentes(alertas){
-  const el = document.getElementById('alertasInteligentes');
+// ════════════════════════════════════════════════════════════════
+// PAGAMENTO
+// ════════════════════════════════════════════════════════════════
+function renderPagamentoCampos(){
+  const tipo = document.getElementById('f_pi_pagamento')?.value;
+  const p = _editando || {};
+  const el = document.getElementById('pagamento-campos');
   if(!el) return;
-  if(!alertas.length){ el.innerHTML=''; return; }
+  if(!tipo){ el.innerHTML=''; return; }
 
-  // Limitar a 8 alertas visíveis
-  const visiveis = alertas.slice(0,8);
-  const resto = alertas.length - visiveis.length;
-
-  el.innerHTML = `<div class="ai-strip">
-    ${visiveis.map(a=>`
-      <div class="ai-alert ${a.tipo}" id="ai-${a.key.replace(/[^a-z0-9]/gi,'_')}">
-        <span class="ai-icon">${a.icon}</span>
-        <span class="ai-text">${a.texto}</span>
-        <button class="ai-btn" onclick="${a.fn}">${a.acao}</button>
-        <button class="ai-dismiss" onclick="dispensarAlerta('${a.key}')" title="Dispensar">✕</button>
-      </div>`).join('')}
-    ${resto>0?`<div style="font-size:11px;color:var(--text-dim);text-align:center;padding:4px">+ ${resto} alertas adicionais — resolva os acima para ver os próximos</div>`:''}
-  </div>`;
+  let html = '<div class="form-grid" style="margin-top:12px;">';
+  if(tipo==='VISTA'){
+    html+=`<div class="form-group"><label class="form-label">Data Pagamento</label>
+      <input class="form-input" type="date" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>`;
+  } else if(tipo==='PRAZO'){
+    html+=`<div class="form-group"><label class="form-label">Prazo (dias)</label>
+      <input class="form-input" type="number" id="f_pi_prazo_dias" value="${p.pi_prazo_dias||''}"></div>
+      <div class="form-group"><label class="form-label">Data Pagamento</label>
+      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
+  } else if(tipo==='ENTRADA_SALDO'){
+    html+=`<div class="form-group"><label class="form-label">% Entrada</label>
+      <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct||30}" min="1" max="99"></div>
+      <div class="form-group"><label class="form-label">Data Entrada</label>
+      <input class="form-input" type="date" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>
+      <div class="form-group"><label class="form-label">Data Saldo</label>
+      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
+  }
+  html+='</div>';
+  el.innerHTML=html;
 }
 
-function dispensarAlerta(key){
-  _alertasDismissed.add(key);
-  gerarAlertas();
+function renderPagamentoInfo(p){
+  if(!p.pi_pagamento||!p.pi_valor_usd) return '';
+  const val = parseFloat(p.pi_valor_usd)||0;
+  const brl = val * _cambio.USD;
+  let rows = '';
+  if(p.pi_pagamento==='VISTA'){
+    rows=`<div class="pagamento-row"><span>Pagamento à vista</span><span>USD ${val.toFixed(2)}</span></div>
+    <div class="pagamento-row"><span>Estimativa BRL</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+  } else if(p.pi_pagamento==='PRAZO'){
+    rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toFixed(2)}</span></div>`;
+  } else if(p.pi_pagamento==='ENTRADA_SALDO'){
+    const pct = parseFloat(p.pi_entrada_pct||30)/100;
+    const ent = val*pct; const sld = val*(1-pct);
+    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%)</span><span>USD ${ent.toFixed(2)}</span></div>
+    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%)</span><span>USD ${sld.toFixed(2)}</span></div>
+    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)}</span></div>`;
+  }
+  return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
 }
 
-// ── AÇÕES DE CONFIRMAÇÃO ──
-function confirmarFase(id, novaFase, campo){
-  const p = _processos.find(x=>x.id===id);
-  if(!p) return;
-  // Abrir modal com campo de data em destaque
-  abrir(id);
-  setTimeout(()=>{
-    tab('dados');
+// ════════════════════════════════════════════════════════════════
+// COLETAR E SALVAR
+// ════════════════════════════════════════════════════════════════
+function coletarESalvar(){
+  const ref = document.getElementById('f_referencia')?.value?.trim();
+  if(!ref){ showToast('Informe a Referência','err'); return; }
+
+  const antigo = {...(_editando||{})};
+  const campos = [
+    'referencia','fornecedor','cliente','produto','obs',
+    'pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento','pi_pago',
+    'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
+    'previsao_prontidao','data_prontidao',
+    'booking_numero','armador','navio','viagem','porto_origem','porto_destino',
+    'etd','eta','free_time','data_embarque','hbl','mbl','container','tipo_container',
+    'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
+    'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
+    'ci_numero','ci_data','ci_valor_usd',
+    'data_agendamento','data_carregamento','transportadora','placa',
+    'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
+    'nf_saida_numero','nf_saida_data','nf_saida_valor',
+    'data_devolucao_vazio','demurrage_valor','demurrage_pago',
+  ];
+
+  const proc = {..._editando};
+  const log = proc.log || [];
+
+  campos.forEach(campo=>{
     const el = document.getElementById('f_'+campo);
-    if(el){ el.focus(); el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.06)'; }
-  }, 200);
-}
+    if(!el) return;
+    let val = el.value?.trim();
+    if(el.type==='number') val = val===''?null:parseFloat(val);
+    else if(campo==='pi_pago'||campo==='demurrage_pago') val = val==='true';
+    else if(val==='') val = null;
 
-function confirmarChegada(id){
-  confirmarFase(id, 'PORTO', 'data_chegada');
-}
-
-function confirmarCampo(id, campo, labelHuman){
-  const p = _processos.find(x=>x.id===id);
-  if(!p) return;
-
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,30,60,.5);z-index:900;display:flex;align-items:center;justify-content:center;';
-  const now = new Date().toISOString().slice(0,10);
-  const isDate = ['data_prontidao','data_chegada','data_presenca','data_retirada','data_di','data_ci','eta'].includes(campo);
-  overlay.innerHTML = `
-    <div style="background:#fff;border-radius:12px;padding:24px 28px;width:380px;box-shadow:0 16px 48px rgba(0,0,0,.2)">
-      <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text-bright);margin-bottom:4px">Confirmar — ${labelHuman}</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;font-family:'DM Mono',monospace">${p.referencia}</div>
-      <div class="field" style="margin-bottom:16px">
-        <label>${labelHuman}</label>
-        <input id="confirm-input" type="${isDate?'date':'text'}" value="${isDate?now:''}" style="font-size:14px">
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-s btn-sm" onclick="this.closest('div[style]').remove()">Cancelar</button>
-        <button class="btn btn-p btn-sm" onclick="salvarConfirmacao(${id},'${campo}',document.getElementById('confirm-input').value,this)">✓ Confirmar</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  setTimeout(()=>{ const el=document.getElementById('confirm-input'); if(el)el.focus(); },100);
-  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
-}
-
-function salvarConfirmacao(id, campo, valor, btn){
-  if(!valor){ alert('Informe o valor.'); return; }
-  const p = _processos.find(x=>x.id===id);
-  if(!p) return;
-
-  const agora = new Date().toLocaleString('pt-BR');
-  const quem = _u ? _u.n : 'Sistema';
-  p[campo] = valor;
-
-  // Recalcular fase automaticamente
-  const novaFase = calcularFase(p);
-  if(novaFase !== p.fase){
-    p.log = p.log||[];
-    p.log.push({time:agora, user:quem, msg:`Fase avançada: ${p.fase} → ${novaFase}`, fields:[]});
-    p.fase = novaFase;
-  }
-
-  if(!p._meta) p._meta = {};
-  p._meta[campo] = {n:quem, t:agora};
-  p.log = p.log||[];
-  p.log.push({time:agora, user:quem, msg:`Confirmação: ${FLABELS[campo]||campo} = ${valor}`, fields:[]});
-  p._updatedAt = Date.now();
-
-  // Fechar overlay
-  btn.closest('div[style]').remove();
-
-  const idx = _processos.findIndex(x=>x.id===id);
-  if(idx>=0) _processos[idx] = p;
-
-  const procSnap = JSON.parse(JSON.stringify(p));
-  saveProcesso(procSnap, ()=>toast('Confirmado e salvo!','ok'));
-  renderAll();
-  gerarAlertas();
-}
-
-function calcularFase(p){
-  if(p.data_ric) return 'FINALIZADO';
-  if(p.data_retirada) return 'RETIRADO';
-  if(p.numero_di || p.canal_parametrizacao) return 'LIBERACAO';
-  if(p.data_chegada || p.data_presenca) return 'PORTO';
-  if(p.data_embarque || p.hbl) return 'EMBARCADO';
-  return 'PRODUCAO';
-}
-
-// ══ AUTO REFRESH + ALERTAS DEMURRAGE ════════════════════════
-setInterval(()=>{
-  if(!_u)return;
-  if(document.getElementById('ov').classList.contains('on'))return;
-  fetch('/api/controle/index').then(async r=>{
-    if(!r.ok) return null;
-    return safeJson(r);
-  }).then(d=>{
-    if(!d||!(d.index||d.processos)) return;
-    const lista=d.index||d.processos||[];
-    if(lista.length){
-      _processos=lista;
-      sbTotal(_processos.length);
-      sbSync();
-      renderAll();
-      gerarAlertas();
+    // Log de auditoria
+    const antes = antigo[campo];
+    if(String(antes||'')!==String(val||'')){
+      log.push({
+        campo, valor_antes: antes||'', valor_depois: val||'',
+        usuario: _user.usuario,
+        created_at: new Date().toISOString()
+      });
     }
-  }).catch(()=>{
-    sbStatus('offline','Sem conexão');
+    proc[campo] = val;
   });
-},60000);
 
-// ══ IMPORTAR EXCEL ═══════════════════════════════════════════
-function importarExcel(files){
-  if(!files.length) return;
-  
-  // Modal de progresso
-  const ov = document.createElement('div');
-  ov.id = 'importOv';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,30,60,.55);z-index:9000;display:flex;align-items:center;justify-content:center;';
-  ov.innerHTML = `
-    <div style="background:#fff;border-radius:14px;padding:28px 32px;width:500px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.25)">
-      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text-bright);margin-bottom:4px">📥 Importar Planilhas</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-bottom:18px">Lendo os arquivos Excel...</div>
-      <div style="background:var(--bg2);border-radius:4px;height:8px;overflow:hidden;margin-bottom:12px">
-        <div id="impBar" style="background:var(--accent);height:100%;border-radius:4px;width:0;transition:width .3s"></div>
-      </div>
-      <div id="impStatus" style="font-size:12px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-bottom:16px">Aguardando...</div>
-      <div id="impResult" style="display:none"></div>
-      <div style="text-align:right;margin-top:12px">
-        <button id="impClose" class="btn btn-s btn-sm" onclick="document.getElementById('importOv').remove()" style="display:none">Fechar</button>
-      </div>
-    </div>`;
-  document.body.appendChild(ov);
+  proc.log = log;
+  _editando = proc;
 
-  setTimeout(()=>processarExcels(files), 100);
+  salvarProcesso(proc).then(ok=>{ if(ok) fecharModal(); });
 }
 
-async function processarExcels(files){
-  const setBar = p => document.getElementById('impBar').style.width = p+'%';
-  const setStatus = t => { const el=document.getElementById('impStatus'); if(el) el.textContent=t; };
-  const fileArr = Array.from(files);
-  
-  let controleWB = null, followUpWB = null;
-  
-  // Identificar qual arquivo é qual
-  for(const f of fileArr){
-    const buf = await f.arrayBuffer();
-    const wb = XLSX.read(buf, {type:'array', cellDates:true});
-    const sheetNames = wb.SheetNames.join(',').toLowerCase();
-    if(sheetNames.includes('controle') || sheetNames.includes('relatório')){
-      controleWB = wb;
-      setStatus('Planilha Controle identificada: ' + f.name);
-    } else if(sheetNames.includes('andamento') || sheetNames.includes('finalizados')){
-      followUpWB = wb;
-      setStatus('Planilha Follow Up identificada: ' + f.name);
-    } else {
-      // Tentar identificar pelo conteúdo
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-      const header = (rows[0]||[]).join(',').toLowerCase();
-      if(header.includes('processos') && header.includes('cliente')){
-        controleWB = wb;
-      } else if(header.includes('referência') && header.includes('hbl')){
-        followUpWB = wb;
-      }
-    }
-  }
+// ════════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════════
+function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
 
-  setBar(20);
-
-  function fmtDate(v){
-    if(!v) return '';
-    if(v instanceof Date) return v.toISOString().slice(0,10);
-    const s = String(v).trim();
-    // DD/MM/YY ou DD/MM/YYYY
-    const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-    if(m1){
-      const y = m1[3].length===2 ? '20'+m1[3] : m1[3];
-      return `${y}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-    }
-    // YYYY-MM-DD
-    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-    return '';
-  }
-
-  function clean(v){ return v===null||v===undefined?'':String(v).trim(); }
-
-  function faseFromDados(p){
-    if(p.data_ric) return 'FINALIZADO';
-    if(p.data_retirada) return 'RETIRADO';
-    if(p.numero_di || p.canal_parametrizacao) return 'LIBERACAO';
-    if(p.data_chegada || p.data_presenca) return 'PORTO';
-    if(p.data_embarque || p.hbl) return 'EMBARCADO';
-    return 'PRODUCAO';
-  }
-
-  const processos = {};
-  const agora = new Date().toLocaleString('pt-BR');
-
-  // ── Processar Controle ──
-  if(controleWB){
-    setStatus('Processando planilha Controle...');
-    const ws = controleWB.Sheets['CONTROLE'] || controleWB.Sheets[controleWB.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
-    const header = rows[0]||[];
-    
-    for(let i=1;i<rows.length;i++){
-      const row = rows[i];
-      const ref = clean(row[1]);
-      if(!ref) continue;
-      
-      const p = {
-        id: Date.now() + i,
-        referencia: ref,
-        cliente: clean(row[2]),
-        produtos: clean(row[3]),
-        finalidade: clean(row[4]),
-        pendencia_processo: clean(row[5]),
-        quant_containers: clean(row[6]),
-        agente: clean(row[7]),
-        porto: clean(row[8]),
-        marca: clean(row[9]),
-        data_pedido: fmtDate(row[10]),
-        data_prontidao: fmtDate(row[11]),
-        data_embarque: fmtDate(row[12]),
-        data_chegada: fmtDate(row[13]),
-        data_presenca: fmtDate(row[14]),
-        anuencia: clean(row[15]),
-        bl_provado: clean(row[16]),
-        pagamento_entrada: fmtDate(row[17])||clean(row[17]),
-        data_retirada: fmtDate(row[19]),
-        horario_retirada: clean(row[20]),
-        frete: clean(row[21]),
-        data_ric: fmtDate(row[22]),
-        status_ric: clean(row[23]),
-        armador: clean(row[24]),
-        nf_processo: clean(row[28]),
-        previsao_prontidao: fmtDate(row[30]),
-        free_time: 21,
-        _meta: {},
-        log: [{time:agora, user:'Importação Excel', msg:'Importado da planilha Controle', fields:[]}],
-      };
-      p.fase = faseFromDados(p);
-      processos[ref] = p;
-    }
-    setStatus('Controle: ' + Object.keys(processos).length + ' processos lidos');
-  }
-
-  setBar(50);
-
-  // ── Processar Follow Up ──
-  if(followUpWB){
-    setStatus('Processando planilha Follow Up...');
-    const sheetName = followUpWB.SheetNames.find(s=>s.toLowerCase().includes('andamento')) || followUpWB.SheetNames[0];
-    const ws = followUpWB.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
-    
-    let enriq = 0;
-    for(let i=1;i<rows.length;i++){
-      const row = rows[i];
-      const ref = clean(row[0]);
-      if(!ref) continue;
-      
-      // HBL/MBL separados por quebra de linha
-      const hblMbl = clean(row[3]).split(/\n|\r/);
-      const ceMasterHouse = clean(row[7]).split(/\n|\r/);
-      const armAg = clean(row[13]).split(/\n|\r/);
-      
-      const extra = {
-        hbl: clean(hblMbl[0]),
-        mbl: clean(hblMbl[1]||''),
-        navio: clean(row[5]),
-        container: clean(row[11]),
-        numero_di: clean(row[8]),
-        data_di: fmtDate(row[9]),
-        data_ci: fmtDate(row[10]),
-        ce_master: clean(ceMasterHouse[0]),
-        ce_house: clean(ceMasterHouse[1]||''),
-        status_mapa: clean(row[6]||'').slice(0,80),
-        demanda_impak: clean(row[14]||'').slice(0,200),
-      };
-      
-      if(processos[ref]){
-        // Enriquecer sem sobrescrever campos já preenchidos
-        Object.keys(extra).forEach(k=>{ if(extra[k]&&!processos[ref][k]) processos[ref][k]=extra[k]; });
-        enriq++;
-      } else {
-        // Criar novo processo com dados do Follow Up
-        const chegadaInfo = clean(row[4]).split(/\n|\r/);
-        processos[ref] = {
-          id: Date.now() + i + 10000,
-          referencia: ref,
-          agente: clean(armAg[1]||''),
-          armador: clean(armAg[0]||''),
-          fase: 'EMBARCADO',
-          free_time: 21, _meta: {},
-          log: [{time:agora, user:'Importação Excel', msg:'Importado do Follow Up', fields:[]}],
-          ...extra,
-        };
-      }
-    }
-    setStatus('Follow Up: ' + enriq + ' processos enriquecidos');
-  }
-
-  setBar(75);
-
-  // ── Mesclar com existentes no sistema ──
-  setStatus('Verificando processos já cadastrados...');
-  let existentes = [];
-  try{
-    const resp = await fetch('/api/controle/carregar');
-    const d = await resp.json();
-    existentes = d.processos||[];
-  }catch(e){}
-
-  const existentesRefs = new Set(existentes.map(p=>p.referencia));
-  const novos = Object.values(processos).filter(p=>!existentesRefs.has(p.referencia));
-  const total = [...existentes, ...novos];
-
-  setStatus('Salvando ' + total.length + ' processos no Drive...');
-  setBar(88);
-
-  try{
-    const resp = await fetch('/api/controle/importar',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({processos: total})
-    });
-    const d = await safeJson(resp);
-    if(!d){
-      setStatus('Sessão expirada. Faça login novamente.');
-      return;
-    }
-    setBar(100);
-
-    const el = document.getElementById('impResult');
-    if(el){
-      if(d.ok){
-        el.innerHTML = '<div style="background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.2);border-radius:7px;padding:12px;font-size:13px;color:var(--ok);font-weight:600">'
-          + '✓ Importação concluída!<br>'
-          + '<span style="font-weight:400;font-size:12px">'
-          + novos.length + ' novos · ' + existentes.length + ' já existiam · ' + total.length + ' total</span></div>';
-        // Atualizar lista
-        _processos = total;
-        renderAll();
-      } else {
-        el.innerHTML = '<div style="color:var(--err);font-size:13px">Erro ao salvar. Tente novamente.</div>';
-      }
-      el.style.display = 'block';
-    }
-  }catch(e){
-    const el = document.getElementById('impResult');
-    if(el){ el.innerHTML = '<div style="color:var(--err);font-size:13px">Erro: '+e.message+'</div>'; el.style.display='block'; }
-  }
-
-  const closeBtn = document.getElementById('impClose');
-  if(closeBtn) closeBtn.style.display = 'inline-flex';
-  setStatus('Concluído.');
+function showToast(msg, tipo){
+  const wrap = document.getElementById('toast-wrap');
+  if(!wrap) return;
+  const t = document.createElement('div');
+  t.className = 'toast '+(tipo||'');
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(()=>t.remove(), 3000);
 }
-
-// ESC / clique fora
-document.addEventListener('keydown',e=>{if(e.key==='Escape')fechar();});
-document.getElementById('ov').addEventListener('click',e=>{
-  if(e.target===document.getElementById('ov'))fechar();
-});
-
-// Aviso ao fechar aba/janela com alterações não salvas
-window.addEventListener('beforeunload',e=>{
-  if(_dirty){
-    e.preventDefault();
-    e.returnValue='Você tem alterações não salvas.';
-  }
-});
 </script>
 </body>
 </html>
