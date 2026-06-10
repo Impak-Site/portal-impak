@@ -101,12 +101,19 @@ body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min
 /* ── MODAL ── */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;}
 .modal-bg.open{display:flex;}
-.modal{background:var(--card);border-radius:16px;width:100%;max-width:860px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
-.modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:sticky;top:0;background:var(--card);z-index:10;}
+.modal{background:var(--card);border-radius:16px;width:100%;max-width:900px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal-header{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;background:var(--card);}
 .modal-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;flex:1;}
 .modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:4px 8px;border-radius:6px;}
 .modal-close:hover{background:var(--bg);}
-.modal-body{padding:24px;}
+.modal-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0;overflow-x:auto;}
+.modal-tab{padding:10px 18px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s;font-family:'Syne',sans-serif;}
+.modal-tab:hover{color:var(--ac);background:rgba(26,127,212,.04);}
+.modal-tab.active{color:var(--ac);border-bottom-color:var(--ac);background:#fff;}
+.modal-tab .tab-alert{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--err);margin-left:4px;vertical-align:middle;}
+.modal-body{padding:0;flex:1;overflow-y:auto;}
+.tab-pane{display:none;padding:20px 24px;}
+.tab-pane.active{display:block;}
 
 /* ── FORM SECTIONS ── */
 .form-section{margin-bottom:24px;}
@@ -193,6 +200,13 @@ select.form-input{cursor:pointer;}
 .fin-PRAZO{background:#fef3c7;color:#92400e;}
 .fin-ENTRADA_SALDO{background:#d1fae5;color:#065f46;}
 
+/* ── INLINE EDIT ── */
+.inline-edit{position:relative;display:inline-flex;align-items:center;gap:4px;cursor:pointer;border-radius:4px;padding:1px 4px;transition:background .1s;}
+.inline-edit:hover{background:rgba(26,127,212,.08);}
+.inline-edit:hover::after{content:'✏';font-size:9px;opacity:.5;margin-left:2px;}
+.inline-input{background:#fff;border:1px solid var(--ac);border-radius:4px;padding:3px 6px;font-size:12px;font-family:'DM Mono',monospace;width:120px;outline:none;}
+.inline-select{background:#fff;border:1px solid var(--ac);border-radius:4px;padding:3px 6px;font-size:11px;outline:none;}
+
 /* ── RESPONSIVE ── */
 @media(max-width:768px){
   .sidebar{display:none;}
@@ -248,6 +262,10 @@ select.form-input{cursor:pointer;}
     <div class="sidebar-item" onclick="setFaseFilter('DEVOLUCAO_VAZIO')">📦 Dev. Vazio</div>
     <div class="sidebar-item" onclick="setFaseFilter('FINALIZADO')">✅ Finalizado</div>
   </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Dashboard</div>
+    <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💵 Visão financeira</div>
+  </div>
   <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
     <div class="sidebar-label">API Key Anthropic</div>
     <div style="padding:0 8px;">
@@ -267,14 +285,39 @@ select.form-input{cursor:pointer;}
 
   <!-- TOOLBAR -->
   <div class="toolbar">
-    <input class="search-box" id="search" placeholder="🔍 Buscar referência, fornecedor, container..." oninput="render()">
+    <input class="search-box" id="search" placeholder="🔍 Ref, fornecedor, container, HBL, DI, navio, armador..." oninput="render()" style="flex:2;min-width:260px;">
     <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
-    <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar Planilha</button>
+    <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
     <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
+    <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
+  </div>
+  <!-- FILTRO POR DATA -->
+  <div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+    <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">📅 Filtrar por data:</span>
+    <select id="filtro-data-campo" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+      <option value="eta">ETA</option>
+      <option value="data_chegada">Chegada</option>
+      <option value="data_embarque">Embarque</option>
+      <option value="etd">ETD</option>
+      <option value="pi_data">Data PI</option>
+      <option value="demurrage_vencimento">Venc. Demurrage</option>
+    </select>
+    <input type="date" id="filtro-data-de" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+    <span style="font-size:12px;color:var(--muted);">até</span>
+    <input type="date" id="filtro-data-ate" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+    <button class="btn btn-sm btn-outline" onclick="limparFiltroData()">Limpar</button>
+    <button class="btn btn-sm btn-outline" onclick="filtroEssaSemana()">Esta semana</button>
+    <button class="btn btn-sm btn-outline" onclick="filtroEsseMes()">Este mês</button>
   </div>
 
   <!-- FASE FILTER -->
   <div class="fase-filter" id="fase-filter"></div>
+
+  <!-- DASHBOARD FINANCEIRO -->
+  <div id="dash-financeiro" style="display:none;margin-bottom:20px;">
+    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">💵 Visão Financeira do Mês</div>
+    <div id="dash-fin-content"></div>
+  </div>
 
   <!-- TABELA -->
   <div class="table-wrap">
@@ -316,6 +359,7 @@ select.form-input{cursor:pointer;}
       <div id="modal-fase-badge"></div>
       <button class="modal-close" onclick="fecharModal()">×</button>
     </div>
+    <div class="modal-tabs" id="modal-tabs"></div>
     <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
@@ -420,6 +464,11 @@ async function salvarProcesso(proc){
   proc.updated_at = new Date().toISOString();
   if(isNovo){ proc.created_by = _user.usuario; proc.created_at = new Date().toISOString(); }
 
+  // Registrar câmbio USD no momento do pedido se não preenchido
+  if(!proc.pi_cambio && proc.pi_valor_usd && _cambio.USD){
+    proc.pi_cambio = _cambio.USD;
+  }
+
   // Calcular vencimento demurrage automaticamente
   if(proc.data_chegada && proc.free_time){
     const chegada = new Date(proc.data_chegada);
@@ -497,13 +546,47 @@ function demurrageDisplay(proc){
 // ════════════════════════════════════════════════════════════════
 function verificarAlertas(proc, criarNotif){
   const alertas = [];
-  const dias = demurrageDias(proc);
-  if(dias !== null && dias <= 5 && dias >= 0 && !proc.data_devolucao_vazio){
-    alertas.push({tipo:'urgente', titulo:`Demurrage: ${proc.referencia}`, mensagem:`Vence em ${dias} dia(s)! Container ainda não devolvido.`});
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+  // Demurrage
+  const diasDemur = demurrageDias(proc);
+  if(diasDemur !== null && diasDemur <= 5 && diasDemur >= 0 && !proc.data_devolucao_vazio){
+    alertas.push({tipo:'urgente', titulo:`Demurrage: ${proc.referencia}`, mensagem:`Vence em ${diasDemur} dia(s)! Container ainda não devolvido.`});
   }
-  if(dias !== null && dias < 0 && !proc.data_devolucao_vazio){
-    alertas.push({tipo:'urgente', titulo:`Demurrage VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(dias)} dia(s). Custos em andamento.`});
+  if(diasDemur !== null && diasDemur < 0 && !proc.data_devolucao_vazio){
+    alertas.push({tipo:'urgente', titulo:`Demurrage VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diasDemur)} dia(s). Custos em andamento.`});
   }
+
+  // Alerta ETA: ETA passou e processo ainda está Embarcado
+  if(proc.eta && proc.fase === 'EMBARCADO'){
+    const eta = new Date(proc.eta); eta.setHours(0,0,0,0);
+    const diff = Math.ceil((hoje - eta)/86400000);
+    if(diff > 0){
+      alertas.push({tipo:'alerta', titulo:`ETA vencido: ${proc.referencia}`, mensagem:`ETA era ${eta.toLocaleDateString('pt-BR')} — processo ainda Embarcado. Verificar chegada.`});
+    }
+  }
+
+  // Alerta ETA próximo (2 dias)
+  if(proc.eta && proc.fase === 'EMBARCADO'){
+    const eta = new Date(proc.eta); eta.setHours(0,0,0,0);
+    const diff = Math.ceil((eta - hoje)/86400000);
+    if(diff >= 0 && diff <= 2){
+      alertas.push({tipo:'info', titulo:`ETA em ${diff === 0 ? 'hoje' : diff + 'd'}: ${proc.referencia}`, mensagem:`Navio previsto para ${eta.toLocaleDateString('pt-BR')}.`});
+    }
+  }
+
+  // Alerta PI vencimento (prazo pagamento nos próximos 5 dias)
+  if(proc.pi_data_saldo && !proc.pi_pago){
+    const venc = new Date(proc.pi_data_saldo); venc.setHours(0,0,0,0);
+    const diff = Math.ceil((venc - hoje)/86400000);
+    if(diff <= 5 && diff >= 0){
+      alertas.push({tipo:'urgente', titulo:`Pagamento PI vence em ${diff}d: ${proc.referencia}`, mensagem:`Saldo da PI vence em ${venc.toLocaleDateString('pt-BR')}.`});
+    }
+    if(diff < 0){
+      alertas.push({tipo:'urgente', titulo:`Pagamento PI VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diff)} dia(s).`});
+    }
+  }
+
   if(criarNotif && alertas.length){
     alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
   }
@@ -636,14 +719,35 @@ function renderStats(){
 function filtrarProcessos(){
   let lista = [..._processos];
   const q = (document.getElementById('search')?.value||'').toLowerCase().trim();
+
   if(q) lista = lista.filter(p=>
     (p.referencia||'').toLowerCase().includes(q)||
     (p.fornecedor||'').toLowerCase().includes(q)||
+    (p.cliente||'').toLowerCase().includes(q)||
     (p.container||'').toLowerCase().includes(q)||
     (p.hbl||'').toLowerCase().includes(q)||
-    (p.numero_di||'').toLowerCase().includes(q)
+    (p.mbl||'').toLowerCase().includes(q)||
+    (p.numero_di||'').toLowerCase().includes(q)||
+    (p.navio||'').toLowerCase().includes(q)||
+    (p.armador||'').toLowerCase().includes(q)||
+    (p.booking_numero||'').toLowerCase().includes(q)
   );
-  if(_faseFilter==='__alertas') lista = lista.filter(p=>verificarAlertas(p,false).length>0);
+
+  // Filtro por data
+  const dtDe  = document.getElementById('filtro-data-de')?.value;
+  const dtAte = document.getElementById('filtro-data-ate')?.value;
+  const dtCampo = document.getElementById('filtro-data-campo')?.value || 'eta';
+  if(dtDe || dtAte){
+    lista = lista.filter(p=>{
+      const val = p[dtCampo];
+      if(!val) return false;
+      if(dtDe  && val < dtDe)  return false;
+      if(dtAte && val > dtAte) return false;
+      return true;
+    });
+  }
+
+  if(_faseFilter==='__alertas')   lista = lista.filter(p=>verificarAlertas(p,false).length>0);
   else if(_faseFilter==='__andamento') lista = lista.filter(p=>p.fase!=='FINALIZADO');
   else if(_faseFilter==='__demur') lista = lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
   else if(_faseFilter) lista = lista.filter(p=>p.fase===_faseFilter);
@@ -673,8 +777,14 @@ function render(){
       return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
         <div class="td td-ref">${p.referencia||'—'}</div>
         <div class="td td-forn">${p.fornecedor||'—'}</div>
-        <div class="td"><span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span></div>
-        <div class="td td-date">${dataDisplay}</div>
+        <div class="td" onclick="event.stopPropagation()">
+          <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)">
+            <span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>
+          </span>
+        </div>
+        <div class="td td-date" onclick="event.stopPropagation()">
+          <span class="inline-edit" onclick="inlineEditData('${p.id}','eta',this)" title="Clique para editar ETA">${dataDisplay}</span>
+        </div>
         <div class="td">${demurrageDisplay(p)}</div>
         <div class="td">${finBadge}</div>
         <div class="td">
@@ -733,376 +843,338 @@ function renderModal(){
   document.getElementById('modal-fase-badge').innerHTML = `<span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>`;
   document.getElementById('modal-bg').classList.add('open');
 
-  // Timeline
+
+  // ── ABAS ──
+  const TABS = [
+    {id:'identificacao', label:'📄 Identificação'},
+    {id:'financeiro',    label:'💰 Financeiro'},
+    {id:'logistica',     label:'🚢 Logística'},
+    {id:'documentos',    label:'📋 Documentos'},
+    {id:'historico',     label:'📜 Histórico'},
+  ];
+  const temAlerta = verificarAlertas(p, false).length > 0;
+  const tabsHtml = TABS.map(t =>
+    `<div class="modal-tab ${t.id==='identificacao'?'active':''}" onclick="trocarAba('${t.id}')" id="tab-${t.id}">
+      ${t.label}${t.id==='identificacao'&&temAlerta?'<span class="tab-alert"></span>':''}
+    </div>`
+  ).join('');
+  document.getElementById('modal-tabs').innerHTML = tabsHtml;
+
+  // ── TIMELINE com datas ──
   const faseIdx = FASES.findIndex(f=>f.id===p.fase);
-  const timeline = FASES.map((f,i)=>{
-    const done = i < faseIdx;
+  // Mapa fase → data do processo
+  const faseDatas = {
+    'PI': p.pi_data,
+    'AGUARDANDO_EMBARQUE': p.previsao_prontidao||p.data_prontidao,
+    'EMBARCADO': p.data_embarque,
+    'DESEMBARCADO': p.data_chegada,
+    'REGISTRO_DI': p.data_registro_di,
+    'PARAMETRIZACAO': p.data_parametrizacao,
+    'CARREGAMENTO': p.data_agendamento||p.data_carregamento,
+    'FATURAMENTO': p.nf_entrada_data||p.nf_saida_data,
+    'DEVOLUCAO_VAZIO': p.data_devolucao_vazio,
+    'FINALIZADO': p.data_devolucao_vazio,
+  };
+  const timeline = FASES.map((f,i) => {
+    const done   = i < faseIdx;
     const active = i === faseIdx;
-    const cls = done?'done':active?'active':'';
+    const cls    = done?'done':active?'active':'';
+    const dataStr = faseDatas[f.id] ? `<div style="font-size:9px;color:var(--dim);margin-top:2px;">${new Date(faseDatas[f.id]).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>` : '';
     return `
       ${i>0?`<div class="tl-line ${done?'done':''}"></div>`:''}
       <div class="tl-step">
         <div class="tl-dot ${cls}">${done?'✓':f.icon}</div>
         <div class="tl-label">${f.label}</div>
+        ${dataStr}
       </div>`;
   }).join('');
 
-  // Alertas do processo
+  // ── ALERTAS ──
   const alertas = verificarAlertas(p, false);
   const alertasHtml = alertas.map(a=>
-    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">
-      🚨 ${a.titulo}: ${a.mensagem}
+    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">🚨 ${a.titulo}: ${a.mensagem}</div>`
+  ).join('');
+
+  // ── CONTEÚDO DAS ABAS ──
+  const finInfo = p.pi_pagamento ? renderPagamentoInfo(p) : '';
+
+  const logItems = (p.log||[]).slice(-20).reverse().map(l=>
+    `<div class="log-item">
+      <div class="log-avatar">${(l.usuario||'?').slice(0,2).toUpperCase()}</div>
+      <div class="log-content">
+        <span class="log-user">${l.usuario||'?'}</span>
+        <span class="log-text"> alterou <strong>${l.campo||''}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}</span>
+        <div class="log-time">${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : ''}</div>
+      </div>
     </div>`
   ).join('');
 
-  // Pagamento info
-  const finInfo = p.pi_pagamento ? renderPagamentoInfo(p) : '';
-
-  // Log
-  const logHtml = (p.log||[]).length
-    ? `<div class="form-section">
-        <div class="form-section-title">📜 Histórico de alterações</div>
-        <div class="log-list">${(p.log||[]).slice(-10).reverse().map(l=>`
-          <div class="log-item">
-            <div class="log-avatar">${(l.usuario||'?').slice(0,2).toUpperCase()}</div>
-            <div class="log-content">
-              <span class="log-user">${l.usuario||'?'}</span>
-              <span class="log-text"> alterou <strong>${l.campo||''}</strong>: ${l.valor_antes||'—'} → ${l.valor_depois||'—'}</span>
-              <div class="log-time">${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : ''}</div>
-            </div>
-          </div>`).join('')}
-        </div>
-      </div>` : '';
+  // Confirmação visual demurrage
+  let demurInfo = '';
+  if(p.data_chegada && p.free_time){
+    const chegada = new Date(p.data_chegada);
+    const venc = new Date(chegada); venc.setDate(venc.getDate() + parseInt(p.free_time||21));
+    const dias = demurrageDias(p);
+    const cor = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
+    demurInfo = `<div style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;margin-top:8px;">
+      📅 Chegada <strong>${chegada.toLocaleDateString('pt-BR')}</strong> + ${p.free_time||21} dias free time = 
+      vence <strong style="color:${cor}">${venc.toLocaleDateString('pt-BR')}</strong>
+      ${dias!==null ? `<span style="color:${cor};font-weight:700;"> (${dias<0?'vencido há '+Math.abs(dias)+'d':dias+'d restantes'})</span>` : ''}
+    </div>`;
+  }
 
   document.getElementById('modal-body').innerHTML = `
-    <!-- Timeline -->
-    <div class="timeline">${timeline}</div>
-
-    ${alertasHtml}
-
-    <!-- EXTRAÇÃO POR IA -->
-    <div class="form-section" style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;">
-      <div class="form-section-title" style="border:none;margin-bottom:8px;">🤖 Extração com IA</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Envie uma PI, CI, BL ou qualquer documento para preencher os campos automaticamente</div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extrairComIA(this)">
-        <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">📎 Selecionar documento</button>
-        <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
-      </div>
-    </div>
-
-    <!-- 01 IDENTIFICAÇÃO -->
-    <div class="form-section">
-      <div class="form-section-title">📄 01 — Identificação</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Referência *</label>
-          <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Fornecedor</label>
-          <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Cliente</label>
-          <input class="form-input" id="f_cliente" value="${esc(p.cliente||'UNICAP')}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Produto</label>
-          <input class="form-input" id="f_produto" value="${esc(p.produto)}" placeholder="Ex: Pneus TBR">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Observações</label>
-          <input class="form-input" id="f_obs" value="${esc(p.obs)}">
+    <!-- ABA: IDENTIFICAÇÃO -->
+    <div class="tab-pane active" id="pane-identificacao">
+      <div class="timeline">${timeline}</div>
+      ${alertasHtml}
+      <!-- IA -->
+      <div class="form-section" style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+        <div class="form-section-title" style="border:none;margin-bottom:8px;">🤖 Extração com IA</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Envie uma PI, CI ou BL para preencher os campos automaticamente</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extrairComIA(this)">
+          <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">📎 Selecionar documento</button>
+          <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
         </div>
       </div>
-    </div>
-
-    <!-- 02 PI E FINANCEIRO -->
-    <div class="form-section">
-      <div class="form-section-title">💰 02 — Proforma Invoice (PI) & Financeiro</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Nº PI</label>
-          <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data PI</label>
-          <input class="form-input" type="date" id="f_pi_data" value="${esc(p.pi_data)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Valor USD</label>
-          <input class="form-input" type="number" id="f_pi_valor_usd" value="${p.pi_valor_usd||''}" placeholder="0.00">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Incoterm</label>
-          <select class="form-input" id="f_pi_incoterm">
-            <option value="">—</option>
-            <option value="FOB" ${p.pi_incoterm==='FOB'?'selected':''}>FOB</option>
-            <option value="CIF" ${p.pi_incoterm==='CIF'?'selected':''}>CIF</option>
-            <option value="CFR" ${p.pi_incoterm==='CFR'?'selected':''}>CFR</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Forma de Pagamento</label>
-          <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()">
-            <option value="">—</option>
-            <option value="VISTA" ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
-            <option value="PRAZO" ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
-            <option value="ENTRADA_SALDO" ${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}>Entrada + Saldo</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">PI Paga?</label>
-          <select class="form-input" id="f_pi_pago">
-            <option value="false" ${!p.pi_pago?'selected':''}>Não</option>
-            <option value="true" ${p.pi_pago?'selected':''}>Sim ✓</option>
-          </select>
+      <!-- Identificação -->
+      <div class="form-section">
+        <div class="form-section-title">📄 Identificação</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Referência *</label>
+            <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340"></div>
+          <div class="form-group"><label class="form-label">Fornecedor</label>
+            <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON"></div>
+          <div class="form-group"><label class="form-label">Cliente</label>
+            <input class="form-input" id="f_cliente" value="${esc(p.cliente||'UNICAP')}"></div>
+          <div class="form-group"><label class="form-label">Produto</label>
+            <input class="form-input" id="f_produto" value="${esc(p.produto)}" placeholder="Ex: Pneus TBR"></div>
+          <div class="form-group"><label class="form-label">Despachante</label>
+            <input class="form-input" id="f_despachante" value="${esc(p.despachante)}"></div>
+          <div class="form-group full"><label class="form-label">Observações</label>
+            <input class="form-input" id="f_obs" value="${esc(p.obs)}"></div>
         </div>
       </div>
-      <div id="pagamento-campos"></div>
-      ${finInfo}
-    </div>
-
-    <!-- 03 PRONTIDÃO -->
-    <div class="form-section">
-      <div class="form-section-title">🏭 03 — Prontidão</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Previsão de Prontidão</label>
-          <input class="form-input" type="date" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data Prontidão Real</label>
-          <input class="form-input" type="date" id="f_data_prontidao" value="${esc(p.data_prontidao)}">
+      <!-- Ações -->
+      <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
+        <div>${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}</div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
         </div>
       </div>
     </div>
 
-    <!-- 04 BOOKING -->
-    <div class="form-section">
-      <div class="form-section-title">📦 04 — Booking / Embarque</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Nº Booking</label>
-          <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}">
+    <!-- ABA: FINANCEIRO -->
+    <div class="tab-pane" id="pane-financeiro">
+      <div class="form-section">
+        <div class="form-section-title">💰 Proforma Invoice (PI)</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nº PI</label>
+            <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}"></div>
+          <div class="form-group"><label class="form-label">Data PI</label>
+            <input class="form-input" type="date" id="f_pi_data" value="${esc(p.pi_data)}"></div>
+          <div class="form-group"><label class="form-label">Valor USD</label>
+            <input class="form-input" type="number" id="f_pi_valor_usd" value="${p.pi_valor_usd||''}" placeholder="0.00"></div>
+          <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
+            <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
+          </div>
+          <div class="form-group"><label class="form-label">Incoterm</label>
+            <select class="form-input" id="f_pi_incoterm">
+              <option value="">—</option>
+              <option value="FOB" ${p.pi_incoterm==='FOB'?'selected':''}>FOB</option>
+              <option value="CIF" ${p.pi_incoterm==='CIF'?'selected':''}>CIF</option>
+              <option value="CFR" ${p.pi_incoterm==='CFR'?'selected':''}>CFR</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Forma de Pagamento</label>
+            <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()">
+              <option value="">—</option>
+              <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
+              <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
+              <option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}>Entrada + Saldo</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">PI Paga?</label>
+            <select class="form-input" id="f_pi_pago">
+              <option value="false" ${!p.pi_pago?'selected':''}>Não</option>
+              <option value="true"  ${p.pi_pago?'selected':''}>Sim ✓</option>
+            </select></div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Armador</label>
-          <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Navio</label>
-          <input class="form-input" id="f_navio" value="${esc(p.navio)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Porto Origem</label>
-          <input class="form-input" id="f_porto_origem" value="${esc(p.porto_origem)}" placeholder="Ex: SHANGHAI">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Porto Destino</label>
-          <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino||'ITAJAI')}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">ETD</label>
-          <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">ETA</label>
-          <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Free Time (dias)</label>
-          <input class="form-input" type="number" id="f_free_time" value="${p.free_time||21}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data Embarque</label>
-          <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">HBL</label>
-          <input class="form-input" id="f_hbl" value="${esc(p.hbl)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">MBL</label>
-          <input class="form-input" id="f_mbl" value="${esc(p.mbl)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Container</label>
-          <input class="form-input" id="f_container" value="${esc(p.container)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Tipo Container</label>
-          <select class="form-input" id="f_tipo_container">
-            <option value="20GP" ${p.tipo_container==='20GP'?'selected':''}>20GP</option>
-            <option value="40GP" ${p.tipo_container==='40GP'?'selected':''}>40GP</option>
-            <option value="40HC" ${(!p.tipo_container||p.tipo_container==='40HC')?'selected':''}>40HC</option>
-          </select>
+        <div id="pagamento-campos"></div>
+        ${finInfo}
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">💵 Commercial Invoice (CI)</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nº CI</label>
+            <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}"></div>
+          <div class="form-group"><label class="form-label">Data CI</label>
+            <input class="form-input" type="date" id="f_ci_data" value="${esc(p.ci_data)}"></div>
+          <div class="form-group"><label class="form-label">Valor CI (USD)</label>
+            <input class="form-input" type="number" id="f_ci_valor_usd" value="${p.ci_valor_usd||''}" placeholder="0.00"></div>
         </div>
       </div>
-    </div>
-
-    <!-- 05 CHEGADA -->
-    <div class="form-section">
-      <div class="form-section-title">⚓ 05 — Chegada</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Data Chegada</label>
-          <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Presença de Carga</label>
-          <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Demurrage Vence</label>
-          <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="font-weight:600;color:var(--err);">
-        </div>
-      </div>
-    </div>
-
-    <!-- 06 DI E PARAMETRIZAÇÃO -->
-    <div class="form-section">
-      <div class="form-section-title">📋 06 — DI e Parametrização</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Data Registro DI</label>
-          <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Número DI</label>
-          <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Canal</label>
-          <select class="form-input" id="f_canal">
-            <option value="">—</option>
-            <option value="VERDE" ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
-            <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
-            <option value="VERMELHO" ${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data Parametrização</label>
-          <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data Liberação</label>
-          <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}">
-        </div>
-      </div>
-    </div>
-
-    <!-- 07 CI -->
-    <div class="form-section">
-      <div class="form-section-title">💵 07 — Commercial Invoice (CI)</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Nº CI</label>
-          <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data CI</label>
-          <input class="form-input" type="date" id="f_ci_data" value="${esc(p.ci_data)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Valor CI (USD)</label>
-          <input class="form-input" type="number" id="f_ci_valor_usd" value="${p.ci_valor_usd||''}" placeholder="0.00">
-        </div>
-      </div>
-    </div>
-
-    <!-- 08 CARREGAMENTO -->
-    <div class="form-section">
-      <div class="form-section-title">🚛 08 — Carregamento</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Agendamento</label>
-          <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data Carregamento</label>
-          <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Transportadora</label>
-          <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Placa</label>
-          <input class="form-input" id="f_placa" value="${esc(p.placa)}">
-        </div>
-      </div>
-    </div>
-
-    <!-- 09 FATURAMENTO -->
-    <div class="form-section">
-      <div class="form-section-title">🧾 09 — Faturamento</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">NF Entrada Nº</label>
-          <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">NF Entrada Data</label>
-          <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">NF Entrada Valor</label>
-          <input class="form-input" type="number" id="f_nf_entrada_valor" value="${p.nf_entrada_valor||''}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">NF Saída Nº</label>
-          <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">NF Saída Data</label>
-          <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">NF Saída Valor</label>
-          <input class="form-input" type="number" id="f_nf_saida_valor" value="${p.nf_saida_valor||''}">
-        </div>
-      </div>
-    </div>
-
-    <!-- 10 DEVOLUÇÃO VAZIO -->
-    <div class="form-section">
-      <div class="form-section-title">📦 10 — Devolução do Vazio (Demurrage)</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Data Devolução</label>
-          <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Valor Demurrage (R$)</label>
-          <input class="form-input" type="number" id="f_demurrage_valor" value="${p.demurrage_valor||''}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Demurrage Pago?</label>
-          <select class="form-input" id="f_demurrage_pago">
-            <option value="false" ${!p.demurrage_pago?'selected':''}>Não</option>
-            <option value="true" ${p.demurrage_pago?'selected':''}>Sim ✓</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    ${logHtml}
-
-    <!-- AÇÕES -->
-    <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
-      <div>
-        ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}
-      </div>
-      <div style="display:flex;gap:10px;">
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
       </div>
     </div>
+
+    <!-- ABA: LOGÍSTICA -->
+    <div class="tab-pane" id="pane-logistica">
+      <div class="form-section">
+        <div class="form-section-title">🏭 Prontidão</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Previsão Prontidão</label>
+            <input class="form-input" type="date" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}"></div>
+          <div class="form-group"><label class="form-label">Data Prontidão Real</label>
+            <input class="form-input" type="date" id="f_data_prontidao" value="${esc(p.data_prontidao)}"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">📦 Booking & Embarque</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nº Booking</label>
+            <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}"></div>
+          <div class="form-group"><label class="form-label">Armador</label>
+            <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC"></div>
+          <div class="form-group"><label class="form-label">Navio</label>
+            <input class="form-input" id="f_navio" value="${esc(p.navio)}"></div>
+          <div class="form-group"><label class="form-label">Porto Origem</label>
+            <input class="form-input" id="f_porto_origem" value="${esc(p.porto_origem)}" placeholder="Ex: SHANGHAI"></div>
+          <div class="form-group"><label class="form-label">Porto Destino</label>
+            <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino||'ITAJAI')}"></div>
+          <div class="form-group"><label class="form-label">ETD</label>
+            <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}"></div>
+          <div class="form-group"><label class="form-label">ETA</label>
+            <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}"></div>
+          <div class="form-group"><label class="form-label">Data Embarque</label>
+            <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}"></div>
+          <div class="form-group"><label class="form-label">Free Time (dias)</label>
+            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||21}"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">🚛 Carregamento</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Agendamento</label>
+            <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}"></div>
+          <div class="form-group"><label class="form-label">Data Carregamento</label>
+            <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}"></div>
+          <div class="form-group"><label class="form-label">Transportadora</label>
+            <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}"></div>
+          <div class="form-group"><label class="form-label">Placa</label>
+            <input class="form-input" id="f_placa" value="${esc(p.placa)}"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">⚓ Chegada & Demurrage</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Data Chegada</label>
+            <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}"></div>
+          <div class="form-group"><label class="form-label">Presença de Carga</label>
+            <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}"></div>
+          <div class="form-group"><label class="form-label">Demurrage Vence</label>
+            <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;"></div>
+          <div class="form-group"><label class="form-label">Data Devolução</label>
+            <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}"></div>
+          <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
+            <input class="form-input" type="number" id="f_demurrage_valor" value="${p.demurrage_valor||''}"></div>
+          <div class="form-group"><label class="form-label">Demurrage Pago?</label>
+            <select class="form-input" id="f_demurrage_pago">
+              <option value="false" ${!p.demurrage_pago?'selected':''}>Não</option>
+              <option value="true"  ${p.demurrage_pago?'selected':''}>Sim ✓</option>
+            </select></div>
+        </div>
+        ${demurInfo}
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- ABA: DOCUMENTOS -->
+    <div class="tab-pane" id="pane-documentos">
+      <div class="form-section">
+        <div class="form-section-title">🔢 Números de Referência</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">HBL</label>
+            <input class="form-input" id="f_hbl" value="${esc(p.hbl)}"></div>
+          <div class="form-group"><label class="form-label">MBL</label>
+            <input class="form-input" id="f_mbl" value="${esc(p.mbl)}"></div>
+          <div class="form-group"><label class="form-label">Container</label>
+            <input class="form-input" id="f_container" value="${esc(p.container)}"></div>
+          <div class="form-group"><label class="form-label">Tipo Container</label>
+            <select class="form-input" id="f_tipo_container">
+              <option value="20GP" ${p.tipo_container==='20GP'?'selected':''}>20GP</option>
+              <option value="40GP" ${p.tipo_container==='40GP'?'selected':''}>40GP</option>
+              <option value="40HC"${(!p.tipo_container||p.tipo_container==='40HC')?'selected':''}>40HC</option>
+            </select></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">📋 DI e Parametrização</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Data Registro DI</label>
+            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}"></div>
+          <div class="form-group"><label class="form-label">Número DI</label>
+            <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}"></div>
+          <div class="form-group"><label class="form-label">Canal</label>
+            <select class="form-input" id="f_canal">
+              <option value="">—</option>
+              <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
+              <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
+              <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Data Parametrização</label>
+            <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}"></div>
+          <div class="form-group"><label class="form-label">Data Liberação</label>
+            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">🧾 Faturamento</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">NF Entrada Nº</label>
+            <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}"></div>
+          <div class="form-group"><label class="form-label">NF Entrada Data</label>
+            <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
+          <div class="form-group"><label class="form-label">NF Entrada Valor</label>
+            <input class="form-input" type="number" id="f_nf_entrada_valor" value="${p.nf_entrada_valor||''}"></div>
+          <div class="form-group"><label class="form-label">NF Saída Nº</label>
+            <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}"></div>
+          <div class="form-group"><label class="form-label">NF Saída Data</label>
+            <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
+          <div class="form-group"><label class="form-label">NF Saída Valor</label>
+            <input class="form-input" type="number" id="f_nf_saida_valor" value="${p.nf_saida_valor||''}"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- ABA: HISTÓRICO -->
+    <div class="tab-pane" id="pane-historico">
+      ${logItems.length
+        ? `<div class="log-list">${logItems}</div>`
+        : '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma alteração registrada ainda</div></div>'
+      }
+    </div>
   `;
 
   renderPagamentoCampos();
+}
+
+function trocarAba(id){
+  document.querySelectorAll('.modal-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  const tab = document.getElementById('tab-'+id);
+  const pane = document.getElementById('pane-'+id);
+  if(tab)  tab.classList.add('active');
+  if(pane) pane.classList.add('active');
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1178,6 +1250,7 @@ function coletarESalvar(){
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
     'data_devolucao_vazio','demurrage_valor','demurrage_pago',
+    'despachante','pi_cambio',
   ];
 
   const proc = {..._editando};
@@ -1212,6 +1285,80 @@ function coletarESalvar(){
 // ════════════════════════════════════════════════════════════════
 // UTILS
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// EXPORTAÇÃO EXCEL
+// ════════════════════════════════════════════════════════════════
+async function exportarExcel(){
+  showToast('Gerando planilha...','info');
+  try{
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    const lista = filtrarProcessos(); // exporta a visão atual (com filtros aplicados)
+
+    const linhas = lista.map(p=>({
+      'Referência':          p.referencia||'',
+      'Fornecedor':          p.fornecedor||'',
+      'Cliente':             p.cliente||'',
+      'Produto':             p.produto||'',
+      'Fase':                FASE_LABEL[p.fase]||p.fase||'',
+      'Despachante':         p.despachante||'',
+      'Armador':             p.armador||'',
+      'Navio':               p.navio||'',
+      'Porto Origem':        p.porto_origem||'',
+      'Porto Destino':       p.porto_destino||'',
+      'ETD':                 p.etd||'',
+      'ETA':                 p.eta||'',
+      'Data Embarque':       p.data_embarque||'',
+      'Data Chegada':        p.data_chegada||'',
+      'Presença de Carga':   p.data_presenca||'',
+      'HBL':                 p.hbl||'',
+      'MBL':                 p.mbl||'',
+      'Container':           p.container||'',
+      'Tipo Container':      p.tipo_container||'',
+      'Free Time':           p.free_time||21,
+      'Demurrage Vence':     p.demurrage_vencimento||'',
+      'Demurrage Valor R$':  p.demurrage_valor||'',
+      'Demurrage Pago':      p.demurrage_pago?'Sim':'Não',
+      'Data Devolução Vazio':p.data_devolucao_vazio||'',
+      'Nº DI':               p.numero_di||'',
+      'Data Registro DI':    p.data_registro_di||'',
+      'Canal':               p.canal||'',
+      'Data Liberação':      p.data_liberacao||'',
+      'Nº PI':               p.pi_numero||'',
+      'Data PI':             p.pi_data||'',
+      'Valor PI (USD)':      p.pi_valor_usd||'',
+      'Câmbio PI':           p.pi_cambio||'',
+      'Valor PI (BRL)':      p.pi_valor_usd&&p.pi_cambio ? (parseFloat(p.pi_valor_usd)*parseFloat(p.pi_cambio)).toFixed(2) : '',
+      'Incoterm':            p.pi_incoterm||'',
+      'Pagamento':           p.pi_pagamento||'',
+      'PI Paga':             p.pi_pago?'Sim':'Não',
+      'Nº CI':               p.ci_numero||'',
+      'Valor CI (USD)':      p.ci_valor_usd||'',
+      'NF Entrada Nº':       p.nf_entrada_numero||'',
+      'NF Entrada Valor':    p.nf_entrada_valor||'',
+      'NF Saída Nº':         p.nf_saida_numero||'',
+      'NF Saída Valor':      p.nf_saida_valor||'',
+      'Agendamento':         p.data_agendamento||'',
+      'Data Carregamento':   p.data_carregamento||'',
+      'Transportadora':      p.transportadora||'',
+      'Obs':                 p.obs||'',
+    }));
+
+    const wb  = XLSX.utils.book_new();
+    const ws  = XLSX.utils.json_to_sheet(linhas);
+
+    // Largura das colunas
+    ws['!cols'] = Object.keys(linhas[0]||{}).map(k=>({wch: Math.max(k.length, 12)}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Processos');
+
+    const data = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `IMPAK_Controle_${data}.xlsx`);
+    showToast(`✓ ${lista.length} processos exportados`,'ok');
+  }catch(e){
+    showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
+  }
+}
+
 function salvarApiKey(v){
   const key = (v||'').trim();
   try{ localStorage.setItem('impak_apikey', key); }catch(e){}
@@ -1450,6 +1597,192 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(status) status.textContent = '❌ Erro: '+e.message;
     showToast('Erro na extração: '+e.message,'err');
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// EDIÇÃO RÁPIDA INLINE
+// ════════════════════════════════════════════════════════════════
+function inlineEditData(id, campo, el){
+  const proc = _processos.find(p=>p.id===id);
+  if(!proc) return;
+  const valorAtual = proc[campo]||'';
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.className = 'inline-input';
+  input.value = valorAtual;
+  input.style.width = '130px';
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.focus();
+  function salvar(){
+    const novoValor = input.value;
+    if(novoValor !== valorAtual){
+      const antes = proc[campo];
+      proc[campo] = novoValor||null;
+      // Log
+      proc.log = proc.log||[];
+      proc.log.push({campo, valor_antes:antes||'', valor_depois:novoValor||'', usuario:_user.usuario, created_at:new Date().toISOString()});
+      salvarProcesso(proc);
+    }
+    render();
+  }
+  input.addEventListener('blur', salvar);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') input.blur(); if(e.key==='Escape'){proc[campo]=valorAtual; render();} });
+}
+
+function inlineEditFase(id, el){
+  const proc = _processos.find(p=>p.id===id);
+  if(!proc) return;
+  const sel = document.createElement('select');
+  sel.className = 'inline-select';
+  FASES.forEach(f=>{
+    const opt = document.createElement('option');
+    opt.value = f.id;
+    opt.textContent = f.icon+' '+f.label;
+    if(f.id===proc.fase) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  el.innerHTML='';
+  el.appendChild(sel);
+  sel.focus();
+  function salvar(){
+    const novaFase = sel.value;
+    if(novaFase !== proc.fase){
+      proc.log = proc.log||[];
+      proc.log.push({campo:'fase', valor_antes:proc.fase, valor_depois:novaFase, usuario:_user.usuario, created_at:new Date().toISOString()});
+      proc.fase = novaFase;
+      salvarProcesso(proc);
+    }
+    render();
+  }
+  sel.addEventListener('change', salvar);
+  sel.addEventListener('blur', ()=>render());
+}
+
+// ════════════════════════════════════════════════════════════════
+// DASHBOARD FINANCEIRO
+// ════════════════════════════════════════════════════════════════
+function toggleDashFinanceiro(){
+  const el = document.getElementById('dash-financeiro');
+  if(!el) return;
+  const visivel = el.style.display !== 'none';
+  el.style.display = visivel ? 'none' : 'block';
+  if(!visivel) renderDashFinanceiro();
+  document.getElementById('menu-financeiro')?.classList.toggle('active', !visivel);
+}
+
+function renderDashFinanceiro(){
+  const el = document.getElementById('dash-fin-content');
+  if(!el) return;
+
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const mesIni = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const mesFim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+
+  // Processos ativos (não finalizados)
+  const ativos = _processos.filter(p=>p.fase!=='FINALIZADO');
+
+  // Total provisionado (todas PIs em aberto)
+  const totalProvUSD = ativos.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const totalProvBRL = totalProvUSD * _cambio.USD;
+
+  // Pagos vs em aberto
+  const pagosUSD  = ativos.filter(p=>p.pi_pago).reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const abertoUSD = totalProvUSD - pagosUSD;
+
+  // Vencendo essa semana
+  const semFim = new Date(hoje); semFim.setDate(hoje.getDate()+7);
+  const vencSemana = ativos.filter(p=>{
+    if(!p.pi_data_saldo||p.pi_pago) return false;
+    const d = new Date(p.pi_data_saldo);
+    return d >= hoje && d <= semFim;
+  });
+
+  // Vencidos
+  const vencidos = ativos.filter(p=>{
+    if(!p.pi_data_saldo||p.pi_pago) return false;
+    return new Date(p.pi_data_saldo) < hoje;
+  });
+
+  // Por forma de pagamento
+  const porTipo = {VISTA:0, PRAZO:0, ENTRADA_SALDO:0};
+  ativos.forEach(p=>{ if(p.pi_pagamento) porTipo[p.pi_pagamento]=(porTipo[p.pi_pagamento]||0)+(parseFloat(p.pi_valor_usd)||0); });
+
+  const fmt = v => `USD ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const fmtBRL = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Provisionado</div>
+        <div style="font-size:20px;font-weight:800;color:var(--ac);">${fmt(totalProvUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalProvBRL)}</div>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Em Aberto</div>
+        <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(abertoUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(abertoUSD*_cambio.USD)}</div>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Pago</div>
+        <div style="font-size:20px;font-weight:800;color:var(--ok);">${fmt(pagosUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(pagosUSD*_cambio.USD)}</div>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Vence em 7 dias</div>
+        <div style="font-size:20px;font-weight:800;color:var(--warn);">${vencSemana.length} PI${vencSemana.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmt(vencSemana.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0))}</div>
+      </div>
+    </div>
+    ${vencidos.length ? `
+    <div style="background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--err);margin-bottom:8px;">🚨 ${vencidos.length} pagamento(s) VENCIDO(S)</div>
+      ${vencidos.map(p=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid rgba(220,38,38,.1);display:flex;justify-content:space-between;">
+        <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia}</span>
+        <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — venceu ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
+      </div>`).join('')}
+    </div>` : ''}
+    ${vencSemana.length ? `
+    <div style="background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--warn);margin-bottom:8px;">⚠ Vencendo nos próximos 7 dias</div>
+      ${vencSemana.map(p=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid rgba(217,119,6,.1);display:flex;justify-content:space-between;">
+        <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia} <span class="fin-badge fin-${p.pi_pagamento}" style="margin-left:4px;">${p.pi_pagamento}</span></span>
+        <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — vence ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
+      </div>`).join('')}
+    </div>` : ''}
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Por forma de pagamento (em aberto)</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div><span class="fin-badge fin-VISTA">VISTA</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.VISTA)}</span></div>
+        <div><span class="fin-badge fin-PRAZO">PRAZO</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.PRAZO)}</span></div>
+        <div><span class="fin-badge fin-ENTRADA_SALDO">ENT+SLD</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.ENTRADA_SALDO)}</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function limparFiltroData(){
+  const de  = document.getElementById('filtro-data-de');
+  const ate = document.getElementById('filtro-data-ate');
+  if(de)  de.value  = '';
+  if(ate) ate.value = '';
+  render();
+}
+function filtroEssaSemana(){
+  const hoje = new Date();
+  const dom  = new Date(hoje); dom.setDate(hoje.getDate() - hoje.getDay());
+  const sab  = new Date(dom);  sab.setDate(dom.getDate() + 6);
+  document.getElementById('filtro-data-de').value  = dom.toISOString().split('T')[0];
+  document.getElementById('filtro-data-ate').value = sab.toISOString().split('T')[0];
+  render();
+}
+function filtroEsseMes(){
+  const hoje = new Date();
+  const ini  = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const fim  = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  document.getElementById('filtro-data-de').value  = ini.toISOString().split('T')[0];
+  document.getElementById('filtro-data-ate').value = fim.toISOString().split('T')[0];
+  render();
 }
 
 function showToast(msg, tipo){
