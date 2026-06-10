@@ -260,6 +260,7 @@ app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) 
 
 // ── API: CONTROLE v2 ──────────────────────────────────────────
 app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html')));
 
 app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
   try {
