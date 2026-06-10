@@ -281,18 +281,40 @@ app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
     const agora = new Date().toISOString();
-    const rows = processos.map(p => ({
-      ...p,
-      id: p.id || crypto.randomUUID(),
-      updated_at: agora,
-      created_at: p.created_at || agora,
-    }));
-    const { error } = await sb()
+
+    // Buscar referências já existentes para evitar duplicatas
+    const refs = processos.map(p => p.referencia).filter(Boolean);
+    const { data: existentes } = await sb()
       .from('controle_processos')
-      .upsert(rows, { onConflict: 'referencia', ignoreDuplicates: true });
-    if (error) throw new Error(error.message);
-    console.log(`controle v2 importar: ${rows.length} processos por ${req.session.usuario}`);
-    res.json({ ok: true, total: rows.length });
+      .select('id, referencia')
+      .in('referencia', refs);
+
+    const refsExistentes = new Set((existentes||[]).map(e => e.referencia));
+
+    // Só inserir os que não existem
+    const novos = processos
+      .filter(p => p.referencia && !refsExistentes.has(p.referencia))
+      .map(p => ({
+        ...p,
+        id: p.id || crypto.randomUUID(),
+        updated_at: agora,
+        created_at: p.created_at || agora,
+      }));
+
+    if (!novos.length) {
+      return res.json({ ok: true, total: 0, msg: 'Todos os processos já existem' });
+    }
+
+    // Inserir em lotes de 50
+    for (let i = 0; i < novos.length; i += 50) {
+      const { error } = await sb()
+        .from('controle_processos')
+        .insert(novos.slice(i, i + 50));
+      if (error) throw new Error(error.message);
+    }
+
+    console.log(`controle v2 importar: ${novos.length} novos de ${processos.length} por ${req.session.usuario}`);
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length });
   } catch (e) {
     console.error('controle v2 importar erro:', e.message);
     res.status(500).json({ erro: e.message });
@@ -492,24 +514,63 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
   try {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
-    const rows = processos.map(p => ({
-      id:         p.id || String(Date.now() + Math.random()),
-      referencia: p.referencia || '',
-      cliente:    p.cliente    || '',
-      fase:       p.fase       || 'PRODUCAO',
-      status:     p.status     || 'ativo',
-      updated_by: req.session.usuario,
-      updated_at: new Date().toISOString(),
-      dados:      p,
-    }));
-    for (let i = 0; i < rows.length; i += 100) {
+
+    const agora = new Date().toISOString();
+
+    // Buscar referências já existentes
+    const refs = processos.map(p => p.referencia).filter(Boolean);
+    const { data: existentes } = await sb()
+      .from('controle_processos')
+      .select('referencia')
+      .in('referencia', refs);
+    const refsExistentes = new Set((existentes||[]).map(e => e.referencia));
+
+    const novos = processos
+      .filter(p => p.referencia && !refsExistentes.has(p.referencia))
+      .map(p => {
+        // Suportar tanto formato antigo (com dados{}) quanto novo (campos diretos)
+        const d = p.dados || p;
+        return {
+          id:                  p.id || crypto.randomUUID(),
+          referencia:          p.referencia || d.referencia || '',
+          fornecedor:          d.fornecedor  || '',
+          cliente:             d.cliente     || p.cliente || '',
+          produto:             d.produto     || '',
+          fase:                d.fase        || p.fase || 'PI',
+          eta:                 d.eta         || null,
+          etd:                 d.etd         || null,
+          data_embarque:       d.data_embarque || null,
+          data_chegada:        d.data_chegada  || null,
+          data_presenca:       d.data_presenca || null,
+          armador:             d.armador     || '',
+          navio:               d.navio       || '',
+          container:           d.container   || '',
+          hbl:                 d.hbl         || '',
+          mbl:                 d.mbl         || '',
+          numero_di:           d.numero_di   || '',
+          obs:                 d.obs         || '',
+          free_time:           d.free_time   || 21,
+          demurrage_vencimento: d.demurrage_vencimento || null,
+          created_by:          p.created_by || req.session.usuario,
+          updated_by:          req.session.usuario,
+          updated_at:          agora,
+          created_at:          p.created_at || agora,
+        };
+      });
+
+    if (!novos.length) {
+      return res.json({ ok: true, total: 0, msg: 'Todos já existem' });
+    }
+
+    for (let i = 0; i < novos.length; i += 50) {
       const { error } = await sb()
         .from('controle_processos')
-        .upsert(rows.slice(i, i + 100), { onConflict: 'id' });
+        .insert(novos.slice(i, i + 50));
       if (error) throw new Error(error.message);
     }
-    console.log(`controle/importar: ${processos.length} processos por ${req.session.usuario}`);
-    res.json({ ok: true, total: processos.length });
+
+    console.log(`controle/importar: ${novos.length} novos de ${processos.length} por ${req.session.usuario}`);
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length });
   } catch (e) {
     console.error('controle/importar erro:', e.message);
     res.status(500).json({ erro: e.message });
