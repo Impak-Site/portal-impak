@@ -275,6 +275,29 @@ app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
   }
 });
 
+app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
+  try {
+    const { processos } = req.body;
+    if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
+    const agora = new Date().toISOString();
+    const rows = processos.map(p => ({
+      ...p,
+      id: p.id || crypto.randomUUID(),
+      updated_at: agora,
+      created_at: p.created_at || agora,
+    }));
+    const { error } = await sb()
+      .from('controle_processos')
+      .upsert(rows, { onConflict: 'referencia', ignoreDuplicates: true });
+    if (error) throw new Error(error.message);
+    console.log(`controle v2 importar: ${rows.length} processos por ${req.session.usuario}`);
+    res.json({ ok: true, total: rows.length });
+  } catch (e) {
+    console.error('controle v2 importar erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
   try {
     const { processo } = req.body;
