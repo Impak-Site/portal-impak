@@ -1491,123 +1491,188 @@ async function importarPlanilha(input){
   showToast('Lendo planilha...','info');
   input.value = '';
 
-  const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  try{
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    const buf = await file.arrayBuffer();
+    // raw:true para não converter datas automaticamente (evita conflito com cellDates)
+    const wb = XLSX.read(buf, {type:'array', cellDates:true, raw:false});
 
-  const processos = [];
-  const refs = new Set(_processos.map(p=>p.referencia));
+    const processos = [];
+    const refs = new Set(_processos.map(p=>p.referencia));
 
-  // Detectar tipo de planilha pelo nome
-  const nome = file.name.toLowerCase();
-  const isFollowUp = nome.includes('follow') || wb.SheetNames.some(s=>s.includes('ANDAMENTO'));
-  const isControle = nome.includes('controle') || wb.SheetNames.some(s=>s===('CONTROLE'));
-
-  function parseDate(v){
-    if(!v) return null;
-    if(v instanceof Date){ if(v.getFullYear()<1950) return null; return v.toISOString().split('T')[0]; }
-    const s = String(v).trim().split('\n')[0];
-    if(!s||s==='—'||s.includes('PRODUÇÃO')) return null;
-    for(const fmt of [/^(\d{4})-(\d{2})-(\d{2})/, /^(\d{2})\/(\d{2})\/(\d{4})/]){
-      const m = s.match(fmt);
-      if(m){
-        const [,a,b,c] = m;
-        const year = a.length===4 ? parseInt(a) : parseInt(c);
-        if(year < 1950) return null;
-        const iso = a.length===4 ? `${a}-${b}-${c}` : `${c}-${b}-${a}`;
-        return iso;
+    function parseDate(v){
+      if(!v) return null;
+      if(v instanceof Date){
+        if(isNaN(v.getTime())||v.getFullYear()<1950) return null;
+        return v.toISOString().split('T')[0];
       }
+      const s = String(v).trim().split(/[\n\r]/)[0].trim();
+      if(!s||s==='—'||s==='-'||s.toUpperCase().includes('PRODUÇÃO')||s.toUpperCase().includes('PRODUCAO')) return null;
+      // DD/MM/YYYY
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if(m){ const [,d,mo,y]=m; if(parseInt(y)>=1950) return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`; }
+      // YYYY-MM-DD
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(m){ const [,y,mo,d]=m; if(parseInt(y)>=1950) return `${y}-${mo}-${d}`; }
+      // DD/MM/YY
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+      if(m){ const [,d,mo,y]=m; const full='20'+y; return `${full}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`; }
+      return null;
     }
-    return null;
-  }
-  function pStr(v){ const s=String(v||'').trim(); return s&&s!=='—'&&s!=='.'?s:null; }
-
-  if(isControle && wb.SheetNames.includes('CONTROLE')){
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets['CONTROLE'], {header:1, defval:null, raw:false});
-    for(let i=1;i<rows.length;i++){
-      const r = rows[i];
-      const ref = pStr(r[1]); if(!ref) continue;
-      if(refs.has(ref)) continue; refs.add(ref);
-
-      const prontidao   = parseDate(r[11]);
-      const embarque    = parseDate(r[12]);
-      const chegada     = parseDate(r[13]);
-      const presenca    = parseDate(r[14]);
-      const retirada    = parseDate(r[19]);
-      const dataRic     = parseDate(r[22]);
-      const prevPront   = parseDate(r[30]);
-      const demurVenc   = parseDate(r[18]);
-
-      let fase='PI';
-      if(dataRic) fase='FINALIZADO';
-      else if(retirada) fase='FATURAMENTO';
-      else if(presenca||chegada) fase='DESEMBARCADO';
-      else if(embarque) fase='EMBARCADO';
-      else if(prevPront||prontidao) fase='AGUARDANDO_EMBARQUE';
-
-      processos.push({
-        referencia:pStr(r[1]), cliente:pStr(r[2]), produto:pStr(r[3]),
-        agente:pStr(r[7]), porto_destino:pStr(r[8]), fornecedor:pStr(r[9]),
-        pi_data:parseDate(r[10]), data_prontidao:prontidao,
-        previsao_prontidao:prevPront, data_embarque:embarque,
-        data_chegada:chegada, data_presenca:presenca,
-        armador:pStr(r[24]), demurrage_vencimento:demurVenc,
-        obs:pStr(r[5]), fase, created_by:'importacao',
-      });
+    function pStr(v){
+      if(v===null||v===undefined) return null;
+      const s = String(v).trim().replace(/\s+/g,' ');
+      return s&&s!=='—'&&s!=='-'&&s!=='null'&&s.length>0 ? s : null;
     }
-  }
 
-  if(isFollowUp){
-    for(const sheetName of ['EM ANDAMENTO','FINALIZADOS']){
-      if(!wb.SheetNames.includes(sheetName)) continue;
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:false});
+    // Detectar tipo — mais tolerante
+    const sheetNames = wb.SheetNames.map(s=>s.trim().toUpperCase());
+    const isControle = sheetNames.includes('CONTROLE');
+    const isFollowUp = sheetNames.includes('EM ANDAMENTO') || sheetNames.some(s=>s.includes('ANDAMENTO'));
+
+    console.log('Planilha:', file.name, '| Abas:', wb.SheetNames, '| isControle:', isControle, '| isFollowUp:', isFollowUp);
+
+    if(!isControle && !isFollowUp){
+      showToast('Planilha não reconhecida. Use a planilha Controle ou Follow Up.','err');
+      return;
+    }
+
+    if(isControle){
+      // Encontrar a aba correta (case-insensitive)
+      const abaName = wb.SheetNames.find(s=>s.trim().toUpperCase()==='CONTROLE');
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[abaName], {header:1, defval:null, raw:false});
+      console.log('CONTROLE: total linhas:', rows.length, '| header:', rows[0]?.slice(0,5));
+
+      // Linha 1 = header, dados a partir de linha 2 (índice 1)
       for(let i=1;i<rows.length;i++){
         const r = rows[i];
-        const ref = pStr(r[0]); if(!ref) continue;
-        if(refs.has(ref)) continue; refs.add(ref);
+        if(!r || !r[1]) continue;
+        const ref = pStr(r[1]);
+        if(!ref) continue;
+        if(refs.has(ref)) continue;
+        refs.add(ref);
 
-        const hblMbl = pStr(r[3]);
-        const hbl = hblMbl ? hblMbl.split('\n')[0] : null;
-        const mbl = hblMbl && hblMbl.includes('\n') ? hblMbl.split('\n')[1] : null;
-        const chegada = parseDate((pStr(r[4])||'').split('\n')[0]);
-        const armAg = pStr(r[13]);
-        const armador = armAg ? armAg.split('\n')[0] : null;
-        const di = pStr(r[8]);
-        const status = pStr(r[14])||'';
-        let fase = 'EMBARCADO';
-        if(status.toLowerCase().includes('finaliz')) fase='FINALIZADO';
-        else if(di) fase='REGISTRO_DI';
-        else if(chegada) fase='DESEMBARCADO';
+        const prontidao = parseDate(r[11]);
+        const embarque  = parseDate(r[12]);
+        const chegada   = parseDate(r[13]);
+        const presenca  = parseDate(r[14]);
+        const retirada  = parseDate(r[19]);
+        const dataRic   = parseDate(r[22]);
+        const prevPront = parseDate(r[30]);
+        const demurVenc = parseDate(r[18]);
+
+        let fase='PI';
+        if(dataRic)             fase='FINALIZADO';
+        else if(retirada)       fase='FATURAMENTO';
+        else if(presenca||chegada) fase='DESEMBARCADO';
+        else if(embarque)       fase='EMBARCADO';
+        else if(prevPront||prontidao) fase='AGUARDANDO_EMBARQUE';
 
         processos.push({
-          referencia:ref, fornecedor:pStr(r[2]), hbl, mbl,
-          data_chegada:chegada, navio:pStr(r[5]),
-          numero_di:di, data_registro_di:parseDate(r[9]),
-          container:pStr(r[11]), armador, fase, obs:status.slice(0,200),
-          created_by:'importacao_followup',
+          referencia:        ref,
+          cliente:           pStr(r[2]),
+          produto:           pStr(r[3]),
+          fornecedor:        pStr(r[9]),
+          porto_destino:     pStr(r[8]),
+          pi_data:           parseDate(r[10]),
+          data_prontidao:    prontidao,
+          previsao_prontidao:prevPront,
+          data_embarque:     embarque,
+          data_chegada:      chegada,
+          data_presenca:     presenca,
+          armador:           pStr(r[24]),
+          demurrage_vencimento: demurVenc,
+          obs:               pStr(r[5]),
+          fase,
+          created_by:        'importacao_controle',
         });
       }
+      console.log('CONTROLE: processos mapeados:', processos.length);
     }
+
+    if(isFollowUp){
+      for(const sheetName of wb.SheetNames.filter(s=>['EM ANDAMENTO','FINALIZADOS'].includes(s.trim().toUpperCase()))){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:false});
+        console.log(sheetName+':', rows.length, 'linhas');
+
+        for(let i=1;i<rows.length;i++){
+          const r = rows[i];
+          if(!r||!r[0]) continue;
+          const ref = pStr(r[0]);
+          if(!ref) continue;
+          if(refs.has(ref)) continue;
+          refs.add(ref);
+
+          const hblMbl = pStr(r[3]);
+          const partes = hblMbl ? hblMbl.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
+          const hbl = partes[0]||null;
+          const mbl = partes[1]||null;
+
+          const chegadaStr = pStr(r[4]);
+          const chegadaPartes = chegadaStr ? chegadaStr.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
+          const chegada = parseDate(chegadaPartes[0]);
+
+          const armAg = pStr(r[13]);
+          const armadorPartes = armAg ? armAg.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
+          const armador = armadorPartes[0]||null;
+
+          const di = pStr(r[8]);
+          const status = pStr(r[14])||'';
+
+          let fase = 'EMBARCADO';
+          if(status.toLowerCase().includes('finaliz')) fase='FINALIZADO';
+          else if(di) fase='REGISTRO_DI';
+          else if(chegada) fase='DESEMBARCADO';
+
+          processos.push({
+            referencia:       ref,
+            fornecedor:       pStr(r[2]),
+            hbl, mbl,
+            data_chegada:     chegada,
+            navio:            pStr(r[5]),
+            numero_di:        di,
+            data_registro_di: parseDate(r[9]),
+            container:        pStr(r[11]),
+            armador, fase,
+            obs:              status.slice(0,200)||null,
+            created_by:       'importacao_followup',
+          });
+        }
+      }
+      console.log('FOLLOWUP: processos mapeados:', processos.length);
+    }
+
+    if(!processos.length){
+      showToast('Nenhum processo novo encontrado (todos já existem ou planilha vazia)','warn');
+      return;
+    }
+
+    showToast(`Importando ${processos.length} processos...`,'info');
+
+    let total = 0, erros = 0;
+    for(let i=0;i<processos.length;i+=50){
+      const lote = processos.slice(i,i+50);
+      try{
+        const resp = await fetch('/api/controle/v2/importar',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({processos:lote})
+        });
+        const d = await resp.json();
+        if(d.ok){ total += d.total||lote.length; }
+        else { erros++; console.error('Lote erro:', d.erro); }
+      }catch(e){ erros++; console.error('Lote fetch erro:', e.message); }
+    }
+
+    if(total > 0){
+      showToast(`✓ ${total} processos importados${erros>0?' ('+erros+' lotes com erro)':''}`, erros>0?'warn':'ok');
+      await carregarProcessos(true);
+    } else {
+      showToast(`Erro ao importar. Verifique o console para detalhes.`,'err');
+    }
+  }catch(e){
+    console.error('importarPlanilha erro:', e);
+    showToast('Erro ao ler planilha: '+e.message,'err');
   }
-
-  if(!processos.length){ showToast('Nenhum processo novo encontrado','warn'); return; }
-
-  showToast(`Importando ${processos.length} processos...`,'info');
-
-  // Enviar em lotes de 100
-  let total = 0;
-  for(let i=0;i<processos.length;i+=100){
-    const lote = processos.slice(i,i+100);
-    const r = await fetch('/api/controle/v2/importar',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({processos:lote})
-    });
-    const d = await r.json();
-    if(d.ok) total += lote.length;
-  }
-
-  showToast(`✓ ${total} processos importados`,'ok');
-  await carregarProcessos(true);
 }
 
 // ════════════════════════════════════════════════════════════════
