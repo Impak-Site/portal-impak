@@ -2271,7 +2271,7 @@ function abrirCalculador(){
   // Salvar no sessionStorage para o calculador ler
   try{
     sessionStorage.setItem('impak_mix_calc', JSON.stringify(mixData));
-    window.open('/calculador', '_blank');
+    location.href = '/calculador';
   }catch(e){
     toast('Erro ao abrir calculador: '+e.message);
   }
