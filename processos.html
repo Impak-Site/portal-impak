@@ -2023,24 +2023,55 @@ function renderResult(r){
       }).join('')}</ul>
     </div>`:'' ;
 
-  // Doc cards
+  // Doc cards — montar a partir dos dados extraídos nos grupos
   const dc=document.getElementById('docCards');
-  dc.innerHTML=(r.documentos||[]).map((doc,i)=>`
-    <div class="check-group" style="margin-bottom:10px">
-      <div class="cg-head" style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-        <span class="cg-title">${doc.tipo}</span>
-        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">▼</span>
-      </div>
-      <div style="display:none;padding:16px 18px">
-        <div class="detail-grid">
-          ${Object.entries(doc.dados||{}).map(([k,v])=>`
-            <div class="detail-field">
-              <div class="df-label">${k}</div>
-              <div class="df-val">${v||'—'}</div>
-            </div>`).join('')}
+
+  // Coletar todos os valores por documento (doc1_label/doc2_label)
+  const porDoc = {};
+  (r.grupos||[]).forEach(grupo=>{
+    (grupo.campos||[]).forEach(c=>{
+      if(c.doc1_label && c.doc1_valor){
+        if(!porDoc[c.doc1_label]) porDoc[c.doc1_label]={};
+        porDoc[c.doc1_label][c.campo] = c.doc1_valor;
+      }
+      if(c.doc2_label && c.doc2_valor){
+        if(!porDoc[c.doc2_label]) porDoc[c.doc2_label]={};
+        porDoc[c.doc2_label][c.campo] = c.doc2_valor;
+      }
+    });
+  });
+
+  // Ordenar: CI primeiro, depois PI, PL, BL, CE
+  const ordem = ['CI','PI','PL','BL','HBL','MBL','CE','CE MERCANTE'];
+  const docs = Object.keys(porDoc).sort((a,b)=>{
+    const ia = ordem.findIndex(o=>a.toUpperCase().includes(o));
+    const ib = ordem.findIndex(o=>b.toUpperCase().includes(o));
+    return (ia===-1?99:ia)-(ib===-1?99:ib);
+  });
+
+  if(!docs.length){
+    dc.innerHTML='<div style="color:var(--text-dim);font-size:13px;padding:12px;">Dados extraídos não disponíveis.</div>';
+  } else {
+    dc.innerHTML = docs.map(docLabel=>{
+      const dados = porDoc[docLabel];
+      const campos = Object.entries(dados);
+      return `<div class="check-group" style="margin-bottom:10px">
+        <div class="cg-head" style="cursor:pointer" onclick="var n=this.nextElementSibling;n.style.display=n.style.display==='none'?'block':'none'">
+          <span class="cg-title">${docLabel}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);margin-left:8px;">${campos.length} campo(s) · clique para expandir ▼</span>
         </div>
-      </div>
-    </div>`).join('');
+        <div style="display:none;padding:16px 18px">
+          <div class="detail-grid">
+            ${campos.map(([k,v])=>`
+              <div class="detail-field">
+                <div class="df-label">${k}</div>
+                <div class="df-val">${v||'—'}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
 
   // Show divergence panel if there are divergences
   const divs = getDivergencias();
