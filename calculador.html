@@ -136,6 +136,7 @@ input.highlighted{border-color:var(--ac);background:rgba(26,127,212,.04);font-we
   <div class="topbar-right">
     <div class="user-badge" id="user-badge">—</div>
     <button class="btn-topbar" onclick="location.href='/'">← TyreDesk</button>
+    <button class="btn-topbar" onclick="location.reload()">↺ Novo cálculo</button>
     <button class="btn-topbar" onclick="location.href='/logout'">Sair</button>
   </div>
 </div>
@@ -154,10 +155,14 @@ input.highlighted{border-color:var(--ac);background:rgba(26,127,212,.04);font-we
     <div class="form-group">
       <label>Dólar para cálculo (R$)</label>
       <div class="dolar-row">
-        <input type="number" id="dolar" value="5.10" step="0.0001" min="1" class="highlighted">
-        <button onclick="buscarPTAX()">PTAX</button>
+        <input type="number" id="dolar" value="5.10" step="0.0001" min="1" class="highlighted"
+          oninput="fixarDolar()" title="Se editar manualmente, o valor fica fixado e não será atualizado automaticamente">
+        <button onclick="desafixarDolar()" id="btn-ptax" title="Buscar PTAX do BCB">PTAX</button>
       </div>
-      <span id="ptax-ref" style="font-size:10px;color:var(--dim);margin-top:2px;"></span>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+        <span id="ptax-ref" style="font-size:10px;color:var(--dim);flex:1;"></span>
+        <span id="dolar-fixado-badge" style="display:none;font-size:10px;font-weight:700;color:var(--warn);background:rgba(217,119,6,.1);padding:1px 6px;border-radius:4px;">🔒 Fixado</span>
+      </div>
     </div>
   </div>
 
@@ -472,24 +477,50 @@ function toggleComChina(){
 // ════════════════════════════════════════════════════════════════
 // PTAX BCB
 // ════════════════════════════════════════════════════════════════
+let _dolarFixado = false;
+
+function fixarDolar(){
+  _dolarFixado = true;
+  const badge = document.getElementById('dolar-fixado-badge');
+  const btn = document.getElementById('btn-ptax');
+  if(badge) badge.style.display='inline';
+  if(btn){ btn.textContent='↺ PTAX'; btn.title='Clique para buscar PTAX e desafixar'; }
+  calcular();
+}
+
+function desafixarDolar(){
+  _dolarFixado = false;
+  const badge = document.getElementById('dolar-fixado-badge');
+  const btn = document.getElementById('btn-ptax');
+  if(badge) badge.style.display='none';
+  if(btn){ btn.textContent='PTAX'; btn.title='Buscar PTAX do BCB'; }
+  buscarPTAX();
+}
+
 async function buscarPTAX(){
   try{
     showToast('Buscando PTAX...','info');
-    // API BCB — cotação mais recente do dólar
     const hoje = new Date();
-    const data1 = formatarDataBCB(new Date(hoje.setDate(hoje.getDate()-7)));
-    const data2 = formatarDataBCB(new Date());
+    const data1 = formatarDataBCB(new Date(new Date().setDate(hoje.getDate()-7)));
+    const data2 = formatarDataBCB(hoje);
     const url = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='${data1}'&@dataFinalCotacao='${data2}'&$top=2&$orderby=dataHoraCotacao%20desc&$format=json`;
     const r = await fetch(url);
     const d = await r.json();
     if(d.value && d.value.length){
       const cotacao = d.value[0];
       const venda = parseFloat(cotacao.cotacaoVenda).toFixed(4);
-      document.getElementById('dolar').value = venda;
+      if(!_dolarFixado){
+        document.getElementById('dolar').value = venda;
+      }
       const dataHora = new Date(cotacao.dataHoraCotacao);
-      document.getElementById('ptax-ref').textContent = `PTAX BCB: ${venda} — ${dataHora.toLocaleDateString('pt-BR')} ${dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
-      showToast(`PTAX: R$ ${venda}`,'ok');
-      calcular();
+      const ref = document.getElementById('ptax-ref');
+      if(ref) ref.textContent = `PTAX BCB: R$ ${venda} — ${dataHora.toLocaleDateString('pt-BR')} ${dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${_dolarFixado?' (não aplicado — dólar fixado)':''}`;
+      if(!_dolarFixado){
+        showToast(`PTAX: R$ ${venda}`,'ok');
+        calcular();
+      } else {
+        showToast(`PTAX R$ ${venda} (dólar fixado em R$ ${document.getElementById('dolar').value})`,'warn');
+      }
     }
   }catch(e){
     showToast('PTAX indisponível — use valor manual','warn');
