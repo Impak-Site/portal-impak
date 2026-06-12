@@ -378,6 +378,27 @@ select.form-input{cursor:pointer;}
 
 <script>
 // ════════════════════════════════════════════════════════════════
+// UUID — compatível com Safari, Chrome, Firefox
+// ════════════════════════════════════════════════════════════════
+function gerarUUID(){
+  // Usar crypto.randomUUID se disponível (Chrome, Firefox, Edge)
+  if(typeof crypto !== 'undefined' && crypto.randomUUID){
+    return gerarUUID();
+  }
+  // Fallback para Safari e browsers mais antigos
+  if(typeof crypto !== 'undefined' && crypto.getRandomValues){
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    );
+  }
+  // Último fallback: Math.random
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0;
+    return (c==='x' ? r : (r&0x3|0x8)).toString(16);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
 // ESTADO
 // ════════════════════════════════════════════════════════════════
 let _user = null;
@@ -471,7 +492,7 @@ async function carregarProcessos(silencioso){
 
 async function salvarProcesso(proc){
   const isNovo = !proc.id;
-  if(isNovo) proc.id = crypto.randomUUID();
+  if(isNovo) proc.id = gerarUUID();
   proc.updated_by = _user.usuario;
   proc.updated_at = new Date().toISOString();
   if(isNovo){ proc.created_by = _user.usuario; proc.created_at = new Date().toISOString(); }
