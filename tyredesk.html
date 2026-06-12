@@ -1622,13 +1622,25 @@ function analisar(){
     const best=comp[0];const c2=document.createElement('div');c2.className='card';
     c2.innerHTML=`<div class="ch"><h3>Detalhe — ${best.forn}</h3><span class="cg ml" style="font-size:11px;font-weight:700">MELHOR NO MIX</span></div>
     <table class="rtable"><thead><tr><th>Medida</th><th>Qtde</th><th>Preço/un</th><th>Peso</th><th>USD/kg</th><th>Subtotal</th></tr></thead><tbody>
-    ${best.det.map(d=>{
+    ${best.det.map((d,di)=>{
       const pkg=d.preco&&d.peso>0?d.preco/d.peso:null;
       const pkgCell=pkg?`<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`:'<span class="peso-missing">—</span>';
-      return `<tr><td><span class="mpill">${d.medida}</span></td><td class="cm">${d.qtde}</td><td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td><td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td><td>${pkgCell}</td><td>${d.sub?getMoeda(best.forn)+' '+fmtP(d.sub):'—'}</td></tr>`;
+      return `<tr>
+        <td><span class="mpill">${d.medida}</span></td>
+        <td class="cm">
+          <input type="number" value="${d.qtde}" min="1" step="1"
+            style="width:70px;background:rgba(26,127,212,.07);border:1px solid var(--ac);border-radius:5px;padding:3px 6px;font-size:12px;font-family:'DM Mono',monospace;text-align:center;color:var(--text);outline:none;"
+            onchange="_detalheQtd[${di}]=parseInt(this.value)||${d.qtde}; recalcDetalhe('${best.forn}')">
+        </td>
+        <td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td>
+        <td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td>
+        <td>${pkgCell}</td>
+        <td id="det-sub-${di}" class="fw7">${d.sub?getMoeda(best.forn)+' '+fmtP(d.sub):'—'}</td>
+      </tr>`;
     }).join('')}
-    <tr style="background:rgba(26,127,212,.07)"><td colspan="4" class="cm fw7">TOTAL</td><td class="cor fw7">${moeda} ${fmtP(best.total)}</td></tr>
-    </tbody></table>`;
+    <tr style="background:rgba(26,127,212,.07)"><td colspan="4" class="cm fw7">TOTAL</td><td></td><td class="cor fw7" id="det-total">${moeda} ${fmtP(best.total)}</td></tr>
+    </tbody></table>
+    <div style="padding:8px 0 4px;font-size:11px;color:var(--mu);">💡 Edite as quantidades acima para ajustar o mix — o subtotal atualiza automaticamente.</div>`;
     area.appendChild(c2);
   }
 
@@ -1652,6 +1664,10 @@ function analisar(){
   }
 
   // Salvar para exportação
+  // Inicializar qtd editável para a tabela de detalhe
+  _detalheQtd = {};
+  _detalheItems = best ? best.det.map(d=>({...d})) : [];
+
   ultimaAnalise={mix,cots,sorted,otim,moeda,tp};
   // Construir pkgPorMedida: USD/kg médio por medida
   const pkgPorMedida={};
@@ -2223,6 +2239,37 @@ function exportarComImpostos(){
     a.download='IMPAK_Impostos.csv'; a.click();
   }
   toast('✓ Exportado com impostos BRL!');
+}
+
+// ── DETALHE FORNECEDOR — QTDE EDITÁVEL ───────────────────────
+var _detalheQtd = {};
+var _detalheItems = [];
+
+function recalcDetalhe(forn){
+  if(!ultimaAnalise) return;
+  const moeda = getMoeda(forn);
+  let total = 0;
+  _detalheItems.forEach((d,i)=>{
+    const qtd = _detalheQtd[i] !== undefined ? _detalheQtd[i] : d.qtde;
+    const sub = d.preco ? d.preco * qtd : 0;
+    total += sub;
+    const el = document.getElementById('det-sub-'+i);
+    if(el) el.textContent = sub ? moeda+' '+fmtP(sub) : '—';
+  });
+  const elTotal = document.getElementById('det-total');
+  if(elTotal) elTotal.textContent = moeda+' '+fmtP(total);
+
+  // Recalcular % do container
+  const pneusPorContainer = {TBR:264, PCR:1100, AGR:200, OTR:100};
+  const tp = ultimaAnalise.tp || 'TBR';
+  const capacidade = pneusPorContainer[tp] || 264;
+  const qtdTotal = _detalheItems.reduce((s,d,i)=>{
+    const qtd = _detalheQtd[i] !== undefined ? _detalheQtd[i] : d.qtde;
+    return s + qtd;
+  }, 0);
+  const pct = Math.round(qtdTotal / capacidade * 100);
+  const elPct = document.querySelector('[data-forn-pct="'+forn+'"]');
+  if(elPct) elPct.textContent = pct+'%';
 }
 
 // ── CALCULADOR DE IMPORTAÇÃO ──────────────────────────────────
