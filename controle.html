@@ -1144,7 +1144,7 @@ function renderModal(){
         <div class="form-section-title">📦 Booking & Embarque</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Nº Booking</label>
-            <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}"></div>
+            <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armador</label>
             <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC"></div>
           <div class="form-group"><label class="form-label">Navio</label>
@@ -1154,13 +1154,13 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Porto Destino</label>
             <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino||'ITAJAI')}"></div>
           <div class="form-group"><label class="form-label">ETD</label>
-            <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}"></div>
+            <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">ETA</label>
             <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
             ${(()=>{ const pv=previsaoChegada(p); return pv ? `<div style="font-size:10px;color:var(--warn);margin-top:3px;">⚠ Histórico ${p.armador}: média ${pv.mediaDias>0?'+':''}${pv.mediaDias}d → prev. ${pv.previsao.toLocaleDateString('pt-BR')}</div>` : ''; })()}
           </div>
           <div class="form-group"><label class="form-label">Data Embarque</label>
-            <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}"></div>
+            <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
             <input class="form-input" type="number" id="f_free_time" value="${p.free_time||21}"></div>
         </div>
@@ -1169,9 +1169,9 @@ function renderModal(){
         <div class="form-section-title">🚛 Carregamento</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Agendamento</label>
-            <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}"></div>
+            <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Carregamento</label>
-            <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}"></div>
+            <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Transportadora</label>
             <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}"></div>
           <div class="form-group"><label class="form-label">Placa</label>
@@ -1182,13 +1182,13 @@ function renderModal(){
         <div class="form-section-title">⚓ Chegada & Demurrage</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
-            <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}"></div>
+            <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Presença de Carga</label>
-            <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}"></div>
+            <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
             <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;"></div>
           <div class="form-group"><label class="form-label">Data Devolução</label>
-            <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}"></div>
+            <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
             <input class="form-input" type="number" id="f_demurrage_valor" value="${p.demurrage_valor||''}"></div>
           <div class="form-group"><label class="form-label">Demurrage Pago?</label>
@@ -1211,7 +1211,7 @@ function renderModal(){
         <div class="form-section-title">🔢 Números de Referência</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">HBL</label>
-            <input class="form-input" id="f_hbl" value="${esc(p.hbl)}"></div>
+            <input class="form-input" id="f_hbl" value="${esc(p.hbl)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">MBL</label>
             <input class="form-input" id="f_mbl" value="${esc(p.mbl)}"></div>
           <div class="form-group"><label class="form-label">Container</label>
@@ -1228,33 +1228,33 @@ function renderModal(){
         <div class="form-section-title">📋 DI e Parametrização</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
-            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}"></div>
+            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Número DI</label>
-            <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}"></div>
+            <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Canal</label>
-            <select class="form-input" id="f_canal">
+            <select class="form-input" id="f_canal" onchange="atualizarFaseEmTempoReal()">
               <option value="">—</option>
               <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
               <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
               <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
             </select></div>
           <div class="form-group"><label class="form-label">Data Parametrização</label>
-            <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}"></div>
+            <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Liberação</label>
-            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}"></div>
+            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()"></div>
         </div>
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">NF Entrada Nº</label>
-            <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}"></div>
+            <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Entrada Data</label>
             <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
           <div class="form-group"><label class="form-label">NF Entrada Valor</label>
             <input class="form-input" type="number" id="f_nf_entrada_valor" value="${p.nf_entrada_valor||''}"></div>
           <div class="form-group"><label class="form-label">NF Saída Nº</label>
-            <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}"></div>
+            <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Saída Data</label>
             <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
           <div class="form-group"><label class="form-label">NF Saída Valor</label>
@@ -1277,6 +1277,57 @@ function renderModal(){
   `;
 
   renderPagamentoCampos();
+}
+
+// ════════════════════════════════════════════════════════════════
+// ATUALIZAÇÃO AUTOMÁTICA DE FASE EM TEMPO REAL
+// ════════════════════════════════════════════════════════════════
+function atualizarFaseEmTempoReal(){
+  if(!_editando) return;
+
+  // Coletar valores atuais do form
+  const campos = [
+    'data_embarque','hbl','mbl','etd','eta','booking_numero',
+    'data_chegada','data_presenca',
+    'data_registro_di','numero_di',
+    'canal','data_parametrizacao','data_liberacao',
+    'data_agendamento','data_carregamento',
+    'nf_entrada_numero','nf_saida_numero',
+    'data_devolucao_vazio',
+  ];
+
+  const snapshot = {..._editando};
+  campos.forEach(campo=>{
+    const el = document.getElementById('f_'+campo);
+    if(!el) return;
+    const val = el.value?.trim()||null;
+    snapshot[campo] = val||null;
+  });
+
+  const novaFase = calcularFase(snapshot);
+
+  // Atualizar badge no header do modal
+  const badge = document.getElementById('modal-fase-badge');
+  if(badge){
+    const fase = FASES.find(f=>f.id===novaFase)||FASES[0];
+    badge.innerHTML = `<span class="fase-badge fase-${novaFase}">${fase.icon} ${fase.label}</span>`;
+  }
+
+  // Atualizar _editando.fase para que ao salvar já venha correto
+  _editando._fasePrevista = novaFase;
+
+  // Atualizar a timeline
+  const faseIdx = FASES.findIndex(f=>f.id===novaFase);
+  document.querySelectorAll('.tl-dot').forEach((dot, i)=>{
+    dot.className = 'tl-dot';
+    if(i < faseIdx) dot.classList.add('done'), dot.textContent='✓';
+    else if(i===faseIdx) dot.classList.add('active'), dot.textContent=FASES[i].icon;
+    else dot.textContent=FASES[i].icon;
+  });
+  document.querySelectorAll('.tl-line').forEach((line, i)=>{
+    line.className = 'tl-line';
+    if(i < faseIdx) line.classList.add('done');
+  });
 }
 
 function trocarAba(id){
@@ -1366,6 +1417,9 @@ function coletarESalvar(){
 
   const proc = {..._editando};
   const log = proc.log || [];
+
+  // Remover campo interno de controle
+  delete proc._fasePrevista;
 
   campos.forEach(campo=>{
     const el = document.getElementById('f_'+campo);
@@ -1506,17 +1560,52 @@ async function importarPlanilha(input){
         if(isNaN(v.getTime())||v.getFullYear()<1950) return null;
         return v.toISOString().split('T')[0];
       }
+      // Serial numérico do Excel (ex: 45667)
+      if(typeof v === 'number' && v > 25000 && v < 60000){
+        const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+        if(!isNaN(d.getTime())&&d.getFullYear()>=1950) return d.toISOString().split('T')[0];
+      }
       const s = String(v).trim().split(/[\n\r]/)[0].trim();
-      if(!s||s==='—'||s==='-'||s.toUpperCase().includes('PRODUÇÃO')||s.toUpperCase().includes('PRODUCAO')) return null;
-      // DD/MM/YYYY
-      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if(m){ const [,d,mo,y]=m; if(parseInt(y)>=1950) return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`; }
+      if(!s||s==='—'||s==='-') return null;
+      const su = s.toUpperCase();
+      if(su.includes('PRODUÇÃO')||su.includes('PRODUCAO')||su.includes('ANDAMENTO')||su.includes('PRODUC')) return null;
+
       // YYYY-MM-DD
-      m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
       if(m){ const [,y,mo,d]=m; if(parseInt(y)>=1950) return `${y}-${mo}-${d}`; }
-      // DD/MM/YY
-      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-      if(m){ const [,d,mo,y]=m; const full='20'+y; return `${full}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`; }
+
+      // DD/MM/YYYY (formato brasileiro)
+      m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if(m){
+        const [,a,b,y]=m;
+        if(parseInt(y)>=1950){
+          // Verificar se é DD/MM ou MM/DD pela validade do mês
+          if(parseInt(b)<=12) return `${y}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`;
+          if(parseInt(a)<=12) return `${y}-${a.padStart(2,'0')}-${b.padStart(2,'0')}`;
+        }
+      }
+
+      // M/D/YYYY ou M/D/YY (formato americano do Excel/XLSX.js)
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if(m){
+        let [,mo,d,y]=m;
+        const year = y.length===2 ? (parseInt(y)>=50?'19'+y:'20'+y) : y;
+        if(parseInt(year)>=1950 && parseInt(mo)>=1 && parseInt(mo)<=12 && parseInt(d)>=1 && parseInt(d)<=31){
+          return `${year}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        }
+        // Tentar como DD/MM/YY se mês > 12
+        if(parseInt(mo)>12 && parseInt(d)<=12){
+          return `${year}-${d.padStart(2,'0')}-${mo.padStart(2,'0')}`;
+        }
+      }
+
+      // Serial numérico como string (ex: "45667")
+      const num = parseInt(s);
+      if(!isNaN(num) && num > 25000 && num < 60000){
+        const d2 = new Date(Math.round((num - 25569) * 86400 * 1000));
+        if(!isNaN(d2.getTime())&&d2.getFullYear()>=1950) return d2.toISOString().split('T')[0];
+      }
+
       return null;
     }
     function pStr(v){
