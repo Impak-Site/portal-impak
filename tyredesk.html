@@ -954,21 +954,49 @@ function logImport(msg,type='info'){
 
 function setBar(pct){document.getElementById('import-bar').style.width=pct+'%';}
 
-function detectFornecedor(filename,data){
-  const fn=filename.toUpperCase();
-  if(fn.includes('ROVELO'))return'ROVELO';
-  if(fn.includes('EUDEMON'))return'EUDEMON';
-  if(fn.includes('DELMAX'))return'DELMAX';
-  if(fn.includes('TRACMAX')||fn.includes('WINDFORCE'))return'TRACMAX/WINDFORCE';
-  if(fn.includes('INVOVIC')||fn.includes('SUNWIDE'))return'SUNWIDE/INVOVIC';
-  // tentar pelo conteúdo
-  const flat=JSON.stringify(data).toUpperCase();
-  if(flat.includes('ROVELO'))return'ROVELO';
-  if(flat.includes('EUDEMON'))return'EUDEMON';
-  if(flat.includes('DELMAX'))return'DELMAX';
-  if(flat.includes('TRACMAX'))return'TRACMAX/WINDFORCE';
-  if(flat.includes('INVOVIC'))return'SUNWIDE/INVOVIC';
-  return null;
+function detectFornecedor(filename, data){
+  const fn = filename.toUpperCase();
+  const flat = JSON.stringify(data).toUpperCase();
+
+  // 1. Tentar match exato pelo nome de fornecedor cadastrado
+  // Ordenar por nome mais longo primeiro (ROVELO - TBR antes de ROVELO)
+  const sorted = [...fornecedores].sort((a,b)=>b.nome.length-a.nome.length);
+  for(const f of sorted){
+    const nome = f.nome.toUpperCase();
+    if(fn.includes(nome) || flat.includes(nome)) return f.nome;
+  }
+
+  // 2. Fallback: detectar marca base e diferenciar pelo tipo na planilha
+  let marcaBase = null;
+  if(fn.includes('ROVELO')||flat.includes('ROVELO')) marcaBase='ROVELO';
+  else if(fn.includes('EUDEMON')||flat.includes('EUDEMON')) marcaBase='EUDEMON';
+  else if(fn.includes('DELMAX')||flat.includes('DELMAX')) marcaBase='DELMAX';
+  else if(fn.includes('TRACMAX')||fn.includes('WINDFORCE')) marcaBase='TRACMAX/WINDFORCE';
+  else if(fn.includes('INVOVIC')||fn.includes('SUNWIDE')) marcaBase='SUNWIDE/INVOVIC';
+
+  if(!marcaBase) return null;
+
+  // Detectar tipo pela planilha (TBR vs PCR)
+  let tipoDetectado = null;
+  if(flat.includes('"TBR"')||fn.includes('TBR')) tipoDetectado='TBR';
+  else if(flat.includes('"PCR"')||fn.includes('PCR')) tipoDetectado='PCR';
+
+  // Verificar se existe fornecedor com nome "MARCA - TIPO"
+  if(tipoDetectado){
+    const nomeCandidato = marcaBase + ' - ' + tipoDetectado;
+    const f = fornecedores.find(x=>x.nome.toUpperCase()===nomeCandidato.toUpperCase());
+    if(f) return f.nome;
+    // Também testar "MARCA TBR" ou "MARCATBR"
+    const f2 = fornecedores.find(x=>x.nome.toUpperCase().includes(marcaBase) && x.nome.toUpperCase().includes(tipoDetectado));
+    if(f2) return f2.nome;
+  }
+
+  // Retornar o fornecedor base se existir com esse nome exato
+  const fBase = fornecedores.find(x=>x.nome.toUpperCase()===marcaBase);
+  if(fBase) return fBase.nome;
+
+  // Último recurso: retornar marcaBase mesmo sem cadastro
+  return marcaBase;
 }
 
 function parseTBR(rows, fornecedor){
@@ -2295,8 +2323,8 @@ function recalcDetalhe(forn){
 
   // Recalcular % do container
   const pneusPorContainer = {TBR:264, PCR:1100, AGR:200, OTR:100};
-  const tp = ultimaAnalise.tp || 'TBR';
-  const capacidade = pneusPorContainer[tp] || 264;
+  const tp = ultimaAnalise.tp || 'PCR';
+  const capacidade = pneusPorContainer[tp] || 1100;
   const qtdTotal = _detalheItems.reduce((s,d,i)=>{
     const qtd = _detalheQtd[i] !== undefined ? _detalheQtd[i] : d.qtde;
     return s + qtd;
