@@ -1542,8 +1542,28 @@ function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;'
 async function importarPlanilha(input){
   const file = input.files[0];
   if(!file) return;
-  showToast('Lendo planilha...','info');
   input.value = '';
+
+  // Criar modal de diagnóstico visível na tela
+  let logDiv = document.getElementById('import-log-modal');
+  if(!logDiv){
+    logDiv = document.createElement('div');
+    logDiv.id = 'import-log-modal';
+    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"DM Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+    document.body.appendChild(logDiv);
+  }
+  logDiv.innerHTML = `<div style="font-weight:700;margin-bottom:8px;font-size:13px;">📊 Importando: ${file.name}</div>`;
+  const addLog = (msg, cor) => {
+    const d = document.createElement('div');
+    d.style.cssText = `color:${cor||'#fff'};padding:2px 0;`;
+    d.textContent = msg;
+    logDiv.appendChild(d);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  };
+  const fecharLog = (delay) => setTimeout(()=>{ if(logDiv) logDiv.remove(); }, delay||5000);
+
+  showToast('Lendo planilha...','info');
+  addLog('Lendo arquivo...', '#7dd3fc');
 
   try{
     const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
@@ -1619,7 +1639,7 @@ async function importarPlanilha(input){
     const isControle = sheetNames.includes('CONTROLE');
     const isFollowUp = sheetNames.includes('EM ANDAMENTO') || sheetNames.some(s=>s.includes('ANDAMENTO'));
 
-    console.log('Planilha:', file.name, '| Abas:', wb.SheetNames, '| isControle:', isControle, '| isFollowUp:', isFollowUp);
+    addLog(`Abas: ${wb.SheetNames.join(', ')}`, '#7dd3fc'); addLog(`isControle: ${isControle} | isFollowUp: ${isFollowUp}`, '#7dd3fc');
 
     if(!isControle && !isFollowUp){
       showToast('Planilha não reconhecida. Use a planilha Controle ou Follow Up.','err');
@@ -1630,7 +1650,7 @@ async function importarPlanilha(input){
       // Encontrar a aba correta (case-insensitive)
       const abaName = wb.SheetNames.find(s=>s.trim().toUpperCase()==='CONTROLE');
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[abaName], {header:1, defval:null, raw:false});
-      console.log('CONTROLE: total linhas:', rows.length, '| header:', rows[0]?.slice(0,5));
+      addLog(`CONTROLE: ${rows.length} linhas | header: ${(rows[0]||[]).slice(0,3).join(', ')}`, '#7dd3fc');
 
       // Linha 1 = header, dados a partir de linha 2 (índice 1)
       for(let i=1;i<rows.length;i++){
@@ -1676,13 +1696,13 @@ async function importarPlanilha(input){
           created_by:        'importacao_controle',
         });
       }
-      console.log('CONTROLE: processos mapeados:', processos.length);
+      addLog(`✓ CONTROLE: ${processos.length} processos mapeados`, '#86efac');
     }
 
     if(isFollowUp){
       for(const sheetName of wb.SheetNames.filter(s=>['EM ANDAMENTO','FINALIZADOS'].includes(s.trim().toUpperCase()))){
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:false});
-        console.log(sheetName+':', rows.length, 'linhas');
+        addLog(`${sheetName}: ${rows.length} linhas`, '#7dd3fc');
 
         for(let i=1;i<rows.length;i++){
           const r = rows[i];
@@ -1728,14 +1748,17 @@ async function importarPlanilha(input){
           });
         }
       }
-      console.log('FOLLOWUP: processos mapeados:', processos.length);
+      addLog(`✓ FOLLOWUP: ${processos.length} processos mapeados`, '#86efac');
     }
 
     if(!processos.length){
-      showToast('Nenhum processo novo encontrado (todos já existem ou planilha vazia)','warn');
+      addLog('⚠ Nenhum processo novo (todos já existem ou planilha vazia)', '#fcd34d');
+      fecharLog(8000);
+      showToast('Nenhum processo novo encontrado','warn');
       return;
     }
 
+    addLog(`Enviando ${processos.length} processos ao servidor...`, '#7dd3fc');
     showToast(`Importando ${processos.length} processos...`,'info');
 
     let total = 0, erros = 0;
@@ -1747,20 +1770,25 @@ async function importarPlanilha(input){
           body: JSON.stringify({processos:lote})
         });
         const d = await resp.json();
-        if(d.ok){ total += d.total||lote.length; }
-        else { erros++; console.error('Lote erro:', d.erro); }
-      }catch(e){ erros++; console.error('Lote fetch erro:', e.message); }
+        if(d.ok){ total += d.total||lote.length; addLog(`✓ Lote ${Math.floor(i/50)+1}: ${d.total||lote.length} salvos`, '#86efac'); }
+        else { erros++; addLog(`✕ Lote erro: ${d.erro||'?'}`, '#fca5a5'); }
+      }catch(e){ erros++; addLog(`✕ Fetch erro: ${e.message}`, '#fca5a5'); }
     }
 
     if(total > 0){
-      showToast(`✓ ${total} processos importados${erros>0?' ('+erros+' lotes com erro)':''}`, erros>0?'warn':'ok');
+      addLog(`✅ ${total} processos importados!`, '#86efac');
+      fecharLog(6000);
+      showToast(`✓ ${total} processos importados${erros>0?' ('+erros+' com erro)':''}`, erros>0?'warn':'ok');
       await carregarProcessos(true);
     } else {
-      showToast(`Erro ao importar. Verifique o console para detalhes.`,'err');
+      addLog('✕ Zero processos importados — verifique os erros acima', '#fca5a5');
+      fecharLog(10000);
+      showToast('Erro ao importar. Veja o log na tela.','err');
     }
   }catch(e){
-    console.error('importarPlanilha erro:', e);
-    showToast('Erro ao ler planilha: '+e.message,'err');
+    if(typeof addLog === 'function') addLog(`✕ ERRO: ${e.message}`, '#fca5a5');
+    showToast('Erro: '+e.message,'err');
+    if(typeof fecharLog === 'function') fecharLog(10000);
   }
 }
 
