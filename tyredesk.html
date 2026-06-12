@@ -1620,7 +1620,7 @@ function analisar(){
   ${sorted.map((r,i)=>`<tr class="${i===0&&r.total!==null?'brow':''}">
     <td class="cm" style="font-size:10px">${i+1}</td>
     <td class="fw7">${r.forn}${i===0&&r.total!==null?' <span class="cg" style="font-size:10px">✓</span>':''}</td>
-    <td class="cor fw7">${r.total!==null?getMoeda(r.forn)+' '+fmtP(r.total):`<span class="cm">~${r.curMoeda||moeda} ${fmtP(r.parcial)}</span>`}</td>
+    <td class="cor fw7">${r.total!==null?`<span id="rank-total-${r.forn.replace(/[^a-zA-Z0-9]/g,'_')}">${getMoeda(r.forn)+' '+fmtP(r.total)}</span>`:`<span class="cm">~${r.curMoeda||moeda} ${fmtP(r.parcial)}</span>`}</td>
     <td class="${r.pct===100?'cg':r.pct>=50?'cor':'cr'}" style="font-size:10px">${r.pct}% (${r.cob}/${mix.length})</td>
     <td><div class="bw"><div class="bf ${i>0?'dm':''}" style="width:${maxT>0?Math.round((r.parcial/maxT)*100):0}%"></div></div></td>
     
@@ -1692,7 +1692,7 @@ function analisar(){
         <td class="cm">
           <input type="number" value="${d.qtde}" min="1" step="1"
             style="width:70px;background:rgba(26,127,212,.07);border:1px solid var(--ac);border-radius:5px;padding:3px 6px;font-size:12px;font-family:'DM Mono',monospace;text-align:center;color:var(--text);outline:none;"
-            onchange="_detalheQtd[${di}]=parseInt(this.value)||${d.qtde}; recalcDetalhe('${best.forn}')">
+            oninput="_detalheQtd[${di}]=parseInt(this.value)||${d.qtde}; recalcDetalhe('${best.forn}')">
         </td>
         <td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td>
         <td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td>
@@ -2320,6 +2320,10 @@ function recalcDetalhe(forn){
   });
   const elTotal = document.getElementById('det-total');
   if(elTotal) elTotal.textContent = moeda+' '+fmtP(total);
+
+  // Atualizar total no ranking também
+  const elRankTotal = document.getElementById('rank-total-'+forn.replace(/[^a-zA-Z0-9]/g,'_'));
+  if(elRankTotal) elRankTotal.textContent = moeda+' '+fmtP(total);
 
   // Recalcular % do container
   const pneusPorContainer = {TBR:264, PCR:1100, AGR:200, OTR:100};
