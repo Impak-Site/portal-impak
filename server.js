@@ -16,6 +16,9 @@ const express = require('express');
 const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const { randomUUID } = require('crypto');
+
+function gerarUUID(){ return randomUUID(); }
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -296,7 +299,7 @@ app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
       .filter(p => p.referencia && !refsExistentes.has(p.referencia))
       .map(p => ({
         ...p,
-        id: p.id || crypto.randomUUID(),
+        id: p.id || gerarUUID(),
         updated_at: agora,
         created_at: p.created_at || agora,
       }));
@@ -325,7 +328,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo || !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
-    if (!processo.id) processo.id = crypto.randomUUID();
+    if (!processo.id) processo.id = gerarUUID();
     processo.updated_at = new Date().toISOString();
 
     // Log de auditoria no banco
@@ -531,7 +534,7 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
         // Suportar tanto formato antigo (com dados{}) quanto novo (campos diretos)
         const d = p.dados || p;
         return {
-          id:                  p.id || crypto.randomUUID(),
+          id:                  p.id || gerarUUID(),
           referencia:          p.referencia || d.referencia || '',
           fornecedor:          d.fornecedor  || '',
           cliente:             d.cliente     || p.cliente || '',
