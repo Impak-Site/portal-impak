@@ -1275,12 +1275,12 @@ function salvarForn(){
   if(!tipos.length){toast('Selecione ao menos um tipo');return;}
   if(editFornId){Object.assign(fornecedores.find(x=>x.id===editFornId),{nome,contato,email,tipos});}
   else fornecedores.push({id:uid(),nome,contato,email,tipos,ultimaCot:null});
-  closeM('modal-forn');renderForn();toast(editFornId?'Atualizado':'Cadastrado');
+  closeM('modal-forn');renderForn();salvarFornecedores();toast(editFornId?'Atualizado':'Cadastrado');
   document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
 }
 function delForn(id){
   if(!confirm('Remover?'))return;
-  fornecedores=fornecedores.filter(f=>f.id!==id);renderForn();toast('Removido');
+  fornecedores=fornecedores.filter(f=>f.id!==id);renderForn();salvarFornecedores();toast('Removido');
 }
 function syncC(t){
   const el=document.getElementById('chk-'+t);
@@ -1366,7 +1366,15 @@ async function marcarEnv(){
 
 async function salvarFornecedores(){
   try{
-    const payload = fornecedores.map(f=>({id:f.id, nome:f.nome, ultimaCot:f.ultimaCot||null}));
+    // Salvar tudo: id, nome, contato, email, tipos, ultimaCot
+    const payload = fornecedores.map(f=>({
+      id:       f.id,
+      nome:     f.nome,
+      contato:  f.contato||'',
+      email:    f.email||'',
+      tipos:    f.tipos||[],
+      ultimaCot:f.ultimaCot||null,
+    }));
     await fetch('/api/base/salvar-fornecedores',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -1379,11 +1387,36 @@ async function carregarFornecedores(){
   try{
     const r = await fetch('/api/base/carregar-fornecedores');
     const d = await r.json();
-    if(d.ok && d.fornecedores){
-      d.fornecedores.forEach(function(saved){
-        const f = fornecedores.find(x=>x.id===saved.id||x.nome===saved.nome);
-        if(f && saved.ultimaCot) f.ultimaCot = saved.ultimaCot;
-      });
+    if(d.ok && d.fornecedores && d.fornecedores.length){
+      // Restaurar lista completa do banco (inclui criações/edições do usuário)
+      const savedList = d.fornecedores;
+      // Verificar se tem dados completos (nome, tipos) — se sim, substituir lista inteira
+      const temDadosCompletos = savedList.some(f=>f.tipos && f.tipos.length>0);
+      if(temDadosCompletos){
+        // Substituir completamente pela versão salva
+        fornecedores.length = 0;
+        savedList.forEach(function(saved){
+          fornecedores.push({
+            id:        saved.id || uid(),
+            nome:      saved.nome || '',
+            contato:   saved.contato || '',
+            email:     saved.email || '',
+            tipos:     saved.tipos || ['PCR'],
+            ultimaCot: saved.ultimaCot || null,
+          });
+        });
+      } else {
+        // Fallback: só atualizar ultimaCot (dados antigos sem tipos)
+        savedList.forEach(function(saved){
+          const f = fornecedores.find(x=>x.id===saved.id||x.nome===saved.nome);
+          if(f){
+            if(saved.ultimaCot) f.ultimaCot = saved.ultimaCot;
+          }
+        });
+      }
+      // Atualizar datalist
+      const dl = document.getElementById('forn-dl');
+      if(dl) dl.innerHTML = fornecedores.map(f=>`<option value="${f.nome}">`).join('');
     }
   }catch(e){ console.warn('Carregar fornecedores:', e); }
 }
@@ -1607,10 +1640,11 @@ function analisar(){
     const pct=Math.round((totalQtde/totalMoq)*100);
     const barColor=pct>100?'#c0392b':pct>=90?'#1a9c5b':pct>=60?'#b07800':'#c0392b';
     const overClass=pct>100?'ctnr-over':'';
+    const fornId = forn.replace(/[^a-zA-Z0-9]/g,'_');
     ctnrHtml+=`<div class="ctnr-row"><span style="font-size:11px;font-weight:600;min-width:170px">${forn}</span>
-      <div class="ctnr-bar-bg"><div class="ctnr-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
-      <span class="ctnr-pct ${overClass}" style="color:${barColor}">${pct}%${pct>100?' ⚠':''}</span>
-      <span style="font-size:10px;color:var(--mu);font-weight:500">${totalQtde} un</span>
+      <div class="ctnr-bar-bg"><div class="ctnr-bar-fill" id="ctnr-bar-${fornId}" style="width:${Math.min(pct,100)}%;background:${barColor}"></div></div>
+      <span class="ctnr-pct ${overClass}" id="ctnr-pct-${fornId}" style="color:${barColor}">${pct}%${pct>100?' ⚠':''}</span>
+      <span id="ctnr-qtd-${fornId}" style="font-size:10px;color:var(--mu);font-weight:500">${totalQtde} un</span>
     </div>`;
   });
   ctnrHtml+='</div>';
@@ -2268,8 +2302,14 @@ function recalcDetalhe(forn){
     return s + qtd;
   }, 0);
   const pct = Math.round(qtdTotal / capacidade * 100);
-  const elPct = document.querySelector('[data-forn-pct="'+forn+'"]');
-  if(elPct) elPct.textContent = pct+'%';
+  const fornId = forn.replace(/[^a-zA-Z0-9]/g,'_');
+  const elPct = document.getElementById('ctnr-pct-'+fornId);
+  const elBar = document.getElementById('ctnr-bar-'+fornId);
+  const elQtd = document.getElementById('ctnr-qtd-'+fornId);
+  const barColor = pct>100?'#c0392b':pct>=90?'#1a9c5b':pct>=60?'#b07800':'#c0392b';
+  if(elPct){ elPct.textContent = pct+'%'+(pct>100?' ⚠':''); elPct.style.color=barColor; }
+  if(elBar){ elBar.style.width=Math.min(pct,100)+'%'; elBar.style.background=barColor; }
+  if(elQtd){ elQtd.textContent = qtdTotal+' un'; }
 }
 
 // ── CALCULADOR DE IMPORTAÇÃO ──────────────────────────────────
