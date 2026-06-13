@@ -580,6 +580,12 @@ function calcular(){
   const taxa_ce_usd = parseFloat(document.getElementById('taxa_ce').value)||0;
   const qtd_cont    = parseInt(document.getElementById('qtd_containers').value)||1;
   const qtd_pneus   = parseInt(document.getElementById('qtd_pneus').value)||1;
+
+  // Capacidade real por tipo (pneus por 40HC)
+  const CAP_CONTAINER = {TBR:264, PCR:1100, AGR:200, OTR:100};
+  const capUnit = CAP_CONTAINER[tipo] || 1100;
+  const contNecessarios = Math.ceil(qtd_pneus / capUnit);
+  const pctContainer = Math.round((qtd_pneus / (capUnit * qtd_cont)) * 100);
   const tipo        = document.getElementById('tipo_pneu').value;
   const uf          = document.getElementById('uf_destino').value;
   const tem_st      = document.getElementById('tem_st').value === 'SIM';
@@ -705,6 +711,7 @@ function calcular(){
 
   _resultado = {
     dolar, fob_usd, fob_brl, frete_usd, frete_brl, seguro_usd,
+    capUnit, contNecessarios, pctContainer, qtd_containers: qtd_cont,
     cif_usd, cif_brl, tipo, uf, tem_st, ncmInfo, stInfo,
     ii_val, ipi_val, rbc_val, pis_e_val, cof_e_val, icms_e_val, ibs_e_val, cbs_e_val,
     total_impostos_entrada,
@@ -743,6 +750,25 @@ function renderResultado(r){
     </div>
     <div class="resultado-body">
 
+      <!-- ALERTA CONTAINER -->
+      ${r.pctContainer > 100 ? `
+      <div style="background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+        <span style="font-size:24px;">⚠️</span>
+        <div>
+          <div style="font-weight:700;color:var(--err);font-size:13px;">Quantidade excede a capacidade do container</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+            ${r.qtd_pneus} pneus em ${r.qtd_containers} container${r.qtd_containers!==1?'s':''} = ${r.pctContainer}% da capacidade (${r.capUnit} por CTR).
+            Necessário: <strong>${r.contNecessarios} container${r.contNecessarios!==1?'s':''}</strong>. Ajuste o campo acima.
+          </div>
+        </div>
+      </div>` : r.pctContainer < 70 ? `
+      <div style="background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.2);border-radius:10px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:18px;">💡</span>
+        <div style="font-size:12px;color:var(--warn);">
+          Container com apenas ${r.pctContainer}% de ocupação. Considere aumentar o pedido para ${r.capUnit} unidades para aproveitar melhor o frete.
+        </div>
+      </div>` : ''}
+
       <!-- CARDS PRINCIPAIS -->
       <div class="cards-grid">
         <div class="card-num destaque">
@@ -774,6 +800,11 @@ function renderResultado(r){
           <div class="card-label">Câmbio</div>
           <div class="card-value" style="font-size:22px;">R$ ${r.dolar.toFixed(4)}</div>
           <div class="card-sub">FOB: ${usd(r.fob_usd)} = ${brl(r.fob_brl)}</div>
+        </div>
+        <div class="card-num ${r.pctContainer>100?'warn':r.pctContainer>=85?'ok':''}">
+          <div class="card-label">Ocupação Container</div>
+          <div class="card-value ${r.pctContainer>100?'warn':'ok'}" style="font-size:22px;">${r.pctContainer}%</div>
+          <div class="card-sub">${r.qtd_pneus} un / cap ${r.capUnit} · ${r.contNecessarios} CTR necessário${r.contNecessarios!==1?'s':''}</div>
         </div>
       </div>
 
