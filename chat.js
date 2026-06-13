@@ -6,6 +6,41 @@
   if (document.getElementById('impak-chat-root')) return;
 
   const CSS = `
+
+    /* ── NAV GLOBAL ── */
+    #impak-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
+      background: #0a2d5e;
+      height: 44px;
+      display: flex; align-items: center;
+      padding: 0 16px; gap: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+      font-family: 'DM Sans', sans-serif;
+    }
+    #impak-nav .nav-logo {
+      font-family: 'Syne', 'DM Sans', sans-serif;
+      font-size: 15px; font-weight: 800;
+      color: #fff; letter-spacing: 1px;
+      margin-right: 12px; flex-shrink: 0;
+    }
+    #impak-nav .nav-link {
+      color: rgba(255,255,255,.65);
+      text-decoration: none;
+      font-size: 12px; font-weight: 600;
+      padding: 5px 11px; border-radius: 6px;
+      transition: all .15s; white-space: nowrap;
+      border: none; background: none; cursor: pointer;
+    }
+    #impak-nav .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
+    #impak-nav .nav-link.active { color: #fff; background: rgba(255,255,255,.15); }
+    #impak-nav .nav-sep { color: rgba(255,255,255,.2); margin: 0 2px; font-size: 11px; }
+    #impak-nav .nav-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #impak-nav .nav-user { font-size: 11px; color: rgba(255,255,255,.5); }
+    /* Empurrar conteúdo para baixo */
+    body { padding-top: 44px !important; }
+    /* Ajustar topbars existentes */
+    .topbar, .nav { position: relative !important; top: auto !important; }
+
     #impak-chat-root {
       position: fixed; bottom: 24px; right: 24px; z-index: 9999;
       font-family: 'DM Sans', sans-serif;
@@ -109,6 +144,44 @@
   style.textContent = CSS;
   document.head.appendChild(style);
 
+  // ── NAV GLOBAL ──────────────────────────────────────────────
+
+    const navModulos = [
+      { label: '📦 TyreDesk',    href: '/',           key: 'tyredesk'    },
+      { label: '🚢 Controle',    href: '/controle',   key: 'controle'    },
+      { label: '📄 Conferência', href: '/processos',  key: 'processos'   },
+      { label: '💰 Calculador',  href: '/calculador', key: 'calculador'  },
+    ];
+
+    // Detectar módulo atual pelo path
+    const path = window.location.pathname;
+    const modAtual = path === '/' ? 'tyredesk'
+      : path.includes('controle')  ? 'controle'
+      : path.includes('processos') ? 'processos'
+      : path.includes('calculador')? 'calculador'
+      : '';
+
+    const navEl = document.createElement('div');
+    navEl.id = 'impak-nav';
+    navEl.innerHTML = `
+      <div class="nav-logo">IMPAK</div>
+      ${navModulos.map(m => `
+        <a class="nav-link${modAtual === m.key ? ' active' : ''}" href="${m.href}">${m.label}</a>
+      `).join('<span class="nav-sep">·</span>')}
+      <div class="nav-right">
+        <span class="nav-user" id="nav-user-label">—</span>
+      </div>
+    `;
+    document.body.insertBefore(navEl, document.body.firstChild);
+
+    // Mostrar usuário logado
+    fetch('/api/me').then(r=>r.json()).then(d=>{
+      const el = document.getElementById('nav-user-label');
+      if(el && d.displayName) el.textContent = d.displayName;
+    }).catch(()=>{});
+
+
+  // ── CHAT ─────────────────────────────────────────────────────
   // Injetar HTML
   const root = document.createElement('div');
   root.id = 'impak-chat-root';
