@@ -812,6 +812,10 @@ INSTRUÇÕES:
       { role: 'user', content: mensagem }
     ];
 
+    // Timeout de 25s para evitar conexão pendurada no Railway
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -824,8 +828,10 @@ INSTRUÇÕES:
         max_tokens: 1024,
         system: systemPrompt,
         messages
-      })
+      }),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
 
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
@@ -837,6 +843,48 @@ INSTRUÇÕES:
   } catch (e) {
     console.error('chat erro:', e.message);
     res.status(500).json({ erro: e.message });
+  }
+});
+
+// ── HISTÓRICO TYREDESK (email de cotações) ──────────────────────
+app.get('/api/drive/historico', auth('tyredesk'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('tyredesk_historico')
+      .select('*')
+      .order('data', { ascending: false })
+      .limit(100);
+    if (error) {
+      // Tabela pode não existir ainda — retornar vazio sem erro
+      return res.json({ ok: true, historico: [] });
+    }
+    res.json({ ok: true, historico: data || [] });
+  } catch(e) {
+    res.json({ ok: true, historico: [] });
+  }
+});
+
+app.post('/api/drive/historico', auth('tyredesk'), async (req, res) => {
+  try {
+    const { entrada } = req.body;
+    if (!entrada) return res.json({ ok: true });
+    entrada.id = entrada.id || gerarUUID();
+    const { error } = await sb()
+      .from('tyredesk_historico')
+      .insert([entrada]);
+    // Ignorar erro se tabela não existir — não é crítico
+    res.json({ ok: true });
+  } catch(e) {
+    res.json({ ok: true }); // não crítico
+  }
+});
+
+app.post('/api/drive/historico/limpar', auth('tyredesk'), async (req, res) => {
+  try {
+    await sb().from('tyredesk_historico').delete().neq('id', '');
+    res.json({ ok: true });
+  } catch(e) {
+    res.json({ ok: true });
   }
 });
 
