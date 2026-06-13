@@ -378,6 +378,7 @@ let _user = null;
 let _mix = null;        // mix importado do TyreDesk
 let _cenario = 0;       // 0=lucrobruto%, 1=lucroalvo%, 2=lucroalvoR$
 let _resultado = null;  // último cálculo
+let _cambio = { USD: 5.10, EUR: 5.70, CNY: 0.72 }; // atualizado pela PTAX
 
 // ── TABELA NCM por tipo + UF ─────────────────────────────────
 // Impostos de ENTRADA variam por NCM e UF destino
@@ -481,6 +482,8 @@ let _dolarFixado = false;
 
 function fixarDolar(){
   _dolarFixado = true;
+  const v = parseFloat(document.getElementById('dolar').value)||5.10;
+  _cambio.USD = v;
   const badge = document.getElementById('dolar-fixado-badge');
   const btn = document.getElementById('btn-ptax');
   if(badge) badge.style.display='inline';
@@ -512,6 +515,7 @@ async function buscarPTAX(){
       if(!_dolarFixado){
         document.getElementById('dolar').value = venda;
       }
+      _cambio.USD = parseFloat(venda)||5.10;
       const dataHora = new Date(cotacao.dataHoraCotacao);
       const ref = document.getElementById('ptax-ref');
       if(ref) ref.textContent = `PTAX BCB: R$ ${venda} — ${dataHora.toLocaleDateString('pt-BR')} ${dataHora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${_dolarFixado?' (não aplicado — dólar fixado)':''}`;
