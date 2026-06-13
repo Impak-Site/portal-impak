@@ -709,7 +709,7 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
 // ── HEALTH ────────────────────────────────────────────────────
 
 // Servir chat.js
-app.get('/chat.js', auth('processos'), (req, res) => {
+app.get('/chat.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.sendFile(path.join(__dirname, 'chat.js'));
 });
