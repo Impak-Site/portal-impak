@@ -153,7 +153,6 @@ function auth(modulo) {
 // ── PÁGINAS ───────────────────────────────────────────────────
 app.get('/',          auth('tyredesk'),  (req, res) => res.sendFile(path.join(__dirname, 'tyredesk.html')));
 app.get('/processos', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
-app.get('/controle',  auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle.html')));
 app.get('/importar',  auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'importar.html')));
 
 // ── API: SESSÃO ───────────────────────────────────────────────
