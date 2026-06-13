@@ -880,7 +880,16 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <!-- v1779232115 -->
 
-<script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
+<script>
+// UUID compatível com todos os browsers incluindo Safari
+function gerarUUID(){
+  if(typeof crypto!=='undefined'&&crypto.randomUUID) return crypto.randomUUID();
+  if(typeof crypto!=='undefined'&&crypto.getRandomValues){
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});
+}
+window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
 <script>
 
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
@@ -1819,7 +1828,7 @@ async function runAnalysis(){
 
     const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
     const novaAnalise = {
-      id: Date.now(),
+      id: gerarUUID(),
       data: new Date().toLocaleString('pt-BR'),
       docs: docsUsados,
       docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
@@ -1874,7 +1883,7 @@ async function runAnalysis(){
     } else {
       // Novo processo
       aplicarAnalise({
-        id: Date.now(),
+        id: gerarUUID(),
         ref: ref,
         exportador: exp || extrairExportador(result),
         obs: obs,
