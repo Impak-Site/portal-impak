@@ -532,7 +532,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 
 <!-- LOGIN SCREEN -->
-<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:flex;align-items:center;justify-content:center;z-index:9999;">
+<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:none;align-items:center;justify-content:center;z-index:9999;">
   <div style="width:400px;max-width:94vw;">
     <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;">
       <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
@@ -895,7 +895,11 @@ window.firebase={apps:[],initializeApp:function(){},firestore:function(){return 
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
-    if(!d.logado) return;
+    if(!d.logado){
+      // Não autenticado no servidor — mostrar tela de login
+      document.getElementById('loginScreen').style.display='flex';
+      return;
+    }
     var found = USERS.find(function(x){ return x.username===d.usuario; });
     // Fallback: criar usuário temporário com dados da sessão do servidor
     if(!found){
@@ -908,7 +912,10 @@ window.addEventListener('DOMContentLoaded', function(){
       };
     }
     entrarDireto(found);
-  }).catch(function(e){ console.warn('auto-login:', e.message); });
+  }).catch(function(e){
+    // Erro de rede — mostrar login como fallback
+    document.getElementById('loginScreen').style.display='flex';
+  });
 });
 
 // Login direto sem passar por campos de formulário
