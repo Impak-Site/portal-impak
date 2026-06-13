@@ -43,13 +43,13 @@ function env(key, fallback) { return process.env[key] || fallback; }
 const USUARIOS = [
   { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio'  },
   { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean'      },
-  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['processos'],            nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
-  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['processos'],            nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
-  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['processos'],            nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
-  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['processos'],            nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
-  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['processos'],            nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
-  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['processos'],            nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
-  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['processos'],            nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
+  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
+  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
+  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
+  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
+  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
+  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
+  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
 ];
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
