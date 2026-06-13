@@ -2349,8 +2349,6 @@ function abrirCalculador(){
   if(!ultimaAnalise){ toast('Faça uma análise primeiro'); return; }
   const { mix, cots, sorted, tp } = ultimaAnalise;
 
-  // Montar mix para passar ao calculador
-  // Usar o fornecedor com melhor total (primeiro do ranking)
   const melhorForn = sorted.filter(r=>r.total!==null)[0];
   if(!melhorForn){ toast('Selecione pelo menos um fornecedor na análise'); return; }
 
@@ -2367,27 +2365,25 @@ function abrirCalculador(){
     totalFob += subtotal;
     qtdTotal += qtd;
     itens.push({
-      size: m.medida,
-      marca: cot.marca||forn,
-      pattern: cot.pattern||'',
-      qtd, preco: cot.preco,
+      size:     m.medida,
+      marca:    cot.m || forn,      // campo correto: .m não .marca
+      pattern:  cot.pat || '',      // campo correto: .pat não .pattern
+      qtd,
+      preco:    cot.preco,
       subtotal,
     });
   });
 
-  // Detectar tipo automaticamente pelo primeiro item
-  const primeiroTipo = (cots.find(c=>c.forn===forn)?.tipo)||'TBR';
-
+  // tp já vem do ultimaAnalise (TBR, PCR, AGR, OTR)
   const mixData = {
     itens,
-    totalFob,
+    totalFob: Math.round(totalFob * 100) / 100,
     qtdTotal,
-    tipo: primeiroTipo,
+    tipo:      tp || 'PCR',
     fornecedor: forn,
-    data: new Date().toISOString(),
+    data:      new Date().toISOString(),
   };
 
-  // Salvar no sessionStorage para o calculador ler
   try{
     sessionStorage.setItem('impak_mix_calc', JSON.stringify(mixData));
     location.href = '/calculador';
