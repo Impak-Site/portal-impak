@@ -389,7 +389,7 @@ select.form-input{cursor:pointer;}
 function gerarUUID(){
   // Usar crypto.randomUUID se disponível (Chrome, Firefox, Edge)
   if(typeof crypto !== 'undefined' && crypto.randomUUID){
-    return gerarUUID();
+    return crypto.randomUUID();
   }
   // Fallback para Safari e browsers mais antigos
   if(typeof crypto !== 'undefined' && crypto.getRandomValues){
@@ -519,12 +519,18 @@ async function salvarProcesso(proc){
   proc.fase = calcularFase(proc);
 
   showToast('Salvando...','info');
-  const r = await fetch('/api/controle/v2/processo', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ processo: proc })
-  });
-  const d = await r.json();
+  let r, d;
+  try{
+    r = await fetch('/api/controle/v2/processo', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ processo: proc })
+    });
+    d = await r.json();
+  } catch(netErr){
+    showToast('Erro de rede ao salvar: '+netErr.message,'err');
+    return false;
+  }
   if(d.ok){
     showToast('✓ Salvo','ok');
     // Criar notificação se houver alerta
@@ -829,6 +835,7 @@ function renderStats(){
     el.textContent = n;
     el.style.display = n > 0 ? 'inline' : 'none';
   });
+  const badgeAlerta = document.getElementById('badge-alertas');
   if(badgeAlerta){ badgeAlerta.textContent=comAlerta; badgeAlerta.style.display=comAlerta>0?'block':'none'; }
   document.getElementById('badge-total').textContent = total;
 
@@ -1708,7 +1715,7 @@ async function importarPlanilha(input){
 
         let fase='PI';
         if(dataRic)             fase='FINALIZADO';
-        else if(retirada)       fase='FATURAMENTO';
+        else if(retirada)       fase='CARREGAMENTO';  // retirada = carregamento já feito
         else if(presenca||chegada) fase='DESEMBARCADO';
         else if(embarque)       fase='EMBARCADO';
         else if(prevPront||prontidao) fase='AGUARDANDO_EMBARQUE';
