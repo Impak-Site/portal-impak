@@ -897,7 +897,17 @@ window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
     if(!d.logado) return;
     var found = USERS.find(function(x){ return x.username===d.usuario; });
-    if(found) entrarDireto(found);
+    // Fallback: criar usuário temporário com dados da sessão do servidor
+    if(!found){
+      found = {
+        username: d.usuario,
+        email: d.usuario+'@impak.com.br',
+        password: '',
+        role: d.role||'analista',
+        displayName: d.displayName||d.usuario
+      };
+    }
+    entrarDireto(found);
   }).catch(function(e){ console.warn('auto-login:', e.message); });
 });
 
@@ -1129,6 +1139,10 @@ var USERS = [
   { username: 'paula',     email: 'paula@impak.com.br',       password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
   { username: 'bianca',    email: 'bianca@impak.com.br',      password: 'Bianca@2026',        role: 'gerente',  displayName: 'Bianca'    },
   { username: 'emanuelly', email: 'importacao1@impak.com.br', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
+  { username: 'italo',     email: 'italo@impak.com.br',       password: 'Italo@2026',         role: 'analista', displayName: 'Italo'     },
+  { username: 'maria',     email: 'maria@impak.com.br',       password: 'Maria@2026',         role: 'analista', displayName: 'Maria'     },
+  { username: 'joyce',     email: 'joyce@impak.com.br',       password: 'Joyce@2026',         role: 'analista', displayName: 'Joyce'     },
+  { username: 'neide',     email: 'neide@impak.com.br',       password: 'Neide@2026',         role: 'analista', displayName: 'Neide'     },
 ];
 
 var _currentUser = null;
