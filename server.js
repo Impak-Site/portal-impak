@@ -707,6 +707,139 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
 });
 
 // ── HEALTH ────────────────────────────────────────────────────
+
+// Servir chat.js
+app.get('/chat.js', auth('processos'), (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'chat.js'));
+});
+
+// ════════════════════════════════════════════════════════════════
+// CHAT COM IA — consulta inteligente sobre processos
+// ════════════════════════════════════════════════════════════════
+app.post('/api/chat', auth('processos'), async (req, res) => {
+  try {
+    const { mensagem, historico = [] } = req.body;
+    if (!mensagem) return res.status(400).json({ erro: 'Mensagem vazia' });
+
+    // Buscar todos os processos do banco para contexto
+    const { data: processos, error } = await sb()
+      .from('controle_processos')
+      .select('*')
+      .order('updated_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    const hoje = new Date();
+    const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO');
+    const finalizados = (processos || []).filter(p => p.fase === 'FINALIZADO');
+
+    // Calcular demurrage para cada processo ativo
+    function demDias(p) {
+      if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
+      const d = new Date(p.demurrage_vencimento);
+      return Math.ceil((d - hoje) / 86400000);
+    }
+
+    // Resumo executivo para contexto da IA
+    const porFase = {};
+    ativos.forEach(p => { porFase[p.fase] = (porFase[p.fase] || 0) + 1; });
+
+    const demCrit = ativos.filter(p => { const d = demDias(p); return d !== null && d <= 5; });
+    const etaVenc = ativos.filter(p => p.eta && p.fase === 'EMBARCADO' && new Date(p.eta) < hoje);
+    const semana  = new Date(hoje); semana.setDate(hoje.getDate() + 7);
+    const etaSem  = ativos.filter(p => p.eta && new Date(p.eta) >= hoje && new Date(p.eta) <= semana && p.fase === 'EMBARCADO');
+    const piVenc  = ativos.filter(p => p.pi_data_saldo && !p.pi_pago && new Date(p.pi_data_saldo) < hoje);
+
+    // Montar contexto compacto (evitar context window enorme)
+    const ctx = {
+      data_hoje: hoje.toLocaleDateString('pt-BR'),
+      total_processos: processos.length,
+      em_andamento: ativos.length,
+      finalizados: finalizados.length,
+      por_fase: porFase,
+      alertas: {
+        demurrage_critico: demCrit.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, armador: p.armador,
+          dias: demDias(p), container: p.container
+        })),
+        eta_vencido: etaVenc.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, eta: p.eta, armador: p.armador
+        })),
+        pi_vencida: piVenc.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, vencimento: p.pi_data_saldo,
+          valor: p.pi_valor_usd
+        })),
+        chegando_semana: etaSem.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, eta: p.eta, armador: p.armador
+        }))
+      },
+      processos_ativos: ativos.map(p => ({
+        ref: p.referencia, fornecedor: p.fornecedor, cliente: p.cliente,
+        fase: p.fase, eta: p.eta, hbl: p.hbl, mbl: p.mbl,
+        container: p.container, armador: p.armador, navio: p.navio,
+        numero_di: p.numero_di, pi_valor_usd: p.pi_valor_usd,
+        pi_pago: p.pi_pago, pi_data_saldo: p.pi_data_saldo,
+        nf_entrada_numero: p.nf_entrada_numero, nf_saida_numero: p.nf_saida_numero,
+        nf_saida_valor: p.nf_saida_valor, obs: p.obs,
+        demurrage_vencimento: p.demurrage_vencimento,
+        data_embarque: p.data_embarque, data_chegada: p.data_chegada,
+      }))
+    };
+
+    const systemPrompt = `Você é o assistente de importação da IMPAK COMERCIAL IMPORTADORA LTDA, especializado em pneus importados da Ásia (Vietnam e China) para o Brasil.
+
+Você tem acesso em tempo real a todos os processos de importação. Responda de forma direta, objetiva e em português brasileiro.
+
+DADOS ATUAIS (${hoje.toLocaleDateString('pt-BR')}):
+${JSON.stringify(ctx, null, 2)}
+
+INSTRUÇÕES:
+- Responda perguntas sobre status de processos, ETAs, demurrage, pagamentos e faturamento
+- Dê alertas proativos quando identificar riscos (demurrage, pagamentos vencidos, ETA vencido)
+- Use os dados reais acima para responder com precisão
+- Quando listar processos, use o formato: REF | FORNECEDOR | FASE | detalhe relevante
+- Seja conciso mas completo
+- Sugira ações quando pertinente (ex: "Recomendo contatar o armador X sobre o container Y")
+- Valores em USD mantenha em USD, valores em BRL no formato R$ X.XXX,XX`;
+
+    // Chamar Claude API
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada');
+
+    const messages = [
+      ...historico.slice(-8), // últimas 8 mensagens para contexto
+      { role: 'user', content: mensagem }
+    ];
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages
+      })
+    });
+
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const resposta = data.content?.[0]?.text || 'Não consegui processar sua pergunta.';
+    console.log(`chat: ${req.session.usuario} → "${mensagem.slice(0,50)}..."`);
+
+    res.json({ ok: true, resposta });
+  } catch (e) {
+    console.error('chat erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 app.get('/health', async (req, res) => {
   const url = process.env.SUPABASE_URL || '';
   const key = process.env.SUPABASE_KEY || '';
