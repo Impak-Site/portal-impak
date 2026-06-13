@@ -147,9 +147,9 @@
   // ── NAV GLOBAL ──────────────────────────────────────────────
 
     const navModulos = [
-      { label: '📦 TyreDesk',    href: '/',           key: 'tyredesk'    },
       { label: '🚢 Controle',    href: '/controle',   key: 'controle'    },
       { label: '📄 Conferência', href: '/processos',  key: 'processos'   },
+      { label: '📦 TyreDesk',    href: '/',           key: 'tyredesk'    },
       { label: '💰 Calculador',  href: '/calculador', key: 'calculador'  },
     ];
 
