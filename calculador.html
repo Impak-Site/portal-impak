@@ -258,8 +258,18 @@ input.highlighted{border-color:var(--ac);background:rgba(26,127,212,.04);font-we
         <input type="number" id="frete_usd" value="3650" step="0.01" oninput="calcular()">
       </div>
       <div class="form-group">
+        <label>Seguro (USD) <span style="font-size:9px;color:var(--dim)">~0,05% FOB</span></label>
+        <input type="number" id="seguro_usd" step="0.01" placeholder="auto" oninput="calcular()">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
         <label>Qtd Containers</label>
         <input type="number" id="qtd_containers" value="1" min="1" oninput="calcular()">
+      </div>
+      <div class="form-group">
+        <label>Custos Diversos (R$)</label>
+        <input type="number" id="custos_diversos" value="500" oninput="calcular()">
       </div>
     </div>
     <div class="form-row">
@@ -267,6 +277,12 @@ input.highlighted{border-color:var(--ac);background:rgba(26,127,212,.04);font-we
         <label>Taxa C.E. (USD)</label>
         <input type="number" id="taxa_ce" value="360" oninput="calcular()">
       </div>
+      <div class="form-group">
+        <label>Qtd Containers</label>
+        <input type="number" id="qtd_containers" value="1" min="1" oninput="calcular()">
+      </div>
+    </div>
+    <div class="form-row">
       <div class="form-group">
         <label>Custos Diversos (R$)</label>
         <input type="number" id="custos_diversos" value="500" oninput="calcular()">
@@ -580,150 +596,215 @@ function calcular(){
   const taxa_ce_usd = parseFloat(document.getElementById('taxa_ce').value)||0;
   const qtd_cont    = parseInt(document.getElementById('qtd_containers').value)||1;
   const qtd_pneus   = parseInt(document.getElementById('qtd_pneus').value)||1;
-
-  // Capacidade real por tipo (pneus por 40HC)
-  const CAP_CONTAINER = {TBR:264, PCR:1100, AGR:200, OTR:100};
-  const capUnit = CAP_CONTAINER[tipo] || 1100;
-  const contNecessarios = Math.ceil(qtd_pneus / capUnit);
-  const pctContainer = Math.round((qtd_pneus / (capUnit * qtd_cont)) * 100);
   const tipo        = document.getElementById('tipo_pneu').value;
   const uf          = document.getElementById('uf_destino').value;
   const tem_st      = document.getElementById('tem_st').value === 'SIM';
   const margem_in   = parseFloat(document.getElementById('margem_valor').value)||4;
   const custos_div  = parseFloat(document.getElementById('custos_diversos').value)||0;
 
+  // Capacidade real por tipo (pneus por 40HC)
+  const CAP_CONTAINER = {TBR:264, PCR:1100, AGR:200, OTR:100};
+  const capUnit = CAP_CONTAINER[tipo] || 1100;
+  const contNecessarios = Math.ceil(qtd_pneus / capUnit);
+  const pctContainer = Math.round((qtd_pneus / (capUnit * qtd_cont)) * 100);
+
   if(!fob_usd || !dolar){ return; }
 
   const ncmInfo = NCM_MAP[tipo];
-  const stInfo  = (ST_TABLE[tipo]||{})[uf] || {mva:0.5,aliq:0.17};
-  const rbc     = getRBC(uf);
-  const aliqInter = getAliqInter(uf);
+  const stInfo  = (ST_TABLE[tipo]||{})[uf] || {mva:0.5, aliq:0.17};
+  const aliq_icms_inter = getAliqInter(uf); // alíquota interestadual (4% SC→outros, 12% SC→SC)
 
-  // ── 1. CIF ─────────────────────────────────────────────────
-  const seguro_usd   = fob_usd * 0.003;  // 0,3% do FOB
-  const cif_usd      = fob_usd + frete_usd + seguro_usd;
-  const cif_brl      = cif_usd * dolar;
-  const fob_brl      = fob_usd * dolar;
-  const frete_brl    = frete_usd * dolar;
+  // ── 1. SEGURO ──────────────────────────────────────────────────
+  // Valor declarado pelo usuário ou 0,05% do FOB (apólice típica)
+  // Planilha usa valor real da apólice (~$19 USD por container típico)
+  const seguro_input = parseFloat(document.getElementById('seguro_usd')?.value);
+  const seguro_usd   = seguro_input > 0 ? seguro_input : (fob_usd * 0.0005);
 
-  // ── 2. Impostos de ENTRADA ──────────────────────────────────
-  const ii_val       = cif_usd * ncmInfo.ii * dolar;
-  const base_ipi     = (cif_usd * dolar) + ii_val;
-  const ipi_val      = base_ipi * ncmInfo.ipi;
-  const rbc_val      = cif_brl * rbc;
-  const pis_e_val    = cif_brl * 0.0268;
-  const cof_e_val    = cif_brl * 0.1235;
-  // ICMS entrada por dentro: aliq / (1 - aliq)
-  const icms_aliq    = aliqInter;
-  const base_icms_e  = cif_brl + ii_val + ipi_val + pis_e_val + cof_e_val;
-  const icms_e_pct   = icms_aliq / (1 - icms_aliq);
-  const icms_e_val   = cif_brl * (icms_aliq/(1-icms_aliq));
-  const ibs_e_val    = cif_brl * 0.001;
-  const cbs_e_val    = cif_brl * 0.009;
+  // ── 2. CIF ─────────────────────────────────────────────────────
+  // Planilha: FOB × câmbio_fob, Frete/Seguro × câmbio_frete
+  // O campo "Dólar" é o câmbio_fob (médio). Câmbio_frete ≈ câmbio_fob+0.1 na prática
+  // Para precisão: usamos o mesmo câmbio para ambos (diferença de 0.1% no resultado)
+  const fob_brl    = fob_usd    * dolar;
+  const frete_brl  = frete_usd  * dolar;
+  const seguro_brl = seguro_usd * dolar;
+  const cif_brl    = fob_brl + frete_brl + seguro_brl;
 
-  const total_impostos_entrada = ii_val + ipi_val + rbc_val + pis_e_val + cof_e_val + icms_e_val + ibs_e_val + cbs_e_val;
+  // ── 3. BASE DE CÁLCULO DOS IMPOSTOS ────────────────────────────
+  // REGRA DA PLANILHA: a Taxa CE entra no CIF para cálculo dos impostos
+  // (mesmo que não entre no CIF para a NF)
+  // Base = (FOB + FRETE + SEGURO + TAXA_CE) × câmbio_fob
+  const cif_usd_imp  = fob_usd + frete_usd + seguro_usd + taxa_ce_usd;
+  const base_imp_brl = cif_usd_imp * dolar;  // base uniforme para todos os impostos
 
-  // ── 3. Taxas fixas (por container) ─────────────────────────
-  const n = qtd_cont;
+  // Taxa CE em BRL (custo operacional)
   const taxa_ce_brl  = taxa_ce_usd * dolar;
-  const taxa_siscomex = 480 * n;
-  const marinha      = 1712 * n;
-  const armazenagem  = 2088 * n;
-  const capatazia    = 1100 * n;
-  const lib_bl       = 650 * n;
-  const add_costs    = 95 * dolar * n;
-  const logistic     = 32.157 * dolar * n;
-  const trs          = 19.608 * dolar * n;
-  const tsc          = 35 * dolar * n;
-  const drop_off     = 25 * dolar * n;
-  const isps         = 25 * dolar * n;
-  const iof          = 138.662 * dolar * n;
-  const descons      = 408 * n;
-  const taxa_agente  = 476 * n;
-  const lavacao      = 550 * n;
-  const admin        = 300 * n;
-  const despachante  = 1650 * n;
-  const sda          = 650 * n;
-  const emissao_li   = 153.53 * n;
 
-  const total_taxas = taxa_ce_brl + taxa_siscomex + marinha + armazenagem + capatazia +
-    lib_bl + add_costs + logistic + trs + tsc + drop_off + isps + iof + descons +
-    taxa_agente + lavacao + admin + despachante + sda + emissao_li + custos_div;
+  // ── 4. IMPOSTOS DE ENTRADA ─────────────────────────────────────
+  // II — sobre base (inclui taxa CE)
+  const ii_val      = base_imp_brl * ncmInfo.ii;
 
-  const custo_total = cif_brl + total_impostos_entrada + total_taxas;
+  // IPI entrada — sobre (base + II)
+  const base_ipi    = base_imp_brl + ii_val;
+  const ipi_e_val   = base_ipi * ncmInfo.ipi;
 
-  // ── 4. Comissões ────────────────────────────────────────────
-  const com_br_ativo  = document.getElementById('com_br_ativo').value === 'SIM';
-  const com_br_pct    = com_br_ativo ? (parseFloat(document.getElementById('com_br_pct').value)||0)/100 : 0;
+  // PIS/COFINS entrada — sobre base
+  const pis_e_val   = base_imp_brl * 0.0268;
+  const cof_e_val   = base_imp_brl * 0.1235;
+
+  // IBS/CBS entrada — sobre (base + II + IPI)
+  const base_ibs    = base_ipi + ipi_e_val;
+  const ibs_e_val   = base_ibs * 0.001;
+  const cbs_e_val   = base_ibs * 0.009;
+
+  // ICMS entrada — alíquota efetiva estadual (benefício fiscal ≈ 1.4%)
+  const icms_e_val  = base_imp_brl * SAIDA.icms_proprio;
+
+  // RBC — 8,5% sobre base, zero para SC→SC
+  const rbc_val     = base_imp_brl * getRBC(uf);
+
+  // REGRA FISCAL IMPORTANTE:
+  // PIS/COFINS/IPI/ICMS/IBS/CBS entrada = CRÉDITOS RECUPERÁVEIS → NÃO entram no custo
+  // Apenas II + RBC são não-recuperáveis → entram no custo
+  const imp_custo   = ii_val + rbc_val;
+  const total_impostos_entrada = ii_val + ipi_e_val + pis_e_val + cof_e_val +
+                                  icms_e_val + ibs_e_val + cbs_e_val + rbc_val;
+
+  // ── 4. TAXAS FIXAS ─────────────────────────────────────────────
+  const n = qtd_cont;
+  const taxa_siscomex  = 480   * n;
+  const marinha        = 1712  * n;
+  const armazenagem    = 2088  * n;
+  const emissao_li     = 153.53 * n;
+  const baixa_patio    = 500   * n;
+  const capatazia      = 1100  * n;
+  const lib_bl         = 650   * n;
+  const add_costs      = 95    * dolar * n;
+  const logistic       = 32.157 * dolar * n;
+  const trs            = 19.608 * dolar * n;
+  const tsc            = 35    * dolar * n;
+  const drop_off       = 25    * dolar * n;
+  const isps           = 25    * dolar * n;
+  const iof            = 138.662 * dolar * n;
+  const descons        = 80    * dolar * n;
+  const taxa_agente    = 476   * n;
+  const lavacao        = 550   * n;
+  const admin          = 300   * n;
+  const despachante    = 1650  * n;
+  const sda            = 650   * n;
+
+  // Taxa CE e Seguro como custos operacionais
+  // (Taxa CE cobrada separado, Seguro = apólice total)
+  // Taxa CE: já entrou na base de impostos acima
+  // O custo da CE em BRL é adicionado aqui como custo operacional
+  const total_taxas = taxa_ce_brl + taxa_siscomex + marinha + armazenagem + emissao_li +
+    baixa_patio + capatazia + lib_bl + add_costs + logistic + trs + tsc + drop_off +
+    isps + iof + descons + taxa_agente + lavacao + admin + despachante + sda +
+    seguro_brl + custos_div;
+
+  // ── 5. CUSTO TOTAL ─────────────────────────────────────────────
+  // CUSTO = CIF_BRL + II (não recuperável) + RBC + TAXAS FIXAS
+  // PIS/COFINS/IPI/ICMS/IBS/CBS = créditos fiscais, não entram no custo
+  const custo_total = cif_brl + imp_custo + total_taxas;
+
+  // ── 6. COMISSÕES ───────────────────────────────────────────────
+  const com_br_ativo   = document.getElementById('com_br_ativo').value === 'SIM';
+  const com_br_pct     = com_br_ativo ? (parseFloat(document.getElementById('com_br_pct').value)||0)/100 : 0;
   const com_china_ativo = document.getElementById('com_china_ativo').value === 'SIM';
   const com_china_tipo  = document.getElementById('com_china_tipo')?.value||'';
   const com_china_pct   = com_china_ativo ? (parseFloat(document.getElementById('com_china_pct').value)||0)/100 : 0;
   const com_china_dentro = com_china_ativo && com_china_tipo === 'DENTRO_CHINA';
   const com_pct_total   = com_br_pct + (com_china_dentro ? com_china_pct : 0);
 
-  // ── 5. Faturamento por cenário ──────────────────────────────
-  const impostos_saida_pct = SAIDA.pis + SAIDA.cofins + SAIDA.ipi + SAIDA.icms_proprio;
-  const deducoes_pct = impostos_saida_pct + com_pct_total;
+  // ── 7. FATURAMENTO ─────────────────────────────────────────────
+  // Fórmula da planilha SANTA HELENA:
+  // Faturamento = Valor_Produto × (1 + IPI%)
+  // Valor_Produto calculado por dentro com todos os impostos de saída e lucro
+  //
+  // Percentuais reais sobre faturamento (com IPI por fora):
+  // c_pis   = (1/(1+IPI%)) × (1 - aliq_ICMS_inter) × PIS%
+  // c_cof   = (1/(1+IPI%)) × (1 - aliq_ICMS_inter) × COFINS%
+  // c_ipi   = IPI% / (1 + IPI%)
+  // c_icms  = (1/(1+IPI%)) × ICMS_proprio%
+  // c_comis = comis% (sobre fat)
+  // c_lucro = lucro% (sobre fat)
+  // fat = custo / (1 - c_pis - c_cof - c_ipi - c_icms - c_comis - c_lucro)
+
+  const ipi_s_aliq   = SAIDA.ipi;     // 1.3%
+  const icms_p_aliq  = SAIDA.icms_proprio; // 1.4%
 
   let faturamento = 0;
-  if(_cenario === 0){
-    // Lucro Bruto %: fat * (1 - deducoes - lucro) = custo
-    const lucro_pct = margem_in/100;
-    faturamento = custo_total / (1 - deducoes_pct - lucro_pct);
-  } else if(_cenario === 1){
-    // Lucro Alvo % (margem limpa antes de IRPJ/CSLL)
-    const lucro_pct = margem_in/100;
-    faturamento = custo_total / (1 - deducoes_pct - lucro_pct);
+  if(_cenario === 2){
+    // Lucro Alvo R$: fat iterativo
+    let f = custo_total + margem_in + custo_total * 0.15; // chute inicial
+    for(let i=0;i<50;i++){
+      const vp = f/(1+ipi_s_aliq);
+      const ded = vp*(1-aliq_icms_inter)*SAIDA.pis + vp*(1-aliq_icms_inter)*SAIDA.cofins +
+                  vp*ipi_s_aliq + vp*icms_p_aliq + f*com_pct_total;
+      const lucro_calc = f - ded - custo_total;
+      if(Math.abs(lucro_calc - margem_in) < 0.01) break;
+      f = f + (margem_in - lucro_calc) * 0.5;
+    }
+    faturamento = f;
   } else {
-    // Lucro Alvo R$
-    faturamento = custo_total + margem_in + (custo_total * deducoes_pct);
+    // Lucro % sobre faturamento
+    const lucro_pct = margem_in/100;
+    const c_pis    = (1/(1+ipi_s_aliq)) * (1-aliq_icms_inter) * SAIDA.pis;
+    const c_cof    = (1/(1+ipi_s_aliq)) * (1-aliq_icms_inter) * SAIDA.cofins;
+    const c_ipi    = ipi_s_aliq / (1+ipi_s_aliq);
+    const c_icms   = (1/(1+ipi_s_aliq)) * icms_p_aliq;
+    const divisor  = 1 - c_pis - c_cof - c_ipi - c_icms - com_pct_total - lucro_pct;
+    faturamento    = custo_total / divisor;
   }
 
-  // ── 6. Impostos de SAÍDA ───────────────────────────────────
-  const pis_s_val    = faturamento * SAIDA.pis;
-  const cof_s_val    = faturamento * SAIDA.cofins;
-  const ipi_s_val    = faturamento * SAIDA.ipi;
-  const icms_p_val   = faturamento * SAIDA.icms_proprio;
+  // ── 8. IMPOSTOS DE SAÍDA ───────────────────────────────────────
+  const val_produto  = faturamento / (1 + ipi_s_aliq);
+  const base_imp_s   = val_produto * (1 - aliq_icms_inter); // base PIS/COFINS
+  const pis_s_val    = base_imp_s * SAIDA.pis;
+  const cof_s_val    = base_imp_s * SAIDA.cofins;
+  const ipi_s_val    = val_produto * ipi_s_aliq;
+  const icms_p_val   = val_produto * icms_p_aliq;
   const com_br_val   = faturamento * com_br_pct;
   const com_china_val = faturamento * (com_china_dentro ? com_china_pct : 0);
   const total_deducoes = pis_s_val + cof_s_val + ipi_s_val + icms_p_val + com_br_val + com_china_val;
 
-  // ── 7. Com S.T. ────────────────────────────────────────────
+  // ── 9. ICMS S.T. ───────────────────────────────────────────────
   let icms_st_val = 0, base_st = 0;
   if(tem_st && stInfo.mva > 0){
-    base_st    = faturamento * (1 + stInfo.mva);
-    const icms_proprio_nf = faturamento * aliqInter;
+    base_st     = faturamento * (1 + stInfo.mva);
+    const icms_proprio_nf = val_produto * aliq_icms_inter;
     icms_st_val = (base_st * stInfo.aliq) - icms_proprio_nf;
   }
 
-  // ── 8. Lucro ───────────────────────────────────────────────
+  // ── 10. LUCRO E RESULTADO ──────────────────────────────────────
   const receita_liq  = faturamento - total_deducoes;
   const lucro_val    = receita_liq - custo_total;
-  const lucro_pct    = lucro_val / faturamento * 100;
-
-  // ── 9. Por unidade ─────────────────────────────────────────
+  const lucro_pct_real = lucro_val / faturamento * 100;
+  const fat_com_st   = faturamento + icms_st_val;
   const preco_unit   = faturamento / qtd_pneus;
   const custo_unit   = custo_total / qtd_pneus;
-  const fat_com_st   = faturamento + icms_st_val;
-
-  // ── 10. Fator (para referência) ───────────────────────────
-  const fator = fob_brl > 0 ? faturamento / fob_brl : 0;
+  const fator        = fob_brl > 0 ? faturamento / fob_brl : 0;
 
   _resultado = {
-    dolar, fob_usd, fob_brl, frete_usd, frete_brl, seguro_usd,
-    capUnit, contNecessarios, pctContainer, qtd_containers: qtd_cont,
-    cif_usd, cif_brl, tipo, uf, tem_st, ncmInfo, stInfo,
-    ii_val, ipi_val, rbc_val, pis_e_val, cof_e_val, icms_e_val, ibs_e_val, cbs_e_val,
-    total_impostos_entrada,
-    taxa_ce_brl, taxa_siscomex, marinha, armazenagem, capatazia, lib_bl,
+    dolar, fob_usd, fob_brl, frete_usd, frete_brl, seguro_usd, seguro_brl,
+    cif_usd, cif_brl, taxa_ce_brl, tipo, uf, tem_st, ncmInfo, stInfo,
+    // Impostos entrada (para exibição — são créditos)
+    ii_val, ipi_e_val, rbc_val, pis_e_val, cof_e_val, icms_e_val, ibs_e_val, cbs_e_val,
+    imp_custo, total_impostos_entrada,
+    // Taxas
+    taxa_siscomex, marinha, armazenagem, emissao_li, baixa_patio, capatazia, lib_bl,
     add_costs, logistic, trs, tsc, drop_off, isps, iof, descons,
-    taxa_agente, lavacao, admin, despachante, sda, emissao_li, custos_div,
+    taxa_agente, lavacao, admin, despachante, sda, custos_div,
     total_taxas, custo_total,
+    // Saída
+    val_produto, base_imp_s,
     pis_s_val, cof_s_val, ipi_s_val, icms_p_val, com_br_val, com_china_val,
-    total_deducoes, faturamento, receita_liq, lucro_val, lucro_pct,
+    total_deducoes, faturamento, receita_liq, lucro_val,
+    lucro_pct: lucro_pct_real,
     icms_st_val, base_st, fat_com_st,
     preco_unit, custo_unit, qtd_pneus, fator,
+    capUnit, contNecessarios, pctContainer, qtd_containers: qtd_cont,
     com_br_pct, com_br_ativo, com_china_ativo, com_china_tipo, com_china_pct,
+    aliq_icms_inter,
     cliente: document.getElementById('cliente').value,
     tipo_importacao: document.getElementById('tipo_importacao').value,
   };
@@ -731,6 +812,7 @@ function calcular(){
   renderResultado(_resultado);
   document.getElementById('btn-export').disabled = false;
 }
+
 
 // ════════════════════════════════════════════════════════════════
 // RENDER RESULTADO
@@ -821,15 +903,15 @@ function renderResultado(r){
           </div>
           <div class="detail-section">
             <div class="detail-title">🧾 Impostos de Entrada</div>
-            <div class="detail-row neg"><span class="lbl">II (${(r.ncmInfo.ii*100).toFixed(0)}%)</span><span class="val">${brl(r.ii_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">IPI (${(r.ncmInfo.ipi*100).toFixed(2)}%)</span><span class="val">${brl(r.ipi_val)}</span></div>
-            ${r.rbc_val>0?`<div class="detail-row neg"><span class="lbl">RBC 8,5%</span><span class="val">${brl(r.rbc_val)}</span></div>`:''}
-            <div class="detail-row neg"><span class="lbl">PIS entrada 2,68%</span><span class="val">${brl(r.pis_e_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">COFINS entrada 12,35%</span><span class="val">${brl(r.cof_e_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">ICMS ${(getAliqInter(r.uf)*100).toFixed(0)}% (interestadual)</span><span class="val">${brl(r.icms_e_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">IBS 0,1%</span><span class="val">${brl(r.ibs_e_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">CBS 0,9%</span><span class="val">${brl(r.cbs_e_val)}</span></div>
-            <div class="detail-row total"><span>Total Impostos Entrada</span><span class="val">${brl(r.total_impostos_entrada)}</span></div>
+            <div class="detail-row neg"><span class="lbl">II (${(r.ncmInfo.ii*100).toFixed(0)}%) ← CUSTO</span><span class="val">${brl(r.ii_val)}</span></div>
+            ${r.rbc_val>0?`<div class="detail-row neg"><span class="lbl">RBC 8,5% ← CUSTO</span><span class="val">${brl(r.rbc_val)}</span></div>`:''}
+            <div class="detail-row" style="opacity:.65"><span class="lbl">IPI (${(r.ncmInfo.ipi*100).toFixed(2)}%) — crédito</span><span class="val">${brl(r.ipi_e_val)}</span></div>
+            <div class="detail-row" style="opacity:.65"><span class="lbl">PIS 2,68% — crédito</span><span class="val">${brl(r.pis_e_val)}</span></div>
+            <div class="detail-row" style="opacity:.65"><span class="lbl">COFINS 12,35% — crédito</span><span class="val">${brl(r.cof_e_val)}</span></div>
+            <div class="detail-row" style="opacity:.65"><span class="lbl">ICMS 1,4% — crédito</span><span class="val">${brl(r.icms_e_val)}</span></div>
+            <div class="detail-row" style="opacity:.65"><span class="lbl">IBS 0,1% — crédito</span><span class="val">${brl(r.ibs_e_val)}</span></div>
+            <div class="detail-row" style="opacity:.65"><span class="lbl">CBS 0,9% — crédito</span><span class="val">${brl(r.cbs_e_val)}</span></div>
+            <div class="detail-row total"><span>Não-recuperáveis (II${r.rbc_val>0?'+RBC':''})</span><span class="val">${brl(r.imp_custo)}</span></div>
           </div>
           <div class="detail-section">
             <div class="detail-title">💼 Taxas e Despesas</div>
@@ -847,6 +929,9 @@ function renderResultado(r){
           </div>
           <div class="detail-section">
             <div class="detail-title" style="color:var(--err)">💰 Custo Total de Importação</div>
+            <div class="detail-row"><span class="lbl">CIF BRL</span><span class="val">${brl(r.cif_brl)}</span></div>
+            <div class="detail-row neg"><span class="lbl">II + RBC (não-recuperáveis)</span><span class="val">${brl(r.imp_custo)}</span></div>
+            <div class="detail-row"><span class="lbl">Taxas fixas</span><span class="val">${brl(r.total_taxas)}</span></div>
             <div class="detail-row total"><span>CUSTO TOTAL</span><span class="val">${brl(r.custo_total)}</span></div>
           </div>
         </div>
@@ -855,13 +940,14 @@ function renderResultado(r){
         <div>
           <div class="detail-section">
             <div class="detail-title">📤 Venda ao Cliente (Faturamento)</div>
-            <div class="detail-row"><span class="lbl">Faturamento bruto</span><span class="val">${brl(r.faturamento)}</span></div>
-            <div class="detail-row neg"><span class="lbl">PIS saída 2%</span><span class="val">- ${brl(r.pis_s_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">COFINS saída 9,5%</span><span class="val">- ${brl(r.cof_s_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">IPI saída 1,3%</span><span class="val">- ${brl(r.ipi_s_val)}</span></div>
-            <div class="detail-row neg"><span class="lbl">ICMS próprio 1,4%</span><span class="val">- ${brl(r.icms_p_val)}</span></div>
-            ${r.com_br_val>0?`<div class="detail-row neg"><span class="lbl">Comissão BR ${(r.com_br_pct*100).toFixed(1)}%</span><span class="val">- ${brl(r.com_br_val)}</span></div>`:''}
-            ${r.com_china_val>0?`<div class="detail-row neg"><span class="lbl">Comissão China ${(r.com_china_pct*100).toFixed(1)}% (dentro)</span><span class="val">- ${brl(r.com_china_val)}</span></div>`:''}
+            <div class="detail-row"><span class="lbl">Valor Produto (base NF)</span><span class="val">${brl(r.val_produto)}</span></div>
+            <div class="detail-row"><span class="lbl">IPI saída 1,3% (por fora)</span><span class="val">+ ${brl(r.ipi_s_val)}</span></div>
+            <div class="detail-row total"><span>Faturamento Total NF</span><span class="val">${brl(r.faturamento)}</span></div>
+            <div class="detail-row neg"><span class="lbl">(-) PIS 2% × base</span><span class="val">- ${brl(r.pis_s_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">(-) COFINS 9,5% × base</span><span class="val">- ${brl(r.cof_s_val)}</span></div>
+            <div class="detail-row neg"><span class="lbl">(-) ICMS próprio 1,4%</span><span class="val">- ${brl(r.icms_p_val)}</span></div>
+            ${r.com_br_val>0?`<div class="detail-row neg"><span class="lbl">(-) Comissão BR ${(r.com_br_pct*100).toFixed(1)}%</span><span class="val">- ${brl(r.com_br_val)}</span></div>`:''}
+            ${r.com_china_val>0?`<div class="detail-row neg"><span class="lbl">(-) Comissão China ${(r.com_china_pct*100).toFixed(1)}%</span><span class="val">- ${brl(r.com_china_val)}</span></div>`:''}
             <div class="detail-row total"><span>Receita Líquida</span><span class="val">${brl(r.receita_liq)}</span></div>
             <div class="detail-row total"><span>(-) Custo Total</span><span class="val" style="color:var(--err)">- ${brl(r.custo_total)}</span></div>
             <div class="detail-row total ${lucroColor}"><span>Lucro Bruto IMPAK</span><span class="val ${lucroColor}">${brl(r.lucro_val)} (${pct(r.lucro_pct)})</span></div>
