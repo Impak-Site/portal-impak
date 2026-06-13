@@ -251,19 +251,20 @@ select.form-input{cursor:pointer;}
   </div>
   <div class="sidebar-section">
     <div class="sidebar-label">Por fase</div>
-    <div class="sidebar-item" onclick="setFaseFilter('PI')">📄 PI recebida</div>
-    <div class="sidebar-item" onclick="setFaseFilter('AGUARDANDO_EMBARQUE')">⏳ Ag. Embarque</div>
-    <div class="sidebar-item" onclick="setFaseFilter('EMBARCADO')">🚢 Embarcado</div>
-    <div class="sidebar-item" onclick="setFaseFilter('DESEMBARCADO')">⚓ Desembarcado</div>
-    <div class="sidebar-item" onclick="setFaseFilter('REGISTRO_DI')">📋 Registro DI</div>
-    <div class="sidebar-item" onclick="setFaseFilter('PARAMETRIZACAO')">🔍 Parametrização</div>
-    <div class="sidebar-item" onclick="setFaseFilter('CARREGAMENTO')">🚛 Carregamento</div>
-    <div class="sidebar-item" onclick="setFaseFilter('FATURAMENTO')">💰 Faturamento</div>
-    <div class="sidebar-item" onclick="setFaseFilter('DEVOLUCAO_VAZIO')">📦 Dev. Vazio</div>
-    <div class="sidebar-item" onclick="setFaseFilter('FINALIZADO')">✅ Finalizado</div>
+    <div class="sidebar-item" onclick="setFaseFilter('PI')">📄 PI recebida <span class="badge ok" id="sb-PI" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('AGUARDANDO_EMBARQUE')">⏳ Ag. Embarque <span class="badge ok" id="sb-AGUARDANDO_EMBARQUE" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('EMBARCADO')">🚢 Embarcado <span class="badge ok" id="sb-EMBARCADO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('DESEMBARCADO')">⚓ Desembarcado <span class="badge ok" id="sb-DESEMBARCADO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('REGISTRO_DI')">📋 Registro DI <span class="badge ok" id="sb-REGISTRO_DI" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('PARAMETRIZACAO')">🔍 Parametrização <span class="badge ok" id="sb-PARAMETRIZACAO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('CARREGAMENTO')">🚛 Carregamento <span class="badge ok" id="sb-CARREGAMENTO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('FATURAMENTO')">💰 Faturamento <span class="badge ok" id="sb-FATURAMENTO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('DEVOLUCAO_VAZIO')">📦 Dev. Vazio <span class="badge warn" id="sb-DEVOLUCAO_VAZIO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('FINALIZADO')">✅ Finalizado <span class="badge" id="sb-FINALIZADO" style="display:none;background:var(--ok)">0</span></div>
   </div>
   <div class="sidebar-section">
     <div class="sidebar-label">Dashboard</div>
+    <div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
     <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💵 Visão financeira</div>
     <div class="sidebar-item" id="menu-armadores" onclick="toggleDashArmadores()">🚢 Armadores</div>
   </div>
@@ -313,6 +314,11 @@ select.form-input{cursor:pointer;}
 
   <!-- FASE FILTER -->
   <div class="fase-filter" id="fase-filter"></div>
+
+  <!-- DASHBOARD EXECUTIVO -->
+  <div id="dash-executivo" style="display:none;margin-bottom:20px;">
+    <div id="dash-exec-content"></div>
+  </div>
 
   <!-- DASHBOARD ARMADORES -->
   <div id="dash-armadores" style="display:none;margin-bottom:20px;">
@@ -543,15 +549,15 @@ async function excluirProcesso(id){
 // FASE AUTOMÁTICA
 // ════════════════════════════════════════════════════════════════
 function calcularFase(p){
-  if(p.data_devolucao_vazio) return 'FINALIZADO';
-  if(p.nf_saida_numero || p.nf_entrada_numero) return 'FATURAMENTO';
-  if(p.data_carregamento || p.data_agendamento) return 'CARREGAMENTO';
-  if(p.data_liberacao || (p.canal === 'VERDE' && p.data_parametrizacao)) return 'CARREGAMENTO';
-  if(p.canal || p.data_parametrizacao) return 'PARAMETRIZACAO';
-  if(p.numero_di || p.data_registro_di) return 'REGISTRO_DI';
-  if(p.data_presenca || p.data_chegada) return 'DESEMBARCADO';
-  if(p.data_embarque || p.hbl) return 'EMBARCADO';
-  if(p.etd || p.booking_numero) return 'AGUARDANDO_EMBARQUE';
+  if(p.data_devolucao_vazio)                                        return 'FINALIZADO';
+  if(p.data_carregamento)                                           return 'DEVOLUCAO_VAZIO';
+  if(p.data_agendamento || p.nf_saida_numero || p.nf_entrada_numero) return 'CARREGAMENTO';
+  if(p.data_liberacao || (p.canal==='VERDE' && p.data_parametrizacao)) return 'FATURAMENTO';
+  if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
+  if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
+  if(p.data_presenca || p.data_chegada)                             return 'DESEMBARCADO';
+  if(p.data_embarque || p.hbl)                                      return 'EMBARCADO';
+  if(p.etd || p.booking_numero)                                     return 'AGUARDANDO_EMBARQUE';
   return 'PI';
 }
 
@@ -812,8 +818,17 @@ function renderStats(){
     {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
   ];
 
-  // Badge sidebar
-  const badgeAlerta = document.getElementById('badge-alertas');
+  // Badges sidebar por fase
+  const faseCount = {};
+  _processos.forEach(p=>{ faseCount[p.fase] = (faseCount[p.fase]||0)+1; });
+  ['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI',
+   'PARAMETRIZACAO','CARREGAMENTO','FATURAMENTO','DEVOLUCAO_VAZIO','FINALIZADO'].forEach(f=>{
+    const el = document.getElementById('sb-'+f);
+    if(!el) return;
+    const n = faseCount[f]||0;
+    el.textContent = n;
+    el.style.display = n > 0 ? 'inline' : 'none';
+  });
   if(badgeAlerta){ badgeAlerta.textContent=comAlerta; badgeAlerta.style.display=comAlerta>0?'block':'none'; }
   document.getElementById('badge-total').textContent = total;
 
@@ -972,16 +987,16 @@ function renderModal(){
   const faseIdx = FASES.findIndex(f=>f.id===p.fase);
   // Mapa fase → data do processo
   const faseDatas = {
-    'PI': p.pi_data,
+    'PI':                  p.pi_data,
     'AGUARDANDO_EMBARQUE': p.previsao_prontidao||p.data_prontidao,
-    'EMBARCADO': p.data_embarque,
-    'DESEMBARCADO': p.data_chegada,
-    'REGISTRO_DI': p.data_registro_di,
-    'PARAMETRIZACAO': p.data_parametrizacao,
-    'CARREGAMENTO': p.data_agendamento||p.data_carregamento,
-    'FATURAMENTO': p.nf_entrada_data||p.nf_saida_data,
-    'DEVOLUCAO_VAZIO': p.data_devolucao_vazio,
-    'FINALIZADO': p.data_devolucao_vazio,
+    'EMBARCADO':           p.data_embarque,
+    'DESEMBARCADO':        p.data_chegada,
+    'REGISTRO_DI':         p.data_registro_di,
+    'PARAMETRIZACAO':      p.data_parametrizacao,
+    'FATURAMENTO':         p.nf_entrada_data||p.nf_saida_data,
+    'CARREGAMENTO':        p.data_agendamento||p.data_carregamento,
+    'DEVOLUCAO_VAZIO':     p.data_devolucao_vazio,
+    'FINALIZADO':          p.data_devolucao_vazio,
   };
   const timeline = FASES.map((f,i) => {
     const done   = i < faseIdx;
@@ -1312,8 +1327,8 @@ function atualizarFaseEmTempoReal(){
     'data_chegada','data_presenca',
     'data_registro_di','numero_di',
     'canal','data_parametrizacao','data_liberacao',
-    'data_agendamento','data_carregamento',
     'nf_entrada_numero','nf_saida_numero',
+    'data_agendamento','data_carregamento',
     'data_devolucao_vazio',
   ];
 
@@ -1976,6 +1991,134 @@ function inlineEditFase(id, el){
 // ════════════════════════════════════════════════════════════════
 // DASHBOARD FINANCEIRO
 // ════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════
+// DASHBOARD EXECUTIVO
+// ════════════════════════════════════════════════════════════════
+function toggleDashExecutivo(){
+  const el = document.getElementById('dash-executivo');
+  if(!el) return;
+  const visivel = el.style.display !== 'none';
+  el.style.display = visivel ? 'none' : 'block';
+  document.getElementById('menu-executivo')?.classList.toggle('active', !visivel);
+  if(!visivel) renderDashExecutivo();
+}
+
+function renderDashExecutivo(){
+  const el = document.getElementById('dash-exec-content');
+  if(!el) return;
+
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const mesIni = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const mesFim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  const semFim = new Date(hoje); semFim.setDate(hoje.getDate()+7);
+
+  const ativos    = _processos.filter(p=>p.fase!=='FINALIZADO');
+  const finalizados = _processos.filter(p=>p.fase==='FINALIZADO');
+  const brl = v => 'R$ '+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const usd = v => 'USD '+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const totalProvUSD = ativos.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const pagosUSD     = ativos.filter(p=>p.pi_pago).reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const abertoUSD    = totalProvUSD - pagosUSD;
+  const demurCrit    = ativos.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
+  const etaVencidos  = ativos.filter(p=>p.eta&&p.fase==='EMBARCADO'&&new Date(p.eta)<hoje);
+  const piVencidos   = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&new Date(p.pi_data_saldo)<hoje);
+  const piSemana     = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&new Date(p.pi_data_saldo)>=hoje&&new Date(p.pi_data_saldo)<=semFim);
+  const etaSemana    = ativos.filter(p=>p.eta&&new Date(p.eta)>=hoje&&new Date(p.eta)<=semFim&&p.fase==='EMBARCADO');
+  const porFase      = {};
+  _processos.forEach(p=>{ porFase[p.fase]=(porFase[p.fase]||0)+1; });
+  const porForn      = {};
+  ativos.forEach(p=>{ if(p.fornecedor) porForn[p.fornecedor]=(porForn[p.fornecedor]||0)+1; });
+  const topForn      = Object.entries(porForn).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const nfMes        = ativos.filter(p=>p.nf_saida_data&&new Date(p.nf_saida_data)>=mesIni&&new Date(p.nf_saida_data)<=mesFim);
+  const totalNfMes   = nfMes.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
+  const mesNome      = hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+
+  function card(label, val, sub, cor, fmt){
+    const display = fmt==='usd' ? usd(val) : val;
+    return '<div style="background:#fff;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:14px 16px;">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+label+'</div>'
+      +'<div style="font-size:22px;font-weight:800;color:'+cor+';font-family:Syne,sans-serif;">'+display+'</div>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+sub+'</div>'
+      +'</div>';
+  }
+
+  const kpis = [
+    card('Total Processos', _processos.length, ativos.length+' em andamento', 'var(--ac)', 'num'),
+    card('Provisionado', totalProvUSD, brl(totalProvUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--ac)', 'usd'),
+    card('Em Aberto', abertoUSD, brl(abertoUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--err)', 'usd'),
+    card('Demurrage Critico', demurCrit.length, 'containers <=5 dias', demurCrit.length>0?'var(--err)':'var(--ok)', 'num'),
+    card('ETA Vencidos', etaVencidos.length, 'ainda Embarcado', etaVencidos.length>0?'var(--warn)':'var(--ok)', 'num'),
+    card('PI Vencidas', piVencidos.length, 'pagamento atrasado', piVencidos.length>0?'var(--err)':'var(--ok)', 'num'),
+  ];
+
+  const funil = FASES.map(f=>{
+    const n = porFase[f.id]||0;
+    if(!n) return '';
+    const pct = _processos.length ? Math.round(n/_processos.length*100) : 0;
+    const cor = f.id==='FINALIZADO' ? 'var(--ok)' : 'var(--ac)';
+    const fid = f.id;
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;" onclick="setFaseFilter(\"'+fid+'\");toggleDashExecutivo()">'
+      +'<div style="font-size:11px;min-width:115px;color:var(--text);">'+f.icon+' '+f.label+'</div>'
+      +'<div style="flex:1;background:var(--bg);border-radius:4px;height:8px;">'
+      +'<div style="width:'+pct+'%;background:'+cor+';border-radius:4px;height:8px;"></div></div>'
+      +'<div style="font-size:11px;font-weight:700;color:'+cor+';min-width:24px;text-align:right;">'+n+'</div>'
+      +'</div>';
+  }).join('');
+
+  const alertasHtml = (demurCrit.length===0&&etaVencidos.length===0&&piVencidos.length===0)
+    ? '<div style="text-align:center;padding:20px;color:var(--ok);font-size:13px;font-weight:600;">Sem alertas criticos</div>'
+    : [
+        ...demurCrit.map(p=>{
+          const d=demurrageDias(p);
+          const pid=p.id;
+          return '<div style="padding:8px 10px;margin-bottom:6px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+pid+'\");toggleDashExecutivo()">'
+            +'<div style="font-size:11px;font-weight:700;color:var(--err);">Demurrage: '+p.referencia+'</div>'
+            +'<div style="font-size:10px;color:var(--muted);">Vence em '+d+' dia(s) · '+(p.armador||'—')+'</div></div>';
+        }),
+        ...etaVencidos.slice(0,4).map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
+          +'<div style="font-size:11px;font-weight:700;color:var(--warn);">ETA vencido: '+p.referencia+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?new Date(p.eta).toLocaleDateString('pt-BR'):'—')+' · ainda Embarcado</div></div>'),
+        ...piVencidos.slice(0,4).map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
+          +'<div style="font-size:11px;font-weight:700;color:var(--err);">PI vencida: '+p.referencia+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);">Venceu '+new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')+' · '+usd(parseFloat(p.pi_valor_usd)||0)+'</div></div>'),
+      ].join('');
+
+  const agendaHtml = etaSemana.length===0
+    ? '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">Nenhum navio chegando esta semana</div>'
+    : etaSemana.map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--ac);">'+p.referencia+'</div>'
+        +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?new Date(p.eta).toLocaleDateString('pt-BR'):'—')+' · '+(p.armador||'—')+' · '+(p.fornecedor||'—')+'</div></div>').join('')
+      + (topForn.length>0
+        ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Top Fornecedores</div>'
+          + topForn.map(([f,n])=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>'+f+'</span><span style="font-weight:700;color:var(--ac);">'+n+'</span></div>').join('')+'</div>'
+        : '');
+
+  const secStyle = 'background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;';
+  const secTitle = t => '<div style="font-family:Syne,sans-serif;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">'+t+'</div>';
+  const piSemanaHtml = piSemana.length>0
+    ? '<div style="padding:8px 10px;margin-top:6px;background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.15);border-radius:7px;">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--warn);">'+piSemana.length+' PI(s) vencem em 7 dias · '+usd(piSemana.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0))+'</div></div>' : '';
+
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
+    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;">Dashboard Executivo</div>'
+    +'<div style="font-size:12px;color:var(--muted);">'+hoje.toLocaleDateString('pt-BR')+' · '+_processos.length+' processos</div></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;">'+kpis.join('')+'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">'
+    +'<div style="'+secStyle+'">'+secTitle('Pipeline de Processos')+funil+'</div>'
+    +'<div style="'+secStyle+'">'+secTitle('Alertas Criticos')+alertasHtml+piSemanaHtml+'</div>'
+    +'<div style="'+secStyle+'">'+secTitle('Chegando Esta Semana')+agendaHtml+'</div>'
+    +'</div>'
+    +(totalNfMes>0
+      ? '<div style="'+secStyle+'margin-bottom:16px;">'+secTitle('Faturamento — '+mesNome)
+        +'<div style="display:flex;gap:24px;">'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs emitidas</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+nfMes.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+brl(totalNfMes)+'</div></div>'
+        +'</div></div>' : '');
+}
+
 function toggleDashArmadores(){
   const el = document.getElementById('dash-armadores');
   if(!el) return;
