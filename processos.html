@@ -1536,7 +1536,9 @@ function abrirEstatisticas(){
     '<th>Total Diverg.</th><th>Total Alertas</th><th>Média Diverg./Análise</th><th>Qualidade</th>'+
     '</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
     '<script>setTimeout(function(){window.print();},500);<\/script>'+
-    '</body></html>');
+    '
+<script src="/chat.js"></script>
+</body></html>');
   win.document.close();
 }
 
@@ -2747,6 +2749,31 @@ function _renderProcessModal(p){
   html+='<div style="font-size:13px;color:var(--accent);">Recebeu novos documentos? Adicione-os e faça uma nova análise.</div>';
   html+='<button data-ref="'+p.ref+'" class="btn btn-primary btn-sm" style="flex-shrink:0;">+ Nova Análise</button>';
   html+='</div>';
+
+  // ── Histórico de Resoluções ──────────────────────────────────────────
+  var resolvedMap = p._divResolvedMap || {};
+  var resolvedEntries = Object.entries(resolvedMap);
+  if(resolvedEntries.length){
+    html+='<div class="detail-section" style="margin-bottom:16px;">';
+    html+='<div class="sec" style="margin-bottom:12px;">📋 Histórico de Resoluções</div>';
+    html+='<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">';
+    resolvedEntries.forEach(function(entry, i){
+      var key = entry[0], val = entry[1];
+      var isAlerta = key.startsWith('alerta-');
+      var label = isAlerta ? key.replace('alerta-','') : key;
+      var cor = isAlerta ? '#d97706' : '#16a34a';
+      var icon = isAlerta ? '⚠' : '✓';
+      html+='<div style="'+(i>0?'border-top:1px solid var(--border);':'')+';padding:10px 14px;display:flex;gap:12px;align-items:flex-start;background:rgba(22,163,74,.03);">';
+      html+='<div style="margin-top:2px;font-size:14px;">'+icon+'</div>';
+      html+='<div style="flex:1;">';
+      html+='<div style="font-size:12px;font-weight:700;color:'+cor+';">'+label+'</div>';
+      html+='<div style="font-size:12px;color:var(--text);margin-top:2px;font-style:italic;">"'+(val.nota||'—')+'"</div>';
+      html+='<div style="font-size:10px;color:var(--text-dim);margin-top:3px;">por <strong>'+(val.por||'?')+'</strong> · '+(val.time||'')+'</div>';
+      html+='</div>';
+      html+='</div>';
+    });
+    html+='</div></div>';
+  }
 
   // ── Log ─────────────────────────────────────────────────────────
   html+='<div class="detail-section"><div class="sec" style="margin-bottom:12px">Log do Processo</div>';
