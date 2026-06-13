@@ -161,9 +161,9 @@
       : path.includes('calculador')? 'calculador'
       : '';
 
-    // Não mostrar nav na tela de login
-    const isLogin = document.querySelector('.login-box, #login-form, input[name="usuario"]');
-    if (isLogin) return;
+    // Não mostrar nav na tela de login do servidor (página /login)
+    const isLoginPage = window.location.pathname === '/login';
+    if (isLoginPage) return;
 
     const navEl = document.createElement('div');
     navEl.id = 'impak-nav';
