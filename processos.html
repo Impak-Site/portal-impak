@@ -9,8 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase removido — não utilizado nesta versão -->
 <style>
 :root {
   --bg:        #e8f0f8;
@@ -2467,15 +2466,17 @@ function _renderGestaoModal(p, username){
 }
 
 function approveProcess(id, username){
-  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
-  var docId = username + '_' + id;
-  var now = new Date().toLocaleString('pt-BR');
   var aprovadoPor = getCurrentUser() ? getCurrentUser().displayName : '?';
-  _db.collection('processos').doc(docId).update({
-    _approved: true, _approvedBy: aprovadoPor, _approvedAt: now, _updatedAt: Date.now()
-  }).then(function(){
-    // Atualiza cache local
-    // (localStorage removido — Drive é fonte única)
+  var now = new Date().toLocaleString('pt-BR');
+  // Buscar processo no cache local e salvar via Supabase
+  var procs = getAllProcesses();
+  var proc = procs.find(function(x){ return x.id===id||(username+'_'+x.id)===id; });
+  if(!proc){ showToast('Processo não encontrado','err'); return; }
+  proc._approved = true;
+  proc._approvedBy = aprovadoPor;
+  proc._approvedAt = now;
+  proc._updatedAt = Date.now();
+  dbSaveProcess(proc).then(function(){
     closeGestaoModal();
     renderGestao();
     showToast('Processo aprovado!','ok');
@@ -2483,12 +2484,14 @@ function approveProcess(id, username){
 }
 
 function revokeApproval(id, username){
-  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
-  var docId = username + '_' + id;
-  _db.collection('processos').doc(docId).update({
-    _approved: false, _approvedBy: null, _approvedAt: null, _updatedAt: Date.now()
-  }).then(function(){
-    // (localStorage removido — Drive é fonte única)
+  var procs = getAllProcesses();
+  var proc = procs.find(function(x){ return x.id===id||(username+'_'+x.id)===id; });
+  if(!proc){ showToast('Processo não encontrado','err'); return; }
+  proc._approved = false;
+  proc._approvedBy = null;
+  proc._approvedAt = null;
+  proc._updatedAt = Date.now();
+  dbSaveProcess(proc).then(function(){
     closeGestaoModal(); renderGestao();
     showToast('Aprovação revogada','ok');
   }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
