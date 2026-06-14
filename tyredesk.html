@@ -1177,7 +1177,7 @@ async function handleImport(files){
       logImport(`Fornecedor detectado: ${forn}`,'info');
 
       let novos=[];
-      if(forn==='ROVELO'||forn==='EUDEMON') novos=parseTBR(rows,forn);
+      if(forn.includes('ROVELO')||forn.includes('EUDEMON')||forn.includes('TBR')) novos=parseTBR(rows,forn);
       else if(forn==='DELMAX') novos=parsePCR_DELMAX(rows);
       else if(forn==='TRACMAX/WINDFORCE') novos=parsePCR_TRACMAX(rows);
       else if(forn==='SUNWIDE/INVOVIC') novos=parsePCR_INVOVIC(rows);
@@ -1753,7 +1753,13 @@ function analisar(){
     <div>${ops.map((o,i)=>{
       const ppu=o.peso>0?o.preco/o.peso:null;
       const ppuBadge=ppu?`<span class="pkg-badge pkg-info" title="USD/kg">${fmtPkg(ppu)}</span>`:'';
-      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipClass}">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patSpan}${borBdg}${origBdg}${alertBadge}</div>`;
+      // Construir badges inline
+      const chipCls = i===0?'mpill':'mpill';
+      const patTxt  = o.pat ? ` <span style="font-size:10px;color:var(--mu);margin-left:4px">${o.pat}</span>` : '';
+      const borTxt  = o.bor==='borrachudo' ? ' <span class="badge-borr" style="font-size:9px">BORR</span>' : o.bor==='liso' ? ' <span class="badge-liso" style="font-size:9px">LISO</span>' : '';
+      const origTxt = o.orig ? ` <span class="badge-orig" style="font-size:9px">${o.orig}</span>` : '';
+      const alertTxt= (o.moq&&parseInt(m.qtde)<o.moq) ? ' <span style="font-size:9px;color:var(--rd);font-weight:700">MOQ!</span>' : '';
+      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipCls}" style="font-size:11px;padding:3px 8px">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patTxt}${borTxt}${origTxt}${alertTxt}</div>`;
     }).join('')}</div></div>`;
   });
   c4.innerHTML=`<div class="ch"><h3>Todas as Cotações por Medida</h3>
@@ -2398,8 +2404,8 @@ function exportarExcel() {
   const hoje = new Date().toLocaleDateString('pt-BR');
   const num = 'PVN' + Date.now().toString().slice(-7);
 
-  // Calcular fator (média USD/BRL placeholder)
-  const fator = 5.70;
+  // Câmbio real carregado da API (ou fallback 5.70)
+  const fator = (_cambio && _cambio.USD > 1) ? _cambio.USD : 5.70;
 
   // Montar linhas por fornecedor selecionado
   const wb = XLSX.utils.book_new();
@@ -2505,8 +2511,6 @@ async function init(){
 }
 // init() é chamado pelo doLogin() após descriptografia
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
 <script src="/chat.js"></script>
 </body>
 </html>
