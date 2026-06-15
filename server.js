@@ -41,15 +41,15 @@ function sb() {
 function env(key, fallback) { return process.env[key] || fallback; }
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio'  },
-  { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean'      },
-  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
-  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
-  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
-  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
-  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
-  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
-  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
+  { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
+  { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
+  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
+  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
+  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
+  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
+  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
+  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
 ];
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
@@ -137,7 +137,8 @@ app.post('/login', (req, res) => {
   req.session.role        = u.role;
   req.session.displayName = u.displayName;
   req.session.senha       = u.senha;
-  res.redirect(destino || '/');
+  req.session.home        = u.home || '/';
+  res.redirect(destino && destino !== '/' ? destino : (u.home || '/'));
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
