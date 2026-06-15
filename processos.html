@@ -886,27 +886,10 @@ textarea.field-input{resize:vertical;min-height:80px;}
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
-    if(!d.logado){
-      // Não logado — manter loginScreen visível
-      return;
-    }
-    // Logado — ocultar loginScreen imediatamente
-    document.getElementById('loginScreen').style.display='none';
+    if(!d.logado) return;
     var found = USERS.find(function(x){ return x.username===d.usuario; });
-    if(!found){
-      found = {
-        username: d.usuario,
-        email: d.usuario+'@impak.com.br',
-        password: '',
-        role: d.role||'analista',
-        displayName: d.displayName||d.usuario
-      };
-    }
-    entrarDireto(found);
-  }).catch(function(e){
-    // Erro de rede — manter loginScreen visível
-    console.warn('auto-login:', e.message);
-  });
+    if(found) entrarDireto(found);
+  }).catch(function(e){ console.warn('auto-login:', e.message); });
 });
 
 // Login direto sem passar por campos de formulário
@@ -1455,12 +1438,12 @@ function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apike
 function saveApiKeyBtn(){
   const input = document.getElementById('apiKeyInput');
   const v = input.value.trim();
-  if(!v){ showToast('Cole sua API Key no campo antes de confirmar','err'); return; }
+  if(!v){ alert('Por favor, cole sua API Key no campo antes de confirmar.'); return; }
   // Salvar via saveApiKey — garante localStorage + _apiKey + status
   saveApiKey(v);
   updateApiStatus();
   checkReady();
-  showToast('\u2713 API Key salva! (' + v.length + ' caracteres)','ok');
+  alert('API Key salva com sucesso! ' + v.length + ' caracteres.');
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────
@@ -1594,7 +1577,6 @@ function showPage(id){
 function updateApiStatus(){
   const dot = document.getElementById('apiDot');
   const txt = document.getElementById('apiStatusText');
-  if(!dot || !txt) return;
   if(_apiKey && _apiKey.length > 20){
     dot.className='api-dot ok'; txt.textContent='Configurada';
   } else {
