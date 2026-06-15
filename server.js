@@ -16,6 +16,9 @@ const express = require('express');
 const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const { randomUUID } = require('crypto');
+
+function gerarUUID(){ return randomUUID(); }
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -40,13 +43,13 @@ function env(key, fallback) { return process.env[key] || fallback; }
 const USUARIOS = [
   { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio'  },
   { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean'      },
-  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['processos'],            nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
-  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['processos'],            nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
-  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['processos'],            nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
-  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['processos'],            nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
-  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['processos'],            nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
-  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['processos'],            nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
-  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['processos'],            nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
+  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
+  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
+  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
+  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
+  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
+  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
+  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
 ];
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
@@ -150,8 +153,6 @@ function auth(modulo) {
 // ── PÁGINAS ───────────────────────────────────────────────────
 app.get('/',          auth('tyredesk'),  (req, res) => res.sendFile(path.join(__dirname, 'tyredesk.html')));
 app.get('/processos', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
-app.get('/controle',  auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle.html')));
-app.get('/importar',  auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'importar.html')));
 
 // ── API: SESSÃO ───────────────────────────────────────────────
 app.get('/api/me', (req, res) => {
@@ -176,16 +177,19 @@ app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
       .order('updated_at', { ascending: false });
     if (error) throw new Error(error.message);
     const index = (data || []).map(p => ({
-      id:         p.id,
-      ref:        p.ref        || '',
-      exportador: p.exportador || '',
-      obs:        p.obs        || '',
-      status:     p.status     || 'ok',
-      data:       p.data       || '',
-      _user:      p.created_by || '',
-      _updatedAt: new Date(p.updated_at).getTime(),
-      analises:   (p.dados && p.dados.analises) ? p.dados.analises.map(a => ({
+      id:           p.id,
+      ref:          p.ref        || '',
+      exportador:   p.exportador || '',
+      obs:          p.obs        || '',
+      status:       p.status     || 'ok',
+      data:         p.data       || '',
+      _user:        p.created_by || '',
+      _updatedAt:   new Date(p.updated_at).getTime(),
+      _divResolvedMap: (p.dados && p.dados._divResolvedMap) ? p.dados._divResolvedMap : {},
+      analises:     (p.dados && p.dados.analises) ? p.dados.analises.map(a => ({
         id: a.id, data: a.data, docs: a.docs, resumo: a.resumo,
+        grupos: a.grupos || [],
+        alertas: a.alertas || [],
       })) : [],
     }));
     console.log(`/api/conferencia/index: ${index.length} processos`);
@@ -258,7 +262,169 @@ app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) 
   }
 });
 
-// ── API: CONTROLE ─────────────────────────────────────────────
+// ── API: CONTROLE v2 ──────────────────────────────────────────
+app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
+
+app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_processos')
+      .select('*')
+      .order('updated_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, processos: data || [] });
+  } catch (e) {
+    console.error('controle v2 GET erro:', e.message);
+    res.json({ ok: true, processos: [] });
+  }
+});
+
+app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
+  try {
+    const { processos } = req.body;
+    if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
+    const agora = new Date().toISOString();
+
+    // Buscar referências já existentes para evitar duplicatas
+    const refs = processos.map(p => p.referencia).filter(Boolean);
+    const { data: existentes } = await sb()
+      .from('controle_processos')
+      .select('id, referencia')
+      .in('referencia', refs);
+
+    const refsExistentes = new Set((existentes||[]).map(e => e.referencia));
+
+    // Só inserir os que não existem
+    const novos = processos
+      .filter(p => p.referencia && !refsExistentes.has(p.referencia))
+      .map(p => ({
+        ...p,
+        id: p.id || gerarUUID(),
+        updated_at: agora,
+        created_at: p.created_at || agora,
+      }));
+
+    if (!novos.length) {
+      return res.json({ ok: true, total: 0, msg: 'Todos os processos já existem' });
+    }
+
+    // Inserir em lotes de 50
+    for (let i = 0; i < novos.length; i += 50) {
+      const { error } = await sb()
+        .from('controle_processos')
+        .insert(novos.slice(i, i + 50));
+      if (error) throw new Error(error.message);
+    }
+
+    console.log(`controle v2 importar: ${novos.length} novos de ${processos.length} por ${req.session.usuario}`);
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length });
+  } catch (e) {
+    console.error('controle v2 importar erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
+  try {
+    const { processo } = req.body;
+    if (!processo || !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
+    if (!processo.id) processo.id = gerarUUID();
+    processo.updated_at = new Date().toISOString();
+
+    // Log de auditoria no banco
+    const logEntries = (processo.log || []).filter(l => !l._saved);
+    if (logEntries.length) {
+      const rows = logEntries.map(l => ({
+        processo_id: processo.id,
+        usuario: l.usuario || req.session.usuario,
+        campo: l.campo || '',
+        valor_antes: String(l.valor_antes || ''),
+        valor_depois: String(l.valor_depois || ''),
+        created_at: l.created_at || new Date().toISOString(),
+      }));
+      await sb().from('controle_log').insert(rows).catch(e => console.warn('log erro:', e.message));
+      processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
+    }
+
+    const { error } = await sb()
+      .from('controle_processos')
+      .upsert(processo, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+
+    // Criar notificação de demurrage se necessário
+    if (processo.demurrage_vencimento) {
+      const venc = new Date(processo.demurrage_vencimento);
+      const dias = Math.ceil((venc - new Date()) / 86400000);
+      if (dias <= 5 && dias >= 0 && !processo.data_devolucao_vazio) {
+        await sb().from('controle_notificacoes').insert({
+          processo_id: processo.id,
+          tipo: 'urgente',
+          titulo: `Demurrage: ${processo.referencia}`,
+          mensagem: `Container vence em ${dias} dia(s)!`,
+          created_by: req.session.usuario,
+        }).catch(() => {});
+      }
+    }
+
+    console.log(`controle v2 salvo: ${processo.referencia} por ${req.session.usuario}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('controle v2 POST erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.delete('/api/controle/v2/processo/:id', auth('processos'), async (req, res) => {
+  try {
+    const { error } = await sb().from('controle_processos').delete().eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.get('/api/controle/v2/notificacoes', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_notificacoes')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, notificacoes: data || [] });
+  } catch (e) {
+    res.json({ ok: true, notificacoes: [] });
+  }
+});
+
+app.post('/api/controle/v2/notificacao', auth('processos'), async (req, res) => {
+  try {
+    const { processo_id, tipo, titulo, mensagem } = req.body;
+    await sb().from('controle_notificacoes').insert({
+      processo_id, tipo, titulo, mensagem, created_by: req.session.usuario,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.post('/api/controle/v2/notificacao/:id/lida', auth('processos'), async (req, res) => {
+  try {
+    const { usuario } = req.body;
+    const { data } = await sb().from('controle_notificacoes').select('lida_por').eq('id', req.params.id).single();
+    const lidaPor = [...(data?.lida_por || [])];
+    if (!lidaPor.includes(usuario)) lidaPor.push(usuario);
+    await sb().from('controle_notificacoes').update({ lida_por: lidaPor }).eq('id', req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+
 app.get('/api/controle/index', auth('processos'), async (req, res) => {
   try {
     const { data, error } = await sb()
@@ -352,24 +518,63 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
   try {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
-    const rows = processos.map(p => ({
-      id:         p.id || String(Date.now() + Math.random()),
-      referencia: p.referencia || '',
-      cliente:    p.cliente    || '',
-      fase:       p.fase       || 'PRODUCAO',
-      status:     p.status     || 'ativo',
-      updated_by: req.session.usuario,
-      updated_at: new Date().toISOString(),
-      dados:      p,
-    }));
-    for (let i = 0; i < rows.length; i += 100) {
+
+    const agora = new Date().toISOString();
+
+    // Buscar referências já existentes
+    const refs = processos.map(p => p.referencia).filter(Boolean);
+    const { data: existentes } = await sb()
+      .from('controle_processos')
+      .select('referencia')
+      .in('referencia', refs);
+    const refsExistentes = new Set((existentes||[]).map(e => e.referencia));
+
+    const novos = processos
+      .filter(p => p.referencia && !refsExistentes.has(p.referencia))
+      .map(p => {
+        // Suportar tanto formato antigo (com dados{}) quanto novo (campos diretos)
+        const d = p.dados || p;
+        return {
+          id:                  p.id || gerarUUID(),
+          referencia:          p.referencia || d.referencia || '',
+          fornecedor:          d.fornecedor  || '',
+          cliente:             d.cliente     || p.cliente || '',
+          produto:             d.produto     || '',
+          fase:                d.fase        || p.fase || 'PI',
+          eta:                 d.eta         || null,
+          etd:                 d.etd         || null,
+          data_embarque:       d.data_embarque || null,
+          data_chegada:        d.data_chegada  || null,
+          data_presenca:       d.data_presenca || null,
+          armador:             d.armador     || '',
+          navio:               d.navio       || '',
+          container:           d.container   || '',
+          hbl:                 d.hbl         || '',
+          mbl:                 d.mbl         || '',
+          numero_di:           d.numero_di   || '',
+          obs:                 d.obs         || '',
+          free_time:           d.free_time   || 21,
+          demurrage_vencimento: d.demurrage_vencimento || null,
+          created_by:          p.created_by || req.session.usuario,
+          updated_by:          req.session.usuario,
+          updated_at:          agora,
+          created_at:          p.created_at || agora,
+        };
+      });
+
+    if (!novos.length) {
+      return res.json({ ok: true, total: 0, msg: 'Todos já existem' });
+    }
+
+    for (let i = 0; i < novos.length; i += 50) {
       const { error } = await sb()
         .from('controle_processos')
-        .upsert(rows.slice(i, i + 100), { onConflict: 'id' });
+        .insert(novos.slice(i, i + 50));
       if (error) throw new Error(error.message);
     }
-    console.log(`controle/importar: ${processos.length} processos por ${req.session.usuario}`);
-    res.json({ ok: true, total: processos.length });
+
+    console.log(`controle/importar: ${novos.length} novos de ${processos.length} por ${req.session.usuario}`);
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length });
   } catch (e) {
     console.error('controle/importar erro:', e.message);
     res.status(500).json({ erro: e.message });
@@ -504,6 +709,187 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
 });
 
 // ── HEALTH ────────────────────────────────────────────────────
+
+// Servir chat.js
+app.get('/chat.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'chat.js'));
+});
+
+// ════════════════════════════════════════════════════════════════
+// CHAT COM IA — consulta inteligente sobre processos
+// ════════════════════════════════════════════════════════════════
+app.post('/api/chat', auth('processos'), async (req, res) => {
+  try {
+    const { mensagem, historico = [] } = req.body;
+    if (!mensagem) return res.status(400).json({ erro: 'Mensagem vazia' });
+
+    // Buscar todos os processos do banco para contexto
+    const { data: processos, error } = await sb()
+      .from('controle_processos')
+      .select('*')
+      .order('updated_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    const hoje = new Date();
+    const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO');
+    const finalizados = (processos || []).filter(p => p.fase === 'FINALIZADO');
+
+    // Calcular demurrage para cada processo ativo
+    function demDias(p) {
+      if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
+      const d = new Date(p.demurrage_vencimento);
+      return Math.ceil((d - hoje) / 86400000);
+    }
+
+    // Resumo executivo para contexto da IA
+    const porFase = {};
+    ativos.forEach(p => { porFase[p.fase] = (porFase[p.fase] || 0) + 1; });
+
+    const demCrit = ativos.filter(p => { const d = demDias(p); return d !== null && d <= 5; });
+    const etaVenc = ativos.filter(p => p.eta && p.fase === 'EMBARCADO' && new Date(p.eta) < hoje);
+    const semana  = new Date(hoje); semana.setDate(hoje.getDate() + 7);
+    const etaSem  = ativos.filter(p => p.eta && new Date(p.eta) >= hoje && new Date(p.eta) <= semana && p.fase === 'EMBARCADO');
+    const piVenc  = ativos.filter(p => p.pi_data_saldo && !p.pi_pago && new Date(p.pi_data_saldo) < hoje);
+
+    // Montar contexto compacto (evitar context window enorme)
+    const ctx = {
+      data_hoje: hoje.toLocaleDateString('pt-BR'),
+      total_processos: processos.length,
+      em_andamento: ativos.length,
+      finalizados: finalizados.length,
+      por_fase: porFase,
+      alertas: {
+        demurrage_critico: demCrit.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, armador: p.armador,
+          dias: demDias(p), container: p.container
+        })),
+        eta_vencido: etaVenc.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, eta: p.eta, armador: p.armador
+        })),
+        pi_vencida: piVenc.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, vencimento: p.pi_data_saldo,
+          valor: p.pi_valor_usd
+        })),
+        chegando_semana: etaSem.map(p => ({
+          ref: p.referencia, fornecedor: p.fornecedor, eta: p.eta, armador: p.armador
+        }))
+      },
+      processos_ativos: ativos.map(p => ({
+        ref: p.referencia, fornecedor: p.fornecedor, cliente: p.cliente,
+        fase: p.fase, eta: p.eta, hbl: p.hbl, mbl: p.mbl,
+        container: p.container, armador: p.armador, navio: p.navio,
+        numero_di: p.numero_di, pi_valor_usd: p.pi_valor_usd,
+        pi_pago: p.pi_pago, pi_data_saldo: p.pi_data_saldo,
+        nf_entrada_numero: p.nf_entrada_numero, nf_saida_numero: p.nf_saida_numero,
+        nf_saida_valor: p.nf_saida_valor, obs: p.obs,
+        demurrage_vencimento: p.demurrage_vencimento,
+        data_embarque: p.data_embarque, data_chegada: p.data_chegada,
+      }))
+    };
+
+    const systemPrompt = `Você é o assistente de importação da IMPAK COMERCIAL IMPORTADORA LTDA, especializado em pneus importados da Ásia (Vietnam e China) para o Brasil.
+
+Você tem acesso em tempo real a todos os processos de importação. Responda de forma direta, objetiva e em português brasileiro.
+
+DADOS ATUAIS (${hoje.toLocaleDateString('pt-BR')}):
+${JSON.stringify(ctx, null, 2)}
+
+INSTRUÇÕES:
+- Responda perguntas sobre status de processos, ETAs, demurrage, pagamentos e faturamento
+- Dê alertas proativos quando identificar riscos (demurrage, pagamentos vencidos, ETA vencido)
+- Use os dados reais acima para responder com precisão
+- Quando listar processos, use o formato: REF | FORNECEDOR | FASE | detalhe relevante
+- Seja conciso mas completo
+- Sugira ações quando pertinente (ex: "Recomendo contatar o armador X sobre o container Y")
+- Valores em USD mantenha em USD, valores em BRL no formato R$ X.XXX,XX`;
+
+    // Chamar Claude API
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada');
+
+    const messages = [
+      ...historico.slice(-8), // últimas 8 mensagens para contexto
+      { role: 'user', content: mensagem }
+    ];
+
+    // Timeout de 25s para evitar conexão pendurada no Railway
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const resposta = data.content?.[0]?.text || 'Não consegui processar sua pergunta.';
+    console.log(`chat: ${req.session.usuario} → "${mensagem.slice(0,50)}..."`);
+
+    res.json({ ok: true, resposta });
+  } catch (e) {
+    console.error('chat erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// ── HISTÓRICO TYREDESK (email de cotações) ──────────────────────
+app.get('/api/drive/historico', auth('tyredesk'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('tyredesk_historico')
+      .select('*')
+      .order('data', { ascending: false })
+      .limit(100);
+    if (error) {
+      // Tabela pode não existir ainda — retornar vazio sem erro
+      return res.json({ ok: true, historico: [] });
+    }
+    res.json({ ok: true, historico: data || [] });
+  } catch(e) {
+    res.json({ ok: true, historico: [] });
+  }
+});
+
+app.post('/api/drive/historico', auth('tyredesk'), async (req, res) => {
+  try {
+    const { entrada } = req.body;
+    if (!entrada) return res.json({ ok: true });
+    entrada.id = entrada.id || gerarUUID();
+    const { error } = await sb()
+      .from('tyredesk_historico')
+      .insert([entrada]);
+    // Ignorar erro se tabela não existir — não é crítico
+    res.json({ ok: true });
+  } catch(e) {
+    res.json({ ok: true }); // não crítico
+  }
+});
+
+app.post('/api/drive/historico/limpar', auth('tyredesk'), async (req, res) => {
+  try {
+    await sb().from('tyredesk_historico').delete().neq('id', '');
+    res.json({ ok: true });
+  } catch(e) {
+    res.json({ ok: true });
+  }
+});
+
 app.get('/health', async (req, res) => {
   const url = process.env.SUPABASE_URL || '';
   const key = process.env.SUPABASE_KEY || '';
