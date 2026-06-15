@@ -1312,24 +1312,48 @@ function analisar(){
   else origHtml+=`<div><div class="ctnr-ok" style="margin-top:0">✓ Todas as cotações da mesma origem — container OK</div></div>`;
   origHtml+='</div>';
 
-  // Container % por fornecedor
+  // Container % por fornecedor — usa quantidade real por medida (coluna 40HQ/40HC da planilha)
   let ctnrHtml='<div style="padding:0 16px 14px">';
   const pneusPorCtnr = {TBR:264, PCR:1100, AGR:200, OTR:100};
-  const capCtnr = pneusPorCtnr[tp] || 1100;
+  const capCtnrDefault = pneusPorCtnr[tp] || 1100;
   const fornsCtnr=[...new Set(cots.map(c=>c.forn))];
   fornsCtnr.forEach(forn=>{
     const linhas=cots.filter(c=>c.forn===forn);
     if(!linhas.length) return;
     const mixF=mix.filter(m=>linhas.some(l=>l.medida===m.medida));
     if(!mixF.length) return;
-    const totalQtde=mixF.reduce((s,m)=>s+m.qtde,0);
-    const pct=Math.round((totalQtde/capCtnr)*100);
+
+    // Para cada medida do mix, usar a qtd real do container (ctnr) da cotação
+    // Se não tiver ctnr, usar capacidade padrão proporcional
+    let totalQtde=0, totalCapacidade=0, temCtnrReal=false;
+    mixF.forEach(m=>{
+      const cot = linhas.find(l=>l.medida===m.medida);
+      const cap = cot && cot.ctnr > 0 ? cot.ctnr : null;
+      totalQtde += m.qtde;
+      if(cap){
+        // Cada unidade pedida ocupa (1/cap) do container
+        totalCapacidade += m.qtde / cap;
+        temCtnrReal = true;
+      }
+    });
+
+    let pct, labelCap;
+    if(temCtnrReal){
+      // totalCapacidade = fração do container ocupada
+      pct = Math.round(totalCapacidade * 100);
+      labelCap = `${totalQtde} un · ${pct}% do CTR`;
+    } else {
+      // Fallback: capacidade fixa
+      pct = Math.round((totalQtde/capCtnrDefault)*100);
+      labelCap = `${totalQtde} / ${capCtnrDefault} un`;
+    }
+
     const barColor=pct>100?'#c0392b':pct>=90?'#1a9c5b':pct>=60?'#b07800':'#c0392b';
     const overClass=pct>100?'ctnr-over':'';
     ctnrHtml+=`<div class="ctnr-row"><span style="font-size:11px;font-weight:600;min-width:170px">${forn}</span>
       <div class="ctnr-bar-bg"><div class="ctnr-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
       <span class="ctnr-pct ${overClass}" style="color:${barColor}">${pct}%${pct>100?' ⚠':''}</span>
-      <span style="font-size:10px;color:var(--mu);font-weight:500">${totalQtde} / ${capCtnr} un</span>
+      <span style="font-size:10px;color:var(--mu);font-weight:500">${labelCap}</span>
     </div>`;
   });
   ctnrHtml+='</div>';
