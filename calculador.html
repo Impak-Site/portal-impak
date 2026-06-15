@@ -743,6 +743,7 @@ function calcular(){
     const c_ipi    = ipi_s_aliq / (1+ipi_s_aliq);
     const c_icms   = (1/(1+ipi_s_aliq)) * icms_p_aliq;
     const divisor  = 1 - c_pis - c_cof - c_ipi - c_icms - com_pct_total - lucro_pct;
+    if(divisor <= 0.01){ showToast('Margem + comissões muito altas — impossível calcular','err'); return; }
     faturamento    = custo_total / divisor;
   }
 
