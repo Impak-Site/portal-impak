@@ -9,8 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase removido — não utilizado nesta versão -->
 <style>
 :root {
   --bg:        #e8f0f8;
@@ -532,7 +531,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 
 <!-- LOGIN SCREEN -->
-<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:flex;align-items:center;justify-content:center;z-index:9999;">
+<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:none;align-items:center;justify-content:center;z-index:9999;">
   <div style="width:400px;max-width:94vw;">
     <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;">
       <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
@@ -603,16 +602,16 @@ textarea.field-input{resize:vertical;min-height:80px;}
       <button class="api-toggle" onclick="toggleApiVis()">👁</button>
     </div>
     <button onclick="saveApiKeyBtn()" style="width:100%;margin-top:6px;padding:7px;background:var(--accent);color:#0c0f0a;border:none;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;">✓ Confirmar Chave</button>
-    <div class="api-status" style="margin-top:6px;">
+    <div class="api-status" style="margin-top:6px;display:flex;align-items:center;gap:6px;">
       <div class="api-dot" id="apiDot"></div>
+      <span id="apiStatusText" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Não configurada</span>
+    </div>
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
       <div class="api-label">Banco de Dados</div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
         <div class="api-dot" id="sheetsDot"></div>
-        <span id="sheetsStatusText" style="font-size:10px;color:var(--text-dim);">Conectando...</span>
+        <span id="sheetsStatusText" style="font-size:10px;color:var(--text-dim);">Verificando...</span>
       </div>
-    </div>
-      <span id="apiStatusText" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Não configurada</span>
     </div>
   </div>
 </aside>
@@ -880,16 +879,42 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <!-- v1779232115 -->
 
-<script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
+<script>
+// UUID compatível com todos os browsers incluindo Safari
+function gerarUUID(){
+  if(typeof crypto!=='undefined'&&crypto.randomUUID) return crypto.randomUUID();
+  if(typeof crypto!=='undefined'&&crypto.getRandomValues){
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});
+}
+window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
 <script>
 
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
-    if(!d.logado) return;
+    if(!d.logado){
+      // Não autenticado no servidor — mostrar tela de login
+      document.getElementById('loginScreen').style.display='flex';
+      return;
+    }
     var found = USERS.find(function(x){ return x.username===d.usuario; });
-    if(found) entrarDireto(found);
-  }).catch(function(e){ console.warn('auto-login:', e.message); });
+    // Fallback: criar usuário temporário com dados da sessão do servidor
+    if(!found){
+      found = {
+        username: d.usuario,
+        email: d.usuario+'@impak.com.br',
+        password: '',
+        role: d.role||'analista',
+        displayName: d.displayName||d.usuario
+      };
+    }
+    entrarDireto(found);
+  }).catch(function(e){
+    // Erro de rede — mostrar login como fallback
+    document.getElementById('loginScreen').style.display='flex';
+  });
 });
 
 // Login direto sem passar por campos de formulário
@@ -901,6 +926,7 @@ function entrarDireto(found){
   document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
   _processes = migrateAlerts(loadUserProcesses());
   updateApiStatus();
+  verificarBanco();
   checkReady();
   renderDashboard();
   renderProcessos();
@@ -1120,6 +1146,10 @@ var USERS = [
   { username: 'paula',     email: 'paula@impak.com.br',       password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
   { username: 'bianca',    email: 'bianca@impak.com.br',      password: 'Bianca@2026',        role: 'gerente',  displayName: 'Bianca'    },
   { username: 'emanuelly', email: 'importacao1@impak.com.br', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
+  { username: 'italo',     email: 'italo@impak.com.br',       password: 'Italo@2026',         role: 'analista', displayName: 'Italo'     },
+  { username: 'maria',     email: 'maria@impak.com.br',       password: 'Maria@2026',         role: 'analista', displayName: 'Maria'     },
+  { username: 'joyce',     email: 'joyce@impak.com.br',       password: 'Joyce@2026',         role: 'analista', displayName: 'Joyce'     },
+  { username: 'neide',     email: 'neide@impak.com.br',       password: 'Neide@2026',         role: 'analista', displayName: 'Neide'     },
 ];
 
 var _currentUser = null;
@@ -1433,13 +1463,12 @@ function getApiKey(){ return _apiKey; }
 function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); checkReady(); }
 function saveApiKeyBtn(){
   const input = document.getElementById('apiKeyInput');
+  if(!input){ showToast('Campo de API Key não encontrado','err'); return; }
   const v = input.value.trim();
-  if(!v){ alert('Por favor, cole sua API Key no campo antes de confirmar.'); return; }
-  // Salvar via saveApiKey — garante localStorage + _apiKey + status
+  if(!v){ showToast('Cole sua API Key no campo antes de confirmar','err'); return; }
+  if(v.length < 20){ showToast('API Key inválida — muito curta','err'); return; }
   saveApiKey(v);
-  updateApiStatus();
-  checkReady();
-  alert('API Key salva com sucesso! ' + v.length + ' caracteres.');
+  showToast('\u2713 API Key salva com sucesso!','ok');
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────
@@ -1536,7 +1565,9 @@ function abrirEstatisticas(){
     '<th>Total Diverg.</th><th>Total Alertas</th><th>Média Diverg./Análise</th><th>Qualidade</th>'+
     '</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
     '<script>setTimeout(function(){window.print();},500);<\/script>'+
-    '</body></html>');
+    '
+<script src="/chat.js"></script>
+</body></html>');
   win.document.close();
 }
 
@@ -1571,11 +1602,27 @@ function showPage(id){
 function updateApiStatus(){
   const dot = document.getElementById('apiDot');
   const txt = document.getElementById('apiStatusText');
+  if(!dot || !txt) return;
   if(_apiKey && _apiKey.length > 20){
     dot.className='api-dot ok'; txt.textContent='Configurada';
   } else {
     dot.className='api-dot'; txt.textContent='Não configurada';
   }
+}
+
+function verificarBanco(){
+  const dot = document.getElementById('sheetsDot');
+  const txt = document.getElementById('sheetsStatusText');
+  if(!dot || !txt) return;
+  fetch('/api/me').then(r=>r.json()).then(d=>{
+    if(d.logado){
+      dot.className='api-dot ok'; txt.textContent='Configurado';
+    } else {
+      dot.className='api-dot'; txt.textContent='Não conectado';
+    }
+  }).catch(()=>{
+    dot.className='api-dot err'; txt.textContent='Erro de conexão';
+  });
 }
 function toggleApiVis(){
   const i = document.getElementById('apiKeyInput');
@@ -1817,7 +1864,7 @@ async function runAnalysis(){
 
     const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
     const novaAnalise = {
-      id: Date.now(),
+      id: gerarUUID(),
       data: new Date().toLocaleString('pt-BR'),
       docs: docsUsados,
       docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
@@ -1872,7 +1919,7 @@ async function runAnalysis(){
     } else {
       // Novo processo
       aplicarAnalise({
-        id: Date.now(),
+        id: gerarUUID(),
         ref: ref,
         exportador: exp || extrairExportador(result),
         obs: obs,
@@ -2419,15 +2466,17 @@ function _renderGestaoModal(p, username){
 }
 
 function approveProcess(id, username){
-  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
-  var docId = username + '_' + id;
-  var now = new Date().toLocaleString('pt-BR');
   var aprovadoPor = getCurrentUser() ? getCurrentUser().displayName : '?';
-  _db.collection('processos').doc(docId).update({
-    _approved: true, _approvedBy: aprovadoPor, _approvedAt: now, _updatedAt: Date.now()
-  }).then(function(){
-    // Atualiza cache local
-    // (localStorage removido — Drive é fonte única)
+  var now = new Date().toLocaleString('pt-BR');
+  // Buscar processo no cache local e salvar via Supabase
+  var procs = getAllProcesses();
+  var proc = procs.find(function(x){ return x.id===id||(username+'_'+x.id)===id; });
+  if(!proc){ showToast('Processo não encontrado','err'); return; }
+  proc._approved = true;
+  proc._approvedBy = aprovadoPor;
+  proc._approvedAt = now;
+  proc._updatedAt = Date.now();
+  dbSaveProcess(proc).then(function(){
     closeGestaoModal();
     renderGestao();
     showToast('Processo aprovado!','ok');
@@ -2435,12 +2484,14 @@ function approveProcess(id, username){
 }
 
 function revokeApproval(id, username){
-  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
-  var docId = username + '_' + id;
-  _db.collection('processos').doc(docId).update({
-    _approved: false, _approvedBy: null, _approvedAt: null, _updatedAt: Date.now()
-  }).then(function(){
-    // (localStorage removido — Drive é fonte única)
+  var procs = getAllProcesses();
+  var proc = procs.find(function(x){ return x.id===id||(username+'_'+x.id)===id; });
+  if(!proc){ showToast('Processo não encontrado','err'); return; }
+  proc._approved = false;
+  proc._approvedBy = null;
+  proc._approvedAt = null;
+  proc._updatedAt = Date.now();
+  dbSaveProcess(proc).then(function(){
     closeGestaoModal(); renderGestao();
     showToast('Aprovação revogada','ok');
   }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
@@ -3013,7 +3064,7 @@ function recalcularStatusProcesso(proc) {
   var divsPendentes = 0;
   (grupos || []).forEach(function(g) {
     (g.campos || []).forEach(function(c) {
-      if (c.status === 'DIVERGENCIA') {
+      if (c.status === 'DIVERGENCIA' || c.status === 'AUSENTE') {
         var key = g.titulo + '-' + c.campo;
         if (!resolvedMap[key]) divsPendentes++;
       }
