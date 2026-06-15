@@ -1120,10 +1120,6 @@ var USERS = [
   { username: 'paula',     email: 'paula@impak.com.br',       password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
   { username: 'bianca',    email: 'bianca@impak.com.br',      password: 'Bianca@2026',        role: 'gerente',  displayName: 'Bianca'    },
   { username: 'emanuelly', email: 'importacao1@impak.com.br', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
-  { username: 'italo',     email: 'italo@impak.com.br',       password: 'Italo@2026',         role: 'analista', displayName: 'Italo'     },
-  { username: 'maria',     email: 'maria@impak.com.br',       password: 'Maria@2026',         role: 'analista', displayName: 'Maria'     },
-  { username: 'joyce',     email: 'joyce@impak.com.br',       password: 'Joyce@2026',         role: 'analista', displayName: 'Joyce'     },
-  { username: 'neide',     email: 'neide@impak.com.br',       password: 'Neide@2026',         role: 'analista', displayName: 'Neide'     },
 ];
 
 var _currentUser = null;
@@ -1540,9 +1536,7 @@ function abrirEstatisticas(){
     '<th>Total Diverg.</th><th>Total Alertas</th><th>Média Diverg./Análise</th><th>Qualidade</th>'+
     '</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
     '<script>setTimeout(function(){window.print();},500);<\/script>'+
-    '
-<script src="/chat.js"></script>
-</body></html>');
+    '</body></html>');
   win.document.close();
 }
 
