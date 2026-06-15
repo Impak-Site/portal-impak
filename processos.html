@@ -532,7 +532,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 
 <!-- LOGIN SCREEN -->
-<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:none;align-items:center;justify-content:center;z-index:9999;">
+<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:flex;align-items:center;justify-content:center;z-index:9999;">
   <div style="width:400px;max-width:94vw;">
     <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;">
       <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
@@ -887,9 +887,11 @@ textarea.field-input{resize:vertical;min-height:80px;}
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
     if(!d.logado){
-      document.getElementById('loginScreen').style.display='flex';
+      // Não logado — manter loginScreen visível
       return;
     }
+    // Logado — ocultar loginScreen imediatamente
+    document.getElementById('loginScreen').style.display='none';
     var found = USERS.find(function(x){ return x.username===d.usuario; });
     if(!found){
       found = {
@@ -902,7 +904,8 @@ window.addEventListener('DOMContentLoaded', function(){
     }
     entrarDireto(found);
   }).catch(function(e){
-    document.getElementById('loginScreen').style.display='flex';
+    // Erro de rede — manter loginScreen visível
+    console.warn('auto-login:', e.message);
   });
 });
 
