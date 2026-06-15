@@ -781,7 +781,12 @@ function setBar(pct){document.getElementById('import-bar').style.width=pct+'%';}
 
 function detectFornecedor(filename,data){
   const fn=filename.toUpperCase();
-  if(fn.includes('ROVELO'))return'ROVELO';
+  if(fn.includes('ROVELO')){
+    // Detectar tipo pelo conteúdo para diferenciar ROVELO TBR e ROVELO PCR
+    const flat=JSON.stringify(data).toUpperCase();
+    const temTBR = flat.includes('TBR') || flat.includes('TRUCK') || flat.includes('BUS');
+    return temTBR ? 'ROVELO - TBR' : 'ROVELO - PCR';
+  }
   if(fn.includes('EUDEMON'))return'EUDEMON';
   if(fn.includes('DELMAX'))return'DELMAX';
   if(fn.includes('TRACMAX')||fn.includes('WINDFORCE'))return'TRACMAX/WINDFORCE';
@@ -950,8 +955,9 @@ async function handleImport(files){
 
       if(!novos.length){logImport(`⚠ Nenhum produto encontrado em ${file.name}`,'err');totalErros++;continue;}
 
-      // remover entradas antigas deste fornecedor e adicionar novas
-      COTACOES=COTACOES.filter(c=>c.f!==forn);
+      // remover entradas antigas deste fornecedor e tipo ao mesclar
+      const tipoNovos = novos[0]&&novos[0].t ? novos[0].t : null;
+      COTACOES=COTACOES.filter(c=>!(c.f===forn && (tipoNovos===null||c.t===tipoNovos)));
       COTACOES=[...COTACOES,...novos.map(c=>Object.assign({},c,{pat:c.pat||c.md||''}))];
 
       // marcar fornecedor como atualizado
@@ -1365,10 +1371,10 @@ function analisar(){
     const best=comp[0];const c2=document.createElement('div');c2.className='card';
     c2.innerHTML=`<div class="ch"><h3>Detalhe — ${best.forn}</h3><span class="cg ml" style="font-size:11px;font-weight:700">MELHOR NO MIX</span></div>
     <table class="rtable"><thead><tr><th>Medida</th><th>Qtde</th><th>Preço/un</th><th>Peso</th><th>USD/kg</th><th>Subtotal</th></tr></thead><tbody>
-    ${best.det.map(d=>{
+    ${best.det.map((d,di)=>{
       const pkg=d.preco&&d.peso>0?d.preco/d.peso:null;
       const pkgCell=pkg?`<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`:'<span class="peso-missing">—</span>';
-      return `<tr><td><span class="mpill">${d.medida}</span></td><td class="cm">${d.qtde}</td><td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td><td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td><td>${pkgCell}</td><td>${d.sub?getMoeda(best.forn)+' '+fmtP(d.sub):'—'}</td></tr>`;
+      return `<tr><td><span class="mpill">${d.medida}</span></td><td class="cm"><input type="number" min="1" value="${d.qtde}" style="width:70px;border:1px solid #d0dce8;border-radius:4px;padding:2px 4px;text-align:center;font-size:12px" oninput="_detalheQtd(this,${di},best)" /></td><td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td><td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td><td>${pkgCell}</td><td>${d.sub?getMoeda(best.forn)+' '+fmtP(d.sub):'—'}</td></tr>`;
     }).join('')}
     <tr style="background:rgba(26,127,212,.07)"><td colspan="4" class="cm fw7">TOTAL</td><td class="cor fw7">${moeda} ${fmtP(best.total)}</td></tr>
     </tbody></table>`;
@@ -1810,6 +1816,37 @@ function confirmarSel() {
 }
 
 // ══ ANÁLISE DE CONTAINER ═══════════════════════════════════════════════
+// Editar qtde no detalhe do container
+function _detalheQtd(el, idx, best){
+  const novaQtd = parseInt(el.value)||0;
+  if(!best || !best.det[idx]) return;
+  best.det[idx].qtde = novaQtd;
+  // Recalcular subtotal e total
+  let total = 0;
+  best.det.forEach(d=>{
+    const sub = (d.preco||0) * (d.qtde||0);
+    d.subtotal = sub;
+    total += sub;
+  });
+  best.total = total;
+  // Atualizar ranking
+  const rankEl = document.getElementById('rank-total-'+best.forn.replace(/[^a-zA-Z0-9]/g,'_'));
+  if(rankEl) rankEl.textContent = fmtP(total);
+  // Recalcular container
+  const tp = ultimaAnalise ? ultimaAnalise.tp : 'PCR';
+  const pneusPorCtnr = {TBR:264, PCR:1100, AGR:200, OTR:100};
+  const capCtnr = pneusPorCtnr[tp] || 1100;
+  const fornId = best.forn.replace(/[^a-zA-Z0-9]/g,'_');
+  const totalQtde = best.det.reduce((s,d)=>s+(d.qtde||0),0);
+  const pct = Math.round((totalQtde/capCtnr)*100);
+  const elPct = document.getElementById('ctnr-pct-'+fornId);
+  const elBar = document.getElementById('ctnr-bar-'+fornId);
+  const elQtd = document.getElementById('ctnr-qtd-'+fornId);
+  if(elPct) elPct.textContent = pct+'%';
+  if(elBar) elBar.style.width = Math.min(pct,100)+'%';
+  if(elQtd) elQtd.textContent = totalQtde+' / '+capCtnr+' un';
+}
+
 function calcContainer(cots, mix) {
   // Agrupar por origem
   const origens = {};
