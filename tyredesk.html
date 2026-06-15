@@ -212,14 +212,6 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 /* MISC */
 .empty{text-align:center;padding:40px;color:var(--mu);font-size:13px;font-weight:500}
 .cor{color:var(--or)}.cg{color:#1a9c5b}.cr{color:#c0392b}.cm{color:#4a6480}.cbl{color:#1a7fd4}
-.cambio-chip{background:rgba(26,127,212,.1);border:1px solid rgba(26,127,212,.2);border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;color:var(--ac);cursor:default;white-space:nowrap;}
-.cambio-chip.stale{opacity:.55;border-color:rgba(100,100,100,.2);}
-.imposto-box{background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:8px;padding:14px 16px;margin-top:12px;}
-.imp-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid rgba(26,127,212,.08);}
-.imp-row:last-child{border-bottom:none;font-weight:700;font-size:13px;color:var(--ac);}
-.imp-label{color:var(--mu);}
-.imp-val{font-family:'DM Mono',monospace;font-weight:600;}
-.vbadge{font-size:9px;background:rgba(26,127,212,.08);color:var(--ac);border:1px solid rgba(26,127,212,.2);border-radius:3px;padding:1px 5px;font-weight:700;margin-left:4px;}
 .fw7{font-weight:700}.mono{font-family:var(--sans)}.ml{margin-left:auto}
 .flex{display:flex;align-items:center}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.mb10{margin-bottom:10px}.mb14{margin-bottom:14px}
 .divider{height:1px;background:var(--b1);margin:14px 0}
@@ -448,7 +440,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
     </div>
     <div class="login-title">Acesso Restrito</div>
     <div class="login-sub">Sistema interno — IMPAK Comercial Importadora</div>
-    <div style="font-size:10px;color:#1a7fd4;font-weight:600;letter-spacing:1px;text-align:center;margin-top:-14px;margin-bottom:10px;text-transform:uppercase">v2.0 — Câmbio · Impostos · Versões</div>
+    <div style="font-size:10px;color:#1a7fd4;font-weight:600;letter-spacing:1px;text-align:center;margin-top:-14px;margin-bottom:10px;text-transform:uppercase">Versão 1.0</div>
     <div class="login-error" id="login-error">Senha incorreta. Tente novamente.</div>
     <label class="login-label">Senha</label>
     <input class="login-input" type="password" id="login-pass"
@@ -466,7 +458,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <div class="nl">
     <div class="logo">
       <div class="logo-box">IMPAK</div>
-      <div class="logo-sub">TyreDesk <span class="vbadge">v2.0</span></div>
+      <div class="logo-sub">TyreDesk <span style="font-size:10px;opacity:.6">v1.0</span></div>
     </div>
   </div>
   <button class="nt active" onclick="pg('dash',this)">Dashboard</button>
@@ -475,8 +467,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <button class="nt" onclick="pg('catalogo',this)">Catálogo</button>
   <button class="nt" onclick="pg('alertas',this)">Alertas</button>
   <button class="nt" onclick="pg('historico',this)">Histórico</button>
-  <div class="nr" style="display:flex;align-items:center;gap:10px">
-    <div id="cambio-bar" style="display:flex;gap:6px;align-items:center"></div>
+  <div class="nr">
     <div class="abadge" id="abadge" onclick="pg('alertas',document.querySelectorAll('.nt')[4])"></div>
   </div>
 </nav>
@@ -495,10 +486,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <div class="card">
     <div class="ch">
       <h3>Importar planilha de preços <span class="badge-novo">NOVO</span></h3>
-      <span class="cm ml" style="font-size:11px;font-weight:500" id="import-status">
-        Base: <span id="import-date" style="font-weight:700;color:var(--ac)">—</span>
-        &nbsp;·&nbsp;<span id="import-fonte" style="font-size:10px;color:var(--mu)">—</span>
-      </span>
+      <span class="cm ml" style="font-size:11px;font-weight:500" id="import-status">Base atual: <span id="import-date">carregada na inicialização</span></span>
     </div>
     <div class="cb">
       <p style="font-size:12px;color:var(--mu);font-weight:500;margin-bottom:14px">
@@ -517,7 +505,6 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn bor bsm" onclick="document.getElementById('import-file').click()">📤 Selecionar arquivo</button>
         <button class="btn bg2 bsm" onclick="resetBase()">↺ Restaurar base original</button>
-        <button class="btn bor bsm" onclick="abrirVersions()">📋 Versões salvas</button>
         <span style="font-size:11px;color:var(--mu);font-weight:500" id="import-count"></span>
       </div>
     </div>
@@ -673,14 +660,6 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 </div>
 
 <!-- MODAL EMAIL -->
-<!-- MODAL VERSÕES -->
-<div class="mbg" id="modal-versions">
-  <div class="modal" style="max-width:560px">
-    <div class="mh"><h3>📋 Versões da Base</h3><button class="mc" onclick="closeM('modal-versions')">×</button></div>
-    <div class="mb" id="versions-list" style="padding:16px;min-height:80px"></div>
-  </div>
-</div>
-
 <div class="mbg" id="modal-email">
   <div class="modal">
     <div class="mh"><h3>Solicitar Cotação</h3><button class="mc" onclick="closeM('modal-email')">×</button></div>
@@ -729,160 +708,6 @@ let fornecedores = [
   {id:'f5',nome:'TRACMAX/WINDFORCE',contato:'Carol Xiu',email:'info32@chinese-tyres.com',tipos:['PCR'],ultimaCot:null},
 ];
 let mixRows=[],cotRows=[],tipoAtivo='PCR',emailLang='pt',emailFornId=null,editFornId=null;
-
-// ── CÂMBIO ──────────────────────────────────────────────────
-let _cambio = {USD:1, EUR:1, CNY:1, BRL:1, at:null, stale:false};
-
-async function carregarCambio(){
-  try{
-    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL');
-    const d = await r.json();
-    _cambio = {
-      USD: parseFloat(d.USDBRL?.bid||0)||1,
-      EUR: parseFloat(d.EURBRL?.bid||0)||1,
-      CNY: parseFloat(d.CNYBRL?.bid||0)||1,
-      BRL: 1,
-      at: new Date(),
-      stale: false,
-    };
-    renderCambioBar();
-  } catch(e){
-    _cambio.stale = true;
-    renderCambioBar();
-  }
-  setTimeout(carregarCambio, 5*60*1000);
-}
-
-function renderCambioBar(){
-  const bar = document.getElementById('cambio-bar');
-  if(!bar) return;
-  const hora = _cambio.at ? _cambio.at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—';
-  const cls = _cambio.stale ? 'cambio-chip stale' : 'cambio-chip';
-  bar.innerHTML = `
-    <span class="${cls}" title="USD/BRL · ${hora}">USD R$ ${_cambio.USD.toFixed(2)}</span>
-    <span class="${cls}" title="EUR/BRL · ${hora}">EUR R$ ${_cambio.EUR.toFixed(2)}</span>
-    <span class="${cls}" title="CNY/BRL · ${hora}">CNY R$ ${_cambio.CNY.toFixed(4)}</span>`;
-}
-
-function toBRL(valor, moeda){
-  if(!valor||!moeda) return 0;
-  const taxa = _cambio[moeda] || 1;
-  return valor * taxa;
-}
-
-// ── IMPOSTOS BRASILEIROS ─────────────────────────────────────
-// Tabela de alíquotas por NCM de pneus (valores típicos 2026)
-const ALIQUOTAS = {
-  // PCR (pneus de passeio)
-  PCR: { II:16, IPI:0, PIS:2.1, COFINS:9.65, ICMS:12 },
-  // TBR (pneus de carga)
-  TBR: { II:16, IPI:0, PIS:2.1, COFINS:9.65, ICMS:12 },
-};
-
-function calcImpostosBR(precoCIF_BRL, tipo){
-  const al = ALIQUOTAS[tipo] || ALIQUOTAS.PCR;
-  const II    = precoCIF_BRL * (al.II/100);
-  const IPI   = (precoCIF_BRL + II) * (al.IPI/100);
-  const base_pis = precoCIF_BRL + II + IPI;
-  const PIS   = base_pis * (al.PIS/100);
-  const COF   = base_pis * (al.COFINS/100);
-  const base_icms = precoCIF_BRL + II + IPI + PIS + COF;
-  const ICMS  = base_icms / (1 - al.ICMS/100) * (al.ICMS/100);
-  const total = precoCIF_BRL + II + IPI + PIS + COF + ICMS;
-  return {II, IPI, PIS, COFINS:COF, ICMS, total, aliquotas:al};
-}
-
-function renderImpostoBox(precoBRL_unit, tipo, containerId){
-  const el = document.getElementById(containerId);
-  if(!el) return;
-  const imp = calcImpostosBR(precoBRL_unit, tipo||tipoAtivo);
-  el.innerHTML = `<div class="imposto-box">
-    <div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
-      Custo estimado DDP (R$/pneu)
-    </div>
-    <div class="imp-row"><span class="imp-label">FOB + Frete CIF</span><span class="imp-val">R$ ${fmt(precoBRL_unit)}</span></div>
-    <div class="imp-row"><span class="imp-label">II (${imp.aliquotas.II}%)</span><span class="imp-val">R$ ${fmt(imp.II)}</span></div>
-    <div class="imp-row"><span class="imp-label">IPI (${imp.aliquotas.IPI}%)</span><span class="imp-val">R$ ${fmt(imp.IPI)}</span></div>
-    <div class="imp-row"><span class="imp-label">PIS (${imp.aliquotas.PIS}%)</span><span class="imp-val">R$ ${fmt(imp.PIS)}</span></div>
-    <div class="imp-row"><span class="imp-label">COFINS (${imp.aliquotas.COFINS}%)</span><span class="imp-val">R$ ${fmt(imp.COFINS)}</span></div>
-    <div class="imp-row"><span class="imp-label">ICMS (${imp.aliquotas.ICMS}%)</span><span class="imp-val">R$ ${fmt(imp.ICMS)}</span></div>
-    <div class="imp-row" style="margin-top:4px;padding-top:6px;border-top:2px solid rgba(26,127,212,.15)">
-      <span>Total DDP</span><span class="imp-val">R$ ${fmt(imp.total)}</span>
-    </div>
-  </div>`;
-}
-
-// ── INDICADOR DE BASE ────────────────────────────────────────
-function atualizarStatusBase(fonte, total){
-  const dateEl = document.getElementById('import-date');
-  const fonteEl = document.getElementById('import-fonte');
-  if(dateEl) dateEl.textContent = total + ' itens · ' + new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-  if(fonteEl){
-    if(fonte==='drive'){
-      fonteEl.innerHTML = '<span style="color:#16a34a;font-weight:700">● Drive</span>';
-    } else if(fonte==='upload'){
-      fonteEl.innerHTML = '<span style="color:var(--ac);font-weight:700">● Upload</span>';
-    } else {
-      fonteEl.innerHTML = '<span style="color:var(--or);font-weight:700">● Base embutida</span>';
-    }
-  }
-}
-
-// ── VERSIONAMENTO DA BASE ────────────────────────────────────
-const MAX_SNAPSHOTS = 5;
-let _snapshots = []; // [{label, total, ts}] — sem data para não pesar
-
-function salvarSnapshot(label){
-  // Guardar só metadados em RAM (dados no Drive)
-  const snap = {
-    label: label || 'Backup ' + new Date().toLocaleString('pt-BR'),
-    ts: Date.now(),
-    total: COTACOES.length,
-  };
-  _snapshots.unshift(snap);
-  if(_snapshots.length > MAX_SNAPSHOTS) _snapshots.pop();
-
-  // Salvar snapshot completo no Drive
-  const snapKey = 'tyredesk_snap_' + snap.ts + '.json';
-  fetch('/api/base/salvar', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({base: COTACOES, label: snap.label, ts: snap.ts})
-  }).catch(()=>{});
-
-  // Salvar lista de snapshots
-  fetch('/api/base/salvar-snapshots', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({snapshots: _snapshots})
-  }).catch(()=>{});
-
-  toast('Versão salva: ' + snap.label);
-}
-
-async function carregarSnapshots(){
-  try{
-    const r = await fetch('/api/base/carregar-snapshots');
-    if(!r.ok) return;
-    const d = await r.json();
-    if(d.ok && d.snapshots) _snapshots = d.snapshots;
-  }catch(e){}
-}
-
-function restaurarSnapshot(idx){
-  const snap = _snapshots[idx];
-  if(!snap) return;
-  if(!confirm('Restaurar versão "' + snap.label + '" com ' + snap.total + ' itens?')) return;
-  // Carregar dados do Drive (não ficam em RAM)
-  toast('Carregando versão...', 'ok');
-  // Por enquanto usa o Drive principal como base de restauração
-  // (versões completas podem ser implementadas com endpoints específicos)
-  fetch('/api/base/carregar').then(r=>r.json()).then(d=>{
-    if(d.base && d.base.length){
-      COTACOES = d.base.map(c=>Object.assign({},c,{pat:c.pat||c.md||''}));
-      renderDash(); renderCat();
-      toast('Base restaurada: ' + snap.label);
-    }
-  }).catch(()=>toast('Erro ao restaurar','err'));
-}
 let ultimaAnalise=null;
 let catFiltered=[],catSortKey='f',catSortAsc=true,catPage=0;
 const CAT_PER = 50;
@@ -954,49 +779,21 @@ function logImport(msg,type='info'){
 
 function setBar(pct){document.getElementById('import-bar').style.width=pct+'%';}
 
-function detectFornecedor(filename, data){
-  const fn = filename.toUpperCase();
-  const flat = JSON.stringify(data).toUpperCase();
-
-  // 1. Tentar match exato pelo nome de fornecedor cadastrado
-  // Ordenar por nome mais longo primeiro (ROVELO - TBR antes de ROVELO)
-  const sorted = [...fornecedores].sort((a,b)=>b.nome.length-a.nome.length);
-  for(const f of sorted){
-    const nome = f.nome.toUpperCase();
-    if(fn.includes(nome) || flat.includes(nome)) return f.nome;
-  }
-
-  // 2. Fallback: detectar marca base e diferenciar pelo tipo na planilha
-  let marcaBase = null;
-  if(fn.includes('ROVELO')||flat.includes('ROVELO')) marcaBase='ROVELO';
-  else if(fn.includes('EUDEMON')||flat.includes('EUDEMON')) marcaBase='EUDEMON';
-  else if(fn.includes('DELMAX')||flat.includes('DELMAX')) marcaBase='DELMAX';
-  else if(fn.includes('TRACMAX')||fn.includes('WINDFORCE')) marcaBase='TRACMAX/WINDFORCE';
-  else if(fn.includes('INVOVIC')||fn.includes('SUNWIDE')) marcaBase='SUNWIDE/INVOVIC';
-
-  if(!marcaBase) return null;
-
-  // Detectar tipo pela planilha (TBR vs PCR)
-  let tipoDetectado = null;
-  if(flat.includes('"TBR"')||fn.includes('TBR')) tipoDetectado='TBR';
-  else if(flat.includes('"PCR"')||fn.includes('PCR')) tipoDetectado='PCR';
-
-  // Verificar se existe fornecedor com nome "MARCA - TIPO"
-  if(tipoDetectado){
-    const nomeCandidato = marcaBase + ' - ' + tipoDetectado;
-    const f = fornecedores.find(x=>x.nome.toUpperCase()===nomeCandidato.toUpperCase());
-    if(f) return f.nome;
-    // Também testar "MARCA TBR" ou "MARCATBR"
-    const f2 = fornecedores.find(x=>x.nome.toUpperCase().includes(marcaBase) && x.nome.toUpperCase().includes(tipoDetectado));
-    if(f2) return f2.nome;
-  }
-
-  // Retornar o fornecedor base se existir com esse nome exato
-  const fBase = fornecedores.find(x=>x.nome.toUpperCase()===marcaBase);
-  if(fBase) return fBase.nome;
-
-  // Último recurso: retornar marcaBase mesmo sem cadastro
-  return marcaBase;
+function detectFornecedor(filename,data){
+  const fn=filename.toUpperCase();
+  if(fn.includes('ROVELO'))return'ROVELO';
+  if(fn.includes('EUDEMON'))return'EUDEMON';
+  if(fn.includes('DELMAX'))return'DELMAX';
+  if(fn.includes('TRACMAX')||fn.includes('WINDFORCE'))return'TRACMAX/WINDFORCE';
+  if(fn.includes('INVOVIC')||fn.includes('SUNWIDE'))return'SUNWIDE/INVOVIC';
+  // tentar pelo conteúdo
+  const flat=JSON.stringify(data).toUpperCase();
+  if(flat.includes('ROVELO'))return'ROVELO';
+  if(flat.includes('EUDEMON'))return'EUDEMON';
+  if(flat.includes('DELMAX'))return'DELMAX';
+  if(flat.includes('TRACMAX'))return'TRACMAX/WINDFORCE';
+  if(flat.includes('INVOVIC'))return'SUNWIDE/INVOVIC';
+  return null;
 }
 
 function parseTBR(rows, fornecedor){
@@ -1004,57 +801,30 @@ function parseTBR(rows, fornecedor){
   let hi=-1;
   for(let i=0;i<rows.length;i++){
     const r=rows[i].map(c=>(c||'').toString().toUpperCase());
-    if(r.some(c=>c==='SIZE'||c==='SIZE COMPLETE')){hi=i;break;}
+    if(r.includes('SIZE')){hi=i;break;}
   }
   if(hi<0)return[];
   const hdr=rows[hi].map(c=>(c||'').toString());
-
-  // Preferir SIZE COMPLETE (tem medida + índice) mas usar SIZE se não tiver COMPLETE
-  let iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE COMPLETE');
-  if(iSize<0) iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE');
-
+  const iSize=hdr.findIndex(c=>c.toUpperCase()==='SIZE');
   const iBrand=hdr.findIndex(c=>c.toUpperCase()==='BRAND');
-  const iPat  =hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
-  const iWgt  =hdr.findIndex(c=>c.toUpperCase().includes('WEIGHT'));
-  const iLi   =hdr.findIndex(c=>c.toUpperCase().includes('LI'));
-  const iPr   =hdr.findIndex(c=>c.toUpperCase()==='PR');
-  const iMoq  =hdr.findIndex(c=>c.toString().includes('40'));
-  const iFob  =hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
-  const iSpc  =hdr.findIndex(c=>c.toUpperCase().includes('SPECIAL'));
-  const iCat  =hdr.findIndex(c=>c.toUpperCase()==='CATEGORY');
-
+  const iPat=hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
+  const iWgt=hdr.findIndex(c=>c.toUpperCase()==='WEIGHT');
+  const iLi=hdr.findIndex(c=>c.toUpperCase().includes('LI'));
+  const iPr=hdr.findIndex(c=>c.toUpperCase()==='PR');
+  const iMoq=hdr.findIndex(c=>c.includes('40'));
+  const iFob=hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
+  const iSpc=hdr.findIndex(c=>c.toUpperCase().includes('SPECIAL'));
   const items=[];
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i];
-    const sizeRaw=(r[iSize]||'').toString().trim();
-    if(!sizeRaw||sizeRaw.length<5) continue;
-
-    // Extrair só a medida (ex: "165/70R14 81T" → "165/70R14")
-    const size = sizeRaw.replace(/\s+.*$/,'').trim();
-    if(!size||size.length<5) continue;
-
-    const preco = iSpc>=0&&r[iSpc]&&parseFloat(r[iSpc])>0
-      ? parseFloat(r[iSpc])
-      : iFob>=0 ? parseFloat(r[iFob]) : 0;
-    if(!preco||preco<=0) continue;
-
-    // Detectar tipo PCR ou TBR pela medida ou coluna CATEGORY
-    const cat = iCat>=0 ? (r[iCat]||'').toString().toUpperCase() : '';
-    const tipo = cat.includes('TBR') ? 'TBR'
-      : cat.includes('PCR') ? 'PCR'
-      : /^(1[0-9]{2}\/|2[0-9]{2}\/)/.test(size) ? 'PCR'  // medidas PCR: 165/, 195/, 225/ etc
-      : /^(7\.50|8\.25|9\.00|10\.00|11\.00|12\.00|13\.00|295\/80|315\/80|385\/|425\/)/.test(size) ? 'TBR'
-      : 'PCR'; // default PCR para ROVELO
-
-    items.push({
-      f:fornecedor, s:size, m:(r[iBrand]||fornecedor).toString(),
-      md:(r[iPat]||'').toString(), cur:'USD',
-      pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,
-      li:iLi>=0?(r[iLi]||'').toString():'',
-      pr:iPr>=0?(r[iPr]||'').toString():'',
-      moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
-      p:Math.round(preco*100)/100, t:tipo
-    });
+    const size=(r[iSize]||'').toString().trim().replace(/\s+/g,'');
+    if(!size||size.length<5)continue;
+    const preco=iSpc>=0&&r[iSpc]?parseFloat(r[iSpc]):iFob>=0?parseFloat(r[iFob]):0;
+    if(!preco||preco<=0)continue;
+    items.push({f:fornecedor,s:size,m:(r[iBrand]||fornecedor).toString(),md:(r[iPat]||'').toString(),cur:'USD',
+      pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,li:iLi>=0?(r[iLi]||'').toString():'',
+      pr:iPr>=0?(r[iPr]||'').toString():'',moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
+      p:Math.round(preco*100)/100,t:'TBR'});
   }
   return items;
 }
@@ -1148,10 +918,6 @@ function parsePCR_INVOVIC(rows){
 }
 
 async function handleImport(files){
-  // Salvar versão anterior antes de importar (máximo 5 versões)
-  if(COTACOES.length > 0){
-    salvarSnapshot('Antes de importar ' + Array.from(files).map(f=>f.name.split('.')[0]).join(', '));
-  }
   if(!files||!files.length)return;
   const prog=document.getElementById('import-progress');
   prog.style.display='block';
@@ -1187,7 +953,6 @@ async function handleImport(files){
       // remover entradas antigas deste fornecedor e adicionar novas
       COTACOES=COTACOES.filter(c=>c.f!==forn);
       COTACOES=[...COTACOES,...novos.map(c=>Object.assign({},c,{pat:c.pat||c.md||''}))];
-      atualizarStatusBase('upload', COTACOES.length);
 
       // marcar fornecedor como atualizado
       const fo=fornecedores.find(x=>x.nome===forn);
@@ -1207,7 +972,9 @@ async function handleImport(files){
   toast(`✓ ${totalNovos} produtos importados!`);
   renderDash();
   updateSizeDl();
-  // Salvar base no Drive (fonte de verdade para todos os usuários)
+  // Salvar base atual por fornecedor
+  if(totalNovos>0){const fm={};COTACOES.forEach(c=>{if(!fm[c.f])fm[c.f]=[];fm[c.f].push(c);});for(const [fn,its] of Object.entries(fm)){await salvarCotacoes(fn,its);}}
+  // Salvar base GLOBAL no Drive (todos os usuários vão carregar isso)
   if(totalNovos>0){
     try{
       const r = await fetch('/api/base/salvar',{
@@ -1218,10 +985,6 @@ async function handleImport(files){
       const d = await r.json();
       if(d.ok) logImport(`✓ Base global salva no Drive (${d.total} itens)`, 'ok');
     } catch(e){ logImport('⚠ Base salva localmente (Drive offline)', 'warn'); }
-
-    // Salvar datas de cotação dos fornecedores
-    await salvarFornecedores();
-    renderForn();
   }
 }
 
@@ -1303,12 +1066,12 @@ function salvarForn(){
   if(!tipos.length){toast('Selecione ao menos um tipo');return;}
   if(editFornId){Object.assign(fornecedores.find(x=>x.id===editFornId),{nome,contato,email,tipos});}
   else fornecedores.push({id:uid(),nome,contato,email,tipos,ultimaCot:null});
-  closeM('modal-forn');renderForn();salvarFornecedores();toast(editFornId?'Atualizado':'Cadastrado');
+  closeM('modal-forn');renderForn();toast(editFornId?'Atualizado':'Cadastrado');
   document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
 }
 function delForn(id){
   if(!confirm('Remover?'))return;
-  fornecedores=fornecedores.filter(f=>f.id!==id);renderForn();salvarFornecedores();toast('Removido');
+  fornecedores=fornecedores.filter(f=>f.id!==id);renderForn();toast('Removido');
 }
 function syncC(t){
   const el=document.getElementById('chk-'+t);
@@ -1316,23 +1079,6 @@ function syncC(t){
 }
 
 // ── EMAIL ─────────────────────────────────────────────
-function abrirVersions(){
-  const el = document.getElementById('versions-list');
-  if(!_snapshots.length){
-    el.innerHTML='<div style="text-align:center;padding:20px;color:var(--mu)">Nenhuma versão salva.<br><small>Versões são salvas automaticamente antes de cada importação.</small></div>';
-  } else {
-    el.innerHTML = _snapshots.map((s,i)=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd)">
-        <div>
-          <div style="font-weight:600;font-size:13px">${s.label}</div>
-          <div style="font-size:11px;color:var(--mu)">${s.total} itens · ${new Date(s.ts).toLocaleString('pt-BR')}</div>
-        </div>
-        <button class="btn bor bsm" onclick="restaurarSnapshot(${i});closeM('modal-versions')">Restaurar</button>
-      </div>`).join('');
-  }
-  document.getElementById('modal-versions').style.display='flex';
-}
-
 function openEmail(fid){
   emailFornId=fid;const f=fornecedores.find(x=>x.id===fid);
   document.getElementById('em-dest').textContent=`${f.nome} <${f.email}>`;
@@ -1351,29 +1097,9 @@ function renderEmail(){
   const f=fornecedores.find(x=>x.id===emailFornId);if(!f)return;
   const tipo=document.getElementById('em-tipo').value;
   const tn={PCR:'PCR (Passeio)',TBR:'TBR (Carga)',AGR:'AGR (Agrícola)',OTR:'OTR (Industrial)'}[tipo];
-
-  // Pegar medidas do mix atual para incluir no email
-  const medidasMix = mixRows.filter(r=>r.medida).map(r=>r.medida.trim());
-  // Pegar medidas do fornecedor na base
-  const medidasForn = [...new Set(
-    COTACOES.filter(c=>c.f&&c.f.toUpperCase().includes(f.nome.split('/')[0].toUpperCase()))
-    .map(c=>c.s||c.medida||'').filter(Boolean)
-  )].slice(0,20);
-
-  const temMedidas = medidasMix.length > 0;
-  const listaMedidas = temMedidas ? medidasMix : medidasForn;
-
-  const medidasStr_pt = listaMedidas.length
-    ? '\n\nMedidas de interesse:\n' + listaMedidas.map(m=>'  • ' + m).join('\n')
-    : '';
-  const medidasStr_en = listaMedidas.length
-    ? '\n\nSizes of interest:\n' + listaMedidas.map(m=>'  • ' + m).join('\n')
-    : '';
-
-  const txt = emailLang==='pt'
-    ? `Bom dia, ${f.contato}! Tudo bem?\n\nFavor enviar tabela de preços atualizada para pneus ${tn}.${medidasStr_pt}\n\nAtenciosamente,\nJean\nIMPAK Comercial Importadora\nimpak@impak.com.br`
-    : `Good morning, ${f.contato}! Hope you are well.\n\nPlease send the updated price list for ${tn} tyres.${medidasStr_en}\n\nBest regards,\nJean\nIMPAK Comercial Importadora\nimpak@impak.com.br`;
-
+  const txt=emailLang==='pt'
+    ?`Bom dia, ${f.contato}! Tudo bem?\n\nFavor atualizar a tabela de preço dos pneus ${tn}.\n\nAtenciosamente,\nJean\nIMPAK Importadora`
+    :`Good morning, ${f.contato}! Hope you are well.\n\nPlease send the updated price list for ${tn} tyres.\n\nBest regards,\nJean\nIMPAK Importadora`;
   document.getElementById('email-prev').textContent=txt;
 }
 function copiarEmail(){
@@ -1385,68 +1111,10 @@ async function marcarEnv(){
     f.ultimaCot=new Date().toISOString();
     const tipo=document.getElementById('em-tipo').value;
     await gravarHistorico(f, tipo, emailLang);
-    await salvarFornecedores();
     renderForn();
     toast('Marcado — próximo em 30 dias · histórico salvo');
   }
   closeM('modal-email');
-}
-
-async function salvarFornecedores(){
-  try{
-    // Salvar tudo: id, nome, contato, email, tipos, ultimaCot
-    const payload = fornecedores.map(f=>({
-      id:       f.id,
-      nome:     f.nome,
-      contato:  f.contato||'',
-      email:    f.email||'',
-      tipos:    f.tipos||[],
-      ultimaCot:f.ultimaCot||null,
-    }));
-    await fetch('/api/base/salvar-fornecedores',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({fornecedores: payload})
-    });
-  }catch(e){ console.warn('Salvar fornecedores:', e); }
-}
-
-async function carregarFornecedores(){
-  try{
-    const r = await fetch('/api/base/carregar-fornecedores');
-    const d = await r.json();
-    if(d.ok && d.fornecedores && d.fornecedores.length){
-      // Restaurar lista completa do banco (inclui criações/edições do usuário)
-      const savedList = d.fornecedores;
-      // Verificar se tem dados completos (nome, tipos) — se sim, substituir lista inteira
-      const temDadosCompletos = savedList.some(f=>f.tipos && f.tipos.length>0);
-      if(temDadosCompletos){
-        // Substituir completamente pela versão salva
-        fornecedores.length = 0;
-        savedList.forEach(function(saved){
-          fornecedores.push({
-            id:        saved.id || uid(),
-            nome:      saved.nome || '',
-            contato:   saved.contato || '',
-            email:     saved.email || '',
-            tipos:     saved.tipos || ['PCR'],
-            ultimaCot: saved.ultimaCot || null,
-          });
-        });
-      } else {
-        // Fallback: só atualizar ultimaCot (dados antigos sem tipos)
-        savedList.forEach(function(saved){
-          const f = fornecedores.find(x=>x.id===saved.id||x.nome===saved.nome);
-          if(f){
-            if(saved.ultimaCot) f.ultimaCot = saved.ultimaCot;
-          }
-        });
-      }
-      // Atualizar datalist
-      const dl = document.getElementById('forn-dl');
-      if(dl) dl.innerHTML = fornecedores.map(f=>`<option value="${f.nome}">`).join('');
-    }
-  }catch(e){ console.warn('Carregar fornecedores:', e); }
 }
 
 // ── ALERTAS ───────────────────────────────────────────
@@ -1566,7 +1234,7 @@ function analisar(){
   const cots=cotRows.filter(r=>r.forn&&r.medida&&r.preco>0).map(r=>({
     forn:r.forn.trim(),medida:norm(r.medida),preco:parseFloat(r.preco)||0,
     peso:parseFloat(r.peso)||0,moq:parseInt(r.moq)||0,
-    orig:r.orig||'',pat:r.pat||'',bor:r.bor||'',
+    orig:r.orig||'',pat:r.pat||'',bor:r.bor||'liso',
     li:r.li||'',pr:r.pr||'',
     ctnr:r.ctnr||r.moq||0, cur:r.cur||moeda
   }));
@@ -1600,27 +1268,18 @@ function analisar(){
     return{...m,melhor:ops[0].forn,preco:ops[0].preco,peso:ops[0].peso,sub:ops[0].preco*m.qtde,moq:ops[0].moq||0,li:ops[0].li||'',pr:ops[0].pr||'',pat:ops[0].pat||'',todas:ops};
   });
   const totOtim=otim.reduce((s,o)=>s+(o.sub||0),0);
-  const totOtimBRL = _cambio.USD > 1
-    ? otim.reduce((s,o)=>{ if(!o.sub||!o.melhor) return s; const t=_cambio[getMoeda(o.melhor)]||_cambio.USD||1; return s+o.sub*t; },0)
-    : 0;
   const econ=comp[0]?comp[0].total-totOtim:0;
   const maxT=Math.max(...sorted.map(r=>r.parcial));
 
   const area=document.getElementById('results-area');area.innerHTML='';
 
-  const cambioInfo = _cambio.at
-    ? `USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${_cambio.EUR.toFixed(2)}`
-    : 'câmbio não carregado';
   const c1=document.createElement('div');c1.className='card';
-  c1.innerHTML=`<div class="ch"><h3>Ranking de Fornecedores</h3>
-    <span class="cm ml" style="font-size:11px;font-weight:600">${moeda} · ${tp}</span>
-    <span class="cambio-chip ${_cambio.stale?'stale':''}" style="margin-left:8px" title="Câmbio em tempo real">${cambioInfo}</span>
-  </div>
+  c1.innerHTML=`<div class="ch"><h3>Ranking de Fornecedores</h3><span class="cm ml" style="font-size:11px;font-weight:600">${moeda} · ${tp}</span></div>
   <table class="rtable"><thead><tr><th>#</th><th>Fornecedor</th><th>Total mix</th><th>Cobertura</th><th></th><th></tr></thead><tbody>
   ${sorted.map((r,i)=>`<tr class="${i===0&&r.total!==null?'brow':''}">
     <td class="cm" style="font-size:10px">${i+1}</td>
     <td class="fw7">${r.forn}${i===0&&r.total!==null?' <span class="cg" style="font-size:10px">✓</span>':''}</td>
-    <td class="cor fw7">${r.total!==null?`<span id="rank-total-${r.forn.replace(/[^a-zA-Z0-9]/g,'_')}">${getMoeda(r.forn)+' '+fmtP(r.total)}</span>`:`<span class="cm">~${r.curMoeda||moeda} ${fmtP(r.parcial)}</span>`}</td>
+    <td class="cor fw7">${r.total!==null?getMoeda(r.forn)+' '+fmtP(r.total):`<span class="cm">~${r.curMoeda||moeda} ${fmtP(r.parcial)}</span>`}</td>
     <td class="${r.pct===100?'cg':r.pct>=50?'cor':'cr'}" style="font-size:10px">${r.pct}% (${r.cob}/${mix.length})</td>
     <td><div class="bw"><div class="bf ${i>0?'dm':''}" style="width:${maxT>0?Math.round((r.parcial/maxT)*100):0}%"></div></div></td>
     
@@ -1628,10 +1287,8 @@ function analisar(){
   // Botão exportar
   const btnExp=document.createElement('div');
   btnExp.style.cssText='display:flex;justify-content:flex-end;margin-bottom:12px';
-  btnExp.innerHTML=`
-    <button class="btn bp" onclick="exportarExcel()" style="gap:6px;display:flex;align-items:center">📥 Exportar Excel</button>
-    <button class="btn bor" onclick="exportarComImpostos()" style="gap:6px;display:flex;align-items:center;margin-left:8px">🇧🇷 Exportar c/ Impostos BRL</button>
-    <button class="btn" onclick="abrirCalculador()" style="gap:6px;display:flex;align-items:center;margin-left:8px;background:#0a2d5e;color:#fff;border:none;">⚡ Calcular Importação</button>`;
+  btnExp.innerHTML=`<button class="btn bp" onclick="exportarExcel()" style="gap:6px;display:flex;align-items:center">
+    📥 Exportar Excel</button>`;
   area.appendChild(btnExp);
 
   area.appendChild(c1);
@@ -1657,22 +1314,22 @@ function analisar(){
 
   // Container % por fornecedor
   let ctnrHtml='<div style="padding:0 16px 14px">';
+  const pneusPorCtnr = {TBR:264, PCR:1100, AGR:200, OTR:100};
+  const capCtnr = pneusPorCtnr[tp] || 1100;
   const fornsCtnr=[...new Set(cots.map(c=>c.forn))];
   fornsCtnr.forEach(forn=>{
-    const linhas=cots.filter(c=>c.forn===forn&&c.moq>0);
+    const linhas=cots.filter(c=>c.forn===forn);
     if(!linhas.length) return;
     const mixF=mix.filter(m=>linhas.some(l=>l.medida===m.medida));
     if(!mixF.length) return;
-    const totalMoq=linhas.reduce((s,c)=>s+(c.moq||0),0)/linhas.length;
     const totalQtde=mixF.reduce((s,m)=>s+m.qtde,0);
-    const pct=Math.round((totalQtde/totalMoq)*100);
+    const pct=Math.round((totalQtde/capCtnr)*100);
     const barColor=pct>100?'#c0392b':pct>=90?'#1a9c5b':pct>=60?'#b07800':'#c0392b';
     const overClass=pct>100?'ctnr-over':'';
-    const fornId = forn.replace(/[^a-zA-Z0-9]/g,'_');
     ctnrHtml+=`<div class="ctnr-row"><span style="font-size:11px;font-weight:600;min-width:170px">${forn}</span>
-      <div class="ctnr-bar-bg"><div class="ctnr-bar-fill" id="ctnr-bar-${fornId}" style="width:${Math.min(pct,100)}%;background:${barColor}"></div></div>
-      <span class="ctnr-pct ${overClass}" id="ctnr-pct-${fornId}" style="color:${barColor}">${pct}%${pct>100?' ⚠':''}</span>
-      <span id="ctnr-qtd-${fornId}" style="font-size:10px;color:var(--mu);font-weight:500">${totalQtde} un</span>
+      <div class="ctnr-bar-bg"><div class="ctnr-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+      <span class="ctnr-pct ${overClass}" style="color:${barColor}">${pct}%${pct>100?' ⚠':''}</span>
+      <span style="font-size:10px;color:var(--mu);font-weight:500">${totalQtde} un</span>
     </div>`;
   });
   ctnrHtml+='</div>';
@@ -1684,25 +1341,13 @@ function analisar(){
     const best=comp[0];const c2=document.createElement('div');c2.className='card';
     c2.innerHTML=`<div class="ch"><h3>Detalhe — ${best.forn}</h3><span class="cg ml" style="font-size:11px;font-weight:700">MELHOR NO MIX</span></div>
     <table class="rtable"><thead><tr><th>Medida</th><th>Qtde</th><th>Preço/un</th><th>Peso</th><th>USD/kg</th><th>Subtotal</th></tr></thead><tbody>
-    ${best.det.map((d,di)=>{
+    ${best.det.map(d=>{
       const pkg=d.preco&&d.peso>0?d.preco/d.peso:null;
       const pkgCell=pkg?`<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`:'<span class="peso-missing">—</span>';
-      return `<tr>
-        <td><span class="mpill">${d.medida}</span></td>
-        <td class="cm">
-          <input type="number" value="${d.qtde}" min="1" step="1"
-            style="width:70px;background:rgba(26,127,212,.07);border:1px solid var(--ac);border-radius:5px;padding:3px 6px;font-size:12px;font-family:'DM Mono',monospace;text-align:center;color:var(--text);outline:none;"
-            oninput="_detalheQtd[${di}]=parseInt(this.value)||${d.qtde}; recalcDetalhe('${best.forn}')">
-        </td>
-        <td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td>
-        <td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td>
-        <td>${pkgCell}</td>
-        <td id="det-sub-${di}" class="fw7">${d.sub?getMoeda(best.forn)+' '+fmtP(d.sub):'—'}</td>
-      </tr>`;
+      return `<tr><td><span class="mpill">${d.medida}</span></td><td class="cm">${d.qtde}</td><td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td><td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td><td>${pkgCell}</td><td>${d.sub?getMoeda(best.forn)+' '+fmtP(d.sub):'—'}</td></tr>`;
     }).join('')}
-    <tr style="background:rgba(26,127,212,.07)"><td colspan="4" class="cm fw7">TOTAL</td><td></td><td class="cor fw7" id="det-total">${moeda} ${fmtP(best.total)}</td></tr>
-    </tbody></table>
-    <div style="padding:8px 0 4px;font-size:11px;color:var(--mu);">💡 Edite as quantidades acima para ajustar o mix — o subtotal atualiza automaticamente.</div>`;
+    <tr style="background:rgba(26,127,212,.07)"><td colspan="4" class="cm fw7">TOTAL</td><td class="cor fw7">${moeda} ${fmtP(best.total)}</td></tr>
+    </tbody></table>`;
     area.appendChild(c2);
   }
 
@@ -1717,19 +1362,12 @@ function analisar(){
       const pkgCellO=pkg?`<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`:'<span class="peso-missing">—</span>';
       return `<tr><td><span class="mpill">${o.medida}</span></td><td class="cm">${o.qtde}</td><td class="cg fw7">${o.melhor||'<span class="cr">sem cot.</span>'}</td><td class="cor">${o.preco?getMoeda(o.melhor||'')+' '+fmtP(o.preco):'—'}</td><td class="cm">${o.peso?fmtKg(o.peso)+'kg':'—'}</td><td>${pkgCellO}</td><td>${o.sub?getMoeda(o.forn||'')+' '+fmtP(o.sub):'—'}</td></tr>`;
     }).join('')}
-    <tr style="background:rgba(26,127,212,.07)"><td colspan="5" class="cm fw7">TOTAL OTIMIZADO</td>
-      <td class="cor fw7">${getMoeda(otim.find(o=>o.melhor)?.melhor||'')} ${fmtP(totOtim)}
-        ${totOtimBRL>0?`<span style="font-size:10px;color:var(--mu);font-weight:400;margin-left:6px">≈ R$ ${fmtP(totOtimBRL)}</span>`:''}
-      </td></tr>
+    <tr style="background:rgba(26,127,212,.07)"><td colspan="5" class="cm fw7">TOTAL OTIMIZADO</td><td class="cor fw7">${getMoeda(otim.find(o=>o.melhor)?.melhor||'')} ${fmtP(totOtim)}</td></tr>
     </tbody></table>`;
     area.appendChild(c3);
   }
 
   // Salvar para exportação
-  // Inicializar qtd editável para a tabela de detalhe
-  _detalheQtd = {};
-  _detalheItems = best ? best.det.map(d=>({...d})) : [];
-
   ultimaAnalise={mix,cots,sorted,otim,moeda,tp};
   // Construir pkgPorMedida: USD/kg médio por medida
   const pkgPorMedida={};
@@ -1753,12 +1391,11 @@ function analisar(){
     <div>${ops.map((o,i)=>{
       const ppu=o.peso>0?o.preco/o.peso:null;
       const ppuBadge=ppu?`<span class="pkg-badge pkg-info" title="USD/kg">${fmtPkg(ppu)}</span>`:'';
-      // Construir badges inline
-      const chipCls = i===0?'mpill':'mpill';
-      const patTxt  = o.pat ? ` <span style="font-size:10px;color:var(--mu);margin-left:4px">${o.pat}</span>` : '';
-      const borTxt  = o.bor==='borrachudo' ? ' <span class="badge-borr" style="font-size:9px">BORR</span>' : o.bor==='liso' ? ' <span class="badge-liso" style="font-size:9px">LISO</span>' : '';
+      const chipCls = i===0 ? 'mpill' : 'mpill';
+      const patTxt = o.pat ? ` <span style="font-size:10px;color:var(--mu);margin-left:4px">${o.pat}</span>` : '';
+      const borTxt = o.bor==='borrachudo' ? ' <span class="badge-borr" style="font-size:9px">BORR</span>' : o.bor==='liso' ? ' <span class="badge-liso" style="font-size:9px">LISO</span>' : '';
       const origTxt = o.orig ? ` <span class="badge-orig" style="font-size:9px">${o.orig}</span>` : '';
-      const alertTxt= (o.moq&&parseInt(m.qtde)<o.moq) ? ' <span style="font-size:9px;color:var(--rd);font-weight:700">MOQ!</span>' : '';
+      const alertTxt = (o.moq&&parseInt(m.qtde)<o.moq) ? ' <span style="font-size:9px;color:var(--rd);font-weight:700">MOQ!</span>' : '';
       return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipCls}" style="font-size:11px;padding:3px 8px">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patTxt}${borTxt}${origTxt}${alertTxt}</div>`;
     }).join('')}</div></div>`;
   });
@@ -1860,7 +1497,7 @@ window.addEventListener('load', async function(){
         const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
         const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
         const data=JSON.parse(new TextDecoder().decode(plain));
-        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'',moq:c.moq||null,cat:c.cat||''}));
+        window._BASE_ORIGINAL=data.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
         COTACOES=window._BASE_ORIGINAL.slice();
       } catch(e) {
         console.warn('Decrypt:', e.message);
@@ -1871,16 +1508,15 @@ window.addEventListener('load', async function(){
         const br = await fetch('/api/base/carregar');
         const bd = await br.json();
         if(bd.ok && bd.base && bd.base.length > 0){
-          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'',moq:c.moq||null,cat:c.cat||''}));
+          const driveBase = bd.base.map(c=>Object.assign({},c,{cur:c.cur||'USD',orig:c.orig||'',pat:c.pat||c.md||'',bor:c.bor||'liso',moq:c.moq||null,cat:c.cat||''}));
           if(driveBase.length > 100){
             window._BASE_ORIGINAL = driveBase;
             COTACOES = window._BASE_ORIGINAL.slice();
             console.log('Base Drive usada:', COTACOES.length, 'itens');
-            atualizarStatusBase('drive', COTACOES.length);
           }
         }
       } catch(e){ console.warn('Drive:', e.message); }
-      init();
+      await initDB(); await carregarCotacoesSalvas(); init();
       return;
     }
   } catch(e) {
@@ -1944,7 +1580,7 @@ async function doLogin(){
       cur: c.cur||'USD',
       orig: c.orig||'',
       pat: c.pat||'',
-      bor: c.bor||'',
+      bor: c.bor||'liso',
       moq: c.moq||null,
       ctnr: c.moq||null,
     }));
@@ -1953,7 +1589,7 @@ async function doLogin(){
     await new Promise(r=>setTimeout(r,300));
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('login-pass').value = '';
-    await init();
+    init();
 
   } catch(e) {
     clearInterval(timer); lpbar.style.width='0%';
@@ -2031,9 +1667,9 @@ function renderSelTable() {
     // PCR: agrupa por padrão + li + bor
     const rkCat = tipoAtivo==='TBR' ? (c.cat||c.pat||'—') : (c.pat||'—');
     const rkLi  = tipoAtivo==='TBR' ? '' : (c.li||'—');
-    const rk = [rkCat, rkLi, prKey, (c.bor||'')].join('||');
+    const rk = [rkCat, rkLi, prKey, c.bor||'liso'].join('||');
     if (!rowMap[rk]) {
-      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'', cat:c.cat||'', cells:{} };
+      rowMap[rk] = { pat:c.cat||c.pat||'—', patCode:c.pat||'', li:c.li||'—', pr:prKey, bor:c.bor||'liso', cat:c.cat||'', cells:{} };
       rowOrder.push(rk);
     }
     // Guardar o mais barato por fornecedor nessa linha
@@ -2059,12 +1695,9 @@ function renderSelTable() {
   rowOrder.forEach(rk => {
     const row = rowMap[rk];
     const sel = forns.some(f => row.cells[f] && selPicked[getSelKey(row.cells[f])]);
-    // Badge só aparece se bor tiver valor real (não default vazio)
     const borBdg = row.bor==='borrachudo'
       ? '<span class="badge-borr">BORRACHUDO</span>'
-      : row.bor==='liso'
-        ? '<span class="badge-liso">LISO</span>'
-        : '';
+      : '<span class="badge-liso">LISO</span>';
     const prSpan = row.pr && row.pr!=='PCR' ? ` <span style="font-size:10px;color:var(--mu)">· ${row.pr}</span>` : '';
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
@@ -2186,6 +1819,79 @@ function calcContainer(cots, mix) {
 }
 
 
+// ══ STORAGE PERSISTENTE (IndexedDB) ═════════════════════════════════
+const DB_NAME = 'TyreDesk', DB_VER = 1;
+let db = null;
+
+function initDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('cotacoes'))
+        d.createObjectStore('cotacoes', {keyPath:'id'});
+      if (!d.objectStoreNames.contains('historico'))
+        d.createObjectStore('historico', {keyPath:'id', autoIncrement:true});
+      if (!d.objectStoreNames.contains('fornecedores'))
+        d.createObjectStore('fornecedores', {keyPath:'id'});
+    };
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbPut(store, data) {
+  return new Promise((res,rej) => {
+    const tx = db.transaction(store,'readwrite');
+    tx.objectStore(store).put(data);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((res,rej) => {
+    const tx = db.transaction(store,'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbClear(store) {
+  return new Promise((res,rej) => {
+    const tx = db.transaction(store,'readwrite');
+    tx.objectStore(store).clear();
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+
+// Salvar cotações importadas
+async function salvarCotacoes(fornecedor, itens) {
+  try {
+    await dbPut('cotacoes', { id: fornecedor, itens, data: new Date().toISOString() });
+    console.log('Cotações salvas para', fornecedor);
+  } catch(e) { console.warn('Erro ao salvar cotações:', e); }
+}
+
+// Carregar cotações salvas (sobrescrever base original)
+async function carregarCotacoesSalvas() {
+  try {
+    const salvas = await dbGetAll('cotacoes');
+    // Normalizar nomes antigos com espaço
+    const normalizar = id => id.replace('SUNWIDE / INVOVIC','SUNWIDE/INVOVIC')
+                                .replace('TRACMAX / WINDFORCE','TRACMAX/WINDFORCE');
+    salvas.forEach(reg => {
+      const fNorm = normalizar(reg.id);
+      if(reg.itens && reg.itens.length > 0){
+        COTACOES = COTACOES.filter(c => c.f !== fNorm && c.f !== reg.id);
+        COTACOES = [...COTACOES, ...reg.itens.map(c=>Object.assign({},c,{f:fNorm,pat:c.pat||c.md||''}))];
+      }
+    });
+    if (salvas.length) {
+      console.log('Cotações restauradas:', salvas.map(r=>normalizar(r.id)).join(', '));
+    }
+  } catch(e) { console.warn('Erro ao carregar cotações:', e); }
+}
 
 // ── HISTÓRICO DE E-MAILS ─────────────────────────────────────────────
 async function gravarHistorico(forn, tipo, lang) {
@@ -2197,7 +1903,9 @@ async function gravarHistorico(forn, tipo, lang) {
     data: new Date().toISOString(),
     usuario: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'Sistema'
   };
-  // Salvar no Drive
+  // Salvar local
+  try { await dbPut('historico', entrada); } catch(e) { console.warn('Histórico local:', e); }
+  // Salvar no Drive (persistente entre usuários e dispositivos)
   try {
     await fetch('/api/drive/historico', {
       method: 'POST',
@@ -2216,8 +1924,12 @@ async function renderHistorico() {
       const d = await r.json();
       if (d.historico && d.historico.length) {
         items = d.historico;
+        // Sincronizar local
+        for (const it of items) { try { await dbPut('historico', it); } catch(e) {} }
       }
     } catch(e) {}
+    // Fallback: local
+    if (!items.length) items = await dbGetAll('historico');
     const el = document.getElementById('hist-list');
     document.getElementById('hist-total').textContent = items.length + ' registros';
     if (!items.length) {
@@ -2244,9 +1956,7 @@ async function renderHistorico() {
 
 async function limparHistorico() {
   if (!confirm('Apagar todo o histórico de solicitações?')) return;
-  try {
-    await fetch('/api/drive/historico/limpar', { method: 'POST' });
-  } catch(e) {}
+  await dbClear('historico');
   renderHistorico();
   toast('Histórico apagado');
 }
@@ -2254,157 +1964,13 @@ async function limparHistorico() {
 
 
 // ══ EXPORTAR PARA EXCEL ══════════════════════════════════════════════
-function exportarComImpostos(){
-  if(!ultimaAnalise){ toast('Faça uma análise primeiro'); return; }
-  const { mix, cots, otim, moeda } = ultimaAnalise;
-  if(!_cambio.USD || _cambio.USD===1){
-    toast('⚠ Câmbio não carregado — abra a análise com câmbio atualizado');
-  }
-  const taxa = _cambio[moeda] || _cambio.USD || 1;
-  const tipo = tipoAtivo;
-
-  const rows = [
-    ['Medida','Qtde','Melhor Fornecedor','Preço FOB USD/un','Preço FOB BRL/un',
-     'II','IPI','PIS','COFINS','ICMS','Total DDP BRL/un','Total DDP BRL mix',
-     'Câmbio '+moeda+'/BRL','Data']
-  ];
-
-  otim.forEach(o=>{
-    if(!o.preco) return;
-    const fobBRL = o.preco * taxa;
-    const imp = calcImpostosBR(fobBRL, tipo);
-    rows.push([
-      o.medida, o.qtde,
-      o.melhor||'—',
-      o.preco.toFixed(2),
-      fobBRL.toFixed(2),
-      imp.II.toFixed(2), imp.IPI.toFixed(2), imp.PIS.toFixed(2),
-      imp.COFINS.toFixed(2), imp.ICMS.toFixed(2),
-      imp.total.toFixed(2),
-      (imp.total * o.qtde).toFixed(2),
-      taxa.toFixed(4),
-      new Date().toLocaleDateString('pt-BR')
-    ]);
-  });
-
-  // Total
-  const totalDDP = otim.reduce((s,o)=>{
-    if(!o.preco) return s;
-    return s + calcImpostosBR(o.preco*taxa, tipo).total * o.qtde;
-  }, 0);
-  rows.push(['TOTAL DDP','','','','','','','','','','',totalDDP.toFixed(2),'','']);
-
-  // Exportar via SheetJS se disponível, senão CSV
-  if(typeof XLSX !== 'undefined'){
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Análise com Impostos');
-    XLSX.writeFile(wb, 'IMPAK_Analise_Impostos_'+new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')+'.xlsx');
-  } else {
-    const csv = rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-    const a=document.createElement('a');
-    a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-    a.download='IMPAK_Impostos.csv'; a.click();
-  }
-  toast('✓ Exportado com impostos BRL!');
-}
-
-// ── DETALHE FORNECEDOR — QTDE EDITÁVEL ───────────────────────
-var _detalheQtd = {};
-var _detalheItems = [];
-
-function recalcDetalhe(forn){
-  if(!ultimaAnalise) return;
-  const moeda = getMoeda(forn);
-  let total = 0;
-  _detalheItems.forEach((d,i)=>{
-    const qtd = _detalheQtd[i] !== undefined ? _detalheQtd[i] : d.qtde;
-    const sub = d.preco ? d.preco * qtd : 0;
-    total += sub;
-    const el = document.getElementById('det-sub-'+i);
-    if(el) el.textContent = sub ? moeda+' '+fmtP(sub) : '—';
-  });
-  const elTotal = document.getElementById('det-total');
-  if(elTotal) elTotal.textContent = moeda+' '+fmtP(total);
-
-  // Atualizar total no ranking também
-  const elRankTotal = document.getElementById('rank-total-'+forn.replace(/[^a-zA-Z0-9]/g,'_'));
-  if(elRankTotal) elRankTotal.textContent = moeda+' '+fmtP(total);
-
-  // Recalcular % do container
-  const pneusPorContainer = {TBR:264, PCR:1100, AGR:200, OTR:100};
-  const tp = ultimaAnalise.tp || 'PCR';
-  const capacidade = pneusPorContainer[tp] || 1100;
-  const qtdTotal = _detalheItems.reduce((s,d,i)=>{
-    const qtd = _detalheQtd[i] !== undefined ? _detalheQtd[i] : d.qtde;
-    return s + qtd;
-  }, 0);
-  const pct = Math.round(qtdTotal / capacidade * 100);
-  const fornId = forn.replace(/[^a-zA-Z0-9]/g,'_');
-  const elPct = document.getElementById('ctnr-pct-'+fornId);
-  const elBar = document.getElementById('ctnr-bar-'+fornId);
-  const elQtd = document.getElementById('ctnr-qtd-'+fornId);
-  const barColor = pct>100?'#c0392b':pct>=90?'#1a9c5b':pct>=60?'#b07800':'#c0392b';
-  if(elPct){ elPct.textContent = pct+'%'+(pct>100?' ⚠':''); elPct.style.color=barColor; }
-  if(elBar){ elBar.style.width=Math.min(pct,100)+'%'; elBar.style.background=barColor; }
-  if(elQtd){ elQtd.textContent = qtdTotal+' un'; }
-}
-
-// ── CALCULADOR DE IMPORTAÇÃO ──────────────────────────────────
-function abrirCalculador(){
-  if(!ultimaAnalise){ toast('Faça uma análise primeiro'); return; }
-  const { mix, cots, sorted, tp } = ultimaAnalise;
-
-  const melhorForn = sorted.filter(r=>r.total!==null)[0];
-  if(!melhorForn){ toast('Selecione pelo menos um fornecedor na análise'); return; }
-
-  const forn = melhorForn.forn;
-  const itens = [];
-  let totalFob = 0, qtdTotal = 0;
-
-  mix.forEach(m=>{
-    const cot = cots.find(c=>c.forn===forn && c.medida===m.medida);
-    if(!cot) return;
-    const qtd = parseInt(m.qtde)||0;
-    if(!qtd) return;
-    const subtotal = cot.preco * qtd;
-    totalFob += subtotal;
-    qtdTotal += qtd;
-    itens.push({
-      size:     m.medida,
-      marca:    cot.m || forn,      // campo correto: .m não .marca
-      pattern:  cot.pat || '',      // campo correto: .pat não .pattern
-      qtd,
-      preco:    cot.preco,
-      subtotal,
-    });
-  });
-
-  // tp já vem do ultimaAnalise (TBR, PCR, AGR, OTR)
-  const mixData = {
-    itens,
-    totalFob: Math.round(totalFob * 100) / 100,
-    qtdTotal,
-    tipo:      tp || 'PCR',
-    fornecedor: forn,
-    data:      new Date().toISOString(),
-  };
-
-  try{
-    sessionStorage.setItem('impak_mix_calc', JSON.stringify(mixData));
-    location.href = '/calculador';
-  }catch(e){
-    toast('Erro ao abrir calculador: '+e.message);
-  }
-}
-
 function exportarExcel() {
   if (!ultimaAnalise) { toast('Faça uma análise primeiro'); return; }
   const { mix, cots, sorted, otim, moeda, tp } = ultimaAnalise;
   const hoje = new Date().toLocaleDateString('pt-BR');
   const num = 'PVN' + Date.now().toString().slice(-7);
 
-  // Câmbio real carregado da API (ou fallback 5.70)
+  // Câmbio real
   const fator = (_cambio && _cambio.USD > 1) ? _cambio.USD : 5.70;
 
   // Montar linhas por fornecedor selecionado
@@ -2501,16 +2067,13 @@ function exportarExcel() {
 
 // ── INIT ──────────────────────────────────────────────
 async function init(){
-  await carregarFornecedores();
-  await carregarSnapshots(); // Restaurar lista de versões salvas
-  carregarCambio(); // Câmbio em tempo real
-  atualizarStatusBase('embed', COTACOES.length);
+  await initDB();
+  await carregarCotacoesSalvas();
   renderForn();renderDash();updateSizeDl();
   document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
   addMix('295/80R22.5','200');addMix('275/80R22.5','100');
 }
 // init() é chamado pelo doLogin() após descriptografia
 </script>
-<script src="/chat.js"></script>
 </body>
 </html>
