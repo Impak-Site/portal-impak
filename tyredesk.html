@@ -1292,9 +1292,12 @@ function analisar(){
   </tr>`).join('')}</tbody></table>`;
   // Botão exportar
   const btnExp=document.createElement('div');
-  btnExp.style.cssText='display:flex;justify-content:flex-end;margin-bottom:12px';
-  btnExp.innerHTML=`<button class="btn bp" onclick="exportarExcel()" style="gap:6px;display:flex;align-items:center">
-    📥 Exportar Excel</button>`;
+  btnExp.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px';
+  btnExp.innerHTML=`
+    <button class="btn bp" onclick="enviarParaCalculador()" style="gap:6px;display:flex;align-items:center;background:#166534;color:#fff;border-color:#166534;">
+      💰 Enviar ao Calculador</button>
+    <button class="btn bp" onclick="exportarExcel()" style="gap:6px;display:flex;align-items:center">
+      📥 Exportar Excel</button>`;
   area.appendChild(btnExp);
 
   area.appendChild(c1);
@@ -2025,6 +2028,49 @@ async function limparHistorico() {
 
 
 // ══ EXPORTAR PARA EXCEL ══════════════════════════════════════════════
+function enviarParaCalculador() {
+  if (!ultimaAnalise) { toast('Faça uma análise primeiro'); return; }
+  const { mix, cots, sorted, tp } = ultimaAnalise;
+
+  // Pegar o melhor fornecedor (primeiro do ranking com cobertura total)
+  const best = sorted.find(r => r.total !== null);
+  if (!best) { toast('Nenhum fornecedor com cobertura total do mix'); return; }
+
+  const forn = best.forn;
+  let fob_total = 0;
+  const itens = [];
+
+  mix.forEach(m => {
+    const cot = cots.find(c => c.forn === forn && c.medida === m.medida);
+    if (!cot || !cot.preco) return;
+    const qtd = m.qtde || 0;
+    const subtotal = cot.preco * qtd;
+    fob_total += subtotal;
+    itens.push({
+      medida:  m.medida,
+      pat:     cot.pat || cot.m || '—',
+      forn:    forn,
+      preco:   cot.preco,
+      peso:    cot.peso || 0,
+      qtd:     qtd,
+      subtotal: subtotal,
+    });
+  });
+
+  if (!itens.length) { toast('Nenhum item com cotação no mix'); return; }
+
+  const payload = {
+    fob_total: parseFloat(fob_total.toFixed(2)),
+    tipo: tp || 'TBR',
+    forn: forn,
+    itens,
+  };
+
+  sessionStorage.setItem('calculador_mix', JSON.stringify(payload));
+  toast('✓ Mix enviado! Abrindo calculador...');
+  setTimeout(() => { window.location.href = '/calculador'; }, 800);
+}
+
 function exportarExcel() {
   if (!ultimaAnalise) { toast('Faça uma análise primeiro'); return; }
   const { mix, cots, sorted, otim, moeda, tp } = ultimaAnalise;
