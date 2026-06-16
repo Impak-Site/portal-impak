@@ -42,7 +42,7 @@
     .topbar, .nav { position: relative !important; top: auto !important; }
 
     #impak-chat-root {
-      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+      position: fixed; bottom: 24px; right: 24px; z-index: 190;
       font-family: 'DM Sans', sans-serif;
     }
     #impak-chat-btn {
@@ -61,7 +61,7 @@
       display: none; align-items: center; justify-content: center;
     }
     #impak-chat-window {
-      position: fixed; bottom: 88px; right: 24px;
+      position: fixed; bottom: 88px; right: 24px; z-index: 190;
       width: 380px; height: 520px;
       background: #fff; border-radius: 16px;
       box-shadow: 0 8px 40px rgba(0,0,0,.18);
