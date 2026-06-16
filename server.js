@@ -348,12 +348,12 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
       processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
     }
 
-    // Remover campos internos/calculados que não existem na tabela
-    const { log: _log, _fasePrevista, ...processoParaSalvar } = processo;
+    // Remover campos internos antes de salvar no banco
+    const { log: _log, _fasePrevista, _savedAt, ...processoLimpo } = processo;
 
     const { error } = await sb()
       .from('controle_processos')
-      .upsert(processoParaSalvar, { onConflict: 'id' });
+      .upsert(processoLimpo, { onConflict: 'id' });
     if (error) throw new Error(error.message);
 
     // Criar notificação de demurrage se necessário
