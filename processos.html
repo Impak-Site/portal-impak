@@ -3180,6 +3180,7 @@ function renderDivPanel(){
       html+='<div style="display:flex;align-items:center;gap:8px;">';
       html+='<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;color:'+ac+';font-family:monospace;background:'+bg+';">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
       html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+d.campo+'</span></div>';
+      var safeKey=key.replace(/[^a-zA-Z0-9]/g,'_');
       html+='<span id="div-status-key-'+safeKey+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
       html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
       html+='<div style="padding:10px 16px;border-right:1px solid var(--border);">';
@@ -3196,7 +3197,6 @@ function renderDivPanel(){
       }
       html+='<div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border);align-items:center;">';
       var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
-      var safeKey=key.replace(/[^a-zA-Z0-9]/g,'_');
       html+='<input id="div-nota-key-'+safeKey+'" class="field-input" placeholder="Motivo para aceitar..." value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
       var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
       html+='<button data-action="resolve" data-key="'+key.replace(/"/g,'&quot;')+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
