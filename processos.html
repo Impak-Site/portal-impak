@@ -1120,10 +1120,6 @@ var USERS = [
   { username: 'paula',     email: 'paula@impak.com.br',       password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
   { username: 'bianca',    email: 'bianca@impak.com.br',      password: 'Bianca@2026',        role: 'gerente',  displayName: 'Bianca'    },
   { username: 'emanuelly', email: 'importacao1@impak.com.br', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
-  { username: 'italo',     email: 'italo@impak.com.br',       password: 'Italo@2026',         role: 'analista', displayName: 'Italo'     },
-  { username: 'maria',     email: 'maria@impak.com.br',       password: 'Maria@2026',         role: 'analista', displayName: 'Maria'     },
-  { username: 'joyce',     email: 'joyce@impak.com.br',       password: 'Joyce@2026',         role: 'analista', displayName: 'Joyce'     },
-  { username: 'neide',     email: 'neide@impak.com.br',       password: 'Neide@2026',         role: 'analista', displayName: 'Neide'     },
 ];
 
 var _currentUser = null;
@@ -1540,9 +1536,7 @@ function abrirEstatisticas(){
     '<th>Total Diverg.</th><th>Total Alertas</th><th>Média Diverg./Análise</th><th>Qualidade</th>'+
     '</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
     '<script>setTimeout(function(){window.print();},500);<\/script>'+
-    '
-<script src="/chat.js"></script>
-</body></html>');
+    '</body></html>');
   win.document.close();
 }
 
@@ -3168,7 +3162,6 @@ function renderDivPanel(){
     sectionDivs.forEach(function(d,i){
       var gi=divs.indexOf(d);
       var key=d.grupo+'-'+d.campo;
-      var safeKey=key.replace(/[^a-zA-Z0-9]/g,'_');
       var resolved=divergResolved[key];
       var isDiv=d.status==='DIVERGENCIA';
       var ac=isDiv?'#dc2626':'#d97706';
@@ -3181,7 +3174,7 @@ function renderDivPanel(){
       html+='<div style="display:flex;align-items:center;gap:8px;">';
       html+='<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;color:'+ac+';font-family:monospace;background:'+bg+';">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
       html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+d.campo+'</span></div>';
-      html+='<span id="div-status-key-'+safeKey+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
+      html+='<span id="div-status-'+gi+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
       html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
       html+='<div style="padding:10px 16px;border-right:1px solid var(--border);">';
       html+='<div style="font-size:9px;font-weight:700;color:var(--text-dim);font-family:monospace;text-transform:uppercase;margin-bottom:4px;">'+(d.doc1_label||'DOC 1')+'</div>';
@@ -3197,19 +3190,9 @@ function renderDivPanel(){
       }
       html+='<div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border);align-items:center;">';
       var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
-      html+='<input id="div-nota-key-'+safeKey+'" class="field-input" placeholder="Motivo para aceitar..." value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
-      if(d.motivo_sugerido&&!resolved){
-        html+='</div><div style="padding:2px 10px 8px;background:var(--surface2);display:flex;gap:6px;flex-wrap:wrap;">';
-        var sugestoes=(d.motivo_sugerido+'').split('|');
-        sugestoes.forEach(function(sg){
-          sg=sg.trim();
-          if(!sg) return;
-          html+='<span class="motivo-sugestao" onclick="var el=document.getElementById(\'div-nota-key-'+safeKey+'\');if(el){el.value=\''+sg.replace(/'/g,"\\'")+'\';el.dispatchEvent(new Event(\'input\'));}" title="Clique para usar">'+sg+'</span>';
-        });
-        html+='<div style="display:none">';  // fecha div extra aberta acima — será fechada abaixo
-      }
+      html+='<input id="div-nota-'+gi+'" class="field-input" placeholder="Motivo para aceitar (ex: transbordo normal, formato diferente...)" value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
       var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
-      html+='<button data-action="resolve" data-key="'+key.replace(/"/g,'&quot;')+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
+      html+='<button data-action="resolve" data-idx="'+gi+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
       html+='</div></div>';
     });
     html+='</div>';
@@ -3253,71 +3236,71 @@ function renderDivPanel(){
       return;
     }
     var action=btn.getAttribute('data-action');
-    // Ler key diretamente do botão (sem depender de índice numérico)
-    var key=btn.getAttribute('data-key');
-    if(!key) return;
-    var safeKey=key.replace(/[^a-zA-Z0-9]/g,'_');
-
-    if(action==='resolve'){
-      var notaEl=document.getElementById('div-nota-key-'+safeKey);
-      var statusEl=document.getElementById('div-status-key-'+safeKey);
-      var nota=notaEl?notaEl.value.trim():'';
-
-      if(divergResolved[key]){
-        // Desfazer aceite
-        delete divergResolved[key];
-        if(statusEl){statusEl.textContent='Pendente';statusEl.style.color='#94a3b8';}
-        btn.textContent='Aceitar como OK';
-        btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
-        if(notaEl) notaEl.style.borderColor='var(--border2)';
-        try{
-          var refUn=document.getElementById('procRef')?document.getElementById('procRef').value.trim():'';
-          if(refUn&&currentResult){
-            var procsUn=getProcesses();
-            var procUn=procsUn.find(function(p){return p.ref===refUn;});
-            if(procUn){
-              if(procUn._divResolvedMap) delete procUn._divResolvedMap[key];
-              recalcularStatusProcesso(procUn);
-              saveProcesses(procsUn,procUn);
-              renderDashboard();
-              renderProcessos();
-            }
-          }
-        }catch(e){}
-      } else {
-        // Aceitar — motivo obrigatório
-        if(!nota){
-          if(notaEl){notaEl.style.borderColor='var(--warn)';notaEl.focus();}
-          showToast('Digite o motivo para aceitar esta divergência','warn');
-          return;
-        }
-        var quemAc=_currentUser?(_currentUser.displayName||_currentUser.username):'';
-        divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR'),por:quemAc};
-        if(statusEl){statusEl.innerHTML='&#10003; Aceito — '+nota.substring(0,30)+(nota.length>30?'...':'');statusEl.style.color='#16a34a';}
-        btn.textContent='Desfazer';
-        btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
-        if(notaEl) notaEl.style.borderColor='#16a34a';
-        showToast('Aceito: '+nota.substring(0,40),'ok');
-        try{
-          var refAc=document.getElementById('procRef')?document.getElementById('procRef').value.trim():'';
-          if(refAc&&currentResult){
-            var procsAc=getProcesses();
-            var procAc=procsAc.find(function(p){return p.ref===refAc;});
-            if(procAc){
-              procAc._divResolvedMap=procAc._divResolvedMap||{};
-              procAc._divResolvedMap[key]={nota:nota,time:new Date().toLocaleString('pt-BR'),por:quemAc};
-              recalcularStatusProcesso(procAc);
-              saveProcesses(procsAc,procAc);
-              renderDashboard();
-              renderProcessos();
-            }
-          }
-        }catch(e){}
+    var i=parseInt(btn.getAttribute('data-idx'));
+    var d=divs[i];
+    if(!d) return;
+    var key=d.grupo+'-'+d.campo;
+if(action==='resolve'){
+var nota=(document.getElementById('div-nota-'+i)||{value:''}).value.trim();
+if(divergResolved[key]){
+  // Undo aceite — recalcular status
+  delete divergResolved[key];
+  var s=document.getElementById('div-status-'+i);
+  if(s){s.textContent='Pendente';s.style.color='#94a3b8';}
+  btn.textContent='Aceitar como OK';
+  btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
+  var notaEl=document.getElementById('div-nota-'+i);
+  if(notaEl) notaEl.style.borderColor='var(--border2)';
+  try{
+    var refUn = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(refUn && currentResult){
+      var procsUn = getProcesses();
+      var procUn = procsUn.find(function(p){ return p.ref===refUn; });
+      if(procUn){
+        if(procUn._divResolvedMap) delete procUn._divResolvedMap[key];
+        recalcularStatusProcesso(procUn);
+        saveProcesses(procsUn, procUn);
+        renderDashboard();
+        renderProcessos();
       }
     }
+  }catch(e){}
+} else {
+  if(!nota){
+    // Highlight nota field and prompt
+    var notaEl2=document.getElementById('div-nota-'+i);
+    if(notaEl2){notaEl2.style.borderColor='var(--warn)';notaEl2.focus();}
+    showToast('Digite o motivo para aceitar esta divergência','warn');
+    return;
   }
-  }
-  }
+  divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
+  var s2=document.getElementById('div-status-'+i);
+  if(s2){s2.innerHTML='&#10003; Aceito — '+nota.substring(0,30)+(nota.length>30?'...':'');s2.style.color='#16a34a';}
+  btn.textContent='Desfazer';
+  btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
+  var notaEl3=document.getElementById('div-nota-'+i);
+  if(notaEl3) notaEl3.style.borderColor='#16a34a';
+  showToast('Aceito: '+nota.substring(0,40),'ok');
+  // Salvar aceite e recalcular status via função central
+  try{
+    var refAc = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(refAc && currentResult){
+      var procsAc = getProcesses();
+      var procAc = procsAc.find(function(p){ return p.ref===refAc; });
+      if(procAc){
+        procAc._divResolvedMap = procAc._divResolvedMap || {};
+        procAc._divResolvedMap[key] = {nota:nota, time:new Date().toLocaleString('pt-BR'), por: _currentUser ? (_currentUser.displayName||_currentUser.username) : ''};
+        recalcularStatusProcesso(procAc);
+        saveProcesses(procsAc, procAc);
+        renderDashboard();
+        renderProcessos();
+      }
+    }
+  }catch(e){}
+}
+}
+}
+}
 
 function aceitarAlerta(key){
   if(divergResolved[key]){
