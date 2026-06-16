@@ -1253,7 +1253,7 @@ function processarProxima(){
     Object.entries(mixSelecoes).forEach(([med,sels])=>{
       sels.forEach(c=>{
         cotRows.push({id:uid(),forn:c.f,medida:c.s,preco:c.p,peso:c.pe||'',moq:c.moq||'',
-          orig:c.orig||'',pat:c.pat||'',bor:c.bor||'',li:c.li||'',pr:c.pr||'',ctnr:c.moq||null,cur:c.cur||'USD'});
+          orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',li:c.li||'',pr:c.pr||'',ctnr:c.ctnr||c.moq||null,cur:c.cur||'USD'});
       });
     });
     renderCot();
@@ -1369,48 +1369,63 @@ function analisar(){
   else origHtml+=`<div><div class="ctnr-ok" style="margin-top:0">✓ Todas as cotações da mesma origem — container OK</div></div>`;
   origHtml+='</div>';
 
-  // Container % por fornecedor — usa quantidade real por medida (coluna 40HQ/40HC da planilha)
-  let ctnrHtml='<div style="padding:0 16px 14px">';
+  // Container % por fornecedor — breakdown por medida
   const pneusPorCtnr = {TBR:264, PCR:1100, AGR:200, OTR:100};
   const capCtnrDefault = pneusPorCtnr[tp] || 1100;
   const fornsCtnr=[...new Set(cots.map(c=>c.forn))];
+  let ctnrHtml='<div style="padding:0 16px 14px">';
+
   fornsCtnr.forEach(forn=>{
     const linhas=cots.filter(c=>c.forn===forn);
     if(!linhas.length) return;
     const mixF=mix.filter(m=>linhas.some(l=>l.medida===m.medida));
     if(!mixF.length) return;
+    const fornId = forn.replace(/[^a-zA-Z0-9]/g,'_');
 
-    // Para cada medida do mix, usar a qtd real do container (ctnr) da cotação
-    // Se não tiver ctnr, usar capacidade padrão proporcional
-    let totalQtde=0, totalCapacidade=0, temCtnrReal=false;
+    // Calcular % por medida individualmente
+    let totalFracao = 0;
+    const detalhesMedidas = [];
     mixF.forEach(m=>{
       const cot = linhas.find(l=>l.medida===m.medida);
-      const cap = cot && cot.ctnr > 0 ? cot.ctnr : null;
-      totalQtde += m.qtde;
-      if(cap){
-        // Cada unidade pedida ocupa (1/cap) do container
-        totalCapacidade += m.qtde / cap;
-        temCtnrReal = true;
-      }
+      const cap = (cot && cot.ctnr > 0) ? cot.ctnr : capCtnrDefault;
+      const fracao = m.qtde / cap;
+      totalFracao += fracao;
+      detalhesMedidas.push({
+        medida: m.medida,
+        qtde: m.qtde,
+        cap: cap,
+        fracao: fracao,
+        pctMedida: Math.round(fracao * 100 * 100) / 100  // ex: 80.65
+      });
     });
 
-    let pct, labelCap;
-    if(temCtnrReal){
-      // totalCapacidade = fração do container ocupada
-      pct = Math.round(totalCapacidade * 100);
-      labelCap = `${totalQtde} un · ${pct}% do CTR`;
-    } else {
-      // Fallback: capacidade fixa
-      pct = Math.round((totalQtde/capCtnrDefault)*100);
-      labelCap = `${totalQtde} / ${capCtnrDefault} un`;
-    }
+    const pctTotal = Math.round(totalFracao * 100);
+    const barColor = pctTotal > 100 ? '#c0392b' : pctTotal >= 90 ? '#1a9c5b' : pctTotal >= 60 ? '#b07800' : '#1a7fd4';
+    const overClass = pctTotal > 100 ? 'ctnr-over' : '';
 
-    const barColor=pct>100?'#c0392b':pct>=90?'#1a9c5b':pct>=60?'#b07800':'#c0392b';
-    const overClass=pct>100?'ctnr-over':'';
-    ctnrHtml+=`<div class="ctnr-row"><span style="font-size:11px;font-weight:600;min-width:170px">${forn}</span>
-      <div class="ctnr-bar-bg"><div class="ctnr-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
-      <span class="ctnr-pct ${overClass}" style="color:${barColor}">${pct}%${pct>100?' ⚠':''}</span>
-      <span style="font-size:10px;color:var(--mu);font-weight:500">${labelCap}</span>
+    // Linha principal do fornecedor
+    ctnrHtml += `<div style="margin-bottom:8px">
+      <div class="ctnr-row" style="margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700;min-width:170px">${forn}</span>
+        <div class="ctnr-bar-bg" style="flex:1;max-width:160px">
+          <div id="ctnr-bar-${fornId}" class="ctnr-bar-fill" style="width:${Math.min(pctTotal,100)}%;background:${barColor}"></div>
+        </div>
+        <span id="ctnr-pct-${fornId}" class="ctnr-pct ${overClass}" style="color:${barColor};min-width:52px">
+          ${pctTotal}%${pctTotal>100?' ⚠':''}
+        </span>
+        <span id="ctnr-qtd-${fornId}" style="font-size:10px;color:var(--mu);font-weight:600">
+          Total: ${(totalFracao*100).toFixed(1)}%
+        </span>
+      </div>
+      <div style="padding-left:170px;display:flex;flex-wrap:wrap;gap:4px">
+        ${detalhesMedidas.map(d=>{
+          const corMed = d.fracao > 1 ? '#c0392b' : '#4a6480';
+          return `<span id="ctnr-med-${fornId}-${d.medida.replace(/[^a-zA-Z0-9]/g,'_')}"
+            style="font-size:10px;background:#f0f6fc;border:1px solid #c8d8e8;border-radius:4px;padding:2px 6px;color:${corMed}">
+            ${d.medida}: ${d.qtde}/${d.cap} = <strong>${d.pctMedida.toFixed(1)}%</strong>
+          </span>`;
+        }).join('')}
+      </div>
     </div>`;
   });
   ctnrHtml+='</div>';
@@ -1663,7 +1678,7 @@ async function doLogin(){
       pat: c.pat||'',
       bor: c.bor||'liso',
       moq: c.moq||null,
-      ctnr: c.moq||null,
+      ctnr: c.ctnr||c.moq||null,
     }));
     COTACOES = [...window._BASE_ORIGINAL];
 
@@ -1872,30 +1887,70 @@ function _detalheQtd(el, idx, best){
   const novaQtd = parseInt(el.value)||0;
   if(!best || !best.det[idx]) return;
   best.det[idx].qtde = novaQtd;
+
   // Recalcular subtotal e total
   let total = 0;
   best.det.forEach(d=>{
-    const sub = (d.preco||0) * (d.qtde||0);
-    d.subtotal = sub;
-    total += sub;
+    d.sub = (d.preco||0) * (d.qtde||0);
+    total += d.sub;
   });
   best.total = total;
+
+  // Atualizar subtotal da linha
+  const trEls = document.querySelectorAll('[id^="detalhe-sub-"]');
+  best.det.forEach((d,i)=>{
+    const el2 = document.getElementById('detalhe-sub-'+best.forn.replace(/[^a-zA-Z0-9]/g,'_')+'-'+i);
+    if(el2) el2.textContent = d.sub ? (getMoeda(best.forn)+' '+fmtP(d.sub)) : '—';
+  });
+  const totalEl = document.getElementById('detalhe-total-'+best.forn.replace(/[^a-zA-Z0-9]/g,'_'));
+  if(totalEl) totalEl.textContent = (ultimaAnalise&&ultimaAnalise.moeda||'USD')+' '+fmtP(total);
+
   // Atualizar ranking
   const rankEl = document.getElementById('rank-total-'+best.forn.replace(/[^a-zA-Z0-9]/g,'_'));
   if(rankEl) rankEl.textContent = fmtP(total);
-  // Recalcular container
-  const tp = ultimaAnalise ? ultimaAnalise.tp : 'PCR';
+
+  // Recalcular container — breakdown por medida com ctnr real
+  const tp = ultimaAnalise ? ultimaAnalise.tp : 'TBR';
   const pneusPorCtnr = {TBR:264, PCR:1100, AGR:200, OTR:100};
-  const capCtnr = pneusPorCtnr[tp] || 1100;
+  const capCtnrDefault = pneusPorCtnr[tp] || 264;
   const fornId = best.forn.replace(/[^a-zA-Z0-9]/g,'_');
-  const totalQtde = best.det.reduce((s,d)=>s+(d.qtde||0),0);
-  const pct = Math.round((totalQtde/capCtnr)*100);
+  const cots = ultimaAnalise ? ultimaAnalise.cots : [];
+  const linhas = cots.filter(c=>c.forn===best.forn);
+
+  let totalFracao = 0;
+  best.det.forEach(d=>{
+    const cot = linhas.find(l=>l.medida===d.medida);
+    const cap = (cot && cot.ctnr > 0) ? cot.ctnr : capCtnrDefault;
+    const fracao = (d.qtde||0) / cap;
+    totalFracao += fracao;
+
+    // Atualizar badge da medida
+    const medId = 'ctnr-med-'+fornId+'-'+d.medida.replace(/[^a-zA-Z0-9]/g,'_');
+    const medEl = document.getElementById(medId);
+    if(medEl){
+      const pctMed = (fracao * 100).toFixed(1);
+      const cor = fracao > 1 ? '#c0392b' : '#4a6480';
+      medEl.style.color = cor;
+      medEl.innerHTML = `${d.medida}: ${d.qtde}/${cap} = <strong>${pctMed}%</strong>`;
+    }
+  });
+
+  const pctTotal = Math.round(totalFracao * 100);
+  const barColor = pctTotal > 100 ? '#c0392b' : pctTotal >= 90 ? '#1a9c5b' : pctTotal >= 60 ? '#b07800' : '#1a7fd4';
+
   const elPct = document.getElementById('ctnr-pct-'+fornId);
   const elBar = document.getElementById('ctnr-bar-'+fornId);
   const elQtd = document.getElementById('ctnr-qtd-'+fornId);
-  if(elPct) elPct.textContent = pct+'%';
-  if(elBar) elBar.style.width = Math.min(pct,100)+'%';
-  if(elQtd) elQtd.textContent = totalQtde+' / '+capCtnr+' un';
+  if(elPct){
+    elPct.textContent = pctTotal+'%'+(pctTotal>100?' ⚠':'');
+    elPct.style.color = barColor;
+    elPct.className = 'ctnr-pct'+(pctTotal>100?' ctnr-over':'');
+  }
+  if(elBar){
+    elBar.style.width = Math.min(pctTotal,100)+'%';
+    elBar.style.background = barColor;
+  }
+  if(elQtd) elQtd.textContent = 'Total: '+(totalFracao*100).toFixed(1)+'%';
 }
 
 function calcContainer(cots, mix) {
