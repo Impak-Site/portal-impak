@@ -3198,16 +3198,6 @@ function renderDivPanel(){
       var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
       var safeKey=key.replace(/[^a-zA-Z0-9]/g,'_');
       html+='<input id="div-nota-key-'+safeKey+'" class="field-input" placeholder="Motivo para aceitar..." value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
-      if(d.motivo_sugerido&&!resolved){
-        html+='</div><div style="padding:2px 10px 8px;background:var(--surface2);display:flex;gap:6px;flex-wrap:wrap;">';
-        var sugestoes=(d.motivo_sugerido+'').split('|');
-        sugestoes.forEach(function(sg){
-          sg=sg.trim();
-          if(!sg) return;
-          html+='<span class="motivo-sugestao" onclick="var el=document.getElementById(\'div-nota-key-'+safeKey+'\');if(el){el.value=\''+sg.replace(/'/g,"\\'")+'\';el.dispatchEvent(new Event(\'input\'));}" title="Clique para usar">'+sg+'</span>';
-        });
-        html+='<div style="display:none">';  // fecha div extra aberta acima — será fechada abaixo
-      }
       var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
       html+='<button data-action="resolve" data-key="'+key.replace(/"/g,'&quot;')+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
       html+='</div></div>';
