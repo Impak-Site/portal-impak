@@ -41,15 +41,15 @@ function sb() {
 function env(key, fallback) { return process.env[key] || fallback; }
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio'  },
-  { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean'      },
-  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula'     },
-  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca'    },
-  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly' },
-  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo'     },
-  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria'     },
-  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce'     },
-  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide'     },
+  { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
+  { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
+  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
+  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
+  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
+  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
+  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
+  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
 ];
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
@@ -137,7 +137,8 @@ app.post('/login', (req, res) => {
   req.session.role        = u.role;
   req.session.displayName = u.displayName;
   req.session.senha       = u.senha;
-  res.redirect(destino || '/');
+  req.session.home        = u.home || '/';
+  res.redirect(destino && destino !== '/' ? destino : (u.home || '/'));
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
@@ -177,16 +178,19 @@ app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
       .order('updated_at', { ascending: false });
     if (error) throw new Error(error.message);
     const index = (data || []).map(p => ({
-      id:         p.id,
-      ref:        p.ref        || '',
-      exportador: p.exportador || '',
-      obs:        p.obs        || '',
-      status:     p.status     || 'ok',
-      data:       p.data       || '',
-      _user:      p.created_by || '',
-      _updatedAt: new Date(p.updated_at).getTime(),
-      analises:   (p.dados && p.dados.analises) ? p.dados.analises.map(a => ({
+      id:           p.id,
+      ref:          p.ref        || '',
+      exportador:   p.exportador || '',
+      obs:          p.obs        || '',
+      status:       p.status     || 'ok',
+      data:         p.data       || '',
+      _user:        p.created_by || '',
+      _updatedAt:   new Date(p.updated_at).getTime(),
+      _divResolvedMap: (p.dados && p.dados._divResolvedMap) ? p.dados._divResolvedMap : {},
+      analises:     (p.dados && p.dados.analises) ? p.dados.analises.map(a => ({
         id: a.id, data: a.data, docs: a.docs, resumo: a.resumo,
+        grupos: a.grupos || [],
+        alertas: a.alertas || [],
       })) : [],
     }));
     console.log(`/api/conferencia/index: ${index.length} processos`);
@@ -344,9 +348,12 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
       processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
     }
 
+    // Remover campos internos/calculados que não existem na tabela
+    const { log: _log, _fasePrevista, ...processoParaSalvar } = processo;
+
     const { error } = await sb()
       .from('controle_processos')
-      .upsert(processo, { onConflict: 'id' });
+      .upsert(processoParaSalvar, { onConflict: 'id' });
     if (error) throw new Error(error.message);
 
     // Criar notificação de demurrage se necessário
