@@ -712,6 +712,43 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
   }
 });
 
+// ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
+app.get('/api/contatos', auth(), async (req, res) => {
+  try {
+    const { q, tipo, uf } = req.query;
+    let query = sb().from('contatos_clientes').select('id,cnpj,razao_social,nome_fantasia,cidade,uf,email,telefone,tipo').eq('ativo', true);
+    if (tipo) query = query.eq('tipo', tipo.toUpperCase());
+    if (uf)   query = query.eq('uf', uf.toUpperCase());
+    if (q && q.length >= 2) {
+      query = query.or(`razao_social.ilike.%${q}%,cnpj.ilike.%${q}%,nome_fantasia.ilike.%${q}%`);
+    }
+    query = query.order('razao_social').limit(30);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, contatos: data || [] });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.post('/api/contatos', auth('processos'), async (req, res) => {
+  try {
+    const c = req.body;
+    if (!c.razao_social) return res.status(400).json({ erro: 'Razão social obrigatória' });
+    if (!c.id) c.id = require('crypto').randomUUID();
+    c.updated_at = new Date().toISOString();
+    const { error } = await sb().from('contatos_clientes').upsert(c, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, id: c.id });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.delete('/api/contatos/:id', auth('processos'), async (req, res) => {
+  try {
+    const { error } = await sb().from('contatos_clientes').update({ ativo: false }).eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
 // ── HEALTH ────────────────────────────────────────────────────
 
 // Servir chat.js
