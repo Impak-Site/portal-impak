@@ -978,4 +978,6 @@ app.get('/health', async (req, res) => {
 // ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
+  console.log(`Variáveis de ambiente carregadas: ${Object.keys(process.env).filter(k=>k.includes('ANTHROPIC')||k.includes('SUPABASE')).join(', ')}`);
+  console.log(`ANTHROPIC_API_KEY presente: ${!!process.env.ANTHROPIC_API_KEY} | tamanho: ${(process.env.ANTHROPIC_API_KEY||'').length}`);
 });
