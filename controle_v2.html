@@ -462,14 +462,15 @@ async function carregarCambio(){
   try{
     const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL');
     const d = await r.json();
+    // Valor bruto sem arredondar — Dólar Comercial (bid da AwesomeAPI)
     _cambio.USD = parseFloat(d.USDBRL?.bid||5.2)||5.2;
     _cambio.EUR = parseFloat(d.EURBRL?.bid||5.7)||5.7;
     _cambio.CNY = parseFloat(d.CNYBRL?.bid||0.72)||0.72;
     const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const bar = document.getElementById('cambio-bar');
     if(bar) bar.innerHTML = [
-      `USD R$ ${_cambio.USD.toFixed(2)}`,
-      `EUR R$ ${_cambio.EUR.toFixed(2)}`,
+      `USD R$ ${_cambio.USD.toFixed(4)}`,
+      `EUR R$ ${_cambio.EUR.toFixed(4)}`,
       `CNY R$ ${_cambio.CNY.toFixed(4)}`,
     ].map(t=>`<span style="font-size:11px;font-family:'DM Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="Atualizado ${hora}">${t}</span>`).join('');
   }catch(e){ console.warn('Câmbio erro:',e.message); }
@@ -511,7 +512,7 @@ async function salvarProcesso(proc){
   // Calcular vencimento demurrage automaticamente
   if(proc.data_chegada && proc.free_time){
     const chegada = new Date(proc.data_chegada);
-    chegada.setDate(chegada.getDate() + parseInt(proc.free_time||21));
+    chegada.setDate(chegada.getDate() + parseInt(proc.free_time||0));
     proc.demurrage_vencimento = chegada.toISOString().split('T')[0];
   }
 
@@ -1098,8 +1099,11 @@ function renderModal(){
             <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340"></div>
           <div class="form-group"><label class="form-label">Fornecedor</label>
             <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON"></div>
-          <div class="form-group"><label class="form-label">Cliente</label>
-            <input class="form-input" id="f_cliente" value="${esc(p.cliente||'UNICAP')}"></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
+            <input class="form-input" id="f_cliente" value="${esc(p.cliente||'UNICAP')}" autocomplete="off"
+              oninput="autocompletarCliente(this)" placeholder="Digite razão social, CNPJ ou cidade...">
+            <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
           <div class="form-group"><label class="form-label">Produto</label>
             <input class="form-input" id="f_produto" value="${esc(p.produto)}" placeholder="Ex: Pneus TBR"></div>
           <div class="form-group"><label class="form-label">Despachante</label>
@@ -1579,6 +1583,34 @@ function salvarApiKey(v){
 
 function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
 
+// ── AUTOCOMPLETE CLIENTE ──────────────────────────────────────
+let _acTimer = null;
+async function autocompletarCliente(input){
+  clearTimeout(_acTimer);
+  const q = input.value.trim();
+  const dd = document.getElementById('cliente-dropdown');
+  if(!dd) return;
+  if(q.length < 2){ dd.style.display='none'; return; }
+  _acTimer = setTimeout(async ()=>{
+    try{
+      const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo=CLIENTE');
+      const d = await r.json();
+      if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
+      dd.innerHTML = d.contatos.map(c=>{
+        const label = `${c.razao_social} · ${c.uf}${c.cnpj?' · '+c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):''}`;
+        return `<div onclick="document.getElementById('f_cliente').value='${c.razao_social.replace(/'/,"\'")}';document.getElementById('cliente-dropdown').style.display='none';"
+          style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
+          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
+      }).join('');
+      dd.style.display='block';
+    }catch(e){ dd.style.display='none'; }
+  }, 300);
+}
+document.addEventListener('click', e=>{
+  const dd = document.getElementById('cliente-dropdown');
+  if(dd && !dd.contains(e.target) && e.target.id!=='f_cliente') dd.style.display='none';
+});
+
 // ════════════════════════════════════════════════════════════════
 // IMPORTAR PLANILHA EXCEL
 // ════════════════════════════════════════════════════════════════
@@ -1857,6 +1889,7 @@ async function extrairComIA(input){
 
     const isImg = file.type.startsWith('image/');
     const apiKey = localStorage.getItem('impak_apikey')||'';
+    // A chave do servidor (Railway) é usada se não houver chave local — ok
 
     const content = [{
       type: isImg ? 'image' : 'document',
@@ -1866,18 +1899,19 @@ async function extrairComIA(input){
       text:`Extraia os dados deste documento de importação e retorne SOMENTE JSON com os campos disponíveis:
 {
   "referencia": "",
-  "fornecedor": "",
-  "pi_numero": "",
+  "fornecedor": "",  // razão social ou nome comercial do exportador/supplier
+  "produto": "",  // extrair de: Description of Goods, Cargo Description, Size, Item Description na CI — ex: "TRUCK TYRE 295/80R22.5"
+  "pi_numero": "",  // extrair APENAS o número principal; ignorar números secundários entre parênteses (ex: "PI-001 (JY-999)" → usar "PI-001")
   "pi_data": "YYYY-MM-DD",
   "pi_valor_usd": 0,
   "pi_incoterm": "",
   "pi_pagamento": "VISTA|PRAZO|ENTRADA_SALDO",
   "etd": "YYYY-MM-DD",
   "eta": "YYYY-MM-DD",
-  "armador": "",
+  "armador": "",  // NÃO inferir armador pelo nome do navio (ex: navio MSC XXXX não significa armador MSC — extrair apenas de campos explícitos como Carrier, Shipping Line, Armador)
   "navio": "",
   "porto_origem": "",
-  "porto_destino": "",
+  "porto_destino": "",  // extrair de: POD, Port of Discharge, Port of Destination, Discharge Port
   "hbl": "",
   "mbl": "",
   "container": "",
@@ -1888,8 +1922,9 @@ async function extrairComIA(input){
   "ci_valor_usd": 0,
   "ci_data": "YYYY-MM-DD",
   "data_chegada": "YYYY-MM-DD",
-  "free_time": 21
+  "free_time": null
 }
+Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`
     }];
 
@@ -1907,6 +1942,18 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       const clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
       extracted = JSON.parse(clean);
     } catch(e){ throw new Error('Resposta da IA inválida'); }
+
+    // Normalizar valores numéricos e limpar PI antes de preencher
+    function normNum(v){
+      if(!v && v!==0) return null;
+      const s = String(v).replace(/[R$USD\s]/gi,'').trim();
+      if(/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(s)) return parseFloat(s.replace(/\./g,'').replace(',','.'));
+      return parseFloat(s.replace(',','.')) || null;
+    }
+    if(extracted.pi_valor_usd) extracted.pi_valor_usd = normNum(extracted.pi_valor_usd);
+    if(extracted.ci_valor_usd) extracted.ci_valor_usd = normNum(extracted.ci_valor_usd);
+    if(extracted.pi_numero)    extracted.pi_numero    = extracted.pi_numero.replace(/\s*\(.*?\)\s*/g,'').trim();
+    if(!extracted.free_time)   delete extracted.free_time;
 
     // Preencher campos do formulário
     let preenchidos = 0;
