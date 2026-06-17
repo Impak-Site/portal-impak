@@ -344,7 +344,11 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
         valor_depois: String(l.valor_depois || ''),
         created_at: l.created_at || new Date().toISOString(),
       }));
-      await sb().from('controle_log').insert(rows).catch(e => console.warn('log erro:', e.message));
+      try {
+        await sb().from('controle_log').insert(rows);
+      } catch(logErr) {
+        console.warn('log erro:', logErr.message);
+      }
       processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
     }
 
@@ -361,13 +365,17 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
       const venc = new Date(processo.demurrage_vencimento);
       const dias = Math.ceil((venc - new Date()) / 86400000);
       if (dias <= 5 && dias >= 0 && !processo.data_devolucao_vazio) {
-        await sb().from('controle_notificacoes').insert({
-          processo_id: processo.id,
-          tipo: 'urgente',
-          titulo: `Demurrage: ${processo.referencia}`,
-          mensagem: `Container vence em ${dias} dia(s)!`,
-          created_by: req.session.usuario,
-        }).catch(() => {});
+        try {
+          await sb().from('controle_notificacoes').insert({
+            processo_id: processo.id,
+            tipo: 'urgente',
+            titulo: `Demurrage: ${processo.referencia}`,
+            mensagem: `Container vence em ${dias} dia(s)!`,
+            created_by: req.session.usuario,
+          });
+        } catch(notifErr) {
+          console.warn('notificacao erro:', notifErr.message);
+        }
       }
     }
 
