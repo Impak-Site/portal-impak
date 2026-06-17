@@ -1200,16 +1200,16 @@ function renderModal(){
             <input class="form-input" id="f_porto_origem" value="${esc(p.porto_origem)}" placeholder="Ex: SHANGHAI"></div>
           <div class="form-group"><label class="form-label">Porto Destino</label>
             <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino||'ITAJAI')}"></div>
-          <div class="form-group"><label class="form-label">ETD</label>
+          <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
             <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">ETA</label>
             <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
             ${(()=>{ const pv=previsaoChegada(p); return pv ? `<div style="font-size:10px;color:var(--warn);margin-top:3px;">⚠ Histórico ${p.armador}: média ${pv.mediaDias>0?'+':''}${pv.mediaDias}d → prev. ${pv.previsao.toLocaleDateString('pt-BR')}</div>` : ''; })()}
           </div>
-          <div class="form-group"><label class="form-label">Data Embarque</label>
+          <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
             <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
-            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||21}"></div>
+            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher após emissão do BL"></div>
         </div>
       </div>
       <div class="form-section">
@@ -1308,6 +1308,15 @@ function renderModal(){
             <input class="form-input" type="number" id="f_nf_saida_valor" value="${p.nf_saida_valor||''}"></div>
         </div>
       </div>
+      <div class="form-section">
+        <div class="form-section-title">📎 Arquivos do Processo (GED)</div>
+        <div id="ged-upload-area" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;" onclick="document.getElementById('ged-file-input').click()">
+          <input type="file" id="ged-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="uploadArquivosGed(this.files)">
+          <div style="color:var(--muted);font-size:13px;">📤 Clique para enviar PDF, JPEG ou PNG</div>
+          <div style="color:var(--dim);font-size:11px;margin-top:4px;">Múltiplos arquivos permitidos</div>
+        </div>
+        <div id="ged-lista-arquivos" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
@@ -1324,6 +1333,90 @@ function renderModal(){
   `;
 
   renderPagamentoCampos();
+  if(!isNovo) carregarArquivosGed(p.id);
+  else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
+}
+
+// ════════════════════════════════════════════════════════════════
+// GED — UPLOAD E GESTÃO DE ARQUIVOS DO PROCESSO
+// ════════════════════════════════════════════════════════════════
+async function carregarArquivosGed(processoId){
+  const lista = document.getElementById('ged-lista-arquivos');
+  if(!lista) return;
+  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando...</div>';
+  try{
+    const r = await fetch('/api/controle/v2/arquivos/'+processoId);
+    const d = await r.json();
+    if(!d.ok || !d.arquivos.length){
+      lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Nenhum arquivo enviado ainda.</div>';
+      return;
+    }
+    lista.innerHTML = d.arquivos.map(a=>{
+      const icon = a.nome.toLowerCase().endsWith('.pdf') ? '📄' : '🖼️';
+      const tamanho = a.tamanho ? (a.tamanho/1024).toFixed(0)+' KB' : '';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;">
+        <span>${icon}</span>
+        <a href="${a.url}" target="_blank" style="flex:1;color:var(--ac);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.nome}</a>
+        <span style="color:var(--dim);font-size:10px;">${tamanho}</span>
+        <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">✕</button>
+      </div>`;
+    }).join('');
+  }catch(e){
+    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar arquivos.</div>';
+  }
+}
+
+async function uploadArquivosGed(files){
+  const p = _editando;
+  if(!p || !p.id){ showToast('Salve o processo antes de enviar arquivos','warn'); return; }
+  if(!files || !files.length) return;
+
+  const lista = document.getElementById('ged-lista-arquivos');
+  for(const file of files){
+    const tiposPermitidos = ['application/pdf','image/jpeg','image/jpg','image/png'];
+    if(!tiposPermitidos.includes(file.type)){
+      showToast(`Tipo não permitido: ${file.name}`,'err');
+      continue;
+    }
+    if(file.size > 15*1024*1024){
+      showToast(`Arquivo muito grande (máx 15MB): ${file.name}`,'err');
+      continue;
+    }
+    try{
+      const base64 = await new Promise((res,rej)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>res(reader.result.split(',')[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      showToast(`Enviando ${file.name}...`,'ok');
+      const r = await fetch('/api/controle/v2/arquivos', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          processo_id: p.id,
+          nome: file.name,
+          tipo: file.type,
+          base64,
+        })
+      });
+      const d = await r.json();
+      if(!d.ok) showToast('Erro ao enviar '+file.name+': '+(d.erro||''),'err');
+    }catch(e){
+      showToast('Erro ao enviar '+file.name,'err');
+    }
+  }
+  carregarArquivosGed(p.id);
+}
+
+async function excluirArquivoGed(arquivoId, processoId){
+  if(!confirm('Excluir este arquivo?')) return;
+  try{
+    const r = await fetch('/api/controle/v2/arquivos/'+arquivoId, { method:'DELETE' });
+    const d = await r.json();
+    if(d.ok){ showToast('Arquivo excluído','ok'); carregarArquivosGed(processoId); }
+    else showToast('Erro ao excluir','err');
+  }catch(e){ showToast('Erro ao excluir','err'); }
 }
 
 // ════════════════════════════════════════════════════════════════
