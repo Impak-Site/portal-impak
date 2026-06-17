@@ -720,6 +720,87 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
   }
 });
 
+// ── GED — ARQUIVOS DO PROCESSO (Supabase Storage) ──────────────
+const GED_BUCKET = 'controle-arquivos';
+
+app.get('/api/controle/v2/arquivos/:processoId', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_arquivos')
+      .select('id, nome, tipo, tamanho, storage_path, created_at, created_by')
+      .eq('processo_id', req.params.processoId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    const arquivos = await Promise.all((data || []).map(async a => {
+      const { data: urlData } = sb().storage.from(GED_BUCKET).getPublicUrl(a.storage_path);
+      return { ...a, url: urlData?.publicUrl || '' };
+    }));
+    res.json({ ok: true, arquivos });
+  } catch (e) {
+    console.error('ged listar erro:', e.message);
+    res.json({ ok: true, arquivos: [] });
+  }
+});
+
+app.post('/api/controle/v2/arquivos', auth('processos'), async (req, res) => {
+  try {
+    const { processo_id, nome, tipo, base64 } = req.body;
+    if (!processo_id || !nome || !base64) return res.status(400).json({ erro: 'Dados incompletos' });
+
+    const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!tiposPermitidos.includes(tipo)) return res.status(400).json({ erro: 'Tipo de arquivo não permitido' });
+
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ erro: 'Arquivo maior que 15MB' });
+
+    const arquivoId = gerarUUID();
+    const extensao = nome.split('.').pop();
+    const storagePath = `${processo_id}/${arquivoId}.${extensao}`;
+
+    const { error: uploadError } = await sb().storage
+      .from(GED_BUCKET)
+      .upload(storagePath, buffer, { contentType: tipo, upsert: false });
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { error: dbError } = await sb().from('controle_arquivos').insert({
+      id: arquivoId,
+      processo_id,
+      nome,
+      tipo,
+      tamanho: buffer.length,
+      storage_path: storagePath,
+      created_by: req.session.usuario,
+      created_at: new Date().toISOString(),
+    });
+    if (dbError) throw new Error(dbError.message);
+
+    console.log(`ged upload: ${nome} (${(buffer.length/1024).toFixed(0)}KB) processo=${processo_id} por ${req.session.usuario}`);
+    res.json({ ok: true, id: arquivoId });
+  } catch (e) {
+    console.error('ged upload erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.delete('/api/controle/v2/arquivos/:id', auth('processos'), async (req, res) => {
+  try {
+    const { data: arquivo } = await sb()
+      .from('controle_arquivos')
+      .select('storage_path')
+      .eq('id', req.params.id)
+      .single();
+    if (arquivo?.storage_path) {
+      await sb().storage.from(GED_BUCKET).remove([arquivo.storage_path]);
+    }
+    const { error } = await sb().from('controle_arquivos').delete().eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('ged excluir erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 // ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
 app.get('/api/contatos', auth(), async (req, res) => {
   try {
