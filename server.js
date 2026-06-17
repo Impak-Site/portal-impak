@@ -942,6 +942,7 @@ app.post('/api/drive/historico/limpar', auth('tyredesk'), async (req, res) => {
 app.get('/health', async (req, res) => {
   const url = process.env.SUPABASE_URL || '';
   const key = process.env.SUPABASE_KEY || '';
+  const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
 
   // Decodificar role da key sem dependência externa
   let keyRole = 'desconhecido';
@@ -968,6 +969,9 @@ app.get('/health', async (req, res) => {
     key_len: key.length,
     url_ok: url.includes('supabase.co'),
     node: process.version,
+    anthropic_key_configurada: anthropicKey.length > 20,
+    anthropic_key_len: anthropicKey.length,
+    anthropic_key_prefixo: anthropicKey.slice(0, 10),
   });
 });
 
