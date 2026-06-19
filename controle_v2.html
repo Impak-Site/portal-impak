@@ -266,7 +266,10 @@ select.form-input{cursor:pointer;}
     <div class="sidebar-label">Dashboard</div>
     <div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
     <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💵 Visão financeira</div>
-    <div class="sidebar-item" id="menu-armadores" onclick="toggleDashArmadores()">🚢 Armadores</div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Cadastros</div>
+    <div class="sidebar-item" onclick="abrirContatos()">📇 Fornecedores / Clientes / Despachantes / Agentes</div>
   </div>
   <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
     <div class="sidebar-label">API Key Anthropic</div>
@@ -324,14 +327,6 @@ select.form-input{cursor:pointer;}
     <div id="dash-exec-content"></div>
   </div>
 
-  <!-- DASHBOARD ARMADORES -->
-  <div id="dash-armadores" style="display:none;margin-bottom:20px;">
-    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">🚢 Histórico de Atraso por Armador</div>
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;">
-      <div id="dash-arm-content"></div>
-    </div>
-  </div>
-
   <!-- DASHBOARD FINANCEIRO -->
   <div id="dash-financeiro" style="display:none;margin-bottom:20px;">
     <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">💵 Visão Financeira do Mês</div>
@@ -383,6 +378,84 @@ select.form-input{cursor:pointer;}
     </div>
     <div class="modal-tabs" id="modal-tabs"></div>
     <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- MODAL: CADASTRO DE CONTATOS -->
+<div class="modal-bg" id="modal-contatos-bg">
+  <div class="modal" style="max-width:880px;">
+    <div class="modal-header">
+      <div class="modal-title">📇 Cadastro de Contatos</div>
+      <button class="modal-close" onclick="fecharModalContatos()">×</button>
+    </div>
+    <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <div style="display:flex;gap:6px;margin:0;" id="contatos-tipo-filter">
+        <button class="btn btn-sm btn-primary" data-tipo="CLIENTE" onclick="filtrarContatosTipo('CLIENTE')">👤 Clientes</button>
+        <button class="btn btn-sm btn-outline" data-tipo="FORNECEDOR" onclick="filtrarContatosTipo('FORNECEDOR')">🏭 Fornecedores</button>
+        <button class="btn btn-sm btn-outline" data-tipo="DESPACHANTE" onclick="filtrarContatosTipo('DESPACHANTE')">📋 Despachantes</button>
+        <button class="btn btn-sm btn-outline" data-tipo="AGENTE" onclick="filtrarContatosTipo('AGENTE')">🚢 Agentes</button>
+      </div>
+      <input class="search-box" id="contatos-search" placeholder="🔍 Buscar por razão social, CNPJ..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
+      <button class="btn btn-primary" onclick="abrirNovoContato()">+ Novo</button>
+    </div>
+    <div class="modal-body" style="padding:0;max-height:480px;overflow-y:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead style="position:sticky;top:0;background:var(--card);z-index:1;">
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Razão Social</th>
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">CNPJ</th>
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Cidade/UF</th>
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Contato</th>
+            <th style="text-align:right;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="contatos-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR/NOVO CONTATO -->
+<div class="modal-bg" id="modal-contato-edit-bg">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title" id="contato-edit-title">Novo Contato</div>
+      <button class="modal-close" onclick="fecharModalContatoEdit()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ce_id">
+      <div class="form-group"><label class="form-label">Tipo</label>
+        <select class="form-input" id="ce_tipo">
+          <option value="CLIENTE">Cliente</option>
+          <option value="FORNECEDOR">Fornecedor</option>
+          <option value="DESPACHANTE">Despachante</option>
+          <option value="AGENTE">Agente de Carga</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Razão Social *</label>
+        <input class="form-input" id="ce_razao_social"></div>
+      <div class="form-group"><label class="form-label">Nome Fantasia</label>
+        <input class="form-input" id="ce_nome_fantasia"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">CNPJ</label>
+          <input class="form-input" id="ce_cnpj" placeholder="00.000.000/0000-00"></div>
+        <div class="form-group"><label class="form-label">UF</label>
+          <input class="form-input" id="ce_uf" maxlength="2" style="text-transform:uppercase;"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Cidade</label>
+        <input class="form-input" id="ce_cidade"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">E-mail</label>
+          <input class="form-input" id="ce_email"></div>
+        <div class="form-group"><label class="form-label">Telefone</label>
+          <input class="form-input" id="ce_telefone"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Observações</label>
+        <textarea class="form-input" id="ce_obs" rows="2"></textarea></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:12px;">
+        <button class="btn btn-outline" onclick="fecharModalContatoEdit()">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarContato()">💾 Salvar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -728,64 +801,6 @@ function toggleNotif(){
   _notifAberto = !_notifAberto;
   document.getElementById('notif-panel').classList.toggle('open', _notifAberto);
   if(_notifAberto) carregarNotificacoes();
-}
-
-// ════════════════════════════════════════════════════════════════
-// PREVISÃO DE ATRASO POR ARMADOR
-// Calcula média de atraso (ETA previsto vs chegada real)
-// ════════════════════════════════════════════════════════════════
-function calcularHistoricoArmadores(){
-  const hist = {};
-  _processos.forEach(p=>{
-    if(!p.armador || !p.eta || !p.data_chegada) return;
-    const arm = (p.armador||'').toUpperCase().trim();
-    const eta     = new Date(p.eta);      eta.setHours(0,0,0,0);
-    const chegada = new Date(p.data_chegada); chegada.setHours(0,0,0,0);
-    const diff = Math.ceil((chegada - eta)/86400000); // dias de diferença (+atraso, -adiantado)
-    if(!hist[arm]) hist[arm] = { total:0, count:0, processos:[] };
-    hist[arm].total   += diff;
-    hist[arm].count   += 1;
-    hist[arm].processos.push({ ref:p.referencia, eta:p.eta, chegada:p.data_chegada, diff });
-  });
-  // Calcular média
-  Object.keys(hist).forEach(arm=>{
-    hist[arm].media = Math.round(hist[arm].total / hist[arm].count);
-  });
-  return hist;
-}
-
-function previsaoChegada(proc){
-  if(!proc.eta || !proc.armador) return null;
-  const hist = calcularHistoricoArmadores();
-  const arm  = (proc.armador||'').toUpperCase().trim();
-  if(!hist[arm] || hist[arm].count < 2) return null; // mínimo 2 amostras
-  const etaBase = new Date(proc.eta);
-  const previsao = new Date(etaBase);
-  previsao.setDate(etaBase.getDate() + hist[arm].media);
-  return { previsao, mediaDias: hist[arm].media, amostras: hist[arm].count };
-}
-
-function renderHistoricoArmadores(){
-  const hist = calcularHistoricoArmadores();
-  const entries = Object.entries(hist)
-    .filter(([,v])=>v.count >= 1)
-    .sort((a,b)=>b[1].count - a[1].count);
-  if(!entries.length) return '<div style="color:var(--muted);font-size:13px;">Nenhum dado histórico ainda. Preencha ETA e Data de Chegada nos processos.</div>';
-
-  return entries.map(([arm, v])=>{
-    const cor = v.media > 3 ? 'var(--err)' : v.media > 0 ? 'var(--warn)' : v.media < 0 ? 'var(--ok)' : 'var(--muted)';
-    const label = v.media > 0 ? `+${v.media}d de atraso` : v.media < 0 ? `${v.media}d adiantado` : 'pontual';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
-      <div>
-        <div style="font-weight:700;font-size:13px;">${arm}</div>
-        <div style="font-size:11px;color:var(--muted);">${v.count} processo${v.count!==1?'s':''} com dados</div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:14px;font-weight:800;color:${cor}">${label}</div>
-        <div style="font-size:10px;color:var(--muted);">média histórica</div>
-      </div>
-    </div>`;
-  }).join('');
 }
 
 function tempoRelativo(isoDate){
@@ -1222,7 +1237,6 @@ function renderModal(){
             <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">ETA</label>
             <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
-            ${(()=>{ const pv=previsaoChegada(p); return pv ? `<div style="font-size:10px;color:var(--warn);margin-top:3px;">⚠ Histórico ${p.armador}: média ${pv.mediaDias>0?'+':''}${pv.mediaDias}d → prev. ${pv.previsao.toLocaleDateString('pt-BR')}</div>` : ''; })()}
           </div>
           <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
             <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}" onchange="atualizarFaseEmTempoReal()"></div>
@@ -1577,7 +1591,7 @@ function coletarESalvar(){
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
     'data_devolucao_vazio','demurrage_valor','demurrage_pago',
-    'despachante','pi_cambio',
+    'despachante','pi_cambio','containers_json',
   ];
 
   const proc = {..._editando};
@@ -1606,14 +1620,20 @@ function coletarESalvar(){
     proc[campo] = val;
   });
 
-  proc.log = log;
-
-  // Salvar multi-containers
+  // Salvar multi-containers e auditar mudança
   sincronizarContainerLegado();
-  proc.containers_json = JSON.stringify(_containers);
+  const novosContainersJson = JSON.stringify(_containers);
+  if(String(antigo.containers_json||'')!==novosContainersJson){
+    log.push({
+      campo:'containers_json', valor_antes: antigo.containers_json||'', valor_depois: novosContainersJson,
+      usuario: _user.usuario, created_at: new Date().toISOString()
+    });
+  }
+  proc.containers_json = novosContainersJson;
   proc.container = _containers[0]?.numero||'';
   proc.tipo_container = _containers[0]?.tipo||'40HC';
 
+  proc.log = log;
   _editando = proc;
 
   salvarProcesso(proc).then(ok=>{ if(ok) fecharModal(); });
@@ -1835,6 +1855,138 @@ document.addEventListener('click', e=>{
   const dd = document.getElementById('cliente-dropdown');
   if(dd && !dd.contains(e.target) && e.target.id!=='f_cliente') dd.style.display='none';
 });
+
+// ════════════════════════════════════════════════════════════════
+// CADASTRO DE CONTATOS (Clientes, Fornecedores, Despachantes, Agentes)
+// ════════════════════════════════════════════════════════════════
+let _contatosTipoAtivo = 'CLIENTE';
+let _contatosLista = [];
+
+function abrirContatos(){
+  document.getElementById('modal-contatos-bg').classList.add('open');
+  filtrarContatosTipo('CLIENTE');
+}
+function fecharModalContatos(){
+  document.getElementById('modal-contatos-bg').classList.remove('open');
+}
+
+async function filtrarContatosTipo(tipo){
+  _contatosTipoAtivo = tipo;
+  document.querySelectorAll('#contatos-tipo-filter button').forEach(b=>{
+    const ativo = b.dataset.tipo===tipo;
+    b.className = ativo ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline';
+  });
+  await carregarContatos();
+}
+
+async function carregarContatos(){
+  try{
+    const r = await fetch('/api/contatos?tipo='+_contatosTipoAtivo+'&limit=500');
+    const d = await r.json();
+    _contatosLista = d.ok ? d.contatos : [];
+  }catch(e){ _contatosLista = []; }
+  renderListaContatos();
+}
+
+function renderListaContatos(){
+  const tbody = document.getElementById('contatos-tbody');
+  if(!tbody) return;
+  const q = (document.getElementById('contatos-search')?.value||'').toLowerCase().trim();
+  let lista = _contatosLista;
+  if(q) lista = lista.filter(c=>
+    (c.razao_social||'').toLowerCase().includes(q) ||
+    (c.cnpj||'').includes(q) ||
+    (c.nome_fantasia||'').toLowerCase().includes(q)
+  );
+  if(!lista.length){
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--dim);font-size:13px;">Nenhum contato cadastrado neste tipo.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = lista.map(c=>{
+    const cnpjFmt = c.cnpj ? c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5') : '—';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:9px 16px;font-weight:600;">${esc(c.razao_social)}</td>
+      <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-size:11px;">${cnpjFmt}</td>
+      <td style="padding:9px 16px;">${esc(c.cidade||'')}${c.uf?'/'+c.uf:''}</td>
+      <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${esc(c.email||c.telefone||'—')}</td>
+      <td style="padding:9px 16px;text-align:right;">
+        <button class="btn btn-sm btn-outline" onclick="editarContato('${c.id}')">Editar</button>
+        <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="excluirContato('${c.id}')">Excluir</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirNovoContato(){
+  document.getElementById('contato-edit-title').textContent = 'Novo Contato';
+  ['ce_id','ce_razao_social','ce_nome_fantasia','ce_cnpj','ce_uf','ce_cidade','ce_email','ce_telefone','ce_obs'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('ce_tipo').value = _contatosTipoAtivo;
+  document.getElementById('modal-contato-edit-bg').classList.add('open');
+}
+
+function editarContato(id){
+  const c = _contatosLista.find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('contato-edit-title').textContent = 'Editar Contato';
+  document.getElementById('ce_id').value = c.id;
+  document.getElementById('ce_tipo').value = c.tipo||'CLIENTE';
+  document.getElementById('ce_razao_social').value = c.razao_social||'';
+  document.getElementById('ce_nome_fantasia').value = c.nome_fantasia||'';
+  document.getElementById('ce_cnpj').value = c.cnpj||'';
+  document.getElementById('ce_uf').value = c.uf||'';
+  document.getElementById('ce_cidade').value = c.cidade||'';
+  document.getElementById('ce_email').value = c.email||'';
+  document.getElementById('ce_telefone').value = c.telefone||'';
+  document.getElementById('ce_obs').value = c.obs||'';
+  document.getElementById('modal-contato-edit-bg').classList.add('open');
+}
+
+function fecharModalContatoEdit(){
+  document.getElementById('modal-contato-edit-bg').classList.remove('open');
+}
+
+async function salvarContato(){
+  const razao = document.getElementById('ce_razao_social').value.trim();
+  if(!razao){ showToast('Razão social é obrigatória','err'); return; }
+  const payload = {
+    id: document.getElementById('ce_id').value || undefined,
+    tipo: document.getElementById('ce_tipo').value,
+    razao_social: razao,
+    nome_fantasia: document.getElementById('ce_nome_fantasia').value.trim(),
+    cnpj: document.getElementById('ce_cnpj').value.replace(/\D/g,''),
+    uf: document.getElementById('ce_uf').value.trim().toUpperCase(),
+    cidade: document.getElementById('ce_cidade').value.trim(),
+    email: document.getElementById('ce_email').value.trim(),
+    telefone: document.getElementById('ce_telefone').value.trim(),
+    obs: document.getElementById('ce_obs').value.trim(),
+  };
+  try{
+    const r = await fetch('/api/contatos', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if(d.ok){
+      showToast('✓ Contato salvo','ok');
+      fecharModalContatoEdit();
+      await carregarContatos();
+    } else {
+      showToast('Erro: '+(d.erro||''),'err');
+    }
+  }catch(e){ showToast('Erro ao salvar contato','err'); }
+}
+
+async function excluirContato(id){
+  if(!confirm('Excluir este contato?')) return;
+  try{
+    const r = await fetch('/api/contatos/'+id, { method:'DELETE' });
+    const d = await r.json();
+    if(d.ok){ showToast('Contato removido','ok'); await carregarContatos(); }
+    else showToast('Erro ao excluir','err');
+  }catch(e){ showToast('Erro ao excluir','err'); }
+}
 
 // ════════════════════════════════════════════════════════════════
 // IMPORTAR PLANILHA EXCEL
@@ -2396,18 +2548,6 @@ function renderDashExecutivo(){
         +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs emitidas</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+nfMes.length+'</div></div>'
         +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+brl(totalNfMes)+'</div></div>'
         +'</div></div>' : '');
-}
-
-function toggleDashArmadores(){
-  const el = document.getElementById('dash-armadores');
-  if(!el) return;
-  const visivel = el.style.display !== 'none';
-  el.style.display = visivel ? 'none' : 'block';
-  document.getElementById('menu-armadores')?.classList.toggle('active', !visivel);
-  if(!visivel){
-    const content = document.getElementById('dash-arm-content');
-    if(content) content.innerHTML = renderHistoricoArmadores();
-  }
 }
 
 function toggleDashFinanceiro(){
