@@ -804,14 +804,15 @@ app.delete('/api/controle/v2/arquivos/:id', auth('processos'), async (req, res) 
 // ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
 app.get('/api/contatos', auth(), async (req, res) => {
   try {
-    const { q, tipo, uf } = req.query;
-    let query = sb().from('contatos_clientes').select('id,cnpj,razao_social,nome_fantasia,cidade,uf,email,telefone,tipo').eq('ativo', true);
+    const { q, tipo, uf, limit } = req.query;
+    const lim = Math.min(parseInt(limit) || 30, 1000);
+    let query = sb().from('contatos_clientes').select('id,cnpj,razao_social,nome_fantasia,cidade,uf,email,telefone,tipo,obs').eq('ativo', true);
     if (tipo) query = query.eq('tipo', tipo.toUpperCase());
     if (uf)   query = query.eq('uf', uf.toUpperCase());
     if (q && q.length >= 2) {
       query = query.or(`razao_social.ilike.%${q}%,cnpj.ilike.%${q}%,nome_fantasia.ilike.%${q}%`);
     }
-    query = query.order('razao_social').limit(30);
+    query = query.order('razao_social').limit(lim);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     res.json({ ok: true, contatos: data || [] });
