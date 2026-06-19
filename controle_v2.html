@@ -288,10 +288,14 @@ select.form-input{cursor:pointer;}
   <!-- TOOLBAR -->
   <div class="toolbar">
     <input class="search-box" id="search" placeholder="🔍 Ref, fornecedor, container, HBL, DI, navio, armador..." oninput="render()" style="flex:2;min-width:260px;">
+    <select id="filtro-cliente" onchange="render()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
+      <option value="">👤 Todos os clientes</option>
+    </select>
     <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
     <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
     <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
     <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
+    <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
   </div>
   <!-- FILTRO POR DATA -->
   <div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
@@ -487,8 +491,17 @@ async function carregarProcessos(silencioso){
     const d = await r.json();
     if(d.ok){
       _processos = d.processos || [];
+      // Popular select de clientes
+      const selCliente = document.getElementById('filtro-cliente');
+      if(selCliente){
+        const clientesUnicos = [...new Set(_processos.map(p=>p.cliente||'').filter(Boolean))].sort();
+        const valAtual = selCliente.value;
+        selCliente.innerHTML = '<option value="">👤 Todos os clientes</option>' +
+          clientesUnicos.map(c=>`<option value="${c}" ${c===valAtual?'selected':''}>${c}</option>`).join('');
+      }
       render();
       renderStats();
+      renderFaseFilter();
       carregarNotificacoes();
       if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
     }
@@ -882,6 +895,11 @@ function filtrarProcessos(){
   else if(_faseFilter==='__andamento') lista = lista.filter(p=>p.fase!=='FINALIZADO');
   else if(_faseFilter==='__demur') lista = lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
   else if(_faseFilter) lista = lista.filter(p=>p.fase===_faseFilter);
+
+  // Filtro por cliente
+  const filtroCliente = document.getElementById('filtro-cliente')?.value||'';
+  if(filtroCliente) lista = lista.filter(p=>(p.cliente||'')=== filtroCliente);
+
   return lista;
 }
 
@@ -1261,14 +1279,14 @@ function renderModal(){
             <input class="form-input" id="f_hbl" value="${esc(p.hbl)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">MBL</label>
             <input class="form-input" id="f_mbl" value="${esc(p.mbl)}"></div>
-          <div class="form-group"><label class="form-label">Container</label>
-            <input class="form-input" id="f_container" value="${esc(p.container)}"></div>
-          <div class="form-group"><label class="form-label">Tipo Container</label>
-            <select class="form-input" id="f_tipo_container">
-              <option value="20GP" ${p.tipo_container==='20GP'?'selected':''}>20GP</option>
-              <option value="40GP" ${p.tipo_container==='40GP'?'selected':''}>40GP</option>
-              <option value="40HC"${(!p.tipo_container||p.tipo_container==='40HC')?'selected':''}>40HC</option>
-            </select></div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Containers</label>
+            <div id="multi-containers-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
+            <button type="button" onclick="adicionarContainer()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Container</button>
+            <input type="hidden" id="f_containers_json">
+            <input type="hidden" id="f_container" value="${esc(p.container||'')}">
+            <input type="hidden" id="f_tipo_container" value="${esc(p.tipo_container||'40HC')}">
+          </div>
         </div>
       </div>
       <div class="form-section">
@@ -1333,6 +1351,13 @@ function renderModal(){
   `;
 
   renderPagamentoCampos();
+  // Inicializar multi-containers
+  try{
+    if(p.containers_json) _containers = JSON.parse(p.containers_json);
+    else if(p.container) _containers = [{numero:p.container||'', tipo:p.tipo_container||'40HC', lacre:p.lacre||''}];
+    else _containers = [{numero:'', tipo:'40HC', lacre:''}];
+  }catch(e){ _containers = [{numero:'', tipo:'40HC', lacre:''}]; }
+  renderMultiContainers();
   if(!isNovo) carregarArquivosGed(p.id);
   else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
 }
@@ -1582,6 +1607,13 @@ function coletarESalvar(){
   });
 
   proc.log = log;
+
+  // Salvar multi-containers
+  sincronizarContainerLegado();
+  proc.containers_json = JSON.stringify(_containers);
+  proc.container = _containers[0]?.numero||'';
+  proc.tipo_container = _containers[0]?.tipo||'40HC';
+
   _editando = proc;
 
   salvarProcesso(proc).then(ok=>{ if(ok) fecharModal(); });
@@ -1593,7 +1625,107 @@ function coletarESalvar(){
 // ════════════════════════════════════════════════════════════════
 // EXPORTAÇÃO EXCEL
 // ════════════════════════════════════════════════════════════════
-async function exportarExcel(){
+async // ════════════════════════════════════════════════════════════════
+// MULTI-CONTAINERS
+// ════════════════════════════════════════════════════════════════
+let _containers = []; // [{numero, tipo, lacre}]
+
+function renderMultiContainers(){
+  const lista = document.getElementById('multi-containers-list');
+  if(!lista) return;
+  if(!_containers.length) _containers = [{numero:'', tipo:'40HC', lacre:''}];
+  lista.innerHTML = _containers.map((c,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 100px 1fr 32px;gap:6px;align-items:center;">
+      <input class="form-input" placeholder="Nº Container (ex: MSCU1234567)" value="${c.numero||''}"
+        oninput="_containers[${i}].numero=this.value;sincronizarContainerLegado()">
+      <select class="form-input" onchange="_containers[${i}].tipo=this.value;sincronizarContainerLegado()">
+        <option value="20GP" ${c.tipo==='20GP'?'selected':''}>20GP</option>
+        <option value="40GP" ${c.tipo==='40GP'?'selected':''}>40GP</option>
+        <option value="40HC" ${(!c.tipo||c.tipo==='40HC')?'selected':''}>40HC</option>
+        <option value="40NOR" ${c.tipo==='40NOR'?'selected':''}>40NOR</option>
+      </select>
+      <input class="form-input" placeholder="Lacre (opcional)" value="${c.lacre||''}"
+        oninput="_containers[${i}].lacre=this.value">
+      ${_containers.length>1
+        ? `<button type="button" onclick="removerContainer(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
+        : '<div></div>'}
+    </div>
+  `).join('');
+  sincronizarContainerLegado();
+}
+
+function adicionarContainer(){
+  _containers.push({numero:'', tipo:'40HC', lacre:''});
+  renderMultiContainers();
+}
+
+function removerContainer(i){
+  _containers.splice(i,1);
+  if(!_containers.length) _containers = [{numero:'', tipo:'40HC', lacre:''}];
+  renderMultiContainers();
+}
+
+function sincronizarContainerLegado(){
+  // Manter campo legado f_container com o primeiro container para compatibilidade
+  const input = document.getElementById('f_containers_json');
+  if(input) input.value = JSON.stringify(_containers);
+  const fc = document.getElementById('f_container');
+  const ft = document.getElementById('f_tipo_container');
+  if(fc && _containers[0]) fc.value = _containers[0].numero||'';
+  if(ft && _containers[0]) ft.value = _containers[0].tipo||'40HC';
+}
+
+// ════════════════════════════════════════════════════════════════
+// RELATÓRIO COM FILTROS
+// ════════════════════════════════════════════════════════════════
+async function exportarRelatorio(){
+  const lista = filtrarProcessos();
+  if(!lista.length){ showToast('Nenhum processo no filtro atual','warn'); return; }
+
+  const cliente = document.getElementById('filtro-cliente')?.value||'Todos';
+  const dtDe = document.getElementById('filtro-data-de')?.value||'';
+  const dtAte = document.getElementById('filtro-data-ate')?.value||'';
+  const fase = document.getElementById('fase-filter')?.querySelector('.active')?.textContent||'';
+
+  showToast(`Gerando relatório de ${lista.length} processos...`,'ok');
+
+  const rows = [
+    ['IMPAK — Relatório de Processos de Importação'],
+    [`Cliente: ${cliente}`, `Período: ${dtDe||'—'} a ${dtAte||'—'}`, `Fase: ${fase||'Todas'}`, `Total: ${lista.length} processos`],
+    [`Gerado em: ${new Date().toLocaleString('pt-BR')}`],
+    [],
+    ['REF','FORNECEDOR','CLIENTE','FASE','ETA','ETD','EMBARQUE','CHEGADA',
+     'ARMADOR','NAVIO','CONTAINER','HBL','MBL','Nº DI','CANAL',
+     'PI VALOR USD','PI PAGO','NF SAÍDA Nº','NF SAÍDA VALOR','OBS'],
+  ];
+
+  lista.forEach(p=>{
+    const ctrs = p.containers_json ? JSON.parse(p.containers_json) : [{numero:p.container||'',tipo:p.tipo_container||'',lacre:''}];
+    const ctStr = ctrs.map(c=>`${c.numero}${c.tipo?' ('+c.tipo+')':''}${c.lacre?' L:'+c.lacre:''}`).join(' | ');
+    rows.push([
+      p.referencia||'', p.fornecedor||'', p.cliente||'', p.fase||'',
+      p.eta||'', p.etd||'', p.data_embarque||'', p.data_chegada||'',
+      p.armador||'', p.navio||'', ctStr,
+      p.hbl||'', p.mbl||'', p.numero_di||'', p.canal||'',
+      p.pi_valor_usd||'', p.pi_pago?'SIM':'NÃO',
+      p.nf_saida_numero||'', p.nf_saida_valor||'', p.obs||'',
+    ]);
+  });
+
+  try{
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [12,18,18,16,11,11,11,11,14,16,22,14,14,14,8,13,8,14,14,30].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Processos');
+    const nome = `IMPAK_Relatorio_${cliente.replace(/[^a-zA-Z0-9]/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, nome);
+    showToast(`✓ Relatório exportado: ${lista.length} processos`,'ok');
+  }catch(e){
+    showToast('Erro ao gerar relatório: '+e.message,'err');
+  }
+}
+
+function exportarExcel(){
   showToast('Gerando planilha...','info');
   try{
     const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
