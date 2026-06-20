@@ -290,9 +290,10 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <button class="toggle-btn" id="toggle-ie-nao" onclick="setToggle('ie','NAO')">NÃO</button>
         </div>
       </div>
-      <div class="form-group">
+      <div class="form-group" style="position:relative;">
         <label>Cliente</label>
-        <input type="text" id="cliente" placeholder="Nome do cliente">
+        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)">
+        <div id="cliente-calc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
       <div class="form-group">
         <label>Custos Diversos (R$)</label>
@@ -476,6 +477,35 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── CÂMBIO ───────────────────────────────────────────────
+let _acClienteCalcTimer = null;
+async function autocompletarClienteCalc(input){
+  clearTimeout(_acClienteCalcTimer);
+  const q = input.value.trim();
+  const dd = document.getElementById('cliente-calc-dropdown');
+  if(!dd) return;
+  if(q.length < 2){ dd.style.display='none'; return; }
+  _acClienteCalcTimer = setTimeout(async ()=>{
+    try{
+      const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo=CLIENTE');
+      const d = await r.json();
+      if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
+      dd.innerHTML = d.contatos.map(c=>{
+        const cnpjFmt = c.cnpj ? c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5') : '';
+        const label = `${c.razao_social}${c.uf?' · '+c.uf:''}${cnpjFmt?' · '+cnpjFmt:''}`;
+        const razaoEsc = c.razao_social.replace(/'/g,"\\'");
+        return `<div onclick="document.getElementById('cliente').value='${razaoEsc}';document.getElementById('cliente-calc-dropdown').style.display='none';"
+          style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);"
+          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
+      }).join('');
+      dd.style.display='block';
+    }catch(e){ dd.style.display='none'; }
+  }, 300);
+}
+document.addEventListener('click', e=>{
+  const dd = document.getElementById('cliente-calc-dropdown');
+  if(dd && !dd.contains(e.target) && e.target.id!=='cliente') dd.style.display='none';
+});
+
 async function buscarCambio() {
   const el = document.getElementById('cambio_usd');
   const info = document.getElementById('cambio-info');
