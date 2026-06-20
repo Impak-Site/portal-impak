@@ -437,7 +437,8 @@ select.form-input{cursor:pointer;}
         <input class="form-input" id="ce_nome_fantasia"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">CNPJ</label>
-          <input class="form-input" id="ce_cnpj" placeholder="00.000.000/0000-00"></div>
+          <input class="form-input" id="ce_cnpj" placeholder="00.000.000/0000-00" oninput="formatarCnpjInput(this)" onblur="buscarDadosCnpj(this.value)">
+          <div id="ce_cnpj_status" style="font-size:10px;color:var(--dim);margin-top:2px;"></div></div>
         <div class="form-group"><label class="form-label">UF</label>
           <input class="form-input" id="ce_uf" maxlength="2" style="text-transform:uppercase;"></div>
       </div>
@@ -1917,12 +1918,61 @@ function renderListaContatos(){
   }).join('');
 }
 
+function formatarCnpjInput(input){
+  let v = input.value.replace(/\D/g,'').slice(0,14);
+  if(v.length > 12) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2})/, '$1.$2.$3/$4-$5');
+  else if(v.length > 8) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
+  else if(v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if(v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
+  input.value = v;
+}
+
+async function buscarDadosCnpj(valor){
+  const cnpj = (valor||'').replace(/\D/g,'');
+  const statusEl = document.getElementById('ce_cnpj_status');
+  if(cnpj.length !== 14){
+    if(statusEl) statusEl.textContent = '';
+    return;
+  }
+  if(statusEl){ statusEl.textContent = 'Buscando dados na Receita Federal...'; statusEl.style.color = 'var(--dim)'; }
+  try{
+    const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj);
+    if(!r.ok){
+      if(statusEl){ statusEl.textContent = 'CNPJ não encontrado na base pública'; statusEl.style.color = 'var(--warn)'; }
+      return;
+    }
+    const d = await r.json();
+    const razaoEl = document.getElementById('ce_razao_social');
+    const fantasiaEl = document.getElementById('ce_nome_fantasia');
+    const cidadeEl = document.getElementById('ce_cidade');
+    const ufEl = document.getElementById('ce_uf');
+    const emailEl = document.getElementById('ce_email');
+    const telEl = document.getElementById('ce_telefone');
+    // Só preenche campos vazios, não sobrescreve o que o usuário já digitou
+    if(razaoEl && !razaoEl.value) razaoEl.value = d.razao_social || '';
+    if(fantasiaEl && !fantasiaEl.value) fantasiaEl.value = d.nome_fantasia || '';
+    if(cidadeEl && !cidadeEl.value) cidadeEl.value = d.municipio || '';
+    if(ufEl && !ufEl.value) ufEl.value = d.uf || '';
+    if(emailEl && !emailEl.value && d.email) emailEl.value = d.email || '';
+    if(telEl && !telEl.value && d.ddd_telefone_1) telEl.value = d.ddd_telefone_1 || '';
+    if(statusEl){
+      const situacao = d.descricao_situacao_cadastral || '';
+      statusEl.textContent = '✓ Dados preenchidos automaticamente'+(situacao?' · Situação: '+situacao:'');
+      statusEl.style.color = situacao==='ATIVA' ? 'var(--ok)' : 'var(--warn)';
+    }
+  }catch(e){
+    if(statusEl){ statusEl.textContent = 'Erro ao consultar CNPJ — preencha manualmente'; statusEl.style.color = 'var(--err)'; }
+  }
+}
+
 function abrirNovoContato(){
   document.getElementById('contato-edit-title').textContent = 'Novo Contato';
   ['ce_id','ce_razao_social','ce_nome_fantasia','ce_cnpj','ce_uf','ce_cidade','ce_email','ce_telefone','ce_obs'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('ce_tipo').value = _contatosTipoAtivo;
+  const statusEl = document.getElementById('ce_cnpj_status');
+  if(statusEl) statusEl.textContent = '';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
 }
 
@@ -1940,6 +1990,8 @@ function editarContato(id){
   document.getElementById('ce_email').value = c.email||'';
   document.getElementById('ce_telefone').value = c.telefone||'';
   document.getElementById('ce_obs').value = c.obs||'';
+  const statusEl = document.getElementById('ce_cnpj_status');
+  if(statusEl) statusEl.textContent = '';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
 }
 
