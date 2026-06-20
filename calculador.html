@@ -188,6 +188,16 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <input type="number" id="qtde_containers" min="1" value="1">
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Taxa Seguro Compra (%)</label>
+          <input type="number" id="taxa_seguro_compra" step="0.001" value="0.04" placeholder="0,04">
+        </div>
+        <div class="form-group">
+          <label>Taxa Seguro Venda (%)</label>
+          <input type="number" id="taxa_seguro_venda" step="0.001" value="0.04" placeholder="0,04">
+        </div>
+      </div>
     </div>
 
     <!-- CLASSIFICAÇÃO -->
@@ -624,6 +634,8 @@ function calcular() {
   const cliente  = document.getElementById('cliente').value;
   const custos_div = parseFloat(document.getElementById('custos_diversos').value) || 0;
   const cenario_val = parseFloat(document.getElementById('cenario_valor').value) || 0;
+  const taxa_seguro_compra = (parseFloat(document.getElementById('taxa_seguro_compra').value) || 0.04) / 100;
+  const taxa_seguro_venda  = (parseFloat(document.getElementById('taxa_seguro_venda').value)  || 0.04) / 100;
 
   if(!cambio || !fob_usd) { showToast('Preencha câmbio e FOB','err'); return; }
 
@@ -632,15 +644,24 @@ function calcular() {
   const t = TABELA_NCM[chave];
   if(!t) { showToast(`NCM ${ncm}/${uf} não encontrado na tabela NCM`,'err'); return; }
 
-  // ── 1. CIF ──
-  const seguro_usd = fob_usd * 0.000535; // seguro padrão ~0,0535%
+  // ── 1. SEGURO (compra e venda) ──
+  // Base: (FOB + Frete) + 10% despesas + 10% lucro esperado + Taxa C.E.
+  const seguro_total_usd  = fob_usd + frete_usd;
+  const seguro_despesas   = seguro_total_usd * 0.10;
+  const seguro_lucro_esp  = (seguro_total_usd + seguro_despesas) * 0.10;
+  const seguro_base_usd   = seguro_total_usd + seguro_despesas + seguro_lucro_esp + taxa_ce;
+  const seguro_compra_usd = seguro_base_usd * taxa_seguro_compra;
+  const seguro_venda_usd  = seguro_base_usd * taxa_seguro_venda;
+
+  // ── 2. CIF (usa seguro de COMPRA — custo real interno) ──
   const fob_brl    = fob_usd * cambio;
   const frete_brl  = frete_usd * cambio;
   const taxa_ce_brl= taxa_ce * cambio;
-  const seguro_brl = seguro_usd * cambio;
+  const seguro_brl = seguro_compra_usd * cambio;
+  const seguro_venda_brl = seguro_venda_usd * cambio;
   const cif_brl    = fob_brl + frete_brl + seguro_brl;
 
-  // ── 2. Base de impostos ──
+  // ── 3. Base de impostos ──
   const base_imp_brl = fob_brl + frete_brl + seguro_brl + taxa_ce_brl;
 
   // ── 3. Impostos de entrada (créditos) ──
@@ -756,7 +777,7 @@ function calcular() {
   _ultimoResultado = {
     cambio, fob_usd, frete_usd, taxa_ce, containers, tipo, uf, cliente,
     ncm, t,
-    fob_brl, frete_brl, seguro_brl, cif_brl, base_imp_brl,
+    fob_brl, frete_brl, seguro_brl, seguro_venda_brl, seguro_compra_usd, seguro_venda_usd, cif_brl, base_imp_brl,
     II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
     taxas_fixas, taxas_usd_brl, total_taxas,
     imp_custo, custo_total,
@@ -857,7 +878,8 @@ function renderResultado(r) {
             <tr><td>FOB (USD)</td><td class="num">US$ ${fmt(r.fob_usd)}</td></tr>
             <tr><td>FOB (BRL)</td><td class="num">${fmtR(r.fob_brl)}</td></tr>
             <tr><td>Frete (BRL)</td><td class="num">${fmtR(r.frete_brl)}</td></tr>
-            <tr><td>Seguro (BRL)</td><td class="num">${fmtR(r.seguro_brl)}</td></tr>
+            <tr><td>Seguro Compra (custo interno)</td><td class="num">${fmtR(r.seguro_brl)}</td></tr>
+            <tr style="background:rgba(217,119,6,.05);"><td>Seguro Venda (proposta cliente)</td><td class="num" style="color:var(--warn);">${fmtR(r.seguro_venda_brl)}</td></tr>
             <tr class="total-row"><td>CIF Total</td><td class="num">${fmtR(r.cif_brl)}</td></tr>
             <tr><td>Base Impostos</td><td class="num">${fmtR(r.base_imp_brl)}</td></tr>
           </table>
@@ -955,6 +977,7 @@ async function exportarExcel() {
       ['── CIF ──', '', '', ''],
       ['FOB USD', r.fob_usd, 'FOB BRL', fmtR(r.fob_brl)],
       ['Frete USD', r.frete_usd, 'Frete BRL', fmtR(r.frete_brl)],
+      ['Seguro Compra BRL (interno)', fmtR(r.seguro_brl), 'Seguro Venda BRL (cliente)', fmtR(r.seguro_venda_brl)],
       ['CIF Total BRL', '', fmtR(r.cif_brl), ''],
       [],
       ['── IMPOSTOS ENTRADA ──', '', '', ''],
