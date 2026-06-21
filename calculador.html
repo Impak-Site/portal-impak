@@ -804,70 +804,96 @@ function calcular() {
 
   // Alíq saída
   const aliq_ipi_s  = t.ipi;
-  const aliq_icms_s = t.aliq_interna;
+  const aliq_icms_s = t.aliq_interna;   // alíquota interna p/ ICMS ST
   const aliq_pis_s  = t.pis_s;
   const aliq_cof_s  = t.cofins_s;
-  const aliq_icms_nfe = t.icms_prop;
+  const aliq_icms_nfe = t.icms_prop;    // ICMS próprio na venda (ex: 1,4%)
   const aliq_ibs_s  = t.ibs;
   const aliq_cbs_s  = t.cbs;
-
-  let faturamento, vlr_produto, lucro_bruto, pct_lucro;
-
-  if(_cenario === 1) {
-    // Lucro Alvo % → cenário_val é % de lucro sobre faturamento
-    const alvo_pct = cenario_val / 100;
-    const divisor = 1 - aliq_pis_s - aliq_cof_s - aliq_icms_nfe - aliq_ibs_s - aliq_cbs_s - br_pct - china_dentro - alvo_pct;
-    if(divisor <= 0.01) { showToast('Divisor inválido — revise as alíquotas','err'); return; }
-    faturamento   = custo_total / divisor;
-    vlr_produto   = faturamento / (1 + aliq_ipi_s);
-    lucro_bruto   = faturamento * alvo_pct;
-    pct_lucro     = alvo_pct * 100;
-  } else if(_cenario === 2) {
-    // Lucro Alvo R$ → cenário_val é o valor R$ de lucro
-    // faturamento = custo + lucro / (1 - impostos - comissões)
-    const divisor = 1 - aliq_pis_s - aliq_cof_s - aliq_icms_nfe - aliq_ibs_s - aliq_cbs_s - br_pct - china_dentro;
-    if(divisor <= 0.01) { showToast('Divisor inválido — revise as alíquotas','err'); return; }
-    faturamento   = (custo_total + cenario_val) / divisor;
-    vlr_produto   = faturamento / (1 + aliq_ipi_s);
-    lucro_bruto   = cenario_val;
-    pct_lucro     = (lucro_bruto / faturamento) * 100;
-  } else {
-    // Lucro Bruto % → cenário_val é % bruto
-    const alvo_pct = cenario_val / 100;
-    const divisor = 1 - aliq_pis_s - aliq_cof_s - aliq_icms_nfe - aliq_ibs_s - aliq_cbs_s - br_pct - china_dentro - alvo_pct;
-    if(divisor <= 0.01) { showToast('Divisor inválido — revise as alíquotas','err'); return; }
-    faturamento   = custo_total / divisor;
-    vlr_produto   = faturamento / (1 + aliq_ipi_s);
-    lucro_bruto   = faturamento * alvo_pct;
-    pct_lucro     = alvo_pct * 100;
-  }
-
-  // IPI sobre venda
-  const IPI_s     = vlr_produto * aliq_ipi_s;
-  const base_icms = vlr_produto + IPI_s;
-  const ICMS_nfe  = base_icms * aliq_icms_nfe;
-  const PIS_s     = vlr_produto * aliq_pis_s;
-  const COFINS_s  = vlr_produto * aliq_cof_s;
-  const IBS_s     = vlr_produto * aliq_ibs_s;
-  const CBS_s     = vlr_produto * aliq_cbs_s;
-  const COM_br    = faturamento * br_pct;
-  const COM_china_dentro = faturamento * china_dentro;
-
-  // ST
-  let base_st = 0, icms_st = 0;
   const tem_st = _toggles.st === 'SIM';
-  if(tem_st) {
-    base_st = (vlr_produto + IPI_s) * (1 + t.mva);
-    icms_st = Math.max(0, base_st * aliq_icms_s - ICMS_nfe);
+  const china_fora_pct = (_toggles.china==='SIM' && _togglesInner['china-modal']==='FORA') ? china_pct : 0;
+
+  // ── Função que, dado um Fator NFe, calcula toda a cadeia de saída ──
+  // Replica fielmente a planilha: Vlr.Produto → IPI → ICMS NFe → ICMS ST →
+  // Vlr.Total NFe → PIS/COFINS/ICMS Próprio → Comissões → Lucro Bruto
+  function calcularCadeiaSaida(fatorNfe){
+    // IMPORTANTE: Vlr.Produto é calculado sobre o CUSTO TOTAL (não sobre FOB) — fórmula real da planilha (L17=F48×L11)
+    const vlr_produto = custo_total * fatorNfe;
+    const IPI_s        = vlr_produto * aliq_ipi_s;
+    // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP), usado na base do ICMS ST e do PIS/COFINS
+    const ICMS_nfe_normal = vlr_produto * t.aliq_inter;
+    // ICMS Próprio — alíquota da coluna ICMS-Próprio da tabela NCM (ex: 1,4%), abate direto do lucro
+    const ICMS_proprio = vlr_produto * aliq_icms_nfe;
+
+    let icms_st = 0, base_st = 0;
+    if(tem_st){
+      base_st  = (vlr_produto + IPI_s) * (1 + t.mva);
+      icms_st  = Math.max(0, (base_st * aliq_icms_s) - ICMS_nfe_normal);
+    }
+    const vlr_total_nfe = vlr_produto + IPI_s + icms_st;
+
+    // Base de impostos PIS/COFINS = Vlr.Produto - ICMS_nfe_normal (replica L25 = L17-L19)
+    const base_pis_cofins = vlr_produto - ICMS_nfe_normal;
+    const PIS_s     = base_pis_cofins * aliq_pis_s;
+    const COFINS_s  = base_pis_cofins * aliq_cof_s;
+    const IBS_s     = base_pis_cofins * aliq_ibs_s;
+    const CBS_s     = base_pis_cofins * aliq_cbs_s;
+
+    // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
+    const china_fora_val = fob_brl * china_fora_pct;
+    const faturamento_total = vlr_total_nfe + china_fora_val;
+
+    // Comissão BR (Representante) — sobre o faturamento total
+    const COM_br = faturamento_total * br_pct;
+    // Comissão China "dentro" — sobre FOB×câmbio, desconta da margem
+    const COM_china_dentro = china_dentro>0 ? fob_brl * china_dentro : 0;
+
+    // Lucro Bruto = Vlr.Total NFe - ICMS_ST - PIS - COFINS - ICMS_Próprio - Comissão_Repr - Comissão_China_dentro - Custo_Total - IPI
+    const lucro_bruto = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_br - COM_china_dentro - custo_total - IPI_s;
+    const pct_lucro = faturamento_total !== 0 ? (lucro_bruto / faturamento_total) * 100 : 0;
+
+    return {
+      vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, icms_st, base_st, vlr_total_nfe,
+      PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
+      china_fora_val, COM_br, COM_china_dentro,
+      faturamento_total, lucro_bruto, pct_lucro, fatorNfe,
+    };
   }
-  const vlr_total_nfe = vlr_produto + IPI_s + icms_st;
 
-  // Comissões fora (nota de serviço)
-  const china_fora_val  = (_toggles.china==='SIM' && _togglesInner['china-modal']==='FORA') ? fob_brl * china_pct : 0;
+  // ── Resolver o Fator NFe necessário para o cenário escolhido (busca binária) ──
+  function resolverFatorNfe(alvoFn){
+    let lo = 1.0, hi = 5.0;
+    for(let i=0;i<60;i++){
+      const mid = (lo+hi)/2;
+      const r = calcularCadeiaSaida(mid);
+      if(alvoFn(r) > 0) hi = mid; else lo = mid;
+    }
+    return calcularCadeiaSaida((lo+hi)/2);
+  }
+
+  let cadeia;
+  if(_cenario === 1){
+    // Lucro Alvo % sobre faturamento
+    const alvo_pct = cenario_val / 100;
+    cadeia = resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct);
+  } else if(_cenario === 2){
+    // Lucro Alvo em R$
+    cadeia = resolverFatorNfe(r => r.lucro_bruto - cenario_val);
+  } else {
+    // Lucro Bruto % (igual ao 1, padrão "histórico" do sistema)
+    const alvo_pct = cenario_val / 100;
+    cadeia = resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct);
+  }
+
+  const { vlr_produto, IPI_s, ICMS_nfe, icms_st, base_st, vlr_total_nfe,
+          PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
+          china_fora_val, COM_br, COM_china_dentro,
+          faturamento_total: faturamento, lucro_bruto, pct_lucro, fatorNfe } = cadeia;
+
+  const ICMS_nfe_final = ICMS_proprio; // mantém nome legado abaixo
+  const base_icms = vlr_produto + IPI_s; // mantido para compatibilidade de exibição
   const boss_fora_val   = _toggles.boss==='SIM' ? faturamento * boss_pct_fora : 0;
-
-  // Fator
-  const fator = faturamento / fob_brl;
+  const fator = fatorNfe;
 
   // Mix unitário
   const mix_itens = _mix?.itens || [];
@@ -953,9 +979,9 @@ function renderResultado(r) {
             <div class="card-sub">${fmtP(r.pct_lucro)} s/ faturamento</div>
           </div>
           <div class="card-num">
-            <div class="card-label">Fator</div>
+            <div class="card-label">Fator NFe</div>
             <div class="card-value">${r.fator.toFixed(4)}</div>
-            <div class="card-sub">Faturamento / FOB BRL</div>
+            <div class="card-sub">Vlr.Produto / Custo Total</div>
           </div>
           <div class="card-num">
             <div class="card-label">Vlr. Produto (NF)</div>
