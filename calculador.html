@@ -443,6 +443,67 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
       </div>
     </div>
 
+    <!-- PARCELAMENTO E NOTA DE SERVIÇO -->
+    <div class="section">
+      <div class="section-title" style="cursor:pointer;" onclick="toggleParcelamento()">
+        💳 Parcelamento / Nota de Serviço <span id="parcel-arrow">▾</span>
+      </div>
+      <div id="parcel-body" style="display:none;">
+        <div class="form-group">
+          <label>Venda Parcelada?</label>
+          <div class="toggle-group">
+            <button class="toggle-btn active-nao" id="toggle-parcelado-nao" onclick="setToggle('parcelado','NAO')">NÃO</button>
+            <button class="toggle-btn" id="toggle-parcelado-sim" onclick="setToggle('parcelado','SIM')">SIM</button>
+          </div>
+          <div id="parcelado-detalhe" class="comissao-detalhe">
+            <div class="form-row" style="margin-bottom:6px">
+              <div class="form-group" style="margin:0">
+                <label>Tem Entrada?</label>
+                <div class="toggle-group">
+                  <button class="toggle-btn active-nao" id="toggle-entrada-nao" onclick="setToggle('entrada','NAO')">NÃO</button>
+                  <button class="toggle-btn" id="toggle-entrada-sim" onclick="setToggle('entrada','SIM')">SIM</button>
+                </div>
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>% Entrada</label>
+                <input type="number" id="pct_entrada" step="0.01" value="0" placeholder="ex: 30">
+              </div>
+            </div>
+            <div class="form-row" style="margin-bottom:6px">
+              <div class="form-group" style="margin:0">
+                <label>Taxa de Juros (% a.m.)</label>
+                <input type="number" id="taxa_juros_am" step="0.01" value="0" placeholder="ex: 2,5">
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>Prazo Médio (dias)</label>
+                <input type="number" id="prazo_medio_dias" step="1" value="60" placeholder="ex: 60">
+              </div>
+            </div>
+            <div style="font-size:10px;color:var(--dim);">Prazo médio: 30dd=30 · 30/60dd=45 · 30/60/90dd=60 · 30/60/90/120dd=75</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Nota de Serviço?</label>
+          <div class="toggle-group">
+            <button class="toggle-btn active-nao" id="toggle-nota-nao" onclick="setToggle('nota','NAO')">NÃO</button>
+            <button class="toggle-btn" id="toggle-nota-sim" onclick="setToggle('nota','SIM')">SIM</button>
+          </div>
+          <div id="nota-detalhe" class="comissao-detalhe">
+            <div class="form-row" style="margin:0">
+              <div class="form-group" style="margin:0">
+                <label>% Nota</label>
+                <input type="number" id="pct_nota_servico" step="0.01" value="0" placeholder="ex: 1">
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>Beneficiário</label>
+                <input type="text" id="nota_beneficiario" placeholder="ex: BOSS">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- CENÁRIO DE MARGEM -->
     <div class="section">
       <div class="section-title">🎯 Cenário de Margem</div>
@@ -612,6 +673,14 @@ function ontem() {
 }
 
 // ── TOGGLES ──────────────────────────────────────────────
+function toggleParcelamento(){
+  const body = document.getElementById('parcel-body');
+  const arrow = document.getElementById('parcel-arrow');
+  const aberto = body.style.display !== 'none';
+  body.style.display = aberto ? 'none' : 'block';
+  arrow.textContent = aberto ? '▾' : '▴';
+}
+
 function toggleTaxasOperacionais(){
   const body = document.getElementById('taxas-op-body');
   const arrow = document.getElementById('taxas-op-arrow');
@@ -848,14 +917,36 @@ function calcular() {
     // Comissão China "dentro" — sobre FOB×câmbio, desconta da margem
     const COM_china_dentro = china_dentro>0 ? fob_brl * china_dentro : 0;
 
-    // Lucro Bruto = Vlr.Total NFe - ICMS_ST - PIS - COFINS - ICMS_Próprio - Comissão_Repr - Comissão_China_dentro - Custo_Total - IPI
-    const lucro_bruto = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_br - COM_china_dentro - custo_total - IPI_s;
+    // ── Parcelamento / Nota de Serviço (bloco K42:K48 da planilha) ──
+    let valor_entrada = 0, valor_saldo = 0, juros_parcelamento = 0,
+        nota_servico_val = 0, comissao_repr_parcel = 0, total_parcelamento = 0;
+    if(_toggles.parcelado === 'SIM'){
+      const pctEntrada = _toggles.entrada==='SIM' ? (parseFloat(document.getElementById('pct_entrada').value)||0)/100 : 0;
+      const pctSaldo = 1 - pctEntrada;
+      valor_entrada = vlr_total_nfe * pctEntrada;
+      valor_saldo = vlr_total_nfe * pctSaldo;
+      const taxaJurosMes = (parseFloat(document.getElementById('taxa_juros_am').value)||0)/100;
+      const prazoMedio = parseFloat(document.getElementById('prazo_medio_dias').value)||60;
+      juros_parcelamento = ((valor_saldo * prazoMedio) / 30) * taxaJurosMes;
+      total_parcelamento = valor_entrada + valor_saldo + juros_parcelamento;
+    }
+    if(_toggles.nota === 'SIM'){
+      const pctNota = (parseFloat(document.getElementById('pct_nota_servico').value)||0)/100;
+      nota_servico_val = faturamento_total * pctNota;
+      total_parcelamento += nota_servico_val;
+    }
+    // Comissão sobre o total do bloco parcelamento (J46 — geralmente 0% salvo cliente específico)
+    total_parcelamento += comissao_repr_parcel;
+
+    // Lucro Bruto = Vlr.Total NFe - ICMS_ST - PIS - COFINS - ICMS_Próprio - Comissão_Repr - Comissão_China_dentro - Custo_Total - IPI - Juros - Nota
+    const lucro_bruto = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_br - COM_china_dentro - custo_total - IPI_s - juros_parcelamento - nota_servico_val;
     const pct_lucro = faturamento_total !== 0 ? (lucro_bruto / faturamento_total) * 100 : 0;
 
     return {
       vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, icms_st, base_st, vlr_total_nfe,
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
       china_fora_val, COM_br, COM_china_dentro,
+      valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
       faturamento_total, lucro_bruto, pct_lucro, fatorNfe,
     };
   }
@@ -888,6 +979,7 @@ function calcular() {
   const { vlr_produto, IPI_s, ICMS_nfe, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
           china_fora_val, COM_br, COM_china_dentro,
+          valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
           faturamento_total: faturamento, lucro_bruto, pct_lucro, fatorNfe } = cadeia;
 
   const ICMS_nfe_final = ICMS_proprio; // mantém nome legado abaixo
@@ -912,6 +1004,7 @@ function calcular() {
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, PIS_s, COFINS_s, IBS_s, CBS_s,
     COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
     china_fora_val, boss_fora_val, china_pct, txOp,
+    valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
     lucro_bruto, pct_lucro, fator,
     tem_st, mix_result,
     br_nome: document.getElementById('br_nome').value,
@@ -933,6 +1026,20 @@ function renderResultado(r) {
       <div class="nota-servico-title">📋 Notas de Serviço (fora do preço)</div>
       ${r.china_fora_val > 0 ? `<div style="font-size:12px;margin-bottom:4px;">• Comissão China (DABRURA): <strong>${fmtR(r.china_fora_val)}</strong> (${(r.china_pct*100).toFixed(2)}% sobre FOB×câmbio)</div>` : ''}
       ${r.boss_fora_val > 0 ? `<div style="font-size:12px;">• Comissão ${r.boss_nome}: <strong>${fmtR(r.boss_fora_val)}</strong></div>` : ''}
+    </div>
+  ` : '';
+
+  const parcelamento_html = (r.total_parcelamento > 0) ? `
+    <div class="detail-section">
+      <div class="detail-title">💳 Parcelamento / Nota de Serviço</div>
+      <table class="calc-table">
+        ${r.valor_entrada > 0 ? `<tr><td>Valor Entrada</td><td class="num">${fmtR(r.valor_entrada)}</td></tr>` : ''}
+        ${r.valor_saldo > 0 ? `<tr><td>Valor Saldo</td><td class="num">${fmtR(r.valor_saldo)}</td></tr>` : ''}
+        ${r.juros_parcelamento > 0 ? `<tr><td>Juros do Parcelamento</td><td class="num" style="color:var(--warn);">${fmtR(r.juros_parcelamento)}</td></tr>` : ''}
+        ${r.nota_servico_val > 0 ? `<tr><td>Nota de Serviço</td><td class="num" style="color:var(--warn);">${fmtR(r.nota_servico_val)}</td></tr>` : ''}
+        <tr class="destaque-row"><td>Total do Bloco</td><td class="num">${fmtR(r.total_parcelamento)}</td></tr>
+      </table>
+      <div style="font-size:10px;color:var(--dim);margin-top:6px;">Juros e Nota de Serviço já foram descontados do Lucro Bruto acima.</div>
     </div>
   ` : '';
 
@@ -1084,6 +1191,7 @@ function renderResultado(r) {
     </div>
 
     ${notas_serv_html}
+    ${parcelamento_html}
     ${mix_html}
   `;
 }
