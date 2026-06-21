@@ -267,11 +267,12 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </select>
       </div>
       <div class="form-group">
-        <label>Tem ICMS ST / TTD?</label>
+        <label>Cliente tem TTD?</label>
         <div class="toggle-group">
-          <button class="toggle-btn active-nao" id="toggle-st-nao" onclick="setToggle('st','NAO')">NÃO</button>
-          <button class="toggle-btn" id="toggle-st-sim" onclick="setToggle('st','SIM')">SIM</button>
+          <button class="toggle-btn active-nao" id="toggle-ttd-nao" onclick="setToggleTTD('NAO')">NÃO</button>
+          <button class="toggle-btn" id="toggle-ttd-sim" onclick="setToggleTTD('SIM')">SIM</button>
         </div>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px;" id="ttd-st-info">Sem TTD → calcula com ICMS ST</div>
       </div>
       <div class="form-group">
         <label>Tem Dumping?</label>
@@ -344,14 +345,20 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <button class="toggle-btn" id="toggle-china-sim" onclick="setToggle('china','SIM')">SIM</button>
         </div>
         <div id="china-detalhe" class="comissao-detalhe">
-          <div class="form-group" style="margin-bottom:6px">
-            <label>Modalidade</label>
-            <div class="toggle-group">
-              <button class="toggle-btn active-sim" id="toggle-china-dentro" onclick="setToggleInner('china-modal','DENTRO')">DENTRO</button>
-              <button class="toggle-btn" id="toggle-china-fora" onclick="setToggleInner('china-modal','FORA')">FORA</button>
+          <div class="form-row" style="margin-bottom:6px">
+            <div class="form-group" style="margin:0">
+              <label>Modalidade</label>
+              <div class="toggle-group">
+                <button class="toggle-btn active-sim" id="toggle-china-dentro" onclick="setToggleInner('china-modal','DENTRO')">DENTRO</button>
+                <button class="toggle-btn" id="toggle-china-fora" onclick="setToggleInner('china-modal','FORA')">FORA</button>
+              </div>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>% Comissão</label>
+              <input type="number" id="china_pct" step="0.001" value="0.03" placeholder="0.03">
             </div>
           </div>
-          <div style="font-size:11px;color:var(--muted);">3% automático · FORA = nota DABRURA · DENTRO = desconta margem</div>
+          <div style="font-size:11px;color:var(--muted);">FORA = nota DABRURA (% sobre FOB×câmbio) · DENTRO = desconta margem (% sobre FOB×câmbio)</div>
         </div>
       </div>
 
@@ -382,6 +389,56 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
               </select>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAXAS OPERACIONAIS EDITÁVEIS -->
+    <div class="section">
+      <div class="section-title" style="cursor:pointer;" onclick="toggleTaxasOperacionais()">
+        🏦 Taxas Operacionais (por container) <span id="taxas-op-arrow">▾</span>
+      </div>
+      <div id="taxas-op-body" style="display:none;">
+        <div class="form-row">
+          <div class="form-group"><label>Siscomex (R$)</label><input type="number" id="tx_siscomex" step="0.01" value="480"></div>
+          <div class="form-group"><label>Marinha/AFRMM (R$)</label><input type="number" id="tx_marinha" step="0.01" value="1712"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Armazenagem (R$)</label><input type="number" id="tx_armazenagem" step="0.01" value="2088"></div>
+          <div class="form-group"><label>Emissão L.I. (R$)</label><input type="number" id="tx_emissao_li" step="0.01" value="153.53"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Baixa Pátio (R$)</label><input type="number" id="tx_baixa_patio" step="0.01" value="500"></div>
+          <div class="form-group"><label>Capatazia/THC (R$)</label><input type="number" id="tx_capatazia" step="0.01" value="1100"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Liberação BL (R$)</label><input type="number" id="tx_liberacao_bl" step="0.01" value="650"></div>
+          <div class="form-group"><label>Despachante (R$)</label><input type="number" id="tx_despachante" step="0.01" value="1650"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>SDA (R$)</label><input type="number" id="tx_sda" step="0.01" value="650"></div>
+          <div class="form-group"><label>Lavação Container (R$)</label><input type="number" id="tx_lavacao" step="0.01" value="550"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Administrativo (R$)</label><input type="number" id="tx_administrativo" step="0.01" value="300"></div>
+          <div class="form-group"><label>Agente Carga (R$)</label><input type="number" id="tx_agente" step="0.01" value="476"></div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio)</div>
+        <div class="form-row">
+          <div class="form-group"><label>Additional Costs (US$)</label><input type="number" id="tx_additional_costs" step="0.01" value="95"></div>
+          <div class="form-group"><label>Import Logistics (US$)</label><input type="number" id="tx_import_logistics" step="0.01" value="32.16"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>TRS (US$)</label><input type="number" id="tx_trs" step="0.01" value="19.61"></div>
+          <div class="form-group"><label>TSC (US$)</label><input type="number" id="tx_tsc" step="0.01" value="35"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Drop Off (US$)</label><input type="number" id="tx_drop_off" step="0.01" value="25"></div>
+          <div class="form-group"><label>ISPS (US$)</label><input type="number" id="tx_isps" step="0.01" value="25"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>IOF (US$)</label><input type="number" id="tx_iof" step="0.01" value="138.66"></div>
+          <div class="form-group"><label>Desconsolidação (US$)</label><input type="number" id="tx_desconsolidacao" step="0.01" value="80"></div>
         </div>
       </div>
     </div>
@@ -459,7 +516,7 @@ const TAXAS_USD_CONTAINER = {
 };
 
 // ── ESTADO ──────────────────────────────────────────────
-let _toggles = { st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO' };
+let _toggles = { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO' };
 let _togglesInner = { 'china-modal':'DENTRO' };
 let _cenario = 3;
 let _mix = null;
@@ -474,6 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   onProdutoChange();
   buscarCambio();
+  setToggleTTD('SIM'); // estado inicial padrão: TTD=SIM → sem ICMS ST
 
   // Mix do TyreDesk
   try {
@@ -554,6 +612,31 @@ function ontem() {
 }
 
 // ── TOGGLES ──────────────────────────────────────────────
+function toggleTaxasOperacionais(){
+  const body = document.getElementById('taxas-op-body');
+  const arrow = document.getElementById('taxas-op-arrow');
+  const aberto = body.style.display !== 'none';
+  body.style.display = aberto ? 'none' : 'block';
+  arrow.textContent = aberto ? '▾' : '▴';
+}
+
+function lerTaxasOperacionais(){
+  const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+  return {
+    fixas: {
+      siscomex: v('tx_siscomex'), marinha: v('tx_marinha'), armazenagem: v('tx_armazenagem'),
+      emissao_li: v('tx_emissao_li'), baixa_patio: v('tx_baixa_patio'), capatazia: v('tx_capatazia'),
+      liberacao_bl: v('tx_liberacao_bl'), despachante: v('tx_despachante'), sda: v('tx_sda'),
+      lavacao: v('tx_lavacao'), administrativo: v('tx_administrativo'), agente: v('tx_agente'),
+    },
+    usd: {
+      additional_costs: v('tx_additional_costs'), import_logistics: v('tx_import_logistics'),
+      trs: v('tx_trs'), tsc: v('tx_tsc'), drop_off: v('tx_drop_off'), isps: v('tx_isps'),
+      iof: v('tx_iof'), desconsolidacao: v('tx_desconsolidacao'),
+    }
+  };
+}
+
 function setToggle(key, val) {
   _toggles[key] = val;
   const sim = document.getElementById(`toggle-${key}-sim`);
@@ -564,6 +647,18 @@ function setToggle(key, val) {
   const det = document.getElementById(`${key}-detalhe`);
   if(det) det.classList.toggle('show', val==='SIM');
   if(key==='dump') { const d2 = document.getElementById('dump-detalhe'); if(d2) d2.classList.toggle('show', val==='SIM'); }
+}
+
+// TTD e ICMS ST são mutuamente exclusivos: TTD=SIM → sem ST. TTD=NÃO → com ST.
+function setToggleTTD(val) {
+  _toggles.ttd = val;
+  _toggles.st = val === 'SIM' ? 'NAO' : 'SIM'; // inverso automático
+  const sim = document.getElementById('toggle-ttd-sim');
+  const nao = document.getElementById('toggle-ttd-nao');
+  if(sim) sim.className = 'toggle-btn' + (val==='SIM' ? ' active-sim' : '');
+  if(nao) nao.className = 'toggle-btn' + (val==='NAO' ? ' active-nao' : '');
+  const info = document.getElementById('ttd-st-info');
+  if(info) info.textContent = val==='SIM' ? 'Com TTD → calcula SEM ICMS ST' : 'Sem TTD → calcula COM ICMS ST';
 }
 
 function setToggleInner(key, val) {
@@ -671,17 +766,23 @@ function calcular() {
   const COFINS_e = base_imp_brl * t.cofins_e;
   const IBS_e    = (base_imp_brl + II + IPI_e) * t.ibs;
   const CBS_e    = (base_imp_brl + II + IPI_e) * t.cbs;
-  const ICMS_e   = base_imp_brl * 0.014;
   const RBC      = base_imp_brl * t.rbc;
   const DUMP     = _toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
+  // Taxas operacionais — lidas dos campos editáveis (fallback nas constantes padrão)
+  const txOp = lerTaxasOperacionais();
 
-  // ── 4. Taxas fixas ──
+  // ICMS Entrada — fórmula real da planilha: ((CIF + II+IPI+PIS+COFINS + Siscomex + Dumping + AFRMM) / 0,96) × 1%
+  const siscomex_unit = txOp.fixas.siscomex * containers;
+  const afrmm_unit     = txOp.fixas.marinha * containers;
+  const ICMS_e   = ((cif_brl + II + IPI_e + PIS_e + COFINS_e + siscomex_unit + DUMP + afrmm_unit) / 0.96) * 0.01;
+
+  // ── 4. Taxas fixas (editáveis) ──
   let taxas_fixas = 0;
-  Object.values(TAXAS_FIXAS_CONTAINER).forEach(v => taxas_fixas += v * containers);
+  Object.values(txOp.fixas).forEach(v => taxas_fixas += v * containers);
   taxas_fixas += custos_div;
 
   let taxas_usd = 0;
-  Object.values(TAXAS_USD_CONTAINER).forEach(v => taxas_usd += v * containers);
+  Object.values(txOp.usd).forEach(v => taxas_usd += v * containers);
   const taxas_usd_brl = taxas_usd * cambio;
 
   // Seguro dif (entre seguro real e taxa CE p/ AFRMM)
@@ -696,7 +797,8 @@ function calcular() {
   // Comissão BR
   const br_pct  = _toggles.br==='SIM' ? (parseFloat(document.getElementById('br_pct').value)||0) : 0;
   // Comissão China (dentro)
-  const china_dentro = _toggles.china==='SIM' && _togglesInner['china-modal']==='DENTRO' ? 0.03 : 0;
+  const china_pct = (parseFloat(document.getElementById('china_pct').value) || 0.03);
+  const china_dentro = _toggles.china==='SIM' && _togglesInner['china-modal']==='DENTRO' ? china_pct : 0;
   // Boss/Lopes (sempre fora, não entra no divisor)
   const boss_pct_fora = _toggles.boss==='SIM' ? (parseFloat(document.getElementById('boss_pct').value)||0) : 0;
 
@@ -761,7 +863,7 @@ function calcular() {
   const vlr_total_nfe = vlr_produto + IPI_s + icms_st;
 
   // Comissões fora (nota de serviço)
-  const china_fora_val  = (_toggles.china==='SIM' && _togglesInner['china-modal']==='FORA') ? faturamento * 0.03 : 0;
+  const china_fora_val  = (_toggles.china==='SIM' && _togglesInner['china-modal']==='FORA') ? fob_brl * china_pct : 0;
   const boss_fora_val   = _toggles.boss==='SIM' ? faturamento * boss_pct_fora : 0;
 
   // Fator
@@ -783,7 +885,7 @@ function calcular() {
     imp_custo, custo_total,
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, PIS_s, COFINS_s, IBS_s, CBS_s,
     COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
-    china_fora_val, boss_fora_val,
+    china_fora_val, boss_fora_val, china_pct, txOp,
     lucro_bruto, pct_lucro, fator,
     tem_st, mix_result,
     br_nome: document.getElementById('br_nome').value,
@@ -803,7 +905,7 @@ function renderResultado(r) {
   const notas_serv_html = (r.china_fora_val > 0 || r.boss_fora_val > 0) ? `
     <div class="nota-servico">
       <div class="nota-servico-title">📋 Notas de Serviço (fora do preço)</div>
-      ${r.china_fora_val > 0 ? `<div style="font-size:12px;margin-bottom:4px;">• Comissão China (DABRURA): <strong>${fmtR(r.china_fora_val)}</strong> (3% sobre faturamento)</div>` : ''}
+      ${r.china_fora_val > 0 ? `<div style="font-size:12px;margin-bottom:4px;">• Comissão China (DABRURA): <strong>${fmtR(r.china_fora_val)}</strong> (${(r.china_pct*100).toFixed(2)}% sobre FOB×câmbio)</div>` : ''}
       ${r.boss_fora_val > 0 ? `<div style="font-size:12px;">• Comissão ${r.boss_nome}: <strong>${fmtR(r.boss_fora_val)}</strong></div>` : ''}
     </div>
   ` : '';
@@ -910,18 +1012,18 @@ function renderResultado(r) {
         <div class="resultado-header"><h2>🏦 Taxas Operacionais</h2></div>
         <div class="resultado-body">
           <table class="calc-table">
-            <tr><td>Siscomex</td><td class="num">${fmtR(480*r.containers)}</td></tr>
-            <tr><td>Marinha Mercante</td><td class="num">${fmtR(1712*r.containers)}</td></tr>
-            <tr><td>Armazenagem</td><td class="num">${fmtR(2088*r.containers)}</td></tr>
-            <tr><td>Emissão L.I.</td><td class="num">${fmtR(153.53*r.containers)}</td></tr>
-            <tr><td>Baixa Pátio</td><td class="num">${fmtR(500*r.containers)}</td></tr>
-            <tr><td>Capatazia (THC)</td><td class="num">${fmtR(1100*r.containers)}</td></tr>
-            <tr><td>Liberação BL</td><td class="num">${fmtR(650*r.containers)}</td></tr>
-            <tr><td>Despachante</td><td class="num">${fmtR(1650*r.containers)}</td></tr>
-            <tr><td>SDA</td><td class="num">${fmtR(650*r.containers)}</td></tr>
-            <tr><td>Lavação Container</td><td class="num">${fmtR(550*r.containers)}</td></tr>
-            <tr><td>Administrativo</td><td class="num">${fmtR(300*r.containers)}</td></tr>
-            <tr><td>Agente Carga</td><td class="num">${fmtR(476*r.containers)}</td></tr>
+            <tr><td>Siscomex</td><td class="num">${fmtR(r.txOp.fixas.siscomex*r.containers)}</td></tr>
+            <tr><td>Marinha Mercante</td><td class="num">${fmtR(r.txOp.fixas.marinha*r.containers)}</td></tr>
+            <tr><td>Armazenagem</td><td class="num">${fmtR(r.txOp.fixas.armazenagem*r.containers)}</td></tr>
+            <tr><td>Emissão L.I.</td><td class="num">${fmtR(r.txOp.fixas.emissao_li*r.containers)}</td></tr>
+            <tr><td>Baixa Pátio</td><td class="num">${fmtR(r.txOp.fixas.baixa_patio*r.containers)}</td></tr>
+            <tr><td>Capatazia (THC)</td><td class="num">${fmtR(r.txOp.fixas.capatazia*r.containers)}</td></tr>
+            <tr><td>Liberação BL</td><td class="num">${fmtR(r.txOp.fixas.liberacao_bl*r.containers)}</td></tr>
+            <tr><td>Despachante</td><td class="num">${fmtR(r.txOp.fixas.despachante*r.containers)}</td></tr>
+            <tr><td>SDA</td><td class="num">${fmtR(r.txOp.fixas.sda*r.containers)}</td></tr>
+            <tr><td>Lavação Container</td><td class="num">${fmtR(r.txOp.fixas.lavacao*r.containers)}</td></tr>
+            <tr><td>Administrativo</td><td class="num">${fmtR(r.txOp.fixas.administrativo*r.containers)}</td></tr>
+            <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
             <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custo_total - r.cif_brl - r.imp_custo - r.taxas_fixas - r.taxas_usd_brl + parseFloat(document.getElementById('custos_diversos').value||0))}</td></tr>
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
