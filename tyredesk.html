@@ -525,6 +525,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <div class="sh"><h2>Fornecedores</h2>
     <div style="display:flex;gap:8px;">
       <button class="btn" style="background:#fff3cd;border-color:#d97706;color:#92400e;" onclick="normalizarBaseExistente()" title="Corrige fornecedores duplicados (ex: ROVELO/ROVELO-TBR) e reclassifica pattern (liso/misto/borrachudo) dos itens já salvos">🔧 Normalizar Base</button>
+      <button class="btn" style="background:#fde8e8;border-color:#c0392b;color:#c0392b;" onclick="limparCacheLocal()" title="Remove dados antigos salvos neste navegador (IndexedDB), forçando recarregar tudo do Supabase">🗑️ Limpar Cache Local</button>
       <button class="btn bp" onclick="openForn()">+ Novo</button>
     </div>
   </div>
@@ -1111,6 +1112,18 @@ function checkBadge(){
   el.style.display=n>0?'block':'none';
   if(n>0)el.textContent=`⚠ ${n} pendente${n>1?'s':''}`;
 }
+async function limparCacheLocal(){
+  if(!confirm('Isso vai apagar TODAS as cotações salvas localmente neste navegador (IndexedDB).\n\nNa próxima vez que abrir o TyreDesk, tudo será recarregado direto do Supabase (fonte de verdade).\n\nContinuar?')) return;
+  try{
+    await initDB();
+    await dbClear('cotacoes');
+    toast('✓ Cache local limpo. Recarregando...');
+    setTimeout(()=>location.reload(), 1000);
+  }catch(e){
+    toast('Erro ao limpar cache: '+e.message);
+  }
+}
+
 async function normalizarBaseExistente(){
   if(!confirm('Isso vai reprocessar TODOS os itens da base atual:\n\n• Unificar ROVELO-TBR / ROVELO-PCR em um único fornecedor "ROVELO"\n• Reclassificar o padrão (liso/misto/borrachudo/tração) de cada item pelo nome do pattern\n\nNenhum preço ou quantidade é alterado. Continuar?')) return;
 
@@ -2168,6 +2181,7 @@ async function carregarCotacoesSalvas() {
           f: fNorm,
           pat: c.pat||c.md||'',
           bor: c.bor||'liso', // respeita valor salvo, fallback liso
+          ctnr: c.ctnr||c.moq||null, // garante capacidade real, mesmo em itens antigos do IndexedDB
         }))];
       }
     });
