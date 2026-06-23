@@ -996,8 +996,23 @@ async function handleImport(files){
       if(!forn){logImport(`⚠ Não reconhecido: ${file.name} — verifique o nome do arquivo`,'err');totalErros++;continue;}
       logImport(`Fornecedor detectado: ${forn}`,'info');
 
+      // Detectar tipo (TBR/PCR) pelo conteúdo da planilha — campo "Group: TBR" ou "Group: PCR"
+      // Mais confiável que o nome do fornecedor, pois o mesmo fornecedor pode enviar ambos
+      const flatTexto = JSON.stringify(rows.slice(0,10)).toUpperCase();
+      const tipoDetectado = flatTexto.includes('GROUP: TBR') || flatTexto.includes('GROUP:TBR') ? 'TBR'
+        : flatTexto.includes('GROUP: PCR') || flatTexto.includes('GROUP:PCR') ? 'PCR'
+        : null;
+      logImport(`Tipo detectado pelo conteúdo: ${tipoDetectado||'(não identificado, usando padrão do fornecedor)'}`,'info');
+
       let novos=[];
-      if(forn.includes('ROVELO')||forn.includes('EUDEMON')||forn.includes('TBR')) novos=parseTBR(rows,forn);
+      if(tipoDetectado === 'PCR'){
+        if(forn==='DELMAX') novos=parsePCR_DELMAX(rows);
+        else if(forn==='TRACMAX/WINDFORCE') novos=parsePCR_TRACMAX(rows);
+        else if(forn==='SUNWIDE/INVOVIC') novos=parsePCR_INVOVIC(rows);
+        else novos=parseTBR(rows,forn); // ROVELO PCR usa mesma estrutura de colunas do TBR, mas marcado como PCR
+        novos.forEach(n=>n.t='PCR');
+      }
+      else if(tipoDetectado === 'TBR' || forn.includes('ROVELO')||forn.includes('EUDEMON')||forn.includes('TBR')) novos=parseTBR(rows,forn);
       else if(forn==='DELMAX') novos=parsePCR_DELMAX(rows);
       else if(forn==='TRACMAX/WINDFORCE') novos=parsePCR_TRACMAX(rows);
       else if(forn==='SUNWIDE/INVOVIC') novos=parsePCR_INVOVIC(rows);
