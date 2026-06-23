@@ -397,6 +397,23 @@ app.delete('/api/controle/v2/processo/:id', auth('processos'), async (req, res) 
   }
 });
 
+// Histórico de auditoria de um processo (aba Histórico no modal)
+app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_log')
+      .select('*')
+      .eq('processo_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, log: data || [] });
+  } catch (e) {
+    console.error('controle v2 log GET erro:', e.message);
+    res.json({ ok: true, log: [] });
+  }
+});
+
 app.get('/api/controle/v2/notificacoes', auth('processos'), async (req, res) => {
   try {
     const { data, error } = await sb()
