@@ -1317,11 +1317,11 @@ function renderModal(){
         <div class="form-section-title">📋 DI e Parametrização</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
-            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Número DI</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Canal</label>
-            <select class="form-input" id="f_canal" onchange="atualizarFaseEmTempoReal()">
+            <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
               <option value="">—</option>
               <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
               <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
@@ -1330,8 +1330,9 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Data Parametrização</label>
             <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Liberação</label>
-            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
         </div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
@@ -1509,6 +1510,22 @@ async function excluirArquivoGed(arquivoId, processoId){
 // ════════════════════════════════════════════════════════════════
 // ATUALIZAÇÃO AUTOMÁTICA DE FASE EM TEMPO REAL
 // ════════════════════════════════════════════════════════════════
+
+// Quando o canal sai VERDE, não há etapa de conferência separada — a
+// parametrização ocorre na mesma data do registro da DI. Só preenche
+// automaticamente se o campo ainda estiver vazio, para não sobrescrever
+// uma data de parametrização já informada manualmente (ex: Amarelo/Vermelho
+// que depois virou Verde após reanálise, mas já tinha data própria).
+function aplicarRegraParametrizacaoVerde(){
+  const canalEl = document.getElementById('f_canal');
+  const paramEl = document.getElementById('f_data_parametrizacao');
+  const regEl   = document.getElementById('f_data_registro_di');
+  if(!canalEl || !paramEl || !regEl) return;
+  if(canalEl.value === 'VERDE' && !paramEl.value && regEl.value){
+    paramEl.value = regEl.value;
+  }
+}
+
 function atualizarFaseEmTempoReal(){
   if(!_editando) return;
 
@@ -2517,9 +2534,10 @@ async function extrairComIA(input){
   "hbl": "",
   "mbl": "",
   "container": "",
-  "numero_di": "",
-  "data_registro_di": "YYYY-MM-DD",
-  "canal": "VERDE|AMARELO|VERMELHO",
+  "numero_di": "",  // número da Declaração de Importação — ex: "26/0672265-4"
+  "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI
+  "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
+  "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
   "ci_numero": "",
   "ci_valor_usd": 0,
   "ci_data": "YYYY-MM-DD",
@@ -2535,6 +2553,12 @@ async function extrairComIA(input){
   "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
   "free_time": null
 }
+Se o documento for um Comprovante de Importação ou Extrato da Declaração de Importação (DI), emitidos pela Receita Federal:
+- numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4").
+- data_registro_di vem de "DATA DO REGISTRO".
+- canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
+- data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
+- se o Extrato da DI trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
 Se o documento for uma Nota Fiscal (NF-e brasileira):
 - todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
 - se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*.
@@ -2606,6 +2630,12 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
       : `✓ ${preenchidos} campos preenchidos`;
     showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
+
+    // Preenchimento programático não dispara onchange/oninput dos campos —
+    // por isso a regra de parametrização e o recálculo de fase/demurrage
+    // precisam ser chamados manualmente aqui.
+    aplicarRegraParametrizacaoVerde();
+    atualizarFaseEmTempoReal();
 
     // Atualizar _editando com os valores extraídos
     if(_editando) Object.assign(_editando, extracted);
