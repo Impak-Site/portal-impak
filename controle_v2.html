@@ -1340,13 +1340,13 @@ function renderModal(){
             <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Entrada Data</label>
             <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
-          <div class="form-group"><label class="form-label">NF Entrada Valor</label>
+          <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
           <div class="form-group"><label class="form-label">NF Saída Nº</label>
             <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Saída Data</label>
             <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
-          <div class="form-group"><label class="form-label">NF Saída Valor</label>
+          <div class="form-group"><label class="form-label">NF Saída Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_saida_valor" value="${exibirMoeda(p.nf_saida_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
         </div>
       </div>
@@ -2527,8 +2527,19 @@ async function extrairComIA(input){
   "ce_numero": "",  // número do CE Mercante (Conhecimento Eletrônico de Carga), se houver
   "ce_data_embarque": "YYYY-MM-DD",  // data de embarque conforme o CE Mercante
   "ce_armador": "",  // armador/transportador conforme o CE Mercante (campo Transportador/Armador no CE)
+  "nf_entrada_numero": "",  // número da Nota Fiscal de ENTRADA (nacionalização/entrada da mercadoria no estoque)
+  "nf_entrada_data": "YYYY-MM-DD",  // data de emissão da NF de entrada
+  "nf_entrada_valor": 0,  // valor da NF de entrada em REAIS (R$) — NF brasileira nunca é emitida em USD
+  "nf_saida_numero": "",  // número da Nota Fiscal de SAÍDA (venda ao cliente final)
+  "nf_saida_data": "YYYY-MM-DD",  // data de emissão da NF de saída
+  "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
   "free_time": null
 }
+Se o documento for uma Nota Fiscal (NF-e brasileira):
+- todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
+- se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*.
+- se a NF for de SAÍDA (venda, destinatário é o cliente final), preencher apenas os campos nf_saida_*.
+- não preencher os dois grupos ao mesmo tempo a partir do mesmo documento — cada NF enviada é de um tipo só.
 Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
 - extrair ce_numero, "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e ce_armador (transportador/armador).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
@@ -2560,6 +2571,8 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     if(extracted.pi_valor_usd) extracted.pi_valor_usd = normNum(extracted.pi_valor_usd);
     if(extracted.ci_valor_usd) extracted.ci_valor_usd = normNum(extracted.ci_valor_usd);
+    if(extracted.nf_entrada_valor) extracted.nf_entrada_valor = normNum(extracted.nf_entrada_valor);
+    if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
     if(extracted.pi_numero)    extracted.pi_numero    = extracted.pi_numero.replace(/\s*\(.*?\)\s*/g,'').trim();
     if(!extracted.free_time)   delete extracted.free_time;
 
