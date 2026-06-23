@@ -674,42 +674,6 @@ function demurrageDisplay(proc){
   return `<span class="demur-ok">${dias}d</span>`;
 }
 
-// Gera o bloco "Cálculo do Demurrage" (aba Logística). Extraída como função própria
-// para poder ser recalculada em tempo real conforme o usuário digita (ver
-// atualizarFaseEmTempoReal), e não apenas uma vez quando o modal abre.
-function renderDemurInfo(p){
-  if(!p.data_chegada && !p.demurrage_vencimento) return '';
-  const chegada   = p.data_chegada   ? new Date(p.data_chegada)   : null;
-  const freeTime  = parseInt(p.free_time||21);
-  const vencCalc  = chegada ? new Date(chegada) : null;
-  if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime);
-  const vencReal  = p.demurrage_vencimento ? new Date(p.demurrage_vencimento) : vencCalc;
-  const dias = demurrageDias(p);
-  const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
-
-  let statusTxt = '', statusIcon = '';
-  if(p.data_devolucao_vazio){
-    statusIcon = '✅'; statusTxt = `Container devolvido em ${new Date(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
-  } else if(dias !== null && dias < 0){
-    statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — custos acumulando!`;
-  } else if(dias !== null && dias <= 5){
-    statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
-  } else if(dias !== null){
-    statusIcon = '🟢'; statusTxt = `${dias} dias restantes`;
-  }
-
-  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
-    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">📊 Cálculo do Demurrage</div>
-    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
-      ${chegada ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 Data de chegada</span><strong>${chegada.toLocaleDateString('pt-BR')}</strong></div>` : ''}
-      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time</span><strong>${freeTime} dias</strong></div>
-      ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
-      ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
-      ${p.demurrage_valor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">💸 Valor registrado</span><strong>R$ ${parseFloat(p.demurrage_valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>` : ''}
-    </div>
-  </div>`;
-}
-
 // ════════════════════════════════════════════════════════════════
 // ALERTAS E NOTIFICAÇÕES
 // ════════════════════════════════════════════════════════════════
@@ -1099,8 +1063,52 @@ function renderModal(){
   // ── CONTEÚDO DAS ABAS ──
   const finInfo = p.pi_pagamento ? renderPagamentoInfo(p) : '';
 
-  // Confirmação visual demurrage (calculada dinamicamente — ver renderDemurInfo)
-  let demurInfo = renderDemurInfo(p);
+  const logItems = (p.log||[]).slice(-20).reverse().map(l=>
+    `<div class="log-item">
+      <div class="log-avatar">${(l.usuario||'?').slice(0,2).toUpperCase()}</div>
+      <div class="log-content">
+        <span class="log-user">${l.usuario||'?'}</span>
+        <span class="log-text"> alterou <strong>${l.campo||''}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}</span>
+        <div class="log-time">${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : ''}</div>
+      </div>
+    </div>`
+  ).join('');
+
+  // Confirmação visual demurrage
+  let demurInfo = '';
+  if(p.data_chegada || p.demurrage_vencimento){
+    const chegada   = p.data_chegada   ? new Date(p.data_chegada)   : null;
+    const freeTime  = parseInt(p.free_time||21);
+    const vencCalc  = chegada ? new Date(chegada) : null;
+    if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime);
+    const vencReal  = p.demurrage_vencimento ? new Date(p.demurrage_vencimento) : vencCalc;
+    const dias = demurrageDias(p);
+    const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+    // Linha do tempo do demurrage
+    let statusTxt = '', statusIcon = '';
+    if(p.data_devolucao_vazio){
+      statusIcon = '✅'; statusTxt = `Container devolvido em ${new Date(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
+    } else if(dias !== null && dias < 0){
+      statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — custos acumulando!`;
+    } else if(dias !== null && dias <= 5){
+      statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
+    } else if(dias !== null){
+      statusIcon = '🟢'; statusTxt = `${dias} dias restantes`;
+    }
+
+    demurInfo = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">📊 Cálculo do Demurrage</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+        ${chegada ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 Data de chegada</span><strong>${chegada.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time</span><strong>${freeTime} dias</strong></div>
+        ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+        ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
+        ${p.demurrage_valor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">💸 Valor registrado</span><strong>R$ ${parseFloat(p.demurrage_valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>` : ''}
+      </div>
+    </div>`;
+  }
 
   document.getElementById('modal-body').innerHTML = `
     <!-- ABA: IDENTIFICAÇÃO -->
@@ -1130,13 +1138,8 @@ function renderModal(){
               oninput="autocompletarCliente(this)" placeholder="Digite razão social, CNPJ ou cidade...">
             <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
-          <div class="form-group full">
-            <label class="form-label">Produtos</label>
-            <div id="multi-produtos-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
-            <button type="button" onclick="adicionarProdutoItem()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Item</button>
-            <input type="hidden" id="f_produtos_json">
-            <input type="hidden" id="f_produto" value="${esc(p.produto||'')}">
-          </div>
+          <div class="form-group"><label class="form-label">Produto</label>
+            <input class="form-input" id="f_produto" value="${esc(p.produto)}" placeholder="Ex: Pneus TBR"></div>
           <div class="form-group"><label class="form-label">Despachante</label>
             <input class="form-input" id="f_despachante" value="${esc(p.despachante)}"></div>
           <div class="form-group full"><label class="form-label">Observações</label>
@@ -1163,7 +1166,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Data PI</label>
             <input class="form-input" type="date" id="f_pi_data" value="${esc(p.pi_data)}"></div>
           <div class="form-group"><label class="form-label">Valor USD</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+            <input class="form-input" type="number" id="f_pi_valor_usd" value="${p.pi_valor_usd||''}" placeholder="0.00"></div>
           <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
             <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
           </div>
@@ -1198,7 +1201,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Data CI</label>
             <input class="form-input" type="date" id="f_ci_data" value="${esc(p.ci_data)}"></div>
           <div class="form-group"><label class="form-label">Valor CI (USD)</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_ci_valor_usd" value="${exibirMoeda(p.ci_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+            <input class="form-input" type="number" id="f_ci_valor_usd" value="${p.ci_valor_usd||''}" placeholder="0.00"></div>
         </div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
@@ -1230,7 +1233,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Porto Origem</label>
             <input class="form-input" id="f_porto_origem" value="${esc(p.porto_origem)}" placeholder="Ex: SHANGHAI"></div>
           <div class="form-group"><label class="form-label">Porto Destino</label>
-            <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino)}" placeholder="Ex: ITAJAI"></div>
+            <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino||'ITAJAI')}"></div>
           <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
             <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">ETA</label>
@@ -1263,18 +1266,18 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Presença de Carga</label>
             <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
-            <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;"></div>
           <div class="form-group"><label class="form-label">Data Devolução</label>
             <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="number" id="f_demurrage_valor" value="${p.demurrage_valor||''}"></div>
           <div class="form-group"><label class="form-label">Demurrage Pago?</label>
             <select class="form-input" id="f_demurrage_pago">
               <option value="false" ${!p.demurrage_pago?'selected':''}>Não</option>
               <option value="true"  ${p.demurrage_pago?'selected':''}>Sim ✓</option>
             </select></div>
         </div>
-        <div id="demur-info-wrap">${demurInfo}</div>
+        ${demurInfo}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
@@ -1302,26 +1305,14 @@ function renderModal(){
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">⚓ CE Mercante</div>
-        <div class="form-grid">
-          <div class="form-group"><label class="form-label">Número CE</label>
-            <input class="form-input" id="f_ce_numero" value="${esc(p.ce_numero)}"></div>
-          <div class="form-group"><label class="form-label">Data Embarque (CE)</label>
-            <input class="form-input" type="date" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
-          <div class="form-group"><label class="form-label">Armador (CE)</label>
-            <input class="form-input" id="f_ce_armador" value="${esc(p.ce_armador)}" placeholder="Transportador conforme CE"></div>
-        </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extração por IA, o campo Navio (aba Logística) é atualizado automaticamente para o navio de chegada — em caso de transbordo no exterior, o navio de conexão/último navio.</div>
-      </div>
-      <div class="form-section">
         <div class="form-section-title">📋 DI e Parametrização</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
-            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Número DI</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Canal</label>
-            <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
+            <select class="form-input" id="f_canal" onchange="atualizarFaseEmTempoReal()">
               <option value="">—</option>
               <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
               <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
@@ -1330,9 +1321,8 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Data Parametrização</label>
             <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Liberação</label>
-            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
+            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
@@ -1341,14 +1331,14 @@ function renderModal(){
             <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Entrada Data</label>
             <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
-          <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+          <div class="form-group"><label class="form-label">NF Entrada Valor</label>
+            <input class="form-input" type="number" id="f_nf_entrada_valor" value="${p.nf_entrada_valor||''}"></div>
           <div class="form-group"><label class="form-label">NF Saída Nº</label>
             <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Saída Data</label>
             <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
-          <div class="form-group"><label class="form-label">NF Saída Valor (R$)</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_nf_saida_valor" value="${exibirMoeda(p.nf_saida_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+          <div class="form-group"><label class="form-label">NF Saída Valor</label>
+            <input class="form-input" type="number" id="f_nf_saida_valor" value="${p.nf_saida_valor||''}"></div>
         </div>
       </div>
       <div class="form-section">
@@ -1368,12 +1358,10 @@ function renderModal(){
 
     <!-- ABA: HISTÓRICO -->
     <div class="tab-pane" id="pane-historico">
-      <div id="historico-lista">
-        ${isNovo
-          ? '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Salve o processo para começar a registrar alterações.</div></div>'
-          : '<div style="font-size:11px;color:var(--dim);">Carregando histórico...</div>'
-        }
-      </div>
+      ${logItems.length
+        ? `<div class="log-list">${logItems}</div>`
+        : '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma alteração registrada ainda</div></div>'
+      }
     </div>
   `;
 
@@ -1385,44 +1373,8 @@ function renderModal(){
     else _containers = [{numero:'', tipo:'40HC', lacre:''}];
   }catch(e){ _containers = [{numero:'', tipo:'40HC', lacre:''}]; }
   renderMultiContainers();
-  // Inicializar multi-produtos (com retrocompatibilidade do campo "produto" legado em texto único)
-  try{
-    if(p.produtos_json) _produtos = JSON.parse(p.produtos_json);
-    else if(p.produto) _produtos = [{descricao:p.produto||'', quantidade:''}];
-    else _produtos = [{descricao:'', quantidade:''}];
-  }catch(e){ _produtos = [{descricao:'', quantidade:''}]; }
-  renderMultiProdutos();
-  if(!isNovo){ carregarArquivosGed(p.id); carregarHistorico(p.id); }
+  if(!isNovo) carregarArquivosGed(p.id);
   else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
-}
-
-// ════════════════════════════════════════════════════════════════
-// HISTÓRICO — AUDITORIA DE ALTERAÇÕES
-// ════════════════════════════════════════════════════════════════
-async function carregarHistorico(processoId){
-  const lista = document.getElementById('historico-lista');
-  if(!lista) return;
-  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando histórico...</div>';
-  try{
-    const r = await fetch('/api/controle/v2/processo/'+processoId+'/log');
-    const d = await r.json();
-    if(!d.ok || !d.log.length){
-      lista.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma alteração registrada ainda</div></div>';
-      return;
-    }
-    lista.innerHTML = '<div class="log-list">' + d.log.map(l=>
-      `<div class="log-item">
-        <div class="log-avatar">${(l.usuario||'?').slice(0,2).toUpperCase()}</div>
-        <div class="log-content">
-          <span class="log-user">${esc(l.usuario||'?')}</span>
-          <span class="log-text"> alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}</span>
-          <div class="log-time">${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : ''}</div>
-        </div>
-      </div>`
-    ).join('') + '</div>';
-  }catch(e){
-    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar histórico.</div>';
-  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1510,22 +1462,6 @@ async function excluirArquivoGed(arquivoId, processoId){
 // ════════════════════════════════════════════════════════════════
 // ATUALIZAÇÃO AUTOMÁTICA DE FASE EM TEMPO REAL
 // ════════════════════════════════════════════════════════════════
-
-// Quando o canal sai VERDE, não há etapa de conferência separada — a
-// parametrização ocorre na mesma data do registro da DI. Só preenche
-// automaticamente se o campo ainda estiver vazio, para não sobrescrever
-// uma data de parametrização já informada manualmente (ex: Amarelo/Vermelho
-// que depois virou Verde após reanálise, mas já tinha data própria).
-function aplicarRegraParametrizacaoVerde(){
-  const canalEl = document.getElementById('f_canal');
-  const paramEl = document.getElementById('f_data_parametrizacao');
-  const regEl   = document.getElementById('f_data_registro_di');
-  if(!canalEl || !paramEl || !regEl) return;
-  if(canalEl.value === 'VERDE' && !paramEl.value && regEl.value){
-    paramEl.value = regEl.value;
-  }
-}
-
 function atualizarFaseEmTempoReal(){
   if(!_editando) return;
 
@@ -1537,7 +1473,7 @@ function atualizarFaseEmTempoReal(){
     'canal','data_parametrizacao','data_liberacao',
     'nf_entrada_numero','nf_saida_numero',
     'data_agendamento','data_carregamento',
-    'data_devolucao_vazio','demurrage_vencimento','free_time',
+    'data_devolucao_vazio',
   ];
 
   const snapshot = {..._editando};
@@ -1547,9 +1483,6 @@ function atualizarFaseEmTempoReal(){
     const val = el.value?.trim()||null;
     snapshot[campo] = val||null;
   });
-  // demurrage_valor usa máscara monetária — não pode ser lido como texto puro
-  const valorDemurAtual = valorMoeda('f_demurrage_valor');
-  if(valorDemurAtual!=null) snapshot.demurrage_valor = valorDemurAtual;
 
   const novaFase = calcularFase(snapshot);
 
@@ -1562,12 +1495,6 @@ function atualizarFaseEmTempoReal(){
 
   // Atualizar _editando.fase para que ao salvar já venha correto
   _editando._fasePrevista = novaFase;
-
-  // Recalcular e redesenhar o bloco "Cálculo do Demurrage" com os valores
-  // atuais do formulário — antes este bloco só era montado uma vez, ao abrir
-  // o modal, e ficava com dados desatualizados ao editar Data Devolução etc.
-  const demurWrap = document.getElementById('demur-info-wrap');
-  if(demurWrap) demurWrap.innerHTML = renderDemurInfo(snapshot);
 
   // Atualizar a timeline
   const faseIdx = FASES.findIndex(f=>f.id===novaFase);
@@ -1613,34 +1540,14 @@ function renderPagamentoCampos(){
       <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
   } else if(tipo==='ENTRADA_SALDO'){
     html+=`<div class="form-group"><label class="form-label">% Entrada</label>
-      <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct||30}" min="1" max="99" oninput="renderPagamentoInfoLive()"></div>
+      <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct||30}" min="1" max="99"></div>
       <div class="form-group"><label class="form-label">Data Entrada</label>
       <input class="form-input" type="date" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>
       <div class="form-group"><label class="form-label">Data Saldo</label>
-      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
-      <div class="form-group"><label class="form-label">Câmbio Entrada (R$)</label>
-      <input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_entrada" value="${exibirMoeda(p.pi_cambio_entrada)||''}" placeholder="${exibirMoeda(_cambio.USD)}" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()"></div>
-      <div class="form-group"><label class="form-label">Câmbio Saldo (R$)</label>
-      <input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_saldo" value="${exibirMoeda(p.pi_cambio_saldo)||''}" placeholder="${exibirMoeda(_cambio.USD)}" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()"></div>`;
+      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
   }
   html+='</div>';
   el.innerHTML=html;
-}
-
-// Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuário
-// edita % de entrada ou os câmbios, sem precisar salvar/reabrir o modal.
-function renderPagamentoInfoLive(){
-  if(!_editando) return;
-  const snapshot = {..._editando};
-  const pct = document.getElementById('f_pi_entrada_pct')?.value;
-  if(pct!=null && pct!=='') snapshot.pi_entrada_pct = pct;
-  const ce = valorMoeda('f_pi_cambio_entrada');
-  const cs = valorMoeda('f_pi_cambio_saldo');
-  if(ce!=null) snapshot.pi_cambio_entrada = ce;
-  if(cs!=null) snapshot.pi_cambio_saldo = cs;
-  const box = document.querySelector('#pane-financeiro .pagamento-box');
-  const novoHtml = renderPagamentoInfo(snapshot);
-  if(box && box.parentElement) box.outerHTML = novoHtml || box.outerHTML;
 }
 
 function renderPagamentoInfo(p){
@@ -1656,12 +1563,9 @@ function renderPagamentoInfo(p){
   } else if(p.pi_pagamento==='ENTRADA_SALDO'){
     const pct = parseFloat(p.pi_entrada_pct||30)/100;
     const ent = val*pct; const sld = val*(1-pct);
-    const cambioEnt = parseFloat(p.pi_cambio_entrada) || _cambio.USD;
-    const cambioSld = parseFloat(p.pi_cambio_saldo)   || _cambio.USD;
-    const entBRL = ent*cambioEnt; const sldBRL = sld*cambioSld;
-    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) · câmbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} · R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) · câmbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} · R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} · R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%)</span><span>USD ${ent.toFixed(2)}</span></div>
+    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%)</span><span>USD ${sld.toFixed(2)}</span></div>
+    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)}</span></div>`;
   }
   return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
 }
@@ -1684,19 +1588,15 @@ function coletarESalvar(){
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
-    'ce_numero','ce_data_embarque','ce_armador',
     'data_agendamento','data_carregamento','transportadora','placa',
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
     'data_devolucao_vazio','demurrage_valor','demurrage_pago',
-    'despachante','pi_cambio','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json',
+    'despachante','pi_cambio','containers_json',
   ];
 
   const proc = {..._editando};
   const log = proc.log || [];
-
-  // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
-  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','pi_cambio_entrada','pi_cambio_saldo'];
 
   // Remover campo interno de controle
   delete proc._fasePrevista;
@@ -1704,14 +1604,10 @@ function coletarESalvar(){
   campos.forEach(campo=>{
     const el = document.getElementById('f_'+campo);
     if(!el) return;
-    let val;
-    if(camposMoeda.includes(campo)) val = valorMoeda('f_'+campo);
-    else{
-      val = el.value?.trim();
-      if(el.type==='number') val = val===''?null:parseFloat(val);
-      else if(campo==='pi_pago'||campo==='demurrage_pago') val = val==='true';
-      else if(val==='') val = null;
-    }
+    let val = el.value?.trim();
+    if(el.type==='number') val = val===''?null:parseFloat(val);
+    else if(campo==='pi_pago'||campo==='demurrage_pago') val = val==='true';
+    else if(val==='') val = null;
 
     // Log de auditoria
     const antes = antigo[campo];
@@ -1737,18 +1633,6 @@ function coletarESalvar(){
   proc.containers_json = novosContainersJson;
   proc.container = _containers[0]?.numero||'';
   proc.tipo_container = _containers[0]?.tipo||'40HC';
-
-  // Salvar multi-produtos e auditar mudança
-  sincronizarProdutoLegado();
-  const novosProdutosJson = JSON.stringify(_produtos);
-  if(String(antigo.produtos_json||'')!==novosProdutosJson){
-    log.push({
-      campo:'produtos_json', valor_antes: antigo.produtos_json||'', valor_depois: novosProdutosJson,
-      usuario: _user.usuario, created_at: new Date().toISOString()
-    });
-  }
-  proc.produtos_json = novosProdutosJson;
-  proc.produto = document.getElementById('f_produto')?.value || '';
 
   proc.log = log;
   _editando = proc;
@@ -1810,54 +1694,6 @@ function sincronizarContainerLegado(){
   const ft = document.getElementById('f_tipo_container');
   if(fc && _containers[0]) fc.value = _containers[0].numero||'';
   if(ft && _containers[0]) ft.value = _containers[0].tipo||'40HC';
-}
-
-// ════════════════════════════════════════════════════════════════
-// MULTI-PRODUTOS (descrição + quantidade, múltiplos itens)
-// ════════════════════════════════════════════════════════════════
-let _produtos = []; // [{descricao, quantidade}]
-
-function renderMultiProdutos(){
-  const lista = document.getElementById('multi-produtos-list');
-  if(!lista) return;
-  if(!_produtos.length) _produtos = [{descricao:'', quantidade:''}];
-  lista.innerHTML = _produtos.map((it,i)=>`
-    <div style="display:grid;grid-template-columns:1fr 110px 32px;gap:6px;align-items:center;">
-      <input class="form-input" placeholder="Descrição (ex: PNEU TBR 295/80R22.5)" value="${esc(it.descricao||'')}"
-        oninput="_produtos[${i}].descricao=this.value;sincronizarProdutoLegado()">
-      <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
-        oninput="_produtos[${i}].quantidade=this.value;sincronizarProdutoLegado()">
-      ${_produtos.length>1
-        ? `<button type="button" onclick="removerProdutoItem(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
-        : '<div></div>'}
-    </div>
-  `).join('');
-  sincronizarProdutoLegado();
-}
-
-function adicionarProdutoItem(){
-  _produtos.push({descricao:'', quantidade:''});
-  renderMultiProdutos();
-}
-
-function removerProdutoItem(i){
-  _produtos.splice(i,1);
-  if(!_produtos.length) _produtos = [{descricao:'', quantidade:''}];
-  renderMultiProdutos();
-}
-
-function sincronizarProdutoLegado(){
-  // Manter campo legado f_produto com resumo (1º item + "e mais N") para compatibilidade
-  // com telas/relatórios que ainda leem o texto único.
-  const input = document.getElementById('f_produtos_json');
-  if(input) input.value = JSON.stringify(_produtos);
-  const fp = document.getElementById('f_produto');
-  if(fp){
-    const validos = _produtos.filter(it=>it.descricao);
-    fp.value = validos.length
-      ? validos.map(it=>it.descricao + (it.quantidade?` (${it.quantidade})`:'')).join(' + ')
-      : '';
-  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1992,32 +1828,6 @@ function salvarApiKey(v){
 }
 
 function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
-
-// ── MÁSCARA NUMÉRICA xx.xxx,xx (campos monetários) ──────────────
-// Usada em inputs type="text" que substituem os antigos type="number"
-// para permitir exibir separador de milhar (o <input type="number"> nativo
-// nunca aceita formatação). O valor numérico real é obtido com valorMoeda().
-function formatarMoedaInput(el){
-  let digits = (el.value||'').replace(/\D/g,'');
-  if(!digits){ el.value=''; return; }
-  digits = digits.replace(/^0+(?=\d)/,'');
-  while(digits.length<3) digits = '0'+digits;
-  const intPart = digits.slice(0,-2).replace(/^0+(?=\d)/,'') || '0';
-  const centavos = digits.slice(-2);
-  const milhares = intPart.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-  el.value = milhares+','+centavos;
-}
-function valorMoeda(id){
-  const el = document.getElementById(id);
-  if(!el || !el.value) return null;
-  const limpo = el.value.replace(/\./g,'').replace(',','.');
-  const n = parseFloat(limpo);
-  return isNaN(n) ? null : n;
-}
-function exibirMoeda(v){
-  if(v===null||v===undefined||v==='') return '';
-  return parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-}
 
 // ── AUTOCOMPLETE CLIENTE ──────────────────────────────────────
 let _acTimer = null;
@@ -2528,45 +2338,21 @@ async function extrairComIA(input){
   "etd": "YYYY-MM-DD",
   "eta": "YYYY-MM-DD",
   "armador": "",  // NÃO inferir armador pelo nome do navio (ex: navio MSC XXXX não significa armador MSC — extrair apenas de campos explícitos como Carrier, Shipping Line, Armador)
-  "navio": "",  // se o documento for um CE Mercante, usar o navio de CHEGADA: em caso de transbordo/baldeação no exterior, o navio de chegada é o navio de conexão/último navio que efetivamente atracou no porto de destino brasileiro — NÃO o navio original de embarque na origem
+  "navio": "",
   "porto_origem": "",
   "porto_destino": "",  // extrair de: POD, Port of Discharge, Port of Destination, Discharge Port
   "hbl": "",
   "mbl": "",
   "container": "",
-  "numero_di": "",  // número da Declaração de Importação — ex: "26/0672265-4"
-  "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI
-  "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
-  "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
+  "numero_di": "",
+  "data_registro_di": "YYYY-MM-DD",
+  "canal": "VERDE|AMARELO|VERMELHO",
   "ci_numero": "",
   "ci_valor_usd": 0,
   "ci_data": "YYYY-MM-DD",
   "data_chegada": "YYYY-MM-DD",
-  "ce_numero": "",  // número do CE Mercante (Conhecimento Eletrônico de Carga), se houver
-  "ce_data_embarque": "YYYY-MM-DD",  // data de embarque conforme o CE Mercante
-  "ce_armador": "",  // armador/transportador conforme o CE Mercante (campo Transportador/Armador no CE)
-  "nf_entrada_numero": "",  // número da Nota Fiscal de ENTRADA (nacionalização/entrada da mercadoria no estoque)
-  "nf_entrada_data": "YYYY-MM-DD",  // data de emissão da NF de entrada
-  "nf_entrada_valor": 0,  // valor da NF de entrada em REAIS (R$) — NF brasileira nunca é emitida em USD
-  "nf_saida_numero": "",  // número da Nota Fiscal de SAÍDA (venda ao cliente final)
-  "nf_saida_data": "YYYY-MM-DD",  // data de emissão da NF de saída
-  "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
   "free_time": null
 }
-Se o documento for um Comprovante de Importação ou Extrato da Declaração de Importação (DI), emitidos pela Receita Federal:
-- numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4").
-- data_registro_di vem de "DATA DO REGISTRO".
-- canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
-- data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
-- se o Extrato da DI trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
-Se o documento for uma Nota Fiscal (NF-e brasileira):
-- todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
-- se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*.
-- se a NF for de SAÍDA (venda, destinatário é o cliente final), preencher apenas os campos nf_saida_*.
-- não preencher os dois grupos ao mesmo tempo a partir do mesmo documento — cada NF enviada é de um tipo só.
-Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
-- extrair ce_numero, "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e ce_armador (transportador/armador).
-- o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`
     }];
@@ -2595,29 +2381,16 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     if(extracted.pi_valor_usd) extracted.pi_valor_usd = normNum(extracted.pi_valor_usd);
     if(extracted.ci_valor_usd) extracted.ci_valor_usd = normNum(extracted.ci_valor_usd);
-    if(extracted.nf_entrada_valor) extracted.nf_entrada_valor = normNum(extracted.nf_entrada_valor);
-    if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
     if(extracted.pi_numero)    extracted.pi_numero    = extracted.pi_numero.replace(/\s*\(.*?\)\s*/g,'').trim();
     if(!extracted.free_time)   delete extracted.free_time;
 
-    // Quando o documento é um CE Mercante, o navio/armador/etd que ele traz
-    // são mais confiáveis que os do BL (refletem o navio de chegada real, já
-    // considerando transbordo/baldeação no exterior) — por isso sobrescrevem
-    // o que já estiver no formulário em vez de respeitar a regra "só preenche vazio".
-    const ehCeMercante = !!extracted.ce_numero;
-    const camposSobrescritosPorCe = ehCeMercante ? ['navio'] : [];
-
     // Preencher campos do formulário
-    const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor'];
     let preenchidos = 0;
     Object.keys(extracted).forEach(campo=>{
-      let val = extracted[campo];
+      const val = extracted[campo];
       if(!val) return;
       const el = document.getElementById('f_'+campo);
-      if(!el) return;
-      if(camposMoedaIA.includes(campo)) val = exibirMoeda(val);
-      const podeSobrescrever = camposSobrescritosPorCe.includes(campo);
-      if(!el.value || podeSobrescrever){
+      if(el && !el.value){
         el.value = val;
         el.style.borderColor='var(--ok)';
         el.style.background='rgba(22,163,74,.04)';
@@ -2626,16 +2399,8 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       }
     });
 
-    if(status) status.textContent = ehCeMercante
-      ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
-      : `✓ ${preenchidos} campos preenchidos`;
+    if(status) status.textContent = `✓ ${preenchidos} campos preenchidos`;
     showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
-
-    // Preenchimento programático não dispara onchange/oninput dos campos —
-    // por isso a regra de parametrização e o recálculo de fase/demurrage
-    // precisam ser chamados manualmente aqui.
-    aplicarRegraParametrizacaoVerde();
-    atualizarFaseEmTempoReal();
 
     // Atualizar _editando com os valores extraídos
     if(_editando) Object.assign(_editando, extracted);
