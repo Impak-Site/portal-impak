@@ -395,7 +395,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
         <h3 id="sel-title">Selecionar pneus</h3>
         <div style="font-size:11px;color:var(--mu);font-weight:500;margin-top:3px" id="sel-subtitle"></div>
       </div>
-      <button class="mc" onclick="document.getElementById('sel-modal').classList.remove('open')" style="margin-left:auto">×</button>
+      <button class="mc" onclick="cancelarSelecao()" style="margin-left:auto">×</button>
     </div>
     <div class="sel-filters">
       <select class="fsel" id="sel-bor-f" style="font-size:11px;padding:5px 9px" onchange="renderSelTable()">
@@ -423,7 +423,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
     <div class="sel-foot">
       <button class="btn bg2 bsm" onclick="limparSel()">Limpar</button>
       <div style="display:flex;gap:8px">
-        <button class="btn bg2" onclick="document.getElementById('sel-modal').classList.remove('open')">Cancelar</button>
+        <button class="btn bg2" onclick="cancelarSelecao()">Cancelar</button>
         <button class="btn bp" onclick="confirmarSel()" style="background:#1a7fd4;color:#fff;border-color:#1a7fd4;padding:10px 22px;font-size:14px;">✓ Confirmar e analisar</button>
       </div>
     </div>
@@ -2054,6 +2054,29 @@ function confirmarSel() {
   if (!sels.length) { toast('Selecione ao menos 1 pneu para comparar'); return; }
   document.getElementById('sel-modal').classList.remove('open');
   if (selCallback) selCallback(sels);
+}
+
+// Fechar o modal de seleção SEM confirmar. Antes, isso só escondia o modal e
+// nunca avançava a fila de "Preencher da base" — se o usuário fechasse no
+// meio de um processamento com várias medidas, as medidas restantes ficavam
+// pendentes para sempre, sem nenhum aviso (parecia que o sistema "travou").
+// Agora, se ainda houver medidas na fila, avisamos e oferecemos continuar.
+function cancelarSelecao() {
+  document.getElementById('sel-modal').classList.remove('open');
+  const restantes = mixSelPendente.length;
+  if (restantes > 0) {
+    const continuar = confirm(
+      `Você fechou sem confirmar "${selMixItem ? selMixItem.medida : 'esta medida'}".\n\n`+
+      `Ainda há ${restantes} medida(s) aguardando seleção: ${mixSelPendente.map(m=>m.medida).join(', ')}.\n\n`+
+      `Continuar o preenchimento das medidas restantes?`
+    );
+    if (continuar) { processarProxima(); return; }
+    medidasSemCotacao.push(selMixItem ? selMixItem.medida : '(medida atual)');
+    medidasSemCotacao.push(...mixSelPendente.map(m=>m.medida));
+    mixSelPendente=[];
+    mostrarAvisoMedidasSemCotacao(medidasSemCotacao);
+    toast('Preenchimento interrompido — algumas medidas ficaram de fora');
+  }
 }
 
 // ══ ANÁLISE DE CONTAINER ═══════════════════════════════════════════════
