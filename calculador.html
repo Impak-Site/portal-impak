@@ -332,7 +332,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <div class="form-row" style="margin:0">
             <div class="form-group" style="margin:0">
               <label>% Comissão</label>
-              <input type="number" id="br_pct" step="0.001" value="0.005" placeholder="0.005">
+              <input type="number" id="br_pct" step="0.01" value="0.5" placeholder="ex: 1 para 1%">
             </div>
             <div class="form-group" style="margin:0">
               <label>Nome</label>
@@ -360,7 +360,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
             </div>
             <div class="form-group" style="margin:0">
               <label>% Comissão</label>
-              <input type="number" id="china_pct" step="0.001" value="0.03" placeholder="0.03">
+              <input type="number" id="china_pct" step="0.01" value="3" placeholder="ex: 3 para 3%">
             </div>
           </div>
           <div style="font-size:11px;color:var(--muted);">FORA = nota DABRURA (% sobre FOB×câmbio) · DENTRO = desconta margem (% sobre FOB×câmbio)</div>
@@ -385,7 +385,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
             </div>
             <div class="form-group" style="margin:0">
               <label>%</label>
-              <input type="number" id="boss_pct" step="0.001" placeholder="0.03">
+              <input type="number" id="boss_pct" step="0.01" placeholder="ex: 3 para 3%">
             </div>
             <div class="form-group" style="margin:0">
               <label>Modo</label>
@@ -871,12 +871,12 @@ function calcular() {
 
   // ── 6. Faturamento / Preço de venda ──
   // Comissão BR
-  const br_pct  = _toggles.br==='SIM' ? (parseFloat(document.getElementById('br_pct').value)||0) : 0;
+  const br_pct  = _toggles.br==='SIM' ? (parseFloat(document.getElementById('br_pct').value)||0)/100 : 0;
   // Comissão China (dentro)
-  const china_pct = (parseFloat(document.getElementById('china_pct').value) || 0.03);
+  const china_pct = (parseFloat(document.getElementById('china_pct').value) || 3)/100;
   const china_dentro = _toggles.china==='SIM' && _togglesInner['china-modal']==='DENTRO' ? china_pct : 0;
   // Boss/Lopes (sempre fora, não entra no divisor)
-  const boss_pct_fora = _toggles.boss==='SIM' ? (parseFloat(document.getElementById('boss_pct').value)||0) : 0;
+  const boss_pct_fora = _toggles.boss==='SIM' ? (parseFloat(document.getElementById('boss_pct').value)||0)/100 : 0;
 
   // Alíq saída
   const aliq_ipi_s  = t.ipi;
@@ -917,9 +917,12 @@ function calcular() {
 
     // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
     const china_fora_val = fob_brl * china_fora_pct;
-    const faturamento_total = vlr_total_nfe + china_fora_val;
+    // Comissão BOSS — 3% (ou X%) sobre o valor da NF, também soma no faturamento total
+    // antes da Comissão BR ser calculada (ex: NF 100 + BOSS 3% = 103 de faturamento).
+    const boss_fora_val = boss_pct_fora>0 ? vlr_total_nfe * boss_pct_fora : 0;
+    const faturamento_total = vlr_total_nfe + china_fora_val + boss_fora_val;
 
-    // Comissão BR (Representante) — sobre o faturamento total
+    // Comissão BR (Representante) — sobre o faturamento total, que já inclui China e BOSS
     const COM_br = faturamento_total * br_pct;
     // Comissão China "dentro" — sobre FOB×câmbio, desconta da margem
     const COM_china_dentro = china_dentro>0 ? fob_brl * china_dentro : 0;
@@ -952,7 +955,7 @@ function calcular() {
     return {
       vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, icms_st, base_st, vlr_total_nfe,
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
-      china_fora_val, COM_br, COM_china_dentro,
+      china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
       valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
       faturamento_total, lucro_bruto, pct_lucro, fatorNfe,
     };
@@ -985,13 +988,16 @@ function calcular() {
 
   const { vlr_produto, IPI_s, ICMS_nfe, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
-          china_fora_val, COM_br, COM_china_dentro,
+          china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
           valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
           faturamento_total: faturamento, lucro_bruto, pct_lucro, fatorNfe } = cadeia;
 
   const ICMS_nfe_final = ICMS_proprio; // mantém nome legado abaixo
-  const base_icms = vlr_produto + IPI_s; // mantido para compatibilidade de exibição
-  const boss_fora_val   = _toggles.boss==='SIM' ? faturamento * boss_pct_fora : 0;
+  // Base ICMS Normal: o IPI só se junta ao Vlr.Produto na base quando a
+  // operação é de Uso e Consumo (regra fiscal — em revenda normal o IPI
+  // não compõe a base do ICMS).
+  const usoConsumo = _toggles.uc === 'SIM';
+  const base_icms = usoConsumo ? (vlr_produto + IPI_s) : vlr_produto;
   const fator = fatorNfe;
 
   // Mix unitário
@@ -1008,7 +1014,7 @@ function calcular() {
     II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
     taxas_fixas, taxas_usd_brl, total_taxas,
     imp_custo, custo_total,
-    faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s,
+    faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s, usoConsumo,
     COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
@@ -1123,7 +1129,7 @@ function renderResultado(r) {
             <tr><td>Seguro Compra (custo interno)</td><td class="num">${fmtR(r.seguro_brl)}</td></tr>
             <tr style="background:rgba(217,119,6,.05);"><td>Seguro Venda (proposta cliente)</td><td class="num" style="color:var(--warn);">${fmtR(r.seguro_venda_brl)}</td></tr>
             <tr class="total-row"><td>CIF Total</td><td class="num">${fmtR(r.cif_brl)}</td></tr>
-            <tr><td>Base Impostos</td><td class="num">${fmtR(r.base_imp_brl)}</td></tr>
+            <tr><td>Base Impostos <button type="button" onclick="calcular()" title="Recalcular com os valores atuais de FOB/Frete/Seguro/Taxa CE" style="border:none;background:none;cursor:pointer;font-size:11px;color:var(--ac);">🔄</button></td><td class="num">${fmtR(r.base_imp_brl)}</td></tr>
           </table>
         </div>
       </div>
@@ -1165,6 +1171,7 @@ function renderResultado(r) {
             <tr><td>Administrativo</td><td class="num">${fmtR(r.txOp.fixas.administrativo*r.containers)}</td></tr>
             <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
+            <tr><td>Taxa Seguro de Venda</td><td class="num">${fmtR(r.seguro_venda_brl)}</td></tr>
             <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custo_total - r.cif_brl - r.imp_custo - r.taxas_fixas - r.taxas_usd_brl + parseFloat(document.getElementById('custos_diversos').value||0))}</td></tr>
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
             <tr class="destaque-row"><td>CUSTO TOTAL</td><td class="num">${fmtR(r.custo_total)}</td></tr>
@@ -1175,9 +1182,9 @@ function renderResultado(r) {
         <div class="resultado-header"><h2>📤 Faturamento / NF Saída</h2></div>
         <div class="resultado-body">
           <table class="calc-table">
-            <tr><td>Vlr. Produto</td><td class="num">${fmtR(r.vlr_produto)}</td></tr>
+            ${r.usoConsumo ? `<tr><td>Vlr. Produto</td><td class="num">${fmtR(r.vlr_produto)}</td></tr>` : ''}
             <tr><td>IPI (${pct(r.t.ipi)})</td><td class="num">${fmtR(r.IPI_s)}</td></tr>
-            <tr><td>Base ICMS Normal</td><td class="num">${fmtR(r.base_icms)}</td></tr>
+            <tr><td>Base ICMS Normal${r.usoConsumo ? ' (Vlr.Produto + IPI)' : ''}</td><td class="num">${fmtR(r.base_icms)}</td></tr>
             <tr><td>ICMS Normal (${pct(r.t.aliq_inter)})</td><td class="num">${fmtR(r.ICMS_nfe)}</td></tr>
             ${r.tem_st ? `
             <tr><td>Base ICMS ST (MVA ${pct(r.t.mva)})</td><td class="num">${fmtR(r.base_st)}</td></tr>
