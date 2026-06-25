@@ -129,6 +129,11 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
 .toast.info{background:var(--ac);}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 </style>
+<!-- Carregada antecipadamente (não no clique do botão) — no Safari, gerar o
+     blob de download muito tempo depois do carregamento dinâmico da lib via
+     CDN causa "WebKitBlobResource error 1". Carregando aqui, a lib já está
+     pronta quando o usuário clica em Exportar Excel. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -594,13 +599,15 @@ document.addEventListener('DOMContentLoaded', () => {
   buscarCambio();
   setToggleTTD('SIM'); // estado inicial padrão: TTD=SIM → sem ICMS ST
 
-  // Mix do TyreDesk
+  // Mix do TyreDesk — fica salvo no sessionStorage durante toda a sessão do
+  // navegador (não é removido após o primeiro carregamento), para permitir
+  // trocar a base no TyreDesk e reenviar, ou simplesmente recarregar esta
+  // página, sem precisar preencher tudo de novo.
   try {
     const mixRaw = sessionStorage.getItem('calculador_mix');
     if(mixRaw) {
       _mix = JSON.parse(mixRaw);
       renderMix();
-      sessionStorage.removeItem('calculador_mix');
     }
   } catch(e){}
 });
@@ -1001,7 +1008,7 @@ function calcular() {
     II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
     taxas_fixas, taxas_usd_brl, total_taxas,
     imp_custo, custo_total,
-    faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, PIS_s, COFINS_s, IBS_s, CBS_s,
+    faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s,
     COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
@@ -1171,7 +1178,7 @@ function renderResultado(r) {
             <tr><td>Vlr. Produto</td><td class="num">${fmtR(r.vlr_produto)}</td></tr>
             <tr><td>IPI (${pct(r.t.ipi)})</td><td class="num">${fmtR(r.IPI_s)}</td></tr>
             <tr><td>Base ICMS Normal</td><td class="num">${fmtR(r.base_icms)}</td></tr>
-            <tr><td>ICMS Normal (${pct(r.t.icms_prop)})</td><td class="num">${fmtR(r.ICMS_nfe)}</td></tr>
+            <tr><td>ICMS Normal (${pct(r.t.aliq_inter)})</td><td class="num">${fmtR(r.ICMS_nfe)}</td></tr>
             ${r.tem_st ? `
             <tr><td>Base ICMS ST (MVA ${pct(r.t.mva)})</td><td class="num">${fmtR(r.base_st)}</td></tr>
             <tr><td>ICMS ST (${pct(r.t.aliq_interna)})</td><td class="num">${fmtR(r.icms_st)}</td></tr>
@@ -1179,7 +1186,7 @@ function renderResultado(r) {
             <tr class="destaque-row"><td>VALOR TOTAL NF</td><td class="num">${fmtR(r.vlr_total_nfe)}</td></tr>
             <tr><td>PIS-S (${pct(r.t.pis_s)})</td><td class="num">${fmtR(r.PIS_s)}</td></tr>
             <tr><td>COFINS-S (${pct(r.t.cofins_s)})</td><td class="num">${fmtR(r.COFINS_s)}</td></tr>
-            <tr><td>ICMS Próprio</td><td class="num">${fmtR(r.ICMS_nfe)}</td></tr>
+            <tr><td>ICMS Próprio (${pct(r.t.icms_prop)})</td><td class="num">${fmtR(r.ICMS_proprio)}</td></tr>
             <tr><td>IBS-S</td><td class="num">${fmtR(r.IBS_s)}</td></tr>
             <tr><td>CBS-S</td><td class="num">${fmtR(r.CBS_s)}</td></tr>
             ${r.COM_br > 0 ? `<tr><td>Comissão BR (${r.br_nome})</td><td class="num">${fmtR(r.COM_br)}</td></tr>` : ''}
@@ -1227,6 +1234,7 @@ async function exportarExcel() {
       ['── FATURAMENTO ──', '', '', ''],
       ['Vlr. Produto', fmtR(r.vlr_produto), 'IPI-S', fmtR(r.IPI_s)],
       ['ICMS Normal', fmtR(r.ICMS_nfe), 'ICMS ST', fmtR(r.icms_st)],
+      ['ICMS Próprio', fmtR(r.ICMS_proprio), '', ''],
       ['Valor Total NF', fmtR(r.vlr_total_nfe), '', ''],
       ['Lucro Bruto', fmtR(r.lucro_bruto), `${r.pct_lucro.toFixed(2)}%`, ''],
       ['Fator', r.fator.toFixed(4), '', ''],
@@ -1239,19 +1247,20 @@ async function exportarExcel() {
       r.mix_result.forEach(it => rows.push([it.medida, it.pat||'—', it.qtd, it.preco.toFixed(2), fmtR(it.vlr_unit_brl), fmtR(it.total_brl)]));
     }
 
-    // Usar SheetJS via CDN
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    script.onload = () => {
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws['!cols'] = [20,15,20,15].map(w => ({wch:w}));
-      XLSX.utils.book_append_sheet(wb, ws, 'Simulação');
-      const nome = `IMPAK_Simulação_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
-      XLSX.writeFile(wb, nome);
-      showToast('✓ Excel exportado','ok');
-    };
-    document.head.appendChild(script);
+    // XLSX já é carregado antecipadamente no <head> (ver comentário lá) —
+    // gerar e baixar o arquivo de forma síncrona, sem esperar onload de CDN,
+    // evita o erro "WebKitBlobResource error 1" no Safari.
+    if(typeof XLSX === 'undefined'){
+      showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [20,15,20,15].map(w => ({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Simulação');
+    const nome = `IMPAK_Simulação_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, nome);
+    showToast('✓ Excel exportado','ok');
   } catch(e) {
     showToast('Erro ao exportar: '+e.message,'err');
   }
