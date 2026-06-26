@@ -1096,7 +1096,7 @@ function render(){
 // MODAL — ABRIR / NOVO
 // ════════════════════════════════════════════════════════════════
 function abrirNovo(){
-  _editando = { fase:'PI', free_time:21, cliente:'UNICAP' };
+  _editando = { fase:'PI', free_time:21 };
   renderModal();
 }
 
@@ -1206,7 +1206,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Fornecedor</label>
             <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON"></div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
-            <input class="form-input" id="f_cliente" value="${esc(p.cliente||'UNICAP')}" autocomplete="off"
+            <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
               oninput="autocompletarCliente(this)" placeholder="Digite razão social, CNPJ ou cidade...">
             <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
@@ -2699,6 +2699,7 @@ async function extrairComIA(input){
   "nf_saida_numero": "",  // número da Nota Fiscal de SAÍDA (venda ao cliente final)
   "nf_saida_data": "YYYY-MM-DD",  // data de emissão da NF de saída
   "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
+  "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
   "free_time": null
 }
 Se o documento for um Comprovante de Importação ou Extrato da Declaração de Importação (DI), emitidos pela Receita Federal:
@@ -2709,8 +2710,8 @@ Se o documento for um Comprovante de Importação ou Extrato da Declaração de 
 - se o Extrato da DI trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
 Se o documento for uma Nota Fiscal (NF-e brasileira):
 - todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
-- se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*.
-- se a NF for de SAÍDA (venda, destinatário é o cliente final), preencher apenas os campos nf_saida_*.
+- se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*. O destinatário desta NF é a própria IMPAK — não usar como "cliente".
+- se a NF for de SAÍDA (venda, destinatário é o cliente final), preencher os campos nf_saida_* e também extrair "cliente" do nome/razão social do destinatário.
 - não preencher os dois grupos ao mesmo tempo a partir do mesmo documento — cada NF enviada é de um tipo só.
 Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
 - extrair ce_numero, "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e ce_armador (transportador/armador).
