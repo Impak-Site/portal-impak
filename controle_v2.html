@@ -298,6 +298,7 @@ select.form-input{cursor:pointer;}
     <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
     <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
     <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
+    <button class="btn btn-outline" onclick="exportarFormatoCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor)">📋 Exportar p/ Cliente</button>
     <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
   </div>
   <!-- FILTRO POR DATA -->
@@ -324,12 +325,16 @@ select.form-input{cursor:pointer;}
 
   <!-- DASHBOARD EXECUTIVO -->
   <div id="dash-executivo" style="display:none;margin-bottom:20px;">
+    <div id="periodo-seletor-executivo" style="margin-bottom:12px;"></div>
     <div id="dash-exec-content"></div>
   </div>
 
   <!-- DASHBOARD FINANCEIRO -->
   <div id="dash-financeiro" style="display:none;margin-bottom:20px;">
-    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">💵 Visão Financeira do Mês</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">💵 Visão Financeira</div>
+      <div id="periodo-seletor-financeiro"></div>
+    </div>
     <div id="dash-fin-content"></div>
   </div>
 
@@ -1981,6 +1986,74 @@ async function exportarExcel(){
   }
 }
 
+// Exportação no formato de planilha enviada aos clientes (modelo "PNEUS
+// EXPRESS"): uma linha por produto/medida (não por processo), agrupado por
+// Fornecedor, com mapeamento:
+//   Data do Pedido = Data da PI · Medida = descrição do produto ·
+//   Quantidade = quantidade preenchida daquele item · Data de Prontidão na
+//   Fábrica = sem fonte no sistema hoje, fica em branco · Data de Embarque =
+//   ETD · Data Chegada = Data Chegada · POD = Porto Destino.
+async function exportarFormatoCliente(){
+  showToast('Gerando planilha no formato cliente...','info');
+  try{
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    const lista = filtrarProcessos(); // respeita os filtros aplicados na tela
+
+    // Montar 1 linha por produto, lendo produtos_json com retrocompatibilidade
+    // para o campo "produto" legado (texto único), igual ao padrão usado no
+    // resto do sistema para multi-produtos.
+    const linhas = [];
+    lista.forEach(p=>{
+      let produtos = [];
+      try{
+        if(p.produtos_json) produtos = JSON.parse(p.produtos_json);
+        else if(p.produto) produtos = [{descricao:p.produto, quantidade:''}];
+      }catch(e){ produtos = p.produto ? [{descricao:p.produto, quantidade:''}] : []; }
+      if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
+
+      produtos.filter(it=>it.descricao).forEach(it=>{
+        linhas.push({
+          fornecedor: p.fornecedor||'—',
+          'Invoice':                 p.referencia||'',
+          'Medida':                  it.descricao||'',
+          'Qte':                     it.quantidade||'',
+          'Data do Pedido':          p.pi_data ? new Date(p.pi_data).toLocaleDateString('pt-BR') : '',
+          'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
+          'Data de Embarque':        p.etd ? new Date(p.etd).toLocaleDateString('pt-BR') : '',
+          'Data Chegada':            p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '',
+          'POD':                     p.porto_destino||'N/I',
+        });
+      });
+    });
+
+    if(!linhas.length){ showToast('Nenhum produto encontrado para exportar','err'); return; }
+
+    // Agrupar por fornecedor, com uma linha de cabeçalho de grupo entre eles
+    // (igual ao modelo: "EUDEMON" como linha de separação antes dos itens).
+    const porForn = {};
+    linhas.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
+
+    const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD'];
+    const aoa = [['PNEUS EXPRESS'], colunas];
+    Object.keys(porForn).sort().forEach(forn=>{
+      aoa.push([forn]); // linha de cabeçalho do grupo
+      porForn[forn].forEach(l=> aoa.push(colunas.map(c=>l[c])));
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = colunas.map(c=>({wch: Math.max(c.length, 14)}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Pneus Express');
+
+    const data = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `IMPAK_PneusExpress_${data}.xlsx`);
+    showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${Object.keys(porForn).length} fornecedor(es)`,'ok');
+  }catch(e){
+    showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
+  }
+}
+
 function salvarApiKey(v){
   const key = (v||'').trim();
   try{ localStorage.setItem('impak_apikey', key); }catch(e){}
@@ -2726,9 +2799,9 @@ function renderDashExecutivo(){
   const el = document.getElementById('dash-exec-content');
   if(!el) return;
 
+  renderPeriodoSeletor('periodo-seletor-executivo', renderDashExecutivo);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const mesIni = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const mesFim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo();
   const semFim = new Date(hoje); semFim.setDate(hoje.getDate()+7);
 
   const ativos    = _processos.filter(p=>p.fase!=='FINALIZADO');
@@ -2749,9 +2822,9 @@ function renderDashExecutivo(){
   const porForn      = {};
   ativos.forEach(p=>{ if(p.fornecedor) porForn[p.fornecedor]=(porForn[p.fornecedor]||0)+1; });
   const topForn      = Object.entries(porForn).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const nfMes        = ativos.filter(p=>p.nf_saida_data&&new Date(p.nf_saida_data)>=mesIni&&new Date(p.nf_saida_data)<=mesFim);
-  const totalNfMes   = nfMes.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
-  const mesNome      = hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const nfSaidaPeriodo = ativos.filter(p=>p.nf_saida_data&&new Date(p.nf_saida_data)>=mesIni&&new Date(p.nf_saida_data)<=mesFim);
+  const nfEntradaPeriodo = ativos.filter(p=>p.nf_entrada_data&&new Date(p.nf_entrada_data)>=mesIni&&new Date(p.nf_entrada_data)<=mesFim);
+  const totalNfMes   = nfSaidaPeriodo.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
 
   function card(label, val, sub, cor, fmt){
     const display = fmt==='usd' ? usd(val) : val;
@@ -2829,11 +2902,12 @@ function renderDashExecutivo(){
     +'<div style="'+secStyle+'">'+secTitle('Alertas Criticos')+alertasHtml+piSemanaHtml+'</div>'
     +'<div style="'+secStyle+'">'+secTitle('Chegando Esta Semana')+agendaHtml+'</div>'
     +'</div>'
-    +(totalNfMes>0
-      ? '<div style="'+secStyle+'margin-bottom:16px;">'+secTitle('Faturamento — '+mesNome)
-        +'<div style="display:flex;gap:24px;">'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs emitidas</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+nfMes.length+'</div></div>'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+brl(totalNfMes)+'</div></div>'
+    +(totalNfMes>0 || nfEntradaPeriodo.length>0
+      ? '<div style="'+secStyle+'margin-bottom:16px;">'+secTitle('Faturamento — '+periodoLabel)
+        +'<div style="display:flex;gap:24px;flex-wrap:wrap;">'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Saída emitidas</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+nfSaidaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Entrada emitidas</div><div style="font-size:22px;font-weight:800;color:var(--info);font-family:Syne,sans-serif;">'+nfEntradaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado (saída)</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+brl(totalNfMes)+'</div></div>'
         +'</div></div>' : '');
 }
 
@@ -2846,13 +2920,68 @@ function toggleDashFinanceiro(){
   document.getElementById('menu-financeiro')?.classList.toggle('active', !visivel);
 }
 
+// ════════════════════════════════════════════════════════════════
+// FILTRO DE PERÍODO — compartilhado entre Dashboard Executivo e Financeiro
+// ════════════════════════════════════════════════════════════════
+let _periodoTipo = 'mes'; // 'semana' | 'mes' | 'ano' | 'custom'
+let _periodoCustomIni = '';
+let _periodoCustomFim = '';
+
+// Calcula {ini, fim, label} a partir do tipo de período selecionado.
+function calcularPeriodo(){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  let ini, fim, label;
+  if(_periodoTipo==='semana'){
+    const diaSemana = hoje.getDay(); // 0=domingo
+    ini = new Date(hoje); ini.setDate(hoje.getDate()-diaSemana);
+    fim = new Date(ini); fim.setDate(ini.getDate()+6);
+    label = `Semana de ${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
+  } else if(_periodoTipo==='ano'){
+    ini = new Date(hoje.getFullYear(),0,1);
+    fim = new Date(hoje.getFullYear(),11,31);
+    label = `Ano ${hoje.getFullYear()}`;
+  } else if(_periodoTipo==='custom' && _periodoCustomIni && _periodoCustomFim){
+    ini = new Date(_periodoCustomIni);
+    fim = new Date(_periodoCustomFim);
+    label = `${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
+  } else {
+    _periodoTipo = 'mes';
+    ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    fim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+    label = hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  }
+  fim.setHours(23,59,59,999);
+  return {ini, fim, label};
+}
+
+// Desenha o seletor (Semana/Mês/Ano/Personalizado) num container, e religa
+// ao callback informado para re-renderizar o painel correspondente quando
+// o período mudar.
+function renderPeriodoSeletor(containerId, onChangeCallback){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  const opts = [['semana','Semana'],['mes','Mês'],['ano','Ano'],['custom','Personalizado']];
+  el.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      ${opts.map(([v,l])=>`<button type="button" onclick="_periodoTipo='${v}';renderPeriodoSeletor('${containerId}',${onChangeCallback.name});${onChangeCallback.name}()"
+        style="padding:5px 12px;border-radius:6px;border:1px solid ${_periodoTipo===v?'var(--ac)':'var(--border)'};background:${_periodoTipo===v?'var(--ac)':'#fff'};color:${_periodoTipo===v?'#fff':'var(--text)'};font-size:11px;font-weight:600;cursor:pointer;">${l}</button>`).join('')}
+      ${_periodoTipo==='custom' ? `
+        <input type="date" id="periodo-custom-ini-${containerId}" value="${_periodoCustomIni}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+          onchange="_periodoCustomIni=this.value;${onChangeCallback.name}()">
+        <span style="font-size:11px;color:var(--muted);">até</span>
+        <input type="date" id="periodo-custom-fim-${containerId}" value="${_periodoCustomFim}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+          onchange="_periodoCustomFim=this.value;${onChangeCallback.name}()">
+      ` : ''}
+    </div>`;
+}
+
 function renderDashFinanceiro(){
   const el = document.getElementById('dash-fin-content');
   if(!el) return;
 
+  renderPeriodoSeletor('periodo-seletor-financeiro', renderDashFinanceiro);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const mesIni = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const mesFim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo();
 
   // Processos ativos (não finalizados)
   const ativos = _processos.filter(p=>p.fase!=='FINALIZADO');
@@ -2878,6 +3007,30 @@ function renderDashFinanceiro(){
     if(!p.pi_data_saldo||p.pi_pago) return false;
     return new Date(p.pi_data_saldo) < hoje;
   });
+
+  // Câmbio a pagar no período selecionado — soma os pagamentos de PI (saldo
+  // ou entrada) com vencimento dentro do período, ainda não pagos. Cada
+  // pagamento usa seu próprio câmbio salvo (pi_cambio/pi_cambio_entrada/
+  // pi_cambio_saldo) quando disponível, senão o câmbio atual.
+  const pagamentosNoPeriodo = [];
+  ativos.forEach(p=>{
+    if(p.pi_pago) return;
+    const checarData = (data, valorUsd, cambio) => {
+      if(!data || !valorUsd) return;
+      const d = new Date(data);
+      if(d>=mesIni && d<=mesFim) pagamentosNoPeriodo.push({ref:p.referencia, data:d, valorUsd, cambio: cambio||_cambio.USD});
+    };
+    if(p.pi_pagamento==='ENTRADA_SALDO'){
+      const pct = parseFloat(p.pi_entrada_pct||30)/100;
+      const total = parseFloat(p.pi_valor_usd)||0;
+      checarData(p.pi_data_entrada, total*pct, parseFloat(p.pi_cambio_entrada));
+      checarData(p.pi_data_saldo, total*(1-pct), parseFloat(p.pi_cambio_saldo));
+    } else {
+      checarData(p.pi_data_saldo, parseFloat(p.pi_valor_usd), parseFloat(p.pi_cambio));
+    }
+  });
+  const cambioPagarUSD = pagamentosNoPeriodo.reduce((s,x)=>s+x.valorUsd,0);
+  const cambioPagarBRL = pagamentosNoPeriodo.reduce((s,x)=>s+(x.valorUsd*x.cambio),0);
 
   // Por forma de pagamento
   const porTipo = {VISTA:0, PRAZO:0, ENTRADA_SALDO:0};
@@ -2906,9 +3059,9 @@ function renderDashFinanceiro(){
   const demurVencidos = demurAberto.filter(p=>demurrageDias(p)<0);
 
   el.innerHTML = `
-    <!-- Cabeçalho mês -->
+    <!-- Cabeçalho período -->
     <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:12px;">
-      📅 Referência: ${hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})} · 
+      📅 Período: ${periodoLabel} · 
       Câmbio atual: USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${(_cambio.EUR||0).toFixed(2)} · CNY R$ ${(_cambio.CNY||0).toFixed(4)}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
@@ -2949,13 +3102,18 @@ function renderDashFinanceiro(){
         <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — vence ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
       </div>`).join('')}
     </div>` : ''}
+      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Câmbio a Pagar (período)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--warn);">${fmt(cambioPagarUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(cambioPagarBRL)} · ${pagamentosNoPeriodo.length} pagamento${pagamentosNoPeriodo.length!==1?'s':''}</div>
+      </div>
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Entrada (mês)</div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Entrada (período)</div>
         <div style="font-size:20px;font-weight:800;color:var(--info);">${nfEntradaMes.length} NF${nfEntradaMes.length!==1?'s':''}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfEntrada)}</div>
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Saída (mês)</div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Saída (período)</div>
         <div style="font-size:20px;font-weight:800;color:var(--ok);">${nfSaidaMes.length} NF${nfSaidaMes.length!==1?'s':''}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfSaida)}</div>
       </div>
