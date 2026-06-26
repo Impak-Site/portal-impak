@@ -877,6 +877,21 @@ function setFaseFilter(fase){
   else if(fase==='__alertas') document.getElementById('menu-alertas')?.classList.add('active');
 }
 
+// Usada pelos cards clicáveis do Dashboard Executivo/Financeiro: fecha o
+// dashboard que estiver aberto e mostra a tabela principal já filtrada,
+// para o usuário poder ver e agir diretamente nos processos daquele número
+// (em vez do card ser só um número estático no topo).
+function abrirComFiltro(filtro){
+  const dashExec = document.getElementById('dash-executivo');
+  const dashFin  = document.getElementById('dash-financeiro');
+  if(dashExec) dashExec.style.display = 'none';
+  if(dashFin)  dashFin.style.display  = 'none';
+  document.getElementById('menu-executivo')?.classList.remove('active');
+  document.getElementById('menu-financeiro')?.classList.remove('active');
+  setFaseFilter(filtro);
+  document.querySelector('.table-wrap')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
 function renderStats(){
   const el = document.getElementById('stats-grid');
   if(!el) return;
@@ -951,6 +966,39 @@ function filtrarProcessos(){
   if(_faseFilter==='__alertas')   lista = lista.filter(p=>verificarAlertas(p,false).length>0);
   else if(_faseFilter==='__andamento') lista = lista.filter(p=>p.fase!=='FINALIZADO');
   else if(_faseFilter==='__demur') lista = lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
+  // Filtros financeiros — usados pelos cards clicáveis do Dashboard Financeiro/Executivo
+  else if(_faseFilter==='__pi_aberto')  lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && !p.pi_pago);
+  else if(_faseFilter==='__pi_pago')    lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && p.pi_pago);
+  else if(_faseFilter==='__pi_vencido') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
+    return new Date(p.pi_data_saldo) < new Date(new Date().setHours(0,0,0,0));
+  });
+  else if(_faseFilter==='__pi_vence_semana') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    const semFim=new Date(hoje); semFim.setDate(hoje.getDate()+7);
+    const d=new Date(p.pi_data_saldo);
+    return d>=hoje && d<=semFim;
+  });
+  else if(_faseFilter==='__nf_entrada_periodo') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||!p.nf_entrada_data) return false;
+    const {ini,fim} = calcularPeriodo();
+    const d=new Date(p.nf_entrada_data);
+    return d>=ini && d<=fim;
+  });
+  else if(_faseFilter==='__nf_saida_periodo') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||!p.nf_saida_data) return false;
+    const {ini,fim} = calcularPeriodo();
+    const d=new Date(p.nf_saida_data);
+    return d>=ini && d<=fim;
+  });
+  else if(_faseFilter==='__demur_aberto') lista = lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento);
+  else if(_faseFilter==='__cambio_periodo') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
+    const {ini,fim} = calcularPeriodo();
+    const checar = data => { if(!data) return false; const d=new Date(data); return d>=ini && d<=fim; };
+    return checar(p.pi_data_saldo) || checar(p.pi_data_entrada);
+  });
   else if(_faseFilter) lista = lista.filter(p=>p.fase===_faseFilter);
 
   // Filtro por cliente
@@ -2826,9 +2874,10 @@ function renderDashExecutivo(){
   const nfEntradaPeriodo = ativos.filter(p=>p.nf_entrada_data&&new Date(p.nf_entrada_data)>=mesIni&&new Date(p.nf_entrada_data)<=mesFim);
   const totalNfMes   = nfSaidaPeriodo.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
 
-  function card(label, val, sub, cor, fmt){
+  function card(label, val, sub, cor, fmt, filtro){
     const display = fmt==='usd' ? usd(val) : val;
-    return '<div style="background:#fff;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:14px 16px;">'
+    const clickAttr = filtro!==undefined ? ` onclick="abrirComFiltro('${filtro}')" style="cursor:pointer;` : ' style="';
+    return '<div'+clickAttr+'background:#fff;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:14px 16px;">'
       +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+label+'</div>'
       +'<div style="font-size:22px;font-weight:800;color:'+cor+';font-family:Syne,sans-serif;">'+display+'</div>'
       +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+sub+'</div>'
@@ -2836,12 +2885,12 @@ function renderDashExecutivo(){
   }
 
   const kpis = [
-    card('Total Processos', _processos.length, ativos.length+' em andamento', 'var(--ac)', 'num'),
-    card('Provisionado', totalProvUSD, brl(totalProvUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--ac)', 'usd'),
-    card('Em Aberto', abertoUSD, brl(abertoUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--err)', 'usd'),
-    card('Demurrage Critico', demurCrit.length, 'containers <=5 dias', demurCrit.length>0?'var(--err)':'var(--ok)', 'num'),
-    card('ETA Vencidos', etaVencidos.length, 'ainda Embarcado', etaVencidos.length>0?'var(--warn)':'var(--ok)', 'num'),
-    card('PI Vencidas', piVencidos.length, 'pagamento atrasado', piVencidos.length>0?'var(--err)':'var(--ok)', 'num'),
+    card('Total Processos', _processos.length, ativos.length+' em andamento', 'var(--ac)', 'num', ''),
+    card('Provisionado', totalProvUSD, brl(totalProvUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--ac)', 'usd', '__pi_aberto'),
+    card('Em Aberto', abertoUSD, brl(abertoUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--err)', 'usd', '__pi_aberto'),
+    card('Demurrage Critico', demurCrit.length, 'containers <=5 dias', demurCrit.length>0?'var(--err)':'var(--ok)', 'num', '__demur'),
+    card('ETA Vencidos', etaVencidos.length, 'ainda Embarcado', etaVencidos.length>0?'var(--warn)':'var(--ok)', 'num', 'EMBARCADO'),
+    card('PI Vencidas', piVencidos.length, 'pagamento atrasado', piVencidos.length>0?'var(--err)':'var(--ok)', 'num', '__pi_vencido'),
   ];
 
   const funil = FASES.map(f=>{
@@ -3065,22 +3114,22 @@ function renderDashFinanceiro(){
       Câmbio atual: USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${(_cambio.EUR||0).toFixed(2)} · CNY R$ ${(_cambio.CNY||0).toFixed(4)}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px;" title="Ver todos os processos em aberto">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Provisionado</div>
         <div style="font-size:20px;font-weight:800;color:var(--ac);">${fmt(totalProvUSD)}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalProvBRL)}</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('__pi_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver processos com pagamento em aberto">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Em Aberto</div>
         <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(abertoUSD)}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(abertoUSD*_cambio.USD)}</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('__pi_pago')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;" title="Ver processos já pagos">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Pago</div>
         <div style="font-size:20px;font-weight:800;color:var(--ok);">${fmt(pagosUSD)}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(pagosUSD*_cambio.USD)}</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('__pi_vence_semana')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver pagamentos vencendo nos próximos 7 dias">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Vence em 7 dias</div>
         <div style="font-size:20px;font-weight:800;color:var(--warn);">${vencSemana.length} PI${vencSemana.length!==1?'s':''}</div>
         <div style="font-size:12px;color:var(--muted);">${fmt(vencSemana.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0))}</div>
@@ -3089,7 +3138,7 @@ function renderDashFinanceiro(){
     ${vencidos.length ? `
     <div style="background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
       <div style="font-size:12px;font-weight:700;color:var(--err);margin-bottom:8px;">🚨 ${vencidos.length} pagamento(s) VENCIDO(S)</div>
-      ${vencidos.map(p=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid rgba(220,38,38,.1);display:flex;justify-content:space-between;">
+      ${vencidos.map(p=>`<div onclick="abrirProcesso('${p.id}');toggleDashFinanceiro()" style="cursor:pointer;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(220,38,38,.1);display:flex;justify-content:space-between;">
         <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia}</span>
         <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — venceu ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
       </div>`).join('')}
@@ -3097,27 +3146,27 @@ function renderDashFinanceiro(){
     ${vencSemana.length ? `
     <div style="background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
       <div style="font-size:12px;font-weight:700;color:var(--warn);margin-bottom:8px;">⚠ Vencendo nos próximos 7 dias</div>
-      ${vencSemana.map(p=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid rgba(217,119,6,.1);display:flex;justify-content:space-between;">
+      ${vencSemana.map(p=>`<div onclick="abrirProcesso('${p.id}');toggleDashFinanceiro()" style="cursor:pointer;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(217,119,6,.1);display:flex;justify-content:space-between;">
         <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia} <span class="fin-badge fin-${p.pi_pagamento}" style="margin-left:4px;">${p.pi_pagamento}</span></span>
         <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — vence ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
       </div>`).join('')}
     </div>` : ''}
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('__cambio_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver pagamentos de câmbio dentro do período selecionado">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Câmbio a Pagar (período)</div>
         <div style="font-size:20px;font-weight:800;color:var(--warn);">${fmt(cambioPagarUSD)}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(cambioPagarBRL)} · ${pagamentosNoPeriodo.length} pagamento${pagamentosNoPeriodo.length!==1?'s':''}</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('__nf_entrada_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;" title="Ver processos com NF de entrada no período">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Entrada (período)</div>
         <div style="font-size:20px;font-weight:800;color:var(--info);">${nfEntradaMes.length} NF${nfEntradaMes.length!==1?'s':''}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfEntrada)}</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('__nf_saida_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;" title="Ver processos com NF de saída no período">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Saída (período)</div>
         <div style="font-size:20px;font-weight:800;color:var(--ok);">${nfSaidaMes.length} NF${nfSaidaMes.length!==1?'s':''}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfSaida)}</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;">
+      <div onclick="abrirComFiltro('__demur_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver containers com demurrage em aberto">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Demurrage em aberto</div>
         <div style="font-size:20px;font-weight:800;color:var(--err);">${demurVencidos.length} vencido${demurVencidos.length!==1?'s':''}</div>
         <div style="font-size:12px;color:var(--muted);">${demurAberto.length} container${demurAberto.length!==1?'s':''} pendentes</div>
