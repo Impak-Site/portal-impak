@@ -322,6 +322,7 @@ select.form-input{cursor:pointer;}
 
   <!-- FASE FILTER -->
   <div class="fase-filter" id="fase-filter"></div>
+  <div id="filtro-financeiro-ativo"></div>
 
   <!-- DASHBOARD EXECUTIVO -->
   <div id="dash-executivo" style="display:none;margin-bottom:20px;">
@@ -859,6 +860,31 @@ function tempoRelativo(isoDate){
 // ════════════════════════════════════════════════════════════════
 // RENDER
 // ════════════════════════════════════════════════════════════════
+// Rótulos amigáveis para os filtros financeiros especiais (usados pelos
+// cards clicáveis do Dashboard) — sem isso, o usuário não tem como saber
+// qual filtro está ativo depois de clicar num card e ir para a tabela.
+const FILTRO_FINANCEIRO_LABEL = {
+  __pi_aberto:          '💰 Processos com PI em aberto',
+  __pi_pago:            '✓ Processos com PI já paga',
+  __pi_vencido:         '🚨 Pagamentos vencidos',
+  __pi_vence_semana:    '⚠ Pagamentos vencendo em 7 dias',
+  __nf_entrada_periodo: '📥 NF Entrada no período selecionado',
+  __nf_saida_periodo:   '📤 NF Saída no período selecionado',
+  __demur_aberto:       '⏱ Demurrage em aberto',
+  __cambio_periodo:     '💱 Câmbio a pagar no período selecionado',
+};
+
+function renderFiltroFinanceiroAtivo(){
+  const el = document.getElementById('filtro-financeiro-ativo');
+  if(!el) return;
+  const label = FILTRO_FINANCEIRO_LABEL[_faseFilter];
+  if(!label){ el.innerHTML=''; return; }
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.2);border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--ac);">
+    <span>${label}</span>
+    <button type="button" onclick="setFaseFilter('')" style="margin-left:auto;border:none;background:none;color:var(--ac);font-weight:700;cursor:pointer;font-size:12px;">✕ Limpar filtro</button>
+  </div>`;
+}
+
 function renderFaseFilter(){
   const el = document.getElementById('fase-filter');
   if(!el) return;
@@ -870,6 +896,7 @@ function setFaseFilter(fase){
   _faseFilter = fase;
   _pagina = 1;
   renderFaseFilter();
+  renderFiltroFinanceiroAtivo();
   render();
   // Atualizar sidebar
   document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
@@ -982,20 +1009,20 @@ function filtrarProcessos(){
   });
   else if(_faseFilter==='__nf_entrada_periodo') lista = lista.filter(p=>{
     if(p.fase==='FINALIZADO'||!p.nf_entrada_data) return false;
-    const {ini,fim} = calcularPeriodo();
+    const {ini,fim} = calcularPeriodo('financeiro');
     const d=new Date(p.nf_entrada_data);
     return d>=ini && d<=fim;
   });
   else if(_faseFilter==='__nf_saida_periodo') lista = lista.filter(p=>{
     if(p.fase==='FINALIZADO'||!p.nf_saida_data) return false;
-    const {ini,fim} = calcularPeriodo();
+    const {ini,fim} = calcularPeriodo('financeiro');
     const d=new Date(p.nf_saida_data);
     return d>=ini && d<=fim;
   });
   else if(_faseFilter==='__demur_aberto') lista = lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento);
   else if(_faseFilter==='__cambio_periodo') lista = lista.filter(p=>{
     if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
-    const {ini,fim} = calcularPeriodo();
+    const {ini,fim} = calcularPeriodo('financeiro');
     const checar = data => { if(!data) return false; const d=new Date(data); return d>=ini && d<=fim; };
     return checar(p.pi_data_saldo) || checar(p.pi_data_entrada);
   });
@@ -2847,9 +2874,9 @@ function renderDashExecutivo(){
   const el = document.getElementById('dash-exec-content');
   if(!el) return;
 
-  renderPeriodoSeletor('periodo-seletor-executivo', renderDashExecutivo);
+  renderPeriodoSeletor('periodo-seletor-executivo', 'executivo', renderDashExecutivo);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo();
+  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo('executivo');
   const semFim = new Date(hoje); semFim.setDate(hoje.getDate()+7);
 
   const ativos    = _processos.filter(p=>p.fase!=='FINALIZADO');
@@ -2970,31 +2997,35 @@ function toggleDashFinanceiro(){
 }
 
 // ════════════════════════════════════════════════════════════════
-// FILTRO DE PERÍODO — compartilhado entre Dashboard Executivo e Financeiro
+// FILTRO DE PERÍODO — cada dashboard (executivo/financeiro) tem seu
+// próprio estado independente, identificado por um namespace.
 // ════════════════════════════════════════════════════════════════
-let _periodoTipo = 'mes'; // 'semana' | 'mes' | 'ano' | 'custom'
-let _periodoCustomIni = '';
-let _periodoCustomFim = '';
+let _periodoEstado = {
+  executivo:  { tipo:'mes', ini:'', fim:'' },
+  financeiro: { tipo:'mes', ini:'', fim:'' },
+};
 
-// Calcula {ini, fim, label} a partir do tipo de período selecionado.
-function calcularPeriodo(){
+// Calcula {ini, fim, label} a partir do tipo de período selecionado para
+// o namespace informado ('executivo' ou 'financeiro').
+function calcularPeriodo(ns){
+  const estado = _periodoEstado[ns] || _periodoEstado.financeiro;
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   let ini, fim, label;
-  if(_periodoTipo==='semana'){
+  if(estado.tipo==='semana'){
     const diaSemana = hoje.getDay(); // 0=domingo
     ini = new Date(hoje); ini.setDate(hoje.getDate()-diaSemana);
     fim = new Date(ini); fim.setDate(ini.getDate()+6);
     label = `Semana de ${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
-  } else if(_periodoTipo==='ano'){
+  } else if(estado.tipo==='ano'){
     ini = new Date(hoje.getFullYear(),0,1);
     fim = new Date(hoje.getFullYear(),11,31);
     label = `Ano ${hoje.getFullYear()}`;
-  } else if(_periodoTipo==='custom' && _periodoCustomIni && _periodoCustomFim){
-    ini = new Date(_periodoCustomIni);
-    fim = new Date(_periodoCustomFim);
+  } else if(estado.tipo==='custom' && estado.ini && estado.fim){
+    ini = new Date(estado.ini);
+    fim = new Date(estado.fim);
     label = `${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
   } else {
-    _periodoTipo = 'mes';
+    estado.tipo = 'mes';
     ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
     fim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
     label = hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
@@ -3003,23 +3034,25 @@ function calcularPeriodo(){
   return {ini, fim, label};
 }
 
-// Desenha o seletor (Semana/Mês/Ano/Personalizado) num container, e religa
-// ao callback informado para re-renderizar o painel correspondente quando
-// o período mudar.
-function renderPeriodoSeletor(containerId, onChangeCallback){
+// Desenha o seletor (Semana/Mês/Ano/Personalizado) num container, ligado ao
+// namespace de período (ns: 'executivo' ou 'financeiro' — cada um com seu
+// próprio estado independente), e religa ao callback informado para
+// re-renderizar o painel correspondente quando o período mudar.
+function renderPeriodoSeletor(containerId, ns, onChangeCallback){
   const el = document.getElementById(containerId);
   if(!el) return;
+  const estado = _periodoEstado[ns] || _periodoEstado.financeiro;
   const opts = [['semana','Semana'],['mes','Mês'],['ano','Ano'],['custom','Personalizado']];
   el.innerHTML = `
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      ${opts.map(([v,l])=>`<button type="button" onclick="_periodoTipo='${v}';renderPeriodoSeletor('${containerId}',${onChangeCallback.name});${onChangeCallback.name}()"
-        style="padding:5px 12px;border-radius:6px;border:1px solid ${_periodoTipo===v?'var(--ac)':'var(--border)'};background:${_periodoTipo===v?'var(--ac)':'#fff'};color:${_periodoTipo===v?'#fff':'var(--text)'};font-size:11px;font-weight:600;cursor:pointer;">${l}</button>`).join('')}
-      ${_periodoTipo==='custom' ? `
-        <input type="date" id="periodo-custom-ini-${containerId}" value="${_periodoCustomIni}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
-          onchange="_periodoCustomIni=this.value;${onChangeCallback.name}()">
+      ${opts.map(([v,l])=>`<button type="button" onclick="_periodoEstado['${ns}'].tipo='${v}';renderPeriodoSeletor('${containerId}','${ns}',${onChangeCallback.name});${onChangeCallback.name}()"
+        style="padding:5px 12px;border-radius:6px;border:1px solid ${estado.tipo===v?'var(--ac)':'var(--border)'};background:${estado.tipo===v?'var(--ac)':'#fff'};color:${estado.tipo===v?'#fff':'var(--text)'};font-size:11px;font-weight:600;cursor:pointer;">${l}</button>`).join('')}
+      ${estado.tipo==='custom' ? `
+        <input type="date" id="periodo-custom-ini-${containerId}" value="${estado.ini}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+          onchange="_periodoEstado['${ns}'].ini=this.value;${onChangeCallback.name}()">
         <span style="font-size:11px;color:var(--muted);">até</span>
-        <input type="date" id="periodo-custom-fim-${containerId}" value="${_periodoCustomFim}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
-          onchange="_periodoCustomFim=this.value;${onChangeCallback.name}()">
+        <input type="date" id="periodo-custom-fim-${containerId}" value="${estado.fim}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+          onchange="_periodoEstado['${ns}'].fim=this.value;${onChangeCallback.name}()">
       ` : ''}
     </div>`;
 }
@@ -3028,9 +3061,9 @@ function renderDashFinanceiro(){
   const el = document.getElementById('dash-fin-content');
   if(!el) return;
 
-  renderPeriodoSeletor('periodo-seletor-financeiro', renderDashFinanceiro);
+  renderPeriodoSeletor('periodo-seletor-financeiro', 'financeiro', renderDashFinanceiro);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo();
+  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo('financeiro');
 
   // Processos ativos (não finalizados)
   const ativos = _processos.filter(p=>p.fase!=='FINALIZADO');
