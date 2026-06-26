@@ -2678,10 +2678,11 @@ async function extrairComIA(input){
   "armador": "",  // NÃO inferir armador pelo nome do navio (ex: navio MSC XXXX não significa armador MSC — extrair apenas de campos explícitos como Carrier, Shipping Line, Armador)
   "navio": "",  // se o documento for um CE Mercante, usar o navio de CHEGADA: em caso de transbordo/baldeação no exterior, o navio de chegada é o navio de conexão/último navio que efetivamente atracou no porto de destino brasileiro — NÃO o navio original de embarque na origem
   "porto_origem": "",
-  "porto_destino": "",  // extrair de: POD, Port of Discharge, Port of Destination, Discharge Port
+  "porto_destino": "",  // extrair de: POD, Port of Discharge, Port of Destination, Discharge Port. PRIORIDADE DE FONTE: o BL e a DI/Extrato da DI são mais confiáveis que o Sales Contract — o Sales Contract é só a intenção comercial registrada antes do embarque e pode estar desatualizado (ex: prevê "Itajai" mas a carga acabou desembarcando em "Itapoa"). Se o documento atual for um BL ou DI/Extrato da DI, o porto_destino dele deve SOBRESCREVER um valor que tenha vindo de um Sales Contract.
   "hbl": "",
   "mbl": "",
-  "container": "",
+  "container": "",  // número do container (ex: TCKU7973104)
+  "lacre": "",  // número do lacre/selo do container (ex: 22992857) — geralmente aparece junto ao número do container no BL/CE Mercante
   "numero_di": "",  // número da Declaração de Importação — ex: "26/0672265-4"
   "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
@@ -2784,18 +2785,28 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // considerando transbordo/baldeação no exterior) — por isso sobrescrevem
     // o que já estiver no formulário em vez de respeitar a regra "só preenche vazio".
     const ehCeMercante = !!extracted.ce_numero;
+    // Quando o documento é um BL ou uma DI/Extrato da DI, o porto de destino
+    // e o container/navio que eles trazem são mais confiáveis que o Sales
+    // Contract (que é só a intenção comercial registrada antes do embarque,
+    // podendo estar desatualizada — ex: contrato previa "Itajai" mas a carga
+    // foi operacionalmente desembarcada em "Itapoa"). Por isso, se vierem de
+    // um BL/DI, esses campos também sobrescrevem o que já estiver preenchido.
+    const ehBlOuDi = !!(extracted.hbl || extracted.mbl || extracted.numero_di || extracted.data_registro_di);
     const camposSobrescritosPorCe = ehCeMercante ? ['navio'] : [];
+    const camposSobrescritosPorBlDi = ehBlOuDi ? ['porto_destino','container','navio'] : [];
 
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor'];
+    const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
     let preenchidos = 0;
     Object.keys(extracted).forEach(campo=>{
       let val = extracted[campo];
       if(!val) return;
+      if(camposContainerTratadosSeparado.includes(campo)) return;
       const el = document.getElementById('f_'+campo);
       if(!el) return;
       if(camposMoedaIA.includes(campo)) val = exibirMoeda(val);
-      const podeSobrescrever = camposSobrescritosPorCe.includes(campo);
+      const podeSobrescrever = camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo);
       if(!el.value || podeSobrescrever){
         el.value = val;
         el.style.borderColor='var(--ok)';
@@ -2805,8 +2816,28 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       }
     });
 
+    // O campo "container" (e o novo "lacre") extraídos pela IA precisam ser
+    // refletidos na LISTA VISUAL de containers (_containers), não só no
+    // input hidden f_container — senão a extração "preenche" um campo que
+    // o usuário nunca vê na tela, e o container/lacre parecem não ter sido
+    // lidos. Só populamos automaticamente se a lista ainda estiver vazia
+    // (1 container sem número), para não sobrescrever o que o usuário já
+    // tiver preenchido manualmente — exceto quando vem de BL/DI, que é mais
+    // confiável e pode corrigir um container errado de um documento anterior.
+    if(extracted.container){
+      const primeiroVazio = !_containers.length || (!_containers[0].numero);
+      if(primeiroVazio || ehBlOuDi){
+        if(!_containers.length) _containers.push({numero:'', tipo:'40HC', lacre:''});
+        _containers[0].numero = extracted.container;
+        if(extracted.lacre) _containers[0].lacre = extracted.lacre;
+        renderMultiContainers();
+        preenchidos++;
+      }
+    }
+
     if(status) status.textContent = ehCeMercante
       ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
+      : ehBlOuDi ? `✓ ${preenchidos} campos preenchidos (BL/DI — porto e container atualizados)`
       : `✓ ${preenchidos} campos preenchidos`;
     showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
 
