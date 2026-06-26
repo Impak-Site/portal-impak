@@ -2720,13 +2720,43 @@ Não preencha free_time — deixe sempre null. Free time só é preenchido manua
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`
     }];
 
-    const resp = await fetch('/api/analisar',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({content, apiKey})
-    });
-    const d = await resp.json();
-    if(!d.ok) throw new Error(d.erro||'Erro na IA');
+    // Faz a chamada com 1 retry automático: falhas como "Could not process PDF"
+    // ou hiccups passageiros do servidor (resposta não-JSON, ex: página de
+    // erro HTML do proxy) costumam ser intermitentes — uma segunda tentativa
+    // depois de uma pequena espera resolve a maioria dos casos.
+    async function chamarAnalise(tentativa){
+      const resp = await fetch('/api/analisar',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({content, apiKey})
+      });
+      const textoResp = await resp.text();
+      let d;
+      try{
+        d = JSON.parse(textoResp);
+      }catch(e){
+        // Resposta não é JSON — geralmente página de erro do servidor/proxy
+        // (ex: <!DOCTYPE...>), não um problema no documento em si.
+        if(tentativa < 2){
+          if(status) status.textContent = '⏳ Falha de comunicação, tentando novamente...';
+          await new Promise(r=>setTimeout(r, 2000));
+          return chamarAnalise(tentativa+1);
+        }
+        throw new Error('O servidor não respondeu corretamente (pode ter sido uma instabilidade momentânea). Tente novamente em alguns segundos.');
+      }
+      if(!d.ok){
+        // Erro real da API (ex: "Could not process PDF") — também vale a
+        // pena tentar de novo uma vez, já que costuma ser intermitente.
+        if(tentativa < 2 && /could not process|processar.*pdf/i.test(d.erro||'')){
+          if(status) status.textContent = '⏳ Falha ao processar o PDF, tentando novamente...';
+          await new Promise(r=>setTimeout(r, 2000));
+          return chamarAnalise(tentativa+1);
+        }
+        throw new Error(d.erro||'Erro na IA');
+      }
+      return d;
+    }
+    const d = await chamarAnalise(1);
 
     const raw = (d.data.content||[]).map(c=>c.text||'').join('');
     let extracted;
