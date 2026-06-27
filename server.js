@@ -16,9 +16,28 @@ const express = require('express');
 const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { randomUUID } = require('crypto');
+const { randomUUID, scryptSync, randomBytes, timingSafeEqual } = require('crypto');
 
 function gerarUUID(){ return randomUUID(); }
+
+// ── HASH DE SENHA (scrypt nativo do Node — sem dependência externa) ──
+// Formato do hash armazenado: "salt:hash" (ambos em hex).
+function hashSenha(senhaPura){
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(senhaPura, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+function verificarSenha(senhaPura, hashArmazenado){
+  if(!hashArmazenado || !hashArmazenado.includes(':')) return false;
+  const [salt, hashOriginal] = hashArmazenado.split(':');
+  const hashTentativa = scryptSync(senhaPura, salt, 64).toString('hex');
+  // timingSafeEqual evita "timing attack" (comparar com === pode revelar,
+  // pelo tempo de resposta, quantos caracteres já bateram).
+  const bufOriginal  = Buffer.from(hashOriginal, 'hex');
+  const bufTentativa = Buffer.from(hashTentativa, 'hex');
+  if(bufOriginal.length !== bufTentativa.length) return false;
+  return timingSafeEqual(bufOriginal, bufTentativa);
+}
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -38,25 +57,67 @@ function sb() {
 }
 
 // ── USUÁRIOS ──────────────────────────────────────────────────
-function env(key, fallback) { return process.env[key] || fallback; }
+// As senhas NUNCA ficam em texto puro no código — cada SENHA_* no Railway
+// deve conter o HASH gerado (ver scripts/gerar-hash-senha.js), não a senha
+// real. Se uma variável estiver faltando, o login desse usuário falha com
+// um aviso claro no log, em vez de usar uma senha-padrão previsível.
+function envSenhaHash(key) {
+  const v = process.env[key];
+  if (!v) console.error(`⚠️  ${key} não configurada no Railway — login deste usuário vai falhar.`);
+  return v || null;
+}
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
-  { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
-  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
-  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
-  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
-  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
-  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
-  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
-  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
+  { usuario: 'narcelio',  senhaHash: envSenhaHash('SENHA_NARCELIO'),  modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
+  { usuario: 'jean',      senhaHash: envSenhaHash('SENHA_JEAN'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
+  { usuario: 'paula',     senhaHash: envSenhaHash('SENHA_PAULA'),     modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'bianca',    senhaHash: envSenhaHash('SENHA_BIANCA'),    modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
+  { usuario: 'emanuelly', senhaHash: envSenhaHash('SENHA_EMANUELLY'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
+  { usuario: 'italo',     senhaHash: envSenhaHash('SENHA_ITALO'),     modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
+  { usuario: 'maria',     senhaHash: envSenhaHash('SENHA_MARIA'),     modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
+  { usuario: 'joyce',     senhaHash: envSenhaHash('SENHA_JOYCE'),     modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
+  { usuario: 'neide',     senhaHash: envSenhaHash('SENHA_NEIDE'),     modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
 ];
+
+// ── RATE LIMITING NO LOGIN ────────────────────────────────────
+// Proteção simples contra força bruta: no máximo 5 tentativas de login por
+// IP a cada 10 minutos. Em memória (sem dependência externa) — suficiente
+// para o volume de uso deste sistema; reinicia se o servidor reiniciar,
+// o que é aceitável aqui (não é uma defesa contra ataque distribuído).
+const _loginTentativas = new Map(); // ip -> [timestamps]
+const LOGIN_MAX_TENTATIVAS = 5;
+const LOGIN_JANELA_MS = 10 * 60 * 1000;
+
+function rateLimitLogin(req, res, next) {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+  const agora = Date.now();
+  const tentativas = (_loginTentativas.get(ip) || []).filter(t => agora - t < LOGIN_JANELA_MS);
+  if (tentativas.length >= LOGIN_MAX_TENTATIVAS) {
+    const minutosRestantes = Math.ceil((LOGIN_JANELA_MS - (agora - tentativas[0])) / 60000);
+    return res.send(loginPage(`Muitas tentativas. Tente novamente em ${minutosRestantes} minuto(s).`, req.body?.destino || '/'));
+  }
+  tentativas.push(agora);
+  _loginTentativas.set(ip, tentativas);
+  next();
+}
+// Limpeza periódica para a memória não crescer indefinidamente
+setInterval(() => {
+  const agora = Date.now();
+  for (const [ip, tentativas] of _loginTentativas.entries()) {
+    const ativas = tentativas.filter(t => agora - t < LOGIN_JANELA_MS);
+    if (ativas.length) _loginTentativas.set(ip, ativas);
+    else _loginTentativas.delete(ip);
+  }
+}, 5 * 60 * 1000);
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(session({
-  secret: env('SESSION_SECRET', 'impak-secret-2026'),
+  secret: process.env.SESSION_SECRET || (() => {
+    console.error('⚠️  SESSION_SECRET não configurado no Railway — usando valor temporário gerado neste boot (sessões serão invalidadas a cada deploy).');
+    return randomBytes(32).toString('hex');
+  })(),
   resave: false,
   saveUninitialized: false,
   cookie: { secure: false, maxAge: 8 * 60 * 60 * 1000 },
@@ -126,17 +187,23 @@ app.get('/login', (req, res) => {
   res.send(loginPage('', req.query.destino || '/'));
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', rateLimitLogin, (req, res) => {
   const { usuario, senha, destino } = req.body;
   const login = (usuario || '').trim().toLowerCase();
-  const u = USUARIOS.find(x => x.usuario === login && x.senha === senha);
-  if (!u) return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
+  const u = USUARIOS.find(x => x.usuario === login);
+  // Mesma mensagem de erro tanto para "usuário não existe" quanto para
+  // "senha errada" — não revelar qual dos dois está incorreto.
+  if (!u || !u.senhaHash || !verificarSenha(senha || '', u.senhaHash)) {
+    return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
+  }
   req.session.usuario     = u.usuario;
   req.session.nome        = u.nome;
   req.session.modulos     = u.modulos;
   req.session.role        = u.role;
   req.session.displayName = u.displayName;
-  req.session.senha       = u.senha;
+  // A senha (nem em hash) nunca é guardada na sessão — ela só precisa
+  // existir no momento do login. Guardá-la aqui não tem uso real e só
+  // criava o risco de ser devolvida de volta ao navegador via /api/me.
   req.session.home        = u.home || '/';
   res.redirect(destino && destino !== '/' ? destino : (u.home || '/'));
 });
@@ -165,7 +232,6 @@ app.get('/api/me', (req, res) => {
     modulos:     req.session.modulos,
     role:        req.session.role,
     displayName: req.session.displayName,
-    senha:       req.session.senha,
   });
 });
 
@@ -394,23 +460,6 @@ app.delete('/api/controle/v2/processo/:id', auth('processos'), async (req, res) 
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ erro: e.message });
-  }
-});
-
-// Histórico de auditoria de um processo (aba Histórico no modal)
-app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res) => {
-  try {
-    const { data, error } = await sb()
-      .from('controle_log')
-      .select('*')
-      .eq('processo_id', req.params.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (error) throw new Error(error.message);
-    res.json({ ok: true, log: data || [] });
-  } catch (e) {
-    console.error('controle v2 log GET erro:', e.message);
-    res.json({ ok: true, log: [] });
   }
 });
 
