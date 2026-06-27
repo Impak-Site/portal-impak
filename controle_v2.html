@@ -650,7 +650,11 @@ async function excluirProcesso(id){
 // ════════════════════════════════════════════════════════════════
 function calcularFase(p){
   if(p.data_devolucao_vazio)                                        return 'FINALIZADO';
-  if(p.data_carregamento)                                           return 'DEVOLUCAO_VAZIO';
+  // Quando AMBAS as NFs (entrada e saída) estão emitidas, isso já é prova
+  // suficiente de que o carregamento aconteceu de fato — avança direto para
+  // Devolução do Vazio, mesmo sem a data_carregamento manual preenchida,
+  // para já acionar o alerta de demurrage dessa etapa.
+  if(p.data_carregamento || (p.nf_entrada_numero && p.nf_saida_numero)) return 'DEVOLUCAO_VAZIO';
   if(p.data_agendamento || p.nf_saida_numero || p.nf_entrada_numero) return 'CARREGAMENTO';
   if(p.data_liberacao || (p.canal==='VERDE' && p.data_parametrizacao)) return 'FATURAMENTO';
   if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
@@ -2701,8 +2705,13 @@ async function extrairComIA(input){
   "nf_saida_data": "YYYY-MM-DD",  // data de emissão da NF de saída
   "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
   "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
+  "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
   "free_time": null
 }
+Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
+- extrair "container" do campo "Container No.".
+- data_devolucao_vazio vem do campo "Gate In Date/Time" — esta é a data e hora em que o container vazio deu entrada no depósito, ou seja, a devolução física de fato. O formato no documento costuma ser "YYYY/MM/DD HH:MM" (ex: "2026/05/30 10:54") — converta apenas a parte da data para "YYYY-MM-DD" (ex: "2026-05-30"), descartando a hora.
+- se o campo "Gate In Date/Time" estiver vazio mas "Gate Out Date/Time" estiver preenchido, este documento é de SAÍDA do container vazio do depósito (não de devolução) — não preencher data_devolucao_vazio neste caso.
 Se o documento for um Comprovante de Importação ou Extrato da Declaração de Importação (DI), emitidos pela Receita Federal:
 - numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4").
 - data_registro_di vem de "DATA DO REGISTRO".
