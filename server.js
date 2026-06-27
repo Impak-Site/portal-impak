@@ -71,6 +71,7 @@ const USUARIOS = [
   { usuario: 'narcelio',  senhaHash: envSenhaHash('SENHA_NARCELIO'),  modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
   { usuario: 'jean',      senhaHash: envSenhaHash('SENHA_JEAN'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
   { usuario: 'paula',     senhaHash: envSenhaHash('SENHA_PAULA'),     modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'amanda',    senhaHash: envSenhaHash('SENHA_AMANDA'),    modulos: ['tyredesk','processos'], nome: 'Amanda',    role: 'gerente',  displayName: 'Amanda',    home: '/processos'  },
   { usuario: 'bianca',    senhaHash: envSenhaHash('SENHA_BIANCA'),    modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
   { usuario: 'emanuelly', senhaHash: envSenhaHash('SENHA_EMANUELLY'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
   { usuario: 'italo',     senhaHash: envSenhaHash('SENHA_ITALO'),     modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
