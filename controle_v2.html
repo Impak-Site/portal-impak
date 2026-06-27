@@ -2977,7 +2977,7 @@ function renderDashExecutivo(){
     const clickAttr = filtro!==undefined ? ` onclick="abrirComFiltro('${filtro}')" style="cursor:pointer;` : ' style="';
     return '<div'+clickAttr+'background:#fff;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:14px 16px;">'
       +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+label+'</div>'
-      +'<div style="font-size:22px;font-weight:800;color:'+cor+';font-family:Syne,sans-serif;">'+display+'</div>'
+      +'<div style="font-size:20px;font-weight:600;color:'+cor+';font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+display+'</div>'
       +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+sub+'</div>'
       +'</div>';
   }
@@ -3052,9 +3052,9 @@ function renderDashExecutivo(){
     +(totalNfMes>0 || nfEntradaPeriodo.length>0
       ? '<div style="'+secStyle+'margin-bottom:16px;">'+secTitle('Faturamento — '+periodoLabel)
         +'<div style="display:flex;gap:24px;flex-wrap:wrap;">'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Saída emitidas</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+nfSaidaPeriodo.length+'</div></div>'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Entrada emitidas</div><div style="font-size:22px;font-weight:800;color:var(--info);font-family:Syne,sans-serif;">'+nfEntradaPeriodo.length+'</div></div>'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado (saída)</div><div style="font-size:22px;font-weight:800;color:var(--ok);font-family:Syne,sans-serif;">'+brl(totalNfMes)+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Saída emitidas</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+nfSaidaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Entrada emitidas</div><div style="font-size:20px;font-weight:600;color:var(--info);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+nfEntradaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado (saída)</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+brl(totalNfMes)+'</div></div>'
         +'</div></div>' : '');
 }
 
