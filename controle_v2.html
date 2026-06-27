@@ -772,12 +772,36 @@ function verificarAlertas(proc, criarNotif){
   return alertas;
 }
 
+// Cache em memória das notificações já carregadas nesta sessão, usado só
+// para evitar duplicatas — não substitui carregarNotificacoes().
+let _notifsCache = [];
+
 async function criarNotificacao(processoId, tipo, titulo, mensagem){
+  // Evita criar a mesma notificação de novo a cada save do processo: se já
+  // existe uma notificação idêntica (mesmo processo + mesmo título) criada
+  // nas últimas 24h, não cria outra. Sem isso, salvar o processo várias
+  // vezes no mesmo dia (comum durante ajustes) gerava um alerta duplicado
+  // a cada save, mesmo sem nada relacionado ao alerta ter mudado.
+  try{
+    if(!_notifsCache.length){
+      const r = await fetch('/api/controle/v2/notificacoes');
+      const d = await r.json();
+      if(d.ok) _notifsCache = d.notificacoes||[];
+    }
+    const ja_existe = _notifsCache.some(n=>{
+      if(n.processo_id!==processoId || n.titulo!==titulo) return false;
+      if(!n.created_at) return false;
+      const horas = (Date.now()-new Date(n.created_at).getTime())/3600000;
+      return horas < 24;
+    });
+    if(ja_existe) return;
+  }catch(e){ /* se a checagem falhar, segue e cria normalmente */ }
+
   fetch('/api/controle/v2/notificacao', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({processo_id: processoId, tipo, titulo, mensagem})
-  }).catch(()=>{});
+  }).then(()=>{ _notifsCache=[]; }).catch(()=>{}); // invalida cache após criar
 }
 
 async function carregarNotificacoes(){
@@ -805,7 +829,7 @@ async function carregarNotificacoes(){
       const cor = n.tipo==='urgente'?'var(--err)':n.tipo==='alerta'?'var(--warn)':'var(--ac)';
       const iniciais = (n.created_by||'?').slice(0,2).toUpperCase();
       const tempo = n.created_at ? tempoRelativo(n.created_at) : '';
-      return `<div class="notif-item ${naoLida?'unread':''} ${n.tipo}" onclick="marcarLida(${n.id})">
+      return `<div class="notif-item ${naoLida?'unread':''} ${n.tipo}" onclick="abrirNotificacao(${n.id},'${n.processo_id||''}')">
         <div class="notif-row">
           <div class="notif-avatar" style="background:${cor}">${iniciais}</div>
           <div class="notif-content">
@@ -825,6 +849,19 @@ async function marcarLida(id){
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({usuario: _user.usuario})
   }).then(()=>carregarNotificacoes()).catch(()=>{});
+}
+
+// Clicar numa notificação deve marcá-la como lida E abrir o processo que ela
+// se refere — antes só marcava como lida, sem nenhuma forma de chegar ao
+// processo a partir da notificação (era preciso buscar manualmente na lista).
+function abrirNotificacao(id, processoId){
+  marcarLida(id);
+  toggleNotif(); // fecha o painel de notificações
+  if(processoId){
+    abrirProcesso(processoId);
+  } else {
+    showToast('Esta notificação não está vinculada a um processo','info');
+  }
 }
 
 async function marcarTodasLidas(){
