@@ -80,6 +80,19 @@ const USUARIOS = [
   { usuario: 'neide',     senhaHash: envSenhaHash('SENHA_NEIDE'),     modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
 ];
 
+// ── INVALIDAÇÃO DE SESSÃO POR USUÁRIO ─────────────────────────
+// Cada usuário tem um "número de versão" da sessão (começa em 1). A sessão
+// guarda a versão vigente no momento do login; o middleware auth() compara
+// com a versão atual do usuário a cada requisição. Incrementar a versão
+// (ex: ao trocar senha, ou via "Forçar logout") invalida instantaneamente
+// qualquer sessão antiga daquele usuário, mesmo que o cookie ainda exista
+// no navegador da pessoa — sem precisar de um banco de sessões externo.
+const _sessaoVersao = new Map(USUARIOS.map(u => [u.usuario, 1]));
+
+function forcarLogoutUsuario(usuario) {
+  _sessaoVersao.set(usuario, (_sessaoVersao.get(usuario) || 1) + 1);
+}
+
 // ── RATE LIMITING NO LOGIN ────────────────────────────────────
 // Proteção simples contra força bruta: no máximo 5 tentativas de login por
 // IP a cada 10 minutos. Em memória (sem dependência externa) — suficiente
@@ -114,6 +127,10 @@ setInterval(() => {
 // ── MIDDLEWARE ────────────────────────────────────────────────
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Necessário para o Express reconhecer conexões como HTTPS mesmo estando
+// atrás do proxy do Railway (que termina o SSL antes do container) — sem
+// isso, cookie.secure=true bloquearia o cookie de sessão para todo mundo.
+app.set('trust proxy', 1);
 app.use(session({
   secret: process.env.SESSION_SECRET || (() => {
     console.error('⚠️  SESSION_SECRET não configurado no Railway — usando valor temporário gerado neste boot (sessões serão invalidadas a cada deploy).');
@@ -121,7 +138,7 @@ app.use(session({
   })(),
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 8 * 60 * 60 * 1000 },
+  cookie: { secure: true, maxAge: 8 * 60 * 60 * 1000 },
 }));
 app.use(express.static(__dirname));
 
@@ -195,6 +212,11 @@ app.post('/login', rateLimitLogin, (req, res) => {
   // Mesma mensagem de erro tanto para "usuário não existe" quanto para
   // "senha errada" — não revelar qual dos dois está incorreto.
   if (!u || !u.senhaHash || !verificarSenha(senha || '', u.senhaHash)) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+    // Nunca logar a senha digitada, mesmo errada — só o usuário tentado, o
+    // IP, e o horário, suficiente para notar um padrão de ataque sem criar
+    // outro vazamento de dado sensível dentro dos próprios logs.
+    console.warn(`[LOGIN FALHOU] usuário="${login}" ip=${ip} em ${new Date().toISOString()}`);
     return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
   }
   req.session.usuario     = u.usuario;
@@ -205,15 +227,34 @@ app.post('/login', rateLimitLogin, (req, res) => {
   // A senha (nem em hash) nunca é guardada na sessão — ela só precisa
   // existir no momento do login. Guardá-la aqui não tem uso real e só
   // criava o risco de ser devolvida de volta ao navegador via /api/me.
+  req.session.versao      = _sessaoVersao.get(u.usuario) || 1;
   req.session.home        = u.home || '/';
   res.redirect(destino && destino !== '/' ? destino : (u.home || '/'));
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
+// Força o logout de um usuário em TODOS os dispositivos/sessões abertas —
+// útil ao trocar a senha de alguém, ou se houver suspeita de acesso
+// indevido (ex: notebook perdido). Restrito a gerentes.
+app.post('/api/usuarios/:usuario/forcar-logout', (req, res) => {
+  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+  const alvo = (req.params.usuario || '').trim().toLowerCase();
+  if (!USUARIOS.some(u => u.usuario === alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+  forcarLogoutUsuario(alvo);
+  res.json({ ok: true, mensagem: `Todas as sessões de "${alvo}" foram invalidadas.` });
+});
+
 function auth(modulo) {
   return (req, res, next) => {
     if (!req.session.usuario) return res.redirect('/login?destino=' + req.path);
+    // Se a versão da sessão estiver desatualizada (alguém forçou logout
+    // deste usuário, ex: ao trocar a senha), invalida mesmo com cookie válido.
+    const versaoAtual = _sessaoVersao.get(req.session.usuario) || 1;
+    if (req.session.versao !== versaoAtual) {
+      return req.session.destroy(() => res.redirect('/login?destino=' + req.path));
+    }
     if (modulo && !req.session.modulos.includes(modulo)) return res.status(403).send('<h2>Acesso negado</h2>');
     next();
   };
@@ -877,7 +918,14 @@ app.get('/api/contatos', auth(), async (req, res) => {
     if (tipo) query = query.eq('tipo', tipo.toUpperCase());
     if (uf)   query = query.eq('uf', uf.toUpperCase());
     if (q && q.length >= 2) {
-      query = query.or(`razao_social.ilike.%${q}%,cnpj.ilike.%${q}%,nome_fantasia.ilike.%${q}%`);
+      // Remove caracteres com significado especial na sintaxe do filtro
+      // .or() do PostgREST (vírgula separa condições, % é wildcard do
+      // ilike, parênteses/asterisco também têm sentido sintático) — sem
+      // isso, buscar por algo como "Silva, Lima" quebrava a query com erro.
+      const qSeguro = q.replace(/[,%*()]/g, '').trim();
+      if (qSeguro.length >= 2) {
+        query = query.or(`razao_social.ilike.%${qSeguro}%,cnpj.ilike.%${qSeguro}%,nome_fantasia.ilike.%${qSeguro}%`);
+      }
     }
     query = query.order('razao_social').limit(lim);
     const { data, error } = await query;
@@ -1122,6 +1170,17 @@ app.get('/health', async (req, res) => {
     anthropic_key_len: anthropicKey.length,
     anthropic_key_prefixo: anthropicKey.slice(0, 10),
   });
+});
+
+// ── TRATAMENTO DE ERRO GENÉRICO ────────────────────────────────
+// Captura qualquer erro não tratado que escape de uma rota (ex: exceção
+// síncrona, erro de parsing) antes que o Express devolva sua página de
+// erro padrão — que pode incluir stack trace e detalhes da estrutura
+// interna do código, úteis para quem estiver tentando mapear o sistema.
+app.use((err, req, res, next) => {
+  console.error('Erro não tratado:', err.stack || err.message || err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ ok: false, erro: 'Erro interno no servidor. Tente novamente em alguns instantes.' });
 });
 
 // ── START ─────────────────────────────────────────────────────
