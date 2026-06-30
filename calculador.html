@@ -1182,7 +1182,7 @@ function renderResultado(r) {
         <div class="resultado-header"><h2>📤 Faturamento / NF Saída</h2></div>
         <div class="resultado-body">
           <table class="calc-table">
-            ${r.usoConsumo ? `<tr><td>Vlr. Produto</td><td class="num">${fmtR(r.vlr_produto)}</td></tr>` : ''}
+            <tr><td>Vlr. Produto</td><td class="num">${fmtR(r.vlr_produto)}</td></tr>
             <tr><td>IPI (${pct(r.t.ipi)})</td><td class="num">${fmtR(r.IPI_s)}</td></tr>
             <tr><td>Base ICMS Normal${r.usoConsumo ? ' (Vlr.Produto + IPI)' : ''}</td><td class="num">${fmtR(r.base_icms)}</td></tr>
             <tr><td>ICMS Normal (${pct(r.t.aliq_inter)})</td><td class="num">${fmtR(r.ICMS_nfe)}</td></tr>
