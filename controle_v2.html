@@ -1,0 +1,3417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Controle de Processos</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#e8f0f8;--card:#fff;--border:#c8d8e8;--ac:#1a7fd4;--ac2:#1567b8;
+  --text:#0d1e2e;--muted:#4a6480;--dim:#7a9ab8;
+  --ok:#16a34a;--warn:#d97706;--err:#dc2626;--info:#0891b2;
+  --ok-bg:rgba(22,163,74,.08);--warn-bg:rgba(217,119,6,.08);
+  --err-bg:rgba(220,38,38,.08);--info-bg:rgba(8,145,178,.08);
+  --shadow:0 2px 12px rgba(26,127,212,.1);
+}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;}
+
+/* ── LAYOUT ── */
+.app{display:flex;flex-direction:column;min-height:100vh;}
+.topbar{background:#0a2d5e;color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;}
+.topbar-title{font-size:12px;opacity:.6;font-weight:600;letter-spacing:1px;text-transform:uppercase;}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+.user-badge{font-size:12px;opacity:.7;}
+.notif-btn{position:relative;background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;}
+.notif-btn:hover{opacity:1;}
+.notif-count{position:absolute;top:-2px;right:-2px;background:var(--err);color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:1px 4px;min-width:16px;text-align:center;}
+.main{display:flex;flex:1;}
+
+/* ── SIDEBAR ── */
+.sidebar{width:220px;background:#fff;border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;position:sticky;top:52px;height:calc(100vh - 52px);overflow-y:auto;}
+.sidebar-section{padding:0 12px;margin-bottom:4px;}
+.sidebar-label{font-size:9px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;padding:8px 8px 4px;}
+.sidebar-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;margin-bottom:2px;}
+.sidebar-item:hover{background:var(--bg);color:var(--ac);}
+.sidebar-item.active{background:rgba(26,127,212,.1);color:var(--ac);font-weight:600;}
+.sidebar-item .badge{margin-left:auto;background:var(--err);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;}
+.sidebar-item .badge.warn{background:var(--warn);}
+.sidebar-item .badge.ok{background:var(--ok);}
+
+/* ── CONTENT ── */
+.content{flex:1;padding:20px;overflow-y:auto;}
+
+/* ── CARDS STATS ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all .15s;}
+.stat-card:hover{border-color:var(--ac);transform:translateY(-1px);box-shadow:var(--shadow);}
+.stat-card.active{border-color:var(--ac);background:rgba(26,127,212,.05);}
+.stat-num{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--ac);}
+.stat-label{font-size:11px;color:var(--muted);font-weight:600;margin-top:4px;}
+
+/* ── TOOLBAR ── */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.search-box{flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;}
+.search-box:focus{border-color:var(--ac);}
+.btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:'Syne',sans-serif;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.btn-primary{background:var(--ac);color:#fff;}
+.btn-primary:hover{background:var(--ac2);}
+.btn-outline{background:#fff;color:var(--ac);border:1px solid var(--ac);}
+.btn-outline:hover{background:rgba(26,127,212,.05);}
+.btn-sm{padding:5px 10px;font-size:11px;}
+
+/* ── FASE PILLS ── */
+.fase-filter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
+.fase-pill{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--muted);transition:all .15s;white-space:nowrap;}
+.fase-pill:hover{border-color:var(--ac);color:var(--ac);}
+.fase-pill.active{background:var(--ac);color:#fff;border-color:var(--ac);}
+
+/* ── TABELA ── */
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.table-header{display:grid;grid-template-columns:120px 140px 100px 1fr 100px 90px 90px;gap:0;background:#f0f6fc;border-bottom:1px solid var(--border);}
+.th{padding:10px 12px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.table-row{display:grid;grid-template-columns:120px 140px 100px 1fr 100px 90px 90px;gap:0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.table-row:hover{background:#f8fbfe;}
+.table-row:last-child{border-bottom:none;}
+.td{padding:10px 12px;font-size:13px;display:flex;align-items:center;}
+.td-ref{font-family:'DM Mono',monospace;font-weight:600;color:var(--ac);font-size:12px;}
+.td-forn{font-size:12px;font-weight:500;}
+.td-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
+
+/* ── FASE BADGE ── */
+.fase-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;}
+.fase-PI{background:#f0f6fc;color:#1a7fd4;border:1px solid #c8d8e8;}
+.fase-AGUARDANDO_EMBARQUE{background:#fef3c7;color:#92400e;border:1px solid #fde68a;}
+.fase-EMBARCADO{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;}
+.fase-DESEMBARCADO{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}
+.fase-REGISTRO_DI{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;}
+.fase-PARAMETRIZACAO{background:#fce7f3;color:#9d174d;border:1px solid #f9a8d4;}
+.fase-CARREGAMENTO{background:#ecfdf5;color:#064e3b;border:1px solid #a7f3d0;}
+.fase-FATURAMENTO{background:#f0fdf4;color:#14532d;border:1px solid #86efac;}
+.fase-DEVOLUCAO_VAZIO{background:#fff7ed;color:#7c2d12;border:1px solid #fdba74;}
+.fase-FINALIZADO{background:#f0fdf4;color:var(--ok);border:1px solid #86efac;}
+
+/* ── DEMURRAGE ALERT ── */
+.demur-ok{color:var(--ok);}
+.demur-warn{color:var(--warn);font-weight:700;}
+.demur-err{color:var(--err);font-weight:700;}
+
+/* ── MODAL ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;}
+.modal-bg.open{display:flex;}
+.modal{background:var(--card);border-radius:16px;width:100%;max-width:900px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal-header{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;background:var(--card);}
+.modal-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;flex:1;}
+.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:4px 8px;border-radius:6px;}
+.modal-close:hover{background:var(--bg);}
+.modal-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0;overflow-x:auto;}
+.modal-tab{padding:10px 18px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s;font-family:'Syne',sans-serif;}
+.modal-tab:hover{color:var(--ac);background:rgba(26,127,212,.04);}
+.modal-tab.active{color:var(--ac);border-bottom-color:var(--ac);background:#fff;}
+.modal-tab .tab-alert{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--err);margin-left:4px;vertical-align:middle;}
+.modal-body{padding:0;flex:1;overflow-y:auto;}
+.tab-pane{display:none;padding:20px 24px;}
+.tab-pane.active{display:block;}
+
+/* ── FORM SECTIONS ── */
+.form-section{margin-bottom:24px;}
+.form-section-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+.form-group{display:flex;flex-direction:column;gap:4px;}
+.form-group.full{grid-column:1/-1;}
+.form-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.form-input{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;transition:all .15s;}
+.form-input:focus{border-color:var(--ac);background:#fff;}
+.form-input:disabled{opacity:.5;cursor:not-allowed;}
+select.form-input{cursor:pointer;}
+.form-input.highlight{border-color:var(--ac);background:rgba(26,127,212,.04);}
+
+/* ── PAGAMENTO ── */
+.pagamento-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px;}
+.pagamento-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);}
+.pagamento-row:last-child{border-bottom:none;font-weight:700;font-size:13px;color:var(--ac);}
+
+/* ── TIMELINE ── */
+.timeline{display:flex;align-items:center;gap:0;margin-bottom:24px;overflow-x:auto;padding-bottom:4px;}
+.tl-step{display:flex;flex-direction:column;align-items:center;flex:1;min-width:80px;}
+.tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid var(--border);background:var(--card);color:var(--muted);position:relative;z-index:1;transition:all .2s;cursor:default;}
+.tl-dot.done{background:var(--ok);border-color:var(--ok);color:#fff;}
+.tl-dot.active{background:var(--ac);border-color:var(--ac);color:#fff;box-shadow:0 0 0 4px rgba(26,127,212,.2);}
+.tl-dot.warn{background:var(--warn);border-color:var(--warn);color:#fff;}
+.tl-label{font-size:9px;font-weight:600;color:var(--muted);text-align:center;margin-top:4px;max-width:70px;line-height:1.2;}
+.tl-line{flex:1;height:2px;background:var(--border);margin-top:-14px;}
+.tl-line.done{background:var(--ok);}
+
+/* ── NOTIFICAÇÕES ── */
+.notif-panel{position:fixed;top:52px;right:0;width:340px;height:calc(100vh - 52px);background:var(--card);border-left:1px solid var(--border);z-index:150;transform:translateX(100%);transition:transform .25s;overflow-y:auto;}
+.notif-panel.open{transform:translateX(0);}
+.notif-header{padding:16px 20px;border-bottom:1px solid var(--border);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between;}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.notif-item:hover{background:var(--bg);}
+.notif-item.unread{background:rgba(26,127,212,.04);border-left:3px solid var(--ac);}
+.notif-item.urgente{border-left:3px solid var(--err);}
+.notif-avatar{width:36px;height:36px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;}
+.notif-content{flex:1;}
+.notif-title{font-size:13px;font-weight:600;margin-bottom:2px;}
+.notif-msg{font-size:12px;color:var(--muted);line-height:1.4;}
+.notif-time{font-size:10px;color:var(--dim);margin-top:4px;}
+.notif-row{display:flex;gap:10px;align-items:flex-start;}
+
+/* ── LOG ── */
+.log-list{display:flex;flex-direction:column;gap:8px;}
+.log-item{display:flex;gap:10px;align-items:flex-start;font-size:12px;}
+.log-avatar{width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
+.log-content{flex:1;}
+.log-user{font-weight:600;}
+.log-text{color:var(--muted);}
+.log-time{font-size:10px;color:var(--dim);}
+
+/* ── CANAL ── */
+.canal-verde{color:var(--ok);font-weight:700;}
+.canal-amarelo{color:var(--warn);font-weight:700;}
+.canal-vermelho{color:var(--err);font-weight:700;}
+
+/* ── TOAST ── */
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:#0a2d5e;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:slideIn .2s ease;max-width:320px;}
+.toast.ok{background:#15803d;}
+.toast.err{background:#b91c1c;}
+.toast.warn{background:#b45309;}
+@keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:60px 20px;color:var(--muted);}
+.empty-icon{font-size:48px;margin-bottom:12px;}
+.empty-text{font-size:14px;font-weight:500;}
+
+/* ── PAGINAÇÃO ── */
+.pag{display:flex;align-items:center;gap:8px;justify-content:center;padding:16px;}
+.pag-btn{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);}
+.pag-btn:hover:not(:disabled){border-color:var(--ac);color:var(--ac);}
+.pag-btn:disabled{opacity:.4;cursor:not-allowed;}
+.pag-btn.active{background:var(--ac);color:#fff;border-color:var(--ac);}
+.pag-info{font-size:12px;color:var(--muted);}
+
+/* ── FINANCEIRO ── */
+.fin-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
+.fin-VISTA{background:#dbeafe;color:#1e40af;}
+.fin-PRAZO{background:#fef3c7;color:#92400e;}
+.fin-ENTRADA_SALDO{background:#d1fae5;color:#065f46;}
+
+/* ── INLINE EDIT ── */
+.inline-edit{position:relative;display:inline-flex;align-items:center;gap:4px;cursor:pointer;border-radius:4px;padding:1px 4px;transition:background .1s;}
+.inline-edit:hover{background:rgba(26,127,212,.08);}
+.inline-edit:hover::after{content:'✏';font-size:9px;opacity:.5;margin-left:2px;}
+.inline-input{background:#fff;border:1px solid var(--ac);border-radius:4px;padding:3px 6px;font-size:12px;font-family:'DM Mono',monospace;width:120px;outline:none;}
+.inline-select{background:#fff;border:1px solid var(--ac);border-radius:4px;padding:3px 6px;font-size:11px;outline:none;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .sidebar{display:none;}
+  .table-header,.table-row{grid-template-columns:100px 1fr 80px 70px;}
+  .th:nth-child(2),.td:nth-child(2),
+  .th:nth-child(5),.td:nth-child(5){display:none;}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-logo">IMPAK</div>
+  <div class="topbar-title">Controle de Processos</div>
+  <div class="topbar-right">
+    <div id="cambio-bar" style="display:flex;gap:6px;"></div>
+    <button class="notif-btn" onclick="toggleNotif()" title="Notificações">
+      🔔
+      <span class="notif-count" id="notif-count" style="display:none">0</span>
+    </button>
+    <div class="user-badge" id="user-badge">—</div>
+    <button class="btn btn-sm" onclick="location.href='/logout'" style="background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);">Sair</button>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-label">Visão</div>
+    <div class="sidebar-item active" id="menu-todos" onclick="setFaseFilter('')">
+      📋 Todos os processos
+      <span class="badge ok" id="badge-total">0</span>
+    </div>
+    <div class="sidebar-item" id="menu-alertas" onclick="setFaseFilter('__alertas')">
+      🔴 Com alertas
+      <span class="badge" id="badge-alertas" style="display:none">0</span>
+    </div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Por fase</div>
+    <div class="sidebar-item" onclick="setFaseFilter('PI')">📄 PI recebida <span class="badge ok" id="sb-PI" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('AGUARDANDO_EMBARQUE')">⏳ Ag. Embarque <span class="badge ok" id="sb-AGUARDANDO_EMBARQUE" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('EMBARCADO')">🚢 Embarcado <span class="badge ok" id="sb-EMBARCADO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('DESEMBARCADO')">⚓ Desembarcado <span class="badge ok" id="sb-DESEMBARCADO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('REGISTRO_DI')">📋 Registro DI <span class="badge ok" id="sb-REGISTRO_DI" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('PARAMETRIZACAO')">🔍 Parametrização <span class="badge ok" id="sb-PARAMETRIZACAO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('CARREGAMENTO')">🚛 Carregamento <span class="badge ok" id="sb-CARREGAMENTO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('FATURAMENTO')">💰 Faturamento <span class="badge ok" id="sb-FATURAMENTO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('DEVOLUCAO_VAZIO')">📦 Dev. Vazio <span class="badge warn" id="sb-DEVOLUCAO_VAZIO" style="display:none">0</span></div>
+    <div class="sidebar-item" onclick="setFaseFilter('FINALIZADO')">✅ Finalizado <span class="badge" id="sb-FINALIZADO" style="display:none;background:var(--ok)">0</span></div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Dashboard</div>
+    <div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
+    <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💵 Visão financeira</div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Cadastros</div>
+    <div class="sidebar-item" onclick="abrirContatos()">📇 Fornecedores / Clientes / Despachantes / Agentes</div>
+  </div>
+  <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
+    <div class="sidebar-label">API Key Anthropic</div>
+    <div style="padding:0 8px;">
+      <input id="sidebar-apikey" type="password" placeholder="sk-ant-..." 
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;font-family:'DM Mono',monospace;color:var(--text);outline:none;"
+        oninput="salvarApiKey(this.value)">
+      <div id="sidebar-apikey-status" style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center;">Não configurada</div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- STATS -->
+  <div class="stats-grid" id="stats-grid"></div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <input class="search-box" id="search" placeholder="🔍 Ref, fornecedor, container, HBL, DI, navio, armador..." oninput="render()" style="flex:2;min-width:260px;">
+    <select id="filtro-cliente" onchange="render()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
+      <option value="">👤 Todos os clientes</option>
+    </select>
+    <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
+    <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
+    <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
+    <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
+    <button class="btn btn-outline" onclick="exportarFormatoCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor)">📋 Exportar p/ Cliente</button>
+    <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
+  </div>
+  <!-- FILTRO POR DATA -->
+  <div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+    <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">📅 Filtrar por data:</span>
+    <select id="filtro-data-campo" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+      <option value="eta">ETA</option>
+      <option value="data_chegada">Chegada</option>
+      <option value="data_embarque">Embarque</option>
+      <option value="etd">ETD</option>
+      <option value="pi_data">Data PI</option>
+      <option value="demurrage_vencimento">Venc. Demurrage</option>
+    </select>
+    <input type="date" id="filtro-data-de" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+    <span style="font-size:12px;color:var(--muted);">até</span>
+    <input type="date" id="filtro-data-ate" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+    <button class="btn btn-sm btn-outline" onclick="limparFiltroData()">Limpar</button>
+    <button class="btn btn-sm btn-outline" onclick="filtroEssaSemana()">Esta semana</button>
+    <button class="btn btn-sm btn-outline" onclick="filtroEsseMes()">Este mês</button>
+  </div>
+
+  <!-- FASE FILTER -->
+  <div class="fase-filter" id="fase-filter"></div>
+  <div id="filtro-financeiro-ativo"></div>
+
+  <!-- DASHBOARD EXECUTIVO -->
+  <div id="dash-executivo" style="display:none;margin-bottom:20px;">
+    <div id="periodo-seletor-executivo" style="margin-bottom:12px;"></div>
+    <div id="dash-exec-content"></div>
+  </div>
+
+  <!-- DASHBOARD FINANCEIRO -->
+  <div id="dash-financeiro" style="display:none;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">💵 Visão Financeira</div>
+      <div id="periodo-seletor-financeiro"></div>
+    </div>
+    <div id="dash-fin-content"></div>
+  </div>
+
+  <!-- TABELA -->
+  <div class="table-wrap">
+    <div class="table-header">
+      <div class="th">Referência</div>
+      <div class="th">Fornecedor</div>
+      <div class="th">Fase</div>
+      <div class="th">ETA / Chegada</div>
+      <div class="th">Demurrage</div>
+      <div class="th">Financeiro</div>
+      <div class="th">Ações</div>
+    </div>
+    <div id="table-body"></div>
+  </div>
+
+  <!-- PAGINAÇÃO -->
+  <div class="pag" id="paginacao"></div>
+</div>
+</div>
+</div>
+
+<!-- PAINEL NOTIFICAÇÕES -->
+<div class="notif-panel" id="notif-panel">
+  <div class="notif-header">
+    <span>🔔 Notificações</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button onclick="marcarTodasLidas()" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);padding:3px 8px;" title="Marcar todas como lidas">✓ Todas lidas</button>
+      <button onclick="toggleNotif()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">×</button>
+    </div>
+  </div>
+  <div id="notif-list" style="padding:8px 0;"></div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<!-- MODAL PROCESSO -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Novo Processo</div>
+      <div id="modal-fase-badge"></div>
+      <button class="modal-close" onclick="fecharModal()">×</button>
+    </div>
+    <div class="modal-tabs" id="modal-tabs"></div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- MODAL: CADASTRO DE CONTATOS -->
+<div class="modal-bg" id="modal-contatos-bg">
+  <div class="modal" style="max-width:880px;">
+    <div class="modal-header">
+      <div class="modal-title">📇 Cadastro de Contatos</div>
+      <button class="modal-close" onclick="fecharModalContatos()">×</button>
+    </div>
+    <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <div style="display:flex;gap:6px;margin:0;" id="contatos-tipo-filter">
+        <button class="btn btn-sm btn-primary" data-tipo="CLIENTE" onclick="filtrarContatosTipo('CLIENTE')">👤 Clientes</button>
+        <button class="btn btn-sm btn-outline" data-tipo="FORNECEDOR" onclick="filtrarContatosTipo('FORNECEDOR')">🏭 Fornecedores</button>
+        <button class="btn btn-sm btn-outline" data-tipo="DESPACHANTE" onclick="filtrarContatosTipo('DESPACHANTE')">📋 Despachantes</button>
+        <button class="btn btn-sm btn-outline" data-tipo="AGENTE" onclick="filtrarContatosTipo('AGENTE')">🚢 Agentes</button>
+      </div>
+      <input class="search-box" id="contatos-search" placeholder="🔍 Buscar por razão social, CNPJ..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
+      <button class="btn btn-primary" onclick="abrirNovoContato()">+ Novo</button>
+    </div>
+    <div class="modal-body" style="padding:0;max-height:480px;overflow-y:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead style="position:sticky;top:0;background:var(--card);z-index:1;">
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Razão Social</th>
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">CNPJ</th>
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Cidade/UF</th>
+            <th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Contato</th>
+            <th style="text-align:right;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="contatos-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR/NOVO CONTATO -->
+<div class="modal-bg" id="modal-contato-edit-bg">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title" id="contato-edit-title">Novo Contato</div>
+      <button class="modal-close" onclick="fecharModalContatoEdit()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ce_id">
+      <div class="form-group"><label class="form-label">Tipo</label>
+        <select class="form-input" id="ce_tipo">
+          <option value="CLIENTE">Cliente</option>
+          <option value="FORNECEDOR">Fornecedor</option>
+          <option value="DESPACHANTE">Despachante</option>
+          <option value="AGENTE">Agente de Carga</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Razão Social *</label>
+        <input class="form-input" id="ce_razao_social"></div>
+      <div class="form-group"><label class="form-label">Nome Fantasia</label>
+        <input class="form-input" id="ce_nome_fantasia"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">CNPJ</label>
+          <input class="form-input" id="ce_cnpj" placeholder="00.000.000/0000-00" oninput="formatarCnpjInput(this)" onblur="buscarDadosCnpj(this.value)">
+          <div id="ce_cnpj_status" style="font-size:10px;color:var(--dim);margin-top:2px;"></div></div>
+        <div class="form-group"><label class="form-label">UF</label>
+          <input class="form-input" id="ce_uf" maxlength="2" style="text-transform:uppercase;"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Cidade</label>
+        <input class="form-input" id="ce_cidade"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">E-mail</label>
+          <input class="form-input" id="ce_email"></div>
+        <div class="form-group"><label class="form-label">Telefone</label>
+          <input class="form-input" id="ce_telefone"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Observações</label>
+        <textarea class="form-input" id="ce_obs" rows="2"></textarea></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:12px;">
+        <button class="btn btn-outline" onclick="fecharModalContatoEdit()">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarContato()">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// UUID — compatível com Safari, Chrome, Firefox
+// ════════════════════════════════════════════════════════════════
+function gerarUUID(){
+  // Usar crypto.randomUUID se disponível (Chrome, Firefox, Edge)
+  if(typeof crypto !== 'undefined' && crypto.randomUUID){
+    return crypto.randomUUID();
+  }
+  // Fallback para Safari e browsers mais antigos
+  if(typeof crypto !== 'undefined' && crypto.getRandomValues){
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    );
+  }
+  // Último fallback: Math.random
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0;
+    return (c==='x' ? r : (r&0x3|0x8)).toString(16);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// ESTADO
+// ════════════════════════════════════════════════════════════════
+let _user = null;
+let _processos = [];
+let _faseFilter = '';
+let _searchText = '';
+let _pagina = 1;
+const POR_PAGINA = 50;
+let _editando = null; // processo sendo editado
+let _notifAberto = false;
+let _cambio = { USD: 1, BRL: 1 };
+
+const FASES = [
+  { id:'PI',                label:'PI Recebida',       icon:'📄' },
+  { id:'AGUARDANDO_EMBARQUE',label:'Ag. Embarque',      icon:'⏳' },
+  { id:'EMBARCADO',          label:'Embarcado',          icon:'🚢' },
+  { id:'DESEMBARCADO',       label:'Desembarcado',       icon:'⚓' },
+  { id:'REGISTRO_DI',        label:'Registro DI',        icon:'📋' },
+  { id:'PARAMETRIZACAO',     label:'Parametrização',     icon:'🔍' },
+  { id:'CARREGAMENTO',       label:'Carregamento',       icon:'🚛' },
+  { id:'FATURAMENTO',        label:'Faturamento',        icon:'💰' },
+  { id:'DEVOLUCAO_VAZIO',    label:'Dev. Vazio',         icon:'📦' },
+  { id:'FINALIZADO',         label:'Finalizado',         icon:'✅' },
+];
+
+const FASE_LABEL = Object.fromEntries(FASES.map(f=>[f.id, f.label]));
+const FASE_ICON  = Object.fromEntries(FASES.map(f=>[f.id, f.icon]));
+
+// ════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', function(){
+  fetch('/api/me').then(r=>r.json()).then(d=>{
+    if(!d.logado){ location.href='/login?destino=/controle'; return; }
+    _user = d;
+    document.getElementById('user-badge').textContent = d.displayName || d.usuario;
+    carregarCambio();
+  // Carregar API key salva
+  const savedKey = localStorage.getItem('impak_apikey')||'';
+  const keyInput = document.getElementById('sidebar-apikey');
+  const keyStatus = document.getElementById('sidebar-apikey-status');
+  if(keyInput && savedKey){ keyInput.value=savedKey; }
+  if(keyStatus){ keyStatus.textContent=savedKey.length>20?'✓ Configurada':'Não configurada'; keyStatus.style.color=savedKey.length>20?'var(--ok)':'var(--muted)'; }
+    carregarProcessos();
+    renderFaseFilter();
+    // Auto-refresh a cada 30s
+    setInterval(function(){ if(!document.getElementById('modal-bg').classList.contains('open')) carregarProcessos(true); }, 30000);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+// CÂMBIO
+// ════════════════════════════════════════════════════════════════
+async function carregarCambio(){
+  try{
+    const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL');
+    const d = await r.json();
+    // Valor bruto sem arredondar — Dólar Comercial (bid da AwesomeAPI)
+    _cambio.USD = parseFloat(d.USDBRL?.bid||5.2)||5.2;
+    _cambio.EUR = parseFloat(d.EURBRL?.bid||5.7)||5.7;
+    _cambio.CNY = parseFloat(d.CNYBRL?.bid||0.72)||0.72;
+    const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const bar = document.getElementById('cambio-bar');
+    if(bar) bar.innerHTML = [
+      `USD R$ ${_cambio.USD.toFixed(4)}`,
+      `EUR R$ ${_cambio.EUR.toFixed(4)}`,
+      `CNY R$ ${_cambio.CNY.toFixed(4)}`,
+    ].map(t=>`<span style="font-size:11px;font-family:'DM Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="Atualizado ${hora}">${t}</span>`).join('');
+  }catch(e){ console.warn('Câmbio erro:',e.message); }
+  setTimeout(carregarCambio, 5*60*1000);
+}
+
+// ════════════════════════════════════════════════════════════════
+// DADOS
+// ════════════════════════════════════════════════════════════════
+async function carregarProcessos(silencioso){
+  if(!silencioso) showToast('Carregando...','info');
+  try{
+    const r = await fetch('/api/controle/v2/processos');
+    const d = await r.json();
+    if(d.ok){
+      _processos = d.processos || [];
+      // Popular select de clientes
+      const selCliente = document.getElementById('filtro-cliente');
+      if(selCliente){
+        const clientesUnicos = [...new Set(_processos.map(p=>p.cliente||'').filter(Boolean))].sort();
+        const valAtual = selCliente.value;
+        selCliente.innerHTML = '<option value="">👤 Todos os clientes</option>' +
+          clientesUnicos.map(c=>`<option value="${c}" ${c===valAtual?'selected':''}>${c}</option>`).join('');
+      }
+      render();
+      renderStats();
+      renderFaseFilter();
+      carregarNotificacoes();
+      if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
+    }
+  }catch(e){
+    showToast('Erro ao carregar processos','err');
+  }
+}
+
+async function salvarProcesso(proc){
+  const isNovo = !proc.id;
+  if(isNovo) proc.id = gerarUUID();
+  proc.updated_by = _user.usuario;
+  proc.updated_at = new Date().toISOString();
+  if(isNovo){ proc.created_by = _user.usuario; proc.created_at = new Date().toISOString(); }
+
+  // Registrar câmbio USD no momento do pedido se não preenchido
+  if(!proc.pi_cambio && proc.pi_valor_usd && _cambio.USD){
+    proc.pi_cambio = _cambio.USD;
+  }
+
+  // Calcular vencimento demurrage automaticamente
+  if(proc.data_chegada && proc.free_time){
+    const chegada = new Date(proc.data_chegada);
+    chegada.setDate(chegada.getDate() + parseInt(proc.free_time||0));
+    proc.demurrage_vencimento = chegada.toISOString().split('T')[0];
+  }
+
+  // Avançar fase automaticamente
+  proc.fase = calcularFase(proc);
+
+  showToast('Salvando...','info');
+  let r, d;
+  try{
+    r = await fetch('/api/controle/v2/processo', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ processo: proc })
+    });
+    d = await r.json();
+  } catch(netErr){
+    showToast('Erro de rede ao salvar: '+netErr.message,'err');
+    return false;
+  }
+  if(d.ok){
+    showToast('✓ Salvo','ok');
+    // Criar notificação se houver alerta
+    verificarAlertas(proc, true);
+    await carregarProcessos(true);
+    return true;
+  } else {
+    showToast('Erro ao salvar: '+(d.erro||''),'err');
+    return false;
+  }
+}
+
+async function excluirProcesso(id){
+  if(!confirm('Excluir este processo?')) return;
+  const r = await fetch('/api/controle/v2/processo/'+id, {method:'DELETE'});
+  const d = await r.json();
+  if(d.ok){ showToast('Processo excluído','ok'); fecharModal(); carregarProcessos(true); }
+  else showToast('Erro ao excluir','err');
+}
+
+// ════════════════════════════════════════════════════════════════
+// FASE AUTOMÁTICA
+// ════════════════════════════════════════════════════════════════
+function calcularFase(p){
+  if(p.data_devolucao_vazio)                                        return 'FINALIZADO';
+  // Quando AMBAS as NFs (entrada e saída) estão emitidas, isso já é prova
+  // suficiente de que o carregamento aconteceu de fato — avança direto para
+  // Devolução do Vazio, mesmo sem a data_carregamento manual preenchida,
+  // para já acionar o alerta de demurrage dessa etapa.
+  if(p.data_carregamento || (p.nf_entrada_numero && p.nf_saida_numero)) return 'DEVOLUCAO_VAZIO';
+  if(p.data_agendamento || p.nf_saida_numero || p.nf_entrada_numero) return 'CARREGAMENTO';
+  if(p.data_liberacao || (p.canal==='VERDE' && p.data_parametrizacao)) return 'FATURAMENTO';
+  if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
+  if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
+  if(p.data_presenca || p.data_chegada)                             return 'DESEMBARCADO';
+  if(p.data_embarque || p.hbl)                                      return 'EMBARCADO';
+  if(p.etd || p.booking_numero)                                     return 'AGUARDANDO_EMBARQUE';
+  return 'PI';
+}
+
+// ════════════════════════════════════════════════════════════════
+// DEMURRAGE
+// ════════════════════════════════════════════════════════════════
+function demurrageDias(proc){
+  if(!proc.demurrage_vencimento) return null;
+  const venc = new Date(proc.demurrage_vencimento);
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  return Math.ceil((venc-hoje)/86400000);
+}
+
+function demurrageDisplay(proc){
+  if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
+  const dias = demurrageDias(proc);
+  if(dias === null) return '<span style="color:var(--dim)">—</span>';
+  if(dias < 0) return `<span class="demur-err">Vencido há ${Math.abs(dias)}d</span>`;
+  if(dias <= 5) return `<span class="demur-warn">⚠ ${dias}d</span>`;
+  return `<span class="demur-ok">${dias}d</span>`;
+}
+
+// Gera o bloco "Cálculo do Demurrage" (aba Logística). Extraída como função própria
+// para poder ser recalculada em tempo real conforme o usuário digita (ver
+// atualizarFaseEmTempoReal), e não apenas uma vez quando o modal abre.
+function renderDemurInfo(p){
+  if(!p.data_chegada && !p.demurrage_vencimento) return '';
+  const chegada   = p.data_chegada   ? new Date(p.data_chegada)   : null;
+  const freeTime  = parseInt(p.free_time||21);
+  const vencCalc  = chegada ? new Date(chegada) : null;
+  if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime);
+  const vencReal  = p.demurrage_vencimento ? new Date(p.demurrage_vencimento) : vencCalc;
+  const dias = demurrageDias(p);
+  const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
+
+  let statusTxt = '', statusIcon = '';
+  if(p.data_devolucao_vazio){
+    statusIcon = '✅'; statusTxt = `Container devolvido em ${new Date(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
+  } else if(dias !== null && dias < 0){
+    statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — custos acumulando!`;
+  } else if(dias !== null && dias <= 5){
+    statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
+  } else if(dias !== null){
+    statusIcon = '🟢'; statusTxt = `${dias} dias restantes`;
+  }
+
+  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">📊 Cálculo do Demurrage</div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+      ${chegada ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 Data de chegada</span><strong>${chegada.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time</span><strong>${freeTime} dias</strong></div>
+      ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
+      ${p.demurrage_valor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">💸 Valor registrado</span><strong>R$ ${parseFloat(p.demurrage_valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ALERTAS E NOTIFICAÇÕES
+// ════════════════════════════════════════════════════════════════
+function verificarAlertas(proc, criarNotif){
+  const alertas = [];
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+  // Demurrage
+  const diasDemur = demurrageDias(proc);
+  if(diasDemur !== null && diasDemur <= 5 && diasDemur >= 0 && !proc.data_devolucao_vazio){
+    alertas.push({tipo:'urgente', titulo:`Demurrage: ${proc.referencia}`, mensagem:`Vence em ${diasDemur} dia(s)! Container ainda não devolvido.`});
+  }
+  if(diasDemur !== null && diasDemur < 0 && !proc.data_devolucao_vazio){
+    alertas.push({tipo:'urgente', titulo:`Demurrage VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diasDemur)} dia(s). Custos em andamento.`});
+  }
+
+  // Alerta ETA: ETA passou e processo ainda está Embarcado
+  if(proc.eta && proc.fase === 'EMBARCADO'){
+    const eta = new Date(proc.eta); eta.setHours(0,0,0,0);
+    const diff = Math.ceil((hoje - eta)/86400000);
+    if(diff > 0){
+      alertas.push({tipo:'alerta', titulo:`ETA vencido: ${proc.referencia}`, mensagem:`ETA era ${eta.toLocaleDateString('pt-BR')} — processo ainda Embarcado. Verificar chegada.`});
+    }
+  }
+
+  // Alerta ETA próximo (2 dias)
+  if(proc.eta && proc.fase === 'EMBARCADO'){
+    const eta = new Date(proc.eta); eta.setHours(0,0,0,0);
+    const diff = Math.ceil((eta - hoje)/86400000);
+    if(diff >= 0 && diff <= 2){
+      alertas.push({tipo:'info', titulo:`ETA em ${diff === 0 ? 'hoje' : diff + 'd'}: ${proc.referencia}`, mensagem:`Navio previsto para ${eta.toLocaleDateString('pt-BR')}.`});
+    }
+  }
+
+  // Alerta PI vencimento (prazo pagamento nos próximos 5 dias)
+  if(proc.pi_data_saldo && !proc.pi_pago){
+    const venc = new Date(proc.pi_data_saldo); venc.setHours(0,0,0,0);
+    const diff = Math.ceil((venc - hoje)/86400000);
+    if(diff <= 5 && diff >= 0){
+      alertas.push({tipo:'urgente', titulo:`Pagamento PI vence em ${diff}d: ${proc.referencia}`, mensagem:`Saldo da PI vence em ${venc.toLocaleDateString('pt-BR')}.`});
+    }
+    if(diff < 0){
+      alertas.push({tipo:'urgente', titulo:`Pagamento PI VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diff)} dia(s).`});
+    }
+  }
+
+  if(criarNotif && alertas.length){
+    alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
+  }
+  return alertas;
+}
+
+// Cache em memória das notificações já carregadas nesta sessão, usado só
+// para evitar duplicatas — não substitui carregarNotificacoes().
+let _notifsCache = [];
+
+async function criarNotificacao(processoId, tipo, titulo, mensagem){
+  // Evita criar a mesma notificação de novo a cada save do processo: se já
+  // existe uma notificação idêntica (mesmo processo + mesmo título) criada
+  // nas últimas 24h, não cria outra. Sem isso, salvar o processo várias
+  // vezes no mesmo dia (comum durante ajustes) gerava um alerta duplicado
+  // a cada save, mesmo sem nada relacionado ao alerta ter mudado.
+  try{
+    if(!_notifsCache.length){
+      const r = await fetch('/api/controle/v2/notificacoes');
+      const d = await r.json();
+      if(d.ok) _notifsCache = d.notificacoes||[];
+    }
+    const ja_existe = _notifsCache.some(n=>{
+      if(n.processo_id!==processoId || n.titulo!==titulo) return false;
+      if(!n.created_at) return false;
+      const horas = (Date.now()-new Date(n.created_at).getTime())/3600000;
+      return horas < 24;
+    });
+    if(ja_existe) return;
+  }catch(e){ /* se a checagem falhar, segue e cria normalmente */ }
+
+  fetch('/api/controle/v2/notificacao', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({processo_id: processoId, tipo, titulo, mensagem})
+  }).then(()=>{ _notifsCache=[]; }).catch(()=>{}); // invalida cache após criar
+}
+
+async function carregarNotificacoes(){
+  try{
+    const r = await fetch('/api/controle/v2/notificacoes');
+    const d = await r.json();
+    if(!d.ok) return;
+    const notifs = d.notificacoes || [];
+    const naoLidas = notifs.filter(n => !n.lida_por || !n.lida_por.includes(_user.usuario));
+    const count = naoLidas.length;
+    const el = document.getElementById('notif-count');
+    if(el){
+      el.textContent = count;
+      el.style.display = count > 0 ? 'block' : 'none';
+    }
+    // Renderizar lista
+    const list = document.getElementById('notif-list');
+    if(!list) return;
+    if(!notifs.length){
+      list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Nenhuma notificação</div>';
+      return;
+    }
+    list.innerHTML = notifs.slice(0,30).map(n => {
+      const naoLida = !n.lida_por || !n.lida_por.includes(_user.usuario);
+      const cor = n.tipo==='urgente'?'var(--err)':n.tipo==='alerta'?'var(--warn)':'var(--ac)';
+      const iniciais = (n.created_by||'?').slice(0,2).toUpperCase();
+      const tempo = n.created_at ? tempoRelativo(n.created_at) : '';
+      return `<div class="notif-item ${naoLida?'unread':''} ${n.tipo}" onclick="abrirNotificacao(${n.id},'${n.processo_id||''}')">
+        <div class="notif-row">
+          <div class="notif-avatar" style="background:${cor}">${iniciais}</div>
+          <div class="notif-content">
+            <div class="notif-title">${n.titulo||''}</div>
+            <div class="notif-msg">${n.mensagem||''}</div>
+            <div class="notif-time">${tempo}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){}
+}
+
+async function marcarLida(id){
+  fetch('/api/controle/v2/notificacao/'+id+'/lida', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({usuario: _user.usuario})
+  }).then(()=>carregarNotificacoes()).catch(()=>{});
+}
+
+// Clicar numa notificação deve marcá-la como lida E abrir o processo que ela
+// se refere — antes só marcava como lida, sem nenhuma forma de chegar ao
+// processo a partir da notificação (era preciso buscar manualmente na lista).
+function abrirNotificacao(id, processoId){
+  marcarLida(id);
+  toggleNotif(); // fecha o painel de notificações
+  if(processoId){
+    abrirProcesso(processoId);
+  } else {
+    showToast('Esta notificação não está vinculada a um processo','info');
+  }
+}
+
+async function marcarTodasLidas(){
+  try{
+    const r = await fetch('/api/controle/v2/notificacoes');
+    const d = await r.json();
+    if(!d.ok) return;
+    const naoLidas = (d.notificacoes||[]).filter(n=>!n.lida_por||!n.lida_por.includes(_user.usuario));
+    await Promise.all(naoLidas.map(n=>
+      fetch('/api/controle/v2/notificacao/'+n.id+'/lida',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({usuario:_user.usuario})
+      })
+    ));
+    await carregarNotificacoes();
+    showToast('Todas as notificações marcadas como lidas','ok');
+  }catch(e){ showToast('Erro ao marcar notificações','err'); }
+}
+
+function toggleNotif(){
+  _notifAberto = !_notifAberto;
+  document.getElementById('notif-panel').classList.toggle('open', _notifAberto);
+  if(_notifAberto) carregarNotificacoes();
+}
+
+function tempoRelativo(isoDate){
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const min = Math.floor(diff/60000);
+  if(min < 1) return 'agora';
+  if(min < 60) return `${min}min atrás`;
+  const h = Math.floor(min/60);
+  if(h < 24) return `${h}h atrás`;
+  const d = Math.floor(h/24);
+  return `${d}d atrás`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════════
+// Rótulos amigáveis para os filtros financeiros especiais (usados pelos
+// cards clicáveis do Dashboard) — sem isso, o usuário não tem como saber
+// qual filtro está ativo depois de clicar num card e ir para a tabela.
+const FILTRO_FINANCEIRO_LABEL = {
+  __pi_aberto:          '💰 Processos com PI em aberto',
+  __pi_pago:            '✓ Processos com PI já paga',
+  __pi_vencido:         '🚨 Pagamentos vencidos',
+  __pi_vence_semana:    '⚠ Pagamentos vencendo em 7 dias',
+  __nf_entrada_periodo: '📥 NF Entrada no período selecionado',
+  __nf_saida_periodo:   '📤 NF Saída no período selecionado',
+  __demur_aberto:       '⏱ Demurrage em aberto',
+  __cambio_periodo:     '💱 Câmbio a pagar no período selecionado',
+};
+
+function renderFiltroFinanceiroAtivo(){
+  const el = document.getElementById('filtro-financeiro-ativo');
+  if(!el) return;
+  const label = FILTRO_FINANCEIRO_LABEL[_faseFilter];
+  if(!label){ el.innerHTML=''; return; }
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.2);border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--ac);">
+    <span>${label}</span>
+    <button type="button" onclick="setFaseFilter('')" style="margin-left:auto;border:none;background:none;color:var(--ac);font-weight:700;cursor:pointer;font-size:12px;">✕ Limpar filtro</button>
+  </div>`;
+}
+
+function renderFaseFilter(){
+  const el = document.getElementById('fase-filter');
+  if(!el) return;
+  el.innerHTML = `<div class="fase-pill ${_faseFilter===''?'active':''}" onclick="setFaseFilter('')">Todos</div>` +
+    FASES.map(f=>`<div class="fase-pill ${_faseFilter===f.id?'active':''}" onclick="setFaseFilter('${f.id}')">${f.icon} ${f.label}</div>`).join('');
+}
+
+function setFaseFilter(fase){
+  _faseFilter = fase;
+  _pagina = 1;
+  renderFaseFilter();
+  renderFiltroFinanceiroAtivo();
+  render();
+  // Atualizar sidebar
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  if(fase==='') document.getElementById('menu-todos')?.classList.add('active');
+  else if(fase==='__alertas') document.getElementById('menu-alertas')?.classList.add('active');
+}
+
+// Usada pelos cards clicáveis do Dashboard Executivo/Financeiro: fecha o
+// dashboard que estiver aberto e mostra a tabela principal já filtrada,
+// para o usuário poder ver e agir diretamente nos processos daquele número
+// (em vez do card ser só um número estático no topo).
+function abrirComFiltro(filtro){
+  const dashExec = document.getElementById('dash-executivo');
+  const dashFin  = document.getElementById('dash-financeiro');
+  if(dashExec) dashExec.style.display = 'none';
+  if(dashFin)  dashFin.style.display  = 'none';
+  document.getElementById('menu-executivo')?.classList.remove('active');
+  document.getElementById('menu-financeiro')?.classList.remove('active');
+  setFaseFilter(filtro);
+  document.querySelector('.table-wrap')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function renderStats(){
+  const el = document.getElementById('stats-grid');
+  if(!el) return;
+  const total = _processos.length;
+  const comAlerta = _processos.filter(p => verificarAlertas(p,false).length > 0).length;
+  const emAndamento = _processos.filter(p => p.fase !== 'FINALIZADO').length;
+  const finalizados = _processos.filter(p => p.fase === 'FINALIZADO').length;
+  // Demurrage crítico
+  const demurCrit = _processos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
+
+  const stats = [
+    {num:total,       label:'Total',          cor:'var(--ac)',  filtro:''},
+    {num:emAndamento, label:'Em andamento',    cor:'var(--warn)',filtro:'__andamento'},
+    {num:comAlerta,   label:'Com alertas',     cor:'var(--err)', filtro:'__alertas'},
+    {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur'},
+    {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
+  ];
+
+  // Badges sidebar por fase
+  const faseCount = {};
+  _processos.forEach(p=>{ faseCount[p.fase] = (faseCount[p.fase]||0)+1; });
+  ['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI',
+   'PARAMETRIZACAO','CARREGAMENTO','FATURAMENTO','DEVOLUCAO_VAZIO','FINALIZADO'].forEach(f=>{
+    const el = document.getElementById('sb-'+f);
+    if(!el) return;
+    const n = faseCount[f]||0;
+    el.textContent = n;
+    el.style.display = n > 0 ? 'inline' : 'none';
+  });
+  const badgeAlerta = document.getElementById('badge-alertas');
+  if(badgeAlerta){ badgeAlerta.textContent=comAlerta; badgeAlerta.style.display=comAlerta>0?'block':'none'; }
+  document.getElementById('badge-total').textContent = total;
+
+  el.innerHTML = stats.map(s=>`
+    <div class="stat-card" onclick="setFaseFilter('${s.filtro}')">
+      <div class="stat-num" style="color:${s.cor}">${s.num}</div>
+      <div class="stat-label">${s.label}</div>
+    </div>`).join('');
+}
+
+function filtrarProcessos(){
+  let lista = [..._processos];
+  const q = (document.getElementById('search')?.value||'').toLowerCase().trim();
+
+  if(q) lista = lista.filter(p=>
+    (p.referencia||'').toLowerCase().includes(q)||
+    (p.fornecedor||'').toLowerCase().includes(q)||
+    (p.cliente||'').toLowerCase().includes(q)||
+    (p.container||'').toLowerCase().includes(q)||
+    (p.hbl||'').toLowerCase().includes(q)||
+    (p.mbl||'').toLowerCase().includes(q)||
+    (p.numero_di||'').toLowerCase().includes(q)||
+    (p.navio||'').toLowerCase().includes(q)||
+    (p.armador||'').toLowerCase().includes(q)||
+    (p.booking_numero||'').toLowerCase().includes(q)
+  );
+
+  // Filtro por data
+  const dtDe  = document.getElementById('filtro-data-de')?.value;
+  const dtAte = document.getElementById('filtro-data-ate')?.value;
+  const dtCampo = document.getElementById('filtro-data-campo')?.value || 'eta';
+  if(dtDe || dtAte){
+    lista = lista.filter(p=>{
+      const val = p[dtCampo];
+      if(!val) return false;
+      if(dtDe  && val < dtDe)  return false;
+      if(dtAte && val > dtAte) return false;
+      return true;
+    });
+  }
+
+  if(_faseFilter==='__alertas')   lista = lista.filter(p=>verificarAlertas(p,false).length>0);
+  else if(_faseFilter==='__andamento') lista = lista.filter(p=>p.fase!=='FINALIZADO');
+  else if(_faseFilter==='__demur') lista = lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
+  // Filtros financeiros — usados pelos cards clicáveis do Dashboard Financeiro/Executivo
+  else if(_faseFilter==='__pi_aberto')  lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && !p.pi_pago);
+  else if(_faseFilter==='__pi_pago')    lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && p.pi_pago);
+  else if(_faseFilter==='__pi_vencido') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
+    return new Date(p.pi_data_saldo) < new Date(new Date().setHours(0,0,0,0));
+  });
+  else if(_faseFilter==='__pi_vence_semana') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    const semFim=new Date(hoje); semFim.setDate(hoje.getDate()+7);
+    const d=new Date(p.pi_data_saldo);
+    return d>=hoje && d<=semFim;
+  });
+  else if(_faseFilter==='__nf_entrada_periodo') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||!p.nf_entrada_data) return false;
+    const {ini,fim} = calcularPeriodo('financeiro');
+    const d=new Date(p.nf_entrada_data);
+    return d>=ini && d<=fim;
+  });
+  else if(_faseFilter==='__nf_saida_periodo') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||!p.nf_saida_data) return false;
+    const {ini,fim} = calcularPeriodo('financeiro');
+    const d=new Date(p.nf_saida_data);
+    return d>=ini && d<=fim;
+  });
+  else if(_faseFilter==='__demur_aberto') lista = lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento);
+  else if(_faseFilter==='__cambio_periodo') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
+    const {ini,fim} = calcularPeriodo('financeiro');
+    const checar = data => { if(!data) return false; const d=new Date(data); return d>=ini && d<=fim; };
+    return checar(p.pi_data_saldo) || checar(p.pi_data_entrada);
+  });
+  else if(_faseFilter) lista = lista.filter(p=>p.fase===_faseFilter);
+
+  // Filtro por cliente
+  const filtroCliente = document.getElementById('filtro-cliente')?.value||'';
+  if(filtroCliente) lista = lista.filter(p=>(p.cliente||'')=== filtroCliente);
+
+  return lista;
+}
+
+function render(){
+  const lista = filtrarProcessos();
+  const total = lista.length;
+  const totalPags = Math.max(1, Math.ceil(total/POR_PAGINA));
+  _pagina = Math.min(_pagina, totalPags);
+  const inicio = (_pagina-1)*POR_PAGINA;
+  const pagina = lista.slice(inicio, inicio+POR_PAGINA);
+
+  const tbody = document.getElementById('table-body');
+  if(!tbody) return;
+
+  if(!pagina.length){
+    tbody.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
+  } else {
+    tbody.innerHTML = pagina.map(p=>{
+      const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
+      const etaDate = p.eta ? new Date(p.eta).toLocaleDateString('pt-BR') : '—';
+      const chegadaDate = p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '';
+      const dataDisplay = chegadaDate || etaDate;
+      const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
+      return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
+        <div class="td td-ref">${p.referencia||'—'}</div>
+        <div class="td td-forn">${p.fornecedor||'—'}</div>
+        <div class="td" onclick="event.stopPropagation()">
+          <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)">
+            <span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>
+          </span>
+        </div>
+        <div class="td td-date" onclick="event.stopPropagation()">
+          <span class="inline-edit" onclick="inlineEditData('${p.id}','eta',this)" title="Clique para editar ETA">${dataDisplay}</span>
+        </div>
+        <div class="td">${demurrageDisplay(p)}</div>
+        <div class="td">${finBadge}</div>
+        <div class="td">
+          <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();abrirProcesso('${p.id}')">Abrir</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Paginação
+  const pag = document.getElementById('paginacao');
+  if(pag){
+    if(totalPags <= 1){ pag.innerHTML=''; return; }
+    let html = `<button class="pag-btn" onclick="_pagina--;render()" ${_pagina<=1?'disabled':''}>‹</button>`;
+    for(let i=1;i<=totalPags;i++){
+      if(i===1||i===totalPags||Math.abs(i-_pagina)<=1)
+        html+=`<button class="pag-btn ${i===_pagina?'active':''}" onclick="_pagina=${i};render()">${i}</button>`;
+      else if(Math.abs(i-_pagina)===2)
+        html+=`<span class="pag-info">…</span>`;
+    }
+    html+=`<button class="pag-btn" onclick="_pagina++;render()" ${_pagina>=totalPags?'disabled':''}>›</button>`;
+    html+=`<span class="pag-info">${total} processos</span>`;
+    pag.innerHTML = html;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODAL — ABRIR / NOVO
+// ════════════════════════════════════════════════════════════════
+function abrirNovo(){
+  _editando = { fase:'PI', free_time:21 };
+  renderModal();
+}
+
+async function abrirProcesso(id){
+  const proc = _processos.find(p=>p.id===id);
+  if(!proc) return;
+  _editando = {...proc};
+  renderModal();
+}
+
+function fecharModal(){
+  _editando = null;
+  document.getElementById('modal-bg').classList.remove('open');
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODAL — RENDER
+// ════════════════════════════════════════════════════════════════
+function renderModal(){
+  const p = _editando;
+  const isNovo = !p.id;
+  const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
+
+  document.getElementById('modal-title').textContent = isNovo ? 'Novo Processo' : p.referencia;
+  document.getElementById('modal-fase-badge').innerHTML = `<span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>`;
+  document.getElementById('modal-bg').classList.add('open');
+
+
+  // ── ABAS ──
+  const TABS = [
+    {id:'identificacao', label:'📄 Identificação'},
+    {id:'financeiro',    label:'💰 Financeiro'},
+    {id:'logistica',     label:'🚢 Logística'},
+    {id:'documentos',    label:'📋 Documentos'},
+    {id:'historico',     label:'📜 Histórico'},
+  ];
+  const temAlerta = verificarAlertas(p, false).length > 0;
+  const tabsHtml = TABS.map(t =>
+    `<div class="modal-tab ${t.id==='identificacao'?'active':''}" onclick="trocarAba('${t.id}')" id="tab-${t.id}">
+      ${t.label}${t.id==='identificacao'&&temAlerta?'<span class="tab-alert"></span>':''}
+    </div>`
+  ).join('');
+  document.getElementById('modal-tabs').innerHTML = tabsHtml;
+
+  // ── TIMELINE com datas ──
+  const faseIdx = FASES.findIndex(f=>f.id===p.fase);
+  // Mapa fase → data do processo
+  const faseDatas = {
+    'PI':                  p.pi_data,
+    'AGUARDANDO_EMBARQUE': p.previsao_prontidao||p.data_prontidao,
+    'EMBARCADO':           p.data_embarque,
+    'DESEMBARCADO':        p.data_chegada,
+    'REGISTRO_DI':         p.data_registro_di,
+    'PARAMETRIZACAO':      p.data_parametrizacao,
+    'FATURAMENTO':         p.nf_entrada_data||p.nf_saida_data,
+    'CARREGAMENTO':        p.data_agendamento||p.data_carregamento,
+    'DEVOLUCAO_VAZIO':     p.data_devolucao_vazio,
+    'FINALIZADO':          p.data_devolucao_vazio,
+  };
+  const timeline = FASES.map((f,i) => {
+    const done   = i < faseIdx;
+    const active = i === faseIdx;
+    const cls    = done?'done':active?'active':'';
+    const dataStr = faseDatas[f.id] ? `<div style="font-size:9px;color:var(--dim);margin-top:2px;">${new Date(faseDatas[f.id]).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>` : '';
+    return `
+      ${i>0?`<div class="tl-line ${done?'done':''}"></div>`:''}
+      <div class="tl-step">
+        <div class="tl-dot ${cls}">${done?'✓':f.icon}</div>
+        <div class="tl-label">${f.label}</div>
+        ${dataStr}
+      </div>`;
+  }).join('');
+
+  // ── ALERTAS ──
+  const alertas = verificarAlertas(p, false);
+  const alertasHtml = alertas.map(a=>
+    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">🚨 ${a.titulo}: ${a.mensagem}</div>`
+  ).join('');
+
+  // ── CONTEÚDO DAS ABAS ──
+  const finInfo = p.pi_pagamento ? renderPagamentoInfo(p) : '';
+
+  // Confirmação visual demurrage (calculada dinamicamente — ver renderDemurInfo)
+  let demurInfo = renderDemurInfo(p);
+
+  document.getElementById('modal-body').innerHTML = `
+    <!-- ABA: IDENTIFICAÇÃO -->
+    <div class="tab-pane active" id="pane-identificacao">
+      <div class="timeline">${timeline}</div>
+      ${alertasHtml}
+      <!-- IA -->
+      <div class="form-section" style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+        <div class="form-section-title" style="border:none;margin-bottom:8px;">🤖 Extração com IA</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Envie uma PI, CI ou BL para preencher os campos automaticamente</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extrairComIA(this)">
+          <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">📎 Selecionar documento</button>
+          <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+      <!-- Identificação -->
+      <div class="form-section">
+        <div class="form-section-title">📄 Identificação</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Referência *</label>
+            <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340"></div>
+          <div class="form-group"><label class="form-label">Fornecedor</label>
+            <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON"></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
+            <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
+              oninput="autocompletarCliente(this)" placeholder="Digite razão social, CNPJ ou cidade...">
+            <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
+          <div class="form-group full">
+            <label class="form-label">Produtos</label>
+            <div id="multi-produtos-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
+            <button type="button" onclick="adicionarProdutoItem()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Item</button>
+            <input type="hidden" id="f_produtos_json">
+            <input type="hidden" id="f_produto" value="${esc(p.produto||'')}">
+          </div>
+          <div class="form-group"><label class="form-label">Despachante</label>
+            <input class="form-input" id="f_despachante" value="${esc(p.despachante)}"></div>
+          <div class="form-group full"><label class="form-label">Observações</label>
+            <input class="form-input" id="f_obs" value="${esc(p.obs)}"></div>
+        </div>
+      </div>
+      <!-- Ações -->
+      <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
+        <div>${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}</div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA: FINANCEIRO -->
+    <div class="tab-pane" id="pane-financeiro">
+      <div class="form-section">
+        <div class="form-section-title">💰 Proforma Invoice (PI)</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nº PI</label>
+            <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}"></div>
+          <div class="form-group"><label class="form-label">Data PI</label>
+            <input class="form-input" type="date" id="f_pi_data" value="${esc(p.pi_data)}"></div>
+          <div class="form-group"><label class="form-label">Valor USD</label>
+            <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+          <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
+            <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
+          </div>
+          <div class="form-group"><label class="form-label">Incoterm</label>
+            <select class="form-input" id="f_pi_incoterm">
+              <option value="">—</option>
+              <option value="FOB" ${p.pi_incoterm==='FOB'?'selected':''}>FOB</option>
+              <option value="CIF" ${p.pi_incoterm==='CIF'?'selected':''}>CIF</option>
+              <option value="CFR" ${p.pi_incoterm==='CFR'?'selected':''}>CFR</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Forma de Pagamento</label>
+            <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()">
+              <option value="">—</option>
+              <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
+              <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
+              <option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}>Entrada + Saldo</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">PI Paga?</label>
+            <select class="form-input" id="f_pi_pago">
+              <option value="false" ${!p.pi_pago?'selected':''}>Não</option>
+              <option value="true"  ${p.pi_pago?'selected':''}>Sim ✓</option>
+            </select></div>
+        </div>
+        <div id="pagamento-campos"></div>
+        ${finInfo}
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">💵 Commercial Invoice (CI)</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nº CI</label>
+            <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}"></div>
+          <div class="form-group"><label class="form-label">Data CI</label>
+            <input class="form-input" type="date" id="f_ci_data" value="${esc(p.ci_data)}"></div>
+          <div class="form-group"><label class="form-label">Valor CI (USD)</label>
+            <input class="form-input" type="text" inputmode="decimal" id="f_ci_valor_usd" value="${exibirMoeda(p.ci_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- ABA: LOGÍSTICA -->
+    <div class="tab-pane" id="pane-logistica">
+      <div class="form-section">
+        <div class="form-section-title">🏭 Prontidão</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Previsão Prontidão</label>
+            <input class="form-input" type="date" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}"></div>
+          <div class="form-group"><label class="form-label">Data Prontidão Real</label>
+            <input class="form-input" type="date" id="f_data_prontidao" value="${esc(p.data_prontidao)}"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">📦 Booking & Embarque</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nº Booking</label>
+            <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Armador</label>
+            <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC"></div>
+          <div class="form-group"><label class="form-label">Navio</label>
+            <input class="form-input" id="f_navio" value="${esc(p.navio)}"></div>
+          <div class="form-group"><label class="form-label">Porto Origem</label>
+            <input class="form-input" id="f_porto_origem" value="${esc(p.porto_origem)}" placeholder="Ex: SHANGHAI"></div>
+          <div class="form-group"><label class="form-label">Porto Destino</label>
+            <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino)}" placeholder="Ex: ITAJAI"></div>
+          <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
+            <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">ETA</label>
+            <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
+          </div>
+          <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
+            <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Free Time (dias)</label>
+            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher após emissão do BL"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">🚛 Carregamento</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Agendamento</label>
+            <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Data Carregamento</label>
+            <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Transportadora</label>
+            <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}"></div>
+          <div class="form-group"><label class="form-label">Placa</label>
+            <input class="form-input" id="f_placa" value="${esc(p.placa)}"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">⚓ Chegada & Demurrage</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Data Chegada</label>
+            <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Presença de Carga</label>
+            <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Demurrage Vence</label>
+            <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Data Devolução</label>
+            <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
+            <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Demurrage Pago?</label>
+            <select class="form-input" id="f_demurrage_pago">
+              <option value="false" ${!p.demurrage_pago?'selected':''}>Não</option>
+              <option value="true"  ${p.demurrage_pago?'selected':''}>Sim ✓</option>
+            </select></div>
+        </div>
+        <div id="demur-info-wrap">${demurInfo}</div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- ABA: DOCUMENTOS -->
+    <div class="tab-pane" id="pane-documentos">
+      <div class="form-section">
+        <div class="form-section-title">🔢 Números de Referência</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">HBL</label>
+            <input class="form-input" id="f_hbl" value="${esc(p.hbl)}" oninput="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">MBL</label>
+            <input class="form-input" id="f_mbl" value="${esc(p.mbl)}"></div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Containers</label>
+            <div id="multi-containers-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
+            <button type="button" onclick="adicionarContainer()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Container</button>
+            <input type="hidden" id="f_containers_json">
+            <input type="hidden" id="f_container" value="${esc(p.container||'')}">
+            <input type="hidden" id="f_tipo_container" value="${esc(p.tipo_container||'40HC')}">
+          </div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">⚓ CE Mercante</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Número CE</label>
+            <input class="form-input" id="f_ce_numero" value="${esc(p.ce_numero)}"></div>
+          <div class="form-group"><label class="form-label">Data Embarque (CE)</label>
+            <input class="form-input" type="date" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
+          <div class="form-group"><label class="form-label">Armador (CE)</label>
+            <input class="form-input" id="f_ce_armador" value="${esc(p.ce_armador)}" placeholder="Transportador conforme CE"></div>
+        </div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extração por IA, o campo Navio (aba Logística) é atualizado automaticamente para o navio de chegada — em caso de transbordo no exterior, o navio de conexão/último navio.</div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">📋 DI e Parametrização</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Data Registro DI</label>
+            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Número DI</label>
+            <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Canal</label>
+            <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
+              <option value="">—</option>
+              <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
+              <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
+              <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Data Parametrização</label>
+            <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Data Liberação</label>
+            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
+        </div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">🧾 Faturamento</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">NF Entrada Nº</label>
+            <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">NF Entrada Data</label>
+            <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
+          <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
+            <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+          <div class="form-group"><label class="form-label">NF Saída Nº</label>
+            <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">NF Saída Data</label>
+            <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
+          <div class="form-group"><label class="form-label">NF Saída Valor (R$)</label>
+            <input class="form-input" type="text" inputmode="decimal" id="f_nf_saida_valor" value="${exibirMoeda(p.nf_saida_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">📎 Arquivos do Processo (GED)</div>
+        <div id="ged-upload-area" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;" onclick="document.getElementById('ged-file-input').click()">
+          <input type="file" id="ged-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="uploadArquivosGed(this.files)">
+          <div style="color:var(--muted);font-size:13px;">📤 Clique para enviar PDF, JPEG ou PNG</div>
+          <div style="color:var(--dim);font-size:11px;margin-top:4px;">Múltiplos arquivos permitidos</div>
+        </div>
+        <div id="ged-lista-arquivos" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- ABA: HISTÓRICO -->
+    <div class="tab-pane" id="pane-historico">
+      <div id="historico-lista">
+        ${isNovo
+          ? '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Salve o processo para começar a registrar alterações.</div></div>'
+          : '<div style="font-size:11px;color:var(--dim);">Carregando histórico...</div>'
+        }
+      </div>
+    </div>
+  `;
+
+  renderPagamentoCampos();
+  // Inicializar multi-containers
+  try{
+    if(p.containers_json) _containers = JSON.parse(p.containers_json);
+    else if(p.container) _containers = [{numero:p.container||'', tipo:p.tipo_container||'40HC', lacre:p.lacre||''}];
+    else _containers = [{numero:'', tipo:'40HC', lacre:''}];
+  }catch(e){ _containers = [{numero:'', tipo:'40HC', lacre:''}]; }
+  renderMultiContainers();
+  // Inicializar multi-produtos (com retrocompatibilidade do campo "produto" legado em texto único)
+  try{
+    if(p.produtos_json) _produtos = JSON.parse(p.produtos_json);
+    else if(p.produto) _produtos = [{descricao:p.produto||'', quantidade:''}];
+    else _produtos = [{descricao:'', quantidade:''}];
+  }catch(e){ _produtos = [{descricao:'', quantidade:''}]; }
+  renderMultiProdutos();
+  if(!isNovo){ carregarArquivosGed(p.id); carregarHistorico(p.id); }
+  else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
+}
+
+// ════════════════════════════════════════════════════════════════
+// HISTÓRICO — AUDITORIA DE ALTERAÇÕES
+// ════════════════════════════════════════════════════════════════
+async function carregarHistorico(processoId){
+  const lista = document.getElementById('historico-lista');
+  if(!lista) return;
+  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando histórico...</div>';
+  try{
+    const r = await fetch('/api/controle/v2/processo/'+processoId+'/log');
+    const d = await r.json();
+    if(!d.ok || !d.log.length){
+      lista.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma alteração registrada ainda</div></div>';
+      return;
+    }
+    lista.innerHTML = '<div class="log-list">' + d.log.map(l=>
+      `<div class="log-item">
+        <div class="log-avatar">${(l.usuario||'?').slice(0,2).toUpperCase()}</div>
+        <div class="log-content">
+          <span class="log-user">${esc(l.usuario||'?')}</span>
+          <span class="log-text"> alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}</span>
+          <div class="log-time">${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : ''}</div>
+        </div>
+      </div>`
+    ).join('') + '</div>';
+  }catch(e){
+    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar histórico.</div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// GED — UPLOAD E GESTÃO DE ARQUIVOS DO PROCESSO
+// ════════════════════════════════════════════════════════════════
+async function carregarArquivosGed(processoId){
+  const lista = document.getElementById('ged-lista-arquivos');
+  if(!lista) return;
+  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando...</div>';
+  try{
+    const r = await fetch('/api/controle/v2/arquivos/'+processoId);
+    const d = await r.json();
+    if(!d.ok || !d.arquivos.length){
+      lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Nenhum arquivo enviado ainda.</div>';
+      return;
+    }
+    lista.innerHTML = d.arquivos.map(a=>{
+      const icon = a.nome.toLowerCase().endsWith('.pdf') ? '📄' : '🖼️';
+      const tamanho = a.tamanho ? (a.tamanho/1024).toFixed(0)+' KB' : '';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;">
+        <span>${icon}</span>
+        <a href="${a.url}" target="_blank" style="flex:1;color:var(--ac);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.nome}</a>
+        <span style="color:var(--dim);font-size:10px;">${tamanho}</span>
+        <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">✕</button>
+      </div>`;
+    }).join('');
+  }catch(e){
+    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar arquivos.</div>';
+  }
+}
+
+async function uploadArquivosGed(files){
+  const p = _editando;
+  if(!p || !p.id){ showToast('Salve o processo antes de enviar arquivos','warn'); return; }
+  if(!files || !files.length) return;
+
+  const lista = document.getElementById('ged-lista-arquivos');
+  for(const file of files){
+    const tiposPermitidos = ['application/pdf','image/jpeg','image/jpg','image/png'];
+    if(!tiposPermitidos.includes(file.type)){
+      showToast(`Tipo não permitido: ${file.name}`,'err');
+      continue;
+    }
+    if(file.size > 15*1024*1024){
+      showToast(`Arquivo muito grande (máx 15MB): ${file.name}`,'err');
+      continue;
+    }
+    try{
+      const base64 = await new Promise((res,rej)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>res(reader.result.split(',')[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      showToast(`Enviando ${file.name}...`,'ok');
+      const r = await fetch('/api/controle/v2/arquivos', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          processo_id: p.id,
+          nome: file.name,
+          tipo: file.type,
+          base64,
+        })
+      });
+      const d = await r.json();
+      if(!d.ok) showToast('Erro ao enviar '+file.name+': '+(d.erro||''),'err');
+    }catch(e){
+      showToast('Erro ao enviar '+file.name,'err');
+    }
+  }
+  carregarArquivosGed(p.id);
+}
+
+async function excluirArquivoGed(arquivoId, processoId){
+  if(!confirm('Excluir este arquivo?')) return;
+  try{
+    const r = await fetch('/api/controle/v2/arquivos/'+arquivoId, { method:'DELETE' });
+    const d = await r.json();
+    if(d.ok){ showToast('Arquivo excluído','ok'); carregarArquivosGed(processoId); }
+    else showToast('Erro ao excluir','err');
+  }catch(e){ showToast('Erro ao excluir','err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ATUALIZAÇÃO AUTOMÁTICA DE FASE EM TEMPO REAL
+// ════════════════════════════════════════════════════════════════
+
+// Quando o canal sai VERDE, não há etapa de conferência separada — a
+// parametrização ocorre na mesma data do registro da DI. Só preenche
+// automaticamente se o campo ainda estiver vazio, para não sobrescrever
+// uma data de parametrização já informada manualmente (ex: Amarelo/Vermelho
+// que depois virou Verde após reanálise, mas já tinha data própria).
+function aplicarRegraParametrizacaoVerde(){
+  const canalEl = document.getElementById('f_canal');
+  const paramEl = document.getElementById('f_data_parametrizacao');
+  const regEl   = document.getElementById('f_data_registro_di');
+  if(!canalEl || !paramEl || !regEl) return;
+  if(canalEl.value === 'VERDE' && !paramEl.value && regEl.value){
+    paramEl.value = regEl.value;
+  }
+}
+
+function atualizarFaseEmTempoReal(){
+  if(!_editando) return;
+
+  // Coletar valores atuais do form
+  const campos = [
+    'data_embarque','hbl','mbl','etd','eta','booking_numero',
+    'data_chegada','data_presenca',
+    'data_registro_di','numero_di',
+    'canal','data_parametrizacao','data_liberacao',
+    'nf_entrada_numero','nf_saida_numero',
+    'data_agendamento','data_carregamento',
+    'data_devolucao_vazio','demurrage_vencimento','free_time',
+  ];
+
+  const snapshot = {..._editando};
+  campos.forEach(campo=>{
+    const el = document.getElementById('f_'+campo);
+    if(!el) return;
+    const val = el.value?.trim()||null;
+    snapshot[campo] = val||null;
+  });
+  // demurrage_valor usa máscara monetária — não pode ser lido como texto puro
+  const valorDemurAtual = valorMoeda('f_demurrage_valor');
+  if(valorDemurAtual!=null) snapshot.demurrage_valor = valorDemurAtual;
+
+  const novaFase = calcularFase(snapshot);
+
+  // Atualizar badge no header do modal
+  const badge = document.getElementById('modal-fase-badge');
+  if(badge){
+    const fase = FASES.find(f=>f.id===novaFase)||FASES[0];
+    badge.innerHTML = `<span class="fase-badge fase-${novaFase}">${fase.icon} ${fase.label}</span>`;
+  }
+
+  // Atualizar _editando.fase para que ao salvar já venha correto
+  _editando._fasePrevista = novaFase;
+
+  // Recalcular e redesenhar o bloco "Cálculo do Demurrage" com os valores
+  // atuais do formulário — antes este bloco só era montado uma vez, ao abrir
+  // o modal, e ficava com dados desatualizados ao editar Data Devolução etc.
+  const demurWrap = document.getElementById('demur-info-wrap');
+  if(demurWrap) demurWrap.innerHTML = renderDemurInfo(snapshot);
+
+  // Atualizar a timeline
+  const faseIdx = FASES.findIndex(f=>f.id===novaFase);
+  document.querySelectorAll('.tl-dot').forEach((dot, i)=>{
+    dot.className = 'tl-dot';
+    if(i < faseIdx) dot.classList.add('done'), dot.textContent='✓';
+    else if(i===faseIdx) dot.classList.add('active'), dot.textContent=FASES[i].icon;
+    else dot.textContent=FASES[i].icon;
+  });
+  document.querySelectorAll('.tl-line').forEach((line, i)=>{
+    line.className = 'tl-line';
+    if(i < faseIdx) line.classList.add('done');
+  });
+}
+
+function trocarAba(id){
+  document.querySelectorAll('.modal-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  const tab = document.getElementById('tab-'+id);
+  const pane = document.getElementById('pane-'+id);
+  if(tab)  tab.classList.add('active');
+  if(pane) pane.classList.add('active');
+}
+
+// ════════════════════════════════════════════════════════════════
+// PAGAMENTO
+// ════════════════════════════════════════════════════════════════
+function renderPagamentoCampos(){
+  const tipo = document.getElementById('f_pi_pagamento')?.value;
+  const p = _editando || {};
+  const el = document.getElementById('pagamento-campos');
+  if(!el) return;
+  if(!tipo){ el.innerHTML=''; return; }
+
+  let html = '<div class="form-grid" style="margin-top:12px;">';
+  if(tipo==='VISTA'){
+    html+=`<div class="form-group"><label class="form-label">Data Pagamento</label>
+      <input class="form-input" type="date" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>`;
+  } else if(tipo==='PRAZO'){
+    html+=`<div class="form-group"><label class="form-label">Prazo (dias)</label>
+      <input class="form-input" type="number" id="f_pi_prazo_dias" value="${p.pi_prazo_dias||''}"></div>
+      <div class="form-group"><label class="form-label">Data Pagamento</label>
+      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
+  } else if(tipo==='ENTRADA_SALDO'){
+    html+=`<div class="form-group"><label class="form-label">% Entrada</label>
+      <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct||30}" min="1" max="99" oninput="renderPagamentoInfoLive()"></div>
+      <div class="form-group"><label class="form-label">Data Entrada</label>
+      <input class="form-input" type="date" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>
+      <div class="form-group"><label class="form-label">Data Saldo</label>
+      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
+      <div class="form-group"><label class="form-label">Câmbio Entrada (R$)</label>
+      <input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_entrada" value="${exibirMoeda(p.pi_cambio_entrada)||''}" placeholder="${exibirMoeda(_cambio.USD)}" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()"></div>
+      <div class="form-group"><label class="form-label">Câmbio Saldo (R$)</label>
+      <input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_saldo" value="${exibirMoeda(p.pi_cambio_saldo)||''}" placeholder="${exibirMoeda(_cambio.USD)}" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()"></div>`;
+  }
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+// Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuário
+// edita % de entrada ou os câmbios, sem precisar salvar/reabrir o modal.
+function renderPagamentoInfoLive(){
+  if(!_editando) return;
+  const snapshot = {..._editando};
+  const pct = document.getElementById('f_pi_entrada_pct')?.value;
+  if(pct!=null && pct!=='') snapshot.pi_entrada_pct = pct;
+  const ce = valorMoeda('f_pi_cambio_entrada');
+  const cs = valorMoeda('f_pi_cambio_saldo');
+  if(ce!=null) snapshot.pi_cambio_entrada = ce;
+  if(cs!=null) snapshot.pi_cambio_saldo = cs;
+  const box = document.querySelector('#pane-financeiro .pagamento-box');
+  const novoHtml = renderPagamentoInfo(snapshot);
+  if(box && box.parentElement) box.outerHTML = novoHtml || box.outerHTML;
+}
+
+function renderPagamentoInfo(p){
+  if(!p.pi_pagamento||!p.pi_valor_usd) return '';
+  const val = parseFloat(p.pi_valor_usd)||0;
+  const brl = val * _cambio.USD;
+  let rows = '';
+  if(p.pi_pagamento==='VISTA'){
+    rows=`<div class="pagamento-row"><span>Pagamento à vista</span><span>USD ${val.toFixed(2)}</span></div>
+    <div class="pagamento-row"><span>Estimativa BRL</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+  } else if(p.pi_pagamento==='PRAZO'){
+    rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toFixed(2)}</span></div>`;
+  } else if(p.pi_pagamento==='ENTRADA_SALDO'){
+    const pct = parseFloat(p.pi_entrada_pct||30)/100;
+    const ent = val*pct; const sld = val*(1-pct);
+    const cambioEnt = parseFloat(p.pi_cambio_entrada) || _cambio.USD;
+    const cambioSld = parseFloat(p.pi_cambio_saldo)   || _cambio.USD;
+    const entBRL = ent*cambioEnt; const sldBRL = sld*cambioSld;
+    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) · câmbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} · R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) · câmbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} · R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} · R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+  }
+  return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// COLETAR E SALVAR
+// ════════════════════════════════════════════════════════════════
+function coletarESalvar(){
+  const ref = document.getElementById('f_referencia')?.value?.trim();
+  if(!ref){ showToast('Informe a Referência','err'); return; }
+
+  const antigo = {...(_editando||{})};
+  const campos = [
+    'referencia','fornecedor','cliente','produto','obs',
+    'pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento','pi_pago',
+    'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
+    'previsao_prontidao','data_prontidao',
+    'booking_numero','armador','navio','viagem','porto_origem','porto_destino',
+    'etd','eta','free_time','data_embarque','hbl','mbl','container','tipo_container',
+    'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
+    'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
+    'ci_numero','ci_data','ci_valor_usd',
+    'ce_numero','ce_data_embarque','ce_armador',
+    'data_agendamento','data_carregamento','transportadora','placa',
+    'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
+    'nf_saida_numero','nf_saida_data','nf_saida_valor',
+    'data_devolucao_vazio','demurrage_valor','demurrage_pago',
+    'despachante','pi_cambio','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json',
+  ];
+
+  const proc = {..._editando};
+  const log = proc.log || [];
+
+  // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
+  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','pi_cambio_entrada','pi_cambio_saldo'];
+
+  // Remover campo interno de controle
+  delete proc._fasePrevista;
+
+  campos.forEach(campo=>{
+    const el = document.getElementById('f_'+campo);
+    if(!el) return;
+    let val;
+    if(camposMoeda.includes(campo)) val = valorMoeda('f_'+campo);
+    else{
+      val = el.value?.trim();
+      if(el.type==='number') val = val===''?null:parseFloat(val);
+      else if(campo==='pi_pago'||campo==='demurrage_pago') val = val==='true';
+      else if(val==='') val = null;
+    }
+
+    // Log de auditoria
+    const antes = antigo[campo];
+    if(String(antes||'')!==String(val||'')){
+      log.push({
+        campo, valor_antes: antes||'', valor_depois: val||'',
+        usuario: _user.usuario,
+        created_at: new Date().toISOString()
+      });
+    }
+    proc[campo] = val;
+  });
+
+  // Salvar multi-containers e auditar mudança
+  sincronizarContainerLegado();
+  const novosContainersJson = JSON.stringify(_containers);
+  if(String(antigo.containers_json||'')!==novosContainersJson){
+    log.push({
+      campo:'containers_json', valor_antes: antigo.containers_json||'', valor_depois: novosContainersJson,
+      usuario: _user.usuario, created_at: new Date().toISOString()
+    });
+  }
+  proc.containers_json = novosContainersJson;
+  proc.container = _containers[0]?.numero||'';
+  proc.tipo_container = _containers[0]?.tipo||'40HC';
+
+  // Salvar multi-produtos e auditar mudança
+  sincronizarProdutoLegado();
+  const novosProdutosJson = JSON.stringify(_produtos);
+  if(String(antigo.produtos_json||'')!==novosProdutosJson){
+    log.push({
+      campo:'produtos_json', valor_antes: antigo.produtos_json||'', valor_depois: novosProdutosJson,
+      usuario: _user.usuario, created_at: new Date().toISOString()
+    });
+  }
+  proc.produtos_json = novosProdutosJson;
+  proc.produto = document.getElementById('f_produto')?.value || '';
+
+  proc.log = log;
+  _editando = proc;
+
+  salvarProcesso(proc).then(ok=>{ if(ok) fecharModal(); });
+}
+
+// ════════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// EXPORTAÇÃO EXCEL
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// MULTI-CONTAINERS
+// ════════════════════════════════════════════════════════════════
+let _containers = []; // [{numero, tipo, lacre}]
+
+function renderMultiContainers(){
+  const lista = document.getElementById('multi-containers-list');
+  if(!lista) return;
+  if(!_containers.length) _containers = [{numero:'', tipo:'40HC', lacre:''}];
+  lista.innerHTML = _containers.map((c,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 100px 1fr 32px;gap:6px;align-items:center;">
+      <input class="form-input" placeholder="Nº Container (ex: MSCU1234567)" value="${c.numero||''}"
+        oninput="_containers[${i}].numero=this.value;sincronizarContainerLegado()">
+      <select class="form-input" onchange="_containers[${i}].tipo=this.value;sincronizarContainerLegado()">
+        <option value="20GP" ${c.tipo==='20GP'?'selected':''}>20GP</option>
+        <option value="40GP" ${c.tipo==='40GP'?'selected':''}>40GP</option>
+        <option value="40HC" ${(!c.tipo||c.tipo==='40HC')?'selected':''}>40HC</option>
+        <option value="40NOR" ${c.tipo==='40NOR'?'selected':''}>40NOR</option>
+      </select>
+      <input class="form-input" placeholder="Lacre (opcional)" value="${c.lacre||''}"
+        oninput="_containers[${i}].lacre=this.value">
+      ${_containers.length>1
+        ? `<button type="button" onclick="removerContainer(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
+        : '<div></div>'}
+    </div>
+  `).join('');
+  sincronizarContainerLegado();
+}
+
+function adicionarContainer(){
+  _containers.push({numero:'', tipo:'40HC', lacre:''});
+  renderMultiContainers();
+}
+
+function removerContainer(i){
+  _containers.splice(i,1);
+  if(!_containers.length) _containers = [{numero:'', tipo:'40HC', lacre:''}];
+  renderMultiContainers();
+}
+
+function sincronizarContainerLegado(){
+  // Manter campo legado f_container com o primeiro container para compatibilidade
+  const input = document.getElementById('f_containers_json');
+  if(input) input.value = JSON.stringify(_containers);
+  const fc = document.getElementById('f_container');
+  const ft = document.getElementById('f_tipo_container');
+  if(fc && _containers[0]) fc.value = _containers[0].numero||'';
+  if(ft && _containers[0]) ft.value = _containers[0].tipo||'40HC';
+}
+
+// ════════════════════════════════════════════════════════════════
+// MULTI-PRODUTOS (descrição + quantidade, múltiplos itens)
+// ════════════════════════════════════════════════════════════════
+let _produtos = []; // [{descricao, quantidade}]
+
+function renderMultiProdutos(){
+  const lista = document.getElementById('multi-produtos-list');
+  if(!lista) return;
+  if(!_produtos.length) _produtos = [{descricao:'', quantidade:''}];
+  lista.innerHTML = _produtos.map((it,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 110px 32px;gap:6px;align-items:center;">
+      <input class="form-input" placeholder="Descrição (ex: PNEU TBR 295/80R22.5)" value="${esc(it.descricao||'')}"
+        oninput="_produtos[${i}].descricao=this.value;sincronizarProdutoLegado()">
+      <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
+        oninput="_produtos[${i}].quantidade=this.value;sincronizarProdutoLegado()">
+      ${_produtos.length>1
+        ? `<button type="button" onclick="removerProdutoItem(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
+        : '<div></div>'}
+    </div>
+  `).join('');
+  sincronizarProdutoLegado();
+}
+
+function adicionarProdutoItem(){
+  _produtos.push({descricao:'', quantidade:''});
+  renderMultiProdutos();
+}
+
+function removerProdutoItem(i){
+  _produtos.splice(i,1);
+  if(!_produtos.length) _produtos = [{descricao:'', quantidade:''}];
+  renderMultiProdutos();
+}
+
+function sincronizarProdutoLegado(){
+  // Manter campo legado f_produto com resumo (1º item + "e mais N") para compatibilidade
+  // com telas/relatórios que ainda leem o texto único.
+  const input = document.getElementById('f_produtos_json');
+  if(input) input.value = JSON.stringify(_produtos);
+  const fp = document.getElementById('f_produto');
+  if(fp){
+    const validos = _produtos.filter(it=>it.descricao);
+    fp.value = validos.length
+      ? validos.map(it=>it.descricao + (it.quantidade?` (${it.quantidade})`:'')).join(' + ')
+      : '';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// RELATÓRIO COM FILTROS
+// ════════════════════════════════════════════════════════════════
+async function exportarRelatorio(){
+  const lista = filtrarProcessos();
+  if(!lista.length){ showToast('Nenhum processo no filtro atual','warn'); return; }
+
+  const cliente = document.getElementById('filtro-cliente')?.value||'Todos';
+  const dtDe = document.getElementById('filtro-data-de')?.value||'';
+  const dtAte = document.getElementById('filtro-data-ate')?.value||'';
+  const fase = document.getElementById('fase-filter')?.querySelector('.active')?.textContent||'';
+
+  showToast(`Gerando relatório de ${lista.length} processos...`,'ok');
+
+  const rows = [
+    ['IMPAK — Relatório de Processos de Importação'],
+    [`Cliente: ${cliente}`, `Período: ${dtDe||'—'} a ${dtAte||'—'}`, `Fase: ${fase||'Todas'}`, `Total: ${lista.length} processos`],
+    [`Gerado em: ${new Date().toLocaleString('pt-BR')}`],
+    [],
+    ['REF','FORNECEDOR','CLIENTE','FASE','ETA','ETD','EMBARQUE','CHEGADA',
+     'ARMADOR','NAVIO','CONTAINER','HBL','MBL','Nº DI','CANAL',
+     'PI VALOR USD','PI PAGO','NF SAÍDA Nº','NF SAÍDA VALOR','OBS'],
+  ];
+
+  lista.forEach(p=>{
+    const ctrs = p.containers_json ? JSON.parse(p.containers_json) : [{numero:p.container||'',tipo:p.tipo_container||'',lacre:''}];
+    const ctStr = ctrs.map(c=>`${c.numero}${c.tipo?' ('+c.tipo+')':''}${c.lacre?' L:'+c.lacre:''}`).join(' | ');
+    rows.push([
+      p.referencia||'', p.fornecedor||'', p.cliente||'', p.fase||'',
+      p.eta||'', p.etd||'', p.data_embarque||'', p.data_chegada||'',
+      p.armador||'', p.navio||'', ctStr,
+      p.hbl||'', p.mbl||'', p.numero_di||'', p.canal||'',
+      p.pi_valor_usd||'', p.pi_pago?'SIM':'NÃO',
+      p.nf_saida_numero||'', p.nf_saida_valor||'', p.obs||'',
+    ]);
+  });
+
+  try{
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [12,18,18,16,11,11,11,11,14,16,22,14,14,14,8,13,8,14,14,30].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Processos');
+    const nome = `IMPAK_Relatorio_${cliente.replace(/[^a-zA-Z0-9]/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, nome);
+    showToast(`✓ Relatório exportado: ${lista.length} processos`,'ok');
+  }catch(e){
+    showToast('Erro ao gerar relatório: '+e.message,'err');
+  }
+}
+
+async function exportarExcel(){
+  showToast('Gerando planilha...','info');
+  try{
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    const lista = filtrarProcessos(); // exporta a visão atual (com filtros aplicados)
+
+    const linhas = lista.map(p=>({
+      'Referência':          p.referencia||'',
+      'Fornecedor':          p.fornecedor||'',
+      'Cliente':             p.cliente||'',
+      'Produto':             p.produto||'',
+      'Fase':                FASE_LABEL[p.fase]||p.fase||'',
+      'Despachante':         p.despachante||'',
+      'Armador':             p.armador||'',
+      'Navio':               p.navio||'',
+      'Porto Origem':        p.porto_origem||'',
+      'Porto Destino':       p.porto_destino||'',
+      'ETD':                 p.etd||'',
+      'ETA':                 p.eta||'',
+      'Data Embarque':       p.data_embarque||'',
+      'Data Chegada':        p.data_chegada||'',
+      'Presença de Carga':   p.data_presenca||'',
+      'HBL':                 p.hbl||'',
+      'MBL':                 p.mbl||'',
+      'Container':           p.container||'',
+      'Tipo Container':      p.tipo_container||'',
+      'Free Time':           p.free_time||21,
+      'Demurrage Vence':     p.demurrage_vencimento||'',
+      'Demurrage Valor R$':  p.demurrage_valor||'',
+      'Demurrage Pago':      p.demurrage_pago?'Sim':'Não',
+      'Data Devolução Vazio':p.data_devolucao_vazio||'',
+      'Nº DI':               p.numero_di||'',
+      'Data Registro DI':    p.data_registro_di||'',
+      'Canal':               p.canal||'',
+      'Data Liberação':      p.data_liberacao||'',
+      'Nº PI':               p.pi_numero||'',
+      'Data PI':             p.pi_data||'',
+      'Valor PI (USD)':      p.pi_valor_usd||'',
+      'Câmbio PI':           p.pi_cambio||'',
+      'Valor PI (BRL)':      p.pi_valor_usd&&p.pi_cambio ? (parseFloat(p.pi_valor_usd)*parseFloat(p.pi_cambio)).toFixed(2) : '',
+      'Incoterm':            p.pi_incoterm||'',
+      'Pagamento':           p.pi_pagamento||'',
+      'PI Paga':             p.pi_pago?'Sim':'Não',
+      'Nº CI':               p.ci_numero||'',
+      'Valor CI (USD)':      p.ci_valor_usd||'',
+      'NF Entrada Nº':       p.nf_entrada_numero||'',
+      'NF Entrada Valor':    p.nf_entrada_valor||'',
+      'NF Saída Nº':         p.nf_saida_numero||'',
+      'NF Saída Valor':      p.nf_saida_valor||'',
+      'Agendamento':         p.data_agendamento||'',
+      'Data Carregamento':   p.data_carregamento||'',
+      'Transportadora':      p.transportadora||'',
+      'Obs':                 p.obs||'',
+    }));
+
+    const wb  = XLSX.utils.book_new();
+    const ws  = XLSX.utils.json_to_sheet(linhas);
+
+    // Largura das colunas
+    ws['!cols'] = Object.keys(linhas[0]||{}).map(k=>({wch: Math.max(k.length, 12)}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Processos');
+
+    const data = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `IMPAK_Controle_${data}.xlsx`);
+    showToast(`✓ ${lista.length} processos exportados`,'ok');
+  }catch(e){
+    showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
+  }
+}
+
+// Exportação no formato de planilha enviada aos clientes (modelo "PNEUS
+// EXPRESS"): uma linha por produto/medida (não por processo), agrupado por
+// Fornecedor, com mapeamento:
+//   Data do Pedido = Data da PI · Medida = descrição do produto ·
+//   Quantidade = quantidade preenchida daquele item · Data de Prontidão na
+//   Fábrica = sem fonte no sistema hoje, fica em branco · Data de Embarque =
+//   ETD · Data Chegada = Data Chegada · POD = Porto Destino.
+async function exportarFormatoCliente(){
+  showToast('Gerando planilha no formato cliente...','info');
+  try{
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    const lista = filtrarProcessos(); // respeita os filtros aplicados na tela
+
+    // Montar 1 linha por produto, lendo produtos_json com retrocompatibilidade
+    // para o campo "produto" legado (texto único), igual ao padrão usado no
+    // resto do sistema para multi-produtos.
+    const linhas = [];
+    lista.forEach(p=>{
+      let produtos = [];
+      try{
+        if(p.produtos_json) produtos = JSON.parse(p.produtos_json);
+        else if(p.produto) produtos = [{descricao:p.produto, quantidade:''}];
+      }catch(e){ produtos = p.produto ? [{descricao:p.produto, quantidade:''}] : []; }
+      if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
+
+      produtos.filter(it=>it.descricao).forEach(it=>{
+        linhas.push({
+          fornecedor: p.fornecedor||'—',
+          'Invoice':                 p.referencia||'',
+          'Medida':                  it.descricao||'',
+          'Qte':                     it.quantidade||'',
+          'Data do Pedido':          p.pi_data ? new Date(p.pi_data).toLocaleDateString('pt-BR') : '',
+          'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
+          'Data de Embarque':        p.etd ? new Date(p.etd).toLocaleDateString('pt-BR') : '',
+          'Data Chegada':            p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '',
+          'POD':                     p.porto_destino||'N/I',
+        });
+      });
+    });
+
+    if(!linhas.length){ showToast('Nenhum produto encontrado para exportar','err'); return; }
+
+    // Agrupar por fornecedor, com uma linha de cabeçalho de grupo entre eles
+    // (igual ao modelo: "EUDEMON" como linha de separação antes dos itens).
+    const porForn = {};
+    linhas.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
+
+    const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD'];
+    const aoa = [['PNEUS EXPRESS'], colunas];
+    Object.keys(porForn).sort().forEach(forn=>{
+      aoa.push([forn]); // linha de cabeçalho do grupo
+      porForn[forn].forEach(l=> aoa.push(colunas.map(c=>l[c])));
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = colunas.map(c=>({wch: Math.max(c.length, 14)}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Pneus Express');
+
+    const data = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `IMPAK_PneusExpress_${data}.xlsx`);
+    showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${Object.keys(porForn).length} fornecedor(es)`,'ok');
+  }catch(e){
+    showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
+  }
+}
+
+function salvarApiKey(v){
+  const key = (v||'').trim();
+  try{ localStorage.setItem('impak_apikey', key); }catch(e){}
+  const status = document.getElementById('sidebar-apikey-status');
+  if(status){
+    status.textContent = key.length>20 ? '✓ Configurada' : 'Não configurada';
+    status.style.color = key.length>20 ? 'var(--ok)' : 'var(--muted)';
+  }
+}
+
+function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
+
+// ── MÁSCARA NUMÉRICA xx.xxx,xx (campos monetários) ──────────────
+// Usada em inputs type="text" que substituem os antigos type="number"
+// para permitir exibir separador de milhar (o <input type="number"> nativo
+// nunca aceita formatação). O valor numérico real é obtido com valorMoeda().
+function formatarMoedaInput(el){
+  let digits = (el.value||'').replace(/\D/g,'');
+  if(!digits){ el.value=''; return; }
+  digits = digits.replace(/^0+(?=\d)/,'');
+  while(digits.length<3) digits = '0'+digits;
+  const intPart = digits.slice(0,-2).replace(/^0+(?=\d)/,'') || '0';
+  const centavos = digits.slice(-2);
+  const milhares = intPart.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  el.value = milhares+','+centavos;
+}
+function valorMoeda(id){
+  const el = document.getElementById(id);
+  if(!el || !el.value) return null;
+  const limpo = el.value.replace(/\./g,'').replace(',','.');
+  const n = parseFloat(limpo);
+  return isNaN(n) ? null : n;
+}
+function exibirMoeda(v){
+  if(v===null||v===undefined||v==='') return '';
+  return parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+// ── AUTOCOMPLETE CLIENTE ──────────────────────────────────────
+let _acTimer = null;
+async function autocompletarCliente(input){
+  clearTimeout(_acTimer);
+  const q = input.value.trim();
+  const dd = document.getElementById('cliente-dropdown');
+  if(!dd) return;
+  if(q.length < 2){ dd.style.display='none'; return; }
+  _acTimer = setTimeout(async ()=>{
+    try{
+      const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo=CLIENTE');
+      const d = await r.json();
+      if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
+      dd.innerHTML = d.contatos.map(c=>{
+        const label = `${c.razao_social} · ${c.uf}${c.cnpj?' · '+c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):''}`;
+        return `<div onclick="document.getElementById('f_cliente').value='${c.razao_social.replace(/'/,"\'")}';document.getElementById('cliente-dropdown').style.display='none';"
+          style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
+          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
+      }).join('');
+      dd.style.display='block';
+    }catch(e){ dd.style.display='none'; }
+  }, 300);
+}
+document.addEventListener('click', e=>{
+  const dd = document.getElementById('cliente-dropdown');
+  if(dd && !dd.contains(e.target) && e.target.id!=='f_cliente') dd.style.display='none';
+});
+
+// ════════════════════════════════════════════════════════════════
+// CADASTRO DE CONTATOS (Clientes, Fornecedores, Despachantes, Agentes)
+// ════════════════════════════════════════════════════════════════
+let _contatosTipoAtivo = 'CLIENTE';
+let _contatosLista = [];
+
+function abrirContatos(){
+  document.getElementById('modal-contatos-bg').classList.add('open');
+  filtrarContatosTipo('CLIENTE');
+}
+function fecharModalContatos(){
+  document.getElementById('modal-contatos-bg').classList.remove('open');
+}
+
+async function filtrarContatosTipo(tipo){
+  _contatosTipoAtivo = tipo;
+  document.querySelectorAll('#contatos-tipo-filter button').forEach(b=>{
+    const ativo = b.dataset.tipo===tipo;
+    b.className = ativo ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline';
+  });
+  await carregarContatos();
+}
+
+async function carregarContatos(){
+  try{
+    const r = await fetch('/api/contatos?tipo='+_contatosTipoAtivo+'&limit=500');
+    const d = await r.json();
+    _contatosLista = d.ok ? d.contatos : [];
+  }catch(e){ _contatosLista = []; }
+  renderListaContatos();
+}
+
+function renderListaContatos(){
+  const tbody = document.getElementById('contatos-tbody');
+  if(!tbody) return;
+  const q = (document.getElementById('contatos-search')?.value||'').toLowerCase().trim();
+  let lista = _contatosLista;
+  if(q) lista = lista.filter(c=>
+    (c.razao_social||'').toLowerCase().includes(q) ||
+    (c.cnpj||'').includes(q) ||
+    (c.nome_fantasia||'').toLowerCase().includes(q)
+  );
+  if(!lista.length){
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--dim);font-size:13px;">Nenhum contato cadastrado neste tipo.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = lista.map(c=>{
+    const cnpjFmt = c.cnpj ? c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5') : '—';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:9px 16px;font-weight:600;">${esc(c.razao_social)}</td>
+      <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-size:11px;">${cnpjFmt}</td>
+      <td style="padding:9px 16px;">${esc(c.cidade||'')}${c.uf?'/'+c.uf:''}</td>
+      <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${esc(c.email||c.telefone||'—')}</td>
+      <td style="padding:9px 16px;text-align:right;">
+        <button class="btn btn-sm btn-outline" onclick="editarContato('${c.id}')">Editar</button>
+        <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="excluirContato('${c.id}')">Excluir</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function formatarCnpjInput(input){
+  let v = input.value.replace(/\D/g,'').slice(0,14);
+  if(v.length > 12) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2})/, '$1.$2.$3/$4-$5');
+  else if(v.length > 8) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
+  else if(v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if(v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
+  input.value = v;
+}
+
+async function buscarDadosCnpj(valor){
+  const cnpj = (valor||'').replace(/\D/g,'');
+  const statusEl = document.getElementById('ce_cnpj_status');
+  if(cnpj.length !== 14){
+    if(statusEl) statusEl.textContent = '';
+    return;
+  }
+  if(statusEl){ statusEl.textContent = 'Buscando dados na Receita Federal...'; statusEl.style.color = 'var(--dim)'; }
+  try{
+    const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj);
+    if(!r.ok){
+      if(statusEl){ statusEl.textContent = 'CNPJ não encontrado na base pública'; statusEl.style.color = 'var(--warn)'; }
+      return;
+    }
+    const d = await r.json();
+    const razaoEl = document.getElementById('ce_razao_social');
+    const fantasiaEl = document.getElementById('ce_nome_fantasia');
+    const cidadeEl = document.getElementById('ce_cidade');
+    const ufEl = document.getElementById('ce_uf');
+    const emailEl = document.getElementById('ce_email');
+    const telEl = document.getElementById('ce_telefone');
+    // Só preenche campos vazios, não sobrescreve o que o usuário já digitou
+    if(razaoEl && !razaoEl.value) razaoEl.value = d.razao_social || '';
+    if(fantasiaEl && !fantasiaEl.value) fantasiaEl.value = d.nome_fantasia || '';
+    if(cidadeEl && !cidadeEl.value) cidadeEl.value = d.municipio || '';
+    if(ufEl && !ufEl.value) ufEl.value = d.uf || '';
+    if(emailEl && !emailEl.value && d.email) emailEl.value = d.email || '';
+    if(telEl && !telEl.value && d.ddd_telefone_1) telEl.value = d.ddd_telefone_1 || '';
+    if(statusEl){
+      const situacao = d.descricao_situacao_cadastral || '';
+      statusEl.textContent = '✓ Dados preenchidos automaticamente'+(situacao?' · Situação: '+situacao:'');
+      statusEl.style.color = situacao==='ATIVA' ? 'var(--ok)' : 'var(--warn)';
+    }
+  }catch(e){
+    if(statusEl){ statusEl.textContent = 'Erro ao consultar CNPJ — preencha manualmente'; statusEl.style.color = 'var(--err)'; }
+  }
+}
+
+function abrirNovoContato(){
+  document.getElementById('contato-edit-title').textContent = 'Novo Contato';
+  ['ce_id','ce_razao_social','ce_nome_fantasia','ce_cnpj','ce_uf','ce_cidade','ce_email','ce_telefone','ce_obs'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('ce_tipo').value = _contatosTipoAtivo;
+  const statusEl = document.getElementById('ce_cnpj_status');
+  if(statusEl) statusEl.textContent = '';
+  document.getElementById('modal-contato-edit-bg').classList.add('open');
+}
+
+function editarContato(id){
+  const c = _contatosLista.find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('contato-edit-title').textContent = 'Editar Contato';
+  document.getElementById('ce_id').value = c.id;
+  document.getElementById('ce_tipo').value = c.tipo||'CLIENTE';
+  document.getElementById('ce_razao_social').value = c.razao_social||'';
+  document.getElementById('ce_nome_fantasia').value = c.nome_fantasia||'';
+  document.getElementById('ce_cnpj').value = c.cnpj||'';
+  document.getElementById('ce_uf').value = c.uf||'';
+  document.getElementById('ce_cidade').value = c.cidade||'';
+  document.getElementById('ce_email').value = c.email||'';
+  document.getElementById('ce_telefone').value = c.telefone||'';
+  document.getElementById('ce_obs').value = c.obs||'';
+  const statusEl = document.getElementById('ce_cnpj_status');
+  if(statusEl) statusEl.textContent = '';
+  document.getElementById('modal-contato-edit-bg').classList.add('open');
+}
+
+function fecharModalContatoEdit(){
+  document.getElementById('modal-contato-edit-bg').classList.remove('open');
+}
+
+async function salvarContato(){
+  const razao = document.getElementById('ce_razao_social').value.trim();
+  if(!razao){ showToast('Razão social é obrigatória','err'); return; }
+  const payload = {
+    id: document.getElementById('ce_id').value || undefined,
+    tipo: document.getElementById('ce_tipo').value,
+    razao_social: razao,
+    nome_fantasia: document.getElementById('ce_nome_fantasia').value.trim(),
+    cnpj: document.getElementById('ce_cnpj').value.replace(/\D/g,''),
+    uf: document.getElementById('ce_uf').value.trim().toUpperCase(),
+    cidade: document.getElementById('ce_cidade').value.trim(),
+    email: document.getElementById('ce_email').value.trim(),
+    telefone: document.getElementById('ce_telefone').value.trim(),
+    obs: document.getElementById('ce_obs').value.trim(),
+  };
+  try{
+    const r = await fetch('/api/contatos', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if(d.ok){
+      showToast('✓ Contato salvo','ok');
+      fecharModalContatoEdit();
+      await carregarContatos();
+    } else {
+      showToast('Erro: '+(d.erro||''),'err');
+    }
+  }catch(e){ showToast('Erro ao salvar contato','err'); }
+}
+
+async function excluirContato(id){
+  if(!confirm('Excluir este contato?')) return;
+  try{
+    const r = await fetch('/api/contatos/'+id, { method:'DELETE' });
+    const d = await r.json();
+    if(d.ok){ showToast('Contato removido','ok'); await carregarContatos(); }
+    else showToast('Erro ao excluir','err');
+  }catch(e){ showToast('Erro ao excluir','err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// IMPORTAR PLANILHA EXCEL
+// ════════════════════════════════════════════════════════════════
+async function importarPlanilha(input){
+  const file = input.files[0];
+  if(!file) return;
+  input.value = '';
+
+  // Criar modal de diagnóstico visível na tela
+  let logDiv = document.getElementById('import-log-modal');
+  if(!logDiv){
+    logDiv = document.createElement('div');
+    logDiv.id = 'import-log-modal';
+    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"DM Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+    document.body.appendChild(logDiv);
+  }
+  logDiv.innerHTML = `<div style="font-weight:700;margin-bottom:8px;font-size:13px;">📊 Importando: ${file.name}</div>`;
+  const addLog = (msg, cor) => {
+    const d = document.createElement('div');
+    d.style.cssText = `color:${cor||'#fff'};padding:2px 0;`;
+    d.textContent = msg;
+    logDiv.appendChild(d);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  };
+  const fecharLog = (delay) => setTimeout(()=>{ if(logDiv) logDiv.remove(); }, delay||5000);
+
+  showToast('Lendo planilha...','info');
+  addLog('Lendo arquivo...', '#7dd3fc');
+
+  try{
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    const buf = await file.arrayBuffer();
+    // raw:true para não converter datas automaticamente (evita conflito com cellDates)
+    const wb = XLSX.read(buf, {type:'array', cellDates:true, raw:false});
+
+    const processos = [];
+    const refs = new Set(_processos.map(p=>p.referencia));
+
+    function parseDate(v){
+      if(!v) return null;
+      if(v instanceof Date){
+        if(isNaN(v.getTime())||v.getFullYear()<1950) return null;
+        return v.toISOString().split('T')[0];
+      }
+      // Serial numérico do Excel (ex: 45667)
+      if(typeof v === 'number' && v > 25000 && v < 60000){
+        const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+        if(!isNaN(d.getTime())&&d.getFullYear()>=1950) return d.toISOString().split('T')[0];
+      }
+      const s = String(v).trim().split(/[\n\r]/)[0].trim();
+      if(!s||s==='—'||s==='-') return null;
+      const su = s.toUpperCase();
+      if(su.includes('PRODUÇÃO')||su.includes('PRODUCAO')||su.includes('ANDAMENTO')||su.includes('PRODUC')) return null;
+
+      // YYYY-MM-DD
+      let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(m){ const [,y,mo,d]=m; if(parseInt(y)>=1950) return `${y}-${mo}-${d}`; }
+
+      // DD/MM/YYYY (formato brasileiro)
+      m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if(m){
+        const [,a,b,y]=m;
+        if(parseInt(y)>=1950){
+          // Verificar se é DD/MM ou MM/DD pela validade do mês
+          if(parseInt(b)<=12) return `${y}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`;
+          if(parseInt(a)<=12) return `${y}-${a.padStart(2,'0')}-${b.padStart(2,'0')}`;
+        }
+      }
+
+      // M/D/YYYY ou M/D/YY (formato americano do Excel/XLSX.js)
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if(m){
+        let [,mo,d,y]=m;
+        const year = y.length===2 ? (parseInt(y)>=50?'19'+y:'20'+y) : y;
+        if(parseInt(year)>=1950 && parseInt(mo)>=1 && parseInt(mo)<=12 && parseInt(d)>=1 && parseInt(d)<=31){
+          return `${year}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        }
+        // Tentar como DD/MM/YY se mês > 12
+        if(parseInt(mo)>12 && parseInt(d)<=12){
+          return `${year}-${d.padStart(2,'0')}-${mo.padStart(2,'0')}`;
+        }
+      }
+
+      // Serial numérico como string (ex: "45667")
+      const num = parseInt(s);
+      if(!isNaN(num) && num > 25000 && num < 60000){
+        const d2 = new Date(Math.round((num - 25569) * 86400 * 1000));
+        if(!isNaN(d2.getTime())&&d2.getFullYear()>=1950) return d2.toISOString().split('T')[0];
+      }
+
+      return null;
+    }
+    function pStr(v){
+      if(v===null||v===undefined) return null;
+      const s = String(v).trim().replace(/\s+/g,' ');
+      return s&&s!=='—'&&s!=='-'&&s!=='null'&&s.length>0 ? s : null;
+    }
+
+    // Detectar tipo — mais tolerante
+    const sheetNames = wb.SheetNames.map(s=>s.trim().toUpperCase());
+    const isControle = sheetNames.includes('CONTROLE');
+    const isFollowUp = sheetNames.includes('EM ANDAMENTO') || sheetNames.some(s=>s.includes('ANDAMENTO'));
+
+    addLog(`Abas: ${wb.SheetNames.join(', ')}`, '#7dd3fc'); addLog(`isControle: ${isControle} | isFollowUp: ${isFollowUp}`, '#7dd3fc');
+
+    if(!isControle && !isFollowUp){
+      showToast('Planilha não reconhecida. Use a planilha Controle ou Follow Up.','err');
+      return;
+    }
+
+    if(isControle){
+      // Encontrar a aba correta (case-insensitive)
+      const abaName = wb.SheetNames.find(s=>s.trim().toUpperCase()==='CONTROLE');
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[abaName], {header:1, defval:null, raw:false});
+      addLog(`CONTROLE: ${rows.length} linhas | header: ${(rows[0]||[]).slice(0,3).join(', ')}`, '#7dd3fc');
+
+      // Linha 1 = header, dados a partir de linha 2 (índice 1)
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i];
+        if(!r || !r[1]) continue;
+        const ref = pStr(r[1]);
+        if(!ref) continue;
+        if(refs.has(ref)) continue;
+        refs.add(ref);
+
+        const prontidao = parseDate(r[11]);
+        const embarque  = parseDate(r[12]);
+        const chegada   = parseDate(r[13]);
+        const presenca  = parseDate(r[14]);
+        const retirada  = parseDate(r[19]);
+        const dataRic   = parseDate(r[22]);
+        const prevPront = parseDate(r[30]);
+        const demurVenc = parseDate(r[18]);
+
+        let fase='PI';
+        if(dataRic)             fase='FINALIZADO';
+        else if(retirada)       fase='CARREGAMENTO';  // retirada = carregamento já feito
+        else if(presenca||chegada) fase='DESEMBARCADO';
+        else if(embarque)       fase='EMBARCADO';
+        else if(prevPront||prontidao) fase='AGUARDANDO_EMBARQUE';
+
+        processos.push({
+          referencia:        ref,
+          cliente:           pStr(r[2]),
+          produto:           pStr(r[3]),
+          fornecedor:        pStr(r[9]),
+          porto_destino:     pStr(r[8]),
+          pi_data:           parseDate(r[10]),
+          data_prontidao:    prontidao,
+          previsao_prontidao:prevPront,
+          data_embarque:     embarque,
+          data_chegada:      chegada,
+          data_presenca:     presenca,
+          armador:           pStr(r[24]),
+          demurrage_vencimento: demurVenc,
+          obs:               pStr(r[5]),
+          fase,
+          created_by:        'importacao_controle',
+        });
+      }
+      addLog(`✓ CONTROLE: ${processos.length} processos mapeados`, '#86efac');
+    }
+
+    if(isFollowUp){
+      for(const sheetName of wb.SheetNames.filter(s=>['EM ANDAMENTO','FINALIZADOS'].includes(s.trim().toUpperCase()))){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:false});
+        addLog(`${sheetName}: ${rows.length} linhas`, '#7dd3fc');
+
+        for(let i=1;i<rows.length;i++){
+          const r = rows[i];
+          if(!r||!r[0]) continue;
+          const ref = pStr(r[0]);
+          if(!ref) continue;
+          if(refs.has(ref)) continue;
+          refs.add(ref);
+
+          const hblMbl = pStr(r[3]);
+          const partes = hblMbl ? hblMbl.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
+          const hbl = partes[0]||null;
+          const mbl = partes[1]||null;
+
+          const chegadaStr = pStr(r[4]);
+          const chegadaPartes = chegadaStr ? chegadaStr.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
+          const chegada = parseDate(chegadaPartes[0]);
+
+          const armAg = pStr(r[13]);
+          const armadorPartes = armAg ? armAg.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
+          const armador = armadorPartes[0]||null;
+
+          const di = pStr(r[8]);
+          const status = pStr(r[14])||'';
+
+          let fase = 'EMBARCADO';
+          if(status.toLowerCase().includes('finaliz')) fase='FINALIZADO';
+          else if(di) fase='REGISTRO_DI';
+          else if(chegada) fase='DESEMBARCADO';
+
+          processos.push({
+            referencia:       ref,
+            fornecedor:       pStr(r[2]),
+            hbl, mbl,
+            data_chegada:     chegada,
+            navio:            pStr(r[5]),
+            numero_di:        di,
+            data_registro_di: parseDate(r[9]),
+            container:        pStr(r[11]),
+            armador, fase,
+            obs:              status.slice(0,200)||null,
+            created_by:       'importacao_followup',
+          });
+        }
+      }
+      addLog(`✓ FOLLOWUP: ${processos.length} processos mapeados`, '#86efac');
+    }
+
+    if(!processos.length){
+      addLog('⚠ Nenhum processo novo (todos já existem ou planilha vazia)', '#fcd34d');
+      fecharLog(8000);
+      showToast('Nenhum processo novo encontrado','warn');
+      return;
+    }
+
+    addLog(`Enviando ${processos.length} processos ao servidor...`, '#7dd3fc');
+    showToast(`Importando ${processos.length} processos...`,'info');
+
+    let total = 0, erros = 0;
+    for(let i=0;i<processos.length;i+=50){
+      const lote = processos.slice(i,i+50);
+      try{
+        const resp = await fetch('/api/controle/v2/importar',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({processos:lote})
+        });
+        const d = await resp.json();
+        if(d.ok){ total += d.total||lote.length; addLog(`✓ Lote ${Math.floor(i/50)+1}: ${d.total||lote.length} salvos`, '#86efac'); }
+        else { erros++; addLog(`✕ Lote erro: ${d.erro||'?'}`, '#fca5a5'); }
+      }catch(e){ erros++; addLog(`✕ Fetch erro: ${e.message}`, '#fca5a5'); }
+    }
+
+    if(total > 0){
+      addLog(`✅ ${total} processos importados!`, '#86efac');
+      fecharLog(6000);
+      showToast(`✓ ${total} processos importados${erros>0?' ('+erros+' com erro)':''}`, erros>0?'warn':'ok');
+      await carregarProcessos(true);
+    } else {
+      addLog('✕ Zero processos importados — verifique os erros acima', '#fca5a5');
+      fecharLog(10000);
+      showToast('Erro ao importar. Veja o log na tela.','err');
+    }
+  }catch(e){
+    if(typeof addLog === 'function') addLog(`✕ ERRO: ${e.message}`, '#fca5a5');
+    showToast('Erro: '+e.message,'err');
+    if(typeof fecharLog === 'function') fecharLog(10000);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// EXTRAÇÃO COM IA
+// ════════════════════════════════════════════════════════════════
+async function extrairComIA(input){
+  const file = input.files[0];
+  if(!file) return;
+  input.value='';
+
+  const status = document.getElementById('ia-status');
+  if(status) status.textContent = '⏳ Analisando documento...';
+
+  try{
+    // Converter para base64
+    const base64 = await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=()=>res(r.result.split(',')[1]);
+      r.onerror=rej;
+      r.readAsDataURL(file);
+    });
+
+    const isImg = file.type.startsWith('image/');
+    const apiKey = localStorage.getItem('impak_apikey')||'';
+    // A chave do servidor (Railway) é usada se não houver chave local — ok
+
+    const content = [{
+      type: isImg ? 'image' : 'document',
+      source: { type:'base64', media_type: file.type, data: base64 }
+    },{
+      type:'text',
+      text:`Extraia os dados deste documento de importação e retorne SOMENTE JSON com os campos disponíveis:
+{
+  "referencia": "",
+  "fornecedor": "",  // razão social ou nome comercial do exportador/supplier
+  "produto": "",  // extrair de: Description of Goods, Cargo Description, Size, Item Description na CI — ex: "TRUCK TYRE 295/80R22.5"
+  "pi_numero": "",  // extrair APENAS o número principal; ignorar números secundários entre parênteses (ex: "PI-001 (JY-999)" → usar "PI-001")
+  "pi_data": "YYYY-MM-DD",
+  "pi_valor_usd": 0,
+  "pi_incoterm": "",
+  "pi_pagamento": "VISTA|PRAZO|ENTRADA_SALDO",
+  "etd": "YYYY-MM-DD",
+  "eta": "YYYY-MM-DD",
+  "armador": "",  // NÃO inferir armador pelo nome do navio (ex: navio MSC XXXX não significa armador MSC — extrair apenas de campos explícitos como Carrier, Shipping Line, Armador)
+  "navio": "",  // se o documento for um CE Mercante, usar o navio de CHEGADA: em caso de transbordo/baldeação no exterior, o navio de chegada é o navio de conexão/último navio que efetivamente atracou no porto de destino brasileiro — NÃO o navio original de embarque na origem
+  "porto_origem": "",
+  "porto_destino": "",  // extrair de: POD, Port of Discharge, Port of Destination, Discharge Port. PRIORIDADE DE FONTE: o BL e a DI/Extrato da DI são mais confiáveis que o Sales Contract — o Sales Contract é só a intenção comercial registrada antes do embarque e pode estar desatualizado (ex: prevê "Itajai" mas a carga acabou desembarcando em "Itapoa"). Se o documento atual for um BL ou DI/Extrato da DI, o porto_destino dele deve SOBRESCREVER um valor que tenha vindo de um Sales Contract.
+  "hbl": "",
+  "mbl": "",
+  "container": "",  // número do container (ex: TCKU7973104)
+  "lacre": "",  // número do lacre/selo do container (ex: 22992857) — geralmente aparece junto ao número do container no BL/CE Mercante
+  "numero_di": "",  // número da Declaração de Importação — ex: "26/0672265-4"
+  "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI
+  "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
+  "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
+  "ci_numero": "",
+  "ci_valor_usd": 0,
+  "ci_data": "YYYY-MM-DD",
+  "data_chegada": "YYYY-MM-DD",
+  "ce_numero": "",  // número do CE Mercante (Conhecimento Eletrônico de Carga), se houver
+  "ce_data_embarque": "YYYY-MM-DD",  // data de embarque conforme o CE Mercante
+  "ce_armador": "",  // armador/transportador conforme o CE Mercante (campo Transportador/Armador no CE)
+  "nf_entrada_numero": "",  // número da Nota Fiscal de ENTRADA (nacionalização/entrada da mercadoria no estoque)
+  "nf_entrada_data": "YYYY-MM-DD",  // data de emissão da NF de entrada
+  "nf_entrada_valor": 0,  // valor da NF de entrada em REAIS (R$) — NF brasileira nunca é emitida em USD
+  "nf_saida_numero": "",  // número da Nota Fiscal de SAÍDA (venda ao cliente final)
+  "nf_saida_data": "YYYY-MM-DD",  // data de emissão da NF de saída
+  "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
+  "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
+  "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
+  "free_time": null
+}
+Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
+- extrair "container" do campo "Container No.".
+- data_devolucao_vazio vem do campo "Gate In Date/Time" — esta é a data e hora em que o container vazio deu entrada no depósito, ou seja, a devolução física de fato. O formato no documento costuma ser "YYYY/MM/DD HH:MM" (ex: "2026/05/30 10:54") — converta apenas a parte da data para "YYYY-MM-DD" (ex: "2026-05-30"), descartando a hora.
+- se o campo "Gate In Date/Time" estiver vazio mas "Gate Out Date/Time" estiver preenchido, este documento é de SAÍDA do container vazio do depósito (não de devolução) — não preencher data_devolucao_vazio neste caso.
+Se o documento for um Comprovante de Importação ou Extrato da Declaração de Importação (DI), emitidos pela Receita Federal:
+- numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4").
+- data_registro_di vem de "DATA DO REGISTRO".
+- canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
+- data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
+- se o Extrato da DI trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
+Se o documento for uma Nota Fiscal (NF-e brasileira):
+- todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
+- se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*. O destinatário desta NF é a própria IMPAK — não usar como "cliente".
+- se a NF for de SAÍDA (venda, destinatário é o cliente final), preencher os campos nf_saida_* e também extrair "cliente" do nome/razão social do destinatário.
+- não preencher os dois grupos ao mesmo tempo a partir do mesmo documento — cada NF enviada é de um tipo só.
+Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
+- extrair ce_numero, "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e ce_armador (transportador/armador).
+- o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
+Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
+Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`
+    }];
+
+    // Faz a chamada com 1 retry automático: falhas como "Could not process PDF"
+    // ou hiccups passageiros do servidor (resposta não-JSON, ex: página de
+    // erro HTML do proxy) costumam ser intermitentes — uma segunda tentativa
+    // depois de uma pequena espera resolve a maioria dos casos.
+    async function chamarAnalise(tentativa){
+      const resp = await fetch('/api/analisar',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({content, apiKey})
+      });
+      const textoResp = await resp.text();
+      let d;
+      try{
+        d = JSON.parse(textoResp);
+      }catch(e){
+        // Resposta não é JSON — geralmente página de erro do servidor/proxy
+        // (ex: <!DOCTYPE...>), não um problema no documento em si.
+        if(tentativa < 2){
+          if(status) status.textContent = '⏳ Falha de comunicação, tentando novamente...';
+          await new Promise(r=>setTimeout(r, 2000));
+          return chamarAnalise(tentativa+1);
+        }
+        throw new Error('O servidor não respondeu corretamente (pode ter sido uma instabilidade momentânea). Tente novamente em alguns segundos.');
+      }
+      if(!d.ok){
+        // Erro real da API (ex: "Could not process PDF") — também vale a
+        // pena tentar de novo uma vez, já que costuma ser intermitente.
+        if(tentativa < 2 && /could not process|processar.*pdf/i.test(d.erro||'')){
+          if(status) status.textContent = '⏳ Falha ao processar o PDF, tentando novamente...';
+          await new Promise(r=>setTimeout(r, 2000));
+          return chamarAnalise(tentativa+1);
+        }
+        throw new Error(d.erro||'Erro na IA');
+      }
+      return d;
+    }
+    const d = await chamarAnalise(1);
+
+    const raw = (d.data.content||[]).map(c=>c.text||'').join('');
+    let extracted;
+    try{
+      const clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+      extracted = JSON.parse(clean);
+    } catch(e){ throw new Error('Resposta da IA inválida'); }
+
+    // Normalizar valores numéricos e limpar PI antes de preencher
+    function normNum(v){
+      if(!v && v!==0) return null;
+      const s = String(v).replace(/[R$USD\s]/gi,'').trim();
+      if(/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(s)) return parseFloat(s.replace(/\./g,'').replace(',','.'));
+      return parseFloat(s.replace(',','.')) || null;
+    }
+    if(extracted.pi_valor_usd) extracted.pi_valor_usd = normNum(extracted.pi_valor_usd);
+    if(extracted.ci_valor_usd) extracted.ci_valor_usd = normNum(extracted.ci_valor_usd);
+    if(extracted.nf_entrada_valor) extracted.nf_entrada_valor = normNum(extracted.nf_entrada_valor);
+    if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
+    if(extracted.pi_numero)    extracted.pi_numero    = extracted.pi_numero.replace(/\s*\(.*?\)\s*/g,'').trim();
+    if(!extracted.free_time)   delete extracted.free_time;
+
+    // Quando o documento é um CE Mercante, o navio/armador/etd que ele traz
+    // são mais confiáveis que os do BL (refletem o navio de chegada real, já
+    // considerando transbordo/baldeação no exterior) — por isso sobrescrevem
+    // o que já estiver no formulário em vez de respeitar a regra "só preenche vazio".
+    const ehCeMercante = !!extracted.ce_numero;
+    // Quando o documento é um BL ou uma DI/Extrato da DI, o porto de destino
+    // e o container/navio que eles trazem são mais confiáveis que o Sales
+    // Contract (que é só a intenção comercial registrada antes do embarque,
+    // podendo estar desatualizada — ex: contrato previa "Itajai" mas a carga
+    // foi operacionalmente desembarcada em "Itapoa"). Por isso, se vierem de
+    // um BL/DI, esses campos também sobrescrevem o que já estiver preenchido.
+    const ehBlOuDi = !!(extracted.hbl || extracted.mbl || extracted.numero_di || extracted.data_registro_di);
+    const camposSobrescritosPorCe = ehCeMercante ? ['navio'] : [];
+    const camposSobrescritosPorBlDi = ehBlOuDi ? ['porto_destino','container','navio'] : [];
+
+    // Preencher campos do formulário
+    const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor'];
+    const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
+    let preenchidos = 0;
+    Object.keys(extracted).forEach(campo=>{
+      let val = extracted[campo];
+      if(!val) return;
+      if(camposContainerTratadosSeparado.includes(campo)) return;
+      const el = document.getElementById('f_'+campo);
+      if(!el) return;
+      if(camposMoedaIA.includes(campo)) val = exibirMoeda(val);
+      const podeSobrescrever = camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo);
+      if(!el.value || podeSobrescrever){
+        el.value = val;
+        el.style.borderColor='var(--ok)';
+        el.style.background='rgba(22,163,74,.04)';
+        preenchidos++;
+        setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+      }
+    });
+
+    // O campo "container" (e o novo "lacre") extraídos pela IA precisam ser
+    // refletidos na LISTA VISUAL de containers (_containers), não só no
+    // input hidden f_container — senão a extração "preenche" um campo que
+    // o usuário nunca vê na tela, e o container/lacre parecem não ter sido
+    // lidos. Só populamos automaticamente se a lista ainda estiver vazia
+    // (1 container sem número), para não sobrescrever o que o usuário já
+    // tiver preenchido manualmente — exceto quando vem de BL/DI, que é mais
+    // confiável e pode corrigir um container errado de um documento anterior.
+    if(extracted.container){
+      const primeiroVazio = !_containers.length || (!_containers[0].numero);
+      if(primeiroVazio || ehBlOuDi){
+        if(!_containers.length) _containers.push({numero:'', tipo:'40HC', lacre:''});
+        _containers[0].numero = extracted.container;
+        if(extracted.lacre) _containers[0].lacre = extracted.lacre;
+        renderMultiContainers();
+        preenchidos++;
+      }
+    }
+
+    if(status) status.textContent = ehCeMercante
+      ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
+      : ehBlOuDi ? `✓ ${preenchidos} campos preenchidos (BL/DI — porto e container atualizados)`
+      : `✓ ${preenchidos} campos preenchidos`;
+    showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
+
+    // Preenchimento programático não dispara onchange/oninput dos campos —
+    // por isso a regra de parametrização e o recálculo de fase/demurrage
+    // precisam ser chamados manualmente aqui.
+    aplicarRegraParametrizacaoVerde();
+    atualizarFaseEmTempoReal();
+
+    // Atualizar _editando com os valores extraídos
+    if(_editando) Object.assign(_editando, extracted);
+
+  } catch(e){
+    if(status) status.textContent = '❌ Erro: '+e.message;
+    showToast('Erro na extração: '+e.message,'err');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// EDIÇÃO RÁPIDA INLINE
+// ════════════════════════════════════════════════════════════════
+function inlineEditData(id, campo, el){
+  const proc = _processos.find(p=>p.id===id);
+  if(!proc) return;
+  const valorAtual = proc[campo]||'';
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.className = 'inline-input';
+  input.value = valorAtual;
+  input.style.width = '130px';
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.focus();
+  function salvar(){
+    const novoValor = input.value;
+    if(novoValor !== valorAtual){
+      const antes = proc[campo];
+      proc[campo] = novoValor||null;
+      // Log
+      proc.log = proc.log||[];
+      proc.log.push({campo, valor_antes:antes||'', valor_depois:novoValor||'', usuario:_user.usuario, created_at:new Date().toISOString()});
+      salvarProcesso(proc);
+    }
+    render();
+  }
+  input.addEventListener('blur', salvar);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') input.blur(); if(e.key==='Escape'){proc[campo]=valorAtual; render();} });
+}
+
+function inlineEditFase(id, el){
+  const proc = _processos.find(p=>p.id===id);
+  if(!proc) return;
+  const sel = document.createElement('select');
+  sel.className = 'inline-select';
+  FASES.forEach(f=>{
+    const opt = document.createElement('option');
+    opt.value = f.id;
+    opt.textContent = f.icon+' '+f.label;
+    if(f.id===proc.fase) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  el.innerHTML='';
+  el.appendChild(sel);
+  sel.focus();
+  function salvar(){
+    const novaFase = sel.value;
+    if(novaFase !== proc.fase){
+      proc.log = proc.log||[];
+      proc.log.push({campo:'fase', valor_antes:proc.fase, valor_depois:novaFase, usuario:_user.usuario, created_at:new Date().toISOString()});
+      proc.fase = novaFase;
+      salvarProcesso(proc);
+    }
+    render();
+  }
+  sel.addEventListener('change', salvar);
+  sel.addEventListener('blur', ()=>render());
+}
+
+// ════════════════════════════════════════════════════════════════
+// DASHBOARD FINANCEIRO
+// ════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════
+// DASHBOARD EXECUTIVO
+// ════════════════════════════════════════════════════════════════
+function toggleDashExecutivo(){
+  const el = document.getElementById('dash-executivo');
+  if(!el) return;
+  const visivel = el.style.display !== 'none';
+  el.style.display = visivel ? 'none' : 'block';
+  document.getElementById('menu-executivo')?.classList.toggle('active', !visivel);
+  if(!visivel) renderDashExecutivo();
+}
+
+function renderDashExecutivo(){
+  const el = document.getElementById('dash-exec-content');
+  if(!el) return;
+
+  renderPeriodoSeletor('periodo-seletor-executivo', 'executivo', renderDashExecutivo);
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo('executivo');
+  const semFim = new Date(hoje); semFim.setDate(hoje.getDate()+7);
+
+  const ativos    = _processos.filter(p=>p.fase!=='FINALIZADO');
+  const finalizados = _processos.filter(p=>p.fase==='FINALIZADO');
+  const brl = v => 'R$ '+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const usd = v => 'USD '+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const totalProvUSD = ativos.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const pagosUSD     = ativos.filter(p=>p.pi_pago).reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const abertoUSD    = totalProvUSD - pagosUSD;
+  const demurCrit    = ativos.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
+  const etaVencidos  = ativos.filter(p=>p.eta&&p.fase==='EMBARCADO'&&new Date(p.eta)<hoje);
+  const piVencidos   = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&new Date(p.pi_data_saldo)<hoje);
+  const piSemana     = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&new Date(p.pi_data_saldo)>=hoje&&new Date(p.pi_data_saldo)<=semFim);
+  const etaSemana    = ativos.filter(p=>p.eta&&new Date(p.eta)>=hoje&&new Date(p.eta)<=semFim&&p.fase==='EMBARCADO');
+  const porFase      = {};
+  _processos.forEach(p=>{ porFase[p.fase]=(porFase[p.fase]||0)+1; });
+  const porForn      = {};
+  ativos.forEach(p=>{ if(p.fornecedor) porForn[p.fornecedor]=(porForn[p.fornecedor]||0)+1; });
+  const topForn      = Object.entries(porForn).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const nfSaidaPeriodo = ativos.filter(p=>p.nf_saida_data&&new Date(p.nf_saida_data)>=mesIni&&new Date(p.nf_saida_data)<=mesFim);
+  const nfEntradaPeriodo = ativos.filter(p=>p.nf_entrada_data&&new Date(p.nf_entrada_data)>=mesIni&&new Date(p.nf_entrada_data)<=mesFim);
+  const totalNfMes   = nfSaidaPeriodo.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
+
+  function card(label, val, sub, cor, fmt, filtro){
+    const display = fmt==='usd' ? usd(val) : val;
+    const clickAttr = filtro!==undefined ? ` onclick="abrirComFiltro('${filtro}')" style="cursor:pointer;` : ' style="';
+    return '<div'+clickAttr+'background:#fff;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:14px 16px;">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+label+'</div>'
+      +'<div style="font-size:20px;font-weight:600;color:'+cor+';font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+display+'</div>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+sub+'</div>'
+      +'</div>';
+  }
+
+  const kpis = [
+    card('Total Processos', _processos.length, ativos.length+' em andamento', 'var(--ac)', 'num', ''),
+    card('Provisionado', totalProvUSD, brl(totalProvUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--ac)', 'usd', '__pi_aberto'),
+    card('Em Aberto', abertoUSD, brl(abertoUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--err)', 'usd', '__pi_aberto'),
+    card('Demurrage Critico', demurCrit.length, 'containers <=5 dias', demurCrit.length>0?'var(--err)':'var(--ok)', 'num', '__demur'),
+    card('ETA Vencidos', etaVencidos.length, 'ainda Embarcado', etaVencidos.length>0?'var(--warn)':'var(--ok)', 'num', 'EMBARCADO'),
+    card('PI Vencidas', piVencidos.length, 'pagamento atrasado', piVencidos.length>0?'var(--err)':'var(--ok)', 'num', '__pi_vencido'),
+  ];
+
+  const funil = FASES.map(f=>{
+    const n = porFase[f.id]||0;
+    if(!n) return '';
+    const pct = _processos.length ? Math.round(n/_processos.length*100) : 0;
+    const cor = f.id==='FINALIZADO' ? 'var(--ok)' : 'var(--ac)';
+    const fid = f.id;
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;" onclick="setFaseFilter(\"'+fid+'\");toggleDashExecutivo()">'
+      +'<div style="font-size:11px;min-width:115px;color:var(--text);">'+f.icon+' '+f.label+'</div>'
+      +'<div style="flex:1;background:var(--bg);border-radius:4px;height:8px;">'
+      +'<div style="width:'+pct+'%;background:'+cor+';border-radius:4px;height:8px;"></div></div>'
+      +'<div style="font-size:11px;font-weight:700;color:'+cor+';min-width:24px;text-align:right;">'+n+'</div>'
+      +'</div>';
+  }).join('');
+
+  const alertasHtml = (demurCrit.length===0&&etaVencidos.length===0&&piVencidos.length===0)
+    ? '<div style="text-align:center;padding:20px;color:var(--ok);font-size:13px;font-weight:600;">Sem alertas criticos</div>'
+    : [
+        ...demurCrit.map(p=>{
+          const d=demurrageDias(p);
+          const pid=p.id;
+          return '<div style="padding:8px 10px;margin-bottom:6px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+pid+'\");toggleDashExecutivo()">'
+            +'<div style="font-size:11px;font-weight:700;color:var(--err);">Demurrage: '+p.referencia+'</div>'
+            +'<div style="font-size:10px;color:var(--muted);">Vence em '+d+' dia(s) · '+(p.armador||'—')+'</div></div>';
+        }),
+        ...etaVencidos.slice(0,4).map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
+          +'<div style="font-size:11px;font-weight:700;color:var(--warn);">ETA vencido: '+p.referencia+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?new Date(p.eta).toLocaleDateString('pt-BR'):'—')+' · ainda Embarcado</div></div>'),
+        ...piVencidos.slice(0,4).map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
+          +'<div style="font-size:11px;font-weight:700;color:var(--err);">PI vencida: '+p.referencia+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);">Venceu '+new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')+' · '+usd(parseFloat(p.pi_valor_usd)||0)+'</div></div>'),
+      ].join('');
+
+  const agendaHtml = etaSemana.length===0
+    ? '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">Nenhum navio chegando esta semana</div>'
+    : etaSemana.map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--ac);">'+p.referencia+'</div>'
+        +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?new Date(p.eta).toLocaleDateString('pt-BR'):'—')+' · '+(p.armador||'—')+' · '+(p.fornecedor||'—')+'</div></div>').join('')
+      + (topForn.length>0
+        ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Top Fornecedores</div>'
+          + topForn.map(([f,n])=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>'+f+'</span><span style="font-weight:700;color:var(--ac);">'+n+'</span></div>').join('')+'</div>'
+        : '');
+
+  const secStyle = 'background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;';
+  const secTitle = t => '<div style="font-family:Syne,sans-serif;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">'+t+'</div>';
+  const piSemanaHtml = piSemana.length>0
+    ? '<div style="padding:8px 10px;margin-top:6px;background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.15);border-radius:7px;">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--warn);">'+piSemana.length+' PI(s) vencem em 7 dias · '+usd(piSemana.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0))+'</div></div>' : '';
+
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
+    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;">Dashboard Executivo</div>'
+    +'<div style="font-size:12px;color:var(--muted);">'+hoje.toLocaleDateString('pt-BR')+' · '+_processos.length+' processos</div></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;">'+kpis.join('')+'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">'
+    +'<div style="'+secStyle+'">'+secTitle('Pipeline de Processos')+funil+'</div>'
+    +'<div style="'+secStyle+'">'+secTitle('Alertas Criticos')+alertasHtml+piSemanaHtml+'</div>'
+    +'<div style="'+secStyle+'">'+secTitle('Chegando Esta Semana')+agendaHtml+'</div>'
+    +'</div>'
+    +(totalNfMes>0 || nfEntradaPeriodo.length>0
+      ? '<div style="'+secStyle+'margin-bottom:16px;">'+secTitle('Faturamento — '+periodoLabel)
+        +'<div style="display:flex;gap:24px;flex-wrap:wrap;">'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Saída emitidas</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+nfSaidaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Entrada emitidas</div><div style="font-size:20px;font-weight:600;color:var(--info);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+nfEntradaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado (saída)</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+brl(totalNfMes)+'</div></div>'
+        +'</div></div>' : '');
+}
+
+function toggleDashFinanceiro(){
+  const el = document.getElementById('dash-financeiro');
+  if(!el) return;
+  const visivel = el.style.display !== 'none';
+  el.style.display = visivel ? 'none' : 'block';
+  if(!visivel) renderDashFinanceiro();
+  document.getElementById('menu-financeiro')?.classList.toggle('active', !visivel);
+}
+
+// ════════════════════════════════════════════════════════════════
+// FILTRO DE PERÍODO — cada dashboard (executivo/financeiro) tem seu
+// próprio estado independente, identificado por um namespace.
+// ════════════════════════════════════════════════════════════════
+let _periodoEstado = {
+  executivo:  { tipo:'mes', ini:'', fim:'' },
+  financeiro: { tipo:'mes', ini:'', fim:'' },
+};
+
+// Calcula {ini, fim, label} a partir do tipo de período selecionado para
+// o namespace informado ('executivo' ou 'financeiro').
+function calcularPeriodo(ns){
+  const estado = _periodoEstado[ns] || _periodoEstado.financeiro;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  let ini, fim, label;
+  if(estado.tipo==='semana'){
+    const diaSemana = hoje.getDay(); // 0=domingo
+    ini = new Date(hoje); ini.setDate(hoje.getDate()-diaSemana);
+    fim = new Date(ini); fim.setDate(ini.getDate()+6);
+    label = `Semana de ${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
+  } else if(estado.tipo==='ano'){
+    ini = new Date(hoje.getFullYear(),0,1);
+    fim = new Date(hoje.getFullYear(),11,31);
+    label = `Ano ${hoje.getFullYear()}`;
+  } else if(estado.tipo==='custom' && estado.ini && estado.fim){
+    ini = new Date(estado.ini);
+    fim = new Date(estado.fim);
+    label = `${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
+  } else {
+    estado.tipo = 'mes';
+    ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    fim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+    label = hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  }
+  fim.setHours(23,59,59,999);
+  return {ini, fim, label};
+}
+
+// Desenha o seletor (Semana/Mês/Ano/Personalizado) num container, ligado ao
+// namespace de período (ns: 'executivo' ou 'financeiro' — cada um com seu
+// próprio estado independente), e religa ao callback informado para
+// re-renderizar o painel correspondente quando o período mudar.
+function renderPeriodoSeletor(containerId, ns, onChangeCallback){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  const estado = _periodoEstado[ns] || _periodoEstado.financeiro;
+  const opts = [['semana','Semana'],['mes','Mês'],['ano','Ano'],['custom','Personalizado']];
+  el.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      ${opts.map(([v,l])=>`<button type="button" onclick="_periodoEstado['${ns}'].tipo='${v}';renderPeriodoSeletor('${containerId}','${ns}',${onChangeCallback.name});${onChangeCallback.name}()"
+        style="padding:5px 12px;border-radius:6px;border:1px solid ${estado.tipo===v?'var(--ac)':'var(--border)'};background:${estado.tipo===v?'var(--ac)':'#fff'};color:${estado.tipo===v?'#fff':'var(--text)'};font-size:11px;font-weight:600;cursor:pointer;">${l}</button>`).join('')}
+      ${estado.tipo==='custom' ? `
+        <input type="date" id="periodo-custom-ini-${containerId}" value="${estado.ini}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+          onchange="_periodoEstado['${ns}'].ini=this.value;${onChangeCallback.name}()">
+        <span style="font-size:11px;color:var(--muted);">até</span>
+        <input type="date" id="periodo-custom-fim-${containerId}" value="${estado.fim}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+          onchange="_periodoEstado['${ns}'].fim=this.value;${onChangeCallback.name}()">
+      ` : ''}
+    </div>`;
+}
+
+function renderDashFinanceiro(){
+  const el = document.getElementById('dash-fin-content');
+  if(!el) return;
+
+  renderPeriodoSeletor('periodo-seletor-financeiro', 'financeiro', renderDashFinanceiro);
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo('financeiro');
+
+  // Processos ativos (não finalizados)
+  const ativos = _processos.filter(p=>p.fase!=='FINALIZADO');
+
+  // Total provisionado (todas PIs em aberto)
+  const totalProvUSD = ativos.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const totalProvBRL = totalProvUSD * _cambio.USD;
+
+  // Pagos vs em aberto
+  const pagosUSD  = ativos.filter(p=>p.pi_pago).reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
+  const abertoUSD = totalProvUSD - pagosUSD;
+
+  // Vencendo essa semana
+  const semFim = new Date(hoje); semFim.setDate(hoje.getDate()+7);
+  const vencSemana = ativos.filter(p=>{
+    if(!p.pi_data_saldo||p.pi_pago) return false;
+    const d = new Date(p.pi_data_saldo);
+    return d >= hoje && d <= semFim;
+  });
+
+  // Vencidos
+  const vencidos = ativos.filter(p=>{
+    if(!p.pi_data_saldo||p.pi_pago) return false;
+    return new Date(p.pi_data_saldo) < hoje;
+  });
+
+  // Câmbio a pagar no período selecionado — soma os pagamentos de PI (saldo
+  // ou entrada) com vencimento dentro do período, ainda não pagos. Cada
+  // pagamento usa seu próprio câmbio salvo (pi_cambio/pi_cambio_entrada/
+  // pi_cambio_saldo) quando disponível, senão o câmbio atual.
+  const pagamentosNoPeriodo = [];
+  ativos.forEach(p=>{
+    if(p.pi_pago) return;
+    const checarData = (data, valorUsd, cambio) => {
+      if(!data || !valorUsd) return;
+      const d = new Date(data);
+      if(d>=mesIni && d<=mesFim) pagamentosNoPeriodo.push({ref:p.referencia, data:d, valorUsd, cambio: cambio||_cambio.USD});
+    };
+    if(p.pi_pagamento==='ENTRADA_SALDO'){
+      const pct = parseFloat(p.pi_entrada_pct||30)/100;
+      const total = parseFloat(p.pi_valor_usd)||0;
+      checarData(p.pi_data_entrada, total*pct, parseFloat(p.pi_cambio_entrada));
+      checarData(p.pi_data_saldo, total*(1-pct), parseFloat(p.pi_cambio_saldo));
+    } else {
+      checarData(p.pi_data_saldo, parseFloat(p.pi_valor_usd), parseFloat(p.pi_cambio));
+    }
+  });
+  const cambioPagarUSD = pagamentosNoPeriodo.reduce((s,x)=>s+x.valorUsd,0);
+  const cambioPagarBRL = pagamentosNoPeriodo.reduce((s,x)=>s+(x.valorUsd*x.cambio),0);
+
+  // Por forma de pagamento
+  const porTipo = {VISTA:0, PRAZO:0, ENTRADA_SALDO:0};
+  ativos.forEach(p=>{ if(p.pi_pagamento) porTipo[p.pi_pagamento]=(porTipo[p.pi_pagamento]||0)+(parseFloat(p.pi_valor_usd)||0); });
+
+  const fmt = v => `USD ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const fmtBRL = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+
+  // NF emitidas no mês
+  const nfEntradaMes = ativos.filter(p=>{
+    if(!p.nf_entrada_data) return false;
+    const d = new Date(p.nf_entrada_data);
+    return d >= mesIni && d <= mesFim;
+  });
+  const nfSaidaMes = ativos.filter(p=>{
+    if(!p.nf_saida_data) return false;
+    const d = new Date(p.nf_saida_data);
+    return d >= mesIni && d <= mesFim;
+  });
+  const totalNfEntrada = nfEntradaMes.reduce((s,p)=>s+(parseFloat(p.nf_entrada_valor)||0),0);
+  const totalNfSaida   = nfSaidaMes.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
+
+  // Demurrage em aberto
+  const demurAberto = _processos.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento);
+  const totalDemur  = demurAberto.reduce((s,p)=>s+(parseFloat(p.demurrage_valor)||0),0);
+  const demurVencidos = demurAberto.filter(p=>demurrageDias(p)<0);
+
+  el.innerHTML = `
+    <!-- Cabeçalho período -->
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:12px;">
+      📅 Período: ${periodoLabel} · 
+      Câmbio atual: USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${(_cambio.EUR||0).toFixed(2)} · CNY R$ ${(_cambio.CNY||0).toFixed(4)}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
+      <div onclick="abrirComFiltro('')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px;" title="Ver todos os processos em aberto">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Provisionado</div>
+        <div style="font-size:20px;font-weight:800;color:var(--ac);">${fmt(totalProvUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalProvBRL)}</div>
+      </div>
+      <div onclick="abrirComFiltro('__pi_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver processos com pagamento em aberto">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Em Aberto</div>
+        <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(abertoUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(abertoUSD*_cambio.USD)}</div>
+      </div>
+      <div onclick="abrirComFiltro('__pi_pago')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;" title="Ver processos já pagos">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Pago</div>
+        <div style="font-size:20px;font-weight:800;color:var(--ok);">${fmt(pagosUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(pagosUSD*_cambio.USD)}</div>
+      </div>
+      <div onclick="abrirComFiltro('__pi_vence_semana')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver pagamentos vencendo nos próximos 7 dias">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Vence em 7 dias</div>
+        <div style="font-size:20px;font-weight:800;color:var(--warn);">${vencSemana.length} PI${vencSemana.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmt(vencSemana.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0))}</div>
+      </div>
+    </div>
+    ${vencidos.length ? `
+    <div style="background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--err);margin-bottom:8px;">🚨 ${vencidos.length} pagamento(s) VENCIDO(S)</div>
+      ${vencidos.map(p=>`<div onclick="abrirProcesso('${p.id}');toggleDashFinanceiro()" style="cursor:pointer;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(220,38,38,.1);display:flex;justify-content:space-between;">
+        <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia}</span>
+        <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — venceu ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
+      </div>`).join('')}
+    </div>` : ''}
+    ${vencSemana.length ? `
+    <div style="background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--warn);margin-bottom:8px;">⚠ Vencendo nos próximos 7 dias</div>
+      ${vencSemana.map(p=>`<div onclick="abrirProcesso('${p.id}');toggleDashFinanceiro()" style="cursor:pointer;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(217,119,6,.1);display:flex;justify-content:space-between;">
+        <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia} <span class="fin-badge fin-${p.pi_pagamento}" style="margin-left:4px;">${p.pi_pagamento}</span></span>
+        <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — vence ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
+      </div>`).join('')}
+    </div>` : ''}
+      <div onclick="abrirComFiltro('__cambio_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver pagamentos de câmbio dentro do período selecionado">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Câmbio a Pagar (período)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--warn);">${fmt(cambioPagarUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(cambioPagarBRL)} · ${pagamentosNoPeriodo.length} pagamento${pagamentosNoPeriodo.length!==1?'s':''}</div>
+      </div>
+      <div onclick="abrirComFiltro('__nf_entrada_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;" title="Ver processos com NF de entrada no período">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Entrada (período)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--info);">${nfEntradaMes.length} NF${nfEntradaMes.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfEntrada)}</div>
+      </div>
+      <div onclick="abrirComFiltro('__nf_saida_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;" title="Ver processos com NF de saída no período">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Saída (período)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--ok);">${nfSaidaMes.length} NF${nfSaidaMes.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfSaida)}</div>
+      </div>
+      <div onclick="abrirComFiltro('__demur_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver containers com demurrage em aberto">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Demurrage em aberto</div>
+        <div style="font-size:20px;font-weight:800;color:var(--err);">${demurVencidos.length} vencido${demurVencidos.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${demurAberto.length} container${demurAberto.length!==1?'s':''} pendentes</div>
+      </div>
+    </div>
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Por forma de pagamento (em aberto)</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div><span class="fin-badge fin-VISTA">VISTA</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.VISTA)}</span></div>
+        <div><span class="fin-badge fin-PRAZO">PRAZO</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.PRAZO)}</span></div>
+        <div><span class="fin-badge fin-ENTRADA_SALDO">ENT+SLD</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.ENTRADA_SALDO)}</span></div>
+      </div>
+    </div>
+    <!-- Tabela consolidada por processo -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">
+        Todos os processos em aberto — visão financeira
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:var(--bg);">
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Pagamento</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor USD</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor BRL</th>
+              <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Vencimento</th>
+              <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ativos.filter(p=>p.pi_valor_usd).map(p=>{
+              const vencData = p.pi_data_saldo||p.pi_data_entrada||'';
+              const valUSD   = parseFloat(p.pi_valor_usd)||0;
+              const cambio   = parseFloat(p.pi_cambio)||_cambio.USD;
+              const valBRL   = valUSD * cambio;
+              const vencido  = vencData && new Date(vencData) < hoje && !p.pi_pago;
+              const vcSemana = vencData && new Date(vencData)>=hoje && new Date(vencData)<=semFim && !p.pi_pago;
+              const statusHtml = p.pi_pago
+                ? '<span style="color:var(--ok);font-weight:700;">✓ Pago</span>'
+                : vencido  ? '<span style="color:var(--err);font-weight:700;">⚠ Vencido</span>'
+                : vcSemana ? '<span style="color:var(--warn);font-weight:700;">⏰ Vence em breve</span>'
+                : '<span style="color:var(--muted);">Em aberto</span>';
+              return `<tr style="border-top:1px solid var(--border);${vencido?'background:rgba(220,38,38,.03)':''}">
+                <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${p.referencia}</td>
+                <td style="padding:8px 12px;">${p.fornecedor||'—'}</td>
+                <td style="padding:8px 12px;"><span class="fin-badge fin-${p.pi_pagamento||'VISTA'}">${p.pi_pagamento||'—'}</span></td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmt(valUSD)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmtBRL(valBRL)}</td>
+                <td style="padding:8px 12px;text-align:center;">${vencData?new Date(vencData).toLocaleDateString('pt-BR'):'—'}</td>
+                <td style="padding:8px 12px;text-align:center;">${statusHtml}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--border);background:var(--bg);">
+              <td colspan="3" style="padding:10px 12px;font-weight:700;font-size:13px;">TOTAL</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;font-family:DM Mono,monospace;color:var(--ac);">${fmt(totalProvUSD)}</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;font-family:DM Mono,monospace;color:var(--ac);">${fmtBRL(totalProvBRL)}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function limparFiltroData(){
+  const de  = document.getElementById('filtro-data-de');
+  const ate = document.getElementById('filtro-data-ate');
+  if(de)  de.value  = '';
+  if(ate) ate.value = '';
+  render();
+}
+function filtroEssaSemana(){
+  const hoje = new Date();
+  const dom  = new Date(hoje); dom.setDate(hoje.getDate() - hoje.getDay());
+  const sab  = new Date(dom);  sab.setDate(dom.getDate() + 6);
+  document.getElementById('filtro-data-de').value  = dom.toISOString().split('T')[0];
+  document.getElementById('filtro-data-ate').value = sab.toISOString().split('T')[0];
+  render();
+}
+function filtroEsseMes(){
+  const hoje = new Date();
+  const ini  = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const fim  = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  document.getElementById('filtro-data-de').value  = ini.toISOString().split('T')[0];
+  document.getElementById('filtro-data-ate').value = fim.toISOString().split('T')[0];
+  render();
+}
+
+function showToast(msg, tipo){
+  const wrap = document.getElementById('toast-wrap');
+  if(!wrap) return;
+  const t = document.createElement('div');
+  t.className = 'toast '+(tipo||'');
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(()=>t.remove(), 3000);
+}
+</script>
+
+<script src="/chat.js"></script>
+</body>
+</html>

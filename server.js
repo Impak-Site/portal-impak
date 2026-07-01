@@ -16,9 +16,28 @@ const express = require('express');
 const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { randomUUID } = require('crypto');
+const { randomUUID, scryptSync, randomBytes, timingSafeEqual } = require('crypto');
 
 function gerarUUID(){ return randomUUID(); }
+
+// ── HASH DE SENHA (scrypt nativo do Node — sem dependência externa) ──
+// Formato do hash armazenado: "salt:hash" (ambos em hex).
+function hashSenha(senhaPura){
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(senhaPura, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+function verificarSenha(senhaPura, hashArmazenado){
+  if(!hashArmazenado || !hashArmazenado.includes(':')) return false;
+  const [salt, hashOriginal] = hashArmazenado.split(':');
+  const hashTentativa = scryptSync(senhaPura, salt, 64).toString('hex');
+  // timingSafeEqual evita "timing attack" (comparar com === pode revelar,
+  // pelo tempo de resposta, quantos caracteres já bateram).
+  const bufOriginal  = Buffer.from(hashOriginal, 'hex');
+  const bufTentativa = Buffer.from(hashTentativa, 'hex');
+  if(bufOriginal.length !== bufTentativa.length) return false;
+  return timingSafeEqual(bufOriginal, bufTentativa);
+}
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -38,28 +57,88 @@ function sb() {
 }
 
 // ── USUÁRIOS ──────────────────────────────────────────────────
-function env(key, fallback) { return process.env[key] || fallback; }
+// As senhas NUNCA ficam em texto puro no código — cada SENHA_* no Railway
+// deve conter o HASH gerado (ver scripts/gerar-hash-senha.js), não a senha
+// real. Se uma variável estiver faltando, o login desse usuário falha com
+// um aviso claro no log, em vez de usar uma senha-padrão previsível.
+function envSenhaHash(key) {
+  const v = process.env[key];
+  if (!v) console.error(`⚠️  ${key} não configurada no Railway — login deste usuário vai falhar.`);
+  return v || null;
+}
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senha: env('SENHA_NARCELIO',  'Narcelio@2026'),      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
-  { usuario: 'jean',      senha: env('SENHA_JEAN',      'Jeanimpak2026'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
-  { usuario: 'paula',     senha: env('SENHA_PAULA',     'Paula@2026'),         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
-  { usuario: 'bianca',    senha: env('SENHA_BIANCA',    'Bianca@2026'),        modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
-  { usuario: 'emanuelly', senha: env('SENHA_EMANUELLY', 'EmanuellyImpak2026'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
-  { usuario: 'italo',     senha: env('SENHA_ITALO',     'Italo@2026'),         modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
-  { usuario: 'maria',     senha: env('SENHA_MARIA',     'Maria@2026'),         modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
-  { usuario: 'joyce',     senha: env('SENHA_JOYCE',     'Joyce@2026'),         modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
-  { usuario: 'neide',     senha: env('SENHA_NEIDE',     'Neide@2026'),         modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
+  { usuario: 'narcelio',  senhaHash: envSenhaHash('SENHA_NARCELIO'),  modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
+  { usuario: 'jean',      senhaHash: envSenhaHash('SENHA_JEAN'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
+  { usuario: 'paula',     senhaHash: envSenhaHash('SENHA_PAULA'),     modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'amanda',    senhaHash: envSenhaHash('SENHA_AMANDA'),    modulos: ['tyredesk','processos'], nome: 'Amanda',    role: 'gerente',  displayName: 'Amanda',    home: '/processos'  },
+  { usuario: 'bianca',    senhaHash: envSenhaHash('SENHA_BIANCA'),    modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
+  { usuario: 'emanuelly', senhaHash: envSenhaHash('SENHA_EMANUELLY'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
+  { usuario: 'italo',     senhaHash: envSenhaHash('SENHA_ITALO'),     modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
+  { usuario: 'maria',     senhaHash: envSenhaHash('SENHA_MARIA'),     modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
+  { usuario: 'joyce',     senhaHash: envSenhaHash('SENHA_JOYCE'),     modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
+  { usuario: 'neide',     senhaHash: envSenhaHash('SENHA_NEIDE'),     modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
 ];
+
+// ── INVALIDAÇÃO DE SESSÃO POR USUÁRIO ─────────────────────────
+// Cada usuário tem um "número de versão" da sessão (começa em 1). A sessão
+// guarda a versão vigente no momento do login; o middleware auth() compara
+// com a versão atual do usuário a cada requisição. Incrementar a versão
+// (ex: ao trocar senha, ou via "Forçar logout") invalida instantaneamente
+// qualquer sessão antiga daquele usuário, mesmo que o cookie ainda exista
+// no navegador da pessoa — sem precisar de um banco de sessões externo.
+const _sessaoVersao = new Map(USUARIOS.map(u => [u.usuario, 1]));
+
+function forcarLogoutUsuario(usuario) {
+  _sessaoVersao.set(usuario, (_sessaoVersao.get(usuario) || 1) + 1);
+}
+
+// ── RATE LIMITING NO LOGIN ────────────────────────────────────
+// Proteção simples contra força bruta: no máximo 5 tentativas de login por
+// IP a cada 10 minutos. Em memória (sem dependência externa) — suficiente
+// para o volume de uso deste sistema; reinicia se o servidor reiniciar,
+// o que é aceitável aqui (não é uma defesa contra ataque distribuído).
+const _loginTentativas = new Map(); // ip -> [timestamps]
+const LOGIN_MAX_TENTATIVAS = 5;
+const LOGIN_JANELA_MS = 10 * 60 * 1000;
+
+function rateLimitLogin(req, res, next) {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+  const agora = Date.now();
+  const tentativas = (_loginTentativas.get(ip) || []).filter(t => agora - t < LOGIN_JANELA_MS);
+  if (tentativas.length >= LOGIN_MAX_TENTATIVAS) {
+    const minutosRestantes = Math.ceil((LOGIN_JANELA_MS - (agora - tentativas[0])) / 60000);
+    return res.send(loginPage(`Muitas tentativas. Tente novamente em ${minutosRestantes} minuto(s).`, req.body?.destino || '/'));
+  }
+  tentativas.push(agora);
+  _loginTentativas.set(ip, tentativas);
+  next();
+}
+// Limpeza periódica para a memória não crescer indefinidamente
+setInterval(() => {
+  const agora = Date.now();
+  for (const [ip, tentativas] of _loginTentativas.entries()) {
+    const ativas = tentativas.filter(t => agora - t < LOGIN_JANELA_MS);
+    if (ativas.length) _loginTentativas.set(ip, ativas);
+    else _loginTentativas.delete(ip);
+  }
+}, 5 * 60 * 1000);
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Necessário para o Express reconhecer conexões como HTTPS mesmo estando
+// atrás do proxy do Railway (que termina o SSL antes do container) — sem
+// isso, cookie.secure=true bloquearia o cookie de sessão para todo mundo.
+app.set('trust proxy', 1);
 app.use(session({
-  secret: env('SESSION_SECRET', 'impak-secret-2026'),
+  secret: process.env.SESSION_SECRET || (() => {
+    console.error('⚠️  SESSION_SECRET não configurado no Railway — usando valor temporário gerado neste boot (sessões serão invalidadas a cada deploy).');
+    return randomBytes(32).toString('hex');
+  })(),
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 8 * 60 * 60 * 1000 },
+  cookie: { secure: true, maxAge: 8 * 60 * 60 * 1000 },
 }));
 app.use(express.static(__dirname));
 
@@ -126,26 +205,56 @@ app.get('/login', (req, res) => {
   res.send(loginPage('', req.query.destino || '/'));
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', rateLimitLogin, (req, res) => {
   const { usuario, senha, destino } = req.body;
   const login = (usuario || '').trim().toLowerCase();
-  const u = USUARIOS.find(x => x.usuario === login && x.senha === senha);
-  if (!u) return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
+  const u = USUARIOS.find(x => x.usuario === login);
+  // Mesma mensagem de erro tanto para "usuário não existe" quanto para
+  // "senha errada" — não revelar qual dos dois está incorreto.
+  if (!u || !u.senhaHash || !verificarSenha(senha || '', u.senhaHash)) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+    // Nunca logar a senha digitada, mesmo errada — só o usuário tentado, o
+    // IP, e o horário, suficiente para notar um padrão de ataque sem criar
+    // outro vazamento de dado sensível dentro dos próprios logs.
+    console.warn(`[LOGIN FALHOU] usuário="${login}" ip=${ip} em ${new Date().toISOString()}`);
+    return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
+  }
   req.session.usuario     = u.usuario;
   req.session.nome        = u.nome;
   req.session.modulos     = u.modulos;
   req.session.role        = u.role;
   req.session.displayName = u.displayName;
-  req.session.senha       = u.senha;
+  // A senha (nem em hash) nunca é guardada na sessão — ela só precisa
+  // existir no momento do login. Guardá-la aqui não tem uso real e só
+  // criava o risco de ser devolvida de volta ao navegador via /api/me.
+  req.session.versao      = _sessaoVersao.get(u.usuario) || 1;
   req.session.home        = u.home || '/';
   res.redirect(destino && destino !== '/' ? destino : (u.home || '/'));
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
+// Força o logout de um usuário em TODOS os dispositivos/sessões abertas —
+// útil ao trocar a senha de alguém, ou se houver suspeita de acesso
+// indevido (ex: notebook perdido). Restrito a gerentes.
+app.post('/api/usuarios/:usuario/forcar-logout', (req, res) => {
+  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+  const alvo = (req.params.usuario || '').trim().toLowerCase();
+  if (!USUARIOS.some(u => u.usuario === alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+  forcarLogoutUsuario(alvo);
+  res.json({ ok: true, mensagem: `Todas as sessões de "${alvo}" foram invalidadas.` });
+});
+
 function auth(modulo) {
   return (req, res, next) => {
     if (!req.session.usuario) return res.redirect('/login?destino=' + req.path);
+    // Se a versão da sessão estiver desatualizada (alguém forçou logout
+    // deste usuário, ex: ao trocar a senha), invalida mesmo com cookie válido.
+    const versaoAtual = _sessaoVersao.get(req.session.usuario) || 1;
+    if (req.session.versao !== versaoAtual) {
+      return req.session.destroy(() => res.redirect('/login?destino=' + req.path));
+    }
     if (modulo && !req.session.modulos.includes(modulo)) return res.status(403).send('<h2>Acesso negado</h2>');
     next();
   };
@@ -165,7 +274,6 @@ app.get('/api/me', (req, res) => {
     modulos:     req.session.modulos,
     role:        req.session.role,
     displayName: req.session.displayName,
-    senha:       req.session.senha,
   });
 });
 
@@ -344,13 +452,20 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
         valor_depois: String(l.valor_depois || ''),
         created_at: l.created_at || new Date().toISOString(),
       }));
-      await sb().from('controle_log').insert(rows).catch(e => console.warn('log erro:', e.message));
+      try {
+        await sb().from('controle_log').insert(rows);
+      } catch(logErr) {
+        console.warn('log erro:', logErr.message);
+      }
       processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
     }
 
+    // Remover campos internos antes de salvar no banco
+    const { log: _log, _fasePrevista, _savedAt, ...processoLimpo } = processo;
+
     const { error } = await sb()
       .from('controle_processos')
-      .upsert(processo, { onConflict: 'id' });
+      .upsert(processoLimpo, { onConflict: 'id' });
     if (error) throw new Error(error.message);
 
     // Criar notificação de demurrage se necessário
@@ -358,13 +473,17 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
       const venc = new Date(processo.demurrage_vencimento);
       const dias = Math.ceil((venc - new Date()) / 86400000);
       if (dias <= 5 && dias >= 0 && !processo.data_devolucao_vazio) {
-        await sb().from('controle_notificacoes').insert({
-          processo_id: processo.id,
-          tipo: 'urgente',
-          titulo: `Demurrage: ${processo.referencia}`,
-          mensagem: `Container vence em ${dias} dia(s)!`,
-          created_by: req.session.usuario,
-        }).catch(() => {});
+        try {
+          await sb().from('controle_notificacoes').insert({
+            processo_id: processo.id,
+            tipo: 'urgente',
+            titulo: `Demurrage: ${processo.referencia}`,
+            mensagem: `Container vence em ${dias} dia(s)!`,
+            created_by: req.session.usuario,
+          });
+        } catch(notifErr) {
+          console.warn('notificacao erro:', notifErr.message);
+        }
       }
     }
 
@@ -709,6 +828,132 @@ app.post('/api/analisar', auth('processos'), async (req, res) => {
   }
 });
 
+// ── GED — ARQUIVOS DO PROCESSO (Supabase Storage) ──────────────
+const GED_BUCKET = 'controle-arquivos';
+
+app.get('/api/controle/v2/arquivos/:processoId', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_arquivos')
+      .select('id, nome, tipo, tamanho, storage_path, created_at, created_by')
+      .eq('processo_id', req.params.processoId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    const arquivos = await Promise.all((data || []).map(async a => {
+      const { data: urlData } = sb().storage.from(GED_BUCKET).getPublicUrl(a.storage_path);
+      return { ...a, url: urlData?.publicUrl || '' };
+    }));
+    res.json({ ok: true, arquivos });
+  } catch (e) {
+    console.error('ged listar erro:', e.message);
+    res.json({ ok: true, arquivos: [] });
+  }
+});
+
+app.post('/api/controle/v2/arquivos', auth('processos'), async (req, res) => {
+  try {
+    const { processo_id, nome, tipo, base64 } = req.body;
+    if (!processo_id || !nome || !base64) return res.status(400).json({ erro: 'Dados incompletos' });
+
+    const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!tiposPermitidos.includes(tipo)) return res.status(400).json({ erro: 'Tipo de arquivo não permitido' });
+
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ erro: 'Arquivo maior que 15MB' });
+
+    const arquivoId = gerarUUID();
+    const extensao = nome.split('.').pop();
+    const storagePath = `${processo_id}/${arquivoId}.${extensao}`;
+
+    const { error: uploadError } = await sb().storage
+      .from(GED_BUCKET)
+      .upload(storagePath, buffer, { contentType: tipo, upsert: false });
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { error: dbError } = await sb().from('controle_arquivos').insert({
+      id: arquivoId,
+      processo_id,
+      nome,
+      tipo,
+      tamanho: buffer.length,
+      storage_path: storagePath,
+      created_by: req.session.usuario,
+      created_at: new Date().toISOString(),
+    });
+    if (dbError) throw new Error(dbError.message);
+
+    console.log(`ged upload: ${nome} (${(buffer.length/1024).toFixed(0)}KB) processo=${processo_id} por ${req.session.usuario}`);
+    res.json({ ok: true, id: arquivoId });
+  } catch (e) {
+    console.error('ged upload erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+app.delete('/api/controle/v2/arquivos/:id', auth('processos'), async (req, res) => {
+  try {
+    const { data: arquivo } = await sb()
+      .from('controle_arquivos')
+      .select('storage_path')
+      .eq('id', req.params.id)
+      .single();
+    if (arquivo?.storage_path) {
+      await sb().storage.from(GED_BUCKET).remove([arquivo.storage_path]);
+    }
+    const { error } = await sb().from('controle_arquivos').delete().eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('ged excluir erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
+app.get('/api/contatos', auth(), async (req, res) => {
+  try {
+    const { q, tipo, uf, limit } = req.query;
+    const lim = Math.min(parseInt(limit) || 30, 1000);
+    let query = sb().from('contatos_clientes').select('id,cnpj,razao_social,nome_fantasia,cidade,uf,email,telefone,tipo,obs').eq('ativo', true);
+    if (tipo) query = query.eq('tipo', tipo.toUpperCase());
+    if (uf)   query = query.eq('uf', uf.toUpperCase());
+    if (q && q.length >= 2) {
+      // Remove caracteres com significado especial na sintaxe do filtro
+      // .or() do PostgREST (vírgula separa condições, % é wildcard do
+      // ilike, parênteses/asterisco também têm sentido sintático) — sem
+      // isso, buscar por algo como "Silva, Lima" quebrava a query com erro.
+      const qSeguro = q.replace(/[,%*()]/g, '').trim();
+      if (qSeguro.length >= 2) {
+        query = query.or(`razao_social.ilike.%${qSeguro}%,cnpj.ilike.%${qSeguro}%,nome_fantasia.ilike.%${qSeguro}%`);
+      }
+    }
+    query = query.order('razao_social').limit(lim);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, contatos: data || [] });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.post('/api/contatos', auth('processos'), async (req, res) => {
+  try {
+    const c = req.body;
+    if (!c.razao_social) return res.status(400).json({ erro: 'Razão social obrigatória' });
+    if (!c.id) c.id = require('crypto').randomUUID();
+    c.updated_at = new Date().toISOString();
+    const { error } = await sb().from('contatos_clientes').upsert(c, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, id: c.id });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.delete('/api/contatos/:id', auth('processos'), async (req, res) => {
+  try {
+    const { error } = await sb().from('contatos_clientes').update({ ativo: false }).eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
 // ── HEALTH ────────────────────────────────────────────────────
 
 // Servir chat.js
@@ -894,6 +1139,7 @@ app.post('/api/drive/historico/limpar', auth('tyredesk'), async (req, res) => {
 app.get('/health', async (req, res) => {
   const url = process.env.SUPABASE_URL || '';
   const key = process.env.SUPABASE_KEY || '';
+  const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
 
   // Decodificar role da key sem dependência externa
   let keyRole = 'desconhecido';
@@ -920,10 +1166,26 @@ app.get('/health', async (req, res) => {
     key_len: key.length,
     url_ok: url.includes('supabase.co'),
     node: process.version,
+    anthropic_key_configurada: anthropicKey.length > 20,
+    anthropic_key_len: anthropicKey.length,
+    anthropic_key_prefixo: anthropicKey.slice(0, 10),
   });
+});
+
+// ── TRATAMENTO DE ERRO GENÉRICO ────────────────────────────────
+// Captura qualquer erro não tratado que escape de uma rota (ex: exceção
+// síncrona, erro de parsing) antes que o Express devolva sua página de
+// erro padrão — que pode incluir stack trace e detalhes da estrutura
+// interna do código, úteis para quem estiver tentando mapear o sistema.
+app.use((err, req, res, next) => {
+  console.error('Erro não tratado:', err.stack || err.message || err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ ok: false, erro: 'Erro interno no servidor. Tente novamente em alguns instantes.' });
 });
 
 // ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
+  console.log(`Variáveis de ambiente carregadas: ${Object.keys(process.env).filter(k=>k.includes('ANTHROPIC')||k.includes('SUPABASE')).join(', ')}`);
+  console.log(`ANTHROPIC_API_KEY presente: ${!!process.env.ANTHROPIC_API_KEY} | tamanho: ${(process.env.ANTHROPIC_API_KEY||'').length}`);
 });

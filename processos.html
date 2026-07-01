@@ -3174,7 +3174,7 @@ function renderDivPanel(){
       html+='<div style="display:flex;align-items:center;gap:8px;">';
       html+='<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;color:'+ac+';font-family:monospace;background:'+bg+';">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
       html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+d.campo+'</span></div>';
-      html+='<span class="div-status-'+gi+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
+      html+='<span id="div-status-'+gi+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
       html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
       html+='<div style="padding:10px 16px;border-right:1px solid var(--border);">';
       html+='<div style="font-size:9px;font-weight:700;color:var(--text-dim);font-family:monospace;text-transform:uppercase;margin-bottom:4px;">'+(d.doc1_label||'DOC 1')+'</div>';
@@ -3190,7 +3190,7 @@ function renderDivPanel(){
       }
       html+='<div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border);align-items:center;">';
       var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
-      html+='<input class="div-nota-'+gi+' field-input" placeholder="Motivo para aceitar (ex: transbordo normal, formato diferente...)" value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
+      html+='<input id="div-nota-'+gi+'" class="field-input" placeholder="Motivo para aceitar (ex: transbordo normal, formato diferente...)" value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
       var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
       html+='<button data-action="resolve" data-idx="'+gi+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
       html+='</div></div>';
@@ -3241,15 +3241,15 @@ function renderDivPanel(){
     if(!d) return;
     var key=d.grupo+'-'+d.campo;
 if(action==='resolve'){
-var nota=panel.querySelector('.div-nota-'+i).value.trim();
+var nota=(document.getElementById('div-nota-'+i)||{value:''}).value.trim();
 if(divergResolved[key]){
   // Undo aceite — recalcular status
   delete divergResolved[key];
-  var s=panel.querySelector('.div-status-'+i);
+  var s=document.getElementById('div-status-'+i);
   if(s){s.textContent='Pendente';s.style.color='#94a3b8';}
   btn.textContent='Aceitar como OK';
   btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
-  var notaEl=panel.querySelector('.div-nota-'+i);
+  var notaEl=document.getElementById('div-nota-'+i);
   if(notaEl) notaEl.style.borderColor='var(--border2)';
   try{
     var refUn = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
@@ -3268,17 +3268,17 @@ if(divergResolved[key]){
 } else {
   if(!nota){
     // Highlight nota field and prompt
-    var notaEl2=panel.querySelector('.div-nota-'+i);
+    var notaEl2=document.getElementById('div-nota-'+i);
     if(notaEl2){notaEl2.style.borderColor='var(--warn)';notaEl2.focus();}
     showToast('Digite o motivo para aceitar esta divergência','warn');
     return;
   }
   divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
-  var s2=panel.querySelector('.div-status-'+i);
+  var s2=document.getElementById('div-status-'+i);
   if(s2){s2.innerHTML='&#10003; Aceito — '+nota.substring(0,30)+(nota.length>30?'...':'');s2.style.color='#16a34a';}
   btn.textContent='Desfazer';
   btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
-  var notaEl3=panel.querySelector('.div-nota-'+i);
+  var notaEl3=document.getElementById('div-nota-'+i);
   if(notaEl3) notaEl3.style.borderColor='#16a34a';
   showToast('Aceito: '+nota.substring(0,40),'ok');
   // Salvar aceite e recalcular status via função central

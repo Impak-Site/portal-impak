@@ -1,0 +1,30 @@
+name: Testes do Portal IMPAK
+
+# Roda automaticamente sempre que houver um push (ou um Pull Request) para
+# as branches dev e main — não precisa de nenhuma ação manual depois de
+# configurado. Se um teste falhar, o GitHub mostra um X vermelho no commit
+# e o repositório fica com um aviso visível.
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  testes:
+    name: Rodar testes automatizados
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v6
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Rodar testes do Controle de Processos
+        run: node testes_controle.js
+
+      - name: Rodar testes do TyreDesk
+        run: node testes_tyredesk.js
