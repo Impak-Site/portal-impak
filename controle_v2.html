@@ -2699,12 +2699,14 @@ async function extrairComIA(input){
     const apiKey = localStorage.getItem('impak_apikey')||'';
     // A chave do servidor (Railway) é usada se não houver chave local — ok
 
-    const content = [{
-      type: isImg ? 'image' : 'document',
-      source: { type:'base64', media_type: file.type, data: base64 }
-    },{
-      type:'text',
-      text:`Extraia os dados deste documento de importação e retorne SOMENTE JSON com os campos disponíveis:
+    // Prompt de instruções: texto FIXO, idêntico em toda chamada (só muda o
+    // documento anexado). Extraído numa constante própria e colocado ANTES do
+    // documento no array `content`, marcado com cache_control — a API Anthropic
+    // cacheia o PREFIXO da mensagem, então o bloco que não muda precisa vir
+    // primeiro. Isso reduz o custo desse bloco (~12 mil tokens) para ~10% do
+    // valor normal em chamadas subsequentes dentro da janela de cache (5 min),
+    // sem alterar em nada o resultado da extração.
+    const promptInstrucoes = `Extraia os dados deste documento de importação e retorne SOMENTE JSON com os campos disponíveis:
 {
   "referencia": "",
   "fornecedor": "",  // razão social ou nome comercial do exportador/supplier
@@ -2765,7 +2767,15 @@ Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pe
 - extrair ce_numero, "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e ce_armador (transportador/armador).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
-Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`
+Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`;
+
+    const content = [{
+      type: 'text',
+      text: promptInstrucoes,
+      cache_control: { type: 'ephemeral' }
+    },{
+      type: isImg ? 'image' : 'document',
+      source: { type:'base64', media_type: file.type, data: base64 }
     }];
 
     // Faz a chamada com 1 retry automático: falhas como "Could not process PDF"
