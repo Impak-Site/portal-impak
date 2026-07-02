@@ -751,6 +751,11 @@ const FORNECEDOR_ALIASES = [
 // 2º esta tabela, por medida (mais precisa que o default genérico por tipo);
 // 3º o default genérico por tipo (TBR/PCR/AGR/OTR) só como último recurso.
 // Preencher/ajustar aqui conforme a tabela real de capacidade por medida.
+// Capacidade padrão de pneus por container 40HC, por tipo (fallback quando não
+// há capacidade específica da cotação nem da medida). Única fonte — reutilizada
+// em toda análise de cobertura/container do TyreDesk e no envio pro Calculador.
+const PNEUS_POR_CONTAINER_DEFAULT = {TBR:264, PCR:1100, AGR:200, OTR:100};
+
 const CAPACIDADE_POR_MEDIDA = {
   '295/80R22.5': 248,
 };
@@ -1513,8 +1518,7 @@ function analisar(){
   origHtml+='</div>';
 
   // Container % por fornecedor — breakdown por medida
-  const pneusPorCtnr = {TBR:264, PCR:1100, AGR:200, OTR:100};
-  const capCtnrDefault = pneusPorCtnr[tp] || 1100;
+  const capCtnrDefault = PNEUS_POR_CONTAINER_DEFAULT[tp] || 1100;
   const fornsCtnr=[...new Set(cots.map(c=>c.forn))];
   let ctnrHtml='<div style="padding:0 16px 14px">';
 
@@ -1955,8 +1959,7 @@ function _detalheQtd(el, idx, best){
 
   // Recalcular container — breakdown por medida com ctnr real
   const tp = ultimaAnalise ? ultimaAnalise.tp : 'TBR';
-  const pneusPorCtnr = {TBR:264, PCR:1100, AGR:200, OTR:100};
-  const capCtnrDefault = pneusPorCtnr[tp] || 264;
+  const capCtnrDefault = PNEUS_POR_CONTAINER_DEFAULT[tp] || 264;
   const fornId = best.forn.replace(/[^a-zA-Z0-9]/g,'_');
   const cots = ultimaAnalise ? ultimaAnalise.cots : [];
   const linhas = cots.filter(c=>c.forn===best.forn);
@@ -2211,15 +2214,31 @@ function enviarParaCalculador() {
 
   if (!itens.length) { toast('Nenhum item com cotação no mix'); return; }
 
+  // Quantos containers esse mix precisa: soma qtde/capacidade por medida
+  // (capacidade da própria cotação > tabela por medida > default por tipo).
+  // Regra combinada com o Calculador: passou de 105% → abre novo container.
+  const capCtnrDefault = PNEUS_POR_CONTAINER_DEFAULT[tp] || 1100;
+  let totalFracaoContainer = 0;
+  mix.forEach(m => {
+    const cotItem = cots.find(c => c.forn === forn && c.medida === m.medida);
+    const cap = (cotItem && cotItem.ctnr > 0) ? cotItem.ctnr : (CAPACIDADE_POR_MEDIDA[m.medida] || capCtnrDefault);
+    totalFracaoContainer += (m.qtde || 0) / cap;
+  });
+  const containers_necessarios = totalFracaoContainer > 1.05 ? Math.ceil(totalFracaoContainer) : 1;
+
   const payload = {
     fob_total: parseFloat(fob_total.toFixed(2)),
     tipo: tp || 'TBR',
     forn: forn,
     itens,
+    containers: containers_necessarios,
+    cobertura_container_pct: Math.round(totalFracaoContainer * 100),
   };
 
   sessionStorage.setItem('calculador_mix', JSON.stringify(payload));
-  toast('✓ Mix enviado! Abrindo calculador...');
+  toast(containers_necessarios > 1
+    ? `✓ Mix enviado! ${Math.round(totalFracaoContainer*100)}% de container — ${containers_necessarios} containers. Abrindo calculador...`
+    : '✓ Mix enviado! Abrindo calculador...');
   setTimeout(() => { window.location.href = '/calculador'; }, 800);
 }
 
