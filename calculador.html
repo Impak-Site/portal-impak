@@ -413,6 +413,29 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <div class="form-group"><label>Emissão L.I. (R$)</label><input type="number" id="tx_emissao_li" step="0.01" value="153.53"></div>
         </div>
         <div class="form-row">
+          <div class="form-group">
+            <label>Porto (p/ calcular armazenagem)</label>
+            <select id="tx_porto">
+              <option value="">— selecionar —</option>
+              <option value="ITJ">ITJ — Itajaí</option>
+              <option value="IOA">IOA — Itapoá</option>
+              <option value="NVT">NVT — Navegantes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Dias parado (fechamento, opcional)</label>
+            <input type="number" id="tx_dias_parado" step="1" min="0" value="0" placeholder="0 = só simulação">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:0 0 auto;">
+            <button type="button" class="btn-refresh" onclick="calcularArmazenagemUI()">🔄 Calcular armazenagem pelo porto</button>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <div style="font-size:11px;color:var(--dim);margin-top:22px;" id="armazenagem-info">Sem dias = só simulação (1º período). Com dias = inclui fechamento (2º período).</div>
+          </div>
+        </div>
+        <div class="form-row">
           <div class="form-group"><label>Baixa Pátio (R$)</label><input type="number" id="tx_baixa_patio" step="0.01" value="500"></div>
           <div class="form-group"><label>Capatazia/THC (R$)</label><input type="number" id="tx_capatazia" step="0.01" value="1100"></div>
         </div>
@@ -555,6 +578,62 @@ const NCM_POR_TIPO = {
   'AGR': 40117090,
   'OTR': 40118090,
 };
+
+// Regra de armazenagem por porto (fonte: planilha UD25-333, aba "MODELO - COM S.T", linhas 86-94).
+// Base de cálculo (baseImpBrl) = (FOB + Frete + Taxa C.E. + Seguro de compra) × câmbio, em R$.
+// 1º período = MAX(base × pct1, min1 × containers) + Pesagem + Controle Acesso + Levante (todos por container).
+// 2º período (só entra se diasParado > 0, ex: fechamento do processo) = base × pct2 × diasParado.
+// Simulação de cotação normalmente usa diasParado=0 (só 1º período); fechamento real usa os dias parados.
+const ARMAZENAGEM_POR_PORTO = {
+  ITJ: { nome: 'Itajaí',    pct1: 0.0063, min1: 1399, pct2: 0.0033, min2: 259, pesagem: 161, controle: 0, levante: 489 },
+  IOA: { nome: 'Itapoá',    pct1: 0.0059, min1: 1300, pct2: 0.0038, min2: 264, pesagem: 115, controle: 0, levante: 480 },
+  NVT: { nome: 'Navegantes',pct1: 0.0064, min1: 1433, pct2: 0.0033, min2: 236, pesagem: 165, controle: 0, levante: 490 },
+};
+
+function calcularArmazenagemPorto(baseImpBrl, containers, porto, diasParado){
+  const p = ARMAZENAGEM_POR_PORTO[porto];
+  if(!p) return 0;
+  const periodo1 = Math.max(baseImpBrl * p.pct1, p.min1 * containers);
+  const extras   = (p.pesagem + p.controle + p.levante) * containers;
+  let total = periodo1 + extras;
+  if(diasParado > 0){
+    total += baseImpBrl * p.pct2 * diasParado;
+  }
+  return total;
+}
+
+// Lê FOB/Frete/Taxa C.E./Seguro/Câmbio direto dos campos do topo (mesma fórmula do cálculo
+// principal) pra poder calcular a armazenagem ANTES de rodar o cálculo completo.
+function calcularArmazenagemUI(){
+  const cambio   = parseFloat(document.getElementById('cambio_usd').value) || 0;
+  const fob_usd  = parseFloat(document.getElementById('fob_usd').value) || 0;
+  const frete_usd= parseFloat(document.getElementById('frete_usd').value) || 0;
+  const taxa_ce  = parseFloat(document.getElementById('taxa_ce_usd').value) || 0;
+  const taxa_seguro_compra = parseFloat(document.getElementById('taxa_seguro_compra').value) || 0;
+  const containers = parseInt(document.getElementById('qtde_containers').value) || 1;
+  const porto    = document.getElementById('tx_porto').value;
+  const dias     = parseInt(document.getElementById('tx_dias_parado').value) || 0;
+
+  if(!cambio || !fob_usd){ showToast('Preencha câmbio e FOB antes de calcular a armazenagem','err'); return; }
+  if(!porto){ showToast('Selecione o porto','err'); return; }
+
+  const seguro_total_usd = fob_usd + frete_usd;
+  const seguro_despesas  = seguro_total_usd * 0.10;
+  const seguro_lucro_esp = (seguro_total_usd + seguro_despesas) * 0.10;
+  const seguro_base_usd  = seguro_total_usd + seguro_despesas + seguro_lucro_esp + taxa_ce;
+  const seguro_compra_usd= seguro_base_usd * taxa_seguro_compra;
+
+  const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambio;
+  const valor = calcularArmazenagemPorto(base_imp_brl, containers, porto, dias);
+
+  document.getElementById('tx_armazenagem').value = valor.toFixed(2);
+  const info = document.getElementById('armazenagem-info');
+  const p = ARMAZENAGEM_POR_PORTO[porto];
+  info.textContent = dias > 0
+    ? `${p.nome}: 1º período + ${dias} dia(s) de 2º período incluídos (fechamento).`
+    : `${p.nome}: só 1º período (simulação). Pra fechamento, informe os dias parados.`;
+  showToast('Armazenagem calculada e preenchida', 'ok');
+}
 
 const TAXAS_FIXAS_CONTAINER = {
   siscomex:      480,
@@ -903,7 +982,11 @@ function calcular() {
 
     let icms_st = 0, base_st = 0;
     if(tem_st){
-      base_st  = (vlr_produto + IPI_s) * (1 + t.mva);
+      // Redução de base (RBC 06/09, coluna K da Tabela NCM) aplicada ANTES do MVA.
+      // Para SC, rbc=0 na tabela (sempre) — então a fórmula abaixo já reproduz
+      // exatamente a regra de SC sem precisar de exceção separada.
+      const vlr_produto_reduzido = vlr_produto - (vlr_produto * t.rbc);
+      base_st  = (vlr_produto_reduzido + IPI_s) * (1 + t.mva);
       icms_st  = Math.max(0, (base_st * aliq_icms_s) - ICMS_nfe_normal);
     }
     const vlr_total_nfe = vlr_produto + IPI_s + icms_st;
