@@ -745,6 +745,16 @@ const FORNECEDOR_ALIASES = [
   { canonico: 'TIANFU',             aliases: ['TIANFU'] },
 ];
 
+// Capacidade real de container (un. por 40HC) por medida específica.
+// Usada como 2ª camada de fallback no cálculo de % de container:
+// 1º a capacidade da própria cotação (cot.ctnr, quando informada na planilha);
+// 2º esta tabela, por medida (mais precisa que o default genérico por tipo);
+// 3º o default genérico por tipo (TBR/PCR/AGR/OTR) só como último recurso.
+// Preencher/ajustar aqui conforme a tabela real de capacidade por medida.
+const CAPACIDADE_POR_MEDIDA = {
+  '295/80R22.5': 248,
+};
+
 // Normaliza qualquer variação de nome para o nome canônico.
 // Usar SEMPRE que um nome de fornecedor entrar no sistema:
 // upload de planilha, cadastro manual, edição, importação de base antiga.
@@ -798,7 +808,8 @@ function parseTBR(rows, fornecedor){
   const iBrand=hdr.findIndex(c=>c.toUpperCase()==='BRAND');
   const iPat  =hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
   const iWgt  =hdr.findIndex(c=>c.toUpperCase().includes('WEIGHT'));
-  const iLi   =hdr.findIndex(c=>c.toUpperCase().includes('LI'));
+  // LI/SR: match só cabeçalhos claros (evita falso-positivo tipo "APLICAÇÃO" que contém "LI")
+  const iLi   =hdr.findIndex(c=>/^LI(\/SR)?$/i.test(c.trim())||/LI\s*\/\s*SR/i.test(c)||/LOAD\s*INDEX/i.test(c));
   const iPr   =hdr.findIndex(c=>c.toUpperCase()==='PR');
   const iMoq  =hdr.findIndex(c=>c.toString().includes('40'));
   const iFob  =hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
@@ -817,7 +828,8 @@ function parseTBR(rows, fornecedor){
     const sizeStr = (r[iSize]||'').toString().toUpperCase();
     const tipoItem = (sizeStr.includes('R22')||sizeStr.includes('R20')||sizeStr.includes('R17.5')||sizeStr.includes('R19.5')) ? 'TBR' : 'TBR';
     items.push({f:fornecedor,s:size,medida:size,m:(r[iBrand]||fornecedor).toString(),
-      md:(r[iPat]||'').toString(),pat:(r[iPat]||'').toString(),cur:'USD',
+      md:(r[iPat]||'').toString(),pat:(r[iPat]||'').toString(),
+      cat:iCat>=0?(r[iCat]||'').toString():'',cur:'USD',
       pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,peso:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,
       li:iLi>=0?(r[iLi]||'').toString():'',
       pr:iPr>=0?(r[iPr]||'').toString():'',
@@ -1518,7 +1530,7 @@ function analisar(){
     const detalhesMedidas = [];
     mixF.forEach(m=>{
       const cot = linhas.find(l=>l.medida===m.medida);
-      const cap = (cot && cot.ctnr > 0) ? cot.ctnr : capCtnrDefault;
+      const cap = (cot && cot.ctnr > 0) ? cot.ctnr : (CAPACIDADE_POR_MEDIDA[m.medida] || capCtnrDefault);
       const fracao = m.qtde / cap;
       totalFracao += fracao;
       detalhesMedidas.push({
@@ -1802,25 +1814,20 @@ function renderSelTable() {
   rowOrder.forEach(rk => {
     const row = rowMap[rk];
     const sel = forns.some(f => row.cells[f] && selPicked[getSelKey(row.cells[f])]);
-    // Badge só aparece se bor tiver valor real (não default vazio)
-    const borBdg = row.bor==='borrachudo'
-      ? '<span class="badge-borr">BORRACHUDO</span>'
-      : row.bor==='liso'
-        ? '<span class="badge-liso">LISO</span>'
-        : '';
     const prSpan = row.pr && row.pr!=='PCR' ? ` <span style="font-size:10px;color:var(--mu)">· ${row.pr}</span>` : '';
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
-    const catBdg = row.cat ? `<span style="font-size:10px;font-weight:700;background:#dce8f5;color:#1a7fd4;border-radius:4px;padding:2px 6px;">${row.cat}</span>` : '';
     // Para TBR mostrar categoria como título, padrão como código secundário
     const isTBR = tipoAtivo === 'TBR';
     const mainLabel = isTBR ? (row.cat || row.pat || '—') : (row.pat || '—');
-    const subLabel  = '';
+    // Código do padrão (ex: RDO17) só aparece como subtítulo quando é diferente da categoria já mostrada acima
+    const subLabel = (row.patCode && row.patCode !== mainLabel) ? row.patCode : '';
+    // LI/SR só aparece se for realmente um LI/SR (não repete o texto da categoria)
+    const liTxt = (row.li && row.li !== '—' && row.li !== mainLabel) ? row.li : '';
     t += `<td class="spec-col">
       <div class="spec-pat">${mainLabel}${prSpan}</div>
-      ${subLabel ? `<div style="margin-top:2px">${subLabel}</div>` : ''}
-      <div class="spec-li">${row.li}</div>
-      <div class="spec-bor" style="margin-top:4px">${borBdg}</div>
+      ${subLabel ? `<div style="font-size:10px;color:var(--mu);margin-top:2px">${subLabel}</div>` : ''}
+      ${liTxt ? `<div class="spec-li">${liTxt}</div>` : ''}
     </td>`;
 
     forns.forEach(f => {
@@ -1957,7 +1964,7 @@ function _detalheQtd(el, idx, best){
   let totalFracao = 0;
   best.det.forEach(d=>{
     const cot = linhas.find(l=>l.medida===d.medida);
-    const cap = (cot && cot.ctnr > 0) ? cot.ctnr : capCtnrDefault;
+    const cap = (cot && cot.ctnr > 0) ? cot.ctnr : (CAPACIDADE_POR_MEDIDA[d.medida] || capCtnrDefault);
     const fracao = (d.qtde||0) / cap;
     totalFracao += fracao;
 
