@@ -729,12 +729,18 @@ app.get('/api/base/carregar', auth(), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('tyredesk_base')
-      .select('dados')
+      .select('dados, updated_at, updated_by')
       .eq('id', 1)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
     const base = data ? data.dados : null;
-    res.json({ ok: !!base, base, total: base ? base.length : 0 });
+    res.json({
+      ok: !!base,
+      base,
+      total: base ? base.length : 0,
+      updated_at: data ? data.updated_at : null,
+      updated_by: data ? data.updated_by : null,
+    });
   } catch (e) { res.json({ ok: false, base: null }); }
 });
 
