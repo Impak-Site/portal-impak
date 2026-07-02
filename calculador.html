@@ -870,6 +870,14 @@ function renderMix() {
   ).join('');
   document.getElementById('mix-fob-total').textContent = 'US$ '+fmt(_mix.fob_total);
   document.getElementById('fob_usd').value = _mix.fob_total || '';
+  // Containers calculados pelo TyreDesk (>105% de cobertura = novo container).
+  // Pré-preenche mas continua editável — usuário pode ajustar se souber melhor.
+  if(_mix.containers){
+    document.getElementById('qtde_containers').value = _mix.containers;
+    if(_mix.containers > 1){
+      showToast(`Mix do TyreDesk usa ${_mix.cobertura_container_pct||''}% de container — ${_mix.containers} containers detectados`, 'info');
+    }
+  }
 }
 
 // ── CÁLCULO PRINCIPAL ─────────────────────────────────────
@@ -932,8 +940,15 @@ function calcular() {
   const ICMS_e   = ((cif_brl + II + IPI_e + PIS_e + COFINS_e + siscomex_unit + DUMP + afrmm_unit) / 0.96) * 0.01;
 
   // ── 4. Taxas fixas (editáveis) ──
+  // Armazenagem tem regra própria por porto (calcularArmazenagemPorto já soma
+  // mínimo/pesagem/controle/levante × containers internamente) — não duplicar
+  // de novo aqui, senão conta container duas vezes. As demais taxas fixas são
+  // realmente por container (Siscomex, Marinha/AFRMM, Despachante etc.) e
+  // multiplicam linearmente pela quantidade de containers.
   let taxas_fixas = 0;
-  Object.values(txOp.fixas).forEach(v => taxas_fixas += v * containers);
+  Object.entries(txOp.fixas).forEach(([chave, v]) => {
+    taxas_fixas += (chave === 'armazenagem') ? v : v * containers;
+  });
   taxas_fixas += custos_div;
 
   let taxas_usd = 0;
@@ -1243,7 +1258,7 @@ function renderResultado(r) {
           <table class="calc-table">
             <tr><td>Siscomex</td><td class="num">${fmtR(r.txOp.fixas.siscomex*r.containers)}</td></tr>
             <tr><td>Marinha Mercante</td><td class="num">${fmtR(r.txOp.fixas.marinha*r.containers)}</td></tr>
-            <tr><td>Armazenagem</td><td class="num">${fmtR(r.txOp.fixas.armazenagem*r.containers)}</td></tr>
+            <tr><td>Armazenagem</td><td class="num">${fmtR(r.txOp.fixas.armazenagem)}</td></tr>
             <tr><td>Emissão L.I.</td><td class="num">${fmtR(r.txOp.fixas.emissao_li*r.containers)}</td></tr>
             <tr><td>Baixa Pátio</td><td class="num">${fmtR(r.txOp.fixas.baixa_patio*r.containers)}</td></tr>
             <tr><td>Capatazia (THC)</td><td class="num">${fmtR(r.txOp.fixas.capatazia*r.containers)}</td></tr>
