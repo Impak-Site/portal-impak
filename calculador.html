@@ -128,6 +128,23 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
 .toast.err{background:var(--err);}
 .toast.info{background:var(--ac);}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* MODAL COTAÇÕES */
+.mbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;}
+.mbg.open{display:flex;}
+.modal-cot{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--ac);border-radius:10px;width:680px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.3);}
+.modal-cot-h{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-cot-h h3{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;}
+.modal-cot-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;}
+.modal-cot-b{padding:16px 20px;}
+.cot-table{width:100%;border-collapse:collapse;font-size:12px;}
+.cot-table th{text-align:left;padding:6px 8px;background:var(--bg);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;}
+.cot-table td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.cot-table tr:hover td{background:rgba(26,127,212,.04);}
+.cot-actions{display:flex;gap:4px;}
+.cot-actions button{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;color:var(--text);}
+.cot-actions button:hover{background:var(--border);}
+.cot-actions button.danger{color:var(--err);}
 </style>
 <!-- Carregada antecipadamente (não no clique do botão) — no Safari, gerar o
      blob de download muito tempo depois do carregamento dinâmico da lib via
@@ -550,6 +567,11 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     <!-- BOTÃO CALCULAR -->
     <button class="btn-calc" onclick="calcular()">⚡ CALCULAR</button>
     <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
+      <button class="btn-refresh" style="flex:1;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
+    </div>
+    <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
 
   </div>
 
@@ -565,6 +587,22 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
 </div>
 
 <div class="toast-wrap" id="toasts"></div>
+
+<!-- MODAL: MINHAS COTAÇÕES -->
+<div class="mbg" id="mbg-cotacoes">
+  <div class="modal-cot">
+    <div class="modal-cot-h">
+      <h3>📂 Minhas Cotações</h3>
+      <button class="modal-cot-close" onclick="fecharListaCotacoes()">✕</button>
+    </div>
+    <div class="modal-cot-b">
+      <table class="cot-table">
+        <thead><tr><th>Cliente</th><th>Tipo/UF</th><th>Custo Total</th><th>Lucro</th><th>Atualizado</th><th></th></tr></thead>
+        <tbody id="cot-lista-body"><tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 <script>
 // ════════════════════════════════════════════════════════
@@ -667,6 +705,7 @@ let _cenario = 3;
 let _mix = null;
 let _cambioFixado = false;
 let _ultimoResultado = null;
+let _cotacaoAtualId = null; // id da cotação carregada (null = ainda não salva / nova)
 
 // ── INIT ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -1369,6 +1408,149 @@ async function exportarExcel() {
   } catch(e) {
     showToast('Erro ao exportar: '+e.message,'err');
   }
+}
+
+// ── COTAÇÕES SALVAS (salvar / listar / editar / duplicar / excluir) ────────
+
+// IDs de todo campo do formulário que precisa ser salvo/restaurado pra reabrir
+// a cotação exatamente como ficou. Se adicionar campo novo no formulário,
+// adicionar o id aqui também.
+const CAMPOS_COTACAO = [
+  'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
+  'taxa_seguro_compra','taxa_seguro_venda','produto','origem','uf_destino',
+  'tipo_importacao','dump_valor','cliente','custos_diversos',
+  'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
+  'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
+  'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
+  'tx_administrativo','tx_agente','tx_additional_costs','tx_import_logistics','tx_trs','tx_tsc',
+  'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao',
+  'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor',
+];
+
+function coletarEstadoFormulario(){
+  const campos = {};
+  CAMPOS_COTACAO.forEach(id => {
+    const el = document.getElementById(id);
+    if(el) campos[id] = el.value;
+  });
+  return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix };
+}
+
+function aplicarEstadoFormulario(estado){
+  if(!estado) return;
+  Object.entries(estado.campos||{}).forEach(([id,val]) => {
+    const el = document.getElementById(id);
+    if(el) el.value = val;
+  });
+  if(estado.toggles){
+    Object.entries(estado.toggles).forEach(([k,v]) => {
+      if(k==='ttd') setToggleTTD(v); else setToggle(k,v);
+    });
+  }
+  if(estado.togglesInner){
+    Object.entries(estado.togglesInner).forEach(([k,v]) => setToggleInner(k,v));
+  }
+  _mix = estado.mix || null;
+  if(_mix && _mix.itens && _mix.itens.length) renderMix();
+  if(typeof onProdutoChange === 'function') onProdutoChange();
+  if(typeof onUFChange === 'function') onUFChange();
+}
+
+// Resumo leve pra exibir na lista sem precisar carregar o formulário inteiro.
+function resumoParaLista(r){
+  if(!r) return null;
+  return {
+    tipo: r.tipo, uf: r.uf, containers: r.containers,
+    custo_total: r.custo_total, faturamento: r.faturamento,
+    lucro_bruto: r.lucro_bruto, pct_lucro: r.pct_lucro,
+  };
+}
+
+async function salvarCotacao(){
+  const cliente = (document.getElementById('cliente').value || '').trim();
+  if(!cliente){ showToast('Preencha o cliente antes de salvar', 'err'); return; }
+  const body = {
+    id: _cotacaoAtualId || undefined,
+    cliente,
+    dados: coletarEstadoFormulario(),
+    resumo: resumoParaLista(_ultimoResultado),
+  };
+  try{
+    const r = await fetch('/api/calculador/cotacoes', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if(d.ok){
+      const eraNova = !_cotacaoAtualId;
+      _cotacaoAtualId = d.id;
+      document.getElementById('cotacao-status').textContent = `Cotação salva${eraNova?'':' (atualizada)'} — ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+      showToast(eraNova ? '✓ Cotação criada' : '✓ Cotação atualizada', 'ok');
+    } else {
+      showToast('Erro ao salvar: '+(d.erro||'?'), 'err');
+    }
+  } catch(e){ showToast('Erro ao salvar: '+e.message, 'err'); }
+}
+
+async function abrirListaCotacoes(){
+  document.getElementById('mbg-cotacoes').classList.add('open');
+  const tbody = document.getElementById('cot-lista-body');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr>';
+  try{
+    const r = await fetch('/api/calculador/cotacoes');
+    const d = await r.json();
+    if(!d.ok || !d.cotacoes.length){
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Nenhuma cotação salva ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.cotacoes.map(c => {
+      const res = c.resumo || {};
+      const dt = c.updated_at ? new Date(c.updated_at) : null;
+      const dtTxt = dt ? `${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}` : '—';
+      return `<tr>
+        <td><strong>${c.cliente||'—'}</strong></td>
+        <td>${res.tipo||'—'} / ${res.uf||'—'}</td>
+        <td>${res.custo_total!=null ? fmt(res.custo_total) : '—'}</td>
+        <td>${res.lucro_bruto!=null ? fmt(res.lucro_bruto)+' ('+(res.pct_lucro||0).toFixed(1)+'%)' : '—'}</td>
+        <td style="font-size:11px;color:var(--muted);">${dtTxt}${c.updated_by?' · '+c.updated_by:''}</td>
+        <td><div class="cot-actions">
+          <button onclick="carregarCotacao('${c.id}', false)">✏️ Editar</button>
+          <button onclick="carregarCotacao('${c.id}', true)">📋 Duplicar</button>
+          <button class="danger" onclick="excluirCotacao('${c.id}')">🗑</button>
+        </div></td>
+      </tr>`;
+    }).join('');
+  } catch(e){
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--err);padding:20px;">Erro ao carregar: ${e.message}</td></tr>`;
+  }
+}
+
+function fecharListaCotacoes(){
+  document.getElementById('mbg-cotacoes').classList.remove('open');
+}
+
+async function carregarCotacao(id, duplicar){
+  try{
+    const r = await fetch('/api/calculador/cotacoes/'+id);
+    const d = await r.json();
+    if(!d.ok){ showToast('Erro ao carregar cotação', 'err'); return; }
+    aplicarEstadoFormulario(d.cotacao.dados);
+    _cotacaoAtualId = duplicar ? null : id; // duplicar = próximo salvar cria registro novo
+    document.getElementById('cotacao-status').textContent = duplicar
+      ? 'Duplicada — ainda não salva (salve pra criar uma cópia nova)'
+      : `Editando cotação de ${d.cotacao.cliente}`;
+    fecharListaCotacoes();
+    showToast(duplicar ? '✓ Cotação duplicada no formulário' : '✓ Cotação carregada', 'ok');
+  } catch(e){ showToast('Erro ao carregar: '+e.message, 'err'); }
+}
+
+async function excluirCotacao(id){
+  if(!confirm('Excluir essa cotação? Não dá pra desfazer.')) return;
+  try{
+    const r = await fetch('/api/calculador/cotacoes/'+id, {method:'DELETE'});
+    const d = await r.json();
+    if(d.ok){ showToast('✓ Cotação excluída', 'ok'); abrirListaCotacoes(); }
+    else showToast('Erro ao excluir', 'err');
+  } catch(e){ showToast('Erro ao excluir: '+e.message, 'err'); }
 }
 
 // ── UTILS ─────────────────────────────────────────────────
