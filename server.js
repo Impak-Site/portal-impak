@@ -960,6 +960,58 @@ app.delete('/api/contatos/:id', auth('processos'), async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
+// ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
+// Lista leve (só o resumo, não o formulário inteiro) pra tela de listagem.
+app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('calculador_cotacoes')
+      .select('id,cliente,numero,resumo,updated_at,updated_by')
+      .eq('ativo', true)
+      .order('updated_at', { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, cotacoes: data || [] });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Registro completo (formulário + mix) pra reabrir no Calculador.
+app.get('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('calculador_cotacoes')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, cotacao: data });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Criar/atualizar. Sem id no corpo = cria novo (usado tanto pra "Salvar"
+// quanto pra "Duplicar", já que duplicar só manda os dados sem o id original).
+app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
+  try {
+    const c = req.body;
+    if (!c.cliente) return res.status(400).json({ erro: 'Cliente obrigatório' });
+    if (!c.id) c.id = require('crypto').randomUUID();
+    c.ativo = true;
+    c.updated_at = new Date().toISOString();
+    c.updated_by = req.session.usuario || null;
+    const { error } = await sb().from('calculador_cotacoes').upsert(c, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, id: c.id });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.delete('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
+  try {
+    const { error } = await sb().from('calculador_cotacoes').update({ ativo: false }).eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
 // ── HEALTH ────────────────────────────────────────────────────
 
 // Servir chat.js
