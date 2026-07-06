@@ -566,6 +566,10 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
 
     <!-- BOTÃO CALCULAR -->
     <button class="btn-calc" onclick="calcular()">⚡ CALCULAR</button>
+    <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--dim);">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-demonstrativo" checked> Aba Demonstrativo (interno, com custos e lucro)</label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-cliente" checked> Aba Cliente (comercial, só mix e preço)</label>
+    </div>
     <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
     <div style="display:flex;gap:8px;margin-top:8px;">
       <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
@@ -1209,12 +1213,8 @@ function calcular() {
     lucro_bruto, pct_lucro, fator,
     tem_st: tem_st_toggle, mix_result,
     cenarios: {
-      com_st: { vlr_produto: cenario_com_st.vlr_produto, faturamento: cenario_com_st.faturamento_total,
-                lucro_bruto: cenario_com_st.lucro_bruto, pct_lucro: cenario_com_st.pct_lucro,
-                icms_st: cenario_com_st.icms_st, mix: mix_com_st },
-      sem_st: { vlr_produto: cenario_sem_st.vlr_produto, faturamento: cenario_sem_st.faturamento_total,
-                lucro_bruto: cenario_sem_st.lucro_bruto, pct_lucro: cenario_sem_st.pct_lucro,
-                icms_st: cenario_sem_st.icms_st, mix: mix_sem_st },
+      com_st: { ...cenario_com_st, mix: mix_com_st },
+      sem_st: { ...cenario_sem_st, mix: mix_sem_st },
     },
     br_nome: document.getElementById('br_nome').value,
     boss_nome: document.getElementById('boss_nome')?.value,
@@ -1442,62 +1442,160 @@ async function exportarExcel() {
   showToast('Gerando planilha...','info');
   try {
     const r = _ultimoResultado;
-    const fmtR = v => parseFloat(v.toFixed(2));
-    const rows = [
-      ['IMPAK — Simulação de Importação', '', '', ''],
-      ['Cliente', r.cliente||'—', 'Data', new Date().toLocaleDateString('pt-BR')],
-      ['NCM', r.ncm, 'UF Destino', r.uf],
-      ['Produto', r.tipo, 'Câmbio USD', r.cambio],
-      ['Tipo Importação', r.tipo, 'Containers', r.containers],
-      [],
-      ['── CIF ──', '', '', ''],
-      ['FOB USD', r.fob_usd, 'FOB BRL', fmtR(r.fob_brl)],
-      ['Frete USD', r.frete_usd, 'Frete BRL', fmtR(r.frete_brl)],
-      ['Seguro Compra BRL (interno)', fmtR(r.seguro_brl), 'Seguro Venda BRL (cliente)', fmtR(r.seguro_venda_brl)],
-      ['CIF Total BRL', '', fmtR(r.cif_brl), ''],
-      [],
-      ['── IMPOSTOS ENTRADA ──', '', '', ''],
-      ['II', fmtR(r.II), 'IPI-E', fmtR(r.IPI_e)],
-      ['PIS-E', fmtR(r.PIS_e), 'COFINS-E', fmtR(r.COFINS_e)],
-      ['RBC', fmtR(r.RBC), 'ICMS-E', fmtR(r.ICMS_e)],
-      [],
-      ['── CUSTO ──', '', '', ''],
-      ['Total Taxas', fmtR(r.total_taxas), 'CUSTO TOTAL', fmtR(r.custo_total)],
-      [],
-      ['── FATURAMENTO ──', '', '', ''],
-      ['Vlr. Produto', fmtR(r.vlr_produto), 'IPI-S', fmtR(r.IPI_s)],
-      ['ICMS Normal', fmtR(r.ICMS_nfe), 'ICMS ST', fmtR(r.icms_st)],
-      ['ICMS Próprio', fmtR(r.ICMS_proprio), '', ''],
-      ['Valor Total NF', fmtR(r.vlr_total_nfe), '', ''],
-      ['Lucro Bruto', fmtR(r.lucro_bruto), `${r.pct_lucro.toFixed(2)}%`, ''],
-      ['Fator', r.fator.toFixed(4), '', ''],
-    ];
-
-    if(r.mix_result && r.mix_result.length) {
-      rows.push([]);
-      rows.push(['── MIX DE PRODUTOS ──','','','','']);
-      rows.push(['Medida','Pattern','Qtd','FOB Unit US$','Vlr Unit R$','Total R$']);
-      r.mix_result.forEach(it => rows.push([it.medida, it.pat||'—', it.qtd, it.preco.toFixed(2), fmtR(it.vlr_unit_brl), fmtR(it.total_brl)]));
-    }
-
-    // XLSX já é carregado antecipadamente no <head> (ver comentário lá) —
-    // gerar e baixar o arquivo de forma síncrona, sem esperar onload de CDN,
-    // evita o erro "WebKitBlobResource error 1" no Safari.
+    const fmtR = v => parseFloat((v||0).toFixed(2));
     if(typeof XLSX === 'undefined'){
       showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
       return;
     }
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [20,15,20,15].map(w => ({wch:w}));
-    XLSX.utils.book_append_sheet(wb, ws, 'Simulação');
-    const nome = `IMPAK_Simulação_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const incluirDemonstrativo = document.getElementById('exp-demonstrativo').checked;
+    const incluirCliente = document.getElementById('exp-cliente').checked;
+    if(!incluirDemonstrativo && !incluirCliente){
+      showToast('Marque pelo menos uma aba pra exportar','err'); return;
+    }
+
+    // ── ABA DEMONSTRATIVO (interno) — layout espelhado na aba CAPA da planilha padrão ──
+    if(incluirDemonstrativo){
+      const cst = r.cenarios.com_st, sst = r.cenarios.sem_st;
+      const rows = [
+        [(r.tipo||'').toUpperCase()+' — IMPORTAÇÃO', '', '', ''],
+        [`DEMONSTRATIVO DO PROCESSO — ${r.cliente||'—'}`, '', '', ''],
+        [],
+        ['Cliente:', r.cliente||'—', '', ''],
+        ['Data:', new Date().toLocaleDateString('pt-BR'), 'Quantidade:', (r.mix_result||[]).reduce((a,it)=>a+it.qtd,0)],
+        ['Produto:', r.tipo, 'Total FOB:', r.fob_usd],
+        ['NCM:', r.ncm, 'Containers:', r.containers],
+        ['UF Destino:', r.uf, '', ''],
+        [],
+        ['DÓLAR', r.cambio, 'CUSTO EM DÓLAR', 'VALORES EM REAIS'],
+        ['Valor FOB', r.fob_usd, r.fob_usd, fmtR(r.fob_brl)],
+        ['Frete', r.frete_usd, r.frete_usd, fmtR(r.frete_brl)],
+        ['Seguro', fmtR(r.seguro_compra_usd), fmtR(r.seguro_compra_usd), fmtR(r.seguro_brl)],
+        ['Taxa do C.E.', r.taxa_ce, r.taxa_ce, fmtR(r.taxa_ce*r.cambio)],
+        ['Total do CIF', '', '', fmtR(r.cif_brl)],
+        [],
+        ['TRIBUTOS', '', '', ''],
+        ['Alíquota I.I.', pct(r.t.ii), '', fmtR(r.II)],
+        ['Alíquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e)],
+        ['Alíquota PIS', pct(r.t.pis_e), '', fmtR(r.PIS_e)],
+        ['Alíquota COFINS', pct(r.t.cofins_e), '', fmtR(r.COFINS_e)],
+        ['Alíquota IBS', pct(r.t.ibs), '', fmtR(r.IBS_e)],
+        ['Alíquota CBS', pct(r.t.cbs), '', fmtR(r.CBS_e)],
+        ['Dumping', '', '', fmtR(r.DUMP)],
+        ['TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e+r.DUMP)],
+        [],
+        ['CRÉDITOS DE ENTRADA (recuperáveis)', '', '', ''],
+        ['IPI', '', '', fmtR(-r.IPI_e)],
+        ['PIS', '', '', fmtR(-r.PIS_e)],
+        ['COFINS', '', '', fmtR(-r.COFINS_e)],
+        ['IBS', '', '', fmtR(-r.IBS_e)],
+        ['CBS', '', '', fmtR(-r.CBS_e)],
+        ['TOTAL DOS CRÉDITOS', '', '', fmtR(-(r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e))],
+        [],
+        ['DESPESAS ADUANEIRAS E OPERACIONAIS', '', '', ''],
+        ['Taxa SISCOMEX', '', '', fmtR(r.txOp.fixas.siscomex*r.containers)],
+        ['A.F.R.M (Marinha Mercante)', '', '', fmtR(r.txOp.fixas.marinha*r.containers)],
+        ['Armazenagem e Movimentação Porto', '', '', fmtR(r.txOp.fixas.armazenagem)],
+        ['Capatazia (THC)', '', '', fmtR(r.txOp.fixas.capatazia*r.containers)],
+        ['Liberação BL', '', '', fmtR(r.txOp.fixas.liberacao_bl*r.containers)],
+        ['Emissão de L.Is', '', '', fmtR(r.txOp.fixas.emissao_li*r.containers)],
+        ['Despachante - SDA', '', '', fmtR((r.txOp.fixas.despachante+r.txOp.fixas.sda)*r.containers)],
+        ['Lavação Container', '', '', fmtR(r.txOp.fixas.lavacao*r.containers)],
+        ['Administrativo', '', '', fmtR(r.txOp.fixas.administrativo*r.containers)],
+        ['Agente de Carga', '', '', fmtR(r.txOp.fixas.agente*r.containers)],
+        ['Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers)],
+        ['Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl)],
+        ['Custos Diversos', '', '', fmtR(parseFloat(document.getElementById('custos_diversos').value)||0)],
+        ['TOTAL DESPESAS', '', '', fmtR(r.total_taxas)],
+        [],
+        ['CUSTO TOTAL', '', '', fmtR(r.custo_total)],
+        [],
+      ];
+
+      // Bloco de preço de venda — um por cenário (COM ST / SEM ST)
+      function blocoPrecoVenda(nome, c){
+        return [
+          [`PREÇO DE VENDA — ${nome}`, '', '', ''],
+          ['Total dos Produtos', '', '', fmtR(c.vlr_produto)],
+          ['IPI', pct(r.t.ipi), '', fmtR(c.IPI_s)],
+          ['ICMS', pct(r.t.aliq_inter), '', fmtR(c.ICMS_nfe)],
+          ['ICMS S.T', '', '', fmtR(c.icms_st)],
+          ['IBS', pct(r.t.ibs), '', fmtR(c.IBS_s)],
+          ['CBS', pct(r.t.cbs), '', fmtR(c.CBS_s)],
+          ['TOTAL DA NFe', '', '', fmtR(c.vlr_total_nfe)],
+          [],
+          ['PIS', pct(r.t.pis_s), '', fmtR(c.PIS_s)],
+          ['COFINS', pct(r.t.cofins_s), '', fmtR(c.COFINS_s)],
+          ['ICMS Próprio', pct(r.t.icms_prop), '', fmtR(c.ICMS_proprio)],
+          ['Comissão Repr.', '', '', fmtR(c.COM_br)],
+          ['Comissão China (dentro)', '', '', fmtR(c.COM_china_dentro)],
+          ['Lucro Bruto', pctF(c.pct_lucro), '', fmtR(c.lucro_bruto)],
+          [],
+          ['NOTA DE SERVIÇO (fora do preço)', '', '', ''],
+          ['Comissão China (fora)', '', '', fmtR(c.china_fora_val)],
+          [r.boss_nome||'Comissão Boss/Lopes', '', '', fmtR(c.boss_fora_val)],
+          [],
+          ['TOTAL DO PROCESSO', '', '', fmtR(c.faturamento_total)],
+          [],
+        ];
+      }
+      rows.push(...blocoPrecoVenda('COM S.T', cst));
+      rows.push(...blocoPrecoVenda('SEM S.T', sst));
+
+      if(r.mix_result && r.mix_result.length){
+        rows.push(['VALOR UNITÁRIO POR PRODUTO — COM S.T x SEM S.T', '', '', '']);
+        rows.push(['Medida','Pattern','Qtd Total','Preço COM ST (R$)','Preço SEM ST (R$)']);
+        r.mix_result.forEach((it, idx) => {
+          rows.push([it.medida, it.pat||'—', it.qtd, fmtR(cst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl)]);
+        });
+      }
+
+      const wsD = XLSX.utils.aoa_to_sheet(rows);
+      wsD['!cols'] = [32,16,20,16].map(w => ({wch:w}));
+      XLSX.utils.book_append_sheet(wb, wsD, 'Demonstrativo');
+    }
+
+    // ── ABA CLIENTE (comercial) — só mix, preço e total; sem custo/lucro/comissão ──
+    if(incluirCliente){
+      const cst = r.cenarios.com_st, sst = r.cenarios.sem_st;
+      const rows = [
+        [`${r.cliente||'—'}`, '', '', '', ''],
+        ['Data:', new Date().toLocaleDateString('pt-BR'), '', '', ''],
+        [],
+        ['Medida', 'Pattern', 'Condição', 'Qtd', 'Preço Unit (R$)', 'Total (R$)'],
+      ];
+      let totalGeral = 0;
+      (r.mix_result||[]).forEach((it, idx) => {
+        const qComSt = _splitST[it.medida] ?? it.qtd;
+        const qSemSt = it.qtd - qComSt;
+        if(qComSt > 0){
+          const unit = cst.mix[idx].vlr_unit_brl, tot = unit*qComSt;
+          rows.push([it.medida, it.pat||'—', 'Com ST', qComSt, fmtR(unit), fmtR(tot)]);
+          totalGeral += tot;
+        }
+        if(qSemSt > 0){
+          const unit = sst.mix[idx].vlr_unit_brl, tot = unit*qSemSt;
+          rows.push([it.medida, it.pat||'—', 'Sem ST', qSemSt, fmtR(unit), fmtR(tot)]);
+          totalGeral += tot;
+        }
+      });
+      rows.push([]);
+      rows.push(['', '', '', '', 'TOTAL GERAL', fmtR(totalGeral)]);
+
+      const wsC = XLSX.utils.aoa_to_sheet(rows);
+      wsC['!cols'] = [18,14,10,8,16,16].map(w => ({wch:w}));
+      XLSX.utils.book_append_sheet(wb, wsC, 'Cliente');
+    }
+
+    const nome = `IMPAK_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb, nome);
     showToast('✓ Excel exportado','ok');
   } catch(e) {
     showToast('Erro ao exportar: '+e.message,'err');
   }
 }
+function pct(v){ return (v*100).toFixed(2)+'%'; }
+function pctF(v){ return v.toFixed(2)+'%'; }
 
 // ── COTAÇÕES SALVAS (salvar / listar / editar / duplicar / excluir) ────────
 
