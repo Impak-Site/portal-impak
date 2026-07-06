@@ -488,6 +488,21 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
       </div>
     </div>
 
+    <!-- CUSTO REAL DAS TAXAS (apuração de lucro real) -->
+    <div class="section">
+      <div class="section-title" style="cursor:pointer;" onclick="toggleCustoReal()">
+        💵 Custo Real das Taxas (apuração de lucro real) <span id="custo-real-arrow">▾</span>
+      </div>
+      <div id="custo-real-body" style="display:none;">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
+          O que está em "Taxas Operacionais" acima é o valor <strong>cobrado</strong> (usado no preço). Aqui você informa o que <strong>realmente pagou</strong> em cada uma —
+          a diferença (pra mais ou pra menos) ajusta o Lucro Real sem mudar o preço de venda. Campo vazio = assume igual ao cobrado (sem diferença).
+        </div>
+        <button type="button" class="btn-refresh" onclick="copiarValoresCobrados()" style="margin-bottom:10px;">🔄 Copiar valores cobrados (preencher todos como ponto de partida)</button>
+        <div id="custo-real-inputs"></div>
+      </div>
+    </div>
+
     <!-- PARCELAMENTO E NOTA DE SERVIÇO -->
     <div class="section">
       <div class="section-title" style="cursor:pointer;" onclick="toggleParcelamento()">
@@ -721,6 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
   onProdutoChange();
   buscarCambio();
   setToggleTTD('SIM'); // estado inicial padrão: TTD=SIM → sem ICMS ST
+  renderCustoRealInputs();
 
   // Mix do TyreDesk — fica salvo no sessionStorage durante toda a sessão do
   // navegador (não é removido após o primeiro carregamento), para permitir
@@ -817,6 +833,94 @@ function toggleTaxasOperacionais(){
   const aberto = body.style.display !== 'none';
   body.style.display = aberto ? 'none' : 'block';
   arrow.textContent = aberto ? '▾' : '▴';
+}
+
+function toggleCustoReal(){
+  const body = document.getElementById('custo-real-body');
+  const arrow = document.getElementById('custo-real-arrow');
+  const aberto = body.style.display !== 'none';
+  body.style.display = aberto ? 'none' : 'block';
+  arrow.textContent = aberto ? '▾' : '▴';
+}
+
+// Config única das taxas operacionais — usada pra gerar os campos de "custo
+// real" (apuração de lucro real) espelhando os campos de "valor cobrado".
+// Se adicionar uma taxa nova em Taxas Operacionais, adicionar aqui também.
+const TAXAS_CONFIG = [
+  { id:'siscomex', label:'Siscomex', unit:'R$', tipo:'fixa' },
+  { id:'marinha', label:'Marinha/AFRMM', unit:'R$', tipo:'fixa' },
+  { id:'armazenagem', label:'Armazenagem', unit:'R$', tipo:'fixa' },
+  { id:'emissao_li', label:'Emissão L.I.', unit:'R$', tipo:'fixa' },
+  { id:'baixa_patio', label:'Baixa Pátio', unit:'R$', tipo:'fixa' },
+  { id:'capatazia', label:'Capatazia/THC', unit:'R$', tipo:'fixa' },
+  { id:'liberacao_bl', label:'Liberação BL', unit:'R$', tipo:'fixa' },
+  { id:'despachante', label:'Despachante', unit:'R$', tipo:'fixa' },
+  { id:'sda', label:'SDA', unit:'R$', tipo:'fixa' },
+  { id:'lavacao', label:'Lavação Container', unit:'R$', tipo:'fixa' },
+  { id:'administrativo', label:'Administrativo', unit:'R$', tipo:'fixa' },
+  { id:'agente', label:'Agente Carga', unit:'R$', tipo:'fixa' },
+  { id:'additional_costs', label:'Additional Costs', unit:'US$', tipo:'usd' },
+  { id:'import_logistics', label:'Import Logistics', unit:'US$', tipo:'usd' },
+  { id:'trs', label:'TRS', unit:'US$', tipo:'usd' },
+  { id:'tsc', label:'TSC', unit:'US$', tipo:'usd' },
+  { id:'drop_off', label:'Drop Off', unit:'US$', tipo:'usd' },
+  { id:'isps', label:'ISPS', unit:'US$', tipo:'usd' },
+  { id:'iof', label:'IOF', unit:'US$', tipo:'usd' },
+  { id:'desconsolidacao', label:'Desconsolidação', unit:'US$', tipo:'usd' },
+];
+const ID_COBRADO = { fixa: id => 'tx_'+id, usd: id => 'tx_'+id };
+
+function renderCustoRealInputs(){
+  const wrap = document.getElementById('custo-real-inputs');
+  if(!wrap) return;
+  let html = '';
+  for(let i=0; i<TAXAS_CONFIG.length; i+=2){
+    const a = TAXAS_CONFIG[i], b = TAXAS_CONFIG[i+1];
+    html += '<div class="form-row">';
+    html += `<div class="form-group"><label>${a.label} — Real (${a.unit})</label><input type="number" id="real_${a.id}" step="0.01" placeholder="= cobrado"></div>`;
+    html += b ? `<div class="form-group"><label>${b.label} — Real (${b.unit})</label><input type="number" id="real_${b.id}" step="0.01" placeholder="= cobrado"></div>` : '<div class="form-group"></div>';
+    html += '</div>';
+  }
+  wrap.innerHTML = html;
+}
+
+function copiarValoresCobrados(){
+  TAXAS_CONFIG.forEach(t => {
+    const cobrado = document.getElementById('tx_'+t.id);
+    const real = document.getElementById('real_'+t.id);
+    if(cobrado && real) real.value = cobrado.value;
+  });
+  showToast('✓ Valores cobrados copiados — ajuste só o que realmente pagou diferente', 'ok');
+}
+
+// Lê os custos reais. Campo vazio = assume igual ao cobrado (diferença zero).
+// Retorna também o detalhe de cada taxa que teve diferença, pra exibir.
+function lerCustosReais(containers, cambio){
+  const detalhe = [];
+  let diferenca = 0;
+  TAXAS_CONFIG.forEach(t => {
+    const elCobrado = document.getElementById('tx_'+t.id);
+    const elReal = document.getElementById('real_'+t.id);
+    const cobrado = parseFloat(elCobrado?.value) || 0;
+    const realStr = elReal?.value;
+    const real = (realStr !== '' && realStr !== undefined) ? (parseFloat(realStr) || 0) : cobrado;
+    // Mesma regra de container já usada no cálculo: armazenagem já é container-aware
+    // internamente (não multiplica de novo); as demais são lineares por container.
+    // Taxas em USD convertem pelo câmbio.
+    let diffItem;
+    if(t.id === 'armazenagem'){
+      diffItem = cobrado - real;
+    } else if(t.tipo === 'fixa'){
+      diffItem = (cobrado - real) * containers;
+    } else {
+      diffItem = (cobrado - real) * containers * cambio;
+    }
+    if(Math.abs(diffItem) > 0.01){
+      detalhe.push({ label: t.label, cobrado, real, diferenca: diffItem });
+    }
+    diferenca += diffItem;
+  });
+  return { diferenca, detalhe };
 }
 
 function lerTaxasOperacionais(){
@@ -1199,6 +1303,15 @@ function calcular() {
   const mix_com_st = calcularMixCenario(cenario_com_st.vlr_produto);
   const mix_sem_st = calcularMixCenario(cenario_sem_st.vlr_produto);
 
+  // ── Apuração de Lucro Real (compra x venda das Taxas Operacionais) ──
+  // O Lucro Bruto acima assume que pagamos exatamente o que cobramos em cada
+  // taxa operacional. Na prática às vezes pagamos menos (ou nada) — essa
+  // diferença não muda o preço de venda, mas é lucro real que o Lucro Bruto
+  // contábil não mostra.
+  const { diferenca: diferenca_taxas_real, detalhe: detalhe_diferenca_real } = lerCustosReais(containers, cambio);
+  const lucro_real = lucro_bruto + diferenca_taxas_real;
+  const pct_lucro_real = faturamento !== 0 ? (lucro_real / faturamento) * 100 : 0;
+
   _ultimoResultado = {
     cambio, fob_usd, frete_usd, taxa_ce, containers, tipo, uf, cliente,
     ncm, t,
@@ -1211,6 +1324,7 @@ function calcular() {
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
     lucro_bruto, pct_lucro, fator,
+    lucro_real, pct_lucro_real, diferenca_taxas_real, detalhe_diferenca_real,
     tem_st: tem_st_toggle, mix_result,
     cenarios: {
       com_st: { ...cenario_com_st, mix: mix_com_st },
@@ -1324,6 +1438,12 @@ function renderResultado(r) {
             <div class="card-value ${r.pct_lucro >= 4 ? 'ok' : r.pct_lucro >= 2 ? 'warn' : 'err'}">${fmtR(r.lucro_bruto)}</div>
             <div class="card-sub">${fmtP(r.pct_lucro)} s/ faturamento</div>
           </div>
+          ${Math.abs(r.diferenca_taxas_real) > 0.01 ? `
+          <div class="card-num ${r.pct_lucro_real >= 4 ? 'ok' : r.pct_lucro_real >= 2 ? 'warn' : 'err'}">
+            <div class="card-label">Lucro Real</div>
+            <div class="card-value ${r.pct_lucro_real >= 4 ? 'ok' : r.pct_lucro_real >= 2 ? 'warn' : 'err'}">${fmtR(r.lucro_real)}</div>
+            <div class="card-sub">${r.diferenca_taxas_real > 0 ? '+' : ''}${fmtR(r.diferenca_taxas_real)} vs. contábil</div>
+          </div>` : ''}
           <div class="card-num">
             <div class="card-label">Fator NFe</div>
             <div class="card-value">${r.fator.toFixed(4)}</div>
@@ -1404,6 +1524,20 @@ function renderResultado(r) {
           </table>
         </div>
       </div>
+      ${r.detalhe_diferenca_real && r.detalhe_diferenca_real.length ? `
+      <div class="resultado">
+        <div class="resultado-header"><h2>💵 Apuração de Lucro Real</h2></div>
+        <div class="resultado-body">
+          <table class="calc-table">
+            ${r.detalhe_diferenca_real.map(d => `<tr>
+              <td>${d.label} — cobrado ${fmtR(d.cobrado)} / real ${fmtR(d.real)}</td>
+              <td class="num" style="color:${d.diferenca>=0?'var(--ok)':'var(--err)'}">${d.diferenca>=0?'+':''}${fmtR(d.diferenca)}</td>
+            </tr>`).join('')}
+            <tr class="total-row"><td>Diferença total</td><td class="num" style="color:${r.diferenca_taxas_real>=0?'var(--ok)':'var(--err)'}">${r.diferenca_taxas_real>=0?'+':''}${fmtR(r.diferenca_taxas_real)}</td></tr>
+            <tr class="destaque-row"><td>LUCRO REAL</td><td class="num" style="color:var(--ok);font-weight:800;">${fmtR(r.lucro_real)} (${fmtP(r.pct_lucro_real)})</td></tr>
+          </table>
+        </div>
+      </div>` : ''}
       <div class="resultado">
         <div class="resultado-header"><h2>📤 Faturamento / NF Saída</h2></div>
         <div class="resultado-body">
@@ -1542,6 +1676,16 @@ async function exportarExcel() {
       rows.push(...blocoPrecoVenda('COM S.T', cst));
       rows.push(...blocoPrecoVenda('SEM S.T', sst));
 
+      if(r.detalhe_diferenca_real && r.detalhe_diferenca_real.length){
+        rows.push(['APURAÇÃO DE LUCRO REAL (compra x venda das taxas)', '', '', '']);
+        r.detalhe_diferenca_real.forEach(d => {
+          rows.push([d.label, `Cobrado: ${fmtR(d.cobrado)}`, `Real: ${fmtR(d.real)}`, fmtR(d.diferenca)]);
+        });
+        rows.push(['Diferença total', '', '', fmtR(r.diferenca_taxas_real)]);
+        rows.push(['LUCRO REAL', pctF(r.pct_lucro_real), '', fmtR(r.lucro_real)]);
+        rows.push([]);
+      }
+
       if(r.mix_result && r.mix_result.length){
         rows.push(['VALOR UNITÁRIO POR PRODUTO — COM S.T x SEM S.T', '', '', '']);
         rows.push(['Medida','Pattern','Qtd Total','Preço COM ST (R$)','Preço SEM ST (R$)']);
@@ -1620,6 +1764,8 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) campos[id] = el.value;
   });
+  // Custo real das taxas (real_*) — gerados dinamicamente, não estão em CAMPOS_COTACAO
+  document.querySelectorAll('[id^="real_"]').forEach(el => { campos[el.id] = el.value; });
   return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix, splitST: {..._splitST} };
 }
 
