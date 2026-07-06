@@ -706,6 +706,7 @@ let _mix = null;
 let _cambioFixado = false;
 let _ultimoResultado = null;
 let _cotacaoAtualId = null; // id da cotação carregada (null = ainda não salva / nova)
+let _splitST = {}; // medida -> quantidade que vai COM ST (resto vai SEM ST)
 
 // ── INIT ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -902,6 +903,7 @@ function pct(v){ return v != null ? (v*100).toFixed(2)+'%' : '0%'; }
 // ── MIX ──────────────────────────────────────────────────
 function renderMix() {
   if(!_mix || !_mix.itens || !_mix.itens.length) return;
+  _splitST = {}; // mix novo — zera o split manual (cada recálculo com o MESMO mix preserva)
   document.getElementById('mix-badge').style.display = 'block';
   const lista = document.getElementById('mix-items-list');
   lista.innerHTML = _mix.itens.map(it =>
@@ -917,6 +919,38 @@ function renderMix() {
       showToast(`Mix do TyreDesk usa ${_mix.cobertura_container_pct||''}% de container — ${_mix.containers} containers detectados`, 'info');
     }
   }
+}
+
+// Chamado ao editar "Qtd COM ST" de uma linha do mix. Atualiza a linha (Qtd
+// SEM ST é sempre o complemento) e o total geral combinado, sem precisar
+// rodar CALCULAR de novo (os dois cenários já foram calculados).
+function atualizarSplitST(idx){
+  const r = _ultimoResultado;
+  if(!r || !r.cenarios) return;
+  const it = r.mix_result[idx];
+  const comStItem = r.cenarios.com_st.mix[idx];
+  const semStItem = r.cenarios.sem_st.mix[idx];
+  const inputEl = document.getElementById('split-com-'+idx);
+  let qComSt = parseInt(inputEl.value) || 0;
+  if(qComSt < 0) qComSt = 0;
+  if(qComSt > it.qtd) qComSt = it.qtd;
+  inputEl.value = qComSt;
+  const qSemSt = it.qtd - qComSt;
+  document.getElementById('split-sem-'+idx).textContent = qSemSt;
+  const totalRow = qComSt*comStItem.vlr_unit_brl + qSemSt*semStItem.vlr_unit_brl;
+  document.getElementById('split-total-'+idx).textContent = 'R$ '+fmt(totalRow);
+  _splitST[it.medida] = qComSt;
+
+  // Recalcula o total geral combinado
+  let totalGeral = 0;
+  r.mix_result.forEach((item, i) => {
+    const cs = r.cenarios.com_st.mix[i], ss = r.cenarios.sem_st.mix[i];
+    const qcs = _splitST[item.medida] ?? item.qtd;
+    const qss = item.qtd - qcs;
+    totalGeral += qcs*cs.vlr_unit_brl + qss*ss.vlr_unit_brl;
+  });
+  const elGeral = document.getElementById('split-total-geral');
+  if(elGeral) elGeral.textContent = 'R$ '+fmt(totalGeral);
 }
 
 // ── CÁLCULO PRINCIPAL ─────────────────────────────────────
@@ -1019,13 +1053,15 @@ function calcular() {
   const aliq_icms_nfe = t.icms_prop;    // ICMS próprio na venda (ex: 1,4%)
   const aliq_ibs_s  = t.ibs;
   const aliq_cbs_s  = t.cbs;
-  const tem_st = _toggles.st === 'SIM';
   const china_fora_pct = (_toggles.china==='SIM' && _togglesInner['china-modal']==='FORA') ? china_pct : 0;
 
-  // ── Função que, dado um Fator NFe, calcula toda a cadeia de saída ──
+  // ── Função que, dado um Fator NFe e um cenário de ST, calcula toda a cadeia de saída ──
   // Replica fielmente a planilha: Vlr.Produto → IPI → ICMS NFe → ICMS ST →
   // Vlr.Total NFe → PIS/COFINS/ICMS Próprio → Comissões → Lucro Bruto
-  function calcularCadeiaSaida(fatorNfe){
+  // temStCenario é passado explicitamente (não lido do toggle) pra poder rodar
+  // os dois cenários (COM ST / SEM ST) em cima do MESMO custo_total — exatamente
+  // como a planilha faz "cópia fiel" da aba COM S.T pra aba SEM S.T.
+  function calcularCadeiaSaida(fatorNfe, temStCenario){
     // IMPORTANTE: Vlr.Produto é calculado sobre o CUSTO TOTAL (não sobre FOB) — fórmula real da planilha (L17=F48×L11)
     const vlr_produto = custo_total * fatorNfe;
     const IPI_s        = vlr_produto * aliq_ipi_s;
@@ -1035,7 +1071,7 @@ function calcular() {
     const ICMS_proprio = vlr_produto * aliq_icms_nfe;
 
     let icms_st = 0, base_st = 0;
-    if(tem_st){
+    if(temStCenario){
       // Redução de base (RBC 06/09, coluna K da Tabela NCM) aplicada ANTES do MVA.
       // Para SC, rbc=0 na tabela (sempre) — então a fórmula abaixo já reproduz
       // exatamente a regra de SC sem precisar de exceção separada.
@@ -1094,34 +1130,42 @@ function calcular() {
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
       china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
       valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
-      faturamento_total, lucro_bruto, pct_lucro, fatorNfe,
+      faturamento_total, lucro_bruto, pct_lucro, fatorNfe, tem_st: temStCenario,
     };
   }
 
   // ── Resolver o Fator NFe necessário para o cenário escolhido (busca binária) ──
-  function resolverFatorNfe(alvoFn){
+  function resolverFatorNfe(alvoFn, temStCenario){
     let lo = 1.0, hi = 5.0;
     for(let i=0;i<60;i++){
       const mid = (lo+hi)/2;
-      const r = calcularCadeiaSaida(mid);
+      const r = calcularCadeiaSaida(mid, temStCenario);
       if(alvoFn(r) > 0) hi = mid; else lo = mid;
     }
-    return calcularCadeiaSaida((lo+hi)/2);
+    return calcularCadeiaSaida((lo+hi)/2, temStCenario);
   }
 
-  let cadeia;
-  if(_cenario === 1){
-    // Lucro Alvo % sobre faturamento
-    const alvo_pct = cenario_val / 100;
-    cadeia = resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct);
-  } else if(_cenario === 2){
-    // Lucro Alvo em R$
-    cadeia = resolverFatorNfe(r => r.lucro_bruto - cenario_val);
-  } else {
-    // Lucro Bruto % (igual ao 1, padrão "histórico" do sistema)
-    const alvo_pct = cenario_val / 100;
-    cadeia = resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct);
+  // Roda os DOIS cenários (COM ST e SEM ST) sobre o MESMO custo_total — igual
+  // a planilha, que copia os custos da aba COM S.T pra aba SEM S.T e só muda
+  // se o ICMS ST entra ou não. Cada cenário resolve seu próprio Fator NFe.
+  function resolverCenario(temStCenario){
+    if(_cenario === 1){
+      const alvo_pct = cenario_val / 100;
+      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario);
+    } else if(_cenario === 2){
+      return resolverFatorNfe(r => r.lucro_bruto - cenario_val, temStCenario);
+    } else {
+      const alvo_pct = cenario_val / 100;
+      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario);
+    }
   }
+
+  const cenario_com_st = resolverCenario(true);
+  const cenario_sem_st = resolverCenario(false);
+  // Cenário "principal" (o que alimenta o resultado detalhado de sempre, export etc.)
+  // continua sendo o que o toggle COM/SEM S.T do topo já selecionava.
+  const tem_st_toggle = _toggles.st === 'SIM';
+  const cadeia = tem_st_toggle ? cenario_com_st : cenario_sem_st;
 
   const { vlr_produto, IPI_s, ICMS_nfe, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
@@ -1137,12 +1181,19 @@ function calcular() {
   const base_icms = usoConsumo ? (vlr_produto + IPI_s) : vlr_produto;
   const fator = fatorNfe;
 
-  // Mix unitário
+  // Mix unitário — preço por medida em cada cenário (COM ST e SEM ST), usando
+  // o vlr_produto de CADA cenário (mesmo custo_total, fator NFe pode diferir
+  // porque o alvo de lucro é resolvido separadamente pra cada um).
   const mix_itens = _mix?.itens || [];
-  const mix_result = mix_itens.map(it => {
-    const vlr_unit = vlr_produto / (fob_usd || 1) * it.preco;
-    return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd };
-  });
+  function calcularMixCenario(vlrProdutoCenario){
+    return mix_itens.map(it => {
+      const vlr_unit = vlrProdutoCenario / (fob_usd || 1) * it.preco;
+      return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd };
+    });
+  }
+  const mix_result = calcularMixCenario(vlr_produto); // cenário principal (compat com o resto do sistema)
+  const mix_com_st = calcularMixCenario(cenario_com_st.vlr_produto);
+  const mix_sem_st = calcularMixCenario(cenario_sem_st.vlr_produto);
 
   _ultimoResultado = {
     cambio, fob_usd, frete_usd, taxa_ce, containers, tipo, uf, cliente,
@@ -1156,7 +1207,15 @@ function calcular() {
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
     lucro_bruto, pct_lucro, fator,
-    tem_st, mix_result,
+    tem_st: tem_st_toggle, mix_result,
+    cenarios: {
+      com_st: { vlr_produto: cenario_com_st.vlr_produto, faturamento: cenario_com_st.faturamento_total,
+                lucro_bruto: cenario_com_st.lucro_bruto, pct_lucro: cenario_com_st.pct_lucro,
+                icms_st: cenario_com_st.icms_st, mix: mix_com_st },
+      sem_st: { vlr_produto: cenario_sem_st.vlr_produto, faturamento: cenario_sem_st.faturamento_total,
+                lucro_bruto: cenario_sem_st.lucro_bruto, pct_lucro: cenario_sem_st.pct_lucro,
+                icms_st: cenario_sem_st.icms_st, mix: mix_sem_st },
+    },
     br_nome: document.getElementById('br_nome').value,
     boss_nome: document.getElementById('boss_nome')?.value,
     cenario_val,
@@ -1193,20 +1252,50 @@ function renderResultado(r) {
     </div>
   ` : '';
 
-  const mix_html = r.mix_result && r.mix_result.length ? `
+  const mix_html = r.mix_result && r.mix_result.length && r.cenarios ? `
     <div class="detail-section">
-      <div class="detail-title">📦 Mix de Produtos — Preço Unitário</div>
+      <div class="detail-title">📦 Mix de Produtos — Preço Unitário (COM ST × SEM ST)</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
+        Os dois preços usam o MESMO custo total do container (igual à planilha) — só muda se o ICMS ST entra ou não.
+        Ajuste "Qtd COM ST" pra decidir quanto de cada medida sai em cada nota.
+      </div>
       <table class="mix-result-table">
-        <thead><tr><th>Medida</th><th>Pattern</th><th>Qtd</th><th>FOB Unit (US$)</th><th>Vlr Unit (R$)</th><th>Total (R$)</th></tr></thead>
+        <thead><tr>
+          <th>Medida</th><th>Pattern</th><th>Qtd Total</th>
+          <th>Preço COM ST</th><th>Preço SEM ST</th>
+          <th>Qtd COM ST</th><th>Qtd SEM ST</th><th>Total (R$)</th>
+        </tr></thead>
         <tbody>
-          ${r.mix_result.map(it => `<tr>
-            <td>${it.medida}</td><td>${it.pat||'—'}</td>
-            <td class="num">${it.qtd}</td>
-            <td class="num">$${it.preco.toFixed(2)}</td>
-            <td class="num">${fmtR(it.vlr_unit_brl)}</td>
-            <td class="num">${fmtR(it.total_brl)}</td>
-          </tr>`).join('')}
+          ${r.mix_result.map((it, idx) => {
+            const comSt = r.cenarios.com_st.mix[idx];
+            const semSt = r.cenarios.sem_st.mix[idx];
+            const qComSt = (_splitST[it.medida] !== undefined) ? Math.min(_splitST[it.medida], it.qtd) : (r.tem_st ? it.qtd : 0);
+            const qSemSt = it.qtd - qComSt;
+            const totalRow = qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
+            _splitST[it.medida] = qComSt; // fixa default calculado, se ainda não existia
+            return `<tr>
+              <td>${it.medida}</td><td>${it.pat||'—'}</td>
+              <td class="num">${it.qtd}</td>
+              <td class="num">${fmtR(comSt.vlr_unit_brl)}</td>
+              <td class="num">${fmtR(semSt.vlr_unit_brl)}</td>
+              <td class="num"><input type="number" min="0" max="${it.qtd}" value="${qComSt}"
+                  id="split-com-${idx}" oninput="atualizarSplitST(${idx})"
+                  style="width:56px;text-align:right;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 4px;"></td>
+              <td class="num" id="split-sem-${idx}">${qSemSt}</td>
+              <td class="num" id="split-total-${idx}">${fmtR(totalRow)}</td>
+            </tr>`;
+          }).join('')}
         </tbody>
+        <tfoot>
+          <tr style="font-weight:700;background:var(--bg);">
+            <td colspan="7" style="text-align:right;padding:8px;">Faturamento combinado (conforme o split acima)</td>
+            <td class="num" id="split-total-geral" style="padding:8px;">${fmtR(r.mix_result.reduce((acc,it,idx)=>{
+              const comSt=r.cenarios.com_st.mix[idx], semSt=r.cenarios.sem_st.mix[idx];
+              const qComSt=_splitST[it.medida]??0, qSemSt=it.qtd-qComSt;
+              return acc + qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
+            },0))}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   ` : '';
@@ -1433,7 +1522,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) campos[id] = el.value;
   });
-  return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix };
+  return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix, splitST: {..._splitST} };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -1452,6 +1541,7 @@ function aplicarEstadoFormulario(estado){
   }
   _mix = estado.mix || null;
   if(_mix && _mix.itens && _mix.itens.length) renderMix();
+  _splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
   if(typeof onProdutoChange === 'function') onProdutoChange();
   if(typeof onUFChange === 'function') onUFChange();
 }
