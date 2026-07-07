@@ -294,6 +294,12 @@ select.form-input{cursor:pointer;}
     <select id="filtro-cliente" onchange="render()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
       <option value="">👤 Todos os clientes</option>
     </select>
+    <select id="filtro-finalidade" onchange="render()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
+      <option value="">🏷 Todas as finalidades</option>
+      <option value="IMPORTACAO_DIRETA">Importação Própria (Direto)</option>
+      <option value="ENCOMENDA">Encomenda</option>
+      <option value="CONTA_E_ORDEM">Conta e Ordem</option>
+    </select>
     <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
     <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
     <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
@@ -1073,6 +1079,10 @@ function filtrarProcessos(){
   const filtroCliente = document.getElementById('filtro-cliente')?.value||'';
   if(filtroCliente) lista = lista.filter(p=>(p.cliente||'')=== filtroCliente);
 
+  // Filtro por finalidade
+  const filtroFinalidade = document.getElementById('filtro-finalidade')?.value||'';
+  if(filtroFinalidade) lista = lista.filter(p=>p.finalidade === filtroFinalidade);
+
   return lista;
 }
 
@@ -1096,8 +1106,10 @@ function render(){
       const chegadaDate = p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '';
       const dataDisplay = chegadaDate || etaDate;
       const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
+      const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
+      const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
       return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
-        <div class="td td-ref">${p.referencia||'—'}</div>
+        <div class="td td-ref">${p.referencia||'—'}${finalidadeBadge}</div>
         <div class="td td-forn">${p.fornecedor||'—'}</div>
         <div class="td" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)">
@@ -1244,6 +1256,13 @@ function renderModal(){
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Referência *</label>
             <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340"></div>
+          <div class="form-group"><label class="form-label">Finalidade</label>
+            <select class="form-input" id="f_finalidade">
+              <option value="">— selecionar —</option>
+              <option value="IMPORTACAO_DIRETA" ${p.finalidade==='IMPORTACAO_DIRETA'?'selected':''}>Importação Própria (Direto)</option>
+              <option value="ENCOMENDA" ${p.finalidade==='ENCOMENDA'?'selected':''}>Encomenda</option>
+              <option value="CONTA_E_ORDEM" ${p.finalidade==='CONTA_E_ORDEM'?'selected':''}>Conta e Ordem</option>
+            </select></div>
           <div class="form-group"><label class="form-label">Fornecedor</label>
             <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON"></div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
@@ -1796,7 +1815,7 @@ function coletarESalvar(){
 
   const antigo = {...(_editando||{})};
   const campos = [
-    'referencia','fornecedor','cliente','produto','obs',
+    'referencia','finalidade','fornecedor','cliente','produto','obs',
     'pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento','pi_pago',
     'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
     'previsao_prontidao','data_prontidao',
@@ -2516,6 +2535,16 @@ async function importarPlanilha(input){
       const s = String(v).trim().replace(/\s+/g,' ');
       return s&&s!=='—'&&s!=='-'&&s!=='null'&&s.length>0 ? s : null;
     }
+    // Finalidade: aceita "direto"/"própria", "encomenda", "conta e ordem" (livre, case-insensitive)
+    function parseFinalidade(v){
+      const s = pStr(v);
+      if(!s) return null;
+      const su = s.toUpperCase();
+      if(su.includes('CONTA') && su.includes('ORDEM')) return 'CONTA_E_ORDEM';
+      if(su.includes('ENCOMENDA')) return 'ENCOMENDA';
+      if(su.includes('DIRET') || su.includes('PRÓPRIA') || su.includes('PROPRIA')) return 'IMPORTACAO_DIRETA';
+      return null;
+    }
 
     // Detectar tipo — mais tolerante
     const sheetNames = wb.SheetNames.map(s=>s.trim().toUpperCase());
@@ -2553,6 +2582,9 @@ async function importarPlanilha(input){
         const prevPront = parseDate(r[30]);
         const demurVenc = parseDate(r[18]);
 
+        // Finalidade — coluna A do formato Controle
+        const finalidade = parseFinalidade(r[0]);
+
         let fase='PI';
         if(dataRic)             fase='FINALIZADO';
         else if(retirada)       fase='CARREGAMENTO';  // retirada = carregamento já feito
@@ -2562,6 +2594,7 @@ async function importarPlanilha(input){
 
         processos.push({
           referencia:        ref,
+          finalidade,
           cliente:           pStr(r[2]),
           produto:           pStr(r[3]),
           fornecedor:        pStr(r[9]),
@@ -2596,6 +2629,7 @@ async function importarPlanilha(input){
           refs.add(ref);
 
           const hblMbl = pStr(r[3]);
+          const finalidade = parseFinalidade(r[1]);
           const partes = hblMbl ? hblMbl.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
           const hbl = partes[0]||null;
           const mbl = partes[1]||null;
@@ -2618,6 +2652,7 @@ async function importarPlanilha(input){
 
           processos.push({
             referencia:       ref,
+            finalidade,
             fornecedor:       pStr(r[2]),
             hbl, mbl,
             data_chegada:     chegada,
