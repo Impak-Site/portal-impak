@@ -819,7 +819,13 @@ function parseTBR(rows, fornecedor){
   const iMoq  =hdr.findIndex(c=>c.toString().includes('40'));
   const iFob  =hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
   const iSpc  =hdr.findIndex(c=>c.toUpperCase().includes('SPECIAL'));
-  const iCat  =hdr.findIndex(c=>c.toUpperCase()==='CATEGORY');
+  // Categoria/Aplicação: aceita "CATEGORY" (inglês) ou "APLICAÇÃO"/"APLICACAO"/"APPLICATION"
+  // (nomes de coluna variam entre fornecedores — antes só aceitava "CATEGORY" exato,
+  // e a maioria dos arquivos reais usa "APLICAÇÃO", deixando essa coluna sempre vazia).
+  const iCat  =hdr.findIndex(c=>{
+    const cu = c.toUpperCase().trim();
+    return cu==='CATEGORY' || cu==='APLICACAO' || cu==='APLICAÇÃO' || cu==='APPLICATION';
+  });
 
   const items=[];
   for(let i=hi+1;i<rows.length;i++){
