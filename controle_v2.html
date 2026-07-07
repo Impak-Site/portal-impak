@@ -1365,6 +1365,8 @@ function renderModal(){
             <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armador</label>
             <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC"></div>
+          <div class="form-group"><label class="form-label">Agente de Carga</label>
+            <input class="form-input" id="f_agente" value="${esc(p.agente)}" placeholder="Ex: ROYAL"></div>
           <div class="form-group"><label class="form-label">Navio</label>
             <input class="form-input" id="f_navio" value="${esc(p.navio)}"></div>
           <div class="form-group"><label class="form-label">Porto Origem</label>
@@ -1444,8 +1446,12 @@ function renderModal(){
       <div class="form-section">
         <div class="form-section-title">⚓ CE Mercante</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">Número CE</label>
+          <div class="form-group"><label class="form-label">Número CE (legado — use Master/House abaixo se tiver os dois)</label>
             <input class="form-input" id="f_ce_numero" value="${esc(p.ce_numero)}"></div>
+          <div class="form-group"><label class="form-label">CE Master</label>
+            <input class="form-input" id="f_ce_master" value="${esc(p.ce_master)}"></div>
+          <div class="form-group"><label class="form-label">CE House</label>
+            <input class="form-input" id="f_ce_house" value="${esc(p.ce_house)}"></div>
           <div class="form-group"><label class="form-label">Data Embarque (CE)</label>
             <input class="form-input" type="date" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
           <div class="form-group"><label class="form-label">Armador (CE)</label>
@@ -1819,12 +1825,12 @@ function coletarESalvar(){
     'pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento','pi_pago',
     'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
     'previsao_prontidao','data_prontidao',
-    'booking_numero','armador','navio','viagem','porto_origem','porto_destino',
+    'booking_numero','armador','agente','navio','viagem','porto_origem','porto_destino',
     'etd','eta','free_time','data_embarque','hbl','mbl','container','tipo_container',
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
-    'ce_numero','ce_data_embarque','ce_armador',
+    'ce_numero','ce_master','ce_house','ce_data_embarque','ce_armador',
     'data_agendamento','data_carregamento','transportadora','placa',
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
@@ -2606,6 +2612,14 @@ async function importarPlanilha(input){
           data_chegada:      chegada,
           data_presenca:     presenca,
           armador:           pStr(r[24]),
+          agente:            pStr(r[31]),
+          hbl:               pStr(r[32]),
+          mbl:               pStr(r[33]),
+          ce_master:         pStr(r[34]),
+          ce_house:          pStr(r[35]),
+          container:         pStr(r[36]),
+          navio:             pStr(r[37]),
+          numero_di:         pStr(r[38]),
           demurrage_vencimento: demurVenc,
           obs:               pStr(r[5]),
           fase,
@@ -2641,6 +2655,12 @@ async function importarPlanilha(input){
           const armAg = pStr(r[13]);
           const armadorPartes = armAg ? armAg.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
           const armador = armadorPartes[0]||null;
+          const agente = armadorPartes[1]||null;
+
+          const ceMasterHouse = pStr(r[7]);
+          const cePartes = ceMasterHouse ? ceMasterHouse.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
+          const ce_master = cePartes[0]||null;
+          const ce_house = cePartes[1]||null;
 
           const di = pStr(r[8]);
           const status = pStr(r[14])||'';
@@ -2655,12 +2675,13 @@ async function importarPlanilha(input){
             finalidade,
             fornecedor:       pStr(r[2]),
             hbl, mbl,
+            ce_master, ce_house,
             data_chegada:     chegada,
             navio:            pStr(r[5]),
             numero_di:        di,
             data_registro_di: parseDate(r[9]),
             container:        pStr(r[11]),
-            armador, fase,
+            armador, agente, fase,
             obs:              status.slice(0,200)||null,
             created_by:       'importacao_followup',
           });
