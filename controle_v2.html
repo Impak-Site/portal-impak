@@ -2669,9 +2669,22 @@ async function importarPlanilha(input){
           const hbl = partes[0]||null;
           const mbl = partes[1]||null;
 
+          // A célula de chegada tem 2 formatos possíveis (planilha Follow Up):
+          //  - Já chegou:  "06/07/26\nNVT\n07/07"       → linha 1 = chegada efetiva, linha 3 = presença
+          //  - Ainda não:  "ETA 13/07/26 - 13h\nIOA"     → é só previsão, NÃO é chegada efetiva
+          // Antes o código jogava a linha 1 direto em "chegada" nos dois casos —
+          // por isso uma previsão virava "já chegou" e pulava a fase pra Desembarcado.
           const chegadaStr = pStr(r[4]);
           const chegadaPartes = chegadaStr ? chegadaStr.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
-          const chegada = parseDate(chegadaPartes[0]);
+          let chegada = null, etaFollowUp = null;
+          if(chegadaPartes[0]){
+            if(chegadaPartes[0].toUpperCase().startsWith('ETA')){
+              const m = chegadaPartes[0].match(/(\d{2}\/\d{2}\/\d{2,4})/);
+              etaFollowUp = m ? parseDate(m[1]) : null;
+            } else {
+              chegada = parseDate(chegadaPartes[0]);
+            }
+          }
 
           const armAg = pStr(r[13]);
           const armadorPartes = armAg ? armAg.split(/[\n\r]/).map(s=>s.trim()).filter(Boolean) : [];
@@ -2698,6 +2711,7 @@ async function importarPlanilha(input){
             hbl, mbl,
             ce_master, ce_house,
             data_chegada:     chegada,
+            eta:              etaFollowUp,
             navio:            pStr(r[5]),
             numero_di:        di,
             data_registro_di: parseDate(r[9]),
