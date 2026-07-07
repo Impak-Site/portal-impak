@@ -635,7 +635,8 @@ const TABELA_NCM = {"40111000BA": {"ncm": 40111000, "produto": "Pneu Automóvel"
 
 // Logo por marca/fornecedor — extraído da aba oculta "IMAGENS" da planilha
 // padrão (primeira imagem de cada marca, quando existe mais de uma).
-// Arquivos ficam em /logos/ na raiz do repo (servidos como estático).
+// Arquivos ficam na RAIZ do repo (junto com server.js, calculador.html etc),
+// servidos automaticamente como estático pelo express.static(__dirname).
 // EUDEMON e TIANFU não têm imagem cadastrada na planilha original — ficam sem logo.
 const LOGO_POR_MARCA = {
   'ROVELO': 'rovelo.png',
@@ -1051,7 +1052,7 @@ function renderMix() {
   if(logoFile){
     const logoImg = document.getElementById('mix-marca-logo');
     logoImg.style.display = '';
-    logoImg.src = '/logos/'+logoFile;
+    logoImg.src = '/'+logoFile; // arquivos estão na raiz do repo, não em /logos/
     document.getElementById('mix-marca-nome').textContent = _mix.forn;
     marcaWrap.style.display = 'flex';
   } else {
