@@ -982,19 +982,23 @@ async function handleImport(files){
 
       if(!novos.length){logImport(`⚠ Nenhum produto encontrado em ${file.name}`,'err');totalErros++;continue;}
 
-      // Merge inteligente: atualiza itens existentes (forn+medida+tipo), mantém os que não vieram na nova planilha
+      // Merge inteligente: atualiza itens existentes (forn+medida+PADRÃO+tipo), mantém os que não vieram na nova planilha.
+      // A chave PRECISA incluir o padrão (pat/md) — senão medidas com vários padrões
+      // (ex: 295/80 R22.5 em LISO, TRAÇÃO, MISTO, TRAÇÃO-CANAVIEIRO) se sobrescrevem
+      // umas às outras, sobrando só a última processada por medida.
       const tipoNovos = novos[0]&&novos[0].t ? novos[0].t : null;
+      const chaveDe = c => (c.f||forn)+'||'+(c.medida||c.m||'')+'||'+(c.pat||c.md||'')+'||'+(c.t||'');
       const novosPorChave = {};
       novos.forEach(c => {
-        const chave = (c.f||forn)+'||'+(c.medida||c.m||'')+'||'+(c.t||'');
-        novosPorChave[chave] = Object.assign({},c,{f:forn,pat:c.pat||c.md||''});
+        novosPorChave[chaveDe(c)] = Object.assign({},c,{f:forn,pat:c.pat||c.md||''});
       });
-      // Manter itens antigos do mesmo forn+tipo que NÃO vieram na planilha nova
+      // Manter itens antigos do mesmo forn+tipo que NÃO vieram na planilha nova.
+      // Antes esse filtro calculava a chave mas nunca checava ela — descartava
+      // TUDO do mesmo forn+tipo, mesmo produtos que a planilha nova não mencionava.
       const mantidos = COTACOES.filter(c => {
         if(c.f !== forn) return true; // outro fornecedor: sempre manter
         if(tipoNovos && c.t !== tipoNovos) return true; // mesmo forn, tipo diferente: manter
-        const chave = c.f+'||'+(c.medida||c.m||'')+'||'+(c.t||'');
-        return false; // vai ser substituído ou adicionado abaixo
+        return !(chaveDe(c) in novosPorChave); // só descarta se REALMENTE veio atualização pra essa combinação exata
       });
       COTACOES = [...mantidos, ...Object.values(novosPorChave)];
 
