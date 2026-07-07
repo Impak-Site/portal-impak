@@ -300,6 +300,9 @@ select.form-input{cursor:pointer;}
       <option value="ENCOMENDA">Encomenda</option>
       <option value="CONTA_E_ORDEM">Conta e Ordem</option>
     </select>
+    <label style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap;">
+      <input type="checkbox" id="filtro-pendencia" onchange="render()"> ⚠ Só com pendência
+    </label>
     <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
     <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
     <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
@@ -1083,6 +1086,10 @@ function filtrarProcessos(){
   const filtroFinalidade = document.getElementById('filtro-finalidade')?.value||'';
   if(filtroFinalidade) lista = lista.filter(p=>p.finalidade === filtroFinalidade);
 
+  // Filtro por pendência de revisão
+  const filtroPendencia = document.getElementById('filtro-pendencia')?.checked;
+  if(filtroPendencia) lista = lista.filter(p=>!!p.pendencia_revisao);
+
   return lista;
 }
 
@@ -1108,8 +1115,9 @@ function render(){
       const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
       const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
       const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
+      const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">⚠ Revisar</span>` : '';
       return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
-        <div class="td td-ref">${p.referencia||'—'}${finalidadeBadge}</div>
+        <div class="td td-ref">${p.referencia||'—'}${finalidadeBadge}${pendenciaBadge}</div>
         <div class="td td-forn">${p.fornecedor||'—'}</div>
         <div class="td" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)">
@@ -1249,6 +1257,13 @@ function renderModal(){
           <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">📎 Selecionar documento</button>
           <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
         </div>
+      </div>
+      <!-- Alerta de pendência de revisão (vem da importação de planilha) -->
+      <div id="alerta-pendencia" style="display:${p.pendencia_revisao ? 'block' : 'none'};background:rgba(243,156,18,.1);border:1px solid rgba(243,156,18,.4);border-left:4px solid #f39c12;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
+        <div style="font-weight:700;color:#f39c12;font-size:13px;margin-bottom:6px;">⚠ Pendência de revisão (da importação de planilha)</div>
+        <div id="texto-pendencia" style="font-size:12px;color:var(--text);white-space:pre-line;line-height:1.6;">${esc(p.pendencia_revisao)}</div>
+        <input type="hidden" id="f_pendencia_revisao" value="${esc(p.pendencia_revisao)}">
+        <button type="button" class="btn btn-outline" style="margin-top:10px;font-size:12px;" onclick="marcarPendenciaRevisada()">✓ Marcar como revisado</button>
       </div>
       <!-- Identificação -->
       <div class="form-section">
@@ -1811,6 +1826,15 @@ function renderPagamentoInfo(p){
 // ════════════════════════════════════════════════════════════════
 // COLETAR E SALVAR
 // ════════════════════════════════════════════════════════════════
+function marcarPendenciaRevisada(){
+  const el = document.getElementById('f_pendencia_revisao');
+  if(el) el.value = '';
+  const banner = document.getElementById('alerta-pendencia');
+  if(banner) banner.style.display = 'none';
+  coletarESalvar();
+  showToast('✓ Pendência marcada como revisada', 'ok');
+}
+
 function coletarESalvar(){
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
@@ -1826,7 +1850,7 @@ function coletarESalvar(){
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
-    'ce_master','ce_house','ce_data_embarque',
+    'ce_master','ce_house','ce_data_embarque','pendencia_revisao',
     'data_agendamento','data_carregamento','transportadora','placa',
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
@@ -2618,6 +2642,7 @@ async function importarPlanilha(input){
           numero_di:         pStr(r[38]),
           demurrage_vencimento: demurVenc,
           obs:               pStr(r[5]),
+          pendencia_revisao: pStr(r[43]),
           fase,
           created_by:        'importacao_controle',
         });
