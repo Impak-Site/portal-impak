@@ -1446,18 +1446,14 @@ function renderModal(){
       <div class="form-section">
         <div class="form-section-title">⚓ CE Mercante</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">Número CE (legado — use Master/House abaixo se tiver os dois)</label>
-            <input class="form-input" id="f_ce_numero" value="${esc(p.ce_numero)}"></div>
           <div class="form-group"><label class="form-label">CE Master</label>
             <input class="form-input" id="f_ce_master" value="${esc(p.ce_master)}"></div>
           <div class="form-group"><label class="form-label">CE House</label>
             <input class="form-input" id="f_ce_house" value="${esc(p.ce_house)}"></div>
           <div class="form-group"><label class="form-label">Data Embarque (CE)</label>
             <input class="form-input" type="date" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
-          <div class="form-group"><label class="form-label">Armador (CE)</label>
-            <input class="form-input" id="f_ce_armador" value="${esc(p.ce_armador)}" placeholder="Transportador conforme CE"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extração por IA, o campo Navio (aba Logística) é atualizado automaticamente para o navio de chegada — em caso de transbordo no exterior, o navio de conexão/último navio.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extração por IA, os campos Navio e Armador (aba Booking &amp; Embarque) são atualizados automaticamente — em caso de transbordo no exterior, o navio de conexão/último navio.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">📋 DI e Parametrização</div>
@@ -1830,7 +1826,7 @@ function coletarESalvar(){
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
-    'ce_numero','ce_master','ce_house','ce_data_embarque','ce_armador',
+    'ce_master','ce_house','ce_data_embarque',
     'data_agendamento','data_carregamento','transportadora','placa',
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
@@ -2791,9 +2787,9 @@ async function extrairComIA(input){
   "ci_valor_usd": 0,
   "ci_data": "YYYY-MM-DD",
   "data_chegada": "YYYY-MM-DD",
-  "ce_numero": "",  // número do CE Mercante (Conhecimento Eletrônico de Carga), se houver
+  "ce_master": "",  // número do CE Mercante MASTER (do armador/linha de navegação), se houver
+  "ce_house": "",  // número do CE Mercante HOUSE (do agente de carga/consolidador), se houver
   "ce_data_embarque": "YYYY-MM-DD",  // data de embarque conforme o CE Mercante
-  "ce_armador": "",  // armador/transportador conforme o CE Mercante (campo Transportador/Armador no CE)
   "nf_entrada_numero": "",  // número da Nota Fiscal de ENTRADA (nacionalização/entrada da mercadoria no estoque)
   "nf_entrada_data": "YYYY-MM-DD",  // data de emissão da NF de entrada
   "nf_entrada_valor": 0,  // valor da NF de entrada em REAIS (R$) — NF brasileira nunca é emitida em USD
@@ -2820,7 +2816,8 @@ Se o documento for uma Nota Fiscal (NF-e brasileira):
 - se a NF for de SAÍDA (venda, destinatário é o cliente final), preencher os campos nf_saida_* e também extrair "cliente" do nome/razão social do destinatário.
 - não preencher os dois grupos ao mesmo tempo a partir do mesmo documento — cada NF enviada é de um tipo só.
 Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
-- extrair ce_numero, "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e ce_armador (transportador/armador).
+- extrair ce_master (CE do armador/linha de navegação) e/ou ce_house (CE do agente de carga/consolidador) — um CE Mercante pode ter só um dos dois ou os dois, dependendo se a carga é consolidada. Preencher cada campo apenas se aquele número aparecer no documento.
+- extrair também "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`;
@@ -2897,7 +2894,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // são mais confiáveis que os do BL (refletem o navio de chegada real, já
     // considerando transbordo/baldeação no exterior) — por isso sobrescrevem
     // o que já estiver no formulário em vez de respeitar a regra "só preenche vazio".
-    const ehCeMercante = !!extracted.ce_numero;
+    const ehCeMercante = !!(extracted.ce_master || extracted.ce_house);
     // Quando o documento é um BL ou uma DI/Extrato da DI, o porto de destino
     // e o container/navio que eles trazem são mais confiáveis que o Sales
     // Contract (que é só a intenção comercial registrada antes do embarque,
@@ -2905,7 +2902,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // foi operacionalmente desembarcada em "Itapoa"). Por isso, se vierem de
     // um BL/DI, esses campos também sobrescrevem o que já estiver preenchido.
     const ehBlOuDi = !!(extracted.hbl || extracted.mbl || extracted.numero_di || extracted.data_registro_di);
-    const camposSobrescritosPorCe = ehCeMercante ? ['navio'] : [];
+    const camposSobrescritosPorCe = ehCeMercante ? ['navio','armador'] : [];
     const camposSobrescritosPorBlDi = ehBlOuDi ? ['porto_destino','container','navio'] : [];
 
     let preenchidos = 0;
