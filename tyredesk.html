@@ -1831,16 +1831,16 @@ function renderSelTable() {
     const prSpan = row.pr && row.pr!=='PCR' ? ` <span style="font-size:10px;color:var(--mu)">· ${row.pr}</span>` : '';
 
     t += `<tr class="${sel?'cmp-selected':''}">`;
-    // Para TBR mostrar categoria como título, padrão como código secundário
+    // Para TBR mostrar categoria como título (o código de padrão não aparece mais aqui
+    // porque cada fornecedor tem seu PRÓPRIO código pra mesma categoria — ex: "Liso" é
+    // UF195 na EUDEMON mas RFR06 na ROVELO. Mostrar só um deles aqui era enganoso;
+    // o código certo de cada fornecedor já aparece embaixo do preço de cada um).
     const isTBR = tipoAtivo === 'TBR';
     const mainLabel = isTBR ? (row.cat || row.pat || '—') : (row.pat || '—');
-    // Código do padrão (ex: RDO17) só aparece como subtítulo quando é diferente da categoria já mostrada acima
-    const subLabel = (row.patCode && row.patCode !== mainLabel) ? row.patCode : '';
     // LI/SR só aparece se for realmente um LI/SR (não repete o texto da categoria)
     const liTxt = (row.li && row.li !== '—' && row.li !== mainLabel) ? row.li : '';
     t += `<td class="spec-col">
       <div class="spec-pat">${mainLabel}${prSpan}</div>
-      ${subLabel ? `<div style="font-size:10px;color:var(--mu);margin-top:2px">${subLabel}</div>` : ''}
       ${liTxt ? `<div class="spec-li">${liTxt}</div>` : ''}
     </td>`;
 
