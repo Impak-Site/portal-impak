@@ -220,8 +220,8 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <input type="number" id="taxa_seguro_compra" step="0.001" value="0.04" placeholder="0,04">
         </div>
         <div class="form-group">
-          <label>Taxa Seguro Venda (%)</label>
-          <input type="number" id="taxa_seguro_venda" step="0.001" value="0.04" placeholder="0,04">
+          <label>Câmbio Abertura do Dia da Chegada</label>
+          <input type="number" id="cambio_chegada" step="0.0001" placeholder="Vazio = usa o câmbio principal">
         </div>
       </div>
     </div>
@@ -1113,7 +1113,11 @@ function calcular() {
   const custos_div = parseFloat(document.getElementById('custos_diversos').value) || 0;
   const cenario_val = parseFloat(document.getElementById('cenario_valor').value) || 0;
   const taxa_seguro_compra = (parseFloat(document.getElementById('taxa_seguro_compra').value) || 0.04) / 100;
-  const taxa_seguro_venda  = (parseFloat(document.getElementById('taxa_seguro_venda').value)  || 0.04) / 100;
+  // Câmbio de abertura do dia da chegada — específico pro Seguro Venda (diferente
+  // do câmbio principal usado no resto do cálculo). Se vazio, usa o câmbio principal
+  // como fallback razoável (evita travar quem só quer uma simulação rápida).
+  const cambioVendaInput = parseFloat(document.getElementById('cambio_chegada').value);
+  const cambio_chegada = cambioVendaInput || cambio;
 
   if(!cambio || !fob_usd) { showToast('Preencha câmbio e FOB','err'); return; }
 
@@ -1129,14 +1133,17 @@ function calcular() {
   const seguro_lucro_esp  = (seguro_total_usd + seguro_despesas) * 0.10;
   const seguro_base_usd   = seguro_total_usd + seguro_despesas + seguro_lucro_esp + taxa_ce;
   const seguro_compra_usd = seguro_base_usd * taxa_seguro_compra;
-  const seguro_venda_usd  = seguro_base_usd * taxa_seguro_venda;
+  // Seguro Venda (proposta cliente) — fórmula real da planilha (confirmada com
+  // exemplo real): ((FOB+Frete)×0,3%) − seguro_compra_usd, essa diferença ×
+  // câmbio de abertura do dia da chegada × 1,02 (margem).
+  const seguro_venda_usd  = ((fob_usd + frete_usd) * 0.003) - seguro_compra_usd;
 
   // ── 2. CIF (usa seguro de COMPRA — custo real interno) ──
   const fob_brl    = fob_usd * cambio;
   const frete_brl  = frete_usd * cambio;
   const taxa_ce_brl= taxa_ce * cambio;
   const seguro_brl = seguro_compra_usd * cambio;
-  const seguro_venda_brl = seguro_venda_usd * cambio;
+  const seguro_venda_brl = seguro_venda_usd * cambio_chegada * 1.02;
   const cif_brl    = fob_brl + frete_brl + seguro_brl;
 
   // ── 3. Base de impostos ──
@@ -1180,7 +1187,7 @@ function calcular() {
   const total_taxas = taxas_fixas + taxas_usd_brl + seguro_dif_brl + DUMP;
 
   // ── 5. Custo total (apenas não recuperáveis) ──
-  const imp_custo   = II + RBC; // créditos: IPI, PIS, COFINS, ICMS, IBS, CBS
+  const imp_custo   = II; // RBC NÃO entra como custo — é só referência/crédito, confirmado com exemplo real
   const custo_total = cif_brl + imp_custo + total_taxas;
 
   // ── 6. Faturamento / Preço de venda ──
@@ -1212,17 +1219,20 @@ function calcular() {
     // IMPORTANTE: Vlr.Produto é calculado sobre o CUSTO TOTAL (não sobre FOB) — fórmula real da planilha (L17=F48×L11)
     const vlr_produto = custo_total * fatorNfe;
     const IPI_s        = vlr_produto * aliq_ipi_s;
+    // Redução de base (RBC 06/09, coluna K da Tabela NCM) — aplica ANTES do ICMS,
+    // tanto no ICMS Normal (próprio interestadual) quanto no ICMS ST. Antes só
+    // entrava na base do ST — mas a mesma redução vale pro ICMS Normal também.
+    // Para SC, rbc=0 na tabela (sempre) — a fórmula já reproduz a regra de SC
+    // sem precisar de exceção separada.
+    const vlr_produto_reduzido = vlr_produto - (vlr_produto * t.rbc);
     // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP), usado na base do ICMS ST e do PIS/COFINS
-    const ICMS_nfe_normal = vlr_produto * t.aliq_inter;
+    const ICMS_nfe_normal = vlr_produto_reduzido * t.aliq_inter;
     // ICMS Próprio — alíquota da coluna ICMS-Próprio da tabela NCM (ex: 1,4%), abate direto do lucro
+    // (esse NÃO leva redução — confirmado com o exemplo real, usa vlr_produto cheio)
     const ICMS_proprio = vlr_produto * aliq_icms_nfe;
 
     let icms_st = 0, base_st = 0;
     if(temStCenario){
-      // Redução de base (RBC 06/09, coluna K da Tabela NCM) aplicada ANTES do MVA.
-      // Para SC, rbc=0 na tabela (sempre) — então a fórmula abaixo já reproduz
-      // exatamente a regra de SC sem precisar de exceção separada.
-      const vlr_produto_reduzido = vlr_produto - (vlr_produto * t.rbc);
       base_st  = (vlr_produto_reduzido + IPI_s) * (1 + t.mva);
       icms_st  = Math.max(0, (base_st * aliq_icms_s) - ICMS_nfe_normal);
     }
@@ -1529,9 +1539,9 @@ function renderResultado(r) {
             <tr><td>ICMS-E (1,4%)</td><td class="num">${fmtR(r.ICMS_e)}</td></tr>
             <tr><td>IBS (${pct(r.t.ibs)})</td><td class="num">${fmtR(r.IBS_e)}</td></tr>
             <tr><td>CBS (${pct(r.t.cbs)})</td><td class="num">${fmtR(r.CBS_e)}</td></tr>
-            <tr><td>RBC (${pct(r.t.rbc)})</td><td class="num">${fmtR(r.RBC)}</td></tr>
+            <tr><td>RBC (${pct(r.t.rbc)}) <span style="font-size:10px;color:var(--dim);">— referência, não soma no custo</span></td><td class="num">${fmtR(r.RBC)}</td></tr>
             ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
-            <tr class="destaque-row"><td>Custo (II + RBC)</td><td class="num">${fmtR(r.imp_custo)}</td></tr>
+            <tr class="destaque-row"><td>Custo (II)</td><td class="num">${fmtR(r.imp_custo)}</td></tr>
           </table>
         </div>
       </div>
@@ -1788,7 +1798,7 @@ function pctF(v){ return v.toFixed(2)+'%'; }
 // adicionar o id aqui também.
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
-  'taxa_seguro_compra','taxa_seguro_venda','produto','origem','uf_destino',
+  'taxa_seguro_compra','cambio_chegada','produto','origem','uf_destino',
   'tipo_importacao','dump_valor','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
