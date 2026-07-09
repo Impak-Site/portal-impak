@@ -449,8 +449,14 @@ select.form-input{cursor:pointer;}
         <select class="form-input" id="ce_tipo">
           <option value="CLIENTE">Cliente</option>
           <option value="FORNECEDOR">Fornecedor</option>
+          <option value="EXPORTADOR">Exportador</option>
           <option value="DESPACHANTE">Despachante</option>
           <option value="AGENTE">Agente de Carga</option>
+          <option value="ARMADOR">Armador</option>
+          <option value="TRANSPORTADORA">Transportadora</option>
+          <option value="ARMAZEM_ALFANDEGADO">Armazém Alfandegado</option>
+          <option value="PORTO_ARMAZEM">Porto/Armazém</option>
+          <option value="DEPOT_DEVOLUCAO">Depot Devolução</option>
         </select></div>
       <div class="form-group"><label class="form-label">Razão Social *</label>
         <input class="form-input" id="ce_razao_social"></div>
@@ -1413,9 +1419,11 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Navio</label>
             <input class="form-input" id="f_navio" value="${esc(p.navio)}"></div>
           <div class="form-group"><label class="form-label">Porto Origem</label>
-            <input class="form-input" id="f_porto_origem" value="${esc(p.porto_origem)}" placeholder="Ex: SHANGHAI"></div>
+            <select class="form-input" id="f_porto_origem" onchange="togglePortoOutro('origem')">${gerarOptionsPortoOrigem(p.porto_origem)}</select>
+            <input class="form-input" id="f_porto_origem_outro" value="${esc(PORTOS_ORIGEM.includes((p.porto_origem||'').toUpperCase())?'':p.porto_origem)}"
+              placeholder="Digite o porto de origem" style="display:${(p.porto_origem && !PORTOS_ORIGEM.includes(p.porto_origem.toUpperCase()))?'block':'none'};margin-top:6px;"></div>
           <div class="form-group"><label class="form-label">Porto Destino</label>
-            <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino)}" placeholder="Ex: ITAJAI"></div>
+            <select class="form-input" id="f_porto_destino">${gerarOptionsPortoDestino(p.porto_destino)}</select></div>
           <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
             <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">ETA (Previsão de Chegada)</label>
@@ -1880,6 +1888,79 @@ function marcarPendenciaRevisada(){
   showToast('✓ Pendência marcada como revisada', 'ok');
 }
 
+// ── PORTOS PADRONIZADOS ──────────────────────────────────────────
+// Objetivo: acabar com grafias diferentes pro mesmo porto (NAVEGANTES vs NVT
+// vs Navegantes-SC...). Destino usa os MESMOS 3 códigos do Calculador
+// (armazenagem por porto) — mantém os dois sistemas 100% consistentes.
+const PORTOS_DESTINO = [
+  { codigo:'ITJ', nome:'Itajaí' },
+  { codigo:'IOA', nome:'Itapoá' },
+  { codigo:'NVT', nome:'Navegantes' },
+];
+// Origem varia mais (várias cidades/países), então fica uma lista das mais
+// usadas + "Outro" pra digitar livre quando aparecer uma nova.
+// Lista ampliada cobrindo os principais polos de fabricação de pneus na Ásia
+// (China, Vietnã, Camboja, Tailândia, Indonésia, Índia, Coreia do Sul, Malásia).
+const PORTOS_ORIGEM = [
+  // China
+  'SHANGHAI','NINGBO','QINGDAO','TIANJIN','XIAMEN','SHENZHEN','GUANGZHOU','NANSHA','YANTIAN','DALIAN','LIANYUNGANG',
+  // Vietnã
+  'HO CHI MINH','HAI PHONG',
+  // Camboja
+  'SIHANOUKVILLE','PHNOM PENH',
+  // Tailândia
+  'LAEM CHABANG','BANGKOK',
+  // Indonésia
+  'JAKARTA','SURABAYA',
+  // Índia
+  'CHENNAI','NHAVA SHEVA','MUNDRA',
+  // Coreia do Sul
+  'BUSAN',
+  // Malásia
+  'PORT KLANG',
+];
+
+// Normaliza grafias antigas/variadas do porto de destino pro código padrão
+// (ITJ/IOA/NVT) — usado no import de planilha e na extração por IA, pra já
+// chegar limpo na base em vez de precisar corrigir manualmente depois.
+function normalizarPortoDestino(valor){
+  if(!valor) return valor;
+  const va = valor.trim().toUpperCase();
+  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT' };
+  return APELIDOS[va] || (PORTOS_DESTINO.some(p=>p.codigo===va) ? va : valor);
+}
+
+function gerarOptionsPortoDestino(valorAtual){
+  const va = (valorAtual||'').trim().toUpperCase();
+  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA' };
+  const codigoResolvido = APELIDOS[va] || va;
+  const match = PORTOS_DESTINO.find(p => p.codigo === codigoResolvido);
+  let html = '<option value="">— selecionar —</option>';
+  html += PORTOS_DESTINO.map(p => `<option value="${p.codigo}" ${match&&match.codigo===p.codigo?'selected':''}>${p.nome} (${p.codigo})</option>`).join('');
+  if(valorAtual && !match){
+    // Valor antigo que não bate com nenhum dos 3 — mantém visível pra não
+    // sumir a informação, mas sinaliza que precisa escolher o correto.
+    html += `<option value="${esc(valorAtual)}" selected>⚠ "${esc(valorAtual)}" (valor antigo — selecione o porto correto)</option>`;
+  }
+  return html;
+}
+
+function gerarOptionsPortoOrigem(valorAtual){
+  const va = (valorAtual||'').trim().toUpperCase();
+  const match = PORTOS_ORIGEM.includes(va);
+  let html = '<option value="">— selecionar —</option>';
+  html += PORTOS_ORIGEM.map(p => `<option value="${p}" ${va===p?'selected':''}>${p}</option>`).join('');
+  html += `<option value="OUTRO" ${(valorAtual && !match)?'selected':''}>Outro (digitar)</option>`;
+  return html;
+}
+
+function togglePortoOutro(tipo){
+  const sel = document.getElementById('f_porto_'+tipo);
+  const outro = document.getElementById('f_porto_'+tipo+'_outro');
+  if(!sel || !outro) return;
+  outro.style.display = sel.value === 'OUTRO' ? 'block' : 'none';
+}
+
 function coletarESalvar(){
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
@@ -1924,9 +2005,10 @@ function coletarESalvar(){
       else if(val==='') val = null;
     }
 
-    // Log de auditoria
+    // Log de auditoria (porto_origem fica de fora aqui — tratado à parte
+    // depois, porque o valor "OUTRO" do select não é o valor real digitado)
     const antes = antigo[campo];
-    if(String(antes||'')!==String(val||'')){
+    if(campo !== 'porto_origem' && String(antes||'')!==String(val||'')){
       log.push({
         campo, valor_antes: antes||'', valor_depois: val||'',
         usuario: _user.usuario,
@@ -1935,6 +2017,25 @@ function coletarESalvar(){
     }
     proc[campo] = val;
   });
+
+  // Porto Origem "Outro" — usa o texto digitado no campo extra em vez do
+  // literal "OUTRO" que o select devolveria.
+  if(proc.porto_origem === 'OUTRO'){
+    proc.porto_origem = document.getElementById('f_porto_origem_outro')?.value?.trim() || null;
+  }
+  if(String(antigo.porto_origem||'') !== String(proc.porto_origem||'')){
+    log.push({ campo:'porto_origem', valor_antes: antigo.porto_origem||'', valor_depois: proc.porto_origem||'', usuario: _user.usuario, created_at: new Date().toISOString() });
+  }
+
+  // Porto Origem "Outro" — usa o texto digitado no campo extra em vez do
+  // literal "OUTRO" que o select devolveria.
+  if(proc.porto_origem === 'OUTRO'){
+    const outroVal = document.getElementById('f_porto_origem_outro')?.value?.trim();
+    if(String(antigo.porto_origem||'') !== String(outroVal||'')){
+      log.push({ campo:'porto_origem', valor_antes: antigo.porto_origem||'', valor_depois: outroVal||'', usuario: _user.usuario, created_at: new Date().toISOString() });
+    }
+    proc.porto_origem = outroVal || null;
+  }
 
   // Salvar multi-containers e auditar mudança
   sincronizarContainerLegado();
@@ -2672,7 +2773,7 @@ async function importarPlanilha(input){
           cliente:           pStr(r[2]),
           produto:           pStr(r[3]),
           fornecedor:        pStr(r[9]),
-          porto_destino:     pStr(r[8]),
+          porto_destino:     normalizarPortoDestino(pStr(r[8])),
           pi_data:           parseDate(r[10]),
           data_prontidao:    prontidao,
           previsao_prontidao:prevPront,
@@ -3023,6 +3124,38 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       if(!el) return;
       if(camposMoedaIA.includes(campo)) val = exibirMoeda(val);
       const podeSobrescrever = camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo);
+      // Porto Destino é <select> agora — não aceita texto livre direto.
+      // Normaliza pro código (ITJ/IOA/NVT) e, se não bater com nenhum,
+      // reconstrói as opções incluindo o valor extraído como fallback
+      // visível (em vez de falhar silenciosamente sem selecionar nada).
+      if(campo==='porto_destino'){
+        if(!el.value || podeSobrescrever){
+          const normalizado = normalizarPortoDestino(val);
+          if(!PORTOS_DESTINO.some(p=>p.codigo===normalizado)) el.innerHTML = gerarOptionsPortoDestino(normalizado);
+          else el.value = normalizado;
+          el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
+          preenchidos++;
+          setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+        }
+        return;
+      }
+      if(campo==='porto_origem'){
+        if(!el.value || podeSobrescrever){
+          const vu = val.trim().toUpperCase();
+          const outro = document.getElementById('f_porto_origem_outro');
+          if(PORTOS_ORIGEM.includes(vu)){
+            el.value = vu;
+            if(outro) outro.style.display = 'none';
+          } else {
+            el.value = 'OUTRO';
+            if(outro){ outro.value = val; outro.style.display = 'block'; }
+          }
+          el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
+          preenchidos++;
+          setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+        }
+        return;
+      }
       if(!el.value || podeSobrescrever){
         el.value = val;
         el.style.borderColor='var(--ok)';
