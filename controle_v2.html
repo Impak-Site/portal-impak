@@ -658,6 +658,16 @@ async function excluirProcesso(id){
 // FASE AUTOMÁTICA
 // ════════════════════════════════════════════════════════════════
 function calcularFase(p){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  // "Data Chegada" e "Data Presença" só contam pra avançar a fase se já
+  // aconteceram de fato. Se alguém preencher uma data futura ali (comum
+  // quando o booking já traz uma previsão e a pessoa preenche no campo
+  // errado por hábito), NÃO trata como já desembarcado — fica na fase
+  // anterior até a data realmente chegar. Use o campo "Previsão de Chegada"
+  // (ETA) pra registrar uma data futura sem mexer na fase do processo.
+  const chegadaPassada  = p.data_chegada  && new Date(p.data_chegada+'T00:00:00')  <= hoje ? p.data_chegada  : null;
+  const presencaPassada = p.data_presenca && new Date(p.data_presenca+'T00:00:00') <= hoje ? p.data_presenca : null;
+
   if(p.data_devolucao_vazio)                                        return 'FINALIZADO';
   // Quando AMBAS as NFs (entrada e saída) estão emitidas, isso já é prova
   // suficiente de que o carregamento aconteceu de fato — avança direto para
@@ -668,7 +678,7 @@ function calcularFase(p){
   if(p.data_liberacao || (p.canal==='VERDE' && p.data_parametrizacao)) return 'FATURAMENTO';
   if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
   if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
-  if(p.data_presenca || p.data_chegada)                             return 'DESEMBARCADO';
+  if(presencaPassada || chegadaPassada)                             return 'DESEMBARCADO';
   if(p.data_embarque || p.hbl)                                      return 'EMBARCADO';
   if(p.etd || p.booking_numero)                                     return 'AGUARDANDO_EMBARQUE';
   return 'PI';
@@ -1390,7 +1400,7 @@ function renderModal(){
             <input class="form-input" id="f_porto_destino" value="${esc(p.porto_destino)}" placeholder="Ex: ITAJAI"></div>
           <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
             <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">ETA</label>
+          <div class="form-group"><label class="form-label">ETA (Previsão de Chegada)</label>
             <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
           </div>
           <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
@@ -1416,7 +1426,7 @@ function renderModal(){
         <div class="form-section-title">⚓ Chegada & Demurrage</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
-            <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}" onchange="atualizarFaseEmTempoReal();avisarSeChegadaFutura();"></div>
           <div class="form-group"><label class="form-label">Presença de Carga</label>
             <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
@@ -1680,6 +1690,20 @@ function aplicarRegraParametrizacaoVerde(){
   if(!canalEl || !paramEl || !regEl) return;
   if(canalEl.value === 'VERDE' && !paramEl.value && regEl.value){
     paramEl.value = regEl.value;
+  }
+}
+
+// Se a Data Chegada preenchida for no futuro, avisa que provavelmente é só
+// uma previsão (booking) e sugere usar o campo "Previsão de Chegada" (ETA) —
+// a fase do processo já não avança sozinha nesse caso (ver calcularFase),
+// isso aqui é só pra deixar claro pra quem tá digitando, na hora.
+function avisarSeChegadaFutura(){
+  const el = document.getElementById('f_data_chegada');
+  if(!el || !el.value) return;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const chegada = new Date(el.value+'T00:00:00');
+  if(chegada > hoje){
+    showToast('⚠ Essa data de chegada é futura — parece uma previsão. Use o campo "ETA (Previsão de Chegada)" em vez desse, pra não confundir com a chegada de fato.', 'warn');
   }
 }
 
