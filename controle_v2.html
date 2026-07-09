@@ -404,11 +404,17 @@ select.form-input{cursor:pointer;}
       <button class="modal-close" onclick="fecharModalContatos()">×</button>
     </div>
     <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      <div style="display:flex;gap:6px;margin:0;" id="contatos-tipo-filter">
+      <div style="display:flex;gap:6px;margin:0;flex-wrap:wrap;" id="contatos-tipo-filter">
         <button class="btn btn-sm btn-primary" data-tipo="CLIENTE" onclick="filtrarContatosTipo('CLIENTE')">👤 Clientes</button>
         <button class="btn btn-sm btn-outline" data-tipo="FORNECEDOR" onclick="filtrarContatosTipo('FORNECEDOR')">🏭 Fornecedores</button>
+        <button class="btn btn-sm btn-outline" data-tipo="EXPORTADOR" onclick="filtrarContatosTipo('EXPORTADOR')">🏗 Exportadores</button>
         <button class="btn btn-sm btn-outline" data-tipo="DESPACHANTE" onclick="filtrarContatosTipo('DESPACHANTE')">📋 Despachantes</button>
         <button class="btn btn-sm btn-outline" data-tipo="AGENTE" onclick="filtrarContatosTipo('AGENTE')">🚢 Agentes</button>
+        <button class="btn btn-sm btn-outline" data-tipo="ARMADOR" onclick="filtrarContatosTipo('ARMADOR')">⚓ Armadores</button>
+        <button class="btn btn-sm btn-outline" data-tipo="TRANSPORTADORA" onclick="filtrarContatosTipo('TRANSPORTADORA')">🚚 Transportadoras</button>
+        <button class="btn btn-sm btn-outline" data-tipo="ARMAZEM_ALFANDEGADO" onclick="filtrarContatosTipo('ARMAZEM_ALFANDEGADO')">🏢 Armazém Alfandegado</button>
+        <button class="btn btn-sm btn-outline" data-tipo="PORTO_ARMAZEM" onclick="filtrarContatosTipo('PORTO_ARMAZEM')">🏗 Porto/Armazém</button>
+        <button class="btn btn-sm btn-outline" data-tipo="DEPOT_DEVOLUCAO" onclick="filtrarContatosTipo('DEPOT_DEVOLUCAO')">🔄 Depot Devolução</button>
       </div>
       <input class="search-box" id="contatos-search" placeholder="🔍 Buscar por razão social, CNPJ..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
       <button class="btn btn-primary" onclick="abrirNovoContato()">+ Novo</button>
@@ -1288,11 +1294,14 @@ function renderModal(){
               <option value="ENCOMENDA" ${p.finalidade==='ENCOMENDA'?'selected':''}>Encomenda</option>
               <option value="CONTA_E_ORDEM" ${p.finalidade==='CONTA_E_ORDEM'?'selected':''}>Conta e Ordem</option>
             </select></div>
-          <div class="form-group"><label class="form-label">Fornecedor</label>
-            <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON"></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Fornecedor (Exportador)</label>
+            <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON" autocomplete="off"
+              oninput="autocompletarContato(this,'EXPORTADOR','fornecedor-dropdown')">
+            <div id="fornecedor-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
             <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
-              oninput="autocompletarCliente(this)" placeholder="Digite razão social, CNPJ ou cidade...">
+              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown')" placeholder="Digite razão social, CNPJ ou cidade...">
             <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group full">
@@ -1302,8 +1311,11 @@ function renderModal(){
             <input type="hidden" id="f_produtos_json">
             <input type="hidden" id="f_produto" value="${esc(p.produto||'')}">
           </div>
-          <div class="form-group"><label class="form-label">Despachante</label>
-            <input class="form-input" id="f_despachante" value="${esc(p.despachante)}"></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Despachante</label>
+            <input class="form-input" id="f_despachante" value="${esc(p.despachante)}" autocomplete="off"
+              oninput="autocompletarContato(this,'DESPACHANTE','despachante-dropdown')">
+            <div id="despachante-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
           <div class="form-group full"><label class="form-label">Observações</label>
             <input class="form-input" id="f_obs" value="${esc(p.obs)}"></div>
         </div>
@@ -1388,10 +1400,16 @@ function renderModal(){
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Nº Booking</label>
             <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Armador</label>
-            <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC"></div>
-          <div class="form-group"><label class="form-label">Agente de Carga</label>
-            <input class="form-input" id="f_agente" value="${esc(p.agente)}" placeholder="Ex: ROYAL"></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Armador</label>
+            <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC" autocomplete="off"
+              oninput="autocompletarContato(this,'ARMADOR','armador-dropdown')">
+            <div id="armador-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
+          <div class="form-group" style="position:relative"><label class="form-label">Agente de Carga</label>
+            <input class="form-input" id="f_agente" value="${esc(p.agente)}" placeholder="Ex: ROYAL" autocomplete="off"
+              oninput="autocompletarContato(this,'AGENTE','agente-dropdown')">
+            <div id="agente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
           <div class="form-group"><label class="form-label">Navio</label>
             <input class="form-input" id="f_navio" value="${esc(p.navio)}"></div>
           <div class="form-group"><label class="form-label">Porto Origem</label>
@@ -1416,8 +1434,11 @@ function renderModal(){
             <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Carregamento</label>
             <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Transportadora</label>
-            <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}"></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Transportadora</label>
+            <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}" autocomplete="off"
+              oninput="autocompletarContato(this,'TRANSPORTADORA','transportadora-dropdown')">
+            <div id="transportadora-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
           <div class="form-group"><label class="form-label">Placa</label>
             <input class="form-input" id="f_placa" value="${esc(p.placa)}"></div>
         </div>
@@ -2277,22 +2298,23 @@ function exibirMoeda(v){
   return parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
-// ── AUTOCOMPLETE CLIENTE ──────────────────────────────────────
+// ── AUTOCOMPLETE GENÉRICO (Cliente, Fornecedor, Armador, Agente, Despachante, Transportadora) ──
 let _acTimer = null;
-async function autocompletarCliente(input){
+async function autocompletarContato(input, tipo, dropdownId){
   clearTimeout(_acTimer);
   const q = input.value.trim();
-  const dd = document.getElementById('cliente-dropdown');
+  const dd = document.getElementById(dropdownId);
   if(!dd) return;
   if(q.length < 2){ dd.style.display='none'; return; }
   _acTimer = setTimeout(async ()=>{
     try{
-      const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo=CLIENTE');
+      const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo='+encodeURIComponent(tipo));
       const d = await r.json();
       if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
       dd.innerHTML = d.contatos.map(c=>{
-        const label = `${c.razao_social} · ${c.uf}${c.cnpj?' · '+c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):''}`;
-        return `<div onclick="document.getElementById('f_cliente').value='${c.razao_social.replace(/'/,"\'")}';document.getElementById('cliente-dropdown').style.display='none';"
+        const nome = c.nome_fantasia && c.nome_fantasia !== c.razao_social ? c.nome_fantasia : c.razao_social;
+        const label = `${nome}${c.uf?' · '+c.uf:''}${c.cnpj?' · '+c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):''}`;
+        return `<div onclick="document.getElementById('${input.id}').value='${nome.replace(/'/g,"\\'")}';document.getElementById('${dropdownId}').style.display='none';"
           style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
           onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
       }).join('');
@@ -2301,8 +2323,10 @@ async function autocompletarCliente(input){
   }, 300);
 }
 document.addEventListener('click', e=>{
-  const dd = document.getElementById('cliente-dropdown');
-  if(dd && !dd.contains(e.target) && e.target.id!=='f_cliente') dd.style.display='none';
+  ['cliente-dropdown','fornecedor-dropdown','armador-dropdown','agente-dropdown','despachante-dropdown','transportadora-dropdown'].forEach(id=>{
+    const dd = document.getElementById(id);
+    if(dd && !dd.contains(e.target) && e.target.id!=='f_'+id.replace('-dropdown','')) dd.style.display='none';
+  });
 });
 
 // ════════════════════════════════════════════════════════════════
