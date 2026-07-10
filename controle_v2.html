@@ -3249,6 +3249,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // sozinho: primeiro localiza o item da lista que bate com a referência
     // do processo ABERTO agora, e abre um modal pedindo confirmação manual
     // de qual parcela é (Entrada/Saldo/Único) antes de gravar qualquer coisa.
+    let abriuModalCambio = false;
     if(Array.isArray(extracted.cambio_referencias) && extracted.cambio_referencias.length){
       const refAtual = (document.getElementById('f_referencia')?.value||'').trim().toUpperCase();
       const itensCambio = extracted.cambio_referencias.filter(c=>c && c.taxa_cambio);
@@ -3256,6 +3257,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       if(!match && itensCambio.length===1 && !itensCambio[0].referencia) match = itensCambio[0];
       if(match){
         abrirModalConfirmarCambio(match, refAtual);
+        abriuModalCambio = true;
       } else if(itensCambio.length){
         const refsEncontradas = itensCambio.map(c=>c.referencia||'(sem referência)').join(', ');
         showToast(`⚠ Comprovante de câmbio não menciona a referência "${refAtual}" — encontradas: ${refsEncontradas}. Abra o processo correto.`,'warn');
@@ -3353,11 +3355,13 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       }
     }
 
-    if(status) status.textContent = ehCeMercante
+    if(status) status.textContent = abriuModalCambio
+      ? `💱 Comprovante de câmbio lido — confirme no modal a qual parcela pertence`
+      : ehCeMercante
       ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
       : ehBlOuDi ? `✓ ${preenchidos} campos preenchidos (BL/DI — porto e container atualizados)`
       : `✓ ${preenchidos} campos preenchidos`;
-    showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
+    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
 
     // Preenchimento programático não dispara onchange/oninput dos campos —
     // por isso a regra de parametrização e o recálculo de fase/demurrage
