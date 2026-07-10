@@ -1418,6 +1418,14 @@ function renderModal(){
           </div>
           <div class="form-group"><label class="form-label">Navio</label>
             <input class="form-input" id="f_navio" value="${esc(p.navio)}"></div>
+          <div class="form-group"><label class="form-label">Valor do Frete</label>
+            <input class="form-input" type="text" inputmode="decimal" id="f_valor_frete" value="${exibirMoeda(p.valor_frete)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+          <div class="form-group"><label class="form-label">Moeda do Frete</label>
+            <select class="form-input" id="f_moeda_frete">
+              <option value="USD" ${(!p.moeda_frete||p.moeda_frete==='USD')?'selected':''}>USD (US$)</option>
+              <option value="BRL" ${p.moeda_frete==='BRL'?'selected':''}>BRL (R$)</option>
+              <option value="EUR" ${p.moeda_frete==='EUR'?'selected':''}>EUR (€)</option>
+            </select></div>
           <div class="form-group"><label class="form-label">Porto Origem</label>
             <select class="form-input" id="f_porto_origem" onchange="togglePortoOutro('origem')">${gerarOptionsPortoOrigem(p.porto_origem)}</select>
             <input class="form-input" id="f_porto_origem_outro" value="${esc(PORTOS_ORIGEM.includes((p.porto_origem||'').toUpperCase())?'':p.porto_origem)}"
@@ -1971,7 +1979,7 @@ function coletarESalvar(){
     'pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento','pi_pago',
     'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
     'previsao_prontidao','data_prontidao',
-    'booking_numero','armador','agente','navio','viagem','porto_origem','porto_destino',
+    'booking_numero','armador','agente','navio','viagem','valor_frete','moeda_frete','porto_origem','porto_destino',
     'etd','eta','free_time','data_embarque','hbl','mbl','container','tipo_container',
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
@@ -1988,7 +1996,7 @@ function coletarESalvar(){
   const log = proc.log || [];
 
   // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
-  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','pi_cambio_entrada','pi_cambio_saldo'];
+  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','pi_cambio_entrada','pi_cambio_saldo','valor_frete'];
 
   // Remover campo interno de controle
   delete proc._fasePrevista;
@@ -2237,6 +2245,8 @@ async function exportarExcel(){
       'Despachante':         p.despachante||'',
       'Armador':             p.armador||'',
       'Navio':               p.navio||'',
+      'Valor do Frete':      p.valor_frete||'',
+      'Moeda do Frete':      p.moeda_frete||'USD',
       'Porto Origem':        p.porto_origem||'',
       'Porto Destino':       p.porto_destino||'',
       'ETD':                 p.etd||'',
