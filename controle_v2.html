@@ -308,6 +308,9 @@ select.form-input{cursor:pointer;}
     <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
     <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
     <button class="btn btn-outline" onclick="exportarFormatoCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor)">📋 Exportar p/ Cliente</button>
+    <label style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap;" title="Marque antes de clicar em 'Exportar p/ Cliente' para incluir a coluna de Valor do Frete na planilha">
+      <input type="checkbox" id="exportcliente-incluir-frete"> 💰 Incluir Frete no Follow Up
+    </label>
     <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
   </div>
   <!-- FILTRO POR DATA -->
@@ -321,9 +324,9 @@ select.form-input{cursor:pointer;}
       <option value="pi_data">Data PI</option>
       <option value="demurrage_vencimento">Venc. Demurrage</option>
     </select>
-    <input type="date" id="filtro-data-de" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+    <input type="date" onpaste="colarData(event,this)" id="filtro-data-de" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
     <span style="font-size:12px;color:var(--muted);">até</span>
-    <input type="date" id="filtro-data-ate" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+    <input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
     <button class="btn btn-sm btn-outline" onclick="limparFiltroData()">Limpar</button>
     <button class="btn btn-sm btn-outline" onclick="filtroEssaSemana()">Esta semana</button>
     <button class="btn btn-sm btn-outline" onclick="filtroEsseMes()">Este mês</button>
@@ -1344,7 +1347,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Nº PI</label>
             <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}"></div>
           <div class="form-group"><label class="form-label">Data PI</label>
-            <input class="form-input" type="date" id="f_pi_data" value="${esc(p.pi_data)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data" value="${esc(p.pi_data)}"></div>
           <div class="form-group"><label class="form-label">Valor USD</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
           <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
@@ -1353,9 +1356,12 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
               <option value="">—</option>
+              <option value="EXW" ${p.pi_incoterm==='EXW'?'selected':''}>EXW</option>
+              <option value="FCA" ${p.pi_incoterm==='FCA'?'selected':''}>FCA</option>
               <option value="FOB" ${p.pi_incoterm==='FOB'?'selected':''}>FOB</option>
-              <option value="CIF" ${p.pi_incoterm==='CIF'?'selected':''}>CIF</option>
               <option value="CFR" ${p.pi_incoterm==='CFR'?'selected':''}>CFR</option>
+              <option value="CIF" ${p.pi_incoterm==='CIF'?'selected':''}>CIF</option>
+              <option value="CPT" ${p.pi_incoterm==='CPT'?'selected':''}>CPT</option>
             </select></div>
           <div class="form-group"><label class="form-label">Forma de Pagamento</label>
             <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()">
@@ -1379,7 +1385,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Nº CI</label>
             <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}"></div>
           <div class="form-group"><label class="form-label">Data CI</label>
-            <input class="form-input" type="date" id="f_ci_data" value="${esc(p.ci_data)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_ci_data" value="${esc(p.ci_data)}"></div>
           <div class="form-group"><label class="form-label">Valor CI (USD)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_ci_valor_usd" value="${exibirMoeda(p.ci_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
         </div>
@@ -1396,9 +1402,9 @@ function renderModal(){
         <div class="form-section-title">🏭 Prontidão</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Previsão Prontidão</label>
-            <input class="form-input" type="date" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}"></div>
           <div class="form-group"><label class="form-label">Data Prontidão Real</label>
-            <input class="form-input" type="date" id="f_data_prontidao" value="${esc(p.data_prontidao)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_prontidao" value="${esc(p.data_prontidao)}"></div>
         </div>
       </div>
       <div class="form-section">
@@ -1433,12 +1439,12 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Porto Destino</label>
             <select class="form-input" id="f_porto_destino">${gerarOptionsPortoDestino(p.porto_destino)}</select></div>
           <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
-            <input class="form-input" type="date" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">ETA (Previsão de Chegada)</label>
-            <input class="form-input highlight" type="date" id="f_eta" value="${esc(p.eta)}">
+            <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_eta" value="${esc(p.eta)}">
           </div>
           <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
-            <input class="form-input" type="date" id="f_data_embarque" value="${esc(p.data_embarque)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_embarque" value="${esc(p.data_embarque)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
             <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher após emissão do BL"></div>
         </div>
@@ -1447,9 +1453,9 @@ function renderModal(){
         <div class="form-section-title">🚛 Carregamento</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Agendamento</label>
-            <input class="form-input" type="date" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Carregamento</label>
-            <input class="form-input" type="date" id="f_data_carregamento" value="${esc(p.data_carregamento)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_carregamento" value="${esc(p.data_carregamento)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group" style="position:relative"><label class="form-label">Transportadora</label>
             <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}" autocomplete="off"
               oninput="autocompletarContato(this,'TRANSPORTADORA','transportadora-dropdown')">
@@ -1463,13 +1469,13 @@ function renderModal(){
         <div class="form-section-title">⚓ Chegada & Demurrage</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
-            <input class="form-input highlight" type="date" id="f_data_chegada" value="${esc(p.data_chegada)}" onchange="atualizarFaseEmTempoReal();avisarSeChegadaFutura();"></div>
+            <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_data_chegada" value="${esc(p.data_chegada)}" onchange="atualizarFaseEmTempoReal();avisarSeChegadaFutura();"></div>
           <div class="form-group"><label class="form-label">Presença de Carga</label>
-            <input class="form-input" type="date" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
-            <input class="form-input" type="date" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Devolução</label>
-            <input class="form-input" type="date" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Pago?</label>
@@ -1513,7 +1519,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">CE House</label>
             <input class="form-input" id="f_ce_house" value="${esc(p.ce_house)}"></div>
           <div class="form-group"><label class="form-label">Data Embarque (CE)</label>
-            <input class="form-input" type="date" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
         </div>
         <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extração por IA, os campos Navio e Armador (aba Booking &amp; Embarque) são atualizados automaticamente — em caso de transbordo no exterior, o navio de conexão/último navio.</div>
       </div>
@@ -1521,7 +1527,7 @@ function renderModal(){
         <div class="form-section-title">📋 DI e Parametrização</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
-            <input class="form-input" type="date" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Número DI</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Canal</label>
@@ -1532,9 +1538,9 @@ function renderModal(){
               <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
             </select></div>
           <div class="form-group"><label class="form-label">Data Parametrização</label>
-            <input class="form-input" type="date" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Liberação</label>
-            <input class="form-input" type="date" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
         </div>
         <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
       </div>
@@ -1544,13 +1550,13 @@ function renderModal(){
           <div class="form-group"><label class="form-label">NF Entrada Nº</label>
             <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Entrada Data</label>
-            <input class="form-input" type="date" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
           <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
           <div class="form-group"><label class="form-label">NF Saída Nº</label>
             <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Saída Data</label>
-            <input class="form-input" type="date" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
           <div class="form-group"><label class="form-label">NF Saída Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_saida_valor" value="${exibirMoeda(p.nf_saida_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
         </div>
@@ -1823,19 +1829,19 @@ function renderPagamentoCampos(){
   let html = '<div class="form-grid" style="margin-top:12px;">';
   if(tipo==='VISTA'){
     html+=`<div class="form-group"><label class="form-label">Data Pagamento</label>
-      <input class="form-input" type="date" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>`;
+      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>`;
   } else if(tipo==='PRAZO'){
     html+=`<div class="form-group"><label class="form-label">Prazo (dias)</label>
       <input class="form-input" type="number" id="f_pi_prazo_dias" value="${p.pi_prazo_dias||''}"></div>
       <div class="form-group"><label class="form-label">Data Pagamento</label>
-      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
+      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
   } else if(tipo==='ENTRADA_SALDO'){
     html+=`<div class="form-group"><label class="form-label">% Entrada</label>
       <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct||30}" min="1" max="99" oninput="renderPagamentoInfoLive()"></div>
       <div class="form-group"><label class="form-label">Data Entrada</label>
-      <input class="form-input" type="date" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>
+      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>
       <div class="form-group"><label class="form-label">Data Saldo</label>
-      <input class="form-input" type="date" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
+      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
       <div class="form-group"><label class="form-label">Câmbio Entrada (R$)</label>
       <input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_entrada" value="${exibirMoeda(p.pi_cambio_entrada)||''}" placeholder="${exibirMoeda(_cambio.USD)}" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()"></div>
       <div class="form-group"><label class="form-label">Câmbio Saldo (R$)</label>
@@ -2316,6 +2322,12 @@ async function exportarFormatoCliente(){
     const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
     const lista = filtrarProcessos(); // respeita os filtros aplicados na tela
 
+    // Toggle manual (checkbox ao lado do botão) — decide se a coluna "Valor
+    // do Frete" entra ou não nesse export. Fica marcado só quando o usuário
+    // realmente quer que o cliente veja esse valor (ex: negociação FOB onde
+    // o frete é por conta do cliente); por padrão vem desmarcado/oculto.
+    const incluirFrete = !!document.getElementById('exportcliente-incluir-frete')?.checked;
+
     // Montar 1 linha por produto, lendo produtos_json com retrocompatibilidade
     // para o campo "produto" legado (texto único), igual ao padrão usado no
     // resto do sistema para multi-produtos.
@@ -2329,7 +2341,7 @@ async function exportarFormatoCliente(){
       if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
 
       produtos.filter(it=>it.descricao).forEach(it=>{
-        linhas.push({
+        const linha = {
           fornecedor: p.fornecedor||'—',
           'Invoice':                 p.referencia||'',
           'Medida':                  it.descricao||'',
@@ -2339,7 +2351,11 @@ async function exportarFormatoCliente(){
           'Data de Embarque':        p.etd ? new Date(p.etd).toLocaleDateString('pt-BR') : '',
           'Data Chegada':            p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '',
           'POD':                     p.porto_destino||'N/I',
-        });
+        };
+        if(incluirFrete){
+          linha['Valor do Frete'] = p.valor_frete ? `${exibirMoeda(p.valor_frete)} ${p.moeda_frete||'USD'}` : '';
+        }
+        linhas.push(linha);
       });
     });
 
@@ -2351,6 +2367,7 @@ async function exportarFormatoCliente(){
     linhas.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
 
     const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD'];
+    if(incluirFrete) colunas.push('Valor do Frete');
     const aoa = [['PNEUS EXPRESS'], colunas];
     Object.keys(porForn).sort().forEach(forn=>{
       aoa.push([forn]); // linha de cabeçalho do grupo
@@ -2364,7 +2381,7 @@ async function exportarFormatoCliente(){
 
     const data = new Date().toISOString().split('T')[0];
     XLSX.writeFile(wb, `IMPAK_PneusExpress_${data}.xlsx`);
-    showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${Object.keys(porForn).length} fornecedor(es)`,'ok');
+    showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${Object.keys(porForn).length} fornecedor(es)${incluirFrete?' — com Valor do Frete':''}`,'ok');
   }catch(e){
     showToast('Erro ao exportar: '+e.message,'err');
     console.error(e);
@@ -2382,6 +2399,34 @@ function salvarApiKey(v){
 }
 
 function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
+
+// ── COLAR DATA (DD/MM/AAAA) EM CAMPOS type="date" ────────────────
+function colarData(ev, el){
+  const texto = ((ev.clipboardData || window.clipboardData)?.getData('text') || '').trim();
+  if(!texto) return;
+  let d, m, y;
+  const comSeparador = texto.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if(comSeparador){
+    d = comSeparador[1].padStart(2,'0');
+    m = comSeparador[2].padStart(2,'0');
+    y = comSeparador[3].length===2 ? ('20'+comSeparador[3]) : comSeparador[3];
+  } else {
+    const digits = texto.replace(/[^\d]/g,'');
+    if(digits.length===8){ d=digits.slice(0,2); m=digits.slice(2,4); y=digits.slice(4,8); }
+  }
+  if(!d) return;
+  const iso = `${y}-${m}-${d}`;
+  const testeData = new Date(iso+'T00:00:00');
+  if(isNaN(testeData.getTime()) || testeData.getDate()!==parseInt(d,10)){
+    showToast('Data colada inválida — use o formato DD/MM/AAAA','err');
+    ev.preventDefault();
+    return;
+  }
+  ev.preventDefault();
+  el.value = iso;
+  el.dispatchEvent(new Event('input', {bubbles:true}));
+  el.dispatchEvent(new Event('change', {bubbles:true}));
+}
 
 // ── MÁSCARA NUMÉRICA xx.xxx,xx (campos monetários) ──────────────
 // Usada em inputs type="text" que substituem os antigos type="number"
@@ -2984,7 +3029,7 @@ async function extrairComIA(input){
   "ci_numero": "",
   "ci_valor_usd": 0,
   "ci_data": "YYYY-MM-DD",
-  "data_chegada": "YYYY-MM-DD",
+  "data_chegada": "YYYY-MM-DD",  // preencher SOMENTE quando o documento for a DI/Extrato da DI — é a única fonte que confirma o desembarque efetivo. Para qualquer outro documento (BL, CE Mercante, invoice, etc.), NÃO preencher este campo — a data de chegada/atracação deles é só previsão, então use "eta" em vez disso.
   "ce_master": "",  // número do CE Mercante MASTER (do armador/linha de navegação), se houver
   "ce_house": "",  // número do CE Mercante HOUSE (do agente de carga/consolidador), se houver
   "ce_data_embarque": "YYYY-MM-DD",  // data de embarque conforme o CE Mercante
@@ -3015,7 +3060,7 @@ Se o documento for uma Nota Fiscal (NF-e brasileira):
 - não preencher os dois grupos ao mesmo tempo a partir do mesmo documento — cada NF enviada é de um tipo só.
 Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
 - extrair ce_master (CE do armador/linha de navegação) e/ou ce_house (CE do agente de carga/consolidador) — um CE Mercante pode ter só um dos dois ou os dois, dependendo se a carga é consolidada. Preencher cada campo apenas se aquele número aparecer no documento.
-- extrair também "data_chegada" (data de chegada/atracação no porto brasileiro), ce_data_embarque (data de embarque na origem) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
+- extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`;
@@ -3102,6 +3147,14 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     const ehBlOuDi = !!(extracted.hbl || extracted.mbl || extracted.numero_di || extracted.data_registro_di);
     const camposSobrescritosPorCe = ehCeMercante ? ['navio','armador'] : [];
     const camposSobrescritosPorBlDi = ehBlOuDi ? ['porto_destino','container','navio'] : [];
+    // Regra de negócio: o processo só pode ser considerado DESEMBARCADO de
+    // fato com base na DI/Extrato da DI — qualquer outro documento (CE
+    // Mercante, BL, invoice etc.) só traz uma PREVISÃO de chegada. Por isso
+    // "data_chegada" (que é o campo que muda a fase pra Desembarcado, ver
+    // calcularFase) só é aceito quando o documento atual é mesmo a DI —
+    // caso contrário, a data extraída vira "eta" (previsão), nunca chegada
+    // efetiva, mesmo que a IA (por engano) tenha devolvido "data_chegada".
+    const ehDI = !!(extracted.numero_di || extracted.data_registro_di);
 
     let preenchidos = 0;
 
@@ -3163,6 +3216,25 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
           el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
           preenchidos++;
           setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+        }
+        return;
+      }
+      if(campo==='data_chegada'){
+        if(ehDI){
+          if(!el.value || podeSobrescrever){
+            el.value = val;
+            el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
+            preenchidos++;
+            setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+          }
+        } else {
+          const elEta = document.getElementById('f_eta');
+          if(elEta && !elEta.value){
+            elEta.value = val;
+            elEta.style.borderColor='var(--ok)'; elEta.style.background='rgba(22,163,74,.04)';
+            preenchidos++;
+            setTimeout(()=>{ elEta.style.borderColor=''; elEta.style.background=''; }, 3000);
+          }
         }
         return;
       }
@@ -3469,10 +3541,10 @@ function renderPeriodoSeletor(containerId, ns, onChangeCallback){
       ${opts.map(([v,l])=>`<button type="button" onclick="_periodoEstado['${ns}'].tipo='${v}';renderPeriodoSeletor('${containerId}','${ns}',${onChangeCallback.name});${onChangeCallback.name}()"
         style="padding:5px 12px;border-radius:6px;border:1px solid ${estado.tipo===v?'var(--ac)':'var(--border)'};background:${estado.tipo===v?'var(--ac)':'#fff'};color:${estado.tipo===v?'#fff':'var(--text)'};font-size:11px;font-weight:600;cursor:pointer;">${l}</button>`).join('')}
       ${estado.tipo==='custom' ? `
-        <input type="date" id="periodo-custom-ini-${containerId}" value="${estado.ini}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+        <input type="date" onpaste="colarData(event,this)" id="periodo-custom-ini-${containerId}" value="${estado.ini}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
           onchange="_periodoEstado['${ns}'].ini=this.value;${onChangeCallback.name}()">
         <span style="font-size:11px;color:var(--muted);">até</span>
-        <input type="date" id="periodo-custom-fim-${containerId}" value="${estado.fim}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
+        <input type="date" onpaste="colarData(event,this)" id="periodo-custom-fim-${containerId}" value="${estado.fim}" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;"
           onchange="_periodoEstado['${ns}'].fim=this.value;${onChangeCallback.name}()">
       ` : ''}
     </div>`;
