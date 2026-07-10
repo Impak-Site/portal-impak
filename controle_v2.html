@@ -490,6 +490,28 @@ select.form-input{cursor:pointer;}
   </div>
 </div>
 
+<!-- MODAL: CONFIRMAR COMPROVANTE DE CÂMBIO -->
+<div class="modal-bg" id="modal-cambio-bg">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <div class="modal-title">💱 Comprovante de Câmbio lido</div>
+      <button class="modal-close" onclick="fecharModalCambio()">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="cambio-modal-info" style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:16px;"></p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Esse valor/taxa é referente a qual parcela deste processo?</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-outline" onclick="confirmarCambioComo('unico')">💳 Pagamento Único (à vista/prazo)</button>
+        <button class="btn btn-outline" onclick="confirmarCambioComo('entrada')">1️⃣ Entrada</button>
+        <button class="btn btn-outline" onclick="confirmarCambioComo('saldo')">2️⃣ Saldo</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end;padding-top:16px;">
+        <button class="btn btn-outline" onclick="fecharModalCambio()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════════════
 // UUID — compatível com Safari, Chrome, Firefox
@@ -2428,6 +2450,47 @@ function colarData(ev, el){
   el.dispatchEvent(new Event('change', {bubbles:true}));
 }
 
+// ── COMPROVANTE DE CÂMBIO (confirmação manual Entrada/Saldo/Único) ──
+let _cambioPendente = null;
+
+function abrirModalConfirmarCambio(match, refAtual){
+  _cambioPendente = match;
+  const taxa = parseFloat(match.taxa_cambio) || 0;
+  const valorPago = parseFloat(match.valor_pago) || 0;
+  const valorUsdImplicito = taxa ? (valorPago/taxa) : 0;
+  const info = document.getElementById('cambio-modal-info');
+  if(info){
+    info.innerHTML = `<b>Referência:</b> ${esc(match.referencia||refAtual||'(não identificada no documento)')}<br>`
+      + `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}<br>`
+      + (valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '');
+  }
+  document.getElementById('modal-cambio-bg')?.classList.add('open');
+}
+
+function fecharModalCambio(){
+  document.getElementById('modal-cambio-bg')?.classList.remove('open');
+  _cambioPendente = null;
+}
+
+function confirmarCambioComo(tipo){
+  if(!_cambioPendente){ fecharModalCambio(); return; }
+  const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
+  if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
+
+  if(tipo==='unico'){
+    const el = document.getElementById('f_pi_cambio');
+    if(el){ el.value = taxa.toFixed(4); el.dispatchEvent(new Event('change',{bubbles:true})); }
+  } else if(tipo==='entrada'){
+    const el = document.getElementById('f_pi_cambio_entrada');
+    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); renderPagamentoInfoLive(); }
+  } else if(tipo==='saldo'){
+    const el = document.getElementById('f_pi_cambio_saldo');
+    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); renderPagamentoInfoLive(); }
+  }
+  showToast(`✓ Câmbio (${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}) aplicado como ${tipo==='unico'?'Pagamento Único':tipo==='entrada'?'Entrada':'Saldo'}`,'ok');
+  fecharModalCambio();
+}
+
 // ── MÁSCARA NUMÉRICA xx.xxx,xx (campos monetários) ──────────────
 // Usada em inputs type="text" que substituem os antigos type="number"
 // para permitir exibir separador de milhar (o <input type="number"> nativo
@@ -3041,6 +3104,7 @@ async function extrairComIA(input){
   "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
   "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
   "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
+  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "taxa_cambio":0}. Deixar [] para qualquer outro tipo de documento.
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
@@ -3062,6 +3126,10 @@ Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pe
 - extrair ce_master (CE do armador/linha de navegação) e/ou ce_house (CE do agente de carga/consolidador) — um CE Mercante pode ter só um dos dois ou os dois, dependendo se a carga é consolidada. Preencher cada campo apenas se aquele número aparecer no documento.
 - extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
+Se o documento for um Comprovante de Câmbio (operação de câmbio bancária — compra de moeda estrangeira para pagamento ao exterior):
+- extrair "taxa_cambio" (a taxa/PTAX da operação, em R$ por US$) — normalmente é UMA só para o comprovante inteiro, mesmo que ele cubra várias referências/faturas.
+- o comprovante pode listar UMA OU VÁRIAS referências de processo/invoice na mesma operação (ex: numa tabela ou lista de "faturas pagas" dentro do comprovante), cada uma com seu valor. Para CADA referência encontrada, criar um item em "cambio_referencias" com: "referencia" (o número/código da referência ou invoice, exatamente como aparece no documento), "valor_pago" (o valor em REAIS pago especificamente para aquela referência — se o documento já mostrar o rateio/split por referência, use os valores exatos do documento; nunca divida o total igualmente entre as referências por conta própria) e "taxa_cambio" (repetir a mesma taxa da operação em cada item, a menos que o documento mostre taxas diferentes por referência).
+- se o comprovante não mencionar nenhuma referência/invoice explicitamente (só o valor total e a taxa), retornar um único item em "cambio_referencias" com "referencia" vazia ("") e o valor total — o sistema vai pedir confirmação manual de qual processo isso pertence.
 Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`;
 
@@ -3175,6 +3243,25 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       }
     }
     delete extracted.itens; // não é um campo de input direto — já tratado acima
+
+    // Comprovante de Câmbio — pode cobrir várias referências na mesma
+    // operação. Nunca preenche pi_cambio/pi_cambio_entrada/pi_cambio_saldo
+    // sozinho: primeiro localiza o item da lista que bate com a referência
+    // do processo ABERTO agora, e abre um modal pedindo confirmação manual
+    // de qual parcela é (Entrada/Saldo/Único) antes de gravar qualquer coisa.
+    if(Array.isArray(extracted.cambio_referencias) && extracted.cambio_referencias.length){
+      const refAtual = (document.getElementById('f_referencia')?.value||'').trim().toUpperCase();
+      const itensCambio = extracted.cambio_referencias.filter(c=>c && c.taxa_cambio);
+      let match = itensCambio.find(c=>(c.referencia||'').trim().toUpperCase()===refAtual);
+      if(!match && itensCambio.length===1 && !itensCambio[0].referencia) match = itensCambio[0];
+      if(match){
+        abrirModalConfirmarCambio(match, refAtual);
+      } else if(itensCambio.length){
+        const refsEncontradas = itensCambio.map(c=>c.referencia||'(sem referência)').join(', ');
+        showToast(`⚠ Comprovante de câmbio não menciona a referência "${refAtual}" — encontradas: ${refsEncontradas}. Abra o processo correto.`,'warn');
+      }
+    }
+    delete extracted.cambio_referencias; // tratado à parte acima, nunca vai pro loop genérico
 
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor'];
