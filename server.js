@@ -81,6 +81,7 @@ const USUARIOS = [
   { usuario: 'maria',     senhaHashEnv: envSenhaHash('SENHA_MARIA'),     email: 'maria@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
   { usuario: 'joyce',     senhaHashEnv: envSenhaHash('SENHA_JOYCE'),     email: 'joyce@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
   { usuario: 'neide',     senhaHashEnv: envSenhaHash('SENHA_NEIDE'),     email: 'neide@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
+  { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',   modulos: ['tyredesk','processos'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
 ];
 
 // Cache em memória dos usuários carregados do Supabase (recarregado no boot
