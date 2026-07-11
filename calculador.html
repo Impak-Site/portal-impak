@@ -332,10 +332,6 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)">
         <div id="cliente-calc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <div class="form-group">
-        <label>Custos Diversos (R$)</label>
-        <input type="number" id="custos_diversos" step="0.01" value="500" placeholder="0,00">
-      </div>
     </div>
 
     <!-- COMISSÕES -->
@@ -427,7 +423,10 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
       <div id="taxas-op-body" style="display:none;">
         <div class="form-row">
           <div class="form-group"><label>Siscomex (R$)</label><input type="number" id="tx_siscomex" step="0.01" value="480"></div>
-          <div class="form-group"><label>Marinha/AFRMM (R$)</label><input type="number" id="tx_marinha" step="0.01" value="1712"></div>
+          <div class="form-group">
+            <label>Marinha/AFRMM (R$) <span style="font-weight:400;font-size:10px;color:var(--dim);"><input type="checkbox" id="auto_marinha" checked onchange="onToggleAutoTaxa('marinha')" style="vertical-align:middle;"> auto</span></label>
+            <input type="number" id="tx_marinha" step="0.01" value="1712" readonly style="background:#f5f5f5;">
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Armazenagem (R$)</label><input type="number" id="tx_armazenagem" step="0.01" value="2088"></div>
@@ -470,9 +469,15 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div class="form-row">
           <div class="form-group"><label>Administrativo (R$)</label><input type="number" id="tx_administrativo" step="0.01" value="300"></div>
-          <div class="form-group"><label>Agente Carga (R$)</label><input type="number" id="tx_agente" step="0.01" value="476"></div>
+          <div class="form-group">
+            <label>Agente Carga (R$) <span style="font-weight:400;font-size:10px;color:var(--dim);"><input type="checkbox" id="auto_agente" checked onchange="onToggleAutoTaxa('agente')" style="vertical-align:middle;"> auto</span></label>
+            <input type="number" id="tx_agente" step="0.01" value="476" readonly style="background:#f5f5f5;">
+          </div>
         </div>
-        <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio)</div>
+        <div class="form-row">
+          <div class="form-group"><label>Custos Diversos (R$)</label><input type="number" id="custos_diversos" step="0.01" value="500" placeholder="0,00"></div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio de abertura do dia da chegada +2%)</div>
         <div class="form-row">
           <div class="form-group"><label>Additional Costs (US$)</label><input type="number" id="tx_additional_costs" step="0.01" value="95"></div>
           <div class="form-group"><label>Import Logistics (US$)</label><input type="number" id="tx_import_logistics" step="0.01" value="32.16"></div>
@@ -967,6 +972,18 @@ function lerTaxasOperacionais(){
   };
 }
 
+// Marinha/AFRMM e Agente de Carga: por padrão calculados automaticamente (fórmula
+// real da planilha, ver calcular()). Desmarcando "auto" o campo vira editável e o
+// valor digitado pelo usuário passa a valer (útil pra caso excepcional/negociado).
+function onToggleAutoTaxa(campo){
+  const chk = document.getElementById(`auto_${campo}`);
+  const input = document.getElementById(`tx_${campo}`);
+  if(!chk || !input) return;
+  input.readOnly = chk.checked;
+  input.style.background = chk.checked ? '#f5f5f5' : '#fff';
+  if(_ultimoResultado || document.getElementById('cambio_usd').value) calcular();
+}
+
 function setToggle(key, val) {
   _toggles[key] = val;
   const sim = document.getElementById(`toggle-${key}-sim`);
@@ -1158,7 +1175,41 @@ function calcular() {
   const CBS_e    = (base_imp_brl + II + IPI_e) * t.cbs;
   const RBC      = base_imp_brl * t.rbc;
   const DUMP     = _toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
-  // Taxas operacionais — lidas dos campos editáveis (fallback nas constantes padrão)
+
+  // Câmbio de abertura do dia da chegada + 2% — usado nas Taxas em USD (destino)
+  // e nas fórmulas de Marinha/AFRMM e Agente de Carga, replicando a planilha
+  // (coluna "Tx Cambio" / "Dólar de Abertura dia da chegada (+) 2%").
+  const cambio_chegada_markup = cambio_chegada * 1.02;
+
+  // Leitura prévia das taxas operacionais (antes de sobrescrever Marinha/Agente,
+  // pra ter capatazia, liberação BL e taxas USD disponíveis nas fórmulas abaixo).
+  const txOpPre = lerTaxasOperacionais();
+
+  // FIX (docx itens 3.3 e 5): Marinha/AFRMM e Agente de Carga tinham fórmula na
+  // planilha mas eram só campo manual no calculador. Agora calculados automático
+  // por padrão (checkbox "auto" permite sobrescrever manualmente em caso excepcional).
+  // Marinha/AFRMM = ((FRETE_BRL + TAXA_CE_BRL + CAPATAZIA_BRL) × 8%) + 20
+  // (planilha MODELO-COM S.T!F20; TAXA_CE_BRL usa fallback R$2.000 se Taxa C.E. = 0)
+  const taxaCeParaAfrmm = taxa_ce === 0 ? 2000 : taxa_ce * cambio;
+  const capatazia_brl = txOpPre.fixas.capatazia * containers;
+  const marinha_auto = ((frete_brl + taxaCeParaAfrmm + capatazia_brl) * 0.08) + 20;
+  const autoMarinhaChk = document.getElementById('auto_marinha');
+  if(!autoMarinhaChk || autoMarinhaChk.checked){
+    document.getElementById('tx_marinha').value = marinha_auto.toFixed(2);
+  }
+
+  // Agente de Carga = ((SOMA Taxas USD destino, exceto IOF) × câmbio+2% + Liberação BL) × 21,25%
+  // (planilha MODELO-COM S.T!F37 = (SOMA(F27:F36)-IOF)×21,25%)
+  const somaUsdSemIof = (txOpPre.usd.additional_costs + txOpPre.usd.import_logistics + txOpPre.usd.trs +
+    txOpPre.usd.tsc + txOpPre.usd.drop_off + txOpPre.usd.isps + txOpPre.usd.desconsolidacao) * containers;
+  const liberacaoBl_brl = txOpPre.fixas.liberacao_bl * containers;
+  const agente_auto = ((somaUsdSemIof * cambio_chegada_markup) + liberacaoBl_brl) * 0.2125;
+  const autoAgenteChk = document.getElementById('auto_agente');
+  if(!autoAgenteChk || autoAgenteChk.checked){
+    document.getElementById('tx_agente').value = agente_auto.toFixed(2);
+  }
+
+  // Releitura das taxas operacionais, já com Marinha/Agente atualizados acima
   const txOp = lerTaxasOperacionais();
 
   // ICMS Entrada — fórmula real da planilha: ((CIF + II+IPI+PIS+COFINS + Siscomex + Dumping + AFRMM) / 0,96) × 1%
@@ -1180,11 +1231,17 @@ function calcular() {
 
   let taxas_usd = 0;
   Object.values(txOp.usd).forEach(v => taxas_usd += v * containers);
-  const taxas_usd_brl = taxas_usd * cambio;
+  // FIX (docx item 3.2): Taxas em USD (destino) devem converter pelo câmbio de
+  // abertura do dia da chegada + 2%, não pelo câmbio simples — confirmado na
+  // anotação da imagem e na coluna "Tx Cambio" (E5/$E$5) da planilha.
+  const taxas_usd_brl = taxas_usd * cambio_chegada_markup;
 
   // Seguro dif (entre seguro real e taxa CE p/ AFRMM)
   const seguro_dif_brl = (98.189416 * containers) * cambio; // diferença seguro
-  const total_taxas = taxas_fixas + taxas_usd_brl + seguro_dif_brl + DUMP;
+  // FIX (docx item 9): faltava somar o Seguro Venda no Total Taxas — confirmado
+  // via soma manual das 15 linhas de Taxas Operacionais no demonstrativo real
+  // (R$14.556,98 vs R$13.997,70 exibido, diferença R$559,27 = seguro_venda_brl).
+  const total_taxas = taxas_fixas + taxas_usd_brl + seguro_dif_brl + DUMP + seguro_venda_brl;
 
   // ── 5. Custo total (apenas não recuperáveis) ──
   const imp_custo   = II; // RBC NÃO entra como custo — é só referência/crédito, confirmado com exemplo real
@@ -1219,14 +1276,14 @@ function calcular() {
     // IMPORTANTE: Vlr.Produto é calculado sobre o CUSTO TOTAL (não sobre FOB) — fórmula real da planilha (L17=F48×L11)
     const vlr_produto = custo_total * fatorNfe;
     const IPI_s        = vlr_produto * aliq_ipi_s;
-    // Redução de base (RBC 06/09, coluna K da Tabela NCM) — aplica ANTES do ICMS,
-    // tanto no ICMS Normal (próprio interestadual) quanto no ICMS ST. Antes só
-    // entrava na base do ST — mas a mesma redução vale pro ICMS Normal também.
-    // Para SC, rbc=0 na tabela (sempre) — a fórmula já reproduz a regra de SC
-    // sem precisar de exceção separada.
+    // Redução de base (RBC, coluna K da Tabela NCM) — FIX (docx item 8): confirmado
+    // direto na planilha (linha L19 "ICMS NFe" das abas MODELO - COM/SEM S.T) que
+    // o ICMS Normal usa sempre o Vlr.Produto CHEIO, sem redução — tanto COM quanto
+    // SEM S.T. A redução (K20/RBC) só entra na BASE ICMS ST (linha L20), que só
+    // existe no cenário COM S.T. Produtos SEM S.T não podem reduzir a base.
     const vlr_produto_reduzido = vlr_produto - (vlr_produto * t.rbc);
-    // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP), usado na base do ICMS ST e do PIS/COFINS
-    const ICMS_nfe_normal = vlr_produto_reduzido * t.aliq_inter;
+    // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP), usa vlr_produto cheio
+    const ICMS_nfe_normal = vlr_produto * t.aliq_inter;
     // ICMS Próprio — alíquota da coluna ICMS-Próprio da tabela NCM (ex: 1,4%), abate direto do lucro
     // (esse NÃO leva redução — confirmado com o exemplo real, usa vlr_produto cheio)
     const ICMS_proprio = vlr_produto * aliq_icms_nfe;
@@ -1242,8 +1299,12 @@ function calcular() {
     const base_pis_cofins = vlr_produto - ICMS_nfe_normal;
     const PIS_s     = base_pis_cofins * aliq_pis_s;
     const COFINS_s  = base_pis_cofins * aliq_cof_s;
-    const IBS_s     = base_pis_cofins * aliq_ibs_s;
-    const CBS_s     = base_pis_cofins * aliq_cbs_s;
+    // FIX (docx item 7): base do IBS/CBS confirmada direto na planilha (J56/J57) =
+    // Vlr.Produto - ICMS_nfe_normal - PIS_s - COFINS_s (ou seja, base_pis_cofins
+    // menos o PIS e o COFINS já calculados) — faltava subtrair PIS_s e COFINS_s.
+    const base_ibs_cbs = base_pis_cofins - PIS_s - COFINS_s;
+    const IBS_s     = base_ibs_cbs * aliq_ibs_s;
+    const CBS_s     = base_ibs_cbs * aliq_cbs_s;
 
     // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
     const china_fora_val = fob_brl * china_fora_pct;
@@ -1366,7 +1427,7 @@ function calcular() {
     ncm, t,
     fob_brl, frete_brl, seguro_brl, seguro_venda_brl, seguro_compra_usd, seguro_venda_usd, cif_brl, base_imp_brl,
     II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
-    taxas_fixas, taxas_usd_brl, total_taxas,
+    taxas_fixas, taxas_usd_brl, total_taxas, custos_div,
     imp_custo, custo_total,
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s, usoConsumo,
     COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
@@ -1567,7 +1628,7 @@ function renderResultado(r) {
             <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
             <tr><td>Taxa Seguro de Venda</td><td class="num">${fmtR(r.seguro_venda_brl)}</td></tr>
-            <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custo_total - r.cif_brl - r.imp_custo - r.taxas_fixas - r.taxas_usd_brl + parseFloat(document.getElementById('custos_diversos').value||0))}</td></tr>
+            <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custos_div)}</td></tr>
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
             <tr class="destaque-row"><td>CUSTO TOTAL</td><td class="num">${fmtR(r.custo_total)}</td></tr>
           </table>
@@ -1689,7 +1750,7 @@ async function exportarExcel() {
         ['Agente de Carga', '', '', fmtR(r.txOp.fixas.agente*r.containers)],
         ['Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers)],
         ['Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl)],
-        ['Custos Diversos', '', '', fmtR(parseFloat(document.getElementById('custos_diversos').value)||0)],
+        ['Custos Diversos', '', '', fmtR(r.custos_div)],
         ['TOTAL DESPESAS', '', '', fmtR(r.total_taxas)],
         [],
         ['CUSTO TOTAL', '', '', fmtR(r.custo_total)],
