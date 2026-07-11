@@ -2249,7 +2249,10 @@ function enviarParaCalculador() {
   toast(containers_necessarios > 1
     ? `✓ Mix enviado! ${Math.round(totalFracaoContainer*100)}% de container — ${containers_necessarios} containers. Abrindo calculador...`
     : '✓ Mix enviado! Abrindo calculador...');
-  setTimeout(() => { window.location.href = '/calculador'; }, 800);
+  // FIX (docx item 2): abre em nova aba em vez de substituir a tela atual do
+  // TyreDesk — sessionStorage é herdado pela nova aba (mesma origem), então o
+  // payload continua chegando certinho no Calculador.
+  setTimeout(() => { window.open('/calculador', '_blank'); }, 800);
 }
 
 function exportarExcel() {
