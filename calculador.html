@@ -189,6 +189,46 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div class="cambio-info" id="cambio-info">Clique em PTAX para buscar automaticamente</div>
       </div>
+      <!-- FEATURE NOVA (docx item 3.1): FOB pago em parcelas (entrada/saldo), cada uma
+           fechada num câmbio diferente conforme a fábrica (ex: 30% no pedido + 70% no
+           embarque/10 dias antes da chegada). Desligado por padrão — se não usar, o
+           cálculo continua igual a antes (100% do FOB no Câmbio principal acima). -->
+      <div class="form-group">
+        <label>FOB pago em parcelas (câmbio diferente por parcela)?</label>
+        <div class="toggle-group">
+          <button class="toggle-btn" id="toggle-fobpar-sim" onclick="setToggle('fobpar','SIM')">SIM</button>
+          <button class="toggle-btn active-nao" id="toggle-fobpar-nao" onclick="setToggle('fobpar','NAO')">NÃO</button>
+        </div>
+      </div>
+      <div id="fobpar-detalhe" class="comissao-detalhe">
+        <div class="form-row">
+          <div class="form-group">
+            <label>% FOB Entrada</label>
+            <input type="number" id="pct_fob_entrada" step="0.01" value="30" placeholder="Ex: 30" oninput="atualizarPctFobSaldo()">
+          </div>
+          <div class="form-group">
+            <label>% FOB Saldo</label>
+            <input type="number" id="pct_fob_saldo_display" value="70" readonly style="background:#f5f5f5;">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Câmbio FOB Entrada</label>
+            <input type="number" id="cambio_fob_entrada" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+          </div>
+          <div class="form-group">
+            <label>Câmbio FOB Saldo</label>
+            <input type="number" id="cambio_fob_saldo" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin:-4px 0 8px;">Ex: Eudemon/Rovelo — entrada no pedido, saldo de 14 a 10 dias antes da chegada, cada um com o câmbio do dia do pagamento.</div>
+      </div>
+      <!-- Frete sempre tem spread/taxa própria diferente do câmbio principal — campo
+           opcional, se ficar vazio usa o câmbio principal como sempre. -->
+      <div class="form-group">
+        <label>Câmbio do Frete (se diferente do principal)</label>
+        <input type="number" id="cambio_frete" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+      </div>
     </div>
 
     <!-- DADOS DA IMPORTAÇÃO -->
@@ -750,7 +790,7 @@ const TAXAS_USD_CONTAINER = {
 };
 
 // ── ESTADO ──────────────────────────────────────────────
-let _toggles = { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO' };
+let _toggles = { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO', fobpar:'NAO' };
 let _togglesInner = { 'china-modal':'DENTRO' };
 let _cenario = 3;
 let _mix = null;
@@ -972,6 +1012,12 @@ function lerTaxasOperacionais(){
   };
 }
 
+// FOB escalonado (docx item 3.1) — % Saldo é sempre o complemento de % Entrada.
+function atualizarPctFobSaldo(){
+  const entrada = parseFloat(document.getElementById('pct_fob_entrada').value) || 0;
+  document.getElementById('pct_fob_saldo_display').value = (100 - entrada).toFixed(2);
+}
+
 // Marinha/AFRMM e Agente de Carga: por padrão calculados automaticamente (fórmula
 // real da planilha, ver calcular()). Desmarcando "auto" o campo vira editável e o
 // valor digitado pelo usuário passa a valer (útil pra caso excepcional/negociado).
@@ -1156,8 +1202,23 @@ function calcular() {
   const seguro_venda_usd  = ((fob_usd + frete_usd) * 0.003) - seguro_compra_usd;
 
   // ── 2. CIF (usa seguro de COMPRA — custo real interno) ──
-  const fob_brl    = fob_usd * cambio;
-  const frete_brl  = frete_usd * cambio;
+  // FEATURE NOVA (docx item 3.1): algumas fábricas cobram o FOB em 2 parcelas
+  // (entrada no pedido + saldo no embarque/dias antes da chegada), cada uma
+  // fechada num câmbio diferente. Se o toggle estiver OFF (padrão), continua
+  // 100% no câmbio principal — comportamento idêntico a antes.
+  let fob_brl;
+  if(_toggles.fobpar === 'SIM'){
+    const pctEntradaFob = (parseFloat(document.getElementById('pct_fob_entrada').value) || 0) / 100;
+    const pctSaldoFob = 1 - pctEntradaFob;
+    const cambioFobEntrada = parseFloat(document.getElementById('cambio_fob_entrada').value) || cambio;
+    const cambioFobSaldo = parseFloat(document.getElementById('cambio_fob_saldo').value) || cambio;
+    fob_brl = (fob_usd * pctEntradaFob * cambioFobEntrada) + (fob_usd * pctSaldoFob * cambioFobSaldo);
+  } else {
+    fob_brl = fob_usd * cambio;
+  }
+  // Frete sempre tem spread/taxa própria — campo opcional, vazio cai no câmbio principal.
+  const cambioFrete = parseFloat(document.getElementById('cambio_frete').value) || cambio;
+  const frete_brl  = frete_usd * cambioFrete;
   const taxa_ce_brl= taxa_ce * cambio;
   const seguro_brl = seguro_compra_usd * cambio;
   const seguro_venda_brl = seguro_venda_usd * cambio_chegada * 1.02;
@@ -1476,6 +1537,42 @@ function renderResultado(r) {
     </div>
   ` : '';
 
+  // FIX (docx item 9): resumo comparando COM S.T. × SEM S.T. em 2 linhas claras,
+  // com a divisão Comissão China (fora) / Valor Impak em cada cenário — mesma
+  // lógica das Notas de Serviço, replicando os números confirmados da planilha
+  // (Chinês é o mesmo valor nos dois cenários, pois é % sobre FOB×câmbio, não
+  // sobre o faturamento; Impak é o restante do faturamento total).
+  const resumoStHtml = r.cenarios ? (() => {
+    const cs = r.cenarios.com_st, ss = r.cenarios.sem_st;
+    const linha = (label, c) => {
+      const impak = c.faturamento_total - c.china_fora_val - c.boss_fora_val;
+      return `<tr>
+        <td><strong>${label}</strong></td>
+        <td class="num">${fmtR(c.faturamento_total)}</td>
+        <td class="num">${fmtR(c.china_fora_val)}</td>
+        ${c.boss_fora_val > 0 ? `<td class="num">${fmtR(c.boss_fora_val)}</td>` : ''}
+        <td class="num" style="font-weight:700;">${fmtR(impak)}</td>
+      </tr>`;
+    };
+    const temBoss = cs.boss_fora_val > 0 || ss.boss_fora_val > 0;
+    return `
+    <div class="detail-section">
+      <div class="detail-title">🔀 Resumo por Cenário — COM S.T. × SEM S.T.</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
+        Total da operação em cada cenário, já separando quanto é Comissão China (nota de serviço, fora do preço) e quanto fica pra Impak.
+      </div>
+      <table class="calc-table">
+        <thead><tr>
+          <th></th><th>Total Operação</th><th>Comissão China</th>${temBoss ? '<th>Comissão Boss/Lopes</th>' : ''}<th>Valor Impak</th>
+        </tr></thead>
+        <tbody>
+          ${linha('COM S.T.', cs)}
+          ${linha('SEM S.T.', ss)}
+        </tbody>
+      </table>
+    </div>`;
+  })() : '';
+
   const mix_html = r.mix_result && r.mix_result.length && r.cenarios ? `
     <div class="detail-section">
       <div class="detail-title">📦 Mix de Produtos — Preço Unitário (COM ST × SEM ST)</div>
@@ -1675,6 +1772,7 @@ function renderResultado(r) {
     </div>
 
     ${notas_serv_html}
+    ${resumoStHtml}
     ${parcelamento_html}
     ${mix_html}
   `;
@@ -1860,6 +1958,7 @@ function pctF(v){ return v.toFixed(2)+'%'; }
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
   'taxa_seguro_compra','cambio_chegada','produto','origem','uf_destino',
+  'pct_fob_entrada','cambio_fob_entrada','cambio_fob_saldo','cambio_frete',
   'tipo_importacao','dump_valor','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
@@ -1894,6 +1993,7 @@ function aplicarEstadoFormulario(estado){
   if(estado.togglesInner){
     Object.entries(estado.togglesInner).forEach(([k,v]) => setToggleInner(k,v));
   }
+  if(typeof atualizarPctFobSaldo === 'function') atualizarPctFobSaldo();
   _mix = estado.mix || null;
   if(_mix && _mix.itens && _mix.itens.length) renderMix();
   _splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
