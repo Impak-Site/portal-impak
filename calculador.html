@@ -519,7 +519,10 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio de abertura do dia da chegada +2%)</div>
         <div class="form-row">
+          <div class="form-group"><label>Handling at Destination (US$)</label><input type="number" id="tx_handling" step="0.01" value="0"></div>
           <div class="form-group"><label>Additional Costs (US$)</label><input type="number" id="tx_additional_costs" step="0.01" value="95"></div>
+        </div>
+        <div class="form-row">
           <div class="form-group"><label>Import Logistics (US$)</label><input type="number" id="tx_import_logistics" step="0.01" value="32.16"></div>
         </div>
         <div class="form-row">
@@ -931,6 +934,7 @@ const TAXAS_CONFIG = [
   { id:'lavacao', label:'Lavação Container', unit:'R$', tipo:'fixa' },
   { id:'administrativo', label:'Administrativo', unit:'R$', tipo:'fixa' },
   { id:'agente', label:'Agente Carga', unit:'R$', tipo:'fixa' },
+  { id:'handling', label:'Handling at Destination', unit:'US$', tipo:'usd' },
   { id:'additional_costs', label:'Additional Costs', unit:'US$', tipo:'usd' },
   { id:'import_logistics', label:'Import Logistics', unit:'US$', tipo:'usd' },
   { id:'trs', label:'TRS', unit:'US$', tipo:'usd' },
@@ -1005,7 +1009,7 @@ function lerTaxasOperacionais(){
       lavacao: v('tx_lavacao'), administrativo: v('tx_administrativo'), agente: v('tx_agente'),
     },
     usd: {
-      additional_costs: v('tx_additional_costs'), import_logistics: v('tx_import_logistics'),
+      handling: v('tx_handling'), additional_costs: v('tx_additional_costs'), import_logistics: v('tx_import_logistics'),
       trs: v('tx_trs'), tsc: v('tx_tsc'), drop_off: v('tx_drop_off'), isps: v('tx_isps'),
       iof: v('tx_iof'), desconsolidacao: v('tx_desconsolidacao'),
     }
@@ -1261,7 +1265,7 @@ function calcular() {
 
   // Agente de Carga = ((SOMA Taxas USD destino, exceto IOF) × câmbio+2% + Liberação BL) × 21,25%
   // (planilha MODELO-COM S.T!F37 = (SOMA(F27:F36)-IOF)×21,25%)
-  const somaUsdSemIof = (txOpPre.usd.additional_costs + txOpPre.usd.import_logistics + txOpPre.usd.trs +
+  const somaUsdSemIof = (txOpPre.usd.handling + txOpPre.usd.additional_costs + txOpPre.usd.import_logistics + txOpPre.usd.trs +
     txOpPre.usd.tsc + txOpPre.usd.drop_off + txOpPre.usd.isps + txOpPre.usd.desconsolidacao) * containers;
   const liberacaoBl_brl = txOpPre.fixas.liberacao_bl * containers;
   const agente_auto = ((somaUsdSemIof * cambio_chegada_markup) + liberacaoBl_brl) * 0.2125;
@@ -1697,7 +1701,6 @@ function renderResultado(r) {
             <tr><td>ICMS-E (1,4%)</td><td class="num">${fmtR(r.ICMS_e)}</td></tr>
             <tr><td>IBS (${pct(r.t.ibs)})</td><td class="num">${fmtR(r.IBS_e)}</td></tr>
             <tr><td>CBS (${pct(r.t.cbs)})</td><td class="num">${fmtR(r.CBS_e)}</td></tr>
-            <tr><td>RBC (${pct(r.t.rbc)}) <span style="font-size:10px;color:var(--dim);">— referência, não soma no custo</span></td><td class="num">${fmtR(r.RBC)}</td></tr>
             ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
             <tr class="destaque-row"><td>Custo (II)</td><td class="num">${fmtR(r.imp_custo)}</td></tr>
           </table>
@@ -1963,7 +1966,7 @@ const CAMPOS_COTACAO = [
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
   'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
-  'tx_administrativo','tx_agente','tx_additional_costs','tx_import_logistics','tx_trs','tx_tsc',
+  'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_tsc',
   'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao',
   'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor',
 ];
@@ -1976,7 +1979,14 @@ function coletarEstadoFormulario(){
   });
   // Custo real das taxas (real_*) — gerados dinamicamente, não estão em CAMPOS_COTACAO
   document.querySelectorAll('[id^="real_"]').forEach(el => { campos[el.id] = el.value; });
-  return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix, splitST: {..._splitST} };
+  // Checkboxes "auto" (Marinha/Agente) — precisam do estado checked, não do .value
+  // (que pra checkbox é sempre "on"), senão reabrir a cotação sempre volta pro auto.
+  const checkboxes = {};
+  ['auto_marinha','auto_agente'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) checkboxes[id] = el.checked;
+  });
+  return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix, splitST: {..._splitST}, checkboxes };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -1993,6 +2003,17 @@ function aplicarEstadoFormulario(estado){
   if(estado.togglesInner){
     Object.entries(estado.togglesInner).forEach(([k,v]) => setToggleInner(k,v));
   }
+  // Restaura o estado dos checkboxes "auto" (Marinha/Agente). Cotações salvas
+  // antes dessa feature não têm esse campo — mantém o padrão (auto ligado).
+  ['auto_marinha','auto_agente'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const checked = estado.checkboxes ? (estado.checkboxes[id] !== false) : true;
+    el.checked = checked;
+    const campo = id.replace('auto_','');
+    const input = document.getElementById(`tx_${campo}`);
+    if(input){ input.readOnly = checked; input.style.background = checked ? '#f5f5f5' : '#fff'; }
+  });
   if(typeof atualizarPctFobSaldo === 'function') atualizarPctFobSaldo();
   _mix = estado.mix || null;
   if(_mix && _mix.itens && _mix.itens.length) renderMix();
