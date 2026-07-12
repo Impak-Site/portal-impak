@@ -1483,7 +1483,10 @@ function calcular() {
   // taxa operacional. Na prática às vezes pagamos menos (ou nada) — essa
   // diferença não muda o preço de venda, mas é lucro real que o Lucro Bruto
   // contábil não mostra.
-  const { diferenca: diferenca_taxas_real, detalhe: detalhe_diferenca_real } = lerCustosReais(containers, cambio);
+  // FIX: as Taxas em USD "cobradas" (taxas_usd_brl) agora convertem pelo câmbio
+  // de abertura+2% (cambio_chegada_markup), não pelo câmbio simples — a apuração
+  // de diferença real precisa usar o MESMO câmbio, senão a comparação fica torta.
+  const { diferenca: diferenca_taxas_real, detalhe: detalhe_diferenca_real } = lerCustosReais(containers, cambio_chegada_markup);
   const lucro_real = lucro_bruto + diferenca_taxas_real;
   const pct_lucro_real = faturamento !== 0 ? (lucro_real / faturamento) * 100 : 0;
 
@@ -1548,17 +1551,17 @@ function renderResultado(r) {
   // sobre o faturamento; Impak é o restante do faturamento total).
   const resumoStHtml = r.cenarios ? (() => {
     const cs = r.cenarios.com_st, ss = r.cenarios.sem_st;
+    const temBoss = cs.boss_fora_val > 0 || ss.boss_fora_val > 0;
     const linha = (label, c) => {
       const impak = c.faturamento_total - c.china_fora_val - c.boss_fora_val;
       return `<tr>
         <td><strong>${label}</strong></td>
         <td class="num">${fmtR(c.faturamento_total)}</td>
         <td class="num">${fmtR(c.china_fora_val)}</td>
-        ${c.boss_fora_val > 0 ? `<td class="num">${fmtR(c.boss_fora_val)}</td>` : ''}
+        ${temBoss ? `<td class="num">${fmtR(c.boss_fora_val)}</td>` : ''}
         <td class="num" style="font-weight:700;">${fmtR(impak)}</td>
       </tr>`;
     };
-    const temBoss = cs.boss_fora_val > 0 || ss.boss_fora_val > 0;
     return `
     <div class="detail-section">
       <div class="detail-title">🔀 Resumo por Cenário — COM S.T. × SEM S.T.</div>
