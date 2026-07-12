@@ -1194,11 +1194,14 @@ function calcular() {
   if(!t) { showToast(`NCM ${ncm}/${uf} não encontrado na tabela NCM`,'err'); return; }
 
   // ── 1. SEGURO (compra e venda) ──
-  // Base: (FOB + Frete) + 10% despesas + 10% lucro esperado + Taxa C.E.
+  // FIX: reproduzindo a fórmula exata da planilha (MODELO-COM/SEM S.T!D7) contra
+  // o exemplo real (FOB 37.472,80 + Frete 5.000 → Seguro USD 20,5568352 confirmado),
+  // a Taxa C.E. NÃO entra na base do Seguro — só (FOB+Frete)×1,10×1,10×0,04%.
+  // Base: (FOB + Frete) + 10% despesas + 10% lucro esperado (sem Taxa C.E.)
   const seguro_total_usd  = fob_usd + frete_usd;
   const seguro_despesas   = seguro_total_usd * 0.10;
   const seguro_lucro_esp  = (seguro_total_usd + seguro_despesas) * 0.10;
-  const seguro_base_usd   = seguro_total_usd + seguro_despesas + seguro_lucro_esp + taxa_ce;
+  const seguro_base_usd   = seguro_total_usd + seguro_despesas + seguro_lucro_esp;
   const seguro_compra_usd = seguro_base_usd * taxa_seguro_compra;
   // Seguro Venda (proposta cliente) — fórmula real da planilha (confirmada com
   // exemplo real): ((FOB+Frete)×0,3%) − seguro_compra_usd, essa diferença ×
