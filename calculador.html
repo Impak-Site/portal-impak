@@ -1239,8 +1239,6 @@ function calcular() {
   const IPI_e    = (base_imp_brl + II) * t.ipi;
   const PIS_e    = base_imp_brl * t.pis_e;
   const COFINS_e = base_imp_brl * t.cofins_e;
-  const IBS_e    = (base_imp_brl + II + IPI_e) * t.ibs;
-  const CBS_e    = (base_imp_brl + II + IPI_e) * t.cbs;
   const RBC      = base_imp_brl * t.rbc;
   const DUMP     = _toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
 
@@ -1280,10 +1278,18 @@ function calcular() {
   // Releitura das taxas operacionais, já com Marinha/Agente atualizados acima
   const txOp = lerTaxasOperacionais();
 
-  // ICMS Entrada — fórmula real da planilha: ((CIF + II+IPI+PIS+COFINS + Siscomex + Dumping + AFRMM) / 0,96) × 1%
+  // ICMS Entrada — fórmula real da planilha (MODELO-COM S.T!F14): ((BASE IMP. +
+  // II+IPI+PIS+COFINS + Siscomex + Dumping + AFRMM) / 0,96) × 1%.
+  // FIX: usava cif_brl (sem Taxa C.E.) — planilha usa base_imp_brl (com Taxa
+  // C.E.), verificado numérico exato contra o exemplo real (3042,93 vs 3037,58).
   const siscomex_unit = txOp.fixas.siscomex * containers;
   const afrmm_unit     = txOp.fixas.marinha * containers;
-  const ICMS_e   = ((cif_brl + II + IPI_e + PIS_e + COFINS_e + siscomex_unit + DUMP + afrmm_unit) / 0.96) * 0.01;
+  const ICMS_e   = ((base_imp_brl + II + IPI_e + PIS_e + COFINS_e + siscomex_unit + DUMP + afrmm_unit) / 0.96) * 0.01;
+  // FIX: confirmado via planilha (MODELO-COM S.T!F15/F16) que IBS-E/CBS-E usam
+  // (base_imp_brl + II + Siscomex + Marinha/AFRMM + Dumping) — NÃO o IPI como
+  // estava antes. Verificado numérico exato contra o exemplo real da planilha.
+  const IBS_e    = (base_imp_brl + II + siscomex_unit + afrmm_unit + DUMP) * t.ibs;
+  const CBS_e    = (base_imp_brl + II + siscomex_unit + afrmm_unit + DUMP) * t.cbs;
 
   // ── 4. Taxas fixas (editáveis) ──
   // Armazenagem tem regra própria por porto (calcularArmazenagemPorto já soma
