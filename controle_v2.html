@@ -272,13 +272,8 @@ select.form-input{cursor:pointer;}
     <div class="sidebar-item" onclick="abrirContatos()">📇 Fornecedores / Clientes / Despachantes / Agentes</div>
   </div>
   <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
-    <div class="sidebar-label">API Key Anthropic</div>
-    <div style="padding:0 8px;">
-      <input id="sidebar-apikey" type="password" placeholder="sk-ant-..." 
-        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;font-family:'DM Mono',monospace;color:var(--text);outline:none;"
-        oninput="salvarApiKey(this.value)">
-      <div id="sidebar-apikey-status" style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center;">Não configurada</div>
-    </div>
+    <div class="sidebar-label">API Anthropic</div>
+    <div style="padding:0 8px;font-size:10px;color:var(--muted);text-align:center;">✓ Configurada no servidor</div>
   </div>
 </div>
 
@@ -572,12 +567,6 @@ window.addEventListener('DOMContentLoaded', function(){
     _user = d;
     document.getElementById('user-badge').textContent = d.displayName || d.usuario;
     carregarCambio();
-  // Carregar API key salva
-  const savedKey = localStorage.getItem('impak_apikey')||'';
-  const keyInput = document.getElementById('sidebar-apikey');
-  const keyStatus = document.getElementById('sidebar-apikey-status');
-  if(keyInput && savedKey){ keyInput.value=savedKey; }
-  if(keyStatus){ keyStatus.textContent=savedKey.length>20?'✓ Configurada':'Não configurada'; keyStatus.style.color=savedKey.length>20?'var(--ok)':'var(--muted)'; }
     carregarProcessos();
     renderFaseFilter();
     // Auto-refresh a cada 30s
@@ -2410,16 +2399,6 @@ async function exportarFormatoCliente(){
   }
 }
 
-function salvarApiKey(v){
-  const key = (v||'').trim();
-  try{ localStorage.setItem('impak_apikey', key); }catch(e){}
-  const status = document.getElementById('sidebar-apikey-status');
-  if(status){
-    status.textContent = key.length>20 ? '✓ Configurada' : 'Não configurada';
-    status.style.color = key.length>20 ? 'var(--ok)' : 'var(--muted)';
-  }
-}
-
 function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
 
 // ── COLAR DATA (DD/MM/AAAA) EM CAMPOS type="date" ────────────────
@@ -3054,8 +3033,7 @@ async function extrairComIA(input){
     });
 
     const isImg = file.type.startsWith('image/');
-    const apiKey = localStorage.getItem('impak_apikey')||'';
-    // A chave do servidor (Railway) é usada se não houver chave local — ok
+    // A chave da Anthropic é sempre a configurada no servidor (Railway).
 
     // Prompt de instruções: texto FIXO, idêntico em toda chamada (só muda o
     // documento anexado). Extraído numa constante própria e colocado ANTES do
@@ -3150,7 +3128,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       const resp = await fetch('/api/analisar',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({content, apiKey})
+        body: JSON.stringify({content})
       });
       const textoResp = await resp.text();
       let d;

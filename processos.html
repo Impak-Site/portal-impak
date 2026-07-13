@@ -597,22 +597,17 @@ textarea.field-input{resize:vertical;min-height:80px;}
     </div>
   </nav>
   <div class="sidebar-api">
-    <div class="api-label">API Key Anthropic</div>
-    <div class="api-input-wrap">
-      <input class="api-input" id="apiKeyInput" type="password" placeholder="Cole sua chave aqui...">
-      <button class="api-toggle" onclick="toggleApiVis()">👁</button>
-    </div>
-    <button onclick="saveApiKeyBtn()" style="width:100%;margin-top:6px;padding:7px;background:var(--accent);color:#0c0f0a;border:none;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;">✓ Confirmar Chave</button>
+    <div class="api-label">API Anthropic</div>
     <div class="api-status" style="margin-top:6px;">
-      <div class="api-dot" id="apiDot"></div>
+      <div class="api-dot ok"></div>
+      <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Configurada no servidor</span>
+    </div>
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
       <div class="api-label">Banco de Dados</div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
         <div class="api-dot" id="sheetsDot"></div>
         <span id="sheetsStatusText" style="font-size:10px;color:var(--text-dim);">Conectando...</span>
       </div>
-    </div>
-      <span id="apiStatusText" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Não configurada</span>
     </div>
   </div>
 </aside>
@@ -1194,8 +1189,6 @@ function getAllProcesses(){
 
 
 // ─── STORAGE ─────────────────────────────────────────────────────────
-// Session storage - works everywhere
-let _apiKey = '';
 
 // ─── FIREBASE CONFIG ──────────────────────────────────────────────────
 // 🔧 CONFIGURAÇÃO: Cole aqui as credenciais do seu projeto Firebase
@@ -1429,18 +1422,6 @@ function saveProcesses(processos, proc){
   });
 }
 // _saveProcesses_placeholder
-function getApiKey(){ return _apiKey; }
-function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); checkReady(); }
-function saveApiKeyBtn(){
-  const input = document.getElementById('apiKeyInput');
-  const v = input.value.trim();
-  if(!v){ alert('Por favor, cole sua API Key no campo antes de confirmar.'); return; }
-  // Salvar via saveApiKey — garante localStorage + _apiKey + status
-  saveApiKey(v);
-  updateApiStatus();
-  checkReady();
-  alert('API Key salva com sucesso! ' + v.length + ' caracteres.');
-}
 
 // ─── INIT ────────────────────────────────────────────────────────────
 window.onload = function(){
@@ -1450,17 +1431,7 @@ window.onload = function(){
   // loginScreen is shown by default (display:flex in HTML)
   // Drag and drop - set up on showPage('conferencia')
   // (dropZone starts hidden, so we set up listeners when page becomes visible)
-  try{
-    var saved = localStorage.getItem('impak_apikey');
-    if(saved && saved.length > 20){
-      _apiKey = saved.trim();
-      var inp = document.getElementById('apiKeyInput');
-      if(inp) inp.value = saved.trim();
-      // Atualizar indicador visual e habilitar botão
-      updateApiStatus();
-      checkReady();
-    }
-  }catch(e){}
+  checkReady();
 
   // Fechar modais com ESC
   document.addEventListener('keydown', function(e){
@@ -1567,21 +1538,6 @@ function showPage(id){
   document.documentElement.scrollTop=0; document.body.scrollTop=0;
 }
 
-// ─── API STATUS ───────────────────────────────────────────────────────
-function updateApiStatus(){
-  const dot = document.getElementById('apiDot');
-  const txt = document.getElementById('apiStatusText');
-  if(_apiKey && _apiKey.length > 20){
-    dot.className='api-dot ok'; txt.textContent='Configurada';
-  } else {
-    dot.className='api-dot'; txt.textContent='Não configurada';
-  }
-}
-function toggleApiVis(){
-  const i = document.getElementById('apiKeyInput');
-  i.type = i.type==='password'?'text':'password';
-}
-
 // ─── FILES ────────────────────────────────────────────────────────────
 function addFiles(list){
   for(const f of list) uploadedFiles[f.name]={file:f,type:guessType(f.name)};
@@ -1670,8 +1626,7 @@ function changeType(name,newType){
 function checkReady(){
   const ref = document.getElementById('procRef').value.trim();
   const hasFiles = Object.keys(uploadedFiles).length >= 2;
-  const hasKey = _apiKey.length > 20;
-  document.getElementById('btnAnalyze').disabled = !(ref && hasFiles && hasKey);
+  document.getElementById('btnAnalyze').disabled = !(ref && hasFiles);
 }
 function clearConferencia(){
   uploadedFiles={};
@@ -1704,16 +1659,6 @@ function setStep(n){
 }
 
 async function runAnalysis(){
-  // Garantir que _apiKey está atualizado do localStorage
-  if(!_apiKey || _apiKey.length < 20){
-    try{
-      var saved = localStorage.getItem('impak_apikey');
-      if(saved && saved.length > 20){ _apiKey = saved.trim(); updateApiStatus(); }
-    }catch(e){}
-  }
-  const apiKey = getApiKey();
-  if(!apiKey || apiKey.length < 20){ showToast('Configure sua API Key primeiro!','err'); return; }
-
   document.getElementById('btnAnalyze').disabled=true;
   document.getElementById('loadingBox').classList.add('show');
   document.getElementById('resultArea').style.display='none';
@@ -1766,7 +1711,7 @@ async function runAnalysis(){
     setStep(3);
 
     // Verificar tamanho antes de enviar
-    const bodyStr = JSON.stringify({ content, apiKey: _apiKey });
+    const bodyStr = JSON.stringify({ content });
     const sizeMB = (bodyStr.length / 1024 / 1024).toFixed(1);
     console.log(`Payload: ${sizeMB} MB, ${content.length} partes`);
     if(parseFloat(sizeMB) > 80){
