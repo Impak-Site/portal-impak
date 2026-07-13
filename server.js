@@ -1074,17 +1074,18 @@ app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
 // ── API: ANÁLISE DOCUMENTAL ───────────────────────────────────
 app.post('/api/analisar', auth('processos'), async (req, res) => {
   try {
-    const { content, apiKey } = req.body;
+    const { content } = req.body;
     if (!content || !Array.isArray(content)) {
       return res.status(400).json({ erro: 'Conteúdo inválido' });
     }
-    const keyCliente = (apiKey || '').trim();
-    const keyEnv     = (process.env.ANTHROPIC_API_KEY || '').trim();
-    const key        = keyCliente.length > 20 ? keyCliente : keyEnv;
+    // Única chave da Anthropic é a configurada no servidor (Railway →
+    // variável ANTHROPIC_API_KEY). Não aceitamos mais chave vinda do
+    // cliente/navegador — evita que cada usuário use uma chave própria e
+    // garante que a chave nunca fique salva no navegador de ninguém.
+    const key = (process.env.ANTHROPIC_API_KEY || '').trim();
     if (!key || key.length < 20) {
-      return res.status(400).json({ erro: 'API key não configurada.' });
+      return res.status(500).json({ erro: 'ANTHROPIC_API_KEY não configurada no servidor. Configure-a nas variáveis de ambiente do Railway.' });
     }
-    console.log(`/api/analisar: key=${key.length}chars fonte=${keyCliente.length > 20 ? 'cliente' : 'env'}`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 180000);
     let respData;
