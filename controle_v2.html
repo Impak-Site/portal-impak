@@ -3265,26 +3265,6 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     delete extracted.cambio_referencias; // tratado à parte acima, nunca vai pro loop genérico
 
-    let preenchidos = 0;
-
-    // Itens estruturados (Size/Pattern/L.I.S.R./Quantidade por linha da tabela do
-    // documento) — populam a LISTA VISUAL de produtos (_produtos), não o campo
-    // legado escondido. Sem isso, a extração "preenchia" um campo que o usuário
-    // nunca via na tela, e a lista de produtos parecia vazia mesmo após a IA
-    // rodar com sucesso.
-    if(Array.isArray(extracted.itens) && extracted.itens.length){
-      const itensValidos = extracted.itens.filter(it=>it && (it.size||it.pattern));
-      if(itensValidos.length){
-        _produtos = itensValidos.map(it=>{
-          const partes = [it.size, it.pattern, it.li_sr].filter(Boolean);
-          return { descricao: partes.join(' '), quantidade: it.quantidade!=null?it.quantidade:'' };
-        });
-        renderMultiProdutos();
-        preenchidos += _produtos.length;
-      }
-    }
-    delete extracted.itens; // não é um campo de input direto — já tratado acima
-
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor'];
     const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
