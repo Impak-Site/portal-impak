@@ -39,6 +39,22 @@ function verificarSenha(senhaPura, hashArmazenado){
   return timingSafeEqual(bufOriginal, bufTentativa);
 }
 
+// ── SEGURANÇA: sanitização do parâmetro "destino" (usado no fluxo de login) ──
+// "destino" chega direto da query string / body (controlado pelo visitante),
+// e era antes inserido sem escapar num atributo HTML e usado em res.redirect
+// sem validação — abrindo brecha de XSS refletido e de "open redirect"
+// (alguém manda um link tipo /login?destino=https://site-falso.com e, após
+// o login legítimo, o usuário é levado pra fora do domínio do IMPAK).
+// Aqui só aceitamos caminhos relativos internos (começando com uma única
+// barra, nunca "//" — que os navegadores tratam como protocol-relative URL).
+function sanitizeDestino(destino) {
+  if (typeof destino !== 'string' || !destino.startsWith('/') || destino.startsWith('//')) return '/';
+  return destino;
+}
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
@@ -230,9 +246,10 @@ button:hover{background:#1567b8;}
 </html>`;
 
 function loginPage(erro, destino) {
+  const destinoSeguro = sanitizeDestino(destino);
   return LOGIN_HTML
-    .replace('ERRO_PLACEHOLDER', erro ? `<div class="err">${erro}</div>` : '')
-    .replace('DESTINO_PLACEHOLDER', destino || '/');
+    .replace('ERRO_PLACEHOLDER', erro ? `<div class="err">${escapeHtml(erro)}</div>` : '')
+    .replace('DESTINO_PLACEHOLDER', escapeHtml(destinoSeguro));
 }
 
 // Mesmo CSS da tela de login (extraído do LOGIN_HTML) — reaproveitado aqui
@@ -365,8 +382,8 @@ async function salvar(){
 
 // ── AUTENTICAÇÃO ──────────────────────────────────────────────
 app.get('/login', (req, res) => {
-  if (req.session.usuario) return res.redirect(req.query.destino || '/');
-  res.send(loginPage('', req.query.destino || '/'));
+  if (req.session.usuario) return res.redirect(sanitizeDestino(req.query.destino));
+  res.send(loginPage('', req.query.destino));
 });
 
 app.post('/login', rateLimitLogin, (req, res) => {
@@ -391,7 +408,8 @@ app.post('/login', rateLimitLogin, (req, res) => {
   // criava o risco de ser devolvida de volta ao navegador via /api/me.
   req.session.versao      = _sessaoVersao.get(u.usuario) || 1;
   req.session.home        = u.home || '/';
-  res.redirect(destino && destino !== '/' ? destino : (u.home || '/'));
+  const destinoSeguro = sanitizeDestino(destino);
+  res.redirect(destinoSeguro !== '/' ? destinoSeguro : (u.home || '/'));
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
