@@ -57,10 +57,13 @@ function sb() {
 }
 
 // ── USUÁRIOS ──────────────────────────────────────────────────
-// As senhas NUNCA ficam em texto puro no código — cada SENHA_* no Railway
-// deve conter o HASH gerado (ver scripts/gerar-hash-senha.js), não a senha
-// real. Se uma variável estiver faltando, o login desse usuário falha com
-// um aviso claro no log, em vez de usar uma senha-padrão previsível.
+// Esta lista continua sendo a FONTE DOS METADADOS (nome, módulos, role, home,
+// email) — mas a SENHA de verdade agora mora na tabela `usuarios` do Supabase,
+// não mais só na variável de ambiente. Isso é o que permite "Esqueci minha
+// senha" funcionar: a senha pode mudar em tempo real, sem precisar mexer no
+// Railway. Na subida do servidor, sincronizarUsuarios() garante que cada
+// usuário exista no Supabase — usando a senha do env var SÓ NA PRIMEIRA VEZ
+// (se a pessoa já resetou a própria senha depois, isso nunca é sobrescrito).
 function envSenhaHash(key) {
   const v = process.env[key];
   if (!v) console.error(`⚠️  ${key} não configurada no Railway — login deste usuário vai falhar.`);
@@ -68,17 +71,47 @@ function envSenhaHash(key) {
 }
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senhaHash: envSenhaHash('SENHA_NARCELIO'),  modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
-  { usuario: 'jean',      senhaHash: envSenhaHash('SENHA_JEAN'),      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
-  { usuario: 'paula',     senhaHash: envSenhaHash('SENHA_PAULA'),     modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
-  { usuario: 'amanda',    senhaHash: envSenhaHash('SENHA_AMANDA'),    modulos: ['tyredesk','processos'], nome: 'Amanda',    role: 'gerente',  displayName: 'Amanda',    home: '/processos'  },
-  { usuario: 'bianca',    senhaHash: envSenhaHash('SENHA_BIANCA'),    modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
-  { usuario: 'emanuelly', senhaHash: envSenhaHash('SENHA_EMANUELLY'), modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
-  { usuario: 'italo',     senhaHash: envSenhaHash('SENHA_ITALO'),     modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
-  { usuario: 'maria',     senhaHash: envSenhaHash('SENHA_MARIA'),     modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
-  { usuario: 'joyce',     senhaHash: envSenhaHash('SENHA_JOYCE'),     modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
-  { usuario: 'neide',     senhaHash: envSenhaHash('SENHA_NEIDE'),     modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
+  { usuario: 'narcelio',  senhaHashEnv: envSenhaHash('SENHA_NARCELIO'),  email: 'narcelio@impak.com.br',  modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
+  { usuario: 'jean',      senhaHashEnv: envSenhaHash('SENHA_JEAN'),      email: 'jean@impak.com.br',      modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
+  { usuario: 'paula',     senhaHashEnv: envSenhaHash('SENHA_PAULA'),     email: 'paula@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'amanda',    senhaHashEnv: envSenhaHash('SENHA_AMANDA'),    email: 'amanda@impak.com.br',    modulos: ['tyredesk','processos'], nome: 'Amanda',    role: 'gerente',  displayName: 'Amanda',    home: '/processos'  },
+  { usuario: 'bianca',    senhaHashEnv: envSenhaHash('SENHA_BIANCA'),    email: 'bianca@impak.com.br',    modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
+  { usuario: 'emanuelly', senhaHashEnv: envSenhaHash('SENHA_EMANUELLY'), email: 'emanuelly@impak.com.br', modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
+  { usuario: 'italo',     senhaHashEnv: envSenhaHash('SENHA_ITALO'),     email: 'italo@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
+  { usuario: 'maria',     senhaHashEnv: envSenhaHash('SENHA_MARIA'),     email: 'maria@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
+  { usuario: 'joyce',     senhaHashEnv: envSenhaHash('SENHA_JOYCE'),     email: 'joyce@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
+  { usuario: 'neide',     senhaHashEnv: envSenhaHash('SENHA_NEIDE'),     email: 'neide@impak.com.br',     modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
+  { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',   modulos: ['tyredesk','processos'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
 ];
+
+// Cache em memória dos usuários carregados do Supabase (recarregado no boot
+// e sempre que alguém redefine a senha). O login lê DAQUI, não do array acima.
+let _usuariosCache = new Map();
+
+async function sincronizarUsuarios(){
+  for(const u of USUARIOS){
+    try{
+      const { data: existente } = await sb().from('usuarios').select('senha_hash').eq('usuario', u.usuario).maybeSingle();
+      const senha_hash = existente ? existente.senha_hash : u.senhaHashEnv;
+      if(!senha_hash){
+        console.error(`⚠️  Usuário "${u.usuario}" sem senha (nem no Supabase, nem no env var) — login vai falhar.`);
+        continue;
+      }
+      await sb().from('usuarios').upsert({
+        usuario: u.usuario, senha_hash, email: u.email, nome: u.nome,
+        display_name: u.displayName, role: u.role, modulos: u.modulos, home: u.home,
+      }, { onConflict: 'usuario' });
+    }catch(e){ console.error(`Erro sincronizando usuário ${u.usuario}:`, e.message); }
+  }
+  await recarregarCacheUsuarios();
+  console.log('✓ Usuários sincronizados com o Supabase:', _usuariosCache.size);
+}
+
+async function recarregarCacheUsuarios(){
+  const { data, error } = await sb().from('usuarios').select('*');
+  if(error){ console.error('Erro ao carregar usuários do Supabase:', error.message); return; }
+  _usuariosCache = new Map((data||[]).map(u => [u.usuario, u]));
+}
 
 // ── INVALIDAÇÃO DE SESSÃO POR USUÁRIO ─────────────────────────
 // Cada usuário tem um "número de versão" da sessão (começa em 1). A sessão
@@ -187,6 +220,9 @@ button:hover{background:#1567b8;}
       <input type="hidden" name="destino" value="DESTINO_PLACEHOLDER">
       <button type="submit">Entrar</button>
     </form>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="/esqueci-senha" style="font-size:12px;color:#1a7fd4;text-decoration:none;font-weight:600;">Esqueci minha senha</a>
+    </div>
     <div class="footer">IMPAK Comercial Importadora · Portal v2.0 · Confidencial</div>
   </div>
 </div>
@@ -199,6 +235,134 @@ function loginPage(erro, destino) {
     .replace('DESTINO_PLACEHOLDER', destino || '/');
 }
 
+// Mesmo CSS da tela de login (extraído do LOGIN_HTML) — reaproveitado aqui
+// pra manter a identidade visual sem duplicar o bloco <style> inteiro.
+const AUTH_CSS = LOGIN_HTML.slice(LOGIN_HTML.indexOf('<style>'), LOGIN_HTML.indexOf('</style>')+8);
+
+function esqueciSenhaPage(){
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Esqueci minha senha</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+${AUTH_CSS}
+</head>
+<body>
+<div class="wrap">
+  <div class="logo-row"><div class="logo-badge">IMPAK</div><div class="logo-sub">Portal</div></div>
+  <div class="box">
+    <h1>Esqueci minha senha</h1>
+    <div class="sub">Digite seu usuário ou e-mail</div>
+    <div id="msg"></div>
+    <label>Usuário ou e-mail</label>
+    <input id="identificador" type="text" placeholder="ex: narcelio ou narcelio@impak.com.br" autofocus>
+    <button onclick="enviar()">Enviar link de redefinição</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="/login" style="font-size:12px;color:#1a7fd4;text-decoration:none;font-weight:600;">Voltar pro login</a>
+    </div>
+    <div class="footer">IMPAK Comercial Importadora · Portal v2.0 · Confidencial</div>
+  </div>
+</div>
+<script>
+async function enviar(){
+  const identificador = document.getElementById('identificador').value.trim();
+  const msg = document.getElementById('msg');
+  if(!identificador){ msg.innerHTML = '<div class="err">Digite seu usuário ou e-mail.</div>'; return; }
+  const btn = document.querySelector('button');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try{
+    const r = await fetch('/api/auth/esqueci-senha', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ identificador })
+    });
+    const d = await r.json();
+    msg.innerHTML = '<div style="background:rgba(26,127,212,.08);border:1px solid rgba(26,127,212,.25);border-radius:6px;padding:12px 14px;font-size:12px;color:#1a7fd4;font-weight:600;text-align:center;margin-bottom:16px;">'+d.mensagem+'</div>';
+    document.getElementById('identificador').value = '';
+  }catch(e){
+    msg.innerHTML = '<div class="err">Erro ao enviar. Tente novamente.</div>';
+  }
+  btn.disabled = false; btn.textContent = 'Enviar link de redefinição';
+}
+document.getElementById('identificador').addEventListener('keydown', e=>{ if(e.key==='Enter') enviar(); });
+</script>
+</body>
+</html>`;
+}
+
+function redefinirSenhaPage(tokenValido){
+  if(!tokenValido){
+    return `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Link inválido</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+${AUTH_CSS}
+</head><body><div class="wrap">
+  <div class="logo-row"><div class="logo-badge">IMPAK</div><div class="logo-sub">Portal</div></div>
+  <div class="box">
+    <h1>Link expirado ou inválido</h1>
+    <div class="err">Esse link de redefinição não é mais válido. Peça um novo.</div>
+    <a href="/esqueci-senha"><button type="button">Pedir novo link</button></a>
+  </div>
+</div></body></html>`;
+  }
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Definir nova senha</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+${AUTH_CSS}
+</head>
+<body>
+<div class="wrap">
+  <div class="logo-row"><div class="logo-badge">IMPAK</div><div class="logo-sub">Portal</div></div>
+  <div class="box">
+    <h1>Definir nova senha</h1>
+    <div class="sub">Mínimo de 6 caracteres</div>
+    <div id="msg"></div>
+    <label>Nova senha</label>
+    <input id="novaSenha" type="password" placeholder="nova senha" autofocus>
+    <label>Confirmar nova senha</label>
+    <input id="confirmar" type="password" placeholder="repita a nova senha">
+    <button onclick="salvar()">Salvar nova senha</button>
+    <div class="footer">IMPAK Comercial Importadora · Portal v2.0 · Confidencial</div>
+  </div>
+</div>
+<script>
+async function salvar(){
+  const novaSenha = document.getElementById('novaSenha').value;
+  const confirmar = document.getElementById('confirmar').value;
+  const msg = document.getElementById('msg');
+  if(novaSenha.length < 6){ msg.innerHTML = '<div class="err">A senha precisa ter pelo menos 6 caracteres.</div>'; return; }
+  if(novaSenha !== confirmar){ msg.innerHTML = '<div class="err">As senhas não são iguais.</div>'; return; }
+  const btn = document.querySelector('button');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try{
+    const r = await fetch('/api/auth/redefinir-senha', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: new URLSearchParams(location.search).get('token'), novaSenha })
+    });
+    const d = await r.json();
+    if(d.ok){
+      msg.innerHTML = '<div style="background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.25);border-radius:6px;padding:12px 14px;font-size:12px;color:#16a34a;font-weight:600;text-align:center;margin-bottom:16px;">✓ Senha alterada! Redirecionando pro login...</div>';
+      setTimeout(()=>location.href='/login', 1500);
+    } else {
+      msg.innerHTML = '<div class="err">'+(d.erro||'Erro ao salvar.')+'</div>';
+      btn.disabled = false; btn.textContent = 'Salvar nova senha';
+    }
+  }catch(e){
+    msg.innerHTML = '<div class="err">Erro ao salvar. Tente novamente.</div>';
+    btn.disabled = false; btn.textContent = 'Salvar nova senha';
+  }
+}
+</script>
+</body>
+</html>`;
+}
+
 // ── AUTENTICAÇÃO ──────────────────────────────────────────────
 app.get('/login', (req, res) => {
   if (req.session.usuario) return res.redirect(req.query.destino || '/');
@@ -208,10 +372,8 @@ app.get('/login', (req, res) => {
 app.post('/login', rateLimitLogin, (req, res) => {
   const { usuario, senha, destino } = req.body;
   const login = (usuario || '').trim().toLowerCase();
-  const u = USUARIOS.find(x => x.usuario === login);
-  // Mesma mensagem de erro tanto para "usuário não existe" quanto para
-  // "senha errada" — não revelar qual dos dois está incorreto.
-  if (!u || !u.senhaHash || !verificarSenha(senha || '', u.senhaHash)) {
+  const u = _usuariosCache.get(login);
+  if (!u || !u.senha_hash || !verificarSenha(senha || '', u.senha_hash)) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
     // Nunca logar a senha digitada, mesmo errada — só o usuário tentado, o
     // IP, e o horário, suficiente para notar um padrão de ataque sem criar
@@ -223,7 +385,7 @@ app.post('/login', rateLimitLogin, (req, res) => {
   req.session.nome        = u.nome;
   req.session.modulos     = u.modulos;
   req.session.role        = u.role;
-  req.session.displayName = u.displayName;
+  req.session.displayName = u.display_name;
   // A senha (nem em hash) nunca é guardada na sessão — ela só precisa
   // existir no momento do login. Guardá-la aqui não tem uso real e só
   // criava o risco de ser devolvida de volta ao navegador via /api/me.
@@ -233,6 +395,107 @@ app.post('/login', rateLimitLogin, (req, res) => {
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
+
+// ── ENVIO DE E-MAIL (Resend) ────────────────────────────────────
+// RESEND_API_KEY precisa estar configurada no Railway. RESEND_FROM é
+// opcional — se não configurada, usa o domínio sandbox do Resend (só
+// funciona pra testes, pra produção precisa verificar impak.com.br no
+// painel do Resend e configurar RESEND_FROM=algo@impak.com.br).
+async function enviarEmail(destinatario, assunto, html){
+  const apiKey = process.env.RESEND_API_KEY;
+  if(!apiKey) throw new Error('RESEND_API_KEY não configurada no Railway');
+  const from = process.env.RESEND_FROM || 'IMPAK Portal <onboarding@resend.dev>';
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: [destinatario], subject: assunto, html }),
+  });
+  if(!r.ok){
+    const erro = await r.text();
+    throw new Error(`Resend respondeu ${r.status}: ${erro}`);
+  }
+  return await r.json();
+}
+
+// ── ESQUECI MINHA SENHA ──────────────────────────────────────────
+// Fluxo: usuário pede reset (por usuário ou e-mail) → gera token aleatório,
+// válido por 1h, salvo no Supabase → manda e-mail com link → usuário abre
+// o link, define senha nova → token é invalidado e todas as sessões antigas
+// daquele usuário são derrubadas (mesmo mecanismo do "Forçar logout").
+//
+// Sempre responde com a MESMA mensagem de sucesso, exista ou não o usuário/
+// e-mail digitado — evita que alguém descubra quais usuários existem no
+// sistema só testando e-mails aqui.
+app.get('/esqueci-senha', (req, res) => {
+  res.send(esqueciSenhaPage());
+});
+
+app.post('/api/auth/esqueci-senha', rateLimitLogin, async (req, res) => {
+  const identificador = (req.body.identificador || '').trim().toLowerCase();
+  const mensagemGenerica = { ok: true, mensagem: 'Se esse usuário ou e-mail existir, um link de redefinição foi enviado.' };
+  if(!identificador) return res.json(mensagemGenerica);
+  try{
+    await recarregarCacheUsuarios();
+    const u = [..._usuariosCache.values()].find(x => x.usuario === identificador || (x.email||'').toLowerCase() === identificador);
+    if(!u) return res.json(mensagemGenerica); // não revela se existe ou não
+
+    const token = randomBytes(32).toString('hex');
+    const expira = new Date(Date.now() + 60*60*1000); // 1 hora
+    await sb().from('usuarios').update({ reset_token: token, reset_token_expira: expira.toISOString() }).eq('usuario', u.usuario);
+    await recarregarCacheUsuarios();
+
+    const link = `${req.protocol}://${req.get('host')}/redefinir-senha?token=${token}`;
+    await enviarEmail(u.email, 'Redefinir senha — IMPAK Portal',
+      `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#1a7fd4;">IMPAK Portal</h2>
+        <p>Olá, ${u.nome || u.usuario}. Foi solicitada a redefinição da sua senha.</p>
+        <p><a href="${link}" style="background:#1a7fd4;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Redefinir minha senha</a></p>
+        <p style="font-size:12px;color:#666;">Esse link expira em 1 hora. Se você não pediu isso, pode ignorar este e-mail com segurança — sua senha não vai mudar.</p>
+      </div>`
+    );
+    res.json(mensagemGenerica);
+  } catch(e){
+    console.error('Erro no esqueci-senha:', e.message);
+    // Mesmo em erro interno, não expõe detalhe pro usuário final — só loga.
+    res.json(mensagemGenerica);
+  }
+});
+
+app.get('/redefinir-senha', async (req, res) => {
+  const token = req.query.token || '';
+  try{
+    await recarregarCacheUsuarios();
+    const u = [..._usuariosCache.values()].find(x => x.reset_token === token);
+    const valido = u && u.reset_token_expira && new Date(u.reset_token_expira) > new Date();
+    res.send(redefinirSenhaPage(valido ? token : null));
+  } catch(e){
+    res.send(redefinirSenhaPage(null));
+  }
+});
+
+app.post('/api/auth/redefinir-senha', rateLimitLogin, async (req, res) => {
+  try{
+    const { token, novaSenha } = req.body;
+    if(!token || !novaSenha || novaSenha.length < 6){
+      return res.json({ ok: false, erro: 'Senha precisa ter pelo menos 6 caracteres.' });
+    }
+    await recarregarCacheUsuarios();
+    const u = [..._usuariosCache.values()].find(x => x.reset_token === token);
+    if(!u || !u.reset_token_expira || new Date(u.reset_token_expira) <= new Date()){
+      return res.json({ ok: false, erro: 'Link expirado ou inválido. Peça um novo.' });
+    }
+    const novoHash = hashSenha(novaSenha);
+    await sb().from('usuarios').update({
+      senha_hash: novoHash, reset_token: null, reset_token_expira: null,
+    }).eq('usuario', u.usuario);
+    await recarregarCacheUsuarios();
+    forcarLogoutUsuario(u.usuario); // derruba qualquer sessão antiga com a senha velha
+    res.json({ ok: true });
+  } catch(e){
+    console.error('Erro ao redefinir senha:', e.message);
+    res.json({ ok: false, erro: 'Erro interno. Tente novamente.' });
+  }
+});
 
 // Força o logout de um usuário em TODOS os dispositivos/sessões abertas —
 // útil ao trocar a senha de alguém, ou se houver suspeita de acesso
@@ -729,12 +992,18 @@ app.get('/api/base/carregar', auth(), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('tyredesk_base')
-      .select('dados')
+      .select('dados, updated_at, updated_by')
       .eq('id', 1)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
     const base = data ? data.dados : null;
-    res.json({ ok: !!base, base, total: base ? base.length : 0 });
+    res.json({
+      ok: !!base,
+      base,
+      total: base ? base.length : 0,
+      updated_at: data ? data.updated_at : null,
+      updated_by: data ? data.updated_by : null,
+    });
   } catch (e) { res.json({ ok: false, base: null }); }
 });
 
@@ -949,6 +1218,58 @@ app.post('/api/contatos', auth('processos'), async (req, res) => {
 app.delete('/api/contatos/:id', auth('processos'), async (req, res) => {
   try {
     const { error } = await sb().from('contatos_clientes').update({ ativo: false }).eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
+// Lista leve (só o resumo, não o formulário inteiro) pra tela de listagem.
+app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('calculador_cotacoes')
+      .select('id,cliente,numero,resumo,updated_at,updated_by')
+      .eq('ativo', true)
+      .order('updated_at', { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, cotacoes: data || [] });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Registro completo (formulário + mix) pra reabrir no Calculador.
+app.get('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('calculador_cotacoes')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, cotacao: data });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Criar/atualizar. Sem id no corpo = cria novo (usado tanto pra "Salvar"
+// quanto pra "Duplicar", já que duplicar só manda os dados sem o id original).
+app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
+  try {
+    const c = req.body;
+    if (!c.cliente) return res.status(400).json({ erro: 'Cliente obrigatório' });
+    if (!c.id) c.id = require('crypto').randomUUID();
+    c.ativo = true;
+    c.updated_at = new Date().toISOString();
+    c.updated_by = req.session.usuario || null;
+    const { error } = await sb().from('calculador_cotacoes').upsert(c, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, id: c.id });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.delete('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
+  try {
+    const { error } = await sb().from('calculador_cotacoes').update({ ativo: false }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ erro: e.message }); }
@@ -1188,4 +1509,5 @@ app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
   console.log(`Variáveis de ambiente carregadas: ${Object.keys(process.env).filter(k=>k.includes('ANTHROPIC')||k.includes('SUPABASE')).join(', ')}`);
   console.log(`ANTHROPIC_API_KEY presente: ${!!process.env.ANTHROPIC_API_KEY} | tamanho: ${(process.env.ANTHROPIC_API_KEY||'').length}`);
+  sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
 });

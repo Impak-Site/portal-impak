@@ -128,6 +128,23 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
 .toast.err{background:var(--err);}
 .toast.info{background:var(--ac);}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* MODAL COTAÇÕES */
+.mbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;}
+.mbg.open{display:flex;}
+.modal-cot{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--ac);border-radius:10px;width:680px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.3);}
+.modal-cot-h{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-cot-h h3{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;}
+.modal-cot-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;}
+.modal-cot-b{padding:16px 20px;}
+.cot-table{width:100%;border-collapse:collapse;font-size:12px;}
+.cot-table th{text-align:left;padding:6px 8px;background:var(--bg);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;}
+.cot-table td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.cot-table tr:hover td{background:rgba(26,127,212,.04);}
+.cot-actions{display:flex;gap:4px;}
+.cot-actions button{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;color:var(--text);}
+.cot-actions button:hover{background:var(--border);}
+.cot-actions button.danger{color:var(--err);}
 </style>
 <!-- Carregada antecipadamente (não no clique do botão) — no Safari, gerar o
      blob de download muito tempo depois do carregamento dinâmico da lib via
@@ -153,6 +170,10 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     <!-- MIX IMPORTADO DO TYREDESK -->
     <div id="mix-badge" class="mix-badge" style="display:none;">
       <div class="mix-badge-title">📦 Mix importado do TyreDesk</div>
+      <div id="mix-marca-wrap" style="display:none;align-items:center;gap:8px;margin-bottom:8px;">
+        <img id="mix-marca-logo" src="" alt="" onerror="this.style.display='none'" style="height:28px;max-width:90px;object-fit:contain;background:#fff;border-radius:4px;padding:2px;">
+        <strong id="mix-marca-nome" style="font-size:13px;"></strong>
+      </div>
       <div class="mix-items" id="mix-items-list"></div>
       <div style="margin-top:6px;font-size:11px;color:var(--muted);">FOB Total: <strong id="mix-fob-total">—</strong></div>
     </div>
@@ -167,6 +188,46 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <button class="btn-refresh" onclick="buscarCambio()">↻ PTAX</button>
         </div>
         <div class="cambio-info" id="cambio-info">Clique em PTAX para buscar automaticamente</div>
+      </div>
+      <!-- FEATURE NOVA (docx item 3.1): FOB pago em parcelas (entrada/saldo), cada uma
+           fechada num câmbio diferente conforme a fábrica (ex: 30% no pedido + 70% no
+           embarque/10 dias antes da chegada). Desligado por padrão — se não usar, o
+           cálculo continua igual a antes (100% do FOB no Câmbio principal acima). -->
+      <div class="form-group">
+        <label>FOB pago em parcelas (câmbio diferente por parcela)?</label>
+        <div class="toggle-group">
+          <button class="toggle-btn" id="toggle-fobpar-sim" onclick="setToggle('fobpar','SIM')">SIM</button>
+          <button class="toggle-btn active-nao" id="toggle-fobpar-nao" onclick="setToggle('fobpar','NAO')">NÃO</button>
+        </div>
+      </div>
+      <div id="fobpar-detalhe" class="comissao-detalhe">
+        <div class="form-row">
+          <div class="form-group">
+            <label>% FOB Entrada</label>
+            <input type="number" id="pct_fob_entrada" step="0.01" value="30" placeholder="Ex: 30" oninput="atualizarPctFobSaldo()">
+          </div>
+          <div class="form-group">
+            <label>% FOB Saldo</label>
+            <input type="number" id="pct_fob_saldo_display" value="70" readonly style="background:#f5f5f5;">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Câmbio FOB Entrada</label>
+            <input type="number" id="cambio_fob_entrada" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+          </div>
+          <div class="form-group">
+            <label>Câmbio FOB Saldo</label>
+            <input type="number" id="cambio_fob_saldo" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin:-4px 0 8px;">Ex: Eudemon/Rovelo — entrada no pedido, saldo de 14 a 10 dias antes da chegada, cada um com o câmbio do dia do pagamento.</div>
+      </div>
+      <!-- Frete sempre tem spread/taxa própria diferente do câmbio principal — campo
+           opcional, se ficar vazio usa o câmbio principal como sempre. -->
+      <div class="form-group">
+        <label>Câmbio do Frete (se diferente do principal)</label>
+        <input type="number" id="cambio_frete" step="0.0001" placeholder="Vazio = usa o câmbio principal">
       </div>
     </div>
 
@@ -199,8 +260,8 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <input type="number" id="taxa_seguro_compra" step="0.001" value="0.04" placeholder="0,04">
         </div>
         <div class="form-group">
-          <label>Taxa Seguro Venda (%)</label>
-          <input type="number" id="taxa_seguro_venda" step="0.001" value="0.04" placeholder="0,04">
+          <label>Câmbio Abertura do Dia da Chegada</label>
+          <input type="number" id="cambio_chegada" step="0.0001" placeholder="Vazio = usa o câmbio principal">
         </div>
       </div>
     </div>
@@ -311,10 +372,6 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)">
         <div id="cliente-calc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
-      <div class="form-group">
-        <label>Custos Diversos (R$)</label>
-        <input type="number" id="custos_diversos" step="0.01" value="500" placeholder="0,00">
-      </div>
     </div>
 
     <!-- COMISSÕES -->
@@ -406,11 +463,37 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
       <div id="taxas-op-body" style="display:none;">
         <div class="form-row">
           <div class="form-group"><label>Siscomex (R$)</label><input type="number" id="tx_siscomex" step="0.01" value="480"></div>
-          <div class="form-group"><label>Marinha/AFRMM (R$)</label><input type="number" id="tx_marinha" step="0.01" value="1712"></div>
+          <div class="form-group">
+            <label>Marinha/AFRMM (R$) <span style="font-weight:400;font-size:10px;color:var(--dim);"><input type="checkbox" id="auto_marinha" checked onchange="onToggleAutoTaxa('marinha')" style="vertical-align:middle;"> auto</span></label>
+            <input type="number" id="tx_marinha" step="0.01" value="1712" readonly style="background:#f5f5f5;">
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Armazenagem (R$)</label><input type="number" id="tx_armazenagem" step="0.01" value="2088"></div>
           <div class="form-group"><label>Emissão L.I. (R$)</label><input type="number" id="tx_emissao_li" step="0.01" value="153.53"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Porto (p/ calcular armazenagem)</label>
+            <select id="tx_porto">
+              <option value="">— selecionar —</option>
+              <option value="ITJ">ITJ — Itajaí</option>
+              <option value="IOA">IOA — Itapoá</option>
+              <option value="NVT">NVT — Navegantes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Dias parado (fechamento, opcional)</label>
+            <input type="number" id="tx_dias_parado" step="1" min="0" value="0" placeholder="0 = só simulação">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:0 0 auto;">
+            <button type="button" class="btn-refresh" onclick="calcularArmazenagemUI()">🔄 Calcular armazenagem pelo porto</button>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <div style="font-size:11px;color:var(--dim);margin-top:22px;" id="armazenagem-info">Sem dias = só simulação (1º período). Com dias = inclui fechamento (2º período).</div>
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Baixa Pátio (R$)</label><input type="number" id="tx_baixa_patio" step="0.01" value="500"></div>
@@ -426,11 +509,20 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div class="form-row">
           <div class="form-group"><label>Administrativo (R$)</label><input type="number" id="tx_administrativo" step="0.01" value="300"></div>
-          <div class="form-group"><label>Agente Carga (R$)</label><input type="number" id="tx_agente" step="0.01" value="476"></div>
+          <div class="form-group">
+            <label>Agente Carga (R$) <span style="font-weight:400;font-size:10px;color:var(--dim);"><input type="checkbox" id="auto_agente" checked onchange="onToggleAutoTaxa('agente')" style="vertical-align:middle;"> auto</span></label>
+            <input type="number" id="tx_agente" step="0.01" value="476" readonly style="background:#f5f5f5;">
+          </div>
         </div>
-        <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio)</div>
         <div class="form-row">
+          <div class="form-group"><label>Custos Diversos (R$)</label><input type="number" id="custos_diversos" step="0.01" value="500" placeholder="0,00"></div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio de abertura do dia da chegada +2%)</div>
+        <div class="form-row">
+          <div class="form-group"><label>Handling at Destination (US$)</label><input type="number" id="tx_handling" step="0.01" value="0"></div>
           <div class="form-group"><label>Additional Costs (US$)</label><input type="number" id="tx_additional_costs" step="0.01" value="95"></div>
+        </div>
+        <div class="form-row">
           <div class="form-group"><label>Import Logistics (US$)</label><input type="number" id="tx_import_logistics" step="0.01" value="32.16"></div>
         </div>
         <div class="form-row">
@@ -445,6 +537,21 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <div class="form-group"><label>IOF (US$)</label><input type="number" id="tx_iof" step="0.01" value="138.66"></div>
           <div class="form-group"><label>Desconsolidação (US$)</label><input type="number" id="tx_desconsolidacao" step="0.01" value="80"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- CUSTO REAL DAS TAXAS (apuração de lucro real) -->
+    <div class="section">
+      <div class="section-title" style="cursor:pointer;" onclick="toggleCustoReal()">
+        💵 Custo Real das Taxas (apuração de lucro real) <span id="custo-real-arrow">▾</span>
+      </div>
+      <div id="custo-real-body" style="display:none;">
+        <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
+          O que está em "Taxas Operacionais" acima é o valor <strong>cobrado</strong> (usado no preço). Aqui você informa o que <strong>realmente pagou</strong> em cada uma —
+          a diferença (pra mais ou pra menos) ajusta o Lucro Real sem mudar o preço de venda. Campo vazio = assume igual ao cobrado (sem diferença).
+        </div>
+        <button type="button" class="btn-refresh" onclick="copiarValoresCobrados()" style="margin-bottom:10px;">🔄 Copiar valores cobrados (preencher todos como ponto de partida)</button>
+        <div id="custo-real-inputs"></div>
       </div>
     </div>
 
@@ -526,7 +633,16 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
 
     <!-- BOTÃO CALCULAR -->
     <button class="btn-calc" onclick="calcular()">⚡ CALCULAR</button>
+    <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--dim);">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-demonstrativo" checked> Aba Demonstrativo (interno, com custos e lucro)</label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-cliente" checked> Aba Cliente (comercial, só mix e preço)</label>
+    </div>
     <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
+      <button class="btn-refresh" style="flex:1;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
+    </div>
+    <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
 
   </div>
 
@@ -543,11 +659,50 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
 
 <div class="toast-wrap" id="toasts"></div>
 
+<!-- MODAL: MINHAS COTAÇÕES -->
+<div class="mbg" id="mbg-cotacoes">
+  <div class="modal-cot">
+    <div class="modal-cot-h">
+      <h3>📂 Minhas Cotações</h3>
+      <button class="modal-cot-close" onclick="fecharListaCotacoes()">✕</button>
+    </div>
+    <div class="modal-cot-b">
+      <table class="cot-table">
+        <thead><tr><th>Cliente</th><th>Tipo/UF</th><th>Custo Total</th><th>Lucro</th><th>Atualizado</th><th></th></tr></thead>
+        <tbody id="cot-lista-body"><tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════
 // TABELA NCM EMBUTIDA
 // ════════════════════════════════════════════════════════
 const TABELA_NCM = {"40111000BA": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "BA", "aliq_inter": 0.04, "mva": 0.7147, "aliq_interna": 0.205, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000ES": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "ES", "aliq_inter": 0.04, "mva": 0.6424, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000GO": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.683, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000MG": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "MG", "aliq_inter": 0.04, "mva": 0.6624, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000PR": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "PR", "aliq_inter": 0.04, "mva": 0.6783, "aliq_interna": 0.195, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000RJ": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "RJ", "aliq_inter": 0.04, "mva": 0.7477, "aliq_interna": 0.22, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000RS": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "RS", "aliq_inter": 0.04, "mva": 0.8833, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000SC": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.6424, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000SP": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.7172, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000AC": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "AC", "aliq_inter": 0.04, "mva": 0.683, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000AL": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "AL", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000AP": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "AP", "aliq_inter": 0.04, "mva": 0.6624, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000AM": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "AM", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000CE": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "CE", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000DF": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "DF", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000MA": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "MA", "aliq_inter": 0.04, "mva": 0.7704, "aliq_interna": 0.23, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000MS": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.6424, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000MT": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "MT", "aliq_inter": 0.04, "mva": 0.7879, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000PB": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "PB", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000PE": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "PE", "aliq_inter": 0.04, "mva": 0.7147, "aliq_interna": 0.205, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000PI": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "PI", "aliq_inter": 0.04, "mva": 0.759, "aliq_interna": 0.225, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000PA": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "PA", "aliq_inter": 0.04, "mva": 0.683, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000RO": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "RO", "aliq_inter": 0.04, "mva": 0, "aliq_interna": 0.195, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000RR": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "RR", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000RN": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "RN", "aliq_inter": 0.04, "mva": 0.6624, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000SE": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "SE", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40111000TO": {"ncm": 40111000, "produto": "Pneu Automóvel", "cest": 1600100, "uf_dest": "TO", "aliq_inter": 0.04, "mva": 0.704, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.25, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090BA": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "BA", "aliq_inter": 0.04, "mva": 0.594, "aliq_interna": 0.205, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090ES": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "ES", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090GO": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.5644, "aliq_interna": 0.19, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090MG": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "MG", "aliq_inter": 0.04, "mva": 0.5454, "aliq_interna": 0.18, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090PR": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "PR", "aliq_inter": 0.04, "mva": 0.5626, "aliq_interna": 0.195, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090RJ": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "RJ", "aliq_inter": 0.04, "mva": 0.6246, "aliq_interna": 0.22, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090RS": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "RS", "aliq_inter": 0.04, "mva": 0.5984, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090SC": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090SP": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.5904, "aliq_interna": 0.18, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090AC": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "AC", "aliq_inter": 0.04, "mva": 0.5644, "aliq_interna": 0.19, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090AL": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "AL", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090AP": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "AP", "aliq_inter": 0.04, "mva": 0.5454, "aliq_interna": 0.18, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090AM": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "AM", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090CE": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "CE", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090DF": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "DF", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090MA": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "MA", "aliq_inter": 0.04, "mva": 0.6457, "aliq_interna": 0.23, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090MS": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40117090MS": {"ncm": 40117090, "produto": "Pneu Agricola", "cest": 1600200, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40117090ES": {"ncm": 40117090, "produto": "Pneu Agricola", "cest": 1600200, "uf_dest": "ES", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40117090SP": {"ncm": 40117090, "produto": "Pneu Agricola", "cest": 1600200, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.5904, "aliq_interna": 0.18, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40117090SC": {"ncm": 40117090, "produto": "Pneu Agricola", "cest": 1600200, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40117090BA": {"ncm": 40117090, "produto": "Pneu Agricola", "cest": 1600200, "uf_dest": "BA", "aliq_inter": 0.04, "mva": 0.594, "aliq_interna": 0.205, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40117090GO": {"ncm": 40117090, "produto": "Pneu Agricola", "cest": 1600200, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.5644, "aliq_interna": 0.19, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40117090MG": {"ncm": 40117090, "produto": "Pneu Agricola", "cest": 1600200, "uf_dest": "MG", "aliq_inter": 0.04, "mva": 0.5454, "aliq_interna": 0.18, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090MT": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "MT", "aliq_inter": 0.04, "mva": 0.7879, "aliq_interna": 0.17, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090PB": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "PB", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090PE": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "PE", "aliq_inter": 0.04, "mva": 0.594, "aliq_interna": 0.205, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090PI": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "PI", "aliq_inter": 0.04, "mva": 0.6351, "aliq_interna": 0.225, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090PA": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "PA", "aliq_inter": 0.04, "mva": 0.5644, "aliq_interna": 0.19, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090RO": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "RO", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.195, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090RR": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "RR", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090RN": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "RN", "aliq_inter": 0.04, "mva": 0.5454, "aliq_interna": 0.18, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090SE": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "SE", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40112090TO": {"ncm": 40112090, "produto": "Pneu Caminhão", "cest": 1600200, "uf_dest": "TO", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.013, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090BA": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "BA", "aliq_inter": 0.04, "mva": 0.594, "aliq_interna": 0.205, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090ES": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "ES", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090GO": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.5644, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090MG": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "MG", "aliq_inter": 0.04, "mva": 0.5454, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090PR": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "PR", "aliq_inter": 0.04, "mva": 0.5626, "aliq_interna": 0.195, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090RJ": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "RJ", "aliq_inter": 0.04, "mva": 0.6246, "aliq_interna": 0.22, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090RS": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "RS", "aliq_inter": 0.04, "mva": 0.5984, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090SC": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090SP": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.5904, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090AC": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "AC", "aliq_inter": 0.04, "mva": 0.5644, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090AL": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "AL", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090AP": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "AP", "aliq_inter": 0.04, "mva": 0.5454, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090AM": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "AM", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090CE": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "CE", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090DF": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "DF", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090MA": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "MA", "aliq_inter": 0.04, "mva": 0.6457, "aliq_interna": 0.23, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090MS": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.5267, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090MT": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "MT", "aliq_inter": 0.04, "mva": 0.7879, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090PB": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "PB", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090PE": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "PE", "aliq_inter": 0.04, "mva": 0.594, "aliq_interna": 0.205, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090PI": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "PI", "aliq_inter": 0.04, "mva": 0.6351, "aliq_interna": 0.225, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090PA": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "PA", "aliq_inter": 0.04, "mva": 0.5644, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090RO": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "RO", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.195, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090RR": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "RR", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090RN": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "RN", "aliq_inter": 0.04, "mva": 0.5454, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090SE": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "SE", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40118090TO": {"ncm": 40118090, "produto": "Pneu Maquina", "cest": 1600200, "uf_dest": "TO", "aliq_inter": 0.04, "mva": 0.584, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090BA": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "BA", "aliq_inter": 0.04, "mva": 0.7509, "aliq_interna": 0.205, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090ES": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "ES", "aliq_inter": 0.04, "mva": 0.6771, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090GO": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.7185, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090MG": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "MG", "aliq_inter": 0.04, "mva": 0.6976, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090PR": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "PR", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.195, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090RJ": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "RJ", "aliq_inter": 0.04, "mva": 0.7846, "aliq_interna": 0.22, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090RS": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "RS", "aliq_inter": 0.04, "mva": 1.022, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090SC": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.6771, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090SP": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.8082, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090AC": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "AC", "aliq_inter": 0.04, "mva": 0.7185, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090AL": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "AL", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090AP": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "AP", "aliq_inter": 0.04, "mva": 0.6976, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090AM": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "AM", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090CE": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "CE", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090DF": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "DF", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090MA": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "MA", "aliq_inter": 0.04, "mva": 0.8078, "aliq_interna": 0.23, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090MS": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.6771, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090MT": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "MT", "aliq_inter": 0.04, "mva": 0.7879, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090PB": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "PB", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090PE": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "PE", "aliq_inter": 0.04, "mva": 0.7509, "aliq_interna": 0.205, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090PI": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "PI", "aliq_inter": 0.04, "mva": 0.7961, "aliq_interna": 0.225, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090PA": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "PA", "aliq_inter": 0.04, "mva": 0.7185, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090RO": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "RO", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.195, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090RR": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "RR", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090RN": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "RN", "aliq_inter": 0.04, "mva": 0.6976, "aliq_interna": 0.18, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090SE": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "SE", "aliq_inter": 0.04, "mva": 0.74, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40119090TO": {"ncm": 40119090, "produto": "Outros (Automóvel)", "cest": 1600400, "uf_dest": "TO", "aliq_inter": 0.04, "mva": 0.6976, "aliq_interna": 0.2, "ipi": 0.0975, "rbc": 0.085, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85044050SC": {"ncm": 85044050, "produto": "Outros (Conversores)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.0975, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85444200SC": {"ncm": 85444200, "produto": "Outros (Munidos)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.05, "rbc": 0.0, "ii": 0.08, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85015190SC": {"ncm": 85015190, "produto": "Outros (Outros 85015190)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.0, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85015290SC": {"ncm": 85015290, "produto": "Outros (Outros 85015290)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.0, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85371020SC": {"ncm": 85371020, "produto": "Outros (Controladores)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.0975, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84716062SC": {"ncm": 84716062, "produto": "Outros (Vídeo Policromático) ", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85369090SC": {"ncm": 85369090, "produto": "Outros (Outros 85369090)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85389090SC": {"ncm": 85389090, "produto": "Outros (Outros 85389090)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85044029SC": {"ncm": 85044029, "produto": "Outros (Outros 85044029)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.04, "ipi": 0.05, "rbc": 0.0, "ii": 0.162, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "87087090MG": {"ncm": 87087090, "produto": "Rodas", "cest": null, "uf_dest": "MG", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0325, "rbc": 0.0, "ii": 0.18, "pis_e": 0.0312, "cofins_e": 0.1437, "majoracao": false, "pis_s": 0.023, "cofins_s": 0.108, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "87087090SC": {"ncm": 87087090, "produto": "Rodas-Implementos", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.18, "pis_e": 0.0312, "cofins_e": 0.1437, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "87087090SP": {"ncm": 87087090, "produto": "Rodas", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.18, "pis_e": 0.0312, "cofins_e": 0.1437, "majoracao": false, "pis_s": 0.023, "cofins_s": 0.108, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "87087090RS": {"ncm": 87087090, "produto": "Rodas", "cest": null, "uf_dest": "RS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.18, "pis_e": 0.0312, "cofins_e": 0.1437, "majoracao": false, "pis_s": 0.023, "cofins_s": 0.108, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84262000SC": {"ncm": 84262000, "produto": "Grua", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84798999SC": {"ncm": 84798999, "produto": "Maq. montagem/desmontagem", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84798290SP": {"ncm": 84798290, "produto": "Robo de Limpeza", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84193900SC": {"ncm": 84193900, "produto": "Secadora", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84281000SC": {"ncm": 84281000, "produto": "Elevador", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84281000GO": {"ncm": 84281000, "produto": "Elevador", "cest": null, "uf_dest": "GO", "aliq_inter": 0.19, "mva": 0.0, "aliq_interna": 0.19, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84283990SC": {"ncm": 84283990, "produto": "Balancim", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84796000SP": {"ncm": 84796000, "produto": "Ar-Evaporadora", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0, "rbc": 0.0, "ii": 0.112, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84799090SP": {"ncm": 84799090, "produto": "Peças", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0, "rbc": 0.0, "ii": 0.112, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "73084000ESC": {"ncm": "73084000E", "produto": "Escoras", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.25, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "73151210MS": {"ncm": 73151210, "produto": "Correntes", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.15, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "87141000MS": {"ncm": 87141000, "produto": "Kit Transmissão", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.09, "rbc": 0.0, "ii": 0.144, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "72255090SP": {"ncm": 72255090, "produto": "Metais", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "72255090RS": {"ncm": 72255090, "produto": "Metais", "cest": null, "uf_dest": "RS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "72255090SC": {"ncm": 72255090, "produto": "Metais", "cest": null, "uf_dest": "SC", "aliq_inter": 0.1, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "72254090RS": {"ncm": 72254090, "produto": "Metais", "cest": null, "uf_dest": "RS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "72254090SC": {"ncm": 72254090, "produto": "Metais", "cest": null, "uf_dest": "SC", "aliq_inter": 0.1, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "72254090SP": {"ncm": 72254090, "produto": "Metais", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "73084000CSC": {"ncm": "73084000C", "produto": "Cimbramento", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.25, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "40131090GO": {"ncm": 40131090, "produto": "CamaraCarro", "cest": null, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.7185, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40139000MGO": {"ncm": "40139000M", "produto": "CamaraMoto", "cest": null, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40139000IGO": {"ncm": "40139000I", "produto": "CamaraIndustrial", "cest": null, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.7185, "aliq_interna": 0.19, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40139000ISC": {"ncm": "40139000I", "produto": "CamaraIndustrial", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40132000GO": {"ncm": 40132000, "produto": "CamaraBicicleta", "cest": null, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.19, "ipi": 0.15, "rbc": 0.0, "ii": 0.144, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40132000SC": {"ncm": 40132000, "produto": "CamaraBicicleta", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0, "aliq_interna": 0.17, "ipi": 0.15, "rbc": 0.0, "ii": 0.144, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40129010GO": {"ncm": 40129010, "produto": "Flap", "cest": null, "uf_dest": "GO", "aliq_inter": 0.04, "mva": 0.7185, "aliq_interna": 0.19, "ipi": 0.0, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "40129010SC": {"ncm": 40129010, "produto": "Flap", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "40131090MS": {"ncm": 40131090, "produto": "CamaraCarro", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.6771, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40131090SC": {"ncm": 40131090, "produto": "CamaraCarro", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40139000MMS": {"ncm": "40139000M", "produto": "CamaraMoto", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40139000IMS": {"ncm": "40139000I", "produto": "CamaraIndustrial", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.6771, "aliq_interna": 0.17, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40132000MS": {"ncm": 40132000, "produto": "CamaraBicicleta", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.15, "rbc": 0.0, "ii": 0.144, "pis_e": 0.0268, "cofins_e": 0.1235, "majoracao": false, "pis_s": 0.02, "cofins_s": 0.095, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40129010MS": {"ncm": 40129010, "produto": "Flap", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.6771, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "64069020SC": {"ncm": 64069020, "produto": "Palmilhas", "cest": null, "uf_dest": "SC", "aliq_inter": 0.12, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0, "rbc": 0.0, "ii": 0.162, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "39269090SC": {"ncm": 39269090, "produto": "GuardaTenis", "cest": null, "uf_dest": "SC", "aliq_inter": 0.12, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0975, "rbc": 0.0, "ii": 0.18, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "33079000SC": {"ncm": 33079000, "produto": "Desodorizador", "cest": null, "uf_dest": "SC", "aliq_inter": 0.25, "mva": 0.0, "aliq_interna": 0.25, "ipi": 0.143, "rbc": 0.0, "ii": 0.162, "pis_e": 0.0352, "cofins_e": 0.1648, "majoracao": false, "pis_s": 0.022, "cofins_s": 0.103, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "96032900SC": {"ncm": 96032900, "produto": "EscovaSapato", "cest": null, "uf_dest": "SC", "aliq_inter": 0.12, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0, "rbc": 0.0, "ii": 0.162, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "96050000SC": {"ncm": 96050000, "produto": "KitLimpezaTenis", "cest": null, "uf_dest": "SC", "aliq_inter": 0.12, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.065, "rbc": 0.0, "ii": 0.162, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "40169200SC": {"ncm": 40169200, "produto": "BorrachaSapato", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0, "rbc": 0.0, "ii": 0.144, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "84514010SC": {"ncm": 84514010, "produto": "Lavadora", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "84512990SC": {"ncm": 84512990, "produto": "Secadora", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "85371019SC": {"ncm": 85371019, "produto": "ControladorEnergia", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0975, "rbc": 0.0, "ii": 0.112, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85013110SC": {"ncm": 85013110, "produto": "MotoEletricoControle", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.065, "rbc": 0.0, "ii": 0.18, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40103900SC": {"ncm": 40103900, "produto": "CorreiaTransfiraRotação", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.065, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84519090SC": {"ncm": 84519090, "produto": "Rolamento", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84519090LSC": {"ncm": "84519090L", "produto": "Peças - Lavanderia", "cest": null, "uf_dest": "SC", "aliq_inter": 0.17, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0325, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84799090SC": {"ncm": 84799090, "produto": "Peças", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0, "rbc": 0.0, "ii": 0.112, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85364900SC": {"ncm": 85364900, "produto": "ComponenteYAZY", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0325, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84131900SC": {"ncm": 84131900, "produto": "BombaAgua", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.065, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "90321010SC": {"ncm": 90321010, "produto": "Termostato", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0975, "rbc": 0.0, "ii": 0.18, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84212100SC": {"ncm": 84212100, "produto": "Filtro", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0, "rbc": 0.0, "ii": 0.112, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85044022SC": {"ncm": 85044022, "produto": "ComponenteLEDFRIVE", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0325, "rbc": 0.0, "ii": 0.162, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85362000SC": {"ncm": 85362000, "produto": "Disjuntor", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.065, "rbc": 0.0, "ii": 0.08, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85365090SC": {"ncm": 85365090, "produto": "PowerController", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0975, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "85044021SC": {"ncm": 85044021, "produto": "ComponenteLEDFRIVE", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.12, "ipi": 0.0375, "rbc": 0.0, "ii": 0.162, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40129090MS": {"ncm": 40129090, "produto": "Pneus maciços ou ocos", "cest": null, "uf_dest": "MS", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84331100PR": {"ncm": 84331100, "produto": "Cortador", "cest": null, "uf_dest": "PR", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.195, "ipi": 0.0325, "rbc": 0.0, "ii": 0.162, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.02, "cofins_s": 0.096, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84672999SC": {"ncm": 84672999, "produto": "EscovaEletrica", "cest": null, "uf_dest": "SC", "aliq_inter": 0.12, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.052, "rbc": 0.0, "ii": 0.18, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "84679900SC": {"ncm": 84679900, "produto": "Pecas (PainelClean)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.12, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.052, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "96035000SC": {"ncm": 96035000, "produto": "Escovas (PainelClean)", "cest": null, "uf_dest": "SC", "aliq_inter": 0.12, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.18, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.04, "ibs": 0.001, "cbs": 0.009}, "84306100SP": {"ncm": 84306100, "produto": "Compactadores", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "49111090SC": {"ncm": 49111090, "produto": "Catalogos", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.16, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84213990SP": {"ncm": 84213990, "produto": "Maquina Nitrogenio", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84148090SP": {"ncm": 84148090, "produto": "Inflador de Pneu", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84213990SC": {"ncm": 84213990, "produto": "Maquina Nitrogenio", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84148090SC": {"ncm": 84148090, "produto": "Inflador de Pneu", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.126, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84148012SP": {"ncm": 84148012, "produto": "Compressor de AR Parafuso", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "84148012SC": {"ncm": 84148012, "produto": "Compressor de AR Parafuso", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0, "rbc": 0.0, "ii": 0.2, "pis_e": 0.021, "cofins_e": 0.1025, "majoracao": true, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "73063000SC": {"ncm": 73063000, "produto": "Tubos", "cest": null, "uf_dest": "SC", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.17, "ipi": 0.0325, "rbc": 0.0, "ii": 0.14, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}, "40051090ACE18SP": {"ncm": "40051090ACE18", "produto": "Bandas", "cest": null, "uf_dest": "SP", "aliq_inter": 0.04, "mva": 0.0, "aliq_interna": 0.18, "ipi": 0.0325, "rbc": 0.0, "ii": 0.0, "pis_e": 0.021, "cofins_e": 0.0965, "majoracao": false, "pis_s": 0.0165, "cofins_s": 0.076, "icms_prop": 0.014, "ibs": 0.001, "cbs": 0.009}};
+
+// Logo por marca/fornecedor — extraído da aba oculta "IMAGENS" da planilha
+// padrão (primeira imagem de cada marca, quando existe mais de uma).
+// Arquivos ficam na RAIZ do repo (junto com server.js, calculador.html etc),
+// servidos automaticamente como estático pelo express.static(__dirname).
+// EUDEMON e TIANFU não têm imagem cadastrada na planilha original — ficam sem logo.
+const LOGO_POR_MARCA = {
+  'ROVELO': 'rovelo.png',
+  'DELMAX': 'delmax.png',
+  'TRACMAX/WINDFORCE': 'tracmax.png',
+  'SUNWIDE/INVOVIC': 'invovic.png',
+  'ADVANCE': 'advance.png', 'ALLIANCE': 'alliance.png', 'APOLO': 'apolo.png',
+  'CASUMINA': 'casumina.png', 'COMPASAL': 'compasal.png', 'DOUBLECOIN': 'doublecoin.png',
+  'DOUBLESTAR': 'doublestar.jpeg', 'DURABLE': 'durable.png', 'DYNAMO': 'dynamo.png',
+  'HROHUA': 'hrohua.png', 'JK': 'jk.png', 'KUMHO': 'kumho.png', 'NANKANG': 'nankang.png',
+  'ROADCRUZA': 'roadcruza.png', 'SAILUN': 'sailun.png', 'SUNSET': 'sunset.jpeg',
+  'TIANLI': 'tianli.png', 'TORNEL': 'tornel.png', 'TRIANGLE': 'triangle.jpeg',
+  'UNITED': 'united.png', 'WESTLAKE': 'westlake.png', 'WINDFORCE': 'windforce.jpeg',
+  'CROSSWIND': 'crosswind.jpeg', 'SUNFULL': 'sunfull.png', 'POWERSTON': 'powerston.png',
+  'HOSOON': 'hosoon.png', 'ALWAYSRUN': 'alwaysrun.png', 'ZHENDA': 'zhenda.png',
+  'XBRI-RODAS': 'xbri-rodas.png', 'FW': 'fw.png', 'MAXAM': 'maxam.png', 'BNRUI': 'bnrui.png',
+  'MARCHER': 'marcher.jpeg', 'SAFERICH': 'saferich.png',
+};
 
 const NCM_POR_TIPO = {
   'TBR': 40112090,
@@ -555,6 +710,62 @@ const NCM_POR_TIPO = {
   'AGR': 40117090,
   'OTR': 40118090,
 };
+
+// Regra de armazenagem por porto (fonte: planilha UD25-333, aba "MODELO - COM S.T", linhas 86-94).
+// Base de cálculo (baseImpBrl) = (FOB + Frete + Taxa C.E. + Seguro de compra) × câmbio, em R$.
+// 1º período = MAX(base × pct1, min1 × containers) + Pesagem + Controle Acesso + Levante (todos por container).
+// 2º período (só entra se diasParado > 0, ex: fechamento do processo) = base × pct2 × diasParado.
+// Simulação de cotação normalmente usa diasParado=0 (só 1º período); fechamento real usa os dias parados.
+const ARMAZENAGEM_POR_PORTO = {
+  ITJ: { nome: 'Itajaí',    pct1: 0.0063, min1: 1399, pct2: 0.0033, min2: 259, pesagem: 161, controle: 0, levante: 489 },
+  IOA: { nome: 'Itapoá',    pct1: 0.0059, min1: 1300, pct2: 0.0038, min2: 264, pesagem: 115, controle: 0, levante: 480 },
+  NVT: { nome: 'Navegantes',pct1: 0.0064, min1: 1433, pct2: 0.0033, min2: 236, pesagem: 165, controle: 0, levante: 490 },
+};
+
+function calcularArmazenagemPorto(baseImpBrl, containers, porto, diasParado){
+  const p = ARMAZENAGEM_POR_PORTO[porto];
+  if(!p) return 0;
+  const periodo1 = Math.max(baseImpBrl * p.pct1, p.min1 * containers);
+  const extras   = (p.pesagem + p.controle + p.levante) * containers;
+  let total = periodo1 + extras;
+  if(diasParado > 0){
+    total += baseImpBrl * p.pct2 * diasParado;
+  }
+  return total;
+}
+
+// Lê FOB/Frete/Taxa C.E./Seguro/Câmbio direto dos campos do topo (mesma fórmula do cálculo
+// principal) pra poder calcular a armazenagem ANTES de rodar o cálculo completo.
+function calcularArmazenagemUI(){
+  const cambio   = parseFloat(document.getElementById('cambio_usd').value) || 0;
+  const fob_usd  = parseFloat(document.getElementById('fob_usd').value) || 0;
+  const frete_usd= parseFloat(document.getElementById('frete_usd').value) || 0;
+  const taxa_ce  = parseFloat(document.getElementById('taxa_ce_usd').value) || 0;
+  const taxa_seguro_compra = parseFloat(document.getElementById('taxa_seguro_compra').value) || 0;
+  const containers = parseInt(document.getElementById('qtde_containers').value) || 1;
+  const porto    = document.getElementById('tx_porto').value;
+  const dias     = parseInt(document.getElementById('tx_dias_parado').value) || 0;
+
+  if(!cambio || !fob_usd){ showToast('Preencha câmbio e FOB antes de calcular a armazenagem','err'); return; }
+  if(!porto){ showToast('Selecione o porto','err'); return; }
+
+  const seguro_total_usd = fob_usd + frete_usd;
+  const seguro_despesas  = seguro_total_usd * 0.10;
+  const seguro_lucro_esp = (seguro_total_usd + seguro_despesas) * 0.10;
+  const seguro_base_usd  = seguro_total_usd + seguro_despesas + seguro_lucro_esp + taxa_ce;
+  const seguro_compra_usd= seguro_base_usd * taxa_seguro_compra;
+
+  const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambio;
+  const valor = calcularArmazenagemPorto(base_imp_brl, containers, porto, dias);
+
+  document.getElementById('tx_armazenagem').value = valor.toFixed(2);
+  const info = document.getElementById('armazenagem-info');
+  const p = ARMAZENAGEM_POR_PORTO[porto];
+  info.textContent = dias > 0
+    ? `${p.nome}: 1º período + ${dias} dia(s) de 2º período incluídos (fechamento).`
+    : `${p.nome}: só 1º período (simulação). Pra fechamento, informe os dias parados.`;
+  showToast('Armazenagem calculada e preenchida', 'ok');
+}
 
 const TAXAS_FIXAS_CONTAINER = {
   siscomex:      480,
@@ -582,12 +793,14 @@ const TAXAS_USD_CONTAINER = {
 };
 
 // ── ESTADO ──────────────────────────────────────────────
-let _toggles = { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO' };
+let _toggles = { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO', fobpar:'NAO' };
 let _togglesInner = { 'china-modal':'DENTRO' };
 let _cenario = 3;
 let _mix = null;
 let _cambioFixado = false;
 let _ultimoResultado = null;
+let _cotacaoAtualId = null; // id da cotação carregada (null = ainda não salva / nova)
+let _splitST = {}; // medida -> quantidade que vai COM ST (resto vai SEM ST)
 
 // ── INIT ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -598,6 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
   onProdutoChange();
   buscarCambio();
   setToggleTTD('SIM'); // estado inicial padrão: TTD=SIM → sem ICMS ST
+  renderCustoRealInputs();
 
   // Mix do TyreDesk — fica salvo no sessionStorage durante toda a sessão do
   // navegador (não é removido após o primeiro carregamento), para permitir
@@ -696,6 +910,95 @@ function toggleTaxasOperacionais(){
   arrow.textContent = aberto ? '▾' : '▴';
 }
 
+function toggleCustoReal(){
+  const body = document.getElementById('custo-real-body');
+  const arrow = document.getElementById('custo-real-arrow');
+  const aberto = body.style.display !== 'none';
+  body.style.display = aberto ? 'none' : 'block';
+  arrow.textContent = aberto ? '▾' : '▴';
+}
+
+// Config única das taxas operacionais — usada pra gerar os campos de "custo
+// real" (apuração de lucro real) espelhando os campos de "valor cobrado".
+// Se adicionar uma taxa nova em Taxas Operacionais, adicionar aqui também.
+const TAXAS_CONFIG = [
+  { id:'siscomex', label:'Siscomex', unit:'R$', tipo:'fixa' },
+  { id:'marinha', label:'Marinha/AFRMM', unit:'R$', tipo:'fixa' },
+  { id:'armazenagem', label:'Armazenagem', unit:'R$', tipo:'fixa' },
+  { id:'emissao_li', label:'Emissão L.I.', unit:'R$', tipo:'fixa' },
+  { id:'baixa_patio', label:'Baixa Pátio', unit:'R$', tipo:'fixa' },
+  { id:'capatazia', label:'Capatazia/THC', unit:'R$', tipo:'fixa' },
+  { id:'liberacao_bl', label:'Liberação BL', unit:'R$', tipo:'fixa' },
+  { id:'despachante', label:'Despachante', unit:'R$', tipo:'fixa' },
+  { id:'sda', label:'SDA', unit:'R$', tipo:'fixa' },
+  { id:'lavacao', label:'Lavação Container', unit:'R$', tipo:'fixa' },
+  { id:'administrativo', label:'Administrativo', unit:'R$', tipo:'fixa' },
+  { id:'agente', label:'Agente Carga', unit:'R$', tipo:'fixa' },
+  { id:'handling', label:'Handling at Destination', unit:'US$', tipo:'usd' },
+  { id:'additional_costs', label:'Additional Costs', unit:'US$', tipo:'usd' },
+  { id:'import_logistics', label:'Import Logistics', unit:'US$', tipo:'usd' },
+  { id:'trs', label:'TRS', unit:'US$', tipo:'usd' },
+  { id:'tsc', label:'TSC', unit:'US$', tipo:'usd' },
+  { id:'drop_off', label:'Drop Off', unit:'US$', tipo:'usd' },
+  { id:'isps', label:'ISPS', unit:'US$', tipo:'usd' },
+  { id:'iof', label:'IOF', unit:'US$', tipo:'usd' },
+  { id:'desconsolidacao', label:'Desconsolidação', unit:'US$', tipo:'usd' },
+];
+const ID_COBRADO = { fixa: id => 'tx_'+id, usd: id => 'tx_'+id };
+
+function renderCustoRealInputs(){
+  const wrap = document.getElementById('custo-real-inputs');
+  if(!wrap) return;
+  let html = '';
+  for(let i=0; i<TAXAS_CONFIG.length; i+=2){
+    const a = TAXAS_CONFIG[i], b = TAXAS_CONFIG[i+1];
+    html += '<div class="form-row">';
+    html += `<div class="form-group"><label>${a.label} — Real (${a.unit})</label><input type="number" id="real_${a.id}" step="0.01" placeholder="= cobrado"></div>`;
+    html += b ? `<div class="form-group"><label>${b.label} — Real (${b.unit})</label><input type="number" id="real_${b.id}" step="0.01" placeholder="= cobrado"></div>` : '<div class="form-group"></div>';
+    html += '</div>';
+  }
+  wrap.innerHTML = html;
+}
+
+function copiarValoresCobrados(){
+  TAXAS_CONFIG.forEach(t => {
+    const cobrado = document.getElementById('tx_'+t.id);
+    const real = document.getElementById('real_'+t.id);
+    if(cobrado && real) real.value = cobrado.value;
+  });
+  showToast('✓ Valores cobrados copiados — ajuste só o que realmente pagou diferente', 'ok');
+}
+
+// Lê os custos reais. Campo vazio = assume igual ao cobrado (diferença zero).
+// Retorna também o detalhe de cada taxa que teve diferença, pra exibir.
+function lerCustosReais(containers, cambio){
+  const detalhe = [];
+  let diferenca = 0;
+  TAXAS_CONFIG.forEach(t => {
+    const elCobrado = document.getElementById('tx_'+t.id);
+    const elReal = document.getElementById('real_'+t.id);
+    const cobrado = parseFloat(elCobrado?.value) || 0;
+    const realStr = elReal?.value;
+    const real = (realStr !== '' && realStr !== undefined) ? (parseFloat(realStr) || 0) : cobrado;
+    // Mesma regra de container já usada no cálculo: armazenagem já é container-aware
+    // internamente (não multiplica de novo); as demais são lineares por container.
+    // Taxas em USD convertem pelo câmbio.
+    let diffItem;
+    if(t.id === 'armazenagem'){
+      diffItem = cobrado - real;
+    } else if(t.tipo === 'fixa'){
+      diffItem = (cobrado - real) * containers;
+    } else {
+      diffItem = (cobrado - real) * containers * cambio;
+    }
+    if(Math.abs(diffItem) > 0.01){
+      detalhe.push({ label: t.label, cobrado, real, diferenca: diffItem });
+    }
+    diferenca += diffItem;
+  });
+  return { diferenca, detalhe };
+}
+
 function lerTaxasOperacionais(){
   const v = id => parseFloat(document.getElementById(id)?.value) || 0;
   return {
@@ -706,11 +1009,29 @@ function lerTaxasOperacionais(){
       lavacao: v('tx_lavacao'), administrativo: v('tx_administrativo'), agente: v('tx_agente'),
     },
     usd: {
-      additional_costs: v('tx_additional_costs'), import_logistics: v('tx_import_logistics'),
+      handling: v('tx_handling'), additional_costs: v('tx_additional_costs'), import_logistics: v('tx_import_logistics'),
       trs: v('tx_trs'), tsc: v('tx_tsc'), drop_off: v('tx_drop_off'), isps: v('tx_isps'),
       iof: v('tx_iof'), desconsolidacao: v('tx_desconsolidacao'),
     }
   };
+}
+
+// FOB escalonado (docx item 3.1) — % Saldo é sempre o complemento de % Entrada.
+function atualizarPctFobSaldo(){
+  const entrada = parseFloat(document.getElementById('pct_fob_entrada').value) || 0;
+  document.getElementById('pct_fob_saldo_display').value = (100 - entrada).toFixed(2);
+}
+
+// Marinha/AFRMM e Agente de Carga: por padrão calculados automaticamente (fórmula
+// real da planilha, ver calcular()). Desmarcando "auto" o campo vira editável e o
+// valor digitado pelo usuário passa a valer (útil pra caso excepcional/negociado).
+function onToggleAutoTaxa(campo){
+  const chk = document.getElementById(`auto_${campo}`);
+  const input = document.getElementById(`tx_${campo}`);
+  if(!chk || !input) return;
+  input.readOnly = chk.checked;
+  input.style.background = chk.checked ? '#f5f5f5' : '#fff';
+  if(_ultimoResultado || document.getElementById('cambio_usd').value) calcular();
 }
 
 function setToggle(key, val) {
@@ -784,6 +1105,7 @@ function pct(v){ return v != null ? (v*100).toFixed(2)+'%' : '0%'; }
 // ── MIX ──────────────────────────────────────────────────
 function renderMix() {
   if(!_mix || !_mix.itens || !_mix.itens.length) return;
+  _splitST = {}; // mix novo — zera o split manual (cada recálculo com o MESMO mix preserva)
   document.getElementById('mix-badge').style.display = 'block';
   const lista = document.getElementById('mix-items-list');
   lista.innerHTML = _mix.itens.map(it =>
@@ -791,6 +1113,58 @@ function renderMix() {
   ).join('');
   document.getElementById('mix-fob-total').textContent = 'US$ '+fmt(_mix.fob_total);
   document.getElementById('fob_usd').value = _mix.fob_total || '';
+  // Logo da marca — só exibe se a planilha original tinha imagem cadastrada pra ela
+  const marcaWrap = document.getElementById('mix-marca-wrap');
+  const logoFile = _mix.forn ? LOGO_POR_MARCA[_mix.forn.toUpperCase()] : null;
+  if(logoFile){
+    const logoImg = document.getElementById('mix-marca-logo');
+    logoImg.style.display = '';
+    logoImg.src = '/'+logoFile; // arquivos estão na raiz do repo, não em /logos/
+    document.getElementById('mix-marca-nome').textContent = _mix.forn;
+    marcaWrap.style.display = 'flex';
+  } else {
+    marcaWrap.style.display = 'none';
+  }
+  // Containers calculados pelo TyreDesk (>105% de cobertura = novo container).
+  // Pré-preenche mas continua editável — usuário pode ajustar se souber melhor.
+  if(_mix.containers){
+    document.getElementById('qtde_containers').value = _mix.containers;
+    if(_mix.containers > 1){
+      showToast(`Mix do TyreDesk usa ${_mix.cobertura_container_pct||''}% de container — ${_mix.containers} containers detectados`, 'info');
+    }
+  }
+}
+
+// Chamado ao editar "Qtd COM ST" de uma linha do mix. Atualiza a linha (Qtd
+// SEM ST é sempre o complemento) e o total geral combinado, sem precisar
+// rodar CALCULAR de novo (os dois cenários já foram calculados).
+function atualizarSplitST(idx){
+  const r = _ultimoResultado;
+  if(!r || !r.cenarios) return;
+  const it = r.mix_result[idx];
+  const comStItem = r.cenarios.com_st.mix[idx];
+  const semStItem = r.cenarios.sem_st.mix[idx];
+  const inputEl = document.getElementById('split-com-'+idx);
+  let qComSt = parseInt(inputEl.value) || 0;
+  if(qComSt < 0) qComSt = 0;
+  if(qComSt > it.qtd) qComSt = it.qtd;
+  inputEl.value = qComSt;
+  const qSemSt = it.qtd - qComSt;
+  document.getElementById('split-sem-'+idx).textContent = qSemSt;
+  const totalRow = qComSt*comStItem.vlr_unit_brl + qSemSt*semStItem.vlr_unit_brl;
+  document.getElementById('split-total-'+idx).textContent = 'R$ '+fmt(totalRow);
+  _splitST[it.medida] = qComSt;
+
+  // Recalcula o total geral combinado
+  let totalGeral = 0;
+  r.mix_result.forEach((item, i) => {
+    const cs = r.cenarios.com_st.mix[i], ss = r.cenarios.sem_st.mix[i];
+    const qcs = _splitST[item.medida] ?? item.qtd;
+    const qss = item.qtd - qcs;
+    totalGeral += qcs*cs.vlr_unit_brl + qss*ss.vlr_unit_brl;
+  });
+  const elGeral = document.getElementById('split-total-geral');
+  if(elGeral) elGeral.textContent = 'R$ '+fmt(totalGeral);
 }
 
 // ── CÁLCULO PRINCIPAL ─────────────────────────────────────
@@ -806,7 +1180,11 @@ function calcular() {
   const custos_div = parseFloat(document.getElementById('custos_diversos').value) || 0;
   const cenario_val = parseFloat(document.getElementById('cenario_valor').value) || 0;
   const taxa_seguro_compra = (parseFloat(document.getElementById('taxa_seguro_compra').value) || 0.04) / 100;
-  const taxa_seguro_venda  = (parseFloat(document.getElementById('taxa_seguro_venda').value)  || 0.04) / 100;
+  // Câmbio de abertura do dia da chegada — específico pro Seguro Venda (diferente
+  // do câmbio principal usado no resto do cálculo). Se vazio, usa o câmbio principal
+  // como fallback razoável (evita travar quem só quer uma simulação rápida).
+  const cambioVendaInput = parseFloat(document.getElementById('cambio_chegada').value);
+  const cambio_chegada = cambioVendaInput || cambio;
 
   if(!cambio || !fob_usd) { showToast('Preencha câmbio e FOB','err'); return; }
 
@@ -816,20 +1194,41 @@ function calcular() {
   if(!t) { showToast(`NCM ${ncm}/${uf} não encontrado na tabela NCM`,'err'); return; }
 
   // ── 1. SEGURO (compra e venda) ──
-  // Base: (FOB + Frete) + 10% despesas + 10% lucro esperado + Taxa C.E.
+  // FIX: reproduzindo a fórmula exata da planilha (MODELO-COM/SEM S.T!D7) contra
+  // o exemplo real (FOB 37.472,80 + Frete 5.000 → Seguro USD 20,5568352 confirmado),
+  // a Taxa C.E. NÃO entra na base do Seguro — só (FOB+Frete)×1,10×1,10×0,04%.
+  // Base: (FOB + Frete) + 10% despesas + 10% lucro esperado (sem Taxa C.E.)
   const seguro_total_usd  = fob_usd + frete_usd;
   const seguro_despesas   = seguro_total_usd * 0.10;
   const seguro_lucro_esp  = (seguro_total_usd + seguro_despesas) * 0.10;
-  const seguro_base_usd   = seguro_total_usd + seguro_despesas + seguro_lucro_esp + taxa_ce;
+  const seguro_base_usd   = seguro_total_usd + seguro_despesas + seguro_lucro_esp;
   const seguro_compra_usd = seguro_base_usd * taxa_seguro_compra;
-  const seguro_venda_usd  = seguro_base_usd * taxa_seguro_venda;
+  // Seguro Venda (proposta cliente) — fórmula real da planilha (confirmada com
+  // exemplo real): ((FOB+Frete)×0,3%) − seguro_compra_usd, essa diferença ×
+  // câmbio de abertura do dia da chegada × 1,02 (margem).
+  const seguro_venda_usd  = ((fob_usd + frete_usd) * 0.003) - seguro_compra_usd;
 
   // ── 2. CIF (usa seguro de COMPRA — custo real interno) ──
-  const fob_brl    = fob_usd * cambio;
-  const frete_brl  = frete_usd * cambio;
+  // FEATURE NOVA (docx item 3.1): algumas fábricas cobram o FOB em 2 parcelas
+  // (entrada no pedido + saldo no embarque/dias antes da chegada), cada uma
+  // fechada num câmbio diferente. Se o toggle estiver OFF (padrão), continua
+  // 100% no câmbio principal — comportamento idêntico a antes.
+  let fob_brl;
+  if(_toggles.fobpar === 'SIM'){
+    const pctEntradaFob = (parseFloat(document.getElementById('pct_fob_entrada').value) || 0) / 100;
+    const pctSaldoFob = 1 - pctEntradaFob;
+    const cambioFobEntrada = parseFloat(document.getElementById('cambio_fob_entrada').value) || cambio;
+    const cambioFobSaldo = parseFloat(document.getElementById('cambio_fob_saldo').value) || cambio;
+    fob_brl = (fob_usd * pctEntradaFob * cambioFobEntrada) + (fob_usd * pctSaldoFob * cambioFobSaldo);
+  } else {
+    fob_brl = fob_usd * cambio;
+  }
+  // Frete sempre tem spread/taxa própria — campo opcional, vazio cai no câmbio principal.
+  const cambioFrete = parseFloat(document.getElementById('cambio_frete').value) || cambio;
+  const frete_brl  = frete_usd * cambioFrete;
   const taxa_ce_brl= taxa_ce * cambio;
   const seguro_brl = seguro_compra_usd * cambio;
-  const seguro_venda_brl = seguro_venda_usd * cambio;
+  const seguro_venda_brl = seguro_venda_usd * cambio_chegada * 1.02;
   const cif_brl    = fob_brl + frete_brl + seguro_brl;
 
   // ── 3. Base de impostos ──
@@ -840,33 +1239,86 @@ function calcular() {
   const IPI_e    = (base_imp_brl + II) * t.ipi;
   const PIS_e    = base_imp_brl * t.pis_e;
   const COFINS_e = base_imp_brl * t.cofins_e;
-  const IBS_e    = (base_imp_brl + II + IPI_e) * t.ibs;
-  const CBS_e    = (base_imp_brl + II + IPI_e) * t.cbs;
   const RBC      = base_imp_brl * t.rbc;
   const DUMP     = _toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
-  // Taxas operacionais — lidas dos campos editáveis (fallback nas constantes padrão)
+
+  // Câmbio de abertura do dia da chegada + 2% — usado nas Taxas em USD (destino)
+  // e nas fórmulas de Marinha/AFRMM e Agente de Carga, replicando a planilha
+  // (coluna "Tx Cambio" / "Dólar de Abertura dia da chegada (+) 2%").
+  const cambio_chegada_markup = cambio_chegada * 1.02;
+
+  // Leitura prévia das taxas operacionais (antes de sobrescrever Marinha/Agente,
+  // pra ter capatazia, liberação BL e taxas USD disponíveis nas fórmulas abaixo).
+  const txOpPre = lerTaxasOperacionais();
+
+  // FIX (docx itens 3.3 e 5): Marinha/AFRMM e Agente de Carga tinham fórmula na
+  // planilha mas eram só campo manual no calculador. Agora calculados automático
+  // por padrão (checkbox "auto" permite sobrescrever manualmente em caso excepcional).
+  // Marinha/AFRMM = ((FRETE_BRL + TAXA_CE_BRL + CAPATAZIA_BRL) × 8%) + 20
+  // (planilha MODELO-COM S.T!F20; TAXA_CE_BRL usa fallback R$2.000 se Taxa C.E. = 0)
+  const taxaCeParaAfrmm = taxa_ce === 0 ? 2000 : taxa_ce * cambio;
+  const capatazia_brl = txOpPre.fixas.capatazia * containers;
+  const marinha_auto = ((frete_brl + taxaCeParaAfrmm + capatazia_brl) * 0.08) + 20;
+  const autoMarinhaChk = document.getElementById('auto_marinha');
+  if(!autoMarinhaChk || autoMarinhaChk.checked){
+    document.getElementById('tx_marinha').value = marinha_auto.toFixed(2);
+  }
+
+  // Agente de Carga = ((SOMA Taxas USD destino, exceto IOF) × câmbio+2% + Liberação BL) × 21,25%
+  // (planilha MODELO-COM S.T!F37 = (SOMA(F27:F36)-IOF)×21,25%)
+  const somaUsdSemIof = (txOpPre.usd.handling + txOpPre.usd.additional_costs + txOpPre.usd.import_logistics + txOpPre.usd.trs +
+    txOpPre.usd.tsc + txOpPre.usd.drop_off + txOpPre.usd.isps + txOpPre.usd.desconsolidacao) * containers;
+  const liberacaoBl_brl = txOpPre.fixas.liberacao_bl * containers;
+  const agente_auto = ((somaUsdSemIof * cambio_chegada_markup) + liberacaoBl_brl) * 0.2125;
+  const autoAgenteChk = document.getElementById('auto_agente');
+  if(!autoAgenteChk || autoAgenteChk.checked){
+    document.getElementById('tx_agente').value = agente_auto.toFixed(2);
+  }
+
+  // Releitura das taxas operacionais, já com Marinha/Agente atualizados acima
   const txOp = lerTaxasOperacionais();
 
-  // ICMS Entrada — fórmula real da planilha: ((CIF + II+IPI+PIS+COFINS + Siscomex + Dumping + AFRMM) / 0,96) × 1%
+  // ICMS Entrada — fórmula real da planilha (MODELO-COM S.T!F14): ((BASE IMP. +
+  // II+IPI+PIS+COFINS + Siscomex + Dumping + AFRMM) / 0,96) × 1%.
+  // FIX: usava cif_brl (sem Taxa C.E.) — planilha usa base_imp_brl (com Taxa
+  // C.E.), verificado numérico exato contra o exemplo real (3042,93 vs 3037,58).
   const siscomex_unit = txOp.fixas.siscomex * containers;
   const afrmm_unit     = txOp.fixas.marinha * containers;
-  const ICMS_e   = ((cif_brl + II + IPI_e + PIS_e + COFINS_e + siscomex_unit + DUMP + afrmm_unit) / 0.96) * 0.01;
+  const ICMS_e   = ((base_imp_brl + II + IPI_e + PIS_e + COFINS_e + siscomex_unit + DUMP + afrmm_unit) / 0.96) * 0.01;
+  // FIX: confirmado via planilha (MODELO-COM S.T!F15/F16) que IBS-E/CBS-E usam
+  // (base_imp_brl + II + Siscomex + Marinha/AFRMM + Dumping) — NÃO o IPI como
+  // estava antes. Verificado numérico exato contra o exemplo real da planilha.
+  const IBS_e    = (base_imp_brl + II + siscomex_unit + afrmm_unit + DUMP) * t.ibs;
+  const CBS_e    = (base_imp_brl + II + siscomex_unit + afrmm_unit + DUMP) * t.cbs;
 
   // ── 4. Taxas fixas (editáveis) ──
+  // Armazenagem tem regra própria por porto (calcularArmazenagemPorto já soma
+  // mínimo/pesagem/controle/levante × containers internamente) — não duplicar
+  // de novo aqui, senão conta container duas vezes. As demais taxas fixas são
+  // realmente por container (Siscomex, Marinha/AFRMM, Despachante etc.) e
+  // multiplicam linearmente pela quantidade de containers.
   let taxas_fixas = 0;
-  Object.values(txOp.fixas).forEach(v => taxas_fixas += v * containers);
+  Object.entries(txOp.fixas).forEach(([chave, v]) => {
+    taxas_fixas += (chave === 'armazenagem') ? v : v * containers;
+  });
   taxas_fixas += custos_div;
 
   let taxas_usd = 0;
   Object.values(txOp.usd).forEach(v => taxas_usd += v * containers);
-  const taxas_usd_brl = taxas_usd * cambio;
+  // FIX (docx item 3.2): Taxas em USD (destino) devem converter pelo câmbio de
+  // abertura do dia da chegada + 2%, não pelo câmbio simples — confirmado na
+  // anotação da imagem e na coluna "Tx Cambio" (E5/$E$5) da planilha.
+  const taxas_usd_brl = taxas_usd * cambio_chegada_markup;
 
   // Seguro dif (entre seguro real e taxa CE p/ AFRMM)
   const seguro_dif_brl = (98.189416 * containers) * cambio; // diferença seguro
-  const total_taxas = taxas_fixas + taxas_usd_brl + seguro_dif_brl + DUMP;
+  // FIX (docx item 9): faltava somar o Seguro Venda no Total Taxas — confirmado
+  // via soma manual das 15 linhas de Taxas Operacionais no demonstrativo real
+  // (R$14.556,98 vs R$13.997,70 exibido, diferença R$559,27 = seguro_venda_brl).
+  const total_taxas = taxas_fixas + taxas_usd_brl + seguro_dif_brl + DUMP + seguro_venda_brl;
 
   // ── 5. Custo total (apenas não recuperáveis) ──
-  const imp_custo   = II + RBC; // créditos: IPI, PIS, COFINS, ICMS, IBS, CBS
+  const imp_custo   = II; // RBC NÃO entra como custo — é só referência/crédito, confirmado com exemplo real
   const custo_total = cif_brl + imp_custo + total_taxas;
 
   // ── 6. Faturamento / Preço de venda ──
@@ -886,24 +1338,33 @@ function calcular() {
   const aliq_icms_nfe = t.icms_prop;    // ICMS próprio na venda (ex: 1,4%)
   const aliq_ibs_s  = t.ibs;
   const aliq_cbs_s  = t.cbs;
-  const tem_st = _toggles.st === 'SIM';
   const china_fora_pct = (_toggles.china==='SIM' && _togglesInner['china-modal']==='FORA') ? china_pct : 0;
 
-  // ── Função que, dado um Fator NFe, calcula toda a cadeia de saída ──
+  // ── Função que, dado um Fator NFe e um cenário de ST, calcula toda a cadeia de saída ──
   // Replica fielmente a planilha: Vlr.Produto → IPI → ICMS NFe → ICMS ST →
   // Vlr.Total NFe → PIS/COFINS/ICMS Próprio → Comissões → Lucro Bruto
-  function calcularCadeiaSaida(fatorNfe){
+  // temStCenario é passado explicitamente (não lido do toggle) pra poder rodar
+  // os dois cenários (COM ST / SEM ST) em cima do MESMO custo_total — exatamente
+  // como a planilha faz "cópia fiel" da aba COM S.T pra aba SEM S.T.
+  function calcularCadeiaSaida(fatorNfe, temStCenario){
     // IMPORTANTE: Vlr.Produto é calculado sobre o CUSTO TOTAL (não sobre FOB) — fórmula real da planilha (L17=F48×L11)
     const vlr_produto = custo_total * fatorNfe;
     const IPI_s        = vlr_produto * aliq_ipi_s;
-    // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP), usado na base do ICMS ST e do PIS/COFINS
+    // Redução de base (RBC, coluna K da Tabela NCM) — FIX (docx item 8): confirmado
+    // direto na planilha (linha L19 "ICMS NFe" das abas MODELO - COM/SEM S.T) que
+    // o ICMS Normal usa sempre o Vlr.Produto CHEIO, sem redução — tanto COM quanto
+    // SEM S.T. A redução (K20/RBC) só entra na BASE ICMS ST (linha L20), que só
+    // existe no cenário COM S.T. Produtos SEM S.T não podem reduzir a base.
+    const vlr_produto_reduzido = vlr_produto - (vlr_produto * t.rbc);
+    // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP), usa vlr_produto cheio
     const ICMS_nfe_normal = vlr_produto * t.aliq_inter;
     // ICMS Próprio — alíquota da coluna ICMS-Próprio da tabela NCM (ex: 1,4%), abate direto do lucro
+    // (esse NÃO leva redução — confirmado com o exemplo real, usa vlr_produto cheio)
     const ICMS_proprio = vlr_produto * aliq_icms_nfe;
 
     let icms_st = 0, base_st = 0;
-    if(tem_st){
-      base_st  = (vlr_produto + IPI_s) * (1 + t.mva);
+    if(temStCenario){
+      base_st  = (vlr_produto_reduzido + IPI_s) * (1 + t.mva);
       icms_st  = Math.max(0, (base_st * aliq_icms_s) - ICMS_nfe_normal);
     }
     const vlr_total_nfe = vlr_produto + IPI_s + icms_st;
@@ -912,8 +1373,12 @@ function calcular() {
     const base_pis_cofins = vlr_produto - ICMS_nfe_normal;
     const PIS_s     = base_pis_cofins * aliq_pis_s;
     const COFINS_s  = base_pis_cofins * aliq_cof_s;
-    const IBS_s     = base_pis_cofins * aliq_ibs_s;
-    const CBS_s     = base_pis_cofins * aliq_cbs_s;
+    // FIX (docx item 7): base do IBS/CBS confirmada direto na planilha (J56/J57) =
+    // Vlr.Produto - ICMS_nfe_normal - PIS_s - COFINS_s (ou seja, base_pis_cofins
+    // menos o PIS e o COFINS já calculados) — faltava subtrair PIS_s e COFINS_s.
+    const base_ibs_cbs = base_pis_cofins - PIS_s - COFINS_s;
+    const IBS_s     = base_ibs_cbs * aliq_ibs_s;
+    const CBS_s     = base_ibs_cbs * aliq_cbs_s;
 
     // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
     const china_fora_val = fob_brl * china_fora_pct;
@@ -957,34 +1422,42 @@ function calcular() {
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
       china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
       valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
-      faturamento_total, lucro_bruto, pct_lucro, fatorNfe,
+      faturamento_total, lucro_bruto, pct_lucro, fatorNfe, tem_st: temStCenario,
     };
   }
 
   // ── Resolver o Fator NFe necessário para o cenário escolhido (busca binária) ──
-  function resolverFatorNfe(alvoFn){
+  function resolverFatorNfe(alvoFn, temStCenario){
     let lo = 1.0, hi = 5.0;
     for(let i=0;i<60;i++){
       const mid = (lo+hi)/2;
-      const r = calcularCadeiaSaida(mid);
+      const r = calcularCadeiaSaida(mid, temStCenario);
       if(alvoFn(r) > 0) hi = mid; else lo = mid;
     }
-    return calcularCadeiaSaida((lo+hi)/2);
+    return calcularCadeiaSaida((lo+hi)/2, temStCenario);
   }
 
-  let cadeia;
-  if(_cenario === 1){
-    // Lucro Alvo % sobre faturamento
-    const alvo_pct = cenario_val / 100;
-    cadeia = resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct);
-  } else if(_cenario === 2){
-    // Lucro Alvo em R$
-    cadeia = resolverFatorNfe(r => r.lucro_bruto - cenario_val);
-  } else {
-    // Lucro Bruto % (igual ao 1, padrão "histórico" do sistema)
-    const alvo_pct = cenario_val / 100;
-    cadeia = resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct);
+  // Roda os DOIS cenários (COM ST e SEM ST) sobre o MESMO custo_total — igual
+  // a planilha, que copia os custos da aba COM S.T pra aba SEM S.T e só muda
+  // se o ICMS ST entra ou não. Cada cenário resolve seu próprio Fator NFe.
+  function resolverCenario(temStCenario){
+    if(_cenario === 1){
+      const alvo_pct = cenario_val / 100;
+      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario);
+    } else if(_cenario === 2){
+      return resolverFatorNfe(r => r.lucro_bruto - cenario_val, temStCenario);
+    } else {
+      const alvo_pct = cenario_val / 100;
+      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario);
+    }
   }
+
+  const cenario_com_st = resolverCenario(true);
+  const cenario_sem_st = resolverCenario(false);
+  // Cenário "principal" (o que alimenta o resultado detalhado de sempre, export etc.)
+  // continua sendo o que o toggle COM/SEM S.T do topo já selecionava.
+  const tem_st_toggle = _toggles.st === 'SIM';
+  const cadeia = tem_st_toggle ? cenario_com_st : cenario_sem_st;
 
   const { vlr_produto, IPI_s, ICMS_nfe, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
@@ -1000,26 +1473,50 @@ function calcular() {
   const base_icms = usoConsumo ? (vlr_produto + IPI_s) : vlr_produto;
   const fator = fatorNfe;
 
-  // Mix unitário
+  // Mix unitário — preço por medida em cada cenário (COM ST e SEM ST), usando
+  // o vlr_produto de CADA cenário (mesmo custo_total, fator NFe pode diferir
+  // porque o alvo de lucro é resolvido separadamente pra cada um).
   const mix_itens = _mix?.itens || [];
-  const mix_result = mix_itens.map(it => {
-    const vlr_unit = vlr_produto / (fob_usd || 1) * it.preco;
-    return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd };
-  });
+  function calcularMixCenario(vlrProdutoCenario){
+    return mix_itens.map(it => {
+      const vlr_unit = vlrProdutoCenario / (fob_usd || 1) * it.preco;
+      return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd };
+    });
+  }
+  const mix_result = calcularMixCenario(vlr_produto); // cenário principal (compat com o resto do sistema)
+  const mix_com_st = calcularMixCenario(cenario_com_st.vlr_produto);
+  const mix_sem_st = calcularMixCenario(cenario_sem_st.vlr_produto);
+
+  // ── Apuração de Lucro Real (compra x venda das Taxas Operacionais) ──
+  // O Lucro Bruto acima assume que pagamos exatamente o que cobramos em cada
+  // taxa operacional. Na prática às vezes pagamos menos (ou nada) — essa
+  // diferença não muda o preço de venda, mas é lucro real que o Lucro Bruto
+  // contábil não mostra.
+  // FIX: as Taxas em USD "cobradas" (taxas_usd_brl) agora convertem pelo câmbio
+  // de abertura+2% (cambio_chegada_markup), não pelo câmbio simples — a apuração
+  // de diferença real precisa usar o MESMO câmbio, senão a comparação fica torta.
+  const { diferenca: diferenca_taxas_real, detalhe: detalhe_diferenca_real } = lerCustosReais(containers, cambio_chegada_markup);
+  const lucro_real = lucro_bruto + diferenca_taxas_real;
+  const pct_lucro_real = faturamento !== 0 ? (lucro_real / faturamento) * 100 : 0;
 
   _ultimoResultado = {
     cambio, fob_usd, frete_usd, taxa_ce, containers, tipo, uf, cliente,
     ncm, t,
     fob_brl, frete_brl, seguro_brl, seguro_venda_brl, seguro_compra_usd, seguro_venda_usd, cif_brl, base_imp_brl,
     II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
-    taxas_fixas, taxas_usd_brl, total_taxas,
+    taxas_fixas, taxas_usd_brl, total_taxas, custos_div,
     imp_custo, custo_total,
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s, usoConsumo,
     COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
     lucro_bruto, pct_lucro, fator,
-    tem_st, mix_result,
+    lucro_real, pct_lucro_real, diferenca_taxas_real, detalhe_diferenca_real,
+    tem_st: tem_st_toggle, mix_result,
+    cenarios: {
+      com_st: { ...cenario_com_st, mix: mix_com_st },
+      sem_st: { ...cenario_sem_st, mix: mix_sem_st },
+    },
     br_nome: document.getElementById('br_nome').value,
     boss_nome: document.getElementById('boss_nome')?.value,
     cenario_val,
@@ -1056,20 +1553,86 @@ function renderResultado(r) {
     </div>
   ` : '';
 
-  const mix_html = r.mix_result && r.mix_result.length ? `
+  // FIX (docx item 9): resumo comparando COM S.T. × SEM S.T. em 2 linhas claras,
+  // com a divisão Comissão China (fora) / Valor Impak em cada cenário — mesma
+  // lógica das Notas de Serviço, replicando os números confirmados da planilha
+  // (Chinês é o mesmo valor nos dois cenários, pois é % sobre FOB×câmbio, não
+  // sobre o faturamento; Impak é o restante do faturamento total).
+  const resumoStHtml = r.cenarios ? (() => {
+    const cs = r.cenarios.com_st, ss = r.cenarios.sem_st;
+    const temBoss = cs.boss_fora_val > 0 || ss.boss_fora_val > 0;
+    const linha = (label, c) => {
+      const impak = c.faturamento_total - c.china_fora_val - c.boss_fora_val;
+      return `<tr>
+        <td><strong>${label}</strong></td>
+        <td class="num">${fmtR(c.faturamento_total)}</td>
+        <td class="num">${fmtR(c.china_fora_val)}</td>
+        ${temBoss ? `<td class="num">${fmtR(c.boss_fora_val)}</td>` : ''}
+        <td class="num" style="font-weight:700;">${fmtR(impak)}</td>
+      </tr>`;
+    };
+    return `
     <div class="detail-section">
-      <div class="detail-title">📦 Mix de Produtos — Preço Unitário</div>
-      <table class="mix-result-table">
-        <thead><tr><th>Medida</th><th>Pattern</th><th>Qtd</th><th>FOB Unit (US$)</th><th>Vlr Unit (R$)</th><th>Total (R$)</th></tr></thead>
+      <div class="detail-title">🔀 Resumo por Cenário — COM S.T. × SEM S.T.</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
+        Total da operação em cada cenário, já separando quanto é Comissão China (nota de serviço, fora do preço) e quanto fica pra Impak.
+      </div>
+      <table class="calc-table">
+        <thead><tr>
+          <th></th><th>Total Operação</th><th>Comissão China</th>${temBoss ? '<th>Comissão Boss/Lopes</th>' : ''}<th>Valor Impak</th>
+        </tr></thead>
         <tbody>
-          ${r.mix_result.map(it => `<tr>
-            <td>${it.medida}</td><td>${it.pat||'—'}</td>
-            <td class="num">${it.qtd}</td>
-            <td class="num">$${it.preco.toFixed(2)}</td>
-            <td class="num">${fmtR(it.vlr_unit_brl)}</td>
-            <td class="num">${fmtR(it.total_brl)}</td>
-          </tr>`).join('')}
+          ${linha('COM S.T.', cs)}
+          ${linha('SEM S.T.', ss)}
         </tbody>
+      </table>
+    </div>`;
+  })() : '';
+
+  const mix_html = r.mix_result && r.mix_result.length && r.cenarios ? `
+    <div class="detail-section">
+      <div class="detail-title">📦 Mix de Produtos — Preço Unitário (COM ST × SEM ST)</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
+        Os dois preços usam o MESMO custo total do container (igual à planilha) — só muda se o ICMS ST entra ou não.
+        Ajuste "Qtd COM ST" pra decidir quanto de cada medida sai em cada nota.
+      </div>
+      <table class="mix-result-table">
+        <thead><tr>
+          <th>Medida</th><th>Pattern</th><th>Qtd Total</th>
+          <th>Preço COM ST</th><th>Preço SEM ST</th>
+          <th>Qtd COM ST</th><th>Qtd SEM ST</th><th>Total (R$)</th>
+        </tr></thead>
+        <tbody>
+          ${r.mix_result.map((it, idx) => {
+            const comSt = r.cenarios.com_st.mix[idx];
+            const semSt = r.cenarios.sem_st.mix[idx];
+            const qComSt = (_splitST[it.medida] !== undefined) ? Math.min(_splitST[it.medida], it.qtd) : (r.tem_st ? it.qtd : 0);
+            const qSemSt = it.qtd - qComSt;
+            const totalRow = qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
+            _splitST[it.medida] = qComSt; // fixa default calculado, se ainda não existia
+            return `<tr>
+              <td>${it.medida}</td><td>${it.pat||'—'}</td>
+              <td class="num">${it.qtd}</td>
+              <td class="num">${fmtR(comSt.vlr_unit_brl)}</td>
+              <td class="num">${fmtR(semSt.vlr_unit_brl)}</td>
+              <td class="num"><input type="number" min="0" max="${it.qtd}" value="${qComSt}"
+                  id="split-com-${idx}" oninput="atualizarSplitST(${idx})"
+                  style="width:56px;text-align:right;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 4px;"></td>
+              <td class="num" id="split-sem-${idx}">${qSemSt}</td>
+              <td class="num" id="split-total-${idx}">${fmtR(totalRow)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="font-weight:700;background:var(--bg);">
+            <td colspan="7" style="text-align:right;padding:8px;">Faturamento combinado (conforme o split acima)</td>
+            <td class="num" id="split-total-geral" style="padding:8px;">${fmtR(r.mix_result.reduce((acc,it,idx)=>{
+              const comSt=r.cenarios.com_st.mix[idx], semSt=r.cenarios.sem_st.mix[idx];
+              const qComSt=_splitST[it.medida]??0, qSemSt=it.qtd-qComSt;
+              return acc + qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
+            },0))}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   ` : '';
@@ -1098,6 +1661,12 @@ function renderResultado(r) {
             <div class="card-value ${r.pct_lucro >= 4 ? 'ok' : r.pct_lucro >= 2 ? 'warn' : 'err'}">${fmtR(r.lucro_bruto)}</div>
             <div class="card-sub">${fmtP(r.pct_lucro)} s/ faturamento</div>
           </div>
+          ${Math.abs(r.diferenca_taxas_real) > 0.01 ? `
+          <div class="card-num ${r.pct_lucro_real >= 4 ? 'ok' : r.pct_lucro_real >= 2 ? 'warn' : 'err'}">
+            <div class="card-label">Lucro Real</div>
+            <div class="card-value ${r.pct_lucro_real >= 4 ? 'ok' : r.pct_lucro_real >= 2 ? 'warn' : 'err'}">${fmtR(r.lucro_real)}</div>
+            <div class="card-sub">${r.diferenca_taxas_real > 0 ? '+' : ''}${fmtR(r.diferenca_taxas_real)} vs. contábil</div>
+          </div>` : ''}
           <div class="card-num">
             <div class="card-label">Fator NFe</div>
             <div class="card-value">${r.fator.toFixed(4)}</div>
@@ -1144,9 +1713,8 @@ function renderResultado(r) {
             <tr><td>ICMS-E (1,4%)</td><td class="num">${fmtR(r.ICMS_e)}</td></tr>
             <tr><td>IBS (${pct(r.t.ibs)})</td><td class="num">${fmtR(r.IBS_e)}</td></tr>
             <tr><td>CBS (${pct(r.t.cbs)})</td><td class="num">${fmtR(r.CBS_e)}</td></tr>
-            <tr><td>RBC (${pct(r.t.rbc)})</td><td class="num">${fmtR(r.RBC)}</td></tr>
             ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
-            <tr class="destaque-row"><td>Custo (II + RBC)</td><td class="num">${fmtR(r.imp_custo)}</td></tr>
+            <tr class="destaque-row"><td>Custo (II)</td><td class="num">${fmtR(r.imp_custo)}</td></tr>
           </table>
         </div>
       </div>
@@ -1160,7 +1728,7 @@ function renderResultado(r) {
           <table class="calc-table">
             <tr><td>Siscomex</td><td class="num">${fmtR(r.txOp.fixas.siscomex*r.containers)}</td></tr>
             <tr><td>Marinha Mercante</td><td class="num">${fmtR(r.txOp.fixas.marinha*r.containers)}</td></tr>
-            <tr><td>Armazenagem</td><td class="num">${fmtR(r.txOp.fixas.armazenagem*r.containers)}</td></tr>
+            <tr><td>Armazenagem</td><td class="num">${fmtR(r.txOp.fixas.armazenagem)}</td></tr>
             <tr><td>Emissão L.I.</td><td class="num">${fmtR(r.txOp.fixas.emissao_li*r.containers)}</td></tr>
             <tr><td>Baixa Pátio</td><td class="num">${fmtR(r.txOp.fixas.baixa_patio*r.containers)}</td></tr>
             <tr><td>Capatazia (THC)</td><td class="num">${fmtR(r.txOp.fixas.capatazia*r.containers)}</td></tr>
@@ -1172,12 +1740,26 @@ function renderResultado(r) {
             <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
             <tr><td>Taxa Seguro de Venda</td><td class="num">${fmtR(r.seguro_venda_brl)}</td></tr>
-            <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custo_total - r.cif_brl - r.imp_custo - r.taxas_fixas - r.taxas_usd_brl + parseFloat(document.getElementById('custos_diversos').value||0))}</td></tr>
+            <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custos_div)}</td></tr>
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
             <tr class="destaque-row"><td>CUSTO TOTAL</td><td class="num">${fmtR(r.custo_total)}</td></tr>
           </table>
         </div>
       </div>
+      ${r.detalhe_diferenca_real && r.detalhe_diferenca_real.length ? `
+      <div class="resultado">
+        <div class="resultado-header"><h2>💵 Apuração de Lucro Real</h2></div>
+        <div class="resultado-body">
+          <table class="calc-table">
+            ${r.detalhe_diferenca_real.map(d => `<tr>
+              <td>${d.label} — cobrado ${fmtR(d.cobrado)} / real ${fmtR(d.real)}</td>
+              <td class="num" style="color:${d.diferenca>=0?'var(--ok)':'var(--err)'}">${d.diferenca>=0?'+':''}${fmtR(d.diferenca)}</td>
+            </tr>`).join('')}
+            <tr class="total-row"><td>Diferença total</td><td class="num" style="color:${r.diferenca_taxas_real>=0?'var(--ok)':'var(--err)'}">${r.diferenca_taxas_real>=0?'+':''}${fmtR(r.diferenca_taxas_real)}</td></tr>
+            <tr class="destaque-row"><td>LUCRO REAL</td><td class="num" style="color:var(--ok);font-weight:800;">${fmtR(r.lucro_real)} (${fmtP(r.pct_lucro_real)})</td></tr>
+          </table>
+        </div>
+      </div>` : ''}
       <div class="resultado">
         <div class="resultado-header"><h2>📤 Faturamento / NF Saída</h2></div>
         <div class="resultado-body">
@@ -1205,6 +1787,7 @@ function renderResultado(r) {
     </div>
 
     ${notas_serv_html}
+    ${resumoStHtml}
     ${parcelamento_html}
     ${mix_html}
   `;
@@ -1216,61 +1799,336 @@ async function exportarExcel() {
   showToast('Gerando planilha...','info');
   try {
     const r = _ultimoResultado;
-    const fmtR = v => parseFloat(v.toFixed(2));
-    const rows = [
-      ['IMPAK — Simulação de Importação', '', '', ''],
-      ['Cliente', r.cliente||'—', 'Data', new Date().toLocaleDateString('pt-BR')],
-      ['NCM', r.ncm, 'UF Destino', r.uf],
-      ['Produto', r.tipo, 'Câmbio USD', r.cambio],
-      ['Tipo Importação', r.tipo, 'Containers', r.containers],
-      [],
-      ['── CIF ──', '', '', ''],
-      ['FOB USD', r.fob_usd, 'FOB BRL', fmtR(r.fob_brl)],
-      ['Frete USD', r.frete_usd, 'Frete BRL', fmtR(r.frete_brl)],
-      ['Seguro Compra BRL (interno)', fmtR(r.seguro_brl), 'Seguro Venda BRL (cliente)', fmtR(r.seguro_venda_brl)],
-      ['CIF Total BRL', '', fmtR(r.cif_brl), ''],
-      [],
-      ['── IMPOSTOS ENTRADA ──', '', '', ''],
-      ['II', fmtR(r.II), 'IPI-E', fmtR(r.IPI_e)],
-      ['PIS-E', fmtR(r.PIS_e), 'COFINS-E', fmtR(r.COFINS_e)],
-      ['RBC', fmtR(r.RBC), 'ICMS-E', fmtR(r.ICMS_e)],
-      [],
-      ['── CUSTO ──', '', '', ''],
-      ['Total Taxas', fmtR(r.total_taxas), 'CUSTO TOTAL', fmtR(r.custo_total)],
-      [],
-      ['── FATURAMENTO ──', '', '', ''],
-      ['Vlr. Produto', fmtR(r.vlr_produto), 'IPI-S', fmtR(r.IPI_s)],
-      ['ICMS Normal', fmtR(r.ICMS_nfe), 'ICMS ST', fmtR(r.icms_st)],
-      ['ICMS Próprio', fmtR(r.ICMS_proprio), '', ''],
-      ['Valor Total NF', fmtR(r.vlr_total_nfe), '', ''],
-      ['Lucro Bruto', fmtR(r.lucro_bruto), `${r.pct_lucro.toFixed(2)}%`, ''],
-      ['Fator', r.fator.toFixed(4), '', ''],
-    ];
-
-    if(r.mix_result && r.mix_result.length) {
-      rows.push([]);
-      rows.push(['── MIX DE PRODUTOS ──','','','','']);
-      rows.push(['Medida','Pattern','Qtd','FOB Unit US$','Vlr Unit R$','Total R$']);
-      r.mix_result.forEach(it => rows.push([it.medida, it.pat||'—', it.qtd, it.preco.toFixed(2), fmtR(it.vlr_unit_brl), fmtR(it.total_brl)]));
-    }
-
-    // XLSX já é carregado antecipadamente no <head> (ver comentário lá) —
-    // gerar e baixar o arquivo de forma síncrona, sem esperar onload de CDN,
-    // evita o erro "WebKitBlobResource error 1" no Safari.
+    const fmtR = v => parseFloat((v||0).toFixed(2));
     if(typeof XLSX === 'undefined'){
       showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
       return;
     }
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [20,15,20,15].map(w => ({wch:w}));
-    XLSX.utils.book_append_sheet(wb, ws, 'Simulação');
-    const nome = `IMPAK_Simulação_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const incluirDemonstrativo = document.getElementById('exp-demonstrativo').checked;
+    const incluirCliente = document.getElementById('exp-cliente').checked;
+    if(!incluirDemonstrativo && !incluirCliente){
+      showToast('Marque pelo menos uma aba pra exportar','err'); return;
+    }
+
+    // ── ABA DEMONSTRATIVO (interno) — layout espelhado na aba CAPA da planilha padrão ──
+    if(incluirDemonstrativo){
+      const cst = r.cenarios.com_st, sst = r.cenarios.sem_st;
+      const rows = [
+        [(r.tipo||'').toUpperCase()+' — IMPORTAÇÃO', '', '', ''],
+        [`DEMONSTRATIVO DO PROCESSO — ${r.cliente||'—'}`, '', '', ''],
+        [],
+        ['Cliente:', r.cliente||'—', '', ''],
+        ['Data:', new Date().toLocaleDateString('pt-BR'), 'Quantidade:', (r.mix_result||[]).reduce((a,it)=>a+it.qtd,0)],
+        ['Produto:', r.tipo, 'Total FOB:', r.fob_usd],
+        ['Marca:', (_mix && _mix.forn) ? _mix.forn : '—', '', ''],
+        ['NCM:', r.ncm, 'Containers:', r.containers],
+        ['UF Destino:', r.uf, '', ''],
+        [],
+        ['DÓLAR', r.cambio, 'CUSTO EM DÓLAR', 'VALORES EM REAIS'],
+        ['Valor FOB', r.fob_usd, r.fob_usd, fmtR(r.fob_brl)],
+        ['Frete', r.frete_usd, r.frete_usd, fmtR(r.frete_brl)],
+        ['Seguro', fmtR(r.seguro_compra_usd), fmtR(r.seguro_compra_usd), fmtR(r.seguro_brl)],
+        ['Taxa do C.E.', r.taxa_ce, r.taxa_ce, fmtR(r.taxa_ce*r.cambio)],
+        ['Total do CIF', '', '', fmtR(r.cif_brl)],
+        [],
+        ['TRIBUTOS', '', '', ''],
+        ['Alíquota I.I.', pct(r.t.ii), '', fmtR(r.II)],
+        ['Alíquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e)],
+        ['Alíquota PIS', pct(r.t.pis_e), '', fmtR(r.PIS_e)],
+        ['Alíquota COFINS', pct(r.t.cofins_e), '', fmtR(r.COFINS_e)],
+        ['Alíquota IBS', pct(r.t.ibs), '', fmtR(r.IBS_e)],
+        ['Alíquota CBS', pct(r.t.cbs), '', fmtR(r.CBS_e)],
+        ['Dumping', '', '', fmtR(r.DUMP)],
+        ['TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e+r.DUMP)],
+        [],
+        ['CRÉDITOS DE ENTRADA (recuperáveis)', '', '', ''],
+        ['IPI', '', '', fmtR(-r.IPI_e)],
+        ['PIS', '', '', fmtR(-r.PIS_e)],
+        ['COFINS', '', '', fmtR(-r.COFINS_e)],
+        ['IBS', '', '', fmtR(-r.IBS_e)],
+        ['CBS', '', '', fmtR(-r.CBS_e)],
+        ['TOTAL DOS CRÉDITOS', '', '', fmtR(-(r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e))],
+        [],
+        ['DESPESAS ADUANEIRAS E OPERACIONAIS', '', '', ''],
+        ['Taxa SISCOMEX', '', '', fmtR(r.txOp.fixas.siscomex*r.containers)],
+        ['A.F.R.M (Marinha Mercante)', '', '', fmtR(r.txOp.fixas.marinha*r.containers)],
+        ['Armazenagem e Movimentação Porto', '', '', fmtR(r.txOp.fixas.armazenagem)],
+        ['Capatazia (THC)', '', '', fmtR(r.txOp.fixas.capatazia*r.containers)],
+        ['Liberação BL', '', '', fmtR(r.txOp.fixas.liberacao_bl*r.containers)],
+        ['Emissão de L.Is', '', '', fmtR(r.txOp.fixas.emissao_li*r.containers)],
+        ['Despachante - SDA', '', '', fmtR((r.txOp.fixas.despachante+r.txOp.fixas.sda)*r.containers)],
+        ['Lavação Container', '', '', fmtR(r.txOp.fixas.lavacao*r.containers)],
+        ['Administrativo', '', '', fmtR(r.txOp.fixas.administrativo*r.containers)],
+        ['Agente de Carga', '', '', fmtR(r.txOp.fixas.agente*r.containers)],
+        ['Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers)],
+        ['Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl)],
+        ['Custos Diversos', '', '', fmtR(r.custos_div)],
+        ['TOTAL DESPESAS', '', '', fmtR(r.total_taxas)],
+        [],
+        ['CUSTO TOTAL', '', '', fmtR(r.custo_total)],
+        [],
+      ];
+
+      // Bloco de preço de venda — um por cenário (COM ST / SEM ST)
+      function blocoPrecoVenda(nome, c){
+        return [
+          [`PREÇO DE VENDA — ${nome}`, '', '', ''],
+          ['Total dos Produtos', '', '', fmtR(c.vlr_produto)],
+          ['IPI', pct(r.t.ipi), '', fmtR(c.IPI_s)],
+          ['ICMS', pct(r.t.aliq_inter), '', fmtR(c.ICMS_nfe)],
+          ['ICMS S.T', '', '', fmtR(c.icms_st)],
+          ['IBS', pct(r.t.ibs), '', fmtR(c.IBS_s)],
+          ['CBS', pct(r.t.cbs), '', fmtR(c.CBS_s)],
+          ['TOTAL DA NFe', '', '', fmtR(c.vlr_total_nfe)],
+          [],
+          ['PIS', pct(r.t.pis_s), '', fmtR(c.PIS_s)],
+          ['COFINS', pct(r.t.cofins_s), '', fmtR(c.COFINS_s)],
+          ['ICMS Próprio', pct(r.t.icms_prop), '', fmtR(c.ICMS_proprio)],
+          ['Comissão Repr.', '', '', fmtR(c.COM_br)],
+          ['Comissão China (dentro)', '', '', fmtR(c.COM_china_dentro)],
+          ['Lucro Bruto', pctF(c.pct_lucro), '', fmtR(c.lucro_bruto)],
+          [],
+          ['NOTA DE SERVIÇO (fora do preço)', '', '', ''],
+          ['Comissão China (fora)', '', '', fmtR(c.china_fora_val)],
+          [r.boss_nome||'Comissão Boss/Lopes', '', '', fmtR(c.boss_fora_val)],
+          [],
+          ['TOTAL DO PROCESSO', '', '', fmtR(c.faturamento_total)],
+          [],
+        ];
+      }
+      rows.push(...blocoPrecoVenda('COM S.T', cst));
+      rows.push(...blocoPrecoVenda('SEM S.T', sst));
+
+      if(r.detalhe_diferenca_real && r.detalhe_diferenca_real.length){
+        rows.push(['APURAÇÃO DE LUCRO REAL (compra x venda das taxas)', '', '', '']);
+        r.detalhe_diferenca_real.forEach(d => {
+          rows.push([d.label, `Cobrado: ${fmtR(d.cobrado)}`, `Real: ${fmtR(d.real)}`, fmtR(d.diferenca)]);
+        });
+        rows.push(['Diferença total', '', '', fmtR(r.diferenca_taxas_real)]);
+        rows.push(['LUCRO REAL', pctF(r.pct_lucro_real), '', fmtR(r.lucro_real)]);
+        rows.push([]);
+      }
+
+      if(r.mix_result && r.mix_result.length){
+        rows.push(['VALOR UNITÁRIO POR PRODUTO — COM S.T x SEM S.T', '', '', '']);
+        rows.push(['Medida','Pattern','Qtd Total','Preço COM ST (R$)','Preço SEM ST (R$)']);
+        r.mix_result.forEach((it, idx) => {
+          rows.push([it.medida, it.pat||'—', it.qtd, fmtR(cst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl)]);
+        });
+      }
+
+      const wsD = XLSX.utils.aoa_to_sheet(rows);
+      wsD['!cols'] = [32,16,20,16].map(w => ({wch:w}));
+      XLSX.utils.book_append_sheet(wb, wsD, 'Demonstrativo');
+    }
+
+    // ── ABA CLIENTE (comercial) — só mix, preço e total; sem custo/lucro/comissão ──
+    if(incluirCliente){
+      const cst = r.cenarios.com_st, sst = r.cenarios.sem_st;
+      const rows = [
+        [`${r.cliente||'—'}`, '', '', '', ''],
+        ['Data:', new Date().toLocaleDateString('pt-BR'), 'Marca:', (_mix && _mix.forn) ? _mix.forn : '—', ''],
+        [],
+        ['Medida', 'Pattern', 'Condição', 'Qtd', 'Preço Unit (R$)', 'Total (R$)'],
+      ];
+      let totalGeral = 0;
+      (r.mix_result||[]).forEach((it, idx) => {
+        const qComSt = _splitST[it.medida] ?? it.qtd;
+        const qSemSt = it.qtd - qComSt;
+        if(qComSt > 0){
+          const unit = cst.mix[idx].vlr_unit_brl, tot = unit*qComSt;
+          rows.push([it.medida, it.pat||'—', 'Com ST', qComSt, fmtR(unit), fmtR(tot)]);
+          totalGeral += tot;
+        }
+        if(qSemSt > 0){
+          const unit = sst.mix[idx].vlr_unit_brl, tot = unit*qSemSt;
+          rows.push([it.medida, it.pat||'—', 'Sem ST', qSemSt, fmtR(unit), fmtR(tot)]);
+          totalGeral += tot;
+        }
+      });
+      rows.push([]);
+      rows.push(['', '', '', '', 'TOTAL GERAL', fmtR(totalGeral)]);
+
+      const wsC = XLSX.utils.aoa_to_sheet(rows);
+      wsC['!cols'] = [18,14,10,8,16,16].map(w => ({wch:w}));
+      XLSX.utils.book_append_sheet(wb, wsC, 'Cliente');
+    }
+
+    const nome = `IMPAK_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb, nome);
     showToast('✓ Excel exportado','ok');
   } catch(e) {
     showToast('Erro ao exportar: '+e.message,'err');
   }
+}
+function pct(v){ return (v*100).toFixed(2)+'%'; }
+function pctF(v){ return v.toFixed(2)+'%'; }
+
+// ── COTAÇÕES SALVAS (salvar / listar / editar / duplicar / excluir) ────────
+
+// IDs de todo campo do formulário que precisa ser salvo/restaurado pra reabrir
+// a cotação exatamente como ficou. Se adicionar campo novo no formulário,
+// adicionar o id aqui também.
+const CAMPOS_COTACAO = [
+  'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
+  'taxa_seguro_compra','cambio_chegada','produto','origem','uf_destino',
+  'pct_fob_entrada','cambio_fob_entrada','cambio_fob_saldo','cambio_frete',
+  'tipo_importacao','dump_valor','cliente','custos_diversos',
+  'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
+  'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
+  'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
+  'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_tsc',
+  'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao',
+  'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor',
+];
+
+function coletarEstadoFormulario(){
+  const campos = {};
+  CAMPOS_COTACAO.forEach(id => {
+    const el = document.getElementById(id);
+    if(el) campos[id] = el.value;
+  });
+  // Custo real das taxas (real_*) — gerados dinamicamente, não estão em CAMPOS_COTACAO
+  document.querySelectorAll('[id^="real_"]').forEach(el => { campos[el.id] = el.value; });
+  // Checkboxes "auto" (Marinha/Agente) — precisam do estado checked, não do .value
+  // (que pra checkbox é sempre "on"), senão reabrir a cotação sempre volta pro auto.
+  const checkboxes = {};
+  ['auto_marinha','auto_agente'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) checkboxes[id] = el.checked;
+  });
+  return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix, splitST: {..._splitST}, checkboxes };
+}
+
+function aplicarEstadoFormulario(estado){
+  if(!estado) return;
+  Object.entries(estado.campos||{}).forEach(([id,val]) => {
+    const el = document.getElementById(id);
+    if(el) el.value = val;
+  });
+  if(estado.toggles){
+    Object.entries(estado.toggles).forEach(([k,v]) => {
+      if(k==='ttd') setToggleTTD(v); else setToggle(k,v);
+    });
+  }
+  if(estado.togglesInner){
+    Object.entries(estado.togglesInner).forEach(([k,v]) => setToggleInner(k,v));
+  }
+  // Restaura o estado dos checkboxes "auto" (Marinha/Agente). Cotações salvas
+  // antes dessa feature não têm esse campo — mantém o padrão (auto ligado).
+  ['auto_marinha','auto_agente'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const checked = estado.checkboxes ? (estado.checkboxes[id] !== false) : true;
+    el.checked = checked;
+    const campo = id.replace('auto_','');
+    const input = document.getElementById(`tx_${campo}`);
+    if(input){ input.readOnly = checked; input.style.background = checked ? '#f5f5f5' : '#fff'; }
+  });
+  if(typeof atualizarPctFobSaldo === 'function') atualizarPctFobSaldo();
+  _mix = estado.mix || null;
+  if(_mix && _mix.itens && _mix.itens.length) renderMix();
+  _splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
+  if(typeof onProdutoChange === 'function') onProdutoChange();
+  if(typeof onUFChange === 'function') onUFChange();
+}
+
+// Resumo leve pra exibir na lista sem precisar carregar o formulário inteiro.
+function resumoParaLista(r){
+  if(!r) return null;
+  return {
+    tipo: r.tipo, uf: r.uf, containers: r.containers,
+    custo_total: r.custo_total, faturamento: r.faturamento,
+    lucro_bruto: r.lucro_bruto, pct_lucro: r.pct_lucro,
+  };
+}
+
+async function salvarCotacao(){
+  const cliente = (document.getElementById('cliente').value || '').trim();
+  if(!cliente){ showToast('Preencha o cliente antes de salvar', 'err'); return; }
+  const body = {
+    id: _cotacaoAtualId || undefined,
+    cliente,
+    dados: coletarEstadoFormulario(),
+    resumo: resumoParaLista(_ultimoResultado),
+  };
+  try{
+    const r = await fetch('/api/calculador/cotacoes', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if(d.ok){
+      const eraNova = !_cotacaoAtualId;
+      _cotacaoAtualId = d.id;
+      document.getElementById('cotacao-status').textContent = `Cotação salva${eraNova?'':' (atualizada)'} — ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+      showToast(eraNova ? '✓ Cotação criada' : '✓ Cotação atualizada', 'ok');
+    } else {
+      showToast('Erro ao salvar: '+(d.erro||'?'), 'err');
+    }
+  } catch(e){ showToast('Erro ao salvar: '+e.message, 'err'); }
+}
+
+async function abrirListaCotacoes(){
+  document.getElementById('mbg-cotacoes').classList.add('open');
+  const tbody = document.getElementById('cot-lista-body');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr>';
+  try{
+    const r = await fetch('/api/calculador/cotacoes');
+    const d = await r.json();
+    if(!d.ok || !d.cotacoes.length){
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Nenhuma cotação salva ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.cotacoes.map(c => {
+      const res = c.resumo || {};
+      const dt = c.updated_at ? new Date(c.updated_at) : null;
+      const dtTxt = dt ? `${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}` : '—';
+      return `<tr>
+        <td><strong>${c.cliente||'—'}</strong></td>
+        <td>${res.tipo||'—'} / ${res.uf||'—'}</td>
+        <td>${res.custo_total!=null ? fmt(res.custo_total) : '—'}</td>
+        <td>${res.lucro_bruto!=null ? fmt(res.lucro_bruto)+' ('+(res.pct_lucro||0).toFixed(1)+'%)' : '—'}</td>
+        <td style="font-size:11px;color:var(--muted);">${dtTxt}${c.updated_by?' · '+c.updated_by:''}</td>
+        <td><div class="cot-actions">
+          <button onclick="carregarCotacao('${c.id}', false)">✏️ Editar</button>
+          <button onclick="carregarCotacao('${c.id}', true)">📋 Duplicar</button>
+          <button class="danger" onclick="excluirCotacao('${c.id}')">🗑</button>
+        </div></td>
+      </tr>`;
+    }).join('');
+  } catch(e){
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--err);padding:20px;">Erro ao carregar: ${e.message}</td></tr>`;
+  }
+}
+
+function fecharListaCotacoes(){
+  document.getElementById('mbg-cotacoes').classList.remove('open');
+}
+
+async function carregarCotacao(id, duplicar){
+  try{
+    const r = await fetch('/api/calculador/cotacoes/'+id);
+    const d = await r.json();
+    if(!d.ok){ showToast('Erro ao carregar cotação', 'err'); return; }
+    aplicarEstadoFormulario(d.cotacao.dados);
+    _cotacaoAtualId = duplicar ? null : id; // duplicar = próximo salvar cria registro novo
+    document.getElementById('cotacao-status').textContent = duplicar
+      ? 'Duplicada — ainda não salva (salve pra criar uma cópia nova)'
+      : `Editando cotação de ${d.cotacao.cliente}`;
+    fecharListaCotacoes();
+    showToast(duplicar ? '✓ Cotação duplicada no formulário' : '✓ Cotação carregada', 'ok');
+  } catch(e){ showToast('Erro ao carregar: '+e.message, 'err'); }
+}
+
+async function excluirCotacao(id){
+  if(!confirm('Excluir essa cotação? Não dá pra desfazer.')) return;
+  try{
+    const r = await fetch('/api/calculador/cotacoes/'+id, {method:'DELETE'});
+    const d = await r.json();
+    if(d.ok){ showToast('✓ Cotação excluída', 'ok'); abrirListaCotacoes(); }
+    else showToast('Erro ao excluir', 'err');
+  } catch(e){ showToast('Erro ao excluir: '+e.message, 'err'); }
 }
 
 // ── UTILS ─────────────────────────────────────────────────
