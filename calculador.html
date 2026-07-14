@@ -227,7 +227,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
            opcional, se ficar vazio usa o câmbio principal como sempre. -->
       <div class="form-group">
         <label>Câmbio do Frete (se diferente do principal)</label>
-        <input type="number" id="cambio_frete" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+        <input type="number" id="cambio_frete" onchange="onAutoTaxaDepChange()" step="0.0001" placeholder="Vazio = usa o câmbio principal">
       </div>
     </div>
 
@@ -241,17 +241,17 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div class="form-group">
           <label>Frete (USD)</label>
-          <input type="number" id="frete_usd" step="0.01" placeholder="0,00">
+          <input type="number" id="frete_usd" onchange="onAutoTaxaDepChange()" step="0.01" placeholder="0,00">
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label>Taxa C.E. (USD)</label>
-          <input type="number" id="taxa_ce_usd" step="0.01" placeholder="0,00">
+          <input type="number" id="taxa_ce_usd" onchange="onAutoTaxaDepChange()" step="0.01" placeholder="0,00">
         </div>
         <div class="form-group">
           <label>Qtde Containers</label>
-          <input type="number" id="qtde_containers" min="1" value="1">
+          <input type="number" id="qtde_containers" onchange="onAutoTaxaDepChange()" min="1" value="1">
         </div>
       </div>
       <div class="form-row">
@@ -261,7 +261,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div class="form-group">
           <label>Câmbio Abertura do Dia da Chegada</label>
-          <input type="number" id="cambio_chegada" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+          <input type="number" id="cambio_chegada" onchange="onAutoTaxaDepChange()" step="0.0001" placeholder="Vazio = usa o câmbio principal">
         </div>
       </div>
     </div>
@@ -497,10 +497,10 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div class="form-row">
           <div class="form-group"><label>Baixa Pátio (R$)</label><input type="number" id="tx_baixa_patio" step="0.01" value="500"></div>
-          <div class="form-group"><label>Capatazia/THC (R$)</label><input type="number" id="tx_capatazia" step="0.01" value="1100"></div>
+          <div class="form-group"><label>Capatazia/THC (R$)</label><input type="number" id="tx_capatazia" onchange="onAutoTaxaDepChange()" step="0.01" value="1100"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Liberação BL (R$)</label><input type="number" id="tx_liberacao_bl" step="0.01" value="650"></div>
+          <div class="form-group"><label>Liberação BL (R$)</label><input type="number" id="tx_liberacao_bl" onchange="onAutoTaxaDepChange()" step="0.01" value="650"></div>
           <div class="form-group"><label>Despachante (R$)</label><input type="number" id="tx_despachante" step="0.01" value="1650"></div>
         </div>
         <div class="form-row">
@@ -519,23 +519,23 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio de abertura do dia da chegada +2%)</div>
         <div class="form-row">
-          <div class="form-group"><label>Handling at Destination (US$)</label><input type="number" id="tx_handling" step="0.01" value="0"></div>
-          <div class="form-group"><label>Additional Costs (US$)</label><input type="number" id="tx_additional_costs" step="0.01" value="95"></div>
+          <div class="form-group"><label>Handling at Destination (US$)</label><input type="number" id="tx_handling" onchange="onAutoTaxaDepChange()" step="0.01" value="0"></div>
+          <div class="form-group"><label>Additional Costs (US$)</label><input type="number" id="tx_additional_costs" onchange="onAutoTaxaDepChange()" step="0.01" value="95"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Import Logistics (US$)</label><input type="number" id="tx_import_logistics" step="0.01" value="32.16"></div>
+          <div class="form-group"><label>Import Logistics (US$)</label><input type="number" id="tx_import_logistics" onchange="onAutoTaxaDepChange()" step="0.01" value="32.16"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>TRS (US$)</label><input type="number" id="tx_trs" step="0.01" value="19.61"></div>
-          <div class="form-group"><label>TSC (US$)</label><input type="number" id="tx_tsc" step="0.01" value="35"></div>
+          <div class="form-group"><label>TRS (US$)</label><input type="number" id="tx_trs" onchange="onAutoTaxaDepChange()" step="0.01" value="19.61"></div>
+          <div class="form-group"><label>TSC (US$)</label><input type="number" id="tx_tsc" onchange="onAutoTaxaDepChange()" step="0.01" value="35"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Drop Off (US$)</label><input type="number" id="tx_drop_off" step="0.01" value="25"></div>
-          <div class="form-group"><label>ISPS (US$)</label><input type="number" id="tx_isps" step="0.01" value="25"></div>
+          <div class="form-group"><label>Drop Off (US$)</label><input type="number" id="tx_drop_off" onchange="onAutoTaxaDepChange()" step="0.01" value="25"></div>
+          <div class="form-group"><label>ISPS (US$)</label><input type="number" id="tx_isps" onchange="onAutoTaxaDepChange()" step="0.01" value="25"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>IOF (US$)</label><input type="number" id="tx_iof" step="0.01" value="138.66"></div>
-          <div class="form-group"><label>Desconsolidação (US$)</label><input type="number" id="tx_desconsolidacao" step="0.01" value="80"></div>
+          <div class="form-group"><label>Desconsolidação (US$)</label><input type="number" id="tx_desconsolidacao" onchange="onAutoTaxaDepChange()" step="0.01" value="80"></div>
         </div>
       </div>
     </div>
@@ -1034,6 +1034,19 @@ function onToggleAutoTaxa(campo){
   if(_ultimoResultado || document.getElementById('cambio_usd').value) calcular();
 }
 
+// Marinha/AFRMM e Agente de Carga "auto" antes só recalculavam quando o botão
+// CALCULAR era clicado de novo — se o usuário mudasse Frete, Capatazia, Taxa
+// C.E., câmbio de chegada ou qualquer taxa em USD (todos entram nas fórmulas
+// de Marinha/Agente), o campo "auto" ficava mostrando o valor da rodada
+// ANTERIOR até um novo clique em CALCULAR (o que parecia "precisar de 2
+// cliques"). Agora qualquer mudança nesses campos-fonte recalcula tudo na
+// hora, reaproveitando o calcular() já existente (mesma fórmula, sem duplicar
+// lógica) — só dispara se já houver um cálculo anterior ou câmbio preenchido,
+// pra não interromper quem ainda está preenchendo o formulário pela 1ª vez.
+function onAutoTaxaDepChange(){
+  if(_ultimoResultado || document.getElementById('cambio_usd').value) calcular();
+}
+
 function setToggle(key, val) {
   _toggles[key] = val;
   const sim = document.getElementById(`toggle-${key}-sim`);
@@ -1223,8 +1236,11 @@ function calcular() {
   } else {
     fob_brl = fob_usd * cambio;
   }
-  // Frete sempre tem spread/taxa própria — campo opcional, vazio cai no câmbio principal.
-  const cambioFrete = parseFloat(document.getElementById('cambio_frete').value) || cambio;
+  // Frete sempre tem spread/taxa própria — campo opcional. Se vazio, NÃO cai no
+  // câmbio principal puro: usa o mesmo parâmetro das Taxas em USD (destino) —
+  // câmbio de abertura do dia da chegada × 1,02 — já que o frete também é pago
+  // próximo à chegada, não na data de fechamento do câmbio principal.
+  const cambioFrete = parseFloat(document.getElementById('cambio_frete').value) || (cambio_chegada * 1.02);
   const frete_brl  = frete_usd * cambioFrete;
   const taxa_ce_brl= taxa_ce * cambio;
   const seguro_brl = seguro_compra_usd * cambio;
@@ -1504,7 +1520,7 @@ function calcular() {
     ncm, t,
     fob_brl, frete_brl, seguro_brl, seguro_venda_brl, seguro_compra_usd, seguro_venda_usd, cif_brl, base_imp_brl,
     II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
-    taxas_fixas, taxas_usd_brl, total_taxas, custos_div,
+    taxas_fixas, taxas_usd_brl, seguro_dif_brl, total_taxas, custos_div,
     imp_custo, custo_total,
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s, usoConsumo,
     COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
@@ -1740,7 +1756,9 @@ function renderResultado(r) {
             <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
             <tr><td>Taxa Seguro de Venda</td><td class="num">${fmtR(r.seguro_venda_brl)}</td></tr>
+            <tr><td>Seguro (Diferença)</td><td class="num">${fmtR(r.seguro_dif_brl)}</td></tr>
             <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custos_div)}</td></tr>
+            ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
             <tr class="destaque-row"><td>CUSTO TOTAL</td><td class="num">${fmtR(r.custo_total)}</td></tr>
           </table>
@@ -1863,7 +1881,10 @@ async function exportarExcel() {
         ['Agente de Carga', '', '', fmtR(r.txOp.fixas.agente*r.containers)],
         ['Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers)],
         ['Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl)],
+        ['Taxa Seguro de Venda', '', '', fmtR(r.seguro_venda_brl)],
+        ['Seguro (Diferença)', '', '', fmtR(r.seguro_dif_brl)],
         ['Custos Diversos', '', '', fmtR(r.custos_div)],
+        ...(r.DUMP > 0 ? [['Dumping', '', '', fmtR(r.DUMP)]] : []),
         ['TOTAL DESPESAS', '', '', fmtR(r.total_taxas)],
         [],
         ['CUSTO TOTAL', '', '', fmtR(r.custo_total)],
