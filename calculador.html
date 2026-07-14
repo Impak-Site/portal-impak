@@ -1521,18 +1521,28 @@ function calcular() {
   const fator = fatorNfe;
 
   // Mix unitário — preço por medida em cada cenário (COM ST e SEM ST), usando
-  // o vlr_produto de CADA cenário (mesmo custo_total, fator NFe pode diferir
+  // o valor CHEIO de cada cenário (mesmo custo_total, fator NFe pode diferir
   // porque o alvo de lucro é resolvido separadamente pra cada um).
+  // FIX: antes ratejava só o vlr_produto (campo "valor do produto" da NFe,
+  // ANTES de IPI/ICMS-ST/PIS-S/COFINS-S/IBS-S/CBS-S) — isso fazia o Preço
+  // Unitário do Mix não bater com o Total Operação do Resumo por Cenário
+  // (confirmado com o usuário: o preço do Mix deve ser o valor cheio por
+  // pneu, batendo com "Valor Impak" do resumo — tudo que o cliente paga
+  // pelo produto, exceto a Comissão China/BOSS que é nota de serviço à
+  // parte, fora do preço).
   const mix_itens = _mix?.itens || [];
-  function calcularMixCenario(vlrProdutoCenario){
+  function calcularMixCenario(valorCheioCenario){
     return mix_itens.map(it => {
-      const vlr_unit = vlrProdutoCenario / (fob_usd || 1) * it.preco;
+      const vlr_unit = valorCheioCenario / (fob_usd || 1) * it.preco;
       return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd };
     });
   }
-  const mix_result = calcularMixCenario(vlr_produto); // cenário principal (compat com o resto do sistema)
-  const mix_com_st = calcularMixCenario(cenario_com_st.vlr_produto);
-  const mix_sem_st = calcularMixCenario(cenario_sem_st.vlr_produto);
+  const valorImpakPrincipal = faturamento - china_fora_val - boss_fora_val;
+  const valorImpakComSt = cenario_com_st.faturamento_total - cenario_com_st.china_fora_val - cenario_com_st.boss_fora_val;
+  const valorImpakSemSt = cenario_sem_st.faturamento_total - cenario_sem_st.china_fora_val - cenario_sem_st.boss_fora_val;
+  const mix_result = calcularMixCenario(valorImpakPrincipal); // cenário principal (compat com o resto do sistema)
+  const mix_com_st = calcularMixCenario(valorImpakComSt);
+  const mix_sem_st = calcularMixCenario(valorImpakSemSt);
 
   // ── Apuração de Lucro Real (compra x venda das Taxas Operacionais) ──
   // O Lucro Bruto acima assume que pagamos exatamente o que cobramos em cada
