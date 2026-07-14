@@ -2736,6 +2736,11 @@ async function salvarContato(){
       showToast('✓ Contato salvo','ok');
       fecharModalContatoEdit();
       await carregarContatos();
+    } else if(d.duplicado_id){
+      // Trava de duplicidade (ver POST /api/contatos no server) — não é bem
+      // um "erro" do sistema, é um aviso de negócio, por isso toast 'warn'
+      // em vez de 'err' e sem o prefixo "Erro:".
+      showToast(d.erro || 'Já existe um cadastro parecido com esse.', 'warn');
     } else {
       showToast('Erro: '+(d.erro||''),'err');
     }
