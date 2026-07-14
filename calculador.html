@@ -364,7 +364,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
       <div class="form-group" style="position:relative;">
         <label>Cliente</label>
         <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)">
-        <div id="cliente-calc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
+        <div id="cliente-calc-dropdown" style="display:none;position:fixed;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
     </div>
 
@@ -822,6 +822,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── CÂMBIO ───────────────────────────────────────────────
 let _acClienteCalcTimer = null;
+function posicionarClienteCalcDropdown(input, dd){
+  // position:fixed é relativo à viewport (não é recortado pelo overflow-y:auto
+  // da sidebar), então a posição precisa ser calculada em pixels reais da tela
+  // toda vez que o dropdown aparece.
+  const rect = input.getBoundingClientRect();
+  dd.style.top = (rect.bottom) + 'px';
+  dd.style.left = rect.left + 'px';
+  dd.style.width = rect.width + 'px';
+}
 async function autocompletarClienteCalc(input){
   clearTimeout(_acClienteCalcTimer);
   const q = input.value.trim();
@@ -841,6 +850,7 @@ async function autocompletarClienteCalc(input){
           style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);"
           onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
       }).join('');
+      posicionarClienteCalcDropdown(input, dd);
       dd.style.display='block';
     }catch(e){ dd.style.display='none'; }
   }, 300);
@@ -849,6 +859,13 @@ document.addEventListener('click', e=>{
   const dd = document.getElementById('cliente-calc-dropdown');
   if(dd && !dd.contains(e.target) && e.target.id!=='cliente') dd.style.display='none';
 });
+// Some junto se a sidebar (ou a janela) rolar com o dropdown aberto — evita
+// ele ficar "flutuando" numa posição errada, já que position:fixed não
+// acompanha o scroll do container por conta própria.
+document.addEventListener('scroll', e=>{
+  const dd = document.getElementById('cliente-calc-dropdown');
+  if(dd && dd.style.display==='block') dd.style.display='none';
+}, true);
 
 async function buscarCambio() {
   const el = document.getElementById('cambio_usd');
@@ -1326,7 +1343,11 @@ function calcular() {
   // FIX (docx item 9): faltava somar o Seguro Venda no Total Taxas — confirmado
   // via soma manual das 15 linhas de Taxas Operacionais no demonstrativo real
   // (R$14.556,98 vs R$13.997,70 exibido, diferença R$559,27 = seguro_venda_brl).
-  const total_taxas = taxas_fixas + taxas_usd_brl + seguro_dif_brl + DUMP + seguro_venda_brl;
+  // "Seguro (Diferença)" foi removido do total — o usuário confirmou que só a
+  // Taxa de Seguro de Venda (seguro_venda_brl) deve compor as Taxas Operacionais;
+  // seguro_dif_brl continua calculado (usado em outro lugar/relatório interno),
+  // só não entra mais na soma nem aparece na tabela de Taxas Operacionais.
+  const total_taxas = taxas_fixas + taxas_usd_brl + DUMP + seguro_venda_brl;
 
   // ── 5. Custo total (apenas não recuperáveis) ──
   const imp_custo   = II; // RBC NÃO entra como custo — é só referência/crédito, confirmado com exemplo real
@@ -1759,7 +1780,6 @@ function renderResultado(r) {
             <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
             <tr><td>Taxa Seguro de Venda</td><td class="num">${fmtR(r.seguro_venda_brl)}</td></tr>
-            <tr><td>Seguro (Diferença)</td><td class="num">${fmtR(r.seguro_dif_brl)}</td></tr>
             <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custos_div)}</td></tr>
             ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
@@ -1885,7 +1905,6 @@ async function exportarExcel() {
         ['Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers)],
         ['Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl)],
         ['Taxa Seguro de Venda', '', '', fmtR(r.seguro_venda_brl)],
-        ['Seguro (Diferença)', '', '', fmtR(r.seguro_dif_brl)],
         ['Custos Diversos', '', '', fmtR(r.custos_div)],
         ...(r.DUMP > 0 ? [['Dumping', '', '', fmtR(r.DUMP)]] : []),
         ['TOTAL DESPESAS', '', '', fmtR(r.total_taxas)],
