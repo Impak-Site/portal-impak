@@ -1260,7 +1260,14 @@ function calcular() {
   const cif_brl    = fob_brl + frete_brl + seguro_brl;
 
   // ── 3. Base de impostos ──
-  const base_imp_brl = fob_brl + frete_brl + seguro_brl + taxa_ce_brl;
+  // FIX: base de II/IPI/PIS-E/COFINS-E/RBC/ICMS-E/IBS/CBS deve usar sempre o
+  // câmbio único da simulação (mesma fórmula documentada da planilha, igual à
+  // usada no preview de Armazenagem em calcularArmazenagemUI() acima) — e NÃO
+  // o câmbio específico de FOB parcelado nem o câmbio de abertura da chegada
+  // usados em fob_brl/frete_brl (esses só valem pro custo real/CIF, porque a
+  // Receita usa a PTAX/câmbio de referência único na Declaração de Importação,
+  // não o câmbio comercial negociado por parcela).
+  const base_imp_brl = (fob_usd + frete_usd) * cambio + seguro_brl + taxa_ce_brl;
 
   // ── 3. Impostos de entrada (créditos) ──
   const II       = base_imp_brl * t.ii;
