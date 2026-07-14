@@ -1372,8 +1372,14 @@ function calcular() {
     // SEM S.T. A redução (K20/RBC) só entra na BASE ICMS ST (linha L20), que só
     // existe no cenário COM S.T. Produtos SEM S.T não podem reduzir a base.
     const vlr_produto_reduzido = vlr_produto - (vlr_produto * t.rbc);
-    // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP), usa vlr_produto cheio
-    const ICMS_nfe_normal = vlr_produto * t.aliq_inter;
+    // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP). Regra de negócio
+    // (confirmada com o usuário, substitui a suposição anterior): no cenário
+    // SEM S.T NUNCA reduz a base (usa vlr_produto cheio, igual antes). No
+    // cenário COM S.T, reduz a base (RBC) em TODOS os estados, EXCETO Santa
+    // Catarina (SC) — SC continua usando o valor cheio mesmo com S.T.
+    const usaBaseReduzidaIcmsNormal = temStCenario && uf !== 'SC';
+    const baseIcmsNormal = usaBaseReduzidaIcmsNormal ? vlr_produto_reduzido : vlr_produto;
+    const ICMS_nfe_normal = baseIcmsNormal * t.aliq_inter;
     // ICMS Próprio — alíquota da coluna ICMS-Próprio da tabela NCM (ex: 1,4%), abate direto do lucro
     // (esse NÃO leva redução — confirmado com o exemplo real, usa vlr_produto cheio)
     const ICMS_proprio = vlr_produto * aliq_icms_nfe;
@@ -1434,7 +1440,7 @@ function calcular() {
     const pct_lucro = faturamento_total !== 0 ? (lucro_bruto / faturamento_total) * 100 : 0;
 
     return {
-      vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, icms_st, base_st, vlr_total_nfe,
+      vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
       china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
       valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
@@ -1475,18 +1481,20 @@ function calcular() {
   const tem_st_toggle = _toggles.st === 'SIM';
   const cadeia = tem_st_toggle ? cenario_com_st : cenario_sem_st;
 
-  const { vlr_produto, IPI_s, ICMS_nfe, icms_st, base_st, vlr_total_nfe,
+  const { vlr_produto, IPI_s, ICMS_nfe, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
           china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
           valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
           faturamento_total: faturamento, lucro_bruto, pct_lucro, fatorNfe } = cadeia;
 
   const ICMS_nfe_final = ICMS_proprio; // mantém nome legado abaixo
-  // Base ICMS Normal: o IPI só se junta ao Vlr.Produto na base quando a
-  // operação é de Uso e Consumo (regra fiscal — em revenda normal o IPI
-  // não compõe a base do ICMS).
+  // Base ICMS Normal: parte de baseIcmsNormal (já considera a redução de 8,5%
+  // quando aplicável — COM S.T, exceto SC — calculada dentro de calcularCadeiaSaida,
+  // pra sempre bater com o valor realmente usado no cálculo de ICMS_nfe). O IPI só
+  // se soma quando a operação é de Uso e Consumo (regra fiscal — em revenda normal
+  // o IPI não compõe a base do ICMS).
   const usoConsumo = _toggles.uc === 'SIM';
-  const base_icms = usoConsumo ? (vlr_produto + IPI_s) : vlr_produto;
+  const base_icms = usoConsumo ? (baseIcmsNormal + IPI_s) : baseIcmsNormal;
   const fator = fatorNfe;
 
   // Mix unitário — preço por medida em cada cenário (COM ST e SEM ST), usando
