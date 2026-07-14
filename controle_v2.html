@@ -3104,6 +3104,7 @@ async function extrairComIA(input){
   "nf_saida_data": "YYYY-MM-DD",  // data de emissão da NF de saída
   "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
   "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
+  "encomendante_cnpj": "",  // CNPJ do encomendante/adquirente — ver instruções específicas na seção do Comprovante de Importação/Extrato da DI abaixo. Deixar "" se o documento não for esse tipo ou não trouxer esse campo.
   "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
   "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "taxa_cambio":0}. Deixar [] para qualquer outro tipo de documento.
   "free_time": null
@@ -3118,6 +3119,7 @@ Se o documento for um Comprovante de Importação ou Extrato da Declaração de 
 - canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
 - data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
 - se o Extrato da DI trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
+- extrair "encomendante_cnpj": o CNPJ do ENCOMENDANTE/ADQUIRENTE da operação (campos comuns: "Encomendante", "Adquirente", "Importador por conta e ordem de" — em operações de importação por conta e ordem ou por encomenda) — extrair só os 14 dígitos do CNPJ, sem pontuação. Se o documento não mostrar essa figura (importação direta, sem encomendante/adquirente distinto do importador), deixar "".
 Se o documento for uma Nota Fiscal (NF-e brasileira):
 - todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
 - se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*. O destinatário desta NF é a própria IMPAK — não usar como "cliente".
@@ -3201,6 +3203,30 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
     if(extracted.pi_numero)    extracted.pi_numero    = extracted.pi_numero.replace(/\s*\(.*?\)\s*/g,'').trim();
     if(!extracted.free_time)   delete extracted.free_time;
+
+    // CNPJ do encomendante (extraído do Comprovante de Importação/Extrato da
+    // DI) — cruza com o cadastro de contatos pra usar o nome OFICIAL já
+    // cadastrado em vez de confiar na grafia exata do documento (evita
+    // "cliente" divergente por causa de abreviação/acento/razão social
+    // desatualizada entre documentos do mesmo cliente real).
+    if(extracted.encomendante_cnpj){
+      const cnpjDigits = String(extracted.encomendante_cnpj).replace(/\D/g,'');
+      if(cnpjDigits.length === 14){
+        try{
+          const rContato = await fetch('/api/contatos?q='+cnpjDigits+'&limit=5');
+          const dContato = await rContato.json();
+          const match = (dContato.contatos||[]).find(c => (c.cnpj||'') === cnpjDigits);
+          if(match){
+            extracted.cliente = match.razao_social;
+            showToast(`Encomendante identificado pelo cadastro: ${match.razao_social}`,'ok');
+          } else {
+            const cnpjFmt = cnpjDigits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
+            showToast(`CNPJ do encomendante (${cnpjFmt}) não está cadastrado — cadastre em Cadastros pra reconhecimento automático`,'warn');
+          }
+        }catch(e){ /* falha na consulta de cadastro não deve travar o resto da extração */ }
+      }
+      delete extracted.encomendante_cnpj; // não é campo de input direto no formulário
+    }
 
     // Quando o documento é um CE Mercante, o navio/armador/etd que ele traz
     // são mais confiáveis que os do BL (refletem o navio de chegada real, já
