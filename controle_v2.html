@@ -1193,14 +1193,22 @@ function render(){
 // MODAL — ABRIR / NOVO
 // ════════════════════════════════════════════════════════════════
 function abrirNovo(){
-  _editando = { fase:'PI', free_time:21 };
+  // _camposIA rastreia, NESTA sessão de edição, quais campos foram preenchidos
+  // pela última leitura de IA (não pelo usuário digitando) — usado por
+  // extrairComIA() pra saber se pode corrigir um campo já preenchido quando
+  // um documento novo (ex: o certo, depois de um errado) trouxer outro valor.
+  // Não é salvo no banco (propositalmente prefixado com _, igual _fasePrevista
+  // e _savedAt já removidos antes do save) — reseta a cada vez que o processo
+  // é reaberto, o que cobre o caso real relatado (corrigir dentro da mesma
+  // sessão de edição, logo após perceber o documento errado).
+  _editando = { fase:'PI', free_time:21, _camposIA: {} };
   renderModal();
 }
 
 async function abrirProcesso(id){
   const proc = _processos.find(p=>p.id===id);
   if(!proc) return;
-  _editando = {...proc};
+  _editando = {...proc, _camposIA: {}};
   renderModal();
 }
 
@@ -1208,6 +1216,19 @@ function fecharModal(){
   _editando = null;
   document.getElementById('modal-bg').classList.remove('open');
 }
+
+// Se o usuário editar manualmente um campo que a IA tinha preenchido antes,
+// esse campo "vira dele" — deixa de poder ser sobrescrito automaticamente por
+// uma leitura de IA seguinte, protegendo a correção manual do usuário. Só
+// reage a eventos reais do teclado/mouse: setar .value via JS (como a própria
+// extração faz) não dispara 'input', então isso nunca conflita com a IA.
+document.addEventListener('input', function(e){
+  if(!_editando || !_editando._camposIA) return;
+  const id = e.target && e.target.id;
+  if(!id || !id.startsWith('f_')) return;
+  const campo = id.slice(2);
+  if(_editando._camposIA[campo]) delete _editando._camposIA[campo];
+});
 
 // ════════════════════════════════════════════════════════════════
 // MODAL — RENDER
@@ -3248,6 +3269,18 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete'];
     const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
+    // camposIA (ver abrirNovo/abrirProcesso) guarda quais campos a última
+    // leitura de IA preencheu NESTA sessão — se o campo já tiver um valor mas
+    // veio da própria IA (não foi digitado pelo usuário), uma leitura nova
+    // pode corrigi-lo. Ex.: documento errado preenche "fornecedor" errado →
+    // usuário percebe e sobe o documento certo → agora corrige normalmente,
+    // em vez de ficar bloqueado pela regra "só preenche vazio". Se o usuário
+    // tiver editado esse campo manualmente nesse meio tempo, o listener de
+    // 'input' em fecharModal() já removeu o campo daqui, então ele volta a
+    // ficar protegido como sempre foi.
+    if(!_editando._camposIA) _editando._camposIA = {};
+    const foiPreenchidoPorIA = campo => !!_editando._camposIA[campo];
+    const marcarComoIA = campo => { _editando._camposIA[campo] = true; };
     Object.keys(extracted).forEach(campo=>{
       let val = extracted[campo];
       if(!val) return;
@@ -3255,7 +3288,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       const el = document.getElementById('f_'+campo);
       if(!el) return;
       if(camposMoedaIA.includes(campo)) val = exibirMoeda(val);
-      const podeSobrescrever = camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo);
+      const podeSobrescrever = camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo) || foiPreenchidoPorIA(campo);
       // Porto Destino é <select> agora — não aceita texto livre direto.
       // Normaliza pro código (ITJ/IOA/NVT) e, se não bater com nenhum,
       // reconstrói as opções incluindo o valor extraído como fallback
@@ -3266,7 +3299,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
           if(!PORTOS_DESTINO.some(p=>p.codigo===normalizado)) el.innerHTML = gerarOptionsPortoDestino(normalizado);
           else el.value = normalizado;
           el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
-          preenchidos++;
+          preenchidos++; marcarComoIA(campo);
           setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
         }
         return;
@@ -3283,7 +3316,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
             if(outro){ outro.value = val; outro.style.display = 'block'; }
           }
           el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
-          preenchidos++;
+          preenchidos++; marcarComoIA(campo);
           setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
         }
         return;
@@ -3293,15 +3326,15 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
           if(!el.value || podeSobrescrever){
             el.value = val;
             el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
-            preenchidos++;
+            preenchidos++; marcarComoIA(campo);
             setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
           }
         } else {
           const elEta = document.getElementById('f_eta');
-          if(elEta && !elEta.value){
+          if(elEta && (!elEta.value || foiPreenchidoPorIA('eta'))){
             elEta.value = val;
             elEta.style.borderColor='var(--ok)'; elEta.style.background='rgba(22,163,74,.04)';
-            preenchidos++;
+            preenchidos++; marcarComoIA('eta');
             setTimeout(()=>{ elEta.style.borderColor=''; elEta.style.background=''; }, 3000);
           }
         }
@@ -3311,7 +3344,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         el.value = val;
         el.style.borderColor='var(--ok)';
         el.style.background='rgba(22,163,74,.04)';
-        preenchidos++;
+        preenchidos++; marcarComoIA(campo);
         setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
       }
     });
@@ -3326,12 +3359,12 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // confiável e pode corrigir um container errado de um documento anterior.
     if(extracted.container){
       const primeiroVazio = !_containers.length || (!_containers[0].numero);
-      if(primeiroVazio || ehBlOuDi){
+      if(primeiroVazio || ehBlOuDi || foiPreenchidoPorIA('container')){
         if(!_containers.length) _containers.push({numero:'', tipo:'40HC', lacre:''});
         _containers[0].numero = extracted.container;
         if(extracted.lacre) _containers[0].lacre = extracted.lacre;
         renderMultiContainers();
-        preenchidos++;
+        preenchidos++; marcarComoIA('container');
       }
     }
 
