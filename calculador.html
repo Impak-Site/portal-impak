@@ -223,12 +223,6 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
         </div>
         <div style="font-size:10px;color:var(--dim);margin:-4px 0 8px;">Ex: Eudemon/Rovelo — entrada no pedido, saldo de 14 a 10 dias antes da chegada, cada um com o câmbio do dia do pagamento.</div>
       </div>
-      <!-- Frete sempre tem spread/taxa própria diferente do câmbio principal — campo
-           opcional, se ficar vazio usa o câmbio principal como sempre. -->
-      <div class="form-group">
-        <label>Câmbio do Frete (se diferente do principal)</label>
-        <input type="number" id="cambio_frete" onchange="onAutoTaxaDepChange()" step="0.0001" placeholder="Vazio = usa o câmbio principal">
-      </div>
     </div>
 
     <!-- DADOS DA IMPORTAÇÃO -->
@@ -1236,11 +1230,12 @@ function calcular() {
   } else {
     fob_brl = fob_usd * cambio;
   }
-  // Frete sempre tem spread/taxa própria — campo opcional. Se vazio, NÃO cai no
-  // câmbio principal puro: usa o mesmo parâmetro das Taxas em USD (destino) —
-  // câmbio de abertura do dia da chegada × 1,02 — já que o frete também é pago
-  // próximo à chegada, não na data de fechamento do câmbio principal.
-  const cambioFrete = parseFloat(document.getElementById('cambio_frete').value) || (cambio_chegada * 1.02);
+  // Frete sempre usa o câmbio de abertura do dia da chegada × 1,02 — mesmo
+  // parâmetro das Taxas em USD (destino) e do Seguro Venda, sem campo manual
+  // de override (removido: gerava confusão/divergência quando alguém digitava
+  // um valor ali por engano ou desatualizado, em vez de deixar o sistema
+  // calcular pela regra padrão).
+  const cambioFrete = cambio_chegada * 1.02;
   const frete_brl  = frete_usd * cambioFrete;
   const taxa_ce_brl= taxa_ce * cambio;
   const seguro_brl = seguro_compra_usd * cambio;
@@ -2001,7 +1996,7 @@ function pctF(v){ return v.toFixed(2)+'%'; }
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
   'taxa_seguro_compra','cambio_chegada','produto','origem','uf_destino',
-  'pct_fob_entrada','cambio_fob_entrada','cambio_fob_saldo','cambio_frete',
+  'pct_fob_entrada','cambio_fob_entrada','cambio_fob_saldo',
   'tipo_importacao','dump_valor','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
