@@ -528,7 +528,10 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
           <div class="form-group"><label>ISPS (US$)</label><input type="number" id="tx_isps" onchange="onAutoTaxaDepChange()" step="0.01" value="25"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>IOF (US$)</label><input type="number" id="tx_iof" step="0.01" value="138.66"></div>
+          <div class="form-group">
+            <label>IOF (US$) <span style="font-weight:400;font-size:10px;color:var(--dim);"><input type="checkbox" id="auto_iof" checked onchange="onToggleAutoTaxa('iof')" style="vertical-align:middle;"> auto</span></label>
+            <input type="number" id="tx_iof" step="0.01" value="138.66" readonly style="background:#f5f5f5;">
+          </div>
           <div class="form-group"><label>Desconsolidação (US$)</label><input type="number" id="tx_desconsolidacao" onchange="onAutoTaxaDepChange()" step="0.01" value="80"></div>
         </div>
       </div>
@@ -1310,7 +1313,18 @@ function calcular() {
     document.getElementById('tx_agente').value = agente_auto.toFixed(2);
   }
 
-  // Releitura das taxas operacionais, já com Marinha/Agente atualizados acima
+  // IOF (US$) = (SOMA Taxas USD destino, exceto IOF + FRETE USD) × 3,5%
+  // (planilha MODELO-COM S.T!D35 = SUM(D28:D34,D36,D5)×3,5% — mesmo grupo de
+  // taxas usado no Agente de Carga, mais o Frete; fica em USD, sem câmbio na
+  // própria fórmula — a conversão pra R$ acontece junto com as outras taxas
+  // em USD, no mesmo câmbio de abertura+2%, quando somam taxas_usd_brl).
+  const iof_auto = (somaUsdSemIof + frete_usd) * 0.035;
+  const autoIofChk = document.getElementById('auto_iof');
+  if(!autoIofChk || autoIofChk.checked){
+    document.getElementById('tx_iof').value = iof_auto.toFixed(2);
+  }
+
+  // Releitura das taxas operacionais, já com Marinha/Agente/IOF atualizados acima
   const txOp = lerTaxasOperacionais();
 
   // ICMS Entrada — fórmula real da planilha (MODELO-COM S.T!F14): ((BASE IMP. +
