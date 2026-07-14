@@ -776,6 +776,28 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
   }
 });
 
+// Histórico de alterações de um processo — faltava esta rota: o front-end
+// (controle_v2.html) já chamava GET /api/controle/v2/processo/:id/log desde
+// sempre, mas como a rota nunca existiu, a aba "Histórico" sempre recebia
+// 404 e mostrava "sem histórico" mesmo com registros salvos normalmente na
+// tabela controle_log (o insert em POST /api/controle/v2/processo sempre
+// funcionou — só faltava como ler de volta).
+app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_log')
+      .select('usuario, campo, valor_antes, valor_depois, created_at')
+      .eq('processo_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, log: data || [] });
+  } catch (e) {
+    console.error('controle v2 log erro:', e.message);
+    res.json({ ok: true, log: [] });
+  }
+});
+
 app.delete('/api/controle/v2/processo/:id', auth('processos'), async (req, res) => {
   try {
     const { error } = await sb().from('controle_processos').delete().eq('id', req.params.id);

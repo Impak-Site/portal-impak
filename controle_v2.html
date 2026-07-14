@@ -3063,6 +3063,8 @@ async function extrairComIA(input){
   "mbl": "",
   "container": "",  // número do container (ex: TCKU7973104)
   "lacre": "",  // número do lacre/selo do container (ex: 22992857) — geralmente aparece junto ao número do container no BL/CE Mercante
+  "valor_frete": 0,  // valor do frete marítimo — extrair de: BL (campo "Freight", "Ocean Freight", "Freight Charges", geralmente no rodapé/seção de charges do BL — usar o valor "Prepaid" OU "Collect", o que estiver preenchido com valor) ou CE Mercante (campo "Frete"). Se não encontrar um valor de frete explícito no documento, deixar 0.
+  "moeda_frete": "",  // moeda em que o valor_frete veio no documento: "USD", "BRL" ou "EUR". Deixar "" se valor_frete for 0.
   "numero_di": "",  // número da Declaração de Importação — ex: "26/0672265-4"
   "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
@@ -3244,7 +3246,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     delete extracted.cambio_referencias; // tratado à parte acima, nunca vai pro loop genérico
 
     // Preencher campos do formulário
-    const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor'];
+    const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete'];
     const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
     Object.keys(extracted).forEach(campo=>{
       let val = extracted[campo];
