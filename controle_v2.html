@@ -3352,6 +3352,19 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // Atualizar _editando com os valores extraídos
     if(_editando) Object.assign(_editando, extracted);
 
+    // Salva automaticamente no GED do processo o documento que acabou de ser
+    // lido pela IA — antes disso, o único jeito de guardar o arquivo era um
+    // upload manual separado na aba GED, então o documento usado pra extrair
+    // os dados quase nunca ficava de fato anexado ao processo. Reaproveita
+    // uploadArquivosGed() (mesma validação/limite/endpoint do upload manual).
+    // Só roda se o processo já tiver id (já foi salvo ao menos uma vez) —
+    // num processo novo ainda não salvo, o arquivo fica de fora do GED por
+    // enquanto (evita um toast de aviso logo após o sucesso da extração);
+    // o usuário anexa manualmente depois de salvar, como já era possível.
+    if(_editando && _editando.id){
+      uploadArquivosGed([file]);
+    }
+
   } catch(e){
     if(status) status.textContent = '❌ Erro: '+e.message;
     showToast('Erro na extração: '+e.message,'err');
