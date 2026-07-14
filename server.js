@@ -776,6 +776,28 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
   }
 });
 
+// Histórico de alterações de um processo — faltava esta rota: o front-end
+// (controle_v2.html) já chamava GET /api/controle/v2/processo/:id/log desde
+// sempre, mas como a rota nunca existiu, a aba "Histórico" sempre recebia
+// 404 e mostrava "sem histórico" mesmo com registros salvos normalmente na
+// tabela controle_log (o insert em POST /api/controle/v2/processo sempre
+// funcionou — só faltava como ler de volta).
+app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_log')
+      .select('usuario, campo, valor_antes, valor_depois, created_at')
+      .eq('processo_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, log: data || [] });
+  } catch (e) {
+    console.error('controle v2 log erro:', e.message);
+    res.json({ ok: true, log: [] });
+  }
+});
+
 app.delete('/api/controle/v2/processo/:id', auth('processos'), async (req, res) => {
   try {
     const { error } = await sb().from('controle_processos').delete().eq('id', req.params.id);
@@ -1226,7 +1248,46 @@ app.post('/api/contatos', auth('processos'), async (req, res) => {
   try {
     const c = req.body;
     if (!c.razao_social) return res.status(400).json({ erro: 'Razão social obrigatória' });
+    const isNovo = !c.id;
     if (!c.id) c.id = require('crypto').randomUUID();
+
+    // Trava de duplicidade — só entra em ação na CRIAÇÃO de um contato novo
+    // (editar um contato existente passa direto, mesmo mantendo o nome).
+    // Considera duplicado quando: (a) o CNPJ informado já existe em outro
+    // cadastro ativo, ou (b) a razão social (ignorando maiúsculas/espaços
+    // extras) já existe ativa NO MESMO TIPO. CNPJs diferentes com o mesmo
+    // nome continuam permitidos de propósito — isso normalmente é
+    // matriz/filial em cidades diferentes, não duplicidade de cadastro
+    // (mesma lógica usada na limpeza dos duplicados existentes).
+    if (isNovo) {
+      const cnpjDigits = (c.cnpj || '').replace(/\D/g, '');
+      const nomeNorm = (c.razao_social || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      const { data: existentes, error: buscaErro } = await sb()
+        .from('contatos_clientes')
+        .select('id, razao_social, cnpj, tipo')
+        .eq('ativo', true);
+      if (buscaErro) throw new Error(buscaErro.message);
+      const duplicado = (existentes || []).find(e => {
+        if (cnpjDigits && (e.cnpj || '') === cnpjDigits) return true;
+        // Duplicidade por NOME só conta quando NENHUM dos dois lados tem
+        // CNPJ pra diferenciar (caso típico: exportador/armador/agente
+        // estrangeiro, sem CNPJ brasileiro). Se qualquer um dos dois tiver
+        // CNPJ e forem diferentes, não bloqueia — é matriz/filial legítima
+        // com o mesmo nome em CNPJs diferentes (mesma regra usada na
+        // limpeza dos duplicados existentes).
+        if (cnpjDigits || e.cnpj) return false;
+        const eNome = (e.razao_social || '').trim().toUpperCase().replace(/\s+/g, ' ');
+        return eNome === nomeNorm && e.tipo === c.tipo;
+      });
+      if (duplicado) {
+        const motivo = cnpjDigits && duplicado.cnpj === cnpjDigits ? 'esse CNPJ' : 'esse nome e tipo';
+        return res.status(409).json({
+          erro: `Já existe um cadastro ativo com ${motivo}: "${duplicado.razao_social}". Edite o cadastro existente em vez de criar outro.`,
+          duplicado_id: duplicado.id,
+        });
+      }
+    }
+
     c.updated_at = new Date().toISOString();
     const { error } = await sb().from('contatos_clientes').upsert(c, { onConflict: 'id' });
     if (error) throw new Error(error.message);
