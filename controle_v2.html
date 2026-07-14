@@ -1641,6 +1641,23 @@ function renderModal(){
 // ════════════════════════════════════════════════════════════════
 // HISTÓRICO — AUDITORIA DE ALTERAÇÕES
 // ════════════════════════════════════════════════════════════════
+// Marcador usado no campo "campo" de uma entrada de log pra indicar que ela
+// não é uma alteração normal de campo, e sim o registro de "a IA leu este
+// documento e preencheu estes campos" (ver extrairComIA() e o render abaixo).
+const LOG_CAMPO_LEITURA_IA = '📄_leitura_ia';
+const LABELS_CAMPOS_IA = {
+  referencia:'Referência', fornecedor:'Fornecedor/Exportador', cliente:'Cliente',
+  itens:'Itens/Produtos', pi_numero:'Nº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
+  pi_incoterm:'Incoterm', pi_pagamento:'Forma de pagamento', etd:'ETD', eta:'ETA',
+  armador:'Armador', navio:'Navio', porto_origem:'Porto de origem', porto_destino:'Porto de destino',
+  hbl:'HBL', mbl:'MBL', container:'Container', lacre:'Lacre', valor_frete:'Valor do frete',
+  moeda_frete:'Moeda do frete', numero_di:'Nº DI', data_registro_di:'Data registro DI',
+  canal:'Canal', data_liberacao:'Data liberação', ci_numero:'Nº CI', ci_valor_usd:'Valor CI (USD)',
+  ci_data:'Data CI', data_chegada:'Data de chegada', ce_master:'CE Master', ce_house:'CE House',
+  ce_data_embarque:'Data embarque (CE)', nf_entrada_numero:'Nº NF entrada', nf_entrada_data:'Data NF entrada',
+  nf_entrada_valor:'Valor NF entrada', nf_saida_numero:'Nº NF saída', nf_saida_data:'Data NF saída',
+  nf_saida_valor:'Valor NF saída', data_devolucao_vazio:'Data devolução vazio',
+};
 async function carregarHistorico(processoId){
   const lista = document.getElementById('historico-lista');
   if(!lista) return;
@@ -1652,16 +1669,20 @@ async function carregarHistorico(processoId){
       lista.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma alteração registrada ainda</div></div>';
       return;
     }
-    lista.innerHTML = '<div class="log-list">' + d.log.map(l=>
-      `<div class="log-item">
-        <div class="log-avatar">${(l.usuario||'?').slice(0,2).toUpperCase()}</div>
+    lista.innerHTML = '<div class="log-list">' + d.log.map(l=>{
+      const isLeituraIA = l.campo === LOG_CAMPO_LEITURA_IA;
+      const texto = isLeituraIA
+        ? ` leu o documento <strong>${esc(l.valor_antes||'?')}</strong> com IA e preencheu: ${esc(l.valor_depois||'—')}`
+        : ` alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}`;
+      return `<div class="log-item">
+        <div class="log-avatar">${isLeituraIA ? '🤖' : esc((l.usuario||'?').slice(0,2).toUpperCase())}</div>
         <div class="log-content">
           <span class="log-user">${esc(l.usuario||'?')}</span>
-          <span class="log-text"> alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}</span>
+          <span class="log-text">${texto}</span>
           <div class="log-time">${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : ''}</div>
         </div>
-      </div>`
-    ).join('') + '</div>';
+      </div>`;
+    }).join('') + '</div>';
   }catch(e){
     lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar histórico.</div>';
   }
@@ -3252,6 +3273,10 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     const ehDI = !!(extracted.numero_di || extracted.data_registro_di);
 
     let preenchidos = 0;
+    // Rastreia quais campos esta LEITURA especifica preencheu (diferente de
+    // _camposIA, que acumula por toda a sessao de edicao) -- usado so pra
+    // registrar no Historico o que essa leitura de documento trouxe.
+    const camposLidosNestaLeitura = [];
 
     // Itens estruturados (Size/Pattern/L.I.S.R./Quantidade por linha da tabela do
     // documento) — populam a LISTA VISUAL de produtos (_produtos), não o campo
@@ -3267,6 +3292,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         });
         renderMultiProdutos();
         preenchidos += _produtos.length;
+        camposLidosNestaLeitura.push('itens');
       }
     }
     delete extracted.itens; // não é um campo de input direto — já tratado acima
@@ -3306,7 +3332,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // ficar protegido como sempre foi.
     if(!_editando._camposIA) _editando._camposIA = {};
     const foiPreenchidoPorIA = campo => !!_editando._camposIA[campo];
-    const marcarComoIA = campo => { _editando._camposIA[campo] = true; };
+    const marcarComoIA = campo => { _editando._camposIA[campo] = true; camposLidosNestaLeitura.push(campo); };
     Object.keys(extracted).forEach(campo=>{
       let val = extracted[campo];
       if(!val) return;
@@ -3420,6 +3446,24 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // num processo novo ainda não salvo, o arquivo fica de fora do GED por
     // enquanto (evita um toast de aviso logo após o sucesso da extração);
     // o usuário anexa manualmente depois de salvar, como já era possível.
+    // Registra no Histórico do processo qual documento foi lido pela IA e
+    // quais campos ela preencheu a partir dele -- fica junto do log de
+    // auditoria de alterações normal (mesma tabela controle_log), só com um
+    // "campo" especial que o carregarHistorico() sabe renderizar de forma
+    // diferente (não é "alterou X: antes → depois", é "leu o documento").
+    if(_editando && camposLidosNestaLeitura.length){
+      const camposUnicos = [...new Set(camposLidosNestaLeitura)];
+      const rotulo = campo => LABELS_CAMPOS_IA[campo] || campo;
+      _editando.log = _editando.log || [];
+      _editando.log.push({
+        campo: LOG_CAMPO_LEITURA_IA,
+        valor_antes: file.name,
+        valor_depois: camposUnicos.map(rotulo).join(', '),
+        usuario: _user.usuario,
+        created_at: new Date().toISOString(),
+      });
+    }
+
     if(_editando && _editando.id){
       uploadArquivosGed([file]);
     }
