@@ -639,6 +639,24 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
+// ── SESSÃO EXPIRADA: mensagem clara em vez de erro de parse ──────
+// Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
+// redirecionam pra /login (HTML) em vez de responder JSON. O código que
+// chama fetch(...).then(r=>r.json()) então quebra com um erro confuso tipo
+// "Unexpected token '<' ... is not valid JSON". Este wrapper detecta esse
+// redirecionamento e troca por uma mensagem que o usuário entende, usando os
+// mesmos catch() que já existem em cada tela.
+(function(){
+  const _fetch = window.fetch.bind(window);
+  window.fetch = async function(...args){
+    const res = await _fetch(...args);
+    if (res.redirected && res.url.startsWith(location.origin) && res.url.includes('/login')) {
+      throw new Error('Sessão expirada. Abra outra aba, faça login novamente e tente de novo (seus dados não foram perdidos).');
+    }
+    return res;
+  };
+})();
+
 // ── BASE DE DADOS ORIGINAL ─────────────────────────────
 // Garantir campo cur em todos os itens
 let COTACOES = []; // preenchido após descriptografia
