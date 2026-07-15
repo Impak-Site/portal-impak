@@ -187,6 +187,32 @@ teste('vencimento no futuro retorna número positivo', () => {
   verdadeiro(dias > 0, `esperado positivo, recebido ${dias}`);
 });
 
+// ── 5b. TESTES: chegandoEmDias — card "Chegada em 7d" do Dashboard ─
+console.log('\n📋 chegandoEmDias() — processo com ETA dentro da janela e ainda não desembarcado');
+teste('ETA daqui a 3 dias, sem data_chegada -> true (dentro da janela de 7 dias)', () => {
+  const eta = new Date(); eta.setDate(eta.getDate() + 3);
+  verdadeiro(sandbox.chegandoEmDias({ eta: eta.toISOString().slice(0,10) }, 7) === true);
+});
+teste('ETA daqui a 10 dias -> false (fora da janela de 7 dias)', () => {
+  const eta = new Date(); eta.setDate(eta.getDate() + 10);
+  verdadeiro(sandbox.chegandoEmDias({ eta: eta.toISOString().slice(0,10) }, 7) === false);
+});
+teste('ETA dentro da janela mas já com data_chegada preenchida -> false (já desembarcou)', () => {
+  const eta = new Date(); eta.setDate(eta.getDate() + 2);
+  verdadeiro(sandbox.chegandoEmDias({ eta: eta.toISOString().slice(0,10), data_chegada: '2026-07-10' }, 7) === false);
+});
+teste('ETA dentro da janela mas processo FINALIZADO -> false', () => {
+  const eta = new Date(); eta.setDate(eta.getDate() + 2);
+  verdadeiro(sandbox.chegandoEmDias({ eta: eta.toISOString().slice(0,10), fase: 'FINALIZADO' }, 7) === false);
+});
+teste('sem ETA -> false', () => {
+  verdadeiro(sandbox.chegandoEmDias({}, 7) === false);
+});
+teste('ETA no passado -> false (já deveria ter chegado, não é mais "próxima chegada")', () => {
+  const eta = new Date(); eta.setDate(eta.getDate() - 2);
+  verdadeiro(sandbox.chegandoEmDias({ eta: eta.toISOString().slice(0,10) }, 7) === false);
+});
+
 // ── 6. TESTES: norm (normalização de medida, usada no TyreDesk) ─
 if (sandbox.norm) {
   console.log('\n📋 norm() [se presente neste arquivo]');

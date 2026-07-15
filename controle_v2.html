@@ -773,6 +773,20 @@ function demurrageDias(proc){
   return Math.ceil((venc-hoje)/86400000);
 }
 
+// Processo com chegada prevista (ETA) nos próximos N dias e que ainda não
+// desembarcou de fato (sem data_chegada preenchida — assim que a chegada
+// efetiva é registrada, o processo sai naturalmente deste card). Usado
+// pelo card "Chegada em 7 dias" do Dashboard e pelo filtro correspondente
+// na tabela — mesma regra nos dois lugares, pra não desalinhar contagem e
+// lista exibida ao clicar no card.
+function chegandoEmDias(proc, dias){
+  if(proc.data_chegada || proc.fase==='FINALIZADO' || !proc.eta) return false;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const limite = new Date(hoje); limite.setDate(hoje.getDate()+dias);
+  const eta = new Date(proc.eta+'T00:00:00');
+  return eta>=hoje && eta<=limite;
+}
+
 function demurrageDisplay(proc){
   if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
   const dias = demurrageDias(proc);
@@ -1003,6 +1017,7 @@ function tempoRelativo(isoDate){
 // cards clicáveis do Dashboard) — sem isso, o usuário não tem como saber
 // qual filtro está ativo depois de clicar num card e ir para a tabela.
 const FILTRO_FINANCEIRO_LABEL = {
+  __chegada_7d:         '🚢 Chegada prevista (ETA) nos próximos 7 dias',
   __pi_aberto:          '💰 Processos com PI em aberto',
   __pi_pago:            '✓ Processos com PI já paga',
   __pi_vencido:         '🚨 Pagamentos vencidos',
@@ -1062,16 +1077,19 @@ function renderStats(){
   const el = document.getElementById('stats-grid');
   if(!el) return;
   const total = _processos.length;
-  const comAlerta = _processos.filter(p => verificarAlertas(p,false).length > 0).length;
   const emAndamento = _processos.filter(p => p.fase !== 'FINALIZADO').length;
   const finalizados = _processos.filter(p => p.fase === 'FINALIZADO').length;
+  // Mantido para o badge "Com alertas" da sidebar (o card do topo agora
+  // mostra "Chegada em 7d" no lugar, mas o item do menu lateral continua).
+  const comAlerta = _processos.filter(p => verificarAlertas(p,false).length > 0).length;
   // Demurrage crítico
   const demurCrit = _processos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
+  const chegando7d = _processos.filter(p => chegandoEmDias(p,7)).length;
 
   const stats = [
     {num:total,       label:'Total',          cor:'var(--ac)',  filtro:''},
     {num:emAndamento, label:'Em andamento',    cor:'var(--warn)',filtro:'__andamento'},
-    {num:comAlerta,   label:'Com alertas',     cor:'var(--err)', filtro:'__alertas'},
+    {num:chegando7d,  label:'Chegada em 7d',  cor:'var(--info)',filtro:'__chegada_7d'},
     {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur'},
     {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
   ];
@@ -1132,6 +1150,7 @@ function filtrarProcessos(){
   if(_faseFilter==='__alertas')   lista = lista.filter(p=>verificarAlertas(p,false).length>0);
   else if(_faseFilter==='__andamento') lista = lista.filter(p=>p.fase!=='FINALIZADO');
   else if(_faseFilter==='__demur') lista = lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
+  else if(_faseFilter==='__chegada_7d') lista = lista.filter(p=>chegandoEmDias(p,7));
   // Filtros financeiros — usados pelos cards clicáveis do Dashboard Financeiro/Executivo
   else if(_faseFilter==='__pi_aberto')  lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && !p.pi_pago);
   else if(_faseFilter==='__pi_pago')    lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && p.pi_pago);
