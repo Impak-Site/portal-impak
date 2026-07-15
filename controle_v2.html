@@ -265,7 +265,7 @@ select.form-input{cursor:pointer;}
   <div class="sidebar-section">
     <div class="sidebar-label">Dashboard</div>
     <div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
-    <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💵 Visão financeira</div>
+    <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💰 Dashboard Financeiro</div>
   </div>
   <div class="sidebar-section">
     <div class="sidebar-label">Cadastros</div>
@@ -340,7 +340,7 @@ select.form-input{cursor:pointer;}
   <!-- DASHBOARD FINANCEIRO -->
   <div id="dash-financeiro" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">💵 Visão Financeira</div>
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">💰 Dashboard Financeiro</div>
       <div id="periodo-seletor-financeiro"></div>
     </div>
     <div id="dash-fin-content"></div>
@@ -787,6 +787,60 @@ function chegandoEmDias(proc, dias){
   return eta>=hoje && eta<=limite;
 }
 
+// ════════════════════════════════════════════════════════════════
+// PAGAMENTOS DE PI — fonte única pro Dashboard Financeiro
+// ════════════════════════════════════════════════════════════════
+// Um processo com forma "Entrada+Saldo" na verdade tem DUAS datas de
+// vencimento e DOIS câmbios diferentes — tratar isso como "um pagamento só"
+// (como o resto do sistema faz) esconde a parcela de Entrada inteira do
+// fluxo de caixa e do controle cambial. Essa função "achata" cada processo
+// em 1 ou 2 parcelas de pagamento individuais, cada uma já com fornecedor,
+// país (via porto de origem), valor, vencimento, câmbio previsto/fechado e
+// se já foi paga — pra não reimplementar essa lógica 3x (KPIs, calendário,
+// câmbio) de formas ligeiramente diferentes e desalinhadas entre si.
+//
+// "Pago" por parcela (não usa só o pi_pago geral do processo, que só vira
+// true quando TUDO foi pago):
+//  - única (Vista/Prazo): usa pi_pago mesmo — é o único pagamento do processo.
+//  - entrada: considera paga se já tem câmbio de entrada fechado registrado.
+//  - saldo: usa pi_pago — é a parcela que fecha o processo (ver confirmarCambioComo).
+function listarPagamentosPI(processos){
+  const pagamentos = [];
+  (processos||[]).forEach(p=>{
+    const valorTotal = parseFloat(p.pi_valor_usd)||0;
+    if(!valorTotal || p.fase==='FINALIZADO') return;
+    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD' };
+    if(p.pi_pagamento==='ENTRADA_SALDO'){
+      const pct = parseFloat(p.pi_entrada_pct||30)/100;
+      const cambioPrevisto = parseFloat(p.pi_cambio)||null;
+      pagamentos.push({...base, parcela:'entrada',
+        valorUsd: valorTotal*pct, vencimento: p.pi_data_entrada||null,
+        cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_entrada)||null,
+        pago: !!p.pi_cambio_entrada });
+      pagamentos.push({...base, parcela:'saldo',
+        valorUsd: valorTotal*(1-pct), vencimento: p.pi_data_saldo||null,
+        cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_saldo)||null,
+        pago: !!p.pi_pago });
+    } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
+      const vencimento = p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada;
+      pagamentos.push({...base, parcela:'unico',
+        valorUsd: valorTotal, vencimento: vencimento||null,
+        cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(p.pi_cambio_fechado)||null,
+        pago: !!p.pi_pago });
+    }
+    // Sem pi_pagamento definido ainda (processo recém-criado, só com valor
+    // da PI preenchido): não dá pra saber vencimento nem parcelas, mas ainda
+    // conta pra Exposição em USD — entra como pagamento "sem forma definida".
+    else {
+      pagamentos.push({...base, parcela:'indefinido',
+        valorUsd: valorTotal, vencimento: null,
+        cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: null,
+        pago: !!p.pi_pago });
+    }
+  });
+  return pagamentos;
+}
+
 function demurrageDisplay(proc){
   if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
   const dias = demurrageDias(proc);
@@ -1018,6 +1072,8 @@ function tempoRelativo(isoDate){
 // qual filtro está ativo depois de clicar num card e ir para a tabela.
 const FILTRO_FINANCEIRO_LABEL = {
   __chegada_7d:         '🚢 Chegada prevista (ETA) nos próximos 7 dias',
+  __pi_vence_30d:       '💰 Saldo a pagar nos próximos 30 dias',
+  __capital_parado:     '📦 Capital parado em estoque/trânsito (pago, aguardando finalizar)',
   __pi_aberto:          '💰 Processos com PI em aberto',
   __pi_pago:            '✓ Processos com PI já paga',
   __pi_vencido:         '🚨 Pagamentos vencidos',
@@ -1165,6 +1221,17 @@ function filtrarProcessos(){
     const d=new Date(p.pi_data_saldo);
     return d>=hoje && d<=semFim;
   });
+  else if(_faseFilter==='__pi_vence_30d') lista = lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    const lim=new Date(hoje); lim.setDate(hoje.getDate()+30);
+    const dentro = d => { if(!d) return false; const dt=new Date(d+'T00:00:00'); return dt>=hoje && dt<=lim; };
+    return dentro(p.pi_data_entrada) || dentro(p.pi_data_saldo);
+  });
+  // Capital parado em estoque/trânsito — usado pelo card do Dashboard
+  // Financeiro (v2): já pago integralmente, mas o processo ainda não foi
+  // finalizado (mercadoria ainda não virou venda concluída).
+  else if(_faseFilter==='__capital_parado') lista = lista.filter(p=>p.pi_pago && p.fase!=='FINALIZADO');
   else if(_faseFilter==='__nf_entrada_periodo') lista = lista.filter(p=>{
     if(p.fase==='FINALIZADO'||!p.nf_entrada_data) return false;
     const {ini,fim} = calcularPeriodo('financeiro');
@@ -1458,6 +1525,10 @@ function renderModal(){
             <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
           <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
             <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
+          </div>
+          <div class="form-group"><label class="form-label">Câmbio Fechado (R$)</label>
+            <input class="form-input" type="number" id="f_pi_cambio_fechado" value="${p.pi_cambio_fechado||''}" placeholder="preenchido ao confirmar o câmbio" step="0.0001"
+              title="Taxa que realmente foi paga (vem do comprovante de câmbio, pra Pagamento Único/Prazo). Fica separado de 'Câmbio na PI' de propósito — aquele é a previsão, este é o fechado, pra dar pra comparar os dois no Dashboard Financeiro.">
           </div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
@@ -2076,6 +2147,29 @@ const PORTOS_ORIGEM = [
   'PORT KLANG',
 ];
 
+// Mesmo agrupamento por país da lista PORTOS_ORIGEM acima, só que como mapa
+// direto porto→país — usado no Dashboard Financeiro pra mostrar de qual
+// país cada pagamento é, sem precisar de um campo novo no cadastro (reusa
+// o porto de origem que já é preenchido em todo processo).
+const PORTO_PAIS = {
+  'SHANGHAI':'China','NINGBO':'China','QINGDAO':'China','TIANJIN':'China','XIAMEN':'China',
+  'SHENZHEN':'China','GUANGZHOU':'China','NANSHA':'China','YANTIAN':'China','DALIAN':'China','LIANYUNGANG':'China',
+  'HO CHI MINH':'Vietnã','HAI PHONG':'Vietnã',
+  'SIHANOUKVILLE':'Camboja','PHNOM PENH':'Camboja',
+  'LAEM CHABANG':'Tailândia','BANGKOK':'Tailândia',
+  'JAKARTA':'Indonésia','SURABAYA':'Indonésia',
+  'CHENNAI':'Índia','NHAVA SHEVA':'Índia','MUNDRA':'Índia',
+  'BUSAN':'Coreia do Sul',
+  'PORT KLANG':'Malásia',
+};
+// País do processo a partir do porto de origem já cadastrado — se for um
+// porto fora da lista (ou "Outro" com texto livre), mostra "—" em vez de
+// arriscar um palpite errado.
+function paisDoProcesso(proc){
+  const porto = (proc.porto_origem||'').trim().toUpperCase();
+  return PORTO_PAIS[porto] || '—';
+}
+
 // Normaliza grafias antigas/variadas do porto de destino pro código padrão
 // (ITJ/IOA/NVT) — usado no import de planilha e na extração por IA, pra já
 // chegar limpo na base em vez de precisar corrigir manualmente depois.
@@ -2137,7 +2231,7 @@ function coletarESalvar(){
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
     'data_devolucao_vazio','demurrage_valor','demurrage_pago',
-    'despachante','pi_cambio','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json',
+    'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json',
   ];
 
   const proc = {..._editando};
@@ -2614,7 +2708,12 @@ function confirmarCambioComo(tipo){
   // "PI Paga?" e a data de pagamento correspondente, além da taxa de câmbio
   // (antes só a taxa era preenchida e o "PI Paga?" nunca era tocado).
   if(tipo==='unico'){
-    const el = document.getElementById('f_pi_cambio');
+    // Grava no campo "Câmbio Fechado" (separado de "Câmbio na PI", que é a
+    // previsão feita lá atrás) — assim o Dashboard Financeiro consegue
+    // comparar previsto x fechado e calcular a diferença cambial depois.
+    // Antes isso sobrescrevia f_pi_cambio direto, o que apagava a previsão
+    // original assim que o pagamento era confirmado.
+    const el = document.getElementById('f_pi_cambio_fechado');
     if(el){ el.value = taxa.toFixed(4); el.dispatchEvent(new Event('change',{bubbles:true})); }
 
     const selPagamento = document.getElementById('f_pi_pagamento');
@@ -3894,217 +3993,211 @@ function renderPeriodoSeletor(containerId, ns, onChangeCallback){
     </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════
+// DASHBOARD FINANCEIRO (v2 — simplificado)
+// ════════════════════════════════════════════════════════════════
+// Redesenhado a pedido do usuário: 3 números que importam de verdade (saldo
+// a pagar em 30 dias, exposição em USD, capital parado em estoque/trânsito)
+// + fluxo de caixa em calendário (sem DRE) + controle cambial (previsto x
+// fechado). "Saldo a receber" e "lucro esperado" ficaram de fora de
+// propósito — o sistema ainda não rastreia pagamento de clientes nem
+// preço de venda/custo por processo, então mostrar esses números seria
+// inventar dado. Entram numa fase 2, quando existir esse cadastro.
 function renderDashFinanceiro(){
   const el = document.getElementById('dash-fin-content');
   if(!el) return;
 
-  renderPeriodoSeletor('periodo-seletor-financeiro', 'financeiro', renderDashFinanceiro);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const {ini: mesIni, fim: mesFim, label: periodoLabel} = calcularPeriodo('financeiro');
+  const pagamentos = listarPagamentosPI(_processos);
+  const emAberto = pagamentos.filter(x=>!x.pago);
 
-  // Processos ativos (não finalizados)
-  const ativos = _processos.filter(p=>p.fase!=='FINALIZADO');
-
-  // Total provisionado (todas PIs em aberto)
-  const totalProvUSD = ativos.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
-  const totalProvBRL = totalProvUSD * _cambio.USD;
-
-  // Pagos vs em aberto
-  const pagosUSD  = ativos.filter(p=>p.pi_pago).reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
-  const abertoUSD = totalProvUSD - pagosUSD;
-
-  // Vencendo essa semana
-  const semFim = new Date(hoje); semFim.setDate(hoje.getDate()+7);
-  const vencSemana = ativos.filter(p=>{
-    if(!p.pi_data_saldo||p.pi_pago) return false;
-    const d = new Date(p.pi_data_saldo);
-    return d >= hoje && d <= semFim;
-  });
-
-  // Vencidos
-  const vencidos = ativos.filter(p=>{
-    if(!p.pi_data_saldo||p.pi_pago) return false;
-    return new Date(p.pi_data_saldo) < hoje;
-  });
-
-  // Câmbio a pagar no período selecionado — soma os pagamentos de PI (saldo
-  // ou entrada) com vencimento dentro do período, ainda não pagos. Cada
-  // pagamento usa seu próprio câmbio salvo (pi_cambio/pi_cambio_entrada/
-  // pi_cambio_saldo) quando disponível, senão o câmbio atual.
-  const pagamentosNoPeriodo = [];
-  ativos.forEach(p=>{
-    if(p.pi_pago) return;
-    const checarData = (data, valorUsd, cambio) => {
-      if(!data || !valorUsd) return;
-      const d = new Date(data);
-      if(d>=mesIni && d<=mesFim) pagamentosNoPeriodo.push({ref:p.referencia, data:d, valorUsd, cambio: cambio||_cambio.USD});
-    };
-    if(p.pi_pagamento==='ENTRADA_SALDO'){
-      const pct = parseFloat(p.pi_entrada_pct||30)/100;
-      const total = parseFloat(p.pi_valor_usd)||0;
-      checarData(p.pi_data_entrada, total*pct, parseFloat(p.pi_cambio_entrada));
-      checarData(p.pi_data_saldo, total*(1-pct), parseFloat(p.pi_cambio_saldo));
-    } else {
-      checarData(p.pi_data_saldo, parseFloat(p.pi_valor_usd), parseFloat(p.pi_cambio));
-    }
-  });
-  const cambioPagarUSD = pagamentosNoPeriodo.reduce((s,x)=>s+x.valorUsd,0);
-  const cambioPagarBRL = pagamentosNoPeriodo.reduce((s,x)=>s+(x.valorUsd*x.cambio),0);
-
-  // Por forma de pagamento
-  const porTipo = {VISTA:0, PRAZO:0, ENTRADA_SALDO:0};
-  ativos.forEach(p=>{ if(p.pi_pagamento) porTipo[p.pi_pagamento]=(porTipo[p.pi_pagamento]||0)+(parseFloat(p.pi_valor_usd)||0); });
-
-  const fmt = v => `USD ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const fmt    = v => `USD ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const fmtBRL = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
-  // NF emitidas no mês
-  const nfEntradaMes = ativos.filter(p=>{
-    if(!p.nf_entrada_data) return false;
-    const d = new Date(p.nf_entrada_data);
-    return d >= mesIni && d <= mesFim;
+  // KPI 1 — Saldo a pagar nos próximos 30 dias
+  const limite30 = new Date(hoje); limite30.setDate(hoje.getDate()+30);
+  const aPagar30d = emAberto.filter(x=>{
+    if(!x.vencimento) return false;
+    const d = new Date(x.vencimento+'T00:00:00');
+    return d>=hoje && d<=limite30;
   });
-  const nfSaidaMes = ativos.filter(p=>{
-    if(!p.nf_saida_data) return false;
-    const d = new Date(p.nf_saida_data);
-    return d >= mesIni && d <= mesFim;
-  });
-  const totalNfEntrada = nfEntradaMes.reduce((s,p)=>s+(parseFloat(p.nf_entrada_valor)||0),0);
-  const totalNfSaida   = nfSaidaMes.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
+  const totalAPagar30dUSD = aPagar30d.reduce((s,x)=>s+x.valorUsd,0);
 
-  // Demurrage em aberto
-  const demurAberto = _processos.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento);
-  const totalDemur  = demurAberto.reduce((s,p)=>s+(parseFloat(p.demurrage_valor)||0),0);
-  const demurVencidos = demurAberto.filter(p=>demurrageDias(p)<0);
+  // KPI 2 — Exposição total em USD (tudo que ainda está em aberto)
+  const totalExposicaoUSD = emAberto.reduce((s,x)=>s+x.valorUsd,0);
+
+  // KPI 3 — Capital parado em estoque/trânsito: já pago integralmente, mas
+  // o processo ainda não foi finalizado (mercadoria ainda não virou venda).
+  const capitalParado = _processos.filter(p=>p.pi_pago && p.fase!=='FINALIZADO');
+  const totalCapitalParadoUSD = capitalParado.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
 
   el.innerHTML = `
-    <!-- Cabeçalho período -->
     <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:12px;">
-      📅 Período: ${periodoLabel} · 
       Câmbio atual: USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${(_cambio.EUR||0).toFixed(2)} · CNY R$ ${(_cambio.CNY||0).toFixed(4)}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
-      <div onclick="abrirComFiltro('')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px;" title="Ver todos os processos em aberto">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Provisionado</div>
-        <div style="font-size:20px;font-weight:800;color:var(--ac);">${fmt(totalProvUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalProvBRL)}</div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px;">
+      <div onclick="abrirComFiltro('__pi_vence_30d')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver pagamentos vencendo nos próximos 30 dias">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Saldo a Pagar (30 dias)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(totalAPagar30dUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalAPagar30dUSD*_cambio.USD)} · ${aPagar30d.length} pagamento${aPagar30d.length!==1?'s':''}</div>
       </div>
-      <div onclick="abrirComFiltro('__pi_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver processos com pagamento em aberto">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Em Aberto</div>
-        <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(abertoUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(abertoUSD*_cambio.USD)}</div>
+      <div onclick="abrirComFiltro('__pi_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver todos os processos com pagamento em aberto">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Exposição em USD</div>
+        <div style="font-size:20px;font-weight:800;color:var(--warn);">${fmt(totalExposicaoUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalExposicaoUSD*_cambio.USD)} · ${emAberto.length} pagamento${emAberto.length!==1?'s':''} em aberto</div>
       </div>
-      <div onclick="abrirComFiltro('__pi_pago')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;" title="Ver processos já pagos">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Pago</div>
-        <div style="font-size:20px;font-weight:800;color:var(--ok);">${fmt(pagosUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(pagosUSD*_cambio.USD)}</div>
-      </div>
-      <div onclick="abrirComFiltro('__pi_vence_semana')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver pagamentos vencendo nos próximos 7 dias">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Vence em 7 dias</div>
-        <div style="font-size:20px;font-weight:800;color:var(--warn);">${vencSemana.length} PI${vencSemana.length!==1?'s':''}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmt(vencSemana.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0))}</div>
+      <div onclick="abrirComFiltro('__capital_parado')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;" title="Ver processos já pagos, aguardando finalizar (mercadoria em estoque/trânsito)">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Capital Parado (estoque/trânsito)</div>
+        <div style="font-size:20px;font-weight:800;color:var(--info);">${fmt(totalCapitalParadoUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalCapitalParadoUSD*_cambio.USD)} · ${capitalParado.length} processo${capitalParado.length!==1?'s':''} pago(s)</div>
       </div>
     </div>
-    ${vencidos.length ? `
-    <div style="background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:700;color:var(--err);margin-bottom:8px;">🚨 ${vencidos.length} pagamento(s) VENCIDO(S)</div>
-      ${vencidos.map(p=>`<div onclick="abrirProcesso('${p.id}');toggleDashFinanceiro()" style="cursor:pointer;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(220,38,38,.1);display:flex;justify-content:space-between;">
-        <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia}</span>
-        <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — venceu ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
-      </div>`).join('')}
-    </div>` : ''}
-    ${vencSemana.length ? `
-    <div style="background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.2);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:700;color:var(--warn);margin-bottom:8px;">⚠ Vencendo nos próximos 7 dias</div>
-      ${vencSemana.map(p=>`<div onclick="abrirProcesso('${p.id}');toggleDashFinanceiro()" style="cursor:pointer;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(217,119,6,.1);display:flex;justify-content:space-between;">
-        <span style="font-family:'DM Mono',monospace;font-weight:600;">${p.referencia} <span class="fin-badge fin-${p.pi_pagamento}" style="margin-left:4px;">${p.pi_pagamento}</span></span>
-        <span>${fmt(parseFloat(p.pi_valor_usd)||0)} — vence ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}</span>
-      </div>`).join('')}
-    </div>` : ''}
-      <div onclick="abrirComFiltro('__cambio_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver pagamentos de câmbio dentro do período selecionado">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Câmbio a Pagar (período)</div>
-        <div style="font-size:20px;font-weight:800;color:var(--warn);">${fmt(cambioPagarUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(cambioPagarBRL)} · ${pagamentosNoPeriodo.length} pagamento${pagamentosNoPeriodo.length!==1?'s':''}</div>
-      </div>
-      <div onclick="abrirComFiltro('__nf_entrada_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;" title="Ver processos com NF de entrada no período">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Entrada (período)</div>
-        <div style="font-size:20px;font-weight:800;color:var(--info);">${nfEntradaMes.length} NF${nfEntradaMes.length!==1?'s':''}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfEntrada)}</div>
-      </div>
-      <div onclick="abrirComFiltro('__nf_saida_periodo')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:10px;padding:14px 16px;" title="Ver processos com NF de saída no período">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">NF Saída (período)</div>
-        <div style="font-size:20px;font-weight:800;color:var(--ok);">${nfSaidaMes.length} NF${nfSaidaMes.length!==1?'s':''}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalNfSaida)}</div>
-      </div>
-      <div onclick="abrirComFiltro('__demur_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver containers com demurrage em aberto">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Demurrage em aberto</div>
-        <div style="font-size:20px;font-weight:800;color:var(--err);">${demurVencidos.length} vencido${demurVencidos.length!==1?'s':''}</div>
-        <div style="font-size:12px;color:var(--muted);">${demurAberto.length} container${demurAberto.length!==1?'s':''} pendentes</div>
-      </div>
-    </div>
-    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Por forma de pagamento (em aberto)</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;">
-        <div><span class="fin-badge fin-VISTA">VISTA</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.VISTA)}</span></div>
-        <div><span class="fin-badge fin-PRAZO">PRAZO</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.PRAZO)}</span></div>
-        <div><span class="fin-badge fin-ENTRADA_SALDO">ENT+SLD</span> <span style="font-size:13px;font-weight:600;">${fmt(porTipo.ENTRADA_SALDO)}</span></div>
-      </div>
-    </div>
-    <!-- Tabela consolidada por processo -->
-    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">
-        Todos os processos em aberto — visão financeira
-      </div>
+
+    <!-- Lista de pagamentos -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">Pagamentos a Fornecedor</div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr style="background:var(--bg);">
-              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
-              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Pagamento</th>
-              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor USD</th>
-              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor BRL</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">País</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Moeda</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor</th>
               <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Vencimento</th>
               <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Status</th>
             </tr>
           </thead>
           <tbody>
-            ${ativos.filter(p=>p.pi_valor_usd).map(p=>{
-              const vencData = p.pi_data_saldo||p.pi_data_entrada||'';
-              const valUSD   = parseFloat(p.pi_valor_usd)||0;
-              const cambio   = parseFloat(p.pi_cambio)||_cambio.USD;
-              const valBRL   = valUSD * cambio;
-              const vencido  = vencData && new Date(vencData) < hoje && !p.pi_pago;
-              const vcSemana = vencData && new Date(vencData)>=hoje && new Date(vencData)<=semFim && !p.pi_pago;
-              const statusHtml = p.pi_pago
+            ${pagamentos.slice().sort((a,b)=>(a.vencimento||'9999').localeCompare(b.vencimento||'9999')).map(x=>{
+              const vencido = x.vencimento && !x.pago && new Date(x.vencimento+'T00:00:00') < hoje;
+              const statusHtml = x.pago
                 ? '<span style="color:var(--ok);font-weight:700;">✓ Pago</span>'
-                : vencido  ? '<span style="color:var(--err);font-weight:700;">⚠ Vencido</span>'
-                : vcSemana ? '<span style="color:var(--warn);font-weight:700;">⏰ Vence em breve</span>'
-                : '<span style="color:var(--muted);">Em aberto</span>';
-              return `<tr style="border-top:1px solid var(--border);${vencido?'background:rgba(220,38,38,.03)':''}">
-                <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${p.referencia}</td>
-                <td style="padding:8px 12px;">${p.fornecedor||'—'}</td>
-                <td style="padding:8px 12px;"><span class="fin-badge fin-${p.pi_pagamento||'VISTA'}">${p.pi_pagamento||'—'}</span></td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmt(valUSD)}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmtBRL(valBRL)}</td>
-                <td style="padding:8px 12px;text-align:center;">${vencData?new Date(vencData).toLocaleDateString('pt-BR'):'—'}</td>
+                : vencido ? '<span style="color:var(--err);font-weight:700;">⚠ Vencido</span>'
+                : '<span style="color:var(--muted);">Previsto</span>';
+              return `<tr style="border-top:1px solid var(--border);cursor:pointer;${vencido?'background:rgba(220,38,38,.03)':''}" onclick="abrirProcesso('${x.processoId}');toggleDashFinanceiro()">
+                <td style="padding:8px 12px;">${x.fornecedor}</td>
+                <td style="padding:8px 12px;">${x.pais}</td>
+                <td style="padding:8px 12px;">${x.moeda}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmt(x.valorUsd)}</td>
+                <td style="padding:8px 12px;text-align:center;">${x.vencimento?new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR'):'—'}</td>
                 <td style="padding:8px 12px;text-align:center;">${statusHtml}</td>
               </tr>`;
-            }).join('')}
+            }).join('') || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--muted);">Nenhum pagamento de PI registrado ainda.</td></tr>'}
           </tbody>
-          <tfoot>
-            <tr style="border-top:2px solid var(--border);background:var(--bg);">
-              <td colspan="3" style="padding:10px 12px;font-weight:700;font-size:13px;">TOTAL</td>
-              <td style="padding:10px 12px;text-align:right;font-weight:700;font-family:DM Mono,monospace;color:var(--ac);">${fmt(totalProvUSD)}</td>
-              <td style="padding:10px 12px;text-align:right;font-weight:700;font-family:DM Mono,monospace;color:var(--ac);">${fmtBRL(totalProvBRL)}</td>
-              <td colspan="2"></td>
-            </tr>
-          </tfoot>
         </table>
       </div>
     </div>
+
+    ${renderFluxoCaixaHtml(pagamentos)}
+    ${renderControleCambialHtml(pagamentos)}
   `;
 }
+
+// Calendário simples de saídas (sem DRE) — próximos 6 meses, separando o
+// que já foi pago do que ainda é previsão. "Entradas" fica de fora por
+// enquanto: o sistema não rastreia pagamento de cliente, só emissão de NF
+// de Saída, que não é a mesma coisa (a NF pode ser emitida antes do cliente
+// efetivamente pagar) — melhor não mostrar um número que pareceria "entrada
+// de caixa" sem ser garantido.
+function renderFluxoCaixaHtml(pagamentos){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const fmtBRL = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+
+  const meses = [];
+  for(let i=0;i<6;i++){
+    const ini = new Date(hoje.getFullYear(), hoje.getMonth()+i, 1);
+    const fim = new Date(hoje.getFullYear(), hoje.getMonth()+i+1, 0);
+    fim.setHours(23,59,59,999);
+    meses.push({ini, fim, label: ini.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})});
+  }
+
+  const linhas = meses.map(m=>{
+    const doMes = pagamentos.filter(x=>{
+      if(!x.vencimento) return false;
+      const d = new Date(x.vencimento+'T00:00:00');
+      return d>=m.ini && d<=m.fim;
+    });
+    const pagoBRL      = doMes.filter(x=>x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioFechado||_cambio.USD),0);
+    const previstoBRL   = doMes.filter(x=>!x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||_cambio.USD),0);
+    return {label:m.label, pagoBRL, previstoBRL, qtd:doMes.length};
+  });
+
+  return `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:700;">📅 Fluxo de Caixa — Saídas por mês</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Só pagamentos a fornecedor por enquanto — entradas de clientes ainda não são rastreadas no sistema.</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:var(--bg);">
+          <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Mês</th>
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Saídas Pagas</th>
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Saídas Previstas</th>
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Total</th>
+        </tr></thead>
+        <tbody>
+          ${linhas.map(l=>`<tr style="border-top:1px solid var(--border);">
+            <td style="padding:8px 16px;text-transform:capitalize;font-weight:600;">${l.label}</td>
+            <td style="padding:8px 16px;text-align:right;color:var(--ok);">${fmtBRL(l.pagoBRL)}</td>
+            <td style="padding:8px 16px;text-align:right;color:var(--warn);">${fmtBRL(l.previstoBRL)}</td>
+            <td style="padding:8px 16px;text-align:right;font-weight:700;">${fmtBRL(l.pagoBRL+l.previstoBRL)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// Controle cambial: compara o câmbio previsto na PI com o que realmente foi
+// fechado no pagamento, só pra parcelas já pagas com os dois valores
+// registrados. Diferença positiva = fechou mais barato que o previsto
+// (economia); negativa = fechou mais caro (perda).
+function renderControleCambialHtml(pagamentos){
+  const fmtBRL = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const comparaveis = pagamentos.filter(x=>x.pago && x.cambioPrevisto && x.cambioFechado);
+
+  if(!comparaveis.length){
+    return `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;">💱 Controle Cambial — Previsto x Fechado</div>
+      <div style="font-size:12px;color:var(--muted);">Ainda não há pagamentos com "Câmbio na PI" e "Câmbio Fechado" registrados pra comparar. Assim que confirmar um comprovante de câmbio de um processo que já tinha o câmbio previsto preenchido, a diferença aparece aqui.</div>
+    </div>`;
+  }
+
+  const linhas = comparaveis.map(x=>({...x, diff:(x.cambioPrevisto-x.cambioFechado)*x.valorUsd}))
+    .sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+  const diffTotal = linhas.reduce((s,x)=>s+x.diff,0);
+  const economizou = diffTotal >= 0;
+  const corDiff = economizou ? 'var(--ok)' : 'var(--err)';
+  const fraseDiff = economizou
+    ? `✓ Você economizou ${fmtBRL(Math.abs(diffTotal))} no câmbio`
+    : `⚠ Você perdeu ${fmtBRL(Math.abs(diffTotal))} no câmbio`;
+
+  return `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">💱 Controle Cambial — Previsto x Fechado</div>
+        <div style="font-size:17px;font-weight:800;color:${corDiff};">${fraseDiff}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:var(--bg);">
+          <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Previsto</th>
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fechado</th>
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Diferença</th>
+        </tr></thead>
+        <tbody>
+          ${linhas.map(x=>`<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}');toggleDashFinanceiro()">
+            <td style="padding:8px 16px;font-family:DM Mono,monospace;font-weight:600;">${x.referencia}</td>
+            <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioPrevisto.toFixed(4)}</td>
+            <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioFechado.toFixed(4)}</td>
+            <td style="padding:8px 16px;text-align:right;font-weight:700;color:${x.diff>=0?'var(--ok)':'var(--err)'};">${x.diff>=0?'+':''}${fmtBRL(x.diff)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 
 function limparFiltroData(){
   const de  = document.getElementById('filtro-data-de');

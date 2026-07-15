@@ -213,6 +213,53 @@ teste('ETA no passado -> false (já deveria ter chegado, não é mais "próxima 
   verdadeiro(sandbox.chegandoEmDias({ eta: eta.toISOString().slice(0,10) }, 7) === false);
 });
 
+// ── 5c. TESTES: listarPagamentosPI / paisDoProcesso — base do Dashboard Financeiro ─
+console.log('\n📋 listarPagamentosPI() — achata processos em parcelas de pagamento');
+teste('paisDoProcesso: porto conhecido retorna o país; porto desconhecido retorna "—"', () => {
+  iguais(sandbox.paisDoProcesso({ porto_origem: 'NINGBO' }), 'China');
+  iguais(sandbox.paisDoProcesso({ porto_origem: 'busan' }), 'Coreia do Sul');
+  iguais(sandbox.paisDoProcesso({ porto_origem: 'OUTRO PORTO QUALQUER' }), '—');
+  iguais(sandbox.paisDoProcesso({}), '—');
+});
+teste('VISTA vira 1 parcela "unico" com vencimento em Data Entrada', () => {
+  const procs = [{ referencia:'UD26-100', fornecedor:'ACME', porto_origem:'NINGBO', pi_valor_usd:10000, pi_pagamento:'VISTA', pi_data_entrada:'2026-08-01', pi_cambio:5.10, pi_pago:false, fase:'PI' }];
+  const pags = sandbox.listarPagamentosPI(procs);
+  iguais(pags.length, 1);
+  iguais(pags[0].parcela, 'unico');
+  iguais(pags[0].valorUsd, 10000);
+  iguais(pags[0].vencimento, '2026-08-01');
+  iguais(pags[0].pais, 'China');
+  iguais(pags[0].pago, false);
+});
+teste('PRAZO vira 1 parcela "unico" com vencimento em Data Saldo (não Data Entrada)', () => {
+  const procs = [{ referencia:'UD26-101', pi_valor_usd:5000, pi_pagamento:'PRAZO', pi_data_saldo:'2026-09-15', pi_pago:true, fase:'PI' }];
+  const pags = sandbox.listarPagamentosPI(procs);
+  iguais(pags.length, 1);
+  iguais(pags[0].vencimento, '2026-09-15');
+  iguais(pags[0].pago, true);
+});
+teste('ENTRADA_SALDO vira 2 parcelas (entrada + saldo), valor rateado pelo %', () => {
+  const procs = [{ referencia:'UD26-102', pi_valor_usd:20000, pi_pagamento:'ENTRADA_SALDO', pi_entrada_pct:30,
+    pi_data_entrada:'2026-08-01', pi_data_saldo:'2026-09-01', pi_cambio:5.0,
+    pi_cambio_entrada:5.05, pi_cambio_saldo:null, pi_pago:false, fase:'PI' }];
+  const pags = sandbox.listarPagamentosPI(procs);
+  iguais(pags.length, 2);
+  const entrada = pags.find(x=>x.parcela==='entrada');
+  const saldo   = pags.find(x=>x.parcela==='saldo');
+  iguais(entrada.valorUsd, 6000, 'entrada deveria ser 30% de 20000');
+  iguais(saldo.valorUsd, 14000, 'saldo deveria ser os 70% restantes');
+  iguais(entrada.pago, true, 'entrada com câmbio fechado registrado conta como paga');
+  iguais(saldo.pago, false, 'saldo sem pi_pago ainda não conta como paga');
+});
+teste('Processo FINALIZADO não entra na lista (já não representa capital em aberto)', () => {
+  const procs = [{ referencia:'UD26-103', pi_valor_usd:1000, pi_pagamento:'VISTA', pi_pago:true, fase:'FINALIZADO' }];
+  iguais(sandbox.listarPagamentosPI(procs).length, 0);
+});
+teste('Processo sem pi_valor_usd não entra na lista', () => {
+  const procs = [{ referencia:'UD26-104', pi_pagamento:'VISTA', fase:'PI' }];
+  iguais(sandbox.listarPagamentosPI(procs).length, 0);
+});
+
 // ── 6. TESTES: norm (normalização de medida, usada no TyreDesk) ─
 if (sandbox.norm) {
   console.log('\n📋 norm() [se presente neste arquivo]');
@@ -371,6 +418,16 @@ teste('Saldo define ENTRADA_SALDO, preenche Data Saldo e marca PI como paga (fec
   iguais(sandbox.document.getElementById('f_pi_pago').value, 'true', 'saldo fecha o pagamento — PI deveria ficar marcada como paga');
 });
 
+teste('Pagamento Único grava a taxa em "Câmbio Fechado", SEM sobrescrever "Câmbio na PI" (previsto)', () => {
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.60, valor_pago:12000, referencia:'UD26-994', data_pagamento:'2026-07-11'};", sandbox);
+  sandbox.document.getElementById('f_pi_pagamento').value = 'VISTA';
+  sandbox.document.getElementById('f_pi_cambio').value = '5.10'; // previsão feita na época da PI
+  sandbox.document.getElementById('f_pi_cambio_fechado').value = '';
+  sandbox.confirmarCambioComo('unico');
+  iguais(sandbox.document.getElementById('f_pi_cambio').value, '5.10', 'câmbio previsto (da PI) não deveria ser mexido ao confirmar o pagamento');
+  iguais(sandbox.document.getElementById('f_pi_cambio_fechado').value, '5.6000', 'taxa fechada do comprovante deveria ir pro campo separado');
+});
+
 teste('Sem data_pagamento no comprovante, usa a data de hoje como aproximação', () => {
   vm.runInContext("_cambioPendente = {taxa_cambio:5.20, valor_pago:8000, referencia:'UD26-995'};", sandbox);
   sandbox.document.getElementById('f_pi_pagamento').value = '';
@@ -379,6 +436,37 @@ teste('Sem data_pagamento no comprovante, usa a data de hoje como aproximação'
   sandbox.confirmarCambioComo('unico');
   const hojeStr = new Date().toISOString().slice(0,10);
   iguais(sandbox.document.getElementById('f_pi_data_entrada').value, hojeStr, 'sem data no comprovante, deveria cair pra data de hoje');
+});
+
+// ── 9. TESTES: renderControleCambialHtml / renderFluxoCaixaHtml (Dashboard Financeiro v2) ─
+console.log('\n📋 Dashboard Financeiro v2 — controle cambial e fluxo de caixa');
+teste('Sem pagamentos comparáveis (previsto+fechado), mostra aviso em vez de inventar número', () => {
+  const html = sandbox.renderControleCambialHtml([]);
+  verdadeiro(html.includes('Ainda não há pagamentos'), 'deveria mostrar o aviso de dado insuficiente');
+});
+teste('Câmbio fechado MENOR que o previsto -> mensagem de economia', () => {
+  const pagamentos = [{ referencia:'UD26-200', processoId:'x1', pago:true, cambioPrevisto:5.50, cambioFechado:5.30, valorUsd:1000 }];
+  const html = sandbox.renderControleCambialHtml(pagamentos);
+  verdadeiro(html.includes('Você economizou'), 'câmbio fechado mais barato que o previsto deveria ser economia');
+  verdadeiro(!html.includes('Você perdeu'));
+});
+teste('Câmbio fechado MAIOR que o previsto -> mensagem de perda', () => {
+  const pagamentos = [{ referencia:'UD26-201', processoId:'x2', pago:true, cambioPrevisto:5.00, cambioFechado:5.40, valorUsd:1000 }];
+  const html = sandbox.renderControleCambialHtml(pagamentos);
+  verdadeiro(html.includes('Você perdeu'), 'câmbio fechado mais caro que o previsto deveria ser perda');
+});
+teste('Pagamento sem câmbio fechado ainda (só previsto) não entra na comparação', () => {
+  const pagamentos = [{ referencia:'UD26-202', processoId:'x3', pago:false, cambioPrevisto:5.00, cambioFechado:null, valorUsd:1000 }];
+  const html = sandbox.renderControleCambialHtml(pagamentos);
+  verdadeiro(html.includes('Ainda não há pagamentos'), 'pagamento não fechado não deveria contar pro comparativo');
+});
+teste('renderFluxoCaixaHtml roda sem erro e lista os 6 meses', () => {
+  const hoje = new Date();
+  const vencProximo = new Date(hoje); vencProximo.setDate(hoje.getDate()+5);
+  const pagamentos = [{ referencia:'UD26-203', valorUsd:2000, vencimento:vencProximo.toISOString().slice(0,10), pago:false, cambioPrevisto:5.2, cambioFechado:null }];
+  const html = sandbox.renderFluxoCaixaHtml(pagamentos);
+  verdadeiro(html.includes('Fluxo de Caixa'));
+  verdadeiro(html.includes('entradas de clientes ainda não são rastreadas'), 'deveria deixar claro que Entradas não é rastreado ainda');
 });
 
 // ── RESUMO ───────────────────────────────────────────────────────
