@@ -557,6 +557,17 @@ let _searchText = '';
 let _pagina = 1;
 const POR_PAGINA = 50;
 let _editando = null; // processo sendo editado
+// Snapshot do processo exatamente como veio do servidor quando o modal foi
+// aberto (ou {} pra um processo novo) — usado só pra saber quais campos o
+// usuário de fato alterou nesta sessão de edição (ver coletarESalvar). Nunca
+// é mutado depois de setado; existe só pra comparação, não é enviado ao
+// servidor. Concorrência: com vários usuários editando processos ao mesmo
+// tempo, salvar o processo inteiro sempre que alguém clica em Salvar
+// sobrescrevia silenciosamente qualquer campo que outra pessoa tivesse
+// alterado nesse meio tempo (quem salvasse por último "vencia" em TUDO, não
+// só no que de fato editou). Agora só os campos realmente alterados nesta
+// sessão são enviados — os demais ficam intocados no banco.
+let _editandoOriginal = null;
 let _notifAberto = false;
 let _cambio = { USD: 1, BRL: 1 };
 
@@ -643,7 +654,7 @@ async function carregarProcessos(silencioso){
   }
 }
 
-async function salvarProcesso(proc){
+async function salvarProcesso(proc, patchFields){
   const isNovo = !proc.id;
   if(isNovo) proc.id = gerarUUID();
   proc.updated_by = _user.usuario;
@@ -653,6 +664,7 @@ async function salvarProcesso(proc){
   // Registrar câmbio USD no momento do pedido se não preenchido
   if(!proc.pi_cambio && proc.pi_valor_usd && _cambio.USD){
     proc.pi_cambio = _cambio.USD;
+    if(patchFields) patchFields.push('pi_cambio');
   }
 
   // Calcular vencimento demurrage automaticamente
@@ -665,13 +677,30 @@ async function salvarProcesso(proc){
   // Avançar fase automaticamente
   proc.fase = calcularFase(proc);
 
+  // ── CONCORRÊNCIA: enviar só o que mudou ──────────────────────────
+  // Se quem chamou informou patchFields (lista de campos de fato alterados
+  // nesta sessão de edição), manda ao servidor só esses campos + os
+  // metadados/calculados de sempre — não o processo inteiro. Isso evita que
+  // duas pessoas editando o mesmo processo ao mesmo tempo apaguem uma a
+  // mudança da outra: cada save só toca nos campos que aquele usuário de
+  // fato mexeu. Sem patchFields (chamada antiga/desconhecida), mantém o
+  // comportamento de sempre — manda o processo inteiro.
+  let payload = proc;
+  if(patchFields && Array.isArray(patchFields)){
+    const camposFixos = ['id','referencia','fase','demurrage_vencimento','pi_cambio',
+      'updated_by','updated_at','created_by','created_at','log'];
+    const chaves = [...new Set([...camposFixos, ...patchFields])];
+    payload = {};
+    chaves.forEach(k=>{ if(proc[k]!==undefined) payload[k] = proc[k]; });
+  }
+
   showToast('Salvando...','info');
   let r, d;
   try{
     r = await fetch('/api/controle/v2/processo', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ processo: proc })
+      body: JSON.stringify({ processo: payload })
     });
     d = await r.json();
   } catch(netErr){
@@ -1220,6 +1249,7 @@ function abrirNovo(){
   // é reaberto, o que cobre o caso real relatado (corrigir dentro da mesma
   // sessão de edição, logo após perceber o documento errado).
   _editando = { fase:'PI', free_time:21, _camposIA: {} };
+  _editandoOriginal = {};
   renderModal();
 }
 
@@ -1227,6 +1257,7 @@ async function abrirProcesso(id){
   const proc = _processos.find(p=>p.id===id);
   if(!proc) return;
   _editando = {...proc, _camposIA: {}};
+  _editandoOriginal = {...proc};
   renderModal();
 }
 
@@ -2071,6 +2102,17 @@ function coletarESalvar(){
 
   const proc = {..._editando};
   const log = proc.log || [];
+  // Campos que de fato mudaram nesta sessão de edição (comparados contra o
+  // snapshot capturado quando o modal abriu, não contra "antigo" acima — o
+  // "antigo" é recapturado a cada clique em Salvar e já reflete qualquer
+  // valor que a extração por IA tenha colocado em _editando ANTES do clique,
+  // então usá-lo aqui faria campos preenchidos pela IA nunca entrarem no
+  // patch. _editandoOriginal fica fixo desde a abertura do modal e pega
+  // qualquer alteração real, seja por digitação ou por IA). Só esses campos
+  // (+ os calculados abaixo) são enviados ao servidor — ver nota em
+  // _editandoOriginal sobre por quê.
+  const original = _editandoOriginal || {};
+  const patchFields = [];
 
   // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
   const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','pi_cambio_entrada','pi_cambio_saldo','valor_frete'];
@@ -2100,6 +2142,7 @@ function coletarESalvar(){
         created_at: new Date().toISOString()
       });
     }
+    if(String(original[campo]||'')!==String(val||'')) patchFields.push(campo);
     proc[campo] = val;
   });
 
@@ -2121,6 +2164,7 @@ function coletarESalvar(){
     }
     proc.porto_origem = outroVal || null;
   }
+  if(String(original.porto_origem||'')!==String(proc.porto_origem||'')) patchFields.push('porto_origem');
 
   // Salvar multi-containers e auditar mudança
   sincronizarContainerLegado();
@@ -2131,6 +2175,7 @@ function coletarESalvar(){
       usuario: _user.usuario, created_at: new Date().toISOString()
     });
   }
+  if(String(original.containers_json||'')!==novosContainersJson) patchFields.push('containers_json','container','tipo_container');
   proc.containers_json = novosContainersJson;
   proc.container = _containers[0]?.numero||'';
   proc.tipo_container = _containers[0]?.tipo||'40HC';
@@ -2144,13 +2189,15 @@ function coletarESalvar(){
       usuario: _user.usuario, created_at: new Date().toISOString()
     });
   }
+  const novoProdutoTxt = document.getElementById('f_produto')?.value || '';
+  if(String(original.produtos_json||'')!==novosProdutosJson || String(original.produto||'')!==novoProdutoTxt) patchFields.push('produtos_json','produto');
   proc.produtos_json = novosProdutosJson;
-  proc.produto = document.getElementById('f_produto')?.value || '';
+  proc.produto = novoProdutoTxt;
 
   proc.log = log;
   _editando = proc;
 
-  salvarProcesso(proc).then(ok=>{ if(ok) fecharModal(); });
+  salvarProcesso(proc, patchFields).then(ok=>{ if(ok) fecharModal(); });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3520,7 +3567,13 @@ function inlineEditData(id, campo, el){
       // Log
       proc.log = proc.log||[];
       proc.log.push({campo, valor_antes:antes||'', valor_depois:novoValor||'', usuario:_user.usuario, created_at:new Date().toISOString()});
-      salvarProcesso(proc);
+      // Edição rápida inline: só este campo mudou de fato — manda só ele
+      // (ver nota de concorrência em salvarProcesso/coletarESalvar). "proc"
+      // aqui vem do cache local (_processos), que pode estar levemente
+      // desatualizado em relação ao servidor; sem isso, salvar essa edição
+      // rápida sobrescreveria com esse cache velho qualquer campo que outra
+      // pessoa tivesse alterado nesse meio tempo.
+      salvarProcesso(proc, [campo]);
     }
     render();
   }
@@ -3549,7 +3602,8 @@ function inlineEditFase(id, el){
       proc.log = proc.log||[];
       proc.log.push({campo:'fase', valor_antes:proc.fase, valor_depois:novaFase, usuario:_user.usuario, created_at:new Date().toISOString()});
       proc.fase = novaFase;
-      salvarProcesso(proc);
+      // Override manual de fase — só esse campo. Ver nota em inlineEditData.
+      salvarProcesso(proc, ['fase']);
     }
     render();
   }
