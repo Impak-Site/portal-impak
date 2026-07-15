@@ -4065,7 +4065,9 @@ function renderDashFinanceiro(){
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">País</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Moeda</th>
-              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor (USD)</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Câmbio</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor (BRL)</th>
               <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Vencimento</th>
               <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Status</th>
             </tr>
@@ -4077,16 +4079,26 @@ function renderDashFinanceiro(){
                 ? '<span style="color:var(--ok);font-weight:700;">✓ Pago</span>'
                 : vencido ? '<span style="color:var(--err);font-weight:700;">⚠ Vencido</span>'
                 : '<span style="color:var(--muted);">Previsto</span>';
+              // Câmbio usado pra converter USD→BRL nessa linha: se já foi pago,
+              // usa o câmbio que REALMENTE fechou (fato); senão usa o previsto
+              // na PI, se tiver; senão cai pro câmbio atual só como estimativa
+              // (marcado com "~" pra não parecer um valor fechado).
+              const cambioReal = x.pago ? x.cambioFechado : null;
+              const cambioUsado = cambioReal || x.cambioPrevisto || _cambio.USD;
+              const cambioLabel = cambioReal ? cambioReal.toFixed(4) : `~${cambioUsado.toFixed(4)}`;
+              const valorBRL = x.valorUsd * cambioUsado;
               return `<tr style="border-top:1px solid var(--border);cursor:pointer;${vencido?'background:rgba(220,38,38,.03)':''}" onclick="abrirProcesso('${x.processoId}');toggleDashFinanceiro()">
                 <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${x.referencia}${x.parcela==='entrada'?' <span style="color:var(--muted);font-weight:400;">(entrada)</span>':x.parcela==='saldo'?' <span style="color:var(--muted);font-weight:400;">(saldo)</span>':''}</td>
                 <td style="padding:8px 12px;">${x.fornecedor}</td>
                 <td style="padding:8px 12px;">${x.pais}</td>
                 <td style="padding:8px 12px;">${x.moeda}</td>
                 <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmt(x.valorUsd)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;" title="${cambioReal?'Câmbio fechado (real)':'Câmbio previsto — ainda não fechado'}">R$ ${cambioLabel}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmtBRL(valorBRL)}</td>
                 <td style="padding:8px 12px;text-align:center;">${x.vencimento?new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR'):'—'}</td>
                 <td style="padding:8px 12px;text-align:center;">${statusHtml}</td>
               </tr>`;
-            }).join('') || '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted);">Nenhum pagamento de PI registrado ainda.</td></tr>'}
+            }).join('') || '<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted);">Nenhum pagamento de PI registrado ainda.</td></tr>'}
           </tbody>
         </table>
       </div>
