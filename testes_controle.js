@@ -145,6 +145,17 @@ teste('Só NF Entrada preenchida -> CARREGAMENTO (não avança sozinha)', () => 
 teste('Só NF Saída preenchida -> CARREGAMENTO (não avança sozinha)', () => {
   iguais(sandbox.calcularFase({ nf_saida_numero: '8309' }), 'CARREGAMENTO');
 });
+teste('Data de Embarque no futuro NÃO avança pra EMBARCADO (provável previsão no campo errado)', () => {
+  const amanha = new Date(); amanha.setDate(amanha.getDate() + 4);
+  iguais(sandbox.calcularFase({ etd: '2026-01-01', data_embarque: amanha.toISOString().slice(0,10) }), 'AGUARDANDO_EMBARQUE');
+});
+teste('Data de Embarque no passado avança normalmente pra EMBARCADO', () => {
+  const ontem = new Date(); ontem.setDate(ontem.getDate() - 2);
+  iguais(sandbox.calcularFase({ etd: '2026-01-01', data_embarque: ontem.toISOString().slice(0,10) }), 'EMBARCADO');
+});
+teste('HBL presente avança pra EMBARCADO mesmo sem data_embarque (não depende só da data)', () => {
+  iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'HBLX123' }), 'EMBARCADO');
+});
 teste('AMBAS as NFs preenchidas -> avança para DEVOLUCAO_VAZIO (regra de negócio confirmada com o usuário)', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '8305', nf_saida_numero: '8309' }), 'DEVOLUCAO_VAZIO');
 });
@@ -187,6 +198,45 @@ if (sandbox.norm) {
 }
 
 (async () => {
+// ── 6b. TESTES: moverDataFuturaParaPrevisao — data futura em campo "efetivo"
+// Sobrescreve document.getElementById temporariamente pra injetar 2
+// elementos falsos controlados pelo teste — sempre restaura o original
+// logo em seguida, pra não vazar pros testes seguintes (que dependem do
+// stub genérico completo, com classList/innerHTML/etc, usado por render(),
+// carregarProcessos() e companhia).
+console.log('\n📋 moverDataFuturaParaPrevisao() — auto-mover data futura pra previsão');
+const getElementByIdOriginal = sandbox.document.getElementById;
+teste('data futura no campo efetivo é movida pro campo de previsão e o efetivo é limpo', () => {
+  const amanha = new Date(); amanha.setDate(amanha.getDate() + 5);
+  const amanhaStr = amanha.toISOString().slice(0,10);
+  const efetivo = { value: amanhaStr };
+  const previsao = { value: '' };
+  sandbox.document.getElementById = (id) => id==='f_data_embarque' ? efetivo : id==='f_etd' ? previsao : getElementByIdOriginal(id);
+  try {
+    const moveu = sandbox.moverDataFuturaParaPrevisao('f_data_embarque','f_etd','Previsão de Embarque (ETD)');
+    verdadeiro(moveu === true, 'deveria retornar true quando move');
+    iguais(efetivo.value, '');
+    iguais(previsao.value, amanhaStr);
+  } finally {
+    sandbox.document.getElementById = getElementByIdOriginal;
+  }
+});
+teste('data no passado no campo efetivo NÃO é mexida (é uma data efetiva legítima)', () => {
+  const ontem = new Date(); ontem.setDate(ontem.getDate() - 3);
+  const ontemStr = ontem.toISOString().slice(0,10);
+  const efetivo = { value: ontemStr };
+  const previsao = { value: '' };
+  sandbox.document.getElementById = (id) => id==='f_data_chegada' ? efetivo : id==='f_eta' ? previsao : getElementByIdOriginal(id);
+  try {
+    const moveu = sandbox.moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (Previsão de Chegada)');
+    verdadeiro(moveu === false, 'não deveria mexer em data passada');
+    iguais(efetivo.value, ontemStr);
+    iguais(previsao.value, '');
+  } finally {
+    sandbox.document.getElementById = getElementByIdOriginal;
+  }
+});
+
 // ── 7. TESTES: salvarProcesso — concorrência (só envia o que mudou) ─
 // Cobre o fix de vários usuários editando processos ao mesmo tempo: o save
 // não pode mais mandar o processo inteiro (o que apagaria silenciosamente
