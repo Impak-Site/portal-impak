@@ -469,6 +469,14 @@ teste('renderFluxoCaixaHtml roda sem erro e lista os 6 meses', () => {
   verdadeiro(html.includes('entradas de clientes ainda não são rastreadas'), 'deveria deixar claro que Entradas não é rastreado ainda');
 });
 
+// ── 10. TESTE: ativarTelaFinanceiroExclusiva — tela /financeiro não quebra ─
+console.log('\n📋 ativarTelaFinanceiroExclusiva() — tela exclusiva do Dashboard Financeiro');
+teste('roda sem lançar erro mesmo com os stubs de DOM mínimos (sem elementos reais)', () => {
+  let erro = null;
+  try { sandbox.ativarTelaFinanceiroExclusiva(); } catch(e) { erro = e; }
+  verdadeiro(erro === null, `não deveria lançar erro, lançou: ${erro && erro.message}`);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

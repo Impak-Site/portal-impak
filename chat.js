@@ -147,15 +147,20 @@
   // ── NAV GLOBAL ──────────────────────────────────────────────
 
     const navModulos = [
-      { label: '🚢 Controle',    href: '/controle',   key: 'controle'    },
-      { label: '📄 Conferência', href: '/processos',  key: 'processos'   },
-      { label: '📦 TyreDesk',    href: '/',           key: 'tyredesk'    },
-      { label: '💰 Calculador',  href: '/calculador', key: 'calculador'  },
+      { label: '🚢 Controle',    href: '/controle',    key: 'controle'    },
+      { label: '📄 Conferência', href: '/processos',   key: 'processos'   },
+      { label: '📦 TyreDesk',    href: '/',            key: 'tyredesk'    },
+      { label: '💰 Calculador',  href: '/calculador',  key: 'calculador'  },
+      { label: '📊 Financeiro',  href: '/financeiro',  key: 'financeiro'  },
     ];
 
-    // Detectar módulo atual pelo path
+    // Detectar módulo atual pelo path — "financeiro" precisa vir ANTES de
+    // "controle" na checagem porque as duas telas usam o path /financeiro
+    // e /controle (não têm substring em comum, mas mantém a ordem por
+    // segurança caso isso mude no futuro).
     const path = window.location.pathname;
     const modAtual = path === '/' ? 'tyredesk'
+      : path.includes('financeiro') ? 'financeiro'
       : path.includes('controle')  ? 'controle'
       : path.includes('processos') ? 'processos'
       : path.includes('calculador')? 'calculador'
