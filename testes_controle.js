@@ -95,6 +95,20 @@ function teste(nome, fn) {
     console.log(`      ${e.message}`);
   }
 }
+// Versão async: espera a Promise resolver antes de considerar passou/falhou.
+// Necessária pra testar salvarProcesso() (async function real do código),
+// diferente de teste() acima que só cobre funções síncronas puras.
+async function testeAsync(nome, fn) {
+  totalTestes++;
+  try {
+    await fn();
+    console.log(`  ✓ ${nome}`);
+  } catch (e) {
+    totalFalhas++;
+    console.log(`  ✗ ${nome}`);
+    console.log(`      ${e.message}`);
+  }
+}
 function iguais(a, b, msg) {
   if (a !== b) throw new Error(msg || `esperado "${b}", recebido "${a}"`);
 }
@@ -172,6 +186,66 @@ if (sandbox.norm) {
   });
 }
 
+(async () => {
+// ── 7. TESTES: salvarProcesso — concorrência (só envia o que mudou) ─
+// Cobre o fix de vários usuários editando processos ao mesmo tempo: o save
+// não pode mais mandar o processo inteiro (o que apagaria silenciosamente
+// campos que outra pessoa tenha alterado nesse meio tempo) — só os campos
+// realmente alterados (patchFields) + os sempre-recalculados (fase,
+// demurrage_vencimento, pi_cambio, metadados). Mocka fetch pra capturar
+// exatamente o que seria mandado pro servidor.
+console.log('\n📋 salvarProcesso() — patch de concorrência');
+vm.runInContext("_user = {usuario:'teste'}; _cambio = {USD:5.5};", sandbox);
+
+await testeAsync('com patchFields, manda só os campos alterados + sempre-recalculados (não o processo inteiro)', async () => {
+  let corpoEnviado = null;
+  sandbox.fetch = (url, opts) => {
+    if (String(url).includes('/processo') && !String(url).includes('processos')) {
+      corpoEnviado = JSON.parse(opts.body).processo;
+    }
+    return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+  };
+  const proc = {
+    id: 'abc-123', referencia: 'UD26-999',
+    despachante: 'NOVO DESPACHANTE',           // campo que o usuário editou
+    fornecedor: 'FORNECEDOR QUE OUTRO USUARIO ALTEROU DEPOIS QUE ESTA TELA CARREGOU', // NÃO deveria ir
+    cliente: 'CLIENTE ANTIGO NO CACHE LOCAL',   // idem — não deveria ir
+  };
+  await sandbox.salvarProcesso(proc, ['despachante']);
+  verdadeiro(corpoEnviado !== null, 'fetch pro endpoint de salvar processo não foi chamado');
+  iguais(corpoEnviado.despachante, 'NOVO DESPACHANTE');
+  verdadeiro(!('fornecedor' in corpoEnviado), 'fornecedor não foi editado nesta sessão e não deveria estar no payload — isso sobrescreveria a alteração de outro usuário');
+  verdadeiro(!('cliente' in corpoEnviado), 'cliente não foi editado nesta sessão e não deveria estar no payload — isso sobrescreveria a alteração de outro usuário');
+  verdadeiro('id' in corpoEnviado && 'fase' in corpoEnviado && 'updated_by' in corpoEnviado, 'campos fixos (id/fase/updated_by) sempre devem ir junto');
+});
+
+await testeAsync('sem patchFields (chamada antiga), mantém comportamento de sempre — manda o processo inteiro', async () => {
+  let corpoEnviado = null;
+  sandbox.fetch = (url, opts) => {
+    if (String(url).includes('/processo') && !String(url).includes('processos')) {
+      corpoEnviado = JSON.parse(opts.body).processo;
+    }
+    return Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+  };
+  const proc = { id: 'abc-456', referencia: 'UD26-998', despachante: 'X', fornecedor: 'Y', cliente: 'Z' };
+  await sandbox.salvarProcesso(proc);
+  verdadeiro('fornecedor' in corpoEnviado && 'cliente' in corpoEnviado, 'sem patchFields deve continuar mandando o objeto inteiro (compatibilidade)');
+});
+
+teste('edição rápida inline de 1 campo (data) não vaza outros campos do cache local', () => {
+  // Simula o padrão real de inlineEditData: só o campo em questão é
+  // conhecido como "alterado agora"; o resto do objeto "proc" pode ser
+  // cache desatualizado.
+  const proc = { id: 'xyz', etd: '2026-08-01', hbl: 'HBL-VELHO-NO-CACHE' };
+  const patchFields = ['etd'];
+  const camposFixos = ['id','referencia','fase','demurrage_vencimento','pi_cambio','updated_by','updated_at','created_by','created_at','log'];
+  const chaves = [...new Set([...camposFixos, ...patchFields])];
+  const payload = {};
+  chaves.forEach(k=>{ if(proc[k]!==undefined) payload[k] = proc[k]; });
+  verdadeiro('etd' in payload, 'campo editado precisa estar no payload');
+  verdadeiro(!('hbl' in payload), 'hbl não foi editado nesta ação e não deveria ir — evita sobrescrever HBL que outro usuário tenha acabado de preencher');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
@@ -180,4 +254,7 @@ if (totalFalhas > 0) {
   process.exit(1);
 } else {
   console.log('✓ Tudo certo para deploy (do ponto de vista destas regras testadas).');
+  process.exit(0);
 }
+
+})();

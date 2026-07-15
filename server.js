@@ -794,7 +794,13 @@ app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
 app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
   try {
     const { processo } = req.body;
-    if (!processo || !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
+    if (!processo) return res.status(400).json({ erro: 'Processo ausente' });
+    // Referência só é obrigatória ao CRIAR (sem id ainda) — em edições
+    // parciais (ver controle_v2.html: coletarESalvar/salvarProcesso agora
+    // manda só os campos que o usuário de fato alterou, pra não sobrescrever
+    // edições concorrentes de outro usuário) o payload pode legitimamente
+    // não incluir "referencia" se ela não foi um dos campos alterados.
+    if (!processo.id && !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
     if (!processo.id) processo.id = gerarUUID();
     processo.updated_at = new Date().toISOString();
 
