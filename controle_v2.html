@@ -2584,17 +2584,50 @@ function confirmarCambioComo(tipo){
   const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
   if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
 
+  // Data em que o pagamento/câmbio foi efetivado — vem da extração da IA
+  // (ver "data_pagamento" no comprovante) ou, se o documento não trouxer
+  // essa data, usa hoje como aproximação razoável (o usuário pode corrigir
+  // manualmente no campo de data depois).
+  const dataPagamento = _cambioPendente.data_pagamento || new Date().toISOString().slice(0,10);
+
+  // Confirmar um comprovante de câmbio aqui é a prova de que o pagamento
+  // (total ou parcial) realmente aconteceu — por isso também atualiza
+  // "PI Paga?" e a data de pagamento correspondente, além da taxa de câmbio
+  // (antes só a taxa era preenchida e o "PI Paga?" nunca era tocado).
   if(tipo==='unico'){
     const el = document.getElementById('f_pi_cambio');
     if(el){ el.value = taxa.toFixed(4); el.dispatchEvent(new Event('change',{bubbles:true})); }
+
+    const selPagamento = document.getElementById('f_pi_pagamento');
+    if(selPagamento && !selPagamento.value){ selPagamento.value = 'VISTA'; renderPagamentoCampos(); }
+    const formaAtual = selPagamento?.value;
+    const idData = formaAtual==='PRAZO' ? 'f_pi_data_saldo' : 'f_pi_data_entrada';
+    const elData = document.getElementById(idData);
+    if(elData) elData.value = dataPagamento;
+    const elPago = document.getElementById('f_pi_pago');
+    if(elPago) elPago.value = 'true';
+    renderPagamentoInfoLive();
   } else if(tipo==='entrada'){
+    const selPagamento = document.getElementById('f_pi_pagamento');
+    if(selPagamento && selPagamento.value!=='ENTRADA_SALDO'){ selPagamento.value = 'ENTRADA_SALDO'; renderPagamentoCampos(); }
     const el = document.getElementById('f_pi_cambio_entrada');
-    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); renderPagamentoInfoLive(); }
+    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); }
+    const elData = document.getElementById('f_pi_data_entrada');
+    if(elData) elData.value = dataPagamento;
+    // Entrada é só parcial — NÃO marca a PI inteira como paga, só o Saldo fecha.
+    renderPagamentoInfoLive();
   } else if(tipo==='saldo'){
+    const selPagamento = document.getElementById('f_pi_pagamento');
+    if(selPagamento && selPagamento.value!=='ENTRADA_SALDO'){ selPagamento.value = 'ENTRADA_SALDO'; renderPagamentoCampos(); }
     const el = document.getElementById('f_pi_cambio_saldo');
-    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); renderPagamentoInfoLive(); }
+    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); }
+    const elData = document.getElementById('f_pi_data_saldo');
+    if(elData) elData.value = dataPagamento;
+    const elPago = document.getElementById('f_pi_pago');
+    if(elPago) elPago.value = 'true';
+    renderPagamentoInfoLive();
   }
-  showToast(`✓ Câmbio (${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}) aplicado como ${tipo==='unico'?'Pagamento Único':tipo==='entrada'?'Entrada':'Saldo'}`,'ok');
+  showToast(`✓ Câmbio (${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}) aplicado como ${tipo==='unico'?'Pagamento Único':tipo==='entrada'?'Entrada':'Saldo'} — PI marcada de acordo`,'ok');
   fecharModalCambio();
 }
 
@@ -3218,7 +3251,7 @@ async function extrairComIA(input){
   "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
   "encomendante_cnpj": "",  // CNPJ do encomendante/adquirente — ver instruções específicas na seção do Comprovante de Importação/Extrato da DI abaixo. Deixar "" se o documento não for esse tipo ou não trouxer esse campo.
   "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
-  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "taxa_cambio":0}. Deixar [] para qualquer outro tipo de documento.
+  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD"}. Deixar [] para qualquer outro tipo de documento.
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
@@ -3245,6 +3278,7 @@ Se o documento for um Comprovante de Câmbio (operação de câmbio bancária �
 - extrair "taxa_cambio" (a taxa/PTAX da operação, em R$ por US$) — normalmente é UMA só para o comprovante inteiro, mesmo que ele cubra várias referências/faturas.
 - o comprovante pode listar UMA OU VÁRIAS referências de processo/invoice na mesma operação (ex: numa tabela ou lista de "faturas pagas" dentro do comprovante), cada uma com seu valor. Para CADA referência encontrada, criar um item em "cambio_referencias" com: "referencia" (o número/código da referência ou invoice, exatamente como aparece no documento), "valor_pago" (o valor em REAIS pago especificamente para aquela referência — se o documento já mostrar o rateio/split por referência, use os valores exatos do documento; nunca divida o total igualmente entre as referências por conta própria) e "taxa_cambio" (repetir a mesma taxa da operação em cada item, a menos que o documento mostre taxas diferentes por referência).
 - se o comprovante não mencionar nenhuma referência/invoice explicitamente (só o valor total e a taxa), retornar um único item em "cambio_referencias" com "referencia" vazia ("") e o valor total — o sistema vai pedir confirmação manual de qual processo isso pertence.
+- extrair também "data_pagamento" (a data em que a operação de câmbio/pagamento foi feita — normalmente "Data da Operação", "Data de Liquidação" ou a data de emissão do comprovante) — repetir a mesma data em cada item de "cambio_referencias", a menos que o documento mostre datas diferentes por referência.
 Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`;
 
@@ -3521,9 +3555,15 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
 
     // Preenchimento programático não dispara onchange/oninput dos campos —
     // por isso a regra de parametrização e o recálculo de fase/demurrage
-    // precisam ser chamados manualmente aqui.
+    // precisam ser chamados manualmente aqui. O mesmo vale pro campo "Forma
+    // de Pagamento" (f_pi_pagamento): setar .value direto NÃO dispara seu
+    // onchange="renderPagamentoCampos()", então quando a IA lê uma PI e
+    // preenche "100% a Prazo" o <select> mostra a opção certa mas o campo
+    // "Prazo (dias)" (e Data Pagamento) nunca aparecia — precisa chamar de
+    // novo aqui manualmente, senão o formulário fica com dado "invisível".
     aplicarRegraParametrizacaoVerde();
     atualizarFaseEmTempoReal();
+    if(extracted.pi_pagamento) renderPagamentoCampos();
 
     // Atualizar _editando com os valores extraídos
     if(_editando) Object.assign(_editando, extracted);
