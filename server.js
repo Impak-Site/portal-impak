@@ -8,8 +8,16 @@
  *
  * Variáveis Railway opcionais:
  *   ANTHROPIC_API_KEY → chave da API Anthropic
- *   SESSION_SECRET    → segredo da sessão
+ *   SESSION_SECRET    → segredo da sessão (fixo — se não tiver, sessão morre a cada deploy)
  *   SENHA_*           → senhas dos usuários
+ *
+ * Tabela extra necessária no Supabase (sessão persistente, sobrevive a deploy):
+ *   create table if not exists app_sessions (
+ *     sid text primary key,
+ *     sess jsonb not null,
+ *     expire timestamptz not null
+ *   );
+ *   create index if not exists app_sessions_expire_idx on app_sessions (expire);
  */
 
 const express = require('express');
@@ -71,6 +79,73 @@ function sb() {
   console.log('✓ Supabase conectado:', url.slice(0, 40) + '...');
   return _sb;
 }
+
+// ── SESSION STORE PERSISTENTE (Supabase) ─────────────────────────
+// Antes: sessão vivia só na memória do processo Node (MemoryStore, o padrão
+// do express-session). Resultado: TODO deploy/restart do Railway derrubava a
+// sessão de TODOS os usuários logados, mesmo com SESSION_SECRET fixo — o
+// segredo só evita erro de assinatura do cookie, mas sem um lugar persistente
+// pra guardar os dados da sessão em si, o servidor não reconhece mais o
+// cookie depois de reiniciar. Isso causava o erro "Unexpected token '<' ...
+// is not valid JSON" ao salvar: a chamada à API era redirecionada
+// silenciosamente pra /login (HTML) e o front tentava ler aquilo como JSON.
+// Este store salva a sessão na tabela `app_sessions` do Supabase, então ela
+// sobrevive a deploys normalmente (precisa existir a tabela — ver README).
+// Se a tabela `app_sessions` ainda não existir no Supabase (setup pendente),
+// nenhuma chamada aqui deve derrubar a requisição nem travar login — só
+// registra um aviso uma vez e segue como se não houvesse sessão persistida
+// (mesmo comportamento de antes, sem quebrar nada enquanto a tabela não sai).
+let _avisouTabelaAusente = false;
+function avisarTabelaAusente(error) {
+  if (_avisouTabelaAusente) return;
+  _avisouTabelaAusente = true;
+  console.error('⚠️  Tabela app_sessions indisponível no Supabase — sessão vai continuar caindo a cada deploy até criar a tabela (ver instruções no topo do arquivo). Erro:', error && error.message);
+}
+
+class SupabaseSessionStore extends session.Store {
+  get(sid, callback) {
+    sb().from('app_sessions').select('sess, expire').eq('sid', sid).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { avisarTabelaAusente(error); return callback(null, null); }
+        if (!data) return callback(null, null);
+        if (new Date(data.expire) < new Date()) {
+          this.destroy(sid, () => {});
+          return callback(null, null);
+        }
+        callback(null, data.sess);
+      })
+      .catch(err => { avisarTabelaAusente(err); callback(null, null); });
+  }
+
+  set(sid, sessionData, callback) {
+    const maxAge = (sessionData.cookie && sessionData.cookie.maxAge) || 8 * 60 * 60 * 1000;
+    const expire = new Date(Date.now() + maxAge).toISOString();
+    sb().from('app_sessions').upsert({ sid, sess: sessionData, expire }, { onConflict: 'sid' })
+      .then(({ error }) => { if (error) avisarTabelaAusente(error); callback && callback(null); })
+      .catch(err => { avisarTabelaAusente(err); callback && callback(null); });
+  }
+
+  destroy(sid, callback) {
+    sb().from('app_sessions').delete().eq('sid', sid)
+      .then(({ error }) => { if (error) avisarTabelaAusente(error); callback && callback(null); })
+      .catch(err => { avisarTabelaAusente(err); callback && callback(null); });
+  }
+
+  touch(sid, sessionData, callback) {
+    const maxAge = (sessionData.cookie && sessionData.cookie.maxAge) || 8 * 60 * 60 * 1000;
+    const expire = new Date(Date.now() + maxAge).toISOString();
+    sb().from('app_sessions').update({ expire }).eq('sid', sid)
+      .then(({ error }) => { if (error) avisarTabelaAusente(error); callback && callback(null); })
+      .catch(err => { avisarTabelaAusente(err); callback && callback(null); });
+  }
+}
+
+// Limpeza periódica de sessões expiradas (evita a tabela crescer sem fim)
+setInterval(() => {
+  sb().from('app_sessions').delete().lt('expire', new Date().toISOString())
+    .then(({ error }) => { if (error) avisarTabelaAusente(error); })
+    .catch(err => avisarTabelaAusente(err));
+}, 60 * 60 * 1000); // a cada 1h
 
 // ── USUÁRIOS ──────────────────────────────────────────────────
 // Esta lista continua sendo a FONTE DOS METADADOS (nome, módulos, role, home,
@@ -181,8 +256,9 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // isso, cookie.secure=true bloquearia o cookie de sessão para todo mundo.
 app.set('trust proxy', 1);
 app.use(session({
+  store: new SupabaseSessionStore(),
   secret: process.env.SESSION_SECRET || (() => {
-    console.error('⚠️  SESSION_SECRET não configurado no Railway — usando valor temporário gerado neste boot (sessões serão invalidadas a cada deploy).');
+    console.error('⚠️  SESSION_SECRET não configurado no Railway — usando valor temporário gerado neste boot (sessões serão invalidadas a cada deploy, mesmo com o store persistente).');
     return randomBytes(32).toString('hex');
   })(),
   resave: false,
