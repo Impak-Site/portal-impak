@@ -747,6 +747,12 @@ app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) 
 
 // ── API: CONTROLE v2 ──────────────────────────────────────────
 app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+// "Tela exclusiva" do Dashboard Financeiro — serve o MESMO controle_v2.html
+// (o front-end detecta location.pathname==='/financeiro' e ajusta o que
+// aparece na tela). Evita duplicar toda a lógica de abrir/editar processo,
+// upload de documentos, autocomplete de contatos etc. num arquivo separado
+// que rapidamente ficaria desatualizado em relação ao Controle de verdade.
+app.get('/financeiro', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
 
 app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
