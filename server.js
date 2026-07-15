@@ -95,18 +95,35 @@ function sb() {
 // nenhuma chamada aqui deve derrubar a requisição nem travar login — só
 // registra um aviso uma vez e segue como se não houvesse sessão persistida
 // (mesmo comportamento de antes, sem quebrar nada enquanto a tabela não sai).
+// Duas categorias de erro bem diferentes aqui:
+//  1. "Tabela ainda não existe" (setup pendente) — situação SEGURA e
+//     esperada logo após o deploy deste código, antes de alguém rodar o SQL
+//     de criação da tabela. Avisa só 1x pra não poluir o log.
+//  2. QUALQUER outro erro (ex: permissão faltando — já aconteceu: a tabela
+//     foi criada mas o Supabase não deu GRANT pro service_role, e isso
+//     travou login de todo mundo silenciosamente até alguém notar) — isso
+//     é grave, avisa SEMPRE (não só 1x) e de um jeito bem visível, porque
+//     "só 1 aviso perdido no meio do log" foi exatamente o que escondeu o
+//     problema real da última vez.
 let _avisouTabelaAusente = false;
-function avisarTabelaAusente(error) {
-  if (_avisouTabelaAusente) return;
-  _avisouTabelaAusente = true;
-  console.error('⚠️  Tabela app_sessions indisponível no Supabase — sessão vai continuar caindo a cada deploy até criar a tabela (ver instruções no topo do arquivo). Erro:', error && error.message);
+function avisarErroSessao(error, operacao) {
+  if (!error) return;
+  const msg = error.message || String(error);
+  const tabelaAusente = error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(msg);
+  if (tabelaAusente) {
+    if (_avisouTabelaAusente) return;
+    _avisouTabelaAusente = true;
+    console.error(`⚠️  Tabela app_sessions ainda não existe no Supabase — sessão vai continuar caindo a cada deploy até criar a tabela (ver instruções no topo do arquivo). [${operacao}]`, msg);
+  } else {
+    console.error(`🛑 ERRO REAL ao acessar app_sessions — sessão NÃO está sendo salva/lida, login pode estar quebrado para todo mundo. [${operacao}] code=${error.code||'?'}:`, msg);
+  }
 }
 
 class SupabaseSessionStore extends session.Store {
   get(sid, callback) {
     sb().from('app_sessions').select('sess, expire').eq('sid', sid).maybeSingle()
       .then(({ data, error }) => {
-        if (error) { avisarTabelaAusente(error); return callback(null, null); }
+        if (error) { avisarErroSessao(error, 'get'); return callback(null, null); }
         if (!data) return callback(null, null);
         if (new Date(data.expire) < new Date()) {
           this.destroy(sid, () => {});
@@ -114,37 +131,37 @@ class SupabaseSessionStore extends session.Store {
         }
         callback(null, data.sess);
       })
-      .catch(err => { avisarTabelaAusente(err); callback(null, null); });
+      .catch(err => { avisarErroSessao(err, 'get'); callback(null, null); });
   }
 
   set(sid, sessionData, callback) {
     const maxAge = (sessionData.cookie && sessionData.cookie.maxAge) || 8 * 60 * 60 * 1000;
     const expire = new Date(Date.now() + maxAge).toISOString();
     sb().from('app_sessions').upsert({ sid, sess: sessionData, expire }, { onConflict: 'sid' })
-      .then(({ error }) => { if (error) avisarTabelaAusente(error); callback && callback(null); })
-      .catch(err => { avisarTabelaAusente(err); callback && callback(null); });
+      .then(({ error }) => { if (error) avisarErroSessao(error, 'set'); callback && callback(null); })
+      .catch(err => { avisarErroSessao(err, 'set'); callback && callback(null); });
   }
 
   destroy(sid, callback) {
     sb().from('app_sessions').delete().eq('sid', sid)
-      .then(({ error }) => { if (error) avisarTabelaAusente(error); callback && callback(null); })
-      .catch(err => { avisarTabelaAusente(err); callback && callback(null); });
+      .then(({ error }) => { if (error) avisarErroSessao(error, 'destroy'); callback && callback(null); })
+      .catch(err => { avisarErroSessao(err, 'destroy'); callback && callback(null); });
   }
 
   touch(sid, sessionData, callback) {
     const maxAge = (sessionData.cookie && sessionData.cookie.maxAge) || 8 * 60 * 60 * 1000;
     const expire = new Date(Date.now() + maxAge).toISOString();
     sb().from('app_sessions').update({ expire }).eq('sid', sid)
-      .then(({ error }) => { if (error) avisarTabelaAusente(error); callback && callback(null); })
-      .catch(err => { avisarTabelaAusente(err); callback && callback(null); });
+      .then(({ error }) => { if (error) avisarErroSessao(error, 'touch'); callback && callback(null); })
+      .catch(err => { avisarErroSessao(err, 'touch'); callback && callback(null); });
   }
 }
 
 // Limpeza periódica de sessões expiradas (evita a tabela crescer sem fim)
 setInterval(() => {
   sb().from('app_sessions').delete().lt('expire', new Date().toISOString())
-    .then(({ error }) => { if (error) avisarTabelaAusente(error); })
-    .catch(err => avisarTabelaAusente(err));
+    .then(({ error }) => { if (error) avisarErroSessao(error, 'limpeza'); })
+    .catch(err => avisarErroSessao(err, 'limpeza'));
 }, 60 * 60 * 1000); // a cada 1h
 
 // ── USUÁRIOS ──────────────────────────────────────────────────
