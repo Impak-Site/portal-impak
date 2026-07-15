@@ -1324,7 +1324,15 @@ app.get('/api/contatos', auth(), async (req, res) => {
     const { q, tipo, uf, limit } = req.query;
     const lim = Math.min(parseInt(limit) || 30, 1000);
     let query = sb().from('contatos_clientes').select('id,cnpj,razao_social,nome_fantasia,cidade,uf,email,telefone,tipo,obs').eq('ativo', true);
-    if (tipo) query = query.eq('tipo', tipo.toUpperCase());
+    // tipo aceita mais de um valor separado por vírgula (ex: "FORNECEDOR,EXPORTADOR")
+    // — usado pelo campo "Fornecedor (Exportador)" do processo, que precisa achar
+    // contatos cadastrados em QUALQUER uma dessas duas categorias (antes buscava
+    // só EXPORTADOR, então um contato cadastrado como Fornecedor nunca aparecia
+    // no autocomplete daquele campo, mesmo existindo no cadastro).
+    if (tipo) {
+      const tipos = tipo.split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
+      query = tipos.length > 1 ? query.in('tipo', tipos) : query.eq('tipo', tipos[0]);
+    }
     if (uf)   query = query.eq('uf', uf.toUpperCase());
     if (q && q.length >= 2) {
       // Remove caracteres com significado especial na sintaxe do filtro
