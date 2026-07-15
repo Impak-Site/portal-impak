@@ -45,7 +45,7 @@ function criarSandbox() {
   const documentFalso = {
     getElementById: (id) => elementosFalsos[id] || (elementosFalsos[id] = {
       value: '', innerHTML: '', style: {}, textContent: '', classList: { add(){}, remove(){}, contains(){ return false; } },
-      addEventListener(){}, appendChild(){}, querySelector(){ return null; }, querySelectorAll(){ return []; },
+      addEventListener(){}, appendChild(){}, querySelector(){ return null; }, querySelectorAll(){ return []; }, dispatchEvent(){ return true; },
     }),
     querySelector: () => null,
     querySelectorAll: () => [],
@@ -64,6 +64,7 @@ function criarSandbox() {
     navigator: { clipboard: { writeText(){} } },
     Date, Math, JSON, Array, Object, String, Number, Boolean, RegExp, Promise,
     URL: typeof URL !== 'undefined' ? URL : undefined,
+    Event: typeof Event !== 'undefined' ? Event : undefined, // usado por confirmarCambioComo (dispatchEvent de 'change')
     addEventListener: () => {}, // o código real registra listeners de window.onload etc.
   };
   sandbox.window = sandbox; // padrão comum: window === global scope no browser
@@ -294,6 +295,64 @@ teste('edição rápida inline de 1 campo (data) não vaza outros campos do cach
   chaves.forEach(k=>{ if(proc[k]!==undefined) payload[k] = proc[k]; });
   verdadeiro('etd' in payload, 'campo editado precisa estar no payload');
   verdadeiro(!('hbl' in payload), 'hbl não foi editado nesta ação e não deveria ir — evita sobrescrever HBL que outro usuário tenha acabado de preencher');
+});
+
+// ── 8. TESTES: confirmarCambioComo — comprovante de câmbio marca PI paga ─
+// Cobre o fix do bug reportado: confirmar um comprovante de câmbio (Único/
+// Entrada/Saldo) atualizava só a taxa de câmbio e nunca tocava em "PI Paga?"
+// nem na data de pagamento — o usuário precisava ir lá marcar manualmente.
+console.log('\n📋 confirmarCambioComo() — marca PI paga e data de pagamento');
+
+teste('Pagamento Único (forma vazia) define VISTA, marca PI paga e usa data_pagamento do comprovante', () => {
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.35, valor_pago:10000, referencia:'UD26-999', data_pagamento:'2026-07-10'};", sandbox);
+  sandbox.document.getElementById('f_pi_pagamento').value = '';
+  sandbox.document.getElementById('f_pi_pago').value = 'false';
+  sandbox.document.getElementById('f_pi_data_entrada').value = '';
+  sandbox.confirmarCambioComo('unico');
+  iguais(sandbox.document.getElementById('f_pi_pagamento').value, 'VISTA', 'forma de pagamento deveria virar VISTA por padrão');
+  iguais(sandbox.document.getElementById('f_pi_pago').value, 'true', 'PI deveria ficar marcada como paga');
+  iguais(sandbox.document.getElementById('f_pi_data_entrada').value, '2026-07-10', 'data de pagamento deveria vir do comprovante');
+});
+
+teste('Pagamento Único com forma já PRAZO grava a data no Saldo (não na Entrada)', () => {
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.40, valor_pago:20000, referencia:'UD26-998', data_pagamento:'2026-07-12'};", sandbox);
+  sandbox.document.getElementById('f_pi_pagamento').value = 'PRAZO';
+  sandbox.document.getElementById('f_pi_pago').value = 'false';
+  sandbox.document.getElementById('f_pi_data_saldo').value = '';
+  sandbox.confirmarCambioComo('unico');
+  iguais(sandbox.document.getElementById('f_pi_pago').value, 'true', 'PI deveria ficar marcada como paga');
+  iguais(sandbox.document.getElementById('f_pi_data_saldo').value, '2026-07-12', 'pagamento único a prazo fecha no Saldo, não na Entrada');
+});
+
+teste('Entrada define ENTRADA_SALDO, preenche Data Entrada mas NÃO marca PI como paga (é só parcial)', () => {
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.30, valor_pago:5000, referencia:'UD26-997', data_pagamento:'2026-07-05'};", sandbox);
+  sandbox.document.getElementById('f_pi_pagamento').value = '';
+  sandbox.document.getElementById('f_pi_pago').value = 'false';
+  sandbox.document.getElementById('f_pi_data_entrada').value = '';
+  sandbox.confirmarCambioComo('entrada');
+  iguais(sandbox.document.getElementById('f_pi_pagamento').value, 'ENTRADA_SALDO', 'forma de pagamento deveria virar ENTRADA_SALDO');
+  iguais(sandbox.document.getElementById('f_pi_data_entrada').value, '2026-07-05', 'data de pagamento da entrada deveria vir do comprovante');
+  iguais(sandbox.document.getElementById('f_pi_pago').value, 'false', 'entrada é só parcial — PI não deveria ficar marcada como paga ainda');
+});
+
+teste('Saldo define ENTRADA_SALDO, preenche Data Saldo e marca PI como paga (fecha o pagamento)', () => {
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.45, valor_pago:15000, referencia:'UD26-996', data_pagamento:'2026-07-14'};", sandbox);
+  sandbox.document.getElementById('f_pi_pagamento').value = 'ENTRADA_SALDO';
+  sandbox.document.getElementById('f_pi_pago').value = 'false';
+  sandbox.document.getElementById('f_pi_data_saldo').value = '';
+  sandbox.confirmarCambioComo('saldo');
+  iguais(sandbox.document.getElementById('f_pi_data_saldo').value, '2026-07-14', 'data de pagamento do saldo deveria vir do comprovante');
+  iguais(sandbox.document.getElementById('f_pi_pago').value, 'true', 'saldo fecha o pagamento — PI deveria ficar marcada como paga');
+});
+
+teste('Sem data_pagamento no comprovante, usa a data de hoje como aproximação', () => {
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.20, valor_pago:8000, referencia:'UD26-995'};", sandbox);
+  sandbox.document.getElementById('f_pi_pagamento').value = '';
+  sandbox.document.getElementById('f_pi_pago').value = 'false';
+  sandbox.document.getElementById('f_pi_data_entrada').value = '';
+  sandbox.confirmarCambioComo('unico');
+  const hojeStr = new Date().toISOString().slice(0,10);
+  iguais(sandbox.document.getElementById('f_pi_data_entrada').value, hojeStr, 'sem data no comprovante, deveria cair pra data de hoje');
 });
 
 // ── RESUMO ───────────────────────────────────────────────────────
