@@ -4061,6 +4061,7 @@ function renderDashFinanceiro(){
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr style="background:var(--bg);">
+              <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">País</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Moeda</th>
@@ -4077,6 +4078,7 @@ function renderDashFinanceiro(){
                 : vencido ? '<span style="color:var(--err);font-weight:700;">⚠ Vencido</span>'
                 : '<span style="color:var(--muted);">Previsto</span>';
               return `<tr style="border-top:1px solid var(--border);cursor:pointer;${vencido?'background:rgba(220,38,38,.03)':''}" onclick="abrirProcesso('${x.processoId}');toggleDashFinanceiro()">
+                <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${x.referencia}${x.parcela==='entrada'?' <span style="color:var(--muted);font-weight:400;">(entrada)</span>':x.parcela==='saldo'?' <span style="color:var(--muted);font-weight:400;">(saldo)</span>':''}</td>
                 <td style="padding:8px 12px;">${x.fornecedor}</td>
                 <td style="padding:8px 12px;">${x.pais}</td>
                 <td style="padding:8px 12px;">${x.moeda}</td>
@@ -4084,7 +4086,7 @@ function renderDashFinanceiro(){
                 <td style="padding:8px 12px;text-align:center;">${x.vencimento?new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR'):'—'}</td>
                 <td style="padding:8px 12px;text-align:center;">${statusHtml}</td>
               </tr>`;
-            }).join('') || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--muted);">Nenhum pagamento de PI registrado ainda.</td></tr>'}
+            }).join('') || '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted);">Nenhum pagamento de PI registrado ainda.</td></tr>'}
           </tbody>
         </table>
       </div>
