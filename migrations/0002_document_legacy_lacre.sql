@@ -1,0 +1,33 @@
+-- 0002_document_legacy_lacre.sql
+--
+-- Este arquivo NÃO executa nenhuma mudança — é só documentação, pra
+-- registrar uma decisão tomada durante a auditoria de código de
+-- julho/2026.
+--
+-- A coluna "lacre" existe em controle_processos no banco de PRODUÇÃO
+-- (main), mas:
+--   - não é usada em nenhum lugar do código atual (nem server.js, nem
+--     controle_v2.html, em nenhuma das duas branches);
+--   - não existe no banco do lab.
+--
+-- Motivo provável: era o campo de lacre/selo do container antes da
+-- introdução do "containers_json" (que guarda numero+tipo+lacre por
+-- container, dentro de um array, pra suportar múltiplos containers por
+-- processo — ver função _containers em controle_v2.html).
+--
+-- Decisão (18/07/2026): deixar a coluna como está por enquanto, sem
+-- remover e sem replicar no lab. Antes de considerar excluí-la de
+-- produção no futuro, rodar primeiro:
+--
+--   select count(*) from controle_processos
+--   where lacre is not null and containers_json is null;
+--
+-- Se o resultado for 0, a coluna pode ser removida com segurança (todo
+-- processo com lacre preenchido já tem o valor espelhado em
+-- containers_json). Se for maior que 0, existem processos antigos que só
+-- têm o lacre nessa coluna legada — precisaria migrar esse valor pro
+-- containers_json antes de remover.
+
+-- Statement real (mas inofensivo) só pra este arquivo ter algo executável
+-- de verdade — o runner de migrations espera rodar uma query por arquivo.
+select 1;
