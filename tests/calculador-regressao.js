@@ -17,7 +17,7 @@
 //      pare e investigue antes de dar deploy.
 //
 // Isso roda direto no estado global da página (mesmo truque de arquivos
-// <script> separados: _toggles, _ultimoResultado etc. são variáveis
+// <script> separados: _estado (com .toggles, .ultimoResultado etc.) é uma variável
 // compartilhadas), então usa o calcular() de verdade, sem simular nada.
 //
 // COMO ADICIONAR UM CASO NOVO:
@@ -48,7 +48,7 @@
         setVal('cambio_chegada', '');
         setVal('produto', 'TBR');
         setVal('uf_destino', 'MG');
-        _toggles = { ttd: 'SIM', st: 'NAO', dump: 'NAO', uc: 'NAO', ie: 'SIM', br: 'NAO', china: 'NAO', boss: 'NAO', fobpar: 'NAO' };
+        _estado.toggles = { ttd: 'SIM', st: 'NAO', dump: 'NAO', uc: 'NAO', ie: 'SIM', br: 'NAO', china: 'NAO', boss: 'NAO', fobpar: 'NAO' };
         setChecked('auto_marinha', true);
         setChecked('auto_agente', true);
         setChecked('auto_iof', true);
@@ -75,7 +75,7 @@
         setVal('tx_capatazia', 1100); // valor padrão do formulário — deixado explícito aqui
         setVal('produto', 'TBR');
         setVal('uf_destino', 'MG');
-        _toggles = { ttd: 'SIM', st: 'NAO', dump: 'NAO', uc: 'NAO', ie: 'SIM', br: 'NAO', china: 'NAO', boss: 'NAO', fobpar: 'NAO' };
+        _estado.toggles = { ttd: 'SIM', st: 'NAO', dump: 'NAO', uc: 'NAO', ie: 'SIM', br: 'NAO', china: 'NAO', boss: 'NAO', fobpar: 'NAO' };
         setChecked('auto_marinha', true);
         setChecked('auto_agente', true);
         setChecked('auto_iof', true);
@@ -106,8 +106,8 @@
         setChecked('auto_marinha', true);
         setChecked('auto_agente', true);
         setChecked('auto_iof', true);
-        _toggles = { ttd: 'SIM', st: 'SIM', dump: 'NAO', uc: 'NAO', ie: 'SIM', br: 'NAO', china: 'NAO', boss: 'NAO', fobpar: 'NAO' };
-        _cenario = 1;
+        _estado.toggles = { ttd: 'SIM', st: 'SIM', dump: 'NAO', uc: 'NAO', ie: 'SIM', br: 'NAO', china: 'NAO', boss: 'NAO', fobpar: 'NAO' };
+        _estado.cenario = 1;
       },
       esperado: {
         'seguro_compra_usd':  { valor: 8.1312,             tolerancia: 0.01 },
@@ -167,9 +167,9 @@
       totalFail += Object.keys(caso.esperado).length;
       return;
     }
-    const r = _ultimoResultado;
+    const r = _estado.ultimoResultado;
     if (!r) {
-      console.error('  ✗ _ultimoResultado não foi preenchido — calcular() deve ter retornado cedo (câmbio/FOB vazio? NCM não encontrado?)');
+      console.error('  ✗ _estado.ultimoResultado não foi preenchido — calcular() deve ter retornado cedo (câmbio/FOB vazio? NCM não encontrado?)');
       totalFail += Object.keys(caso.esperado).length;
       return;
     }
