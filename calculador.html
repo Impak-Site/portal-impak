@@ -676,7 +676,8 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--dim);">
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-demonstrativo" checked> Aba Demonstrativo (interno, com custos e lucro)</label>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-cliente" checked> Aba Cliente (comercial, só mix e preço)</label>
-      </div>
+      
+<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-capa"> Aba Capa (resumo 1 pagina)</label></div>
       <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
@@ -1803,6 +1804,175 @@ function calcular() {
   irParaResultado();
 }
 
+
+// ── CAPA (task Capa) ──────────────────────────────────────────────
+// Resumo de 1 pagina "DEMONSTRATIVO DO PROCESSO", reproduzindo a aba
+// CAPA da planilha de referencia (ref. UD25-305). Reaproveita 100% dos
+// campos ja calculados por calcular() (_estado.ultimoResultado) — nao
+// recalcula nada do zero, so reorganiza/rotula pra bater com o layout
+// da planilha. Usada tanto pelo render HTML (renderCapaHtml) quanto
+// pelo export Excel de aba unica (ver exportarExcel -> incluirCapa).
+const TIPO_IMPORTACAO_LABEL_CAPA = {
+  ENCOMENDA: 'IMPORTACAO POR ENCOMENDA',
+  PROPRIA: 'IMPORTACAO PROPRIA (IMPAK)',
+  IMPLEMENTOS: 'IMPLEMENTOS',
+  TRANSPORTADORA: 'TRANSPORTADORA',
+};
+function dadosCapa(r) {
+  const cst = r.cenarios.com_st, sst = r.cenarios.sem_st;
+  const tipoImportacaoRaw = document.getElementById('tipo_importacao')?.value || '';
+  const tipoImportacaoLabel = TIPO_IMPORTACAO_LABEL_CAPA[tipoImportacaoRaw] || tipoImportacaoRaw || '—';
+  const marca = (_estado.mix && _estado.mix.forn) ? _estado.mix.forn : '—';
+  const qtdTotal = (r.mix_result || []).reduce((a, it) => a + it.qtd, 0);
+  const totalCreditos = -(r.IPI_e + r.PIS_e + r.COFINS_e + r.IBS_e + r.CBS_e);
+  const totalTributos = r.II + r.IPI_e + r.PIS_e + r.COFINS_e + r.IBS_e + r.CBS_e + r.DUMP;
+  const despesas = [
+    { label: 'Taxa SISCOMEX', brl: r.txOp.fixas.siscomex * r.containers },
+    { label: 'A.F.R.M (Marinha Mercante)', brl: r.txOp.fixas.marinha * r.containers },
+    { label: 'Capatazia (THC-Container)', brl: r.txOp.fixas.capatazia * r.containers },
+    { label: 'Armazenagem e Movimentacao Porto', brl: r.txOp.fixas.armazenagem },
+    { label: 'Taxas Destino (agente de carga)', brl: r.txOp.fixas.agente * r.containers },
+    { label: 'Emissao de L.Is (D.I/DUIMP)', brl: r.txOp.fixas.emissao_li * r.containers },
+    { label: 'Despachante - SDA', brl: (r.txOp.fixas.despachante + r.txOp.fixas.sda) * r.containers },
+    { label: 'Lavacao (retorno container)', brl: r.txOp.fixas.lavacao * r.containers },
+    { label: 'Administrativo', brl: r.txOp.fixas.administrativo * r.containers },
+    { label: 'Seguro (venda)', brl: r.seguro_venda_brl },
+    { label: 'Baixa Patio', brl: r.txOp.fixas.baixa_patio * r.containers },
+    { label: 'Liberacao BL', brl: r.txOp.fixas.liberacao_bl * r.containers },
+    { label: 'Taxas em USD (diversas, destino)', brl: r.taxas_usd_brl },
+    { label: 'Custos Diversos', brl: r.custos_div },
+  ];
+  if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
+  return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas };
+}
+
+// ── RENDER HTML — secao "Capa" na tela de Resultado ────────────────
+function renderCapaHtml(r) {
+  const d = dadosCapa(r);
+  const fmtR = v => 'R$ ' + fmt(v);
+  const fmtUsdCapa = v => 'US$ ' + fmt(v);
+  const blocoCenarioCapa = (nome, c) => `
+    <div class="detail-section">
+      <div class="detail-title">Preco de Venda — ${nome}</div>
+      <table class="calc-table">
+        <tr><td>Total dos Produtos</td><td class="num">${fmtR(c.vlr_produto)}</td></tr>
+        <tr><td>IPI (${pct(r.t.ipi)})</td><td class="num">${fmtR(c.IPI_s)}</td></tr>
+        <tr><td>ICMS (${pct(r.t.aliq_inter)})</td><td class="num">${fmtR(c.ICMS_nfe)}</td></tr>
+        ${c.icms_st > 0 ? `<tr><td>ICMS S.T</td><td class="num">${fmtR(c.icms_st)}</td></tr>` : ''}
+        <tr><td>IBS (${pct(r.t.ibs)})</td><td class="num">${fmtR(c.IBS_s)}</td></tr>
+        <tr><td>CBS (${pct(r.t.cbs)})</td><td class="num">${fmtR(c.CBS_s)}</td></tr>
+        <tr class="destaque-row"><td>TOTAL DA NFe</td><td class="num">${fmtR(c.vlr_total_nfe)}</td></tr>
+        <tr><td>PIS (${pct(r.t.pis_s)})</td><td class="num">${fmtR(c.PIS_s)}</td></tr>
+        <tr><td>COFINS (${pct(r.t.cofins_s)})</td><td class="num">${fmtR(c.COFINS_s)}</td></tr>
+        <tr><td>ICMS Proprio (${pct(r.t.icms_prop)})</td><td class="num">${fmtR(c.ICMS_proprio)}</td></tr>
+        ${c.COM_br > 0 ? `<tr><td>Comissao Repr. (${r.br_nome || ''})</td><td class="num">${fmtR(c.COM_br)}</td></tr>` : ''}
+        ${c.COM_china_dentro > 0 ? `<tr><td>Comissao China (dentro)</td><td class="num">${fmtR(c.COM_china_dentro)}</td></tr>` : ''}
+        <tr class="total-row ok"><td>Lucro Bruto Impak</td><td class="num" style="color:var(--ok);font-weight:800;">${fmtR(c.lucro_bruto)} (${pctF(c.pct_lucro)})</td></tr>
+      </table>
+      ${(c.china_fora_val > 0 || c.boss_fora_val > 0) ? `
+        <div class="nota-servico" style="margin-top:10px;">
+          <div class="nota-servico-title">Nota de Servico (fora do preco)</div>
+          ${c.china_fora_val > 0 ? `<div style="font-size:12px;margin-bottom:4px;">• Chines (Comissao China): <strong>${fmtR(c.china_fora_val)}</strong> (${(r.china_pct*100).toFixed(2)}%)</div>` : ''}
+          ${c.boss_fora_val > 0 ? `<div style="font-size:12px;">• ${r.boss_nome || 'Boss/Lopes'}: <strong>${fmtR(c.boss_fora_val)}</strong></div>` : ''}
+        </div>` : ''}
+      <table class="calc-table" style="margin-top:8px;">
+        <tr class="destaque-row"><td>TOTAL DO PROCESSO</td><td class="num">${fmtR(c.faturamento_total)}</td></tr>
+      </table>
+    </div>
+  `;
+
+  const mixHtmlCapa = (r.mix_result && r.mix_result.length) ? `
+    <div class="detail-section">
+      <div class="detail-title">Valor Unitario por Produto + Servico</div>
+      <table class="mix-result-table">
+        <thead><tr><th>Medida</th><th>Qtd</th><th>Preco Unit. COM S.T</th><th>Preco Unit. SEM S.T</th></tr></thead>
+        <tbody>
+          ${r.mix_result.map((it, idx) => `<tr><td>${it.medida}</td><td class="num">${it.qtd}</td><td class="num">${fmtR(d.cst.mix[idx].vlr_unit_brl)}</td><td class="num">${fmtR(d.sst.mix[idx].vlr_unit_brl)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  ` : `
+    <div class="detail-section">
+      <div class="detail-title">Valor do Produto</div>
+      <div style="font-size:11px;color:var(--dim);">Produto unico (sem Mix importado do TyreDesk) — o sistema nao fraciona o valor por unidade nesse caso; ver "Total dos Produtos"/"TOTAL DA NFe" acima.</div>
+    </div>
+  `;
+
+  return `
+  <div class="resultado" style="margin-bottom:16px;" id="capa-secao">
+    <div class="resultado-header">
+      <h2>📋 Capa — Demonstrativo do Processo</h2>
+      <span style="font-size:12px;opacity:.7;">${d.tipoImportacaoLabel}</span>
+    </div>
+    <div class="resultado-body">
+      <table class="calc-table" style="margin-bottom:14px;">
+        <tr><td>Cliente</td><td>${r.cliente || '—'}</td><td>Data</td><td>${new Date().toLocaleDateString('pt-BR')}</td></tr>
+        <tr><td>Marca</td><td>${d.marca}</td><td>Produto</td><td>${r.tipo}</td></tr>
+        <tr><td>Quantidade</td><td>${d.qtdTotal || '—'}</td><td>NCM</td><td>${r.ncm}</td></tr>
+        <tr><td>Total FOB</td><td>${fmtUsdCapa(r.fob_usd)}</td><td>Containers</td><td>${r.containers}</td></tr>
+        <tr><td>Dolar</td><td>${r.cambio}</td><td></td><td></td></tr>
+      </table>
+
+      <div class="detail-section">
+        <div class="detail-title">Custo em Dolar / Valores em Reais</div>
+        <table class="calc-table">
+          <tr><td>Valor FOB</td><td class="num">${fmtUsdCapa(r.fob_usd)}</td><td class="num">${fmtR(r.fob_brl)}</td></tr>
+          <tr><td>Frete</td><td class="num">${fmtUsdCapa(r.frete_usd)}</td><td class="num">${fmtR(r.frete_brl)}</td></tr>
+          <tr><td>Seguro</td><td class="num">${fmtUsdCapa(r.seguro_compra_usd)}</td><td class="num">${fmtR(r.seguro_brl)}</td></tr>
+          <tr><td>Taxa do C.E. (Duimp)</td><td class="num">${fmtUsdCapa(r.taxa_ce)}</td><td class="num">${fmtR(r.taxa_ce*r.cambio)}</td></tr>
+          <tr class="total-row"><td>Total do CIF</td><td></td><td class="num">${fmtR(r.cif_brl)}</td></tr>
+        </table>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-title">Tributos (Entrada)</div>
+        <table class="calc-table">
+          <tr><td>Aliquota I.I. (${pct(r.t.ii)})</td><td class="num">${fmtR(r.II)}</td></tr>
+          <tr><td>Aliquota I.P.I (${pct(r.t.ipi)})</td><td class="num">${fmtR(r.IPI_e)}</td></tr>
+          <tr><td>Aliquota PIS (PIS-E) (${pct(r.t.pis_e)})</td><td class="num">${fmtR(r.PIS_e)}</td></tr>
+          <tr><td>Aliquota COFINS (COFINS-E) (${pct(r.t.cofins_e)})</td><td class="num">${fmtR(r.COFINS_e)}</td></tr>
+          <tr><td>Aliquota IBS (IBS-E) (${pct(r.t.ibs)})</td><td class="num">${fmtR(r.IBS_e)}</td></tr>
+          <tr><td>Aliquota CBS (CBS-E) (${pct(r.t.cbs)})</td><td class="num">${fmtR(r.CBS_e)}</td></tr>
+          ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
+          <tr class="destaque-row"><td>TOTAL DOS TRIBUTOS</td><td class="num">${fmtR(d.totalTributos)}</td></tr>
+        </table>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-title">Creditos de Entrada</div>
+        <table class="calc-table">
+          <tr><td>IPI</td><td class="num">${fmtR(-r.IPI_e)}</td></tr>
+          <tr><td>PIS</td><td class="num">${fmtR(-r.PIS_e)}</td></tr>
+          <tr><td>COFINS</td><td class="num">${fmtR(-r.COFINS_e)}</td></tr>
+          <tr><td>IBS</td><td class="num">${fmtR(-r.IBS_e)}</td></tr>
+          <tr><td>CBS</td><td class="num">${fmtR(-r.CBS_e)}</td></tr>
+          <tr class="destaque-row"><td>TOTAL DOS CREDITOS</td><td class="num">${fmtR(d.totalCreditos)}</td></tr>
+        </table>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-title">Despesas Aduaneiras e Diversas</div>
+        <table class="calc-table">
+          ${d.despesas.map(x => `<tr><td>${x.label}</td><td class="num">${fmtR(x.brl)}</td></tr>`).join('')}
+          <tr class="destaque-row"><td>Total Despesas Aduaneiras e Diversas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
+        </table>
+      </div>
+
+      <table class="calc-table" style="margin:10px 0;">
+        <tr class="total-row" style="font-size:14px;"><td>CUSTO TOTAL</td><td class="num">${fmtUsdCapa(r.custo_total/(r.cambio||1))} · ${fmtR(r.custo_total)}</td></tr>
+      </table>
+
+      ${blocoCenarioCapa('COM S.T', d.cst)}
+      ${blocoCenarioCapa('SEM S.T', d.sst)}
+
+      ${mixHtmlCapa}
+
+      <div style="font-size:10px;color:var(--dim);margin-top:6px;">Dolar do fechamento do processo: ${r.cambio}</div>
+    </div>
+  </div>
+  `;
+}
+
 // ── RENDER RESULTADO ──────────────────────────────────────
 function renderResultado(r) {
   const fmtR = v => 'R$ '+fmt(v);
@@ -1963,7 +2133,8 @@ function renderResultado(r) {
       </div>
     </div>
 
-    <!-- DETALHES CIF E IMPOSTOS ENTRADA -->
+    ${renderCapaHtml(r)}
+<!-- DETALHES CIF E IMPOSTOS ENTRADA -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
       <div class="resultado">
         <div class="resultado-header"><h2>🚢 CIF e Base</h2></div>
@@ -2090,7 +2261,8 @@ async function exportarExcel() {
 
     const incluirDemonstrativo = document.getElementById('exp-demonstrativo').checked;
     const incluirCliente = document.getElementById('exp-cliente').checked;
-    if(!incluirDemonstrativo && !incluirCliente){
+    const incluirCapa = document.getElementById('exp-capa').checked;
+    if(!incluirDemonstrativo && !incluirCliente && !incluirCapa){
       showToast('Marque pelo menos uma aba pra exportar','err'); return;
     }
 
@@ -2387,7 +2559,188 @@ async function exportarExcel() {
       wsC.getColumn(6).width = 18;
     }
 
-    const nome = `IMPAK_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    
+  // ── ABA CAPA (resumo 1 pagina) — reaproveita os mesmos campos de r
+  // (ultimoResultado) que a aba Demonstrativo, so reorganizados/rotulados
+  // pra bater com o layout da aba CAPA da planilha de referencia
+  // (DEMONSTRATIVO DO PROCESSO, ref. UD25-305). Nao inclui a secao de
+  // Adiantamentos/Saldo a Pagar (fora de escopo — controle de pagamento
+  // de cambio ainda nao existe ligado ao Calculador).
+  if(incluirCapa){
+    const dCapa = dadosCapa(r);
+    const cst = dCapa.cst, sst = dCapa.sst;
+    const linhasCapa = [];
+    const addCapa = (tipo, ...valores) => linhasCapa.push({tipo, valores});
+    addCapa('titulo', 'DEMONSTRATIVO DO PROCESSO' + (r.cliente ? (' — ' + r.cliente) : ''));
+    addCapa('subtitulo', dCapa.tipoImportacaoLabel);
+    addCapa('blank');
+    addCapa('info', 'Cliente:', r.cliente||'—', 'Data:', new Date().toLocaleDateString('pt-BR'));
+    addCapa('info', 'Marca:', dCapa.marca, 'Produto:', r.tipo);
+    addCapa('info', 'Quantidade:', dCapa.qtdTotal||'—', 'NCM:', r.ncm);
+    addCapa('info', 'Total Fob (USD):', r.fob_usd, 'Containers:', r.containers);
+    addCapa('info', 'Dolar:', r.cambio, '', '');
+    addCapa('blank');
+    addCapa('cabecalho', 'DOLAR', r.cambio, 'CUSTO EM DOLAR', 'VALORES EM REAIS');
+    addCapa('dado', 'Valor FOB', r.fob_usd, r.fob_usd, fmtR(r.fob_brl));
+    addCapa('dado', 'Frete', r.frete_usd, r.frete_usd, fmtR(r.frete_brl));
+    addCapa('dado', 'Seguro', fmtR(r.seguro_compra_usd), fmtR(r.seguro_compra_usd), fmtR(r.seguro_brl));
+    addCapa('dado', 'Taxa do C.E. (Duimp)', r.taxa_ce, r.taxa_ce, fmtR(r.taxa_ce*r.cambio));
+    addCapa('total', 'Total do CIF', '', '', fmtR(r.cif_brl));
+    addCapa('blank');
+    addCapa('secao', 'TRIBUTOS (ENTRADA)');
+    addCapa('dado', 'Aliquota I.I.', pct(r.t.ii), '', fmtR(r.II));
+    addCapa('dado', 'Aliquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e));
+    addCapa('dado', 'Aliquota PIS (PIS-E)', pct(r.t.pis_e), '', fmtR(r.PIS_e));
+    addCapa('dado', 'Aliquota COFINS (COFINS-E)', pct(r.t.cofins_e), '', fmtR(r.COFINS_e));
+    addCapa('dado', 'Aliquota IBS (IBS-E)', pct(r.t.ibs), '', fmtR(r.IBS_e));
+    addCapa('dado', 'Aliquota CBS (CBS-E)', pct(r.t.cbs), '', fmtR(r.CBS_e));
+    if(r.DUMP > 0) addCapa('dado', 'Dumping', '', '', fmtR(r.DUMP));
+    addCapa('total', 'TOTAL DOS TRIBUTOS', '', '', fmtR(dCapa.totalTributos));
+    addCapa('blank');
+    addCapa('secao', 'CREDITOS DE ENTRADA (recuperaveis)');
+    addCapa('dado', 'IPI', '', '', fmtR(-r.IPI_e));
+    addCapa('dado', 'PIS', '', '', fmtR(-r.PIS_e));
+    addCapa('dado', 'COFINS', '', '', fmtR(-r.COFINS_e));
+    addCapa('dado', 'IBS', '', '', fmtR(-r.IBS_e));
+    addCapa('dado', 'CBS', '', '', fmtR(-r.CBS_e));
+    addCapa('total', 'TOTAL DOS CREDITOS', '', '', fmtR(dCapa.totalCreditos));
+    addCapa('blank');
+    addCapa('secao', 'DESPESAS ADUANEIRAS E DIVERSAS');
+    dCapa.despesas.forEach(x => addCapa('dado', x.label, '', '', fmtR(x.brl)));
+    addCapa('total', 'Total Despesas Aduaneiras e Diversas', '', '', fmtR(r.total_taxas));
+    addCapa('blank');
+    addCapa('totalGrande', 'CUSTO TOTAL', '', '', fmtR(r.custo_total));
+    addCapa('blank');
+    function blocoCapaPrecoVenda(nome, c){
+      addCapa('secao', 'PRECO DE VENDA — ' + nome);
+      addCapa('dado', 'Total dos Produtos', '', '', fmtR(c.vlr_produto));
+      addCapa('dado', 'IPI', pct(r.t.ipi), '', fmtR(c.IPI_s));
+      addCapa('dado', 'ICMS', pct(r.t.aliq_inter), '', fmtR(c.ICMS_nfe));
+      addCapa('dado', 'ICMS S.T', '', '', fmtR(c.icms_st));
+      addCapa('dado', 'IBS', pct(r.t.ibs), '', fmtR(c.IBS_s));
+      addCapa('dado', 'CBS', pct(r.t.cbs), '', fmtR(c.CBS_s));
+      addCapa('total', 'TOTAL DA NFe', '', '', fmtR(c.vlr_total_nfe));
+      addCapa('dado', 'PIS', pct(r.t.pis_s), '', fmtR(c.PIS_s));
+      addCapa('dado', 'COFINS', pct(r.t.cofins_s), '', fmtR(c.COFINS_s));
+      addCapa('dado', 'ICMS Proprio', pct(r.t.icms_prop), '', fmtR(c.ICMS_proprio));
+      if(c.COM_br > 0) addCapa('dado', 'Comissao Repr.', '', '', fmtR(c.COM_br));
+      if(c.COM_china_dentro > 0) addCapa('dado', 'Comissao China (dentro)', '', '', fmtR(c.COM_china_dentro));
+      addCapa('total', 'Lucro Bruto Impak', pctF(c.pct_lucro), '', fmtR(c.lucro_bruto));
+      addCapa('blank');
+      if(c.china_fora_val > 0 || c.boss_fora_val > 0){
+        addCapa('secao', 'NOTA DE SERVICO (fora do preco)');
+        if(c.china_fora_val > 0) addCapa('dado', 'Chines (Comissao China)', pct(r.china_pct), '', fmtR(c.china_fora_val));
+        if(c.boss_fora_val > 0) addCapa('dado', r.boss_nome||'Comissao Boss/Lopes', '', '', fmtR(c.boss_fora_val));
+        addCapa('blank');
+      }
+      addCapa('totalGrande', 'TOTAL DO PROCESSO', '', '', fmtR(c.faturamento_total));
+      addCapa('blank');
+    }
+    blocoCapaPrecoVenda('COM S.T', cst);
+    blocoCapaPrecoVenda('SEM S.T', sst);
+    addCapa('info', 'Dolar do fechamento do processo:', r.cambio, '', '');
+    addCapa('blank');
+    if(r.mix_result && r.mix_result.length){
+      addCapa('secao', 'VALOR UNITARIO POR PRODUTO + SERVICO');
+      addCapa('cabecalhoTabela', 'Medida','Pattern','Qtd Total','Preco COM ST (R$)','Preco SEM ST (R$)');
+      r.mix_result.forEach((it, idx) => {
+        addCapa('linhaTabela', it.medida, it.pat||'—', it.qtd, fmtR(cst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl));
+      });
+    } else {
+      addCapa('secao', 'VALOR DO PRODUTO');
+      addCapa('dado', 'Produto unico — total conforme TOTAL DA NFe acima', '', '', '');
+    }
+const wsCapa = wb.addWorksheet('Capa');
+      const numColsCapa = 5;
+
+      linhasCapa.forEach(linha=>{
+        const row = wsCapa.addRow(linha.valores);
+        const n = linha.valores.length;
+        switch(linha.tipo){
+          case 'titulo':
+            wsCapa.mergeCells(row.number,1,row.number,numColsCapa);
+            row.getCell(1).font = {name:'Calibri', bold:true, size:14, color:{argb:CORES.BRANCO}};
+            row.getCell(1).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO}};
+            row.getCell(1).alignment = {vertical:'middle', horizontal:'left', indent:1};
+            row.height = 26;
+            break;
+          case 'subtitulo':
+            wsCapa.mergeCells(row.number,1,row.number,numColsCapa);
+            row.getCell(1).font = {name:'Calibri', bold:true, size:11, color:{argb:CORES.CINZA}};
+            row.getCell(1).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.CINZA_CLARO}};
+            row.getCell(1).alignment = {vertical:'middle', horizontal:'left', indent:1};
+            row.height = 20;
+            break;
+          case 'info':
+            row.getCell(1).font = {bold:true, size:10, color:{argb:CORES.CINZA}};
+            for(let c=2;c<=4;c++) row.getCell(c).font = {size:10, color:{argb:CORES.TEXTO}};
+            break;
+          case 'secao':
+            wsCapa.mergeCells(row.number,1,row.number,numColsCapa);
+            estilizarGrupoHeader(row.getCell(1));
+            row.getCell(1).alignment = {vertical:'middle', horizontal:'left', indent:1};
+            row.height = 20;
+            break;
+          case 'cabecalho':
+            for(let c=1;c<=n;c++){
+              row.getCell(c).font = {bold:true, size:10, color:{argb:CORES.BRANCO}};
+              row.getCell(c).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL}};
+            }
+            if(typeof row.getCell(2).value === 'number') row.getCell(2).numFmt = '#,##0.0000';
+            break;
+          case 'cabecalhoTabela':
+            for(let c=1;c<=n;c++){
+              estilizarHeaderCell(row.getCell(c), {size:10});
+            }
+            row.height = 28;
+            break;
+          case 'linhaTabela':
+            for(let c=1;c<=n;c++){
+              const cell = row.getCell(c);
+              cell.font = {size:10, color:{argb:CORES.TEXTO}};
+              cell.alignment = {horizontal: c>=3?'center':'left'};
+              cell.border = bordaFio;
+              if((c===4||c===5) && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            break;
+          case 'total':
+            for(let c=1;c<=4;c++){
+              const cell = row.getCell(c);
+              cell.font = {bold:true, size:10, color:{argb:CORES.TEXTO}};
+              cell.border = {top:{style:'thin',color:{argb:CORES.BORDA}}};
+              if(c===4 && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            break;
+          case 'totalGrande':
+            for(let c=1;c<=4;c++){
+              const cell = row.getCell(c);
+              cell.font = {bold:true, size:11.5, color:{argb:CORES.AZUL_ESCURO}};
+              cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_CLARO}};
+              if(c===4 && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            row.height = 20;
+            break;
+          case 'dado':
+            row.getCell(1).font = {size:10, color:{argb:CORES.TEXTO}};
+            for(let c=2;c<=4;c++){
+              const cell = row.getCell(c);
+              cell.font = {size:10, color:{argb:CORES.CINZA}};
+              if(c===4 && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            break;
+          case 'blank':
+          default:
+            break;
+        }
+      });
+      wsCapa.getColumn(1).width = 34;
+      wsCapa.getColumn(2).width = 18;
+      wsCapa.getColumn(3).width = 20;
+      wsCapa.getColumn(4).width = 18;
+      wsCapa.getColumn(5).width = 18;
+  }
+
+const nome = `IMPAK_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url = URL.createObjectURL(blob);
