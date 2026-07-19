@@ -190,10 +190,10 @@ async function exportarFormatoCliente(){
           'Invoice':                 p.referencia||'',
           'Medida':                  it.descricao||'',
           'Qte':                     it.quantidade||'',
-          'Data do Pedido':          p.pi_data ? new Date(p.pi_data).toLocaleDateString('pt-BR') : '',
+          'Data do Pedido':          p.pi_data ? parseDataLocal(p.pi_data).toLocaleDateString('pt-BR') : '',
           'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
-          'Data de Embarque':        p.etd ? new Date(p.etd).toLocaleDateString('pt-BR') : '',
-          'Data Chegada':            p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '',
+          'Data de Embarque':        p.etd ? parseDataLocal(p.etd).toLocaleDateString('pt-BR') : '',
+          'Data Chegada':            p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '',
           'POD':                     p.porto_destino||'N/I',
         };
         if(incluirFrete){
