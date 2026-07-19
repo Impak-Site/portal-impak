@@ -178,15 +178,6 @@ function coletarESalvar(){
   // Porto Origem "Outro" — usa o texto digitado no campo extra em vez do
   // literal "OUTRO" que o select devolveria.
   if(proc.porto_origem === 'OUTRO'){
-    proc.porto_origem = document.getElementById('f_porto_origem_outro')?.value?.trim() || null;
-  }
-  if(String(antigo.porto_origem||'') !== String(proc.porto_origem||'')){
-    log.push({ campo:'porto_origem', valor_antes: antigo.porto_origem||'', valor_depois: proc.porto_origem||'', usuario: _user.usuario, created_at: new Date().toISOString() });
-  }
-
-  // Porto Origem "Outro" — usa o texto digitado no campo extra em vez do
-  // literal "OUTRO" que o select devolveria.
-  if(proc.porto_origem === 'OUTRO'){
     const outroVal = document.getElementById('f_porto_origem_outro')?.value?.trim();
     if(String(antigo.porto_origem||'') !== String(outroVal||'')){
       log.push({ campo:'porto_origem', valor_antes: antigo.porto_origem||'', valor_depois: outroVal||'', usuario: _user.usuario, created_at: new Date().toISOString() });

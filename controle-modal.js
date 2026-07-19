@@ -104,7 +104,7 @@ function renderModal(){
     const done   = i < faseIdx;
     const active = i === faseIdx;
     const cls    = done?'done':active?'active':'';
-    const dataStr = faseDatas[f.id] ? `<div style="font-size:9px;color:var(--dim);margin-top:2px;">${new Date(faseDatas[f.id]).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>` : '';
+    const dataStr = faseDatas[f.id] ? `<div style="font-size:9px;color:var(--dim);margin-top:2px;">${parseDataLocal(faseDatas[f.id]).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>` : '';
     return `
       ${i>0?`<div class="tl-line ${done?'done':''}"></div>`:''}
       <div class="tl-step">

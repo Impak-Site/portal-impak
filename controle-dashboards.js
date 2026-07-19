@@ -37,17 +37,17 @@ function renderDashExecutivo(){
   const pagosUSD     = ativos.filter(p=>p.pi_pago).reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0);
   const abertoUSD    = totalProvUSD - pagosUSD;
   const demurCrit    = ativos.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
-  const etaVencidos  = ativos.filter(p=>p.eta&&p.fase==='EMBARCADO'&&new Date(p.eta)<hoje);
-  const piVencidos   = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&new Date(p.pi_data_saldo)<hoje);
-  const piSemana     = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&new Date(p.pi_data_saldo)>=hoje&&new Date(p.pi_data_saldo)<=semFim);
-  const etaSemana    = ativos.filter(p=>p.eta&&new Date(p.eta)>=hoje&&new Date(p.eta)<=semFim&&p.fase==='EMBARCADO');
+  const etaVencidos  = ativos.filter(p=>p.eta&&p.fase==='EMBARCADO'&&parseDataLocal(p.eta)<hoje);
+  const piVencidos   = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&parseDataLocal(p.pi_data_saldo)<hoje);
+  const piSemana     = ativos.filter(p=>p.pi_data_saldo&&!p.pi_pago&&parseDataLocal(p.pi_data_saldo)>=hoje&&parseDataLocal(p.pi_data_saldo)<=semFim);
+  const etaSemana    = ativos.filter(p=>p.eta&&parseDataLocal(p.eta)>=hoje&&parseDataLocal(p.eta)<=semFim&&p.fase==='EMBARCADO');
   const porFase      = {};
   _processos.forEach(p=>{ porFase[p.fase]=(porFase[p.fase]||0)+1; });
   const porForn      = {};
   ativos.forEach(p=>{ if(p.fornecedor) porForn[p.fornecedor]=(porForn[p.fornecedor]||0)+1; });
   const topForn      = Object.entries(porForn).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const nfSaidaPeriodo = ativos.filter(p=>p.nf_saida_data&&new Date(p.nf_saida_data)>=mesIni&&new Date(p.nf_saida_data)<=mesFim);
-  const nfEntradaPeriodo = ativos.filter(p=>p.nf_entrada_data&&new Date(p.nf_entrada_data)>=mesIni&&new Date(p.nf_entrada_data)<=mesFim);
+  const nfSaidaPeriodo = ativos.filter(p=>p.nf_saida_data&&parseDataLocal(p.nf_saida_data)>=mesIni&&parseDataLocal(p.nf_saida_data)<=mesFim);
+  const nfEntradaPeriodo = ativos.filter(p=>p.nf_entrada_data&&parseDataLocal(p.nf_entrada_data)>=mesIni&&parseDataLocal(p.nf_entrada_data)<=mesFim);
   const totalNfMes   = nfSaidaPeriodo.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
 
   function card(label, val, sub, cor, fmt, filtro){
@@ -86,29 +86,33 @@ function renderDashExecutivo(){
   const alertasHtml = (demurCrit.length===0&&etaVencidos.length===0&&piVencidos.length===0)
     ? '<div style="text-align:center;padding:20px;color:var(--ok);font-size:13px;font-weight:600;">Sem alertas criticos</div>'
     : [
+        // referencia/armador/fornecedor são texto livre (fornecedor às vezes
+        // vem de extração por IA) — sempre escapar antes de innerHTML, senão
+        // um valor malicioso/malformado vira HTML executável pra quem vir
+        // este dashboard (XSS persistente). Ver esc() em controle-campos.js.
         ...demurCrit.map(p=>{
           const d=demurrageDias(p);
           const pid=p.id;
           return '<div style="padding:8px 10px;margin-bottom:6px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+pid+'\");toggleDashExecutivo()">'
-            +'<div style="font-size:11px;font-weight:700;color:var(--err);">Demurrage: '+p.referencia+'</div>'
-            +'<div style="font-size:10px;color:var(--muted);">Vence em '+d+' dia(s) · '+(p.armador||'—')+'</div></div>';
+            +'<div style="font-size:11px;font-weight:700;color:var(--err);">Demurrage: '+esc(p.referencia)+'</div>'
+            +'<div style="font-size:10px;color:var(--muted);">Vence em '+d+' dia(s) · '+esc(p.armador||'—')+'</div></div>';
         }),
         ...etaVencidos.slice(0,4).map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
-          +'<div style="font-size:11px;font-weight:700;color:var(--warn);">ETA vencido: '+p.referencia+'</div>'
-          +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?new Date(p.eta).toLocaleDateString('pt-BR'):'—')+' · ainda Embarcado</div></div>'),
+          +'<div style="font-size:11px;font-weight:700;color:var(--warn);">ETA vencido: '+esc(p.referencia)+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?parseDataLocal(p.eta).toLocaleDateString('pt-BR'):'—')+' · ainda Embarcado</div></div>'),
         ...piVencidos.slice(0,4).map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.15);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
-          +'<div style="font-size:11px;font-weight:700;color:var(--err);">PI vencida: '+p.referencia+'</div>'
-          +'<div style="font-size:10px;color:var(--muted);">Venceu '+new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')+' · '+usd(parseFloat(p.pi_valor_usd)||0)+'</div></div>'),
+          +'<div style="font-size:11px;font-weight:700;color:var(--err);">PI vencida: '+esc(p.referencia)+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);">Venceu '+parseDataLocal(p.pi_data_saldo).toLocaleDateString('pt-BR')+' · '+usd(parseFloat(p.pi_valor_usd)||0)+'</div></div>'),
       ].join('');
 
   const agendaHtml = etaSemana.length===0
     ? '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">Nenhum navio chegando esta semana</div>'
     : etaSemana.map(p=>'<div style="padding:8px 10px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:7px;cursor:pointer;" onclick="abrirProcesso(\"'+p.id+'\");toggleDashExecutivo()">'
-        +'<div style="font-size:11px;font-weight:700;color:var(--ac);">'+p.referencia+'</div>'
-        +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?new Date(p.eta).toLocaleDateString('pt-BR'):'—')+' · '+(p.armador||'—')+' · '+(p.fornecedor||'—')+'</div></div>').join('')
+        +'<div style="font-size:11px;font-weight:700;color:var(--ac);">'+esc(p.referencia)+'</div>'
+        +'<div style="font-size:10px;color:var(--muted);">ETA '+(p.eta?parseDataLocal(p.eta).toLocaleDateString('pt-BR'):'—')+' · '+esc(p.armador||'—')+' · '+esc(p.fornecedor||'—')+'</div></div>').join('')
       + (topForn.length>0
         ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);"><div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">Top Fornecedores</div>'
-          + topForn.map(([f,n])=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>'+f+'</span><span style="font-weight:700;color:var(--text);">'+n+'</span></div>').join('')+'</div>'
+          + topForn.map(([f,n])=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>'+esc(f)+'</span><span style="font-weight:700;color:var(--text);">'+n+'</span></div>').join('')+'</div>'
         : '');
 
   const secStyle = 'background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;';
@@ -170,8 +174,8 @@ function calcularPeriodo(ns){
     fim = new Date(hoje.getFullYear(),11,31);
     label = `Ano ${hoje.getFullYear()}`;
   } else if(estado.tipo==='custom' && estado.ini && estado.fim){
-    ini = new Date(estado.ini);
-    fim = new Date(estado.fim);
+    ini = parseDataLocal(estado.ini);
+    fim = parseDataLocal(estado.fim);
     label = `${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
   } else {
     estado.tipo = 'mes';

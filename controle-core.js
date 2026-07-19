@@ -49,6 +49,26 @@ function gerarUUID(){
   });
 }
 
+// Analisa uma data "sem hora" (ex.: "2026-07-18", vinda de <input type=date>
+// ou do banco) SEMPRE no fuso LOCAL do navegador, nunca em UTC.
+// `new Date('2026-07-18')` (sem hora) é interpretado pelo JS como meia-noite
+// UTC — em fusos negativos (ex.: Brasil, UTC-3) isso exibe/compara como o
+// dia ANTERIOR (17/07) em vez do dia certo. `new Date('2026-07-18T00:00:00')`
+// (sem "Z") é interpretado em horário LOCAL, então bate com o que a pessoa
+// realmente digitou. Antes deste helper, os dois estilos apareciam
+// misturados neste arquivo (e em controle-dashboards.js/controle-export.js)
+// pro MESMO tipo de campo — ex.: renderDemurInfo() lia data_chegada sem
+// sufixo (UTC) enquanto calcularFase() lia o mesmo campo com sufixo (local),
+// podendo mostrar dias diferentes pro mesmo processo em telas diferentes.
+// Use esta função pra qualquer campo de data-só (data_chegada, eta,
+// demurrage_vencimento, pi_data_saldo, nf_entrada_data, nf_saida_data etc.).
+// Para timestamps completos (created_at/updated_at, que já vêm com hora e
+// "Z" de toISOString()), continue usando new Date(...) direto — não passar
+// por aqui.
+function parseDataLocal(str){
+  return str ? new Date(str + 'T00:00:00') : null;
+}
+
 // ════════════════════════════════════════════════════════════════
 // ESTADO
 // ════════════════════════════════════════════════════════════════
@@ -360,7 +380,7 @@ function calcularFase(p){
 // ════════════════════════════════════════════════════════════════
 function demurrageDias(proc){
   if(!proc.demurrage_vencimento) return null;
-  const venc = new Date(proc.demurrage_vencimento);
+  const venc = parseDataLocal(proc.demurrage_vencimento);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   return Math.ceil((venc-hoje)/86400000);
 }
@@ -447,17 +467,17 @@ function demurrageDisplay(proc){
 // atualizarFaseEmTempoReal), e não apenas uma vez quando o modal abre.
 function renderDemurInfo(p){
   if(!p.data_chegada && !p.demurrage_vencimento) return '';
-  const chegada   = p.data_chegada   ? new Date(p.data_chegada)   : null;
+  const chegada   = parseDataLocal(p.data_chegada);
   const freeTime  = parseInt(p.free_time||21);
   const vencCalc  = chegada ? new Date(chegada) : null;
   if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime);
-  const vencReal  = p.demurrage_vencimento ? new Date(p.demurrage_vencimento) : vencCalc;
+  const vencReal  = p.demurrage_vencimento ? parseDataLocal(p.demurrage_vencimento) : vencCalc;
   const dias = demurrageDias(p);
   const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
 
   let statusTxt = '', statusIcon = '';
   if(p.data_devolucao_vazio){
-    statusIcon = '✅'; statusTxt = `Container devolvido em ${new Date(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
+    statusIcon = '✅'; statusTxt = `Container devolvido em ${parseDataLocal(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
   } else if(dias !== null && dias < 0){
     statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — custos acumulando!`;
   } else if(dias !== null && dias <= 5){
@@ -582,7 +602,7 @@ function verificarAlertas(proc, criarNotif){
 
   // Alerta ETA: ETA passou e processo ainda está Embarcado
   if(proc.eta && proc.fase === 'EMBARCADO'){
-    const eta = new Date(proc.eta); eta.setHours(0,0,0,0);
+    const eta = parseDataLocal(proc.eta);
     const diff = Math.ceil((hoje - eta)/86400000);
     if(diff > 0){
       alertas.push({tipo:'alerta', titulo:`ETA vencido: ${proc.referencia}`, mensagem:`ETA era ${eta.toLocaleDateString('pt-BR')} — processo ainda Embarcado. Verificar chegada.`});
@@ -591,7 +611,7 @@ function verificarAlertas(proc, criarNotif){
 
   // Alerta ETA próximo (2 dias)
   if(proc.eta && proc.fase === 'EMBARCADO'){
-    const eta = new Date(proc.eta); eta.setHours(0,0,0,0);
+    const eta = parseDataLocal(proc.eta);
     const diff = Math.ceil((eta - hoje)/86400000);
     if(diff >= 0 && diff <= 2){
       alertas.push({tipo:'info', titulo:`ETA em ${diff === 0 ? 'hoje' : diff + 'd'}: ${proc.referencia}`, mensagem:`Navio previsto para ${eta.toLocaleDateString('pt-BR')}.`});
@@ -600,7 +620,7 @@ function verificarAlertas(proc, criarNotif){
 
   // Alerta PI vencimento (prazo pagamento nos próximos 5 dias)
   if(proc.pi_data_saldo && !proc.pi_pago){
-    const venc = new Date(proc.pi_data_saldo); venc.setHours(0,0,0,0);
+    const venc = parseDataLocal(proc.pi_data_saldo);
     const diff = Math.ceil((venc - hoje)/86400000);
     if(diff <= 5 && diff >= 0){
       alertas.push({tipo:'urgente', titulo:`Pagamento PI vence em ${diff}d: ${proc.referencia}`, mensagem:`Saldo da PI vence em ${venc.toLocaleDateString('pt-BR')}.`});
@@ -677,8 +697,8 @@ async function carregarNotificacoes(){
         <div class="notif-row">
           <div class="notif-avatar" style="background:${cor}">${iniciais}</div>
           <div class="notif-content">
-            <div class="notif-title">${n.titulo||''}</div>
-            <div class="notif-msg">${n.mensagem||''}</div>
+            <div class="notif-title">${esc(n.titulo)}</div>
+            <div class="notif-msg">${esc(n.mensagem)}</div>
             <div class="notif-time">${tempo}</div>
           </div>
         </div>
@@ -850,6 +870,64 @@ function renderStats(){
     </div>`).join('');
 }
 
+// Mapa de filtros especiais por "fase" virtual (chaves começando com "__",
+// usadas pelos cards clicáveis dos dashboards Executivo/Financeiro). Cada
+// função recebe a lista já filtrada por busca/data e devolve a lista final.
+// Antes isso era uma cadeia crescente de if/else (uma comparação de string
+// atrás da outra) — um mapa deixa mais fácil ver todos os filtros disponíveis
+// de uma vez, e adicionar um novo sem alterar uma cadeia gigante.
+const FILTROS_FASE_ESPECIAIS = {
+  __alertas:    lista => lista.filter(p=>verificarAlertas(p,false).length>0),
+  __andamento:  lista => lista.filter(p=>p.fase!=='FINALIZADO'),
+  __demur:      lista => lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }),
+  __chegada_7d: lista => lista.filter(p=>chegandoEmDias(p,7)),
+  // Filtros financeiros — usados pelos cards clicáveis do Dashboard Financeiro/Executivo
+  __pi_aberto:  lista => lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && !p.pi_pago),
+  __pi_pago:    lista => lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && p.pi_pago),
+  __pi_vencido: lista => lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    return parseDataLocal(p.pi_data_saldo) < hoje;
+  }),
+  __pi_vence_semana: lista => lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    const semFim=new Date(hoje); semFim.setDate(hoje.getDate()+7);
+    const d=parseDataLocal(p.pi_data_saldo);
+    return d>=hoje && d<=semFim;
+  }),
+  __pi_vence_30d: lista => lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    const lim=new Date(hoje); lim.setDate(hoje.getDate()+30);
+    const dentro = d => { if(!d) return false; const dt=new Date(d+'T00:00:00'); return dt>=hoje && dt<=lim; };
+    return dentro(p.pi_data_entrada) || dentro(p.pi_data_saldo);
+  }),
+  // Capital parado em estoque/trânsito — usado pelo card do Dashboard
+  // Financeiro (v2): já pago integralmente, mas o processo ainda não foi
+  // finalizado (mercadoria ainda não virou venda concluída).
+  __capital_parado: lista => lista.filter(p=>p.pi_pago && p.fase!=='FINALIZADO'),
+  __nf_entrada_periodo: lista => lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||!p.nf_entrada_data) return false;
+    const {ini,fim} = calcularPeriodo('financeiro');
+    const d=parseDataLocal(p.nf_entrada_data);
+    return d>=ini && d<=fim;
+  }),
+  __nf_saida_periodo: lista => lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||!p.nf_saida_data) return false;
+    const {ini,fim} = calcularPeriodo('financeiro');
+    const d=parseDataLocal(p.nf_saida_data);
+    return d>=ini && d<=fim;
+  }),
+  __demur_aberto: lista => lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento),
+  __cambio_periodo: lista => lista.filter(p=>{
+    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
+    const {ini,fim} = calcularPeriodo('financeiro');
+    const checar = data => { if(!data) return false; const d=parseDataLocal(data); return d>=ini && d<=fim; };
+    return checar(p.pi_data_saldo) || checar(p.pi_data_entrada);
+  }),
+};
+
 function filtrarProcessos(){
   let lista = [..._processos];
   const q = (document.getElementById('search')?.value||'').toLowerCase().trim();
@@ -881,55 +959,10 @@ function filtrarProcessos(){
     });
   }
 
-  if(_faseFilter==='__alertas')   lista = lista.filter(p=>verificarAlertas(p,false).length>0);
-  else if(_faseFilter==='__andamento') lista = lista.filter(p=>p.fase!=='FINALIZADO');
-  else if(_faseFilter==='__demur') lista = lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; });
-  else if(_faseFilter==='__chegada_7d') lista = lista.filter(p=>chegandoEmDias(p,7));
-  // Filtros financeiros — usados pelos cards clicáveis do Dashboard Financeiro/Executivo
-  else if(_faseFilter==='__pi_aberto')  lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && !p.pi_pago);
-  else if(_faseFilter==='__pi_pago')    lista = lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && p.pi_pago);
-  else if(_faseFilter==='__pi_vencido') lista = lista.filter(p=>{
-    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
-    return new Date(p.pi_data_saldo) < new Date(new Date().setHours(0,0,0,0));
-  });
-  else if(_faseFilter==='__pi_vence_semana') lista = lista.filter(p=>{
-    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_data_saldo) return false;
-    const hoje=new Date(); hoje.setHours(0,0,0,0);
-    const semFim=new Date(hoje); semFim.setDate(hoje.getDate()+7);
-    const d=new Date(p.pi_data_saldo);
-    return d>=hoje && d<=semFim;
-  });
-  else if(_faseFilter==='__pi_vence_30d') lista = lista.filter(p=>{
-    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
-    const hoje=new Date(); hoje.setHours(0,0,0,0);
-    const lim=new Date(hoje); lim.setDate(hoje.getDate()+30);
-    const dentro = d => { if(!d) return false; const dt=new Date(d+'T00:00:00'); return dt>=hoje && dt<=lim; };
-    return dentro(p.pi_data_entrada) || dentro(p.pi_data_saldo);
-  });
-  // Capital parado em estoque/trânsito — usado pelo card do Dashboard
-  // Financeiro (v2): já pago integralmente, mas o processo ainda não foi
-  // finalizado (mercadoria ainda não virou venda concluída).
-  else if(_faseFilter==='__capital_parado') lista = lista.filter(p=>p.pi_pago && p.fase!=='FINALIZADO');
-  else if(_faseFilter==='__nf_entrada_periodo') lista = lista.filter(p=>{
-    if(p.fase==='FINALIZADO'||!p.nf_entrada_data) return false;
-    const {ini,fim} = calcularPeriodo('financeiro');
-    const d=new Date(p.nf_entrada_data);
-    return d>=ini && d<=fim;
-  });
-  else if(_faseFilter==='__nf_saida_periodo') lista = lista.filter(p=>{
-    if(p.fase==='FINALIZADO'||!p.nf_saida_data) return false;
-    const {ini,fim} = calcularPeriodo('financeiro');
-    const d=new Date(p.nf_saida_data);
-    return d>=ini && d<=fim;
-  });
-  else if(_faseFilter==='__demur_aberto') lista = lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento);
-  else if(_faseFilter==='__cambio_periodo') lista = lista.filter(p=>{
-    if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
-    const {ini,fim} = calcularPeriodo('financeiro');
-    const checar = data => { if(!data) return false; const d=new Date(data); return d>=ini && d<=fim; };
-    return checar(p.pi_data_saldo) || checar(p.pi_data_entrada);
-  });
-  else if(_faseFilter) lista = lista.filter(p=>p.fase===_faseFilter);
+  if(_faseFilter){
+    const filtroEspecial = FILTROS_FASE_ESPECIAIS[_faseFilter];
+    lista = filtroEspecial ? filtroEspecial(lista) : lista.filter(p=>p.fase===_faseFilter);
+  }
 
   // Filtro por cliente
   const filtroCliente = document.getElementById('filtro-cliente')?.value||'';
@@ -962,16 +995,21 @@ function render(){
   } else {
     tbody.innerHTML = pagina.map(p=>{
       const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
-      const etaDate = p.eta ? new Date(p.eta).toLocaleDateString('pt-BR') : '—';
-      const chegadaDate = p.data_chegada ? new Date(p.data_chegada).toLocaleDateString('pt-BR') : '';
+      const etaDate = p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—';
+      const chegadaDate = p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '';
       const dataDisplay = chegadaDate || etaDate;
       const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
       const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
       const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
       const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">⚠ Revisar</span>` : '';
+      // referencia/fornecedor são texto livre (fornecedor às vezes vem de
+      // extração por IA de documento externo) — escapar sempre antes de
+      // colocar em innerHTML, senão um valor malicioso/malformado vira HTML
+      // executável pra QUALQUER usuário que abrir esta lista (XSS
+      // persistente). Ver esc() em controle-campos.js.
       return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
-        <div class="td td-ref" data-label="">${p.referencia||'—'}${finalidadeBadge}${pendenciaBadge}</div>
-        <div class="td td-forn" data-label="Fornecedor">${p.fornecedor||'—'}</div>
+        <div class="td td-ref" data-label="">${esc(p.referencia)||'—'}${finalidadeBadge}${pendenciaBadge}</div>
+        <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>
         <div class="td" data-label="Fase" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)">
             <span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>
