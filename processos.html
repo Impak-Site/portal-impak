@@ -57,7 +57,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   display:flex;
   flex-direction:column;
   position:fixed;
-  top:0;left:0;bottom:0;
+  top:52px;left:0;bottom:0;
   z-index:100;
 }
 .sidebar-logo{
@@ -562,7 +562,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <div class="shell">
 <!-- Sidebar -->
 <aside class="sidebar">
-  <div class="sidebar-logo">
+  <div class="sidebar-logo" style="display:none">
     <img src="https://impak.com.br/wp-content/uploads/2025/01/Design-sem-nome-6.webp"
          alt="IMPAK" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='block';"
          style="width:140px;height:auto;margin-bottom:6px;display:block;">
@@ -571,7 +571,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
     </div>
     <div class="logo-sub">Sistema de Gestão · Importação</div>
   </div>
-  <div id="userBadge" style="padding:10px 16px;margin:0 8px 8px;background:var(--accent-dim);border-radius:8px;display:flex;align-items:center;justify-content:space-between;">
+  <div id="userBadge" style="padding:10px 16px;margin:0 8px 8px;background:var(--accent-dim);border-radius:8px;display:none;align-items:center;justify-content:space-between;">
     <div>
       <div id="userBadgeName" style="font-size:12px;font-weight:700;color:var(--accent);"></div>
       <div id="userBadgeRole" style="font-size:10px;color:var(--text-dim);"></div>
@@ -3697,5 +3697,6 @@ function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'doc
 </script>
 
 
+<script src="/chat.js"></script>
 </body>
 </html>
