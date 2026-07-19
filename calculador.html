@@ -793,6 +793,31 @@ function calcularArmazenagemPorto(baseImpBrl, containers, porto, diasParado){
   return total;
 }
 
+// Seguro de Compra (USD) — fórmula única, compartilhada entre calcular() e
+// calcularArmazenagemUI(). Antes cada função tinha sua PRÓPRIA cópia dessa
+// fórmula, e as duas haviam divergido silenciosamente:
+//   1. calcularArmazenagemUI() somava taxa_ce na base do seguro; calcular()
+//      NÃO soma (FIX de auditoria documentado abaixo, confirmado contra
+//      exemplo real) — a base correta é só (FOB+Frete)×1,10×1,10.
+//   2. calcularArmazenagemUI() usava taxa_seguro_compra direto (ex.: 0,04),
+//      enquanto calcular() sempre divide por 100 antes de usar (o campo
+//      guarda um PERCENTUAL, ex. "0,04" = 0,04%, não a fração 0,04). Isso
+//      fazia a prévia de Armazenagem estimar um seguro ~100x maior que o
+//      valor real usado no cálculo principal.
+// Consolidar numa função só elimina os dois desalinhamentos de uma vez e
+// evita que voltem a divergir no futuro (uma mudança na fórmula agora só
+// precisa ser feita aqui).
+// FIX: reproduzindo a fórmula exata da planilha (MODELO-COM/SEM S.T!D7) contra
+// o exemplo real (FOB 37.472,80 + Frete 5.000 → Seguro USD 20,5568352 confirmado),
+// a Taxa C.E. NÃO entra na base do Seguro — só (FOB+Frete)×1,10×1,10×0,04%.
+function calcularSeguroCompraUsd(fobUsd, freteUsd, taxaSeguroCompraFracao){
+  const total    = fobUsd + freteUsd;
+  const despesas = total * 0.10;
+  const lucroEsp = (total + despesas) * 0.10;
+  const base     = total + despesas + lucroEsp;
+  return base * taxaSeguroCompraFracao;
+}
+
 // Lê FOB/Frete/Taxa C.E./Seguro/Câmbio direto dos campos do topo (mesma fórmula do cálculo
 // principal) pra poder calcular a armazenagem ANTES de rodar o cálculo completo.
 function calcularArmazenagemUI(){
@@ -800,7 +825,9 @@ function calcularArmazenagemUI(){
   const fob_usd  = parseFloat(document.getElementById('fob_usd').value) || 0;
   const frete_usd= parseFloat(document.getElementById('frete_usd').value) || 0;
   const taxa_ce  = parseFloat(document.getElementById('taxa_ce_usd').value) || 0;
-  const taxa_seguro_compra = parseFloat(document.getElementById('taxa_seguro_compra').value) || 0;
+  // Mesma unidade usada em calcular(): o campo guarda um PERCENTUAL (ex. 0,04
+  // = 0,04%), então precisa dividir por 100 antes de usar como fração.
+  const taxa_seguro_compra = (parseFloat(document.getElementById('taxa_seguro_compra').value) || 0) / 100;
   const containers = parseInt(document.getElementById('qtde_containers').value) || 1;
   const porto    = document.getElementById('tx_porto').value;
   const dias     = parseInt(document.getElementById('tx_dias_parado').value) || 0;
@@ -808,11 +835,7 @@ function calcularArmazenagemUI(){
   if(!cambio || !fob_usd){ showToast('Preencha câmbio e FOB antes de calcular a armazenagem','err'); return; }
   if(!porto){ showToast('Selecione o porto','err'); return; }
 
-  const seguro_total_usd = fob_usd + frete_usd;
-  const seguro_despesas  = seguro_total_usd * 0.10;
-  const seguro_lucro_esp = (seguro_total_usd + seguro_despesas) * 0.10;
-  const seguro_base_usd  = seguro_total_usd + seguro_despesas + seguro_lucro_esp + taxa_ce;
-  const seguro_compra_usd= seguro_base_usd * taxa_seguro_compra;
+  const seguro_compra_usd = calcularSeguroCompraUsd(fob_usd, frete_usd, taxa_seguro_compra);
 
   const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambio;
   const valor = calcularArmazenagemPorto(base_imp_brl, containers, porto, dias);
@@ -852,14 +875,27 @@ const TAXAS_USD_CONTAINER = {
 };
 
 // ── ESTADO ──────────────────────────────────────────────
-let _toggles = { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO', fobpar:'NAO' };
-let _togglesInner = { 'china-modal':'DENTRO' };
-let _cenario = 3;
-let _mix = null;
-let _cambioFixado = false;
-let _ultimoResultado = null;
-let _cotacaoAtualId = null; // id da cotação carregada (null = ainda não salva / nova)
-let _splitST = {}; // medida -> quantidade que vai COM ST (resto vai SEM ST)
+// Estado global do formulário/wizard consolidado num objeto único — antes
+// era ~10 variáveis soltas (_estado.toggles, _estado.mix, _estado.wizardStep, etc.) espalhadas
+// pelo arquivo (algumas até bem longe daqui, perto do código que as usa).
+// Ter tudo num só lugar deixa mais fácil auditar de uma vez tudo que
+// compõe o estado, e reduz o risco de esquecer de resetar alguma peça
+// nova do estado no futuro (ex.: ao trocar de cenário ou limpar o
+// formulário). Os nomes das propriedades são os mesmos das variáveis
+// antigas, só sem o "_" na frente — ex.: _estado.toggles virou _estado.toggles.
+let _estado = {
+  toggles:               { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO', fobpar:'NAO' },
+  togglesInner:          { 'china-modal':'DENTRO' },
+  cenario:               3,
+  mix:                   null,
+  cambioFixado:          false,
+  ultimoResultado:       null,
+  cotacaoAtualId:        null, // id da cotação carregada (null = ainda não salva / nova)
+  splitST:               {},   // medida -> quantidade que vai COM ST (resto vai SEM ST)
+  wizardStep:            1,
+  wizardResultadoPronto: false, // vira true após o 1º cálculo bem-sucedido
+  acClienteCalcTimer:    null,
+};
 
 // ── WIZARD (task #60) ─────────────────────────────────────
 // Transforma o formulário de rolagem única em 4 etapas navegáveis
@@ -875,23 +911,22 @@ const WIZARD_ETAPAS = [
   {n:4, label:'Taxas'},
   {n:5, label:'Resultado'},
 ];
-let _wizardStep = 1;
-let _wizardResultadoPronto = false; // vira true após o 1º cálculo bem-sucedido
+// wizardStep e wizardResultadoPronto agora vivem em _estado (ver ── ESTADO ── acima).
 
 function renderWizardSteps(){
   const el = document.getElementById('wizard-steps');
   if(!el) return;
   el.innerHTML = WIZARD_ETAPAS.map((e,i)=>{
-    const done = e.n < _wizardStep || (e.n===5 && _wizardResultadoPronto);
-    const active = e.n === _wizardStep;
+    const done = e.n < _estado.wizardStep || (e.n===5 && _estado.wizardResultadoPronto);
+    const active = e.n === _estado.wizardStep;
     // Etapas 1-4 são sempre clicáveis (o usuário pode ir e voltar livremente
     // entre seções já preenchidas). A etapa 5 (Resultado) não esconde o
     // formulário — o painel já vive ao lado (content-calc) e atualiza ao
     // vivo — o nó só fica clicável depois do 1º cálculo, e ao clicar rola
     // a tela até o painel em vez de trocar de "etapa" de verdade.
-    const disabled = e.n===5 && !_wizardResultadoPronto;
+    const disabled = e.n===5 && !_estado.wizardResultadoPronto;
     const cls = ['wizard-step-btn', active?'active':'', done?'done':''].filter(Boolean).join(' ');
-    const linha = i < WIZARD_ETAPAS.length-1 ? `<div class="wizard-line ${e.n < _wizardStep ? 'done':''}"></div>` : '';
+    const linha = i < WIZARD_ETAPAS.length-1 ? `<div class="wizard-line ${e.n < _estado.wizardStep ? 'done':''}"></div>` : '';
     return `<div class="wizard-node" style="flex:${i===WIZARD_ETAPAS.length-1?'0 0 auto':'1'};display:flex;align-items:flex-start;width:100%;">`
       + `<button type="button" class="${cls}" ${disabled?'disabled':''} onclick="${e.n===5?'irParaResultado()':'irParaEtapa('+e.n+')'}">`
       + `<div class="wizard-dot">${done?'✓':e.n}</div><div class="wizard-label">${e.label}</div></button>${linha}`
@@ -901,11 +936,11 @@ function renderWizardSteps(){
 
 function aplicarWizardVisibilidade(){
   document.querySelectorAll('.section[data-step]').forEach(sec=>{
-    sec.style.display = (parseInt(sec.dataset.step,10) === _wizardStep) ? '' : 'none';
+    sec.style.display = (parseInt(sec.dataset.step,10) === _estado.wizardStep) ? '' : 'none';
   });
-  document.getElementById('wizard-nav-etapas').style.display = _wizardStep < 4 ? 'flex' : 'none';
-  document.getElementById('wizard-etapa-final').style.display = _wizardStep === 4 ? 'block' : 'none';
-  document.getElementById('wizard-btn-voltar').style.visibility = _wizardStep > 1 ? 'visible' : 'hidden';
+  document.getElementById('wizard-nav-etapas').style.display = _estado.wizardStep < 4 ? 'flex' : 'none';
+  document.getElementById('wizard-etapa-final').style.display = _estado.wizardStep === 4 ? 'block' : 'none';
+  document.getElementById('wizard-btn-voltar').style.visibility = _estado.wizardStep > 1 ? 'visible' : 'hidden';
   renderWizardSteps();
   // Rola a sidebar pro topo ao trocar de etapa, senão o usuário pode ficar
   // "no meio" da etapa anterior sem ver o título da nova.
@@ -914,14 +949,14 @@ function aplicarWizardVisibilidade(){
 }
 
 function irParaEtapa(n){
-  _wizardStep = n;
+  _estado.wizardStep = n;
   aplicarWizardVisibilidade();
 }
 
 function avancarEtapa(){
   // Validação leve antes de sair da etapa 2 (Importação) — sem FOB preenchido
   // o resto do cálculo não faz sentido, então evita avançar "no vazio".
-  if(_wizardStep === 2){
+  if(_estado.wizardStep === 2){
     const fob = parseFloat(document.getElementById('fob_usd').value);
     if(!fob || fob<=0){
       showToast('Preencha o FOB (USD) antes de continuar', 'warn');
@@ -929,15 +964,15 @@ function avancarEtapa(){
       return;
     }
   }
-  if(_wizardStep < 4) irParaEtapa(_wizardStep+1);
+  if(_estado.wizardStep < 4) irParaEtapa(_estado.wizardStep+1);
 }
 
 function voltarEtapa(){
-  if(_wizardStep > 1) irParaEtapa(_wizardStep-1);
+  if(_estado.wizardStep > 1) irParaEtapa(_estado.wizardStep-1);
 }
 
 function irParaResultado(){
-  if(!_wizardResultadoPronto) return;
+  if(!_estado.wizardResultadoPronto) return;
   const painel = document.querySelector('.content-calc');
   if(painel) painel.scrollIntoView({behavior:'smooth', block:'start'});
 }
@@ -961,14 +996,14 @@ document.addEventListener('DOMContentLoaded', () => {
   try {
     const mixRaw = sessionStorage.getItem('calculador_mix');
     if(mixRaw) {
-      _mix = JSON.parse(mixRaw);
+      _estado.mix = JSON.parse(mixRaw);
       renderMix();
     }
   } catch(e){}
 });
 
 // ── CÂMBIO ───────────────────────────────────────────────
-let _acClienteCalcTimer = null;
+// acClienteCalcTimer agora vive em _estado (ver ── ESTADO ── no topo do arquivo).
 function posicionarClienteCalcDropdown(input, dd){
   // position:fixed é relativo à viewport (não é recortado pelo overflow-y:auto
   // da sidebar), então a posição precisa ser calculada em pixels reais da tela
@@ -979,24 +1014,38 @@ function posicionarClienteCalcDropdown(input, dd){
   dd.style.width = rect.width + 'px';
 }
 async function autocompletarClienteCalc(input){
-  clearTimeout(_acClienteCalcTimer);
+  clearTimeout(_estado.acClienteCalcTimer);
   const q = input.value.trim();
   const dd = document.getElementById('cliente-calc-dropdown');
   if(!dd) return;
   if(q.length < 2){ dd.style.display='none'; return; }
-  _acClienteCalcTimer = setTimeout(async ()=>{
+  _estado.acClienteCalcTimer = setTimeout(async ()=>{
     try{
       const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo=CLIENTE');
       const d = await r.json();
       if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
-      dd.innerHTML = d.contatos.map(c=>{
+      // Monta os itens via DOM (createElement/textContent), não via innerHTML
+      // com HTML montado por concatenação de string. razao_social vem do
+      // cadastro de contatos (às vezes preenchido a partir de documentos
+      // lidos por IA) e podia conter caracteres que quebrassem o HTML/JS
+      // (aspas, "<", etc.) — textContent nunca interpreta o valor como
+      // marcação, então elimina esse risco por completo, sem precisar de
+      // uma função de escape separada pra manter em dia.
+      dd.innerHTML = '';
+      d.contatos.forEach(c=>{
         const cnpjFmt = c.cnpj ? c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5') : '';
         const label = `${c.razao_social}${c.uf?' · '+c.uf:''}${cnpjFmt?' · '+cnpjFmt:''}`;
-        const razaoEsc = c.razao_social.replace(/'/g,"\\'");
-        return `<div onclick="document.getElementById('cliente').value='${razaoEsc}';document.getElementById('cliente-calc-dropdown').style.display='none';"
-          style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);"
-          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
-      }).join('');
+        const item = document.createElement('div');
+        item.textContent = label;
+        item.style.cssText = 'padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);';
+        item.addEventListener('mouseover', ()=>{ item.style.background='var(--bg)'; });
+        item.addEventListener('mouseout', ()=>{ item.style.background=''; });
+        item.addEventListener('click', ()=>{
+          document.getElementById('cliente').value = c.razao_social;
+          dd.style.display='none';
+        });
+        dd.appendChild(item);
+      });
       posicionarClienteCalcDropdown(input, dd);
       dd.style.display='block';
     }catch(e){ dd.style.display='none'; }
@@ -1029,7 +1078,7 @@ async function buscarCambio() {
       val = d2?.value?.[0]?.cotacaoVenda;
     }
     if(val) {
-      if(!_cambioFixado) el.value = val.toFixed(4);
+      if(!_estado.cambioFixado) el.value = val.toFixed(4);
       info.textContent = `PTAX ${val.toFixed(4)} — campo editável, não atualiza automaticamente`;
     } else {
       info.textContent = 'PTAX indisponível — insira manualmente';
@@ -1039,7 +1088,7 @@ async function buscarCambio() {
   }
 }
 
-el_cambio().addEventListener('change', () => { _cambioFixado = true; });
+el_cambio().addEventListener('change', () => { _estado.cambioFixado = true; });
 function el_cambio(){ return document.getElementById('cambio_usd'); }
 
 function hoje() {
@@ -1189,7 +1238,7 @@ function onToggleAutoTaxa(campo){
   if(!chk || !input) return;
   input.readOnly = chk.checked;
   input.style.background = chk.checked ? '#f5f5f5' : '#fff';
-  if(_ultimoResultado || document.getElementById('cambio_usd').value) calcular();
+  if(_estado.ultimoResultado || document.getElementById('cambio_usd').value) calcular();
 }
 
 // Marinha/AFRMM e Agente de Carga "auto" antes só recalculavam quando o botão
@@ -1202,11 +1251,11 @@ function onToggleAutoTaxa(campo){
 // lógica) — só dispara se já houver um cálculo anterior ou câmbio preenchido,
 // pra não interromper quem ainda está preenchendo o formulário pela 1ª vez.
 function onAutoTaxaDepChange(){
-  if(_ultimoResultado || document.getElementById('cambio_usd').value) calcular();
+  if(_estado.ultimoResultado || document.getElementById('cambio_usd').value) calcular();
 }
 
 function setToggle(key, val) {
-  _toggles[key] = val;
+  _estado.toggles[key] = val;
   const sim = document.getElementById(`toggle-${key}-sim`);
   const nao = document.getElementById(`toggle-${key}-nao`);
   if(sim) sim.className = 'toggle-btn' + (val==='SIM' ? ' active-sim' : '');
@@ -1219,8 +1268,8 @@ function setToggle(key, val) {
 
 // TTD e ICMS ST são mutuamente exclusivos: TTD=SIM → sem ST. TTD=NÃO → com ST.
 function setToggleTTD(val) {
-  _toggles.ttd = val;
-  _toggles.st = val === 'SIM' ? 'NAO' : 'SIM'; // inverso automático
+  _estado.toggles.ttd = val;
+  _estado.toggles.st = val === 'SIM' ? 'NAO' : 'SIM'; // inverso automático
   const sim = document.getElementById('toggle-ttd-sim');
   const nao = document.getElementById('toggle-ttd-nao');
   if(sim) sim.className = 'toggle-btn' + (val==='SIM' ? ' active-sim' : '');
@@ -1230,7 +1279,7 @@ function setToggleTTD(val) {
 }
 
 function setToggleInner(key, val) {
-  _togglesInner[key] = val;
+  _estado.togglesInner[key] = val;
   const den = document.getElementById(`toggle-china-dentro`);
   const fora = document.getElementById(`toggle-china-fora`);
   if(den) den.className = 'toggle-btn' + (val==='DENTRO' ? ' active-sim' : '');
@@ -1239,7 +1288,7 @@ function setToggleInner(key, val) {
 
 // ── CENÁRIO ──────────────────────────────────────────────
 function setCenario(n) {
-  _cenario = n;
+  _estado.cenario = n;
   ['cen-1','cen-2','cen-3'].forEach((id,i) => {
     document.getElementById(id).classList.toggle('active', i+1===n);
   });
@@ -1275,33 +1324,33 @@ function pct(v){ return v != null ? (v*100).toFixed(2)+'%' : '0%'; }
 
 // ── MIX ──────────────────────────────────────────────────
 function renderMix() {
-  if(!_mix || !_mix.itens || !_mix.itens.length) return;
-  _splitST = {}; // mix novo — zera o split manual (cada recálculo com o MESMO mix preserva)
+  if(!_estado.mix || !_estado.mix.itens || !_estado.mix.itens.length) return;
+  _estado.splitST = {}; // mix novo — zera o split manual (cada recálculo com o MESMO mix preserva)
   document.getElementById('mix-badge').style.display = 'block';
   const lista = document.getElementById('mix-items-list');
-  lista.innerHTML = _mix.itens.map(it =>
+  lista.innerHTML = _estado.mix.itens.map(it =>
     `<div class="mix-item"><span>${it.medida}</span><span>${it.qtd} un · $${it.preco}</span></div>`
   ).join('');
-  document.getElementById('mix-fob-total').textContent = 'US$ '+fmt(_mix.fob_total);
-  document.getElementById('fob_usd').value = _mix.fob_total || '';
+  document.getElementById('mix-fob-total').textContent = 'US$ '+fmt(_estado.mix.fob_total);
+  document.getElementById('fob_usd').value = _estado.mix.fob_total || '';
   // Logo da marca — só exibe se a planilha original tinha imagem cadastrada pra ela
   const marcaWrap = document.getElementById('mix-marca-wrap');
-  const logoFile = _mix.forn ? LOGO_POR_MARCA[_mix.forn.toUpperCase()] : null;
+  const logoFile = _estado.mix.forn ? LOGO_POR_MARCA[_estado.mix.forn.toUpperCase()] : null;
   if(logoFile){
     const logoImg = document.getElementById('mix-marca-logo');
     logoImg.style.display = '';
     logoImg.src = '/'+logoFile; // arquivos estão na raiz do repo, não em /logos/
-    document.getElementById('mix-marca-nome').textContent = _mix.forn;
+    document.getElementById('mix-marca-nome').textContent = _estado.mix.forn;
     marcaWrap.style.display = 'flex';
   } else {
     marcaWrap.style.display = 'none';
   }
   // Containers calculados pelo TyreDesk (>105% de cobertura = novo container).
   // Pré-preenche mas continua editável — usuário pode ajustar se souber melhor.
-  if(_mix.containers){
-    document.getElementById('qtde_containers').value = _mix.containers;
-    if(_mix.containers > 1){
-      showToast(`Mix do TyreDesk usa ${_mix.cobertura_container_pct||''}% de container — ${_mix.containers} containers detectados`, 'info');
+  if(_estado.mix.containers){
+    document.getElementById('qtde_containers').value = _estado.mix.containers;
+    if(_estado.mix.containers > 1){
+      showToast(`Mix do TyreDesk usa ${_estado.mix.cobertura_container_pct||''}% de container — ${_estado.mix.containers} containers detectados`, 'info');
     }
   }
 }
@@ -1310,7 +1359,7 @@ function renderMix() {
 // SEM ST é sempre o complemento) e o total geral combinado, sem precisar
 // rodar CALCULAR de novo (os dois cenários já foram calculados).
 function atualizarSplitST(idx){
-  const r = _ultimoResultado;
+  const r = _estado.ultimoResultado;
   if(!r || !r.cenarios) return;
   const it = r.mix_result[idx];
   const comStItem = r.cenarios.com_st.mix[idx];
@@ -1324,13 +1373,13 @@ function atualizarSplitST(idx){
   document.getElementById('split-sem-'+idx).textContent = qSemSt;
   const totalRow = qComSt*comStItem.vlr_unit_brl + qSemSt*semStItem.vlr_unit_brl;
   document.getElementById('split-total-'+idx).textContent = 'R$ '+fmt(totalRow);
-  _splitST[it.medida] = qComSt;
+  _estado.splitST[it.medida] = qComSt;
 
   // Recalcula o total geral combinado
   let totalGeral = 0;
   r.mix_result.forEach((item, i) => {
     const cs = r.cenarios.com_st.mix[i], ss = r.cenarios.sem_st.mix[i];
-    const qcs = _splitST[item.medida] ?? item.qtd;
+    const qcs = _estado.splitST[item.medida] ?? item.qtd;
     const qss = item.qtd - qcs;
     totalGeral += qcs*cs.vlr_unit_brl + qss*ss.vlr_unit_brl;
   });
@@ -1369,11 +1418,9 @@ function calcular() {
   // o exemplo real (FOB 37.472,80 + Frete 5.000 → Seguro USD 20,5568352 confirmado),
   // a Taxa C.E. NÃO entra na base do Seguro — só (FOB+Frete)×1,10×1,10×0,04%.
   // Base: (FOB + Frete) + 10% despesas + 10% lucro esperado (sem Taxa C.E.)
-  const seguro_total_usd  = fob_usd + frete_usd;
-  const seguro_despesas   = seguro_total_usd * 0.10;
-  const seguro_lucro_esp  = (seguro_total_usd + seguro_despesas) * 0.10;
-  const seguro_base_usd   = seguro_total_usd + seguro_despesas + seguro_lucro_esp;
-  const seguro_compra_usd = seguro_base_usd * taxa_seguro_compra;
+  // Fórmula centralizada em calcularSeguroCompraUsd() (ver acima) — usada
+  // também por calcularArmazenagemUI(), pra nunca mais divergir entre as duas.
+  const seguro_compra_usd = calcularSeguroCompraUsd(fob_usd, frete_usd, taxa_seguro_compra);
   // Seguro Venda (proposta cliente) — fórmula real da planilha (confirmada com
   // exemplo real): ((FOB+Frete)×0,3%) − seguro_compra_usd, essa diferença ×
   // câmbio de abertura do dia da chegada × 1,02 (margem).
@@ -1385,7 +1432,7 @@ function calcular() {
   // fechada num câmbio diferente. Se o toggle estiver OFF (padrão), continua
   // 100% no câmbio principal — comportamento idêntico a antes.
   let fob_brl;
-  if(_toggles.fobpar === 'SIM'){
+  if(_estado.toggles.fobpar === 'SIM'){
     const pctEntradaFob = (parseFloat(document.getElementById('pct_fob_entrada').value) || 0) / 100;
     const pctSaldoFob = 1 - pctEntradaFob;
     const cambioFobEntrada = parseFloat(document.getElementById('cambio_fob_entrada').value) || cambio;
@@ -1427,7 +1474,7 @@ function calcular() {
   const PIS_e    = base_imp_brl * t.pis_e;
   const COFINS_e = base_imp_brl * t.cofins_e;
   const RBC      = base_imp_brl * t.rbc;
-  const DUMP     = _toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
+  const DUMP     = _estado.toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
 
   // Câmbio de abertura do dia da chegada + 2% — usado nas Taxas em USD (destino)
   // e nas fórmulas de Marinha/AFRMM e Agente de Carga, replicando a planilha
@@ -1530,12 +1577,12 @@ function calcular() {
 
   // ── 6. Faturamento / Preço de venda ──
   // Comissão BR
-  const br_pct  = _toggles.br==='SIM' ? (parseFloat(document.getElementById('br_pct').value)||0)/100 : 0;
+  const br_pct  = _estado.toggles.br==='SIM' ? (parseFloat(document.getElementById('br_pct').value)||0)/100 : 0;
   // Comissão China (dentro)
   const china_pct = (parseFloat(document.getElementById('china_pct').value) || 3)/100;
-  const china_dentro = _toggles.china==='SIM' && _togglesInner['china-modal']==='DENTRO' ? china_pct : 0;
+  const china_dentro = _estado.toggles.china==='SIM' && _estado.togglesInner['china-modal']==='DENTRO' ? china_pct : 0;
   // Boss/Lopes (sempre fora, não entra no divisor)
-  const boss_pct_fora = _toggles.boss==='SIM' ? (parseFloat(document.getElementById('boss_pct').value)||0)/100 : 0;
+  const boss_pct_fora = _estado.toggles.boss==='SIM' ? (parseFloat(document.getElementById('boss_pct').value)||0)/100 : 0;
 
   // Alíq saída
   const aliq_ipi_s  = t.ipi;
@@ -1545,7 +1592,7 @@ function calcular() {
   const aliq_icms_nfe = t.icms_prop;    // ICMS próprio na venda (ex: 1,4%)
   const aliq_ibs_s  = t.ibs;
   const aliq_cbs_s  = t.cbs;
-  const china_fora_pct = (_toggles.china==='SIM' && _togglesInner['china-modal']==='FORA') ? china_pct : 0;
+  const china_fora_pct = (_estado.toggles.china==='SIM' && _estado.togglesInner['china-modal']==='FORA') ? china_pct : 0;
 
   // ── Função que, dado um Fator NFe e um cenário de ST, calcula toda a cadeia de saída ──
   // Replica fielmente a planilha: Vlr.Produto → IPI → ICMS NFe → ICMS ST →
@@ -1608,8 +1655,8 @@ function calcular() {
     // ── Parcelamento / Nota de Serviço (bloco K42:K48 da planilha) ──
     let valor_entrada = 0, valor_saldo = 0, juros_parcelamento = 0,
         nota_servico_val = 0, comissao_repr_parcel = 0, total_parcelamento = 0;
-    if(_toggles.parcelado === 'SIM'){
-      const pctEntrada = _toggles.entrada==='SIM' ? (parseFloat(document.getElementById('pct_entrada').value)||0)/100 : 0;
+    if(_estado.toggles.parcelado === 'SIM'){
+      const pctEntrada = _estado.toggles.entrada==='SIM' ? (parseFloat(document.getElementById('pct_entrada').value)||0)/100 : 0;
       const pctSaldo = 1 - pctEntrada;
       valor_entrada = vlr_total_nfe * pctEntrada;
       valor_saldo = vlr_total_nfe * pctSaldo;
@@ -1618,7 +1665,7 @@ function calcular() {
       juros_parcelamento = ((valor_saldo * prazoMedio) / 30) * taxaJurosMes;
       total_parcelamento = valor_entrada + valor_saldo + juros_parcelamento;
     }
-    if(_toggles.nota === 'SIM'){
+    if(_estado.toggles.nota === 'SIM'){
       const pctNota = (parseFloat(document.getElementById('pct_nota_servico').value)||0)/100;
       nota_servico_val = faturamento_total * pctNota;
       total_parcelamento += nota_servico_val;
@@ -1654,10 +1701,10 @@ function calcular() {
   // a planilha, que copia os custos da aba COM S.T pra aba SEM S.T e só muda
   // se o ICMS ST entra ou não. Cada cenário resolve seu próprio Fator NFe.
   function resolverCenario(temStCenario){
-    if(_cenario === 1){
+    if(_estado.cenario === 1){
       const alvo_pct = cenario_val / 100;
       return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario);
-    } else if(_cenario === 2){
+    } else if(_estado.cenario === 2){
       return resolverFatorNfe(r => r.lucro_bruto - cenario_val, temStCenario);
     } else {
       const alvo_pct = cenario_val / 100;
@@ -1669,7 +1716,7 @@ function calcular() {
   const cenario_sem_st = resolverCenario(false);
   // Cenário "principal" (o que alimenta o resultado detalhado de sempre, export etc.)
   // continua sendo o que o toggle COM/SEM S.T do topo já selecionava.
-  const tem_st_toggle = _toggles.st === 'SIM';
+  const tem_st_toggle = _estado.toggles.st === 'SIM';
   const cadeia = tem_st_toggle ? cenario_com_st : cenario_sem_st;
 
   const { vlr_produto, IPI_s, ICMS_nfe, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
@@ -1684,7 +1731,7 @@ function calcular() {
   // pra sempre bater com o valor realmente usado no cálculo de ICMS_nfe). O IPI só
   // se soma quando a operação é de Uso e Consumo (regra fiscal — em revenda normal
   // o IPI não compõe a base do ICMS).
-  const usoConsumo = _toggles.uc === 'SIM';
+  const usoConsumo = _estado.toggles.uc === 'SIM';
   const base_icms = usoConsumo ? (baseIcmsNormal + IPI_s) : baseIcmsNormal;
   const fator = fatorNfe;
 
@@ -1698,7 +1745,7 @@ function calcular() {
   // pneu, batendo com "Valor Impak" do resumo — tudo que o cliente paga
   // pelo produto, exceto a Comissão China/BOSS que é nota de serviço à
   // parte, fora do preço).
-  const mix_itens = _mix?.itens || [];
+  const mix_itens = _estado.mix?.itens || [];
   function calcularMixCenario(valorCheioCenario){
     return mix_itens.map(it => {
       const vlr_unit = valorCheioCenario / (fob_usd || 1) * it.preco;
@@ -1724,7 +1771,7 @@ function calcular() {
   const lucro_real = lucro_bruto + diferenca_taxas_real;
   const pct_lucro_real = faturamento !== 0 ? (lucro_real / faturamento) * 100 : 0;
 
-  _ultimoResultado = {
+  _estado.ultimoResultado = {
     cambio, fob_usd, frete_usd, taxa_ce, containers, tipo, uf, cliente,
     ncm, t,
     fob_brl, frete_brl, seguro_brl, seguro_venda_brl, seguro_compra_usd, seguro_venda_usd, cif_brl, base_imp_brl,
@@ -1747,11 +1794,11 @@ function calcular() {
     cenario_val,
   };
 
-  renderResultado(_ultimoResultado);
+  renderResultado(_estado.ultimoResultado);
   document.getElementById('btn-export').disabled = false;
   // Wizard (task #60) — 1º cálculo bem-sucedido "libera" o nó Resultado no
   // indicador de etapas e rola o painel de resultado (ao lado) pra vista.
-  _wizardResultadoPronto = true;
+  _estado.wizardResultadoPronto = true;
   renderWizardSteps();
   irParaResultado();
 }
@@ -1836,10 +1883,10 @@ function renderResultado(r) {
           ${r.mix_result.map((it, idx) => {
             const comSt = r.cenarios.com_st.mix[idx];
             const semSt = r.cenarios.sem_st.mix[idx];
-            const qComSt = (_splitST[it.medida] !== undefined) ? Math.min(_splitST[it.medida], it.qtd) : (r.tem_st ? it.qtd : 0);
+            const qComSt = (_estado.splitST[it.medida] !== undefined) ? Math.min(_estado.splitST[it.medida], it.qtd) : (r.tem_st ? it.qtd : 0);
             const qSemSt = it.qtd - qComSt;
             const totalRow = qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
-            _splitST[it.medida] = qComSt; // fixa default calculado, se ainda não existia
+            _estado.splitST[it.medida] = qComSt; // fixa default calculado, se ainda não existia
             return `<tr>
               <td>${it.medida}</td><td>${it.pat||'—'}</td>
               <td class="num">${it.qtd}</td>
@@ -1858,7 +1905,7 @@ function renderResultado(r) {
             <td colspan="7" style="text-align:right;padding:8px;">Faturamento combinado (conforme o split acima)</td>
             <td class="num" id="split-total-geral" style="padding:8px;">${fmtR(r.mix_result.reduce((acc,it,idx)=>{
               const comSt=r.cenarios.com_st.mix[idx], semSt=r.cenarios.sem_st.mix[idx];
-              const qComSt=_splitST[it.medida]??0, qSemSt=it.qtd-qComSt;
+              const qComSt=_estado.splitST[it.medida]??0, qSemSt=it.qtd-qComSt;
               return acc + qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
             },0))}</td>
           </tr>
@@ -2026,10 +2073,10 @@ function renderResultado(r) {
 
 // ── EXPORT EXCEL ──────────────────────────────────────────
 async function exportarExcel() {
-  if(!_ultimoResultado) return;
+  if(!_estado.ultimoResultado) return;
   showToast('Gerando planilha...','info');
   try {
-    const r = _ultimoResultado;
+    const r = _estado.ultimoResultado;
     const fmtR = v => parseFloat((v||0).toFixed(2));
 
     // ExcelJS (carregado antecipadamente no <head>, ver comentário lá —
@@ -2070,7 +2117,7 @@ async function exportarExcel() {
       add('info', 'Cliente:', r.cliente||'—', '', '');
       add('info', 'Data:', new Date().toLocaleDateString('pt-BR'), 'Quantidade:', (r.mix_result||[]).reduce((a,it)=>a+it.qtd,0));
       add('info', 'Produto:', r.tipo, 'Total FOB:', r.fob_usd);
-      add('info', 'Marca:', (_mix && _mix.forn) ? _mix.forn : '—', '', '');
+      add('info', 'Marca:', (_estado.mix && _estado.mix.forn) ? _estado.mix.forn : '—', '', '');
       add('info', 'NCM:', r.ncm, 'Containers:', r.containers);
       add('info', 'UF Destino:', r.uf, '', '');
       add('blank');
@@ -2277,7 +2324,7 @@ async function exportarExcel() {
       wsC.mergeCells(2,1,2,numColsC);
       const agora = new Date();
       const subC = wsC.getCell(2,1);
-      subC.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${(_mix&&_mix.forn)?'  ·  Marca: '+_mix.forn:''}`;
+      subC.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${(_estado.mix&&_estado.mix.forn)?'  ·  Marca: '+_estado.mix.forn:''}`;
       estilizarSubtitulo(subC);
       wsC.getRow(2).height = 20;
       wsC.getRow(3).height = 6;
@@ -2293,7 +2340,7 @@ async function exportarExcel() {
 
       let rowIdx = 5, totalGeral = 0, count = 0;
       (r.mix_result||[]).forEach((it, idx) => {
-        const qComSt = _splitST[it.medida] ?? it.qtd;
+        const qComSt = _estado.splitST[it.medida] ?? it.qtd;
         const qSemSt = it.qtd - qComSt;
         const linhasItem = [];
         if(qComSt > 0){
@@ -2389,7 +2436,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
-  return { campos, toggles: {..._toggles}, togglesInner: {..._togglesInner}, mix: _mix, splitST: {..._splitST}, checkboxes };
+  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -2418,9 +2465,9 @@ function aplicarEstadoFormulario(estado){
     if(input){ input.readOnly = checked; input.style.background = checked ? '#f5f5f5' : '#fff'; }
   });
   if(typeof atualizarPctFobSaldo === 'function') atualizarPctFobSaldo();
-  _mix = estado.mix || null;
-  if(_mix && _mix.itens && _mix.itens.length) renderMix();
-  _splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
+  _estado.mix = estado.mix || null;
+  if(_estado.mix && _estado.mix.itens && _estado.mix.itens.length) renderMix();
+  _estado.splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
   if(typeof onProdutoChange === 'function') onProdutoChange();
   if(typeof onUFChange === 'function') onUFChange();
 }
@@ -2458,10 +2505,10 @@ async function salvarCotacao(){
   const cliente = (document.getElementById('cliente').value || '').trim();
   if(!cliente){ showToast('Preencha o cliente antes de salvar', 'err'); return; }
   const body = {
-    id: _cotacaoAtualId || undefined,
+    id: _estado.cotacaoAtualId || undefined,
     cliente,
     dados: coletarEstadoFormulario(),
-    resumo: resumoParaLista(_ultimoResultado),
+    resumo: resumoParaLista(_estado.ultimoResultado),
   };
   try{
     const r = await fetch('/api/calculador/cotacoes', {
@@ -2469,8 +2516,8 @@ async function salvarCotacao(){
     });
     const d = await r.json();
     if(d.ok){
-      const eraNova = !_cotacaoAtualId;
-      _cotacaoAtualId = d.id;
+      const eraNova = !_estado.cotacaoAtualId;
+      _estado.cotacaoAtualId = d.id;
       document.getElementById('cotacao-status').textContent = `Cotação salva${eraNova?'':' (atualizada)'} — ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
       showToast(eraNova ? '✓ Cotação criada' : '✓ Cotação atualizada', 'ok');
     } else {
@@ -2582,7 +2629,7 @@ async function carregarCotacao(id, duplicar){
     const d = await r.json();
     if(!d.ok){ showToast('Erro ao carregar cotação', 'err'); return; }
     aplicarEstadoFormulario(d.cotacao.dados);
-    _cotacaoAtualId = duplicar ? null : id; // duplicar = próximo salvar cria registro novo
+    _estado.cotacaoAtualId = duplicar ? null : id; // duplicar = próximo salvar cria registro novo
     if(duplicar){
       // Duplicar sempre volta pra rascunho — é uma cotação nova, mesmo que a
       // original tenha sido aprovada ou rejeitada (não herda status/processo).
