@@ -6,9 +6,9 @@ name: Testes do Portal IMPAK
 # e o repositório fica com um aviso visível.
 on:
   push:
-    branches: [dev, main]
+    branches: [dev, main, lab]
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, lab]
 
 jobs:
   testes:
@@ -28,3 +28,9 @@ jobs:
 
       - name: Rodar testes do TyreDesk
         run: node testes_tyredesk.js
+
+      - name: Rodar testes do Calculador
+        run: node testes_calculador.js
+
+      - name: Rodar testes de Aprovação de Cotação (LAB)
+        run: node testes_aprovacao.js
