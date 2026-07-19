@@ -24,7 +24,8 @@ const express = require('express');
 const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { randomUUID, scryptSync, randomBytes, timingSafeEqual } = require('crypto');
+const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
+const { mapearCotacaoParaProcesso, extrairEstimativa } = require('./mapeamento_cotacao_processo.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -61,6 +62,34 @@ function sanitizeDestino(destino) {
 }
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ── HASH DO TOKEN DE REDEFINIÇÃO DE SENHA ─────────────────────
+// Antes o reset_token era salvo em texto puro no banco — quem tivesse
+// acesso de leitura à tabela "usuarios" (um dump, um backup vazado, uma
+// query mal protegida) podia usar o token direto pra resetar a senha de
+// qualquer usuário, sem nunca precisar do e-mail. Agora só o HASH do
+// token fica no banco; o token em si só existe no link enviado por
+// e-mail. SHA-256 (não scrypt) é suficiente aqui porque o token já nasce
+// com 32 bytes de entropia aleatória (randomBytes) — diferente de uma
+// senha escolhida por humano, não há risco de força bruta por dicionário.
+function hashToken(token) {
+  return createHash('sha256').update(token).digest('hex');
+}
+// Busca o usuário dono de um token, comparando o HASH com timingSafeEqual
+// (em vez de === direto) para não vazar, pelo tempo de resposta, quantos
+// bytes do hash já bateram — mesma lógica de verificarSenha() acima.
+function buscarUsuarioPorTokenReset(token) {
+  if (!token) return null;
+  const tentativaBuf = Buffer.from(hashToken(token), 'hex');
+  for (const u of _usuariosCache.values()) {
+    if (!u.reset_token) continue;
+    const armazenadoBuf = Buffer.from(u.reset_token, 'hex');
+    if (armazenadoBuf.length === tentativaBuf.length && timingSafeEqual(armazenadoBuf, tentativaBuf)) {
+      return u;
+    }
+  }
+  return null;
 }
 
 const app  = express();
@@ -106,24 +135,38 @@ function sb() {
 //     "só 1 aviso perdido no meio do log" foi exatamente o que escondeu o
 //     problema real da última vez.
 let _avisouTabelaAusente = false;
+// Retorna true se o erro é o caso conhecido/esperado "tabela ainda não existe"
+// (degradação graciosa é ok), ou false se é um erro real (outage, permissão
+// faltando, etc) — nesse caso quem chamou NÃO deve fingir que "não tem sessão".
 function avisarErroSessao(error, operacao) {
-  if (!error) return;
+  if (!error) return false;
   const msg = error.message || String(error);
   const tabelaAusente = error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(msg);
   if (tabelaAusente) {
-    if (_avisouTabelaAusente) return;
-    _avisouTabelaAusente = true;
-    console.error(`⚠️  Tabela app_sessions ainda não existe no Supabase — sessão vai continuar caindo a cada deploy até criar a tabela (ver instruções no topo do arquivo). [${operacao}]`, msg);
+    if (!_avisouTabelaAusente) {
+      _avisouTabelaAusente = true;
+      console.error(`⚠️  Tabela app_sessions ainda não existe no Supabase — sessão vai continuar caindo a cada deploy até criar a tabela (ver instruções no topo do arquivo). [${operacao}]`, msg);
+    }
   } else {
     console.error(`🛑 ERRO REAL ao acessar app_sessions — sessão NÃO está sendo salva/lida, login pode estar quebrado para todo mundo. [${operacao}] code=${error.code||'?'}:`, msg);
   }
+  return tabelaAusente;
 }
 
 class SupabaseSessionStore extends session.Store {
   get(sid, callback) {
     sb().from('app_sessions').select('sess, expire').eq('sid', sid).maybeSingle()
       .then(({ data, error }) => {
-        if (error) { avisarErroSessao(error, 'get'); return callback(null, null); }
+        if (error) {
+          const tabelaAusente = avisarErroSessao(error, 'get');
+          // "Tabela ainda não existe" é um estado conhecido/esperado (antes da
+          // tabela ser criada) — degradar pra "sem sessão" está ok. QUALQUER
+          // outro erro (outage passageiro do Supabase, permissão revogada, etc)
+          // é propagado como erro real: NÃO fingimos "sessão não encontrada",
+          // porque isso derrubaria o login de todo mundo silenciosamente até
+          // alguém notar (foi exatamente o incidente que motivou este arquivo).
+          return callback(tabelaAusente ? null : error, null);
+        }
         if (!data) return callback(null, null);
         if (new Date(data.expire) < new Date()) {
           this.destroy(sid, () => {});
@@ -131,7 +174,10 @@ class SupabaseSessionStore extends session.Store {
         }
         callback(null, data.sess);
       })
-      .catch(err => { avisarErroSessao(err, 'get'); callback(null, null); });
+      .catch(err => {
+        const tabelaAusente = avisarErroSessao(err, 'get');
+        callback(tabelaAusente ? null : err, null);
+      });
   }
 
   set(sid, sessionData, callback) {
@@ -255,6 +301,38 @@ function rateLimitLogin(req, res, next) {
   _loginTentativas.set(ip, tentativas);
   next();
 }
+// ── RATE LIMITING GENÉRICO (IA: /api/analisar e /api/chat) ────
+// Mesmas ideias do rateLimitLogin acima (em memória, por IP), mas em fábrica
+// pra poder configurar limite/janela por endpoint. Protege os proxies pra
+// API paga da Anthropic contra uso abusivo/loop de erro no cliente — sem
+// isso, qualquer usuário autenticado podia disparar chamadas ilimitadas.
+function criarRateLimiter(nome, maxTentativas, janelaMs) {
+  const tentativasPorIp = new Map(); // ip -> [timestamps]
+  setInterval(() => {
+    const agora = Date.now();
+    for (const [ip, tentativas] of tentativasPorIp.entries()) {
+      const ativas = tentativas.filter(t => agora - t < janelaMs);
+      if (ativas.length) tentativasPorIp.set(ip, ativas);
+      else tentativasPorIp.delete(ip);
+    }
+  }, 5 * 60 * 1000).unref?.();
+
+  return function rateLimitMiddleware(req, res, next) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+    const agora = Date.now();
+    const tentativas = (tentativasPorIp.get(ip) || []).filter(t => agora - t < janelaMs);
+    if (tentativas.length >= maxTentativas) {
+      const minutosRestantes = Math.ceil((janelaMs - (agora - tentativas[0])) / 60000);
+      return res.status(429).json({ erro: `Muitas requisições a ${nome}. Tente novamente em ${minutosRestantes} minuto(s).` });
+    }
+    tentativas.push(agora);
+    tentativasPorIp.set(ip, tentativas);
+    next();
+  };
+}
+const rateLimitAnalisar = criarRateLimiter('/api/analisar', 20, 10 * 60 * 1000);
+const rateLimitChat = criarRateLimiter('/api/chat', 30, 10 * 60 * 1000);
+
 // Limpeza periódica para a memória não crescer indefinidamente
 setInterval(() => {
   const agora = Date.now();
@@ -552,7 +630,8 @@ app.post('/api/auth/esqueci-senha', rateLimitLogin, async (req, res) => {
 
     const token = randomBytes(32).toString('hex');
     const expira = new Date(Date.now() + 60*60*1000); // 1 hora
-    await sb().from('usuarios').update({ reset_token: token, reset_token_expira: expira.toISOString() }).eq('usuario', u.usuario);
+    // Só o hash do token é persistido — ver hashToken() acima.
+    await sb().from('usuarios').update({ reset_token: hashToken(token), reset_token_expira: expira.toISOString() }).eq('usuario', u.usuario);
     await recarregarCacheUsuarios();
 
     const link = `${req.protocol}://${req.get('host')}/redefinir-senha?token=${token}`;
@@ -576,7 +655,7 @@ app.get('/redefinir-senha', async (req, res) => {
   const token = req.query.token || '';
   try{
     await recarregarCacheUsuarios();
-    const u = [..._usuariosCache.values()].find(x => x.reset_token === token);
+    const u = buscarUsuarioPorTokenReset(token);
     const valido = u && u.reset_token_expira && new Date(u.reset_token_expira) > new Date();
     res.send(redefinirSenhaPage(valido ? token : null));
   } catch(e){
@@ -591,7 +670,7 @@ app.post('/api/auth/redefinir-senha', rateLimitLogin, async (req, res) => {
       return res.json({ ok: false, erro: 'Senha precisa ter pelo menos 6 caracteres.' });
     }
     await recarregarCacheUsuarios();
-    const u = [..._usuariosCache.values()].find(x => x.reset_token === token);
+    const u = buscarUsuarioPorTokenReset(token);
     if(!u || !u.reset_token_expira || new Date(u.reset_token_expira) <= new Date()){
       return res.json({ ok: false, erro: 'Link expirado ou inválido. Peça um novo.' });
     }
@@ -632,6 +711,18 @@ function auth(modulo) {
     if (modulo && !req.session.modulos.includes(modulo)) return res.status(403).send('<h2>Acesso negado</h2>');
     next();
   };
+}
+
+// Restringe exclusões (DELETE) a usuários com role "gerente". Antes, qualquer
+// usuário do módulo "processos"/"tyredesk" podia excluir permanentemente
+// processos, contatos, cotações e arquivos de outros — só o "forçar logout"
+// era restrito a gerente. Usar SEMPRE depois de auth(modulo) na cadeia de
+// middlewares (auth() já garante req.session.usuario/role existirem).
+function requireGerente(req, res, next) {
+  if (req.session.role !== 'gerente') {
+    return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem excluir.' });
+  }
+  next();
 }
 
 // ── PÁGINAS ───────────────────────────────────────────────────
@@ -731,7 +822,7 @@ app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
   }
 });
 
-app.delete('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
+app.delete('/api/conferencia/processo/:id', auth('processos'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb()
       .from('conferencia_processos')
@@ -753,6 +844,10 @@ app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__d
 // upload de documentos, autocomplete de contatos etc. num arquivo separado
 // que rapidamente ficaria desatualizado em relação ao Controle de verdade.
 app.get('/financeiro', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+// Deep-link por processo — /controle/UD26-005 serve o mesmo controle_v2.html;
+// o front-end lê location.pathname no load e abre o painel lateral do
+// processo correspondente automaticamente (ver abrirProcessoPorURL()).
+app.get('/controle/:ref', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
 
 app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
@@ -903,7 +998,7 @@ app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res)
   }
 });
 
-app.delete('/api/controle/v2/processo/:id', auth('processos'), async (req, res) => {
+app.delete('/api/controle/v2/processo/:id', auth('processos'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb().from('controle_processos').delete().eq('id', req.params.id);
     if (error) throw new Error(error.message);
@@ -1028,7 +1123,7 @@ app.post('/api/controle/processo', auth('processos'), async (req, res) => {
   }
 });
 
-app.delete('/api/controle/processo/:id', auth('processos'), async (req, res) => {
+app.delete('/api/controle/processo/:id', auth('processos'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb()
       .from('controle_processos')
@@ -1199,7 +1294,7 @@ app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
 });
 
 // ── API: ANÁLISE DOCUMENTAL ───────────────────────────────────
-app.post('/api/analisar', auth('processos'), async (req, res) => {
+app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res) => {
   try {
     const { content } = req.body;
     if (!content || !Array.isArray(content)) {
@@ -1305,7 +1400,7 @@ app.post('/api/controle/v2/arquivos', auth('processos'), async (req, res) => {
   }
 });
 
-app.delete('/api/controle/v2/arquivos/:id', auth('processos'), async (req, res) => {
+app.delete('/api/controle/v2/arquivos/:id', auth('processos'), requireGerente, async (req, res) => {
   try {
     const { data: arquivo } = await sb()
       .from('controle_arquivos')
@@ -1408,7 +1503,7 @@ app.post('/api/contatos', auth('processos'), async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.delete('/api/contatos/:id', auth('processos'), async (req, res) => {
+app.delete('/api/contatos/:id', auth('processos'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb().from('contatos_clientes').update({ ativo: false }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
@@ -1446,11 +1541,33 @@ app.get('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
 
 // Criar/atualizar. Sem id no corpo = cria novo (usado tanto pra "Salvar"
 // quanto pra "Duplicar", já que duplicar só manda os dados sem o id original).
+//
+// IMPORTANTE: o front (resumoParaLista, calculador.html) só manda os campos
+// de CÁLCULO dentro de `resumo` (tipo, uf, custo_total, etc) — ele não sabe
+// nada sobre status de aprovação/rejeição, porque isso é decidido pelos
+// endpoints /aprovar e /rejeitar abaixo. Se a gente simplesmente sobrescrever
+// `resumo` inteiro aqui, salvar uma edição numa cotação já aprovada ou
+// rejeitada IA PERDER esse status (voltava pra "rascunho" sem querer). Por
+// isso, quando já existe uma cotação com esse id, busca o resumo salvo antes
+// e faz merge: os campos de cálculo vêm do front (mais recentes), mas
+// status/processo_id/motivo_perda/etc só são tocados pelos endpoints
+// dedicados de aprovar/rejeitar, nunca por um "Salvar" comum.
 app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
   try {
     const c = req.body;
     if (!c.cliente) return res.status(400).json({ erro: 'Cliente obrigatório' });
-    if (!c.id) c.id = require('crypto').randomUUID();
+    if (c.id) {
+      const { data: existente } = await sb()
+        .from('calculador_cotacoes')
+        .select('resumo')
+        .eq('id', c.id)
+        .maybeSingle();
+      if (existente && existente.resumo) {
+        c.resumo = { ...existente.resumo, ...(c.resumo || {}) };
+      }
+    } else {
+      c.id = require('crypto').randomUUID();
+    }
     c.ativo = true;
     c.updated_at = new Date().toISOString();
     c.updated_by = req.session.usuario || null;
@@ -1460,7 +1577,109 @@ app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.delete('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
+// ── Aprovar cotação → cria processo em Controle de Processos ────
+// Idempotente: se a cotação já foi aprovada antes (já tem processo_id no
+// resumo), não cria um processo novo de novo — só devolve o que já existe.
+// Isso evita duplicar processo se o usuário clicar "Aprovar" duas vezes
+// (ex: clique duplo, ou dar refresh e clicar de novo sem perceber que já
+// tinha aprovado).
+//
+// Aprovar cria dado em outro sistema (Controle de Processos), então exige
+// os DOIS módulos — não basta ter acesso ao Calculador (`auth('tyredesk')`
+// só cobre isso), também precisa ter acesso a Processos. Hoje todo usuário
+// já tem os dois (ver USUARIOS no topo do arquivo), mas isso evita abrir uma
+// brecha se um dia existir um usuário só com acesso ao Calculador.
+app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, next) => {
+  if (!req.session.modulos.includes('processos')) {
+    return res.status(403).json({ erro: 'Sem acesso a Processos — não é possível aprovar cotações' });
+  }
+  next();
+}, async (req, res) => {
+  try {
+    const { data: cot, error: errBusca } = await sb()
+      .from('calculador_cotacoes')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (errBusca) throw new Error(errBusca.message);
+    if (!cot) return res.status(404).json({ erro: 'Cotação não encontrada' });
+
+    const resumoAtual = cot.resumo || {};
+    if (resumoAtual.status === 'aprovada' && resumoAtual.processo_id) {
+      return res.json({ ok: true, ja_aprovada: true, processo_id: resumoAtual.processo_id, processo_referencia: resumoAtual.processo_referencia });
+    }
+
+    const processoBase = mapearCotacaoParaProcesso(cot.dados, cot.cliente);
+    // Guarda o "cotado" (custo/faturamento/lucro estimados dos dois cenários) junto
+    // do processo, pra dar pra comparar depois com o resultado real no Fechamento
+    // (ver seção 💰 Fechamento na ficha do processo).
+    const processo = {
+      ...processoBase,
+      id: gerarUUID(),
+      updated_at: new Date().toISOString(),
+      estimativa_json: extrairEstimativa(cot.resumo),
+      cotacao_id: cot.id,
+    };
+    const { error: errProc } = await sb().from('controle_processos').insert(processo);
+    if (errProc) throw new Error(errProc.message);
+
+    const novoResumo = {
+      ...resumoAtual,
+      status: 'aprovada',
+      processo_id: processo.id,
+      processo_referencia: processo.referencia,
+      data_aprovacao: new Date().toISOString(),
+      aprovado_por: req.session.usuario || null,
+      // se tinha sido rejeitada antes e o usuário mudou de ideia, limpa o motivo antigo
+      motivo_perda: undefined,
+      data_rejeicao: undefined,
+      rejeitado_por: undefined,
+    };
+    const { error: errUpd } = await sb()
+      .from('calculador_cotacoes')
+      .update({ resumo: novoResumo })
+      .eq('id', req.params.id);
+    if (errUpd) throw new Error(errUpd.message);
+
+    console.log(`cotação aprovada: ${cot.cliente} → processo ${processo.referencia} por ${req.session.usuario}`);
+    res.json({ ok: true, processo_id: processo.id, processo_referencia: processo.referencia });
+  } catch(e) {
+    console.error('aprovar cotação erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// ── Rejeitar cotação (registra motivo de perda) ──────────────────
+app.post('/api/calculador/cotacoes/:id/rejeitar', auth('tyredesk'), async (req, res) => {
+  try {
+    const motivo = (req.body && req.body.motivo || '').trim();
+    if (!motivo) return res.status(400).json({ erro: 'Informe o motivo da perda' });
+
+    const { data: cot, error: errBusca } = await sb()
+      .from('calculador_cotacoes')
+      .select('resumo')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (errBusca) throw new Error(errBusca.message);
+    if (!cot) return res.status(404).json({ erro: 'Cotação não encontrada' });
+
+    const novoResumo = {
+      ...(cot.resumo || {}),
+      status: 'rejeitada',
+      motivo_perda: motivo,
+      data_rejeicao: new Date().toISOString(),
+      rejeitado_por: req.session.usuario || null,
+    };
+    const { error } = await sb()
+      .from('calculador_cotacoes')
+      .update({ resumo: novoResumo })
+      .eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.delete('/api/calculador/cotacoes/:id', auth('tyredesk'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb().from('calculador_cotacoes').update({ ativo: false }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
@@ -1479,7 +1698,7 @@ app.get('/chat.js', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 // CHAT COM IA — consulta inteligente sobre processos
 // ════════════════════════════════════════════════════════════════
-app.post('/api/chat', auth('processos'), async (req, res) => {
+app.post('/api/chat', auth('processos'), rateLimitChat, async (req, res) => {
   try {
     const { mensagem, historico = [] } = req.body;
     if (!mensagem) return res.status(400).json({ erro: 'Mensagem vazia' });
