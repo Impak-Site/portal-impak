@@ -4,163 +4,195 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IMPAK — Calculador de Importação</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#e8f0f8;--card:#fff;--border:#c8d8e8;--ac:#1a7fd4;--ac2:#1567b8;
-  --text:#0d1e2e;--muted:#4a6480;--dim:#7a9ab8;
+  --bg:#f5f7fb;--card:#fff;--border:#e4e9f1;--border-strong:#d2dae6;--ac:#1a7fd4;--ac2:#1567b8;--ac-soft:#eaf3fc;
+  --text:#101a2b;--muted:#5c7089;--dim:#98a7ba;
   --ok:#16a34a;--warn:#d97706;--err:#dc2626;
-  --shadow:0 2px 12px rgba(26,127,212,.1);
+  --r-sm:6px;--r-md:8px;--r-lg:12px;--r-xl:16px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.06);
+  --shadow-md:0 4px 12px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 16px 40px rgba(16,24,40,.14),0 4px 10px rgba(16,24,40,.06);
+  --shadow:var(--shadow-sm);
 }
-body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;}
-.topbar{background:#0a2d5e;color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2);}
-.topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;}
-.topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
-.user-badge{font-size:12px;opacity:.7;}
-.btn-topbar{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;}
+.topbar{background:#0a2340;color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 1px 0 rgba(255,255,255,.06),var(--shadow-md);}
+.topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:.5px;}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:14px;}
+.user-badge{font-size:12px;opacity:.75;}
+.btn-topbar{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:6px 13px;border-radius:var(--r-sm);font-size:12px;font-weight:600;cursor:pointer;transition:background .15s;}
 .btn-topbar:hover{background:rgba(255,255,255,.2);}
 
 /* LAYOUT */
-.main{display:flex;gap:0;min-height:calc(100vh - 52px);}
-.sidebar-calc{width:340px;background:var(--card);border-right:1px solid var(--border);padding:20px;overflow-y:auto;flex-shrink:0;}
-.content-calc{flex:1;padding:20px;overflow-y:auto;}
+.main{display:flex;gap:0;min-height:calc(100vh - 56px);}
+.sidebar-calc{width:340px;background:var(--card);border-right:1px solid var(--border);padding:22px;overflow-y:auto;flex-shrink:0;}
+.content-calc{flex:1;padding:24px;overflow-y:auto;}
+
+/* ── WIZARD (task #60) ────────────────────────────────────────────
+   O formulário da esquerda (.sidebar-calc) era uma rolagem única e longa
+   com todas as seções empilhadas. Agora vira 4 etapas — Câmbio →
+   Importação → Classificação → Taxas — navegadas uma de cada vez (cada
+   .section ganhou um data-step; JS mostra só a etapa ativa). O 5º nó
+   "Resultado" é só indicativo — o painel de resultado já vive ao lado
+   (content-calc) e continua atualizando ao vivo, sem precisar esconder
+   o formulário. Nada na lógica de cálculo mudou — os campos das etapas
+   escondidas continuam no DOM com seus valores, só com display:none. */
+.wizard-steps{display:flex;align-items:flex-start;gap:0;margin-bottom:22px;}
+.wizard-node{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
+.wizard-step-btn{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0;font-family:'DM Sans',sans-serif;}
+.wizard-step-btn:disabled{cursor:default;}
+.wizard-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--border);background:#fff;color:var(--muted);transition:all .15s;}
+.wizard-step-btn.done .wizard-dot{background:var(--ac);border-color:var(--ac);color:#fff;}
+.wizard-step-btn.active .wizard-dot{border-color:var(--ac);color:var(--ac);box-shadow:0 0 0 3px var(--ac-soft);}
+.wizard-label{font-size:8px;font-weight:700;color:var(--muted);text-align:center;letter-spacing:.2px;line-height:1.2;max-width:48px;}
+.wizard-step-btn.active .wizard-label{color:var(--ac);}
+.wizard-step-btn.done .wizard-label{color:var(--text);}
+.wizard-line{flex:1;height:2px;background:var(--border);margin-top:11px;min-width:6px;}
+.wizard-line.done{background:var(--ac);}
+.wizard-nav{display:flex;gap:8px;margin-top:6px;}
+.wizard-nav .btn-refresh{flex:1;}
+.wizard-nav .btn-calc{flex:2;margin-top:0;}
 
 /* FORM */
-.section{margin-bottom:18px;}
-.section-title{font-family:'Syne',sans-serif;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:6px;}
-.form-group{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;}
+.section{margin-bottom:20px;}
+.section-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);letter-spacing:.2px;margin-bottom:11px;padding-bottom:7px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;}
+.form-group{display:flex;flex-direction:column;gap:4px;margin-bottom:9px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .form-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
 label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
 input[type=number],input[type=text],input[type=date],select,textarea{
-  background:var(--bg);border:1px solid var(--border);border-radius:6px;
-  padding:7px 10px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);
-  outline:none;transition:border .15s;width:100%;
+  background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:8px 11px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);
+  outline:none;transition:border-color .15s,box-shadow .15s;width:100%;
 }
-input:focus,select:focus{border-color:var(--ac);background:#fff;}
-input.locked{background:#f0f6fc;color:var(--muted);cursor:not-allowed;}
+input:focus,select:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--ac-soft);}
+input.locked{background:var(--bg);color:var(--muted);cursor:not-allowed;}
 
 /* CÂMBIO */
 .cambio-row{display:flex;gap:6px;align-items:center;}
 .cambio-row input{flex:1;}
-.btn-refresh{padding:7px 10px;background:var(--ac);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600;}
+.btn-refresh{padding:8px 11px;background:var(--ac);color:#fff;border:none;border-radius:var(--r-sm);font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600;transition:background .15s;}
 .btn-refresh:hover{background:var(--ac2);}
-.cambio-info{font-size:10px;color:var(--dim);margin-top:2px;}
+.cambio-info{font-size:10px;color:var(--dim);margin-top:3px;}
 
 /* TOGGLE SIM/NÃO */
 .toggle-group{display:flex;gap:6px;}
-.toggle-btn{flex:1;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;}
-.toggle-btn.active-sim{background:#dcfce7;border-color:var(--ok);color:var(--ok);}
-.toggle-btn.active-nao{background:#fee2e2;border-color:var(--err);color:var(--err);}
+.toggle-btn{flex:1;padding:7px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;}
+.toggle-btn.active-sim{background:var(--ok-bg,#eafaf1);border-color:var(--ok);color:var(--ok);}
+.toggle-btn.active-nao{background:#fdedee;border-color:var(--err);color:var(--err);}
 
 /* COMISSÃO */
-.comissao-detalhe{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:6px;display:none;}
+.comissao-detalhe{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:11px;margin-top:7px;display:none;}
 .comissao-detalhe.show{display:block;}
 
 /* MIX */
-.mix-badge{background:rgba(22,163,74,.07);border:1px solid rgba(22,163,74,.25);border-radius:8px;padding:10px 12px;margin-bottom:14px;}
-.mix-badge-title{font-weight:700;color:var(--ok);font-size:12px;margin-bottom:4px;}
+.mix-badge{background:#eafaf1;border:1px solid #c3ecd4;border-radius:var(--r-md);padding:11px 13px;margin-bottom:16px;}
+.mix-badge-title{font-weight:700;color:var(--ok);font-size:12px;margin-bottom:5px;}
 .mix-items{max-height:100px;overflow-y:auto;}
-.mix-item{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px solid rgba(22,163,74,.1);}
+.mix-item{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(22,163,74,.12);}
 
 /* CENÁRIOS */
-.cenarios{display:flex;gap:6px;margin-bottom:10px;}
-.cenario-btn{flex:1;padding:8px 4px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--muted);font-size:10px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;line-height:1.3;}
-.cenario-btn.active{background:rgba(26,127,212,.1);border-color:var(--ac);color:var(--ac);}
+.cenarios{display:flex;gap:6px;margin-bottom:11px;}
+.cenario-btn{flex:1;padding:9px 4px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg);color:var(--muted);font-size:10px;font-weight:700;cursor:pointer;text-align:center;transition:all .15s;line-height:1.3;}
+.cenario-btn.active{background:var(--ac-soft);border-color:var(--ac);color:var(--ac);}
 
 /* BOTÕES */
-.btn-calc{width:100%;background:var(--ac);color:#fff;border:none;border-radius:8px;padding:13px;font-family:'Syne',sans-serif;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;margin-top:8px;}
-.btn-calc:hover{background:var(--ac2);}
-.btn-export{width:100%;background:#166534;color:#fff;border:none;border-radius:8px;padding:10px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-top:6px;transition:background .15s;}
+.btn-calc{width:100%;background:var(--ac);color:#fff;border:none;border-radius:var(--r-md);padding:14px;font-family:'Syne',sans-serif;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:all .15s;margin-top:8px;box-shadow:var(--shadow-sm);}
+.btn-calc:hover{background:var(--ac2);box-shadow:var(--shadow-md);}
+.btn-export{width:100%;background:#166534;color:#fff;border:none;border-radius:var(--r-md);padding:11px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-top:7px;transition:background .15s;}
 .btn-export:hover{background:#15803d;}
 .btn-export:disabled{opacity:.4;cursor:not-allowed;}
 
 /* RESULTADO */
-.resultado{background:var(--card);border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:20px;}
-.resultado-header{background:#0a2d5e;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;}
+.resultado{background:var(--card);border-radius:var(--r-lg);border:1px solid var(--border);overflow:hidden;margin-bottom:22px;box-shadow:var(--shadow-sm);}
+.resultado-header{background:#0a2340;color:#fff;padding:15px 22px;display:flex;align-items:center;justify-content:space-between;}
 .resultado-header h2{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;}
-.resultado-body{padding:20px;}
+.resultado-body{padding:22px;}
 .placeholder-msg{text-align:center;padding:60px 20px;color:var(--dim);}
 .placeholder-msg .icon{font-size:48px;margin-bottom:12px;}
 .placeholder-msg p{font-size:14px;}
 
 /* CARDS */
-.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:20px;}
-.card-num{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
-.card-num.destaque{border-color:var(--ac);background:rgba(26,127,212,.05);}
-.card-num.ok{border-color:var(--ok);background:rgba(22,163,74,.05);}
-.card-num.warn{border-color:var(--warn);background:rgba(217,119,6,.05);}
-.card-num.err{border-color:var(--err);background:rgba(220,38,38,.05);}
-.card-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
-.card-value{font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--ac);letter-spacing:-.3px;}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px;}
+.card-num{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;transition:box-shadow .15s;}
+.card-num:hover{box-shadow:var(--shadow-sm);}
+.card-num.destaque{border-color:var(--ac);background:var(--ac-soft);}
+.card-num.ok{border-color:var(--ok);background:#eafaf1;}
+.card-num.warn{border-color:var(--warn);background:#fdf6e9;}
+.card-num.err{border-color:var(--err);background:#fdedee;}
+.card-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;}
+.card-value{font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--text);letter-spacing:-.3px;}
 .card-value.ok{color:var(--ok);}
 .card-value.warn{color:var(--warn);}
 .card-value.err{color:var(--err);}
-.card-sub{font-size:10px;color:var(--muted);margin-top:1px;}
+.card-sub{font-size:10px;color:var(--muted);margin-top:2px;}
 
 /* TABELAS */
-.detail-section{margin-bottom:20px;}
-.detail-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border);}
+.detail-section{margin-bottom:22px;}
+.detail-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:9px;padding-bottom:6px;border-bottom:1px solid var(--border);}
 table.calc-table{width:100%;border-collapse:collapse;font-size:12px;}
-table.calc-table th{text-align:left;padding:5px 8px;background:var(--bg);font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
-table.calc-table td{padding:5px 8px;border-bottom:1px solid var(--bg);}
-table.calc-table tr:hover td{background:rgba(26,127,212,.03);}
+table.calc-table th{text-align:left;padding:6px 8px;background:#f8fafc;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+table.calc-table td{padding:6px 8px;border-bottom:1px solid var(--bg);}
+table.calc-table tr:hover td{background:var(--ac-soft);}
 table.calc-table td.num{font-family:'DM Mono',monospace;text-align:right;}
 table.calc-table tr.total-row td{font-weight:700;border-top:2px solid var(--border);background:var(--bg);}
-table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:700;color:var(--ac);}
+table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;color:var(--ac);}
 
 /* MIX TABLE */
 .mix-result-table{width:100%;border-collapse:collapse;font-size:12px;}
-.mix-result-table th{text-align:left;padding:6px 8px;background:#0a2d5e;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
-.mix-result-table td{padding:5px 8px;border-bottom:1px solid var(--bg);}
+.mix-result-table th{text-align:left;padding:7px 8px;background:#0a2340;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+.mix-result-table td{padding:6px 8px;border-bottom:1px solid var(--bg);}
 .mix-result-table td.num{font-family:'DM Mono',monospace;text-align:right;}
-.mix-result-table tr:hover td{background:rgba(26,127,212,.04);}
+.mix-result-table tr:hover td{background:var(--ac-soft);}
 
 /* NOTA DE SERVIÇO */
-.nota-servico{background:rgba(217,119,6,.07);border:1px solid rgba(217,119,6,.3);border-radius:8px;padding:12px 14px;margin-top:12px;}
-.nota-servico-title{font-weight:700;color:var(--warn);font-size:12px;margin-bottom:6px;}
+.nota-servico{background:#fdf6e9;border:1px solid #f6dfae;border-radius:var(--r-md);padding:13px 15px;margin-top:13px;}
+.nota-servico-title{font-weight:700;color:var(--warn);font-size:12px;margin-bottom:7px;}
 
 /* TOAST */
 .toast-wrap{position:fixed;bottom:20px;right:80px;z-index:999;display:flex;flex-direction:column;gap:8px;}
-.toast{padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:fadeIn .2s;}
+.toast{padding:11px 18px;border-radius:var(--r-md);font-size:13px;font-weight:600;color:#fff;box-shadow:var(--shadow-lg);animation:fadeIn .2s;}
 .toast.ok{background:var(--ok);}
 .toast.err{background:var(--err);}
 .toast.info{background:var(--ac);}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
 /* MODAL COTAÇÕES */
-.mbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;}
+.mbg{display:none;position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:200;align-items:center;justify-content:center;}
 .mbg.open{display:flex;}
-.modal-cot{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--ac);border-radius:10px;width:680px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.3);}
-.modal-cot-h{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
-.modal-cot-h h3{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;}
-.modal-cot-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;}
-.modal-cot-b{padding:16px 20px;}
+.modal-cot{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--ac);border-radius:var(--r-lg);width:680px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow-lg);}
+.modal-cot-h{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-cot-h h3{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;}
+.modal-cot-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;border-radius:var(--r-sm);}
+.modal-cot-b{padding:18px 22px;}
 .cot-table{width:100%;border-collapse:collapse;font-size:12px;}
-.cot-table th{text-align:left;padding:6px 8px;background:var(--bg);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;}
-.cot-table td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle;}
-.cot-table tr:hover td{background:rgba(26,127,212,.04);}
+.cot-table th{text-align:left;padding:7px 8px;background:#f8fafc;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;}
+.cot-table td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.cot-table tr:hover td{background:var(--ac-soft);}
 .cot-actions{display:flex;gap:4px;}
-.cot-actions button{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;color:var(--text);}
+.cot-actions button{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 9px;font-size:11px;cursor:pointer;color:var(--text);transition:all .15s;}
 .cot-actions button:hover{background:var(--border);}
 .cot-actions button.danger{color:var(--err);}
 </style>
 <!-- Carregada antecipadamente (não no clique do botão) — no Safari, gerar o
      blob de download muito tempo depois do carregamento dinâmico da lib via
      CDN causa "WebKitBlobResource error 1". Carregando aqui, a lib já está
-     pronta quando o usuário clica em Exportar Excel. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+     pronta quando o usuário clica em Exportar Excel. ExcelJS (em vez da
+     antiga "xlsx") porque estiliza células (cor/borda/fonte) de graça. -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<!-- Paleta/bordas/estilização de Excel compartilhada com controle_v2.html e
+     tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
+<script src="excel-styles.js"></script>
 </head>
 <body>
 
-<div class="topbar">
-  <span class="topbar-logo">IMPAK</span>
-  <span style="font-size:12px;opacity:.6;">💰 Calculador de Importação</span>
-  <div class="topbar-right">
-    <span class="user-badge" id="user-label">—</span>
-    <button class="btn-topbar" onclick="location.href='/logout'">Sair</button>
-  </div>
+<!-- Topbar antigo removido — nav global (chat.js) já cobre logo, título do
+     módulo (via link ativo), usuário e Sair. O span abaixo fica oculto só
+     pra não quebrar o script que seta o nome do usuário (linha ~828). -->
+<div class="topbar" style="display:none">
+  <span class="user-badge" id="user-label">—</span>
 </div>
 
 <div class="main">
@@ -178,8 +210,11 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
       <div style="margin-top:6px;font-size:11px;color:var(--muted);">FOB Total: <strong id="mix-fob-total">—</strong></div>
     </div>
 
+    <!-- WIZARD — indicador de etapas (task #60) -->
+    <div class="wizard-steps" id="wizard-steps"></div>
+
     <!-- CÂMBIO -->
-    <div class="section">
+    <div class="section" data-step="1">
       <div class="section-title">💵 Câmbio</div>
       <div class="form-group">
         <label>USD — Dólar (utilizável na simulação)</label>
@@ -226,7 +261,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- DADOS DA IMPORTAÇÃO -->
-    <div class="section">
+    <div class="section" data-step="2">
       <div class="section-title">🚢 Dados da Importação</div>
       <div class="form-row">
         <div class="form-group">
@@ -261,7 +296,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- CLASSIFICAÇÃO -->
-    <div class="section">
+    <div class="section" data-step="3">
       <div class="section-title">📋 Classificação</div>
       <div class="form-row">
         <div class="form-group">
@@ -315,7 +350,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- TIPO E CONFIGURAÇÕES -->
-    <div class="section">
+    <div class="section" data-step="2">
       <div class="section-title">⚙️ Configurações</div>
       <div class="form-group">
         <label>Tipo de Importação</label>
@@ -369,7 +404,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- COMISSÕES -->
-    <div class="section">
+    <div class="section" data-step="4">
       <div class="section-title">💼 Comissões</div>
 
       <!-- Comissão BR -->
@@ -450,7 +485,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- TAXAS OPERACIONAIS EDITÁVEIS -->
-    <div class="section">
+    <div class="section" data-step="4">
       <div class="section-title" style="cursor:pointer;" onclick="toggleTaxasOperacionais()">
         🏦 Taxas Operacionais (por container) <span id="taxas-op-arrow">▾</span>
       </div>
@@ -538,7 +573,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- CUSTO REAL DAS TAXAS (apuração de lucro real) -->
-    <div class="section">
+    <div class="section" data-step="4">
       <div class="section-title" style="cursor:pointer;" onclick="toggleCustoReal()">
         💵 Custo Real das Taxas (apuração de lucro real) <span id="custo-real-arrow">▾</span>
       </div>
@@ -553,7 +588,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- PARCELAMENTO E NOTA DE SERVIÇO -->
-    <div class="section">
+    <div class="section" data-step="4">
       <div class="section-title" style="cursor:pointer;" onclick="toggleParcelamento()">
         💳 Parcelamento / Nota de Serviço <span id="parcel-arrow">▾</span>
       </div>
@@ -614,7 +649,7 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
 
     <!-- CENÁRIO DE MARGEM -->
-    <div class="section">
+    <div class="section" data-step="4">
       <div class="section-title">🎯 Cenário de Margem</div>
       <div class="cenarios">
         <button class="cenario-btn" id="cen-1" onclick="setCenario(1)">Lucro<br>Alvo %</button>
@@ -628,18 +663,27 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
       </div>
     </div>
 
-    <!-- BOTÃO CALCULAR -->
-    <button class="btn-calc" onclick="calcular()">⚡ CALCULAR</button>
-    <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--dim);">
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-demonstrativo" checked> Aba Demonstrativo (interno, com custos e lucro)</label>
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-cliente" checked> Aba Cliente (comercial, só mix e preço)</label>
+    <!-- NAVEGAÇÃO DO WIZARD (etapas 1-3) + BOTÃO CALCULAR (etapa 4) -->
+    <div class="wizard-nav" id="wizard-nav-etapas" style="display:none;">
+      <button class="btn-refresh" id="wizard-btn-voltar" onclick="voltarEtapa()">‹ Voltar</button>
+      <button class="btn-calc" style="margin-top:0;" onclick="avancarEtapa()">Avançar ›</button>
     </div>
-    <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
-      <button class="btn-refresh" style="flex:1;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
+    <div id="wizard-etapa-final" style="display:none;">
+      <div class="wizard-nav">
+        <button class="btn-refresh" onclick="voltarEtapa()">‹ Voltar</button>
+        <button class="btn-calc" style="margin-top:0;" onclick="calcular()">⚡ CALCULAR</button>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--dim);">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-demonstrativo" checked> Aba Demonstrativo (interno, com custos e lucro)</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-cliente" checked> Aba Cliente (comercial, só mix e preço)</label>
+      </div>
+      <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
+        <button class="btn-refresh" style="flex:1;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
+      </div>
+      <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
     </div>
-    <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
 
   </div>
 
@@ -665,8 +709,8 @@ table.calc-table tr.destaque-row td{background:rgba(26,127,212,.07);font-weight:
     </div>
     <div class="modal-cot-b">
       <table class="cot-table">
-        <thead><tr><th>Cliente</th><th>Tipo/UF</th><th>Custo Total</th><th>Lucro</th><th>Atualizado</th><th></th></tr></thead>
-        <tbody id="cot-lista-body"><tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr></tbody>
+        <thead><tr><th>Cliente</th><th>Tipo/UF</th><th>Custo Total</th><th>Lucro</th><th>Status</th><th>Atualizado</th><th></th></tr></thead>
+        <tbody id="cot-lista-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -817,6 +861,87 @@ let _ultimoResultado = null;
 let _cotacaoAtualId = null; // id da cotação carregada (null = ainda não salva / nova)
 let _splitST = {}; // medida -> quantidade que vai COM ST (resto vai SEM ST)
 
+// ── WIZARD (task #60) ─────────────────────────────────────
+// Transforma o formulário de rolagem única em 4 etapas navegáveis
+// (Câmbio → Importação → Classificação → Taxas), mostrando só as
+// .section[data-step] da etapa atual. O cálculo em si (calcular()) não
+// muda em nada — ele lê os campos pelo id de sempre, então funciona
+// igual mesmo com etapas anteriores escondidas (display:none não apaga
+// o valor do campo, só some visualmente).
+const WIZARD_ETAPAS = [
+  {n:1, label:'Câmbio'},
+  {n:2, label:'Importação'},
+  {n:3, label:'Classificação'},
+  {n:4, label:'Taxas'},
+  {n:5, label:'Resultado'},
+];
+let _wizardStep = 1;
+let _wizardResultadoPronto = false; // vira true após o 1º cálculo bem-sucedido
+
+function renderWizardSteps(){
+  const el = document.getElementById('wizard-steps');
+  if(!el) return;
+  el.innerHTML = WIZARD_ETAPAS.map((e,i)=>{
+    const done = e.n < _wizardStep || (e.n===5 && _wizardResultadoPronto);
+    const active = e.n === _wizardStep;
+    // Etapas 1-4 são sempre clicáveis (o usuário pode ir e voltar livremente
+    // entre seções já preenchidas). A etapa 5 (Resultado) não esconde o
+    // formulário — o painel já vive ao lado (content-calc) e atualiza ao
+    // vivo — o nó só fica clicável depois do 1º cálculo, e ao clicar rola
+    // a tela até o painel em vez de trocar de "etapa" de verdade.
+    const disabled = e.n===5 && !_wizardResultadoPronto;
+    const cls = ['wizard-step-btn', active?'active':'', done?'done':''].filter(Boolean).join(' ');
+    const linha = i < WIZARD_ETAPAS.length-1 ? `<div class="wizard-line ${e.n < _wizardStep ? 'done':''}"></div>` : '';
+    return `<div class="wizard-node" style="flex:${i===WIZARD_ETAPAS.length-1?'0 0 auto':'1'};display:flex;align-items:flex-start;width:100%;">`
+      + `<button type="button" class="${cls}" ${disabled?'disabled':''} onclick="${e.n===5?'irParaResultado()':'irParaEtapa('+e.n+')'}">`
+      + `<div class="wizard-dot">${done?'✓':e.n}</div><div class="wizard-label">${e.label}</div></button>${linha}`
+      + `</div>`;
+  }).join('');
+}
+
+function aplicarWizardVisibilidade(){
+  document.querySelectorAll('.section[data-step]').forEach(sec=>{
+    sec.style.display = (parseInt(sec.dataset.step,10) === _wizardStep) ? '' : 'none';
+  });
+  document.getElementById('wizard-nav-etapas').style.display = _wizardStep < 4 ? 'flex' : 'none';
+  document.getElementById('wizard-etapa-final').style.display = _wizardStep === 4 ? 'block' : 'none';
+  document.getElementById('wizard-btn-voltar').style.visibility = _wizardStep > 1 ? 'visible' : 'hidden';
+  renderWizardSteps();
+  // Rola a sidebar pro topo ao trocar de etapa, senão o usuário pode ficar
+  // "no meio" da etapa anterior sem ver o título da nova.
+  const sb = document.querySelector('.sidebar-calc');
+  if(sb) sb.scrollTop = 0;
+}
+
+function irParaEtapa(n){
+  _wizardStep = n;
+  aplicarWizardVisibilidade();
+}
+
+function avancarEtapa(){
+  // Validação leve antes de sair da etapa 2 (Importação) — sem FOB preenchido
+  // o resto do cálculo não faz sentido, então evita avançar "no vazio".
+  if(_wizardStep === 2){
+    const fob = parseFloat(document.getElementById('fob_usd').value);
+    if(!fob || fob<=0){
+      showToast('Preencha o FOB (USD) antes de continuar', 'warn');
+      document.getElementById('fob_usd').focus();
+      return;
+    }
+  }
+  if(_wizardStep < 4) irParaEtapa(_wizardStep+1);
+}
+
+function voltarEtapa(){
+  if(_wizardStep > 1) irParaEtapa(_wizardStep-1);
+}
+
+function irParaResultado(){
+  if(!_wizardResultadoPronto) return;
+  const painel = document.querySelector('.content-calc');
+  if(painel) painel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
 // ── INIT ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   fetch('/api/me').then(r=>r.json()).then(d=>{
@@ -827,6 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
   buscarCambio();
   setToggleTTD('SIM'); // estado inicial padrão: TTD=SIM → sem ICMS ST
   renderCustoRealInputs();
+  aplicarWizardVisibilidade();
 
   // Mix do TyreDesk — fica salvo no sessionStorage durante toda a sessão do
   // navegador (não é removido após o primeiro carregamento), para permitir
@@ -1276,7 +1402,12 @@ function calcular() {
   const cambioFrete = cambio_chegada * 1.02;
   const frete_brl  = frete_usd * cambioFrete;
   const taxa_ce_brl= taxa_ce * cambio;
-  const seguro_brl = seguro_compra_usd * cambio;
+  // FIX (auditoria UD25-305, planilha real): Seguro Compra convertia pelo
+  // câmbio principal, mas a planilha (MODELO!F7) usa o mesmo câmbio de
+  // abertura do dia da chegada ×1,02 já usado no Frete e no Seguro Venda —
+  // confirmado numérico exato contra o exemplo real (R$96,08 vs R$93,87
+  // que o câmbio principal dava antes).
+  const seguro_brl = seguro_compra_usd * cambio_chegada * 1.02;
   const seguro_venda_brl = seguro_venda_usd * cambio_chegada * 1.02;
   const cif_brl    = fob_brl + frete_brl + seguro_brl;
 
@@ -1310,11 +1441,16 @@ function calcular() {
   // FIX (docx itens 3.3 e 5): Marinha/AFRMM e Agente de Carga tinham fórmula na
   // planilha mas eram só campo manual no calculador. Agora calculados automático
   // por padrão (checkbox "auto" permite sobrescrever manualmente em caso excepcional).
-  // Marinha/AFRMM = ((FRETE_BRL + TAXA_CE_BRL + CAPATAZIA_BRL) × 8%) + 20
-  // (planilha MODELO-COM S.T!F20; TAXA_CE_BRL usa fallback R$2.000 se Taxa C.E. = 0)
-  const taxaCeParaAfrmm = taxa_ce === 0 ? 2000 : taxa_ce * cambio;
+  // Marinha/AFRMM = (((FRETE_USD × Dólar D.I./DUIMP) + CAPATAZIA_BRL) × 8%) + 20
+  // FIX (auditoria UD25-305, fórmula real confirmada com o usuário — print de
+  // conversa): a Taxa C.E. NÃO entra na fórmula automática do AFRMM — só o Frete
+  // (convertido pelo câmbio D.I./DUIMP, DADOS!E5 na planilha) + Capatazia. Quando
+  // não existe uma Taxa C.E. própria, às vezes cobram uma taxa equivalente convertida
+  // à parte, mas isso é sempre lançamento manual (campo "auto" desmarcado), nunca
+  // parte da fórmula automática. Confirmado numérico exato: (2050×5,0827+1100)×8%+20
+  // = R$941,56 (bate com a planilha real da UD25-305, sem nenhuma diferença).
   const capatazia_brl = txOpPre.fixas.capatazia * containers;
-  const marinha_auto = ((frete_brl + taxaCeParaAfrmm + capatazia_brl) * 0.08) + 20;
+  const marinha_auto = (((frete_usd * cambio) + capatazia_brl) * 0.08) + 20;
   const autoMarinhaChk = document.getElementById('auto_marinha');
   if(!autoMarinhaChk || autoMarinhaChk.checked){
     document.getElementById('tx_marinha').value = marinha_auto.toFixed(2);
@@ -1331,12 +1467,12 @@ function calcular() {
     document.getElementById('tx_agente').value = agente_auto.toFixed(2);
   }
 
-  // IOF (US$) = (SOMA Taxas USD destino, exceto IOF + FRETE USD) × 3,5%
-  // (planilha MODELO-COM S.T!D35 = SUM(D28:D34,D36,D5)×3,5% — mesmo grupo de
-  // taxas usado no Agente de Carga, mais o Frete; fica em USD, sem câmbio na
-  // própria fórmula — a conversão pra R$ acontece junto com as outras taxas
-  // em USD, no mesmo câmbio de abertura+2%, quando somam taxas_usd_brl).
-  const iof_auto = (somaUsdSemIof + frete_usd) * 0.035;
+  // IOF (US$) = FRETE USD × 3,5%
+  // FIX (auditoria UD25-305, confirmado com o usuário): a fórmula antiga somava
+  // as outras taxas em USD (destino) + frete antes de aplicar 3,5% — o valor real
+  // desse processo bate exato só com Frete×3,5% (2.050×3,5% = 71,75), sem somar
+  // as outras taxas.
+  const iof_auto = frete_usd * 0.035;
   const autoIofChk = document.getElementById('auto_iof');
   if(!autoIofChk || autoIofChk.checked){
     document.getElementById('tx_iof').value = iof_auto.toFixed(2);
@@ -1613,6 +1749,11 @@ function calcular() {
 
   renderResultado(_ultimoResultado);
   document.getElementById('btn-export').disabled = false;
+  // Wizard (task #60) — 1º cálculo bem-sucedido "libera" o nó Resultado no
+  // indicador de etapas e rola o painel de resultado (ao lado) pra vista.
+  _wizardResultadoPronto = true;
+  renderWizardSteps();
+  irParaResultado();
 }
 
 // ── RENDER RESULTADO ──────────────────────────────────────
@@ -1890,168 +2031,327 @@ async function exportarExcel() {
   try {
     const r = _ultimoResultado;
     const fmtR = v => parseFloat((v||0).toFixed(2));
-    if(typeof XLSX === 'undefined'){
+
+    // ExcelJS (carregado antecipadamente no <head>, ver comentário lá —
+    // evita o "WebKitBlobResource error 1" do Safari que a lib antiga
+    // também evitava sendo pré-carregada) — permite estilizar células
+    // (cor, borda, fonte), o que o build gratuito da "xlsx" não fazia.
+    if(typeof ExcelJS === 'undefined'){
       showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
       return;
     }
-    const wb = XLSX.utils.book_new();
+
     const incluirDemonstrativo = document.getElementById('exp-demonstrativo').checked;
     const incluirCliente = document.getElementById('exp-cliente').checked;
     if(!incluirDemonstrativo && !incluirCliente){
       showToast('Marque pelo menos uma aba pra exportar','err'); return;
     }
 
-    // ── ABA DEMONSTRATIVO (interno) — layout espelhado na aba CAPA da planilha padrão ──
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'IMPAK';
+    wb.created = new Date();
+
+    // Paleta/bordas/estilização compartilhadas com controle_v2.html e
+    // tyredesk.html — ver excel-styles.js (window.ExcelStyles).
+    const { CORES, bordaFio, estilizarGrupoHeader, estilizarHeaderCell,
+            estilizarTitulo, estilizarSubtitulo, estilizarCelulaDado } = window.ExcelStyles;
+
+    // ── ABA DEMONSTRATIVO (interno) — mesmo conteúdo/cálculo de antes, só que
+    // agora cada linha carrega um "tipo" (título/seção/total/dado/tabela) pra
+    // ser estilizada depois de montada, sem tocar na lógica de valores. ──
     if(incluirDemonstrativo){
       const cst = r.cenarios.com_st, sst = r.cenarios.sem_st;
-      const rows = [
-        [(r.tipo||'').toUpperCase()+' — IMPORTAÇÃO', '', '', ''],
-        [`DEMONSTRATIVO DO PROCESSO — ${r.cliente||'—'}`, '', '', ''],
-        [],
-        ['Cliente:', r.cliente||'—', '', ''],
-        ['Data:', new Date().toLocaleDateString('pt-BR'), 'Quantidade:', (r.mix_result||[]).reduce((a,it)=>a+it.qtd,0)],
-        ['Produto:', r.tipo, 'Total FOB:', r.fob_usd],
-        ['Marca:', (_mix && _mix.forn) ? _mix.forn : '—', '', ''],
-        ['NCM:', r.ncm, 'Containers:', r.containers],
-        ['UF Destino:', r.uf, '', ''],
-        [],
-        ['DÓLAR', r.cambio, 'CUSTO EM DÓLAR', 'VALORES EM REAIS'],
-        ['Valor FOB', r.fob_usd, r.fob_usd, fmtR(r.fob_brl)],
-        ['Frete', r.frete_usd, r.frete_usd, fmtR(r.frete_brl)],
-        ['Seguro', fmtR(r.seguro_compra_usd), fmtR(r.seguro_compra_usd), fmtR(r.seguro_brl)],
-        ['Taxa do C.E.', r.taxa_ce, r.taxa_ce, fmtR(r.taxa_ce*r.cambio)],
-        ['Total do CIF', '', '', fmtR(r.cif_brl)],
-        [],
-        ['TRIBUTOS', '', '', ''],
-        ['Alíquota I.I.', pct(r.t.ii), '', fmtR(r.II)],
-        ['Alíquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e)],
-        ['Alíquota PIS', pct(r.t.pis_e), '', fmtR(r.PIS_e)],
-        ['Alíquota COFINS', pct(r.t.cofins_e), '', fmtR(r.COFINS_e)],
-        ['Alíquota IBS', pct(r.t.ibs), '', fmtR(r.IBS_e)],
-        ['Alíquota CBS', pct(r.t.cbs), '', fmtR(r.CBS_e)],
-        ['Dumping', '', '', fmtR(r.DUMP)],
-        ['TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e+r.DUMP)],
-        [],
-        ['CRÉDITOS DE ENTRADA (recuperáveis)', '', '', ''],
-        ['IPI', '', '', fmtR(-r.IPI_e)],
-        ['PIS', '', '', fmtR(-r.PIS_e)],
-        ['COFINS', '', '', fmtR(-r.COFINS_e)],
-        ['IBS', '', '', fmtR(-r.IBS_e)],
-        ['CBS', '', '', fmtR(-r.CBS_e)],
-        ['TOTAL DOS CRÉDITOS', '', '', fmtR(-(r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e))],
-        [],
-        ['DESPESAS ADUANEIRAS E OPERACIONAIS', '', '', ''],
-        ['Taxa SISCOMEX', '', '', fmtR(r.txOp.fixas.siscomex*r.containers)],
-        ['A.F.R.M (Marinha Mercante)', '', '', fmtR(r.txOp.fixas.marinha*r.containers)],
-        ['Armazenagem e Movimentação Porto', '', '', fmtR(r.txOp.fixas.armazenagem)],
-        ['Capatazia (THC)', '', '', fmtR(r.txOp.fixas.capatazia*r.containers)],
-        ['Liberação BL', '', '', fmtR(r.txOp.fixas.liberacao_bl*r.containers)],
-        ['Emissão de L.Is', '', '', fmtR(r.txOp.fixas.emissao_li*r.containers)],
-        ['Despachante - SDA', '', '', fmtR((r.txOp.fixas.despachante+r.txOp.fixas.sda)*r.containers)],
-        ['Lavação Container', '', '', fmtR(r.txOp.fixas.lavacao*r.containers)],
-        ['Administrativo', '', '', fmtR(r.txOp.fixas.administrativo*r.containers)],
-        ['Agente de Carga', '', '', fmtR(r.txOp.fixas.agente*r.containers)],
-        ['Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers)],
-        ['Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl)],
-        ['Taxa Seguro de Venda', '', '', fmtR(r.seguro_venda_brl)],
-        ['Custos Diversos', '', '', fmtR(r.custos_div)],
-        ...(r.DUMP > 0 ? [['Dumping', '', '', fmtR(r.DUMP)]] : []),
-        ['TOTAL DESPESAS', '', '', fmtR(r.total_taxas)],
-        [],
-        ['CUSTO TOTAL', '', '', fmtR(r.custo_total)],
-        [],
-      ];
+      const linhas = [];
+      const add = (tipo, ...valores) => linhas.push({tipo, valores});
 
-      // Bloco de preço de venda — um por cenário (COM ST / SEM ST)
+      add('titulo', (r.tipo||'').toUpperCase()+' — IMPORTAÇÃO');
+      add('subtitulo', `DEMONSTRATIVO DO PROCESSO — ${r.cliente||'—'}`);
+      add('blank');
+      add('info', 'Cliente:', r.cliente||'—', '', '');
+      add('info', 'Data:', new Date().toLocaleDateString('pt-BR'), 'Quantidade:', (r.mix_result||[]).reduce((a,it)=>a+it.qtd,0));
+      add('info', 'Produto:', r.tipo, 'Total FOB:', r.fob_usd);
+      add('info', 'Marca:', (_mix && _mix.forn) ? _mix.forn : '—', '', '');
+      add('info', 'NCM:', r.ncm, 'Containers:', r.containers);
+      add('info', 'UF Destino:', r.uf, '', '');
+      add('blank');
+      add('cabecalho', 'DÓLAR', r.cambio, 'CUSTO EM DÓLAR', 'VALORES EM REAIS');
+      add('dado', 'Valor FOB', r.fob_usd, r.fob_usd, fmtR(r.fob_brl));
+      add('dado', 'Frete', r.frete_usd, r.frete_usd, fmtR(r.frete_brl));
+      add('dado', 'Seguro', fmtR(r.seguro_compra_usd), fmtR(r.seguro_compra_usd), fmtR(r.seguro_brl));
+      add('dado', 'Taxa do C.E.', r.taxa_ce, r.taxa_ce, fmtR(r.taxa_ce*r.cambio));
+      add('total', 'Total do CIF', '', '', fmtR(r.cif_brl));
+      add('blank');
+      add('secao', 'TRIBUTOS');
+      add('dado', 'Alíquota I.I.', pct(r.t.ii), '', fmtR(r.II));
+      add('dado', 'Alíquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e));
+      add('dado', 'Alíquota PIS', pct(r.t.pis_e), '', fmtR(r.PIS_e));
+      add('dado', 'Alíquota COFINS', pct(r.t.cofins_e), '', fmtR(r.COFINS_e));
+      add('dado', 'Alíquota IBS', pct(r.t.ibs), '', fmtR(r.IBS_e));
+      add('dado', 'Alíquota CBS', pct(r.t.cbs), '', fmtR(r.CBS_e));
+      add('dado', 'Dumping', '', '', fmtR(r.DUMP));
+      add('total', 'TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e+r.DUMP));
+      add('blank');
+      add('secao', 'CRÉDITOS DE ENTRADA (recuperáveis)');
+      add('dado', 'IPI', '', '', fmtR(-r.IPI_e));
+      add('dado', 'PIS', '', '', fmtR(-r.PIS_e));
+      add('dado', 'COFINS', '', '', fmtR(-r.COFINS_e));
+      add('dado', 'IBS', '', '', fmtR(-r.IBS_e));
+      add('dado', 'CBS', '', '', fmtR(-r.CBS_e));
+      add('total', 'TOTAL DOS CRÉDITOS', '', '', fmtR(-(r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e)));
+      add('blank');
+      add('secao', 'DESPESAS ADUANEIRAS E OPERACIONAIS');
+      add('dado', 'Taxa SISCOMEX', '', '', fmtR(r.txOp.fixas.siscomex*r.containers));
+      add('dado', 'A.F.R.M (Marinha Mercante)', '', '', fmtR(r.txOp.fixas.marinha*r.containers));
+      add('dado', 'Armazenagem e Movimentação Porto', '', '', fmtR(r.txOp.fixas.armazenagem));
+      add('dado', 'Capatazia (THC)', '', '', fmtR(r.txOp.fixas.capatazia*r.containers));
+      add('dado', 'Liberação BL', '', '', fmtR(r.txOp.fixas.liberacao_bl*r.containers));
+      add('dado', 'Emissão de L.Is', '', '', fmtR(r.txOp.fixas.emissao_li*r.containers));
+      add('dado', 'Despachante - SDA', '', '', fmtR((r.txOp.fixas.despachante+r.txOp.fixas.sda)*r.containers));
+      add('dado', 'Lavação Container', '', '', fmtR(r.txOp.fixas.lavacao*r.containers));
+      add('dado', 'Administrativo', '', '', fmtR(r.txOp.fixas.administrativo*r.containers));
+      add('dado', 'Agente de Carga', '', '', fmtR(r.txOp.fixas.agente*r.containers));
+      add('dado', 'Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers));
+      add('dado', 'Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl));
+      add('dado', 'Taxa Seguro de Venda', '', '', fmtR(r.seguro_venda_brl));
+      add('dado', 'Custos Diversos', '', '', fmtR(r.custos_div));
+      if(r.DUMP > 0) add('dado', 'Dumping', '', '', fmtR(r.DUMP));
+      add('total', 'TOTAL DESPESAS', '', '', fmtR(r.total_taxas));
+      add('blank');
+      add('totalGrande', 'CUSTO TOTAL', '', '', fmtR(r.custo_total));
+      add('blank');
+
       function blocoPrecoVenda(nome, c){
-        return [
-          [`PREÇO DE VENDA — ${nome}`, '', '', ''],
-          ['Total dos Produtos', '', '', fmtR(c.vlr_produto)],
-          ['IPI', pct(r.t.ipi), '', fmtR(c.IPI_s)],
-          ['ICMS', pct(r.t.aliq_inter), '', fmtR(c.ICMS_nfe)],
-          ['ICMS S.T', '', '', fmtR(c.icms_st)],
-          ['IBS', pct(r.t.ibs), '', fmtR(c.IBS_s)],
-          ['CBS', pct(r.t.cbs), '', fmtR(c.CBS_s)],
-          ['TOTAL DA NFe', '', '', fmtR(c.vlr_total_nfe)],
-          [],
-          ['PIS', pct(r.t.pis_s), '', fmtR(c.PIS_s)],
-          ['COFINS', pct(r.t.cofins_s), '', fmtR(c.COFINS_s)],
-          ['ICMS Próprio', pct(r.t.icms_prop), '', fmtR(c.ICMS_proprio)],
-          ['Comissão Repr.', '', '', fmtR(c.COM_br)],
-          ['Comissão China (dentro)', '', '', fmtR(c.COM_china_dentro)],
-          ['Lucro Bruto', pctF(c.pct_lucro), '', fmtR(c.lucro_bruto)],
-          [],
-          ['NOTA DE SERVIÇO (fora do preço)', '', '', ''],
-          ['Comissão China (fora)', '', '', fmtR(c.china_fora_val)],
-          [r.boss_nome||'Comissão Boss/Lopes', '', '', fmtR(c.boss_fora_val)],
-          [],
-          ['TOTAL DO PROCESSO', '', '', fmtR(c.faturamento_total)],
-          [],
-        ];
+        add('secao', `PREÇO DE VENDA — ${nome}`);
+        add('dado', 'Total dos Produtos', '', '', fmtR(c.vlr_produto));
+        add('dado', 'IPI', pct(r.t.ipi), '', fmtR(c.IPI_s));
+        add('dado', 'ICMS', pct(r.t.aliq_inter), '', fmtR(c.ICMS_nfe));
+        add('dado', 'ICMS S.T', '', '', fmtR(c.icms_st));
+        add('dado', 'IBS', pct(r.t.ibs), '', fmtR(c.IBS_s));
+        add('dado', 'CBS', pct(r.t.cbs), '', fmtR(c.CBS_s));
+        add('total', 'TOTAL DA NFe', '', '', fmtR(c.vlr_total_nfe));
+        add('blank');
+        add('dado', 'PIS', pct(r.t.pis_s), '', fmtR(c.PIS_s));
+        add('dado', 'COFINS', pct(r.t.cofins_s), '', fmtR(c.COFINS_s));
+        add('dado', 'ICMS Próprio', pct(r.t.icms_prop), '', fmtR(c.ICMS_proprio));
+        add('dado', 'Comissão Repr.', '', '', fmtR(c.COM_br));
+        add('dado', 'Comissão China (dentro)', '', '', fmtR(c.COM_china_dentro));
+        add('total', 'Lucro Bruto', pctF(c.pct_lucro), '', fmtR(c.lucro_bruto));
+        add('blank');
+        add('secao', 'NOTA DE SERVIÇO (fora do preço)');
+        add('dado', 'Comissão China (fora)', '', '', fmtR(c.china_fora_val));
+        add('dado', r.boss_nome||'Comissão Boss/Lopes', '', '', fmtR(c.boss_fora_val));
+        add('blank');
+        add('totalGrande', 'TOTAL DO PROCESSO', '', '', fmtR(c.faturamento_total));
+        add('blank');
       }
-      rows.push(...blocoPrecoVenda('COM S.T', cst));
-      rows.push(...blocoPrecoVenda('SEM S.T', sst));
+      blocoPrecoVenda('COM S.T', cst);
+      blocoPrecoVenda('SEM S.T', sst);
 
       if(r.detalhe_diferenca_real && r.detalhe_diferenca_real.length){
-        rows.push(['APURAÇÃO DE LUCRO REAL (compra x venda das taxas)', '', '', '']);
+        add('secao', 'APURAÇÃO DE LUCRO REAL (compra x venda das taxas)');
         r.detalhe_diferenca_real.forEach(d => {
-          rows.push([d.label, `Cobrado: ${fmtR(d.cobrado)}`, `Real: ${fmtR(d.real)}`, fmtR(d.diferenca)]);
+          add('dado', d.label, `Cobrado: ${fmtR(d.cobrado)}`, `Real: ${fmtR(d.real)}`, fmtR(d.diferenca));
         });
-        rows.push(['Diferença total', '', '', fmtR(r.diferenca_taxas_real)]);
-        rows.push(['LUCRO REAL', pctF(r.pct_lucro_real), '', fmtR(r.lucro_real)]);
-        rows.push([]);
+        add('total', 'Diferença total', '', '', fmtR(r.diferenca_taxas_real));
+        add('totalGrande', 'LUCRO REAL', pctF(r.pct_lucro_real), '', fmtR(r.lucro_real));
+        add('blank');
       }
 
       if(r.mix_result && r.mix_result.length){
-        rows.push(['VALOR UNITÁRIO POR PRODUTO — COM S.T x SEM S.T', '', '', '']);
-        rows.push(['Medida','Pattern','Qtd Total','Preço COM ST (R$)','Preço SEM ST (R$)']);
+        add('secao', 'VALOR UNITÁRIO POR PRODUTO — COM S.T x SEM S.T');
+        add('cabecalhoTabela', 'Medida','Pattern','Qtd Total','Preço COM ST (R$)','Preço SEM ST (R$)');
         r.mix_result.forEach((it, idx) => {
-          rows.push([it.medida, it.pat||'—', it.qtd, fmtR(cst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl)]);
+          add('linhaTabela', it.medida, it.pat||'—', it.qtd, fmtR(cst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl));
         });
       }
 
-      const wsD = XLSX.utils.aoa_to_sheet(rows);
-      wsD['!cols'] = [32,16,20,16].map(w => ({wch:w}));
-      XLSX.utils.book_append_sheet(wb, wsD, 'Demonstrativo');
+      const wsD = wb.addWorksheet('Demonstrativo');
+      const numColsD = 5;
+
+      linhas.forEach(linha=>{
+        const row = wsD.addRow(linha.valores);
+        const n = linha.valores.length;
+        switch(linha.tipo){
+          case 'titulo':
+            wsD.mergeCells(row.number,1,row.number,numColsD);
+            row.getCell(1).font = {name:'Calibri', bold:true, size:14, color:{argb:CORES.BRANCO}};
+            row.getCell(1).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO}};
+            row.getCell(1).alignment = {vertical:'middle', horizontal:'left', indent:1};
+            row.height = 26;
+            break;
+          case 'subtitulo':
+            wsD.mergeCells(row.number,1,row.number,numColsD);
+            row.getCell(1).font = {name:'Calibri', bold:true, size:11, color:{argb:CORES.CINZA}};
+            row.getCell(1).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.CINZA_CLARO}};
+            row.getCell(1).alignment = {vertical:'middle', horizontal:'left', indent:1};
+            row.height = 20;
+            break;
+          case 'info':
+            row.getCell(1).font = {bold:true, size:10, color:{argb:CORES.CINZA}};
+            for(let c=2;c<=4;c++) row.getCell(c).font = {size:10, color:{argb:CORES.TEXTO}};
+            break;
+          case 'secao':
+            wsD.mergeCells(row.number,1,row.number,numColsD);
+            estilizarGrupoHeader(row.getCell(1));
+            row.getCell(1).alignment = {vertical:'middle', horizontal:'left', indent:1};
+            row.height = 20;
+            break;
+          case 'cabecalho':
+            for(let c=1;c<=n;c++){
+              row.getCell(c).font = {bold:true, size:10, color:{argb:CORES.BRANCO}};
+              row.getCell(c).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL}};
+            }
+            if(typeof row.getCell(2).value === 'number') row.getCell(2).numFmt = '#,##0.0000';
+            break;
+          case 'cabecalhoTabela':
+            for(let c=1;c<=n;c++){
+              estilizarHeaderCell(row.getCell(c), {size:10});
+            }
+            row.height = 28;
+            break;
+          case 'linhaTabela':
+            for(let c=1;c<=n;c++){
+              const cell = row.getCell(c);
+              cell.font = {size:10, color:{argb:CORES.TEXTO}};
+              cell.alignment = {horizontal: c>=3?'center':'left'};
+              cell.border = bordaFio;
+              if((c===4||c===5) && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            break;
+          case 'total':
+            for(let c=1;c<=4;c++){
+              const cell = row.getCell(c);
+              cell.font = {bold:true, size:10, color:{argb:CORES.TEXTO}};
+              cell.border = {top:{style:'thin',color:{argb:CORES.BORDA}}};
+              if(c===4 && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            break;
+          case 'totalGrande':
+            for(let c=1;c<=4;c++){
+              const cell = row.getCell(c);
+              cell.font = {bold:true, size:11.5, color:{argb:CORES.AZUL_ESCURO}};
+              cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_CLARO}};
+              if(c===4 && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            row.height = 20;
+            break;
+          case 'dado':
+            row.getCell(1).font = {size:10, color:{argb:CORES.TEXTO}};
+            for(let c=2;c<=4;c++){
+              const cell = row.getCell(c);
+              cell.font = {size:10, color:{argb:CORES.CINZA}};
+              if(c===4 && typeof cell.value==='number') cell.numFmt = 'R$ #,##0.00';
+            }
+            break;
+          case 'blank':
+          default:
+            break;
+        }
+      });
+      wsD.getColumn(1).width = 34;
+      wsD.getColumn(2).width = 18;
+      wsD.getColumn(3).width = 20;
+      wsD.getColumn(4).width = 18;
+      wsD.getColumn(5).width = 18;
     }
 
-    // ── ABA CLIENTE (comercial) — só mix, preço e total; sem custo/lucro/comissão ──
+    // ── ABA CLIENTE (comercial) — só mix, preço e total; sem custo/lucro/comissão.
+    // Essa é a aba que efetivamente sai pro cliente, então recebe o visual
+    // "de proposta" completo (título, subtítulo, cabeçalho colorido, zebra,
+    // total em destaque) — mesmo padrão do export "Exportar p/ Cliente" do Controle. ──
     if(incluirCliente){
       const cst = r.cenarios.com_st, sst = r.cenarios.sem_st;
-      const rows = [
-        [`${r.cliente||'—'}`, '', '', '', ''],
-        ['Data:', new Date().toLocaleDateString('pt-BR'), 'Marca:', (_mix && _mix.forn) ? _mix.forn : '—', ''],
-        [],
-        ['Medida', 'Pattern', 'Condição', 'Qtd', 'Preço Unit (R$)', 'Total (R$)'],
-      ];
-      let totalGeral = 0;
+      const colunasCliente = ['Medida','Pattern','Condição','Qtd','Preço Unit (R$)','Total (R$)'];
+      const numColsC = colunasCliente.length;
+
+      const nomeAbaC = (r.cliente||'Cliente').replace(/[\\\/\?\*\[\]:]/g,'').substring(0,31) || 'Cliente';
+      const wsC = wb.addWorksheet(nomeAbaC);
+      wsC.views = [{state:'frozen', ySplit:4}];
+
+      wsC.mergeCells(1,1,1,numColsC);
+      const tituloC = wsC.getCell(1,1);
+      tituloC.value = `IMPAK — Proposta Comercial${r.cliente?' · '+r.cliente:''}`;
+      estilizarTitulo(tituloC);
+      wsC.getRow(1).height = 30;
+
+      wsC.mergeCells(2,1,2,numColsC);
+      const agora = new Date();
+      const subC = wsC.getCell(2,1);
+      subC.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${(_mix&&_mix.forn)?'  ·  Marca: '+_mix.forn:''}`;
+      estilizarSubtitulo(subC);
+      wsC.getRow(2).height = 20;
+      wsC.getRow(3).height = 6;
+
+      const headerRowC = wsC.getRow(4);
+      colunasCliente.forEach((c,i)=>{
+        const cell = headerRowC.getCell(i+1);
+        cell.value = c;
+        estilizarHeaderCell(cell, {size:11});
+      });
+      headerRowC.height = 30;
+      wsC.autoFilter = {from:{row:4,column:1}, to:{row:4,column:numColsC}};
+
+      let rowIdx = 5, totalGeral = 0, count = 0;
       (r.mix_result||[]).forEach((it, idx) => {
         const qComSt = _splitST[it.medida] ?? it.qtd;
         const qSemSt = it.qtd - qComSt;
+        const linhasItem = [];
         if(qComSt > 0){
           const unit = cst.mix[idx].vlr_unit_brl, tot = unit*qComSt;
-          rows.push([it.medida, it.pat||'—', 'Com ST', qComSt, fmtR(unit), fmtR(tot)]);
+          linhasItem.push([it.medida, it.pat||'—', 'Com ST', qComSt, fmtR(unit), fmtR(tot)]);
           totalGeral += tot;
         }
         if(qSemSt > 0){
           const unit = sst.mix[idx].vlr_unit_brl, tot = unit*qSemSt;
-          rows.push([it.medida, it.pat||'—', 'Sem ST', qSemSt, fmtR(unit), fmtR(tot)]);
+          linhasItem.push([it.medida, it.pat||'—', 'Sem ST', qSemSt, fmtR(unit), fmtR(tot)]);
           totalGeral += tot;
         }
+        linhasItem.forEach(vals=>{
+          const row = wsC.getRow(rowIdx);
+          vals.forEach((v,i)=>{
+            const cell = row.getCell(i+1);
+            cell.value = v;
+            estilizarCelulaDado(cell, {idx: count, alinhamento: i>=3?'center':'left', size:10.5});
+            if((i===4||i===5) && typeof v==='number') cell.numFmt = 'R$ #,##0.00';
+          });
+          count++;
+          rowIdx++;
+        });
       });
-      rows.push([]);
-      rows.push(['', '', '', '', 'TOTAL GERAL', fmtR(totalGeral)]);
 
-      const wsC = XLSX.utils.aoa_to_sheet(rows);
-      wsC['!cols'] = [18,14,10,8,16,16].map(w => ({wch:w}));
-      XLSX.utils.book_append_sheet(wb, wsC, 'Cliente');
+      rowIdx++; // linha em branco antes do total
+      wsC.mergeCells(rowIdx,1,rowIdx,4);
+      const totalRow = wsC.getRow(rowIdx);
+      totalRow.getCell(5).value = 'TOTAL GERAL';
+      totalRow.getCell(5).font = {bold:true, size:11, color:{argb:CORES.BRANCO}};
+      totalRow.getCell(5).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO}};
+      totalRow.getCell(5).alignment = {horizontal:'right'};
+      totalRow.getCell(6).value = fmtR(totalGeral);
+      totalRow.getCell(6).font = {bold:true, size:11, color:{argb:CORES.BRANCO}};
+      totalRow.getCell(6).fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO}};
+      totalRow.getCell(6).numFmt = 'R$ #,##0.00';
+      totalRow.height = 22;
+
+      wsC.getColumn(1).width = 18;
+      wsC.getColumn(2).width = 14;
+      wsC.getColumn(3).width = 12;
+      wsC.getColumn(4).width = 8;
+      wsC.getColumn(5).width = 18;
+      wsC.getColumn(6).width = 18;
     }
 
     const nome = `IMPAK_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().slice(0,10)}.xlsx`;
-    XLSX.writeFile(wb, nome);
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nome;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
     showToast('✓ Excel exportado','ok');
   } catch(e) {
     showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
   }
 }
 function pctF(v){ return v.toFixed(2)+'%'; }
@@ -2126,13 +2426,32 @@ function aplicarEstadoFormulario(estado){
 }
 
 // Resumo leve pra exibir na lista sem precisar carregar o formulário inteiro.
+// Monta um resumo enxuto (sem os detalhes internos de cada linha de imposto/taxa)
+// pra salvar junto da cotação — mas com os DOIS cenários (Com ST e Sem ST), não só
+// o que estava ativo na tela. Isso é o que vira a "estimativa" gravada no processo
+// quando a cotação é aprovada (ver /api/calculador/cotacoes/:id/aprovar), pra dar
+// pra comparar depois com o resultado real no Fechamento do processo.
 function resumoParaLista(r){
   if(!r) return null;
+  const cst = r.cenarios && r.cenarios.com_st, sst = r.cenarios && r.cenarios.sem_st;
+  const impak = c => c ? (c.faturamento_total - (c.china_fora_val||0) - (c.boss_fora_val||0)) : null;
   return {
     tipo: r.tipo, uf: r.uf, containers: r.containers,
     custo_total: r.custo_total, faturamento: r.faturamento,
     lucro_bruto: r.lucro_bruto, pct_lucro: r.pct_lucro,
+    cenarios: cst && sst ? {
+      com_st: { faturamento_total: cst.faturamento_total, comissao_china: cst.china_fora_val||0, valor_impak: impak(cst) },
+      sem_st: { faturamento_total: sst.faturamento_total, comissao_china: sst.china_fora_val||0, valor_impak: impak(sst) },
+    } : undefined,
   };
+}
+
+// Rótulo/cor do status de uma cotação, a partir de resumo.status (undefined = rascunho).
+function statusCotacaoInfo(res){
+  const status = (res && res.status) || 'rascunho';
+  if(status === 'aprovada') return { label:'✅ Aprovada', cor:'#16a34a' };
+  if(status === 'rejeitada') return { label:'❌ Rejeitada', cor:'#dc2626' };
+  return { label:'📝 Rascunho', cor:'var(--dim)' };
 }
 
 async function salvarCotacao(){
@@ -2163,25 +2482,45 @@ async function salvarCotacao(){
 async function abrirListaCotacoes(){
   document.getElementById('mbg-cotacoes').classList.add('open');
   const tbody = document.getElementById('cot-lista-body');
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr>';
   try{
     const r = await fetch('/api/calculador/cotacoes');
     const d = await r.json();
     if(!d.ok || !d.cotacoes.length){
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:20px;">Nenhuma cotação salva ainda.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">Nenhuma cotação salva ainda.</td></tr>';
       return;
     }
     tbody.innerHTML = d.cotacoes.map(c => {
       const res = c.resumo || {};
+      const st = statusCotacaoInfo(res);
       const dt = c.updated_at ? new Date(c.updated_at) : null;
       const dtTxt = dt ? `${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}` : '—';
+      const status = res.status || 'rascunho';
+
+      let statusCel = `<span style="color:${st.cor};font-weight:600;">${st.label}</span>`;
+      if(status === 'aprovada' && res.processo_referencia){
+        statusCel += `<br><a href="#" onclick="event.preventDefault();abrirProcessoNoControle('${res.processo_id}')" style="font-size:11px;">${res.processo_referencia} ↗</a>`;
+      } else if(status === 'rejeitada' && res.motivo_perda){
+        statusCel += `<div style="font-size:10px;color:var(--muted);max-width:160px;" title="${res.motivo_perda.replace(/"/g,'&quot;')}">${res.motivo_perda.length>40?res.motivo_perda.slice(0,40)+'…':res.motivo_perda}</div>`;
+      }
+
+      let acoesExtra = '';
+      if(status !== 'aprovada'){
+        acoesExtra += `<button onclick="aprovarCotacao('${c.id}', '${(c.cliente||'').replace(/'/g,"\\'")}')">✅ Aprovar</button>`;
+      }
+      if(status === 'rascunho'){
+        acoesExtra += `<button onclick="rejeitarCotacao('${c.id}')">❌ Rejeitar</button>`;
+      }
+
       return `<tr>
         <td><strong>${c.cliente||'—'}</strong></td>
         <td>${res.tipo||'—'} / ${res.uf||'—'}</td>
         <td>${res.custo_total!=null ? fmt(res.custo_total) : '—'}</td>
         <td>${res.lucro_bruto!=null ? fmt(res.lucro_bruto)+' ('+(res.pct_lucro||0).toFixed(1)+'%)' : '—'}</td>
+        <td>${statusCel}</td>
         <td style="font-size:11px;color:var(--muted);">${dtTxt}${c.updated_by?' · '+c.updated_by:''}</td>
         <td><div class="cot-actions">
+          ${acoesExtra}
           <button onclick="carregarCotacao('${c.id}', false)">✏️ Editar</button>
           <button onclick="carregarCotacao('${c.id}', true)">📋 Duplicar</button>
           <button class="danger" onclick="excluirCotacao('${c.id}')">🗑</button>
@@ -2189,12 +2528,52 @@ async function abrirListaCotacoes(){
       </tr>`;
     }).join('');
   } catch(e){
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--err);padding:20px;">Erro ao carregar: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--err);padding:20px;">Erro ao carregar: ${e.message}</td></tr>`;
   }
 }
 
 function fecharListaCotacoes(){
   document.getElementById('mbg-cotacoes').classList.remove('open');
+}
+
+// Abre o processo criado direto no Controle de Processos, em outra aba, já
+// focado no processo certo (ver deep-link ?processo=<id> em controle_v2.html).
+function abrirProcessoNoControle(processoId){
+  window.open('/controle?processo='+encodeURIComponent(processoId), '_blank');
+}
+
+// Aprova a cotação: cria (ou reabre, se já aprovada antes) o processo
+// correspondente em Controle de Processos. Pede confirmação antes porque é
+// uma ação que cria dado em outro sistema — não dá pra "desfazer" com um
+// simples cancelar depois.
+async function aprovarCotacao(id, cliente){
+  if(!confirm(`Aprovar a cotação de "${cliente||'—'}"? Isso cria automaticamente um processo em Controle de Processos.`)) return;
+  try{
+    const r = await fetch(`/api/calculador/cotacoes/${id}/aprovar`, { method:'POST' });
+    const d = await r.json();
+    if(d.ok){
+      showToast(d.ja_aprovada ? `✓ Já estava aprovada — processo ${d.processo_referencia}` : `✓ Processo ${d.processo_referencia} criado no Controle`, 'ok');
+      abrirListaCotacoes();
+    } else {
+      showToast('Erro ao aprovar: '+(d.erro||'?'), 'err');
+    }
+  } catch(e){ showToast('Erro ao aprovar: '+e.message, 'err'); }
+}
+
+// Rejeita a cotação registrando o motivo da perda (pra análise depois: por
+// que perdemos esse negócio — preço, prazo, concorrente, cliente desistiu...).
+async function rejeitarCotacao(id){
+  const motivo = prompt('Motivo da perda dessa cotação (ex: preço, prazo, concorrente, cliente desistiu):');
+  if(motivo === null) return; // usuário cancelou
+  if(!motivo.trim()){ showToast('Informe um motivo para rejeitar', 'err'); return; }
+  try{
+    const r = await fetch(`/api/calculador/cotacoes/${id}/rejeitar`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ motivo: motivo.trim() })
+    });
+    const d = await r.json();
+    if(d.ok){ showToast('✓ Cotação marcada como rejeitada', 'ok'); abrirListaCotacoes(); }
+    else showToast('Erro ao rejeitar: '+(d.erro||'?'), 'err');
+  } catch(e){ showToast('Erro ao rejeitar: '+e.message, 'err'); }
 }
 
 async function carregarCotacao(id, duplicar){
@@ -2204,9 +2583,14 @@ async function carregarCotacao(id, duplicar){
     if(!d.ok){ showToast('Erro ao carregar cotação', 'err'); return; }
     aplicarEstadoFormulario(d.cotacao.dados);
     _cotacaoAtualId = duplicar ? null : id; // duplicar = próximo salvar cria registro novo
-    document.getElementById('cotacao-status').textContent = duplicar
-      ? 'Duplicada — ainda não salva (salve pra criar uma cópia nova)'
-      : `Editando cotação de ${d.cotacao.cliente}`;
+    if(duplicar){
+      // Duplicar sempre volta pra rascunho — é uma cotação nova, mesmo que a
+      // original tenha sido aprovada ou rejeitada (não herda status/processo).
+      document.getElementById('cotacao-status').textContent = 'Duplicada — ainda não salva (salve pra criar uma cópia nova)';
+    } else {
+      const st = statusCotacaoInfo(d.cotacao.resumo);
+      document.getElementById('cotacao-status').innerHTML = `Editando cotação de ${d.cotacao.cliente} — <span style="color:${st.cor};">${st.label}</span>`;
+    }
     fecharListaCotacoes();
     showToast(duplicar ? '✓ Cotação duplicada no formulário' : '✓ Cotação carregada', 'ok');
   } catch(e){ showToast('Erro ao carregar: '+e.message, 'err'); }
@@ -2235,5 +2619,6 @@ function showToast(msg, tipo='info') {
   setTimeout(() => t.remove(), 3500);
 }
 </script>
+<script src="/chat.js"></script>
 </body>
 </html>

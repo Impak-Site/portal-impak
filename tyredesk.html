@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>IMPAK TyreDesk v1.0</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#f0f4f8;
+  --bg:#f5f7fb;
   --sf:#ffffff;
   --sf2:#e8f0f8;
   --sf3:#dce8f5;
@@ -26,15 +26,20 @@
   --am:#b07800;
   --or:#1a7fd4;
   --or2:#1567b8;
-  --mono:'Barlow',monospace;
-  --sans:'Barlow',sans-serif;
-  --cond:'Barlow Condensed',sans-serif;
+  --mono:'DM Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+  --cond:'Syne',sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100vh;font-size:14px}
 
 /* NAV */
-.nav{background:var(--sf);border-bottom:2px solid var(--or);display:flex;align-items:center;padding:0 24px;height:56px;position:sticky;top:0;z-index:100;gap:0}
+/* Renomeado de .nav pra .td-nav — nome próprio pra não ser pego pela regra
+   do nav global (chat.js) que neutraliza topbars/navs antigos ainda não
+   redesenhados. Essa aqui é uma sub-nav funcional (abas do TyreDesk), não
+   branding redundante, então mantemos sticky, só reposicionada abaixo do
+   nav global fixo (52px de altura). */
+.td-nav{background:var(--sf);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 24px;height:56px;position:sticky;top:52px;z-index:100;gap:0}
 .nl{display:flex;align-items:center;gap:10px;margin-right:28px;text-decoration:none}
 .nl .logo{height:32px;display:flex;align-items:center;gap:8px}
 .nl .logo-box{background:var(--or);color:#fff;font-family:var(--cond);font-size:18px;font-weight:800;padding:4px 10px;border-radius:4px;letter-spacing:1px}
@@ -51,7 +56,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 
 /* UTILS */
 .sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.sh h2{font-family:var(--cond);font-size:22px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.sh h2{font-family:var(--cond);font-size:22px;font-weight:700;letter-spacing:.2px}
 .sh h2 span{color:var(--or)}
 .btn{padding:8px 16px;border-radius:6px;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid var(--b2);letter-spacing:.2px}
 .bp{background:var(--or);color:#fff;border-color:var(--or)}.bp:hover{background:var(--or2)}
@@ -64,7 +69,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 /* CARD */
 .card{background:var(--sf);border:1px solid var(--b1);border-radius:10px;overflow:hidden;margin-bottom:14px}
 .ch{padding:12px 16px;border-bottom:1px solid var(--b2);display:flex;align-items:center;gap:8px;background:rgba(26,127,212,.06)}
-.ch h3{font-family:var(--cond);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.ch h3{font-family:var(--cond);font-size:15px;font-weight:700;letter-spacing:.2px}
 .cb{padding:16px}
 
 /* FORNECEDORES GRID */
@@ -93,7 +98,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 .mbg.open{display:flex}
 .modal{background:var(--sf);border:1px solid var(--b2);border-top:3px solid var(--or);border-radius:10px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto}
 .mh{padding:16px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between}
-.mh h3{font-family:var(--cond);font-size:17px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.mh h3{font-family:var(--cond);font-size:17px;font-weight:700;letter-spacing:.2px}
 .mc{background:transparent;border:none;color:var(--mu);font-size:20px;cursor:pointer;line-height:1}
 .mb{padding:20px}
 .mf{padding:12px 20px;border-top:1px solid var(--b1);display:flex;gap:8px;justify-content:flex-end}
@@ -141,7 +146,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 .import-zone:hover,.import-zone.drag{border-color:var(--or);background:rgba(26,127,212,.07)}
 .import-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .import-icon{font-size:28px;margin-bottom:8px;display:block}
-.import-title{font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px;font-family:var(--cond);text-transform:uppercase;letter-spacing:.5px}
+.import-title{font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px;font-family:var(--cond);letter-spacing:.2px}
 .import-sub{font-size:11px;color:var(--mu)}
 .import-progress{display:none;margin-top:12px}
 .import-bar-bg{background:var(--b1);border-radius:4px;height:6px;overflow:hidden}
@@ -179,7 +184,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 .adot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 .adot.late{background:var(--rd)}.adot.warn{background:var(--am)}.adot.ok{background:var(--gn)}
 .ain{flex:1}
-.an{font-size:13px;font-weight:700;margin-bottom:2px;font-family:var(--cond);text-transform:uppercase;letter-spacing:.3px}
+.an{font-size:13px;font-weight:700;margin-bottom:2px;font-family:var(--cond);letter-spacing:.2px}
 .as2{font-size:11px;color:var(--mu);font-weight:500}
 
 /* EMAIL */
@@ -206,7 +211,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 /* STATS CARDS */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
 .stat{background:var(--sf2);border:1px solid var(--b1);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px}
-.stat-val{font-family:var(--cond);font-size:28px;font-weight:800;color:var(--or);line-height:1}
+.stat-val{font-family:var(--cond);font-size:28px;font-weight:800;color:var(--tx);line-height:1}
 .stat-lbl{font-size:11px;font-weight:600;color:var(--mu);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
 
 /* MISC */
@@ -224,7 +229,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 .sel-modal-bg.open{display:flex}
 .sel-modal{background:#ffffff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:12px;width:780px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column}
 .sel-head{padding:14px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px;flex-shrink:0}
-.sel-head h3{font-family:var(--cond);font-size:16px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.sel-head h3{font-family:var(--cond);font-size:16px;font-weight:700;letter-spacing:.2px}
 .sel-filters{padding:12px 20px;border-bottom:1px solid #c8d8e8;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;align-items:center}
 .sel-body{overflow-y:auto;padding:0}
 .sel-table{width:100%;border-collapse:collapse}
@@ -299,12 +304,6 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 
 
 /* ── TEMA CLARO EXTRAS ───────────────────────────────────────────────── */
-.nav{background:#1a7fd4!important;border-bottom:2px solid #1567b8!important}
-.nt{color:rgba(255,255,255,.75)!important}
-.nt:hover{color:#fff!important}
-.nt.active{color:#fff!important;border-bottom-color:#fff!important}
-.nl .logo-sub{color:rgba(255,255,255,.7)!important}
-.abadge{background:rgba(255,255,255,.2)!important;color:#fff!important;border-color:rgba(255,255,255,.4)!important}
 .card{box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .ch{background:#f8fafc!important}
 .ch h3{color:#0d1e2e}
@@ -387,13 +386,8 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 </div>
 <!-- ════════════════════════════════════════════════════════════════════ -->
 
-<nav class="nav">
-  <div class="nl">
-    <div class="logo">
-      <div class="logo-box">IMPAK</div>
-      <div class="logo-sub">TyreDesk <span style="font-size:10px;opacity:.6">v1.0</span></div>
-    </div>
-  </div>
+<nav class="td-nav">
+  <!-- Logo IMPAK/TyreDesk removido daqui — já vive no nav global (chat.js). -->
   <button class="nt active" onclick="pg('dash',this)">Dashboard</button>
   <button class="nt" onclick="pg('fornecedores',this)">Fornecedores</button>
   <button class="nt" onclick="pg('analisar',this)">Analisar Mix</button>
@@ -637,7 +631,19 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 <datalist id="forn-dl"></datalist>
 <datalist id="size-dl"></datalist>
 
+<!-- "xlsx" continua aqui só pra LEITURA das planilhas importadas de fornecedor
+     (handleImport() usa XLSX.read/sheet_to_json) — não estiliza nada, então
+     não serve pro export. Pro export (exportarExcel()) agora usamos ExcelJS
+     também, que estiliza células (cor/borda/fonte) de graça, dando um visual
+     profissional pra planilha de análise/proposta. Ambas carregadas
+     antecipadamente (não no clique do botão): no Safari, gerar o blob de
+     download muito tempo depois do carregamento dinâmico de uma lib via CDN
+     causa "WebKitBlobResource error 1". -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<!-- Paleta/bordas/estilização de Excel compartilhada com controle_v2.html e
+     calculador.html (window.ExcelStyles) — ver excel-styles.js. -->
+<script src="excel-styles.js"></script>
 <script>
 // ── SESSÃO EXPIRADA: mensagem clara em vez de erro de parse ──────
 // Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
@@ -2273,28 +2279,31 @@ function enviarParaCalculador() {
   setTimeout(() => { window.open('/calculador', '_blank'); }, 800);
 }
 
-function exportarExcel() {
+async function exportarExcel() {
   if (!ultimaAnalise) { toast('Faça uma análise primeiro'); return; }
+  if(typeof ExcelJS === 'undefined'){
+    toast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo');
+    return;
+  }
   const { mix, cots, sorted, otim, moeda, tp } = ultimaAnalise;
   const hoje = new Date().toLocaleDateString('pt-BR');
   const num = 'PVN' + Date.now().toString().slice(-7);
 
-  // Câmbio real
-  const fator = (_cambio && _cambio.USD > 1) ? _cambio.USD : 5.70;
+  // Paleta/bordas/estilização compartilhadas com controle_v2.html e
+  // calculador.html — ver excel-styles.js (window.ExcelStyles).
+  const { estilizarAba } = window.ExcelStyles;
 
-  // Montar linhas por fornecedor selecionado
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'IMPAK';
+  wb.created = new Date();
 
+  const colunas = ['Tipo','Descrição','Size','L.I./ S.R.','P.R.','Pattern','Pedido','Weight (Kgs.)','Peso Total','FOB','TOTAL'];
+  const largurasPadrao = [14,55,12,10,8,14,10,13,12,10,14];
+
+  // ── Uma aba por fornecedor selecionado ──────────────────────────────
   sorted.filter(r => r.total !== null).forEach(rank => {
     const forn = rank.forn;
-    const rows = [];
-
-    // Cabeçalho linha 1: labels (igual ao modelo IMPAK)
-    rows.push([
-      'Tipo', forn.toUpperCase(), 'Size', 'L.I./ S.R.', 'P.R.', 'Pattern',
-      'Pedido', 'Weight (Kgs.)', 'Peso Total', 'FOB', 'TOTAL'
-    ]);
-
+    const linhasDados = [];
     let totalPedido = 0, totalPesoTotal = 0, totalFOB = 0;
 
     mix.forEach((m, idx) => {
@@ -2308,7 +2317,7 @@ function exportarExcel() {
       totalPesoTotal += pesoTotal;
       totalFOB += subtotal;
 
-      rows.push([
+      linhasDados.push([
         'Pneu Automóvel',
         `PNEU ${forn} ${m.medida} ${cot.li||''} ${cot.pat||''} - Cod.Prod ${idx+1}`,
         m.medida,
@@ -2323,54 +2332,53 @@ function exportarExcel() {
       ]);
     });
 
-    // Linha de totais
-    rows.push([
-      '', '', '', '', '', '',
-      totalPedido, '', totalPesoTotal, '', totalFOB
-    ]);
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-
-    // Larguras das colunas
-    ws['!cols'] = [
-      {wch:14},{wch:55},{wch:12},{wch:10},{wch:8},{wch:14},
-      {wch:10},{wch:13},{wch:12},{wch:10},{wch:14}
-    ];
-
-    // Formatar moeda e peso
-    for (let R = 1; R <= rows.length - 1; R++) {
-      const fobCell = ws[XLSX.utils.encode_cell({r:R, c:9})];
-      if (fobCell && typeof fobCell.v === 'number') fobCell.z = '"$"#,##0.00';
-      const totCell = ws[XLSX.utils.encode_cell({r:R, c:10})];
-      if (totCell && typeof totCell.v === 'number') totCell.z = '"$"#,##0.00';
-      const psoCell = ws[XLSX.utils.encode_cell({r:R, c:8})];
-      if (psoCell && typeof psoCell.v === 'number') psoCell.z = '#,##0.00';
-    }
+    const linhaTotal = ['', '', '', '', '', '', totalPedido, '', totalPesoTotal, '', totalFOB];
 
     const sheetName = forn.slice(0, 28).replace(/[\\/:*?[\]]/g,'_');
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const ws = wb.addWorksheet(sheetName);
+    const headerLabels = ['Tipo', forn.toUpperCase(), 'Size', 'L.I./ S.R.', 'P.R.', 'Pattern', 'Pedido', 'Weight (Kgs.)', 'Peso Total', 'FOB', 'TOTAL'];
+    estilizarAba(ws, headerLabels, linhasDados, linhaTotal, largurasPadrao);
+
+    // Formatar moeda e peso (colunas FOB=10, TOTAL=11, Peso Total=9 — 1-based)
+    for(let r=2; r<=ws.rowCount; r++){
+      const fobCell = ws.getCell(r,10), totCell = ws.getCell(r,11), psoCell = ws.getCell(r,9);
+      if(typeof fobCell.value === 'number') fobCell.numFmt = '"$"#,##0.00';
+      if(typeof totCell.value === 'number') totCell.numFmt = '"$"#,##0.00';
+      if(typeof psoCell.value === 'number') psoCell.numFmt = '#,##0.00';
+    }
   });
 
-  // Aba Mix Otimizado
-  const rowsOtim = [];
-  rowsOtim.push(['Size','L.I./S.R.','P.R.','Pattern','Melhor Fornecedor','Pedido','Weight (Kgs.)','Peso Total','FOB','TOTAL']);
+  // ── Aba Mix Otimizado ────────────────────────────────────────────────
+  const linhasOtim = [];
   let totOtPed=0,totOtPeso=0,totOtFob=0;
   otim.forEach(o => {
     if (!o.melhor) return;
     const pesoT = (o.peso||0)*o.qtde;
     totOtPed+=o.qtde; totOtPeso+=pesoT; totOtFob+=(o.sub||0);
-    rowsOtim.push([
+    linhasOtim.push([
       o.medida, o.li||'-', o.pr||'-', o.pat||'-', o.melhor,
       o.qtde, o.peso||'-', pesoT||'-', o.preco, o.sub
     ]);
   });
-  rowsOtim.push(['','','','','TOTAL',totOtPed,'',totOtPeso,'',totOtFob]);
-  const wsOtim = XLSX.utils.aoa_to_sheet(rowsOtim);
-  wsOtim['!cols']=[{wch:12},{wch:10},{wch:8},{wch:14},{wch:22},{wch:8},{wch:13},{wch:12},{wch:10},{wch:14}];
-  XLSX.utils.book_append_sheet(wb, wsOtim, 'Mix Otimizado');
+  const linhaTotalOtim = ['','','','','TOTAL',totOtPed,'',totOtPeso,'',totOtFob];
+  const wsOtim = wb.addWorksheet('Mix Otimizado');
+  const headerOtim = ['Size','L.I./S.R.','P.R.','Pattern','Melhor Fornecedor','Pedido','Weight (Kgs.)','Peso Total','FOB','TOTAL'];
+  estilizarAba(wsOtim, headerOtim, linhasOtim, linhaTotalOtim, [12,10,8,14,22,8,13,12,10,14]);
+  for(let r=2; r<=wsOtim.rowCount; r++){
+    const fobCell = wsOtim.getCell(r,9), totCell = wsOtim.getCell(r,10), psoCell = wsOtim.getCell(r,8);
+    if(typeof fobCell.value === 'number') fobCell.numFmt = '"$"#,##0.00';
+    if(typeof totCell.value === 'number') totCell.numFmt = '"$"#,##0.00';
+    if(typeof psoCell.value === 'number') psoCell.numFmt = '#,##0.00';
+  }
 
   const data = hoje.replace(/\//g,'-');
-  XLSX.writeFile(wb, `IMPAK_Analise_${data}_${num}.xlsx`);
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `IMPAK_Analise_${data}_${num}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
   toast('✓ Excel exportado!');
 }
 
@@ -2421,5 +2429,6 @@ async function init(){
 }
 // init() é chamado direto após a checagem de sessão em /api/me
 </script>
+<script src="/chat.js"></script>
 </body>
 </html>
