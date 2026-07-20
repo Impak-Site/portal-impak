@@ -901,7 +901,8 @@ window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
     if(!d.logado) return;
     var found = USERS.find(function(x){ return x.username===d.usuario; });
-    if(found) entrarDireto(found);
+    if(!found) found = { username: d.usuario, displayName: d.displayName || d.nome || d.usuario, role: d.role || 'analista' };
+    entrarDireto(found);
   }).catch(function(e){ console.warn('auto-login:', e.message); });
 });
 
