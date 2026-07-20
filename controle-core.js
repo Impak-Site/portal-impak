@@ -507,12 +507,99 @@ function renderDemurInfo(p){
 // na aba Documentos). Compara sempre contra o cenário Com S.T. (é o mais
 // comum na prática — resumo antigo, salvo antes dos dois cenários existirem,
 // cai no faturamento genérico que tinha na época).
+const REAL_TAXAS_CONFIG = [
+  {id:'siscomex', label:'Siscomex', unit:'R$', grupo:'fixas'},
+  {id:'marinha', label:'Marinha Mercante', unit:'R$', grupo:'fixas'},
+  {id:'armazenagem', label:'Armazenagem', unit:'R$', grupo:'fixas'},
+  {id:'emissao_li', label:'Emissão LI', unit:'R$', grupo:'fixas'},
+  {id:'baixa_patio', label:'Baixa Pátio', unit:'R$', grupo:'fixas'},
+  {id:'capatazia', label:'Capatazia', unit:'R$', grupo:'fixas'},
+  {id:'liberacao_bl', label:'Liberação BL', unit:'R$', grupo:'fixas'},
+  {id:'despachante', label:'Despachante', unit:'R$', grupo:'fixas'},
+  {id:'sda', label:'SDA', unit:'R$', grupo:'fixas'},
+  {id:'lavacao', label:'Lavação', unit:'R$', grupo:'fixas'},
+  {id:'administrativo', label:'Administrativo', unit:'R$', grupo:'fixas'},
+  {id:'agente', label:'Agente', unit:'R$', grupo:'fixas'},
+  {id:'handling', label:'Handling', unit:'US$', grupo:'usd'},
+  {id:'additional_costs', label:'Additional Costs', unit:'US$', grupo:'usd'},
+  {id:'import_logistics', label:'Import Logistics', unit:'US$', grupo:'usd'},
+  {id:'trs', label:'TRS', unit:'US$', grupo:'usd'},
+  {id:'tsc', label:'TSC', unit:'US$', grupo:'usd'},
+  {id:'drop_off', label:'Drop Off', unit:'US$', grupo:'usd'},
+  {id:'isps', label:'ISPS', unit:'US$', grupo:'usd'},
+  {id:'iof', label:'IOF', unit:'US$', grupo:'usd'},
+  {id:'desconsolidacao', label:'Desconsolidação', unit:'US$', grupo:'usd'},
+];
+
+function renderCustosReaisForm(p){
+  const rj = p.real_json || {fixas:{}, usd:{}};
+  const camb = (p.real_cambio != null && p.real_cambio !== '') ? p.real_cambio : '';
+  const campo = (t) => {
+    const grp = rj[t.grupo] || {};
+    const val = (grp[t.id] != null) ? grp[t.id] : '';
+    return `<div style="display:flex;flex-direction:column;gap:2px;">
+      <label style="font-size:11px;color:var(--muted);">${t.label} (${t.unit})</label>
+      <input type="number" step="0.01" id="realcusto_${t.id}" value="${val}" placeholder="0,00" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--text);"/>
+    </div>`;
+  };
+  const camposFixas = REAL_TAXAS_CONFIG.filter(t=>t.grupo==='fixas').map(campo).join('');
+  const camposUsd = REAL_TAXAS_CONFIG.filter(t=>t.grupo==='usd').map(campo).join('');
+  return `<details style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px;">
+    <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);">💵 Lançar custos reais (despesas aduaneiras)</summary>
+    <div style="margin-top:10px;">
+      <div style="display:flex;flex-direction:column;gap:2px;max-width:220px;margin-bottom:8px;">
+        <label style="font-size:11px;color:var(--muted);">Câmbio Real (p/ converter US$)</label>
+        <input type="number" step="0.0001" id="realcusto_cambio" value="${camb}" placeholder="0,0000" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--text);"/>
+      </div>
+      <div style="font-weight:600;font-size:12px;margin:8px 0 4px;">Em Reais (R$)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${camposFixas}</div>
+      <div style="font-weight:600;font-size:12px;margin:8px 0 4px;">Em Dólares (US$)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${camposUsd}</div>
+      <button type="button" class="btn" style="margin-top:10px;" onclick="salvarCustosReais('${p.id}')">💾 Salvar custos reais</button>
+    </div>
+  </details>`;
+}
+
+async function salvarCustosReais(id){
+  const cambioEl = document.getElementById('realcusto_cambio');
+  const cambio = cambioEl ? parseFloat(cambioEl.value) : NaN;
+  const real_json = {fixas:{}, usd:{}};
+  REAL_TAXAS_CONFIG.forEach(t=>{
+    const el = document.getElementById('realcusto_' + t.id);
+    const v = el ? parseFloat(el.value) : NaN;
+    if(!isNaN(v)) real_json[t.grupo][t.id] = v;
+  });
+  try{
+    const resp = await fetch('/api/controle/v2/processo', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({processo:{id, real_json, real_cambio: isNaN(cambio)?null:cambio}})
+    });
+    const j = await resp.json();
+    if(!resp.ok || j.erro) throw new Error(j.erro || 'Erro ao salvar');
+    alert('Custos reais salvos!');
+    location.reload();
+  }catch(e){
+    alert('Erro ao salvar custos reais: ' + e.message);
+  }
+}
+window.salvarCustosReais = salvarCustosReais;
+
 function calcularFechamento(p){
   const est = p.estimativa_json || null;
   const nfEntrada = parseFloat(p.nf_entrada_valor);
   const nfSaida   = parseFloat(p.nf_saida_valor);
   const temReal   = !isNaN(nfSaida) && nfSaida > 0;
-  const lucroReal    = temReal ? (nfSaida - (isNaN(nfEntrada)?0:nfEntrada)) : null;
+  const realJson = p.real_json || null;
+  const realCambio = parseFloat(p.real_cambio);
+  let despesasReaisBRL = null;
+  if(realJson){
+    const somaFixas = Object.values(realJson.fixas || {}).reduce((s,v)=> s + (parseFloat(v)||0), 0);
+    const somaUsd = Object.values(realJson.usd || {}).reduce((s,v)=> s + (parseFloat(v)||0), 0);
+    despesasReaisBRL = somaFixas + (somaUsd * (isNaN(realCambio)?0:realCambio));
+  }
+  const custoRealTotal = (despesasReaisBRL != null) ? ((isNaN(nfEntrada)?0:nfEntrada) + despesasReaisBRL) : null;
+  const lucroReal = temReal ? (nfSaida - (custoRealTotal != null ? custoRealTotal : (isNaN(nfEntrada)?0:nfEntrada))) : null;
   const pctLucroReal = temReal ? (lucroReal / nfSaida) : null;
 
   let custoEstimado = null, faturamentoEstimado = null, lucroEstimado = null, pctLucroEstimado = null;
@@ -536,11 +623,16 @@ function calcularFechamento(p){
   const deltaValor = temComparacao ? (lucroReal - lucroEstimado) : null;
   const deltaPct   = (temComparacao && pctLucroReal != null && pctLucroEstimado != null) ? (pctLucroReal - pctLucroEstimado) : null;
 
+  const cenariosEst = est && est.cenarios ? est.cenarios : null;
+  const detalhamentoEst = est && est.detalhamento ? est.detalhamento : null;
+
   return {
     temEstimativa: !!est, temReal, temComparacao,
+    detalhamentoEst, cenariosEst,
     custoEstimado, faturamentoEstimado, lucroEstimado, pctLucroEstimado,
     nfEntrada: isNaN(nfEntrada)?null:nfEntrada, nfSaida: isNaN(nfSaida)?null:nfSaida,
     lucroReal, pctLucroReal, deltaValor, deltaPct,
+    custoRealTotal, despesasReaisBRL, realJson, realCambio: isNaN(realCambio)?null:realCambio,
   };
 }
 
@@ -548,6 +640,43 @@ function renderFechamentoInfo(p){
   const f = calcularFechamento(p);
   const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const pct2 = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
+
+  const linhaItem = (label, val) => val==null ? '' : `<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;"><span style="color:var(--muted);">${label}</span><span>${r2(val)}</span></div>`;
+  const blocoCenario = (nome, ce) => {
+    if(!ce) return '';
+    return `<div style="margin-top:10px;">
+      <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${nome}</div>
+      ${linhaItem('Total dos Produtos', ce.vlr_produto)}
+      ${linhaItem('Total da NFe', ce.vlr_total_nfe)}
+      ${linhaItem('Lucro Bruto', ce.lucro_bruto)}
+      <div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;"><span style="color:var(--muted);">% Lucro</span><span>${pct2(ce.vlr_total_nfe ? (ce.lucro_bruto/ce.vlr_total_nfe) : null)}</span></div>
+    </div>`;
+  };
+  let linhaDetalhamento = '';
+  if(f.detalhamentoEst){
+    const d = f.detalhamentoEst;
+    const tx = d.txOp || {fixas:{}, usd:{}};
+    const despesasFixas = Object.entries(tx.fixas||{}).map(([k,v]) => linhaItem(k, v)).join('');
+    linhaDetalhamento = `<details style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px;">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);">Ver detalhamento estimado (CIF, tributos, despesas, cenários)</summary>
+      <div style="margin-top:10px;">
+        ${linhaItem('CIF Total', d.cif_brl)}
+        ${linhaItem('II', d.tributos && d.tributos.II)}
+        ${linhaItem('IPI (entrada)', d.tributos && d.tributos.IPI_e)}
+        ${linhaItem('PIS (entrada)', d.tributos && d.tributos.PIS_e)}
+        ${linhaItem('COFINS (entrada)', d.tributos && d.tributos.COFINS_e)}
+        ${linhaItem('IBS (entrada)', d.tributos && d.tributos.IBS_e)}
+        ${linhaItem('CBS (entrada)', d.tributos && d.tributos.CBS_e)}
+        ${linhaItem('ICMS (entrada)', d.tributos && d.tributos.ICMS_e)}
+        <div style="font-weight:600;font-size:13px;margin-top:8px;margin-bottom:2px;">Despesas Aduaneiras</div>
+        ${despesasFixas}
+        ${linhaItem('Custos Diversos', d.custos_div)}
+        ${blocoCenario('Preço de Venda — COM S.T.', f.cenariosEst && f.cenariosEst.com_st)}
+        ${blocoCenario('Preço de Venda — SEM S.T.', f.cenariosEst && f.cenariosEst.sem_st)}
+      </div>
+    </details>`;
+  }
+
 
   if(!f.temEstimativa){
     return `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:12px;">
@@ -581,6 +710,8 @@ function renderFechamentoInfo(p){
       ${linhaReal}
     </div>
     ${linhaDelta}
+    ${linhaDetalhamento}
+${renderCustosReaisForm(p)}
   </div>`;
 }
 
