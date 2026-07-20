@@ -1295,6 +1295,9 @@ app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
 
 // ── API: ANÁLISE DOCUMENTAL ───────────────────────────────────
 app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res) => {
+  const _t0 = Date.now();
+  const _nDocs = Array.isArray(req.body?.content) ? req.body.content.length : 0;
+  console.log(`analisar: início | ${_nDocs} item(ns) | usuario=${req.session?.usuario || '?'}`);
   try {
     const { content } = req.body;
     if (!content || !Array.isArray(content)) {
@@ -1321,22 +1324,25 @@ app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res)
       clearTimeout(timeout);
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
+        console.warn(`analisar: falhou (Anthropic ${resp.status}) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
         return res.status(resp.status).json({ erro: `API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}` });
       }
       respData = await resp.json();
     } catch (fetchErr) {
       clearTimeout(timeout);
       if (fetchErr.name === 'AbortError') {
+        console.warn(`analisar: timeout (180s) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
         return res.status(504).json({ erro: 'Análise demorou mais de 3 minutos. Tente com menos documentos.' });
       }
       throw fetchErr;
     }
+    console.log(`analisar: ok | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
     res.json({ ok: true, data: respData });
   } catch (e) {
-    console.error('Erro /api/analisar:', e.message);
+    console.error(`analisar: erro (${e.message}) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
     res.status(500).json({ erro: e.message });
   }
-});
+})
 
 // ── GED — ARQUIVOS DO PROCESSO (Supabase Storage) ──────────────
 const GED_BUCKET = 'controle-arquivos';
