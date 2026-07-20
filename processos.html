@@ -753,6 +753,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <!-- Loading -->
   <div class="loading-box" id="loadingBox">
     <div class="loading-title">Analisando documentos com IA...</div>
+    <div style="font-size:13px;color:var(--muted,#888);margin-top:-8px;margin-bottom:8px;">Pode levar até 2 minutos com vários documentos. Não feche nem atualize esta página.</div>
     <div class="steps">
       <div class="step" id="s1">① Lendo e interpretando os documentos</div>
       <div class="step" id="s2">② Extraindo dados estruturados</div>
@@ -1738,11 +1739,19 @@ async function runAnalysis(){
     }
 
     // Chamada via servidor (proxy) — sem CORS, sem erro de channel, API key segura
-    const resp = await fetch('/api/analisar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: bodyStr,
-    });
+    async function _fetchAnalisar(){
+      return fetch('/api/analisar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: bodyStr,
+      });
+    }
+    let resp = await _fetchAnalisar();
+    if(!resp.ok && [502,503,504].includes(resp.status)){
+      // Erro transitório de gateway (comum em análises longas) — tenta 1x automaticamente
+      await new Promise(r => setTimeout(r, 2000));
+      resp = await _fetchAnalisar();
+    }
 
     if(!resp.ok){
       let errMsg = 'Erro ' + resp.status;
