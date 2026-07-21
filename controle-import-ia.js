@@ -366,9 +366,9 @@ async function extrairComIA(input){
   "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
   "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
-  "ci_numero": "",
-  "ci_valor_usd": 0,
-  "ci_data": "YYYY-MM-DD",
+  "ci_numero": "",  // número da CI (Commercial Invoice/Fatura Comercial) — extrair de rótulos como "Invoice No", "Invoice Number", "INV. NO", "INV NO", "INV. NO:", "CI No", "Commercial Invoice No" (aceitar variações de pontuação/abreviação do rótulo, ex: com ou sem ponto, com ou sem dois-pontos)
+  "ci_valor_usd": 0,  // valor total da Commercial Invoice — "Total Amount", "Total Value", "Grand Total", "Total USD"
+  "ci_data": "YYYY-MM-DD",  // data de emissão da Commercial Invoice — "Invoice Date", "INV. DATE", "Date"
   "data_chegada": "YYYY-MM-DD",  // preencher SOMENTE quando o documento for a DI/Extrato da DI — é a única fonte que confirma o desembarque efetivo. Para qualquer outro documento (BL, CE Mercante, invoice, etc.), NÃO preencher este campo — a data de chegada/atracação deles é só previsão, então use "eta" em vez disso.
   "ce_master": "",  // número do CE Mercante MASTER (do armador/linha de navegação), se houver
   "ce_house": "",  // número do CE Mercante HOUSE (do agente de carga/consolidador), se houver
@@ -446,9 +446,9 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         }
         throw new Error('O servidor não respondeu corretamente (pode ter sido uma instabilidade momentânea). Tente novamente em alguns segundos.');
       }
-      if(!d.ok){
-        // Erro real da API (ex: "Could not process PDF") — também vale a
-        // pena tentar de novo uma vez, já que costuma ser intermitente.
+      if(!d.ok || !d.jobId){
+        // Erro real na criação do job (ex: falha de validação ou chave não
+        // configurada) — também vale a pena tentar de novo uma vez.
         if(tentativa < 2 && /could not process|processar.*pdf/i.test(d.erro||'')){
           if(status) status.textContent = '⏳ Falha ao processar o PDF, tentando novamente...';
           await new Promise(r=>setTimeout(r, 2000));
@@ -456,8 +456,32 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         }
         throw new Error(d.erro||'Erro na IA');
       }
-      return d;
+      // /api/analisar agora só CRIA o job e responde na hora (evita erro 502
+      // em análises longas) — o resultado real vem via polling em
+      // /api/analisar/job/:id, exatamente como o runAnalysis() da Conferência
+      // (processos.html) já faz. Sem isso, extrairComIA() lia "d.data" de uma
+      // resposta que só tinha "jobId", travando com "Cannot read properties
+      // of undefined (reading 'content')" toda vez que a IA lia um documento.
+      const jobId = d.jobId;
+      const inicio = Date.now();
+      while(true){
+        await new Promise(r=>setTimeout(r, 2500));
+        const rJob = await fetch('/api/analisar/job/'+jobId);
+        const dJob = await rJob.json();
+        if(!dJob.ok) throw new Error(dJob.erro||'Erro ao consultar análise');
+        if(dJob.status === 'concluido') return { ok:true, data: dJob.resultado };
+        if(dJob.status === 'erro'){
+          if(tentativa < 2 && /could not process|processar.*pdf/i.test(dJob.erro||'')){
+            if(status) status.textContent = '⏳ Falha ao processar o PDF, tentando novamente...';
+            return chamarAnalise(tentativa+1);
+          }
+          throw new Error(dJob.erro||'Erro na IA');
+        }
+        if(status) status.textContent = '⏳ Analisando documento...';
+        if(Date.now()-inicio > 180000) throw new Error('Análise demorou demais. Tente novamente com um documento menor.');
+      }
     }
+
     const d = await chamarAnalise(1);
 
     const raw = (d.data.content||[]).map(c=>c.text||'').join('');
@@ -480,6 +504,13 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
     if(extracted.pi_numero)    extracted.pi_numero    = extracted.pi_numero.replace(/\s*\(.*?\)\s*/g,'').trim();
     if(!extracted.free_time)   delete extracted.free_time;
+
+    // Fallback: alguns documentos (principalmente a CI/Commercial Invoice)
+    // não trazem uma "referência" interna do processo — só o número da CI.
+    // Nesse caso, usa o próprio número da CI como referência, pra não deixar
+    // o campo obrigatório em branco. Só entra em ação quando a IA não achou
+    // NENHUMA referência no documento.
+    if(!extracted.referencia && extracted.ci_numero) extracted.referencia = extracted.ci_numero;
 
     // CNPJ do encomendante (extraído do Comprovante de Importação/Extrato da
     // DI) — cruza com o cadastro de contatos pra usar o nome OFICIAL já
