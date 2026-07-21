@@ -1897,12 +1897,12 @@ function renderCapaHtml(r) {
   const mixHtmlCapa = (r.mix_result && r.mix_result.length) ? `
     <div class="detail-section">
       <div class="detail-title">Valor Unitario por Produto + Servico</div>
-      <table class="mix-result-table">
+      <div style="overflow-x:auto;"><table class="mix-result-table">
         <thead><tr><th>Medida</th><th>Qtd</th><th>Preco Unit. COM S.T</th><th>Preco Unit. SEM S.T</th></tr></thead>
         <tbody>
           ${r.mix_result.map((it, idx) => `<tr><td>${it.medida}</td><td class="num">${it.qtd}</td><td class="num">${fmtR(d.cst.mix[idx].vlr_unit_brl)}</td><td class="num">${fmtR(d.sst.mix[idx].vlr_unit_brl)}</td></tr>`).join('')}
         </tbody>
-      </table>
+      </table></div>
     </div>
   ` : `
     <div class="detail-section">
@@ -2056,7 +2056,7 @@ function renderResultado(r) {
         Os dois preços usam o MESMO custo total do container (igual à planilha) — só muda se o ICMS ST entra ou não.
         Ajuste "Qtd COM ST" pra decidir quanto de cada medida sai em cada nota.
       </div>
-      <table class="mix-result-table">
+      <div style="overflow-x:auto;"><table class="mix-result-table">
         <thead><tr>
           <th>Medida</th><th>Pattern</th><th>Qtd Total</th>
           <th>Preço COM ST</th><th>Preço SEM ST</th>
@@ -2093,7 +2093,7 @@ function renderResultado(r) {
             },0))}</td>
           </tr>
         </tfoot>
-      </table>
+      </table></div>
     </div>
   ` : '';
 
