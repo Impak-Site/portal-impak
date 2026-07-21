@@ -1395,6 +1395,36 @@ function atualizarSplitST(idx){
   });
   const elGeral = document.getElementById('split-total-geral');
   if(elGeral) elGeral.textContent = 'R$ '+fmt(totalGeral);
+
+  // Atualiza tambem o Resumo por Cenario (rateio de Comissao China conforme
+  // o split), que calcular() so preenche uma vez e nao recalcula sozinho
+  // quando o split muda aqui no Mix de Produtos.
+  const cs2 = r.cenarios.com_st, ss2 = r.cenarios.sem_st;
+  const qtdTotalMix2 = r.mix_result.reduce((a, item) => a + item.qtd, 0);
+  const qtdComStMix2 = r.mix_result.reduce((a, item) => {
+    const s = _estado.splitST[item.medida];
+    return a + (s !== undefined ? Math.min(s, item.qtd) : (r.tem_st ? item.qtd : 0));
+  }, 0);
+  const temSplit2 = qtdTotalMix2 > 0;
+  const qtdPorCenario2 = { com_st: qtdComStMix2, sem_st: qtdTotalMix2 - qtdComStMix2 };
+  ['com_st', 'sem_st'].forEach(chave => {
+    const c = chave === 'com_st' ? cs2 : ss2;
+    const fator = temSplit2 ? (qtdPorCenario2[chave] / qtdTotalMix2) : 1;
+    const faturamento = c.faturamento_total * fator;
+    const china = c.china_fora_val * fator;
+    const boss = c.boss_fora_val * fator;
+    const impak = faturamento - china - boss;
+    const qtdEl = document.getElementById('resumo-'+chave+'-qtd');
+    if(qtdEl) qtdEl.textContent = temSplit2 ? ' ('+qtdPorCenario2[chave]+' un)' : '';
+    const fatEl = document.getElementById('resumo-'+chave+'-fat');
+    if(fatEl) fatEl.textContent = 'R$ '+fmt(faturamento);
+    const chinaEl = document.getElementById('resumo-'+chave+'-china');
+    if(chinaEl) chinaEl.textContent = 'R$ '+fmt(china);
+    const bossEl = document.getElementById('resumo-'+chave+'-boss');
+    if(bossEl) bossEl.textContent = 'R$ '+fmt(boss);
+    const impakEl = document.getElementById('resumo-'+chave+'-impak');
+    if(impakEl) impakEl.textContent = 'R$ '+fmt(impak);
+  });
 }
 
 // ── CÁLCULO PRINCIPAL ─────────────────────────────────────
@@ -2044,11 +2074,11 @@ function renderResultado(r) {
       const boss = c.boss_fora_val * fator;
       const impak = faturamento - china - boss;
       return `<tr>
-        <td><strong>${label}</strong>${temSplit ? ` <span style="font-weight:400;color:var(--dim);">(${qtdPorCenario[chave]} un)</span>` : ''}</td>
-        <td class="num">${fmtR(faturamento)}</td>
-        <td class="num">${fmtR(china)}</td>
-        ${temBoss ? `<td class="num">${fmtR(boss)}</td>` : ''}
-        <td class="num" style="font-weight:700;">${fmtR(impak)}</td>
+        <td><strong>${label}</strong><span id="resumo-${chave}-qtd" style="font-weight:400;color:var(--dim);">${temSplit ? ` (${qtdPorCenario[chave]} un)` : ''}</span></td>
+        <td class="num" id="resumo-${chave}-fat">${fmtR(faturamento)}</td>
+        <td class="num" id="resumo-${chave}-china">${fmtR(china)}</td>
+        ${temBoss ? `<td class="num" id="resumo-${chave}-boss">${fmtR(boss)}</td>` : ''}
+        <td class="num" style="font-weight:700;" id="resumo-${chave}-impak">${fmtR(impak)}</td>
       </tr>`;
     };
     return `
