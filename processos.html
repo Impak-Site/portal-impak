@@ -1685,6 +1685,7 @@ async function runAnalysis(){
   setStep(1);
 
   try {
+
     const content=[];
     for(const[name,{file,type}] of Object.entries(uploadedFiles)){
       const b64=await toB64(file);
@@ -1752,128 +1753,7 @@ async function runAnalysis(){
     }
     const startProxy = await startResp.json();
     if(!startProxy.ok || !startProxy.jobId) throw new Error(startProxy.erro || 'Erro ao iniciar análise');
-    const jobId = startProxy.jobId;
-
-    setStep(3);
-    const loadingSub = document.getElementById('loadingSub');
-    const _pollStart = Date.now();
-    let job;
-    while(true){
-      await new Promise(r => setTimeout(r, 2500));
-      const elapsed = Math.round((Date.now() - _pollStart) / 1000);
-      if(loadingSub) loadingSub.textContent = `Pode levar até 2 minutos com vários documentos. Não feche nem atualize esta página. (${elapsed}s)`;
-      if(elapsed > 200) throw new Error('Análise demorou demais. Tente novamente com menos documentos.');
-
-      const pollResp = await fetch('/api/analisar/job/' + jobId);
-      if(!pollResp.ok) continue; // instabilidade momentânea — tenta de novo no próximo ciclo
-      const pollProxy = await pollResp.json();
-      if(!pollProxy.ok) continue;
-      if(pollProxy.status === 'processando') continue;
-      job = pollProxy;
-      break;
-    }
-    if(job.status === 'erro') throw new Error(job.erro || 'Erro desconhecido na análise');
-
-    setStep(4);
-    const data = job.resultado;
-    const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
-
-    let result;
-    try{
-      let clean=raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
-      const fb=clean.indexOf('{'); if(fb>0) clean=clean.substring(fb);
-      const lb=clean.lastIndexOf('}'); if(lb>=0) clean=clean.substring(0,lb+1);
-      result=JSON.parse(clean);
-    } catch(e1){
-      const m=raw.match(/\{[\s\S]*\}/);
-      if(!m) throw new Error('A IA nao retornou JSON. Resposta: '+raw.substring(0,200));
-      try{ result=JSON.parse(m[0]); } catch(e2){ 
-        throw new Error('JSON invalido ('+e2.message+'). Inicio: '+raw.substring(0,150));
-      }
-    }
-    if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
-
-    setStep(4);
-
-    // Save process
-    const ref = document.getElementById('procRef').value.trim();
-    const exp = document.getElementById('procExp').value.trim();
-    const obs = document.getElementById('procObs').value.trim();
-    const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
-
-    const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
-    const novaAnalise = {
-      id: Date.now(),
-      data: new Date().toLocaleString('pt-BR'),
-      docs: docsUsados,
-      docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
-      docNomes: Object.keys(uploadedFiles), // nomes dos arquivos para rastreabilidade
-      analisadoPor: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'desconhecido',
-      resumo: result.resumo,
-      grupos: result.grupos,
-      alertas: (result.alertas||[]).map(extractAlert),
-      // Estatísticas de confiança
-      confMedia: (function(){
-        var campos = (result.grupos||[]).flatMap(function(g){return g.campos||[];});
-        if(!campos.length) return 100;
-        var soma = campos.reduce(function(s,c){return s+(c.confianca||100);},0);
-        return Math.round(soma/campos.length);
-      })(),
-    };
-
-    var user = _currentUser ? _currentUser.username : 'desconhecido';
-    var procExistente = _processes.find(function(p){ return p.ref===ref; });
-
-    function aplicarAnalise(proc){
-      // Adicionar nova análise ao histórico
-      proc.analises = proc.analises||[];
-      proc.analises.push(novaAnalise);
-      proc.status   = status;
-      proc.resumo   = result.resumo;
-      proc.grupos   = result.grupos;
-      proc.alertas  = novaAnalise.alertas;
-      proc.log      = proc.log||[];
-      var docList2  = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||f.file.name;}).join(', ');
-      proc.log.push({
-        msg:'Análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',
-        time:new Date().toLocaleString('pt-BR'),
-        type:status
-      });
-
-      currentResult = proc;
-      if(proc._divResolvedMap) Object.assign(divergResolved, proc._divResolvedMap);
-      document.getElementById('loadingBox').classList.remove('show');
-      renderResult(result);
-      sincronizarComControle(proc, result, novaAnalise);
-
-      // Salvar no Drive e atualizar lista
-      saveProcesses(_processes, proc);
-    }
-
-    if(procExistente){
-      // Buscar versão COMPLETA do Drive (índice só tem campos leves)
-      dbGetProcess(user, procExistente.id, function(procCompleto){
-        aplicarAnalise(procCompleto || procExistente);
-      });
-    } else {
-      // Novo processo
-      aplicarAnalise({
-        id: Date.now(),
-        ref: ref,
-        exportador: exp || extrairExportador(result),
-        obs: obs,
-        data: new Date().toLocaleDateString('pt-BR'),
-        status: status,
-        resumo: result.resumo,
-        grupos: result.grupos,
-        alertas: [],
-        documentos: result.documentos||[],
-        analises: [],
-        log: [],
-        _divResolvedMap: {},
-      });
-    }
-
+    await processarJobAnalise(startProxy.jobId);
   } catch(err){
     document.getElementById('loadingBox').classList.remove('show');
     showToast('Erro: '+err.message,'err');
@@ -1882,6 +1762,157 @@ async function runAnalysis(){
   document.getElementById('btnAnalyze').disabled=false;
   checkReady();
 }
+
+  // Faz o polling de um job já criado e processa o resultado (usada tanto pelo
+  // fluxo normal de runAnalysis() quanto pra retomar um job que ficou
+  // 'processando' se a página foi recarregada/reaberta no meio do caminho —
+  // ver checarAnaliseEmAndamento() logo abaixo.
+  async function processarJobAnalise(jobId){
+    try{ localStorage.setItem('impak_analise_job', JSON.stringify({ jobId, ts: Date.now() })); }catch(e){}
+    try {
+          setStep(3);
+          const loadingSub = document.getElementById('loadingSub');
+          const _pollStart = Date.now();
+          let job;
+          while(true){
+            await new Promise(r => setTimeout(r, 2500));
+            const elapsed = Math.round((Date.now() - _pollStart) / 1000);
+            if(loadingSub) loadingSub.textContent = `Pode levar até 2 minutos com vários documentos. Não feche nem atualize esta página. (${elapsed}s)`;
+            if(elapsed > 200) throw new Error('Análise demorou demais. Tente novamente com menos documentos.');
+      
+            const pollResp = await fetch('/api/analisar/job/' + jobId);
+            if(!pollResp.ok) continue; // instabilidade momentânea — tenta de novo no próximo ciclo
+            const pollProxy = await pollResp.json();
+            if(!pollProxy.ok) continue;
+            if(pollProxy.status === 'processando') continue;
+            job = pollProxy;
+            break;
+          }
+          if(job.status === 'erro') throw new Error(job.erro || 'Erro desconhecido na análise');
+      
+          setStep(4);
+          const data = job.resultado;
+          const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
+      
+          let result;
+          try{
+            let clean=raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+            const fb=clean.indexOf('{'); if(fb>0) clean=clean.substring(fb);
+            const lb=clean.lastIndexOf('}'); if(lb>=0) clean=clean.substring(0,lb+1);
+            result=JSON.parse(clean);
+          } catch(e1){
+            const m=raw.match(/\{[\s\S]*\}/);
+            if(!m) throw new Error('A IA nao retornou JSON. Resposta: '+raw.substring(0,200));
+            try{ result=JSON.parse(m[0]); } catch(e2){ 
+              throw new Error('JSON invalido ('+e2.message+'). Inicio: '+raw.substring(0,150));
+            }
+          }
+          if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
+      
+          setStep(4);
+      
+          // Save process
+          const ref = document.getElementById('procRef').value.trim();
+          const exp = document.getElementById('procExp').value.trim();
+          const obs = document.getElementById('procObs').value.trim();
+          const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
+      
+          const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
+          const novaAnalise = {
+            id: Date.now(),
+            data: new Date().toLocaleString('pt-BR'),
+            docs: docsUsados,
+            docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
+            docNomes: Object.keys(uploadedFiles), // nomes dos arquivos para rastreabilidade
+            analisadoPor: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'desconhecido',
+            resumo: result.resumo,
+            grupos: result.grupos,
+            alertas: (result.alertas||[]).map(extractAlert),
+            // Estatísticas de confiança
+            confMedia: (function(){
+              var campos = (result.grupos||[]).flatMap(function(g){return g.campos||[];});
+              if(!campos.length) return 100;
+              var soma = campos.reduce(function(s,c){return s+(c.confianca||100);},0);
+              return Math.round(soma/campos.length);
+            })(),
+          };
+      
+          var user = _currentUser ? _currentUser.username : 'desconhecido';
+          var procExistente = _processes.find(function(p){ return p.ref===ref; });
+      
+          function aplicarAnalise(proc){
+            // Adicionar nova análise ao histórico
+            proc.analises = proc.analises||[];
+            proc.analises.push(novaAnalise);
+            proc.status   = status;
+            proc.resumo   = result.resumo;
+            proc.grupos   = result.grupos;
+            proc.alertas  = novaAnalise.alertas;
+            proc.log      = proc.log||[];
+            var docList2  = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||f.file.name;}).join(', ');
+            proc.log.push({
+              msg:'Análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',
+              time:new Date().toLocaleString('pt-BR'),
+              type:status
+            });
+      
+            currentResult = proc;
+            if(proc._divResolvedMap) Object.assign(divergResolved, proc._divResolvedMap);
+            document.getElementById('loadingBox').classList.remove('show');
+            renderResult(result);
+            sincronizarComControle(proc, result, novaAnalise);
+      
+            // Salvar no Drive e atualizar lista
+            saveProcesses(_processes, proc);
+          }
+      
+          if(procExistente){
+            // Buscar versão COMPLETA do Drive (índice só tem campos leves)
+            dbGetProcess(user, procExistente.id, function(procCompleto){
+              aplicarAnalise(procCompleto || procExistente);
+            });
+          } else {
+            // Novo processo
+            aplicarAnalise({
+              id: Date.now(),
+              ref: ref,
+              exportador: exp || extrairExportador(result),
+              obs: obs,
+              data: new Date().toLocaleDateString('pt-BR'),
+              status: status,
+              resumo: result.resumo,
+              grupos: result.grupos,
+              alertas: [],
+              documentos: result.documentos||[],
+              analises: [],
+              log: [],
+              _divResolvedMap: {},
+            });
+          }
+    } finally {
+      try{ localStorage.removeItem('impak_analise_job'); }catch(e){}
+    }
+  }
+
+  // Se a página foi recarregada/reaberta com uma análise ainda em andamento (ou
+  // que terminou enquanto a aba estava fechada), retoma o acompanhamento em vez
+  // de deixar o resultado perdido.
+  function checarAnaliseEmAndamento(){
+    try {
+      const saved = localStorage.getItem('impak_analise_job');
+      if(!saved) return;
+      const { jobId, ts } = JSON.parse(saved);
+      if(!jobId || (Date.now() - ts) > 15 * 60 * 1000){
+        localStorage.removeItem('impak_analise_job');
+        return;
+      }
+      processarJobAnalise(jobId).catch(err => {
+        console.warn('Não foi possível retomar a análise em andamento:', err.message);
+      });
+    } catch(e){}
+  }
+  document.addEventListener('DOMContentLoaded', checarAnaliseEmAndamento);
+
 
 function extrairExportador(result){
   for(const g of result.grupos||[]){
