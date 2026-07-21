@@ -1796,8 +1796,13 @@ function calcular() {
   const valorImpakComSt = cenario_com_st.faturamento_total - cenario_com_st.china_fora_val - cenario_com_st.boss_fora_val;
   const valorImpakSemSt = cenario_sem_st.faturamento_total - cenario_sem_st.china_fora_val - cenario_sem_st.boss_fora_val;
   const mix_result = calcularMixCenario(valorImpakPrincipal); // cenário principal (compat com o resto do sistema)
-  const mix_com_st = calcularMixCenario(valorImpakComSt);
-  const mix_sem_st = calcularMixCenario(valorImpakSemSt);
+  // FIX: Preço Unitário do Mix (COM ST/SEM ST) agora usa o Total Operação
+  // (faturamento_total, INCLUINDO Comissão China/BOSS), não mais o Valor
+  // Impak (que excluía a comissão). Confirmado com o usuário: o preço
+  // exibido no Mix deve bater com Total Operação ÷ Qtd do Resumo por
+  // Cenário (ex.: R$404.778,88 ÷ 248 = R$1.632,17 por pneu).
+  const mix_com_st = calcularMixCenario(cenario_com_st.faturamento_total);
+  const mix_sem_st = calcularMixCenario(cenario_sem_st.faturamento_total);
 
   // ── Apuração de Lucro Real (compra x venda das Taxas Operacionais) ──
   // O Lucro Bruto acima assume que pagamos exatamente o que cobramos em cada
