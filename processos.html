@@ -1777,8 +1777,8 @@ async function runAnalysis(){
           while(true){
             await new Promise(r => setTimeout(r, 2500));
             const elapsed = Math.round((Date.now() - _pollStart) / 1000);
-            if(loadingSub) loadingSub.textContent = `Pode levar até 2 minutos com vários documentos. Não feche nem atualize esta página. (${elapsed}s)`;
-            if(elapsed > 200) throw new Error('Análise demorou demais. Tente novamente com menos documentos.');
+            if(loadingSub) loadingSub.textContent = `Pode levar até 5 minutos com vários documentos. Não feche nem atualize esta página. (${elapsed}s)`;
+            if(elapsed > 340) throw new Error('Análise demorou demais. Tente novamente com menos documentos.');
       
             const pollResp = await fetch('/api/analisar/job/' + jobId);
             if(!pollResp.ok) continue; // instabilidade momentânea — tenta de novo no próximo ciclo
