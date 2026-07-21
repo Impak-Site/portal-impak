@@ -2030,13 +2030,24 @@ function renderResultado(r) {
   const resumoStHtml = r.cenarios ? (() => {
     const cs = r.cenarios.com_st, ss = r.cenarios.sem_st;
     const temBoss = cs.boss_fora_val > 0 || ss.boss_fora_val > 0;
-    const linha = (label, c) => {
-      const impak = c.faturamento_total - c.china_fora_val - c.boss_fora_val;
+    const qtdTotalMix = (r.mix_result || []).reduce((a, it) => a + it.qtd, 0);
+    const qtdComStMix = (r.mix_result || []).reduce((a, it) => {
+      const s = _estado.splitST[it.medida];
+      return a + (s !== undefined ? Math.min(s, it.qtd) : (r.tem_st ? it.qtd : 0));
+    }, 0);
+    const temSplit = !!(r.mix_result && r.mix_result.length && qtdTotalMix > 0);
+    const qtdPorCenario = { com_st: qtdComStMix, sem_st: qtdTotalMix - qtdComStMix };
+    const linha = (label, c, chave) => {
+      const fator = temSplit ? (qtdPorCenario[chave] / qtdTotalMix) : 1;
+      const faturamento = c.faturamento_total * fator;
+      const china = c.china_fora_val * fator;
+      const boss = c.boss_fora_val * fator;
+      const impak = faturamento - china - boss;
       return `<tr>
-        <td><strong>${label}</strong></td>
-        <td class="num">${fmtR(c.faturamento_total)}</td>
-        <td class="num">${fmtR(c.china_fora_val)}</td>
-        ${temBoss ? `<td class="num">${fmtR(c.boss_fora_val)}</td>` : ''}
+        <td><strong>${label}</strong>${temSplit ? ` <span style="font-weight:400;color:var(--dim);">(${qtdPorCenario[chave]} un)</span>` : ''}</td>
+        <td class="num">${fmtR(faturamento)}</td>
+        <td class="num">${fmtR(china)}</td>
+        ${temBoss ? `<td class="num">${fmtR(boss)}</td>` : ''}
         <td class="num" style="font-weight:700;">${fmtR(impak)}</td>
       </tr>`;
     };
@@ -2051,8 +2062,8 @@ function renderResultado(r) {
           <th></th><th>Total Operação</th><th>Comissão China</th>${temBoss ? '<th>Comissão Boss/Lopes</th>' : ''}<th>Valor Impak</th>
         </tr></thead>
         <tbody>
-          ${linha('COM S.T.', cs)}
-          ${linha('SEM S.T.', ss)}
+          ${linha('COM S.T.', cs, 'com_st')}
+          ${linha('SEM S.T.', ss, 'sem_st')}
         </tbody>
       </table>
     </div>`;
