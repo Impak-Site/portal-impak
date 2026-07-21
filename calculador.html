@@ -1001,6 +1001,10 @@ document.addEventListener('DOMContentLoaded', () => {
       renderMix();
     }
   } catch(e){}
+
+  restaurarAutosaveSeExistir();
+  document.addEventListener('input', agendarAutosave);
+  document.addEventListener('change', agendarAutosave);
 });
 
 // ── CÂMBIO ───────────────────────────────────────────────
@@ -2787,6 +2791,38 @@ const CAMPOS_COTACAO = [
   'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor',
 ];
 
+// ── AUTOSAVE (evita perder o que foi preenchido ao atualizar a pagina) ──
+// Usa localStorage (nao expira ao fechar a aba) guardando o mesmo formato de
+// coletarEstadoFormulario()/aplicarEstadoFormulario() ja usado pra salvar
+// cotacao no banco, entao nao duplicamos logica de campos.
+const AUTOSAVE_KEY = 'calculador_autosave_v1';
+let autosaveTimer = null;
+function salvarAutosave(){
+  try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ ...coletarEstadoFormulario(), savedAt: Date.now() })); } catch(e){}
+}
+function agendarAutosave(){
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(salvarAutosave, 600);
+}
+function limparAutosave(){
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch(e){}
+}
+function restaurarAutosaveSeExistir(){
+  let raw;
+  try { raw = localStorage.getItem(AUTOSAVE_KEY); } catch(e){ return; }
+  if(!raw) return;
+  let salvo;
+  try { salvo = JSON.parse(raw); } catch(e){ return; }
+  if(!salvo || !salvo.campos) return;
+  const temDados = Object.values(salvo.campos).some(v => v !== '' && v != null);
+  if(!temDados) { limparAutosave(); return; }
+  if(confirm('Encontramos uma simulacao nao finalizada (nao salva) de antes de atualizar a pagina. Deseja continuar de onde parou?')){
+    aplicarEstadoFormulario(salvo);
+  } else {
+    limparAutosave();
+  }
+}
+
 function coletarEstadoFormulario(){
   const campos = {};
   CAMPOS_COTACAO.forEach(id => {
@@ -2886,6 +2922,7 @@ async function salvarCotacao(){
       _estado.cotacaoAtualId = d.id;
       document.getElementById('cotacao-status').textContent = `Cotação salva${eraNova?'':' (atualizada)'} — ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
       showToast(eraNova ? '✓ Cotação criada' : '✓ Cotação atualizada', 'ok');
+      limparAutosave();
     } else {
       showToast('Erro ao salvar: '+(d.erro||'?'), 'err');
     }
