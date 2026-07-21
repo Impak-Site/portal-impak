@@ -1681,7 +1681,18 @@ function calcular() {
     const CBS_s     = base_ibs_cbs * aliq_cbs_s;
 
     // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
-    const china_fora_val = fob_brl * china_fora_pct;
+    // Fator Dólar ponderado (replica a tabela "Cálc. Dólar Médio" da planilha,
+    // aba MIX-COMPLETO linhas 44-49): pondera o câmbio do FOB (fob_brl, que já
+    // respeita entrada/saldo quando configurado) com o câmbio principal aplicado
+    // ao restante do Vlr. Total NFe. Usa vlr_total_nfe (antes da comissão) como
+    // base do "resto" pra evitar circularidade (a comissão entraria no próprio
+    // faturamento que define seu câmbio). Se não houver split de câmbio
+    // (fob_brl = fob_usd*cambio), o fator cai exatamente no câmbio principal —
+    // ou seja, não muda nada pra quem não usa câmbio diferente por parcela.
+    const fatorDolarPonderado = fob_usd > 0 ? (1 + (vlr_total_nfe - fob_brl) / (fob_usd * cambio)) : 1;
+    const fatorDolarChina = fob_usd > 0 ? (vlr_total_nfe / (fob_usd * fatorDolarPonderado)) : cambio;
+    // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
+    const china_fora_val = fob_usd * china_fora_pct * fatorDolarChina;
     // Comissão BOSS — 3% (ou X%) sobre o valor da NF, também soma no faturamento total
     // antes da Comissão BR ser calculada (ex: NF 100 + BOSS 3% = 103 de faturamento).
     const boss_fora_val = boss_pct_fora>0 ? vlr_total_nfe * boss_pct_fora : 0;
