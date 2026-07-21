@@ -133,6 +133,7 @@ input.locked{background:var(--bg);color:var(--muted);cursor:not-allowed;}
 .detail-section{margin-bottom:22px;}
 .detail-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:9px;padding-bottom:6px;border-bottom:1px solid var(--border);}
 table.calc-table{width:100%;border-collapse:collapse;font-size:12px;}
+table.calc-table-cenario{width:auto;}
 table.calc-table th{text-align:left;padding:6px 8px;background:#f8fafc;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
 table.calc-table td{padding:6px 8px;border-bottom:1px solid var(--bg);}
 table.calc-table tr:hover td{background:var(--ac-soft);}
@@ -2045,7 +2046,7 @@ function renderResultado(r) {
       <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
         Total da operação em cada cenário, já separando quanto é Comissão China (nota de serviço, fora do preço) e quanto fica pra Impak.
       </div>
-      <table class="calc-table">
+      <table class="calc-table calc-table-cenario">
         <thead><tr>
           <th></th><th>Total Operação</th><th>Comissão China</th>${temBoss ? '<th>Comissão Boss/Lopes</th>' : ''}<th>Valor Impak</th>
         </tr></thead>
