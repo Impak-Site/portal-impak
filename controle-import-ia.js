@@ -478,7 +478,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
           throw new Error(dJob.erro||'Erro na IA');
         }
         if(status) status.textContent = '⏳ Analisando documento...';
-        if(Date.now()-inicio > 180000) throw new Error('Análise demorou demais. Tente novamente com um documento menor.');
+        if(Date.now()-inicio > 340000) throw new Error('Análise demorou demais. Tente novamente com um documento menor.');
       }
     }
 
