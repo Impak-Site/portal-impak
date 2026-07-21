@@ -1848,27 +1848,50 @@ INSTRUÇÕES:
       { role: 'user', content: mensagem }
     ];
 
-    // Timeout de 25s para evitar conexão pendurada no Railway
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    // Timeout menor por tentativa, com retry automático em erros transitórios
+    // da Anthropic (429/500/502/503/529) — a resposta do chat é curta, então
+    // dá pra tentar de novo sem que o total ultrapasse o que a conexão do
+    // Railway aguenta (orçamento total ~27s, próximo do limite original de 25s).
+    const RETRYAVEIS_CHAT = [429, 500, 502, 503, 529];
+    const MAX_TENTATIVAS_CHAT = 3;
+    async function _callAnthropicChat(tentativa){
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      try {
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1024,
+            system: systemPrompt,
+            messages
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (RETRYAVEIS_CHAT.includes(resp.status) && tentativa < MAX_TENTATIVAS_CHAT) {
+          const espera = 1000 * tentativa;
+          console.warn(`chat: erro transitório (Anthropic ${resp.status}, tentativa ${tentativa}/${MAX_TENTATIVAS_CHAT}) | retry em ${espera}ms`);
+          await new Promise(r => setTimeout(r, espera));
+          return _callAnthropicChat(tentativa + 1);
+        }
+        return resp;
+      } catch (e) {
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError' && tentativa < MAX_TENTATIVAS_CHAT) {
+          console.warn(`chat: timeout parcial (tentativa ${tentativa}/${MAX_TENTATIVAS_CHAT}) | retry`);
+          return _callAnthropicChat(tentativa + 1);
+        }
+        throw e;
+      }
+    }
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages
-      }),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-
+    const resp = await _callAnthropicChat(1);
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
 
