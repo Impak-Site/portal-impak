@@ -1328,30 +1328,50 @@ app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res)
   (async () => {
     const _t0 = Date.now();
     console.log(`analisar: início (job ${jobId}) | ${_nDocs} item(ns) | usuario=${usuario}`);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 180000);
-    try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 16000, messages: [{ role: 'user', content }] }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        const msg = `API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}`;
-        console.warn(`analisar: falhou (job ${jobId}, Anthropic ${resp.status}) | ${Date.now() - _t0}ms`);
-        await sb().from('analise_jobs').update({ status: 'erro', erro: msg, updated_at: new Date().toISOString() }).eq('id', jobId);
-        return;
+    // Erros transitórios (sobrecarga/instabilidade momentânea da Anthropic) não
+    // devem virar erro pro usuário — como o processamento roda em background,
+    // dá pra tentar de novo sem custo de UX. 429/500/502/503/529 são status
+    // que a própria Anthropic recomenda re-tentar.
+    const RETRYAVEIS = [429, 500, 502, 503, 529];
+    const MAX_TENTATIVAS = 3;
+    async function _callAnthropic(tentativa){
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
+      try {
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 16000, messages: [{ role: 'user', content }] }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!resp.ok) {
+          if (RETRYAVEIS.includes(resp.status) && tentativa < MAX_TENTATIVAS) {
+            const espera = 2000 * tentativa;
+            console.warn(`analisar: erro transitório (job ${jobId}, Anthropic ${resp.status}, tentativa ${tentativa}/${MAX_TENTATIVAS}) | retry em ${espera}ms`);
+            await new Promise(r => setTimeout(r, espera));
+            return _callAnthropic(tentativa + 1);
+          }
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(`API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}`);
+        }
+        return await resp.json();
+      } catch (e) {
+        clearTimeout(timeout);
+        if (e.name === 'AbortError' && tentativa < MAX_TENTATIVAS) {
+          console.warn(`analisar: timeout parcial (job ${jobId}, tentativa ${tentativa}/${MAX_TENTATIVAS}) | retry`);
+          return _callAnthropic(tentativa + 1);
+        }
+        throw e;
       }
-      const respData = await resp.json();
+    }
+    try {
+      const respData = await _callAnthropic(1);
       console.log(`analisar: ok (job ${jobId}) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
       await sb().from('analise_jobs').update({ status: 'concluido', resultado: respData, updated_at: new Date().toISOString() }).eq('id', jobId);
     } catch (fetchErr) {
-      clearTimeout(timeout);
       const msg = fetchErr.name === 'AbortError'
-        ? 'Análise demorou mais de 3 minutos. Tente com menos documentos.'
+        ? 'Análise demorou demais mesmo com novas tentativas. Tente com menos documentos.'
         : fetchErr.message;
       console.warn(`analisar: erro (job ${jobId}): ${msg} | ${Date.now() - _t0}ms`);
       await sb().from('analise_jobs').update({ status: 'erro', erro: msg, updated_at: new Date().toISOString() }).eq('id', jobId);
