@@ -1333,10 +1333,10 @@ app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res)
     // dá pra tentar de novo sem custo de UX. 429/500/502/503/529 são status
     // que a própria Anthropic recomenda re-tentar.
     const RETRYAVEIS = [429, 500, 502, 503, 529];
-    const MAX_TENTATIVAS = 3;
+    const MAX_TENTATIVAS = 2;
     async function _callAnthropic(tentativa){
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
+      const timeout = setTimeout(() => controller.abort(), 150000);
       try {
         const resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
