@@ -1295,25 +1295,41 @@ app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
 
 // ── API: ANÁLISE DOCUMENTAL ───────────────────────────────────
 app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res) => {
-  const _t0 = Date.now();
-  const _nDocs = Array.isArray(req.body?.content) ? req.body.content.length : 0;
-  console.log(`analisar: início | ${_nDocs} item(ns) | usuario=${req.session?.usuario || '?'}`);
-  try {
-    const { content } = req.body;
-    if (!content || !Array.isArray(content)) {
-      return res.status(400).json({ erro: 'Conteúdo inválido' });
-    }
-    // Única chave da Anthropic é a configurada no servidor (Railway →
-    // variável ANTHROPIC_API_KEY). Não aceitamos mais chave vinda do
-    // cliente/navegador — evita que cada usuário use uma chave própria e
-    // garante que a chave nunca fique salva no navegador de ninguém.
-    const key = (process.env.ANTHROPIC_API_KEY || '').trim();
-    if (!key || key.length < 20) {
-      return res.status(500).json({ erro: 'ANTHROPIC_API_KEY não configurada no servidor. Configure-a nas variáveis de ambiente do Railway.' });
-    }
+  const { content } = req.body;
+  if (!content || !Array.isArray(content)) {
+    return res.status(400).json({ erro: 'Conteúdo inválido' });
+  }
+  const key = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!key || key.length < 20) {
+    return res.status(500).json({ erro: 'ANTHROPIC_API_KEY não configurada no servidor. Configure-a nas variáveis de ambiente do Railway.' });
+  }
+
+  // ── Padrão job assíncrono ───────────────────────────────────
+  // Análises longas (até ~2-3min com vários documentos) não podem viver
+  // dentro de uma única requisição HTTP: qualquer proxy no meio do caminho
+  // (Railway, navegador) pode considerar a conexão parada e derrubá-la —
+  // aí o usuário via "Erro 502" mesmo com o processamento ainda rodando.
+  // Aqui só criamos o job e respondemos na hora; o processamento roda em
+  // background e o cliente consulta o resultado via polling em
+  // GET /api/analisar/job/:id (ver runAnalysis() em processos.html).
+  const jobId = gerarUUID();
+  const usuario = req.session?.usuario || '?';
+  const _nDocs = content.length;
+  const { error: insErr } = await sb()
+    .from('analise_jobs')
+    .insert({ id: jobId, status: 'processando', usuario });
+  if (insErr) {
+    console.error('analisar: erro ao criar job:', insErr.message);
+    return res.status(500).json({ erro: 'Erro ao iniciar análise: ' + insErr.message });
+  }
+  res.json({ ok: true, jobId });
+
+  // Processamento em background — não bloqueia a resposta acima.
+  (async () => {
+    const _t0 = Date.now();
+    console.log(`analisar: início (job ${jobId}) | ${_nDocs} item(ns) | usuario=${usuario}`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 180000);
-    let respData;
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -1324,25 +1340,38 @@ app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res)
       clearTimeout(timeout);
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        console.warn(`analisar: falhou (Anthropic ${resp.status}) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
-        return res.status(resp.status).json({ erro: `API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}` });
+        const msg = `API Anthropic erro ${resp.status}: ${err?.error?.message || resp.statusText}`;
+        console.warn(`analisar: falhou (job ${jobId}, Anthropic ${resp.status}) | ${Date.now() - _t0}ms`);
+        await sb().from('analise_jobs').update({ status: 'erro', erro: msg, updated_at: new Date().toISOString() }).eq('id', jobId);
+        return;
       }
-      respData = await resp.json();
+      const respData = await resp.json();
+      console.log(`analisar: ok (job ${jobId}) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
+      await sb().from('analise_jobs').update({ status: 'concluido', resultado: respData, updated_at: new Date().toISOString() }).eq('id', jobId);
     } catch (fetchErr) {
       clearTimeout(timeout);
-      if (fetchErr.name === 'AbortError') {
-        console.warn(`analisar: timeout (180s) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
-        return res.status(504).json({ erro: 'Análise demorou mais de 3 minutos. Tente com menos documentos.' });
-      }
-      throw fetchErr;
+      const msg = fetchErr.name === 'AbortError'
+        ? 'Análise demorou mais de 3 minutos. Tente com menos documentos.'
+        : fetchErr.message;
+      console.warn(`analisar: erro (job ${jobId}): ${msg} | ${Date.now() - _t0}ms`);
+      await sb().from('analise_jobs').update({ status: 'erro', erro: msg, updated_at: new Date().toISOString() }).eq('id', jobId);
     }
-    console.log(`analisar: ok | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
-    res.json({ ok: true, data: respData });
+  })();
+});
+
+app.get('/api/analisar/job/:id', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('analise_jobs')
+      .select('status, resultado, erro')
+      .eq('id', req.params.id)
+      .single();
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, status: data.status, resultado: data.resultado, erro: data.erro });
   } catch (e) {
-    console.error(`analisar: erro (${e.message}) | ${Date.now() - _t0}ms | ${_nDocs} item(ns)`);
     res.status(500).json({ erro: e.message });
   }
-})
+});
 
 // ── GED — ARQUIVOS DO PROCESSO (Supabase Storage) ──────────────
 const GED_BUCKET = 'controle-arquivos';
