@@ -1905,9 +1905,10 @@ function dadosCapa(r) {
     { label: 'Lavacao (retorno container)', brl: r.txOp.fixas.lavacao * r.containers },
     { label: 'Administrativo', brl: r.txOp.fixas.administrativo * r.containers },
     { label: 'Seguro (venda)', brl: r.seguro_venda_brl },
-    { label: 'Baixa Patio', brl: r.txOp.fixas.baixa_patio * r.containers },
     { label: 'Liberacao BL', brl: r.txOp.fixas.liberacao_bl * r.containers },
-    { label: 'Taxas em USD (diversas, destino)', brl: r.taxas_usd_brl },
+    // Baixa Pátio fica oculta como linha própria, mas seu valor continua somado
+    // (embutido dentro de "Taxas em USD") — o total da tabela não muda.
+    { label: 'Taxas em USD (diversas, destino)', brl: r.taxas_usd_brl + (r.txOp.fixas.baixa_patio * r.containers) },
     { label: 'Custos Diversos', brl: r.custos_div },
   ];
   if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
