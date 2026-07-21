@@ -663,6 +663,14 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       </div>
     </div>
 
+    <!-- SALVAR/ABRIR COTAÇÃO: sempre visível (nao so na ultima etapa), pra dar
+         pra salvar um rascunho a qualquer momento do preenchimento. -->
+    <div style="display:flex;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border);">
+      <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
+      <button class="btn-refresh" style="flex:1;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
+    </div>
+    <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
+
     <!-- NAVEGAÇÃO DO WIZARD (etapas 1-3) + BOTÃO CALCULAR (etapa 4) -->
     <div class="wizard-nav" id="wizard-nav-etapas" style="display:none;">
       <button class="btn-refresh" id="wizard-btn-voltar" onclick="voltarEtapa()">‹ Voltar</button>
@@ -679,11 +687,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       
 <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="exp-capa"> Aba Capa (resumo 1 pagina)</label></div>
       <button class="btn-export" id="btn-export" onclick="exportarExcel()" disabled>📊 Exportar Excel</button>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
-        <button class="btn-refresh" style="flex:1;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
-      </div>
-      <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
+      
     </div>
 
   </div>
