@@ -1824,8 +1824,21 @@ function dadosCapa(r) {
   const tipoImportacaoLabel = TIPO_IMPORTACAO_LABEL_CAPA[tipoImportacaoRaw] || tipoImportacaoRaw || '—';
   const marca = (_estado.mix && _estado.mix.forn) ? _estado.mix.forn : '—';
   const qtdTotal = (r.mix_result || []).reduce((a, it) => a + it.qtd, 0);
-  const totalCreditos = -(r.IPI_e + r.PIS_e + r.COFINS_e + r.IBS_e + r.CBS_e);
-  const totalTributos = r.II + r.IPI_e + r.PIS_e + r.COFINS_e + r.IBS_e + r.CBS_e + r.DUMP;
+  // Base de impostos especifica da tela "Capa" (Demonstrativo do Processo):
+  // FOB + Frete + Seguro + Taxa C.E. sempre pelo cambio unico da simulacao
+  // (r.cambio), a pedido do usuario. Nao afeta o restante do calculador —
+  // as demais telas continuam usando r.II/r.IPI_e/etc do calcular().
+  const baseImpCapa = (r.fob_usd + r.frete_usd + r.seguro_compra_usd + r.taxa_ce) * r.cambio;
+  const baseImpOriginalCapa = (r.fob_usd + r.frete_usd) * r.cambio + r.seguro_brl + r.taxa_ce * r.cambio;
+  const extraIbsCbsCapa = (r.IBS_e / r.t.ibs) - (baseImpOriginalCapa + r.II);
+  const iiCapa = baseImpCapa * r.t.ii;
+  const ipiCapa = (baseImpCapa + iiCapa) * r.t.ipi;
+  const pisCapa = baseImpCapa * r.t.pis_e;
+  const cofinsCapa = baseImpCapa * r.t.cofins_e;
+  const ibsCapa = (baseImpCapa + iiCapa + extraIbsCbsCapa) * r.t.ibs;
+  const cbsCapa = (baseImpCapa + iiCapa + extraIbsCbsCapa) * r.t.cbs;
+  const totalCreditos = -(ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa);
+  const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa + r.DUMP;
   const despesas = [
     { label: 'Taxa SISCOMEX', brl: r.txOp.fixas.siscomex * r.containers },
     { label: 'A.F.R.M (Marinha Mercante)', brl: r.txOp.fixas.marinha * r.containers },
@@ -1843,7 +1856,7 @@ function dadosCapa(r) {
     { label: 'Custos Diversos', brl: r.custos_div },
   ];
   if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
-  return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas };
+  return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas, iiCapa, ipiCapa, pisCapa, cofinsCapa, ibsCapa, cbsCapa };
 }
 
 // ── RENDER HTML — secao "Capa" na tela de Resultado ────────────────
@@ -1927,12 +1940,12 @@ function renderCapaHtml(r) {
       <div class="detail-section">
         <div class="detail-title">Tributos (Entrada)</div>
         <table class="calc-table">
-          <tr><td>Aliquota I.I. (${pct(r.t.ii)})</td><td class="num">${fmtR(r.II)}</td></tr>
-          <tr><td>Aliquota I.P.I (${pct(r.t.ipi)})</td><td class="num">${fmtR(r.IPI_e)}</td></tr>
-          <tr><td>Aliquota PIS (PIS-E) (${pct(r.t.pis_e)})</td><td class="num">${fmtR(r.PIS_e)}</td></tr>
-          <tr><td>Aliquota COFINS (COFINS-E) (${pct(r.t.cofins_e)})</td><td class="num">${fmtR(r.COFINS_e)}</td></tr>
-          <tr><td>Aliquota IBS (IBS-E) (${pct(r.t.ibs)})</td><td class="num">${fmtR(r.IBS_e)}</td></tr>
-          <tr><td>Aliquota CBS (CBS-E) (${pct(r.t.cbs)})</td><td class="num">${fmtR(r.CBS_e)}</td></tr>
+          <tr><td>Aliquota I.I. (${pct(r.t.ii)})</td><td class="num">${fmtR(d.iiCapa)}</td></tr>
+          <tr><td>Aliquota I.P.I (${pct(r.t.ipi)})</td><td class="num">${fmtR(d.ipiCapa)}</td></tr>
+          <tr><td>Aliquota PIS (PIS-E) (${pct(r.t.pis_e)})</td><td class="num">${fmtR(d.pisCapa)}</td></tr>
+          <tr><td>Aliquota COFINS (COFINS-E) (${pct(r.t.cofins_e)})</td><td class="num">${fmtR(d.cofinsCapa)}</td></tr>
+          <tr><td>Aliquota IBS (IBS-E) (${pct(r.t.ibs)})</td><td class="num">${fmtR(d.ibsCapa)}</td></tr>
+          <tr><td>Aliquota CBS (CBS-E) (${pct(r.t.cbs)})</td><td class="num">${fmtR(d.cbsCapa)}</td></tr>
           ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
           <tr class="destaque-row"><td>TOTAL DOS TRIBUTOS</td><td class="num">${fmtR(d.totalTributos)}</td></tr>
         </table>
