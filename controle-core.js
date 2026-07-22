@@ -370,7 +370,10 @@ function calcularFase(p){
   if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
   if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
   if(presencaPassada || chegadaPassada)                             return 'DESEMBARCADO';
-  if(embarquePassado || p.hbl)                                      return 'EMBARCADO';
+  // EMBARCADO só conta com a Data de Embarque (Efetiva) preenchida — o HBL
+  // sozinho não é mais suficiente, porque o HBL pode ser emitido antes do
+  // embarque físico acontecer (varia por armador/agente de carga).
+  if(embarquePassado)                                                return 'EMBARCADO';
   if(p.etd || p.booking_numero)                                     return 'AGUARDANDO_EMBARQUE';
   return 'PI';
 }

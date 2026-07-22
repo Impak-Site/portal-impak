@@ -144,7 +144,7 @@ function coletarESalvar(){
   const patchFields = [];
 
   // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
-  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','pi_cambio_entrada','pi_cambio_saldo','valor_frete'];
+  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete'];
 
   // Remover campo interno de controle
   delete proc._fasePrevista;
@@ -416,7 +416,7 @@ function confirmarCambioComo(tipo){
     const selPagamento = document.getElementById('f_pi_pagamento');
     if(selPagamento && selPagamento.value!=='ENTRADA_SALDO'){ selPagamento.value = 'ENTRADA_SALDO'; renderPagamentoCampos(); }
     const el = document.getElementById('f_pi_cambio_entrada');
-    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); }
+    if(el){ el.value = taxa.toFixed(4); }
     const elData = document.getElementById('f_pi_data_entrada');
     if(elData) elData.value = dataPagamento;
     // Entrada é só parcial — NÃO marca a PI inteira como paga, só o Saldo fecha.
@@ -425,7 +425,7 @@ function confirmarCambioComo(tipo){
     const selPagamento = document.getElementById('f_pi_pagamento');
     if(selPagamento && selPagamento.value!=='ENTRADA_SALDO'){ selPagamento.value = 'ENTRADA_SALDO'; renderPagamentoCampos(); }
     const el = document.getElementById('f_pi_cambio_saldo');
-    if(el){ el.value = exibirMoeda(taxa); formatarMoedaInput(el); }
+    if(el){ el.value = taxa.toFixed(4); }
     const elData = document.getElementById('f_pi_data_saldo');
     if(elData) elData.value = dataPagamento;
     const elPago = document.getElementById('f_pi_pago');

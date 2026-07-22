@@ -756,9 +756,9 @@ function renderPagamentoCampos(){
       <div class="form-group"><label class="form-label">Data Saldo</label>
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
       <div class="form-group"><label class="form-label">Câmbio Entrada (R$)</label>
-      <input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_entrada" value="${exibirMoeda(p.pi_cambio_entrada)||''}" placeholder="${exibirMoeda(_cambio.USD)}" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()"></div>
+      <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_entrada" value="${p.pi_cambio_entrada||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>
       <div class="form-group"><label class="form-label">Câmbio Saldo (R$)</label>
-      <input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_saldo" value="${exibirMoeda(p.pi_cambio_saldo)||''}" placeholder="${exibirMoeda(_cambio.USD)}" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()"></div>`;
+      <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_saldo" value="${p.pi_cambio_saldo||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>`;
   }
   html+='</div>';
   el.innerHTML=html;
@@ -771,8 +771,8 @@ function renderPagamentoInfoLive(){
   const snapshot = {..._editando};
   const pct = document.getElementById('f_pi_entrada_pct')?.value;
   if(pct!=null && pct!=='') snapshot.pi_entrada_pct = pct;
-  const ce = valorMoeda('f_pi_cambio_entrada');
-  const cs = valorMoeda('f_pi_cambio_saldo');
+  const ce = parseFloat(document.getElementById('f_pi_cambio_entrada')?.value) || null;
+  const cs = parseFloat(document.getElementById('f_pi_cambio_saldo')?.value) || null;
   if(ce!=null) snapshot.pi_cambio_entrada = ce;
   if(cs!=null) snapshot.pi_cambio_saldo = cs;
   const box = document.querySelector('#pane-financeiro .pagamento-box');
