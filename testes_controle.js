@@ -26,15 +26,36 @@ const fs   = require('fs');
 const path = require('path');
 const vm   = require('vm');
 
-// ── 1. EXTRAIR O JS REAL DO ARQUIVO ────────────────────────────
-const ARQUIVO_HTML = path.join(__dirname, 'controle_v2.html');
-const html = fs.readFileSync(ARQUIVO_HTML, 'utf-8');
-const scriptMatches = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-if (!scriptMatches.length) {
-  console.error('❌ Não encontrei nenhum bloco <script> em', ARQUIVO_HTML);
-  process.exit(1);
-}
-const jsReal = scriptMatches[scriptMatches.length - 1][1];
+// ── 1. CARREGAR O JS REAL DOS MÓDULOS ────────────────────────────
+// controle_v2.html foi modularizado (ver commit "Quebrar controle_v2.html
+// em módulos") — o JS que antes vivia num único <script> inline dentro do
+// HTML agora é carregado via <script src="..."> a partir de arquivos
+// separados (controle-core.js, controle-modal.js etc.). Este teste
+// concatena esses mesmos módulos, na mesma ordem em que o HTML os carrega,
+// e roda o resultado nos stubs abaixo — continua sendo o CÓDIGO REAL
+// rodando (não uma cópia), só que montado a partir dos arquivos certos em
+// vez de extraído de dentro do HTML (que não tem mais nenhum <script>
+// inline pra extrair). chat.js (nav global) e excel-styles.js/ExcelJS
+// ficam de fora de propósito — não têm nenhuma das funções puras testadas
+// aqui, e excel-styles.js só é referenciado dentro do corpo de funções de
+// export (não executado no carregamento do módulo).
+const MODULOS_JS = [
+  'controle-core.js',
+  'controle-modal.js',
+  'controle-campos.js',
+  'controle-export.js',
+  'controle-contatos.js',
+  'controle-import-ia.js',
+  'controle-dashboards.js',
+];
+const jsReal = MODULOS_JS.map(nome => {
+  const caminho = path.join(__dirname, nome);
+  if (!fs.existsSync(caminho)) {
+    console.error('❌ Não encontrei o módulo', caminho);
+    process.exit(1);
+  }
+  return fs.readFileSync(caminho, 'utf-8');
+}).join('\n');
 
 // ── 2. STUBS MÍNIMOS DE DOM/BROWSER ────────────────────────────
 // Suficientes para o arquivo CARREGAR sem lançar erro ao definir as
