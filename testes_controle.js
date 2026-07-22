@@ -83,6 +83,11 @@ function criarSandbox() {
     console,
     setTimeout, clearTimeout, setInterval, clearInterval,
     navigator: { clipboard: { writeText(){} } },
+    // location: usado pelo wrapper de fetch em controle-core.js
+    // (res.url.startsWith(location.origin)) pra detectar redirecionamento
+    // de sessão expirada — sem isso, carregar o módulo real lança
+    // "location is not defined" fora de um navegador de verdade.
+    location: { origin: 'http://localhost', href: 'http://localhost/', pathname: '/' },
     Date, Math, JSON, Array, Object, String, Number, Boolean, RegExp, Promise,
     URL: typeof URL !== 'undefined' ? URL : undefined,
     Event: typeof Event !== 'undefined' ? Event : undefined, // usado por confirmarCambioComo (dispatchEvent de 'change')
