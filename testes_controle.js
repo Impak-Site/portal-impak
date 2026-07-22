@@ -156,8 +156,8 @@ teste('processo novo (sem nada) fica em PI', () => {
 teste('ETD preenchido avança para AGUARDANDO_EMBARQUE', () => {
   iguais(sandbox.calcularFase({ etd: '2026-01-01' }), 'AGUARDANDO_EMBARQUE');
 });
-teste('HBL preenchido avança para EMBARCADO', () => {
-  iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'ABC123' }), 'EMBARCADO');
+teste('HBL sozinho (sem Data de Embarque efetiva) NÃO avança para EMBARCADO — fica em AGUARDANDO_EMBARQUE (regra atualizada: HBL pode ser emitido antes do embarque físico)', () => {
+  iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'ABC123' }), 'AGUARDANDO_EMBARQUE');
 });
 teste('Data de chegada avança para DESEMBARCADO', () => {
   iguais(sandbox.calcularFase({ hbl: 'ABC123', data_chegada: '2026-02-01' }), 'DESEMBARCADO');
@@ -185,8 +185,10 @@ teste('Data de Embarque no passado avança normalmente pra EMBARCADO', () => {
   const ontem = new Date(); ontem.setDate(ontem.getDate() - 2);
   iguais(sandbox.calcularFase({ etd: '2026-01-01', data_embarque: ontem.toISOString().slice(0,10) }), 'EMBARCADO');
 });
-teste('HBL presente avança pra EMBARCADO mesmo sem data_embarque (não depende só da data)', () => {
-  iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'HBLX123' }), 'EMBARCADO');
+teste('Data de Embarque efetiva é obrigatória pra EMBARCADO — HBL sozinho não é mais suficiente (HBL pode ser emitido antes do embarque físico)', () => {
+  const ontem = new Date(); ontem.setDate(ontem.getDate() - 2);
+  iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'HBLX123', data_embarque: ontem.toISOString().slice(0,10) }), 'EMBARCADO');
+  iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'HBLX123' }), 'AGUARDANDO_EMBARQUE');
 });
 teste('AMBAS as NFs preenchidas -> avança para DEVOLUCAO_VAZIO (regra de negócio confirmada com o usuário)', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '8305', nf_saida_numero: '8309' }), 'DEVOLUCAO_VAZIO');
