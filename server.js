@@ -402,8 +402,8 @@ button:hover{background:#1567b8;}
     <div class="sub">TyreDesk + Gestão de Processos</div>
     ERRO_PLACEHOLDER
     <form method="POST" action="/login">
-      <label>Usuário</label>
-      <input name="usuario" type="text" placeholder="seu usuário" autocomplete="username" required autofocus>
+      <label>Usuário ou e-mail</label>
+      <input name="usuario" type="text" placeholder="seu usuário ou e-mail" autocomplete="username" required autofocus>
       <label>Senha</label>
       <input name="senha" type="password" placeholder="sua senha" autocomplete="current-password" required>
       <input type="hidden" name="destino" value="DESTINO_PLACEHOLDER">
@@ -562,7 +562,12 @@ app.get('/login', (req, res) => {
 app.post('/login', rateLimitLogin, (req, res) => {
   const { usuario, senha, destino } = req.body;
   const login = (usuario || '').trim().toLowerCase();
-  const u = _usuariosCache.get(login);
+  // Aceita tanto o usuário curto (ex: "emanuelly") quanto o e-mail
+  // cadastrado (ex: "importacao1@impak.com.br") no mesmo campo — mesma
+  // lógica de busca já usada em /api/auth/esqueci-senha. Sem isso, quem
+  // digitasse o e-mail (rotulado como "Login" na planilha de cadastro)
+  // caía em "usuário ou senha incorretos" mesmo com a senha certa.
+  const u = _usuariosCache.get(login) || [..._usuariosCache.values()].find(x => (x.email||'').toLowerCase() === login);
   if (!u || !u.senha_hash || !verificarSenha(senha || '', u.senha_hash)) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
     // Nunca logar a senha digitada, mesmo errada — só o usuário tentado, o
