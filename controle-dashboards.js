@@ -266,6 +266,13 @@ function renderDashFinanceiro(){
   });
   const emAberto = pagamentos.filter(x=>!x.pago);
 
+  // Pagamentos em aberto sem vencimento calculável (falta "Prazo (dias)" da
+  // PI preenchido) — não entram no cálculo de "Saldo a Pagar (30 dias)" nem
+  // de "Vencido", porque não há data pra comparar. Isso pode fazer o KPI de
+  // 30 dias parecer "zerado" mesmo com muito pagamento em aberto — o aviso
+  // abaixo existe pra deixar isso visível em vez de escondido.
+  const semVencimento = emAberto.filter(x=>!x.vencimento);
+
   // Capital parado vem de _processos (não da lista de pagamentos) — aplica
   // só os filtros que fazem sentido aqui (fornecedor/país/cliente; período e
   // status são sobre vencimento de pagamento, não sobre estoque parado).
@@ -303,6 +310,11 @@ function renderDashFinanceiro(){
     <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:12px;">
       Câmbio atual: USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${(_cambio.EUR||0).toFixed(2)} · CNY R$ ${(_cambio.CNY||0).toFixed(4)}
     </div>
+
+    ${semVencimento.length>0 ? `<div style="background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:10px;padding:10px 16px;margin-bottom:16px;font-size:12px;color:var(--warn);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:16px;">⚠</span>
+      <span><strong>${semVencimento.length} pagamento${semVencimento.length!==1?'s':''} em aberto sem vencimento calculável</strong> — falta o campo "Prazo (dias)" da PI. Esses pagamentos não entram no "Saldo a Pagar (30 dias)" nem aparecem como "Vencido" até esse campo ser preenchido.</span>
+    </div>` : ''}
 
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
       <div>
@@ -389,7 +401,8 @@ function renderDashFinanceiro(){
               const statusHtml = x.pago
                 ? '<span style="color:var(--ok);font-weight:700;">✓ Pago</span>'
                 : vencido ? '<span style="color:var(--err);font-weight:700;">⚠ Vencido</span>'
-                : '<span style="color:var(--muted);">Previsto</span>';
+                : x.vencimento ? '<span style="color:var(--muted);">Previsto</span>'
+                : '<span style="color:var(--warn);" title="Falta o Prazo (dias) da PI pra calcular quando vence">— sem vencimento</span>';
               // Câmbio usado pra converter USD→BRL nessa linha: se já foi pago,
               // usa o câmbio que REALMENTE fechou (fato); senão usa o previsto
               // na PI, se tiver; senão cai pro câmbio atual só como estimativa
