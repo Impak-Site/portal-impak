@@ -233,7 +233,14 @@ teste('com câmbio de abertura da chegada explícito, seguro_brl bate com a plan
   });
   carregarNoSandbox(sandbox);
   sandbox.calcular();
-  vm.runInContext('this._ultimoResultado = _ultimoResultado;', sandbox);
+  // O resultado do cálculo, antes exposto numa variável solta
+  // "_ultimoResultado", foi consolidado dentro do objeto de estado global
+  // único "_estado" (ver comentário "ESTADO" em calculador.html — refactor
+  // que juntou ~10 variáveis soltas do formulário/wizard num objeto só).
+  // Continua sendo o mesmo objeto de sempre (mesmos campos), só o caminho
+  // pra chegar nele mudou: _estado.ultimoResultado em vez de
+  // _ultimoResultado direto.
+  vm.runInContext('this._ultimoResultado = _estado.ultimoResultado;', sandbox);
   const r = sandbox._ultimoResultado;
   aproxIgual(r.seguro_brl, 96.08, 0.05, `seguro_brl deveria ≈R$96,08 (planilha), recebido ${r.seguro_brl}`);
 });
@@ -241,7 +248,7 @@ teste('sem câmbio de abertura preenchido (fallback = câmbio principal), ainda 
   const sandbox = criarSandbox({ cambio_chegada: '' }); // usa o padrão da suíte (cambio_usd 5.1695)
   carregarNoSandbox(sandbox);
   sandbox.calcular();
-  vm.runInContext('this._ultimoResultado = _ultimoResultado;', sandbox);
+  vm.runInContext('this._ultimoResultado = _estado.ultimoResultado;', sandbox);
   const r = sandbox._ultimoResultado;
   const esperado = r.seguro_compra_usd * 5.1695 * 1.02;
   aproxIgual(r.seguro_brl, esperado, 0.01, `sem câmbio de chegada explícito, deveria cair no fallback (câmbio principal ×1,02)`);
