@@ -344,7 +344,7 @@ async function extrairComIA(input){
   "referencia": "",
   "fornecedor": "",  // razão social ou nome comercial do exportador/supplier
   "produto": "",  // usar SOMENTE quando o documento tiver um único item/descrição corrida (ex: CI com texto livre) — extrair de: Description of Goods, Cargo Description, Item Description. Se o documento tiver uma TABELA com múltiplos itens (Size/Pattern/Quantity por linha, comum em PI/Sales Contract), deixar "produto" vazio e usar "itens" abaixo.
-  "itens": [],  // ARRAY com um objeto por LINHA DE PRODUTO da tabela do documento (comum em PI/Sales Contract com colunas Size, Pattern, L.I./S.R., P.R., Quantity). Cada objeto: {"size":"","pattern":"","li_sr":"","quantidade":0}. Ex. de uma tabela com 3 linhas (600/65R28, 600/70R30, 710/70R42): retornar 3 objetos, um por linha, cada um com sua própria quantidade — NUNCA somar as quantidades num único item. Se o documento não tiver tabela de itens (só descrição corrida), deixar "itens" como array vazio [] e usar "produto" acima.
+  "itens": [],  // ARRAY com um objeto por LINHA DE PRODUTO da tabela do documento (comum em PI/Sales Contract com colunas Size, Pattern, L.I./S.R., P.R., Quantity — mas também vale para uma tabela de item único com colunas tipo Description/Brand/NCM/Qty, comum em Proforma Invoice). Cada objeto: {"size":"","pattern":"","li_sr":"","quantidade":0}. Ex. de uma tabela com 3 linhas (600/65R28, 600/70R30, 710/70R42): retornar 3 objetos, um por linha, cada um com sua própria quantidade — NUNCA somar as quantidades num único item. Se a tabela trouxer a descrição do produto já combinada numa única coluna (ex: "215/75R17.5 16PR 135/133L TL TR685"), sem separação clara entre Size/Pattern/L.I. S.R., preencha "size" com o texto COMPLETO dessa descrição e deixe "pattern"/"li_sr" vazios — NUNCA deixe "size" e "pattern" vazios ao mesmo tempo numa linha que tiver quantidade preenchida, senão o item é descartado. Se o documento não tiver tabela de itens (só descrição corrida, sem coluna de quantidade), deixar "itens" como array vazio [] e usar "produto" acima.
   "pi_numero": "",  // extrair APENAS o número principal; ignorar números secundários entre parênteses (ex: "PI-001 (JY-999)" → usar "PI-001")
   "pi_data": "YYYY-MM-DD",
   "pi_valor_usd": 0,
@@ -571,7 +571,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // nunca via na tela, e a lista de produtos parecia vazia mesmo após a IA
     // rodar com sucesso.
     if(Array.isArray(extracted.itens) && extracted.itens.length){
-      const itensValidos = extracted.itens.filter(it=>it && (it.size||it.pattern));
+      const itensValidos = extracted.itens.filter(it=>it && (it.size||it.pattern||it.quantidade));
       if(itensValidos.length){
         _produtos = itensValidos.map(it=>{
           const partes = [it.size, it.pattern, it.li_sr].filter(Boolean);
