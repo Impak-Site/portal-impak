@@ -910,7 +910,7 @@ function entrarDireto(found){
   document.getElementById('userBadgeName').textContent = found.displayName;
   document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
   _processes = migrateAlerts(loadUserProcesses());
-  updateApiStatus();
+  updateSheetsStatus();
   checkReady();
   renderDashboard();
   renderProcessos();
@@ -1156,7 +1156,7 @@ function doLogin(){
   // Load user processes (Firebase async, localStorage como cache imediato)
   _processes = loadUserProcesses(); // cache local imediato
   _processes = migrateAlerts(_processes);
-  updateApiStatus();
+  updateSheetsStatus();
   renderDashboard();
   renderProcessos();
   showPage('dashboard');
@@ -1547,7 +1547,7 @@ function showPage(id){
     if(ra2) ra2.style.display='none';
     setupDropZone();
     // Garantir que API key salva é lida e botão habilitado
-    updateApiStatus();
+    updateSheetsStatus();
     checkReady();
   }
   document.documentElement.scrollTop=0; document.body.scrollTop=0;
