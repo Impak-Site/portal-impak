@@ -583,7 +583,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
       <div id="userBadgeName" style="font-size:12px;font-weight:700;color:var(--accent);"></div>
       <div id="userBadgeRole" style="font-size:10px;color:var(--text-dim);"></div>
     </div>
-    <button onclick="doLogout()" style="font-size:10px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;">↩ Sair</button>
+    <button onclick="location.href='/logout'" style="font-size:10px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;" title="Sair">↩ Sair</button>
   </div>
   <nav class="nav">
     <div class="nav-item active" onclick="showPage('dashboard')">
@@ -1183,6 +1183,12 @@ function loginClearErr(){
   document.getElementById('loginErr').style.display='none';
 }
 
+// Não usada mais pelo botão "Sair" do menu lateral (agora vai direto pra
+// /logout, que derruba a sessão de verdade no servidor — este doLogout()
+// só limpava estado local do JS e reexibia o form de login antigo, sem
+// nunca encerrar a sessão real, então quem clicava aqui achando que saiu
+// continuava logado). Mantida sem uso por segurança, caso algo mais no
+// código ainda dependa dela indiretamente.
 function doLogout(){
   _currentUser=null;
   _processes=[];
