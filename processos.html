@@ -11,6 +11,10 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Nav global (Controle/Conferência/TyreDesk/Calculador/Financeiro) + assistente IA —
+     mesmo script já usado no controle_v2.html; faltava aqui, por isso essa tela
+     não mostrava a barra com os outros módulos. -->
+<script src="/chat.js"></script>
 <style>
 :root {
   --bg:        #e8f0f8;
@@ -57,7 +61,10 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   display:flex;
   flex-direction:column;
   position:fixed;
-  top:0;left:0;bottom:0;
+  /* top:52px (em vez de 0) — reserva o espaço da barra global do chat.js
+     (#impak-nav, fixa no topo, 52px de altura), senão ela sobrepõe o logo
+     e o badge do usuário aqui no menu lateral. */
+  top:52px;left:0;bottom:0;
   z-index:100;
 }
 .sidebar-logo{
