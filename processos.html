@@ -57,7 +57,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   display:flex;
   flex-direction:column;
   position:fixed;
-  top:52px;left:0;bottom:0;
+  top:0;left:0;bottom:0;
   z-index:100;
 }
 .sidebar-logo{
@@ -562,7 +562,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <div class="shell">
 <!-- Sidebar -->
 <aside class="sidebar">
-  <div class="sidebar-logo" style="display:none">
+  <div class="sidebar-logo">
     <img src="https://impak.com.br/wp-content/uploads/2025/01/Design-sem-nome-6.webp"
          alt="IMPAK" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='block';"
          style="width:140px;height:auto;margin-bottom:6px;display:block;">
@@ -571,7 +571,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
     </div>
     <div class="logo-sub">Sistema de Gestão · Importação</div>
   </div>
-  <div id="userBadge" style="padding:10px 16px;margin:0 8px 8px;background:var(--accent-dim);border-radius:8px;display:none;align-items:center;justify-content:space-between;">
+  <div id="userBadge" style="padding:10px 16px;margin:0 8px 8px;background:var(--accent-dim);border-radius:8px;display:flex;align-items:center;justify-content:space-between;">
     <div>
       <div id="userBadgeName" style="font-size:12px;font-weight:700;color:var(--accent);"></div>
       <div id="userBadgeRole" style="font-size:10px;color:var(--text-dim);"></div>
@@ -753,7 +753,6 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <!-- Loading -->
   <div class="loading-box" id="loadingBox">
     <div class="loading-title">Analisando documentos com IA...</div>
-    <div id="loadingSub" style="font-size:13px;color:var(--muted,#888);margin-top:-8px;margin-bottom:8px;">Pode levar até 2 minutos com vários documentos. Não feche nem atualize esta página.</div>
     <div class="steps">
       <div class="step" id="s1">① Lendo e interpretando os documentos</div>
       <div class="step" id="s2">② Extraindo dados estruturados</div>
@@ -878,32 +877,28 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
 <script>
-// ── SESSÃO EXPIRADA: mensagem clara em vez de erro de parse ──────
-// Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
-// redirecionam pra /login (HTML) em vez de responder JSON. O código que
-// chama fetch(...).then(r=>r.json()) então quebra com um erro confuso tipo
-// "Unexpected token '<' ... is not valid JSON". Este wrapper detecta esse
-// redirecionamento e troca por uma mensagem que o usuário entende, usando os
-// mesmos catch() que já existem em cada tela.
-(function(){
-  const _fetch = window.fetch.bind(window);
-  window.fetch = async function(...args){
-    const res = await _fetch(...args);
-    if (res.redirected && res.url.startsWith(location.origin) && res.url.includes('/login')) {
-      throw new Error('Sessão expirada. Abra outra aba, faça login novamente e tente de novo (seus dados não foram perdidos).');
-    }
-    return res;
-  };
-})();
-
 
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
+// Antes: procurava o usuário logado (d.usuario) dentro do array local
+// USERS abaixo — uma lista antiga, sobrada de antes da autenticação
+// passar a ser 100% via servidor/Supabase, com só 5 usuários cadastrados
+// (narcelio, jean, paula, bianca, emanuelly). Qualquer pessoa fora dessa
+// lista (suporte, amanda, italo, maria, joyce, neide, e os novos Everton/
+// Isabella) fazia login normalmente no servidor, mas aqui o "found" saía
+// undefined, entrarDireto() nunca era chamado, e a página ficava com o
+// loginScreen escondido (por algum outro caminho) porém NENHUMA .page
+// marcada como "active" — dashboard em branco até a pessoa clicar
+// manualmente num item do menu (que chama showPage() direto, sem
+// depender desse array). Agora usa os dados que o servidor já manda em
+// /api/me (fonte real da sessão), sem depender da lista local desatualizada.
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
     if(!d.logado) return;
-    var found = USERS.find(function(x){ return x.username===d.usuario; });
-    if(!found) found = { username: d.usuario, displayName: d.displayName || d.nome || d.usuario, role: d.role || 'analista' };
-    entrarDireto(found);
+    entrarDireto({
+      username: d.usuario,
+      displayName: d.displayName || d.nome || d.usuario,
+      role: d.role,
+    });
   }).catch(function(e){ console.warn('auto-login:', e.message); });
 });
 
@@ -1685,7 +1680,6 @@ async function runAnalysis(){
   setStep(1);
 
   try {
-
     const content=[];
     for(const[name,{file,type}] of Object.entries(uploadedFiles)){
       const b64=await toB64(file);
@@ -1729,7 +1723,9 @@ async function runAnalysis(){
 
 
 
-        // Verificar tamanho antes de enviar
+    setStep(3);
+
+    // Verificar tamanho antes de enviar
     const bodyStr = JSON.stringify({ content });
     const sizeMB = (bodyStr.length / 1024 / 1024).toFixed(1);
     console.log(`Payload: ${sizeMB} MB, ${content.length} partes`);
@@ -1737,23 +1733,121 @@ async function runAnalysis(){
       throw new Error(`Documentos muito grandes (${sizeMB} MB). Use no máximo 4-5 PDFs por análise ou PDFs menores.`);
     }
 
-    // Cria o job no servidor (resposta rápida) e acompanha o progresso via
-    // polling — evita manter uma conexão HTTP aberta por 1-2 minutos, que é
-    // o que causava os erros 502 em análises com vários documentos (ver
-    // /api/analisar em server.js).
-    const startResp = await fetch('/api/analisar', {
+    // Chamada via servidor (proxy) — sem CORS, sem erro de channel, API key segura
+    const resp = await fetch('/api/analisar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: bodyStr,
     });
-    if(!startResp.ok){
-      let errMsg = 'Erro ' + startResp.status;
-      try{ const e = await startResp.json(); errMsg = e.erro || errMsg; }catch(e){}
+
+    if(!resp.ok){
+      let errMsg = 'Erro ' + resp.status;
+      try{ const e = await resp.json(); errMsg = e.erro || errMsg; }catch(e){}
       throw new Error(errMsg);
     }
-    const startProxy = await startResp.json();
-    if(!startProxy.ok || !startProxy.jobId) throw new Error(startProxy.erro || 'Erro ao iniciar análise');
-    await processarJobAnalise(startProxy.jobId);
+
+    const proxy = await resp.json();
+    if(!proxy.ok) throw new Error(proxy.erro || 'Erro desconhecido na análise');
+
+    const data = proxy.data;
+    const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
+
+    let result;
+    try{
+      let clean=raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+      const fb=clean.indexOf('{'); if(fb>0) clean=clean.substring(fb);
+      const lb=clean.lastIndexOf('}'); if(lb>=0) clean=clean.substring(0,lb+1);
+      result=JSON.parse(clean);
+    } catch(e1){
+      const m=raw.match(/\{[\s\S]*\}/);
+      if(!m) throw new Error('A IA nao retornou JSON. Resposta: '+raw.substring(0,200));
+      try{ result=JSON.parse(m[0]); } catch(e2){ 
+        throw new Error('JSON invalido ('+e2.message+'). Inicio: '+raw.substring(0,150));
+      }
+    }
+    if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
+
+    setStep(4);
+
+    // Save process
+    const ref = document.getElementById('procRef').value.trim();
+    const exp = document.getElementById('procExp').value.trim();
+    const obs = document.getElementById('procObs').value.trim();
+    const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
+
+    const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
+    const novaAnalise = {
+      id: Date.now(),
+      data: new Date().toLocaleString('pt-BR'),
+      docs: docsUsados,
+      docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
+      docNomes: Object.keys(uploadedFiles), // nomes dos arquivos para rastreabilidade
+      analisadoPor: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'desconhecido',
+      resumo: result.resumo,
+      grupos: result.grupos,
+      alertas: (result.alertas||[]).map(extractAlert),
+      // Estatísticas de confiança
+      confMedia: (function(){
+        var campos = (result.grupos||[]).flatMap(function(g){return g.campos||[];});
+        if(!campos.length) return 100;
+        var soma = campos.reduce(function(s,c){return s+(c.confianca||100);},0);
+        return Math.round(soma/campos.length);
+      })(),
+    };
+
+    var user = _currentUser ? _currentUser.username : 'desconhecido';
+    var procExistente = _processes.find(function(p){ return p.ref===ref; });
+
+    function aplicarAnalise(proc){
+      // Adicionar nova análise ao histórico
+      proc.analises = proc.analises||[];
+      proc.analises.push(novaAnalise);
+      proc.status   = status;
+      proc.resumo   = result.resumo;
+      proc.grupos   = result.grupos;
+      proc.alertas  = novaAnalise.alertas;
+      proc.log      = proc.log||[];
+      var docList2  = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||f.file.name;}).join(', ');
+      proc.log.push({
+        msg:'Análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',
+        time:new Date().toLocaleString('pt-BR'),
+        type:status
+      });
+
+      currentResult = proc;
+      if(proc._divResolvedMap) Object.assign(divergResolved, proc._divResolvedMap);
+      document.getElementById('loadingBox').classList.remove('show');
+      renderResult(result);
+      sincronizarComControle(proc, result, novaAnalise);
+
+      // Salvar no Drive e atualizar lista
+      saveProcesses(_processes, proc);
+    }
+
+    if(procExistente){
+      // Buscar versão COMPLETA do Drive (índice só tem campos leves)
+      dbGetProcess(user, procExistente.id, function(procCompleto){
+        aplicarAnalise(procCompleto || procExistente);
+      });
+    } else {
+      // Novo processo
+      aplicarAnalise({
+        id: Date.now(),
+        ref: ref,
+        exportador: exp || extrairExportador(result),
+        obs: obs,
+        data: new Date().toLocaleDateString('pt-BR'),
+        status: status,
+        resumo: result.resumo,
+        grupos: result.grupos,
+        alertas: [],
+        documentos: result.documentos||[],
+        analises: [],
+        log: [],
+        _divResolvedMap: {},
+      });
+    }
+
   } catch(err){
     document.getElementById('loadingBox').classList.remove('show');
     showToast('Erro: '+err.message,'err');
@@ -1762,157 +1856,6 @@ async function runAnalysis(){
   document.getElementById('btnAnalyze').disabled=false;
   checkReady();
 }
-
-  // Faz o polling de um job já criado e processa o resultado (usada tanto pelo
-  // fluxo normal de runAnalysis() quanto pra retomar um job que ficou
-  // 'processando' se a página foi recarregada/reaberta no meio do caminho —
-  // ver checarAnaliseEmAndamento() logo abaixo.
-  async function processarJobAnalise(jobId){
-    try{ localStorage.setItem('impak_analise_job', JSON.stringify({ jobId, ts: Date.now() })); }catch(e){}
-    try {
-          setStep(3);
-          const loadingSub = document.getElementById('loadingSub');
-          const _pollStart = Date.now();
-          let job;
-          while(true){
-            await new Promise(r => setTimeout(r, 2500));
-            const elapsed = Math.round((Date.now() - _pollStart) / 1000);
-            if(loadingSub) loadingSub.textContent = `Pode levar até 5 minutos com vários documentos. Não feche nem atualize esta página. (${elapsed}s)`;
-            if(elapsed > 340) throw new Error('Análise demorou demais. Tente novamente com menos documentos.');
-      
-            const pollResp = await fetch('/api/analisar/job/' + jobId);
-            if(!pollResp.ok) continue; // instabilidade momentânea — tenta de novo no próximo ciclo
-            const pollProxy = await pollResp.json();
-            if(!pollProxy.ok) continue;
-            if(pollProxy.status === 'processando') continue;
-            job = pollProxy;
-            break;
-          }
-          if(job.status === 'erro') throw new Error(job.erro || 'Erro desconhecido na análise');
-      
-          setStep(4);
-          const data = job.resultado;
-          const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
-      
-          let result;
-          try{
-            let clean=raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
-            const fb=clean.indexOf('{'); if(fb>0) clean=clean.substring(fb);
-            const lb=clean.lastIndexOf('}'); if(lb>=0) clean=clean.substring(0,lb+1);
-            result=JSON.parse(clean);
-          } catch(e1){
-            const m=raw.match(/\{[\s\S]*\}/);
-            if(!m) throw new Error('A IA nao retornou JSON. Resposta: '+raw.substring(0,200));
-            try{ result=JSON.parse(m[0]); } catch(e2){ 
-              throw new Error('JSON invalido ('+e2.message+'). Inicio: '+raw.substring(0,150));
-            }
-          }
-          if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
-      
-          setStep(4);
-      
-          // Save process
-          const ref = document.getElementById('procRef').value.trim();
-          const exp = document.getElementById('procExp').value.trim();
-          const obs = document.getElementById('procObs').value.trim();
-          const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
-      
-          const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
-          const novaAnalise = {
-            id: Date.now(),
-            data: new Date().toLocaleString('pt-BR'),
-            docs: docsUsados,
-            docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
-            docNomes: Object.keys(uploadedFiles), // nomes dos arquivos para rastreabilidade
-            analisadoPor: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'desconhecido',
-            resumo: result.resumo,
-            grupos: result.grupos,
-            alertas: (result.alertas||[]).map(extractAlert),
-            // Estatísticas de confiança
-            confMedia: (function(){
-              var campos = (result.grupos||[]).flatMap(function(g){return g.campos||[];});
-              if(!campos.length) return 100;
-              var soma = campos.reduce(function(s,c){return s+(c.confianca||100);},0);
-              return Math.round(soma/campos.length);
-            })(),
-          };
-      
-          var user = _currentUser ? _currentUser.username : 'desconhecido';
-          var procExistente = _processes.find(function(p){ return p.ref===ref; });
-      
-          function aplicarAnalise(proc){
-            // Adicionar nova análise ao histórico
-            proc.analises = proc.analises||[];
-            proc.analises.push(novaAnalise);
-            proc.status   = status;
-            proc.resumo   = result.resumo;
-            proc.grupos   = result.grupos;
-            proc.alertas  = novaAnalise.alertas;
-            proc.log      = proc.log||[];
-            var docList2  = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||f.file.name;}).join(', ');
-            proc.log.push({
-              msg:'Análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',
-              time:new Date().toLocaleString('pt-BR'),
-              type:status
-            });
-      
-            currentResult = proc;
-            if(proc._divResolvedMap) Object.assign(divergResolved, proc._divResolvedMap);
-            document.getElementById('loadingBox').classList.remove('show');
-            renderResult(result);
-            sincronizarComControle(proc, result, novaAnalise);
-      
-            // Salvar no Drive e atualizar lista
-            saveProcesses(_processes, proc);
-          }
-      
-          if(procExistente){
-            // Buscar versão COMPLETA do Drive (índice só tem campos leves)
-            dbGetProcess(user, procExistente.id, function(procCompleto){
-              aplicarAnalise(procCompleto || procExistente);
-            });
-          } else {
-            // Novo processo
-            aplicarAnalise({
-              id: Date.now(),
-              ref: ref,
-              exportador: exp || extrairExportador(result),
-              obs: obs,
-              data: new Date().toLocaleDateString('pt-BR'),
-              status: status,
-              resumo: result.resumo,
-              grupos: result.grupos,
-              alertas: [],
-              documentos: result.documentos||[],
-              analises: [],
-              log: [],
-              _divResolvedMap: {},
-            });
-          }
-    } finally {
-      try{ localStorage.removeItem('impak_analise_job'); }catch(e){}
-    }
-  }
-
-  // Se a página foi recarregada/reaberta com uma análise ainda em andamento (ou
-  // que terminou enquanto a aba estava fechada), retoma o acompanhamento em vez
-  // de deixar o resultado perdido.
-  function checarAnaliseEmAndamento(){
-    try {
-      const saved = localStorage.getItem('impak_analise_job');
-      if(!saved) return;
-      const { jobId, ts } = JSON.parse(saved);
-      if(!jobId || (Date.now() - ts) > 15 * 60 * 1000){
-        localStorage.removeItem('impak_analise_job');
-        return;
-      }
-      processarJobAnalise(jobId).catch(err => {
-        console.warn('Não foi possível retomar a análise em andamento:', err.message);
-      });
-    } catch(e){}
-  }
-  document.addEventListener('DOMContentLoaded', checarAnaliseEmAndamento);
-
 
 function extrairExportador(result){
   for(const g of result.grupos||[]){
@@ -3751,6 +3694,5 @@ function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'doc
 </script>
 
 
-<script src="/chat.js"></script>
 </body>
 </html>
