@@ -706,6 +706,23 @@ app.post('/api/usuarios/:usuario/forcar-logout', (req, res) => {
   res.json({ ok: true, mensagem: `Todas as sessões de "${alvo}" foram invalidadas.` });
 });
 
+// Recarrega o cache de usuários (_usuariosCache) sob demanda. Necessário
+// sempre que alguém edita senha_hash (ou qualquer outro campo de usuários)
+// direto no Supabase via SQL — sem isso, o processo rodando continua com
+// os dados antigos em memória até o próximo restart/deploy. Restrito a
+// gerentes, e sujeito ao mesmo rate limit do login (evita brute-force via
+// esse endpoint também).
+app.post('/api/admin/recarregar-cache', rateLimitLogin, (req, res) => {
+  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+  recarregarCacheUsuarios()
+    .then(() => res.json({ ok: true, mensagem: `Cache recarregado (${_usuariosCache.size} usuários).` }))
+    .catch(e => {
+      console.error('Erro ao recarregar cache de usuários:', e.message);
+      res.status(500).json({ ok: false, erro: 'Erro ao recarregar cache.' });
+    });
+});
+
 function auth(modulo) {
   return (req, res, next) => {
     if (!req.session.usuario) return res.redirect('/login?destino=' + req.path);
