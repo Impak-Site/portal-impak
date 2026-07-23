@@ -370,7 +370,13 @@ function calcularFase(p){
   if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
   if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
   if(presencaPassada || chegadaPassada)                             return 'DESEMBARCADO';
-  if(embarquePassado || p.hbl)                                      return 'EMBARCADO';
+  // Igual ao caso do Booking acima: o Nº HBL costuma ser preenchido antes
+  // do embarque acontecer de fato (o armador/agente já manda o HBL com
+  // antecedência), então usar só "p.hbl" aqui fazia o status pular pra
+  // "Embarcado" antes da hora — mesmo com o embarque real ainda previsto
+  // pra outro dia. Agora só a Data de Embarque (Efetiva) — quando já
+  // passou — conta como embarque de verdade.
+  if(embarquePassado)                                               return 'EMBARCADO';
   // O status avança pra "Ag. Embarque" só com a Previsão de Embarque (ETD)
   // preenchida — NÃO mais com o Nº Booking. Motivo: como o booking real
   // muitas vezes não chega a tempo, o time preenche esse campo com a
