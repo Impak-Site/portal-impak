@@ -631,12 +631,31 @@ function taxaCambioMoedaReal(moeda, p){
   return null;
 }
 
-// Lista de containers do processo (campo texto livre, separado por vírgula/
-// ponto-e-vírgula/quebra de linha) — usada só pra oferecer o detalhamento
+// Lista de containers do processo — usada só pra oferecer o detalhamento
 // por container nas taxas "porContainer". Sem containers cadastrados (ou só
 // 1), a taxa fica como valor único, sem opção de detalhar.
+//
+// Fonte da verdade: p.containers_json, o MESMO campo preenchido na tela
+// "+ Adicionar Container" da aba Documentos (ver controle-campos.js,
+// renderMultiContainers/sincronizarContainerLegado) — array de
+// {numero, tipo, lacre}. Antes esta função lia p.container (o campo texto
+// legado, que só guarda o número do PRIMEIRO container, sincronizado
+// automaticamente a partir de containers_json) — por isso processos com
+// mais de um container apareciam com só 1 na aba Custos Reais. Mantém
+// fallback pro campo legado só pra processos antigos que nunca chegaram a
+// usar a tela de multi-container (containers_json ainda vazio).
 function containersDoProcesso(p){
-  if(!p || !p.container) return [];
+  if(!p) return [];
+  if(p.containers_json){
+    try{
+      const lista = JSON.parse(p.containers_json);
+      if(Array.isArray(lista)){
+        const numeros = lista.map(c => (c && c.numero || '').trim()).filter(Boolean);
+        if(numeros.length) return numeros;
+      }
+    }catch(e){ /* containers_json inválido — cai no fallback abaixo */ }
+  }
+  if(!p.container) return [];
   return String(p.container).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
 }
 
