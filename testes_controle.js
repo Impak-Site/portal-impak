@@ -553,6 +553,17 @@ teste('renderFechamentoInfo() sem estimativa mostra aviso, não lança erro', ()
   const html = sandbox.renderFechamentoInfo({});
   verdadeiro(html.includes('não tem um valor estimado'), 'deveria explicar que não há estimativa vinculada');
 });
+teste('renderFechamentoInfo() sem estimativa mas com NF Entrada/Saída mostra o resultado real mesmo assim', () => {
+  // Processo que nunca passou pela cotação do Calculador (ex: criado direto
+  // no Controle), mas já tem NF Entrada e NF Saída lançadas na aba
+  // Documentos — antes disso a função nem chegava a olhar pro NF, e a
+  // margem desse tipo de processo nunca aparecia em lugar nenhum.
+  const p = { nf_entrada_valor: 200000, nf_saida_valor: 260000 };
+  const html = sandbox.renderFechamentoInfo(p);
+  verdadeiro(!html.includes('não tem um valor estimado'), 'com NF preenchida não deveria cair no aviso genérico de "nada pra mostrar"');
+  verdadeiro(html.includes('Lucro Real'), 'deveria calcular e mostrar o lucro real mesmo sem cotação vinculada');
+  verdadeiro(html.includes('não passou pela cotação'), 'deveria avisar que não tem estimativa pra comparar, sem bloquear o resultado real');
+});
 teste('renderFechamentoInfo() com resultado pior que o estimado mostra "a menos" em vermelho', () => {
   // Estimado: lucro ≈124,9k (363.898,12 - 239.039,83). Real bem menor: NF Saída 250k - NF Entrada 220k = 30k.
   const p = {
