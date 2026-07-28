@@ -2955,6 +2955,24 @@ function resumoParaLista(r){
       com_st: { faturamento_total: cst.faturamento_total, comissao_china: cst.china_fora_val||0, valor_impak: impak(cst) },
       sem_st: { faturamento_total: sst.faturamento_total, comissao_china: sst.china_fora_val||0, valor_impak: impak(sst) },
     } : undefined,
+    // custos_cotados_json (tela "Custos Reais" no Controle) — detalhamento do
+    // que foi COTADO nesta cotação, item a item, pra virar o ponto de partida
+    // ("Cotado") quando o processo em Controle abrir a aba Custos Reais. Antes
+    // resumoParaLista só salvava agregados (custo_total, faturamento) — o
+    // detalhamento por taxa/imposto/comissão nunca chegava no banco, então a
+    // aba de Custos Reais no Controle não tinha com o que pré-preencher.
+    // r.txOp.fixas/usd já vêm por container (exceto armazenagem, que já é
+    // total) — mesma base usada pela Capa (dadosCapa) e pelo "Custo Real das
+    // Taxas" desta tela (lerCustosReais), reaproveitada aqui em vez de duplicar.
+    custos_cotados_json: {
+      cambio: r.cambio, containers: r.containers,
+      compra: { fob: r.fob_usd, frete: r.frete_usd, taxa_ce: r.taxa_ce, seguro_usd: r.seguro_compra_usd },
+      impostos: { ii: r.II, ipi: r.IPI_e, pis: r.PIS_e, cofins: r.COFINS_e, icms: r.ICMS_e, ibs: r.IBS_e, cbs: r.CBS_e },
+      comissoes: { br: r.COM_br, china: r.china_fora_val, boss: r.boss_fora_val },
+      taxas_fixas: (r.txOp && r.txOp.fixas) || {},
+      taxas_usd: (r.txOp && r.txOp.usd) || {},
+      custos_diversos: r.custos_div,
+    },
   };
 }
 
