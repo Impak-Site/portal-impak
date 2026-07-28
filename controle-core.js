@@ -1221,9 +1221,9 @@ function render(){
           </div>
         </div>
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>
-        <div class="td" data-label="Fase" onclick="event.stopPropagation()">
-          <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)">
-            <span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>
+        <div class="td" data-label="Fase" onclick="event.stopPropagation()" style="min-width:0;">
+          <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)" style="display:inline-block;max-width:100%;">
+            <span class="fase-badge fase-${p.fase}" style="white-space:normal;word-break:break-word;display:inline-block;max-width:100%;line-height:1.3;">${fase.icon} ${fase.label}</span>
           </span>
         </div>
         <div class="td td-date" data-label="ETA / Chegada" onclick="event.stopPropagation()">
