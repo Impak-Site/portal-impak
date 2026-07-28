@@ -516,8 +516,14 @@ function renderCustosReaisTab(p){
   const cotado = (p.estimativa_json && p.estimativa_json.custos_cotados_json) || null;
   const cambioDefault = p.real_cambio ?? (cotado && cotado.cambio) ?? p.pi_cambio ?? _cambio.USD;
 
+  // Tabela em largura total (em vez do form-grid de 2-3 colunas) — com dois
+  // campos por item (Pago/Cobrado) + hint do cotado, a versão em grid
+  // espremia demais e cortava o campo "Cobrado" na tela. Uma linha por item,
+  // ocupando toda a largura do painel, dá espaço de sobra pros 2 campos +
+  // a margem, e ainda fica mais fácil de escanear várias taxas em sequência
+  // (mesma lógica da tabela Pagamento × Recebimento do Conexos).
   const gruposHtml = CUSTOS_REAIS_CONFIG.map(g => {
-    const itensHtml = g.itens.map(item => {
+    const linhasHtml = g.itens.map(item => {
       const valorCotado = calcularCustoCotadoItem(item, cotado);
       const valorSalvo = reais[item.id];
       const valorCobradoSalvo = reais[item.id+'_cobrado'];
@@ -529,29 +535,37 @@ function renderCustosReaisTab(p){
       const valorCobradoInicial = (valorCobradoSalvo != null && valorCobradoSalvo !== '') ? valorCobradoSalvo : '';
       const simboloUnidade = item.unidade === 'USD' ? 'US$' : 'R$';
       const hintCotado = valorCotado != null
-        ? ` <span style="font-weight:400;color:var(--dim);">· Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
+        ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`
         : '';
-      // Dois campos lado a lado — o que foi PAGO (custo) e o que foi
-      // COBRADO DO CLIENTE (receita) — pra dar pra ver a margem de CADA
-      // taxa, não só do processo inteiro. Igual ao Conexos, que mostra
-      // Pagamento × Recebimento na mesma linha pra cada taxa.
-      return `<div class="form-group">
-        <label class="form-label">${item.label} (${simboloUnidade})${hintCotado}</label>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicial}" placeholder="Pago" title="Valor pago (custo)" oninput="atualizarTotalCustosReais()">
-          <input class="form-input" type="number" step="0.01" id="f_cr_cobrado_${item.id}" value="${valorCobradoInicial}" placeholder="Cobrado" title="Valor cobrado do cliente (receita)" oninput="atualizarTotalCustosReais()">
-        </div>
-        <div id="cr_margem_${item.id}" style="font-size:11px;margin-top:3px;min-height:14px;"></div>
-      </div>`;
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">${item.label} <span style="font-weight:400;color:var(--muted);">(${simboloUnidade})</span>${hintCotado}</td>
+        <td style="padding:8px 6px;width:22%;">
+          <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicial}" placeholder="Pago" title="Valor pago (custo)" oninput="atualizarTotalCustosReais()" style="width:100%;">
+        </td>
+        <td style="padding:8px 6px;width:22%;">
+          <input class="form-input" type="number" step="0.01" id="f_cr_cobrado_${item.id}" value="${valorCobradoInicial}" placeholder="Cobrado" title="Valor cobrado do cliente (receita)" oninput="atualizarTotalCustosReais()" style="width:100%;">
+        </td>
+        <td style="padding:8px 0 8px 10px;width:18%;font-size:11px;" id="cr_margem_${item.id}"></td>
+      </tr>`;
     }).join('');
-    return `<div style="margin-bottom:16px;">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">${g.grupo}</div>
-      <div style="font-size:10px;color:var(--dim);margin-bottom:6px;">Cada linha: <strong>Pago</strong> (o que saiu do bolso) e <strong>Cobrado</strong> (o que foi repassado ao cliente) — a margem de cada taxa aparece embaixo do campo.</div>
-      <div class="form-grid">${itensHtml}</div>
+    return `<div style="margin-bottom:22px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">${g.grupo}</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);">
+            <th style="text-align:left;padding:0 10px 6px 0;font-size:10px;color:var(--dim);text-transform:uppercase;">Taxa</th>
+            <th style="text-align:left;padding:0 6px 6px;font-size:10px;color:var(--dim);text-transform:uppercase;">Pago</th>
+            <th style="text-align:left;padding:0 6px 6px;font-size:10px;color:var(--dim);text-transform:uppercase;">Cobrado</th>
+            <th style="text-align:left;padding:0 0 6px 10px;font-size:10px;color:var(--dim);text-transform:uppercase;">Margem</th>
+          </tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+      </table>
     </div>`;
   }).join('');
 
-  return `<div class="form-group" style="max-width:260px;margin-bottom:16px;">
+  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita). A margem de cada taxa aparece na última coluna.</div>
+    <div class="form-group" style="max-width:260px;margin-bottom:16px;">
       <label class="form-label">Câmbio USD usado nestes custos</label>
       <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()">
     </div>
