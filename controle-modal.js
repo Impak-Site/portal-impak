@@ -73,6 +73,7 @@ function renderModal(){
     {id:'identificacao', label:'📄 Identificação'},
     {id:'financeiro',    label:'💰 Financeiro'},
     {id:'fechamento',    label:'📐 Fechamento'},
+    {id:'custosreais',   label:'💵 Custos Reais'},
     {id:'logistica',     label:'🚢 Logística'},
     {id:'documentos',    label:'📋 Documentos'},
     {id:'historico',     label:'📜 Histórico'},
@@ -273,6 +274,21 @@ function renderModal(){
       </div>
     </div>
 
+    <!-- ABA: CUSTOS REAIS -->
+    <div class="tab-pane" id="pane-custosreais">
+      <div class="form-section">
+        <div class="form-section-title">💵 Custos Reais — apuração de lucro item a item</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+          Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissões e taxas operacionais). Quando o processo veio de uma cotação aprovada, cada campo já nasce preenchido com o valor cotado — ajuste só o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cálculo simples por NF.
+        </div>
+        ${renderCustosReaisTab(p)}
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarCustosReaisTab()">💾 Salvar Custos Reais</button>
+      </div>
+    </div>
+
     <!-- ABA: LOGÍSTICA -->
     <div class="tab-pane" id="pane-logistica">
       <div class="form-section">
@@ -468,6 +484,7 @@ function renderModal(){
   `;
 
   renderPagamentoCampos();
+  atualizarTotalCustosReais();
   // Inicializar multi-containers
   try{
     if(p.containers_json) _containers = JSON.parse(p.containers_json);
@@ -484,6 +501,103 @@ function renderModal(){
   renderMultiProdutos();
   if(!isNovo){ carregarArquivosGed(p.id); carregarHistorico(p.id); }
   else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
+}
+
+// ════════════════════════════════════════════════════════════════
+// CUSTOS REAIS — apuração de lucro por processo, item a item
+// ════════════════════════════════════════════════════════════════
+// Config/cálculo (CUSTOS_REAIS_CONFIG, calcularCustoCotadoItem,
+// calcularCustoRealTotal) vivem em controle-core.js — aqui só o HTML da aba
+// e a coleta/salvamento dos campos, seguindo o mesmo padrão de "aba com
+// botão de salvar próprio" que a aba Fechamento já usa (ela só lê, não tem
+// campo editável; esta aba tem campos, então precisa de coletar+salvar).
+function renderCustosReaisTab(p){
+  const reais = p.real_json || {};
+  const cotado = (p.estimativa_json && p.estimativa_json.custos_cotados_json) || null;
+  const cambioDefault = p.real_cambio ?? (cotado && cotado.cambio) ?? p.pi_cambio ?? _cambio.USD;
+
+  const gruposHtml = CUSTOS_REAIS_CONFIG.map(g => {
+    const itensHtml = g.itens.map(item => {
+      const valorCotado = calcularCustoCotadoItem(item, cotado);
+      const valorSalvo = reais[item.id];
+      // Pré-preenche com o real já salvo; sem isso, com o cotado (quando o
+      // processo veio de uma cotação aprovada); sem cotado nem real, começa
+      // vazio — é o caso normal de processo criado direto no Controle.
+      const temSalvo = valorSalvo != null && valorSalvo !== '';
+      const valorInicial = temSalvo ? valorSalvo : (valorCotado != null ? valorCotado.toFixed(2) : '');
+      const simboloUnidade = item.unidade === 'USD' ? 'US$' : 'R$';
+      const hintCotado = valorCotado != null
+        ? ` <span style="font-weight:400;color:var(--dim);">· Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
+        : '';
+      return `<div class="form-group">
+        <label class="form-label">${item.label} (${simboloUnidade})${hintCotado}</label>
+        <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicial}" placeholder="0,00" oninput="atualizarTotalCustosReais()">
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">${g.grupo}</div>
+      <div class="form-grid">${itensHtml}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="form-group" style="max-width:260px;margin-bottom:16px;">
+      <label class="form-label">Câmbio USD usado nestes custos</label>
+      <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()">
+    </div>
+    ${gruposHtml}
+    <div id="custos-reais-total" style="margin-top:6px;"></div>`;
+}
+
+// Lê os valores atualmente digitados nos campos f_cr_* (sem depender de
+// _editando estar sincronizado ainda) — usado tanto pra atualizar o total ao
+// vivo quanto pra montar o que vai salvo em real_json/real_cambio. O câmbio
+// vem separado (real_cambio é coluna própria, não fica dentro do real_json)
+// pra bater com a migration 0004_add_custos_reais_processo.sql, que já
+// criou as duas colunas assim.
+function coletarCustosReaisDoForm(){
+  const obj = {};
+  custosReaisItensFlat().forEach(item => {
+    const el = document.getElementById('f_cr_'+item.id);
+    if(el && el.value !== '') obj[item.id] = parseFloat(el.value);
+  });
+  return obj;
+}
+
+function coletarCambioCustosReaisDoForm(){
+  const el = document.getElementById('f_cr_cambio');
+  return (el && el.value !== '') ? parseFloat(el.value) : null;
+}
+
+// Recalcula e redesenha o resumo (Custo Total Real / Lucro Real) conforme o
+// usuário digita, sem precisar salvar — mesmo padrão do renderPagamentoInfoLive().
+function atualizarTotalCustosReais(){
+  if(!_editando) return;
+  const wrap = document.getElementById('custos-reais-total');
+  if(!wrap) return;
+  const snapshot = { ..._editando, real_json: coletarCustosReaisDoForm(), real_cambio: coletarCambioCustosReaisDoForm() };
+  const custosReais = calcularCustoRealTotal(snapshot);
+  if(!custosReais){ wrap.innerHTML = ''; return; }
+  const nfSaida = parseFloat(snapshot.nf_saida_valor);
+  const temNf = !isNaN(nfSaida) && nfSaida > 0;
+  const lucro = temNf ? (nfSaida - custosReais.total) : null;
+  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
+    <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lançados)</span><strong>${r2(custosReais.total)}</strong></div>
+    ${temNf
+      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF Saída − Custo Real Total)</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
+      : `<div style="color:var(--dim);">Preencha a NF Saída na aba Documentos pra ver o lucro real aqui.</div>`}
+  </div>`;
+}
+
+// Salva só os custos reais — segue o mesmo mecanismo de patchFields das
+// outras abas (salvarProcesso em controle-core.js), então não sobrescreve
+// nenhum outro campo alterado por outra pessoa nesse meio tempo.
+async function salvarCustosReaisTab(){
+  if(!_editando) return;
+  _editando.real_json = coletarCustosReaisDoForm();
+  _editando.real_cambio = coletarCambioCustosReaisDoForm();
+  const ok = await salvarProcesso(_editando, ['real_json', 'real_cambio']);
+  if(ok) atualizarTotalCustosReais();
 }
 
 // ════════════════════════════════════════════════════════════════
