@@ -520,22 +520,33 @@ function renderCustosReaisTab(p){
     const itensHtml = g.itens.map(item => {
       const valorCotado = calcularCustoCotadoItem(item, cotado);
       const valorSalvo = reais[item.id];
+      const valorCobradoSalvo = reais[item.id+'_cobrado'];
       // Pré-preenche com o real já salvo; sem isso, com o cotado (quando o
       // processo veio de uma cotação aprovada); sem cotado nem real, começa
       // vazio — é o caso normal de processo criado direto no Controle.
       const temSalvo = valorSalvo != null && valorSalvo !== '';
       const valorInicial = temSalvo ? valorSalvo : (valorCotado != null ? valorCotado.toFixed(2) : '');
+      const valorCobradoInicial = (valorCobradoSalvo != null && valorCobradoSalvo !== '') ? valorCobradoSalvo : '';
       const simboloUnidade = item.unidade === 'USD' ? 'US$' : 'R$';
       const hintCotado = valorCotado != null
         ? ` <span style="font-weight:400;color:var(--dim);">· Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
         : '';
+      // Dois campos lado a lado — o que foi PAGO (custo) e o que foi
+      // COBRADO DO CLIENTE (receita) — pra dar pra ver a margem de CADA
+      // taxa, não só do processo inteiro. Igual ao Conexos, que mostra
+      // Pagamento × Recebimento na mesma linha pra cada taxa.
       return `<div class="form-group">
         <label class="form-label">${item.label} (${simboloUnidade})${hintCotado}</label>
-        <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicial}" placeholder="0,00" oninput="atualizarTotalCustosReais()">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicial}" placeholder="Pago" title="Valor pago (custo)" oninput="atualizarTotalCustosReais()">
+          <input class="form-input" type="number" step="0.01" id="f_cr_cobrado_${item.id}" value="${valorCobradoInicial}" placeholder="Cobrado" title="Valor cobrado do cliente (receita)" oninput="atualizarTotalCustosReais()">
+        </div>
+        <div id="cr_margem_${item.id}" style="font-size:11px;margin-top:3px;min-height:14px;"></div>
       </div>`;
     }).join('');
     return `<div style="margin-bottom:16px;">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">${g.grupo}</div>
+      <div style="font-size:10px;color:var(--dim);margin-bottom:6px;">Cada linha: <strong>Pago</strong> (o que saiu do bolso) e <strong>Cobrado</strong> (o que foi repassado ao cliente) — a margem de cada taxa aparece embaixo do campo.</div>
       <div class="form-grid">${itensHtml}</div>
     </div>`;
   }).join('');
@@ -559,6 +570,11 @@ function coletarCustosReaisDoForm(){
   custosReaisItensFlat().forEach(item => {
     const el = document.getElementById('f_cr_'+item.id);
     if(el && el.value !== '') obj[item.id] = parseFloat(el.value);
+    // "Cobrado do Cliente" fica na MESMA real_json, com sufixo _cobrado —
+    // não precisa de coluna nova (ver calcularReceitaRealTotal em
+    // controle-core.js, que lê exatamente essa convenção).
+    const elCobrado = document.getElementById('f_cr_cobrado_'+item.id);
+    if(elCobrado && elCobrado.value !== '') obj[item.id+'_cobrado'] = parseFloat(elCobrado.value);
   });
   return obj;
 }
@@ -574,15 +590,40 @@ function atualizarTotalCustosReais(){
   if(!_editando) return;
   const wrap = document.getElementById('custos-reais-total');
   if(!wrap) return;
-  const snapshot = { ..._editando, real_json: coletarCustosReaisDoForm(), real_cambio: coletarCambioCustosReaisDoForm() };
+  const cambio = coletarCambioCustosReaisDoForm();
+  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // Margem por LINHA (pago × cobrado), atualizada a cada tecla — igual ao
+  // Conexos mostra Pagamento × Recebimento lado a lado por taxa.
+  custosReaisItensFlat().forEach(item => {
+    const badge = document.getElementById('cr_margem_'+item.id);
+    if(!badge) return;
+    const elPago = document.getElementById('f_cr_'+item.id);
+    const elCobrado = document.getElementById('f_cr_cobrado_'+item.id);
+    const pago = elPago && elPago.value !== '' ? parseFloat(elPago.value) : null;
+    const cobrado = elCobrado && elCobrado.value !== '' ? parseFloat(elCobrado.value) : null;
+    if(pago == null || cobrado == null || isNaN(pago) || isNaN(cobrado)){ badge.innerHTML = ''; return; }
+    // Margem na própria unidade do item (USD ou BRL) — mais direto de ler
+    // linha a linha do que já converter pra BRL aqui.
+    const margem = cobrado - pago;
+    const simb = item.unidade === 'USD' ? 'US$' : 'R$';
+    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'▲':'▼'} margem: ${simb} ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+  });
+
+  const snapshot = { ..._editando, real_json: coletarCustosReaisDoForm(), real_cambio: cambio };
   const custosReais = calcularCustoRealTotal(snapshot);
   if(!custosReais){ wrap.innerHTML = ''; return; }
+  const receitaReais = calcularReceitaRealTotal(snapshot);
   const nfSaida = parseFloat(snapshot.nf_saida_valor);
   const temNf = !isNaN(nfSaida) && nfSaida > 0;
   const lucro = temNf ? (nfSaida - custosReais.total) : null;
-  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const linhaMargemTaxas = receitaReais
+    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${receitaReais.count} ${receitaReais.count===1?'item':'itens'})</span><strong>${r2(receitaReais.total)}</strong></div>
+       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${(receitaReais.total-custosReais.total)>=0?'var(--ok)':'var(--err)'}">${r2(receitaReais.total-custosReais.total)}</strong></div>`
+    : '';
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
     <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lançados)</span><strong>${r2(custosReais.total)}</strong></div>
+    ${linhaMargemTaxas}
     ${temNf
       ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF Saída − Custo Real Total)</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
       : `<div style="color:var(--dim);">Preencha a NF Saída na aba Documentos pra ver o lucro real aqui.</div>`}
