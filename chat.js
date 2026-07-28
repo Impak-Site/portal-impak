@@ -5,6 +5,23 @@
 // Evitar duplicata
 if (document.getElementById('impak-chat-root')) return;
 
+// Em processos.html o <script src="/chat.js"> está no <head>, então
+// document.body ainda não existe quando este arquivo roda — isso
+// derrubava tudo com "Cannot read properties of null (reading
+// 'insertBefore')" e a nav global nunca aparecia nessa tela. Em vez de
+// depender de cada página incluir o script no lugar certo, este script
+// agora adia a própria execução até o body existir (funciona tanto
+// quando incluído no <head> quanto no fim do <body>, como já era o
+// caso nas outras telas).
+if (!document.body) {
+document.addEventListener('DOMContentLoaded', init);
+} else {
+init();
+}
+
+function init() {
+if (document.getElementById('impak-chat-root')) return;
+
 const CSS = `
 
 /* ── NAV GLOBAL ── */
@@ -340,5 +357,7 @@ if (!aberto) toggleChat();
 setTimeout(() => enviar(btn.textContent), 100);
 };
 });
+
+}
 
 })();
