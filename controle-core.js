@@ -631,6 +631,32 @@ function calcularCustoRealTotal(p){
   return { total, detalhe, cambio, count };
 }
 
+// Espelha calcularCustoRealTotal, mas soma o que foi COBRADO DO CLIENTE por
+// item (não o que foi pago ao fornecedor/agente) — guardado nas mesmas
+// chaves de real_json, com sufixo "_cobrado" (ex.: reais.siscomex = pago,
+// reais.siscomex_cobrado = cobrado). Isso dá pra ver a margem de CADA taxa
+// individualmente (compra × venda), igual ao Conexos mostra na aba Taxas —
+// não só o total do processo (NF Saída − Custo Real Total).
+function calcularReceitaRealTotal(p){
+  const reais = p.real_json;
+  if(!reais || typeof reais !== 'object') return null;
+  const cambio = parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || null;
+  let total = 0, count = 0;
+  const detalhe = [];
+  custosReaisItensFlat().forEach(item => {
+    const bruto = reais[item.id+'_cobrado'];
+    if(bruto == null || bruto === '') return;
+    const valor = parseFloat(bruto);
+    if(isNaN(valor)) return;
+    const valorBrl = item.unidade === 'USD' ? valor * (cambio || 0) : valor;
+    total += valorBrl;
+    count++;
+    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valor, valorBrl });
+  });
+  if(count === 0) return null;
+  return { total, detalhe, cambio, count };
+}
+
 function calcularFechamento(p){
   const est = p.estimativa_json || null;
   const nfEntrada = parseFloat(p.nf_entrada_valor);
@@ -644,6 +670,14 @@ function calcularFechamento(p){
   // teve ou não). Sem nenhum item lançado, mantém o cálculo antigo por NF.
   const custosReais = calcularCustoRealTotal(p);
   const custoRealTotal = custosReais ? custosReais.total : null;
+  // Margem por taxa (compra × venda) — só existe quando o usuário também
+  // lançou valores "cobrado do cliente" na aba Custos Reais, não é
+  // obrigatório preencher. Independente do Lucro Real (que usa a NF Saída
+  // inteira); esta é uma visão à parte, item a item, das taxas específicas.
+  const receitaReais = calcularReceitaRealTotal(p);
+  const margemTaxas = (custosReais && receitaReais)
+    ? { total: receitaReais.total - custosReais.total, custoTotal: custosReais.total, receitaTotal: receitaReais.total }
+    : null;
   const lucroReal = custosReais
     ? (temReal ? (nfSaida - custoRealTotal) : null)
     : (temReal ? (nfSaida - (isNaN(nfEntrada)?0:nfEntrada)) : null);
@@ -676,6 +710,7 @@ function calcularFechamento(p){
     nfEntrada: isNaN(nfEntrada)?null:nfEntrada, nfSaida: isNaN(nfSaida)?null:nfSaida,
     lucroReal, pctLucroReal, deltaValor, deltaPct,
     custosReais, custoRealTotal, // detalhamento por item — null se a aba Custos Reais nunca foi preenchida
+    receitaReais, margemTaxas, // margem por taxa (compra × venda) — null se "cobrado do cliente" nunca foi preenchido
   };
 }
 
@@ -703,6 +738,18 @@ function renderFechamentoInfo(p){
   // frete, seguro, impostos, comissões e taxas operacionais reais também.
   const linhaCustoRealDetalhado = f.custosReais
     ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Real Total (${f.custosReais.count} ${f.custosReais.count===1?'item lançado':'itens lançados'} na aba Custos Reais)</span><strong>${r2(f.custoRealTotal)}</strong></div>`
+    : '';
+  // Margem das Taxas (compra × venda) — só aparece quando o usuário também
+  // preencheu "Cobrado do Cliente" em pelo menos um item na aba Custos Reais.
+  // É uma visão separada do Lucro Real: mostra quanto sobrou/faltou SÓ nas
+  // taxas repassadas ao cliente (ex.: taxa que custou R$ 110 e foi cobrada
+  // por USD 55) — não mexe no cálculo do Lucro Real, que continua usando a
+  // NF Saída inteira.
+  const linhaMargemTaxas = f.margemTaxas
+    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${f.receitaReais.count} ${f.receitaReais.count===1?'item':'itens'})</span><strong>${r2(f.margemTaxas.receitaTotal)}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${f.margemTaxas.total>=0?'var(--ok)':'var(--err)'}">${r2(f.margemTaxas.total)}</strong></div>
+      </div>`
     : '';
   const linhaReal = f.temReal
     ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF Saída − Custo Real Total)':' (NF Saída − NF Entrada)'}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>`
@@ -739,6 +786,7 @@ function renderFechamentoInfo(p){
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Saída</span><strong>${r2(f.nfSaida)}</strong></div>
       ${linhaReal}
     </div>
+    ${linhaMargemTaxas}
     ${linhaDelta}
   </div>`;
 }
