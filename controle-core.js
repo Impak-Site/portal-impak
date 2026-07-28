@@ -561,9 +561,16 @@ function renderFechamentoInfo(p){
   const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const pct2 = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
 
-  if(!f.temEstimativa){
+  // Antes: sem estimativa_json (processo que não passou pela cotação do
+  // Calculador) a função parava aqui e nunca mostrava nada — nem o lucro
+  // real, mesmo com NF Entrada e NF Saída já preenchidas na aba Documentos.
+  // Ou seja, processo criado direto no Controle nunca tinha como saber a
+  // margem, mesmo depois de fechado. Agora só cai nesse aviso quando NÃO
+  // há estimativa E também não há NF Saída ainda — nesse caso não tem
+  // mesmo nada pra mostrar.
+  if(!f.temEstimativa && !f.temReal){
     return `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:12px;">
-      Este processo não tem um valor estimado vinculado — ou foi criado direto no Controle (sem passar pela cotação do Calculador), ou é de antes desse recurso existir.
+      Este processo ainda não tem valor estimado (cotação) nem resultado real (NF Entrada/Saída) — preencha a NF Entrada e a NF Saída na aba Documentos assim que possível pra ver a margem aqui.
     </div>`;
   }
 
@@ -579,13 +586,23 @@ function renderFechamentoInfo(p){
       </div>`
     : '';
 
-  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
-    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📐 Estimado na cotação</div>
+  // Bloco "Estimado na cotação" só existe se o processo passou pelo
+  // Calculador. Sem isso (processo criado direto no Controle), mostra um
+  // aviso curto no lugar, mas o "Resultado real" abaixo continua aparecendo
+  // normalmente contanto que NF Entrada/Saída existam.
+  const blocoEstimado = f.temEstimativa
+    ? `<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📐 Estimado na cotação</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total estimado</span><strong>${r2(f.custoEstimado)}</strong></div>
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Faturamento estimado (Com S.T.)</span><strong>${r2(f.faturamentoEstimado)}</strong></div>
       <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro estimado</span><strong>${r2(f.lucroEstimado)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroEstimado)})</span></strong></div>
-    </div>
+    </div>`
+    : `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--muted);margin-bottom:14px;">
+      Este processo não passou pela cotação do Calculador — sem valor estimado pra comparar, mas o resultado real abaixo já funciona normalmente.
+    </div>`;
+
+  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+    ${blocoEstimado}
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">✅ Resultado real</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Entrada</span><strong>${r2(f.nfEntrada)}</strong></div>
