@@ -570,7 +570,7 @@ function renderFechamentoInfo(p){
   // mesmo nada pra mostrar.
   if(!f.temEstimativa && !f.temReal){
     return `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:12px;">
-      Este processo ainda não tem valor estimado (cotação) nem resultado real (NF Entrada/Saída) — preencha a NF Entrada e a NF Saída na aba Documentos assim que possível pra ver a margem aqui.
+      Este processo não tem um valor estimado (cotação) nem resultado real (NF Entrada/Saída) vinculado ainda — preencha a NF Entrada e a NF Saída na aba Documentos assim que possível pra ver a margem aqui.
     </div>`;
   }
 
