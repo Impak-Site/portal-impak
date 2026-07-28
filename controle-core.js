@@ -1215,7 +1215,11 @@ function render(){
       // executável pra QUALQUER usuário que abrir esta lista (XSS
       // persistente). Ver esc() em controle-campos.js.
       return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
-        <div class="td td-ref" data-label="">${esc(p.referencia)||'—'}${finalidadeBadge}${pendenciaBadge}</div>
+        <div class="td td-ref" data-label="">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;row-gap:2px;">
+            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}
+          </div>
+        </div>
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>
         <div class="td" data-label="Fase" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)">
