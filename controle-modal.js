@@ -561,6 +561,28 @@ function renderCustosReaisTab(p){
     const linhasHtml = g.itens.map(item => {
       const valorCotado = calcularCustoCotadoItem(item, cotado);
       const rawPago = reais[item.id];
+
+      // Imposto (apenasPago) não tem compra × venda — é só um valor a pagar
+      // pro governo, sempre em R$, sem Cobrado/Margem nem seletor de moeda.
+      if(item.apenasPago){
+        const valorInicialImposto = (rawPago != null && rawPago !== '')
+          ? (typeof rawPago === 'object' ? rawPago.valor : rawPago)
+          : (valorCotado != null ? valorCotado.toFixed(2) : '');
+        const hintCotadoImposto = valorCotado != null
+          ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">Cotado: R$ ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`
+          : '';
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">${item.label}${hintCotadoImposto}</td>
+          <td colspan="2" style="padding:8px 6px;">
+            <div style="display:flex;align-items:center;gap:6px;max-width:220px;">
+              <span style="font-size:12px;color:var(--muted);flex-shrink:0;">R$</span>
+              <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicialImposto}" placeholder="Valor a pagar" oninput="atualizarTotalCustosReais()" style="width:100%;">
+            </div>
+          </td>
+          <td style="padding:8px 0 8px 10px;width:16%;font-size:11px;color:var(--dim);font-style:italic;">custo direto</td>
+        </tr>`;
+      }
+
       const rawCobrado = reais[item.id+'_cobrado'];
       const podeDetalhar = !!item.porContainer && containers.length > 1;
       const breakdownAtivo = podeDetalhar && ((rawPago && rawPago.porContainer) || (rawCobrado && rawCobrado.porContainer));

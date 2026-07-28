@@ -544,14 +544,18 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'seguro',   label:'Seguro',               unidade:'USD', cotado:c=>c?.compra?.seguro_usd },
     { id:'taxa_ce',  label:'Taxa C.E.',            unidade:'USD', cotado:c=>c?.compra?.taxa_ce },
   ]},
+  // apenasPago:true = imposto não tem "compra × venda" — é só um valor a
+  // pagar pro governo, sempre em R$, sem contrapartida cobrada do cliente
+  // (diferente das taxas operacionais, que podem ter margem). A aba mostra
+  // só um campo "Valor a pagar", sem Cobrado/Margem nem seletor de moeda.
   { grupo:'Impostos de Importação', itens:[
-    { id:'ii',     label:'II',     unidade:'BRL', cotado:c=>c?.impostos?.ii },
-    { id:'ipi',    label:'IPI',    unidade:'BRL', cotado:c=>c?.impostos?.ipi },
-    { id:'pis',    label:'PIS',    unidade:'BRL', cotado:c=>c?.impostos?.pis },
-    { id:'cofins', label:'COFINS', unidade:'BRL', cotado:c=>c?.impostos?.cofins },
-    { id:'icms',   label:'ICMS',   unidade:'BRL', cotado:c=>c?.impostos?.icms },
-    { id:'ibs',    label:'IBS',    unidade:'BRL', cotado:c=>c?.impostos?.ibs },
-    { id:'cbs',    label:'CBS',    unidade:'BRL', cotado:c=>c?.impostos?.cbs },
+    { id:'ii',     label:'II',     unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ii },
+    { id:'ipi',    label:'IPI',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ipi },
+    { id:'pis',    label:'PIS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.pis },
+    { id:'cofins', label:'COFINS', unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.cofins },
+    { id:'icms',   label:'ICMS',   unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.icms },
+    { id:'ibs',    label:'IBS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ibs },
+    { id:'cbs',    label:'CBS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.cbs },
   ]},
   { grupo:'Comissões', itens:[
     { id:'comissao_br',    label:'Comissão BR (Representante)', unidade:'BRL', cotado:c=>c?.comissoes?.br },
