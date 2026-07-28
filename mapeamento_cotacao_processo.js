@@ -58,6 +58,7 @@ const ITENS_CUSTOS_REAIS = [
   { id: 'icms',    unidade: 'BRL', porContainer: false, get: c => c?.impostos?.icms },
   { id: 'ibs',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.ibs },
   { id: 'cbs',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.cbs },
+  { id: 'antidumping', unidade: 'BRL', porContainer: false, get: c => c?.impostos?.antidumping },
   // Comissões (BRL)
   { id: 'comissao_br',    unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.br },
   { id: 'comissao_china', unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.china },
@@ -77,6 +78,7 @@ const ITENS_CUSTOS_REAIS = [
   // Taxas Operacionais — fixas em BRL, porContainer:false
   { id: 'armazenagem',    unidade: 'BRL', porContainer: false, get: c => c?.taxas_fixas?.armazenagem },
   { id: 'custos_diversos', unidade: 'BRL', porContainer: false, get: c => c?.custos_diversos },
+  { id: 'seguro_venda',    unidade: 'BRL', porContainer: false, get: c => c?.seguro_venda },
   // Taxas Operacionais — em USD, porContainer:true
   { id: 'handling',         unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.handling },
   { id: 'additional_costs', unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.additional_costs },

@@ -556,6 +556,10 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'icms',   label:'ICMS',   unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.icms },
     { id:'ibs',    label:'IBS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ibs },
     { id:'cbs',    label:'CBS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.cbs },
+    // Antidumping: direito antidumping (encargo governamental cobrado quando o
+    // toggle "dump" está SIM no Calculador) — igual aos demais impostos, sem
+    // compra×venda, só existe quando a cotação de origem teve o toggle ativo.
+    { id:'antidumping', label:'Antidumping', unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.antidumping },
   ]},
   { grupo:'Comissões', itens:[
     { id:'comissao_br',    label:'Comissão BR (Representante)', unidade:'BRL', cotado:c=>c?.comissoes?.br },
@@ -580,6 +584,11 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'administrativo',   label:'Administrativo',          unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.administrativo },
     { id:'agente',           label:'Agente Carga',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.agente },
     { id:'custos_diversos',  label:'Custos Diversos',         unidade:'BRL', porContainer:false, cotado:c=>c?.custos_diversos },
+    // Seguro de Venda: distinto do Seguro (Compra e Frete acima, custo interno
+    // da importação) — é a taxa de seguro cobrada na proposta ao cliente, que
+    // compõe total_taxas/custo_total no Calculador (ver comentário em
+    // calcular(), "deve compor as Taxas Operacionais").
+    { id:'seguro_venda',    label:'Seguro de Venda',         unidade:'BRL', porContainer:false, cotado:c=>c?.seguro_venda },
     { id:'handling',         label:'Handling at Destination', unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.handling },
     { id:'additional_costs', label:'Additional Costs',        unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.additional_costs },
     { id:'import_logistics', label:'Import Logistics',        unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.import_logistics },

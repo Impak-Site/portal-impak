@@ -2967,11 +2967,20 @@ function resumoParaLista(r){
     custos_cotados_json: {
       cambio: r.cambio, containers: r.containers,
       compra: { fob: r.fob_usd, frete: r.frete_usd, taxa_ce: r.taxa_ce, seguro_usd: r.seguro_compra_usd },
-      impostos: { ii: r.II, ipi: r.IPI_e, pis: r.PIS_e, cofins: r.COFINS_e, icms: r.ICMS_e, ibs: r.IBS_e, cbs: r.CBS_e },
+      // Antidumping (DUMP) entra como imposto — é um direito antidumping (encargo
+      // governamental), não tem compra×venda, igual II/IPI/PIS/COFINS/ICMS/IBS/CBS
+      // (ver toggle "dump" e cálculo de DUMP em calcular()). Fica 0 quando o
+      // toggle "dump" está NÃO — sem impacto no total de Custos Reais.
+      impostos: { ii: r.II, ipi: r.IPI_e, pis: r.PIS_e, cofins: r.COFINS_e, icms: r.ICMS_e, ibs: r.IBS_e, cbs: r.CBS_e, antidumping: r.DUMP },
       comissoes: { br: r.COM_br, china: r.china_fora_val, boss: r.boss_fora_val },
       taxas_fixas: (r.txOp && r.txOp.fixas) || {},
       taxas_usd: (r.txOp && r.txOp.usd) || {},
       custos_diversos: r.custos_div,
+      // Seguro de Venda (proposta cliente) — comentário em calcular() já dizia
+      // que essa taxa "deve compor as Taxas Operacionais" (compõe total_taxas/
+      // custo_total), mas nunca tinha chegado até aqui. Distinto do Seguro
+      // Compra (custo interno, já mapeado acima em compra.seguro_usd).
+      seguro_venda: r.seguro_venda_brl,
     },
   };
 }

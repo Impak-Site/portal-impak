@@ -270,6 +270,19 @@ teste('resultado é diretamente compatível com o formato {valor,moeda} de real_
   verdadeiro(typeof rj.fob.valor === 'number' && typeof rj.fob.moeda === 'string');
   verdadeiro(typeof rj.siscomex.valor === 'number' && typeof rj.siscomex.moeda === 'string');
 });
+teste('antidumping (impostos.antidumping) é mapeado quando a cotação teve o toggle dump=SIM', () => {
+  const rj = gerarRealJsonInicial({ containers: 1, impostos: { ii: 5000, antidumping: 320.5 } });
+  iguais(rj.antidumping, { valor: 320.5, moeda: 'BRL' });
+});
+teste('sem antidumping na cotação (toggle NAO, DUMP=0), vem zerado — não quebra, só sem impacto no total', () => {
+  const rj = gerarRealJsonInicial({ containers: 1, impostos: { ii: 5000, antidumping: 0 } });
+  iguais(rj.antidumping, { valor: 0, moeda: 'BRL' });
+});
+teste('seguro_venda (nível raiz, distinto do Seguro Compra) é mapeado', () => {
+  const rj = gerarRealJsonInicial({ containers: 1, compra: { seguro_usd: 50 }, seguro_venda: 890.5 });
+  iguais(rj.seguro, { valor: 50, moeda: 'USD' });
+  iguais(rj.seguro_venda, { valor: 890.5, moeda: 'BRL' });
+});
 
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
