@@ -511,10 +511,40 @@ function renderModal(){
 // e a coleta/salvamento dos campos, seguindo o mesmo padrão de "aba com
 // botão de salvar próprio" que a aba Fechamento já usa (ela só lê, não tem
 // campo editável; esta aba tem campos, então precisa de coletar+salvar).
+// Uma célula "valor + moeda" (input number + select BRL/USD/EUR lado a
+// lado) — usada tanto pro Pago quanto pro Cobrado, tanto na linha principal
+// quanto em cada sub-linha de container, sempre com o mesmo par de ids
+// (valorId/moedaId) montado pelo chamador.
+function celulaValorMoedaHtml(valorId, moedaId, valor, moeda, placeholder, readonly){
+  const dis = readonly ? 'readonly style="width:100%;background:var(--bg);color:var(--muted);"' : 'style="width:100%;"';
+  return `<div style="display:flex;gap:4px;">
+    <input class="form-input" type="number" step="0.01" id="${valorId}" value="${valor}" placeholder="${placeholder}" ${dis} oninput="atualizarTotalCustosReais()">
+    <select class="form-input" id="${moedaId}" ${readonly?'disabled':''} onchange="atualizarTotalCustosReais()" style="width:62px;flex-shrink:0;padding-left:4px;padding-right:4px;">
+      ${MOEDAS_REAIS.map(m=>`<option value="${m.code}" ${m.code===moeda?'selected':''}>${m.code}</option>`).join('')}
+    </select>
+  </div>`;
+}
+
+// Extrai { valor, moeda } pra pré-preencher a célula única (não-detalhada) a
+// partir do que está salvo em real_json — aceita os 3 formatos possíveis
+// (ver normalizarValorRealItem em controle-core.js); quando salvo em modo
+// "por container", devolve null (tratado à parte).
+function valorMoedaInicial(raw, item){
+  if(raw == null || raw === '') return { valor:'', moeda:item.unidade };
+  if(typeof raw === 'object'){
+    if(raw.porContainer) return null;
+    if(raw.valor != null && raw.valor !== '') return { valor: raw.valor, moeda: raw.moeda || item.unidade };
+    return { valor:'', moeda:item.unidade };
+  }
+  return { valor: raw, moeda: item.unidade };
+}
+
 function renderCustosReaisTab(p){
   const reais = p.real_json || {};
   const cotado = (p.estimativa_json && p.estimativa_json.custos_cotados_json) || null;
   const cambioDefault = p.real_cambio ?? (cotado && cotado.cambio) ?? p.pi_cambio ?? _cambio.USD;
+  const cambioEurDefault = (reais._cambio_eur != null && reais._cambio_eur !== '') ? reais._cambio_eur : _cambio.EUR;
+  const containers = containersDoProcesso(p);
 
   // Tabela em largura total (em vez do form-grid de 2-3 colunas) — com dois
   // campos por item (Pago/Cobrado) + hint do cotado, a versão em grid
@@ -522,31 +552,70 @@ function renderCustosReaisTab(p){
   // ocupando toda a largura do painel, dá espaço de sobra pros 2 campos +
   // a margem, e ainda fica mais fácil de escanear várias taxas em sequência
   // (mesma lógica da tabela Pagamento × Recebimento do Conexos).
+  //
+  // Cada lado (Pago/Cobrado) tem sua PRÓPRIA moeda (BRL/USD/EUR) — igual ao
+  // Conexos, que deixa pagar num moeda e receber em outra. E taxas marcadas
+  // como porContainer podem ser detalhadas container a container quando o
+  // processo tem mais de um (link "📦 Detalhar por container").
   const gruposHtml = CUSTOS_REAIS_CONFIG.map(g => {
     const linhasHtml = g.itens.map(item => {
       const valorCotado = calcularCustoCotadoItem(item, cotado);
-      const valorSalvo = reais[item.id];
-      const valorCobradoSalvo = reais[item.id+'_cobrado'];
-      // Pré-preenche com o real já salvo; sem isso, com o cotado (quando o
-      // processo veio de uma cotação aprovada); sem cotado nem real, começa
-      // vazio — é o caso normal de processo criado direto no Controle.
-      const temSalvo = valorSalvo != null && valorSalvo !== '';
-      const valorInicial = temSalvo ? valorSalvo : (valorCotado != null ? valorCotado.toFixed(2) : '');
-      const valorCobradoInicial = (valorCobradoSalvo != null && valorCobradoSalvo !== '') ? valorCobradoSalvo : '';
+      const rawPago = reais[item.id];
+      const rawCobrado = reais[item.id+'_cobrado'];
+      const podeDetalhar = !!item.porContainer && containers.length > 1;
+      const breakdownAtivo = podeDetalhar && ((rawPago && rawPago.porContainer) || (rawCobrado && rawCobrado.porContainer));
+
+      const iniPago = valorMoedaInicial(rawPago, item) || { valor:'', moeda:item.unidade };
+      const iniCobrado = valorMoedaInicial(rawCobrado, item) || { valor:'', moeda:item.unidade };
+      // Sem nada salvo ainda (nem detalhado, nem valor único), pré-preenche
+      // com o cotado — só faz sentido no modo valor único.
+      if(!breakdownAtivo && iniPago.valor === '' && valorCotado != null) iniPago.valor = valorCotado.toFixed(2);
+
       const simboloUnidade = item.unidade === 'USD' ? 'US$' : 'R$';
       const hintCotado = valorCotado != null
         ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`
         : '';
+      const detalharLink = podeDetalhar
+        ? `<div style="margin-top:3px;"><a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" style="font-size:10px;color:var(--ac);text-decoration:none;">📦 <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total único' : `Detalhar por container (${containers.length})`}</span></a></div>`
+        : '';
+
+      // Se já está em modo detalhado, o valor mostrado na linha principal é
+      // só um resumo somado em R$ (read-only) — a edição de verdade acontece
+      // nas sub-linhas por container, logo abaixo.
+      let pagoValorExibido = iniPago.valor, pagoMoedaExibida = iniPago.moeda;
+      let cobradoValorExibido = iniCobrado.valor, cobradoMoedaExibida = iniCobrado.moeda;
+      if(breakdownAtivo){
+        const normP = normalizarValorRealItem(rawPago, item, p);
+        const normC = normalizarValorRealItem(rawCobrado, item, p);
+        pagoValorExibido = normP ? normP.totalBrl.toFixed(2) : '';
+        cobradoValorExibido = normC ? normC.totalBrl.toFixed(2) : '';
+        pagoMoedaExibida = 'BRL'; cobradoMoedaExibida = 'BRL';
+      }
+
+      const containersLinhasHtml = podeDetalhar ? containers.map((nome, idx) => {
+        const savedPago = (rawPago && rawPago.porContainer && rawPago.porContainer[nome]) || null;
+        const savedCobrado = (rawCobrado && rawCobrado.porContainer && rawCobrado.porContainer[nome]) || null;
+        return `<tr>
+          <td style="padding:4px 10px 4px 0;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;">${esc(nome)}</td>
+          <td style="padding:4px 6px;">${celulaValorMoedaHtml('f_cr_'+item.id+'__c'+idx, 'f_cr_moeda_'+item.id+'__c'+idx, savedPago?savedPago.valor:'', savedPago?savedPago.moeda:item.unidade, 'Pago', false)}</td>
+          <td style="padding:4px 6px;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id+'__c'+idx, 'f_cr_cobrado_moeda_'+item.id+'__c'+idx, savedCobrado?savedCobrado.valor:'', savedCobrado?savedCobrado.moeda:item.unidade, 'Cobrado', false)}</td>
+          <td></td>
+        </tr>`;
+      }).join('') : '';
+
       return `<tr style="border-bottom:1px solid var(--border);">
-        <td style="padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">${item.label} <span style="font-weight:400;color:var(--muted);">(${simboloUnidade})</span>${hintCotado}</td>
-        <td style="padding:8px 6px;width:22%;">
-          <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicial}" placeholder="Pago" title="Valor pago (custo)" oninput="atualizarTotalCustosReais()" style="width:100%;">
+        <td style="padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">${item.label}${hintCotado}${detalharLink}</td>
+        <td style="padding:8px 6px;width:24%;">${celulaValorMoedaHtml('f_cr_'+item.id, 'f_cr_moeda_'+item.id, pagoValorExibido, pagoMoedaExibida, 'Pago', breakdownAtivo)}</td>
+        <td style="padding:8px 6px;width:24%;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id, 'f_cr_cobrado_moeda_'+item.id, cobradoValorExibido, cobradoMoedaExibida, 'Cobrado', breakdownAtivo)}</td>
+        <td style="padding:8px 0 8px 10px;width:16%;font-size:11px;" id="cr_margem_${item.id}"></td>
+      </tr>
+      ${podeDetalhar ? `<tr id="cr_containers_row_${item.id}" style="display:${breakdownAtivo?'table-row':'none'};background:var(--bg);">
+        <td colspan="4" style="padding:2px 0 10px 14px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tbody>${containersLinhasHtml}</tbody>
+          </table>
         </td>
-        <td style="padding:8px 6px;width:22%;">
-          <input class="form-input" type="number" step="0.01" id="f_cr_cobrado_${item.id}" value="${valorCobradoInicial}" placeholder="Cobrado" title="Valor cobrado do cliente (receita)" oninput="atualizarTotalCustosReais()" style="width:100%;">
-        </td>
-        <td style="padding:8px 0 8px 10px;width:18%;font-size:11px;" id="cr_margem_${item.id}"></td>
-      </tr>`;
+      </tr>` : ''}`;
     }).join('');
     return `<div style="margin-bottom:22px;">
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">${g.grupo}</div>
@@ -564,13 +633,40 @@ function renderCustosReaisTab(p){
     </div>`;
   }).join('');
 
-  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita). A margem de cada taxa aparece na última coluna.</div>
-    <div class="form-group" style="max-width:260px;margin-bottom:16px;">
-      <label class="form-label">Câmbio USD usado nestes custos</label>
-      <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()">
+  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita), cada um com sua própria moeda. Taxas por container podem ser detalhadas container a container.</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="form-group" style="max-width:200px;">
+        <label class="form-label">Câmbio USD</label>
+        <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()">
+      </div>
+      <div class="form-group" style="max-width:200px;">
+        <label class="form-label">Câmbio EUR</label>
+        <input class="form-input" type="number" step="0.0001" id="f_cr_cambio_eur" value="${cambioEurDefault||''}" placeholder="${_cambio.EUR.toFixed(4)}" oninput="atualizarTotalCustosReais()">
+      </div>
     </div>
     ${gruposHtml}
     <div id="custos-reais-total" style="margin-top:6px;"></div>`;
+}
+
+// Alterna uma taxa entre "valor único pro processo" e "detalhado container a
+// container" — ativa/desativa a sub-linha de containers e trava (readonly) a
+// linha principal, que passa a mostrar só o total somado em R$.
+function toggleCrContainerBreakdown(itemId){
+  const row = document.getElementById('cr_containers_row_'+itemId);
+  const label = document.getElementById('cr_toggle_label_'+itemId);
+  if(!row) return;
+  const ativar = row.style.display === 'none';
+  row.style.display = ativar ? 'table-row' : 'none';
+  if(label) label.textContent = ativar ? 'Ver total único' : `Detalhar por container`;
+  ['f_cr_'+itemId, 'f_cr_cobrado_'+itemId].forEach(id => {
+    const el = document.getElementById(id);
+    if(el){ el.readOnly = ativar; el.style.background = ativar ? 'var(--bg)' : ''; el.style.color = ativar ? 'var(--muted)' : ''; }
+  });
+  ['f_cr_moeda_'+itemId, 'f_cr_cobrado_moeda_'+itemId].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.disabled = ativar;
+  });
+  atualizarTotalCustosReais();
 }
 
 // Lê os valores atualmente digitados nos campos f_cr_* (sem depender de
@@ -581,14 +677,40 @@ function renderCustosReaisTab(p){
 // criou as duas colunas assim.
 function coletarCustosReaisDoForm(){
   const obj = {};
+  const eurEl = document.getElementById('f_cr_cambio_eur');
+  if(eurEl && eurEl.value !== '') obj._cambio_eur = parseFloat(eurEl.value);
+  const containers = containersDoProcesso(_editando || {});
   custosReaisItensFlat().forEach(item => {
-    const el = document.getElementById('f_cr_'+item.id);
-    if(el && el.value !== '') obj[item.id] = parseFloat(el.value);
     // "Cobrado do Cliente" fica na MESMA real_json, com sufixo _cobrado —
     // não precisa de coluna nova (ver calcularReceitaRealTotal em
-    // controle-core.js, que lê exatamente essa convenção).
-    const elCobrado = document.getElementById('f_cr_cobrado_'+item.id);
-    if(elCobrado && elCobrado.value !== '') obj[item.id+'_cobrado'] = parseFloat(elCobrado.value);
+    // controle-core.js, que lê exatamente essa convenção). Cada lado (Pago/
+    // Cobrado) é coletado com o mesmo par de prefixos, valor+moeda; quando a
+    // taxa está em modo "detalhado por container" (sub-linha visível), lê os
+    // campos por container em vez do campo único da linha principal.
+    [
+      { sufixo:'',         prefV:'f_cr_',          prefM:'f_cr_moeda_' },
+      { sufixo:'_cobrado', prefV:'f_cr_cobrado_',  prefM:'f_cr_cobrado_moeda_' },
+    ].forEach(({sufixo, prefV, prefM}) => {
+      const containersRow = document.getElementById('cr_containers_row_'+item.id);
+      const emBreakdown = containersRow && containersRow.style.display !== 'none';
+      if(emBreakdown){
+        const porContainer = {};
+        containers.forEach((nome, idx) => {
+          const el = document.getElementById(prefV+item.id+'__c'+idx);
+          const moedaEl = document.getElementById(prefM+item.id+'__c'+idx);
+          if(el && el.value !== ''){
+            porContainer[nome] = { valor: parseFloat(el.value), moeda: moedaEl ? moedaEl.value : item.unidade };
+          }
+        });
+        if(Object.keys(porContainer).length) obj[item.id+sufixo] = { porContainer };
+        return;
+      }
+      const el = document.getElementById(prefV+item.id);
+      const moedaEl = document.getElementById(prefM+item.id);
+      if(el && el.value !== ''){
+        obj[item.id+sufixo] = { valor: parseFloat(el.value), moeda: moedaEl ? moedaEl.value : item.unidade };
+      }
+    });
   });
   return obj;
 }
@@ -607,24 +729,34 @@ function atualizarTotalCustosReais(){
   const cambio = coletarCambioCustosReaisDoForm();
   const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 
+  const obj = coletarCustosReaisDoForm();
+  const snapshot = { ..._editando, real_json: obj, real_cambio: cambio };
+
   // Margem por LINHA (pago × cobrado), atualizada a cada tecla — igual ao
-  // Conexos mostra Pagamento × Recebimento lado a lado por taxa.
+  // Conexos mostra Pagamento × Recebimento lado a lado por taxa. Sempre em
+  // R$: Pago e Cobrado podem estar em moedas diferentes entre si (ex.: paga
+  // o representante em BRL, recebe do importador em USD), então R$ é a
+  // única unidade em que dá pra comparar os dois lados direto.
   custosReaisItensFlat().forEach(item => {
     const badge = document.getElementById('cr_margem_'+item.id);
+    const normPago = normalizarValorRealItem(obj[item.id], item, snapshot);
+    const normCobrado = normalizarValorRealItem(obj[item.id+'_cobrado'], item, snapshot);
+    // Quando a taxa está em modo "detalhado por container", a linha
+    // principal fica só como resumo somado em R$ (readonly) — atualiza o
+    // valor mostrado a cada tecla digitada nas sub-linhas.
+    const containersRow = document.getElementById('cr_containers_row_'+item.id);
+    if(containersRow && containersRow.style.display !== 'none'){
+      const pagoInput = document.getElementById('f_cr_'+item.id);
+      const cobradoInput = document.getElementById('f_cr_cobrado_'+item.id);
+      if(pagoInput) pagoInput.value = normPago ? normPago.totalBrl.toFixed(2) : '';
+      if(cobradoInput) cobradoInput.value = normCobrado ? normCobrado.totalBrl.toFixed(2) : '';
+    }
     if(!badge) return;
-    const elPago = document.getElementById('f_cr_'+item.id);
-    const elCobrado = document.getElementById('f_cr_cobrado_'+item.id);
-    const pago = elPago && elPago.value !== '' ? parseFloat(elPago.value) : null;
-    const cobrado = elCobrado && elCobrado.value !== '' ? parseFloat(elCobrado.value) : null;
-    if(pago == null || cobrado == null || isNaN(pago) || isNaN(cobrado)){ badge.innerHTML = ''; return; }
-    // Margem na própria unidade do item (USD ou BRL) — mais direto de ler
-    // linha a linha do que já converter pra BRL aqui.
-    const margem = cobrado - pago;
-    const simb = item.unidade === 'USD' ? 'US$' : 'R$';
-    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'▲':'▼'} margem: ${simb} ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+    if(!normPago || !normCobrado){ badge.innerHTML = ''; return; }
+    const margem = normCobrado.totalBrl - normPago.totalBrl;
+    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'▲':'▼'} margem: R$ ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
   });
 
-  const snapshot = { ..._editando, real_json: coletarCustosReaisDoForm(), real_cambio: cambio };
   const custosReais = calcularCustoRealTotal(snapshot);
   if(!custosReais){ wrap.innerHTML = ''; return; }
   const receitaReais = calcularReceitaRealTotal(snapshot);

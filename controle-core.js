@@ -91,7 +91,7 @@ let _editando = null; // processo sendo editado
 // sessão são enviados — os demais ficam intocados no banco.
 let _editandoOriginal = null;
 let _notifAberto = false;
-let _cambio = { USD: 1, BRL: 1 };
+let _cambio = { USD: 1, BRL: 1, EUR: 1 };
 
 // ── URL por processo (task #59) ──────────────────────────────────
 // _baseUrlPath é a tela "de baixo" (/controle ou /financeiro) — pra onde
@@ -592,6 +592,86 @@ function custosReaisItensFlat(){
   return CUSTOS_REAIS_CONFIG.flatMap(g => g.itens.map(it => ({...it, grupo:g.grupo})));
 }
 
+// ── MULTI-MOEDA + QUEBRA POR CONTAINER (Pago × Cobrado por taxa) ──────
+// Igual à tela de Taxas do Conexos: cada taxa pode ter Pago e Cobrado em
+// moedas diferentes (BRL/USD/EUR, cada lado com sua própria moeda — ex.:
+// paga o representante em BRL, recebe do importador em USD), e quando o
+// processo tem mais de um container, cada taxa "porContainer" pode ser
+// detalhada container a container em vez de um valor único pro processo
+// inteiro. Formato salvo em real_json[item.id] (e o mesmo com sufixo
+// "_cobrado"), aceita 3 formatos pra manter compatibilidade com dados já
+// salvos antes dessa mudança:
+//   número puro            → legado: valor na moeda padrão do item (unidade)
+//   { valor, moeda }       → valor único, moeda escolhida pelo usuário
+//   { porContainer:{ 'CONTAINER1':{valor,moeda}, ... } } → detalhado
+const MOEDAS_REAIS = [
+  { code:'BRL', simbolo:'R$' },
+  { code:'USD', simbolo:'US$' },
+  { code:'EUR', simbolo:'€' },
+];
+
+// Câmbio de uma moeda em relação a R$ pra este processo. USD usa a mesma
+// coluna já existente (p.real_cambio, com fallback pro câmbio da PI); EUR
+// não tem coluna própria — pra não precisar de migration nova, fica salvo
+// dentro do próprio real_json (_cambio_eur), com fallback pro câmbio do dia
+// (_cambio.EUR, já buscado no boot pra barra do topo).
+function taxaCambioMoedaReal(moeda, p){
+  if(moeda === 'BRL') return 1;
+  if(moeda === 'USD'){
+    return parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || (typeof _cambio !== 'undefined' ? _cambio.USD : null) || null;
+  }
+  if(moeda === 'EUR'){
+    const salvo = p.real_json && parseFloat(p.real_json._cambio_eur);
+    return (salvo && !isNaN(salvo) ? salvo : null) || (typeof _cambio !== 'undefined' ? _cambio.EUR : null) || null;
+  }
+  return null;
+}
+
+// Lista de containers do processo (campo texto livre, separado por vírgula/
+// ponto-e-vírgula/quebra de linha) — usada só pra oferecer o detalhamento
+// por container nas taxas "porContainer". Sem containers cadastrados (ou só
+// 1), a taxa fica como valor único, sem opção de detalhar.
+function containersDoProcesso(p){
+  if(!p || !p.container) return [];
+  return String(p.container).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
+}
+
+// Converte o valor bruto salvo em real_json[item.id] (nos 3 formatos
+// possíveis, ver comentário acima) pro total em R$ desse item. Retorna
+// null quando não há nada lançado.
+function normalizarValorRealItem(raw, item, p){
+  if(raw == null || raw === '') return null;
+  if(typeof raw === 'object'){
+    if(raw.porContainer && typeof raw.porContainer === 'object'){
+      let totalBrl = 0, count = 0;
+      Object.values(raw.porContainer).forEach(entry => {
+        if(!entry || entry.valor == null || entry.valor === '') return;
+        const valor = parseFloat(entry.valor);
+        if(isNaN(valor)) return;
+        const moeda = entry.moeda || item.unidade;
+        const cambio = taxaCambioMoedaReal(moeda, p);
+        totalBrl += moeda === 'BRL' ? valor : valor * (cambio || 0);
+        count++;
+      });
+      if(count === 0) return null;
+      return { totalBrl, count, porContainer:true };
+    }
+    if(raw.valor != null && raw.valor !== ''){
+      const valor = parseFloat(raw.valor);
+      if(isNaN(valor)) return null;
+      const moeda = raw.moeda || item.unidade;
+      const cambio = taxaCambioMoedaReal(moeda, p);
+      return { totalBrl: moeda === 'BRL' ? valor : valor * (cambio || 0), count:1, moeda };
+    }
+    return null;
+  }
+  // legado: número (ou string numérica) puro, na moeda padrão do item
+  const valor = parseFloat(raw);
+  if(isNaN(valor)) return null;
+  const cambio = taxaCambioMoedaReal(item.unidade, p);
+  return { totalBrl: item.unidade === 'BRL' ? valor : valor * (cambio || 0), count:1, moeda:item.unidade };
+}
+
 // Valor COTADO de um item, já no TOTAL do processo (multiplicado pelos
 // containers quando for porContainer) — usado só pra pré-preencher/mostrar
 // como referência na aba Custos Reais, nunca entra direto no cálculo do
@@ -618,14 +698,11 @@ function calcularCustoRealTotal(p){
   let total = 0, count = 0;
   const detalhe = [];
   custosReaisItensFlat().forEach(item => {
-    const bruto = reais[item.id];
-    if(bruto == null || bruto === '') return;
-    const valor = parseFloat(bruto);
-    if(isNaN(valor)) return;
-    const valorBrl = item.unidade === 'USD' ? valor * (cambio || 0) : valor;
-    total += valorBrl;
+    const norm = normalizarValorRealItem(reais[item.id], item, p);
+    if(!norm) return;
+    total += norm.totalBrl;
     count++;
-    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valor, valorBrl });
+    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valorBrl:norm.totalBrl, porContainer:!!norm.porContainer });
   });
   if(count === 0) return null;
   return { total, detalhe, cambio, count };
@@ -644,14 +721,11 @@ function calcularReceitaRealTotal(p){
   let total = 0, count = 0;
   const detalhe = [];
   custosReaisItensFlat().forEach(item => {
-    const bruto = reais[item.id+'_cobrado'];
-    if(bruto == null || bruto === '') return;
-    const valor = parseFloat(bruto);
-    if(isNaN(valor)) return;
-    const valorBrl = item.unidade === 'USD' ? valor * (cambio || 0) : valor;
-    total += valorBrl;
+    const norm = normalizarValorRealItem(reais[item.id+'_cobrado'], item, p);
+    if(!norm) return;
+    total += norm.totalBrl;
     count++;
-    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valor, valorBrl });
+    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valorBrl:norm.totalBrl, porContainer:!!norm.porContainer });
   });
   if(count === 0) return null;
   return { total, detalhe, cambio, count };
