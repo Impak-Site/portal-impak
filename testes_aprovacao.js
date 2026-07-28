@@ -9,7 +9,7 @@
  * lógica de mapeamento de campos.
  */
 
-const { mapearCotacaoParaProcesso, gerarReferenciaSugerida, extrairEstimativa } = require('./mapeamento_cotacao_processo.js');
+const { mapearCotacaoParaProcesso, gerarReferenciaSugerida, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js');
 
 let totalTestes = 0, totalFalhas = 0;
 function teste(nome, fn) {
@@ -213,6 +213,62 @@ teste('resumo null/undefined retorna null (cotação nunca foi calculada)', () =
 teste('resumo só com campos de status (sem nenhum número) retorna null', () => {
   const est = extrairEstimativa({ status: 'aprovada', processo_id: 'abc' });
   iguais(est, null);
+});
+
+// ── Caso 8: gerarRealJsonInicial() — Custos Reais preenchidos direto na aprovação ──
+console.log('\n📋 gerarRealJsonInicial() — real_json gravado no processo ao aprovar');
+teste('custosCotados null/undefined retorna null (processo abre em branco, igual hoje)', () => {
+  iguais(gerarRealJsonInicial(null), null);
+  iguais(gerarRealJsonInicial(undefined), null);
+});
+teste('popula itens simples (não porContainer) com {valor, moeda}', () => {
+  const custosCotados = {
+    containers: 1,
+    compra: { fob: 27812.96, frete: 1000, seguro_usd: 50, taxa_ce: 30 },
+    impostos: { ii: 5000, ipi: 200, pis: 100, cofins: 300, icms: 1200, ibs: 10, cbs: 5 },
+    comissoes: { br: 800, china: 500, boss: 200 },
+  };
+  const rj = gerarRealJsonInicial(custosCotados);
+  iguais(rj.fob, { valor: 27812.96, moeda: 'USD' });
+  iguais(rj.frete, { valor: 1000, moeda: 'USD' });
+  iguais(rj.seguro, { valor: 50, moeda: 'USD' });
+  iguais(rj.taxa_ce, { valor: 30, moeda: 'USD' });
+  iguais(rj.ii, { valor: 5000, moeda: 'BRL' });
+  iguais(rj.comissao_br, { valor: 800, moeda: 'BRL' });
+});
+teste('multiplica itens porContainer pela quantidade de containers da cotação', () => {
+  const custosCotados = {
+    containers: 3,
+    taxas_fixas: { siscomex: 200, marinha: 150, armazenagem: 900 },
+    taxas_usd: { handling: 80 },
+  };
+  const rj = gerarRealJsonInicial(custosCotados);
+  // siscomex e handling são porContainer:true → valor unitário × 3 containers
+  iguais(rj.siscomex, { valor: 600, moeda: 'BRL' });
+  iguais(rj.handling, { valor: 240, moeda: 'USD' });
+  // armazenagem é porContainer:false → não multiplica
+  iguais(rj.armazenagem, { valor: 900, moeda: 'BRL' });
+});
+teste('sem containers informado, assume 1 (não quebra nem zera)', () => {
+  const rj = gerarRealJsonInicial({ taxas_fixas: { siscomex: 200 } });
+  iguais(rj.siscomex, { valor: 200, moeda: 'BRL' });
+});
+teste('ignora itens ausentes/zerados sem gerar chave (undefined ≠ 0)', () => {
+  const rj = gerarRealJsonInicial({ containers: 1, compra: { fob: 1000 } });
+  verdadeiro(rj.fob !== undefined);
+  verdadeiro(rj.frete === undefined, 'frete não informado não deveria aparecer no real_json');
+});
+teste('custosCotados sem nenhum campo populado retorna null', () => {
+  iguais(gerarRealJsonInicial({ containers: 2 }), null);
+});
+teste('custos_diversos (nível raiz, não dentro de taxas_fixas) é mapeado', () => {
+  const rj = gerarRealJsonInicial({ containers: 1, custos_diversos: 450 });
+  iguais(rj.custos_diversos, { valor: 450, moeda: 'BRL' });
+});
+teste('resultado é diretamente compatível com o formato {valor,moeda} de real_json (ver teste_custos_reais.js)', () => {
+  const rj = gerarRealJsonInicial({ containers: 2, compra: { fob: 100 }, taxas_fixas: { siscomex: 50 } });
+  verdadeiro(typeof rj.fob.valor === 'number' && typeof rj.fob.moeda === 'string');
+  verdadeiro(typeof rj.siscomex.valor === 'number' && typeof rj.siscomex.moeda === 'string');
 });
 
 // ── RESUMO ───────────────────────────────────────────────────────

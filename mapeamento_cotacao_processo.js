@@ -36,10 +36,97 @@ const FINALIDADE_POR_TIPO_IMPORTACAO = {
   // — fica sem valor e a observação registra o tipo original.
 };
 
+// Mapeia cada item de CUSTOS_REAIS_CONFIG (controle-core.js) pro caminho
+// correspondente dentro de `custos_cotados_json` (o formato salvo pelo
+// Calculador em `resumo.custos_cotados_json`, ver calculador.html). Não dá
+// pra reaproveitar CUSTOS_REAIS_CONFIG diretamente aqui porque esse arquivo
+// roda em Node (sem os globais de browser que controle-core.js espera) —
+// então mantemos essa cópia enxuta, só com o que é preciso pra gerar o
+// `real_json` inicial no momento da aprovação. Ver CUSTOS_REAIS_CONFIG em
+// controle-core.js pra a lista "oficial" (mesmos ids/unidades/porContainer).
+const ITENS_CUSTOS_REAIS = [
+  // Compra e Frete (USD)
+  { id: 'fob',     unidade: 'USD', porContainer: false, get: c => c?.compra?.fob },
+  { id: 'frete',   unidade: 'USD', porContainer: false, get: c => c?.compra?.frete },
+  { id: 'seguro',  unidade: 'USD', porContainer: false, get: c => c?.compra?.seguro_usd },
+  { id: 'taxa_ce', unidade: 'USD', porContainer: false, get: c => c?.compra?.taxa_ce },
+  // Impostos de Importação (BRL, apenasPago)
+  { id: 'ii',      unidade: 'BRL', porContainer: false, get: c => c?.impostos?.ii },
+  { id: 'ipi',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.ipi },
+  { id: 'pis',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.pis },
+  { id: 'cofins',  unidade: 'BRL', porContainer: false, get: c => c?.impostos?.cofins },
+  { id: 'icms',    unidade: 'BRL', porContainer: false, get: c => c?.impostos?.icms },
+  { id: 'ibs',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.ibs },
+  { id: 'cbs',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.cbs },
+  // Comissões (BRL)
+  { id: 'comissao_br',    unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.br },
+  { id: 'comissao_china', unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.china },
+  { id: 'comissao_boss',  unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.boss },
+  // Taxas Operacionais — fixas em BRL, porContainer:true
+  { id: 'siscomex',      unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.siscomex },
+  { id: 'marinha',       unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.marinha },
+  { id: 'emissao_li',    unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.emissao_li },
+  { id: 'baixa_patio',   unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.baixa_patio },
+  { id: 'capatazia',     unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.capatazia },
+  { id: 'liberacao_bl',  unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.liberacao_bl },
+  { id: 'despachante',   unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.despachante },
+  { id: 'sda',           unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.sda },
+  { id: 'lavacao',       unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.lavacao },
+  { id: 'administrativo', unidade: 'BRL', porContainer: true, get: c => c?.taxas_fixas?.administrativo },
+  { id: 'agente',        unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.agente },
+  // Taxas Operacionais — fixas em BRL, porContainer:false
+  { id: 'armazenagem',    unidade: 'BRL', porContainer: false, get: c => c?.taxas_fixas?.armazenagem },
+  { id: 'custos_diversos', unidade: 'BRL', porContainer: false, get: c => c?.custos_diversos },
+  // Taxas Operacionais — em USD, porContainer:true
+  { id: 'handling',         unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.handling },
+  { id: 'additional_costs', unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.additional_costs },
+  { id: 'import_logistics', unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.import_logistics },
+  { id: 'trs',               unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.trs },
+  { id: 'tsc',               unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.tsc },
+  { id: 'drop_off',          unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.drop_off },
+  { id: 'isps',              unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.isps },
+  { id: 'iof',               unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.iof },
+  { id: 'desconsolidacao',   unidade: 'USD', porContainer: true, get: c => c?.taxas_usd?.desconsolidacao },
+];
+
 function numOuNull(v) {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Gera o `real_json` inicial de um processo a partir do `custos_cotados_json`
+ * salvo na cotação aprovada (mesma estrutura que calculador.html grava em
+ * `resumo.custos_cotados_json` — ver comentário lá, "pra virar o ponto de
+ * partida ('Cotado') quando o processo em Controle abrir a aba Custos
+ * Reais"). Antes disso só era usado como sugestão passiva de UI (preenchia
+ * o placeholder "Cotado: ..." mas exigia alguém abrir a aba e salvar); agora
+ * grava direto no processo no momento da aprovação, então a aba Custos Reais
+ * já abre com os valores da cotação como "Pago".
+ *
+ * Cada item populado vira `real_json[item.id] = { valor, moeda: item.unidade }`.
+ * Itens `porContainer:true` têm o valor unitário multiplicado pela
+ * quantidade de containers da cotação (mesma lógica de
+ * `calcularCustoCotadoItem` em controle-core.js).
+ *
+ * Retorna `null` se não houver `custosCotados` ou nenhum item populado —
+ * nesse caso o processo fica sem `real_json` (aba abre em branco, igual
+ * hoje pra processos criados direto no Controle).
+ */
+function gerarRealJsonInicial(custosCotados) {
+  if (!custosCotados) return null;
+  const containers = numOuNull(custosCotados.containers) || 1;
+  const realJson = {};
+  let algumItem = false;
+  for (const item of ITENS_CUSTOS_REAIS) {
+    const base = numOuNull(item.get(custosCotados));
+    if (base === null) continue;
+    const valor = item.porContainer ? base * containers : base;
+    realJson[item.id] = { valor: Math.round(valor * 100) / 100, moeda: item.unidade };
+    algumItem = true;
+  }
+  return algumItem ? realJson : null;
 }
 
 // Gera uma referência sugerida e legível a partir do nome do cliente + data.
@@ -179,4 +266,10 @@ function extrairEstimativa(resumo) {
   return Object.keys(estimativa).length ? estimativa : null;
 }
 
-module.exports = { mapearCotacaoParaProcesso, gerarReferenciaSugerida, extrairEstimativa, NCM_POR_TIPO };
+module.exports = {
+  mapearCotacaoParaProcesso,
+  gerarReferenciaSugerida,
+  extrairEstimativa,
+  gerarRealJsonInicial,
+  NCM_POR_TIPO,
+};

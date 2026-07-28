@@ -25,7 +25,7 @@ const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
-const { mapearCotacaoParaProcesso, extrairEstimativa } = require('./mapeamento_cotacao_processo.js');
+const { mapearCotacaoParaProcesso, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -1692,11 +1692,20 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
     // Guarda o "cotado" (custo/faturamento/lucro estimados dos dois cenários) junto
     // do processo, pra dar pra comparar depois com o resultado real no Fechamento
     // (ver seção 💰 Fechamento na ficha do processo).
+    const estimativa = extrairEstimativa(cot.resumo);
+    // Além de guardar a estimativa (só leitura), já grava os custos cotados
+    // como ponto de partida REAL da aba Custos Reais — antes disso o usuário
+    // precisava abrir a aba manualmente pra ver o "Cotado" como sugestão; agora
+    // o processo já nasce com esses valores preenchidos em "Pago" (ver
+    // gerarRealJsonInicial em mapeamento_cotacao_processo.js).
+    const custosCotados = estimativa && estimativa.custos_cotados_json;
     const processo = {
       ...processoBase,
       id: gerarUUID(),
       updated_at: new Date().toISOString(),
-      estimativa_json: extrairEstimativa(cot.resumo),
+      estimativa_json: estimativa,
+      real_json: gerarRealJsonInicial(custosCotados),
+      real_cambio: (custosCotados && Number.isFinite(parseFloat(custosCotados.cambio)) ? parseFloat(custosCotados.cambio) : null),
       cotacao_id: cot.id,
     };
     const { error: errProc } = await sb().from('controle_processos').insert(processo);
