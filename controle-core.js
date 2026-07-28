@@ -519,13 +519,135 @@ function renderDemurInfo(p){
 // na aba Documentos). Compara sempre contra o cenário Com S.T. (é o mais
 // comum na prática — resumo antigo, salvo antes dos dois cenários existirem,
 // cai no faturamento genérico que tinha na época).
+// ── CUSTOS REAIS — apuração de lucro por processo, item a item ────
+// Mesmos grupos/campos usados no Calculador (TAXAS_CONFIG + FOB/Frete/
+// Seguro/Taxa C.E. + Impostos + Comissões) — pra dar pra apurar o lucro
+// real de QUALQUER processo, com ou sem cotação aprovada. `cotado(c)` lê o
+// valor cotado de dentro de p.estimativa_json.custos_cotados_json (gravado
+// por resumoParaLista() no calculador.html, ao salvar a cotação) — usado só
+// como REFERÊNCIA/ponto de partida na aba Custos Reais; o cálculo do lucro
+// real (ver calcularCustoRealTotal) usa exclusivamente o que está em
+// p.real_json/p.real_cambio, preenchido pelo usuário no Controle.
+//
+// p.real_json e p.real_cambio já existem no banco (migration
+// 0004_add_custos_reais_processo.sql, aplicada em produção e no lab em
+// 2026-07-19) — a coluna foi criada antes pra essa mesma finalidade, mas o
+// código que a usava nunca chegou a ser commitado. Reaproveitada aqui em vez
+// de criar coluna nova. real_json guarda um valor TOTAL (já em R$ ou US$,
+// conforme a unidade do item) por chave de item (ver custosReaisItensFlat) —
+// mais simples que o { fixas, usd } por-container original documentado na
+// migration, e cobre também Compra/Impostos/Comissões, não só as 21 taxas.
+const CUSTOS_REAIS_CONFIG = [
+  { grupo:'Compra e Frete', itens:[
+    { id:'fob',      label:'FOB',                 unidade:'USD', cotado:c=>c?.compra?.fob },
+    { id:'frete',    label:'Frete Internacional',  unidade:'USD', cotado:c=>c?.compra?.frete },
+    { id:'seguro',   label:'Seguro',               unidade:'USD', cotado:c=>c?.compra?.seguro_usd },
+    { id:'taxa_ce',  label:'Taxa C.E.',            unidade:'USD', cotado:c=>c?.compra?.taxa_ce },
+  ]},
+  { grupo:'Impostos de Importação', itens:[
+    { id:'ii',     label:'II',     unidade:'BRL', cotado:c=>c?.impostos?.ii },
+    { id:'ipi',    label:'IPI',    unidade:'BRL', cotado:c=>c?.impostos?.ipi },
+    { id:'pis',    label:'PIS',    unidade:'BRL', cotado:c=>c?.impostos?.pis },
+    { id:'cofins', label:'COFINS', unidade:'BRL', cotado:c=>c?.impostos?.cofins },
+    { id:'icms',   label:'ICMS',   unidade:'BRL', cotado:c=>c?.impostos?.icms },
+    { id:'ibs',    label:'IBS',    unidade:'BRL', cotado:c=>c?.impostos?.ibs },
+    { id:'cbs',    label:'CBS',    unidade:'BRL', cotado:c=>c?.impostos?.cbs },
+  ]},
+  { grupo:'Comissões', itens:[
+    { id:'comissao_br',    label:'Comissão BR (Representante)', unidade:'BRL', cotado:c=>c?.comissoes?.br },
+    { id:'comissao_china', label:'Comissão China',              unidade:'BRL', cotado:c=>c?.comissoes?.china },
+    { id:'comissao_boss',  label:'Comissão Boss/Lopes',         unidade:'BRL', cotado:c=>c?.comissoes?.boss },
+  ]},
+  // porContainer:true = no Calculador esse valor é POR container (r.txOp);
+  // usado só pra multiplicar corretamente ao calcular o "Cotado" total abaixo
+  // (calcularCustoCotadoItem). Os valores REAIS lançados na aba são sempre o
+  // TOTAL do item pro processo inteiro — o usuário não precisa multiplicar.
+  { grupo:'Taxas Operacionais', itens:[
+    { id:'siscomex',         label:'Siscomex',                unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.siscomex },
+    { id:'marinha',          label:'Marinha/AFRMM',           unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.marinha },
+    { id:'armazenagem',      label:'Armazenagem',             unidade:'BRL', porContainer:false, cotado:c=>c?.taxas_fixas?.armazenagem },
+    { id:'emissao_li',       label:'Emissão L.I.',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.emissao_li },
+    { id:'baixa_patio',      label:'Baixa Pátio',             unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.baixa_patio },
+    { id:'capatazia',        label:'Capatazia/THC',           unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.capatazia },
+    { id:'liberacao_bl',     label:'Liberação BL',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.liberacao_bl },
+    { id:'despachante',      label:'Despachante',             unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.despachante },
+    { id:'sda',              label:'SDA',                     unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.sda },
+    { id:'lavacao',          label:'Lavação Container',       unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.lavacao },
+    { id:'administrativo',   label:'Administrativo',          unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.administrativo },
+    { id:'agente',           label:'Agente Carga',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.agente },
+    { id:'custos_diversos',  label:'Custos Diversos',         unidade:'BRL', porContainer:false, cotado:c=>c?.custos_diversos },
+    { id:'handling',         label:'Handling at Destination', unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.handling },
+    { id:'additional_costs', label:'Additional Costs',        unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.additional_costs },
+    { id:'import_logistics', label:'Import Logistics',        unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.import_logistics },
+    { id:'trs',              label:'TRS',                     unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.trs },
+    { id:'tsc',              label:'TSC',                     unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.tsc },
+    { id:'drop_off',         label:'Drop Off',                unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.drop_off },
+    { id:'isps',             label:'ISPS',                    unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.isps },
+    { id:'iof',              label:'IOF',                     unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.iof },
+    { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.desconsolidacao },
+  ]},
+];
+
+function custosReaisItensFlat(){
+  return CUSTOS_REAIS_CONFIG.flatMap(g => g.itens.map(it => ({...it, grupo:g.grupo})));
+}
+
+// Valor COTADO de um item, já no TOTAL do processo (multiplicado pelos
+// containers quando for porContainer) — usado só pra pré-preencher/mostrar
+// como referência na aba Custos Reais, nunca entra direto no cálculo do
+// lucro real (ver calcularCustoRealTotal, que só olha p.real_json).
+function calcularCustoCotadoItem(item, cotado){
+  if(!cotado) return null;
+  const base = item.cotado(cotado);
+  if(base == null) return null;
+  return item.porContainer ? base * (cotado.containers || 1) : base;
+}
+
+// Soma tudo que estiver preenchido em p.real_json (valores TOTAIS, já
+// digitados pelo usuário na aba Custos Reais — sem fallback automático pro
+// cotado aqui; o fallback acontece só visualmente, pré-preenchendo o campo
+// quando a aba abre). Itens em USD convertem pelo câmbio salvo em
+// p.real_cambio ou, na falta dele, pelo câmbio da PI do processo. Retorna
+// null quando não há NENHUM custo real lançado ainda — nesse caso
+// calcularFechamento() cai no cálculo antigo (NF Saída − NF Entrada),
+// preservando o comportamento de processos que nunca abriram essa aba.
+function calcularCustoRealTotal(p){
+  const reais = p.real_json;
+  if(!reais || typeof reais !== 'object') return null;
+  const cambio = parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || null;
+  let total = 0, count = 0;
+  const detalhe = [];
+  custosReaisItensFlat().forEach(item => {
+    const bruto = reais[item.id];
+    if(bruto == null || bruto === '') return;
+    const valor = parseFloat(bruto);
+    if(isNaN(valor)) return;
+    const valorBrl = item.unidade === 'USD' ? valor * (cambio || 0) : valor;
+    total += valorBrl;
+    count++;
+    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valor, valorBrl });
+  });
+  if(count === 0) return null;
+  return { total, detalhe, cambio, count };
+}
+
 function calcularFechamento(p){
   const est = p.estimativa_json || null;
   const nfEntrada = parseFloat(p.nf_entrada_valor);
   const nfSaida   = parseFloat(p.nf_saida_valor);
   const temReal   = !isNaN(nfSaida) && nfSaida > 0;
-  const lucroReal    = temReal ? (nfSaida - (isNaN(nfEntrada)?0:nfEntrada)) : null;
-  const pctLucroReal = temReal ? (lucroReal / nfSaida) : null;
+
+  // Custo real detalhado (aba "Custos Reais") — quando o processo tem pelo
+  // menos um item lançado ali, ele é MAIS PRECISO que o cálculo grosseiro
+  // NF Saída − NF Entrada (que ignora frete, seguro, impostos, comissões e
+  // taxas operacionais — cada processo tem uma combinação diferente do que
+  // teve ou não). Sem nenhum item lançado, mantém o cálculo antigo por NF.
+  const custosReais = calcularCustoRealTotal(p);
+  const custoRealTotal = custosReais ? custosReais.total : null;
+  const lucroReal = custosReais
+    ? (temReal ? (nfSaida - custoRealTotal) : null)
+    : (temReal ? (nfSaida - (isNaN(nfEntrada)?0:nfEntrada)) : null);
+  const pctLucroReal = (temReal && lucroReal != null) ? (lucroReal / nfSaida) : null;
 
   let custoEstimado = null, faturamentoEstimado = null, lucroEstimado = null, pctLucroEstimado = null;
   if(est){
@@ -553,6 +675,7 @@ function calcularFechamento(p){
     custoEstimado, faturamentoEstimado, lucroEstimado, pctLucroEstimado,
     nfEntrada: isNaN(nfEntrada)?null:nfEntrada, nfSaida: isNaN(nfSaida)?null:nfSaida,
     lucroReal, pctLucroReal, deltaValor, deltaPct,
+    custosReais, custoRealTotal, // detalhamento por item — null se a aba Custos Reais nunca foi preenchida
   };
 }
 
@@ -574,9 +697,16 @@ function renderFechamentoInfo(p){
     </div>`;
   }
 
+  // Quando a aba "Custos Reais" tem pelo menos um item lançado, o Lucro Real
+  // vem de Faturamento (NF Saída) − Custo Real Total (soma item a item) em
+  // vez da conta grosseira NF Saída − NF Entrada — mais preciso porque conta
+  // frete, seguro, impostos, comissões e taxas operacionais reais também.
+  const linhaCustoRealDetalhado = f.custosReais
+    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Real Total (${f.custosReais.count} ${f.custosReais.count===1?'item lançado':'itens lançados'} na aba Custos Reais)</span><strong>${r2(f.custoRealTotal)}</strong></div>`
+    : '';
   const linhaReal = f.temReal
-    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real (NF Saída − NF Entrada)</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>`
-    : `<div style="color:var(--muted);font-size:12px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
+    ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF Saída − Custo Real Total)':' (NF Saída − NF Entrada)'}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>`
+    : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:12px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
 
   const corDelta = f.deltaValor==null ? 'var(--muted)' : f.deltaValor >= 0 ? 'var(--ok)' : 'var(--err)';
   const linhaDelta = f.temComparacao
