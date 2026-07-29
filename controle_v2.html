@@ -323,6 +323,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div class="sidebar-label">Dashboard</div>
 <div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
 <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💰 Dashboard Financeiro</div>
+  <div class="sidebar-item" id="menu-resultado" onclick="toggleDashResultado()">📈 Dashboard Resultado</div>
 </div>
 <div class="sidebar-section">
 <div class="sidebar-label">Cadastros</div>
@@ -402,6 +403,15 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 </div>
 <div id="dash-fin-content"></div>
 </div>
+
+  <!-- DASHBOARD RESULTADO -->
+  <div id="dash-resultado" style="display:none;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📈 Dashboard Resultado</div>
+      <div id="periodo-seletor-resultado"></div>
+    </div>
+    <div id="dash-resultado-content"></div>
+  </div>
 
 <!-- TABELA -->
 <div class="table-wrap">
