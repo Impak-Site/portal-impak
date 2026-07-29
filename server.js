@@ -868,6 +868,12 @@ app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__d
 // upload de documentos, autocomplete de contatos etc. num arquivo separado
 // que rapidamente ficaria desatualizado em relação ao Controle de verdade.
 app.get('/financeiro', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+// "Tela exclusiva" do Dashboard Resultado (lucro estimado x real de todos
+// os processos) — mesmo esquema do /financeiro acima: serve o MESMO
+// controle_v2.html, e o front-end detecta location.pathname==='/resultado'
+// pra abrir direto no Dashboard Resultado (ver ativarTelaResultadoExclusiva
+// em controle-core.js).
+app.get('/resultado', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // Deep-link por processo — /controle/UD26-005 serve o mesmo controle_v2.html;
 // o front-end lê location.pathname no load e abre o painel lateral do
 // processo correspondente automaticamente (ver abrirProcessoPorURL()).
@@ -943,6 +949,44 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
     // edições concorrentes de outro usuário) o payload pode legitimamente
     // não incluir "referencia" se ela não foi um dos campos alterados.
     if (!processo.id && !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
+// ── TRAVA DE PROCESSO ("Fechar Processo") ──────────────────────
+    // Depois de conferido, o processo pode ser fechado (ver botão 🔒 no
+    // painel do processo) pra impedir que NF, custos reais, lucro etc.
+    // mudem por engano — trava o processo INTEIRO, não só os campos
+    // financeiros, porque é mais simples e mais previsível do que travar
+    // campo a campo. Isso é reforçado aqui no servidor (não só escondido/
+    // desabilitado no front-end) porque a trava só vale alguma coisa se
+    // não der pra contornar chamando a API direto.
+    if (processo.id) {
+      const { data: atual } = await sb()
+        .from('controle_processos')
+        .select('fechado')
+        .eq('id', processo.id)
+        .maybeSingle();
+      const estavaFechado = !!(atual && atual.fechado);
+      const tentandoDestravar = estavaFechado && processo.fechado === false;
+      const tentandoTravar    = !estavaFechado && processo.fechado === true;
+      
+      if (estavaFechado && !tentandoDestravar) {
+        return res.status(403).json({ erro: 'Processo fechado — reabra para editar (só gerente pode reabrir).' });
+      }
+      if (tentandoDestravar && req.session.role !== 'gerente') {
+        return res.status(403).json({ erro: 'Só um gerente pode reabrir um processo fechado.' });
+      }
+      // fechado_em/fechado_por são registrados pelo servidor, nunca aceitos
+      // direto do cliente — evita que alguém finja ter travado/destravado
+      // em outro momento ou como outro usuário.
+      if (tentandoTravar) {
+        processo.fechado_em = new Date().toISOString();
+        processo.fechado_por = req.session.usuario;
+      } else if (tentandoDestravar) {
+        processo.fechado_em = null;
+        processo.fechado_por = null;
+      } else {
+        delete processo.fechado; // não deixa alterar a trava por acidente num save comum
+      }
+    }
+    
     if (!processo.id) processo.id = gerarUUID();
     processo.updated_at = new Date().toISOString();
 
