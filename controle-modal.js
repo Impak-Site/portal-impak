@@ -299,7 +299,7 @@ function renderModal(){
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
           Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissões e taxas operacionais). Quando o processo veio de uma cotação aprovada, cada campo já nasce preenchido com o valor cotado — ajuste só o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cálculo simples por NF.
         </div>
-        ${renderCustosReaisTab(p)}
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;"><button type="button" class="btn btn-outline" onclick="document.getElementById('input-fechamento-planilha').click()">Importar Fechamento (.xlsm)</button><input type="file" id="input-fechamento-planilha" accept=".xlsx,.xlsm" style="display:none" onchange="importarFechamentoSelecionado(this)"></div>${renderCustosReaisTab(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
@@ -828,7 +828,7 @@ async function salvarCustosReaisTab(){
 }
 
 // ════════════════════════════════════════════════════════════════
-// HISTÓRICO — AUDITORIA DE ALTERAÇÕES
+async function importarFechamentoSelecionado(input){ if(!_editando || !input.files || !input.files[0]) return; const file = input.files[0]; const reader = new FileReader(); reader.onload = async function(ev){ try{ const b64 = String(ev.target.result).split(',')[1]; const r = await fetch('/api/controle/importar-fechamento', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arquivo_base64: b64}) }); const d = await r.json(); if(!d.ok){ showToast(d.erro || 'Erro ao importar planilha.', 'error'); return; } _editando.real_json = Object.assign({}, _editando.real_json || {}, d.real_json || {}); const patch = ['real_json']; if(d.datas && d.datas.data_embarque){ _editando.data_embarque = d.datas.data_embarque; patch.push('data_embarque'); } if(d.datas && d.datas.data_chegada){ _editando.data_chegada = d.datas.data_chegada; patch.push('data_chegada'); } if(d.datas && d.datas.data_registro_di){ _editando.data_registro_di = d.datas.data_registro_di; patch.push('data_registro_di'); } const ok = await salvarProcesso(_editando, patch); if(ok){ renderModal(); showToast('Fechamento importado - confira os valores.', 'success'); if(d.avisos && d.avisos.length) alert('Avisos: ' + d.avisos.join(' | ')); } }catch(err){ showToast('Erro ao importar: ' + err.message, 'error'); } }; reader.readAsDataURL(file); input.value=''; } // HISTÓRICO — AUDITORIA DE ALTERAÇÕES
 // ════════════════════════════════════════════════════════════════
 // Marcador usado no campo "campo" de uma entrada de log pra indicar que ela
 // não é uma alteração normal de campo, e sim o registro de "a IA leu este
