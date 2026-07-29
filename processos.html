@@ -1746,24 +1746,43 @@ async function runAnalysis(){
       throw new Error(`Documentos muito grandes (${sizeMB} MB). Use no máximo 4-5 PDFs por análise ou PDFs menores.`);
     }
 
-    // Chamada via servidor (proxy) — sem CORS, sem erro de channel, API key segura
-    const resp = await fetch('/api/analisar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: bodyStr,
-    });
+// Cria o job no servidor (resposta rápida) e acompanha o progresso via
+        // polling — evita manter uma conexão HTTP aberta por 1-2 minutos, que é
+        // o que causava os erros 502 em análises com vários documentos (ver
+        // /api/analisar em server.js).
+        const startResp = await fetch('/api/analisar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: bodyStr,
+        });
+        if(!startResp.ok){
+                let errMsg = 'Erro ' + startResp.status;
+                try{ const e = await startResp.json(); errMsg = e.erro || errMsg; }catch(e){}
+                throw new Error(errMsg);
+        }
+        const startProxy = await startResp.json();
+        if(!startProxy.ok || !startProxy.jobId) throw new Error(startProxy.erro || 'Erro ao iniciar análise');
 
-    if(!resp.ok){
-      let errMsg = 'Erro ' + resp.status;
-      try{ const e = await resp.json(); errMsg = e.erro || errMsg; }catch(e){}
-      throw new Error(errMsg);
-    }
+        const loadingSub = document.getElementById('loadingSub');
+        const _pollStart = Date.now();
+        let job;
+        while(true){
+                await new Promise(r => setTimeout(r, 2500));
+                const elapsed = Math.round((Date.now() - _pollStart) / 1000);
+                if(loadingSub) loadingSub.textContent = `Pode levar até 2 minutos com vários documentos. Não feche nem atualize esta página. (${elapsed}s)`;
+                if(elapsed > 200) throw new Error('Análise demorou demais. Tente novamente com menos documentos.');
+                const pollResp = await fetch('/api/analisar/job/' + startProxy.jobId);
+                if(!pollResp.ok) continue;
+                const pollProxy = await pollResp.json();
+                if(!pollProxy.ok) continue;
+                if(pollProxy.status === 'processando') continue;
+                job = pollProxy;
+                break;
+        }
+        if(job.status === 'erro') throw new Error(job.erro || 'Erro desconhecido na análise');
 
-    const proxy = await resp.json();
-    if(!proxy.ok) throw new Error(proxy.erro || 'Erro desconhecido na análise');
-
-    const data = proxy.data;
-    const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
+        const data = job.resultado;
+        const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
 
     let result;
     try{
