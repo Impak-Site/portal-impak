@@ -127,7 +127,25 @@ function renderModal(){
   // Confirmação visual demurrage (calculada dinamicamente — ver renderDemurInfo)
   let demurInfo = renderDemurInfo(p);
 
+  // ── TRAVA DE PROCESSO ("Fechar Processo") ──────────────────
+  // Quando fechado, o conteúdo do modal fica visualmente desabilitado
+  // (opacity + pointer-events:none) dentro do wrapper abaixo — a validação
+  // que de fato impede a edição é no servidor (ver server.js: POST /api/
+  // controle/v2/processo), isto aqui é só pra não deixar o usuário tentar
+  // editar um processo travado sem perceber.
+  const bloqueado = !!p.fechado;
+  const podeDestravar = _user && _user.role === 'gerente';
+  const bannerTrava = bloqueado
+  ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(0,0,0,.04);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
+  <div style="font-size:12px;color:var(--text);"><strong>🔒 Processo fechado</strong>${p.fechado_em?` em ${new Date(p.fechado_em).toLocaleString('pt-BR')}`:''}${p.fechado_por?` por ${esc(p.fechado_por)}`:''} — edição travada.</div>
+  ${podeDestravar ? `<button type="button" class="btn btn-outline" onclick="reabrirProcesso('${p.id}')">🔓 Reabrir para editar</button>` : `<span style="font-size:11px;color:var(--muted);">Só um gerente pode reabrir.</span>`}
+  </div>`
+    : '';
+  
+
   document.getElementById('modal-body').innerHTML = `
+  ${bannerTrava}
+  <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
     <!-- ABA: IDENTIFICAÇÃO -->
     <div class="tab-pane active" id="pane-identificacao">
       <div class="timeline">${timeline}</div>
@@ -190,7 +208,7 @@ function renderModal(){
       </div>
       <!-- Ações -->
       <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
-        <div>${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}</div>
+        <div>${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado — só gerente pode reabrir depois">🔒 Fechar Processo</button>`:''}</div>
         <div style="display:flex;gap:10px;">
           <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
           <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
@@ -480,6 +498,7 @@ function renderModal(){
           : '<div style="font-size:11px;color:var(--dim);">Carregando histórico...</div>'
         }
       </div>
+    </div>
     </div>
   `;
 
