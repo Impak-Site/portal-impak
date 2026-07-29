@@ -149,6 +149,137 @@ function toggleDashFinanceiro(){
   document.getElementById('menu-financeiro')?.classList.toggle('active', !visivel);
 }
 
+function toggleDashResultado(){
+  const el = document.getElementById('dash-resultado');
+  if(!el) return;
+  const visivel = el.style.display !== 'none';
+  el.style.display = visivel ? 'none' : 'block';
+  if(!visivel) renderDashResultado();
+  document.getElementById('menu-resultado')?.classList.toggle('active', !visivel);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DASHBOARD RESULTADO — "quanto lucramos de verdade": cruza o Lucro
+// Estimado (gravado em estimativa_json quando a cotação do Calculador é
+// aprovada) com o Lucro Real de cada processo (calcularFechamento, em
+// controle-core.js: NF Saída − Custo Real Total quando a aba Custos Reais
+// tem itens lançados, senão NF Saída − NF Entrada). Reaproveita
+// calcularFechamento() em vez de duplicar essa conta.
+// ══════════════════════════════════════════════════════════════════
+let _filResultado = { cliente:'' };
+
+function atualizarFiltroResultado(campo, valor){
+  _filResultado[campo] = valor;
+  renderDashResultado();
+}
+
+function renderDashResultado(){
+  const el = document.getElementById('dash-resultado-content');
+  if(!el) return;
+
+  renderPeriodoSeletor('periodo-seletor-resultado', 'resultado', renderDashResultado);
+  const {ini, fim, label: periodoLabel} = calcularPeriodo('resultado');
+  const f = _filResultado;
+
+  const fmtBRL = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const fmtPct = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
+
+  const opClientes = [...new Set(_processos.map(p=>p.cliente||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+
+  // "Realizado" no período = processos com NF Saída emitida dentro do
+  // período selecionado — é o momento em que o resultado vira fato
+  // (faturado), não mais só previsão.
+  const realizados = _processos.filter(p=>{
+    if(!p.nf_saida_data) return false;
+    const d = parseDataLocal(p.nf_saida_data);
+    if(d < ini || d > fim) return false;
+    if(f.cliente && p.cliente !== f.cliente) return false;
+    return true;
+  }).map(p => ({ p, fch: calcularFechamento(p) }));
+
+  const totalLucroReal     = realizados.reduce((s,x)=> s + (x.fch.lucroReal||0), 0);
+  const totalLucroEstimado = realizados.reduce((s,x)=> s + (x.fch.lucroEstimado||0), 0);
+  const totalFaturamento   = realizados.reduce((s,x)=> s + (x.fch.nfSaida||0), 0);
+  const margemMedia        = totalFaturamento > 0 ? totalLucroReal / totalFaturamento : null;
+  const deltaTotal         = totalLucroReal - totalLucroEstimado;
+
+  // Processos já cotados (têm estimativa) mas ainda sem NF Saída no período
+  // — só um contador informativo, não entra nos totais (evita inflar o
+  // resultado com venda que ainda não aconteceu).
+  const emAndamento = _processos.filter(p=>{
+    if(f.cliente && p.cliente !== f.cliente) return false;
+    if(p.nf_saida_data){ const d = parseDataLocal(p.nf_saida_data); if(d>=ini && d<=fim) return false; }
+    return !!p.estimativa_json && !p.nf_saida_valor;
+  });
+
+  function card(label, val, sub, cor){
+    return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
+    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
+    </div>`;
+  }
+
+  const kpis = [
+    card('Lucro Real', fmtBRL(totalLucroReal), `${realizados.length} processo${realizados.length!==1?'s':''} faturado(s) no período`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
+    card('Lucro Estimado (cotado)', fmtBRL(totalLucroEstimado), 'previsto no Calculador', 'var(--ac)'),
+    card('Diferença (Real − Estimado)', (deltaTotal>=0?'+':'')+fmtBRL(deltaTotal), deltaTotal>=0?'rendeu a mais que o cotado':'rendeu a menos que o cotado', deltaTotal>=0?'var(--ok)':'var(--err)'),
+    card('Margem Real Média', fmtPct(margemMedia), fmtBRL(totalFaturamento)+' faturado', 'var(--info)'),
+    ];
+
+  const linhas = realizados.slice().sort((a,b)=>(b.fch.lucroReal??-Infinity)-(a.fch.lucroReal??-Infinity));
+  el.innerHTML = `
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+  <div>
+  <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Cliente</label>
+  <select onchange="atualizarFiltroResultado('cliente', this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;max-width:180px;">
+  <option value="">Todos</option>
+  ${opClientes.map(v=>`<option value="${esc(v)}" ${f.cliente===v?'selected':''}>${esc(v)}</option>`).join('')}
+  </select>
+  </div>
+  <div style="font-size:11px;color:var(--muted);">Considerando processos com NF Saída emitida em: <strong>${periodoLabel}</strong></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px;">${kpis.join('')}</div>
+
+  ${emAndamento.length ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">+ ${emAndamento.length} processo${emAndamento.length!==1?'s':''} cotado(s) ainda sem NF Saída neste período (não entram nos totais acima).</div>` : ''}
+
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+  <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">Lucro por processo</div>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+  <thead>
+  <tr style="background:var(--bg);">
+  <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
+  <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Cliente</th>
+  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">NF Saída</th>
+  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Lucro Estimado</th>
+  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Lucro Real</th>
+  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Margem Real</th>
+  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Δ (Real − Estimado)</th>
+  </tr>
+  </thead>
+  <tbody>
+  ${linhas.map(({p,fch})=>{
+    const margem = fch.nfSaida ? (fch.lucroReal||0)/fch.nfSaida : null;
+    return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${p.id}');toggleDashResultado()">
+    <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${esc(p.referencia)}${p.fechado?' 🔒':''}</td>
+    <td style="padding:8px 12px;">${esc(p.cliente||'—')}</td>
+    <td style="padding:8px 12px;text-align:right;">${fmtBRL(fch.nfSaida)}</td>
+    <td style="padding:8px 12px;text-align:right;">${fmtBRL(fch.lucroEstimado)}</td>
+    <td style="padding:8px 12px;text-align:right;font-weight:700;color:${(fch.lucroReal||0)>=0?'var(--ok)':'var(--err)'};">${fmtBRL(fch.lucroReal)}</td>
+    <td style="padding:8px 12px;text-align:right;">${fmtPct(margem)}</td>
+    <td style="padding:8px 12px;text-align:right;font-weight:700;color:${fch.deltaValor==null?'var(--muted)':fch.deltaValor>=0?'var(--ok)':'var(--err)'};">${fch.deltaValor==null?'—':(fch.deltaValor>=0?'+':'')+fmtBRL(fch.deltaValor)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted);">Nenhum processo com NF Saída emitida neste período.</td></tr>'}
+  </tbody>
+  </table>
+  </div>
+  </div>
+  `;
+}
+  
+
 // ════════════════════════════════════════════════════════════════
 // FILTRO DE PERÍODO — cada dashboard (executivo/financeiro) tem seu
 // próprio estado independente, identificado por um namespace.
@@ -156,6 +287,7 @@ function toggleDashFinanceiro(){
 let _periodoEstado = {
   executivo:  { tipo:'mes', ini:'', fim:'' },
   financeiro: { tipo:'mes', ini:'', fim:'' },
+  resultado:  { tipo:'mes', ini:'', fim:'' },
 };
 
 // Calcula {ini, fim, label} a partir do tipo de período selecionado para
