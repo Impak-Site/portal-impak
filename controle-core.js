@@ -130,6 +130,7 @@ window.addEventListener('DOMContentLoaded', function(){
     carregarCambio();
     carregarProcessos().then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
+      if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
       // Deep-link ?processo=<id> — usado pelo Calculador pra abrir direto o
       // processo recém-criado ao aprovar uma cotação (ver aprovarCotacao()
       // em calculador.html). Só tenta abrir depois que a lista carregou,
@@ -181,6 +182,71 @@ function ativarTelaFinanceiroExclusiva(){
   const dashFin = document.getElementById('dash-financeiro');
   if(dashFin) dashFin.style.display = 'block';
   renderDashFinanceiro();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /resultado — mesmo esquema do /financeiro acima: o
+// Dashboard Resultado responde "quanto lucramos de verdade" cruzando o
+// estimado na cotação (estimativa_json, gravado ao aprovar no Calculador)
+// com o resultado real de cada processo (calcularFechamento — NF Saída −
+// Custo Real Total). Reaproveita _processos e calcularFechamento() em vez
+// de duplicar essa lógica.
+function ativarTelaResultadoExclusiva(){
+  document.title = 'IMPAK — Dashboard Resultado';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Dashboard Resultado';
+
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+
+  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('menu-resultado')?.classList.add('active');
+
+  const dashRes = document.getElementById('dash-resultado');
+  if(dashRes) dashRes.style.display = 'block';
+  renderDashResultado();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TRAVA DE PROCESSO ("Fechar Processo") — ver server.js (POST /api/
+// controle/v2/processo) pra a validação que de fato importa (o front-end
+// aqui só evita o usuário clicar sem querer; quem garante que ninguém
+// edita um processo fechado é o servidor).
+// ══════════════════════════════════════════════════════════════════
+async function fecharProcesso(id){
+  if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.')) return;
+  const r = await fetch('/api/controle/v2/processo', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ processo:{ id, fechado:true } })
+  });
+  const d = await r.json();
+  if(d.ok){
+    showToast('🔒 Processo fechado','ok');
+    await carregarProcessos(true);
+    const p = _processos.find(p=>p.id===id);
+    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+  } else showToast('Erro ao fechar: '+(d.erro||''),'err');
+}
+
+async function reabrirProcesso(id){
+  if(!confirm('Reabrir este processo para edição?')) return;
+  const r = await fetch('/api/controle/v2/processo', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ processo:{ id, fechado:false } })
+  });
+  const d = await r.json();
+  if(d.ok){
+    showToast('🔓 Processo reaberto','ok');
+    await carregarProcessos(true);
+    const p = _processos.find(p=>p.id===id);
+    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+  } else showToast('Erro ao reabrir: '+(d.erro||''),'err');
 }
 
 // ════════════════════════════════════════════════════════════════
