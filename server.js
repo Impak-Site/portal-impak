@@ -25,7 +25,7 @@ const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
-const { mapearCotacaoParaProcesso, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js');
+const { mapearCotacaoParaProcesso, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase } = require('./planilha-import.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -1635,7 +1635,7 @@ app.delete('/api/contatos/:id', auth('processos'), requireGerente, async (req, r
 
 // ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
 // Lista leve (só o resumo, não o formulário inteiro) pra tela de listagem.
-app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
+app.post('/api/calculador/importar-planilha', auth('tyredesk'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarPlanilhaBase(buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } }); app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('calculador_cotacoes')
