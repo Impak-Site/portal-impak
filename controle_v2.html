@@ -360,10 +360,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
 <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
 <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
-<button class="btn btn-outline" onclick="exportarFormatoCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor)">📋 Exportar p/ Cliente</button>
-<label style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap;" title="Marque antes de clicar em 'Exportar p/ Cliente' para incluir a coluna de Valor do Frete na planilha">
-<input type="checkbox" id="exportcliente-incluir-frete"> 💰 Incluir Frete no Follow Up
-</label>
+<button class="btn btn-outline" onclick="abrirModalExportCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor, ordenado por Data de Chegada) — confirme os status antes de gerar">📋 Exportar p/ Cliente</button>
 <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
 </div>
 <!-- FILTRO POR DATA -->
@@ -569,6 +566,31 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 </div>
 <div style="display:flex;justify-content:flex-end;padding-top:16px;">
 <button class="btn btn-outline" onclick="fecharModalCambio()">Cancelar</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- MODAL: EXPORTAR P/ CLIENTE — CONFIRMAR STATUS ANTES DE GERAR -->
+<div class="modal-bg" id="modal-exportcliente-bg">
+<div class="modal" style="max-width:460px;">
+<div class="modal-header">
+<div class="modal-title">📋 Exportar p/ Cliente</div>
+<button class="modal-close" onclick="fecharModalExportCliente()">×</button>
+</div>
+<div class="modal-body">
+<p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Marque os status que devem entrar no follow-up. A planilha sai agrupada por fornecedor e ordenada por Data de Chegada.</p>
+<div style="display:flex;gap:8px;margin-bottom:12px;">
+<button class="btn btn-sm btn-outline" onclick="marcarTodosStatusExport(true)">Marcar todos</button>
+<button class="btn btn-sm btn-outline" onclick="marcarTodosStatusExport(false)">Desmarcar todos</button>
+</div>
+<div id="exportcliente-status-list" style="display:flex;flex-direction:column;gap:2px;margin-bottom:16px;"></div>
+<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;margin-bottom:18px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;" title="Incluir a coluna de Valor do Frete na planilha">
+<input type="checkbox" id="exportcliente-incluir-frete"> 💰 Incluir Valor do Frete no Follow Up
+</label>
+<div style="display:flex;justify-content:flex-end;gap:10px;">
+<button class="btn btn-outline" onclick="fecharModalExportCliente()">Cancelar</button>
+<button class="btn btn-primary" onclick="confirmarExportCliente()">📤 Gerar Planilha</button>
 </div>
 </div>
 </div>
