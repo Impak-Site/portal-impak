@@ -1,6 +1,8 @@
 // controle-campos.js
 //
-// Portos padronizados, containers/produtos multi-item, confirmação de câmbio, máscara monetária, esc() e colarData() — campos e helpers usados no formulário do processo.
+// Portos padronizados, containers/produtos multi-item, vendas multi-cliente
+// (rateio de custo), confirmação de câmbio, máscara monetária, esc() e
+// colarData() — campos e helpers usados no formulário do processo.
 //
 // Parte do controle_v2.html, extraído do <script> único original pra
 // facilitar manutenção. Carregado via <script src> junto com os outros
@@ -126,7 +128,7 @@ function coletarESalvar(){
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
     'data_devolucao_vazio','demurrage_valor','demurrage_pago',
-    'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json',
+    'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json','vendas_json',
   ];
 
   const proc = {..._editando};
@@ -213,6 +215,21 @@ function coletarESalvar(){
   if(String(original.produtos_json||'')!==novosProdutosJson || String(original.produto||'')!==novoProdutoTxt) patchFields.push('produtos_json','produto');
   proc.produtos_json = novosProdutosJson;
   proc.produto = novoProdutoTxt;
+
+  // Salvar vendas multi-cliente (rateio de custo) e auditar mudança —
+  // mesmo padrão de containers_json/produtos_json acima. Vazio (nenhuma
+  // venda cadastrada) grava "[]", que calcularVendasResumo/parseVendas em
+  // controle-core.js tratam como "processo sem split" — 100% retrocompatível.
+  sincronizarVendasLegado();
+  const novasVendasJson = JSON.stringify(_vendas);
+  if(String(antigo.vendas_json||'')!==novasVendasJson){
+    log.push({
+      campo:'vendas_json', valor_antes: antigo.vendas_json||'', valor_depois: novasVendasJson,
+      usuario: _user.usuario, created_at: new Date().toISOString()
+    });
+  }
+  if(String(original.vendas_json||'')!==novasVendasJson) patchFields.push('vendas_json');
+  proc.vendas_json = novasVendasJson;
 
   proc.log = log;
   _editando = proc;
@@ -322,6 +339,153 @@ function sincronizarProdutoLegado(){
       ? validos.map(it=>it.descricao + (it.quantidade?` (${it.quantidade})`:'')).join(' + ')
       : '';
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// VENDAS MULTI-CLIENTE (rateio de custo por processo)
+// ════════════════════════════════════════════════════════════════
+// Um processo (de QUALQUER finalidade — Direto, Encomenda ou Conta e Ordem)
+// pode ser vendido pra mais de um cliente — ex.: meio contêiner pra um
+// cliente, meio pra outro. Cada venda tem seu próprio cliente, NF Saída
+// (número/data/valor) e a quantidade que levou de cada item; controle-core.js
+// (calcularRateioVenda/calcularVendasResumo) usa essa quantidade pra ratear
+// os custos reais do processo (aba Custos Reais) proporcionalmente entre as
+// vendas. Custos que NÃO devem ser rateados — ex.: um frete rodoviário extra
+// que só existiu porque um cliente específico pediu entrega em outra cidade
+// — entram em "custos_diretos" de cada venda, somados por fora do rateio.
+//
+// Sem nenhuma venda cadastrada (aba vazia, vendas_json="[]"), o processo
+// continua funcionando exatamente como antes: 1 cliente, 1 NF Saída, sem
+// rateio nenhum — esta aba é 100% opcional.
+let _vendas = []; // [{cliente, itens:[{descricao,quantidade}], nf_saida_numero, nf_saida_data, nf_saida_valor, custos_diretos:[{label,valor}], obs}]
+
+function vendaVazia(){
+  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'' };
+}
+
+function renderVendas(){
+  const wrap = document.getElementById('vendas-list');
+  if(!wrap) return;
+  if(!_vendas.length){
+    wrap.innerHTML = '<div class="empty"><div class="empty-icon">🧾</div><div class="empty-text">Nenhuma venda cadastrada — se este processo tem um único cliente/NF Saída, não precisa usar esta aba (use o campo Cliente em Identificação e NF Saída em Documentos, normalmente).</div></div>';
+    sincronizarVendasLegado();
+    renderResumoVendas();
+    return;
+  }
+  wrap.innerHTML = _vendas.map((v,vi)=>{
+    const itensHtml = (v.itens||[]).map((it,ii)=>`
+      <div style="display:grid;grid-template-columns:1fr 110px 32px;gap:6px;align-items:center;margin-bottom:6px;">
+        <input class="form-input" placeholder="Descrição do item vendido" value="${esc(it.descricao||'')}"
+          oninput="_vendas[${vi}].itens[${ii}].descricao=this.value;sincronizarVendasLegado()">
+        <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
+          oninput="_vendas[${vi}].itens[${ii}].quantidade=this.value;sincronizarVendasLegado();renderResumoVendas()">
+        ${(v.itens.length>1) ? `<button type="button" onclick="removerItemVenda(${vi},${ii})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>` : '<div></div>'}
+      </div>`).join('');
+    const custosHtml = (v.custos_diretos||[]).map((c,ci)=>`
+      <div style="display:grid;grid-template-columns:1fr 130px 32px;gap:6px;align-items:center;margin-bottom:6px;">
+        <input class="form-input" placeholder="Descrição do custo direto (ex: Frete extra)" value="${esc(c.label||'')}"
+          oninput="_vendas[${vi}].custos_diretos[${ci}].label=this.value;sincronizarVendasLegado()">
+        <input class="form-input" type="number" step="0.01" placeholder="R$" value="${c.valor!=null?c.valor:''}"
+          oninput="_vendas[${vi}].custos_diretos[${ci}].valor=this.value;sincronizarVendasLegado();renderResumoVendas()">
+        <button type="button" onclick="removerCustoDiretoVenda(${vi},${ci})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>
+      </div>`).join('') || '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;">Nenhum custo direto nesta venda.</div>';
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--bg);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">Venda ${vi+1}</div>
+        <button type="button" onclick="removerVenda(${vi})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:12px;font-weight:600;">🗑 Remover venda</button>
+      </div>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="form-group full" style="position:relative;"><label class="form-label">Cliente</label>
+          <input class="form-input" value="${esc(v.cliente||'')}" autocomplete="off" id="venda-cliente-${vi}"
+            oninput="_vendas[${vi}].cliente=this.value;sincronizarVendasLegado();autocompletarContato(this,'CLIENTE','venda-cliente-dropdown-${vi}')" placeholder="Digite razão social, CNPJ ou cidade...">
+          <div id="venda-cliente-dropdown-${vi}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Nº NF Saída</label>
+          <input class="form-input" value="${esc(v.nf_saida_numero||'')}" oninput="_vendas[${vi}].nf_saida_numero=this.value;sincronizarVendasLegado()"></div>
+        <div class="form-group"><label class="form-label">Data NF Saída</label>
+          <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(v.nf_saida_data||'')}" oninput="_vendas[${vi}].nf_saida_data=this.value;sincronizarVendasLegado()"></div>
+        <div class="form-group"><label class="form-label">Valor NF Saída (R$)</label>
+          <input class="form-input" type="number" step="0.01" value="${v.nf_saida_valor!=null?v.nf_saida_valor:''}" oninput="_vendas[${vi}].nf_saida_valor=this.value;sincronizarVendasLegado();renderResumoVendas()"></div>
+      </div>
+      <label class="form-label">Itens vendidos (quantidade alocada a este cliente)</label>
+      <div style="margin-bottom:6px;">${itensHtml}</div>
+      <button type="button" onclick="adicionarItemVenda(${vi})" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-bottom:14px;">+ Item</button>
+      <label class="form-label">Custos diretos desta venda (não rateados — ex.: frete extra só deste cliente)</label>
+      <div style="margin-bottom:6px;">${custosHtml}</div>
+      <button type="button" onclick="adicionarCustoDiretoVenda(${vi})" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;">+ Custo direto</button>
+    </div>`;
+  }).join('');
+  sincronizarVendasLegado();
+  renderResumoVendas();
+}
+
+function adicionarVenda(){
+  _vendas.push(vendaVazia());
+  renderVendas();
+}
+
+function removerVenda(vi){
+  _vendas.splice(vi,1);
+  renderVendas();
+}
+
+function adicionarItemVenda(vi){
+  _vendas[vi].itens.push({descricao:'', quantidade:''});
+  renderVendas();
+}
+
+function removerItemVenda(vi,ii){
+  _vendas[vi].itens.splice(ii,1);
+  if(!_vendas[vi].itens.length) _vendas[vi].itens = [{descricao:'', quantidade:''}];
+  renderVendas();
+}
+
+function adicionarCustoDiretoVenda(vi){
+  if(!_vendas[vi].custos_diretos) _vendas[vi].custos_diretos = [];
+  _vendas[vi].custos_diretos.push({label:'', valor:''});
+  renderVendas();
+}
+
+function removerCustoDiretoVenda(vi,ci){
+  _vendas[vi].custos_diretos.splice(ci,1);
+  renderVendas();
+}
+
+function sincronizarVendasLegado(){
+  const input = document.getElementById('f_vendas_json');
+  if(input) input.value = JSON.stringify(_vendas);
+}
+
+// Resumo ao vivo (sem precisar salvar) de rateio/lucro por venda — mesmo
+// padrão de atualizarTotalCustosReais() em controle-modal.js: recalcula a
+// cada tecla usando _editando + o que está digitado AGORA nos campos da aba
+// Custos Reais (não obriga salvar aquela aba primeiro só pra ver o resumo
+// aqui). Cálculo de verdade em calcularVendasResumo (controle-core.js).
+function renderResumoVendas(){
+  const wrap = document.getElementById('vendas-resumo');
+  if(!wrap || !_editando) return;
+  if(!_vendas.length){ wrap.innerHTML = ''; return; }
+  const r2 = v => v==null ? '—' : 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const cambio = typeof coletarCambioCustosReaisDoForm === 'function' ? coletarCambioCustosReaisDoForm() : _editando.real_cambio;
+  const realJson = typeof coletarCustosReaisDoForm === 'function' ? coletarCustosReaisDoForm() : (_editando.real_json||{});
+  const snapshot = { ..._editando, real_json: realJson, real_cambio: cambio, vendas_json: JSON.stringify(_vendas) };
+  const resumo = calcularVendasResumo(snapshot);
+  if(!resumo){ wrap.innerHTML = ''; return; }
+  const linhasHtml = resumo.linhas.map((l,i)=>`
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+      <span style="color:var(--muted);">${esc(l.venda.cliente||('Venda '+(i+1)+' — sem cliente'))} — ${l.qtdVenda||0} un. (${(l.fracao*100).toFixed(1)}% do processo)</span>
+      <strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong>
+    </div>`).join('');
+  const saldo = resumo.saldoNaoAlocado;
+  const alertaSaldo = Math.abs(saldo) > 0.001
+    ? `<div style="margin-top:8px;font-size:11px;color:${saldo>0?'#f39c12':'var(--err)'};">⚠ ${saldo>0 ? `Ainda faltam ${saldo} un. sem venda alocada (de ${resumo.totalQtd} do processo).` : `Alocado ${Math.abs(saldo)} un. a mais do que o processo tem (${resumo.totalQtd}).`}</div>`
+    : '';
+  wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:6px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">Resumo por venda (rateio automático dos Custos Reais + custos diretos)</div>
+    ${linhasHtml}
+    ${resumo.todasComNf ? `<div style="display:flex;justify-content:space-between;padding-top:8px;margin-top:4px;border-top:1px solid var(--border);font-weight:700;font-size:12px;"><span>Lucro total do processo (soma das vendas)</span><span style="color:${resumo.lucroTotal>=0?'var(--ok)':'var(--err)'}">${r2(resumo.lucroTotal)}</span></div>` : '<div style="font-size:11px;color:var(--dim);margin-top:6px;">Preencha a NF Saída de cada venda pra ver o lucro total.</div>'}
+    ${alertaSaldo}
+  </div>`;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -461,4 +625,3 @@ function exibirMoeda(v){
   if(v===null||v===undefined||v==='') return '';
   return parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
-
