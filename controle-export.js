@@ -139,6 +139,40 @@ async function exportarExcel(){
   }
 }
 
+// ── MODAL: "Exportar p/ Cliente" — confirmar status + ordenar por chegada ──
+// Pedido: antes de gerar a planilha de follow-up, deixar o usuário confirmar
+// quais status/fases entram (PI Recebida, Ag. Embarque, Embarcado etc), e
+// garantir que o resultado saia ordenado por Data de Chegada. Em vez de
+// exportar direto no clique do botão, abre este popup com um checkbox por
+// fase (lido de FASES, controle-core.js, pra nunca ficar desalinhado com as
+// fases reais do sistema) e só chama exportarFormatoCliente() depois de
+// confirmado.
+function abrirModalExportCliente(){
+  const cont = document.getElementById('exportcliente-status-list');
+  cont.innerHTML = FASES.map(f=>`
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;padding:3px 0;">
+      <input type="checkbox" class="exportcliente-status-chk" value="${f.id}" checked> ${f.icon} ${f.label}
+    </label>
+  `).join('');
+  document.getElementById('modal-exportcliente-bg').classList.add('open');
+}
+
+function fecharModalExportCliente(){
+  document.getElementById('modal-exportcliente-bg').classList.remove('open');
+}
+
+function marcarTodosStatusExport(valor){
+  document.querySelectorAll('.exportcliente-status-chk').forEach(chk=>{ chk.checked = valor; });
+}
+
+function confirmarExportCliente(){
+  const statusSelecionados = Array.from(document.querySelectorAll('.exportcliente-status-chk'))
+    .filter(chk=>chk.checked).map(chk=>chk.value);
+  if(!statusSelecionados.length){ showToast('Marque ao menos um status para exportar','warn'); return; }
+  fecharModalExportCliente();
+  exportarFormatoCliente(statusSelecionados);
+}
+
 // Exportação no formato de planilha enviada aos clientes (modelo "PNEUS
 // EXPRESS"): uma linha por produto/medida (não por processo), agrupado por
 // Fornecedor, com mapeamento:
@@ -146,7 +180,13 @@ async function exportarExcel(){
 //   Quantidade = quantidade preenchida daquele item · Data de Prontidão na
 //   Fábrica = sem fonte no sistema hoje, fica em branco · Data de Embarque =
 //   ETD · Data Chegada = Data Chegada · POD = Porto Destino.
-async function exportarFormatoCliente(){
+//
+// statusSelecionados (opcional): array com os ids de fase (FASES[].id) que
+// devem entrar na planilha, escolhidos no popup abrirModalExportCliente().
+// Quando omitido/vazio, exporta todos os status (mesmo comportamento de
+// antes do popup existir) — mantém a função utilizável de outros lugares
+// sem quebrar nada.
+async function exportarFormatoCliente(statusSelecionados){
   showToast('Gerando planilha no formato cliente...','info');
   try{
     // ExcelJS (carregado antecipadamente no <head>, ver comentário lá) em
@@ -159,9 +199,27 @@ async function exportarFormatoCliente(){
       showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
       return;
     }
-    const lista = filtrarProcessos(); // respeita os filtros aplicados na tela
+    let lista = filtrarProcessos(); // respeita os filtros aplicados na tela
 
-    // Toggle manual (checkbox ao lado do botão) — decide se a coluna "Valor
+    // Filtro de status escolhido no popup (pedido: confirmar quais fases
+    // entram antes de exportar). Sem seleção (chamada antiga/direta) exporta
+    // todos os status, igual ao comportamento original.
+    if(Array.isArray(statusSelecionados) && statusSelecionados.length){
+      lista = lista.filter(p=>statusSelecionados.includes(p.fase));
+    }
+
+    // Ordena por Data de Chegada, do mais próximo pro mais distante (pedido:
+    // "tem que ser ordenado pela data de chegada"). Processos sem chegada
+    // lançada ainda vão pro final, não pro topo. parseDataLocal() (não
+    // `new Date()` direto) pra não reintroduzir o bug de UTC×local já
+    // corrigido no resto do sistema.
+    lista = [...lista].sort((a,b)=>{
+      const da = a.data_chegada ? parseDataLocal(a.data_chegada).getTime() : Infinity;
+      const db = b.data_chegada ? parseDataLocal(b.data_chegada).getTime() : Infinity;
+      return da - db;
+    });
+
+    // Toggle manual (checkbox dentro do popup) — decide se a coluna "Valor
     // do Frete" entra ou não nesse export. Fica marcado só quando o usuário
     // realmente quer que o cliente veja esse valor (ex: negociação FOB onde
     // o frete é por conta do cliente); por padrão vem desmarcado/oculto.
@@ -174,7 +232,8 @@ async function exportarFormatoCliente(){
 
     // Montar 1 linha por produto, lendo produtos_json com retrocompatibilidade
     // para o campo "produto" legado (texto único), igual ao padrão usado no
-    // resto do sistema para multi-produtos.
+    // resto do sistema para multi-produtos. lista já está ordenada por
+    // chegada, então as linhas nascem nessa ordem dentro de cada fornecedor.
     const linhas = [];
     lista.forEach(p=>{
       let produtos = [];
@@ -184,9 +243,12 @@ async function exportarFormatoCliente(){
       }catch(e){ produtos = p.produto ? [{descricao:p.produto, quantidade:''}] : []; }
       if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
 
+      const chegadaTs = p.data_chegada ? parseDataLocal(p.data_chegada).getTime() : Infinity;
+
       produtos.filter(it=>it.descricao).forEach(it=>{
         const linha = {
           fornecedor: p.fornecedor||'—',
+          _chegadaTs: chegadaTs, // só pra ordenar os grupos de fornecedor abaixo, não vira coluna
           'Invoice':                 p.referencia||'',
           'Medida':                  it.descricao||'',
           'Qte':                     it.quantidade||'',
@@ -209,6 +271,16 @@ async function exportarFormatoCliente(){
     // (igual ao modelo: "EUDEMON" como linha de separação antes dos itens).
     const porForn = {};
     linhas.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
+
+    // Grupos de fornecedor em ordem de chegada mais próxima primeiro (não
+    // mais alfabética) — pega a menor Data de Chegada de cada grupo pra
+    // decidir a ordem, mantendo o pedido de "ordenado pela data de chegada"
+    // mesmo com a planilha agrupada por fornecedor.
+    const fornOrdenados = Object.keys(porForn).sort((fa,fb)=>{
+      const da = Math.min(...porForn[fa].map(l=>l._chegadaTs));
+      const db = Math.min(...porForn[fb].map(l=>l._chegadaTs));
+      return da - db;
+    });
 
     const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD'];
     if(incluirFrete) colunas.push('Valor do Frete');
@@ -254,9 +326,10 @@ async function exportarFormatoCliente(){
     ws.autoFilter = {from:{row:4,column:1}, to:{row:4,column:numCols}};
 
     // Linhas de dados, agrupadas por fornecedor (cada grupo com uma linha
-    // de cabeçalho destacada, igual ao modelo original).
+    // de cabeçalho destacada, igual ao modelo original) — grupos e linhas
+    // dentro de cada grupo em ordem de Data de Chegada.
     let rowIdx = 5;
-    Object.keys(porForn).sort().forEach(forn=>{
+    fornOrdenados.forEach(forn=>{
       ws.mergeCells(rowIdx,1,rowIdx,numCols);
       const gcell = ws.getCell(rowIdx,1);
       gcell.value = `🏭  ${forn}`;
@@ -302,10 +375,9 @@ async function exportarFormatoCliente(){
     a.remove();
     URL.revokeObjectURL(url);
 
-    showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${Object.keys(porForn).length} fornecedor(es)${incluirFrete?' — com Valor do Frete':''}`,'ok');
+    showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${Object.keys(porForn).length} fornecedor(es), ordenado por chegada${incluirFrete?' — com Valor do Frete':''}`,'ok');
   }catch(e){
     showToast('Erro ao exportar: '+e.message,'err');
     console.error(e);
   }
 }
-
