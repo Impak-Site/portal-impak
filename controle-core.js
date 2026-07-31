@@ -184,7 +184,7 @@ function ativarTelaFinanceiroExclusiva(){
   renderDashFinanceiro();
 }
 
-// ══════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // TELA EXCLUSIVA /resultado — mesmo esquema do /financeiro acima: o
 // Dashboard Resultado responde "quanto lucramos de verdade" cruzando o
 // estimado na cotação (estimativa_json, gravado ao aprovar no Calculador)
@@ -213,12 +213,12 @@ function ativarTelaResultadoExclusiva(){
   renderDashResultado();
 }
 
-// ══════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // TRAVA DE PROCESSO ("Fechar Processo") — ver server.js (POST /api/
 // controle/v2/processo) pra a validação que de fato importa (o front-end
 // aqui só evita o usuário clicar sem querer; quem garante que ninguém
 // edita um processo fechado é o servidor).
-// ══════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 async function fecharProcesso(id){
   if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.')) return;
   const r = await fetch('/api/controle/v2/processo', {
@@ -829,11 +829,144 @@ function calcularReceitaRealTotal(p){
   return { total, detalhe, cambio, count };
 }
 
+// ── VENDAS MULTI-CLIENTE (rateio de custo) ────────────────────────
+// Um processo (de qualquer finalidade) pode ser vendido a mais de um
+// cliente — ex.: meio contêiner pra um, meio pra outro. p.vendas_json guarda
+// um array de vendas, cada uma com seu próprio cliente, NF Saída e a
+// quantidade que levou de cada item. Quando existe pelo menos uma venda
+// cadastrada, o Lucro Real deixa de ser um número único do processo (NF
+// Saída − Custo Real Total) e passa a ser calculado VENDA A VENDA: cada
+// custo real lançado na aba Custos Reais é rateado proporcionalmente à
+// quantidade que aquela venda levou (sobre a quantidade total de produtos do
+// processo, ver totalQuantidadeProdutos), e alguns custos podem ser
+// lançados DIRETO numa venda específica (custos_diretos), sem entrar no
+// rateio — ex.: um frete rodoviário que só existiu porque aquele cliente
+// pediu entrega em outra cidade.
+// Sem nenhuma venda cadastrada (vendas_json vazio/null), calcularFechamento
+// continua exatamente como antes — 100% retrocompatível com todo processo
+// já cadastrado.
+
+// Soma a quantidade de todos os itens em produtos_json — é o "tamanho
+// total" do processo (ex.: 1400 pneus), denominador do rateio.
+function totalQuantidadeProdutos(p){
+  if(!p || !p.produtos_json) return 0;
+  try{
+    const produtos = JSON.parse(p.produtos_json);
+    if(!Array.isArray(produtos)) return 0;
+    return produtos.reduce((s,it)=> s + (parseFloat(it.quantidade)||0), 0);
+  }catch(e){ return 0; }
+}
+
+// Lê e normaliza p.vendas_json — nunca lança, sempre devolve array (vazio
+// se não houver nada salvo ou o JSON estiver corrompido).
+function parseVendas(p){
+  if(!p || !p.vendas_json) return [];
+  try{
+    const vendas = JSON.parse(p.vendas_json);
+    return Array.isArray(vendas) ? vendas : [];
+  }catch(e){ return []; }
+}
+
+// Quantidade total alocada pra uma venda (soma de todos os itens dela).
+function quantidadeVenda(venda){
+  return (venda.itens||[]).reduce((s,it)=> s + (parseFloat(it.quantidade)||0), 0);
+}
+
+// Soma dos custos diretos (não-rateados) de uma venda — cada um já é um
+// valor TOTAL em R$, lançado manualmente (ex.: "Frete Rodoviário Extra").
+function custosDiretosVenda(venda){
+  return (venda.custos_diretos||[]).reduce((s,c)=> s + (parseFloat(c.valor)||0), 0);
+}
+
+// Rateia o Custo Real Total do processo por uma venda específica,
+// proporcional à quantidade que ela levou, e soma os custos diretos dela
+// por cima (esses não são rateados — são só dessa venda).
+function calcularRateioVenda(p, venda, custoRealTotal){
+  const totalQtd = totalQuantidadeProdutos(p);
+  const qtdVenda = quantidadeVenda(venda);
+  const fracao = totalQtd > 0 ? (qtdVenda / totalQtd) : 0;
+  const custoRateado = (custoRealTotal||0) * fracao;
+  const custoDireto = custosDiretosVenda(venda);
+  return { totalQtd, qtdVenda, fracao, custoRateado, custoDireto, custoTotal: custoRateado + custoDireto };
+}
+
+// Lucro de uma venda específica: NF Saída DELA (não do processo) − a fatia
+// de custo que lhe cabe (rateado + direto). null quando a venda ainda não
+// tem NF Saída lançada (mesma convenção do Lucro Real do processo inteiro).
+function calcularLucroVenda(p, venda, custoRealTotal){
+  const rateio = calcularRateioVenda(p, venda, custoRealTotal);
+  const nfSaida = parseFloat(venda.nf_saida_valor);
+  const temNf = !isNaN(nfSaida) && nfSaida > 0;
+  const lucro = temNf ? (nfSaida - rateio.custoTotal) : null;
+  const pctLucro = (temNf && lucro != null && nfSaida > 0) ? (lucro / nfSaida) : null;
+  return { ...rateio, nfSaida: temNf?nfSaida:null, temNf, lucro, pctLucro };
+}
+
+// Ajusta uma lista de valores fracionários (em R$) que deveriam somar
+// "totalAlvo" pra somarem EXATAMENTE isso até o centavo — método do maior
+// resto (largest remainder / Hamilton), o mesmo usado pra distribuir
+// cadeiras em sistemas proporcionais. Sem isso, ratear R$100.000,00 em 3
+// partes de 33.333,33... e converter cada uma pra centavos pode deixar 1-2
+// centavos "perdidos" ou "sobrando" que nunca aparecem em lugar nenhum —
+// pequeno, mas incomoda numa tela financeira onde a soma devia bater exato.
+function arredondarComRestoExato(valores, totalAlvo){
+  const totalCentavosAlvo = Math.round((totalAlvo||0) * 100);
+  const centavosBase = valores.map(v => Math.floor((v||0) * 100));
+  const somaBase = centavosBase.reduce((s,c)=> s+c, 0);
+  let restante = totalCentavosAlvo - somaBase;
+  // Distribui o restante (positivo ou negativo) 1 centavo de cada vez,
+  // priorizando quem tem a maior parte fracionária "perdida" no floor.
+  const ordem = valores
+    .map((v,i)=>({ i, frac: (v||0)*100 - Math.floor((v||0)*100) }))
+    .sort((a,b)=> b.frac - a.frac);
+  const resultado = [...centavosBase];
+  for(let k=0; k<ordem.length && restante>0; k++){ resultado[ordem[k].i] += 1; restante--; }
+  for(let k=ordem.length-1; k>=0 && restante<0; k--){ resultado[ordem[k].i] -= 1; restante++; }
+  return resultado.map(c => c/100);
+}
+
+// Resumo agregado de todas as vendas de um processo — null quando não há
+// nenhuma venda cadastrada (processo continua no modelo antigo, 1 NF Saída
+// única pro processo inteiro).
+function calcularVendasResumo(p){
+  const vendas = parseVendas(p);
+  if(!vendas.length) return null;
+  const custosReais = calcularCustoRealTotal(p);
+  const custoRealTotal = custosReais ? custosReais.total : 0;
+  let linhas = vendas.map(venda => ({ venda, ...calcularLucroVenda(p, venda, custoRealTotal) }));
+  const totalQtd = totalQuantidadeProdutos(p);
+  const qtdAlocada = linhas.reduce((s,l)=> s + l.qtdVenda, 0);
+
+  // Correção de arredondamento (maior resto): só faz sentido quando o
+  // processo está 100% alocado entre as vendas (senão a soma parcial dos
+  // custos rateados É o comportamento correto — ver saldoNaoAlocado) e
+  // quando há mais de 1 venda (com 1 venda só não existe erro de soma pra
+  // corrigir). Recalcula custoTotal/lucro/pctLucro de cada linha em cima
+  // do custoRateado ajustado.
+  if(totalQtd > 0 && qtdAlocada === totalQtd && custoRealTotal > 0 && linhas.length > 1){
+    const ajustados = arredondarComRestoExato(linhas.map(l=>l.custoRateado), custoRealTotal);
+    linhas = linhas.map((l,i) => {
+      const custoRateado = ajustados[i];
+      const custoTotal = custoRateado + l.custoDireto;
+      const lucro = l.temNf ? (l.nfSaida - custoTotal) : null;
+      const pctLucro = (l.temNf && lucro != null && l.nfSaida > 0) ? (lucro / l.nfSaida) : null;
+      return { ...l, custoRateado, custoTotal, lucro, pctLucro };
+    });
+  }
+
+  const nfSaidaTotal = linhas.reduce((s,l)=> s + (l.temNf?l.nfSaida:0), 0);
+  const todasComNf = linhas.length>0 && linhas.every(l=>l.temNf);
+  const lucroTotal = todasComNf ? linhas.reduce((s,l)=> s + l.lucro, 0) : null;
+  return {
+    linhas, custosReais, custoRealTotal, totalQtd, qtdAlocada,
+    saldoNaoAlocado: totalQtd - qtdAlocada,
+    nfSaidaTotal, todasComNf, lucroTotal,
+  };
+}
+
 function calcularFechamento(p){
   const est = p.estimativa_json || null;
   const nfEntrada = parseFloat(p.nf_entrada_valor);
-  const nfSaida   = parseFloat(p.nf_saida_valor);
-  const temReal   = !isNaN(nfSaida) && nfSaida > 0;
 
   // Custo real detalhado (aba "Custos Reais") — quando o processo tem pelo
   // menos um item lançado ali, ele é MAIS PRECISO que o cálculo grosseiro
@@ -850,10 +983,28 @@ function calcularFechamento(p){
   const margemTaxas = (custosReais && receitaReais)
     ? { total: receitaReais.total - custosReais.total, custoTotal: custosReais.total, receitaTotal: receitaReais.total }
     : null;
-  const lucroReal = custosReais
-    ? (temReal ? (nfSaida - custoRealTotal) : null)
-    : (temReal ? (nfSaida - (isNaN(nfEntrada)?0:nfEntrada)) : null);
-  const pctLucroReal = (temReal && lucroReal != null) ? (lucroReal / nfSaida) : null;
+
+  // Vendas multi-cliente (rateio de custo) — quando o processo foi vendido
+  // a mais de um cliente (ver calcularVendasResumo acima), o Lucro Real do
+  // processo vira a SOMA do lucro de cada venda (NF dela − sua fatia de
+  // custo), e a "NF Saída" do processo vira a soma das NFs de cada venda.
+  // Sem nenhuma venda cadastrada, cai exatamente no cálculo antigo abaixo.
+  const vendasResumo = calcularVendasResumo(p);
+  let nfSaida, temReal, lucroReal, pctLucroReal;
+  if(vendasResumo){
+    nfSaida = vendasResumo.nfSaidaTotal || null;
+    temReal = vendasResumo.linhas.some(l=>l.temNf);
+    lucroReal = vendasResumo.todasComNf ? vendasResumo.lucroTotal : null;
+    pctLucroReal = (lucroReal != null && nfSaida) ? (lucroReal / nfSaida) : null;
+  } else {
+    const nfSaidaRaw = parseFloat(p.nf_saida_valor);
+    temReal = !isNaN(nfSaidaRaw) && nfSaidaRaw > 0;
+    nfSaida = isNaN(nfSaidaRaw) ? null : nfSaidaRaw;
+    lucroReal = custosReais
+      ? (temReal ? (nfSaida - custoRealTotal) : null)
+      : (temReal ? (nfSaida - (isNaN(nfEntrada)?0:nfEntrada)) : null);
+    pctLucroReal = (temReal && lucroReal != null) ? (lucroReal / nfSaida) : null;
+  }
 
   let custoEstimado = null, faturamentoEstimado = null, lucroEstimado = null, pctLucroEstimado = null;
   if(est){
@@ -879,10 +1030,11 @@ function calcularFechamento(p){
   return {
     temEstimativa: !!est, temReal, temComparacao,
     custoEstimado, faturamentoEstimado, lucroEstimado, pctLucroEstimado,
-    nfEntrada: isNaN(nfEntrada)?null:nfEntrada, nfSaida: isNaN(nfSaida)?null:nfSaida,
+    nfEntrada: isNaN(nfEntrada)?null:nfEntrada, nfSaida,
     lucroReal, pctLucroReal, deltaValor, deltaPct,
     custosReais, custoRealTotal, // detalhamento por item — null se a aba Custos Reais nunca foi preenchida
     receitaReais, margemTaxas, // margem por taxa (compra × venda) — null se "cobrado do cliente" nunca foi preenchido
+    vendasResumo, // null se o processo não foi vendido a mais de um cliente
   };
 }
 
@@ -923,6 +1075,18 @@ function renderFechamentoInfo(p){
         <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${f.margemTaxas.total>=0?'var(--ok)':'var(--err)'}">${r2(f.margemTaxas.total)}</strong></div>
       </div>`
     : '';
+  // Vendas multi-cliente (rateio) — quando o processo tem a aba Vendas
+  // preenchida, mostra um lembrete de que o Lucro Real acima já é a SOMA de
+  // todas as vendas, com um mini-detalhamento por cliente. O rateio/lucro
+  // por venda em si é editado e recalculado ao vivo na aba Vendas
+  // (renderResumoVendas, em controle-campos.js) — aqui é só um resumo
+  // read-only pra quem está olhando a aba Fechamento.
+  const linhaVendas = f.vendasResumo
+    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
+        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
+      </div>`
+    : '';
   const linhaReal = f.temReal
     ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF Saída − Custo Real Total)':' (NF Saída − NF Entrada)'}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>`
     : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:12px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
@@ -955,10 +1119,11 @@ function renderFechamentoInfo(p){
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">✅ Resultado real</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Entrada</span><strong>${r2(f.nfEntrada)}</strong></div>
-      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Saída</span><strong>${r2(f.nfSaida)}</strong></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Saída${f.vendasResumo?' (soma das vendas)':''}</span><strong>${r2(f.nfSaida)}</strong></div>
       ${linhaReal}
     </div>
     ${linhaMargemTaxas}
+    ${linhaVendas}
     ${linhaDelta}
   </div>`;
 }

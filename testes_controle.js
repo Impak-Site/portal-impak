@@ -582,7 +582,193 @@ teste('renderFechamentoInfo() com resultado melhor que o estimado mostra "a mais
   verdadeiro(html.includes('a mais que o cotado'), 'lucro real maior deveria mostrar mensagem de "a mais"');
 });
 
-console.log('=== calcularCustoRealTotal() e calcularFechamento() com Custos Reais lancados ==='); teste('calcularCustoRealTotal: sem real_json retorna null', () => { verdadeiro(sandbox.calcularCustoRealTotal({}) === null); }); teste('calcularCustoRealTotal: item legado em USD converte pelo câmbio da PI (sem real_cambio)', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { fob: 10000 }, pi_cambio: 5.0 }); verdadeiro(r !== null); iguais(r.count, 1); aproxIgual(r.total, 50000, 0.01); }); teste('calcularCustoRealTotal: real_cambio tem prioridade sobre pi_cambio', () => { const r = sandbox.calcularCustoRealTotal({ real_json:{fob:1000}, pi_cambio:5.0, real_cambio:5.5 }); aproxIgual(r.total, 5500, 0.01); }); teste('calcularCustoRealTotal: item BRL (ex. imposto II) soma direto sem conversão de câmbio', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { ii: 8000 } }); iguais(r.total, 8000); }); teste('calcularCustoRealTotal: soma múltiplos itens de grupos diferentes (USD convertido + BRL direto)', () => { const r = sandbox.calcularCustoRealTotal({ real_json:{ fob:1000, frete:200, ii:500 }, real_cambio:5 }); iguais(r.count, 3); aproxIgual(r.total, 6500, 0.01); }); teste('calcularCustoRealTotal: formato valor/moeda converte na moeda escolhida, não na padrão do item', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { comissao_br: { valor: 100, moeda: 'USD' } }, real_cambio: 5 }); aproxIgual(r.total, 500, 0.01); }); teste('calcularCustoRealTotal: item detalhado por container soma cada container (moedas podem diferir)', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { siscomex: { porContainer: { CONT1:{valor:100,moeda:'BRL'}, CONT2:{valor:50,moeda:'USD'} } } }, real_cambio: 5 }); aproxIgual(r.total, 350, 0.01); verdadeiro(r.detalhe[0].porContainer === true); }); teste('calcularCustoRealTotal: itens vazios/nulos são ignorados, não zeram o total', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { fob:'', frete:null, ii:300 } }); iguais(r.count, 1); iguais(r.total, 300); }); teste('calcularFechamento: com Custos Reais lançados, usa Custo Real Total em vez de NF Entrada (mais preciso)', () => { const f = sandbox.calcularFechamento({ nf_saida_valor:100000, nf_entrada_valor:60000, real_json:{ fob:5000, ii:10000 }, real_cambio:5 }); verdadeiro(f.custosReais !== null, 'deveria ter custosReais calculado'); iguais(f.custoRealTotal, 35000); iguais(f.lucroReal, 65000, 'lucro real deveria usar Custo Real Total, nao NF Entrada'); }); teste('calcularFechamento: sem nenhum item em Custos Reais, custosReais fica null e usa cálculo antigo', () => { const f = sandbox.calcularFechamento({ nf_saida_valor: 50000, nf_entrada_valor: 30000 }); verdadeiro(f.custosReais === null); iguais(f.lucroReal, 20000); }); teste('calcularFechamento: margemTaxas calcula Cobrado menos Pago quando o campo cobrado também foi lançado', () => { const f = sandbox.calcularFechamento({ real_json: { siscomex: 1000, siscomex_cobrado: 1500 } }); verdadeiro(f.margemTaxas !== null); iguais(f.margemTaxas.custoTotal, 1000); iguais(f.margemTaxas.receitaTotal, 1500); iguais(f.margemTaxas.total, 500); }); teste('renderFechamentoInfo com Custos Reais lançados menciona Custo Real Total e a contagem de itens', () => { const p = { nf_saida_valor: 100000, real_json: { fob: 5000, ii:10000 }, real_cambio: 5 }; const html = sandbox.renderFechamentoInfo(p); verdadeiro(html.includes('Custo Real Total'), 'deveria mostrar a linha de Custo Real Total detalhado'); verdadeiro(html.includes('2 itens lançados'), 'deveria indicar quantos itens foram lançados na aba Custos Reais'); }); // ── RESUMO ───────────────────────────────────────────────────────
+console.log('=== calcularCustoRealTotal() e calcularFechamento() com Custos Reais lancados ==='); teste('calcularCustoRealTotal: sem real_json retorna null', () => { verdadeiro(sandbox.calcularCustoRealTotal({}) === null); }); teste('calcularCustoRealTotal: item legado em USD converte pelo câmbio da PI (sem real_cambio)', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { fob: 10000 }, pi_cambio: 5.0 }); verdadeiro(r !== null); iguais(r.count, 1); aproxIgual(r.total, 50000, 0.01); }); teste('calcularCustoRealTotal: real_cambio tem prioridade sobre pi_cambio', () => { const r = sandbox.calcularCustoRealTotal({ real_json:{fob:1000}, pi_cambio:5.0, real_cambio:5.5 }); aproxIgual(r.total, 5500, 0.01); }); teste('calcularCustoRealTotal: item BRL (ex. imposto II) soma direto sem conversão de câmbio', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { ii: 8000 } }); iguais(r.total, 8000); }); teste('calcularCustoRealTotal: soma múltiplos itens de grupos diferentes (USD convertido + BRL direto)', () => { const r = sandbox.calcularCustoRealTotal({ real_json:{ fob:1000, frete:200, ii:500 }, real_cambio:5 }); iguais(r.count, 3); aproxIgual(r.total, 6500, 0.01); }); teste('calcularCustoRealTotal: formato valor/moeda converte na moeda escolhida, não na padrão do item', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { comissao_br: { valor: 100, moeda: 'USD' } }, real_cambio: 5 }); aproxIgual(r.total, 500, 0.01); }); teste('calcularCustoRealTotal: item detalhado por container soma cada container (moedas podem diferir)', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { siscomex: { porContainer: { CONT1:{valor:100,moeda:'BRL'}, CONT2:{valor:50,moeda:'USD'} } } }, real_cambio: 5 }); aproxIgual(r.total, 350, 0.01); verdadeiro(r.detalhe[0].porContainer === true); }); teste('calcularCustoRealTotal: itens vazios/nulos são ignorados, não zeram o total', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { fob:'', frete:null, ii:300 } }); iguais(r.count, 1); iguais(r.total, 300); }); teste('calcularFechamento: com Custos Reais lançados, usa Custo Real Total em vez de NF Entrada (mais preciso)', () => { const f = sandbox.calcularFechamento({ nf_saida_valor:100000, nf_entrada_valor:60000, real_json:{ fob:5000, ii:10000 }, real_cambio:5 }); verdadeiro(f.custosReais !== null, 'deveria ter custosReais calculado'); iguais(f.custoRealTotal, 35000); iguais(f.lucroReal, 65000, 'lucro real deveria usar Custo Real Total, nao NF Entrada'); }); teste('calcularFechamento: sem nenhum item em Custos Reais, custosReais fica null e usa cálculo antigo', () => { const f = sandbox.calcularFechamento({ nf_saida_valor: 50000, nf_entrada_valor: 30000 }); verdadeiro(f.custosReais === null); iguais(f.lucroReal, 20000); }); teste('calcularFechamento: margemTaxas calcula Cobrado menos Pago quando o campo cobrado também foi lançado', () => { const f = sandbox.calcularFechamento({ real_json: { siscomex: 1000, siscomex_cobrado: 1500 } }); verdadeiro(f.margemTaxas !== null); iguais(f.margemTaxas.custoTotal, 1000); iguais(f.margemTaxas.receitaTotal, 1500); iguais(f.margemTaxas.total, 500); }); teste('renderFechamentoInfo com Custos Reais lançados menciona Custo Real Total e a contagem de itens', () => { const p = { nf_saida_valor: 100000, real_json: { fob: 5000, ii:10000 }, real_cambio: 5 }; const html = sandbox.renderFechamentoInfo(p); verdadeiro(html.includes('Custo Real Total'), 'deveria mostrar a linha de Custo Real Total detalhado'); verdadeiro(html.includes('2 itens lançados'), 'deveria indicar quantos itens foram lançados na aba Custos Reais'); });
+
+// ── 12. TESTES: Vendas multi-cliente (rateio de custo) ──────────────
+// calcularRateioVenda / calcularVendasResumo / calcularFechamento com
+// vendas_json preenchido — ver controle-core.js. Sem nenhuma venda
+// cadastrada, tudo isso precisa continuar 100% idêntico ao comportamento
+// anterior (coberto pelos testes da seção 11 acima, que não usam vendas_json).
+console.log('\n📋 Vendas multi-cliente — parseVendas / calcularRateioVenda / calcularVendasResumo');
+
+teste('parseVendas: sem vendas_json (processo antigo) retorna array vazio, não null/erro', () => {
+  const v = sandbox.parseVendas({});
+  verdadeiro(Array.isArray(v) && v.length === 0);
+});
+teste('parseVendas: JSON corrompido retorna array vazio em vez de lançar', () => {
+  const v = sandbox.parseVendas({ vendas_json: '{isso não é um array válido' });
+  verdadeiro(Array.isArray(v) && v.length === 0);
+});
+teste('calcularVendasResumo: processo sem vendas retorna null (não quebra nada do fluxo antigo)', () => {
+  verdadeiro(sandbox.calcularVendasResumo({ vendas_json: '[]' }) === null);
+  verdadeiro(sandbox.calcularVendasResumo({}) === null);
+});
+teste('calcularFechamento: processo sem vendas continua usando NF Saída única (comportamento antigo intacto)', () => {
+  const f = sandbox.calcularFechamento({ nf_saida_valor: 50000, real_json: { fob: 10000 }, real_cambio: 5 });
+  verdadeiro(f.vendasResumo === null, 'sem vendas_json, vendasResumo precisa ser null');
+  iguais(f.nfSaida, 50000);
+});
+
+teste('calcularRateioVenda: rateia o custo real proporcional à quantidade da venda', () => {
+  const p = { produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]) };
+  const venda = { itens: [{descricao:'Pneu A', quantidade: 250}], custos_diretos: [] };
+  const r = sandbox.calcularRateioVenda(p, venda, 40000); // 250/1000 = 25% de 40000 = 10000
+  iguais(r.totalQtd, 1000);
+  iguais(r.qtdVenda, 250);
+  aproxIgual(r.fracao, 0.25, 0.0001);
+  aproxIgual(r.custoRateado, 10000, 0.01);
+  iguais(r.custoDireto, 0);
+  aproxIgual(r.custoTotal, 10000, 0.01);
+});
+teste('calcularRateioVenda: custo direto soma por fora do rateio, sem entrar na fração', () => {
+  const p = { produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]) };
+  const venda = { itens: [{descricao:'Pneu A', quantidade: 250}], custos_diretos: [{label:'Frete extra', valor: 500}] };
+  const r = sandbox.calcularRateioVenda(p, venda, 40000);
+  aproxIgual(r.custoRateado, 10000, 0.01);
+  iguais(r.custoDireto, 500);
+  aproxIgual(r.custoTotal, 10500, 0.01);
+});
+teste('calcularRateioVenda: processo sem produtos_json (totalQtd=0) não lança erro nem divide por zero', () => {
+  const r = sandbox.calcularRateioVenda({}, { itens: [{descricao:'X', quantidade: 10}], custos_diretos: [] }, 5000);
+  iguais(r.totalQtd, 0);
+  iguais(r.fracao, 0, 'sem denominador, fração cai pra 0 em vez de Infinity/NaN');
+  iguais(r.custoRateado, 0);
+});
+
+teste('calcularVendasResumo: split 2 vias — soma das NFs, lucro por venda e lucro total corretos', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+    real_json: { fob: 8000 }, real_cambio: 5, // custo real total = 40000
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:600}], nf_saida_valor: 40000, custos_diretos: [] },
+      { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:400}], nf_saida_valor: 25000, custos_diretos: [] },
+    ]),
+  };
+  const resumo = sandbox.calcularVendasResumo(p);
+  verdadeiro(resumo !== null);
+  iguais(resumo.custoRealTotal, 40000);
+  iguais(resumo.totalQtd, 1000);
+  iguais(resumo.qtdAlocada, 1000);
+  iguais(resumo.saldoNaoAlocado, 0);
+  const a = resumo.linhas.find(l=>l.venda.cliente==='Cliente A');
+  const b = resumo.linhas.find(l=>l.venda.cliente==='Cliente B');
+  aproxIgual(a.custoRateado, 24000, 0.01, 'Cliente A levou 60% -> 60% de 40000 = 24000');
+  aproxIgual(b.custoRateado, 16000, 0.01, 'Cliente B levou 40% -> 40% de 40000 = 16000');
+  aproxIgual(a.lucro, 40000-24000, 0.01);
+  aproxIgual(b.lucro, 25000-16000, 0.01);
+  verdadeiro(resumo.todasComNf === true);
+  aproxIgual(resumo.nfSaidaTotal, 65000, 0.01);
+  aproxIgual(resumo.lucroTotal, (40000-24000)+(25000-16000), 0.01);
+});
+
+teste('calcularVendasResumo: venda ainda sem NF Saída não trava as outras — lucroTotal fica null até todas terem NF', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+    real_json: { fob: 8000 }, real_cambio: 5,
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:600}], nf_saida_valor: 40000, custos_diretos: [] },
+      { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:400}], nf_saida_valor: '', custos_diretos: [] },
+    ]),
+  };
+  const resumo = sandbox.calcularVendasResumo(p);
+  verdadeiro(resumo.todasComNf === false);
+  verdadeiro(resumo.lucroTotal === null, 'sem todas as NFs, não dá pra fechar o lucro total do processo ainda');
+  const b = resumo.linhas.find(l=>l.venda.cliente==='Cliente B');
+  verdadeiro(b.temNf === false && b.lucro === null);
+});
+
+teste('calcularVendasResumo: sobrevenda (soma das quantidades > total do processo) fica visível em saldoNaoAlocado negativo', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:700}], nf_saida_valor: 10000, custos_diretos: [] },
+      { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:500}], nf_saida_valor: 10000, custos_diretos: [] },
+    ]),
+  };
+  const resumo = sandbox.calcularVendasResumo(p);
+  iguais(resumo.qtdAlocada, 1200);
+  iguais(resumo.saldoNaoAlocado, -200, 'alocou 200 unidades a mais do que o processo tem');
+});
+
+teste('calcularVendasResumo: split parcial (nem todo o processo foi vendido ainda) mostra saldoNaoAlocado positivo', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:300}], nf_saida_valor: '', custos_diretos: [] },
+    ]),
+  };
+  const resumo = sandbox.calcularVendasResumo(p);
+  iguais(resumo.saldoNaoAlocado, 700);
+});
+
+teste('calcularVendasResumo: split 3 vias com resto — soma dos custos rateados bate EXATAMENTE (até o centavo) com o Custo Real Total', () => {
+  // 100000/3 gera dízima (33.333,33...) — sem correção de arredondamento,
+  // a soma de 3 valores truncados pode "vazar" ou "faltar" 1-2 centavos.
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 3}]),
+    real_json: { fob: 20000 }, real_cambio: 5, // custo real total = 100000
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:1}], nf_saida_valor: 40000, custos_diretos: [] },
+      { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:1}], nf_saida_valor: 40000, custos_diretos: [] },
+      { cliente:'Cliente C', itens:[{descricao:'Pneu A', quantidade:1}], nf_saida_valor: 40000, custos_diretos: [] },
+    ]),
+  };
+  const resumo = sandbox.calcularVendasResumo(p);
+  const somaCustoRateado = resumo.linhas.reduce((s,l)=> s + Math.round(l.custoRateado*100), 0) / 100;
+  iguais(somaCustoRateado, 100000, `soma dos custos rateados (${somaCustoRateado}) deveria bater exatamente com o Custo Real Total (100000) — diferença de arredondamento não pode "sumir" nem "sobrar"`);
+});
+
+teste('calcularVendasResumo: com custos diretos, cada venda soma o rateio + seu próprio custo direto (não misturado com o das outras)', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+    real_json: { fob: 8000 }, real_cambio: 5, // custo real total = 40000
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:500}], nf_saida_valor: 30000, custos_diretos: [{label:'Frete extra A', valor: 300}] },
+      { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:500}], nf_saida_valor: 30000, custos_diretos: [{label:'Frete extra B', valor: 900}] },
+    ]),
+  };
+  const resumo = sandbox.calcularVendasResumo(p);
+  const a = resumo.linhas.find(l=>l.venda.cliente==='Cliente A');
+  const b = resumo.linhas.find(l=>l.venda.cliente==='Cliente B');
+  aproxIgual(a.custoTotal, 20000+300, 0.01);
+  aproxIgual(b.custoTotal, 20000+900, 0.01);
+  aproxIgual(a.lucro, 30000-20300, 0.01);
+  aproxIgual(b.lucro, 30000-20900, 0.01);
+});
+
+teste('calcularFechamento: com vendas cadastradas, NF Saída do processo vira a soma das NFs e o Lucro Real vira a soma dos lucros de cada venda', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+    real_json: { fob: 8000 }, real_cambio: 5, // custo real total = 40000
+    nf_saida_valor: 999999, // valor legado antigo — deve ser IGNORADO quando há vendas cadastradas
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:600}], nf_saida_valor: 40000, custos_diretos: [] },
+      { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:400}], nf_saida_valor: 25000, custos_diretos: [] },
+    ]),
+  };
+  const f = sandbox.calcularFechamento(p);
+  verdadeiro(f.vendasResumo !== null);
+  aproxIgual(f.nfSaida, 65000, 0.01, 'NF Saída do processo deveria ser a soma das NFs das vendas, não o campo legado nf_saida_valor');
+  aproxIgual(f.lucroReal, (40000-24000)+(25000-16000), 0.01);
+  verdadeiro(f.temReal === true);
+});
+
+teste('renderFechamentoInfo: com vendas cadastradas, menciona "Vendido a N clientes" e lista cada um', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+    real_json: { fob: 8000 }, real_cambio: 5,
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:600}], nf_saida_valor: 40000, custos_diretos: [] },
+      { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:400}], nf_saida_valor: 25000, custos_diretos: [] },
+    ]),
+  };
+  const html = sandbox.renderFechamentoInfo(p);
+  verdadeiro(html.includes('2 clientes'), 'deveria mencionar quantos clientes compraram deste processo');
+  verdadeiro(html.includes('Cliente A') && html.includes('Cliente B'), 'deveria listar o nome de cada cliente');
+  verdadeiro(html.includes('soma das vendas'), 'deveria deixar claro que a NF Saída mostrada é a soma, não um valor único');
+});
+
+// ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {

@@ -74,6 +74,7 @@ function renderModal(){
     {id:'financeiro',    label:'💰 Financeiro'},
     {id:'fechamento',    label:'📐 Fechamento'},
     {id:'custosreais',   label:'💵 Custos Reais'},
+    {id:'vendas',        label:'🧾 Vendas'},
     {id:'logistica',     label:'🚢 Logística'},
     {id:'documentos',    label:'📋 Documentos'},
     {id:'historico',     label:'📜 Histórico'},
@@ -127,7 +128,7 @@ function renderModal(){
   // Confirmação visual demurrage (calculada dinamicamente — ver renderDemurInfo)
   let demurInfo = renderDemurInfo(p);
 
-  // ── TRAVA DE PROCESSO ("Fechar Processo") ──────────────────
+  // ── TRAVA DE PROCESSO ("Fechar Processo") ────────────────────────
   // Quando fechado, o conteúdo do modal fica visualmente desabilitado
   // (opacity + pointer-events:none) dentro do wrapper abaixo — a validação
   // que de fato impede a edição é no servidor (ver server.js: POST /api/
@@ -136,16 +137,15 @@ function renderModal(){
   const bloqueado = !!p.fechado;
   const podeDestravar = _user && _user.role === 'gerente';
   const bannerTrava = bloqueado
-  ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(0,0,0,.04);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
-  <div style="font-size:12px;color:var(--text);"><strong>🔒 Processo fechado</strong>${p.fechado_em?` em ${new Date(p.fechado_em).toLocaleString('pt-BR')}`:''}${p.fechado_por?` por ${esc(p.fechado_por)}`:''} — edição travada.</div>
-  ${podeDestravar ? `<button type="button" class="btn btn-outline" onclick="reabrirProcesso('${p.id}')">🔓 Reabrir para editar</button>` : `<span style="font-size:11px;color:var(--muted);">Só um gerente pode reabrir.</span>`}
-  </div>`
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(0,0,0,.04);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
+        <div style="font-size:12px;color:var(--text);"><strong>🔒 Processo fechado</strong>${p.fechado_em?` em ${new Date(p.fechado_em).toLocaleString('pt-BR')}`:''}${p.fechado_por?` por ${esc(p.fechado_por)}`:''} — edição travada.</div>
+        ${podeDestravar ? `<button type="button" class="btn btn-outline" onclick="reabrirProcesso('${p.id}')">🔓 Reabrir para editar</button>` : `<span style="font-size:11px;color:var(--muted);">Só um gerente pode reabrir.</span>`}
+      </div>`
     : '';
-  
 
   document.getElementById('modal-body').innerHTML = `
-  ${bannerTrava}
-  <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
+    ${bannerTrava}
+    <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
     <!-- ABA: IDENTIFICAÇÃO -->
     <div class="tab-pane active" id="pane-identificacao">
       <div class="timeline">${timeline}</div>
@@ -208,7 +208,10 @@ function renderModal(){
       </div>
       <!-- Ações -->
       <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
-        <div>${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado — só gerente pode reabrir depois">🔒 Fechar Processo</button>`:''}</div>
+        <div style="display:flex;gap:10px;">
+          ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}
+          ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado — só gerente pode reabrir depois">🔒 Fechar Processo</button>`:''}
+        </div>
         <div style="display:flex;gap:10px;">
           <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
           <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
@@ -299,11 +302,29 @@ function renderModal(){
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
           Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissões e taxas operacionais). Quando o processo veio de uma cotação aprovada, cada campo já nasce preenchido com o valor cotado — ajuste só o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cálculo simples por NF.
         </div>
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;"><button type="button" class="btn btn-outline" onclick="document.getElementById('input-fechamento-planilha').click()">Importar Fechamento (.xlsm)</button><input type="file" id="input-fechamento-planilha" accept=".xlsx,.xlsm" style="display:none" onchange="importarFechamentoSelecionado(this)"></div>${renderCustosReaisTab(p)}
+        ${renderCustosReaisTab(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
         <button class="btn btn-primary" onclick="salvarCustosReaisTab()">💾 Salvar Custos Reais</button>
+      </div>
+    </div>
+
+    <!-- ABA: VENDAS (multi-cliente / rateio de custo) -->
+    <div class="tab-pane" id="pane-vendas">
+      <div class="form-section">
+        <div class="form-section-title">🧾 Vendas — um processo, vários clientes</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+          Use esta aba quando este processo (Direto, Encomenda ou Conta e Ordem) foi vendido pra mais de um cliente — ex.: meio contêiner pra um, meio pra outro. Cada venda tem seu próprio cliente e NF Saída. Os custos lançados na aba Custos Reais são rateados automaticamente entre as vendas, proporcional à quantidade que cada uma levou; custos que só existiram por causa de um cliente específico (ex.: um frete extra) podem ser lançados direto naquela venda, sem entrar no rateio. Se este processo tem um único cliente/NF Saída, não precisa usar esta aba.
+        </div>
+        <div id="vendas-list"></div>
+        <button type="button" onclick="adicionarVenda()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Venda</button>
+        <input type="hidden" id="f_vendas_json">
+        <div id="vendas-resumo"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
       </div>
     </div>
 
@@ -460,6 +481,21 @@ function renderModal(){
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
+        ${(() => {
+          // Ambiguidade NF Saída legada × aba Vendas: quando o processo já
+          // tem vendas cadastradas (multi-cliente), calcularFechamento()
+          // ignora nf_saida_numero/data/valor por completo e usa a soma das
+          // NFs de cada venda — sem este aviso, alguém podia preencher os
+          // dois lugares achando que os dois contam, ou não entender por que
+          // editar este campo aqui não muda o Lucro Real na aba Fechamento.
+          let vendas = [];
+          try{ vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; }catch(e){ vendas = []; }
+          if(!Array.isArray(vendas)) vendas = [];
+          if(!vendas.length) return '';
+          return `<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.35);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--text);">
+            ⚠ Este processo foi vendido a <strong>${vendas.length} cliente${vendas.length===1?'':'s'}</strong> diferentes (ver aba 🧾 Vendas) — os campos de <strong>NF Saída</strong> abaixo NÃO são usados no cálculo de Fechamento nesse caso; cada venda tem sua própria NF Saída, lançada na aba Vendas.
+          </div>`;
+        })()}
         <div class="form-grid">
           <div class="form-group"><label class="form-label">NF Entrada Nº</label>
             <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
@@ -467,7 +503,7 @@ function renderModal(){
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
           <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">NF Saída Nº</label>
+          <div class="form-group"><label class="form-label">NF Saída Nº${p.vendas_json&&JSON.parse(p.vendas_json||'[]').length?' <span style="color:#f39c12;font-weight:400;">(não usado — ver aba Vendas)</span>':''}</label>
             <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Saída Data</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
@@ -518,6 +554,13 @@ function renderModal(){
     else _produtos = [{descricao:'', quantidade:''}];
   }catch(e){ _produtos = [{descricao:'', quantidade:''}]; }
   renderMultiProdutos();
+  // Inicializar vendas multi-cliente (aba Vendas) — vazio ([]) pra qualquer
+  // processo que nunca usou essa aba, exatamente como _produtos/_containers acima.
+  try{
+    _vendas = p.vendas_json ? JSON.parse(p.vendas_json) : [];
+    if(!Array.isArray(_vendas)) _vendas = [];
+  }catch(e){ _vendas = []; }
+  renderVendas();
   if(!isNovo){ carregarArquivosGed(p.id); carregarHistorico(p.id); }
   else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
 }
@@ -828,7 +871,7 @@ async function salvarCustosReaisTab(){
 }
 
 // ════════════════════════════════════════════════════════════════
-async function importarFechamentoSelecionado(input){ if(!_editando || !input.files || !input.files[0]) return; const file = input.files[0]; const reader = new FileReader(); reader.onload = async function(ev){ try{ const b64 = String(ev.target.result).split(',')[1]; const r = await fetch('/api/controle/importar-fechamento', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({arquivo_base64: b64}) }); const d = await r.json(); if(!d.ok){ showToast(d.erro || 'Erro ao importar planilha.', 'error'); return; } _editando.real_json = Object.assign({}, _editando.real_json || {}, d.real_json || {}); const patch = ['real_json']; if(d.datas && d.datas.data_embarque){ _editando.data_embarque = d.datas.data_embarque; patch.push('data_embarque'); } if(d.datas && d.datas.data_chegada){ _editando.data_chegada = d.datas.data_chegada; patch.push('data_chegada'); } if(d.datas && d.datas.data_registro_di){ _editando.data_registro_di = d.datas.data_registro_di; patch.push('data_registro_di'); } const ok = await salvarProcesso(_editando, patch); if(ok){ renderModal(); showToast('Fechamento importado - confira os valores.', 'success'); if(d.avisos && d.avisos.length) alert('Avisos: ' + d.avisos.join(' | ')); } }catch(err){ showToast('Erro ao importar: ' + err.message, 'error'); } }; reader.readAsDataURL(file); input.value=''; } // HISTÓRICO — AUDITORIA DE ALTERAÇÕES
+// HISTÓRICO — AUDITORIA DE ALTERAÇÕES
 // ════════════════════════════════════════════════════════════════
 // Marcador usado no campo "campo" de uma entrada de log pra indicar que ela
 // não é uma alteração normal de campo, e sim o registro de "a IA leu este
