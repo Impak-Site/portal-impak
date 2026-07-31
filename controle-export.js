@@ -39,13 +39,22 @@ async function exportarRelatorio(){
     // processo não tem estimativa_json (criado direto no Controle) ou ainda não
     // tem NF Saída lançada.
     const f = calcularFechamento(p);
+    // Vendas multi-cliente: quando o processo foi vendido a mais de um
+    // cliente, não existe "a" NF Saída — usa a soma (f.nfSaida, já calculada
+    // por calcularFechamento a partir das vendas) e sinaliza no número em
+    // vez de mostrar o campo legado nf_saida_numero (que fica vazio/errado
+    // nesse caso, já que cada venda tem seu próprio número de NF).
+    const nfSaidaNumeroCol = f.vendasResumo
+      ? `Múltiplos (${f.vendasResumo.linhas.length} clientes — ver aba Vendas)`
+      : (p.nf_saida_numero||'');
+    const nfSaidaValorCol = f.vendasResumo ? (f.nfSaida!=null ? f.nfSaida.toFixed(2) : '') : (p.nf_saida_valor||'');
     rows.push([
       p.referencia||'', p.fornecedor||'', p.cliente||'', p.fase||'',
       p.eta||'', p.etd||'', p.data_embarque||'', p.data_chegada||'',
       p.armador||'', p.navio||'', ctStr,
       p.hbl||'', p.mbl||'', p.numero_di||'', p.canal||'',
       p.pi_valor_usd||'', p.pi_pago?'SIM':'NÃO',
-      p.nf_saida_numero||'', p.nf_saida_valor||'',
+      nfSaidaNumeroCol, nfSaidaValorCol,
       f.lucroEstimado!=null ? f.lucroEstimado.toFixed(2) : '',
       f.lucroReal!=null ? f.lucroReal.toFixed(2) : '',
       f.deltaValor!=null ? f.deltaValor.toFixed(2) : '',
@@ -72,7 +81,18 @@ async function exportarExcel(){
     const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
     const lista = filtrarProcessos(); // exporta a visão atual (com filtros aplicados)
 
-    const linhas = lista.map(p=>({
+    const linhas = lista.map(p=>{
+    // Vendas multi-cliente: quando o processo foi vendido a mais de um
+    // cliente, o campo legado NF Saída não representa mais o processo
+    // inteiro — troca pelo resumo (soma das NFs) e sinaliza quantos
+    // clientes levaram parte deste processo, em vez de mostrar um valor
+    // vazio ou de uma venda só.
+    let vendasResumoExport = null;
+    try{
+      const vs = p.vendas_json ? JSON.parse(p.vendas_json) : [];
+      if(Array.isArray(vs) && vs.length && typeof calcularVendasResumo==='function') vendasResumoExport = calcularVendasResumo(p);
+    }catch(e){ vendasResumoExport = null; }
+    return {
       'Referência':          p.referencia||'',
       'Fornecedor':          p.fornecedor||'',
       'Cliente':             p.cliente||'',
@@ -115,13 +135,15 @@ async function exportarExcel(){
       'Valor CI (USD)':      p.ci_valor_usd||'',
       'NF Entrada Nº':       p.nf_entrada_numero||'',
       'NF Entrada Valor':    p.nf_entrada_valor||'',
-      'NF Saída Nº':         p.nf_saida_numero||'',
-      'NF Saída Valor':      p.nf_saida_valor||'',
+      'NF Saída Nº':         vendasResumoExport ? `Múltiplos (${vendasResumoExport.linhas.length} clientes)` : (p.nf_saida_numero||''),
+      'NF Saída Valor':      vendasResumoExport ? (vendasResumoExport.nfSaidaTotal||'') : (p.nf_saida_valor||''),
+      'Vendido a (multi-cliente)': vendasResumoExport ? vendasResumoExport.linhas.map(l=>l.venda.cliente||'(sem cliente)').join(' / ') : '',
       'Agendamento':         p.data_agendamento||'',
       'Data Carregamento':   p.data_carregamento||'',
       'Transportadora':      p.transportadora||'',
       'Obs':                 p.obs||'',
-    }));
+    };
+    });
 
     const wb  = XLSX.utils.book_new();
     const ws  = XLSX.utils.json_to_sheet(linhas);

@@ -902,6 +902,29 @@ function calcularLucroVenda(p, venda, custoRealTotal){
   return { ...rateio, nfSaida: temNf?nfSaida:null, temNf, lucro, pctLucro };
 }
 
+// Ajusta uma lista de valores fracionários (em R$) que deveriam somar
+// "totalAlvo" pra somarem EXATAMENTE isso até o centavo — método do maior
+// resto (largest remainder / Hamilton), o mesmo usado pra distribuir
+// cadeiras em sistemas proporcionais. Sem isso, ratear R$100.000,00 em 3
+// partes de 33.333,33... e converter cada uma pra centavos pode deixar 1-2
+// centavos "perdidos" ou "sobrando" que nunca aparecem em lugar nenhum —
+// pequeno, mas incomoda numa tela financeira onde a soma devia bater exato.
+function arredondarComRestoExato(valores, totalAlvo){
+  const totalCentavosAlvo = Math.round((totalAlvo||0) * 100);
+  const centavosBase = valores.map(v => Math.floor((v||0) * 100));
+  const somaBase = centavosBase.reduce((s,c)=> s+c, 0);
+  let restante = totalCentavosAlvo - somaBase;
+  // Distribui o restante (positivo ou negativo) 1 centavo de cada vez,
+  // priorizando quem tem a maior parte fracionária "perdida" no floor.
+  const ordem = valores
+    .map((v,i)=>({ i, frac: (v||0)*100 - Math.floor((v||0)*100) }))
+    .sort((a,b)=> b.frac - a.frac);
+  const resultado = [...centavosBase];
+  for(let k=0; k<ordem.length && restante>0; k++){ resultado[ordem[k].i] += 1; restante--; }
+  for(let k=ordem.length-1; k>=0 && restante<0; k--){ resultado[ordem[k].i] -= 1; restante++; }
+  return resultado.map(c => c/100);
+}
+
 // Resumo agregado de todas as vendas de um processo — null quando não há
 // nenhuma venda cadastrada (processo continua no modelo antigo, 1 NF Saída
 // única pro processo inteiro).
@@ -910,9 +933,27 @@ function calcularVendasResumo(p){
   if(!vendas.length) return null;
   const custosReais = calcularCustoRealTotal(p);
   const custoRealTotal = custosReais ? custosReais.total : 0;
-  const linhas = vendas.map(venda => ({ venda, ...calcularLucroVenda(p, venda, custoRealTotal) }));
+  let linhas = vendas.map(venda => ({ venda, ...calcularLucroVenda(p, venda, custoRealTotal) }));
   const totalQtd = totalQuantidadeProdutos(p);
   const qtdAlocada = linhas.reduce((s,l)=> s + l.qtdVenda, 0);
+
+  // Correção de arredondamento (maior resto): só faz sentido quando o
+  // processo está 100% alocado entre as vendas (senão a soma parcial dos
+  // custos rateados É o comportamento correto — ver saldoNaoAlocado) e
+  // quando há mais de 1 venda (com 1 venda só não existe erro de soma pra
+  // corrigir). Recalcula custoTotal/lucro/pctLucro de cada linha em cima
+  // do custoRateado ajustado.
+  if(totalQtd > 0 && qtdAlocada === totalQtd && custoRealTotal > 0 && linhas.length > 1){
+    const ajustados = arredondarComRestoExato(linhas.map(l=>l.custoRateado), custoRealTotal);
+    linhas = linhas.map((l,i) => {
+      const custoRateado = ajustados[i];
+      const custoTotal = custoRateado + l.custoDireto;
+      const lucro = l.temNf ? (l.nfSaida - custoTotal) : null;
+      const pctLucro = (l.temNf && lucro != null && l.nfSaida > 0) ? (lucro / l.nfSaida) : null;
+      return { ...l, custoRateado, custoTotal, lucro, pctLucro };
+    });
+  }
+
   const nfSaidaTotal = linhas.reduce((s,l)=> s + (l.temNf?l.nfSaida:0), 0);
   const todasComNf = linhas.length>0 && linhas.every(l=>l.temNf);
   const lucroTotal = todasComNf ? linhas.reduce((s,l)=> s + l.lucro, 0) : null;

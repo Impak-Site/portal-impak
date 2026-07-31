@@ -481,6 +481,21 @@ function renderModal(){
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
+        ${(() => {
+          // Ambiguidade NF Saída legada × aba Vendas: quando o processo já
+          // tem vendas cadastradas (multi-cliente), calcularFechamento()
+          // ignora nf_saida_numero/data/valor por completo e usa a soma das
+          // NFs de cada venda — sem este aviso, alguém podia preencher os
+          // dois lugares achando que os dois contam, ou não entender por que
+          // editar este campo aqui não muda o Lucro Real na aba Fechamento.
+          let vendas = [];
+          try{ vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; }catch(e){ vendas = []; }
+          if(!Array.isArray(vendas)) vendas = [];
+          if(!vendas.length) return '';
+          return `<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.35);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--text);">
+            ⚠ Este processo foi vendido a <strong>${vendas.length} cliente${vendas.length===1?'':'s'}</strong> diferentes (ver aba 🧾 Vendas) — os campos de <strong>NF Saída</strong> abaixo NÃO são usados no cálculo de Fechamento nesse caso; cada venda tem sua própria NF Saída, lançada na aba Vendas.
+          </div>`;
+        })()}
         <div class="form-grid">
           <div class="form-group"><label class="form-label">NF Entrada Nº</label>
             <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
@@ -488,7 +503,7 @@ function renderModal(){
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
           <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">NF Saída Nº</label>
+          <div class="form-group"><label class="form-label">NF Saída Nº${p.vendas_json&&JSON.parse(p.vendas_json||'[]').length?' <span style="color:#f39c12;font-weight:400;">(não usado — ver aba Vendas)</span>':''}</label>
             <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Saída Data</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>

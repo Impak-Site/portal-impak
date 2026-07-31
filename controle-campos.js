@@ -112,6 +112,31 @@ function coletarESalvar(){
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
 
+  // Validação das vendas multi-cliente ANTES de gravar qualquer coisa — sem
+  // isso, cliente em branco, item sem quantidade ou sobrevenda (vender mais
+  // unidades do que o processo tem) só apareceriam quebrados depois, na aba
+  // Fechamento, sem nenhum aviso claro de por que o número está errado.
+  if(_vendas.length){
+    for(let vi=0; vi<_vendas.length; vi++){
+      const v = _vendas[vi];
+      if(!v.cliente || !v.cliente.trim()){
+        showToast(`Venda ${vi+1}: informe o cliente antes de salvar (ou remova a venda, se não for usar esta aba)`,'err');
+        return;
+      }
+      const itensValidos = (v.itens||[]).filter(it => it.descricao && it.descricao.trim() && parseFloat(it.quantidade) > 0);
+      if(!itensValidos.length){
+        showToast(`Venda ${vi+1} (${v.cliente}): informe ao menos um item com descrição e quantidade maior que zero`,'err');
+        return;
+      }
+    }
+    const totalQtdProc = totalQuantidadeProdutos({..._editando, produtos_json: JSON.stringify(_produtos)});
+    const qtdAlocadaVendas = _vendas.reduce((s,v)=> s + (v.itens||[]).reduce((s2,it)=> s2 + (parseFloat(it.quantidade)||0), 0), 0);
+    if(totalQtdProc > 0 && qtdAlocadaVendas > totalQtdProc){
+      showToast(`As vendas somam ${qtdAlocadaVendas} unidades, mas o processo só tem ${totalQtdProc} — corrija a quantidade de alguma venda antes de salvar (sobrevenda)`,'err');
+      return;
+    }
+  }
+
   const antigo = {...(_editando||{})};
   const campos = [
     'referencia','finalidade','fornecedor','cliente','produto','obs',
@@ -425,6 +450,18 @@ function adicionarVenda(){
 }
 
 function removerVenda(vi){
+  const v = _vendas[vi] || {};
+  // Só pede confirmação se a venda já tem algo digitado — uma venda recém
+  // adicionada e ainda vazia (clique errado em "+ Adicionar Venda") pode
+  // sumir direto, sem incomodar o usuário com um confirm() desnecessário.
+  const temDados = !!(
+    (v.cliente && v.cliente.trim()) ||
+    (v.nf_saida_numero && v.nf_saida_numero.trim()) ||
+    (v.nf_saida_valor !== '' && v.nf_saida_valor != null) ||
+    (v.itens||[]).some(it => (it.descricao && it.descricao.trim()) || (it.quantidade !== '' && it.quantidade != null)) ||
+    (v.custos_diretos||[]).length
+  );
+  if(temDados && !confirm(`Remover a venda ${vi+1}${v.cliente?' ('+v.cliente+')':''}? Os dados digitados nela serão perdidos (isso só é gravado de verdade quando você clicar em Salvar).`)) return;
   _vendas.splice(vi,1);
   renderVendas();
 }
