@@ -235,9 +235,17 @@ async function exportarFormatoCliente(statusSelecionados){
     // lançada ainda vão pro final, não pro topo. parseDataLocal() (não
     // `new Date()` direto) pra não reintroduzir o bug de UTC×local já
     // corrigido no resto do sistema.
+    // Data Chegada (real) tem prioridade; processos que ainda não chegaram
+    // (ex.: Ag. Embarque, PI Recebida) usam a ETA (estimada) no lugar — mesma
+    // regra da coluna "ETA / Chegada" da tela principal (ver dataDisplay em
+    // render(), controle-core.js: `chegadaDate || etaDate`). Sem esse
+    // fallback, todo processo ainda não chegado ficava jogado pro fim da
+    // planilha (Infinity), fora de ordem em relação à previsão de chegada.
     lista = [...lista].sort((a,b)=>{
-      const da = a.data_chegada ? parseDataLocal(a.data_chegada).getTime() : Infinity;
-      const db = b.data_chegada ? parseDataLocal(b.data_chegada).getTime() : Infinity;
+      const dtA = a.data_chegada || a.eta;
+      const dtB = b.data_chegada || b.eta;
+      const da = dtA ? parseDataLocal(dtA).getTime() : Infinity;
+      const db = dtB ? parseDataLocal(dtB).getTime() : Infinity;
       return da - db;
     });
 
@@ -265,7 +273,11 @@ async function exportarFormatoCliente(statusSelecionados){
       }catch(e){ produtos = p.produto ? [{descricao:p.produto, quantidade:''}] : []; }
       if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
 
-      const chegadaTs = p.data_chegada ? parseDataLocal(p.data_chegada).getTime() : Infinity;
+      // Idem ao sort acima: sem chegada real ainda, usa a ETA — senão a
+      // coluna "Data Chegada" ficava em branco pra qualquer processo em
+      // Ag. Embarque/PI Recebida, mesmo já tendo previsão de chegada.
+      const dtChegadaOuEta = p.data_chegada || p.eta;
+      const chegadaTs = dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).getTime() : Infinity;
 
       produtos.filter(it=>it.descricao).forEach(it=>{
         const linha = {
@@ -277,7 +289,7 @@ async function exportarFormatoCliente(statusSelecionados){
           'Data do Pedido':          p.pi_data ? parseDataLocal(p.pi_data).toLocaleDateString('pt-BR') : '',
           'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
           'Data de Embarque':        p.etd ? parseDataLocal(p.etd).toLocaleDateString('pt-BR') : '',
-          'Data Chegada':            p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '',
+          'Data Chegada':            dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).toLocaleDateString('pt-BR') + (p.data_chegada?'':' (estimado)') : '',
           'POD':                     p.porto_destino||'N/I',
         };
         if(incluirFrete){
