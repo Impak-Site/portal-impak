@@ -1,0 +1,23 @@
+-- 0007_add_vendas_processo.sql
+--
+-- Vendas multi-cliente por processo (rateio de custo): um processo (de
+-- qualquer finalidade — Direto, Encomenda ou Conta e Ordem) pode ser vendido
+-- a mais de um cliente, ex.: meio contêiner pra um cliente, meio pra outro.
+-- Ver controle-core.js (calcularRateioVenda/calcularVendasResumo/
+-- calcularFechamento) e controle-modal.js (aba "Vendas").
+--
+-- vendas_json: array JSON (texto, mesmo padrão de containers_json/
+-- produtos_json) com uma entrada por venda:
+--   [{
+--     cliente: string,
+--     itens: [{descricao, quantidade}],       -- quantidade alocada a esta venda
+--     nf_saida_numero, nf_saida_data, nf_saida_valor: campos da NF Saída DESSA venda
+--     custos_diretos: [{label, valor}],        -- custos não-rateados, só desta venda
+--     obs: string
+--   }, ...]
+--
+-- "[]" ou NULL = processo sem split (comportamento antigo, 1 cliente/NF
+-- Saída só) — 100% retrocompatível, calcularFechamento() só muda de
+-- comportamento quando esta coluna tem pelo menos uma venda cadastrada.
+
+alter table controle_processos add column if not exists vendas_json text;
