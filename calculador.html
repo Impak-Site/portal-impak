@@ -77,6 +77,18 @@ input.locked{background:var(--bg);color:var(--muted);cursor:not-allowed;}
 .btn-refresh:hover{background:var(--ac2);}
 .cambio-info{font-size:10px;color:var(--dim);margin-top:3px;}
 
+/* PARCELAS DO FOB (item e) */
+.parcela-calc-row{display:grid;grid-template-columns:1fr 28px;grid-template-areas:"etapa remover" "valor valor" "data data";gap:6px;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--border);}
+.parcela-calc-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+.parcela-calc-row select{grid-area:etapa;}
+.parcela-calc-row .parcela-valor-wrap{grid-area:valor;}
+.parcela-calc-row .parcela-data-wrap{grid-area:data;}
+.parcela-calc-row button{grid-area:remover;background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;justify-self:end;}
+.parcela-calc-row .parcela-mini-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;display:block;}
+/* Painel do calculador é uma coluna estreita fixa mesmo em telas largas —
+   por isso as parcelas ficam sempre empilhadas (Etapa em cima, Valor e Data
+   embaixo lado a lado), em vez de depender de media query por viewport. */
+
 /* TOGGLE SIM/NÃO */
 .toggle-group{display:flex;gap:6px;}
 .toggle-btn{flex:1;padding:7px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;}
@@ -1249,16 +1261,22 @@ function renderParcelasCalc(){
   const wrap = document.getElementById('parcelas-calc-list');
   if(!wrap) return;
   wrap.innerHTML = _estado.parcelas.map((pc,i) => `
-    <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 28px;gap:6px;align-items:center;margin-bottom:6px;">
+    <div class="parcela-calc-row">
       <select onchange="_estado.parcelas[${i}].label=this.value">
         <option value="">Etapa...</option>
         ${PARCELA_ETAPAS_CALC.map(et => `<option value="${et}" ${pc.label===et?'selected':''}>${et}</option>`).join('')}
       </select>
-      <input type="number" step="0.01" placeholder="Valor USD" value="${pc.valor_usd!=null?pc.valor_usd:''}"
-        oninput="_estado.parcelas[${i}].valor_usd=this.value">
-      <input type="date" value="${pc.data||''}"
-        oninput="_estado.parcelas[${i}].data=this.value">
-      <button type="button" onclick="removerParcelaCalc(${i})" title="Remover" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;">✕</button>
+      <div class="parcela-valor-wrap">
+        <span class="parcela-mini-label">Valor (USD)</span>
+        <input type="number" step="0.01" placeholder="0,00" value="${pc.valor_usd!=null?pc.valor_usd:''}"
+          oninput="_estado.parcelas[${i}].valor_usd=this.value">
+      </div>
+      <div class="parcela-data-wrap">
+        <span class="parcela-mini-label">Data</span>
+        <input type="date" value="${pc.data||''}"
+          oninput="_estado.parcelas[${i}].data=this.value">
+      </div>
+      <button type="button" onclick="removerParcelaCalc(${i})" title="Remover">✕</button>
     </div>
   `).join('');
 }
