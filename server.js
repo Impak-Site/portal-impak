@@ -2070,6 +2070,68 @@ app.use((err, req, res, next) => {
   res.status(500).json({ ok: false, erro: 'Erro interno no servidor. Tente novamente em alguns instantes.' });
 });
 
+// ── Vincular cotação a processo existente (item d) ──────────────
+app.get('/api/controle/processos-abertos', auth('processos'), async (req, res) => {
+    try {
+          const { data, error } = await sb()
+            .from('controle_processos')
+            .select('id, referencia, cliente, fase')
+            .neq('fase', 'FINALIZADO')
+            .order('referencia', { ascending: true })
+            .limit(500);
+          if (error) throw new Error(error.message);
+          res.json({ ok: true, processos: data || [] });
+    } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (req, res, next) => {
+    if (!req.session.modulos.includes('processos')) {
+          return res.status(403).json({ erro: 'Sem acesso a Processos — não é possível vincular cotações' });
+    }
+    next();
+}, async (req, res) => {
+    try {
+          const { processo_id } = req.body;
+          if (!processo_id) return res.status(400).json({ erro: 'processo_id obrigatório' });
+
+          const { data: cot, error: eCot } = await sb()
+            .from('calculador_cotacoes').select('*').eq('id', req.params.id).single();
+          if (eCot) throw new Error(eCot.message);
+
+          const { data: proc, error: eProc } = await sb()
+            .from('controle_processos').select('id, referencia, estimativa_json, real_json')
+            .eq('id', processo_id).single();
+          if (eProc) throw new Error(eProc.message);
+
+          const estimativa = extrairEstimativa(cot.resumo);
+          const custosCotados = (cot.resumo && cot.resumo.custos_cotados_json) || null;
+          const realInicial = proc.real_json ? null : gerarRealJsonInicial(custosCotados);
+
+          const patch = {};
+          if (estimativa) patch.estimativa_json = estimativa;
+          if (realInicial) patch.real_json = realInicial;
+          if (Object.keys(patch).length) {
+                  const { error: eUpd } = await sb().from('controle_processos').update(patch).eq('id', processo_id);
+                  if (eUpd) throw new Error(eUpd.message);
+          }
+
+          const novoResumo = {
+                  ...(cot.resumo || {}),
+                  status: 'aprovada',
+                  processo_id: proc.id,
+                  processo_referencia: proc.referencia,
+                  data_aprovacao: new Date().toISOString(),
+                  aprovado_por: req.session.usuario || null,
+          };
+          const { error: eCotUpd } = await sb().from('calculador_cotacoes')
+            .update({ resumo: novoResumo }).eq('id', req.params.id);
+          if (eCotUpd) throw new Error(eCotUpd.message);
+
+          res.json({ ok: true, processo_id: proc.id, processo_referencia: proc.referencia });
+    } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+
 // ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
