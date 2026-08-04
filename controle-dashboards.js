@@ -430,6 +430,14 @@ function renderDashFinanceiro(){
   });
   const totalAPagar30dUSD = aPagar30d.reduce((s,x)=>s+x.valorUsd,0);
 
+  // KPI 1b — Total já vencido (não pago, vencimento < hoje). Fica separado
+  // do "Saldo a Pagar (30 dias)" de propósito — aquele card olha só pra
+  // frente (vencimento >= hoje), então um pagamento atrasado nunca aparecia
+  // em lugar nenhum com o valor em R$/USD, só como contador no Dashboard
+  // Executivo ("PI Vencidas"). Esse card cobre esse buraco.
+  const vencidos = emAberto.filter(estaVencido);
+  const totalVencidoUSD = vencidos.reduce((s,x)=>s+x.valorUsd,0);
+
   // KPI 2 — Exposição total em USD (tudo que ainda está em aberto)
   const totalExposicaoUSD = emAberto.reduce((s,x)=>s+x.valorUsd,0);
 
@@ -496,6 +504,11 @@ function renderDashFinanceiro(){
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Saldo a Pagar (30 dias)</div>
         <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(totalAPagar30dUSD)}</div>
         <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalAPagar30dUSD*_cambio.USD)} · ${aPagar30d.length} pagamento${aPagar30d.length!==1?'s':''}</div>
+      </div>
+      <div onclick="abrirComFiltro('__pi_vencido')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver pagamentos já vencidos (vencimento no passado, ainda não pagos)">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Vencido</div>
+        <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(totalVencidoUSD)}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalVencidoUSD*_cambio.USD)} · ${vencidos.length} pagamento${vencidos.length!==1?'s':''}</div>
       </div>
       <div onclick="abrirComFiltro('__pi_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver todos os processos com pagamento em aberto">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Exposição em USD</div>
