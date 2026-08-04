@@ -455,6 +455,10 @@ function renderModal(){
             <input class="form-input" id="f_hbl" value="${esc(p.hbl)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">MBL</label>
             <input class="form-input" id="f_mbl" value="${esc(p.mbl)}"></div>
+          <div class="form-group"><label class="form-label">Consignatário</label>
+            <input class="form-input" id="f_consignatario" value="${esc(p.consignatario)}" placeholder="Consignee do BL/DI — pode ser diferente do Cliente"></div>
+          <div class="form-group"><label class="form-label">Notify</label>
+            <input class="form-input" id="f_notify" value="${esc(p.notify)}" placeholder="Notify Party do BL/DI"></div>
           <div class="form-group" style="grid-column:1/-1">
             <label class="form-label">Containers</label>
             <div id="multi-containers-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>

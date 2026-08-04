@@ -156,7 +156,7 @@ function coletarESalvar(){
     'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
     'previsao_prontidao','data_prontidao',
     'booking_numero','armador','agente','navio','viagem','valor_frete','moeda_frete','porto_origem','porto_destino',
-    'etd','eta','free_time','data_embarque','hbl','mbl','container','tipo_container',
+    'etd','eta','free_time','data_embarque','hbl','mbl','consignatario','notify','container','tipo_container',
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
@@ -447,7 +447,11 @@ function renderVendas(){
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--bg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">Venda ${vi+1}</div>
-        <button type="button" onclick="removerVenda(${vi})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:12px;font-weight:600;">🗑 Remover venda</button>
+        <div style="display:flex;gap:14px;align-items:center;">
+          <button type="button" onclick="document.getElementById('nf-import-${vi}').click()" style="background:none;border:none;color:var(--ac);cursor:pointer;font-size:12px;font-weight:600;">📎 Importar NF (XML ou PDF)</button>
+          <input type="file" id="nf-import-${vi}" accept=".xml,application/pdf,image/*" style="display:none" onchange="importarNFVenda(${vi},this)">
+          <button type="button" onclick="removerVenda(${vi})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:12px;font-weight:600;">🗑 Remover venda</button>
+        </div>
       </div>
       <div class="form-grid" style="margin-bottom:10px;">
         <div class="form-group full" style="position:relative;"><label class="form-label">Cliente</label>

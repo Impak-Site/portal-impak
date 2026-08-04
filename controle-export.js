@@ -260,18 +260,21 @@ async function exportarFormatoCliente(statusSelecionados){
     // esse follow-up quando for reenviado por e-mail.
     const clienteFiltro = document.getElementById('filtro-cliente')?.value || '';
 
-    // Montar 1 linha por produto, lendo produtos_json com retrocompatibilidade
-    // para o campo "produto" legado (texto único), igual ao padrão usado no
-    // resto do sistema para multi-produtos. lista já está ordenada por
-    // chegada, então as linhas nascem nessa ordem dentro de cada fornecedor.
+    // Montar 1 linha por produto. Quando o processo tem vendas cadastradas
+    // (aba Vendas, vendas_json) e mais de uma delas tem cliente preenchido,
+    // cada linha nasce a partir dos itens DA VENDA (venda.itens) — não de
+    // produtos_json — e carrega o cliente daquela venda especificamente
+    // (pedido: "quando fizermos o follow up/exportar para cliente, tem que
+    // puxar os dados de cada pedido separado por cliente da aba vendas").
+    // Processos sem vendas cadastradas (ou com só 1 venda) continuam usando
+    // produtos_json/produto legado e o campo p.cliente, como antes.
+    // lista já está ordenada por chegada, então as linhas nascem nessa
+    // ordem dentro de cada fornecedor/cliente.
     const linhas = [];
     lista.forEach(p=>{
-      let produtos = [];
-      try{
-        if(p.produtos_json) produtos = JSON.parse(p.produtos_json);
-        else if(p.produto) produtos = [{descricao:p.produto, quantidade:''}];
-      }catch(e){ produtos = p.produto ? [{descricao:p.produto, quantidade:''}] : []; }
-      if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
+      let vendas = [];
+      try{ vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; }catch(e){ vendas = []; }
+      const temMultiCliente = Array.isArray(vendas) && vendas.filter(v=>v && (v.itens||[]).length).length > 1;
 
       // Idem ao sort acima: sem chegada real ainda, usa a ETA — senão a
       // coluna "Data Chegada" ficava em branco pra qualquer processo em
@@ -279,9 +282,10 @@ async function exportarFormatoCliente(statusSelecionados){
       const dtChegadaOuEta = p.data_chegada || p.eta;
       const chegadaTs = dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).getTime() : Infinity;
 
-      produtos.filter(it=>it.descricao).forEach(it=>{
+      const montarLinha = (clienteNome, it)=>{
         const linha = {
           fornecedor: p.fornecedor||'—',
+          cliente: clienteNome || '(sem cliente)',
           _chegadaTs: chegadaTs, // só pra ordenar os grupos de fornecedor abaixo, não vira coluna
           'Invoice':                 p.referencia||'',
           'Medida':                  it.descricao||'',
@@ -295,121 +299,167 @@ async function exportarFormatoCliente(statusSelecionados){
         if(incluirFrete){
           linha['Valor do Frete'] = p.valor_frete ? `${exibirMoeda(p.valor_frete)} ${p.moeda_frete||'USD'}` : '';
         }
-        linhas.push(linha);
-      });
+        return linha;
+      };
+
+      if(temMultiCliente){
+        vendas.forEach(v=>{
+          (v.itens||[]).filter(it=>it.descricao).forEach(it=>{
+            linhas.push(montarLinha(v.cliente || p.cliente, it));
+          });
+        });
+      }else{
+        let produtos = [];
+        try{
+          if(p.produtos_json) produtos = JSON.parse(p.produtos_json);
+          else if(p.produto) produtos = [{descricao:p.produto, quantidade:''}];
+        }catch(e){ produtos = p.produto ? [{descricao:p.produto, quantidade:''}] : []; }
+        if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
+        produtos.filter(it=>it.descricao).forEach(it=>{
+          linhas.push(montarLinha(p.cliente, it));
+        });
+      }
     });
 
     if(!linhas.length){ showToast('Nenhum produto encontrado para exportar','err'); return; }
 
-    // Agrupar por fornecedor, com uma linha de cabeçalho de grupo entre eles
-    // (igual ao modelo: "EUDEMON" como linha de separação antes dos itens).
-    const porForn = {};
-    linhas.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
+    // Separar por cliente — pedido: "um arquivo por cliente" quando há mais
+    // de um cliente envolvido nas linhas selecionadas (seja porque a lista
+    // tem processos de clientes diferentes, seja porque um único processo
+    // foi vendido a mais de um cliente na aba Vendas). Com um cliente só,
+    // gera 1 arquivo, igual ao comportamento de sempre.
+    const porCliente = {};
+    linhas.forEach(l=>{ (porCliente[l.cliente] = porCliente[l.cliente]||[]).push(l); });
+    const clientesOrdenados = Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR'));
 
-    // Grupos de fornecedor em ordem de chegada mais próxima primeiro (não
-    // mais alfabética) — pega a menor Data de Chegada de cada grupo pra
-    // decidir a ordem, mantendo o pedido de "ordenado pela data de chegada"
-    // mesmo com a planilha agrupada por fornecedor.
-    const fornOrdenados = Object.keys(porForn).sort((fa,fb)=>{
-      const da = Math.min(...porForn[fa].map(l=>l._chegadaTs));
-      const db = Math.min(...porForn[fb].map(l=>l._chegadaTs));
-      return da - db;
-    });
+    const { CORES, estilizarTitulo, estilizarSubtitulo, estilizarHeaderCell,
+            estilizarGrupoHeader, estilizarCelulaDado } = window.ExcelStyles;
 
     const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD'];
     if(incluirFrete) colunas.push('Valor do Frete');
     const numCols = colunas.length;
-
-    // Paleta/bordas/estilização compartilhadas com calculador.html e
-    // tyredesk.html — ver excel-styles.js (window.ExcelStyles).
-    const { CORES, estilizarTitulo, estilizarSubtitulo, estilizarHeaderCell,
-            estilizarGrupoHeader, estilizarCelulaDado } = window.ExcelStyles;
-
-    const wb = new ExcelJS.Workbook();
-    wb.creator = 'IMPAK';
-    wb.created = new Date();
-    const nomeAbaBruto = (clienteFiltro || 'Follow-up').replace(/[\\\/\?\*\[\]:]/g,'').substring(0,31);
-    const ws = wb.addWorksheet(nomeAbaBruto || 'Follow-up');
-    ws.views = [{state:'frozen', ySplit:4}];
-
-    // Linha 1 — título (nome do cliente, se filtrado)
-    ws.mergeCells(1,1,1,numCols);
-    const titulo = ws.getCell(1,1);
-    titulo.value = `IMPAK — Follow-up de Importação${clienteFiltro?' · '+clienteFiltro:''}`;
-    estilizarTitulo(titulo);
-    ws.getRow(1).height = 30;
-
-    // Linha 2 — subtítulo (data de geração)
-    ws.mergeCells(2,1,2,numCols);
-    const agora = new Date();
-    const sub = ws.getCell(2,1);
-    sub.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
-    estilizarSubtitulo(sub);
-    ws.getRow(2).height = 20;
-
-    ws.getRow(3).height = 6; // espaçador
-
-    // Linha 4 — cabeçalho das colunas
-    const headerRow = ws.getRow(4);
-    colunas.forEach((c,i)=>{
-      const cell = headerRow.getCell(i+1);
-      cell.value = c;
-      estilizarHeaderCell(cell, {size:11});
-    });
-    headerRow.height = 32;
-    ws.autoFilter = {from:{row:4,column:1}, to:{row:4,column:numCols}};
-
-    // Linhas de dados, agrupadas por fornecedor (cada grupo com uma linha
-    // de cabeçalho destacada, igual ao modelo original) — grupos e linhas
-    // dentro de cada grupo em ordem de Data de Chegada.
-    let rowIdx = 5;
-    fornOrdenados.forEach(forn=>{
-      ws.mergeCells(rowIdx,1,rowIdx,numCols);
-      const gcell = ws.getCell(rowIdx,1);
-      gcell.value = `🏭  ${forn}`;
-      estilizarGrupoHeader(gcell);
-      gcell.alignment = {vertical:'middle', horizontal:'left', indent:1};
-      gcell.border = {bottom:{style:'thin',color:{argb:CORES.BORDA}}};
-      ws.getRow(rowIdx).height = 22;
-      rowIdx++;
-
-      porForn[forn].forEach((l,idx)=>{
-        const row = ws.getRow(rowIdx);
-        colunas.forEach((c,i)=>{
-          const cell = row.getCell(i+1);
-          cell.value = l[c];
-          estilizarCelulaDado(cell, {idx, alinhamento: c==='Qte' ? 'center':'left', size:10.5});
-        });
-        rowIdx++;
-      });
-    });
-
-    // Linha final — resumo
-    ws.mergeCells(rowIdx,1,rowIdx,numCols);
-    const totalCell = ws.getCell(rowIdx,1);
-    totalCell.value = `Total: ${linhas.length} item(ns) em ${Object.keys(porForn).length} fornecedor(es)`;
-    totalCell.font = {name:'Calibri', bold:true, italic:true, size:10, color:{argb:CORES.CINZA}};
-    totalCell.alignment = {horizontal:'right'};
-    ws.getRow(rowIdx).height = 20;
-
-    // Larguras de coluna
     const largurasMinimas = {Invoice:14,Medida:26,Qte:8,'Data do Pedido':16,'Data de Prontidão na Fábrica':22,'Data de Embarque':16,'Data Chegada':16,POD:10,'Valor do Frete':16};
-    colunas.forEach((c,i)=>{ ws.getColumn(i+1).width = largurasMinimas[c]||14; });
-
-    const buf = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url = URL.createObjectURL(blob);
     const dataArq = new Date().toISOString().split('T')[0];
-    const sufixoCliente = clienteFiltro ? '_'+clienteFiltro.replace(/[^a-zA-Z0-9]+/g,'') : '';
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `IMPAK_FollowUp${sufixoCliente}_${dataArq}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
 
-    showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${Object.keys(porForn).length} fornecedor(es), ordenado por chegada${incluirFrete?' — com Valor do Frete':''}`,'ok');
+    // Monta e baixa 1 arquivo .xlsx pra um cliente específico (reaproveitado
+    // tanto no caso de 1 cliente só quanto no loop multi-cliente abaixo).
+    async function gerarArquivoCliente(nomeCliente, linhasCliente){
+      const porForn = {};
+      linhasCliente.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
+
+      // Grupos de fornecedor em ordem de chegada mais próxima primeiro (não
+      // mais alfabética) — pega a menor Data de Chegada de cada grupo pra
+      // decidir a ordem, mantendo o pedido de "ordenado pela data de chegada"
+      // mesmo com a planilha agrupada por fornecedor.
+      const fornOrdenados = Object.keys(porForn).sort((fa,fb)=>{
+        const da = Math.min(...porForn[fa].map(l=>l._chegadaTs));
+        const db = Math.min(...porForn[fb].map(l=>l._chegadaTs));
+        return da - db;
+      });
+
+      // Paleta/bordas/estilização compartilhadas com calculador.html e
+      // tyredesk.html — ver excel-styles.js (window.ExcelStyles).
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'IMPAK';
+      wb.created = new Date();
+      const nomeClienteExibir = nomeCliente === '(sem cliente)' ? '' : nomeCliente;
+      const nomeAbaBruto = (nomeClienteExibir || clienteFiltro || 'Follow-up').replace(/[\\\/\?\*\[\]:]/g,'').substring(0,31);
+      const ws = wb.addWorksheet(nomeAbaBruto || 'Follow-up');
+      ws.views = [{state:'frozen', ySplit:4}];
+
+      // Linha 1 — título (nome do cliente)
+      ws.mergeCells(1,1,1,numCols);
+      const titulo = ws.getCell(1,1);
+      titulo.value = `IMPAK — Follow-up de Importação${nomeClienteExibir?' · '+nomeClienteExibir:(clienteFiltro?' · '+clienteFiltro:'')}`;
+      estilizarTitulo(titulo);
+      ws.getRow(1).height = 30;
+
+      // Linha 2 — subtítulo (data de geração)
+      ws.mergeCells(2,1,2,numCols);
+      const agora = new Date();
+      const sub = ws.getCell(2,1);
+      sub.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+      estilizarSubtitulo(sub);
+      ws.getRow(2).height = 20;
+
+      ws.getRow(3).height = 6; // espaçador
+
+      // Linha 4 — cabeçalho das colunas
+      const headerRow = ws.getRow(4);
+      colunas.forEach((c,i)=>{
+        const cell = headerRow.getCell(i+1);
+        cell.value = c;
+        estilizarHeaderCell(cell, {size:11});
+      });
+      headerRow.height = 32;
+      ws.autoFilter = {from:{row:4,column:1}, to:{row:4,column:numCols}};
+
+      // Linhas de dados, agrupadas por fornecedor (cada grupo com uma linha
+      // de cabeçalho destacada, igual ao modelo original) — grupos e linhas
+      // dentro de cada grupo em ordem de Data de Chegada.
+      let rowIdx = 5;
+      fornOrdenados.forEach(forn=>{
+        ws.mergeCells(rowIdx,1,rowIdx,numCols);
+        const gcell = ws.getCell(rowIdx,1);
+        gcell.value = `🏭  ${forn}`;
+        estilizarGrupoHeader(gcell);
+        gcell.alignment = {vertical:'middle', horizontal:'left', indent:1};
+        gcell.border = {bottom:{style:'thin',color:{argb:CORES.BORDA}}};
+        ws.getRow(rowIdx).height = 22;
+        rowIdx++;
+
+        porForn[forn].forEach((l,idx)=>{
+          const row = ws.getRow(rowIdx);
+          colunas.forEach((c,i)=>{
+            const cell = row.getCell(i+1);
+            cell.value = l[c];
+            estilizarCelulaDado(cell, {idx, alinhamento: c==='Qte' ? 'center':'left', size:10.5});
+          });
+          rowIdx++;
+        });
+      });
+
+      // Linha final — resumo
+      ws.mergeCells(rowIdx,1,rowIdx,numCols);
+      const totalCell = ws.getCell(rowIdx,1);
+      totalCell.value = `Total: ${linhasCliente.length} item(ns) em ${Object.keys(porForn).length} fornecedor(es)`;
+      totalCell.font = {name:'Calibri', bold:true, italic:true, size:10, color:{argb:CORES.CINZA}};
+      totalCell.alignment = {horizontal:'right'};
+      ws.getRow(rowIdx).height = 20;
+
+      // Larguras de coluna
+      colunas.forEach((c,i)=>{ ws.getColumn(i+1).width = largurasMinimas[c]||14; });
+
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url = URL.createObjectURL(blob);
+      const sufixoCliente = '_'+(nomeClienteExibir || clienteFiltro || 'FollowUp').replace(/[^a-zA-Z0-9]+/g,'');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `IMPAK_FollowUp${sufixoCliente}_${dataArq}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return Object.keys(porForn).length;
+    }
+
+    if(clientesOrdenados.length <= 1){
+      const nomeUnico = clientesOrdenados[0] || (clienteFiltro || 'Follow-up');
+      const nForn = await gerarArquivoCliente(nomeUnico, linhas);
+      showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${nForn} fornecedor(es), ordenado por chegada${incluirFrete?' — com Valor do Frete':''}`,'ok');
+    }else{
+      // Múltiplos clientes: 1 arquivo por cliente (pedido confirmado com o
+      // usuário: "Um arquivo por cliente"). O navegador bloqueia downloads
+      // múltiplos disparados sem pausa em alguns casos — um pequeno delay
+      // entre cada `a.click()` evita isso.
+      for(let i=0;i<clientesOrdenados.length;i++){
+        const nome = clientesOrdenados[i];
+        await gerarArquivoCliente(nome, porCliente[nome]);
+        if(i < clientesOrdenados.length-1) await new Promise(r=>setTimeout(r,400));
+      }
+      showToast(`✓ ${linhas.length} item(ns) exportado(s) em ${clientesOrdenados.length} arquivo(s) (1 por cliente)`,'ok');
+    }
   }catch(e){
     showToast('Erro ao exportar: '+e.message,'err');
     console.error(e);
