@@ -2975,7 +2975,13 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
         por: quemAceitou
       };
       p._updatedAt = Date.now();
-      salvarMotivoHistorico(divKey, nota);
+      // Bug irmão do motivoSugerido acima: essa função também nunca existiu
+      // no arquivo — todo clique em "Confirmar" chegava até aqui (já com o
+      // _divResolvedMap atualizado em memória) e MORRIA aqui com
+      // ReferenceError, antes de chamar recalcularStatusProcesso/dbSaveProcess.
+      // Resultado: a divergência parecia aceita na hora (o card fechava/
+      // recolhia), mas nada era persistido — no reload, ou até no mesmo
+      // toast "aceita", o processo continuava "Com Divergência" pra sempre.
       recalcularStatusProcesso(p);
       dbSaveProcess(ownerUser, p, function(){
         dbGetAllProcesses(function(all){ _processes=migrateAlerts(all); renderDashboard(); renderProcessos(); });
