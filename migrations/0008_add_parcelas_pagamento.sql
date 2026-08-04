@@ -1,0 +1,29 @@
+-- 0008_add_parcelas_pagamento.sql
+--
+-- Forma de pagamento "Parcelado": alguns pedidos têm mais de 2 câmbios
+-- (ex.: um na confirmação do pedido, outro no embarque, outro na chegada) —
+-- a forma antiga "Entrada + Saldo" só suportava exatamente 2. "Parcelado"
+-- substitui essa opção no formulário de processos novos (ela continua
+-- existindo/funcionando pra processos antigos que já usam ENTRADA_SALDO,
+-- só não aparece mais como opção pra escolher) e permite quantas parcelas
+-- forem necessárias, cada uma com valor em USD fixo (não percentual — mais
+-- fácil de bater com o valor real fechado no câmbio).
+--
+-- Ver controle-campos.js (_parcelas/renderParcelas/adicionarParcela/
+-- coletarESalvar), controle-modal.js (renderPagamentoCampos/
+-- renderPagamentoInfo, case 'PARCELADO') e controle-core.js
+-- (listarPagamentosPI, fonte única do Dashboard Financeiro).
+--
+-- pi_parcelas_json: array JSON (texto, mesmo padrão de containers_json/
+-- produtos_json/vendas_json) com uma entrada por parcela:
+--   [{
+--     label: string,              -- etapa (ex: "Confirmação do pedido", "Embarque", "Chegada")
+--     valor_usd: number,
+--     data_vencimento: 'AAAA-MM-DD',
+--     cambio_fechado: number|null -- taxa realmente paga; null = ainda não fechada/paga
+--   }, ...]
+--
+-- "[]" ou NULL = processo não usa Parcelado (comportamento normal pros
+-- outros 3 tipos de pagamento) — 100% retrocompatível.
+
+alter table controle_processos add column if not exists pi_parcelas_json text;
