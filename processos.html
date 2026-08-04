@@ -2839,16 +2839,28 @@ function aceitarAlertaHistorico(procId, ownerUser, alertKey){
   var quemAceitou = _currentUser ? (_currentUser.displayName||_currentUser.username) : '?';
 
   // Se já aceito, desfazer direto sem overlay
+  // Bug: getProcesses() devolve a lista LEVE do dashboard (só índice, sem
+  // analises/grupos completos) — salvar esse objeto reduzido de volta no
+  // servidor apagava o histórico de análises do processo inteiro. Trocado
+  // por dbGetProcess, que traz (ou usa em cache) o processo COMPLETO, e só
+  // salva depois de confirmado (mesmo motivo do fix acima: evitar perder o
+  // desfazer se a página for recarregada logo em seguida).
   var procs0 = getProcesses();
-  var proc0 = procs0.find(function(p){ return p.id===parseInt(procId)||p.id===procId; });
-  if(proc0 && proc0._divResolvedMap && proc0._divResolvedMap[alertKey]){
-    delete proc0._divResolvedMap[alertKey];
-    proc0._updatedAt = Date.now();
-    recalcularStatusProcesso(proc0);
-    dbSaveProcess(ownerUser, proc0);
-    renderDashboard(); renderProcessos();
-    showToast('Aceite desfeito','warn');
-    setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 300);
+  var proc0Leve = procs0.find(function(p){ return p.id===parseInt(procId)||p.id===procId; });
+  if(proc0Leve && proc0Leve._divResolvedMap && proc0Leve._divResolvedMap[alertKey]){
+    dbGetProcess(ownerUser, parseInt(procId), function(proc0){
+      if(!proc0){ showToast('Processo não encontrado','err'); return; }
+      delete proc0._divResolvedMap[alertKey];
+      proc0._updatedAt = Date.now();
+      recalcularStatusProcesso(proc0);
+      dbSaveProcess(ownerUser, proc0, function(){
+        renderDashboard(); renderProcessos();
+        showToast('Aceite desfeito','warn');
+        openProcess(parseInt(procId), ownerUser);
+      }, function(erro){
+        showToast('Não foi possível desfazer: ' + (erro||'erro de rede'),'err');
+      });
+    });
     return;
   }
 
@@ -2881,17 +2893,30 @@ function aceitarAlertaHistorico(procId, ownerUser, alertKey){
   btnOk.onclick = function(){
     var nota = (textarea.value||'').trim();
     if(!nota){ showToast('Informe o motivo para aceitar.','err'); return; }
-    overlay.remove();
+    // Mesmo ajuste feito em aceitarDivHistorico: só fecha o modal / mostra
+    // o toast / recarrega DEPOIS que dbSaveProcess confirmar que o
+    // servidor gravou — antes disso era possível dar refresh ou sair da
+    // tela com o POST ainda em voo e perder o aceite silenciosamente.
+    btnOk.disabled = true;
+    btnOk.textContent = 'Salvando...';
+    btnCancel.style.display = 'none';
     dbGetProcess(ownerUser, parseInt(procId), function(p){
-      if(!p){ showToast('Processo não encontrado','err'); return; }
+      if(!p){ showToast('Processo não encontrado','err'); overlay.remove(); return; }
       p._divResolvedMap = p._divResolvedMap || {};
       p._divResolvedMap[alertKey] = { nota:nota, time:new Date().toLocaleString('pt-BR'), por:quemAceitou };
       p._updatedAt = Date.now();
       recalcularStatusProcesso(p);
-      dbSaveProcess(ownerUser, p);
-      renderDashboard(); renderProcessos();
-      showToast('Alerta aceito por ' + quemAceitou,'ok');
-      setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 400);
+      dbSaveProcess(ownerUser, p, function(){
+        overlay.remove();
+        renderDashboard(); renderProcessos();
+        showToast('Alerta aceito por ' + quemAceitou,'ok');
+        openProcess(parseInt(procId), ownerUser);
+      }, function(erro){
+        btnOk.disabled = false;
+        btnOk.textContent = '✓ Confirmar';
+        btnCancel.style.display = '';
+        showToast('Não foi possível salvar: ' + (erro||'erro de rede') + ' — tente novamente','err');
+      });
     });
   };
   btnRow.appendChild(btnCancel); btnRow.appendChild(btnOk);
@@ -2965,9 +2990,20 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
   btnOk.onclick = function(){
     var nota = (textarea.value||'').trim();
     if(!nota){ showToast('Informe o motivo para aceitar.','err'); return; }
-    overlay.remove();
+    // Antes: overlay.remove() + toast "aceita" disparavam ANTES do
+    // dbSaveProcess terminar (fetch é assíncrono). Se o usuário desse
+    // refresh (F5) ou saísse da página logo depois de ver o toast — o que
+    // é natural, já que a UI dizia "aceito" — o POST em andamento era
+    // cancelado pelo navegador e nada ficava salvo no servidor, mesmo já
+    // tendo "funcionado" visualmente. Agora: mantemos o modal aberto com o
+    // botão desabilitado até o servidor confirmar o save (onSuccess), e só
+    // então fechamos/mostramos o toast/recarregamos — assim a confirmação
+    // na tela só aparece quando já está realmente persistido.
+    btnOk.disabled = true;
+    btnOk.textContent = 'Salvando...';
+    btnCancel.style.display = 'none';
     dbGetProcess(ownerUser, parseInt(procId), function(p){
-      if(!p){ showToast('Processo não encontrado','err'); return; }
+      if(!p){ showToast('Processo não encontrado','err'); overlay.remove(); return; }
       p._divResolvedMap = p._divResolvedMap || {};
       p._divResolvedMap[divKey] = {
         nota: nota,
@@ -2975,19 +3011,18 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
         por: quemAceitou
       };
       p._updatedAt = Date.now();
-      // Bug irmão do motivoSugerido acima: essa função também nunca existiu
-      // no arquivo — todo clique em "Confirmar" chegava até aqui (já com o
-      // _divResolvedMap atualizado em memória) e MORRIA aqui com
-      // ReferenceError, antes de chamar recalcularStatusProcesso/dbSaveProcess.
-      // Resultado: a divergência parecia aceita na hora (o card fechava/
-      // recolhia), mas nada era persistido — no reload, ou até no mesmo
-      // toast "aceita", o processo continuava "Com Divergência" pra sempre.
       recalcularStatusProcesso(p);
       dbSaveProcess(ownerUser, p, function(){
+        overlay.remove();
         dbGetAllProcesses(function(all){ _processes=migrateAlerts(all); renderDashboard(); renderProcessos(); });
+        showToast('Divergência aceita por ' + quemAceitou,'ok');
+        openProcess(parseInt(procId), ownerUser);
+      }, function(erro){
+        btnOk.disabled = false;
+        btnOk.textContent = '✓ Confirmar';
+        btnCancel.style.display = '';
+        showToast('Não foi possível salvar: ' + (erro||'erro de rede') + ' — tente novamente','err');
       });
-      showToast('Divergência aceita por ' + quemAceitou,'ok');
-      setTimeout(function(){ openProcess(parseInt(procId), ownerUser); }, 800);
     });
   };
   
