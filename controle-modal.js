@@ -35,6 +35,16 @@ async function abrirProcesso(id){
   if(location.pathname !== novaUrl) history.pushState({processoId:proc.id}, '', novaUrl);
 }
 
+function copiarReferencia(){
+  const ref = _editando && _editando.referencia;
+  if(!ref) return;
+  navigator.clipboard.writeText(ref).then(function(){
+    showToast('Referência copiada: ' + ref, 'ok');
+  }, function(){
+    showToast('Não foi possível copiar — copie manualmente: ' + ref, 'err');
+  });
+}
+
 function fecharModal(){
   _editando = null;
   document.getElementById('modal-bg').classList.remove('open');
@@ -64,6 +74,8 @@ function renderModal(){
   const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
 
   document.getElementById('modal-title').textContent = isNovo ? 'Novo Processo' : p.referencia;
+  const btnCopiarRef = document.getElementById('btn-copiar-ref');
+  if(btnCopiarRef) btnCopiarRef.style.display = isNovo ? 'none' : '';
   document.getElementById('modal-fase-badge').innerHTML = `<span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>`;
   document.getElementById('modal-bg').classList.add('open');
 
@@ -227,7 +239,7 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Nº PI</label>
             <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}"></div>
           <div class="form-group"><label class="form-label">Data PI</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data" value="${esc(p.pi_data)}"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" oninput="atualizarDataPagamentoPrazo()" id="f_pi_data" value="${esc(p.pi_data)}"></div>
           <div class="form-group"><label class="form-label">Valor USD</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
           <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
@@ -1136,7 +1148,7 @@ function renderPagamentoCampos(){
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>`;
   } else if(tipo==='PRAZO'){
     html+=`<div class="form-group"><label class="form-label">Prazo (dias)</label>
-      <input class="form-input" type="number" id="f_pi_prazo_dias" value="${p.pi_prazo_dias||''}"></div>
+      <input class="form-input" type="number" id="f_pi_prazo_dias" value="${p.pi_prazo_dias||''}" oninput="atualizarDataPagamentoPrazo()"></div>
       <div class="form-group"><label class="form-label">Data Pagamento</label>
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
   } else if(tipo==='ENTRADA_SALDO'){
@@ -1171,11 +1183,34 @@ function renderPagamentoCampos(){
   if(tipo==='PARCELADO') renderParcelas();
 }
 
+// Forma "100% a Prazo": provisiona a Data Pagamento automaticamente como
+// Data PI + Prazo (dias), pra não depender do usuário calcular/lembrar de
+// preencher na mão — e sem isso o pagamento nem entrava no Dashboard
+// Financeiro (listarPagamentosPI usa pi_data_saldo como vencimento pro
+// "Saldo a pagar"). Roda a cada edição da Data PI ou do Prazo; se o usuário
+// mudar a Data Pagamento manualmente depois, prevalece o valor calculado na
+// última edição de Data PI/Prazo (mesmo comportamento de "provisionar", não
+// de travar o campo).
+function atualizarDataPagamentoPrazo(){
+  if(document.getElementById('f_pi_pagamento')?.value !== 'PRAZO') return;
+  const dataPI = document.getElementById('f_pi_data')?.value;
+  const prazo = parseInt(document.getElementById('f_pi_prazo_dias')?.value, 10);
+  const destino = document.getElementById('f_pi_data_saldo');
+  if(!dataPI || !prazo || !destino) return;
+  const d = parseDataLocal(dataPI);
+  if(!d) return;
+  d.setDate(d.getDate() + prazo);
+  destino.value = d.toISOString().split('T')[0];
+  renderPagamentoInfoLive();
+}
+
 // Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuário
 // edita % de entrada ou os câmbios, sem precisar salvar/reabrir o modal.
 function renderPagamentoInfoLive(){
   if(!_editando) return;
   const snapshot = {..._editando};
+  const prazo = document.getElementById('f_pi_prazo_dias')?.value;
+  if(prazo!=null && prazo!=='') snapshot.pi_prazo_dias = prazo;
   const pct = document.getElementById('f_pi_entrada_pct')?.value;
   if(pct!=null && pct!=='') snapshot.pi_entrada_pct = pct;
   const ce = parseFloat(document.getElementById('f_pi_cambio_entrada')?.value) || null;
