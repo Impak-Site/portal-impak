@@ -112,6 +112,18 @@ function coletarESalvar(){
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
 
+  // Validação das parcelas do pagamento "Parcelado" — mesma ideia da
+  // validação de vendas logo abaixo: barrar ANTES de gravar, não deixar
+  // parcela sem valor virar um "USD 0,00" silencioso no Financeiro.
+  if(document.getElementById('f_pi_pagamento')?.value === 'PARCELADO'){
+    sincronizarParcelasLegado();
+    const parcelasValidas = _parcelas.filter(pc => parseFloat(pc.valor_usd) > 0);
+    if(!parcelasValidas.length){
+      showToast('Informe o valor em USD de ao menos uma parcela (ou troque a Forma de Pagamento)','err');
+      return;
+    }
+  }
+
   // Validação das vendas multi-cliente ANTES de gravar qualquer coisa — sem
   // isso, cliente em branco, item sem quantidade ou sobrevenda (vender mais
   // unidades do que o processo tem) só apareceriam quebrados depois, na aba
@@ -153,7 +165,7 @@ function coletarESalvar(){
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor',
     'data_devolucao_vazio','demurrage_valor','demurrage_pago',
-    'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json','vendas_json',
+    'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json','vendas_json','pi_parcelas_json',
   ];
 
   const proc = {..._editando};
@@ -255,6 +267,24 @@ function coletarESalvar(){
   }
   if(String(original.vendas_json||'')!==novasVendasJson) patchFields.push('vendas_json');
   proc.vendas_json = novasVendasJson;
+
+  // Salvar parcelas do pagamento "Parcelado" e auditar mudança — mesmo
+  // padrão de containers_json/vendas_json acima. Só grava de verdade quando
+  // a forma de pagamento atual É "Parcelado": trocar pra Vista/Prazo/
+  // Entrada+Saldo não deve sobrescrever/apagar parcelas antigas com o
+  // conteúdo (possivelmente desatualizado) de _parcelas em memória.
+  if(document.getElementById('f_pi_pagamento')?.value === 'PARCELADO'){
+    sincronizarParcelasLegado();
+    const novasParcelasJson = JSON.stringify(_parcelas);
+    if(String(antigo.pi_parcelas_json||'')!==novasParcelasJson){
+      log.push({
+        campo:'pi_parcelas_json', valor_antes: antigo.pi_parcelas_json||'', valor_depois: novasParcelasJson,
+        usuario: _user.usuario, created_at: new Date().toISOString()
+      });
+    }
+    if(String(original.pi_parcelas_json||'')!==novasParcelasJson) patchFields.push('pi_parcelas_json');
+    proc.pi_parcelas_json = novasParcelasJson;
+  }
 
   proc.log = log;
   _editando = proc;
@@ -523,6 +553,60 @@ function renderResumoVendas(){
     ${resumo.todasComNf ? `<div style="display:flex;justify-content:space-between;padding-top:8px;margin-top:4px;border-top:1px solid var(--border);font-weight:700;font-size:12px;"><span>Lucro total do processo (soma das vendas)</span><span style="color:${resumo.lucroTotal>=0?'var(--ok)':'var(--err)'}">${r2(resumo.lucroTotal)}</span></div>` : '<div style="font-size:11px;color:var(--dim);margin-top:6px;">Preencha a NF Saída de cada venda pra ver o lucro total.</div>'}
     ${alertaSaldo}
   </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// PARCELAS DO PAGAMENTO "PARCELADO" (N câmbios por processo)
+// ════════════════════════════════════════════════════════════════
+// Substitui "Entrada + Saldo" (fixo em 2 parcelas por %) pra pedidos que têm
+// mais de 2 câmbios — ex.: um na confirmação do pedido, outro no embarque,
+// outro na chegada. Cada parcela tem valor FIXO em USD (não %, ver decisão
+// no commit) + etapa/rótulo livre + vencimento + câmbio fechado (null =
+// ainda não paga). Mesmo padrão de _containers/_produtos/_vendas acima:
+// estado numa variável global porque as linhas são adicionadas/removidas
+// dinamicamente com um botão "+".
+let _parcelas = []; // [{label, valor_usd, data_vencimento, cambio_fechado}]
+
+function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'' }; }
+
+function renderParcelas(){
+  const wrap = document.getElementById('parcelas-list');
+  if(!wrap) return;
+  if(!_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
+  wrap.innerHTML = _parcelas.map((pc,i)=>`
+    <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
+      <input class="form-input" placeholder="Etapa (ex: Confirmação do pedido, Embarque, Chegada)" value="${esc(pc.label||'')}"
+        oninput="_parcelas[${i}].label=this.value;sincronizarParcelasLegado()">
+      <input class="form-input" type="number" step="0.01" placeholder="Valor USD" value="${pc.valor_usd!=null?pc.valor_usd:''}"
+        oninput="_parcelas[${i}].valor_usd=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
+      <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
+        oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()">
+      <input class="form-input" type="number" step="0.0001" placeholder="Câmbio fechado" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
+        oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
+      ${_parcelas.length>1
+        ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
+        : '<div></div>'}
+    </div>
+  `).join('');
+  sincronizarParcelasLegado();
+}
+
+function adicionarParcela(){
+  _parcelas.push(parcelaVazia());
+  renderParcelas();
+  renderPagamentoInfoLive();
+}
+
+function removerParcela(i){
+  _parcelas.splice(i,1);
+  if(!_parcelas.length) _parcelas = [parcelaVazia()];
+  renderParcelas();
+  renderPagamentoInfoLive();
+}
+
+function sincronizarParcelasLegado(){
+  const input = document.getElementById('f_pi_parcelas_json');
+  if(input) input.value = JSON.stringify(_parcelas);
 }
 
 // ════════════════════════════════════════════════════════════════

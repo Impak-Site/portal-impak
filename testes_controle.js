@@ -284,6 +284,28 @@ teste('ENTRADA_SALDO vira 2 parcelas (entrada + saldo), valor rateado pelo %', (
   iguais(entrada.pago, true, 'entrada com câmbio fechado registrado conta como paga');
   iguais(saldo.pago, false, 'saldo sem pi_pago ainda não conta como paga');
 });
+teste('PARCELADO vira 1 parcela por linha de pi_parcelas_json, valor fixo em USD cada', () => {
+  const parcelas = JSON.stringify([
+    { label:'Confirmação do pedido', valor_usd:8000, data_vencimento:'2026-07-01', cambio_fechado:5.20 },
+    { label:'Embarque', valor_usd:9000, data_vencimento:'2026-08-01', cambio_fechado:null },
+    { label:'Chegada', valor_usd:8000, data_vencimento:'2026-09-01', cambio_fechado:null },
+  ]);
+  const procs = [{ referencia:'UD26-105', pi_valor_usd:25000, pi_pagamento:'PARCELADO', pi_parcelas_json:parcelas, pi_cambio:5.10, fase:'PI' }];
+  const pags = sandbox.listarPagamentosPI(procs);
+  iguais(pags.length, 3, '3 linhas em pi_parcelas_json deveriam virar 3 pagamentos');
+  const conf = pags.find(x=>x.parcela==='Confirmação do pedido');
+  iguais(conf.valorUsd, 8000);
+  iguais(conf.cambioFechado, 5.20);
+  iguais(conf.pago, true, 'parcela com câmbio fechado registrado conta como paga');
+  const embarque = pags.find(x=>x.parcela==='Embarque');
+  iguais(embarque.pago, false, 'parcela sem câmbio fechado ainda não conta como paga');
+  iguais(pags.reduce((s,x)=>s+x.valorUsd,0), 25000, 'soma das parcelas deveria bater com o total');
+});
+teste('PARCELADO ignora linhas sem valor_usd (linha em branco recém-adicionada, ainda não preenchida)', () => {
+  const parcelas = JSON.stringify([{ label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'' }]);
+  const procs = [{ referencia:'UD26-106', pi_valor_usd:1000, pi_pagamento:'PARCELADO', pi_parcelas_json:parcelas, fase:'PI' }];
+  iguais(sandbox.listarPagamentosPI(procs).length, 0);
+});
 teste('Processo FINALIZADO não entra na lista (já não representa capital em aberto)', () => {
   const procs = [{ referencia:'UD26-103', pi_valor_usd:1000, pi_pagamento:'VISTA', pi_pago:true, fase:'FINALIZADO' }];
   iguais(sandbox.listarPagamentosPI(procs).length, 0);

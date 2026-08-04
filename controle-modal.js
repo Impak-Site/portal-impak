@@ -252,7 +252,14 @@ function renderModal(){
               <option value="">—</option>
               <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
               <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
-              <option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}>Entrada + Saldo</option>
+              <option value="PARCELADO"    ${p.pi_pagamento==='PARCELADO'?'selected':''}>Parcelado</option>
+              <!-- "Entrada + Saldo" foi substituída por "Parcelado" (suporta quantos
+                   câmbios forem necessários, não só 2) — este option some do
+                   dropdown pra processos novos, mas continua aqui (só oculto via
+                   CSS) e SELECIONÁVEL/exibido quando o processo já usa esse valor,
+                   pra não quebrar/perder a forma de pagamento de processos antigos
+                   ao simplesmente abrir e salvar o cadastro de novo. -->
+              <option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>Entrada + Saldo (legado)</option>
             </select></div>
           <div class="form-group"><label class="form-label">PI Paga?</label>
             <select class="form-input" id="f_pi_pago">
@@ -1143,9 +1150,25 @@ function renderPagamentoCampos(){
       <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_entrada" value="${p.pi_cambio_entrada||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>
       <div class="form-group"><label class="form-label">Câmbio Saldo (R$)</label>
       <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_saldo" value="${p.pi_cambio_saldo||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>`;
+  } else if(tipo==='PARCELADO'){
+    // Recarrega _parcelas a partir do processo sempre que o form entra em
+    // modo Parcelado (troca de tipo de pagamento ou abertura do modal) —
+    // mesmo padrão de _vendas/_containers: estado vive numa variável global
+    // porque as linhas são adicionadas/removidas dinamicamente (sem isso não
+    // dá pra ter "quantas parcelas forem necessárias" com um botão +).
+    try{ _parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ _parcelas = []; }
+    if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
+    html+=`<div class="form-group full">
+      <label class="form-label">Parcelas (quantos câmbios forem necessários — ex.: confirmação do pedido, embarque, chegada)</label>
+      <div id="parcelas-list"></div>
+      <button type="button" onclick="adicionarParcela()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Parcela</button>
+      <input type="hidden" id="f_pi_parcelas_json">
+    </div>`;
   }
   html+='</div>';
   el.innerHTML=html;
+  // #parcelas-list só existe no DOM depois do innerHTML acima — preencher aqui.
+  if(tipo==='PARCELADO') renderParcelas();
 }
 
 // Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuário
@@ -1159,6 +1182,9 @@ function renderPagamentoInfoLive(){
   const cs = parseFloat(document.getElementById('f_pi_cambio_saldo')?.value) || null;
   if(ce!=null) snapshot.pi_cambio_entrada = ce;
   if(cs!=null) snapshot.pi_cambio_saldo = cs;
+  // Parcelado: usa o array em memória (ainda não salvo) pra refletir ao vivo
+  // toda linha adicionada/editada/removida, igual ao resto do resumo.
+  if(document.getElementById('f_pi_pagamento')?.value==='PARCELADO') snapshot.pi_parcelas_json = JSON.stringify(_parcelas);
   const box = document.querySelector('#pane-financeiro .pagamento-box');
   const novoHtml = renderPagamentoInfo(snapshot);
   if(box && box.parentElement) box.outerHTML = novoHtml || box.outerHTML;
@@ -1183,6 +1209,25 @@ function renderPagamentoInfo(p){
     rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) · câmbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} · R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
     <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) · câmbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} · R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
     <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} · R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+  } else if(p.pi_pagamento==='PARCELADO'){
+    let parcelas = [];
+    try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
+    let totalUsd = 0, totalBrl = 0;
+    parcelas.forEach((pc,i)=>{
+      const v = parseFloat(pc.valor_usd)||0;
+      const c = parseFloat(pc.cambio_fechado) || _cambio.USD;
+      const brlPc = v*c;
+      totalUsd += v; totalBrl += brlPc;
+      const venc = pc.data_vencimento ? ' · ' + parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '';
+      rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} · câmbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toFixed(2)} · R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    });
+    rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toFixed(2)} · R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    // Como cada parcela usa valor fixo em USD (não %), não há garantia
+    // automática de que a soma bate com o Valor USD da PI — sinalizar em vez
+    // de deixar passar batido (percentual, ao contrário, sempre soma 100%).
+    if(val && Math.abs(totalUsd-val) > 0.01){
+      rows += `<div class="pagamento-row" style="color:#b45309;"><span>⚠ Parcelas somam USD ${totalUsd.toFixed(2)}, mas o Valor USD da PI é USD ${val.toFixed(2)}</span><span></span></div>`;
+    }
   }
   return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
 }

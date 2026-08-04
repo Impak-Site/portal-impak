@@ -511,6 +511,22 @@ function listarPagamentosPI(processos){
         valorUsd: valorTotal*(1-pct), vencimento: p.pi_data_saldo||null,
         cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_saldo)||null,
         pago: !!p.pi_pago });
+    } else if(p.pi_pagamento==='PARCELADO'){
+      // "Parcelado" (N câmbios, valor fixo em USD cada) — achata cada linha
+      // de pi_parcelas_json num pagamento próprio, mesmo espírito de
+      // Entrada+Saldo acima, só que sem limite de 2. "Paga" por parcela usa
+      // a presença de câmbio fechado (mesma regra da parcela "entrada"), já
+      // que aqui não existe um pi_pago único cobrindo "a última parcela".
+      let parcelas = [];
+      try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
+      parcelas.forEach((pc,i)=>{
+        const v = parseFloat(pc.valor_usd)||0;
+        if(!v) return;
+        pagamentos.push({...base, parcela: pc.label || ('parcela '+(i+1)),
+          valorUsd: v, vencimento: pc.data_vencimento||null,
+          cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(pc.cambio_fechado)||null,
+          pago: !!pc.cambio_fechado });
+      });
     } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
       const vencimento = p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada;
       pagamentos.push({...base, parcela:'unico',
