@@ -837,16 +837,23 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </div>
 
 <!-- Página de detalhe do processo (tela cheia) -->
-<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
-  <div style="min-height:100vh;">
+<!-- top:52px (em vez de inset:0) — a barra global do chat.js (#impak-nav) é
+     fixa no topo com 52px de altura e z-index MAIOR que este painel
+     (10000 vs 9998), então com inset:0 ela cobria a faixa de cima daqui:
+     título/fornecedor e os botões "Excluir"/"← Voltar" ficavam escondidos
+     atrás da nav, sem dar pra ver nem clicar (mesmo ajuste já usado na
+     .sidebar, ver CSS lá em cima). O botão "← Voltar" já existe — só
+     estava inacessível por causa disso. -->
+<div id="modalDetalhe" style="display:none;position:fixed;top:52px;left:0;right:0;bottom:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
+  <div style="min-height:100%;">
     <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
       <div>
         <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
         <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
       </div>
       <div style="display:flex;gap:10px;">
-        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
         <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
       </div>
     </div>
     <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
