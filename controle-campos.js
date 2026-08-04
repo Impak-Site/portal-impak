@@ -569,27 +569,43 @@ function renderResumoVendas(){
 // ainda não paga). Mesmo padrão de _containers/_produtos/_vendas acima:
 // estado numa variável global porque as linhas são adicionadas/removidas
 // dinamicamente com um botão "+".
-let _parcelas = []; // [{label, valor_usd, data_vencimento, cambio_fechado}]
+let _parcelas = []; // [{label, valor_usd, data_vencimento, cambio_fechado, valor_recebido_cliente, data_recebimento}]
 
-function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'' }; }
+// Etapas fixas — antes era texto livre, mas na prática só existem estes 4
+// momentos de câmbio no fluxo de importação. Fixar evita rótulos
+// inconsistentes (ex: "Pré embarque" vs "Pre-embarque" vs "Embarque").
+const PARCELA_ETAPAS = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
+
+function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', valor_recebido_cliente:'', data_recebimento:'' }; }
 
 function renderParcelas(){
   const wrap = document.getElementById('parcelas-list');
   if(!wrap) return;
   if(!_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
   wrap.innerHTML = _parcelas.map((pc,i)=>`
-    <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
-      <input class="form-input" placeholder="Etapa (ex: Confirmação do pedido, Embarque, Chegada)" value="${esc(pc.label||'')}"
-        oninput="_parcelas[${i}].label=this.value;sincronizarParcelasLegado()">
-      <input class="form-input" type="number" step="0.01" placeholder="Valor USD" value="${pc.valor_usd!=null?pc.valor_usd:''}"
-        oninput="_parcelas[${i}].valor_usd=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
-      <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
-        oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()">
-      <input class="form-input" type="number" step="0.0001" placeholder="Câmbio fechado" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
-        oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
-      ${_parcelas.length>1
-        ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
-        : '<div></div>'}
+    <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
+        <select class="form-input" onchange="_parcelas[${i}].label=this.value;sincronizarParcelasLegado()">
+          <option value="">Etapa...</option>
+          ${PARCELA_ETAPAS.map(et=>`<option value="${esc(et)}" ${pc.label===et?'selected':''}>${esc(et)}</option>`).join('')}
+        </select>
+        <input class="form-input" type="number" step="0.01" placeholder="Valor USD" value="${pc.valor_usd!=null?pc.valor_usd:''}"
+          oninput="_parcelas[${i}].valor_usd=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
+        <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
+          oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()">
+        <input class="form-input" type="number" step="0.0001" placeholder="Câmbio fechado" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
+          oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
+        ${_parcelas.length>1
+          ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
+          : '<div></div>'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;">
+        <input class="form-input" type="number" step="0.01" placeholder="Valor recebido do cliente (USD)" value="${pc.valor_recebido_cliente!=null?pc.valor_recebido_cliente:''}"
+          oninput="_parcelas[${i}].valor_recebido_cliente=this.value;sincronizarParcelasLegado()">
+        <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
+          oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()">
+        <div></div>
+      </div>
     </div>
   `).join('');
   sincronizarParcelasLegado();

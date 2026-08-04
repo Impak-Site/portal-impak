@@ -621,7 +621,7 @@ function renderDemurInfo(p){
 // migration, e cobre também Compra/Impostos/Comissões, não só as 21 taxas.
 const CUSTOS_REAIS_CONFIG = [
   { grupo:'Compra e Frete', itens:[
-    { id:'fob',      label:'FOB',                 unidade:'USD', cotado:c=>c?.compra?.fob },
+    { id:'fob',      label:'Custo da mercadoria', unidade:'USD', cotado:c=>c?.compra?.fob },
     { id:'frete',    label:'Frete Internacional',  unidade:'USD', cotado:c=>c?.compra?.frete },
     { id:'seguro',   label:'Seguro',               unidade:'USD', cotado:c=>c?.compra?.seguro_usd },
     { id:'taxa_ce',  label:'Taxa C.E.',            unidade:'USD', cotado:c=>c?.compra?.taxa_ce },
