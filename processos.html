@@ -2907,6 +2907,15 @@ var _paginaAnterior = 'processos';
 
 function aceitarDivHistorico(procId, ownerUser, divKey){
   var quemAceitou = _currentUser ? (_currentUser.displayName||_currentUser.username) : '?';
+  // Bug: essa variável era usada mais abaixo (bloco "Sugestão de motivo") sem
+  // nunca ter sido declarada — todo clique em "Aceitar" de uma divergência
+  // disparava ReferenceError e a função morria ANTES de criar/anexar o modal
+  // no body. Resultado: o modal nunca aparecia (só o card da análise recolhia,
+  // por causa do listener de data-toggle que também escuta o mesmo clique) e
+  // a divergência nunca era de fato aceita, então o status do processo nunca
+  // saía de "Com Divergência". Sugestão de motivo automática ainda não foi
+  // implementada, então mantemos null (bloco de sugestão fica oculto).
+  var motivoSugerido = null;
   var overlay = document.createElement('div');
   overlay.id = 'aceiteOverlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
