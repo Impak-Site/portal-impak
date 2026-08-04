@@ -9,7 +9,7 @@
  * lógica de mapeamento de campos.
  */
 
-const { mapearCotacaoParaProcesso, gerarReferenciaSugerida, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js');
+const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, gerarReferenciaSugerida, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js');
 
 let totalTestes = 0, totalFalhas = 0;
 function teste(nome, fn) {
@@ -34,7 +34,7 @@ console.log('\n📋 Cotação simples (sem TyreDesk) — caso base');
       produto: 'PCR', origem: 'CHINA', fob_usd: '27812.96', frete_usd: '1000',
       cambio_usd: '5.1695', qtde_containers: '1', tipo_importacao: 'PROPRIA',
     },
-    toggles: { fobpar: 'NAO', dump: 'NAO' },
+    toggles: { dump: 'NAO' },
     mix: null,
   };
   const p = mapearCotacaoParaProcesso(dados, 'Cliente Teste', { agora: new Date('2026-07-15') });
@@ -57,7 +57,7 @@ console.log('\n📋 Cotação simples (sem TyreDesk) — caso base');
   teste('pi_incoterm default FOB', () => {
     iguais(p.pi_incoterm, 'FOB');
   });
-  teste('pi_pagamento VISTA quando fobpar=NAO', () => {
+  teste('pi_pagamento VISTA quando não tem parcelas', () => {
     iguais(p.pi_pagamento, 'VISTA');
   });
   teste('valor_frete = frete_usd, moeda USD', () => {
@@ -81,7 +81,7 @@ console.log('\n📋 Cotação com mix do TyreDesk — fornecedor e itens reais')
 {
   const dados = {
     campos: { produto: 'TBR', origem: 'CHINA', fob_usd: '50000', frete_usd: '2000', qtde_containers: '2' },
-    toggles: { fobpar: 'NAO' },
+    toggles: {},
     mix: {
       forn: 'EUDEMON',
       fob_total: 50000,
@@ -110,32 +110,49 @@ console.log('\n📋 Cotação com mix do TyreDesk — fornecedor e itens reais')
   });
 }
 
-// ── Caso 3: FOB parcelado (entrada + saldo) ──
-console.log('\n📋 FOB parcelado (toggle fobpar=SIM)');
+// ── Caso 3: FOB parcelado (N parcelas — item e) ──
+console.log('\n📋 FOB parcelado em N parcelas (item e)');
 {
   const dados = {
-    campos: {
-      produto: 'PCR', fob_usd: '30000', frete_usd: '1200',
-      pct_fob_entrada: '30', cambio_fob_entrada: '5.10', cambio_fob_saldo: '5.25',
-      tipo_importacao: 'ENCOMENDA',
-    },
-    toggles: { fobpar: 'SIM' },
+    campos: { produto: 'PCR', fob_usd: '30000', frete_usd: '1200', tipo_importacao: 'ENCOMENDA' },
+    toggles: {},
     mix: null,
+    parcelas: [
+      { label: 'Inicial', valor_usd: '9000', data: '2026-08-01' },
+      { label: 'Pré-embarque', valor_usd: '12000', data: '2026-08-20' },
+      { label: 'Final', valor_usd: '9000', data: '2026-09-05' },
+      { label: '', valor_usd: '', data: '' }, // linha em branco não deve virar parcela válida
+    ],
   };
   const p = mapearCotacaoParaProcesso(dados, 'Cliente ABC');
 
-  teste('pi_pagamento = ENTRADA_SALDO', () => {
-    iguais(p.pi_pagamento, 'ENTRADA_SALDO');
+  teste('pi_pagamento = PARCELADO quando tem parcelas com valor', () => {
+    iguais(p.pi_pagamento, 'PARCELADO');
   });
-  teste('pi_entrada_pct/cambio_entrada/cambio_saldo preenchidos', () => {
-    iguais(p.pi_entrada_pct, 30);
-    iguais(p.pi_cambio_entrada, 5.10);
-    iguais(p.pi_cambio_saldo, 5.25);
+  teste('pi_parcelas_json tem só as 3 parcelas válidas (ignora linha em branco)', () => {
+    const parcelas = JSON.parse(p.pi_parcelas_json);
+    iguais(parcelas.length, 3);
+    iguais(parcelas[0].label, 'Inicial');
+    iguais(parcelas[0].valor_usd, '9000');
+    iguais(parcelas[0].data_vencimento, '2026-08-01');
+  });
+  teste('parcela migrada não traz câmbio_fechado nem recebido_cliente preenchidos', () => {
+    const parcelas = JSON.parse(p.pi_parcelas_json);
+    iguais(parcelas[0].cambio_fechado, '');
+    iguais(parcelas[0].valor_recebido_cliente, '');
   });
   teste('finalidade ENCOMENDA mapeada direto', () => {
     iguais(p.finalidade, 'ENCOMENDA');
   });
 }
+teste('sem parcelas (array vazio ou ausente) → pi_pagamento VISTA e pi_parcelas_json null', () => {
+  const p1 = mapearCotacaoParaProcesso({ campos: {}, toggles: {}, mix: null, parcelas: [] }, 'Cliente');
+  iguais(p1.pi_pagamento, 'VISTA');
+  iguais(p1.pi_parcelas_json, null);
+  const p2 = mapearCotacaoParaProcesso({ campos: {}, toggles: {}, mix: null }, 'Cliente');
+  iguais(p2.pi_pagamento, 'VISTA');
+  iguais(p2.pi_parcelas_json, null);
+});
 
 // ── Caso 4: tipo_importacao sem correspondente em finalidade ──
 console.log('\n📋 tipo_importacao sem equivalente direto (IMPLEMENTOS/TRANSPORTADORA)');
@@ -282,6 +299,54 @@ teste('seguro_venda (nível raiz, distinto do Seguro Compra) é mapeado', () => 
   const rj = gerarRealJsonInicial({ containers: 1, compra: { seguro_usd: 50 }, seguro_venda: 890.5 });
   iguais(rj.seguro, { valor: 50, moeda: 'USD' });
   iguais(rj.seguro_venda, { valor: 890.5, moeda: 'BRL' });
+});
+
+// ── Caso 9: mapearProcessoParaCotacao() — vínculo reverso (item e) ──
+console.log('\n📋 mapearProcessoParaCotacao() — prefill do Calculador a partir de um processo do Controle');
+teste('mapeia campos básicos (cliente, câmbio, FOB, frete, containers, tipo de importação)', () => {
+  const proc = {
+    cliente: 'Cliente X', pi_cambio: 5.2, pi_valor_usd: 20000, valor_frete: 1500, moeda_frete: 'USD',
+    containers_json: [{ numero: '', tipo: '40HC', lacre: '' }, { numero: '', tipo: '40HC', lacre: '' }],
+    finalidade: 'ENCOMENDA', pi_pagamento: 'VISTA',
+  };
+  const dados = mapearProcessoParaCotacao(proc);
+  iguais(dados.campos.cliente, 'Cliente X');
+  iguais(dados.campos.cambio_usd, 5.2);
+  iguais(dados.campos.fob_usd, 20000);
+  iguais(dados.campos.frete_usd, 1500);
+  iguais(dados.campos.qtde_containers, 2);
+  iguais(dados.campos.tipo_importacao, 'ENCOMENDA');
+});
+teste('frete em moeda diferente de USD não é migrado (Calculador só tem frete em USD)', () => {
+  const proc = { valor_frete: 1500, moeda_frete: 'EUR' };
+  const dados = mapearProcessoParaCotacao(proc);
+  verdadeiro(dados.campos.frete_usd === undefined);
+});
+teste('parcelas migradas quando pi_pagamento=PARCELADO (sem câmbio/recebido, que ficam pra trás)', () => {
+  const proc = {
+    pi_pagamento: 'PARCELADO',
+    pi_parcelas_json: JSON.stringify([
+      { label: 'Inicial', valor_usd: 8000, data_vencimento: '2026-03-01', cambio_fechado: 5.15, valor_recebido_cliente: 8000, data_recebimento: '2026-03-02' },
+      { label: '', valor_usd: null, data_vencimento: '' },
+    ]),
+  };
+  const dados = mapearProcessoParaCotacao(proc);
+  iguais(dados.parcelas.length, 1, 'linha sem valor não deve virar parcela');
+  iguais(dados.parcelas[0], { label: 'Inicial', valor_usd: 8000, data: '2026-03-01' });
+});
+teste('sem PARCELADO, parcelas vem vazio mesmo se pi_parcelas_json tiver lixo de outra forma de pagamento', () => {
+  const proc = { pi_pagamento: 'ENTRADA_SALDO', pi_parcelas_json: null };
+  const dados = mapearProcessoParaCotacao(proc);
+  iguais(dados.parcelas, []);
+});
+teste('processo vazio/mínimo não lança erro', () => {
+  const dados = mapearProcessoParaCotacao({});
+  iguais(dados.campos, {});
+  iguais(dados.parcelas, []);
+});
+teste('mix sempre null (não reconstrói mix a partir do processo — usuário revisa manualmente)', () => {
+  const dados = mapearProcessoParaCotacao({ produtos_json: [{ descricao: 'x', quantidade: 10 }] });
+  iguais(dados.mix, null);
 });
 
 // ── RESUMO ───────────────────────────────────────────────────────

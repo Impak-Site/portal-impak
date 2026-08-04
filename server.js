@@ -25,7 +25,7 @@ const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
-const { mapearCotacaoParaProcesso, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase } = require('./planilha-import.js');
+const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -610,7 +610,8 @@ async function enviarEmail(destinatario, assunto, html){
     const erro = await r.text();
     throw new Error(`Resend respondeu ${r.status}: ${erro}`);
   }
-  return await r.json(); } async function verificarAlertasDiarios(){ const { data: processos, error } = await sb().from('controle_processos').select('*').order('updated_at', { ascending: false }); if (error) { console.error('Erro ao buscar processos p/ alertas diarios:', error.message); return; } const hoje = new Date(); const semana = new Date(hoje); semana.setDate(hoje.getDate() + 7); const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO'); function demDias(p){ if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null; const d = new Date(p.demurrage_vencimento); return Math.ceil((d - hoje) / 86400000); } const demCrit = ativos.filter(p => { const d = demDias(p); return d !== null && d <= 5; }); const etaVenc = ativos.filter(p => p.eta && p.fase === 'EMBARCADO' && new Date(p.eta) < hoje); const etaSem = ativos.filter(p => p.eta && new Date(p.eta) >= hoje && new Date(p.eta) <= semana && p.fase === 'EMBARCADO'); const piVenc = ativos.filter(p => p.pi_data_saldo && !p.pi_pago && new Date(p.pi_data_saldo) < hoje); const total = demCrit.length + etaVenc.length + etaSem.length + piVenc.length; if (!total) return; const linhaProc = (p, extra) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.referencia || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.cliente || p.fornecedor || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.fase || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${extra}</td></tr>`; const tabela = (titulo, itens, extraFn) => itens.length ? `<h3 style="margin:20px 0 8px;color:#333;">${titulo} (${itens.length})</h3><table style="width:100%;border-collapse:collapse;font-size:13px;"><tr><th style="text-align:left;padding:6px 10px;">Referencia</th><th style="text-align:left;padding:6px 10px;">Cliente/Fornecedor</th><th style="text-align:left;padding:6px 10px;">Fase</th><th style="text-align:left;padding:6px 10px;"></th></tr>${itens.map(p => linhaProc(p, extraFn(p))).join('')}</table>` : ''; let html = `<div style="font-family:sans-serif;max-width:640px;margin:0 auto;"><h2 style="color:#1a7fd4;">IMPAK Portal - Alertas do dia (${hoje.toLocaleDateString('pt-BR')})</h2>`; html += tabela('Demurrage critico (ate 5 dias)', demCrit, p => { const d = demDias(p); return d < 0 ? `Vencido ha ${-d}d` : `Vence em ${d}d`; }); html += tabela('ETA vencido (ainda embarcado)', etaVenc, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`); html += tabela('Chegando essa semana', etaSem, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`); html += tabela('PI vencida (saldo nao pago)', piVenc, p => `Venceu: ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}${p.pi_valor_usd ? ' - US$ ' + Number(p.pi_valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2}) : ''}`); html += `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automatico diario do IMPAK Portal.</p></div>`; let destinatarios = (process.env.ALERTA_EMAIL_PARA || '').split(',').map(s => s.trim()).filter(Boolean); if (!destinatarios.length) { destinatarios = [..._usuariosCache.values()].filter(u => u.role === 'gerente' && u.email).map(u => u.email); } for (const email of destinatarios) { try { await enviarEmail(email, `IMPAK Portal - ${total} alerta(s) hoje`, html); } catch (e) { console.error(`Erro ao enviar e-mail de alerta pra ${email}:`, e.message); } } } function agendarAlertasDiarios(){ verificarAlertasDiarios().catch(e => console.error('Erro nos alertas diarios:', e.message)); setInterval(() => { verificarAlertasDiarios().catch(e => console.error('Erro nos alertas diarios:', e.message)); }, 24 * 60 * 60 * 1000); }
+  return await r.json();
+}
 
 // ── ESQUECI MINHA SENHA ──────────────────────────────────────────
 // Fluxo: usuário pede reset (por usuário ou e-mail) → gera token aleatório,
@@ -722,7 +723,7 @@ app.post('/api/admin/recarregar-cache', rateLimitLogin, (req, res) => {
     });
 });
 
-app.post('/api/admin/testar-alertas', rateLimitLogin, async (req, res) => { if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Nao autenticado' }); if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' }); try { await verificarAlertasDiarios(); res.json({ ok: true, mensagem: 'Verificacao de alertas executada - confira o e-mail se houver algum risco hoje.' }); } catch (e) { res.status(500).json({ ok: false, erro: e.message }); } }); function auth(modulo) {
+function auth(modulo) {
   return (req, res, next) => {
     if (!req.session.usuario) return res.redirect('/login?destino=' + req.path);
     // Se a versão da sessão estiver desatualizada (alguém forçou logout
@@ -948,7 +949,8 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
     // edições concorrentes de outro usuário) o payload pode legitimamente
     // não incluir "referencia" se ela não foi um dos campos alterados.
     if (!processo.id && !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
-// ── TRAVA DE PROCESSO ("Fechar Processo") ──────────────────────
+
+    // ── TRAVA DE PROCESSO ("Fechar Processo") ────────────────────────
     // Depois de conferido, o processo pode ser fechado (ver botão 🔒 no
     // painel do processo) pra impedir que NF, custos reais, lucro etc.
     // mudem por engano — trava o processo INTEIRO, não só os campos
@@ -965,7 +967,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
       const estavaFechado = !!(atual && atual.fechado);
       const tentandoDestravar = estavaFechado && processo.fechado === false;
       const tentandoTravar    = !estavaFechado && processo.fechado === true;
-      
+
       if (estavaFechado && !tentandoDestravar) {
         return res.status(403).json({ erro: 'Processo fechado — reabra para editar (só gerente pode reabrir).' });
       }
@@ -985,7 +987,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
         delete processo.fechado; // não deixa alterar a trava por acidente num save comum
       }
     }
-    
+
     if (!processo.id) processo.id = gerarUUID();
     processo.updated_at = new Date().toISOString();
 
@@ -1633,9 +1635,9 @@ app.delete('/api/contatos/:id', auth('processos'), requireGerente, async (req, r
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.post('/api/controle/importar-fechamento', auth('processos'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarFechamentoBase(buffer); res.json({ ok: true, datas: resultado.datas, real_json: resultado.real_json, avisos: resultado.avisos }); } catch (e) { console.error('Erro ao importar fechamento:', e.message); res.status(400).json({ ok: false, erro: e.message }); } }); // ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
+// ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
 // Lista leve (só o resumo, não o formulário inteiro) pra tela de listagem.
-app.post('/api/calculador/importar-planilha', auth('tyredesk'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarPlanilhaBase(buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } }); app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
+app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('calculador_cotacoes')
@@ -2059,6 +2061,87 @@ app.get('/health', async (req, res) => {
   });
 });
 
+// ── Vincular cotação a processo existente (item d) ──────────────────────
+app.get('/api/controle/processos-abertos', auth('processos'), async (req, res) => {
+  try {
+    const { data, error } = await sb()
+      .from('controle_processos')
+      .select('id, referencia, cliente, fase')
+      .neq('fase', 'FINALIZADO')
+      .order('referencia', { ascending: true })
+      .limit(500);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, processos: data || [] });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (req, res, next) => {
+  if (!req.session.modulos.includes('processos')) {
+    return res.status(403).json({ erro: 'Sem acesso a Processos — não é possível vincular cotações' });
+  }
+  next();
+}, async (req, res) => {
+  try {
+    const { processo_id } = req.body;
+    if (!processo_id) return res.status(400).json({ erro: 'processo_id obrigatório' });
+
+    const { data: cot, error: eCot } = await sb()
+      .from('calculador_cotacoes').select('*').eq('id', req.params.id).single();
+    if (eCot) throw new Error(eCot.message);
+
+    const { data: proc, error: eProc } = await sb()
+      .from('controle_processos').select('id, referencia, estimativa_json, real_json')
+      .eq('id', processo_id).single();
+    if (eProc) throw new Error(eProc.message);
+
+    const estimativa = extrairEstimativa(cot.resumo);
+    const custosCotados = (cot.resumo && cot.resumo.custos_cotados_json) || null;
+    const realInicial = proc.real_json ? null : gerarRealJsonInicial(custosCotados);
+
+    const patch = {};
+    if (estimativa) patch.estimativa_json = estimativa;
+    if (realInicial) patch.real_json = realInicial;
+    if (Object.keys(patch).length) {
+      const { error: eUpd } = await sb().from('controle_processos').update(patch).eq('id', processo_id);
+      if (eUpd) throw new Error(eUpd.message);
+    }
+
+    const novoResumo = {
+      ...(cot.resumo || {}),
+      status: 'aprovada',
+      processo_id: proc.id,
+      processo_referencia: proc.referencia,
+      data_aprovacao: new Date().toISOString(),
+      aprovado_por: req.session.usuario || null,
+    };
+    const { error: eCotUpd } = await sb().from('calculador_cotacoes')
+      .update({ resumo: novoResumo }).eq('id', req.params.id);
+    if (eCotUpd) throw new Error(eCotUpd.message);
+
+    res.json({ ok: true, processo_id: proc.id, processo_referencia: proc.referencia });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// ── Vincular ao Calculador — prefill reverso (item e) ────────────────────
+// Lê um processo do Controle e devolve o `dados` já no formato que o wizard
+// do Calculador espera (aplicarEstadoFormulario), pra abrir pré-preenchido
+// pra revisão antes de salvar como cotação nova. Só faz sentido pra
+// processos ainda no início (sem Custos Reais lançados) — depois disso, a
+// estimativa "cotada" já não tem tanto valor e o link fica mais confuso do
+// que ajuda.
+app.get('/api/controle/processos/:id/prefill-cotacao', auth('processos'), async (req, res) => {
+  try {
+    const { data: proc, error } = await sb()
+      .from('controle_processos').select('*').eq('id', req.params.id).single();
+    if (error) throw new Error(error.message);
+    if (proc.custos_reais_json) {
+      return res.status(400).json({ erro: 'Este processo já tem Custos Reais lançados — vincular ao Calculador só faz sentido na fase inicial.' });
+    }
+    const dados = mapearProcessoParaCotacao(proc);
+    res.json({ ok: true, dados, referencia: proc.referencia });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
 // ── TRATAMENTO DE ERRO GENÉRICO ────────────────────────────────
 // Captura qualquer erro não tratado que escape de uma rota (ex: exceção
 // síncrona, erro de parsing) antes que o Express devolva sua página de
@@ -2070,72 +2153,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ ok: false, erro: 'Erro interno no servidor. Tente novamente em alguns instantes.' });
 });
 
-// ── Vincular cotação a processo existente (item d) ──────────────
-app.get('/api/controle/processos-abertos', auth('processos'), async (req, res) => {
-    try {
-          const { data, error } = await sb()
-            .from('controle_processos')
-            .select('id, referencia, cliente, fase')
-            .neq('fase', 'FINALIZADO')
-            .order('referencia', { ascending: true })
-            .limit(500);
-          if (error) throw new Error(error.message);
-          res.json({ ok: true, processos: data || [] });
-    } catch (e) { res.status(500).json({ erro: e.message }); }
-});
-
-app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (req, res, next) => {
-    if (!req.session.modulos.includes('processos')) {
-          return res.status(403).json({ erro: 'Sem acesso a Processos — não é possível vincular cotações' });
-    }
-    next();
-}, async (req, res) => {
-    try {
-          const { processo_id } = req.body;
-          if (!processo_id) return res.status(400).json({ erro: 'processo_id obrigatório' });
-
-          const { data: cot, error: eCot } = await sb()
-            .from('calculador_cotacoes').select('*').eq('id', req.params.id).single();
-          if (eCot) throw new Error(eCot.message);
-
-          const { data: proc, error: eProc } = await sb()
-            .from('controle_processos').select('id, referencia, estimativa_json, real_json')
-            .eq('id', processo_id).single();
-          if (eProc) throw new Error(eProc.message);
-
-          const estimativa = extrairEstimativa(cot.resumo);
-          const custosCotados = (cot.resumo && cot.resumo.custos_cotados_json) || null;
-          const realInicial = proc.real_json ? null : gerarRealJsonInicial(custosCotados);
-
-          const patch = {};
-          if (estimativa) patch.estimativa_json = estimativa;
-          if (realInicial) patch.real_json = realInicial;
-          if (Object.keys(patch).length) {
-                  const { error: eUpd } = await sb().from('controle_processos').update(patch).eq('id', processo_id);
-                  if (eUpd) throw new Error(eUpd.message);
-          }
-
-          const novoResumo = {
-                  ...(cot.resumo || {}),
-                  status: 'aprovada',
-                  processo_id: proc.id,
-                  processo_referencia: proc.referencia,
-                  data_aprovacao: new Date().toISOString(),
-                  aprovado_por: req.session.usuario || null,
-          };
-          const { error: eCotUpd } = await sb().from('calculador_cotacoes')
-            .update({ resumo: novoResumo }).eq('id', req.params.id);
-          if (eCotUpd) throw new Error(eCotUpd.message);
-
-          res.json({ ok: true, processo_id: proc.id, processo_referencia: proc.referencia });
-    } catch (e) { res.status(500).json({ erro: e.message }); }
-});
-
-
 // ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
   console.log(`Variáveis de ambiente carregadas: ${Object.keys(process.env).filter(k=>k.includes('ANTHROPIC')||k.includes('SUPABASE')).join(', ')}`);
   console.log(`ANTHROPIC_API_KEY presente: ${!!process.env.ANTHROPIC_API_KEY} | tamanho: ${(process.env.ANTHROPIC_API_KEY||'').length}`);
-  agendarAlertasDiarios(); sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
+  sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
 });

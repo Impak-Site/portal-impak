@@ -212,7 +212,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
     </div>
 
     <!-- WIZARD — indicador de etapas (task #60) -->
-    <div class="form-group" style="margin-bottom:12px;"><label>Importar Planilha (opcional)</label><input type="file" id="importar-planilha-input" accept=".xlsm,.xlsx" style="display:none;" onchange="importarPlanilhaSelecionada(this)"><button type="button" class="btn-refresh" style="width:100%;" onclick="document.getElementById('importar-planilha-input').click()">Importar Planilha (.xlsm)</button><div id="importar-planilha-status" style="font-size:11px;color:var(--muted);margin-top:4px;"></div></div><div class="wizard-steps" id="wizard-steps"></div>
+    <div class="wizard-steps" id="wizard-steps"></div>
 
     <!-- CÂMBIO -->
     <div class="section" data-step="1">
@@ -225,39 +225,17 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         </div>
         <div class="cambio-info" id="cambio-info">Clique em PTAX para buscar automaticamente</div>
       </div>
-      <!-- FEATURE NOVA (docx item 3.1): FOB pago em parcelas (entrada/saldo), cada uma
-           fechada num câmbio diferente conforme a fábrica (ex: 30% no pedido + 70% no
-           embarque/10 dias antes da chegada). Desligado por padrão — se não usar, o
-           cálculo continua igual a antes (100% do FOB no Câmbio principal acima). -->
+      <!-- PARCELAS DO FOB (item e): cronograma de pagamento em N parcelas —
+           mesma ideia das parcelas do Controle (Etapa/Valor/Data), mas SEM
+           câmbio por parcela: na cotação usa-se sempre o câmbio único acima
+           pra toda a simulação. O câmbio por parcela só existe depois, quando
+           a cotação vira processo no Controle e os pagamentos acontecem de
+           fato (ver aba "Parcelas" no processo). Opcional — só serve pra já
+           deixar o cronograma pronto pra quando o processo for criado. -->
       <div class="form-group">
-        <label>FOB pago em parcelas (câmbio diferente por parcela)?</label>
-        <div class="toggle-group">
-          <button class="toggle-btn" id="toggle-fobpar-sim" onclick="setToggle('fobpar','SIM')">SIM</button>
-          <button class="toggle-btn active-nao" id="toggle-fobpar-nao" onclick="setToggle('fobpar','NAO')">NÃO</button>
-        </div>
-      </div>
-      <div id="fobpar-detalhe" class="comissao-detalhe">
-        <div class="form-row">
-          <div class="form-group">
-            <label>% FOB Entrada</label>
-            <input type="number" id="pct_fob_entrada" step="0.01" value="30" placeholder="Ex: 30" oninput="atualizarPctFobSaldo()">
-          </div>
-          <div class="form-group">
-            <label>% FOB Saldo</label>
-            <input type="number" id="pct_fob_saldo_display" value="70" readonly style="background:#f5f5f5;">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Câmbio FOB Entrada</label>
-            <input type="number" id="cambio_fob_entrada" step="0.0001" placeholder="Vazio = usa o câmbio principal">
-          </div>
-          <div class="form-group">
-            <label>Câmbio FOB Saldo</label>
-            <input type="number" id="cambio_fob_saldo" step="0.0001" placeholder="Vazio = usa o câmbio principal">
-          </div>
-        </div>
-        <div style="font-size:10px;color:var(--dim);margin:-4px 0 8px;">Ex: Eudemon/Rovelo — entrada no pedido, saldo de 14 a 10 dias antes da chegada, cada um com o câmbio do dia do pagamento.</div>
+        <label>Parcelas do FOB (cronograma de pagamento — opcional)</label>
+        <div id="parcelas-calc-list"></div>
+        <button type="button" class="btn-refresh" style="margin-top:4px;" onclick="addParcelaCalc()">+ Parcela</button>
       </div>
     </div>
 
@@ -890,7 +868,7 @@ const TAXAS_USD_CONTAINER = {
 // formulário). Os nomes das propriedades são os mesmos das variáveis
 // antigas, só sem o "_" na frente — ex.: _estado.toggles virou _estado.toggles.
 let _estado = {
-  toggles:               { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO', fobpar:'NAO' },
+  toggles:               { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO' },
   togglesInner:          { 'china-modal':'DENTRO' },
   cenario:               3,
   mix:                   null,
@@ -901,6 +879,8 @@ let _estado = {
   wizardStep:            1,
   wizardResultadoPronto: false, // vira true após o 1º cálculo bem-sucedido
   acClienteCalcTimer:    null,
+  parcelas:              [],   // cronograma de pagamento do FOB (item e) — [{label,valor_usd,data}]
+  processoOrigemId:      null, // preenchido quando a cotação foi aberta a partir de "Vincular ao Calculador" no Controle
 };
 
 // ── WIZARD (task #60) ─────────────────────────────────────
@@ -1007,10 +987,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   } catch(e){}
 
-  restaurarAutosaveSeExistir();
+  // Prefill a partir de um processo do Controle (item e — botão "Vincular ao
+  // Calculador" na aba Custos Reais). Se veio com ?processo_id=, pula o
+  // autosave/restauração normal — abre o wizard já preenchido, do zero, pra
+  // revisão antes de salvar (o usuário decide se quer aproveitar algo que
+  // estava em andamento depois, manualmente).
+  const paramsUrl = new URLSearchParams(location.search);
+  const processoIdPrefill = paramsUrl.get('processo_id');
+  if(processoIdPrefill){
+    prefillDeProcesso(processoIdPrefill);
+  } else {
+    restaurarAutosaveSeExistir();
+  }
   document.addEventListener('input', agendarAutosave);
   document.addEventListener('change', agendarAutosave);
 });
+
+// Busca os dados do processo no Controle (já mapeados pro formato do wizard
+// pelo servidor) e aplica no formulário, deixando pronto pra revisão — não
+// salva nada sozinho, o usuário confere e clica "Salvar Cotação" quando
+// estiver certo (aí sim vincula automaticamente de volta, ver salvarCotacao()).
+async function prefillDeProcesso(processoId){
+  try{
+    const r = await fetch(`/api/controle/processos/${processoId}/prefill-cotacao`);
+    const d = await r.json();
+    if(!d.ok){ showToast('Erro ao carregar dados do processo: '+(d.erro||'?'), 'err'); return; }
+    aplicarEstadoFormulario(d.dados);
+    _estado.processoOrigemId = processoId;
+    showToast(`Cotação pré-preenchida com os dados do processo ${d.referencia||''} — confira e clique em "Salvar Cotação" quando estiver certo`, 'info');
+  } catch(e){ showToast('Erro ao carregar dados do processo: '+e.message, 'err'); }
+}
 
 // ── CÂMBIO ───────────────────────────────────────────────
 // acClienteCalcTimer agora vive em _estado (ver ── ESTADO ── no topo do arquivo).
@@ -1233,10 +1239,36 @@ function lerTaxasOperacionais(){
   };
 }
 
-// FOB escalonado (docx item 3.1) — % Saldo é sempre o complemento de % Entrada.
-function atualizarPctFobSaldo(){
-  const entrada = parseFloat(document.getElementById('pct_fob_entrada').value) || 0;
-  document.getElementById('pct_fob_saldo_display').value = (100 - entrada).toFixed(2);
+// PARCELAS DO FOB (item e) — cronograma de pagamento em N parcelas, mesma
+// ideia das parcelas do Controle (Etapa/Valor/Data). Sem câmbio por parcela
+// aqui: a cotação sempre usa o câmbio único do topo da etapa "Câmbio" pra
+// simular; o câmbio por parcela só existe depois, no processo em Controle.
+const PARCELA_ETAPAS_CALC = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
+function parcelaCalcVazia(){ return { label:'', valor_usd:'', data:'' }; }
+function renderParcelasCalc(){
+  const wrap = document.getElementById('parcelas-calc-list');
+  if(!wrap) return;
+  wrap.innerHTML = _estado.parcelas.map((pc,i) => `
+    <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 28px;gap:6px;align-items:center;margin-bottom:6px;">
+      <select onchange="_estado.parcelas[${i}].label=this.value">
+        <option value="">Etapa...</option>
+        ${PARCELA_ETAPAS_CALC.map(et => `<option value="${et}" ${pc.label===et?'selected':''}>${et}</option>`).join('')}
+      </select>
+      <input type="number" step="0.01" placeholder="Valor USD" value="${pc.valor_usd!=null?pc.valor_usd:''}"
+        oninput="_estado.parcelas[${i}].valor_usd=this.value">
+      <input type="date" value="${pc.data||''}"
+        oninput="_estado.parcelas[${i}].data=this.value">
+      <button type="button" onclick="removerParcelaCalc(${i})" title="Remover" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;">✕</button>
+    </div>
+  `).join('');
+}
+function addParcelaCalc(){
+  _estado.parcelas.push(parcelaCalcVazia());
+  renderParcelasCalc();
+}
+function removerParcelaCalc(i){
+  _estado.parcelas.splice(i,1);
+  renderParcelasCalc();
 }
 
 // Marinha/AFRMM e Agente de Carga: por padrão calculados automaticamente (fórmula
@@ -1333,7 +1365,7 @@ function onUFChange() {
 function pct(v){ return v != null ? (v*100).toFixed(2)+'%' : '0%'; }
 
 // ── MIX ──────────────────────────────────────────────────
-async function importarPlanilhaSelecionada(input){ const file = input.files && input.files[0]; if(!file) return; const status = document.getElementById('importar-planilha-status'); status.textContent = 'Lendo planilha...'; status.style.color = 'var(--muted)'; try{ const base64 = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); const r = await fetch('/api/calculador/importar-planilha', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo_base64: base64, nome_arquivo: file.name }) }); const d = await r.json(); if(!d.ok){ status.textContent = 'Erro: ' + (d.erro || 'falha ao importar'); status.style.color = '#c0392b'; input.value=''; return; } preencherComPlanilha(d.campos, d.mix); status.textContent = 'Planilha importada - revise os campos antes de calcular.'; status.style.color = '#1a7fd4'; } catch(e){ status.textContent = 'Erro ao ler o arquivo: ' + e.message; status.style.color = '#c0392b'; } finally { input.value = ''; } } function preencherComPlanilha(campos, mix){ if(campos.cambio_usd) document.getElementById('cambio_usd').value = campos.cambio_usd; document.getElementById('fob_usd').value = campos.fob_usd || 0; document.getElementById('frete_usd').value = campos.frete_usd || 0; document.getElementById('taxa_ce_usd').value = campos.taxa_ce_usd || 0; document.getElementById('qtde_containers').value = campos.qtde_containers || 1; document.getElementById('produto').value = campos.produto || 'TBR'; onProdutoChange(); document.getElementById('origem').value = campos.origem || 'DIVERSOS'; document.getElementById('tipo_importacao').value = campos.tipo_importacao || 'ENCOMENDA'; document.getElementById('cliente').value = campos.cliente || ''; document.getElementById('custos_diversos').value = campos.custos_diversos || 0; setToggleTTD(campos.tem_icms_st ? 'NAO' : 'SIM'); setToggle('br', campos.comissao_br ? 'SIM' : 'NAO'); setToggle('china', campos.comissao_china ? 'SIM' : 'NAO'); if(campos.comissao_china){ setToggleInner('china-modal', campos.comissao_china_local || 'FORA'); } if(Array.isArray(mix) && mix.length){ _estado.mix = { itens: mix.map(function(it){ return { medida: it.medida, pat: it.pat, qtd: it.qtd, preco: it.preco }; }), fob_total: campos.fob_usd }; try{ sessionStorage.setItem('calculador_mix', JSON.stringify(_estado.mix)); }catch(e){} renderMix(); } if(typeof onAutoTaxaDepChange === 'function') onAutoTaxaDepChange(); if(typeof agendarAutosave === 'function') agendarAutosave(); } function renderMix() {
+function renderMix() {
   if(!_estado.mix || !_estado.mix.itens || !_estado.mix.itens.length) return;
   _estado.splitST = {}; // mix novo — zera o split manual (cada recálculo com o MESMO mix preserva)
   document.getElementById('mix-badge').style.display = 'block';
@@ -1467,20 +1499,10 @@ function calcular() {
   const seguro_venda_usd  = ((fob_usd + frete_usd) * 0.003) - seguro_compra_usd;
 
   // ── 2. CIF (usa seguro de COMPRA — custo real interno) ──
-  // FEATURE NOVA (docx item 3.1): algumas fábricas cobram o FOB em 2 parcelas
-  // (entrada no pedido + saldo no embarque/dias antes da chegada), cada uma
-  // fechada num câmbio diferente. Se o toggle estiver OFF (padrão), continua
-  // 100% no câmbio principal — comportamento idêntico a antes.
-  let fob_brl;
-  if(_estado.toggles.fobpar === 'SIM'){
-    const pctEntradaFob = (parseFloat(document.getElementById('pct_fob_entrada').value) || 0) / 100;
-    const pctSaldoFob = 1 - pctEntradaFob;
-    const cambioFobEntrada = parseFloat(document.getElementById('cambio_fob_entrada').value) || cambio;
-    const cambioFobSaldo = parseFloat(document.getElementById('cambio_fob_saldo').value) || cambio;
-    fob_brl = (fob_usd * pctEntradaFob * cambioFobEntrada) + (fob_usd * pctSaldoFob * cambioFobSaldo);
-  } else {
-    fob_brl = fob_usd * cambio;
-  }
+  // A cotação sempre usa o câmbio único da simulação pro FOB — o cronograma
+  // de parcelas (item e, ver _estado.parcelas) é só informativo/pra já deixar
+  // pronto pro processo no Controle; não muda o câmbio usado aqui.
+  const fob_brl = fob_usd * cambio;
   // Frete sempre usa o câmbio de abertura do dia da chegada × 1,02 — mesmo
   // parâmetro das Taxas em USD (destino) e do Seguro Venda, sem campo manual
   // de override (removido: gerava confusão/divergência quando alguém digitava
@@ -2844,7 +2866,6 @@ function pctF(v){ return v.toFixed(2)+'%'; }
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
   'taxa_seguro_compra','cambio_chegada','produto','origem','uf_destino',
-  'pct_fob_entrada','cambio_fob_entrada','cambio_fob_saldo',
   'tipo_importacao','dump_valor','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
@@ -2901,7 +2922,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
-  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes };
+  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -2929,7 +2950,9 @@ function aplicarEstadoFormulario(estado){
     const input = document.getElementById(`tx_${campo}`);
     if(input){ input.readOnly = checked; input.style.background = checked ? '#f5f5f5' : '#fff'; }
   });
-  if(typeof atualizarPctFobSaldo === 'function') atualizarPctFobSaldo();
+  _estado.parcelas = Array.isArray(estado.parcelas) ? estado.parcelas.map(p => ({...p})) : [];
+  if(typeof renderParcelasCalc === 'function') renderParcelasCalc();
+  _estado.processoOrigemId = estado.processo_origem_id || null;
   _estado.mix = estado.mix || null;
   if(_estado.mix && _estado.mix.itens && _estado.mix.itens.length) renderMix();
   _estado.splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
@@ -3013,6 +3036,23 @@ async function salvarCotacao(){
       document.getElementById('cotacao-status').textContent = `Cotação salva${eraNova?'':' (atualizada)'} — ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
       showToast(eraNova ? '✓ Cotação criada' : '✓ Cotação atualizada', 'ok');
       limparAutosave();
+      // Cotação nasceu a partir de "Vincular ao Calculador" no Controle (item e):
+      // já vincula automaticamente ao processo de origem no primeiro save, sem
+      // precisar do fluxo manual "Vincular a Processo". Só dispara uma vez —
+      // depois de vinculado, salvamentos seguintes já vão como update normal.
+      if(_estado.processoOrigemId){
+        const processoIdParaVincular = _estado.processoOrigemId;
+        _estado.processoOrigemId = null;
+        try{
+          const rv = await fetch(`/api/calculador/cotacoes/${d.id}/vincular-processo`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({processo_id: processoIdParaVincular})
+          });
+          const dv = await rv.json();
+          if(dv.ok) showToast(`✓ Cotação vinculada automaticamente ao processo ${dv.processo_referencia||''}`, 'ok');
+          else showToast('Cotação salva, mas não deu pra vincular ao processo automaticamente: '+(dv.erro||'?'), 'err');
+        }catch(e){ showToast('Cotação salva, mas não deu pra vincular ao processo automaticamente: '+e.message, 'err'); }
+      }
     } else {
       showToast('Erro ao salvar: '+(d.erro||'?'), 'err');
     }
@@ -3160,6 +3200,5 @@ function showToast(msg, tipo='info') {
 }
 </script>
 <script src="/chat.js"></script>
-  <script src="/calculador-vincular.js"></script>
 </body>
 </html>

@@ -330,9 +330,12 @@ function renderModal(){
         Registro DI (aba Documentos), sem precisar digitar tudo de novo.
         Reaproveita POST /api/controle/importar-fechamento (server-side,
         planilha-import.js) — o usuário sempre revisa/ajusta antes de salvar. -->
-        <div style="margin-bottom:14px;">
+        <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
           <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
+          ${!p.custos_reais_json ? `
+          <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotação no Calculador já pré-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">🧮 Vincular ao Calculador</button>
+          ` : ''}
         </div>
         ${renderCustosReaisTab(p)}
       </div>
@@ -1296,3 +1299,10 @@ function marcarPendenciaRevisada(){
   showToast('✓ Pendência marcada como revisada', 'ok');
 }
 
+
+// Botão "Vincular ao Calculador" (item e) — abre o Calculador em uma nova
+// aba, já preenchendo o wizard com os dados deste processo, pra gerar uma
+// cotação (estimativa) de um processo que começou direto no Controle.
+function vincularProcessoAoCalculador(processoId){
+  window.open(`/calculador?processo_id=${processoId}`, '_blank');
+}

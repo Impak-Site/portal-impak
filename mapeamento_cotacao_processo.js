@@ -196,14 +196,27 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
     observacoes.push(`Origem: ${d.origem}`);
   }
 
-  // ── Pagamento (FOB à vista x FOB parcelado) ──────────────────
+  // ── Pagamento (à vista x parcelado) ──────────────────────────
+  // Parcelas (item e) ficam em dadosCotacao.parcelas — sibling de `campos`,
+  // não dentro dele, porque é uma lista (mesmo padrão de `mix`). Mesmo
+  // formato salvo pelo Controle em pi_parcelas_json (ver PARCELA_ETAPAS em
+  // controle-campos.js), só que ainda sem câmbio/recebimento do cliente —
+  // esses só existem depois, quando o processo já existe e os pagamentos
+  // acontecem de fato.
+  const parcelasCotacao = (dadosCotacao && Array.isArray(dadosCotacao.parcelas)) ? dadosCotacao.parcelas : [];
+  const parcelasValidas = parcelasCotacao.filter(p => numOuNull(p.valor_usd) !== null);
   let pi_pagamento = 'VISTA';
-  let pi_entrada_pct = null, pi_cambio_entrada = null, pi_cambio_saldo = null;
-  if (toggles.fobpar === 'SIM') {
-    pi_pagamento = 'ENTRADA_SALDO';
-    pi_entrada_pct = numOuNull(d.pct_fob_entrada);
-    pi_cambio_entrada = numOuNull(d.cambio_fob_entrada);
-    pi_cambio_saldo = numOuNull(d.cambio_fob_saldo);
+  let pi_parcelas_json = null;
+  if (parcelasValidas.length) {
+    pi_pagamento = 'PARCELADO';
+    pi_parcelas_json = JSON.stringify(parcelasValidas.map(p => ({
+      label: p.label || '',
+      valor_usd: p.valor_usd,
+      data_vencimento: p.data || '',
+      cambio_fechado: '',
+      valor_recebido_cliente: '',
+      data_recebimento: '',
+    })));
   }
 
   // ── Finalidade ────────────────────────────────────────────
@@ -234,9 +247,7 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
     pi_valor_usd: numOuNull(d.fob_usd),
     pi_incoterm: 'FOB',
     pi_pagamento,
-    pi_entrada_pct,
-    pi_cambio_entrada,
-    pi_cambio_saldo,
+    pi_parcelas_json,
     pi_cambio: numOuNull(d.cambio_usd),
     valor_frete: numOuNull(d.frete_usd),
     moeda_frete: 'USD',
@@ -245,6 +256,65 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
   };
 
   return processo;
+}
+
+// Inverso de FINALIDADE_POR_TIPO_IMPORTACAO — só as chaves que têm ida e volta.
+const TIPO_IMPORTACAO_POR_FINALIDADE = Object.fromEntries(
+  Object.entries(FINALIDADE_POR_TIPO_IMPORTACAO).map(([k, v]) => [v, k])
+);
+
+/**
+ * MAPEAMENTO REVERSO: Processo do Controle → Cotação do Calculador
+ * ════════════════════════════════════════════════════════════════
+ * Usado pelo botão "Vincular ao Calculador" (aba Custos Reais, item e) —
+ * quando um processo começou direto no Controle (sem passar pelo Calculador)
+ * e o usuário quer gerar uma cotação a partir dele, pra ter a estimativa/
+ * fechamento registrados. Abre o wizard do Calculador já pré-preenchido
+ * (`aplicarEstadoFormulario`) pra revisão — o usuário confere e completa o
+ * que não dá pra inferir com segurança (Taxa C.E., classificação NCM/UF,
+ * comissões, taxas operacionais etc.) antes de salvar.
+ *
+ * Só mapeia o que existe de forma inequívoca no processo — o resto fica em
+ * branco de propósito, igual ao mapeamento direto faz com o processo.
+ *
+ * @param {object} processo - linha de controle_processos
+ * @returns {object} `dados` no formato de coletarEstadoFormulario() (campos/toggles/mix/parcelas)
+ */
+function mapearProcessoParaCotacao(processo) {
+  const p = processo || {};
+  const campos = {};
+
+  if (p.cliente) campos.cliente = p.cliente;
+  if (numOuNull(p.pi_cambio) !== null) campos.cambio_usd = p.pi_cambio;
+  if (numOuNull(p.pi_valor_usd) !== null) campos.fob_usd = p.pi_valor_usd;
+  // Frete só é confiável migrar se já estiver em USD (o Calculador não tem
+  // campo de moeda pro frete — é sempre USD lá).
+  if ((p.moeda_frete || 'USD') === 'USD' && numOuNull(p.valor_frete) !== null) {
+    campos.frete_usd = p.valor_frete;
+  }
+
+  let containers = [];
+  try { containers = Array.isArray(p.containers_json) ? p.containers_json : JSON.parse(p.containers_json || '[]'); } catch (e) { containers = []; }
+  if (containers.length) campos.qtde_containers = containers.length;
+
+  if (p.finalidade && TIPO_IMPORTACAO_POR_FINALIDADE[p.finalidade]) {
+    campos.tipo_importacao = TIPO_IMPORTACAO_POR_FINALIDADE[p.finalidade];
+  }
+
+  // Parcelas — só migra se o processo já usa a forma de pagamento "PARCELADO"
+  // (pi_parcelas_json). Câmbio fechado e recebimento do cliente (campos que só
+  // existem no Controle) ficam pra trás de propósito — não fazem sentido numa
+  // cotação nova.
+  let parcelas = [];
+  if (p.pi_pagamento === 'PARCELADO') {
+    let parcelasProcesso = [];
+    try { parcelasProcesso = Array.isArray(p.pi_parcelas_json) ? p.pi_parcelas_json : JSON.parse(p.pi_parcelas_json || '[]'); } catch (e) { parcelasProcesso = []; }
+    parcelas = parcelasProcesso
+      .filter(pc => numOuNull(pc.valor_usd) !== null)
+      .map(pc => ({ label: pc.label || '', valor_usd: pc.valor_usd, data: pc.data_vencimento || '' }));
+  }
+
+  return { campos, toggles: {}, togglesInner: {}, mix: null, splitST: {}, checkboxes: {}, parcelas };
 }
 
 /**
@@ -270,6 +340,7 @@ function extrairEstimativa(resumo) {
 
 module.exports = {
   mapearCotacaoParaProcesso,
+  mapearProcessoParaCotacao,
   gerarReferenciaSugerida,
   extrairEstimativa,
   gerarRealJsonInicial,
