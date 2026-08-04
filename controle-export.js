@@ -284,7 +284,13 @@ async function exportarFormatoCliente(statusSelecionados){
 
       const montarLinha = (clienteNome, it)=>{
         const linha = {
-          fornecedor: p.fornecedor||'—',
+          // Pedido: na planilha de follow-up, mostrar a MARCA do produto
+          // (ex: "Maxam") em vez do Fornecedor (ex: "Sailun Group", quem
+          // efetivamente fatura/exporta) quando a marca estiver preenchida —
+          // são coisas diferentes e o cliente final reconhece a marca, não
+          // necessariamente o nome do fornecedor real. Sem marca preenchida,
+          // cai no fornecedor, como sempre foi.
+          fornecedor: p.brand || p.fornecedor || '—',
           cliente: clienteNome || '(sem cliente)',
           _chegadaTs: chegadaTs, // só pra ordenar os grupos de fornecedor abaixo, não vira coluna
           'Invoice':                 p.referencia||'',
