@@ -129,7 +129,11 @@ vira um painel encostado na borda direita, com a altura toda da viewport,
 permitindo ainda enxergar a lista por trás e reforçando que dá pra
 navegar (URL muda, botão voltar do navegador funciona — ver JS). */
 #modal-bg{justify-content:flex-end;align-items:stretch;padding:0;top:52px;}
-#modal-bg .modal{max-width:min(1200px,64vw);width:100%;height:calc(100vh - 52px);max-height:calc(100vh - 52px);border-radius:0;box-shadow:-12px 0 40px rgba(16,24,40,.18);}
+/* Limite antigo (1200px/64vw) era apertado demais pras 8 abas (Identificação
+   … Histórico) caberem sem scroll horizontal na faixa de abas — em telas
+   largas isso sobrava espaço morto no fundo escurecido em vez de dar mais
+   largura ao painel. Alargado pra caber as abas inteiras sem cortar/rolar. */
+#modal-bg .modal{max-width:min(1600px,88vw);width:100%;height:calc(100vh - 52px);max-height:calc(100vh - 52px);border-radius:0;box-shadow:-12px 0 40px rgba(16,24,40,.18);}
 #modal-bg.open .modal{animation:painelEntrar .22s ease;}
 @keyframes painelEntrar{from{transform:translateX(24px);opacity:.5}to{transform:translateX(0);opacity:1}}
 @media(max-width:820px){ #modal-bg .modal{max-width:100%;} }
