@@ -324,6 +324,16 @@ function renderModal(){
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
           Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissões e taxas operacionais). Quando o processo veio de uma cotação aprovada, cada campo já nasce preenchido com o valor cotado — ajuste só o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cálculo simples por NF.
         </div>
+        <!-- Importar direto da planilha de Fechamento (mesmo template BASE
+        SP/SC usado antes de existir esta tela) — lê a aba "Fechamento" e
+        preenche os campos "Pago" abaixo + as datas de Embarque/Chegada/
+        Registro DI (aba Documentos), sem precisar digitar tudo de novo.
+        Reaproveita POST /api/controle/importar-fechamento (server-side,
+        planilha-import.js) — o usuário sempre revisa/ajusta antes de salvar. -->
+        <div style="margin-bottom:14px;">
+          <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
+          <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
+        </div>
         ${renderCustosReaisTab(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">

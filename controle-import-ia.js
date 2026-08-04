@@ -310,6 +310,74 @@ async function importarPlanilha(input){
 }
 
 // ════════════════════════════════════════════════════════════════
+// IMPORTAR PLANILHA DE FECHAMENTO (aba Custos Reais, por processo)
+// ════════════════════════════════════════════════════════════════
+// Reaproveita POST /api/controle/importar-fechamento (server-side,
+// planilha-import.js/parseFechamento) — mesmo parser já usado e testado
+// pro Calculador, só que lendo a aba "Fechamento" do template BASE SP/SC em
+// vez de DADOS/MIX. Botão fica dentro do processo (aba Custos Reais) — só
+// existia via upload solto antes, sem nenhum gatilho na tela (ver histórico
+// de tasks #188/#189: endpoint foi construído mas nunca ligado a um botão).
+//
+// Preenche só os campos "Pago" (f_cr_<item>) — nunca o "Cobrado" — porque a
+// planilha de Fechamento só registra o que foi de fato desembolsado, não o
+// preço cobrado do cliente. As datas (Embarque/Chegada/Registro DI) seguem
+// a mesma regra "só preenche vazio" da extração por IA — não sobrescreve o
+// que já estiver preenchido manualmente.
+async function importarFechamentoProcesso(input){
+  const file = input.files[0];
+  if(!file) return;
+  input.value = '';
+
+  showToast('Lendo planilha de Fechamento...','info');
+
+  try{
+    const base64 = await new Promise((res,rej)=>{
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+    const resp = await fetch('/api/controle/importar-fechamento', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({arquivo_base64: base64})
+    });
+    const d = await resp.json();
+    if(!d.ok) throw new Error(d.erro || 'Erro ao ler a planilha');
+
+    let preenchidos = 0;
+
+    // Datas — Embarque/Chegada/Registro DI (aba Documentos/Logística)
+    Object.entries(d.datas||{}).forEach(([campo, valor])=>{
+      const el = document.getElementById('f_'+campo);
+      if(el && !el.value){ el.value = valor; preenchidos++; }
+    });
+
+    // Custos reais — cada chave do real_json vira o campo "Pago" do item
+    // correspondente na aba Custos Reais (f_cr_<id>). Só preenche campo
+    // vazio, pra não sobrescrever o que o usuário já tiver lançado à mão.
+    Object.entries(d.real_json||{}).forEach(([itemId, valor])=>{
+      const el = document.getElementById('f_cr_'+itemId);
+      if(el && !el.value){
+        el.value = valor;
+        el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
+        setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+        preenchidos++;
+      }
+    });
+    if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
+
+    showToast(`✓ Planilha lida: ${preenchidos} campo${preenchidos===1?'':'s'} preenchido${preenchidos===1?'':'s'}. Revise e clique em Salvar.`, 'ok');
+    if(Array.isArray(d.avisos) && d.avisos.length){
+      d.avisos.forEach(av => showToast('⚠ '+av, 'warn'));
+    }
+  }catch(e){
+    showToast('Erro ao importar planilha: '+e.message, 'err');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
 // EXTRAÇÃO COM IA
 // ════════════════════════════════════════════════════════════════
 async function extrairComIA(input){
