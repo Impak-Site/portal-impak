@@ -12,7 +12,13 @@
 //
 // ── AUTOCOMPLETE GENÉRICO (Cliente, Fornecedor, Armador, Agente, Despachante, Transportadora) ──
 let _acTimer = null;
-async function autocompletarContato(input, tipo, dropdownId){
+// onSelect (opcional): callback(nomeCompleto) chamado quando o usuário clica
+// numa sugestão do dropdown. Necessário pra campos cujo valor não é lido
+// direto do DOM no momento de salvar, e sim espelhado numa variável JS a
+// cada tecla (ex.: _vendas[vi].cliente, na aba Vendas) — sem isso, clicar
+// numa sugestão só atualizava o texto visível do input, e o array que
+// realmente é salvo ficava com o texto parcial digitado antes de escolher.
+async function autocompletarContato(input, tipo, dropdownId, onSelect){
   clearTimeout(_acTimer);
   const q = input.value.trim();
   const dd = document.getElementById(dropdownId);
@@ -23,16 +29,27 @@ async function autocompletarContato(input, tipo, dropdownId){
       const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo='+encodeURIComponent(tipo));
       const d = await r.json();
       if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
-      dd.innerHTML = d.contatos.map(c=>{
-        const nome = c.nome_fantasia && c.nome_fantasia !== c.razao_social ? c.nome_fantasia : c.razao_social;
-        const label = `${nome}${c.uf?' · '+c.uf:''}${c.cnpj?' · '+c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):''}`;
-        return `<div onclick="document.getElementById('${input.id}').value='${nome.replace(/'/g,"\\'")}';document.getElementById('${dropdownId}').style.display='none';"
+      dd.innerHTML = d.contatos.map((c,ci)=>{
+        // Nome completo (razão social) é o que vai pro campo — é o nome que
+        // bate com o CNPJ/contrato social. Nome fantasia só ajuda a
+        // identificar visualmente na lista, quando existir e for diferente.
+        const nomeCompleto = c.razao_social || c.nome_fantasia;
+        const label = `${nomeCompleto}${c.nome_fantasia && c.nome_fantasia!==c.razao_social ? ' ('+c.nome_fantasia+')' : ''}${c.uf?' · '+c.uf:''}${c.cnpj?' · '+c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):''}`;
+        return `<div data-nome="${esc(nomeCompleto)}" onclick="_acSelecionar('${input.id}','${dropdownId}',this.dataset.nome,${onSelect?'window._acCallback':'null'})"
           style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
           onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
       }).join('');
+      window._acCallback = onSelect || null;
       dd.style.display='block';
     }catch(e){ dd.style.display='none'; }
   }, 300);
+}
+function _acSelecionar(inputId, dropdownId, nome, callback){
+  const el = document.getElementById(inputId);
+  if(el) el.value = nome;
+  const dd = document.getElementById(dropdownId);
+  if(dd) dd.style.display = 'none';
+  if(typeof callback === 'function') callback(nome);
 }
 document.addEventListener('click', e=>{
   ['cliente-dropdown','fornecedor-dropdown','armador-dropdown','agente-dropdown','despachante-dropdown','transportadora-dropdown'].forEach(id=>{

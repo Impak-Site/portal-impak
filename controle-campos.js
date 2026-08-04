@@ -452,7 +452,7 @@ function renderVendas(){
       <div class="form-grid" style="margin-bottom:10px;">
         <div class="form-group full" style="position:relative;"><label class="form-label">Cliente</label>
           <input class="form-input" value="${esc(v.cliente||'')}" autocomplete="off" id="venda-cliente-${vi}"
-            oninput="_vendas[${vi}].cliente=this.value;sincronizarVendasLegado();autocompletarContato(this,'CLIENTE','venda-cliente-dropdown-${vi}')" placeholder="Digite razão social, CNPJ ou cidade...">
+            oninput="_vendas[${vi}].cliente=this.value;sincronizarVendasLegado();autocompletarContato(this,'CLIENTE','venda-cliente-dropdown-${vi}',function(nome){_vendas[${vi}].cliente=nome;sincronizarVendasLegado();renderResumoVendas();})" placeholder="Digite razão social, CNPJ ou cidade...">
           <div id="venda-cliente-dropdown-${vi}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
         </div>
         <div class="form-group"><label class="form-label">Nº NF Saída</label>
