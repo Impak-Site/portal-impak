@@ -151,12 +151,12 @@ function renderDashNarcelio(){
   const totalPrevisto = mesesOrdenados.reduce((s,k) => s + meses[k], 0);
 
   const kpis = [
-    card('Containers Pedidos (PI)', qtdPedido, `${_processos.length} processo${_processos.length!==1?'s':''} no total`, 'var(--ac)'),
-    card('Previsão de Embarque', qtdPrevisaoEmbarque, 'aguardando embarque', '#b45309'),
-    card('Embarcados / em água', qtdEmbarcado, 'em trânsito', 'var(--ac)'),
-    card('Chegando no período', qtdChegando, periodoChegando.label, 'var(--ok)'),
+    card('Containers Pedidos (PI)', `${qtdPedido} containers`, `${_processos.length} processo${_processos.length!==1?'s':''} no total`, 'var(--ac)'),
+    card('Previsão de Embarque', `${qtdPrevisaoEmbarque} containers`, 'aguardando embarque', '#b45309'),
+    card('Embarcados / em água', `${qtdEmbarcado} containers`, 'em trânsito', 'var(--ac)'),
+    card('Chegando no período', `${qtdChegando} containers`, periodoChegando.label, 'var(--ok)'),
     card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodoFat.label}`, 'var(--ok)'),
-    card('Estoque Parado', processosEstoqueParado, `${estoqueParadoLista.length} descrições diferentes`, 'var(--err)'),
+    card('Processos com Estoque Parado', `${processosEstoqueParado} processos`, `${estoqueParadoLista.length} descrições diferentes de produto`, 'var(--err)'),
     card('Previsão de Caixa (total)', fmtBRL(totalPrevisto), 'FOB + custos reais pendentes', 'var(--err)'),
   ];
 
