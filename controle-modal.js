@@ -549,7 +549,10 @@ function renderModal(){
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
           <div class="form-group"><label class="form-label">NF Saída Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_saida_valor" value="${exibirMoeda(p.nf_saida_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+          <div class="form-group"><label class="form-label">CFOP NF Saída</label>
+            <input class="form-input" id="f_nf_saida_cfop" value="${esc(p.nf_saida_cfop)}" placeholder="ex: 5405, 5905..."></div>
         </div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">CFOP 5905 (ou NF de Saída ainda não emitida) = container importado sem venda efetiva ainda — usado no Dashboard Narcélio pra calcular estoque parado no armazém.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">📎 Arquivos do Processo (GED)</div>
@@ -928,7 +931,7 @@ const LABELS_CAMPOS_IA = {
   ci_data:'Data CI', data_chegada:'Data de chegada', ce_master:'CE Master', ce_house:'CE House',
   ce_data_embarque:'Data embarque (CE)', nf_entrada_numero:'Nº NF entrada', nf_entrada_data:'Data NF entrada',
   nf_entrada_valor:'Valor NF entrada', nf_saida_numero:'Nº NF saída', nf_saida_data:'Data NF saída',
-  nf_saida_valor:'Valor NF saída', data_devolucao_vazio:'Data devolução vazio',
+  nf_saida_valor:'Valor NF saída', nf_saida_cfop:'CFOP NF saída', data_devolucao_vazio:'Data devolução vazio',
 };
 async function carregarHistorico(processoId){
   const lista = document.getElementById('historico-lista');
@@ -1307,3 +1310,4 @@ function marcarPendenciaRevisada(){
 function vincularProcessoAoCalculador(processoId){
   window.open(`/calculador?processo_id=${processoId}`, '_blank');
 }
+f_nf_saida_cfop
