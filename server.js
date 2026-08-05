@@ -873,7 +873,18 @@ app.get('/financeiro', auth('processos'), (req, res) => res.sendFile(path.join(_
 // controle_v2.html, e o front-end detecta location.pathname==='/resultado'
 // pra abrir direto no Dashboard Resultado (ver ativarTelaResultadoExclusiva
 // em controle-core.js).
-app.get('/resultado', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/resultado', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
+// "Tela exclusiva" do Dashboard Narcélio (visão do dono da empresa) —
+// diferente de /financeiro e /resultado (visíveis a qualquer usuário com o
+// módulo "processos"), aqui o back-end também confere o usuário logado:
+// containers em água, faturamento e previsão de caixa são dados sensíveis
+// que não devem ficar visíveis pra todo mundo que usa o Controle. Ver
+// renderDashNarcelio() em controle-dash-narcelio.js e
+// ativarTelaNarcelioExclusiva() em controle-core.js.
+app.get('/narcelio', auth('processos'), (req, res) => {
+  if (req.session.usuario !== 'narcelio') return res.status(403).send('Acesso restrito.')
+  res.sendFile(path.join(__dirname, 'controle_v2.html'))
+});
 // Deep-link por processo — /controle/UD26-005 serve o mesmo controle_v2.html;
 // o front-end lê location.pathname no load e abre o painel lateral do
 // processo correspondente automaticamente (ver abrirProcessoPorURL()).
