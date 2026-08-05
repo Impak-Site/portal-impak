@@ -127,6 +127,11 @@ window.addEventListener('DOMContentLoaded', function(){
     if(!d.logado){ location.href='/login?destino='+encodeURIComponent(location.pathname); return; }
     _user = d;
     document.getElementById('user-badge').textContent = d.displayName || d.usuario;
+    // Link do Dashboard Narcélio só aparece pro próprio usuário narcelio —
+    // cosmético (a proteção real é o back-end em GET /narcelio, ver
+    // server.js), mas evita mostrar um link "quebrado" (403) pra quem não
+    // tem acesso.
+    document.getElementById('menu-narcelio')?.style.setProperty('display', d.usuario==='narcelio' ? '' : 'none');
     carregarCambio();
     carregarProcessos().then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
