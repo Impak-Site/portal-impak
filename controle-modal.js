@@ -1310,4 +1310,3 @@ function marcarPendenciaRevisada(){
 function vincularProcessoAoCalculador(processoId){
   window.open(`/calculador?processo_id=${processoId}`, '_blank');
 }
-f_nf_saida_cfop
