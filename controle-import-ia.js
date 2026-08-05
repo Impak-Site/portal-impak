@@ -361,6 +361,8 @@ async function importarFechamentoProcesso(input){
       const el = document.getElementById('f_cr_'+itemId);
       if(el && !el.value){
         el.value = valor;
+        const selMoeda = document.getElementById('f_cr_moeda_'+itemId);
+        if(selMoeda && d.moedas && d.moedas[itemId]) selMoeda.value = d.moedas[itemId];
         el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
         setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
         preenchidos++;
