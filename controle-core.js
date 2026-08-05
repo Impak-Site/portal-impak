@@ -225,7 +225,6 @@ function ativarTelaResultadoExclusiva(){
 // aqui só evita o usuário clicar sem querer; quem garante que ninguém
 // edita um processo fechado é o servidor).
 // ════════════════════════════════════════════════════════════════
-async 
 // ════════════════════════════════════════════════════════════════
 // TELA EXCLUSIVA /narcelio — visão do dono da empresa: containers por fase
 // (PI recebida/previsão de embarque/embarcado/chegando), faturamento por
@@ -253,10 +252,11 @@ function ativarTelaNarcelioExclusiva(){
 
   const dashNarc = document.getElementById('dash-narcelio');
   if(dashNarc) dashNarc.style.display = 'block';
+  const tw = document.querySelector('.table-wrap'); if(tw) tw.style.display = 'none';
   renderDashNarcelio();
 }
 
-async function fecharProcesso(id){
+async async function fecharProcesso(id){
   if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.')) return;
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
