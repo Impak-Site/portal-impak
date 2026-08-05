@@ -116,5 +116,73 @@ function cellVal(ws, addr) {
                                                                                                                                                                                                                         return { campos: campos, mix: mix };
                                                                                                                                                                                                                         }
                                                                                                                                                                                                                         
-                                                                                                                                                                                                                        function isoDate(v) { if (v instanceof Date && !isNaN(v)) { const y = v.getUTCFullYear(); const m = String(v.getUTCMonth() + 1).padStart(2, '0'); const d = String(v.getUTCDate()).padStart(2, '0'); return y + '-' + m + '-' + d; } return null; } function numVal(v) { const n = Number(v); return (isNaN(n) || v === '' || v === undefined) ? 0 : n; } function parseFechamento(wb) { const ws = wb.Sheets['Fechamento']; if (!ws) throw new Error('Aba "Fechamento" nao encontrada na planilha.'); const avisos = []; const dataRegistroDi = isoDate(cellVal(ws, 'I4')); const dataEmbarque = isoDate(cellVal(ws, 'F61')); const dataChegada = isoDate(cellVal(ws, 'F62')); const dataPedido = isoDate(cellVal(ws, 'F60')); const datas = {}; if (dataEmbarque) datas.data_embarque = dataEmbarque; if (dataChegada) datas.data_chegada = dataChegada; if (dataRegistroDi) datas.data_registro_di = dataRegistroDi; if (dataPedido) avisos.push('Data do Pedido na planilha: ' + dataPedido + ' (sem campo correspondente no Controle - confira manualmente).'); const fobPago = numVal(cellVal(ws, 'F17')) + numVal(cellVal(ws, 'F18')) + numVal(cellVal(ws, 'F19')) + numVal(cellVal(ws, 'F20')); const icmsProprio = numVal(cellVal(ws, 'G28')); const icmsSt = numVal(cellVal(ws, 'G29')); const marjoracao = numVal(cellVal(ws, 'G26')); const icmsTotal = icmsProprio + icmsSt + marjoracao; const seguroUsd = numVal(cellVal(ws, 'E39')) + numVal(cellVal(ws, 'D40')); const diversos = numVal(cellVal(ws, 'G33')) + numVal(cellVal(ws, 'G37')) + numVal(cellVal(ws, 'G38')); const real_json = {}; if (fobPago > 0) real_json.fob = fobPago; if (seguroUsd > 0) real_json.seguro = seguroUsd; const agente = numVal(cellVal(ws, 'G23')); if (agente > 0) real_json.agente = agente; const pis = numVal(cellVal(ws, 'G24')); if (pis > 0) real_json.pis = pis; const cofins = numVal(cellVal(ws, 'G25')); if (cofins > 0) real_json.cofins = cofins; const ipi = numVal(cellVal(ws, 'G27')); if (ipi > 0) real_json.ipi = ipi; if (icmsTotal > 0) real_json.icms = icmsTotal; const ibs = numVal(cellVal(ws, 'G30')); if (ibs > 0) real_json.ibs = ibs; const cbs = numVal(cellVal(ws, 'G31')); if (cbs > 0) real_json.cbs = cbs; const comissaoVendedor = numVal(cellVal(ws, 'G32')); if (comissaoVendedor > 0) real_json.comissao_br = comissaoVendedor; const lavacao = numVal(cellVal(ws, 'G34')); if (lavacao > 0) real_json.lavacao = lavacao; const baixaPatio = numVal(cellVal(ws, 'G35')); if (baixaPatio > 0) real_json.baixa_patio = baixaPatio; const comissaoChina = numVal(cellVal(ws, 'G36')); if (comissaoChina > 0) real_json.comissao_china = comissaoChina; const adiantamentoPorto = numVal(cellVal(ws, 'G22')); if (adiantamentoPorto > 0) real_json.liberacao_bl = adiantamentoPorto; if (diversos > 0) real_json.custos_diversos = diversos; avisos.push('Alguns itens foram mapeados por aproximacao (ICMS = Proprio + ST + Marjoracao; Adiantamento Porto -> Liberacao BL; Reciclagem/Timp/Trademaster -> Custos Diversos) - confira antes de considerar definitivo.'); return { datas: datas, real_json: real_json, avisos: avisos }; } function importarFechamentoBase(buffer) { const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true }); return parseFechamento(wb); } module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase };
+                                                                                                                                                                                                                        function isoDate(v) { if (v instanceof Date && !isNaN(v)) { const y = v.getUTCFullYear(); const m = String(v.getUTCMonth() + 1).padStart(2, '0'); const d = String(v.getUTCDate()).padStart(2, '0'); return y + '-' + m + '-' + d; } return null; } function numVal(v) { const n = Number(v); return (isNaN(n) || v === '' || v === undefined) ? 0 : n; } function parseFechamento(wb) {
+  const ws = wb.Sheets['Fechamento'];
+  if (!ws) throw new Error('Aba "Fechamento" nao encontrada na planilha.');
+
+  const avisos = [];
+
+  const dataRegistroDi = isoDate(cellVal(ws, 'I4'));
+  const dataEmbarque = isoDate(cellVal(ws, 'F61'));
+  const dataChegada = isoDate(cellVal(ws, 'F62'));
+  const dataPedido = isoDate(cellVal(ws, 'F60'));
+
+  const datas = {};
+  if (dataEmbarque) datas.data_embarque = dataEmbarque;
+  if (dataChegada) datas.data_chegada = dataChegada;
+  if (dataRegistroDi) datas.data_registro_di = dataRegistroDi;
+  if (dataPedido) avisos.push('Data do Pedido na planilha: ' + dataPedido + ' (sem campo correspondente no Controle - confira manualmente).');
+
+  // FOB pago: soma das parcelas "Advance Payment" (G17:G20) ja convertidas
+  // para BRL pela propria planilha - cada parcela pode ter cambio historico
+  // diferente da data do pagamento, entao usamos o total em BRL pronto em
+  // vez de somar o USD (F17:F20) e reconverter com um cambio unico (isso
+  // gerava divergencia de centenas de reais vs. o total da planilha).
+  const fobPago = numVal(cellVal(ws, 'G17')) + numVal(cellVal(ws, 'G18')) + numVal(cellVal(ws, 'G19')) + numVal(cellVal(ws, 'G20'));
+
+  const icmsProprio = numVal(cellVal(ws, 'G28'));
+  const icmsSt = numVal(cellVal(ws, 'G29'));
+  const marjoracao = numVal(cellVal(ws, 'G26'));
+  const icmsTotal = icmsProprio + icmsSt + marjoracao;
+
+  // Seguro: so a linha "Seguro" (G39, ja em BRL). A linha "Dif. de Seguro"
+  // (D40/E40/F40) NAO tem formula na coluna G (G40 fica vazio) - ou seja,
+  // a propria planilha nunca soma esse valor no TOTAL (G42=SUM(G17:G41)-G30-G31).
+  // Somar D40 aqui inflava o custo real e desbatia do resultado da planilha.
+  const seguroBrl = numVal(cellVal(ws, 'G39'));
+
+  const diversos = numVal(cellVal(ws, 'G33')) + numVal(cellVal(ws, 'G37')) + numVal(cellVal(ws, 'G38'));
+
+  const real_json = {};
+  const moedas = {};
+  if (fobPago > 0) { real_json.fob = fobPago; moedas.fob = 'BRL'; }
+  if (seguroBrl > 0) { real_json.seguro = seguroBrl; moedas.seguro = 'BRL'; }
+  const agente = numVal(cellVal(ws, 'G23')); if (agente > 0) real_json.agente = agente;
+  const pis = numVal(cellVal(ws, 'G24')); if (pis > 0) real_json.pis = pis;
+  const cofins = numVal(cellVal(ws, 'G25')); if (cofins > 0) real_json.cofins = cofins;
+  const ipi = numVal(cellVal(ws, 'G27')); if (ipi > 0) real_json.ipi = ipi;
+  if (icmsTotal > 0) real_json.icms = icmsTotal;
+
+  // IBS/CBS: a formula do TOTAL da planilha (G42=SUM(G17:G41)-G30-G31)
+  // subtrai esses dois valores de volta - a planilha trata IBS/CBS como
+  // credito tributario recuperavel, nao como custo real. Por isso NAO
+  // entram no real_json (nao contam pro Custo Real Total no Controle);
+  // ficam so registrados em aviso, pra conferencia manual se necessario.
+  const ibs = numVal(cellVal(ws, 'G30'));
+  const cbs = numVal(cellVal(ws, 'G31'));
+  if (ibs > 0 || cbs > 0) avisos.push('IBS (R$ ' + ibs.toFixed(2) + ') e CBS (R$ ' + cbs.toFixed(2) + ') nao foram importados como custo: a planilha os trata como credito tributario recuperavel e os exclui do TOTAL (formula G42).');
+
+  const comissaoVendedor = numVal(cellVal(ws, 'G32')); if (comissaoVendedor > 0) real_json.comissao_br = comissaoVendedor;
+  const lavacao = numVal(cellVal(ws, 'G34')); if (lavacao > 0) real_json.lavacao = lavacao;
+  const baixaPatio = numVal(cellVal(ws, 'G35')); if (baixaPatio > 0) real_json.baixa_patio = baixaPatio;
+  const comissaoChina = numVal(cellVal(ws, 'G36')); if (comissaoChina > 0) real_json.comissao_china = comissaoChina;
+  const adiantamentoPorto = numVal(cellVal(ws, 'G22')); if (adiantamentoPorto > 0) real_json.liberacao_bl = adiantamentoPorto;
+  if (diversos > 0) real_json.custos_diversos = diversos;
+
+  avisos.push('Alguns itens foram mapeados por aproximacao (ICMS = Proprio + ST + Marjoracao; Adiantamento Porto -> Liberacao BL; Reciclagem/Timp/Trademaster -> Custos Diversos) - confira antes de considerar definitivo.');
+
+  return { datas: datas, real_json: real_json, moedas: moedas, avisos: avisos };
+}
+
+function importarFechamentoBase(buffer) { const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true }); return parseFechamento(wb); } module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase };
                                                                                                                                                                                                                         
