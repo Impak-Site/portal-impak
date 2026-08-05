@@ -256,7 +256,7 @@ function ativarTelaNarcelioExclusiva(){
   renderDashNarcelio();
 }
 
-async async function fecharProcesso(id){
+async function fecharProcesso(id){
   if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.')) return;
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
