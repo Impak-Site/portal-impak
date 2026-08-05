@@ -1381,7 +1381,6 @@ function renderCot(){
     <input class="ci" type="text" placeholder="295/80R22.5" value="${r.medida}" oninput="updC('${r.id}','medida',this.value)" list="size-dl">
     <input class="ci" type="number" placeholder="0.00" value="${r.preco}" step="0.01" oninput="updC('${r.id}','preco',this.value)">
     <input class="ci" type="number" placeholder="kg" value="${r.peso}" step="0.1" oninput="updC('${r.id}','peso',this.value)">
-    <input class="ci" type="number" placeholder=">
     <button class="brem" style="width:24px;height:24px;font-size:12px" onclick="removeCot('${r.id}')">×</button>`;
     el.appendChild(d);
   });
