@@ -131,6 +131,7 @@ window.addEventListener('DOMContentLoaded', function(){
     carregarProcessos().then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
       if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
+      if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
       // Deep-link ?processo=<id> — usado pelo Calculador pra abrir direto o
       // processo recém-criado ao aprovar uma cotação (ver aprovarCotacao()
       // em calculador.html). Só tenta abrir depois que a lista carregou,
@@ -219,7 +220,38 @@ function ativarTelaResultadoExclusiva(){
 // aqui só evita o usuário clicar sem querer; quem garante que ninguém
 // edita um processo fechado é o servidor).
 // ════════════════════════════════════════════════════════════════
-async function fecharProcesso(id){
+async 
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /narcelio — visão do dono da empresa: containers por fase
+// (PI recebida/previsão de embarque/embarcado/chegando), faturamento por
+// período, estoque parado no armazém (NF entrada lançada + NF saída com
+// CFOP 5905 ou ainda não emitida) e previsão de recurso de numerário
+// (fluxo de caixa combinando pagamentos de PI com custos reais do
+// processo). Acesso já é restrito no back-end (ver /narcelio em
+// server.js) — aqui é só a apresentação.
+function ativarTelaNarcelioExclusiva(){
+  document.title = 'IMPAK — Dashboard Narcélio';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Dashboard Narcélio';
+
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+
+  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('menu-narcelio')?.classList.add('active');
+
+  const dashNarc = document.getElementById('dash-narcelio');
+  if(dashNarc) dashNarc.style.display = 'block';
+  renderDashNarcelio();
+}
+
+function fecharProcesso(id){
   if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.')) return;
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
