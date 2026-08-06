@@ -64,7 +64,6 @@ function renderDashNarcelio(){
   });
 
   // ── 4: containers chegando, com filtro de data (ETA) ─────────
-  renderPeriodoSeletor('periodo-seletor-narcelio-chegando', 'narcelioChegando', renderDashNarcelio);
   const periodoChegando = calcularPeriodo('narcelioChegando');
   let qtdChegando = 0;
   const chegandoLista = [];
@@ -80,7 +79,6 @@ function renderDashNarcelio(){
   chegandoLista.sort((a,b) => (a.eta||'').localeCompare(b.eta||''));
 
   // ── 5: faturamento por período (NF de Saída) ─────────────────
-  renderPeriodoSeletor('periodo-seletor-narcelio-faturamento', 'narcelio', renderDashNarcelio);
   const periodoFat = calcularPeriodo('narcelio');
   let faturamento = 0, qtdFaturados = 0;
   _processos.forEach(p => {
@@ -230,4 +228,7 @@ function renderDashNarcelio(){
       ${tabelaFluxo}
     </div>
   `;
+
+  renderPeriodoSeletor('periodo-seletor-narcelio-chegando', 'narcelioChegando', renderDashNarcelio);
+  renderPeriodoSeletor('periodo-seletor-narcelio-faturamento', 'narcelio', renderDashNarcelio);
 }
