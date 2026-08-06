@@ -54,26 +54,33 @@ function renderDashNarcelio(){
   // primeira fase de todo processo cadastrado). Previsão de embarque e
   // Embarcado usam a fase calculada (calcularFase), consistente com o resto
   // do sistema (não duplica a lógica de datas aqui).
+  const periodo = calcularPeriodo('narcelio'); // período único, aplicado a todos os cards abaixo (exceto Estoque Parado)
+  function dentroPeriodo(dataStr){
+    if(!dataStr) return false;
+    const d = parseDataLocal(String(dataStr).slice(0,10));
+    return !!d && d >= periodo.ini && d <= periodo.fim;
+  }
   let qtdPedido = 0, qtdPrevisaoEmbarque = 0, qtdEmbarcado = 0;
   const pedidoLista = [], previsaoEmbarqueLista = [], embarcadoLista = [];
   _processos.forEach(p => {
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0);
     if(!n) return;
-    qtdPedido += n;
-    pedidoLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n });
+    if(dentroPeriodo(p.created_at)){
+      qtdPedido += n;
+      pedidoLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n });
+    }
     const fase = calcularFase(p);
-    if(fase === 'AGUARDANDO_EMBARQUE'){ qtdPrevisaoEmbarque += n; previsaoEmbarqueLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n }); }
-    if(fase === 'EMBARCADO'){ qtdEmbarcado += n; embarcadoLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n }); }
+    if(fase === 'AGUARDANDO_EMBARQUE' && dentroPeriodo(p.etd)){ qtdPrevisaoEmbarque += n; previsaoEmbarqueLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n }); }
+    if(dentroPeriodo(p.data_embarque)){ qtdEmbarcado += n; embarcadoLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n }); }
   });
 
   // ── 4: containers chegando, com filtro de data (ETA) ─────────
-  const periodoChegando = calcularPeriodo('narcelioChegando');
   let qtdChegando = 0;
   const chegandoLista = [];
   _processos.forEach(p => {
     if(p.data_chegada || !p.eta) return; // já chegou de fato, ou sem ETA — não conta como "chegando"
     const eta = parseDataLocal(p.eta);
-    if(!eta || eta < periodoChegando.ini || eta > periodoChegando.fim) return;
+    if(!eta || eta < periodo.ini || eta > periodo.fim) return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0);
     if(!n) return;
     qtdChegando += n;
@@ -82,13 +89,12 @@ function renderDashNarcelio(){
   chegandoLista.sort((a,b) => (a.eta||'').localeCompare(b.eta||''));
 
   // ── 5: faturamento por período (NF de Saída) ─────────────────
-  const periodoFat = calcularPeriodo('narcelio');
   let faturamento = 0, qtdFaturados = 0;
   const faturadosLista = [];
   _processos.forEach(p => {
     if(!p.nf_saida_data || !p.nf_saida_valor) return;
     const d = parseDataLocal(p.nf_saida_data);
-    if(!d || d < periodoFat.ini || d > periodoFat.fim) return;
+    if(!d || d < periodo.ini || d > periodo.fim) return;
     faturamento += parseFloat(p.nf_saida_valor) || 0;
     qtdFaturados++;
     faturadosLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.cliente||p.fornecedor, valor: parseFloat(p.nf_saida_valor)||0, data: p.nf_saida_data });
@@ -143,6 +149,7 @@ function renderDashNarcelio(){
     if(pg.pago) return;
     const cambio = pg.cambioFechado || pg.cambioPrevisto;
     if(!cambio || !pg.valorUsd) return;
+    if(!dentroPeriodo(pg.vencimento)) return;
     const valorPg = pg.valorUsd * cambio;
     addMes(pg.vencimento, valorPg);
     addContrib(pg.processoId, valorPg);
@@ -154,7 +161,9 @@ function renderDashNarcelio(){
     const fobConvertido = (parseFloat(p.real_json && p.real_json.fob) || 0) * cambioReal;
     const restante = custoReal.total - fobConvertido;
     if(restante <= 0) return;
-    addMes(p.eta || p.data_registro_di || p.previsao_prontidao, restante);
+    const dataRef = p.eta || p.data_registro_di || p.previsao_prontidao;
+    if(!dentroPeriodo(dataRef)) return;
+    addMes(dataRef, restante);
     addContrib(p.id, restante);
   });
   const mesesOrdenados = Object.keys(meses).sort();
@@ -165,22 +174,22 @@ function renderDashNarcelio(){
   }).sort((a,b) => b.valor - a.valor);
 
   const kpis = [
-    card('Containers Pedidos (PI)', `${qtdPedido} containers`, `${_processos.length} processo${_processos.length!==1?'s':''} no total`, 'var(--ac)', 'pedido'),
-    card('Previsão de Embarque', `${qtdPrevisaoEmbarque} containers`, 'aguardando embarque', '#b45309', 'embarque'),
-    card('Embarcados / em água', `${qtdEmbarcado} containers`, 'em trânsito', 'var(--ac)', 'embarcado'),
-    card('Chegando no período', `${qtdChegando} containers`, periodoChegando.label, 'var(--ok)', 'chegando'),
-    card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodoFat.label}`, 'var(--ok)', 'faturamento'),
+    card('Containers Pedidos (PI)', `${qtdPedido} containers`, `${pedidoLista.length} processo${pedidoLista.length!==1?'s':''} — ${periodo.label}`, 'var(--ac)', 'pedido'),
+    card('Previsão de Embarque', `${qtdPrevisaoEmbarque} containers`, `aguardando embarque — ${periodo.label}`, '#b45309', 'embarque'),
+    card('Embarcados / em água', `${qtdEmbarcado} containers`, `embarcado — ${periodo.label}`, 'var(--ac)', 'embarcado'),
+    card('Chegando no período', `${qtdChegando} containers`, periodo.label, 'var(--ok)', 'chegando'),
+    card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodo.label}`, 'var(--ok)', 'faturamento'),
     card('Processos com Estoque Parado', `${processosEstoqueParado} processos`, `${estoqueParadoLista.length} descrições diferentes de produto`, 'var(--err)', 'estoque'),
-    card('Previsão de Caixa (total)', fmtBRL(totalPrevisto), 'FOB + custos reais pendentes', 'var(--err)', 'caixa'),
+    card('Previsão de Caixa (no período)', fmtBRL(totalPrevisto), `FOB + custos reais pendentes — ${periodo.label}`, 'var(--err)', 'caixa'),
   ];
   window._narcelioListas = {
-    pedido: { titulo: 'Containers Pedidos (PI)', rows: pedidoLista },
-    embarque: { titulo: 'Previsão de Embarque', rows: previsaoEmbarqueLista },
-    embarcado: { titulo: 'Embarcados / em água', rows: embarcadoLista },
-    chegando: { titulo: 'Chegando no período — ' + periodoChegando.label, rows: chegandoLista },
-    faturamento: { titulo: 'Faturamento no período — ' + periodoFat.label, rows: faturadosLista },
+    pedido: { titulo: 'Containers Pedidos (PI) — ' + periodo.label, rows: pedidoLista },
+    embarque: { titulo: 'Previsão de Embarque — ' + periodo.label, rows: previsaoEmbarqueLista },
+    embarcado: { titulo: 'Embarcados / em água — ' + periodo.label, rows: embarcadoLista },
+    chegando: { titulo: 'Chegando no período — ' + periodo.label, rows: chegandoLista },
+    faturamento: { titulo: 'Faturamento no período — ' + periodo.label, rows: faturadosLista },
     estoque: { titulo: 'Processos com Estoque Parado', rows: estoqueProcessosLista },
-    caixa: { titulo: 'Previsão de Caixa (total)', rows: caixaLista },
+    caixa: { titulo: 'Previsão de Caixa — ' + periodo.label, rows: caixaLista },
   };
 
   const tabelaChegando = chegandoLista.length ? `
@@ -222,14 +231,15 @@ function renderDashNarcelio(){
     </table>` : `<div style="font-size:12px;color:var(--muted);">Sem pagamentos ou custos pendentes previstos.</div>`;
 
   el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-size:11px;color:var(--muted);">Período aplicado aos indicadores abaixo (exceto Estoque Parado):</div>
+      <div id="periodo-seletor-narcelio-geral"></div>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px;">${kpis.join('')}</div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
       <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-          <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);">🚢 Containers Chegando</div>
-          <div id="periodo-seletor-narcelio-chegando"></div>
-        </div>
+        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">🚢 Containers Chegando</div>
         ${tabelaChegando}
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
@@ -239,12 +249,9 @@ function renderDashNarcelio(){
     </div>
 
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);">💰 Faturamento (NF de Saída)</div>
-        <div id="periodo-seletor-narcelio-faturamento"></div>
-      </div>
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">💰 Faturamento (NF de Saída)</div>
       <div style="font-size:20px;font-weight:800;color:var(--ok);font-family:'DM Sans',sans-serif;">${fmtBRL(faturamento)}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${qtdFaturados} NF de saída emitida(s) em ${periodoFat.label}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${qtdFaturados} NF de saída emitida(s) em ${periodo.label}</div>
     </div>
 
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
@@ -254,8 +261,7 @@ function renderDashNarcelio(){
     </div>
   `;
 
-  renderPeriodoSeletor('periodo-seletor-narcelio-chegando', 'narcelioChegando', renderDashNarcelio);
-  renderPeriodoSeletor('periodo-seletor-narcelio-faturamento', 'narcelio', renderDashNarcelio);
+  renderPeriodoSeletor('periodo-seletor-narcelio-geral', 'narcelio', renderDashNarcelio);
 }
 
 
