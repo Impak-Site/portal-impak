@@ -40,8 +40,9 @@ function renderDashNarcelio(){
 
   const fmtBRL = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
-  function card(label, val, sub, cor){
-    return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
+  function card(label, val, sub, cor, key){
+    const attrs = key ? ` onclick="abrirListaNarcelio('${key}')" title="Clique para ver a lista" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"` : ` style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"`;
+    return `<div${attrs}>
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
     <div style="font-size:20px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
@@ -54,13 +55,15 @@ function renderDashNarcelio(){
   // Embarcado usam a fase calculada (calcularFase), consistente com o resto
   // do sistema (não duplica a lógica de datas aqui).
   let qtdPedido = 0, qtdPrevisaoEmbarque = 0, qtdEmbarcado = 0;
+  const pedidoLista = [], previsaoEmbarqueLista = [], embarcadoLista = [];
   _processos.forEach(p => {
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0);
     if(!n) return;
     qtdPedido += n;
+    pedidoLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n });
     const fase = calcularFase(p);
-    if(fase === 'AGUARDANDO_EMBARQUE') qtdPrevisaoEmbarque += n;
-    if(fase === 'EMBARCADO') qtdEmbarcado += n;
+    if(fase === 'AGUARDANDO_EMBARQUE'){ qtdPrevisaoEmbarque += n; previsaoEmbarqueLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n }); }
+    if(fase === 'EMBARCADO'){ qtdEmbarcado += n; embarcadoLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor, n }); }
   });
 
   // ── 4: containers chegando, com filtro de data (ETA) ─────────
@@ -74,19 +77,21 @@ function renderDashNarcelio(){
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0);
     if(!n) return;
     qtdChegando += n;
-    chegandoLista.push({ referencia: p.referencia, eta: p.eta, n, fornecedor: p.fornecedor });
+    chegandoLista.push({ id: p.id, referencia: p.referencia, eta: p.eta, n, fornecedor: p.fornecedor });
   });
   chegandoLista.sort((a,b) => (a.eta||'').localeCompare(b.eta||''));
 
   // ── 5: faturamento por período (NF de Saída) ─────────────────
   const periodoFat = calcularPeriodo('narcelio');
   let faturamento = 0, qtdFaturados = 0;
+  const faturadosLista = [];
   _processos.forEach(p => {
     if(!p.nf_saida_data || !p.nf_saida_valor) return;
     const d = parseDataLocal(p.nf_saida_data);
     if(!d || d < periodoFat.ini || d > periodoFat.fim) return;
     faturamento += parseFloat(p.nf_saida_valor) || 0;
     qtdFaturados++;
+    faturadosLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.cliente||p.fornecedor, valor: parseFloat(p.nf_saida_valor)||0, data: p.nf_saida_data });
   });
 
   // ── 6: estoque parado no armazém (importado, ainda sem venda) ─
@@ -97,11 +102,13 @@ function renderDashNarcelio(){
   // simples e recomendada, conforme decisão do usuário.
   const estoqueParado = {}; // descricao -> quantidade
   let processosEstoqueParado = 0;
+  const estoqueProcessosLista = [];
   _processos.forEach(p => {
     if(!p.nf_entrada_numero) return;
     const semVenda = p.nf_saida_cfop === '5905' || !p.nf_saida_numero;
     if(!semVenda) return;
     processosEstoqueParado++;
+    estoqueProcessosLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor });
     let produtos = [];
     try { produtos = JSON.parse(p.produtos_json || '[]'); } catch(e) { /* ignora produtos_json inválido */ }
     if(!Array.isArray(produtos) || !produtos.length){
@@ -130,11 +137,15 @@ function renderDashNarcelio(){
     meses[chave] = (meses[chave]||0) + valor;
   }
   const processosAbertos = _processos.filter(p => !p.fechado);
+  const contribPorProcesso = {}; // processoId -> valor
+  function addContrib(id, valor){ if(!id) return; contribPorProcesso[id] = (contribPorProcesso[id]||0) + valor; }
   listarPagamentosPI(processosAbertos).forEach(pg => {
     if(pg.pago) return;
     const cambio = pg.cambioFechado || pg.cambioPrevisto;
     if(!cambio || !pg.valorUsd) return;
-    addMes(pg.vencimento, pg.valorUsd * cambio);
+    const valorPg = pg.valorUsd * cambio;
+    addMes(pg.vencimento, valorPg);
+    addContrib(pg.processoId, valorPg);
   });
   processosAbertos.forEach(p => {
     const custoReal = calcularCustoRealTotal(p);
@@ -144,19 +155,33 @@ function renderDashNarcelio(){
     const restante = custoReal.total - fobConvertido;
     if(restante <= 0) return;
     addMes(p.eta || p.data_registro_di || p.previsao_prontidao, restante);
+    addContrib(p.id, restante);
   });
   const mesesOrdenados = Object.keys(meses).sort();
   const totalPrevisto = mesesOrdenados.reduce((s,k) => s + meses[k], 0);
+  const caixaLista = Object.keys(contribPorProcesso).map(id => {
+    const p = _processos.find(x => x.id === id);
+    return { id, referencia: p ? p.referencia : id, fornecedor: p ? p.fornecedor : '', valor: contribPorProcesso[id] };
+  }).sort((a,b) => b.valor - a.valor);
 
   const kpis = [
-    card('Containers Pedidos (PI)', `${qtdPedido} containers`, `${_processos.length} processo${_processos.length!==1?'s':''} no total`, 'var(--ac)'),
-    card('Previsão de Embarque', `${qtdPrevisaoEmbarque} containers`, 'aguardando embarque', '#b45309'),
-    card('Embarcados / em água', `${qtdEmbarcado} containers`, 'em trânsito', 'var(--ac)'),
-    card('Chegando no período', `${qtdChegando} containers`, periodoChegando.label, 'var(--ok)'),
-    card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodoFat.label}`, 'var(--ok)'),
-    card('Processos com Estoque Parado', `${processosEstoqueParado} processos`, `${estoqueParadoLista.length} descrições diferentes de produto`, 'var(--err)'),
-    card('Previsão de Caixa (total)', fmtBRL(totalPrevisto), 'FOB + custos reais pendentes', 'var(--err)'),
+    card('Containers Pedidos (PI)', `${qtdPedido} containers`, `${_processos.length} processo${_processos.length!==1?'s':''} no total`, 'var(--ac)', 'pedido'),
+    card('Previsão de Embarque', `${qtdPrevisaoEmbarque} containers`, 'aguardando embarque', '#b45309', 'embarque'),
+    card('Embarcados / em água', `${qtdEmbarcado} containers`, 'em trânsito', 'var(--ac)', 'embarcado'),
+    card('Chegando no período', `${qtdChegando} containers`, periodoChegando.label, 'var(--ok)', 'chegando'),
+    card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodoFat.label}`, 'var(--ok)', 'faturamento'),
+    card('Processos com Estoque Parado', `${processosEstoqueParado} processos`, `${estoqueParadoLista.length} descrições diferentes de produto`, 'var(--err)', 'estoque'),
+    card('Previsão de Caixa (total)', fmtBRL(totalPrevisto), 'FOB + custos reais pendentes', 'var(--err)', 'caixa'),
   ];
+  window._narcelioListas = {
+    pedido: { titulo: 'Containers Pedidos (PI)', rows: pedidoLista },
+    embarque: { titulo: 'Previsão de Embarque', rows: previsaoEmbarqueLista },
+    embarcado: { titulo: 'Embarcados / em água', rows: embarcadoLista },
+    chegando: { titulo: 'Chegando no período — ' + periodoChegando.label, rows: chegandoLista },
+    faturamento: { titulo: 'Faturamento no período — ' + periodoFat.label, rows: faturadosLista },
+    estoque: { titulo: 'Processos com Estoque Parado', rows: estoqueProcessosLista },
+    caixa: { titulo: 'Previsão de Caixa (total)', rows: caixaLista },
+  };
 
   const tabelaChegando = chegandoLista.length ? `
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -232,3 +257,55 @@ function renderDashNarcelio(){
   renderPeriodoSeletor('periodo-seletor-narcelio-chegando', 'narcelioChegando', renderDashNarcelio);
   renderPeriodoSeletor('periodo-seletor-narcelio-faturamento', 'narcelio', renderDashNarcelio);
 }
+
+
+// ── Modal de lista (cards clicáveis) ──────────────────────────
+function abrirListaNarcelio(key){
+  const dados = (window._narcelioListas || {})[key];
+  if(!dados) return;
+  let modal = document.getElementById('narcelio-lista-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'narcelio-lista-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:720px;width:92%;max-height:82vh;overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.25);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<h3 id="narcelio-lista-titulo" style="margin:0;font-size:16px;"></h3>' +
+      '<button onclick="fecharListaNarcelio()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--muted);">&times;</button>' +
+      '</div><div id="narcelio-lista-corpo"></div></div>';
+    modal.addEventListener('click', function(e){ if(e.target === modal) fecharListaNarcelio(); });
+    document.body.appendChild(modal);
+  }
+  document.getElementById('narcelio-lista-titulo').textContent = dados.titulo + ' (' + dados.rows.length + ')';
+  const fmtBRL2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const corpo = document.getElementById('narcelio-lista-corpo');
+  if(!dados.rows.length){
+    corpo.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center;">Nenhum processo encontrado.</div>';
+  } else {
+    const temN = dados.rows[0].n !== undefined;
+    const temValor = dados.rows[0].valor !== undefined;
+    const temData = dados.rows[0].eta !== undefined || dados.rows[0].data !== undefined;
+    corpo.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border);">
+        <th style="padding:6px 8px;">Referência</th>
+        <th style="padding:6px 8px;">Fornecedor/Cliente</th>
+        ${temN || temValor ? '<th style="padding:6px 8px;text-align:right;">' + (temN?'Containers':'Valor') + '</th>' : ''}
+        ${temData ? '<th style="padding:6px 8px;">Data</th>' : ''}
+      </tr></thead>
+      <tbody>
+      ${dados.rows.map(r => `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="fecharListaNarcelio();abrirProcesso('${r.id}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+        <td style="padding:6px 8px;font-weight:600;">${esc(r.referencia||'—')}</td>
+        <td style="padding:6px 8px;">${esc(r.fornecedor||'—')}</td>
+        ${temN ? '<td style="padding:6px 8px;text-align:right;">' + r.n + '</td>' : (temValor ? '<td style="padding:6px 8px;text-align:right;">' + fmtBRL2(r.valor) + '</td>' : '')}
+        ${temData ? '<td style="padding:6px 8px;">' + esc(r.eta||r.data||'') + '</td>' : ''}
+      </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }
+  modal.style.display = 'flex';
+}
+function fecharListaNarcelio(){
+  const modal = document.getElementById('narcelio-lista-modal');
+  if(modal) modal.style.display = 'none';
+}
+
