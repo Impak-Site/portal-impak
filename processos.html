@@ -2820,6 +2820,3793 @@ function _renderProcessModal(p){
     document.body.style.overflow = 'hidden';
     m.scrollTop = 0;
     // Event delegation para botões dentro do modal
+    mb.onclick = function(e){
+      var btn = e.target.closest('button[data-action]');
+      if(!btn) return;
+      var action = btn.getAttribute('data-action');
+      var key = btn.getAttribute('data-key');
+      var pid = btn.getAttribute('data-pid') || id;
+      var puser = btn.getAttribute('data-user') || ownerUser;
+      if(action==='aceitar-div') aceitarDivHistorico(pid, puser, key);
+      if(action==='aceitar-alerta') aceitarAlertaHistorico(pid, puser, key);
+      if(action==='add-log') addLog(pid, puser);
+      if(action==='nova-analise') document.getElementById('btnNovaAnalise') && document.getElementById('btnNovaAnalise').click();
+    };
+  }
+}
+
+function aceitarAlertaHistorico(procId, ownerUser, alertKey){
+  var quemAceitou = _currentUser ? (_currentUser.displayName||_currentUser.username) : '?';
+
+  // Se já aceito, desfazer direto sem overlay
+  // Bug: getProcesses() devolve a lista LEVE do dashboard (só índice, sem
+  // analises/grupos completos) — salvar esse objeto reduzido de volta no
+  // servidor apagava o histórico de análises do processo inteiro. Trocado
+  // por dbGetProcess, que traz (ou usa em cache) o processo COMPLETO, e só
+  // salva depois de confirmado (mesmo motivo do fix acima: evitar perder o
+  // desfazer se a página for recarregada logo em seguida).
+  var procs0 = getProcesses();
+  var proc0Leve = procs0.find(function(p){ return p.id===parseInt(procId)||p.id===procId; });
+  if(proc0Leve && proc0Leve._divResolvedMap && proc0Leve._divResolvedMap[alertKey]){
+    dbGetProcess(ownerUser, parseInt(procId), function(proc0){
+      if(!proc0){ showToast('Processo não encontrado','err'); return; }
+      delete proc0._divResolvedMap[alertKey];
+      proc0._updatedAt = Date.now();
+      recalcularStatusProcesso(proc0);
+      dbSaveProcess(ownerUser, proc0, function(){
+        renderDashboard(); renderProcessos();
+        showToast('Aceite desfeito','warn');
+        openProcess(parseInt(procId), ownerUser);
+      }, function(erro){
+        showToast('Não foi possível desfazer: ' + (erro||'erro de rede'),'err');
+      });
+    });
+    return;
+  }
+
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:14px;font-weight:700;color:#e6edf4;margin-bottom:6px;';
+  title.textContent = 'Aceitar Alerta';
+  var sub = document.createElement('div');
+  sub.style.cssText = 'font-size:11px;color:#6b8aaa;margin-bottom:16px;';
+  sub.innerHTML = 'Aceito por: <strong style="color:#d97706">' + quemAceitou + '</strong>';
+  var lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:12px;color:#6b8aaa;margin-bottom:8px;';
+  lbl.textContent = 'Motivo (obrigatório):';
+  var textarea = document.createElement('textarea');
+  textarea.rows = 3;
+  textarea.placeholder = 'Descreva o motivo para aceitar este alerta...';
+  textarea.style.cssText = 'width:100%;background:#0d1e2e;border:1px solid #2a3d55;border-radius:7px;color:#e6edf4;font-size:13px;padding:10px 12px;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;';
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px;margin-top:16px;justify-content:flex-end;';
+  var btnCancel = document.createElement('button');
+  btnCancel.style.cssText = 'background:transparent;border:1px solid #2a3d55;border-radius:7px;color:#6b8aaa;padding:8px 18px;cursor:pointer;font-size:13px;';
+  btnCancel.textContent = 'Cancelar';
+  btnCancel.onclick = function(){ overlay.remove(); };
+  var btnOk = document.createElement('button');
+  btnOk.style.cssText = 'background:#d97706;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:600;';
+  btnOk.textContent = '✓ Confirmar';
+  btnOk.onclick = function(){
+    var nota = (textarea.value||'').trim();
+    if(!nota){ showToast('Informe o motivo para aceitar.','err'); return; }
+    // Mesmo ajuste feito em aceitarDivHistorico: só fecha o modal / mostra
+    // o toast / recarrega DEPOIS que dbSaveProcess confirmar que o
+    // servidor gravou — antes disso era possível dar refresh ou sair da
+    // tela com o POST ainda em voo e perder o aceite silenciosamente.
+    btnOk.disabled = true;
+    btnOk.textContent = 'Salvando...';
+    btnCancel.style.display = 'none';
+    dbGetProcess(ownerUser, parseInt(procId), function(p){
+      if(!p){ showToast('Processo não encontrado','err'); overlay.remove(); return; }
+      p._divResolvedMap = p._divResolvedMap || {};
+      p._divResolvedMap[alertKey] = { nota:nota, time:new Date().toLocaleString('pt-BR'), por:quemAceitou };
+      p._updatedAt = Date.now();
+      recalcularStatusProcesso(p);
+      dbSaveProcess(ownerUser, p, function(){
+        overlay.remove();
+        renderDashboard(); renderProcessos();
+        showToast('Alerta aceito por ' + quemAceitou,'ok');
+        openProcess(parseInt(procId), ownerUser);
+      }, function(erro){
+        btnOk.disabled = false;
+        btnOk.textContent = '✓ Confirmar';
+        btnCancel.style.display = '';
+        showToast('Não foi possível salvar: ' + (erro||'erro de rede') + ' — tente novamente','err');
+      });
+    });
+  };
+  btnRow.appendChild(btnCancel); btnRow.appendChild(btnOk);
+  box.appendChild(textarea); box.appendChild(btnRow);
+  overlay.appendChild(box); document.body.appendChild(overlay); textarea.focus();
+  overlay.addEventListener('keydown', function(e){
+    if(e.key==='Escape') overlay.remove();
+    if(e.key==='Enter' && e.ctrlKey) btnOk.click();
+  });
+}
+
+var _paginaAnterior = 'processos';
+
+function aceitarDivHistorico(procId, ownerUser, divKey){
+  var quemAceitou = _currentUser ? (_currentUser.displayName||_currentUser.username) : '?';
+  // Bug: essa variável era usada mais abaixo (bloco "Sugestão de motivo") sem
+  // nunca ter sido declarada — todo clique em "Aceitar" de uma divergência
+  // disparava ReferenceError e a função morria ANTES de criar/anexar o modal
+  // no body. Resultado: o modal nunca aparecia (só o card da análise recolhia,
+  // por causa do listener de data-toggle que também escuta o mesmo clique) e
+  // a divergência nunca era de fato aceita, então o status do processo nunca
+  // saía de "Com Divergência". Sugestão de motivo automática ainda não foi
+  // implementada, então mantemos null (bloco de sugestão fica oculto).
+  var motivoSugerido = null;
+  var overlay = document.createElement('div');
+  overlay.id = 'aceiteOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+  
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:14px;font-weight:700;color:#e6edf4;margin-bottom:6px;';
+  title.textContent = 'Aceitar Divergência';
+  
+  var sub = document.createElement('div');
+  sub.style.cssText = 'font-size:11px;color:#6b8aaa;margin-bottom:16px;';
+  sub.innerHTML = 'Aceito por: <strong style="color:#1a7fd4">' + quemAceitou + '</strong>';
+  
+  var lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:12px;color:#6b8aaa;margin-bottom:8px;';
+  lbl.textContent = 'Motivo (obrigatório):';
+  box.appendChild(title); box.appendChild(sub); box.appendChild(lbl);
+
+  // Sugestão de motivo da IA ou histórico
+  if(motivoSugerido){
+    var sugestaoEl = document.createElement('div');
+    sugestaoEl.style.cssText = 'padding:8px 12px;background:rgba(26,127,212,.08);border:1px solid rgba(26,127,212,.2);border-radius:6px;margin-bottom:8px;font-size:12px;color:#1a7fd4;cursor:pointer;line-height:1.4;';
+    sugestaoEl.innerHTML = '💡 <strong>Sugestão:</strong> '+motivoSugerido+'<br><span style="font-size:10px;opacity:.7">↑ Clique para usar</span>';
+    sugestaoEl.onclick = function(){ textarea.value = motivoSugerido; textarea.focus(); };
+    box.appendChild(sugestaoEl);
+  }
+
+  var textarea = document.createElement('textarea');
+  textarea.id = 'aceiteNota';
+  textarea.rows = 3;
+  textarea.placeholder = 'Descreva o motivo para aceitar esta divergência...';
+  textarea.style.cssText = 'width:100%;background:#0d1e2e;border:1px solid #2a3d55;border-radius:7px;color:#e6edf4;font-size:13px;padding:10px 12px;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;';
+  
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px;margin-top:16px;justify-content:flex-end;';
+  
+  var btnCancel = document.createElement('button');
+  btnCancel.style.cssText = 'background:transparent;border:1px solid #2a3d55;border-radius:7px;color:#6b8aaa;padding:8px 18px;cursor:pointer;font-size:13px;';
+  btnCancel.textContent = 'Cancelar';
+  btnCancel.onclick = function(){ overlay.remove(); };
+  
+  var btnOk = document.createElement('button');
+  btnOk.style.cssText = 'background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:600;';
+  btnOk.textContent = '✓ Confirmar';
+  btnOk.onclick = function(){
+    var nota = (textarea.value||'').trim();
+    if(!nota){ showToast('Informe o motivo para aceitar.','err'); return; }
+    // Antes: overlay.remove() + toast "aceita" disparavam ANTES do
+    // dbSaveProcess terminar (fetch é assíncrono). Se o usuário desse
+    // refresh (F5) ou saísse da página logo depois de ver o toast — o que
+    // é natural, já que a UI dizia "aceito" — o POST em andamento era
+    // cancelado pelo navegador e nada ficava salvo no servidor, mesmo já
+    // tendo "funcionado" visualmente. Agora: mantemos o modal aberto com o
+    // botão desabilitado até o servidor confirmar o save (onSuccess), e só
+    // então fechamos/mostramos o toast/recarregamos — assim a confirmação
+    // na tela só aparece quando já está realmente persistido.
+    btnOk.disabled = true;
+    btnOk.textContent = 'Salvando...';
+    btnCancel.style.display = 'none';
+    dbGetProcess(ownerUser, parseInt(procId), function(p){
+      if(!p){ showToast('Processo não encontrado','err'); overlay.remove(); return; }
+      p._divResolvedMap = p._divResolvedMap || {};
+      p._divResolvedMap[divKey] = {
+        nota: nota,
+        time: new Date().toLocaleString('pt-BR'),
+        por: quemAceitou
+      };
+      p._updatedAt = Date.now();
+      recalcularStatusProcesso(p);
+      dbSaveProcess(ownerUser, p, function(){
+        overlay.remove();
+        dbGetAllProcesses(function(all){ _processes=migrateAlerts(all); renderDashboard(); renderProcessos(); });
+        showToast('Divergência aceita por ' + quemAceitou,'ok');
+        openProcess(parseInt(procId), ownerUser);
+      }, function(erro){
+        btnOk.disabled = false;
+        btnOk.textContent = '✓ Confirmar';
+        btnCancel.style.display = '';
+        showToast('Não foi possível salvar: ' + (erro||'erro de rede') + ' — tente novamente','err');
+      });
+    });
+  };
+  
+  btnRow.appendChild(btnCancel);
+  btnRow.appendChild(btnOk);
+  box.appendChild(title);
+  box.appendChild(sub);
+  box.appendChild(lbl);
+  box.appendChild(textarea);
+  box.appendChild(btnRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  textarea.focus();
+  
+  overlay.addEventListener('keydown', function(e){
+    if(e.key==='Escape') overlay.remove();
+    if(e.key==='Enter' && e.ctrlKey) btnOk.click();
+  });
+}
+
+function fecharModalDetalhe(){ document.getElementById('modalDetalhe').style.display='none'; document.body.style.overflow=''; }
+function fecharDetalheProcesso(){
+  fecharModalDetalhe();
+}
+
+// ── RECÁLCULO CENTRAL DE STATUS ──────────────────────────────────────────
+function recalcularStatusProcesso(proc) {
+  if (!proc) return;
+  var resolvedMap = proc._divResolvedMap || {};
+  var ultimaAnalise = null;
+  if (proc.analises && proc.analises.length) {
+    ultimaAnalise = proc.analises[proc.analises.length - 1];
+  }
+  var grupos  = ultimaAnalise ? ultimaAnalise.grupos  : (proc.grupos  || []);
+  var alertas = ultimaAnalise ? ultimaAnalise.alertas : (proc.alertas || []);
+
+  var divsPendentes = 0;
+  (grupos || []).forEach(function(g) {
+    (g.campos || []).forEach(function(c) {
+      if (c.status === 'DIVERGENCIA') {
+        var key = g.titulo + '-' + c.campo;
+        if (!resolvedMap[key]) divsPendentes++;
+      }
+    });
+  });
+
+  var alertasPendentes = 0;
+  (alertas || []).forEach(function(al) {
+    var alText = typeof al === 'string' ? al : (al.texto || al.text || String(al));
+    var key = 'alerta-' + alText;
+    if (!resolvedMap[key]) alertasPendentes++;
+  });
+
+  var novoStatus;
+  if (divsPendentes > 0)         novoStatus = 'err';
+  else if (alertasPendentes > 0) novoStatus = 'warn';
+  else                           novoStatus = 'ok';
+
+  var statusAnterior = proc.status;
+  proc.status = novoStatus;
+
+  if (proc.log && novoStatus !== statusAnterior) {
+    var quem = typeof _currentUser !== 'undefined' && _currentUser
+      ? (_currentUser.displayName || _currentUser.username) : 'Sistema';
+    var msgs = {
+      'ok':   'Todas divergencias/alertas aceitos — status OK',
+      'warn': alertasPendentes + ' alerta(s) pendente(s)',
+      'err':  divsPendentes + ' divergencia(s) pendente(s)'
+    };
+    proc.log.push({ msg: msgs[novoStatus], time: new Date().toLocaleString('pt-BR'), type: novoStatus });
+  }
+
+  return novoStatus;
+}
+
+function toggleAnalise(id){
+  var el=document.getElementById(id);
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+
+
+function addLog(id, ownerUser){
+  const input=document.getElementById('logInput');
+  const msg=input.value.trim();
+  if(!msg) return;
+  var targetUser = ownerUser || (_currentUser ? _currentUser.username : null);
+  var quem = _currentUser ? _currentUser.displayName : '?';
+  input.value='';
+  // Busca processo do Firebase, adiciona log e salva
+  dbGetProcess(targetUser, id, function(p){
+    if(!p){ showToast('Processo não encontrado','err'); return; }
+    p.log = p.log||[];
+    p.log.push({ msg:'['+quem+'] '+msg, time:new Date().toLocaleString('pt-BR'), type:'ok' });
+    dbSaveProcess(targetUser, p);
+    openProcess(id, ownerUser);
+    showToast('Anotação salva!','ok');
+  });
+}
+
+function deleteProcess(id){
+  if(!confirm('Excluir este processo? Esta ação não pode ser desfeita.')) return;
+  var user = _currentUser ? _currentUser.username : null;
+  if(!user) return;
+
+  showToast('Excluindo...','ok');
+
+  // Deletar do Drive primeiro, depois atualizar UI
+  fetch('/api/processos/'+encodeURIComponent(id), {
+    method:'DELETE',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username: user})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    _processes = _processes.filter(function(p){ return p.id!==id; });
+    fecharDetalheProcesso();
+    renderProcessos();
+    renderDashboard();
+    showToast('Processo excluído.','ok');
+  })
+  .catch(function(){
+    showToast('Erro ao excluir no servidor.','err');
+  });
+}
+
+function closeModal(e){
+  if(e.target===document.getElementById('modalBg'))
+    document.getElementById('modalBg').classList.remove('show');
+}
+
+// ─── PRINT ───────────────────────────────────────────────────────────
+// ─── LANGUAGE ────────────────────────────────────────────────────────
+const LANG = {
+  pt:{divergencias:'Divergências Encontradas',alertas:'Alertas',processo:'Processo',exportador:'Exportador',data:'Data',campo:'Campo',doc1:'Documento 1',doc2:'Documento 2',status:'Status',obs:'Observação',semDiv:'Nenhuma divergência encontrada.',resolv:'Marcar como resolvido',resolvido:'✅ Resolvido',pendente:'⚠️ Pendente',nota:'Adicionar nota...',relatorio:'Relatório de Conferência Documental',geradoEm:'Gerado em'},
+  en:{divergencias:'Divergences Found',alertas:'Alerts',processo:'Process',exportador:'Exporter',data:'Date',campo:'Field',doc1:'Document 1',doc2:'Document 2',status:'Status',obs:'Note',semDiv:'No divergences found.',resolv:'Mark as resolved',resolvido:'✅ Resolved',pendente:'⚠️ Pending',nota:'Add note...',relatorio:'Documentary Review Report',geradoEm:'Generated on'},
+  es:{divergencias:'Divergencias Encontradas',alertas:'Alertas',processo:'Proceso',exportador:'Exportador',data:'Fecha',campo:'Campo',doc1:'Documento 1',doc2:'Documento 2',status:'Estado',obs:'Observación',semDiv:'No se encontraron divergencias.',resolv:'Marcar como resuelto',resolvido:'✅ Resuelto',pendente:'⚠️ Pendiente',nota:'Agregar nota...',relatorio:'Informe de Revisión Documental',geradoEm:'Generado el'}
+};
+function getLang(){ var s=document.getElementById('langSelect2')||document.getElementById('langSelect'); return s?s.value:'pt'; }
+function t(key){ return LANG[getLang()][key]||LANG['pt'][key]; }
+
+let divergResolved = {};
+
+function getDivergencias(){
+  if(!currentResult) return [];
+  const divs=[];
+  for(const grupo of currentResult.grupos||[]){
+    for(const c of grupo.campos||[]){
+      if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') divs.push({grupo:grupo.titulo,...c});
+    }
+  }
+  return divs;
+}
+
+function renderDivPanel(){
+  const panel=document.getElementById('divPanel');
+  if(!panel) return;
+  const divs=getDivergencias();
+  if(!divs.length){
+    panel.innerHTML='<div style="padding:24px;text-align:center;color:var(--ok);font-size:14px;">&#10003; Nenhuma divergencia encontrada.</div>';
+    return;
+  }
+  const BL_GROUPS=['logistica bl','logistica','bill of lading'];
+  const blDivs=divs.filter(function(d){
+    var g=d.grupo.toLowerCase();
+    return BL_GROUPS.some(function(k){return g.includes(k);})||
+           d.doc1_label==='BILL OF LADING (BL)'||d.doc2_label==='BILL OF LADING (BL)';
+  });
+  const docDivs=divs.filter(function(d){return blDivs.indexOf(d)===-1;});
+
+  function buildSection(title,icon,sectionDivs,sectionKey){
+    if(!sectionDivs.length) return '';
+    var html='';
+    html+='<div style="background:var(--accent);color:#fff;border-radius:8px 8px 0 0;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">';
+    html+='<div style="display:flex;align-items:center;gap:10px;">';
+    html+='<span style="font-size:18px;">'+icon+'</span>';
+    html+='<div><div style="font-size:10px;font-family:monospace;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;">'+sectionDivs.length+' divergencia(s)</div>';
+    html+='<div style="font-size:15px;font-weight:700;">'+title+'</div></div></div>';
+    html+='<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    var btnStyle='padding:7px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.1);color:#fff;';
+    html+='<button data-section-action="copyPT" data-section="'+sectionKey+'" style="'+btnStyle+'">&#128203; PT</button>';
+    html+='<button data-section-action="copyEN" data-section="'+sectionKey+'" style="'+btnStyle+'">&#128203; EN</button>';
+    html+='<button data-section-action="copyES" data-section="'+sectionKey+'" style="'+btnStyle+'">&#128203; ES</button>';
+    html+='<button data-section-action="email" data-section="'+sectionKey+'" style="'+btnStyle+'">&#9993; E-mail</button>';
+    html+='</div></div>';
+    html+='<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden;margin-bottom:24px;">';
+    sectionDivs.forEach(function(d,i){
+      var gi=divs.indexOf(d);
+      var key=d.grupo+'-'+d.campo;
+      var resolved=divergResolved[key];
+      var isDiv=d.status==='DIVERGENCIA';
+      var ac=isDiv?'#dc2626':'#d97706';
+      var bg=isDiv?'rgba(220,38,38,0.04)':'rgba(217,119,6,0.04)';
+      var v1=(d.doc1_valor||'Nao informado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var v2=(d.doc2_valor||'Nao encontrado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var bt=i>0?'border-top:1px solid var(--border);':'';
+      html+='<div style="'+bt+'background:var(--surface);">';
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:'+bg+';border-left:3px solid '+ac+';">';
+      html+='<div style="display:flex;align-items:center;gap:8px;">';
+      html+='<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;color:'+ac+';font-family:monospace;background:'+bg+';">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
+      html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+d.campo+'</span></div>';
+      html+='<span id="div-status-'+gi+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
+      html+='<div style="padding:10px 16px;border-right:1px solid var(--border);">';
+      html+='<div style="font-size:9px;font-weight:700;color:var(--text-dim);font-family:monospace;text-transform:uppercase;margin-bottom:4px;">'+(d.doc1_label||'DOC 1')+'</div>';
+      html+='<div style="font-size:13px;color:var(--text);line-height:1.4;">'+v1+'</div></div>';
+      html+='<div style="padding:10px 16px;border-left:2px solid '+ac+';">';
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+      html+='<span style="font-size:9px;font-weight:700;color:'+ac+';font-family:monospace;text-transform:uppercase;">'+(d.doc2_label||'DOC 2')+'</span>';
+      html+='<span style="font-size:9px;color:'+ac+';font-weight:700;">&#9888; DIFERE</span></div>';
+      html+='<div style="font-size:13px;font-weight:600;color:'+ac+';line-height:1.4;">'+v2+'</div></div></div>';
+      if(d.observacao){
+        var obs=d.observacao.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        html+='<div style="padding:8px 16px;background:rgba(217,119,6,0.05);border-top:1px solid rgba(217,119,6,0.15);font-size:12px;color:#d97706;font-style:italic;">'+obs+'</div>';
+      }
+      html+='<div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border);align-items:center;">';
+      var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
+      html+='<input id="div-nota-'+gi+'" class="field-input" placeholder="Motivo para aceitar (ex: transbordo normal, formato diferente...)" value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
+      var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
+      html+='<button data-action="resolve" data-idx="'+gi+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
+      html+='</div></div>';
+    });
+    html+='</div>';
+    return html;
+  }
+
+  // Also split out CE Mercante divergences
+  const CE_GROUPS=['ce mercante','ce_mercante'];
+  const ceDivs=divs.filter(function(d){
+    var g=d.grupo.toLowerCase();
+    return CE_GROUPS.some(function(k){return g.includes(k);})||
+           d.doc1_label==='CE MERCANTE'||d.doc2_label==='CE MERCANTE';
+  });
+  const blDivsFinal=blDivs.filter(function(d){return ceDivs.indexOf(d)===-1;});
+  const docDivsFinal=docDivs.filter(function(d){return ceDivs.indexOf(d)===-1;});
+
+  var html='';
+  if(blDivsFinal.length) html+=buildSection('Bill of Lading (BL)','&#128674;',blDivsFinal,'bl');
+  if(docDivsFinal.length) html+=buildSection('Commercial Invoice (CI) / Packing List (PL) / Proforma (PI)','&#128196;',docDivsFinal,'docs');
+  if(ceDivs.length) html+=buildSection('CE Mercante','&#127963;',ceDivs,'ce');
+  panel.innerHTML=html;
+  // Store section data on panel for onclick access
+  panel._blDivs=blDivsFinal;
+  panel._docDivs=docDivsFinal;
+  panel._ceDivs=ceDivs;
+  panel._allDivs=divs;
+
+  panel.onclick=function(e){
+    var btn=e.target.closest('[data-action],[data-section-action]');
+    if(!btn) return;
+    var sectionAction=btn.getAttribute('data-section-action');
+    if(sectionAction){
+      var section=btn.getAttribute('data-section');
+      var sd=section==='bl'?panel._blDivs:(section==='ce'?panel._ceDivs:panel._docDivs);
+      var procRefEl=document.getElementById('procRef');
+      var ref=procRefEl?procRefEl.value:'';
+      if(sectionAction==='copyPT') copySectionText(sd,ref,'pt');
+      else if(sectionAction==='copyEN') copySectionText(sd,ref,'en');
+      else if(sectionAction==='copyES') copySectionText(sd,ref,'es');
+      else if(sectionAction==='email') emailSection(sd,section,ref);
+      return;
+    }
+    var action=btn.getAttribute('data-action');
+    var i=parseInt(btn.getAttribute('data-idx'));
+    var d=divs[i];
+    if(!d) return;
+    var key=d.grupo+'-'+d.campo;
+if(action==='resolve'){
+var nota=(document.getElementById('div-nota-'+i)||{value:''}).value.trim();
+if(divergResolved[key]){
+  // Undo aceite — recalcular status
+  delete divergResolved[key];
+  var s=document.getElementById('div-status-'+i);
+  if(s){s.textContent='Pendente';s.style.color='#94a3b8';}
+  btn.textContent='Aceitar como OK';
+  btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
+  var notaEl=document.getElementById('div-nota-'+i);
+  if(notaEl) notaEl.style.borderColor='var(--border2)';
+  try{
+    var refUn = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(refUn && currentResult){
+      var procsUn = getProcesses();
+      var procUn = procsUn.find(function(p){ return p.ref===refUn; });
+      if(procUn){
+        if(procUn._divResolvedMap) delete procUn._divResolvedMap[key];
+        recalcularStatusProcesso(procUn);
+        saveProcesses(procsUn, procUn);
+        renderDashboard();
+        renderProcessos();
+      }
+    }
+  }catch(e){}
+} else {
+  if(!nota){
+    // Highlight nota field and prompt
+    var notaEl2=document.getElementById('div-nota-'+i);
+    if(notaEl2){notaEl2.style.borderColor='var(--warn)';notaEl2.focus();}
+    showToast('Digite o motivo para aceitar esta divergência','warn');
+    return;
+  }
+  divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
+  var s2=document.getElementById('div-status-'+i);
+  if(s2){s2.innerHTML='&#10003; Aceito — '+nota.substring(0,30)+(nota.length>30?'...':'');s2.style.color='#16a34a';}
+  btn.textContent='Desfazer';
+  btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
+  var notaEl3=document.getElementById('div-nota-'+i);
+  if(notaEl3) notaEl3.style.borderColor='#16a34a';
+  showToast('Aceito: '+nota.substring(0,40),'ok');
+  // Salvar aceite e recalcular status via função central
+  try{
+    var refAc = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(refAc && currentResult){
+      var procsAc = getProcesses();
+      var procAc = procsAc.find(function(p){ return p.ref===refAc; });
+      if(procAc){
+        procAc._divResolvedMap = procAc._divResolvedMap || {};
+        procAc._divResolvedMap[key] = {nota:nota, time:new Date().toLocaleString('pt-BR'), por: _currentUser ? (_currentUser.displayName||_currentUser.username) : ''};
+        recalcularStatusProcesso(procAc);
+        saveProcesses(procsAc, procAc);
+        renderDashboard();
+        renderProcessos();
+      }
+    }
+  }catch(e){}
+}
+}
+}
+}
+
+function aceitarAlerta(key){
+  if(divergResolved[key]){
+    // Desfazer
+    delete divergResolved[key];
+    showToast('Aceite desfeito','warn');
+  } else {
+    divergResolved[key] = { nota:'Alerta aceito', time:new Date().toLocaleString('pt-BR'), por: _currentUser ? (_currentUser.displayName||_currentUser.username) : '' };
+    showToast('Alerta aceito','ok');
+  }
+  // Recalcular status no processo
+  try{
+    var ref = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(ref && currentResult){
+      var procs = getProcesses();
+      var proc = procs.find(function(p){ return p.ref===ref; });
+      if(proc){
+        proc._divResolvedMap = proc._divResolvedMap || {};
+        if(divergResolved[key]) proc._divResolvedMap[key] = divergResolved[key];
+        else delete proc._divResolvedMap[key];
+        recalcularStatusProcesso(proc);
+        saveProcesses(procs, proc);
+        renderDashboard();
+        renderProcessos();
+      }
+    }
+  }catch(e){}
+  // Re-renderizar alertas
+  if(currentResult) {
+    var aa = document.getElementById('alertas-area');
+    if(aa) {
+      var r = currentResult;
+      aa.innerHTML=r.alertas&&r.alertas.length?`
+    <div class="alerts-box">
+      <h4>⚠ Alertas e Recomendações</h4>
+      <ul>`+r.alertas.map(function(a){
+        var txt = typeof a==='string' ? a : (a.descricao||a.mensagem||String(a));
+        var k = 'alerta-' + txt;
+        var ac2 = divergResolved[k];
+        return '<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
+          + '<span style="flex:1;'+(ac2?'text-decoration:line-through;opacity:.5;':'')+'">'+txt+'</span>'
+          + (ac2
+            ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
+              + '<button onclick="aceitarAlerta('+JSON.stringify(k)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+            : '<button onclick="aceitarAlerta('+JSON.stringify(k)+')" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+            )
+          + '</li>';
+      }).join('')+`</ul>
+    </div>`:'';
+    }
+  }
+}
+
+function copiarTexto(btn, texto){
+  navigator.clipboard.writeText(texto).then(function(){
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copiado!';
+    btn.style.color = '#16a34a';
+    btn.style.borderColor = '#16a34a';
+    setTimeout(function(){ btn.textContent=orig; btn.style.color='#dc2626'; btn.style.borderColor='#dc2626'; }, 2000);
+  }).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = texto; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    btn.textContent = '✓ Copiado!';
+    setTimeout(function(){ btn.textContent='📋 Copiar'; }, 2000);
+  });
+}
+
+function copyDivergencias(){
+  const L=LANG[getLang()];
+  const divs=getDivergencias();
+  const ref=document.getElementById('procRef')?.value||'';
+  const exp=document.getElementById('procExp')?.value||'';
+  const date=new Date().toLocaleDateString('pt-BR');
+  let text=`*${L.relatorio}*
+${L.processo}: ${ref} | ${L.exportador}: ${exp} | ${L.data}: ${date}
+
+`;
+  if(!divs.length){ text+=L.semDiv; }
+  else {
+    text+=`*${L.divergencias}:*
+`;
+    divs.forEach((d,i)=>{
+      const resolved=divergResolved[`${d.grupo}-${d.campo}`];
+      text+=`
+${i+1}. *${d.campo}* (${d.grupo})
+   ${d.doc1_label}: ${d.doc1_valor||'—'}
+   ${d.doc2_label}: ${d.doc2_valor||'—'}
+`;
+      if(d.observacao) text+=`   ${L.obs}: ${d.observacao}
+`;
+      text+=`   ${resolved?L.resolvido+': '+(resolved.nota||''):L.pendente}
+`;
+    });
+  }
+  if(currentResult?.alertas?.length){ text+=`
+*${L.alertas}:*
+`; currentResult.alertas.forEach((a,i)=>{ text+=`${i+1}. ${a}
+`; }); }
+  navigator.clipboard.writeText(text).then(()=>showToast('Copiado!','ok')).catch(()=>{ prompt('Copie o texto:',text); });
+}
+
+function exportPDF(){
+  const L=LANG[getLang()];
+  const divs=getDivergencias();
+  const ref=document.getElementById('procRef')?.value||'';
+  const exp=document.getElementById('procExp')?.value||'';
+  const date=new Date().toLocaleDateString('pt-BR');
+  const hora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const analista=_currentUser?(_currentUser.displayName||_currentUser.username):'—';
+
+  // Docs usados nesta análise
+  const docsUsados=Object.keys(uploadedFiles).length
+    ? Object.keys(uploadedFiles).join(', ')
+    : (currentResult&&currentResult.analises&&currentResult.analises.length
+        ? currentResult.analises[currentResult.analises.length-1].docNomes?.join(', ')||'—'
+        : '—');
+
+  // Confiança média
+  const confMedia = currentResult&&currentResult.analises&&currentResult.analises.length
+    ? (currentResult.analises[currentResult.analises.length-1].confMedia||100) : 100;
+  const confColor = confMedia>=90?'#16a34a':confMedia>=70?'#d97706':'#dc2626';
+
+  const rows=!divs.length
+    ?`<tr><td colspan="6" style="text-align:center;color:green;padding:20px">✓ Sem divergências</td></tr>`
+    :divs.map((d,i)=>{
+      const resolved=divergResolved[`${d.grupo}-${d.campo}`];
+      const confCell=d.confianca&&d.confianca<85
+        ?`<span style="color:${d.confianca<70?'#dc2626':'#d97706'};font-size:10px;font-weight:700">${d.confianca}%</span>`
+        :'—';
+      return `<tr style="background:${i%2===0?'#fff':'#fafafa'}">
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:600">${d.campo}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#666;font-size:12px">${d.grupo}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee">${d.doc1_valor||'—'}<br><small style="color:#999">${d.doc1_label||''}</small></td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#e84040">${d.doc2_valor||'—'}<br><small style="color:#999">${d.doc2_label||''}</small></td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${resolved?`<span style="color:green">✅ ${resolved.por||''}</span>`:'<span style="color:orange">⚠️ Pendente</span>'}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${confCell}</td>
+      </tr>`;
+    }).join('');
+  const alertRows=(currentResult?.alertas||[]).map(a=>`<li style="padding:6px 0;border-bottom:1px solid #fde;">${a}</li>`).join('');
+  const win=window.open('','_blank');
+  if(!win){
+    showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
+    return;
+  }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${L.relatorio}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;color:#0d1e2e}
+    .header{background:#0a2d5e;color:#fff;padding:24px 36px;display:flex;justify-content:space-between;align-items:flex-end}
+    .header h1{margin:0;font-size:20px;font-weight:800}
+    .header p{margin:4px 0 0;font-size:12px;opacity:.6}
+    .conf-badge{background:${confColor};color:#fff;padding:4px 10px;border-radius:5px;font-size:12px;font-weight:700}
+    .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:2px solid #c8d8e8}
+    .meta-item{padding:14px 18px;font-size:12px;border-right:1px solid #c8d8e8}
+    .meta-item:last-child{border-right:none}
+    .meta-item strong{display:block;font-size:10px;color:#7a7267;text-transform:uppercase;margin-bottom:3px;letter-spacing:.05em}
+    .docs-row{padding:10px 18px;background:#f0f6fc;border-bottom:1px solid #c8d8e8;font-size:11px;color:#4a6480}
+    .section{padding:20px 36px}
+    .section h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#4a6480;margin:0 0 12px;padding-bottom:6px;border-bottom:1px solid #c8d8e8}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th{background:#0a2d5e;color:#fff;padding:9px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+    .alerts{background:#fff8f6;border:1px solid #f0c9be;border-left:4px solid #b5451b;border-radius:6px;padding:14px 18px}
+    .alerts ul{margin:0;padding:0;list-style:none}
+    .footer{padding:16px 36px;font-size:10px;color:#7a7267;border-top:1px solid #c8d8e8;display:flex;justify-content:space-between}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
+  </head><body>
+  <div class="header">
+    <div><h1>IMPAK — Relatório de Conferência Documental</h1><p>Gerado em ${date} às ${hora} por ${analista}</p></div>
+    <div class="conf-badge">IA ${confMedia}% confiança</div>
+  </div>
+  <div class="meta">
+    <div class="meta-item"><strong>Processo</strong>${ref}</div>
+    <div class="meta-item"><strong>Exportador</strong>${exp||'—'}</div>
+    <div class="meta-item"><strong>Divergências</strong><span style="color:${divs.length?'#dc2626':'#16a34a'};font-weight:700">${divs.length}</span></div>
+  </div>
+  <div class="docs-row">📎 Documentos analisados: <strong>${docsUsados}</strong></div>
+  <div class="section"><h2>Divergências encontradas</h2>
+    <table><thead><tr><th>Campo</th><th>Grupo</th><th>Doc 1</th><th>Doc 2 (divergente)</th><th>Status</th><th>Conf. IA</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
+  ${alertRows?`<div class="section"><h2>Alertas</h2><div class="alerts"><ul>${alertRows}</ul></div></div>`:''}
+  <div class="footer"><span>IMPAK Comercial Importadora · Conferência Documental v2.0</span><span>${new Date().toLocaleString('pt-BR')}</span></div>
+  <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),500);<\/script>
+  
+<!-- MODAL FULLSCREEN DETALHE PROCESSO -->
+<div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
+  <div style="min-height:100vh;padding:0;">
+    <!-- Header fixo do modal -->
+    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+      </div>
+    </div>
+    <!-- Conteúdo -->
+    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
+  </div>
+</div>
+
+</body></html>`);
+  win.document.close();
+}
+
+function printReport(){ exportPDF(); }
+
+// ─── MESSAGE GENERATOR ───────────────────────────────────────────────
+let currentMsgType = 'agent';
+
+function buildMsgText(type, lang, ref, divs, alerts) {
+  var date = new Date().toLocaleDateString('pt-BR');
+  var msg = '';
+
+  if(type === 'agent') {
+    if(lang === 'pt') {
+      msg = 'Prezado Agente de Cargas,\n\nEstamos verificando o draft do Bill of Lading referente ao processo *' + ref + '* e identificamos os seguintes pontos que precisam de correcao antes da emissao final:\n\n';
+      var blDivs = divs.filter(function(d){ return d.doc1_label==='BILL OF LADING (BL)' || d.doc2_label==='BILL OF LADING (BL)'; });
+      var items = blDivs.length ? blDivs : divs.slice(0,5);
+      msg += '*CORRECOES NECESSARIAS NO BL:*\n\n';
+      items.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Consta no BL: '+(d.doc1_label==='BILL OF LADING (BL)'?d.doc1_valor:d.doc2_valor||'N/A')+'\n   Deve ser: '+(d.doc1_label==='BILL OF LADING (BL)'?d.doc2_valor:d.doc1_valor||'N/A')+'\n\n'; });
+      if(alerts.length){ msg += '*ALERTAS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+      msg += '\nPor favor, enviar o BL corrigido para nossa analise.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else if(lang === 'en') {
+      msg = 'Dear Freight Agent,\n\nWe are reviewing the Bill of Lading draft for process *' + ref + '* and identified the following corrections needed before final issuance:\n\n';
+      var blDivs2 = divs.filter(function(d){ return d.doc1_label==='BILL OF LADING (BL)' || d.doc2_label==='BILL OF LADING (BL)'; });
+      var items2 = blDivs2.length ? blDivs2 : divs.slice(0,5);
+      msg += '*CORRECTIONS REQUIRED:*\n\n';
+      items2.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Current (BL): '+(d.doc1_valor||'N/A')+'\n   Should be: '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPlease send the corrected BL for our review.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else {
+      msg = 'Estimado Agente de Carga,\n\nEstamos revisando el borrador del Bill of Lading para el proceso *' + ref + '*:\n\n';
+      divs.slice(0,5).forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Actual: '+(d.doc1_valor||'N/A')+'\n   Debe ser: '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPor favor, enviar el BL corregido.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    }
+  } else if(type === 'supplier') {
+    if(lang === 'pt') {
+      msg = 'Prezado Fornecedor,\n\nEm relacao ao processo *' + ref + '*, identificamos divergencias nos documentos (CI/PL/PI) que precisam ser corrigidas:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Obs: '+d.observacao+'\n':'')+'\n'; });
+      msg += '\nPor favor, emitir documentos corrigidos com urgencia.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else if(lang === 'en') {
+      msg = 'Dear Supplier,\n\nRegarding process *' + ref + '*, we have identified discrepancies in the shipping documents (CI/PL/PI) that require correction:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Note: '+d.observacao+'\n':'')+'\n'; });
+      if(alerts.length){ msg += '*ADDITIONAL ALERTS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+      msg += '\nPlease issue corrected documents as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else {
+      msg = 'Estimado Proveedor,\n\nEn relacion al proceso *' + ref + '*, hemos identificado discrepancias en los documentos:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPor favor, emita documentos corregidos a la brevedad.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    }
+  } else {
+    if(lang === 'pt') {
+      msg = '*RELATORIO DE CONFERENCIA DOCUMENTAL*\nProcesso: ' + ref + ' | Data: ' + date + '\n\n';
+      msg += 'RESUMO: ' + divs.length + ' divergencia(s) | ' + alerts.length + ' alerta(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCIAS:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+      if(alerts.length){ msg += '*ALERTAS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+    } else if(lang === 'en') {
+      msg = '*DOCUMENTARY REVIEW REPORT*\nProcess: ' + ref + ' | Date: ' + date + '\n\n';
+      msg += 'SUMMARY: ' + divs.length + ' divergence(s) | ' + alerts.length + ' alert(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCES:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+      if(alerts.length){ msg += '*ALERTS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+    } else {
+      msg = '*INFORME DE REVISION DOCUMENTAL*\nProceso: ' + ref + ' | Fecha: ' + date + '\n\n';
+      msg += 'RESUMEN: ' + divs.length + ' divergencia(s) | ' + alerts.length + ' alerta(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCIAS:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+    }
+  }
+  return msg;
+}
+
+const MSG_TEMPLATES = {
+  agent: {
+    pt: function(ref,divs,alerts){ return buildMsgText('agent','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('agent','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('agent','es',ref,divs,alerts); }
+  },
+  supplier: {
+    pt: function(ref,divs,alerts){ return buildMsgText('supplier','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('supplier','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('supplier','es',ref,divs,alerts); }
+  },
+  all: {
+    pt: function(ref,divs,alerts){ return buildMsgText('all','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('all','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('all','es',ref,divs,alerts); }
+  }
+};
+
+
+function openMsgModal(type, lang){
+  currentMsgType = type;
+  const titles = { agent:'🚢 Agente de Cargas — Correção do BL', supplier:'🏭 Fornecedor — Invoice & Packing List', all:'📋 Relatório Completo' };
+  const subs = { agent:'Mensagem para solicitar correções no Bill of Lading', supplier:'Mensagem para solicitar correções na Invoice e Packing List', all:'Relatório com todas as divergências' };
+  document.getElementById('msgModalTitle').textContent = titles[type];
+  document.getElementById('msgModalSub').textContent = subs[type];
+  document.getElementById('msgLangSelect').value = lang;
+  updateMsgContent();
+  document.getElementById('msgModalBg').style.display = 'flex';
+}
+
+function updateMsgContent(){
+  const lang = document.getElementById('msgLangSelect').value;
+  const ref = document.getElementById('procRef')?.value || 'N/A';
+  const divs = getDivergencias();
+  const alerts = currentResult?.alertas || [];
+  const fn = MSG_TEMPLATES[currentMsgType]?.[lang];
+  if(fn) document.getElementById('msgContent').value = fn(ref, divs, alerts);
+}
+
+function copyMsg(){
+  const txt = document.getElementById('msgContent').value;
+  navigator.clipboard.writeText(txt).then(()=>showToast('Copiado! Cole no WhatsApp ou e-mail.','ok')).catch(()=>{ document.getElementById('msgContent').select(); document.execCommand('copy'); showToast('Copiado!','ok'); });
+}
+
+function exportMsgPDF(){
+  const txt = document.getElementById('msgContent').value;
+  const ref = document.getElementById('procRef')?.value || '';
+  const win = window.open('','_blank');
+  if(!win){
+    showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
+    return;
+  }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mensagem - ${ref}</title>
+  <style>body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;color:#1c1a16;line-height:1.7;}
+  .header{background:#1a3a2a;color:#fff;padding:20px 28px;border-radius:8px;margin-bottom:24px;}
+  .header h1{margin:0;font-size:18px;} .header p{margin:4px 0 0;font-size:12px;opacity:.7;}
+  pre{white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;background:#f4f1eb;padding:20px;border-radius:6px;border-left:4px solid #1a3a2a;}
+  @media print{body{margin:20px;}}</style></head><body>
+  <div class="header"><h1>IMPAK — Comunicação de Processo</h1><p>Referência: ${ref} · ${new Date().toLocaleDateString('pt-BR')}</p></div>
+  <pre>${txt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+  <scr"+"ipt>window.onload=()=>setTimeout(()=>window.print(),400);<\/script>
+  
+
+</body></html>`);
+  win.document.close();
+}
+
+function closeMsgModal(e){
+  if(e.target===document.getElementById('msgModalBg')) document.getElementById('msgModalBg').style.display='none';
+}
+
+// ─── SECTION COPY/EMAIL ──────────────────────────────────────────────
+var SECTION_LABELS = {
+  bl: {pt:'Bill of Lading (BL)', en:'Bill of Lading (BL)', es:'Bill of Lading (BL)'},
+  docs: {pt:'Commercial Invoice / Packing List / Proforma', en:'Commercial Invoice / Packing List / Proforma', es:'Commercial Invoice / Packing List / Proforma'}
+};
+
+var SECTION_INTRO = {
+  bl:{
+    pt: function(ref){ return 'Prezado Agente de Cargas,\n\nIdentificamos divergencias no Bill of Lading do processo *'+ref+'* que precisam ser corrigidas antes da emissao final:\n'; },
+    en: function(ref){ return 'Dear Freight Agent,\n\nWe have identified discrepancies in the Bill of Lading for process *'+ref+'* that require correction before final issuance:\n'; },
+    es: function(ref){ return 'Estimado Agente de Carga,\n\nHemos identificado discrepancias en el Bill of Lading del proceso *'+ref+'* que requieren correccion:\n'; }
+  },
+  docs:{
+    pt: function(ref){ return 'Prezado Fornecedor,\n\nIdentificamos divergencias nos documentos (Commercial Invoice / Packing List / Proforma) do processo *'+ref+'* que precisam ser corrigidas:\n'; },
+    en: function(ref){ return 'Dear Supplier,\n\nWe have identified discrepancies in the shipping documents (Commercial Invoice / Packing List / Proforma) for process *'+ref+'* that require correction:\n'; },
+    es: function(ref){ return 'Estimado Proveedor,\n\nHemos identificado discrepancias en los documentos (Commercial Invoice / Packing List / Proforma) del proceso *'+ref+'* que requieren correccion:\n'; }
+  },
+  ce:{
+    pt: function(ref){ return 'Prezado responsavel,\n\nIdentificamos divergencias no CE Mercante do processo *'+ref+'* em relacao aos demais documentos (BL, Invoice, Packing List). Os itens abaixo precisam ser verificados:\n'; },
+    en: function(ref){ return 'Dear responsible,\n\nWe have identified discrepancies in the CE Mercante (Brazilian cargo manifest) for process *'+ref+'* when compared to BL, Invoice and Packing List:\n'; },
+    es: function(ref){ return 'Estimado responsable,\n\nHemos identificado discrepancias en el CE Mercante del proceso *'+ref+'* en relacion a los demas documentos:\n'; }
+  }
+};
+
+var SECTION_CLOSING = {
+  pt: '\nPor favor, corrigir e reemitir os documentos com urgencia.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda',
+  en: '\nPlease correct and reissue the documents as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda',
+  es: '\nPor favor, corrija y reemita los documentos a la brevedad.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda'
+};
+
+var FIELD_LABELS = {
+  pt:{field:'Campo', doc1:'Documento', doc2:'Divergencia', note:'Obs'},
+  en:{field:'Field', doc1:'Document', doc2:'Discrepancy', note:'Note'},
+  es:{field:'Campo', doc1:'Documento', doc2:'Discrepancia', note:'Obs'}
+};
+
+function copySectionText(sectionDivs, ref, lang){
+  if(!sectionDivs.length){ showToast('Nenhuma divergencia nesta secao','err'); return; }
+  var firstD=sectionDivs[0];
+  var sk='docs';
+  if(firstD){
+    var fg=firstD.grupo.toLowerCase();
+    var fl1=firstD.doc1_label||'';
+    var fl2=firstD.doc2_label||'';
+    if(fl1==='CE MERCANTE'||fl2==='CE MERCANTE'||fg.includes('ce mercante')) sk='ce';
+    else if(fl1==='BILL OF LADING (BL)'||fl2==='BILL OF LADING (BL)'||fg.includes('logistic')||fg.includes('bill of lading')) sk='bl';
+  }
+  var L=FIELD_LABELS[lang];
+  var date=new Date().toLocaleDateString('pt-BR');
+  var text=SECTION_INTRO[sk][lang](ref);
+  text+='\n';
+  sectionDivs.forEach(function(d,i){
+    var resolved=divergResolved[d.grupo+'-'+d.campo];
+    text+=(i+1)+'. *'+d.campo+'*\n';
+    text+='   '+L.doc1+' ('+d.doc1_label+'): '+(d.doc1_valor||'N/A')+'\n';
+    text+='   '+L.doc2+' ('+d.doc2_label+'): '+(d.doc2_valor||'N/A')+'\n';
+    if(d.observacao) text+='   '+L.note+': '+d.observacao+'\n';
+    if(resolved&&resolved.nota) text+='   Status: Resolvido - '+resolved.nota+'\n';
+    text+='\n';
+  });
+  text+=SECTION_CLOSING[lang];
+  navigator.clipboard.writeText(text)
+    .then(function(){showToast('Copiado em '+lang.toUpperCase()+'!','ok');})
+    .catch(function(){prompt('Copie o texto:',text);});
+}
+
+function emailSection(sectionDivs, sectionKey, ref){
+  var subjectPT='Divergencias Documentais - Processo '+ref+' - '+(sectionKey==='bl'?'BL':'Invoice/Packing List');
+  var subject=encodeURIComponent(subjectPT);
+  var bodyPT=SECTION_INTRO[sectionKey].pt(ref)+'\n';
+  var bodyEN=SECTION_INTRO[sectionKey].en(ref)+'\n';
+  sectionDivs.forEach(function(d,i){
+    var line=(i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Obs: '+d.observacao+'\n':'')+'\n';
+    bodyPT+=line; bodyEN+=line;
+  });
+  bodyPT+=SECTION_CLOSING.pt;
+  bodyEN+=SECTION_CLOSING.en;
+  var body=encodeURIComponent(bodyPT+'\n\n---\n\n'+bodyEN);
+  window.open('mailto:?subject='+subject+'&body='+body);
+}
+
+// Legacy single-div functions kept for compatibility
+function copyOneDivPT(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','pt'); }
+function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','en'); }
+function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
+</script>
+
+
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IMPAK — Gestão de Processos</title>
+  <meta name="version" content="1779232091">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Nav global (Controle/Conferência/TyreDesk/Calculador/Financeiro) + assistente IA —
+     mesmo script já usado no controle_v2.html; faltava aqui, por isso essa tela
+     não mostrava a barra com os outros módulos. -->
+<script src="/chat.js"></script>
+<style>
+:root {
+  --bg:        #e8f0f8;
+  --bg2:       #dce8f5;
+  --surface:   #ffffff;
+  --surface2:  #f4f8fc;
+  --border:    #c8d8e8;
+  --border2:   #b0c8e0;
+  --accent:    #1a7fd4;
+  --accent2:   #1567b8;
+  --accent-dim:rgba(26,127,212,.10);
+  --warn:      #d97706;
+  --danger:    #c0392b;
+  --ok:        #16a34a;
+  --text:      #0d1e2e;
+  --text-dim:  #4a6480;
+  --text-bright:#0d1e2e;
+  --text-mid:  #2a4060;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+body{box-shadow:inset 0 0 0 1px transparent;}
+
+/* Layout */
+.shell{min-height:100vh;}
+
+/* Sidebar */
+.sidebar{
+  width:220px;
+  background:#0a2d5e;
+  border-right:none;
+  display:flex;
+  flex-direction:column;
+  position:fixed;
+  /* top:52px (em vez de 0) — reserva o espaço da barra global do chat.js
+     (#impak-nav, fixa no topo, 52px de altura), senão ela sobrepõe o logo
+     e o badge do usuário aqui no menu lateral. */
+  top:52px;left:0;bottom:0;
+  z-index:100;
+}
+.sidebar-logo{
+  padding:20px 20px 16px;
+  border-bottom:1px solid rgba(255,255,255,.1);
+  margin-bottom:8px;
+}
+.sidebar-logo .logo-tag{
+  font-family:'DM Mono',monospace;
+  font-size:9px;
+  color:rgba(255,255,255,0.5);
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.sidebar-logo .logo-name{
+  font-family:'Syne',sans-serif;
+  font-size:22px;
+  font-weight:800;
+  color:#ffffff;
+  letter-spacing:-0.02em;
+}
+.sidebar-logo .logo-sub{
+  font-size:11px;
+  color:rgba(255,255,255,0.6);
+  margin-top:2px;
+}
+.nav{padding:16px 0;flex:1;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 20px;
+  font-size:13px;
+  color:rgba(255,255,255,.65);
+  cursor:pointer;
+  border-left:2px solid transparent;
+  transition:all 0.15s;
+  user-select:none;
+}
+.nav-item:hover{
+  color:#fff;
+  background:rgba(255,255,255,.08);
+}
+.nav-item.active{
+  color:#fff;
+  background:rgba(255,255,255,.12);
+  border-left-color:#1a7fd4;
+  font-weight:600;
+}
+.nav-item .nav-icon{font-size:15px;width:20px;text-align:center;}
+.nav-item .nav-label{font-weight:500;}
+
+.sidebar-api{
+  padding:16px 20px;
+  border-top:1px solid rgba(255,255,255,.1);
+}
+.api-label{
+  font-size:9px;font-weight:700;
+  color:rgba(255,255,255,.4);
+  letter-spacing:1.5px;text-transform:uppercase;
+  margin-bottom:6px;
+}
+.api-input-wrap{position:relative;}
+.api-input{
+  width:100%;background:rgba(0,0,0,.2);
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:6px;
+  color:#fff;font-size:12px;font-family:'DM Mono',monospace;
+  padding:7px 10px;outline:none;
+}
+.api-input:focus{border-color:#1a7fd4;}
+.api-input:focus{border-color:var(--accent);}
+.api-input::placeholder{color:var(--text-dim);}
+.api-toggle{
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;
+  font-size:12px;color:var(--text-dim);padding:0;
+}
+.api-status{
+  font-size:10px;
+  margin-top:6px;
+  display:flex;align-items:center;gap:5px;
+}
+.api-dot{width:6px;height:6px;border-radius:50%;background:var(--text-dim);}
+.api-dot.ok{background:var(--ok);}
+.api-dot.err{background:var(--danger);}
+
+/* Main */
+.main,main.main{margin-left:220px;min-height:100vh;}
+.page{display:none;padding:28px 32px 60px;}
+.page.active{display:block;}
+
+/* Page header */
+.page-header{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  margin-bottom:36px;flex-wrap:wrap;gap:16px;
+}
+.page-title{
+  font-family:'Syne',sans-serif;
+  font-size:26px;
+  font-weight:700;
+  color:var(--text-bright);
+  letter-spacing:-0.02em;
+}
+.page-title span{color:var(--accent);}
+.page-sub{font-size:13px;color:var(--text-dim);margin-top:4px;}
+
+/* Section label */
+.sec{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  font-weight:500;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  margin-bottom:14px;
+  display:flex;align-items:center;gap:12px;
+}
+.sec::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* Cards */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:20px 24px;
+  box-shadow:0 1px 4px rgba(0,0,0,0.06);
+}
+
+/* Dashboard stats */
+.stats-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:12px;
+  margin-bottom:32px;
+}
+.stat-card{cursor:pointer;transition:box-shadow 0.15s;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:20px;
+  position:relative;
+  overflow:hidden;
+  box-shadow:0 1px 4px rgba(0,0,0,0.06);
+}
+.stat-card::before{
+  content:'';
+  position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--accent);
+  border-radius:8px 8px 0 0;
+}
+.stat-val{
+  font-family:'Syne',sans-serif;
+  font-size:32px;
+  font-weight:800;
+  color:var(--text-bright);
+  line-height:1;
+  margin-bottom:6px;
+}
+.stat-label{font-size:12px;color:var(--text-dim);}
+
+/* Process list */
+.process-list{display:flex;flex-direction:column;gap:8px;}
+.process-row{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:16px 20px;
+  display:grid;
+  grid-template-columns:140px 1fr 120px 100px 80px;
+  gap:12px;
+  align-items:center;
+  cursor:pointer;
+  transition:all 0.15s;
+}
+.process-row:hover{border-color:var(--accent);background:var(--surface2);box-shadow:0 2px 8px rgba(10,45,94,0.08);}
+.proc-ref{
+  font-family:'DM Mono',monospace;
+  font-size:12px;
+  font-weight:500;
+  color:var(--accent);
+}
+.proc-desc{font-size:13px;color:var(--text);}
+.proc-date{font-size:12px;color:var(--text-dim);font-family:'DM Mono',monospace;}
+.proc-status{
+  font-family:'DM Mono',monospace;
+  font-size:10px;
+  font-weight:500;
+  padding:4px 10px;
+  border-radius:100px;
+  text-align:center;
+  white-space:nowrap;
+}
+.proc-status.ok{background:rgba(64,200,120,0.12);color:var(--ok);}
+.proc-status.warn{background:rgba(232,160,32,0.12);color:var(--warn);}
+.proc-status.err{background:rgba(232,64,64,0.12);color:var(--danger);}
+.proc-status.pending{background:rgba(106,122,80,0.2);color:var(--text-dim);}
+.proc-actions{display:flex;gap:6px;justify-content:flex-end;}
+
+/* Buttons */
+.btn{
+  padding:10px 20px;
+  border-radius:6px;
+  font-family:'DM Mono',monospace;
+  font-size:11px;
+  font-weight:500;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  cursor:pointer;
+  border:none;
+  transition:all 0.15s;
+}
+.btn-primary{background:var(--accent);color:#ffffff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-primary:disabled{opacity:0.3;cursor:not-allowed;}
+.btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border2);}
+.btn-ghost:hover{color:var(--text);border-color:var(--text-dim);}
+.btn-sm{padding:6px 12px;font-size:10px;}
+.btn-danger{background:rgba(232,64,64,0.15);color:var(--danger);border:1px solid rgba(232,64,64,0.3);}
+.btn-danger:hover{background:rgba(232,64,64,0.25);}
+
+/* Upload zone */
+.drop-zone{
+  border:2px dashed var(--border2);
+  border-radius:8px;
+  padding:48px 24px;
+  text-align:center;
+  cursor:pointer;
+  transition:all 0.15s;
+  position:relative;
+  background:var(--surface);
+}
+.page-drag .drop-zone{border-color:var(--accent);background:var(--accent-dim);}
+.page-drag .drop-zone .dz-title{color:var(--accent);}
+.drop-zone:hover,.drop-zone.drag{
+  border-color:var(--accent);
+  background:var(--accent-dim);
+}
+.drop-zone{box-shadow:0 1px 3px rgba(0,0,0,0.05);}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;pointer-events:none;}
+.dz-icon{font-size:36px;margin-bottom:12px;display:block;}
+.dz-title{font-size:15px;font-weight:600;color:var(--text-bright);margin-bottom:6px;}
+.dz-sub{font-size:12px;color:var(--text-dim);}
+
+/* File chips */
+.file-chips{display:flex;flex-direction:column;gap:6px;margin-top:12px;}
+.chip{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface2);
+  border:1px solid var(--border2);
+  border-radius:6px;padding:10px 14px;
+}
+.chip-icon{font-size:16px;}
+.chip-name{flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chip-type{
+  font-family:'DM Mono',monospace;font-size:9px;font-weight:500;
+  letter-spacing:0.1em;text-transform:uppercase;
+  background:var(--accent-dim);color:var(--accent);
+  border:1px solid rgba(168,212,72,0.2);
+  padding:3px 8px;border-radius:3px;white-space:nowrap;
+}
+.chip-rm{background:none;border:none;cursor:pointer;font-size:13px;color:var(--text-dim);padding:0 2px;}
+.chip-rm:hover{color:var(--danger);}
+
+/* Loading steps */
+.loading-box{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:32px;text-align:center;
+  display:none;
+}
+.loading-box.show{display:block;}
+.loading-title{
+  font-family:'DM Mono',monospace;font-size:11px;font-weight:500;
+  letter-spacing:0.15em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:24px;
+  animation:pulse 1.4s ease infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.steps{display:flex;flex-direction:column;gap:8px;max-width:320px;margin:0 auto;text-align:left;}
+.step{
+  font-size:13px;color:var(--text-dim);
+  padding:8px 14px;border-left:2px solid var(--border);
+  transition:all 0.3s;
+}
+.step.active{color:var(--accent2);border-color:var(--accent2);font-weight:500;}
+.step.done{color:var(--ok);border-color:var(--ok);}
+
+/* Results */
+.result-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:20px;flex-wrap:wrap;gap:12px;
+}
+.pills{display:flex;gap:8px;flex-wrap:wrap;}
+.pill{
+  font-family:'DM Mono',monospace;font-size:11px;font-weight:500;
+  padding:5px 14px;border-radius:100px;
+}
+.pill-ok{background:rgba(64,200,120,0.12);color:var(--ok);}
+.pill-err{background:rgba(232,64,64,0.12);color:var(--danger);}
+.pill-warn{background:rgba(232,160,32,0.12);color:var(--warn);}
+
+.check-group{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;margin-bottom:12px;
+}
+.cg-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 18px;background:var(--bg2);
+  border-bottom:1px solid var(--border);
+}
+.cg-title{
+  font-family:'DM Mono',monospace;font-size:10px;font-weight:500;
+  letter-spacing:0.15em;text-transform:uppercase;color:var(--text-bright);
+}
+.col-head{
+  display:grid;grid-template-columns:170px 1fr 1fr 36px;gap:8px;
+  padding:8px 18px;border-bottom:1px solid var(--border);
+}
+.col-head span{
+  font-family:'DM Mono',monospace;font-size:9px;
+  letter-spacing:0.15em;text-transform:uppercase;color:var(--text-dim);
+}
+.c-row{
+  display:grid;grid-template-columns:170px 1fr 1fr 36px;gap:8px;
+  padding:10px 18px;border-bottom:1px solid rgba(37,45,24,0.6);
+  align-items:start;transition:background 0.1s;
+}
+.c-row:last-child{border-bottom:none;}
+.c-row:hover{background:var(--surface2);}
+.c-row.div{background:rgba(232,64,64,0.04);border-left:2px solid var(--danger);}
+.c-label{font-size:12px;color:var(--text-mid);font-weight:500;padding-top:2px;}
+.c-val{font-size:13px;color:var(--text);line-height:1.5;}
+.c-tag{
+  font-family:'DM Mono',monospace;font-size:9px;color:var(--text-dim);
+  display:block;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.1em;
+}
+.c-obs{
+  grid-column:2/5;font-size:11px;color:var(--warn);
+  font-style:italic;padding:0 0 6px;
+}
+.c-icon{text-align:center;font-size:14px;padding-top:2px;}
+
+/* Alerts */
+.alerts-box{
+  border:1px solid rgba(232,160,32,0.2);
+  border-left:3px solid var(--warn);
+  background:rgba(232,160,32,0.05);
+  border-radius:8px;padding:16px 20px;margin-top:12px;
+}
+.alerts-box h4{
+  font-family:'DM Mono',monospace;font-size:10px;font-weight:500;
+  letter-spacing:0.15em;text-transform:uppercase;color:var(--warn);margin-bottom:10px;
+}
+.alerts-box ul{list-style:none;}
+.alerts-box li{
+  font-size:13px;color:var(--text);padding:5px 0 5px 18px;
+  position:relative;line-height:1.5;
+  border-bottom:1px solid rgba(232,160,32,0.1);
+}
+.alerts-box li:last-child{border-bottom:none;}
+.alerts-box li::before{content:'→';position:absolute;left:0;color:var(--warn);font-family:monospace;}
+
+/* Modal */
+.modal-bg{
+  position:fixed;inset:0;background:rgba(10,45,94,0.5);
+  z-index:200;display:none;align-items:center;justify-content:center;
+  backdrop-filter:blur(4px);
+}
+.modal-bg.show{display:flex;}
+.modal{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:12px;padding:32px;width:90%;max-width:520px;
+  max-height:90vh;overflow-y:auto;
+}
+.modal-title{
+  font-family:'Syne',sans-serif;font-size:20px;font-weight:700;
+  color:var(--text-bright);margin-bottom:6px;
+}
+.modal-sub{font-size:13px;color:var(--text-dim);margin-bottom:24px;}
+.field-group{margin-bottom:16px;}
+.field-label{
+  font-family:'DM Mono',monospace;font-size:10px;font-weight:500;
+  letter-spacing:0.15em;text-transform:uppercase;color:var(--text-dim);
+  margin-bottom:7px;display:block;
+}
+.field-input{
+  width:100%;background:var(--bg2);border:1px solid var(--border2);
+  border-radius:6px;padding:10px 14px;
+  font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);
+  outline:none;transition:border-color 0.15s;
+}
+.field-input:focus{border-color:var(--accent);}
+.field-input::placeholder{color:var(--text-dim);}
+textarea.field-input{resize:vertical;min-height:80px;}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:24px;}
+
+/* Process detail */
+.detail-section{margin-bottom:28px;}
+.detail-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;
+}
+.detail-field{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:6px;padding:12px 14px;
+}
+.detail-field .df-label{
+  font-family:'DM Mono',monospace;font-size:9px;font-weight:500;
+  letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;
+}
+.detail-field .df-val{font-size:13px;color:var(--text-bright);line-height:1.4;}
+
+/* Log timeline */
+.log-list{display:flex;flex-direction:column;gap:0;}
+.log-item{
+  display:flex;gap:14px;padding:12px 0;
+  border-bottom:1px solid var(--border);position:relative;
+}
+.log-item:last-child{border-bottom:none;}
+.log-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--accent);margin-top:5px;flex-shrink:0;
+}
+.log-dot.warn{background:var(--warn);}
+.log-dot.err{background:var(--danger);}
+.log-content{flex:1;}
+.log-msg{font-size:13px;color:var(--text);line-height:1.5;}
+.log-time{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:3px;}
+
+/* Empty state */
+.empty{
+  text-align:center;padding:60px 20px;
+  color:var(--text-dim);
+}
+.empty-icon{font-size:40px;margin-bottom:16px;opacity:0.4;}
+.empty-title{font-size:15px;font-weight:500;color:var(--text-mid);margin-bottom:6px;}
+.empty-sub{font-size:13px;}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:24px;right:24px;z-index:300;
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:8px;padding:14px 20px;
+  font-size:13px;color:var(--text);
+  transform:translateY(80px);opacity:0;
+  transition:all 0.3s ease;pointer-events:none;
+  max-width:300px;
+}
+.toast.show{transform:translateY(0);opacity:1;}
+.toast.ok{border-left:3px solid var(--ok);}
+.toast.err{border-left:3px solid var(--danger);}
+
+/* Responsive */
+@media(max-width:600px){
+  .sidebar{width:100%;height:auto;position:relative;flex-direction:row;flex-wrap:wrap;}
+  .process-row{grid-template-columns:1fr;}
+  .c-row,.col-head{grid-template-columns:1fr;}
+  .col-head{display:none;}
+  .page{padding:16px 12px 40px;}
+}
+
+/* ── MELHORIAS IA ── */
+.sev-bloc{display:inline-block;font-size:9px;font-weight:700;background:rgba(220,38,38,.1);color:#dc2626;padding:1px 6px;border-radius:3px;margin-left:4px;vertical-align:middle;}
+.sev-info{display:inline-block;font-size:9px;font-weight:700;background:rgba(217,119,6,.1);color:#d97706;padding:1px 6px;border-radius:3px;margin-left:4px;vertical-align:middle;}
+.email-sugestao{margin:4px 12px 8px;padding:8px 12px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.15);border-radius:6px;font-size:11px;}
+.motivo-sugestao{padding:8px 12px;background:rgba(26,127,212,.08);border:1px solid rgba(26,127,212,.2);border-radius:6px;margin-bottom:8px;font-size:12px;color:#1a7fd4;cursor:pointer;line-height:1.4;transition:background .15s;}
+.motivo-sugestao:hover{background:rgba(26,127,212,.14);}
+.docs-identificados{margin-bottom:10px;padding:7px 12px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.15);border-radius:8px;font-size:12px;color:#1a7fd4;}
+
+</style>
+
+</head>
+<body>
+
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="width:400px;max-width:94vw;">
+    <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;">
+      <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
+      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;">Portal</div>
+    </div>
+    <div style="background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:36px 32px;box-shadow:0 8px 32px rgba(26,127,212,.1);">
+      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0d1e2e;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Acesso ao Sistema</div>
+      <div style="font-size:11px;color:#1a7fd4;text-align:center;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:28px;">Gestão de Processos</div>
+      <div id="loginErr" style="display:none;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;text-align:center;margin-bottom:16px;"></div>
+      <div style="font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Usuário</div>
+      <input id="loginUser" type="text" placeholder="seu usuário" autocomplete="username"
+        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:16px;box-sizing:border-box;transition:border .15s;"
+        onfocus="this.style.borderColor='#1a7fd4';this.style.background='#c8ddf0'" onblur="this.style.borderColor='#c8d8e8';this.style.background='#dce8f5'">
+      <div style="font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Senha</div>
+      <input id="loginPass" type="password" placeholder="sua senha" autocomplete="current-password"
+        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:20px;box-sizing:border-box;transition:border .15s;"
+        onfocus="this.style.borderColor='#1a7fd4';this.style.background='#c8ddf0'" onblur="this.style.borderColor='#c8d8e8';this.style.background='#dce8f5'"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <button onclick="doLogin()"
+        style="width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;"
+        onmouseover="this.style.background='#1567b8'" onmouseout="this.style.background='#1a7fd4'">Entrar</button>
+      <div style="text-align:center;margin-top:18px;font-size:10px;color:#a8bfd4;">IMPAK Comercial Importadora · Confidencial</div>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <img src="https://impak.com.br/wp-content/uploads/2025/01/Design-sem-nome-6.webp"
+         alt="IMPAK" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='block';"
+         style="width:140px;height:auto;margin-bottom:6px;display:block;">
+    <div id="logoFallback" style="display:none;">
+      <div class="logo-name">IMPAK</div>
+    </div>
+    <div class="logo-sub">Sistema de Gestão · Importação</div>
+  </div>
+  <div id="userBadge" style="padding:10px 16px;margin:0 8px 8px;background:var(--accent-dim);border-radius:8px;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div id="userBadgeName" style="font-size:12px;font-weight:700;color:var(--accent);"></div>
+      <div id="userBadgeRole" style="font-size:10px;color:var(--text-dim);"></div>
+    </div>
+    <button onclick="location.href='/logout'" style="font-size:10px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;" title="Sair">↩ Sair</button>
+  </div>
+  <nav class="nav">
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="showPage('processos')">
+      <span class="nav-icon">📁</span>
+      <span class="nav-label">Processos</span>
+    </div>
+    <div class="nav-item" id="navGestao" style="display:none;" onclick="showPage('gestao')">
+      <span class="nav-icon">👔</span>
+      <span class="nav-label">Gestão</span>
+    </div>
+    <div class="nav-item" onclick="showPage('conferencia')">
+      <span class="nav-icon">🔍</span>
+      <span class="nav-label">Conferência</span>
+    </div>
+  </nav>
+  <div class="sidebar-api">
+    <div class="api-label">API Anthropic</div>
+    <div class="api-status" style="margin-top:6px;">
+      <div class="api-dot ok"></div>
+      <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Configurada no servidor</span>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <div class="api-label">Banco de Dados</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+        <div class="api-dot" id="sheetsDot"></div>
+        <span id="sheetsStatusText" style="font-size:10px;color:var(--text-dim);">Conectando...</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="main" style="margin-left:220px;min-height:100vh;">
+
+<!-- DASHBOARD -->
+<div class="page" id="page-dashboard">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Bem-vindo ao <span>IMPAK</span></div>
+      <div class="page-sub">Visão geral dos seus processos de importação</div>
+    </div>
+    <button class="btn btn-primary" onclick="showPage('conferencia')">+ Nova Conferência</button>
+  </div>
+
+  <div class="sec">Resumo</div>
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card" id="statCardTotal" onclick="showPage('processos');renderProcessos('');" title="Ver todos" style="cursor:pointer;"><div class="stat-val" id="statTotal">0</div><div class="stat-label">Total de processos</div></div>
+    <div class="stat-card" id="statCardOk" onclick="showPage('processos');renderProcessos('__status:ok');" title="Ver sem divergências" style="cursor:pointer;--accent:var(--ok)"><div class="stat-val" id="statOk" style="color:var(--ok)">0</div><div class="stat-label">Sem divergências</div></div>
+    <div class="stat-card" id="statCardWarn" onclick="showPage('processos');renderProcessos('__status:warn');" title="Ver com alertas" style="cursor:pointer;--accent:var(--warn)"><div class="stat-val" id="statWarn" style="color:var(--warn)">0</div><div class="stat-label">Com alertas</div></div>
+    <div class="stat-card" id="statCardErr" onclick="showPage('processos');renderProcessos('__status:err');" title="Ver com divergências" style="cursor:pointer;--accent:var(--danger)"><div class="stat-val" id="statErr" style="color:var(--danger)">0</div><div class="stat-label">Com divergências</div></div>
+  </div>
+
+  <div class="sec">Processos Recentes</div>
+  <div id="dashRecent"></div>
+</div>
+
+<!-- PROCESSOS -->
+<div class="page" id="page-processos">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Processos</div>
+      <div class="page-sub">Histórico completo de conferências</div>
+    </div>
+    <button class="btn btn-primary" onclick="showPage('conferencia')">+ Nova Conferência</button>
+  </div>
+  <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+    <div style="position:relative;flex:1;">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:14px;">🔍</span>
+      <input class="field-input" id="procSearch" placeholder="Buscar por referência, exportador, BL, container..." oninput="renderProcessos(this.value)" style="padding-left:36px;font-size:13px;">
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('procSearch').value='';renderProcessos('')">Limpar</button>
+  </div>
+  <div class="sec">Todos os Processos</div>
+  <div id="processosList"></div>
+</div>
+
+<!-- GESTÃO (manager view) -->
+<div class="page" id="page-gestao">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Gestão</div>
+      <div class="page-sub">Visão gerencial de todos os processos · <span id="gestaoSyncStatus" style="color:var(--text-dim);font-size:11px;">Atualizado agora</span></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="atualizarGestaoManual()" title="Buscar atualizações agora">↻ Atualizar</button>
+      <button class="btn btn-danger btn-sm" onclick="clearAllHistory()" title="Apagar todo o histórico">🗑 Limpar Histórico</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+    <div style="position:relative;flex:1;min-width:200px;">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:14px;">🔍</span>
+      <input class="field-input" id="gestaoSearch" placeholder="Buscar por referência, exportador, BL..." oninput="renderGestao()" style="padding-left:36px;font-size:13px;">
+    </div>
+    <select class="field-input" id="gestaoUser" onchange="renderGestao()" style="width:180px;font-size:13px;">
+      <option value="">Todos os usuários</option>
+    </select>
+    <select class="field-input" id="gestaoStatus" onchange="renderGestao()" style="width:160px;font-size:13px;">
+      <option value="">Todos os status</option>
+      <option value="err">Com divergências</option>
+      <option value="warn">Com alertas</option>
+      <option value="ok">Sem divergências</option>
+    </select>
+  </div>
+  <div id="gestaoStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;"></div>
+  <div id="gestaoList"></div>
+</div>
+
+<!-- GESTÃO MODAL - approval -->
+<div class="modal-bg" id="gestaoModalBg" onclick="closeGestaoModal(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div class="modal" style="max-width:720px;width:95%;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title" id="gestaoModalTitle">Processo</div>
+    <div class="modal-sub" id="gestaoModalSub"></div>
+    <div id="gestaoModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeGestaoModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFERÊNCIA -->
+
+<div class="page" id="page-conferencia">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Nova <span>Conferência</span></div>
+      <div class="page-sub">Upload de documentos para análise automática com IA</div>
+    </div>
+  </div>
+
+  <!-- Step 1: Processo info -->
+  <div class="sec">01 — Identificação do Processo</div>
+  <div class="card" style="margin-bottom:24px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;flex-wrap:wrap;">
+      <div class="field-group" style="margin:0">
+        <label class="field-label">Referência do Processo *</label>
+        <input class="field-input" id="procRef" placeholder="Ex: UD26-009" oninput="checkReady();autoFillProcess();">
+      </div>
+      <div class="field-group" style="margin:0">
+        <label class="field-label">Exportador</label>
+        <input class="field-input" id="procExp" placeholder="Ex: Jinyu Tire">
+      </div>
+      <div class="field-group" style="margin:0">
+        <label class="field-label">Observações</label>
+        <input class="field-input" id="procObs" placeholder="Opcional">
+      </div>
+    </div>
+    <div id="procStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:6px;font-size:12px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(10,45,94,0.15);">
+      <span id="procStatusText"></span>
+    </div>
+
+  </div>
+
+  <!-- Step 2: Upload -->
+  <div class="sec">02 — Documentos</div>
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".pdf,image/*" multiple onchange="addFiles(this.files)" style="position:absolute;left:-9999px;">
+    <span class="dz-icon">📂</span>
+    <div class="dz-title">Clique aqui ou arraste os arquivos</div>
+    <div class="dz-sub">PDF e imagens · CI, PL, BL, PI, CE Mercante · múltiplos de uma vez</div>
+  </div>
+  <div class="file-chips" id="fileChips"></div>
+
+  <div style="display:flex;gap:10px;margin-top:16px;margin-bottom:24px;">
+    <button class="btn btn-primary" id="btnAnalyze" onclick="runAnalysis()" disabled>
+      🔍 Iniciar Conferência com IA
+    </button>
+    <button class="btn btn-ghost" onclick="clearConferencia()">Limpar</button>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-box" id="loadingBox">
+    <div class="loading-title">Analisando documentos com IA...</div>
+    <div class="steps">
+      <div class="step" id="s1">① Lendo e interpretando os documentos</div>
+      <div class="step" id="s2">② Extraindo dados estruturados</div>
+      <div class="step" id="s3">③ Cruzando informações entre documentos</div>
+      <div class="step" id="s4">④ Salvando no histórico de processos</div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultArea" style="display:none">
+    <div class="sec">03 — Relatório de Conferência</div>
+    <div class="result-header">
+      <div class="pills" id="resultPills"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 PDF</button>
+        <button class="btn btn-primary btn-sm" onclick="showPage('processos')">Ver Histórico</button>
+      </div>
+    </div>
+
+    <!-- Message Generator -->
+    <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+      <button onclick="openMsgModal('agent','pt')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
+        <div style="font-size:18px;margin-bottom:6px;">🚢</div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Agente de Cargas</div>
+        <div style="font-size:12px;color:var(--text-dim);">Correção do BL · Português</div>
+      </button>
+      <button onclick="openMsgModal('supplier','en')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
+        <div style="font-size:18px;margin-bottom:6px;">🏭</div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Fornecedor</div>
+        <div style="font-size:12px;color:var(--text-dim);">Invoice & Packing List · English</div>
+      </button>
+      <button onclick="openMsgModal('all','pt')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--warn)'" onmouseout="this.style.borderColor='var(--border2)'">
+        <div style="font-size:18px;margin-bottom:6px;">📋</div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--warn);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Relatório Completo</div>
+        <div style="font-size:12px;color:var(--text-dim);">Todas as divergências · PT/EN/ES</div>
+      </button>
+    </div>
+    <div id="checkGroups"></div>
+    <div id="alertsArea"></div>
+
+    <!-- Divergencias Panel — único -->
+    <div id="divPanelWrap" style="display:none;margin-top:28px;">
+      <div class="sec" style="margin-bottom:14px;">
+        <span id="divPanelTitle">Divergências — Gestão e Resolução</span>
+        <select id="langSelect2" class="field-input" onchange="renderDivPanel();" style="width:auto;padding:4px 10px;font-size:11px;margin-left:8px;">
+          <option value="pt">🇧🇷 PT</option>
+          <option value="en">🇺🇸 EN</option>
+          <option value="es">🇪🇸 ES</option>
+        </select>
+      </div>
+      <div id="divPanel"></div>
+    </div>
+
+    <div class="sec" style="margin-top:28px;">04 — Dados Extraídos</div>
+    <div id="docCards"></div>
+  </div>
+</div>
+
+
+
+</main>
+</div>
+
+<!-- Process Detail Modal -->
+<div class="modal-bg" id="modalBg" onclick="closeModal(event)" style="display:none;">
+  <div class="modal" id="modalContent">
+    <div class="modal-title" id="modalTitle">Processo</div>
+    <div class="modal-sub" id="modalSub"></div>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger btn-sm" id="modalDeleteBtn">Excluir</button>
+      <button class="btn btn-ghost" onclick="fecharDetalheProcesso()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Página de detalhe do processo (tela cheia) -->
+<!-- top:52px (em vez de inset:0) — a barra global do chat.js (#impak-nav) é
+     fixa no topo com 52px de altura e z-index MAIOR que este painel
+     (10000 vs 9998), então com inset:0 ela cobria a faixa de cima daqui:
+     título/fornecedor e os botões "Excluir"/"← Voltar" ficavam escondidos
+     atrás da nav, sem dar pra ver nem clicar (mesmo ajuste já usado na
+     .sidebar, ver CSS lá em cima). O botão "← Voltar" já existe — só
+     estava inacessível por causa disso. -->
+<div id="modalDetalhe" style="display:none;position:fixed;top:52px;left:0;right:0;bottom:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
+  <div style="min-height:100%;">
+    <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+      </div>
+    </div>
+    <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
+  </div>
+</div>
+
+
+<!-- Message Modal -->
+<div class="modal-bg" id="msgModalBg" onclick="closeMsgModal(event)" style="display:none;align-items:center;justify-content:center;">
+  <div class="modal" style="max-width:640px;width:95%;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div>
+        <div class="modal-title" id="msgModalTitle">Mensagem</div>
+        <div class="modal-sub" id="msgModalSub"></div>
+      </div>
+      <select id="msgLangSelect" onchange="updateMsgContent()" class="field-input" style="width:auto;padding:6px 12px;font-size:12px;">
+        <option value="pt">🇧🇷 Português</option>
+        <option value="en">🇺🇸 English</option>
+        <option value="es">🇪🇸 Español</option>
+      </select>
+    </div>
+    <textarea id="msgContent" style="width:100%;min-height:320px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:14px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);line-height:1.7;resize:vertical;outline:none;"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-ghost" onclick="document.getElementById('msgModalBg').style.display='none'">Fechar</button>
+      <button class="btn btn-ghost" onclick="copyMsg()">📋 Copiar para WhatsApp/E-mail</button>
+      <button class="btn btn-primary" onclick="exportMsgPDF()">📄 Exportar PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- v1779232115 -->
+
+<script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
+<script>
+
+// ── AUTO-LOGIN via sessão do servidor ──────────────────────────
+// Antes: procurava o usuário logado (d.usuario) dentro do array local
+// USERS abaixo — uma lista antiga, sobrada de antes da autenticação
+// passar a ser 100% via servidor/Supabase, com só 5 usuários cadastrados
+// (narcelio, jean, paula, bianca, emanuelly). Qualquer pessoa fora dessa
+// lista (suporte, amanda, italo, maria, joyce, neide, e os novos Everton/
+// Isabella) fazia login normalmente no servidor, mas aqui o "found" saía
+// undefined, entrarDireto() nunca era chamado, e a página ficava com o
+// loginScreen escondido (por algum outro caminho) porém NENHUMA .page
+// marcada como "active" — dashboard em branco até a pessoa clicar
+// manualmente num item do menu (que chama showPage() direto, sem
+// depender desse array). Agora usa os dados que o servidor já manda em
+// /api/me (fonte real da sessão), sem depender da lista local desatualizada.
+window.addEventListener('DOMContentLoaded', function(){
+  fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
+    if(!d.logado) return;
+    entrarDireto({
+      username: d.usuario,
+      displayName: d.displayName || d.nome || d.usuario,
+      role: d.role,
+    });
+  }).catch(function(e){ console.warn('auto-login:', e.message); });
+});
+
+// Login direto sem passar por campos de formulário
+// Evita "The string did not match the expected pattern"
+function entrarDireto(found){
+  _currentUser = found;
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('userBadgeName').textContent = found.displayName;
+  document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
+  _processes = migrateAlerts(loadUserProcesses());
+  updateSheetsStatus();
+  checkReady();
+  renderDashboard();
+  renderProcessos();
+  showPage('dashboard');
+  // Carregar TODOS do Drive (compartilhado entre usuários)
+  dbGetAllProcesses(function(todos){
+    if(todos && todos.length){
+      _processes = migrateAlerts(todos);
+      renderDashboard();
+      renderProcessos();
+    }
+  });
+}
+
+// ─── EARLY FUNCTION DECLARATIONS (needed by HTML onload) ─────────────
+function showToast(msg,type){
+  const t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg;
+  t.className='toast show '+(type||'');
+  clearTimeout(showToast._t);
+  showToast._t=setTimeout(()=>t.className='toast',3500);
+}
+
+var ETAPA_HINTS = {
+  '1': {icon:'📋', text:'Etapa 1 — Envie a PI/Sales Contract, CI e o Packing List para análise inicial.'},
+  '2': {icon:'🚢', text:'Etapa 2 — Envie o Draft BL junto com os demais documentos.'},
+  '3': {icon:'⚓', text:'Etapa 3 — Envie o BL Original. O sistema confirma as correções.'},
+  '4': {icon:'🏛️', text:'Etapa 4 — Envie o CE Mercante com todos os documentos para conferência final.'}
+};
+
+function getGuiaUpload(fase){
+  var guias = {
+    'PRODUCAO': {
+      docs: [{nome:'PI (Proforma Invoice)', icone:'📋', obrig:true, desc:'Documento de pedido com valores, produtos e condições'}],
+      dica: 'Para análise completa envie a PI do fornecedor'
+    },
+    'EMBARCADO': {
+      docs: [
+        {nome:'CI (Commercial Invoice)', icone:'💰', obrig:true, desc:'Fatura comercial final'},
+        {nome:'PL (Packing List)', icone:'📦', obrig:true, desc:'Lista de embalagem com pesos e volumes'},
+        {nome:'HBL (House Bill of Lading)', icone:'🚢', obrig:true, desc:'Conhecimento de embarque'},
+        {nome:'PI (Proforma Invoice)', icone:'📋', obrig:false, desc:'Para comparar com CI'},
+      ],
+      dica: 'Envie CI + PL + HBL para análise completa de divergências'
+    },
+    'PORTO': {
+      docs: [
+        {nome:'CE Master/House', icone:'🔢', obrig:true, desc:'Conhecimento de embarque eletrônico'},
+        {nome:'BL (Bill of Lading)', icone:'🚢', obrig:false, desc:'Para cruzar com CE'},
+      ],
+      dica: 'Envie o CE para verificar dados aduaneiros'
+    },
+    'LIBERACAO': {
+      docs: [
+        {nome:'DI (Declaração de Importação)', icone:'📋', obrig:true, desc:'Declaração para desembaraço'},
+        {nome:'MAPA/LPCO', icone:'🌿', obrig:false, desc:'Licenças sanitárias se aplicável'},
+      ],
+      dica: 'Envie a DI para verificar parametrização'
+    }
+  };
+  return guias[fase] || guias['EMBARCADO'];
+}
+
+function renderGuiaUpload(){
+  var fase = 'EMBARCADO'; // default
+  if(currentResult && currentResult.ref){
+    // Tentar pegar fase do processo no Controle via processo atual
+    fase = 'EMBARCADO';
+  }
+  var guia = getGuiaUpload(fase);
+  var el = document.getElementById('upload-guia');
+  if(!el) return;
+  el.innerHTML = '<div style="font-size:11px;color:#4a6480;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Documentos recomendados:</div>'+
+    guia.docs.map(function(d){
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;">'+
+        '<span>'+d.icone+'</span>'+
+        '<span style="font-weight:600;color:#0d1e2e">'+(d.obrig?'<span style="color:#dc2626;font-size:10px;margin-right:3px">*</span>':'')+d.nome+'</span>'+
+        '<span style="color:#4a6480;font-size:11px">'+d.desc+'</span>'+
+      '</div>';
+    }).join('')+
+    '<div style="font-size:11px;color:#1a7fd4;margin-top:6px;padding:6px 8px;background:rgba(26,127,212,.06);border-radius:5px">💡 '+guia.dica+'</div>';
+}
+
+function updateEtapaHint(){
+  var sel=document.getElementById('etapaSelect');
+  var icon=document.getElementById('etapaHintIcon');
+  var txt=document.getElementById('etapaHintText');
+  if(!sel||!txt) return;
+  var h=ETAPA_HINTS[sel.value]||ETAPA_HINTS['1'];
+  if(icon) icon.textContent=h.icon;
+  txt.textContent=h.text;
+}
+
+function autoFillProcess(){
+  var ref=document.getElementById('procRef').value.trim();
+  var statusEl=document.getElementById('procStatus');
+  var statusTxt=document.getElementById('procStatusText');
+  if(!ref){if(statusEl) statusEl.style.display='none'; return;}
+  var procs=getProcesses();
+  var existing=procs.find(function(p){return p.ref===ref;});
+  if(!existing){if(statusEl) statusEl.style.display='none'; return;}
+  var expEl=document.getElementById('procExp');
+  if(expEl&&!expEl.value&&existing.exportador) expEl.value=existing.exportador;
+  var analises=existing.analises||[];
+  var lastA=analises.length?analises[analises.length-1]:null;
+  if(statusEl&&statusTxt){
+    var msg='📁 Processo existente — '+analises.length+' análise(s).';
+    if(lastA){
+      msg+=' Última: '+lastA.data+' ('+lastA.docs+')';
+      var divCount=lastA.resumo?lastA.resumo.divergencias:0;
+      msg+=divCount>0?' — ⚠ '+divCount+' divergência(s) pendente(s).':' — ✓ Sem divergências.';
+    }
+    msg+=' Adicione os novos documentos e analise novamente.';
+    statusTxt.textContent=msg;
+    statusEl.style.display='flex';
+  }
+  showToast('Processo '+ref+' encontrado — '+analises.length+' análise(s)','ok');
+}
+function extractAlert(a){
+  if(typeof a==='string') return a;
+  if(a&&typeof a==='object'){
+    return a.descricao||a.mensagem||a.message||a.texto||a.text||JSON.stringify(a);
+  }
+  return String(a||'');
+}
+
+
+function setupDropZone(){
+  var dz = document.getElementById('dropZone');
+  if(!dz) return;
+
+  // Drag visual feedback
+  ['dragenter','dragover'].forEach(function(ev){
+    dz.addEventListener(ev, function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.add('drag');
+    }, false);
+  });
+  dz.addEventListener('dragleave', function(e){
+    e.stopPropagation();
+    // Only remove if leaving the label entirely
+    var rect = dz.getBoundingClientRect();
+    if(e.clientX <= rect.left || e.clientX >= rect.right ||
+       e.clientY <= rect.top  || e.clientY >= rect.bottom){
+      dz.classList.remove('drag');
+    }
+  }, false);
+  dz.addEventListener('drop', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.remove('drag');
+    var files = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
+    if(files.length) addFiles(files);
+  }, false);
+  // Click to open file dialog
+  dz.addEventListener('click', function(){
+    document.getElementById('fileInput').click();
+  });
+}
+
+// ─── END EARLY DECLARATIONS ───────────────────────────────────────────
+
+
+// ─── STATE ───────────────────────────────────────────────────────────
+let uploadedFiles = {};
+let currentResult = null;
+
+const DOC_KW = {
+  invoice:['commercial invoice','ci_','_ci','ci ','_invoice'],
+  packing:['packing list','packing','pl_','_pl','pl '],
+  bl:['bill of lading','hbl','mbl','bl_','_bl','b/l','hbl_'],
+  proforma:['proforma','sales contract','pi_','_pi','pi ','_sc','_sc_'],
+};
+const DOC_ICON = {invoice:'📄',packing:'📦',bl:'🚢',proforma:'📋',outros:'🗂️'};
+const DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',bl_draft:'DRAFT BL',bl_original:'BL ORIGINAL',proforma:'PROFORMA INVOICE (PI)',ce:'CE MERCANTE',outros:'OUTRO DOCUMENTO'};
+const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',bl_draft:'Draft BL',bl_original:'BL Original',proforma:'Proforma Invoice (PI)',ce:'CE Mercante',outros:'Outro Documento'};
+
+function guessType(name){
+  var b=name.toLowerCase().replace(/\.[a-z]{2,4}$/,'');
+  var sep='(_|^|-| |\\(|\\)|\\.)'
+  var m=function(pat){return new RegExp(pat).test(b);};
+  // BL — OBL, HBL, MBL, BL, Draft BL
+  // Draft BL
+  if(m('draft.{0,5}(bl|hbl|obl|mbl)')||m('(bl|hbl|obl|mbl).{0,5}draft')) return 'bl_draft';
+  if(b.includes('draft')&&(b.includes('bl')||b.includes('lading'))) return 'bl_draft';
+  // BL Original
+  if(m(sep+'(obl|ohbl)'+sep)||m(sep+'(obl|ohbl)$')||m('^(obl|ohbl)'+sep)) return 'bl_original';
+  if(b.includes('original')&&(b.includes('bl')||b.includes('lading'))) return 'bl_original';
+  // Generic BL
+  if(m(sep+'(hbl|mbl|bl)'+sep)||m(sep+'(hbl|mbl|bl)$')||m('^(hbl|mbl|bl)'+sep)) return 'bl';
+  if(b.includes('bill of lading')||b.includes('bill_of_lading')||b.includes('lading')) return 'bl';
+  // PI — before CI
+  if(m(sep+'pi'+sep)||m(sep+'pi$')||m('^pi'+sep)) return 'proforma';
+  if(b.includes('proforma')||b.includes('pro_forma')||b.includes('sales_contract')||b.includes('sales contract')||b.includes('sales_confirm')) return 'proforma';
+  // CI — including typo Cl
+  if(m(sep+'(ci|cl)'+sep)||m(sep+'(ci|cl)$')||m('^(ci|cl)'+sep)) return 'invoice';
+  if(b.includes('commercial invoice')||b.includes('commercial_invoice')||b.includes('_invoice')||b.includes('invoice_')) return 'invoice';
+  if(m(sep+'invoice'+sep)||m(sep+'invoice$')) return 'invoice';
+  // PL
+  if(m(sep+'pl'+sep)||m(sep+'pl$')||m('^pl'+sep)) return 'packing';
+  if(b.includes('packing list')||b.includes('packing_list')||b.includes('packing')) return 'packing';
+  // CE Mercante
+  if(b.includes('ce_mercante')||b.includes('cemercante')||b.includes('ce-mercante')||b.includes('ce mercante')||b.includes('ce_mer')) return 'ce';
+  if((m(sep+'ce'+sep)||m(sep+'ce$')||m('^ce'+sep))&&!b.includes('invoice')&&!b.includes('price')&&!b.includes('service')) return 'ce';
+  // Fallback
+  if(b.includes('invoice')) return 'invoice';
+  return 'outros';
+}
+
+
+// ─── USER SYSTEM ──────────────────────────────────────────────────────
+var USERS = [
+  { username: 'narcelio',  email: 'narcelio@impak.com.br',    password: 'Narcelio@2026',      role: 'gerente',  displayName: 'Narcelio'  },
+  { username: 'jean',      email: 'jean@impak.com.br',        password: 'Jeanimpak2026',      role: 'gerente',  displayName: 'Jean'      },
+  { username: 'paula',     email: 'paula@impak.com.br',       password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
+  { username: 'bianca',    email: 'bianca@impak.com.br',      password: 'Bianca@2026',        role: 'gerente',  displayName: 'Bianca'    },
+  { username: 'emanuelly', email: 'importacao1@impak.com.br', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
+];
+
+var _currentUser = null;
+
+function getCurrentUser(){ return _currentUser; }
+
+function doLogin(){
+  var u = (document.getElementById('loginUser').value||'').trim().toLowerCase();
+  var p = (document.getElementById('loginPass').value||'').trim();
+  var found = USERS.find(function(x){ return x.username===u && x.password===p; });
+  if(!found){
+    document.getElementById('loginErr').textContent='Usuário ou senha incorretos.';
+    document.getElementById('loginErr').style.display='block';
+    return;
+  }
+  _currentUser = found;
+  document.getElementById('loginScreen').style.display='none';
+  // Show user badge
+  document.getElementById('userBadgeName').textContent = found.displayName;
+  document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
+  // Show gestao tab for manager
+  // Aba Gestão removida — tudo em Processos
+  // if(found.role==='gerente'){ document.getElementById('navGestao').style.display='flex'; }
+  // Load user processes (Firebase async, localStorage como cache imediato)
+  _processes = loadUserProcesses(); // cache local imediato
+  _processes = migrateAlerts(_processes);
+  updateSheetsStatus();
+  renderDashboard();
+  renderProcessos();
+  showPage('dashboard');
+  // Sincronizar: busca do Drive e faz upload de processos locais que não estão lá
+  // Carregar TODOS os processos do Drive — compartilhado entre todos os usuários
+  dbGetAllProcesses(function(todos){
+    if(todos && todos.length){
+      _processes = migrateAlerts(todos);
+      renderDashboard();
+      renderProcessos();
+      verificarDivergenciasCriticas();
+    }
+  });
+}
+
+function loginClearErr(){
+  document.getElementById('loginErr').style.display='none';
+}
+
+// Não usada mais pelo botão "Sair" do menu lateral (agora vai direto pra
+// /logout, que derruba a sessão de verdade no servidor — este doLogout()
+// só limpava estado local do JS e reexibia o form de login antigo, sem
+// nunca encerrar a sessão real, então quem clicava aqui achando que saiu
+// continuava logado). Mantida sem uso por segurança, caso algo mais no
+// código ainda dependa dela indiretamente.
+function doLogout(){
+  _currentUser=null;
+  _processes=[];
+  // Limpar estado de sessão para próximo login
+  try{ sessionStorage.removeItem('divNotifBloqueada'); }catch(e){}
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginPass').value='';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('navGestao').style.display='none';
+}
+
+function getUserKey(){
+  if(!_currentUser) return 'impak_processes';
+  return 'impak_processes_'+_currentUser.username;
+}
+
+function loadUserProcesses(){
+  // Retorna _processes em memória — Drive é a fonte, carregado no login
+  return _processes || [];
+}
+
+function getAllProcesses(){
+  // Todos os processos já estão em _processes carregados do Drive no login
+  return _processes || [];
+}
+
+
+// ─── STORAGE ─────────────────────────────────────────────────────────
+
+// ─── FIREBASE CONFIG ──────────────────────────────────────────────────
+// 🔧 CONFIGURAÇÃO: Cole aqui as credenciais do seu projeto Firebase
+// Acesse: console.firebase.google.com → Seu projeto → ⚙️ Configurações → "Seus aplicativos" → SDK
+var FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyDCCtgy81b_n7VvRaXwy1_XoGGmedgAtTg",
+  authDomain:        "impak-sistema.firebaseapp.com",
+  projectId:         "impak-sistema",
+  storageBucket:     "impak-sistema.firebasestorage.app",
+  messagingSenderId: "79766710857",
+  appId:             "1:79766710857:web:aad1c9c93ba1cb3fcd2d98"
+};
+
+// Firebase SDK (carregado via CDN no <head>)
+var _db = null;
+var _firebaseReady = false;
+
+function initFirebase(){ _firebaseReady=false; }
+
+// ─── DB — Firebase como fonte única de verdade ────────────────
+// ════════════════════════════════════════════════════════════════
+// CAMADA DE DADOS — idêntica ao Controle de Processos
+// Drive é a ÚNICA fonte de verdade. Zero localStorage.
+// conferencia_index.json  → lista leve (id, ref, status, resumo)
+// conferencia_proc_ID.json → processo completo
+// ════════════════════════════════════════════════════════════════
+
+var _procCache = {}; // cache em memória por sessão
+
+// Detecta HTML de redirect (sessão expirada) e redireciona para login
+function safeJsonConf(r){
+  var ct = r.headers.get('content-type')||'';
+  if(!ct.includes('application/json')){
+    return r.text().then(function(t){
+      if(t.includes('<!DOCTYPE')||t.includes('<html')){
+        window.location.href='/login'; return null;
+      }
+      throw new Error('Resposta inválida do servidor');
+    });
+  }
+  return r.json();
+}
+
+// Salvar processo completo no Drive
+function dbSaveProcess(username, proc, onSuccess, onError){
+  proc._updatedAt = Date.now();
+  proc._user      = username;
+  proc._userName  = _currentUser ? (_currentUser.displayName||username) : username;
+  _procCache[proc.id] = proc;
+
+  showToast('Salvando...','ok');
+  fetch('/api/conferencia/processo',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({processo: proc})
+  })
+  .then(function(r){ return safeJsonConf(r); })
+  .then(function(d){
+    if(!d) return;
+    if(d.ok){
+      showToast('✓ Salvo','ok');
+      if(onSuccess) onSuccess();
+    } else {
+      showToast('Erro ao salvar: '+(d.erro||'?'),'err');
+      if(onError) onError(d.erro);
+    }
+  })
+  .catch(function(e){
+    showToast('Sem conexão — não foi salvo!','err');
+    console.error('dbSaveProcess erro:',e.message);
+    if(onError) onError(e.message);
+  });
+}
+
+// Carregar índice leve — lista de todos os processos
+function dbGetAllProcesses(callback){
+  fetch('/api/conferencia/index')
+  .then(function(r){ return safeJsonConf(r); })
+  .then(function(d){ callback(d && d.index ? d.index : []); })
+  .catch(function(e){ console.warn('dbGetAllProcesses:',e.message); callback([]); });
+}
+
+// Alias para compatibilidade
+function dbGetProcesses(username, callback){ dbGetAllProcesses(callback); }
+
+// Carregar processo COMPLETO do Drive (ao abrir)
+function dbGetProcess(username, id, callback){
+  var cid = String(id);
+  if(_procCache[cid]){ callback(_procCache[cid]); return; }
+  fetch('/api/conferencia/processo/'+encodeURIComponent(id))
+  .then(function(r){ return safeJsonConf(r); })
+  .then(function(d){
+    if(d && d.processo){ _procCache[cid]=d.processo; callback(d.processo); }
+    else callback(null);
+  })
+  .catch(function(){ callback(null); });
+}
+
+// Excluir processo do Drive
+function dbDeleteProcess(username, id){
+  delete _procCache[String(id)];
+  fetch('/api/conferencia/processo/'+encodeURIComponent(id),{
+    method:'DELETE',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username:username})
+  }).catch(function(e){ console.warn('dbDeleteProcess:',e.message); });
+}
+
+// Legacy stubs
+var _sheetsUrl = '';
+function getSheetsUrl(){ return ''; }
+function saveSheetsUrl(){}
+function testSheetsConnection(){}
+function updateSheetsStatus(){
+  var dot=document.getElementById('sheetsDot');
+  var txt=document.getElementById('sheetsStatusText');
+  if(!dot||!txt) return;
+  fetch('/api/drive/status').then(function(r){return r.json();})
+  .then(function(d){
+    if(d.conectado){ dot.className='api-dot ok'; txt.textContent='Conectado'; }
+    else { dot.className='api-dot warn'; txt.textContent='Sem Drive'; }
+  }).catch(function(){ dot.className='api-dot ok'; txt.textContent='Local'; });
+}
+
+// Estado em memória — carregado do Firebase após login
+let _processes = [];
+// _processes carregado do Drive no login — não usar localStorage
+
+function getProcesses(){ return _processes; }
+function migrateAlerts(procs){
+  if(!procs||!Array.isArray(procs)) return [];
+  // Fix any saved processes that have object alerts
+  return procs.map(function(p){
+    if(p.alertas&&p.alertas.length){
+      p.alertas = p.alertas.map(extractAlert);
+    }
+    return p;
+  });
+}
+// ── SINCRONIZAÇÃO COM MÓDULO CONTROLE ────────────────────────
+function sincronizarComControle(proc, result, analise) {
+  try {
+    var ref = proc.ref;
+    if(!ref) return;
+
+    // Extrair campos relevantes da análise para o Controle
+    var camposControle = {};
+    (result.grupos||[]).forEach(function(g){
+      (g.campos||[]).forEach(function(c){
+        var v = c.doc1_valor||c.doc2_valor||'';
+        if(!v||c.status==='DIVERGENCIA') return;
+        var campo = c.campo.toLowerCase();
+        // Mapear campos da análise para campos do Controle
+        if(campo.includes('navio')) camposControle.navio = v;
+        if(campo.includes('container')) camposControle.container = v;
+        if(campo.includes('hbl')||campo.includes('house bill')) camposControle.hbl = v;
+        if(campo.includes('mbl')||campo.includes('master bill')) camposControle.mbl = v;
+        if(campo.includes('canal')) camposControle.canal_parametrizacao = v;
+        if(campo.includes('armador')) camposControle.armador = v;
+        if(campo.includes('porto destino')) camposControle.porto = v;
+        if(campo.includes('exportador')) camposControle.fornecedor = v;
+      });
+    });
+
+    if(!Object.keys(camposControle).length) return;
+
+    // Buscar processo no Controle via API
+    fetch('/api/controle/index').then(function(r){return r.json();}).then(function(d){
+      var idx = (d.index||d.processos||[]).find(function(p){
+        return p.referencia && (
+          p.referencia.toUpperCase()===ref.toUpperCase() ||
+          ref.toUpperCase().includes(p.referencia.toUpperCase())
+        );
+      });
+      if(!idx) return; // Processo não encontrado no Controle
+
+      // Carregar processo completo e atualizar campos
+      fetch('/api/controle/processo/'+idx.id).then(function(r){return r.json();}).then(function(d2){
+        var procCtrl = d2.processo;
+        if(!procCtrl) return;
+
+        var atualizado = false;
+        var agora = new Date().toLocaleString('pt-BR');
+        var quem = (_currentUser?(_currentUser.displayName||_currentUser.username):'Conferência')
+                 + ' (via análise documental)';
+
+        Object.keys(camposControle).forEach(function(k){
+          var novoVal = camposControle[k];
+          if(novoVal && !procCtrl[k]){ // Só preenche campos vazios
+            procCtrl[k] = novoVal;
+            if(!procCtrl._meta) procCtrl._meta = {};
+            procCtrl._meta[k] = {n:quem, t:agora};
+            atualizado = true;
+          }
+        });
+
+        if(atualizado){
+          if(!procCtrl.log) procCtrl.log = [];
+          procCtrl.log.push({
+            time: agora,
+            user: quem,
+            msg: 'Campos atualizados automaticamente via Conferência de Documentos',
+            fields: Object.keys(camposControle).filter(function(k){return camposControle[k]&&!d2.processo[k];}).map(function(k){return {c:k,de:'',para:camposControle[k]};})
+          });
+          fetch('/api/controle/processo',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({processo:procCtrl})
+          }).then(function(){
+            showToast('Controle atualizado automaticamente: '+ref,'ok');
+          }).catch(function(){});
+        }
+      }).catch(function(){});
+    }).catch(function(){});
+  } catch(e) {
+    console.warn('Erro ao sincronizar com Controle:', e.message);
+  }
+}
+
+function saveProcesses(processos, proc){
+  if(!proc || !proc.id){ console.warn('saveProcesses: proc inválido'); return; }
+  var user = _currentUser ? _currentUser.username : 'desconhecido';
+
+  dbSaveProcess(user, proc, function(){
+    // Após confirmação do Drive — atualizar lista e dashboard
+    dbGetAllProcesses(function(index){
+      _processes = migrateAlerts(index);
+      renderDashboard();
+      renderProcessos();
+    });
+  });
+}
+// _saveProcesses_placeholder
+
+// ─── INIT ────────────────────────────────────────────────────────────
+window.onload = function(){
+  // Inicializar Firebase
+  initFirebase();
+  // Don't load anything - wait for login
+  // loginScreen is shown by default (display:flex in HTML)
+  // Drag and drop - set up on showPage('conferencia')
+  // (dropZone starts hidden, so we set up listeners when page becomes visible)
+  checkReady();
+
+  // Fechar modais com ESC
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){
+      var mb = document.getElementById('modalBg');
+      if(mb && mb.classList.contains('show')) mb.classList.remove('show');
+      var gmb = document.getElementById('gestaoModalBg');
+      if(gmb && gmb.style.display !== 'none') gmb.style.display = 'none';
+    }
+  });
+}
+
+// ─── NAVIGATION ──────────────────────────────────────────────────────
+// ── ESTATÍSTICAS POR FORNECEDOR ──────────────────────────────
+function abrirEstatisticas(){
+  var procs = getProcesses();
+  if(!procs.length){ showToast('Nenhum processo encontrado','err'); return; }
+
+  // Agrupar por exportador
+  var stats = {};
+  procs.forEach(function(p){
+    var exp = p.exportador||'Desconhecido';
+    if(!stats[exp]) stats[exp] = {total:0, divTotal:0, alertaTotal:0, tempoResolucao:[], analises:0};
+    stats[exp].total++;
+    (p.analises||[]).forEach(function(a){
+      stats[exp].analises++;
+      stats[exp].divTotal += (a.resumo&&a.resumo.divergencias)||0;
+      stats[exp].alertaTotal += (a.resumo&&a.resumo.alertas)||0;
+    });
+  });
+
+  var linhas = Object.keys(stats).sort(function(a,b){
+    return stats[b].divTotal - stats[a].divTotal;
+  }).map(function(exp){
+    var s = stats[exp];
+    var mediaDivs = s.analises>0 ? (s.divTotal/s.analises).toFixed(1) : '0';
+    var qualidade = s.analises===0 ? '—' :
+      s.divTotal===0 ? '<span style="color:#16a34a;font-weight:700">✓ Ótimo</span>' :
+      parseFloat(mediaDivs)<2 ? '<span style="color:#d97706;font-weight:700">⚠ Regular</span>' :
+      '<span style="color:#dc2626;font-weight:700">✗ Crítico</span>';
+    return '<tr>'+
+      '<td style="padding:10px 12px;font-weight:600">'+exp+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+s.total+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+s.analises+'</td>'+
+      '<td style="padding:10px 12px;text-align:center;color:#dc2626;font-weight:600">'+s.divTotal+'</td>'+
+      '<td style="padding:10px 12px;text-align:center;color:#d97706">'+s.alertaTotal+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+mediaDivs+'</td>'+
+      '<td style="padding:10px 12px;text-align:center">'+qualidade+'</td>'+
+    '</tr>';
+  }).join('');
+
+  var win = window.open('','_blank','width=900,height=600');
+  if(!win){
+    showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
+    return;
+  }
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+    '<title>IMPAK — Estatísticas por Fornecedor</title>'+
+    '<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">'+
+    '<style>body{font-family:"DM Sans",sans-serif;background:#e8f0f8;margin:0;padding:24px}'+
+    '.hd{background:#0a2d5e;color:#fff;padding:20px 28px;border-radius:10px;margin-bottom:20px;font-family:"Syne",sans-serif}'+
+    '.hd h1{margin:0;font-size:20px;font-weight:800}.hd p{margin:4px 0 0;font-size:12px;opacity:.6}'+
+    '.card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)}'+
+    'table{width:100%;border-collapse:collapse;font-size:13px}'+
+    'th{background:#f0f6fc;padding:10px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#4a6480;border-bottom:1px solid #c8d8e8}'+
+    'tr:nth-child(even)td{background:#f8fbfe}'+
+    '@media print{body{background:#fff}.hd{background:#0a2d5e!important;-webkit-print-color-adjust:exact}}</style>'+
+    '</head><body>'+
+    '<div class="hd"><h1>IMPAK — Estatísticas por Fornecedor</h1><p>Gerado em '+new Date().toLocaleString('pt-BR')+'</p></div>'+
+    '<div class="card">'+
+    '<table><thead><tr>'+
+    '<th>Fornecedor/Exportador</th><th>Processos</th><th>Análises</th>'+
+    '<th>Total Diverg.</th><th>Total Alertas</th><th>Média Diverg./Análise</th><th>Qualidade</th>'+
+    '</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+    '<script>setTimeout(function(){window.print();},500);<\/script>'+
+    '</body></html>');
+  win.document.close();
+}
+
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes(id)) n.classList.add('active');
+  });
+  // Sempre recarrega dados do Firebase ao trocar de aba
+  if(id==='dashboard') renderDashboard();
+  if(id==='processos'){
+    var ps=document.getElementById('procSearch');
+    if(ps) ps.value='';
+    renderProcessos(_dashFilter ? '__status:'+_dashFilter : '');
+    _dashFilter = ''; // limpa após usar
+  }
+  if(id==='gestao') renderGestao();
+  if(id==='conferencia'){
+    var ra2=document.getElementById('resultArea');
+    if(ra2) ra2.style.display='none';
+    setupDropZone();
+    // Garantir que API key salva é lida e botão habilitado
+    updateSheetsStatus();
+    checkReady();
+  }
+  document.documentElement.scrollTop=0; document.body.scrollTop=0;
+}
+
+// ─── FILES ────────────────────────────────────────────────────────────
+function addFiles(list){
+  for(const f of list) uploadedFiles[f.name]={file:f,type:guessType(f.name)};
+  renderChips();
+  checkReady();
+}
+function removeFile(name){ delete uploadedFiles[name]; renderChips(); checkReady(); }
+function renderChips(){
+  var c=document.getElementById('fileChips');
+  var entries=Object.entries(uploadedFiles);
+  if(!entries.length){c.innerHTML='';return;}
+  var html='';
+  entries.forEach(function(entry){
+    var n=entry[0];
+    var type=entry[1].type;
+    var isOther=type==='outros';
+    var short=n.length>45?n.slice(0,43)+'...':n;
+    var opts=[
+      ['invoice','📄 CI - Commercial Invoice'],
+      ['packing','📦 PL - Packing List'],
+      ['bl_draft','🚢 Draft BL'],
+      ['bl_original','⚓ BL Original'],
+      ['bl','🚢 BL - Bill of Lading (genérico)'],
+      ['proforma','📋 PI - Proforma Invoice'],
+      ['ce','🏛️ CE - CE Mercante'],
+      ['outros','🗂️ Outro Documento']
+    ].map(function(o){
+      return '<option value="'+o[0]+'"'+(o[0]===type?' selected':'')+'>'+o[1]+'</option>';
+    }).join('');
+    html+='<div class="chip" style="'+(isOther?'border-color:var(--warn);background:rgba(217,119,6,0.04);':'')+'">'
+      +'<span style="flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;" title="'+n+'">'+short+'</span>'
+      +'<select data-filename="'+n.replace(/"/g,'&quot;')+'" class="type-select" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid '+(isOther?'#d97706':'var(--border2)')+';background:var(--surface);color:'+(isOther?'#d97706':'var(--accent)')+';font-family:monospace;font-weight:700;cursor:pointer;flex-shrink:0;margin:0 6px;">'+opts+'</select>'
+      +'<button data-remove="'+n.replace(/"/g,'&quot;')+'" class="chip-rm" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-dim);padding:0 2px;flex-shrink:0;">✕</button>'
+      +'</div>';
+  });
+  c.innerHTML=html;
+
+  // Event delegation for selects and remove buttons
+  c.onchange=function(e){
+    var sel=e.target.closest('.type-select');
+    if(sel){
+      var fname=sel.getAttribute('data-filename');
+      if(uploadedFiles[fname]){
+        uploadedFiles[fname].type=sel.value;
+        renderChips();
+        checkReady();
+      }
+    }
+  };
+  // Feedback de completude
+  var hint = document.getElementById('docHint');
+  if(hint){
+    var tipos = new Set(Object.values(uploadedFiles).map(function(f){return f.type;}));
+    var faltando = [];
+    if(!tipos.has('invoice')&&!tipos.has('proforma')) faltando.push('CI ou PI');
+    if(!tipos.has('packing')) faltando.push('PL');
+    if(!tipos.has('bl')&&!tipos.has('bl_draft')&&!tipos.has('bl_original')) faltando.push('BL');
+    if(Object.keys(uploadedFiles).length>0&&faltando.length>0){
+      hint.style.display='block';
+      hint.innerHTML='💡 Análise mais completa com: <strong>'+faltando.join(', ')+'</strong>';
+    } else if(Object.keys(uploadedFiles).length>0){
+      hint.style.display='block';
+      hint.innerHTML='✅ Conjunto de documentos completo para análise';
+      hint.style.color='#16a34a';
+      hint.style.background='rgba(22,163,74,.06)';
+      hint.style.borderColor='rgba(22,163,74,.2)';
+    } else {
+      hint.style.display='none';
+    }
+  }
+
+  c.onclick=function(e){
+    var btn=e.target.closest('[data-remove]');
+    if(btn){
+      var fname=btn.getAttribute('data-remove');
+      delete uploadedFiles[fname];
+      renderChips();
+      checkReady();
+    }
+  };
+}
+
+function changeType(name,newType){
+  if(uploadedFiles[name]){uploadedFiles[name].type=newType;renderChips();checkReady();}
+}
+function checkReady(){
+  const ref = document.getElementById('procRef').value.trim();
+  const hasFiles = Object.keys(uploadedFiles).length >= 2;
+  document.getElementById('btnAnalyze').disabled = !(ref && hasFiles);
+}
+function clearConferencia(){
+  uploadedFiles={};
+  divergResolved={};
+  var chips=document.getElementById('fileChips');
+  if(chips) chips.innerHTML='';
+  document.getElementById('procRef').value='';
+  document.getElementById('procExp').value='';
+  document.getElementById('procObs').value='';
+  document.getElementById('resultArea').style.display='none';
+  document.getElementById('loadingBox').classList.remove('show');
+  checkReady();
+}
+
+// ─── ANALYSIS ────────────────────────────────────────────────────────
+async function toB64(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function setStep(n){
+  for(let i=1;i<=4;i++){
+    const el=document.getElementById('s'+i);
+    if(el) el.className='step'+(i<n?' done':i===n?' active':'');
+  }
+}
+
+async function runAnalysis(){
+  document.getElementById('btnAnalyze').disabled=true;
+  document.getElementById('loadingBox').classList.add('show');
+  document.getElementById('resultArea').style.display='none';
+  setStep(1);
+
+  try {
+    const content=[];
+    for(const[name,{file,type}] of Object.entries(uploadedFiles)){
+      const b64=await toB64(file);
+      const isPdf=file.type==='application/pdf';
+      content.push(isPdf
+        ?{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}}
+        :{type:'image',source:{type:'base64',media_type:file.type,data:b64}});
+      content.push({type:'text',text:`[DOCUMENTO ACIMA: ${DOC_LBL[type]} — arquivo: ${name}]`});
+    }
+    setStep(2);
+
+    const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
+
+    const prompt = 'JSON ONLY. No markdown. Especialista em conferencia documental importacao pneus Brasil. '
+      + 'Docs: '+docList+'. '
+      + 'IDENTIFICACAO AUTOMATICA: Ao analisar cada documento identifique seu tipo real (PI/CI/PL/BL/CE/DI/MAPA/LPCO/NF) pelo conteudo, nao pelo nome do arquivo. Inclua no resumo o campo "docs_identificados": ["CI","PL","BL"] com os tipos detectados. '
+      + 'Schema: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0,"docs_identificados":[]},"grupos":[{"titulo":"","campos":[{"campo":"","doc1_label":"","doc1_valor":"","doc2_label":"","doc2_valor":"","status":"OK","observacao":null,"confianca":100,"severidade":"INFORMATIVA","motivo_sugerido":"","email_fornecedor":""}]}],"alertas":[""]}. '
+      + 'CAMPO severidade: Para cada DIVERGENCIA classifique: '
+      + '"BLOQUEANTE" = impede registro da DI ou liberacao aduaneira (ex: valor diferente entre CI e PI, INCOTERM ausente, NCM incorreto, exportador diferente, dados bancarios divergentes, peso com diferenca >2%, quantidade diferente). '
+      + '"INFORMATIVA" = nao impede liberacao mas deve ser documentada (ex: endereco abreviado, data com formato diferente, referencia de container ausente em um doc, diferenca de peso <2%). '
+      + 'CAMPO motivo_sugerido: Sugira um motivo curto para aceitar esta divergencia (ex: "Diferenca de arredondamento dentro da tolerancia comercial", "Abreviacao do endereco - dado correto", "Padrao do fornecedor ROVELO"). '
+      + 'CAMPO email_fornecedor: Para divergencias BLOQUEANTES, escreva em ingles o texto para solicitar correcao ao fornecedor (ex: "Please send an amended CI with the correct gross weight: PL states 18,720 kg while CI states 18,500 kg."). Para INFORMATIVAS deixe vazio. '
+      + 'CAMPO confianca (0-100): 100=certeza absoluta, 80-99=alta, 50-79=media (verificar), 0-49=baixa (rever manualmente). Campos com confianca<70 devem ter status ALERTA. '
+      + 'REGRA GERAL: Mostrar APENAS erros. Usar nome real do doc (CI,PL,BL,PI,CE). Nunca "Documento 1". '
+      + 'PASSO 1 - CAMPOS OBRIGATORIOS: '
+      + 'CI/PI: exportador(nome+end), importador(nome+end), encomendante(se houver), forma+moeda pagamento, porto origem, porto destino, descricao itens, marca+ref volumes, qtd+especie volumes, valores unit+total, peso bruto+liquido, INCOTERM(obrigatorio na CI - se ausente=DIVERGENCIA, valores aceitos: FOB/CIF/CFR/EXW/DDP/DAP/FCA), pais origem+aquisicao+procedencia, dados bancarios. SE incoterm!=FOB: frete internacional obrigatorio. '
+      + 'REGRA CI INCONSISTENCIA INTERNA: Se a CI mencionar portos diferentes em campos distintos (ex: "FOB QINGDAO" no item de produto mas "FOB NAVEGANTES" no total), isso e DIVERGENCIA BLOQUEANTE de inconsistencia interna na propria CI — gerar alerta com campo="Porto FOB" doc1_label=CI doc2_label=CI. '
+      + 'REGRA CI x PI (QUANDO AMBAS PRESENTES): A CI e o documento DEFINITIVO e sobressai a PI em todos os campos. A PI e o documento DRAFT/PROFORMA. Comparar CI x PI APENAS nos seguintes campos: (1) descricao da mercadoria, (2) valor unitario e total, (3) quantidade. Qualquer diferenca nesses 3 campos entre CI e PI = DIVERGENCIA BLOQUEANTE com doc1_label=CI doc2_label=PI. Diferencas em outros campos (endereco, data, referencia) entre CI e PI = NAO gerar divergencia, pois CI e definitiva. Para cruzamento com BL, CE e PL, usar SEMPRE os valores da CI, nunca os da PI. '
+      + 'PL: importador, encomendante(se buyer preenchido na PI/CI), porto origem+destino, descricao itens, qtd+especie, pesos unit+totais, peso bruto+liquido, produto(deve conter TIRE/TYRE/PNEU/RADIAL senao DIVERGENCIA), pais origem+aquisicao, marca+numeracao volumes. Container/BL/lacre=OPCIONAL. '
+      + 'REGRA FABRICANTE NA PL: O Packing List DEVE conter o nome completo E o endereco completo do fabricante/manufacturer dos pneus. IMPORTANTE: o fabricante pode ser diferente do exportador/shipper. Se a marca dos pneus (ex: TIANFU, ROVELO, EUDEMON) for diferente do nome do exportador/shipper no cabecalho da PL, verificar se ha um campo separado identificando o fabricante real com nome e endereco. Se o fabricante real dos pneus nao estiver identificado com nome e endereco na PL = DIVERGENCIA BLOQUEANTE (apenas o exportador no cabecalho nao e suficiente). Se o endereco do fabricante estiver ausente ou incompleto (apenas cidade ou pais sem rua/numero) = DIVERGENCIA INFORMATIVA. Endereco completo exige pelo menos: rua/avenida + cidade + pais. '
+      + 'BL: shipper, notify, consignee, porto origem+destino, peso, qtd, NCM(verificar se tem 8 digitos — se NCM tiver menos de 8 digitos = DIVERGENCIA INFORMATIVA "NCM incompleto no BL"), descricao, free time, valor frete, prepaid/collect, container+lacre(se constar PI/CI/PL - ao comparar lacre IGNORAR espacos, quebras de linha e hifens - tratar EMCCWW0805 e EMCCWW-0805 como identicos), wooden(WOODEN/WOOD/PALLET/NOT APPLICABLE obrigatorio senao DIVERGENCIA). '
+      + 'CE: cruzar navio/embarque pelo campo Transbordo/Baldeacao(se vazio usar manifesto). Numero CE nao cruzar. IMPORTANTE: campo "Condicao de pagamento" ou "Situacao pagamento" do CE Mercante com valor "Suspenso" ou "Suspensao" ou "Sem cobertura cambial" eh NORMAL para importacoes brasileiras - NAO gerar alerta ou divergencia para esse campo. '
+      + 'PASSO 2 - CRUZAMENTO: Comparar todos campos entre todos docs. Campo presente num doc e ausente em outro=DIVERGENCIA. Dados bancarios identicos em todos. Para cruzamentos envolvendo CI e PI simultaneamente, usar CI como referencia. '
+      + 'Grupos: Identificacao|Importador|Comprador Final(buyer!=importador=normal)|Exportador|Mercadoria|Valores|Pesos|Logistica|CE Mercante|Pais Origem. '
+      + 'PASSO 3 - EUDEMON: Se marca EUDEMON verificar codigo em CI/PI/PL: 3301000094ab=275/80R22.5 UD188 149/146L 18PR|3302001532eu=275/80R22.5 UF195 149/146L 18PR|3302002217=295/80R22.5 UD188 154/149L 18PR|3302002218=295/80R22.5 UF195 154/149M 18PR|3302002429=295/80R22.5 UD223 154/149K 18PR|3302001815ab=235/75R17.5 UD188 143/141L 18PR|3302001861ab=215/75R17.5 UD188 135/133L 16PR|3302001609ab=215/75R17.5 UF195 135/133L 16PR|3302001608ab=235/75R17.5 UF195 143/141L 18PR. '
+      + 'REGRA PESO: Para pneus sem embalagem o peso liquido=bruto e aceitavel ter apenas um campo de peso. EXCECAO: fabricante NAKANKG exige peso bruto E liquido separados — se NAKANKG e peso liquido ausente = DIVERGENCIA. Se fabricante NAO for NAKANKG e peso tiver apenas um valor (G.W/N.W ou similar) = OK, nao alertar. '
+      + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL. '
+      + 'REGRAS POR FORNECEDOR: ROVELO/SAILUN: peso liquido=bruto aceitavel. TRACMAX/WINDFORCE: modelo pode vir como codigo alfanumerico, nao alertar. DELMAX: volumes podem usar caixas em vez de pallets, aceitavel. ';
+
+    content.push({type:'text',text:prompt});
+
+
+
+    setStep(3);
+
+    // Verificar tamanho antes de enviar
+    const bodyStr = JSON.stringify({ content });
+    const sizeMB = (bodyStr.length / 1024 / 1024).toFixed(1);
+    console.log(`Payload: ${sizeMB} MB, ${content.length} partes`);
+    if(parseFloat(sizeMB) > 80){
+      throw new Error(`Documentos muito grandes (${sizeMB} MB). Use no máximo 4-5 PDFs por análise ou PDFs menores.`);
+    }
+
+// Cria o job no servidor (resposta rápida) e acompanha o progresso via
+        // polling — evita manter uma conexão HTTP aberta por 1-2 minutos, que é
+        // o que causava os erros 502 em análises com vários documentos (ver
+        // /api/analisar em server.js).
+        const startResp = await fetch('/api/analisar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: bodyStr,
+        });
+        if(!startResp.ok){
+                let errMsg = 'Erro ' + startResp.status;
+                try{ const e = await startResp.json(); errMsg = e.erro || errMsg; }catch(e){}
+                throw new Error(errMsg);
+        }
+        const startProxy = await startResp.json();
+        if(!startProxy.ok || !startProxy.jobId) throw new Error(startProxy.erro || 'Erro ao iniciar análise');
+
+        const loadingSub = document.getElementById('loadingSub');
+        const _pollStart = Date.now();
+        let job;
+        while(true){
+                await new Promise(r => setTimeout(r, 2500));
+                const elapsed = Math.round((Date.now() - _pollStart) / 1000);
+                if(loadingSub) loadingSub.textContent = `Pode levar até 2 minutos com vários documentos. Não feche nem atualize esta página. (${elapsed}s)`;
+                if(elapsed > 200) throw new Error('Análise demorou demais. Tente novamente com menos documentos.');
+                const pollResp = await fetch('/api/analisar/job/' + startProxy.jobId);
+                if(!pollResp.ok) continue;
+                const pollProxy = await pollResp.json();
+                if(!pollProxy.ok) continue;
+                if(pollProxy.status === 'processando') continue;
+                job = pollProxy;
+                break;
+        }
+        if(job.status === 'erro') throw new Error(job.erro || 'Erro desconhecido na análise');
+
+        const data = job.resultado;
+        const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
+
+    let result;
+    try{
+      let clean=raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+      const fb=clean.indexOf('{'); if(fb>0) clean=clean.substring(fb);
+      const lb=clean.lastIndexOf('}'); if(lb>=0) clean=clean.substring(0,lb+1);
+      result=JSON.parse(clean);
+    } catch(e1){
+      const m=raw.match(/\{[\s\S]*\}/);
+      if(!m) throw new Error('A IA nao retornou JSON. Resposta: '+raw.substring(0,200));
+      try{ result=JSON.parse(m[0]); } catch(e2){ 
+        throw new Error('JSON invalido ('+e2.message+'). Inicio: '+raw.substring(0,150));
+      }
+    }
+    if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
+
+    setStep(4);
+
+    // Save process
+    const ref = document.getElementById('procRef').value.trim();
+    const exp = document.getElementById('procExp').value.trim();
+    const obs = document.getElementById('procObs').value.trim();
+    const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
+
+    const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
+    const novaAnalise = {
+      id: Date.now(),
+      data: new Date().toLocaleString('pt-BR'),
+      docs: docsUsados,
+      docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
+      docNomes: Object.keys(uploadedFiles), // nomes dos arquivos para rastreabilidade
+      analisadoPor: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'desconhecido',
+      resumo: result.resumo,
+      grupos: result.grupos,
+      alertas: (result.alertas||[]).map(extractAlert),
+      // Estatísticas de confiança
+      confMedia: (function(){
+        var campos = (result.grupos||[]).flatMap(function(g){return g.campos||[];});
+        if(!campos.length) return 100;
+        var soma = campos.reduce(function(s,c){return s+(c.confianca||100);},0);
+        return Math.round(soma/campos.length);
+      })(),
+    };
+
+    var user = _currentUser ? _currentUser.username : 'desconhecido';
+    var procExistente = _processes.find(function(p){ return p.ref===ref; });
+
+    function aplicarAnalise(proc){
+      // Adicionar nova análise ao histórico
+      proc.analises = proc.analises||[];
+      proc.analises.push(novaAnalise);
+      proc.status   = status;
+      proc.resumo   = result.resumo;
+      proc.grupos   = result.grupos;
+      proc.alertas  = novaAnalise.alertas;
+      proc.log      = proc.log||[];
+      var docList2  = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||f.file.name;}).join(', ');
+      proc.log.push({
+        msg:'Análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',
+        time:new Date().toLocaleString('pt-BR'),
+        type:status
+      });
+
+      currentResult = proc;
+      if(proc._divResolvedMap) Object.assign(divergResolved, proc._divResolvedMap);
+      document.getElementById('loadingBox').classList.remove('show');
+      renderResult(result);
+      sincronizarComControle(proc, result, novaAnalise);
+
+      // Salvar no Drive e atualizar lista
+      saveProcesses(_processes, proc);
+    }
+
+    if(procExistente){
+      // Buscar versão COMPLETA do Drive (índice só tem campos leves)
+      dbGetProcess(user, procExistente.id, function(procCompleto){
+        aplicarAnalise(procCompleto || procExistente);
+      });
+    } else {
+      // Novo processo
+      aplicarAnalise({
+        id: Date.now(),
+        ref: ref,
+        exportador: exp || extrairExportador(result),
+        obs: obs,
+        data: new Date().toLocaleDateString('pt-BR'),
+        status: status,
+        resumo: result.resumo,
+        grupos: result.grupos,
+        alertas: [],
+        documentos: result.documentos||[],
+        analises: [],
+        log: [],
+        _divResolvedMap: {},
+      });
+    }
+
+  } catch(err){
+    document.getElementById('loadingBox').classList.remove('show');
+    showToast('Erro: '+err.message,'err');
+    console.error(err);
+  }
+  document.getElementById('btnAnalyze').disabled=false;
+  checkReady();
+}
+
+function extrairExportador(result){
+  for(const g of result.grupos||[]){
+    for(const c of g.campos||[]){
+      if(c.campo&&c.campo.toLowerCase().includes('exportador')) return c.doc1_valor||'';
+    }
+  }
+  return '';
+}
+
+// ─── RENDER RESULT ────────────────────────────────────────────────────
+function renderResult(r){
+  const ra=document.getElementById('resultArea');
+  ra.style.display='block';
+
+  // Pills
+  document.getElementById('resultPills').innerHTML=`
+    <span class="pill pill-ok">✓ ${r.resumo.campos_ok} OK</span>
+    ${r.resumo.divergencias>0?`<span class="pill pill-err">✗ ${r.resumo.divergencias} Divergência${r.resumo.divergencias!==1?'s':''}</span>`:''}
+    ${r.resumo.alertas>0?`<span class="pill pill-warn">⚠ ${r.resumo.alertas} Alerta${r.resumo.alertas!==1?'s':''}</span>`:''}`;
+
+  // Groups
+  const cg=document.getElementById('checkGroups');
+  // Ordenar grupos: BLOQUEANTE primeiro
+  const gruposOrdenados=(r.grupos||[]).slice().sort((a,b)=>{
+    const aTemBloc=a.campos.some(c=>c.status==='DIVERGENCIA'&&c.severidade==='BLOQUEANTE');
+    const bTemBloc=b.campos.some(c=>c.status==='DIVERGENCIA'&&c.severidade==='BLOQUEANTE');
+    return (bTemBloc?1:0)-(aTemBloc?1:0);
+  });
+
+  // Exibir documentos identificados automaticamente
+  if(r.resumo&&r.resumo.docs_identificados&&r.resumo.docs_identificados.length){
+    const docsEl=document.getElementById('docCards');
+    const docsIdentEl=document.createElement('div');
+    docsIdentEl.style.cssText='margin-bottom:10px;padding:8px 12px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.15);border-radius:8px;font-size:12px;color:#1a7fd4;';
+    docsIdentEl.innerHTML='🔍 Documentos identificados pela IA: <strong>'+r.resumo.docs_identificados.join(' · ')+'</strong>';
+    if(docsEl) docsEl.prepend(docsIdentEl);
+  }
+
+  cg.innerHTML='';
+  for(const grupo of gruposOrdenados){
+    const divs=grupo.campos.filter(c=>c.status==='DIVERGENCIA');
+    const temBloc=divs.some(c=>c.severidade==='BLOQUEANTE');
+    const temInfo=divs.some(c=>c.severidade==='INFORMATIVA'||!c.severidade);
+    const hasDiv=divs.length>0;
+
+    // Badge do grupo
+    let grupoBadge='<span class="pill pill-ok" style="font-size:9px">OK</span>';
+    if(temBloc) grupoBadge='<span class="pill pill-err" style="font-size:9px">🔴 BLOQUEANTE</span>';
+    else if(temInfo) grupoBadge='<span class="pill" style="font-size:9px;background:rgba(217,119,6,.1);color:#d97706;border:1px solid rgba(217,119,6,.3)">🟡 INFORMATIVA</span>';
+
+    const el=document.createElement('div');
+    el.className='check-group';
+    el.innerHTML=`
+      <div class="cg-head">
+        <span class="cg-title">${grupo.titulo}</span>
+        ${grupoBadge}
+      </div>
+      <div class="col-head"><span>Campo</span><span>Documento 1</span><span>Documento 2</span><span></span></div>`;
+
+    for(const c of grupo.campos){
+      const isDiv=c.status==='DIVERGENCIA';
+      const isBloc=isDiv&&c.severidade==='BLOQUEANTE';
+      const isInfo=isDiv&&(c.severidade==='INFORMATIVA'||!c.severidade);
+      const icon=c.status==='OK'?'✅':isBloc?'🔴':isInfo?'🟡':'⚠️';
+
+      const row=document.createElement('div');
+      row.className='c-row'+(isBloc?' div':(isInfo?' div':''));
+      if(isBloc) row.style.borderLeft='3px solid #dc2626';
+      else if(isInfo) row.style.borderLeft='3px solid #d97706';
+
+      // Badge de severidade
+      const sevBadge=isBloc
+        ?'<span style="font-size:9px;font-weight:700;background:rgba(220,38,38,.1);color:#dc2626;padding:1px 6px;border-radius:3px;margin-left:4px">BLOQUEANTE</span>'
+        :isInfo
+        ?'<span style="font-size:9px;font-weight:700;background:rgba(217,119,6,.1);color:#d97706;padding:1px 6px;border-radius:3px;margin-left:4px">INFORMATIVA</span>'
+        :'';
+
+      row.innerHTML=`
+        <div class="c-label">${c.campo}${sevBadge}</div>
+        <div class="c-val"><span class="c-tag">${c.doc1_label||''}</span>${c.doc1_valor||'<em style="color:var(--text-dim)">—</em>'}</div>
+        <div class="c-val"><span class="c-tag">${c.doc2_label||''}</span>${c.doc2_valor||'<em style="color:var(--text-dim)">—</em>'}</div>
+        <div class="c-icon">${icon}</div>`;
+      el.appendChild(row);
+
+      if(c.observacao){
+        const obs=document.createElement('div');
+        obs.className='c-obs';
+        obs.style.padding='0 18px 8px';
+        obs.textContent='↳ '+c.observacao;
+        el.appendChild(obs);
+      }
+
+      // Mostrar email sugerido para BLOQUEANTES
+      if(isBloc&&c.email_fornecedor){
+        const emailBox=document.createElement('div');
+        emailBox.style.cssText='margin:0 12px 8px;padding:8px 12px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.15);border-radius:6px;font-size:11px;';
+        emailBox.innerHTML=
+          '<div style="font-size:10px;font-weight:700;color:#dc2626;margin-bottom:4px">📧 Texto sugerido para o fornecedor:</div>'+
+          '<div style="color:#4a6480;font-style:italic;line-height:1.5">'+c.email_fornecedor+'</div>'+
+          '<button onclick="copiarTexto(this,'+JSON.stringify(c.email_fornecedor)+')" style="margin-top:6px;font-size:10px;padding:2px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;">📋 Copiar</button>';
+        el.appendChild(emailBox);
+      }
+    }
+    cg.appendChild(el);
+  }
+
+  // Alerts
+  const aa=document.getElementById('alertsArea');
+  aa.innerHTML=r.alertas&&r.alertas.length?`
+    <div class="alerts-box">
+      <h4>⚠ Alertas e Recomendações</h4>
+      <ul>${r.alertas.map(a=>{
+        var txt = typeof a==='string' ? a : (a.descricao||a.mensagem||String(a));
+        var key = 'alerta-' + txt;
+        var aceito = divergResolved[key];
+        return '<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
+          + '<span style="flex:1;'+(aceito?'text-decoration:line-through;opacity:.5;':'')+'">'+txt+'</span>'
+          + (aceito
+            ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
+              + '<button onclick="aceitarAlerta('+JSON.stringify(key)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+            : '<button onclick="aceitarAlerta('+JSON.stringify(key)+')" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+            )
+          + '</li>';
+      }).join('')}</ul>
+    </div>`:'' ;
+
+  // Doc cards — montar a partir dos dados extraídos nos grupos
+  const dc=document.getElementById('docCards');
+
+  // Coletar todos os valores por documento (doc1_label/doc2_label)
+  const porDoc = {};
+  (r.grupos||[]).forEach(grupo=>{
+    (grupo.campos||[]).forEach(c=>{
+      if(c.doc1_label && c.doc1_valor){
+        if(!porDoc[c.doc1_label]) porDoc[c.doc1_label]={};
+        porDoc[c.doc1_label][c.campo] = c.doc1_valor;
+      }
+      if(c.doc2_label && c.doc2_valor){
+        if(!porDoc[c.doc2_label]) porDoc[c.doc2_label]={};
+        porDoc[c.doc2_label][c.campo] = c.doc2_valor;
+      }
+    });
+  });
+
+  // Ordenar: CI primeiro, depois PI, PL, BL, CE
+  const ordem = ['CI','PI','PL','BL','HBL','MBL','CE','CE MERCANTE'];
+  const docs = Object.keys(porDoc).sort((a,b)=>{
+    const ia = ordem.findIndex(o=>a.toUpperCase().includes(o));
+    const ib = ordem.findIndex(o=>b.toUpperCase().includes(o));
+    return (ia===-1?99:ia)-(ib===-1?99:ib);
+  });
+
+  if(!docs.length){
+    dc.innerHTML='<div style="color:var(--text-dim);font-size:13px;padding:12px;">Dados extraídos não disponíveis.</div>';
+  } else {
+    dc.innerHTML = docs.map(docLabel=>{
+      const dados = porDoc[docLabel];
+      const campos = Object.entries(dados);
+      return `<div class="check-group" style="margin-bottom:10px">
+        <div class="cg-head" style="cursor:pointer" onclick="var n=this.nextElementSibling;n.style.display=n.style.display==='none'?'block':'none'">
+          <span class="cg-title">${docLabel}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);margin-left:8px;">${campos.length} campo(s) · clique para expandir ▼</span>
+        </div>
+        <div style="display:none;padding:16px 18px">
+          <div class="detail-grid">
+            ${campos.map(([k,v])=>`
+              <div class="detail-field">
+                <div class="df-label">${k}</div>
+                <div class="df-val">${v||'—'}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Show divergence panel if there are divergences
+  const divs = getDivergencias();
+  const wrap = document.getElementById('divPanelWrap');
+  if(divs.length > 0){
+    wrap.style.display = 'block';
+    renderDivPanel();
+  } else {
+    wrap.style.display = 'none';
+  }
+
+  // Sync language selectors
+  // langSelect2 handles language selection
+  const ls2 = document.getElementById('langSelect2');
+  if(ls2) ls2.onchange = function(){ renderDivPanel(); };
+
+  ra.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────
+function verificarDivergenciasCriticas(){
+  var procs = getProcesses();
+  var criticos = procs.filter(function(p){ return p.status==='err'; });
+  if(!criticos.length) return;
+
+  // Mostrar notificação se há processos críticos não resolvidos
+  var naoBloqueado = !sessionStorage.getItem('divNotifBloqueada');
+  if(naoBloqueado && criticos.length>0){
+    var notif = document.getElementById('divNotif');
+    if(notif){
+      notif.style.display='flex';
+      notif.innerHTML = '<span style="font-size:16px">🔴</span>'+
+        '<span style="flex:1"><strong>'+criticos.length+' processo(s)</strong> com divergências não resolvidas: '+
+        criticos.slice(0,3).map(function(p){return p.ref;}).join(', ')+(criticos.length>3?'...':'')+'</span>'+
+        '<button onclick="sessionStorage.setItem(\'divNotifBloqueada\',\'1\');this.parentNode.style.display=\'none\'" style="background:transparent;border:none;cursor:pointer;font-size:16px;opacity:.6">✕</button>';
+    }
+  }
+}
+
+function renderDashboard(){
+  if(!_currentUser) return;
+  dbGetAllProcesses(function(procs){
+    _processes = migrateAlerts(procs);
+    var total = procs.length;
+    var ok    = procs.filter(function(p){return p.status==='ok';}).length;
+    var warn  = procs.filter(function(p){return p.status==='warn';}).length;
+    var err   = procs.filter(function(p){return p.status==='err';}).length;
+
+    var s1=document.getElementById('statTotal');
+    var s2=document.getElementById('statOk');
+    var s3=document.getElementById('statWarn');
+    var s4=document.getElementById('statErr');
+    if(s1) s1.textContent=total;
+    if(s2) s2.textContent=ok;
+    if(s3) s3.textContent=warn;
+    if(s4) s4.textContent=err;
+
+    // Cards clicáveis — navega para Processos com filtro
+    [
+      {id:'statCardTotal', filter:'', label:'todos'},
+      {id:'statCardOk',    filter:'ok',   label:'sem divergências'},
+      {id:'statCardWarn',  filter:'warn', label:'com alertas'},
+      {id:'statCardErr',   filter:'err',  label:'com divergências'},
+    ].forEach(function(sc){
+      var card = document.getElementById(sc.id);
+      if(!card) return;
+      card.style.cursor='pointer';
+      card.title = 'Ver processos ' + sc.label;
+      // Remove listener anterior para não acumular
+      card.onclick = null;
+      card.onclick = function(){
+        _dashFilter = sc.filter;
+        showPage('processos');
+      };
+    });
+
+    // Processos recentes — clicáveis
+    var recent=document.getElementById('dashRecent');
+    if(!recent) return;
+    if(!procs.length){
+      recent.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">Nenhum processo ainda. Faça a primeira conferência!</div>';
+      return;
+    }
+    recent.innerHTML=procs.slice(0,5).map(function(p){
+      var sc={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'}[p.status]||'var(--text-dim)';
+      var sl={ok:'✓ OK',warn:'⚠ Alertas',err:'✗ Divergências'}[p.status]||'—';
+      var analises=(p.analises||[]).length;
+      var nomeAnalista = p._userName ? ' · <span style="color:var(--accent)">'+p._userName+'</span>' : '';
+      return '<div data-proc-id="'+p.id+'" data-proc-user="'+(p._user||'')+'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s;" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">'
+        +'<div><div style="font-weight:600;font-size:13px;color:var(--text-bright);">'+p.ref+'</div>'
+        +'<div style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'—')+' · '+p.data+' · '+analises+' análise(s)'+nomeAnalista+'</div></div>'
+        +'<span style="font-size:11px;font-weight:700;color:'+sc+';font-family:monospace;">'+sl+'</span>'
+        +'</div>';
+    }).join('');
+
+    // Click nos recentes abre o processo em tela cheia
+    recent.onclick = function(e){
+      var card = e.target.closest('[data-proc-id]');
+      if(card){
+        _paginaAnterior = 'dashboard';
+        openProcess(parseInt(card.getAttribute('data-proc-id')), card.getAttribute('data-proc-user')||null);
+      }
+    };
+  });
+}
+
+var _dashFilter = '';
+
+// ─── GESTÃO (manager view) ────────────────────────────────────────────
+function atualizarGestaoManual(){
+  var btn = document.querySelector('[onclick="atualizarGestaoManual()"]');
+  if(btn){ btn.textContent = '↻ Buscando...'; btn.disabled = true; }
+  dbGetAllProcesses(function(fresh){
+    _gestaoAll = fresh;
+    _doRenderGestao();
+    var ts = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    var el = document.getElementById('gestaoSyncStatus');
+    if(el) el.textContent = 'Atualizado às ' + ts + ' · ' + fresh.length + ' processo(s)';
+    if(btn){ btn.textContent = '↻ Atualizar'; btn.disabled = false; }
+    showToast('Gestão atualizada — ' + fresh.length + ' processo(s)','ok');
+  });
+}
+
+function _renderGestaoWithData(all){ _gestaoAll=all; _doRenderGestao(); }
+var _gestaoAll=null;
+function renderGestao(){
+  // Auto-sync a cada 30 segundos
+  if(!window._gestaoSyncInterval){
+    window._gestaoSyncInterval = setInterval(function(){
+      var gestaoPage = document.getElementById('page-gestao');
+      if(gestaoPage && gestaoPage.style.display !== 'none') renderGestao();
+    }, 30000);
+  }
+
+  dbGetAllProcesses(function(all){
+    var q=(document.getElementById('gestaoSearch')||{value:''}).value.toLowerCase();
+    var filterUser=(document.getElementById('gestaoUser')||{value:''}).value;
+    var filterStatus=(document.getElementById('gestaoStatus')||{value:''}).value;
+
+    // Banner diagnóstico
+    var banner = document.getElementById('gestaoDiagBanner');
+    if(!banner){
+      banner = document.createElement('div');
+      banner.id = 'gestaoDiagBanner';
+      var gw = document.getElementById('gestaoStats');
+      if(gw && gw.parentNode) gw.parentNode.insertBefore(banner, gw);
+    }
+    var contagem={};
+    all.forEach(function(p){ var u=p._user||'?'; contagem[u]=(contagem[u]||0)+1; });
+    var ct=Object.keys(contagem).map(function(u){return u+': '+contagem[u];}).join(' · ');
+    banner.innerHTML='<div style="background:rgba(10,45,94,0.5);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:11px;color:var(--text-dim);"><span style="color:var(--ok);margin-right:6px;">●</span>Firebase: <strong style="color:var(--text-bright);">'+all.length+' processo(s)</strong>'+(all.length>0?' &nbsp;·&nbsp; '+ct:' — nenhum processo salvo ainda')+'</div>';
+
+    // Sync status
+    var ts=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    var syncEl=document.getElementById('gestaoSyncStatus');
+    if(syncEl) syncEl.textContent='Atualizado às '+ts+' · '+all.length+' processo(s)';
+
+    // Dropdown usuários
+    var sel=document.getElementById('gestaoUser');
+    if(sel){
+      var existing=Array.from(sel.options).map(function(o){return o.value;});
+      USERS.forEach(function(u){
+        if(!existing.includes(u.username)){
+          var opt=document.createElement('option');
+          opt.value=u.username; opt.textContent=u.displayName; sel.appendChild(opt);
+        }
+      });
+    }
+
+    // Filtrar
+    var procs=all.filter(function(p){
+      if(filterUser && p._user!==filterUser) return false;
+      if(filterStatus && p.status!==filterStatus) return false;
+      if(q){
+        var s=[p.ref||'',p.exportador||'',p._userName||'',(p.analises||[]).map(function(a){return a.docs||'';}).join(' ')].join(' ').toLowerCase();
+        if(!s.includes(q)) return false;
+      }
+      return true;
+    });
+
+    // Stats
+    var stats=document.getElementById('gestaoStats');
+    if(stats){
+      var total=procs.length,
+          errs=procs.filter(function(p){return p.status==='err';}).length,
+          warns=procs.filter(function(p){return p.status==='warn';}).length,
+          oks=procs.filter(function(p){return p.status==='ok';}).length;
+      stats.innerHTML=[['Total',total,'var(--accent)'],['Divergências',errs,'var(--danger)'],['Alertas',warns,'var(--warn)'],['OK',oks,'var(--ok)']].map(function(s){
+        return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:700;color:'+s[2]+';">'+s[1]+'</div><div style="font-size:11px;color:var(--text-dim);">'+s[0]+'</div></div>';
+      }).join('');
+    }
+
+    // Lista
+    var list=document.getElementById('gestaoList');
+    if(!list) return;
+    if(!procs.length){
+      list.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:32px;">Nenhum processo encontrado.</div>';
+      return;
+    }
+    list.innerHTML=procs.map(function(p){
+      var analises=p.analises||[];
+      var last=analises.length?analises[analises.length-1]:null;
+      var divs=last&&last.resumo?last.resumo.divergencias:0;
+      var alerts=last&&last.resumo?last.resumo.alertas:0;
+      var badge=divs?'<span style="color:var(--danger);font-size:11px;font-weight:700;">✗ '+divs+' diverg.</span>':alerts?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>':'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
+      var approved=p._approved?'<span style="color:var(--ok);font-size:10px;margin-left:6px;">✓ Aprovado por '+p._approvedBy+'</span>':'';
+      var hasComment=p._managerComment?'<span style="color:var(--accent);font-size:10px;margin-left:6px;">💬 comentário</span>':'';
+      return '<div data-gestao-id="'+p.id+'" data-gestao-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span><span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span><span style="font-size:11px;padding:2px 8px;border-radius:100px;background:var(--accent-dim);color:var(--accent);">'+(p._userName||p._user||'?')+'</span>'+approved+hasComment+'</div>'+badge+'</div><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);"><span>'+(p.data||'')+'</span><span>'+analises.length+' análise(s)</span>'+(last?'<span>Última: '+last.data+'</span>':'')+(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')+'</div></div>';
+    }).join('');
+    list.onclick=function(e){
+      var card=e.target.closest('[data-gestao-id]');
+      if(card) openGestaoModal(parseInt(card.getAttribute('data-gestao-id')),card.getAttribute('data-gestao-user'));
+    };
+  });
+}
+
+function openGestaoModal(id, username){
+  if(!username){ showToast('Usuário não identificado','err'); return; }
+  // Busca do Drive diretamente
+  dbGetProcess(username, id, function(p){
+    if(!p){ showToast('Processo não encontrado','err'); return; }
+    _renderGestaoModal(p, username);
+  });
+}
+
+function _renderGestaoModal(p, username){
+  var analises = p.analises||[];
+  var last = analises.length ? analises[analises.length-1] : null;
+
+  document.getElementById('gestaoModalTitle').textContent = 'Processo '+p.ref;
+  document.getElementById('gestaoModalSub').textContent = (p._userName||'') + ' · ' + (p.exportador||'') + ' · ' + p.data + ' · ' + analises.length + ' análise(s)';
+
+  var body = '';
+
+  // ── Approval ──────────────────────────────────────────────────────
+  body += '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2,var(--surface));border-radius:8px;border:1px solid var(--border);">';
+  body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">Aprovação Gerencial</div>';
+  if(p._approved){
+    body += '<div style="color:var(--ok);font-size:13px;font-weight:600;margin-bottom:8px;">✓ Aprovado por '+p._approvedBy+' em '+p._approvedAt+'</div>';
+    body += '<button data-action="revoke" data-id="'+id+'" data-user="'+username+'" style="font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
+  } else {
+    body += '<button data-action="approve" data-id="'+id+'" data-user="'+username+'" style="font-size:13px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 20px;cursor:pointer;">✓ Aprovar processo</button>';
+  }
+  body += '</div>';
+
+  // ── Manager comment ───────────────────────────────────────────────
+  body += '<div style="margin-bottom:16px;">';
+  body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Comentário do Gerente</div>';
+  body += '<textarea id="gestaoComment" style="width:100%;min-height:72px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;" placeholder="Orientações, observações ou aprovações parciais...">'+(p._managerComment||'')+'</textarea>';
+  if(p._managerCommentBy){
+    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Último comentário por '+p._managerCommentBy+' em '+p._managerCommentAt+'</div>';
+  }
+  body += '<button data-action="savecomment" data-id="'+id+'" data-user="'+username+'" style="margin-top:8px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;">Salvar comentário</button>';
+  body += '</div>';
+
+  // ── Analyses with full divergences ────────────────────────────────
+  body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em;">Análises do Processo</div>';
+
+  analises.slice().reverse().forEach(function(a, revIdx){
+    var analIdx = analises.length - revIdx;
+    var isLast = revIdx === 0;
+    var divs = a.resumo ? a.resumo.divergencias : 0;
+    var alts = a.resumo ? a.resumo.alertas : 0;
+    var ok  = a.resumo ? a.resumo.campos_ok : 0;
+
+    body += '<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;">';
+
+    // Analysis header
+    body += '<div style="padding:12px 16px;background:var(--surface-2,var(--surface));display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">';
+    body += '<div><span style="font-size:13px;font-weight:700;">Análise '+analIdx+'</span>';
+    if(isLast) body += ' <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--accent);color:white;font-weight:600;margin-left:6px;">ÚLTIMA</span>';
+    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+a.data+' · '+a.docs+'</div></div>';
+    body += '<div style="display:flex;gap:8px;align-items:center;">';
+    if(divs) body += '<span style="font-size:11px;font-weight:700;color:var(--danger);">✗ '+divs+' diverg.</span>';
+    if(alts) body += '<span style="font-size:11px;font-weight:700;color:var(--warn);">⚠ '+alts+' alertas</span>';
+    if(!divs&&!alts) body += '<span style="font-size:11px;font-weight:700;color:var(--ok);">✓ OK</span>';
+    body += '</div></div>';
+
+    // Divergences list
+    if(a.grupos && a.grupos.length){
+      a.grupos.forEach(function(g){
+        var campos = (g.campos||[]).filter(function(c){ return c.status && c.status !== 'OK'; });
+        if(!campos.length) return;
+        body += '<div style="padding:10px 16px;border-bottom:1px solid var(--border);">';
+        body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">'+g.titulo+'</div>';
+        campos.forEach(function(c){
+          var color = c.status==='DIVERGENCIA' ? 'var(--danger)' : 'var(--warn)';
+          var divKey = g.titulo+'-'+c.campo;
+          var aceito = p._divResolvedMap && p._divResolvedMap[divKey];
+          if(aceito) color = '#16a34a';
+          body += '<div style="padding:8px;border-radius:6px;background:'+(aceito?'rgba(22,163,74,0.04)':'rgba(220,38,38,0.04)')+';border-left:3px solid '+color+';margin-bottom:6px;">';
+          var confBadge='';
+          if(c.confianca!==undefined && c.confianca<85){
+            var confColor=c.confianca<70?'#dc2626':'#d97706';
+            confBadge='<span style="font-size:9px;font-weight:700;color:'+confColor+';background:'+confColor+'18;padding:1px 5px;border-radius:3px;margin-left:4px" title="Confiança da IA: '+c.confianca+'%">IA '+c.confianca+'%</span>';
+          }
+          body += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+          body += '<span style="font-size:12px;font-weight:600;">'+c.campo+confBadge+'</span>';
+          body += '<span style="font-size:10px;font-weight:700;color:'+color+';">'+(aceito?'✓ ACEITO':c.status)+'</span>';
+          body += '</div>';
+          body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+          body += '<div style="font-size:11px;"><span style="color:var(--text-dim);">'+c.doc1_label+':</span> '+c.doc1_valor+'</div>';
+          body += '<div style="font-size:11px;color:'+color+';font-weight:600;"><span style="color:var(--text-dim);">'+c.doc2_label+':</span> '+c.doc2_valor+'</div>';
+          body += '</div>';
+          if(aceito) body += '<div style="font-size:11px;color:#16a34a;margin-top:5px;padding:4px 8px;background:rgba(22,163,74,0.08);border-radius:4px;">✓ Aceito por '+aceito.por+' em '+aceito.time+': <em>'+aceito.nota+'</em></div>';
+          if(c.observacao && !aceito) body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic;">'+c.observacao+'</div>';
+          body += '</div>';
+        });
+        body += '</div>';
+      });
+    }
+
+    // Alerts
+    if(a.alertas && a.alertas.length){
+      body += '<div style="padding:10px 16px;">';
+      body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Alertas</div>';
+      a.alertas.forEach(function(al){
+        var txt = typeof al==='string' ? al : (al.descricao||al.mensagem||JSON.stringify(al));
+        body += '<div style="font-size:12px;padding:6px 10px;border-left:3px solid var(--warn);background:rgba(217,119,6,0.04);border-radius:0 4px 4px 0;margin-bottom:4px;">'+txt+'</div>';
+      });
+      body += '</div>';
+    }
+
+    body += '</div>'; // end analysis card
+  });
+
+  document.getElementById('gestaoModalBody').innerHTML = body;
+
+  // Button delegation
+  document.getElementById('gestaoModalBody').onclick = function(e){
+    var btn = e.target.closest('[data-action]');
+    if(!btn) return;
+    var act  = btn.getAttribute('data-action');
+    var bid  = parseInt(btn.getAttribute('data-id'));
+    var buser= btn.getAttribute('data-user');
+    if(act==='approve') approveProcess(bid, buser);
+    else if(act==='revoke') revokeApproval(bid, buser);
+    else if(act==='savecomment'){
+      var comment = document.getElementById('gestaoComment').value.trim();
+      saveGestaoComment(bid, buser, comment);
+    }
+  };
+
+  document.getElementById('gestaoModalBg').style.display='flex';
+}
+
+function approveProcess(id, username){
+  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
+  var docId = username + '_' + id;
+  var now = new Date().toLocaleString('pt-BR');
+  var aprovadoPor = getCurrentUser() ? getCurrentUser().displayName : '?';
+  _db.collection('processos').doc(docId).update({
+    _approved: true, _approvedBy: aprovadoPor, _approvedAt: now, _updatedAt: Date.now()
+  }).then(function(){
+    // Atualiza cache local
+    // (localStorage removido — Drive é fonte única)
+    closeGestaoModal();
+    renderGestao();
+    showToast('Processo aprovado!','ok');
+  }).catch(function(e){ showToast('Erro ao aprovar: '+e.message,'err'); });
+}
+
+function revokeApproval(id, username){
+  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
+  var docId = username + '_' + id;
+  _db.collection('processos').doc(docId).update({
+    _approved: false, _approvedBy: null, _approvedAt: null, _updatedAt: Date.now()
+  }).then(function(){
+    // (localStorage removido — Drive é fonte única)
+    closeGestaoModal(); renderGestao();
+    showToast('Aprovação revogada','ok');
+  }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
+}
+
+function saveGestaoComment(id, username, comment){
+  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
+  var docId = username + '_' + id;
+  var by = getCurrentUser() ? getCurrentUser().displayName : '?';
+  var at = new Date().toLocaleString('pt-BR');
+  _db.collection('processos').doc(docId).update({
+    _managerComment: comment||'', _managerCommentBy: by, _managerCommentAt: at, _updatedAt: Date.now()
+  }).then(function(){
+    // (localStorage removido — Drive é fonte única)
+    renderGestao(); showToast('Comentário salvo!','ok');
+  }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
+}
+
+function closeGestaoModal(e){
+  if(!e || e.target===document.getElementById('gestaoModalBg')){
+    document.getElementById('gestaoModalBg').style.display='none';
+  }
+}
+
+function clearAllHistory(){
+  if(!confirm('Tem certeza que deseja apagar TODO o histórico de processos? Esta ação não pode ser desfeita.')) return;
+  try{
+    // Deletar do Firebase
+    if(_firebaseReady && _db){
+      _db.collection('processos').get().then(function(snap){
+        var batch = _db.batch();
+        snap.forEach(function(doc){ batch.delete(doc.ref); });
+        return batch.commit();
+      }).catch(function(e){ console.warn('Erro ao limpar Firebase:', e); });
+    }
+    // Dados removidos do Drive via API
+    _processes = [];
+    currentResult = null;
+    divergResolved = {};
+    renderDashboard();
+    renderProcessos();
+    showToast('Histórico apagado com sucesso','ok');
+    showPage('dashboard');
+  }catch(e){ showToast('Erro ao apagar histórico','err'); }
+}
+
+
+
+function renderProcessos(filter){
+  if(!_currentUser){ _renderProcessosList([], filter); return; }
+  // Aplicar filtro do dashboard se existir
+  var f = filter !== undefined ? filter : (_dashFilter ? '__status:'+_dashFilter : '');
+  _dashFilter = ''; // limpar após usar
+  dbGetAllProcesses(function(all){
+    _processes = migrateAlerts(all);
+    _renderProcessosList(all, f);
+  });
+}
+
+function _renderProcessosList(procs, filter){
+  var statusFilter = '';
+  var q = (filter||'').toLowerCase().trim();
+  if(q.startsWith('__status:')){
+    statusFilter = q.replace('__status:','');
+    q = '';
+  }
+  if(statusFilter){
+    procs = procs.filter(function(p){ return p.status===statusFilter; });
+  }
+  if(q){
+    procs=procs.filter(function(p){
+      var s=[p.ref||'',p.exportador||'',p.obs||'',
+        (p.analises||[]).map(function(a){return a.docs||'';}).join(' ')
+      ].join(' ').toLowerCase();
+      return s.includes(q);
+    });
+  }
+  var list=document.getElementById('processosList');
+  if(!list) return;
+  if(!procs.length){
+    list.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">'+(q?'Sem resultados para "'+q+'"':'Nenhum processo encontrado.')+'</div>';
+    return;
+  }
+  list.innerHTML=procs.map(function(p){
+    var analises=p.analises||[];
+    var last=analises.length?analises[analises.length-1]:null;
+    var divs=last&&last.resumo?last.resumo.divergencias:0;
+    var alerts=last&&last.resumo?last.resumo.alertas:0;
+    var badge=divs
+      ?'<span style="color:var(--danger);font-size:11px;font-weight:700;">✗ '+divs+' diverg.</span>'
+      :alerts
+      ?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>'
+      :'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
+    return '<div data-proc-id="'+p.id+'" data-proc-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+      +'<div style="display:flex;align-items:center;gap:10px;">'
+      +'<span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
+      +'<span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span>'
+      +(p._userName?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--accent-dim);color:var(--accent);">'+p._userName+'</span>':'')
+      +'</div>'+badge+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);">'
+      +'<span>'+p.data+'</span>'
+      +'<span>'+analises.length+' análise(s)</span>'
+      +(last?'<span>Última: '+last.data+'</span>':'')
+      +(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')
+      +'</div></div>';
+  }).join('');
+  // Click handler via delegation
+  list.onclick=function(e){
+    var card=e.target.closest('[data-proc-id]');
+    if(card) openProcess(parseInt(card.getAttribute('data-proc-id')), card.getAttribute('data-proc-user')||null);
+  };
+}
+
+
+function openProcess(id, procUser){
+  var ownerUser = procUser || (_currentUser ? _currentUser.username : null);
+  if(!ownerUser){
+    // Buscar em _processes (já carregado do Drive)
+    var found = _processes.find(function(x){ return x.id==id; });
+    if(found){ ownerUser = found._savedBy || found._user || _currentUser.username; }
+    else { showToast('Processo não encontrado','err'); return; }
+  }
+
+  // Busca do Drive (fonte única de verdade)
+  dbGetProcess(ownerUser, id, function(p){
+    if(!p){
+      // Tentar em _processes em memória
+      p = _processes.find(function(x){ return x.id==id; });
+    }
+    if(!p){ showToast('Processo não encontrado','err'); return; }
+    p._ownerUser = ownerUser;
+    _renderProcessModal(p);
+  });
+}
+
+function _renderProcessModal(p){
+  var id = p.id;
+  var ownerUser = p._ownerUser;
+
+  // titulo setado no modal
+  // sub setado no modal
+  // delete btn setado no modal
+
+  var analises=p.analises||[];
+  // Backwards compat: if no analises array, create one from existing data
+  if(!analises.length && p.grupos){
+    analises=[{id:p.id,data:p.data,docs:'Documentos iniciais',docTypes:[],resumo:p.resumo,grupos:p.grupos,alertas:p.alertas||[]}];
+  }
+
+  var html='';
+
+  // ── Analysis timeline ──────────────────────────────────────────────
+  if(analises.length){
+    html+='<div class="sec" style="margin-bottom:14px;">Histórico de Análises</div>';
+
+    // Timeline
+    html+='<div style="position:relative;margin-bottom:24px;">';
+    analises.forEach(function(a,idx){
+      var divCount=(a.resumo&&a.resumo.divergencias)||0;
+      var alertCount=(a.resumo&&a.resumo.alertas)||0;
+      var okCount=(a.resumo&&a.resumo.campos_ok)||0;
+      var isLast=idx===analises.length-1;
+      var confIndicator='';
+      if(a.confMedia!==undefined){
+        var confColor=a.confMedia>=90?'#16a34a':a.confMedia>=70?'#d97706':'#dc2626';
+        confIndicator=' · <span style="color:'+confColor+';font-weight:700;font-size:11px;">IA '+a.confMedia+'%</span>';
+      }
+      var statusColor=divCount>0?'var(--danger)':alertCount>0?'var(--warn)':'var(--ok)';
+      var statusIcon=divCount>0?'❌':'✓';
+
+      html+='<div style="display:flex;gap:14px;margin-bottom:'+(isLast?'0':'16px')+';position:relative;">';
+      // Timeline dot and line
+      html+='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">';
+      html+='<div style="width:32px;height:32px;border-radius:50%;background:'+statusColor+';display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;font-weight:700;flex-shrink:0;">'+statusIcon+'</div>';
+      if(!isLast) html+='<div style="width:2px;flex:1;background:var(--border);margin-top:4px;min-height:20px;"></div>';
+      html+='</div>';
+      // Content
+      html+='<div style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;cursor:pointer;" data-toggle="analise_'+id+'_'+idx+'">';
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">';
+      html+='<div>';
+      html+='<div style="font-size:13px;font-weight:700;color:var(--text-bright);">Análise '+(idx+1)+(isLast?' <span style="font-size:10px;font-family:monospace;background:var(--accent);color:#fff;padding:2px 6px;border-radius:3px;">ÚLTIMA</span>':'')+'</div>';
+      html+='<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+a.data+' · '+a.docs+'</div>';
+      html+='</div>';
+      html+='<div style="display:flex;gap:6px;">';
+      if(okCount) html+='<span style="font-size:10px;padding:3px 8px;border-radius:100px;background:rgba(22,163,74,0.1);color:var(--ok);font-family:monospace;">✓ '+okCount+' OK</span>';
+      if(divCount) html+='<span style="font-size:10px;padding:3px 8px;border-radius:100px;background:rgba(220,38,38,0.1);color:var(--danger);font-family:monospace;">✗ '+divCount+' diverg.</span>';
+      if(alertCount) html+='<span style="font-size:10px;padding:3px 8px;border-radius:100px;background:rgba(217,119,6,0.1);color:var(--warn);font-family:monospace;">⚠ '+alertCount+' alertas</span>';
+      html+='</div></div>';
+
+      // Collapsible divergences detail
+      html+='<div id="analise_'+id+'_'+idx+'" style="display:'+(isLast?'block':'none')+';margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">';
+
+      // Divergences list
+      var divs=[];
+      (a.grupos||[]).forEach(function(g){
+        (g.campos||[]).forEach(function(c){
+          if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') divs.push({grupo:g.titulo,campo:c});
+        });
+      });
+
+      if(!divs.length){
+        html+='<div style="text-align:center;color:var(--ok);font-size:13px;padding:8px 0;">✓ Nenhuma divergência nesta análise</div>';
+      } else {
+        html+='<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;">';
+        divs.forEach(function(d,di){
+          var c2=d.campo;
+          var ac=c2.status==='DIVERGENCIA'?'#dc2626':'#d97706';
+          var divKey = d.grupo+'-'+c2.campo;
+          var aceito = p._divResolvedMap && p._divResolvedMap[divKey];
+          var corBorda = aceito ? '#16a34a' : ac;
+          html+='<div style="'+(di>0?'border-top:1px solid var(--border);':'')+'">';
+          html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:'+(aceito?'rgba(22,163,74,0.04)':'rgba(220,38,38,0.03)')+';border-left:3px solid '+corBorda+';">';
+          html+='<span style="font-size:10px;color:'+corBorda+';font-family:monospace;font-weight:700;">'+(aceito?'✓ ACEITO':c2.status)+'</span>';
+          html+='<span style="font-size:12px;font-weight:600;color:var(--text-bright);">'+c2.campo+'</span>';
+          html+='<span style="font-size:10px;color:var(--text-dim);margin-left:auto;">'+d.grupo+'</span>';
+          if(!aceito){
+            html+='<button onclick="aceitarDivHistorico(\''+id+'\',\''+ownerUser+'\',\''+divKey.replace(/'/g,"\\'")+'\')" style="margin-left:8px;font-size:10px;padding:2px 8px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;">Aceitar</button>';
+          }
+          html+='</div>';
+          html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
+          html+='<div style="padding:6px 12px;border-right:1px solid var(--border);">';
+          html+='<div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">'+(c2.doc1_label||'')+'</div>';
+          html+='<div style="font-size:12px;color:var(--text);">'+(c2.doc1_valor||'—')+'</div></div>';
+          html+='<div style="padding:6px 12px;border-left:2px solid '+corBorda+';">';
+          html+='<div style="font-size:9px;color:'+corBorda+';margin-bottom:2px;">'+(c2.doc2_label||'')+'</div>';
+          html+='<div style="font-size:12px;font-weight:600;color:'+corBorda+';">'+(c2.doc2_valor||'—')+'</div></div></div>';
+          if(c2.observacao && !aceito) html+='<div style="padding:4px 12px 6px;font-size:11px;color:var(--warn);font-style:italic;">'+c2.observacao+'</div>';
+          if(aceito) html+='<div style="padding:4px 12px 6px;font-size:11px;color:#16a34a;font-style:italic;">✓ Aceito por '+aceito.por+' em '+aceito.time+': '+aceito.nota+'</div>';
+          html+='</div>';
+        });
+        html+='</div>';
+      }
+
+      // Alerts
+      var alertTexts=(a.alertas||[]).map(extractAlert).filter(function(x){return x;});
+      if(alertTexts.length){
+        html+='<div style="margin-top:10px;" class="alerts-box"><ul>';
+        alertTexts.forEach(function(at){
+          var aKey = 'alerta-' + at;
+          var aAceito = p._divResolvedMap && p._divResolvedMap[aKey];
+          html+='<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
+            +'<span style="flex:1;'+(aAceito?'text-decoration:line-through;opacity:.5;':'')+'">'+at+'</span>'
+            +(aAceito
+              ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
+                +'<button data-action="aceitar-alerta" data-key="'+aKey.replace(/"/g,'&quot;')+'" data-pid="'+p.id+'" data-puser="'+(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+              : '<button data-action="aceitar-alerta" data-key="'+aKey.replace(/"/g,'&quot;')+'" data-pid="'+p.id+'" data-puser="'+(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+            )
+            +'</li>';
+        });
+        html+='</ul></div>';
+      }
+
+      html+='</div></div></div>';
+    });
+    html+='</div>';
+
+    // ── Comparison between last two analyses ─────────────────────────
+    if(analises.length>=2){
+      var prev=analises[analises.length-2];
+      var curr=analises[analises.length-1];
+      // Calcular diferenças entre análises
+      var divsPrev = (prev.grupos||[]).flatMap(function(g){return (g.campos||[]).filter(function(c){return c.status==='DIVERGENCIA';}).map(function(c){return g.titulo+'-'+c.campo;});});
+      var divsCurr = (curr.grupos||[]).flatMap(function(g){return (g.campos||[]).filter(function(c){return c.status==='DIVERGENCIA';}).map(function(c){return g.titulo+'-'+c.campo;});});
+      var resolvidas = divsPrev.filter(function(k){return !divsCurr.includes(k);});
+      var novas = divsCurr.filter(function(k){return !divsPrev.includes(k);});
+      var prevDivs={};
+      (prev.grupos||[]).forEach(function(g){ (g.campos||[]).forEach(function(c){ if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') prevDivs[c.campo]=c; }); });
+      var currDivs={};
+      (curr.grupos||[]).forEach(function(g){ (g.campos||[]).forEach(function(c){ if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') currDivs[c.campo]=c; }); });
+
+      var resolved=Object.keys(prevDivs).filter(function(k){return !currDivs[k];});
+      var remaining=Object.keys(prevDivs).filter(function(k){return !!currDivs[k];});
+      var newIssues=Object.keys(currDivs).filter(function(k){return !prevDivs[k];});
+
+      html+='<div class="sec" style="margin-bottom:14px;">Comparação: Análise '+(analises.length-1)+' → Análise '+analises.length+'</div>';
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">';
+      html+='<div style="padding:14px;border-radius:8px;background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.2);text-align:center;">';
+      html+='<div style="font-size:28px;font-weight:800;color:var(--ok);">'+resolved.length+'</div>';
+      html+='<div style="font-size:11px;color:var(--ok);font-weight:600;">✓ Corrigidos</div></div>';
+      html+='<div style="padding:14px;border-radius:8px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.2);text-align:center;">';
+      html+='<div style="font-size:28px;font-weight:800;color:var(--danger);">'+remaining.length+'</div>';
+      html+='<div style="font-size:11px;color:var(--danger);font-weight:600;">✗ Ainda pendentes</div></div>';
+      html+='<div style="padding:14px;border-radius:8px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.2);text-align:center;">';
+      html+='<div style="font-size:28px;font-weight:800;color:var(--warn);">'+newIssues.length+'</div>';
+      html+='<div style="font-size:11px;color:var(--warn);font-weight:600;">⚠ Novos problemas</div></div>';
+      html+='</div>';
+
+      if(resolved.length){
+        resolved.forEach(function(k){ html+='<div style="padding:8px 14px;background:rgba(22,163,74,0.06);border-left:3px solid var(--ok);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--ok);">✓ '+k+' — corrigido</div>'; });
+      }
+      if(remaining.length){
+        remaining.forEach(function(k){ html+='<div style="padding:8px 14px;background:rgba(220,38,38,0.06);border-left:3px solid var(--danger);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--danger);">✗ '+k+' — ainda divergente</div>'; });
+      }
+      if(newIssues.length){
+        newIssues.forEach(function(k){ html+='<div style="padding:8px 14px;background:rgba(217,119,6,0.06);border-left:3px solid var(--warn);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--warn);">⚠ '+k+' — novo problema</div>'; });
+      }
+      html+='<div style="height:16px;"></div>';
+    }
+  }
+
+  // ── CTA: new analysis ─────────────────────────────────────────────
+  html+='<div style="padding:14px;background:var(--accent-dim);border-radius:8px;border:1px solid rgba(10,45,94,0.15);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;">';
+  html+='<div style="font-size:13px;color:var(--accent);">Recebeu novos documentos? Adicione-os e faça uma nova análise.</div>';
+  html+='<button data-ref="'+p.ref+'" class="btn btn-primary btn-sm" style="flex-shrink:0;">+ Nova Análise</button>';
+  html+='</div>';
+
+  // ── Histórico de Resoluções ──────────────────────────────────────────
+  var resolvedMap = p._divResolvedMap || {};
+  var resolvedEntries = Object.entries(resolvedMap);
+  if(resolvedEntries.length){
+    html+='<div class="detail-section" style="margin-bottom:16px;">';
+    html+='<div class="sec" style="margin-bottom:12px;">📋 Histórico de Resoluções</div>';
+    html+='<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">';
+    resolvedEntries.forEach(function(entry, i){
+      var key = entry[0], val = entry[1];
+      var isAlerta = key.startsWith('alerta-');
+      var label = isAlerta ? key.replace('alerta-','') : key;
+      var cor = isAlerta ? '#d97706' : '#16a34a';
+      var icon = isAlerta ? '⚠' : '✓';
+      html+='<div style="'+(i>0?'border-top:1px solid var(--border);':'')+';padding:10px 14px;display:flex;gap:12px;align-items:flex-start;background:rgba(22,163,74,.03);">';
+      html+='<div style="margin-top:2px;font-size:14px;">'+icon+'</div>';
+      html+='<div style="flex:1;">';
+      html+='<div style="font-size:12px;font-weight:700;color:'+cor+';">'+label+'</div>';
+      html+='<div style="font-size:12px;color:var(--text);margin-top:2px;font-style:italic;">"'+(val.nota||'—')+'"</div>';
+      html+='<div style="font-size:10px;color:var(--text-dim);margin-top:3px;">por <strong>'+(val.por||'?')+'</strong> · '+(val.time||'')+'</div>';
+      html+='</div>';
+      html+='</div>';
+    });
+    html+='</div></div>';
+  }
+
+  // ── Log ─────────────────────────────────────────────────────────
+  html+='<div class="detail-section"><div class="sec" style="margin-bottom:12px">Log do Processo</div>';
+  html+='<div class="log-list">';
+  (p.log||[]).forEach(function(l){
+    html+='<div class="log-item"><div class="log-dot '+(l.type||'')+'"></div>';
+    html+='<div class="log-content"><div class="log-msg">'+l.msg+'</div>';
+    html+='<div class="log-time">'+l.time+'</div></div></div>';
+  });
+  html+='</div>';
+  html+='<div style="margin-top:14px;display:flex;gap:8px;">';
+  html+='<input class="field-input" id="logInput" placeholder="Adicionar anotação..." style="flex:1;font-size:12px">';
+  html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+id+', \''+(p._ownerUser||'')+'\')">+ Adicionar</button>';
+  html+='</div></div>';
+
+  // html setado no modal acima
+
+  // Event delegation
+  var _dpb = document.getElementById('modalDetalheBody') || (document.getElementById('modalDetalheBody')||document.getElementById('detalheProcBody')||{innerHTML:'',addEventListener:function(){},onclick:null}); if(_dpb) _dpb.onclick=function(e){
+    var tog=e.target.closest('[data-toggle]');
+    if(tog){ toggleAnalise(tog.getAttribute('data-toggle')); return; }
+    var btn=e.target.closest('[data-ref]');
+    if(btn&&btn.className.includes('btn')){
+      var ref2=btn.getAttribute('data-ref');
+      fecharDetalheProcesso();
+      showPage('conferencia');
+      setTimeout(function(){
+        var refEl=document.getElementById('procRef');
+        if(refEl){ refEl.value=ref2; autoFillProcess(); }
+        showToast('Processo '+ref2+' carregado — adicione os novos documentos','ok');
+      },200);
+    }
+  };
+
+  // Navegar para a página de detalhe — sempre no topo
+  // Abrir modal fullscreen
+  var m = document.getElementById('modalDetalhe');
+  var mb = document.getElementById('modalDetalheBody');
+  var mt = document.getElementById('modalDetalheTitulo');
+  var ms = document.getElementById('modalDetalheSub');
+  if(m && mb){
+    mt.textContent = 'Processo ' + (p.ref||'');
+    ms.textContent = (p.exportador||'') + ' · ' + (p.data||'') + (p._userName ? ' · ' + p._userName : '');
+    mb.innerHTML = html;
+    var excBtn = document.getElementById('modalDetalheExcluir'); if(excBtn) excBtn.onclick = function(){ deleteProcess(id); };
+    m.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    m.scrollTop = 0;
+    // Event delegation para botões dentro do modal
     mb.addEventListener('click', function(e){
       var btn = e.target.closest('button[data-action]');
       if(!btn) return;
