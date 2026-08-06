@@ -64,12 +64,14 @@ async function parseNFeXml(file){
     if(!prod) return null;
     const xProd = (prod.getElementsByTagName('xProd')[0]||{}).textContent || '';
     const qCom  = (prod.getElementsByTagName('qCom')[0]||{}).textContent || '';
-    return { descricao: xProd.trim(), quantidade: qCom ? String(parseFloat(qCom)) : '' };
+    const cfopItem = (prod.getElementsByTagName('CFOP')[0]||{}).textContent || '';
+    return { descricao: xProd.trim(), quantidade: qCom ? String(parseFloat(qCom)) : '', cfop: cfopItem.trim() };
   }).filter(Boolean);
+  const cfop = (itens.find(it=>it.cfop)||{}).cfop || '';
 
   if(!cliente && !nfNumero && !itens.length) throw new Error('Não achei os campos esperados de uma NFe nesse XML');
 
-  return { cliente, nf_numero: nfNumero, nf_data: nfData, nf_valor: nfValor||0, itens };
+  return { cliente, nf_numero: nfNumero, nf_data: nfData, nf_valor: nfValor||0, cfop, itens };
 }
 
 // ── PDF/imagem (DANFE) via IA — reaproveita /api/analisar ───────────────
@@ -88,6 +90,7 @@ async function extrairNFComIA(file){
   "nf_numero": "",      // número da nota fiscal
   "nf_data": "YYYY-MM-DD", // data de emissão
   "nf_valor": 0,        // valor total da nota em R$
+  "cfop": "",            // codigo CFOP (ex: 5405, 5117, 5905) do item principal da nota
   "itens": [{"descricao":"", "quantidade":0}]  // um item por linha de produto da nota
 }
 Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem texto adicional.`;
@@ -116,6 +119,7 @@ Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem t
         nf_numero: extracted.nf_numero||'',
         nf_data: extracted.nf_data||'',
         nf_valor: parseFloat(extracted.nf_valor)||0,
+        cfop: extracted.cfop||'',
         itens: Array.isArray(extracted.itens) ? extracted.itens.filter(it=>it&&(it.descricao||it.quantidade)).map(it=>({descricao:it.descricao||'', quantidade:it.quantidade!=null?String(it.quantidade):''})) : [],
       };
     }
@@ -159,8 +163,34 @@ async function importarNFSaidaProcesso(input){
   try{
     const dados = isXml ? await parseNFeXml(file) : await extrairNFComIA(file);
     if(!dados){ if(status) status.textContent = 'Nao foi possivel extrair dados desse arquivo.'; return; }
+
+    const elNumChk = document.getElementById('f_nf_saida_numero');
+    const elDataChk = document.getElementById('f_nf_saida_data');
+    const elValorChk = document.getElementById('f_nf_saida_valor');
+    const jaPreenchido = (elNumChk && elNumChk.value) || (elDataChk && elDataChk.value) || (elValorChk && elValorChk.value && elValorChk.value !== '0,00');
+    if(jaPreenchido){
+      const ok = window.confirm('Ja existe NF Saida preenchida nesse processo (No ' + (elNumChk ? elNumChk.value : '') + '). Sobrescrever com os dados extraidos da NF anexada?');
+      if(!ok){ if(status) status.textContent = 'Importacao cancelada (dados existentes mantidos).'; return; }
+    }
+
     aplicarDadosNFSaidaNoProcesso(dados);
-    if(status) status.textContent = 'NF importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
+
+    const avisos = [];
+    const elCliente = document.getElementById('f_cliente');
+    if(dados.cliente && elCliente && elCliente.value){
+      const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+      const a = norm(dados.cliente), b = norm(elCliente.value);
+      if(a && b && !a.includes(b) && !b.includes(a)) avisos.push('cliente da NF ("' + dados.cliente + '") diverge do cadastrado ("' + elCliente.value + '")');
+    }
+    if(Array.isArray(dados.itens) && dados.itens.length && typeof _produtos !== 'undefined' && Array.isArray(_produtos)){
+      const qtdNF = dados.itens.reduce((s,it)=>s+(parseFloat(it.quantidade)||0),0);
+      const qtdProcesso = _produtos.reduce((s,it)=>s+(parseFloat(it.quantidade)||0),0);
+      if(qtdNF>0 && qtdProcesso>0 && qtdNF !== qtdProcesso) avisos.push('quantidade da NF (' + qtdNF + ') diverge do processo (' + qtdProcesso + ')');
+    }
+
+    let msg = 'NF importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
+    if(avisos.length) msg += ' | ATENCAO: ' + avisos.join('; ');
+    if(status) status.textContent = msg;
   }catch(e){
     if(status) status.textContent = 'Erro ao importar NF: ' + e.message;
   }
@@ -170,8 +200,10 @@ function aplicarDadosNFSaidaNoProcesso(dados){
   const elNum = document.getElementById('f_nf_saida_numero');
   const elData = document.getElementById('f_nf_saida_data');
   const elValor = document.getElementById('f_nf_saida_valor');
+  const elCfop = document.getElementById('f_nf_saida_cfop');
   if(elNum && dados.nf_numero) elNum.value = dados.nf_numero;
   if(elData && dados.nf_data) elData.value = dados.nf_data;
   if(elValor && dados.nf_valor) elValor.value = exibirMoeda(dados.nf_valor);
+  if(elCfop && dados.cfop) elCfop.value = dados.cfop;
   if(typeof atualizarFaseEmTempoReal === 'function') atualizarFaseEmTempoReal();
 }
