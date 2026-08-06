@@ -170,7 +170,16 @@ async function importarNFSaidaProcesso(input){
     if(!dados){ if(status) status.textContent = 'Nao foi possivel extrair dados desse arquivo.'; return; }
 
     if(dados.tipo === 'ENTRADA'){
-      if(status) status.textContent = 'Este documento parece ser uma NF de ENTRADA (No ' + (dados.nf_numero||'?') + '), nao de Saida. Nada foi preenchido aqui — use o campo NF Entrada (aba Faturamento) ou confira o arquivo anexado.';
+      const elNumChk = document.getElementById('f_nf_entrada_numero');
+      const elDataChk = document.getElementById('f_nf_entrada_data');
+      const elValorChk = document.getElementById('f_nf_entrada_valor');
+      const jaPreenchidoEnt = (elNumChk && elNumChk.value) || (elDataChk && elDataChk.value) || (elValorChk && elValorChk.value && elValorChk.value !== '0,00');
+      if(jaPreenchidoEnt){
+        const okEnt = window.confirm('Ja existe NF Entrada preenchida nesse processo (No ' + (elNumChk ? elNumChk.value : '') + '). Sobrescrever com os dados extraidos da NF anexada?');
+        if(!okEnt){ if(status) status.textContent = 'Importacao cancelada (dados existentes mantidos).'; return; }
+      }
+      aplicarDadosNFEntradaNoProcesso(dados);
+      if(status) status.textContent = 'NF de Entrada importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
       return;
     }
 
@@ -204,6 +213,16 @@ async function importarNFSaidaProcesso(input){
   }catch(e){
     if(status) status.textContent = 'Erro ao importar NF: ' + e.message;
   }
+}
+
+function aplicarDadosNFEntradaNoProcesso(dados){
+  const elNum = document.getElementById('f_nf_entrada_numero');
+  const elData = document.getElementById('f_nf_entrada_data');
+  const elValor = document.getElementById('f_nf_entrada_valor');
+  if(elNum && dados.nf_numero) elNum.value = dados.nf_numero;
+  if(elData && dados.nf_data) elData.value = dados.nf_data;
+  if(elValor && dados.nf_valor) elValor.value = exibirMoeda(dados.nf_valor);
+  if(typeof atualizarFaseEmTempoReal === 'function') atualizarFaseEmTempoReal();
 }
 
 function aplicarDadosNFSaidaNoProcesso(dados){
