@@ -220,7 +220,7 @@ if(el && d.displayName) el.textContent = d.displayName;
 // cosmético (a proteção real é o back-end em GET /narcelio, ver
 // server.js). Injetado aqui (assíncrono) em vez de no array navModulos
 // porque o usuário logado só é conhecido depois desse fetch.
-if(['narcelio', 'suporte'].includes(d.usuario)){
+if(['narcelio', 'suporte', 'paula'].includes(d.usuario)){
   const navRight = document.querySelector('.nav-right');
   if(navRight){
     const link = document.createElement('a');
