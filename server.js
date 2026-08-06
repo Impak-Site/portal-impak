@@ -882,7 +882,7 @@ app.get('/resultado', auth('processos'), (req, res) => res.sendFile(path.join(__
 // renderDashNarcelio() em controle-dash-narcelio.js e
 // ativarTelaNarcelioExclusiva() em controle-core.js.
 app.get('/narcelio', auth('processos'), (req, res) => {
-  if (!['narcelio', 'suporte'].includes(req.session.usuario)) return res.status(403).send('Acesso restrito.')
+  if (!['narcelio', 'suporte', 'paula'].includes(req.session.usuario)) return res.status(403).send('Acesso restrito.')
   res.sendFile(path.join(__dirname, 'controle_v2.html'))
 });
 // Deep-link por processo — /controle/UD26-005 serve o mesmo controle_v2.html;
