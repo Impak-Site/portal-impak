@@ -138,3 +138,40 @@ function aplicarDadosNFNaVenda(vi, dados){
   if(dados.itens && dados.itens.length) v.itens = dados.itens;
   renderVendas();
 }
+
+
+// -- NF de Saida direto no processo (sem Venda) --
+// Processos de cliente unico nao usam a aba Vendas (ver aviso na aba
+// Vendas: 'se este processo tem um unico cliente/NF Saida, nao precisa
+// usar esta aba'). Pra esses casos, este extrator reaproveita a mesma
+// leitura (XML local ou IA) so que escreve direto nos campos de topo do
+// processo (aba Documentos: f_nf_saida_numero/data/valor) em vez de numa
+// linha de _vendas[].
+async function importarNFSaidaProcesso(input){
+  const file = input.files[0];
+  if(!file) return;
+  input.value = '';
+
+  const status = document.getElementById('ia-nf-saida-status');
+  const isXml = /\.xml$/i.test(file.name) || file.type.includes('xml');
+  if(status) status.textContent = isXml ? 'Lendo XML da NFe...' : 'Analisando documento com IA...';
+
+  try{
+    const dados = isXml ? await parseNFeXml(file) : await extrairNFComIA(file);
+    if(!dados){ if(status) status.textContent = 'Nao foi possivel extrair dados desse arquivo.'; return; }
+    aplicarDadosNFSaidaNoProcesso(dados);
+    if(status) status.textContent = 'NF importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
+  }catch(e){
+    if(status) status.textContent = 'Erro ao importar NF: ' + e.message;
+  }
+}
+
+function aplicarDadosNFSaidaNoProcesso(dados){
+  const elNum = document.getElementById('f_nf_saida_numero');
+  const elData = document.getElementById('f_nf_saida_data');
+  const elValor = document.getElementById('f_nf_saida_valor');
+  if(elNum && dados.nf_numero) elNum.value = dados.nf_numero;
+  if(elData && dados.nf_data) elData.value = dados.nf_data;
+  if(elValor && dados.nf_valor) elValor.value = exibirMoeda(dados.nf_valor);
+  if(typeof atualizarFaseEmTempoReal === 'function') atualizarFaseEmTempoReal();
+}
