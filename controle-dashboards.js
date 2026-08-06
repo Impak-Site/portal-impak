@@ -288,6 +288,7 @@ let _periodoEstado = {
   executivo:  { tipo:'mes', ini:'', fim:'' },
   financeiro: { tipo:'mes', ini:'', fim:'' },
   resultado:  { tipo:'mes', ini:'', fim:'' },
+  narcelio:   { tipo:'mes', ini:'', fim:'' },
 };
 
 // Calcula {ini, fim, label} a partir do tipo de período selecionado para
@@ -309,6 +310,14 @@ function calcularPeriodo(ns){
     ini = parseDataLocal(estado.ini);
     fim = parseDataLocal(estado.fim);
     label = `${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`;
+  } else if(estado.tipo === 'custom'){
+    // "Personalizado" selecionado mas ainda faltam as duas datas — calcula
+    // com o mês atual só pra não quebrar nada, mas SEM forçar o tipo de
+    // volta pra "mes" (senão os campos de data somem antes do usuário
+    // conseguir preenchê-los — era o bug reportado).
+    ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    fim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+    label = 'Selecione as datas';
   } else {
     estado.tipo = 'mes';
     ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
