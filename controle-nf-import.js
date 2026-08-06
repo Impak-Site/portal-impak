@@ -68,10 +68,13 @@ async function parseNFeXml(file){
     return { descricao: xProd.trim(), quantidade: qCom ? String(parseFloat(qCom)) : '', cfop: cfopItem.trim() };
   }).filter(Boolean);
   const cfop = (itens.find(it=>it.cfop)||{}).cfop || '';
+  // tpNF: 0 = entrada, 1 = saída (padrao NFe) — mais confiavel que tentar inferir por outros campos
+  const tpNF = txt('tpNF');
+  const tipo = tpNF === '0' ? 'ENTRADA' : 'SAIDA';
 
   if(!cliente && !nfNumero && !itens.length) throw new Error('Não achei os campos esperados de uma NFe nesse XML');
 
-  return { cliente, nf_numero: nfNumero, nf_data: nfData, nf_valor: nfValor||0, cfop, itens };
+  return { tipo, cliente, nf_numero: nfNumero, nf_data: nfData, nf_valor: nfValor||0, cfop, itens };
 }
 
 // ── PDF/imagem (DANFE) via IA — reaproveita /api/analisar ───────────────
@@ -84,13 +87,14 @@ async function extrairNFComIA(file){
   });
   const isImg = file.type.startsWith('image/');
 
-  const prompt = `Extraia os dados desta Nota Fiscal de Saída (DANFE) e retorne SOMENTE JSON:
+  const prompt = `Este documento deveria ser uma Nota Fiscal (DANFE) de SAÍDA (venda ao cliente final), mas confira com cuidado antes de extrair. Retorne SOMENTE JSON:
 {
-  "cliente": "",       // razão social do DESTINATÁRIO da nota (quem comprou)
+  "tipo": "",           // "SAIDA" se o campo NATUREZA DA OPERACAO contiver algo como VENDA/REMESSA (nota emitida para o cliente final); "ENTRADA" se contiver algo como COMPRA/NACIONALIZACAO/ENTRADA (nota de aquisicao da mercadoria importada). Use as pistas do proprio documento, nao suponha.
+  "cliente": "",       // razão social do DESTINATÁRIO da nota (quem comprou) — so preencher se tipo=SAIDA
   "nf_numero": "",      // número da nota fiscal
   "nf_data": "YYYY-MM-DD", // data de emissão
   "nf_valor": 0,        // valor total da nota em R$
-  "cfop": "",            // codigo CFOP (ex: 5405, 5117, 5905) do item principal da nota
+  "cfop": "",            // codigo CFOP (ex: 5405, 5117, 5905, 1101, 3101) do item principal da nota
   "itens": [{"descricao":"", "quantidade":0}]  // um item por linha de produto da nota
 }
 Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem texto adicional.`;
@@ -115,6 +119,7 @@ Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem t
       const clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
       const extracted = JSON.parse(clean);
       return {
+        tipo: (extracted.tipo||'').toUpperCase().includes('ENTRADA') ? 'ENTRADA' : 'SAIDA',
         cliente: extracted.cliente||'',
         nf_numero: extracted.nf_numero||'',
         nf_data: extracted.nf_data||'',
@@ -163,6 +168,11 @@ async function importarNFSaidaProcesso(input){
   try{
     const dados = isXml ? await parseNFeXml(file) : await extrairNFComIA(file);
     if(!dados){ if(status) status.textContent = 'Nao foi possivel extrair dados desse arquivo.'; return; }
+
+    if(dados.tipo === 'ENTRADA'){
+      if(status) status.textContent = 'Este documento parece ser uma NF de ENTRADA (No ' + (dados.nf_numero||'?') + '), nao de Saida. Nada foi preenchido aqui — use o campo NF Entrada (aba Faturamento) ou confira o arquivo anexado.';
+      return;
+    }
 
     const elNumChk = document.getElementById('f_nf_saida_numero');
     const elDataChk = document.getElementById('f_nf_saida_data');
