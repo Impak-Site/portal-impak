@@ -1,4 +1,4 @@
-// controle-dash-narcelio.js
+undefined// controle-dash-narcelio.js
 //
 // Dashboard Narcélio — visão do dono da empresa: quantos containers estão
 // em cada fase do funil (pedido/previsão de embarque/embarcado), quais
@@ -40,11 +40,13 @@ function renderDashNarcelio(){
 
   const fmtBRL = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
-  function card(label, val, sub, cor, key){
-    const attrs = key ? ` onclick="abrirListaNarcelio('${key}')" title="Clique para ver a lista" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"` : ` style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"`;
+  function card(label, val, sub, cor, key, span){
+    const spanStyle = span ? `grid-column:span ${span};` : '';
+    const valSize = span ? '26px' : '20px';
+    const attrs = key ? ` onclick="abrirListaNarcelio('${key}')" title="Clique para ver a lista" style="cursor:pointer;${spanStyle}background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"` : ` style="${spanStyle}background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"`;
     return `<div${attrs}>
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
-    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
+    <div style="font-size:${valSize};font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
     </div>`;
   }
@@ -184,7 +186,7 @@ function renderDashNarcelio(){
     card('Chegando no período', `${qtdChegando} containers`, periodo.label, 'var(--ok)', 'chegando'),
     card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodo.label}`, 'var(--ok)', 'faturamento'),
     card('Processos com Estoque Parado', `${processosEstoqueParado} processos`, `${estoqueParadoLista.length} descrições diferentes de produto`, 'var(--err)', 'estoque'),
-    card('Previsão de Caixa (no período)', fmtBRL(totalPrevisto), `Câmbio (FOB): US$ ${totalUsdFob.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} → ${fmtBRL(totalFobBRL)} · Impostos/custos: ${fmtBRL(totalCustosBRL)} — ${periodo.label}`, 'var(--err)', 'caixa'),
+    card('Previsão de Caixa (no período)', fmtBRL(totalPrevisto), `Câmbio (FOB): US$ ${totalUsdFob.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} → ${fmtBRL(totalFobBRL)} · Impostos/custos: ${fmtBRL(totalCustosBRL)} — ${periodo.label}`, 'var(--err)', 'caixa', 2),
   ];
   window._narcelioListas = {
     pedido: { titulo: 'Containers Pedidos (PI) — ' + periodo.label, rows: pedidoLista },
