@@ -1,4 +1,4 @@
-undefined// controle-dash-narcelio.js
+// controle-dash-narcelio.js
 //
 // Dashboard Narcélio — visão do dono da empresa: quantos containers estão
 // em cada fase do funil (pedido/previsão de embarque/embarcado), quais
@@ -152,7 +152,6 @@ function renderDashNarcelio(){
     if(pg.pago) return;
     const cambio = pg.cambioFechado || pg.cambioPrevisto;
     if(!cambio || !pg.valorUsd) return;
-    if(!dentroPeriodo(pg.vencimento)) return;
     const valorPg = pg.valorUsd * cambio;
     addMes(pg.vencimento, valorPg);
     addContrib(pg.processoId, valorPg);
@@ -167,7 +166,6 @@ function renderDashNarcelio(){
     const restante = custoReal.total - fobConvertido;
     if(restante <= 0) return;
     const dataRef = p.eta || p.data_registro_di || p.previsao_prontidao;
-    if(!dentroPeriodo(dataRef)) return;
     addMes(dataRef, restante);
     addContrib(p.id, restante);
     totalCustosBRL += restante;
