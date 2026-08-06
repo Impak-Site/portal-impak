@@ -162,6 +162,7 @@ function coletarESalvar(){
     'ci_numero','ci_data','ci_valor_usd',
     'ce_master','ce_house','ce_data_embarque','pendencia_revisao',
     'data_agendamento','data_carregamento','transportadora','placa',
+    'horario_retirada','agendamento_cancelado','motivo_cancelamento',
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor','nf_saida_cfop',
     'data_devolucao_vazio','demurrage_valor','demurrage_pago',
@@ -196,7 +197,7 @@ function coletarESalvar(){
     else{
       val = el.value?.trim();
       if(el.type==='number') val = val===''?null:parseFloat(val);
-      else if(campo==='pi_pago'||campo==='demurrage_pago') val = val==='true';
+      else if(campo==='pi_pago'||campo==='demurrage_pago'||campo==='agendamento_cancelado') val = val==='true';
       else if(val==='') val = null;
     }
 

@@ -330,6 +330,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💰 Dashboard Financeiro</div>
   <div class="sidebar-item" id="menu-resultado" onclick="toggleDashResultado()">📈 Dashboard Resultado</div>
   <div class="sidebar-item" id="menu-narcelio" style="display:none;" onclick="toggleDashNarcelio()">👔 Dashboard Narcélio</div>
+<div class="sidebar-item" id="menu-carregamento" onclick="toggleDashCarregamento()">🚛 Dashboard de Carregamentos</div>
 </div>
 <div class="sidebar-section">
 <div class="sidebar-label">Cadastros</div>
@@ -422,6 +423,14 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
       <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">👔 Dashboard Narcélio</div>
     </div>
     <div id="dash-narcelio-content"></div>
+  </div>
+
+  <!-- DASHBOARD DE CARREGAMENTOS -->
+  <div id="dash-carregamento" style="display:none;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🚛 Dashboard de Carregamentos</div>
+    </div>
+    <div id="dash-carregamento-content"></div>
   </div>
 
 <!-- TABELA -->
@@ -622,6 +631,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <script src="/controle-nf-import.js"></script>
 <script src="/controle-dashboards.js"></script>
 <script src="/controle-dash-narcelio.js"></script>
+<script src="/controle-dash-carregamento.js"></script>
 
 <script src="/chat.js"></script>
 </body>

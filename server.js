@@ -1048,6 +1048,72 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
       }
     }
 
+    // Alerta: Carregamento pendente (data de presenca preenchida mas sem data de carregamento)
+    if (processo.data_presenca && !processo.data_carregamento && !processo.data_devolucao_vazio) {
+      try {
+        const { data: existenteCarreg } = await supabase
+          .from('controle_notificacoes')
+          .select('id')
+          .eq('processo_id', processo.id)
+          .eq('tipo', 'urgente')
+          .eq('titulo', `Carregamento pendente: ${processo.referencia}`)
+          .limit(1);
+        if (!existenteCarreg || existenteCarreg.length === 0) {
+          await supabase.from('controle_notificacoes').insert({
+            processo_id: processo.id,
+            tipo: 'urgente',
+            titulo: `Carregamento pendente: ${processo.referencia}`,
+            mensagem: 'Presença de carga registrada, mas ainda sem Data de Carregamento.',
+            created_by: req.session.usuario,
+          });
+        }
+      } catch(notifErr) {
+        console.warn('notificacao carregamento pendente erro:', notifErr.message);
+      }
+    }
+
+    // Alerta: Transportadora pendente (agregado semanal, limiar configuravel)
+    if (processo.data_agendamento && !processo.transportadora && !processo.data_devolucao_vazio) {
+      try {
+        const dataAg = new Date(processo.data_agendamento + 'T00:00:00');
+        const diaSemana = dataAg.getDay(); // 0=domingo
+        const offsetSegunda = diaSemana === 0 ? 6 : diaSemana - 1;
+        const inicio = new Date(dataAg); inicio.setDate(dataAg.getDate() - offsetSegunda);
+        const fim = new Date(inicio); fim.setDate(inicio.getDate() + 6);
+        const inicioStr = inicio.toISOString().slice(0,10);
+        const fimStr = fim.toISOString().slice(0,10);
+
+        const { data: processosSemana } = await supabase
+          .from('controle_processos')
+          .select('id, transportadora, data_agendamento, data_devolucao_vazio')
+          .gte('data_agendamento', inicioStr)
+          .lte('data_agendamento', fimStr);
+
+        const semTransportadora = (processosSemana || []).filter(p => !p.transportadora && !p.data_devolucao_vazio);
+        const limiar = parseInt(process.env.CARGA_ALERTA_TRANSPORTADORA_LIMIAR || '3', 10);
+
+        if (semTransportadora.length >= limiar) {
+          const tituloSemana = `Transportadoras pendentes - semana de ${inicioStr}`;
+          const { data: existenteTransp } = await supabase
+            .from('controle_notificacoes')
+            .select('id')
+            .eq('tipo', 'urgente')
+            .eq('titulo', tituloSemana)
+            .limit(1);
+          if (!existenteTransp || existenteTransp.length === 0) {
+            await supabase.from('controle_notificacoes').insert({
+              tipo: 'urgente',
+              titulo: tituloSemana,
+              mensagem: `${semTransportadora.length} processo(s) agendados nesta semana sem Transportadora preenchida.`,
+              created_by: req.session.usuario,
+            });
+          }
+        }
+      } catch(notifErr) {
+        console.warn('notificacao transportadora pendente erro:', notifErr.message);
+      }
+    }
+
     console.log(`controle v2 salvo: ${processo.referencia} por ${req.session.usuario}`);
     res.json({ ok: true });
   } catch (e) {

@@ -436,6 +436,17 @@ function renderModal(){
           </div>
           <div class="form-group"><label class="form-label">Placa</label>
             <input class="form-input" id="f_placa" value="${esc(p.placa)}"></div>
+          <div class="form-group"><label class="form-label">Horário Retirada</label>
+            <input class="form-input" type="time" id="f_horario_retirada" value="${esc(p.horario_retirada)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Agendamento Cancelado?</label>
+            <select class="form-input" id="f_agendamento_cancelado" onchange="toggleMotivoCancelamento()">
+              <option value="false" ${!p.agendamento_cancelado?'selected':''}>Não</option>
+              <option value="true"  ${p.agendamento_cancelado?'selected':''}>Sim</option>
+            </select></div>
+        </div>
+        <div id="wrap_motivo_cancelamento" style="display:${p.agendamento_cancelado?'block':'none'};margin-top:10px;">
+          <div class="form-group"><label class="form-label">Motivo do Cancelamento</label>
+            <textarea class="form-input" id="f_motivo_cancelamento" rows="2" style="resize:vertical;">${esc(p.motivo_cancelamento)}</textarea></div>
         </div>
       </div>
       <div class="form-section">
@@ -1324,4 +1335,11 @@ function marcarPendenciaRevisada(){
 // cotação (estimativa) de um processo que começou direto no Controle.
 function vincularProcessoAoCalculador(processoId){
   window.open(`/calculador?processo_id=${processoId}`, '_blank');
+}
+
+
+function toggleMotivoCancelamento(){
+  const sel = document.getElementById('f_agendamento_cancelado');
+  const wrap = document.getElementById('wrap_motivo_cancelamento');
+  if(sel && wrap) wrap.style.display = sel.value === 'true' ? 'block' : 'none';
 }
