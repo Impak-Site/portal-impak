@@ -145,6 +145,7 @@ function renderDashNarcelio(){
   const processosAbertos = _processos.filter(p => !p.fechado);
   const contribPorProcesso = {}; // processoId -> valor
   function addContrib(id, valor){ if(!id) return; contribPorProcesso[id] = (contribPorProcesso[id]||0) + valor; }
+  let totalUsdFob = 0, totalFobBRL = 0, totalCustosBRL = 0;
   listarPagamentosPI(processosAbertos).forEach(pg => {
     if(pg.pago) return;
     const cambio = pg.cambioFechado || pg.cambioPrevisto;
@@ -153,6 +154,8 @@ function renderDashNarcelio(){
     const valorPg = pg.valorUsd * cambio;
     addMes(pg.vencimento, valorPg);
     addContrib(pg.processoId, valorPg);
+    totalUsdFob += pg.valorUsd;
+    totalFobBRL += valorPg;
   });
   processosAbertos.forEach(p => {
     const custoReal = calcularCustoRealTotal(p);
@@ -165,6 +168,7 @@ function renderDashNarcelio(){
     if(!dentroPeriodo(dataRef)) return;
     addMes(dataRef, restante);
     addContrib(p.id, restante);
+    totalCustosBRL += restante;
   });
   const mesesOrdenados = Object.keys(meses).sort();
   const totalPrevisto = mesesOrdenados.reduce((s,k) => s + meses[k], 0);
@@ -180,7 +184,7 @@ function renderDashNarcelio(){
     card('Chegando no período', `${qtdChegando} containers`, periodo.label, 'var(--ok)', 'chegando'),
     card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodo.label}`, 'var(--ok)', 'faturamento'),
     card('Processos com Estoque Parado', `${processosEstoqueParado} processos`, `${estoqueParadoLista.length} descrições diferentes de produto`, 'var(--err)', 'estoque'),
-    card('Previsão de Caixa (no período)', fmtBRL(totalPrevisto), `FOB + custos reais pendentes — ${periodo.label}`, 'var(--err)', 'caixa'),
+    card('Previsão de Caixa (no período)', fmtBRL(totalPrevisto), `Câmbio (FOB): US$ ${totalUsdFob.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} → ${fmtBRL(totalFobBRL)} · Impostos/custos: ${fmtBRL(totalCustosBRL)} — ${periodo.label}`, 'var(--err)', 'caixa'),
   ];
   window._narcelioListas = {
     pedido: { titulo: 'Containers Pedidos (PI) — ' + periodo.label, rows: pedidoLista },
