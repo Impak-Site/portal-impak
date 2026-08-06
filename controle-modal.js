@@ -542,11 +542,11 @@ function renderModal(){
           if(!Array.isArray(vendas2)) vendas2 = [];
           if(vendas2.length) return '';
           return `<div style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
-            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Extrair NF Saida com IA</div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE de saida para preencher No, Data e Valor automaticamente</div>
+            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Extrair NF (Entrada ou Saida) com IA</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE — o sistema identifica se e Entrada ou Saida e preenche os campos certos automaticamente</div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <input type="file" id="ia-nf-saida-file" accept=".pdf,.png,.jpg,.jpeg,.xml" style="display:none" onchange="importarNFSaidaProcesso(this)">
-              <button class="btn btn-outline" onclick="document.getElementById('ia-nf-saida-file').click()">Selecionar NF de Saida</button>
+              <button class="btn btn-outline" onclick="document.getElementById('ia-nf-saida-file').click()">Selecionar NF (Entrada ou Saida)</button>
               <span id="ia-nf-saida-status" style="font-size:12px;color:var(--muted);"></span>
             </div>
           </div>`;
