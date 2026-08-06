@@ -184,7 +184,7 @@ function renderDashNarcelio(){
     card('Chegando no período', `${qtdChegando} containers`, periodo.label, 'var(--ok)', 'chegando'),
     card('Faturamento no período', fmtBRL(faturamento), `${qtdFaturados} NF de saída — ${periodo.label}`, 'var(--ok)', 'faturamento'),
     card('Processos com Estoque Parado', `${processosEstoqueParado} processos`, `${estoqueParadoLista.length} descrições diferentes de produto`, 'var(--err)', 'estoque'),
-    card('Previsão de Caixa (no período)', fmtBRL(totalPrevisto), `Câmbio (FOB): US$ ${totalUsdFob.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} → ${fmtBRL(totalFobBRL)} · Impostos/custos: ${fmtBRL(totalCustosBRL)} — ${periodo.label}`, 'var(--err)', 'caixa', 2),
+    card('Previsão de Caixa (no período)', fmtBRL(totalPrevisto), `Câmbio (FOB): US$ ${totalUsdFob.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} → ${fmtBRL(totalFobBRL)}<br>Impostos/custos: ${fmtBRL(totalCustosBRL)} — ${periodo.label}`, 'var(--err)', 'caixa', 2),
   ];
   window._narcelioListas = {
     pedido: { titulo: 'Containers Pedidos (PI) — ' + periodo.label, rows: pedidoLista },
