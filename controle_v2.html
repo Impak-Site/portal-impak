@@ -351,17 +351,17 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <!-- TOOLBAR -->
 <div class="toolbar">
 <input class="search-box" id="search" placeholder="🔍 Ref, fornecedor, container, HBL, DI, navio, armador..." oninput="render()" style="flex:2;min-width:260px;">
-<select id="filtro-cliente" onchange="render()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
+<select id="filtro-cliente" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
 <option value="">👤 Todos os clientes</option>
 </select>
-<select id="filtro-finalidade" onchange="render()" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
+<select id="filtro-finalidade" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
 <option value="">🏷 Todas as finalidades</option>
 <option value="IMPORTACAO_DIRETA">Importação Própria (Direto)</option>
 <option value="ENCOMENDA">Encomenda</option>
 <option value="CONTA_E_ORDEM">Conta e Ordem</option>
 </select>
 <label style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap;">
-<input type="checkbox" id="filtro-pendencia" onchange="render()"> ⚠ Só com pendência
+<input type="checkbox" id="filtro-pendencia" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();"> ⚠ Só com pendência
 </label>
 <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
 <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
@@ -373,7 +373,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <!-- FILTRO POR DATA -->
 <div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
 <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">📅 Filtrar por data:</span>
-<select id="filtro-data-campo" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+<select id="filtro-data-campo" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
 <option value="eta">ETA</option>
 <option value="data_chegada">Chegada</option>
 <option value="data_embarque">Embarque</option>
@@ -383,9 +383,9 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <option value="data_presenca">Presença de Carga</option>
 <option value="data_carregamento">Data Carregamento</option>
 </select>
-<input type="date" onpaste="colarData(event,this)" id="filtro-data-de" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+<input type="date" onpaste="colarData(event,this)" id="filtro-data-de" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
 <span style="font-size:12px;color:var(--muted);">até</span>
-<input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" onchange="render()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+<input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
 <button class="btn btn-sm btn-outline" onclick="limparFiltroData()">Limpar</button>
 <button class="btn btn-sm btn-outline" onclick="filtroEssaSemana()">Esta semana</button>
 <button class="btn btn-sm btn-outline" onclick="filtroEsseMes()">Este mês</button>

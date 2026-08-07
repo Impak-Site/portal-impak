@@ -700,6 +700,7 @@ function limparFiltroData(){
   if(de)  de.value  = '';
   if(ate) ate.value = '';
   render();
+  if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();
 }
 function filtroEssaSemana(){
   const hoje = new Date();
@@ -708,6 +709,7 @@ function filtroEssaSemana(){
   document.getElementById('filtro-data-de').value  = dom.toISOString().split('T')[0];
   document.getElementById('filtro-data-ate').value = sab.toISOString().split('T')[0];
   render();
+  if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();
 }
 function filtroEsseMes(){
   const hoje = new Date();
@@ -716,6 +718,7 @@ function filtroEsseMes(){
   document.getElementById('filtro-data-de').value  = ini.toISOString().split('T')[0];
   document.getElementById('filtro-data-ate').value = fim.toISOString().split('T')[0];
   render();
+  if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();
 }
 
 function showToast(msg, tipo){
