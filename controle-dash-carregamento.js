@@ -20,6 +20,7 @@ function toggleDashCarregamento(){
   if(!el) return;
   const visivel = el.style.display !== 'none';
   if(!visivel) fecharTodosDashboards();
+document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
   el.style.display = visivel ? 'none' : 'block';
   if(!visivel) renderDashCarregamento();
   document.getElementById('menu-carregamento')?.classList.toggle('active', !visivel);

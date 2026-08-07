@@ -1408,6 +1408,8 @@ function fecharTodosDashboards(){
     var menu = document.getElementById('menu-'+id);
     if(menu) menu.classList.remove('active');
   });
+
+document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = '');
 }
 
 function setFaseFilter(fase){
