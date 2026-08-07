@@ -47,7 +47,7 @@ function renderDashCarregamento(){
     </div>`;
   }
 
-  let lista = _processos.filter(p => (p.data_chegada || p.data_presenca) && (!p.data_agendamento || p.agendamento_cancelado));
+  let lista = _processos.filter(p => (p.data_chegada || p.data_presenca) && (!p.data_carregamento || p.agendamento_cancelado));
 
   // Respeita o mesmo filtro de data (campo + de/até) usado na tabela
   // principal (Esta semana/Este mês/intervalo custom), pra dar consistência
