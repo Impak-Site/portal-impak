@@ -2,7 +2,8 @@
 //
 // Dashboard de Carregamentos — visão consolidada de todo processo que já
 // chegou no porto (tem Data de Chegada ou Presença de Carga) e ainda não
-// finalizou a retirada (sem Devolução de Vazio). Mostra, por processo:
+// tem Agendamento de retirada confirmado (sai da lista quando o
+// Agendamento é preenchido, a menos que tenha sido cancelado). Mostra, por processo:
 // transportadora, agendamento, data de carregamento, horário de retirada,
 // presença de carga, dias parado no porto e status do agendamento
 // (inclusive motivo se foi cancelado). Também resume dois indicadores que
@@ -45,7 +46,7 @@ function renderDashCarregamento(){
     </div>`;
   }
 
-  let lista = _processos.filter(p => (p.data_chegada || p.data_presenca) && !p.data_devolucao_vazio);
+  let lista = _processos.filter(p => (p.data_chegada || p.data_presenca) && (!p.data_agendamento || p.agendamento_cancelado));
 
   // Respeita o mesmo filtro de data (campo + de/até) usado na tabela
   // principal (Esta semana/Este mês/intervalo custom), pra dar consistência
