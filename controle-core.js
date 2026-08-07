@@ -1,5 +1,5 @@
 // controle-core.js
-//
+// 
 // Estado global, boot (login/DOMContentLoaded), câmbio, CRUD de processos (API), cálculo de fase/demurrage/fechamento, notificações, filtros/stats e a renderização da lista principal.
 //
 // Parte do controle_v2.html, extraído do <script> único original pra
