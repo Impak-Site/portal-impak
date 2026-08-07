@@ -18,6 +18,7 @@ function toggleDashCarregamento(){
   const el = document.getElementById('dash-carregamento');
   if(!el) return;
   const visivel = el.style.display !== 'none';
+  if(!visivel) fecharTodosDashboards();
   el.style.display = visivel ? 'none' : 'block';
   if(!visivel) renderDashCarregamento();
   document.getElementById('menu-carregamento')?.classList.toggle('active', !visivel);
@@ -44,7 +45,23 @@ function renderDashCarregamento(){
     </div>`;
   }
 
-  const lista = _processos.filter(p => (p.data_chegada || p.data_presenca) && !p.data_devolucao_vazio);
+  let lista = _processos.filter(p => (p.data_chegada || p.data_presenca) && !p.data_devolucao_vazio);
+
+  // Respeita o mesmo filtro de data (campo + de/até) usado na tabela
+  // principal (Esta semana/Este mês/intervalo custom), pra dar consistência
+  // entre as telas em vez do dashboard sempre mostrar tudo.
+  const dtDe = document.getElementById('filtro-data-de')?.value;
+  const dtAte = document.getElementById('filtro-data-ate')?.value;
+  const dtCampo = document.getElementById('filtro-data-campo')?.value || 'eta';
+  if(dtDe || dtAte){
+    lista = lista.filter(p => {
+      const val = p[dtCampo];
+      if(!val) return false;
+      if(dtDe && val < dtDe) return false;
+      if(dtAte && val > dtAte) return false;
+      return true;
+    });
+  }
 
   lista.sort((a,b) => {
     const da = diasEntre(a.data_presenca || a.data_chegada) ?? -9999;

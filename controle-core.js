@@ -1397,7 +1397,21 @@ function renderFaseFilter(){
     FASES.map(f=>`<div class="fase-pill ${_faseFilter===f.id?'active':''}" onclick="setFaseFilter('${f.id}')">${f.icon} ${f.label}</div>`).join('');
 }
 
+// Fecha todos os dashboards (Executivo, Financeiro, Resultado, Narcélio,
+// Carregamento) e desmarca seus itens no menu lateral. Chamado ao trocar
+// de aba/fase ou ao abrir outro dashboard, para a tela trocar de fato em
+// vez de empilhar dashboard + tabela (ou dois dashboards ao mesmo tempo).
+function fecharTodosDashboards(){
+  ['executivo','financeiro','resultado','narcelio','carregamento'].forEach(function(id){
+    var el = document.getElementById('dash-'+id);
+    if(el) el.style.display = 'none';
+    var menu = document.getElementById('menu-'+id);
+    if(menu) menu.classList.remove('active');
+  });
+}
+
 function setFaseFilter(fase){
+  fecharTodosDashboards();
   _faseFilter = fase;
   _pagina = 1;
   renderFaseFilter();

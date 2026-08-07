@@ -14,6 +14,7 @@ function toggleDashExecutivo(){
   const el = document.getElementById('dash-executivo');
   if(!el) return;
   const visivel = el.style.display !== 'none';
+  if(!visivel) fecharTodosDashboards();
   el.style.display = visivel ? 'none' : 'block';
   document.getElementById('menu-executivo')?.classList.toggle('active', !visivel);
   if(!visivel) renderDashExecutivo();
@@ -144,6 +145,7 @@ function toggleDashFinanceiro(){
   const el = document.getElementById('dash-financeiro');
   if(!el) return;
   const visivel = el.style.display !== 'none';
+  if(!visivel) fecharTodosDashboards();
   el.style.display = visivel ? 'none' : 'block';
   if(!visivel) renderDashFinanceiro();
   document.getElementById('menu-financeiro')?.classList.toggle('active', !visivel);
@@ -153,6 +155,7 @@ function toggleDashResultado(){
   const el = document.getElementById('dash-resultado');
   if(!el) return;
   const visivel = el.style.display !== 'none';
+  if(!visivel) fecharTodosDashboards();
   el.style.display = visivel ? 'none' : 'block';
   if(!visivel) renderDashResultado();
   document.getElementById('menu-resultado')?.classList.toggle('active', !visivel);

@@ -29,6 +29,7 @@ function toggleDashNarcelio(){
   const el = document.getElementById('dash-narcelio');
   if(!el) return;
   const visivel = el.style.display !== 'none';
+  if(!visivel) fecharTodosDashboards();
   el.style.display = visivel ? 'none' : 'block';
   if(!visivel) renderDashNarcelio();
   document.getElementById('menu-narcelio')?.classList.toggle('active', !visivel);
