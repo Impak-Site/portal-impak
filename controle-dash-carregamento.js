@@ -27,9 +27,10 @@ document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').
 
   var _optDC = document.querySelector('#filtro-data-campo option[value="data_carregamento"]');
   if (_optDC) {
-    _optDC.style.display = visivel ? 'none' : '';
-    _optDC.disabled = !!visivel;
-    if (visivel && document.getElementById('filtro-data-campo') && document.getElementById('filtro-data-campo').value === 'data_carregamento') {
+    var _nowVisible = !visivel;
+    _optDC.style.display = _nowVisible ? 'none' : '';
+    _optDC.disabled = !!_nowVisible;
+    if (_nowVisible && document.getElementById('filtro-data-campo') && document.getElementById('filtro-data-campo').value === 'data_carregamento') {
       document.getElementById('filtro-data-campo').value = 'data_chegada';
     }
   }
