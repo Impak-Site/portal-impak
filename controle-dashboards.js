@@ -15,7 +15,7 @@ function toggleDashExecutivo(){
   if(!el) return;
   const visivel = el.style.display !== 'none';
   if(!visivel) fecharTodosDashboards();
-document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
+document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
   document.getElementById('menu-executivo')?.classList.toggle('active', !visivel);
   if(!visivel) renderDashExecutivo();
@@ -147,7 +147,7 @@ function toggleDashFinanceiro(){
   if(!el) return;
   const visivel = el.style.display !== 'none';
   if(!visivel) fecharTodosDashboards();
-document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
+document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
   if(!visivel) renderDashFinanceiro();
   document.getElementById('menu-financeiro')?.classList.toggle('active', !visivel);
@@ -158,7 +158,7 @@ function toggleDashResultado(){
   if(!el) return;
   const visivel = el.style.display !== 'none';
   if(!visivel) fecharTodosDashboards();
-document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
+document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
   if(!visivel) renderDashResultado();
   document.getElementById('menu-resultado')?.classList.toggle('active', !visivel);
