@@ -198,24 +198,24 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
 
   // ── Pagamento (à vista x parcelado) ──────────────────────────
   // Parcelas (item e) ficam em dadosCotacao.parcelas — sibling de `campos`,
-  // não dentro dele, porque é uma lista (mesmo padrão de `mix`). Mesmo
-  // formato salvo pelo Controle em pi_parcelas_json (ver PARCELA_ETAPAS em
-  // controle-campos.js), só que ainda sem câmbio/recebimento do cliente —
-  // esses só existem depois, quando o processo já existe e os pagamentos
-  // acontecem de fato.
+  // não dentro dele, porque é uma lista (mesmo padrão de `mix`). MESMO
+  // formato do Controle (ver PARCELA_ETAPAS/parcelaVazia em
+  // controle-campos.js) — desde que o Calculador ganhou Câmbio Fechado e
+  // Valor Recebido do Cliente como campos próprios (não mais só
+  // label/valor_usd/data), migra 1:1 sem perder nada.
   const parcelasCotacao = (dadosCotacao && Array.isArray(dadosCotacao.parcelas)) ? dadosCotacao.parcelas : [];
-  const parcelasValidas = parcelasCotacao.filter(p => numOuNull(p.valor_usd) !== null);
+  const parcelasValidas = parcelasCotacao.filter(p => numOuNull(p.valor_usd) !== null || numOuNull(p.cambio_fechado) !== null);
   let pi_pagamento = 'VISTA';
   let pi_parcelas_json = null;
   if (parcelasValidas.length) {
     pi_pagamento = 'PARCELADO';
     pi_parcelas_json = JSON.stringify(parcelasValidas.map(p => ({
       label: p.label || '',
-      valor_usd: p.valor_usd,
-      data_vencimento: p.data || '',
-      cambio_fechado: '',
-      valor_recebido_cliente: '',
-      data_recebimento: '',
+      valor_usd: p.valor_usd || '',
+      data_vencimento: p.data_vencimento || p.data || '',
+      cambio_fechado: p.cambio_fechado || '',
+      valor_recebido_cliente: p.valor_recebido_cliente || '',
+      data_recebimento: p.data_recebimento || '',
     })));
   }
 
@@ -302,16 +302,23 @@ function mapearProcessoParaCotacao(processo) {
   }
 
   // Parcelas — só migra se o processo já usa a forma de pagamento "PARCELADO"
-  // (pi_parcelas_json). Câmbio fechado e recebimento do cliente (campos que só
-  // existem no Controle) ficam pra trás de propósito — não fazem sentido numa
-  // cotação nova.
+  // (pi_parcelas_json). Desde que o Calculador ganhou os mesmos campos do
+  // Controle (Câmbio Fechado, Valor Recebido do Cliente, Data Recebimento),
+  // migra tudo — inclusive esses, que antes ficavam pra trás de propósito.
   let parcelas = [];
   if (p.pi_pagamento === 'PARCELADO') {
     let parcelasProcesso = [];
     try { parcelasProcesso = Array.isArray(p.pi_parcelas_json) ? p.pi_parcelas_json : JSON.parse(p.pi_parcelas_json || '[]'); } catch (e) { parcelasProcesso = []; }
     parcelas = parcelasProcesso
-      .filter(pc => numOuNull(pc.valor_usd) !== null)
-      .map(pc => ({ label: pc.label || '', valor_usd: pc.valor_usd, data: pc.data_vencimento || '' }));
+      .filter(pc => numOuNull(pc.valor_usd) !== null || numOuNull(pc.cambio_fechado) !== null)
+      .map(pc => ({
+        label: pc.label || '',
+        valor_usd: pc.valor_usd || '',
+        data_vencimento: pc.data_vencimento || '',
+        cambio_fechado: pc.cambio_fechado || '',
+        valor_recebido_cliente: pc.valor_recebido_cliente || '',
+        data_recebimento: pc.data_recebimento || '',
+      }));
   }
 
   return { campos, toggles: {}, togglesInner: {}, mix: null, splitST: {}, checkboxes: {}, parcelas };
