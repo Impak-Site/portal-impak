@@ -1435,12 +1435,12 @@ function processarProxima(){
   }
   // Se só há 1 opção, pegar automaticamente
   if(opcoes.length===1){
-    mixSelecoes[m.medida]=opcoes;
+    mixSelecoes[m.id]=opcoes;
     processarProxima(); return;
   }
   // Múltiplas opções — abrir seleção
   abrirSelecao(m, (sels)=>{
-    mixSelecoes[m.medida]=sels;
+    mixSelecoes[m.id]=sels;
     processarProxima();
   });
 }
