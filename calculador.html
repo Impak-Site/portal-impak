@@ -1563,30 +1563,31 @@ function calcular() {
   const seguro_venda_usd  = ((fob_usd + frete_usd) * 0.003) - seguro_compra_usd;
 
   // ── 2. CIF (usa seguro de COMPRA — custo real interno) ──
-  // A cotação sempre usa o câmbio único da simulação pro FOB — o cronograma
-  // de parcelas (item e, ver _estado.parcelas) é só informativo/pra já deixar
-  // pronto pro processo no Controle; não muda o câmbio usado aqui.
   const fob_brl = fob_usd * cambio;
   // Câmbio médio ponderado pelas parcelas — MESMA fórmula usada na Capa pro
   // Valor FOB/CIF (ver dadosCapa()): cada parcela com Câmbio Fechado
   // preenchido converte a fatia do FOB equivalente ao seu Valor (USD) por
-  // esse câmbio; o que sobrar do FOB usa o câmbio principal. Usado SÓ na
-  // Comissão China (dentro/fora), a pedido do usuário — confirmado que o
-  // resto do resultado (impostos, lucro, faturamento) continua com o câmbio
-  // único da simulação, sem alteração.
-  let fobCobertoUsdChina = 0, fobCobertoBrlChina = 0;
+  // esse câmbio; o que sobrar do FOB usa o câmbio principal (simulação).
+  // FIX (reconciliação com a planilha real UD26-052): a planilha usa esse
+  // câmbio ponderado (o que foi de fato pago) no FOB do CIF/Custo Total —
+  // não só o câmbio único da simulação. A base de impostos (base_imp_brl,
+  // mais abaixo) continua usando o câmbio único/oficial, porque a Receita usa
+  // a PTAX/câmbio de referência na Declaração de Importação, não o câmbio
+  // comercial negociado por parcela — só o custo real (CIF/Custo Total/
+  // Faturamento/Lucro) e a Comissão China usam o câmbio ponderado.
+  let fobCobertoUsd = 0, fobCobertoBrl = 0;
   (_estado.parcelas || []).forEach(p => {
     const cambioP = parseFloat(p.cambio_fechado);
     const valorP = parseFloat(p.valor_usd);
     if(cambioP > 0 && valorP > 0){
-      fobCobertoUsdChina += valorP;
-      fobCobertoBrlChina += valorP * cambioP;
+      fobCobertoUsd += valorP;
+      fobCobertoBrl += valorP * cambioP;
     }
   });
-  fobCobertoUsdChina = Math.min(fobCobertoUsdChina, fob_usd);
-  const fobRestanteUsdChina = Math.max(0, fob_usd - fobCobertoUsdChina);
-  const fobBrlPonderadoChina = fobCobertoBrlChina + (fobRestanteUsdChina * cambio);
-  const cambioMedioChina = fob_usd > 0 ? (fobBrlPonderadoChina / fob_usd) : cambio;
+  fobCobertoUsd = Math.min(fobCobertoUsd, fob_usd);
+  const fobRestanteUsd = Math.max(0, fob_usd - fobCobertoUsd);
+  const fobBrlPonderado = fobCobertoBrl + (fobRestanteUsd * cambio);
+  const cambioMedio = fob_usd > 0 ? (fobBrlPonderado / fob_usd) : cambio;
   // Frete sempre usa o câmbio de abertura do dia da chegada × 1,02 — mesmo
   // parâmetro das Taxas em USD (destino) e do Seguro Venda, sem campo manual
   // de override (removido: gerava confusão/divergência quando alguém digitava
@@ -1602,7 +1603,7 @@ function calcular() {
   // que o câmbio principal dava antes).
   const seguro_brl = seguro_compra_usd * cambio_chegada * 1.02;
   const seguro_venda_brl = seguro_venda_usd * cambio_chegada * 1.02;
-  const cif_brl    = fob_brl + frete_brl + seguro_brl;
+  const cif_brl    = fobBrlPonderado + frete_brl + seguro_brl;
 
   // ── 3. Base de impostos ──
   // FIX: base de II/IPI/PIS-E/COFINS-E/RBC/ICMS-E/IBS/CBS deve usar sempre o
@@ -1797,11 +1798,12 @@ function calcular() {
     // ou seja, não muda nada pra quem não usa câmbio diferente por parcela.
     // FIX (câmbio ponderado pelas parcelas): a Comissão China usava fob_brl
     // (câmbio único da simulação) tanto no fator "fora" quanto no "dentro" —
-    // agora usa fobBrlPonderadoChina/cambioMedioChina (soma ponderada pelas
-    // parcelas, mesma fórmula da Capa), confirmado com o usuário e com a
-    // planilha feita à mão (aba MIX-COMPLETO, coluna "Cálc. Dólar Médio").
-    const fatorDolarPonderado = fob_usd > 0 ? (1 + (vlr_total_nfe - fobBrlPonderadoChina) / (fob_usd * cambioMedioChina)) : 1;
-    const fatorDolarChina = fob_usd > 0 ? (vlr_total_nfe / (fob_usd * fatorDolarPonderado)) : cambioMedioChina;
+    // agora usa fobBrlPonderado/cambioMedio (soma ponderada pelas parcelas,
+    // mesma fórmula da Capa e do CIF/Custo Total — ver bloco 2 acima),
+    // confirmado com o usuário e com a planilha feita à mão (aba
+    // MIX-COMPLETO, coluna "Cálc. Dólar Médio").
+    const fatorDolarPonderado = fob_usd > 0 ? (1 + (vlr_total_nfe - fobBrlPonderado) / (fob_usd * cambioMedio)) : 1;
+    const fatorDolarChina = fob_usd > 0 ? (vlr_total_nfe / (fob_usd * fatorDolarPonderado)) : cambioMedio;
     // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
     const china_fora_val = fob_usd * china_fora_pct * fatorDolarChina;
     // Comissão BOSS — 3% (ou X%) sobre o valor da NF, também soma no faturamento total
@@ -1812,7 +1814,7 @@ function calcular() {
     // Comissão BR (Representante) — sobre o faturamento total, que já inclui China e BOSS
     const COM_br = faturamento_total * br_pct;
     // Comissão China "dentro" — sobre FOB×câmbio ponderado pelas parcelas, desconta da margem
-    const COM_china_dentro = china_dentro>0 ? fobBrlPonderadoChina * china_dentro : 0;
+    const COM_china_dentro = china_dentro>0 ? fobBrlPonderado * china_dentro : 0;
 
     // ── Parcelamento / Nota de Serviço (bloco K42:K48 da planilha) ──
     let valor_entrada = 0, valor_saldo = 0, juros_parcelamento = 0,
