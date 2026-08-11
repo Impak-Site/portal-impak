@@ -1567,6 +1567,26 @@ function calcular() {
   // de parcelas (item e, ver _estado.parcelas) é só informativo/pra já deixar
   // pronto pro processo no Controle; não muda o câmbio usado aqui.
   const fob_brl = fob_usd * cambio;
+  // Câmbio médio ponderado pelas parcelas — MESMA fórmula usada na Capa pro
+  // Valor FOB/CIF (ver dadosCapa()): cada parcela com Câmbio Fechado
+  // preenchido converte a fatia do FOB equivalente ao seu Valor (USD) por
+  // esse câmbio; o que sobrar do FOB usa o câmbio principal. Usado SÓ na
+  // Comissão China (dentro/fora), a pedido do usuário — confirmado que o
+  // resto do resultado (impostos, lucro, faturamento) continua com o câmbio
+  // único da simulação, sem alteração.
+  let fobCobertoUsdChina = 0, fobCobertoBrlChina = 0;
+  (_estado.parcelas || []).forEach(p => {
+    const cambioP = parseFloat(p.cambio_fechado);
+    const valorP = parseFloat(p.valor_usd);
+    if(cambioP > 0 && valorP > 0){
+      fobCobertoUsdChina += valorP;
+      fobCobertoBrlChina += valorP * cambioP;
+    }
+  });
+  fobCobertoUsdChina = Math.min(fobCobertoUsdChina, fob_usd);
+  const fobRestanteUsdChina = Math.max(0, fob_usd - fobCobertoUsdChina);
+  const fobBrlPonderadoChina = fobCobertoBrlChina + (fobRestanteUsdChina * cambio);
+  const cambioMedioChina = fob_usd > 0 ? (fobBrlPonderadoChina / fob_usd) : cambio;
   // Frete sempre usa o câmbio de abertura do dia da chegada × 1,02 — mesmo
   // parâmetro das Taxas em USD (destino) e do Seguro Venda, sem campo manual
   // de override (removido: gerava confusão/divergência quando alguém digitava
@@ -1775,8 +1795,13 @@ function calcular() {
     // faturamento que define seu câmbio). Se não houver split de câmbio
     // (fob_brl = fob_usd*cambio), o fator cai exatamente no câmbio principal —
     // ou seja, não muda nada pra quem não usa câmbio diferente por parcela.
-    const fatorDolarPonderado = fob_usd > 0 ? (1 + (vlr_total_nfe - fob_brl) / (fob_usd * cambio)) : 1;
-    const fatorDolarChina = fob_usd > 0 ? (vlr_total_nfe / (fob_usd * fatorDolarPonderado)) : cambio;
+    // FIX (câmbio ponderado pelas parcelas): a Comissão China usava fob_brl
+    // (câmbio único da simulação) tanto no fator "fora" quanto no "dentro" —
+    // agora usa fobBrlPonderadoChina/cambioMedioChina (soma ponderada pelas
+    // parcelas, mesma fórmula da Capa), confirmado com o usuário e com a
+    // planilha feita à mão (aba MIX-COMPLETO, coluna "Cálc. Dólar Médio").
+    const fatorDolarPonderado = fob_usd > 0 ? (1 + (vlr_total_nfe - fobBrlPonderadoChina) / (fob_usd * cambioMedioChina)) : 1;
+    const fatorDolarChina = fob_usd > 0 ? (vlr_total_nfe / (fob_usd * fatorDolarPonderado)) : cambioMedioChina;
     // Comissão China "fora" — entra como nota de serviço, soma no faturamento total (L38=L36+L37)
     const china_fora_val = fob_usd * china_fora_pct * fatorDolarChina;
     // Comissão BOSS — 3% (ou X%) sobre o valor da NF, também soma no faturamento total
@@ -1786,8 +1811,8 @@ function calcular() {
 
     // Comissão BR (Representante) — sobre o faturamento total, que já inclui China e BOSS
     const COM_br = faturamento_total * br_pct;
-    // Comissão China "dentro" — sobre FOB×câmbio, desconta da margem
-    const COM_china_dentro = china_dentro>0 ? fob_brl * china_dentro : 0;
+    // Comissão China "dentro" — sobre FOB×câmbio ponderado pelas parcelas, desconta da margem
+    const COM_china_dentro = china_dentro>0 ? fobBrlPonderadoChina * china_dentro : 0;
 
     // ── Parcelamento / Nota de Serviço (bloco K42:K48 da planilha) ──
     let valor_entrada = 0, valor_saldo = 0, juros_parcelamento = 0,
@@ -1978,8 +2003,16 @@ function dadosCapa(r) {
   const cofinsCapa = baseImpCapa * r.t.cofins_e;
   const ibsCapa = (baseImpCapa + iiCapa + extraIbsCbsCapa) * r.t.ibs;
   const cbsCapa = (baseImpCapa + iiCapa + extraIbsCbsCapa) * r.t.cbs;
-  const totalCreditos = -(ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa);
-  const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa + r.DUMP;
+  // ICMS de entrada (importação) — mesma fórmula do ICMS_e principal (ver
+  // calcular()), só que na base da Capa: ((base + II+IPI+PIS+COFINS+Siscomex+
+  // Dumping+AFRMM)/0,96)×1%. FIX: estava totalmente ausente da Capa — não
+  // aparecia em Tributos nem tinha o crédito correspondente em Créditos de
+  // Entrada (confirmado pelo usuário comparando com a planilha feita à mão).
+  const siscomexCapa = r.txOp.fixas.siscomex * r.containers;
+  const afrmmCapa = r.txOp.fixas.marinha * r.containers;
+  const icmsCapa = ((baseImpCapa + iiCapa + ipiCapa + pisCapa + cofinsCapa + siscomexCapa + r.DUMP + afrmmCapa) / 0.96) * 0.01;
+  const totalCreditos = -(ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa + icmsCapa);
+  const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + icmsCapa + ibsCapa + cbsCapa + r.DUMP;
   const despesas = [
     { label: 'Taxa SISCOMEX', brl: r.txOp.fixas.siscomex * r.containers },
     { label: 'A.F.R.M (Marinha Mercante)', brl: r.txOp.fixas.marinha * r.containers },
@@ -2023,7 +2056,7 @@ function dadosCapa(r) {
   // Câmbio médio efetivo do FOB na Capa (só informativo, pra exibir na nota) —
   // fobBrlCapa/fob_usd; cai pra r.cambio quando nenhuma parcela tem câmbio fechado.
   const cambioCapaFob = r.fob_usd > 0 ? (fobBrlCapa / r.fob_usd) : r.cambio;
-  return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas, iiCapa, ipiCapa, pisCapa, cofinsCapa, ibsCapa, cbsCapa, cambioCapaFob, fobBrlCapa, cifBrlCapa };
+  return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas, iiCapa, ipiCapa, pisCapa, cofinsCapa, icmsCapa, ibsCapa, cbsCapa, cambioCapaFob, fobBrlCapa, cifBrlCapa };
 }
 
 // ── RENDER HTML — secao "Capa" na tela de Resultado ────────────────
@@ -2112,6 +2145,7 @@ function renderCapaHtml(r) {
           <tr><td>Aliquota I.P.I (${pct(r.t.ipi)})</td><td class="num">${fmtR(d.ipiCapa)}</td></tr>
           <tr><td>Aliquota PIS (PIS-E) (${pct(r.t.pis_e)})</td><td class="num">${fmtR(d.pisCapa)}</td></tr>
           <tr><td>Aliquota COFINS (COFINS-E) (${pct(r.t.cofins_e)})</td><td class="num">${fmtR(d.cofinsCapa)}</td></tr>
+          <tr><td>Aliquota ICMS (ICMS-E) (1,00%)</td><td class="num">${fmtR(d.icmsCapa)}</td></tr>
           <tr><td>Aliquota IBS (IBS-E) (${pct(r.t.ibs)})</td><td class="num">${fmtR(d.ibsCapa)}</td></tr>
           <tr><td>Aliquota CBS (CBS-E) (${pct(r.t.cbs)})</td><td class="num">${fmtR(d.cbsCapa)}</td></tr>
           ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
@@ -2125,6 +2159,7 @@ function renderCapaHtml(r) {
           <tr><td>IPI</td><td class="num">${fmtR(-r.IPI_e)}</td></tr>
           <tr><td>PIS</td><td class="num">${fmtR(-r.PIS_e)}</td></tr>
           <tr><td>COFINS</td><td class="num">${fmtR(-r.COFINS_e)}</td></tr>
+          <tr><td>ICMS</td><td class="num">${fmtR(-d.icmsCapa)}</td></tr>
           <tr><td>IBS</td><td class="num">${fmtR(-r.IBS_e)}</td></tr>
           <tr><td>CBS</td><td class="num">${fmtR(-r.CBS_e)}</td></tr>
           <tr class="destaque-row"><td>TOTAL DOS CREDITOS</td><td class="num">${fmtR(d.totalCreditos)}</td></tr>
@@ -2497,18 +2532,20 @@ async function exportarExcel() {
       add('dado', 'Alíquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e));
       add('dado', 'Alíquota PIS', pct(r.t.pis_e), '', fmtR(r.PIS_e));
       add('dado', 'Alíquota COFINS', pct(r.t.cofins_e), '', fmtR(r.COFINS_e));
+      add('dado', 'Alíquota ICMS', '1,00%', '', fmtR(r.ICMS_e));
       add('dado', 'Alíquota IBS', pct(r.t.ibs), '', fmtR(r.IBS_e));
       add('dado', 'Alíquota CBS', pct(r.t.cbs), '', fmtR(r.CBS_e));
       add('dado', 'Dumping', '', '', fmtR(r.DUMP));
-      add('total', 'TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e+r.DUMP));
+      add('total', 'TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.ICMS_e+r.IBS_e+r.CBS_e+r.DUMP));
       add('blank');
       add('secao', 'CRÉDITOS DE ENTRADA (recuperáveis)');
       add('dado', 'IPI', '', '', fmtR(-r.IPI_e));
       add('dado', 'PIS', '', '', fmtR(-r.PIS_e));
       add('dado', 'COFINS', '', '', fmtR(-r.COFINS_e));
+      add('dado', 'ICMS', '', '', fmtR(-r.ICMS_e));
       add('dado', 'IBS', '', '', fmtR(-r.IBS_e));
       add('dado', 'CBS', '', '', fmtR(-r.CBS_e));
-      add('total', 'TOTAL DOS CRÉDITOS', '', '', fmtR(-(r.IPI_e+r.PIS_e+r.COFINS_e+r.IBS_e+r.CBS_e)));
+      add('total', 'TOTAL DOS CRÉDITOS', '', '', fmtR(-(r.IPI_e+r.PIS_e+r.COFINS_e+r.ICMS_e+r.IBS_e+r.CBS_e)));
       add('blank');
       add('secao', 'DESPESAS ADUANEIRAS E OPERACIONAIS');
       add('dado', 'Taxa SISCOMEX', '', '', fmtR(r.txOp.fixas.siscomex*r.containers));
@@ -2785,6 +2822,7 @@ async function exportarExcel() {
     addCapa('dado', 'Aliquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e));
     addCapa('dado', 'Aliquota PIS (PIS-E)', pct(r.t.pis_e), '', fmtR(r.PIS_e));
     addCapa('dado', 'Aliquota COFINS (COFINS-E)', pct(r.t.cofins_e), '', fmtR(r.COFINS_e));
+    addCapa('dado', 'Aliquota ICMS (ICMS-E)', '1,00%', '', fmtR(dCapa.icmsCapa));
     addCapa('dado', 'Aliquota IBS (IBS-E)', pct(r.t.ibs), '', fmtR(r.IBS_e));
     addCapa('dado', 'Aliquota CBS (CBS-E)', pct(r.t.cbs), '', fmtR(r.CBS_e));
     if(r.DUMP > 0) addCapa('dado', 'Dumping', '', '', fmtR(r.DUMP));
@@ -2794,6 +2832,7 @@ async function exportarExcel() {
     addCapa('dado', 'IPI', '', '', fmtR(-r.IPI_e));
     addCapa('dado', 'PIS', '', '', fmtR(-r.PIS_e));
     addCapa('dado', 'COFINS', '', '', fmtR(-r.COFINS_e));
+    addCapa('dado', 'ICMS', '', '', fmtR(-dCapa.icmsCapa));
     addCapa('dado', 'IBS', '', '', fmtR(-r.IBS_e));
     addCapa('dado', 'CBS', '', '', fmtR(-r.CBS_e));
     addCapa('total', 'TOTAL DOS CREDITOS', '', '', fmtR(dCapa.totalCreditos));
