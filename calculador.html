@@ -77,17 +77,17 @@ input.locked{background:var(--bg);color:var(--muted);cursor:not-allowed;}
 .btn-refresh:hover{background:var(--ac2);}
 .cambio-info{font-size:10px;color:var(--dim);margin-top:3px;}
 
-/* PARCELAS DO FOB (item e) */
-.parcela-calc-row{display:grid;grid-template-columns:1fr 28px;grid-template-areas:"etapa remover" "valor valor" "data data";gap:6px;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--border);}
+/* PARCELAS DO FOB (item e) — mesmos 6 campos do Controle (Etapa, Valor USD,
+   Data Vencimento, Câmbio Fechado, Valor Recebido do Cliente, Data
+   Recebimento), pra trocar 1:1 quando a cotação virar processo. */
+.parcela-calc-row{display:flex;flex-direction:column;gap:6px;position:relative;margin-bottom:10px;padding-bottom:10px;padding-right:22px;border-bottom:1px dashed var(--border);}
 .parcela-calc-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
-.parcela-calc-row select{grid-area:etapa;}
-.parcela-calc-row .parcela-valor-wrap{grid-area:valor;}
-.parcela-calc-row .parcela-data-wrap{grid-area:data;}
-.parcela-calc-row button{grid-area:remover;background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;justify-self:end;}
+.parcela-calc-row select{width:100%;}
+.parcela-calc-row>button{position:absolute;top:0;right:0;background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;}
 .parcela-calc-row .parcela-mini-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;display:block;}
 /* Painel do calculador é uma coluna estreita fixa mesmo em telas largas —
-   por isso as parcelas ficam sempre empilhadas (Etapa em cima, Valor e Data
-   embaixo lado a lado), em vez de depender de media query por viewport. */
+   por isso as parcelas ficam sempre empilhadas (um campo embaixo do outro),
+   em vez de depender de media query por viewport. */
 
 /* TOGGLE SIM/NÃO */
 .toggle-group{display:flex;gap:6px;}
@@ -1251,12 +1251,43 @@ function lerTaxasOperacionais(){
   };
 }
 
-// PARCELAS DO FOB (item e) — cronograma de pagamento em N parcelas, mesma
-// ideia das parcelas do Controle (Etapa/Valor/Data). Sem câmbio por parcela
-// aqui: a cotação sempre usa o câmbio único do topo da etapa "Câmbio" pra
-// simular; o câmbio por parcela só existe depois, no processo em Controle.
+// PARCELAS DO FOB (item e) — cronograma de pagamento em N parcelas, MESMOS
+// campos do Controle (ver PARCELA_ETAPAS/parcelaVazia em controle-campos.js):
+// Etapa, Valor USD, Data Vencimento, Câmbio Fechado, Valor Recebido do
+// Cliente, Data Recebimento. Câmbio Fechado (quando preenchido) é usado por
+// dadosCapa() pra converter a fatia do FOB coberta por aquela parcela —
+// ver comentário em dadosCapa() pra fórmula completa.
 const PARCELA_ETAPAS_CALC = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
-function parcelaCalcVazia(){ return { label:'', valor_usd:'', data:'' }; }
+function parcelaCalcVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', valor_recebido_cliente:'', data_recebimento:'' }; }
+// Normaliza uma parcela salva (possivelmente em formato antigo) pro formato
+// atual — chamado ao carregar/aplicar qualquer estado salvo. Cobre 2 casos:
+// 1) cotações salvas antes do campo "data_vencimento" existir, que usavam
+//    só "data"; 2) cotações salvas entre o fix de "Ajuste de câmbio" (que
+//    guardava o câmbio dentro de valor_usd, sem campo próprio) e esta
+//    mudança — migra esse valor pra cambio_fechado automaticamente.
+function normalizarParcelaCalc(p, fobUsdRef){
+  const norm = {
+    label: p.label || '',
+    valor_usd: p.valor_usd != null ? p.valor_usd : '',
+    data_vencimento: p.data_vencimento || p.data || '',
+    cambio_fechado: p.cambio_fechado != null ? p.cambio_fechado : '',
+    valor_recebido_cliente: p.valor_recebido_cliente != null ? p.valor_recebido_cliente : '',
+    data_recebimento: p.data_recebimento || '',
+  };
+  if(norm.label === 'Ajuste de câmbio' && !norm.cambio_fechado && norm.valor_usd){
+    const v = parseFloat(norm.valor_usd);
+    if(v > 2 && v < 15){
+      // Formato antigo: esse número era um câmbio (sem campo Câmbio Fechado
+      // próprio ainda) e valia pro FOB inteiro, sem "Valor (USD)" associado.
+      // Migra pra Câmbio Fechado e preenche Valor (USD) com o FOB total da
+      // cotação, pra manter o mesmo efeito na fórmula nova (soma ponderada
+      // por Valor x Câmbio Fechado, ver dadosCapa()).
+      norm.cambio_fechado = norm.valor_usd;
+      norm.valor_usd = fobUsdRef ? String(fobUsdRef) : '';
+    }
+  }
+  return norm;
+}
 function renderParcelasCalc(){
   const wrap = document.getElementById('parcelas-calc-list');
   if(!wrap) return;
@@ -1266,15 +1297,30 @@ function renderParcelasCalc(){
         <option value="">Etapa...</option>
         ${PARCELA_ETAPAS_CALC.map(et => `<option value="${et}" ${pc.label===et?'selected':''}>${et}</option>`).join('')}
       </select>
-      <div class="parcela-valor-wrap">
+      <div>
         <span class="parcela-mini-label">Valor (USD)</span>
         <input type="number" step="0.01" placeholder="0,00" value="${pc.valor_usd!=null?pc.valor_usd:''}"
           oninput="_estado.parcelas[${i}].valor_usd=this.value">
       </div>
-      <div class="parcela-data-wrap">
-        <span class="parcela-mini-label">Data</span>
-        <input type="date" value="${pc.data||''}"
-          oninput="_estado.parcelas[${i}].data=this.value">
+      <div>
+        <span class="parcela-mini-label">Data Vencimento</span>
+        <input type="date" value="${pc.data_vencimento||''}"
+          oninput="_estado.parcelas[${i}].data_vencimento=this.value">
+      </div>
+      <div>
+        <span class="parcela-mini-label">Câmbio Fechado</span>
+        <input type="number" step="0.0001" placeholder="Vazio = usa o câmbio principal" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
+          oninput="_estado.parcelas[${i}].cambio_fechado=this.value">
+      </div>
+      <div>
+        <span class="parcela-mini-label">Valor Recebido do Cliente (USD)</span>
+        <input type="number" step="0.01" placeholder="0,00" value="${pc.valor_recebido_cliente!=null?pc.valor_recebido_cliente:''}"
+          oninput="_estado.parcelas[${i}].valor_recebido_cliente=this.value">
+      </div>
+      <div>
+        <span class="parcela-mini-label">Data Recebimento</span>
+        <input type="date" value="${pc.data_recebimento||''}"
+          oninput="_estado.parcelas[${i}].data_recebimento=this.value">
       </div>
       <button type="button" onclick="removerParcelaCalc(${i})" title="Remover">✕</button>
     </div>
@@ -1952,16 +1998,31 @@ function dadosCapa(r) {
     { label: 'Custos Diversos', brl: r.custos_div },
   ];
   if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
-  // Câmbio de ajuste do FOB (parcela "Ajuste de câmbio", ver PARCELA_ETAPAS_CALC,
-  // em _estado.parcelas) — se preenchida com um valor, usa esse câmbio SÓ pra
-  // converter as linhas de Valor FOB / Total do CIF exibidas na Capa. NÃO afeta
-  // impostos, base_imp_brl nem o restante do cálculo (calcular()), que continuam
-  // usando r.cambio normalmente — confirmado com o usuário que o ajuste vale
-  // só pra Capa (Valor FOB/CIF).
-  const parcelaAjusteCambio = (_estado.parcelas || []).find(p => p.label === 'Ajuste de câmbio' && parseFloat(p.valor_usd) > 0);
-  const cambioCapaFob = parcelaAjusteCambio ? parseFloat(parcelaAjusteCambio.valor_usd) : r.cambio;
-  const fobBrlCapa = r.fob_usd * cambioCapaFob;
+  // Valor FOB/CIF na Capa por Câmbio Fechado de cada parcela (ver
+  // PARCELA_ETAPAS_CALC/_estado.parcelas, mesmos campos do Controle) — SÓ
+  // afeta as linhas de Valor FOB/Total do CIF exibidas na Capa; impostos,
+  // base_imp_brl e o restante do cálculo (calcular()) continuam usando
+  // r.cambio normalmente, sem alteração (confirmado com o usuário).
+  // Fórmula (soma ponderada pelas parcelas, confirmada com o usuário): cada
+  // parcela com Câmbio Fechado preenchido converte a fatia do FOB equivalente
+  // ao seu Valor (USD) por esse câmbio; o que sobrar do FOB (não coberto por
+  // nenhuma parcela) converte pelo câmbio principal da simulação (r.cambio).
+  let fobCobertoUsd = 0, fobCobertoBrl = 0;
+  (_estado.parcelas || []).forEach(p => {
+    const cambioP = parseFloat(p.cambio_fechado);
+    const valorP = parseFloat(p.valor_usd);
+    if(cambioP > 0 && valorP > 0){
+      fobCobertoUsd += valorP;
+      fobCobertoBrl += valorP * cambioP;
+    }
+  });
+  fobCobertoUsd = Math.min(fobCobertoUsd, r.fob_usd); // nunca conta mais do que o FOB total
+  const fobRestanteUsd = Math.max(0, r.fob_usd - fobCobertoUsd);
+  const fobBrlCapa = fobCobertoBrl + (fobRestanteUsd * r.cambio);
   const cifBrlCapa = fobBrlCapa + r.frete_brl + r.seguro_brl;
+  // Câmbio médio efetivo do FOB na Capa (só informativo, pra exibir na nota) —
+  // fobBrlCapa/fob_usd; cai pra r.cambio quando nenhuma parcela tem câmbio fechado.
+  const cambioCapaFob = r.fob_usd > 0 ? (fobBrlCapa / r.fob_usd) : r.cambio;
   return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas, iiCapa, ipiCapa, pisCapa, cofinsCapa, ibsCapa, cbsCapa, cambioCapaFob, fobBrlCapa, cifBrlCapa };
 }
 
@@ -2980,7 +3041,8 @@ function aplicarEstadoFormulario(estado){
     const input = document.getElementById(`tx_${campo}`);
     if(input){ input.readOnly = checked; input.style.background = checked ? '#f5f5f5' : '#fff'; }
   });
-  _estado.parcelas = Array.isArray(estado.parcelas) ? estado.parcelas.map(p => ({...p})) : [];
+  const fobUsdRefEstado = parseFloat(estado.campos && estado.campos.fob_usd) || null;
+  _estado.parcelas = Array.isArray(estado.parcelas) ? estado.parcelas.map(p => normalizarParcelaCalc(p, fobUsdRefEstado)) : [];
   if(typeof renderParcelasCalc === 'function') renderParcelasCalc();
   _estado.processoOrigemId = estado.processo_origem_id || null;
   _estado.mix = estado.mix || null;
