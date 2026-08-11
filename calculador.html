@@ -2095,7 +2095,7 @@ function renderCapaHtml(r) {
 
       <div class="detail-section">
         <div class="detail-title">Custo em Dolar / Valores em Reais</div>
-        ${d.cambioCapaFob !== r.cambio ? `<div style="font-size:10px;color:var(--dim);margin:0 0 8px;">Valor FOB/Total do CIF abaixo convertidos pelo câmbio de ajuste ${d.cambioCapaFob} (parcela "Ajuste de câmbio"), diferente do câmbio principal da simulação (${r.cambio}) usado nos impostos/resultado.</div>` : ''}
+        ${d.cambioCapaFob !== r.cambio ? `<div style="font-size:10px;color:var(--dim);margin:0 0 8px;">Valor FOB/Total do CIF abaixo convertidos pelo câmbio efetivo de ${d.cambioCapaFob} (ponderado pelas parcelas com Câmbio Fechado preenchido), diferente do câmbio principal da simulação (${r.cambio}) usado nos impostos/resultado.</div>` : ''}
         <table class="calc-table">
           <tr><td>Valor FOB</td><td class="num">${fmtUsdCapa(r.fob_usd)}</td><td class="num">${fmtR(d.fobBrlCapa)}</td></tr>
           <tr><td>Frete</td><td class="num">${fmtUsdCapa(r.frete_usd)}</td><td class="num">${fmtR(r.frete_brl)}</td></tr>
