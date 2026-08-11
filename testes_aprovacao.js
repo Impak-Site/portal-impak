@@ -246,10 +246,13 @@ teste('popula itens simples (não porContainer) com {valor, moeda}', () => {
     comissoes: { br: 800, china: 500, boss: 200 },
   };
   const rj = gerarRealJsonInicial(custosCotados);
-  iguais(rj.fob, { valor: 27812.96, moeda: 'USD' });
-  iguais(rj.frete, { valor: 1000, moeda: 'USD' });
-  iguais(rj.seguro, { valor: 50, moeda: 'USD' });
-  iguais(rj.taxa_ce, { valor: 30, moeda: 'USD' });
+  // FIX (a pedido do usuário): fob/frete/seguro/taxa_ce agora chegam do
+  // Calculador já em BRL (convertidos pelo câmbio certo de cada item —
+  // ponderado por parcela, abertura+2%, etc.), não mais em USD puro.
+  iguais(rj.fob, { valor: 27812.96, moeda: 'BRL' });
+  iguais(rj.frete, { valor: 1000, moeda: 'BRL' });
+  iguais(rj.seguro, { valor: 50, moeda: 'BRL' });
+  iguais(rj.taxa_ce, { valor: 30, moeda: 'BRL' });
   iguais(rj.ii, { valor: 5000, moeda: 'BRL' });
   iguais(rj.comissao_br, { valor: 800, moeda: 'BRL' });
 });
@@ -261,8 +264,10 @@ teste('multiplica itens porContainer pela quantidade de containers da cotação'
   };
   const rj = gerarRealJsonInicial(custosCotados);
   // siscomex e handling são porContainer:true → valor unitário × 3 containers
+  // FIX: handling (e as demais Taxas em USD/destino) agora chegam em BRL
+  // (convertidas pelo câmbio de abertura+2% no Calculador), não mais USD puro.
   iguais(rj.siscomex, { valor: 600, moeda: 'BRL' });
-  iguais(rj.handling, { valor: 240, moeda: 'USD' });
+  iguais(rj.handling, { valor: 240, moeda: 'BRL' });
   // armazenagem é porContainer:false → não multiplica
   iguais(rj.armazenagem, { valor: 900, moeda: 'BRL' });
 });
@@ -297,7 +302,8 @@ teste('sem antidumping na cotação (toggle NAO, DUMP=0), vem zerado — não qu
 });
 teste('seguro_venda (nível raiz, distinto do Seguro Compra) é mapeado', () => {
   const rj = gerarRealJsonInicial({ containers: 1, compra: { seguro_usd: 50 }, seguro_venda: 890.5 });
-  iguais(rj.seguro, { valor: 50, moeda: 'USD' });
+  // FIX: seguro (compra) agora chega do Calculador já em BRL, ver testes acima.
+  iguais(rj.seguro, { valor: 50, moeda: 'BRL' });
   iguais(rj.seguro_venda, { valor: 890.5, moeda: 'BRL' });
 });
 
