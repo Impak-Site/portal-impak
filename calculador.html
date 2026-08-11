@@ -1954,6 +1954,7 @@ function calcular() {
     cambio, fob_usd, frete_usd, taxa_ce, containers, tipo, uf, cliente,
     ncm, t,
     fob_brl, frete_brl, seguro_brl, seguro_venda_brl, seguro_compra_usd, seguro_venda_usd, cif_brl, base_imp_brl,
+    taxa_ce_brl, cambioMedio, cambio_chegada_markup,
     II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
     taxas_fixas, taxas_usd_brl, seguro_dif_brl, total_taxas, custos_div,
     imp_custo, custo_total,
@@ -3130,9 +3131,23 @@ function resumoParaLista(r){
     // r.txOp.fixas/usd já vêm por container (exceto armazenagem, que já é
     // total) — mesma base usada pela Capa (dadosCapa) e pelo "Custo Real das
     // Taxas" desta tela (lerCustosReais), reaproveitada aqui em vez de duplicar.
+    // FIX (a pedido do usuário): "Custos Reais" no Controle mostrava FOB/
+    // Frete/Seguro/Taxa C.E. e as Taxas em USD (destino) em dólar puro,
+    // exigindo conversão manual — mas o Calculador já parametriza um câmbio
+    // específico pra cada um desses itens (câmbio ponderado pelas parcelas
+    // pro FOB, câmbio de abertura+2% pro Frete/Seguro/Taxas em USD, câmbio
+    // único da simulação pra Taxa C.E.). Agora tudo já sai em R$, convertido
+    // pelo câmbio correto de cada item — sem exigir conversão manual depois.
+    // (cambio_chegada_markup = cambio_chegada×1,02, mesmo câmbio já usado em
+    // taxas_usd_brl/IOF — ver calcular().)
     custos_cotados_json: {
       cambio: r.cambio, containers: r.containers,
-      compra: { fob: r.fob_usd, frete: r.frete_usd, taxa_ce: r.taxa_ce, seguro_usd: r.seguro_compra_usd },
+      compra: {
+        fob: r.fob_usd * (r.cambioMedio || r.cambio),
+        frete: r.frete_brl,
+        taxa_ce: r.taxa_ce_brl,
+        seguro_usd: r.seguro_brl,
+      },
       // Antidumping (DUMP) entra como imposto — é um direito antidumping (encargo
       // governamental), não tem compra×venda, igual II/IPI/PIS/COFINS/ICMS/IBS/CBS
       // (ver toggle "dump" e cálculo de DUMP em calcular()). Fica 0 quando o
@@ -3140,7 +3155,12 @@ function resumoParaLista(r){
       impostos: { ii: r.II, ipi: r.IPI_e, pis: r.PIS_e, cofins: r.COFINS_e, icms: r.ICMS_e, ibs: r.IBS_e, cbs: r.CBS_e, antidumping: r.DUMP },
       comissoes: { br: r.COM_br, china: r.china_fora_val, boss: r.boss_fora_val },
       taxas_fixas: (r.txOp && r.txOp.fixas) || {},
-      taxas_usd: (r.txOp && r.txOp.usd) || {},
+      // Taxas em USD (destino) — convertidas pro câmbio de abertura+2%
+      // (mesmo usado no cálculo real, cambio_chegada_markup), não mais em
+      // dólar puro.
+      taxas_usd: Object.fromEntries(
+        Object.entries((r.txOp && r.txOp.usd) || {}).map(([k, v]) => [k, (parseFloat(v) || 0) * (r.cambio_chegada_markup || r.cambio)])
+      ),
       custos_diversos: r.custos_div,
       // Seguro de Venda (proposta cliente) — comentário em calcular() já dizia
       // que essa taxa "deve compor as Taxas Operacionais" (compõe total_taxas/
