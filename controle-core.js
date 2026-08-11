@@ -656,12 +656,20 @@ function renderDemurInfo(p){
 // conforme a unidade do item) por chave de item (ver custosReaisItensFlat) —
 // mais simples que o { fixas, usd } por-container original documentado na
 // migration, e cobre também Compra/Impostos/Comissões, não só as 21 taxas.
+// FIX (a pedido do usuário): FOB/Frete/Seguro/Taxa C.E. e as Taxas em USD
+// (destino) eram unidade:'USD' aqui — exigia conversão manual toda vez que
+// alguém abria a aba, mesmo o Calculador já parametrizando um câmbio
+// específico pra cada um desses itens (câmbio ponderado pelas parcelas pro
+// FOB, câmbio de abertura+2% pro Frete/Seguro/Taxas em USD, câmbio único da
+// simulação pra Taxa C.E — ver resumoParaLista() em calculador.html). Agora
+// unidade:'BRL' em todos — os valores que chegam em custos_cotados_json já
+// vêm convertidos pelo câmbio correto de cada item, não mais em dólar puro.
 const CUSTOS_REAIS_CONFIG = [
   { grupo:'Compra e Frete', itens:[
-    { id:'fob',      label:'Custo da mercadoria', unidade:'USD', cotado:c=>c?.compra?.fob },
-    { id:'frete',    label:'Frete Internacional',  unidade:'USD', cotado:c=>c?.compra?.frete },
-    { id:'seguro',   label:'Seguro',               unidade:'USD', cotado:c=>c?.compra?.seguro_usd },
-    { id:'taxa_ce',  label:'Taxa C.E.',            unidade:'USD', cotado:c=>c?.compra?.taxa_ce },
+    { id:'fob',      label:'Custo da mercadoria', unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.fob },
+    { id:'frete',    label:'Frete Internacional',  unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.frete },
+    { id:'seguro',   label:'Seguro',               unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.seguro_usd },
+    { id:'taxa_ce',  label:'Taxa C.E.',            unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.taxa_ce },
   ]},
   // apenasPago:true = imposto não tem "compra × venda" — é só um valor a
   // pagar pro governo, sempre em R$, sem contrapartida cobrada do cliente
@@ -708,15 +716,15 @@ const CUSTOS_REAIS_CONFIG = [
     // compõe total_taxas/custo_total no Calculador (ver comentário em
     // calcular(), "deve compor as Taxas Operacionais").
     { id:'seguro_venda',    label:'Seguro de Venda',         unidade:'BRL', porContainer:false, cotado:c=>c?.seguro_venda },
-    { id:'handling',         label:'Handling at Destination', unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.handling },
-    { id:'additional_costs', label:'Additional Costs',        unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.additional_costs },
-    { id:'import_logistics', label:'Import Logistics',        unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.import_logistics },
-    { id:'trs',              label:'TRS',                     unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.trs },
-    { id:'tsc',              label:'TSC',                     unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.tsc },
-    { id:'drop_off',         label:'Drop Off',                unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.drop_off },
-    { id:'isps',             label:'ISPS',                    unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.isps },
-    { id:'iof',              label:'IOF',                     unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.iof },
-    { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.desconsolidacao },
+    { id:'handling',         label:'Handling at Destination', unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.handling },
+    { id:'additional_costs', label:'Additional Costs',        unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.additional_costs },
+    { id:'import_logistics', label:'Import Logistics',        unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.import_logistics },
+    { id:'trs',              label:'TRS',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.trs },
+    { id:'tsc',              label:'TSC',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.tsc },
+    { id:'drop_off',         label:'Drop Off',                unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.drop_off },
+    { id:'isps',             label:'ISPS',                    unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.isps },
+    { id:'iof',              label:'IOF',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.iof },
+    { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.desconsolidacao },
   ]},
 ];
 
@@ -816,11 +824,18 @@ function normalizarValorRealItem(raw, item, p){
     }
     return null;
   }
-  // legado: número (ou string numérica) puro, na moeda padrão do item
+  // legado: número (ou string numérica) puro, sem objeto {valor,moeda} — só
+  // existe em processos criados ANTES do multi-moeda (task #159). Usa
+  // unidadeLegado quando existe (itens que mudaram de padrão USD->BRL nesta
+  // correção — ver comentário no topo de CUSTOS_REAIS_CONFIG) pra não
+  // reinterpretar retroativamente valores antigos que foram salvos em USD
+  // como se já fossem BRL. Itens que sempre foram BRL não têm
+  // unidadeLegado, então caem direto em item.unidade (sem mudança).
+  const unidadeParaLegado = item.unidadeLegado || item.unidade;
   const valor = parseFloat(raw);
   if(isNaN(valor)) return null;
-  const cambio = taxaCambioMoedaReal(item.unidade, p);
-  return { totalBrl: item.unidade === 'BRL' ? valor : valor * (cambio || 0), count:1, moeda:item.unidade };
+  const cambio = taxaCambioMoedaReal(unidadeParaLegado, p);
+  return { totalBrl: unidadeParaLegado === 'BRL' ? valor : valor * (cambio || 0), count:1, moeda:unidadeParaLegado };
 }
 
 // Valor COTADO de um item, já no TOTAL do processo (multiplicado pelos
