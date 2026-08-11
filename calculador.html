@@ -1952,7 +1952,17 @@ function dadosCapa(r) {
     { label: 'Custos Diversos', brl: r.custos_div },
   ];
   if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
-  return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas, iiCapa, ipiCapa, pisCapa, cofinsCapa, ibsCapa, cbsCapa };
+  // Câmbio de ajuste do FOB (parcela "Ajuste de câmbio", ver PARCELA_ETAPAS_CALC,
+  // em _estado.parcelas) — se preenchida com um valor, usa esse câmbio SÓ pra
+  // converter as linhas de Valor FOB / Total do CIF exibidas na Capa. NÃO afeta
+  // impostos, base_imp_brl nem o restante do cálculo (calcular()), que continuam
+  // usando r.cambio normalmente — confirmado com o usuário que o ajuste vale
+  // só pra Capa (Valor FOB/CIF).
+  const parcelaAjusteCambio = (_estado.parcelas || []).find(p => p.label === 'Ajuste de câmbio' && parseFloat(p.valor_usd) > 0);
+  const cambioCapaFob = parcelaAjusteCambio ? parseFloat(parcelaAjusteCambio.valor_usd) : r.cambio;
+  const fobBrlCapa = r.fob_usd * cambioCapaFob;
+  const cifBrlCapa = fobBrlCapa + r.frete_brl + r.seguro_brl;
+  return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas, iiCapa, ipiCapa, pisCapa, cofinsCapa, ibsCapa, cbsCapa, cambioCapaFob, fobBrlCapa, cifBrlCapa };
 }
 
 // ── RENDER HTML — secao "Capa" na tela de Resultado ────────────────
@@ -2024,12 +2034,13 @@ function renderCapaHtml(r) {
 
       <div class="detail-section">
         <div class="detail-title">Custo em Dolar / Valores em Reais</div>
+        ${d.cambioCapaFob !== r.cambio ? `<div style="font-size:10px;color:var(--dim);margin:0 0 8px;">Valor FOB/Total do CIF abaixo convertidos pelo câmbio de ajuste ${d.cambioCapaFob} (parcela "Ajuste de câmbio"), diferente do câmbio principal da simulação (${r.cambio}) usado nos impostos/resultado.</div>` : ''}
         <table class="calc-table">
-          <tr><td>Valor FOB</td><td class="num">${fmtUsdCapa(r.fob_usd)}</td><td class="num">${fmtR(r.fob_brl)}</td></tr>
+          <tr><td>Valor FOB</td><td class="num">${fmtUsdCapa(r.fob_usd)}</td><td class="num">${fmtR(d.fobBrlCapa)}</td></tr>
           <tr><td>Frete</td><td class="num">${fmtUsdCapa(r.frete_usd)}</td><td class="num">${fmtR(r.frete_brl)}</td></tr>
           <tr><td>Seguro</td><td class="num">${fmtUsdCapa(r.seguro_compra_usd)}</td><td class="num">${fmtR(r.seguro_brl)}</td></tr>
           <tr><td>Taxa do C.E. (Duimp)</td><td class="num">${fmtUsdCapa(r.taxa_ce)}</td><td class="num">${fmtR(r.taxa_ce*r.cambio)}</td></tr>
-          <tr class="total-row"><td>Total do CIF</td><td></td><td class="num">${fmtR(r.cif_brl)}</td></tr>
+          <tr class="total-row"><td>Total do CIF</td><td></td><td class="num">${fmtR(d.cifBrlCapa)}</td></tr>
         </table>
       </div>
 
@@ -2701,11 +2712,12 @@ async function exportarExcel() {
     addCapa('info', 'Dolar:', r.cambio, '', '');
     addCapa('blank');
     addCapa('cabecalho', 'DOLAR', r.cambio, 'CUSTO EM DOLAR', 'VALORES EM REAIS');
-    addCapa('dado', 'Valor FOB', r.fob_usd, r.fob_usd, fmtR(r.fob_brl));
+    if(dCapa.cambioCapaFob !== r.cambio) addCapa('info', 'Cambio de ajuste (Valor FOB/CIF):', dCapa.cambioCapaFob, '', '');
+    addCapa('dado', 'Valor FOB', r.fob_usd, r.fob_usd, fmtR(dCapa.fobBrlCapa));
     addCapa('dado', 'Frete', r.frete_usd, r.frete_usd, fmtR(r.frete_brl));
     addCapa('dado', 'Seguro', fmtR(r.seguro_compra_usd), fmtR(r.seguro_compra_usd), fmtR(r.seguro_brl));
     addCapa('dado', 'Taxa do C.E. (Duimp)', r.taxa_ce, r.taxa_ce, fmtR(r.taxa_ce*r.cambio));
-    addCapa('total', 'Total do CIF', '', '', fmtR(r.cif_brl));
+    addCapa('total', 'Total do CIF', '', '', fmtR(dCapa.cifBrlCapa));
     addCapa('blank');
     addCapa('secao', 'TRIBUTOS (ENTRADA)');
     addCapa('dado', 'Aliquota I.I.', pct(r.t.ii), '', fmtR(r.II));
