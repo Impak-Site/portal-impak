@@ -1069,9 +1069,13 @@ async function autocompletarClienteCalc(input){
         item.addEventListener('mouseover', ()=>{ item.style.background='var(--bg)'; });
         item.addEventListener('mouseout', ()=>{ item.style.background=''; });
         item.addEventListener('click', ()=>{
-          document.getElementById('cliente').value = c.razao_social;
-          dd.style.display='none';
-        });
+document.getElementById('cliente').value = c.razao_social;
+if(c.uf){
+const ufSel = document.getElementById('uf_destino');
+if(ufSel){ ufSel.value = c.uf; if(typeof onUFChange==='function') onUFChange(); }
+}
+dd.style.display='none';
+});
         dd.appendChild(item);
       });
       posicionarClienteCalcDropdown(input, dd);
