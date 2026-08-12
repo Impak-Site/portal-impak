@@ -2033,8 +2033,8 @@ const cofinsCapa = r.COFINS_e;
 const icmsCapa = r.ICMS_e;
 const ibsCapa = r.IBS_e;
 const cbsCapa = r.CBS_e;
-  const totalCreditos = -(ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa + icmsCapa);
-  const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + icmsCapa + ibsCapa + cbsCapa + r.DUMP;
+const totalCreditos = -(ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa);
+const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa + r.DUMP;
   const despesas = [
     { label: 'Taxa SISCOMEX', brl: r.txOp.fixas.siscomex * r.containers },
     { label: 'A.F.R.M (Marinha Mercante)', brl: r.txOp.fixas.marinha * r.containers },
@@ -2167,7 +2167,6 @@ function renderCapaHtml(r) {
           <tr><td>Aliquota I.P.I (${pct(r.t.ipi)})</td><td class="num">${fmtR(d.ipiCapa)}</td></tr>
           <tr><td>Aliquota PIS (PIS-E) (${pct(r.t.pis_e)})</td><td class="num">${fmtR(d.pisCapa)}</td></tr>
           <tr><td>Aliquota COFINS (COFINS-E) (${pct(r.t.cofins_e)})</td><td class="num">${fmtR(d.cofinsCapa)}</td></tr>
-          <tr><td>Aliquota ICMS (ICMS-E) (1,00%)</td><td class="num">${fmtR(d.icmsCapa)}</td></tr>
           <tr><td>Aliquota IBS (IBS-E) (${pct(r.t.ibs)})</td><td class="num">${fmtR(d.ibsCapa)}</td></tr>
           <tr><td>Aliquota CBS (CBS-E) (${pct(r.t.cbs)})</td><td class="num">${fmtR(d.cbsCapa)}</td></tr>
           ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
@@ -2181,7 +2180,6 @@ function renderCapaHtml(r) {
           <tr><td>IPI</td><td class="num">${fmtR(-r.IPI_e)}</td></tr>
           <tr><td>PIS</td><td class="num">${fmtR(-r.PIS_e)}</td></tr>
           <tr><td>COFINS</td><td class="num">${fmtR(-r.COFINS_e)}</td></tr>
-          <tr><td>ICMS</td><td class="num">${fmtR(-d.icmsCapa)}</td></tr>
           <tr><td>IBS</td><td class="num">${fmtR(-r.IBS_e)}</td></tr>
           <tr><td>CBS</td><td class="num">${fmtR(-r.CBS_e)}</td></tr>
           <tr class="destaque-row"><td>TOTAL DOS CREDITOS</td><td class="num">${fmtR(d.totalCreditos)}</td></tr>
@@ -2844,7 +2842,6 @@ async function exportarExcel() {
     addCapa('dado', 'Aliquota I.P.I', pct(r.t.ipi), '', fmtR(r.IPI_e));
     addCapa('dado', 'Aliquota PIS (PIS-E)', pct(r.t.pis_e), '', fmtR(r.PIS_e));
     addCapa('dado', 'Aliquota COFINS (COFINS-E)', pct(r.t.cofins_e), '', fmtR(r.COFINS_e));
-    addCapa('dado', 'Aliquota ICMS (ICMS-E)', '1,00%', '', fmtR(dCapa.icmsCapa));
     addCapa('dado', 'Aliquota IBS (IBS-E)', pct(r.t.ibs), '', fmtR(r.IBS_e));
     addCapa('dado', 'Aliquota CBS (CBS-E)', pct(r.t.cbs), '', fmtR(r.CBS_e));
     if(r.DUMP > 0) addCapa('dado', 'Dumping', '', '', fmtR(r.DUMP));
@@ -2854,7 +2851,6 @@ async function exportarExcel() {
     addCapa('dado', 'IPI', '', '', fmtR(-r.IPI_e));
     addCapa('dado', 'PIS', '', '', fmtR(-r.PIS_e));
     addCapa('dado', 'COFINS', '', '', fmtR(-r.COFINS_e));
-    addCapa('dado', 'ICMS', '', '', fmtR(-dCapa.icmsCapa));
     addCapa('dado', 'IBS', '', '', fmtR(-r.IBS_e));
     addCapa('dado', 'CBS', '', '', fmtR(-r.CBS_e));
     addCapa('total', 'TOTAL DOS CREDITOS', '', '', fmtR(dCapa.totalCreditos));
