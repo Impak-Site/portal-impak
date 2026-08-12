@@ -698,7 +698,17 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       const el = document.getElementById('f_'+campo);
       if(!el) return;
       if(camposMoedaIA.includes(campo)) val = exibirMoeda(val);
-      const podeSobrescrever = camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo) || foiPreenchidoPorIA(campo);
+      // Campos específicos de um tipo de documento (ex: CE Master/House só
+      // existem num CE Mercante) não podem ser sobrescritos por uma leitura de
+      // IA de um documento de OUTRO tipo, mesmo que já tenham sido preenchidos
+      // pela IA antes nesta sessão — antes, foiPreenchidoPorIA(campo) sozinho
+      // liberava a sobrescrita por QUALQUER leitura seguinte, então ler uma
+      // DUIMP/DI depois de ler um CE Mercante no mesmo processo podia apagar ou
+      // trocar CE Master/House com um valor mal interpretado do documento de DI
+      // (que não é CE Mercante e não deveria mexer nesses campos).
+      const camposRestritosATipoDoc = ['ce_master','ce_house','ce_data_embarque'];
+      const restritoEBloqueado = camposRestritosATipoDoc.includes(campo) && !ehCeMercante;
+      const podeSobrescrever = !restritoEBloqueado && (camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo) || foiPreenchidoPorIA(campo));
       // Porto Destino é <select> agora — não aceita texto livre direto.
       // Normaliza pro código (ITJ/IOA/NVT) e, se não bater com nenhum,
       // reconstrói as opções incluindo o valor extraído como fallback
