@@ -132,6 +132,11 @@ window.addEventListener('DOMContentLoaded', function(){
     // server.js), mas evita mostrar um link "quebrado" (403) pra quem não
     // tem acesso.
     document.getElementById('menu-narcelio')?.style.setProperty('display', ['narcelio','suporte'].includes(d.usuario) ? '' : 'none');
+// Botão "Gerar Follow-up Semanal" (task #327): só visível pra usuários
+// gerente — mesma role já usada pelo back-end em POST /api/admin/
+// followup-semanal (ver server.js), cosmético aqui (a proteção real é
+// o back-end checar req.session.role==='gerente').
+document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.role==='gerente' ? '' : 'none');
     carregarCambio();
     carregarProcessos().then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
@@ -284,6 +289,21 @@ async function reabrirProcesso(id){
     const p = _processos.find(p=>p.id===id);
     if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
   } else showToast('Erro ao reabrir: '+(d.erro||''),'err');
+}
+
+// Dispara na hora o e-mail de follow-up semanal (task #327) — mesma rota
+// usada pelo job automático de domingo (ver server.js,
+// POST /api/admin/followup-semanal), só que sob demanda. Restrito a
+// gerente no back-end; o botão em si já fica escondido no boot (ver
+// DOMContentLoaded acima) pra quem não é gerente.
+async function gerarFollowUpManual(){
+showToast('Gerando follow-up semanal...','info');
+try{
+const r = await fetch('/api/admin/followup-semanal', { method:'POST' });
+const d = await r.json();
+if(d.ok) showToast(`✓ Follow-up enviado (${d.processos} processo${d.processos===1?'':'s'})`,'ok');
+else showToast('Erro ao gerar follow-up: '+(d.erro||''),'err');
+}catch(e){ showToast('Erro de rede ao gerar follow-up: '+e.message,'err'); }
 }
 
 // ════════════════════════════════════════════════════════════════
