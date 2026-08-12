@@ -2018,23 +2018,21 @@ function dadosCapa(r) {
   // FOB + Frete + Seguro + Taxa C.E. sempre pelo cambio unico da simulacao
   // (r.cambio), a pedido do usuario. Nao afeta o restante do calculador —
   // as demais telas continuam usando r.II/r.IPI_e/etc do calcular().
-  const baseImpCapa = (r.fob_usd + r.frete_usd + r.seguro_compra_usd + r.taxa_ce) * r.cambio;
-  const baseImpOriginalCapa = (r.fob_usd + r.frete_usd) * r.cambio + r.seguro_brl + r.taxa_ce * r.cambio;
-  const extraIbsCbsCapa = (r.IBS_e / r.t.ibs) - (baseImpOriginalCapa + r.II);
-  const iiCapa = baseImpCapa * r.t.ii;
-  const ipiCapa = (baseImpCapa + iiCapa) * r.t.ipi;
-  const pisCapa = baseImpCapa * r.t.pis_e;
-  const cofinsCapa = baseImpCapa * r.t.cofins_e;
-  const ibsCapa = (baseImpCapa + iiCapa + extraIbsCbsCapa) * r.t.ibs;
-  const cbsCapa = (baseImpCapa + iiCapa + extraIbsCbsCapa) * r.t.cbs;
-  // ICMS de entrada (importação) — mesma fórmula do ICMS_e principal (ver
-  // calcular()), só que na base da Capa: ((base + II+IPI+PIS+COFINS+Siscomex+
-  // Dumping+AFRMM)/0,96)×1%. FIX: estava totalmente ausente da Capa — não
-  // aparecia em Tributos nem tinha o crédito correspondente em Créditos de
-  // Entrada (confirmado pelo usuário comparando com a planilha feita à mão).
-  const siscomexCapa = r.txOp.fixas.siscomex * r.containers;
-  const afrmmCapa = r.txOp.fixas.marinha * r.containers;
-  const icmsCapa = ((baseImpCapa + iiCapa + ipiCapa + pisCapa + cofinsCapa + siscomexCapa + r.DUMP + afrmmCapa) / 0.96) * 0.01;
+  // FIX: dadosCapa() recalculava II/IPI/PIS/COFINS/ICMS/IBS/CBS do zero com uma
+// base propria (baseImpCapa, cambio unico da simulacao), diferente da
+// base_imp_brl usada em calcular() (cambio medio ultimos 2 dias/D.I.-DUIMP).
+// Isso fazia o painel "Tributos (Entrada)" da Capa/Demonstrativo divergir do
+// resto do sistema e da planilha real (confirmado comparando planilha
+// UD26-002: os tributos da Capa tem que ser EXATAMENTE os mesmos de
+// calcular(), nao uma segunda formula em paralelo). Agora reaproveita os
+// valores ja corretos, eliminando a duplicidade.
+const iiCapa = r.II;
+const ipiCapa = r.IPI_e;
+const pisCapa = r.PIS_e;
+const cofinsCapa = r.COFINS_e;
+const icmsCapa = r.ICMS_e;
+const ibsCapa = r.IBS_e;
+const cbsCapa = r.CBS_e;
   const totalCreditos = -(ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa + icmsCapa);
   const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + icmsCapa + ibsCapa + cbsCapa + r.DUMP;
   const despesas = [
