@@ -283,6 +283,10 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
           <label>Câmbio Abertura do Dia da Chegada</label>
           <input type="number" id="cambio_chegada" onchange="onAutoTaxaDepChange()" step="0.0001" placeholder="Vazio = usa o câmbio principal">
         </div>
+        <div class="form-group">
+        <label>Câmbio Médio Últimos 2 Dias (D.I./DUIMP)</label>
+        <input type="number" id="cambio_medio_di" onchange="onAutoTaxaDepChange()" step="0.0001" placeholder="Vazio = usa o câmbio principal">
+        </div>
       </div>
     </div>
 
@@ -1617,7 +1621,9 @@ function calcular() {
   // usados em fob_brl/frete_brl (esses só valem pro custo real/CIF, porque a
   // Receita usa a PTAX/câmbio de referência único na Declaração de Importação,
   // não o câmbio comercial negociado por parcela).
-  const base_imp_brl = (fob_usd + frete_usd) * cambio + seguro_brl + taxa_ce_brl;
+  const cambioMedioDiInput = parseFloat(document.getElementById('cambio_medio_di').value);
+const cambioMedioDI = cambioMedioDiInput || cambio;
+const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambioMedioDI;
 
   // ── 3. Impostos de entrada (créditos) ──
   const II       = base_imp_brl * t.ii;
@@ -1648,7 +1654,8 @@ function calcular() {
   // parte da fórmula automática. Confirmado numérico exato: (2050×5,0827+1100)×8%+20
   // = R$941,56 (bate com a planilha real da UD25-305, sem nenhuma diferença).
   const capatazia_brl = txOpPre.fixas.capatazia * containers;
-  const marinha_auto = (((frete_usd * cambio) + capatazia_brl) * 0.08) + 20;
+  const taxaCeParaAfrmm = taxa_ce === 0 ? 2000 : (taxa_ce * cambioMedioDI);
+const marinha_auto = (((frete_usd * cambioMedioDI) + taxaCeParaAfrmm + capatazia_brl) * 0.08) + 20;
   const autoMarinhaChk = document.getElementById('auto_marinha');
   if(!autoMarinhaChk || autoMarinhaChk.checked){
     document.getElementById('tx_marinha').value = marinha_auto.toFixed(2);
