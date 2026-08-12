@@ -2221,6 +2221,144 @@ app.get('/api/controle/processos/:id/prefill-cotacao', auth('processos'), async 
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
+// ── FOLLOW-UP SEMANAL POR E-MAIL (processos com ETA próxima) ────
+// Toda semana, junta os processos ativos com chegada prevista (ETA) nos
+// próximos 10 dias, agrupa por cliente, e manda por e-mail pra Ayslan e
+// Emanuelly conferirem — Emanuelly repassa manualmente ao cliente depois
+// (não vai direto pro cliente, de propósito: é um rascunho pra revisão).
+// Pede também a transportadora de cada processo, pra dar tempo hábil de
+// organizar a retirada assim que a carga desembaraçar.
+const FOLLOWUP_DIAS_JANELA = 10;
+const FOLLOWUP_DESTINATARIOS = ['ayslan_pereira@hotmail.com', 'importacao1@impak.com.br'];
+
+async function processosParaFollowUpSemanal(){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const limite = new Date(hoje); limite.setDate(hoje.getDate() + FOLLOWUP_DIAS_JANELA);
+  const hojeStr = hoje.toISOString().split('T')[0];
+  const limiteStr = limite.toISOString().split('T')[0];
+
+  const { data, error } = await sb()
+    .from('controle_processos')
+    .select('id, referencia, cliente, fornecedor, produto, produtos_json, eta, porto_destino, armador, navio, transportadora, fase')
+    .not('eta', 'is', null)
+    .gte('eta', hojeStr)
+    .lte('eta', limiteStr)
+    .neq('fase', 'FINALIZADO')
+    .order('eta', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+function descricaoProdutos(p){
+  try{
+    if (p.produtos_json) {
+      const itens = JSON.parse(p.produtos_json).filter(it => it && it.descricao);
+      if (itens.length) return itens.map(it => it.descricao + (it.quantidade ? ` (${it.quantidade})` : '')).join(', ');
+    }
+  } catch(e) { /* ignora produtos_json malformado, cai no campo legado abaixo */ }
+  return p.produto || '—';
+}
+
+function montarHtmlFollowUpSemanal(processos){
+  const escHtml = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+  const fmtData = iso => { try { return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR'); } catch(e) { return iso || '—'; } };
+
+  const porCliente = {};
+  processos.forEach(p => {
+    const chave = p.cliente || '(cliente não definido)';
+    (porCliente[chave] = porCliente[chave] || []).push(p);
+  });
+
+  const blocosCliente = Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(cliente => {
+    const linhas = porCliente[cliente].map(p => `
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-weight:600;">${escHtml(p.referencia)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.fornecedor)||'—'}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(descricaoProdutos(p))}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">${fmtData(p.eta)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.porto_destino)||'—'}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.navio)||'—'}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:${p.transportadora?'#166534':'#b45309'};font-weight:600;">${escHtml(p.transportadora)||'⚠ a definir'}</td>
+      </tr>`).join('');
+    return `
+      <div style="margin-bottom:24px;">
+        <div style="font-size:15px;font-weight:700;color:#0a2d5e;margin-bottom:8px;">${escHtml(cliente)}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:sans-serif;">
+          <thead>
+            <tr style="background:#f3f4f6;">
+              <th style="padding:8px 10px;text-align:left;">Referência</th>
+              <th style="padding:8px 10px;text-align:left;">Fornecedor</th>
+              <th style="padding:8px 10px;text-align:left;">Produto</th>
+              <th style="padding:8px 10px;text-align:center;">ETA</th>
+              <th style="padding:8px 10px;text-align:left;">Destino</th>
+              <th style="padding:8px 10px;text-align:left;">Navio</th>
+              <th style="padding:8px 10px;text-align:left;">Transportadora</th>
+            </tr>
+          </thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  return `
+    <div style="font-family:sans-serif;max-width:760px;margin:0 auto;">
+      <h2 style="color:#1a7fd4;margin-bottom:4px;">IMPAK — Follow-up Semanal</h2>
+      <p style="color:#444;font-size:13px;margin-top:0;">Processos com chegada prevista (ETA) nos próximos ${FOLLOWUP_DIAS_JANELA} dias, agrupados por cliente.</p>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#92400e;">
+        ⚠ <strong>Pedir a transportadora de cada processo</strong> o quanto antes — as linhas marcadas "a definir" ainda não têm transportadora informada no sistema. Isso dá tempo hábil pra organizar a retirada assim que a carga desembaraçar.
+      </div>
+      ${blocosCliente || '<p style="color:#666;">Nenhum processo com ETA nos próximos ' + FOLLOWUP_DIAS_JANELA + ' dias.</p>'}
+      <p style="font-size:11px;color:#888;margin-top:24px;">Este e-mail é um rascunho interno para conferência — Emanuelly revisa e repassa manualmente aos clientes depois de confirmar os dados.</p>
+    </div>`;
+}
+
+async function jaEnviouFollowUpHoje(){
+  const { data } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'followup_semanal').maybeSingle();
+  if (!data || !data.last_run_at) return false;
+  const ultima = new Date(data.last_run_at);
+  const hoje = new Date();
+  return ultima.getFullYear() === hoje.getFullYear() && ultima.getMonth() === hoje.getMonth() && ultima.getDate() === hoje.getDate();
+}
+
+async function marcarFollowUpEnviadoHoje(){
+  await sb().from('app_job_runs').upsert({ job_name: 'followup_semanal', last_run_at: new Date().toISOString() });
+}
+
+async function enviarFollowUpSemanal(){
+  const processos = await processosParaFollowUpSemanal();
+  const html = montarHtmlFollowUpSemanal(processos);
+  const assunto = `IMPAK — Follow-up Semanal (${processos.length} processo${processos.length===1?'':'s'} com ETA próxima)`;
+  for (const destinatario of FOLLOWUP_DESTINATARIOS) {
+    await enviarEmail(destinatario, assunto, html);
+  }
+  await marcarFollowUpEnviadoHoje();
+  return processos.length;
+}
+
+// Checagem a cada 30 min: dispara automaticamente todo domingo (uma vez só
+// por dia, mesmo que o servidor reinicie no meio do domingo — ver
+// jaEnviouFollowUpHoje/app_job_runs). Sem lib de cron: o processo do
+// Railway fica sempre no ar, então um setInterval simples cobre o caso.
+setInterval(() => {
+  const agora = new Date();
+  if (agora.getDay() !== 0) return; // 0 = domingo
+  jaEnviouFollowUpHoje().then(ja => {
+    if (ja) return;
+    enviarFollowUpSemanal()
+      .then(n => console.log(`✓ Follow-up semanal enviado (${n} processos)`))
+      .catch(e => console.error('Erro no follow-up semanal:', e.message));
+  }).catch(e => console.error('Erro ao checar follow-up semanal:', e.message));
+}, 30 * 60 * 1000);
+
+// Disparo manual pra testar sem esperar domingo — restrito a gerente.
+app.post('/api/admin/followup-semanal', (req, res) => {
+  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+  enviarFollowUpSemanal()
+    .then(n => res.json({ ok: true, processos: n }))
+    .catch(e => res.status(500).json({ ok: false, erro: e.message }));
+});
+
 // ── TRATAMENTO DE ERRO GENÉRICO ────────────────────────────────
 // Captura qualquer erro não tratado que escape de uma rota (ex: exceção
 // síncrona, erro de parsing) antes que o Express devolva sua página de
