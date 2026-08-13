@@ -2359,6 +2359,73 @@ app.post('/api/admin/followup-semanal', (req, res) => {
     .catch(e => res.status(500).json({ ok: false, erro: e.message }));
 });
 
+// ── ALERTAS DIÁRIOS (demurrage crítico, ETA vencido, ETA na semana, PI vencida) ──
+async function jaEnviouAlertasHoje(){
+const { data } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'alertas_diarios').maybeSingle();
+if (!data || !data.last_run_at) return false;
+const ultima = new Date(data.last_run_at);
+const hoje = new Date();
+return ultima.getFullYear() === hoje.getFullYear() && ultima.getMonth() === hoje.getMonth() && ultima.getDate() === hoje.getDate();
+}
+
+async function marcarAlertasEnviadosHoje(){
+await sb().from('app_job_runs').upsert({ job_name: 'alertas_diarios', last_run_at: new Date().toISOString() });
+}
+
+async function verificarAlertasDiarios(){
+const { data: processos, error } = await sb().from('controle_processos').select('*').order('updated_at', { ascending: false });
+if (error) { console.error('Erro ao buscar processos p/ alertas diarios:', error.message); return 0; }
+const hoje = new Date();
+const semana = new Date(hoje); semana.setDate(hoje.getDate() + 7);
+const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO');
+function demDias(p){
+if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
+const d = new Date(p.demurrage_vencimento);
+return Math.ceil((d - hoje) / 86400000);
+}
+const demCrit = ativos.filter(p => { const d = demDias(p); return d !== null && d <= 5; });
+const etaVenc = ativos.filter(p => p.eta && p.fase === 'EMBARCADO' && new Date(p.eta) < hoje);
+const etaSem = ativos.filter(p => p.eta && new Date(p.eta) >= hoje && new Date(p.eta) <= semana && p.fase === 'EMBARCADO');
+const piVenc = ativos.filter(p => p.pi_data_saldo && !p.pi_pago && new Date(p.pi_data_saldo) < hoje);
+const total = demCrit.length + etaVenc.length + etaSem.length + piVenc.length;
+if (!total) { await marcarAlertasEnviadosHoje(); return 0; }
+const linhaProc = (p, extra) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.referencia || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.cliente || p.fornecedor || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.fase || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${extra}</td></tr>`;
+const tabela = (titulo, itens, extraFn) => itens.length ? `<h3 style="margin:20px 0 8px;color:#333;">${titulo} (${itens.length})</h3><table style="width:100%;border-collapse:collapse;font-size:13px;"><tr><th style="text-align:left;padding:6px 10px;">Referencia</th><th style="text-align:left;padding:6px 10px;">Cliente/Fornecedor</th><th style="text-align:left;padding:6px 10px;">Fase</th><th style="text-align:left;padding:6px 10px;"></th></tr>${itens.map(p => linhaProc(p, extraFn(p))).join('')}</table>` : '';
+let html = `<div style="font-family:sans-serif;max-width:640px;margin:0 auto;"><h2 style="color:#1a7fd4;">IMPAK Portal - Alertas do dia (${hoje.toLocaleDateString('pt-BR')})</h2>`;
+html += tabela('Demurrage critico (ate 5 dias)', demCrit, p => { const d = demDias(p); return d < 0 ? `Vencido ha ${-d}d` : `Vence em ${d}d`; });
+html += tabela('ETA vencido (ainda embarcado)', etaVenc, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
+html += tabela('Chegando essa semana', etaSem, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
+html += tabela('PI vencida (saldo nao pago)', piVenc, p => `Venceu: ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}${p.pi_valor_usd ? ' - US$ ' + Number(p.pi_valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2}) : ''}`);
+html += `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automatico diario do IMPAK Portal.</p></div>`;
+let destinatarios = (process.env.ALERTA_EMAIL_PARA || '').split(',').map(s => s.trim()).filter(Boolean);
+if (!destinatarios.length) {
+destinatarios = [..._usuariosCache.values()].filter(u => u.role === 'gerente' && u.email).map(u => u.email);
+}
+for (const email of destinatarios) {
+try { await enviarEmail(email, `IMPAK Portal - ${total} alerta(s) hoje`, html); }
+catch (e) { console.error(`Erro ao enviar e-mail de alerta pra ${email}:`, e.message); }
+}
+await marcarAlertasEnviadosHoje();
+return total;
+}
+
+function agendarAlertasDiarios(){
+setInterval(() => {
+jaEnviouAlertasHoje().then(ja => {
+if (ja) return;
+verificarAlertasDiarios().catch(e => console.error('Erro nos alertas diarios:', e.message));
+}).catch(e => console.error('Erro ao checar alertas diarios:', e.message));
+}, 30 * 60 * 1000); // checa a cada 30min; só dispara 1x/dia (controlado por app_job_runs)
+}
+
+app.post('/api/admin/alertas-diarios', (req, res) => {
+if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+verificarAlertasDiarios()
+.then(n => res.json({ ok: true, total: n || 0 }))
+.catch(e => res.status(500).json({ ok: false, erro: e.message }));
+});
+
 // ── TRATAMENTO DE ERRO GENÉRICO ────────────────────────────────
 // Captura qualquer erro não tratado que escape de uma rota (ex: exceção
 // síncrona, erro de parsing) antes que o Express devolva sua página de
@@ -2375,5 +2442,6 @@ app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
   console.log(`Variáveis de ambiente carregadas: ${Object.keys(process.env).filter(k=>k.includes('ANTHROPIC')||k.includes('SUPABASE')).join(', ')}`);
   console.log(`ANTHROPIC_API_KEY presente: ${!!process.env.ANTHROPIC_API_KEY} | tamanho: ${(process.env.ANTHROPIC_API_KEY||'').length}`);
-  sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
+  agendarAlertasDiarios();
+sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
 });
