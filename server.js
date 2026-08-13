@@ -2229,7 +2229,7 @@ app.get('/api/controle/processos/:id/prefill-cotacao', auth('processos'), async 
 // Pede também a transportadora de cada processo, pra dar tempo hábil de
 // organizar a retirada assim que a carga desembaraçar.
 const FOLLOWUP_DIAS_JANELA = 10;
-const FOLLOWUP_DESTINATARIOS = ['ayslan_pereira@hotmail.com', 'importacao1@impak.com.br'];
+const FOLLOWUP_DESTINATARIOS = ['suporte@impak.com.br']; // so suporte@impak.com.br por enquanto: a conta Resend ainda nao tem dominio verificado (task #147) e em modo sandbox so entrega pro proprio email da conta. Depois de verificar o dominio, pode voltar a incluir outros destinatarios (Ayslan, Emanuelly, etc).
 
 async function processosParaFollowUpSemanal(){
   const hoje = new Date(); hoje.setHours(0,0,0,0);
