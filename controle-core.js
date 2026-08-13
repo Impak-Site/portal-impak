@@ -1604,7 +1604,8 @@ function filtrarProcessos(){
     (p.numero_di||'').toLowerCase().includes(q)||
     (p.navio||'').toLowerCase().includes(q)||
     (p.armador||'').toLowerCase().includes(q)||
-    (p.booking_numero||'').toLowerCase().includes(q)
+    (p.booking_numero||'').toLowerCase().includes(q)||
+    (p.brand||'').toLowerCase().includes(q)
   );
 
   // Filtro por data
