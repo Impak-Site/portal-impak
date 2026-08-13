@@ -1488,13 +1488,21 @@ function renderStats(){
   const demurCrit = _processos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
   const chegando7d = _processos.filter(p => chegandoEmDias(p,7)).length;
 
-  const stats = [
+  const refsDuplicadas = (() => {
+const norm = s => (s||'').toString().trim().toUpperCase().replace(/\s+/g,'');
+const cont = {};
+_processos.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont[r]||0)+1; });
+return _processos.filter(p => cont[norm(p.referencia)] > 1).length;
+})();
+
+const stats = [
     {num:total,       label:'Total',          cor:'var(--ac)',  filtro:''},
     {num:emAndamento, label:'Em andamento',    cor:'var(--warn)',filtro:'__andamento'},
     {num:chegando7d,  label:'Chegada em 7d',  cor:'var(--info)',filtro:'__chegada_7d'},
     {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur'},
     {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
   ];
+if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência duplicada', cor:'var(--err)', filtro:'__ref_duplicada'});
 
   // Badges sidebar por fase
   const faseCount = {};
@@ -1529,6 +1537,12 @@ const FILTROS_FASE_ESPECIAIS = {
   __andamento:  lista => lista.filter(p=>p.fase!=='FINALIZADO'),
   __demur:      lista => lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }),
   __chegada_7d: lista => lista.filter(p=>chegandoEmDias(p,7)),
+__ref_duplicada: lista => {
+const norm = s => (s||'').toString().trim().toUpperCase().replace(/\s+/g,'');
+const cont = {};
+lista.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont[r]||0)+1; });
+return lista.filter(p => cont[norm(p.referencia)] > 1);
+},
   // Filtros financeiros — usados pelos cards clicáveis do Dashboard Financeiro/Executivo
   __pi_aberto:  lista => lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && !p.pi_pago),
   __pi_pago:    lista => lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && p.pi_pago),
