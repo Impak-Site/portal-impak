@@ -2075,5 +2075,6 @@ app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
   console.log(`Variáveis de ambiente carregadas: ${Object.keys(process.env).filter(k=>k.includes('ANTHROPIC')||k.includes('SUPABASE')).join(', ')}`);
   console.log(`ANTHROPIC_API_KEY presente: ${!!process.env.ANTHROPIC_API_KEY} | tamanho: ${(process.env.ANTHROPIC_API_KEY||'').length}`);
-  agendarAlertasDiarios(); sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
+  // agendarAlertasDiarios(); // DESLIGADO (task #330): job antigo rodava contra o banco do lab (dados desatualizados) e sem dedup diario, mandando alertas duplicados/obsoletos. Logica correta agora roda no main, ligada ao banco de producao, com dedup via app_job_runs.
+sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
 });
