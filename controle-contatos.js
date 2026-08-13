@@ -52,7 +52,7 @@ function _acSelecionar(inputId, dropdownId, nome, callback){
   if(typeof callback === 'function') callback(nome);
 }
 document.addEventListener('click', e=>{
-  ['cliente-dropdown','fornecedor-dropdown','armador-dropdown','agente-dropdown','despachante-dropdown','transportadora-dropdown'].forEach(id=>{
+  ['cliente-dropdown','fornecedor-dropdown','armador-dropdown','agente-dropdown','despachante-dropdown','transportadora-dropdown','consignatario-dropdown','notify-dropdown'].forEach(id=>{
     const dd = document.getElementById(id);
     if(dd && !dd.contains(e.target) && e.target.id!=='f_'+id.replace('-dropdown','')) dd.style.display='none';
   });

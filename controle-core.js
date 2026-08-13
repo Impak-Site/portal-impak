@@ -341,7 +341,7 @@ async function carregarProcessos(silencioso){
       // Popular select de clientes
       const selCliente = document.getElementById('filtro-cliente');
       if(selCliente){
-        const clientesUnicos = [...new Set(_processos.map(p=>p.cliente||'').filter(Boolean))].sort();
+        const clientesUnicos = [...new Set(_processos.flatMap(p=>clientesDoProcesso(p)))].sort();
         const valAtual = selCliente.value;
         selCliente.innerHTML = '<option value="">👤 Todos os clientes</option>' +
           clientesUnicos.map(c=>`<option value="${c}" ${c===valAtual?'selected':''}>${c}</option>`).join('');
@@ -954,6 +954,13 @@ function parseVendas(p){
     return Array.isArray(vendas) ? vendas : [];
   }catch(e){ return []; }
 }
+function clientesDoProcesso(p){
+const nomes = new Set();
+if(p && p.cliente) nomes.add(p.cliente);
+parseVendas(p).forEach(v=>{ if(v && v.cliente) nomes.add(v.cliente); });
+return [...nomes];
+}
+
 
 // Quantidade total alocada pra uma venda (soma de todos os itens dela).
 function quantidadeVenda(venda){
@@ -1629,7 +1636,7 @@ function filtrarProcessos(){
 
   // Filtro por cliente
   const filtroCliente = document.getElementById('filtro-cliente')?.value||'';
-  if(filtroCliente) lista = lista.filter(p=>(p.cliente||'')=== filtroCliente);
+  if(filtroCliente) lista = lista.filter(p=>clientesDoProcesso(p).includes(filtroCliente));
 
   // Filtro por finalidade
   const filtroFinalidade = document.getElementById('filtro-finalidade')?.value||'';
