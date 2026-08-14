@@ -403,8 +403,11 @@ async function salvarProcesso(proc, patchFields){
   }
 
   // Calcular vencimento demurrage automaticamente
+  // Usa parseDataLocal (meio-dia local, T00:00:00) em vez de `new Date(string)`
+  // direto — evita depender de coincidência de fuso horário nesse cálculo,
+  // que tem impacto financeiro direto (multa por atraso na devolução do container).
   if(proc.data_chegada && proc.free_time){
-    const chegada = new Date(proc.data_chegada);
+    const chegada = parseDataLocal(proc.data_chegada);
     chegada.setDate(chegada.getDate() + parseInt(proc.free_time||0));
     proc.demurrage_vencimento = chegada.toISOString().split('T')[0];
   }
