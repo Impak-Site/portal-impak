@@ -273,7 +273,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               <option value="CPT" ${p.pi_incoterm==='CPT'?'selected':''}>CPT</option>
             </select></div>
           <div class="form-group"><label class="form-label">Forma de Pagamento</label>
-            <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()">
+            <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()" onwheel="this.blur()">
               <option value="">—</option>
               <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
               <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
