@@ -493,6 +493,64 @@ teste('Sem data_pagamento no comprovante, usa a data de hoje como aproximação'
   iguais(sandbox.document.getElementById('f_pi_data_entrada').value, hojeStr, 'sem data no comprovante, deveria cair pra data de hoje');
 });
 
+// ── 8b. TESTES: confirmarCambioParcela / aplicarCambioNaParcelaPendente ─
+// Cobre o fix de hoje (task #342): confirmar um comprovante de câmbio numa
+// parcela específica (fluxo "Parcelado") só gravava cambio_fechado — Valor
+// USD e Data ficavam em branco e o usuário tinha que digitar tudo de novo
+// na mão (reclamação da Emanuelly: "só salva o câmbio"). Sem teste
+// automatizado essa correção pode "voltar" silenciosamente numa
+// refatoração futura sem ninguém notar.
+console.log('\n📋 confirmarCambioParcela() / aplicarCambioNaParcelaPendente() — preenche Valor USD e Data');
+
+teste('confirmarCambioParcela preenche Valor USD e Data quando a parcela está vazia', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.30, valor_pago:26500, referencia:'UD26-993', data_pagamento:'2026-07-20'};", sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const parcela = JSON.parse(vm.runInContext("JSON.stringify(_parcelas[0]);", sandbox));
+  iguais(parcela.cambio_fechado, '5.3000', 'câmbio fechado deveria vir do comprovante');
+  iguais(parcela.valor_usd, (26500/5.30).toFixed(2), 'Valor USD deveria ser calculado a partir do valor pago / taxa');
+  iguais(parcela.data_vencimento, '2026-07-20', 'Data deveria vir do comprovante');
+});
+
+teste('confirmarCambioParcela NÃO sobrescreve Valor USD e Data já preenchidos pelo usuário', () => {
+  vm.runInContext("_parcelas = [{label:'Final', valor_usd:'1000.00', data_vencimento:'2026-06-01', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.30, valor_pago:26500, referencia:'UD26-992', data_pagamento:'2026-07-20'};", sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const parcela = JSON.parse(vm.runInContext("JSON.stringify(_parcelas[0]);", sandbox));
+  iguais(parcela.cambio_fechado, '5.3000', 'câmbio fechado deveria ser gravado normalmente');
+  iguais(parcela.valor_usd, '1000.00', 'Valor USD já preenchido pelo usuário não deveria ser sobrescrito');
+  iguais(parcela.data_vencimento, '2026-06-01', 'Data já preenchida pelo usuário não deveria ser sobrescrita');
+});
+
+teste('confirmarCambioParcela com taxa inválida no comprovante não mexe na parcela', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:0, valor_pago:1000, referencia:'UD26-991'};", sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const parcela = JSON.parse(vm.runInContext("JSON.stringify(_parcelas[0]);", sandbox));
+  iguais(parcela.cambio_fechado, '', 'sem taxa válida, câmbio fechado não deveria ser gravado');
+});
+
+teste('aplicarCambioNaParcelaPendente preenche Valor USD e Data na primeira parcela sem câmbio fechado', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:'5.1000'}, {label:'Final', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.45, valor_pago:16350, referencia:'UD26-990', data_pagamento:'2026-07-22'};", sandbox);
+  const idx = sandbox.aplicarCambioNaParcelaPendente(5.45);
+  iguais(idx, 1, 'deveria escolher a primeira parcela ainda sem câmbio fechado (índice 1)');
+  const parcela = JSON.parse(vm.runInContext("JSON.stringify(_parcelas[1]);", sandbox));
+  iguais(parcela.cambio_fechado, '5.4500', 'câmbio fechado deveria ser gravado na parcela pendente');
+  iguais(parcela.valor_usd, (16350/5.45).toFixed(2), 'Valor USD deveria ser calculado a partir do valor pago / taxa');
+  iguais(parcela.data_vencimento, '2026-07-22', 'Data deveria vir do comprovante');
+});
+
+teste('aplicarCambioNaParcelaPendente NÃO sobrescreve Valor USD e Data já preenchidos pelo usuário', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'500.00', data_vencimento:'2026-05-01', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.45, valor_pago:16350, referencia:'UD26-989', data_pagamento:'2026-07-22'};", sandbox);
+  sandbox.aplicarCambioNaParcelaPendente(5.45);
+  const parcela = JSON.parse(vm.runInContext("JSON.stringify(_parcelas[0]);", sandbox));
+  iguais(parcela.cambio_fechado, '5.4500', 'câmbio fechado deveria ser gravado normalmente');
+  iguais(parcela.valor_usd, '500.00', 'Valor USD já preenchido pelo usuário não deveria ser sobrescrito');
+  iguais(parcela.data_vencimento, '2026-05-01', 'Data já preenchida pelo usuário não deveria ser sobrescrita');
+});
+
 // ── 9. TESTES: renderControleCambialHtml / renderFluxoCaixaHtml (Dashboard Financeiro v2) ─
 console.log('\n📋 Dashboard Financeiro v2 — controle cambial e fluxo de caixa');
 teste('Sem pagamentos comparáveis (previsto+fechado), mostra aviso em vez de inventar número', () => {
