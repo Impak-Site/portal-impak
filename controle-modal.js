@@ -1,24 +1,24 @@
 // controle-modal.js
 //
-// Painel lateral do processo: abrir/fechar, render das abas (timeline, alertas, conteÃÂºdo), histÃÂ³rico, arquivos GED, parametrizaÃÂ§ÃÂ£o, troca de aba, pagamento (PI).
+// Painel lateral do processo: abrir/fechar, render das abas (timeline, alertas, conteÃÂÃÂºdo), histÃÂÃÂ³rico, arquivos GED, parametrizaÃÂÃÂ§ÃÂÃÂ£o, troca de aba, pagamento (PI).
 //
-// Parte do controle_v2.html, extraÃÂ­do do <script> ÃÂºnico original pra
-// facilitar manutenÃÂ§ÃÂ£o. Carregado via <script src> junto com os outros
-// mÃÂ³dulos (ver controle_v2.html) Ã¢ÂÂ nÃÂ£o ÃÂ© um ES module, entÃÂ£o todo
-// estado (let/const de topo) e funÃÂ§ÃÂµes aqui continuam visÃÂ­veis pros
-// outros arquivos, exatamente como estavam quando tudo era um sÃÂ³
-// <script>. controle-core.js precisa carregar ANTES dos demais (ÃÂ©
+// Parte do controle_v2.html, extraÃÂÃÂ­do do <script> ÃÂÃÂºnico original pra
+// facilitar manutenÃÂÃÂ§ÃÂÃÂ£o. Carregado via <script src> junto com os outros
+// mÃÂÃÂ³dulos (ver controle_v2.html) ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o ÃÂÃÂ© um ES module, entÃÂÃÂ£o todo
+// estado (let/const de topo) e funÃÂÃÂ§ÃÂÃÂµes aqui continuam visÃÂÃÂ­veis pros
+// outros arquivos, exatamente como estavam quando tudo era um sÃÂÃÂ³
+// <script>. controle-core.js precisa carregar ANTES dos demais (ÃÂÃÂ©
 // quem declara o estado global: _processos, _user, FASES etc.).
 //
 function abrirNovo(){
-  // _camposIA rastreia, NESTA sessÃÂ£o de ediÃÂ§ÃÂ£o, quais campos foram preenchidos
-  // pela ÃÂºltima leitura de IA (nÃÂ£o pelo usuÃÂ¡rio digitando) Ã¢ÂÂ usado por
-  // extrairComIA() pra saber se pode corrigir um campo jÃÂ¡ preenchido quando
+  // _camposIA rastreia, NESTA sessÃÂÃÂ£o de ediÃÂÃÂ§ÃÂÃÂ£o, quais campos foram preenchidos
+  // pela ÃÂÃÂºltima leitura de IA (nÃÂÃÂ£o pelo usuÃÂÃÂ¡rio digitando) ÃÂ¢ÃÂÃÂ usado por
+  // extrairComIA() pra saber se pode corrigir um campo jÃÂÃÂ¡ preenchido quando
   // um documento novo (ex: o certo, depois de um errado) trouxer outro valor.
-  // NÃÂ£o ÃÂ© salvo no banco (propositalmente prefixado com _, igual _fasePrevista
-  // e _savedAt jÃÂ¡ removidos antes do save) Ã¢ÂÂ reseta a cada vez que o processo
-  // ÃÂ© reaberto, o que cobre o caso real relatado (corrigir dentro da mesma
-  // sessÃÂ£o de ediÃÂ§ÃÂ£o, logo apÃÂ³s perceber o documento errado).
+  // NÃÂÃÂ£o ÃÂÃÂ© salvo no banco (propositalmente prefixado com _, igual _fasePrevista
+  // e _savedAt jÃÂÃÂ¡ removidos antes do save) ÃÂ¢ÃÂÃÂ reseta a cada vez que o processo
+  // ÃÂÃÂ© reaberto, o que cobre o caso real relatado (corrigir dentro da mesma
+  // sessÃÂÃÂ£o de ediÃÂÃÂ§ÃÂÃÂ£o, logo apÃÂÃÂ³s perceber o documento errado).
   _editando = { fase:'PI', free_time:21, _camposIA: {} };
   _editandoOriginal = {};
   renderModal();
@@ -28,10 +28,10 @@ async function abrirProcesso(id){
   const proc = _processos.find(p=>p.id===id);
   if(!proc) return;
   _editando = {...proc, _camposIA: {}};
-    _parcelas = []; // task #340b: forÃ§a recarregar parcelas do processo certo ao trocar de processo
+    _parcelas = []; // task #340b: forÃÂ§a recarregar parcelas do processo certo ao trocar de processo
   _editandoOriginal = {...proc};
   renderModal();
-  // URL por processo (task #59) Ã¢ÂÂ deep link/bookmark + botÃÂ£o voltar do navegador
+  // URL por processo (task #59) ÃÂ¢ÃÂÃÂ deep link/bookmark + botÃÂÃÂ£o voltar do navegador
   const novaUrl = _baseUrlPath.replace(/\/$/,'') + '/' + encodeURIComponent(proc.referencia);
   if(location.pathname !== novaUrl) history.pushState({processoId:proc.id}, '', novaUrl);
 }
@@ -40,24 +40,24 @@ function copiarReferencia(){
   const ref = _editando && _editando.referencia;
   if(!ref) return;
   navigator.clipboard.writeText(ref).then(function(){
-    showToast('ReferÃÂªncia copiada: ' + ref, 'ok');
+    showToast('ReferÃÂÃÂªncia copiada: ' + ref, 'ok');
   }, function(){
-    showToast('NÃÂ£o foi possÃÂ­vel copiar Ã¢ÂÂ copie manualmente: ' + ref, 'err');
+    showToast('NÃÂÃÂ£o foi possÃÂÃÂ­vel copiar ÃÂ¢ÃÂÃÂ copie manualmente: ' + ref, 'err');
   });
 }
 
 function fecharModal(){
   _editando = null;
   document.getElementById('modal-bg').classList.remove('open');
-  // Volta a URL pra tela de baixo (/controle ou /financeiro) sem recarregar a pÃÂ¡gina.
+  // Volta a URL pra tela de baixo (/controle ou /financeiro) sem recarregar a pÃÂÃÂ¡gina.
   if(location.pathname !== _baseUrlPath) history.pushState(null, '', _baseUrlPath);
 }
 
-// Se o usuÃÂ¡rio editar manualmente um campo que a IA tinha preenchido antes,
-// esse campo "vira dele" Ã¢ÂÂ deixa de poder ser sobrescrito automaticamente por
-// uma leitura de IA seguinte, protegendo a correÃÂ§ÃÂ£o manual do usuÃÂ¡rio. SÃÂ³
-// reage a eventos reais do teclado/mouse: setar .value via JS (como a prÃÂ³pria
-// extraÃÂ§ÃÂ£o faz) nÃÂ£o dispara 'input', entÃÂ£o isso nunca conflita com a IA.
+// Se o usuÃÂÃÂ¡rio editar manualmente um campo que a IA tinha preenchido antes,
+// esse campo "vira dele" ÃÂ¢ÃÂÃÂ deixa de poder ser sobrescrito automaticamente por
+// uma leitura de IA seguinte, protegendo a correÃÂÃÂ§ÃÂÃÂ£o manual do usuÃÂÃÂ¡rio. SÃÂÃÂ³
+// reage a eventos reais do teclado/mouse: setar .value via JS (como a prÃÂÃÂ³pria
+// extraÃÂÃÂ§ÃÂÃÂ£o faz) nÃÂÃÂ£o dispara 'input', entÃÂÃÂ£o isso nunca conflita com a IA.
 document.addEventListener('input', function(e){
   if(!_editando || !_editando._camposIA) return;
   const id = e.target && e.target.id;
@@ -66,9 +66,9 @@ document.addEventListener('input', function(e){
   if(_editando._camposIA[campo]) delete _editando._camposIA[campo];
 });
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// MODAL Ã¢ÂÂ RENDER
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// MODAL ÃÂ¢ÃÂÃÂ RENDER
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 function renderModal(){
   const p = _editando;
   const isNovo = !p.id;
@@ -81,16 +81,16 @@ function renderModal(){
   document.getElementById('modal-bg').classList.add('open');
 
 
-  // Ã¢ÂÂÃ¢ÂÂ ABAS Ã¢ÂÂÃ¢ÂÂ
+  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ ABAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
   const TABS = [
-    {id:'identificacao', label:'Ã°ÂÂÂ IdentificaÃÂ§ÃÂ£o'},
-    {id:'financeiro',    label:'Ã°ÂÂÂ° Financeiro'},
-    {id:'fechamento',    label:'Ã°ÂÂÂ Fechamento'},
-    {id:'custosreais',   label:'Ã°ÂÂÂµ Custos Reais'},
-    {id:'vendas',        label:'Ã°ÂÂ§Â¾ Vendas'},
-    {id:'logistica',     label:'Ã°ÂÂÂ¢ LogÃÂ­stica'},
-    {id:'documentos',    label:'Ã°ÂÂÂ Documentos'},
-    {id:'historico',     label:'Ã°ÂÂÂ HistÃÂ³rico'},
+    {id:'identificacao', label:'📄 Identificação'},
+    {id:'financeiro',    label:'💰 Financeiro'},
+    {id:'fechamento',    label:'📐 Fechamento'},
+    {id:'custosreais',   label:'💵 Custos Reais'},
+    {id:'vendas',        label:'🧾 Vendas'},
+    {id:'logistica',     label:'🚢 Logística'},
+    {id:'documentos',    label:'📋 Documentos'},
+    {id:'historico',     label:'📜 Histórico'},
   ];
   const temAlerta = verificarAlertas(p, false).length > 0;
   const tabsHtml = TABS.map(t =>
@@ -100,9 +100,9 @@ function renderModal(){
   ).join('');
   document.getElementById('modal-tabs').innerHTML = tabsHtml;
 
-  // Ã¢ÂÂÃ¢ÂÂ TIMELINE com datas Ã¢ÂÂÃ¢ÂÂ
+  // ── TIMELINE com datas ──
   const faseIdx = FASES.findIndex(f=>f.id===p.fase);
-  // Mapa fase Ã¢ÂÂ data do processo
+  // Mapa fase → data do processo
   const faseDatas = {
     'PI':                  p.pi_data,
     'AGUARDANDO_EMBARQUE': p.previsao_prontidao||p.data_prontidao,
@@ -123,73 +123,73 @@ function renderModal(){
     return `
       ${i>0?`<div class="tl-line ${done?'done':''}"></div>`:''}
       <div class="tl-step">
-        <div class="tl-dot ${cls}">${done?'Ã¢ÂÂ':f.icon}</div>
+        <div class="tl-dot ${cls}">${done?'ÃÂ¢ÃÂÃÂ':f.icon}</div>
         <div class="tl-label">${f.label}</div>
         ${dataStr}
       </div>`;
   }).join('');
 
-  // Ã¢ÂÂÃ¢ÂÂ ALERTAS Ã¢ÂÂÃ¢ÂÂ
+  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ ALERTAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
   const alertas = verificarAlertas(p, false);
   const alertasHtml = alertas.map(a=>
-    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">Ã°ÂÂÂ¨ ${a.titulo}: ${a.mensagem}</div>`
+    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">ÃÂ°ÃÂÃÂÃÂ¨ ${a.titulo}: ${a.mensagem}</div>`
   ).join('');
 
-  // Ã¢ÂÂÃ¢ÂÂ CONTEÃÂDO DAS ABAS Ã¢ÂÂÃ¢ÂÂ
+  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CONTEÃÂÃÂDO DAS ABAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
   const finInfo = p.pi_pagamento ? renderPagamentoInfo(p) : '';
 
-  // ConfirmaÃÂ§ÃÂ£o visual demurrage (calculada dinamicamente Ã¢ÂÂ ver renderDemurInfo)
+  // ConfirmaÃÂÃÂ§ÃÂÃÂ£o visual demurrage (calculada dinamicamente ÃÂ¢ÃÂÃÂ ver renderDemurInfo)
   let demurInfo = renderDemurInfo(p);
 
-  // Ã¢ÂÂÃ¢ÂÂ TRAVA DE PROCESSO ("Fechar Processo") Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-  // Quando fechado, o conteÃÂºdo do modal fica visualmente desabilitado
-  // (opacity + pointer-events:none) dentro do wrapper abaixo Ã¢ÂÂ a validaÃÂ§ÃÂ£o
-  // que de fato impede a ediÃÂ§ÃÂ£o ÃÂ© no servidor (ver server.js: POST /api/
-  // controle/v2/processo), isto aqui ÃÂ© sÃÂ³ pra nÃÂ£o deixar o usuÃÂ¡rio tentar
+  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ TRAVA DE PROCESSO ("Fechar Processo") ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+  // Quando fechado, o conteÃÂÃÂºdo do modal fica visualmente desabilitado
+  // (opacity + pointer-events:none) dentro do wrapper abaixo ÃÂ¢ÃÂÃÂ a validaÃÂÃÂ§ÃÂÃÂ£o
+  // que de fato impede a ediÃÂÃÂ§ÃÂÃÂ£o ÃÂÃÂ© no servidor (ver server.js: POST /api/
+  // controle/v2/processo), isto aqui ÃÂÃÂ© sÃÂÃÂ³ pra nÃÂÃÂ£o deixar o usuÃÂÃÂ¡rio tentar
   // editar um processo travado sem perceber.
   const bloqueado = !!p.fechado;
   const podeDestravar = _user && _user.role === 'gerente';
   const bannerTrava = bloqueado
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(0,0,0,.04);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
-        <div style="font-size:12px;color:var(--text);"><strong>Ã°ÂÂÂ Processo fechado</strong>${p.fechado_em?` em ${new Date(p.fechado_em).toLocaleString('pt-BR')}`:''}${p.fechado_por?` por ${esc(p.fechado_por)}`:''} Ã¢ÂÂ ediÃÂ§ÃÂ£o travada.</div>
-        ${podeDestravar ? `<button type="button" class="btn btn-outline" onclick="reabrirProcesso('${p.id}')">Ã°ÂÂÂ Reabrir para editar</button>` : `<span style="font-size:11px;color:var(--muted);">SÃÂ³ um gerente pode reabrir.</span>`}
+        <div style="font-size:12px;color:var(--text);"><strong>ÃÂ°ÃÂÃÂÃÂ Processo fechado</strong>${p.fechado_em?` em ${new Date(p.fechado_em).toLocaleString('pt-BR')}`:''}${p.fechado_por?` por ${esc(p.fechado_por)}`:''} ÃÂ¢ÃÂÃÂ ediÃÂÃÂ§ÃÂÃÂ£o travada.</div>
+        ${podeDestravar ? `<button type="button" class="btn btn-outline" onclick="reabrirProcesso('${p.id}')">ÃÂ°ÃÂÃÂÃÂ Reabrir para editar</button>` : `<span style="font-size:11px;color:var(--muted);">SÃÂÃÂ³ um gerente pode reabrir.</span>`}
       </div>`
     : '';
 
   document.getElementById('modal-body').innerHTML = `
     ${bannerTrava}
     <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
-    <!-- ABA: IDENTIFICAÃÂÃÂO -->
+    <!-- ABA: IDENTIFICAÃÂÃÂÃÂÃÂO -->
     <div class="tab-pane active" id="pane-identificacao">
       <div class="timeline">${timeline}</div>
       ${alertasHtml}
       <!-- IA -->
       <div class="form-section" style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
-        <div class="form-section-title" style="border:none;margin-bottom:8px;">Ã°ÂÂ¤Â ExtraÃÂ§ÃÂ£o com IA</div>
+        <div class="form-section-title" style="border:none;margin-bottom:8px;">ÃÂ°ÃÂÃÂ¤ÃÂ ExtraÃÂÃÂ§ÃÂÃÂ£o com IA</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Envie uma PI, CI ou BL para preencher os campos automaticamente</div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extrairComIA(this)">
-          <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">Ã°ÂÂÂ Selecionar documento</button>
+          <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">ÃÂ°ÃÂÃÂÃÂ Selecionar documento</button>
           <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
         </div>
       </div>
-      <!-- Alerta de pendÃÂªncia de revisÃÂ£o (vem da importaÃÂ§ÃÂ£o de planilha) -->
+      <!-- Alerta de pendÃÂÃÂªncia de revisÃÂÃÂ£o (vem da importaÃÂÃÂ§ÃÂÃÂ£o de planilha) -->
       <div id="alerta-pendencia" style="display:${p.pendencia_revisao ? 'block' : 'none'};background:rgba(243,156,18,.1);border:1px solid rgba(243,156,18,.4);border-left:4px solid #f39c12;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-        <div style="font-weight:700;color:#f39c12;font-size:13px;margin-bottom:6px;">Ã¢ÂÂ  PendÃÂªncia de revisÃÂ£o (da importaÃÂ§ÃÂ£o de planilha)</div>
+        <div style="font-weight:700;color:#f39c12;font-size:13px;margin-bottom:6px;">ÃÂ¢ÃÂÃÂ  PendÃÂÃÂªncia de revisÃÂÃÂ£o (da importaÃÂÃÂ§ÃÂÃÂ£o de planilha)</div>
         <div id="texto-pendencia" style="font-size:12px;color:var(--text);white-space:pre-line;line-height:1.6;">${esc(p.pendencia_revisao)}</div>
         <input type="hidden" id="f_pendencia_revisao" value="${esc(p.pendencia_revisao)}">
-        <button type="button" class="btn btn-outline" style="margin-top:10px;font-size:12px;" onclick="marcarPendenciaRevisada()">Ã¢ÂÂ Marcar como revisado</button>
+        <button type="button" class="btn btn-outline" style="margin-top:10px;font-size:12px;" onclick="marcarPendenciaRevisada()">ÃÂ¢ÃÂÃÂ Marcar como revisado</button>
       </div>
-      <!-- IdentificaÃÂ§ÃÂ£o -->
+      <!-- IdentificaÃÂÃÂ§ÃÂÃÂ£o -->
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ IdentificaÃÂ§ÃÂ£o</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ IdentificaÃÂÃÂ§ÃÂÃÂ£o</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">ReferÃÂªncia *</label>
+          <div class="form-group"><label class="form-label">ReferÃÂÃÂªncia *</label>
             <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340"></div>
           <div class="form-group"><label class="form-label">Finalidade</label>
             <select class="form-input" id="f_finalidade">
-              <option value="">Ã¢ÂÂ selecionar Ã¢ÂÂ</option>
-              <option value="IMPORTACAO_DIRETA" ${p.finalidade==='IMPORTACAO_DIRETA'?'selected':''}>ImportaÃÂ§ÃÂ£o PrÃÂ³pria (Direto)</option>
+              <option value="">ÃÂ¢ÃÂÃÂ selecionar ÃÂ¢ÃÂÃÂ</option>
+              <option value="IMPORTACAO_DIRETA" ${p.finalidade==='IMPORTACAO_DIRETA'?'selected':''}>ImportaÃÂÃÂ§ÃÂÃÂ£o PrÃÂÃÂ³pria (Direto)</option>
               <option value="ENCOMENDA" ${p.finalidade==='ENCOMENDA'?'selected':''}>Encomenda</option>
               <option value="CONTA_E_ORDEM" ${p.finalidade==='CONTA_E_ORDEM'?'selected':''}>Conta e Ordem</option>
             </select></div>
@@ -199,15 +199,15 @@ function renderModal(){
             <div id="fornecedor-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group"><label class="form-label">Marca (Brand)</label>
-            <input class="form-input" id="f_brand" value="${esc(p.brand)}" placeholder="Ex: Maxam Ã¢ÂÂ deixe em branco se marca = fornecedor">
+            <input class="form-input" id="f_brand" value="${esc(p.brand)}" placeholder="Ex: Maxam ÃÂ¢ÃÂÃÂ deixe em branco se marca = fornecedor">
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
             <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
-              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown')" placeholder="Digite razÃÂ£o social, CNPJ ou cidade...">
+              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown')" placeholder="Digite razÃÂÃÂ£o social, CNPJ ou cidade...">
             <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
-          <div class="form-group" style="position:relative"><label class="form-label">ConsignatÃÂ¡rio</label>
-<input class="form-input" id="f_consignatario" value="${esc(p.consignatario)}" placeholder="Consignee do BL/DI Ã¢ÂÂ pode ser diferente do Cliente" autocomplete="off"
+          <div class="form-group" style="position:relative"><label class="form-label">ConsignatÃÂÃÂ¡rio</label>
+<input class="form-input" id="f_consignatario" value="${esc(p.consignatario)}" placeholder="Consignee do BL/DI ÃÂ¢ÃÂÃÂ pode ser diferente do Cliente" autocomplete="off"
 oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','consignatario-dropdown')">
 <div id="consignatario-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
 </div>
@@ -228,19 +228,19 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               oninput="autocompletarContato(this,'DESPACHANTE','despachante-dropdown')">
             <div id="despachante-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
-          <div class="form-group full"><label class="form-label">ObservaÃÂ§ÃÂµes</label>
+          <div class="form-group full"><label class="form-label">ObservaÃÂÃÂ§ÃÂÃÂµes</label>
             <input class="form-input" id="f_obs" value="${esc(p.obs)}"></div>
         </div>
       </div>
-      <!-- AÃÂ§ÃÂµes -->
+      <!-- AÃÂÃÂ§ÃÂÃÂµes -->
       <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
         <div style="display:flex;gap:10px;">
-          ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">Ã°ÂÂÂ Excluir</button>`:''}
-          ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado Ã¢ÂÂ sÃÂ³ gerente pode reabrir depois">Ã°ÂÂÂ Fechar Processo</button>`:''}
+          ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">ÃÂ°ÃÂÃÂÃÂ Excluir</button>`:''}
+          ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ gerente pode reabrir depois">ÃÂ°ÃÂÃÂÃÂ Fechar Processo</button>`:''}
         </div>
         <div style="display:flex;gap:10px;">
           <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-          <button class="btn btn-primary" onclick="coletarESalvar()">Ã°ÂÂÂ¾ Salvar</button>
+          <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
         </div>
       </div>
     </div>
@@ -248,24 +248,24 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: FINANCEIRO -->
     <div class="tab-pane" id="pane-financeiro">
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ° Proforma Invoice (PI)</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ° Proforma Invoice (PI)</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NÃÂº PI</label>
+          <div class="form-group"><label class="form-label">NÃÂÃÂº PI</label>
             <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}"></div>
           <div class="form-group"><label class="form-label">Data PI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" oninput="atualizarDataPagamentoPrazo()" id="f_pi_data" value="${esc(p.pi_data)}"></div>
           <div class="form-group"><label class="form-label">Valor USD</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">CÃÂ¢mbio na PI (R$)</label>
+          <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio na PI (R$)</label>
             <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
           </div>
-          <div class="form-group"><label class="form-label">CÃÂ¢mbio Fechado (R$)</label>
-            <input class="form-input" type="number" id="f_pi_cambio_fechado" value="${p.pi_cambio_fechado||''}" placeholder="preenchido ao confirmar o cÃÂ¢mbio" step="0.0001"
-              title="Taxa que realmente foi paga (vem do comprovante de cÃÂ¢mbio, pra Pagamento ÃÂnico/Prazo). Fica separado de 'CÃÂ¢mbio na PI' de propÃÂ³sito Ã¢ÂÂ aquele ÃÂ© a previsÃÂ£o, este ÃÂ© o fechado, pra dar pra comparar os dois no Dashboard Financeiro.">
+          <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio Fechado (R$)</label>
+            <input class="form-input" type="number" id="f_pi_cambio_fechado" value="${p.pi_cambio_fechado||''}" placeholder="preenchido ao confirmar o cÃÂÃÂ¢mbio" step="0.0001"
+              title="Taxa que realmente foi paga (vem do comprovante de cÃÂÃÂ¢mbio, pra Pagamento ÃÂÃÂnico/Prazo). Fica separado de 'CÃÂÃÂ¢mbio na PI' de propÃÂÃÂ³sito ÃÂ¢ÃÂÃÂ aquele ÃÂÃÂ© a previsÃÂÃÂ£o, este ÃÂÃÂ© o fechado, pra dar pra comparar os dois no Dashboard Financeiro.">
           </div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
-              <option value="">Ã¢ÂÂ</option>
+              <option value="">ÃÂ¢ÃÂÃÂ</option>
               <option value="EXW" ${p.pi_incoterm==='EXW'?'selected':''}>EXW</option>
               <option value="FCA" ${p.pi_incoterm==='FCA'?'selected':''}>FCA</option>
               <option value="FOB" ${p.pi_incoterm==='FOB'?'selected':''}>FOB</option>
@@ -275,32 +275,32 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             </select></div>
           <div class="form-group"><label class="form-label">Forma de Pagamento</label>
             <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()" onwheel="this.blur()">
-              <option value="">Ã¢ÂÂ</option>
-              <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% ÃÂ  Vista</option>
+              <option value="">ÃÂ¢ÃÂÃÂ</option>
+              <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% ÃÂÃÂ  Vista</option>
               <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
               <option value="PARCELADO"    ${p.pi_pagamento==='PARCELADO'?'selected':''}>Parcelado</option>
-              <!-- "Entrada + Saldo" foi substituÃÂ­da por "Parcelado" (suporta quantos
-                   cÃÂ¢mbios forem necessÃÂ¡rios, nÃÂ£o sÃÂ³ 2) Ã¢ÂÂ este option some do
-                   dropdown pra processos novos, mas continua aqui (sÃÂ³ oculto via
-                   CSS) e SELECIONÃÂVEL/exibido quando o processo jÃÂ¡ usa esse valor,
-                   pra nÃÂ£o quebrar/perder a forma de pagamento de processos antigos
+              <!-- "Entrada + Saldo" foi substituÃÂÃÂ­da por "Parcelado" (suporta quantos
+                   cÃÂÃÂ¢mbios forem necessÃÂÃÂ¡rios, nÃÂÃÂ£o sÃÂÃÂ³ 2) ÃÂ¢ÃÂÃÂ este option some do
+                   dropdown pra processos novos, mas continua aqui (sÃÂÃÂ³ oculto via
+                   CSS) e SELECIONÃÂÃÂVEL/exibido quando o processo jÃÂÃÂ¡ usa esse valor,
+                   pra nÃÂÃÂ£o quebrar/perder a forma de pagamento de processos antigos
                    ao simplesmente abrir e salvar o cadastro de novo. -->
-              <option disabled${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ</option>
+              <option disabled${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ</option>
 <option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>Entrada + Saldo (legado)</option>
             </select></div>
           <div class="form-group"><label class="form-label">PI Paga?</label>
             <select class="form-input" id="f_pi_pago">
-              <option value="false" ${!p.pi_pago?'selected':''}>NÃÂ£o</option>
-              <option value="true"  ${p.pi_pago?'selected':''}>Sim Ã¢ÂÂ</option>
+              <option value="false" ${!p.pi_pago?'selected':''}>NÃÂÃÂ£o</option>
+              <option value="true"  ${p.pi_pago?'selected':''}>Sim ÃÂ¢ÃÂÃÂ</option>
             </select></div>
         </div>
         <div id="pagamento-campos"></div>
         ${finInfo}
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂµ Commercial Invoice (CI)</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂµ Commercial Invoice (CI)</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NÃÂº CI</label>
+          <div class="form-group"><label class="form-label">NÃÂÃÂº CI</label>
             <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}"></div>
           <div class="form-group"><label class="form-label">Data CI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_ci_data" value="${esc(p.ci_data)}"></div>
@@ -310,59 +310,59 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">Ã°ÂÂÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
       </div>
     </div>
 
     <!-- ABA: FECHAMENTO -->
     <div class="tab-pane" id="pane-fechamento">
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ Fechamento Ã¢ÂÂ Estimado ÃÂ Real</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ Fechamento ÃÂ¢ÃÂÃÂ Estimado ÃÂÃÂ Real</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-          Compara o que foi cotado no Calculador (na hora de aprovar a cotaÃÂ§ÃÂ£o) com o resultado real do processo, calculado a partir da NF Entrada e NF SaÃÂ­da lanÃÂ§adas na aba Documentos.
+          Compara o que foi cotado no Calculador (na hora de aprovar a cotaÃÂÃÂ§ÃÂÃÂ£o) com o resultado real do processo, calculado a partir da NF Entrada e NF SaÃÂÃÂ­da lanÃÂÃÂ§adas na aba Documentos.
         </div>
         ${renderFechamentoInfo(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">Ã°ÂÂÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
       </div>
     </div>
 
     <!-- ABA: CUSTOS REAIS -->
     <div class="tab-pane" id="pane-custosreais">
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂµ Custos Reais Ã¢ÂÂ apuraÃÂ§ÃÂ£o de lucro item a item</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂµ Custos Reais ÃÂ¢ÃÂÃÂ apuraÃÂÃÂ§ÃÂÃÂ£o de lucro item a item</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-          Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissÃÂµes e taxas operacionais). Quando o processo veio de uma cotaÃÂ§ÃÂ£o aprovada, cada campo jÃÂ¡ nasce preenchido com o valor cotado Ã¢ÂÂ ajuste sÃÂ³ o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cÃÂ¡lculo simples por NF.
+          Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissÃÂÃÂµes e taxas operacionais). Quando o processo veio de uma cotaÃÂÃÂ§ÃÂÃÂ£o aprovada, cada campo jÃÂÃÂ¡ nasce preenchido com o valor cotado ÃÂ¢ÃÂÃÂ ajuste sÃÂÃÂ³ o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cÃÂÃÂ¡lculo simples por NF.
         </div>
         <!-- Importar direto da planilha de Fechamento (mesmo template BASE
-        SP/SC usado antes de existir esta tela) Ã¢ÂÂ lÃÂª a aba "Fechamento" e
+        SP/SC usado antes de existir esta tela) ÃÂ¢ÃÂÃÂ lÃÂÃÂª a aba "Fechamento" e
         preenche os campos "Pago" abaixo + as datas de Embarque/Chegada/
         Registro DI (aba Documentos), sem precisar digitar tudo de novo.
         Reaproveita POST /api/controle/importar-fechamento (server-side,
-        planilha-import.js) Ã¢ÂÂ o usuÃÂ¡rio sempre revisa/ajusta antes de salvar. -->
+        planilha-import.js) ÃÂ¢ÃÂÃÂ o usuÃÂÃÂ¡rio sempre revisa/ajusta antes de salvar. -->
         <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
-          <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">Ã°ÂÂÂ¥ Importar planilha de Fechamento</button>
+          <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">ÃÂ°ÃÂÃÂÃÂ¥ Importar planilha de Fechamento</button>
           ${!p.custos_reais_json ? `
-          <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotaÃÂ§ÃÂ£o no Calculador jÃÂ¡ prÃÂ©-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">Ã°ÂÂ§Â® Vincular ao Calculador</button>
+          <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotaÃÂÃÂ§ÃÂÃÂ£o no Calculador jÃÂÃÂ¡ prÃÂÃÂ©-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">ÃÂ°ÃÂÃÂ§ÃÂ® Vincular ao Calculador</button>
           ` : ''}
         </div>
         ${renderCustosReaisTab(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="salvarCustosReaisTab()">Ã°ÂÂÂ¾ Salvar Custos Reais</button>
+        <button class="btn btn-primary" onclick="salvarCustosReaisTab()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar Custos Reais</button>
       </div>
     </div>
 
     <!-- ABA: VENDAS (multi-cliente / rateio de custo) -->
     <div class="tab-pane" id="pane-vendas">
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂ§Â¾ Vendas Ã¢ÂÂ um processo, vÃÂ¡rios clientes</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂ§ÃÂ¾ Vendas ÃÂ¢ÃÂÃÂ um processo, vÃÂÃÂ¡rios clientes</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-          Use esta aba quando este processo (Direto, Encomenda ou Conta e Ordem) foi vendido pra mais de um cliente Ã¢ÂÂ ex.: meio contÃÂªiner pra um, meio pra outro. Cada venda tem seu prÃÂ³prio cliente e NF SaÃÂ­da. Os custos lanÃÂ§ados na aba Custos Reais sÃÂ£o rateados automaticamente entre as vendas, proporcional ÃÂ  quantidade que cada uma levou; custos que sÃÂ³ existiram por causa de um cliente especÃÂ­fico (ex.: um frete extra) podem ser lanÃÂ§ados direto naquela venda, sem entrar no rateio. Se este processo tem um ÃÂºnico cliente/NF SaÃÂ­da, nÃÂ£o precisa usar esta aba.
+          Use esta aba quando este processo (Direto, Encomenda ou Conta e Ordem) foi vendido pra mais de um cliente ÃÂ¢ÃÂÃÂ ex.: meio contÃÂÃÂªiner pra um, meio pra outro. Cada venda tem seu prÃÂÃÂ³prio cliente e NF SaÃÂÃÂ­da. Os custos lanÃÂÃÂ§ados na aba Custos Reais sÃÂÃÂ£o rateados automaticamente entre as vendas, proporcional ÃÂÃÂ  quantidade que cada uma levou; custos que sÃÂÃÂ³ existiram por causa de um cliente especÃÂÃÂ­fico (ex.: um frete extra) podem ser lanÃÂÃÂ§ados direto naquela venda, sem entrar no rateio. Se este processo tem um ÃÂÃÂºnico cliente/NF SaÃÂÃÂ­da, nÃÂÃÂ£o precisa usar esta aba.
         </div>
         <div id="vendas-list"></div>
         <button type="button" onclick="adicionarVenda()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Venda</button>
@@ -371,26 +371,26 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">Ã°ÂÂÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
       </div>
     </div>
 
-    <!-- ABA: LOGÃÂSTICA -->
+    <!-- ABA: LOGÃÂÃÂSTICA -->
     <div class="tab-pane" id="pane-logistica">
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ­ ProntidÃÂ£o</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ­ ProntidÃÂÃÂ£o</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">PrevisÃÂ£o ProntidÃÂ£o</label>
+          <div class="form-group"><label class="form-label">PrevisÃÂÃÂ£o ProntidÃÂÃÂ£o</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}"></div>
-          <div class="form-group"><label class="form-label">Data ProntidÃÂ£o Real</label>
+          <div class="form-group"><label class="form-label">Data ProntidÃÂÃÂ£o Real</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_prontidao" value="${esc(p.data_prontidao)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_prontidao','f_previsao_prontidao','PrevisÃÂ£o ProntidÃÂ£o')"></div>
+              onchange="moverDataFuturaParaPrevisao('f_data_prontidao','f_previsao_prontidao','PrevisÃÂÃÂ£o ProntidÃÂÃÂ£o')"></div>
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ¦ Booking & Embarque</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ¦ Booking & Embarque</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NÃÂº Booking</label>
+          <div class="form-group"><label class="form-label">NÃÂÃÂº Booking</label>
             <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group" style="position:relative"><label class="form-label">Armador</label>
             <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC" autocomplete="off"
@@ -410,7 +410,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <select class="form-input" id="f_moeda_frete">
               <option value="USD" ${(!p.moeda_frete||p.moeda_frete==='USD')?'selected':''}>USD (US$)</option>
               <option value="BRL" ${p.moeda_frete==='BRL'?'selected':''}>BRL (R$)</option>
-              <option value="EUR" ${p.moeda_frete==='EUR'?'selected':''}>EUR (Ã¢ÂÂ¬)</option>
+              <option value="EUR" ${p.moeda_frete==='EUR'?'selected':''}>EUR (ÃÂ¢ÃÂÃÂ¬)</option>
             </select></div>
           <div class="form-group"><label class="form-label">Porto Origem</label>
             <select class="form-input" id="f_porto_origem" onchange="togglePortoOutro('origem')">${gerarOptionsPortoOrigem(p.porto_origem)}</select>
@@ -418,20 +418,20 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               placeholder="Digite o porto de origem" style="display:${(p.porto_origem && !PORTOS_ORIGEM.includes(p.porto_origem.toUpperCase()))?'block':'none'};margin-top:6px;"></div>
           <div class="form-group"><label class="form-label">Porto Destino</label>
             <select class="form-input" id="f_porto_destino">${gerarOptionsPortoDestino(p.porto_destino)}</select></div>
-          <div class="form-group"><label class="form-label">PrevisÃÂ£o de Embarque (ETD)</label>
+          <div class="form-group"><label class="form-label">PrevisÃÂÃÂ£o de Embarque (ETD)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">ETA (PrevisÃÂ£o de Chegada)</label>
+          <div class="form-group"><label class="form-label">ETA (PrevisÃÂÃÂ£o de Chegada)</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_eta" value="${esc(p.eta)}">
           </div>
           <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_embarque" value="${esc(p.data_embarque)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_embarque','f_etd','PrevisÃÂ£o de Embarque (ETD)');atualizarFaseEmTempoReal()"></div>
+              onchange="moverDataFuturaParaPrevisao('f_data_embarque','f_etd','PrevisÃÂÃÂ£o de Embarque (ETD)');atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
-            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher apÃÂ³s emissÃÂ£o do BL"></div>
+            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher apÃÂÃÂ³s emissÃÂÃÂ£o do BL"></div>
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ Carregamento</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ Carregamento</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Agendamento</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
@@ -444,11 +444,11 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           </div>
           <div class="form-group"><label class="form-label">Placa</label>
             <input class="form-input" id="f_placa" value="${esc(p.placa)}"></div>
-          <div class="form-group"><label class="form-label">HorÃÂ¡rio Retirada</label>
+          <div class="form-group"><label class="form-label">HorÃÂÃÂ¡rio Retirada</label>
             <input class="form-input" type="time" id="f_horario_retirada" value="${esc(p.horario_retirada)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Agendamento Cancelado?</label>
             <select class="form-input" id="f_agendamento_cancelado" onchange="toggleMotivoCancelamento()">
-              <option value="false" ${!p.agendamento_cancelado?'selected':''}>NÃÂ£o</option>
+              <option value="false" ${!p.agendamento_cancelado?'selected':''}>NÃÂÃÂ£o</option>
               <option value="true"  ${p.agendamento_cancelado?'selected':''}>Sim</option>
             </select></div>
         </div>
@@ -458,37 +458,37 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã¢ÂÂ Chegada & Demurrage</div>
+        <div class="form-section-title">ÃÂ¢ÃÂÃÂ Chegada & Demurrage</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_data_chegada" value="${esc(p.data_chegada)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (PrevisÃÂ£o de Chegada)');atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">PresenÃÂ§a de Carga</label>
+              onchange="moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (PrevisÃÂÃÂ£o de Chegada)');atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">PresenÃÂÃÂ§a de Carga</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Data DevoluÃÂ§ÃÂ£o</label>
+          <div class="form-group"><label class="form-label">Data DevoluÃÂÃÂ§ÃÂÃÂ£o</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Pago?</label>
             <select class="form-input" id="f_demurrage_pago">
-              <option value="false" ${!p.demurrage_pago?'selected':''}>NÃÂ£o</option>
-              <option value="true"  ${p.demurrage_pago?'selected':''}>Sim Ã¢ÂÂ</option>
+              <option value="false" ${!p.demurrage_pago?'selected':''}>NÃÂÃÂ£o</option>
+              <option value="true"  ${p.demurrage_pago?'selected':''}>Sim ÃÂ¢ÃÂÃÂ</option>
             </select></div>
         </div>
         <div id="demur-info-wrap">${demurInfo}</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">Ã°ÂÂÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
       </div>
     </div>
 
     <!-- ABA: DOCUMENTOS -->
     <div class="tab-pane" id="pane-documentos">
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ¢ NÃÂºmeros de ReferÃÂªncia</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ¢ NÃÂÃÂºmeros de ReferÃÂÃÂªncia</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">HBL</label>
             <input class="form-input" id="f_hbl" value="${esc(p.hbl)}" oninput="atualizarFaseEmTempoReal()"></div>
@@ -506,7 +506,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã¢ÂÂ CE Mercante</div>
+        <div class="form-section-title">ÃÂ¢ÃÂÃÂ CE Mercante</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">CE Master</label>
             <input class="form-input" id="f_ce_master" value="${esc(p.ce_master)}"></div>
@@ -515,44 +515,44 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Data Embarque (CE)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extraÃÂ§ÃÂ£o por IA, os campos Navio e Armador (aba Booking &amp; Embarque) sÃÂ£o atualizados automaticamente Ã¢ÂÂ em caso de transbordo no exterior, o navio de conexÃÂ£o/ÃÂºltimo navio.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extraÃÂÃÂ§ÃÂÃÂ£o por IA, os campos Navio e Armador (aba Booking &amp; Embarque) sÃÂÃÂ£o atualizados automaticamente ÃÂ¢ÃÂÃÂ em caso de transbordo no exterior, o navio de conexÃÂÃÂ£o/ÃÂÃÂºltimo navio.</div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ DI e ParametrizaÃÂ§ÃÂ£o</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ DI e ParametrizaÃÂÃÂ§ÃÂÃÂ£o</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">NÃÂºmero DI</label>
+          <div class="form-group"><label class="form-label">NÃÂÃÂºmero DI</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Canal</label>
             <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
-              <option value="">Ã¢ÂÂ</option>
-              <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>Ã°ÂÂÂ¢ Verde</option>
-              <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>Ã°ÂÂÂ¡ Amarelo</option>
-              <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>Ã°ÂÂÂ´ Vermelho</option>
+              <option value="">ÃÂ¢ÃÂÃÂ</option>
+              <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>ÃÂ°ÃÂÃÂÃÂ¢ Verde</option>
+              <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>ÃÂ°ÃÂÃÂÃÂ¡ Amarelo</option>
+              <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>ÃÂ°ÃÂÃÂÃÂ´ Vermelho</option>
             </select></div>
-          <div class="form-group"><label class="form-label">Data ParametrizaÃÂ§ÃÂ£o</label>
+          <div class="form-group"><label class="form-label">Data ParametrizaÃÂÃÂ§ÃÂÃÂ£o</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Data LiberaÃÂ§ÃÂ£o</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraÃÂ§o (CI)"></div>
+          <div class="form-group"><label class="form-label">Data LiberaÃÂÃÂ§ÃÂÃÂ£o</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraÃÂÃÂ§o (CI)"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data ParametrizaÃÂ§ÃÂ£o automaticamente com a Data de Registro da DI (sem conferÃÂªncia separada). Data LiberaÃÂ§ÃÂ£o ÃÂ© a Data do DesembaraÃÂ§o informada no Comprovante de ImportaÃÂ§ÃÂ£o.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data ParametrizaÃÂÃÂ§ÃÂÃÂ£o automaticamente com a Data de Registro da DI (sem conferÃÂÃÂªncia separada). Data LiberaÃÂÃÂ§ÃÂÃÂ£o ÃÂÃÂ© a Data do DesembaraÃÂÃÂ§o informada no Comprovante de ImportaÃÂÃÂ§ÃÂÃÂ£o.</div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂ§Â¾ Faturamento</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂ§ÃÂ¾ Faturamento</div>
         ${(() => {
-          // Ambiguidade NF SaÃÂ­da legada ÃÂ aba Vendas: quando o processo jÃÂ¡
+          // Ambiguidade NF SaÃÂÃÂ­da legada ÃÂÃÂ aba Vendas: quando o processo jÃÂÃÂ¡
           // tem vendas cadastradas (multi-cliente), calcularFechamento()
           // ignora nf_saida_numero/data/valor por completo e usa a soma das
-          // NFs de cada venda Ã¢ÂÂ sem este aviso, alguÃÂ©m podia preencher os
-          // dois lugares achando que os dois contam, ou nÃÂ£o entender por que
-          // editar este campo aqui nÃÂ£o muda o Lucro Real na aba Fechamento.
+          // NFs de cada venda ÃÂ¢ÃÂÃÂ sem este aviso, alguÃÂÃÂ©m podia preencher os
+          // dois lugares achando que os dois contam, ou nÃÂÃÂ£o entender por que
+          // editar este campo aqui nÃÂÃÂ£o muda o Lucro Real na aba Fechamento.
           let vendas = [];
           try{ vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; }catch(e){ vendas = []; }
           if(!Array.isArray(vendas)) vendas = [];
           if(!vendas.length) return '';
           return `<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.35);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--text);">
-            Ã¢ÂÂ  Este processo foi vendido a <strong>${vendas.length} cliente${vendas.length===1?'':'s'}</strong> diferentes (ver aba Ã°ÂÂ§Â¾ Vendas) Ã¢ÂÂ os campos de <strong>NF SaÃÂ­da</strong> abaixo NÃÂO sÃÂ£o usados no cÃÂ¡lculo de Fechamento nesse caso; cada venda tem sua prÃÂ³pria NF SaÃÂ­da, lanÃÂ§ada na aba Vendas.
+            ÃÂ¢ÃÂÃÂ  Este processo foi vendido a <strong>${vendas.length} cliente${vendas.length===1?'':'s'}</strong> diferentes (ver aba ÃÂ°ÃÂÃÂ§ÃÂ¾ Vendas) ÃÂ¢ÃÂÃÂ os campos de <strong>NF SaÃÂÃÂ­da</strong> abaixo NÃÂÃÂO sÃÂÃÂ£o usados no cÃÂÃÂ¡lculo de Fechamento nesse caso; cada venda tem sua prÃÂÃÂ³pria NF SaÃÂÃÂ­da, lanÃÂÃÂ§ada na aba Vendas.
           </div>`;
         })()}
         ${(() => {
@@ -562,7 +562,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           if(vendas2.length) return '';
           return `<div style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
             <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Extrair NF (Entrada ou Saida) com IA</div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE Ã¢ÂÂ o sistema identifica se e Entrada ou Saida e preenche os campos certos automaticamente</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE ÃÂ¢ÃÂÃÂ o sistema identifica se e Entrada ou Saida e preenche os campos certos automaticamente</div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <input type="file" id="ia-nf-saida-file" accept=".pdf,.png,.jpg,.jpeg,.xml" style="display:none" onchange="importarNFSaidaProcesso(this)">
               <button class="btn btn-outline" onclick="document.getElementById('ia-nf-saida-file').click()">Selecionar NF (Entrada ou Saida)</button>
@@ -571,44 +571,44 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           </div>`;
         })()}
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NF Entrada NÃÂº</label>
+          <div class="form-group"><label class="form-label">NF Entrada NÃÂÃÂº</label>
             <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Entrada Data</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
           <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">NF SaÃÂ­da NÃÂº${p.vendas_json&&JSON.parse(p.vendas_json||'[]').length?' <span style="color:#f39c12;font-weight:400;">(nÃÂ£o usado Ã¢ÂÂ ver aba Vendas)</span>':''}</label>
+          <div class="form-group"><label class="form-label">NF SaÃÂÃÂ­da NÃÂÃÂº${p.vendas_json&&JSON.parse(p.vendas_json||'[]').length?' <span style="color:#f39c12;font-weight:400;">(nÃÂÃÂ£o usado ÃÂ¢ÃÂÃÂ ver aba Vendas)</span>':''}</label>
             <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">NF SaÃÂ­da Data</label>
+          <div class="form-group"><label class="form-label">NF SaÃÂÃÂ­da Data</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
-          <div class="form-group"><label class="form-label">NF SaÃÂ­da Valor (R$)</label>
+          <div class="form-group"><label class="form-label">NF SaÃÂÃÂ­da Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_saida_valor" value="${exibirMoeda(p.nf_saida_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">CFOP NF SaÃÂ­da</label>
+          <div class="form-group"><label class="form-label">CFOP NF SaÃÂÃÂ­da</label>
             <input class="form-input" id="f_nf_saida_cfop" value="${esc(p.nf_saida_cfop)}" placeholder="ex: 5405, 5905..."></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">CFOP 5905 (ou NF de SaÃÂ­da ainda nÃÂ£o emitida) = container importado sem venda efetiva ainda Ã¢ÂÂ usado no Dashboard NarcÃÂ©lio pra calcular estoque parado no armazÃÂ©m.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">CFOP 5905 (ou NF de SaÃÂÃÂ­da ainda nÃÂÃÂ£o emitida) = container importado sem venda efetiva ainda ÃÂ¢ÃÂÃÂ usado no Dashboard NarcÃÂÃÂ©lio pra calcular estoque parado no armazÃÂÃÂ©m.</div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">Ã°ÂÂÂ Arquivos do Processo (GED)</div>
+        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ Arquivos do Processo (GED)</div>
         <div id="ged-upload-area" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;" onclick="document.getElementById('ged-file-input').click()">
           <input type="file" id="ged-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="uploadArquivosGed(this.files)">
-          <div style="color:var(--muted);font-size:13px;">Ã°ÂÂÂ¤ Clique para enviar PDF, JPEG ou PNG</div>
-          <div style="color:var(--dim);font-size:11px;margin-top:4px;">MÃÂºltiplos arquivos permitidos</div>
+          <div style="color:var(--muted);font-size:13px;">ÃÂ°ÃÂÃÂÃÂ¤ Clique para enviar PDF, JPEG ou PNG</div>
+          <div style="color:var(--dim);font-size:11px;margin-top:4px;">MÃÂÃÂºltiplos arquivos permitidos</div>
         </div>
         <div id="ged-lista-arquivos" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">Ã°ÂÂÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
       </div>
     </div>
 
-    <!-- ABA: HISTÃÂRICO -->
+    <!-- ABA: HISTÃÂÃÂRICO -->
     <div class="tab-pane" id="pane-historico">
       <div id="historico-lista">
         ${isNovo
-          ? '<div class="empty"><div class="empty-icon">Ã°ÂÂÂ</div><div class="empty-text">Salve o processo para comeÃÂ§ar a registrar alteraÃÂ§ÃÂµes.</div></div>'
-          : '<div style="font-size:11px;color:var(--dim);">Carregando histÃÂ³rico...</div>'
+          ? '<div class="empty"><div class="empty-icon">ÃÂ°ÃÂÃÂÃÂ</div><div class="empty-text">Salve o processo para comeÃÂÃÂ§ar a registrar alteraÃÂÃÂ§ÃÂÃÂµes.</div></div>'
+          : '<div style="font-size:11px;color:var(--dim);">Carregando histÃÂÃÂ³rico...</div>'
         }
       </div>
     </div>
@@ -624,14 +624,14 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     else _containers = [{numero:'', tipo:'40HC', lacre:''}];
   }catch(e){ _containers = [{numero:'', tipo:'40HC', lacre:''}]; }
   renderMultiContainers();
-  // Inicializar multi-produtos (com retrocompatibilidade do campo "produto" legado em texto ÃÂºnico)
+  // Inicializar multi-produtos (com retrocompatibilidade do campo "produto" legado em texto ÃÂÃÂºnico)
   try{
     if(p.produtos_json) _produtos = JSON.parse(p.produtos_json);
     else if(p.produto) _produtos = [{descricao:p.produto||'', quantidade:''}];
     else _produtos = [{descricao:'', quantidade:''}];
   }catch(e){ _produtos = [{descricao:'', quantidade:''}]; }
   renderMultiProdutos();
-  // Inicializar vendas multi-cliente (aba Vendas) Ã¢ÂÂ vazio ([]) pra qualquer
+  // Inicializar vendas multi-cliente (aba Vendas) ÃÂ¢ÃÂÃÂ vazio ([]) pra qualquer
   // processo que nunca usou essa aba, exatamente como _produtos/_containers acima.
   try{
     _vendas = p.vendas_json ? JSON.parse(p.vendas_json) : [];
@@ -642,16 +642,16 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
   else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// CUSTOS REAIS Ã¢ÂÂ apuraÃÂ§ÃÂ£o de lucro por processo, item a item
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// Config/cÃÂ¡lculo (CUSTOS_REAIS_CONFIG, calcularCustoCotadoItem,
-// calcularCustoRealTotal) vivem em controle-core.js Ã¢ÂÂ aqui sÃÂ³ o HTML da aba
-// e a coleta/salvamento dos campos, seguindo o mesmo padrÃÂ£o de "aba com
-// botÃÂ£o de salvar prÃÂ³prio" que a aba Fechamento jÃÂ¡ usa (ela sÃÂ³ lÃÂª, nÃÂ£o tem
-// campo editÃÂ¡vel; esta aba tem campos, entÃÂ£o precisa de coletar+salvar).
-// Uma cÃÂ©lula "valor + moeda" (input number + select BRL/USD/EUR lado a
-// lado) Ã¢ÂÂ usada tanto pro Pago quanto pro Cobrado, tanto na linha principal
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// CUSTOS REAIS ÃÂ¢ÃÂÃÂ apuraÃÂÃÂ§ÃÂÃÂ£o de lucro por processo, item a item
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// Config/cÃÂÃÂ¡lculo (CUSTOS_REAIS_CONFIG, calcularCustoCotadoItem,
+// calcularCustoRealTotal) vivem em controle-core.js ÃÂ¢ÃÂÃÂ aqui sÃÂÃÂ³ o HTML da aba
+// e a coleta/salvamento dos campos, seguindo o mesmo padrÃÂÃÂ£o de "aba com
+// botÃÂÃÂ£o de salvar prÃÂÃÂ³prio" que a aba Fechamento jÃÂÃÂ¡ usa (ela sÃÂÃÂ³ lÃÂÃÂª, nÃÂÃÂ£o tem
+// campo editÃÂÃÂ¡vel; esta aba tem campos, entÃÂÃÂ£o precisa de coletar+salvar).
+// Uma cÃÂÃÂ©lula "valor + moeda" (input number + select BRL/USD/EUR lado a
+// lado) ÃÂ¢ÃÂÃÂ usada tanto pro Pago quanto pro Cobrado, tanto na linha principal
 // quanto em cada sub-linha de container, sempre com o mesmo par de ids
 // (valorId/moedaId) montado pelo chamador.
 function celulaValorMoedaHtml(valorId, moedaId, valor, moeda, placeholder, readonly){
@@ -664,10 +664,10 @@ function celulaValorMoedaHtml(valorId, moedaId, valor, moeda, placeholder, reado
   </div>`;
 }
 
-// Extrai { valor, moeda } pra prÃÂ©-preencher a cÃÂ©lula ÃÂºnica (nÃÂ£o-detalhada) a
-// partir do que estÃÂ¡ salvo em real_json Ã¢ÂÂ aceita os 3 formatos possÃÂ­veis
+// Extrai { valor, moeda } pra prÃÂÃÂ©-preencher a cÃÂÃÂ©lula ÃÂÃÂºnica (nÃÂÃÂ£o-detalhada) a
+// partir do que estÃÂÃÂ¡ salvo em real_json ÃÂ¢ÃÂÃÂ aceita os 3 formatos possÃÂÃÂ­veis
 // (ver normalizarValorRealItem em controle-core.js); quando salvo em modo
-// "por container", devolve null (tratado ÃÂ  parte).
+// "por container", devolve null (tratado ÃÂÃÂ  parte).
 function valorMoedaInicial(raw, item){
   if(raw == null || raw === '') return { valor:'', moeda:item.unidade };
   if(typeof raw === 'object'){
@@ -685,23 +685,23 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
   const cambioEurDefault = (reais._cambio_eur != null && reais._cambio_eur !== '') ? reais._cambio_eur : _cambio.EUR;
   const containers = containersDoProcesso(p);
 
-  // Tabela em largura total (em vez do form-grid de 2-3 colunas) Ã¢ÂÂ com dois
-  // campos por item (Pago/Cobrado) + hint do cotado, a versÃÂ£o em grid
+  // Tabela em largura total (em vez do form-grid de 2-3 colunas) ÃÂ¢ÃÂÃÂ com dois
+  // campos por item (Pago/Cobrado) + hint do cotado, a versÃÂÃÂ£o em grid
   // espremia demais e cortava o campo "Cobrado" na tela. Uma linha por item,
-  // ocupando toda a largura do painel, dÃÂ¡ espaÃÂ§o de sobra pros 2 campos +
-  // a margem, e ainda fica mais fÃÂ¡cil de escanear vÃÂ¡rias taxas em sequÃÂªncia
-  // (mesma lÃÂ³gica da tabela Pagamento ÃÂ Recebimento do Conexos).
+  // ocupando toda a largura do painel, dÃÂÃÂ¡ espaÃÂÃÂ§o de sobra pros 2 campos +
+  // a margem, e ainda fica mais fÃÂÃÂ¡cil de escanear vÃÂÃÂ¡rias taxas em sequÃÂÃÂªncia
+  // (mesma lÃÂÃÂ³gica da tabela Pagamento ÃÂÃÂ Recebimento do Conexos).
   //
-  // Cada lado (Pago/Cobrado) tem sua PRÃÂPRIA moeda (BRL/USD/EUR) Ã¢ÂÂ igual ao
+  // Cada lado (Pago/Cobrado) tem sua PRÃÂÃÂPRIA moeda (BRL/USD/EUR) ÃÂ¢ÃÂÃÂ igual ao
   // Conexos, que deixa pagar num moeda e receber em outra. E taxas marcadas
   // como porContainer podem ser detalhadas container a container quando o
-  // processo tem mais de um (link "Ã°ÂÂÂ¦ Detalhar por container").
+  // processo tem mais de um (link "ÃÂ°ÃÂÃÂÃÂ¦ Detalhar por container").
   const gruposHtml = CUSTOS_REAIS_CONFIG.map(g => {
     const linhasHtml = g.itens.map(item => {
       const valorCotado = calcularCustoCotadoItem(item, cotado);
       const rawPago = reais[item.id];
 
-      // Imposto (apenasPago) nÃÂ£o tem compra ÃÂ venda Ã¢ÂÂ ÃÂ© sÃÂ³ um valor a pagar
+      // Imposto (apenasPago) nÃÂÃÂ£o tem compra ÃÂÃÂ venda ÃÂ¢ÃÂÃÂ ÃÂÃÂ© sÃÂÃÂ³ um valor a pagar
       // pro governo, sempre em R$, sem Cobrado/Margem nem seletor de moeda.
       if(item.apenasPago){
         const valorInicialImposto = (rawPago != null && rawPago !== '')
@@ -728,8 +728,8 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
 
       const iniPago = valorMoedaInicial(rawPago, item) || { valor:'', moeda:item.unidade };
       const iniCobrado = valorMoedaInicial(rawCobrado, item) || { valor:'', moeda:item.unidade };
-      // Sem nada salvo ainda (nem detalhado, nem valor ÃÂºnico), prÃÂ©-preenche
-      // com o cotado Ã¢ÂÂ sÃÂ³ faz sentido no modo valor ÃÂºnico.
+      // Sem nada salvo ainda (nem detalhado, nem valor ÃÂÃÂºnico), prÃÂÃÂ©-preenche
+      // com o cotado ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ faz sentido no modo valor ÃÂÃÂºnico.
       if(!breakdownAtivo && iniPago.valor === '' && valorCotado != null) iniPago.valor = valorCotado.toFixed(2);
 
       const simboloUnidade = item.unidade === 'USD' ? 'US$' : 'R$';
@@ -737,11 +737,11 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
         ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`
         : '';
       const detalharLink = podeDetalhar
-        ? `<div style="margin-top:3px;"><a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" style="font-size:10px;color:var(--ac);text-decoration:none;">Ã°ÂÂÂ¦ <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total ÃÂºnico' : `Detalhar por container (${containers.length})`}</span></a></div>`
+        ? `<div style="margin-top:3px;"><a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" style="font-size:10px;color:var(--ac);text-decoration:none;">ÃÂ°ÃÂÃÂÃÂ¦ <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total ÃÂÃÂºnico' : `Detalhar por container (${containers.length})`}</span></a></div>`
         : '';
 
-      // Se jÃÂ¡ estÃÂ¡ em modo detalhado, o valor mostrado na linha principal ÃÂ©
-      // sÃÂ³ um resumo somado em R$ (read-only) Ã¢ÂÂ a ediÃÂ§ÃÂ£o de verdade acontece
+      // Se jÃÂÃÂ¡ estÃÂÃÂ¡ em modo detalhado, o valor mostrado na linha principal ÃÂÃÂ©
+      // sÃÂÃÂ³ um resumo somado em R$ (read-only) ÃÂ¢ÃÂÃÂ a ediÃÂÃÂ§ÃÂÃÂ£o de verdade acontece
       // nas sub-linhas por container, logo abaixo.
       let pagoValorExibido = iniPago.valor, pagoMoedaExibida = iniPago.moeda;
       let cobradoValorExibido = iniCobrado.valor, cobradoMoedaExibida = iniCobrado.moeda;
@@ -793,14 +793,14 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
     </div>`;
   }).join('');
 
-  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita), cada um com sua prÃÂ³pria moeda. Taxas por container podem ser detalhadas container a container.</div>
+  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita), cada um com sua prÃÂÃÂ³pria moeda. Taxas por container podem ser detalhadas container a container.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
       <div class="form-group" style="max-width:200px;">
-        <label class="form-label">CÃÂ¢mbio USD</label>
+        <label class="form-label">CÃÂÃÂ¢mbio USD</label>
         <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()">
       </div>
       <div class="form-group" style="max-width:200px;">
-        <label class="form-label">CÃÂ¢mbio EUR</label>
+        <label class="form-label">CÃÂÃÂ¢mbio EUR</label>
         <input class="form-input" type="number" step="0.0001" id="f_cr_cambio_eur" value="${cambioEurDefault||''}" placeholder="${_cambio.EUR.toFixed(4)}" oninput="atualizarTotalCustosReais()">
       </div>
     </div>
@@ -808,16 +808,16 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
     <div id="custos-reais-total" style="margin-top:6px;"></div>`;
 }
 
-// Alterna uma taxa entre "valor ÃÂºnico pro processo" e "detalhado container a
-// container" Ã¢ÂÂ ativa/desativa a sub-linha de containers e trava (readonly) a
-// linha principal, que passa a mostrar sÃÂ³ o total somado em R$.
+// Alterna uma taxa entre "valor ÃÂÃÂºnico pro processo" e "detalhado container a
+// container" ÃÂ¢ÃÂÃÂ ativa/desativa a sub-linha de containers e trava (readonly) a
+// linha principal, que passa a mostrar sÃÂÃÂ³ o total somado em R$.
 function toggleCrContainerBreakdown(itemId){
   const row = document.getElementById('cr_containers_row_'+itemId);
   const label = document.getElementById('cr_toggle_label_'+itemId);
   if(!row) return;
   const ativar = row.style.display === 'none';
   row.style.display = ativar ? 'table-row' : 'none';
-  if(label) label.textContent = ativar ? 'Ver total ÃÂºnico' : `Detalhar por container`;
+  if(label) label.textContent = ativar ? 'Ver total ÃÂÃÂºnico' : `Detalhar por container`;
   ['f_cr_'+itemId, 'f_cr_cobrado_'+itemId].forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.readOnly = ativar; el.style.background = ativar ? 'var(--bg)' : ''; el.style.color = ativar ? 'var(--muted)' : ''; }
@@ -829,11 +829,11 @@ function toggleCrContainerBreakdown(itemId){
   atualizarTotalCustosReais();
 }
 
-// LÃÂª os valores atualmente digitados nos campos f_cr_* (sem depender de
-// _editando estar sincronizado ainda) Ã¢ÂÂ usado tanto pra atualizar o total ao
-// vivo quanto pra montar o que vai salvo em real_json/real_cambio. O cÃÂ¢mbio
-// vem separado (real_cambio ÃÂ© coluna prÃÂ³pria, nÃÂ£o fica dentro do real_json)
-// pra bater com a migration 0004_add_custos_reais_processo.sql, que jÃÂ¡
+// LÃÂÃÂª os valores atualmente digitados nos campos f_cr_* (sem depender de
+// _editando estar sincronizado ainda) ÃÂ¢ÃÂÃÂ usado tanto pra atualizar o total ao
+// vivo quanto pra montar o que vai salvo em real_json/real_cambio. O cÃÂÃÂ¢mbio
+// vem separado (real_cambio ÃÂÃÂ© coluna prÃÂÃÂ³pria, nÃÂÃÂ£o fica dentro do real_json)
+// pra bater com a migration 0004_add_custos_reais_processo.sql, que jÃÂÃÂ¡
 // criou as duas colunas assim.
 function coletarCustosReaisDoForm(){
   const obj = {};
@@ -841,12 +841,12 @@ function coletarCustosReaisDoForm(){
   if(eurEl && eurEl.value !== '') obj._cambio_eur = parseFloat(eurEl.value);
   const containers = containersDoProcesso(_editando || {});
   custosReaisItensFlat().forEach(item => {
-    // "Cobrado do Cliente" fica na MESMA real_json, com sufixo _cobrado Ã¢ÂÂ
-    // nÃÂ£o precisa de coluna nova (ver calcularReceitaRealTotal em
-    // controle-core.js, que lÃÂª exatamente essa convenÃÂ§ÃÂ£o). Cada lado (Pago/
-    // Cobrado) ÃÂ© coletado com o mesmo par de prefixos, valor+moeda; quando a
-    // taxa estÃÂ¡ em modo "detalhado por container" (sub-linha visÃÂ­vel), lÃÂª os
-    // campos por container em vez do campo ÃÂºnico da linha principal.
+    // "Cobrado do Cliente" fica na MESMA real_json, com sufixo _cobrado ÃÂ¢ÃÂÃÂ
+    // nÃÂÃÂ£o precisa de coluna nova (ver calcularReceitaRealTotal em
+    // controle-core.js, que lÃÂÃÂª exatamente essa convenÃÂÃÂ§ÃÂÃÂ£o). Cada lado (Pago/
+    // Cobrado) ÃÂÃÂ© coletado com o mesmo par de prefixos, valor+moeda; quando a
+    // taxa estÃÂÃÂ¡ em modo "detalhado por container" (sub-linha visÃÂÃÂ­vel), lÃÂÃÂª os
+    // campos por container em vez do campo ÃÂÃÂºnico da linha principal.
     [
       { sufixo:'',         prefV:'f_cr_',          prefM:'f_cr_moeda_' },
       { sufixo:'_cobrado', prefV:'f_cr_cobrado_',  prefM:'f_cr_cobrado_moeda_' },
@@ -881,7 +881,7 @@ function coletarCambioCustosReaisDoForm(){
 }
 
 // Recalcula e redesenha o resumo (Custo Total Real / Lucro Real) conforme o
-// usuÃÂ¡rio digita, sem precisar salvar Ã¢ÂÂ mesmo padrÃÂ£o do renderPagamentoInfoLive().
+// usuÃÂÃÂ¡rio digita, sem precisar salvar ÃÂ¢ÃÂÃÂ mesmo padrÃÂÃÂ£o do renderPagamentoInfoLive().
 function atualizarTotalCustosReais(){
   if(!_editando) return;
   const wrap = document.getElementById('custos-reais-total');
@@ -892,17 +892,17 @@ function atualizarTotalCustosReais(){
   const obj = coletarCustosReaisDoForm();
   const snapshot = { ..._editando, real_json: obj, real_cambio: cambio };
 
-  // Margem por LINHA (pago ÃÂ cobrado), atualizada a cada tecla Ã¢ÂÂ igual ao
-  // Conexos mostra Pagamento ÃÂ Recebimento lado a lado por taxa. Sempre em
+  // Margem por LINHA (pago ÃÂÃÂ cobrado), atualizada a cada tecla ÃÂ¢ÃÂÃÂ igual ao
+  // Conexos mostra Pagamento ÃÂÃÂ Recebimento lado a lado por taxa. Sempre em
   // R$: Pago e Cobrado podem estar em moedas diferentes entre si (ex.: paga
-  // o representante em BRL, recebe do importador em USD), entÃÂ£o R$ ÃÂ© a
-  // ÃÂºnica unidade em que dÃÂ¡ pra comparar os dois lados direto.
+  // o representante em BRL, recebe do importador em USD), entÃÂÃÂ£o R$ ÃÂÃÂ© a
+  // ÃÂÃÂºnica unidade em que dÃÂÃÂ¡ pra comparar os dois lados direto.
   custosReaisItensFlat().forEach(item => {
     const badge = document.getElementById('cr_margem_'+item.id);
     const normPago = normalizarValorRealItem(obj[item.id], item, snapshot);
     const normCobrado = normalizarValorRealItem(obj[item.id+'_cobrado'], item, snapshot);
-    // Quando a taxa estÃÂ¡ em modo "detalhado por container", a linha
-    // principal fica sÃÂ³ como resumo somado em R$ (readonly) Ã¢ÂÂ atualiza o
+    // Quando a taxa estÃÂÃÂ¡ em modo "detalhado por container", a linha
+    // principal fica sÃÂÃÂ³ como resumo somado em R$ (readonly) ÃÂ¢ÃÂÃÂ atualiza o
     // valor mostrado a cada tecla digitada nas sub-linhas.
     const containersRow = document.getElementById('cr_containers_row_'+item.id);
     if(containersRow && containersRow.style.display !== 'none'){
@@ -914,7 +914,7 @@ function atualizarTotalCustosReais(){
     if(!badge) return;
     if(!normPago || !normCobrado){ badge.innerHTML = ''; return; }
     const margem = normCobrado.totalBrl - normPago.totalBrl;
-    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'Ã¢ÂÂ²':'Ã¢ÂÂ¼'} margem: R$ ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'ÃÂ¢ÃÂÃÂ²':'ÃÂ¢ÃÂÃÂ¼'} margem: R$ ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
   });
 
   const custosReais = calcularCustoRealTotal(snapshot);
@@ -925,19 +925,19 @@ function atualizarTotalCustosReais(){
   const lucro = temNf ? (nfSaida - custosReais.total) : null;
   const linhaMargemTaxas = receitaReais
     ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${receitaReais.count} ${receitaReais.count===1?'item':'itens'})</span><strong>${r2(receitaReais.total)}</strong></div>
-       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado Ã¢ÂÂ Pago)</span><strong style="color:${(receitaReais.total-custosReais.total)>=0?'var(--ok)':'var(--err)'}">${r2(receitaReais.total-custosReais.total)}</strong></div>`
+       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado ÃÂ¢ÃÂÃÂ Pago)</span><strong style="color:${(receitaReais.total-custosReais.total)>=0?'var(--ok)':'var(--err)'}">${r2(receitaReais.total-custosReais.total)}</strong></div>`
     : '';
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
-    <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lanÃÂ§ados)</span><strong>${r2(custosReais.total)}</strong></div>
+    <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lanÃÂÃÂ§ados)</span><strong>${r2(custosReais.total)}</strong></div>
     ${linhaMargemTaxas}
     ${temNf
-      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF SaÃÂ­da Ã¢ÂÂ Custo Real Total)</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
-      : `<div style="color:var(--dim);">Preencha a NF SaÃÂ­da na aba Documentos pra ver o lucro real aqui.</div>`}
+      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ Custo Real Total)</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
+      : `<div style="color:var(--dim);">Preencha a NF SaÃÂÃÂ­da na aba Documentos pra ver o lucro real aqui.</div>`}
   </div>`;
 }
 
-// Salva sÃÂ³ os custos reais Ã¢ÂÂ segue o mesmo mecanismo de patchFields das
-// outras abas (salvarProcesso em controle-core.js), entÃÂ£o nÃÂ£o sobrescreve
+// Salva sÃÂÃÂ³ os custos reais ÃÂ¢ÃÂÃÂ segue o mesmo mecanismo de patchFields das
+// outras abas (salvarProcesso em controle-core.js), entÃÂÃÂ£o nÃÂÃÂ£o sobrescreve
 // nenhum outro campo alterado por outra pessoa nesse meio tempo.
 async function salvarCustosReaisTab(){
   if(!_editando) return;
@@ -947,44 +947,44 @@ async function salvarCustosReaisTab(){
   if(ok) atualizarTotalCustosReais();
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// HISTÃÂRICO Ã¢ÂÂ AUDITORIA DE ALTERAÃÂÃÂES
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// HISTÃÂÃÂRICO ÃÂ¢ÃÂÃÂ AUDITORIA DE ALTERAÃÂÃÂÃÂÃÂES
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // Marcador usado no campo "campo" de uma entrada de log pra indicar que ela
-// nÃÂ£o ÃÂ© uma alteraÃÂ§ÃÂ£o normal de campo, e sim o registro de "a IA leu este
+// nÃÂÃÂ£o ÃÂÃÂ© uma alteraÃÂÃÂ§ÃÂÃÂ£o normal de campo, e sim o registro de "a IA leu este
 // documento e preencheu estes campos" (ver extrairComIA() e o render abaixo).
-const LOG_CAMPO_LEITURA_IA = 'Ã°ÂÂÂ_leitura_ia';
+const LOG_CAMPO_LEITURA_IA = 'ÃÂ°ÃÂÃÂÃÂ_leitura_ia';
 const LABELS_CAMPOS_IA = {
-  referencia:'ReferÃÂªncia', fornecedor:'Fornecedor/Exportador', cliente:'Cliente',
-  itens:'Itens/Produtos', pi_numero:'NÃÂº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
+  referencia:'ReferÃÂÃÂªncia', fornecedor:'Fornecedor/Exportador', cliente:'Cliente',
+  itens:'Itens/Produtos', pi_numero:'NÃÂÃÂº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
   pi_incoterm:'Incoterm', pi_pagamento:'Forma de pagamento', etd:'ETD', eta:'ETA',
   armador:'Armador', navio:'Navio', porto_origem:'Porto de origem', porto_destino:'Porto de destino',
   hbl:'HBL', mbl:'MBL', container:'Container', lacre:'Lacre', valor_frete:'Valor do frete',
-  moeda_frete:'Moeda do frete', numero_di:'NÃÂº DI', data_registro_di:'Data registro DI',
-  canal:'Canal', data_liberacao:'Data liberaÃÂ§ÃÂ£o', ci_numero:'NÃÂº CI', ci_valor_usd:'Valor CI (USD)',
+  moeda_frete:'Moeda do frete', numero_di:'NÃÂÃÂº DI', data_registro_di:'Data registro DI',
+  canal:'Canal', data_liberacao:'Data liberaÃÂÃÂ§ÃÂÃÂ£o', ci_numero:'NÃÂÃÂº CI', ci_valor_usd:'Valor CI (USD)',
   ci_data:'Data CI', data_chegada:'Data de chegada', ce_master:'CE Master', ce_house:'CE House',
-  ce_data_embarque:'Data embarque (CE)', nf_entrada_numero:'NÃÂº NF entrada', nf_entrada_data:'Data NF entrada',
-  nf_entrada_valor:'Valor NF entrada', nf_saida_numero:'NÃÂº NF saÃÂ­da', nf_saida_data:'Data NF saÃÂ­da',
-  nf_saida_valor:'Valor NF saÃÂ­da', nf_saida_cfop:'CFOP NF saÃÂ­da', data_devolucao_vazio:'Data devoluÃÂ§ÃÂ£o vazio',
+  ce_data_embarque:'Data embarque (CE)', nf_entrada_numero:'NÃÂÃÂº NF entrada', nf_entrada_data:'Data NF entrada',
+  nf_entrada_valor:'Valor NF entrada', nf_saida_numero:'NÃÂÃÂº NF saÃÂÃÂ­da', nf_saida_data:'Data NF saÃÂÃÂ­da',
+  nf_saida_valor:'Valor NF saÃÂÃÂ­da', nf_saida_cfop:'CFOP NF saÃÂÃÂ­da', data_devolucao_vazio:'Data devoluÃÂÃÂ§ÃÂÃÂ£o vazio',
 };
 async function carregarHistorico(processoId){
   const lista = document.getElementById('historico-lista');
   if(!lista) return;
-  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando histÃÂ³rico...</div>';
+  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando histÃÂÃÂ³rico...</div>';
   try{
     const r = await fetch('/api/controle/v2/processo/'+processoId+'/log');
     const d = await r.json();
     if(!d.ok || !d.log.length){
-      lista.innerHTML = '<div class="empty"><div class="empty-icon">Ã°ÂÂÂ</div><div class="empty-text">Nenhuma alteraÃÂ§ÃÂ£o registrada ainda</div></div>';
+      lista.innerHTML = '<div class="empty"><div class="empty-icon">ÃÂ°ÃÂÃÂÃÂ</div><div class="empty-text">Nenhuma alteraÃÂÃÂ§ÃÂÃÂ£o registrada ainda</div></div>';
       return;
     }
     lista.innerHTML = '<div class="log-list">' + d.log.map(l=>{
       const isLeituraIA = l.campo === LOG_CAMPO_LEITURA_IA;
       const texto = isLeituraIA
-        ? ` leu o documento <strong>${esc(l.valor_antes||'?')}</strong> com IA e preencheu: ${esc(l.valor_depois||'Ã¢ÂÂ')}`
-        : ` alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'Ã¢ÂÂ'))} Ã¢ÂÂ ${esc(String(l.valor_depois||'Ã¢ÂÂ'))}`;
+        ? ` leu o documento <strong>${esc(l.valor_antes||'?')}</strong> com IA e preencheu: ${esc(l.valor_depois||'ÃÂ¢ÃÂÃÂ')}`
+        : ` alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'ÃÂ¢ÃÂÃÂ'))} ÃÂ¢ÃÂÃÂ ${esc(String(l.valor_depois||'ÃÂ¢ÃÂÃÂ'))}`;
       return `<div class="log-item">
-        <div class="log-avatar">${isLeituraIA ? 'Ã°ÂÂ¤Â' : esc((l.usuario||'?').slice(0,2).toUpperCase())}</div>
+        <div class="log-avatar">${isLeituraIA ? 'ÃÂ°ÃÂÃÂ¤ÃÂ' : esc((l.usuario||'?').slice(0,2).toUpperCase())}</div>
         <div class="log-content">
           <span class="log-user">${esc(l.usuario||'?')}</span>
           <span class="log-text">${texto}</span>
@@ -993,13 +993,13 @@ async function carregarHistorico(processoId){
       </div>`;
     }).join('') + '</div>';
   }catch(e){
-    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar histÃÂ³rico.</div>';
+    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar histÃÂÃÂ³rico.</div>';
   }
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// GED Ã¢ÂÂ UPLOAD E GESTÃÂO DE ARQUIVOS DO PROCESSO
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// GED ÃÂ¢ÃÂÃÂ UPLOAD E GESTÃÂÃÂO DE ARQUIVOS DO PROCESSO
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 async function carregarArquivosGed(processoId){
   const lista = document.getElementById('ged-lista-arquivos');
   if(!lista) return;
@@ -1012,13 +1012,13 @@ async function carregarArquivosGed(processoId){
       return;
     }
     lista.innerHTML = d.arquivos.map(a=>{
-      const icon = a.nome.toLowerCase().endsWith('.pdf') ? 'Ã°ÂÂÂ' : 'Ã°ÂÂÂ¼Ã¯Â¸Â';
+      const icon = a.nome.toLowerCase().endsWith('.pdf') ? 'ÃÂ°ÃÂÃÂÃÂ' : 'ÃÂ°ÃÂÃÂÃÂ¼ÃÂ¯ÃÂ¸ÃÂ';
       const tamanho = a.tamanho ? (a.tamanho/1024).toFixed(0)+' KB' : '';
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;">
         <span>${icon}</span>
         <a href="${a.url}" target="_blank" style="flex:1;color:var(--ac);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.nome}</a>
         <span style="color:var(--dim);font-size:10px;">${tamanho}</span>
-        <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">Ã¢ÂÂ</button>
+        <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">ÃÂ¢ÃÂÃÂ</button>
       </div>`;
     }).join('');
   }catch(e){
@@ -1035,11 +1035,11 @@ async function uploadArquivosGed(files){
   for(const file of files){
     const tiposPermitidos = ['application/pdf','image/jpeg','image/jpg','image/png'];
     if(!tiposPermitidos.includes(file.type)){
-      showToast(`Tipo nÃÂ£o permitido: ${file.name}`,'err');
+      showToast(`Tipo nÃÂÃÂ£o permitido: ${file.name}`,'err');
       continue;
     }
     if(file.size > 15*1024*1024){
-      showToast(`Arquivo muito grande (mÃÂ¡x 15MB): ${file.name}`,'err');
+      showToast(`Arquivo muito grande (mÃÂÃÂ¡x 15MB): ${file.name}`,'err');
       continue;
     }
     try{
@@ -1074,20 +1074,20 @@ async function excluirArquivoGed(arquivoId, processoId){
   try{
     const r = await fetch('/api/controle/v2/arquivos/'+arquivoId, { method:'DELETE' });
     const d = await r.json();
-    if(d.ok){ showToast('Arquivo excluÃÂ­do','ok'); carregarArquivosGed(processoId); }
+    if(d.ok){ showToast('Arquivo excluÃÂÃÂ­do','ok'); carregarArquivosGed(processoId); }
     else showToast('Erro ao excluir','err');
   }catch(e){ showToast('Erro ao excluir','err'); }
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// ATUALIZAÃÂÃÂO AUTOMÃÂTICA DE FASE EM TEMPO REAL
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ATUALIZAÃÂÃÂÃÂÃÂO AUTOMÃÂÃÂTICA DE FASE EM TEMPO REAL
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 
-// Quando o canal sai VERDE, nÃÂ£o hÃÂ¡ etapa de conferÃÂªncia separada Ã¢ÂÂ a
-// parametrizaÃÂ§ÃÂ£o ocorre na mesma data do registro da DI. SÃÂ³ preenche
-// automaticamente se o campo ainda estiver vazio, para nÃÂ£o sobrescrever
-// uma data de parametrizaÃÂ§ÃÂ£o jÃÂ¡ informada manualmente (ex: Amarelo/Vermelho
-// que depois virou Verde apÃÂ³s reanÃÂ¡lise, mas jÃÂ¡ tinha data prÃÂ³pria).
+// Quando o canal sai VERDE, nÃÂÃÂ£o hÃÂÃÂ¡ etapa de conferÃÂÃÂªncia separada ÃÂ¢ÃÂÃÂ a
+// parametrizaÃÂÃÂ§ÃÂÃÂ£o ocorre na mesma data do registro da DI. SÃÂÃÂ³ preenche
+// automaticamente se o campo ainda estiver vazio, para nÃÂÃÂ£o sobrescrever
+// uma data de parametrizaÃÂÃÂ§ÃÂÃÂ£o jÃÂÃÂ¡ informada manualmente (ex: Amarelo/Vermelho
+// que depois virou Verde apÃÂÃÂ³s reanÃÂÃÂ¡lise, mas jÃÂÃÂ¡ tinha data prÃÂÃÂ³pria).
 function aplicarRegraParametrizacaoVerde(){
   const canalEl = document.getElementById('f_canal');
   const paramEl = document.getElementById('f_data_parametrizacao');
@@ -1098,17 +1098,17 @@ function aplicarRegraParametrizacaoVerde(){
   }
 }
 
-// Datas "efetivas" (Data de Embarque, Data Chegada, Data ProntidÃÂ£o Real)
-// registram algo que JÃÂ ACONTECEU. Se alguÃÂ©m digitar ali uma data no
-// FUTURO Ã¢ÂÂ muito comum: o booking chega com uma previsÃÂ£o e a pessoa
-// preenche direto no campo "de verdade" por hÃÂ¡bito, sem notar que existe um
-// campo de previsÃÂ£o separado Ã¢ÂÂ isso quase sempre ÃÂ© engano. Em vez de sÃÂ³
-// avisar (como este arquivo fazia antes, sÃÂ³ pra Data Chegada), move o valor
-// automaticamente pro campo de previsÃÂ£o correspondente (ETD/ETA/PrevisÃÂ£o
-// ProntidÃÂ£o) e limpa o campo efetivo, porque por definiÃÂ§ÃÂ£o ele nÃÂ£o pode ter
-// uma data que ainda nÃÂ£o aconteceu. Isso evita o processo aparecer como "jÃÂ¡
-// embarcado" ou "jÃÂ¡ chegou" antes da hora sÃÂ³ por causa do campo errado Ã¢ÂÂ
-// consistente com a 2ÃÂª camada de proteÃÂ§ÃÂ£o que jÃÂ¡ existe em calcularFase().
+// Datas "efetivas" (Data de Embarque, Data Chegada, Data ProntidÃÂÃÂ£o Real)
+// registram algo que JÃÂÃÂ ACONTECEU. Se alguÃÂÃÂ©m digitar ali uma data no
+// FUTURO ÃÂ¢ÃÂÃÂ muito comum: o booking chega com uma previsÃÂÃÂ£o e a pessoa
+// preenche direto no campo "de verdade" por hÃÂÃÂ¡bito, sem notar que existe um
+// campo de previsÃÂÃÂ£o separado ÃÂ¢ÃÂÃÂ isso quase sempre ÃÂÃÂ© engano. Em vez de sÃÂÃÂ³
+// avisar (como este arquivo fazia antes, sÃÂÃÂ³ pra Data Chegada), move o valor
+// automaticamente pro campo de previsÃÂÃÂ£o correspondente (ETD/ETA/PrevisÃÂÃÂ£o
+// ProntidÃÂÃÂ£o) e limpa o campo efetivo, porque por definiÃÂÃÂ§ÃÂÃÂ£o ele nÃÂÃÂ£o pode ter
+// uma data que ainda nÃÂÃÂ£o aconteceu. Isso evita o processo aparecer como "jÃÂÃÂ¡
+// embarcado" ou "jÃÂÃÂ¡ chegou" antes da hora sÃÂÃÂ³ por causa do campo errado ÃÂ¢ÃÂÃÂ
+// consistente com a 2ÃÂÃÂª camada de proteÃÂÃÂ§ÃÂÃÂ£o que jÃÂÃÂ¡ existe em calcularFase().
 function moverDataFuturaParaPrevisao(idEfetivo, idPrevisao, labelPrevisao){
   const elEfetivo = document.getElementById(idEfetivo);
   const elPrevisao = document.getElementById(idPrevisao);
@@ -1120,7 +1120,7 @@ function moverDataFuturaParaPrevisao(idEfetivo, idPrevisao, labelPrevisao){
   const valor = elEfetivo.value;
   elEfetivo.value = '';
   elPrevisao.value = valor;
-  showToast(`Ã°ÂÂÂ Essa data ainda nÃÂ£o aconteceu (ÃÂ© futura) Ã¢ÂÂ movida para "${labelPrevisao}" automaticamente.`, 'info');
+  showToast(`ÃÂ°ÃÂÃÂÃÂ Essa data ainda nÃÂÃÂ£o aconteceu (ÃÂÃÂ© futura) ÃÂ¢ÃÂÃÂ movida para "${labelPrevisao}" automaticamente.`, 'info');
   return true;
 }
 
@@ -1145,7 +1145,7 @@ function atualizarFaseEmTempoReal(){
     const val = el.value?.trim()||null;
     snapshot[campo] = val||null;
   });
-  // demurrage_valor usa mÃÂ¡scara monetÃÂ¡ria Ã¢ÂÂ nÃÂ£o pode ser lido como texto puro
+  // demurrage_valor usa mÃÂÃÂ¡scara monetÃÂÃÂ¡ria ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o pode ser lido como texto puro
   const valorDemurAtual = valorMoeda('f_demurrage_valor');
   if(valorDemurAtual!=null) snapshot.demurrage_valor = valorDemurAtual;
 
@@ -1158,12 +1158,12 @@ function atualizarFaseEmTempoReal(){
     badge.innerHTML = `<span class="fase-badge fase-${novaFase}">${fase.icon} ${fase.label}</span>`;
   }
 
-  // Atualizar _editando.fase para que ao salvar jÃÂ¡ venha correto
+  // Atualizar _editando.fase para que ao salvar jÃÂÃÂ¡ venha correto
   _editando._fasePrevista = novaFase;
 
-  // Recalcular e redesenhar o bloco "CÃÂ¡lculo do Demurrage" com os valores
-  // atuais do formulÃÂ¡rio Ã¢ÂÂ antes este bloco sÃÂ³ era montado uma vez, ao abrir
-  // o modal, e ficava com dados desatualizados ao editar Data DevoluÃÂ§ÃÂ£o etc.
+  // Recalcular e redesenhar o bloco "CÃÂÃÂ¡lculo do Demurrage" com os valores
+  // atuais do formulÃÂÃÂ¡rio ÃÂ¢ÃÂÃÂ antes este bloco sÃÂÃÂ³ era montado uma vez, ao abrir
+  // o modal, e ficava com dados desatualizados ao editar Data DevoluÃÂÃÂ§ÃÂÃÂ£o etc.
   const demurWrap = document.getElementById('demur-info-wrap');
   if(demurWrap) demurWrap.innerHTML = renderDemurInfo(snapshot);
 
@@ -1171,7 +1171,7 @@ function atualizarFaseEmTempoReal(){
   const faseIdx = FASES.findIndex(f=>f.id===novaFase);
   document.querySelectorAll('.tl-dot').forEach((dot, i)=>{
     dot.className = 'tl-dot';
-    if(i < faseIdx) dot.classList.add('done'), dot.textContent='Ã¢ÂÂ';
+    if(i < faseIdx) dot.classList.add('done'), dot.textContent='ÃÂ¢ÃÂÃÂ';
     else if(i===faseIdx) dot.classList.add('active'), dot.textContent=FASES[i].icon;
     else dot.textContent=FASES[i].icon;
   });
@@ -1190,9 +1190,9 @@ function trocarAba(id){
   if(pane) pane.classList.add('active');
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // PAGAMENTO
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 function renderPagamentoCampos(){
   const tipo = document.getElementById('f_pi_pagamento')?.value;
   const p = _editando || {};
@@ -1216,22 +1216,22 @@ function renderPagamentoCampos(){
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>
       <div class="form-group"><label class="form-label">Data Saldo</label>
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
-      <div class="form-group"><label class="form-label">CÃÂ¢mbio Entrada (R$)</label>
+      <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio Entrada (R$)</label>
       <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_entrada" value="${p.pi_cambio_entrada||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>
-      <div class="form-group"><label class="form-label">CÃÂ¢mbio Saldo (R$)</label>
+      <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio Saldo (R$)</label>
       <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_saldo" value="${p.pi_cambio_saldo||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>`;
   } else if(tipo==='PARCELADO'){
     // Recarrega _parcelas a partir do processo sempre que o form entra em
-    // modo Parcelado (troca de tipo de pagamento ou abertura do modal) Ã¢ÂÂ
-    // mesmo padrÃÂ£o de _vendas/_containers: estado vive numa variÃÂ¡vel global
-    // porque as linhas sÃÂ£o adicionadas/removidas dinamicamente (sem isso nÃÂ£o
-    // dÃÂ¡ pra ter "quantas parcelas forem necessÃÂ¡rias" com um botÃÂ£o +).
+    // modo Parcelado (troca de tipo de pagamento ou abertura do modal) ÃÂ¢ÃÂÃÂ
+    // mesmo padrÃÂÃÂ£o de _vendas/_containers: estado vive numa variÃÂÃÂ¡vel global
+    // porque as linhas sÃÂÃÂ£o adicionadas/removidas dinamicamente (sem isso nÃÂÃÂ£o
+    // dÃÂÃÂ¡ pra ter "quantas parcelas forem necessÃÂÃÂ¡rias" com um botÃÂÃÂ£o +).
     if(!Array.isArray(_parcelas) || !_parcelas.length){
         try{ _parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ _parcelas = []; }
     if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
       }
     html+=`<div class="form-group full">
-      <label class="form-label">Parcelas (quantos cÃÂ¢mbios forem necessÃÂ¡rios Ã¢ÂÂ ex.: confirmaÃÂ§ÃÂ£o do pedido, embarque, chegada)</label>
+      <label class="form-label">Parcelas (quantos cÃÂÃÂ¢mbios forem necessÃÂÃÂ¡rios ÃÂ¢ÃÂÃÂ ex.: confirmaÃÂÃÂ§ÃÂÃÂ£o do pedido, embarque, chegada)</label>
       <div id="parcelas-list"></div>
       <button type="button" onclick="adicionarParcela()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Parcela</button>
       <input type="hidden" id="f_pi_parcelas_json">
@@ -1239,17 +1239,17 @@ function renderPagamentoCampos(){
   }
   html+='</div>';
   el.innerHTML=html;
-  // #parcelas-list sÃÂ³ existe no DOM depois do innerHTML acima Ã¢ÂÂ preencher aqui.
+  // #parcelas-list sÃÂÃÂ³ existe no DOM depois do innerHTML acima ÃÂ¢ÃÂÃÂ preencher aqui.
   if(tipo==='PARCELADO') renderParcelas();
 }
 
 // Forma "100% a Prazo": provisiona a Data Pagamento automaticamente como
-// Data PI + Prazo (dias), pra nÃÂ£o depender do usuÃÂ¡rio calcular/lembrar de
-// preencher na mÃÂ£o Ã¢ÂÂ e sem isso o pagamento nem entrava no Dashboard
+// Data PI + Prazo (dias), pra nÃÂÃÂ£o depender do usuÃÂÃÂ¡rio calcular/lembrar de
+// preencher na mÃÂÃÂ£o ÃÂ¢ÃÂÃÂ e sem isso o pagamento nem entrava no Dashboard
 // Financeiro (listarPagamentosPI usa pi_data_saldo como vencimento pro
-// "Saldo a pagar"). Roda a cada ediÃÂ§ÃÂ£o da Data PI ou do Prazo; se o usuÃÂ¡rio
+// "Saldo a pagar"). Roda a cada ediÃÂÃÂ§ÃÂÃÂ£o da Data PI ou do Prazo; se o usuÃÂÃÂ¡rio
 // mudar a Data Pagamento manualmente depois, prevalece o valor calculado na
-// ÃÂºltima ediÃÂ§ÃÂ£o de Data PI/Prazo (mesmo comportamento de "provisionar", nÃÂ£o
+// ÃÂÃÂºltima ediÃÂÃÂ§ÃÂÃÂ£o de Data PI/Prazo (mesmo comportamento de "provisionar", nÃÂÃÂ£o
 // de travar o campo).
 function atualizarDataPagamentoPrazo(){
   if(document.getElementById('f_pi_pagamento')?.value !== 'PRAZO') return;
@@ -1264,21 +1264,21 @@ function atualizarDataPagamentoPrazo(){
   renderPagamentoInfoLive();
 }
 
-// Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuÃÂ¡rio
-// edita % de entrada ou os cÃÂ¢mbios, sem precisar salvar/reabrir o modal.
+// Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuÃÂÃÂ¡rio
+// edita % de entrada ou os cÃÂÃÂ¢mbios, sem precisar salvar/reabrir o modal.
 function renderPagamentoInfoLive(){
   if(!_editando) return;
   const snapshot = {..._editando};
-  // BUG #340 Ã¢ÂÂ snapshot herdava pi_pagamento de _editando (o valor salvo no
+  // BUG #340 ÃÂ¢ÃÂÃÂ snapshot herdava pi_pagamento de _editando (o valor salvo no
   // banco), nunca do <select> na tela. Resultado: trocar a Forma de
-  // Pagamento (ex.: ENTRADA_SALDO salvo Ã¢ÂÂ escolher PARCELADO) e digitar
-  // qualquer cÃÂ¢mbio disparava este redraw usando o tipo ANTIGO, entÃÂ£o o
-  // resumo (pagamento-box) mostrava "Entrada + Saldo (legado)" de novo Ã¢ÂÂ o
-  // usuÃÂ¡rio via isso como "o formulÃÂ¡rio reverteu sozinho", mesmo com o
-  // <select> e as parcelas continuando corretos por trÃÂ¡s. _editando.pi_pagamento
-  // sÃÂ³ ÃÂ© atualizado de fato no Salvar (coletarESalvar), entÃÂ£o tem que ler o
-  // tipo atual direto do DOM aqui tambÃÂ©m, nÃÂ£o sÃÂ³ pra decidir se anexa
-  // pi_parcelas_json (como jÃÂ¡ fazia abaixo).
+  // Pagamento (ex.: ENTRADA_SALDO salvo ÃÂ¢ÃÂÃÂ escolher PARCELADO) e digitar
+  // qualquer cÃÂÃÂ¢mbio disparava este redraw usando o tipo ANTIGO, entÃÂÃÂ£o o
+  // resumo (pagamento-box) mostrava "Entrada + Saldo (legado)" de novo ÃÂ¢ÃÂÃÂ o
+  // usuÃÂÃÂ¡rio via isso como "o formulÃÂÃÂ¡rio reverteu sozinho", mesmo com o
+  // <select> e as parcelas continuando corretos por trÃÂÃÂ¡s. _editando.pi_pagamento
+  // sÃÂÃÂ³ ÃÂÃÂ© atualizado de fato no Salvar (coletarESalvar), entÃÂÃÂ£o tem que ler o
+  // tipo atual direto do DOM aqui tambÃÂÃÂ©m, nÃÂÃÂ£o sÃÂÃÂ³ pra decidir se anexa
+  // pi_parcelas_json (como jÃÂÃÂ¡ fazia abaixo).
   const tipoAtual = document.getElementById('f_pi_pagamento')?.value;
   if(tipoAtual) snapshot.pi_pagamento = tipoAtual;
   const prazo = document.getElementById('f_pi_prazo_dias')?.value;
@@ -1289,7 +1289,7 @@ function renderPagamentoInfoLive(){
   const cs = parseFloat(document.getElementById('f_pi_cambio_saldo')?.value) || null;
   if(ce!=null) snapshot.pi_cambio_entrada = ce;
   if(cs!=null) snapshot.pi_cambio_saldo = cs;
-  // Parcelado: usa o array em memÃÂ³ria (ainda nÃÂ£o salvo) pra refletir ao vivo
+  // Parcelado: usa o array em memÃÂÃÂ³ria (ainda nÃÂÃÂ£o salvo) pra refletir ao vivo
   // toda linha adicionada/editada/removida, igual ao resto do resumo.
   if(tipoAtual==='PARCELADO') snapshot.pi_parcelas_json = JSON.stringify(_parcelas);
   const box = document.querySelector('#pane-financeiro .pagamento-box');
@@ -1303,7 +1303,7 @@ function renderPagamentoInfo(p){
   const brl = val * _cambio.USD;
   let rows = '';
   if(p.pi_pagamento==='VISTA'){
-    rows=`<div class="pagamento-row"><span>Pagamento ÃÂ  vista</span><span>USD ${val.toFixed(2)}</span></div>
+    rows=`<div class="pagamento-row"><span>Pagamento ÃÂÃÂ  vista</span><span>USD ${val.toFixed(2)}</span></div>
     <div class="pagamento-row"><span>Estimativa BRL</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PRAZO'){
     rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toFixed(2)}</span></div>`;
@@ -1313,9 +1313,9 @@ function renderPagamentoInfo(p){
     const cambioEnt = parseFloat(p.pi_cambio_entrada) || _cambio.USD;
     const cambioSld = parseFloat(p.pi_cambio_saldo)   || _cambio.USD;
     const entBRL = ent*cambioEnt; const sldBRL = sld*cambioSld;
-    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) ÃÂ· cÃÂ¢mbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} ÃÂ· R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) ÃÂ· cÃÂ¢mbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} ÃÂ· R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} ÃÂ· R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) ÃÂÃÂ· cÃÂÃÂ¢mbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} ÃÂÃÂ· R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) ÃÂÃÂ· cÃÂÃÂ¢mbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} ÃÂÃÂ· R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} ÃÂÃÂ· R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PARCELADO'){
     let parcelas = [];
     try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
@@ -1325,36 +1325,36 @@ function renderPagamentoInfo(p){
       const c = parseFloat(pc.cambio_fechado) || _cambio.USD;
       const brlPc = v*c;
       totalUsd += v; totalBrl += brlPc;
-      const venc = pc.data_vencimento ? ' ÃÂ· ' + parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '';
-      rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} ÃÂ· cÃÂ¢mbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toFixed(2)} ÃÂ· R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+      const venc = pc.data_vencimento ? ' ÃÂÃÂ· ' + parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '';
+      rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} ÃÂÃÂ· cÃÂÃÂ¢mbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toFixed(2)} ÃÂÃÂ· R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
     });
-    rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toFixed(2)} ÃÂ· R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
-    // Como cada parcela usa valor fixo em USD (nÃÂ£o %), nÃÂ£o hÃÂ¡ garantia
-    // automÃÂ¡tica de que a soma bate com o Valor USD da PI Ã¢ÂÂ sinalizar em vez
-    // de deixar passar batido (percentual, ao contrÃÂ¡rio, sempre soma 100%).
+    rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toFixed(2)} ÃÂÃÂ· R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    // Como cada parcela usa valor fixo em USD (nÃÂÃÂ£o %), nÃÂÃÂ£o hÃÂÃÂ¡ garantia
+    // automÃÂÃÂ¡tica de que a soma bate com o Valor USD da PI ÃÂ¢ÃÂÃÂ sinalizar em vez
+    // de deixar passar batido (percentual, ao contrÃÂÃÂ¡rio, sempre soma 100%).
     if(val && Math.abs(totalUsd-val) > 0.01){
-      rows += `<div class="pagamento-row" style="color:#b45309;"><span>Ã¢ÂÂ  Parcelas somam USD ${totalUsd.toFixed(2)}, mas o Valor USD da PI ÃÂ© USD ${val.toFixed(2)}</span><span></span></div>`;
+      rows += `<div class="pagamento-row" style="color:#b45309;"><span>ÃÂ¢ÃÂÃÂ  Parcelas somam USD ${totalUsd.toFixed(2)}, mas o Valor USD da PI ÃÂÃÂ© USD ${val.toFixed(2)}</span><span></span></div>`;
     }
   }
   return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // COLETAR E SALVAR
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 function marcarPendenciaRevisada(){
   const el = document.getElementById('f_pendencia_revisao');
   if(el) el.value = '';
   const banner = document.getElementById('alerta-pendencia');
   if(banner) banner.style.display = 'none';
   coletarESalvar();
-  showToast('Ã¢ÂÂ PendÃÂªncia marcada como revisada', 'ok');
+  showToast('ÃÂ¢ÃÂÃÂ PendÃÂÃÂªncia marcada como revisada', 'ok');
 }
 
 
-// BotÃÂ£o "Vincular ao Calculador" (item e) Ã¢ÂÂ abre o Calculador em uma nova
-// aba, jÃÂ¡ preenchendo o wizard com os dados deste processo, pra gerar uma
-// cotaÃÂ§ÃÂ£o (estimativa) de um processo que comeÃÂ§ou direto no Controle.
+// BotÃÂÃÂ£o "Vincular ao Calculador" (item e) ÃÂ¢ÃÂÃÂ abre o Calculador em uma nova
+// aba, jÃÂÃÂ¡ preenchendo o wizard com os dados deste processo, pra gerar uma
+// cotaÃÂÃÂ§ÃÂÃÂ£o (estimativa) de um processo que comeÃÂÃÂ§ou direto no Controle.
 function vincularProcessoAoCalculador(processoId){
   window.open(`/calculador?processo_id=${processoId}`, '_blank');
 }
