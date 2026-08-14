@@ -1266,6 +1266,18 @@ function atualizarDataPagamentoPrazo(){
 function renderPagamentoInfoLive(){
   if(!_editando) return;
   const snapshot = {..._editando};
+  // BUG #340 — snapshot herdava pi_pagamento de _editando (o valor salvo no
+  // banco), nunca do <select> na tela. Resultado: trocar a Forma de
+  // Pagamento (ex.: ENTRADA_SALDO salvo → escolher PARCELADO) e digitar
+  // qualquer câmbio disparava este redraw usando o tipo ANTIGO, então o
+  // resumo (pagamento-box) mostrava "Entrada + Saldo (legado)" de novo — o
+  // usuário via isso como "o formulário reverteu sozinho", mesmo com o
+  // <select> e as parcelas continuando corretos por trás. _editando.pi_pagamento
+  // só é atualizado de fato no Salvar (coletarESalvar), então tem que ler o
+  // tipo atual direto do DOM aqui também, não só pra decidir se anexa
+  // pi_parcelas_json (como já fazia abaixo).
+  const tipoAtual = document.getElementById('f_pi_pagamento')?.value;
+  if(tipoAtual) snapshot.pi_pagamento = tipoAtual;
   const prazo = document.getElementById('f_pi_prazo_dias')?.value;
   if(prazo!=null && prazo!=='') snapshot.pi_prazo_dias = prazo;
   const pct = document.getElementById('f_pi_entrada_pct')?.value;
@@ -1276,7 +1288,7 @@ function renderPagamentoInfoLive(){
   if(cs!=null) snapshot.pi_cambio_saldo = cs;
   // Parcelado: usa o array em memória (ainda não salvo) pra refletir ao vivo
   // toda linha adicionada/editada/removida, igual ao resto do resumo.
-  if(document.getElementById('f_pi_pagamento')?.value==='PARCELADO') snapshot.pi_parcelas_json = JSON.stringify(_parcelas);
+  if(tipoAtual==='PARCELADO') snapshot.pi_parcelas_json = JSON.stringify(_parcelas);
   const box = document.querySelector('#pane-financeiro .pagamento-box');
   const novoHtml = renderPagamentoInfo(snapshot);
   if(box && box.parentElement) box.outerHTML = novoHtml || box.outerHTML;
