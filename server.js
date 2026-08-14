@@ -921,14 +921,32 @@ app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
     const refsExistentes = new Set((existentes||[]).map(e => e.referencia));
 
     // Só inserir os que não existem
+    // Whitelist de campos aceitos — evita que a planilha importada injete
+    // colunas de controle interno (ex: fechado/fechado_por/id de outro processo)
+    // que não deveriam vir de fora.
+    const CAMPOS_IMPORT_PERMITIDOS = [
+      'referencia', 'finalidade', 'fornecedor', 'brand', 'cliente', 'consignatario', 'notify',
+      'produtos', 'fase', 'eta', 'data_embarque', 'data_chegada', 'data_prontidao',
+      'navio', 'porto_origem', 'porto_destino', 'container_tipo', 'container_qtd',
+      'peso_bruto', 'peso_liquido', 'volumes', 'pais_origem',
+      'pi_valor_usd', 'pi_forma_pagamento', 'pi_data_saldo', 'pi_pago', 'pi_cambio_fechado',
+      'ce_master', 'ce_house', 'transportadora',
+    ];
     const novos = processos
       .filter(p => p.referencia && !refsExistentes.has(p.referencia))
-      .map(p => ({
-        ...p,
-        id: p.id || gerarUUID(),
-        updated_at: agora,
-        created_at: p.created_at || agora,
-      }));
+      .map(p => {
+        const filtrado = {};
+        for (const campo of CAMPOS_IMPORT_PERMITIDOS) {
+          if (p[campo] !== undefined) filtrado[campo] = p[campo];
+        }
+        return {
+          ...filtrado,
+          referencia: p.referencia,
+          id: p.id || gerarUUID(),
+          updated_at: agora,
+          created_at: p.created_at || agora,
+        };
+      });
 
     if (!novos.length) {
       return res.json({ ok: true, total: 0, msg: 'Todos os processos já existem' });
@@ -1573,7 +1591,10 @@ app.post('/api/controle/v2/arquivos', auth('processos'), async (req, res) => {
     if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ erro: 'Arquivo maior que 15MB' });
 
     const arquivoId = gerarUUID();
-    const extensao = nome.split('.').pop();
+    // Extensão vem de um mapa fixo baseado no MIME já validado acima (tiposPermitidos),
+    // não do nome enviado pelo cliente — evita caminho de storage com conteúdo inesperado.
+    const extPorTipo = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png' };
+    const extensao = extPorTipo[tipo] || 'bin';
     const storagePath = `${processo_id}/${arquivoId}.${extensao}`;
 
     const { error: uploadError } = await sb().storage
@@ -1832,8 +1853,6 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
       real_cambio: (custosCotados && Number.isFinite(parseFloat(custosCotados.cambio)) ? parseFloat(custosCotados.cambio) : null),
       cotacao_id: cot.id,
     };
-    const { error: errProc } = await sb().from('controle_processos').insert(processo);
-    if (errProc) throw new Error(errProc.message);
 
     const novoResumo = {
       ...resumoAtual,
@@ -1847,11 +1866,31 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
       data_rejeicao: undefined,
       rejeitado_por: undefined,
     };
-    const { error: errUpd } = await sb()
+
+    // Trava contra duplo clique/corrida: só atualiza o resumo (marcando
+    // aprovada) se o resumo no banco ainda for exatamente o que acabamos de
+    // ler (compare-and-swap via .eq no valor antigo). Se 0 linhas voltarem,
+    // outra requisição venceu a corrida — não cria processo duplicado.
+    const { data: casRows, error: errCas } = await sb()
       .from('calculador_cotacoes')
       .update({ resumo: novoResumo })
-      .eq('id', req.params.id);
-    if (errUpd) throw new Error(errUpd.message);
+      .eq('id', req.params.id)
+      .eq('resumo', cot.resumo)
+      .select('id');
+    if (errCas) throw new Error(errCas.message);
+    if (!casRows || !casRows.length) {
+      const { data: fresco } = await sb().from('calculador_cotacoes').select('resumo').eq('id', req.params.id).maybeSingle();
+      const r = (fresco && fresco.resumo) || {};
+      return res.json({ ok: true, ja_aprovada: true, processo_id: r.processo_id, processo_referencia: r.processo_referencia });
+    }
+
+    const { error: errProc } = await sb().from('controle_processos').insert(processo);
+    if (errProc) {
+      // Resumo já ficou marcado como aprovado mas o processo não foi criado —
+      // caso raro (falha do insert depois do CAS); loga alto pra correção manual.
+      console.error(`INCONSISTÊNCIA: cotação ${cot.id} marcada aprovada mas processo ${processo.id} falhou ao inserir: ${errProc.message}`);
+      throw new Error(errProc.message);
+    }
 
     console.log(`cotação aprovada: ${cot.cliente} → processo ${processo.referencia} por ${req.session.usuario}`);
     res.json({ ok: true, processo_id: processo.id, processo_referencia: processo.referencia });
@@ -2105,39 +2144,18 @@ app.post('/api/drive/historico/limpar', auth('tyredesk'), async (req, res) => {
 });
 
 app.get('/health', async (req, res) => {
-  const url = process.env.SUPABASE_URL || '';
-  const key = process.env.SUPABASE_KEY || '';
-  const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
-
-  // Decodificar role da key sem dependência externa
-  let keyRole = 'desconhecido';
-  try {
-    const payload = JSON.parse(Buffer.from(key.split('.')[1], 'base64').toString());
-    keyRole = payload.role || 'desconhecido';
-  } catch(e) {}
-
+  // Não expõe segredos/detalhes internos aqui de propósito — esse endpoint
+  // é público (sem auth) pra healthcheck do Railway. Ver logs do servidor
+  // pra diagnóstico detalhado de erro do Supabase/Anthropic.
   let supabaseOk = false;
-  let supabaseErro = null;
   try {
-    const { data, error } = await sb().from('conferencia_processos').select('id').limit(1);
+    const { error } = await sb().from('conferencia_processos').select('id').limit(1);
     supabaseOk = !error;
-    supabaseErro = error ? (error.message + ' | code: ' + error.code + ' | hint: ' + error.hint) : null;
   } catch (e) {
-    supabaseErro = e.message;
+    supabaseOk = false;
   }
 
-  res.json({
-    ok: true,
-    supabase: supabaseOk,
-    supabase_erro: supabaseErro,
-    key_role: keyRole,
-    key_len: key.length,
-    url_ok: url.includes('supabase.co'),
-    node: process.version,
-    anthropic_key_configurada: anthropicKey.length > 20,
-    anthropic_key_len: anthropicKey.length,
-    anthropic_key_prefixo: anthropicKey.slice(0, 10),
-  });
+  res.json({ ok: true, supabase: supabaseOk });
 });
 
 // ── Vincular cotação a processo existente (item d) ──────────────────────
@@ -2213,7 +2231,7 @@ app.get('/api/controle/processos/:id/prefill-cotacao', auth('processos'), async 
     const { data: proc, error } = await sb()
       .from('controle_processos').select('*').eq('id', req.params.id).single();
     if (error) throw new Error(error.message);
-    if (proc.custos_reais_json) {
+    if (proc.real_json) {
       return res.status(400).json({ erro: 'Este processo já tem Custos Reais lançados — vincular ao Calculador só faz sentido na fase inicial.' });
     }
     const dados = mapearProcessoParaCotacao(proc);
@@ -2392,7 +2410,8 @@ const etaSem = ativos.filter(p => p.eta && new Date(p.eta) >= hoje && new Date(p
 const piVenc = ativos.filter(p => p.pi_data_saldo && !p.pi_pago && new Date(p.pi_data_saldo) < hoje);
 const total = demCrit.length + etaVenc.length + etaSem.length + piVenc.length;
 if (!total) { await marcarAlertasEnviadosHoje(); return 0; }
-const linhaProc = (p, extra) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.referencia || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.cliente || p.fornecedor || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${p.fase || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${extra}</td></tr>`;
+const escHtmlAlerta = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+const linhaProc = (p, extra) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;">${escHtmlAlerta(p.referencia) || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${escHtmlAlerta(p.cliente || p.fornecedor) || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${escHtmlAlerta(p.fase) || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${escHtmlAlerta(extra)}</td></tr>`;
 const tabela = (titulo, itens, extraFn) => itens.length ? `<h3 style="margin:20px 0 8px;color:#333;">${titulo} (${itens.length})</h3><table style="width:100%;border-collapse:collapse;font-size:13px;"><tr><th style="text-align:left;padding:6px 10px;">Referencia</th><th style="text-align:left;padding:6px 10px;">Cliente/Fornecedor</th><th style="text-align:left;padding:6px 10px;">Fase</th><th style="text-align:left;padding:6px 10px;"></th></tr>${itens.map(p => linhaProc(p, extraFn(p))).join('')}</table>` : '';
 let html = `<div style="font-family:sans-serif;max-width:640px;margin:0 auto;"><h2 style="color:#1a7fd4;">IMPAK Portal - Alertas do dia (${hoje.toLocaleDateString('pt-BR')})</h2>`;
 html += tabela('Demurrage critico (ate 5 dias)', demCrit, p => { const d = demDias(p); return d < 0 ? `Vencido ha ${-d}d` : `Vence em ${d}d`; });
@@ -2443,8 +2462,7 @@ app.use((err, req, res, next) => {
 // ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
-  console.log(`Variáveis de ambiente carregadas: ${Object.keys(process.env).filter(k=>k.includes('ANTHROPIC')||k.includes('SUPABASE')).join(', ')}`);
-  console.log(`ANTHROPIC_API_KEY presente: ${!!process.env.ANTHROPIC_API_KEY} | tamanho: ${(process.env.ANTHROPIC_API_KEY||'').length}`);
+  console.log(`ANTHROPIC_API_KEY configurada: ${!!process.env.ANTHROPIC_API_KEY} | SUPABASE_URL configurada: ${!!process.env.SUPABASE_URL}`);
   agendarAlertasDiarios();
 sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
 });
