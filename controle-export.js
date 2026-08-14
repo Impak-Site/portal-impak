@@ -388,7 +388,12 @@ async function exportarFormatoCliente(statusSelecionados){
       estilizarSubtitulo(sub);
       ws.getRow(2).height = 20;
 
-      ws.getRow(3).height = 6; // espaÃ§ador
+      ws.mergeCells(3,1,3,numCols);
+const disclaimerCell = ws.getCell(3,1);
+disclaimerCell.value = 'As datas de chegada informadas sao previsoes (ETA) e podem sofrer alteracoes ou atrasos.';
+disclaimerCell.font = {italic:true, size:9, color:{argb:'FF92400E'}};
+disclaimerCell.alignment = {vertical:'middle', horizontal:'left'};
+ws.getRow(3).height = 16;
 
       // Linha 4 â cabeÃ§alho das colunas
       const headerRow = ws.getRow(4);
