@@ -19,17 +19,17 @@ async function exportarRelatorio(){
   const dtAte = document.getElementById('filtro-data-ate')?.value||'';
   const fase = document.getElementById('fase-filter')?.querySelector('.active')?.textContent||'';
 
-  showToast(`Gerando relatÃ³rio de ${lista.length} processos...`,'ok');
+  showToast(`Gerando relatório de ${lista.length} processos...`,'ok');
 
   const rows = [
-    ['IMPAK â RelatÃ³rio de Processos de ImportaÃ§Ã£o'],
-    [`Cliente: ${cliente}`, `PerÃ­odo: ${dtDe||'â'} a ${dtAte||'â'}`, `Fase: ${fase||'Todas'}`, `Total: ${lista.length} processos`],
+    ['IMPAK — Relatório de Processos de Importação'],
+    [`Cliente: ${cliente}`, `Período: ${dtDe||'—'} a ${dtAte||'—'}`, `Fase: ${fase||'Todas'}`, `Total: ${lista.length} processos`],
     [`Gerado em: ${new Date().toLocaleString('pt-BR')}`],
     [],
     ['REF','FORNECEDOR','CLIENTE','FASE','ETA','ETD','EMBARQUE','CHEGADA',
-     'ARMADOR','NAVIO','CONTAINER','HBL','MBL','NÂº DI','CANAL',
-     'PI VALOR USD','PI PAGO','NF SAÃDA NÂº','NF SAÃDA VALOR',
-     'LUCRO ESTIMADO','LUCRO REAL','DIFERENÃA (REAL â ESTIMADO)','OBS'],
+     'ARMADOR','NAVIO','CONTAINER','HBL','MBL','Nº DI','CANAL',
+     'PI VALOR USD','PI PAGO','NF SAÍDA Nº','NF SAÍDA VALOR',
+     'LUCRO ESTIMADO','LUCRO REAL','DIFERENÇA (REAL − ESTIMADO)','OBS'],
   ];
 
   lista.forEach(p=>{
@@ -45,7 +45,7 @@ async function exportarRelatorio(){
     // vez de mostrar o campo legado nf_saida_numero (que fica vazio/errado
     // nesse caso, jÃ¡ que cada venda tem seu prÃ³prio nÃºmero de NF).
     const nfSaidaNumeroCol = f.vendasResumo
-      ? `MÃºltiplos (${f.vendasResumo.linhas.length} clientes â ver aba Vendas)`
+      ? `Múltiplos (${f.vendasResumo.linhas.length} clientes — ver aba Vendas)`
       : (p.nf_saida_numero||'');
     const nfSaidaValorCol = f.vendasResumo ? (f.nfSaida!=null ? f.nfSaida.toFixed(2) : '') : (p.nf_saida_valor||'');
     rows.push([
@@ -53,7 +53,7 @@ async function exportarRelatorio(){
       p.eta||'', p.etd||'', p.data_embarque||'', p.data_chegada||'',
       p.armador||'', p.navio||'', ctStr,
       p.hbl||'', p.mbl||'', p.numero_di||'', p.canal||'',
-      p.pi_valor_usd||'', p.pi_pago?'SIM':'NÃO',
+      p.pi_valor_usd||'', p.pi_pago?'SIM':'NÃO',
       nfSaidaNumeroCol, nfSaidaValorCol,
       f.lucroEstimado!=null ? f.lucroEstimado.toFixed(2) : '',
       f.lucroReal!=null ? f.lucroReal.toFixed(2) : '',
@@ -69,9 +69,9 @@ async function exportarRelatorio(){
     XLSX.utils.book_append_sheet(wb, ws, 'Processos');
     const nome = `IMPAK_Relatorio_${cliente.replace(/[^a-zA-Z0-9]/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb, nome);
-    showToast(`â RelatÃ³rio exportado: ${lista.length} processos`,'ok');
+    showToast(`✓ Relatório exportado: ${lista.length} processos`,'ok');
   }catch(e){
-    showToast('Erro ao gerar relatÃ³rio: '+e.message,'err');
+    showToast('Erro ao gerar relatório: '+e.message,'err');
   }
 }
 
@@ -79,7 +79,7 @@ async function exportarExcel(){
   showToast('Gerando planilha...','info');
   try{
     const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
-    const lista = filtrarProcessos(); // exporta a visÃ£o atual (com filtros aplicados)
+    const lista = filtrarProcessos(); // exporta a visão atual (com filtros aplicados)
 
     const linhas = lista.map(p=>{
     // Vendas multi-cliente: quando o processo foi vendido a mais de um
@@ -93,7 +93,7 @@ async function exportarExcel(){
       if(Array.isArray(vs) && vs.length && typeof calcularVendasResumo==='function') vendasResumoExport = calcularVendasResumo(p);
     }catch(e){ vendasResumoExport = null; }
     return {
-      'ReferÃªncia':          p.referencia||'',
+      'Referência':          p.referencia||'',
       'Fornecedor':          p.fornecedor||'',
       'Cliente':             p.cliente||'',
       'Produto':             p.produto||'',
@@ -109,7 +109,7 @@ async function exportarExcel(){
       'ETA':                 p.eta||'',
       'Data Embarque':       p.data_embarque||'',
       'Data Chegada':        p.data_chegada||'',
-      'PresenÃ§a de Carga':   p.data_presenca||'',
+      'Presença de Carga':   p.data_presenca||'',
       'HBL':                 p.hbl||'',
       'MBL':                 p.mbl||'',
       'Container':           p.container||'',
@@ -117,26 +117,26 @@ async function exportarExcel(){
       'Free Time':           p.free_time||21,
       'Demurrage Vence':     p.demurrage_vencimento||'',
       'Demurrage Valor R$':  p.demurrage_valor||'',
-      'Demurrage Pago':      p.demurrage_pago?'Sim':'NÃ£o',
-      'Data DevoluÃ§Ã£o Vazio':p.data_devolucao_vazio||'',
-      'NÂº DI':               p.numero_di||'',
+      'Demurrage Pago':      p.demurrage_pago?'Sim':'Não',
+      'Data Devolução Vazio':p.data_devolucao_vazio||'',
+      'Nº DI':               p.numero_di||'',
       'Data Registro DI':    p.data_registro_di||'',
       'Canal':               p.canal||'',
-      'Data LiberaÃ§Ã£o':      p.data_liberacao||'',
-      'NÂº PI':               p.pi_numero||'',
+      'Data Liberação':      p.data_liberacao||'',
+      'Nº PI':               p.pi_numero||'',
       'Data PI':             p.pi_data||'',
       'Valor PI (USD)':      p.pi_valor_usd||'',
-      'CÃ¢mbio PI':           p.pi_cambio||'',
+      'Câmbio PI':           p.pi_cambio||'',
       'Valor PI (BRL)':      p.pi_valor_usd&&p.pi_cambio ? (parseFloat(p.pi_valor_usd)*parseFloat(p.pi_cambio)).toFixed(2) : '',
       'Incoterm':            p.pi_incoterm||'',
       'Pagamento':           p.pi_pagamento||'',
-      'PI Paga':             p.pi_pago?'Sim':'NÃ£o',
-      'NÂº CI':               p.ci_numero||'',
+      'PI Paga':             p.pi_pago?'Sim':'Não',
+      'Nº CI':               p.ci_numero||'',
       'Valor CI (USD)':      p.ci_valor_usd||'',
-      'NF Entrada NÂº':       p.nf_entrada_numero||'',
+      'NF Entrada Nº':       p.nf_entrada_numero||'',
       'NF Entrada Valor':    p.nf_entrada_valor||'',
-      'NF SaÃ­da NÂº':         vendasResumoExport ? `MÃºltiplos (${vendasResumoExport.linhas.length} clientes)` : (p.nf_saida_numero||''),
-      'NF SaÃ­da Valor':      vendasResumoExport ? (vendasResumoExport.nfSaidaTotal||'') : (p.nf_saida_valor||''),
+      'NF Saída Nº':         vendasResumoExport ? `Múltiplos (${vendasResumoExport.linhas.length} clientes)` : (p.nf_saida_numero||''),
+      'NF Saída Valor':      vendasResumoExport ? (vendasResumoExport.nfSaidaTotal||'') : (p.nf_saida_valor||''),
       'Vendido a (multi-cliente)': vendasResumoExport ? vendasResumoExport.linhas.map(l=>l.venda.cliente||'(sem cliente)').join(' / ') : '',
       'Agendamento':         p.data_agendamento||'',
       'Data Carregamento':   p.data_carregamento||'',
@@ -154,7 +154,7 @@ async function exportarExcel(){
 
     const data = new Date().toISOString().split('T')[0];
     XLSX.writeFile(wb, `IMPAK_Controle_${data}.xlsx`);
-    showToast(`â ${lista.length} processos exportados`,'ok');
+    showToast(`✓ ${lista.length} processos exportados`,'ok');
   }catch(e){
     showToast('Erro ao exportar: '+e.message,'err');
     console.error(e);
@@ -218,7 +218,7 @@ async function exportarFormatoCliente(statusSelecionados){
     // profissional, pronta pra ser enviada a um cliente/terceiro (task:
     // planilha de follow-up bem formatada pra exportar ao cliente).
     if(typeof ExcelJS === 'undefined'){
-      showToast('Biblioteca de exportaÃ§Ã£o ainda carregando, tente novamente em 1 segundo','err');
+      showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
       return;
     }
     let lista = filtrarProcessos(true); // ignora o filtro de fase/status ativo na tela (task #335: antes, exportar com uma aba de status aberta gerava planilha só daquela fase; a seleção de status agora é feita só pelo popup, que já vem com todos marcados por padrão) — mantém os demais filtros (cliente, busca, data)
@@ -290,14 +290,14 @@ async function exportarFormatoCliente(statusSelecionados){
           // sÃ£o coisas diferentes e o cliente final reconhece a marca, nÃ£o
           // necessariamente o nome do fornecedor real. Sem marca preenchida,
           // cai no fornecedor, como sempre foi.
-          fornecedor: p.brand || p.fornecedor || 'â',
+          fornecedor: p.brand || p.fornecedor || '—',
           cliente: clienteNome || '(sem cliente)',
-          _chegadaTs: chegadaTs, // sÃ³ pra ordenar os grupos de fornecedor abaixo, nÃ£o vira coluna
+          _chegadaTs: chegadaTs, // só pra ordenar os grupos de fornecedor abaixo, não vira coluna
           'Invoice':                 p.referencia||'',
           'Medida':                  it.descricao||'',
           'Qte':                     it.quantidade||'',
           'Data do Pedido':          p.pi_data ? parseDataLocal(p.pi_data).toLocaleDateString('pt-BR') : '',
-          'Data de ProntidÃ£o na FÃ¡brica': '', // sem fonte no sistema hoje
+          'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
           'Data de Embarque':        p.etd ? parseDataLocal(p.etd).toLocaleDateString('pt-BR') : '',
           'Data Chegada':            dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).toLocaleDateString('pt-BR') + (p.data_chegada?'':' (estimado)') : '',
           'POD':                     p.porto_destino||'N/I',
@@ -320,7 +320,7 @@ async function exportarFormatoCliente(statusSelecionados){
           if(p.produtos_json) produtos = JSON.parse(p.produtos_json);
           else if(p.produto) produtos = [{descricao:p.produto, quantidade:''}];
         }catch(e){ produtos = p.produto ? [{descricao:p.produto, quantidade:''}] : []; }
-        if(!produtos.length) produtos = [{descricao:'â', quantidade:''}];
+        if(!produtos.length) produtos = [{descricao:'—', quantidade:''}];
         produtos.filter(it=>it.descricao).forEach(it=>{
           linhas.push(montarLinha(p.cliente, it));
         });
@@ -341,10 +341,10 @@ async function exportarFormatoCliente(statusSelecionados){
     const { CORES, estilizarTitulo, estilizarSubtitulo, estilizarHeaderCell,
             estilizarGrupoHeader, estilizarCelulaDado } = window.ExcelStyles;
 
-    const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de ProntidÃ£o na FÃ¡brica','Data de Embarque','Data Chegada','POD'];
+    const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD'];
     if(incluirFrete) colunas.push('Valor do Frete');
     const numCols = colunas.length;
-    const largurasMinimas = {Invoice:14,Medida:26,Qte:8,'Data do Pedido':16,'Data de ProntidÃ£o na FÃ¡brica':22,'Data de Embarque':16,'Data Chegada':16,POD:10,'Valor do Frete':16};
+    const largurasMinimas = {Invoice:14,Medida:26,Qte:8,'Data do Pedido':16,'Data de Prontidão na Fábrica':22,'Data de Embarque':16,'Data Chegada':16,POD:10,'Valor do Frete':16};
     const dataArq = new Date().toISOString().split('T')[0];
 
     // Monta e baixa 1 arquivo .xlsx pra um cliente especÃ­fico (reaproveitado
@@ -376,7 +376,7 @@ async function exportarFormatoCliente(statusSelecionados){
       // Linha 1 â tÃ­tulo (nome do cliente)
       ws.mergeCells(1,1,1,numCols);
       const titulo = ws.getCell(1,1);
-      titulo.value = `IMPAK â Follow-up de ImportaÃ§Ã£o${nomeClienteExibir?' Â· '+nomeClienteExibir:(clienteFiltro?' Â· '+clienteFiltro:'')}`;
+      titulo.value = `IMPAK — Follow-up de Importação${nomeClienteExibir?' · '+nomeClienteExibir:(clienteFiltro?' · '+clienteFiltro:'')}`;
       estilizarTitulo(titulo);
       ws.getRow(1).height = 30;
 
@@ -384,7 +384,7 @@ async function exportarFormatoCliente(statusSelecionados){
       ws.mergeCells(2,1,2,numCols);
       const agora = new Date();
       const sub = ws.getCell(2,1);
-      sub.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} Ã s ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+      sub.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
       estilizarSubtitulo(sub);
       ws.getRow(2).height = 20;
 
@@ -412,7 +412,7 @@ ws.getRow(3).height = 16;
       fornOrdenados.forEach(forn=>{
         ws.mergeCells(rowIdx,1,rowIdx,numCols);
         const gcell = ws.getCell(rowIdx,1);
-        gcell.value = `ð­  ${forn}`;
+        gcell.value = `🏭  ${forn}`;
         estilizarGrupoHeader(gcell);
         gcell.alignment = {vertical:'middle', horizontal:'left', indent:1};
         gcell.border = {bottom:{style:'thin',color:{argb:CORES.BORDA}}};
@@ -458,7 +458,7 @@ ws.getRow(3).height = 16;
     if(clientesOrdenados.length <= 1){
       const nomeUnico = clientesOrdenados[0] || (clienteFiltro || 'Follow-up');
       const nForn = await gerarArquivoCliente(nomeUnico, linhas);
-      showToast(`â ${linhas.length} item(ns) exportado(s), agrupados em ${nForn} fornecedor(es), ordenado por chegada${incluirFrete?' â com Valor do Frete':''}`,'ok');
+      showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${nForn} fornecedor(es), ordenado por chegada${incluirFrete?' — com Valor do Frete':''}`,'ok');
     }else{
       // MÃºltiplos clientes: 1 arquivo por cliente (pedido confirmado com o
       // usuÃ¡rio: "Um arquivo por cliente"). O navegador bloqueia downloads
@@ -469,7 +469,7 @@ ws.getRow(3).height = 16;
         await gerarArquivoCliente(nome, porCliente[nome]);
         if(i < clientesOrdenados.length-1) await new Promise(r=>setTimeout(r,400));
       }
-      showToast(`â ${linhas.length} item(ns) exportado(s) em ${clientesOrdenados.length} arquivo(s) (1 por cliente)`,'ok');
+      showToast(`✓ ${linhas.length} item(ns) exportado(s) em ${clientesOrdenados.length} arquivo(s) (1 por cliente)`,'ok');
     }
   }catch(e){
     showToast('Erro ao exportar: '+e.message,'err');
