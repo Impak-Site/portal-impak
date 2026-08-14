@@ -123,7 +123,7 @@ function renderModal(){
     return `
       ${i>0?`<div class="tl-line ${done?'done':''}"></div>`:''}
       <div class="tl-step">
-        <div class="tl-dot ${cls}">${done?'ÃÂ¢ÃÂÃÂ':f.icon}</div>
+        <div class="tl-dot ${cls}">${done?'✓':f.icon}</div>
         <div class="tl-label">${f.label}</div>
         ${dataStr}
       </div>`;
