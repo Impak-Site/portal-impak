@@ -119,7 +119,7 @@ function coletarESalvar(){
     sincronizarParcelasLegado();
     const parcelasValidas = _parcelas.filter(pc => parseFloat(pc.valor_usd) > 0);
     if(!parcelasValidas.length){
-      showToast('Informe o valor em USD de ao menos uma parcela (ou troque a Forma de Pagamento)','err');
+      showToast('Preencha o Valor USD de ao menos uma parcela para salvar — so o Cambio Fechado nao e suficiente, o Valor USD tambem precisa estar preenchido (ou troque a Forma de Pagamento)','err');
       return;
     }
   }
