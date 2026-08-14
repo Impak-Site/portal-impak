@@ -62,10 +62,16 @@ function renderDashExecutivo(){
       +'</div>';
   }
 
+  // Se a cotação do dia não veio da API, cai num câmbio fixo antigo (5.10) só
+  // pra não travar a tela — mas isso pode ficar bem desatualizado, então avisa
+  // visualmente em vez de mostrar o valor como se fosse a cotação real.
+  const cambioIndisponivel = !(_cambio && _cambio.USD);
+  const cambioUsado = cambioIndisponivel ? 5.1 : _cambio.USD;
+  const avisoCambio = cambioIndisponivel ? ' ⚠ câmbio estimado' : '';
   const kpis = [
     card('Total Processos', _processos.length, ativos.length+' em andamento', 'var(--ac)', 'num', ''),
-    card('Provisionado', totalProvUSD, brl(totalProvUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--ac)', 'usd', '__pi_aberto'),
-    card('Em Aberto', abertoUSD, brl(abertoUSD*(_cambio&&_cambio.USD?_cambio.USD:5.1)), 'var(--err)', 'usd', '__pi_aberto'),
+    card('Provisionado', totalProvUSD, brl(totalProvUSD*cambioUsado)+avisoCambio, 'var(--ac)', 'usd', '__pi_aberto'),
+    card('Em Aberto', abertoUSD, brl(abertoUSD*cambioUsado)+avisoCambio, 'var(--err)', 'usd', '__pi_aberto'),
     card('Demurrage Critico', demurCrit.length, 'containers <=5 dias', demurCrit.length>0?'var(--err)':'var(--ok)', 'num', '__demur'),
     card('ETA Vencidos', etaVencidos.length, 'ainda Embarcado', etaVencidos.length>0?'var(--warn)':'var(--ok)', 'num', 'EMBARCADO'),
     card('PI Vencidas', piVencidos.length, 'pagamento atrasado', piVencidos.length>0?'var(--err)':'var(--ok)', 'num', '__pi_vencido'),
