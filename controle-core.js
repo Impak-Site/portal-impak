@@ -605,17 +605,17 @@ function listarPagamentosPI(processos){
 }
 
 function demurrageDisplay(proc){
-  if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">ÃÂ¢ÃÂÃÂ Devolvido</span>';
+  if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
   const dias = demurrageDias(proc);
-  if(dias === null) return '<span style="color:var(--dim)">ÃÂ¢ÃÂÃÂ</span>';
-  if(dias < 0) return `<span class="demur-err">Vencido hÃÂÃÂ¡ ${Math.abs(dias)}d</span>`;
-  if(dias <= 5) return `<span class="demur-warn">ÃÂ¢ÃÂÃÂ  ${dias}d</span>`;
+  if(dias === null) return '<span style="color:var(--dim)">—</span>';
+  if(dias < 0) return `<span class="demur-err">Vencido há ${Math.abs(dias)}d</span>`;
+  if(dias <= 5) return `<span class="demur-warn">⚠ ${dias}d</span>`;
   return `<span class="demur-ok">${dias}d</span>`;
 }
 
-// Gera o bloco "CÃÂÃÂ¡lculo do Demurrage" (aba LogÃÂÃÂ­stica). ExtraÃÂÃÂ­da como funÃÂÃÂ§ÃÂÃÂ£o prÃÂÃÂ³pria
-// para poder ser recalculada em tempo real conforme o usuÃÂÃÂ¡rio digita (ver
-// atualizarFaseEmTempoReal), e nÃÂÃÂ£o apenas uma vez quando o modal abre.
+// Gera o bloco "Cálculo do Demurrage" (aba Logística). Extraída como função própria
+// para poder ser recalculada em tempo real conforme o usuário digita (ver
+// atualizarFaseEmTempoReal), e não apenas uma vez quando o modal abre.
 function renderDemurInfo(p){
   if(!p.data_chegada && !p.demurrage_vencimento) return '';
   const chegada   = parseDataLocal(p.data_chegada);
