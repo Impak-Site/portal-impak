@@ -165,11 +165,11 @@ function renderModal(){
       ${alertasHtml}
       <!-- IA -->
       <div class="form-section" style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
-        <div class="form-section-title" style="border:none;margin-bottom:8px;">ÃÂ°ÃÂÃÂ¤ÃÂ ExtraÃÂÃÂ§ÃÂÃÂ£o com IA</div>
+        <div class="form-section-title" style="border:none;margin-bottom:8px;">🤖 Extração com IA</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Envie uma PI, CI ou BL para preencher os campos automaticamente</div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extrairComIA(this)">
-          <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">ÃÂ°ÃÂÃÂÃÂ Selecionar documento</button>
+          <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">📎 Selecionar documento</button>
           <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
         </div>
       </div>
@@ -182,7 +182,7 @@ function renderModal(){
       </div>
       <!-- IdentificaÃÂÃÂ§ÃÂÃÂ£o -->
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ IdentificaÃÂÃÂ§ÃÂÃÂ£o</div>
+        <div class="form-section-title">📄 Identificação</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">ReferÃÂÃÂªncia *</label>
             <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340"></div>
@@ -248,7 +248,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: FINANCEIRO -->
     <div class="tab-pane" id="pane-financeiro">
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ° Proforma Invoice (PI)</div>
+        <div class="form-section-title">💰 Proforma Invoice (PI)</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">NÃÂÃÂº PI</label>
             <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}"></div>
@@ -298,7 +298,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         ${finInfo}
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂµ Commercial Invoice (CI)</div>
+        <div class="form-section-title">💵 Commercial Invoice (CI)</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">NÃÂÃÂº CI</label>
             <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}"></div>
@@ -317,7 +317,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: FECHAMENTO -->
     <div class="tab-pane" id="pane-fechamento">
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ Fechamento ÃÂ¢ÃÂÃÂ Estimado ÃÂÃÂ Real</div>
+        <div class="form-section-title">📐 Fechamento — Estimado × Real</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
           Compara o que foi cotado no Calculador (na hora de aprovar a cotaÃÂÃÂ§ÃÂÃÂ£o) com o resultado real do processo, calculado a partir da NF Entrada e NF SaÃÂÃÂ­da lanÃÂÃÂ§adas na aba Documentos.
         </div>
@@ -332,7 +332,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: CUSTOS REAIS -->
     <div class="tab-pane" id="pane-custosreais">
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂµ Custos Reais ÃÂ¢ÃÂÃÂ apuraÃÂÃÂ§ÃÂÃÂ£o de lucro item a item</div>
+        <div class="form-section-title">💵 Custos Reais — apuração de lucro item a item</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
           Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissÃÂÃÂµes e taxas operacionais). Quando o processo veio de uma cotaÃÂÃÂ§ÃÂÃÂ£o aprovada, cada campo jÃÂÃÂ¡ nasce preenchido com o valor cotado ÃÂ¢ÃÂÃÂ ajuste sÃÂÃÂ³ o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cÃÂÃÂ¡lculo simples por NF.
         </div>
@@ -360,7 +360,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: VENDAS (multi-cliente / rateio de custo) -->
     <div class="tab-pane" id="pane-vendas">
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂ§ÃÂ¾ Vendas ÃÂ¢ÃÂÃÂ um processo, vÃÂÃÂ¡rios clientes</div>
+        <div class="form-section-title">🧾 Vendas — um processo, vários clientes</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
           Use esta aba quando este processo (Direto, Encomenda ou Conta e Ordem) foi vendido pra mais de um cliente ÃÂ¢ÃÂÃÂ ex.: meio contÃÂÃÂªiner pra um, meio pra outro. Cada venda tem seu prÃÂÃÂ³prio cliente e NF SaÃÂÃÂ­da. Os custos lanÃÂÃÂ§ados na aba Custos Reais sÃÂÃÂ£o rateados automaticamente entre as vendas, proporcional ÃÂÃÂ  quantidade que cada uma levou; custos que sÃÂÃÂ³ existiram por causa de um cliente especÃÂÃÂ­fico (ex.: um frete extra) podem ser lanÃÂÃÂ§ados direto naquela venda, sem entrar no rateio. Se este processo tem um ÃÂÃÂºnico cliente/NF SaÃÂÃÂ­da, nÃÂÃÂ£o precisa usar esta aba.
         </div>
@@ -378,7 +378,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: LOGÃÂÃÂSTICA -->
     <div class="tab-pane" id="pane-logistica">
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ­ ProntidÃÂÃÂ£o</div>
+        <div class="form-section-title">🏭 Prontidão</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">PrevisÃÂÃÂ£o ProntidÃÂÃÂ£o</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}"></div>
@@ -388,7 +388,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ¦ Booking & Embarque</div>
+        <div class="form-section-title">📦 Booking & Embarque</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">NÃÂÃÂº Booking</label>
             <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
@@ -431,7 +431,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ Carregamento</div>
+        <div class="form-section-title">🚛 Carregamento</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Agendamento</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
@@ -458,7 +458,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ¢ÃÂÃÂ Chegada & Demurrage</div>
+        <div class="form-section-title">⚓ Chegada & Demurrage</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_data_chegada" value="${esc(p.data_chegada)}"
@@ -488,7 +488,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: DOCUMENTOS -->
     <div class="tab-pane" id="pane-documentos">
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ¢ NÃÂÃÂºmeros de ReferÃÂÃÂªncia</div>
+        <div class="form-section-title">🔢 Números de Referência</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">HBL</label>
             <input class="form-input" id="f_hbl" value="${esc(p.hbl)}" oninput="atualizarFaseEmTempoReal()"></div>
@@ -506,7 +506,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ¢ÃÂÃÂ CE Mercante</div>
+        <div class="form-section-title">⚓ CE Mercante</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">CE Master</label>
             <input class="form-input" id="f_ce_master" value="${esc(p.ce_master)}"></div>
@@ -518,7 +518,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extraÃÂÃÂ§ÃÂÃÂ£o por IA, os campos Navio e Armador (aba Booking &amp; Embarque) sÃÂÃÂ£o atualizados automaticamente ÃÂ¢ÃÂÃÂ em caso de transbordo no exterior, o navio de conexÃÂÃÂ£o/ÃÂÃÂºltimo navio.</div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ DI e ParametrizaÃÂÃÂ§ÃÂÃÂ£o</div>
+        <div class="form-section-title">📋 DI e Parametrização</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
@@ -539,7 +539,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data ParametrizaÃÂÃÂ§ÃÂÃÂ£o automaticamente com a Data de Registro da DI (sem conferÃÂÃÂªncia separada). Data LiberaÃÂÃÂ§ÃÂÃÂ£o ÃÂÃÂ© a Data do DesembaraÃÂÃÂ§o informada no Comprovante de ImportaÃÂÃÂ§ÃÂÃÂ£o.</div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂ§ÃÂ¾ Faturamento</div>
+        <div class="form-section-title">🧾 Faturamento</div>
         ${(() => {
           // Ambiguidade NF SaÃÂÃÂ­da legada ÃÂÃÂ aba Vendas: quando o processo jÃÂÃÂ¡
           // tem vendas cadastradas (multi-cliente), calcularFechamento()
@@ -589,7 +589,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div style="font-size:11px;color:var(--dim);margin-top:6px;">CFOP 5905 (ou NF de SaÃÂÃÂ­da ainda nÃÂÃÂ£o emitida) = container importado sem venda efetiva ainda ÃÂ¢ÃÂÃÂ usado no Dashboard NarcÃÂÃÂ©lio pra calcular estoque parado no armazÃÂÃÂ©m.</div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">ÃÂ°ÃÂÃÂÃÂ Arquivos do Processo (GED)</div>
+        <div class="form-section-title">📎 Arquivos do Processo (GED)</div>
         <div id="ged-upload-area" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;" onclick="document.getElementById('ged-file-input').click()">
           <input type="file" id="ged-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="uploadArquivosGed(this.files)">
           <div style="color:var(--muted);font-size:13px;">ÃÂ°ÃÂÃÂÃÂ¤ Clique para enviar PDF, JPEG ou PNG</div>
