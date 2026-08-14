@@ -104,16 +104,16 @@ let _baseUrlPath = '/' + (_pathPartsInicial[0] || 'controle');
 let _refPendenteDeepLink = _pathPartsInicial[1] ? decodeURIComponent(_pathPartsInicial[1]) : null;
 
 const FASES = [
-  { id:'PI',                label:'PI Recebida',       icon:'ð' },
-  { id:'AGUARDANDO_EMBARQUE',label:'Ag. Embarque',      icon:'â³' },
-  { id:'EMBARCADO',          label:'Embarcado',          icon:'ð¢' },
-  { id:'DESEMBARCADO',       label:'Desembarcado',       icon:'â' },
-  { id:'REGISTRO_DI',        label:'Registro DI',        icon:'ð' },
-  { id:'PARAMETRIZACAO',     label:'ParametrizaÃ§Ã£o',     icon:'ð' },
-  { id:'CARREGAMENTO',       label:'Carregamento',       icon:'ð' },
-  { id:'FATURAMENTO',        label:'Faturamento',        icon:'ð°' },
-  { id:'DEVOLUCAO_VAZIO',    label:'Dev. Vazio',         icon:'ð¦' },
-  { id:'FINALIZADO',         label:'Finalizado',         icon:'â' },
+  { id:'PI',                label:'PI Recebida',       icon:'📄' },
+  { id:'AGUARDANDO_EMBARQUE',label:'Ag. Embarque',      icon:'⏳' },
+  { id:'EMBARCADO',          label:'Embarcado',          icon:'🚢' },
+  { id:'DESEMBARCADO',       label:'Desembarcado',       icon:'⚓' },
+  { id:'REGISTRO_DI',        label:'Registro DI',        icon:'📋' },
+  { id:'PARAMETRIZACAO',     label:'Parametrização',     icon:'🔍' },
+  { id:'CARREGAMENTO',       label:'Carregamento',       icon:'🚛' },
+  { id:'FATURAMENTO',        label:'Faturamento',        icon:'💰' },
+  { id:'DEVOLUCAO_VAZIO',    label:'Dev. Vazio',         icon:'📦' },
+  { id:'FINALIZADO',         label:'Finalizado',         icon:'✅' },
 ];
 
 const FASE_LABEL = Object.fromEntries(FASES.map(f=>[f.id, f.label]));
