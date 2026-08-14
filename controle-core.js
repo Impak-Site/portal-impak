@@ -343,7 +343,7 @@ async function carregarProcessos(silencioso){
       if(selCliente){
         const clientesUnicos = [...new Set(_processos.flatMap(p=>clientesDoProcesso(p)))].sort();
         const valAtual = selCliente.value;
-        selCliente.innerHTML = '<option value="">ð¤ Todos os clientes</option>' +
+        selCliente.innerHTML = '<option value="">👤 Todos os clientes</option>' +
           clientesUnicos.map(c=>`<option value="${c}" ${c===valAtual?'selected':''}>${c}</option>`).join('');
       }
       render();
