@@ -587,12 +587,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 </div>
 <div class="modal-body">
 <p id="cambio-modal-info" style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:16px;"></p>
-<p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Esse valor/taxa é referente a qual parcela deste processo?</p>
-<div style="display:flex;flex-direction:column;gap:8px;">
-<button class="btn btn-outline" onclick="confirmarCambioComo('unico')">💳 Pagamento Único (à vista/prazo)</button>
-<button class="btn btn-outline" onclick="confirmarCambioComo('entrada')">1️⃣ Entrada</button>
-<button class="btn btn-outline" onclick="confirmarCambioComo('saldo')">2️⃣ Saldo</button>
-</div>
+<p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Esse valor/taxa é referente a qual parcela deste processo?</p> <div id="cambio-modal-parcelas" style="display:none;flex-direction:column;gap:8px;margin-bottom:8px;"></div> <div id="cambio-modal-botoes-legado" style="display:flex;flex-direction:column;gap:8px;"> <button class="btn btn-outline" onclick="confirmarCambioComo('unico')">💳 Pagamento Único (à vista/prazo)</button> <button class="btn btn-outline" onclick="confirmarCambioComo('entrada')">1️⃣ Entrada</button> <button class="btn btn-outline" onclick="confirmarCambioComo('saldo')">2️⃣ Saldo</button> </div>
 <div style="display:flex;justify-content:flex-end;padding-top:16px;">
 <button class="btn btn-outline" onclick="fecharModalCambio()">Cancelar</button>
 </div>
