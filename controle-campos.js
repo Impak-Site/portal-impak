@@ -685,6 +685,26 @@ function fecharModalCambio(){
   _cambioPendente = null;
 }
 
+// Aplica um câmbio confirmado (de comprovante) numa parcela do fluxo
+// "Parcelado" em vez de forçar a Forma de Pagamento pra "Entrada + Saldo
+// (legado)". Usa a primeira parcela que ainda não tem Câmbio Fechado
+// preenchido; se todas já estiverem completas, cria uma parcela nova pra
+// não sobrescrever um câmbio que o usuário já tinha confirmado antes.
+// Só mexe em cambio_fechado — os campos de "Valor recebido do cliente" são
+// de outro fluxo (repasse do cliente) e não têm relação com o câmbio pago
+// ao fornecedor.
+function aplicarCambioNaParcelaPendente(taxa){
+  let idx = _parcelas.findIndex(pc => !pc.cambio_fechado);
+  if(idx===-1){
+    adicionarParcela(); // já chama renderParcelas()+renderPagamentoInfoLive()
+    idx = _parcelas.length - 1;
+  }
+  _parcelas[idx].cambio_fechado = taxa.toFixed(4);
+  renderParcelas();
+  renderPagamentoInfoLive();
+  return idx;
+}
+
 function confirmarCambioComo(tipo){
   if(!_cambioPendente){ fecharModalCambio(); return; }
   const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
@@ -718,24 +738,28 @@ function confirmarCambioComo(tipo){
     const elPago = document.getElementById('f_pi_pago');
     if(elPago) elPago.value = 'true';
     renderPagamentoInfoLive();
-  } else if(tipo==='entrada'){
+  } else if(tipo==='entrada' || tipo==='saldo'){
     const selPagamento = document.getElementById('f_pi_pagamento');
+    if(selPagamento && selPagamento.value==='PARCELADO'){
+      const idx = aplicarCambioNaParcelaPendente(taxa);
+      showToast(`✓ Câmbio (${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}) aplicado na Parcela ${idx+1}`,'ok');
+      fecharModalCambio();
+      return;
+    }
     if(selPagamento && selPagamento.value!=='ENTRADA_SALDO'){ selPagamento.value = 'ENTRADA_SALDO'; renderPagamentoCampos(); }
-    const el = document.getElementById('f_pi_cambio_entrada');
-    if(el){ el.value = taxa.toFixed(4); }
-    const elData = document.getElementById('f_pi_data_entrada');
-    if(elData) elData.value = dataPagamento;
-    // Entrada é só parcial — NÃO marca a PI inteira como paga, só o Saldo fecha.
-    renderPagamentoInfoLive();
-  } else if(tipo==='saldo'){
-    const selPagamento = document.getElementById('f_pi_pagamento');
-    if(selPagamento && selPagamento.value!=='ENTRADA_SALDO'){ selPagamento.value = 'ENTRADA_SALDO'; renderPagamentoCampos(); }
-    const el = document.getElementById('f_pi_cambio_saldo');
-    if(el){ el.value = taxa.toFixed(4); }
-    const elData = document.getElementById('f_pi_data_saldo');
-    if(elData) elData.value = dataPagamento;
-    const elPago = document.getElementById('f_pi_pago');
-    if(elPago) elPago.value = 'true';
+    if(tipo==='entrada'){
+      const el = document.getElementById('f_pi_cambio_entrada');
+      if(el){ el.value = taxa.toFixed(4); }
+      const elData = document.getElementById('f_pi_data_entrada');
+      if(elData) elData.value = dataPagamento;
+    } else {
+      const el = document.getElementById('f_pi_cambio_saldo');
+      if(el){ el.value = taxa.toFixed(4); }
+      const elData = document.getElementById('f_pi_data_saldo');
+      if(elData) elData.value = dataPagamento;
+      const elPago = document.getElementById('f_pi_pago');
+      if(elPago) elPago.value = 'true';
+    }
     renderPagamentoInfoLive();
   }
   showToast(`✓ Câmbio (${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}) aplicado como ${tipo==='unico'?'Pagamento Único':tipo==='entrada'?'Entrada':'Saldo'} — PI marcada de acordo`,'ok');
