@@ -345,7 +345,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
           <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">ÃÂ°ÃÂÃÂÃÂ¥ Importar planilha de Fechamento</button>
-          ${!p.custos_reais_json ? `
+          ${!p.real_json ? `
           <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotaÃÂÃÂ§ÃÂÃÂ£o no Calculador jÃÂÃÂ¡ prÃÂÃÂ©-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">ÃÂ°ÃÂÃÂ§ÃÂ® Vincular ao Calculador</button>
           ` : ''}
         </div>
