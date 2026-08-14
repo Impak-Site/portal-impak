@@ -713,6 +713,17 @@ function confirmarCambioParcela(idx){
   if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
   if(!_parcelas[idx]){ fecharModalCambio(); return; }
   _parcelas[idx].cambio_fechado = taxa.toFixed(4);
+  // Preenche Valor USD e Data também a partir do comprovante — sem isso só a
+  // taxa de câmbio era gravada e o usuário tinha que digitar o resto na mão
+  // de novo (reclamação da Emanuelly: "só salva o câmbio"). Só preenche se o
+  // campo ainda estiver vazio, pra nunca sobrescrever o que o usuário já digitou.
+  const valorPagoP = parseFloat(_cambioPendente.valor_pago) || 0;
+  if(!_parcelas[idx].valor_usd && valorPagoP && taxa){
+    _parcelas[idx].valor_usd = (valorPagoP/taxa).toFixed(2);
+  }
+  if(!_parcelas[idx].data_vencimento && _cambioPendente.data_pagamento){
+    _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
+  }
   renderParcelas();
   renderPagamentoInfoLive();
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
@@ -740,6 +751,16 @@ function aplicarCambioNaParcelaPendente(taxa){
     idx = _parcelas.length - 1;
   }
   _parcelas[idx].cambio_fechado = taxa.toFixed(4);
+  // Mesma correção do confirmarCambioParcela: também preenche Valor USD e
+  // Data do comprovante quando ainda estiverem vazios (não sobrescreve o
+  // que o usuário já preencheu).
+  const valorPagoP2 = parseFloat(_cambioPendente?.valor_pago) || 0;
+  if(!_parcelas[idx].valor_usd && valorPagoP2 && taxa){
+    _parcelas[idx].valor_usd = (valorPagoP2/taxa).toFixed(2);
+  }
+  if(!_parcelas[idx].data_vencimento && _cambioPendente?.data_pagamento){
+    _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
+  }
   renderParcelas();
   renderPagamentoInfoLive();
   return idx;
