@@ -28,7 +28,7 @@ async function abrirProcesso(id){
   const proc = _processos.find(p=>p.id===id);
   if(!proc) return;
   _editando = {...proc, _camposIA: {}};
-    _parcelas = []; // task #340b: forÃÂ§a recarregar parcelas do processo certo ao trocar de processo
+    _parcelas = []; // task #340b: força recarregar parcelas do processo certo ao trocar de processo
   _editandoOriginal = {...proc};
   renderModal();
   // URL por processo (task #59) ÃÂ¢ÃÂÃÂ deep link/bookmark + botÃÂÃÂ£o voltar do navegador
@@ -40,9 +40,9 @@ function copiarReferencia(){
   const ref = _editando && _editando.referencia;
   if(!ref) return;
   navigator.clipboard.writeText(ref).then(function(){
-    showToast('ReferÃÂÃÂªncia copiada: ' + ref, 'ok');
+    showToast('Referência copiada: ' + ref, 'ok');
   }, function(){
-    showToast('NÃÂÃÂ£o foi possÃÂÃÂ­vel copiar ÃÂ¢ÃÂÃÂ copie manualmente: ' + ref, 'err');
+    showToast('Não foi possível copiar — copie manualmente: ' + ref, 'err');
   });
 }
 
@@ -132,7 +132,7 @@ function renderModal(){
   // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ ALERTAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
   const alertas = verificarAlertas(p, false);
   const alertasHtml = alertas.map(a=>
-    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">ÃÂ°ÃÂÃÂÃÂ¨ ${a.titulo}: ${a.mensagem}</div>`
+    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">🚨 ${a.titulo}: ${a.mensagem}</div>`
   ).join('');
 
   // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CONTEÃÂÃÂDO DAS ABAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
@@ -151,15 +151,15 @@ function renderModal(){
   const podeDestravar = _user && _user.role === 'gerente';
   const bannerTrava = bloqueado
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(0,0,0,.04);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
-        <div style="font-size:12px;color:var(--text);"><strong>ÃÂ°ÃÂÃÂÃÂ Processo fechado</strong>${p.fechado_em?` em ${new Date(p.fechado_em).toLocaleString('pt-BR')}`:''}${p.fechado_por?` por ${esc(p.fechado_por)}`:''} ÃÂ¢ÃÂÃÂ ediÃÂÃÂ§ÃÂÃÂ£o travada.</div>
-        ${podeDestravar ? `<button type="button" class="btn btn-outline" onclick="reabrirProcesso('${p.id}')">ÃÂ°ÃÂÃÂÃÂ Reabrir para editar</button>` : `<span style="font-size:11px;color:var(--muted);">SÃÂÃÂ³ um gerente pode reabrir.</span>`}
+        <div style="font-size:12px;color:var(--text);"><strong>🔒 Processo fechado</strong>${p.fechado_em?` em ${new Date(p.fechado_em).toLocaleString('pt-BR')}`:''}${p.fechado_por?` por ${esc(p.fechado_por)}`:''} — edição travada.</div>
+        ${podeDestravar ? `<button type="button" class="btn btn-outline" onclick="reabrirProcesso('${p.id}')">🔓 Reabrir para editar</button>` : `<span style="font-size:11px;color:var(--muted);">Só um gerente pode reabrir.</span>`}
       </div>`
     : '';
 
   document.getElementById('modal-body').innerHTML = `
     ${bannerTrava}
     <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
-    <!-- ABA: IDENTIFICAÃÂÃÂÃÂÃÂO -->
+    <!-- ABA: IDENTIFICAÇÃO -->
     <div class="tab-pane active" id="pane-identificacao">
       <div class="timeline">${timeline}</div>
       ${alertasHtml}
@@ -173,23 +173,23 @@ function renderModal(){
           <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
         </div>
       </div>
-      <!-- Alerta de pendÃÂÃÂªncia de revisÃÂÃÂ£o (vem da importaÃÂÃÂ§ÃÂÃÂ£o de planilha) -->
+      <!-- Alerta de pendência de revisão (vem da importação de planilha) -->
       <div id="alerta-pendencia" style="display:${p.pendencia_revisao ? 'block' : 'none'};background:rgba(243,156,18,.1);border:1px solid rgba(243,156,18,.4);border-left:4px solid #f39c12;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-        <div style="font-weight:700;color:#f39c12;font-size:13px;margin-bottom:6px;">ÃÂ¢ÃÂÃÂ  PendÃÂÃÂªncia de revisÃÂÃÂ£o (da importaÃÂÃÂ§ÃÂÃÂ£o de planilha)</div>
+        <div style="font-weight:700;color:#f39c12;font-size:13px;margin-bottom:6px;">⚠ Pendência de revisão (da importação de planilha)</div>
         <div id="texto-pendencia" style="font-size:12px;color:var(--text);white-space:pre-line;line-height:1.6;">${esc(p.pendencia_revisao)}</div>
         <input type="hidden" id="f_pendencia_revisao" value="${esc(p.pendencia_revisao)}">
-        <button type="button" class="btn btn-outline" style="margin-top:10px;font-size:12px;" onclick="marcarPendenciaRevisada()">ÃÂ¢ÃÂÃÂ Marcar como revisado</button>
+        <button type="button" class="btn btn-outline" style="margin-top:10px;font-size:12px;" onclick="marcarPendenciaRevisada()">✓ Marcar como revisado</button>
       </div>
-      <!-- IdentificaÃÂÃÂ§ÃÂÃÂ£o -->
+      <!-- Identificação -->
       <div class="form-section">
         <div class="form-section-title">📄 Identificação</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">ReferÃÂÃÂªncia *</label>
+          <div class="form-group"><label class="form-label">Referência *</label>
             <input class="form-input" id="f_referencia" value="${esc(p.referencia)}" placeholder="Ex: UD25-340"></div>
           <div class="form-group"><label class="form-label">Finalidade</label>
             <select class="form-input" id="f_finalidade">
-              <option value="">ÃÂ¢ÃÂÃÂ selecionar ÃÂ¢ÃÂÃÂ</option>
-              <option value="IMPORTACAO_DIRETA" ${p.finalidade==='IMPORTACAO_DIRETA'?'selected':''}>ImportaÃÂÃÂ§ÃÂÃÂ£o PrÃÂÃÂ³pria (Direto)</option>
+              <option value="">— selecionar —</option>
+              <option value="IMPORTACAO_DIRETA" ${p.finalidade==='IMPORTACAO_DIRETA'?'selected':''}>Importação Própria (Direto)</option>
               <option value="ENCOMENDA" ${p.finalidade==='ENCOMENDA'?'selected':''}>Encomenda</option>
               <option value="CONTA_E_ORDEM" ${p.finalidade==='CONTA_E_ORDEM'?'selected':''}>Conta e Ordem</option>
             </select></div>
@@ -199,15 +199,15 @@ function renderModal(){
             <div id="fornecedor-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group"><label class="form-label">Marca (Brand)</label>
-            <input class="form-input" id="f_brand" value="${esc(p.brand)}" placeholder="Ex: Maxam ÃÂ¢ÃÂÃÂ deixe em branco se marca = fornecedor">
+            <input class="form-input" id="f_brand" value="${esc(p.brand)}" placeholder="Ex: Maxam — deixe em branco se marca = fornecedor">
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
             <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
-              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown')" placeholder="Digite razÃÂÃÂ£o social, CNPJ ou cidade...">
+              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown')" placeholder="Digite razão social, CNPJ ou cidade...">
             <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
-          <div class="form-group" style="position:relative"><label class="form-label">ConsignatÃÂÃÂ¡rio</label>
-<input class="form-input" id="f_consignatario" value="${esc(p.consignatario)}" placeholder="Consignee do BL/DI ÃÂ¢ÃÂÃÂ pode ser diferente do Cliente" autocomplete="off"
+          <div class="form-group" style="position:relative"><label class="form-label">Consignatário</label>
+<input class="form-input" id="f_consignatario" value="${esc(p.consignatario)}" placeholder="Consignee do BL/DI — pode ser diferente do Cliente" autocomplete="off"
 oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','consignatario-dropdown')">
 <div id="consignatario-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
 </div>
@@ -228,19 +228,19 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               oninput="autocompletarContato(this,'DESPACHANTE','despachante-dropdown')">
             <div id="despachante-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
-          <div class="form-group full"><label class="form-label">ObservaÃÂÃÂ§ÃÂÃÂµes</label>
+          <div class="form-group full"><label class="form-label">Observações</label>
             <input class="form-input" id="f_obs" value="${esc(p.obs)}"></div>
         </div>
       </div>
-      <!-- AÃÂÃÂ§ÃÂÃÂµes -->
+      <!-- Ações -->
       <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
         <div style="display:flex;gap:10px;">
-          ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">ÃÂ°ÃÂÃÂÃÂ Excluir</button>`:''}
-          ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ gerente pode reabrir depois">ÃÂ°ÃÂÃÂÃÂ Fechar Processo</button>`:''}
+          ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}
+          ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado — só gerente pode reabrir depois">🔒 Fechar Processo</button>`:''}
         </div>
         <div style="display:flex;gap:10px;">
           <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-          <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
+          <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
         </div>
       </div>
     </div>
@@ -250,22 +250,22 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div class="form-section">
         <div class="form-section-title">💰 Proforma Invoice (PI)</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NÃÂÃÂº PI</label>
+          <div class="form-group"><label class="form-label">Nº PI</label>
             <input class="form-input" id="f_pi_numero" value="${esc(p.pi_numero)}"></div>
           <div class="form-group"><label class="form-label">Data PI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" oninput="atualizarDataPagamentoPrazo()" id="f_pi_data" value="${esc(p.pi_data)}"></div>
           <div class="form-group"><label class="form-label">Valor USD</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio na PI (R$)</label>
+          <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
             <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
           </div>
-          <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio Fechado (R$)</label>
-            <input class="form-input" type="number" id="f_pi_cambio_fechado" value="${p.pi_cambio_fechado||''}" placeholder="preenchido ao confirmar o cÃÂÃÂ¢mbio" step="0.0001"
-              title="Taxa que realmente foi paga (vem do comprovante de cÃÂÃÂ¢mbio, pra Pagamento ÃÂÃÂnico/Prazo). Fica separado de 'CÃÂÃÂ¢mbio na PI' de propÃÂÃÂ³sito ÃÂ¢ÃÂÃÂ aquele ÃÂÃÂ© a previsÃÂÃÂ£o, este ÃÂÃÂ© o fechado, pra dar pra comparar os dois no Dashboard Financeiro.">
+          <div class="form-group"><label class="form-label">Câmbio Fechado (R$)</label>
+            <input class="form-input" type="number" id="f_pi_cambio_fechado" value="${p.pi_cambio_fechado||''}" placeholder="preenchido ao confirmar o câmbio" step="0.0001"
+              title="Taxa que realmente foi paga (vem do comprovante de câmbio, pra Pagamento Único/Prazo). Fica separado de 'Câmbio na PI' de propósito — aquele é a previsão, este é o fechado, pra dar pra comparar os dois no Dashboard Financeiro.">
           </div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
-              <option value="">ÃÂ¢ÃÂÃÂ</option>
+              <option value="">—</option>
               <option value="EXW" ${p.pi_incoterm==='EXW'?'selected':''}>EXW</option>
               <option value="FCA" ${p.pi_incoterm==='FCA'?'selected':''}>FCA</option>
               <option value="FOB" ${p.pi_incoterm==='FOB'?'selected':''}>FOB</option>
@@ -275,23 +275,23 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             </select></div>
           <div class="form-group"><label class="form-label">Forma de Pagamento</label>
             <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()" onwheel="this.blur()">
-              <option value="">ÃÂ¢ÃÂÃÂ</option>
-              <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% ÃÂÃÂ  Vista</option>
+              <option value="">—</option>
+              <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
               <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
               <option value="PARCELADO"    ${p.pi_pagamento==='PARCELADO'?'selected':''}>Parcelado</option>
-              <!-- "Entrada + Saldo" foi substituÃÂÃÂ­da por "Parcelado" (suporta quantos
-                   cÃÂÃÂ¢mbios forem necessÃÂÃÂ¡rios, nÃÂÃÂ£o sÃÂÃÂ³ 2) ÃÂ¢ÃÂÃÂ este option some do
-                   dropdown pra processos novos, mas continua aqui (sÃÂÃÂ³ oculto via
-                   CSS) e SELECIONÃÂÃÂVEL/exibido quando o processo jÃÂÃÂ¡ usa esse valor,
-                   pra nÃÂÃÂ£o quebrar/perder a forma de pagamento de processos antigos
+              <!-- "Entrada + Saldo" foi substituída por "Parcelado" (suporta quantos
+                   câmbios forem necessários, não só 2) — este option some do
+                   dropdown pra processos novos, mas continua aqui (só oculto via
+                   CSS) e SELECIONÁVEL/exibido quando o processo já usa esse valor,
+                   pra não quebrar/perder a forma de pagamento de processos antigos
                    ao simplesmente abrir e salvar o cadastro de novo. -->
-              <option disabled${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ</option>
+              <option disabled${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>──────────</option>
 <option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>Entrada + Saldo (legado)</option>
             </select></div>
           <div class="form-group"><label class="form-label">PI Paga?</label>
             <select class="form-input" id="f_pi_pago">
-              <option value="false" ${!p.pi_pago?'selected':''}>NÃÂÃÂ£o</option>
-              <option value="true"  ${p.pi_pago?'selected':''}>Sim ÃÂ¢ÃÂÃÂ</option>
+              <option value="false" ${!p.pi_pago?'selected':''}>Não</option>
+              <option value="true"  ${p.pi_pago?'selected':''}>Sim ✓</option>
             </select></div>
         </div>
         <div id="pagamento-campos"></div>
@@ -300,7 +300,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div class="form-section">
         <div class="form-section-title">💵 Commercial Invoice (CI)</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NÃÂÃÂº CI</label>
+          <div class="form-group"><label class="form-label">Nº CI</label>
             <input class="form-input" id="f_ci_numero" value="${esc(p.ci_numero)}"></div>
           <div class="form-group"><label class="form-label">Data CI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_ci_data" value="${esc(p.ci_data)}"></div>
@@ -310,7 +310,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
       </div>
     </div>
 
@@ -319,13 +319,13 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div class="form-section">
         <div class="form-section-title">📐 Fechamento — Estimado × Real</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-          Compara o que foi cotado no Calculador (na hora de aprovar a cotaÃÂÃÂ§ÃÂÃÂ£o) com o resultado real do processo, calculado a partir da NF Entrada e NF SaÃÂÃÂ­da lanÃÂÃÂ§adas na aba Documentos.
+          Compara o que foi cotado no Calculador (na hora de aprovar a cotação) com o resultado real do processo, calculado a partir da NF Entrada e NF Saída lançadas na aba Documentos.
         </div>
         ${renderFechamentoInfo(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
       </div>
     </div>
 
@@ -334,26 +334,26 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div class="form-section">
         <div class="form-section-title">💵 Custos Reais — apuração de lucro item a item</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-          Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissÃÂÃÂµes e taxas operacionais). Quando o processo veio de uma cotaÃÂÃÂ§ÃÂÃÂ£o aprovada, cada campo jÃÂÃÂ¡ nasce preenchido com o valor cotado ÃÂ¢ÃÂÃÂ ajuste sÃÂÃÂ³ o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cÃÂÃÂ¡lculo simples por NF.
+          Lance aqui o que realmente foi pago em cada item (FOB, frete, seguro, impostos, comissões e taxas operacionais). Quando o processo veio de uma cotação aprovada, cada campo já nasce preenchido com o valor cotado — ajuste só o que saiu diferente. Assim que tiver pelo menos um item aqui, o Lucro Real na aba Fechamento passa a usar esse detalhamento em vez do cálculo simples por NF.
         </div>
         <!-- Importar direto da planilha de Fechamento (mesmo template BASE
-        SP/SC usado antes de existir esta tela) ÃÂ¢ÃÂÃÂ lÃÂÃÂª a aba "Fechamento" e
+        SP/SC usado antes de existir esta tela) — lê a aba "Fechamento" e
         preenche os campos "Pago" abaixo + as datas de Embarque/Chegada/
         Registro DI (aba Documentos), sem precisar digitar tudo de novo.
         Reaproveita POST /api/controle/importar-fechamento (server-side,
-        planilha-import.js) ÃÂ¢ÃÂÃÂ o usuÃÂÃÂ¡rio sempre revisa/ajusta antes de salvar. -->
+        planilha-import.js) — o usuário sempre revisa/ajusta antes de salvar. -->
         <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
-          <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">ÃÂ°ÃÂÃÂÃÂ¥ Importar planilha de Fechamento</button>
+          <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
           ${!p.real_json ? `
-          <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotaÃÂÃÂ§ÃÂÃÂ£o no Calculador jÃÂÃÂ¡ prÃÂÃÂ©-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">ÃÂ°ÃÂÃÂ§ÃÂ® Vincular ao Calculador</button>
+          <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotação no Calculador já pré-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">🧮 Vincular ao Calculador</button>
           ` : ''}
         </div>
         ${renderCustosReaisTab(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="salvarCustosReaisTab()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar Custos Reais</button>
+        <button class="btn btn-primary" onclick="salvarCustosReaisTab()">💾 Salvar Custos Reais</button>
       </div>
     </div>
 
@@ -362,7 +362,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div class="form-section">
         <div class="form-section-title">🧾 Vendas — um processo, vários clientes</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-          Use esta aba quando este processo (Direto, Encomenda ou Conta e Ordem) foi vendido pra mais de um cliente ÃÂ¢ÃÂÃÂ ex.: meio contÃÂÃÂªiner pra um, meio pra outro. Cada venda tem seu prÃÂÃÂ³prio cliente e NF SaÃÂÃÂ­da. Os custos lanÃÂÃÂ§ados na aba Custos Reais sÃÂÃÂ£o rateados automaticamente entre as vendas, proporcional ÃÂÃÂ  quantidade que cada uma levou; custos que sÃÂÃÂ³ existiram por causa de um cliente especÃÂÃÂ­fico (ex.: um frete extra) podem ser lanÃÂÃÂ§ados direto naquela venda, sem entrar no rateio. Se este processo tem um ÃÂÃÂºnico cliente/NF SaÃÂÃÂ­da, nÃÂÃÂ£o precisa usar esta aba.
+          Use esta aba quando este processo (Direto, Encomenda ou Conta e Ordem) foi vendido pra mais de um cliente — ex.: meio contêiner pra um, meio pra outro. Cada venda tem seu próprio cliente e NF Saída. Os custos lançados na aba Custos Reais são rateados automaticamente entre as vendas, proporcional à quantidade que cada uma levou; custos que só existiram por causa de um cliente específico (ex.: um frete extra) podem ser lançados direto naquela venda, sem entrar no rateio. Se este processo tem um único cliente/NF Saída, não precisa usar esta aba.
         </div>
         <div id="vendas-list"></div>
         <button type="button" onclick="adicionarVenda()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Venda</button>
@@ -371,26 +371,26 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
       </div>
     </div>
 
-    <!-- ABA: LOGÃÂÃÂSTICA -->
+    <!-- ABA: LOGÍSTICA -->
     <div class="tab-pane" id="pane-logistica">
       <div class="form-section">
         <div class="form-section-title">🏭 Prontidão</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">PrevisÃÂÃÂ£o ProntidÃÂÃÂ£o</label>
+          <div class="form-group"><label class="form-label">Previsão Prontidão</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_previsao_prontidao" value="${esc(p.previsao_prontidao)}"></div>
-          <div class="form-group"><label class="form-label">Data ProntidÃÂÃÂ£o Real</label>
+          <div class="form-group"><label class="form-label">Data Prontidão Real</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_prontidao" value="${esc(p.data_prontidao)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_prontidao','f_previsao_prontidao','PrevisÃÂÃÂ£o ProntidÃÂÃÂ£o')"></div>
+              onchange="moverDataFuturaParaPrevisao('f_data_prontidao','f_previsao_prontidao','Previsão Prontidão')"></div>
         </div>
       </div>
       <div class="form-section">
         <div class="form-section-title">📦 Booking & Embarque</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NÃÂÃÂº Booking</label>
+          <div class="form-group"><label class="form-label">Nº Booking</label>
             <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group" style="position:relative"><label class="form-label">Armador</label>
             <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC" autocomplete="off"
@@ -410,7 +410,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <select class="form-input" id="f_moeda_frete">
               <option value="USD" ${(!p.moeda_frete||p.moeda_frete==='USD')?'selected':''}>USD (US$)</option>
               <option value="BRL" ${p.moeda_frete==='BRL'?'selected':''}>BRL (R$)</option>
-              <option value="EUR" ${p.moeda_frete==='EUR'?'selected':''}>EUR (ÃÂ¢ÃÂÃÂ¬)</option>
+              <option value="EUR" ${p.moeda_frete==='EUR'?'selected':''}>EUR (€)</option>
             </select></div>
           <div class="form-group"><label class="form-label">Porto Origem</label>
             <select class="form-input" id="f_porto_origem" onchange="togglePortoOutro('origem')">${gerarOptionsPortoOrigem(p.porto_origem)}</select>
@@ -418,16 +418,16 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               placeholder="Digite o porto de origem" style="display:${(p.porto_origem && !PORTOS_ORIGEM.includes(p.porto_origem.toUpperCase()))?'block':'none'};margin-top:6px;"></div>
           <div class="form-group"><label class="form-label">Porto Destino</label>
             <select class="form-input" id="f_porto_destino">${gerarOptionsPortoDestino(p.porto_destino)}</select></div>
-          <div class="form-group"><label class="form-label">PrevisÃÂÃÂ£o de Embarque (ETD)</label>
+          <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">ETA (PrevisÃÂÃÂ£o de Chegada)</label>
+          <div class="form-group"><label class="form-label">ETA (Previsão de Chegada)</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_eta" value="${esc(p.eta)}">
           </div>
           <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_embarque" value="${esc(p.data_embarque)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_embarque','f_etd','PrevisÃÂÃÂ£o de Embarque (ETD)');atualizarFaseEmTempoReal()"></div>
+              onchange="moverDataFuturaParaPrevisao('f_data_embarque','f_etd','Previsão de Embarque (ETD)');atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
-            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher apÃÂÃÂ³s emissÃÂÃÂ£o do BL"></div>
+            <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher após emissão do BL"></div>
         </div>
       </div>
       <div class="form-section">
@@ -444,11 +444,11 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           </div>
           <div class="form-group"><label class="form-label">Placa</label>
             <input class="form-input" id="f_placa" value="${esc(p.placa)}"></div>
-          <div class="form-group"><label class="form-label">HorÃÂÃÂ¡rio Retirada</label>
+          <div class="form-group"><label class="form-label">Horário Retirada</label>
             <input class="form-input" type="time" id="f_horario_retirada" value="${esc(p.horario_retirada)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Agendamento Cancelado?</label>
             <select class="form-input" id="f_agendamento_cancelado" onchange="toggleMotivoCancelamento()">
-              <option value="false" ${!p.agendamento_cancelado?'selected':''}>NÃÂÃÂ£o</option>
+              <option value="false" ${!p.agendamento_cancelado?'selected':''}>Não</option>
               <option value="true"  ${p.agendamento_cancelado?'selected':''}>Sim</option>
             </select></div>
         </div>
@@ -462,26 +462,26 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_data_chegada" value="${esc(p.data_chegada)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (PrevisÃÂÃÂ£o de Chegada)');atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">PresenÃÂÃÂ§a de Carga</label>
+              onchange="moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (Previsão de Chegada)');atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Presença de Carga</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Data DevoluÃÂÃÂ§ÃÂÃÂ£o</label>
+          <div class="form-group"><label class="form-label">Data Devolução</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Pago?</label>
             <select class="form-input" id="f_demurrage_pago">
-              <option value="false" ${!p.demurrage_pago?'selected':''}>NÃÂÃÂ£o</option>
-              <option value="true"  ${p.demurrage_pago?'selected':''}>Sim ÃÂ¢ÃÂÃÂ</option>
+              <option value="false" ${!p.demurrage_pago?'selected':''}>Não</option>
+              <option value="true"  ${p.demurrage_pago?'selected':''}>Sim ✓</option>
             </select></div>
         </div>
         <div id="demur-info-wrap">${demurInfo}</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
       </div>
     </div>
 
@@ -515,28 +515,28 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Data Embarque (CE)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_ce_data_embarque" value="${esc(p.ce_data_embarque)}"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extraÃÂÃÂ§ÃÂÃÂ£o por IA, os campos Navio e Armador (aba Booking &amp; Embarque) sÃÂÃÂ£o atualizados automaticamente ÃÂ¢ÃÂÃÂ em caso de transbordo no exterior, o navio de conexÃÂÃÂ£o/ÃÂÃÂºltimo navio.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extração por IA, os campos Navio e Armador (aba Booking &amp; Embarque) são atualizados automaticamente — em caso de transbordo no exterior, o navio de conexão/último navio.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">📋 DI e Parametrização</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">NÃÂÃÂºmero DI</label>
+          <div class="form-group"><label class="form-label">Número DI</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Canal</label>
             <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
-              <option value="">ÃÂ¢ÃÂÃÂ</option>
-              <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>ÃÂ°ÃÂÃÂÃÂ¢ Verde</option>
-              <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>ÃÂ°ÃÂÃÂÃÂ¡ Amarelo</option>
-              <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>ÃÂ°ÃÂÃÂÃÂ´ Vermelho</option>
+              <option value="">—</option>
+              <option value="VERDE"   ${p.canal==='VERDE'?'selected':''}>🟢 Verde</option>
+              <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
+              <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
             </select></div>
-          <div class="form-group"><label class="form-label">Data ParametrizaÃÂÃÂ§ÃÂÃÂ£o</label>
+          <div class="form-group"><label class="form-label">Data Parametrização</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Data LiberaÃÂÃÂ§ÃÂÃÂ£o</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraÃÂÃÂ§o (CI)"></div>
+          <div class="form-group"><label class="form-label">Data Liberação</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data ParametrizaÃÂÃÂ§ÃÂÃÂ£o automaticamente com a Data de Registro da DI (sem conferÃÂÃÂªncia separada). Data LiberaÃÂÃÂ§ÃÂÃÂ£o ÃÂÃÂ© a Data do DesembaraÃÂÃÂ§o informada no Comprovante de ImportaÃÂÃÂ§ÃÂÃÂ£o.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
@@ -552,7 +552,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           if(!Array.isArray(vendas)) vendas = [];
           if(!vendas.length) return '';
           return `<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.35);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--text);">
-            ÃÂ¢ÃÂÃÂ  Este processo foi vendido a <strong>${vendas.length} cliente${vendas.length===1?'':'s'}</strong> diferentes (ver aba ÃÂ°ÃÂÃÂ§ÃÂ¾ Vendas) ÃÂ¢ÃÂÃÂ os campos de <strong>NF SaÃÂÃÂ­da</strong> abaixo NÃÂÃÂO sÃÂÃÂ£o usados no cÃÂÃÂ¡lculo de Fechamento nesse caso; cada venda tem sua prÃÂÃÂ³pria NF SaÃÂÃÂ­da, lanÃÂÃÂ§ada na aba Vendas.
+            ⚠ Este processo foi vendido a <strong>${vendas.length} cliente${vendas.length===1?'':'s'}</strong> diferentes (ver aba 🧾 Vendas) — os campos de <strong>NF Saída</strong> abaixo NÃO são usados no cálculo de Fechamento nesse caso; cada venda tem sua própria NF Saída, lançada na aba Vendas.
           </div>`;
         })()}
         ${(() => {
@@ -562,7 +562,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           if(vendas2.length) return '';
           return `<div style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
             <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Extrair NF (Entrada ou Saida) com IA</div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE ÃÂ¢ÃÂÃÂ o sistema identifica se e Entrada ou Saida e preenche os campos certos automaticamente</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE — o sistema identifica se e Entrada ou Saida e preenche os campos certos automaticamente</div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <input type="file" id="ia-nf-saida-file" accept=".pdf,.png,.jpg,.jpeg,.xml" style="display:none" onchange="importarNFSaidaProcesso(this)">
               <button class="btn btn-outline" onclick="document.getElementById('ia-nf-saida-file').click()">Selecionar NF (Entrada ou Saida)</button>
@@ -571,44 +571,44 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           </div>`;
         })()}
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">NF Entrada NÃÂÃÂº</label>
+          <div class="form-group"><label class="form-label">NF Entrada Nº</label>
             <input class="form-input" id="f_nf_entrada_numero" value="${esc(p.nf_entrada_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">NF Entrada Data</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_entrada_data" value="${esc(p.nf_entrada_data)}"></div>
           <div class="form-group"><label class="form-label">NF Entrada Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_entrada_valor" value="${exibirMoeda(p.nf_entrada_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">NF SaÃÂÃÂ­da NÃÂÃÂº${p.vendas_json&&JSON.parse(p.vendas_json||'[]').length?' <span style="color:#f39c12;font-weight:400;">(nÃÂÃÂ£o usado ÃÂ¢ÃÂÃÂ ver aba Vendas)</span>':''}</label>
+          <div class="form-group"><label class="form-label">NF Saída Nº${p.vendas_json&&JSON.parse(p.vendas_json||'[]').length?' <span style="color:#f39c12;font-weight:400;">(não usado — ver aba Vendas)</span>':''}</label>
             <input class="form-input" id="f_nf_saida_numero" value="${esc(p.nf_saida_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">NF SaÃÂÃÂ­da Data</label>
+          <div class="form-group"><label class="form-label">NF Saída Data</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_nf_saida_data" value="${esc(p.nf_saida_data)}"></div>
-          <div class="form-group"><label class="form-label">NF SaÃÂÃÂ­da Valor (R$)</label>
+          <div class="form-group"><label class="form-label">NF Saída Valor (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_nf_saida_valor" value="${exibirMoeda(p.nf_saida_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
-          <div class="form-group"><label class="form-label">CFOP NF SaÃÂÃÂ­da</label>
+          <div class="form-group"><label class="form-label">CFOP NF Saída</label>
             <input class="form-input" id="f_nf_saida_cfop" value="${esc(p.nf_saida_cfop)}" placeholder="ex: 5405, 5905..."></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">CFOP 5905 (ou NF de SaÃÂÃÂ­da ainda nÃÂÃÂ£o emitida) = container importado sem venda efetiva ainda ÃÂ¢ÃÂÃÂ usado no Dashboard NarcÃÂÃÂ©lio pra calcular estoque parado no armazÃÂÃÂ©m.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">CFOP 5905 (ou NF de Saída ainda não emitida) = container importado sem venda efetiva ainda — usado no Dashboard Narcélio pra calcular estoque parado no armazém.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">📎 Arquivos do Processo (GED)</div>
         <div id="ged-upload-area" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;" onclick="document.getElementById('ged-file-input').click()">
           <input type="file" id="ged-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="uploadArquivosGed(this.files)">
-          <div style="color:var(--muted);font-size:13px;">ÃÂ°ÃÂÃÂÃÂ¤ Clique para enviar PDF, JPEG ou PNG</div>
-          <div style="color:var(--dim);font-size:11px;margin-top:4px;">MÃÂÃÂºltiplos arquivos permitidos</div>
+          <div style="color:var(--muted);font-size:13px;">📤 Clique para enviar PDF, JPEG ou PNG</div>
+          <div style="color:var(--dim);font-size:11px;margin-top:4px;">Múltiplos arquivos permitidos</div>
         </div>
         <div id="ged-lista-arquivos" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">ÃÂ°ÃÂÃÂÃÂ¾ Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
       </div>
     </div>
 
-    <!-- ABA: HISTÃÂÃÂRICO -->
+    <!-- ABA: HISTÓRICO -->
     <div class="tab-pane" id="pane-historico">
       <div id="historico-lista">
         ${isNovo
-          ? '<div class="empty"><div class="empty-icon">ÃÂ°ÃÂÃÂÃÂ</div><div class="empty-text">Salve o processo para comeÃÂÃÂ§ar a registrar alteraÃÂÃÂ§ÃÂÃÂµes.</div></div>'
-          : '<div style="font-size:11px;color:var(--dim);">Carregando histÃÂÃÂ³rico...</div>'
+          ? '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Salve o processo para começar a registrar alterações.</div></div>'
+          : '<div style="font-size:11px;color:var(--dim);">Carregando histórico...</div>'
         }
       </div>
     </div>
@@ -737,7 +737,7 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
         ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`
         : '';
       const detalharLink = podeDetalhar
-        ? `<div style="margin-top:3px;"><a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" style="font-size:10px;color:var(--ac);text-decoration:none;">ÃÂ°ÃÂÃÂÃÂ¦ <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total ÃÂÃÂºnico' : `Detalhar por container (${containers.length})`}</span></a></div>`
+        ? `<div style="margin-top:3px;"><a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" style="font-size:10px;color:var(--ac);text-decoration:none;">📦 <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total único' : `Detalhar por container (${containers.length})`}</span></a></div>`
         : '';
 
       // Se jÃÂÃÂ¡ estÃÂÃÂ¡ em modo detalhado, o valor mostrado na linha principal ÃÂÃÂ©
@@ -793,14 +793,14 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
     </div>`;
   }).join('');
 
-  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita), cada um com sua prÃÂÃÂ³pria moeda. Taxas por container podem ser detalhadas container a container.</div>
+  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita), cada um com sua própria moeda. Taxas por container podem ser detalhadas container a container.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
       <div class="form-group" style="max-width:200px;">
-        <label class="form-label">CÃÂÃÂ¢mbio USD</label>
+        <label class="form-label">Câmbio USD</label>
         <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()">
       </div>
       <div class="form-group" style="max-width:200px;">
-        <label class="form-label">CÃÂÃÂ¢mbio EUR</label>
+        <label class="form-label">Câmbio EUR</label>
         <input class="form-input" type="number" step="0.0001" id="f_cr_cambio_eur" value="${cambioEurDefault||''}" placeholder="${_cambio.EUR.toFixed(4)}" oninput="atualizarTotalCustosReais()">
       </div>
     </div>
@@ -817,7 +817,7 @@ function toggleCrContainerBreakdown(itemId){
   if(!row) return;
   const ativar = row.style.display === 'none';
   row.style.display = ativar ? 'table-row' : 'none';
-  if(label) label.textContent = ativar ? 'Ver total ÃÂÃÂºnico' : `Detalhar por container`;
+  if(label) label.textContent = ativar ? 'Ver total único' : `Detalhar por container`;
   ['f_cr_'+itemId, 'f_cr_cobrado_'+itemId].forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.readOnly = ativar; el.style.background = ativar ? 'var(--bg)' : ''; el.style.color = ativar ? 'var(--muted)' : ''; }
@@ -914,7 +914,7 @@ function atualizarTotalCustosReais(){
     if(!badge) return;
     if(!normPago || !normCobrado){ badge.innerHTML = ''; return; }
     const margem = normCobrado.totalBrl - normPago.totalBrl;
-    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'ÃÂ¢ÃÂÃÂ²':'ÃÂ¢ÃÂÃÂ¼'} margem: R$ ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'▲':'▼'} margem: R$ ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
   });
 
   const custosReais = calcularCustoRealTotal(snapshot);
@@ -925,14 +925,14 @@ function atualizarTotalCustosReais(){
   const lucro = temNf ? (nfSaida - custosReais.total) : null;
   const linhaMargemTaxas = receitaReais
     ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${receitaReais.count} ${receitaReais.count===1?'item':'itens'})</span><strong>${r2(receitaReais.total)}</strong></div>
-       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado ÃÂ¢ÃÂÃÂ Pago)</span><strong style="color:${(receitaReais.total-custosReais.total)>=0?'var(--ok)':'var(--err)'}">${r2(receitaReais.total-custosReais.total)}</strong></div>`
+       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${(receitaReais.total-custosReais.total)>=0?'var(--ok)':'var(--err)'}">${r2(receitaReais.total-custosReais.total)}</strong></div>`
     : '';
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
-    <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lanÃÂÃÂ§ados)</span><strong>${r2(custosReais.total)}</strong></div>
+    <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lançados)</span><strong>${r2(custosReais.total)}</strong></div>
     ${linhaMargemTaxas}
     ${temNf
-      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ Custo Real Total)</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
-      : `<div style="color:var(--dim);">Preencha a NF SaÃÂÃÂ­da na aba Documentos pra ver o lucro real aqui.</div>`}
+      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF Saída − Custo Real Total)</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
+      : `<div style="color:var(--dim);">Preencha a NF Saída na aba Documentos pra ver o lucro real aqui.</div>`}
   </div>`;
 }
 
@@ -953,38 +953,38 @@ async function salvarCustosReaisTab(){
 // Marcador usado no campo "campo" de uma entrada de log pra indicar que ela
 // nÃÂÃÂ£o ÃÂÃÂ© uma alteraÃÂÃÂ§ÃÂÃÂ£o normal de campo, e sim o registro de "a IA leu este
 // documento e preencheu estes campos" (ver extrairComIA() e o render abaixo).
-const LOG_CAMPO_LEITURA_IA = 'ÃÂ°ÃÂÃÂÃÂ_leitura_ia';
+const LOG_CAMPO_LEITURA_IA = '📄_leitura_ia';
 const LABELS_CAMPOS_IA = {
-  referencia:'ReferÃÂÃÂªncia', fornecedor:'Fornecedor/Exportador', cliente:'Cliente',
-  itens:'Itens/Produtos', pi_numero:'NÃÂÃÂº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
+  referencia:'Referência', fornecedor:'Fornecedor/Exportador', cliente:'Cliente',
+  itens:'Itens/Produtos', pi_numero:'Nº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
   pi_incoterm:'Incoterm', pi_pagamento:'Forma de pagamento', etd:'ETD', eta:'ETA',
   armador:'Armador', navio:'Navio', porto_origem:'Porto de origem', porto_destino:'Porto de destino',
   hbl:'HBL', mbl:'MBL', container:'Container', lacre:'Lacre', valor_frete:'Valor do frete',
-  moeda_frete:'Moeda do frete', numero_di:'NÃÂÃÂº DI', data_registro_di:'Data registro DI',
-  canal:'Canal', data_liberacao:'Data liberaÃÂÃÂ§ÃÂÃÂ£o', ci_numero:'NÃÂÃÂº CI', ci_valor_usd:'Valor CI (USD)',
+  moeda_frete:'Moeda do frete', numero_di:'Nº DI', data_registro_di:'Data registro DI',
+  canal:'Canal', data_liberacao:'Data liberação', ci_numero:'Nº CI', ci_valor_usd:'Valor CI (USD)',
   ci_data:'Data CI', data_chegada:'Data de chegada', ce_master:'CE Master', ce_house:'CE House',
-  ce_data_embarque:'Data embarque (CE)', nf_entrada_numero:'NÃÂÃÂº NF entrada', nf_entrada_data:'Data NF entrada',
-  nf_entrada_valor:'Valor NF entrada', nf_saida_numero:'NÃÂÃÂº NF saÃÂÃÂ­da', nf_saida_data:'Data NF saÃÂÃÂ­da',
-  nf_saida_valor:'Valor NF saÃÂÃÂ­da', nf_saida_cfop:'CFOP NF saÃÂÃÂ­da', data_devolucao_vazio:'Data devoluÃÂÃÂ§ÃÂÃÂ£o vazio',
+  ce_data_embarque:'Data embarque (CE)', nf_entrada_numero:'Nº NF entrada', nf_entrada_data:'Data NF entrada',
+  nf_entrada_valor:'Valor NF entrada', nf_saida_numero:'Nº NF saída', nf_saida_data:'Data NF saída',
+  nf_saida_valor:'Valor NF saída', nf_saida_cfop:'CFOP NF saída', data_devolucao_vazio:'Data devolução vazio',
 };
 async function carregarHistorico(processoId){
   const lista = document.getElementById('historico-lista');
   if(!lista) return;
-  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando histÃÂÃÂ³rico...</div>';
+  lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Carregando histórico...</div>';
   try{
     const r = await fetch('/api/controle/v2/processo/'+processoId+'/log');
     const d = await r.json();
     if(!d.ok || !d.log.length){
-      lista.innerHTML = '<div class="empty"><div class="empty-icon">ÃÂ°ÃÂÃÂÃÂ</div><div class="empty-text">Nenhuma alteraÃÂÃÂ§ÃÂÃÂ£o registrada ainda</div></div>';
+      lista.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma alteração registrada ainda</div></div>';
       return;
     }
     lista.innerHTML = '<div class="log-list">' + d.log.map(l=>{
       const isLeituraIA = l.campo === LOG_CAMPO_LEITURA_IA;
       const texto = isLeituraIA
-        ? ` leu o documento <strong>${esc(l.valor_antes||'?')}</strong> com IA e preencheu: ${esc(l.valor_depois||'ÃÂ¢ÃÂÃÂ')}`
-        : ` alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'ÃÂ¢ÃÂÃÂ'))} ÃÂ¢ÃÂÃÂ ${esc(String(l.valor_depois||'ÃÂ¢ÃÂÃÂ'))}`;
+        ? ` leu o documento <strong>${esc(l.valor_antes||'?')}</strong> com IA e preencheu: ${esc(l.valor_depois||'—')}`
+        : ` alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}`;
       return `<div class="log-item">
-        <div class="log-avatar">${isLeituraIA ? 'ÃÂ°ÃÂÃÂ¤ÃÂ' : esc((l.usuario||'?').slice(0,2).toUpperCase())}</div>
+        <div class="log-avatar">${isLeituraIA ? '🤖' : esc((l.usuario||'?').slice(0,2).toUpperCase())}</div>
         <div class="log-content">
           <span class="log-user">${esc(l.usuario||'?')}</span>
           <span class="log-text">${texto}</span>
@@ -993,7 +993,7 @@ async function carregarHistorico(processoId){
       </div>`;
     }).join('') + '</div>';
   }catch(e){
-    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar histÃÂÃÂ³rico.</div>';
+    lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Erro ao carregar histórico.</div>';
   }
 }
 
@@ -1012,13 +1012,13 @@ async function carregarArquivosGed(processoId){
       return;
     }
     lista.innerHTML = d.arquivos.map(a=>{
-      const icon = a.nome.toLowerCase().endsWith('.pdf') ? 'ÃÂ°ÃÂÃÂÃÂ' : 'ÃÂ°ÃÂÃÂÃÂ¼ÃÂ¯ÃÂ¸ÃÂ';
+      const icon = a.nome.toLowerCase().endsWith('.pdf') ? '📄' : '🖼️';
       const tamanho = a.tamanho ? (a.tamanho/1024).toFixed(0)+' KB' : '';
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;">
         <span>${icon}</span>
         <a href="${a.url}" target="_blank" style="flex:1;color:var(--ac);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.nome}</a>
         <span style="color:var(--dim);font-size:10px;">${tamanho}</span>
-        <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">ÃÂ¢ÃÂÃÂ</button>
+        <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">✕</button>
       </div>`;
     }).join('');
   }catch(e){
@@ -1035,11 +1035,11 @@ async function uploadArquivosGed(files){
   for(const file of files){
     const tiposPermitidos = ['application/pdf','image/jpeg','image/jpg','image/png'];
     if(!tiposPermitidos.includes(file.type)){
-      showToast(`Tipo nÃÂÃÂ£o permitido: ${file.name}`,'err');
+      showToast(`Tipo não permitido: ${file.name}`,'err');
       continue;
     }
     if(file.size > 15*1024*1024){
-      showToast(`Arquivo muito grande (mÃÂÃÂ¡x 15MB): ${file.name}`,'err');
+      showToast(`Arquivo muito grande (máx 15MB): ${file.name}`,'err');
       continue;
     }
     try{
@@ -1074,7 +1074,7 @@ async function excluirArquivoGed(arquivoId, processoId){
   try{
     const r = await fetch('/api/controle/v2/arquivos/'+arquivoId, { method:'DELETE' });
     const d = await r.json();
-    if(d.ok){ showToast('Arquivo excluÃÂÃÂ­do','ok'); carregarArquivosGed(processoId); }
+    if(d.ok){ showToast('Arquivo excluído','ok'); carregarArquivosGed(processoId); }
     else showToast('Erro ao excluir','err');
   }catch(e){ showToast('Erro ao excluir','err'); }
 }
@@ -1120,7 +1120,7 @@ function moverDataFuturaParaPrevisao(idEfetivo, idPrevisao, labelPrevisao){
   const valor = elEfetivo.value;
   elEfetivo.value = '';
   elPrevisao.value = valor;
-  showToast(`ÃÂ°ÃÂÃÂÃÂ Essa data ainda nÃÂÃÂ£o aconteceu (ÃÂÃÂ© futura) ÃÂ¢ÃÂÃÂ movida para "${labelPrevisao}" automaticamente.`, 'info');
+  showToast(`📅 Essa data ainda não aconteceu (é futura) — movida para "${labelPrevisao}" automaticamente.`, 'info');
   return true;
 }
 
@@ -1171,7 +1171,7 @@ function atualizarFaseEmTempoReal(){
   const faseIdx = FASES.findIndex(f=>f.id===novaFase);
   document.querySelectorAll('.tl-dot').forEach((dot, i)=>{
     dot.className = 'tl-dot';
-    if(i < faseIdx) dot.classList.add('done'), dot.textContent='ÃÂ¢ÃÂÃÂ';
+    if(i < faseIdx) dot.classList.add('done'), dot.textContent='✓';
     else if(i===faseIdx) dot.classList.add('active'), dot.textContent=FASES[i].icon;
     else dot.textContent=FASES[i].icon;
   });
@@ -1216,9 +1216,9 @@ function renderPagamentoCampos(){
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>
       <div class="form-group"><label class="form-label">Data Saldo</label>
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
-      <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio Entrada (R$)</label>
+      <div class="form-group"><label class="form-label">Câmbio Entrada (R$)</label>
       <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_entrada" value="${p.pi_cambio_entrada||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>
-      <div class="form-group"><label class="form-label">CÃÂÃÂ¢mbio Saldo (R$)</label>
+      <div class="form-group"><label class="form-label">Câmbio Saldo (R$)</label>
       <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_saldo" value="${p.pi_cambio_saldo||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>`;
   } else if(tipo==='PARCELADO'){
     // Recarrega _parcelas a partir do processo sempre que o form entra em
@@ -1231,7 +1231,7 @@ function renderPagamentoCampos(){
     if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
       }
     html+=`<div class="form-group full">
-      <label class="form-label">Parcelas (quantos cÃÂÃÂ¢mbios forem necessÃÂÃÂ¡rios ÃÂ¢ÃÂÃÂ ex.: confirmaÃÂÃÂ§ÃÂÃÂ£o do pedido, embarque, chegada)</label>
+      <label class="form-label">Parcelas (quantos câmbios forem necessários — ex.: confirmação do pedido, embarque, chegada)</label>
       <div id="parcelas-list"></div>
       <button type="button" onclick="adicionarParcela()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Parcela</button>
       <input type="hidden" id="f_pi_parcelas_json">
@@ -1303,7 +1303,7 @@ function renderPagamentoInfo(p){
   const brl = val * _cambio.USD;
   let rows = '';
   if(p.pi_pagamento==='VISTA'){
-    rows=`<div class="pagamento-row"><span>Pagamento ÃÂÃÂ  vista</span><span>USD ${val.toFixed(2)}</span></div>
+    rows=`<div class="pagamento-row"><span>Pagamento à vista</span><span>USD ${val.toFixed(2)}</span></div>
     <div class="pagamento-row"><span>Estimativa BRL</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PRAZO'){
     rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toFixed(2)}</span></div>`;
@@ -1313,9 +1313,9 @@ function renderPagamentoInfo(p){
     const cambioEnt = parseFloat(p.pi_cambio_entrada) || _cambio.USD;
     const cambioSld = parseFloat(p.pi_cambio_saldo)   || _cambio.USD;
     const entBRL = ent*cambioEnt; const sldBRL = sld*cambioSld;
-    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) ÃÂÃÂ· cÃÂÃÂ¢mbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} ÃÂÃÂ· R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) ÃÂÃÂ· cÃÂÃÂ¢mbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} ÃÂÃÂ· R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} ÃÂÃÂ· R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) · câmbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} · R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) · câmbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} · R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} · R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PARCELADO'){
     let parcelas = [];
     try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
@@ -1325,15 +1325,15 @@ function renderPagamentoInfo(p){
       const c = parseFloat(pc.cambio_fechado) || _cambio.USD;
       const brlPc = v*c;
       totalUsd += v; totalBrl += brlPc;
-      const venc = pc.data_vencimento ? ' ÃÂÃÂ· ' + parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '';
-      rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} ÃÂÃÂ· cÃÂÃÂ¢mbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toFixed(2)} ÃÂÃÂ· R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+      const venc = pc.data_vencimento ? ' · ' + parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '';
+      rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} · câmbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toFixed(2)} · R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
     });
-    rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toFixed(2)} ÃÂÃÂ· R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toFixed(2)} · R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
     // Como cada parcela usa valor fixo em USD (nÃÂÃÂ£o %), nÃÂÃÂ£o hÃÂÃÂ¡ garantia
     // automÃÂÃÂ¡tica de que a soma bate com o Valor USD da PI ÃÂ¢ÃÂÃÂ sinalizar em vez
     // de deixar passar batido (percentual, ao contrÃÂÃÂ¡rio, sempre soma 100%).
     if(val && Math.abs(totalUsd-val) > 0.01){
-      rows += `<div class="pagamento-row" style="color:#b45309;"><span>ÃÂ¢ÃÂÃÂ  Parcelas somam USD ${totalUsd.toFixed(2)}, mas o Valor USD da PI ÃÂÃÂ© USD ${val.toFixed(2)}</span><span></span></div>`;
+      rows += `<div class="pagamento-row" style="color:#b45309;"><span>⚠ Parcelas somam USD ${totalUsd.toFixed(2)}, mas o Valor USD da PI é USD ${val.toFixed(2)}</span><span></span></div>`;
     }
   }
   return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
@@ -1348,7 +1348,7 @@ function marcarPendenciaRevisada(){
   const banner = document.getElementById('alerta-pendencia');
   if(banner) banner.style.display = 'none';
   coletarESalvar();
-  showToast('ÃÂ¢ÃÂÃÂ PendÃÂÃÂªncia marcada como revisada', 'ok');
+  showToast('✓ Pendência marcada como revisada', 'ok');
 }
 
 
