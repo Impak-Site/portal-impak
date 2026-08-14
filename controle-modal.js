@@ -284,7 +284,8 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
                    CSS) e SELECIONÁVEL/exibido quando o processo já usa esse valor,
                    pra não quebrar/perder a forma de pagamento de processos antigos
                    ao simplesmente abrir e salvar o cadastro de novo. -->
-              <option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>Entrada + Saldo (legado)</option>
+              <option disabled${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>──────────</option>
+<option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>Entrada + Saldo (legado)</option>
             </select></div>
           <div class="form-group"><label class="form-label">PI Paga?</label>
             <select class="form-input" id="f_pi_pago">
