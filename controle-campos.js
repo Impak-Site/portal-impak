@@ -677,7 +677,47 @@ function abrirModalConfirmarCambio(match, refAtual){
       + `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}<br>`
       + (valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '');
   }
+  // Se a Forma de Pagamento atual e "Parcelado", mostra um botao por
+  // parcela (pelo rotulo da Etapa) em vez das opcoes fixas de
+  // Unico/Entrada/Saldo -- o usuario escolhe explicitamente a qual
+  // parcela esse comprovante se refere (pedido direto da Emanuelly,
+  // que queria escolher a etapa igual escolhe a NF na aba Vendas).
+  const formaPagamento = document.getElementById('f_pi_pagamento')?.value;
+  const boxParcelas = document.getElementById('cambio-modal-parcelas');
+  const boxLegado = document.getElementById('cambio-modal-botoes-legado');
+  if(formaPagamento==='PARCELADO' && boxParcelas && boxLegado){
+    boxLegado.style.display = 'none';
+    boxParcelas.style.display = 'flex';
+    if(!_parcelas.length){
+      boxParcelas.innerHTML = '<p style="font-size:12px;color:var(--muted);">Nenhuma parcela cadastrada ainda — adicione uma parcela na aba Financeiro antes de confirmar este comprovante.</p>';
+    } else {
+      boxParcelas.innerHTML = _parcelas.map((p,i)=>{
+        const label = p.label || ('Parcela ' + (i+1));
+        const jaTemCambio = p.cambio_fechado ? (' (câmbio atual: ' + p.cambio_fechado + ')') : '';
+        return '<button class="btn btn-outline" onclick="confirmarCambioParcela(' + i + ')">' + esc(label) + jaTemCambio + '</button>';
+      }).join('');
+    }
+  } else if(boxParcelas && boxLegado){
+    boxParcelas.style.display = 'none';
+    boxLegado.style.display = 'flex';
+  }
   document.getElementById('modal-cambio-bg')?.classList.add('open');
+}
+
+// Aplica o cambio confirmado do comprovante numa parcela especifica,
+// escolhida explicitamente pelo usuario no modal (em vez de tentar
+// adivinhar qual parcela esta pendente).
+function confirmarCambioParcela(idx){
+  if(!_cambioPendente){ fecharModalCambio(); return; }
+  const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
+  if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
+  if(!_parcelas[idx]){ fecharModalCambio(); return; }
+  _parcelas[idx].cambio_fechado = taxa.toFixed(4);
+  renderParcelas();
+  renderPagamentoInfoLive();
+  const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
+  showToast('✓ Câmbio (' + taxa.toLocaleString('pt-BR',{minimumFractionDigits:4}) + ') aplicado em "' + label + '"','ok');
+  fecharModalCambio();
 }
 
 function fecharModalCambio(){
