@@ -22,7 +22,7 @@
   window.fetch = async function(...args){
     const res = await _fetch(...args);
     if (res.redirected && res.url.startsWith(location.origin) && res.url.includes('/login')) {
-      throw new Error('SessÃÂÃÂ£o expirada. Abra outra aba, faÃÂÃÂ§a login novamente e tente de novo (seus dados nÃÂÃÂ£o foram perdidos).');
+      throw new Error('Sessão expirada. Abra outra aba, faça login novamente e tente de novo (seus dados não foram perdidos).');
     }
     return res;
   };
@@ -150,7 +150,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(idDeepLink){
         const achou = _processos.some(p=>p.id===idDeepLink);
         if(achou) abrirProcesso(idDeepLink);
-        else showToast('Processo recÃÂÃÂ©m-criado ainda nÃÂÃÂ£o apareceu na lista ÃÂ¢ÃÂÃÂ atualize a pÃÂÃÂ¡gina em alguns segundos', 'err');
+        else showToast('Processo recém-criado ainda não apareceu na lista — atualize a página em alguns segundos', 'err');
       }
     });
     renderFaseFilter();
@@ -172,7 +172,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
 // em vez de duplicar essa lÃÂÃÂ³gica evita ter duas versÃÂÃÂµes de "abrir
 // processo" pra manter sincronizadas.
 function ativarTelaFinanceiroExclusiva(){
-  document.title = 'IMPAK ÃÂ¢ÃÂÃÂ Dashboard Financeiro';
+  document.title = 'IMPAK — Dashboard Financeiro';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Financeiro';
 
@@ -203,7 +203,7 @@ function ativarTelaFinanceiroExclusiva(){
 // Custo Real Total). Reaproveita _processos e calcularFechamento() em vez
 // de duplicar essa lÃÂÃÂ³gica.
 function ativarTelaResultadoExclusiva(){
-  document.title = 'IMPAK ÃÂ¢ÃÂÃÂ Dashboard Resultado';
+  document.title = 'IMPAK — Dashboard Resultado';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Resultado';
 
@@ -239,9 +239,9 @@ function ativarTelaResultadoExclusiva(){
 // processo). Acesso jÃÂÃÂ¡ ÃÂÃÂ© restrito no back-end (ver /narcelio em
 // server.js) ÃÂ¢ÃÂÃÂ aqui ÃÂÃÂ© sÃÂÃÂ³ a apresentaÃÂÃÂ§ÃÂÃÂ£o.
 function ativarTelaNarcelioExclusiva(){
-  document.title = 'IMPAK ÃÂ¢ÃÂÃÂ Dashboard NarcÃÂÃÂ©lio';
+  document.title = 'IMPAK — Dashboard Narcélio';
   const titulo = document.querySelector('.topbar-title');
-  if(titulo) titulo.textContent = 'Dashboard NarcÃÂÃÂ©lio';
+  if(titulo) titulo.textContent = 'Dashboard Narcélio';
 
   ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
@@ -262,14 +262,14 @@ function ativarTelaNarcelioExclusiva(){
 }
 
 async function fecharProcesso(id){
-  if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ um gerente pode reabrir depois.')) return;
+  if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.')) return;
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ processo:{ id, fechado:true } })
   });
   const d = await r.json();
   if(d.ok){
-    showToast('ÃÂ°ÃÂÃÂÃÂ Processo fechado','ok');
+    showToast('🔒 Processo fechado','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
     if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
@@ -277,14 +277,14 @@ async function fecharProcesso(id){
 }
 
 async function reabrirProcesso(id){
-  if(!confirm('Reabrir este processo para ediÃÂÃÂ§ÃÂÃÂ£o?')) return;
+  if(!confirm('Reabrir este processo para edição?')) return;
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ processo:{ id, fechado:false } })
   });
   const d = await r.json();
   if(d.ok){
-    showToast('ÃÂ°ÃÂÃÂÃÂ Processo reaberto','ok');
+    showToast('🔓 Processo reaberto','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
     if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
@@ -301,7 +301,7 @@ showToast('Gerando follow-up semanal...','info');
 try{
 const r = await fetch('/api/admin/followup-semanal', { method:'POST' });
 const d = await r.json();
-if(d.ok) showToast(`ÃÂ¢ÃÂÃÂ Follow-up enviado (${d.processos} processo${d.processos===1?'':'s'})`,'ok');
+if(d.ok) showToast(`✓ Follow-up enviado (${d.processos} processo${d.processos===1?'':'s'})`,'ok');
 else showToast('Erro ao gerar follow-up: '+(d.erro||''),'err');
 }catch(e){ showToast('Erro de rede ao gerar follow-up: '+e.message,'err'); }
 }
@@ -324,7 +324,7 @@ async function carregarCambio(){
       `EUR R$ ${_cambio.EUR.toFixed(4)}`,
       `CNY R$ ${_cambio.CNY.toFixed(4)}`,
     ].map(t=>`<span style="font-size:11px;font-family:'DM Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="Atualizado ${hora}">${t}</span>`).join('');
-  }catch(e){ console.warn('CÃÂÃÂ¢mbio erro:',e.message); }
+  }catch(e){ console.warn('Câmbio erro:',e.message); }
   setTimeout(carregarCambio, 5*60*1000);
 }
 
@@ -446,7 +446,7 @@ async function salvarProcesso(proc, patchFields){
     return false;
   }
   if(d.ok){
-    showToast('ÃÂ¢ÃÂÃÂ Salvo','ok');
+    showToast('✓ Salvo','ok');
     // Criar notificaÃÂÃÂ§ÃÂÃÂ£o se houver alerta
     verificarAlertas(proc, true);
     await carregarProcessos(true);
@@ -461,7 +461,7 @@ async function excluirProcesso(id){
   if(!confirm('Excluir este processo?')) return;
   const r = await fetch('/api/controle/v2/processo/'+id, {method:'DELETE'});
   const d = await r.json();
-  if(d.ok){ showToast('Processo excluÃÂÃÂ­do','ok'); fecharModal(); carregarProcessos(true); }
+  if(d.ok){ showToast('Processo excluído','ok'); fecharModal(); carregarProcessos(true); }
   else showToast('Erro ao excluir','err');
 }
 
@@ -559,7 +559,7 @@ function listarPagamentosPI(processos){
   (processos||[]).forEach(p=>{
     const valorTotal = parseFloat(p.pi_valor_usd)||0;
     if(!valorTotal || p.fase==='FINALIZADO') return;
-    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'ÃÂ¢ÃÂÃÂ', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'ÃÂ¢ÃÂÃÂ' };
+    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—' };
     if(p.pi_pagamento==='ENTRADA_SALDO'){
       const pct = parseFloat(p.pi_entrada_pct||30)/100;
       const cambioPrevisto = parseFloat(p.pi_cambio)||null;
@@ -631,23 +631,23 @@ function renderDemurInfo(p){
 
   let statusTxt = '', statusIcon = '';
   if(p.data_devolucao_vazio){
-    statusIcon = 'ÃÂ¢ÃÂÃÂ'; statusTxt = `Container devolvido em ${parseDataLocal(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
+    statusIcon = '✅'; statusTxt = `Container devolvido em ${parseDataLocal(p.data_devolucao_vazio).toLocaleDateString('pt-BR')}`;
   } else if(dias !== null && dias < 0){
-    statusIcon = 'ÃÂ°ÃÂÃÂÃÂ´'; statusTxt = `VENCIDO hÃÂÃÂ¡ ${Math.abs(dias)} dia(s) ÃÂ¢ÃÂÃÂ custos acumulando!`;
+    statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — custos acumulando!`;
   } else if(dias !== null && dias <= 5){
-    statusIcon = 'ÃÂ¢ÃÂÃÂ ÃÂ¯ÃÂ¸ÃÂ'; statusTxt = `AtenÃÂÃÂ§ÃÂÃÂ£o: vence em ${dias} dia(s)`;
+    statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
   } else if(dias !== null){
-    statusIcon = 'ÃÂ°ÃÂÃÂÃÂ¢'; statusTxt = `${dias} dias restantes`;
+    statusIcon = '🟢'; statusTxt = `${dias} dias restantes`;
   }
 
   return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
-    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">ÃÂ°ÃÂÃÂÃÂ CÃÂÃÂ¡lculo do Demurrage</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📊 Cálculo do Demurrage</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
-      ${chegada ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">ÃÂ°ÃÂÃÂÃÂ Data de chegada</span><strong>${chegada.toLocaleDateString('pt-BR')}</strong></div>` : ''}
-      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">ÃÂ¢ÃÂÃÂ± Free time</span><strong>${freeTime} dias</strong></div>
-      ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">ÃÂ°ÃÂÃÂÃÂ Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      ${chegada ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 Data de chegada</span><strong>${chegada.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time</span><strong>${freeTime} dias</strong></div>
+      ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
       ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
-      ${p.demurrage_valor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">ÃÂ°ÃÂÃÂÃÂ¸ Valor registrado</span><strong>R$ ${parseFloat(p.demurrage_valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>` : ''}
+      ${p.demurrage_valor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">💸 Valor registrado</span><strong>R$ ${parseFloat(p.demurrage_valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>` : ''}
     </div>
   </div>`;
 }
@@ -698,7 +698,7 @@ const CUSTOS_REAIS_CONFIG = [
   // pagar pro governo, sempre em R$, sem contrapartida cobrada do cliente
   // (diferente das taxas operacionais, que podem ter margem). A aba mostra
   // sÃÂÃÂ³ um campo "Valor a pagar", sem Cobrado/Margem nem seletor de moeda.
-  { grupo:'Impostos de ImportaÃÂÃÂ§ÃÂÃÂ£o', itens:[
+  { grupo:'Impostos de Importação', itens:[
     { id:'ii',     label:'II',     unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ii },
     { id:'ipi',    label:'IPI',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ipi },
     { id:'pis',    label:'PIS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.pis },
@@ -711,10 +711,10 @@ const CUSTOS_REAIS_CONFIG = [
     // compraÃÂÃÂvenda, sÃÂÃÂ³ existe quando a cotaÃÂÃÂ§ÃÂÃÂ£o de origem teve o toggle ativo.
     { id:'antidumping', label:'Antidumping', unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.antidumping },
   ]},
-  { grupo:'ComissÃÂÃÂµes', itens:[
-    { id:'comissao_br',    label:'ComissÃÂÃÂ£o BR (Representante)', unidade:'BRL', cotado:c=>c?.comissoes?.br },
-    { id:'comissao_china', label:'ComissÃÂÃÂ£o China',              unidade:'BRL', cotado:c=>c?.comissoes?.china },
-    { id:'comissao_boss',  label:'ComissÃÂÃÂ£o Boss/Lopes',         unidade:'BRL', cotado:c=>c?.comissoes?.boss },
+  { grupo:'Comissões', itens:[
+    { id:'comissao_br',    label:'Comissão BR (Representante)', unidade:'BRL', cotado:c=>c?.comissoes?.br },
+    { id:'comissao_china', label:'Comissão China',              unidade:'BRL', cotado:c=>c?.comissoes?.china },
+    { id:'comissao_boss',  label:'Comissão Boss/Lopes',         unidade:'BRL', cotado:c=>c?.comissoes?.boss },
   ]},
   // porContainer:true = no Calculador esse valor ÃÂÃÂ© POR container (r.txOp);
   // usado sÃÂÃÂ³ pra multiplicar corretamente ao calcular o "Cotado" total abaixo
@@ -724,13 +724,13 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'siscomex',         label:'Siscomex',                unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.siscomex },
     { id:'marinha',          label:'Marinha/AFRMM',           unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.marinha },
     { id:'armazenagem',      label:'Armazenagem',             unidade:'BRL', porContainer:false, cotado:c=>c?.taxas_fixas?.armazenagem },
-    { id:'emissao_li',       label:'EmissÃÂÃÂ£o L.I.',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.emissao_li },
-    { id:'baixa_patio',      label:'Baixa PÃÂÃÂ¡tio',             unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.baixa_patio },
+    { id:'emissao_li',       label:'Emissão L.I.',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.emissao_li },
+    { id:'baixa_patio',      label:'Baixa Pátio',             unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.baixa_patio },
     { id:'capatazia',        label:'Capatazia/THC',           unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.capatazia },
-    { id:'liberacao_bl',     label:'LiberaÃÂÃÂ§ÃÂÃÂ£o BL',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.liberacao_bl },
+    { id:'liberacao_bl',     label:'Liberação BL',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.liberacao_bl },
     { id:'despachante',      label:'Despachante',             unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.despachante },
     { id:'sda',              label:'SDA',                     unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.sda },
-    { id:'lavacao',          label:'LavaÃÂÃÂ§ÃÂÃÂ£o Container',       unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.lavacao },
+    { id:'lavacao',          label:'Lavação Container',       unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.lavacao },
     { id:'administrativo',   label:'Administrativo',          unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.administrativo },
     { id:'agente',           label:'Agente Carga',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.agente },
     { id:'custos_diversos',  label:'Custos Diversos',         unidade:'BRL', porContainer:false, cotado:c=>c?.custos_diversos },
@@ -747,7 +747,7 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'drop_off',         label:'Drop Off',                unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.drop_off },
     { id:'isps',             label:'ISPS',                    unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.isps },
     { id:'iof',              label:'IOF',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.iof },
-    { id:'desconsolidacao',  label:'DesconsolidaÃÂÃÂ§ÃÂÃÂ£o',         unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.desconsolidacao },
+    { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.desconsolidacao },
   ]},
 ];
 
@@ -770,7 +770,7 @@ function custosReaisItensFlat(){
 const MOEDAS_REAIS = [
   { code:'BRL', simbolo:'R$' },
   { code:'USD', simbolo:'US$' },
-  { code:'EUR', simbolo:'ÃÂ¢ÃÂÃÂ¬' },
+  { code:'EUR', simbolo:'€' },
 ];
 
 // CÃÂÃÂ¢mbio de uma moeda em relaÃÂÃÂ§ÃÂÃÂ£o a R$ pra este processo. USD usa a mesma
@@ -812,7 +812,7 @@ function containersDoProcesso(p){
         const numeros = lista.map(c => (c && c.numero || '').trim()).filter(Boolean);
         if(numeros.length) return numeros;
       }
-    }catch(e){ /* containers_json invÃÂÃÂ¡lido ÃÂ¢ÃÂÃÂ cai no fallback abaixo */ }
+    }catch(e){ /* containers_json inválido — cai no fallback abaixo */ }
   }
   if(!p.container) return [];
   return String(p.container).split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
@@ -1110,7 +1110,7 @@ function calcularFechamento(p){
     if(est.cenarios && est.cenarios.com_st && est.cenarios.com_st.faturamento_total != null){
       faturamentoEstimado = est.cenarios.com_st.faturamento_total;
     } else if(est.faturamento != null){
-      faturamentoEstimado = est.faturamento; // cotaÃÂÃÂ§ÃÂÃÂµes salvas antes dos 2 cenÃÂÃÂ¡rios
+      faturamentoEstimado = est.faturamento; // cotações salvas antes dos 2 cenários
     }
     if(faturamentoEstimado != null && custoEstimado != null){
       lucroEstimado = faturamentoEstimado - custoEstimado;
@@ -1130,16 +1130,16 @@ function calcularFechamento(p){
     custoEstimado, faturamentoEstimado, lucroEstimado, pctLucroEstimado,
     nfEntrada: isNaN(nfEntrada)?null:nfEntrada, nfSaida,
     lucroReal, pctLucroReal, deltaValor, deltaPct,
-    custosReais, custoRealTotal, // detalhamento por item ÃÂ¢ÃÂÃÂ null se a aba Custos Reais nunca foi preenchida
-    receitaReais, margemTaxas, // margem por taxa (compra ÃÂÃÂ venda) ÃÂ¢ÃÂÃÂ null se "cobrado do cliente" nunca foi preenchido
-    vendasResumo, // null se o processo nÃÂÃÂ£o foi vendido a mais de um cliente
+    custosReais, custoRealTotal, // detalhamento por item — null se a aba Custos Reais nunca foi preenchida
+    receitaReais, margemTaxas, // margem por taxa (compra × venda) — null se "cobrado do cliente" nunca foi preenchido
+    vendasResumo, // null se o processo não foi vendido a mais de um cliente
   };
 }
 
 function renderFechamentoInfo(p){
   const f = calcularFechamento(p);
-  const r2 = v => v==null ? 'ÃÂ¢ÃÂÃÂ' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const pct2 = v => v==null ? 'ÃÂ¢ÃÂÃÂ' : `${(v*100).toFixed(1)}%`;
+  const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const pct2 = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
 
   // Antes: sem estimativa_json (processo que nÃÂÃÂ£o passou pela cotaÃÂÃÂ§ÃÂÃÂ£o do
   // Calculador) a funÃÂÃÂ§ÃÂÃÂ£o parava aqui e nunca mostrava nada ÃÂ¢ÃÂÃÂ nem o lucro
@@ -1150,7 +1150,7 @@ function renderFechamentoInfo(p){
   // mesmo nada pra mostrar.
   if(!f.temEstimativa && !f.temReal){
     return `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:12px;">
-      Este processo nÃÂÃÂ£o tem um valor estimado (cotaÃÂÃÂ§ÃÂÃÂ£o) nem resultado real (NF Entrada/SaÃÂÃÂ­da) vinculado ainda ÃÂ¢ÃÂÃÂ preencha a NF Entrada e a NF SaÃÂÃÂ­da na aba Documentos assim que possÃÂÃÂ­vel pra ver a margem aqui.
+      Este processo não tem um valor estimado (cotação) nem resultado real (NF Entrada/Saída) vinculado ainda — preencha a NF Entrada e a NF Saída na aba Documentos assim que possível pra ver a margem aqui.
     </div>`;
   }
 
@@ -1159,7 +1159,7 @@ function renderFechamentoInfo(p){
   // vez da conta grosseira NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ NF Entrada ÃÂ¢ÃÂÃÂ mais preciso porque conta
   // frete, seguro, impostos, comissÃÂÃÂµes e taxas operacionais reais tambÃÂÃÂ©m.
   const linhaCustoRealDetalhado = f.custosReais
-    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Real Total (${f.custosReais.count} ${f.custosReais.count===1?'item lanÃÂÃÂ§ado':'itens lanÃÂÃÂ§ados'} na aba Custos Reais)</span><strong>${r2(f.custoRealTotal)}</strong></div>`
+    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Real Total (${f.custosReais.count} ${f.custosReais.count===1?'item lançado':'itens lançados'} na aba Custos Reais)</span><strong>${r2(f.custoRealTotal)}</strong></div>`
     : '';
   // Margem das Taxas (compra ÃÂÃÂ venda) ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ aparece quando o usuÃÂÃÂ¡rio tambÃÂÃÂ©m
   // preencheu "Cobrado do Cliente" em pelo menos um item na aba Custos Reais.
@@ -1170,7 +1170,7 @@ function renderFechamentoInfo(p){
   const linhaMargemTaxas = f.margemTaxas
     ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
         <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${f.receitaReais.count} ${f.receitaReais.count===1?'item':'itens'})</span><strong>${r2(f.margemTaxas.receitaTotal)}</strong></div>
-        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado ÃÂ¢ÃÂÃÂ Pago)</span><strong style="color:${f.margemTaxas.total>=0?'var(--ok)':'var(--err)'}">${r2(f.margemTaxas.total)}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${f.margemTaxas.total>=0?'var(--ok)':'var(--err)'}">${r2(f.margemTaxas.total)}</strong></div>
       </div>`
     : '';
   // Vendas multi-cliente (rateio) ÃÂ¢ÃÂÃÂ quando o processo tem a aba Vendas
@@ -1181,18 +1181,18 @@ function renderFechamentoInfo(p){
   // read-only pra quem estÃÂÃÂ¡ olhando a aba Fechamento.
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
-        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">ÃÂ°ÃÂÃÂ§ÃÂ¾ Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
         ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
       </div>`
     : '';
   const linhaReal = f.temReal
-    ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ Custo Real Total)':' (NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ NF Entrada)'}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>`
-    : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:12px;">Ainda nÃÂÃÂ£o hÃÂÃÂ¡ NF SaÃÂÃÂ­da lanÃÂÃÂ§ada ÃÂ¢ÃÂÃÂ preencha NF Entrada e NF SaÃÂÃÂ­da na aba Documentos pra ver o resultado real aqui.</div>`;
+    ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF Saída − Custo Real Total)':' (NF Saída − NF Entrada)'}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>`
+    : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:12px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
 
   const corDelta = f.deltaValor==null ? 'var(--muted)' : f.deltaValor >= 0 ? 'var(--ok)' : 'var(--err)';
   const linhaDelta = f.temComparacao
     ? `<div style="margin-top:10px;padding:10px 12px;background:${f.deltaValor>=0?'rgba(22,163,74,.08)':'rgba(220,38,38,.08)'};border-radius:8px;font-weight:700;color:${corDelta};display:flex;justify-content:space-between;">
-        <span>${f.deltaValor>=0?'ÃÂ°ÃÂÃÂÃÂ Rendeu a mais que o cotado':'ÃÂ°ÃÂÃÂÃÂ Rendeu a menos que o cotado'}</span>
+        <span>${f.deltaValor>=0?'📈 Rendeu a mais que o cotado':'📉 Rendeu a menos que o cotado'}</span>
         <span>${f.deltaValor>=0?'+':''}${r2(f.deltaValor)}</span>
       </div>`
     : '';
@@ -1202,22 +1202,22 @@ function renderFechamentoInfo(p){
   // aviso curto no lugar, mas o "Resultado real" abaixo continua aparecendo
   // normalmente contanto que NF Entrada/SaÃÂÃÂ­da existam.
   const blocoEstimado = f.temEstimativa
-    ? `<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">ÃÂ°ÃÂÃÂÃÂ Estimado na cotaÃÂÃÂ§ÃÂÃÂ£o</div>
+    ? `<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📐 Estimado na cotação</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total estimado</span><strong>${r2(f.custoEstimado)}</strong></div>
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Faturamento estimado (Com S.T.)</span><strong>${r2(f.faturamentoEstimado)}</strong></div>
       <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro estimado</span><strong>${r2(f.lucroEstimado)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroEstimado)})</span></strong></div>
     </div>`
     : `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--muted);margin-bottom:14px;">
-      Este processo nÃÂÃÂ£o passou pela cotaÃÂÃÂ§ÃÂÃÂ£o do Calculador ÃÂ¢ÃÂÃÂ sem valor estimado pra comparar, mas o resultado real abaixo jÃÂÃÂ¡ funciona normalmente.
+      Este processo não passou pela cotação do Calculador — sem valor estimado pra comparar, mas o resultado real abaixo já funciona normalmente.
     </div>`;
 
   return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
     ${blocoEstimado}
-    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">ÃÂ¢ÃÂÃÂ Resultado real</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">✅ Resultado real</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Entrada</span><strong>${r2(f.nfEntrada)}</strong></div>
-      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF SaÃÂÃÂ­da${f.vendasResumo?' (soma das vendas)':''}</span><strong>${r2(f.nfSaida)}</strong></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Saída${f.vendasResumo?' (soma das vendas)':''}</span><strong>${r2(f.nfSaida)}</strong></div>
       ${linhaReal}
     </div>
     ${linhaMargemTaxas}
@@ -1236,10 +1236,10 @@ function verificarAlertas(proc, criarNotif){
   // Demurrage
   const diasDemur = demurrageDias(proc);
   if(diasDemur !== null && diasDemur <= 5 && diasDemur >= 0 && !proc.data_devolucao_vazio){
-    alertas.push({tipo:'urgente', titulo:`Demurrage: ${proc.referencia}`, mensagem:`Vence em ${diasDemur} dia(s)! Container ainda nÃÂÃÂ£o devolvido.`});
+    alertas.push({tipo:'urgente', titulo:`Demurrage: ${proc.referencia}`, mensagem:`Vence em ${diasDemur} dia(s)! Container ainda não devolvido.`});
   }
   if(diasDemur !== null && diasDemur < 0 && !proc.data_devolucao_vazio){
-    alertas.push({tipo:'urgente', titulo:`Demurrage VENCIDO: ${proc.referencia}`, mensagem:`Venceu hÃÂÃÂ¡ ${Math.abs(diasDemur)} dia(s). Custos em andamento.`});
+    alertas.push({tipo:'urgente', titulo:`Demurrage VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diasDemur)} dia(s). Custos em andamento.`});
   }
 
   // Alerta ETA: ETA passou e processo ainda estÃÂÃÂ¡ Embarcado
@@ -1247,7 +1247,7 @@ function verificarAlertas(proc, criarNotif){
     const eta = parseDataLocal(proc.eta);
     const diff = Math.ceil((hoje - eta)/86400000);
     if(diff > 0){
-      alertas.push({tipo:'alerta', titulo:`ETA vencido: ${proc.referencia}`, mensagem:`ETA era ${eta.toLocaleDateString('pt-BR')} ÃÂ¢ÃÂÃÂ processo ainda Embarcado. Verificar chegada.`});
+      alertas.push({tipo:'alerta', titulo:`ETA vencido: ${proc.referencia}`, mensagem:`ETA era ${eta.toLocaleDateString('pt-BR')} — processo ainda Embarcado. Verificar chegada.`});
     }
   }
 
@@ -1268,7 +1268,7 @@ function verificarAlertas(proc, criarNotif){
       alertas.push({tipo:'urgente', titulo:`Pagamento PI vence em ${diff}d: ${proc.referencia}`, mensagem:`Saldo da PI vence em ${venc.toLocaleDateString('pt-BR')}.`});
     }
     if(diff < 0){
-      alertas.push({tipo:'urgente', titulo:`Pagamento PI VENCIDO: ${proc.referencia}`, mensagem:`Venceu hÃÂÃÂ¡ ${Math.abs(diff)} dia(s).`});
+      alertas.push({tipo:'urgente', titulo:`Pagamento PI VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diff)} dia(s).`});
     }
   }
 
@@ -1307,7 +1307,7 @@ async function criarNotificacao(processoId, tipo, titulo, mensagem){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({processo_id: processoId, tipo, titulo, mensagem})
-  }).then(()=>{ _notifsCache=[]; }).catch(()=>{}); // invalida cache apÃÂÃÂ³s criar
+  }).then(()=>{ _notifsCache=[]; }).catch(()=>{}); // invalida cache após criar
 }
 
 async function carregarNotificacoes(){
@@ -1327,7 +1327,7 @@ async function carregarNotificacoes(){
     const list = document.getElementById('notif-list');
     if(!list) return;
     if(!notifs.length){
-      list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Nenhuma notificaÃÂÃÂ§ÃÂÃÂ£o</div>';
+      list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Nenhuma notificação</div>';
       return;
     }
     list.innerHTML = notifs.slice(0,30).map(n => {
@@ -1362,11 +1362,11 @@ async function marcarLida(id){
 // processo a partir da notificaÃÂÃÂ§ÃÂÃÂ£o (era preciso buscar manualmente na lista).
 function abrirNotificacao(id, processoId){
   marcarLida(id);
-  toggleNotif(); // fecha o painel de notificaÃÂÃÂ§ÃÂÃÂµes
+  toggleNotif(); // fecha o painel de notificações
   if(processoId){
     abrirProcesso(processoId);
   } else {
-    showToast('Esta notificaÃÂÃÂ§ÃÂÃÂ£o nÃÂÃÂ£o estÃÂÃÂ¡ vinculada a um processo','info');
+    showToast('Esta notificação não está vinculada a um processo','info');
   }
 }
 
@@ -1383,8 +1383,8 @@ async function marcarTodasLidas(){
       })
     ));
     await carregarNotificacoes();
-    showToast('Todas as notificaÃÂÃÂ§ÃÂÃÂµes marcadas como lidas','ok');
-  }catch(e){ showToast('Erro ao marcar notificaÃÂÃÂ§ÃÂÃÂµes','err'); }
+    showToast('Todas as notificações marcadas como lidas','ok');
+  }catch(e){ showToast('Erro ao marcar notificações','err'); }
 }
 
 function toggleNotif(){
@@ -1397,11 +1397,11 @@ function tempoRelativo(isoDate){
   const diff = Date.now() - new Date(isoDate).getTime();
   const min = Math.floor(diff/60000);
   if(min < 1) return 'agora';
-  if(min < 60) return `${min}min atrÃÂÃÂ¡s`;
+  if(min < 60) return `${min}min atrás`;
   const h = Math.floor(min/60);
-  if(h < 24) return `${h}h atrÃÂÃÂ¡s`;
+  if(h < 24) return `${h}h atrás`;
   const d = Math.floor(h/24);
-  return `${d}d atrÃÂÃÂ¡s`;
+  return `${d}d atrás`;
 }
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
@@ -1411,17 +1411,17 @@ function tempoRelativo(isoDate){
 // cards clicÃÂÃÂ¡veis do Dashboard) ÃÂ¢ÃÂÃÂ sem isso, o usuÃÂÃÂ¡rio nÃÂÃÂ£o tem como saber
 // qual filtro estÃÂÃÂ¡ ativo depois de clicar num card e ir para a tabela.
 const FILTRO_FINANCEIRO_LABEL = {
-  __chegada_7d:         'ÃÂ°ÃÂÃÂÃÂ¢ Chegada prevista (ETA) nos prÃÂÃÂ³ximos 7 dias',
-  __pi_vence_30d:       'ÃÂ°ÃÂÃÂÃÂ° Saldo a pagar nos prÃÂÃÂ³ximos 30 dias',
-  __capital_parado:     'ÃÂ°ÃÂÃÂÃÂ¦ Capital parado em estoque/trÃÂÃÂ¢nsito (pago, aguardando finalizar)',
-  __pi_aberto:          'ÃÂ°ÃÂÃÂÃÂ° Processos com PI em aberto',
-  __pi_pago:            'ÃÂ¢ÃÂÃÂ Processos com PI jÃÂÃÂ¡ paga',
-  __pi_vencido:         'ÃÂ°ÃÂÃÂÃÂ¨ Pagamentos vencidos',
-  __pi_vence_semana:    'ÃÂ¢ÃÂÃÂ  Pagamentos vencendo em 7 dias',
-  __nf_entrada_periodo: 'ÃÂ°ÃÂÃÂÃÂ¥ NF Entrada no perÃÂÃÂ­odo selecionado',
-  __nf_saida_periodo:   'ÃÂ°ÃÂÃÂÃÂ¤ NF SaÃÂÃÂ­da no perÃÂÃÂ­odo selecionado',
+  __chegada_7d:         '🚢 Chegada prevista (ETA) nos próximos 7 dias',
+  __pi_vence_30d:       '💰 Saldo a pagar nos próximos 30 dias',
+  __capital_parado:     '📦 Capital parado em estoque/trânsito (pago, aguardando finalizar)',
+  __pi_aberto:          '💰 Processos com PI em aberto',
+  __pi_pago:            '✓ Processos com PI já paga',
+  __pi_vencido:         '🚨 Pagamentos vencidos',
+  __pi_vence_semana:    '⚠ Pagamentos vencendo em 7 dias',
+  __nf_entrada_periodo: '📥 NF Entrada no período selecionado',
+  __nf_saida_periodo:   '📤 NF Saída no período selecionado',
   __demur_aberto:       '⏱ Demurrage em aberto',
-  __cambio_periodo:     'ÃÂ°ÃÂÃÂÃÂ± CÃÂÃÂ¢mbio a pagar no perÃÂÃÂ­odo selecionado',
+  __cambio_periodo:     '💱 Câmbio a pagar no período selecionado',
 };
 
 function renderFiltroFinanceiroAtivo(){
@@ -1431,7 +1431,7 @@ function renderFiltroFinanceiroAtivo(){
   if(!label){ el.innerHTML=''; return; }
   el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.2);border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--ac);">
     <span>${label}</span>
-    <button type="button" onclick="setFaseFilter('')" style="margin-left:auto;border:none;background:none;color:var(--ac);font-weight:700;cursor:pointer;font-size:12px;">ÃÂ¢ÃÂÃÂ Limpar filtro</button>
+    <button type="button" onclick="setFaseFilter('')" style="margin-left:auto;border:none;background:none;color:var(--ac);font-weight:700;cursor:pointer;font-size:12px;">✕ Limpar filtro</button>
   </div>`;
 }
 
@@ -1512,7 +1512,7 @@ const stats = [
     {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur'},
     {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
   ];
-if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'ReferÃÂÃÂªncia duplicada', cor:'var(--err)', filtro:'__ref_duplicada'});
+if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência duplicada', cor:'var(--err)', filtro:'__ref_duplicada'});
 
   // Badges sidebar por fase
   const faseCount = {};
@@ -1665,17 +1665,17 @@ function render(){
   if(!tbody) return;
 
   if(!pagina.length){
-    tbody.innerHTML = `<div class="empty"><div class="empty-icon">ÃÂ°ÃÂÃÂÃÂ­</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
+    tbody.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
   } else {
     tbody.innerHTML = pagina.map(p=>{
       const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
-      const etaDate = p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : 'ÃÂ¢ÃÂÃÂ';
+      const etaDate = p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—';
       const chegadaDate = p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '';
       const dataDisplay = chegadaDate || etaDate;
-      const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : 'ÃÂ¢ÃÂÃÂ';
+      const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
       const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
       const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
-      const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">ÃÂ¢ÃÂÃÂ  Revisar</span>` : '';
+      const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">⚠ Revisar</span>` : '';
       // referencia/fornecedor sÃÂÃÂ£o texto livre (fornecedor ÃÂÃÂ s vezes vem de
       // extraÃÂÃÂ§ÃÂÃÂ£o por IA de documento externo) ÃÂ¢ÃÂÃÂ escapar sempre antes de
       // colocar em innerHTML, senÃÂÃÂ£o um valor malicioso/malformado vira HTML
@@ -1684,10 +1684,10 @@ function render(){
       return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
         <div class="td td-ref" data-label="">
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;row-gap:2px;">
-            <span>${esc(p.referencia)||'ÃÂ¢ÃÂÃÂ'}</span>${finalidadeBadge}${pendenciaBadge}
+            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}
           </div>
         </div>
-        <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'ÃÂ¢ÃÂÃÂ'}</div>
+        <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>
         <div class="td" data-label="Fase" onclick="event.stopPropagation()" style="min-width:0;">
           <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)" style="display:inline-block;max-width:100%;">
             <span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>
@@ -1698,7 +1698,7 @@ function render(){
         </div>
         <div class="td" data-label="Demurrage">${demurrageDisplay(p)}</div>
         <div class="td" data-label="Financeiro">${finBadge}</div>
-        <div class="td" data-label="AÃÂÃÂ§ÃÂÃÂµes">
+        <div class="td" data-label="Ações">
           <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();abrirProcesso('${p.id}')">Abrir</button>
         </div>
       </div>`;
@@ -1709,14 +1709,14 @@ function render(){
   const pag = document.getElementById('paginacao');
   if(pag){
     if(totalPags <= 1){ pag.innerHTML=''; return; }
-    let html = `<button class="pag-btn" onclick="_pagina--;render()" ${_pagina<=1?'disabled':''}>ÃÂ¢ÃÂÃÂ¹</button>`;
+    let html = `<button class="pag-btn" onclick="_pagina--;render()" ${_pagina<=1?'disabled':''}>‹</button>`;
     for(let i=1;i<=totalPags;i++){
       if(i===1||i===totalPags||Math.abs(i-_pagina)<=1)
         html+=`<button class="pag-btn ${i===_pagina?'active':''}" onclick="_pagina=${i};render()">${i}</button>`;
       else if(Math.abs(i-_pagina)===2)
-        html+=`<span class="pag-info">ÃÂ¢ÃÂÃÂ¦</span>`;
+        html+=`<span class="pag-info">…</span>`;
     }
-    html+=`<button class="pag-btn" onclick="_pagina++;render()" ${_pagina>=totalPags?'disabled':''}>ÃÂ¢ÃÂÃÂº</button>`;
+    html+=`<button class="pag-btn" onclick="_pagina++;render()" ${_pagina>=totalPags?'disabled':''}>›</button>`;
     html+=`<span class="pag-info">${total} processos</span>`;
     pag.innerHTML = html;
   }
