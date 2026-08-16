@@ -717,6 +717,12 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
 </div>
 
 <script>
+function esc(v){
+  return v==null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escJs(v){
+  return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 // ── SESSÃO EXPIRADA: mensagem clara em vez de erro de parse ──────
 // Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
 // redirecionam pra /login (HTML) em vez de responder JSON. O código que
@@ -827,7 +833,7 @@ function calcularArmazenagemUI(){
   const taxa_ce  = parseFloat(document.getElementById('taxa_ce_usd').value) || 0;
   // Mesma unidade usada em calcular(): o campo guarda um PERCENTUAL (ex. 0,04
   // = 0,04%), então precisa dividir por 100 antes de usar como fração.
-  const taxa_seguro_compra = (parseFloat(document.getElementById('taxa_seguro_compra').value) || 0) / 100;
+  const taxa_seguro_compra = (parseFloat(document.getElementById('taxa_seguro_compra').value) || 0.04) / 100;
   const containers = parseInt(document.getElementById('qtde_containers').value) || 1;
   const porto    = document.getElementById('tx_porto').value;
   const dias     = parseInt(document.getElementById('tx_dias_parado').value) || 0;
@@ -1443,7 +1449,7 @@ function renderMix() {
   document.getElementById('mix-badge').style.display = 'block';
   const lista = document.getElementById('mix-items-list');
   lista.innerHTML = _estado.mix.itens.map(it =>
-    `<div class="mix-item"><span>${it.medida}</span><span>${it.qtd} un · $${it.preco}</span></div>`
+    `<div class="mix-item"><span>${esc(it.medida)}</span><span>${esc(it.qtd)} un · $${esc(it.preco)}</span></div>`
   ).join('');
   document.getElementById('mix-fob-total').textContent = 'US$ '+fmt(_estado.mix.fob_total);
   document.getElementById('fob_usd').value = _estado.mix.fob_total || '';
@@ -3013,7 +3019,7 @@ function pctF(v){ return v.toFixed(2)+'%'; }
 // adicionar o id aqui também.
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
-  'taxa_seguro_compra','cambio_chegada','produto','origem','uf_destino',
+  'taxa_seguro_compra','cambio_chegada','cambio_medio_di','produto','origem','uf_destino',
   'tipo_importacao','dump_valor','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
@@ -3066,7 +3072,7 @@ function coletarEstadoFormulario(){
   // Checkboxes "auto" (Marinha/Agente) — precisam do estado checked, não do .value
   // (que pra checkbox é sempre "on"), senão reabrir a cotação sempre volta pro auto.
   const checkboxes = {};
-  ['auto_marinha','auto_agente'].forEach(id => {
+  ['auto_marinha','auto_agente','auto_iof'].forEach(id => {
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
@@ -3089,7 +3095,7 @@ function aplicarEstadoFormulario(estado){
   }
   // Restaura o estado dos checkboxes "auto" (Marinha/Agente). Cotações salvas
   // antes dessa feature não têm esse campo — mantém o padrão (auto ligado).
-  ['auto_marinha','auto_agente'].forEach(id => {
+  ['auto_marinha','auto_agente','auto_iof'].forEach(id => {
     const el = document.getElementById(id);
     if(!el) return;
     const checked = estado.checkboxes ? (estado.checkboxes[id] !== false) : true;
@@ -3249,19 +3255,19 @@ async function abrirListaCotacoes(){
       if(status === 'aprovada' && res.processo_referencia){
         statusCel += `<br><a href="#" onclick="event.preventDefault();abrirProcessoNoControle('${res.processo_id}')" style="font-size:11px;">${res.processo_referencia} ↗</a>`;
       } else if(status === 'rejeitada' && res.motivo_perda){
-        statusCel += `<div style="font-size:10px;color:var(--muted);max-width:160px;" title="${res.motivo_perda.replace(/"/g,'&quot;')}">${res.motivo_perda.length>40?res.motivo_perda.slice(0,40)+'…':res.motivo_perda}</div>`;
+        statusCel += `<div style="font-size:10px;color:var(--muted);max-width:160px;" title="${esc(res.motivo_perda)}">${esc(res.motivo_perda.length>40?res.motivo_perda.slice(0,40)+'…':res.motivo_perda)}</div>`;
       }
 
       let acoesExtra = '';
       if(status !== 'aprovada'){
-        acoesExtra += `<button onclick="aprovarCotacao('${c.id}', '${(c.cliente||'').replace(/'/g,"\\'")}')">✅ Aprovar</button>`;
+        acoesExtra += `<button onclick="aprovarCotacao('${c.id}', '${escJs(c.cliente||'')}')">✅ Aprovar</button>`;
       }
       if(status === 'rascunho'){
         acoesExtra += `<button onclick="rejeitarCotacao('${c.id}')">❌ Rejeitar</button>`;
       }
 
       return `<tr>
-        <td><strong>${c.cliente||'—'}</strong></td>
+        <td><strong>${esc(c.cliente)||'—'}</strong></td>
         <td>${res.tipo||'—'} / ${res.uf||'—'}</td>
         <td>${res.custo_total!=null ? fmt(res.custo_total) : '—'}</td>
         <td>${res.lucro_bruto!=null ? fmt(res.lucro_bruto)+' ('+(res.pct_lucro||0).toFixed(1)+'%)' : '—'}</td>
@@ -3337,7 +3343,7 @@ async function carregarCotacao(id, duplicar){
       document.getElementById('cotacao-status').textContent = 'Duplicada — ainda não salva (salve pra criar uma cópia nova)';
     } else {
       const st = statusCotacaoInfo(d.cotacao.resumo);
-      document.getElementById('cotacao-status').innerHTML = `Editando cotação de ${d.cotacao.cliente} — <span style="color:${st.cor};">${st.label}</span>`;
+      document.getElementById('cotacao-status').innerHTML = `Editando cotação de ${esc(d.cotacao.cliente)} — <span style="color:${st.cor};">${st.label}</span>`;
     }
     fecharListaCotacoes();
     showToast(duplicar ? '✓ Cotação duplicada no formulário' : '✓ Cotação carregada', 'ok');
