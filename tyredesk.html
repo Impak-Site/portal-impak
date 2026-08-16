@@ -645,6 +645,12 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
      calculador.html (window.ExcelStyles) — ver excel-styles.js. -->
 <script src="excel-styles.js"></script>
 <script>
+function esc(v){
+  return v==null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escJs(v){
+  return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 // ── SESSÃO EXPIRADA: mensagem clara em vez de erro de parse ──────
 // Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
 // redirecionam pra /login (HTML) em vez de responder JSON. O código que
@@ -674,6 +680,13 @@ let fornecedores = [
   {id:'f3',nome:'DELMAX',contato:'Alice',email:'alice@sunwidetyre.com',tipos:['PCR'],ultimaCot:null},
   {id:'f4',nome:'SUNWIDE/INVOVIC',contato:'Vivian',email:'vivian.meng@landspidertire.com',tipos:['PCR'],ultimaCot:null},
   {id:'f5',nome:'TRACMAX/WINDFORCE',contato:'Carol Xiu',email:'info32@chinese-tyres.com',tipos:['PCR'],ultimaCot:null},
+  // TIANFU já existia em FORNECEDOR_ALIASES (classificação de planilhas) mas nunca
+  // aparecia aqui no cadastro/alertas. Contato/e-mail deixados em branco de propósito
+  // (não temos o dado real) — pedir pro Ayslan completar via aba Fornecedores.
+  // OBS: essa é só a seed local de fallback; em produção o array real vem de
+  // /api/base/carregar-fornecedores (Supabase), então esse ajuste também precisa
+  // ser replicado lá se ainda não estiver.
+  {id:'f6',nome:'TIANFU',contato:'',email:'',tipos:['TBR','PCR'],ultimaCot:null},
 ];
 let mixRows=[],cotRows=[],tipoAtivo='PCR',emailLang='pt',emailFornId=null,editFornId=null;
 let ultimaAnalise=null;
@@ -695,6 +708,11 @@ function norm(s){
   // impedir o casamento com o que o usuário digitou no mix.
   v=v.replace(/^[A-Z]+(?=\d)/,'');
   return v;
+}
+// Remove acentos pra comparação de texto livre (ex: filtro de modelo no Catálogo) —
+// sem isso, digitar "borrachudo" sem acento não batia com dados que têm acento.
+function normalizarAcento(s){
+  return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
 }
 function diasDesde(d){if(!d)return 999;return Math.floor((Date.now()-new Date(d))/86400000);}
 
@@ -813,8 +831,10 @@ function detectFornecedor(filename,data){
   // 1. Tentar pelo nome do arquivo
   const porArquivo = normalizarFornecedor(filename);
   if(porArquivo) return porArquivo;
-  // 2. Tentar pelo conteúdo da planilha
-  const flat = JSON.stringify(data);
+  // 2. Tentar pelo conteúdo da planilha (só as primeiras linhas — evita
+  // falso-positivo por menção de fornecedor solto no meio de uma planilha grande)
+  const primeirasLinhas = Array.isArray(data) ? data.slice(0,5) : data;
+  const flat = JSON.stringify(primeirasLinhas);
   const porConteudo = normalizarFornecedor(flat);
   if(porConteudo) return porConteudo;
   return null;
@@ -859,9 +879,6 @@ function parseTBR(rows, fornecedor){
     const preco=iSpc>=0&&r[iSpc]?parseFloat(r[iSpc]):iFob>=0?parseFloat(r[iFob]):0;
     if(!preco||preco<=0)continue;
     const borVal = classificarPattern(r[iPat]);
-    // Detectar tipo real pelo conteúdo da linha
-    const sizeStr = (r[iSize]||'').toString().toUpperCase();
-    const tipoItem = (sizeStr.includes('R22')||sizeStr.includes('R20')||sizeStr.includes('R17.5')||sizeStr.includes('R19.5')) ? 'TBR' : 'TBR';
     items.push({f:fornecedor,s:size,medida:size,m:(r[iBrand]||fornecedor).toString(),
       md:(r[iPat]||'').toString(),pat:(r[iPat]||'').toString(),
       cat:iCat>=0?(r[iCat]||'').toString():'',cur:'USD',
@@ -1125,9 +1142,9 @@ function renderForn(){
     const slbl=d>=DIAS?'⚠ Atrasado':d>=20?'Em breve':'Em dia';
     const stxt=f.ultimaCot?`${d}d atrás`:'Nunca cotado';
     const div=document.createElement('div'); div.className='fc';
-    div.innerHTML=`<div class="fct"><div class="fav" style="background:${cor}22;color:${cor}">${ini}</div><div><div class="fn">${f.nome}</div><div class="fco">${f.contato}</div></div></div>
-    <div class="tags">${f.tipos.map(t=>`<span class="tag t${t}">${t}</span>`).join('')}</div>
-    <div class="femail">📧 ${f.email}</div>
+    div.innerHTML=`<div class="fct"><div class="fav" style="background:${cor}22;color:${cor}">${esc(ini)}</div><div><div class="fn">${esc(f.nome)}</div><div class="fco">${esc(f.contato)}</div></div></div>
+    <div class="tags">${f.tipos.map(t=>`<span class="tag t${esc(t)}">${esc(t)}</span>`).join('')}</div>
+    <div class="femail">📧 ${esc(f.email)}</div>
     <div class="factions"><span class="cs ${scls}">${slbl} · ${stxt}</span>
     <button class="btn bgn bsm" onclick="openEmail('${f.id}')">✉</button>
     <button class="btn bg2 bsm" onclick="editForn('${f.id}')">✏</button>
@@ -1208,9 +1225,9 @@ async function autocompletarFornecedorCadastro(input){
       const d = await r.json();
       if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
       dd.innerHTML = d.contatos.map(c=>{
-        const label = `${c.razao_social}${c.uf?' · '+c.uf:''}${c.email?' · '+c.email:''}`;
-        const razaoEsc = c.razao_social.replace(/'/g,"\\'");
-        const emailEsc = (c.email||'').replace(/'/g,"\\'");
+        const label = `${esc(c.razao_social)}${c.uf?' · '+esc(c.uf):''}${c.email?' · '+esc(c.email):''}`;
+        const razaoEsc = escJs(c.razao_social);
+        const emailEsc = escJs(c.email||'');
         return `<div onclick="preencherFornecedorDoCadastro('${razaoEsc}','${emailEsc}')"
           style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid #e8f0f8;"
           onmouseover="this.style.background='#f0f6fc'" onmouseout="this.style.background=''">${label}</div>`;
@@ -1258,10 +1275,13 @@ async function salvarForn(){
   const tipos=[...document.querySelectorAll('#f-tipos input:checked')].map(x=>x.value);
   if(!nome||!email){toast('Preencha nome e e-mail');return;}
   if(!tipos.length){toast('Selecione ao menos um tipo');return;}
+  const nomeNorm = nome.toUpperCase();
+  const duplicado = fornecedores.find(f => f.id!==editFornId && f.nome.trim().toUpperCase()===nomeNorm);
+  if(duplicado){ toast(`⚠ Já existe um fornecedor "${duplicado.nome}" cadastrado`); return; }
   if(editFornId){Object.assign(fornecedores.find(x=>x.id===editFornId),{nome,contato,email,tipos});}
   else fornecedores.push({id:uid(),nome,contato,email,tipos,ultimaCot:null});
   closeM('modal-forn');renderForn();
-  document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
+  document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${esc(f.nome)}">`).join('');
   // Salvar no Supabase (multi-usuário)
   try {
     const r = await fetch('/api/base/salvar-fornecedores',{
@@ -1269,19 +1289,23 @@ async function salvarForn(){
       body: JSON.stringify({fornecedores})
     });
     const d = await r.json();
-    toast(d.ok ? (editFornId?'✓ Fornecedor atualizado':'✓ Fornecedor cadastrado') : '⚠ Salvo localmente');
-  } catch(e){ toast(editFornId?'Atualizado (offline)':'Cadastrado (offline)'); }
+    if(d.ok){ toast(editFornId?'✓ Fornecedor atualizado':'✓ Fornecedor cadastrado'); }
+    else { toast('⚠ Não foi possível salvar no servidor — ficou só local'); }
+  } catch(e){ toast('⚠ Erro de rede — salvo só localmente'); }
 }
 async function delForn(id){
   if(!confirm('Remover fornecedor?'))return;
+  const backup = fornecedores;
   fornecedores=fornecedores.filter(f=>f.id!==id);renderForn();
   try {
-    await fetch('/api/base/salvar-fornecedores',{
+    const r = await fetch('/api/base/salvar-fornecedores',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({fornecedores})
     });
-    toast('✓ Fornecedor removido');
-  } catch(e){ toast('Removido (offline)'); }
+    const d = await r.json();
+    if(d.ok){ toast('✓ Fornecedor removido'); }
+    else { fornecedores = backup; renderForn(); toast('⚠ Não foi possível remover no servidor — restaurado'); }
+  } catch(e){ fornecedores = backup; renderForn(); toast('⚠ Erro de rede — remoção cancelada'); }
 }
 function syncC(t){
   const el=document.getElementById('chk-'+t);
@@ -1360,7 +1384,7 @@ function renderMix(){
   const el=document.getElementById('mix-list');el.innerHTML='';
   mixRows.forEach(r=>{
     const d=document.createElement('div');d.className='mr';
-    d.innerHTML=`<input class="fi" type="text" placeholder="295/80R22.5" value="${r.medida}" list="size-dl" oninput="updM('${r.id}','medida',this.value)" style="font-size:13px">
+    d.innerHTML=`<input class="fi" type="text" placeholder="295/80R22.5" value="${esc(r.medida)}" list="size-dl" oninput="updM('${r.id}','medida',this.value)" style="font-size:13px">
     <input class="fi" type="number" placeholder="100" value="${r.qtde}" min="1" oninput="updM('${r.id}','qtde',this.value)" style="font-size:13px">
     <button class="brem" onclick="removeMix('${r.id}')">×</button>`;
     el.appendChild(d);
@@ -1377,8 +1401,8 @@ function renderCot(){
   const el=document.getElementById('cot-list');el.innerHTML='';
   cotRows.forEach(r=>{
     const d=document.createElement('div');d.className='ctr';
-    d.innerHTML=`<input class="ci" type="text" placeholder="Fornecedor" value="${r.forn}" oninput="updC('${r.id}','forn',this.value)" list="forn-dl">
-    <input class="ci" type="text" placeholder="295/80R22.5" value="${r.medida}" oninput="updC('${r.id}','medida',this.value)" list="size-dl">
+    d.innerHTML=`<input class="ci" type="text" placeholder="Fornecedor" value="${esc(r.forn)}" oninput="updC('${r.id}','forn',this.value)" list="forn-dl">
+    <input class="ci" type="text" placeholder="295/80R22.5" value="${esc(r.medida)}" oninput="updC('${r.id}','medida',this.value)" list="size-dl">
     <input class="ci" type="number" placeholder="0.00" value="${r.preco}" step="0.01" oninput="updC('${r.id}','preco',this.value)">
     <input class="ci" type="number" placeholder="kg" value="${r.peso}" step="0.1" oninput="updC('${r.id}','peso',this.value)">
     <button class="brem" style="width:24px;height:24px;font-size:12px" onclick="removeCot('${r.id}')">×</button>`;
@@ -1461,6 +1485,10 @@ function mostrarAvisoMedidasSemCotacao(medidas){
 }
 
 // ── ANÁLISE ───────────────────────────────────────────
+// Guarda o 'best' (melhor fornecedor) do último render, pra _detalheQtd
+// conseguir achá-lo mesmo rodando fora do escopo de analisar() (oninput inline
+// roda no escopo global, não vê a const local 'best').
+let _analiseBest = null;
 function analisar(){
   const moeda=document.getElementById('moeda-sel').value;
   const tp=document.getElementById('tp-sel').value;
@@ -1513,7 +1541,7 @@ function analisar(){
   <table class="rtable"><thead><tr><th>#</th><th>Fornecedor</th><th>Total mix</th><th>Cobertura</th><th></th><th></tr></thead><tbody>
   ${sorted.map((r,i)=>`<tr class="${i===0&&r.total!==null?'brow':''}">
     <td class="cm" style="font-size:10px">${i+1}</td>
-    <td class="fw7">${r.forn}${i===0&&r.total!==null?' <span class="cg" style="font-size:10px">✓</span>':''}</td>
+    <td class="fw7">${esc(r.forn)}${i===0&&r.total!==null?' <span class="cg" style="font-size:10px">✓</span>':''}</td>
     <td class="cor fw7">${r.total!==null?getMoeda(r.forn)+' '+fmtP(r.total):`<span class="cm">~${r.curMoeda||moeda} ${fmtP(r.parcial)}</span>`}</td>
     <td class="${r.pct===100?'cg':r.pct>=50?'cor':'cr'}" style="font-size:10px">${r.pct}% (${r.cob}/${mix.length})</td>
     <td><div class="bw"><div class="bf ${i>0?'dm':''}" style="width:${maxT>0?Math.round((r.parcial/maxT)*100):0}%"></div></div></td>
@@ -1543,8 +1571,8 @@ function analisar(){
   const multiOrig=origKeys.length>1;
   let origHtml='<div style="padding:14px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">';
   origKeys.forEach(o=>{
-    const badge=`<span class="badge-orig${multiOrig?'-warn':''}">${o}</span>`;
-    origHtml+=`<div class="flex gap6">${badge}<span style="font-size:11px;color:var(--mu);font-weight:500">${[...origMap[o].forns].join(', ')}</span></div>`;
+    const badge=`<span class="badge-orig${multiOrig?'-warn':''}">${esc(o)}</span>`;
+    origHtml+=`<div class="flex gap6">${badge}<span style="font-size:11px;color:var(--mu);font-weight:500">${esc([...origMap[o].forns].join(', '))}</span></div>`;
   });
   if(multiOrig) origHtml+=`<div style="width:100%"><div class="ctnr-alert">⚠ Origens diferentes no mix — não é possível misturar no mesmo container</div></div>`;
   else origHtml+=`<div><div class="ctnr-ok" style="margin-top:0">✓ Todas as cotações da mesma origem — container OK</div></div>`;
@@ -1586,7 +1614,7 @@ function analisar(){
     // Linha principal do fornecedor
     ctnrHtml += `<div style="margin-bottom:8px">
       <div class="ctnr-row" style="margin-bottom:4px">
-        <span style="font-size:11px;font-weight:700;min-width:170px">${forn}</span>
+        <span style="font-size:11px;font-weight:700;min-width:170px">${esc(forn)}</span>
         <div class="ctnr-bar-bg" style="flex:1;max-width:160px">
           <div id="ctnr-bar-${fornId}" class="ctnr-bar-fill" style="width:${Math.min(pctTotal,100)}%;background:${barColor}"></div>
         </div>
@@ -1602,7 +1630,7 @@ function analisar(){
           const corMed = d.fracao > 1 ? '#c0392b' : '#4a6480';
           return `<span id="ctnr-med-${fornId}-${d.medida.replace(/[^a-zA-Z0-9]/g,'_')}"
             style="font-size:10px;background:#f0f6fc;border:1px solid #c8d8e8;border-radius:4px;padding:2px 6px;color:${corMed}">
-            ${d.medida}: ${d.qtde}/${d.cap} = <strong>${d.pctMedida.toFixed(1)}%</strong>
+            ${esc(d.medida)}: ${d.qtde}/${d.cap} = <strong>${d.pctMedida.toFixed(1)}%</strong>
           </span>`;
         }).join('')}
       </div>
@@ -1614,15 +1642,16 @@ function analisar(){
   area.appendChild(cOrigem);
 
   if(comp[0]){
-    const best=comp[0];const c2=document.createElement('div');c2.className='card';
+    const best=comp[0];_analiseBest=best;const c2=document.createElement('div');c2.className='card';
     c2.innerHTML=`<div class="ch"><h3>Detalhe — ${best.forn}</h3><span class="cg ml" style="font-size:11px;font-weight:700">MELHOR NO MIX</span></div>
     <table class="rtable"><thead><tr><th>Medida</th><th>Qtde</th><th>Preço/un</th><th>Peso</th><th>USD/kg</th><th>Subtotal</th></tr></thead><tbody>
     ${best.det.map((d,di)=>{
       const pkg=d.preco&&d.peso>0?d.preco/d.peso:null;
       const pkgCell=pkg?`<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`:'<span class="peso-missing">—</span>';
-      return `<tr><td><span class="mpill">${d.medida}</span></td><td class="cm"><input type="number" min="1" value="${d.qtde}" style="width:70px;border:1px solid #d0dce8;border-radius:4px;padding:2px 4px;text-align:center;font-size:12px" oninput="_detalheQtd(this,${di},best)" /></td><td class="cor fw7">${d.preco?getMoeda(best.forn)+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td><td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td><td>${pkgCell}</td><td>${d.sub?getMoeda(best.forn)+' '+fmtP(d.sub):'—'}</td></tr>`;
+      const fornIdBest = best.forn.replace(/[^a-zA-Z0-9]/g,'_');
+      return `<tr><td><span class="mpill">${esc(d.medida)}</span></td><td class="cm"><input type="number" min="1" value="${d.qtde}" style="width:70px;border:1px solid #d0dce8;border-radius:4px;padding:2px 4px;text-align:center;font-size:12px" oninput="_detalheQtd(this,${di})" /></td><td class="cor fw7">${d.preco?esc(getMoeda(best.forn))+' '+fmtP(d.preco):'<span class="cr">—</span>'}</td><td class="cm">${d.peso?fmtKg(d.peso)+'kg':'—'}</td><td>${pkgCell}</td><td id="detalhe-sub-${fornIdBest}-${di}">${d.sub?esc(getMoeda(best.forn))+' '+fmtP(d.sub):'—'}</td></tr>`;
     }).join('')}
-    <tr style="background:rgba(26,127,212,.07)"><td colspan="4" class="cm fw7">TOTAL</td><td class="cor fw7">${moeda} ${fmtP(best.total)}</td></tr>
+    <tr style="background:rgba(26,127,212,.07)"><td colspan="4" class="cm fw7">TOTAL</td><td class="cor fw7" id="detalhe-total-${best.forn.replace(/[^a-zA-Z0-9]/g,'_')}">${moeda} ${fmtP(best.total)}</td></tr>
     </tbody></table>`;
     area.appendChild(c2);
   }
@@ -1636,7 +1665,7 @@ function analisar(){
     ${otim.map(o=>{
       const pkg=o.preco&&o.peso>0?o.preco/o.peso:null;
       const pkgCellO=pkg?`<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`:'<span class="peso-missing">—</span>';
-      return `<tr><td><span class="mpill">${o.medida}</span></td><td class="cm">${o.qtde}</td><td class="cg fw7">${o.melhor||'<span class="cr">sem cot.</span>'}</td><td class="cor">${o.preco?getMoeda(o.melhor||'')+' '+fmtP(o.preco):'—'}</td><td class="cm">${o.peso?fmtKg(o.peso)+'kg':'—'}</td><td>${pkgCellO}</td><td>${o.sub?getMoeda(o.forn||'')+' '+fmtP(o.sub):'—'}</td></tr>`;
+      return `<tr><td><span class="mpill">${esc(o.medida)}</span></td><td class="cm">${o.qtde}</td><td class="cg fw7">${esc(o.melhor)||'<span class="cr">sem cot.</span>'}</td><td class="cor">${o.preco?esc(getMoeda(o.melhor||''))+' '+fmtP(o.preco):'—'}</td><td class="cm">${o.peso?fmtKg(o.peso)+'kg':'—'}</td><td>${pkgCellO}</td><td>${o.sub?esc(getMoeda(o.forn||''))+' '+fmtP(o.sub):'—'}</td></tr>`;
     }).join('')}
     <tr style="background:rgba(26,127,212,.07)"><td colspan="5" class="cm fw7">TOTAL OTIMIZADO</td><td class="cor fw7">${getMoeda(otim.find(o=>o.melhor)?.melhor||'')} ${fmtP(totOtim)}</td></tr>
     </tbody></table>`;
@@ -1663,16 +1692,16 @@ function analisar(){
     const ops=cots.filter(c=>c.medida===m.medida).sort((a,b)=>a.preco-b.preco);
     const pkgInfo=pkgPorMedida[m.medida];
     dh+=`<div style="padding:10px 14px;border-bottom:1px solid var(--b1)">
-    <div class="flex gap8 mb10"><span class="mpill">${m.medida}</span><span style="font-size:10px;color:var(--mu);font-weight:600">× ${m.qtde} un</span>${ops.length===0?'<span style="font-size:10px;color:var(--rd);font-weight:600">sem cotações</span>':''}</div>
+    <div class="flex gap8 mb10"><span class="mpill">${esc(m.medida)}</span><span style="font-size:10px;color:var(--mu);font-weight:600">× ${m.qtde} un</span>${ops.length===0?'<span style="font-size:10px;color:var(--rd);font-weight:600">sem cotações</span>':''}</div>
     <div>${ops.map((o,i)=>{
       const ppu=o.peso>0?o.preco/o.peso:null;
       const ppuBadge=ppu?`<span class="pkg-badge pkg-info" title="USD/kg">${fmtPkg(ppu)}</span>`:'';
       const chipCls = i===0 ? 'mpill' : 'mpill';
-      const patTxt = o.pat ? ` <span style="font-size:10px;color:var(--mu);margin-left:4px">${o.pat}</span>` : '';
+      const patTxt = o.pat ? ` <span style="font-size:10px;color:var(--mu);margin-left:4px">${esc(o.pat)}</span>` : '';
       const borTxt = o.bor==='borrachudo' ? ' <span class="badge-borr" style="font-size:9px">BORR</span>' : o.bor==='liso' ? ' <span class="badge-liso" style="font-size:9px">LISO</span>' : '';
-      const origTxt = o.orig ? ` <span class="badge-orig" style="font-size:9px">${o.orig}</span>` : '';
+      const origTxt = o.orig ? ` <span class="badge-orig" style="font-size:9px">${esc(o.orig)}</span>` : '';
       const alertTxt = (o.moq&&parseInt(m.qtde)<o.moq) ? ' <span style="font-size:9px;color:var(--rd);font-weight:700">MOQ!</span>' : '';
-      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipCls}" style="font-size:11px;padding:3px 8px">${o.forn} · ${o.cur||moeda} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patTxt}${borTxt}${origTxt}${alertTxt}</div>`;
+      return `<div style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px;margin:2px"><span class="${chipCls}" style="font-size:11px;padding:3px 8px">${esc(o.forn)} · ${esc(o.cur||moeda)} ${fmtP(o.preco)}${o.peso?` · ${fmtKg(o.peso)}kg`:''}</span>${patTxt}${borTxt}${origTxt}${alertTxt}</div>`;
     }).join('')}</div></div>`;
   });
   c4.innerHTML=`<div class="ch"><h3>Todas as Cotações por Medida</h3>
@@ -1703,12 +1732,12 @@ function renderCat(){
   const tipo=document.getElementById('cf-tipo').value;
   const forn=document.getElementById('cf-forn').value;
   const size=norm(document.getElementById('cf-size').value);
-  const modelo=(document.getElementById('cf-modelo').value||'').toUpperCase();
+  const modelo=normalizarAcento(document.getElementById('cf-modelo').value);
   catFiltered=COTACOES.filter(c=>{
     if(tipo&&c.t!==tipo)return false;
     if(forn&&c.f!==forn)return false;
     if(size&&!norm(c.s).includes(size))return false;
-    if(modelo&&!(c.md||'').toUpperCase().includes(modelo))return false;
+    if(modelo&&!normalizarAcento(c.pat||c.md).includes(modelo))return false;
     return true;
   });
   // Adicionar campo pkg calculado para ordenação
@@ -1725,17 +1754,17 @@ function renderCat(){
   if(catPage>=pages)catPage=Math.max(0,pages-1);
   const slice=catFiltered.slice(catPage*CAT_PER,(catPage+1)*CAT_PER);
   document.getElementById('cat-body').innerHTML=slice.map(c=>`<tr>
-    <td class="fw7">${c.f}</td>
-    <td><span class="mpill">${c.s}</span></td>
-    <td class="cm">${c.pat||c.md||'—'}</td>
-    <td class="cm">${c.li||'—'}</td>
+    <td class="fw7">${esc(c.f)}</td>
+    <td><span class="mpill">${esc(c.s)}</span></td>
+    <td class="cm">${esc(c.pat||c.md||'—')}</td>
+    <td class="cm">${esc(c.li||'—')}</td>
     <td class="cm">${c.pe!=null?c.pe:'—'}</td>
     <td class="cm">—</td>
-    <td class="cor fw7">${c.cur||'USD'} ${fmtP(c.p)}</td>
+    <td class="cor fw7">${esc(c.cur||'USD')} ${fmtP(c.p)}</td>
     <td>${(()=>{const pkg=c.p&&c.pe&&c.pe>0?c.p/c.pe:null;if(!pkg)return '<span class="peso-missing">—</span>';return `<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`;})()}</td>
-    <td>${c.orig?`<span class="badge-orig">${c.orig}</span>`:'<span class="cm">—</span>'}</td>
+    <td>${c.orig?`<span class="badge-orig">${esc(c.orig)}</span>`:'<span class="cm">—</span>'}</td>
     <td>${c.bor==='borrachudo'?'<span class="badge-borr">BORRACHUDO</span>':'<span class="badge-liso">LISO</span>'}</td>
-    <td><span class="tag t${c.t}">${c.t}</span></td>
+    <td><span class="tag t${esc(c.t)}">${esc(c.t)}</span></td>
   </tr>`).join('');
   document.getElementById('cat-count').textContent=total+' itens';
   document.getElementById('pg-info').textContent=`${catPage+1} / ${pages||1}`;
@@ -1843,7 +1872,7 @@ function renderSelTable() {
   let t = '<thead><tr><th class="spec-col">Especificação</th>';
   forns.forEach(f => {
     const s = filtered.find(c=>c.f===f);
-    t += `<th><span class="cmp-forn-head">${f}</span>${s&&s.orig?`<span class="cmp-forn-orig">${s.orig}</span>`:''}</th>`;
+    t += `<th><span class="cmp-forn-head">${esc(f)}</span>${s&&s.orig?`<span class="cmp-forn-orig">${esc(s.orig)}</span>`:''}</th>`;
   });
   t += '</tr></thead><tbody>';
 
@@ -1863,8 +1892,8 @@ function renderSelTable() {
     // LI/SR só aparece se for realmente um LI/SR (não repete o texto da categoria)
     const liTxt = (row.li && row.li !== '—' && row.li !== mainLabel) ? row.li : '';
     t += `<td class="spec-col">
-      <div class="spec-pat">${mainLabel}${prSpan}</div>
-      ${liTxt ? `<div class="spec-li">${liTxt}</div>` : ''}
+      <div class="spec-pat">${esc(mainLabel)}${prSpan}</div>
+      ${liTxt ? `<div class="spec-li">${esc(liTxt)}</div>` : ''}
     </td>`;
 
     forns.forEach(f => {
@@ -1872,12 +1901,12 @@ function renderSelTable() {
       if (!item) {
         t += `<td><span class="cmp-cell-no">—</span></td>`;
       } else {
-        const key = getSelKey(item).replace(/'/g,"\\'");
+        const key = encodeURIComponent(getSelKey(item));
         const picked = !!selPicked[getSelKey(item)];
         const pkg = item.p&&item.pe&&item.pe>0 ? (item.p/item.pe).toFixed(2) : null;
-        const patLabel = item.pat ? `<span class="cmp-info" style="font-weight:600;color:#1a7fd4;">${item.pat}</span>` : '';
+        const patLabel = item.pat ? `<span class="cmp-info" style="font-weight:600;color:#1a7fd4;">${esc(item.pat)}</span>` : '';
         t += `<td><div class="cmp-cell-yes ${picked?'picked':''}" onclick="toggleCmpSel(this,'${key}')">
-          <span class="cmp-price">${item.cur||'USD'} ${fmtP(item.p)}</span>
+          <span class="cmp-price">${esc(item.cur||'USD')} ${fmtP(item.p)}</span>
           ${patLabel}
           ${item.pe ? `<span class="cmp-info">${fmtKg(item.pe)} kg${pkg?' · '+pkg+' $/kg':''}</span>` : ''}
         </div></td>`;
@@ -1891,8 +1920,9 @@ function renderSelTable() {
 }
 
 function toggleCmpSel(el, key) {
-  // Reconstruir chave real (sem escape)
-  const realKey = key.replace(/\\'/g,"'");
+  // Reconstruir chave real (encodeURIComponent é sempre reversível, ao contrário
+  // do escape manual de aspas que havia antes)
+  const realKey = decodeURIComponent(key);
   const item = selData.find(c => getSelKey(c) === realKey);
   if (!item) {
     // fallback: buscar pelo elemento clicado
@@ -1911,8 +1941,8 @@ function toggleCmpSel(el, key) {
 function renderSelPills() {
   const items = Object.values(selPicked);
   document.getElementById('sel-pills').innerHTML = items.map(c => {
-    const k = getSelKey(c).replace(/'/g,"\'");
-    return `<span class="sel-pill">${c.f} · ${c.pat||c.s} · ${c.cur||'USD'} ${fmtP(c.p)}
+    const k = encodeURIComponent(getSelKey(c));
+    return `<span class="sel-pill">${esc(c.f)} · ${esc(c.pat||c.s)} · ${esc(c.cur||'USD')} ${fmtP(c.p)}
       <button onclick="removePill('${k}')">×</button></span>`;
   }).join('');
   document.getElementById('sel-count-info').innerHTML =
@@ -1920,7 +1950,7 @@ function renderSelPills() {
 }
 
 function removePill(key) {
-  const realKey = key.replace(/\\'/g,"'");
+  const realKey = decodeURIComponent(key);
   delete selPicked[realKey];
   renderSelTable();
 }
@@ -1964,7 +1994,8 @@ function cancelarSelecao() {
 
 // ══ ANÁLISE DE CONTAINER ═══════════════════════════════════════════════
 // Editar qtde no detalhe do container
-function _detalheQtd(el, idx, best){
+function _detalheQtd(el, idx){
+  const best = _analiseBest;
   const novaQtd = parseInt(el.value)||0;
   if(!best || !best.det[idx]) return;
   best.det[idx].qtde = novaQtd;
@@ -2197,8 +2228,8 @@ async function renderHistorico() {
       return `<div class="hist-item">
         <div class="hist-dot"></div>
         <div class="hist-info">
-          <div class="hist-nome">${h.fornecedor}</div>
-          <div class="hist-sub">📧 ${h.email} · ${tipoNome} · ${h.lang==='pt'?'Português':'English'}</div>
+          <div class="hist-nome">${esc(h.fornecedor)}</div>
+          <div class="hist-sub">📧 ${esc(h.email)} · ${esc(tipoNome)} · ${h.lang==='pt'?'Português':'English'}</div>
         </div>
         <div class="hist-data">${dtStr}</div>
       </div>`;
