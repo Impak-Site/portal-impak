@@ -1,3 +1,4 @@
+function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 // Vincular cotação a processo existente (item d) — carregado no calculador.html
 (function () {
   let _processosAbertosCache = null;
@@ -43,7 +44,7 @@
       const cots = (d.cotacoes || []).filter(c => !c.resumo || c.resumo.status !== 'aprovada');
       if (!cots.length) { sel.innerHTML = '<option value="">Nenhuma cotação disponível</option>'; }
       else {
-        sel.innerHTML = cots.map(c => `<option value="${c.id}">${(c.cliente || '(sem cliente)')} — ${c.numero || c.id.slice(0, 8)}</option>`).join('');
+        sel.innerHTML = cots.map(c => `<option value="${_escVinc(c.id)}">${_escVinc(c.cliente || '(sem cliente)')} — ${_escVinc(c.numero || c.id.slice(0, 8))}</option>`).join('');
       }
     } catch (e) { sel.innerHTML = '<option value="">Erro ao carregar cotações</option>'; }
     try {
@@ -71,8 +72,8 @@
       return;
     }
     dd.innerHTML = matches.map(p => {
-      const refEsc = (p.referencia || '').replace(/'/g, "\\'");
-      return `<div style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);" onmousedown="selecionarProcessoVincular('${p.id}','${refEsc}')"><strong>${p.referencia || ''}</strong> — ${p.cliente || '(sem cliente)'} · ${p.fase || ''}</div>`;
+      const refEsc = (p.referencia || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `<div style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);" onmousedown="selecionarProcessoVincular('${_escVinc(p.id)}','${_escVinc(refEsc)}')"><strong>${_escVinc(p.referencia || '')}</strong> — ${_escVinc(p.cliente || '(sem cliente)')} · ${_escVinc(p.fase || '')}</div>`;
     }).join('');
     dd.style.display = 'block';
   };
