@@ -499,6 +499,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <label class="form-label">Containers</label>
             <div id="multi-containers-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
             <button type="button" onclick="adicionarContainer()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Container</button>
+            <div id="container-devolucoes-list" style="margin-top:10px;"></div>
             <input type="hidden" id="f_containers_json">
             <input type="hidden" id="f_container" value="${esc(p.container||'')}">
             <input type="hidden" id="f_tipo_container" value="${esc(p.tipo_container||'40HC')}">
