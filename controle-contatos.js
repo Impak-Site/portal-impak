@@ -34,7 +34,7 @@ async function autocompletarContato(input, tipo, dropdownId, onSelect){
         // bate com o CNPJ/contrato social. Nome fantasia só ajuda a
         // identificar visualmente na lista, quando existir e for diferente.
         const nomeCompleto = c.razao_social || c.nome_fantasia;
-        const label = `${nomeCompleto}${c.nome_fantasia && c.nome_fantasia!==c.razao_social ? ' ('+c.nome_fantasia+')' : ''}${c.uf?' · '+c.uf:''}${c.cnpj?' · '+c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):''}`;
+        const label = `${esc(nomeCompleto)}${c.nome_fantasia && c.nome_fantasia!==c.razao_social ? ' ('+esc(c.nome_fantasia)+')' : ''}${c.uf?' · '+esc(c.uf):''}${c.cnpj?' · '+esc(c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5')):''}`;
         return `<div data-nome="${esc(nomeCompleto)}" onclick="_acSelecionar('${input.id}','${dropdownId}',this.dataset.nome,${onSelect?'window._acCallback':'null'})"
           style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
           onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
