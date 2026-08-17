@@ -750,7 +750,7 @@ function renderDash(){
     const scls=d>=DIAS?'cslate':d>=20?'cswarn':'csok';
     const slbl=d>=DIAS?'Atrasado':d>=20?'Atualizar em breve':'Em dia';
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td class="fw7">${f}</td>
+    tr.innerHTML=`<td class="fw7">${esc(f)}</td>
       <td><span class="tag t${tipo}">${tipo}</span></td>
       <td class="cor fw7">${sub.length}</td>
       <td class="cm">${sizes2}</td>
@@ -1146,7 +1146,7 @@ function renderForn(){
     <div class="tags">${f.tipos.map(t=>`<span class="tag t${esc(t)}">${esc(t)}</span>`).join('')}</div>
     <div class="femail">📧 ${esc(f.email)}</div>
     <div class="factions"><span class="cs ${scls}">${slbl} · ${stxt}</span>
-    <button class="btn bgn bsm" onclick="openEmail('${f.id}')">✉</button>
+    <button class="btn bgn bsm" onclick="openEmail('${escJs(f.id)}')">✉</button>
     <button class="btn bg2 bsm" onclick="editForn('${f.id}')">✏</button>
     <button class="btn bdr bsm" onclick="delForn('${f.id}')">✕</button></div>`;
     g.appendChild(div);
@@ -1360,7 +1360,7 @@ function renderAlertas(){
     const msg=f.ultimaCot?`Última cotação há ${d} dias`:'Nunca solicitada';
     const prox=f.ultimaCot?`Próximo: ${new Date(new Date(f.ultimaCot).getTime()+DIAS*86400000).toLocaleDateString('pt-BR')}`:'Solicitar agora';
     const div=document.createElement('div');div.className='ai';
-    div.innerHTML=`<div class="adot ${dot}"></div><div class="ain"><div class="an">${f.nome}</div><div class="as2">${msg} · ${prox} · ${f.tipos.join(', ')}</div></div><button class="btn bgn bsm" onclick="openEmail('${f.id}')">✉ Solicitar</button>`;
+    div.innerHTML=`<div class="adot ${dot}"></div><div class="ain"><div class="an">${esc(f.nome)}</div><div class="as2">${esc(msg)} · ${esc(prox)} · ${esc(f.tipos.join(', '))}</div></div><button class="btn bgn bsm" onclick="openEmail('${escJs(f.id)}')">✉ Solicitar</button>`;
     el.appendChild(div);
   });
 }
@@ -1374,7 +1374,7 @@ function setTipo(t,btn){
 function updateSizeDl(){
   const dl=document.getElementById('size-dl');
   const sizes=[...new Set(COTACOES.filter(c=>c.t===tipoAtivo).map(c=>c.s))].sort();
-  dl.innerHTML=sizes.map(s=>`<option value="${s}">`).join('');
+  dl.innerHTML=sizes.map(s=>`<option value="${esc(s)}">`).join('');
 }
 function addMix(med='',qtd=''){
   const id=uid();mixRows.push({id,medida:med,qtde:qtd});renderMix();
@@ -1715,7 +1715,7 @@ function analisar(){
 function initCat(){
   const sel=document.getElementById('cf-forn');
   if(sel.options.length<=1){
-    [...new Set(COTACOES.map(c=>c.f))].sort().forEach(f=>sel.innerHTML+=`<option value="${f}">${f}</option>`);
+    [...new Set(COTACOES.map(c=>c.f))].sort().forEach(f=>sel.innerHTML+=`<option value="${esc(f)}">${esc(f)}</option>`);
   }
   renderCat();
 }
@@ -1819,7 +1819,7 @@ function abrirSelecao(mixItem, callback) {
   const origSel = document.getElementById('sel-orig-f');
   origSel.innerHTML = '<option value="">Todas as origens</option>';
   [...new Set(opcoes.map(c=>c.orig).filter(Boolean))].sort()
-    .forEach(o => origSel.innerHTML += `<option value="${o}">${o}</option>`);
+    .forEach(o => origSel.innerHTML += `<option value="${esc(o)}">${esc(o)}</option>`);
   document.getElementById('sel-bor-f').value = '';
   document.getElementById('sel-orig-f').value = '';
 
@@ -2454,7 +2454,7 @@ async function init(){
   await carregarCotacoesSalvas();
 
   renderForn();renderDash();updateSizeDl();
-  document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${f.nome}">`).join('');
+  document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${esc(f.nome)}">`).join('');
   addMix('295/80R22.5','200');addMix('275/80R22.5','100');
 }
 // init() é chamado direto após a checagem de sessão em /api/me
