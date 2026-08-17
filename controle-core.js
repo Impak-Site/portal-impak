@@ -1026,6 +1026,37 @@ function arredondarComRestoExato(valores, totalAlvo){
 // Resumo agregado de todas as vendas de um processo ÃÂ¢ÃÂÃÂ null quando nÃÂÃÂ£o hÃÂÃÂ¡
 // nenhuma venda cadastrada (processo continua no modelo antigo, 1 NF SaÃÂÃÂ­da
 // ÃÂÃÂºnica pro processo inteiro).
+function itensFaltantesVenda(p){
+  if(!p || !p.produtos_json) return [];
+  try{
+    const produtos = JSON.parse(p.produtos_json);
+    if(!Array.isArray(produtos)) return [];
+    const norm = s => String(s||'').trim().toUpperCase().replace(/\s+/g,' ');
+    const totais = {};
+    const labels = {};
+    produtos.forEach(it => {
+      if(!it || !it.descricao) return;
+      const k = norm(it.descricao);
+      if(!k) return;
+      totais[k] = (totais[k]||0) + (parseFloat(it.quantidade)||0);
+      if(!labels[k]) labels[k] = it.descricao;
+    });
+    const vendas = parseVendas(p);
+    vendas.forEach(venda => {
+      (venda.itens||[]).forEach(it => {
+        if(!it || !it.descricao) return;
+        const k = norm(it.descricao);
+        if(!(k in totais)) return;
+        totais[k] -= (parseFloat(it.quantidade)||0);
+      });
+    });
+    return Object.keys(totais)
+      .map(k => ({ descricao: labels[k], quantidade: totais[k] }))
+      .filter(x => x.quantidade > 0.009)
+      .sort((a,b) => b.quantidade - a.quantidade);
+  }catch(e){ return []; }
+}
+
 function calcularVendasResumo(p){
   const vendas = parseVendas(p);
   if(!vendas.length) return null;
@@ -1059,6 +1090,7 @@ function calcularVendasResumo(p){
     linhas, custosReais, custoRealTotal, totalQtd, qtdAlocada,
     saldoNaoAlocado: totalQtd - qtdAlocada,
     nfSaidaTotal, todasComNf, lucroTotal,
+    itensFaltantes: itensFaltantesVenda(p),
   };
 }
 
