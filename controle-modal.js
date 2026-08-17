@@ -974,6 +974,7 @@ async function carregarHistorico(processoId){
   try{
     const r = await fetch('/api/controle/v2/processo/'+processoId+'/log');
     const d = await r.json();
+  if(!_editando || _editando.id !== processoId) return;
     if(!d.ok || !d.log.length){
       lista.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma alteração registrada ainda</div></div>';
       return;
@@ -1007,16 +1008,18 @@ async function carregarArquivosGed(processoId){
   try{
     const r = await fetch('/api/controle/v2/arquivos/'+processoId);
     const d = await r.json();
+  if(!_editando || _editando.id !== processoId) return;
     if(!d.ok || !d.arquivos.length){
       lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Nenhum arquivo enviado ainda.</div>';
       return;
     }
     lista.innerHTML = d.arquivos.map(a=>{
       const icon = a.nome.toLowerCase().endsWith('.pdf') ? '📄' : '🖼️';
+      const urlOk = /^https?:\/\//i.test(a.url||''); const hrefSafe = urlOk ? a.url : '#';
       const tamanho = a.tamanho ? (a.tamanho/1024).toFixed(0)+' KB' : '';
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;">
         <span>${icon}</span>
-        <a href="${a.url}" target="_blank" style="flex:1;color:var(--ac);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.nome}</a>
+        <a href="${esc(hrefSafe)}" target="_blank" rel="noopener noreferrer" style="flex:1;color:var(--ac);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.nome)}</a>
         <span style="color:var(--dim);font-size:10px;">${tamanho}</span>
         <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">✕</button>
       </div>`;
