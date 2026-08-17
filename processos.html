@@ -1397,6 +1397,20 @@ function sincronizarComControle(proc, result, analise) {
       });
     });
 
+    var containersExtraidos = [];
+    (result.grupos||[]).forEach(function(g){
+      var numero='', lacre='', devolucao='';
+      (g.campos||[]).forEach(function(c){
+        var v = c.valor||c.doc1_valor||c.doc2_valor||'';
+        if(!v||c.status==='DIVERGENCIA') return;
+        var campo = c.campo.toLowerCase();
+        if(campo.indexOf('container')>-1 && campo.indexOf('containers')===-1) numero = v;
+        if(campo.indexOf('lacre')>-1) lacre = v;
+        if(campo.indexOf('devolu')>-1) devolucao = v;
+      });
+      if(numero) containersExtraidos.push({numero:numero, lacre:lacre, devolucao:devolucao});
+    });
+    if(containersExtraidos.length) camposControle._containersExtraidos = containersExtraidos;
     if(!Object.keys(camposControle).length) return;
 
     // Buscar processo no Controle via API
@@ -1419,7 +1433,28 @@ function sincronizarComControle(proc, result, analise) {
         var quem = (_currentUser?(_currentUser.displayName||_currentUser.username):'Conferência')
                  + ' (via análise documental)';
 
-        Object.keys(camposControle).forEach(function(k){
+        if(camposControle._containersExtraidos){
+      try {
+        var containersAtuais = [];
+        if(procCtrl.containers_json){
+          try { containersAtuais = JSON.parse(procCtrl.containers_json)||[]; } catch(e2){ containersAtuais=[]; }
+        }
+        if(!Array.isArray(containersAtuais)) containersAtuais=[];
+        camposControle._containersExtraidos.forEach(function(ex){
+          var numNorm = (ex.numero||'').replace(/\s+/g,'').toUpperCase();
+          var achou = containersAtuais.find(function(c){ return (c.numero||'').replace(/\s+/g,'').toUpperCase()===numNorm; });
+          if(achou){
+            if(ex.lacre && !achou.lacre) achou.lacre = ex.lacre;
+            if(ex.devolucao && !achou.devolucao) achou.devolucao = ex.devolucao;
+          } else {
+            containersAtuais.push({numero: ex.numero, tipo:'40HC', lacre: ex.lacre||'', devolucao: ex.devolucao||''});
+          }
+        });
+        procCtrl.containers_json = JSON.stringify(containersAtuais);
+      } catch(eMerge){ console.warn('Erro ao mesclar containers:', eMerge.message); }
+      delete camposControle._containersExtraidos;
+    }
+    Object.keys(camposControle).forEach(function(k){
           var novoVal = camposControle[k];
           if(novoVal && !procCtrl[k]){ // Só preenche campos vazios
             procCtrl[k] = novoVal;
