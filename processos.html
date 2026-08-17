@@ -891,6 +891,11 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <script>window.firebase={apps:[],initializeApp:function(){},firestore:function(){return null;}};</script>
 <script>
+function escHtml(v){
+  if(v===null||v===undefined) return '';
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 
 // ── AUTO-LOGIN via sessão do servidor ──────────────────────────
 // Antes: procurava o usuário logado (d.usuario) dentro do array local
@@ -1021,6 +1026,10 @@ function updateEtapaHint(){
 
 function autoFillProcess(){
   var ref=document.getElementById('procRef').value.trim();
+  if(ref !== window._refCarregada){
+    divergResolved = {};
+    window._refCarregada = ref;
+  }
   var statusEl=document.getElementById('procStatus');
   var statusTxt=document.getElementById('procStatusText');
   if(!ref){if(statusEl) statusEl.style.display='none'; return;}
@@ -1695,6 +1704,8 @@ function setStep(n){
 
 async function runAnalysis(){
   document.getElementById('btnAnalyze').disabled=true;
+  const procRefEl=document.getElementById('procRef'),procExpEl=document.getElementById('procExp'),procObsEl=document.getElementById('procObs');
+  if(procRefEl)procRefEl.disabled=true; if(procExpEl)procExpEl.disabled=true; if(procObsEl)procObsEl.disabled=true;
   document.getElementById('loadingBox').classList.add('show');
   document.getElementById('resultArea').style.display='none';
   setStep(1);
@@ -1896,6 +1907,7 @@ async function runAnalysis(){
     showToast('Erro: '+err.message,'err');
     console.error(err);
   }
+  if(procRefEl)procRefEl.disabled=false; if(procExpEl)procExpEl.disabled=false; if(procObsEl)procObsEl.disabled=false;
   document.getElementById('btnAnalyze').disabled=false;
   checkReady();
 }
@@ -1954,7 +1966,7 @@ function renderResult(r){
     el.className='check-group';
     el.innerHTML=`
       <div class="cg-head">
-        <span class="cg-title">${grupo.titulo}</span>
+        <span class="cg-title">${escHtml(grupo.titulo)}</span>
         ${grupoBadge}
       </div>
       <div class="col-head"><span>Campo</span><span>Documento 1</span><span>Documento 2</span><span></span></div>`;
@@ -1978,9 +1990,9 @@ function renderResult(r){
         :'';
 
       row.innerHTML=`
-        <div class="c-label">${c.campo}${sevBadge}</div>
-        <div class="c-val"><span class="c-tag">${c.doc1_label||''}</span>${c.doc1_valor||'<em style="color:var(--text-dim)">—</em>'}</div>
-        <div class="c-val"><span class="c-tag">${c.doc2_label||''}</span>${c.doc2_valor||'<em style="color:var(--text-dim)">—</em>'}</div>
+        <div class="c-label">${escHtml(c.campo)}${sevBadge}</div>
+        <div class="c-val"><span class="c-tag">${escHtml(c.doc1_label)}</span>${c.doc1_valor?escHtml(c.doc1_valor):'<em style="color:var(--text-dim)">—</em>'}</div>
+        <div class="c-val"><span class="c-tag">${escHtml(c.doc2_label)}</span>${c.doc2_valor?escHtml(c.doc2_valor):'<em style="color:var(--text-dim)">—</em>'}</div>
         <div class="c-icon">${icon}</div>`;
       el.appendChild(row);
 
@@ -1998,7 +2010,7 @@ function renderResult(r){
         emailBox.style.cssText='margin:0 12px 8px;padding:8px 12px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.15);border-radius:6px;font-size:11px;';
         emailBox.innerHTML=
           '<div style="font-size:10px;font-weight:700;color:#dc2626;margin-bottom:4px">📧 Texto sugerido para o fornecedor:</div>'+
-          '<div style="color:#4a6480;font-style:italic;line-height:1.5">'+c.email_fornecedor+'</div>'+
+          '<div style="color:#4a6480;font-style:italic;line-height:1.5">'+escHtml(c.email_fornecedor)+'</div>'+
           '<button onclick="copiarTexto(this,'+JSON.stringify(c.email_fornecedor)+')" style="margin-top:6px;font-size:10px;padding:2px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;">📋 Copiar</button>';
         el.appendChild(emailBox);
       }
@@ -2016,7 +2028,7 @@ function renderResult(r){
         var key = 'alerta-' + txt;
         var aceito = divergResolved[key];
         return '<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
-          + '<span style="flex:1;'+(aceito?'text-decoration:line-through;opacity:.5;':'')+'">'+txt+'</span>'
+          + '<span style="flex:1;'+(aceito?'text-decoration:line-through;opacity:.5;':'')+'">'+escHtml(txt)+'</span>'
           + (aceito
             ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
               + '<button onclick="aceitarAlerta('+JSON.stringify(key)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
@@ -2060,15 +2072,15 @@ function renderResult(r){
       const campos = Object.entries(dados);
       return `<div class="check-group" style="margin-bottom:10px">
         <div class="cg-head" style="cursor:pointer" onclick="var n=this.nextElementSibling;n.style.display=n.style.display==='none'?'block':'none'">
-          <span class="cg-title">${docLabel}</span>
+          <span class="cg-title">${escHtml(docLabel)}</span>
           <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);margin-left:8px;">${campos.length} campo(s) · clique para expandir ▼</span>
         </div>
         <div style="display:none;padding:16px 18px">
           <div class="detail-grid">
             ${campos.map(([k,v])=>`
               <div class="detail-field">
-                <div class="df-label">${k}</div>
-                <div class="df-val">${v||'—'}</div>
+                <div class="df-label">${escHtml(k)}</div>
+                <div class="df-val">${v?escHtml(v):'—'}</div>
               </div>`).join('')}
           </div>
         </div>
@@ -2393,7 +2405,7 @@ function _renderGestaoModal(p, username){
       body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Alertas</div>';
       a.alertas.forEach(function(al){
         var txt = typeof al==='string' ? al : (al.descricao||al.mensagem||JSON.stringify(al));
-        body += '<div style="font-size:12px;padding:6px 10px;border-left:3px solid var(--warn);background:rgba(217,119,6,0.04);border-radius:0 4px 4px 0;margin-bottom:4px;">'+txt+'</div>';
+        body += '<div style="font-size:12px;padding:6px 10px;border-left:3px solid var(--warn);background:rgba(217,119,6,0.04);border-radius:0 4px 4px 0;margin-bottom:4px;">'+escHtml(txt)+'</div>';
       });
       body += '</div>';
     }
@@ -3394,7 +3406,7 @@ function aceitarAlerta(key){
         var k = 'alerta-' + txt;
         var ac2 = divergResolved[k];
         return '<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
-          + '<span style="flex:1;'+(ac2?'text-decoration:line-through;opacity:.5;':'')+'">'+txt+'</span>'
+          + '<span style="flex:1;'+(ac2?'text-decoration:line-through;opacity:.5;':'')+'">'+escHtml(txt)+'</span>'
           + (ac2
             ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
               + '<button onclick="aceitarAlerta('+JSON.stringify(k)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
