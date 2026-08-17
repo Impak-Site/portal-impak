@@ -20,6 +20,7 @@ async function importarNFVenda(vi, input){
   const file = input.files[0];
   if(!file) return;
   input.value = '';
+  const processoIdOrigem = _editando ? _editando.id : null;
 
   const isXml = /\.xml$/i.test(file.name) || file.type.includes('xml');
   showToast(isXml ? 'Lendo XML da NFe...' : 'Analisando documento com IA...', 'info');
@@ -27,6 +28,10 @@ async function importarNFVenda(vi, input){
   try{
     const dados = isXml ? await parseNFeXml(file) : await extrairNFComIA(file);
     if(!dados){ showToast('Não foi possível extrair dados desse arquivo.', 'err'); return; }
+    if(!_editando || _editando.id !== processoIdOrigem){
+      showToast('Processo foi trocado antes da análise terminar — dados da NF descartados para evitar mistura entre processos. Reimporte no processo correto.', 'err');
+      return;
+    }
     aplicarDadosNFNaVenda(vi, dados);
     showToast(`✓ NF importada: ${dados.itens.length} ite${dados.itens.length===1?'m':'ns'} preenchido${dados.itens.length===1?'':'s'}`, 'ok');
   }catch(e){
