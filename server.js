@@ -1069,7 +1069,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
     // Alerta: Carregamento pendente (data de presenca preenchida mas sem data de carregamento)
     if (processo.data_presenca && !processo.data_carregamento && !processo.data_devolucao_vazio) {
       try {
-        const { data: existenteCarreg } = await supabase
+        const { data: existenteCarreg } = await sb()
           .from('controle_notificacoes')
           .select('id')
           .eq('processo_id', processo.id)
@@ -1077,7 +1077,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
           .eq('titulo', `Carregamento pendente: ${processo.referencia}`)
           .limit(1);
         if (!existenteCarreg || existenteCarreg.length === 0) {
-          await supabase.from('controle_notificacoes').insert({
+          await sb().from('controle_notificacoes').insert({
             processo_id: processo.id,
             tipo: 'urgente',
             titulo: `Carregamento pendente: ${processo.referencia}`,
@@ -1101,7 +1101,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
         const inicioStr = inicio.toISOString().slice(0,10);
         const fimStr = fim.toISOString().slice(0,10);
 
-        const { data: processosSemana } = await supabase
+        const { data: processosSemana } = await sb()
           .from('controle_processos')
           .select('id, transportadora, data_agendamento, data_devolucao_vazio')
           .gte('data_agendamento', inicioStr)
@@ -1112,14 +1112,14 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
 
         if (semTransportadora.length >= limiar) {
           const tituloSemana = `Transportadoras pendentes - semana de ${inicioStr}`;
-          const { data: existenteTransp } = await supabase
+          const { data: existenteTransp } = await sb()
             .from('controle_notificacoes')
             .select('id')
             .eq('tipo', 'urgente')
             .eq('titulo', tituloSemana)
             .limit(1);
           if (!existenteTransp || existenteTransp.length === 0) {
-            await supabase.from('controle_notificacoes').insert({
+            await sb().from('controle_notificacoes').insert({
               tipo: 'urgente',
               titulo: tituloSemana,
               mensagem: `${semTransportadora.length} processo(s) agendados nesta semana sem Transportadora preenchida.`,
@@ -1189,6 +1189,11 @@ app.get('/api/controle/v2/notificacoes', auth('processos'), async (req, res) => 
 app.post('/api/controle/v2/notificacao', auth('processos'), async (req, res) => {
   try {
     const { processo_id, tipo, titulo, mensagem } = req.body;
+    if (!tipo || !titulo || !mensagem) return res.status(400).json({ erro: 'tipo, titulo e mensagem são obrigatórios' });
+    if (processo_id) {
+      const { data: procCheck } = await sb().from('controle_processos').select('id').eq('id', processo_id).maybeSingle();
+      if (!procCheck) return res.status(400).json({ erro: 'processo_id inválido' });
+    }
     await sb().from('controle_notificacoes').insert({
       processo_id, tipo, titulo, mensagem, created_by: req.session.usuario,
     });
@@ -1200,7 +1205,7 @@ app.post('/api/controle/v2/notificacao', auth('processos'), async (req, res) => 
 
 app.post('/api/controle/v2/notificacao/:id/lida', auth('processos'), async (req, res) => {
   try {
-    const { usuario } = req.body;
+    const usuario = req.session.usuario;
     const { data } = await sb().from('controle_notificacoes').select('lida_por').eq('id', req.params.id).single();
     const lidaPor = [...(data?.lida_por || [])];
     if (!lidaPor.includes(usuario)) lidaPor.push(usuario);
@@ -1383,6 +1388,7 @@ app.get('/api/controle/carregar', auth('processos'), async (req, res) => {
 app.post('/api/base/salvar', auth('tyredesk'), async (req, res) => {
   try {
     const { base } = req.body;
+  if (!Array.isArray(base) || base.length === 0) return res.status(400).json({ erro: 'Base inválida ou vazia' });
     const { error } = await sb()
       .from('tyredesk_base')
       .upsert({ id: 1, dados: base, updated_by: req.session.usuario, updated_at: new Date().toISOString() }, { onConflict: 'id' });
@@ -1414,6 +1420,7 @@ app.get('/api/base/carregar', auth(), async (req, res) => {
 app.post('/api/base/salvar-fornecedores', auth('tyredesk'), async (req, res) => {
   try {
     const { fornecedores } = req.body;
+  if (!Array.isArray(fornecedores) || fornecedores.length === 0) return res.status(400).json({ erro: 'Lista de fornecedores inválida ou vazia' });
     const { error } = await sb()
       .from('tyredesk_fornecedores')
       .upsert({ id: 1, dados: fornecedores, updated_at: new Date().toISOString() }, { onConflict: 'id' });
@@ -1437,6 +1444,7 @@ app.get('/api/base/carregar-fornecedores', auth(), async (req, res) => {
 app.post('/api/base/salvar-snapshots', auth('tyredesk'), async (req, res) => {
   try {
     const { snapshots } = req.body;
+  if (!Array.isArray(snapshots)) return res.status(400).json({ erro: 'Snapshots inválidos' });
     const { error } = await sb()
       .from('tyredesk_fornecedores')
       .upsert({ id: 2, dados: snapshots, updated_at: new Date().toISOString() }, { onConflict: 'id' });
