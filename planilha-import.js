@@ -1,3 +1,13 @@
+function validarBufferPlanilha(buffer) {
+  if (!buffer || !Buffer.isBuffer(buffer)) throw new Error('Arquivo invalido');
+  if (buffer.length === 0) throw new Error('Arquivo vazio');
+  const MAX_SIZE = 20 * 1024 * 1024;
+  if (buffer.length > MAX_SIZE) throw new Error('Arquivo excede o tamanho maximo permitido (20MB)');
+  const sig = buffer.slice(0, 4);
+  const isZip = sig[0] === 0x50 && sig[1] === 0x4B && (sig[2] === 0x03 || sig[2] === 0x05 || sig[2] === 0x07);
+  if (!isZip) throw new Error('Formato de arquivo nao reconhecido (esperado .xlsx/.xlsm)');
+}
+
 // IMPORTACAO DE PLANILHA BASE (.xlsm) PRO CALCULADOR
 //
 // Le o template interno de planilha usado antes de existir o Calculador
@@ -110,6 +120,7 @@ function cellVal(ws, addr) {
                                                                                                                                                                                                                 }
                                                                                                                                                                                                                 
                                                                                                                                                                                                                 function importarPlanilhaBase(buffer) {
+  validarBufferPlanilha(buffer);
                                                                                                                                                                                                                   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
                                                                                                                                                                                                                     const campos = parseDados(wb);
                                                                                                                                                                                                                       const mix = parseMix(wb);
@@ -184,5 +195,6 @@ function cellVal(ws, addr) {
   return { datas: datas, real_json: real_json, moedas: moedas, avisos: avisos };
 }
 
-function importarFechamentoBase(buffer) { const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true }); return parseFechamento(wb); } module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase };
+function importarFechamentoBase(buffer) {
+  validarBufferPlanilha(buffer); const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true }); return parseFechamento(wb); } module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase };
                                                                                                                                                                                                                         
