@@ -109,6 +109,7 @@ function togglePortoOutro(tipo){
 }
 
 function coletarESalvar(){
+  if(window._salvandoProcesso) return;
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
 
@@ -290,7 +291,17 @@ function coletarESalvar(){
   proc.log = log;
   _editando = proc;
 
-  salvarProcesso(proc, patchFields).then(ok=>{ if(ok) fecharModal(); });
+  window._salvandoProcesso = true;
+  const btnsSalvar = document.querySelectorAll('.btn-primary[onclick="coletarESalvar()"]');
+  btnsSalvar.forEach(b=>b.disabled = true);
+  salvarProcesso(proc, patchFields).then(ok=>{
+    window._salvandoProcesso = false;
+    btnsSalvar.forEach(b=>b.disabled = false);
+    if(ok) fecharModal();
+  }).catch(()=>{
+    window._salvandoProcesso = false;
+    btnsSalvar.forEach(b=>b.disabled = false);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -633,7 +644,7 @@ function sincronizarParcelasLegado(){
 // ════════════════════════════════════════════════════════════════
 // RELATÓRIO COM FILTROS
 // ════════════════════════════════════════════════════════════════
-function esc(v){ return v ? String(v).replace(/"/g,'&quot;').replace(/</g,'&lt;') : ''; }
+function esc(v){ return v ? String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
 
 // ── COLAR DATA (DD/MM/AAAA) EM CAMPOS type="date" ────────────────
 function colarData(ev, el){
