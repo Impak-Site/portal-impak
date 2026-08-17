@@ -863,3 +863,35 @@ function exibirMoeda(v){
   if(v===null||v===undefined||v==='') return '';
   return parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
+
+
+// === Devolucao de vazio por container (extensao da lista de containers) ===
+(function(){
+  if (typeof renderMultiContainers === 'function') {
+    var _origRenderMultiContainers = renderMultiContainers;
+    renderMultiContainers = function(){
+      _origRenderMultiContainers();
+      renderDevolucoesPorContainer();
+    };
+  }
+})();
+
+function renderDevolucoesPorContainer(){
+  var box = document.getElementById('container-devolucoes-list');
+  if(!box) return;
+  if(!_containers || !_containers.length){ box.innerHTML=''; return; }
+  box.innerHTML = '<label class="form-label" style="margin-top:10px;display:block;">Devolu\u00e7\u00e3o de Vazio (por container)</label>' +
+    _containers.map(function(c,i){
+      var num = (c.numero||'').trim();
+      var label = num ? num : ('Container ' + (i+1));
+      return '<div style="display:grid;grid-template-columns:1fr 160px;gap:6px;align-items:center;margin-bottom:6px;">' +
+        '<span style="font-size:12px;color:var(--dim);">' + escContainerLocal(label) + '</span>' +
+        '<input class="form-input" type="date" value="' + escContainerLocal(c.devolucao||'') + '" ' +
+        'oninput="_containers[' + i + '].devolucao=this.value">' +
+        '</div>';
+    }).join('');
+}
+
+function escContainerLocal(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
