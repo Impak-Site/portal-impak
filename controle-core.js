@@ -1007,6 +1007,41 @@ function calcularTotalizadorPorGrupo(p){
   });
 }
 
+// Sub-livro "Notas Fiscais BOSS" (aba Fechamento da planilha, linhas 46-56) -
+// quando o processo tambem fatura por uma segunda nota fiscal ("Boss",
+// separada da NF de Saida principal ja rastreada em nf_saida_valor/
+// vendas_json), essa nota paga seu proprio conjunto de impostos (retencao de
+// IR, ISS, PIS, COFINS, IRPJ, CSLL, IBS, CBS) e o que sobra depois disso
+// (G56 na planilha, "Total a RECEBER") se soma ao Lucro Bruto do Processo
+// pra chegar no resultado final (G58 = G44 + G56). Diferente das
+// "Diferencas de Impostos" (grupo apenasPago em CUSTOS_REAIS_CONFIG), aqui
+// os percentuais sao fixos (nao dependem de UF/VLOOKUP), entao da pra
+// automatizar a conta inteira em vez de pedir pro usuario digitar cada
+// imposto na mao - o unico input manual e o valor total das notas Boss.
+// Lancado em real_json.notas_boss_valor (mesma "gaveta" JSONB dos demais
+// custos reais, sem precisar de coluna/migration nova). Retorna null quando
+// o campo nunca foi preenchido - processo sem nota Boss continua exatamente
+// como antes (Lucro Real = so a NF Saida principal).
+function calcularNotasBoss(p){
+  const reais = p.real_json;
+  if(!reais || typeof reais !== 'object') return null;
+  const valorBoss = parseFloat(reais.notas_boss_valor);
+  if(isNaN(valorBoss) || valorBoss <= 0) return null;
+  const irRetido = valorBoss * 0.015;           // G47: IR - Retido (1,5%)
+  const iss = valorBoss * 0.025;                // G48: ISS (2,5%)
+  const pis = valorBoss * 0.0065;                // G49: PIS (0,65%)
+  const cofins = valorBoss * 0.03;               // G50: COFINS (3%)
+  const baseImpostosLopes = valorBoss * 0.32;    // G51: BASE Impostos Lopes (32%)
+  const irpj = baseImpostosLopes * 0.25 - irRetido; // G52: IRPJ 15%+10% adicional, deduzido do IR retido
+  const csll = baseImpostosLopes * 0.09;         // G53: CSLL (9%)
+  const ibs = valorBoss * 0.001;                 // G54: IBS (0,1%)
+  const cbs = valorBoss * 0.009;                 // G55: CBS (0,9%)
+  // G56: Total a RECEBER - igual a planilha, IBS/CBS ficam de fora dessa
+  // conta (mesma logica de excluirDosTotais aplicada ao Custo do Processo).
+  const totalReceber = valorBoss - iss - pis - cofins - irpj - csll - irRetido;
+  return { valorBoss, irRetido, iss, pis, cofins, baseImpostosLopes, irpj, csll, ibs, cbs, totalReceber };
+}
+
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ VENDAS MULTI-CLIENTE (rateio de custo) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // Um processo (de qualquer finalidade) pode ser vendido a mais de um
 // cliente ÃÂ¢ÃÂÃÂ ex.: meio contÃÂÃÂªiner pra um, meio pra outro. p.vendas_json guarda
@@ -1223,6 +1258,21 @@ function calcularFechamento(p){
     pctLucroReal = (temReal && lucroReal != null) ? (lucroReal / nfSaida) : null;
   }
 
+  // Notas Fiscais BOSS (G56 na planilha) - soma ao Lucro Bruto do Processo
+  // JA CALCULADO acima (single-NF ou soma das vendas, tanto faz), igual a
+  // planilha faz em G58=G44+G56 independente de quantas notas de saida
+  // compoem o G44. So mexe quando o usuario de fato lancou o valor da nota
+  // Boss (calcularNotasBoss retorna null quando nunca foi preenchido) E ja
+  // existe um lucroReal pra ajustar (senao nao ha "Lucro Bruto do Processo"
+  // base pra somar). O percentual usa NF Saida + valor Boss no denominador,
+  // igual a planilha (H58=G58/(G15+G46)).
+  const notasBoss = calcularNotasBoss(p);
+  if(notasBoss && lucroReal != null){
+    lucroReal = lucroReal + notasBoss.totalReceber;
+    const denomComBoss = (nfSaida||0) + notasBoss.valorBoss;
+    pctLucroReal = denomComBoss > 0 ? (lucroReal / denomComBoss) : null;
+  }
+
   let custoEstimado = null, faturamentoEstimado = null, lucroEstimado = null, pctLucroEstimado = null;
   if(est){
     custoEstimado = est.custo_total ?? null;
@@ -1252,6 +1302,7 @@ function calcularFechamento(p){
     custosReais, custoRealTotal, // detalhamento por item — null se a aba Custos Reais nunca foi preenchida
     receitaReais, margemTaxas, // margem por taxa (compra × venda) — null se "cobrado do cliente" nunca foi preenchido
     vendasResumo, // null se o processo não foi vendido a mais de um cliente
+    notasBoss, // null se real_json.notas_boss_valor nunca foi preenchido — detalhe do sub-livro (IR/ISS/PIS/COFINS/IRPJ/CSLL/IBS/CBS + Total a Receber) já somado a lucroReal/pctLucroReal acima
   };
 }
 
@@ -1304,8 +1355,21 @@ function renderFechamentoInfo(p){
         ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
       </div>`
     : '';
+  // Notas Fiscais BOSS (sub-livro da aba Fechamento, linhas 46-56) - quando
+  // lancada, o Lucro Real acima JA VEM com o Total a Receber somado (ver
+  // calcularFechamento/calcularNotasBoss); aqui so mostra o detalhamento pra
+  // quem quer conferir de onde veio o ajuste, igual a planilha mostra a
+  // mini-tabela de impostos da nota Boss antes do G58 final.
+  const linhaNotasBoss = f.notasBoss
+    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Notas Fiscais BOSS</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Valor das Notas Boss</span><strong>${r2(f.notasBoss.valorBoss)}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)</span><strong style="color:var(--err);">− ${r2(f.notasBoss.irRetido+f.notasBoss.iss+f.notasBoss.pis+f.notasBoss.cofins+f.notasBoss.irpj+f.notasBoss.csll)}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Total a Receber (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.notasBoss.totalReceber)}</strong></div>
+      </div>`
+    : '';
   const linhaReal = f.temReal
-    ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF Saída − Custo Real Total)':' (NF Saída − NF Entrada)'}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>`
+    ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF Saída − Custo Real Total)':' (NF Saída − NF Entrada)'}${f.notasBoss?' + Notas Boss':''}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>${linhaNotasBoss}`
     : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:12px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
 
   const corDelta = f.deltaValor==null ? 'var(--muted)' : f.deltaValor >= 0 ? 'var(--ok)' : 'var(--err)';
