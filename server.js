@@ -2251,20 +2251,23 @@ app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (re
 // ── Vincular ao Calculador — prefill reverso (item e) ────────────────────
 // Lê um processo do Controle e devolve o `dados` já no formato que o wizard
 // do Calculador espera (aplicarEstadoFormulario), pra abrir pré-preenchido
-// pra revisão antes de salvar como cotação nova. Só faz sentido pra
-// processos ainda no início (sem Custos Reais lançados) — depois disso, a
-// estimativa "cotada" já não tem tanto valor e o link fica mais confuso do
-// que ajuda.
+// pra revisão antes de salvar como cotação nova. Antes disto, processos com
+// Custos Reais já lançados (real_json) eram bloqueados aqui (erro 400) —
+// só era permitido vincular na fase inicial. Ayslan pediu pra permitir
+// sempre (ex: UD26-109), inclusive pra replicar/simular no Calculador o
+// fechamento de um processo já em andamento. Mantemos só um aviso (não
+// bloqueia): salvar essa cotação nova não altera os Custos Reais já
+// lançados no processo original — é sempre uma cotação independente.
 app.get('/api/controle/processos/:id/prefill-cotacao', auth('processos'), async (req, res) => {
   try {
     const { data: proc, error } = await sb()
-      .from('controle_processos').select('*').eq('id', req.params.id).single();
+    .from('controle_processos').select('*').eq('id', req.params.id).single();
     if (error) throw new Error(error.message);
-    if (proc.real_json) {
-      return res.status(400).json({ erro: 'Este processo já tem Custos Reais lançados — vincular ao Calculador só faz sentido na fase inicial.' });
-    }
     const dados = mapearProcessoParaCotacao(proc);
-    res.json({ ok: true, dados, referencia: proc.referencia });
+    const aviso = proc.real_json
+    ? 'Este processo já tem Custos Reais lançados. Os dados pré-preenchidos aqui são só uma referência/simulação — salvar esta cotação não altera os Custos Reais já lançados no processo original.'
+      : null;
+    res.json({ ok: true, dados, referencia: proc.referencia, aviso });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
