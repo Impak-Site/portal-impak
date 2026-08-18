@@ -763,6 +763,37 @@ const CUSTOS_REAIS_CONFIG = [
     // credito).
     { id:'icms_saida', label:'ICMS de Saída (1,4% s/ Produtos)', unidade:'BRL', porContainer:false, cotado:c=>null },
   ]},
+  // Diferencas de Impostos e Taxas Extras (aba Fechamento da planilha,
+  // linhas 22-40) - itens que so aparecem depois do fechamento do
+  // processo (D.I. registrada + NF de Saida emitida), quando da pra
+  // reconciliar o que foi de fato pago na importacao contra o que a NF de
+  // Saida exige (a diferenca de base de calculo gera imposto adicional a
+  // pagar). Lancamento manual, igual aos demais itens de "so valor a
+  // pagar" (apenasPago) - o Controle nao tem (ainda) um motor de calculo
+  // de impostos por UF pra reproduzir a planilha sozinho, entao quem
+  // reconcilia o D.I. digita o valor calculado aqui, e o Lucro Real passa
+  // a bater com a celula G58 da aba Fechamento. diferenca_ibs/diferenca_cbs
+  // ficam de fora dos totais (excluirDosTotais) porque a propria planilha
+  // exclui essas duas linhas do total de custo (formula G42 da aba
+  // Fechamento: =SOMA(G17:G41)-G30-G31).
+  { grupo:'Diferenças de Impostos (Fechamento)', slug:'diferencas', itens:[
+    { id:'adiantamento_porto',        label:'Adiantamento Porto (Liberação/Aduaneiras)', unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'agente_frete',              label:'Agente Frete',                              unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'diferenca_ipi',             label:'Diferença IPI (NFe × D.I.)',                unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'diferenca_pis',             label:'Diferença PIS (NFe × D.I.)',                unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'diferenca_cofins',          label:'Diferença COFINS (NFe × D.I.)',             unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'diferenca_icms_proprio',    label:'Diferença ICMS Próprio (NFe × D.I.)',       unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'icms_st',                   label:'ICMS Substituição Tributária',              unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'diferenca_ibs',             label:'Diferença IBS',                             unidade:'BRL', apenasPago:true, excluirDosTotais:true, cotado:c=>null },
+    { id:'diferenca_cbs',             label:'Diferença CBS',                             unidade:'BRL', apenasPago:true, excluirDosTotais:true, cotado:c=>null },
+    { id:'marjoracao',                label:'Marjoração 0,6%',                           unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'comissao_vendedor',         label:'Comissão Vendedor',                         unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'reciclagem',                label:'Reciclagem',                                unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'despesas_baixa_patio_venda',label:'Despesas Baixa Pátio (Venda/Devolução)',    unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'dif_seguro',                label:'Diferença de Seguro',                       unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'timp',                      label:'Timp',                                      unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'trademaster',               label:'Trademaster',                               unidade:'BRL', apenasPago:true, cotado:c=>null },
+  ]},
 ];
 
 function custosReaisItensFlat(){
