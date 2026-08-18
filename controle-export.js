@@ -280,6 +280,7 @@ async function exportarFormatoCliente(statusSelecionados){
       // coluna "Data Chegada" ficava em branco pra qualquer processo em
       // Ag. Embarque/PI Recebida, mesmo jÃ¡ tendo previsÃ£o de chegada.
       const dtChegadaOuEta = p.data_chegada || p.eta;
+      const dtEmbarqueOuEtd = p.data_embarque || p.etd;
       const chegadaTs = dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).getTime() : Infinity;
 
       const montarLinha = (clienteNome, it)=>{
@@ -298,7 +299,7 @@ async function exportarFormatoCliente(statusSelecionados){
           'Qte':                     it.quantidade||'',
           'Data do Pedido':          p.pi_data ? parseDataLocal(p.pi_data).toLocaleDateString('pt-BR') : '',
           'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
-          'Data de Embarque':        p.etd ? parseDataLocal(p.etd).toLocaleDateString('pt-BR') : '',
+          'Data de Embarque':        dtEmbarqueOuEtd ? parseDataLocal(dtEmbarqueOuEtd).toLocaleDateString('pt-BR') + (p.data_embarque?'':' (previsto)') : '',
           'Data Chegada':            dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).toLocaleDateString('pt-BR') + (p.data_chegada?'':' (estimado)') : '',
           'POD':                     p.porto_destino||'N/I',
         };
