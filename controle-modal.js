@@ -440,7 +440,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           </div>
           <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_embarque" value="${esc(p.data_embarque)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_embarque','f_etd','Previsão de Embarque (ETD)');atualizarFaseEmTempoReal()"></div>
+              onchange="moverDataFuturaParaPrevisao('f_data_embarque','f_etd','Previsão de Embarque (ETD)');atualizarFaseEmTempoReal();atualizarDataPagamentoPrazo()"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
             <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher após emissão do BL"></div>
         </div>
@@ -1272,11 +1272,14 @@ function renderPagamentoCampos(){
 // de travar o campo).
 function atualizarDataPagamentoPrazo(){
   if(document.getElementById('f_pi_pagamento')?.value !== 'PRAZO') return;
-  const dataPI = document.getElementById('f_pi_data')?.value;
+  // Base do prazo: Data de Embarque Efetiva quando já preenchida (regra #413 - o prazo
+  // de pagamento conta a partir do embarque, não da data do pedido/PI); antes do
+  // embarque acontecer, cai de volta pra Data PI como estimativa provisória.
+  const dataBase = document.getElementById('f_data_embarque')?.value || document.getElementById('f_pi_data')?.value;
   const prazo = parseInt(document.getElementById('f_pi_prazo_dias')?.value, 10);
   const destino = document.getElementById('f_pi_data_saldo');
-  if(!dataPI || !prazo || !destino) return;
-  const d = parseDataLocal(dataPI);
+  if(!dataBase || !prazo || !destino) return;
+  const d = parseDataLocal(dataBase);
   if(!d) return;
   d.setDate(d.getDate() + prazo);
   destino.value = d.toISOString().split('T')[0];
