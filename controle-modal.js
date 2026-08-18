@@ -164,11 +164,11 @@ function renderModal(){
       <div class="timeline">${timeline}</div>
       ${alertasHtml}
       <!-- IA -->
-      <div class="form-section" style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+      <div id="ia-drop-zone" class="form-section" style="background:rgba(26,127,212,.04);border:1px dashed rgba(26,127,212,.15);border-radius:10px;padding:14px 16px;margin-bottom:20px;transition:border-color .15s,background .15s;" ondragover="handleDragOverIA(event)" ondragleave="handleDragLeaveIA(event)" ondrop="handleDropIA(event)">
         <div class="form-section-title" style="border:none;margin-bottom:8px;">🤖 Extração com IA</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Envie uma PI, CI ou BL para preencher os campos automaticamente</div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="extrairComIA(this)">
+          <input type="file" id="ia-doc-file" accept=".pdf,.png,.jpg,.jpeg" multiple style="display:none" onchange="extrairComIA(this)">
           <button class="btn btn-outline" onclick="document.getElementById('ia-doc-file').click()">📎 Selecionar documento</button>
           <span id="ia-status" style="font-size:12px;color:var(--muted);"></span>
         </div>
