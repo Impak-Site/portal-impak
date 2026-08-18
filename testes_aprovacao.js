@@ -238,7 +238,7 @@ teste('custosCotados null/undefined retorna null (processo abre em branco, igual
   iguais(gerarRealJsonInicial(null), null);
   iguais(gerarRealJsonInicial(undefined), null);
 });
-teste('popula itens simples (não porContainer) com {valor, moeda}', () => {
+teste('popula itens simples (não porContainer) com {valor, moeda} — em Cobrado, não Pago', () => {
   const custosCotados = {
     containers: 1,
     compra: { fob: 27812.96, frete: 1000, seguro_usd: 50, taxa_ce: 30 },
@@ -246,15 +246,20 @@ teste('popula itens simples (não porContainer) com {valor, moeda}', () => {
     comissoes: { br: 800, china: 500, boss: 200 },
   };
   const rj = gerarRealJsonInicial(custosCotados);
-  // FIX (a pedido do usuário): fob/frete/seguro/taxa_ce agora chegam do
-  // Calculador já em BRL (convertidos pelo câmbio certo de cada item —
-  // ponderado por parcela, abertura+2%, etc.), não mais em USD puro.
-  iguais(rj.fob, { valor: 27812.96, moeda: 'BRL' });
-  iguais(rj.frete, { valor: 1000, moeda: 'BRL' });
-  iguais(rj.seguro, { valor: 50, moeda: 'BRL' });
-  iguais(rj.taxa_ce, { valor: 30, moeda: 'BRL' });
+  // FIX (a pedido do usuário): a cotação é o que vai ser COBRADO do cliente
+  // (a proposta), não o que a Impak pagou de fato — então itens com
+  // Cobrado/Pago (Compra e Frete, Comissões, Taxas) vão pro sufixo
+  // "_cobrado". "Pago" fica em branco até alguém lançar o valor real.
+  iguais(rj.fob_cobrado, { valor: 27812.96, moeda: 'BRL' });
+  iguais(rj.frete_cobrado, { valor: 1000, moeda: 'BRL' });
+  iguais(rj.seguro_cobrado, { valor: 50, moeda: 'BRL' });
+  iguais(rj.taxa_ce_cobrado, { valor: 30, moeda: 'BRL' });
+  iguais(rj.comissao_br_cobrado, { valor: 800, moeda: 'BRL' });
+  verdadeiro(rj.fob === undefined, 'fob (Pago) não deveria vir preenchido pela cotação');
+  // Impostos (apenasPago:true) continuam indo pro campo comum — não têm
+  // conceito de "cobrado do cliente".
   iguais(rj.ii, { valor: 5000, moeda: 'BRL' });
-  iguais(rj.comissao_br, { valor: 800, moeda: 'BRL' });
+  verdadeiro(rj.ii_cobrado === undefined, 'imposto não tem campo _cobrado');
 });
 teste('multiplica itens porContainer pela quantidade de containers da cotação', () => {
   const custosCotados = {
@@ -266,31 +271,31 @@ teste('multiplica itens porContainer pela quantidade de containers da cotação'
   // siscomex e handling são porContainer:true → valor unitário × 3 containers
   // FIX: handling (e as demais Taxas em USD/destino) agora chegam em BRL
   // (convertidas pelo câmbio de abertura+2% no Calculador), não mais USD puro.
-  iguais(rj.siscomex, { valor: 600, moeda: 'BRL' });
-  iguais(rj.handling, { valor: 240, moeda: 'BRL' });
+  iguais(rj.siscomex_cobrado, { valor: 600, moeda: 'BRL' });
+  iguais(rj.handling_cobrado, { valor: 240, moeda: 'BRL' });
   // armazenagem é porContainer:false → não multiplica
-  iguais(rj.armazenagem, { valor: 900, moeda: 'BRL' });
+  iguais(rj.armazenagem_cobrado, { valor: 900, moeda: 'BRL' });
 });
 teste('sem containers informado, assume 1 (não quebra nem zera)', () => {
   const rj = gerarRealJsonInicial({ taxas_fixas: { siscomex: 200 } });
-  iguais(rj.siscomex, { valor: 200, moeda: 'BRL' });
+  iguais(rj.siscomex_cobrado, { valor: 200, moeda: 'BRL' });
 });
 teste('ignora itens ausentes/zerados sem gerar chave (undefined ≠ 0)', () => {
   const rj = gerarRealJsonInicial({ containers: 1, compra: { fob: 1000 } });
-  verdadeiro(rj.fob !== undefined);
-  verdadeiro(rj.frete === undefined, 'frete não informado não deveria aparecer no real_json');
+  verdadeiro(rj.fob_cobrado !== undefined);
+  verdadeiro(rj.frete_cobrado === undefined, 'frete não informado não deveria aparecer no real_json');
 });
 teste('custosCotados sem nenhum campo populado retorna null', () => {
   iguais(gerarRealJsonInicial({ containers: 2 }), null);
 });
 teste('custos_diversos (nível raiz, não dentro de taxas_fixas) é mapeado', () => {
   const rj = gerarRealJsonInicial({ containers: 1, custos_diversos: 450 });
-  iguais(rj.custos_diversos, { valor: 450, moeda: 'BRL' });
+  iguais(rj.custos_diversos_cobrado, { valor: 450, moeda: 'BRL' });
 });
 teste('resultado é diretamente compatível com o formato {valor,moeda} de real_json (ver teste_custos_reais.js)', () => {
   const rj = gerarRealJsonInicial({ containers: 2, compra: { fob: 100 }, taxas_fixas: { siscomex: 50 } });
-  verdadeiro(typeof rj.fob.valor === 'number' && typeof rj.fob.moeda === 'string');
-  verdadeiro(typeof rj.siscomex.valor === 'number' && typeof rj.siscomex.moeda === 'string');
+  verdadeiro(typeof rj.fob_cobrado.valor === 'number' && typeof rj.fob_cobrado.moeda === 'string');
+  verdadeiro(typeof rj.siscomex_cobrado.valor === 'number' && typeof rj.siscomex_cobrado.moeda === 'string');
 });
 teste('antidumping (impostos.antidumping) é mapeado quando a cotação teve o toggle dump=SIM', () => {
   const rj = gerarRealJsonInicial({ containers: 1, impostos: { ii: 5000, antidumping: 320.5 } });
@@ -303,8 +308,8 @@ teste('sem antidumping na cotação (toggle NAO, DUMP=0), vem zerado — não qu
 teste('seguro_venda (nível raiz, distinto do Seguro Compra) é mapeado', () => {
   const rj = gerarRealJsonInicial({ containers: 1, compra: { seguro_usd: 50 }, seguro_venda: 890.5 });
   // FIX: seguro (compra) agora chega do Calculador já em BRL, ver testes acima.
-  iguais(rj.seguro, { valor: 50, moeda: 'BRL' });
-  iguais(rj.seguro_venda, { valor: 890.5, moeda: 'BRL' });
+  iguais(rj.seguro_cobrado, { valor: 50, moeda: 'BRL' });
+  iguais(rj.seguro_venda_cobrado, { valor: 890.5, moeda: 'BRL' });
 });
 
 // ── Caso 9: mapearProcessoParaCotacao() — vínculo reverso (item e) ──
