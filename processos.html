@@ -1397,18 +1397,37 @@ function sincronizarComControle(proc, result, analise) {
       });
     });
 
+    // Extrai números de container por grupo. Antes disto, a variável
+    // "numero" era sobrescrita a cada campo de container encontrado no
+    // mesmo grupo — num BL/CI com vários containers (ex: campos separados
+    // "Container 1"/"Container 2", ou um único campo com "MSCU1234567,
+    // TCLU7654321"), só o ÚLTIMO container do grupo sobrevivia e os
+    // demais eram perdidos silenciosamente. Agora acumula TODOS os
+    // números de container do grupo, e dentro de cada valor extrai todos
+    // os números no formato ISO 6346 (4 letras + 7 dígitos) — cobre tanto
+    // múltiplos campos quanto um único campo com vários números juntos.
     var containersExtraidos = [];
     (result.grupos||[]).forEach(function(g){
-      var numero='', lacre='', devolucao='';
+      var lacre='', devolucao='', numerosNoGrupo=[];
       (g.campos||[]).forEach(function(c){
         var v = c.valor||c.doc1_valor||c.doc2_valor||'';
         if(!v||c.status==='DIVERGENCIA') return;
         var campo = c.campo.toLowerCase();
-        if(campo.indexOf('container')>-1 && campo.indexOf('containers')===-1) numero = v;
+        if(campo.indexOf('container')>-1 && campo.indexOf('containers')===-1){
+          var isoMatches = v.toUpperCase().match(/[A-Z]{4}\s?\d{7}/g);
+          if(isoMatches && isoMatches.length){
+            isoMatches.forEach(function(m){ numerosNoGrupo.push(m.replace(/\s+/g,'')); });
+          } else if(v.trim()){
+            numerosNoGrupo.push(v.trim());
+          }
+        }
         if(campo.indexOf('lacre')>-1) lacre = v;
         if(campo.indexOf('devolu')>-1) devolucao = v;
       });
-      if(numero) containersExtraidos.push({numero:numero, lacre:lacre, devolucao:devolucao});
+      numerosNoGrupo = numerosNoGrupo.filter(function(n,i){ return numerosNoGrupo.indexOf(n)===i; });
+      numerosNoGrupo.forEach(function(numero){
+        containersExtraidos.push({numero:numero, lacre:lacre, devolucao:devolucao});
+      });
     });
     if(containersExtraidos.length) camposControle._containersExtraidos = containersExtraidos;
     if(!Object.keys(camposControle).length) return;
