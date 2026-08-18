@@ -56,15 +56,17 @@ const ITENS_CUSTOS_REAIS = [
   { id: 'frete',   unidade: 'BRL', porContainer: false, get: c => c?.compra?.frete },
   { id: 'seguro',  unidade: 'BRL', porContainer: false, get: c => c?.compra?.seguro_usd },
   { id: 'taxa_ce', unidade: 'BRL', porContainer: false, get: c => c?.compra?.taxa_ce },
-  // Impostos de Importação (BRL, apenasPago)
-  { id: 'ii',      unidade: 'BRL', porContainer: false, get: c => c?.impostos?.ii },
-  { id: 'ipi',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.ipi },
-  { id: 'pis',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.pis },
-  { id: 'cofins',  unidade: 'BRL', porContainer: false, get: c => c?.impostos?.cofins },
-  { id: 'icms',    unidade: 'BRL', porContainer: false, get: c => c?.impostos?.icms },
-  { id: 'ibs',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.ibs },
-  { id: 'cbs',     unidade: 'BRL', porContainer: false, get: c => c?.impostos?.cbs },
-  { id: 'antidumping', unidade: 'BRL', porContainer: false, get: c => c?.impostos?.antidumping },
+  // Impostos de Importacao (BRL, apenasPago - sem "cobrado do cliente",
+  // ver gerarRealJsonInicial abaixo: estes continuam indo pro campo comum,
+  // nao pro sufixo _cobrado, porque nao existe esse conceito pra imposto).
+  { id: 'ii',      unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.ii },
+  { id: 'ipi',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.ipi },
+  { id: 'pis',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.pis },
+  { id: 'cofins',  unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.cofins },
+  { id: 'icms',    unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.icms },
+  { id: 'ibs',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.ibs },
+  { id: 'cbs',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.cbs },
+  { id: 'antidumping', unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.antidumping },
   // Comissões (BRL)
   { id: 'comissao_br',    unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.br },
   { id: 'comissao_china', unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.china },
@@ -110,10 +112,19 @@ function numOuNull(v) {
  * partida ('Cotado') quando o processo em Controle abrir a aba Custos
  * Reais"). Antes disso só era usado como sugestão passiva de UI (preenchia
  * o placeholder "Cotado: ..." mas exigia alguém abrir a aba e salvar); agora
- * grava direto no processo no momento da aprovação, então a aba Custos Reais
- * já abre com os valores da cotação como "Pago".
+ * grava direto no processo no momento da aprovação.
  *
- * Cada item populado vira `real_json[item.id] = { valor, moeda: item.unidade }`.
+ * IMPORTANTE (fix a pedido do usuario): os valores da cotacao sao o que vai
+ * ser CHARGED ao cliente (a proposta), nao o que a Impak efetivamente pagou
+ * a fornecedor/agente - entao cada item populado vira
+ * `real_json[item.id + '_cobrado'] = { valor, moeda: item.unidade }`, nao
+ * `real_json[item.id]`. O campo "Pago" fica em branco ate alguem lancar o
+ * valor real pago, com base nos comprovantes (aba Custos Reais). Excecao:
+ * itens `apenasPago:true` (Impostos de Importacao - ver
+ * CUSTOS_REAIS_CONFIG/ITENS_CUSTOS_REAIS) nao tem o conceito de "cobrado do
+ * cliente" (sao so um valor a pagar pro governo), entao continuam indo pro
+ * campo comum `real_json[item.id]`, igual sempre foi.
+ *
  * Itens `porContainer:true` têm o valor unitário multiplicado pela
  * quantidade de containers da cotação (mesma lógica de
  * `calcularCustoCotadoItem` em controle-core.js).
@@ -131,7 +142,8 @@ function gerarRealJsonInicial(custosCotados) {
     const base = numOuNull(item.get(custosCotados));
     if (base === null) continue;
     const valor = item.porContainer ? base * containers : base;
-    realJson[item.id] = { valor: Math.round(valor * 100) / 100, moeda: item.unidade };
+    const chave = item.apenasPago ? item.id : (item.id + '_cobrado');
+    realJson[chave] = { valor: Math.round(valor * 100) / 100, moeda: item.unidade };
     algumItem = true;
   }
   return algumItem ? realJson : null;
