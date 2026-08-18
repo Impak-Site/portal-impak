@@ -1,4 +1,4 @@
-undefined/**
+/**
  * IMPAK Portal — Servidor v2.0
  * Banco de dados: Supabase PostgreSQL
  *
@@ -1164,10 +1164,31 @@ app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res)
 
 app.delete('/api/controle/v2/processo/:id', auth('processos'), requireGerente, async (req, res) => {
   try {
-    const { error } = await sb().from('controle_processos').delete().eq('id', req.params.id);
+    const id = req.params.id;
+    // Antes disto, o DELETE só apagava a linha em controle_processos — em
+    // qualquer processo com histórico (controle_log, populado a cada save),
+    // notificação (controle_notificacoes) ou arquivo GED (controle_arquivos)
+    // isso batia numa violação de foreign key no Postgres e o processo
+    // "não excluía" sem mensagem clara (o front-end só mostrava "Erro ao
+    // excluir" genérico). Processo novo/vazio excluía normalmente, o que
+    // explicava o "só alguns processos não excluem" — na prática, qualquer
+    // processo já usado de verdade. Agora apaga os dependentes primeiro
+    // (arquivos GED também do Storage, não só a linha da tabela).
+    const { data: arquivos } = await sb().from('controle_arquivos').select('storage_path').eq('processo_id', id);
+    const paths = (arquivos || []).map(a => a.storage_path).filter(Boolean);
+    if (paths.length) {
+      try { await sb().storage.from(GED_BUCKET).remove(paths); }
+      catch (e) { console.warn('excluir processo: falha ao limpar Storage GED:', e.message); }
+    }
+    await sb().from('controle_arquivos').delete().eq('processo_id', id);
+    await sb().from('controle_notificacoes').delete().eq('processo_id', id);
+    await sb().from('controle_log').delete().eq('processo_id', id);
+
+    const { error } = await sb().from('controle_processos').delete().eq('id', id);
     if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch (e) {
+    console.error('controle/v2/processo DELETE erro:', e.message);
     res.status(500).json({ erro: e.message });
   }
 });
