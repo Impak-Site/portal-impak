@@ -462,6 +462,11 @@ async function excluirProcesso(id){
   const r = await fetch('/api/controle/v2/processo/'+id, {method:'DELETE'});
   const d = await r.json();
   if(d.ok){ showToast('Processo excluído','ok'); fecharModal(); carregarProcessos(true); }
+  // Mostra o erro real do servidor em vez de um "Erro ao excluir" genérico
+  // — antes disso ficava impossível saber, sem abrir o console, por que
+  // um processo específico não excluía (ex: violação de foreign key).
+  else showToast('Erro ao excluir'+(d.erro?': '+d.erro:''),'err');
+}
   else showToast('Erro ao excluir','err');
 }
 
