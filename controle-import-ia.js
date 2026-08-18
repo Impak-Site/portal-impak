@@ -778,11 +778,26 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // tiver preenchido manualmente — exceto quando vem de BL/DI, que é mais
     // confiável e pode corrigir um container errado de um documento anterior.
     if(extracted.container){
-      const primeiroVazio = !_containers.length || (!_containers[0].numero);
-      if(primeiroVazio || ehBlOuDi || foiPreenchidoPorIA('container')){
-        if(!_containers.length) _containers.push({numero:'', tipo:'40HC', lacre:''});
-        _containers[0].numero = extracted.container;
-        if(extracted.lacre) _containers[0].lacre = extracted.lacre;
+      const numNovo = String(extracted.container).trim().toUpperCase();
+      const idxExistente = _containers.findIndex(c => c.numero && c.numero.trim().toUpperCase() === numNovo);
+      if(idxExistente !== -1){
+        // Mesmo container já estava na lista (re-leitura do mesmo documento, ou
+        // outro documento confirmando o mesmo container) — só completa o lacre.
+        if(extracted.lacre && !_containers[idxExistente].lacre) _containers[idxExistente].lacre = extracted.lacre;
+        renderMultiContainers();
+        preenchidos++; marcarComoIA('container');
+      } else {
+        const primeiroVazio = !_containers.length || (!_containers[0].numero);
+        if(primeiroVazio){
+          if(!_containers.length) _containers.push({numero:'', tipo:'40HC', lacre:''});
+          _containers[0].numero = extracted.container;
+          if(extracted.lacre) _containers[0].lacre = extracted.lacre;
+        } else {
+          // Já existe container diferente cadastrado — em processo multi-container,
+          // cada documento novo pode revelar um container adicional. Adiciona em vez
+          // de sobrescrever (evita perder containers já extraídos de outros documentos).
+          _containers.push({numero: extracted.container, tipo:'40HC', lacre: extracted.lacre || ''});
+        }
         renderMultiContainers();
         preenchidos++; marcarComoIA('container');
       }
