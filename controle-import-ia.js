@@ -429,8 +429,7 @@ async function extrairComIA_umArquivo(input){
   "porto_destino": "",  // extrair de: POD, Port of Discharge, Port of Destination, Discharge Port. PRIORIDADE DE FONTE: o BL e a DI/Extrato da DI são mais confiáveis que o Sales Contract — o Sales Contract é só a intenção comercial registrada antes do embarque e pode estar desatualizado (ex: prevê "Itajai" mas a carga acabou desembarcando em "Itapoa"). Se o documento atual for um BL ou DI/Extrato da DI, o porto_destino dele deve SOBRESCREVER um valor que tenha vindo de um Sales Contract.
   "hbl": "",
   "mbl": "",
-  "container": "",  // número do container (ex: TCKU7973104)
-  "lacre": "",  // número do lacre/selo do container (ex: 22992857) — geralmente aparece junto ao número do container no BL/CE Mercante
+  "containers": [],  // ARRAY com TODOS os containers do documento — um item por container: {"numero":"TCKU7973104","lacre":"2299285"}. IMPORTANTE: BL e CE Mercante frequentemente listam 2 OU MAIS containers na mesma tabela (ex: "3X40HQ CONTAINER FCL/FCL" com 3 linhas de número+lacre). Inclua UM item no array PARA CADA linha de container encontrada — nunca junte vários números numa única string separada por vírgula. Mesmo se houver só 1 container no documento, retorne um array com 1 item.
   "valor_frete": 0,  // valor do frete marítimo — extrair de: BL (campo "Freight", "Ocean Freight", "Freight Charges", geralmente no rodapé/seção de charges do BL — usar o valor "Prepaid" OU "Collect", o que estiver preenchido com valor) ou CE Mercante (campo "Frete"). Se não encontrar um valor de frete explícito no documento, deixar 0.
   "moeda_frete": "",  // moeda em que o valor_frete veio no documento: "USD", "BRL" ou "EUR". Deixar "" se valor_frete for 0.
   "numero_di": "",  // número da Declaração de Importação — ex: "26/0672265-4"
@@ -457,7 +456,7 @@ async function extrairComIA_umArquivo(input){
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
-- extrair "container" do campo "Container No.".
+- extrair um item no array "containers" com o número do campo "Container No." (RIC costuma ter 1 container por documento, mas se listar mais de um, inclua um item por container).
 - data_devolucao_vazio vem do campo "Gate In Date/Time" — esta é a data e hora em que o container vazio deu entrada no depósito, ou seja, a devolução física de fato. O formato no documento costuma ser "YYYY/MM/DD HH:MM" (ex: "2026/05/30 10:54") — converta apenas a parte da data para "YYYY-MM-DD" (ex: "2026-05-30"), descartando a hora.
 - se o campo "Gate In Date/Time" estiver vazio mas "Gate Out Date/Time" estiver preenchido, este documento é de SAÍDA do container vazio do depósito (não de devolução) — não preencher data_devolucao_vazio neste caso.
 Se o documento for um Comprovante de Importação ou Extrato da Declaração de Importação (DI), emitidos pela Receita Federal:
@@ -777,30 +776,42 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // (1 container sem número), para não sobrescrever o que o usuário já
     // tiver preenchido manualmente — exceto quando vem de BL/DI, que é mais
     // confiável e pode corrigir um container errado de um documento anterior.
-    if(extracted.container){
-      const numNovo = String(extracted.container).trim().toUpperCase();
-      const idxExistente = _containers.findIndex(c => c.numero && c.numero.trim().toUpperCase() === numNovo);
-      if(idxExistente !== -1){
-        // Mesmo container já estava na lista (re-leitura do mesmo documento, ou
-        // outro documento confirmando o mesmo container) — só completa o lacre.
-        if(extracted.lacre && !_containers[idxExistente].lacre) _containers[idxExistente].lacre = extracted.lacre;
-        renderMultiContainers();
-        preenchidos++; marcarComoIA('container');
-      } else {
-        const primeiroVazio = !_containers.length || (!_containers[0].numero);
-        if(primeiroVazio){
-          if(!_containers.length) _containers.push({numero:'', tipo:'40HC', lacre:''});
-          _containers[0].numero = extracted.container;
-          if(extracted.lacre) _containers[0].lacre = extracted.lacre;
+    let listaContainersExtraidos = [];
+    if(Array.isArray(extracted.containers) && extracted.containers.length){
+      listaContainersExtraidos = extracted.containers
+        .filter(x => x && x.numero)
+        .map(x => ({numero: String(x.numero).trim(), lacre: x.lacre ? String(x.lacre).trim() : ''}));
+    } else if(extracted.container){
+      // Fallback defensivo pro formato antigo (string única) — caso a IA ainda devolva
+      // vários números concatenados numa string só (ex: documento com 2+ containers).
+      const numsPart = String(extracted.container).split(/[,;\/]+/).map(s => s.trim()).filter(Boolean);
+      const lacresPart = extracted.lacre ? String(extracted.lacre).split(/[,;\/]+/).map(s => s.trim()).filter(Boolean) : [];
+      listaContainersExtraidos = numsPart.map((numero, i) => ({numero, lacre: lacresPart[i] || ''}));
+    }
+    if(listaContainersExtraidos.length){
+      listaContainersExtraidos.forEach(item => {
+        const numNovo = item.numero.toUpperCase();
+        const idxExistente = _containers.findIndex(c => c.numero && c.numero.trim().toUpperCase() === numNovo);
+        if(idxExistente !== -1){
+          // Mesmo container já estava na lista (re-leitura do mesmo documento, ou
+          // outro documento confirmando o mesmo container) — só completa o lacre.
+          if(item.lacre && !_containers[idxExistente].lacre) _containers[idxExistente].lacre = item.lacre;
         } else {
-          // Já existe container diferente cadastrado — em processo multi-container,
-          // cada documento novo pode revelar um container adicional. Adiciona em vez
-          // de sobrescrever (evita perder containers já extraídos de outros documentos).
-          _containers.push({numero: extracted.container, tipo:'40HC', lacre: extracted.lacre || ''});
+          const primeiroVazio = !_containers.length || (!_containers[0].numero);
+          if(primeiroVazio){
+            if(!_containers.length) _containers.push({numero:'', tipo:'40HC', lacre:''});
+            _containers[0].numero = item.numero;
+            if(item.lacre) _containers[0].lacre = item.lacre;
+          } else {
+            // Já existe container diferente cadastrado — em processo multi-container,
+            // cada documento novo (ou cada linha da tabela do mesmo documento) pode
+            // revelar um container adicional. Adiciona em vez de sobrescrever.
+            _containers.push({numero: item.numero, tipo:'40HC', lacre: item.lacre || ''});
+          }
         }
-        renderMultiContainers();
-        preenchidos++; marcarComoIA('container');
-      }
+      });
+      renderMultiContainers();
+      preenchidos++; marcarComoIA('container');
     }
 
     if(status) status.textContent = abriuModalCambio
