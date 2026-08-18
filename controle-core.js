@@ -688,30 +688,36 @@ function renderDemurInfo(p){
 // unidade:'BRL' em todos ÃÂ¢ÃÂÃÂ os valores que chegam em custos_cotados_json jÃÂÃÂ¡
 // vÃÂÃÂªm convertidos pelo cÃÂÃÂ¢mbio correto de cada item, nÃÂÃÂ£o mais em dÃÂÃÂ³lar puro.
 const CUSTOS_REAIS_CONFIG = [
-  { grupo:'Compra e Frete', itens:[
+  { grupo:'Compra e Frete', slug:'compra', itens:[
     { id:'fob',      label:'Custo da mercadoria', unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.fob },
     { id:'frete',    label:'Frete Internacional',  unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.frete },
     { id:'seguro',   label:'Seguro',               unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.seguro_usd },
-    { id:'taxa_ce',  label:'Taxa C.E.',            unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.taxa_ce },
+    // Taxa C.E. (CE Mercante): nao e custo nem lucro, e so um valor que
+    // entra na BASE de calculo dos impostos de importacao quando o frete
+    // declarado no CE Mercante fica acima do informado. A Impak nao paga
+    // essa taxa a ninguem, entao ela fica de fora do Custo do Processo e
+    // do totalizador por etapa (ver excluirDosTotais em
+    // calcularCustoRealTotal/calcularReceitaRealTotal/calcularTotalizadorPorGrupo).
+    { id:'taxa_ce',  label:'Taxa C.E. (CE Mercante)', unidade:'BRL', unidadeLegado:'USD', excluirDosTotais:true, cotado:c=>c?.compra?.taxa_ce },
   ]},
   // apenasPago:true = imposto nÃÂÃÂ£o tem "compra ÃÂÃÂ venda" ÃÂ¢ÃÂÃÂ ÃÂÃÂ© sÃÂÃÂ³ um valor a
   // pagar pro governo, sempre em R$, sem contrapartida cobrada do cliente
   // (diferente das taxas operacionais, que podem ter margem). A aba mostra
   // sÃÂÃÂ³ um campo "Valor a pagar", sem Cobrado/Margem nem seletor de moeda.
-  { grupo:'Impostos de Importação', itens:[
+  { grupo:'Impostos de Importação', slug:'impostos', itens:[
     { id:'ii',     label:'II',     unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ii },
-    { id:'ipi',    label:'IPI',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ipi },
-    { id:'pis',    label:'PIS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.pis },
-    { id:'cofins', label:'COFINS', unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.cofins },
-    { id:'icms',   label:'ICMS',   unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.icms },
-    { id:'ibs',    label:'IBS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ibs },
-    { id:'cbs',    label:'CBS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.cbs },
+    { id:'ipi',    label:'IPI',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.ipi },
+    { id:'pis',    label:'PIS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.pis },
+    { id:'cofins', label:'COFINS', unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.cofins },
+    { id:'icms',   label:'ICMS',   unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.icms },
+    { id:'ibs',    label:'IBS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.ibs },
+    { id:'cbs',    label:'CBS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.cbs },
     // Antidumping: direito antidumping (encargo governamental cobrado quando o
     // toggle "dump" estÃÂÃÂ¡ SIM no Calculador) ÃÂ¢ÃÂÃÂ igual aos demais impostos, sem
     // compraÃÂÃÂvenda, sÃÂÃÂ³ existe quando a cotaÃÂÃÂ§ÃÂÃÂ£o de origem teve o toggle ativo.
     { id:'antidumping', label:'Antidumping', unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.antidumping },
   ]},
-  { grupo:'Comissões', itens:[
+  { grupo:'Comissões', slug:'comissoes', itens:[
     { id:'comissao_br',    label:'Comissão BR (Representante)', unidade:'BRL', cotado:c=>c?.comissoes?.br },
     { id:'comissao_china', label:'Comissão China',              unidade:'BRL', cotado:c=>c?.comissoes?.china },
     { id:'comissao_boss',  label:'Comissão Boss/Lopes',         unidade:'BRL', cotado:c=>c?.comissoes?.boss },
@@ -720,7 +726,7 @@ const CUSTOS_REAIS_CONFIG = [
   // usado sÃÂÃÂ³ pra multiplicar corretamente ao calcular o "Cotado" total abaixo
   // (calcularCustoCotadoItem). Os valores REAIS lanÃÂÃÂ§ados na aba sÃÂÃÂ£o sempre o
   // TOTAL do item pro processo inteiro ÃÂ¢ÃÂÃÂ o usuÃÂÃÂ¡rio nÃÂÃÂ£o precisa multiplicar.
-  { grupo:'Taxas Operacionais', itens:[
+  { grupo:'Taxas Operacionais', slug:'taxas', itens:[
     { id:'siscomex',         label:'Siscomex',                unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.siscomex },
     { id:'marinha',          label:'Marinha/AFRMM',           unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.marinha },
     { id:'armazenagem',      label:'Armazenagem',             unidade:'BRL', porContainer:false, cotado:c=>c?.taxas_fixas?.armazenagem },
@@ -748,6 +754,14 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'isps',             label:'ISPS',                    unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.isps },
     { id:'iof',              label:'IOF',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.iof },
     { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.desconsolidacao },
+    // ICMS de Saida (ICMS Proprio, 1,4%): calculado sobre o Valor Total dos
+    // Produtos da NF de Entrada, lancado na NF de Saida ao cliente. E custo
+    // real (Pago = o que foi recolhido) mas tambem e cobrado do cliente
+    // igual ou a maior, entao gera margem como as demais Taxas Operacionais
+    // (nao tem apenasPago nem temCredito - e diferente do ICMS pago na
+    // importacao, que fica no grupo Impostos de Importacao acima e tem
+    // credito).
+    { id:'icms_saida', label:'ICMS de Saída (1,4% s/ Produtos)', unidade:'BRL', porContainer:false, cotado:c=>null },
   ]},
 ];
 
@@ -889,11 +903,16 @@ function calcularCustoRealTotal(p){
   custosReaisItensFlat().forEach(item => {
     const norm = normalizarValorRealItem(reais[item.id], item, p);
     if(!norm) return;
-    total += norm.totalBrl;
-    count++;
-    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valorBrl:norm.totalBrl, porContainer:!!norm.porContainer });
+    // excluirDosTotais (Taxa C.E./CE Mercante) e temCredito (IPI/PIS/COFINS/
+    // ICMS/IBS/CBS pagos na entrada, recuperaveis) ficam FORA do Custo do
+    // Processo - continuam lancados/visiveis na aba, so nao entram na soma
+    // (a pedido do usuario: "Custo do processo tem que ser todo o custo,
+    // exceto o que tem de credito de imposto").
+    const excluido = !!(item.excluirDosTotais || item.temCredito);
+    if(!excluido){ total += norm.totalBrl; count++; }
+    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valorBrl:norm.totalBrl, porContainer:!!norm.porContainer, excluidoDoTotal:excluido });
   });
-  if(count === 0) return null;
+  if(detalhe.length === 0) return null;
   return { total, detalhe, cambio, count };
 }
 
@@ -912,12 +931,49 @@ function calcularReceitaRealTotal(p){
   custosReaisItensFlat().forEach(item => {
     const norm = normalizarValorRealItem(reais[item.id+'_cobrado'], item, p);
     if(!norm) return;
-    total += norm.totalBrl;
-    count++;
-    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valorBrl:norm.totalBrl, porContainer:!!norm.porContainer });
+    const excluido = !!item.excluirDosTotais; // Taxa C.E./CE Mercante - nem custo nem receita
+    if(!excluido){ total += norm.totalBrl; count++; }
+    detalhe.push({ id:item.id, label:item.label, grupo:item.grupo, unidade:item.unidade, valorBrl:norm.totalBrl, porContainer:!!norm.porContainer, excluidoDoTotal:excluido });
   });
-  if(count === 0) return null;
+  if(detalhe.length === 0) return null;
   return { total, detalhe, cambio, count };
+}
+
+// Totalizador por etapa (Pago/Cobrado/Margem), agrupado igual a aba Custos
+// Reais e a planilha de fechamento (MODELO COM S.T) - mostra rapido quanto
+// saiu/entrou em cada bloco (Compra e Frete, Impostos, Comissoes, Taxas)
+// sem precisar somar item a item na mao. Aceita tanto p.real_json salvo
+// quanto um snapshot provisorio (mesmo objeto usado por
+// atualizarTotalCustosReais em controle-modal.js, pra recalcular ao vivo
+// enquanto o usuario digita). Em "Impostos de Importacao" o total de Pago
+// conta so os itens SEM credito (II e Antidumping) - ver temCredito no
+// CUSTOS_REAIS_CONFIG; os demais (IPI, PIS, COFINS, ICMS, IBS, CBS) tem
+// credito tributario recuperavel, entao ficam fora daqui tambem (mesma
+// regra do Custo do Processo, calcularCustoRealTotal). Taxa C.E./CE
+// Mercante (excluirDosTotais) tambem fica de fora - nao e custo nem
+// receita, so referencia pra base de calculo do imposto.
+function calcularTotalizadorPorGrupo(p){
+  const reais = p.real_json;
+  if(!reais || typeof reais !== 'object') return null;
+  return CUSTOS_REAIS_CONFIG.map(g => {
+    let totalPago = 0, totalCobrado = 0, temPago = false, temCobrado = false;
+    const apenasPago = g.itens.every(it => it.apenasPago);
+    g.itens.forEach(item => {
+      if(item.excluirDosTotais || item.temCredito) return;
+      const normPago = normalizarValorRealItem(reais[item.id], item, p);
+      if(normPago){ totalPago += normPago.totalBrl; temPago = true; }
+      if(!item.apenasPago){
+        const normCobrado = normalizarValorRealItem(reais[item.id+'_cobrado'], item, p);
+        if(normCobrado){ totalCobrado += normCobrado.totalBrl; temCobrado = true; }
+      }
+    });
+    return {
+      grupo: g.grupo, slug: g.slug,
+      totalPago, totalCobrado,
+      margem: (!apenasPago && temCobrado) ? (totalCobrado - totalPago) : null,
+      temPago, temCobrado, apenasPago,
+    };
+  });
 }
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ VENDAS MULTI-CLIENTE (rateio de custo) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
