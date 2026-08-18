@@ -712,6 +712,7 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
   // Conexos, que deixa pagar num moeda e receber em outra. E taxas marcadas
   // como porContainer podem ser detalhadas container a container quando o
   // processo tem mais de um (link "ÃÂ°ÃÂÃÂÃÂ¦ Detalhar por container").
+  const totalizadorGrupos = calcularTotalizadorPorGrupo(p) || [];
   const gruposHtml = CUSTOS_REAIS_CONFIG.map(g => {
     const linhasHtml = g.itens.map(item => {
       const valorCotado = calcularCustoCotadoItem(item, cotado);
@@ -793,6 +794,22 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
         </td>
       </tr>` : ''}`;
     }).join('');
+    // Totalizador da etapa - soma Pago/Cobrado/Margem de todos os itens do
+    // grupo (ver calcularTotalizadorPorGrupo em controle-core.js). Em
+    // "Impostos de Importacao" mostra so o custo real (II + Antidumping,
+    // sem os impostos com credito) ja que esse grupo nao tem Cobrado.
+    const totG = totalizadorGrupos.find(t => t.slug === g.slug);
+    const r2g = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const subtotalHtml = totG ? (totG.apenasPago
+      ? `<div id="cr_grupo_total_${g.slug}" style="display:flex;justify-content:flex-end;padding:6px 2px 0;font-size:11px;color:var(--muted);">
+          <span>Total ${g.grupo} (custo real - so itens sem credito): <strong style="color:var(--text);">${r2g(totG.totalPago)}</strong></span>
+        </div>`
+      : `<div id="cr_grupo_total_${g.slug}" style="display:flex;justify-content:flex-end;gap:18px;padding:6px 2px 0;font-size:11px;color:var(--muted);flex-wrap:wrap;">
+          <span>Total Pago: <strong style="color:var(--text);">${r2g(totG.totalPago)}</strong></span>
+          <span>Total Cobrado: <strong style="color:var(--text);">${r2g(totG.totalCobrado)}</strong></span>
+          <span>Margem: <strong style="color:${(totG.margem||0)>=0?'var(--ok)':'var(--err)'};">${r2g(totG.margem||0)}</strong></span>
+        </div>`
+    ) : '';
     return `<div style="margin-bottom:22px;">
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">${g.grupo}</div>
       <table style="width:100%;border-collapse:collapse;">
@@ -806,6 +823,7 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
         </thead>
         <tbody>${linhasHtml}</tbody>
       </table>
+      ${subtotalHtml}
     </div>`;
   }).join('');
 
@@ -931,6 +949,19 @@ function atualizarTotalCustosReais(){
     if(!normPago || !normCobrado){ badge.innerHTML = ''; return; }
     const margem = normCobrado.totalBrl - normPago.totalBrl;
     badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'▲':'▼'} margem: R$ ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+  });
+
+  // Totalizador por etapa (Pago/Cobrado/Margem) ao vivo - mesmo calculo do
+  // render inicial (ver calcularTotalizadorPorGrupo em controle-core.js),
+  // recalculado a cada tecla igual a margem por linha acima.
+  (calcularTotalizadorPorGrupo(snapshot) || []).forEach(totG => {
+    const el = document.getElementById('cr_grupo_total_'+totG.slug);
+    if(!el) return;
+    el.innerHTML = totG.apenasPago
+      ? `<span>Total ${totG.grupo} (custo real - so itens sem credito): <strong style="color:var(--text);">${r2(totG.totalPago)}</strong></span>`
+      : `<span>Total Pago: <strong style="color:var(--text);">${r2(totG.totalPago)}</strong></span>
+         <span>Total Cobrado: <strong style="color:var(--text);">${r2(totG.totalCobrado)}</strong></span>
+         <span>Margem: <strong style="color:${(totG.margem||0)>=0?'var(--ok)':'var(--err)'};">${r2(totG.margem||0)}</strong></span>`;
   });
 
   const custosReais = calcularCustoRealTotal(snapshot);
