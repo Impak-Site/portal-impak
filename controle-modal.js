@@ -10,6 +10,21 @@
 // <script>. controle-core.js precisa carregar ANTES dos demais (ÃÂÃÂ©
 // quem declara o estado global: _processos, _user, FASES etc.).
 //
+// Whitelist de armadores (ocean carriers) conhecidos, para alertar quando o campo Armador
+// vier preenchido com o nome do emissor de um House B/L (agente de carga/NVOCC) em vez do
+// armador real. Não bloqueia o salvamento, é só um aviso visual (ver #407/#408).
+const ARMADORES_CONHECIDOS = ['MSC','CMA CGM','CMA-CGM','COSCO','MAERSK','HAPAG-LLOYD','HAPAG LLOYD','ONE','OCEAN NETWORK EXPRESS','EVERGREEN','YANG MING','PIL','PACIFIC INTERNATIONAL LINES','ZIM','HMM','WAN HAI','OOCL','APL','ANL','SITC','KMTC','TS LINES','IRIS LINES'];
+function armadorReconhecido(valor){
+  if(!valor || !valor.trim()) return true; // campo vazio não gera aviso
+  const v = valor.toUpperCase();
+  return ARMADORES_CONHECIDOS.some(a => v.includes(a));
+}
+function verificarArmadorConhecido(el){
+  const warn = document.getElementById('f_armador_warn');
+  if(!warn) return;
+  warn.style.display = armadorReconhecido(el.value) ? 'none' : 'inline';
+}
+
 function abrirNovo(){
   // _camposIA rastreia, NESTA sessÃÂÃÂ£o de ediÃÂÃÂ§ÃÂÃÂ£o, quais campos foram preenchidos
   // pela ÃÂÃÂºltima leitura de IA (nÃÂÃÂ£o pelo usuÃÂÃÂ¡rio digitando) ÃÂ¢ÃÂÃÂ usado por
@@ -392,9 +407,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Nº Booking</label>
             <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group" style="position:relative"><label class="form-label">Armador</label>
+          <div class="form-group" style="position:relative"><label class="form-label">Armador <span id="f_armador_warn" style="display:${armadorReconhecido(p.armador)?'none':'inline'};color:#f39c12;font-weight:600;font-size:11px;" title="Armador não reconhecido — confira se não é o emissor do House B/L (agente de carga); o armador real (ocean carrier) deve vir do Master B/L">⚠ verificar</span></label>
             <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC" autocomplete="off"
-              oninput="autocompletarContato(this,'ARMADOR','armador-dropdown')">
+              oninput="autocompletarContato(this,'ARMADOR','armador-dropdown');verificarArmadorConhecido(this)">
             <div id="armador-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Agente de Carga</label>
