@@ -442,8 +442,7 @@ function renderVendas(){
   wrap.innerHTML = _vendas.map((v,vi)=>{
     const itensHtml = (v.itens||[]).map((it,ii)=>`
       <div style="display:grid;grid-template-columns:1fr 110px 32px;gap:6px;align-items:center;margin-bottom:6px;">
-        <input class="form-input" placeholder="Descrição do item vendido" value="${esc(it.descricao||'')}"
-          oninput="_vendas[${vi}].itens[${ii}].descricao=this.value;sincronizarVendasLegado()">
+        ${campoDescricaoItemVenda(vi, ii, it)}
         <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
           oninput="_vendas[${vi}].itens[${ii}].quantidade=this.value;sincronizarVendasLegado();renderResumoVendas()">
         ${(v.itens.length>1) ? `<button type="button" onclick="removerItemVenda(${vi},${ii})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>` : '<div></div>'}
@@ -512,6 +511,45 @@ function removerVenda(vi){
   renderVendas();
 }
 
+function produtosDoMixVenda(){
+  if(!_editando || !_editando.produtos_json) return [];
+  try{
+    const arr = JSON.parse(_editando.produtos_json);
+    if(!Array.isArray(arr)) return [];
+    const seen = {}; const out = [];
+    arr.forEach(function(it){
+      if(!it || !it.descricao) return;
+      const k = String(it.descricao).trim().toUpperCase().replace(/\s+/g,' ');
+      if(!k || seen[k]) return;
+      seen[k] = true;
+      out.push(it.descricao);
+    });
+    return out;
+  }catch(e){ return []; }
+}
+
+function campoDescricaoItemVenda(vi, ii, it){
+  const produtos = produtosDoMixVenda();
+  const norm = function(s){ return String(s||'').trim().toUpperCase().replace(/\s+/g,' '); };
+  const normAtual = norm(it.descricao);
+  const existeNoMix = produtos.some(function(p){ return norm(p) === normAtual; });
+  const manual = it._manual || (!!it.descricao && !existeNoMix) || !produtos.length;
+  if(manual){
+    return '<div style="display:flex;gap:4px;align-items:center;">'
+      + '<input class="form-input" placeholder="Descri\u00e7\u00e3o do item vendido" value="' + esc(it.descricao||'') + '"'
+      + ' oninput="_vendas[' + vi + '].itens[' + ii + '].descricao=this.value;sincronizarVendasLegado()" style="flex:1;">'
+      + (produtos.length ? ('<button type="button" title="Escolher da lista de produtos" onclick="_vendas[' + vi + '].itens[' + ii + ']._manual=false;renderVendas()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:14px;padding:0 4px;">\uD83D\uDCCB</button>') : '')
+      + '</div>';
+  }
+  const options = produtos.map(function(p){
+    return '<option value="' + esc(p) + '"' + (norm(p)===normAtual ? ' selected' : '') + '>' + esc(p) + '</option>';
+  }).join('');
+  return '<select class="form-input" style="flex:1;" onchange="if(this.value===\'__outro__\'){_vendas[' + vi + '].itens[' + ii + ']._manual=true;_vendas[' + vi + '].itens[' + ii + '].descricao=\'\';}else{_vendas[' + vi + '].itens[' + ii + '].descricao=this.value;}sincronizarVendasLegado();renderVendas()">'
+    + '<option value="">Selecione um produto...</option>'
+    + options
+    + '<option value="__outro__">Outro (digitar manualmente)</option>'
+    + '</select>';
+}
 function adicionarItemVenda(vi){
   _vendas[vi].itens.push({descricao:'', quantidade:''});
   renderVendas();
