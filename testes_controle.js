@@ -664,6 +664,46 @@ teste('renderFechamentoInfo() com resultado melhor que o estimado mostra "a mais
 
 console.log('=== calcularCustoRealTotal() e calcularFechamento() com Custos Reais lancados ==='); teste('calcularCustoRealTotal: sem real_json retorna null', () => { verdadeiro(sandbox.calcularCustoRealTotal({}) === null); }); teste('calcularCustoRealTotal: item legado em USD converte pelo câmbio da PI (sem real_cambio)', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { fob: 10000 }, pi_cambio: 5.0 }); verdadeiro(r !== null); iguais(r.count, 1); aproxIgual(r.total, 50000, 0.01); }); teste('calcularCustoRealTotal: real_cambio tem prioridade sobre pi_cambio', () => { const r = sandbox.calcularCustoRealTotal({ real_json:{fob:1000}, pi_cambio:5.0, real_cambio:5.5 }); aproxIgual(r.total, 5500, 0.01); }); teste('calcularCustoRealTotal: item BRL (ex. imposto II) soma direto sem conversão de câmbio', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { ii: 8000 } }); iguais(r.total, 8000); }); teste('calcularCustoRealTotal: soma múltiplos itens de grupos diferentes (USD convertido + BRL direto)', () => { const r = sandbox.calcularCustoRealTotal({ real_json:{ fob:1000, frete:200, ii:500 }, real_cambio:5 }); iguais(r.count, 3); aproxIgual(r.total, 6500, 0.01); }); teste('calcularCustoRealTotal: formato valor/moeda converte na moeda escolhida, não na padrão do item', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { comissao_br: { valor: 100, moeda: 'USD' } }, real_cambio: 5 }); aproxIgual(r.total, 500, 0.01); }); teste('calcularCustoRealTotal: item detalhado por container soma cada container (moedas podem diferir)', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { siscomex: { porContainer: { CONT1:{valor:100,moeda:'BRL'}, CONT2:{valor:50,moeda:'USD'} } } }, real_cambio: 5 }); aproxIgual(r.total, 350, 0.01); verdadeiro(r.detalhe[0].porContainer === true); }); teste('calcularCustoRealTotal: itens vazios/nulos são ignorados, não zeram o total', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { fob:'', frete:null, ii:300 } }); iguais(r.count, 1); iguais(r.total, 300); }); teste('calcularFechamento: com Custos Reais lançados, usa Custo Real Total em vez de NF Entrada (mais preciso)', () => { const f = sandbox.calcularFechamento({ nf_saida_valor:100000, nf_entrada_valor:60000, real_json:{ fob:5000, ii:10000 }, real_cambio:5 }); verdadeiro(f.custosReais !== null, 'deveria ter custosReais calculado'); iguais(f.custoRealTotal, 35000); iguais(f.lucroReal, 65000, 'lucro real deveria usar Custo Real Total, nao NF Entrada'); }); teste('calcularFechamento: sem nenhum item em Custos Reais, custosReais fica null e usa cálculo antigo', () => { const f = sandbox.calcularFechamento({ nf_saida_valor: 50000, nf_entrada_valor: 30000 }); verdadeiro(f.custosReais === null); iguais(f.lucroReal, 20000); }); teste('calcularFechamento: margemTaxas calcula Cobrado menos Pago quando o campo cobrado também foi lançado', () => { const f = sandbox.calcularFechamento({ real_json: { siscomex: 1000, siscomex_cobrado: 1500 } }); verdadeiro(f.margemTaxas !== null); iguais(f.margemTaxas.custoTotal, 1000); iguais(f.margemTaxas.receitaTotal, 1500); iguais(f.margemTaxas.total, 500); }); teste('renderFechamentoInfo com Custos Reais lançados menciona Custo Real Total e a contagem de itens', () => { const p = { nf_saida_valor: 100000, real_json: { fob: 5000, ii:10000 }, real_cambio: 5 }; const html = sandbox.renderFechamentoInfo(p); verdadeiro(html.includes('Custo Real Total'), 'deveria mostrar a linha de Custo Real Total detalhado'); verdadeiro(html.includes('2 itens lançados'), 'deveria indicar quantos itens foram lançados na aba Custos Reais'); });
 
+console.log('\n🧾 calcularNotasBoss() / calcularFechamento() com Notas Fiscais BOSS (sub-livro G46-G56 da planilha)');
+teste('calcularNotasBoss: sem real_json retorna null', () => { verdadeiro(sandbox.calcularNotasBoss({}) === null); });
+teste('calcularNotasBoss: notas_boss_valor ausente/zero retorna null (nao ha nota Boss)', () => { verdadeiro(sandbox.calcularNotasBoss({ real_json:{} }) === null); verdadeiro(sandbox.calcularNotasBoss({ real_json:{ notas_boss_valor: 0 } }) === null); });
+teste('calcularNotasBoss: cascata de impostos bate exatamente com a formula da planilha (Boss=100000)', () => {
+  const nb = sandbox.calcularNotasBoss({ real_json: { notas_boss_valor: 100000 } });
+  verdadeiro(nb !== null);
+  iguais(nb.irRetido, 1500); iguais(nb.iss, 2500); iguais(nb.pis, 650); iguais(nb.cofins, 3000);
+  iguais(nb.baseImpostosLopes, 32000); iguais(nb.irpj, 6500); iguais(nb.csll, 2880);
+  aproxIgual(nb.ibs, 100, 0.001); aproxIgual(nb.cbs, 900, 0.001);
+  iguais(nb.totalReceber, 82970, 'Total a Receber = valorBoss - ISS - PIS - COFINS - IRPJ - CSLL - IR (IBS/CBS ficam de fora, igual G56 da planilha)');
+});
+teste('calcularFechamento: com Notas Boss, soma o Total a Receber ao Lucro Real (G58 = G44 + G56)', () => {
+  const f = sandbox.calcularFechamento({ nf_saida_valor: 200000, real_json: { fob: 100000, notas_boss_valor: 100000 }, real_cambio: 1 });
+  iguais(f.lucroReal, 182970, 'lucroReal deveria ser (200000-100000) + 82970 de Total a Receber da nota Boss');
+  aproxIgual(f.pctLucroReal, 182970/300000, 0.0001, 'percentual deveria usar NF Saida + valor Boss no denominador (igual H58=G58/(G15+G46))');
+  verdadeiro(f.notasBoss !== null);
+});
+teste('calcularFechamento: sem Notas Boss lancada, lucroReal fica 100% inalterado (regressao)', () => {
+  const f = sandbox.calcularFechamento({ nf_saida_valor: 200000, real_json: { fob: 100000 }, real_cambio: 1 });
+  iguais(f.lucroReal, 100000);
+  verdadeiro(f.notasBoss === null);
+});
+teste('calcularFechamento: Notas Boss tambem soma quando o processo usa Vendas multi-cliente (rateio)', () => {
+  const p = {
+    real_json: { fob: 40000, notas_boss_valor: 100000 },
+    real_cambio: 1,
+    vendas_json: JSON.stringify([{ cliente:'A', nf_saida_valor:120000, itens:[{descricao:'pneu', quantidade:10}], custos_diretos:[] }]),
+    produtos_json: JSON.stringify([{ descricao:'pneu', quantidade:10 }]),
+  };
+  const f = sandbox.calcularFechamento(p);
+  verdadeiro(f.vendasResumo !== null, 'deveria ter entrado no ramo de vendas multi-cliente');
+  iguais(f.lucroReal, (120000-40000)+82970, 'Boss deveria somar em cima do lucro ja calculado por vendas_json');
+});
+teste('renderFechamentoInfo com Notas Boss lançada mostra o detalhamento e o rótulo "+ Notas Boss"', () => {
+  const p = { nf_saida_valor: 200000, real_json: { fob: 100000, notas_boss_valor: 100000 } };
+  const html = sandbox.renderFechamentoInfo(p);
+  verdadeiro(html.includes('Notas Fiscais BOSS'), 'deveria mostrar o bloco de detalhamento da nota Boss');
+  verdadeiro(html.includes('+ Notas Boss'), 'deveria indicar no rótulo do Lucro Real que o valor já inclui a nota Boss');
+});
+
 // ── 12. TESTES: Vendas multi-cliente (rateio de custo) ──────────────
 // calcularRateioVenda / calcularVendasResumo / calcularFechamento com
 // vendas_json preenchido — ver controle-core.js. Sem nenhuma venda
