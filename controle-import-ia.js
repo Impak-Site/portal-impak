@@ -382,7 +382,7 @@ async function importarFechamentoProcesso(input){
 // ════════════════════════════════════════════════════════════════
 // EXTRAÇÃO COM IA
 // ════════════════════════════════════════════════════════════════
-async function extrairComIA(input){
+async function extrairComIA_umArquivo(input){
   const file = input.files[0];
   if(!file) return;
   input.value='';
@@ -922,3 +922,49 @@ function inlineEditFase(id, el){
 // ════════════════════════════════════════════════════════════════
 // DASHBOARD EXECUTIVO
 // ════════════════════════════════════════════════════════════════
+
+
+// Fila de processamento: processa varios arquivos, um de cada vez, reaproveitando extrairComIA_umArquivo
+async function processarFilaIA(arquivos){
+  for(const arquivo of arquivos){
+    try{
+      await extrairComIA_umArquivo({ files: [arquivo], set value(v){} });
+    }catch(e){
+      console.error('Erro ao processar arquivo via IA:', arquivo && arquivo.name, e);
+    }
+  }
+}
+
+// Ponto de entrada publico (mantem o nome extrairComIA para compatibilidade com onchange="extrairComIA(this)")
+async function extrairComIA(inputReal){
+  const arquivos = Array.from((inputReal && inputReal.files) || []);
+  if(!arquivos.length) return;
+  if(inputReal) inputReal.value = '';
+  await processarFilaIA(arquivos);
+}
+
+function handleDragOverIA(ev){
+  ev.preventDefault();
+  ev.stopPropagation();
+  const zone = document.getElementById('ia-drop-zone');
+  if(zone){ zone.style.borderColor = 'rgba(26,127,212,.6)'; zone.style.background = 'rgba(26,127,212,.10)'; }
+}
+
+function handleDragLeaveIA(ev){
+  ev.preventDefault();
+  ev.stopPropagation();
+  const zone = document.getElementById('ia-drop-zone');
+  if(zone){ zone.style.borderColor = 'rgba(26,127,212,.15)'; zone.style.background = 'rgba(26,127,212,.04)'; }
+}
+
+async function handleDropIA(ev){
+  ev.preventDefault();
+  ev.stopPropagation();
+  const zone = document.getElementById('ia-drop-zone');
+  if(zone){ zone.style.borderColor = 'rgba(26,127,212,.15)'; zone.style.background = 'rgba(26,127,212,.04)'; }
+  const dt = ev.dataTransfer;
+  if(!dt || !dt.files || !dt.files.length) return;
+  const arquivos = Array.from(dt.files).filter(f => /\.(pdf|png|jpe?g)$/i.test(f.name));
+  if(!arquivos.length) return;
+  await processarFilaIA(arquivos);
+}
