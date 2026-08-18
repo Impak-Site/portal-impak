@@ -839,7 +839,35 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
       </div>
     </div>
     ${gruposHtml}
+    ${renderNotasBossBlock(p)}
     <div id="custos-reais-total" style="margin-top:6px;"></div>`;
+}
+
+// Bloco "Notas Fiscais BOSS" (sub-livro da aba Fechamento, linhas 46-56 da
+// planilha) - separado dos grupos de CUSTOS_REAIS_CONFIG porque nao e um
+// custo do processo, e uma SEGUNDA nota de venda (alem da NF Saida
+// principal) que paga seu proprio conjunto de impostos e cujo liquido
+// (Total a Receber) se soma ao Lucro Real. Unico input manual: o valor
+// total das notas Boss (real_json.notas_boss_valor) - o resto (IR/ISS/PIS/
+// COFINS/IRPJ/CSLL/IBS/CBS) e 100% automatico (ver calcularNotasBoss em
+// controle-core.js, percentuais fixos, sem tabela de UF envolvida).
+function renderNotasBossBlock(p){
+  const reais = p.real_json || {};
+  const valorSalvo = (reais.notas_boss_valor != null && reais.notas_boss_valor !== '') ? reais.notas_boss_valor : '';
+  const nb = calcularNotasBoss(p);
+  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return `<div style="margin-bottom:22px;">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Notas Fiscais BOSS (opcional)</div>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Quando o processo tambem fatura por uma nota separada da NF Saída principal, lance aqui o valor total dela — os impostos (IR retido, ISS, PIS, COFINS, IRPJ, CSLL, IBS, CBS) são calculados automaticamente e o líquido entra somado ao Lucro Real.</div>
+    <div class="form-group" style="max-width:220px;margin-bottom:8px;">
+      <label class="form-label">Valor das Notas Boss (R$)</label>
+      <input class="form-input" type="number" step="0.01" id="f_cr_notas_boss" value="${valorSalvo}" placeholder="0,00" oninput="atualizarTotalCustosReais()">
+    </div>
+    <div id="notas-boss-detalhe" style="font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px;">${nb ? `
+      <span>IR Retido (1,5%): ${r2(nb.irRetido)} · ISS (2,5%): ${r2(nb.iss)} · PIS (0,65%): ${r2(nb.pis)} · COFINS (3%): ${r2(nb.cofins)}</span>
+      <span>IRPJ: ${r2(nb.irpj)} · CSLL (9%): ${r2(nb.csll)} · IBS (0,1%): ${r2(nb.ibs)} · CBS (0,9%): ${r2(nb.cbs)}</span>
+      <span style="color:var(--text);font-weight:600;">Total a Receber (soma ao Lucro Real): ${r2(nb.totalReceber)}</span>` : ''}</div>
+  </div>`;
 }
 
 // Alterna uma taxa entre "valor ÃÂÃÂºnico pro processo" e "detalhado container a
@@ -873,6 +901,8 @@ function coletarCustosReaisDoForm(){
   const obj = {};
   const eurEl = document.getElementById('f_cr_cambio_eur');
   if(eurEl && eurEl.value !== '') obj._cambio_eur = parseFloat(eurEl.value);
+  const bossEl = document.getElementById('f_cr_notas_boss');
+  if(bossEl && bossEl.value !== '') obj.notas_boss_valor = parseFloat(bossEl.value);
   const containers = containersDoProcesso(_editando || {});
   custosReaisItensFlat().forEach(item => {
     // "Cobrado do Cliente" fica na MESMA real_json, com sufixo _cobrado ÃÂ¢ÃÂÃÂ
@@ -964,12 +994,27 @@ function atualizarTotalCustosReais(){
          <span>Margem: <strong style="color:${(totG.margem||0)>=0?'var(--ok)':'var(--err)'};">${r2(totG.margem||0)}</strong></span>`;
   });
 
+  // Notas Fiscais BOSS ao vivo - mesma logica de calcularNotasBoss em
+  // controle-core.js, atualizada a cada tecla no campo "Valor das Notas
+  // Boss". Fica FORA do early-return de custosReais logo abaixo porque essa
+  // caixa existe mesmo em processo que ainda nao lancou nenhum Custo Real
+  // (so a nota Boss).
+  const notasBoss = calcularNotasBoss(snapshot);
+  const detalheBoss = document.getElementById('notas-boss-detalhe');
+  if(detalheBoss){
+    detalheBoss.innerHTML = notasBoss ? `
+      <span>IR Retido (1,5%): ${r2(notasBoss.irRetido)} · ISS (2,5%): ${r2(notasBoss.iss)} · PIS (0,65%): ${r2(notasBoss.pis)} · COFINS (3%): ${r2(notasBoss.cofins)}</span>
+      <span>IRPJ: ${r2(notasBoss.irpj)} · CSLL (9%): ${r2(notasBoss.csll)} · IBS (0,1%): ${r2(notasBoss.ibs)} · CBS (0,9%): ${r2(notasBoss.cbs)}</span>
+      <span style="color:var(--text);font-weight:600;">Total a Receber (soma ao Lucro Real): ${r2(notasBoss.totalReceber)}</span>` : '';
+  }
+
   const custosReais = calcularCustoRealTotal(snapshot);
   if(!custosReais){ wrap.innerHTML = ''; return; }
   const receitaReais = calcularReceitaRealTotal(snapshot);
   const nfSaida = parseFloat(snapshot.nf_saida_valor);
   const temNf = !isNaN(nfSaida) && nfSaida > 0;
-  const lucro = temNf ? (nfSaida - custosReais.total) : null;
+  let lucro = temNf ? (nfSaida - custosReais.total) : null;
+  if(notasBoss && lucro != null) lucro += notasBoss.totalReceber;
   const linhaMargemTaxas = receitaReais
     ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${receitaReais.count} ${receitaReais.count===1?'item':'itens'})</span><strong>${r2(receitaReais.total)}</strong></div>
        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${(receitaReais.total-custosReais.total)>=0?'var(--ok)':'var(--err)'}">${r2(receitaReais.total-custosReais.total)}</strong></div>`
@@ -978,7 +1023,7 @@ function atualizarTotalCustosReais(){
     <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lançados)</span><strong>${r2(custosReais.total)}</strong></div>
     ${linhaMargemTaxas}
     ${temNf
-      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF Saída − Custo Real Total)</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
+      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF Saída − Custo Real Total)${notasBoss?' + Notas Boss':''}</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
       : `<div style="color:var(--dim);">Preencha a NF Saída na aba Documentos pra ver o lucro real aqui.</div>`}
   </div>`;
 }
