@@ -889,6 +889,12 @@ app.get('/narcelio', auth('processos'), (req, res) => {
 // o front-end lê location.pathname no load e abre o painel lateral do
 // processo correspondente automaticamente (ver abrirProcessoPorURL()).
 app.get('/controle/:ref', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+// Tela TV — espelhada num monitor da empresa, substitui a planilha Excel
+// manual (Backorders/Em Águas/No Chão). Sem restrição extra de usuário:
+// qualquer um autenticado no Controle pode abrir (é só leitura ao vivo,
+// nada sensível tipo o Dashboard Narcélio). Ver ativarTelaTVExclusiva()
+// em controle-core.js e renderDashTV() em controle-dash-tv.js.
+app.get('/tv', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
 
 app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {

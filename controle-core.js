@@ -142,6 +142,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
       if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
       if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
+      if(location.pathname==='/tv') ativarTelaTVExclusiva();
       // Deep-link ?processo=<id> ÃÂ¢ÃÂÃÂ usado pelo Calculador pra abrir direto o
       // processo recÃÂÃÂ©m-criado ao aprovar uma cotaÃÂÃÂ§ÃÂÃÂ£o (ver aprovarCotacao()
       // em calculador.html). SÃÂÃÂ³ tenta abrir depois que a lista carregou,
@@ -259,6 +260,47 @@ function ativarTelaNarcelioExclusiva(){
   if(dashNarc) dashNarc.style.display = 'block';
   const tw = document.querySelector('.table-wrap'); if(tw) tw.style.display = 'none';
   renderDashNarcelio();
+}
+
+// ────────────────────────────────────────────────────────────────
+// TELA EXCLUSIVA /tv — pensada pra ficar aberta o dia inteiro num monitor
+// da empresa (substitui a planilha Excel manual). Mesmo esquema das outras
+// telas exclusivas acima, mas sem seletor de período (mostra sempre o
+// estado ATUAL) e com auto-atualização: busca os processos de novo a cada
+// alguns minutos e re-renderiza sozinha, sem precisar de F5 nem de alguém
+// digitando números — ver setIntervalAtualizacaoTV() logo abaixo.
+function ativarTelaTVExclusiva(){
+  document.title = 'IMPAK — Dashboard TV';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Dashboard TV';
+
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+
+  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+
+  const dashTV = document.getElementById('dash-tv');
+  if(dashTV) dashTV.style.display = 'block';
+  const tw2 = document.querySelector('.table-wrap'); if(tw2) tw2.style.display = 'none';
+  renderDashTV();
+  setIntervalAtualizacaoTV();
+}
+
+// Recarrega os processos (silenciosamente, sem toast) a cada 5 minutos e
+// re-renderiza o Dashboard TV — é isso que faz a tela na parede ficar
+// sempre atual sem precisar de ninguém digitando números na planilha nem
+// dando F5 manualmente.
+function setIntervalAtualizacaoTV(){
+  setInterval(async () => {
+    await carregarProcessos(true);
+    renderDashTV();
+  }, 5 * 60 * 1000);
 }
 
 async function fecharProcesso(id){
@@ -1633,7 +1675,7 @@ function renderFaseFilter(){
 // de aba/fase ou ao abrir outro dashboard, para a tela trocar de fato em
 // vez de empilhar dashboard + tabela (ou dois dashboards ao mesmo tempo).
 function fecharTodosDashboards(){
-  ['executivo','financeiro','resultado','narcelio','carregamento'].forEach(function(id){
+  ['executivo','financeiro','resultado','narcelio','carregamento','tv'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
     if(el) el.style.display = 'none';
     var menu = document.getElementById('menu-'+id);
