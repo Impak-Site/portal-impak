@@ -1030,14 +1030,19 @@ document.addEventListener('DOMContentLoaded', () => {
 // salva nada sozinho, o usuário confere e clica "Salvar Cotação" quando
 // estiver certo (aí sim vincula automaticamente de volta, ver salvarCotacao()).
 async function prefillDeProcesso(processoId){
-  try{
-    const r = await fetch(`/api/controle/processos/${processoId}/prefill-cotacao`);
-    const d = await r.json();
-    if(!d.ok){ showToast('Erro ao carregar dados do processo: '+(d.erro||'?'), 'err'); return; }
-    aplicarEstadoFormulario(d.dados);
-    _estado.processoOrigemId = processoId;
-    showToast(`Cotação pré-preenchida com os dados do processo ${d.referencia||''} — confira e clique em "Salvar Cotação" quando estiver certo`, 'info');
-  } catch(e){ showToast('Erro ao carregar dados do processo: '+e.message, 'err'); }
+    try{
+          const r = await fetch(`/api/controle/processos/${processoId}/prefill-cotacao`);
+          const d = await r.json();
+          if(!d.ok){ showToast('Erro ao carregar dados do processo: '+(d.erro||'?'), 'err'); return; }
+          aplicarEstadoFormulario(d.dados);
+          _estado.processoOrigemId = processoId;
+          // Se o processo já tem Custos Reais lançados, o servidor manda um aviso
+          // (não bloqueia mais — ver /api/controle/processos/:id/prefill-cotacao):
+          // salvar esta cotação é só uma simulação/referência, não mexe nos
+          // Custos Reais já lançados no processo original.
+          if(d.aviso){ showToast(d.aviso, 'err'); }
+          showToast(`Cotação pré-preenchida com os dados do processo ${d.referencia||''} — confira e clique em "Salvar Cotação" quando estiver certo`, 'info');
+    } catch(e){ showToast('Erro ao carregar dados do processo: '+e.message, 'err'); }
 }
 
 // ── CÂMBIO ───────────────────────────────────────────────
