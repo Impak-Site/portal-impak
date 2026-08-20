@@ -288,6 +288,7 @@ function ativarTelaTVExclusiva(){
   const dashTV = document.getElementById('dash-tv');
   if(dashTV) dashTV.style.display = 'block';
   const tw2 = document.querySelector('.table-wrap'); if(tw2) tw2.style.display = 'none';
+  const pagTV = document.getElementById('paginacao'); if(pagTV) pagTV.style.display = 'none';
   renderDashTV();
   setIntervalAtualizacaoTV();
 }

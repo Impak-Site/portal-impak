@@ -40,26 +40,37 @@ function renderDashTV(){
   if(!el) return;
 
   // ── 1: BACKORDERS — por marca/fábrica, em containers ──────────
-  const backordersPorMarca = {};
+  // Agrupa por marca normalizada (maiúsculo/minúsculo não deveria separar
+  // "Eudemon" de "EUDEMON" em containers diferentes) — a chave do
+  // agrupamento é a versão em CAIXA ALTA, mas guarda a primeira grafia
+  // encontrada só pra exibição não ficar feia gritando tudo maiúsculo à toa
+  // quando o cadastro já está com a grafia "bonita".
+  const backordersPorMarca = {}; // chave normalizada -> quantidade
+  const backordersLabel = {}; // chave normalizada -> rótulo de exibição
   let backordersTotal = 0;
   _processos.forEach(p => {
     const fase = calcularFase(p);
     if(fase !== 'PI' && fase !== 'AGUARDANDO_EMBARQUE') return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
-    const marca = (p.brand || p.fornecedor || 'Sem marca').trim();
-    backordersPorMarca[marca] = (backordersPorMarca[marca] || 0) + n;
+    const marcaOriginal = (p.brand || p.fornecedor || 'Sem marca').trim();
+    const chave = marcaOriginal.toUpperCase();
+    backordersPorMarca[chave] = (backordersPorMarca[chave] || 0) + n;
+    if(!backordersLabel[chave]) backordersLabel[chave] = marcaOriginal;
     backordersTotal += n;
   });
-  const backordersLista = Object.entries(backordersPorMarca).sort((a,b) => b[1]-a[1]);
+  const backordersLista = Object.entries(backordersPorMarca)
+    .map(([chave,qtd]) => [backordersLabel[chave], qtd])
+    .sort((a,b) => b[1]-a[1]);
   const backordersPrincipais = backordersLista.slice(0, 4);
   const backordersResto = backordersLista.slice(4);
 
   // ── 2: EM ÁGUAS — fase Embarcado, ordenado por ETA ────────────
+  const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'};
   const emAguasLista = [];
   _processos.forEach(p => {
     if(calcularFase(p) !== 'EMBARCADO') return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
-    emAguasLista.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n });
+    emAguasLista.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n, finalidade: FINALIDADE_LABEL_TV[p.finalidade] || '—' });
   });
   emAguasLista.sort((a,b) => (a.eta||'9999').localeCompare(b.eta||'9999'));
   const emAguasTotal = emAguasLista.reduce((s,x)=> s+x.n, 0);
@@ -127,12 +138,13 @@ function renderDashTV(){
     <div style="max-height:340px;overflow-y:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;">
-        <th style="padding:6px 8px;">ETA</th><th style="padding:6px 8px;">Processo</th><th style="padding:6px 8px;">Cliente</th><th style="padding:6px 8px;text-align:right;">Containers</th>
+        <th style="padding:6px 8px;">ETA</th><th style="padding:6px 8px;">Processo</th><th style="padding:6px 8px;">Cliente</th><th style="padding:6px 8px;">Finalidade</th><th style="padding:6px 8px;text-align:right;">Containers</th>
       </tr></thead>
       <tbody>${emAguasLista.map(x => `<tr style="border-top:1px solid var(--border);">
         <td style="padding:6px 8px;font-weight:700;">${x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}) : '—'}</td>
         <td style="padding:6px 8px;">${esc(x.referencia)}</td>
         <td style="padding:6px 8px;color:var(--muted);">${esc(x.cliente||'')}</td>
+        <td style="padding:6px 8px;">${esc(x.finalidade)}</td>
         <td style="padding:6px 8px;text-align:right;font-weight:700;">${x.n}</td>
       </tr>`).join('')}</tbody>
     </table>
