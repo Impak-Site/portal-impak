@@ -111,6 +111,7 @@ function renderDashTV(){
   const backordersProcessos = {}; // chave normalizada -> [{id,referencia,cliente,n,eta}]
   let backordersTotal = 0;
   _processos.forEach(p => {
+    if(p.cancelado) return; // processo cancelado não conta como backorder
     const fase = calcularFase(p);
     if(fase !== 'PI' && fase !== 'AGUARDANDO_EMBARQUE') return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
@@ -141,6 +142,7 @@ function renderDashTV(){
   const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'D', ENCOMENDA:'E', CONTA_E_ORDEM:'C'};
   const emAguasLista = [];
   _processos.forEach(p => {
+    if(p.cancelado) return; // processo cancelado não conta como em águas
     if(calcularFase(p) !== 'EMBARCADO') return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
     emAguasLista.push({ referencia: p.referencia, cliente: abreviarClienteTV(p.cliente), eta: p.eta, n, finalidade: FINALIDADE_LABEL_TV[p.finalidade] || '—' });
@@ -154,6 +156,7 @@ function renderDashTV(){
   const noChaoPorProduto = {};
   let noChaoTotalUn = 0, noChaoProcessos = 0;
   _processos.forEach(p => {
+    if(p.cancelado) return; // processo cancelado não conta como estoque parado
     if(!p.nf_entrada_numero) return;
     const semVenda = p.nf_saida_cfop === '5905' || !p.nf_saida_numero;
     if(!semVenda) return;

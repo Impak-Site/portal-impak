@@ -345,6 +345,42 @@ async function reabrirProcesso(id){
   } else showToast('Erro ao reabrir: '+(d.erro||''),'err');
 }
 
+// Cancelamento de processo — pedido da Emanuelly (21/08/2026): alguns
+// processos precisam sair da operação ativa sem serem excluídos, pra
+// manter o histórico. Restrito a gerente (mesmo nível de acesso da
+// exclusão) — a checagem de verdade é no servidor, ver POST /api/
+// controle/v2/processo em server.js.
+async function cancelarProcesso(id){
+  const motivo = prompt('Motivo do cancelamento (opcional):') || '';
+  if(!confirm('Cancelar este processo? Ele continua no histórico, mas sai das contagens operacionais (Dashboard TV etc).')) return;
+  const r = await fetch('/api/controle/v2/processo', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ processo:{ id, cancelado:true, cancelado_motivo: motivo } })
+  });
+  const d = await r.json();
+  if(d.ok){
+    showToast('🚫 Processo cancelado','ok');
+    await carregarProcessos(true);
+    const p = _processos.find(p=>p.id===id);
+    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+  } else showToast('Erro ao cancelar'+(d.erro?': '+d.erro:''),'err');
+}
+
+async function reverterCancelamento(id){
+  if(!confirm('Reverter o cancelamento deste processo?')) return;
+  const r = await fetch('/api/controle/v2/processo', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ processo:{ id, cancelado:false } })
+  });
+  const d = await r.json();
+  if(d.ok){
+    showToast('↩️ Cancelamento revertido','ok');
+    await carregarProcessos(true);
+    const p = _processos.find(p=>p.id===id);
+    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+  } else showToast('Erro ao reverter'+(d.erro?': '+d.erro:''),'err');
+}
+
 // Dispara na hora o e-mail de follow-up semanal (task #327) ÃÂ¢ÃÂÃÂ mesma rota
 // usada pelo job automÃÂÃÂ¡tico de domingo (ver server.js,
 // POST /api/admin/followup-semanal), sÃÂÃÂ³ que sob demanda. Restrito a
@@ -1708,6 +1744,7 @@ function setFaseFilter(fase){
   document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
   if(fase==='') document.getElementById('menu-todos')?.classList.add('active');
   else if(fase==='__alertas') document.getElementById('menu-alertas')?.classList.add('active');
+  else if(fase==='__cancelados') document.getElementById('menu-cancelados')?.classList.add('active');
 }
 
 // Usada pelos cards clicÃÂÃÂ¡veis do Dashboard Executivo/Financeiro: fecha o
@@ -1767,6 +1804,9 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
   });
   const badgeAlerta = document.getElementById('badge-alertas');
   if(badgeAlerta){ badgeAlerta.textContent=comAlerta; badgeAlerta.style.display=comAlerta>0?'block':'none'; }
+  const cancelados = _processos.filter(p=>!!p.cancelado).length;
+  const badgeCancelados = document.getElementById('badge-cancelados');
+  if(badgeCancelados){ badgeCancelados.textContent=cancelados; badgeCancelados.style.display=cancelados>0?'block':'none'; }
   document.getElementById('badge-total').textContent = total;
 
   el.innerHTML = stats.map(s=>`
@@ -1784,6 +1824,7 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
 // de uma vez, e adicionar um novo sem alterar uma cadeia gigante.
 const FILTROS_FASE_ESPECIAIS = {
   __alertas:    lista => lista.filter(p=>verificarAlertas(p,false).length>0),
+  __cancelados: lista => lista.filter(p=>!!p.cancelado),
   __andamento:  lista => lista.filter(p=>p.fase!=='FINALIZADO'),
   __demur:      lista => lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }),
   __chegada_7d: lista => lista.filter(p=>chegandoEmDias(p,7)),
@@ -1921,10 +1962,11 @@ function render(){
       // colocar em innerHTML, senÃÂÃÂ£o um valor malicioso/malformado vira HTML
       // executÃÂÃÂ¡vel pra QUALQUER usuÃÂÃÂ¡rio que abrir esta lista (XSS
       // persistente). Ver esc() em controle-campos.js.
-      return `<div class="table-row" onclick="abrirProcesso('${p.id}')">
+      const canceladoBadge = p.cancelado ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Processo cancelado'}" style="font-size:9px;font-weight:700;background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#64748b;">🚫 CANCELADO</span>` : '';
+      return `<div class="table-row" onclick="abrirProcesso('${p.id}')" style="${p.cancelado?'opacity:.6;':''}">
         <div class="td td-ref" data-label="">
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;row-gap:2px;">
-            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}
+            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}${canceladoBadge}
           </div>
         </div>
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>

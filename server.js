@@ -996,7 +996,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
     if (processo.id) {
       const { data: atual } = await sb()
         .from('controle_processos')
-        .select('fechado')
+        .select('fechado, cancelado')
         .eq('id', processo.id)
         .maybeSingle();
       const estavaFechado = !!(atual && atual.fechado);
@@ -1020,6 +1020,31 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
         processo.fechado_por = null;
       } else {
         delete processo.fechado; // não deixa alterar a trava por acidente num save comum
+      }
+
+      // ── CANCELAMENTO DE PROCESSO ("Cancelar Processo") ──────────────
+      // Pedido da Emanuelly (21/08/2026): processos que não vão pra frente
+      // precisam sumir das contagens operacionais SEM perder o histórico
+      // (diferente de excluir). Mesma restrição de acesso da exclusão —
+      // só gerente pode cancelar ou reverter um cancelamento.
+      const estavaCancelado = !!(atual && atual.cancelado);
+      const tentandoCancelar     = !estavaCancelado && processo.cancelado === true;
+      const tentandoDescancelar  = estavaCancelado && processo.cancelado === false;
+      if ((tentandoCancelar || tentandoDescancelar) && req.session.role !== 'gerente') {
+        return res.status(403).json({ erro: 'Apenas gerentes podem cancelar ou reverter o cancelamento de um processo.' });
+      }
+      if (tentandoCancelar) {
+        processo.cancelado_em = new Date().toISOString();
+        processo.cancelado_por = req.session.usuario;
+        // motivo é texto livre digitado por quem cancelou — mantém o que
+        // veio no payload (pode ser vazio/omitido, é opcional).
+      } else if (tentandoDescancelar) {
+        processo.cancelado_em = null;
+        processo.cancelado_por = null;
+        processo.cancelado_motivo = null;
+      } else {
+        delete processo.cancelado; // não deixa alterar por acidente num save comum
+        delete processo.cancelado_motivo;
       }
     }
 

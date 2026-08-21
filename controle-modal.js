@@ -171,8 +171,24 @@ function renderModal(){
       </div>`
     : '';
 
+  // ── CANCELAMENTO ("Cancelar Processo") ──────────────────────────
+  // Igual à trava de fechado, mas pra processos que não vão pra frente e
+  // precisam sumir das contagens operacionais sem perder o histórico
+  // (pedido da Emanuelly, 21/08/2026). Não trava edição (diferente de
+  // fechado) — só marca visualmente e some das telas de acompanhamento
+  // ao vivo (Dashboard TV).
+  const cancelado = !!p.cancelado;
+  const podeReverterCancelamento = _user && _user.role === 'gerente';
+  const bannerCancelado = cancelado
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(100,116,139,.08);border:1px solid rgba(100,116,139,.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
+        <div style="font-size:12px;color:var(--text);"><strong>🚫 Processo cancelado</strong>${p.cancelado_em?` em ${new Date(p.cancelado_em).toLocaleString('pt-BR')}`:''}${p.cancelado_por?` por ${esc(p.cancelado_por)}`:''}${p.cancelado_motivo?` — ${esc(p.cancelado_motivo)}`:''}</div>
+        ${podeReverterCancelamento ? `<button type="button" class="btn btn-outline" onclick="reverterCancelamento('${p.id}')">↩️ Reverter cancelamento</button>` : `<span style="font-size:11px;color:var(--muted);">Só um gerente pode reverter.</span>`}
+      </div>`
+    : '';
+
   document.getElementById('modal-body').innerHTML = `
     ${bannerTrava}
+    ${bannerCancelado}
     <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
     <!-- ABA: IDENTIFICAÇÃO -->
     <div class="tab-pane active" id="pane-identificacao">
@@ -251,6 +267,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
         <div style="display:flex;gap:10px;">
           ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}
+          ${p.id && !cancelado?`<button class="btn btn-outline" onclick="cancelarProcesso('${p.id}')" title="Mantém no histórico, mas sai das contagens operacionais — restrito a gerente" style="color:#64748b;border-color:rgba(100,116,139,.4);">🚫 Cancelar Processo</button>`:''}
           ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado — só gerente pode reabrir depois">🔒 Fechar Processo</button>`:''}
         </div>
         <div style="display:flex;gap:10px;">
