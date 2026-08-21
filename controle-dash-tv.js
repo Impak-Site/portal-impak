@@ -35,9 +35,22 @@ function toggleDashTV(){
   document.getElementById('menu-tv')?.classList.toggle('active', !visivel);
 }
 
+// Cada TV física da empresa mostra só 1 painel em tela cheia (mais legível
+// à distância do que os 3 espremidos numa tela só) — escolhido pela URL:
+//   /tv?painel=backorders   /tv?painel=aguas   /tv?painel=chao
+// Sem o parâmetro (ou valor desconhecido), mostra os 3 empilhados, útil
+// pra conferir tudo de perto num notebook/monitor comum.
+function _tvPainelAtivo(){
+  const v = new URLSearchParams(location.search).get('painel');
+  return ['backorders','aguas','chao'].includes(v) ? v : 'todos';
+}
+
 function renderDashTV(){
   const el = document.getElementById('dash-tv-content');
   if(!el) return;
+  const painelAtivo = _tvPainelAtivo();
+  const solo = painelAtivo !== 'todos';
+  const maxH = solo ? 'calc(100vh - 260px)' : '340px';
 
   // ── 1: BACKORDERS — por marca/fábrica, em containers ──────────
   // Agrupa por marca normalizada (maiúsculo/minúsculo não deveria separar
@@ -101,16 +114,23 @@ function renderDashTV(){
 
   const fmtN = v => v.toLocaleString('pt-BR');
 
+  // No modo solo (1 TV = 1 painel) tudo fica maior — é pra ler de longe,
+  // não numa tela de notebook a 40cm do rosto.
   function painel(titulo, subtitulo, numero, corBg, conteudoHtml){
+    const tituloSz = solo ? '30px' : '19px';
+    const subSz = solo ? '15px' : '12px';
+    const numSz = solo ? '58px' : '38px';
+    const padHeader = solo ? '24px 32px' : '16px 24px';
+    const padBody = solo ? '26px 32px' : '18px 24px';
     return `<div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
-      <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:${padHeader};display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
-          <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
+          <div style="font-family:'Syne',sans-serif;font-size:${tituloSz};font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+          <div style="font-size:${subSz};color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
         </div>
-        <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:${numSz};font-weight:800;color:#fff;">${numero}</div>
       </div>
-      <div style="padding:18px 24px;">${conteudoHtml}</div>
+      <div style="padding:${padBody};font-size:${solo?'1.15em':'1em'};">${conteudoHtml}</div>
     </div>`;
   }
 
@@ -135,7 +155,7 @@ function renderDashTV(){
   ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`;
 
   const emAguasHtml = emAguasLista.length ? `
-    <div style="max-height:340px;overflow-y:auto;">
+    <div style="max-height:${maxH};overflow-y:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;">
         <th style="padding:6px 8px;">ETA</th><th style="padding:6px 8px;">Processo</th><th style="padding:6px 8px;">Cliente</th><th style="padding:6px 8px;">Finalidade</th><th style="padding:6px 8px;text-align:right;">Containers</th>
@@ -153,7 +173,7 @@ function renderDashTV(){
 
   const noChaoHtml = noChaoLista.length ? `
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${noChaoProcessos} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades no total</div>
-    <div style="max-height:340px;overflow-y:auto;">
+    <div style="max-height:${maxH};overflow-y:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <tbody>${noChaoLista.map(([desc,qtd]) => `<tr style="border-top:1px solid var(--border);">
         <td style="padding:6px 8px;">${esc(desc)}</td>
@@ -163,8 +183,22 @@ function renderDashTV(){
     </div>
   ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado no armazém.</div>`;
 
-  el.innerHTML =
-    painel('BACKORDERS', 'Visão por marca / fábrica — ainda não embarcados', fmtN(backordersTotal), '#2a5298', backordersHtml) +
-    painel('EM ÁGUAS', 'Em trânsito para o Brasil', fmtN(emAguasTotal), '#1e6091', emAguasHtml) +
-    painel('NO CHÃO', 'NF de Entrada lançada, ainda sem venda', fmtN(noChaoProcessos), '#184e77', noChaoHtml);
+  const paineis = {
+    backorders: painel('BACKORDERS', 'Visão por marca / fábrica — ainda não embarcados', fmtN(backordersTotal), '#2a5298', backordersHtml),
+    aguas: painel('EM ÁGUAS', 'Em trânsito para o Brasil', fmtN(emAguasTotal), '#1e6091', emAguasHtml),
+    chao: painel('NO CHÃO', 'NF de Entrada lançada, ainda sem venda', fmtN(noChaoProcessos), '#184e77', noChaoHtml),
+  };
+
+  // No modo "todos" (visão de conferência, não a TV física), mostra links
+  // pra abrir cada painel isolado em tela cheia — é só apontar o navegador
+  // de cada TV pra uma dessas URLs (uma aba por TV, cada uma num painel).
+  const linksSolo = !solo ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;font-size:12px;">
+    <span style="color:var(--muted);align-self:center;">Abrir 1 painel em tela cheia (uma URL por TV):</span>
+    <a href="/tv?painel=backorders" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;text-decoration:none;color:var(--text);font-weight:600;">Backorders ↗</a>
+    <a href="/tv?painel=aguas" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;text-decoration:none;color:var(--text);font-weight:600;">Em Águas ↗</a>
+    <a href="/tv?painel=chao" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;text-decoration:none;color:var(--text);font-weight:600;">No Chão ↗</a>
+  </div>` : '';
+
+  el.innerHTML = solo ? paineis[painelAtivo] : (linksSolo + paineis.backorders + paineis.aguas + paineis.chao);
+  el.classList.toggle('dash-tv-solo', solo);
 }
