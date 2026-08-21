@@ -203,18 +203,29 @@ function renderDashTV(){
   ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`;
 
   // Linha de 1 processo — usada tanto na tabela única (modo "todos") quanto
-  // nas colunas do modo solo abaixo.
+  // nas colunas do modo solo abaixo. table-layout:fixed + nowrap/ellipsis
+  // em todas as colunas garante que toda linha tenha a MESMA altura mesmo
+  // quando "Processo" ou "Cliente" variam de tamanho — pedido da Emanuelly
+  // (21/08/2026): "alinhar para que as linhas tenham o mesmo tamanho".
+  const CEL_TV = 'padding:5px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   function linhaEmAguas(x){
+    // Data curta (dd/mm) em vez de "24 de ago." — cabe mais coisa na largura
+    // disponível pra sobrar espaço pra aumentar a fonte.
+    const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
     return `<tr style="border-top:1px solid var(--border);">
-        <td style="padding:4px 6px;font-weight:700;white-space:nowrap;">${x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}) : '—'}</td>
-        <td style="padding:4px 6px;">${esc(x.referencia)}</td>
-        <td style="padding:4px 6px;color:var(--muted);">${esc(x.cliente||'')}</td>
-        <td style="padding:4px 6px;">${esc(x.finalidade)}</td>
-        <td style="padding:4px 6px;text-align:right;font-weight:700;">${x.n}</td>
+        <td style="${CEL_TV}font-weight:700;">${etaFmt}</td>
+        <td style="${CEL_TV}font-weight:600;" title="${esc(x.referencia)}">${esc(x.referencia)}</td>
+        <td style="${CEL_TV}color:var(--muted);" title="${esc(x.cliente||'')}">${esc(x.cliente||'')}</td>
+        <td style="${CEL_TV}text-align:center;">${esc(x.finalidade)}</td>
+        <td style="${CEL_TV}text-align:right;font-weight:700;">${x.n}</td>
       </tr>`;
   }
-  const theadEmAguas = `<thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;">
-        <th style="padding:4px 6px;">ETA</th><th style="padding:4px 6px;">Processo</th><th style="padding:4px 6px;">Cliente</th><th style="padding:4px 6px;">Finalidade</th><th style="padding:4px 6px;text-align:right;">Cont.</th>
+  // Larguras fixas por coluna (soma 100%) — com table-layout:fixed elas
+  // valem tanto pro <thead> quanto pro <tbody>, o que é o que faz as linhas
+  // alinharem certinho mesmo com conteúdo de tamanho variável.
+  const theadEmAguas = `<colgroup><col style="width:14%"><col style="width:32%"><col style="width:34%"><col style="width:10%"><col style="width:10%"></colgroup>
+      <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;">
+        <th style="padding:5px 6px;">ETA</th><th style="padding:5px 6px;">Processo</th><th style="padding:5px 6px;">Cliente</th><th style="padding:5px 6px;text-align:center;">Fin.</th><th style="padding:5px 6px;text-align:right;">Cont.</th>
       </tr></thead>`;
 
   // No modo solo (1 TV dedicada a este painel), em vez de 1 tabela rolável,
@@ -231,7 +242,7 @@ function renderDashTV(){
     const colunas = [];
     for(let i=0; i<nCols; i++) colunas.push(lista.slice(i*porColuna, (i+1)*porColuna));
     return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:14px;">
-      ${colunas.map(col => `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+      ${colunas.map(col => `<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;">
         ${theadEmAguas}
         <tbody>${col.map(linhaEmAguas).join('')}</tbody>
       </table>`).join('')}
@@ -242,7 +253,7 @@ function renderDashTV(){
     ? emAguasEmColunas(emAguasLista)
     : (emAguasLista.length ? `
     <div style="max-height:${maxH};overflow-y:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;">
       ${theadEmAguas}
       <tbody>${emAguasLista.map(linhaEmAguas).join('')}</tbody>
     </table>
