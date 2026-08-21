@@ -232,6 +232,9 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Marca (Brand)</label>
             <input class="form-input" id="f_brand" value="${esc(p.brand)}" placeholder="Ex: Maxam — deixe em branco se marca = fornecedor">
           </div>
+          <div class="form-group"><label class="form-label">Qtd. Containers (previsto)</label>
+            <input class="form-input" type="number" min="0" step="1" id="f_qtd_containers_prevista" value="${p.qtd_containers_prevista ?? ''}" placeholder="Ex: 3 — preencha assim que souber, mesmo antes do booking">
+          </div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
             <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
               oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown')" placeholder="Digite razão social, CNPJ ou cidade...">

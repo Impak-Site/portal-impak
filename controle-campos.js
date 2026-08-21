@@ -152,7 +152,7 @@ function coletarESalvar(){
 
   const antigo = {...(_editando||{})};
   const campos = [
-    'referencia','finalidade','fornecedor','brand','cliente','produto','obs',
+    'referencia','finalidade','fornecedor','brand','qtd_containers_prevista','cliente','produto','obs',
     'pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento','pi_pago',
     'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
     'previsao_prontidao','data_prontidao',

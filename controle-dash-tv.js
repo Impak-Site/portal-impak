@@ -110,11 +110,20 @@ function renderDashTV(){
   const backordersLabel = {}; // chave normalizada -> rótulo de exibição
   const backordersProcessos = {}; // chave normalizada -> [{id,referencia,cliente,n,eta}]
   let backordersTotal = 0;
+  let backordersProcessosTotal = 0;
   _processos.forEach(p => {
     if(p.cancelado) return; // processo cancelado não conta como backorder
     const fase = calcularFase(p);
     if(fase !== 'PI' && fase !== 'AGUARDANDO_EMBARQUE') return;
-    const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
+    // Prioridade pra saber a quantidade de containers: containers já
+    // lançados (containers_json) > campo legado "container" único >
+    // "Qtd. Containers (previsto)" (preenchido no PI, antes de ter
+    // container/booking) > 1 como último recurso. Pedido da Emanuelly
+    // (21/08/2026): sem essa previsão, o Backorders só sabia quantos
+    // containers um processo tinha depois que os números eram lançados —
+    // tarde de mais pra bater com a bonificação por containers recebidos
+    // no mês, que depende de saber isso com antecedência.
+    const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || (parseInt(p.qtd_containers_prevista, 10) || 0) || 1;
     const marcaOriginal = (p.brand || p.fornecedor || 'Sem marca').trim();
     const chave = marcaOriginal.toUpperCase();
     backordersPorMarca[chave] = (backordersPorMarca[chave] || 0) + n;
@@ -122,6 +131,7 @@ function renderDashTV(){
     if(!backordersProcessos[chave]) backordersProcessos[chave] = [];
     backordersProcessos[chave].push({ id: p.id, referencia: p.referencia, cliente: p.cliente, n, eta: p.eta || '' });
     backordersTotal += n;
+    backordersProcessosTotal++;
   });
   const backordersLista = Object.entries(backordersPorMarca)
     .map(([chave,qtd]) => [backordersLabel[chave], qtd, chave])
@@ -295,7 +305,7 @@ function renderDashTV(){
   ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado no armazém.</div>`;
 
   const paineis = {
-    backorders: painel('BACKORDERS', 'Visão por marca / fábrica — ainda não embarcados', fmtN(backordersTotal), '#2a5298', backordersHtml),
+    backorders: painel('BACKORDERS', `Visão por marca / fábrica — ainda não embarcados · ${fmtN(backordersProcessosTotal)} processos e ${fmtN(backordersTotal)} containers`, fmtN(backordersTotal), '#2a5298', backordersHtml),
     aguas: painel('EM ÁGUAS', 'Em trânsito para o Brasil', fmtN(emAguasTotal), '#1e6091', emAguasHtml),
     chao: painel('NO CHÃO', 'NF de Entrada lançada, ainda sem venda', fmtN(noChaoProcessos), '#184e77', noChaoHtml),
   };
