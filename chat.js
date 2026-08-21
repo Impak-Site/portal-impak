@@ -179,6 +179,7 @@ const navModulos = [
 { label: '💰 Calculador', href: '/calculador', key: 'calculador' },
 { label: '📊 Financeiro', href: '/financeiro', key: 'financeiro' },
   { label: '📈 Resultado', href: '/resultado', key: 'resultado' },
+  { label: '📺 TV', href: '/tv', key: 'tv' },
 ];
 
 // Detectar módulo atual pelo path — "financeiro" precisa vir ANTES de
@@ -189,6 +190,7 @@ const path = window.location.pathname;
 const modAtual = path === '/' ? 'tyredesk'
   : path.includes('resultado') ? 'resultado'
 : path.includes('financeiro') ? 'financeiro'
+: path.includes('/tv') ? 'tv'
 : path.includes('controle') ? 'controle'
 : path.includes('processos') ? 'processos'
 : path.includes('calculador')? 'calculador'
