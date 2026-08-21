@@ -108,6 +108,7 @@ function renderDashTV(){
   // quando o cadastro já está com a grafia "bonita".
   const backordersPorMarca = {}; // chave normalizada -> quantidade
   const backordersLabel = {}; // chave normalizada -> rótulo de exibição
+  const backordersProcessos = {}; // chave normalizada -> [{id,referencia,cliente,n,eta}]
   let backordersTotal = 0;
   _processos.forEach(p => {
     const fase = calcularFase(p);
@@ -117,13 +118,24 @@ function renderDashTV(){
     const chave = marcaOriginal.toUpperCase();
     backordersPorMarca[chave] = (backordersPorMarca[chave] || 0) + n;
     if(!backordersLabel[chave]) backordersLabel[chave] = marcaOriginal;
+    if(!backordersProcessos[chave]) backordersProcessos[chave] = [];
+    backordersProcessos[chave].push({ id: p.id, referencia: p.referencia, cliente: p.cliente, n, eta: p.eta || '' });
     backordersTotal += n;
   });
   const backordersLista = Object.entries(backordersPorMarca)
-    .map(([chave,qtd]) => [backordersLabel[chave], qtd])
+    .map(([chave,qtd]) => [backordersLabel[chave], qtd, chave])
     .sort((a,b) => b[1]-a[1]);
   const backordersPrincipais = backordersLista.slice(0, 4);
   const backordersResto = backordersLista.slice(4);
+
+  // Guarda os processos de cada marca num lugar acessível pro onclick dos
+  // cards (abrirListaTV) — pedido da Emanuelly (21/08/2026): "clicar dentro
+  // e aparecer todos que ele está considerando". Mesmo padrão de modal já
+  // usado no Dashboard Narcélio (controle-dash-narcelio.js).
+  window._tvListasBackorders = {};
+  Object.entries(backordersProcessos).forEach(([chave, rows]) => {
+    window._tvListasBackorders[chave] = { titulo: backordersLabel[chave], rows };
+  });
 
   // ── 2: EM ÁGUAS — fase Embarcado, ordenado por ETA ────────────
   const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'D', ENCOMENDA:'E', CONTA_E_ORDEM:'C'};
@@ -182,9 +194,13 @@ function renderDashTV(){
     </div>`;
   }
 
-  function cardMarca(nome, qtd, maxQtd){
+  // Cards clicáveis — clicar numa marca abre a lista dos processos que
+  // estão sendo contados ali (abrirListaTV), igual ao padrão já usado no
+  // Dashboard Narcélio. chave é a marca em CAIXA ALTA, usada como índice em
+  // window._tvListasBackorders (montado acima).
+  function cardMarca(nome, qtd, maxQtd, chave){
     const pct = maxQtd > 0 ? Math.round((qtd/maxQtd)*100) : 0;
-    return `<div style="background:var(--bg);border-radius:10px;padding:12px 14px;">
+    return `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:var(--bg);border-radius:10px;padding:12px 14px;">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">${esc(nome)}</div>
       <div style="font-size:26px;font-weight:800;color:#1a3a6e;font-family:'DM Sans',sans-serif;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:var(--muted);">containers</span></div>
       <div style="background:#e2e8f0;border-radius:4px;height:5px;margin-top:8px;overflow:hidden;"><div style="background:#1a3a6e;height:100%;width:${pct}%;"></div></div>
@@ -193,10 +209,10 @@ function renderDashTV(){
 
   const backordersHtml = backordersLista.length ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:${backordersResto.length?'14px':'0'};">
-      ${backordersPrincipais.map(([m,q]) => cardMarca(m, q, backordersPrincipais[0][1])).join('')}
+      ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
     </div>
     ${backordersResto.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;">
-      ${backordersResto.map(([m,q]) => `<div style="display:flex;justify-content:space-between;background:#0f1f3d;color:#fff;border-radius:6px;padding:8px 12px;font-size:12px;">
+      ${backordersResto.map(([m,q,chave]) => `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;display:flex;justify-content:space-between;background:#0f1f3d;color:#fff;border-radius:6px;padding:8px 12px;font-size:12px;">
         <span style="font-weight:700;">${esc(m)}</span><span style="font-weight:800;">${fmtN(q)}</span>
       </div>`).join('')}
     </div>` : ''}
@@ -290,4 +306,55 @@ function renderDashTV(){
 
   el.innerHTML = solo ? paineis[painelAtivo] : (linksSolo + paineis.backorders + paineis.aguas + paineis.chao);
   el.classList.toggle('dash-tv-solo', solo);
+}
+
+// ── Modal "quais processos estão nesse número" (Backorders) ──────────
+// Pedido da Emanuelly (21/08/2026): "em como no dashboard de backorders na
+// parte que diz quantidade de cada marca eu clicar dentro e aparecer todos
+// que ele está considerando?" — mesmo padrão de modal clicável já usado no
+// Dashboard Narcélio (abrirListaNarcelio, controle-dash-narcelio.js), só
+// que lendo de window._tvListasBackorders (montado em renderDashTV acima).
+function abrirListaTV(chave){
+  const dados = (window._tvListasBackorders || {})[chave];
+  if(!dados) return;
+  let modal = document.getElementById('tv-lista-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'tv-lista-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:720px;width:92%;max-height:82vh;overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.25);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<h3 id="tv-lista-titulo" style="margin:0;font-size:16px;"></h3>' +
+      '<button onclick="fecharListaTV()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--muted);">&times;</button>' +
+      '</div><div id="tv-lista-corpo"></div></div>';
+    modal.addEventListener('click', function(e){ if(e.target === modal) fecharListaTV(); });
+    document.body.appendChild(modal);
+  }
+  document.getElementById('tv-lista-titulo').textContent = dados.titulo + ' — ' + dados.rows.length + ' processo(s)';
+  const corpo = document.getElementById('tv-lista-corpo');
+  if(!dados.rows.length){
+    corpo.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center;">Nenhum processo encontrado.</div>';
+  } else {
+    corpo.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border);">
+        <th style="padding:6px 8px;">Referência</th>
+        <th style="padding:6px 8px;">Cliente</th>
+        <th style="padding:6px 8px;">ETA/Previsão</th>
+        <th style="padding:6px 8px;text-align:right;">Containers</th>
+      </tr></thead>
+      <tbody>
+      ${dados.rows.map(r => `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="fecharListaTV();abrirProcesso('${r.id}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+        <td style="padding:6px 8px;font-weight:600;">${esc(r.referencia||'—')}</td>
+        <td style="padding:6px 8px;">${esc(r.cliente||'—')}</td>
+        <td style="padding:6px 8px;">${r.eta ? new Date(r.eta+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+        <td style="padding:6px 8px;text-align:right;">${r.n}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }
+  modal.style.display = 'flex';
+}
+function fecharListaTV(){
+  const modal = document.getElementById('tv-lista-modal');
+  if(modal) modal.style.display = 'none';
 }
