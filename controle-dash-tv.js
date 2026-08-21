@@ -154,22 +154,52 @@ function renderDashTV(){
     </div>` : ''}
   ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`;
 
-  const emAguasHtml = emAguasLista.length ? `
+  // Linha de 1 processo — usada tanto na tabela única (modo "todos") quanto
+  // nas colunas do modo solo abaixo.
+  function linhaEmAguas(x){
+    return `<tr style="border-top:1px solid var(--border);">
+        <td style="padding:4px 6px;font-weight:700;white-space:nowrap;">${x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}) : '—'}</td>
+        <td style="padding:4px 6px;">${esc(x.referencia)}</td>
+        <td style="padding:4px 6px;color:var(--muted);">${esc(x.cliente||'')}</td>
+        <td style="padding:4px 6px;">${esc(x.finalidade)}</td>
+        <td style="padding:4px 6px;text-align:right;font-weight:700;">${x.n}</td>
+      </tr>`;
+  }
+  const theadEmAguas = `<thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;">
+        <th style="padding:4px 6px;">ETA</th><th style="padding:4px 6px;">Processo</th><th style="padding:4px 6px;">Cliente</th><th style="padding:4px 6px;">Finalidade</th><th style="padding:4px 6px;text-align:right;">Cont.</th>
+      </tr></thead>`;
+
+  // No modo solo (1 TV dedicada a este painel), em vez de 1 tabela rolável,
+  // divide a lista em colunas lado a lado — igual a planilha antiga fazia
+  // (3 blocos "ETA/Processos/Cliente") — pra caber tudo sem precisar rolar
+  // a tela, que era exatamente o pedido da Emanuelly (21/08/2026).
+  function emAguasEmColunas(lista){
+    if(!lista.length) return `<div style="font-size:13px;color:var(--muted);">Nenhum processo embarcado no momento.</div>`;
+    // Número de colunas cresce com a quantidade de linhas — poucas linhas
+    // não precisam de 4 colunas, muitas linhas (>75) usam 4 pra continuar
+    // cabendo numa tela de TV padrão sem espremer demais a fonte.
+    const nCols = lista.length > 75 ? 4 : (lista.length > 36 ? 3 : (lista.length > 14 ? 2 : 1));
+    const porColuna = Math.ceil(lista.length / nCols);
+    const colunas = [];
+    for(let i=0; i<nCols; i++) colunas.push(lista.slice(i*porColuna, (i+1)*porColuna));
+    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:14px;">
+      ${colunas.map(col => `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+        ${theadEmAguas}
+        <tbody>${col.map(linhaEmAguas).join('')}</tbody>
+      </table>`).join('')}
+    </div>`;
+  }
+
+  const emAguasHtml = solo
+    ? emAguasEmColunas(emAguasLista)
+    : (emAguasLista.length ? `
     <div style="max-height:${maxH};overflow-y:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;">
-        <th style="padding:6px 8px;">ETA</th><th style="padding:6px 8px;">Processo</th><th style="padding:6px 8px;">Cliente</th><th style="padding:6px 8px;">Finalidade</th><th style="padding:6px 8px;text-align:right;">Containers</th>
-      </tr></thead>
-      <tbody>${emAguasLista.map(x => `<tr style="border-top:1px solid var(--border);">
-        <td style="padding:6px 8px;font-weight:700;">${x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}) : '—'}</td>
-        <td style="padding:6px 8px;">${esc(x.referencia)}</td>
-        <td style="padding:6px 8px;color:var(--muted);">${esc(x.cliente||'')}</td>
-        <td style="padding:6px 8px;">${esc(x.finalidade)}</td>
-        <td style="padding:6px 8px;text-align:right;font-weight:700;">${x.n}</td>
-      </tr>`).join('')}</tbody>
+      ${theadEmAguas}
+      <tbody>${emAguasLista.map(linhaEmAguas).join('')}</tbody>
     </table>
     </div>
-  ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo embarcado no momento.</div>`;
+  ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo embarcado no momento.</div>`);
 
   const noChaoHtml = noChaoLista.length ? `
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${noChaoProcessos} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades no total</div>
