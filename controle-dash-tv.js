@@ -203,10 +203,13 @@ function renderDashTV(){
   // window._tvListasBackorders (montado acima).
   function cardMarca(nome, qtd, maxQtd, chave){
     const pct = maxQtd > 0 ? Math.round((qtd/maxQtd)*100) : 0;
-    return `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:var(--bg);border-radius:10px;padding:12px 14px;">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">${esc(nome)}</div>
-      <div style="font-size:26px;font-weight:800;color:#1a3a6e;font-family:'DM Sans',sans-serif;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:var(--muted);">containers</span></div>
-      <div style="background:#e2e8f0;border-radius:4px;height:5px;margin-top:8px;overflow:hidden;"><div style="background:#1a3a6e;height:100%;width:${pct}%;"></div></div>
+    // Mesmo azul marinho + letras brancas dos cards "resto" abaixo — pedido
+    // do Ayslan (21/08/2026) pra deixar os 4 principais visualmente
+    // consistentes com o resto da lista de marcas.
+    return `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#0f1f3d;border-radius:10px;padding:12px 14px;">
+      <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">${esc(nome)}</div>
+      <div style="font-size:26px;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:rgba(255,255,255,.65);">containers</span></div>
+      <div style="background:rgba(255,255,255,.15);border-radius:4px;height:5px;margin-top:8px;overflow:hidden;"><div style="background:#fff;height:100%;width:${pct}%;"></div></div>
     </div>`;
   }
 
