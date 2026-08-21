@@ -347,23 +347,63 @@ async function reabrirProcesso(id){
 
 // Cancelamento de processo — pedido da Emanuelly (21/08/2026): alguns
 // processos precisam sair da operação ativa sem serem excluídos, pra
-// manter o histórico. Restrito a gerente (mesmo nível de acesso da
-// exclusão) — a checagem de verdade é no servidor, ver POST /api/
-// controle/v2/processo em server.js.
+// manter o histórico. Cancelar/reverter direto é restrito a gerente — a
+// checagem de verdade é no servidor, ver POST /api/controle/v2/processo
+// em server.js. Ampliado no mesmo dia: quem não é gerente não cancela
+// mais direto, só "solicita" (com motivo); um gerente vê a solicitação
+// (banner no processo + notificação no sino) e aprova ou rejeita.
 async function cancelarProcesso(id){
-  const motivo = prompt('Motivo do cancelamento (opcional):') || '';
-  if(!confirm('Cancelar este processo? Ele continua no histórico, mas sai das contagens operacionais (Dashboard TV etc).')) return;
+  const souGerente = _user && _user.role === 'gerente';
+  const motivo = prompt(souGerente ? 'Motivo do cancelamento (opcional):' : 'Motivo da solicitação de cancelamento:') || '';
+  if(souGerente){
+    if(!confirm('Cancelar este processo? Ele continua no histórico, mas sai das contagens operacionais (Dashboard TV etc).')) return;
+  } else {
+    if(!confirm('Solicitar o cancelamento deste processo? Um gerente precisa aprovar para ele ser efetivamente cancelado.')) return;
+  }
+  const body = souGerente
+    ? { id, cancelado:true, cancelado_motivo: motivo }
+    : { id, cancelamento_solicitado:true, cancelado_motivo: motivo };
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ processo:{ id, cancelado:true, cancelado_motivo: motivo } })
+    body: JSON.stringify({ processo: body })
   });
   const d = await r.json();
   if(d.ok){
-    showToast('🚫 Processo cancelado','ok');
+    showToast(souGerente ? '🚫 Processo cancelado' : '📨 Solicitação de cancelamento enviada','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
     if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
-  } else showToast('Erro ao cancelar'+(d.erro?': '+d.erro:''),'err');
+  } else showToast('Erro'+(d.erro?': '+d.erro:''),'err');
+}
+
+async function aprovarCancelamento(id){
+  if(!confirm('Aprovar o cancelamento deste processo? Ele continua no histórico, mas sai das contagens operacionais (Dashboard TV etc).')) return;
+  const r = await fetch('/api/controle/v2/processo', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ processo:{ id, cancelado:true } })
+  });
+  const d = await r.json();
+  if(d.ok){
+    showToast('✅ Cancelamento aprovado','ok');
+    await carregarProcessos(true);
+    const p = _processos.find(p=>p.id===id);
+    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+  } else showToast('Erro ao aprovar'+(d.erro?': '+d.erro:''),'err');
+}
+
+async function rejeitarCancelamento(id){
+  if(!confirm('Rejeitar esta solicitação de cancelamento? O processo continua ativo normalmente.')) return;
+  const r = await fetch('/api/controle/v2/processo', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ processo:{ id, cancelamento_solicitado:false } })
+  });
+  const d = await r.json();
+  if(d.ok){
+    showToast('✖️ Solicitação de cancelamento rejeitada','ok');
+    await carregarProcessos(true);
+    const p = _processos.find(p=>p.id===id);
+    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+  } else showToast('Erro ao rejeitar'+(d.erro?': '+d.erro:''),'err');
 }
 
 async function reverterCancelamento(id){
@@ -1745,6 +1785,7 @@ function setFaseFilter(fase){
   if(fase==='') document.getElementById('menu-todos')?.classList.add('active');
   else if(fase==='__alertas') document.getElementById('menu-alertas')?.classList.add('active');
   else if(fase==='__cancelados') document.getElementById('menu-cancelados')?.classList.add('active');
+  else if(fase==='__cancelamento_solicitado') document.getElementById('menu-solicitacoes-cancelamento')?.classList.add('active');
 }
 
 // Usada pelos cards clicÃÂÃÂ¡veis do Dashboard Executivo/Financeiro: fecha o
@@ -1807,6 +1848,9 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
   const cancelados = _processos.filter(p=>!!p.cancelado).length;
   const badgeCancelados = document.getElementById('badge-cancelados');
   if(badgeCancelados){ badgeCancelados.textContent=cancelados; badgeCancelados.style.display=cancelados>0?'block':'none'; }
+  const solicitacoesCancelamento = _processos.filter(p=>!!p.cancelamento_solicitado && !p.cancelado).length;
+  const badgeSolicCancelamento = document.getElementById('badge-solicitacoes-cancelamento');
+  if(badgeSolicCancelamento){ badgeSolicCancelamento.textContent=solicitacoesCancelamento; badgeSolicCancelamento.style.display=solicitacoesCancelamento>0?'block':'none'; }
   document.getElementById('badge-total').textContent = total;
 
   el.innerHTML = stats.map(s=>`
@@ -1825,6 +1869,7 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
 const FILTROS_FASE_ESPECIAIS = {
   __alertas:    lista => lista.filter(p=>verificarAlertas(p,false).length>0),
   __cancelados: lista => lista.filter(p=>!!p.cancelado),
+  __cancelamento_solicitado: lista => lista.filter(p=>!!p.cancelamento_solicitado && !p.cancelado),
   __andamento:  lista => lista.filter(p=>p.fase!=='FINALIZADO'),
   __demur:      lista => lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }),
   __chegada_7d: lista => lista.filter(p=>chegandoEmDias(p,7)),
@@ -1963,10 +2008,11 @@ function render(){
       // executÃÂÃÂ¡vel pra QUALQUER usuÃÂÃÂ¡rio que abrir esta lista (XSS
       // persistente). Ver esc() em controle-campos.js.
       const canceladoBadge = p.cancelado ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Processo cancelado'}" style="font-size:9px;font-weight:700;background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#64748b;">🚫 CANCELADO</span>` : '';
+    const solicitacaoCancelamentoBadge = (p.cancelamento_solicitado && !p.cancelado) ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Cancelamento solicitado'}" style="font-size:9px;font-weight:700;background:rgba(217,119,6,.15);border:1px solid rgba(217,119,6,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#d97706;">📨 CANCEL. SOLICITADO</span>` : '';
       return `<div class="table-row" onclick="abrirProcesso('${p.id}')" style="${p.cancelado?'opacity:.6;':''}">
         <div class="td td-ref" data-label="">
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;row-gap:2px;">
-            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}${canceladoBadge}
+            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}${canceladoBadge}${solicitacaoCancelamentoBadge}
           </div>
         </div>
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>

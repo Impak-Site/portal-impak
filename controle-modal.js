@@ -178,7 +178,8 @@ function renderModal(){
   // fechado) — só marca visualmente e some das telas de acompanhamento
   // ao vivo (Dashboard TV).
   const cancelado = !!p.cancelado;
-  const podeReverterCancelamento = _user && _user.role === 'gerente';
+  const souGerente = _user && _user.role === 'gerente';
+  const podeReverterCancelamento = souGerente;
   const bannerCancelado = cancelado
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(100,116,139,.08);border:1px solid rgba(100,116,139,.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
         <div style="font-size:12px;color:var(--text);"><strong>🚫 Processo cancelado</strong>${p.cancelado_em?` em ${new Date(p.cancelado_em).toLocaleString('pt-BR')}`:''}${p.cancelado_por?` por ${esc(p.cancelado_por)}`:''}${p.cancelado_motivo?` — ${esc(p.cancelado_motivo)}`:''}</div>
@@ -186,9 +187,26 @@ function renderModal(){
       </div>`
     : '';
 
+  // ── SOLICITAÇÃO DE CANCELAMENTO (aprovação por gerente) ──────────
+  // Ampliação do mesmo dia (pedido da Emanuelly, depois que a Paula — que
+  // é gerente — bateu num erro tentando cancelar direto): agora quem não
+  // é gerente só "solicita" o cancelamento; aqui aparece o banner com o
+  // pedido, e só um gerente vê os botões de aprovar/rejeitar.
+  const solicitado = !!p.cancelamento_solicitado && !cancelado;
+  const bannerSolicitacaoCancelamento = solicitado
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
+        <div style="font-size:12px;color:var(--text);"><strong>📨 Cancelamento solicitado</strong>${p.cancelamento_solicitado_em?` em ${new Date(p.cancelamento_solicitado_em).toLocaleString('pt-BR')}`:''}${p.cancelamento_solicitado_por?` por ${esc(p.cancelamento_solicitado_por)}`:''}${p.cancelado_motivo?` — ${esc(p.cancelado_motivo)}`:''}</div>
+        ${souGerente ? `<div style="display:flex;gap:8px;">
+            <button type="button" class="btn" onclick="aprovarCancelamento('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">✅ Aprovar cancelamento</button>
+            <button type="button" class="btn btn-outline" onclick="rejeitarCancelamento('${p.id}')">✖️ Rejeitar</button>
+          </div>` : `<span style="font-size:11px;color:var(--muted);">Aguardando aprovação de um gerente.</span>`}
+      </div>`
+    : '';
+
   document.getElementById('modal-body').innerHTML = `
     ${bannerTrava}
     ${bannerCancelado}
+    ${bannerSolicitacaoCancelamento}
     <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
     <!-- ABA: IDENTIFICAÇÃO -->
     <div class="tab-pane active" id="pane-identificacao">
@@ -270,7 +288,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div style="display:flex;gap:10px;justify-content:space-between;padding-top:16px;border-top:1px solid var(--border);">
         <div style="display:flex;gap:10px;">
           ${p.id?`<button class="btn" onclick="excluirProcesso('${p.id}')" style="background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);">🗑 Excluir</button>`:''}
-          ${p.id && !cancelado?`<button class="btn btn-outline" onclick="cancelarProcesso('${p.id}')" title="Mantém no histórico, mas sai das contagens operacionais — restrito a gerente" style="color:#64748b;border-color:rgba(100,116,139,.4);">🚫 Cancelar Processo</button>`:''}
+          ${p.id && !cancelado && !solicitado?`<button class="btn btn-outline" onclick="cancelarProcesso('${p.id}')" title="${souGerente?'Mantém no histórico, mas sai das contagens operacionais':'Envia para aprovação de um gerente'}" style="color:#64748b;border-color:rgba(100,116,139,.4);">🚫 ${souGerente?'Cancelar Processo':'Solicitar Cancelamento'}</button>`:''}
           ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado — só gerente pode reabrir depois">🔒 Fechar Processo</button>`:''}
         </div>
         <div style="display:flex;gap:10px;">

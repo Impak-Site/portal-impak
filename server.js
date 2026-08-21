@@ -993,12 +993,14 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
     // campo a campo. Isso é reforçado aqui no servidor (não só escondido/
     // desabilitado no front-end) porque a trava só vale alguma coisa se
     // não der pra contornar chamando a API direto.
+    let processoExistente = false;
     if (processo.id) {
       const { data: atual } = await sb()
         .from('controle_processos')
-        .select('fechado, cancelado')
+        .select('fechado, cancelado, cancelamento_solicitado')
         .eq('id', processo.id)
         .maybeSingle();
+      processoExistente = !!atual;
       const estavaFechado = !!(atual && atual.fechado);
       const tentandoDestravar = estavaFechado && processo.fechado === false;
       const tentandoTravar    = !estavaFechado && processo.fechado === true;
@@ -1025,26 +1027,65 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
       // ── CANCELAMENTO DE PROCESSO ("Cancelar Processo") ──────────────
       // Pedido da Emanuelly (21/08/2026): processos que não vão pra frente
       // precisam sumir das contagens operacionais SEM perder o histórico
-      // (diferente de excluir). Mesma restrição de acesso da exclusão —
-      // só gerente pode cancelar ou reverter um cancelamento.
+      // (diferente de excluir). Cancelar/reverter direto continua restrito
+      // a gerente — ver também o fluxo de SOLICITAÇÃO logo abaixo, pedido
+      // por ela no mesmo dia: quem não é gerente não cancela mais direto,
+      // só "solicita" (com motivo) e um gerente aprova ou rejeita.
       const estavaCancelado = !!(atual && atual.cancelado);
       const tentandoCancelar     = !estavaCancelado && processo.cancelado === true;
       const tentandoDescancelar  = estavaCancelado && processo.cancelado === false;
+
+      const estavaSolicitado  = !!(atual && atual.cancelamento_solicitado);
+      const tentandoSolicitar = !estavaSolicitado && processo.cancelamento_solicitado === true;
+      const tentandoRejeitar  = estavaSolicitado && processo.cancelamento_solicitado === false;
+
       if ((tentandoCancelar || tentandoDescancelar) && req.session.role !== 'gerente') {
         return res.status(403).json({ erro: 'Apenas gerentes podem cancelar ou reverter o cancelamento de um processo.' });
       }
+      if (tentandoRejeitar && req.session.role !== 'gerente') {
+        return res.status(403).json({ erro: 'Apenas gerentes podem rejeitar uma solicitação de cancelamento.' });
+      }
+
       if (tentandoCancelar) {
         processo.cancelado_em = new Date().toISOString();
         processo.cancelado_por = req.session.usuario;
-        // motivo é texto livre digitado por quem cancelou — mantém o que
-        // veio no payload (pode ser vazio/omitido, é opcional).
+        // Aprovar (cancelar de verdade) encerra qualquer solicitação pendente.
+        // cancelado_motivo é texto livre — se não vier no payload da aprovação,
+        // mantém o motivo já registrado na solicitação original (não é tocado).
+        processo.cancelamento_solicitado = false;
+        processo.cancelamento_solicitado_em = null;
+        processo.cancelamento_solicitado_por = null;
       } else if (tentandoDescancelar) {
         processo.cancelado_em = null;
         processo.cancelado_por = null;
         processo.cancelado_motivo = null;
       } else {
         delete processo.cancelado; // não deixa alterar por acidente num save comum
-        delete processo.cancelado_motivo;
+        if (!tentandoSolicitar && !tentandoRejeitar) delete processo.cancelado_motivo;
+      }
+
+      if (tentandoSolicitar) {
+        processo.cancelamento_solicitado_em = new Date().toISOString();
+        processo.cancelamento_solicitado_por = req.session.usuario;
+        // Notifica (sino de notificações, visível a todos) pra um gerente
+        // ver e decidir — clicar na notificação já abre o processo direto.
+        try {
+          await sb().from('controle_notificacoes').insert({
+            processo_id: processo.id,
+            tipo: 'alerta',
+            titulo: `Solicitação de cancelamento: ${atual && atual.referencia ? atual.referencia : processo.referencia || ''}`,
+            mensagem: `${req.session.usuario} solicitou o cancelamento deste processo.${processo.cancelado_motivo ? ' Motivo: ' + processo.cancelado_motivo : ''}`,
+            created_by: req.session.usuario,
+          });
+        } catch (notifErr) {
+          console.warn('notificacao solicitacao cancelamento erro:', notifErr.message);
+        }
+      } else if (tentandoRejeitar) {
+        processo.cancelamento_solicitado_em = null;
+        processo.cancelamento_solicitado_por = null;
+        processo.cancelado_motivo = null;
+      } else if (!tentandoCancelar) {
+        delete processo.cancelamento_solicitado; // não deixa alterar por acidente num save comum
       }
     }
 
@@ -1073,9 +1114,25 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
     // Remover campos internos antes de salvar no banco
     const { log: _log, _fasePrevista, _savedAt, ...processoLimpo } = processo;
 
-    const { error } = await sb()
-      .from('controle_processos')
-      .upsert(processoLimpo, { onConflict: 'id' });
+    // Processos já existentes usam UPDATE (não upsert): ações como Fechar/
+    // Cancelar/Reabrir mandam só {id, campo} — um upsert nesse caso monta um
+    // INSERT ... ON CONFLICT DO UPDATE, e o Postgres valida as colunas
+    // NOT NULL (ex.: referencia) do candidato a INSERT mesmo quando a linha
+    // já existe e o caminho real vai ser um UPDATE, derrubando esses saves
+    // parciais com "null value in column referencia violates not-null
+    // constraint" (bug relatado pela Paula, 21/08/2026). UPDATE só toca nas
+    // colunas presentes no payload, então não tem esse problema.
+    let error;
+    if (processoExistente) {
+      ({ error } = await sb()
+        .from('controle_processos')
+        .update(processoLimpo)
+        .eq('id', processo.id));
+    } else {
+      ({ error } = await sb()
+        .from('controle_processos')
+        .upsert(processoLimpo, { onConflict: 'id' }));
+    }
     if (error) throw new Error(error.message);
 
     // Criar notificação de demurrage se necessário
