@@ -24,6 +24,54 @@
 // Depende de: _processos, containersDoProcesso, calcularFase, esc(),
 // parseDataLocal (controle-core.js).
 
+// Nome do cliente abreviado — pedido da Emanuelly (21/08/2026): o nome
+// completo (razão social, às vezes 40+ caracteres) obriga a tabela a
+// quebrar linha e deixa a fonte pequena de mais pra ler de longe na TV.
+// Mantém um "apelido comercial" fixo pros clientes mais recorrentes (igual
+// a planilha antiga já fazia — inclusive alguns apelidos, tipo "Irmãos
+// Silva S/A" = "Sta Helena", não têm nenhuma relação com a razão social e
+// não dá pra deduzir automaticamente). Pra qualquer cliente novo que ainda
+// não está aqui, cai num fallback genérico que tenta cortar os sufixos
+// jurídicos/descritivos comuns (LTDA, COMERCIO DE PNEUS, etc.) e usa a
+// primeira palavra que sobrar — não é perfeito, mas já ajuda. Se aparecer
+// um apelido errado/estranho na TV, é só adicionar a razão social exata
+// (em maiúsculas) aqui embaixo.
+const CLIENTE_APELIDO_TV = {
+  'UNICAP COMERCIO DE PNEUS NOVOS LTDA': 'UNICAP',
+  'CDO ATACADISTA DE PNEUS LTDA': 'CDO',
+  'PNEUSCAR RECAUCHUTAGEM LTDA': 'PNEUSCAR',
+  'IMPAK COMERCIAL E IMPORTADORA LTDA': 'IMPAK',
+  'IRMAOS SILVA S/A': 'STA HELENA',
+  'IRMÃOS SILVA S/A': 'STA HELENA',
+  'TRILL CONSTRUTORA LTDA': 'TRILL/JOUBERT',
+  'ALTA PERFORMANCE RECAUCHUTADORA E R': 'ALTA',
+  'TWI COMERCIO DE PNEUS LTDA': 'TWI',
+  'PNEUS EXPRESS COMERCIO DE PNEUS LTD': 'PNEUS EXPRESS',
+  'F. VACHILESKI & CIA LTDA': 'VACHILESKI',
+  'RECAPADORA DE PNEUS CCN LTDA': 'CCN',
+  'OST RENOVADORA DE PNEUS LTDA': 'OST',
+};
+// Palavras genéricas (sufixo jurídico ou descritivo do ramo) que não ajudam
+// a identificar QUAL cliente é — descartadas no fallback automático.
+const PALAVRAS_GENERICAS_CLIENTE_TV = new Set([
+  'LTDA','LTD','SA','S/A','EIRELI','ME','EPP','CIA','&',
+  'COMERCIO','COMERCIAL','IMPORTADORA','ATACADISTA','ATACADISTA DE',
+  'RECAUCHUTAGEM','RECAUCHUTADORA','RENOVADORA','RECAPADORA','CONSTRUTORA',
+  'PNEUS','PNEUS NOVOS','NOVOS','DE','DA','DO','E',
+]);
+function abreviarClienteTV(nomeCompleto){
+  const nome = (nomeCompleto || '').trim();
+  if(!nome) return '';
+  const chave = nome.toUpperCase();
+  if(CLIENTE_APELIDO_TV[chave]) return CLIENTE_APELIDO_TV[chave];
+  const palavras = chave.replace(/[.,]/g, '').split(/\s+/)
+    .filter(w => w && !PALAVRAS_GENERICAS_CLIENTE_TV.has(w) && w.length > 1);
+  if(palavras.length) return palavras[0];
+  // Não sobrou nada reconhecível (nome só com palavras genéricas/iniciais)
+  // — melhor mostrar a primeira palavra original do que nada.
+  return nome.split(/\s+/)[0] || nome;
+}
+
 function toggleDashTV(){
   const el = document.getElementById('dash-tv');
   if(!el) return;
@@ -78,12 +126,12 @@ function renderDashTV(){
   const backordersResto = backordersLista.slice(4);
 
   // ── 2: EM ÁGUAS — fase Embarcado, ordenado por ETA ────────────
-  const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'};
+  const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'D', ENCOMENDA:'E', CONTA_E_ORDEM:'C'};
   const emAguasLista = [];
   _processos.forEach(p => {
     if(calcularFase(p) !== 'EMBARCADO') return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
-    emAguasLista.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n, finalidade: FINALIDADE_LABEL_TV[p.finalidade] || '—' });
+    emAguasLista.push({ referencia: p.referencia, cliente: abreviarClienteTV(p.cliente), eta: p.eta, n, finalidade: FINALIDADE_LABEL_TV[p.finalidade] || '—' });
   });
   emAguasLista.sort((a,b) => (a.eta||'9999').localeCompare(b.eta||'9999'));
   const emAguasTotal = emAguasLista.reduce((s,x)=> s+x.n, 0);
