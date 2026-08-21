@@ -280,9 +280,20 @@ function ativarTelaTVExclusiva(){
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
 
-  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
-    el.style.display = 'none';
-  });
+  // Essa tela é pra ficar espelhada numa TV física — não faz sentido gastar
+  // ~224px de largura com a barra lateral de navegação do Controle (que
+  // ninguém vai clicar numa TV). Esconde a sidebar inteira (não só as
+  // seções de "processos" como antes) pra o conteúdo usar a tela toda.
+  const sidebarTV = document.querySelector('.sidebar');
+  if(sidebarTV) sidebarTV.style.display = 'none';
+  // Pelo mesmo motivo, esconde também o nav global (logo/links/Sair, vindo
+  // do chat.js) — ele é injetado depois deste script rodar, então some com
+  // um pequeno atraso; sem isso a TV ficaria com uma barra de links inútil
+  // no topo por cima do conteúdo em tela cheia.
+  const esconderNavGlobal = () => { const nav = document.getElementById('impak-nav'); if(nav) nav.style.display = 'none'; };
+  esconderNavGlobal();
+  setTimeout(esconderNavGlobal, 500);
+
   document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
 
   const dashTV = document.getElementById('dash-tv');
