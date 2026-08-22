@@ -34,3 +34,6 @@ jobs:
 
       - name: Rodar testes de Aprovação de Cotação (LAB)
         run: node testes_aprovacao.js
+
+      - name: Rodar testes do TOTP/2FA (lib/totp.js)
+        run: node testes_totp.js
