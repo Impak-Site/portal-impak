@@ -1665,8 +1665,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // parte da fórmula automática. Confirmado numérico exato: (2050×5,0827+1100)×8%+20
   // = R$941,56 (bate com a planilha real da UD25-305, sem nenhuma diferença).
   const capatazia_brl = txOpPre.fixas.capatazia * containers;
-  const taxaCeParaAfrmm = taxa_ce === 0 ? 2000 : (taxa_ce * cambioMedioDI);
-const marinha_auto = (((frete_usd * cambioMedioDI) + taxaCeParaAfrmm + capatazia_brl) * 0.08) + 20;
+  const marinha_auto = (((frete_usd * cambioMedioDI) + capatazia_brl) * 0.08) + 20;
   const autoMarinhaChk = document.getElementById('auto_marinha');
   if(!autoMarinhaChk || autoMarinhaChk.checked){
     document.getElementById('tx_marinha').value = marinha_auto.toFixed(2);

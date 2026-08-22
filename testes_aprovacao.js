@@ -333,7 +333,7 @@ teste('frete em moeda diferente de USD não é migrado (Calculador só tem frete
   const dados = mapearProcessoParaCotacao(proc);
   verdadeiro(dados.campos.frete_usd === undefined);
 });
-teste('parcelas migradas quando pi_pagamento=PARCELADO (sem câmbio/recebido, que ficam pra trás)', () => {
+teste('parcelas migradas quando pi_pagamento=PARCELADO (inclusive câmbio fechado e recebimento do cliente, desde que o Calculador ganhou esses campos)', () => {
   const proc = {
     pi_pagamento: 'PARCELADO',
     pi_parcelas_json: JSON.stringify([
@@ -342,8 +342,11 @@ teste('parcelas migradas quando pi_pagamento=PARCELADO (sem câmbio/recebido, qu
     ]),
   };
   const dados = mapearProcessoParaCotacao(proc);
-  iguais(dados.parcelas.length, 1, 'linha sem valor não deve virar parcela');
-  iguais(dados.parcelas[0], { label: 'Inicial', valor_usd: 8000, data: '2026-03-01' });
+  iguais(dados.parcelas.length, 1, 'linha sem valor nem câmbio não deve virar parcela');
+  iguais(dados.parcelas[0], {
+    label: 'Inicial', valor_usd: 8000, data_vencimento: '2026-03-01',
+    cambio_fechado: 5.15, valor_recebido_cliente: 8000, data_recebimento: '2026-03-02',
+  });
 });
 teste('sem PARCELADO, parcelas vem vazio mesmo se pi_parcelas_json tiver lixo de outra forma de pagamento', () => {
   const proc = { pi_pagamento: 'ENTRADA_SALDO', pi_parcelas_json: null };
