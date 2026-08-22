@@ -22,7 +22,7 @@
 
 const express = require('express');
 const helmet  = require('helmet');
-const { generateSecret: gerarSegredo2FA, generate: gerarCodigo2FA, verify: verificarCodigoOtplib, generateURI: gerarURI2FA } = require('otplib');
+const { generateSecret: gerarSegredo2FA, generate: gerarCodigo2FA, verify: verificarCodigoOtplib, generateURI: gerarURI2FA } = require('./lib/totp');
 const qrcode  = require('qrcode');
 
 // Wrapper síncrono-de-uso pra verify() do otplib (que é assíncrono e lança
