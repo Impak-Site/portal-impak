@@ -22,6 +22,23 @@
 
 const express = require('express');
 const helmet  = require('helmet');
+const { generateSecret: gerarSegredo2FA, generate: gerarCodigo2FA, verify: verificarCodigoOtplib, generateURI: gerarURI2FA } = require('otplib');
+const qrcode  = require('qrcode');
+
+// Wrapper síncrono-de-uso pra verify() do otplib (que é assíncrono e lança
+// erro se o texto digitado não tiver exatamente 6 dígitos) — os pontos de
+// chamada só precisam saber "código bateu ou não", sem se preocupar com
+// formato malformado ou com o await por baixo.
+async function verificarCodigo2FA(secret, codigoDigitado) {
+  const codigo = String(codigoDigitado || '').trim();
+  if (!/^\d{6}$/.test(codigo)) return false;
+  try {
+    const r = await verificarCodigoOtplib({ secret, token: codigo });
+    return !!(r && r.valid);
+  } catch (e) {
+    return false;
+  }
+}
 const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
@@ -564,11 +581,150 @@ async function salvar(){
 </html>`;
 }
 
+// Tela de configuração obrigatória do autenticador (2FA) — aparece uma
+// única vez, logo após a senha certa, pra quem ainda não tem o TOTP
+// configurado. Mostra o QR code (pra escanear com Google Authenticator,
+// Authy, etc.) e também o código em texto, pra quem preferir digitar
+// manualmente. Só libera a sessão de verdade depois de confirmar um
+// código válido gerado pelo app — isso garante que o segredo foi mesmo
+// registrado no autenticador da pessoa, e não só mostrado na tela.
+function configurar2faPage(qrDataUrl, secretTexto, erro) {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Configurar autenticação em duas etapas</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+${AUTH_CSS}
+<style>.qr-box{text-align:center;margin-bottom:18px;}.qr-box img{width:180px;height:180px;border:1px solid #c8d8e8;border-radius:8px;}
+.secret-txt{font-family:monospace;font-size:13px;letter-spacing:1px;background:#dce8f5;border:1px solid #c8d8e8;border-radius:6px;padding:8px 10px;text-align:center;word-break:break-all;margin-bottom:16px;color:#0d1e2e;}
+.codigo-input{letter-spacing:6px;font-size:22px;text-align:center;font-weight:700;}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo-row"><div class="logo-badge">IMPAK</div><div class="logo-sub">Portal</div></div>
+  <div class="box">
+    <h1>Proteger sua conta</h1>
+    <div class="sub">Configuração obrigatória — só na primeira vez</div>
+    <div id="msg">${erro ? `<div class="err">${escapeHtml(erro)}</div>` : ''}</div>
+    <p style="font-size:12px;color:#4a6480;margin-bottom:14px;line-height:1.5;">Escaneie o código abaixo com um aplicativo autenticador (Google Authenticator, Microsoft Authenticator, Authy...) e digite o código de 6 dígitos que ele mostrar.</p>
+    <div class="qr-box">${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR code">` : '<div class="err">Não foi possível gerar o QR code — use o código manual abaixo.</div>'}</div>
+    <label>Ou digite manualmente no app</label>
+    <div class="secret-txt">${escapeHtml(secretTexto)}</div>
+    <label>Código de 6 dígitos</label>
+    <input id="codigo" class="codigo-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autofocus>
+    <button onclick="confirmar()">Confirmar e entrar</button>
+    <div class="footer">IMPAK Comercial Importadora · Portal v2.0 · Confidencial</div>
+  </div>
+</div>
+<script>
+async function confirmar(){
+  const codigo = document.getElementById('codigo').value.trim();
+  const msg = document.getElementById('msg');
+  if(codigo.length !== 6){ msg.innerHTML = '<div class="err">Digite os 6 dígitos do código.</div>'; return; }
+  const btn = document.querySelector('button');
+  btn.disabled = true; btn.textContent = 'Confirmando...';
+  try{
+    const r = await fetch('/login/configurar-2fa', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ codigo })
+    });
+    const d = await r.json();
+    if(d.ok){ location.href = d.destino || '/'; return; }
+    msg.innerHTML = '<div class="err">'+(d.erro||'Erro ao confirmar.')+'</div>';
+  }catch(e){
+    msg.innerHTML = '<div class="err">Erro de rede. Tente novamente.</div>';
+  }
+  btn.disabled = false; btn.textContent = 'Confirmar e entrar';
+}
+document.getElementById('codigo').addEventListener('keydown', e=>{ if(e.key==='Enter') confirmar(); });
+</script>
+</body>
+</html>`;
+}
+
+// Tela de verificação do código (login normal, depois da primeira vez que
+// já configurou o autenticador).
+function verificar2faPage(erro) {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IMPAK — Código de verificação</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+${AUTH_CSS}
+<style>.codigo-input{letter-spacing:6px;font-size:22px;text-align:center;font-weight:700;}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo-row"><div class="logo-badge">IMPAK</div><div class="logo-sub">Portal</div></div>
+  <div class="box">
+    <h1>Verificação em duas etapas</h1>
+    <div class="sub">Digite o código do seu autenticador</div>
+    <div id="msg">${erro ? `<div class="err">${escapeHtml(erro)}</div>` : ''}</div>
+    <label>Código de 6 dígitos</label>
+    <input id="codigo" class="codigo-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autofocus>
+    <button onclick="verificar()">Entrar</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="/login" style="font-size:12px;color:#1a7fd4;text-decoration:none;font-weight:600;">Voltar pro login</a>
+    </div>
+    <div class="footer">IMPAK Comercial Importadora · Portal v2.0 · Confidencial</div>
+  </div>
+</div>
+<script>
+async function verificar(){
+  const codigo = document.getElementById('codigo').value.trim();
+  const msg = document.getElementById('msg');
+  if(codigo.length !== 6){ msg.innerHTML = '<div class="err">Digite os 6 dígitos do código.</div>'; return; }
+  const btn = document.querySelector('button');
+  btn.disabled = true; btn.textContent = 'Verificando...';
+  try{
+    const r = await fetch('/login/verificar-2fa', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ codigo })
+    });
+    const d = await r.json();
+    if(d.ok){ location.href = d.destino || '/'; return; }
+    msg.innerHTML = '<div class="err">'+(d.erro||'Código inválido.')+'</div>';
+    document.getElementById('codigo').value = '';
+  }catch(e){
+    msg.innerHTML = '<div class="err">Erro de rede. Tente novamente.</div>';
+  }
+  btn.disabled = false; btn.textContent = 'Entrar';
+}
+document.getElementById('codigo').addEventListener('keydown', e=>{ if(e.key==='Enter') verificar(); });
+</script>
+</body>
+</html>`;
+}
+
 // ── AUTENTICAÇÃO ──────────────────────────────────────────────
 app.get('/login', (req, res) => {
   if (req.session.usuario) return res.redirect(sanitizeDestino(req.query.destino));
   res.send(loginPage('', req.query.destino));
 });
+
+// Completa o login "de verdade" (grava tudo na sessão) — usada tanto no
+// fluxo sem 2FA (legado, enquanto ainda existir alguém sem configurar)
+// quanto depois que o código do autenticador é confirmado. Extraída pra
+// não duplicar essa lista de campos em 3 lugares (senha ok direto,
+// verificar-2fa, configurar-2fa).
+function completarLogin(req, u, destino) {
+  req.session.usuario     = u.usuario;
+  req.session.nome        = u.nome;
+  req.session.modulos     = u.modulos;
+  req.session.role        = u.role;
+  req.session.displayName = u.display_name;
+  // A senha (nem em hash) nunca é guardada na sessão — ela só precisa
+  // existir no momento do login. Guardá-la aqui não tem uso real e só
+  // criava o risco de ser devolvida de volta ao navegador via /api/me.
+  req.session.versao      = _sessaoVersao.get(u.usuario) || 1;
+  req.session.home        = u.home || '/';
+  const destinoSeguro = sanitizeDestino(destino);
+  return destinoSeguro !== '/' ? destinoSeguro : (u.home || '/');
+}
 
 app.post('/login', rateLimitLogin, (req, res) => {
   const { usuario, senha, destino } = req.body;
@@ -587,18 +743,71 @@ app.post('/login', rateLimitLogin, (req, res) => {
     console.warn(`[LOGIN FALHOU] usuário="${login}" ip=${ip} em ${new Date().toISOString()}`);
     return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
   }
-  req.session.usuario     = u.usuario;
-  req.session.nome        = u.nome;
-  req.session.modulos     = u.modulos;
-  req.session.role        = u.role;
-  req.session.displayName = u.display_name;
-  // A senha (nem em hash) nunca é guardada na sessão — ela só precisa
-  // existir no momento do login. Guardá-la aqui não tem uso real e só
-  // criava o risco de ser devolvida de volta ao navegador via /api/me.
-  req.session.versao      = _sessaoVersao.get(u.usuario) || 1;
-  req.session.home        = u.home || '/';
+  // ── 2FA (obrigatório pra todo mundo, pedido do Ayslan 22/08/2026) ──
+  // Senha certa não é mais suficiente sozinha: se o usuário já tem o
+  // autenticador configurado, pede o código de 6 dígitos antes de abrir
+  // sessão de verdade. Se ainda não configurou, obriga a configurar agora
+  // (gera o QR code) antes de deixar entrar — não dá pra "pular" o setup.
   const destinoSeguro = sanitizeDestino(destino);
-  res.redirect(destinoSeguro !== '/' ? destinoSeguro : (u.home || '/'));
+  if (u.totp_enabled && u.totp_secret) {
+    req.session.pending2fa = { usuario: u.usuario, destino: destinoSeguro };
+    return res.redirect('/login/verificar-2fa');
+  }
+  const secret = gerarSegredo2FA();
+  req.session.pendingSetup2fa = { usuario: u.usuario, secret, destino: destinoSeguro };
+  return res.redirect('/login/configurar-2fa');
+});
+
+app.get('/login/configurar-2fa', async (req, res) => {
+  const pend = req.session.pendingSetup2fa;
+  if (!pend) return res.redirect('/login');
+  const u = _usuariosCache.get(pend.usuario);
+  const otpauth = gerarURI2FA({ secret: pend.secret, label: u ? (u.email || pend.usuario) : pend.usuario, issuer: 'IMPAK Portal' });
+  let qrDataUrl = '';
+  try { qrDataUrl = await qrcode.toDataURL(otpauth); } catch (e) { console.error('QR code erro:', e.message); }
+  res.send(configurar2faPage(qrDataUrl, pend.secret, null));
+});
+
+app.post('/login/configurar-2fa', rateLimitLogin, async (req, res) => {
+  try {
+    const pend = req.session.pendingSetup2fa;
+    if (!pend) return res.json({ ok: false, erro: 'Sessão de configuração expirada. Faça login novamente.' });
+    const codigo = (req.body.codigo || '').trim();
+    if (!(await verificarCodigo2FA(pend.secret, codigo))) {
+      return res.json({ ok: false, erro: 'Código inválido. Confira o horário do celular e tente de novo.' });
+    }
+    await sb().from('usuarios').update({
+      totp_secret: pend.secret, totp_enabled: true, totp_confirmed_at: new Date().toISOString(),
+    }).eq('usuario', pend.usuario);
+    await recarregarCacheUsuarios();
+    const u = _usuariosCache.get(pend.usuario);
+    const destinoFinal = completarLogin(req, u, pend.destino);
+    delete req.session.pendingSetup2fa;
+    res.json({ ok: true, destino: destinoFinal });
+  } catch (e) {
+    console.error('Erro ao confirmar setup 2FA:', e.message);
+    res.json({ ok: false, erro: 'Erro interno. Tente novamente.' });
+  }
+});
+
+app.get('/login/verificar-2fa', (req, res) => {
+  if (!req.session.pending2fa) return res.redirect('/login');
+  res.send(verificar2faPage(null));
+});
+
+app.post('/login/verificar-2fa', rateLimitLogin, async (req, res) => {
+  const pend = req.session.pending2fa;
+  if (!pend) return res.json({ ok: false, erro: 'Sessão expirada. Faça login novamente.' });
+  const u = _usuariosCache.get(pend.usuario);
+  const codigo = (req.body.codigo || '').trim();
+  if (!u || !u.totp_secret || !(await verificarCodigo2FA(u.totp_secret, codigo))) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+    console.warn(`[2FA FALHOU] usuário="${pend.usuario}" ip=${ip} em ${new Date().toISOString()}`);
+    return res.json({ ok: false, erro: 'Código inválido.' });
+  }
+  const destinoFinal = completarLogin(req, u, pend.destino);
+  delete req.session.pending2fa;
+  res.json({ ok: true, destino: destinoFinal });
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
@@ -715,6 +924,30 @@ app.post('/api/usuarios/:usuario/forcar-logout', (req, res) => {
   if (!USUARIOS.some(u => u.usuario === alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
   forcarLogoutUsuario(alvo);
   res.json({ ok: true, mensagem: `Todas as sessões de "${alvo}" foram invalidadas.` });
+});
+
+// Reseta o 2FA de um usuário (perdeu o celular, trocou de aparelho etc.) —
+// limpa o segredo salvo, então no próximo login a pessoa passa pela tela
+// de configuração de novo (novo QR code). Restrito a gerente, e força
+// logout de todas as sessões abertas daquele usuário por segurança (se
+// alguém pediu esse reset por suspeita de conta comprometida, não faz
+// sentido deixar uma sessão antiga válida).
+app.post('/api/usuarios/:usuario/resetar-2fa', rateLimitLogin, async (req, res) => {
+  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+  const alvo = (req.params.usuario || '').trim().toLowerCase();
+  if (!USUARIOS.some(u => u.usuario === alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+  try {
+    await sb().from('usuarios').update({
+      totp_secret: null, totp_enabled: false, totp_confirmed_at: null,
+    }).eq('usuario', alvo);
+    await recarregarCacheUsuarios();
+    forcarLogoutUsuario(alvo);
+    res.json({ ok: true, mensagem: `2FA de "${alvo}" foi resetado — vai configurar de novo no próximo login.` });
+  } catch (e) {
+    console.error('Erro ao resetar 2FA:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro interno.' });
+  }
 });
 
 // Recarrega o cache de usuários (_usuariosCache) sob demanda. Necessário
