@@ -99,13 +99,26 @@ const PORT = process.env.PORT || 3000;
 // ── SUPABASE ──────────────────────────────────────────────────
 // Inicialização lazy — variáveis de ambiente disponíveis somente
 // após o processo iniciar, não no momento do require()
+//
+// HOTFIX 22/08/2026: o cliente do Supabase (@supabase/supabase-js) sempre
+// inicializa um RealtimeClient no construtor, mesmo quando a gente só usa
+// consultas normais (.from().select()) e nunca .channel()/.on() — e esse
+// RealtimeClient exige um WebSocket disponível. O Node 18 (versão rodando
+// no Railway) não tem WebSocket global (só a partir do Node 22), então
+// createClient() lançava uma exceção síncrona logo na primeira chamada,
+// derrubando com "erro interno" QUALQUER rota que dependesse de sessão
+// (a sessão é lida do Supabase a cada requisição). Isso ficou invisível
+// localmente porque o teste rápido `node server.js` sem SUPABASE_URL nunca
+// chega a instanciar o client de verdade. Corrigido passando o pacote
+// `ws` (WebSocket puro-Node) explicitamente como transport.
+const WebSocket = require('ws');
 let _sb = null;
 function sb() {
   if (_sb) return _sb;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_KEY;
   if (!url || !key) throw new Error('SUPABASE_URL ou SUPABASE_KEY não configurados no Railway');
-  _sb = createClient(url, key, { auth: { persistSession: false } });
+  _sb = createClient(url, key, { auth: { persistSession: false }, realtime: { transport: WebSocket } });
   console.log('✓ Supabase conectado:', url.slice(0, 40) + '...');
   return _sb;
 }
