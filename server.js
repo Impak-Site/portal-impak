@@ -350,7 +350,17 @@ function rateLimitLogin(req, res, next) {
   const tentativas = (_loginTentativas.get(ip) || []).filter(t => agora - t < LOGIN_JANELA_MS);
   if (tentativas.length >= LOGIN_MAX_TENTATIVAS) {
     const minutosRestantes = Math.ceil((LOGIN_JANELA_MS - (agora - tentativas[0])) / 60000);
-    return res.send(loginPage(`Muitas tentativas. Tente novamente em ${minutosRestantes} minuto(s).`, req.body?.destino || '/'));
+    const mensagem = `Muitas tentativas. Tente novamente em ${minutosRestantes} minuto(s).`;
+    // /login (form tradicional) espera uma pagina HTML de volta; ja
+    // /login/configurar-2fa e /login/verificar-2fa sao chamados via fetch()
+    // e fazem `await r.json()` no cliente -- mandar HTML pra eles faz o
+    // parse falhar e o usuario ver "Erro de rede" (mensagem errada,
+    // escondendo o motivo real). Detecta pelo path pra responder no
+    // formato certo em cada caso.
+    if (req.path !== '/login') {
+      return res.status(429).json({ ok: false, erro: mensagem });
+    }
+    return res.send(loginPage(mensagem, req.body?.destino || '/'));
   }
   tentativas.push(agora);
   _loginTentativas.set(ip, tentativas);
