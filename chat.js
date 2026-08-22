@@ -172,14 +172,18 @@ document.head.appendChild(style);
 
 // ── NAV GLOBAL ──────────────────────────────────────────────
 
+// "modulo" aqui usa os MESMOS nomes gravados no banco (ver MODULOS_VALIDOS
+// em server.js) — cada usuário só tem os módulos marcados pra ele na tela
+// de Permissões (/permissoes). Calculador é gated pelo módulo "tyredesk"
+// (mesmo módulo do TyreDesk — são a mesma área de trabalho no back-end).
 const navModulos = [
-{ label: '🚢 Controle', href: '/controle', key: 'controle' },
-{ label: '📄 Conferência', href: '/processos', key: 'processos' },
-{ label: '📦 TyreDesk', href: '/', key: 'tyredesk' },
-{ label: '💰 Calculador', href: '/calculador', key: 'calculador' },
-{ label: '📊 Financeiro', href: '/financeiro', key: 'financeiro' },
-  { label: '📈 Resultado', href: '/resultado', key: 'resultado' },
-  { label: '📺 TV', href: '/tv', key: 'tv' },
+{ label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
+{ label: '📄 Conferência', href: '/processos', key: 'processos', modulo: 'conferencia' },
+{ label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
+{ label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
+{ label: '📊 Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
+  { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
+  { label: '📺 TV', href: '/tv', key: 'tv', modulo: 'tv' },
 ];
 
 // Detectar módulo atual pelo path — "financeiro" precisa vir ANTES de
@@ -200,13 +204,15 @@ const modAtual = path === '/' ? 'tyredesk'
 const isLoginPage = window.location.pathname === '/login';
 if (isLoginPage) return;
 
+// A nav começa vazia (só logo + área do usuário) e só ganha os links de
+// módulo depois que /api/me responder — assim a gente nunca pisca um link
+// pra tela que a pessoa não tem acesso (antes os 7 links apareciam todos,
+// pra todo mundo, sempre — o back-end até bloqueava o clique, mas a lista
+// completa ficava visível igual).
 const navEl = document.createElement('div');
 navEl.id = 'impak-nav';
 navEl.innerHTML = `
 <div class="nav-logo">IMPAK</div>
-${navModulos.map(m => `
-<a class="nav-link${modAtual === m.key ? ' active' : ''}" href="${m.href}">${m.label}</a>
-`).join('<span class="nav-sep">·</span>')}
 <div class="nav-right">
 <span class="nav-user" id="nav-user-label">—</span>
 <a class="nav-sair" href="/logout">Sair</a>
@@ -214,23 +220,43 @@ ${navModulos.map(m => `
 `;
 document.body.insertBefore(navEl, document.body.firstChild);
 
-// Mostrar usuário logado
 fetch('/api/me').then(r=>r.json()).then(d=>{
 const el = document.getElementById('nav-user-label');
 if(el && d.displayName) el.textContent = d.displayName;
-// Link do Dashboard Narcélio só aparece pro próprio usuário narcelio —
-// cosmético (a proteção real é o back-end em GET /narcelio, ver
-// server.js). Injetado aqui (assíncrono) em vez de no array navModulos
-// porque o usuário logado só é conhecido depois desse fetch.
-if(['narcelio', 'suporte', 'paula'].includes(d.usuario)){
-  const navRight = document.querySelector('.nav-right');
-  if(navRight){
-    const link = document.createElement('a');
-    link.className = 'nav-link' + (path.includes('narcelio') ? ' active' : '');
-    link.href = '/narcelio';
-    link.textContent = '👔 Narcélio';
-    navRight.parentNode.insertBefore(link, navRight);
-  }
+
+const modulosDoUsuario = d.modulos || [];
+const linksPermitidos = navModulos.filter(m => modulosDoUsuario.includes(m.modulo));
+const navRight = navEl.querySelector('.nav-right');
+linksPermitidos.forEach(m => {
+  const link = document.createElement('a');
+  link.className = 'nav-link' + (modAtual === m.key ? ' active' : '');
+  link.href = m.href;
+  link.textContent = m.label;
+  navEl.insertBefore(link, navRight);
+  const sep = document.createElement('span');
+  sep.className = 'nav-sep';
+  sep.textContent = '·';
+  navEl.insertBefore(sep, navRight);
+});
+
+// Link do Dashboard Narcélio — depende do módulo "narcelio" (dado sensível
+// de faturamento/margem, liberado só pra quem a tela de Permissões marcar).
+if(modulosDoUsuario.includes('narcelio')){
+  const link = document.createElement('a');
+  link.className = 'nav-link' + (path.includes('narcelio') ? ' active' : '');
+  link.href = '/narcelio';
+  link.textContent = '👔 Narcélio';
+  navRight.parentNode.insertBefore(link, navRight);
+}
+
+// Link da tela de Permissões — só pra quem pode gerenciar acesso de outros
+// (Narcelio, Paula, Ayslan/"suporte" — ver ADMINS_PERMISSOES em server.js).
+if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
+  const link = document.createElement('a');
+  link.className = 'nav-link' + (path.includes('permissoes') ? ' active' : '');
+  link.href = '/permissoes';
+  link.textContent = '🔐 Permissões';
+  navRight.parentNode.insertBefore(link, navRight);
 }
 }).catch(()=>{});
 

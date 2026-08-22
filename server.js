@@ -66,6 +66,17 @@ function verificarSenha(senhaPura, hashArmazenado){
   return timingSafeEqual(bufOriginal, bufTentativa);
 }
 
+// ── POLÍTICA DE SENHA (reforçada 22/08/2026) ────────────────────
+// Antes só exigia 6 caracteres quaisquer. Agora exige 8+ com pelo menos
+// uma letra e um número — reduz bastante o espaço de senhas triviais tipo
+// "123456" ou "aaaaaaaa" sem pedir símbolos especiais (que na prática só
+// fazem as pessoas anotarem a senha em algum lugar inseguro).
+function senhaFraca(senha) {
+  if (!senha || senha.length < 8) return 'A senha precisa ter pelo menos 8 caracteres.';
+  if (!/[a-zA-Z]/.test(senha) || !/[0-9]/.test(senha)) return 'A senha precisa ter pelo menos uma letra e um número.';
+  return null;
+}
+
 // ── SEGURANÇA: sanitização do parâmetro "destino" (usado no fluxo de login) ──
 // "destino" chega direto da query string / body (controlado pelo visitante),
 // e era antes inserido sem escapar num atributo HTML e usado em res.redirect
@@ -243,19 +254,19 @@ function envSenhaHash(key) {
 }
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senhaHashEnv: envSenhaHash('SENHA_NARCELIO'),  email: 'narcelio@impak.com.br',      modulos: ['tyredesk','processos'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
-  { usuario: 'jean',      senhaHashEnv: envSenhaHash('SENHA_JEAN'),      email: 'jean@impak.com.br',          modulos: ['tyredesk','processos'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
-  { usuario: 'paula',     senhaHashEnv: envSenhaHash('SENHA_PAULA'),     email: 'paula@impak.com.br',         modulos: ['tyredesk','processos'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
-  { usuario: 'amanda',    senhaHashEnv: envSenhaHash('SENHA_AMANDA'),    email: 'amanda@findcomex.com.br',    modulos: ['tyredesk','processos'], nome: 'Amanda',    role: 'gerente',  displayName: 'Amanda',    home: '/processos'  },
-  { usuario: 'bianca',    senhaHashEnv: envSenhaHash('SENHA_BIANCA'),    email: 'financeiro@impak.com.br',    modulos: ['tyredesk','processos'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
-  { usuario: 'emanuelly', senhaHashEnv: envSenhaHash('SENHA_EMANUELLY'), email: 'importacao1@impak.com.br',   modulos: ['tyredesk','processos'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
-  { usuario: 'italo',     senhaHashEnv: envSenhaHash('SENHA_ITALO'),     email: 'fiscal01@impak.com.br',      modulos: ['tyredesk','processos'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
-  { usuario: 'maria',     senhaHashEnv: envSenhaHash('SENHA_MARIA'),     email: 'fiscal@impak.com.br',        modulos: ['tyredesk','processos'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
-  { usuario: 'joyce',     senhaHashEnv: envSenhaHash('SENHA_JOYCE'),     email: 'nfe@impak.com.br',           modulos: ['tyredesk','processos'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
-  { usuario: 'neide',     senhaHashEnv: envSenhaHash('SENHA_NEIDE'),     email: 'operacional01@impak.com.br', modulos: ['tyredesk','processos'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
-  { usuario: 'everton',   senhaHashEnv: envSenhaHash('SENHA_EVERTON'),   email: 'administrativo@impak.com.br', modulos: ['tyredesk','processos'], nome: 'Everton',   role: 'analista', displayName: 'Everton',   home: '/processos'  },
-  { usuario: 'isabella',  senhaHashEnv: envSenhaHash('SENHA_ISABELLA'),  email: 'operacional@impak.com.br',   modulos: ['tyredesk','processos'], nome: 'Isabella',  role: 'analista', displayName: 'Isabella',  home: '/processos'  },
-  { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',       modulos: ['tyredesk','processos'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
+  { usuario: 'narcelio',  senhaHashEnv: envSenhaHash('SENHA_NARCELIO'),  email: 'narcelio@impak.com.br',      modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
+  { usuario: 'jean',      senhaHashEnv: envSenhaHash('SENHA_JEAN'),      email: 'jean@impak.com.br',          modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
+  { usuario: 'paula',     senhaHashEnv: envSenhaHash('SENHA_PAULA'),     email: 'paula@impak.com.br',         modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'amanda',    senhaHashEnv: envSenhaHash('SENHA_AMANDA'),    email: 'amanda@findcomex.com.br',    modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Amanda',    role: 'gerente',  displayName: 'Amanda',    home: '/processos'  },
+  { usuario: 'bianca',    senhaHashEnv: envSenhaHash('SENHA_BIANCA'),    email: 'financeiro@impak.com.br',    modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Bianca',    role: 'gerente',  displayName: 'Bianca',    home: '/processos'  },
+  { usuario: 'emanuelly', senhaHashEnv: envSenhaHash('SENHA_EMANUELLY'), email: 'importacao1@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
+  { usuario: 'italo',     senhaHashEnv: envSenhaHash('SENHA_ITALO'),     email: 'fiscal01@impak.com.br',      modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
+  { usuario: 'maria',     senhaHashEnv: envSenhaHash('SENHA_MARIA'),     email: 'fiscal@impak.com.br',        modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
+  { usuario: 'joyce',     senhaHashEnv: envSenhaHash('SENHA_JOYCE'),     email: 'nfe@impak.com.br',           modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Joyce',     role: 'analista', displayName: 'Joyce',     home: '/processos'  },
+  { usuario: 'neide',     senhaHashEnv: envSenhaHash('SENHA_NEIDE'),     email: 'operacional01@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Neide',     role: 'analista', displayName: 'Neide',     home: '/processos'  },
+  { usuario: 'everton',   senhaHashEnv: envSenhaHash('SENHA_EVERTON'),   email: 'administrativo@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Everton',   role: 'analista', displayName: 'Everton',   home: '/processos'  },
+  { usuario: 'isabella',  senhaHashEnv: envSenhaHash('SENHA_ISABELLA'),  email: 'operacional@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Isabella',  role: 'analista', displayName: 'Isabella',  home: '/processos'  },
+  { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',       modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
 ];
 
 // Cache em memória dos usuários carregados do Supabase (recarregado no boot
@@ -265,16 +276,27 @@ let _usuariosCache = new Map();
 async function sincronizarUsuarios(){
   for(const u of USUARIOS){
     try{
-      const { data: existente } = await sb().from('usuarios').select('senha_hash').eq('usuario', u.usuario).maybeSingle();
+      const { data: existente } = await sb().from('usuarios').select('senha_hash, modulos, role, home').eq('usuario', u.usuario).maybeSingle();
       const senha_hash = existente ? existente.senha_hash : u.senhaHashEnv;
       if(!senha_hash){
         console.error(`⚠️  Usuário "${u.usuario}" sem senha (nem no Supabase, nem no env var) — login vai falhar.`);
         continue;
       }
-      await sb().from('usuarios').upsert({
-        usuario: u.usuario, senha_hash, email: u.email, nome: u.nome,
-        display_name: u.displayName, role: u.role, modulos: u.modulos, home: u.home,
-      }, { onConflict: 'usuario' });
+      const payload = {
+        usuario: u.usuario, senha_hash, email: u.email, nome: u.nome, display_name: u.displayName,
+      };
+      // "role", "modulos" e "home" só usam o valor fixo do código quando o
+      // usuário está sendo CRIADO agora pela primeira vez. Se já existe no
+      // banco, esses campos ficam intocados — são geridos pela tela de
+      // Permissões (Narcelio/Paula/Ayslan) e não podem ser apagados a cada
+      // deploy/restart do servidor (antes disso acontecia: qualquer
+      // permissão setada na tela era resetada no próximo boot).
+      if(!existente){
+        payload.role = u.role;
+        payload.modulos = u.modulos;
+        payload.home = u.home;
+      }
+      await sb().from('usuarios').upsert(payload, { onConflict: 'usuario' });
     }catch(e){ console.error(`Erro sincronizando usuário ${u.usuario}:`, e.message); }
   }
   await recarregarCacheUsuarios();
@@ -320,6 +342,31 @@ function rateLimitLogin(req, res, next) {
   tentativas.push(agora);
   _loginTentativas.set(ip, tentativas);
   next();
+}
+
+// ── BLOQUEIO POR CONTA (além do limite por IP acima) ───────────
+// O limite por IP acima não segura um ataque que troca de IP a cada
+// tentativa (proxy, rede móvel, etc.) mirando numa única conta. Esta trava
+// é por USUÁRIO: 5 senhas erradas em 15 minutos bloqueiam aquela conta
+// especificamente, não importa de onde venham as tentativas seguintes.
+const _loginFalhasPorUsuario = new Map(); // usuario -> [timestamps]
+const CONTA_MAX_FALHAS = 5;
+const CONTA_JANELA_MS = 15 * 60 * 1000;
+
+function contaBloqueada(usuario) {
+  if (!usuario) return false;
+  const falhas = (_loginFalhasPorUsuario.get(usuario) || []).filter(t => Date.now() - t < CONTA_JANELA_MS);
+  _loginFalhasPorUsuario.set(usuario, falhas);
+  return falhas.length >= CONTA_MAX_FALHAS;
+}
+function registrarFalhaLogin(usuario) {
+  if (!usuario) return;
+  const falhas = (_loginFalhasPorUsuario.get(usuario) || []).filter(t => Date.now() - t < CONTA_JANELA_MS);
+  falhas.push(Date.now());
+  _loginFalhasPorUsuario.set(usuario, falhas);
+}
+function limparFalhasLogin(usuario) {
+  _loginFalhasPorUsuario.delete(usuario);
 }
 // ── RATE LIMITING GENÉRICO (IA: /api/analisar e /api/chat) ────
 // Mesmas ideias do rateLimitLogin acima (em memória, por IP), mas em fábrica
@@ -554,7 +601,8 @@ async function salvar(){
   const novaSenha = document.getElementById('novaSenha').value;
   const confirmar = document.getElementById('confirmar').value;
   const msg = document.getElementById('msg');
-  if(novaSenha.length < 6){ msg.innerHTML = '<div class="err">A senha precisa ter pelo menos 6 caracteres.</div>'; return; }
+  if(novaSenha.length < 8){ msg.innerHTML = '<div class="err">A senha precisa ter pelo menos 8 caracteres.</div>'; return; }
+  if(!/[a-zA-Z]/.test(novaSenha) || !/[0-9]/.test(novaSenha)){ msg.innerHTML = '<div class="err">A senha precisa ter pelo menos uma letra e um número.</div>'; return; }
   if(novaSenha !== confirmar){ msg.innerHTML = '<div class="err">As senhas não são iguais.</div>'; return; }
   const btn = document.querySelector('button');
   btn.disabled = true; btn.textContent = 'Salvando...';
@@ -734,6 +782,9 @@ app.post('/login', rateLimitLogin, (req, res) => {
   // lógica de busca já usada em /api/auth/esqueci-senha. Sem isso, quem
   // digitasse o e-mail (rotulado como "Login" na planilha de cadastro)
   // caía em "usuário ou senha incorretos" mesmo com a senha certa.
+  if (contaBloqueada(login)) {
+    return res.send(loginPage('Muitas tentativas erradas para esse usuário. Tente novamente em alguns minutos, ou use "Esqueci minha senha".', destino || '/'));
+  }
   const u = _usuariosCache.get(login) || [..._usuariosCache.values()].find(x => (x.email||'').toLowerCase() === login);
   if (!u || !u.senha_hash || !verificarSenha(senha || '', u.senha_hash)) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
@@ -741,8 +792,10 @@ app.post('/login', rateLimitLogin, (req, res) => {
     // IP, e o horário, suficiente para notar um padrão de ataque sem criar
     // outro vazamento de dado sensível dentro dos próprios logs.
     console.warn(`[LOGIN FALHOU] usuário="${login}" ip=${ip} em ${new Date().toISOString()}`);
+    registrarFalhaLogin(login);
     return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
   }
+  limparFalhasLogin(login);
   // ── 2FA (obrigatório pra todo mundo, pedido do Ayslan 22/08/2026) ──
   // Senha certa não é mais suficiente sozinha: se o usuário já tem o
   // autenticador configurado, pede o código de 6 dígitos antes de abrir
@@ -893,8 +946,9 @@ app.get('/redefinir-senha', async (req, res) => {
 app.post('/api/auth/redefinir-senha', rateLimitLogin, async (req, res) => {
   try{
     const { token, novaSenha } = req.body;
-    if(!token || !novaSenha || novaSenha.length < 6){
-      return res.json({ ok: false, erro: 'Senha precisa ter pelo menos 6 caracteres.' });
+    const problemaSenha = senhaFraca(novaSenha);
+    if(!token || problemaSenha){
+      return res.json({ ok: false, erro: problemaSenha || 'Token obrigatório.' });
     }
     await recarregarCacheUsuarios();
     const u = buscarUsuarioPorTokenReset(token);
@@ -967,18 +1021,87 @@ app.post('/api/admin/recarregar-cache', rateLimitLogin, (req, res) => {
     });
 });
 
-function auth(modulo) {
+// ── PERMISSÕES POR MÓDULO (tela criada 22/08/2026, pedido do Ayslan) ──
+// Restrito a Narcelio, Paula e Ayslan (usuário "suporte") — ver
+// ADMINS_PERMISSOES logo acima de auth(). Lista todo mundo com os módulos
+// que cada um tem hoje, pra montar a tabela usuário x módulo na tela.
+app.get('/api/admin/permissoes', requireAdminPermissoes, async (req, res) => {
+  try {
+    await recarregarCacheUsuarios();
+    const usuarios = [..._usuariosCache.values()]
+      .map(u => ({
+        usuario: u.usuario, nome: u.nome || u.display_name || u.usuario,
+        role: u.role, modulos: u.modulos || [],
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    res.json({ ok: true, usuarios, modulosValidos: MODULOS_VALIDOS, admins: ADMINS_PERMISSOES });
+  } catch (e) {
+    console.error('Erro ao listar permissões:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro ao carregar permissões.' });
+  }
+});
+
+// Grava os módulos de UM usuário (a tela manda a lista completa de módulos
+// marcados pra aquele usuário, não um delta). Só nomes de MODULOS_VALIDOS
+// são aceitos — qualquer coisa fora disso é ignorada, pra nunca gravar lixo
+// no banco que quebre o auth() depois. Força logout do usuário afetado pra
+// a mudança valer imediatamente (sem esperar a sessão antiga expirar).
+app.post('/api/admin/permissoes/:usuario', requireAdminPermissoes, async (req, res) => {
+  const alvo = (req.params.usuario || '').trim().toLowerCase();
+  if (!USUARIOS.some(u => u.usuario === alvo)) {
+    return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+  }
+  const modulosEnviados = Array.isArray(req.body.modulos) ? req.body.modulos : [];
+  const modulos = [...new Set(modulosEnviados.filter(m => MODULOS_VALIDOS.includes(m)))];
+  try {
+    await sb().from('usuarios').update({ modulos }).eq('usuario', alvo);
+    await recarregarCacheUsuarios();
+    forcarLogoutUsuario(alvo);
+    res.json({ ok: true, mensagem: `Permissões de "${alvo}" atualizadas.`, modulos });
+  } catch (e) {
+    console.error('Erro ao salvar permissões:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro interno ao salvar.' });
+  }
+});
+
+// Lista de todos os módulos/telas que existem hoje no sistema — usada pra
+// validar o que a tela de Permissões pode gravar (evita salvar um nome de
+// módulo digitado errado que nunca vai bater com nenhum auth()).
+const MODULOS_VALIDOS = ['tyredesk', 'conferencia', 'controle', 'financeiro', 'resultado', 'tv', 'narcelio'];
+
+// Usuários que podem abrir a tela de Permissões e mudar o acesso de
+// qualquer outro usuário — combinado explicitamente com o Ayslan
+// (22/08/2026): só ele, o Narcelio e a Paula.
+const ADMINS_PERMISSOES = ['narcelio', 'paula', 'suporte'];
+
+// auth(...modulos) — aceita um ou mais nomes de módulo; o acesso é liberado
+// se o usuário tiver PELO MENOS UM deles (ex: auth('controle','financeiro')
+// libera pra quem tem controle OU financeiro). Sem nenhum argumento, só
+// exige estar logado (qualquer módulo).
+function auth(...modulos) {
   return (req, res, next) => {
     if (!req.session.usuario) return res.redirect('/login?destino=' + req.path);
     // Se a versão da sessão estiver desatualizada (alguém forçou logout
-    // deste usuário, ex: ao trocar a senha), invalida mesmo com cookie válido.
+    // deste usuário, ex: ao trocar a senha ou mudar suas permissões),
+    // invalida mesmo com cookie válido.
     const versaoAtual = _sessaoVersao.get(req.session.usuario) || 1;
     if (req.session.versao !== versaoAtual) {
       return req.session.destroy(() => res.redirect('/login?destino=' + req.path));
     }
-    if (modulo && !req.session.modulos.includes(modulo)) return res.status(403).send('<h2>Acesso negado</h2>');
+    if (modulos.length && !modulos.some(m => req.session.modulos.includes(m))) {
+      return res.status(403).send('<h2>Acesso negado</h2>');
+    }
     next();
   };
+}
+
+// Restringe a quem pode gerenciar as permissões de outros usuários.
+function requireAdminPermissoes(req, res, next) {
+  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+  if (!ADMINS_PERMISSOES.includes(req.session.usuario)) {
+    return res.status(403).json({ ok: false, erro: 'Apenas Narcelio, Paula ou Ayslan podem gerenciar permissões.' });
+  }
+  next();
 }
 
 // Restringe exclusões (DELETE) a usuários com role "gerente". Antes, qualquer
@@ -994,8 +1117,13 @@ function requireGerente(req, res, next) {
 }
 
 // ── PÁGINAS ───────────────────────────────────────────────────
+app.get('/permissoes', (req, res) => {
+  if (!req.session.usuario) return res.redirect('/login?destino=/permissoes');
+  if (!ADMINS_PERMISSOES.includes(req.session.usuario)) return res.status(403).send('<h2>Acesso restrito.</h2>');
+  res.sendFile(path.join(__dirname, 'permissoes.html'));
+});
 app.get('/',          auth('tyredesk'),  (req, res) => res.sendFile(path.join(__dirname, 'tyredesk.html')));
-app.get('/processos', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
+app.get('/processos', auth('conferencia'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
 
 // ── API: SESSÃO ───────────────────────────────────────────────
 app.get('/api/me', (req, res) => {
@@ -1011,7 +1139,7 @@ app.get('/api/me', (req, res) => {
 });
 
 // ── API: CONFERÊNCIA ──────────────────────────────────────────
-app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
+app.get('/api/conferencia/index', auth('conferencia'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('conferencia_processos')
@@ -1042,7 +1170,7 @@ app.get('/api/conferencia/index', auth('processos'), async (req, res) => {
   }
 });
 
-app.get('/api/conferencia/processo/:id', auth('processos'), async (req, res) => {
+app.get('/api/conferencia/processo/:id', auth('conferencia'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('conferencia_processos')
@@ -1062,7 +1190,7 @@ app.get('/api/conferencia/processo/:id', auth('processos'), async (req, res) => 
   }
 });
 
-app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
+app.post('/api/conferencia/processo', auth('conferencia'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
@@ -1090,7 +1218,7 @@ app.post('/api/conferencia/processo', auth('processos'), async (req, res) => {
   }
 });
 
-app.delete('/api/conferencia/processo/:id', auth('processos'), requireGerente, async (req, res) => {
+app.delete('/api/conferencia/processo/:id', auth('conferencia'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb()
       .from('conferencia_processos')
@@ -1105,19 +1233,19 @@ app.delete('/api/conferencia/processo/:id', auth('processos'), requireGerente, a
 });
 
 // ── API: CONTROLE v2 ──────────────────────────────────────────
-app.get('/controle', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/controle', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // "Tela exclusiva" do Dashboard Financeiro — serve o MESMO controle_v2.html
 // (o front-end detecta location.pathname==='/financeiro' e ajusta o que
 // aparece na tela). Evita duplicar toda a lógica de abrir/editar processo,
 // upload de documentos, autocomplete de contatos etc. num arquivo separado
 // que rapidamente ficaria desatualizado em relação ao Controle de verdade.
-app.get('/financeiro', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/financeiro', auth('financeiro'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // "Tela exclusiva" do Dashboard Resultado (lucro estimado x real de todos
 // os processos) — mesmo esquema do /financeiro acima: serve o MESMO
 // controle_v2.html, e o front-end detecta location.pathname==='/resultado'
 // pra abrir direto no Dashboard Resultado (ver ativarTelaResultadoExclusiva
 // em controle-core.js).
-app.get('/resultado', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
+app.get('/resultado', auth('resultado'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
 // "Tela exclusiva" do Dashboard Narcélio (visão do dono da empresa) —
 // diferente de /financeiro e /resultado (visíveis a qualquer usuário com o
 // módulo "processos"), aqui o back-end também confere o usuário logado:
@@ -1125,23 +1253,22 @@ app.get('/resultado', auth('processos'), (req, res) => res.sendFile(path.join(__
 // que não devem ficar visíveis pra todo mundo que usa o Controle. Ver
 // renderDashNarcelio() em controle-dash-narcelio.js e
 // ativarTelaNarcelioExclusiva() em controle-core.js.
-app.get('/narcelio', auth('processos'), (req, res) => {
-  if (!['narcelio', 'suporte', 'paula'].includes(req.session.usuario)) return res.status(403).send('Acesso restrito.')
+app.get('/narcelio', auth('narcelio'), (req, res) => {
   res.sendFile(path.join(__dirname, 'controle_v2.html'))
 });
 // Deep-link por processo — /controle/UD26-005 serve o mesmo controle_v2.html;
 // o front-end lê location.pathname no load e abre o painel lateral do
 // processo correspondente automaticamente (ver abrirProcessoPorURL()).
-app.get('/controle/:ref', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/controle/:ref', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // Tela TV — espelhada num monitor da empresa, substitui a planilha Excel
 // manual (Backorders/Em Águas/No Chão). Sem restrição extra de usuário:
 // qualquer um autenticado no Controle pode abrir (é só leitura ao vivo,
 // nada sensível tipo o Dashboard Narcélio). Ver ativarTelaTVExclusiva()
 // em controle-core.js e renderDashTV() em controle-dash-tv.js.
-app.get('/tv', auth('processos'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/tv', auth('tv'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
 
-app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
+app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_processos')
@@ -1155,7 +1282,7 @@ app.get('/api/controle/v2/processos', auth('processos'), async (req, res) => {
   }
 });
 
-app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
+app.post('/api/controle/v2/importar', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
@@ -1218,7 +1345,7 @@ app.post('/api/controle/v2/importar', auth('processos'), async (req, res) => {
   }
 });
 
-app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
+app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo) return res.status(400).json({ erro: 'Processo ausente' });
@@ -1478,7 +1605,7 @@ app.post('/api/controle/v2/processo', auth('processos'), async (req, res) => {
 // 404 e mostrava "sem histórico" mesmo com registros salvos normalmente na
 // tabela controle_log (o insert em POST /api/controle/v2/processo sempre
 // funcionou — só faltava como ler de volta).
-app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res) => {
+app.get('/api/controle/v2/processo/:id/log', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_log')
@@ -1494,7 +1621,7 @@ app.get('/api/controle/v2/processo/:id/log', auth('processos'), async (req, res)
   }
 });
 
-app.delete('/api/controle/v2/processo/:id', auth('processos'), requireGerente, async (req, res) => {
+app.delete('/api/controle/v2/processo/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
   try {
     const id = req.params.id;
     // Antes disto, o DELETE só apagava a linha em controle_processos — em
@@ -1525,7 +1652,7 @@ app.delete('/api/controle/v2/processo/:id', auth('processos'), requireGerente, a
   }
 });
 
-app.get('/api/controle/v2/notificacoes', auth('processos'), async (req, res) => {
+app.get('/api/controle/v2/notificacoes', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_notificacoes')
@@ -1539,7 +1666,7 @@ app.get('/api/controle/v2/notificacoes', auth('processos'), async (req, res) => 
   }
 });
 
-app.post('/api/controle/v2/notificacao', auth('processos'), async (req, res) => {
+app.post('/api/controle/v2/notificacao', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { processo_id, tipo, titulo, mensagem } = req.body;
     if (!tipo || !titulo || !mensagem) return res.status(400).json({ erro: 'tipo, titulo e mensagem são obrigatórios' });
@@ -1556,7 +1683,7 @@ app.post('/api/controle/v2/notificacao', auth('processos'), async (req, res) => 
   }
 });
 
-app.post('/api/controle/v2/notificacao/:id/lida', auth('processos'), async (req, res) => {
+app.post('/api/controle/v2/notificacao/:id/lida', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const usuario = req.session.usuario;
     const { data } = await sb().from('controle_notificacoes').select('lida_por').eq('id', req.params.id).single();
@@ -1570,7 +1697,7 @@ app.post('/api/controle/v2/notificacao/:id/lida', auth('processos'), async (req,
 });
 
 
-app.get('/api/controle/index', auth('processos'), async (req, res) => {
+app.get('/api/controle/index', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_processos')
@@ -1601,7 +1728,7 @@ app.get('/api/controle/index', auth('processos'), async (req, res) => {
   }
 });
 
-app.get('/api/controle/processo/:id', auth('processos'), async (req, res) => {
+app.get('/api/controle/processo/:id', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_processos')
@@ -1619,7 +1746,7 @@ app.get('/api/controle/processo/:id', auth('processos'), async (req, res) => {
   }
 });
 
-app.post('/api/controle/processo', auth('processos'), async (req, res) => {
+app.post('/api/controle/processo', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
@@ -1645,7 +1772,7 @@ app.post('/api/controle/processo', auth('processos'), async (req, res) => {
   }
 });
 
-app.delete('/api/controle/processo/:id', auth('processos'), requireGerente, async (req, res) => {
+app.delete('/api/controle/processo/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb()
       .from('controle_processos')
@@ -1659,7 +1786,7 @@ app.delete('/api/controle/processo/:id', auth('processos'), requireGerente, asyn
   }
 });
 
-app.post('/api/controle/importar', auth('processos'), async (req, res) => {
+app.post('/api/controle/importar', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
@@ -1726,7 +1853,7 @@ app.post('/api/controle/importar', auth('processos'), async (req, res) => {
   }
 });
 
-app.get('/api/controle/carregar', auth('processos'), async (req, res) => {
+app.get('/api/controle/carregar', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_processos')
@@ -1819,7 +1946,7 @@ app.get('/api/base/carregar-snapshots', auth(), async (req, res) => {
 });
 
 // ── API: ANÁLISE DOCUMENTAL ───────────────────────────────────
-app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res) => {
+app.post('/api/analisar', auth('conferencia','controle'), rateLimitAnalisar, async (req, res) => {
   const { content } = req.body;
   if (!content || !Array.isArray(content)) {
     return res.status(400).json({ erro: 'Conteúdo inválido' });
@@ -1904,7 +2031,7 @@ app.post('/api/analisar', auth('processos'), rateLimitAnalisar, async (req, res)
   })();
 });
 
-app.get('/api/analisar/job/:id', auth('processos'), async (req, res) => {
+app.get('/api/analisar/job/:id', auth('conferencia','controle'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('analise_jobs')
@@ -1921,7 +2048,7 @@ app.get('/api/analisar/job/:id', auth('processos'), async (req, res) => {
 // ── GED — ARQUIVOS DO PROCESSO (Supabase Storage) ──────────────
 const GED_BUCKET = 'controle-arquivos';
 
-app.get('/api/controle/v2/arquivos/:processoId', auth('processos'), async (req, res) => {
+app.get('/api/controle/v2/arquivos/:processoId', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_arquivos')
@@ -1932,7 +2059,7 @@ app.get('/api/controle/v2/arquivos/:processoId', auth('processos'), async (req, 
     // Bucket é privado (corrigido 22/08/2026 — estava público, qualquer um
     // com o link abria PI/CI/BL/NF sem estar logado no sistema). Agora usa
     // link assinado, válido por 1h, gerado só pra quem já passou pelo
-    // auth('processos') desta rota — não dá pra montar a URL sem estar
+    // auth('controle',...) desta rota — não dá pra montar a URL sem estar
     // autenticado no Controle.
     const arquivos = await Promise.all((data || []).map(async a => {
       const { data: urlData, error: signErro } = await sb().storage
@@ -1948,7 +2075,7 @@ app.get('/api/controle/v2/arquivos/:processoId', auth('processos'), async (req, 
   }
 });
 
-app.post('/api/controle/v2/arquivos', auth('processos'), async (req, res) => {
+app.post('/api/controle/v2/arquivos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { processo_id, nome, tipo, base64 } = req.body;
     if (!processo_id || !nome || !base64) return res.status(400).json({ erro: 'Dados incompletos' });
@@ -1991,7 +2118,7 @@ app.post('/api/controle/v2/arquivos', auth('processos'), async (req, res) => {
   }
 });
 
-app.delete('/api/controle/v2/arquivos/:id', auth('processos'), requireGerente, async (req, res) => {
+app.delete('/api/controle/v2/arquivos/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
   try {
     const { data: arquivo } = await sb()
       .from('controle_arquivos')
@@ -2043,7 +2170,7 @@ app.get('/api/contatos', auth(), async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.post('/api/contatos', auth('processos'), async (req, res) => {
+app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const c = req.body;
     if (!c.razao_social) return res.status(400).json({ erro: 'Razão social obrigatória' });
@@ -2094,7 +2221,7 @@ app.post('/api/contatos', auth('processos'), async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.delete('/api/contatos/:id', auth('processos'), requireGerente, async (req, res) => {
+app.delete('/api/contatos/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb().from('contatos_clientes').update({ ativo: false }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
@@ -2103,7 +2230,7 @@ app.delete('/api/contatos/:id', auth('processos'), requireGerente, async (req, r
 });
 
 app.post('/api/calculador/importar-planilha', auth('tyredesk'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarPlanilhaBase(buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
-app.post('/api/controle/importar-fechamento', auth('processos'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarFechamentoBase(buffer); res.json({ ok: true, datas: resultado.datas, real_json: resultado.real_json, moedas: resultado.moedas, avisos: resultado.avisos }); } catch (e) { console.error('Erro ao importar fechamento:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
+app.post('/api/controle/importar-fechamento', auth('controle','financeiro','resultado','tv','narcelio'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarFechamentoBase(buffer); res.json({ ok: true, datas: resultado.datas, real_json: resultado.real_json, moedas: resultado.moedas, avisos: resultado.avisos }); } catch (e) { console.error('Erro ao importar fechamento:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
 // ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
 // Lista leve (só o resumo, não o formulário inteiro) pra tela de listagem.
 app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
@@ -2183,8 +2310,8 @@ app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
 // já tem os dois (ver USUARIOS no topo do arquivo), mas isso evita abrir uma
 // brecha se um dia existir um usuário só com acesso ao Calculador.
 app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, next) => {
-  if (!req.session.modulos.includes('processos')) {
-    return res.status(403).json({ erro: 'Sem acesso a Processos — não é possível aprovar cotações' });
+  if (!req.session.modulos.includes('controle')) {
+    return res.status(403).json({ erro: 'Sem acesso ao Controle — não é possível aprovar cotações' });
   }
   next();
 }, async (req, res) => {
@@ -2318,7 +2445,7 @@ app.get('/chat.js', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 // CHAT COM IA — consulta inteligente sobre processos
 // ════════════════════════════════════════════════════════════════
-app.post('/api/chat', auth('processos'), rateLimitChat, async (req, res) => {
+app.post('/api/chat', auth(), rateLimitChat, async (req, res) => {
   try {
     const { mensagem, historico = [] } = req.body;
     if (!mensagem) return res.status(400).json({ erro: 'Mensagem vazia' });
@@ -2528,7 +2655,7 @@ app.get('/health', async (req, res) => {
 });
 
 // ── Vincular cotação a processo existente (item d) ──────────────────────
-app.get('/api/controle/processos-abertos', auth('processos'), async (req, res) => {
+app.get('/api/controle/processos-abertos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_processos')
@@ -2542,8 +2669,8 @@ app.get('/api/controle/processos-abertos', auth('processos'), async (req, res) =
 });
 
 app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (req, res, next) => {
-  if (!req.session.modulos.includes('processos')) {
-    return res.status(403).json({ erro: 'Sem acesso a Processos — não é possível vincular cotações' });
+  if (!req.session.modulos.includes('controle')) {
+    return res.status(403).json({ erro: 'Sem acesso ao Controle — não é possível vincular cotações' });
   }
   next();
 }, async (req, res) => {
@@ -2598,7 +2725,7 @@ app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (re
 // fechamento de um processo já em andamento. Mantemos só um aviso (não
 // bloqueia): salvar essa cotação nova não altera os Custos Reais já
 // lançados no processo original — é sempre uma cotação independente.
-app.get('/api/controle/processos/:id/prefill-cotacao', auth('processos'), async (req, res) => {
+app.get('/api/controle/processos/:id/prefill-cotacao', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data: proc, error } = await sb()
     .from('controle_processos').select('*').eq('id', req.params.id).single();

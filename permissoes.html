@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Permissões — IMPAK Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+--bg:#f5f7fb;--card:#fff;--border:#e4e9f1;--border-strong:#d2dae6;--ac:#1a7fd4;--ac2:#1567b8;--ac-soft:#eaf3fc;
+--text:#101a2b;--muted:#5c7089;--dim:#98a7ba;
+--ok:#16a34a;--warn:#d97706;--err:#dc2626;--info:#0891b2;
+--ok-bg:#eafaf1;--warn-bg:#fdf6e9;
+--err-bg:#fdedee;--info-bg:#e9f8fb;
+--r-sm:6px;--r-md:8px;--r-lg:12px;--r-xl:16px;
+--shadow-sm:0 1px 2px rgba(16,24,40,.06);
+--shadow-md:0 4px 12px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 24px 60px;}
+h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin:0 0 4px;}
+.sub{color:var(--muted);font-size:13px;margin:0 0 24px;line-height:1.5;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{background:var(--ac-soft);color:var(--ac2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:10px 8px;text-align:center;border-bottom:1px solid var(--border);position:sticky;top:0;}
+thead th:first-child{text-align:left;padding-left:16px;min-width:170px;}
+tbody td{padding:9px 8px;text-align:center;border-bottom:1px solid var(--border);}
+tbody td:first-child{text-align:left;padding-left:16px;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:#fafbfd;}
+.usuario-nome{font-weight:600;}
+.usuario-login{color:var(--dim);font-size:11px;}
+.role-tag{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 7px;border-radius:20px;margin-left:6px;}
+.role-tag.gerente{background:var(--ok-bg);color:var(--ok);}
+.role-tag.analista{background:var(--info-bg);color:var(--info);}
+input[type=checkbox]{width:17px;height:17px;cursor:pointer;accent-color:var(--ac);}
+.admin-linha{background:#fffaf0;}
+.admin-linha .usuario-nome::after{content:' 🔑';}
+.linha-salvando{opacity:.5;pointer-events:none;}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--text);color:#fff;padding:10px 18px;border-radius:var(--r-md);font-size:13px;box-shadow:var(--shadow-md);opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;z-index:999;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.err{background:var(--err);}
+.legenda{margin-top:14px;font-size:12px;color:var(--muted);line-height:1.6;}
+.legenda b{color:var(--text);}
+.loading{padding:40px;text-align:center;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔐 Permissões</h1>
+  <p class="sub">Marque os módulos que cada pessoa pode acessar. As mudanças valem no próximo acesso da pessoa (a sessão dela é encerrada automaticamente). Só Narcelio, Paula e Ayslan podem mexer aqui.</p>
+  <div class="card">
+    <div id="tabelaWrap" class="loading">Carregando…</div>
+  </div>
+  <div class="legenda">
+    <b>🚢 Controle</b> · <b>📄 Conferência</b> · <b>📦 TyreDesk</b> (inclui Calculador) · <b>📊 Financeiro</b> · <b>📈 Resultado</b> · <b>📺 TV</b> · <b>👔 Narcélio</b> (dashboard do dono — dados sensíveis de faturamento e margem).
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const MODULOS = [
+  { key: 'tyredesk',    label: '📦 TyreDesk' },
+  { key: 'conferencia', label: '📄 Conferência' },
+  { key: 'controle',    label: '🚢 Controle' },
+  { key: 'financeiro',  label: '📊 Financeiro' },
+  { key: 'resultado',   label: '📈 Resultado' },
+  { key: 'tv',          label: '📺 TV' },
+  { key: 'narcelio',    label: '👔 Narcélio' },
+];
+
+let admins = [];
+
+function mostrarToast(msg, erro){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (erro ? ' err' : '');
+  setTimeout(() => { t.className = 'toast'; }, 2600);
+}
+
+function escapeHtml(s){
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function carregar(){
+  const wrap = document.getElementById('tabelaWrap');
+  try{
+    const r = await fetch('/api/admin/permissoes');
+    const d = await r.json();
+    if(!r.ok || !d.ok){
+      wrap.innerHTML = '<div class="loading">' + escapeHtml(d.erro || 'Sem acesso a essa tela.') + '</div>';
+      return;
+    }
+    admins = d.admins || [];
+    renderTabela(d.usuarios || []);
+  }catch(e){
+    wrap.innerHTML = '<div class="loading">Erro ao carregar. Recarregue a página.</div>';
+  }
+}
+
+function renderTabela(usuarios){
+  const wrap = document.getElementById('tabelaWrap');
+  let html = '<table><thead><tr><th>Usuário</th>';
+  MODULOS.forEach(m => { html += `<th>${m.label}</th>`; });
+  html += '</tr></thead><tbody>';
+  usuarios.forEach(u => {
+    const ehAdmin = admins.includes(u.usuario);
+    html += `<tr data-usuario="${escapeHtml(u.usuario)}" class="${ehAdmin ? 'admin-linha' : ''}">`;
+    html += `<td><span class="usuario-nome">${escapeHtml(u.nome)}</span><span class="role-tag ${escapeHtml(u.role)}">${escapeHtml(u.role)}</span><br><span class="usuario-login">${escapeHtml(u.usuario)}</span></td>`;
+    MODULOS.forEach(m => {
+      const marcado = (u.modulos || []).includes(m.key);
+      html += `<td><input type="checkbox" data-modulo="${m.key}" ${marcado ? 'checked' : ''}></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('tbody tr').forEach(tr => {
+    tr.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => salvarLinha(tr));
+    });
+  });
+}
+
+let _debounce = {};
+function salvarLinha(tr){
+  const usuario = tr.getAttribute('data-usuario');
+  clearTimeout(_debounce[usuario]);
+  _debounce[usuario] = setTimeout(async () => {
+    const modulos = [...tr.querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.getAttribute('data-modulo'));
+    tr.classList.add('linha-salvando');
+    try{
+      const r = await fetch('/api/admin/permissoes/' + encodeURIComponent(usuario), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modulos }),
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){
+        mostrarToast(d.erro || 'Erro ao salvar.', true);
+      }else{
+        mostrarToast(`Permissões de ${usuario} salvas.`);
+      }
+    }catch(e){
+      mostrarToast('Erro de rede ao salvar.', true);
+    }finally{
+      tr.classList.remove('linha-salvando');
+    }
+  }, 300);
+}
+
+carregar();
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>
