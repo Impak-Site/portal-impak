@@ -21,6 +21,7 @@
  */
 
 const express = require('express');
+const helmet  = require('helmet');
 const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
@@ -346,6 +347,16 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
+// Headers de segurança (helmet) — CSP fica desligada de propósito: o app
+// usa script/estilo inline (onclick=, style=) em várias telas legadas, e
+// uma CSP padrão bloquearia isso e quebraria a aplicação inteira. O que
+// dá pra ligar sem risco de quebrar nada (anti-clickjacking, anti-MIME-
+// sniffing, HSTS) já ajuda bastante. Revisitar CSP no futuro se/quando
+// o front-end for migrado pra scripts externos.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Necessário para o Express reconhecer conexões como HTTPS mesmo estando
@@ -360,7 +371,7 @@ app.use(session({
   })(),
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: true, maxAge: 8 * 60 * 60 * 1000 },
+  cookie: { secure: true, maxAge: 8 * 60 * 60 * 1000, sameSite: 'lax' },
 }));
 app.use(express.static(__dirname));
 
