@@ -1685,9 +1685,17 @@ app.get('/api/controle/v2/arquivos/:processoId', auth('processos'), async (req, 
       .eq('processo_id', req.params.processoId)
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
+    // Bucket é privado (corrigido 22/08/2026 — estava público, qualquer um
+    // com o link abria PI/CI/BL/NF sem estar logado no sistema). Agora usa
+    // link assinado, válido por 1h, gerado só pra quem já passou pelo
+    // auth('processos') desta rota — não dá pra montar a URL sem estar
+    // autenticado no Controle.
     const arquivos = await Promise.all((data || []).map(async a => {
-      const { data: urlData } = sb().storage.from(GED_BUCKET).getPublicUrl(a.storage_path);
-      return { ...a, url: urlData?.publicUrl || '' };
+      const { data: urlData, error: signErro } = await sb().storage
+        .from(GED_BUCKET)
+        .createSignedUrl(a.storage_path, 3600);
+      if (signErro) console.warn('ged signed url erro:', a.storage_path, signErro.message);
+      return { ...a, url: urlData?.signedUrl || '' };
     }));
     res.json({ ok: true, arquivos });
   } catch (e) {
