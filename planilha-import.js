@@ -135,11 +135,42 @@ function parseMix(wb) {
     return itens;
 }
 
+// Faturamento real (preco negociado com o cliente) - vem das abas
+// "MODELO - COM S.T" / "MODELO - SEM S.T", celula rotulada
+// "TOTAL - Faturamento" (linha 38 no layout atual, SUM(L36:M37)). Esse valor
+// e IGUAL nas duas abas (o preco de venda negociado nao muda com o cenario
+// de ICMS-ST do importador - so o custo muda), entao basta ler de uma delas.
+//
+// Isso e diferente do Custo Total (que o Calculador SABE estimar, porque e
+// uma conta de custos de importacao) - o Faturamento aqui NAO e um "estimado"
+// independente: e o preco que foi de fato negociado por item com o cliente,
+// que o Calculador nao tem como recalcular sozinho (ele so sabe sugerir preco
+// por margem-alvo %, nao tem os precos negociados por item). Por isso
+// extraimos o valor real da planilha em vez de tentar re-calcular.
+function parseFaturamentoReal(wb) {
+    const ws = wb.Sheets['MODELO - COM S.T'] || wb.Sheets['MODELO - SEM S.T'];
+    if (!ws) return null;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = range.s.r; r <= range.e.r; r++) {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+            const cell = ws[XLSX.utils.encode_cell({ r, c })];
+            if (cell && typeof cell.v === 'string' && /TOTAL.*Faturamento/i.test(cell.v)) {
+                for (let c2 = c; c2 <= Math.min(c + 10, range.e.c); c2++) {
+                    const cell2 = ws[XLSX.utils.encode_cell({ r, c: c2 })];
+                    if (cell2 && typeof cell2.v === 'number' && cell2.v > 0) return cell2.v;
+                }
+            }
+        }
+    }
+    return null;
+}
+
 function importarPlanilhaBase(buffer) {
     validarBufferPlanilha(buffer);
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const campos = parseDados(wb);
     const mix = parseMix(wb);
+    campos.faturamento_real = parseFaturamentoReal(wb);
     return { campos: campos, mix: mix };
 }
 
