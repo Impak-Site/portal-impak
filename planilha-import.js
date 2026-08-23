@@ -277,49 +277,59 @@ function parseTaxasTotaisReais(wb, temIcmsSt) {
     return buscarValorPorRotulo(ws, /^TOTAL\s*TAXAS$/i);
 }
 
-// ALIQUOTA REAL DO I.I. (Imposto de Importacao): lida direto da aba MODELO
-// (coluna C da linha "IMP. IMPORTACAO", ex: 0.2 = 20%) em vez de deduzida
-// pelo texto livre do campo Produto (DADOS!E11).
+// I.I. (Imposto de Importacao) REAL EM BRL: lido direto da aba MODELO
+// (linha "IMP. IMPORTACAO", valor ja convertido em R$) em vez de recalculado
+// a partir da aliquota da TABELA_NCM x base de calculo.
 //
 // Contexto do bug que isso corrige: o Calculador mapeia o texto livre de
 // Produto pra uma de so 4 categorias de pneu (TBR/PCR/AGR/OTR, cada uma com
 // NCM e aliquota fixos) via mapearProduto() - mas a tabela real de NCMs
 // (TABELA_NCM no calculador.html) tem varias dezenas de outros produtos que
 // essa importadora tambem movimenta (Compactadores, Rodas, Maquina de
-// Nitrogenio, Pecas, etc), nenhum alcancavel pelas 4 opcoes do dropdown.
-// Um produto assim cai sempre no fallback 'OTR' (aliquota 16%), que pode
-// divergir MUITO da aliquota real usada na planilha (confirmado: planilha
-// CA26012026, produto "COMPACTADOR", aliquota real 20% na aba MODELO x 16%
-// do fallback OTR - por si so gerou ~R$10.688 de diferenca no Custo Total,
-// a maior parte do erro de -3,17% que motivou essa investigacao).
+// Nitrogenio, Pecas, etc), nenhum alcancavel pelas 4 opcoes do dropdown. Um
+// produto assim cai sempre no fallback 'OTR' (aliquota 16%), que pode
+// divergir muito da aliquota real (confirmado: planilha CA26012026, produto
+// "COMPACTADOR", aliquota real 20% x 16% do fallback OTR).
 //
-// Em vez de tentar mapear cada nome de produto pra NCM certo (lista
-// enorme e em constante mudanca), lemos a aliquota que a propria planilha
-// ja usou pra essa cotacao especifica e sobrescrevemos o "II" calculado no
-// calculador.html com ela - sempre exata, sem depender de reconhecer texto
-// livre. So a aliquota do I.I. e sobrescrita (e o unico imposto que entra
-// no Custo Total hoje - RBC/IPI/PIS/COFINS/ICMS/IBS/CBS sao creditos
-// recuperaveis, ver imp_custo = II no calculador.html), entao nao precisa
-// sobrescrever as outras aliquotas da TABELA_NCM.
-function parseAliqIIReal(wb, temIcmsSt) {
+// A principio bastaria sobrescrever so a aliquota (t.ii) e deixar o
+// Calculador recalcular II = base_imp_brl x aliquota - e foi o que essa
+// funcao fazia antes. Mas um segundo caso real (planilha UD26-016) mostrou
+// que a BASE de calculo do II na planilha tambem pode divergir do
+// CIF calculado (FOB+Frete+Taxa C.E.+Seguro): a linha "IMP. IMPORTACAO" usa
+// C9 ("Total Duimp", um valor digitado a mao vindo do registro de DUIMP
+// real, nao uma formula) como base, nao o "TOTAL CIF" (D8/F8) - ou seja, a
+// base tambem e um dado externo que so existe na propria planilha, nao e
+// deduzivel de outras celulas.
+//
+// Por isso lemos e usamos o valor final do II EM BRL, ja calculado pela
+// planilha (aliquota x base x cambio, tudo resolvido) - sempre exato,
+// independente de aliquota OU base de calculo divergentes. So o I.I. e
+// sobrescrito (e o unico imposto que entra no Custo Total hoje -
+// RBC/IPI/PIS/COFINS/ICMS/IBS/CBS sao creditos recuperaveis, ver
+// imp_custo = II no calculador.html).
+function parseIIRealBrl(wb, temIcmsSt) {
     const sheetName = temIcmsSt ? 'MODELO - COM S.T' : 'MODELO - SEM S.T';
     const ws = wb.Sheets[sheetName] || wb.Sheets['MODELO - COM S.T'] || wb.Sheets['MODELO - SEM S.T'];
     if (!ws) return null;
+    // NAO usamos buscarValorPorRotulo aqui: essa linha tem varios valores
+    // >=1000 na mesma linha (USD em D, BRL em F) e buscarValorPorRotulo
+    // pega o PRIMEIRO >=1000 da esquerda pra direita (pegaria o USD, D, por
+    // engano). O valor em R$ (o que queremos) e sempre o ULTIMO/mais a
+    // direita dos candidatos >=1000 nessa linha (padrao: rotulo | aliquota
+    // | valor USD | cambio | valor BRL) - pegamos o ultimo, nao o primeiro.
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let r = range.s.r; r <= range.e.r; r++) {
         for (let c = range.s.c; c <= range.e.c; c++) {
             const cell = ws[XLSX.utils.encode_cell({ r, c })];
             if (cell && typeof cell.v === 'string' && /^IMP\.\s*IMPORTACAO$/i.test(cell.v.trim())) {
-                // A aliquota fica na coluna logo apos o rotulo (ex: rotulo em B,
-                // aliquota em C) - buscamos o primeiro numero entre 0 e 1 (fracao
-                // de percentual) nas 3 colunas seguintes, pra tolerar pequenas
-                // variacoes de layout entre planilhas.
-                for (let c2 = c + 1; c2 <= Math.min(c + 3, range.e.c); c2++) {
+                let ultimoGrande = null;
+                for (let c2 = c; c2 <= Math.min(c + 10, range.e.c); c2++) {
                     const cell2 = ws[XLSX.utils.encode_cell({ r, c: c2 })];
-                    if (cell2 && typeof cell2.v === 'number' && cell2.v >= 0 && cell2.v <= 1) {
-                        return cell2.v;
+                    if (cell2 && typeof cell2.v === 'number' && Math.abs(cell2.v) >= 1000) {
+                        ultimoGrande = cell2.v;
                     }
                 }
+                if (ultimoGrande !== null) return ultimoGrande;
             }
         }
     }
@@ -341,9 +351,9 @@ function importarPlanilhaBase(buffer) {
     if (taxasTotaisReais !== null && taxasTotaisReais !== undefined) {
         campos.taxas_totais_planilha_brl = taxasTotaisReais;
     }
-    const aliqIiReal = parseAliqIIReal(wb, campos.tem_icms_st);
-    if (aliqIiReal !== null && aliqIiReal !== undefined) {
-        campos.aliq_ii_planilha = aliqIiReal;
+    const iiRealBrl = parseIIRealBrl(wb, campos.tem_icms_st);
+    if (iiRealBrl !== null && iiRealBrl !== undefined) {
+        campos.ii_planilha_brl = iiRealBrl;
     }
     return { campos: campos, mix: mix };
 }
