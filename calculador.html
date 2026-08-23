@@ -904,6 +904,7 @@ let _estado = {
   parcelas:              [],   // cronograma de pagamento do FOB (item e) — [{label,valor_usd,data}]
   processoOrigemId:      null, // preenchido quando a cotação foi aberta a partir de "Vincular ao Calculador" no Controle
   taxasTotaisOverrideBrl: null, // TOTAL TAXAS (BRL) lido direto da planilha no import - substitui o total_taxas calculado por fórmula quando presente (rotulos de taxas individuais variam por fornecedor/agente, mas o total apurado não)
+  aliqIiOverride: null, // Aliquota real do I.I. lida da aba MODELO no import - substitui a aliquota da TABELA_NCM (derivada do texto livre do campo Produto, que só cobre 4 categorias de pneu) quando presente
 };
 
 // ── WIZARD (task #60) ─────────────────────────────────────
@@ -1566,7 +1567,7 @@ function calcular() {
 
   const ncm = NCM_POR_TIPO[tipo];
   const chave = `${ncm}${uf}`;
-  const t = TABELA_NCM[chave];
+  let t = TABELA_NCM[chave];
   if(!t) { showToast(`NCM ${ncm}/${uf} não encontrado na tabela NCM`,'err'); return; }
 
   // ── 1. SEGURO (compra e venda) ──
@@ -1638,6 +1639,17 @@ const cambioMedioDI = cambioMedioDiInput || cambio;
 const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambioMedioDI;
 
   // ── 3. Impostos de entrada (créditos) ──
+  // FIX: aliquota real do I.I. lida da planilha (import) tem prioridade
+  // sobre a aliquota da TABELA_NCM - essa so cobre 4 categorias de pneu
+  // (TBR/PCR/AGR/OTR) e cai num fallback generico (OTR, 16%) pra qualquer
+  // outro produto (Compactadores, Rodas, Maquina de Nitrogenio etc), o que
+  // pode divergir muito da aliquota real da NCM correta dessa cotacao.
+  // Sobrescreve so o campo ii de uma copia rasa de t (nao mutar TABELA_NCM
+  // compartilhada) pra manter os displays (Capa/Resumo) consistentes com o
+  // valor realmente usado no calculo.
+  if(_estado.aliqIiOverride != null && !isNaN(_estado.aliqIiOverride)){
+    t = { ...t, ii: _estado.aliqIiOverride };
+  }
   const II       = base_imp_brl * t.ii;
   const IPI_e    = (base_imp_brl + II) * t.ipi;
   const PIS_e    = base_imp_brl * t.pis_e;
@@ -3090,7 +3102,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
-  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl };
+  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, aliq_ii_override: _estado.aliqIiOverride };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -3123,6 +3135,7 @@ function aplicarEstadoFormulario(estado){
   if(typeof renderParcelasCalc === 'function') renderParcelasCalc();
   _estado.processoOrigemId = estado.processo_origem_id || null;
   _estado.taxasTotaisOverrideBrl = (estado.campos && estado.campos.taxas_totais_planilha_brl != null) ? Number(estado.campos.taxas_totais_planilha_brl) : ((estado.taxas_totais_override_brl != null) ? Number(estado.taxas_totais_override_brl) : null);
+  _estado.aliqIiOverride = (estado.campos && estado.campos.aliq_ii_planilha != null) ? Number(estado.campos.aliq_ii_planilha) : ((estado.aliq_ii_override != null) ? Number(estado.aliq_ii_override) : null);
   _estado.mix = estado.mix || null;
   if(_estado.mix && _estado.mix.itens && _estado.mix.itens.length) renderMix();
   _estado.splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)

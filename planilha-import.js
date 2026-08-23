@@ -277,6 +277,55 @@ function parseTaxasTotaisReais(wb, temIcmsSt) {
     return buscarValorPorRotulo(ws, /^TOTAL\s*TAXAS$/i);
 }
 
+// ALIQUOTA REAL DO I.I. (Imposto de Importacao): lida direto da aba MODELO
+// (coluna C da linha "IMP. IMPORTACAO", ex: 0.2 = 20%) em vez de deduzida
+// pelo texto livre do campo Produto (DADOS!E11).
+//
+// Contexto do bug que isso corrige: o Calculador mapeia o texto livre de
+// Produto pra uma de so 4 categorias de pneu (TBR/PCR/AGR/OTR, cada uma com
+// NCM e aliquota fixos) via mapearProduto() - mas a tabela real de NCMs
+// (TABELA_NCM no calculador.html) tem varias dezenas de outros produtos que
+// essa importadora tambem movimenta (Compactadores, Rodas, Maquina de
+// Nitrogenio, Pecas, etc), nenhum alcancavel pelas 4 opcoes do dropdown.
+// Um produto assim cai sempre no fallback 'OTR' (aliquota 16%), que pode
+// divergir MUITO da aliquota real usada na planilha (confirmado: planilha
+// CA26012026, produto "COMPACTADOR", aliquota real 20% na aba MODELO x 16%
+// do fallback OTR - por si so gerou ~R$10.688 de diferenca no Custo Total,
+// a maior parte do erro de -3,17% que motivou essa investigacao).
+//
+// Em vez de tentar mapear cada nome de produto pra NCM certo (lista
+// enorme e em constante mudanca), lemos a aliquota que a propria planilha
+// ja usou pra essa cotacao especifica e sobrescrevemos o "II" calculado no
+// calculador.html com ela - sempre exata, sem depender de reconhecer texto
+// livre. So a aliquota do I.I. e sobrescrita (e o unico imposto que entra
+// no Custo Total hoje - RBC/IPI/PIS/COFINS/ICMS/IBS/CBS sao creditos
+// recuperaveis, ver imp_custo = II no calculador.html), entao nao precisa
+// sobrescrever as outras aliquotas da TABELA_NCM.
+function parseAliqIIReal(wb, temIcmsSt) {
+    const sheetName = temIcmsSt ? 'MODELO - COM S.T' : 'MODELO - SEM S.T';
+    const ws = wb.Sheets[sheetName] || wb.Sheets['MODELO - COM S.T'] || wb.Sheets['MODELO - SEM S.T'];
+    if (!ws) return null;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = range.s.r; r <= range.e.r; r++) {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+            const cell = ws[XLSX.utils.encode_cell({ r, c })];
+            if (cell && typeof cell.v === 'string' && /^IMP\.\s*IMPORTACAO$/i.test(cell.v.trim())) {
+                // A aliquota fica na coluna logo apos o rotulo (ex: rotulo em B,
+                // aliquota em C) - buscamos o primeiro numero entre 0 e 1 (fracao
+                // de percentual) nas 3 colunas seguintes, pra tolerar pequenas
+                // variacoes de layout entre planilhas.
+                for (let c2 = c + 1; c2 <= Math.min(c + 3, range.e.c); c2++) {
+                    const cell2 = ws[XLSX.utils.encode_cell({ r, c: c2 })];
+                    if (cell2 && typeof cell2.v === 'number' && cell2.v >= 0 && cell2.v <= 1) {
+                        return cell2.v;
+                    }
+                }
+            }
+        }
+    }
+    return null;
+}
+
 function importarPlanilhaBase(buffer) {
     validarBufferPlanilha(buffer);
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -291,6 +340,10 @@ function importarPlanilhaBase(buffer) {
     const taxasTotaisReais = parseTaxasTotaisReais(wb, campos.tem_icms_st);
     if (taxasTotaisReais !== null && taxasTotaisReais !== undefined) {
         campos.taxas_totais_planilha_brl = taxasTotaisReais;
+    }
+    const aliqIiReal = parseAliqIIReal(wb, campos.tem_icms_st);
+    if (aliqIiReal !== null && aliqIiReal !== undefined) {
+        campos.aliq_ii_planilha = aliqIiReal;
     }
     return { campos: campos, mix: mix };
 }
