@@ -336,6 +336,45 @@ function parseIIRealBrl(wb, temIcmsSt) {
     return null;
 }
 
+// SEGURO (COMPRA) REAL EM BRL: lido direto da aba MODELO (linha "SEGURO",
+// coluna USD - D7/D-da-linha) quando o valor la e um numero digitado a mao
+// (nao uma formula), sinal de que o segurado pagou um premio real diferente
+// da estimativa padrao (0,04% sobre FOB+Frete) usada pelo calcular() do
+// Calculador. Ex.: planilha CA31032026, Seguro real US$185,72 x estimativa
+// da formula padrao US$19,25 - quase 10x menor, gerando ~R$878 de diferenca
+// no CIF (unico residuo depois dos fixes de I.I./aliquota nesse arquivo).
+//
+// So sobrescrevemos quando o valor vem de uma celula SEM formula (numero
+// literal): se a planilha usa a formula padrao normalmente (a maioria dos
+// casos ja bate exato sem essa sobrescrita), nao ha necessidade nem
+// vantagem em travar no valor congelado daquele calculo especifico.
+function parseSeguroCompraRealBrl(wb, temIcmsSt) {
+    const sheetName = temIcmsSt ? 'MODELO - COM S.T' : 'MODELO - SEM S.T';
+    const ws = wb.Sheets[sheetName] || wb.Sheets['MODELO - COM S.T'] || wb.Sheets['MODELO - SEM S.T'];
+    if (!ws) return null;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = range.s.r; r <= range.e.r; r++) {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+            const cell = ws[XLSX.utils.encode_cell({ r, c })];
+            if (cell && typeof cell.v === 'string' && /^SEGURO$/i.test(cell.v.trim())) {
+                // Coluna do valor em USD (logo apos o rotulo) - so aceitamos se
+                // for celula SEM formula (dado digitado, nao calculado).
+                const usdCell = ws[XLSX.utils.encode_cell({ r, c: c + 2 })];
+                if (!usdCell || usdCell.f || typeof usdCell.v !== 'number') return null;
+                // Valor em BRL fica mais a direita na mesma linha (ultimo
+                // numero >=1 nas proximas colunas, tolerando layout variavel).
+                let brl = null;
+                for (let c2 = c + 3; c2 <= Math.min(c + 10, range.e.c); c2++) {
+                    const cell2 = ws[XLSX.utils.encode_cell({ r, c: c2 })];
+                    if (cell2 && typeof cell2.v === 'number' && Math.abs(cell2.v) >= 1) brl = cell2.v;
+                }
+                return brl;
+            }
+        }
+    }
+    return null;
+}
+
 function importarPlanilhaBase(buffer) {
     validarBufferPlanilha(buffer);
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -354,6 +393,10 @@ function importarPlanilhaBase(buffer) {
     const iiRealBrl = parseIIRealBrl(wb, campos.tem_icms_st);
     if (iiRealBrl !== null && iiRealBrl !== undefined) {
         campos.ii_planilha_brl = iiRealBrl;
+    }
+    const seguroCompraRealBrl = parseSeguroCompraRealBrl(wb, campos.tem_icms_st);
+    if (seguroCompraRealBrl !== null && seguroCompraRealBrl !== undefined) {
+        campos.seguro_compra_planilha_brl = seguroCompraRealBrl;
     }
     return { campos: campos, mix: mix };
 }

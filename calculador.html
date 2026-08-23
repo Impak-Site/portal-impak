@@ -905,6 +905,7 @@ let _estado = {
   processoOrigemId:      null, // preenchido quando a cotação foi aberta a partir de "Vincular ao Calculador" no Controle
   taxasTotaisOverrideBrl: null, // TOTAL TAXAS (BRL) lido direto da planilha no import - substitui o total_taxas calculado por fórmula quando presente (rotulos de taxas individuais variam por fornecedor/agente, mas o total apurado não)
   iiOverrideBrl: null, // I.I. (BRL) lido direto da aba MODELO no import - substitui o II calculado (aliquota da TABELA_NCM x base) quando presente; a TABELA_NCM só cobre 4 categorias de pneu (derivadas do texto livre do campo Produto) e a base de cálculo real pode divergir do CIF (ex: UD26-016 usa um valor de DUIMP digitado à mão, não o CIF calculado)
+  seguroCompraOverrideBrl: null, // Seguro Compra (BRL) lido direto da aba MODELO no import quando é um valor digitado à mão (não uma fórmula) - substitui a estimativa padrão (0,04% sobre FOB+Frete) quando o segurado pagou um prêmio real diferente
 };
 
 // ── WIZARD (task #60) ─────────────────────────────────────
@@ -1622,7 +1623,14 @@ function calcular() {
   // abertura do dia da chegada ×1,02 já usado no Frete e no Seguro Venda —
   // confirmado numérico exato contra o exemplo real (R$96,08 vs R$93,87
   // que o câmbio principal dava antes).
-  const seguro_brl = seguro_compra_usd * cambio_chegada * 1.02;
+  let seguro_brl = seguro_compra_usd * cambio_chegada * 1.02;
+  // FIX: Seguro Compra (BRL) real lido da planilha (import) tem prioridade
+  // sobre a estimativa padrao (0,04% sobre FOB+Frete) quando a planilha tem
+  // um premio de seguro digitado a mao, divergente da formula (confirmado:
+  // CA31032026, premio real US$185,72 x estimativa da formula US$19,25).
+  if(_estado.seguroCompraOverrideBrl != null && !isNaN(_estado.seguroCompraOverrideBrl)){
+    seguro_brl = _estado.seguroCompraOverrideBrl;
+  }
   const seguro_venda_brl = seguro_venda_usd * cambio_chegada * 1.02;
   const cif_brl    = fobBrlPonderado + frete_brl + seguro_brl;
 
@@ -3103,7 +3111,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
-  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, ii_override_brl: _estado.iiOverrideBrl };
+  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, ii_override_brl: _estado.iiOverrideBrl, seguro_compra_override_brl: _estado.seguroCompraOverrideBrl };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -3137,6 +3145,7 @@ function aplicarEstadoFormulario(estado){
   _estado.processoOrigemId = estado.processo_origem_id || null;
   _estado.taxasTotaisOverrideBrl = (estado.campos && estado.campos.taxas_totais_planilha_brl != null) ? Number(estado.campos.taxas_totais_planilha_brl) : ((estado.taxas_totais_override_brl != null) ? Number(estado.taxas_totais_override_brl) : null);
   _estado.iiOverrideBrl = (estado.campos && estado.campos.ii_planilha_brl != null) ? Number(estado.campos.ii_planilha_brl) : ((estado.ii_override_brl != null) ? Number(estado.ii_override_brl) : null);
+  _estado.seguroCompraOverrideBrl = (estado.campos && estado.campos.seguro_compra_planilha_brl != null) ? Number(estado.campos.seguro_compra_planilha_brl) : ((estado.seguro_compra_override_brl != null) ? Number(estado.seguro_compra_override_brl) : null);
   _estado.mix = estado.mix || null;
   if(_estado.mix && _estado.mix.itens && _estado.mix.itens.length) renderMix();
   _estado.splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
