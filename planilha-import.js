@@ -147,10 +147,20 @@ function buscarValorPorRotulo(ws, regexRotulo) {
         for (let c = range.s.c; c <= range.e.c; c++) {
             const cell = ws[XLSX.utils.encode_cell({ r, c })];
             if (cell && typeof cell.v === 'string' && regexRotulo.test(cell.v)) {
+                // Coleta todos os numeros na mesma linha, a direita do rotulo.
+                // Prefere o primeiro valor "grande" (>=1000, tipico de total
+                // em R\$) em vez do primeiro numero puro e simples - celulas
+                // vizinhas costumam ter percentuais/indices pequenos (ex: uma
+                // celula de "% Lucro Alvo" logo ao lado de "LUCRO BRUTO
+                // IMPAK") que nao sao o total que queremos.
+                const candidatos = [];
                 for (let c2 = c; c2 <= Math.min(c + 10, range.e.c); c2++) {
                     const cell2 = ws[XLSX.utils.encode_cell({ r, c: c2 })];
-                    if (cell2 && typeof cell2.v === 'number') return cell2.v;
+                    if (cell2 && typeof cell2.v === 'number') candidatos.push(cell2.v);
                 }
+                const grande = candidatos.find(v => Math.abs(v) >= 1000);
+                if (grande !== undefined) return grande;
+                if (candidatos.length) return candidatos[0];
             }
         }
     }
