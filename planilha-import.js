@@ -135,29 +135,21 @@ function parseMix(wb) {
     return itens;
 }
 
-// Faturamento real (preco negociado com o cliente) - vem das abas
-// "MODELO - COM S.T" / "MODELO - SEM S.T", celula rotulada
-// "TOTAL - Faturamento" (linha 38 no layout atual, SUM(L36:M37)). Esse valor
-// e IGUAL nas duas abas (o preco de venda negociado nao muda com o cenario
-// de ICMS-ST do importador - so o custo muda), entao basta ler de uma delas.
-//
-// Isso e diferente do Custo Total (que o Calculador SABE estimar, porque e
-// uma conta de custos de importacao) - o Faturamento aqui NAO e um "estimado"
-// independente: e o preco que foi de fato negociado por item com o cliente,
-// que o Calculador nao tem como recalcular sozinho (ele so sabe sugerir preco
-// por margem-alvo %, nao tem os precos negociados por item). Por isso
-// extraimos o valor real da planilha em vez de tentar re-calcular.
-function parseFaturamentoReal(wb) {
-    const ws = wb.Sheets['MODELO - COM S.T'] || wb.Sheets['MODELO - SEM S.T'];
-    if (!ws) return null;
+// Busca uma celula rotulada (ex: "VALOR TOTAL da NOTA") em qualquer lugar da
+// planilha e retorna o primeiro valor numerico > 0 nas colunas seguintes da
+// mesma linha. Usado pra achar totais sem depender de endereco fixo de
+// celula, ja que o layout da planilha tem varios blocos de tabela
+// sobrepostos na mesma aba (nem todo rotulo "Total"-like esta no mesmo lugar
+// nas 2 planilhas usadas pra validar isso).
+function buscarValorPorRotulo(ws, regexRotulo) {
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let r = range.s.r; r <= range.e.r; r++) {
         for (let c = range.s.c; c <= range.e.c; c++) {
             const cell = ws[XLSX.utils.encode_cell({ r, c })];
-            if (cell && typeof cell.v === 'string' && /TOTAL.*Faturamento/i.test(cell.v)) {
+            if (cell && typeof cell.v === 'string' && regexRotulo.test(cell.v)) {
                 for (let c2 = c; c2 <= Math.min(c + 10, range.e.c); c2++) {
                     const cell2 = ws[XLSX.utils.encode_cell({ r, c: c2 })];
-                    if (cell2 && typeof cell2.v === 'number' && cell2.v > 0) return cell2.v;
+                    if (cell2 && typeof cell2.v === 'number') return cell2.v;
                 }
             }
         }
@@ -165,12 +157,44 @@ function parseFaturamentoReal(wb) {
     return null;
 }
 
+// Faturamento e Lucro Bruto REAIS (negociados/apurados), extraidos da aba
+// "MODELO - COM S.T" (fallback SEM S.T):
+//
+// - faturamento_real: celula "VALOR TOTAL da NOTA" - o valor de venda
+//   efetivamente faturado ao cliente (produtos + IPI + ICMS-ST, quando
+//   houver). CUIDADO: existe uma OUTRA celula na mesma aba rotulada
+//   "TOTAL - Faturamento" (bloco de custos, colunas B:F, nao tem relacao
+//   com o faturamento de venda) - nao confundir as duas; a fonte de
+//   verdade e "VALOR TOTAL da NOTA".
+// - lucro_bruto_real: celula "LUCRO BRUTO IMPAK" - formula da propria
+//   planilha (Faturamento - PIS - COFINS - IPI - ICMS(venda) - Custo Total
+//   - Comissao - Comissao China), lida direto em vez de reimplementada
+//   aqui (menos risco de divergir se a formula mudar de novo).
+//
+// Isso e diferente do Custo Total (que o Calculador SABE estimar, porque e
+// uma conta de custos de importacao) - Faturamento/Lucro aqui NAO sao um
+// "estimado" independente: sao os valores que foram de fato negociados/
+// apurados pra esse processo, que o Calculador nao tem como recalcular
+// sozinho (ele so sabe sugerir preco por margem-alvo %, nao tem os precos
+// negociados por item). Por isso extraimos os valores reais da planilha em
+// vez de tentar re-calcular.
+function parseFaturamentoReal(wb) {
+    const ws = wb.Sheets['MODELO - COM S.T'] || wb.Sheets['MODELO - SEM S.T'];
+    if (!ws) return { faturamento_real: null, lucro_bruto_real: null };
+    return {
+        faturamento_real: buscarValorPorRotulo(ws, /VALOR TOTAL da NOTA/i),
+        lucro_bruto_real: buscarValorPorRotulo(ws, /LUCRO BRUTO IMPAK/i),
+    };
+}
+
 function importarPlanilhaBase(buffer) {
     validarBufferPlanilha(buffer);
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const campos = parseDados(wb);
     const mix = parseMix(wb);
-    campos.faturamento_real = parseFaturamentoReal(wb);
+    const { faturamento_real, lucro_bruto_real } = parseFaturamentoReal(wb);
+    campos.faturamento_real = faturamento_real;
+    campos.lucro_bruto_real = lucro_bruto_real;
     return { campos: campos, mix: mix };
 }
 
