@@ -78,7 +78,17 @@ function parseDados(wb) {
   const comissaoChinaPct = comissaoChinaAtiva && chinaLocalFinal === 'DENTRO' ? 3 : 0;
 
   return {
+        // NOTA: cambio_usd aqui e o cambio "medio ult. 2 dias" (DADOS!E5) -
+        // e a base de calculo dos IMPOSTOS (II/IPI/PIS/COFINS/ICMS/IBS/CBS),
+        // formula confirmada em MODELO!E10 = 'MIX - COMPLETO'!$S$48 = DADOS!E5.
+        // NAO e o cambio do FOB nem do Frete/Seguro/Taxas de destino - a
+        // planilha usa 3 cambios DIFERENTES (ver parseCambiosReais abaixo).
+        // Mantido como cambio_medio_di explicito + cambio_usd por
+        // compatibilidade (ambos preenchidos com o mesmo valor aqui;
+        // importarPlanilhaBase() sobrescreve cambio_usd com o cambio
+        // ponderado do FOB quando consegue le-lo do MODELO).
         cambio_usd: Number(cellVal(ws, 'E5')) || Number(cellVal(ws, 'E3')) || null,
+        cambio_medio_di: Number(cellVal(ws, 'E5')) || Number(cellVal(ws, 'E3')) || null,
         fob_usd: Number(cellVal(ws, 'E6')) || 0,
         frete_usd: Number(cellVal(ws, 'E8')) || 0,
         taxa_ce_usd: Number(cellVal(ws, 'E7')) || 0,
@@ -197,6 +207,38 @@ function parseFaturamentoReal(wb) {
     };
 }
 
+// A planilha legado usa 3 cambios DIFERENTES na mesma cotacao, nao um
+// cambio unico (confirmado por rastreio de formula em MODELO - COM S.T):
+//  - FOB: cambio PONDERADO pelas parcelas pagas (MODELO!E4 = F4/D4, onde
+//    F4 = SOMA das parcelas convertidas cada uma pelo seu proprio cambio
+//    de pagamento - MIX - COMPLETO!T44:T47). Varia por processo, as vezes
+//    MAIOR e as vezes MENOR que o cambio de impostos.
+//  - Impostos (II/IPI/PIS/COFINS/ICMS/IBS/CBS): cambio "medio ult. 2 dias"
+//    (DADOS!E5), ja capturado em campos.cambio_medio_di.
+//  - Frete/Seguro/Taxas de destino: cambio "de abertura do dia da chegada"
+//    (MODELO!E5, um valor manual/literal na planilha - nao tem celula fonte
+//    em DADOS). O Calculador aplica esse cambio como cambio_chegada * 1.02
+//    (margem de 2% embutida na regra do sistema), entao gravamos aqui
+//    cambio_chegada = MODELO!E5 / 1.02 pra reproduzir o mesmo valor final.
+// Sem isso, o wizard aplicava o cambio de impostos (DADOS!E5) tambem no
+// FOB e no Frete - e como o FOB e ~75-80% do Custo Total, um cambio errado
+// ali sozinho ja gerava ~1.5-2% de diferenca no Custo Total estimado
+// (confirmado no piloto UD26-001/UD26-023/UD26-051: erro caiu de ~1.5-2%
+// para ~0.07-0.22% depois desse fix).
+function parseCambiosReais(wb, temIcmsSt) {
+    const sheetName = temIcmsSt ? 'MODELO - COM S.T' : 'MODELO - SEM S.T';
+    const ws = wb.Sheets[sheetName];
+    if (!ws) return { cambio_fob_ponderado: null, cambio_chegada: null };
+    const e4 = cellVal(ws, 'E4');
+    const e5 = cellVal(ws, 'E5');
+    const cambioFobPonderado = Number(e4) || null;
+    const cambioFreteOuChegada = Number(e5) || null;
+    return {
+        cambio_fob_ponderado: cambioFobPonderado,
+        cambio_chegada: cambioFreteOuChegada ? cambioFreteOuChegada / 1.02 : null,
+    };
+}
+
 function importarPlanilhaBase(buffer) {
     validarBufferPlanilha(buffer);
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -205,6 +247,9 @@ function importarPlanilhaBase(buffer) {
     const { faturamento_real, lucro_bruto_real } = parseFaturamentoReal(wb);
     campos.faturamento_real = faturamento_real;
     campos.lucro_bruto_real = lucro_bruto_real;
+    const { cambio_fob_ponderado, cambio_chegada } = parseCambiosReais(wb, campos.tem_icms_st);
+    if (cambio_fob_ponderado) campos.cambio_usd = cambio_fob_ponderado;
+    if (cambio_chegada) campos.cambio_chegada = cambio_chegada;
     return { campos: campos, mix: mix };
 }
 
