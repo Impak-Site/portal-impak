@@ -1076,11 +1076,19 @@ app.post('/api/admin/permissoes/:usuario', requireAdminPermissoes, async (req, r
   }
   const modulosEnviados = Array.isArray(req.body.modulos) ? req.body.modulos : [];
   const modulos = [...new Set(modulosEnviados.filter(m => MODULOS_VALIDOS.includes(m)))];
+  const update = { modulos };
+  if (req.body.role !== undefined) {
+    const ROLES_VALIDAS = ['gerente', 'analista'];
+    if (!ROLES_VALIDAS.includes(req.body.role)) {
+      return res.status(400).json({ ok: false, erro: 'role inválida (use "gerente" ou "analista").' });
+    }
+    update.role = req.body.role;
+  }
   try {
-    await sb().from('usuarios').update({ modulos }).eq('usuario', alvo);
+    await sb().from('usuarios').update(update).eq('usuario', alvo);
     await recarregarCacheUsuarios();
     forcarLogoutUsuario(alvo);
-    res.json({ ok: true, mensagem: `Permissões de "${alvo}" atualizadas.`, modulos });
+    res.json({ ok: true, mensagem: `Permissões de "${alvo}" atualizadas.`, modulos, role: update.role });
   } catch (e) {
     console.error('Erro ao salvar permissões:', e.message);
     res.status(500).json({ ok: false, erro: 'Erro interno ao salvar.' });
