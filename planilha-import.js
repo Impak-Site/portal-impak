@@ -90,7 +90,15 @@ function parseDados(wb) {
         cambio_usd: Number(cellVal(ws, 'E5')) || Number(cellVal(ws, 'E3')) || null,
         cambio_medio_di: Number(cellVal(ws, 'E5')) || Number(cellVal(ws, 'E3')) || null,
         fob_usd: Number(cellVal(ws, 'E6')) || 0,
-        frete_usd: Number(cellVal(ws, 'E8')) || 0,
+        // FIX: FRETE (DADOS!E8) e digitado POR CONTAINER, nao total - formula
+        // confirmada na planilha (MODELO!D5 = DADOS!E8*C2, onde C2 e a
+        // quantidade de containers). Sem multiplicar, o CIF ficava sub-
+        // avaliado em embarques com 2+ containers (confirmado: IPK-05-2026,
+        // 2 containers, US$2.150 lido vs US$4.300 real - ~3% de erro no
+        // Custo Total). Taxa C.E. e FOB NAO seguem essa regra (Taxa C.E. =
+        // DADOS!E7 direto, sem multiplicar; FOB vem do total da aba MIX,
+        // ja agregado) - confirmado tambem por formula, nao presumido.
+        frete_usd: (Number(cellVal(ws, 'E8')) || 0) * (Number(cellVal(ws, 'E9')) || 1),
         taxa_ce_usd: Number(cellVal(ws, 'E7')) || 0,
         qtde_containers: Number(cellVal(ws, 'E9')) || 1,
         produto: mapearProduto(cellVal(ws, 'E11')),
