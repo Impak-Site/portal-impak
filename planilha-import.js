@@ -61,7 +61,21 @@ function parseDados(wb) {
     const ws = wb.Sheets['DADOS'];
     if (!ws) throw new Error('Aba "DADOS" nao encontrada na planilha.');
 
-  const comissaoChinaLocal = norm(cellVal(ws, 'H17'));
+  // FIX: o local da Comissao China (Dentro/Fora) esta na coluna F da linha 17
+  // (DADOS!F17 - confirmado pela formula MODELO!L8 = DADOS!F17), nao H17.
+  // H17 esta sempre vazio, entao o codigo antigo sempre caia no fallback
+  // 'FORA' - por coincidencia batia certo nas planilhas de teste (todas
+  // FORA), mas quebraria silenciosamente numa planilha com Comissao China
+  // "Dentro" (aplicaria FORA em vez de DENTRO, zerando o % errado).
+  const comissaoChinaLocal = norm(cellVal(ws, 'F17'));
+  const chinaLocalFinal = (comissaoChinaLocal === 'DENTRO' || comissaoChinaLocal === 'FORA') ? comissaoChinaLocal : 'FORA';
+  const comissaoChinaAtiva = ehSim(cellVal(ws, 'E17'));
+  // A Comissao China nao tem % livre na planilha (diferente da Comissao BR,
+  // que tem o % em F16) - o modelo usa uma formula fixa
+  // (MODELO!K32 = IF(AND(K8="SIM",L8="Dentro"),3%,"")), ou seja: 3% quando
+  // "Dentro" e 0% (nao se aplica) quando "Fora". Replicamos essa regra fixa
+  // aqui pra pre-preencher o campo china_pct do Calculador corretamente.
+  const comissaoChinaPct = comissaoChinaAtiva && chinaLocalFinal === 'DENTRO' ? 3 : 0;
 
   return {
         cambio_usd: Number(cellVal(ws, 'E5')) || Number(cellVal(ws, 'E3')) || null,
@@ -71,12 +85,19 @@ function parseDados(wb) {
         qtde_containers: Number(cellVal(ws, 'E9')) || 1,
         produto: mapearProduto(cellVal(ws, 'E11')),
         origem: mapearOrigem(cellVal(ws, 'E12')),
+        // UF de destino (DADOS!E13) - usada pela aliquota de ICMS-ST, que
+        // varia por estado (ver MODELO!K4 = DADOS!E13 e as formulas de
+        // ICMS-ST que comparam K4 contra "SC"/"RS"/"MG" etc). Nao era
+        // importada antes - o wizard ficava sem UF, obrigando preenchimento
+        // manual mesmo quando a planilha ja tinha a resposta.
+        uf_destino: cellVal(ws, 'E13') ? norm(cellVal(ws, 'E13')) : '',
         tipo_importacao: mapearTipoImportacao(cellVal(ws, 'E14')),
         tem_icms_st: ehSim(cellVal(ws, 'E15')),
         comissao_br: ehSim(cellVal(ws, 'E16')),
         comissao_br_pct: Number(cellVal(ws, 'F16')) || null,
-        comissao_china: ehSim(cellVal(ws, 'E17')),
-        comissao_china_local: (comissaoChinaLocal === 'DENTRO' || comissaoChinaLocal === 'FORA') ? comissaoChinaLocal : 'FORA',
+        comissao_china: comissaoChinaAtiva,
+        comissao_china_local: chinaLocalFinal,
+        comissao_china_pct: comissaoChinaPct,
         cliente: cellVal(ws, 'E18') ? String(cellVal(ws, 'E18')).trim() : '',
         custos_diversos: Number(cellVal(ws, 'E36')) || 0,
         avisos: ['Confira: parcelamento, cartao, prazo/juros e dumping nao sao importados automaticamente - revise essas secoes manualmente.'],
