@@ -33,6 +33,14 @@ if (!scriptMatches.length) {
 const jsReal = scriptMatches.reduce((maior, atual) =>
   atual[1].length > maior.length ? atual[1] : maior, '');
 
+// taxas-catalogo.js é carregado via <script src="..."> no HTML real (não
+// inline), então o extrator acima (que só pega <script> sem src) não o
+// inclui — precisamos concatenar manualmente, na mesma ordem que o HTML
+// real carrega (taxas-catalogo.js ANTES do script principal), senão
+// window.TaxasCatalogo fica undefined e TAXAS_CONFIG quebra no load.
+const jsCatalogo = fs.readFileSync(path.join(__dirname, 'taxas-catalogo.js'), 'utf-8');
+const jsRealCompleto = jsCatalogo + '\n' + jsReal;
+
 // ── STUB DE FORMULÁRIO — caso real: Pneu Automóvel / SC ────────
 // Valores baseados no caso "IMPAK-PVN25010-1" já discutido e validado
 // manualmente nesta mesma conversa (câmbio, FOB, frete, etc. reais).
@@ -143,7 +151,7 @@ function carregarNoSandbox(sandbox) {
 ;try{ this.TABELA_NCM = TABELA_NCM; }catch(e){}
 ;try{ this.NCM_POR_TIPO = NCM_POR_TIPO; }catch(e){}
 `;
-  vm.runInContext(jsReal + exposicaoExtra, sandbox, { filename: 'calculador_extraido.js' });
+  vm.runInContext(jsRealCompleto + exposicaoExtra, sandbox, { filename: 'calculador_extraido.js' });
 }
 
 // ── FRAMEWORK DE TESTE MÍNIMO ───────────────────────────────────

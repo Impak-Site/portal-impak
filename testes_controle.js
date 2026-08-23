@@ -40,6 +40,10 @@ const vm   = require('vm');
 // aqui, e excel-styles.js só é referenciado dentro do corpo de funções de
 // export (não executado no carregamento do módulo).
 const MODULOS_JS = [
+  // taxas-catalogo.js precisa vir ANTES de controle-core.js — CUSTOS_REAIS_CONFIG
+  // usa window.TaxasCatalogo.porId() pra derivar porContainer (ver comentário
+  // em controle-core.js), mesma ordem do <script src> real em controle_v2.html.
+  'taxas-catalogo.js',
   'controle-core.js',
   'controle-modal.js',
   'controle-campos.js',

@@ -820,6 +820,18 @@ function renderDemurInfo(p){
 // simulaÃÂÃÂ§ÃÂÃÂ£o pra Taxa C.E ÃÂ¢ÃÂÃÂ ver resumoParaLista() em calculador.html). Agora
 // unidade:'BRL' em todos ÃÂ¢ÃÂÃÂ os valores que chegam em custos_cotados_json jÃÂÃÂ¡
 // vÃÂÃÂªm convertidos pelo cÃÂÃÂ¢mbio correto de cada item, nÃÂÃÂ£o mais em dÃÂÃÂ³lar puro.
+// pc(id) = "porContainer" derivado do catálogo único de taxas
+// (window.TaxasCatalogo, ver taxas-catalogo.js) — fonte única com o
+// Calculador (TAXAS_CONFIG em calculador.html) pra saber se uma taxa
+// multiplica pela quantidade de containers do processo ou é um valor
+// único (base_rateio 'container' vs 'processo'). Antes cada item aqui
+// tinha um porContainer:true/false hardcoded, digitado à mão e sem
+// nenhuma ligação com a mesma regra no Calculador — risco real de
+// divergência se alguém mudasse um lado e esquecesse o outro.
+function pc(id) {
+  const t = (window.TaxasCatalogo && window.TaxasCatalogo.porId) ? window.TaxasCatalogo.porId(id) : null;
+  return !!(t && t.base_rateio === 'container');
+}
 const CUSTOS_REAIS_CONFIG = [
   { grupo:'Compra e Frete', slug:'compra', itens:[
     { id:'fob',      label:'Custo da mercadoria', unidade:'BRL', unidadeLegado:'USD', cotado:c=>c?.compra?.fob },
@@ -860,33 +872,33 @@ const CUSTOS_REAIS_CONFIG = [
   // (calcularCustoCotadoItem). Os valores REAIS lanÃÂÃÂ§ados na aba sÃÂÃÂ£o sempre o
   // TOTAL do item pro processo inteiro ÃÂ¢ÃÂÃÂ o usuÃÂÃÂ¡rio nÃÂÃÂ£o precisa multiplicar.
   { grupo:'Taxas Operacionais', slug:'taxas', itens:[
-    { id:'siscomex',         label:'Siscomex',                unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.siscomex },
-    { id:'marinha',          label:'Marinha/AFRMM',           unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.marinha },
-    { id:'armazenagem',      label:'Armazenagem',             unidade:'BRL', porContainer:false, cotado:c=>c?.taxas_fixas?.armazenagem },
-    { id:'emissao_li',       label:'Emissão L.I.',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.emissao_li },
-    { id:'baixa_patio',      label:'Baixa Pátio',             unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.baixa_patio },
-    { id:'capatazia',        label:'Capatazia/THC',           unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.capatazia },
-    { id:'liberacao_bl',     label:'Liberação BL',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.liberacao_bl },
-    { id:'despachante',      label:'Despachante',             unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.despachante },
-    { id:'sda',              label:'SDA',                     unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.sda },
-    { id:'lavacao',          label:'Lavação Container',       unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.lavacao },
-    { id:'administrativo',   label:'Administrativo',          unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.administrativo },
-    { id:'agente',           label:'Agente Carga',            unidade:'BRL', porContainer:true,  cotado:c=>c?.taxas_fixas?.agente },
-    { id:'custos_diversos',  label:'Custos Diversos',         unidade:'BRL', porContainer:false, cotado:c=>c?.custos_diversos },
+    { id:'siscomex',         label:'Siscomex',                unidade:'BRL', porContainer:pc('siscomex'),  cotado:c=>c?.taxas_fixas?.siscomex },
+    { id:'marinha',          label:'Marinha/AFRMM',           unidade:'BRL', porContainer:pc('marinha'),  cotado:c=>c?.taxas_fixas?.marinha },
+    { id:'armazenagem',      label:'Armazenagem',             unidade:'BRL', porContainer:pc('armazenagem'), cotado:c=>c?.taxas_fixas?.armazenagem },
+    { id:'emissao_li',       label:'Emissão L.I.',            unidade:'BRL', porContainer:pc('emissao_li'),  cotado:c=>c?.taxas_fixas?.emissao_li },
+    { id:'baixa_patio',      label:'Baixa Pátio',             unidade:'BRL', porContainer:pc('baixa_patio'),  cotado:c=>c?.taxas_fixas?.baixa_patio },
+    { id:'capatazia',        label:'Capatazia/THC',           unidade:'BRL', porContainer:pc('capatazia'),  cotado:c=>c?.taxas_fixas?.capatazia },
+    { id:'liberacao_bl',     label:'Liberação BL',            unidade:'BRL', porContainer:pc('liberacao_bl'),  cotado:c=>c?.taxas_fixas?.liberacao_bl },
+    { id:'despachante',      label:'Despachante',             unidade:'BRL', porContainer:pc('despachante'),  cotado:c=>c?.taxas_fixas?.despachante },
+    { id:'sda',              label:'SDA',                     unidade:'BRL', porContainer:pc('sda'),  cotado:c=>c?.taxas_fixas?.sda },
+    { id:'lavacao',          label:'Lavação Container',       unidade:'BRL', porContainer:pc('lavacao'),  cotado:c=>c?.taxas_fixas?.lavacao },
+    { id:'administrativo',   label:'Administrativo',          unidade:'BRL', porContainer:pc('administrativo'),  cotado:c=>c?.taxas_fixas?.administrativo },
+    { id:'agente',           label:'Agente Carga',            unidade:'BRL', porContainer:pc('agente'),  cotado:c=>c?.taxas_fixas?.agente },
+    { id:'custos_diversos',  label:'Custos Diversos',         unidade:'BRL', porContainer:pc('custos_diversos'), cotado:c=>c?.custos_diversos },
     // Seguro de Venda: distinto do Seguro (Compra e Frete acima, custo interno
     // da importaÃÂÃÂ§ÃÂÃÂ£o) ÃÂ¢ÃÂÃÂ ÃÂÃÂ© a taxa de seguro cobrada na proposta ao cliente, que
     // compÃÂÃÂµe total_taxas/custo_total no Calculador (ver comentÃÂÃÂ¡rio em
     // calcular(), "deve compor as Taxas Operacionais").
-    { id:'seguro_venda',    label:'Seguro de Venda',         unidade:'BRL', porContainer:false, cotado:c=>c?.seguro_venda },
-    { id:'handling',         label:'Handling at Destination', unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.handling },
-    { id:'additional_costs', label:'Additional Costs',        unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.additional_costs },
-    { id:'import_logistics', label:'Import Logistics',        unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.import_logistics },
-    { id:'trs',              label:'TRS',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.trs },
-    { id:'tsc',              label:'TSC',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.tsc },
-    { id:'drop_off',         label:'Drop Off',                unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.drop_off },
-    { id:'isps',             label:'ISPS',                    unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.isps },
-    { id:'iof',              label:'IOF',                     unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.iof },
-    { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'BRL', unidadeLegado:'USD', porContainer:true,  cotado:c=>c?.taxas_usd?.desconsolidacao },
+    { id:'seguro_venda',    label:'Seguro de Venda',         unidade:'BRL', porContainer:pc('seguro_venda'), cotado:c=>c?.seguro_venda },
+    { id:'handling',         label:'Handling at Destination', unidade:'BRL', unidadeLegado:'USD', porContainer:pc('handling'),  cotado:c=>c?.taxas_usd?.handling },
+    { id:'additional_costs', label:'Additional Costs',        unidade:'BRL', unidadeLegado:'USD', porContainer:pc('additional_costs'),  cotado:c=>c?.taxas_usd?.additional_costs },
+    { id:'import_logistics', label:'Import Logistics',        unidade:'BRL', unidadeLegado:'USD', porContainer:pc('import_logistics'),  cotado:c=>c?.taxas_usd?.import_logistics },
+    { id:'trs',              label:'TRS',                     unidade:'BRL', unidadeLegado:'USD', porContainer:pc('trs'),  cotado:c=>c?.taxas_usd?.trs },
+    { id:'tsc',              label:'TSC',                     unidade:'BRL', unidadeLegado:'USD', porContainer:pc('tsc'),  cotado:c=>c?.taxas_usd?.tsc },
+    { id:'drop_off',         label:'Drop Off',                unidade:'BRL', unidadeLegado:'USD', porContainer:pc('drop_off'),  cotado:c=>c?.taxas_usd?.drop_off },
+    { id:'isps',             label:'ISPS',                    unidade:'BRL', unidadeLegado:'USD', porContainer:pc('isps'),  cotado:c=>c?.taxas_usd?.isps },
+    { id:'iof',              label:'IOF',                     unidade:'BRL', unidadeLegado:'USD', porContainer:pc('iof'),  cotado:c=>c?.taxas_usd?.iof },
+    { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'BRL', unidadeLegado:'USD', porContainer:pc('desconsolidacao'),  cotado:c=>c?.taxas_usd?.desconsolidacao },
     // ICMS de Saida (ICMS Proprio, 1,4%): calculado sobre o Valor Total dos
     // Produtos da NF de Entrada, lancado na NF de Saida ao cliente. E custo
     // real (Pago = o que foi recolhido) mas tambem e cobrado do cliente
@@ -894,7 +906,7 @@ const CUSTOS_REAIS_CONFIG = [
     // (nao tem apenasPago nem temCredito - e diferente do ICMS pago na
     // importacao, que fica no grupo Impostos de Importacao acima e tem
     // credito).
-    { id:'icms_saida', label:'ICMS de Saída (1,4% s/ Produtos)', unidade:'BRL', porContainer:false, cotado:c=>null },
+    { id:'icms_saida', label:'ICMS de Saída (1,4% s/ Produtos)', unidade:'BRL', porContainer:pc('icms_saida'), cotado:c=>null },
   ]},
   // Diferencas de Impostos e Taxas Extras (aba Fechamento da planilha,
   // linhas 22-40) - itens que so aparecem depois do fechamento do

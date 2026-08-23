@@ -15,6 +15,12 @@
  * propósito — o usuário completa depois de aprovado, dentro do Controle.
  */
 
+const TaxasCatalogo = require('./taxas-catalogo.js');
+function pc(id) {
+  const t = TaxasCatalogo.porId(id);
+  return !!(t && t.base_rateio === 'container');
+}
+
 const NCM_POR_TIPO = {
   TBR: 40112090,
   PCR: 40111000,
@@ -36,14 +42,15 @@ const FINALIDADE_POR_TIPO_IMPORTACAO = {
   // — fica sem valor e a observação registra o tipo original.
 };
 
-// Mapeia cada item de CUSTOS_REAIS_CONFIG (controle-core.js) pro caminho
+// Mapeia cada item do catálogo único de taxas (taxas-catalogo.js,
+// TaxasCatalogo.porId — o mesmo usado por CUSTOS_REAIS_CONFIG em
+// controle-core.js e por TAXAS_CONFIG em calculador.html) pro caminho
 // correspondente dentro de `custos_cotados_json` (o formato salvo pelo
-// Calculador em `resumo.custos_cotados_json`, ver calculador.html). Não dá
-// pra reaproveitar CUSTOS_REAIS_CONFIG diretamente aqui porque esse arquivo
-// roda em Node (sem os globais de browser que controle-core.js espera) —
-// então mantemos essa cópia enxuta, só com o que é preciso pra gerar o
-// `real_json` inicial no momento da aprovação. Ver CUSTOS_REAIS_CONFIG em
-// controle-core.js pra a lista "oficial" (mesmos ids/unidades/porContainer).
+// Calculador em `resumo.custos_cotados_json`, ver calculador.html).
+// `porContainer` de cada item abaixo vem do catálogo (base_rateio ===
+// 'container') em vez de ser digitado à mão — antes esta era uma TERCEIRA
+// cópia da mesma lista (além de TAXAS_CONFIG e CUSTOS_REAIS_CONFIG),
+// mantida manualmente em sincronia só na base da atenção.
 // FIX (a pedido do usuário): FOB/Frete/Seguro/Taxa C.E. e as Taxas em USD
 // (destino) eram unidade:'USD' aqui — mas o Calculador (resumoParaLista() em
 // calculador.html) já converte esses itens pro câmbio certo de cada um antes
@@ -52,51 +59,51 @@ const FINALIDADE_POR_TIPO_IMPORTACAO = {
 // simulação pra Taxa C.E.) — então aqui é só BRL puro agora, sem conversão.
 const ITENS_CUSTOS_REAIS = [
   // Compra e Frete (BRL — já convertidas pelo câmbio de cada item no Calculador)
-  { id: 'fob',     unidade: 'BRL', porContainer: false, get: c => c?.compra?.fob },
-  { id: 'frete',   unidade: 'BRL', porContainer: false, get: c => c?.compra?.frete },
-  { id: 'seguro',  unidade: 'BRL', porContainer: false, get: c => c?.compra?.seguro_usd },
-  { id: 'taxa_ce', unidade: 'BRL', porContainer: false, get: c => c?.compra?.taxa_ce },
+  { id: 'fob',     unidade: 'BRL', porContainer: pc('fob'), get: c => c?.compra?.fob },
+  { id: 'frete',   unidade: 'BRL', porContainer: pc('frete'), get: c => c?.compra?.frete },
+  { id: 'seguro',  unidade: 'BRL', porContainer: pc('seguro'), get: c => c?.compra?.seguro_usd },
+  { id: 'taxa_ce', unidade: 'BRL', porContainer: pc('taxa_ce'), get: c => c?.compra?.taxa_ce },
   // Impostos de Importacao (BRL, apenasPago - sem "cobrado do cliente",
   // ver gerarRealJsonInicial abaixo: estes continuam indo pro campo comum,
   // nao pro sufixo _cobrado, porque nao existe esse conceito pra imposto).
-  { id: 'ii',      unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.ii },
-  { id: 'ipi',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.ipi },
-  { id: 'pis',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.pis },
-  { id: 'cofins',  unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.cofins },
-  { id: 'icms',    unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.icms },
-  { id: 'ibs',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.ibs },
-  { id: 'cbs',     unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.cbs },
-  { id: 'antidumping', unidade: 'BRL', porContainer: false, apenasPago: true, get: c => c?.impostos?.antidumping },
+  { id: 'ii',      unidade: 'BRL', porContainer: pc('ii'), apenasPago: true, get: c => c?.impostos?.ii },
+  { id: 'ipi',     unidade: 'BRL', porContainer: pc('ipi'), apenasPago: true, get: c => c?.impostos?.ipi },
+  { id: 'pis',     unidade: 'BRL', porContainer: pc('pis'), apenasPago: true, get: c => c?.impostos?.pis },
+  { id: 'cofins',  unidade: 'BRL', porContainer: pc('cofins'), apenasPago: true, get: c => c?.impostos?.cofins },
+  { id: 'icms',    unidade: 'BRL', porContainer: pc('icms'), apenasPago: true, get: c => c?.impostos?.icms },
+  { id: 'ibs',     unidade: 'BRL', porContainer: pc('ibs'), apenasPago: true, get: c => c?.impostos?.ibs },
+  { id: 'cbs',     unidade: 'BRL', porContainer: pc('cbs'), apenasPago: true, get: c => c?.impostos?.cbs },
+  { id: 'antidumping', unidade: 'BRL', porContainer: pc('antidumping'), apenasPago: true, get: c => c?.impostos?.antidumping },
   // Comissões (BRL)
-  { id: 'comissao_br',    unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.br },
-  { id: 'comissao_china', unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.china },
-  { id: 'comissao_boss',  unidade: 'BRL', porContainer: false, get: c => c?.comissoes?.boss },
+  { id: 'comissao_br',    unidade: 'BRL', porContainer: pc('comissao_br'), get: c => c?.comissoes?.br },
+  { id: 'comissao_china', unidade: 'BRL', porContainer: pc('comissao_china'), get: c => c?.comissoes?.china },
+  { id: 'comissao_boss',  unidade: 'BRL', porContainer: pc('comissao_boss'), get: c => c?.comissoes?.boss },
   // Taxas Operacionais — fixas em BRL, porContainer:true
-  { id: 'siscomex',      unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.siscomex },
-  { id: 'marinha',       unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.marinha },
-  { id: 'emissao_li',    unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.emissao_li },
-  { id: 'baixa_patio',   unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.baixa_patio },
-  { id: 'capatazia',     unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.capatazia },
-  { id: 'liberacao_bl',  unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.liberacao_bl },
-  { id: 'despachante',   unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.despachante },
-  { id: 'sda',           unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.sda },
-  { id: 'lavacao',       unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.lavacao },
-  { id: 'administrativo', unidade: 'BRL', porContainer: true, get: c => c?.taxas_fixas?.administrativo },
-  { id: 'agente',        unidade: 'BRL', porContainer: true,  get: c => c?.taxas_fixas?.agente },
+  { id: 'siscomex',      unidade: 'BRL', porContainer: pc('siscomex'),  get: c => c?.taxas_fixas?.siscomex },
+  { id: 'marinha',       unidade: 'BRL', porContainer: pc('marinha'),  get: c => c?.taxas_fixas?.marinha },
+  { id: 'emissao_li',    unidade: 'BRL', porContainer: pc('emissao_li'),  get: c => c?.taxas_fixas?.emissao_li },
+  { id: 'baixa_patio',   unidade: 'BRL', porContainer: pc('baixa_patio'),  get: c => c?.taxas_fixas?.baixa_patio },
+  { id: 'capatazia',     unidade: 'BRL', porContainer: pc('capatazia'),  get: c => c?.taxas_fixas?.capatazia },
+  { id: 'liberacao_bl',  unidade: 'BRL', porContainer: pc('liberacao_bl'),  get: c => c?.taxas_fixas?.liberacao_bl },
+  { id: 'despachante',   unidade: 'BRL', porContainer: pc('despachante'),  get: c => c?.taxas_fixas?.despachante },
+  { id: 'sda',           unidade: 'BRL', porContainer: pc('sda'),  get: c => c?.taxas_fixas?.sda },
+  { id: 'lavacao',       unidade: 'BRL', porContainer: pc('lavacao'),  get: c => c?.taxas_fixas?.lavacao },
+  { id: 'administrativo', unidade: 'BRL', porContainer: pc('administrativo'), get: c => c?.taxas_fixas?.administrativo },
+  { id: 'agente',        unidade: 'BRL', porContainer: pc('agente'),  get: c => c?.taxas_fixas?.agente },
   // Taxas Operacionais — fixas em BRL, porContainer:false
-  { id: 'armazenagem',    unidade: 'BRL', porContainer: false, get: c => c?.taxas_fixas?.armazenagem },
-  { id: 'custos_diversos', unidade: 'BRL', porContainer: false, get: c => c?.custos_diversos },
-  { id: 'seguro_venda',    unidade: 'BRL', porContainer: false, get: c => c?.seguro_venda },
+  { id: 'armazenagem',    unidade: 'BRL', porContainer: pc('armazenagem'), get: c => c?.taxas_fixas?.armazenagem },
+  { id: 'custos_diversos', unidade: 'BRL', porContainer: pc('custos_diversos'), get: c => c?.custos_diversos },
+  { id: 'seguro_venda',    unidade: 'BRL', porContainer: pc('seguro_venda'), get: c => c?.seguro_venda },
   // Taxas Operacionais — em BRL (já convertidas pelo câmbio de abertura+2% no Calculador), porContainer:true
-  { id: 'handling',         unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.handling },
-  { id: 'additional_costs', unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.additional_costs },
-  { id: 'import_logistics', unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.import_logistics },
-  { id: 'trs',               unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.trs },
-  { id: 'tsc',               unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.tsc },
-  { id: 'drop_off',          unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.drop_off },
-  { id: 'isps',              unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.isps },
-  { id: 'iof',               unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.iof },
-  { id: 'desconsolidacao',   unidade: 'BRL', porContainer: true, get: c => c?.taxas_usd?.desconsolidacao },
+  { id: 'handling',         unidade: 'BRL', porContainer: pc('handling'), get: c => c?.taxas_usd?.handling },
+  { id: 'additional_costs', unidade: 'BRL', porContainer: pc('additional_costs'), get: c => c?.taxas_usd?.additional_costs },
+  { id: 'import_logistics', unidade: 'BRL', porContainer: pc('import_logistics'), get: c => c?.taxas_usd?.import_logistics },
+  { id: 'trs',               unidade: 'BRL', porContainer: pc('trs'), get: c => c?.taxas_usd?.trs },
+  { id: 'tsc',               unidade: 'BRL', porContainer: pc('tsc'), get: c => c?.taxas_usd?.tsc },
+  { id: 'drop_off',          unidade: 'BRL', porContainer: pc('drop_off'), get: c => c?.taxas_usd?.drop_off },
+  { id: 'isps',              unidade: 'BRL', porContainer: pc('isps'), get: c => c?.taxas_usd?.isps },
+  { id: 'iof',               unidade: 'BRL', porContainer: pc('iof'), get: c => c?.taxas_usd?.iof },
+  { id: 'desconsolidacao',   unidade: 'BRL', porContainer: pc('desconsolidacao'), get: c => c?.taxas_usd?.desconsolidacao },
 ];
 
 function numOuNull(v) {

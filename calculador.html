@@ -198,6 +198,9 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
 <!-- Paleta/bordas/estilização de Excel compartilhada com controle_v2.html e
      tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
 <script src="excel-styles.js"></script>
+<!-- Catálogo único de Taxas Operacionais (base_rateio: processo/container),
+     compartilhado com o Controle — ver taxas-catalogo.js -->
+<script src="taxas-catalogo.js"></script>
 </head>
 <body>
 
@@ -1178,29 +1181,14 @@ function toggleCustoReal(){
 // Config única das taxas operacionais — usada pra gerar os campos de "custo
 // real" (apuração de lucro real) espelhando os campos de "valor cobrado".
 // Se adicionar uma taxa nova em Taxas Operacionais, adicionar aqui também.
-const TAXAS_CONFIG = [
-  { id:'siscomex', label:'Siscomex', unit:'R$', tipo:'fixa' },
-  { id:'marinha', label:'Marinha/AFRMM', unit:'R$', tipo:'fixa' },
-  { id:'armazenagem', label:'Armazenagem', unit:'R$', tipo:'fixa' },
-  { id:'emissao_li', label:'Emissão L.I.', unit:'R$', tipo:'fixa' },
-  { id:'baixa_patio', label:'Baixa Pátio', unit:'R$', tipo:'fixa' },
-  { id:'capatazia', label:'Capatazia/THC', unit:'R$', tipo:'fixa' },
-  { id:'liberacao_bl', label:'Liberação BL', unit:'R$', tipo:'fixa' },
-  { id:'despachante', label:'Despachante', unit:'R$', tipo:'fixa' },
-  { id:'sda', label:'SDA', unit:'R$', tipo:'fixa' },
-  { id:'lavacao', label:'Lavação Container', unit:'R$', tipo:'fixa' },
-  { id:'administrativo', label:'Administrativo', unit:'R$', tipo:'fixa' },
-  { id:'agente', label:'Agente Carga', unit:'R$', tipo:'fixa' },
-  { id:'handling', label:'Handling at Destination', unit:'US$', tipo:'usd' },
-  { id:'additional_costs', label:'Additional Costs', unit:'US$', tipo:'usd' },
-  { id:'import_logistics', label:'Import Logistics', unit:'US$', tipo:'usd' },
-  { id:'trs', label:'TRS', unit:'US$', tipo:'usd' },
-  { id:'tsc', label:'TSC', unit:'US$', tipo:'usd' },
-  { id:'drop_off', label:'Drop Off', unit:'US$', tipo:'usd' },
-  { id:'isps', label:'ISPS', unit:'US$', tipo:'usd' },
-  { id:'iof', label:'IOF', unit:'US$', tipo:'usd' },
-  { id:'desconsolidacao', label:'Desconsolidação', unit:'US$', tipo:'usd' },
-];
+// TAXAS_CONFIG agora é derivado do catálogo único (window.TaxasCatalogo,
+// ver taxas-catalogo.js) — mesma lista/ordem/rótulos de antes, só que a
+// fonte da verdade passou a ser um arquivo compartilhado com o Controle
+// (CUSTOS_REAIS_CONFIG em controle-core.js), em vez de duas cópias
+// divergentes. Cada item também carrega `base_rateio` ('processo' ou
+// 'container') — ver uso em taxasFixasBaseRateio()/taxasUsdBaseRateio()
+// dentro de calcular().
+const TAXAS_CONFIG = window.TaxasCatalogo.paraCalculador();
 const ID_COBRADO = { fixa: id => 'tx_'+id, usd: id => 'tx_'+id };
 
 function renderCustoRealInputs(){
@@ -1737,14 +1725,27 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // de novo aqui, senão conta container duas vezes. As demais taxas fixas são
   // realmente por container (Siscomex, Marinha/AFRMM, Despachante etc.) e
   // multiplicam linearmente pela quantidade de containers.
+  // base_rateio de cada taxa vem do catálogo único (window.TaxasCatalogo) —
+  // 'processo' = não multiplica (ex: Armazenagem, cuja fórmula por porto já
+  // soma mínimo/pesagem/controle/levante × containers internamente);
+  // 'container' = multiplica pela quantidade de containers do processo
+  // (a maioria). Antes essa regra era um único if hardcoded pra
+  // 'armazenagem' — agora é genérica e lida do catálogo, então uma taxa
+  // nova só precisa declarar base_rateio uma vez lá, não em cada tela.
+  const baseRateioPorId = {};
+  TAXAS_CONFIG.forEach(t => { baseRateioPorId[t.id] = t.base_rateio; });
+  const multiplicadorRateio = id => (baseRateioPorId[id] === 'container') ? containers : 1;
+
   let taxas_fixas = 0;
   Object.entries(txOp.fixas).forEach(([chave, v]) => {
-    taxas_fixas += (chave === 'armazenagem') ? v : v * containers;
+    taxas_fixas += v * multiplicadorRateio(chave);
   });
   taxas_fixas += custos_div;
 
   let taxas_usd = 0;
-  Object.values(txOp.usd).forEach(v => taxas_usd += v * containers);
+  Object.entries(txOp.usd).forEach(([chave, v]) => {
+    taxas_usd += v * multiplicadorRateio(chave);
+  });
   // FIX (docx item 3.2): Taxas em USD (destino) devem converter pelo câmbio de
   // abertura do dia da chegada + 2%, não pelo câmbio simples — confirmado na
   // anotação da imagem e na coluna "Tx Cambio" (E5/$E$5) da planilha.
