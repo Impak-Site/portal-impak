@@ -903,6 +903,7 @@ let _estado = {
   acClienteCalcTimer:    null,
   parcelas:              [],   // cronograma de pagamento do FOB (item e) — [{label,valor_usd,data}]
   processoOrigemId:      null, // preenchido quando a cotação foi aberta a partir de "Vincular ao Calculador" no Controle
+  taxasTotaisOverrideBrl: null, // TOTAL TAXAS (BRL) lido direto da planilha no import - substitui o total_taxas calculado por fórmula quando presente (rotulos de taxas individuais variam por fornecedor/agente, mas o total apurado não)
 };
 
 // ── WIZARD (task #60) ─────────────────────────────────────
@@ -1737,7 +1738,16 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // Taxa de Seguro de Venda (seguro_venda_brl) deve compor as Taxas Operacionais;
   // seguro_dif_brl continua calculado (usado em outro lugar/relatório interno),
   // só não entra mais na soma nem aparece na tabela de Taxas Operacionais.
-  const total_taxas = taxas_fixas + taxas_usd_brl + DUMP + seguro_venda_brl;
+  let total_taxas = taxas_fixas + taxas_usd_brl + DUMP + seguro_venda_brl;
+  // Override: quando a cotação veio de import de planilha, usa o TOTAL TAXAS
+  // real apurado na planilha (rótulo fixo, robusto a nomenclatura variada das
+  // taxas individuais por fornecedor/agente) em vez do total calculado por
+  // fórmula/padrão - o detalhamento por campo continua disponível pra ajuste
+  // manual, só o Custo Total final passa a bater com o que foi realmente
+  // apurado nessa cotação.
+  if(_estado.taxasTotaisOverrideBrl != null && !isNaN(_estado.taxasTotaisOverrideBrl)){
+    total_taxas = _estado.taxasTotaisOverrideBrl;
+  }
 
   // ── 5. Custo total (apenas não recuperáveis) ──
   const imp_custo   = II; // RBC NÃO entra como custo — é só referência/crédito, confirmado com exemplo real
@@ -3080,7 +3090,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
-  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId };
+  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -3112,6 +3122,7 @@ function aplicarEstadoFormulario(estado){
   _estado.parcelas = Array.isArray(estado.parcelas) ? estado.parcelas.map(p => normalizarParcelaCalc(p, fobUsdRefEstado)) : [];
   if(typeof renderParcelasCalc === 'function') renderParcelasCalc();
   _estado.processoOrigemId = estado.processo_origem_id || null;
+  _estado.taxasTotaisOverrideBrl = (estado.campos && estado.campos.taxas_totais_planilha_brl != null) ? Number(estado.campos.taxas_totais_planilha_brl) : ((estado.taxas_totais_override_brl != null) ? Number(estado.taxas_totais_override_brl) : null);
   _estado.mix = estado.mix || null;
   if(_estado.mix && _estado.mix.itens && _estado.mix.itens.length) renderMix();
   _estado.splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)

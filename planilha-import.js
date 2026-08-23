@@ -239,6 +239,36 @@ function parseCambiosReais(wb, temIcmsSt) {
     };
 }
 
+// TOTAL TAXAS: soma, em BRL, de todas as taxas operacionais/destino da
+// cotacao (Handling, TRS, TSC, Desconsolidacao, Agente de Carga, Armazenagem,
+// Siscomex, AFRMM, Despachante, SDA etc.) - linha "TOTAL TAXAS" na aba MODELO,
+// logo acima de "CUSTO TOTAL" (CUSTO TOTAL = TOTAL CIF + TOTAL IMPOSTOS +
+// TOTAL TAXAS, confirmado por soma manual em varias planilhas).
+//
+// NAO tentamos mapear cada taxa individual (Handling/TRS/TSC/Drop
+// Off/Desconsolidacao/etc) pros campos correspondentes do Calculador,
+// porque o NOME dessas linhas varia livremente de planilha pra planilha -
+// cada agente de carga/fornecedor usa nomenclatura propria (ex: "TRS/TSC/
+// Desconsolidacao/ISPS/Drop Off Fee" numa cotacao, "DDP/Pick Up/BL Fee/EXW
+// Charges/Logistics Fee" noutra pro mesmo tipo de custo). O Calculador
+// calcula essas taxas por FORMULA/padrao (valores medios por container),
+// que diverge do que foi realmente negociado nessa cotacao especifica -
+// gerando ate ~7% de erro no Custo Total em embarques pequenos (onde esse
+// residuo de poucos milhares de reais pesa mais, proporcionalmente).
+//
+// Em vez de tentar decifrar nomenclatura variavel, lemos o TOTAL ja pronto
+// (rotulo fixo "TOTAL TAXAS", robusto a qualquer nomenclatura das linhas
+// acima dele) e usamos como OVERRIDE do total_taxas calculado por formula
+// no calculador.html - o Calculador mantem o detalhamento por campo (util
+// pra reusar/ajustar manualmente), mas o Custo Total final bate exato com
+// o que a planilha realmente apurou pra essa cotacao.
+function parseTaxasTotaisReais(wb, temIcmsSt) {
+    const sheetName = temIcmsSt ? 'MODELO - COM S.T' : 'MODELO - SEM S.T';
+    const ws = wb.Sheets[sheetName] || wb.Sheets['MODELO - COM S.T'] || wb.Sheets['MODELO - SEM S.T'];
+    if (!ws) return null;
+    return buscarValorPorRotulo(ws, /^TOTAL\s*TAXAS$/i);
+}
+
 function importarPlanilhaBase(buffer) {
     validarBufferPlanilha(buffer);
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -250,6 +280,10 @@ function importarPlanilhaBase(buffer) {
     const { cambio_fob_ponderado, cambio_chegada } = parseCambiosReais(wb, campos.tem_icms_st);
     if (cambio_fob_ponderado) campos.cambio_usd = cambio_fob_ponderado;
     if (cambio_chegada) campos.cambio_chegada = cambio_chegada;
+    const taxasTotaisReais = parseTaxasTotaisReais(wb, campos.tem_icms_st);
+    if (taxasTotaisReais !== null && taxasTotaisReais !== undefined) {
+        campos.taxas_totais_planilha_brl = taxasTotaisReais;
+    }
     return { campos: campos, mix: mix };
 }
 
