@@ -1439,17 +1439,118 @@ function calcularFechamento(p){
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// FECHAMENTO — layout rico (espelha a aba Fechamento da planilha, porém em
+// grid de 2 colunas + cards compactos, sem precisar rolar a página inteira
+// pra ver tudo). Três blocos novos abaixo (breakdown itemizado por grupo,
+// parcelas/câmbio e timeline) + o renderFechamentoInfo original reorganizado
+// num "stat strip" de KPIs no topo e 2 colunas de detalhe embaixo.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Itemizado de Custos Reais (Pago x Cobrado x Margem), agrupado igual a
+// planilha (Compra e Frete / Impostos de Importação / Comissões / Taxas
+// Operacionais / Diferenças de Impostos) — usa os totalizadores que já
+// existem (calcularTotalizadorPorGrupo) e o detalhe item a item
+// (calcularCustoRealTotal/calcularReceitaRealTotal) só pra montar as linhas.
+function renderFechamentoBreakdown(p){
+  const totais = calcularTotalizadorPorGrupo(p);
+  if(!totais) return '';
+  const custoReal = calcularCustoRealTotal(p) || { detalhe: [] };
+  const receitaReal = calcularReceitaRealTotal(p) || { detalhe: [] };
+  const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const porGrupoPago = {}, porGrupoCobrado = {};
+  (custoReal.detalhe||[]).forEach(it => { (porGrupoPago[it.grupo] = porGrupoPago[it.grupo]||[]).push(it); });
+  (receitaReal.detalhe||[]).forEach(it => { (porGrupoCobrado[it.grupo] = porGrupoCobrado[it.grupo]||[]).push(it); });
+
+  const linhasGrupo = totais.filter(g => g.temPago || g.temCobrado).map(g => {
+    const itensPago = porGrupoPago[g.grupo] || [];
+    const detalheItens = itensPago.map(it => {
+      const cobrado = (porGrupoCobrado[g.grupo]||[]).find(c => c.id === it.id);
+      return `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--muted);">
+        <span>${esc(it.label)}</span>
+        <span style="display:flex;gap:10px;"><span>${r2(it.valorBrl)}</span>${cobrado?`<span style="color:var(--dim);">/ ${r2(cobrado.valorBrl)}</span>`:''}</span>
+      </div>`;
+    }).join('');
+    return `<details style="margin-bottom:6px;">
+      <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-sm);font-size:12px;">
+        <span style="font-weight:700;color:var(--text);">${esc(g.grupo)}</span>
+        <span style="display:flex;gap:12px;align-items:center;">
+          <span style="color:var(--muted);">${r2(g.totalPago)}</span>
+          ${g.margem!=null?`<strong style="color:${g.margem>=0?'var(--ok)':'var(--err)'};font-size:11px;">${g.margem>=0?'+':''}${r2(g.margem)}</strong>`:''}
+        </span>
+      </summary>
+      <div style="padding:6px 10px 2px 10px;">${detalheItens||'<span style="font-size:11px;color:var(--dim);">sem itens lançados</span>'}</div>
+    </details>`;
+  }).join('');
+
+  return `<div>
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">🧮 Custos Reais — detalhado por grupo</div>
+    ${linhasGrupo || '<div style="font-size:12px;color:var(--dim);">Nenhum custo lançado na aba Custos Reais ainda.</div>'}
+  </div>`;
+}
+
+// Parcelas de pagamento com câmbio fechado (Advance Payment 1, 2, ... —
+// linhas 17-20 da planilha Fechamento) — lê do mesmo pi_parcelas_json usado
+// no modo "Parcelado" da aba Financeiro.
+function renderFechamentoParcelasCambio(p){
+  let parcelas = [];
+  try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
+  parcelas = parcelas.filter(pc => parseFloat(pc.valor_usd) > 0);
+  if(!parcelas.length) return '';
+  const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const linhas = parcelas.map(pc => {
+    const usd = parseFloat(pc.valor_usd)||0;
+    const cambio = parseFloat(pc.cambio_fechado)||null;
+    const brl = cambio ? usd*cambio : null;
+    const data = pc.data_vencimento ? parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '—';
+    return `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px dashed var(--border);">
+      <span style="color:var(--muted);">${esc(pc.label||'Parcela')} <span style="color:var(--dim);">(${data})</span></span>
+      <span style="display:flex;gap:10px;"><span>US$ ${usd.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span><span style="color:var(--dim);">@ ${cambio?cambio.toFixed(4):'—'}</span><strong>${r2(brl)}</strong></span>
+    </div>`;
+  }).join('');
+  return `<div>
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">💱 Parcelas × Câmbio Fechado</div>
+    ${linhas}
+  </div>`;
+}
+
+// Timeline de datas do processo (Data do Pedido / Embarque / Chegada Porto
+// — linhas 60-62 da planilha Fechamento), com o tempo decorrido entre elas.
+function renderFechamentoTimeline(p){
+  if(!p.pi_data && !p.data_embarque && !p.data_chegada) return '';
+  const dias = (a,b) => (a && b) ? Math.round((parseDataLocal(b) - parseDataLocal(a))/86400000) : null;
+  const pontos = [
+    { label:'Data do Pedido', data:p.pi_data },
+    { label:'Embarque', data:p.data_embarque },
+    { label:'Chegada Porto', data:p.data_chegada },
+  ];
+  const rotaDias = dias(p.data_embarque, p.data_chegada);
+  const totalDias = dias(p.pi_data, p.data_chegada);
+  const linhas = pontos.map(pt => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;">
+      <span style="color:var(--muted);">${pt.label}</span>
+      <strong style="color:${pt.data?'var(--text)':'var(--dim)'};">${pt.data?parseDataLocal(pt.data).toLocaleDateString('pt-BR'):'—'}</strong>
+    </div>`).join('');
+  return `<div>
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">📅 Timeline</div>
+    ${linhas}
+    ${(rotaDias!=null || totalDias!=null) ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);display:flex;gap:14px;font-size:11px;color:var(--muted);">
+      ${rotaDias!=null?`<span>Rota: <strong style="color:var(--text);">${rotaDias}d</strong></span>`:''}
+      ${totalDias!=null?`<span>Total: <strong style="color:var(--text);">${totalDias}d</strong> (${(totalDias/30.44).toFixed(1)} meses)</span>`:''}
+    </div>` : ''}
+  </div>`;
+}
+
 function renderFechamentoInfo(p){
   const f = calcularFechamento(p);
   const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const pct2 = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
 
-  // Antes: sem estimativa_json (processo que nÃÂÃÂ£o passou pela cotaÃÂÃÂ§ÃÂÃÂ£o do
-  // Calculador) a funÃÂÃÂ§ÃÂÃÂ£o parava aqui e nunca mostrava nada ÃÂ¢ÃÂÃÂ nem o lucro
-  // real, mesmo com NF Entrada e NF SaÃÂÃÂ­da jÃÂÃÂ¡ preenchidas na aba Documentos.
+  // Antes: sem estimativa_json (processo que não passou pela cotação do
+  // Calculador) a função parava aqui e nunca mostrava nada — nem o lucro
+  // real, mesmo com NF Entrada e NF Saída já preenchidas na aba Documentos.
   // Ou seja, processo criado direto no Controle nunca tinha como saber a
-  // margem, mesmo depois de fechado. Agora sÃÂÃÂ³ cai nesse aviso quando NÃÂÃÂO
-  // hÃÂÃÂ¡ estimativa E tambÃÂÃÂ©m nÃÂÃÂ£o hÃÂÃÂ¡ NF SaÃÂÃÂ­da ainda ÃÂ¢ÃÂÃÂ nesse caso nÃÂÃÂ£o tem
+  // margem, mesmo depois de fechado. Agora só cai nesse aviso quando NÃO
+  // há estimativa E também não há NF Saída ainda — nesse caso não tem
   // mesmo nada pra mostrar.
   if(!f.temEstimativa && !f.temReal){
     return `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:12px;">
@@ -1457,48 +1558,31 @@ function renderFechamentoInfo(p){
     </div>`;
   }
 
-  // Quando a aba "Custos Reais" tem pelo menos um item lanÃÂÃÂ§ado, o Lucro Real
-  // vem de Faturamento (NF SaÃÂÃÂ­da) ÃÂ¢ÃÂÃÂ Custo Real Total (soma item a item) em
-  // vez da conta grosseira NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ NF Entrada ÃÂ¢ÃÂÃÂ mais preciso porque conta
-  // frete, seguro, impostos, comissÃÂÃÂµes e taxas operacionais reais tambÃÂÃÂ©m.
+  // Quando a aba "Custos Reais" tem pelo menos um item lançado, o Lucro Real
+  // vem de Faturamento (NF Saída) − Custo Real Total (soma item a item) em
+  // vez da conta grosseira NF Saída − NF Entrada — mais preciso porque conta
+  // frete, seguro, impostos, comissões e taxas operacionais reais também.
   const linhaCustoRealDetalhado = f.custosReais
-    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Real Total (${f.custosReais.count} ${f.custosReais.count===1?'item lançado':'itens lançados'} na aba Custos Reais)</span><strong>${r2(f.custoRealTotal)}</strong></div>`
+    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Real Total (${f.custosReais.count} ${f.custosReais.count===1?'item lançado':'itens lançados'})</span><strong>${r2(f.custoRealTotal)}</strong></div>`
     : '';
-  // Margem das Taxas (compra ÃÂÃÂ venda) ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ aparece quando o usuÃÂÃÂ¡rio tambÃÂÃÂ©m
-  // preencheu "Cobrado do Cliente" em pelo menos um item na aba Custos Reais.
-  // ÃÂÃÂ uma visÃÂÃÂ£o separada do Lucro Real: mostra quanto sobrou/faltou SÃÂÃÂ nas
-  // taxas repassadas ao cliente (ex.: taxa que custou R$ 110 e foi cobrada
-  // por USD 55) ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o mexe no cÃÂÃÂ¡lculo do Lucro Real, que continua usando a
-  // NF SaÃÂÃÂ­da inteira.
   const linhaMargemTaxas = f.margemTaxas
-    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
+    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${f.receitaReais.count} ${f.receitaReais.count===1?'item':'itens'})</span><strong>${r2(f.margemTaxas.receitaTotal)}</strong></div>
         <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${f.margemTaxas.total>=0?'var(--ok)':'var(--err)'}">${r2(f.margemTaxas.total)}</strong></div>
       </div>`
     : '';
-  // Vendas multi-cliente (rateio) ÃÂ¢ÃÂÃÂ quando o processo tem a aba Vendas
-  // preenchida, mostra um lembrete de que o Lucro Real acima jÃÂÃÂ¡ ÃÂÃÂ© a SOMA de
-  // todas as vendas, com um mini-detalhamento por cliente. O rateio/lucro
-  // por venda em si ÃÂÃÂ© editado e recalculado ao vivo na aba Vendas
-  // (renderResumoVendas, em controle-campos.js) ÃÂ¢ÃÂÃÂ aqui ÃÂÃÂ© sÃÂÃÂ³ um resumo
-  // read-only pra quem estÃÂÃÂ¡ olhando a aba Fechamento.
   const linhaVendas = f.vendasResumo
-    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
-        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
-        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
+    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
+        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
+        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
       </div>`
     : '';
-  // Notas Fiscais BOSS (sub-livro da aba Fechamento, linhas 46-56) - quando
-  // lancada, o Lucro Real acima JA VEM com o Total a Receber somado (ver
-  // calcularFechamento/calcularNotasBoss); aqui so mostra o detalhamento pra
-  // quem quer conferir de onde veio o ajuste, igual a planilha mostra a
-  // mini-tabela de impostos da nota Boss antes do G58 final.
   const linhaNotasBoss = f.notasBoss
-    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
-        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Notas Fiscais BOSS</div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Valor das Notas Boss</span><strong>${r2(f.notasBoss.valorBoss)}</strong></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)</span><strong style="color:var(--err);">− ${r2(f.notasBoss.irRetido+f.notasBoss.iss+f.notasBoss.pis+f.notasBoss.cofins+f.notasBoss.irpj+f.notasBoss.csll)}</strong></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Total a Receber (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.notasBoss.totalReceber)}</strong></div>
+    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
+        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Notas Fiscais BOSS</div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Valor das Notas Boss</span><strong>${r2(f.notasBoss.valorBoss)}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)</span><strong style="color:var(--err);">− ${r2(f.notasBoss.irRetido+f.notasBoss.iss+f.notasBoss.pis+f.notasBoss.cofins+f.notasBoss.irpj+f.notasBoss.csll)}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Total a Receber (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.notasBoss.totalReceber)}</strong></div>
       </div>`
     : '';
   const linhaReal = f.temReal
@@ -1507,40 +1591,71 @@ function renderFechamentoInfo(p){
 
   const corDelta = f.deltaValor==null ? 'var(--muted)' : f.deltaValor >= 0 ? 'var(--ok)' : 'var(--err)';
   const linhaDelta = f.temComparacao
-    ? `<div style="margin-top:10px;padding:10px 12px;background:${f.deltaValor>=0?'rgba(22,163,74,.08)':'rgba(220,38,38,.08)'};border-radius:8px;font-weight:700;color:${corDelta};display:flex;justify-content:space-between;">
+    ? `<div style="margin-top:8px;padding:8px 10px;background:${f.deltaValor>=0?'rgba(22,163,74,.08)':'rgba(220,38,38,.08)'};border-radius:8px;font-weight:700;color:${corDelta};display:flex;justify-content:space-between;font-size:12px;">
         <span>${f.deltaValor>=0?'📈 Rendeu a mais que o cotado':'📉 Rendeu a menos que o cotado'}</span>
         <span>${f.deltaValor>=0?'+':''}${r2(f.deltaValor)}</span>
       </div>`
     : '';
 
-  // Bloco "Estimado na cotaÃÂÃÂ§ÃÂÃÂ£o" sÃÂÃÂ³ existe se o processo passou pelo
-  // Calculador. Sem isso (processo criado direto no Controle), mostra um
-  // aviso curto no lugar, mas o "Resultado real" abaixo continua aparecendo
-  // normalmente contanto que NF Entrada/SaÃÂÃÂ­da existam.
   const blocoEstimado = f.temEstimativa
-    ? `<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📐 Estimado na cotação</div>
-    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;margin-bottom:14px;">
+    ? `<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">📐 Estimado na cotação</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total estimado</span><strong>${r2(f.custoEstimado)}</strong></div>
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Faturamento estimado (Com S.T.)</span><strong>${r2(f.faturamentoEstimado)}</strong></div>
-      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro estimado</span><strong>${r2(f.lucroEstimado)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroEstimado)})</span></strong></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:4px;"><span style="color:var(--muted);">Lucro estimado</span><strong>${r2(f.lucroEstimado)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroEstimado)})</span></strong></div>
     </div>`
-    : `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--muted);margin-bottom:14px;">
-      Este processo não passou pela cotação do Calculador — sem valor estimado pra comparar, mas o resultado real abaixo já funciona normalmente.
+    : `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--muted);margin-bottom:10px;">
+      Este processo não passou pela cotação do Calculador — sem valor estimado pra comparar.
     </div>`;
 
-  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+  // Stat strip — 4 KPIs de relance no topo (evita ter que ler o resto pra
+  // saber se o processo deu lucro, igual olhar o G58 da planilha direto).
+  const kpiLucro = f.temReal ? f.lucroReal : null;
+  const kpiPct = f.temReal ? f.pctLucroReal : null;
+  const statStrip = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">NF Entrada</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);">${r2(f.nfEntrada)}</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">NF Saída${f.vendasResumo?' (soma das vendas)':''}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);">${r2(f.nfSaida)}</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">Custo Real Total</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);">${r2(f.custoRealTotal)}</div>
+    </div>
+    <div style="background:${kpiLucro==null?'var(--card)':kpiLucro>=0?'var(--ok-bg)':'var(--err-bg)'};border:1px solid ${kpiLucro==null?'var(--border)':kpiLucro>=0?'var(--ok)':'var(--err)'};border-radius:var(--r-md);padding:10px 12px;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">Lucro Real</div>
+      <div style="font-size:15px;font-weight:700;color:${kpiLucro==null?'var(--muted)':kpiLucro>=0?'var(--ok)':'var(--err)'};">${r2(kpiLucro)} <span style="font-size:11px;font-weight:400;">${kpiPct!=null?`(${pct2(kpiPct)})`:''}</span></div>
+    </div>
+  </div>`;
+
+  const colunaEsquerda = `
     ${blocoEstimado}
-    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">✅ Resultado real</div>
-    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
-      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Entrada</span><strong>${r2(f.nfEntrada)}</strong></div>
-      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">NF Saída${f.vendasResumo?' (soma das vendas)':''}</span><strong>${r2(f.nfSaida)}</strong></div>
+    <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">✅ Resultado real</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
       ${linhaReal}
     </div>
     ${linhaMargemTaxas}
     ${linhaVendas}
     ${linhaDelta}
+  `;
+
+  const blocosDireita = [renderFechamentoBreakdown(p), renderFechamentoParcelasCambio(p), renderFechamentoTimeline(p)]
+    .filter(Boolean)
+    .map(bloco => `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;margin-bottom:8px;">${bloco}</div>`)
+    .join('');
+
+  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+    ${statStrip}
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;">
+      <div>${colunaEsquerda}</div>
+      <div>${blocosDireita || '<div style="font-size:12px;color:var(--dim);">Sem detalhamento adicional (custos por grupo, parcelas ou timeline) lançado ainda.</div>'}</div>
+    </div>
   </div>`;
 }
+
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // ALERTAS E NOTIFICAÃÂÃÂÃÂÃÂES
