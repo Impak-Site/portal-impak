@@ -2864,7 +2864,14 @@ As datas de chegada (ETA) informadas sao previsoes e podem sofrer alteracoes ou 
 }
 
 async function jaEnviouFollowUpHoje(){
-  const { data } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'followup_semanal').maybeSingle();
+  const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'followup_semanal').maybeSingle();
+  if (error) {
+    // Falha ao consultar (tabela ausente, permissão, etc): assume que JÁ
+    // enviou hoje (fail-closed) pra nunca disparar em loop por causa de um
+    // erro de infraestrutura. O erro fica visível no log do Railway.
+    console.error('jaEnviouFollowUpHoje: erro ao consultar app_job_runs, assumindo já enviado por segurança:', error.message);
+    return true;
+  }
   if (!data || !data.last_run_at) return false;
   const ultima = new Date(data.last_run_at);
   const hoje = new Date();
@@ -2872,7 +2879,8 @@ async function jaEnviouFollowUpHoje(){
 }
 
 async function marcarFollowUpEnviadoHoje(){
-  await sb().from('app_job_runs').upsert({ job_name: 'followup_semanal', last_run_at: new Date().toISOString() });
+  const { error } = await sb().from('app_job_runs').upsert({ job_name: 'followup_semanal', last_run_at: new Date().toISOString() });
+  if (error) console.error('marcarFollowUpEnviadoHoje: falha ao gravar app_job_runs (job pode repetir!):', error.message);
 }
 
 async function enviarFollowUpSemanal(){
@@ -2912,7 +2920,14 @@ app.post('/api/admin/followup-semanal', (req, res) => {
 
 // ── ALERTAS DIÁRIOS (demurrage crítico, ETA vencido, ETA na semana, PI vencida) ──
 async function jaEnviouAlertasHoje(){
-const { data } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'alertas_diarios').maybeSingle();
+const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'alertas_diarios').maybeSingle();
+if (error) {
+  // Mesmo raciocínio do jaEnviouFollowUpHoje: se a consulta falhar, assume
+  // que já foi enviado hoje (fail-closed) em vez de deixar o job repetir
+  // a cada 30min indefinidamente. Erro visível no log do Railway.
+  console.error('jaEnviouAlertasHoje: erro ao consultar app_job_runs, assumindo já enviado por segurança:', error.message);
+  return true;
+}
 if (!data || !data.last_run_at) return false;
 const ultima = new Date(data.last_run_at);
 const hoje = new Date();
@@ -2920,7 +2935,8 @@ return ultima.getFullYear() === hoje.getFullYear() && ultima.getMonth() === hoje
 }
 
 async function marcarAlertasEnviadosHoje(){
-await sb().from('app_job_runs').upsert({ job_name: 'alertas_diarios', last_run_at: new Date().toISOString() });
+const { error } = await sb().from('app_job_runs').upsert({ job_name: 'alertas_diarios', last_run_at: new Date().toISOString() });
+if (error) console.error('marcarAlertasEnviadosHoje: falha ao gravar app_job_runs (job pode repetir!):', error.message);
 }
 
 async function verificarAlertasDiarios(){
