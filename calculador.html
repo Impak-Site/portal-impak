@@ -306,6 +306,10 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
             <option value="OTR">Outros/Máquina</option>
           </select>
         </div>
+        <div class="form-group" id="ncm-especifico-wrap" style="display:none;">
+          <label>NCM específico</label>
+          <select id="ncm_especifico" onchange="onNcmEspecificoChange()"></select>
+        </div>
         <div class="form-group">
           <label>NCM</label>
           <input type="text" id="ncm_display" readonly class="locked" placeholder="—">
@@ -779,6 +783,40 @@ const NCM_POR_TIPO = {
   'OTR': 40118090,
 };
 
+// Expande o <select id="produto"> e o NCM_POR_TIPO com o restante dos
+// produtos ja cadastrados em TABELA_NCM (rodas, pecas, compactadores,
+// maquina de nitrogenio, elevador, correntes etc — a importadora move
+// muito alem de pneu, e a tabela de aliquotas ja tinha esses ~60 produtos
+// cadastrados, so o dropdown do wizard nunca dava acesso a eles: quem
+// importava algo assim caia sempre no fallback "Outros/Maquina" (NCM
+// 40118090, aliquota de OTR), que pode divergir muito da aliquota real
+// desse produto especifico (caso real confirmado: planilha CA26012026,
+// "Compactador", aliquota real 20% x 16% do fallback OTR).
+//
+// Os 4 tipos de pneu acima (TBR/PCR/AGR/OTR) continuam intocados — sao os
+// values gravados em cotacoes ja salvas no banco, trocar esses quebraria a
+// releitura de cotacoes antigas. Os produtos novos usam o proprio nome
+// (ex: "Rodas", "Maquina Nitrogenio") como value, unico nessas cotacoes
+// novas.
+window._PRODUTO_NCMS = {};
+(function popularProdutosAdicionais(){
+  const JA_COBERTOS = new Set(['Pneu Caminhão', 'Pneu Automóvel', 'Pneu Agricola', 'Pneu Maquina']);
+  const porProduto = {};
+  Object.values(TABELA_NCM).forEach(v => {
+    if (JA_COBERTOS.has(v.produto)) return;
+    if (!porProduto[v.produto]) porProduto[v.produto] = new Set();
+    porProduto[v.produto].add(v.ncm);
+  });
+  window._PRODUTO_NCMS = porProduto;
+  Object.keys(porProduto).forEach(produto => {
+    // NCM padrao = o primeiro (menor) da lista; quando o produto tem mais
+    // de 1 NCM possivel (3 casos: Secadora, Metais, ComponenteLEDFRIVE), o
+    // select #ncm_especifico (populado em onProdutoChange) deixa escolher
+    // o correto.
+    NCM_POR_TIPO[produto] = Math.min(...porProduto[produto]);
+  });
+})();
+
 // Regra de armazenagem por porto (fonte: planilha UD25-333, aba "MODELO - COM S.T", linhas 86-94).
 // Base de cálculo (baseImpBrl) = (FOB + Frete + Taxa C.E. + Seguro de compra) × câmbio, em R$.
 // 1º período = MAX(base × pct1, min1 × containers) + Pesagem + Controle Acesso + Levante (todos por container).
@@ -997,6 +1035,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(d.displayName) document.getElementById('user-label').textContent = d.displayName;
   }).catch(()=>{});
 
+  popularOptgroupProdutos();
   onProdutoChange();
   buscarCambio();
   setToggleTTD('SIM'); // estado inicial padrão: TTD=SIM → sem ICMS ST
@@ -1415,17 +1454,62 @@ function setCenario(n) {
 }
 
 // ── PRODUTO / NCM ─────────────────────────────────────────
+// Adiciona ao <select id="produto"> um optgroup com o restante dos
+// produtos ja cadastrados em TABELA_NCM/window._PRODUTO_NCMS (ver
+// popularProdutosAdicionais() acima) — chamado 1x no init, antes de
+// qualquer aplicarEstadoFormulario() precisar selecionar um desses
+// values numa cotacao salva.
+function popularOptgroupProdutos(){
+  const sel = document.getElementById('produto');
+  if (!sel || sel.dataset.expandido) return;
+  const nomes = Object.keys(window._PRODUTO_NCMS || {}).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  if (!nomes.length) return;
+  const grupo = document.createElement('optgroup');
+  grupo.label = 'Outros produtos (rodas, peças, máquinas etc.)';
+  nomes.forEach(nome => {
+    const opt = document.createElement('option');
+    opt.value = nome;
+    opt.textContent = nome;
+    grupo.appendChild(opt);
+  });
+  sel.appendChild(grupo);
+  sel.dataset.expandido = '1';
+}
+
 function onProdutoChange() {
   const tipo = document.getElementById('produto').value;
-  const ncm = NCM_POR_TIPO[tipo] || 40112090;
+  const ncmsProduto = window._PRODUTO_NCMS && window._PRODUTO_NCMS[tipo]
+    ? Array.from(window._PRODUTO_NCMS[tipo]).sort((a,b)=>a-b) : null;
+  const wrap = document.getElementById('ncm-especifico-wrap');
+  const selEspecifico = document.getElementById('ncm_especifico');
+  // Produtos com mais de 1 NCM cadastrado (Secadora, Metais,
+  // ComponenteLEDFRIVE) mostram um segundo select pra escolher o NCM certo
+  // — pra todo o resto (a grande maioria) isso fica escondido e o NCM_POR_TIPO
+  // resolve sozinho.
+  if (ncmsProduto && ncmsProduto.length > 1 && wrap && selEspecifico) {
+    selEspecifico.innerHTML = ncmsProduto.map(n => `<option value="${n}">${n}</option>`).join('');
+    wrap.style.display = '';
+  } else if (wrap) {
+    wrap.style.display = 'none';
+  }
+  const ncm = (ncmsProduto && ncmsProduto.length > 1 && selEspecifico)
+    ? Number(selEspecifico.value) : (NCM_POR_TIPO[tipo] || 40112090);
   document.getElementById('ncm_display').value = ncm;
   onUFChange();
 }
 
+function onNcmEspecificoChange() {
+  const ncm = Number(document.getElementById('ncm_especifico').value);
+  if (ncm) document.getElementById('ncm_display').value = ncm;
+  onUFChange();
+}
+
 function onUFChange() {
-  const tipo = document.getElementById('produto').value;
   const uf = document.getElementById('uf_destino').value;
-  const ncm = NCM_POR_TIPO[tipo];
+  // Le o NCM do proprio campo ncm_display (em vez de recalcular a partir do
+  // tipo) pra respeitar tambem a escolha manual do #ncm_especifico quando
+  // o produto tem mais de um NCM possivel.
+  const ncm = document.getElementById('ncm_display').value;
   const chave = `${ncm}${uf}`;
   const row = TABELA_NCM[chave];
   if(row) {
@@ -1554,7 +1638,11 @@ function calcular() {
 
   if(!cambio || !fob_usd) { showToast('Preencha câmbio e FOB','err'); return; }
 
-  const ncm = NCM_POR_TIPO[tipo];
+  // Usa o NCM ja resolvido em ncm_display (que respeita a escolha manual
+  // do select #ncm_especifico pros poucos produtos com mais de 1 NCM
+  // possivel) em vez de recalcular so a partir do tipo.
+  const ncmDisplay = parseInt(document.getElementById('ncm_display').value, 10);
+  const ncm = ncmDisplay || NCM_POR_TIPO[tipo];
   const chave = `${ncm}${uf}`;
   let t = TABELA_NCM[chave];
   if(!t) { showToast(`NCM ${ncm}/${uf} não encontrado na tabela NCM`,'err'); return; }
