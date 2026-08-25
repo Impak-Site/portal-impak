@@ -2898,7 +2898,15 @@ async function enviarFollowUpSemanal(){
 // por dia, mesmo que o servidor reinicie no meio do domingo — ver
 // jaEnviouFollowUpHoje/app_job_runs). Sem lib de cron: o processo do
 // Railway fica sempre no ar, então um setInterval simples cobre o caso.
-setInterval(() => {
+//
+// FIX: setInterval() só disparava a checagem no PRIMEIRO TICK, ou seja,
+// 30min depois do boot — nunca imediatamente. Como o Railway reinicia o
+// processo a cada deploy, e nesse projeto acontecem vários deploys por
+// dia, o timer quase sempre era resetado antes de completar os 30min,
+// fazendo a checagem nunca rodar de fato. checarFollowUpSemanal() agora
+// roda 1x na hora (logo no boot) e depois a cada 30min, então mesmo com
+// deploys frequentes a checagem sempre acontece pelo menos uma vez.
+function checarFollowUpSemanal(){
   const agora = new Date();
   if (agora.getDay() !== 0) return; // 0 = domingo
   jaEnviouFollowUpHoje().then(ja => {
@@ -2907,7 +2915,9 @@ setInterval(() => {
       .then(n => console.log(`✓ Follow-up semanal enviado (${n} processos)`))
       .catch(e => console.error('Erro no follow-up semanal:', e.message));
   }).catch(e => console.error('Erro ao checar follow-up semanal:', e.message));
-}, 30 * 60 * 1000);
+}
+checarFollowUpSemanal();
+setInterval(checarFollowUpSemanal, 30 * 60 * 1000);
 
 // Disparo manual pra testar sem esperar domingo — restrito a gerente.
 app.post('/api/admin/followup-semanal', (req, res) => {
@@ -2978,12 +2988,23 @@ return total;
 }
 
 function agendarAlertasDiarios(){
-setInterval(() => {
+// FIX: mesmo problema do follow-up semanal (ver checarFollowUpSemanal acima)
+// — setInterval() só checava no primeiro tick (30min depois do boot), nunca
+// na hora. Com deploys frequentes reiniciando o processo, o alerta diario
+// podia simplesmente nunca chegar a rodar num dia inteiro. Agora roda 1x
+// imediatamente no boot (com log explicito do resultado, pra aparecer no
+// Railway) e depois a cada 30min.
+function checar(){
+console.log('[alertas-diarios] checando...');
 jaEnviouAlertasHoje().then(ja => {
-if (ja) return;
-verificarAlertasDiarios().catch(e => console.error('Erro nos alertas diarios:', e.message));
+if (ja) { console.log('[alertas-diarios] ja enviado hoje, pulando.'); return; }
+verificarAlertasDiarios()
+  .then(n => console.log(`[alertas-diarios] verificacao concluida, ${n} alerta(s) encontrado(s).`))
+  .catch(e => console.error('Erro nos alertas diarios:', e.message));
 }).catch(e => console.error('Erro ao checar alertas diarios:', e.message));
-}, 30 * 60 * 1000); // checa a cada 30min; só dispara 1x/dia (controlado por app_job_runs)
+}
+checar();
+setInterval(checar, 30 * 60 * 1000); // checa a cada 30min; só dispara 1x/dia (controlado por app_job_runs)
 }
 
 app.post('/api/admin/alertas-diarios', (req, res) => {
