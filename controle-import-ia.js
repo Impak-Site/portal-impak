@@ -459,12 +459,13 @@ Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RI
 - extrair um item no array "containers" com o número do campo "Container No." (RIC costuma ter 1 container por documento, mas se listar mais de um, inclua um item por container).
 - data_devolucao_vazio vem do campo "Gate In Date/Time" — esta é a data e hora em que o container vazio deu entrada no depósito, ou seja, a devolução física de fato. O formato no documento costuma ser "YYYY/MM/DD HH:MM" (ex: "2026/05/30 10:54") — converta apenas a parte da data para "YYYY-MM-DD" (ex: "2026-05-30"), descartando a hora.
 - se o campo "Gate In Date/Time" estiver vazio mas "Gate Out Date/Time" estiver preenchido, este documento é de SAÍDA do container vazio do depósito (não de devolução) — não preencher data_devolucao_vazio neste caso.
-Se o documento for um Comprovante de Importação ou Extrato da Declaração de Importação (DI), emitidos pela Receita Federal:
+Se o documento for um Comprovante de Importação, Extrato da Declaração de Importação (DI) ou uma DUIMP (Declaração Única de Importação — o novo formato que está substituindo a DI), emitidos pela Receita Federal/Siscomex:
+- NUNCA preencha ce_master, ce_house ou ce_data_embarque a partir desse documento, mesmo que ele mencione ou referencie um número de CE Mercante em algum trecho (a DUIMP costuma citar o CE vinculado à carga como parte dos próprios dados da declaração) — esses 3 campos só podem vir de um CE Mercante emitido de verdade, nunca de uma DI/DUIMP. Preenchê-los a partir daqui troca ou apaga o CE Master/House corretos já registrados no processo.
 - numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4").
 - data_registro_di vem de "DATA DO REGISTRO".
 - canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
 - data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
-- se o Extrato da DI trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
+- se o documento trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
 - extrair "encomendante_cnpj": o CNPJ do ENCOMENDANTE/ADQUIRENTE da operação (campos comuns: "Encomendante", "Adquirente", "Importador por conta e ordem de" — em operações de importação por conta e ordem ou por encomenda) — extrair só os 14 dígitos do CNPJ, sem pontuação. Se o documento não mostrar essa figura (importação direta, sem encomendante/adquirente distinto do importador), deixar "".
 Se o documento for uma Nota Fiscal (NF-e brasileira):
 - todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
@@ -604,6 +605,25 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         }catch(e){ /* falha na consulta de cadastro não deve travar o resto da extração */ }
       }
       delete extracted.encomendante_cnpj; // não é campo de input direto no formulário
+    }
+
+    // Um documento nunca é, ao mesmo tempo, um CE Mercante genuíno E uma
+    // DI/DUIMP genuína (são tipos mutuamente exclusivos) — mas a DUIMP
+    // referencia o CE Mercante vinculado à carga como parte dos próprios
+    // dados da declaração, então a IA às vezes lê esse número mencionado
+    // dentro da DUIMP e devolve em ce_master/ce_house. Isso fazia
+    // ehCeMercante virar true numa leitura de DUIMP e liberar a sobrescrita
+    // de CE Master/House com um valor que não é o CE Mercante de verdade
+    // desse processo (bug real reportado: CE Master sendo substituído pelo
+    // número do CE House ao incluir uma DUIMP). Por isso, se o documento
+    // também tiver dados de DI/DUIMP (numero_di, data_registro_di ou
+    // canal), ce_master/ce_house/ce_data_embarque são descartados ANTES de
+    // qualquer outra lógica — nunca vêm de um documento desse tipo.
+    const pareceDiOuDuimp = !!(extracted.numero_di || extracted.data_registro_di || extracted.canal);
+    if(pareceDiOuDuimp){
+      delete extracted.ce_master;
+      delete extracted.ce_house;
+      delete extracted.ce_data_embarque;
     }
 
     // Quando o documento é um CE Mercante, o navio/armador/etd que ele traz
