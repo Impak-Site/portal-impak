@@ -850,7 +850,17 @@ const CUSTOS_REAIS_CONFIG = [
   // (diferente das taxas operacionais, que podem ter margem). A aba mostra
   // sÃÂÃÂ³ um campo "Valor a pagar", sem Cobrado/Margem nem seletor de moeda.
   { grupo:'Impostos de Importação', slug:'impostos', itens:[
-    { id:'ii',     label:'II',     unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ii },
+    // II (Imposto de Importacao) e a UNICA excecao do grupo: confirmado na
+    // planilha (UD26-052, aba "Demonstrativo COM S.T") que ele ENTRA no
+    // Custo Total (F48) igual FOB/Frete/Taxas, e o Custo Total inteiro e
+    // multiplicado pelo fator de venda (F51=F48*D51) pra chegar no Valor
+    // Total dos Produtos cobrado do cliente - ou seja, o II E recuperado do
+    // cliente (via markup sobre o custo, nao como linha separada na NF),
+    // diferente de IPI/PIS/COFINS/ICMS/IBS/CBS abaixo (creditos tributarios
+    // recuperaveis, sem venda associada) e diferente de Antidumping (encargo
+    // absorvido sem repasse). Por isso tem Cobrado/margem como uma taxa
+    // normal, ao contrario dos demais itens deste grupo.
+    { id:'ii',     label:'II',     unidade:'BRL', cotado:c=>c?.impostos?.ii },
     { id:'ipi',    label:'IPI',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.ipi },
     { id:'pis',    label:'PIS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.pis },
     { id:'cofins', label:'COFINS', unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.cofins },
