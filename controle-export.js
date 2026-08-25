@@ -208,6 +208,114 @@ function confirmarExportCliente(){
 // Quando omitido/vazio, exporta todos os status (mesmo comportamento de
 // antes do popup existir) â mantÃ©m a funÃ§Ã£o utilizÃ¡vel de outros lugares
 // sem quebrar nada.
+// ── DRE (Demonstrativo de Resultado) — exporta pro mesmo layout da
+// planilha "IA - <referencia>" usada internamente antes do Controle
+// existir, a partir do objeto ja montado por montarDRE() (controle-core.js
+// — so reorganiza os MESMOS lancamentos da aba Custos Reais). Reaproveita
+// ExcelJS + window.ExcelStyles, igual aos demais exports deste arquivo.
+async function exportarDREExcel(dre){
+  if(typeof ExcelJS === 'undefined'){
+    showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  try{
+    const { CORES, estilizarTitulo } = window.ExcelStyles;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'IMPAK';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('DRE');
+    const numCols = 4;
+
+    ws.mergeCells(1,1,1,numCols);
+    const titulo = ws.getCell(1,1);
+    titulo.value = `PROCESSO ${dre.referencia} — DRE`;
+    estilizarTitulo(titulo);
+    ws.getRow(1).height = 28;
+
+    let r = 2;
+    const linha = (label, v2, v3, v4) => {
+      const row = ws.getRow(r);
+      row.getCell(1).value = label;
+      if(v2 != null) row.getCell(2).value = v2;
+      if(v3 != null) row.getCell(3).value = v3;
+      if(v4 != null) row.getCell(4).value = v4;
+      r++;
+      return row;
+    };
+    const fmtMoeda = cell => { cell.numFmt = '#,##0.00'; cell.alignment = {horizontal:'right'}; };
+
+    const nfRow = linha(`Nota fiscal de Saída${dre.nfSaidaNumero?' - Nfe '+dre.nfSaidaNumero:''}:`, null, null, dre.nfSaidaValor);
+    fmtMoeda(nfRow.getCell(4));
+    nfRow.font = {bold:true};
+    r++;
+
+    const custosHeader = ws.getCell(r,1); custosHeader.value = 'CUSTOS'; custosHeader.font = {bold:true}; r++;
+
+    const fobRow = linha('    FOB', null, null, dre.fob); fmtMoeda(fobRow.getCell(4));
+
+    const adiRow = linha('    Adiantamento Porto (Liberação)', null, null, dre.totalAdiantamento); fmtMoeda(adiRow.getCell(4));
+    dre.adiantamentoItens.forEach(it=>{
+      const row = linha('          '+it.label, it.valor, null, null);
+      fmtMoeda(row.getCell(2));
+    });
+
+    const agRow = linha('    Agente Frete', null, null, dre.totalAgenteFrete); fmtMoeda(agRow.getCell(4));
+    dre.agenteFreteItens.forEach(it=>{
+      const row = linha('          '+it.label, it.valor, null, null);
+      fmtMoeda(row.getCell(2));
+    });
+
+    const hdrRow = ws.getRow(r);
+    hdrRow.getCell(2).value = 'Valores ref. NFe';
+    hdrRow.getCell(3).value = 'Créditos entrada';
+    hdrRow.font = {italic:true, size:9, color:{argb:CORES.CINZA}};
+    r++;
+    dre.diferencasItens.forEach(it=>{
+      const row = linha('    '+it.label, it.valorNfe, it.creditoEntrada, it.diferenca);
+      fmtMoeda(row.getCell(2)); fmtMoeda(row.getCell(3)); fmtMoeda(row.getCell(4));
+    });
+
+    const lavRow = linha('    Lavação', null, null, dre.lavacao); fmtMoeda(lavRow.getCell(4));
+    const segRow = linha('    Seguro Efetivo PAGO', null, null, dre.seguro); fmtMoeda(segRow.getCell(4));
+
+    r++;
+    const totalRow = linha('TOTAL CUSTOS', null, null, dre.totalCustos);
+    totalRow.font = {bold:true};
+    fmtMoeda(totalRow.getCell(4));
+    totalRow.eachCell({includeEmpty:true}, c=>{ c.border = {top:{style:'thin',color:{argb:CORES.BORDA}}}; });
+
+    r++;
+    const lucroRow = linha('LUCRO BRUTO do PROCESSO', null, null, dre.lucroBruto);
+    lucroRow.font = {bold:true, color:{argb:'FF16A34A'}};
+    fmtMoeda(lucroRow.getCell(4));
+    if(dre.pctLucro != null){
+      lucroRow.getCell(5).value = dre.pctLucro;
+      lucroRow.getCell(5).numFmt = '0.0%';
+    }
+
+    ws.getColumn(1).width = 46;
+    ws.getColumn(2).width = 16;
+    ws.getColumn(3).width = 16;
+    ws.getColumn(4).width = 16;
+    ws.getColumn(5).width = 10;
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DRE_${dre.referencia}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('✓ DRE exportado','ok');
+  }catch(e){
+    showToast('Erro ao exportar DRE: '+e.message,'err');
+    console.error(e);
+  }
+}
+
 async function exportarFormatoCliente(statusSelecionados){
   showToast('Gerando planilha no formato cliente...','info');
   try{
