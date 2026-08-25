@@ -1142,12 +1142,12 @@ function calcularTotalizadorPorGrupo(p){
   const reais = p.real_json;
   if(!reais || typeof reais !== 'object') return null;
   return CUSTOS_REAIS_CONFIG.map(g => {
-    let totalPago = 0, totalCobrado = 0, temPago = false, temCobrado = false;
+    let totalPago = 0, totalCobrado = 0, totalPagoCobravel = 0, totalCredito = 0, temPago = false, temCobrado = false;
     const apenasPago = g.itens.every(it => it.apenasPago);
     g.itens.forEach(item => {
       if(item.excluirDosTotais || item.temCredito) return;
       const normPago = normalizarValorRealItem(reais[item.id], item, p);
-      if(normPago){ totalPago += normPago.totalBrl; temPago = true; }
+      if(normPago){ totalPago += normPago.totalBrl; temPago = true; if(item.apenasPago) totalCredito += normPago.totalBrl; else totalPagoCobravel += normPago.totalBrl; }
       if(!item.apenasPago){
         const normCobrado = normalizarValorRealItem(reais[item.id+'_cobrado'], item, p);
         if(normCobrado){ totalCobrado += normCobrado.totalBrl; temCobrado = true; }
@@ -1155,8 +1155,8 @@ function calcularTotalizadorPorGrupo(p){
     });
     return {
       grupo: g.grupo, slug: g.slug,
-      totalPago, totalCobrado,
-      margem: (!apenasPago && temCobrado) ? (totalCobrado - totalPago) : null,
+      totalPago, totalCobrado, totalCredito,
+      margem: (!apenasPago && temCobrado) ? (totalCobrado - totalPagoCobravel) : null,
       temPago, temCobrado, apenasPago,
     };
   });
@@ -1498,7 +1498,7 @@ function renderFechamentoBreakdown(p){
         <span style="font-weight:700;color:var(--text);">${esc(g.grupo)}</span>
         <span style="display:flex;gap:12px;align-items:center;">
           <span style="color:var(--muted);">${r2(g.totalPago)}</span>
-          ${g.margem!=null?`<strong style="color:${g.margem>=0?'var(--ok)':'var(--err)'};font-size:11px;">${g.margem>=0?'+':''}${r2(g.margem)}</strong>`:''}
+          ${g.margem!=null?`<strong style="color:${g.margem>=0?'var(--ok)':'var(--err)'};font-size:11px;">${g.margem>=0?'+':''}${r2(g.margem)}</strong>`:''}${g.totalCredito>0?`<span style="color:var(--ok);font-size:10px;" title="Impostos pagos na importacao (IPI/PIS/COFINS/ICMS) que geram credito tributario a compensar - nao e margem/lucro nem prejuizo">Credito impostos: ${r2(g.totalCredito)}</span>`:''}
         </span>
       </summary>
       <div style="padding:6px 10px 2px 10px;">${detalheItens||'<span style="font-size:11px;color:var(--dim);">sem itens lançados</span>'}</div>
