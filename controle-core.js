@@ -861,10 +861,10 @@ const CUSTOS_REAIS_CONFIG = [
     // absorvido sem repasse). Por isso tem Cobrado/margem como uma taxa
     // normal, ao contrario dos demais itens deste grupo.
     { id:'ii',     label:'II',     unidade:'BRL', cotado:c=>c?.impostos?.ii },
-    { id:'ipi',    label:'IPI',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.ipi },
-    { id:'pis',    label:'PIS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.pis },
-    { id:'cofins', label:'COFINS', unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.cofins },
-    { id:'icms',   label:'ICMS',   unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.icms },
+    { id:'ipi',    label:'IPI',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.ipi },
+    { id:'pis',    label:'PIS',    unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.pis },
+    { id:'cofins', label:'COFINS', unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.cofins },
+    { id:'icms',   label:'ICMS',   unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.icms },
     { id:'ibs',    label:'IBS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.ibs },
     { id:'cbs',    label:'CBS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.cbs },
     // Antidumping: direito antidumping (encargo governamental cobrado quando o
