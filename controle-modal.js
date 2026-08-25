@@ -1115,10 +1115,7 @@ function atualizarTotalCustosReais(){
   const temNf = !isNaN(nfSaida) && nfSaida > 0;
   let lucro = temNf ? (nfSaida - custosReais.total) : null;
   if(notasBoss && lucro != null) lucro += notasBoss.totalReceber;
-  const linhaMargemTaxas = receitaReais
-    ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${receitaReais.count} ${receitaReais.count===1?'item':'itens'})</span><strong>${r2(receitaReais.total)}</strong></div>
-       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${(receitaReais.total-custosReais.total)>=0?'var(--ok)':'var(--err)'}">${r2(receitaReais.total-custosReais.total)}</strong></div>`
-    : '';
+  const linhaMargemTaxas = ''; // Removido a pedido do usuario (2026-08-25): nao existe na planilha
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
     <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lançados)</span><strong>${r2(custosReais.total)}</strong></div>
     ${linhaMargemTaxas}
