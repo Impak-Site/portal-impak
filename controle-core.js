@@ -1671,12 +1671,13 @@ function renderFechamentoInfo(p){
   const linhaCustoRealDetalhado = f.custosReais
     ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Real Total (${f.custosReais.count} ${f.custosReais.count===1?'item lançado':'itens lançados'})</span><strong>${r2(f.custoRealTotal)}</strong></div>`
     : '';
-  const linhaMargemTaxas = f.margemTaxas
-    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
-        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Cobrado do Cliente nas Taxas (${f.receitaReais.count} ${f.receitaReais.count===1?'item':'itens'})</span><strong>${r2(f.margemTaxas.receitaTotal)}</strong></div>
-        <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Margem das Taxas (Cobrado − Pago)</span><strong style="color:${f.margemTaxas.total>=0?'var(--ok)':'var(--err)'}">${r2(f.margemTaxas.total)}</strong></div>
-      </div>`
-    : '';
+  // Removido a pedido do usuário (2026-08-25): comparava Cobrado (so
+  // itens com campo Cobrado) contra Custo Real Total (que inclui impostos
+  // apenasPago, sem Cobrado por desenho) — sempre dava um negativo grande
+  // sem relacao com a operacao real, e nao existe na planilha (conferido na
+  // aba Fechamento do modelo). f.margemTaxas continua calculado/retornado
+  // (usado em teste existente), so nao aparece mais na tela.
+  const linhaMargemTaxas = '';
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
