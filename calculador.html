@@ -3266,8 +3266,8 @@ function resumoParaLista(r){
     faturamento_real_planilha: r.faturamento_real_planilha != null ? r.faturamento_real_planilha : undefined,
     lucro_bruto_real_planilha: r.lucro_bruto_real_planilha != null ? r.lucro_bruto_real_planilha : undefined,
     cenarios: cst && sst ? {
-      com_st: { faturamento_total: cst.faturamento_total, comissao_china: cst.china_fora_val||0, valor_impak: impak(cst) },
-      sem_st: { faturamento_total: sst.faturamento_total, comissao_china: sst.china_fora_val||0, valor_impak: impak(sst) },
+      com_st: { faturamento_total: cst.faturamento_total, comissao_china: cst.china_fora_val||0, valor_impak: impak(cst), lucro_bruto: cst.lucro_bruto, pct_lucro: cst.pct_lucro },
+      sem_st: { faturamento_total: sst.faturamento_total, comissao_china: sst.china_fora_val||0, valor_impak: impak(sst), lucro_bruto: sst.lucro_bruto, pct_lucro: sst.pct_lucro },
     } : undefined,
     // custos_cotados_json (tela "Custos Reais" no Controle) — detalhamento do
     // que foi COTADO nesta cotação, item a item, pra virar o ponto de partida
