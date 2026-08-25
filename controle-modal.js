@@ -375,6 +375,10 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           Compara o que foi cotado no Calculador (na hora de aprovar a cotação) com o resultado real do processo, calculado a partir da NF Entrada e NF Saída lançadas na aba Documentos.
         </div>
         ${renderFechamentoInfo(p)}
+        <div style="margin-top:14px;">
+          <button type="button" class="btn btn-outline" onclick="abrirDRE()">📊 Ver / Exportar DRE</button>
+        </div>
+        <div id="dre-overlay"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
@@ -732,7 +736,65 @@ function valorMoedaInicial(raw, item){
   return { valor: raw, moeda: item.unidade };
 }
 
-function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx === null) ? '' : ('__c' + idx); var val = document.getElementById('f_cr_' + itemId + suf); var moeda = document.getElementById('f_cr_moeda_' + itemId + suf); var valCobrado = document.getElementById('f_cr_cobrado_' + itemId + suf); var moedaCobrado = document.getElementById('f_cr_cobrado_moeda_' + itemId + suf); if (val && valCobrado) valCobrado.value = val.value; if (moeda && moedaCobrado) moedaCobrado.value = moeda.value; if (typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais(); } function renderCustosReaisTab(p){
+function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx === null) ? '' : ('__c' + idx); var val = document.getElementById('f_cr_' + itemId + suf); var moeda = document.getElementById('f_cr_moeda_' + itemId + suf); var valCobrado = document.getElementById('f_cr_cobrado_' + itemId + suf); var moedaCobrado = document.getElementById('f_cr_cobrado_moeda_' + itemId + suf); if (val && valCobrado) valCobrado.value = val.value; if (moeda && moedaCobrado) moedaCobrado.value = moeda.value; if (typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais(); } // ── DRE (Demonstrativo de Resultado) — modal com o mesmo layout da
+// planilha "IA - <referencia>" usada internamente antes do Controle
+// existir, montado a partir de montarDRE() (controle-core.js), que so
+// reorganiza os MESMOS lancamentos ja feitos na aba Custos Reais
+// (real_json) — abre pelo botao na aba Fechamento; exportar pra Excel
+// fica dentro do proprio modal (exportarDREExcel, controle-export.js).
+function abrirDRE(){
+  const dre = montarDRE(_editando);
+  const overlay = document.getElementById('dre-overlay');
+  if(overlay) overlay.innerHTML = renderDREModalHtml(dre);
+}
+function fecharDRE(){
+  const overlay = document.getElementById('dre-overlay');
+  if(overlay) overlay.innerHTML = '';
+}
+function renderDREModalHtml(dre){
+  const r2 = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const linhaSimples = (label,valor) => `
+    <tr><td style="padding:5px 8px;">${esc(label)}</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(valor)}</td></tr>`;
+  const linhaGrupo = itens => itens.map(i=>linhaSimples('   '+i.label, i.valor)).join('');
+  const linhaDif = i => `
+    <tr><td style="padding:5px 8px;">   ${esc(i.label)}</td>
+        <td style="padding:5px 8px;text-align:right;color:var(--muted);">${r2(i.valorNfe)}</td>
+        <td style="padding:5px 8px;text-align:right;color:var(--muted);">${r2(i.creditoEntrada)}</td>
+        <td style="padding:5px 8px;text-align:right;">${r2(i.diferenca)}</td></tr>`;
+
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this) fecharDRE()">
+    <div style="background:var(--bg,#fff);border-radius:12px;max-width:760px;width:92%;max-height:88vh;overflow:auto;padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;">📊 DRE — Processo ${esc(dre.referencia)}</h3>
+        <button class="btn btn-outline" onclick="fecharDRE()">✕</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr><td style="padding:5px 8px;font-weight:600;">Nota fiscal de Saída${dre.nfSaidaNumero?' — Nfe '+esc(dre.nfSaidaNumero):''}</td>
+            <td colspan="3" style="padding:5px 8px;text-align:right;font-weight:600;">${r2(dre.nfSaidaValor)}</td></tr>
+        <tr><td colspan="4" style="padding:10px 8px 4px;font-weight:700;border-top:1px solid var(--border);">CUSTOS</td></tr>
+        ${linhaSimples('FOB', dre.fob)}
+        <tr><td style="padding:5px 8px;">Adiantamento Porto (Liberação)</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalAdiantamento)}</td></tr>
+        ${linhaGrupo(dre.adiantamentoItens)}
+        <tr><td style="padding:5px 8px;">Agente Frete</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalAgenteFrete)}</td></tr>
+        ${linhaGrupo(dre.agenteFreteItens)}
+        <tr><td></td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Valores ref. NFe</td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Créditos entrada</td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Diferença</td></tr>
+        ${dre.diferencasItens.map(linhaDif).join('')}
+        ${linhaSimples('Lavação', dre.lavacao)}
+        ${linhaSimples('Seguro Efetivo Pago', dre.seguro)}
+        <tr><td style="padding:8px;font-weight:700;border-top:2px solid var(--border);">TOTAL CUSTOS</td><td colspan="3" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid var(--border);">${r2(dre.totalCustos)}</td></tr>
+        <tr><td style="padding:8px;font-weight:700;color:var(--ok);">LUCRO BRUTO do PROCESSO</td>
+            <td colspan="3" style="padding:8px;text-align:right;font-weight:700;color:var(--ok);">${r2(dre.lucroBruto)} ${dre.pctLucro!=null?'('+(dre.pctLucro*100).toFixed(1)+'%)':''}</td></tr>
+      </table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="btn btn-outline" onclick="fecharDRE()">Fechar</button>
+        <button class="btn btn-primary" onclick="exportarDREExcel(montarDRE(_editando))">⬇️ Exportar Excel</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderCustosReaisTab(p){
   const reais = p.real_json || {};
   const cotado = (p.estimativa_json && p.estimativa_json.custos_cotados_json) || null;
   const cambioDefault = p.real_cambio ?? (cotado && cotado.cambio) ?? p.pi_cambio ?? _cambio.USD;
