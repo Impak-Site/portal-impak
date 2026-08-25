@@ -1431,17 +1431,17 @@ function calcularFechamento(p){
   let custoEstimado = null, faturamentoEstimado = null, lucroEstimado = null, pctLucroEstimado = null;
   if(est){
     custoEstimado = est.custo_total ?? null;
-    if(est.cenarios && est.cenarios.com_st && est.cenarios.com_st.faturamento_total != null){
-      faturamentoEstimado = est.cenarios.com_st.faturamento_total;
+    const cenComSt = est.cenarios && est.cenarios.com_st; if(cenComSt && cenComSt.faturamento_total != null){
+      faturamentoEstimado = cenComSt.faturamento_total;
     } else if(est.faturamento != null){
       faturamentoEstimado = est.faturamento; // cotações salvas antes dos 2 cenários
     }
-    if(faturamentoEstimado != null && custoEstimado != null){
-      lucroEstimado = faturamentoEstimado - custoEstimado;
-      pctLucroEstimado = faturamentoEstimado > 0 ? (lucroEstimado / faturamentoEstimado) : null;
+    if(cenComSt && cenComSt.lucro_bruto != null){
+      lucroEstimado = cenComSt.lucro_bruto;
+      pctLucroEstimado = cenComSt.pct_lucro != null ? cenComSt.pct_lucro / 100 : null;
     } else if(est.lucro_bruto != null){
       lucroEstimado = est.lucro_bruto;
-      pctLucroEstimado = est.pct_lucro ?? null;
+      pctLucroEstimado = est.pct_lucro != null ? est.pct_lucro / 100 : null;
     }
   }
 
