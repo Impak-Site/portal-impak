@@ -1177,6 +1177,90 @@ function calcularTotalizadorPorGrupo(p){
 // custos reais, sem precisar de coluna/migration nova). Retorna null quando
 // o campo nunca foi preenchido - processo sem nota Boss continua exatamente
 // como antes (Lucro Real = so a NF Saida principal).
+function valorRealItemBRL(p, id){
+  const reais = p.real_json || {};
+  const item = custosReaisItensFlat().find(it => it.id === id);
+  if(!item) return 0;
+  const norm = normalizarValorRealItem(reais[id], item, p);
+  return norm ? norm.totalBrl : 0;
+}
+
+// DRE (Demonstrativo de Resultado) do processo — reagrupa os MESMOS
+// lancamentos ja feitos na aba Custos Reais (real_json) no layout usado
+// internamente antes do Controle existir (planilha "IA - <referencia>"):
+// FOB / Adiantamento Porto (impostos+taxas de liberacao) / Agente Frete
+// (frete internacional+taxas do agente de carga) / Diferencas de Impostos
+// (NFe x D.I.), com o mesmo Total de Custos e Lucro Bruto que ja aparecem
+// na aba Fechamento (calcularCustoRealTotal) — nao introduz nenhuma conta
+// nova, so reorganiza a apresentacao pro formato que a empresa ja usava.
+function montarDRE(p){
+  const v = id => valorRealItemBRL(p, id);
+
+  const adiantamentoItens = [
+    { label:'II',                      valor:v('ii') },
+    { label:'IPI',                     valor:v('ipi') },
+    { label:'PIS',                     valor:v('pis') },
+    { label:'COFINS',                  valor:v('cofins') },
+    { label:'Taxa Siscomex',           valor:v('siscomex') },
+    { label:'Marinha Mercante/AFRMM',  valor:v('marinha') },
+    { label:'ICMS',                    valor:v('icms') },
+    { label:'Armazenagem',             valor:v('armazenagem') },
+  ];
+  const agenteFreteItens = [
+    { label:'Frete Internacional',              valor:v('frete') },
+    { label:'Capatazia/THC',                     valor:v('capatazia') },
+    { label:'Liberação BL',                      valor:v('liberacao_bl') },
+    { label:'Additional Costs',                  valor:v('additional_costs') },
+    { label:'Import Logistics Fee',              valor:v('import_logistics') },
+    { label:'Drop Off Fee',                      valor:v('drop_off') },
+    { label:'ISPS (Destination)',                valor:v('isps') },
+    { label:'IOF',                               valor:v('iof') },
+    { label:'Desconsolidação',                   valor:v('desconsolidacao') },
+    { label:'Taxa Agente de Carga (IR/PCC/ISS)', valor:v('agente') },
+  ];
+  const par = (label, idPago, idDif) => {
+    const credito = v(idPago), diferenca = v(idDif);
+    return { label, valorNfe: credito+diferenca, creditoEntrada: credito, diferenca };
+  };
+  const diferencasItens = [
+    par('Diferença PIS (NFe × D.I.)', 'pis', 'diferenca_pis'),
+    par('Diferença COFINS (NFe × D.I.)', 'cofins', 'diferenca_cofins'),
+    par('Diferença IPI (NFe × D.I.)', 'ipi', 'diferenca_ipi'),
+    par('Diferença ICMS Próprio (NFe × D.I.)', 'icms', 'diferenca_icms_proprio'),
+    { label:'ICMS Substituição Tributária', valorNfe:v('icms_st'), creditoEntrada:0, diferenca:v('icms_st') },
+    par('IBS', 'ibs', 'diferenca_ibs'),
+    par('CBS', 'cbs', 'diferenca_cbs'),
+  ];
+
+  const fob = v('fob');
+  const totalAdiantamento = adiantamentoItens.reduce((s,i)=>s+i.valor,0);
+  const totalAgenteFrete = agenteFreteItens.reduce((s,i)=>s+i.valor,0);
+  const lavacao = v('lavacao');
+  const seguro = v('seguro');
+
+  // Total de Custos vem da MESMA fonte que a aba Fechamento (Custo Real
+  // Total) — garante que o DRE nunca diverge do que ja aparece la, mesmo
+  // que a soma manual acima (fallback) arredonde diferente.
+  const custoReal = calcularCustoRealTotal(p);
+  const totalCustos = custoReal ? custoReal.total :
+    (fob + totalAdiantamento + totalAgenteFrete + lavacao + seguro +
+     diferencasItens.filter(d=>d.label!=='IBS' && d.label!=='CBS').reduce((s,d)=>s+d.diferenca,0));
+
+  const nfSaidaValor = parseFloat(p.nf_saida_valor) || null;
+  const lucroBruto = nfSaidaValor != null ? (nfSaidaValor - totalCustos) : null;
+  const pctLucro = (lucroBruto != null && nfSaidaValor) ? (lucroBruto/nfSaidaValor) : null;
+
+  return {
+    referencia: p.referencia || '',
+    nfSaidaNumero: p.nf_saida_numero || '',
+    nfSaidaValor,
+    fob, adiantamentoItens, totalAdiantamento,
+    agenteFreteItens, totalAgenteFrete,
+    diferencasItens, lavacao, seguro,
+    totalCustos, lucroBruto, pctLucro,
+  };
+}
+
 function calcularNotasBoss(p){
   const reais = p.real_json;
   if(!reais || typeof reais !== 'object') return null;
