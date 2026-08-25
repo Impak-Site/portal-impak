@@ -712,10 +712,10 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
 // lado) ÃÂ¢ÃÂÃÂ usada tanto pro Pago quanto pro Cobrado, tanto na linha principal
 // quanto em cada sub-linha de container, sempre com o mesmo par de ids
 // (valorId/moedaId) montado pelo chamador.
-function celulaValorMoedaHtml(valorId, moedaId, valor, moeda, placeholder, readonly){
+function celulaValorMoedaHtml(valorId, moedaId, valor, moeda, placeholder, readonly, cotado){
   const dis = readonly ? 'readonly style="width:100%;background:var(--bg);color:var(--muted);"' : 'style="width:100%;"';
   return `<div style="display:flex;gap:4px;">
-    <input class="form-input" type="number" step="0.01" id="${valorId}" value="${valor}" placeholder="${placeholder}" ${dis} oninput="atualizarTotalCustosReais()">
+    <input class="form-input" type="number" step="0.01" id="${valorId}" value="${valor}" placeholder="${placeholder}" ${dis} oninput="atualizarTotalCustosReais()"${(cotado!==undefined&&cotado!==null)?` data-cotado="${cotado}"`:''}>
     <select class="form-input" id="${moedaId}" ${readonly?'disabled':''} onchange="atualizarTotalCustosReais()" style="width:62px;flex-shrink:0;padding-left:4px;padding-right:4px;">
       ${MOEDAS_REAIS.map(m=>`<option value="${m.code}" ${m.code===moeda?'selected':''}>${m.code}</option>`).join('')}
     </select>
@@ -832,7 +832,7 @@ function renderCustosReaisTab(p){
           <td colspan="2" style="padding:8px 6px;">
             <div style="display:flex;align-items:center;gap:6px;max-width:220px;">
               <span style="font-size:12px;color:var(--muted);flex-shrink:0;">R$</span>
-              <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicialImposto}" placeholder="Valor a pagar" oninput="atualizarTotalCustosReais()" style="width:100%;">
+              <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicialImposto}" data-cotado="${valorCotado !== null ? valorCotado.toFixed(2) : ''}" placeholder="Valor a pagar" oninput="atualizarTotalCustosReais()" style="width:100%;">
             </div>
           </td>
           <td style="padding:8px 0 8px 10px;width:16%;font-size:11px;color:var(--dim);font-style:italic;">custo direto</td>
@@ -882,7 +882,7 @@ function renderCustosReaisTab(p){
 
       return `<tr style="border-bottom:1px solid var(--border);">
         <td style="padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">${item.label}${hintCotado}${detalharLink}</td>
-        <td style="padding:8px 6px;width:24%;">${celulaValorMoedaHtml('f_cr_'+item.id, 'f_cr_moeda_'+item.id, pagoValorExibido, pagoMoedaExibida, 'Pago', breakdownAtivo)}</td>
+        <td style="padding:8px 6px;width:24%;">${celulaValorMoedaHtml('f_cr_'+item.id, 'f_cr_moeda_'+item.id, pagoValorExibido, pagoMoedaExibida, 'Pago', breakdownAtivo, valorCotado!==null?valorCotado.toFixed(2):'')}</td>
         <td style="padding:8px 6px;width:24%;"><div style="display:flex;align-items:center;gap:4px;">${!breakdownAtivo ? `<button type="button" title="Usar o mesmo valor do Pago" onclick="igualarCobradoPago('${item.id}')" style="flex-shrink:0;width:22px;height:28px;border:1px solid var(--border);background:var(--bg2);border-radius:6px;cursor:pointer;font-size:12px;color:var(--ac);">=</button>` : ''}<div style="flex:1;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id, 'f_cr_cobrado_moeda_'+item.id, cobradoValorExibido, cobradoMoedaExibida, 'Cobrado', breakdownAtivo)}</div></div></td>
         <td style="padding:8px 0 8px 10px;width:16%;font-size:11px;" id="cr_margem_${item.id}"></td>
       </tr>
@@ -997,8 +997,9 @@ function toggleCrContainerBreakdown(itemId){
 // vem separado (real_cambio ÃÂÃÂ© coluna prÃÂÃÂ³pria, nÃÂÃÂ£o fica dentro do real_json)
 // pra bater com a migration 0004_add_custos_reais_processo.sql, que jÃÂÃÂ¡
 // criou as duas colunas assim.
-function coletarCustosReaisDoForm(){
+function coletarCustosReaisDoForm(soConfirmados){
   const obj = {};
+  const aindaDefault = (el) => soConfirmados && el.dataset && el.dataset.cotado !== undefined && el.value === el.dataset.cotado;
   const eurEl = document.getElementById('f_cr_cambio_eur');
   if(eurEl && eurEl.value !== '') obj._cambio_eur = parseFloat(eurEl.value);
   const bossEl = document.getElementById('f_cr_notas_boss');
@@ -1022,7 +1023,7 @@ function coletarCustosReaisDoForm(){
         containers.forEach((nome, idx) => {
           const el = document.getElementById(prefV+item.id+'__c'+idx);
           const moedaEl = document.getElementById(prefM+item.id+'__c'+idx);
-          if(el && el.value !== ''){
+          if(el && el.value !== '' && !aindaDefault(el)){
             porContainer[nome] = { valor: parseFloat(el.value), moeda: moedaEl ? moedaEl.value : item.unidade };
           }
         });
@@ -1031,7 +1032,7 @@ function coletarCustosReaisDoForm(){
       }
       const el = document.getElementById(prefV+item.id);
       const moedaEl = document.getElementById(prefM+item.id);
-      if(el && el.value !== ''){
+      if(el && el.value !== '' && !aindaDefault(el)){
         obj[item.id+sufixo] = { valor: parseFloat(el.value), moeda: moedaEl ? moedaEl.value : item.unidade };
       }
     });
@@ -1053,7 +1054,7 @@ function atualizarTotalCustosReais(){
   const cambio = coletarCambioCustosReaisDoForm();
   const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-  const obj = coletarCustosReaisDoForm();
+  const obj = coletarCustosReaisDoForm(true);
   const snapshot = { ..._editando, real_json: obj, real_cambio: cambio };
 
   // Margem por LINHA (pago ÃÂÃÂ cobrado), atualizada a cada tecla ÃÂ¢ÃÂÃÂ igual ao
