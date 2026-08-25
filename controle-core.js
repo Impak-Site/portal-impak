@@ -1498,7 +1498,7 @@ function renderFechamentoBreakdown(p){
         <span style="font-weight:700;color:var(--text);">${esc(g.grupo)}</span>
         <span style="display:flex;gap:12px;align-items:center;">
           <span style="color:var(--muted);">${r2(g.totalPago)}</span>
-          ${g.margem!=null?`<strong style="color:${g.margem>=0?'var(--ok)':'var(--err)'};font-size:11px;">${g.margem>=0?'+':''}${r2(g.margem)}</strong>`:''}${g.totalCredito>0?`<span style="color:var(--ok);font-size:10px;" title="Impostos pagos na importacao (IPI/PIS/COFINS/ICMS) que geram credito tributario a compensar - nao e margem/lucro nem prejuizo">Credito impostos: ${r2(g.totalCredito)}</span>`:''}
+          ${g.margem!=null?`<strong style="color:${g.margem>=0?'var(--ok)':'var(--err)'};font-size:11px;">${g.margem>=0?'+':''}${r2(g.margem)}</strong>`:''}${g.totalCredito>0?(g.slug==='diferencas'?`<span style="color:var(--err);font-size:10px;" title="Diferenca entre o valor da NF e o credito ja pago na importacao - imposto que ainda falta recolher">Impostos a recolher: ${r2(g.totalCredito)}</span>`:`<span style="color:var(--ok);font-size:10px;" title="Impostos pagos na importacao (IPI/PIS/COFINS/ICMS) que geram credito tributario a compensar - nao e margem/lucro nem prejuizo">Credito impostos: ${r2(g.totalCredito)}</span>`):''}
         </span>
       </summary>
       <div style="padding:6px 10px 2px 10px;">${detalheItens||'<span style="font-size:11px;color:var(--dim);">sem itens lançados</span>'}</div>
