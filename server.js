@@ -1391,6 +1391,68 @@ function normalizarPortoDestinoDespachante(valor) {
   return APELIDOS[va] || (CODIGOS.includes(va) ? va : valor);
 }
 function normRefDespachante(v) { return String(v || '').trim().toUpperCase(); }
+const DESTINATARIOS_RELATORIO_DESPACHANTE = [
+  'ayslan_pereira@hotmail.com',
+  'importacao1@impak.com.br',
+];
+
+async function enviarRelatorioImportDespachante(resumo, usuario) {
+  const atualizados = resumo.filter(r => r.status === 'atualizado');
+  const naoEncontrados = resumo.filter(r => r.status === 'nao_encontrado');
+  const semMudancas = resumo.filter(r => r.status === 'sem_mudancas');
+  const comErro = resumo.filter(r => r.status === 'erro');
+
+  if (!atualizados.length && !naoEncontrados.length && !comErro.length) return; // nada relevante pra reportar
+
+  const NOMES_CAMPO = {
+    hbl: 'HBL', mbl: 'MBL', data_chegada: 'Data de Chegada', porto_destino: 'Porto de Destino',
+    navio: 'Navio', qtd_containers_prevista: 'Qtd. Containers', obs: 'Observacoes',
+  };
+
+  const linhasAtualizados = atualizados.map(r => `
+    <tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600;">${escapeHtml(r.referencia)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">${r.campos.map(c => escapeHtml(NOMES_CAMPO[c] || c)).join(', ')}</td>
+    </tr>`).join('');
+
+  const linhasNaoEncontrados = naoEncontrados.map(r => `<li>${escapeHtml(r.referencia)}</li>`).join('');
+  const linhasComErro = comErro.map(r => `<li>${escapeHtml(r.referencia)}: ${escapeHtml(r.erro || '')}</li>`).join('');
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#1f2937;max-width:640px;">
+      <h2 style="margin:0 0 4px;">Import Despachante - Resultado</h2>
+      <p style="margin:0 0 16px;color:#6b7280;">Executado por ${escapeHtml(usuario || 'desconhecido')} em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
+      <p style="margin:0 0 16px;">
+        <strong>${atualizados.length}</strong> processos atualizados &nbsp;-&nbsp;
+        <strong>${semMudancas.length}</strong> sem mudancas &nbsp;-&nbsp;
+        <strong>${naoEncontrados.length}</strong> nao encontrados
+        ${comErro.length ? `&nbsp;-&nbsp; <strong style="color:#b91c1c;">${comErro.length} com erro</strong>` : ''}
+      </p>
+      ${atualizados.length ? `
+      <h3 style="margin:16px 0 8px;">Processos atualizados</h3>
+      <table style="border-collapse:collapse;width:100%;font-size:14px;">
+        <thead>
+          <tr style="background:#f3f4f6;">
+            <th style="text-align:left;padding:6px 10px;">Referencia</th>
+            <th style="text-align:left;padding:6px 10px;">Campos alterados</th>
+          </tr>
+        </thead>
+        <tbody>${linhasAtualizados}</tbody>
+      </table>` : ''}
+      ${naoEncontrados.length ? `
+      <h3 style="margin:16px 0 8px;">Referencias nao encontradas no Controle</h3>
+      <ul style="margin:0;padding-left:20px;">${linhasNaoEncontrados}</ul>` : ''}
+      ${comErro.length ? `
+      <h3 style="margin:16px 0 8px;color:#b91c1c;">Erros ao atualizar</h3>
+      <ul style="margin:0;padding-left:20px;">${linhasComErro}</ul>` : ''}
+      <p style="margin-top:20px;color:#9ca3af;font-size:12px;">Enviado automaticamente pelo Portal IMPAK.</p>
+    </div>`;
+
+  const assunto = `Import Despachante: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados`;
+  for (const destinatario of DESTINATARIOS_RELATORIO_DESPACHANTE) {
+    await enviarEmail(destinatario, assunto, html);
+  }
+}
 
 app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
@@ -1482,6 +1544,9 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
     const totalSemMudancas = resumo.filter(r => r.status === 'sem_mudancas').length;
 
     console.log(`importar-despachante: ${totalAtualizados} atualizados, ${totalNaoEncontrados} nao encontrados, ${totalSemMudancas} sem mudancas, por ${req.session.usuario}`);
+
+    enviarRelatorioImportDespachante(resumo, req.session.usuario)
+      .catch(mailErr => console.warn('relatorio email despachante erro:', mailErr.message));
     res.json({
       ok: true, resumo,
       total_linhas: linhas.length,
