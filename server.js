@@ -43,7 +43,7 @@ const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
-const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase } = require('./planilha-import.js');
+const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase } = require('./planilha-import.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -1372,6 +1372,125 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro','resultado','
     res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length });
   } catch (e) {
     console.error('controle v2 importar erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// ── IMPORT DA PLANILHA DO DESPACHANTE ("Separa Data.xlsx") ──────────────
+//
+// Planilha recorrente enviada pelo despachante com o status dos processos
+// em andamento (aba "EM ANDAMENTO"). Diferente de /importar acima (que so
+// cria processos novos), aqui o fluxo e o inverso: casa cada linha com um
+// processo JA EXISTENTE (por referencia) e faz UPDATE so dos campos que
+// mudaram, com log de auditoria -- pedido da Emanuelly, 26/08/2026.
+function normalizarPortoDestinoDespachante(valor) {
+  if (!valor) return valor;
+  const va = String(valor).trim().toUpperCase();
+  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT' };
+  const CODIGOS = ['ITJ','IOA','NVT'];
+  return APELIDOS[va] || (CODIGOS.includes(va) ? va : valor);
+}
+function normRefDespachante(v) { return String(v || '').trim().toUpperCase(); }
+
+app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    const { arquivo_base64 } = req.body;
+    if (!arquivo_base64) return res.status(400).json({ erro: 'Arquivo ausente' });
+    const buffer = Buffer.from(arquivo_base64, 'base64');
+
+    let parsed;
+    try {
+      parsed = importarDespachanteBase(buffer);
+    } catch (parseErr) {
+      return res.status(400).json({ erro: parseErr.message });
+    }
+    if (parsed.erro) return res.status(400).json({ erro: parsed.erro });
+    const linhas = parsed.linhas || [];
+    if (!linhas.length) return res.json({ ok: true, resumo: [], total_linhas: 0 });
+
+    const { data: processos, error: errBusca } = await sb()
+      .from('controle_processos')
+      .select('id, referencia, hbl, mbl, data_chegada, porto_destino, navio, qtd_containers_prevista, obs');
+    if (errBusca) throw new Error(errBusca.message);
+
+    const porRef = new Map();
+    (processos || []).forEach(p => porRef.set(normRefDespachante(p.referencia), p));
+
+    const resumo = [];
+    const logsGlobais = [];
+    const agora = new Date().toISOString();
+
+    for (const linha of linhas) {
+      const proc = porRef.get(normRefDespachante(linha.referencia));
+      if (!proc) {
+        resumo.push({ referencia: linha.referencia, status: 'nao_encontrado' });
+        continue;
+      }
+
+      const patch = {};
+      const camposAlterados = [];
+      const logsProc = [];
+      const setCampo = (campo, novoValor) => {
+        if (novoValor === undefined || novoValor === null || novoValor === '') return;
+        const antigo = proc[campo];
+        if (String(antigo || '') === String(novoValor)) return;
+        patch[campo] = novoValor;
+        camposAlterados.push(campo);
+        logsProc.push({
+          processo_id: proc.id, usuario: req.session.usuario, campo,
+          valor_antes: String(antigo || ''), valor_depois: String(novoValor),
+          created_at: agora,
+        });
+      };
+
+      setCampo('hbl', linha.hbl);
+      setCampo('mbl', linha.mbl);
+      setCampo('data_chegada', linha.data_chegada);
+      setCampo('porto_destino', normalizarPortoDestinoDespachante(linha.porto_destino));
+      setCampo('navio', linha.navio);
+      if (linha.qtd_containers && linha.qtd_containers > 0) setCampo('qtd_containers_prevista', linha.qtd_containers);
+      if (linha.demanda_impak) {
+        const obsAtual = proc.obs || '';
+        if (!obsAtual.includes(linha.demanda_impak)) {
+          const novoObs = obsAtual ? `${obsAtual}\n[Despachante] ${linha.demanda_impak}` : `[Despachante] ${linha.demanda_impak}`;
+          setCampo('obs', novoObs);
+        }
+      }
+
+      if (!camposAlterados.length) {
+        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas' });
+        continue;
+      }
+
+      patch.updated_at = agora;
+      const { error: errUpdate } = await sb().from('controle_processos').update(patch).eq('id', proc.id);
+      if (errUpdate) {
+        resumo.push({ referencia: proc.referencia, status: 'erro', erro: errUpdate.message });
+        continue;
+      }
+      logsGlobais.push(...logsProc);
+      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados });
+    }
+
+    if (logsGlobais.length) {
+      try { await sb().from('controle_log').insert(logsGlobais); }
+      catch (logErr) { console.warn('log despachante erro:', logErr.message); }
+    }
+
+    const totalAtualizados = resumo.filter(r => r.status === 'atualizado').length;
+    const totalNaoEncontrados = resumo.filter(r => r.status === 'nao_encontrado').length;
+    const totalSemMudancas = resumo.filter(r => r.status === 'sem_mudancas').length;
+
+    console.log(`importar-despachante: ${totalAtualizados} atualizados, ${totalNaoEncontrados} nao encontrados, ${totalSemMudancas} sem mudancas, por ${req.session.usuario}`);
+    res.json({
+      ok: true, resumo,
+      total_linhas: linhas.length,
+      total_atualizados: totalAtualizados,
+      total_nao_encontrados: totalNaoEncontrados,
+      total_sem_mudancas: totalSemMudancas,
+    });
+  } catch (e) {
+    console.error('importar-despachante erro:', e.message);
     res.status(500).json({ erro: e.message });
   }
 });
