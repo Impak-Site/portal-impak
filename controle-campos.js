@@ -166,7 +166,7 @@ function coletarESalvar(){
     'horario_retirada','agendamento_cancelado','motivo_cancelamento',
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor','nf_saida_cfop',
-    'data_devolucao_vazio','demurrage_valor','demurrage_pago',
+    'data_devolucao_vazio','demurrage_valor','demurrage_pago','armazem',
     'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json','vendas_json','pi_parcelas_json',
   ];
 
