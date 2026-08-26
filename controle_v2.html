@@ -378,6 +378,8 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Processo</button>
 <button class="btn btn-outline" onclick="document.getElementById('import-xlsx').click()">📥 Importar</button>
 <input type="file" id="import-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilha(this)">
+<button class="btn btn-outline" onclick="document.getElementById('import-despachante-xlsx').click()" title="Planilha recorrente do despachante (aba EM ANDAMENTO) — atualiza HBL/MBL/data de chegada/porto/navio/qtd de containers dos processos JÁ EXISTENTES, casando por referência">📦 Importar Despachante</button>
+<input type="file" id="import-despachante-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilhaDespachante(this)">
 <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
 <button class="btn btn-outline" onclick="abrirModalExportCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor, ordenado por Data de Chegada) — confirme os status antes de gerar">📋 Exportar p/ Cliente</button>
 <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
