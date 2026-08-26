@@ -526,6 +526,8 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Devolução</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Armazém</label>
+            <input class="form-input" id="f_armazem" value="${esc(p.armazem)}" placeholder="Onde a carga está armazenada (útil p/ LCL — não é container cheio)"></div>
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Pago?</label>
