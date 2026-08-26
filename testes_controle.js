@@ -602,27 +602,27 @@ teste('processo sem estimativa_json (criado direto no Controle) não tem compara
   verdadeiro(!f.temComparacao, 'sem estimativa não dá pra comparar');
 });
 teste('com estimativa mas sem NF Saída ainda, mostra estimado mas não fecha comparação', () => {
-  const p = { estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12 } } } };
+  const p = { estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12, lucro_bruto: 124858.29, pct_lucro: 34.31 } } } };
   const f = sandbox.calcularFechamento(p);
   verdadeiro(f.temEstimativa, 'deveria ter estimativa');
   verdadeiro(!f.temReal, 'sem NF Saída não tem real ainda');
   verdadeiro(!f.temComparacao);
-  aproxIgual(f.lucroEstimado, 363898.12 - 239039.83, 0.01, 'lucro estimado = faturamento com ST - custo');
+  aproxIgual(f.lucroEstimado, 124858.29, 0.01, 'lucro estimado vem do lucro_bruto do cenario com ST');
 });
 teste('com NF Entrada e NF Saída preenchidas, calcula lucro real e compara com o estimado', () => {
   const p = {
-    estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12 } } },
+    estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12, lucro_bruto: 124858.29, pct_lucro: 34.31 } } },
     nf_entrada_valor: 200000, nf_saida_valor: 360000,
   };
   const f = sandbox.calcularFechamento(p);
   verdadeiro(f.temReal && f.temComparacao);
   iguais(f.lucroReal, 160000);
-  const lucroEstimado = 363898.12 - 239039.83; // 124.858,29
+  const lucroEstimado = 124858.29; // ja liquido, vem do lucro_bruto do cenario
   aproxIgual(f.deltaValor, 160000 - lucroEstimado, 0.01, 'diferença = lucro real - lucro estimado');
   verdadeiro(f.deltaValor > 0, 'nesse caso o real (160k) ficou acima do estimado (~124,9k)');
 });
 teste('resumo antigo (sem cenarios, só faturamento genérico) ainda funciona', () => {
-  const p = { estimativa_json: { custo_total: 1000, faturamento: 1500 }, nf_entrada_valor: 900, nf_saida_valor: 1600 };
+  const p = { estimativa_json: { custo_total: 1000, faturamento: 1500, lucro_bruto: 500, pct_lucro: 33.33 }, nf_entrada_valor: 900, nf_saida_valor: 1600 };
   const f = sandbox.calcularFechamento(p);
   iguais(f.faturamentoEstimado, 1500);
   iguais(f.lucroEstimado, 500);
@@ -651,7 +651,7 @@ teste('renderFechamentoInfo() sem estimativa mas com NF Entrada/Saída mostra o 
 teste('renderFechamentoInfo() com resultado pior que o estimado mostra "a menos" em vermelho', () => {
   // Estimado: lucro ≈124,9k (363.898,12 - 239.039,83). Real bem menor: NF Saída 250k - NF Entrada 220k = 30k.
   const p = {
-    estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12 } } },
+    estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12, lucro_bruto: 124858.29, pct_lucro: 34.31 } } },
     nf_entrada_valor: 220000, nf_saida_valor: 250000,
   };
   const html = sandbox.renderFechamentoInfo(p);
@@ -659,7 +659,7 @@ teste('renderFechamentoInfo() com resultado pior que o estimado mostra "a menos"
 });
 teste('renderFechamentoInfo() com resultado melhor que o estimado mostra "a mais" em verde', () => {
   const p = {
-    estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12 } } },
+    estimativa_json: { custo_total: 239039.83, cenarios: { com_st: { faturamento_total: 363898.12, lucro_bruto: 124858.29, pct_lucro: 34.31 } } },
     nf_entrada_valor: 200000, nf_saida_valor: 360000,
   };
   const html = sandbox.renderFechamentoInfo(p);
