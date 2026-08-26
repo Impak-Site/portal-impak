@@ -469,4 +469,78 @@ function importarFechamentoBase(buffer) {
     return parseFechamento(wb);
 }
 
-module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase };
+// ── IMPORTACAO DE PLANILHA DO DESPACHANTE ("Separa Data.xlsx") ───────────
+//
+// Planilha recorrente que o despachante manda com o status dos processos
+// em andamento (aba "EM ANDAMENTO") -- cada linha tem a referencia do
+// processo + HBL/MBL/data de chegada (CHEGADA UNICA)/porto de destino/
+// navio/qtd de containers/observacoes (DEMANDA IMPAK). Pedido da
+// Emanuelly, 26/08/2026. So devolve as linhas parseadas aqui; o match
+// contra controle_processos e o UPDATE (com log de auditoria) ficam no
+// server.js -- mesma separacao dos outros parsers deste arquivo.
+function acharColunaDespachante(headers, palavrasChave) {
+    return headers.findIndex(function(h) {
+        var hh = norm(h).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return palavrasChave.every(function(p) { return hh.indexOf(p) >= 0; });
+    });
+}
+
+function parseDataDespachante(v) {
+    if (!v) return null;
+    if (v instanceof Date) {
+        var y = v.getUTCFullYear();
+        var m = String(v.getUTCMonth() + 1).padStart(2, '0');
+        var d = String(v.getUTCDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
+    }
+    var s = String(v).trim();
+    var m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m2) return null;
+    var dd = m2[1].padStart(2, '0');
+    var mm = m2[2].padStart(2, '0');
+    var yy = m2[3];
+    if (yy.length === 2) yy = '20' + yy;
+    return yy + '-' + mm + '-' + dd;
+}
+
+function importarDespachanteBase(buffer) {
+    validarBufferPlanilha(buffer);
+    var wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    var sheetName = wb.SheetNames.find(function(n) { return norm(n).indexOf('ANDAMENTO') >= 0; }) || wb.SheetNames[0];
+    var ws = wb.Sheets[sheetName];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    if (!rows.length) return { linhas: [], erro: 'Planilha vazia' };
+
+    var headers = rows[0];
+    var idx = {
+        referencia: acharColunaDespachante(headers, ['REFER']),
+        hbl: acharColunaDespachante(headers, ['HBL']),
+        mbl: acharColunaDespachante(headers, ['MBL']),
+        chegada: acharColunaDespachante(headers, ['CHEGADA']),
+        porto: acharColunaDespachante(headers, ['PORTO', 'DESTINO']),
+        navio: acharColunaDespachante(headers, ['NAVIO']),
+        container: acharColunaDespachante(headers, ['CONTAINER']),
+        demanda: acharColunaDespachante(headers, ['DEMANDA']),
+    };
+    if (idx.referencia === -1) return { linhas: [], erro: 'Coluna REFERENCIA nao encontrada na planilha' };
+
+    var linhas = [];
+    for (var i = 1; i < rows.length; i++) {
+        var r = rows[i];
+        var ref = r[idx.referencia];
+        if (!ref || !String(ref).trim()) continue;
+        linhas.push({
+            referencia: String(ref).trim(),
+            hbl: idx.hbl >= 0 ? String(r[idx.hbl] || '').trim() : '',
+            mbl: idx.mbl >= 0 ? String(r[idx.mbl] || '').trim() : '',
+            data_chegada: idx.chegada >= 0 ? parseDataDespachante(r[idx.chegada]) : null,
+            porto_destino: idx.porto >= 0 ? String(r[idx.porto] || '').trim() : '',
+            navio: idx.navio >= 0 ? String(r[idx.navio] || '').trim() : '',
+            qtd_containers: idx.container >= 0 ? parseInt(String(r[idx.container] || '').replace(/\D/g, ''), 10) : null,
+            demanda_impak: idx.demanda >= 0 ? String(r[idx.demanda] || '').trim() : '',
+        });
+    }
+    return { linhas: linhas };
+}
+
+module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase };
