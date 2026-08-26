@@ -2787,7 +2787,7 @@ async function processosParaFollowUpSemanal(){
 
   const { data, error } = await sb()
     .from('controle_processos')
-    .select('id, referencia, cliente, fornecedor, produto, produtos_json, eta, porto_destino, armador, navio, transportadora, fase')
+    .select('id, referencia, cliente, fornecedor, produto, produtos_json, vendas_json, eta, porto_destino, armador, navio, transportadora, fase')
     .not('eta', 'is', null)
     .gte('eta', hojeStr)
     .lte('eta', limiteStr)
@@ -2807,12 +2807,43 @@ function descricaoProdutos(p){
   return p.produto || '—';
 }
 
+// Descrição dos itens de UMA venda específica (aba Vendas), não do processo
+// inteiro — usado quando o processo tem mais de um cliente, pra cada bloco
+// do follow-up mostrar só a quantidade vendida àquele cliente.
+function descricaoItensDaVenda(venda){
+    if (!venda || !Array.isArray(venda.itens)) return '';
+    const itens = venda.itens.filter(it => it && it.descricao);
+    if (!itens.length) return '';
+    return itens.map(it => it.descricao + (it.quantidade ? ` (${it.quantidade})` : '')).join(', ');
+}
+
+// Expande a lista de processos em linhas de follow-up: quando o processo
+// tem vendas_json com mais de um cliente, gera uma linha por cliente/venda
+// (com os itens daquela venda); senão, mantém 1 linha por processo (campo
+// cliente + produtos_json, comportamento antigo).
+function linhasFollowUpPorCliente(processos){
+    const linhas = [];
+    processos.forEach(p => {
+          let vendas = [];
+          try { vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; } catch(e) { vendas = []; }
+          vendas = Array.isArray(vendas) ? vendas.filter(v => v && v.cliente) : [];
+          if (vendas.length) {
+                  vendas.forEach(v => {
+                            linhas.push(Object.assign({}, p, { cliente: v.cliente, _produtosTexto: descricaoItensDaVenda(v) || descricaoProdutos(p) }));
+                  });
+          } else {
+                  linhas.push(Object.assign({}, p, { _produtosTexto: descricaoProdutos(p) }));
+          }
+    });
+    return linhas;
+}
+
 function montarHtmlFollowUpSemanal(processos){
   const escHtml = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
   const fmtData = iso => { try { return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR'); } catch(e) { return iso || '—'; } };
 
   const porCliente = {};
-  processos.forEach(p => {
+  linhasFollowUpPorCliente(processos).forEach(p => {
     const chave = p.cliente || '(cliente não definido)';
     (porCliente[chave] = porCliente[chave] || []).push(p);
   });
@@ -2822,7 +2853,7 @@ function montarHtmlFollowUpSemanal(processos){
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-weight:600;">${escHtml(p.referencia)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.fornecedor)||'—'}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(descricaoProdutos(p))}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p._produtosTexto)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">${fmtData(p.eta)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.porto_destino)||'—'}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.navio)||'—'}</td>
