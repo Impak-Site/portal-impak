@@ -370,10 +370,12 @@ async function importarPlanilhaDespachante(input){
     if(data.total_nao_encontrados){
       addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
       (data.resumo||[]).filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${r.referencia}`, '#fcd34d'));
+    } else {
+            addLog(`Tudo certo! Todas as referencias da planilha foram encontradas e conferidas.`, '#4ade80');
     }
     (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
 
-    showToast(`Importacao concluida: ${data.total_atualizados} atualizado(s)`, 'ok');
+    showToast(data.total_nao_encontrados ? `Importacao concluida com ${data.total_nao_encontrados} pendencia(s) - veja o log` : `Tudo certo: ${data.total_atualizados} processo(s) confirmado(s), sem erros`, data.total_nao_encontrados ? 'warn' : 'ok');
     fecharLog(15000);
     if(typeof carregarProcessos === 'function') await carregarProcessos();
     if(typeof render === 'function') render();
@@ -437,10 +439,12 @@ async function importarPlanilhaManu(input){
     if(data.total_nao_encontrados){
       addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
       (data.resumo||[]).filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${r.referencia}`, '#fcd34d'));
+    } else {
+            addLog(`✅ Tudo certo! Todas as referencias da planilha foram encontradas e conferidas.`, '#4ade80');
     }
     (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
 
-    showToast(`Importacao concluida: ${data.total_atualizados} atualizado(s)`, 'ok');
+    showToast(data.total_nao_encontrados ? `Importacao concluida com ${data.total_nao_encontrados} pendencia(s) - veja o log` : `Tudo certo: ${data.total_atualizados} processo(s) confirmado(s), sem erros`, data.total_nao_encontrados ? 'warn' : 'ok');
     fecharLog(15000);
     if(typeof carregarProcessos === 'function') await carregarProcessos();
     if(typeof render === 'function') render();
