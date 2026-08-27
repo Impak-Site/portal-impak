@@ -601,7 +601,7 @@ function importarManuBase(buffer) {
         if (!ref || !String(ref).trim()) continue;
         linhas.push({
             referencia: String(ref).trim(),
-            data_presenca: idx.prontidao >= 0 ? parseDataManu(r[idx.prontidao]) : null,
+            data_prontidao: idx.prontidao >= 0 ? parseDataManu(r[idx.prontidao]) : null,
             agente: idx.agente >= 0 ? String(r[idx.agente] || '').trim() : '',
             etd: idx.etd >= 0 ? parseDataManu(r[idx.etd]) : null,
         });
