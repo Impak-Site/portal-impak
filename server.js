@@ -1405,8 +1405,9 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
   if (!atualizados.length && !naoEncontrados.length && !comErro.length) return; // nada relevante pra reportar
 
   const NOMES_CAMPO = {
-    hbl: 'HBL', mbl: 'MBL', data_chegada: 'Data de Chegada', porto_destino: 'Porto de Destino',
-    navio: 'Navio', qtd_containers_prevista: 'Qtd. Containers', obs: 'Observacoes',
+    hbl: 'HBL', mbl: 'MBL', data_chegada: 'Data de Chegada', eta: 'ETA (Previsao de Chegada)',
+    porto_destino: 'Porto de Destino', navio: 'Navio', qtd_containers_prevista: 'Qtd. Containers',
+    obs: 'Observacoes',
   };
 
   const linhasAtualizados = atualizados.map(r => `
@@ -1472,7 +1473,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
 
     const { data: processos, error: errBusca } = await sb()
       .from('controle_processos')
-      .select('id, referencia, hbl, mbl, data_chegada, porto_destino, navio, qtd_containers_prevista, obs');
+      .select('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs');
     if (errBusca) throw new Error(errBusca.message);
 
     const porRef = new Map();
@@ -1507,7 +1508,19 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
 
       setCampo('hbl', linha.hbl);
       setCampo('mbl', linha.mbl);
-      setCampo('data_chegada', linha.data_chegada);
+      if (linha.data_chegada) {
+        // A "CHEGADA" da planilha do despachante e uma previsao, nao uma
+        // confirmacao. Datas futuras vao para o campo ETA (Previsao de
+        // Chegada) -- so preenchem Data Chegada (que dispara o calculo de
+        // demurrage) quando a data ja aconteceu ou e hoje. Mesma regra do
+        // moverDataFuturaParaPrevisao() usado na digitacao manual.
+        const hojeISO = new Date().toISOString().slice(0, 10);
+        if (linha.data_chegada > hojeISO) {
+          setCampo('eta', linha.data_chegada);
+        } else {
+          setCampo('data_chegada', linha.data_chegada);
+        }
+      }
       setCampo('porto_destino', normalizarPortoDestinoDespachante(linha.porto_destino));
       setCampo('navio', linha.navio);
       if (linha.qtd_containers && linha.qtd_containers > 0) setCampo('qtd_containers_prevista', linha.qtd_containers);
