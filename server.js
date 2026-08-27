@@ -1,5 +1,5 @@
 /**
- * IMPAK Portal — Servidor v2.0
+* IMPAK Portal — Servidor v2.0
  * Banco de dados: Supabase PostgreSQL
  *
  * Variáveis Railway obrigatórias:
@@ -43,7 +43,7 @@ const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
-const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase } = require('./planilha-import.js');
+const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase, importarManuBase } = require('./planilha-import.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -1569,6 +1569,127 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
     });
   } catch (e) {
     console.error('importar-despachante erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+function normRefManu(v) { return String(v || '').trim().toUpperCase(); }
+const DESTINATARIOS_RELATORIO_MANU = [
+  'ayslan_pereira@hotmail.com',
+  'importacao1@impak.com.br',
+];
+
+async function enviarRelatorioImportManu(resumo, usuario) {
+  const atualizados = resumo.filter(r => r.status === 'atualizado');
+  const naoEncontrados = resumo.filter(r => r.status === 'nao_encontrado');
+  const semMudancas = resumo.filter(r => r.status === 'sem_mudancas');
+  const comErro = resumo.filter(r => r.status === 'erro');
+  if (!atualizados.length && !naoEncontrados.length && !comErro.length) return;
+  const NOMES_CAMPO = {
+    data_presenca: 'Data de Prontidao', agente: 'Agente de Carga', etd: 'Previsao de Embarque (ETD)',
+  };
+  const linhaHtml = (r) => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${r.referencia}</td><td style="padding:4px 8px;border:1px solid #ddd;">${(r.campos||[]).map(c => NOMES_CAMPO[c]||c).join(', ')}</td></tr>`;
+  const html = `
+    <h3>Importacao Planilha Interna (Manu/Emanuelly)</h3>
+    <p>Executado por: ${usuario}</p>
+    <p><b>${atualizados.length}</b> processo(s) atualizado(s), <b>${semMudancas.length}</b> sem mudancas, <b>${naoEncontrados.length}</b> nao encontrado(s), <b>${comErro.length}</b> com erro.</p>
+    ${atualizados.length ? `<table style="border-collapse:collapse;"><tr><th style="padding:4px 8px;border:1px solid #ddd;">Referencia</th><th style="padding:4px 8px;border:1px solid #ddd;">Campos atualizados</th></tr>${atualizados.map(linhaHtml).join('')}</table>` : ''}
+    ${naoEncontrados.length ? `<p><b>Nao encontrados:</b> ${naoEncontrados.map(r=>r.referencia).join(', ')}</p>` : ''}
+  `;
+  const assunto = `Import Planilha Interna: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados`;
+  for (const destinatario of DESTINATARIOS_RELATORIO_MANU) {
+    await enviarEmail(destinatario, assunto, html);
+  }
+}
+
+app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    const { arquivo_base64 } = req.body;
+    if (!arquivo_base64) return res.status(400).json({ erro: 'Arquivo ausente' });
+    const buffer = Buffer.from(arquivo_base64, 'base64');
+    let parsed;
+    try {
+      parsed = importarManuBase(buffer);
+    } catch (parseErr) {
+      return res.status(400).json({ erro: parseErr.message });
+    }
+    if (parsed.erro) return res.status(400).json({ erro: parsed.erro });
+    const linhas = parsed.linhas || [];
+    if (!linhas.length) return res.json({ ok: true, resumo: [], total_linhas: 0 });
+
+    const { data: processos, error: errBusca } = await sb()
+      .from('controle_processos')
+      .select('id, referencia, data_presenca, agente, etd');
+    if (errBusca) throw new Error(errBusca.message);
+
+    const porRef = new Map();
+    (processos || []).forEach(p => porRef.set(normRefManu(p.referencia), p));
+
+    const resumo = [];
+    const logsGlobais = [];
+    const agora = new Date().toISOString();
+
+    for (const linha of linhas) {
+      const proc = porRef.get(normRefManu(linha.referencia));
+      if (!proc) {
+        resumo.push({ referencia: linha.referencia, status: 'nao_encontrado' });
+        continue;
+      }
+      const patch = {};
+      const camposAlterados = [];
+      const logsProc = [];
+      const setCampo = (campo, novoValor) => {
+        if (novoValor === undefined || novoValor === null || novoValor === '') return;
+        const antigo = proc[campo];
+        if (String(antigo || '') === String(novoValor)) return;
+        patch[campo] = novoValor;
+        camposAlterados.push(campo);
+        logsProc.push({
+          processo_id: proc.id, usuario: req.session.usuario, campo,
+          valor_antes: String(antigo || ''), valor_depois: String(novoValor),
+          created_at: agora,
+        });
+      };
+      setCampo('data_presenca', linha.data_presenca);
+      setCampo('agente', linha.agente);
+      setCampo('etd', linha.etd);
+
+      if (!camposAlterados.length) {
+        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas' });
+        continue;
+      }
+      patch.updated_at = agora;
+      const { error: errUpdate } = await sb().from('controle_processos').update(patch).eq('id', proc.id);
+      if (errUpdate) {
+        resumo.push({ referencia: proc.referencia, status: 'erro', erro: errUpdate.message });
+        continue;
+      }
+      logsGlobais.push(...logsProc);
+      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados });
+    }
+
+    if (logsGlobais.length) {
+      try { await sb().from('controle_log').insert(logsGlobais); }
+      catch (logErr) { console.warn('log manu erro:', logErr.message); }
+    }
+
+    const totalAtualizados = resumo.filter(r => r.status === 'atualizado').length;
+    const totalNaoEncontrados = resumo.filter(r => r.status === 'nao_encontrado').length;
+    const totalSemMudancas = resumo.filter(r => r.status === 'sem_mudancas').length;
+
+    console.log(`importar-manu: ${totalAtualizados} atualizados, ${totalNaoEncontrados} nao encontrados, ${totalSemMudancas} sem mudancas, por ${req.session.usuario}`);
+
+    enviarRelatorioImportManu(resumo, req.session.usuario)
+      .catch(mailErr => console.warn('relatorio email manu erro:', mailErr.message));
+    res.json({
+      ok: true, resumo,
+      total_linhas: linhas.length,
+      total_atualizados: totalAtualizados,
+      total_nao_encontrados: totalNaoEncontrados,
+      total_sem_mudancas: totalSemMudancas,
+    });
+  } catch (e) {
+    console.error('importar-manu erro:', e.message);
     res.status(500).json({ erro: e.message });
   }
 });
