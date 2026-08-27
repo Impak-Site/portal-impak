@@ -543,4 +543,70 @@ function importarDespachanteBase(buffer) {
     return { linhas: linhas };
 }
 
-module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase };
+// ── IMPORTACAO DE PLANILHA INTERNA (Manu/Emanuelly, "processos manu.xlsx") ──
+//
+// Planilha interna (nao do despachante) com Data de Prontidao Real,
+// Agente de Carga e Previsao de Embarque (ETD). Pedido da Emanuelly,
+// 27/08/2026: "la tem data de prontidao e os bookings" -- so essas
+// informacoes (prontidao, agente/booking, ETD) devem ser importadas;
+// a Previsao de Chegada (ETA) desta planilha NAO deve ser tocada, pois
+// aquele campo e mantido pela planilha da Amanda/despachante. Datas
+// nesta planilha vem no formato M/D/AA (US), diferente da planilha do
+// despachante (D/M/AAAA) -- por isso um parser de data separado.
+function acharColunaManu(headers, palavrasChave) {
+    return headers.findIndex(function(h) {
+        var hh = norm(h).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return palavrasChave.every(function(p) { return hh.indexOf(p) >= 0; });
+    });
+}
+
+function parseDataManu(v) {
+    if (!v) return null;
+    if (v instanceof Date) {
+        var y = v.getUTCFullYear();
+        var m = String(v.getUTCMonth() + 1).padStart(2, '0');
+        var d = String(v.getUTCDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
+    }
+    var s = String(v).trim();
+    var m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m2) return null;
+    var mm = m2[1].padStart(2, '0');
+    var dd = m2[2].padStart(2, '0');
+    var yy = m2[3];
+    if (yy.length === 2) yy = '20' + yy;
+    return yy + '-' + mm + '-' + dd;
+}
+
+function importarManuBase(buffer) {
+    validarBufferPlanilha(buffer);
+    var wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    if (!rows.length) return { linhas: [], erro: 'Planilha vazia' };
+
+    var headers = rows[0];
+    var idx = {
+        referencia: acharColunaManu(headers, ['PROCESSO']),
+        prontidao: acharColunaManu(headers, ['PRONTIDAO']),
+        agente: acharColunaManu(headers, ['AGENTE', 'CARGA']),
+        etd: acharColunaManu(headers, ['PREVISAO', 'EMBARQUE']),
+    };
+    if (idx.referencia === -1) return { linhas: [], erro: 'Coluna PROCESSOS nao encontrada na planilha' };
+
+    var linhas = [];
+    for (var i = 1; i < rows.length; i++) {
+        var r = rows[i];
+        var ref = r[idx.referencia];
+        if (!ref || !String(ref).trim()) continue;
+        linhas.push({
+            referencia: String(ref).trim(),
+            data_presenca: idx.prontidao >= 0 ? parseDataManu(r[idx.prontidao]) : null,
+            agente: idx.agente >= 0 ? String(r[idx.agente] || '').trim() : '',
+            etd: idx.etd >= 0 ? parseDataManu(r[idx.etd]) : null,
+        });
+    }
+    return { linhas: linhas };
+}
+
+module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase, importarManuBase: importarManuBase };
