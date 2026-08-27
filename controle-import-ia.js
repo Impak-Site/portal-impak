@@ -382,6 +382,7 @@ async function importarPlanilhaDespachante(input){
     showToast('Erro: '+e.message,'err');
     fecharLog(10000);
   }
+}
 
 // ════════════════════════════════════════════════════════════════
 // IMPORTAR PLANILHA INTERNA (Manu/Emanuelly) — prontidao + booking/ETD
@@ -450,7 +451,6 @@ async function importarPlanilhaManu(input){
   }
 }
 
-}
 
 // ════════════════════════════════════════════════════════════════
 // IMPORTAR PLANILHA DE FECHAMENTO (aba Custos Reais, por processo)
