@@ -382,6 +382,74 @@ async function importarPlanilhaDespachante(input){
     showToast('Erro: '+e.message,'err');
     fecharLog(10000);
   }
+
+// ════════════════════════════════════════════════════════════════
+// IMPORTAR PLANILHA INTERNA (Manu/Emanuelly) — prontidao + booking/ETD
+// ════════════════════════════════════════════════════════════════
+async function importarPlanilhaManu(input){
+  const file = input.files[0];
+  if(!file) return;
+  input.value = '';
+
+  let logDiv = document.getElementById('import-log-modal');
+  if(!logDiv){
+    logDiv = document.createElement('div');
+    logDiv.id = 'import-log-modal';
+    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"DM Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+    document.body.appendChild(logDiv);
+  }
+  logDiv.innerHTML = `<div style="font-weight:700;margin-bottom:8px;font-size:13px;">📋 Importando planilha interna: ${file.name}</div>`;
+  const addLog = (msg, cor) => {
+    const d = document.createElement('div');
+    d.style.cssText = `color:${cor||'#fff'};padding:2px 0;`;
+    d.textContent = msg;
+    logDiv.appendChild(d);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  };
+  const fecharLog = (delay) => setTimeout(()=>{ if(logDiv) logDiv.remove(); }, delay||8000);
+
+  showToast('Lendo planilha interna...','info');
+  addLog('Enviando arquivo pro servidor...', '#7dd3fc');
+
+  try{
+    const buf = await file.arrayBuffer();
+    let binary = '';
+    const bytes = new Uint8Array(buf);
+    for (let i=0; i<bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+
+    const resp = await fetch('/api/controle/v2/importar-manu', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ arquivo_base64: base64 })
+    });
+    const data = await resp.json();
+    if(!resp.ok || data.erro){
+      addLog(`✕ ERRO: ${data.erro||'falha desconhecida'}`, '#fca5a5');
+      showToast('Erro: '+(data.erro||'falha desconhecida'),'err');
+      fecharLog(10000);
+      return;
+    }
+
+    addLog(`${data.total_linhas} linha(s) na planilha`, '#7dd3fc');
+    addLog(`✓ ${data.total_atualizados} processo(s) atualizado(s)`, '#86efac');
+    if(data.total_sem_mudancas) addLog(`• ${data.total_sem_mudancas} sem mudanca (ja estavam com esses dados)`, '#93c5fd');
+    if(data.total_nao_encontrados){
+      addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
+      (data.resumo||[]).filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${r.referencia}`, '#fcd34d'));
+    }
+    (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
+
+    showToast(`Importacao concluida: ${data.total_atualizados} atualizado(s)`, 'ok');
+    fecharLog(15000);
+    if(typeof carregarProcessos === 'function') await carregarProcessos();
+    if(typeof render === 'function') render();
+  }catch(e){
+    addLog(`✕ ERRO: ${e.message}`, '#fca5a5');
+    showToast('Erro: '+e.message,'err');
+    fecharLog(10000);
+  }
+}
+
 }
 
 // ════════════════════════════════════════════════════════════════
