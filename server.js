@@ -1619,7 +1619,7 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
 
     const { data: processos, error: errBusca } = await sb()
       .from('controle_processos')
-      .select('id, referencia, data_presenca, agente, etd');
+      .select('id, referencia, data_prontidao, agente, etd');
     if (errBusca) throw new Error(errBusca.message);
 
     const porRef = new Map();
@@ -1650,7 +1650,7 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
           created_at: agora,
         });
       };
-      setCampo('data_presenca', linha.data_presenca);
+      setCampo('data_prontidao', linha.data_prontidao);
       setCampo('agente', linha.agente);
       setCampo('etd', linha.etd);
 
