@@ -54,7 +54,7 @@ function mapearOrigem(v) {
 const TIPOS_IMPORTACAO_VALIDOS = ['ENCOMENDA', 'PROPRIA', 'IMPLEMENTOS', 'TRANSPORTADORA'];
 function mapearTipoImportacao(v) {
     const s = norm(v);
-    return TIPOS_IMPORTACAO_VALIDOS.indexOf(s) >= 0 ? s : 'ENCOMENDA';
+    freturn TIPOS_IMPORTACAO_VALIDOS.indexOf(s) >= 0 ? s : 'ENCOMENDA';
 }
 
 function parseDados(wb) {
@@ -609,4 +609,48 @@ function importarManuBase(buffer) {
     return { linhas: linhas };
 }
 
-module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase, importarManuBase: importarManuBase };
+// ── IMPORTACAO DO CATALOGO DE PRODUTOS (aba "Cod Prod.", vinculo com Conexos) ──
+//
+// A aba "Cod Prod." das planilhas de fechamento traz uma lista de produtos
+// com 3 colunas: Descricao Completa, Codigo interno (UD00xx, usado nas
+// planilhas do time) e Cod.Conexos (codigo do item no ERP Conexos, usado
+// pro estoque/faturamento). Nem toda linha tem os 3 campos preenchidos --
+// o Codigo interno as vezes falta, o Cod.Conexos e o mais confiavel (e a
+// chave que usamos pra evitar duplicar o mesmo produto ao reimportar).
+function importarCatalogoProdutos(buffer) {
+    validarBufferPlanilha(buffer);
+    var wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+    var sheetName = wb.SheetNames.find(function(n) { return norm(n).indexOf('PROD') >= 0; });
+    if (!sheetName) return { itens: [], erro: 'Aba "Cod Prod." nao encontrada nesta planilha' };
+    var ws = wb.Sheets[sheetName];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    if (!rows.length) return { itens: [], erro: 'Aba vazia' };
+
+    var headerIdx = rows.findIndex(function(r) {
+        return r.some(function(c) { return norm(c).indexOf('DESCRI') >= 0; }) &&
+               r.some(function(c) { return norm(c).indexOf('CONEXOS') >= 0; });
+    });
+    if (headerIdx === -1) return { itens: [], erro: 'Cabecalho (Descricao/Cod.Conexos) nao encontrado na aba' };
+    var headers = rows[headerIdx];
+    var idxDescricao = headers.findIndex(function(h) { return norm(h).indexOf('DESCRI') >= 0; });
+    var idxCodigo = headers.findIndex(function(h) { return norm(h) === 'CODIGO' || norm(h) === 'CÓDIGO'; });
+    var idxConexos = headers.findIndex(function(h) { return norm(h).indexOf('CONEXOS') >= 0; });
+
+    var itens = [];
+    for (var i = headerIdx + 1; i < rows.length; i++) {
+        var r = rows[i];
+        var descricao = idxDescricao >= 0 ? String(r[idxDescricao] || '').trim() : '';
+        var codigoConexosRaw = idxConexos >= 0 ? r[idxConexos] : '';
+        var codigoConexos = codigoConexosRaw !== '' && !isNaN(parseInt(codigoConexosRaw, 10)) ? parseInt(codigoConexosRaw, 10) : null;
+        if (!descricao && codigoConexos === null) continue;
+        var codigoInterno = idxCodigo >= 0 ? String(r[idxCodigo] || '').trim() : '';
+        itens.push({
+            descricao: descricao,
+            codigo_interno: codigoInterno || null,
+            codigo_conexos: codigoConexos,
+        });
+    }
+    return { itens: itens };
+}
+
+module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase, importarManuBase: importarManuBase, importarCatalogoProdutos: importarCatalogoProdutos };
