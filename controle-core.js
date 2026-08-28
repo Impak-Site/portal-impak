@@ -2275,3 +2275,36 @@ function render(){
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // MODAL ÃÂ¢ÃÂÃÂ ABRIR / NOVO
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+
+// ── ALERTA DE CAMPOS-CHAVE NAO PREENCHIDOS (pedido Emanuelly, 27/08/2026) ──
+//
+// Ao salvar o processo, se um campo de uma fase mais avancada ja foi preenchido
+// (ex: numero da DI) mas o campo-chave de uma fase anterior ainda esta vazio
+// (ex: Presenca de Carga), isso quase sempre e esquecimento -- o sistema deve
+// avisar em vez de ficar silencioso. Usa a mesma ordem de fases de calcularFase(),
+// acha a fase mais avancada "desbloqueada" e confere se todo campo-chave anterior
+// a ela tambem foi preenchido; usado por coletarESalvar() em controle-campos.js.
+const FASE_CAMPOS_ORDEM = [
+  { label: 'ETD (Previsão de Embarque)', ok: p => !!p.etd, ids: ['f_etd'] },
+  { label: 'Data de Embarque', ok: p => !!p.data_embarque, ids: ['f_data_embarque'] },
+  { label: 'Presença de Carga / Data de Chegada', ok: p => !!(p.data_presenca || p.data_chegada), ids: ['f_data_presenca','f_data_chegada'] },
+  { label: 'Nº DI / Data de Registro da DI', ok: p => !!(p.numero_di || p.data_registro_di), ids: ['f_numero_di','f_data_registro_di'] },
+  { label: 'Canal / Data de Parametrização', ok: p => !!(p.canal || p.data_parametrizacao), ids: ['f_canal','f_data_parametrizacao'] },
+  { label: 'Data de Liberação', ok: p => !!p.data_liberacao, ids: ['f_data_liberacao'] },
+  { label: 'Data de Agendamento / NF Saída / NF Entrada', ok: p => !!(p.data_agendamento || p.nf_saida_numero || p.nf_entrada_numero), ids: ['f_data_agendamento','f_nf_saida_numero','f_nf_entrada_numero'] },
+  { label: 'Data de Carregamento', ok: p => !!p.data_carregamento, ids: ['f_data_carregamento'] },
+  { label: 'Data de Devolução de Vazio', ok: p => !!p.data_devolucao_vazio, ids: ['f_data_devolucao_vazio'] },
+  ];
+
+function camposFaseFaltantes(p){
+    let maisAvancada = -1;
+    for (let i = FASE_CAMPOS_ORDEM.length - 1; i >= 0; i--) {
+          if (FASE_CAMPOS_ORDEM[i].ok(p)) { maisAvancada = i; break; }
+    }
+    if (maisAvancada < 0) return [];
+    const faltantes = [];
+    for (let i = 0; i < maisAvancada; i++) {
+          if (!FASE_CAMPOS_ORDEM[i].ok(p)) faltantes.push(FASE_CAMPOS_ORDEM[i]);
+    }
+    return faltantes;
+}
