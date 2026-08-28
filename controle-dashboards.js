@@ -737,5 +737,5 @@ function showToast(msg, tipo, duracao){
   t.className = 'toast '+(tipo||'');
   t.textContent = msg;
   wrap.appendChild(t);
-  setTimeout(()=>t.remove(), duracao || (tipo==='warn' ? 8000 : 3000));
+  setTimeout(()=>t.remove(), duracao || 8000);
 }
