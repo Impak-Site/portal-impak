@@ -288,7 +288,18 @@ function coletarESalvar(){
     proc.pi_parcelas_json = novasParcelasJson;
   }
 
-  proc.log = log;
+  // Alerta de campos-chave nao preenchidos de fases anteriores (pedido Emanuelly, 27/08/2026)
+    document.querySelectorAll('.campo-faltando').forEach(el => el.classList.remove('campo-faltando'));
+    const faseFaltantes = camposFaseFaltantes(proc);
+    if (faseFaltantes.length) {
+          faseFaltantes.forEach(f => f.ids.forEach(id => {
+                  const el = document.getElementById(id);
+                  if (el) el.classList.add('campo-faltando');
+          }));
+          showToast('⚠️ Campos em branco: ' + faseFaltantes.map(f => f.label).join(' · '), 'warn');
+    }
+  
+    proc.log = log;
   _editando = proc;
 
   window._salvandoProcesso = true;
