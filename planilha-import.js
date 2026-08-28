@@ -54,7 +54,7 @@ function mapearOrigem(v) {
 const TIPOS_IMPORTACAO_VALIDOS = ['ENCOMENDA', 'PROPRIA', 'IMPLEMENTOS', 'TRANSPORTADORA'];
 function mapearTipoImportacao(v) {
     const s = norm(v);
-    freturn TIPOS_IMPORTACAO_VALIDOS.indexOf(s) >= 0 ? s : 'ENCOMENDA';
+    return TIPOS_IMPORTACAO_VALIDOS.indexOf(s) >= 0 ? s : 'ENCOMENDA';
 }
 
 function parseDados(wb) {
