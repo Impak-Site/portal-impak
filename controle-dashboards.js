@@ -730,12 +730,12 @@ function filtroEsseMes(){
   if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();
 }
 
-function showToast(msg, tipo){
+function showToast(msg, tipo, duracao){
   const wrap = document.getElementById('toast-wrap');
   if(!wrap) return;
   const t = document.createElement('div');
   t.className = 'toast '+(tipo||'');
   t.textContent = msg;
   wrap.appendChild(t);
-  setTimeout(()=>t.remove(), 3000);
+  setTimeout(()=>t.remove(), duracao || (tipo==='warn' ? 8000 : 3000));
 }
