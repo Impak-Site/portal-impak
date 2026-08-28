@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catálogo de Produtos — IMPAK Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+--bg:#f5f7fb;--card:#fff;--border:#e4e9f1;--border-strong:#d2dae6;--ac:#1a7fd4;--ac2:#1567b8;--ac-soft:#eaf3fc;
+--text:#101a2b;--muted:#5c7089;--dim:#98a7ba;
+--ok:#16a34a;--warn:#d97706;--err:#dc2626;--info:#0891b2;
+--ok-bg:#eafaf1;--warn-bg:#fdf6e9;
+--err-bg:#fdedee;--info-bg:#e9f8fb;
+--r-sm:6px;--r-md:8px;--r-lg:12px;--r-xl:16px;
+--shadow-sm:0 1px 2px rgba(16,24,40,.06);
+--shadow-md:0 4px 12px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 24px 60px;}
+h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin:0 0 4px;}
+.sub{color:var(--muted);font-size:13px;margin:0 0 20px;line-height:1.5;}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+.toolbar input[type=text]{flex:1;min-width:220px;padding:9px 12px;border:1px solid var(--border-strong);border-radius:var(--r-md);font-size:13px;font-family:inherit;}
+.btn{padding:9px 16px;border-radius:var(--r-md);border:1px solid var(--border-strong);background:#fff;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
+.btn.primary{background:var(--ac);border-color:var(--ac);color:#fff;}
+.btn.primary:hover{background:var(--ac2);}
+.btn:hover{background:#f7f9fc;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{background:var(--ac-soft);color:var(--ac2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:10px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:#fafbfd;}
+tbody tr.inativo{opacity:.45;}
+td input[type=text]{width:100%;padding:6px 8px;border:1px solid transparent;border-radius:6px;font-size:13px;font-family:inherit;background:transparent;}
+td input[type=text]:hover{border-color:var(--border-strong);}
+td input[type=text]:focus{outline:none;border-color:var(--ac);background:#fff;}
+td.col-conexos input, td.col-interno input{text-align:center;}
+.col-conexos{width:110px;} .col-interno{width:110px;} .col-acao{width:60px;text-align:center;}
+.del-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:15px;padding:4px;}
+.del-btn:hover{color:var(--err);}
+.linha-salvando{opacity:.5;pointer-events:none;}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--text);color:#fff;padding:10px 18px;border-radius:var(--r-md);font-size:13px;box-shadow:var(--shadow-md);opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;z-index:999;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.err{background:var(--err);}
+.loading{padding:40px;text-align:center;color:var(--muted);}
+.contador{font-size:12px;color:var(--muted);margin:10px 2px 0;}
+#importModal{display:none;position:fixed;inset:0;background:rgba(16,24,40,.5);z-index:1000;align-items:center;justify-content:center;}
+#importModal .box{background:#fff;border-radius:var(--r-lg);padding:24px;max-width:420px;width:90%;box-shadow:var(--shadow-md);}
+#importModal h3{margin:0 0 10px;font-family:'Syne',sans-serif;}
+#importModal p{font-size:13px;color:var(--muted);line-height:1.5;}
+#importModal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
+#importResultado{margin-top:12px;font-size:13px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📋 Catálogo de Produtos</h1>
+  <p class="sub">Produtos vinculados ao Conexos (Cod.Conexos = código do item no ERP, Código = código interno UD00xx usado nas planilhas de fechamento). Edita direto na tabela — salva sozinho.</p>
+  <div class="toolbar">
+    <input type="text" id="busca" placeholder="Buscar por descrição ou código...">
+    <button class="btn" id="btnImportar">📥 Importar de planilha</button>
+    <button class="btn primary" id="btnNovo">+ Novo produto</button>
+  </div>
+  <div class="card">
+    <div id="tabelaWrap" class="loading">Carregando…</div>
+  </div>
+  <div class="contador" id="contador"></div>
+</div>
+<div id="toast" class="toast"></div>
+
+<div id="importModal">
+  <div class="box">
+    <h3>Importar catálogo de planilha</h3>
+    <p>Envie uma planilha (.xlsm/.xlsx) que tenha a aba "Cod Prod." (Descrição Completa / Código / Cod.Conexos). Itens com Cod.Conexos já existente são atualizados; os demais são adicionados.</p>
+    <input type="file" id="arquivoImportar" accept=".xlsx,.xlsm">
+    <div id="importResultado"></div>
+    <div class="actions">
+      <button class="btn" id="btnFecharImport">Cancelar</button>
+      <button class="btn primary" id="btnConfirmarImport">Importar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function escapeHtml(s){
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function mostrarToast(msg, erro){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (erro ? ' err' : '');
+  setTimeout(() => { t.className = 'toast'; }, 2600);
+}
+
+let produtos = [];
+
+async function carregar(termo){
+  const wrap = document.getElementById('tabelaWrap');
+  try{
+    const url = '/api/catalogo-produtos' + (termo ? '?q=' + encodeURIComponent(termo) : '?limit=500');
+    const r = await fetch(url);
+    const d = await r.json();
+    if(!r.ok || !d.ok){
+      wrap.innerHTML = '<div class="loading">' + escapeHtml(d.erro || 'Erro ao carregar.') + '</div>';
+      return;
+    }
+    produtos = d.produtos || [];
+    renderTabela();
+  }catch(e){
+    wrap.innerHTML = '<div class="loading">Erro de rede ao carregar.</div>';
+  }
+}
+
+function renderTabela(){
+  const wrap = document.getElementById('tabelaWrap');
+  document.getElementById('contador').textContent = produtos.length + ' produto(s)';
+  if(!produtos.length){
+    wrap.innerHTML = '<div class="loading">Nenhum produto encontrado.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Descrição</th><th class="col-interno">Código</th><th class="col-conexos">Cod.Conexos</th><th class="col-acao"></th></tr></thead><tbody>';
+  produtos.forEach(p => {
+    html += `<tr data-id="${p.id}">`;
+    html += `<td><input type="text" data-campo="descricao" value="${escapeHtml(p.descricao)}"></td>`;
+    html += `<td class="col-interno"><input type="text" data-campo="codigo_interno" value="${escapeHtml(p.codigo_interno || '')}" placeholder="UD00xx"></td>`;
+    html += `<td class="col-conexos"><input type="text" data-campo="codigo_conexos" value="${p.codigo_conexos != null ? p.codigo_conexos : ''}" placeholder="—"></td>`;
+    html += `<td class="col-acao"><button class="del-btn" title="Remover">✕</button></td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('tbody tr').forEach(tr => {
+    tr.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('change', () => salvarLinha(tr));
+    });
+    tr.querySelector('.del-btn').addEventListener('click', () => removerLinha(tr));
+  });
+}
+
+let _debounce = {};
+function salvarLinha(tr){
+  const id = tr.getAttribute('data-id');
+  clearTimeout(_debounce[id]);
+  _debounce[id] = setTimeout(async () => {
+    const payload = { id: id === 'novo' ? undefined : id };
+    tr.querySelectorAll('input').forEach(inp => { payload[inp.getAttribute('data-campo')] = inp.value; });
+    if(!payload.descricao || !payload.descricao.trim()){ mostrarToast('Descrição obrigatória.', true); return; }
+    tr.classList.add('linha-salvando');
+    try{
+      const r = await fetch('/api/catalogo-produtos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok){ mostrarToast(d.erro || 'Erro ao salvar.', true); return; }
+      if(id === 'novo'){ tr.setAttribute('data-id', d.id); }
+      mostrarToast('Produto salvo.');
+    }catch(e){
+      mostrarToast('Erro de rede ao salvar.', true);
+    }finally{
+      tr.classList.remove('linha-salvando');
+    }
+  }, 400);
+}
+
+async function removerLinha(tr){
+  const id = tr.getAttribute('data-id');
+  if(id === 'novo'){ tr.remove(); return; }
+  if(!confirm('Remover este produto do catálogo?')) return;
+  try{
+    const r = await fetch('/api/catalogo-produtos/' + encodeURIComponent(id), { method: 'DELETE' });
+    const d = await r.json();
+    if(!r.ok || !d.ok){ mostrarToast(d.erro || 'Erro ao remover.', true); return; }
+    tr.remove();
+    mostrarToast('Produto removido.');
+  }catch(e){ mostrarToast('Erro de rede ao remover.', true); }
+}
+
+document.getElementById('btnNovo').addEventListener('click', () => {
+  const wrap = document.getElementById('tabelaWrap');
+  if(wrap.querySelector('.loading')) wrap.innerHTML = '<table><thead><tr><th>Descrição</th><th class="col-interno">Código</th><th class="col-conexos">Cod.Conexos</th><th class="col-acao"></th></tr></thead><tbody></tbody></table>';
+  const tbody = wrap.querySelector('tbody');
+  const tr = document.createElement('tr');
+  tr.setAttribute('data-id', 'novo');
+  tr.innerHTML = `
+    <td><input type="text" data-campo="descricao" placeholder="Descrição do produto"></td>
+    <td class="col-interno"><input type="text" data-campo="codigo_interno" placeholder="UD00xx"></td>
+    <td class="col-conexos"><input type="text" data-campo="codigo_conexos" placeholder="—"></td>
+    <td class="col-acao"><button class="del-btn" title="Remover">✕</button></td>`;
+  tbody.insertBefore(tr, tbody.firstChild);
+  tr.querySelectorAll('input').forEach(inp => inp.addEventListener('change', () => salvarLinha(tr)));
+  tr.querySelector('.del-btn').addEventListener('click', () => removerLinha(tr));
+  tr.querySelector('input').focus();
+});
+
+let _buscaDebounce;
+document.getElementById('busca').addEventListener('input', (e) => {
+  clearTimeout(_buscaDebounce);
+  _buscaDebounce = setTimeout(() => carregar(e.target.value.trim()), 300);
+});
+
+document.getElementById('btnImportar').addEventListener('click', () => { document.getElementById('importModal').style.display = 'flex'; });
+document.getElementById('btnFecharImport').addEventListener('click', () => { document.getElementById('importModal').style.display = 'none'; document.getElementById('importResultado').innerHTML=''; });
+document.getElementById('btnConfirmarImport').addEventListener('click', async () => {
+  const input = document.getElementById('arquivoImportar');
+  const resultDiv = document.getElementById('importResultado');
+  if(!input.files.length){ resultDiv.innerHTML = '<span style="color:var(--err)">Escolha um arquivo.</span>'; return; }
+  const file = input.files[0];
+  resultDiv.textContent = 'Importando...';
+  try{
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const r = await fetch('/api/catalogo-produtos/importar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ arquivo_base64: base64 }),
+    });
+    const d = await r.json();
+    if(!r.ok || !d.ok){ resultDiv.innerHTML = '<span style="color:var(--err)">' + escapeHtml(d.erro || 'Erro ao importar.') + '</span>'; return; }
+    resultDiv.innerHTML = `<span style="color:var(--ok)">Importado: ${d.gravados} de ${d.total} itens (${d.com_conexos} com Cod.Conexos, ${d.sem_conexos} sem).</span>`;
+    carregar();
+  }catch(e){
+    resultDiv.innerHTML = '<span style="color:var(--err)">Erro de rede ao importar.</span>';
+  }
+});
+
+carregar();
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>
+
