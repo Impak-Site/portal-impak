@@ -43,7 +43,7 @@ const session = require('express-session');
 const path    = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
-const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase, importarManuBase } = require('./planilha-import.js');
+const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase, importarManuBase, importarCatalogoProdutos } = require('./planilha-import.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -1155,6 +1155,7 @@ app.get('/permissoes', (req, res) => {
 });
 app.get('/',          auth('tyredesk'),  (req, res) => res.sendFile(path.join(__dirname, 'tyredesk.html')));
 app.get('/processos', auth('conferencia'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
+app.get('/catalogo-produtos', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'catalogo-produtos.html')));
 
 // ── API: SESSÃO ───────────────────────────────────────────────
 app.get('/api/me', (req, res) => {
@@ -2576,6 +2577,89 @@ app.delete('/api/contatos/:id', auth('controle','financeiro','resultado','tv','n
     if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// ── API: CATALOGO DE PRODUTOS (vinculo com Conexos) ────────────
+app.get('/api/catalogo-produtos', auth(), async (req, res) => {
+  try {
+    const { q, limit } = req.query;
+    const lim = Math.min(parseInt(limit) || 50, 2000);
+    let query = sb().from('catalogo_produtos').select('id,descricao,codigo_interno,codigo_conexos,medida,ativo').eq('ativo', true);
+    if (q && q.trim().length >= 2) {
+      const qSeguro = q.replace(/[,%*()]/g, '').trim();
+      query = query.or(`descricao.ilike.%${qSeguro}%,codigo_interno.ilike.%${qSeguro}%`);
+    }
+    query = query.order('descricao').limit(lim);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, produtos: data || [] });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+app.post('/api/catalogo-produtos', auth('tyredesk'), async (req, res) => {
+  try {
+    const p = req.body;
+    if (!p.descricao || !p.descricao.trim()) return res.status(400).json({ ok: false, erro: 'Descrição obrigatória' });
+    const registro = {
+      descricao: String(p.descricao).trim(),
+      codigo_interno: p.codigo_interno ? String(p.codigo_interno).trim() : null,
+      codigo_conexos: p.codigo_conexos !== undefined && p.codigo_conexos !== null && p.codigo_conexos !== '' ? parseInt(p.codigo_conexos, 10) : null,
+      medida: p.medida ? String(p.medida).trim() : null,
+      ativo: p.ativo !== undefined ? !!p.ativo : true,
+      updated_at: new Date().toISOString(),
+    };
+    if (p.id) {
+      const { error } = await sb().from('catalogo_produtos').update(registro).eq('id', p.id);
+      if (error) throw new Error(error.message);
+      return res.json({ ok: true, id: p.id });
+    }
+    const { data, error } = await sb().from('catalogo_produtos').insert(registro).select('id').single();
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, id: data.id });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+app.delete('/api/catalogo-produtos/:id', auth('tyredesk'), async (req, res) => {
+  try {
+    const { error } = await sb().from('catalogo_produtos').update({ ativo: false, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// Importa a aba "Cod Prod." de uma planilha de fechamento e faz upsert em
+// lote no catalogo (chave: codigo_conexos, quando presente). Usado uma vez
+// pra popular o catalogo a partir das planilhas ja existentes, e pode ser
+// reusado sempre que a Unicap mandar uma planilha com produtos novos.
+app.post('/api/catalogo-produtos/importar', auth('tyredesk'), async (req, res) => {
+  try {
+    const { arquivo_base64 } = req.body;
+    if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' });
+    const buffer = Buffer.from(arquivo_base64, 'base64');
+    const resultado = importarCatalogoProdutos(buffer);
+    if (resultado.erro) return res.status(400).json({ ok: false, erro: resultado.erro });
+    const comConexos = resultado.itens.filter(it => it.codigo_conexos !== null);
+    const semConexos = resultado.itens.filter(it => it.codigo_conexos === null);
+    let gravados = 0;
+    if (comConexos.length) {
+      const { error } = await sb().from('catalogo_produtos').upsert(
+        comConexos.map(it => ({ ...it, ativo: true, updated_at: new Date().toISOString() })),
+        { onConflict: 'codigo_conexos' }
+      );
+      if (error) throw new Error(error.message);
+      gravados += comConexos.length;
+    }
+    // Itens sem Cod.Conexos não têm chave confiável pra upsert (evitar
+    // duplicar a cada reimportação) — inserção simples, uma vez só.
+    if (semConexos.length) {
+      const { error } = await sb().from('catalogo_produtos').insert(
+        semConexos.map(it => ({ ...it, ativo: true }))
+      );
+      if (error) throw new Error(error.message);
+      gravados += semConexos.length;
+    }
+    res.json({ ok: true, total: resultado.itens.length, com_conexos: comConexos.length, sem_conexos: semConexos.length, gravados });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
 app.post('/api/calculador/importar-planilha', auth('tyredesk'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarPlanilhaBase(buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });

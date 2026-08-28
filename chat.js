@@ -181,6 +181,7 @@ const navModulos = [
 { label: '📄 Conferência', href: '/processos', key: 'processos', modulo: 'conferencia' },
 { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
 { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
+{ label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
 { label: '📊 Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
   { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
   { label: '📺 TV', href: '/tv', key: 'tv', modulo: 'tv' },
@@ -198,6 +199,7 @@ const modAtual = path === '/' ? 'tyredesk'
 : path.includes('controle') ? 'controle'
 : path.includes('processos') ? 'processos'
 : path.includes('calculador')? 'calculador'
+: path.includes('catalogo-produtos') ? 'catalogo'
 : '';
 
 // Não mostrar nav na tela de login do servidor (página /login)
