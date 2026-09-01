@@ -195,6 +195,14 @@ function confirmarExportCliente(){
   exportarFormatoCliente(statusSelecionados);
 }
 
+function confirmarExportClientePDF(){
+  const statusSelecionados = Array.from(document.querySelectorAll('.exportcliente-status-chk'))
+    .filter(chk=>chk.checked).map(chk=>chk.value);
+  if(!statusSelecionados.length){ showToast('Marque ao menos um status para exportar','warn'); return; }
+  fecharModalExportCliente();
+  exportarFormatoClientePDF(statusSelecionados);
+}
+
 // ExportaÃ§Ã£o no formato de planilha enviada aos clientes (modelo "PNEUS
 // EXPRESS"): uma linha por produto/medida (nÃ£o por processo), agrupado por
 // Fornecedor, com mapeamento:
@@ -316,19 +324,13 @@ async function exportarDREExcel(dre){
   }
 }
 
-async function exportarFormatoCliente(statusSelecionados){
-  showToast('Gerando planilha no formato cliente...','info');
-  try{
-    // ExcelJS (carregado antecipadamente no <head>, ver comentÃ¡rio lÃ¡) em
-    // vez da lib "xlsx" (usada nos outros exports) â o build gratuito da
-    // "xlsx" nÃ£o estiliza cÃ©lulas (cor, borda, fonte); ExcelJS suporta isso
-    // nativamente, o que permite gerar aqui uma planilha com visual
-    // profissional, pronta pra ser enviada a um cliente/terceiro (task:
-    // planilha de follow-up bem formatada pra exportar ao cliente).
-    if(typeof ExcelJS === 'undefined'){
-      showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
-      return;
-    }
+// Monta as linhas do follow-up (1 por produto/item), agrupadas por cliente
+// -- logica compartilhada entre o export Excel e o export PDF (pedido da
+// Emanuelly, 28/08: "daria pra exportar em pdf e excel?"), pra nao duplicar
+// a regra de negocio (filtro de status, ordenacao por chegada, multi-cliente
+// via vendas_json etc) em dois lugares e arriscar os dois divergirem.
+// Retorna null (e mostra o toast de erro) quando nao ha nada pra exportar.
+function montarLinhasFollowUpCliente(statusSelecionados){
     let lista = filtrarProcessos(true); // ignora o filtro de fase/status ativo na tela (task #335: antes, exportar com uma aba de status aberta gerava planilha só daquela fase; a seleção de status agora é feita só pelo popup, que já vem com todos marcados por padrão) — mantém os demais filtros (cliente, busca, data)
 
     // Filtro de status escolhido no popup (pedido: confirmar quais fases
@@ -436,7 +438,7 @@ async function exportarFormatoCliente(statusSelecionados){
       }
     });
 
-    if(!linhas.length){ showToast('Nenhum produto encontrado para exportar','err'); return; }
+    if(!linhas.length){ showToast('Nenhum produto encontrado para exportar','err'); return null; }
 
     // Separar por cliente â pedido: "um arquivo por cliente" quando hÃ¡ mais
     // de um cliente envolvido nas linhas selecionadas (seja porque a lista
@@ -446,6 +448,20 @@ async function exportarFormatoCliente(statusSelecionados){
     const porCliente = {};
     linhas.forEach(l=>{ (porCliente[l.cliente] = porCliente[l.cliente]||[]).push(l); });
     const clientesOrdenados = Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+
+    return { linhas, porCliente, clientesOrdenados, incluirFrete, clienteFiltro };
+}
+
+async function exportarFormatoCliente(statusSelecionados){
+  showToast('Gerando planilha no formato cliente...','info');
+  try{
+    if(typeof ExcelJS === 'undefined'){
+      showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+      return;
+    }
+    const dados = montarLinhasFollowUpCliente(statusSelecionados);
+    if(!dados) return;
+    const { linhas, porCliente, clientesOrdenados, incluirFrete, clienteFiltro } = dados;
 
     const { CORES, estilizarTitulo, estilizarSubtitulo, estilizarHeaderCell,
             estilizarGrupoHeader, estilizarCelulaDado } = window.ExcelStyles;
@@ -528,15 +544,40 @@ ws.getRow(3).height = 16;
         ws.getRow(rowIdx).height = 22;
         rowIdx++;
 
-        porForn[forn].forEach((l,idx)=>{
-          const row = ws.getRow(rowIdx);
-          colunas.forEach((c,i)=>{
-            const cell = row.getCell(i+1);
-            cell.value = l[c];
-            estilizarCelulaDado(cell, {idx, alinhamento: c==='Qte' ? 'center':'left', size:10.5});
-          });
-          rowIdx++;
-        });
+        // Colunas cujo valor vem do PROCESSO (nao do item/produto) -- por
+        // isso repete identico em toda linha do mesmo Invoice. Pedido da
+        // Emanuelly (28/08): em vez de repetir esse valor em toda linha
+        // (poluido visualmente), mesclar essas colunas verticalmente quando
+        // o mesmo Invoice tiver mais de 1 item/linha -- like a planilha
+        // modelo que ela mandou.
+        const colunasDoProcesso = ['Invoice','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD','Valor do Frete'];
+        const linhasForn = porForn[forn];
+        let li = 0;
+        while(li < linhasForn.length){
+          let lj = li;
+          while(lj+1 < linhasForn.length && linhasForn[lj+1]['Invoice'] === linhasForn[li]['Invoice']) lj++;
+          const linhaInicioGrupo = rowIdx;
+          for(let lk=li; lk<=lj; lk++){
+            const l = linhasForn[lk];
+            const row = ws.getRow(rowIdx);
+            colunas.forEach((c,i)=>{
+              const cell = row.getCell(i+1);
+              cell.value = l[c];
+              estilizarCelulaDado(cell, {idx: lk, alinhamento: c==='Qte' ? 'center':'left', size:10.5});
+            });
+            rowIdx++;
+          }
+          const linhaFimGrupo = rowIdx - 1;
+          if(linhaFimGrupo > linhaInicioGrupo){
+            colunas.forEach((c,i)=>{
+              if(!colunasDoProcesso.includes(c)) return;
+              ws.mergeCells(linhaInicioGrupo, i+1, linhaFimGrupo, i+1);
+              const cellMesclada = ws.getCell(linhaInicioGrupo, i+1);
+              cellMesclada.alignment = {vertical:'middle', horizontal: c==='Qte'?'center':'left', wrapText:true};
+            });
+          }
+          li = lj + 1;
+        }
       });
 
       // Linha final â resumo
@@ -582,6 +623,120 @@ ws.getRow(3).height = 16;
     }
   }catch(e){
     showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
+  }
+}
+
+// ── EXPORT PDF NO FORMATO CLIENTE (mesmo layout do exportarFormatoCliente,
+// pedido da Emanuelly 28/08: "e se possivel daria pra exportar em pdf e
+// excel?") ── usa jsPDF + jspdf-autotable (CDN, ver controle_v2.html) e a
+// MESMA logica de montagem de linhas (montarLinhasFollowUpCliente), pra
+// nunca divergir do Excel em quais processos/itens entram.
+async function exportarFormatoClientePDF(statusSelecionados){
+  showToast('Gerando PDF no formato cliente...','info');
+  try{
+    if(typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined'){
+      showToast('Biblioteca de PDF ainda carregando, tente novamente em 1 segundo','err');
+      return;
+    }
+    const dados = montarLinhasFollowUpCliente(statusSelecionados);
+    if(!dados) return;
+    const { porCliente, clientesOrdenados, incluirFrete, clienteFiltro } = dados;
+
+    const colunas = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD'];
+    if(incluirFrete) colunas.push('Valor do Frete');
+    // Colunas que vem do PROCESSO (repetem em todo item do mesmo Invoice) --
+    // mescladas verticalmente (rowSpan) em vez de repetidas, igual ao Excel.
+    const colunasDoProcesso = ['Invoice','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','POD','Valor do Frete'];
+    const dataArq = new Date().toISOString().split('T')[0];
+
+    function gerarPdfCliente(nomeCliente, linhasCliente){
+      const porForn = {};
+      linhasCliente.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
+      const fornOrdenados = Object.keys(porForn).sort((fa,fb)=>{
+        const da = Math.min(...porForn[fa].map(l=>l._chegadaTs));
+        const db = Math.min(...porForn[fb].map(l=>l._chegadaTs));
+        return da - db;
+      });
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+      const nomeClienteExibir = nomeCliente === '(sem cliente)' ? '' : nomeCliente;
+
+      doc.setFontSize(14);
+      doc.setTextColor(30,41,59);
+      doc.text(`IMPAK — Follow-up de Importação${nomeClienteExibir?' · '+nomeClienteExibir:(clienteFiltro?' · '+clienteFiltro:'')}`, 40, 40);
+      doc.setFontSize(9);
+      doc.setTextColor(100,116,139);
+      const agora = new Date();
+      doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`, 40, 56);
+      doc.setFontSize(8);
+      doc.setTextColor(146,64,14);
+      doc.text('As datas de chegada informadas são previsões (ETA) e podem sofrer alterações ou atrasos.', 40, 70);
+
+      // Monta o body inteiro (todos os fornecedores) numa unica tabela --
+      // cada grupo de fornecedor comeca com uma linha "cabecalho" que ocupa
+      // todas as colunas (colSpan), igual ao grupo destacado do Excel.
+      const body = [];
+      fornOrdenados.forEach(forn=>{
+        body.push([{ content: `🏭  ${forn}`, colSpan: colunas.length, styles:{fillColor:[241,245,249], textColor:[51,65,85], fontStyle:'bold', halign:'left'} }]);
+        const linhasForn = porForn[forn];
+        let li = 0;
+        while(li < linhasForn.length){
+          let lj = li;
+          while(lj+1 < linhasForn.length && linhasForn[lj+1]['Invoice'] === linhasForn[li]['Invoice']) lj++;
+          const span = lj - li + 1;
+          for(let lk=li; lk<=lj; lk++){
+            const l = linhasForn[lk];
+            const row = [];
+            colunas.forEach(c=>{
+              if(colunasDoProcesso.includes(c)){
+                // Cobertas por rowSpan: so entram na linha ancora (lk===li);
+                // nas demais linhas do mesmo Invoice, a celula e OMITIDA (nao
+                // um valor vazio) -- e assim que jspdf-autotable espera pra
+                // saber que aquela posicao ja esta coberta pelo rowSpan.
+                if(lk === li) row.push(span > 1 ? { content: l[c]||'', rowSpan: span, styles:{valign:'middle'} } : (l[c]||''));
+              } else {
+                row.push(l[c]||'');
+              }
+            });
+            body.push(row);
+          }
+          li = lj + 1;
+        }
+      });
+      body.push([{ content: `Total: ${linhasCliente.length} item(ns) em ${fornOrdenados.length} fornecedor(es)`, colSpan: colunas.length, styles:{halign:'right', fontStyle:'italic', textColor:[100,116,139]} }]);
+
+      doc.autoTable({
+        startY: 82,
+        head: [colunas],
+        body,
+        theme: 'grid',
+        styles: { fontSize:8, cellPadding:4, valign:'middle', lineColor:[226,232,240], lineWidth:0.5 },
+        headStyles: { fillColor:[37,99,235], textColor:255, fontStyle:'bold', fontSize:8.5 },
+        margin: { left:40, right:40 },
+      });
+
+      const sufixoCliente = '_'+(nomeClienteExibir || clienteFiltro || 'FollowUp').replace(/[^a-zA-Z0-9]+/g,'');
+      doc.save(`IMPAK_FollowUp${sufixoCliente}_${dataArq}.pdf`);
+    }
+
+    if(clientesOrdenados.length <= 1){
+      const nomeUnico = clientesOrdenados[0] || (clienteFiltro || 'Follow-up');
+      gerarPdfCliente(nomeUnico, porCliente[nomeUnico] || dados.linhas);
+      showToast(`✓ PDF gerado, ordenado por chegada${incluirFrete?' — com Valor do Frete':''}`,'ok');
+    }else{
+      // Mesma logica do Excel: 1 arquivo por cliente, com pequeno delay entre
+      // downloads pro navegador nao bloquear downloads multiplos seguidos.
+      for(let i=0;i<clientesOrdenados.length;i++){
+        const nome = clientesOrdenados[i];
+        gerarPdfCliente(nome, porCliente[nome]);
+        if(i < clientesOrdenados.length-1) await new Promise(r=>setTimeout(r,400));
+      }
+      showToast(`✓ PDF gerado em ${clientesOrdenados.length} arquivo(s) (1 por cliente)`,'ok');
+    }
+  }catch(e){
+    showToast('Erro ao exportar PDF: '+e.message,'err');
     console.error(e);
   }
 }
