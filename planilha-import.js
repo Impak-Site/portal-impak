@@ -485,6 +485,19 @@ function acharColunaDespachante(headers, palavrasChave) {
     });
 }
 
+// A planilha do despachante ja mudou de formato mais de uma vez (a Amanda
+// reorganiza as colunas de tempos em tempos -- por isso procurar por UM
+// unico conjunto fixo de palavras-chave quebra silenciosamente quando o
+// cabecalho muda). Tenta cada conjunto de palavras-chave em ordem de
+// prioridade e usa o primeiro que der match.
+function acharColunaComAlternativas(headers, listasDeKeywords) {
+    for (var i = 0; i < listasDeKeywords.length; i++) {
+        var idx = acharColunaDespachante(headers, listasDeKeywords[i]);
+        if (idx >= 0) return idx;
+    }
+    return -1;
+}
+
 function parseDataDespachante(v) {
     if (!v) return null;
     if (v instanceof Date) {
@@ -494,7 +507,15 @@ function parseDataDespachante(v) {
         return y + '-' + m + '-' + d;
     }
     var s = String(v).trim();
-    var m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    // A coluna "CHEGADA TERMINAL DESCARGA" da planilha do despachante quase
+    // sempre vem com texto extra colado na data (codigo do terminal, prefixo
+    // "ETA", as vezes ate 2 datas na mesma celula -- ex: "24/08/26\nNVT\n25/08"
+    // ou "ETA 07/09/26\nIOA"). O regex antigo exigia a celula inteira limpa
+    // (^...$) e por isso nunca dava match nessas linhas -- a data so era lida
+    // quando a celula continha SOMENTE "DD/MM/AAAA", o que praticamente nunca
+    // acontece nessa planilha. Agora extrai a PRIMEIRA data D/M/AA(AA)
+    // encontrada em qualquer parte da string.
+    var m2 = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
     if (!m2) return null;
     var dd = m2[1].padStart(2, '0');
     var mm = m2[2].padStart(2, '0');
@@ -513,27 +534,47 @@ function importarDespachanteBase(buffer) {
 
     var headers = rows[0];
     var idx = {
-        referencia: acharColunaDespachante(headers, ['REFER']),
+        // Formato antigo usava cabecalho "REFERENCIA"; a partir de
+        // 01/09/2026 a Amanda passou a usar "PROCESSOS".
+        referencia: acharColunaComAlternativas(headers, [['REFER'], ['PROCESSO']]),
         hbl: acharColunaDespachante(headers, ['HBL']),
         mbl: acharColunaDespachante(headers, ['MBL']),
-        chegada: acharColunaDespachante(headers, ['CHEGADA']),
+        // Existem 2 colunas relacionadas a chegada no formato novo:
+        // "CHEGADA TERMINAL DESCARGA" (texto misturado, ver
+        // parseDataDespachante) e a coluna dedicada "ETA (Previsao de
+        // Chegada)" (so a data, mais limpa). O formato antigo tinha uma
+        // unica coluna "CHEGADA UNICA".
+        chegada: acharColunaComAlternativas(headers, [['CHEGADA', 'TERMINAL'], ['CHEGADA', 'UNICA'], ['CHEGADA']]),
+        eta: acharColunaDespachante(headers, ['ETA']),
         porto: acharColunaDespachante(headers, ['PORTO', 'DESTINO']),
         navio: acharColunaDespachante(headers, ['NAVIO']),
-        container: acharColunaDespachante(headers, ['CONTAINER']),
+        // O formato novo tem 2 colunas com "CONTAINER" no nome: "CONTAINER"
+        // (o numero do container, ex: FFAU3414856) e "Qtd. Containers
+        // (previsto)" (a quantidade, o que realmente queremos aqui). Sem
+        // priorizar QTD/QUANT primeiro, cairia no numero do container e
+        // geraria uma "quantidade" absurda (parseInt de FFAU3414856).
+        container: acharColunaComAlternativas(headers, [['QTD', 'CONTAINER'], ['QUANT', 'CONTAINER'], ['CONTAINER']]),
         demanda: acharColunaDespachante(headers, ['DEMANDA']),
     };
-    if (idx.referencia === -1) return { linhas: [], erro: 'Coluna REFERENCIA nao encontrada na planilha' };
+    if (idx.referencia === -1) return { linhas: [], erro: 'Coluna REFERENCIA/PROCESSOS nao encontrada na planilha' };
 
     var linhas = [];
     for (var i = 1; i < rows.length; i++) {
         var r = rows[i];
         var ref = r[idx.referencia];
         if (!ref || !String(ref).trim()) continue;
+        // Preferir a coluna ETA dedicada (mais limpa) quando ela vier
+        // preenchida; cair pro parse da coluna CHEGADA (texto misturado) so
+        // quando a ETA estiver vazia -- e o caso das linhas ja chegadas, onde
+        // a planilha do despachante deixa de preencher a previsao e so
+        // mantem a data real na coluna CHEGADA.
+        var dataChegadaEta = idx.eta >= 0 ? parseDataDespachante(r[idx.eta]) : null;
+        var dataChegadaCol = idx.chegada >= 0 ? parseDataDespachante(r[idx.chegada]) : null;
         linhas.push({
             referencia: String(ref).trim(),
             hbl: idx.hbl >= 0 ? String(r[idx.hbl] || '').trim() : '',
             mbl: idx.mbl >= 0 ? String(r[idx.mbl] || '').trim() : '',
-            data_chegada: idx.chegada >= 0 ? parseDataDespachante(r[idx.chegada]) : null,
+            data_chegada: dataChegadaEta || dataChegadaCol,
             porto_destino: idx.porto >= 0 ? String(r[idx.porto] || '').trim() : '',
             navio: idx.navio >= 0 ? String(r[idx.navio] || '').trim() : '',
             qtd_containers: idx.container >= 0 ? parseInt(String(r[idx.container] || '').replace(/\D/g, ''), 10) : null,
