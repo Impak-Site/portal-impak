@@ -708,6 +708,37 @@ teste('renderFechamentoInfo com Notas Boss lançada mostra o detalhamento e o r�
   verdadeiro(html.includes('+ Notas Boss'), 'deveria indicar no rótulo do Lucro Real que o valor já inclui a nota Boss');
 });
 
+console.log('\n💰 calcularJurosCobrado() / calcularFechamento() com Juros Cobrado do Cliente (G13/G15 da planilha, processo KS260507SMBZIMP)');
+teste('calcularJurosCobrado: sem real_json retorna null', () => { verdadeiro(sandbox.calcularJurosCobrado({}) === null); });
+teste('calcularJurosCobrado: juros_valor ausente/zero retorna null (nao ha juro cobrado)', () => { verdadeiro(sandbox.calcularJurosCobrado({ real_json:{} }) === null); verdadeiro(sandbox.calcularJurosCobrado({ real_json:{ juros_valor: 0 } }) === null); });
+teste('calcularJurosCobrado: com valor lancado, devolve o valor puro (sem impostos proprios - custo entra a parte em diferenca_pis/diferenca_cofins)', () => {
+  const j = sandbox.calcularJurosCobrado({ real_json: { juros_valor: 23836.52 } });
+  verdadeiro(j !== null);
+  iguais(j.valor, 23836.52);
+});
+teste('calcularFechamento: com Juros Cobrado, soma direto ao Lucro Real (receita adicional a NF Saida)', () => {
+  const f = sandbox.calcularFechamento({ nf_saida_valor: 287537.36, real_json: { fob: 100000, juros_valor: 23836.52 }, real_cambio: 1 });
+  aproxIgual(f.lucroReal, (287537.36-100000)+23836.52, 0.01, 'lucroReal deveria somar o juro cobrado direto (sem custo proprio aqui)');
+  aproxIgual(f.pctLucroReal, f.lucroReal/(287537.36+23836.52), 0.0001, 'percentual deveria usar NF Saida + Juros no denominador (igual G15 da planilha)');
+  verdadeiro(f.jurosCobrado !== null);
+});
+teste('calcularFechamento: sem Juros Cobrado, lucroReal fica 100% inalterado (regressao)', () => {
+  const f = sandbox.calcularFechamento({ nf_saida_valor: 200000, real_json: { fob: 100000 }, real_cambio: 1 });
+  iguais(f.lucroReal, 100000);
+  verdadeiro(f.jurosCobrado === null);
+});
+teste('calcularFechamento: Juros Cobrado + Notas Boss juntos - Juros entra na receita ANTES do denominador do Boss (igual planilha H58=G58/(G15+G46))', () => {
+  const f = sandbox.calcularFechamento({ nf_saida_valor: 200000, real_json: { fob: 100000, juros_valor: 20000, notas_boss_valor: 100000 }, real_cambio: 1 });
+  iguais(f.lucroReal, (200000-100000)+20000+82970, 'lucroReal deveria somar Juros E o Total a Receber da nota Boss');
+  aproxIgual(f.pctLucroReal, f.lucroReal/(200000+20000+100000), 0.0001, 'denominador deveria ser NF Saida + Juros + valor Boss');
+});
+teste('renderFechamentoInfo com Juros Cobrado lançado mostra o detalhamento e o rótulo "+ Juros"', () => {
+  const p = { nf_saida_valor: 287537.36, real_json: { fob: 100000, juros_valor: 23836.52 } };
+  const html = sandbox.renderFechamentoInfo(p);
+  verdadeiro(html.includes('Juros Cobrado do Cliente'), 'deveria mostrar a linha de detalhamento do juro cobrado');
+  verdadeiro(html.includes('+ Juros'), 'deveria indicar no rótulo do Lucro Real que o valor já inclui o juro cobrado');
+});
+
 // ── 12. TESTES: Vendas multi-cliente (rateio de custo) ──────────────
 // calcularRateioVenda / calcularVendasResumo / calcularFechamento com
 // vendas_json preenchido — ver controle-core.js. Sem nenhuma venda

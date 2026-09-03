@@ -1347,6 +1347,24 @@ function calcularNotasBoss(p){
   return { valorBoss, irRetido, iss, pis, cofins, baseImpostosLopes, irpj, csll, ibs, cbs, totalReceber };
 }
 
+// Juros cobrado do cliente (parcelamento/financiamento) — receita ADICIONAL
+// à NF Saída principal quando o processo cobra juro à parte (G13 na aba
+// Fechamento da planilha, somado a G12=NF Saída pra formar G15=TOTAL;
+// pedido Jean/Emanuelly 03/09/2026, processo KS260507SMBZIMP). Os custos
+// operacionais desse juro (PIS 0,65% + COFINS 4%, segundo o próprio Jean)
+// já entram pelo lado do CUSTO — o usuário soma esse valor manualmente em
+// diferenca_pis/diferenca_cofins (grupo "Diferenças de Impostos", ver
+// CUSTOS_REAIS_CONFIG), exatamente como a planilha já faz nas linhas
+// G24/G25 ("Diferença PIS/COFINS + JUROS", já combinadas). Esta função só
+// captura o lado da RECEITA — o valor do juro em si.
+function calcularJurosCobrado(p){
+  const reais = p.real_json;
+  if(!reais || typeof reais !== 'object') return null;
+  const valor = parseFloat(reais.juros_valor);
+  if(isNaN(valor) || valor <= 0) return null;
+  return { valor };
+}
+
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ VENDAS MULTI-CLIENTE (rateio de custo) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // Um processo (de qualquer finalidade) pode ser vendido a mais de um
 // cliente ÃÂ¢ÃÂÃÂ ex.: meio contÃÂÃÂªiner pra um, meio pra outro. p.vendas_json guarda
@@ -1571,10 +1589,22 @@ function calcularFechamento(p){
   // existe um lucroReal pra ajustar (senao nao ha "Lucro Bruto do Processo"
   // base pra somar). O percentual usa NF Saida + valor Boss no denominador,
   // igual a planilha (H58=G58/(G15+G46)).
+  // Juros cobrado do cliente (ver calcularJurosCobrado acima) — soma como
+  // receita adicional ANTES do ajuste da Nota Boss, que usa essa receita ja
+  // somada ao juro como parte do denominador do percentual (igual a
+  // planilha: H58 = G58/(G15+G46), onde G15 ja inclui o juro).
+  const jurosCobrado = calcularJurosCobrado(p);
+  let receitaTotalReal = nfSaida;
+  if(jurosCobrado && lucroReal != null){
+    lucroReal = lucroReal + jurosCobrado.valor;
+    receitaTotalReal = (nfSaida||0) + jurosCobrado.valor;
+    pctLucroReal = receitaTotalReal > 0 ? (lucroReal / receitaTotalReal) : null;
+  }
+
   const notasBoss = calcularNotasBoss(p);
   if(notasBoss && lucroReal != null){
     lucroReal = lucroReal + notasBoss.totalReceber;
-    const denomComBoss = (nfSaida||0) + notasBoss.valorBoss;
+    const denomComBoss = receitaTotalReal + notasBoss.valorBoss;
     pctLucroReal = denomComBoss > 0 ? (lucroReal / denomComBoss) : null;
   }
 
@@ -1608,6 +1638,7 @@ function calcularFechamento(p){
     receitaReais, margemTaxas, // margem por taxa (compra × venda) — null se "cobrado do cliente" nunca foi preenchido
     vendasResumo, // null se o processo não foi vendido a mais de um cliente
     notasBoss, // null se real_json.notas_boss_valor nunca foi preenchido — detalhe do sub-livro (IR/ISS/PIS/COFINS/IRPJ/CSLL/IBS/CBS + Total a Receber) já somado a lucroReal/pctLucroReal acima
+    jurosCobrado, // null se real_json.juros_valor nunca foi preenchido — já somado a lucroReal/pctLucroReal acima (custo operacional do juro entra à parte, em diferenca_pis/diferenca_cofins)
   };
 }
 
@@ -1750,6 +1781,11 @@ function renderFechamentoInfo(p){
         ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
       </div>`
     : '';
+  const linhaJuros = f.jurosCobrado
+    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)}</strong></div>
+      </div>`
+    : '';
   const linhaNotasBoss = f.notasBoss
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Notas Fiscais BOSS</div>
@@ -1758,8 +1794,13 @@ function renderFechamentoInfo(p){
         <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Total a Receber (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.notasBoss.totalReceber)}</strong></div>
       </div>`
     : '';
+  const rotuloLucroReal = [
+    f.custosReais ? 'NF Saída − Custo Real Total' : 'NF Saída − NF Entrada',
+    f.jurosCobrado ? '+ Juros' : '',
+    f.notasBoss ? '+ Notas Boss' : '',
+  ].filter(Boolean).join(' ');
   const linhaReal = f.temReal
-    ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real${f.custosReais?' (NF Saída − Custo Real Total)':' (NF Saída − NF Entrada)'}${f.notasBoss?' + Notas Boss':''}</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>${linhaNotasBoss}`
+    ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real (${rotuloLucroReal})</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>${linhaJuros}${linhaNotasBoss}`
     : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:12px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
 
   const corDelta = f.deltaValor==null ? 'var(--muted)' : f.deltaValor >= 0 ? 'var(--ok)' : 'var(--err)';

@@ -971,6 +971,7 @@ function renderCustosReaisTab(p){
     </div>
     ${gruposHtml}
     ${renderNotasBossBlock(p)}
+    ${renderJurosCobradoBlock(p)}
     <div id="custos-reais-total" style="margin-top:6px;"></div>`;
 }
 
@@ -998,6 +999,29 @@ function renderNotasBossBlock(p){
       <span>IR Retido (1,5%): ${r2(nb.irRetido)} · ISS (2,5%): ${r2(nb.iss)} · PIS (0,65%): ${r2(nb.pis)} · COFINS (3%): ${r2(nb.cofins)}</span>
       <span>IRPJ: ${r2(nb.irpj)} · CSLL (9%): ${r2(nb.csll)} · IBS (0,1%): ${r2(nb.ibs)} · CBS (0,9%): ${r2(nb.cbs)}</span>
       <span style="color:var(--text);font-weight:600;">Total a Receber (soma ao Lucro Real): ${r2(nb.totalReceber)}</span>` : ''}</div>
+  </div>`;
+}
+
+// Bloco "Juros Cobrado do Cliente" (G13 da aba Fechamento da planilha,
+// somado a NF Saída pra formar a receita total do processo — pedido Jean/
+// Emanuelly 03/09/2026, processo KS260507SMBZIMP). Diferente da Nota Boss
+// (que é uma segunda nota, com seu próprio conjunto de impostos calculado
+// automaticamente), o juro é só um valor de receita — os custos
+// operacionais dele (PIS 0,65% + COFINS 4%) o próprio usuário soma junto
+// com a diferença NFe×D.I. normal nos campos "Diferença PIS/COFINS" (grupo
+// Diferenças de Impostos, mesmo padrão que a planilha já usa nas linhas
+// G24/G25, que já vêm combinadas).
+function renderJurosCobradoBlock(p){
+  const reais = p.real_json || {};
+  const valorSalvo = (reais.juros_valor != null && reais.juros_valor !== '') ? reais.juros_valor : '';
+  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return `<div style="margin-bottom:22px;">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Juros Cobrado do Cliente (opcional)</div>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Quando o processo cobra juro à parte (parcelamento/financiamento), lance aqui o valor — soma direto à receita (junto com a NF Saída) pro Lucro Real. Os custos operacionais desse juro (PIS 0,65% + COFINS 4%, tipicamente) devem ser somados manualmente nos campos "Diferença PIS/COFINS" (aba Diferenças de Impostos), igual a planilha já faz.</div>
+    <div class="form-group" style="max-width:220px;">
+      <label class="form-label">Valor do Juro Cobrado (R$)</label>
+      <input class="form-input" type="number" step="0.01" id="f_cr_juros" value="${valorSalvo}" placeholder="0,00" oninput="atualizarTotalCustosReais()">
+    </div>
   </div>`;
 }
 
@@ -1035,6 +1059,8 @@ function coletarCustosReaisDoForm(soConfirmados){
   if(eurEl && eurEl.value !== '') obj._cambio_eur = parseFloat(eurEl.value);
   const bossEl = document.getElementById('f_cr_notas_boss');
   if(bossEl && bossEl.value !== '') obj.notas_boss_valor = parseFloat(bossEl.value);
+  const jurosEl = document.getElementById('f_cr_juros');
+  if(jurosEl && jurosEl.value !== '') obj.juros_valor = parseFloat(jurosEl.value);
   const containers = containersDoProcesso(_editando || {});
   custosReaisItensFlat().forEach(item => {
     // "Cobrado do Cliente" fica na MESMA real_json, com sufixo _cobrado ÃÂ¢ÃÂÃÂ
@@ -1146,13 +1172,20 @@ function atualizarTotalCustosReais(){
   const nfSaida = parseFloat(snapshot.nf_saida_valor);
   const temNf = !isNaN(nfSaida) && nfSaida > 0;
   let lucro = temNf ? (nfSaida - custosReais.total) : null;
+  // Juros cobrado do cliente (ver calcularJurosCobrado em controle-core.js)
+  // - soma direto como receita adicional, igual a Notas Boss abaixo mas sem
+  // sub-livro de impostos proprio (o custo do juro ja entra via diferenca_
+  // pis/diferenca_cofins, lancados a parte pelo usuario).
+  const jurosCobrado = calcularJurosCobrado(snapshot);
+  if(jurosCobrado && lucro != null) lucro += jurosCobrado.valor;
   if(notasBoss && lucro != null) lucro += notasBoss.totalReceber;
   const linhaMargemTaxas = ''; // Removido a pedido do usuario (2026-08-25): nao existe na planilha
+  const rotuloLucro = ['NF Saída − Custo Real Total', jurosCobrado?'+ Juros':'', notasBoss?'+ Notas Boss':''].filter(Boolean).join(' ');
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
     <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lançados)</span><strong>${r2(custosReais.total)}</strong></div>
     ${linhaMargemTaxas}
     ${temNf
-      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (NF Saída − Custo Real Total)${notasBoss?' + Notas Boss':''}</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
+      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (${rotuloLucro})</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
       : `<div style="color:var(--dim);">Preencha a NF Saída na aba Documentos pra ver o lucro real aqui.</div>`}
   </div>`;
 }
