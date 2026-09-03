@@ -333,6 +333,11 @@ async function exportarDREExcel(dre){
 function montarLinhasFollowUpCliente(statusSelecionados){
     let lista = filtrarProcessos(true); // ignora o filtro de fase/status ativo na tela (task #335: antes, exportar com uma aba de status aberta gerava planilha só daquela fase; a seleção de status agora é feita só pelo popup, que já vem com todos marcados por padrão) — mantém os demais filtros (cliente, busca, data)
 
+    // Processos cancelados nunca aparecem pro cliente (pedido Emanuelly
+    // 03/09/2026) — mesmo que estejam dentro do filtro de fase/data/cliente
+    // ativo, ficam de fora deste follow-up/planilha exportada.
+    lista = lista.filter(p => !p.cancelado);
+
     // Filtro de status escolhido no popup (pedido: confirmar quais fases
     // entram antes de exportar). Sem seleÃ§Ã£o (chamada antiga/direta) exporta
     // todos os status, igual ao comportamento original.

@@ -538,7 +538,10 @@ async function salvarProcesso(proc, patchFields){
   // que tem impacto financeiro direto (multa por atraso na devolução do container).
   if(proc.data_chegada && proc.free_time){
     const chegada = parseDataLocal(proc.data_chegada);
-    chegada.setDate(chegada.getDate() + parseInt(proc.free_time||0));
+    // O dia da chegada já conta como o 1º dia do free time (pedido
+    // Emanuelly 03/09/2026): free_time=21 a partir de 03/09 vence em 23/09
+    // (03,04,...,23 = 21 dias), não 24/09.
+    chegada.setDate(chegada.getDate() + parseInt(proc.free_time||0) - 1);
     proc.demurrage_vencimento = chegada.toISOString().split('T')[0];
   }
 
@@ -549,7 +552,10 @@ async function salvarProcesso(proc, patchFields){
   // PORTO_ARMAZENAGEM_FREE_DIAS em controle-campos.js).
   if(proc.data_presenca && proc.porto_destino && PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]){
     const presenca = parseDataLocal(proc.data_presenca);
-    presenca.setDate(presenca.getDate() + PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]);
+    // Mesma correção de contagem inclusiva do dia inicial (ver comentário
+    // acima no cálculo do demurrage): presença hoje + 5 dias grátis em
+    // Navegantes vence daqui a 4 dias (hoje conta como o 1º), não 5.
+    presenca.setDate(presenca.getDate() + PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino] - 1);
     proc.armazenagem_vencimento = presenca.toISOString().split('T')[0];
   }
 
@@ -782,7 +788,7 @@ function renderDemurInfo(p){
   const chegada   = parseDataLocal(p.data_chegada);
   const freeTime  = parseInt(p.free_time||21);
   const vencCalc  = chegada ? new Date(chegada) : null;
-  if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime);
+  if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime - 1);
   const vencReal  = p.demurrage_vencimento ? parseDataLocal(p.demurrage_vencimento) : vencCalc;
   const dias = demurrageDias(p);
   const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
@@ -820,7 +826,7 @@ function renderArmazenInfo(p){
   if(!freeDias && !p.armazenagem_vencimento) return '';
   const presenca  = parseDataLocal(p.data_presenca);
   const vencCalc  = presenca && freeDias ? new Date(presenca) : null;
-  if(vencCalc) vencCalc.setDate(presenca.getDate() + freeDias);
+  if(vencCalc) vencCalc.setDate(presenca.getDate() + freeDias - 1);
   const vencReal  = p.armazenagem_vencimento ? parseDataLocal(p.armazenagem_vencimento) : vencCalc;
   const dias = armazenagemDias(p);
   const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=2?'var(--warn)':'var(--ok)';
@@ -1881,6 +1887,28 @@ function verificarAlertas(proc, criarNotif){
     }
   }
 
+  // Embarque previsto pra semana atual sem CI/PL/Draft anexados (pedido
+  // Emanuelly 03/09/2026). Não existe campo estruturado pra Packing List e
+  // Draft — a checagem é por nome de arquivo anexado no GED (ver ged_nomes,
+  // preenchido no GET /api/controle/v2/processos, server.js). Só faz
+  // sentido antes do embarque de fato acontecer (PI/Ag. Embarque).
+  if(proc.etd && (proc.fase === 'PI' || proc.fase === 'AGUARDANDO_EMBARQUE')){
+    const etd = parseDataLocal(proc.etd);
+    const diaSemana = hoje.getDay(); // 0=domingo .. 6=sábado
+    const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - (diaSemana===0?6:diaSemana-1)); // segunda-feira
+    const fimSemana = new Date(inicioSemana); fimSemana.setDate(inicioSemana.getDate()+6); // domingo
+    if(etd >= inicioSemana && etd <= fimSemana){
+      const nomes = proc.ged_nomes || [];
+      const temCI    = nomes.some(n => /\bci\b/i.test(n) || /invoice/i.test(n));
+      const temPL    = nomes.some(n => /\bpl\b/i.test(n) || /packing/i.test(n));
+      const temDraft = nomes.some(n => /draft/i.test(n));
+      const faltando = [!temCI&&'CI', !temPL&&'PL', !temDraft&&'Draft'].filter(Boolean);
+      if(faltando.length){
+        alertas.push({tipo:'alerta', titulo:`Embarque esta semana sem documentos: ${proc.referencia}`, mensagem:`ETD ${etd.toLocaleDateString('pt-BR')} — faltando anexar: ${faltando.join(', ')}.`});
+      }
+    }
+  }
+
   if(criarNotif && alertas.length){
     alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
   }
@@ -2099,22 +2127,26 @@ function abrirComFiltro(filtro){
 function renderStats(){
   const el = document.getElementById('stats-grid');
   if(!el) return;
-  const total = _processos.length;
-  const emAndamento = _processos.filter(p => p.fase !== 'FINALIZADO').length;
-  const finalizados = _processos.filter(p => p.fase === 'FINALIZADO').length;
+  // Processos cancelados nao entram em nenhuma contagem do topo (pedido
+  // Emanuelly 03/09/2026) - eles continuam aparecendo na lista/menu
+  // "Cancelados" normalmente, so nao contam pro Total/Em andamento/etc.
+  const processosAtivos = _processos.filter(p => !p.cancelado);
+  const total = processosAtivos.length;
+  const emAndamento = processosAtivos.filter(p => p.fase !== 'FINALIZADO').length;
+  const finalizados = processosAtivos.filter(p => p.fase === 'FINALIZADO').length;
   // Mantido para o badge "Com alertas" da sidebar (o card do topo agora
   // mostra "Chegada em 7d" no lugar, mas o item do menu lateral continua).
-  const comAlerta = _processos.filter(p => verificarAlertas(p,false).length > 0).length;
+  const comAlerta = processosAtivos.filter(p => verificarAlertas(p,false).length > 0).length;
   // Demurrage crÃÂÃÂ­tico
-  const demurCrit = _processos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
-  const armazCrit = _processos.filter(p => { const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada; }).length;
-  const chegando7d = _processos.filter(p => chegandoEmDias(p,7)).length;
+  const demurCrit = processosAtivos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
+  const armazCrit = processosAtivos.filter(p => { const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada; }).length;
+  const chegando7d = processosAtivos.filter(p => chegandoEmDias(p,7)).length;
 
   const refsDuplicadas = (() => {
 const norm = s => (s||'').toString().trim().toUpperCase().replace(/\s+/g,'');
 const cont = {};
-_processos.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont[r]||0)+1; });
-return _processos.filter(p => cont[norm(p.referencia)] > 1).length;
+processosAtivos.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont[r]||0)+1; });
+return processosAtivos.filter(p => cont[norm(p.referencia)] > 1).length;
 })();
 
 const stats = [

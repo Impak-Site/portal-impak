@@ -1307,7 +1307,26 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
       .select('*')
       .order('updated_at', { ascending: false });
     if (error) throw new Error(error.message);
-    res.json({ ok: true, processos: data || [] });
+    const processos = data || [];
+
+    // Anexa a cada processo só os NOMES dos arquivos anexados no GED (não o
+    // conteúdo/URL — isso é buscado à parte quando o modal abre). Usado pelo
+    // alerta "embarque essa semana sem CI/PL/Draft" (pedido Emanuelly
+    // 03/09/2026): como não existe campo estruturado pra Packing List/Draft,
+    // a checagem é feita por nome de arquivo (ver verificarAlertas,
+    // controle-core.js). 1 query em lote em vez de 1 por processo.
+    try {
+      const { data: arquivos } = await sb().from('controle_arquivos').select('processo_id, nome');
+      if (arquivos && arquivos.length) {
+        const porProcesso = {};
+        arquivos.forEach(a => { (porProcesso[a.processo_id] = porProcesso[a.processo_id] || []).push(a.nome); });
+        processos.forEach(p => { p.ged_nomes = porProcesso[p.id] || []; });
+      }
+    } catch (e) {
+      console.warn('controle v2 GET: falha ao buscar nomes de arquivos GED (alerta CI/PL/Draft fica sem dado):', e.message);
+    }
+
+    res.json({ ok: true, processos });
   } catch (e) {
     console.error('controle v2 GET erro:', e.message);
     res.json({ ok: true, processos: [] });
@@ -3189,11 +3208,14 @@ async function processosParaFollowUpSemanal(){
 
   const { data, error } = await sb()
     .from('controle_processos')
-    .select('id, referencia, cliente, fornecedor, produto, produtos_json, vendas_json, eta, porto_destino, armador, navio, transportadora, fase')
+    .select('id, referencia, cliente, fornecedor, produto, produtos_json, vendas_json, eta, porto_destino, armador, navio, transportadora, fase, cancelado')
     .not('eta', 'is', null)
     .gte('eta', hojeStr)
     .lte('eta', limiteStr)
     .neq('fase', 'FINALIZADO')
+    // Processo cancelado não entra no follow-up mandado pro cliente (pedido
+    // Emanuelly 03/09/2026).
+    .or('cancelado.is.null,cancelado.eq.false')
     .order('eta', { ascending: true });
   if (error) throw new Error(error.message);
   return data || [];
