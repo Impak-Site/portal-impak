@@ -1085,7 +1085,7 @@ function atualizarTotalCustosReais(){
   const cambio = coletarCambioCustosReaisDoForm();
   const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-  const obj = coletarCustosReaisDoForm(true);
+  const obj = coletarCustosReaisDoForm();
   const snapshot = { ..._editando, real_json: obj, real_cambio: cambio };
 
   // Margem por LINHA (pago ÃÂÃÂ cobrado), atualizada a cada tecla ÃÂ¢ÃÂÃÂ igual ao
