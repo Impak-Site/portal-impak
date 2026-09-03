@@ -2161,7 +2161,7 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
 
   // Badges sidebar por fase
   const faseCount = {};
-  _processos.forEach(p=>{ faseCount[p.fase] = (faseCount[p.fase]||0)+1; });
+  processosAtivos.forEach(p=>{ faseCount[p.fase] = (faseCount[p.fase]||0)+1; });
   ['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI',
    'PARAMETRIZACAO','CARREGAMENTO','FATURAMENTO','DEVOLUCAO_VAZIO','FINALIZADO'].forEach(f=>{
     const el = document.getElementById('sb-'+f);
