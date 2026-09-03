@@ -2356,6 +2356,10 @@ clientesDoProcesso(p).some(cl=>cl.toLowerCase().includes(q))
   const filtroPendencia = document.getElementById('filtro-pendencia')?.checked;
   if(filtroPendencia) lista = lista.filter(p=>!!p.pendencia_revisao);
 
+  // Filtro: só processos sem Marca (brand) preenchida — pedido da Emanuelly (03/09/2026)
+  const filtroSemMarca = document.getElementById('filtro-sem-marca')?.checked;
+  if(filtroSemMarca) lista = lista.filter(p=>!(p.brand||'').trim());
+
   return lista;
 }
 
