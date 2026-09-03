@@ -1461,6 +1461,30 @@ function calcularLucroVenda(p, venda, custoRealTotal){
   return { ...rateio, nfSaida: temNf?nfSaida:null, temNf, lucro, pctLucro };
 }
 
+// Prazo negociado de uma venda (pedido do Jean/Ayslan, 03/09/2026): À Vista
+// ou A Prazo (N dias, sempre contados a partir da Data NF Saída — não da
+// data de embarque, diferente do prazo de pagamento da PI de compra que já
+// existe em pi_prazo_dias). Retorna null quando a venda não tem forma de
+// pagamento definida ainda (vendas antigas, criadas antes deste campo
+// existir) — nesse caso a tela de Fechamento simplesmente não mostra nada,
+// sem quebrar.
+function calcularVencimentoVenda(venda){
+  if(!venda || !venda.forma_pagamento) return null;
+  if(venda.forma_pagamento === 'avista'){
+    return { formaPagamento: 'avista', prazoDias: null, vencimento: null };
+  }
+  if(venda.forma_pagamento === 'aprazo'){
+    const prazoDias = parseInt(venda.prazo_dias, 10);
+    let vencimento = null;
+    if(venda.nf_saida_data && prazoDias > 0){
+      const d = parseDataLocal(venda.nf_saida_data);
+      if(d){ d.setDate(d.getDate() + prazoDias); vencimento = d; }
+    }
+    return { formaPagamento: 'aprazo', prazoDias: isNaN(prazoDias)?null:prazoDias, vencimento };
+  }
+  return null;
+}
+
 // Ajusta uma lista de valores fracionÃÂÃÂ¡rios (em R$) que deveriam somar
 // "totalAlvo" pra somarem EXATAMENTE isso atÃÂÃÂ© o centavo ÃÂ¢ÃÂÃÂ mÃÂÃÂ©todo do maior
 // resto (largest remainder / Hamilton), o mesmo usado pra distribuir
@@ -1791,10 +1815,21 @@ function renderFechamentoInfo(p){
   // aba Fechamento do modelo). f.margemTaxas continua calculado/retornado
   // (usado em teste existente), so nao aparece mais na tela.
   const linhaMargemTaxas = '';
+  // Prazo negociado da venda (À Vista / A Prazo + vencimento) — pedido do
+  // Ayslan (03/09/2026): mostrar aqui, na tela de Fechamento, sem precisar
+  // abrir a aba Vendas de novo pra conferir o combinado com o cliente.
+  const linhaPrazoVenda = venda => {
+    const v = calcularVencimentoVenda(venda);
+    if(!v) return '';
+    if(v.formaPagamento === 'avista') return ' · À Vista';
+    const dias = v.prazoDias!=null ? `${v.prazoDias}d` : 'prazo não definido';
+    const venc = v.vencimento ? ` — vence ${v.vencimento.toLocaleDateString('pt-BR')}` : '';
+    return ` · A Prazo (${dias})${venc}`;
+  };
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
-        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
+        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}<span style="color:var(--dim);">${linhaPrazoVenda(l.venda)}</span></span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
       </div>`
     : '';
   const linhaJuros = f.jurosCobrado

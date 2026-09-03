@@ -465,7 +465,7 @@ function sincronizarProdutoLegado(){
 let _vendas = []; // [{cliente, itens:[{descricao,quantidade}], nf_saida_numero, nf_saida_data, nf_saida_valor, custos_diretos:[{label,valor}], obs}]
 
 function vendaVazia(){
-  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'' };
+  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_dias:'' };
 }
 
 function renderVendas(){
@@ -514,6 +514,13 @@ function renderVendas(){
           <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(v.nf_saida_data||'')}" oninput="_vendas[${vi}].nf_saida_data=this.value;sincronizarVendasLegado()"></div>
         <div class="form-group"><label class="form-label">Valor NF Saída (R$)</label>
           <input class="form-input" type="number" step="0.01" value="${v.nf_saida_valor!=null?v.nf_saida_valor:''}" oninput="_vendas[${vi}].nf_saida_valor=this.value;sincronizarVendasLegado();renderResumoVendas()"></div>
+        <div class="form-group"><label class="form-label">Forma de Pagamento</label>
+          <select class="form-input" onchange="_vendas[${vi}].forma_pagamento=this.value;if(this.value!=='aprazo')_vendas[${vi}].prazo_dias='';sincronizarVendasLegado();renderVendas();" onwheel="this.blur()">
+            <option value="avista" ${(v.forma_pagamento||'avista')==='avista'?'selected':''}>À Vista</option>
+            <option value="aprazo" ${v.forma_pagamento==='aprazo'?'selected':''}>A Prazo</option>
+          </select></div>
+        ${v.forma_pagamento==='aprazo' ? `<div class="form-group"><label class="form-label">Prazo (dias, a partir da Data NF Saída)</label>
+          <input class="form-input" type="number" min="0" value="${v.prazo_dias!=null?v.prazo_dias:''}" oninput="_vendas[${vi}].prazo_dias=this.value;sincronizarVendasLegado();renderResumoVendas()" placeholder="ex: 30"></div>` : ''}
       </div>
       <label class="form-label">Itens vendidos (quantidade alocada a este cliente)</label>
       <div style="margin-bottom:6px;">${itensHtml}</div>
