@@ -32,10 +32,30 @@ async function importarNFVenda(vi, input){
       showToast('Processo foi trocado antes da análise terminar — dados da NF descartados para evitar mistura entre processos. Reimporte no processo correto.', 'err');
       return;
     }
+    // A aba Vendas só faz sentido pra NF de SAÍDA (nota emitida pro cliente
+    // final) — se o documento anexado for lido como ENTRADA (nota de compra
+    // da mercadoria importada), avisa em vez de aplicar campos vazios sem
+    // explicação (cliente só vem preenchido quando tipo=SAIDA, ver prompt
+    // em extrairNFComIA).
+    if(dados.tipo === 'ENTRADA'){
+      showToast('Esse documento parece ser uma NF de ENTRADA (compra), não de Saída — nada foi preenchido. Confira o arquivo anexado.', 'err', 12000);
+      return;
+    }
+    // IA retornou um objeto válido mas sem nenhum dado aproveitável (PDF
+    // ilegível, DANFE com layout fora do padrão, etc.) — sem essa checagem
+    // o toast de sucesso aparecia mesmo sem preencher nada, escondendo o
+    // problema (relatado por Emanuelly 03/09/2026 no processo
+    // KS260507SMBZIMP: nenhum campo veio, mas nao ficou claro que falhou).
+    const vazio = !dados.cliente && !dados.nf_numero && !dados.nf_valor && (!dados.itens || !dados.itens.length);
+    if(vazio){
+      showToast('Não consegui ler os dados desse documento (nenhum campo reconhecido). Tente novamente ou preencha manualmente.', 'err', 12000);
+      return;
+    }
     aplicarDadosNFNaVenda(vi, dados);
-    showToast(`✓ NF importada: ${dados.itens.length} ite${dados.itens.length===1?'m':'ns'} preenchido${dados.itens.length===1?'':'s'}`, 'ok');
+    const itensMsg = dados.itens.length ? `${dados.itens.length} ite${dados.itens.length===1?'m':'ns'} preenchido${dados.itens.length===1?'':'s'}` : 'sem itens de produto reconhecidos (confira a lista manualmente)';
+    showToast(`✓ NF importada: ${itensMsg}`, dados.itens.length ? 'ok' : 'warn', 10000);
   }catch(e){
-    showToast('Erro ao importar NF: '+e.message, 'err');
+    showToast('Erro ao importar NF: '+e.message, 'err', 12000);
   }
 }
 
@@ -121,8 +141,17 @@ Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem t
     if(!dJob.ok) throw new Error(dJob.erro || 'Erro ao consultar análise');
     if(dJob.status === 'concluido'){
       const raw = (dJob.resultado.content||[]).map(c=>c.text||'').join('');
-      const clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
-      const extracted = JSON.parse(clean);
+      let clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+      // Se ainda sobrou texto antes/depois do JSON (o modelo as vezes ignora
+      // o "sem texto adicional" do prompt), isola o primeiro bloco {...}.
+      const iniJson = clean.indexOf('{'), fimJson = clean.lastIndexOf('}');
+      if(iniJson !== -1 && fimJson > iniJson) clean = clean.slice(iniJson, fimJson+1);
+      let extracted;
+      try{
+        extracted = JSON.parse(clean);
+      }catch(e){
+        throw new Error('A IA não retornou um JSON válido pra esse documento (resposta: "'+raw.slice(0,120)+'..."). Tente novamente.');
+      }
       return {
         tipo: (extracted.tipo||'').toUpperCase().includes('ENTRADA') ? 'ENTRADA' : 'SAIDA',
         cliente: extracted.cliente||'',
