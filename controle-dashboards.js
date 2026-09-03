@@ -739,3 +739,109 @@ function showToast(msg, tipo, duracao){
   wrap.appendChild(t);
   setTimeout(()=>t.remove(), duracao || 8000);
 }
+
+// ── RELATÓRIO NARCÉLIO (semanal, manual) ────────────────────────────
+// Recria à mão o relatório que a Emanuelly já mandava toda sexta-feira
+// pro Sr. Narcélio antes dele usar o sistema (pedido 03/09/2026) — 3
+// contagens por fase + total, mais containers registrados no mês
+// corrente. Sem automação de e-mail por enquanto: um botão que monta a
+// tabela na tela, com "Copiar" (cola em WhatsApp/e-mail) e "Exportar
+// Excel" (mesmo estilo dos demais exports do sistema).
+//
+// Mapeamento de fase (confirmado com a Emanuelly):
+//   "em fábrica e aguardando booking"   = fase PI (PI Recebida)
+//   "com booking aguardando embarque"   = fase AGUARDANDO_EMBARQUE
+//   "embarcados"                        = fase EMBARCADO (só essa fase,
+//                                          não soma Desembarcado em diante)
+// Processos cancelados ficam de fora (mesmo padrão do resto do
+// Dashboard, ver renderStats/processosAtivos).
+//
+// "Containers registrados no mês": não existe uma data de registro por
+// container no banco (containers_json não tem timestamp por item), então
+// usa como proxy a data de embarque efetiva (data_embarque) quando já
+// embarcou, senão a previsão (etd) — ou seja, containers vinculados a um
+// embarque previsto/realizado dentro do mês corrente. Se esse critério
+// não bater com o que o Narcélio já recebia, é só avisar que ajusto.
+function calcularRelatorioNarcelio(processos){
+  const ativos = (processos||[]).filter(p => !p.cancelado);
+  const fabricaBooking     = ativos.filter(p => p.fase === 'PI').length;
+  const aguardandoEmbarque = ativos.filter(p => p.fase === 'AGUARDANDO_EMBARQUE').length;
+  const embarcados         = ativos.filter(p => p.fase === 'EMBARCADO').length;
+
+  const hoje = new Date();
+  const mesRef = hoje.getMonth(), anoRef = hoje.getFullYear();
+  const noMesCorrente = dataStr => {
+    if(!dataStr) return false;
+    const dt = parseDataLocal(dataStr);
+    return !!dt && dt.getMonth() === mesRef && dt.getFullYear() === anoRef;
+  };
+  let containersMes = 0;
+  ativos.forEach(p => {
+    const dataRef = p.data_embarque || p.etd;
+    if(noMesCorrente(dataRef)) containersMes += containersDoProcesso(p).length;
+  });
+
+  const total = fabricaBooking + aguardandoEmbarque + embarcados;
+  const mesLabel = hoje.toLocaleDateString('pt-BR', { month:'long' });
+  return { fabricaBooking, aguardandoEmbarque, embarcados, containersMes, total, mesLabel, geradoEm: hoje };
+}
+
+function abrirRelatorioNarcelio(){
+  const rel = calcularRelatorioNarcelio(_processos);
+  window._relatorioNarcelioAtual = rel;
+  const overlay = document.getElementById('relatorio-narcelio-overlay');
+  if(overlay) overlay.innerHTML = renderRelatorioNarcelioModalHtml(rel);
+}
+function fecharRelatorioNarcelio(){
+  const overlay = document.getElementById('relatorio-narcelio-overlay');
+  if(overlay) overlay.innerHTML = '';
+}
+function renderRelatorioNarcelioModalHtml(rel){
+  const linha = (label, valor) => `
+    <tr>
+      <td style="padding:10px 14px;background:#102A45;color:#fff;font-weight:600;font-size:13px;border:1px solid #1A7FD4;">${esc(label)}</td>
+      <td style="padding:10px 14px;background:#102A45;color:#fff;font-weight:700;font-size:13px;text-align:center;border:1px solid #1A7FD4;width:90px;">${valor===''?'':valor}</td>
+    </tr>`;
+  const mesCap = rel.mesLabel.charAt(0).toUpperCase() + rel.mesLabel.slice(1);
+  return `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this) fecharRelatorioNarcelio()">
+    <div style="background:var(--bg,#fff);border-radius:12px;max-width:560px;width:92%;max-height:88vh;overflow:auto;padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;">📊 Relatório Narcélio</h3>
+        <button class="btn btn-outline" onclick="fecharRelatorioNarcelio()">✕</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Gerado em ${rel.geradoEm.toLocaleDateString('pt-BR')} — confira os números antes de enviar.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr><td colspan="2" style="padding:10px 14px;background:#0B1E33;color:#fff;font-weight:700;font-size:13px;border:1px solid #1A7FD4;">RELATÓRIO PROCESSOS IMPORTAÇÃO</td></tr>
+        ${linha('Processos em fábrica e aguardando booking:', rel.fabricaBooking)}
+        ${linha('Processos com booking aguardando embarque:', rel.aguardandoEmbarque)}
+        ${linha('Processos embarcados:', rel.embarcados)}
+        ${linha(`Containers registrados no mês de ${mesCap} até o momento:`, rel.containersMes)}
+        ${linha('Total de processos em fábrica/booking/embarcados:', rel.total)}
+      </table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="btn btn-outline" onclick="fecharRelatorioNarcelio()">Fechar</button>
+        <button class="btn btn-outline" onclick="copiarRelatorioNarcelio()">📋 Copiar</button>
+        <button class="btn btn-primary" onclick="exportarRelatorioNarcelioExcel(window._relatorioNarcelioAtual)">⬇️ Exportar Excel</button>
+      </div>
+    </div>
+  </div>`;
+}
+function copiarRelatorioNarcelio(){
+  const rel = window._relatorioNarcelioAtual;
+  if(!rel) return;
+  const mesCap = rel.mesLabel.charAt(0).toUpperCase() + rel.mesLabel.slice(1);
+  const texto = [
+    'RELATÓRIO PROCESSOS IMPORTAÇÃO',
+    '',
+    `Processos em fábrica e aguardando booking: ${rel.fabricaBooking}`,
+    `Processos com booking aguardando embarque: ${rel.aguardandoEmbarque}`,
+    `Processos embarcados: ${rel.embarcados}`,
+    `Containers registrados no mês de ${mesCap} até o momento: ${rel.containersMes}`,
+    `Total de processos em fábrica/booking/embarcados: ${rel.total}`,
+  ].join('\n');
+  navigator.clipboard.writeText(texto).then(
+    () => showToast('Relatório copiado — cole no WhatsApp/e-mail', 'ok'),
+    () => showToast('Não consegui copiar automaticamente — selecione o texto manualmente', 'err')
+  );
+}

@@ -745,3 +745,65 @@ async function exportarFormatoClientePDF(statusSelecionados){
     console.error(e);
   }
 }
+
+// ── Export Excel do Relatório Narcélio (pedido Emanuelly 03/09/2026) ────
+// Mesmo estilo dos demais exports (excel-styles.js) — tabela simples de
+// 2 colunas (label + valor), fundo azul escuro, texto branco, igual ao
+// relatório manual que a Emanuelly já mandava.
+async function exportarRelatorioNarcelioExcel(rel){
+  if(!rel){ showToast('Gere o relatório antes de exportar', 'err'); return; }
+  if(typeof ExcelJS === 'undefined'){
+    showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  try{
+    const { CORES } = window.ExcelStyles;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'IMPAK';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Relatório Narcélio');
+
+    ws.mergeCells(1,1,1,2);
+    const titulo = ws.getCell(1,1);
+    titulo.value = 'RELATÓRIO PROCESSOS IMPORTAÇÃO';
+    titulo.font = { name:'Calibri', bold:true, size:13, color:{argb:CORES.BRANCO} };
+    titulo.fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO} };
+    titulo.alignment = { vertical:'middle', horizontal:'center' };
+    ws.getRow(1).height = 26;
+
+    const mesCap = rel.mesLabel.charAt(0).toUpperCase() + rel.mesLabel.slice(1);
+    const linhas = [
+      ['Processos em fábrica e aguardando booking:', rel.fabricaBooking],
+      ['Processos com booking aguardando embarque:', rel.aguardandoEmbarque],
+      ['Processos embarcados:', rel.embarcados],
+      [`Containers registrados no mês de ${mesCap} até o momento:`, rel.containersMes],
+      ['Total de processos em fábrica/booking/embarcados:', rel.total],
+    ];
+    linhas.forEach(([label, valor]) => {
+      const row = ws.addRow([label, valor]);
+      row.getCell(1).font = { name:'Calibri', bold:true, size:11, color:{argb:CORES.BRANCO} };
+      row.getCell(1).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO} };
+      row.getCell(1).alignment = { vertical:'middle', horizontal:'left' };
+      row.getCell(2).font = { name:'Calibri', bold:true, size:11, color:{argb:CORES.BRANCO} };
+      row.getCell(2).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO} };
+      row.getCell(2).alignment = { vertical:'middle', horizontal:'center' };
+      row.eachCell(c => { c.border = window.ExcelStyles.bordaFina; });
+      row.height = 20;
+    });
+    ws.getColumn(1).width = 48;
+    ws.getColumn(2).width = 14;
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Relatorio_Narcelio_${rel.geradoEm.toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('✓ Excel exportado', 'ok');
+  }catch(e){
+    showToast('Erro ao exportar Excel: '+e.message, 'err');
+    console.error(e);
+  }
+}

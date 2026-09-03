@@ -935,6 +935,34 @@ teste('renderFechamentoInfo: com vendas cadastradas, menciona "Vendido a N clien
   verdadeiro(html.includes('soma das vendas'), 'deveria deixar claro que a NF Saída mostrada é a soma, não um valor único');
 });
 
+// 📊 calcularRelatorioNarcelio() — relatório semanal pro Sr. Narcélio
+teste('calcularRelatorioNarcelio: conta fábrica/booking (PI), aguardando embarque e embarcados corretamente', () => {
+  const hoje = new Date();
+  const isoMesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-10`;
+  const processos = [
+    { fase: 'PI' },
+    { fase: 'PI' },
+    { fase: 'AGUARDANDO_EMBARQUE' },
+    { fase: 'EMBARCADO', data_embarque: isoMesAtual, containers_json: JSON.stringify([{numero:'CONT001'},{numero:'CONT002'}]) },
+    { fase: 'DESEMBARCADO' }, // não deveria contar em nenhum dos 3 grupos
+  ];
+  const rel = sandbox.calcularRelatorioNarcelio(processos);
+  aproxIgual(rel.fabricaBooking, 2, 0, 'deveria contar as 2 fases PI');
+  aproxIgual(rel.aguardandoEmbarque, 1, 0);
+  aproxIgual(rel.embarcados, 1, 0, 'DESEMBARCADO não é EMBARCADO, não deveria contar');
+  aproxIgual(rel.total, 4, 0, 'total = fábrica/booking + aguardando embarque + embarcados');
+  aproxIgual(rel.containersMes, 2, 0, 'containers do processo embarcado neste mês');
+});
+
+teste('calcularRelatorioNarcelio: exclui processos cancelados da contagem', () => {
+  const processos = [
+    { fase: 'PI' },
+    { fase: 'PI', cancelado: true },
+  ];
+  const rel = sandbox.calcularRelatorioNarcelio(processos);
+  aproxIgual(rel.fabricaBooking, 1, 0, 'processo cancelado não deveria contar');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

@@ -389,6 +389,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <button class="btn btn-outline" onclick="abrirModalExportCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor, ordenado por Data de Chegada) — confirme os status antes de gerar">📋 Exportar p/ Cliente</button>
 <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
 <button id="btn-followup-semanal" class="btn btn-outline" onclick="gerarFollowUpManual()" title="Gera e envia agora o e-mail de follow-up semanal (processos com ETA nos próximos 10 dias, por cliente) — visível só para gerentes" style="display:none;">📧 Gerar Follow-up Semanal</button>
+<button class="btn btn-outline" onclick="abrirRelatorioNarcelio()" title="Monta o relatório semanal (processos em fábrica/booking/embarcados + containers do mês) pra copiar/exportar e enviar pro Sr. Narcélio, enquanto ele não usa o sistema">📊 Relatório Narcélio</button>
 </div>
 <!-- FILTRO POR DATA -->
 <div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
@@ -497,6 +498,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 
 <!-- TOAST -->
 <div class="toast-wrap" id="toast-wrap"></div>
+<div id="relatorio-narcelio-overlay"></div>
 
 <!-- MODAL PROCESSO -->
 <div class="modal-bg" id="modal-bg">
