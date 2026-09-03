@@ -795,45 +795,32 @@ function fecharRelatorioNarcelio(){
   if(overlay) overlay.innerHTML = '';
 }
 function renderRelatorioNarcelioModalHtml(rel){
+  const linha = (label, valor) => `
+    <tr>
+      <td style="padding:10px 14px;background:#1A7FD4;color:#fff;font-weight:600;font-size:13px;border:1px solid #4DA3E8;">${esc(label)}</td>
+      <td style="padding:10px 14px;background:#1A7FD4;color:#fff;font-weight:700;font-size:13px;text-align:center;border:1px solid #4DA3E8;width:90px;">${valor===''?'':valor}</td>
+    </tr>`;
   const mesCap = rel.mesLabel.charAt(0).toUpperCase() + rel.mesLabel.slice(1);
-  const card = (icone, numero, label) => `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;text-align:center;box-shadow:var(--shadow-sm);">
-      <div style="font-size:22px;line-height:1;margin-bottom:6px;">${icone}</div>
-      <div style="font-size:28px;font-weight:800;color:var(--text);line-height:1.1;">${numero}</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.3;">${label}</div>
-    </div>`;
   return `
-  <div style="position:fixed;inset:0;background:rgba(9,17,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this) fecharRelatorioNarcelio()">
-    <div style="background:var(--bg,#fff);border-radius:var(--r-xl);max-width:640px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shadow-lg);">
-
-      <div style="background:linear-gradient(135deg,#0B1E33,#154671);border-radius:var(--r-xl) var(--r-xl) 0 0;padding:22px 24px;position:relative;">
-        <button onclick="fecharRelatorioNarcelio()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;">✕</button>
-        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#8fb8e6;text-transform:uppercase;margin-bottom:6px;">Relatório semanal · Sr. Narcélio</div>
-        <h2 style="margin:0;color:#fff;font-size:19px;font-weight:700;">📊 Relatório Processos Importação</h2>
-        <div style="font-size:12px;color:#b7cde4;margin-top:6px;">Gerado em ${rel.geradoEm.toLocaleDateString('pt-BR')} às ${rel.geradoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} — confira os números antes de enviar</div>
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this) fecharRelatorioNarcelio()">
+    <div style="background:var(--bg,#fff);border-radius:12px;max-width:560px;width:92%;max-height:88vh;overflow:auto;padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;">📊 Relatório Narcélio</h3>
+        <button class="btn btn-outline" onclick="fecharRelatorioNarcelio()">✕</button>
       </div>
-
-      <div style="padding:22px 24px;">
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-          ${card('🏭', rel.fabricaBooking, 'Em fábrica e aguardando booking')}
-          ${card('📦', rel.aguardandoEmbarque, 'Com booking, aguardando embarque')}
-          ${card('🚢', rel.embarcados, 'Embarcados')}
-          ${card('🛃', rel.containersMes, `Containers c/ DI registrada em ${mesCap}`)}
-        </div>
-
-        <div style="margin-top:14px;background:var(--ac-soft);border:1px solid var(--ac);border-radius:var(--r-lg);padding:16px 18px;display:flex;justify-content:space-between;align-items:center;">
-          <div>
-            <div style="font-size:13px;font-weight:700;color:var(--ac2);">Total em fábrica/booking/embarcados</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Soma dos 3 primeiros indicadores</div>
-          </div>
-          <div style="font-size:32px;font-weight:800;color:var(--ac2);">${rel.total}</div>
-        </div>
-
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
-          <button class="btn btn-outline" onclick="fecharRelatorioNarcelio()">Fechar</button>
-          <button class="btn btn-outline" onclick="copiarRelatorioNarcelio()">📋 Copiar texto</button>
-          <button class="btn btn-primary" onclick="exportarRelatorioNarcelioExcel(window._relatorioNarcelioAtual)">⬇️ Exportar Excel</button>
-        </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Gerado em ${rel.geradoEm.toLocaleDateString('pt-BR')} — confira os números antes de enviar.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr><td colspan="2" style="padding:10px 14px;background:#1567B8;color:#fff;font-weight:700;font-size:13px;border:1px solid #4DA3E8;">RELATÓRIO PROCESSOS IMPORTAÇÃO</td></tr>
+        ${linha('Processos em fábrica e aguardando booking:', rel.fabricaBooking)}
+        ${linha('Processos com booking aguardando embarque:', rel.aguardandoEmbarque)}
+        ${linha('Processos embarcados:', rel.embarcados)}
+        ${linha(`Containers registrados no mês de ${mesCap} até o momento:`, rel.containersMes)}
+        ${linha('Total de processos em fábrica/booking/embarcados:', rel.total)}
+      </table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="btn btn-outline" onclick="fecharRelatorioNarcelio()">Fechar</button>
+        <button class="btn btn-outline" onclick="copiarRelatorioNarcelio()">📋 Copiar</button>
+        <button class="btn btn-primary" onclick="exportarRelatorioNarcelioExcel(window._relatorioNarcelioAtual)">⬇️ Exportar Excel</button>
       </div>
     </div>
   </div>`;
