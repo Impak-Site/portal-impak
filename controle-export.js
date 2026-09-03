@@ -757,7 +757,7 @@ async function exportarRelatorioNarcelioExcel(rel){
     return;
   }
   try{
-    const { CORES } = window.ExcelStyles;
+    const { CORES, bordaFina } = window.ExcelStyles;
     const wb = new ExcelJS.Workbook();
     wb.creator = 'IMPAK';
     wb.created = new Date();
@@ -766,10 +766,18 @@ async function exportarRelatorioNarcelioExcel(rel){
     ws.mergeCells(1,1,1,2);
     const titulo = ws.getCell(1,1);
     titulo.value = 'RELATÓRIO PROCESSOS IMPORTAÇÃO';
-    titulo.font = { name:'Calibri', bold:true, size:13, color:{argb:CORES.BRANCO} };
+    titulo.font = { name:'Calibri', bold:true, size:14, color:{argb:CORES.BRANCO} };
     titulo.fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO} };
     titulo.alignment = { vertical:'middle', horizontal:'center' };
-    ws.getRow(1).height = 26;
+    ws.getRow(1).height = 30;
+
+    ws.mergeCells(2,1,2,2);
+    const subtitulo = ws.getCell(2,1);
+    subtitulo.value = `Gerado em ${rel.geradoEm.toLocaleDateString('pt-BR')} às ${rel.geradoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+    subtitulo.font = { name:'Calibri', italic:true, size:9, color:{argb:CORES.CINZA} };
+    subtitulo.fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.CINZA_CLARO} };
+    subtitulo.alignment = { vertical:'middle', horizontal:'center' };
+    ws.getRow(2).height = 18;
 
     const mesCap = rel.mesLabel.charAt(0).toUpperCase() + rel.mesLabel.slice(1);
     const linhas = [
@@ -777,19 +785,29 @@ async function exportarRelatorioNarcelioExcel(rel){
       ['Processos com booking aguardando embarque:', rel.aguardandoEmbarque],
       ['Processos embarcados:', rel.embarcados],
       [`Containers registrados no mês de ${mesCap} até o momento:`, rel.containersMes],
-      ['Total de processos em fábrica/booking/embarcados:', rel.total],
     ];
     linhas.forEach(([label, valor]) => {
       const row = ws.addRow([label, valor]);
-      row.getCell(1).font = { name:'Calibri', bold:true, size:11, color:{argb:CORES.BRANCO} };
-      row.getCell(1).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO} };
-      row.getCell(1).alignment = { vertical:'middle', horizontal:'left' };
-      row.getCell(2).font = { name:'Calibri', bold:true, size:11, color:{argb:CORES.BRANCO} };
-      row.getCell(2).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_ESCURO} };
+      row.getCell(1).font = { name:'Calibri', size:11, color:{argb:CORES.TEXTO} };
+      row.getCell(1).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.ZEBRA} };
+      row.getCell(1).alignment = { vertical:'middle', horizontal:'left', indent:1 };
+      row.getCell(2).font = { name:'Calibri', bold:true, size:12, color:{argb:CORES.AZUL_ESCURO} };
+      row.getCell(2).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_CLARO} };
       row.getCell(2).alignment = { vertical:'middle', horizontal:'center' };
-      row.eachCell(c => { c.border = window.ExcelStyles.bordaFina; });
-      row.height = 20;
+      row.eachCell(c => { c.border = bordaFina; });
+      row.height = 22;
     });
+
+    const totalRow = ws.addRow(['Total de processos em fábrica/booking/embarcados:', rel.total]);
+    totalRow.getCell(1).font = { name:'Calibri', bold:true, size:12, color:{argb:CORES.BRANCO} };
+    totalRow.getCell(1).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL} };
+    totalRow.getCell(1).alignment = { vertical:'middle', horizontal:'left', indent:1 };
+    totalRow.getCell(2).font = { name:'Calibri', bold:true, size:14, color:{argb:CORES.BRANCO} };
+    totalRow.getCell(2).fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL} };
+    totalRow.getCell(2).alignment = { vertical:'middle', horizontal:'center' };
+    totalRow.eachCell(c => { c.border = bordaFina; });
+    totalRow.height = 26;
+
     ws.getColumn(1).width = 48;
     ws.getColumn(2).width = 14;
 
