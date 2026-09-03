@@ -1381,6 +1381,24 @@ function calcularJurosCobrado(p){
   return { valor };
 }
 
+// Juros por VENDA/NF — pedido do Ayslan (03/09/2026): quando o processo tem
+// mais de uma venda (vendas_json), cada uma pode ter cobrado um juro
+// diferente do cliente, então o valor precisa ser lançado por venda (ver
+// campo venda.juros_valor em controle-campos.js), não mais um único valor
+// pro processo inteiro. Pra não quebrar processos já preenchidos com o
+// campo antigo (real_json.juros_valor, ver calcularJurosCobrado acima) —
+// como o KS260507SMBZIMP, que tem só 1 venda — quando a venda não tem seu
+// próprio juros_valor E é a ÚNICA venda do processo, cai no valor antigo.
+function calcularJurosVenda(p, venda, qtdVendas){
+  const proprio = parseFloat(venda && venda.juros_valor);
+  if(!isNaN(proprio) && proprio > 0) return proprio;
+  if(qtdVendas === 1){
+    const antigo = calcularJurosCobrado(p);
+    if(antigo) return antigo.valor;
+  }
+  return 0;
+}
+
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ VENDAS MULTI-CLIENTE (rateio de custo) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // Um processo (de qualquer finalidade) pode ser vendido a mais de um
 // cliente ÃÂ¢ÃÂÃÂ ex.: meio contÃÂÃÂªiner pra um, meio pra outro. p.vendas_json guarda
@@ -1638,7 +1656,13 @@ function calcularFechamento(p){
   // receita adicional ANTES do ajuste da Nota Boss, que usa essa receita ja
   // somada ao juro como parte do denominador do percentual (igual a
   // planilha: H58 = G58/(G15+G46), onde G15 ja inclui o juro).
-  const jurosCobrado = calcularJurosCobrado(p);
+  let jurosCobrado;
+  if(vendasResumo){
+    const jurosTotal = vendasResumo.linhas.reduce((soma,l) => soma + calcularJurosVenda(p, l.venda, vendasResumo.linhas.length), 0);
+    jurosCobrado = jurosTotal > 0 ? { valor: jurosTotal } : null;
+  } else {
+    jurosCobrado = calcularJurosCobrado(p);
+  }
   let receitaTotalReal = nfSaida;
   if(jurosCobrado && lucroReal != null){
     lucroReal = lucroReal + jurosCobrado.valor;
@@ -1827,28 +1851,42 @@ function renderFechamentoInfo(p){
   // Ayslan (03/09/2026): mostrar aqui, na tela de Fechamento, junto do
   // Juros Cobrado, embaixo do bloco "Vendido a N cliente(s)", sem precisar
   // abrir a aba Vendas de novo pra conferir o combinado com o cliente.
-  const jurosRow = f.jurosCobrado
-    ? `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)}</strong></div>`
-    : '';
-  const linhaPrazoRows = f.vendasResumo
+  // Cada venda mostra sua PRÓPRIA linha de Forma de Pagamento e (se houver)
+  // Juros Cobrado — pedido do Ayslan (03/09/2026): quando o processo tem
+  // mais de uma NF/cliente, cada uma precisa aparecer com os seus próprios
+  // dados aqui embaixo, não um valor único combinado pro processo inteiro.
+  const linhaPrazoJurosRows = f.vendasResumo
     ? f.vendasResumo.linhas.map(l => {
+        const multiplas = f.vendasResumo.linhas.length > 1;
         const v = calcularVencimentoVenda(l.venda);
-        if(!v) return '';
-        const valor = v.formaPagamento === 'avista' ? 'À Vista' : `Prazo: ${v.texto ? esc(v.texto) : 'não informado'}`;
-        const rotulo = f.vendasResumo.linhas.length > 1 ? `🧾 Forma de Pagamento — ${esc(l.venda.cliente||'(sem cliente)')}` : '🧾 Forma de Pagamento';
-        return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong>${valor}</strong></div>`;
+        const linhaPrazo = v
+          ? (() => {
+              const valor = v.formaPagamento === 'avista' ? 'À Vista' : `Prazo: ${v.texto ? esc(v.texto) : 'não informado'}`;
+              const rotulo = multiplas ? `🧾 Forma de Pagamento — ${esc(l.venda.cliente||'(sem cliente)')}` : '🧾 Forma de Pagamento';
+              return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong>${valor}</strong></div>`;
+            })()
+          : '';
+        const jurosVenda = calcularJurosVenda(p, l.venda, f.vendasResumo.linhas.length);
+        const linhaJurosVenda = jurosVenda > 0
+          ? (() => {
+              const rotulo = multiplas ? `🧾 Juros Cobrado do Cliente — ${esc(l.venda.cliente||'(sem cliente)')}` : '🧾 Juros Cobrado do Cliente (somado ao Lucro Real)';
+              return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong style="color:var(--ok);">${r2(jurosVenda)}</strong></div>`;
+            })()
+          : '';
+        return linhaPrazo + linhaJurosVenda;
       }).join('')
     : '';
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
         ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
-        ${linhaPrazoRows}
-        ${jurosRow}
+        ${linhaPrazoJurosRows}
       </div>`
     : '';
-  const linhaJuros = (!f.vendasResumo && jurosRow)
-    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">${jurosRow}</div>`
+  const linhaJuros = (!f.vendasResumo && f.jurosCobrado)
+    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)}</strong></div>
+      </div>`
     : '';
   const linhaNotasBoss = f.notasBoss
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">

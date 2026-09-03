@@ -684,6 +684,28 @@ teste('calcularVencimentoVenda: à vista não tem texto de prazo', () => { const
 teste('calcularVencimentoVenda: prazo é campo livre (ex: 30/60/90 dias)', () => { const v = sandbox.calcularVencimentoVenda({ forma_pagamento:'prazo', prazo_texto:'30/60/90 dias' }); iguais(v.formaPagamento, 'prazo'); iguais(v.texto, '30/60/90 dias'); });
 teste('calcularVencimentoVenda: compat com registro antigo "aprazo" (dias numérico)', () => { const v = sandbox.calcularVencimentoVenda({ forma_pagamento:'aprazo', prazo_dias:'30' }); iguais(v.formaPagamento, 'prazo'); iguais(v.texto, '30 dias'); });
 teste('renderFechamentoInfo: mostra o prazo (campo livre) na linha de cada cliente', () => { const p = { nf_saida_valor:100000, produtos_json: JSON.stringify([{descricao:'X',quantidade:10}]), real_json:{fob:5000}, real_cambio:5, vendas_json: JSON.stringify([{ cliente:'CLIENTE A', itens:[{descricao:'X',quantidade:10}], nf_saida_valor:100000, nf_saida_data:'2026-08-01', forma_pagamento:'prazo', prazo_texto:'30/60/90 dias' }]) }; const html = sandbox.renderFechamentoInfo(p); verdadeiro(html.includes('Prazo: 30/60/90 dias'), 'deveria mostrar o texto livre do prazo'); });
+teste('calcularJurosVenda: usa o valor próprio da venda quando preenchido', () => { const v = sandbox.calcularJurosVenda({}, { juros_valor: '123.45' }, 2); iguais(v, 123.45); });
+teste('calcularJurosVenda: com múltiplas vendas, sem valor próprio não cai no fallback antigo (evita juntar tudo numa só)', () => { const v = sandbox.calcularJurosVenda({ real_json:{ juros_valor: 999 } }, { juros_valor: '' }, 2); iguais(v, 0); });
+teste('calcularJurosVenda: com 1 única venda sem valor próprio, cai no campo antigo (real_json.juros_valor) para não quebrar processos já preenchidos', () => { const v = sandbox.calcularJurosVenda({ real_json:{ juros_valor: 999 } }, { juros_valor: '' }, 1); iguais(v, 999); });
+teste('renderFechamentoInfo: com múltiplas vendas, cada NF/cliente mostra sua própria Forma de Pagamento e Juros Cobrado', () => {
+  const p = {
+    nf_saida_valor: 100000,
+    produtos_json: JSON.stringify([{descricao:'X',quantidade:20}]),
+    real_json: { fob:5000 },
+    real_cambio: 5,
+    vendas_json: JSON.stringify([
+      { cliente:'CLIENTE A', itens:[{descricao:'X',quantidade:10}], nf_saida_valor:50000, nf_saida_data:'2026-08-01', forma_pagamento:'prazo', prazo_texto:'30/60/90 dias', juros_valor: 1000 },
+      { cliente:'CLIENTE B', itens:[{descricao:'X',quantidade:10}], nf_saida_valor:50000, nf_saida_data:'2026-08-02', forma_pagamento:'avista', juros_valor: 2000 },
+    ]),
+  };
+  const html = sandbox.renderFechamentoInfo(p);
+  verdadeiro(html.includes('Forma de Pagamento — CLIENTE A'), 'deveria rotular a forma de pagamento com o nome do cliente A');
+  verdadeiro(html.includes('Forma de Pagamento — CLIENTE B'), 'deveria rotular a forma de pagamento com o nome do cliente B');
+  verdadeiro(html.includes('Juros Cobrado do Cliente — CLIENTE A'), 'deveria rotular o juros com o nome do cliente A');
+  verdadeiro(html.includes('Juros Cobrado do Cliente — CLIENTE B'), 'deveria rotular o juros com o nome do cliente B');
+  verdadeiro(html.includes('1.000,00') || html.includes('1000,00'), 'deveria mostrar o juros do cliente A');
+  verdadeiro(html.includes('2.000,00') || html.includes('2000,00'), 'deveria mostrar o juros do cliente B');
+});
 teste('Reciclagem (Taxas Operacionais): id "reciclagem" soma no Custo Real Total (BRL direto, sem conversão)', () => { const r = sandbox.calcularCustoRealTotal({ real_json: { reciclagem: 2000 } }); iguais(r.total, 2000); });
 teste('Reciclagem: não colide com o item "Reciclagem (Fechamento)" do grupo Diferenças de Impostos — ids distintos', () => { const itens = sandbox.custosReaisItensFlat(); const ids = itens.map(it => it.id); const reciclagens = ids.filter(id => id === 'reciclagem' || id === 'reciclagem_fechamento'); iguais(reciclagens.length, 2, 'deveriam existir exatamente 2 itens de reciclagem, com ids diferentes'); verdadeiro(ids.filter(id => id === 'reciclagem').length === 1, 'id "reciclagem" deve aparecer só uma vez (sem duplicidade)'); });
 

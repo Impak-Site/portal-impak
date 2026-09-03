@@ -465,7 +465,7 @@ function sincronizarProdutoLegado(){
 let _vendas = []; // [{cliente, itens:[{descricao,quantidade}], nf_saida_numero, nf_saida_data, nf_saida_valor, custos_diretos:[{label,valor}], obs}]
 
 function vendaVazia(){
-  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_texto:'' };
+  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_texto:'', juros_valor:'' };
 }
 
 function renderVendas(){
@@ -521,6 +521,8 @@ function renderVendas(){
           </select></div>
         ${v.forma_pagamento==='prazo' ? `<div class="form-group full"><label class="form-label">Prazo (campo livre — ex: "30 dias" ou "30/60/90 dias")</label>
           <input class="form-input" value="${esc(v.prazo_texto||'')}" oninput="_vendas[${vi}].prazo_texto=this.value;sincronizarVendasLegado()" placeholder="ex: 30/60/90 dias"></div>` : ''}
+        <div class="form-group"><label class="form-label">Juros Cobrado do Cliente (R$ — se houver)</label>
+          <input class="form-input" type="number" step="0.01" value="${v.juros_valor!=null?v.juros_valor:''}" oninput="_vendas[${vi}].juros_valor=this.value;sincronizarVendasLegado()" placeholder="0,00"></div>
       </div>
       <label class="form-label">Itens vendidos (quantidade alocada a este cliente)</label>
       <div style="margin-bottom:6px;">${itensHtml}</div>
