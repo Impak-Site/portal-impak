@@ -104,6 +104,7 @@ function renderModal(){
     {id:'custosreais',   label:'💵 Custos Reais'},
     {id:'vendas',        label:'🧾 Vendas'},
     {id:'logistica',     label:'🚢 Logística'},
+    {id:'demurrage',    label:'⚓ Demurrage'},
     {id:'documentos',    label:'📋 Documentos'},
     {id:'historico',     label:'📜 Histórico'},
   ];
@@ -518,31 +519,53 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">⚓ Chegada & Demurrage</div>
+        <div class="form-section-title">⚓ Chegada & Armazenagem</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_data_chegada" value="${esc(p.data_chegada)}"
               onchange="moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (Previsão de Chegada)');atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Presença de Carga</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Demurrage Vence</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armazenagem Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_armazenagem_vencimento" value="${esc(p.armazenagem_vencimento)}" style="color:var(--warn);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Data Devolução</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armazém</label>
             <input class="form-input" id="f_armazem" value="${esc(p.armazem)}" placeholder="Onde a carga está armazenada (útil p/ LCL — não é container cheio)"></div>
+        </div>
+        <div id="armazen-info-wrap">${armazenInfo}</div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- ABA: DEMURRAGE -->
+    <div class="tab-pane" id="pane-demurrage">
+      <div class="form-section">
+        <div class="form-section-title">⚓ Demurrage</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Demurrage Vence</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
             <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Demurrage Pago?</label>
-            <select class="form-input" id="f_demurrage_pago">
-              <option value="false" ${!p.demurrage_pago?'selected':''}>Não</option>
-              <option value="true"  ${p.demurrage_pago?'selected':''}>Sim ✓</option>
+          <div class="form-group"><label class="form-label">Data Devolução</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Status RIC</label>
+            <select class="form-input" id="f_ric_status">
+              <option value="" ${!p.ric_status?'selected':''}>—</option>
+              <option value="Isento" ${p.ric_status==='Isento'?'selected':''}>Isento</option>
+              <option value="Termo" ${p.ric_status==='Termo'?'selected':''}>Termo</option>
             </select></div>
+          <div class="form-group"><label class="form-label">Depot</label>
+            <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução"></div>
+          <div class="form-group"><label class="form-label">Data de Envio do Termo</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_envio_termo" value="${esc(p.data_envio_termo)}"></div>
+          <div class="form-group"><label class="form-label">Data Pagamento Lavagem</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_lavagem" value="${esc(p.data_pagamento_lavagem)}"></div>
+          <div class="form-group"><label class="form-label">Data de Pagamento da Demurrage</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_demurrage" value="${esc(p.data_pagamento_demurrage)}" onchange="atualizarFaseEmTempoReal()"></div>
         </div>
         <div id="demur-info-wrap">${demurInfo}</div>
-        <div id="armazen-info-wrap">${armazenInfo}</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
@@ -1337,6 +1360,7 @@ function atualizarFaseEmTempoReal(){
     'nf_entrada_numero','nf_saida_numero',
     'data_agendamento','data_carregamento',
     'data_devolucao_vazio','demurrage_vencimento','armazenagem_vencimento','free_time',
+    'data_pagamento_demurrage',
   ];
 
   const snapshot = {..._editando};

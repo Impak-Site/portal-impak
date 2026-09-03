@@ -553,6 +553,11 @@ async function salvarProcesso(proc, patchFields){
     proc.armazenagem_vencimento = presenca.toISOString().split('T')[0];
   }
 
+  // demurrage_pago agora Ã© derivado automaticamente da Data de Pagamento da
+  // Demurrage (aba Demurrage) em vez de um dropdown Sim/NÃ£o editado Ã  mÃ£o
+  // (pedido Emanuelly 03/09/2026, junto com o desmembramento da aba).
+  proc.demurrage_pago = !!proc.data_pagamento_demurrage;
+
   // AvanÃÂÃÂ§ar fase automaticamente
   proc.fase = calcularFase(proc);
 
@@ -566,7 +571,7 @@ async function salvarProcesso(proc, patchFields){
   // comportamento de sempre ÃÂ¢ÃÂÃÂ manda o processo inteiro.
   let payload = proc;
   if(patchFields && Array.isArray(patchFields)){
-    const camposFixos = ['id','referencia','fase','demurrage_vencimento','armazenagem_vencimento','pi_cambio',
+    const camposFixos = ['id','referencia','fase','demurrage_vencimento','armazenagem_vencimento','demurrage_pago','pi_cambio',
       'updated_by','updated_at','created_by','created_at','log'];
     const chaves = [...new Set([...camposFixos, ...patchFields])];
     payload = {};
