@@ -452,7 +452,7 @@ function parseFechamento(wb) {
     const diferencaIcmsProprio = numVal(cellVal(ws, 'G28')); if (diferencaIcmsProprio > 0) real_json.diferenca_icms_proprio = diferencaIcmsProprio;
     const icmsSt = numVal(cellVal(ws, 'G29')); if (icmsSt > 0) real_json.icms_st = icmsSt;
     const comissaoVendedor = numVal(cellVal(ws, 'G32')); if (comissaoVendedor > 0) real_json.comissao_vendedor = comissaoVendedor;
-    const reciclagem = numVal(cellVal(ws, 'G33')); if (reciclagem > 0) real_json.reciclagem = reciclagem;
+    const reciclagem = numVal(cellVal(ws, 'G33')); if (reciclagem > 0) real_json.reciclagem_fechamento = reciclagem;
     const despesasBaixaPatioVenda = numVal(cellVal(ws, 'G35')); if (despesasBaixaPatioVenda > 0) real_json.despesas_baixa_patio_venda = despesasBaixaPatioVenda;
     const timp = numVal(cellVal(ws, 'G37')); if (timp > 0) real_json.timp = timp;
     const trademaster = numVal(cellVal(ws, 'G38')); if (trademaster > 0) real_json.trademaster = trademaster;

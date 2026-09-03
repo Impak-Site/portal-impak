@@ -571,6 +571,13 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
           </div>
           <div class="form-group"><label>Desconsolidação (US$)</label><input type="number" id="tx_desconsolidacao" onchange="onAutoTaxaDepChange()" step="0.01" value="80"></div>
         </div>
+        <!-- Reciclagem: pedido do Jean (03/09/2026) — em Encomenda é custo do
+             cliente (não entra no processo); em Importação Própria IMPAK é
+             custo nosso (cobra X do cliente, paga Y). Antes ia dentro de
+             Custos Diversos por falta de campo próprio. -->
+        <div class="form-row">
+          <div class="form-group"><label>Reciclagem (R$)</label><input type="number" id="tx_reciclagem" step="0.01" value="0" placeholder="0,00"></div>
+        </div>
       </div>
     </div>
 
@@ -1291,6 +1298,7 @@ function lerTaxasOperacionais(){
       emissao_li: v('tx_emissao_li'), baixa_patio: v('tx_baixa_patio'), capatazia: v('tx_capatazia'),
       liberacao_bl: v('tx_liberacao_bl'), despachante: v('tx_despachante'), sda: v('tx_sda'),
       lavacao: v('tx_lavacao'), administrativo: v('tx_administrativo'), agente: v('tx_agente'),
+      reciclagem: v('tx_reciclagem'),
     },
     usd: {
       handling: v('tx_handling'), additional_costs: v('tx_additional_costs'), import_logistics: v('tx_import_logistics'),
@@ -3149,7 +3157,7 @@ const CAMPOS_COTACAO = [
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
   'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
   'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_tsc',
-  'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao',
+  'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao','tx_reciclagem',
   'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor',
 ];
 

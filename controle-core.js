@@ -986,6 +986,11 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'isps',             label:'ISPS',                    unidade:'BRL', unidadeLegado:'USD', porContainer:pc('isps'),  cotado:c=>c?.taxas_usd?.isps },
     { id:'iof',              label:'IOF',                     unidade:'BRL', unidadeLegado:'USD', porContainer:pc('iof'),  cotado:c=>c?.taxas_usd?.iof },
     { id:'desconsolidacao',  label:'Desconsolidação',         unidade:'BRL', unidadeLegado:'USD', porContainer:pc('desconsolidacao'),  cotado:c=>c?.taxas_usd?.desconsolidacao },
+    // Reciclagem: pedido do Jean (03/09/2026) — precisa de Pago/Cobrado
+    // proprios porque em Encomenda esse custo e do cliente (nao entra no
+    // processo) e em Importacao Propria IMPAK e custo nosso (cobra X do
+    // cliente, paga Y). Antes ia dentro de 'Custos Diversos'.
+    { id:'reciclagem',       label:'Reciclagem',              unidade:'BRL', porContainer:pc('reciclagem'), cotado:c=>c?.taxas_fixas?.reciclagem },
     // ICMS de Saida (ICMS Proprio, 1,4%): calculado sobre o Valor Total dos
     // Produtos da NF de Entrada, lancado na NF de Saida ao cliente. E custo
     // real (Pago = o que foi recolhido) mas tambem e cobrado do cliente
@@ -1020,7 +1025,7 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'diferenca_cbs',             label:'Diferença CBS',                             unidade:'BRL', apenasPago:true, excluirDosTotais:true, cotado:c=>null },
     { id:'marjoracao',                label:'Marjoração 0,6%',                           unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'comissao_vendedor',         label:'Comissão Vendedor',                         unidade:'BRL', apenasPago:true, cotado:c=>null },
-    { id:'reciclagem',                label:'Reciclagem',                                unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'reciclagem_fechamento',      label:'Reciclagem (Fechamento)',                    unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'despesas_baixa_patio_venda',label:'Despesas Baixa Pátio (Venda/Devolução)',    unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'dif_seguro',                label:'Diferença de Seguro',                       unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'timp',                      label:'Timp',                                      unidade:'BRL', apenasPago:true, cotado:c=>null },

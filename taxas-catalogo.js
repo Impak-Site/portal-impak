@@ -64,6 +64,11 @@
     { id: 'isps',             label: 'ISPS',                            moeda: 'USD', base_rateio: 'container' },
     { id: 'iof',              label: 'IOF',                             moeda: 'USD', base_rateio: 'container' },
     { id: 'desconsolidacao',  label: 'Desconsolidação',                 moeda: 'USD', base_rateio: 'container' },
+    // Reciclagem: pedido do Jean (03/09/2026) — em Encomenda é custo do
+    // cliente (não entra no processo); em Importação Própria IMPAK é custo
+    // nosso (cobra X do cliente, paga Y). Antes era lançado dentro de
+    // 'Custos Diversos' por falta de campo próprio.
+    { id: 'reciclagem',       label: 'Reciclagem',                      moeda: 'BRL', base_rateio: 'processo' },
     // Só existem como lançamento no Controle (aba Custos Reais) — o
     // Calculador não tem campo próprio pra eles no formulário de cotação.
     { id: 'custos_diversos',  label: 'Custos Diversos',                 moeda: 'BRL', base_rateio: 'processo', soControle: true },

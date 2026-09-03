@@ -94,6 +94,8 @@ const ITENS_CUSTOS_REAIS = [
   { id: 'armazenagem',    unidade: 'BRL', porContainer: pc('armazenagem'), get: c => c?.taxas_fixas?.armazenagem },
   { id: 'custos_diversos', unidade: 'BRL', porContainer: pc('custos_diversos'), get: c => c?.custos_diversos },
   { id: 'seguro_venda',    unidade: 'BRL', porContainer: pc('seguro_venda'), get: c => c?.seguro_venda },
+  // Reciclagem: pedido do Jean (03/09/2026) — Pago/Cobrado próprios (Encomenda = custo do cliente, Importação Própria = custo IMPAK).
+  { id: 'reciclagem',      unidade: 'BRL', porContainer: pc('reciclagem'), get: c => c?.taxas_fixas?.reciclagem },
   // Taxas Operacionais — em BRL (já convertidas pelo câmbio de abertura+2% no Calculador), porContainer:true
   { id: 'handling',         unidade: 'BRL', porContainer: pc('handling'), get: c => c?.taxas_usd?.handling },
   { id: 'additional_costs', unidade: 'BRL', porContainer: pc('additional_costs'), get: c => c?.taxas_usd?.additional_costs },
