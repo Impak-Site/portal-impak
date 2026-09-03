@@ -757,11 +757,10 @@ function showToast(msg, tipo, duracao){
 // Dashboard, ver renderStats/processosAtivos).
 //
 // "Containers registrados no mês": não existe uma data de registro por
-// container no banco (containers_json não tem timestamp por item), então
-// usa como proxy a data de embarque efetiva (data_embarque) quando já
-// embarcou, senão a previsão (etd) — ou seja, containers vinculados a um
-// embarque previsto/realizado dentro do mês corrente. Se esse critério
-// não bater com o que o Narcélio já recebia, é só avisar que ajusto.
+// container no banco (containers_json não tem timestamp por item). Critério
+// confirmado com a Emanuelly: container "registrado no mês" = processo cuja
+// Data de Registro da DI (data_registro_di, aba DI e Parametrização) cai
+// dentro do mês corrente.
 function calcularRelatorioNarcelio(processos){
   const ativos = (processos||[]).filter(p => !p.cancelado);
   const fabricaBooking     = ativos.filter(p => p.fase === 'PI').length;
@@ -777,8 +776,7 @@ function calcularRelatorioNarcelio(processos){
   };
   let containersMes = 0;
   ativos.forEach(p => {
-    const dataRef = p.data_embarque || p.etd;
-    if(noMesCorrente(dataRef)) containersMes += containersDoProcesso(p).length;
+    if(noMesCorrente(p.data_registro_di)) containersMes += containersDoProcesso(p).length;
   });
 
   const total = fabricaBooking + aguardandoEmbarque + embarcados;

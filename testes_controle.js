@@ -943,7 +943,7 @@ teste('calcularRelatorioNarcelio: conta fábrica/booking (PI), aguardando embarq
     { fase: 'PI' },
     { fase: 'PI' },
     { fase: 'AGUARDANDO_EMBARQUE' },
-    { fase: 'EMBARCADO', data_embarque: isoMesAtual, containers_json: JSON.stringify([{numero:'CONT001'},{numero:'CONT002'}]) },
+    { fase: 'EMBARCADO', data_registro_di: isoMesAtual, containers_json: JSON.stringify([{numero:'CONT001'},{numero:'CONT002'}]) },
     { fase: 'DESEMBARCADO' }, // não deveria contar em nenhum dos 3 grupos
   ];
   const rel = sandbox.calcularRelatorioNarcelio(processos);
@@ -951,7 +951,7 @@ teste('calcularRelatorioNarcelio: conta fábrica/booking (PI), aguardando embarq
   aproxIgual(rel.aguardandoEmbarque, 1, 0);
   aproxIgual(rel.embarcados, 1, 0, 'DESEMBARCADO não é EMBARCADO, não deveria contar');
   aproxIgual(rel.total, 4, 0, 'total = fábrica/booking + aguardando embarque + embarcados');
-  aproxIgual(rel.containersMes, 2, 0, 'containers do processo embarcado neste mês');
+  aproxIgual(rel.containersMes, 2, 0, 'containers do processo com Data Registro DI neste mês');
 });
 
 teste('calcularRelatorioNarcelio: exclui processos cancelados da contagem', () => {
