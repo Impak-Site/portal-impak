@@ -536,13 +536,19 @@ async function salvarProcesso(proc, patchFields){
   // Usa parseDataLocal (meio-dia local, T00:00:00) em vez de `new Date(string)`
   // direto — evita depender de coincidência de fuso horário nesse cálculo,
   // que tem impacto financeiro direto (multa por atraso na devolução do container).
-  if(proc.data_chegada && proc.free_time){
-    const chegada = parseDataLocal(proc.data_chegada);
-    // O dia da chegada já conta como o 1º dia do free time (pedido
-    // Emanuelly 03/09/2026): free_time=21 a partir de 03/09 vence em 23/09
-    // (03,04,...,23 = 21 dias), não 24/09.
-    chegada.setDate(chegada.getDate() + parseInt(proc.free_time||0) - 1);
-    proc.demurrage_vencimento = chegada.toISOString().split('T')[0];
+  // Base da contagem: Presença de Carga (pedido Emanuelly 03/09/2026,
+  // confirmado com teste no UD26-110 — presença 24/08 + 21 dias, contando
+  // 24/08 como o 1º dia, vence em 13/09, não Data de Chegada). Fica com
+  // fallback pra Data de Chegada só pra processos antigos que nunca
+  // chegaram a preencher Presença de Carga.
+  const baseDemurrage = proc.data_presenca || proc.data_chegada;
+  if(baseDemurrage && proc.free_time){
+    const inicioDemur = parseDataLocal(baseDemurrage);
+    // O dia inicial já conta como o 1º dia do free time (pedido Emanuelly
+    // 03/09/2026): free_time=21 a partir do dia X vence 20 dias depois
+    // (X, X+1,...,X+20 = 21 dias), não X+21.
+    inicioDemur.setDate(inicioDemur.getDate() + parseInt(proc.free_time||0) - 1);
+    proc.demurrage_vencimento = inicioDemur.toISOString().split('T')[0];
   }
 
   // Calcular vencimento do 1º período de armazenagem no porto automaticamente
@@ -784,11 +790,16 @@ function demurrageDisplay(proc){
 // para poder ser recalculada em tempo real conforme o usuário digita (ver
 // atualizarFaseEmTempoReal), e não apenas uma vez quando o modal abre.
 function renderDemurInfo(p){
-  if(!p.data_chegada && !p.demurrage_vencimento) return '';
+  if(!p.data_chegada && !p.data_presenca && !p.demurrage_vencimento) return '';
+  // Base da contagem: Presença de Carga, com fallback pra Data de Chegada
+  // (ver mesmo ajuste em salvarProcesso acima — pedido Emanuelly 03/09/2026,
+  // confirmado com o teste do UD26-110).
+  const baseDemur = p.data_presenca || p.data_chegada;
+  const inicioDemur = parseDataLocal(baseDemur);
   const chegada   = parseDataLocal(p.data_chegada);
   const freeTime  = parseInt(p.free_time||21);
-  const vencCalc  = chegada ? new Date(chegada) : null;
-  if(vencCalc) vencCalc.setDate(chegada.getDate() + freeTime - 1);
+  const vencCalc  = inicioDemur ? new Date(inicioDemur) : null;
+  if(vencCalc) vencCalc.setDate(inicioDemur.getDate() + freeTime - 1);
   const vencReal  = p.demurrage_vencimento ? parseDataLocal(p.demurrage_vencimento) : vencCalc;
   const dias = demurrageDias(p);
   const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=5?'var(--warn)':'var(--ok)';
@@ -807,7 +818,7 @@ function renderDemurInfo(p){
   return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📊 Cálculo do Demurrage</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
-      ${chegada ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 Data de chegada</span><strong>${chegada.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      ${inicioDemur ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 ${p.data_presenca?'Presença de carga':'Data de chegada'}</span><strong>${inicioDemur.toLocaleDateString('pt-BR')}</strong></div>` : ''}
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time</span><strong>${freeTime} dias</strong></div>
       ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
       ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}

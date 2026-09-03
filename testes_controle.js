@@ -223,6 +223,18 @@ teste('vencimento no futuro retorna número positivo', () => {
   const dias = sandbox.demurrageDias({ demurrage_vencimento: futuro.toISOString().slice(0,10) });
   verdadeiro(dias > 0, `esperado positivo, recebido ${dias}`);
 });
+teste('renderDemurInfo: base da contagem é Presença de Carga, não Data de Chegada (pedido Emanuelly 03/09/2026, teste UD26-110)', () => {
+  const p = { data_presenca: '2026-08-24', data_chegada: '2026-08-20', free_time: 21 };
+  const html = sandbox.renderDemurInfo(p);
+  verdadeiro(html.includes('13/09/2026'), 'presença 24/08 + 21 dias (contando 24/08 como o 1º) deveria vencer em 13/09/2026, não a partir da data de chegada (20/08)');
+  verdadeiro(html.includes('Presença de carga'), 'deveria rotular a data usada como Presença de carga quando ela existe');
+});
+teste('renderDemurInfo: sem Presença de Carga, cai no fallback pra Data de Chegada (processos antigos)', () => {
+  const p = { data_chegada: '2026-08-24', free_time: 21 };
+  const html = sandbox.renderDemurInfo(p);
+  verdadeiro(html.includes('13/09/2026'), 'sem presença cadastrada, deveria contar a partir da Data de Chegada igual antes');
+  verdadeiro(html.includes('Data de chegada'), 'deveria rotular a data usada como Data de chegada no fallback');
+});
 
 // ── 5b. TESTES: chegandoEmDias — card "Chegada em 7d" do Dashboard ─
 console.log('\n📋 chegandoEmDias() — processo com ETA dentro da janela e ainda não desembarcado');
