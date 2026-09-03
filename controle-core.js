@@ -1823,22 +1823,32 @@ function renderFechamentoInfo(p){
   // Prazo negociado da venda (À Vista / A Prazo + vencimento) — pedido do
   // Ayslan (03/09/2026): mostrar aqui, na tela de Fechamento, sem precisar
   // abrir a aba Vendas de novo pra conferir o combinado com o cliente.
-  const linhaPrazoVenda = venda => {
-    const v = calcularVencimentoVenda(venda);
-    if(!v) return '';
-    if(v.formaPagamento === 'avista') return ' · À Vista';
-    return ` · Prazo: ${v.texto ? esc(v.texto) : 'não informado'}`;
-  };
+  // Forma de pagamento negociada da venda (À Vista / Prazo) — pedido do
+  // Ayslan (03/09/2026): mostrar aqui, na tela de Fechamento, junto do
+  // Juros Cobrado, embaixo do bloco "Vendido a N cliente(s)", sem precisar
+  // abrir a aba Vendas de novo pra conferir o combinado com o cliente.
+  const jurosRow = f.jurosCobrado
+    ? `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)}</strong></div>`
+    : '';
+  const linhaPrazoRows = f.vendasResumo
+    ? f.vendasResumo.linhas.map(l => {
+        const v = calcularVencimentoVenda(l.venda);
+        if(!v) return '';
+        const valor = v.formaPagamento === 'avista' ? 'À Vista' : `Prazo: ${v.texto ? esc(v.texto) : 'não informado'}`;
+        const rotulo = f.vendasResumo.linhas.length > 1 ? `🧾 Forma de Pagamento — ${esc(l.venda.cliente||'(sem cliente)')}` : '🧾 Forma de Pagamento';
+        return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong>${valor}</strong></div>`;
+      }).join('')
+    : '';
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
-        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}<span style="color:var(--dim);">${linhaPrazoVenda(l.venda)}</span></span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
+        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
+        ${linhaPrazoRows}
+        ${jurosRow}
       </div>`
     : '';
-  const linhaJuros = f.jurosCobrado
-    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)}</strong></div>
-      </div>`
+  const linhaJuros = (!f.vendasResumo && jurosRow)
+    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">${jurosRow}</div>`
     : '';
   const linhaNotasBoss = f.notasBoss
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
