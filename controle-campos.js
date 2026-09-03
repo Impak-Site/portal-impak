@@ -21,6 +21,14 @@ const PORTOS_DESTINO = [
   { codigo:'IOA', nome:'Itapoá' },
   { codigo:'NVT', nome:'Navegantes' },
 ];
+
+// Dias de armazenagem grátis (1º período) no porto por código de destino —
+// depois desse prazo a partir da Presença de Carga (chegada física da carga
+// no terminal, não a atracação do navio), o porto passa a cobrar armazenagem
+// adicional. Pedido da Emanuelly (03/09/2026): Navegantes = 5 dias, Itapoá =
+// 4 dias. Itajaí ainda não tem prazo confirmado com o time — usando 5 dias
+// (mesmo de Navegantes) até alguém confirmar o valor real do terminal.
+const PORTO_ARMAZENAGEM_FREE_DIAS = { NVT: 5, IOA: 4, ITJ: 5 };
 // Origem varia mais (várias cidades/países), então fica uma lista das mais
 // usadas + "Outro" pra digitar livre quando aparecer uma nova.
 // Lista ampliada cobrindo os principais polos de fabricação de pneus na Ásia
@@ -158,7 +166,7 @@ function coletarESalvar(){
     'previsao_prontidao','data_prontidao',
     'booking_numero','armador','agente','navio','viagem','valor_frete','moeda_frete','porto_origem','porto_destino',
     'etd','eta','free_time','data_embarque','hbl','mbl','consignatario','notify','container','tipo_container',
-    'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento',
+    'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento','armazenagem_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
     'ce_master','ce_house','ce_data_embarque','pendencia_revisao',

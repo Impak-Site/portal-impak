@@ -156,6 +156,9 @@ function renderModal(){
   // ConfirmaÃÂÃÂ§ÃÂÃÂ£o visual demurrage (calculada dinamicamente ÃÂ¢ÃÂÃÂ ver renderDemurInfo)
   let demurInfo = renderDemurInfo(p);
 
+  // Confirmação visual armazenagem (calculada dinamicamente — ver renderArmazenInfo)
+  let armazenInfo = renderArmazenInfo(p);
+
   // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ TRAVA DE PROCESSO ("Fechar Processo") ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
   // Quando fechado, o conteÃÂÃÂºdo do modal fica visualmente desabilitado
   // (opacity + pointer-events:none) dentro do wrapper abaixo ÃÂ¢ÃÂÃÂ a validaÃÂÃÂ§ÃÂÃÂ£o
@@ -524,6 +527,8 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Armazenagem Vence</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_armazenagem_vencimento" value="${esc(p.armazenagem_vencimento)}" style="color:var(--warn);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Devolução</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armazém</label>
@@ -537,6 +542,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             </select></div>
         </div>
         <div id="demur-info-wrap">${demurInfo}</div>
+        <div id="armazen-info-wrap">${armazenInfo}</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
@@ -1330,7 +1336,7 @@ function atualizarFaseEmTempoReal(){
     'canal','data_parametrizacao','data_liberacao',
     'nf_entrada_numero','nf_saida_numero',
     'data_agendamento','data_carregamento',
-    'data_devolucao_vazio','demurrage_vencimento','free_time',
+    'data_devolucao_vazio','demurrage_vencimento','armazenagem_vencimento','free_time',
   ];
 
   const snapshot = {..._editando};
@@ -1361,6 +1367,9 @@ function atualizarFaseEmTempoReal(){
   // o modal, e ficava com dados desatualizados ao editar Data DevoluÃÂÃÂ§ÃÂÃÂ£o etc.
   const demurWrap = document.getElementById('demur-info-wrap');
   if(demurWrap) demurWrap.innerHTML = renderDemurInfo(snapshot);
+
+  const armazenWrap = document.getElementById('armazen-info-wrap');
+  if(armazenWrap) armazenWrap.innerHTML = renderArmazenInfo(snapshot);
 
   // Atualizar a timeline
   const faseIdx = FASES.findIndex(f=>f.id===novaFase);

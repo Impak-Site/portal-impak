@@ -542,6 +542,17 @@ async function salvarProcesso(proc, patchFields){
     proc.demurrage_vencimento = chegada.toISOString().split('T')[0];
   }
 
+  // Calcular vencimento do 1º período de armazenagem no porto automaticamente
+  // (pedido Emanuelly 03/09/2026) — mesma ideia do demurrage acima, só que
+  // conta a partir da Presença de Carga (chegada física no terminal) e os
+  // dias grátis são fixos por porto, não um campo digitado (ver
+  // PORTO_ARMAZENAGEM_FREE_DIAS em controle-campos.js).
+  if(proc.data_presenca && proc.porto_destino && PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]){
+    const presenca = parseDataLocal(proc.data_presenca);
+    presenca.setDate(presenca.getDate() + PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]);
+    proc.armazenagem_vencimento = presenca.toISOString().split('T')[0];
+  }
+
   // AvanÃÂÃÂ§ar fase automaticamente
   proc.fase = calcularFase(proc);
 
@@ -555,7 +566,7 @@ async function salvarProcesso(proc, patchFields){
   // comportamento de sempre ÃÂ¢ÃÂÃÂ manda o processo inteiro.
   let payload = proc;
   if(patchFields && Array.isArray(patchFields)){
-    const camposFixos = ['id','referencia','fase','demurrage_vencimento','pi_cambio',
+    const camposFixos = ['id','referencia','fase','demurrage_vencimento','armazenagem_vencimento','pi_cambio',
       'updated_by','updated_at','created_by','created_at','log'];
     const chaves = [...new Set([...camposFixos, ...patchFields])];
     payload = {};
@@ -652,6 +663,15 @@ function calcularFase(p){
 function demurrageDias(proc){
   if(!proc.demurrage_vencimento) return null;
   const venc = parseDataLocal(proc.demurrage_vencimento);
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  return Math.ceil((venc-hoje)/86400000);
+}
+
+// Mesma lógica do demurrageDias() acima, só que pro vencimento do 1º
+// período de armazenagem no porto (ver PORTO_ARMAZENAGEM_FREE_DIAS).
+function armazenagemDias(proc){
+  if(!proc.armazenagem_vencimento) return null;
+  const venc = parseDataLocal(proc.armazenagem_vencimento);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   return Math.ceil((venc-hoje)/86400000);
 }
@@ -781,6 +801,41 @@ function renderDemurInfo(p){
       ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
       ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
       ${p.demurrage_valor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">💸 Valor registrado</span><strong>R$ ${parseFloat(p.demurrage_valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>` : ''}
+    </div>
+  </div>`;
+}
+
+// Bloco "Cálculo da Armazenagem" (aba Logística) — mesmo padrão do
+// renderDemurInfo() acima, recalculado ao vivo (ver atualizarFaseEmTempoReal
+// em controle-modal.js). Só aparece se o porto de destino tem prazo
+// configurado (ver PORTO_ARMAZENAGEM_FREE_DIAS).
+function renderArmazenInfo(p){
+  const freeDias = PORTO_ARMAZENAGEM_FREE_DIAS[p.porto_destino];
+  if(!p.data_presenca && !p.armazenagem_vencimento) return '';
+  if(!freeDias && !p.armazenagem_vencimento) return '';
+  const presenca  = parseDataLocal(p.data_presenca);
+  const vencCalc  = presenca && freeDias ? new Date(presenca) : null;
+  if(vencCalc) vencCalc.setDate(presenca.getDate() + freeDias);
+  const vencReal  = p.armazenagem_vencimento ? parseDataLocal(p.armazenagem_vencimento) : vencCalc;
+  const dias = armazenagemDias(p);
+  const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=2?'var(--warn)':'var(--ok)';
+
+  let statusTxt = '', statusIcon = '';
+  if(dias !== null && dias < 0){
+    statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — armazenagem adicional acumulando!`;
+  } else if(dias !== null && dias <= 2){
+    statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
+  } else if(dias !== null){
+    statusIcon = '🟢'; statusTxt = `${dias} dias restantes`;
+  }
+
+  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📦 Cálculo da Armazenagem (1º período)</div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+      ${presenca ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 Presença de carga</span><strong>${presenca.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      ${freeDias ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time do porto</span><strong>${freeDias} dias</strong></div>` : ''}
+      ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=2?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
     </div>
   </div>`;
 }
@@ -1780,6 +1835,17 @@ function verificarAlertas(proc, criarNotif){
     alertas.push({tipo:'urgente', titulo:`Demurrage VENCIDO: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diasDemur)} dia(s). Custos em andamento.`});
   }
 
+  // Armazenagem (1º período grátis no porto) — mesma ideia do Demurrage
+  // acima, só que o vencimento vem da Presença de Carga + dias fixos por
+  // porto (ver PORTO_ARMAZENAGEM_FREE_DIAS / armazenagemDias()).
+  const diasArmaz = armazenagemDias(proc);
+  if(diasArmaz !== null && diasArmaz <= 2 && diasArmaz >= 0){
+    alertas.push({tipo:'urgente', titulo:`Armazenagem: ${proc.referencia}`, mensagem:`1º período vence em ${diasArmaz} dia(s)! Retirar do porto.`});
+  }
+  if(diasArmaz !== null && diasArmaz < 0){
+    alertas.push({tipo:'urgente', titulo:`Armazenagem VENCIDA: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diasArmaz)} dia(s). Armazenagem adicional em andamento.`});
+  }
+
   // Alerta ETA: ETA passou e processo ainda estÃÂÃÂ¡ Embarcado
   if(proc.eta && proc.fase === 'EMBARCADO'){
     const eta = parseDataLocal(proc.eta);
@@ -2036,6 +2102,7 @@ function renderStats(){
   const comAlerta = _processos.filter(p => verificarAlertas(p,false).length > 0).length;
   // Demurrage crÃÂÃÂ­tico
   const demurCrit = _processos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
+  const armazCrit = _processos.filter(p => { const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada; }).length;
   const chegando7d = _processos.filter(p => chegandoEmDias(p,7)).length;
 
   const refsDuplicadas = (() => {
@@ -2050,6 +2117,7 @@ const stats = [
     {num:emAndamento, label:'Em andamento',    cor:'var(--warn)',filtro:'__andamento'},
     {num:chegando7d,  label:'Chegada em 7d',  cor:'var(--info)',filtro:'__chegada_7d'},
     {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur'},
+    {num:armazCrit,   label:'Armazenagem ≤2d', cor:'var(--err)', filtro:'__armazenagem'},
     {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
   ];
 if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência duplicada', cor:'var(--err)', filtro:'__ref_duplicada'});
@@ -2094,6 +2162,7 @@ const FILTROS_FASE_ESPECIAIS = {
   __cancelamento_solicitado: lista => lista.filter(p=>!!p.cancelamento_solicitado && !p.cancelado),
   __andamento:  lista => lista.filter(p=>p.fase!=='FINALIZADO'),
   __demur:      lista => lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }),
+  __armazenagem: lista => lista.filter(p=>{ const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada; }),
   __chegada_7d: lista => lista.filter(p=>chegandoEmDias(p,7)),
 __ref_duplicada: lista => {
 const norm = s => (s||'').toString().trim().toUpperCase().replace(/\s+/g,'');
