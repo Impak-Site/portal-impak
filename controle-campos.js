@@ -465,25 +465,7 @@ function sincronizarProdutoLegado(){
 let _vendas = []; // [{cliente, itens:[{descricao,quantidade}], nf_saida_numero, nf_saida_data, nf_saida_valor, custos_diretos:[{label,valor}], obs}]
 
 function vendaVazia(){
-  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_dias:'', parcelas:[] };
-}
-
-// Parcela de venda (30/60/90 dias etc.) — pedido do Jean/Ayslan (03/09/2026):
-// cada parcela tem um prazo (dias, sempre a partir da Data NF Saída, mesma
-// regra da forma 'aprazo' simples) e um percentual do valor da NF. Ao
-// contrário das parcelas da PI (que usam valor fixo em USD), aqui usamos %
-// porque o valor da venda já é conhecido de antemão (a NF Saída já emitida).
-function parcelaVendaVazia(){ return { dias:'', percentual:'' }; }
-
-function adicionarParcelaVenda(vi){
-  if(!Array.isArray(_vendas[vi].parcelas)) _vendas[vi].parcelas = [];
-  _vendas[vi].parcelas.push(parcelaVendaVazia());
-  renderVendas();
-}
-
-function removerParcelaVenda(vi, pi){
-  _vendas[vi].parcelas.splice(pi,1);
-  renderVendas();
+  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_texto:'' };
 }
 
 function renderVendas(){
@@ -533,26 +515,13 @@ function renderVendas(){
         <div class="form-group"><label class="form-label">Valor NF Saída (R$)</label>
           <input class="form-input" type="number" step="0.01" value="${v.nf_saida_valor!=null?v.nf_saida_valor:''}" oninput="_vendas[${vi}].nf_saida_valor=this.value;sincronizarVendasLegado();renderResumoVendas()"></div>
         <div class="form-group"><label class="form-label">Forma de Pagamento</label>
-          <select class="form-input" onchange="_vendas[${vi}].forma_pagamento=this.value;if(this.value!=='aprazo')_vendas[${vi}].prazo_dias='';if(this.value==='parcelado'&&(!_vendas[${vi}].parcelas||!_vendas[${vi}].parcelas.length))_vendas[${vi}].parcelas=[parcelaVendaVazia(),parcelaVendaVazia()];sincronizarVendasLegado();renderVendas();" onwheel="this.blur()">
+          <select class="form-input" onchange="_vendas[${vi}].forma_pagamento=this.value;if(this.value!=='prazo')_vendas[${vi}].prazo_texto='';sincronizarVendasLegado();renderVendas();" onwheel="this.blur()">
             <option value="avista" ${(v.forma_pagamento||'avista')==='avista'?'selected':''}>À Vista</option>
-            <option value="aprazo" ${v.forma_pagamento==='aprazo'?'selected':''}>A Prazo</option>
-            <option value="parcelado" ${v.forma_pagamento==='parcelado'?'selected':''}>Parcelado (ex: 30/60/90 dias)</option>
+            <option value="prazo" ${v.forma_pagamento==='prazo'?'selected':''}>Prazo / Parcelado</option>
           </select></div>
-        ${v.forma_pagamento==='aprazo' ? `<div class="form-group"><label class="form-label">Prazo (dias, a partir da Data NF Saída)</label>
-          <input class="form-input" type="number" min="0" value="${v.prazo_dias!=null?v.prazo_dias:''}" oninput="_vendas[${vi}].prazo_dias=this.value;sincronizarVendasLegado();renderResumoVendas()" placeholder="ex: 30"></div>` : ''}
+        ${v.forma_pagamento==='prazo' ? `<div class="form-group full"><label class="form-label">Prazo (campo livre — ex: "30 dias" ou "30/60/90 dias")</label>
+          <input class="form-input" value="${esc(v.prazo_texto||'')}" oninput="_vendas[${vi}].prazo_texto=this.value;sincronizarVendasLegado()" placeholder="ex: 30/60/90 dias"></div>` : ''}
       </div>
-      ${v.forma_pagamento==='parcelado' ? `<div style="margin-bottom:14px;">
-        <label class="form-label">Parcelas (dias a partir da Data NF Saída + % do valor da NF cada uma)</label>
-        ${(v.parcelas||[]).map((pc,pi)=>`
-          <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
-            <input class="form-input" type="number" min="0" placeholder="Dias (ex: 30)" value="${pc.dias!=null?pc.dias:''}"
-              oninput="_vendas[${vi}].parcelas[${pi}].dias=this.value;sincronizarVendasLegado();renderResumoVendas()">
-            <input class="form-input" type="number" min="0" max="100" step="0.01" placeholder="% do valor" value="${pc.percentual!=null?pc.percentual:''}"
-              oninput="_vendas[${vi}].parcelas[${pi}].percentual=this.value;sincronizarVendasLegado();renderResumoVendas()">
-            ${(v.parcelas.length>1) ? `<button type="button" onclick="removerParcelaVenda(${vi},${pi})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>` : '<div></div>'}
-          </div>`).join('')}
-        <button type="button" onclick="adicionarParcelaVenda(${vi})" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;">+ Parcela</button>
-      </div>` : ''}
       <label class="form-label">Itens vendidos (quantidade alocada a este cliente)</label>
       <div style="margin-bottom:6px;">${itensHtml}</div>
       <button type="button" onclick="adicionarItemVenda(${vi})" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-bottom:14px;">+ Item</button>

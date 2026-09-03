@@ -1471,27 +1471,21 @@ function calcularLucroVenda(p, venda, custoRealTotal){
 function calcularVencimentoVenda(venda){
   if(!venda || !venda.forma_pagamento) return null;
   if(venda.forma_pagamento === 'avista'){
-    return { formaPagamento: 'avista', prazoDias: null, vencimento: null };
+    return { formaPagamento: 'avista', texto: null };
   }
+  if(venda.forma_pagamento === 'prazo'){
+    return { formaPagamento: 'prazo', texto: (venda.prazo_texto||'').trim() };
+  }
+  // Compat: registros antigos gravados enquanto o campo ainda era estruturado
+  // (dias/parcelas) — nunca chegou a ir pra produção, mas mantém a leitura
+  // segura em vez de sumir com o dado caso algum registro exista.
   if(venda.forma_pagamento === 'aprazo'){
-    const prazoDias = parseInt(venda.prazo_dias, 10);
-    let vencimento = null;
-    if(venda.nf_saida_data && prazoDias > 0){
-      const d = parseDataLocal(venda.nf_saida_data);
-      if(d){ d.setDate(d.getDate() + prazoDias); vencimento = d; }
-    }
-    return { formaPagamento: 'aprazo', prazoDias: isNaN(prazoDias)?null:prazoDias, vencimento };
+    const dias = parseInt(venda.prazo_dias, 10);
+    return { formaPagamento: 'prazo', texto: isNaN(dias) ? '' : `${dias} dias` };
   }
-  if(venda.forma_pagamento === 'parcelado'){
-    const d0 = venda.nf_saida_data ? parseDataLocal(venda.nf_saida_data) : null;
-    const parcelas = (Array.isArray(venda.parcelas) ? venda.parcelas : []).map(pc => {
-      const dias = parseInt(pc.dias, 10);
-      const percentual = parseFloat(pc.percentual);
-      let vencimento = null;
-      if(d0 && dias > 0){ const d = new Date(d0); d.setDate(d.getDate() + dias); vencimento = d; }
-      return { dias: isNaN(dias)?null:dias, percentual: isNaN(percentual)?null:percentual, vencimento };
-    });
-    return { formaPagamento: 'parcelado', parcelas };
+  if(venda.forma_pagamento === 'parcelado' && Array.isArray(venda.parcelas)){
+    const texto = venda.parcelas.map(pc => `${pc.dias||'?'}d (${pc.percentual||'?'}%)`).join(' · ');
+    return { formaPagamento: 'prazo', texto };
   }
   return null;
 }
@@ -1833,19 +1827,7 @@ function renderFechamentoInfo(p){
     const v = calcularVencimentoVenda(venda);
     if(!v) return '';
     if(v.formaPagamento === 'avista') return ' · À Vista';
-    if(v.formaPagamento === 'parcelado'){
-      if(!v.parcelas.length) return ' · Parcelado';
-      const partes = v.parcelas.map(pc => {
-        const dias = pc.dias!=null ? `${pc.dias}d` : '?';
-        const pct = pc.percentual!=null ? ` (${pc.percentual}%)` : '';
-        const venc = pc.vencimento ? ` — vence ${pc.vencimento.toLocaleDateString('pt-BR')}` : '';
-        return `${dias}${pct}${venc}`;
-      }).join(' · ');
-      return ` · Parcelado: ${partes}`;
-    }
-    const dias = v.prazoDias!=null ? `${v.prazoDias}d` : 'prazo não definido';
-    const venc = v.vencimento ? ` — vence ${v.vencimento.toLocaleDateString('pt-BR')}` : '';
-    return ` · A Prazo (${dias})${venc}`;
+    return ` · Prazo: ${v.texto ? esc(v.texto) : 'não informado'}`;
   };
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
