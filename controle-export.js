@@ -208,7 +208,7 @@ function confirmarExportClientePDF(){
 // Fornecedor, com mapeamento:
 //   Data do Pedido = Data da PI Â· Medida = descriÃ§Ã£o do produto Â·
 //   Quantidade = quantidade preenchida daquele item Â· Data de ProntidÃ£o na
-//   FÃ¡brica = sem fonte no sistema hoje, fica em branco Â· Data de Embarque =
+//   FÃ¡brica = data_prontidao (real) ou previsao_prontidao Â· Data de Embarque =
 //   ETD Â· Data Chegada = Data Chegada Â· POD = Porto Destino.
 //
 // statusSelecionados (opcional): array com os ids de fase (FASES[].id) que
@@ -396,6 +396,7 @@ function montarLinhasFollowUpCliente(statusSelecionados){
       // Ag. Embarque/PI Recebida, mesmo jÃ¡ tendo previsÃ£o de chegada.
       const dtChegadaOuEta = p.data_chegada || p.eta;
       const dtEmbarqueOuEtd = p.data_embarque || p.etd;
+      const dtProntidaoOuPrevisao = p.data_prontidao || p.previsao_prontidao;
       const chegadaTs = dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).getTime() : Infinity;
 
       const montarLinha = (clienteNome, it)=>{
@@ -413,9 +414,12 @@ function montarLinhasFollowUpCliente(statusSelecionados){
           'Medida':                  it.descricao||'',
           'Qte':                     it.quantidade||'',
           'Data do Pedido':          p.pi_data ? parseDataLocal(p.pi_data).toLocaleDateString('pt-BR') : '',
-          'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
+          'Data de Prontidão na Fábrica': dtProntidaoOuPrevisao ? parseDataLocal(dtProntidaoOuPrevisao).toLocaleDateString('pt-BR') + (p.data_prontidao?'':' (previsto)') : '',
           'Data de Embarque':        dtEmbarqueOuEtd ? parseDataLocal(dtEmbarqueOuEtd).toLocaleDateString('pt-BR') + (p.data_embarque?'':' (previsto)') : '',
-          'Data Chegada':            dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).toLocaleDateString('pt-BR') + (p.data_chegada?'':' (estimado)') : '',
+          // Pedido da Emanuelly (03/09): tirar o "(estimado)" daqui â o
+          // disclaimer no topo do arquivo jÃ¡ deixa claro que a chegada Ã©
+          // previsÃ£o; nÃ£o precisa repetir em cada linha.
+          'Data Chegada':            dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).toLocaleDateString('pt-BR') : '',
           'POD':                     formatarPortoDestino(p.porto_destino),
         };
         if(incluirFrete){
@@ -520,10 +524,11 @@ async function exportarFormatoCliente(statusSelecionados){
 
       ws.mergeCells(3,1,3,numCols);
 const disclaimerCell = ws.getCell(3,1);
-disclaimerCell.value = 'As datas de chegada informadas sao previsoes (ETA) e podem sofrer alteracoes ou atrasos.';
-disclaimerCell.font = {italic:true, size:9, color:{argb:'FF92400E'}};
-disclaimerCell.alignment = {vertical:'middle', horizontal:'left'};
-ws.getRow(3).height = 16;
+disclaimerCell.value = '⚠ ATENÇÃO: as datas de embarque/chegada informadas são PREVISÕES (ETA/ETD) e podem sofrer alterações ou atrasos.';
+disclaimerCell.font = {bold:true, italic:true, size:12, color:{argb:'FF92400E'}};
+disclaimerCell.alignment = {vertical:'middle', horizontal:'left', indent:1};
+disclaimerCell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFFEF3C7'}};
+ws.getRow(3).height = 26;
 
       // Linha 4 â cabeÃ§alho das colunas
       const headerRow = ws.getRow(4);
@@ -675,9 +680,11 @@ async function exportarFormatoClientePDF(statusSelecionados){
       doc.setTextColor(100,116,139);
       const agora = new Date();
       doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`, 40, 56);
-      doc.setFontSize(8);
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
       doc.setTextColor(146,64,14);
-      doc.text('As datas de chegada informadas são previsões (ETA) e podem sofrer alterações ou atrasos.', 40, 70);
+      doc.text('⚠ ATENÇÃO: as datas de embarque/chegada informadas são PREVISÕES (ETA/ETD) e podem sofrer alterações ou atrasos.', 40, 74);
+      doc.setFont(undefined, 'normal');
 
       // Monta o body inteiro (todos os fornecedores) numa unica tabela --
       // cada grupo de fornecedor comeca com uma linha "cabecalho" que ocupa
