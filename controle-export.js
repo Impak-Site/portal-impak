@@ -416,7 +416,7 @@ function montarLinhasFollowUpCliente(statusSelecionados){
           'Data de Prontidão na Fábrica': '', // sem fonte no sistema hoje
           'Data de Embarque':        dtEmbarqueOuEtd ? parseDataLocal(dtEmbarqueOuEtd).toLocaleDateString('pt-BR') + (p.data_embarque?'':' (previsto)') : '',
           'Data Chegada':            dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).toLocaleDateString('pt-BR') + (p.data_chegada?'':' (estimado)') : '',
-          'POD':                     p.porto_destino||'N/I',
+          'POD':                     formatarPortoDestino(p.porto_destino),
         };
         if(incluirFrete){
           linha['Valor do Frete'] = p.valor_frete ? `${exibirMoeda(p.valor_frete)} ${p.moeda_frete||'USD'}` : '';

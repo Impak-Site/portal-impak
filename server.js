@@ -1408,7 +1408,22 @@ function normalizarPortoDestinoDespachante(valor) {
   const va = String(valor).trim().toUpperCase();
   const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT' };
   const CODIGOS = ['ITJ','IOA','NVT'];
-  return APELIDOS[va] || (CODIGOS.includes(va) ? va : valor);
+  if (APELIDOS[va]) return APELIDOS[va];
+  if (CODIGOS.includes(va)) return va;
+  // Fallback por substring — cobre variações tipo "NAVEGANTES, BRAZIL" que
+  // vêm de extração por IA (BL) e não batem exato com nenhum apelido acima.
+  const chave = Object.keys(APELIDOS).find(k => va.includes(k));
+  return chave ? APELIDOS[chave] : valor;
+}
+// Nome completo pra exibição (e-mails/relatórios pro cliente) — pedido da
+// Emanuelly (03/09/2026): o follow-up semanal estava saindo com ITJ/NVT/IOA
+// misturado com grafias completas ("NAVEGANTES, BRAZIL") dependendo de como
+// cada processo foi cadastrado/extraído. Sempre normaliza pro nome cheio.
+const NOMES_PORTO_DESTINO = { ITJ: 'Itajaí', IOA: 'Itapoá', NVT: 'Navegantes' };
+function formatarPortoDestinoEmail(valor) {
+  if (!valor || !String(valor).trim()) return 'N/I';
+  const codigo = normalizarPortoDestinoDespachante(valor);
+  return NOMES_PORTO_DESTINO[codigo] || valor;
 }
 function normRefDespachante(v) { return String(v || '').trim().toUpperCase(); }
 const DESTINATARIOS_RELATORIO_DESPACHANTE = [
@@ -3279,7 +3294,7 @@ function montarHtmlFollowUpSemanal(processos){
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.fornecedor)||'—'}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p._produtosTexto)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">${fmtData(p.eta)}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.porto_destino)||'—'}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(formatarPortoDestinoEmail(p.porto_destino))}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.navio)||'—'}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:${p.transportadora?'#166534':'#b45309'};font-weight:600;">${escHtml(p.transportadora)||'⚠ a definir'}</td>
       </tr>`).join('');

@@ -82,7 +82,25 @@ function normalizarPortoDestino(valor){
   if(!valor) return valor;
   const va = valor.trim().toUpperCase();
   const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT' };
-  return APELIDOS[va] || (PORTOS_DESTINO.some(p=>p.codigo===va) ? va : valor);
+  if(APELIDOS[va]) return APELIDOS[va];
+  if(PORTOS_DESTINO.some(p=>p.codigo===va)) return va;
+  // Fallback por substring — cobre variações tipo "NAVEGANTES, BRAZIL" ou
+  // "PORTO DE ITAJAÍ" que vêm de extração por IA (BL) e não batem exato
+  // com nenhum apelido acima.
+  const apelidoPorSubstring = Object.keys(APELIDOS).find(chave => va.includes(chave));
+  return apelidoPorSubstring ? APELIDOS[apelidoPorSubstring] : valor;
+}
+
+// Versão pra exibição (relatórios/exports pro cliente): sempre devolve o
+// nome completo do porto (ex: "Itajaí"), nunca o código nem a grafia crua
+// que veio do documento — pedido da Emanuelly (03/09/2026): o follow-up/
+// export "p/ Cliente" estava saindo com ITJ/NVT/IOA misturado com nomes
+// completos e "N/I", dependendo de como cada processo foi cadastrado.
+function formatarPortoDestino(valor){
+  if(!valor || !String(valor).trim()) return 'N/I';
+  const codigo = normalizarPortoDestino(valor);
+  const match = PORTOS_DESTINO.find(p => p.codigo === codigo);
+  return match ? match.nome : valor;
 }
 
 function gerarOptionsPortoDestino(valorAtual){

@@ -963,6 +963,20 @@ teste('calcularRelatorioNarcelio: exclui processos cancelados da contagem', () =
   aproxIgual(rel.fabricaBooking, 1, 0, 'processo cancelado não deveria contar');
 });
 
+teste('normalizarPortoDestino: reconhece variação por substring (ex: "NAVEGANTES, BRAZIL")', () => {
+  iguais(sandbox.normalizarPortoDestino('NAVEGANTES, BRAZIL'), 'NVT');
+  iguais(sandbox.normalizarPortoDestino('PORTO DE ITAJAÍ'), 'ITJ');
+  iguais(sandbox.normalizarPortoDestino('ITJ'), 'ITJ', 'código já normalizado permanece igual');
+});
+
+teste('formatarPortoDestino: sempre devolve o nome completo do porto, não o código nem texto cru', () => {
+  iguais(sandbox.formatarPortoDestino('ITJ'), 'Itajaí');
+  iguais(sandbox.formatarPortoDestino('NVT'), 'Navegantes');
+  iguais(sandbox.formatarPortoDestino('NAVEGANTES, BRAZIL'), 'Navegantes');
+  iguais(sandbox.formatarPortoDestino(''), 'N/I');
+  iguais(sandbox.formatarPortoDestino(null), 'N/I');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
