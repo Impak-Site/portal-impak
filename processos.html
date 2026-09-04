@@ -2086,12 +2086,20 @@ function renderResult(r){
           + '<span style="flex:1;'+(aceito?'text-decoration:line-through;opacity:.5;':'')+'">'+escHtml(txt)+'</span>'
           + (aceito
             ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
-              + '<button onclick="aceitarAlerta('+JSON.stringify(key)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
-            : '<button onclick="aceitarAlerta('+JSON.stringify(key)+')" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+              + '<button data-action="aceitar-alerta-live" data-key="'+escHtml(key)+'" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+            : '<button data-action="aceitar-alerta-live" data-key="'+escHtml(key)+'" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
             )
           + '</li>';
       }).join('')}</ul>
     </div>`:'' ;
+  // Delegacao de clique — antes usava onclick="aceitarAlerta('+JSON.stringify(key)+')" inline,
+  // mas isso gera HTML quebrado (aspas duplas do JSON.stringify dentro de um atributo
+  // ja delimitado por aspas duplas), entao o botao Aceitar nunca disparava o handler.
+  aa.onclick = function(e){
+    var btn = e.target.closest('[data-action="aceitar-alerta-live"]');
+    if(!btn) return;
+    aceitarAlerta(btn.getAttribute('data-key'));
+  };
 
   // Doc cards — montar a partir dos dados extraídos nos grupos
   const dc=document.getElementById('docCards');
@@ -3467,12 +3475,17 @@ function aceitarAlerta(key){
           + '<span style="flex:1;'+(ac2?'text-decoration:line-through;opacity:.5;':'')+'">'+escHtml(txt)+'</span>'
           + (ac2
             ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
-              + '<button onclick="aceitarAlerta('+JSON.stringify(k)+')" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
-            : '<button onclick="aceitarAlerta('+JSON.stringify(k)+')" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+              + '<button data-action="aceitar-alerta-live" data-key="'+escHtml(k)+'" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+            : '<button data-action="aceitar-alerta-live" data-key="'+escHtml(k)+'" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
             )
           + '</li>';
       }).join('')+`</ul>
     </div>`:'';
+      aa.onclick = function(e){
+        var btn = e.target.closest('[data-action="aceitar-alerta-live"]');
+        if(!btn) return;
+        aceitarAlerta(btn.getAttribute('data-key'));
+      };
     }
   }
 }
