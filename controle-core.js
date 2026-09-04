@@ -589,7 +589,15 @@ async function salvarProcesso(proc, patchFields){
   // acima).
   if(patchTocaCampos(['data_devolucao_vazio','data_carregamento','nf_entrada_numero','nf_saida_numero',
     'data_agendamento','data_liberacao','canal','data_parametrizacao','numero_di','data_registro_di',
-    'data_chegada','data_presenca','data_embarque','etd'])){
+    'data_chegada','data_presenca','data_embarque','etd','ric_status','data_pagamento_lavagem'])){
+    // ric_status e data_pagamento_lavagem entraram aqui em 04/09/2026: a
+    // regra do FINALIZADO (calcularFase) passou a depender desses dois
+    // campos (Isento OU Lavagem paga, ver comentário em calcularFase), mas
+    // eles tinham ficado de fora desta lista de gatilhos quando ela foi
+    // criada — resultado: salvar só o Status RIC ou só a Data Pagamento
+    // Lavagem (sem tocar em nenhum outro campo da lista) nunca recalculava
+    // a fase, e o processo ficava preso em Devolução do Vazio mesmo com
+    // tudo certo (bug reportado pela Emanuelly).
     proc.fase = calcularFase(proc);
   }
 
