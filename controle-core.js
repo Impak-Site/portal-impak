@@ -879,7 +879,20 @@ function renderArmazenInfo(p){
 
   let statusTxt = '', statusIcon = '';
   if(p.data_carregamento){
-    statusIcon = '✅'; statusTxt = `Carga retirada em ${parseDataLocal(p.data_carregamento).toLocaleDateString('pt-BR')}`;
+    // Em vez de repetir a data de vencimento (que é um campo editável à
+    // parte, "Armazenagem Vence" — pode ficar dessincronizada do cálculo
+    // ao vivo se ninguém mexer nela depois de mudar Presença/Porto), mostra
+    // quantos dias a retirada ficou além (ou dentro) do 1º período grátis,
+    // calculado direto a partir de Presença + Free Time do porto. Pedido
+    // Emanuelly (04/09/2026): "tá variando a data do vencimento em vez de
+    // informar quantos dias passou do primeiro período".
+    const retirada = parseDataLocal(p.data_carregamento);
+    const diasAlem = vencCalc ? Math.round((retirada - vencCalc)/86400000) : null;
+    if(diasAlem !== null && diasAlem > 0){
+      statusIcon = '✅'; statusTxt = `Carga retirada em ${retirada.toLocaleDateString('pt-BR')} — ${diasAlem}d além do 1º período grátis`;
+    } else {
+      statusIcon = '✅'; statusTxt = `Carga retirada em ${retirada.toLocaleDateString('pt-BR')} — dentro do 1º período grátis`;
+    }
   } else if(dias !== null && dias < 0){
     statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — armazenagem adicional acumulando!`;
   } else if(dias !== null && dias <= 2){
