@@ -1807,6 +1807,7 @@ async function runAnalysis(){
       + 'REGRA PESO: Para pneus sem embalagem o peso liquido=bruto e aceitavel ter apenas um campo de peso. EXCECAO: fabricante NAKANKG exige peso bruto E liquido separados — se NAKANKG e peso liquido ausente = DIVERGENCIA. Se fabricante NAO for NAKANKG e peso tiver apenas um valor (G.W/N.W ou similar) = OK, nao alertar. '
       + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL. '
       + 'REGRAS POR FORNECEDOR: ROVELO/SAILUN: peso liquido=bruto aceitavel. TRACMAX/WINDFORCE: modelo pode vir como codigo alfanumerico, nao alertar. DELMAX: volumes podem usar caixas em vez de pallets, aceitavel. ';
+      + 'REGRA CAMPO alertas (MUITO IMPORTANTE): o array "alertas" do schema e SOMENTE para observacoes gerais sem um campo/documento especifico a comparar (ex: recomendacao de revisar manualmente, lembrete de procedimento). QUALQUER divergencia, ausencia ou alerta que se refira a um campo especifico (ex: Porto de Destino, Forma de Pagamento, Dados Bancarios, Fabricante na PL, Frete/Taxas) DEVE OBRIGATORIAMENTE ser um item dentro de grupos[].campos[] (com campo, doc1_label, doc2_label, status=DIVERGENCIA/AUSENTE/ALERTA e severidade=BLOQUEANTE/INFORMATIVA), NUNCA como uma string solta em "alertas". Isso vale mesmo quando o texto da regra abaixo usa a palavra "alerta" — sempre gerar como item estruturado em grupos, nunca como texto solto. ';
 
     content.push({type:'text',text:prompt});
 
@@ -2026,7 +2027,7 @@ function renderResult(r){
       <div class="col-head"><span>Campo</span><span>Documento 1</span><span>Documento 2</span><span></span></div>`;
 
     for(const c of grupo.campos){
-      const isDiv=c.status==='DIVERGENCIA';
+      const isDiv=c.status==='DIVERGENCIA'||c.status==='AUSENTE'||(c.status==='ALERTA'&&c.campo);
       const isBloc=isDiv&&c.severidade==='BLOQUEANTE';
       const isInfo=isDiv&&(c.severidade==='INFORMATIVA'||!c.severidade);
       const icon=c.status==='OK'?'✅':isBloc?'🔴':isInfo?'🟡':'⚠️';
@@ -3240,7 +3241,10 @@ function getDivergencias(){
   const divs=[];
   for(const grupo of currentResult.grupos||[]){
     for(const c of grupo.campos||[]){
-      if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') divs.push({grupo:grupo.titulo,...c});
+      // ALERTA com campo definido tambem precisa entrar no painel editavel
+      // (motivo + Aceitar como OK), senao fica so como texto solto sem
+      // possibilidade de registrar o aceite por campo.
+      if(c.status==='DIVERGENCIA'||c.status==='AUSENTE'||(c.status==='ALERTA'&&c.campo)) divs.push({grupo:grupo.titulo,...c});
     }
   }
   return divs;
@@ -3449,7 +3453,7 @@ function aceitarAlerta(key){
   }catch(e){}
   // Re-renderizar alertas
   if(currentResult) {
-    var aa = document.getElementById('alertas-area');
+    var aa = document.getElementById('alertsArea');
     if(aa) {
       var r = currentResult;
       aa.innerHTML=r.alertas&&r.alertas.length?`
