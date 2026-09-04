@@ -878,7 +878,9 @@ function renderArmazenInfo(p){
   const cor  = dias===null?'var(--muted)':dias<0?'var(--err)':dias<=2?'var(--warn)':'var(--ok)';
 
   let statusTxt = '', statusIcon = '';
-  if(dias !== null && dias < 0){
+  if(p.data_carregamento){
+    statusIcon = '✅'; statusTxt = `Carga retirada em ${parseDataLocal(p.data_carregamento).toLocaleDateString('pt-BR')}`;
+  } else if(dias !== null && dias < 0){
     statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — armazenagem adicional acumulando!`;
   } else if(dias !== null && dias <= 2){
     statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
@@ -2026,12 +2028,19 @@ function verificarAlertas(proc, criarNotif){
 
   // Armazenagem (1º período grátis no porto) — mesma ideia do Demurrage
   // acima, só que o vencimento vem da Presença de Carga + dias fixos por
-  // porto (ver PORTO_ARMAZENAGEM_FREE_DIAS / armazenagemDias()).
+  // porto (ver PORTO_ARMAZENAGEM_FREE_DIAS / armazenagemDias()). Faltava
+  // aqui o mesmo "encerra o alerta quando resolvido" que o Demurrage já
+  // tinha com data_devolucao_vazio (pedido Emanuelly 04/09/2026) — sem
+  // isso, um processo continuava alertando "Armazenagem VENCIDA" pra
+  // sempre, mesmo depois da carga já ter saído do porto/terminal. O evento
+  // que encerra a armazenagem é a Data de Carregamento (a carga saiu pra
+  // ser carregada/entregue), não a devolução do container vazio (que é
+  // outra etapa, mais pra frente).
   const diasArmaz = armazenagemDias(proc);
-  if(diasArmaz !== null && diasArmaz <= 2 && diasArmaz >= 0){
+  if(diasArmaz !== null && diasArmaz <= 2 && diasArmaz >= 0 && !proc.data_carregamento){
     alertas.push({tipo:'urgente', titulo:`Armazenagem: ${proc.referencia}`, mensagem:`1º período vence em ${diasArmaz} dia(s)! Retirar do porto.`});
   }
-  if(diasArmaz !== null && diasArmaz < 0){
+  if(diasArmaz !== null && diasArmaz < 0 && !proc.data_carregamento){
     alertas.push({tipo:'urgente', titulo:`Armazenagem VENCIDA: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diasArmaz)} dia(s). Armazenagem adicional em andamento.`});
   }
 
@@ -2331,7 +2340,7 @@ function renderStats(){
   const comAlerta = processosAtivos.filter(p => verificarAlertas(p,false).length > 0).length;
   // Demurrage crÃÂÃÂ­tico
   const demurCrit = processosAtivos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
-  const armazCrit = processosAtivos.filter(p => { const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada; }).length;
+  const armazCrit = processosAtivos.filter(p => { const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada&&!p.data_carregamento; }).length;
   const chegando7d = processosAtivos.filter(p => chegandoEmDias(p,7)).length;
 
   const refsDuplicadas = (() => {
@@ -2391,7 +2400,7 @@ const FILTROS_FASE_ESPECIAIS = {
   __cancelamento_solicitado: lista => lista.filter(p=>!!p.cancelamento_solicitado && !p.cancelado),
   __andamento:  lista => lista.filter(p=>p.fase!=='FINALIZADO'),
   __demur:      lista => lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }),
-  __armazenagem: lista => lista.filter(p=>{ const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada; }),
+  __armazenagem: lista => lista.filter(p=>{ const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada&&!p.data_carregamento; }),
   __chegada_7d: lista => lista.filter(p=>chegandoEmDias(p,7)),
 __ref_duplicada: lista => {
 const norm = s => (s||'').toString().trim().toUpperCase().replace(/\s+/g,'');
