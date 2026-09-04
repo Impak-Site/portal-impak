@@ -2079,6 +2079,20 @@ function verificarAlertas(proc, criarNotif){
     }
   }
 
+  // Aprovação HBL / Solicitação LI pendente após o embarque (pedido
+  // Emanuelly 04/09/2026): esses dois campos (aba Logística, entre Booking
+  // & Embarque e Carregamento) precisam estar marcados "Sim" — se o
+  // processo já embarcou (Data de Embarque preenchida) e algum dos dois
+  // ainda não foi marcado como Sim, entra como alerta pra não passar batido.
+  if(proc.data_embarque){
+    const pendentes = [];
+    if(proc.aprovacao_hbl !== 'Sim') pendentes.push('Aprovação HBL');
+    if(proc.solicitacao_li !== 'Sim') pendentes.push('Solicitação LI');
+    if(pendentes.length){
+      alertas.push({tipo:'alerta', titulo:`Pendência pós-embarque: ${proc.referencia}`, mensagem:`Já embarcou e ainda falta: ${pendentes.join(', ')}.`});
+    }
+  }
+
   if(criarNotif && alertas.length){
     alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
   }

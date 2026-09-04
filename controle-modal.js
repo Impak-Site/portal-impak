@@ -492,6 +492,23 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div class="form-section">
+        <div class="form-section-title">📋 Aprovações Pré-Embarque</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Aprovação HBL</label>
+            <select class="form-input" id="f_aprovacao_hbl" onchange="atualizarFaseEmTempoReal()">
+              <option value="" ${!p.aprovacao_hbl?'selected':''}>Selecione...</option>
+              <option value="Sim" ${p.aprovacao_hbl==='Sim'?'selected':''}>Sim</option>
+              <option value="Não" ${p.aprovacao_hbl==='Não'?'selected':''}>Não</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Solicitação LI</label>
+            <select class="form-input" id="f_solicitacao_li" onchange="atualizarFaseEmTempoReal()">
+              <option value="" ${!p.solicitacao_li?'selected':''}>Selecione...</option>
+              <option value="Sim" ${p.solicitacao_li==='Sim'?'selected':''}>Sim</option>
+              <option value="Não" ${p.solicitacao_li==='Não'?'selected':''}>Não</option>
+            </select></div>
+        </div>
+      </div>
+      <div class="form-section">
         <div class="form-section-title">🚛 Carregamento</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Agendamento</label>

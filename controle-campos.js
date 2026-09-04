@@ -184,6 +184,7 @@ function coletarESalvar(){
     'previsao_prontidao','data_prontidao',
     'booking_numero','armador','agente','navio','viagem','valor_frete','moeda_frete','porto_origem','porto_destino',
     'etd','eta','free_time','data_embarque','hbl','mbl','consignatario','notify','container','tipo_container',
+    'aprovacao_hbl','solicitacao_li',
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento','armazenagem_vencimento',
     'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
