@@ -666,7 +666,14 @@ function calcularFase(p){
   const presencaPassada = p.data_presenca && new Date(p.data_presenca+'T00:00:00') <= hoje ? p.data_presenca : null;
   const embarquePassado = p.data_embarque && new Date(p.data_embarque+'T00:00:00') <= hoje ? p.data_embarque : null;
 
-  if(p.data_devolucao_vazio)                                        return 'FINALIZADO';
+  // Finalizado exige, alem da devolucao do container vazio, que a
+  // pendencia do RIC esteja resolvida: ou o Status RIC foi preenchido
+  // como Isento (nao ha taxa de lavagem a pagar), ou -- quando nao for
+  // isento -- a Data Pagamento Lavagem foi preenchida (a taxa foi paga).
+  // Pedido da Emanuelly (04/09/2026): antes disso o processo ficava
+  // 'preso' em Devolucao do Vazio ate alguem lembrar de conferir RIC/
+  // lavagem manualmente.
+  if(p.data_devolucao_vazio && (p.ric_status === 'Isento' || p.data_pagamento_lavagem)) return 'FINALIZADO';
   // Quando AMBAS as NFs (entrada e saÃÂÃÂ­da) estÃÂÃÂ£o emitidas, isso jÃÂÃÂ¡ ÃÂÃÂ© prova
   // suficiente de que o carregamento aconteceu de fato ÃÂ¢ÃÂÃÂ avanÃÂÃÂ§a direto para
   // DevoluÃÂÃÂ§ÃÂÃÂ£o do Vazio, mesmo sem a data_carregamento manual preenchida,

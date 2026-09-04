@@ -197,14 +197,31 @@ teste('Data de Embarque efetiva é obrigatória pra EMBARCADO — HBL sozinho n�
 teste('AMBAS as NFs preenchidas -> avança para DEVOLUCAO_VAZIO (regra de negócio confirmada com o usuário)', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '8305', nf_saida_numero: '8309' }), 'DEVOLUCAO_VAZIO');
 });
-teste('Data de devolução do vazio sempre finaliza, mesmo com outros campos vazios', () => {
-  iguais(sandbox.calcularFase({ data_devolucao_vazio: '2026-06-30' }), 'FINALIZADO');
+teste('Devolução do vazio sozinha NÃO finaliza mais — precisa RIC Isento ou Lavagem paga (pedido Emanuelly 04/09/2026)', () => {
+  iguais(sandbox.calcularFase({ nf_entrada_numero:'1', nf_saida_numero:'2', data_devolucao_vazio: '2026-06-30' }), 'DEVOLUCAO_VAZIO');
 });
-teste('Devolução do vazio tem prioridade MÁXIMA mesmo com tudo preenchido', () => {
+teste('Devolução do vazio + Status RIC Isento -> finaliza (não há taxa de lavagem a pagar)', () => {
+  iguais(sandbox.calcularFase({ data_devolucao_vazio: '2026-06-30', ric_status: 'Isento' }), 'FINALIZADO');
+});
+teste('Devolução do vazio + Status RIC Termo (não isento) SEM data de pagamento da lavagem -> continua em Devolução do Vazio', () => {
+  iguais(sandbox.calcularFase({ nf_entrada_numero:'1', nf_saida_numero:'2', data_devolucao_vazio: '2026-06-30', ric_status: 'Termo' }), 'DEVOLUCAO_VAZIO');
+});
+teste('Devolução do vazio + Status RIC Termo (não isento) COM data de pagamento da lavagem -> finaliza', () => {
+  iguais(sandbox.calcularFase({ data_devolucao_vazio: '2026-06-30', ric_status: 'Termo', data_pagamento_lavagem: '2026-07-02' }), 'FINALIZADO');
+});
+teste('Devolução do vazio + data de pagamento da lavagem preenchida mesmo sem Status RIC definido -> finaliza', () => {
+  iguais(sandbox.calcularFase({ data_devolucao_vazio: '2026-06-30', data_pagamento_lavagem: '2026-07-02' }), 'FINALIZADO');
+});
+teste('Devolução do vazio tem prioridade MÁXIMA mesmo com tudo preenchido (mas ainda depende de RIC/Lavagem pra finalizar)', () => {
   iguais(sandbox.calcularFase({
     etd:'2026-01-01', hbl:'X', data_chegada:'2026-02-01', numero_di:'1',
     canal:'VERDE', data_parametrizacao:'2026-02-05', nf_entrada_numero:'1',
     nf_saida_numero:'2', data_devolucao_vazio:'2026-06-30'
+  }), 'DEVOLUCAO_VAZIO');
+  iguais(sandbox.calcularFase({
+    etd:'2026-01-01', hbl:'X', data_chegada:'2026-02-01', numero_di:'1',
+    canal:'VERDE', data_parametrizacao:'2026-02-05', nf_entrada_numero:'1',
+    nf_saida_numero:'2', data_devolucao_vazio:'2026-06-30', ric_status:'Isento'
   }), 'FINALIZADO');
 });
 
