@@ -532,6 +532,18 @@ async function salvarProcesso(proc, patchFields){
     if(patchFields) patchFields.push('pi_cambio');
   }
 
+  // Recálculo automático de Fase/Demurrage/Armazenagem — SÓ quando os
+  // campos que realmente alimentam cada cálculo mudaram nesta sessão de
+  // edição (pedido Emanuelly 04/09/2026: editar um campo qualquer, tipo
+  // Qtd. Containers, não pode fazer a Fase "saltar" pra Desembarcado nem
+  // criar Demurrage vencida do nada). Processos antigos às vezes já têm
+  // Presença de Carga preenchida no banco (de um import, por ex.) sem
+  // nunca ter passado por aqui — sem essa trava, o primeiro save de
+  // QUALQUER campo desses processos recalculava tudo de uma vez e dava
+  // essa impressão de "salto". Sem patchFields (chamada antiga/desconhecida
+  // ou processo novo), mantém o comportamento de sempre — recalcula tudo.
+  const patchTocaCampos = (lista) => !patchFields || !Array.isArray(patchFields) || lista.some(c => patchFields.includes(c));
+
   // Calcular vencimento demurrage automaticamente
   // Usa parseDataLocal (meio-dia local, T00:00:00) em vez de `new Date(string)`
   // direto — evita depender de coincidência de fuso horário nesse cálculo,
@@ -541,14 +553,16 @@ async function salvarProcesso(proc, patchFields){
   // 24/08 como o 1º dia, vence em 13/09, não Data de Chegada). Fica com
   // fallback pra Data de Chegada só pra processos antigos que nunca
   // chegaram a preencher Presença de Carga.
-  const baseDemurrage = proc.data_presenca || proc.data_chegada;
-  if(baseDemurrage && proc.free_time){
-    const inicioDemur = parseDataLocal(baseDemurrage);
-    // O dia inicial já conta como o 1º dia do free time (pedido Emanuelly
-    // 03/09/2026): free_time=21 a partir do dia X vence 20 dias depois
-    // (X, X+1,...,X+20 = 21 dias), não X+21.
-    inicioDemur.setDate(inicioDemur.getDate() + parseInt(proc.free_time||0) - 1);
-    proc.demurrage_vencimento = inicioDemur.toISOString().split('T')[0];
+  if(patchTocaCampos(['data_presenca','data_chegada','free_time'])){
+    const baseDemurrage = proc.data_presenca || proc.data_chegada;
+    if(baseDemurrage && proc.free_time){
+      const inicioDemur = parseDataLocal(baseDemurrage);
+      // O dia inicial já conta como o 1º dia do free time (pedido Emanuelly
+      // 03/09/2026): free_time=21 a partir do dia X vence 20 dias depois
+      // (X, X+1,...,X+20 = 21 dias), não X+21.
+      inicioDemur.setDate(inicioDemur.getDate() + parseInt(proc.free_time||0) - 1);
+      proc.demurrage_vencimento = inicioDemur.toISOString().split('T')[0];
+    }
   }
 
   // Calcular vencimento do 1º período de armazenagem no porto automaticamente
@@ -556,7 +570,7 @@ async function salvarProcesso(proc, patchFields){
   // conta a partir da Presença de Carga (chegada física no terminal) e os
   // dias grátis são fixos por porto, não um campo digitado (ver
   // PORTO_ARMAZENAGEM_FREE_DIAS em controle-campos.js).
-  if(proc.data_presenca && proc.porto_destino && PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]){
+  if(patchTocaCampos(['data_presenca','porto_destino']) && proc.data_presenca && proc.porto_destino && PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]){
     const presenca = parseDataLocal(proc.data_presenca);
     // Mesma correção de contagem inclusiva do dia inicial (ver comentário
     // acima no cálculo do demurrage): presença hoje + 5 dias grátis em
@@ -570,8 +584,14 @@ async function salvarProcesso(proc, patchFields){
   // (pedido Emanuelly 03/09/2026, junto com o desmembramento da aba).
   proc.demurrage_pago = !!proc.data_pagamento_demurrage;
 
-  // AvanÃÂÃÂ§ar fase automaticamente
-  proc.fase = calcularFase(proc);
+  // Avançar fase automaticamente — só recalcula se um dos campos que
+  // calcularFase() realmente olha mudou nesta sessão (ver patchTocaCampos
+  // acima).
+  if(patchTocaCampos(['data_devolucao_vazio','data_carregamento','nf_entrada_numero','nf_saida_numero',
+    'data_agendamento','data_liberacao','canal','data_parametrizacao','numero_di','data_registro_di',
+    'data_chegada','data_presenca','data_embarque','etd'])){
+    proc.fase = calcularFase(proc);
+  }
 
   // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CONCORRÃÂÃÂNCIA: enviar sÃÂÃÂ³ o que mudou ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
   // Se quem chamou informou patchFields (lista de campos de fato alterados

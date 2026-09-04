@@ -402,6 +402,7 @@ await testeAsync('com patchFields, manda só os campos alterados + sempre-recalc
   };
   const proc = {
     id: 'abc-123', referencia: 'UD26-999',
+    fase: 'PI', // processo real: _editando sempre já vem com a fase atual carregada do banco
     despachante: 'NOVO DESPACHANTE',           // campo que o usuário editou
     fornecedor: 'FORNECEDOR QUE OUTRO USUARIO ALTEROU DEPOIS QUE ESTA TELA CARREGOU', // NÃO deveria ir
     cliente: 'CLIENTE ANTIGO NO CACHE LOCAL',   // idem — não deveria ir
@@ -425,6 +426,51 @@ await testeAsync('sem patchFields (chamada antiga), mantém comportamento de sem
   const proc = { id: 'abc-456', referencia: 'UD26-998', despachante: 'X', fornecedor: 'Y', cliente: 'Z' };
   await sandbox.salvarProcesso(proc);
   verdadeiro('fornecedor' in corpoEnviado && 'cliente' in corpoEnviado, 'sem patchFields deve continuar mandando o objeto inteiro (compatibilidade)');
+});
+
+await testeAsync('salvarProcesso: editar um campo não-relacionado (ex: qtd_containers_prevista) NÃO recalcula fase/demurrage de um processo com Presença de Carga represada no banco', async () => {
+  // Regressão do bug relatado pela Emanuelly (04/09/2026): processos antigos
+  // já tinham data_presenca preenchida no banco (de import) sem nunca terem
+  // passado por um save que recalculasse fase/demurrage. Antes deste fix,
+  // editar QUALQUER campo (mesmo um sem relação, tipo Qtd. Containers) e
+  // salvar fazia a fase "saltar" pra Desembarcado e criava uma demurrage
+  // vencida do nada.
+  sandbox.fetch = (url, opts) => Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+  const proc = {
+    id: 'presenca-represada', referencia: 'PVN2603B-1',
+    fase: 'PI', // fase antiga, nunca recalculada
+    data_presenca: '2026-07-28', // já passou — se recalculasse, fase iria pra DESEMBARCADO
+    free_time: 21,
+    qtd_containers_prevista: 3, // único campo que o usuário de fato editou agora
+  };
+  const proc2 = await sandbox.salvarProcesso(proc, ['qtd_containers_prevista']) && proc;
+  iguais(proc.fase, 'PI', 'fase não deveria ter sido recalculada — patch não tocou em nenhum campo-gatilho de fase');
+  verdadeiro(proc.demurrage_vencimento === undefined, 'demurrage_vencimento não deveria ter sido calculada — patch não tocou em data_presenca/data_chegada/free_time');
+});
+
+await testeAsync('salvarProcesso: editar Presença de Carga recalcula fase/demurrage normalmente (campo-gatilho de fato mudou)', async () => {
+  sandbox.fetch = (url, opts) => Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+  const proc = {
+    id: 'presenca-editada-agora', referencia: 'PVN2603B-2',
+    fase: 'PI',
+    data_presenca: '2026-07-28',
+    free_time: 21,
+  };
+  await sandbox.salvarProcesso(proc, ['data_presenca']);
+  iguais(proc.fase, 'DESEMBARCADO', 'fase deveria avançar — data_presenca foi o campo de fato editado nesta sessão');
+  verdadeiro(!!proc.demurrage_vencimento, 'demurrage_vencimento deveria ter sido calculada — free_time + data_presenca presentes e data_presenca mudou');
+});
+
+await testeAsync('salvarProcesso: sem patchFields (chamada antiga/processo novo) continua recalculando tudo, igual sempre', async () => {
+  sandbox.fetch = (url, opts) => Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+  const proc = {
+    id: 'sem-patch', referencia: 'PVN2603B-3',
+    fase: 'PI',
+    data_presenca: '2026-07-28',
+    free_time: 21,
+  };
+  await sandbox.salvarProcesso(proc);
+  iguais(proc.fase, 'DESEMBARCADO', 'sem patchFields deve manter o comportamento antigo — recalcula tudo sempre');
 });
 
 teste('edição rápida inline de 1 campo (data) não vaza outros campos do cache local', () => {
