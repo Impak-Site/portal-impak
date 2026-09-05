@@ -570,7 +570,16 @@ async function salvarProcesso(proc, patchFields){
   // conta a partir da Presença de Carga (chegada física no terminal) e os
   // dias grátis são fixos por porto, não um campo digitado (ver
   // PORTO_ARMAZENAGEM_FREE_DIAS em controle-campos.js).
-  if(patchTocaCampos(['data_presenca','porto_destino']) && proc.data_presenca && proc.porto_destino && PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]){
+  //
+  // SÓ preenche se o campo ainda estiver vazio (pedido Emanuelly 04/09/2026:
+  // "precisamos que a data de vencimento se mantenha mesmo que seja alterado
+  // [a Presença de Carga depois]") — antes, qualquer correção de Presença ou
+  // Porto Destino recalculava e sobrescrevia silenciosamente um vencimento já
+  // calculado (ou digitado manualmente no campo "Armazenagem Vence"), o que
+  // fazia a data "pular" sem aviso. Uma vez calculado/preenchido, o campo
+  // fica fixo — para recalcular de fato, é preciso limpar "Armazenagem Vence"
+  // manualmente e salvar de novo.
+  if(!proc.armazenagem_vencimento && patchTocaCampos(['data_presenca','porto_destino']) && proc.data_presenca && proc.porto_destino && PORTO_ARMAZENAGEM_FREE_DIAS[proc.porto_destino]){
     const presenca = parseDataLocal(proc.data_presenca);
     // Mesma correção de contagem inclusiva do dia inicial (ver comentário
     // acima no cálculo do demurrage): presença hoje + 5 dias grátis em
