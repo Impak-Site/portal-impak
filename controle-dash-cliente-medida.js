@@ -262,13 +262,31 @@ function renderDashClienteMedida(){
   processosConsiderados = processosContadosIds.size;
 
   // ── Filtro de busca livre (medida) ─────────────────────────────────
+  // Bug reportado pelo Ayslan (07/09/2026): digitar uma medida no campo de
+  // busca não filtrava nada, a tabela continuava mostrando TODAS as
+  // medidas do cliente. Causa: o filtro só decidia se o bloco do CLIENTE
+  // inteiro aparecia ou sumia (bastava UMA linha bater com o termo pra
+  // manter TODAS as linhas daquele cliente na tela) — nunca filtrava as
+  // linhas dentro da tabela. Agora, quando o termo bate no Cliente, mantém
+  // todas as linhas dele (comportamento de "buscar por cliente" continua
+  // funcionando); quando não bate no Cliente, filtra as LINHAS pelo termo
+  // (medida/fornecedor/marca) e descarta o cliente se sobrar zero linha.
   const termo = _cmFiltroTexto.trim().toLowerCase();
   let clientesLista = Object.entries(porCliente).map(([chave, dados]) => ({ chave, ...dados }));
   if(termo){
-    clientesLista = clientesLista.filter(c =>
-      c.nome.toLowerCase().includes(termo) ||
-      Object.values(c.porLinha).some(l => l.medida.toLowerCase().includes(termo) || l.fornecedor.toLowerCase().includes(termo) || l.marca.toLowerCase().includes(termo))
-    );
+    clientesLista = clientesLista
+      .map(c => {
+        const nomeBate = c.nome.toLowerCase().includes(termo);
+        if(nomeBate) return c;
+        const linhasFiltradas = {};
+        let totalFiltrado = 0;
+        Object.entries(c.porLinha).forEach(([chaveLinha, l]) => {
+          const bate = l.medida.toLowerCase().includes(termo) || l.fornecedor.toLowerCase().includes(termo) || l.marca.toLowerCase().includes(termo);
+          if(bate){ linhasFiltradas[chaveLinha] = l; totalFiltrado += l.qtd; }
+        });
+        return { ...c, porLinha: linhasFiltradas, total: totalFiltrado };
+      })
+      .filter(c => Object.keys(c.porLinha).length > 0);
   }
   clientesLista.sort((a,b) => b.total - a.total);
 
