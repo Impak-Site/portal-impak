@@ -16,6 +16,16 @@
 // dois lotes da mesma medida vindos de fornecedores diferentes aparecem em
 // linhas separadas, em vez de somados juntos numa linha só "Medida".
 //
+// V4 (07/09/2026, pedido do Ayslan: "tem fornecedores que sao o mesmo,
+// porem, com escrita um pouco diferente" — ex: "JIMI RUBBER PTE. LTD."
+// vs "JIMI RUBBER PTE.LTD.", "SAILUN GROUP (HONGKONG) CO., LIMITED" vs
+// "SAILUN GROUP(HONGKONG)CO.,LIMITED"): Fornecedor e Marca agora agrupam
+// por uma CHAVE normalizada (_cmChaveEmpresa — maiúsculas sem espaço nem
+// pontuação), então pequenas diferenças de espaçamento/pontuação na
+// escrita do cadastro não geram mais linhas nem opções de filtro
+// duplicadas. O texto exibido continua sendo a grafia original (a
+// primeira encontrada), só o agrupamento é que ignora essas diferenças.
+//
 // Cada processo já tem Cliente (proc.cliente, ou por venda em vendas_json
 // quando vendido pra mais de um cliente), Fornecedor (proc.fornecedor) e
 // Marca (proc.brand — quando em branco, usa o próprio Fornecedor, mesmo
@@ -35,6 +45,15 @@
 // Parte do controle_v2.html, carregado via <script src> — não é ES module.
 // Depende de: _processos, calcularFase, FASE_LABEL, parseVendas, esc(),
 // fecharTodosDashboards (controle-core.js).
+
+// Normaliza nome de Fornecedor/Marca só pra efeito de AGRUPAMENTO —
+// maiúsculas, sem acento, sem nenhum espaço ou pontuação — assim
+// "JIMI RUBBER PTE. LTD." e "JIMI RUBBER PTE.LTD." caem na mesma chave.
+// Nunca usado pra exibir o nome, só pra decidir se duas grafias são a
+// mesma empresa.
+function _cmChaveEmpresa(nome){
+  return (nome || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,'');
+}
 
 const FASES_CLIENTE_MEDIDA = ['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI'];
 const FASES_CLIENTE_MEDIDA_SET = new Set(FASES_CLIENTE_MEDIDA);
@@ -137,17 +156,29 @@ function renderDashClienteMedida(){
   // cancelado), ignorando os filtros já escolhidos — assim as opções da
   // lista nunca "somem" quando você já filtrou por outra coisa; só o
   // conteúdo da tabela embaixo é que reage aos filtros.
-  const clientesDisponiveis = new Set();
-  const fornecedoresDisponiveis = new Set();
-  const marcasDisponiveis = new Set();
+  // Mapa chave-normalizada -> label exibido (a primeira grafia encontrada
+  // "vence" e vira o rótulo do filtro/coluna pra aquela empresa).
+  const clientesDisponiveis = new Map();
+  const fornecedoresDisponiveis = new Map();
+  const marcasDisponiveis = new Map();
+  // chaveFn default = identidade (maiúsculas/trim) usada pro Cliente — o
+  // Cliente já é comparado assim no resto do código (chaveCliente em
+  // addItem). Fornecedor/Marca usam _cmChaveEmpresa (ignora pontuação e
+  // espaço) pra agrupar grafias diferentes da mesma empresa.
+  function _cmAddOpcao(mapa, nome, chaveFn){
+    const label = (nome || '').trim();
+    if(!label) return;
+    const chave = (chaveFn || (s => s.toUpperCase()))(label);
+    if(!mapa.has(chave)) mapa.set(chave, label);
+  }
   _processos.forEach(p => {
     if(p.cancelado) return;
     if(!FASES_CLIENTE_MEDIDA_SET.has(calcularFase(p))) return;
     const vendas = typeof parseVendas === 'function' ? parseVendas(p) : [];
-    if(vendas.length) vendas.forEach(v => clientesDisponiveis.add((v.cliente || p.cliente || 'Sem cliente').trim() || 'Sem cliente'));
-    else clientesDisponiveis.add((p.cliente || 'Sem cliente').trim() || 'Sem cliente');
-    fornecedoresDisponiveis.add((p.fornecedor || 'Sem fornecedor').trim() || 'Sem fornecedor');
-    marcasDisponiveis.add((p.brand || p.fornecedor || 'Sem marca').trim() || 'Sem marca');
+    if(vendas.length) vendas.forEach(v => _cmAddOpcao(clientesDisponiveis, v.cliente || p.cliente || 'Sem cliente'));
+    else _cmAddOpcao(clientesDisponiveis, p.cliente || 'Sem cliente');
+    _cmAddOpcao(fornecedoresDisponiveis, p.fornecedor || 'Sem fornecedor', _cmChaveEmpresa);
+    _cmAddOpcao(marcasDisponiveis, p.brand || p.fornecedor || 'Sem marca', _cmChaveEmpresa);
   });
 
   // ── Passo 2: agregação Cliente → Medida → Fase, já com os filtros ──
@@ -168,7 +199,10 @@ function renderDashClienteMedida(){
     // 06/09/2026: "colocar cada linha por um fornecedor/marca com suas
     // quantidades" — antes a linha era só a Medida, então dois lotes da
     // mesma medida de fornecedores diferentes ficavam somados juntos).
-    const chaveLinha = fornecedorNome.toUpperCase() + '||' + marcaNome.toUpperCase() + '||' + descricao.toUpperCase();
+    // Fornecedor/Marca entram pela chave NORMALIZADA (_cmChaveEmpresa), não
+    // pelo texto cru — assim "JIMI RUBBER PTE. LTD." e "JIMI RUBBER
+    // PTE.LTD." caem na mesma linha (pedido Ayslan 07/09/2026).
+    const chaveLinha = _cmChaveEmpresa(fornecedorNome) + '||' + _cmChaveEmpresa(marcaNome) + '||' + descricao.toUpperCase();
     const qtd = parseFloat(quantidade) || 0;
 
     if(!porCliente[chaveCliente]) porCliente[chaveCliente] = { nome: clienteNome, porLinha: {}, total: 0 };
@@ -200,9 +234,9 @@ function renderDashClienteMedida(){
     if(!_cmFasesAtivas.has(fase)) return;
 
     const fornecedor = (p.fornecedor || 'Sem fornecedor').trim() || 'Sem fornecedor';
-    if(_cmFiltroFornecedor && fornecedor.toUpperCase() !== _cmFiltroFornecedor.toUpperCase()) return;
+    if(_cmFiltroFornecedor && _cmChaveEmpresa(fornecedor) !== _cmFiltroFornecedor) return;
     const marca = (p.brand || p.fornecedor || 'Sem marca').trim() || 'Sem marca';
-    if(_cmFiltroMarca && marca.toUpperCase() !== _cmFiltroMarca.toUpperCase()) return;
+    if(_cmFiltroMarca && _cmChaveEmpresa(marca) !== _cmFiltroMarca) return;
 
     let produtos = [];
     try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ /* ignora produtos_json inválido */ }
@@ -290,9 +324,13 @@ function renderDashClienteMedida(){
     ? clientesLista.map(blocoCliente).join('')
     : `<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center;">${(termo||_cmFiltroCliente||_cmFiltroFornecedor||_cmFiltroMarca) ? 'Nenhum resultado para os filtros escolhidos.' : 'Nenhum processo em andamento no momento.'}</div>`;
 
-  function selectFiltro(campo, label, valorAtual, opcoes){
+  function selectFiltro(campo, label, valorAtual, opcoesMap){
+    // opcoesMap: chave normalizada -> label exibido. O <option value> é a
+    // chave normalizada (pra bater com o que o filtro compara), o texto é
+    // sempre a grafia original.
+    const entradas = [...opcoesMap.entries()].sort((a,b) => a[1].localeCompare(b[1],'pt-BR'));
     const opts = ['<option value="">Todos'+(label==='Cliente'?' os clientes':label==='Fornecedor'?' os fornecedores':' as marcas')+'</option>']
-      .concat([...opcoes].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(o => `<option value="${esc(o)}" ${o===valorAtual?'selected':''}>${esc(o)}</option>`));
+      .concat(entradas.map(([chave,lbl]) => `<option value="${esc(chave)}" ${chave===valorAtual?'selected':''}>${esc(lbl)}</option>`));
     return `<select onchange="_cmSetFiltroSelect('${campo}',this.value)" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:170px;flex:1;">
       ${opts.join('')}
     </select>`;
