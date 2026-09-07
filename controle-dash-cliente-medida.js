@@ -57,6 +57,7 @@ let _cmFiltroCliente = '';     // '' = todos
 let _cmFiltroFornecedor = '';  // '' = todos
 let _cmFiltroMarca = '';       // '' = todas
 let _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA); // fases marcadas nos checkboxes
+let _cmIntervaloId = null; // id do setInterval de auto-refresh (null = parado)
 
 function toggleDashClienteMedida(){
   const el = document.getElementById('dash-clientemedida');
@@ -65,8 +66,34 @@ function toggleDashClienteMedida(){
   if(!visivel) fecharTodosDashboards();
   document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
-  if(!visivel) renderDashClienteMedida();
+  if(!visivel){
+    renderDashClienteMedida();
+    _cmIniciarAutoRefresh();
+  } else {
+    _cmPararAutoRefresh();
+  }
   document.getElementById('menu-clientemedida')?.classList.toggle('active', !visivel);
+}
+
+// Atualiza sozinho a cada 2 min — pedido do Ayslan (07/09/2026), depois de
+// perguntar se 2 min "sobrecarrega o sistema": não sobrecarrega, porque o
+// _processos já é recarregado do servidor a cada 30s em background (loop
+// global que já existe independente deste dashboard) — aqui a gente só
+// RE-RENDERIZA a partir do que já está em memória, sem nenhuma requisição
+// extra. Para sozinho se o painel for fechado por qualquer caminho
+// (inclusive fecharTodosDashboards() de outro dashboard sendo aberto),
+// checando a visibilidade a cada tick em vez de depender de um evento
+// explícito de "fechou".
+function _cmIniciarAutoRefresh(){
+  _cmPararAutoRefresh();
+  _cmIntervaloId = setInterval(() => {
+    const el = document.getElementById('dash-clientemedida');
+    if(!el || el.style.display !== 'block'){ _cmPararAutoRefresh(); return; }
+    renderDashClienteMedida();
+  }, 2 * 60 * 1000);
+}
+function _cmPararAutoRefresh(){
+  if(_cmIntervaloId){ clearInterval(_cmIntervaloId); _cmIntervaloId = null; }
 }
 
 function _cmAtualizarFiltroTexto(valor){
