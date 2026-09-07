@@ -8,15 +8,13 @@
 // e ela usa o Autofiltro do Excel pra isolar as linhas de um cliente.
 //
 // V1 deste painel (06/09/2026) era uma tabela fixa: Cliente → Medida, sem
-// jeito de restringir por Fornecedor ou Marca. Feedback do Ayslan no mesmo
-// dia: "o ideal era incluirmos vários filtros no controle, para
-// conseguirmos ver a informação correta [...] se for tabela fixa como você
-// fez, não conseguimos ver por fornecedor e marca de pneu." V2 (esta):
-// filtros de verdade (Cliente, Fornecedor, Marca, Fase) que restringem os
-// dados ANTES de agrupar — a tabela Cliente→Medida continua sendo o
-// resultado, mas agora reflete só o que os filtros deixaram passar. Pedir
-// "só EUDEMON, só marca Maxam" no topo, por exemplo, já isola isso sem
-// precisar abrir cada processo.
+// jeito de restringir por Fornecedor ou Marca. V2 (mesmo dia) adicionou
+// filtros (Cliente, Fornecedor, Marca, Fase) que restringem os dados antes
+// de agrupar. V3 (mesmo dia, feedback seguinte do Ayslan: "o melhor seria
+// colocar cada linha por um fornecedor/marca com suas quantidades"): além
+// de filtrar, cada LINHA da tabela agora é Fornecedor + Marca + Medida —
+// dois lotes da mesma medida vindos de fornecedores diferentes aparecem em
+// linhas separadas, em vez de somados juntos numa linha só "Medida".
 //
 // Cada processo já tem Cliente (proc.cliente, ou por venda em vendas_json
 // quando vendido pra mais de um cliente), Fornecedor (proc.fornecedor) e
@@ -126,33 +124,39 @@ function renderDashClienteMedida(){
   });
 
   // ── Passo 2: agregação Cliente → Medida → Fase, já com os filtros ──
-  const porCliente = {}; // chave (CLIENTE em caixa alta) -> {nome, porMedida:{}, total}
+  const porCliente = {}; // chave (CLIENTE em caixa alta) -> {nome, porLinha:{}, total} — cada linha e uma combinacao Fornecedor+Marca+Medida
   let totalGeral = 0;
   let processosConsiderados = 0;
 
   const processosContadosIds = new Set();
 
-  function addItem(clienteNomeOriginal, descricaoOriginal, quantidade, p, fase){
+  function addItem(clienteNomeOriginal, fornecedorOriginal, marcaOriginal, descricaoOriginal, quantidade, p, fase){
     const clienteNome = (clienteNomeOriginal || 'Sem cliente').trim() || 'Sem cliente';
     if(_cmFiltroCliente && clienteNome.toUpperCase() !== _cmFiltroCliente.toUpperCase()) return;
     const chaveCliente = clienteNome.toUpperCase();
+    const fornecedorNome = (fornecedorOriginal || 'Sem fornecedor').trim() || 'Sem fornecedor';
+    const marcaNome = (marcaOriginal || 'Sem marca').trim() || 'Sem marca';
     const descricao = (descricaoOriginal || 'Sem medida informada').trim() || 'Sem medida informada';
-    const chaveMedida = descricao.toUpperCase();
+    // Chave da linha = Fornecedor + Marca + Medida (pedido do Ayslan
+    // 06/09/2026: "colocar cada linha por um fornecedor/marca com suas
+    // quantidades" — antes a linha era só a Medida, então dois lotes da
+    // mesma medida de fornecedores diferentes ficavam somados juntos).
+    const chaveLinha = fornecedorNome.toUpperCase() + '||' + marcaNome.toUpperCase() + '||' + descricao.toUpperCase();
     const qtd = parseFloat(quantidade) || 0;
 
-    if(!porCliente[chaveCliente]) porCliente[chaveCliente] = { nome: clienteNome, porMedida: {}, total: 0 };
+    if(!porCliente[chaveCliente]) porCliente[chaveCliente] = { nome: clienteNome, porLinha: {}, total: 0 };
     const cli = porCliente[chaveCliente];
-    if(!cli.porMedida[chaveMedida]){
+    if(!cli.porLinha[chaveLinha]){
       const porFase = {};
       FASES_CLIENTE_MEDIDA.forEach(f => { porFase[f] = { qtd: 0, processos: [] }; });
-      cli.porMedida[chaveMedida] = { label: descricao, qtd: 0, porFase };
+      cli.porLinha[chaveLinha] = { fornecedor: fornecedorNome, marca: marcaNome, medida: descricao, qtd: 0, porFase };
     }
-    const med = cli.porMedida[chaveMedida];
-    med.qtd += qtd;
+    const linha = cli.porLinha[chaveLinha];
+    linha.qtd += qtd;
     cli.total += qtd;
     totalGeral += qtd;
     processosContadosIds.add(p.id);
-    const bucket = med.porFase[fase];
+    const bucket = linha.porFase[fase];
     bucket.qtd += qtd;
     bucket.processos.push({
       id: p.id,
@@ -188,10 +192,10 @@ function renderDashClienteMedida(){
     if(vendas.length){
       vendas.forEach(v => {
         const itens = (v.itens && v.itens.length) ? v.itens : produtos;
-        itens.forEach(it => addItem(v.cliente || p.cliente, it.descricao, it.quantidade, p, fase));
+        itens.forEach(it => addItem(v.cliente || p.cliente, fornecedor, marca, it.descricao, it.quantidade, p, fase));
       });
     } else {
-      produtos.forEach(it => addItem(p.cliente, it.descricao, it.quantidade, p, fase));
+      produtos.forEach(it => addItem(p.cliente, fornecedor, marca, it.descricao, it.quantidade, p, fase));
     }
   });
   processosConsiderados = processosContadosIds.size;
@@ -202,7 +206,7 @@ function renderDashClienteMedida(){
   if(termo){
     clientesLista = clientesLista.filter(c =>
       c.nome.toLowerCase().includes(termo) ||
-      Object.values(c.porMedida).some(m => m.label.toLowerCase().includes(termo))
+      Object.values(c.porLinha).some(l => l.medida.toLowerCase().includes(termo) || l.fornecedor.toLowerCase().includes(termo) || l.marca.toLowerCase().includes(termo))
     );
   }
   clientesLista.sort((a,b) => b.total - a.total);
@@ -213,38 +217,43 @@ function renderDashClienteMedida(){
   // modal (mesmo padrão do abrirListaTV em controle-dash-tv.js).
   window._cmListas = {};
 
-  function celulaFase(chaveCliente, chaveMedida, fase, bucket){
+  function celulaFase(chaveCliente, chaveLinha, fase, bucket){
     if(!bucket.qtd) return `<td style="padding:6px 14px;text-align:right;color:var(--border);white-space:nowrap;">—</td>`;
-    const idLista = chaveCliente + '||' + chaveMedida + '||' + fase;
+    const idLista = chaveCliente + '||' + chaveLinha + '||' + fase;
     window._cmListas[idLista] = { titulo: FASE_COLUNA_LABEL[fase], rows: bucket.processos };
     return `<td onclick="abrirListaCM('${idLista.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="padding:6px 14px;text-align:right;font-weight:700;cursor:pointer;color:var(--ac);white-space:nowrap;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${fmtN(bucket.qtd)}</td>`;
   }
 
-  function linhaMedida(chaveCliente, chaveMedida, med){
+  function linhaItem(chaveCliente, chaveLinha, linha){
     return `<tr style="border-top:1px solid var(--border);">
-      <td style="padding:6px 10px;white-space:nowrap;">${esc(med.label)}</td>
-      ${FASES_CLIENTE_MEDIDA.filter(f => _cmFasesAtivas.has(f)).map(f => celulaFase(chaveCliente, chaveMedida, f, med.porFase[f])).join('')}
-      <td style="padding:6px 14px;text-align:right;font-weight:800;white-space:nowrap;border-left:1px solid var(--border);">${fmtN(med.qtd)}</td>
+      <td style="padding:6px 10px;white-space:nowrap;">${esc(linha.fornecedor)}</td>
+      <td style="padding:6px 10px;white-space:nowrap;">${esc(linha.marca)}</td>
+      <td style="padding:6px 10px;white-space:nowrap;">${esc(linha.medida)}</td>
+      ${FASES_CLIENTE_MEDIDA.filter(f => _cmFasesAtivas.has(f)).map(f => celulaFase(chaveCliente, chaveLinha, f, linha.porFase[f])).join('')}
+      <td style="padding:6px 14px;text-align:right;font-weight:800;white-space:nowrap;border-left:1px solid var(--border);">${fmtN(linha.qtd)}</td>
     </tr>`;
   }
 
   const fasesColunas = FASES_CLIENTE_MEDIDA.filter(f => _cmFasesAtivas.has(f));
 
   function blocoCliente(c){
-    const medidas = Object.entries(c.porMedida).map(([chave,m]) => [chave,m]).sort((a,b) => b[1].qtd - a[1].qtd);
+    const linhas = Object.entries(c.porLinha).map(([chave,l]) => [chave,l])
+      .sort((a,b) => a[1].fornecedor.localeCompare(b[1].fornecedor,'pt-BR') || a[1].marca.localeCompare(b[1].marca,'pt-BR') || b[1].qtd - a[1].qtd);
     return `<details style="background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;" ${clientesLista.length===1?'open':''}>
       <summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;list-style:none;background:var(--bg);">
         <span style="font-weight:700;font-size:13px;">${esc(c.nome)}</span>
         <span style="font-weight:800;font-size:15px;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(c.total)} <span style="font-size:11px;font-weight:600;color:var(--muted);">pneus</span></span>
       </summary>
       <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:${240 + fasesColunas.length*130}px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:${420 + fasesColunas.length*130}px;">
         <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
+          <th style="padding:6px 10px;white-space:nowrap;">Fornecedor</th>
+          <th style="padding:6px 10px;white-space:nowrap;">Marca</th>
           <th style="padding:6px 10px;white-space:nowrap;">Medida</th>
           ${fasesColunas.map(f => `<th style="padding:6px 14px;text-align:right;white-space:nowrap;">${FASE_COLUNA_LABEL[f]}</th>`).join('')}
           <th style="padding:6px 14px;text-align:right;white-space:nowrap;border-left:1px solid var(--border);">Total</th>
         </tr></thead>
-        <tbody>${medidas.map(([chaveMedida,m]) => linhaMedida(c.chave, chaveMedida, m)).join('')}</tbody>
+        <tbody>${linhas.map(([chaveLinha,l]) => linhaItem(c.chave, chaveLinha, l)).join('')}</tbody>
       </table>
       </div>
     </details>`;
