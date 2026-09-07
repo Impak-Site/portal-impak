@@ -21,12 +21,28 @@
 // caminho/chegou mas ainda não virou estoque disponível (Parametrização
 // em diante) nem foi finalizado. Processos cancelados nunca entram.
 //
+// Colunas por fase (pedido do Ayslan 06/09/2026, depois de ver a 1ª versão
+// com uma coluna "Quantidade" só): em vez de somar tudo junto, cada medida
+// mostra quantos pneus estão em cada fase — dá pra ver de cara quanto já
+// embarcou vs quanto ainda tá esperando embarque, sem precisar abrir a
+// lista de processos pra descobrir.
+//
 // Parte do controle_v2.html, carregado via <script src> — não é ES module.
-// Depende de: _processos, calcularFase, FASE_LABEL, parseVendas,
-// clientesDoProcesso (não usado aqui — ver nota abaixo), esc(),
-// parseDataLocal, fecharTodosDashboards (controle-core.js).
+// Depende de: _processos, calcularFase, FASE_LABEL, parseVendas, esc(),
+// fecharTodosDashboards (controle-core.js).
 
-const FASES_CLIENTE_MEDIDA = new Set(['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI']);
+const FASES_CLIENTE_MEDIDA = ['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI'];
+const FASES_CLIENTE_MEDIDA_SET = new Set(FASES_CLIENTE_MEDIDA);
+// Cabeçalho curto de cada coluna — mais enxuto que o label completo de
+// FASE_LABEL ("Ag. Embarque" em vez de repetir "Aguardando Embarque" numa
+// coluna estreita).
+const FASE_COLUNA_LABEL = {
+  PI: 'PI Recebida',
+  AGUARDANDO_EMBARQUE: 'Ag. Embarque',
+  EMBARCADO: 'Embarcado',
+  DESEMBARCADO: 'Desembarcado',
+  REGISTRO_DI: 'Registro DI',
+};
 
 // Texto do filtro de busca — guardado fora da função pra sobreviver aos
 // re-renders disparados a cada tecla digitada (oninput chama
@@ -62,12 +78,12 @@ function renderDashClienteMedida(){
   const el = document.getElementById('dash-clientemedida-content');
   if(!el) return;
 
-  // ── Agregação: Cliente → Medida → {qtd, processos[]} ──────────────
+  // ── Agregação: Cliente → Medida → Fase → {qtd, processos[]} ───────
   const porCliente = {}; // chave (CLIENTE em caixa alta) -> {nome, porMedida:{}, total}
   let totalGeral = 0;
   let processosConsiderados = 0;
 
-  function addItem(clienteNomeOriginal, descricaoOriginal, quantidade, p, faseLabel){
+  function addItem(clienteNomeOriginal, descricaoOriginal, quantidade, p, fase){
     const clienteNome = (clienteNomeOriginal || 'Sem cliente').trim() || 'Sem cliente';
     const chaveCliente = clienteNome.toUpperCase();
     const descricao = (descricaoOriginal || 'Sem medida informada').trim() || 'Sem medida informada';
@@ -76,15 +92,21 @@ function renderDashClienteMedida(){
 
     if(!porCliente[chaveCliente]) porCliente[chaveCliente] = { nome: clienteNome, porMedida: {}, total: 0 };
     const cli = porCliente[chaveCliente];
-    if(!cli.porMedida[chaveMedida]) cli.porMedida[chaveMedida] = { label: descricao, qtd: 0, processos: [] };
+    if(!cli.porMedida[chaveMedida]){
+      const porFase = {};
+      FASES_CLIENTE_MEDIDA.forEach(f => { porFase[f] = { qtd: 0, processos: [] }; });
+      cli.porMedida[chaveMedida] = { label: descricao, qtd: 0, porFase };
+    }
     const med = cli.porMedida[chaveMedida];
     med.qtd += qtd;
     cli.total += qtd;
     totalGeral += qtd;
-    med.processos.push({
+    const bucket = med.porFase[fase];
+    bucket.qtd += qtd;
+    bucket.processos.push({
       id: p.id,
       referencia: p.referencia,
-      fase: faseLabel,
+      fase: FASE_LABEL[fase] || fase,
       eta: p.eta || p.data_prontidao || '',
       qtd,
     });
@@ -93,7 +115,7 @@ function renderDashClienteMedida(){
   _processos.forEach(p => {
     if(p.cancelado) return;
     const fase = calcularFase(p);
-    if(!FASES_CLIENTE_MEDIDA.has(fase)) return;
+    if(!FASES_CLIENTE_MEDIDA_SET.has(fase)) return;
     processosConsiderados++;
 
     let produtos = [];
@@ -111,10 +133,10 @@ function renderDashClienteMedida(){
     if(vendas.length){
       vendas.forEach(v => {
         const itens = (v.itens && v.itens.length) ? v.itens : produtos;
-        itens.forEach(it => addItem(v.cliente || p.cliente, it.descricao, it.quantidade, p, FASE_LABEL[fase] || fase));
+        itens.forEach(it => addItem(v.cliente || p.cliente, it.descricao, it.quantidade, p, fase));
       });
     } else {
-      produtos.forEach(it => addItem(p.cliente, it.descricao, it.quantidade, p, FASE_LABEL[fase] || fase));
+      produtos.forEach(it => addItem(p.cliente, it.descricao, it.quantidade, p, fase));
     }
   });
 
@@ -131,17 +153,22 @@ function renderDashClienteMedida(){
 
   const fmtN = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
-  // Guarda os dados de cada Cliente×Medida acessíveis pro onclick do modal
-  // (mesmo padrão do abrirListaTV em controle-dash-tv.js).
+  // Guarda os dados de cada Cliente×Medida×Fase acessíveis pro onclick do
+  // modal (mesmo padrão do abrirListaTV em controle-dash-tv.js).
   window._cmListas = {};
 
+  function celulaFase(chaveCliente, chaveMedida, fase, bucket){
+    if(!bucket.qtd) return `<td style="padding:6px 8px;text-align:right;color:var(--border);">—</td>`;
+    const idLista = chaveCliente + '||' + chaveMedida + '||' + fase;
+    window._cmListas[idLista] = { titulo: FASE_COLUNA_LABEL[fase], rows: bucket.processos };
+    return `<td onclick="abrirListaCM('${idLista.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="padding:6px 8px;text-align:right;font-weight:700;cursor:pointer;color:var(--ac);" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${fmtN(bucket.qtd)}</td>`;
+  }
+
   function linhaMedida(chaveCliente, chaveMedida, med){
-    const idLista = chaveCliente + '||' + chaveMedida;
-    window._cmListas[idLista] = { titulo: med.label, rows: med.processos };
-    return `<tr onclick="abrirListaCM('${idLista.replace(/'/g,"\\'")}')" style="cursor:pointer;border-top:1px solid var(--border);" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+    return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:6px 10px;">${esc(med.label)}</td>
-      <td style="padding:6px 10px;text-align:right;font-weight:700;white-space:nowrap;">${fmtN(med.qtd)}</td>
-      <td style="padding:6px 10px;text-align:right;color:var(--muted);white-space:nowrap;">${med.processos.length} processo(s)</td>
+      ${FASES_CLIENTE_MEDIDA.map(f => celulaFase(chaveCliente, chaveMedida, f, med.porFase[f])).join('')}
+      <td style="padding:6px 10px;text-align:right;font-weight:800;white-space:nowrap;border-left:1px solid var(--border);">${fmtN(med.qtd)}</td>
     </tr>`;
   }
 
@@ -152,12 +179,16 @@ function renderDashClienteMedida(){
         <span style="font-weight:700;font-size:13px;">${esc(c.nome)}</span>
         <span style="font-weight:800;font-size:15px;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(c.total)} <span style="font-size:11px;font-weight:600;color:var(--muted);">pneus</span></span>
       </summary>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px;">
         <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;">
-          <th style="padding:6px 10px;">Medida</th><th style="padding:6px 10px;text-align:right;">Quantidade</th><th style="padding:6px 10px;text-align:right;">Processos</th>
+          <th style="padding:6px 10px;">Medida</th>
+          ${FASES_CLIENTE_MEDIDA.map(f => `<th style="padding:6px 8px;text-align:right;">${FASE_COLUNA_LABEL[f]}</th>`).join('')}
+          <th style="padding:6px 10px;text-align:right;border-left:1px solid var(--border);">Total</th>
         </tr></thead>
         <tbody>${medidas.map(([chaveMedida,m]) => linhaMedida(c.chave, chaveMedida, m)).join('')}</tbody>
       </table>
+      </div>
     </details>`;
   }
 
@@ -180,12 +211,13 @@ function renderDashClienteMedida(){
     </div>
     <input id="cm-filtro" class="form-input" placeholder="Filtrar por cliente ou medida (ex: UNICAP, 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
       oninput="_cmAtualizarFiltro(this.value)" style="width:100%;margin-bottom:14px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Clique num número pra ver os processos por trás dele.</div>
     <div>${corpoHtml}</div>
   `;
 }
 
-// ── Modal "quais processos estão nesse Cliente × Medida" ─────────────
-// Mesmo padrão do abrirListaTV (controle-dash-tv.js): clicar numa linha
+// ── Modal "quais processos estão nesse Cliente × Medida × Fase" ──────
+// Mesmo padrão do abrirListaTV (controle-dash-tv.js): clicar numa célula
 // abre a lista dos processos por trás daquele número.
 function abrirListaCM(idLista){
   const dados = (window._cmListas || {})[idLista];
