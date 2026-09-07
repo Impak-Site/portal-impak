@@ -115,17 +115,35 @@ function _cmPararAutoRefresh(){
   if(_cmIntervaloId){ clearInterval(_cmIntervaloId); _cmIntervaloId = null; }
 }
 
+let _cmDebounceFiltroTexto = null; // timer do debounce da busca por medida
+
+// Bug reportado pelo Ayslan (07/09/2026): digitar no campo de busca fazia o
+// texto "sumir"/parar de aparecer, como se não desse pra digitar. Causa: a
+// cada tecla, renderDashClienteMedida() reconstruía a tabela INTEIRA (527
+// processos) e recriava o próprio <input> do zero — se uma tecla mais
+// lenta terminasse de renderizar DEPOIS de uma tecla mais rápida seguinte,
+// a renderização antiga "vencia" por último e sobrescrevia o campo com um
+// valor desatualizado, fora de sincronia com o que você via na tela.
+// Correção: o valor digitado é salvo na hora (_cmFiltroTexto), mas a
+// renderização pesada só acontece depois de uma pequena pausa na digitação
+// (debounce) — assim nunca tem duas renderizações concorrentes disputando
+// o mesmo campo, e a digitação em si (que o próprio campo já mostra
+// nativamente, sem precisar de JS) nunca é interrompida.
 function _cmAtualizarFiltroTexto(valor){
   _cmFiltroTexto = valor || '';
-  renderDashClienteMedida();
-  // Mantém o foco e o cursor no campo depois do re-render (senão cada
-  // tecla digitada perde o foco, porque o innerHTML inteiro é recriado).
-  const input = document.getElementById('cm-filtro-texto');
-  if(input){
-    input.focus();
-    const pos = input.value.length;
-    input.setSelectionRange(pos, pos);
-  }
+  if(_cmDebounceFiltroTexto) clearTimeout(_cmDebounceFiltroTexto);
+  _cmDebounceFiltroTexto = setTimeout(() => {
+    renderDashClienteMedida();
+    // Mantém o foco e o cursor no campo depois do re-render (senão a
+    // tecla que disparou o re-render final perde o foco, porque o
+    // innerHTML inteiro é recriado).
+    const input = document.getElementById('cm-filtro-texto');
+    if(input){
+      input.focus();
+      const pos = input.value.length;
+      input.setSelectionRange(pos, pos);
+    }
+  }, 250);
 }
 function _cmSetFiltroSelect(campo, valor){
   if(campo === 'cliente') _cmFiltroCliente = valor;
@@ -139,6 +157,7 @@ function _cmToggleFase(fase, marcado){
   renderDashClienteMedida();
 }
 function _cmLimparFiltros(){
+  if(_cmDebounceFiltroTexto) clearTimeout(_cmDebounceFiltroTexto);
   _cmFiltroTexto = '';
   _cmFiltroCliente = '';
   _cmFiltroFornecedor = '';
