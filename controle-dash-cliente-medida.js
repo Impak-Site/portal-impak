@@ -158,17 +158,17 @@ function renderDashClienteMedida(){
   window._cmListas = {};
 
   function celulaFase(chaveCliente, chaveMedida, fase, bucket){
-    if(!bucket.qtd) return `<td style="padding:6px 8px;text-align:right;color:var(--border);">—</td>`;
+    if(!bucket.qtd) return `<td style="padding:6px 14px;text-align:right;color:var(--border);white-space:nowrap;">—</td>`;
     const idLista = chaveCliente + '||' + chaveMedida + '||' + fase;
     window._cmListas[idLista] = { titulo: FASE_COLUNA_LABEL[fase], rows: bucket.processos };
-    return `<td onclick="abrirListaCM('${idLista.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="padding:6px 8px;text-align:right;font-weight:700;cursor:pointer;color:var(--ac);" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${fmtN(bucket.qtd)}</td>`;
+    return `<td onclick="abrirListaCM('${idLista.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="padding:6px 14px;text-align:right;font-weight:700;cursor:pointer;color:var(--ac);white-space:nowrap;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${fmtN(bucket.qtd)}</td>`;
   }
 
   function linhaMedida(chaveCliente, chaveMedida, med){
     return `<tr style="border-top:1px solid var(--border);">
-      <td style="padding:6px 10px;">${esc(med.label)}</td>
+      <td style="padding:6px 10px;white-space:nowrap;">${esc(med.label)}</td>
       ${FASES_CLIENTE_MEDIDA.map(f => celulaFase(chaveCliente, chaveMedida, f, med.porFase[f])).join('')}
-      <td style="padding:6px 10px;text-align:right;font-weight:800;white-space:nowrap;border-left:1px solid var(--border);">${fmtN(med.qtd)}</td>
+      <td style="padding:6px 14px;text-align:right;font-weight:800;white-space:nowrap;border-left:1px solid var(--border);">${fmtN(med.qtd)}</td>
     </tr>`;
   }
 
@@ -180,11 +180,11 @@ function renderDashClienteMedida(){
         <span style="font-weight:800;font-size:15px;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(c.total)} <span style="font-size:11px;font-weight:600;color:var(--muted);">pneus</span></span>
       </summary>
       <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px;">
-        <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;">
-          <th style="padding:6px 10px;">Medida</th>
-          ${FASES_CLIENTE_MEDIDA.map(f => `<th style="padding:6px 8px;text-align:right;">${FASE_COLUNA_LABEL[f]}</th>`).join('')}
-          <th style="padding:6px 10px;text-align:right;border-left:1px solid var(--border);">Total</th>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:820px;">
+        <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
+          <th style="padding:6px 10px;white-space:nowrap;">Medida</th>
+          ${FASES_CLIENTE_MEDIDA.map(f => `<th style="padding:6px 14px;text-align:right;white-space:nowrap;">${FASE_COLUNA_LABEL[f]}</th>`).join('')}
+          <th style="padding:6px 14px;text-align:right;white-space:nowrap;border-left:1px solid var(--border);">Total</th>
         </tr></thead>
         <tbody>${medidas.map(([chaveMedida,m]) => linhaMedida(c.chave, chaveMedida, m)).join('')}</tbody>
       </table>
