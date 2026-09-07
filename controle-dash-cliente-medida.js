@@ -7,25 +7,32 @@
 // coluna Cliente já vem escrita junto com a medida (ex: "UNICAP 295 LISO")
 // e ela usa o Autofiltro do Excel pra isolar as linhas de um cliente.
 //
-// Aqui a mesma pergunta é respondida direto dos dados que já existem no
-// Controle — sem planilha manual: cada processo já tem Cliente
-// (proc.cliente, ou por venda em vendas_json quando o processo foi
-// vendido pra mais de um cliente) e a lista de Produtos (produtos_json,
-// descrição + quantidade — a "medida" é a própria descrição, ex: "PNEU TBR
-// 295/80R22.5"). Este painel só soma tudo isso agrupado por Cliente ×
-// Medida.
+// V1 deste painel (06/09/2026) era uma tabela fixa: Cliente → Medida, sem
+// jeito de restringir por Fornecedor ou Marca. Feedback do Ayslan no mesmo
+// dia: "o ideal era incluirmos vários filtros no controle, para
+// conseguirmos ver a informação correta [...] se for tabela fixa como você
+// fez, não conseguimos ver por fornecedor e marca de pneu." V2 (esta):
+// filtros de verdade (Cliente, Fornecedor, Marca, Fase) que restringem os
+// dados ANTES de agrupar — a tabela Cliente→Medida continua sendo o
+// resultado, mas agora reflete só o que os filtros deixaram passar. Pedir
+// "só EUDEMON, só marca Maxam" no topo, por exemplo, já isola isso sem
+// precisar abrir cada processo.
 //
-// Escopo (confirmado com o Ayslan, 06/09/2026): só processos "em
+// Cada processo já tem Cliente (proc.cliente, ou por venda em vendas_json
+// quando vendido pra mais de um cliente), Fornecedor (proc.fornecedor) e
+// Marca (proc.brand — quando em branco, usa o próprio Fornecedor, mesmo
+// fallback do Dashboard TV) e a lista de Produtos (produtos_json,
+// descrição + quantidade — a "medida" é a própria descrição, ex: "PNEU TBR
+// 295/80R22.5"). Este painel soma tudo isso agrupado por Cliente × Medida
+// × Fase, só com o que passar pelos filtros escolhidos.
+//
+// Escopo de fase (confirmado com o Ayslan, 06/09/2026): só processos "em
 // andamento" nas fases PI Recebida, Aguardando Embarque, Embarcado,
 // Desembarcado e Registro DI — ou seja, o pneu já foi pedido/está a
 // caminho/chegou mas ainda não virou estoque disponível (Parametrização
-// em diante) nem foi finalizado. Processos cancelados nunca entram.
-//
-// Colunas por fase (pedido do Ayslan 06/09/2026, depois de ver a 1ª versão
-// com uma coluna "Quantidade" só): em vez de somar tudo junto, cada medida
-// mostra quantos pneus estão em cada fase — dá pra ver de cara quanto já
-// embarcou vs quanto ainda tá esperando embarque, sem precisar abrir a
-// lista de processos pra descobrir.
+// em diante) nem foi finalizado. Cada fase pode ser ligada/desligada no
+// filtro; processos cancelados nunca entram, filtro nenhum traz eles de
+// volta.
 //
 // Parte do controle_v2.html, carregado via <script src> — não é ES module.
 // Depende de: _processos, calcularFase, FASE_LABEL, parseVendas, esc(),
@@ -44,11 +51,14 @@ const FASE_COLUNA_LABEL = {
   REGISTRO_DI: 'Registro DI',
 };
 
-// Texto do filtro de busca — guardado fora da função pra sobreviver aos
-// re-renders disparados a cada tecla digitada (oninput chama
-// renderDashClienteMedida() de novo; sem isso o campo "esqueceria" o que
-// já tinha sido digitado a cada re-render).
-let _cmFiltroTexto = '';
+// Estado dos filtros — guardado fora da função pra sobreviver aos
+// re-renders disparados a cada interação (sem isso, cada seleção
+// "esqueceria" o que já tinha sido escolhido a cada re-render).
+let _cmFiltroTexto = '';       // busca livre (medida)
+let _cmFiltroCliente = '';     // '' = todos
+let _cmFiltroFornecedor = '';  // '' = todos
+let _cmFiltroMarca = '';       // '' = todas
+let _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA); // fases marcadas nos checkboxes
 
 function toggleDashClienteMedida(){
   const el = document.getElementById('dash-clientemedida');
@@ -61,30 +71,70 @@ function toggleDashClienteMedida(){
   document.getElementById('menu-clientemedida')?.classList.toggle('active', !visivel);
 }
 
-function _cmAtualizarFiltro(valor){
+function _cmAtualizarFiltroTexto(valor){
   _cmFiltroTexto = valor || '';
   renderDashClienteMedida();
   // Mantém o foco e o cursor no campo depois do re-render (senão cada
   // tecla digitada perde o foco, porque o innerHTML inteiro é recriado).
-  const input = document.getElementById('cm-filtro');
+  const input = document.getElementById('cm-filtro-texto');
   if(input){
     input.focus();
     const pos = input.value.length;
     input.setSelectionRange(pos, pos);
   }
 }
+function _cmSetFiltroSelect(campo, valor){
+  if(campo === 'cliente') _cmFiltroCliente = valor;
+  else if(campo === 'fornecedor') _cmFiltroFornecedor = valor;
+  else if(campo === 'marca') _cmFiltroMarca = valor;
+  renderDashClienteMedida();
+}
+function _cmToggleFase(fase, marcado){
+  if(marcado) _cmFasesAtivas.add(fase);
+  else _cmFasesAtivas.delete(fase);
+  renderDashClienteMedida();
+}
+function _cmLimparFiltros(){
+  _cmFiltroTexto = '';
+  _cmFiltroCliente = '';
+  _cmFiltroFornecedor = '';
+  _cmFiltroMarca = '';
+  _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA);
+  renderDashClienteMedida();
+}
 
 function renderDashClienteMedida(){
   const el = document.getElementById('dash-clientemedida-content');
   if(!el) return;
 
-  // ── Agregação: Cliente → Medida → Fase → {qtd, processos[]} ───────
+  // ── Passo 1: opções dos selects (Cliente/Fornecedor/Marca) ─────────
+  // Calculadas a partir de TODOS os processos elegíveis (fase certa, não
+  // cancelado), ignorando os filtros já escolhidos — assim as opções da
+  // lista nunca "somem" quando você já filtrou por outra coisa; só o
+  // conteúdo da tabela embaixo é que reage aos filtros.
+  const clientesDisponiveis = new Set();
+  const fornecedoresDisponiveis = new Set();
+  const marcasDisponiveis = new Set();
+  _processos.forEach(p => {
+    if(p.cancelado) return;
+    if(!FASES_CLIENTE_MEDIDA_SET.has(calcularFase(p))) return;
+    const vendas = typeof parseVendas === 'function' ? parseVendas(p) : [];
+    if(vendas.length) vendas.forEach(v => clientesDisponiveis.add((v.cliente || p.cliente || 'Sem cliente').trim() || 'Sem cliente'));
+    else clientesDisponiveis.add((p.cliente || 'Sem cliente').trim() || 'Sem cliente');
+    fornecedoresDisponiveis.add((p.fornecedor || 'Sem fornecedor').trim() || 'Sem fornecedor');
+    marcasDisponiveis.add((p.brand || p.fornecedor || 'Sem marca').trim() || 'Sem marca');
+  });
+
+  // ── Passo 2: agregação Cliente → Medida → Fase, já com os filtros ──
   const porCliente = {}; // chave (CLIENTE em caixa alta) -> {nome, porMedida:{}, total}
   let totalGeral = 0;
   let processosConsiderados = 0;
 
+  const processosContadosIds = new Set();
+
   function addItem(clienteNomeOriginal, descricaoOriginal, quantidade, p, fase){
     const clienteNome = (clienteNomeOriginal || 'Sem cliente').trim() || 'Sem cliente';
+    if(_cmFiltroCliente && clienteNome.toUpperCase() !== _cmFiltroCliente.toUpperCase()) return;
     const chaveCliente = clienteNome.toUpperCase();
     const descricao = (descricaoOriginal || 'Sem medida informada').trim() || 'Sem medida informada';
     const chaveMedida = descricao.toUpperCase();
@@ -101,6 +151,7 @@ function renderDashClienteMedida(){
     med.qtd += qtd;
     cli.total += qtd;
     totalGeral += qtd;
+    processosContadosIds.add(p.id);
     const bucket = med.porFase[fase];
     bucket.qtd += qtd;
     bucket.processos.push({
@@ -115,8 +166,12 @@ function renderDashClienteMedida(){
   _processos.forEach(p => {
     if(p.cancelado) return;
     const fase = calcularFase(p);
-    if(!FASES_CLIENTE_MEDIDA_SET.has(fase)) return;
-    processosConsiderados++;
+    if(!_cmFasesAtivas.has(fase)) return;
+
+    const fornecedor = (p.fornecedor || 'Sem fornecedor').trim() || 'Sem fornecedor';
+    if(_cmFiltroFornecedor && fornecedor.toUpperCase() !== _cmFiltroFornecedor.toUpperCase()) return;
+    const marca = (p.brand || p.fornecedor || 'Sem marca').trim() || 'Sem marca';
+    if(_cmFiltroMarca && marca.toUpperCase() !== _cmFiltroMarca.toUpperCase()) return;
 
     let produtos = [];
     try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ /* ignora produtos_json inválido */ }
@@ -139,8 +194,9 @@ function renderDashClienteMedida(){
       produtos.forEach(it => addItem(p.cliente, it.descricao, it.quantidade, p, fase));
     }
   });
+  processosConsiderados = processosContadosIds.size;
 
-  // ── Filtro de busca (cliente OU medida) ────────────────────────────
+  // ── Filtro de busca livre (medida) ─────────────────────────────────
   const termo = _cmFiltroTexto.trim().toLowerCase();
   let clientesLista = Object.entries(porCliente).map(([chave, dados]) => ({ chave, ...dados }));
   if(termo){
@@ -167,10 +223,12 @@ function renderDashClienteMedida(){
   function linhaMedida(chaveCliente, chaveMedida, med){
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:6px 10px;white-space:nowrap;">${esc(med.label)}</td>
-      ${FASES_CLIENTE_MEDIDA.map(f => celulaFase(chaveCliente, chaveMedida, f, med.porFase[f])).join('')}
+      ${FASES_CLIENTE_MEDIDA.filter(f => _cmFasesAtivas.has(f)).map(f => celulaFase(chaveCliente, chaveMedida, f, med.porFase[f])).join('')}
       <td style="padding:6px 14px;text-align:right;font-weight:800;white-space:nowrap;border-left:1px solid var(--border);">${fmtN(med.qtd)}</td>
     </tr>`;
   }
+
+  const fasesColunas = FASES_CLIENTE_MEDIDA.filter(f => _cmFasesAtivas.has(f));
 
   function blocoCliente(c){
     const medidas = Object.entries(c.porMedida).map(([chave,m]) => [chave,m]).sort((a,b) => b[1].qtd - a[1].qtd);
@@ -180,10 +238,10 @@ function renderDashClienteMedida(){
         <span style="font-weight:800;font-size:15px;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(c.total)} <span style="font-size:11px;font-weight:600;color:var(--muted);">pneus</span></span>
       </summary>
       <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:820px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:${240 + fasesColunas.length*130}px;">
         <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
           <th style="padding:6px 10px;white-space:nowrap;">Medida</th>
-          ${FASES_CLIENTE_MEDIDA.map(f => `<th style="padding:6px 14px;text-align:right;white-space:nowrap;">${FASE_COLUNA_LABEL[f]}</th>`).join('')}
+          ${fasesColunas.map(f => `<th style="padding:6px 14px;text-align:right;white-space:nowrap;">${FASE_COLUNA_LABEL[f]}</th>`).join('')}
           <th style="padding:6px 14px;text-align:right;white-space:nowrap;border-left:1px solid var(--border);">Total</th>
         </tr></thead>
         <tbody>${medidas.map(([chaveMedida,m]) => linhaMedida(c.chave, chaveMedida, m)).join('')}</tbody>
@@ -194,14 +252,24 @@ function renderDashClienteMedida(){
 
   const corpoHtml = clientesLista.length
     ? clientesLista.map(blocoCliente).join('')
-    : `<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center;">${termo ? 'Nenhum cliente/medida encontrado para "'+esc(_cmFiltroTexto)+'".' : 'Nenhum processo em andamento no momento.'}</div>`;
+    : `<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center;">${(termo||_cmFiltroCliente||_cmFiltroFornecedor||_cmFiltroMarca) ? 'Nenhum resultado para os filtros escolhidos.' : 'Nenhum processo em andamento no momento.'}</div>`;
+
+  function selectFiltro(campo, label, valorAtual, opcoes){
+    const opts = ['<option value="">Todos'+(label==='Cliente'?' os clientes':label==='Fornecedor'?' os fornecedores':' as marcas')+'</option>']
+      .concat([...opcoes].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(o => `<option value="${esc(o)}" ${o===valorAtual?'selected':''}>${esc(o)}</option>`));
+    return `<select onchange="_cmSetFiltroSelect('${campo}',this.value)" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:170px;flex:1;">
+      ${opts.join('')}
+    </select>`;
+  }
+
+  const temFiltroAtivo = _cmFiltroTexto || _cmFiltroCliente || _cmFiltroFornecedor || _cmFiltroMarca || _cmFasesAtivas.size !== FASES_CLIENTE_MEDIDA.length;
 
   el.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:12px 16px;flex:1;min-width:160px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Total de Pneus</div>
         <div style="font-size:22px;font-weight:800;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(totalGeral)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">PI Recebida até Registro DI, sem cancelados</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Considerando os filtros abaixo</div>
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid #64748b;border-radius:10px;padding:12px 16px;flex:1;min-width:160px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Clientes</div>
@@ -209,8 +277,23 @@ function renderDashClienteMedida(){
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">${processosConsiderados} processo(s) considerados</div>
       </div>
     </div>
-    <input id="cm-filtro" class="form-input" placeholder="Filtrar por cliente ou medida (ex: UNICAP, 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
-      oninput="_cmAtualizarFiltro(this.value)" style="width:100%;margin-bottom:14px;">
+
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        ${selectFiltro('cliente','Cliente',_cmFiltroCliente,clientesDisponiveis)}
+        ${selectFiltro('fornecedor','Fornecedor',_cmFiltroFornecedor,fornecedoresDisponiveis)}
+        ${selectFiltro('marca','Marca',_cmFiltroMarca,marcasDisponiveis)}
+        <input id="cm-filtro-texto" class="form-input" placeholder="Buscar medida (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
+          oninput="_cmAtualizarFiltroTexto(this.value)" style="flex:2;min-width:200px;">
+        ${temFiltroAtivo ? `<button class="btn btn-outline" onclick="_cmLimparFiltros()" style="white-space:nowrap;">✕ Limpar filtros</button>` : ''}
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text);">
+        ${FASES_CLIENTE_MEDIDA.map(f => `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+          <input type="checkbox" ${_cmFasesAtivas.has(f)?'checked':''} onchange="_cmToggleFase('${f}',this.checked)"> ${FASE_COLUNA_LABEL[f]}
+        </label>`).join('')}
+      </div>
+    </div>
+
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Clique num número pra ver os processos por trás dele.</div>
     <div>${corpoHtml}</div>
   `;
