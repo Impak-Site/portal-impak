@@ -2307,7 +2307,7 @@ function renderFaseFilter(){
 // de aba/fase ou ao abrir outro dashboard, para a tela trocar de fato em
 // vez de empilhar dashboard + tabela (ou dois dashboards ao mesmo tempo).
 function fecharTodosDashboards(){
-  ['executivo','financeiro','resultado','narcelio','carregamento','tv'].forEach(function(id){
+  ['executivo','financeiro','resultado','narcelio','carregamento','tv','clientemedida'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
     if(el) el.style.display = 'none';
     var menu = document.getElementById('menu-'+id);
