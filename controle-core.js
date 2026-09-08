@@ -2543,9 +2543,16 @@ const stats = [
   ];
 if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência duplicada', cor:'var(--err)', filtro:'__ref_duplicada'});
 
-  // Badges sidebar por fase
+  // Badges sidebar por fase — processo fechado (p.fechado) não conta na
+  // fase real dele aqui (ex: FINALIZADO), e sim só no badge próprio
+  // "🔒 Fechado" — mesmo critério de exibição de faseParaExibir(), pra não
+  // contar o mesmo processo em 2 badges ao mesmo tempo.
   const faseCount = {};
-  processosAtivos.forEach(p=>{ faseCount[p.fase] = (faseCount[p.fase]||0)+1; });
+  let fechadoCount = 0;
+  processosAtivos.forEach(p=>{
+    if(p.fechado){ fechadoCount++; return; }
+    faseCount[p.fase] = (faseCount[p.fase]||0)+1;
+  });
   ['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI',
    'PARAMETRIZACAO','CARREGAMENTO','FATURAMENTO','DEVOLUCAO_VAZIO','FINALIZADO'].forEach(f=>{
     const el = document.getElementById('sb-'+f);
@@ -2554,6 +2561,11 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
     el.textContent = n;
     el.style.display = n > 0 ? 'inline' : 'none';
   });
+  const elFechado = document.getElementById('sb-__fechado');
+  if(elFechado){
+    elFechado.textContent = fechadoCount;
+    elFechado.style.display = fechadoCount > 0 ? 'inline' : 'none';
+  }
   const badgeAlerta = document.getElementById('badge-alertas');
   if(badgeAlerta){ badgeAlerta.textContent=comAlerta; badgeAlerta.style.display=comAlerta>0?'block':'none'; }
   const cancelados = _processos.filter(p=>!!p.cancelado).length;
