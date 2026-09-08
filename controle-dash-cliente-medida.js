@@ -443,6 +443,57 @@ function renderDashClienteMedida(){
     </div>`;
   }
 
+  // Totalizadores por Cliente (pedido do Ayslan, 09/09/2026: "precisamos
+  // colocar na tela os totalizadores tambem, e nao somente quando
+  // exportar") — mesmo resumo (por Medida: PI/Previsto/Embarcado/Total +
+  // contagem de pedidos só previstos x já embarcados) que já ia pros
+  // exports Excel/PDF (_cmResumoCliente, ver exportarCMExcel/PDF mais
+  // abaixo), agora também renderizado dentro do próprio card do cliente.
+  function blocoResumoCliente(c){
+    const resumo = _cmResumoCliente(c);
+    if(!resumo.medidas.length) return '';
+    let somaPi = 0, somaPrevisto = 0, somaEmbarcado = 0, somaTotal = 0;
+    const linhas = resumo.medidas.map(md => {
+      somaPi += md.pi; somaPrevisto += md.previsto; somaEmbarcado += md.embarcado; somaTotal += md.total;
+      return `<tr>
+        <td style="padding:5px 8px;text-align:left;">${esc(md.descricao)}</td>
+        <td style="padding:5px 8px;text-align:center;">${fmtN(md.pi)}</td>
+        <td style="padding:5px 8px;text-align:center;">${fmtN(md.previsto)}</td>
+        <td style="padding:5px 8px;text-align:center;">${fmtN(md.embarcado)}</td>
+        <td style="padding:5px 8px;text-align:center;font-weight:700;">${fmtN(md.total)}</td>
+      </tr>`;
+    }).join('');
+    return `<div style="margin-top:6px;border-top:1px dashed var(--border);padding-top:10px;">
+      <div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);margin-bottom:6px;">Totalizador por Medida</div>
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:480px;">
+        <thead><tr style="text-align:center;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
+          <th style="padding:5px 8px;text-align:left;">Medida</th>
+          <th style="padding:5px 8px;">PI Recebida</th>
+          <th style="padding:5px 8px;">Previsto Embarque</th>
+          <th style="padding:5px 8px;">Embarcado</th>
+          <th style="padding:5px 8px;">Total</th>
+        </tr></thead>
+        <tbody>
+          ${linhas}
+          <tr style="background:var(--bg);font-weight:700;border-top:1px solid var(--border);">
+            <td style="padding:6px 8px;text-align:left;">TOTAL</td>
+            <td style="padding:6px 8px;text-align:center;">${fmtN(somaPi)}</td>
+            <td style="padding:6px 8px;text-align:center;">${fmtN(somaPrevisto)}</td>
+            <td style="padding:6px 8px;text-align:center;">${fmtN(somaEmbarcado)}</td>
+            <td style="padding:6px 8px;text-align:center;">${fmtN(somaTotal)}</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;">
+        Previsto embarque: <strong style="color:var(--text);">${resumo.previstoCount.toLocaleString('pt-BR')}</strong> pedido(s) — ${resumo.previstoQtd.toLocaleString('pt-BR')} pneus
+        &nbsp;|&nbsp;
+        Embarcado: <strong style="color:var(--text);">${resumo.embarcadoCount.toLocaleString('pt-BR')}</strong> pedido(s) — ${resumo.embarcadoQtd.toLocaleString('pt-BR')} pneus
+      </div>
+    </div>`;
+  }
+
   function blocoCliente(c){
     const marcas = Object.values(c.porMarca).sort((a,b) => {
       const da = Math.min(...Object.values(a.pedidos).map(p => p._chegadaTs));
@@ -456,6 +507,7 @@ function renderDashClienteMedida(){
       </summary>
       <div style="padding:10px 12px;">
         ${marcas.map(blocoMarca).join('')}
+        ${blocoResumoCliente(c)}
       </div>
     </details>`;
   }
@@ -866,10 +918,28 @@ async function exportarCMPDF(){
         const db = Math.min(...Object.values(b.pedidos).map(p => p._chegadaTs));
         return da - db || a.nome.localeCompare(b.nome,'pt-BR');
       });
-      const body = [];
-      marcas.forEach(m => {
-        body.push([{ content: m.nome.toUpperCase(), colSpan: CM_EXPORT_COLUNAS.length, styles:{fillColor:[234,243,252], textColor:[16,42,69], fontStyle:'bold', halign:'center'} }]);
+
+      // Uma tabela (autoTable) por Marca/Fábrica (o "exportador"), em vez
+      // de uma tabela única com todas as marcas do cliente — pedido do
+      // Ayslan (09/09/2026): "quando nao couber os itens do mesmo
+      // exportador na pagina, sempre começar na próxima", ou seja, o
+      // bloco de um fornecedor nunca pode ficar cortado no meio entre
+      // duas páginas. Antes de desenhar cada marca, estima a altura que
+      // ela vai ocupar (cabeçalho + linha do nome da marca + 1 linha por
+      // item) e compara com o espaço que sobra na página atual — se não
+      // couber, força doc.addPage() ANTES de desenhar (nunca depois, senão
+      // já teria cortado no meio). A estimativa é intencionalmente um
+      // pouco generosa (super-estima a altura de linha) pra errar sempre
+      // pro lado de quebrar cedo demais, nunca pro lado de deixar cortar.
+      const ALTURA_LINHA_EST = 20; // cabeçalho, linha de marca e linhas de item usam a mesma fonte/padding
+      const MARGEM_INFERIOR = 40;
+      const alturaPagina = doc.internal.pageSize.getHeight();
+      let startY = 66;
+
+      marcas.forEach((m, mi) => {
         const pedidos = Object.values(m.pedidos).sort((a,b) => a._chegadaTs - b._chegadaTs || (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
+        const body = [[{ content: m.nome.toUpperCase(), colSpan: CM_EXPORT_COLUNAS.length, styles:{fillColor:[234,243,252], textColor:[16,42,69], fontStyle:'bold', halign:'center'} }]];
+        let qtdLinhasItem = 0;
         pedidos.forEach(pedido => {
           const itens = pedido.itens.length ? pedido.itens : [{descricao:'—', qtd:0}];
           const span = itens.length;
@@ -892,18 +962,30 @@ async function exportarCMPDF(){
               return '';
             }).filter(v => v !== null);
             body.push(row);
+            qtdLinhasItem++;
           });
         });
-      });
 
-      doc.autoTable({
-        startY: 66,
-        head: [CM_EXPORT_COLUNAS],
-        body,
-        theme: 'grid',
-        styles: { fontSize:8, cellPadding:4, valign:'middle', halign:'center', lineColor:[226,232,240], lineWidth:0.5 },
-        headStyles: { fillColor:[16,42,69], textColor:255, fontStyle:'bold', fontSize:8.5, halign:'center' },
-        margin: { left:40, right:40 },
+        // Estimativa de altura: cabeçalho da tabela + linha do nome da
+        // marca + 1 linha por item.
+        const alturaEstimada = ALTURA_LINHA_EST /*head*/ + ALTURA_LINHA_EST /*linha da marca*/ + qtdLinhasItem * ALTURA_LINHA_EST;
+        const espacoDisponivel = alturaPagina - MARGEM_INFERIOR - startY;
+        if(mi > 0 && alturaEstimada > espacoDisponivel){
+          doc.addPage();
+          startY = 40;
+        }
+
+        doc.autoTable({
+          startY,
+          head: [CM_EXPORT_COLUNAS],
+          body,
+          theme: 'grid',
+          styles: { fontSize:8, cellPadding:4, valign:'middle', halign:'center', lineColor:[226,232,240], lineWidth:0.5 },
+          headStyles: { fillColor:[16,42,69], textColor:255, fontStyle:'bold', fontSize:8.5, halign:'center' },
+          margin: { left:40, right:40 },
+          rowPageBreak: 'avoid', // não corta uma linha (com rowSpan de Invoice/datas) no meio entre páginas
+        });
+        startY = doc.lastAutoTable.finalY + 8;
       });
 
       // ── Resumo (pedido do Ayslan, 08/09/2026: "colocar esses totais no
