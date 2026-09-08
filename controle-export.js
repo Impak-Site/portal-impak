@@ -356,6 +356,26 @@ async function exportarDREExcel(dre){
     ws.getColumn(4).width = 16;
     ws.getColumn(5).width = 10;
 
+    // Sem linha de grade (padrão do Excel some, só as bordas que a gente
+    // desenha aparecem) + uma borda inferior fina em TODA linha com
+    // conteúdo (não só nas poucas linhas que já tinham borda de destaque)
+    // — pedido do Ayslan (08/09/2026), pra ficar com "cara de tabela"
+    // igual ao modelo que ele mandou.
+    ws.views = [{ showGridLines: false }];
+    const ultimaLinha = r;
+    for(let linhaN = 2; linhaN <= ultimaLinha; linhaN++){
+      const row = ws.getRow(linhaN);
+      let temConteudo = false;
+      for(let col = 1; col <= numCols; col++){
+        if(row.getCell(col).value != null && row.getCell(col).value !== ''){ temConteudo = true; break; }
+      }
+      if(!temConteudo) continue;
+      for(let col = 1; col <= numCols; col++){
+        const cell = row.getCell(col);
+        cell.border = Object.assign({}, cell.border, { bottom: { style: 'thin', color: { argb: CORES.BORDA } } });
+      }
+    }
+
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url = URL.createObjectURL(blob);
