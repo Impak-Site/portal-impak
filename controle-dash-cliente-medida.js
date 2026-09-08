@@ -257,6 +257,12 @@ function renderDashClienteMedida(){
         id: p.id,
         referencia: p.referencia || '—',
         porto: (typeof formatarPortoDestino === 'function' ? formatarPortoDestino(p.porto_destino) : p.porto_destino) || '',
+        // Fase do processo (PI/AGUARDANDO_EMBARQUE/EMBARCADO/DESEMBARCADO/
+        // REGISTRO_DI) — guardada aqui pra poder somar por Medida x Fase no
+        // resumo dos exports (pedido do Ayslan, 08/09/2026: "totalizador
+        // por medida de pneu previsto pra embarque/embarcado e PI
+        // Recebida"). Ver _cmResumoCliente.
+        fase,
         dataPedido: celulaData(p.pi_data),
         prontidao: celulaData(p.data_prontidao, p.previsao_prontidao),
         embarque: celulaData(p.data_embarque, p.etd),
@@ -529,25 +535,46 @@ function _cmNomeAba(nome, usados){
   return final;
 }
 
+// Fase do pedido -> grupo do resumo por medida (pedido do Ayslan,
+// 08/09/2026: "totalizador por medida de pneu previsto pra
+// embarque/embarcado e PI Recebida, bem como o total que já tem"). Junta
+// DESEMBARCADO e REGISTRO_DI dentro de "embarcado" — já saiu de fábrica,
+// é o que importa pra essa visão (a fase exata continua disponível nos
+// filtros/checkboxes do próprio dashboard).
+const CM_FASE_GRUPO_RESUMO = {
+  PI: 'pi',
+  AGUARDANDO_EMBARQUE: 'previsto',
+  EMBARCADO: 'embarcado',
+  DESEMBARCADO: 'embarcado',
+  REGISTRO_DI: 'embarcado',
+};
+
 // Resumo por cliente (pedido do Ayslan, 08/09/2026: "colocar o total de
 // pneus pedido por medida" + "quantos tem previsto embarque e o total" +
-// "quantos tem embarcado e o total") — agrega, através de TODAS as
-// marcas/pedidos do cliente: (a) total de pneus por Medida; (b) quantos
-// pedidos (Invoices) têm só previsão de embarque (ETD, ainda sem embarque
-// real) e o total de pneus deles; (c) quantos já embarcaram de verdade
-// (Data de Embarque real preenchida) e o total de pneus deles. Usa o
-// mesmo pedido (nível Invoice, não item) pra contar "quantos", e soma
-// pedido.qtd (todos os itens daquele Invoice) pro total — critério igual
-// ao já usado em pedido.embarque (celulaData: previsto=true só quando não
-// tem data real, texto!=='—' quando tem real ou previsão).
+// "quantos tem embarcado e o total"; depois: "colocar nas colunas o
+// totalizador por medida de pneu previsto pra embarque/embarcado e PI
+// Recebida, bem como o total que já tem") — agrega, através de TODAS as
+// marcas/pedidos do cliente: (a) por Medida, quantos pneus estão em cada
+// fase (PI Recebida / Previsto Embarque / Embarcado) + o total; (b)
+// quantos pedidos (Invoices) têm só previsão de embarque (ETD, ainda sem
+// embarque real) e o total de pneus deles; (c) quantos já embarcaram de
+// verdade (Data de Embarque real preenchida) e o total de pneus deles —
+// esse segundo grupo (b/c) é a nível de Invoice, não de Medida, por isso
+// continua separado (soma diferente: um pedido conta 1x mesmo com várias
+// medidas dentro).
 function _cmResumoCliente(c){
-  const medidasMap = new Map(); // descrição -> qtd total
+  const medidasMap = new Map(); // descrição -> {pi, previsto, embarcado, total}
   let previstoCount = 0, previstoQtd = 0, embarcadoCount = 0, embarcadoQtd = 0;
   Object.values(c.porMarca).forEach(m => {
     Object.values(m.pedidos).forEach(pedido => {
+      const grupo = CM_FASE_GRUPO_RESUMO[pedido.fase] || null;
       pedido.itens.forEach(it => {
         const key = it.descricao || 'Sem medida informada';
-        medidasMap.set(key, (medidasMap.get(key) || 0) + (it.qtd || 0));
+        const qtd = it.qtd || 0;
+        if(!medidasMap.has(key)) medidasMap.set(key, { pi: 0, previsto: 0, embarcado: 0, total: 0 });
+        const linha = medidasMap.get(key);
+        linha.total += qtd;
+        if(grupo) linha[grupo] += qtd;
       });
       if(pedido.embarque && pedido.embarque.previsto){
         previstoCount++;
@@ -559,8 +586,8 @@ function _cmResumoCliente(c){
     });
   });
   const medidas = [...medidasMap.entries()]
-    .map(([descricao, qtd]) => ({ descricao, qtd }))
-    .sort((a, b) => b.qtd - a.qtd || a.descricao.localeCompare(b.descricao, 'pt-BR', { numeric: true }));
+    .map(([descricao, v]) => ({ descricao, ...v }))
+    .sort((a, b) => b.total - a.total || a.descricao.localeCompare(b.descricao, 'pt-BR', { numeric: true }));
   return { medidas, previstoCount, previstoQtd, embarcadoCount, embarcadoQtd };
 }
 
@@ -686,17 +713,71 @@ async function exportarCMExcel(){
       ws.getRow(rowIdx).height = 20;
       rowIdx++;
 
+      // Cabeçalho do resumo (pedido do Ayslan, 08/09/2026: "colocar nas
+      // colunas o totalizador por medida de pneu previsto pra
+      // embarque/embarcado e PI Recebida, bem como o total que já tem") —
+      // Medida (col 1-2 mescladas) | PI Recebida | Previsto Embarque |
+      // Embarcado | Total. ─────────────────────────────────────────────
+      const resumoHeaderRow = ws.getRow(rowIdx);
+      ws.mergeCells(rowIdx,1,rowIdx,2);
+      const RESUMO_COLS = [
+        {label:'Medida', col:1},
+        {label:'PI Recebida', col:3},
+        {label:'Previsto Embarque', col:4},
+        {label:'Embarcado', col:5},
+        {label:'Total', col:6},
+      ];
+      RESUMO_COLS.forEach(rc => {
+        const cell = resumoHeaderRow.getCell(rc.col);
+        cell.value = rc.label;
+        estilizarHeaderCell(cell, {size:9.5});
+      });
+      resumoHeaderRow.height = 26;
+      rowIdx++;
+
+      let somaPi = 0, somaPrevisto = 0, somaEmbarcado = 0, somaTotal = 0;
       resumo.medidas.forEach((md, idx) => {
         const row = ws.getRow(rowIdx);
         ws.mergeCells(rowIdx,1,rowIdx,2);
         const cMedida = row.getCell(1);
         cMedida.value = md.descricao;
         estilizarCelulaDado(cMedida, {idx, alinhamento:'left', size:10});
-        const cQtd = row.getCell(3);
-        cQtd.value = md.qtd;
-        estilizarCelulaDado(cQtd, {idx, alinhamento:'center', size:10});
+        const cPi = row.getCell(3);
+        cPi.value = md.pi;
+        estilizarCelulaDado(cPi, {idx, alinhamento:'center', size:10});
+        const cPrevistoMd = row.getCell(4);
+        cPrevistoMd.value = md.previsto;
+        estilizarCelulaDado(cPrevistoMd, {idx, alinhamento:'center', size:10});
+        const cEmbarcadoMd = row.getCell(5);
+        cEmbarcadoMd.value = md.embarcado;
+        estilizarCelulaDado(cEmbarcadoMd, {idx, alinhamento:'center', size:10});
+        const cTotalMd = row.getCell(6);
+        cTotalMd.value = md.total;
+        estilizarCelulaDado(cTotalMd, {idx, alinhamento:'center', size:10});
+        cTotalMd.font = {name:'Calibri', size:10, bold:true, color:{argb:CORES.TEXTO}};
+        somaPi += md.pi; somaPrevisto += md.previsto; somaEmbarcado += md.embarcado; somaTotal += md.total;
         rowIdx++;
       });
+
+      // Linha de total geral do resumo por medida.
+      const resumoTotalRow = ws.getRow(rowIdx);
+      ws.mergeCells(rowIdx,1,rowIdx,2);
+      const cTotalLabel = resumoTotalRow.getCell(1);
+      cTotalLabel.value = 'TOTAL';
+      const totaisResumo = [
+        {col:1, valor:null}, {col:3, valor:somaPi}, {col:4, valor:somaPrevisto},
+        {col:5, valor:somaEmbarcado}, {col:6, valor:somaTotal},
+      ];
+      totaisResumo.forEach(t => {
+        const cell = resumoTotalRow.getCell(t.col);
+        if(t.valor !== null) cell.value = t.valor;
+        cell.font = {name:'Calibri', bold:true, size:10.5, color:{argb:CORES.AZUL_ESCURO}};
+        cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.AZUL_CLARO}};
+        cell.alignment = {vertical:'middle', horizontal: t.col===1?'left':'center'};
+        cell.border = {top:{style:'thin',color:{argb:CORES.BORDA}}};
+      });
+      resumoTotalRow.height = 20;
+      rowIdx++;
 
       rowIdx++; // linha em branco separando o resumo por medida do resumo de embarque
 
@@ -817,26 +898,45 @@ async function exportarCMPDF(){
       // total de pneus de cada grupo. Fica depois da tabela principal,
       // como fechamento do relatório do cliente. ──────────────────────
       const resumo = _cmResumoCliente(c);
-      const resumoBody = resumo.medidas.map(md => [md.descricao, md.qtd.toLocaleString('pt-BR')]);
-      resumoBody.push([
-        { content: `Previsto embarque: ${resumo.previstoCount.toLocaleString('pt-BR')} pedido(s)`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
-        { content: `${resumo.previstoQtd.toLocaleString('pt-BR')} pneus`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
+      // Colunas do resumo (pedido do Ayslan, 08/09/2026: "colocar nas
+      // colunas o totalizador por medida de pneu previsto pra
+      // embarque/embarcado e PI Recebida, bem como o total que já tem")
+      // — Medida | PI Recebida | Previsto Embarque | Embarcado | Total.
+      const resumoBody = resumo.medidas.map(md => [
+        md.descricao,
+        md.pi.toLocaleString('pt-BR'),
+        md.previsto.toLocaleString('pt-BR'),
+        md.embarcado.toLocaleString('pt-BR'),
+        { content: md.total.toLocaleString('pt-BR'), styles:{fontStyle:'bold'} },
       ]);
+      const somaPi = resumo.medidas.reduce((s,md)=>s+md.pi,0);
+      const somaPrevisto = resumo.medidas.reduce((s,md)=>s+md.previsto,0);
+      const somaEmbarcado = resumo.medidas.reduce((s,md)=>s+md.embarcado,0);
+      const somaTotal = resumo.medidas.reduce((s,md)=>s+md.total,0);
       resumoBody.push([
-        { content: `Embarcado: ${resumo.embarcadoCount.toLocaleString('pt-BR')} pedido(s)`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
-        { content: `${resumo.embarcadoQtd.toLocaleString('pt-BR')} pneus`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
+        { content: 'TOTAL', styles:{fontStyle:'bold', fillColor:[234,243,252]} },
+        { content: somaPi.toLocaleString('pt-BR'), styles:{fontStyle:'bold', fillColor:[234,243,252]} },
+        { content: somaPrevisto.toLocaleString('pt-BR'), styles:{fontStyle:'bold', fillColor:[234,243,252]} },
+        { content: somaEmbarcado.toLocaleString('pt-BR'), styles:{fontStyle:'bold', fillColor:[234,243,252]} },
+        { content: somaTotal.toLocaleString('pt-BR'), styles:{fontStyle:'bold', fillColor:[234,243,252]} },
       ]);
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 16,
-        head: [['Medida','Qte']],
+        head: [['Medida','PI Recebida','Previsto Embarque','Embarcado','Total']],
         body: resumoBody,
         theme: 'grid',
-        styles: { fontSize:8, cellPadding:3, valign:'middle', halign:'left', lineColor:[226,232,240], lineWidth:0.5 },
+        styles: { fontSize:8, cellPadding:3, valign:'middle', halign:'center', lineColor:[226,232,240], lineWidth:0.5 },
         headStyles: { fillColor:[26,127,212], textColor:255, fontStyle:'bold', fontSize:8.5, halign:'center' },
-        columnStyles: { 0:{cellWidth:220}, 1:{cellWidth:90, halign:'center'} },
+        columnStyles: { 0:{cellWidth:220, halign:'left'}, 1:{cellWidth:80}, 2:{cellWidth:100}, 3:{cellWidth:80}, 4:{cellWidth:70} },
         margin: { left:40, right:40 },
         tableWidth: 'wrap',
       });
+
+      const resumoTableFinalY = doc.lastAutoTable.finalY;
+      doc.setFontSize(8);
+      doc.setTextColor(92,112,137);
+      doc.setFont(undefined,'normal');
+      doc.text(`Previsto embarque: ${resumo.previstoCount.toLocaleString('pt-BR')} pedido(s) — ${resumo.previstoQtd.toLocaleString('pt-BR')} pneus   |   Embarcado: ${resumo.embarcadoCount.toLocaleString('pt-BR')} pedido(s) — ${resumo.embarcadoQtd.toLocaleString('pt-BR')} pneus`, 40, resumoTableFinalY + 14);
     });
 
     doc.save(`IMPAK_PorClienteMedida_${new Date().toISOString().split('T')[0]}.pdf`);
