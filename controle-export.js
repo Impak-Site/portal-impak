@@ -221,7 +221,7 @@ function confirmarExportClientePDF(){
 // existir, a partir do objeto ja montado por montarDRE() (controle-core.js
 // — so reorganiza os MESMOS lancamentos da aba Custos Reais). Reaproveita
 // ExcelJS + window.ExcelStyles, igual aos demais exports deste arquivo.
-async function exportarDREExcel(dre){
+async function exportarDREExcel(dre, p){
   if(typeof ExcelJS === 'undefined'){
     showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
     return;
@@ -353,6 +353,34 @@ async function exportarDREExcel(dre){
       }
     }
 
+    // Timeline (Data do Pedido / Embarque / Chegada Porto / Rota / Total) --
+    // mesmo bloco que ja aparece no modal do DRE e na aba Fechamento --
+    // pedido do Ayslan (08/09/2026): "a timeline tem que ir quando
+    // exportamos tambem". So entra se o processo (p) tiver ao menos uma
+    // das 3 datas.
+    if(p && (p.pi_data || p.data_embarque || p.data_chegada)){
+      const diasEntre = (a,b) => (a && b) ? Math.round((parseDataLocal(b) - parseDataLocal(a))/86400000) : null;
+      const fmtDataTl = d => d ? parseDataLocal(d).toLocaleDateString('pt-BR') : '—';
+      r++;
+      const tlHeader = ws.getCell(r,1); tlHeader.value = 'TIMELINE'; tlHeader.font = {bold:true}; r++;
+      const tlRow = (label, valorTexto) => {
+        const row = linha('    '+label, null, null, valorTexto);
+        row.getCell(4).alignment = {horizontal:'right'};
+        return row;
+      };
+      tlRow('Data do Pedido', fmtDataTl(p.pi_data));
+      tlRow('Embarque', fmtDataTl(p.data_embarque));
+      tlRow('Chegada Porto', fmtDataTl(p.data_chegada));
+      const rotaDias = diasEntre(p.data_embarque, p.data_chegada);
+      const totalDias = diasEntre(p.pi_data, p.data_chegada);
+      if(rotaDias != null || totalDias != null){
+        const partes = [];
+        if(rotaDias != null) partes.push(`Rota: ${rotaDias}d`);
+        if(totalDias != null) partes.push(`Total: ${totalDias}d (${(totalDias/30.44).toFixed(1)} meses)`);
+        tlRow(partes.join('   |   '), '');
+      }
+    }
+
     ws.getColumn(1).width = 46;
     ws.getColumn(2).width = 16;
     ws.getColumn(3).width = 16;
@@ -392,6 +420,124 @@ async function exportarDREExcel(dre){
     showToast('✓ DRE exportado','ok');
   }catch(e){
     showToast('Erro ao exportar DRE: '+e.message,'err');
+    console.error(e);
+  }
+}
+
+// Export do DRE em PDF — pedido do Ayslan (08/09/2026): "a DRE pode colocar
+// a impressao em PDF tambem? Tem que estruturar para caber e uma pagina."
+// Usa jsPDF + jspdf-autotable (mesma lib ja usada no export PDF do
+// Follow-up, ver exportarFormatoClientePDF acima) — 1 unica tabela com
+// fonte pequena (7pt) pra sempre caber numa unica pagina A4 retrato,
+// independente de quantas linhas o DRE tiver (comissoes/diferencas
+// variam de processo pra processo).
+async function exportarDREPDF(dre, p){
+  if(typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined'){
+    showToast('Biblioteca de PDF ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'portrait', unit:'pt', format:'a4' });
+    const r2 = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+
+    doc.setFontSize(13);
+    doc.setTextColor(30,41,59);
+    doc.text(`DRE — Processo ${dre.referencia}`, 40, 36);
+    doc.setFontSize(8);
+    doc.setTextColor(100,116,139);
+    const agora = new Date();
+    doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`, 40, 50);
+
+    // Body: 1 tabela de 4 colunas (Descrição / Ref. NFe / Créd. entrada / Valor)
+    // -- mesmas colunas que a tela e o Excel usam pras linhas de Diferenças
+    // de Impostos; nas demais linhas as 2 colunas do meio ficam vazias.
+    const body = [];
+    const linhaSimples = (label, valor, opts) => body.push([
+      { content: label, styles: opts && opts.bold ? {fontStyle:'bold'} : {} },
+      '', '',
+      { content: r2(valor), styles: Object.assign({halign:'right'}, opts && opts.bold ? {fontStyle:'bold'} : {}) },
+    ]);
+    const linhaTexto = (label, valorTexto) => body.push([label, '', '', { content: valorTexto||'', styles:{halign:'right'} }]);
+
+    linhaSimples(`Nota fiscal de Saída${dre.nfSaidaNumero?' — Nfe '+dre.nfSaidaNumero:''}`, dre.nfSaidaValor, {bold:true});
+    if(dre.jurosCobrado){
+      linhaSimples('Juros', dre.jurosCobrado.valor);
+      linhaSimples('TOTAL', dre.totalReceita, {bold:true});
+    }
+    body.push([{ content:'CUSTOS', colSpan:4, styles:{fontStyle:'bold', fillColor:[241,245,249]} }]);
+    linhaSimples('    FOB', dre.fob);
+    linhaSimples('    Adiantamento Porto (Liberação)', dre.totalAdiantamento);
+    dre.adiantamentoItens.forEach(it => linhaSimples('          '+it.label, it.valor));
+    linhaSimples('    Agente Frete', dre.totalAgenteFrete);
+    dre.agenteFreteItens.forEach(it => linhaSimples('          '+it.label, it.valor));
+    dre.diferencasItens.forEach(it => body.push([
+      '    '+it.label,
+      { content: r2(it.valorNfe), styles:{halign:'right', fontSize:6.5, textColor:[100,116,139]} },
+      { content: r2(it.creditoEntrada), styles:{halign:'right', fontSize:6.5, textColor:[100,116,139]} },
+      { content: r2(it.diferenca), styles:{halign:'right'} },
+    ]));
+    linhaSimples('    Reciclagem', dre.reciclagem);
+    linhaSimples('    Lavação', dre.lavacao);
+    (dre.comissaoItens||[]).filter(i=>i.valor>0).forEach(it => linhaSimples('    '+it.label, it.valor));
+    linhaSimples('    Despesas - Baixa Pátio para Venda/Devolução', dre.despesasBaixaPatio);
+    linhaSimples('    Seguro Efetivo Pago', dre.seguro);
+    linhaSimples('TOTAL CUSTOS', dre.totalCustos, {bold:true});
+
+    const rotuloLucro1 = dre.notasBoss ? 'LUCRO BRUTO do PROCESSO - IMPAK' : 'LUCRO BRUTO do PROCESSO';
+    linhaSimples(rotuloLucro1 + (dre.pctLucroBrutoImpak!=null?` (${(dre.pctLucroBrutoImpak*100).toFixed(1)}%)`:''), dre.lucroBrutoImpak, {bold:true});
+
+    if(dre.notasBoss){
+      linhaSimples('Nfe BOSS', dre.notasBoss.valorBoss);
+      const impostosBoss = dre.notasBoss.irRetido+dre.notasBoss.iss+dre.notasBoss.pis+dre.notasBoss.cofins+dre.notasBoss.irpj+dre.notasBoss.csll;
+      linhaSimples('Custos (Impostos IR+ISS+PIS+COFINS+IRPJ+CSLL)', impostosBoss);
+      linhaSimples('Total a Receber (somado ao Lucro Real)', dre.notasBoss.totalReceber, {bold:true});
+      linhaSimples('LUCRO BRUTO do PROCESSO' + (dre.pctLucro!=null?` (${(dre.pctLucro*100).toFixed(1)}%)`:''), dre.lucroBruto, {bold:true});
+    }
+
+    // Timeline — mesmo bloco do modal/Excel, no final do PDF.
+    if(p && (p.pi_data || p.data_embarque || p.data_chegada)){
+      const diasEntre = (a,b) => (a && b) ? Math.round((parseDataLocal(b) - parseDataLocal(a))/86400000) : null;
+      const fmtDataTl = d => d ? parseDataLocal(d).toLocaleDateString('pt-BR') : '—';
+      body.push([{ content:'TIMELINE', colSpan:4, styles:{fontStyle:'bold', fillColor:[241,245,249]} }]);
+      linhaTexto('    Data do Pedido', fmtDataTl(p.pi_data));
+      linhaTexto('    Embarque', fmtDataTl(p.data_embarque));
+      linhaTexto('    Chegada Porto', fmtDataTl(p.data_chegada));
+      const rotaDias = diasEntre(p.data_embarque, p.data_chegada);
+      const totalDias = diasEntre(p.pi_data, p.data_chegada);
+      if(rotaDias != null || totalDias != null){
+        const partes = [];
+        if(rotaDias != null) partes.push(`Rota: ${rotaDias}d`);
+        if(totalDias != null) partes.push(`Total: ${totalDias}d (${(totalDias/30.44).toFixed(1)} meses)`);
+        linhaTexto('    '+partes.join('   |   '), '');
+      }
+    }
+
+    // Fonte pequena + padding minimo pra caber tudo numa unica pagina A4
+    // (independente da quantidade de linhas variaveis de cada processo).
+    doc.autoTable({
+      startY: 58,
+      head: [['Descrição','Ref. NFe','Créd. entrada','Valor']],
+      body,
+      theme: 'plain',
+      styles: { fontSize:7, cellPadding:{top:1.6,bottom:1.6,left:3,right:3}, valign:'middle', textColor:[30,41,59] },
+      headStyles: { fontSize:7, fontStyle:'bold', textColor:[100,116,139], fillColor:[255,255,255] },
+      columnStyles: { 0:{cellWidth:250}, 1:{cellWidth:85,halign:'right'}, 2:{cellWidth:85,halign:'right'}, 3:{cellWidth:95,halign:'right'} },
+      margin: { left:40, right:40 },
+      didParseCell: data => {
+        // Linhas de cabecalho de secao (CUSTOS/TIMELINE, colSpan:4) ganham
+        // uma linha superior fina pra separar visualmente do resto.
+        if(data.row.raw[0] && data.row.raw[0].colSpan === 4){
+          data.cell.styles.lineWidth = { top: 0.5 };
+          data.cell.styles.lineColor = [203,213,225];
+        }
+      },
+    });
+
+    doc.save(`DRE_${dre.referencia}_${new Date().toISOString().split('T')[0]}.pdf`);
+    showToast('✓ DRE em PDF exportado','ok');
+  }catch(e){
+    showToast('Erro ao exportar DRE em PDF: '+e.message,'err');
     console.error(e);
   }
 }
