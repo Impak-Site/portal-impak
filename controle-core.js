@@ -90,6 +90,11 @@ let _editando = null; // processo sendo editado
 // sÃÂÃÂ³ no que de fato editou). Agora sÃÂÃÂ³ os campos realmente alterados nesta
 // sessÃÂÃÂ£o sÃÂÃÂ£o enviados ÃÂ¢ÃÂÃÂ os demais ficam intocados no banco.
 let _editandoOriginal = null;
+// Rastreia se o usuário alterou algo no painel do processo desde que ele
+// abriu (input/change delegado, ver listener em INIT) — usado pelo ESC (ver
+// mesmo bloco) pra perguntar se quer salvar antes de fechar, em vez de
+// simplesmente descartar a edição em andamento sem avisar.
+let _painelDirty = false;
 let _notifAberto = false;
 let _cambio = { USD: 1, BRL: 1, EUR: 1 };
 
@@ -118,6 +123,19 @@ const FASES = [
 
 const FASE_LABEL = Object.fromEntries(FASES.map(f=>[f.id, f.label]));
 const FASE_ICON  = Object.fromEntries(FASES.map(f=>[f.id, f.icon]));
+
+// "Fechado" (trava manual, ver fecharProcesso) é um status VISUAL separado
+// da fase real do pipeline (p.fase segue igual, avançando por
+// calcularFase() normalmente até FINALIZADO) — isso mantém intactos todos
+// os filtros/dashboards que já comparam p.fase==='FINALIZADO' (Executivo,
+// Financeiro, Resultado etc.), sem precisar caçar cada um deles. É só a
+// badge exibida (tabela + cabeçalho do painel) que troca pra "🔒 Fechado"
+// quando p.fechado é true, no lugar da fase real por baixo. Ver também
+// FILTROS_FASE_ESPECIAIS.__fechado (pill "Fechado" na barra de filtro).
+function faseParaExibir(p){
+  if(p && p.fechado) return {id:'FECHADO', label:'Fechado', icon:'🔒'};
+  return FASES.find(f=>f.id===(p&&p.fase))||FASES[0];
+}
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 // INIT
@@ -158,6 +176,43 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     // Auto-refresh a cada 30s
     setInterval(function(){ if(!document.getElementById('modal-bg').classList.contains('open')) carregarProcessos(true); }, 30000);
   });
+});
+
+// ── Marca o painel como "sujo" (alterações não salvas) sempre que o usuário
+// digita/muda algo dentro dele — delegado no document porque o conteúdo das
+// abas é recriado a cada trocarAba()/render de sub-seção, então um listener
+// direto nos campos se perderia. Resetado em renderModal() (todo lugar que
+// chama renderModal() já reatribui _editando/_editandoOriginal do zero, ver
+// comentário ali), então só sobe para true depois que o painel já está
+// "estável" com os dados do processo carregado.
+['input','change'].forEach(function(evt){
+  document.addEventListener(evt, function(e){
+    if(!document.getElementById('modal-bg')?.classList.contains('open')) return;
+    if(!e.target.closest('#modal-bg')) return;
+    _painelDirty = true;
+  }, true);
+});
+
+// ESC fecha o painel do processo (pedido do Ayslan, 08/09/2026) — se houver
+// alteração não salva, pergunta antes de descartar. Prioriza fechar o modal
+// do DRE primeiro se ele estiver aberto por cima do painel (ver abrirDRE/
+// fecharDRE em controle-modal.js), senão o ESC "vazaria" e fecharia o
+// painel inteiro por baixo do DRE sem o usuário perceber.
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  const dreOverlay = document.getElementById('dre-overlay');
+  if(dreOverlay && dreOverlay.innerHTML.trim()){ fecharDRE(); return; }
+  const modalBg = document.getElementById('modal-bg');
+  if(!modalBg || !modalBg.classList.contains('open')) return;
+  if(_painelDirty){
+    if(confirm('Você tem alterações não salvas neste processo. Deseja salvar antes de fechar?')){
+      coletarESalvar();
+    } else {
+      fecharModal();
+    }
+  } else {
+    fecharModal();
+  }
 });
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
@@ -2380,7 +2435,11 @@ function renderFaseFilter(){
   const el = document.getElementById('fase-filter');
   if(!el) return;
   el.innerHTML = `<div class="fase-pill ${_faseFilter===''?'active':''}" onclick="setFaseFilter('')">Todos</div>` +
-    FASES.map(f=>`<div class="fase-pill ${_faseFilter===f.id?'active':''}" onclick="setFaseFilter('${f.id}')">${f.icon} ${f.label}</div>`).join('');
+    FASES.map(f=>`<div class="fase-pill ${_faseFilter===f.id?'active':''}" onclick="setFaseFilter('${f.id}')">${f.icon} ${f.label}</div>`).join('') +
+    // Pill "Fechado" à parte — não é uma fase real do pipeline (ver
+    // faseParaExibir), é o filtro especial __fechado (FILTROS_FASE_ESPECIAIS)
+    // que olha p.fechado direto.
+    `<div class="fase-pill ${_faseFilter==='__fechado'?'active':''}" onclick="setFaseFilter('__fechado')">🔒 Fechado</div>`;
 }
 
 // Fecha todos os dashboards (Executivo, Financeiro, Resultado, NarcÃÂÃÂ©lio,
@@ -2521,6 +2580,7 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
 const FILTROS_FASE_ESPECIAIS = {
   __alertas:    lista => lista.filter(p=>verificarAlertas(p,false).length>0),
   __cancelados: lista => lista.filter(p=>!!p.cancelado),
+  __fechado:    lista => lista.filter(p=>!!p.fechado),
   __cancelamento_solicitado: lista => lista.filter(p=>!!p.cancelamento_solicitado && !p.cancelado),
   __andamento:  lista => lista.filter(p=>p.fase!=='FINALIZADO'),
   __demur:      lista => lista.filter(p=>{ const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }),
@@ -2647,7 +2707,7 @@ function render(){
     tbody.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
   } else {
     tbody.innerHTML = pagina.map(p=>{
-      const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
+      const fase = faseParaExibir(p);
       const etaDate = p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—';
       const chegadaDate = p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '';
       const dataDisplay = chegadaDate || etaDate;
@@ -2671,7 +2731,7 @@ function render(){
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>
         <div class="td" data-label="Fase" onclick="event.stopPropagation()" style="min-width:0;">
           <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)" style="display:inline-block;max-width:100%;">
-            <span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>
+            <span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>
           </span>
         </div>
         <div class="td td-date" data-label="ETA / Chegada" onclick="event.stopPropagation()">

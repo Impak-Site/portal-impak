@@ -63,6 +63,7 @@ function copiarReferencia(){
 
 function fecharModal(){
   _editando = null;
+  _painelDirty = false;
   document.getElementById('modal-bg').classList.remove('open');
   // Volta a URL pra tela de baixo (/controle ou /financeiro) sem recarregar a pÃÂÃÂ¡gina.
   if(location.pathname !== _baseUrlPath) history.pushState(null, '', _baseUrlPath);
@@ -87,12 +88,13 @@ document.addEventListener('input', function(e){
 function renderModal(){
   const p = _editando;
   const isNovo = !p.id;
-  const fase = FASES.find(f=>f.id===p.fase)||FASES[0];
+  _painelDirty = false; // painel acabou de (re)carregar do zero — ver ESC em controle-core.js
+  const fase = faseParaExibir(p);
 
   document.getElementById('modal-title').textContent = isNovo ? 'Novo Processo' : p.referencia;
   const btnCopiarRef = document.getElementById('btn-copiar-ref');
   if(btnCopiarRef) btnCopiarRef.style.display = isNovo ? 'none' : '';
-  document.getElementById('modal-fase-badge').innerHTML = `<span class="fase-badge fase-${p.fase}">${fase.icon} ${fase.label}</span>`;
+  document.getElementById('modal-fase-badge').innerHTML = `<span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>`;
   document.getElementById('modal-bg').classList.add('open');
 
 
@@ -1463,8 +1465,8 @@ function atualizarFaseEmTempoReal(){
   // Atualizar badge no header do modal
   const badge = document.getElementById('modal-fase-badge');
   if(badge){
-    const fase = FASES.find(f=>f.id===novaFase)||FASES[0];
-    badge.innerHTML = `<span class="fase-badge fase-${novaFase}">${fase.icon} ${fase.label}</span>`;
+    const fase = faseParaExibir({...snapshot, fase:novaFase});
+    badge.innerHTML = `<span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>`;
   }
 
   // Atualizar _editando.fase para que ao salvar jÃÂÃÂ¡ venha correto
