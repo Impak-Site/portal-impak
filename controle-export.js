@@ -515,21 +515,30 @@ async function exportarDREPDF(dre, p){
 
     // Fonte pequena + padding minimo pra caber tudo numa unica pagina A4
     // (independente da quantidade de linhas variaveis de cada processo).
+    // Cor da borda igual a do Excel (CORES.BORDA = 'FFD2DAE6' -> RGB
+    // 210,218,230), pra ficar com "cara de tabela" igual ao Excel -- pedido
+    // do Ayslan (08/09/2026): "em pdf, nao sai as linhas... o pdf deve vir
+    // na mesma formatacao do excel". Cada linha com conteudo ganha uma
+    // borda inferior fina (mesma logica do loop que desenha as bordas no
+    // Excel), em vez do grid completo (que ficaria pesado/poluido com
+    // fonte tao pequena).
+    const CORBORDA = [210,218,230];
     doc.autoTable({
       startY: 58,
       head: [['Descrição','Ref. NFe','Créd. entrada','Valor']],
       body,
       theme: 'plain',
-      styles: { fontSize:7, cellPadding:{top:1.6,bottom:1.6,left:3,right:3}, valign:'middle', textColor:[30,41,59] },
-      headStyles: { fontSize:7, fontStyle:'bold', textColor:[100,116,139], fillColor:[255,255,255] },
+      styles: { fontSize:7, cellPadding:{top:1.6,bottom:1.6,left:3,right:3}, valign:'middle', textColor:[30,41,59], lineWidth:{bottom:0.4}, lineColor:CORBORDA },
+      headStyles: { fontSize:7, fontStyle:'bold', textColor:[100,116,139], fillColor:[255,255,255], lineWidth:{bottom:0.8}, lineColor:CORBORDA },
       columnStyles: { 0:{cellWidth:250}, 1:{cellWidth:85,halign:'right'}, 2:{cellWidth:85,halign:'right'}, 3:{cellWidth:95,halign:'right'} },
       margin: { left:40, right:40 },
       didParseCell: data => {
         // Linhas de cabecalho de secao (CUSTOS/TIMELINE, colSpan:4) ganham
-        // uma linha superior fina pra separar visualmente do resto.
+        // borda superior tambem (alem da inferior padrao), pra separar
+        // visualmente do bloco anterior.
         if(data.row.raw[0] && data.row.raw[0].colSpan === 4){
-          data.cell.styles.lineWidth = { top: 0.5 };
-          data.cell.styles.lineColor = [203,213,225];
+          data.cell.styles.lineWidth = { top: 0.6, bottom: 0.4 };
+          data.cell.styles.lineColor = CORBORDA;
         }
       },
     });
