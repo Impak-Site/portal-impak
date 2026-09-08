@@ -154,11 +154,18 @@ function renderDashTV(){
   // ── 2: EM ÁGUAS — fase Embarcado, ordenado por ETA ────────────
   const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'D', ENCOMENDA:'E', CONTA_E_ORDEM:'C'};
   const emAguasLista = [];
+  // Tally por marca também aqui — usado no totalizador MARCA/TOTAL/BACKORDERS/
+  // EM ÁGUAS do painel Backorders (pedido do Ayslan 08/09/2026, baseado na
+  // planilha antiga "00-DASHBOARDOPERACIONAL"), sem duplicar a regra de
+  // agrupamento por marca já usada acima em backordersPorMarca.
+  const emAguasPorMarca = {};
   _processos.forEach(p => {
     if(p.cancelado) return; // processo cancelado não conta como em águas
     if(calcularFase(p) !== 'EMBARCADO') return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
     emAguasLista.push({ referencia: p.referencia, cliente: abreviarClienteTV(p.cliente), eta: p.eta, n, finalidade: FINALIDADE_LABEL_TV[p.finalidade] || '—' });
+    const chaveMarca = (p.brand || p.fornecedor || 'Sem marca').trim().toUpperCase();
+    emAguasPorMarca[chaveMarca] = (emAguasPorMarca[chaveMarca] || 0) + n;
   });
   emAguasLista.sort((a,b) => (a.eta||'9999').localeCompare(b.eta||'9999'));
   const emAguasTotal = emAguasLista.reduce((s,x)=> s+x.n, 0);
@@ -223,24 +230,87 @@ function renderDashTV(){
     </div>`;
   }
 
+  // Paleta fixa por marca (via hash do nome) — usada tanto no "badge" de
+  // logo quanto na barra de progresso do card branco abaixo. Não existe um
+  // sistema de logos de marca no portal, então o badge colorido com as
+  // iniciais faz esse papel (mesma ideia visual do logo real na planilha
+  // antiga, só que sem depender de imagem cadastrada).
+  const PALETA_MARCA_TV = ['#2563eb','#16a34a','#ea580c','#7c3aed','#dc2626','#0891b2','#db2777','#65a30d','#0284c7','#c026d3'];
+  function corMarcaTV(chave){
+    let hash = 0;
+    for(let i=0;i<chave.length;i++) hash = (hash*31 + chave.charCodeAt(i)) >>> 0;
+    return PALETA_MARCA_TV[hash % PALETA_MARCA_TV.length];
+  }
+  function iniciaisMarcaTV(nome){
+    const partes = (nome || '').trim().split(/\s+/).filter(Boolean);
+    if(!partes.length) return '?';
+    if(partes.length === 1) return partes[0].slice(0,2).toUpperCase();
+    return (partes[0][0] + partes[1][0]).toUpperCase();
+  }
+
   // Cards clicáveis — clicar numa marca abre a lista dos processos que
   // estão sendo contados ali (abrirListaTV), igual ao padrão já usado no
   // Dashboard Narcélio. chave é a marca em CAIXA ALTA, usada como índice em
   // window._tvListasBackorders (montado acima).
+  //
+  // Card branco com "logo" (badge de iniciais) + barra de progresso colorida
+  // — pedido do Ayslan (08/09/2026), baseado no layout da planilha antiga
+  // "00-DASHBOARDOPERACIONAL" (cards brancos por marca/fábrica, não tudo
+  // azul). Tamanhos em "em" (não px fixo) — mesmo font-size que
+  // ajustarFonteColunasTV calcula pro painel inteiro.
   function cardMarca(nome, qtd, maxQtd, chave){
     const pct = maxQtd > 0 ? Math.round((qtd/maxQtd)*100) : 0;
-    // Mesmo azul marinho + letras brancas dos cards "resto" abaixo — pedido
-    // do Ayslan (21/08/2026) pra deixar os 4 principais visualmente
-    // consistentes com o resto da lista de marcas. Tamanhos em "em" (não
-    // px fixo) — pedido do Ayslan (08/09/2026) pra Backorders escalar
-    // junto com Em Águas/No Chão (mesmo font-size que ajustarFonteColunasTV
-    // calcula pro painel inteiro, em vez de ficar sempre do mesmo tamanho
-    // pequeno). Classe "tv-card" serve de referência de medição quando não
-    // há lista "resto" pra medir (poucas marcas — ver ajustarFonteColunasTV).
-    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#0f1f3d;border-radius:10px;padding:.7em .85em;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
-      <div style="font-size:.68em;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
-      <div style="font-size:1.6em;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;white-space:nowrap;">${fmtN(qtd)} <span style="font-size:.46em;font-weight:600;color:rgba(255,255,255,.65);">containers</span></div>
-      <div style="background:rgba(255,255,255,.15);border-radius:4px;height:.3em;margin-top:.5em;overflow:hidden;"><div style="background:#fff;height:100%;width:${pct}%;"></div></div>
+    const cor = corMarcaTV(chave);
+    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:.75em .9em;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 1px 4px rgba(15,23,42,.08);">
+      <div style="display:flex;align-items:center;gap:.5em;margin-bottom:.5em;overflow:hidden;">
+        <div style="flex:0 0 auto;width:1.9em;height:1.9em;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:.62em;font-weight:800;font-family:'DM Sans',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
+        <div style="font-size:.68em;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
+      </div>
+      <div style="font-size:1.6em;font-weight:800;color:#0f1f3d;font-family:'DM Sans',sans-serif;white-space:nowrap;">${fmtN(qtd)} <span style="font-size:.46em;font-weight:600;color:#94a3b8;">containers</span></div>
+      <div style="background:#e2e8f0;border-radius:4px;height:.3em;margin-top:.5em;overflow:hidden;"><div style="background:${cor};height:100%;width:${pct}%;"></div></div>
+    </div>`;
+  }
+
+  // Totalizador MARCA / TOTAL / BACKORDERS / EM ÁGUAS — pedido do Ayslan
+  // (08/09/2026): "a tela do backorders precisa ter essas informacoes,
+  // totalizadores e afins, conforme esta o layout atual" (referência: tabela
+  // da planilha antiga na tela "NO CHÃO"). Junta as duas contagens já feitas
+  // acima (backordersPorMarca e emAguasPorMarca) por marca, sem duplicar
+  // regra de negócio nenhuma — só soma o que já foi calculado.
+  function blocoTotalizadorMarcasTV(porBackorders, porEmAguas, labelMap){
+    const chaves = new Set([...Object.keys(porBackorders), ...Object.keys(porEmAguas)]);
+    const linhas = Array.from(chaves).map(chave => {
+      const bo = porBackorders[chave] || 0;
+      const ea = porEmAguas[chave] || 0;
+      return { chave, nome: labelMap[chave] || chave, bo, ea, total: bo + ea };
+    }).sort((a,b) => b.total - a.total);
+    if(!linhas.length) return '';
+    const totalGeral = linhas.reduce((s,l)=>s+l.total,0);
+    const totalBO = linhas.reduce((s,l)=>s+l.bo,0);
+    const totalEA = linhas.reduce((s,l)=>s+l.ea,0);
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:.8em;">
+        <thead><tr style="background:#f1f5f9;text-align:left;color:#475569;text-transform:uppercase;letter-spacing:.3px;font-size:.85em;">
+          <th style="padding:8px 12px;">Marca</th>
+          <th style="padding:8px 12px;text-align:right;">Total</th>
+          <th style="padding:8px 12px;text-align:right;">Backorders</th>
+          <th style="padding:8px 12px;text-align:right;">Em Águas</th>
+        </tr></thead>
+        <tbody>
+        ${linhas.map(l => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;">
+          <td style="padding:6px 12px;font-weight:700;">${esc(l.nome)}</td>
+          <td style="padding:6px 12px;text-align:right;font-weight:800;">${fmtN(l.total)}</td>
+          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.bo)}</td>
+          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.ea)}</td>
+        </tr>`).join('')}
+        <tr style="border-top:2px solid #cbd5e1;font-weight:800;color:#0f1f3d;">
+          <td style="padding:8px 12px;">TOTAL</td>
+          <td style="padding:8px 12px;text-align:right;">${fmtN(totalGeral)}</td>
+          <td style="padding:8px 12px;text-align:right;">${fmtN(totalBO)}</td>
+          <td style="padding:8px 12px;text-align:right;">${fmtN(totalEA)}</td>
+        </tr>
+        </tbody>
+      </table>
     </div>`;
   }
 
@@ -268,6 +338,10 @@ function renderDashTV(){
     </div>`;
   }
 
+  // Totalizador MARCA/TOTAL/BACKORDERS/EM ÁGUAS (ver blocoTotalizadorMarcasTV
+  // acima) — mesmo em ambos os modos (solo/todos), pedido do Ayslan
+  // (08/09/2026).
+  const totalizadorMarcasHtml = blocoTotalizadorMarcasTV(backordersPorMarca, emAguasPorMarca, backordersLabel);
   const backordersHtml = !backordersLista.length
     ? `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`
     : (solo ? `
@@ -276,16 +350,18 @@ function renderDashTV(){
         ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
       </div>
       ${backordersResto.length ? backordersRestoEmColunas(backordersResto) : ''}
+      ${totalizadorMarcasHtml ? `<div style="flex:0 0 auto;max-height:34vh;overflow-y:auto;">${totalizadorMarcasHtml}</div>` : ''}
     </div>
   ` : `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:${backordersResto.length?'14px':'0'};">
       ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
     </div>
-    ${backordersResto.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;">
+    ${backordersResto.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:14px;">
       ${backordersResto.map(([m,q,chave]) => `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;display:flex;justify-content:space-between;background:#0f1f3d;color:#fff;border-radius:6px;padding:8px 12px;font-size:12px;">
         <span style="font-weight:700;">${esc(m)}</span><span style="font-weight:800;">${fmtN(q)}</span>
       </div>`).join('')}
     </div>` : ''}
+    ${totalizadorMarcasHtml}
   `);
 
   // Linha de 1 processo — usada tanto na tabela única (modo "todos") quanto
