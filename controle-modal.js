@@ -211,7 +211,7 @@ function renderModal(){
     ${bannerTrava}
     ${bannerCancelado}
     ${bannerSolicitacaoCancelamento}
-    <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.55;pointer-events:none;user-select:none;':''}">
+    <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.85;pointer-events:none;user-select:none;':''}">
     <!-- ABA: IDENTIFICAÇÃO -->
     <div class="tab-pane active" id="pane-identificacao">
       <div class="timeline">${timeline}</div>
