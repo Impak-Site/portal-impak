@@ -274,6 +274,15 @@ function ativarTelaTVExclusiva(){
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard TV';
 
+  // Pedido do Ayslan (08/09/2026): na TV física, o zoom manual do navegador
+  // precisava ficar em 175% pra tudo ficar legível de longe (fonte grande,
+  // números grandes) — mas isso dependia de alguém lembrar de ajustar o
+  // zoom toda vez que o navegador abrisse/recarregasse. Aplica esse mesmo
+  // fator direto via CSS zoom (suportado no Chrome/Edge, que é o motor
+  // usado nos dispositivos de TV/kiosk daqui) só nesta tela — não afeta o
+  // resto do sistema, que continua em 100% normalmente.
+  document.documentElement.style.zoom = '1.75';
+
   ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
