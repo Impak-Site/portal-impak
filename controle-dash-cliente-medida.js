@@ -529,6 +529,41 @@ function _cmNomeAba(nome, usados){
   return final;
 }
 
+// Resumo por cliente (pedido do Ayslan, 08/09/2026: "colocar o total de
+// pneus pedido por medida" + "quantos tem previsto embarque e o total" +
+// "quantos tem embarcado e o total") — agrega, através de TODAS as
+// marcas/pedidos do cliente: (a) total de pneus por Medida; (b) quantos
+// pedidos (Invoices) têm só previsão de embarque (ETD, ainda sem embarque
+// real) e o total de pneus deles; (c) quantos já embarcaram de verdade
+// (Data de Embarque real preenchida) e o total de pneus deles. Usa o
+// mesmo pedido (nível Invoice, não item) pra contar "quantos", e soma
+// pedido.qtd (todos os itens daquele Invoice) pro total — critério igual
+// ao já usado em pedido.embarque (celulaData: previsto=true só quando não
+// tem data real, texto!=='—' quando tem real ou previsão).
+function _cmResumoCliente(c){
+  const medidasMap = new Map(); // descrição -> qtd total
+  let previstoCount = 0, previstoQtd = 0, embarcadoCount = 0, embarcadoQtd = 0;
+  Object.values(c.porMarca).forEach(m => {
+    Object.values(m.pedidos).forEach(pedido => {
+      pedido.itens.forEach(it => {
+        const key = it.descricao || 'Sem medida informada';
+        medidasMap.set(key, (medidasMap.get(key) || 0) + (it.qtd || 0));
+      });
+      if(pedido.embarque && pedido.embarque.previsto){
+        previstoCount++;
+        previstoQtd += pedido.qtd;
+      } else if(pedido.embarque && pedido.embarque.texto !== '—'){
+        embarcadoCount++;
+        embarcadoQtd += pedido.qtd;
+      }
+    });
+  });
+  const medidas = [...medidasMap.entries()]
+    .map(([descricao, qtd]) => ({ descricao, qtd }))
+    .sort((a, b) => a.descricao.localeCompare(b.descricao, 'pt-BR', { numeric: true }));
+  return { medidas, previstoCount, previstoQtd, embarcadoCount, embarcadoQtd };
+}
+
 async function exportarCMExcel(){
   if(!_cmUltimoResultado || !_cmUltimoResultado.clientesLista.length){
     showToast('Nenhum dado pra exportar com os filtros atuais','warn');
@@ -549,7 +584,6 @@ async function exportarCMExcel(){
 
     _cmUltimoResultado.clientesLista.forEach(c => {
       const ws = wb.addWorksheet(_cmNomeAba(c.nome, nomesUsados));
-      ws.views = [{state:'frozen', ySplit:3}];
 
       ws.mergeCells(1,1,1,numCols);
       const titulo = ws.getCell(1,1);
@@ -564,16 +598,68 @@ async function exportarCMExcel(){
       estilizarSubtitulo(sub);
       ws.getRow(2).height = 18;
 
-      const headerRow = ws.getRow(3);
+      // ── Resumo (pedido do Ayslan, 08/09/2026): total por Medida +
+      // quantos pedidos estão só com previsão de embarque x quantos já
+      // embarcaram de fato, com o total de pneus de cada grupo. Fica
+      // entre o subtítulo e a tabela principal, antes de tudo — pra dar
+      // uma visão geral do cliente antes do detalhe por Invoice. ──────
+      const resumo = _cmResumoCliente(c);
+      let rowIdx = 3;
+
+      ws.mergeCells(rowIdx,1,rowIdx,numCols);
+      const resumoTitulo = ws.getCell(rowIdx,1);
+      resumoTitulo.value = 'RESUMO POR MEDIDA';
+      estilizarGrupoHeader(resumoTitulo);
+      resumoTitulo.alignment = {vertical:'middle', horizontal:'center'};
+      ws.getRow(rowIdx).height = 20;
+      rowIdx++;
+
+      resumo.medidas.forEach((md, idx) => {
+        const row = ws.getRow(rowIdx);
+        ws.mergeCells(rowIdx,1,rowIdx,2);
+        const cMedida = row.getCell(1);
+        cMedida.value = md.descricao;
+        estilizarCelulaDado(cMedida, {idx, alinhamento:'left', size:10});
+        const cQtd = row.getCell(3);
+        cQtd.value = md.qtd;
+        estilizarCelulaDado(cQtd, {idx, alinhamento:'center', size:10});
+        rowIdx++;
+      });
+
+      rowIdx++; // linha em branco separando o resumo por medida do resumo de embarque
+
+      ws.mergeCells(rowIdx,1,rowIdx,numCols);
+      const cPrevisto = ws.getCell(rowIdx,1);
+      cPrevisto.value = `Previsto embarque: ${resumo.previstoCount.toLocaleString('pt-BR')} pedido(s) — ${resumo.previstoQtd.toLocaleString('pt-BR')} pneus`;
+      cPrevisto.font = {name:'Calibri', bold:true, size:10.5, color:{argb:CORES.AZUL_ESCURO}};
+      cPrevisto.fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.CINZA_CLARO}};
+      cPrevisto.alignment = {vertical:'middle', horizontal:'left', indent:1};
+      ws.getRow(rowIdx).height = 18;
+      rowIdx++;
+
+      ws.mergeCells(rowIdx,1,rowIdx,numCols);
+      const cEmbarcado = ws.getCell(rowIdx,1);
+      cEmbarcado.value = `Embarcado: ${resumo.embarcadoCount.toLocaleString('pt-BR')} pedido(s) — ${resumo.embarcadoQtd.toLocaleString('pt-BR')} pneus`;
+      cEmbarcado.font = {name:'Calibri', bold:true, size:10.5, color:{argb:CORES.AZUL_ESCURO}};
+      cEmbarcado.fill = {type:'pattern', pattern:'solid', fgColor:{argb:CORES.CINZA_CLARO}};
+      cEmbarcado.alignment = {vertical:'middle', horizontal:'left', indent:1};
+      ws.getRow(rowIdx).height = 18;
+      rowIdx++;
+
+      rowIdx++; // linha em branco antes da tabela principal
+
+      const headerRowIdx = rowIdx;
+      const headerRow = ws.getRow(headerRowIdx);
       CM_EXPORT_COLUNAS.forEach((col,i) => {
         const cell = headerRow.getCell(i+1);
         cell.value = col;
         estilizarHeaderCell(cell, {size:10.5});
       });
       headerRow.height = 30;
-      ws.autoFilter = {from:{row:3,column:1}, to:{row:3,column:numCols}};
+      ws.autoFilter = {from:{row:headerRowIdx,column:1}, to:{row:headerRowIdx,column:numCols}};
+      ws.views = [{state:'frozen', ySplit:headerRowIdx}];
 
-      let rowIdx = 4;
+      rowIdx = headerRowIdx + 1;
       const marcas = Object.values(c.porMarca).sort((a,b) => {
         const da = Math.min(...Object.values(a.pedidos).map(p => p._chegadaTs));
         const db = Math.min(...Object.values(b.pedidos).map(p => p._chegadaTs));
@@ -680,6 +766,34 @@ async function exportarCMPDF(){
       const agora = new Date();
       doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} — Total: ${c.total.toLocaleString('pt-BR')} pneus`, 40, 56);
 
+      // ── Resumo (pedido do Ayslan, 08/09/2026): total por Medida +
+      // quantos pedidos estão só com previsão de embarque x quantos já
+      // embarcaram de fato, com o total de pneus de cada grupo — mesmo
+      // resumo do Excel (_cmResumoCliente), exibido numa tabelinha antes
+      // da tabela principal do cliente. ───────────────────────────────
+      const resumo = _cmResumoCliente(c);
+      const resumoBody = resumo.medidas.map(md => [md.descricao, md.qtd.toLocaleString('pt-BR')]);
+      resumoBody.push([
+        { content: `Previsto embarque: ${resumo.previstoCount.toLocaleString('pt-BR')} pedido(s)`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
+        { content: `${resumo.previstoQtd.toLocaleString('pt-BR')} pneus`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
+      ]);
+      resumoBody.push([
+        { content: `Embarcado: ${resumo.embarcadoCount.toLocaleString('pt-BR')} pedido(s)`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
+        { content: `${resumo.embarcadoQtd.toLocaleString('pt-BR')} pneus`, styles:{fontStyle:'bold', fillColor:[245,247,251]} },
+      ]);
+      doc.autoTable({
+        startY: 66,
+        head: [['Medida','Qte']],
+        body: resumoBody,
+        theme: 'grid',
+        styles: { fontSize:8, cellPadding:3, valign:'middle', halign:'left', lineColor:[226,232,240], lineWidth:0.5 },
+        headStyles: { fillColor:[26,127,212], textColor:255, fontStyle:'bold', fontSize:8.5, halign:'center' },
+        columnStyles: { 0:{cellWidth:220}, 1:{cellWidth:90, halign:'center'} },
+        margin: { left:40, right:40 },
+        tableWidth: 'wrap',
+      });
+      const resumoFinalY = doc.lastAutoTable.finalY;
+
       const marcas = Object.values(c.porMarca).sort((a,b) => {
         const da = Math.min(...Object.values(a.pedidos).map(p => p._chegadaTs));
         const db = Math.min(...Object.values(b.pedidos).map(p => p._chegadaTs));
@@ -716,7 +830,7 @@ async function exportarCMPDF(){
       });
 
       doc.autoTable({
-        startY: 66,
+        startY: resumoFinalY + 16,
         head: [CM_EXPORT_COLUNAS],
         body,
         theme: 'grid',
