@@ -1896,6 +1896,10 @@ function renderFechamentoInfo(p){
   const f = calcularFechamento(p);
   const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const pct2 = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
+  // % com 2 casas (juros/Boss/venda pedem mais precisão que os outros
+  // percentuais da tela, ex: 8,29% de juros — pedido Ayslan 08/09/2026,
+  // mesma fórmula da planilha: valor cobrado / NF Saída daquela venda).
+  const pctPreciso = v => v==null ? '—' : `${(v*100).toFixed(2)}%`;
 
   // Antes: sem estimativa_json (processo que não passou pela cotação do
   // Calculador) a função parava aqui e nunca mostrava nada — nem o lucro
@@ -1950,7 +1954,8 @@ function renderFechamentoInfo(p){
         const linhaJurosVenda = jurosVenda > 0
           ? (() => {
               const rotulo = multiplas ? `🧾 Juros Cobrado do Cliente — ${esc(l.venda.cliente||'(sem cliente)')}` : '🧾 Juros Cobrado do Cliente (somado ao Lucro Real)';
-              return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong style="color:var(--ok);">${r2(jurosVenda)}</strong></div>`;
+              const pctJuros = l.nfSaida ? (jurosVenda / l.nfSaida) : null;
+              return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong style="color:var(--ok);">${r2(jurosVenda)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctJuros)})</span></strong></div>`;
             })()
           : '';
         return linhaPrazo + linhaJurosVenda;
@@ -1959,19 +1964,21 @@ function renderFechamentoInfo(p){
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
-        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')}</span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
+        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')} <span style="color:var(--dim);">(${(l.fracao*100).toFixed(1)}% do processo)</span></span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong></div>`).join('')}
         ${linhaPrazoJurosRows}
       </div>`
     : '';
+  const pctJurosUnico = (f.jurosCobrado && f.nfSaida) ? (f.jurosCobrado.valor / f.nfSaida) : null;
   const linhaJuros = (!f.vendasResumo && f.jurosCobrado)
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctJurosUnico)})</span></strong></div>
       </div>`
     : '';
+  const pctNotasBoss = (f.notasBoss && f.nfSaida) ? (f.notasBoss.valorBoss / f.nfSaida) : null;
   const linhaNotasBoss = f.notasBoss
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Notas Fiscais BOSS</div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Valor das Notas Boss</span><strong>${r2(f.notasBoss.valorBoss)}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Valor das Notas Boss</span><strong>${r2(f.notasBoss.valorBoss)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctNotasBoss)})</span></strong></div>
         <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)</span><strong style="color:var(--err);">− ${r2(f.notasBoss.irRetido+f.notasBoss.iss+f.notasBoss.pis+f.notasBoss.cofins+f.notasBoss.irpj+f.notasBoss.csll)}</strong></div>
         <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Total a Receber (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.notasBoss.totalReceber)}</strong></div>
       </div>`
