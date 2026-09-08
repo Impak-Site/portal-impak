@@ -77,6 +77,12 @@ let _cmFiltroFornecedor = '';  // '' = todos
 let _cmFiltroMarca = '';       // '' = todas
 let _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA); // fases marcadas nos checkboxes
 let _cmIntervaloId = null; // id do setInterval de auto-refresh (null = parado)
+// Snapshot da última lista renderizada (Cliente → Marca → Pedidos), usado
+// pelos exports Excel/PDF (pedido do Ayslan 08/09/2026: "é possivel
+// exportar no modelo que te mandei em excel e/ou pdf?") — assim o arquivo
+// exportado é SEMPRE exatamente o que está na tela (mesmos filtros/fases
+// ativos), sem recalcular a agregação de novo nem arriscar divergir dela.
+let _cmUltimoResultado = null;
 
 function toggleDashClienteMedida(){
   const el = document.getElementById('dash-clientemedida');
@@ -249,7 +255,7 @@ function renderDashClienteMedida(){
       marcaBucket.pedidos[chavePedido] = {
         id: p.id,
         referencia: p.referencia || '—',
-        porto: p.porto_destino || '',
+        porto: (typeof formatarPortoDestino === 'function' ? formatarPortoDestino(p.porto_destino) : p.porto_destino) || '',
         dataPedido: celulaData(p.pi_data),
         prontidao: celulaData(p.data_prontidao, p.previsao_prontidao),
         embarque: celulaData(p.data_embarque, p.etd),
@@ -338,6 +344,10 @@ function renderDashClienteMedida(){
   }
   clientesLista.sort((a,b) => b.total - a.total);
 
+  // Snapshot pros exports Excel/PDF (ver exportarCMExcel/exportarCMPDF mais
+  // abaixo) — sempre o que está na tela agora, com os mesmos filtros.
+  _cmUltimoResultado = { clientesLista, totalGeral, processosConsiderados };
+
   const fmtN = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
   // Uma linha na exibição = uma "célula de data" — mostra a data real em
@@ -362,19 +372,19 @@ function renderDashClienteMedida(){
       const onclick = `onclick="abrirProcesso('${pedido.id}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''" style="cursor:pointer;${i===0?'border-top:1px solid var(--border);':''}"`;
       if(i === 0){
         return `<tr ${onclick}>
-          <td rowspan="${n}" style="padding:6px 10px;font-weight:700;white-space:nowrap;vertical-align:top;border-right:1px solid var(--border);">${esc(pedido.referencia)}</td>
-          <td style="padding:6px 10px;white-space:nowrap;">${esc(it.descricao)}</td>
-          <td style="padding:6px 10px;text-align:right;white-space:nowrap;">${fmtN(it.qtd)}</td>
-          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;border-left:1px solid var(--border);">${celDataHtml(pedido.dataPedido)}</td>
-          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${celDataHtml(pedido.prontidao)}</td>
-          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${celDataHtml(pedido.embarque)}</td>
-          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${celDataHtml(pedido.chegada)}</td>
-          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${esc(pedido.porto || '—')}</td>
+          <td rowspan="${n}" style="padding:6px 10px;font-weight:700;white-space:nowrap;text-align:center;vertical-align:middle;border-right:1px solid var(--border);">${esc(pedido.referencia)}</td>
+          <td style="padding:6px 10px;text-align:center;white-space:nowrap;">${esc(it.descricao)}</td>
+          <td style="padding:6px 10px;text-align:center;white-space:nowrap;">${fmtN(it.qtd)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;text-align:center;white-space:nowrap;vertical-align:middle;border-left:1px solid var(--border);">${celDataHtml(pedido.dataPedido)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;text-align:center;white-space:nowrap;vertical-align:middle;">${celDataHtml(pedido.prontidao)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;text-align:center;white-space:nowrap;vertical-align:middle;">${celDataHtml(pedido.embarque)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;text-align:center;white-space:nowrap;vertical-align:middle;">${celDataHtml(pedido.chegada)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;text-align:center;white-space:nowrap;vertical-align:middle;">${esc(pedido.porto || '—')}</td>
         </tr>`;
       }
       return `<tr ${onclick}>
-        <td style="padding:6px 10px;white-space:nowrap;">${esc(it.descricao)}</td>
-        <td style="padding:6px 10px;text-align:right;white-space:nowrap;">${fmtN(it.qtd)}</td>
+        <td style="padding:6px 10px;text-align:center;white-space:nowrap;">${esc(it.descricao)}</td>
+        <td style="padding:6px 10px;text-align:center;white-space:nowrap;">${fmtN(it.qtd)}</td>
       </tr>`;
     }).join('');
   }
@@ -388,15 +398,15 @@ function renderDashClienteMedida(){
       </div>
       <div style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:780px;">
-        <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
-          <th style="padding:6px 10px;border-right:1px solid var(--border);">Invoice</th>
-          <th style="padding:6px 10px;">Medida</th>
-          <th style="padding:6px 10px;text-align:right;">Qte</th>
-          <th style="padding:6px 10px;border-left:1px solid var(--border);">Data do Pedido</th>
-          <th style="padding:6px 10px;">Data de Prontidão</th>
-          <th style="padding:6px 10px;">Data de Embarque</th>
-          <th style="padding:6px 10px;">Data Chegada</th>
-          <th style="padding:6px 10px;">Porto</th>
+        <thead><tr style="text-align:center;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
+          <th style="padding:6px 10px;text-align:center;border-right:1px solid var(--border);">Invoice</th>
+          <th style="padding:6px 10px;text-align:center;">Medida</th>
+          <th style="padding:6px 10px;text-align:center;">Qte</th>
+          <th style="padding:6px 10px;text-align:center;border-left:1px solid var(--border);">Data do Pedido</th>
+          <th style="padding:6px 10px;text-align:center;">Data de Prontidão</th>
+          <th style="padding:6px 10px;text-align:center;">Data de Embarque</th>
+          <th style="padding:6px 10px;text-align:center;">Data Chegada</th>
+          <th style="padding:6px 10px;text-align:center;">Porto</th>
         </tr></thead>
         <tbody>${pedidos.map(linhasPedido).join('')}</tbody>
       </table>
@@ -457,6 +467,8 @@ function renderDashClienteMedida(){
         <input id="cm-filtro-texto" class="form-input" placeholder="Buscar invoice, medida ou marca (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
           oninput="_cmAtualizarFiltroTexto(this.value)" style="flex:2;min-width:200px;">
         ${temFiltroAtivo ? `<button class="btn btn-outline" onclick="_cmLimparFiltros()" style="white-space:nowrap;">✕ Limpar filtros</button>` : ''}
+        <button class="btn btn-outline" onclick="exportarCMExcel()" style="white-space:nowrap;">📊 Exportar Excel</button>
+        <button class="btn btn-outline" onclick="exportarCMPDF()" style="white-space:nowrap;">📄 Exportar PDF</button>
       </div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text);">
         ${FASES_CLIENTE_MEDIDA.map(f => `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
@@ -468,4 +480,236 @@ function renderDashClienteMedida(){
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Agrupado por Cliente → Marca/Fábrica → Invoice. Clique numa linha pra abrir o processo.</div>
     <div>${corpoHtml}</div>
   `;
+}
+
+// ── EXPORT EXCEL / PDF (pedido do Ayslan, 08/09/2026: "é possivel exportar
+// no modelo que te mandei em excel e/ou pdf?", mostrando a planilha
+// pessoal do despachante "PEDIDOS TWI") ──────────────────────────────────
+// Usa o snapshot _cmUltimoResultado (preenchido no fim de
+// renderDashClienteMedida) — o arquivo exportado é sempre exatamente o que
+// está na tela, com os mesmos filtros/fases ativos. Uma aba/página por
+// Cliente, agrupado por Marca, com Invoice/Datas/Porto mesclados quando o
+// pedido tem mais de uma Medida — igual ao modelo mostrado.
+const CM_EXPORT_COLUNAS = ['Invoice','Medida','Qte','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','Porto'];
+const CM_EXPORT_LARGURAS = {Invoice:14,Medida:28,Qte:8,'Data do Pedido':16,'Data de Prontidão na Fábrica':22,'Data de Embarque':16,'Data Chegada':16,Porto:14};
+// Colunas que vem do PEDIDO (repetem em toda linha do mesmo Invoice) — por
+// isso mescladas verticalmente em vez de repetidas, igual ao modelo.
+const CM_EXPORT_COLUNAS_PEDIDO = new Set(['Invoice','Data do Pedido','Data de Prontidão na Fábrica','Data de Embarque','Data Chegada','Porto']);
+
+function _cmTextoData(d){
+  if(!d || d.texto === '—') return '—';
+  return d.previsto ? `${d.texto} (previsto)` : d.texto;
+}
+
+// Nome de aba do Excel: máx 31 caracteres, sem os caracteres que o Excel
+// proíbe, e sem repetir nome entre clientes com grafia parecida (ex: dois
+// clientes cujo nome só difere depois do caractere 31).
+function _cmNomeAba(nome, usados){
+  let base = (nome || 'Cliente').replace(/[\\\/\?\*\[\]:]/g,'').substring(0,31).trim() || 'Cliente';
+  let final = base;
+  let n = 2;
+  while(usados.has(final.toUpperCase())){
+    const sufixo = ' ('+n+')';
+    final = base.substring(0, 31-sufixo.length) + sufixo;
+    n++;
+  }
+  usados.add(final.toUpperCase());
+  return final;
+}
+
+async function exportarCMExcel(){
+  if(!_cmUltimoResultado || !_cmUltimoResultado.clientesLista.length){
+    showToast('Nenhum dado pra exportar com os filtros atuais','warn');
+    return;
+  }
+  if(typeof ExcelJS === 'undefined'){
+    showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  showToast('Gerando planilha...','info');
+  try{
+    const { CORES, estilizarTitulo, estilizarSubtitulo, estilizarHeaderCell, estilizarGrupoHeader, estilizarCelulaDado } = window.ExcelStyles;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'IMPAK';
+    wb.created = new Date();
+    const numCols = CM_EXPORT_COLUNAS.length;
+    const nomesUsados = new Set();
+
+    _cmUltimoResultado.clientesLista.forEach(c => {
+      const ws = wb.addWorksheet(_cmNomeAba(c.nome, nomesUsados));
+      ws.views = [{state:'frozen', ySplit:3}];
+
+      ws.mergeCells(1,1,1,numCols);
+      const titulo = ws.getCell(1,1);
+      titulo.value = `PEDIDOS ${c.nome.toUpperCase()}`;
+      estilizarTitulo(titulo, {size:14});
+      ws.getRow(1).height = 28;
+
+      ws.mergeCells(2,1,2,numCols);
+      const agora = new Date();
+      const sub = ws.getCell(2,1);
+      sub.value = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} — Total: ${c.total.toLocaleString('pt-BR')} pneus`;
+      estilizarSubtitulo(sub);
+      ws.getRow(2).height = 18;
+
+      const headerRow = ws.getRow(3);
+      CM_EXPORT_COLUNAS.forEach((col,i) => {
+        const cell = headerRow.getCell(i+1);
+        cell.value = col;
+        estilizarHeaderCell(cell, {size:10.5});
+      });
+      headerRow.height = 30;
+      ws.autoFilter = {from:{row:3,column:1}, to:{row:3,column:numCols}};
+
+      let rowIdx = 4;
+      const marcas = Object.values(c.porMarca).sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR'));
+      marcas.forEach(m => {
+        ws.mergeCells(rowIdx,1,rowIdx,numCols);
+        const gcell = ws.getCell(rowIdx,1);
+        gcell.value = m.nome.toUpperCase();
+        estilizarGrupoHeader(gcell);
+        gcell.alignment = {vertical:'middle', horizontal:'center'};
+        gcell.border = {bottom:{style:'thin',color:{argb:CORES.BORDA}}};
+        ws.getRow(rowIdx).height = 20;
+        rowIdx++;
+
+        const pedidos = Object.values(m.pedidos).sort((a,b) => (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
+        let idxZebra = 0;
+        pedidos.forEach(pedido => {
+          const itens = pedido.itens.length ? pedido.itens : [{descricao:'—', qtd:0}];
+          const linhaInicioPedido = rowIdx;
+          itens.forEach(it => {
+            const row = ws.getRow(rowIdx);
+            const valores = {
+              Invoice: pedido.referencia,
+              Medida: it.descricao,
+              Qte: it.qtd,
+              'Data do Pedido': _cmTextoData(pedido.dataPedido),
+              'Data de Prontidão na Fábrica': _cmTextoData(pedido.prontidao),
+              'Data de Embarque': _cmTextoData(pedido.embarque),
+              'Data Chegada': _cmTextoData(pedido.chegada),
+              Porto: pedido.porto || '—',
+            };
+            CM_EXPORT_COLUNAS.forEach((col,i) => {
+              const cell = row.getCell(i+1);
+              cell.value = valores[col];
+              estilizarCelulaDado(cell, {idx: idxZebra, alinhamento: 'center', size:10});
+            });
+            rowIdx++;
+          });
+          idxZebra++;
+          const linhaFimPedido = rowIdx - 1;
+          if(linhaFimPedido > linhaInicioPedido){
+            CM_EXPORT_COLUNAS.forEach((col,i) => {
+              if(!CM_EXPORT_COLUNAS_PEDIDO.has(col)) return;
+              ws.mergeCells(linhaInicioPedido, i+1, linhaFimPedido, i+1);
+              ws.getCell(linhaInicioPedido, i+1).alignment = {vertical:'middle', horizontal:'center'};
+            });
+          }
+        });
+      });
+
+      ws.mergeCells(rowIdx,1,rowIdx,numCols);
+      const totalCell = ws.getCell(rowIdx,1);
+      totalCell.value = `Total: ${c.total.toLocaleString('pt-BR')} pneus em ${marcas.length} marca(s)/fábrica(s)`;
+      totalCell.font = {name:'Calibri', bold:true, italic:true, size:10, color:{argb:CORES.CINZA}};
+      totalCell.alignment = {horizontal:'right'};
+      ws.getRow(rowIdx).height = 20;
+
+      CM_EXPORT_COLUNAS.forEach((col,i) => { ws.getColumn(i+1).width = CM_EXPORT_LARGURAS[col]||14; });
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `IMPAK_PorClienteMedida_${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`✓ Planilha exportada: ${_cmUltimoResultado.clientesLista.length} cliente(s)`,'ok');
+  }catch(e){
+    showToast('Erro ao exportar: '+e.message,'err');
+    console.error(e);
+  }
+}
+
+async function exportarCMPDF(){
+  if(!_cmUltimoResultado || !_cmUltimoResultado.clientesLista.length){
+    showToast('Nenhum dado pra exportar com os filtros atuais','warn');
+    return;
+  }
+  if(typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined'){
+    showToast('Biblioteca de PDF ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  showToast('Gerando PDF...','info');
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+    const clientesLista = _cmUltimoResultado.clientesLista;
+
+    clientesLista.forEach((c, ci) => {
+      if(ci > 0) doc.addPage();
+
+      doc.setFontSize(14);
+      doc.setTextColor(16,42,69);
+      doc.setFont(undefined,'bold');
+      doc.text(`PEDIDOS ${c.nome.toUpperCase()}`, 40, 40);
+      doc.setFont(undefined,'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100,116,139);
+      const agora = new Date();
+      doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} — Total: ${c.total.toLocaleString('pt-BR')} pneus`, 40, 56);
+
+      const marcas = Object.values(c.porMarca).sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR'));
+      const body = [];
+      marcas.forEach(m => {
+        body.push([{ content: m.nome.toUpperCase(), colSpan: CM_EXPORT_COLUNAS.length, styles:{fillColor:[234,243,252], textColor:[16,42,69], fontStyle:'bold', halign:'center'} }]);
+        const pedidos = Object.values(m.pedidos).sort((a,b) => (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
+        pedidos.forEach(pedido => {
+          const itens = pedido.itens.length ? pedido.itens : [{descricao:'—', qtd:0}];
+          const span = itens.length;
+          itens.forEach((it, ii) => {
+            const valoresPedido = {
+              Invoice: pedido.referencia,
+              'Data do Pedido': _cmTextoData(pedido.dataPedido),
+              'Data de Prontidão na Fábrica': _cmTextoData(pedido.prontidao),
+              'Data de Embarque': _cmTextoData(pedido.embarque),
+              'Data Chegada': _cmTextoData(pedido.chegada),
+              Porto: pedido.porto || '—',
+            };
+            const row = CM_EXPORT_COLUNAS.map(col => {
+              if(col === 'Medida') return it.descricao || '';
+              if(col === 'Qte') return it.qtd != null ? it.qtd.toLocaleString('pt-BR') : '';
+              if(CM_EXPORT_COLUNAS_PEDIDO.has(col)){
+                if(ii !== 0) return null; // coberto pelo rowSpan da linha âncora
+                return span > 1 ? { content: valoresPedido[col]||'', rowSpan: span, styles:{valign:'middle'} } : (valoresPedido[col]||'');
+              }
+              return '';
+            }).filter(v => v !== null);
+            body.push(row);
+          });
+        });
+      });
+
+      doc.autoTable({
+        startY: 66,
+        head: [CM_EXPORT_COLUNAS],
+        body,
+        theme: 'grid',
+        styles: { fontSize:8, cellPadding:4, valign:'middle', halign:'center', lineColor:[226,232,240], lineWidth:0.5 },
+        headStyles: { fillColor:[16,42,69], textColor:255, fontStyle:'bold', fontSize:8.5, halign:'center' },
+        margin: { left:40, right:40 },
+      });
+    });
+
+    doc.save(`IMPAK_PorClienteMedida_${new Date().toISOString().split('T')[0]}.pdf`);
+    showToast(`✓ PDF exportado: ${clientesLista.length} cliente(s)`,'ok');
+  }catch(e){
+    showToast('Erro ao exportar PDF: '+e.message,'err');
+    console.error(e);
+  }
 }
