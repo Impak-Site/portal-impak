@@ -451,13 +451,22 @@ async function exportarDREPDF(dre, p){
     const doc = new jsPDF({ orientation:'portrait', unit:'pt', format:'a4' });
     const r2 = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
+    // Titulo com faixa azul-escura full-width (igual ao Excel: CORES.AZUL_ESCURO
+    // 'FF102A45' = RGB 16,42,69, texto branco em negrito, centralizado) --
+    // pedido do Ayslan (08/09/2026): "o pdf deve vir na mesma formatacao do
+    // excel". Antes o PDF so tinha texto preto simples, sem a faixa.
+    const pageW = doc.internal.pageSize.getWidth();
+    doc.setFillColor(16,42,69);
+    doc.rect(40, 24, pageW-80, 24, 'F');
     doc.setFontSize(13);
-    doc.setTextColor(30,41,59);
-    doc.text(`DRE — Processo ${dre.referencia}`, 40, 36);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(255,255,255);
+    doc.text(`PROCESSO ${dre.referencia} — DRE`, pageW/2, 40, { align:'center' });
+    doc.setFont(undefined, 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100,116,139);
     const agora = new Date();
-    doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`, 40, 50);
+    doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`, 40, 62);
 
     // Body: 1 tabela de 4 colunas (Descrição / Ref. NFe / Créd. entrada / Valor)
     // -- mesmas colunas que a tela e o Excel usam pras linhas de Diferenças
@@ -481,6 +490,15 @@ async function exportarDREPDF(dre, p){
     dre.adiantamentoItens.forEach(it => linhaSimples('          '+it.label, it.valor));
     linhaSimples('    Agente Frete', dre.totalAgenteFrete);
     dre.agenteFreteItens.forEach(it => linhaSimples('          '+it.label, it.valor));
+    if(dre.diferencasItens && dre.diferencasItens.length){
+      // Mini-cabecalho so aqui (igual a linha 28 da planilha Excel: "Valores
+      // ref. NFe" / "Créditos entrada" aparecem SO acima das linhas de
+      // Diferenca, nao como cabecalho fixo da tabela inteira).
+      body.push([
+        '', { content:'Valores ref. NFe', styles:{fontStyle:'italic', fontSize:6.5, textColor:[100,116,139]} },
+        { content:'Créditos entrada', styles:{fontStyle:'italic', fontSize:6.5, textColor:[100,116,139]} }, '',
+      ]);
+    }
     dre.diferencasItens.forEach(it => body.push([
       '    '+it.label,
       { content: r2(it.valorNfe), styles:{halign:'right', fontSize:6.5, textColor:[100,116,139]} },
@@ -532,24 +550,29 @@ async function exportarDREPDF(dre, p){
     // borda inferior fina (mesma logica do loop que desenha as bordas no
     // Excel), em vez do grid completo (que ficaria pesado/poluido com
     // fonte tao pequena).
+    // Sem cabecalho fixo no topo da tabela -- igual ao Excel, que vai direto
+    // do titulo pra "Nota fiscal de Saida", sem uma linha "Descricao/Valor"
+    // antes. O mini-cabecalho "Valores ref. NFe / Creditos entrada" ja foi
+    // inserido no body, so acima das linhas de Diferenca (pedido Ayslan
+    // 08/09/2026: "o pdf deve vir na mesma formatacao do excel").
     const CORBORDA = [210,218,230];
     doc.autoTable({
-      startY: 58,
-      head: [['Descrição','Ref. NFe','Créd. entrada','Valor']],
+      startY: 74,
       body,
       theme: 'plain',
       styles: { fontSize:7, cellPadding:{top:1.6,bottom:1.6,left:3,right:3}, valign:'middle', textColor:[30,41,59], lineWidth:{bottom:0.4}, lineColor:CORBORDA },
-      headStyles: { fontSize:7, fontStyle:'bold', textColor:[100,116,139], fillColor:[255,255,255], lineWidth:{bottom:0.8}, lineColor:CORBORDA },
       columnStyles: { 0:{cellWidth:250}, 1:{cellWidth:85,halign:'right'}, 2:{cellWidth:85,halign:'right'}, 3:{cellWidth:95,halign:'right'} },
       margin: { left:40, right:40 },
       didParseCell: data => {
+        const isMiniHeader = data.row.raw[1] && data.row.raw[1].content === 'Valores ref. NFe';
         // Zebra (cor sim, cor nao) bem clarinha nas linhas do corpo, pra
-        // facilitar a leitura -- pedido do Ayslan (08/09/2026). So no
-        // corpo (nao no cabecalho da tabela) e so nas linhas normais; as
-        // de cabecalho de secao (CUSTOS/TIMELINE) ficam com a cor delas
-        // por cima, sem listrar.
-        if(data.section === 'body' && data.row.index % 2 === 1){
+        // facilitar a leitura -- pedido do Ayslan (08/09/2026). Nao lista
+        // as linhas de cabecalho de secao nem o mini-cabecalho.
+        if(data.row.index % 2 === 1 && !isMiniHeader){
           data.cell.styles.fillColor = [246,248,251];
+        }
+        if(isMiniHeader){
+          data.cell.styles.lineWidth = 0;
         }
         // Linhas de cabecalho de secao (CUSTOS/TIMELINE, colSpan:4) ganham
         // borda superior tambem (alem da inferior padrao), pra separar
