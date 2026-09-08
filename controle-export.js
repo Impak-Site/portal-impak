@@ -394,6 +394,12 @@ async function exportarDREExcel(dre, p){
     // igual ao modelo que ele mandou.
     ws.views = [{ showGridLines: false }];
     const ultimaLinha = r;
+    // Zebra (cor sim, cor nao) bem clarinha nas linhas com conteudo, pra
+    // facilitar a leitura -- pedido do Ayslan (08/09/2026). O contador
+    // (contLinha) so avanca em linha com conteudo, entao a listra fica
+    // continua mesmo com linhas em branco intercaladas.
+    const CORZEBRA = 'FFF6F8FB';
+    let contLinha = 0;
     for(let linhaN = 2; linhaN <= ultimaLinha; linhaN++){
       const row = ws.getRow(linhaN);
       let temConteudo = false;
@@ -401,9 +407,13 @@ async function exportarDREExcel(dre, p){
         if(row.getCell(col).value != null && row.getCell(col).value !== ''){ temConteudo = true; break; }
       }
       if(!temConteudo) continue;
+      contLinha++;
       for(let col = 1; col <= numCols; col++){
         const cell = row.getCell(col);
         cell.border = Object.assign({}, cell.border, { bottom: { style: 'thin', color: { argb: CORES.BORDA } } });
+        if(contLinha % 2 === 0 && !cell.fill){
+          cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:CORZEBRA} };
+        }
       }
     }
 
@@ -533,12 +543,21 @@ async function exportarDREPDF(dre, p){
       columnStyles: { 0:{cellWidth:250}, 1:{cellWidth:85,halign:'right'}, 2:{cellWidth:85,halign:'right'}, 3:{cellWidth:95,halign:'right'} },
       margin: { left:40, right:40 },
       didParseCell: data => {
+        // Zebra (cor sim, cor nao) bem clarinha nas linhas do corpo, pra
+        // facilitar a leitura -- pedido do Ayslan (08/09/2026). So no
+        // corpo (nao no cabecalho da tabela) e so nas linhas normais; as
+        // de cabecalho de secao (CUSTOS/TIMELINE) ficam com a cor delas
+        // por cima, sem listrar.
+        if(data.section === 'body' && data.row.index % 2 === 1){
+          data.cell.styles.fillColor = [246,248,251];
+        }
         // Linhas de cabecalho de secao (CUSTOS/TIMELINE, colSpan:4) ganham
         // borda superior tambem (alem da inferior padrao), pra separar
         // visualmente do bloco anterior.
         if(data.row.raw[0] && data.row.raw[0].colSpan === 4){
           data.cell.styles.lineWidth = { top: 0.6, bottom: 0.4 };
           data.cell.styles.lineColor = CORBORDA;
+          data.cell.styles.fillColor = [241,245,249];
         }
       },
     });
