@@ -1367,6 +1367,10 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro','resultado','
         for (const campo of CAMPOS_IMPORT_PERMITIDOS) {
           if (p[campo] !== undefined) filtrado[campo] = p[campo];
         }
+        // Mesma trava do save principal: porto sempre normalizado pro código
+        // padrão (ITJ/IOA/NVT), mesmo que a planilha/IA tenha extraído uma
+        // grafia diferente.
+        if (filtrado.porto_destino) filtrado.porto_destino = normalizarPortoDestinoDespachante(filtrado.porto_destino);
         return {
           ...filtrado,
           referencia: p.referencia,
@@ -1865,6 +1869,14 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
       }
       processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
     }
+
+    // Porto de destino: trava pro código padrão (ITJ/IOA/NVT) mesmo se vier
+    // uma grafia diferente (ex: "Navegantes, Brazil", "NAVEGANTES, BRAZIL",
+    // "Itajai") — pedido do Ayslan (08/09/2026): "nao pode ter 3
+    // nomenclaturas ou mais, para o mesmo porto". Normaliza aqui no
+    // SERVIDOR (não só no <select> do formulário) pra travar de verdade,
+    // mesmo se o valor chegar por outro caminho (API direta, script etc).
+    if (processo.porto_destino) processo.porto_destino = normalizarPortoDestinoDespachante(processo.porto_destino);
 
     // Remover campos internos antes de salvar no banco
     const { log: _log, _fasePrevista, _savedAt, ...processoLimpo } = processo;
