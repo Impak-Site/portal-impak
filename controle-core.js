@@ -274,20 +274,32 @@ function ativarTelaTVExclusiva(){
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard TV';
 
-  // Pedido do Ayslan (08/09/2026): na TV física, o zoom manual do navegador
-  // precisava ficar em 175% pra tudo ficar legível de longe (fonte grande,
-  // números grandes) — mas isso dependia de alguém lembrar de ajustar o
-  // zoom toda vez que o navegador abrisse/recarregasse. Aplica esse mesmo
-  // fator direto via CSS zoom (suportado no Chrome/Edge, que é o motor
-  // usado nos dispositivos de TV/kiosk daqui) só nesta tela — não afeta o
-  // resto do sistema, que continua em 100% normalmente.
-  document.documentElement.style.zoom = '1.75';
-
+  // Pedido do Ayslan (08/09/2026): a planilha Excel antiga que essa tela
+  // substitui cabia ~25 processos por coluna, legíveis de longe, porque
+  // usava a tela inteira sem sobrar espaço com nada além da tabela. A
+  // primeira tentativa aqui foi um zoom fixo de 175% (document.documentElement.
+  // style.zoom) — mas um fator FIXO não se adapta nem à quantidade de
+  // processos do dia (que muda) nem à resolução real de cada TV: às vezes
+  // sobrava tela vazia, às vezes cortava linha no meio sem dar pra rolar
+  // (TV não tem quem role). Trocado por uma abordagem que calcula sozinha:
+  // as colunas de "Em Águas"/"No Chão" (controle-dash-tv.js) ocupam 100%
+  // da altura disponível via flexbox, e o JS mede a altura real de cada
+  // linha depois de renderizada pra escolher o tamanho de fonte que
+  // preenche a tela inteira sem cortar nada — ver ajustarFonteColunasTV()
+  // em controle-dash-tv.js. Por isso essa tela também esconde TUDO que não
+  // é o painel em si (barra de câmbio, rótulo "Dashboard TV", paddings) —
+  // cada pixel de sobra é 1 processo a menos visível na TV.
   ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
+  const utilBarTV = document.querySelector('.util-bar');
+  if(utilBarTV) utilBarTV.style.display = 'none';
+  const labelTV = document.getElementById('dash-tv-label');
+  if(labelTV) labelTV.style.display = 'none';
+  const contentTV = document.querySelector('.content');
+  if(contentTV){ contentTV.style.padding = '0'; contentTV.style.overflow = 'hidden'; }
 
   // Essa tela é pra ficar espelhada numa TV física — não faz sentido gastar
   // ~224px de largura com a barra lateral de navegação do Controle (que
@@ -306,7 +318,7 @@ function ativarTelaTVExclusiva(){
   document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
 
   const dashTV = document.getElementById('dash-tv');
-  if(dashTV) dashTV.style.display = 'block';
+  if(dashTV){ dashTV.style.display = 'block'; dashTV.style.margin = '0'; }
   const tw2 = document.querySelector('.table-wrap'); if(tw2) tw2.style.display = 'none';
   const pagTV = document.getElementById('paginacao'); if(pagTV) pagTV.style.display = 'none';
   renderDashTV();

@@ -190,20 +190,33 @@ function renderDashTV(){
   // No modo solo (1 TV = 1 painel) tudo fica maior — é pra ler de longe,
   // não numa tela de notebook a 40cm do rosto.
   function painel(titulo, subtitulo, numero, corBg, conteudoHtml){
-    const tituloSz = solo ? '30px' : '19px';
-    const subSz = solo ? '15px' : '12px';
-    const numSz = solo ? '58px' : '38px';
-    const padHeader = solo ? '24px 32px' : '16px 24px';
-    const padBody = solo ? '26px 32px' : '18px 24px';
-    return `<div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
-      <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:${padHeader};display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-size:${tituloSz};font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
-          <div style="font-size:${subSz};color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
+    // Modo solo (1 TV = 1 painel): cabeçalho enxuto e o corpo ocupa TODA a
+    // altura restante da tela (flex:1) — pedido do Ayslan (08/09/2026):
+    // "diminuir um pouco o cabeçalho" pra sobrar mais espaço vertical pras
+    // linhas de processos, igual a planilha antiga (que não tinha cabeçalho
+    // nenhum, só a tabela). Sem card/sombra/margem em modo solo (edge-to-
+    // edge) — cada pixel de borda é espaço a menos pra caber processo.
+    if(solo){
+      return `<div style="height:100vh;display:flex;flex-direction:column;background:#fff;">
+        <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:8px 26px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,.75);margin-top:1px;">${subtitulo}</div>
+          </div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:30px;font-weight:800;color:#fff;">${numero}</div>
         </div>
-        <div style="font-family:'DM Sans',sans-serif;font-size:${numSz};font-weight:800;color:#fff;">${numero}</div>
+        <div style="flex:1;min-height:0;padding:12px 22px;display:flex;flex-direction:column;">${conteudoHtml}</div>
+      </div>`;
+    }
+    return `<div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
+      <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
+        </div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
       </div>
-      <div style="padding:${padBody};font-size:${solo?'1.15em':'1em'};">${conteudoHtml}</div>
+      <div style="padding:18px 24px;font-size:1em;">${conteudoHtml}</div>
     </div>`;
   }
 
@@ -224,7 +237,7 @@ function renderDashTV(){
   }
 
   const backordersHtml = backordersLista.length ? `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:${backordersResto.length?'14px':'0'};">
+    <div style="${solo?'flex:0 0 auto;':''}display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:${backordersResto.length?'14px':'0'};">
       ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
     </div>
     ${backordersResto.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;">
@@ -260,24 +273,69 @@ function renderDashTV(){
         <th style="padding:5px 6px;">ETA</th><th style="padding:5px 6px;">Processo</th><th style="padding:5px 6px;">Cliente</th><th style="padding:5px 6px;text-align:center;">Fin.</th><th style="padding:5px 6px;text-align:right;">Cont.</th>
       </tr></thead>`;
 
+  // Linha em flexbox (não <tr>) — usada só no modo solo. Diferente da linha
+  // de tabela normal, o objetivo aqui NÃO é ter altura fixa em px; é dividir
+  // igualmente a altura disponível entre todas as linhas da coluna
+  // (flex:1), pra que a coluna inteira sempre preencha 100% da tela sem
+  // sobrar nem faltar espaço — e ajustarFonteColunasTV() (abaixo) mede essa
+  // altura já renderizada pra escolher o tamanho de fonte que cabe.
+  function linhaEmAguasFlex(x){
+    const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
+    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;border-top:1px solid var(--border);overflow:hidden;">
+        <div style="width:14%;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${etaFmt}</div>
+        <div style="width:32%;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.referencia)}">${esc(x.referencia)}</div>
+        <div style="width:34%;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.cliente||'')}">${esc(x.cliente||'')}</div>
+        <div style="width:10%;text-align:center;overflow:hidden;">${esc(x.finalidade)}</div>
+        <div style="width:10%;text-align:right;font-weight:700;overflow:hidden;">${x.n}</div>
+      </div>`;
+  }
+  const cabecalhoColFlex = `<div style="display:flex;color:var(--muted);font-size:.72em;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);padding-bottom:4px;flex:0 0 auto;">
+      <div style="width:14%;">ETA</div><div style="width:32%;">Processo</div><div style="width:34%;">Cliente</div><div style="width:10%;text-align:center;">Fin.</div><div style="width:10%;text-align:right;">Cont.</div>
+    </div>`;
+
   // No modo solo (1 TV dedicada a este painel), em vez de 1 tabela rolável,
   // divide a lista em colunas lado a lado — igual a planilha antiga fazia
   // (3 blocos "ETA/Processos/Cliente") — pra caber tudo sem precisar rolar
-  // a tela, que era exatamente o pedido da Emanuelly (21/08/2026).
+  // a tela, que era exatamente o pedido da Emanuelly (21/08/2026). Cada
+  // coluna ocupa 100% da altura disponível (flex) e o Ayslan (08/09/2026)
+  // pediu pra manter sempre ~22-25 processos por coluna, igual a planilha
+  // Excel antiga — daí o alvo fixo abaixo em vez das faixas antigas.
   function emAguasEmColunas(lista){
     if(!lista.length) return `<div style="font-size:13px;color:var(--muted);">Nenhum processo embarcado no momento.</div>`;
-    // Número de colunas cresce com a quantidade de linhas — poucas linhas
-    // não precisam de 4 colunas, muitas linhas (>75) usam 4 pra continuar
-    // cabendo numa tela de TV padrão sem espremer demais a fonte.
-    const nCols = lista.length > 75 ? 4 : (lista.length > 36 ? 3 : (lista.length > 14 ? 2 : 1));
+    const ALVO_POR_COLUNA = 22;
+    let nCols = Math.max(1, Math.ceil(lista.length / ALVO_POR_COLUNA));
+    nCols = Math.min(nCols, 5); // 5 colunas já é o razoável numa TV antes de ficar ilegível de largura
     const porColuna = Math.ceil(lista.length / nCols);
     const colunas = [];
     for(let i=0; i<nCols; i++) colunas.push(lista.slice(i*porColuna, (i+1)*porColuna));
-    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:14px;">
-      ${colunas.map(col => `<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;">
-        ${theadEmAguas}
-        <tbody>${col.map(linhaEmAguas).join('')}</tbody>
-      </table>`).join('')}
+    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:16px;flex:1;min-height:0;">
+      ${colunas.map(col => `<div class="tv-col" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+        ${cabecalhoColFlex}
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;">${col.map(linhaEmAguasFlex).join('')}</div>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  // Mesma lógica de colunas em flex pra "No Chão" (lista de produtos parados)
+  // — antes só existia como tabela rolável, mesmo problema que Em Águas.
+  function linhaChaoFlex(desc, qtd){
+    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--border);overflow:hidden;">
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(desc)}">${esc(desc)}</div>
+        <div style="font-weight:700;white-space:nowrap;">${fmtN(Math.round(qtd))} un.</div>
+      </div>`;
+  }
+  function noChaoEmColunas(lista){
+    if(!lista.length) return `<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado no armazém.</div>`;
+    const ALVO_POR_COLUNA = 22;
+    let nCols = Math.max(1, Math.ceil(lista.length / ALVO_POR_COLUNA));
+    nCols = Math.min(nCols, 5);
+    const porColuna = Math.ceil(lista.length / nCols);
+    const colunas = [];
+    for(let i=0; i<nCols; i++) colunas.push(lista.slice(i*porColuna, (i+1)*porColuna));
+    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:16px;flex:1;min-height:0;">
+      ${colunas.map(col => `<div class="tv-col" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;">${col.map(([d,q])=>linhaChaoFlex(d,q)).join('')}</div>
+      </div>`).join('')}
     </div>`;
   }
 
@@ -292,7 +350,11 @@ function renderDashTV(){
     </div>
   ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo embarcado no momento.</div>`);
 
-  const noChaoHtml = noChaoLista.length ? `
+  const noChaoHtml = solo
+    ? (noChaoLista.length
+        ? `<div style="font-size:.85em;color:var(--muted);margin-bottom:8px;flex:0 0 auto;">${noChaoProcessos} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades no total</div>${noChaoEmColunas(noChaoLista)}`
+        : `<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado no armazém.</div>`)
+    : (noChaoLista.length ? `
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${noChaoProcessos} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades no total</div>
     <div style="max-height:${maxH};overflow-y:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -302,7 +364,7 @@ function renderDashTV(){
       </tr>`).join('')}</tbody>
     </table>
     </div>
-  ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado no armazém.</div>`;
+  ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado no armazém.</div>`);
 
   const paineis = {
     backorders: painel('BACKORDERS', `Visão por marca / fábrica — ainda não embarcados · ${fmtN(backordersProcessosTotal)} processos e ${fmtN(backordersTotal)} containers`, fmtN(backordersTotal), '#2a5298', backordersHtml),
@@ -322,6 +384,39 @@ function renderDashTV(){
 
   el.innerHTML = solo ? paineis[painelAtivo] : (linksSolo + paineis.backorders + paineis.aguas + paineis.chao);
   el.classList.toggle('dash-tv-solo', solo);
+  // Só depois do HTML estar no DOM dá pra medir a altura REAL de uma linha
+  // (que já saiu correta, porque cada .tv-row tem flex:1 dividindo o espaço
+  // disponível igualmente) — e então escolher a fonte que cabe certinho,
+  // sem cortar nenhuma linha e sem sobrar espaço vazio. requestAnimationFrame
+  // garante que o layout já foi calculado pelo navegador antes de medir.
+  if(solo) requestAnimationFrame(() => ajustarFonteColunasTV(el));
+}
+
+// Mede a altura de uma linha já renderizada (.tv-row, dentro de .tv-col) e
+// define o font-size do painel inteiro proporcional a essa altura — pedido
+// do Ayslan (08/09/2026): a tela precisa caber a MESMA quantidade de
+// processos que a planilha Excel antiga (~25/coluna) e ainda ficar legível
+// de longe, o que só é possível se o tamanho da fonte se adaptar à
+// resolução real de cada TV em vez de um zoom fixo. Usa a MENOR altura de
+// linha entre todas as colunas (a mais "apertada") como referência, pra
+// garantir que o texto cabe em TODAS as colunas, não só na primeira.
+function ajustarFonteColunasTV(raiz){
+  const colunas = raiz.querySelectorAll('.tv-col');
+  if(!colunas.length) return;
+  let menorAltura = Infinity;
+  colunas.forEach(col => {
+    const linha = col.querySelector('.tv-row');
+    if(!linha) return;
+    const h = linha.getBoundingClientRect().height;
+    if(h > 0 && h < menorAltura) menorAltura = h;
+  });
+  if(!isFinite(menorAltura)) return;
+  // ~42% da altura da linha costuma preencher bem sem estourar (sobra
+  // espaço pro padding/borda) — testado visualmente com 1, 3 e 5 colunas.
+  const fonte = Math.max(11, Math.min(32, Math.round(menorAltura * 0.42)));
+  // raiz é o próprio #dash-tv-content (é nele que o classList.toggle
+  // 'dash-tv-solo' foi aplicado) — o font-size herda pra tudo dentro.
+  raiz.style.fontSize = fonte + 'px';
 }
 
 // ── Modal "quais processos estão nesse número" (Backorders) ──────────
