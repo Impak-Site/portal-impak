@@ -305,7 +305,10 @@ async function exportarDREExcel(dre){
 
     const recRow = linha('    Reciclagem', null, null, dre.reciclagem); fmtMoeda(recRow.getCell(4));
     const lavRow = linha('    Lavação', null, null, dre.lavacao); fmtMoeda(lavRow.getCell(4));
-    const comRow = linha('    Comissão', null, null, dre.comissao); fmtMoeda(comRow.getCell(4));
+    (dre.comissaoItens||[]).filter(i=>i.valor>0).forEach(it=>{
+      const row = linha('    '+it.label, null, null, it.valor);
+      fmtMoeda(row.getCell(4));
+    });
     const dbpRow = linha('    Despesas - Baixa Pátio para Venda/Devolução', null, null, dre.despesasBaixaPatio); fmtMoeda(dbpRow.getCell(4));
     const segRow = linha('    Seguro Efetivo PAGO', null, null, dre.seguro); fmtMoeda(segRow.getCell(4));
 

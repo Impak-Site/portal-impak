@@ -1405,7 +1405,19 @@ function montarDRE(p){
   // (Comissão BR + Comissão China somadas; Comissão Boss fica na seção
   // separada de Notas Boss, mais abaixo).
   const reciclagem = v('reciclagem');
-  const comissao = v('comissao_br') + v('comissao_china');
+  // Comissao: cada tipo separado por linha (nao soma tudo numa unica linha
+  // "Comissao") - pedido do Ayslan (08/09/2026): se tiver Comissao
+  // Vendedor, Comissao China, Comissao Boss ou qualquer outra, cada uma
+  // precisa aparecer na sua propria linha no DRE, igual ao exemplo que ele
+  // mandou (Comissao BR e Comissao China ja vinham em linhas separadas na
+  // planilha modelo).
+  const comissaoItens = [
+    { label:'Comissão BR (Representante)', valor:v('comissao_br') },
+    { label:'Comissão China',              valor:v('comissao_china') },
+    { label:'Comissão Vendedor',           valor:v('comissao_vendedor') },
+    { label:'Comissão Boss/Lopes',         valor:v('comissao_boss') },
+  ];
+  const comissao = comissaoItens.reduce((s,i)=>s+i.valor,0);
   const despesasBaixaPatio = v('custos_diversos');
   const lavacao = v('lavacao');
   const seguro = v('seguro');
@@ -1439,13 +1451,24 @@ function montarDRE(p){
   const denomFinal = totalReceita + (notasBoss ? notasBoss.valorBoss : 0);
   const pctLucro = (lucroBruto != null && denomFinal) ? (lucroBruto/denomFinal) : null;
 
+  // Numero da NF de Saida: nao usa mais o campo legado p.nf_saida_numero
+  // direto (fica parado/desatualizado quando o processo usa a aba Vendas -
+  // era esse o motivo do numero "fixo" que o Ayslan reportou, ex: 8609 no
+  // KS260507SMBZIMP mesmo depois de mudar a venda) - pedido do Ayslan
+  // (08/09/2026): puxar sempre do sistema. Com vendas cadastradas, junta o
+  // numero de cada venda (cada uma tem seu proprio campo nf_saida_numero);
+  // sem vendas, cai no campo legado do processo (fluxo antigo).
+  const nfSaidaNumero = fechamento.vendasResumo
+    ? fechamento.vendasResumo.linhas.map(l => l.venda.nf_saida_numero).filter(Boolean).join(', ')
+    : (p.nf_saida_numero || '');
+
   return {
     referencia: p.referencia || '',
-    nfSaidaNumero: p.nf_saida_numero || '',
+    nfSaidaNumero,
     nfSaidaValor, jurosCobrado, totalReceita,
     fob, adiantamentoItens, totalAdiantamento,
     agenteFreteItens, totalAgenteFrete,
-    diferencasItens, reciclagem, comissao, despesasBaixaPatio, lavacao, seguro,
+    diferencasItens, reciclagem, comissaoItens, comissao, despesasBaixaPatio, lavacao, seguro,
     totalCustos,
     lucroBrutoImpak, pctLucroBrutoImpak,
     notasBoss,

@@ -850,7 +850,7 @@ function renderDREModalHtml(dre){
         ${dre.diferencasItens.map(linhaDif).join('')}
         ${linhaSimples('Reciclagem', dre.reciclagem)}
         ${linhaSimples('Lavação', dre.lavacao)}
-        ${linhaSimples('Comissão', dre.comissao)}
+        ${(dre.comissaoItens||[]).filter(i=>i.valor>0).map(i=>linhaSimples(i.label, i.valor)).join('')}
         ${linhaSimples('Despesas - Baixa Pátio para Venda/Devolução', dre.despesasBaixaPatio)}
         ${linhaSimples('Seguro Efetivo Pago', dre.seguro)}
         <tr><td style="padding:8px;font-weight:700;border-top:2px solid var(--border);">TOTAL CUSTOS</td><td colspan="3" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid var(--border);">${r2(dre.totalCustos)}</td></tr>
