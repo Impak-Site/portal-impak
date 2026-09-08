@@ -297,7 +297,7 @@ function renderDashTV(){
           <th style="padding:8px 12px;text-align:right;">Em Águas</th>
         </tr></thead>
         <tbody>
-        ${linhas.map((l,idx) => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;${idx%2===1?'background:#f8fafc;':''}">
+        ${linhas.map((l,idx) => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;${idx%2===1?'background:#e7edf5;':''}">
           <td style="padding:6px 12px;font-weight:700;">${esc(l.nome)}</td>
           <td style="padding:6px 12px;text-align:right;font-weight:800;">${fmtN(l.total)}</td>
           <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.bo)}</td>
@@ -319,7 +319,7 @@ function renderDashTV(){
   // 100% da altura restante. Antes era uma lista simples com font-size fixo
   // de 12px; agora escala junto com o resto do painel.
   function linhaBackordersRestoFlex(nome, qtd, chave, idx){
-    const zebra = idx % 2 === 1 ? 'background:rgba(255,255,255,.06);' : '';
+    const zebra = idx % 2 === 1 ? 'background:rgba(255,255,255,.16);' : '';
     return `<div class="tv-row" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;flex:1;min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px;${zebra}padding:0 8px;margin:0 -8px;border-radius:4px;overflow:hidden;color:#fff;">
       <span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
       <span style="font-weight:800;white-space:nowrap;">${fmtN(qtd)}</span>
