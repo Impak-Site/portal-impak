@@ -252,6 +252,7 @@ function renderDashClienteMedida(){
     // que couberam àquela venda).
     const chavePedido = p.id + '||' + chaveCliente;
     if(!marcaBucket.pedidos[chavePedido]){
+      const dtChegadaOuEta = p.data_chegada || p.eta;
       marcaBucket.pedidos[chavePedido] = {
         id: p.id,
         referencia: p.referencia || '—',
@@ -260,6 +261,13 @@ function renderDashClienteMedida(){
         prontidao: celulaData(p.data_prontidao, p.previsao_prontidao),
         embarque: celulaData(p.data_embarque, p.etd),
         chegada: celulaData(p.data_chegada, p.eta),
+        // Timestamp puro (não formatado) só pra ordenar — pedido do Ayslan
+        // (08/09/2026): "precisa ordenar por data de chegada antes (o mais
+        // proximo) vir em cima, sempre". Chegada REAL tem prioridade; sem
+        // ela, usa a previsão (ETA) — mesmo critério já usado no Exportar
+        // p/ Cliente (montarLinhasFollowUpCliente). Sem nenhuma das duas,
+        // fica pro final (Infinity), nunca no topo.
+        _chegadaTs: dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).getTime() : Infinity,
         itens: [],
         qtd: 0,
       };
@@ -390,7 +398,7 @@ function renderDashClienteMedida(){
   }
 
   function blocoMarca(m){
-    const pedidos = Object.values(m.pedidos).sort((a,b) => (a.referencia||'').localeCompare(b.referencia||'', 'pt-BR', { numeric: true }));
+    const pedidos = Object.values(m.pedidos).sort((a,b) => a._chegadaTs - b._chegadaTs || (a.referencia||'').localeCompare(b.referencia||'', 'pt-BR', { numeric: true }));
     return `<div style="margin-bottom:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;">
         <span style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.3px;">${esc(m.nome)}</span>
@@ -415,7 +423,11 @@ function renderDashClienteMedida(){
   }
 
   function blocoCliente(c){
-    const marcas = Object.values(c.porMarca).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    const marcas = Object.values(c.porMarca).sort((a,b) => {
+      const da = Math.min(...Object.values(a.pedidos).map(p => p._chegadaTs));
+      const db = Math.min(...Object.values(b.pedidos).map(p => p._chegadaTs));
+      return da - db || a.nome.localeCompare(b.nome, 'pt-BR');
+    });
     return `<details style="background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;" ${clientesLista.length===1?'open':''}>
       <summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;list-style:none;background:var(--bg);">
         <span style="font-weight:700;font-size:13px;">${esc(c.nome)}</span>
@@ -562,7 +574,11 @@ async function exportarCMExcel(){
       ws.autoFilter = {from:{row:3,column:1}, to:{row:3,column:numCols}};
 
       let rowIdx = 4;
-      const marcas = Object.values(c.porMarca).sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR'));
+      const marcas = Object.values(c.porMarca).sort((a,b) => {
+        const da = Math.min(...Object.values(a.pedidos).map(p => p._chegadaTs));
+        const db = Math.min(...Object.values(b.pedidos).map(p => p._chegadaTs));
+        return da - db || a.nome.localeCompare(b.nome,'pt-BR');
+      });
       marcas.forEach(m => {
         ws.mergeCells(rowIdx,1,rowIdx,numCols);
         const gcell = ws.getCell(rowIdx,1);
@@ -573,7 +589,7 @@ async function exportarCMExcel(){
         ws.getRow(rowIdx).height = 20;
         rowIdx++;
 
-        const pedidos = Object.values(m.pedidos).sort((a,b) => (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
+        const pedidos = Object.values(m.pedidos).sort((a,b) => a._chegadaTs - b._chegadaTs || (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
         let idxZebra = 0;
         pedidos.forEach(pedido => {
           const itens = pedido.itens.length ? pedido.itens : [{descricao:'—', qtd:0}];
@@ -664,11 +680,15 @@ async function exportarCMPDF(){
       const agora = new Date();
       doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} — Total: ${c.total.toLocaleString('pt-BR')} pneus`, 40, 56);
 
-      const marcas = Object.values(c.porMarca).sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR'));
+      const marcas = Object.values(c.porMarca).sort((a,b) => {
+        const da = Math.min(...Object.values(a.pedidos).map(p => p._chegadaTs));
+        const db = Math.min(...Object.values(b.pedidos).map(p => p._chegadaTs));
+        return da - db || a.nome.localeCompare(b.nome,'pt-BR');
+      });
       const body = [];
       marcas.forEach(m => {
         body.push([{ content: m.nome.toUpperCase(), colSpan: CM_EXPORT_COLUNAS.length, styles:{fillColor:[234,243,252], textColor:[16,42,69], fontStyle:'bold', halign:'center'} }]);
-        const pedidos = Object.values(m.pedidos).sort((a,b) => (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
+        const pedidos = Object.values(m.pedidos).sort((a,b) => a._chegadaTs - b._chegadaTs || (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
         pedidos.forEach(pedido => {
           const itens = pedido.itens.length ? pedido.itens : [{descricao:'—', qtd:0}];
           const span = itens.length;
