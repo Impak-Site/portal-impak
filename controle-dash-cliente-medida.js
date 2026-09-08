@@ -200,51 +200,75 @@ function renderDashClienteMedida(){
     _cmAddOpcao(marcasDisponiveis, p.brand || p.fornecedor || 'Sem marca', _cmChaveEmpresa);
   });
 
-  // ── Passo 2: agregação Cliente → Medida → Fase, já com os filtros ──
-  const porCliente = {}; // chave (CLIENTE em caixa alta) -> {nome, porLinha:{}, total} — cada linha e uma combinacao Fornecedor+Marca+Medida
+  // ── Passo 2: agregação Cliente → Marca → Pedido (Invoice), já com os
+  // filtros ──────────────────────────────────────────────────────────
+  // V5 (08/09/2026, pedido do Ayslan: mostrou a planilha pessoal da Paula
+  // "PEDIDOS TWI" — Cliente → Marca/Fábrica → um bloco por Invoice, com
+  // Medida/Qte/4 datas/Porto — e perguntou "voce consegue fazer igual?").
+  // Confirmado com o Ayslan que os DADOS continuam vindo só do sistema
+  // (_processos) — a planilha foi só a referência visual de como já é
+  // feito hoje, nunca uma fonte de importação. Cada processo vira um
+  // "pedido" (linha de Invoice) dentro da Marca do Cliente; quando o
+  // processo tem mais de um Produto (produtos_json), a 1ª linha leva
+  // Invoice/Datas/Porto e as linhas seguintes só Medida/Qte — igual à
+  // planilha.
+  const porCliente = {}; // chave (CLIENTE em caixa alta) -> {nome, porMarca:{}, total}
   let totalGeral = 0;
-  let processosConsiderados = 0;
-
   const processosContadosIds = new Set();
 
-  function addItem(clienteNomeOriginal, fornecedorOriginal, marcaOriginal, descricaoOriginal, quantidade, p, fase){
+  function fmtData(d){
+    if(!d) return null;
+    try{ return new Date(d+'T00:00:00').toLocaleDateString('pt-BR'); }catch(e){ return d; }
+  }
+  // Data "real" tem prioridade; sem ela, cai pra previsão (ETD/ETA/Previsão
+  // Prontidão) marcada como tal (itálico + "(prev.)" na exibição) — sem
+  // data nenhuma, mostra "—". Nunca inventa nem copia valor da planilha.
+  function celulaData(realISO, previstoISO){
+    if(realISO) return { texto: fmtData(realISO), previsto: false };
+    if(previstoISO) return { texto: fmtData(previstoISO), previsto: true };
+    return { texto: '—', previsto: false };
+  }
+
+  function addPedido(clienteNomeOriginal, marcaOriginal, p, itens, fase){
     const clienteNome = (clienteNomeOriginal || 'Sem cliente').trim() || 'Sem cliente';
     if(_cmFiltroCliente && clienteNome.toUpperCase() !== _cmFiltroCliente.toUpperCase()) return;
     const chaveCliente = clienteNome.toUpperCase();
-    const fornecedorNome = (fornecedorOriginal || 'Sem fornecedor').trim() || 'Sem fornecedor';
     const marcaNome = (marcaOriginal || 'Sem marca').trim() || 'Sem marca';
-    const descricao = (descricaoOriginal || 'Sem medida informada').trim() || 'Sem medida informada';
-    // Chave da linha = Fornecedor + Marca + Medida (pedido do Ayslan
-    // 06/09/2026: "colocar cada linha por um fornecedor/marca com suas
-    // quantidades" — antes a linha era só a Medida, então dois lotes da
-    // mesma medida de fornecedores diferentes ficavam somados juntos).
-    // Fornecedor/Marca entram pela chave NORMALIZADA (_cmChaveEmpresa), não
-    // pelo texto cru — assim "JIMI RUBBER PTE. LTD." e "JIMI RUBBER
-    // PTE.LTD." caem na mesma linha (pedido Ayslan 07/09/2026).
-    const chaveLinha = _cmChaveEmpresa(fornecedorNome) + '||' + _cmChaveEmpresa(marcaNome) + '||' + descricao.toUpperCase();
-    const qtd = parseFloat(quantidade) || 0;
+    const chaveMarca = _cmChaveEmpresa(marcaNome);
 
-    if(!porCliente[chaveCliente]) porCliente[chaveCliente] = { nome: clienteNome, porLinha: {}, total: 0 };
+    if(!porCliente[chaveCliente]) porCliente[chaveCliente] = { nome: clienteNome, porMarca: {}, total: 0 };
     const cli = porCliente[chaveCliente];
-    if(!cli.porLinha[chaveLinha]){
-      const porFase = {};
-      FASES_CLIENTE_MEDIDA.forEach(f => { porFase[f] = { qtd: 0, processos: [] }; });
-      cli.porLinha[chaveLinha] = { fornecedor: fornecedorNome, marca: marcaNome, medida: descricao, qtd: 0, porFase };
+    if(!cli.porMarca[chaveMarca]) cli.porMarca[chaveMarca] = { nome: marcaNome, pedidos: {}, total: 0 };
+    const marcaBucket = cli.porMarca[chaveMarca];
+
+    // Chave do pedido = processo + cliente (um processo vendido pra mais
+    // de um cliente vira um "pedido" por cliente, cada um só com os itens
+    // que couberam àquela venda).
+    const chavePedido = p.id + '||' + chaveCliente;
+    if(!marcaBucket.pedidos[chavePedido]){
+      marcaBucket.pedidos[chavePedido] = {
+        id: p.id,
+        referencia: p.referencia || '—',
+        porto: p.porto_destino || '',
+        dataPedido: celulaData(p.pi_data),
+        prontidao: celulaData(p.data_prontidao, p.previsao_prontidao),
+        embarque: celulaData(p.data_embarque, p.etd),
+        chegada: celulaData(p.data_chegada, p.eta),
+        itens: [],
+        qtd: 0,
+      };
     }
-    const linha = cli.porLinha[chaveLinha];
-    linha.qtd += qtd;
-    cli.total += qtd;
-    totalGeral += qtd;
-    processosContadosIds.add(p.id);
-    const bucket = linha.porFase[fase];
-    bucket.qtd += qtd;
-    bucket.processos.push({
-      id: p.id,
-      referencia: p.referencia,
-      fase: FASE_LABEL[fase] || fase,
-      eta: p.eta || p.data_prontidao || '',
-      qtd,
+    const pedido = marcaBucket.pedidos[chavePedido];
+    (itens || []).forEach(it => {
+      const qtd = parseFloat(it.quantidade) || 0;
+      const descricao = (it.descricao || 'Sem medida informada').trim() || 'Sem medida informada';
+      pedido.itens.push({ descricao, qtd });
+      pedido.qtd += qtd;
+      marcaBucket.total += qtd;
+      cli.total += qtd;
+      totalGeral += qtd;
     });
+    processosContadosIds.add(p.id);
   }
 
   _processos.forEach(p => {
@@ -272,24 +296,18 @@ function renderDashClienteMedida(){
     if(vendas.length){
       vendas.forEach(v => {
         const itens = (v.itens && v.itens.length) ? v.itens : produtos;
-        itens.forEach(it => addItem(v.cliente || p.cliente, fornecedor, marca, it.descricao, it.quantidade, p, fase));
+        addPedido(v.cliente || p.cliente, marca, p, itens, fase);
       });
     } else {
-      produtos.forEach(it => addItem(p.cliente, fornecedor, marca, it.descricao, it.quantidade, p, fase));
+      addPedido(p.cliente, marca, p, produtos, fase);
     }
   });
-  processosConsiderados = processosContadosIds.size;
+  const processosConsiderados = processosContadosIds.size;
 
-  // ── Filtro de busca livre (medida) ─────────────────────────────────
-  // Bug reportado pelo Ayslan (07/09/2026): digitar uma medida no campo de
-  // busca não filtrava nada, a tabela continuava mostrando TODAS as
-  // medidas do cliente. Causa: o filtro só decidia se o bloco do CLIENTE
-  // inteiro aparecia ou sumia (bastava UMA linha bater com o termo pra
-  // manter TODAS as linhas daquele cliente na tela) — nunca filtrava as
-  // linhas dentro da tabela. Agora, quando o termo bate no Cliente, mantém
-  // todas as linhas dele (comportamento de "buscar por cliente" continua
-  // funcionando); quando não bate no Cliente, filtra as LINHAS pelo termo
-  // (medida/fornecedor/marca) e descarta o cliente se sobrar zero linha.
+  // ── Filtro de busca livre (medida/invoice/marca) ────────────────────
+  // Mesma lógica de antes: se o termo bate no nome do CLIENTE, mantém
+  // tudo dele; senão, filtra Marca → Pedido pelo termo (referência,
+  // marca ou descrição de algum item) e descarta o que sobrar vazio.
   const termo = _cmFiltroTexto.trim().toLowerCase();
   let clientesLista = Object.entries(porCliente).map(([chave, dados]) => ({ chave, ...dados }));
   if(termo){
@@ -297,62 +315,104 @@ function renderDashClienteMedida(){
       .map(c => {
         const nomeBate = c.nome.toLowerCase().includes(termo);
         if(nomeBate) return c;
-        const linhasFiltradas = {};
+        const porMarcaFiltrado = {};
         let totalFiltrado = 0;
-        Object.entries(c.porLinha).forEach(([chaveLinha, l]) => {
-          const bate = l.medida.toLowerCase().includes(termo) || l.fornecedor.toLowerCase().includes(termo) || l.marca.toLowerCase().includes(termo);
-          if(bate){ linhasFiltradas[chaveLinha] = l; totalFiltrado += l.qtd; }
+        Object.entries(c.porMarca).forEach(([chaveMarca, m]) => {
+          const marcaBate = m.nome.toLowerCase().includes(termo);
+          const pedidosFiltrados = {};
+          let totalMarca = 0;
+          Object.entries(m.pedidos).forEach(([chavePedido, ped]) => {
+            const bate = marcaBate
+              || (ped.referencia || '').toLowerCase().includes(termo)
+              || ped.itens.some(it => it.descricao.toLowerCase().includes(termo));
+            if(bate){ pedidosFiltrados[chavePedido] = ped; totalMarca += ped.qtd; }
+          });
+          if(Object.keys(pedidosFiltrados).length){
+            porMarcaFiltrado[chaveMarca] = { nome: m.nome, pedidos: pedidosFiltrados, total: totalMarca };
+            totalFiltrado += totalMarca;
+          }
         });
-        return { ...c, porLinha: linhasFiltradas, total: totalFiltrado };
+        return { ...c, porMarca: porMarcaFiltrado, total: totalFiltrado };
       })
-      .filter(c => Object.keys(c.porLinha).length > 0);
+      .filter(c => Object.keys(c.porMarca).length > 0);
   }
   clientesLista.sort((a,b) => b.total - a.total);
 
   const fmtN = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
-  // Guarda os dados de cada Cliente×Medida×Fase acessíveis pro onclick do
-  // modal (mesmo padrão do abrirListaTV em controle-dash-tv.js).
-  window._cmListas = {};
-
-  function celulaFase(chaveCliente, chaveLinha, fase, bucket){
-    if(!bucket.qtd) return `<td style="padding:6px 14px;text-align:right;color:var(--border);white-space:nowrap;">—</td>`;
-    const idLista = chaveCliente + '||' + chaveLinha + '||' + fase;
-    window._cmListas[idLista] = { titulo: FASE_COLUNA_LABEL[fase], rows: bucket.processos };
-    return `<td onclick="abrirListaCM('${idLista.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="padding:6px 14px;text-align:right;font-weight:700;cursor:pointer;color:var(--ac);white-space:nowrap;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${fmtN(bucket.qtd)}</td>`;
+  // Uma linha na exibição = uma "célula de data" — mostra a data real em
+  // negrito normal; sem data real, mostra a previsão em itálico com
+  // "(prev.)"; sem nenhuma das duas, um traço cinza.
+  function celDataHtml(d){
+    if(!d || d.texto === '—') return `<span style="color:var(--border);">—</span>`;
+    if(d.previsto) return `<span style="color:var(--muted);font-style:italic;">${esc(d.texto)} <span style="font-size:9px;">(prev.)</span></span>`;
+    return esc(d.texto);
   }
 
-  function linhaItem(chaveCliente, chaveLinha, linha){
-    return `<tr style="border-top:1px solid var(--border);">
-      <td style="padding:6px 10px;white-space:nowrap;">${esc(linha.fornecedor)}</td>
-      <td style="padding:6px 10px;white-space:nowrap;">${esc(linha.marca)}</td>
-      <td style="padding:6px 10px;white-space:nowrap;">${esc(linha.medida)}</td>
-      ${FASES_CLIENTE_MEDIDA.filter(f => _cmFasesAtivas.has(f)).map(f => celulaFase(chaveCliente, chaveLinha, f, linha.porFase[f])).join('')}
-      <td style="padding:6px 14px;text-align:right;font-weight:800;white-space:nowrap;border-left:1px solid var(--border);">${fmtN(linha.qtd)}</td>
-    </tr>`;
+  // Um "pedido" (Invoice) vira 1+ linhas de tabela: a 1ª linha leva
+  // Invoice/Datas/Porto (rowspan cobrindo todas as linhas do pedido) +
+  // Medida/Qte do 1º item; linhas seguintes (quando o processo tem mais
+  // de 1 Produto) só repetem Medida/Qte — igual ao formato da planilha
+  // "PEDIDOS TWI" mostrada pelo Ayslan (linhas de produto extra do mesmo
+  // Invoice não repetem Invoice/Datas/Porto).
+  function linhasPedido(pedido){
+    const itens = pedido.itens.length ? pedido.itens : [{ descricao: '—', qtd: 0 }];
+    const n = itens.length;
+    return itens.map((it, i) => {
+      const onclick = `onclick="abrirProcesso('${pedido.id}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''" style="cursor:pointer;${i===0?'border-top:1px solid var(--border);':''}"`;
+      if(i === 0){
+        return `<tr ${onclick}>
+          <td rowspan="${n}" style="padding:6px 10px;font-weight:700;white-space:nowrap;vertical-align:top;border-right:1px solid var(--border);">${esc(pedido.referencia)}</td>
+          <td style="padding:6px 10px;white-space:nowrap;">${esc(it.descricao)}</td>
+          <td style="padding:6px 10px;text-align:right;white-space:nowrap;">${fmtN(it.qtd)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;border-left:1px solid var(--border);">${celDataHtml(pedido.dataPedido)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${celDataHtml(pedido.prontidao)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${celDataHtml(pedido.embarque)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${celDataHtml(pedido.chegada)}</td>
+          <td rowspan="${n}" style="padding:6px 10px;white-space:nowrap;vertical-align:top;">${esc(pedido.porto || '—')}</td>
+        </tr>`;
+      }
+      return `<tr ${onclick}>
+        <td style="padding:6px 10px;white-space:nowrap;">${esc(it.descricao)}</td>
+        <td style="padding:6px 10px;text-align:right;white-space:nowrap;">${fmtN(it.qtd)}</td>
+      </tr>`;
+    }).join('');
   }
 
-  const fasesColunas = FASES_CLIENTE_MEDIDA.filter(f => _cmFasesAtivas.has(f));
+  function blocoMarca(m){
+    const pedidos = Object.values(m.pedidos).sort((a,b) => (a.referencia||'').localeCompare(b.referencia||'', 'pt-BR', { numeric: true }));
+    return `<div style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;">
+        <span style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.3px;">${esc(m.nome)}</span>
+        <span style="font-weight:700;font-size:12px;color:var(--ac);">${fmtN(m.total)} <span style="font-weight:600;color:var(--muted);font-size:10px;">pneus</span></span>
+      </div>
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:780px;">
+        <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
+          <th style="padding:6px 10px;border-right:1px solid var(--border);">Invoice</th>
+          <th style="padding:6px 10px;">Medida</th>
+          <th style="padding:6px 10px;text-align:right;">Qte</th>
+          <th style="padding:6px 10px;border-left:1px solid var(--border);">Data do Pedido</th>
+          <th style="padding:6px 10px;">Data de Prontidão</th>
+          <th style="padding:6px 10px;">Data de Embarque</th>
+          <th style="padding:6px 10px;">Data Chegada</th>
+          <th style="padding:6px 10px;">Porto</th>
+        </tr></thead>
+        <tbody>${pedidos.map(linhasPedido).join('')}</tbody>
+      </table>
+      </div>
+    </div>`;
+  }
 
   function blocoCliente(c){
-    const linhas = Object.entries(c.porLinha).map(([chave,l]) => [chave,l])
-      .sort((a,b) => a[1].fornecedor.localeCompare(b[1].fornecedor,'pt-BR') || a[1].marca.localeCompare(b[1].marca,'pt-BR') || b[1].qtd - a[1].qtd);
+    const marcas = Object.values(c.porMarca).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     return `<details style="background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;" ${clientesLista.length===1?'open':''}>
       <summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;list-style:none;background:var(--bg);">
         <span style="font-weight:700;font-size:13px;">${esc(c.nome)}</span>
         <span style="font-weight:800;font-size:15px;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(c.total)} <span style="font-size:11px;font-weight:600;color:var(--muted);">pneus</span></span>
       </summary>
-      <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:${420 + fasesColunas.length*130}px;">
-        <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">
-          <th style="padding:6px 10px;white-space:nowrap;">Fornecedor</th>
-          <th style="padding:6px 10px;white-space:nowrap;">Marca</th>
-          <th style="padding:6px 10px;white-space:nowrap;">Medida</th>
-          ${fasesColunas.map(f => `<th style="padding:6px 14px;text-align:right;white-space:nowrap;">${FASE_COLUNA_LABEL[f]}</th>`).join('')}
-          <th style="padding:6px 14px;text-align:right;white-space:nowrap;border-left:1px solid var(--border);">Total</th>
-        </tr></thead>
-        <tbody>${linhas.map(([chaveLinha,l]) => linhaItem(c.chave, chaveLinha, l)).join('')}</tbody>
-      </table>
+      <div style="padding:10px 12px;">
+        ${marcas.map(blocoMarca).join('')}
       </div>
     </details>`;
   }
@@ -394,7 +454,7 @@ function renderDashClienteMedida(){
         ${selectFiltro('cliente','Cliente',_cmFiltroCliente,clientesDisponiveis)}
         ${selectFiltro('fornecedor','Fornecedor',_cmFiltroFornecedor,fornecedoresDisponiveis)}
         ${selectFiltro('marca','Marca',_cmFiltroMarca,marcasDisponiveis)}
-        <input id="cm-filtro-texto" class="form-input" placeholder="Buscar medida (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
+        <input id="cm-filtro-texto" class="form-input" placeholder="Buscar invoice, medida ou marca (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
           oninput="_cmAtualizarFiltroTexto(this.value)" style="flex:2;min-width:200px;">
         ${temFiltroAtivo ? `<button class="btn btn-outline" onclick="_cmLimparFiltros()" style="white-space:nowrap;">✕ Limpar filtros</button>` : ''}
       </div>
@@ -405,51 +465,7 @@ function renderDashClienteMedida(){
       </div>
     </div>
 
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Clique num número pra ver os processos por trás dele.</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Agrupado por Cliente → Marca/Fábrica → Invoice. Clique numa linha pra abrir o processo.</div>
     <div>${corpoHtml}</div>
   `;
-}
-
-// ── Modal "quais processos estão nesse Cliente × Medida × Fase" ──────
-// Mesmo padrão do abrirListaTV (controle-dash-tv.js): clicar numa célula
-// abre a lista dos processos por trás daquele número.
-function abrirListaCM(idLista){
-  const dados = (window._cmListas || {})[idLista];
-  if(!dados) return;
-  let modal = document.getElementById('cm-lista-modal');
-  if(!modal){
-    modal = document.createElement('div');
-    modal.id = 'cm-lista-modal';
-    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;align-items:center;justify-content:center;';
-    modal.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:640px;width:92%;max-height:82vh;overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.25);">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
-      '<h3 id="cm-lista-titulo" style="margin:0;font-size:16px;"></h3>' +
-      '<button onclick="fecharListaCM()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--muted);">&times;</button>' +
-      '</div><div id="cm-lista-corpo"></div></div>';
-    modal.addEventListener('click', function(e){ if(e.target === modal) fecharListaCM(); });
-    document.body.appendChild(modal);
-  }
-  document.getElementById('cm-lista-titulo').textContent = dados.titulo + ' — ' + dados.rows.length + ' processo(s)';
-  const corpo = document.getElementById('cm-lista-corpo');
-  corpo.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
-    <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border);">
-      <th style="padding:6px 8px;">Referência</th>
-      <th style="padding:6px 8px;">Fase</th>
-      <th style="padding:6px 8px;">ETA/Previsão</th>
-      <th style="padding:6px 8px;text-align:right;">Quantidade</th>
-    </tr></thead>
-    <tbody>
-    ${dados.rows.map(r => `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="fecharListaCM();abrirProcesso('${r.id}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-      <td style="padding:6px 8px;font-weight:600;">${esc(r.referencia||'—')}</td>
-      <td style="padding:6px 8px;">${esc(r.fase||'—')}</td>
-      <td style="padding:6px 8px;">${r.eta ? new Date(r.eta+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-      <td style="padding:6px 8px;text-align:right;">${r.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
-    </tr>`).join('')}
-    </tbody>
-  </table>`;
-  modal.style.display = 'flex';
-}
-function fecharListaCM(){
-  const modal = document.getElementById('cm-lista-modal');
-  if(modal) modal.style.display = 'none';
 }
