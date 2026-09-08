@@ -858,6 +858,7 @@ function renderDREModalHtml(dre){
             <td colspan="3" style="padding:8px;text-align:right;font-weight:700;color:${dre.notasBoss?'var(--text)':'var(--ok)'};">${r2(dre.lucroBrutoImpak)} ${dre.pctLucroBrutoImpak!=null?'('+(dre.pctLucroBrutoImpak*100).toFixed(1)+'%)':''}</td></tr>
         ${linhaBoss}
       </table>
+      ${(typeof renderFechamentoTimeline==='function' && _editando) ? `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;margin-top:16px;">${renderFechamentoTimeline(_editando)}</div>` : ''}
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
         <button class="btn btn-outline" onclick="fecharDRE()">Fechar</button>
         <button class="btn btn-primary" onclick="exportarDREExcel(montarDRE(_editando))">⬇️ Exportar Excel</button>
