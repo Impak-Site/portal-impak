@@ -228,16 +228,54 @@ function renderDashTV(){
     const pct = maxQtd > 0 ? Math.round((qtd/maxQtd)*100) : 0;
     // Mesmo azul marinho + letras brancas dos cards "resto" abaixo — pedido
     // do Ayslan (21/08/2026) pra deixar os 4 principais visualmente
-    // consistentes com o resto da lista de marcas.
-    return `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#0f1f3d;border-radius:10px;padding:12px 14px;">
-      <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">${esc(nome)}</div>
-      <div style="font-size:26px;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:rgba(255,255,255,.65);">containers</span></div>
-      <div style="background:rgba(255,255,255,.15);border-radius:4px;height:5px;margin-top:8px;overflow:hidden;"><div style="background:#fff;height:100%;width:${pct}%;"></div></div>
+    // consistentes com o resto da lista de marcas. Tamanhos em "em" (não
+    // px fixo) — pedido do Ayslan (08/09/2026) pra Backorders escalar
+    // junto com Em Águas/No Chão (mesmo font-size que ajustarFonteColunasTV
+    // calcula pro painel inteiro, em vez de ficar sempre do mesmo tamanho
+    // pequeno). Classe "tv-card" serve de referência de medição quando não
+    // há lista "resto" pra medir (poucas marcas — ver ajustarFonteColunasTV).
+    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#0f1f3d;border-radius:10px;padding:.7em .85em;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
+      <div style="font-size:.68em;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
+      <div style="font-size:1.6em;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;white-space:nowrap;">${fmtN(qtd)} <span style="font-size:.46em;font-weight:600;color:rgba(255,255,255,.65);">containers</span></div>
+      <div style="background:rgba(255,255,255,.15);border-radius:4px;height:.3em;margin-top:.5em;overflow:hidden;"><div style="background:#fff;height:100%;width:${pct}%;"></div></div>
     </div>`;
   }
 
-  const backordersHtml = backordersLista.length ? `
-    <div style="${solo?'flex:0 0 auto;':''}display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:${backordersResto.length?'14px':'0'};">
+  // Linha em flex pra cada marca da lista "resto" (fora do top 4) — mesmo
+  // padrão .tv-row de Em Águas/No Chão, agrupada em colunas que preenchem
+  // 100% da altura restante. Antes era uma lista simples com font-size fixo
+  // de 12px; agora escala junto com o resto do painel.
+  function linhaBackordersRestoFlex(nome, qtd, chave){
+    return `<div class="tv-row" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;flex:1;min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid rgba(255,255,255,.12);overflow:hidden;color:#fff;">
+      <span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
+      <span style="font-weight:800;white-space:nowrap;">${fmtN(qtd)}</span>
+    </div>`;
+  }
+  function backordersRestoEmColunas(lista){
+    const ALVO_POR_COLUNA = 22;
+    let nCols = Math.max(1, Math.ceil(lista.length / ALVO_POR_COLUNA));
+    nCols = Math.min(nCols, 5);
+    const porColuna = Math.ceil(lista.length / nCols);
+    const colunas = [];
+    for(let i=0; i<nCols; i++) colunas.push(lista.slice(i*porColuna, (i+1)*porColuna));
+    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:16px;flex:1;min-height:0;">
+      ${colunas.map(col => `<div class="tv-col" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:#0f1f3d;border-radius:8px;padding:2px 12px;">
+        ${col.map(([m,q,chave]) => linhaBackordersRestoFlex(m,q,chave)).join('')}
+      </div>`).join('')}
+    </div>`;
+  }
+
+  const backordersHtml = !backordersLista.length
+    ? `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`
+    : (solo ? `
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
+      <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:stretch;">
+        ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
+      </div>
+      ${backordersResto.length ? backordersRestoEmColunas(backordersResto) : ''}
+    </div>
+  ` : `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:${backordersResto.length?'14px':'0'};">
       ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
     </div>
     ${backordersResto.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;">
@@ -245,7 +283,7 @@ function renderDashTV(){
         <span style="font-weight:700;">${esc(m)}</span><span style="font-weight:800;">${fmtN(q)}</span>
       </div>`).join('')}
     </div>` : ''}
-  ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`;
+  `);
 
   // Linha de 1 processo — usada tanto na tabela única (modo "todos") quanto
   // nas colunas do modo solo abaixo. table-layout:fixed + nowrap/ellipsis
@@ -401,15 +439,26 @@ function renderDashTV(){
 // linha entre todas as colunas (a mais "apertada") como referência, pra
 // garantir que o texto cabe em TODAS as colunas, não só na primeira.
 function ajustarFonteColunasTV(raiz){
-  const colunas = raiz.querySelectorAll('.tv-col');
-  if(!colunas.length) return;
   let menorAltura = Infinity;
-  colunas.forEach(col => {
+  raiz.querySelectorAll('.tv-col').forEach(col => {
     const linha = col.querySelector('.tv-row');
     if(!linha) return;
     const h = linha.getBoundingClientRect().height;
     if(h > 0 && h < menorAltura) menorAltura = h;
   });
+  // Fallback pro Backorders quando há poucas marcas (só os 4 cards
+  // principais, sem lista "resto" pra medir) — pedido do Ayslan
+  // (08/09/2026): mede o card (.tv-card) em vez de uma linha de tabela. O
+  // card empilha ~3 "linhas" de conteúdo (nome/número/barra), daí dividir
+  // a altura por 3 pra chegar numa referência comparável à altura de uma
+  // linha normal antes de aplicar a mesma proporção.
+  if(!isFinite(menorAltura)){
+    const card = raiz.querySelector('.tv-card');
+    if(card){
+      const h = card.getBoundingClientRect().height;
+      if(h > 0) menorAltura = h / 3;
+    }
+  }
   if(!isFinite(menorAltura)) return;
   // ~42% da altura da linha costuma preencher bem sem estourar (sobra
   // espaço pro padding/borda) — testado visualmente com 1, 3 e 5 colunas.
