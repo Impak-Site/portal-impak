@@ -379,10 +379,18 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           Compara o que foi cotado no Calculador (na hora de aprovar a cotação) com o resultado real do processo, calculado a partir da NF Entrada e NF Saída lançadas na aba Documentos.
         </div>
         ${renderFechamentoInfo(p)}
-        <div style="margin-top:14px;">
-          <button type="button" class="btn btn-outline" onclick="abrirDRE()">📊 Ver / Exportar DRE</button>
+        <!-- pointer-events:auto explicito nos 3 elementos abaixo -- quando o
+        processo esta fechado, #modal-body-lockwrap trava TODO o conteudo
+        com pointer-events:none (pra impedir edicao), o que sem isso tambem
+        bloqueava clicar em "Ver / Exportar DRE" e no modal do DRE que abre
+        dentro do dre-overlay. Pedido do Ayslan (08/09/2026): "eu nao
+        consigo clicar para ver o DRE" quando fechado, "preciso exportar o
+        DRE mesmo depois de fechado" -- so ver/exportar o DRE, sem editar
+        nada, entao fica de fora da trava. -->
+        <div style="margin-top:14px;pointer-events:auto;">
+          <button type="button" class="btn btn-outline" style="pointer-events:auto;" onclick="abrirDRE()">📊 Ver / Exportar DRE</button>
         </div>
-        <div id="dre-overlay"></div>
+        <div id="dre-overlay" style="pointer-events:auto;"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
