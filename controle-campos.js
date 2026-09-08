@@ -640,22 +640,31 @@ function renderResumoVendas(){
   const snapshot = { ..._editando, real_json: realJson, real_cambio: cambio, vendas_json: JSON.stringify(_vendas) };
   const resumo = calcularVendasResumo(snapshot);
   if(!resumo){ wrap.innerHTML = ''; return; }
-  // Nao mostra o lucro por venda (NF - custo rateado): a Emanuelly/Ayslan
-  // nao usam esse numero isolado, ja que o Lucro Real de verdade (aba
-  // Fechamento) tambem soma Juros Cobrado e Notas Boss, que nao entram
-  // aqui - mostrar os dois lado a lado so confundia. Fica só a alocação
-  // (quantidade/% do processo) pra validar que a venda bate com o total.
+  // Volta a mostrar o lucro por venda (pedido Ayslan 08/09/2026 - tinha
+  // sido tirado antes, mas o Ayslan quer ver de novo aqui). E' o lucro
+  // "bruto" da venda (NF Saida da venda - custo rateado), sem contar Juros
+  // Cobrado/Notas Boss (que so entram no Lucro Real completo da aba
+  // Fechamento) - por isso o rotulo deixa claro que e' so um preview.
   const linhasHtml = resumo.linhas.map((l,i)=>`
     <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
       <span style="color:var(--muted);">${esc(l.venda.cliente||('Venda '+(i+1)+' — sem cliente'))} — ${l.qtdVenda||0} un. (${(l.fracao*100).toFixed(1)}% do processo)</span>
+      <strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?`${r2(l.lucro)}${l.pctLucro!=null?` (${(l.pctLucro*100).toFixed(1)}%)`:''}`:'aguardando NF'}</strong>
     </div>`).join('');
   const saldo = resumo.saldoNaoAlocado;
   const alertaSaldo = Math.abs(saldo) > 0.001
     ? `<div style="margin-top:8px;font-size:11px;color:${saldo>0?'#f39c12':'var(--err)'};">⚠ ${saldo>0 ? `Ainda faltam ${saldo} un. sem venda alocada (de ${resumo.totalQtd} do processo).` : `Alocado ${Math.abs(saldo)} un. a mais do que o processo tem (${resumo.totalQtd}).`}${(saldo>0 && resumo.itensFaltantes && resumo.itensFaltantes.length) ? `<ul style="margin:6px 0 0 18px;padding:0;">${resumo.itensFaltantes.map(it => `<li>${esc(it.descricao)}: ${it.quantidade}</li>`).join('')}</ul>` : ''}</div>`
     : '';
+  const lucroTotal = resumo.linhas.every(l=>l.lucro!=null) ? resumo.linhas.reduce((s,l)=>s+l.lucro,0) : null;
+  const linhaLucroTotal = lucroTotal!=null
+    ? `<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:4px;border-top:1px solid var(--border);font-size:12px;font-weight:700;">
+        <span style="color:var(--text);">Lucro total do processo (soma das vendas)</span>
+        <strong style="color:${lucroTotal>=0?'var(--ok)':'var(--err)'};">${r2(lucroTotal)}</strong>
+      </div>`
+    : '';
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:6px;">
-    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">Resumo por venda (alocação de quantidade — o Lucro Real completo está na aba Fechamento)</div>
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">Resumo por venda (lucro bruto — o Lucro Real completo, com Juros e Notas Boss, está na aba Fechamento)</div>
     ${linhasHtml}
+    ${linhaLucroTotal}
     ${alertaSaldo}
   </div>`;
 }
