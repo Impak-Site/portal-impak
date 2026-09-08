@@ -443,8 +443,10 @@ function parseFechamento(wb) {
     const lavacao = numVal(cellVal(ws, 'G34')); if (lavacao > 0) real_json.lavacao = lavacao;
     const comissaoChina = numVal(cellVal(ws, 'G36')); if (comissaoChina > 0) real_json.comissao_china = comissaoChina;
 
-  const adiantamentoPorto = numVal(cellVal(ws, 'G22')); if (adiantamentoPorto > 0) real_json.adiantamento_porto = adiantamentoPorto;
-    const agenteFrete = numVal(cellVal(ws, 'G23')); if (agenteFrete > 0) real_json.agente_frete = agenteFrete;
+  // Adiantamento Porto (G22) e Agente Frete (G23) NAO sao importados: sao valores de
+  // adiantamento/caixa que ja estao contabilizados item a item em outros campos (II, IPI,
+  // PIS, COFINS, ICMS, IBS, CBS e Frete/Siscomex/Armazenagem/Capatazia/etc.). Importar
+  // esses dois campos soma o mesmo dinheiro duas vezes no Fechamento.
     const diferencaPis = numVal(cellVal(ws, 'G24')); if (diferencaPis > 0) real_json.diferenca_pis = diferencaPis;
     const diferencaCofins = numVal(cellVal(ws, 'G25')); if (diferencaCofins > 0) real_json.diferenca_cofins = diferencaCofins;
     const marjoracao = numVal(cellVal(ws, 'G26')); if (marjoracao > 0) real_json.marjoracao = marjoracao;
