@@ -261,13 +261,13 @@ function renderDashTV(){
   function cardMarca(nome, qtd, maxQtd, chave){
     const pct = maxQtd > 0 ? Math.round((qtd/maxQtd)*100) : 0;
     const cor = corMarcaTV(chave);
-    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:.75em .9em;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 1px 4px rgba(15,23,42,.08);">
-      <div style="display:flex;align-items:center;gap:.5em;margin-bottom:.5em;overflow:hidden;">
-        <div style="flex:0 0 auto;width:1.9em;height:1.9em;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:.62em;font-weight:800;font-family:'DM Sans',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
-        <div style="font-size:.68em;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
+    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.1em 1.3em;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.1);">
+      <div style="display:flex;align-items:center;gap:.6em;margin-bottom:.4em;overflow:hidden;">
+        <div style="flex:0 0 auto;width:2.3em;height:2.3em;border-radius:7px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:.72em;font-weight:800;font-family:'DM Sans',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
+        <div style="font-size:.85em;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
       </div>
-      <div style="font-size:1.6em;font-weight:800;color:#0f1f3d;font-family:'DM Sans',sans-serif;white-space:nowrap;">${fmtN(qtd)} <span style="font-size:.46em;font-weight:600;color:#94a3b8;">containers</span></div>
-      <div style="background:#e2e8f0;border-radius:4px;height:.3em;margin-top:.5em;overflow:hidden;"><div style="background:${cor};height:100%;width:${pct}%;"></div></div>
+      <div style="font-size:2.15em;font-weight:800;color:#0f1f3d;font-family:'DM Sans',sans-serif;white-space:nowrap;">${fmtN(qtd)} <span style="font-size:.42em;font-weight:600;color:#94a3b8;">containers</span></div>
+      <div style="background:#e2e8f0;border-radius:4px;height:.35em;margin-top:.45em;overflow:hidden;"><div style="background:${cor};height:100%;width:${pct}%;"></div></div>
     </div>`;
   }
 
@@ -297,7 +297,7 @@ function renderDashTV(){
           <th style="padding:8px 12px;text-align:right;">Em Águas</th>
         </tr></thead>
         <tbody>
-        ${linhas.map(l => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;">
+        ${linhas.map((l,idx) => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;${idx%2===1?'background:#f8fafc;':''}">
           <td style="padding:6px 12px;font-weight:700;">${esc(l.nome)}</td>
           <td style="padding:6px 12px;text-align:right;font-weight:800;">${fmtN(l.total)}</td>
           <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.bo)}</td>
@@ -318,22 +318,23 @@ function renderDashTV(){
   // padrão .tv-row de Em Águas/No Chão, agrupada em colunas que preenchem
   // 100% da altura restante. Antes era uma lista simples com font-size fixo
   // de 12px; agora escala junto com o resto do painel.
-  function linhaBackordersRestoFlex(nome, qtd, chave){
-    return `<div class="tv-row" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;flex:1;min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid rgba(255,255,255,.12);overflow:hidden;color:#fff;">
+  function linhaBackordersRestoFlex(nome, qtd, chave, idx){
+    const zebra = idx % 2 === 1 ? 'background:rgba(255,255,255,.06);' : '';
+    return `<div class="tv-row" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;flex:1;min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px;${zebra}padding:0 8px;margin:0 -8px;border-radius:4px;overflow:hidden;color:#fff;">
       <span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
       <span style="font-weight:800;white-space:nowrap;">${fmtN(qtd)}</span>
     </div>`;
   }
   function backordersRestoEmColunas(lista){
-    const ALVO_POR_COLUNA = 22;
+    const ALVO_POR_COLUNA = 16;
     let nCols = Math.max(1, Math.ceil(lista.length / ALVO_POR_COLUNA));
     nCols = Math.min(nCols, 5);
     const porColuna = Math.ceil(lista.length / nCols);
     const colunas = [];
     for(let i=0; i<nCols; i++) colunas.push(lista.slice(i*porColuna, (i+1)*porColuna));
-    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:16px;flex:1;min-height:0;">
-      ${colunas.map(col => `<div class="tv-col" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:#0f1f3d;border-radius:8px;padding:2px 12px;">
-        ${col.map(([m,q,chave]) => linhaBackordersRestoFlex(m,q,chave)).join('')}
+    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:14px;flex:1;min-height:0;">
+      ${colunas.map(col => `<div class="tv-col" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:#0f1f3d;border-radius:8px;padding:4px 10px;">
+        ${col.map(([m,q,chave],idx) => linhaBackordersRestoFlex(m,q,chave,idx)).join('')}
       </div>`).join('')}
     </div>`;
   }
@@ -346,18 +347,18 @@ function renderDashTV(){
     ? `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`
     : (solo ? `
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
-      <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:stretch;">
+      <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:stretch;">
         ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
       </div>
       ${backordersResto.length ? backordersRestoEmColunas(backordersResto) : ''}
       ${totalizadorMarcasHtml ? `<div style="flex:0 0 auto;max-height:34vh;overflow-y:auto;">${totalizadorMarcasHtml}</div>` : ''}
     </div>
   ` : `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:${backordersResto.length?'14px':'0'};">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:${backordersResto.length?'14px':'0'};">
       ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
     </div>
     ${backordersResto.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:14px;">
-      ${backordersResto.map(([m,q,chave]) => `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;display:flex;justify-content:space-between;background:#0f1f3d;color:#fff;border-radius:6px;padding:8px 12px;font-size:12px;">
+      ${backordersResto.map(([m,q,chave],idx) => `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;display:flex;justify-content:space-between;background:${idx%2===1?'#16294d':'#0f1f3d'};color:#fff;border-radius:6px;padding:9px 13px;font-size:14px;">
         <span style="font-weight:700;">${esc(m)}</span><span style="font-weight:800;">${fmtN(q)}</span>
       </div>`).join('')}
     </div>` : ''}
@@ -541,7 +542,7 @@ function ajustarFonteColunasTV(raiz){
   if(!isFinite(menorAltura)) return;
   // ~42% da altura da linha costuma preencher bem sem estourar (sobra
   // espaço pro padding/borda) — testado visualmente com 1, 3 e 5 colunas.
-  const fonte = Math.max(11, Math.min(32, Math.round(menorAltura * 0.42)));
+  const fonte = Math.max(13, Math.min(40, Math.round(menorAltura * 0.5)));
   // raiz é o próprio #dash-tv-content (é nele que o classList.toggle
   // 'dash-tv-solo' foi aplicado) — o font-size herda pra tudo dentro.
   raiz.style.fontSize = fonte + 'px';
