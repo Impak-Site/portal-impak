@@ -640,19 +640,22 @@ function renderResumoVendas(){
   const snapshot = { ..._editando, real_json: realJson, real_cambio: cambio, vendas_json: JSON.stringify(_vendas) };
   const resumo = calcularVendasResumo(snapshot);
   if(!resumo){ wrap.innerHTML = ''; return; }
+  // Nao mostra o lucro por venda (NF - custo rateado): a Emanuelly/Ayslan
+  // nao usam esse numero isolado, ja que o Lucro Real de verdade (aba
+  // Fechamento) tambem soma Juros Cobrado e Notas Boss, que nao entram
+  // aqui - mostrar os dois lado a lado so confundia. Fica só a alocação
+  // (quantidade/% do processo) pra validar que a venda bate com o total.
   const linhasHtml = resumo.linhas.map((l,i)=>`
     <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
       <span style="color:var(--muted);">${esc(l.venda.cliente||('Venda '+(i+1)+' — sem cliente'))} — ${l.qtdVenda||0} un. (${(l.fracao*100).toFixed(1)}% do processo)</span>
-      <strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?r2(l.lucro):'aguardando NF'}</strong>
     </div>`).join('');
   const saldo = resumo.saldoNaoAlocado;
   const alertaSaldo = Math.abs(saldo) > 0.001
     ? `<div style="margin-top:8px;font-size:11px;color:${saldo>0?'#f39c12':'var(--err)'};">⚠ ${saldo>0 ? `Ainda faltam ${saldo} un. sem venda alocada (de ${resumo.totalQtd} do processo).` : `Alocado ${Math.abs(saldo)} un. a mais do que o processo tem (${resumo.totalQtd}).`}${(saldo>0 && resumo.itensFaltantes && resumo.itensFaltantes.length) ? `<ul style="margin:6px 0 0 18px;padding:0;">${resumo.itensFaltantes.map(it => `<li>${esc(it.descricao)}: ${it.quantidade}</li>`).join('')}</ul>` : ''}</div>`
     : '';
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:6px;">
-    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">Resumo por venda (rateio automático dos Custos Reais + custos diretos)</div>
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">Resumo por venda (alocação de quantidade — o Lucro Real completo está na aba Fechamento)</div>
     ${linhasHtml}
-    ${resumo.todasComNf ? `<div style="display:flex;justify-content:space-between;padding-top:8px;margin-top:4px;border-top:1px solid var(--border);font-weight:700;font-size:12px;"><span>Lucro total do processo (soma das vendas)</span><span style="color:${resumo.lucroTotal>=0?'var(--ok)':'var(--err)'}">${r2(resumo.lucroTotal)}</span></div>` : '<div style="font-size:11px;color:var(--dim);margin-top:6px;">Preencha a NF Saída de cada venda pra ver o lucro total.</div>'}
     ${alertaSaldo}
   </div>`;
 }
