@@ -84,6 +84,15 @@ let _cmIntervaloId = null; // id do setInterval de auto-refresh (null = parado)
 // ativos), sem recalcular a agregação de novo nem arriscar divergir dela.
 let _cmUltimoResultado = null;
 
+// Elementos do topo da tela normal do Controle (KPI cards, busca/botões,
+// filtro de data, abas de fase) — pedido do Ayslan (08/09/2026, olhando o
+// Por Cliente/Medida aberto): "porque fica essa parte em cima... acho que
+// nao tem necessidade". Mesmo conjunto de IDs que as telas exclusivas
+// (Financeiro/Resultado/Narcélio/TV, ver ativarTelaXExclusiva em
+// controle-core.js) já escondem, só que aqui de forma reversível (toggle
+// dentro do /controle normal, não uma rota própria).
+const CM_ELEMENTOS_TOPO = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'];
+
 function toggleDashClienteMedida(){
   const el = document.getElementById('dash-clientemedida');
   if(!el) return;
@@ -91,6 +100,12 @@ function toggleDashClienteMedida(){
   if(!visivel) fecharTodosDashboards();
   document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
+  CM_ELEMENTOS_TOPO.forEach(id => {
+    const alvo = document.getElementById(id);
+    if(alvo) alvo.style.display = visivel ? '' : 'none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = visivel ? '' : 'none';
   if(!visivel){
     renderDashClienteMedida();
     _cmIniciarAutoRefresh();

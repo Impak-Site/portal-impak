@@ -2336,6 +2336,17 @@ function fecharTodosDashboards(){
   });
 
 document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = '');
+
+// Restaura o topo (KPI cards/busca/botões/filtro de data/abas de fase)
+// caso o Por Cliente/Medida tivesse escondido (ver toggleDashClienteMedida
+// em controle-dash-cliente-medida.js) — sem isso, trocar de Cliente/Medida
+// direto pra outro dashboard deixava o topo sumido pra sempre.
+['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(function(id){
+  var el = document.getElementById(id);
+  if(el) el.style.display = '';
+});
+var toolbarEl = document.querySelector('.toolbar');
+if(toolbarEl) toolbarEl.style.display = '';
 }
 
 function setFaseFilter(fase){
