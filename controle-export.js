@@ -250,7 +250,18 @@ async function exportarDREExcel(dre){
       r++;
       return row;
     };
-    const fmtMoeda = cell => { cell.numFmt = '#,##0.00'; cell.alignment = {horizontal:'right'}; };
+    // Formata como TEXTO "R$ 200.000,00" (ponto de milhar + vírgula decimal)
+    // em vez de numFmt numérico — pedido do Ayslan (08/09/2026): numFmt
+    // numérico mostra os separadores conforme a configuração regional do
+    // Excel de quem abre o arquivo (podia sair "200,000.00" em Excel com
+    // localidade en-US); escrevendo o texto já formatado em pt-BR, o
+    // resultado é sempre o mesmo não importa onde o arquivo for aberto.
+    const fmtMoeda = cell => {
+      if(typeof cell.value === 'number'){
+        cell.value = 'R$ ' + cell.value.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+      }
+      cell.alignment = {horizontal:'right'};
+    };
 
     const nfRow = linha(`Nota fiscal de Saída${dre.nfSaidaNumero?' - Nfe '+dre.nfSaidaNumero:''}:`, null, null, dre.nfSaidaValor);
     fmtMoeda(nfRow.getCell(4));
@@ -307,7 +318,7 @@ async function exportarDREExcel(dre){
     r++;
     const rotuloLucro1 = dre.notasBoss ? 'LUCRO BRUTO do PROCESSO - IMPAK' : 'LUCRO BRUTO do PROCESSO';
     const lucro1Row = linha(rotuloLucro1, null, null, dre.lucroBrutoImpak);
-    lucro1Row.font = {bold:true, color:{argb: dre.notasBoss ? 'FF000000' : 'FF16A34A'}};
+    lucro1Row.font = {bold:true};
     fmtMoeda(lucro1Row.getCell(4));
     if(dre.pctLucroBrutoImpak != null){
       lucro1Row.getCell(5).value = dre.pctLucroBrutoImpak;
@@ -330,7 +341,7 @@ async function exportarDREExcel(dre){
 
       r++;
       const lucroFinalRow = linha('LUCRO BRUTO do PROCESSO', null, null, dre.lucroBruto);
-      lucroFinalRow.font = {bold:true, color:{argb:'FF16A34A'}};
+      lucroFinalRow.font = {bold:true};
       fmtMoeda(lucroFinalRow.getCell(4));
       lucroFinalRow.eachCell({includeEmpty:true}, c=>{ c.border = {top:{style:'thin',color:{argb:CORES.BORDA}}}; });
       if(dre.pctLucro != null){
