@@ -1848,26 +1848,26 @@ function renderFechamentoBreakdown(p){
     const itensPago = porGrupoPago[g.grupo] || [];
     const detalheItens = itensPago.map(it => {
       const cobrado = (porGrupoCobrado[g.grupo]||[]).find(c => c.id === it.id);
-      return `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--muted);">
+      return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--muted);">
         <span>${esc(it.label)}</span>
         <span style="display:flex;gap:10px;"><span>${r2(it.valorBrl)}</span>${cobrado?`<span style="color:var(--dim);">/ ${r2(cobrado.valorBrl)}</span>`:''}</span>
       </div>`;
     }).join('');
     return `<details style="margin-bottom:6px;">
-      <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-sm);font-size:12px;">
+      <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;">
         <span style="font-weight:700;color:var(--text);">${esc(g.grupo)}</span>
         <span style="display:flex;gap:12px;align-items:center;">
           <span style="color:var(--muted);">${r2(g.totalPago)}</span>
-          ${g.margem!=null?`<strong style="color:${g.margem>=0?'var(--ok)':'var(--err)'};font-size:11px;">${g.margem>=0?'+':''}${r2(g.margem)}</strong>`:''}${g.totalCredito>0?(g.slug==='diferencas'?`<span style="color:var(--err);font-size:10px;" title="Diferenca entre o valor da NF e o credito ja pago na importacao - imposto que ainda falta recolher">Impostos a recolher: ${r2(g.totalCredito)}</span>`:`<span style="color:var(--ok);font-size:10px;" title="Impostos pagos na importacao (IPI/PIS/COFINS/ICMS) que geram credito tributario a compensar - nao e margem/lucro nem prejuizo">Credito impostos: ${r2(g.totalCredito)}</span>`):''}
+          ${g.margem!=null?`<strong style="color:${g.margem>=0?'var(--ok)':'var(--err)'};font-size:12px;">${g.margem>=0?'+':''}${r2(g.margem)}</strong>`:''}${g.totalCredito>0?(g.slug==='diferencas'?`<span style="color:var(--err);font-size:11px;" title="Diferenca entre o valor da NF e o credito ja pago na importacao - imposto que ainda falta recolher">Impostos a recolher: ${r2(g.totalCredito)}</span>`:`<span style="color:var(--ok);font-size:11px;" title="Impostos pagos na importacao (IPI/PIS/COFINS/ICMS) que geram credito tributario a compensar - nao e margem/lucro nem prejuizo">Credito impostos: ${r2(g.totalCredito)}</span>`):''}
         </span>
       </summary>
-      <div style="padding:6px 10px 2px 10px;">${detalheItens||'<span style="font-size:11px;color:var(--dim);">sem itens lançados</span>'}</div>
+      <div style="padding:6px 10px 2px 10px;">${detalheItens||'<span style="font-size:12px;color:var(--dim);">sem itens lançados</span>'}</div>
     </details>`;
   }).join('');
 
   return `<div>
-    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">🧮 Custos Reais — detalhado por grupo</div>
-    ${linhasGrupo || '<div style="font-size:12px;color:var(--dim);">Nenhum custo lançado na aba Custos Reais ainda.</div>'}
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">🧮 Custos Reais — detalhado por grupo</div>
+    ${linhasGrupo || '<div style="font-size:13px;color:var(--dim);">Nenhum custo lançado na aba Custos Reais ainda.</div>'}
   </div>`;
 }
 
@@ -1885,13 +1885,13 @@ function renderFechamentoParcelasCambio(p){
     const cambio = parseFloat(pc.cambio_fechado)||null;
     const brl = cambio ? usd*cambio : null;
     const data = pc.data_vencimento ? parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '—';
-    return `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px dashed var(--border);">
+    return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dashed var(--border);">
       <span style="color:var(--muted);">${esc(pc.label||'Parcela')} <span style="color:var(--dim);">(${data})</span></span>
       <span style="display:flex;gap:10px;"><span>US$ ${usd.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span><span style="color:var(--dim);">@ ${cambio?cambio.toFixed(4):'—'}</span><strong>${r2(brl)}</strong></span>
     </div>`;
   }).join('');
   return `<div>
-    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">💱 Parcelas × Câmbio Fechado</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">💱 Parcelas × Câmbio Fechado</div>
     ${linhas}
   </div>`;
 }
@@ -1908,14 +1908,14 @@ function renderFechamentoTimeline(p){
   ];
   const rotaDias = dias(p.data_embarque, p.data_chegada);
   const totalDias = dias(p.pi_data, p.data_chegada);
-  const linhas = pontos.map(pt => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;">
+  const linhas = pontos.map(pt => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;">
       <span style="color:var(--muted);">${pt.label}</span>
       <strong style="color:${pt.data?'var(--text)':'var(--dim)'};">${pt.data?parseDataLocal(pt.data).toLocaleDateString('pt-BR'):'—'}</strong>
     </div>`).join('');
   return `<div>
-    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">📅 Timeline</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">📅 Timeline</div>
     ${linhas}
-    ${(rotaDias!=null || totalDias!=null) ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);display:flex;gap:14px;font-size:11px;color:var(--muted);">
+    ${(rotaDias!=null || totalDias!=null) ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);display:flex;gap:14px;font-size:12px;color:var(--muted);">
       ${rotaDias!=null?`<span>Rota: <strong style="color:var(--text);">${rotaDias}d</strong></span>`:''}
       ${totalDias!=null?`<span>Total: <strong style="color:var(--text);">${totalDias}d</strong> (${(totalDias/30.44).toFixed(1)} meses)</span>`:''}
     </div>` : ''}
@@ -1939,7 +1939,7 @@ function renderFechamentoInfo(p){
   // há estimativa E também não há NF Saída ainda — nesse caso não tem
   // mesmo nada pra mostrar.
   if(!f.temEstimativa && !f.temReal){
-    return `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:12px;">
+    return `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-size:13px;">
       Este processo não tem um valor estimado (cotação) nem resultado real (NF Entrada/Saída) vinculado ainda — preencha a NF Entrada e a NF Saída na aba Documentos assim que possível pra ver a margem aqui.
     </div>`;
   }
@@ -1977,7 +1977,7 @@ function renderFechamentoInfo(p){
           ? (() => {
               const valor = v.formaPagamento === 'avista' ? 'À Vista' : `Prazo: ${v.texto ? esc(v.texto) : 'não informado'}`;
               const rotulo = multiplas ? `🧾 Forma de Pagamento — ${esc(l.venda.cliente||'(sem cliente)')}` : '🧾 Forma de Pagamento';
-              return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong>${valor}</strong></div>`;
+              return `<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong>${valor}</strong></div>`;
             })()
           : '';
         const jurosVenda = calcularJurosVenda(p, l.venda, f.vendasResumo.linhas.length);
@@ -1985,7 +1985,7 @@ function renderFechamentoInfo(p){
           ? (() => {
               const rotulo = multiplas ? `🧾 Juros Cobrado do Cliente — ${esc(l.venda.cliente||'(sem cliente)')}` : '🧾 Juros Cobrado do Cliente (somado ao Lucro Real)';
               const pctJuros = l.nfSaida ? (jurosVenda / l.nfSaida) : null;
-              return `<div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong style="color:var(--ok);">${r2(jurosVenda)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctJuros)})</span></strong></div>`;
+              return `<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px;"><span style="color:var(--muted);">${rotulo}</span><strong style="color:var(--ok);">${r2(jurosVenda)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctJuros)})</span></strong></div>`;
             })()
           : '';
         return linhaPrazo + linhaJurosVenda;
@@ -1993,24 +1993,24 @@ function renderFechamentoInfo(p){
     : '';
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
-        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
-        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')} <span style="color:var(--dim);">(${(l.fracao*100).toFixed(1)}% do processo)</span></span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?`${r2(l.lucro)} <span style="color:var(--muted);font-weight:400;">(${pct2(l.pctLucro)})</span>`:'aguardando NF'}</strong></div>`).join('')}
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
+        ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')} <span style="color:var(--dim);">(${(l.fracao*100).toFixed(1)}% do processo)</span></span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?`${r2(l.lucro)} <span style="color:var(--muted);font-weight:400;">(${pct2(l.pctLucro)})</span>`:'aguardando NF'}</strong></div>`).join('')}
         ${linhaPrazoJurosRows}
       </div>`
     : '';
   const pctJurosUnico = (f.jurosCobrado && f.nfSaida) ? (f.jurosCobrado.valor / f.nfSaida) : null;
   const linhaJuros = (!f.vendasResumo && f.jurosCobrado)
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctJurosUnico)})</span></strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">🧾 Juros Cobrado do Cliente (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.jurosCobrado.valor)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctJurosUnico)})</span></strong></div>
       </div>`
     : '';
   const pctNotasBoss = (f.notasBoss && f.nfSaida) ? (f.notasBoss.valorBoss / f.nfSaida) : null;
   const linhaNotasBoss = f.notasBoss
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
-        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Notas Fiscais BOSS</div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Valor das Notas Boss</span><strong>${r2(f.notasBoss.valorBoss)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctNotasBoss)})</span></strong></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)</span><strong style="color:var(--err);">− ${r2(f.notasBoss.irRetido+f.notasBoss.iss+f.notasBoss.pis+f.notasBoss.cofins+f.notasBoss.irpj+f.notasBoss.csll)}</strong></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Total a Receber (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.notasBoss.totalReceber)}</strong></div>
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Notas Fiscais BOSS</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Valor das Notas Boss</span><strong>${r2(f.notasBoss.valorBoss)} <span style="color:var(--muted);font-weight:400;">(${pctPreciso(pctNotasBoss)})</span></strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)</span><strong style="color:var(--err);">− ${r2(f.notasBoss.irRetido+f.notasBoss.iss+f.notasBoss.pis+f.notasBoss.cofins+f.notasBoss.irpj+f.notasBoss.csll)}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--muted);">Total a Receber (somado ao Lucro Real)</span><strong style="color:var(--ok);">${r2(f.notasBoss.totalReceber)}</strong></div>
       </div>`
     : '';
   const rotuloLucroReal = [
@@ -2020,24 +2020,24 @@ function renderFechamentoInfo(p){
   ].filter(Boolean).join(' ');
   const linhaReal = f.temReal
     ? `${linhaCustoRealDetalhado}<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Lucro Real (${rotuloLucroReal})</span><strong>${r2(f.lucroReal)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroReal)})</span></strong></div>${linhaJuros}${linhaNotasBoss}`
-    : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:12px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
+    : `${linhaCustoRealDetalhado}<div style="color:var(--muted);font-size:13px;">Ainda não há NF Saída lançada — preencha NF Entrada e NF Saída na aba Documentos pra ver o resultado real aqui.</div>`;
 
   const corDelta = f.deltaValor==null ? 'var(--muted)' : f.deltaValor >= 0 ? 'var(--ok)' : 'var(--err)';
   const linhaDelta = f.temComparacao
-    ? `<div style="margin-top:8px;padding:8px 10px;background:${f.deltaValor>=0?'rgba(22,163,74,.08)':'rgba(220,38,38,.08)'};border-radius:8px;font-weight:700;color:${corDelta};display:flex;justify-content:space-between;font-size:12px;">
+    ? `<div style="margin-top:8px;padding:8px 10px;background:${f.deltaValor>=0?'rgba(22,163,74,.08)':'rgba(220,38,38,.08)'};border-radius:8px;font-weight:700;color:${corDelta};display:flex;justify-content:space-between;font-size:13px;">
         <span>${f.deltaValor>=0?'📈 Rendeu a mais que o cotado':'📉 Rendeu a menos que o cotado'}</span>
         <span>${f.deltaValor>=0?'+':''}${r2(f.deltaValor)}</span>
       </div>`
     : '';
 
   const blocoEstimado = f.temEstimativa
-    ? `<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">📐 Estimado na cotação</div>
-    <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;margin-bottom:10px;">
+    ? `<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">📐 Estimado na cotação</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total estimado</span><strong>${r2(f.custoEstimado)}</strong></div>
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Faturamento estimado (Com S.T.)</span><strong>${r2(f.faturamentoEstimado)}</strong></div>
       <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:4px;"><span style="color:var(--muted);">Lucro estimado</span><strong>${r2(f.lucroEstimado)} <span style="color:var(--muted);font-weight:400;">(${pct2(f.pctLucroEstimado)})</span></strong></div>
     </div>`
-    : `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--muted);margin-bottom:10px;">
+    : `<div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--muted);margin-bottom:10px;">
       Este processo não passou pela cotação do Calculador — sem valor estimado pra comparar.
     </div>`;
 
@@ -2047,27 +2047,27 @@ function renderFechamentoInfo(p){
   const kpiPct = f.temReal ? f.pctLucroReal : null;
   const statStrip = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">NF Entrada</div>
-      <div style="font-size:15px;font-weight:700;color:var(--text);">${r2(f.nfEntrada)}</div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">NF Entrada</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text);">${r2(f.nfEntrada)}</div>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">NF Saída${f.vendasResumo?' (soma das vendas)':''}</div>
-      <div style="font-size:15px;font-weight:700;color:var(--text);">${r2(f.nfSaida)}</div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">NF Saída${f.vendasResumo?' (soma das vendas)':''}</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text);">${r2(f.nfSaida)}</div>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">Custo Real Total</div>
-      <div style="font-size:15px;font-weight:700;color:var(--text);">${r2(f.custoRealTotal)}</div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">Custo Real Total</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text);">${r2(f.custoRealTotal)}</div>
     </div>
     <div style="background:${kpiLucro==null?'var(--card)':kpiLucro>=0?'var(--ok-bg)':'var(--err-bg)'};border:1px solid ${kpiLucro==null?'var(--border)':kpiLucro>=0?'var(--ok)':'var(--err)'};border-radius:var(--r-md);padding:10px 12px;">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">Lucro Real</div>
-      <div style="font-size:15px;font-weight:700;color:${kpiLucro==null?'var(--muted)':kpiLucro>=0?'var(--ok)':'var(--err)'};">${r2(kpiLucro)} <span style="font-size:11px;font-weight:400;">${kpiPct!=null?`(${pct2(kpiPct)})`:''}</span></div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;">Lucro Real</div>
+      <div style="font-size:16px;font-weight:700;color:${kpiLucro==null?'var(--muted)':kpiLucro>=0?'var(--ok)':'var(--err)'};">${r2(kpiLucro)} <span style="font-size:12px;font-weight:400;">${kpiPct!=null?`(${pct2(kpiPct)})`:''}</span></div>
     </div>
   </div>`;
 
   const colunaEsquerda = `
     ${blocoEstimado}
-    <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;">✅ Resultado real</div>
-    <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">✅ Resultado real</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
       ${linhaReal}
     </div>
     ${linhaMargemTaxas}
@@ -2084,7 +2084,7 @@ function renderFechamentoInfo(p){
     ${statStrip}
     <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;">
       <div>${colunaEsquerda}</div>
-      <div>${blocosDireita || '<div style="font-size:12px;color:var(--dim);">Sem detalhamento adicional (custos por grupo, parcelas ou timeline) lançado ainda.</div>'}</div>
+      <div>${blocosDireita || '<div style="font-size:13px;color:var(--dim);">Sem detalhamento adicional (custos por grupo, parcelas ou timeline) lançado ainda.</div>'}</div>
     </div>
   </div>`;
 }
