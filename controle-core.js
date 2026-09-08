@@ -1397,6 +1397,16 @@ function montarDRE(p){
   const fob = v('fob');
   const totalAdiantamento = adiantamentoItens.reduce((s,i)=>s+i.valor,0);
   const totalAgenteFrete = agenteFreteItens.reduce((s,i)=>s+i.valor,0);
+  // Reciclagem/Comissão/Despesas Baixa Pátio — pedido do Ayslan (08/09/2026,
+  // exemplo DRE_KS260507SMBZIMP): faltavam essas 3 linhas no DRE mesmo já
+  // entrando no Total de Custos (custoReal.total, que soma o real_json
+  // inteiro) — sem elas a soma visível das linhas do DRE não batia com o
+  // TOTAL CUSTOS mostrado embaixo. "Comissão" no exemplo é uma linha só
+  // (Comissão BR + Comissão China somadas; Comissão Boss fica na seção
+  // separada de Notas Boss, mais abaixo).
+  const reciclagem = v('reciclagem');
+  const comissao = v('comissao_br') + v('comissao_china');
+  const despesasBaixaPatio = v('custos_diversos');
   const lavacao = v('lavacao');
   const seguro = v('seguro');
 
@@ -1405,21 +1415,41 @@ function montarDRE(p){
   // que a soma manual acima (fallback) arredonde diferente.
   const custoReal = calcularCustoRealTotal(p);
   const totalCustos = custoReal ? custoReal.total :
-    (fob + totalAdiantamento + totalAgenteFrete + lavacao + seguro +
+    (fob + totalAdiantamento + totalAgenteFrete + reciclagem + comissao + despesasBaixaPatio + lavacao + seguro +
      diferencasItens.filter(d=>d.label!=='IBS' && d.label!=='CBS').reduce((s,d)=>s+d.diferenca,0));
 
-  const nfSaidaValor = parseFloat(p.nf_saida_valor) || null;
-  const lucroBruto = nfSaidaValor != null ? (nfSaidaValor - totalCustos) : null;
-  const pctLucro = (lucroBruto != null && nfSaidaValor) ? (lucroBruto/nfSaidaValor) : null;
+  // Receita e Notas Boss vem do MESMO cálculo da aba Fechamento
+  // (calcularFechamento) — já cobre NF Saída única ou soma de vendas
+  // multi-cliente (vendasResumo), Juros Cobrado do Cliente (linha à parte,
+  // igual à planilha G13/G15) e o sub-livro Notas Fiscais BOSS. Pedido do
+  // Ayslan (08/09/2026): o DRE precisa ter os mesmos 2 estágios de Lucro
+  // Bruto que a planilha tem — "do PROCESSO - IMPAK" (antes da nota Boss)
+  // e "do PROCESSO" (final, depois de somar a nota Boss) — em vez de um
+  // Lucro Bruto único que pulava a NF Boss.
+  const fechamento = calcularFechamento(p);
+  const nfSaidaValor = fechamento.nfSaida;
+  const jurosCobrado = fechamento.jurosCobrado;
+  const totalReceita = (nfSaidaValor||0) + (jurosCobrado ? jurosCobrado.valor : 0);
+
+  const lucroBrutoImpak = nfSaidaValor != null ? (totalReceita - totalCustos) : null;
+  const pctLucroBrutoImpak = (lucroBrutoImpak != null && totalReceita) ? (lucroBrutoImpak/totalReceita) : null;
+
+  const notasBoss = fechamento.notasBoss;
+  const lucroBruto = (lucroBrutoImpak != null && notasBoss) ? (lucroBrutoImpak + notasBoss.totalReceber) : lucroBrutoImpak;
+  const denomFinal = totalReceita + (notasBoss ? notasBoss.valorBoss : 0);
+  const pctLucro = (lucroBruto != null && denomFinal) ? (lucroBruto/denomFinal) : null;
 
   return {
     referencia: p.referencia || '',
     nfSaidaNumero: p.nf_saida_numero || '',
-    nfSaidaValor,
+    nfSaidaValor, jurosCobrado, totalReceita,
     fob, adiantamentoItens, totalAdiantamento,
     agenteFreteItens, totalAgenteFrete,
-    diferencasItens, lavacao, seguro,
-    totalCustos, lucroBruto, pctLucro,
+    diferencasItens, reciclagem, comissao, despesasBaixaPatio, lavacao, seguro,
+    totalCustos,
+    lucroBrutoImpak, pctLucroBrutoImpak,
+    notasBoss,
+    lucroBruto, pctLucro,
   };
 }
 

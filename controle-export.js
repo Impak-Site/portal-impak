@@ -255,6 +255,15 @@ async function exportarDREExcel(dre){
     const nfRow = linha(`Nota fiscal de Saída${dre.nfSaidaNumero?' - Nfe '+dre.nfSaidaNumero:''}:`, null, null, dre.nfSaidaValor);
     fmtMoeda(nfRow.getCell(4));
     nfRow.font = {bold:true};
+
+    if(dre.jurosCobrado){
+      const jurosRow = linha('Juros', null, null, dre.jurosCobrado.valor);
+      fmtMoeda(jurosRow.getCell(4));
+      const totalRecRow = linha('TOTAL', null, null, dre.totalReceita);
+      totalRecRow.font = {bold:true};
+      fmtMoeda(totalRecRow.getCell(4));
+      totalRecRow.eachCell({includeEmpty:true}, c=>{ c.border = {top:{style:'thin',color:{argb:CORES.BORDA}}}; });
+    }
     r++;
 
     const custosHeader = ws.getCell(r,1); custosHeader.value = 'CUSTOS'; custosHeader.font = {bold:true}; r++;
@@ -283,7 +292,10 @@ async function exportarDREExcel(dre){
       fmtMoeda(row.getCell(2)); fmtMoeda(row.getCell(3)); fmtMoeda(row.getCell(4));
     });
 
+    const recRow = linha('    Reciclagem', null, null, dre.reciclagem); fmtMoeda(recRow.getCell(4));
     const lavRow = linha('    Lavação', null, null, dre.lavacao); fmtMoeda(lavRow.getCell(4));
+    const comRow = linha('    Comissão', null, null, dre.comissao); fmtMoeda(comRow.getCell(4));
+    const dbpRow = linha('    Despesas - Baixa Pátio para Venda/Devolução', null, null, dre.despesasBaixaPatio); fmtMoeda(dbpRow.getCell(4));
     const segRow = linha('    Seguro Efetivo PAGO', null, null, dre.seguro); fmtMoeda(segRow.getCell(4));
 
     r++;
@@ -293,12 +305,38 @@ async function exportarDREExcel(dre){
     totalRow.eachCell({includeEmpty:true}, c=>{ c.border = {top:{style:'thin',color:{argb:CORES.BORDA}}}; });
 
     r++;
-    const lucroRow = linha('LUCRO BRUTO do PROCESSO', null, null, dre.lucroBruto);
-    lucroRow.font = {bold:true, color:{argb:'FF16A34A'}};
-    fmtMoeda(lucroRow.getCell(4));
-    if(dre.pctLucro != null){
-      lucroRow.getCell(5).value = dre.pctLucro;
-      lucroRow.getCell(5).numFmt = '0.0%';
+    const rotuloLucro1 = dre.notasBoss ? 'LUCRO BRUTO do PROCESSO - IMPAK' : 'LUCRO BRUTO do PROCESSO';
+    const lucro1Row = linha(rotuloLucro1, null, null, dre.lucroBrutoImpak);
+    lucro1Row.font = {bold:true, color:{argb: dre.notasBoss ? 'FF000000' : 'FF16A34A'}};
+    fmtMoeda(lucro1Row.getCell(4));
+    if(dre.pctLucroBrutoImpak != null){
+      lucro1Row.getCell(5).value = dre.pctLucroBrutoImpak;
+      lucro1Row.getCell(5).numFmt = '0.0%';
+    }
+
+    if(dre.notasBoss){
+      r++;
+      const bossHeaderRow = linha('Nfe BOSS', null, null, dre.notasBoss.valorBoss);
+      fmtMoeda(bossHeaderRow.getCell(4));
+      const impostosBoss = dre.notasBoss.irRetido+dre.notasBoss.iss+dre.notasBoss.pis+dre.notasBoss.cofins+dre.notasBoss.irpj+dre.notasBoss.csll;
+      const custosBossRow = linha('Custos', null, null, impostosBoss);
+      fmtMoeda(custosBossRow.getCell(4));
+      const impostosRow = linha('  Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)', null, impostosBoss, null);
+      impostosRow.getCell(3).font = {italic:true, size:9, color:{argb:CORES.CINZA}};
+      fmtMoeda(impostosRow.getCell(3));
+      const receberRow = linha('Total a Receber (somado ao Lucro Real)', null, null, dre.notasBoss.totalReceber);
+      receberRow.font = {bold:true};
+      fmtMoeda(receberRow.getCell(4));
+
+      r++;
+      const lucroFinalRow = linha('LUCRO BRUTO do PROCESSO', null, null, dre.lucroBruto);
+      lucroFinalRow.font = {bold:true, color:{argb:'FF16A34A'}};
+      fmtMoeda(lucroFinalRow.getCell(4));
+      lucroFinalRow.eachCell({includeEmpty:true}, c=>{ c.border = {top:{style:'thin',color:{argb:CORES.BORDA}}}; });
+      if(dre.pctLucro != null){
+        lucroFinalRow.getCell(5).value = dre.pctLucro;
+        lucroFinalRow.getCell(5).numFmt = '0.0%';
+      }
     }
 
     ws.getColumn(1).width = 46;
