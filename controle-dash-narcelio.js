@@ -32,6 +32,9 @@ function toggleDashNarcelio(){
   if(!visivel) fecharTodosDashboards();
 document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
+  ELEMENTOS_TOPO_DASHBOARD.forEach(id => { const alvo = document.getElementById(id); if(alvo) alvo.style.display = visivel ? '' : 'none'; });
+  const toolbarNarc = document.querySelector('.toolbar');
+  if(toolbarNarc) toolbarNarc.style.display = visivel ? '' : 'none';
   if(!visivel) renderDashNarcelio();
   document.getElementById('menu-narcelio')?.classList.toggle('active', !visivel);
 }

@@ -22,6 +22,9 @@ function toggleDashCarregamento(){
   if(!visivel) fecharTodosDashboards();
 document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
+  ELEMENTOS_TOPO_DASHBOARD.forEach(id => { const alvo = document.getElementById(id); if(alvo) alvo.style.display = visivel ? '' : 'none'; });
+  const toolbarCarreg = document.querySelector('.toolbar');
+  if(toolbarCarreg) toolbarCarreg.style.display = visivel ? '' : 'none';
   if(!visivel) renderDashCarregamento();
   document.getElementById('menu-carregamento')?.classList.toggle('active', !visivel);
 

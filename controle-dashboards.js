@@ -17,6 +17,9 @@ function toggleDashExecutivo(){
   if(!visivel) fecharTodosDashboards();
 document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
+  ELEMENTOS_TOPO_DASHBOARD.forEach(id => { const alvo = document.getElementById(id); if(alvo) alvo.style.display = visivel ? '' : 'none'; });
+  const toolbarExec = document.querySelector('.toolbar');
+  if(toolbarExec) toolbarExec.style.display = visivel ? '' : 'none';
   document.getElementById('menu-executivo')?.classList.toggle('active', !visivel);
   if(!visivel) renderDashExecutivo();
 }
@@ -155,6 +158,9 @@ function toggleDashFinanceiro(){
   if(!visivel) fecharTodosDashboards();
 document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
+  ELEMENTOS_TOPO_DASHBOARD.forEach(id => { const alvo = document.getElementById(id); if(alvo) alvo.style.display = visivel ? '' : 'none'; });
+  const toolbarFin = document.querySelector('.toolbar');
+  if(toolbarFin) toolbarFin.style.display = visivel ? '' : 'none';
   if(!visivel) renderDashFinanceiro();
   document.getElementById('menu-financeiro')?.classList.toggle('active', !visivel);
 }
@@ -166,6 +172,9 @@ function toggleDashResultado(){
   if(!visivel) fecharTodosDashboards();
 document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
+  ELEMENTOS_TOPO_DASHBOARD.forEach(id => { const alvo = document.getElementById(id); if(alvo) alvo.style.display = visivel ? '' : 'none'; });
+  const toolbarRes = document.querySelector('.toolbar');
+  if(toolbarRes) toolbarRes.style.display = visivel ? '' : 'none';
   if(!visivel) renderDashResultado();
   document.getElementById('menu-resultado')?.classList.toggle('active', !visivel);
 }

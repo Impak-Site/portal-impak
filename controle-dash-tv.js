@@ -79,6 +79,9 @@ function toggleDashTV(){
   if(!visivel) fecharTodosDashboards();
   document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
   el.style.display = visivel ? 'none' : 'block';
+  ELEMENTOS_TOPO_DASHBOARD.forEach(id => { const alvo = document.getElementById(id); if(alvo) alvo.style.display = visivel ? '' : 'none'; });
+  const toolbarTV = document.querySelector('.toolbar');
+  if(toolbarTV) toolbarTV.style.display = visivel ? '' : 'none';
   if(!visivel) renderDashTV();
   document.getElementById('menu-tv')?.classList.toggle('active', !visivel);
 }

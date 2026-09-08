@@ -2327,6 +2327,16 @@ function renderFaseFilter(){
 // Carregamento) e desmarca seus itens no menu lateral. Chamado ao trocar
 // de aba/fase ou ao abrir outro dashboard, para a tela trocar de fato em
 // vez de empilhar dashboard + tabela (ou dois dashboards ao mesmo tempo).
+// Elementos do topo da tela normal do Controle (KPI cards, busca/botoes,
+// filtro de data, abas de fase) - escondidos por TODOS os dashboards do
+// menu lateral ao abrir (pedido do Ayslan, 08/09/2026, depois de ajustar
+// so o Por Cliente/Medida: "da mesma forma tem que ser assim pra todos
+// esses. tirar esse 'cabecalho'"). Usado tanto pelos toggles individuais
+// (toggleDashExecutivo/Financeiro/Resultado/Narcelio/Carregamento/TV/
+// ClienteMedida) quanto por fecharTodosDashboards() abaixo, que restaura
+// tudo sempre que nenhum dashboard fica aberto.
+const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'];
+
 function fecharTodosDashboards(){
   ['executivo','financeiro','resultado','narcelio','carregamento','tv','clientemedida'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
@@ -2341,7 +2351,7 @@ document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').
 // caso o Por Cliente/Medida tivesse escondido (ver toggleDashClienteMedida
 // em controle-dash-cliente-medida.js) — sem isso, trocar de Cliente/Medida
 // direto pra outro dashboard deixava o topo sumido pra sempre.
-['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(function(id){
+ELEMENTOS_TOPO_DASHBOARD.forEach(function(id){
   var el = document.getElementById(id);
   if(el) el.style.display = '';
 });
