@@ -617,10 +617,10 @@ function renderDashTV(){
   // (mesmo padrão de emAguasEmColunas/noChaoEmColunas), colunas ETA/Processo/Qtd.
   function linhaProcessoMesChaoTV(x){
     const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
-    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);overflow:hidden;padding:2px 0;">
-        <div style="width:20%;font-weight:700;overflow:hidden;">${etaFmt}</div>
-        <div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(x.referencia||'')}">${esc(x.referencia||'—')}</div>
-        <div style="width:16%;text-align:right;font-weight:700;">${x.n}</div>
+    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;gap:6px;border-top:1px solid var(--border);overflow:hidden;padding:2px 0;white-space:nowrap;">
+        <div style="flex:0 0 auto;font-weight:700;white-space:nowrap;">${etaFmt}</div>
+        <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(x.referencia||'')}">${esc(x.referencia||'—')}</div>
+        <div style="flex:0 0 auto;text-align:right;font-weight:700;">${x.n}</div>
       </div>`;
   }
   function blocoProcessosDoMesChaoTV(lista){
@@ -633,7 +633,7 @@ function renderDashTV(){
     for(let i=0;i<nCols;i++) colunas.push(lista.slice(i*porColuna,(i+1)*porColuna));
     return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;height:100%;display:flex;flex-direction:column;overflow:hidden;">
       <div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;flex:0 0 auto;">Processos do Mês · ${fmtN(lista.length)} processo(s)</div>
-      <div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:10px;flex:1;min-height:0;">
+      <div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:10px;flex:1;min-height:0;font-size:.78em;">
         ${colunas.map(col => `<div style="display:flex;flex-direction:column;overflow:hidden;">${col.map(linhaProcessoMesChaoTV).join('')}</div>`).join('')}
       </div>
     </div>`;
