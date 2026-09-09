@@ -54,6 +54,108 @@ function atualizarSimulacaoCambio(valorStr){
 // desmarcar manualmente).
 let _cambioLoteSelecao = new Map();
 
+// ── Exportar Relatório Mensal (Excel) — pedido do Ayslan (09/09/2026,
+// "se você fosse o financeiro, o que gostaria de ver"): um arquivo pra
+// levar pra uma reunião sem precisar printar a tela. Recalcula os mesmos
+// números do renderDashCambio() (não guarda estado global só pra isso) —
+// é um snapshot no momento em que o botão é clicado, não um recorte de um
+// mês específico (por isso o nome genérico "Relatório Câmbio", a data de
+// geração já fica no subtítulo).
+async function exportarRelatorioMensalCambio(){
+  if(typeof ExcelJS === 'undefined'){
+    showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  try{
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const fmtBRL = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    const fmtUSD = v => `USD ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    const cambioAtual = (_cambio && _cambio.USD) ? _cambio.USD : 5.10;
+
+    const todosPagamentos = listarPagamentosPI(_processos);
+    const abertos = todosPagamentos.filter(x => !x.pago && x.vencimento);
+    const semData = todosPagamentos.filter(x => !x.pago && !x.vencimento);
+    const pagos = todosPagamentos.filter(x => x.pago);
+    const prontas = abertos.filter(x => new Date(x.vencimento+'T00:00:00') < hoje);
+    function janela(dias){
+      const lim = new Date(hoje); lim.setDate(hoje.getDate()+dias);
+      return abertos.filter(x => { const d = new Date(x.vencimento+'T00:00:00'); return d>=hoje && d<=lim; });
+    }
+    const j7 = janela(7), j14 = janela(14), j30 = janela(30);
+    const economiaTotal = pagos.filter(x=>x.cambioPrevisto && x.cambioFechado)
+      .reduce((s,x)=> s + x.valorUsd*(x.cambioPrevisto - x.cambioFechado), 0);
+
+    const { CORES, estilizarTitulo, estilizarSubtitulo, estilizarAba } = window.ExcelStyles;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'IMPAK';
+    wb.created = new Date();
+
+    // ── Aba Resumo ──
+    const wsResumo = wb.addWorksheet('Resumo');
+    wsResumo.mergeCells(1,1,1,2);
+    const titulo = wsResumo.getCell(1,1);
+    titulo.value = 'IMPAK — Relatório de Câmbio';
+    estilizarTitulo(titulo);
+    wsResumo.getRow(1).height = 28;
+    wsResumo.mergeCells(2,1,2,2);
+    const sub = wsResumo.getCell(2,1);
+    sub.value = `Gerado em ${hoje.toLocaleDateString('pt-BR')} · câmbio de referência atual: ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4})}`;
+    estilizarSubtitulo(sub);
+    const linhasResumo = [
+      ['Prontos p/ Fechamento (atrasados)', fmtUSD(prontas.reduce((s,x)=>s+x.valorUsd,0)) + ` (${prontas.length})`],
+      ['A Liquidar · 7 dias', fmtUSD(j7.reduce((s,x)=>s+x.valorUsd,0)) + ` (${j7.length})`],
+      ['A Liquidar · 14 dias', fmtUSD(j14.reduce((s,x)=>s+x.valorUsd,0)) + ` (${j14.length})`],
+      ['A Liquidar · 30 dias', fmtUSD(j30.reduce((s,x)=>s+x.valorUsd,0)) + ` (${j30.length})`],
+      ['Câmbios Pagos (total)', fmtUSD(pagos.reduce((s,x)=>s+x.valorUsd,0)) + ` (${pagos.length})`],
+      ['Sem forma de pagamento definida', fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0)) + ` (${semData.length})`],
+      ['Economia de câmbio acumulada (Previsto x Fechado)', fmtBRL(economiaTotal)],
+    ];
+    let rr = 4;
+    linhasResumo.forEach(([label,valor])=>{
+      const row = wsResumo.getRow(rr);
+      row.getCell(1).value = label; row.getCell(1).font = {name:'Calibri', bold:true, size:11};
+      row.getCell(2).value = valor; row.getCell(2).font = {name:'Calibri', size:11};
+      rr++;
+    });
+    wsResumo.getColumn(1).width = 42;
+    wsResumo.getColumn(2).width = 30;
+
+    // ── Aba Câmbios Pagos ──
+    const wsPagos = wb.addWorksheet('Câmbios Pagos');
+    const linhasPagos = [...pagos].sort((a,b)=>(b.vencimento||'0000').localeCompare(a.vencimento||'0000')).map(x=>[
+      x.referencia||'', x.fornecedor||'', x.parcela||'', x.numeroDi||'—',
+      x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—',
+      x.valorUsd||0, x.cambioPrevisto||'', x.cambioFechado||'', x.banco||'—', x.custoOperacao||0,
+    ]);
+    estilizarAba(wsPagos,
+      ['Referência','Fornecedor','Parcela','DI/DUIMP','Venc. Original','Valor USD','Câmbio Previsto','Câmbio Fechado','Banco/Corretora','Custo Operação (R$)'],
+      linhasPagos, null, [16,26,12,16,14,14,14,14,20,16]);
+
+    // ── Aba Em Aberto ──
+    const wsAberto = wb.addWorksheet('Em Aberto');
+    const linhasAberto = [...abertos, ...semData].sort((a,b)=>(a.vencimento||'9999').localeCompare(b.vencimento||'9999')).map(x=>[
+      x.referencia||'', x.fornecedor||'', x.parcela||'', x.numeroDi||'—',
+      x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : 'sem data',
+      x.valorUsd||0, x.cambioPrevisto||'',
+    ]);
+    estilizarAba(wsAberto,
+      ['Referência','Fornecedor','Parcela','DI/DUImp','Vencimento','Valor USD','Câmbio Previsto'],
+      linhasAberto, null, [16,26,12,16,14,14,14]);
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `IMPAK_Relatorio_Cambio_${hoje.toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('✓ Relatório de câmbio exportado','ok');
+  }catch(e){
+    console.error(e);
+    showToast('Erro ao exportar relatório: '+e.message,'err');
+  }
+}
+
 // ── PTAX x Câmbio Fechado (gráfico) ─────────────────────────────────────
 // Cache em memória do lado do cliente (o backend já cacheia por 6h também,
 // isso aqui só evita re-buscar toda vez que o usuário clica num KPI e
@@ -357,6 +459,11 @@ function renderDashCambio(){
       <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
     </div>`;
   }
+
+  const toolbarHtml = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+    <button onclick="exportarRelatorioMensalCambio()" title="Baixa um Excel com Resumo, Câmbios Pagos e Em Aberto — pronto pra levar numa reunião"
+      style="font-size:12px;font-weight:700;padding:7px 14px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">📥 Exportar Relatório (Excel)</button>
+  </div>`;
 
   const kpisHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px;">
     ${kpiCard('✅ Prontos p/ Fechamento', prontasUsd, prontas.length+' parcela(s) atrasada(s) — ação imediata', prontas.length?'var(--err)':'var(--ok)', {dias:'vencidas',label:'atrasadas'})}
@@ -701,7 +808,7 @@ function renderDashCambio(){
     </div>
   </div>`;
 
-  el.innerHTML = kpisHtml + alertaSemDataHtml + concentracaoHtml + mtmHtml + graficoPtaxHtml
+  el.innerHTML = toolbarHtml + kpisHtml + alertaSemDataHtml + concentracaoHtml + mtmHtml + graficoPtaxHtml
     + `<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">${fornecedorHtml}${simulacaoHtml}</div>`
     + bancoCustoHtml + consolidacaoHtml + tabelaHtml
     + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
