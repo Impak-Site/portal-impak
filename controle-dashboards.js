@@ -626,6 +626,20 @@ function renderFluxoCaixaHtml(pagamentos){
     meses.push({ini, fim, label: ini.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})});
   }
 
+  // Sem data de vencimento (Entrada+Saldo/Parcelado/À Vista/Prazo ainda não
+  // definido na PI) não entra em NENHUM mês abaixo — mesmo blind spot do
+  // alerta "fora do radar" do Dashboard Câmbio. Mostrado à parte, não
+  // dá pra saber QUANDO vence, só que existe.
+  const semVencimento = pagamentos.filter(x => !x.pago && !x.vencimento);
+  const semVencimentoBRL = semVencimento.reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||_cambio.USD),0);
+
+  // Cenário de estresse (+5% no dólar) — pedido do Ayslan (09/09/2026,
+  // "se voce fosse o financeiro, o que gostaria de ver"): a coluna
+  // "Saídas Previstas" já é uma estimativa em cima do câmbio previsto/atual;
+  // essa segunda coluna responde "e se o dólar subir 5% até lá, quanto a
+  // MAIS eu preciso ter separado em caixa?" — só entra na parte AINDA NÃO
+  // paga (o que já foi pago não tem mais risco de câmbio).
+  const FATOR_ESTRESSE = 1.05;
   const linhas = meses.map(m=>{
     const doMes = pagamentos.filter(x=>{
       if(!x.vencimento) return false;
@@ -634,20 +648,27 @@ function renderFluxoCaixaHtml(pagamentos){
     });
     const pagoBRL      = doMes.filter(x=>x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioFechado||_cambio.USD),0);
     const previstoBRL   = doMes.filter(x=>!x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||_cambio.USD),0);
-    return {label:m.label, pagoBRL, previstoBRL, qtd:doMes.length};
+    const previstoEstresseBRL = doMes.filter(x=>!x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||_cambio.USD)*FATOR_ESTRESSE,0);
+    return {label:m.label, pagoBRL, previstoBRL, previstoEstresseBRL, qtd:doMes.length};
   });
+  const totais = linhas.reduce((acc,l)=>({
+    pagoBRL: acc.pagoBRL+l.pagoBRL,
+    previstoBRL: acc.previstoBRL+l.previstoBRL,
+    previstoEstresseBRL: acc.previstoEstresseBRL+l.previstoEstresseBRL,
+  }), {pagoBRL:0, previstoBRL:0, previstoEstresseBRL:0});
 
   return `
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
       <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
         <div style="font-size:13px;font-weight:700;">📅 Fluxo de Caixa — Saídas por mês</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Só pagamentos a fornecedor por enquanto — entradas de clientes ainda não são rastreadas no sistema.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Só pagamentos a fornecedor por enquanto — entradas de clientes ainda não são rastreadas no sistema. "Se dólar +5%" é o cenário de estresse: quanto a mais separar em caixa se o câmbio subir 5% até o vencimento.</div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:var(--bg);">
           <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Mês</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Saídas Pagas</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Saídas Previstas</th>
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Se dólar +5%</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Total</th>
         </tr></thead>
         <tbody>
@@ -655,10 +676,19 @@ function renderFluxoCaixaHtml(pagamentos){
             <td style="padding:8px 16px;text-transform:capitalize;font-weight:600;">${l.label}</td>
             <td style="padding:8px 16px;text-align:right;color:var(--ok);">${fmtBRL(l.pagoBRL)}</td>
             <td style="padding:8px 16px;text-align:right;color:var(--warn);">${fmtBRL(l.previstoBRL)}</td>
+            <td style="padding:8px 16px;text-align:right;color:var(--err);">${fmtBRL(l.previstoEstresseBRL)}</td>
             <td style="padding:8px 16px;text-align:right;font-weight:700;">${fmtBRL(l.pagoBRL+l.previstoBRL)}</td>
           </tr>`).join('')}
+          <tr style="border-top:2px solid var(--border);background:var(--bg);">
+            <td style="padding:8px 16px;font-weight:800;">Total (6 meses)</td>
+            <td style="padding:8px 16px;text-align:right;font-weight:800;color:var(--ok);">${fmtBRL(totais.pagoBRL)}</td>
+            <td style="padding:8px 16px;text-align:right;font-weight:800;color:var(--warn);">${fmtBRL(totais.previstoBRL)}</td>
+            <td style="padding:8px 16px;text-align:right;font-weight:800;color:var(--err);">${fmtBRL(totais.previstoEstresseBRL)}</td>
+            <td style="padding:8px 16px;text-align:right;font-weight:800;">${fmtBRL(totais.pagoBRL+totais.previstoBRL)}</td>
+          </tr>
         </tbody>
       </table>
+      ${semVencimento.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">⚠ Fora desta tabela: ${semVencimento.length} parcela(s) sem vencimento definido ainda (${fmtBRL(semVencimentoBRL)}) — não dá pra saber em qual mês cairiam.</div>` : ''}
     </div>`;
 }
 
