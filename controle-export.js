@@ -1,13 +1,13 @@
 // controle-export.js
 //
-// Exports (RelatÃ³rio, Excel padrÃ£o, planilha formato cliente) â usa window.ExcelStyles (excel-styles.js) pra estilizaÃ§Ã£o.
+// Exports (Relatório, Excel padrão, planilha formato cliente) — usa window.ExcelStyles (excel-styles.js) pra estilização.
 //
-// Parte do controle_v2.html, extraÃ­do do <script> Ãºnico original pra
-// facilitar manutenÃ§Ã£o. Carregado via <script src> junto com os outros
-// mÃ³dulos (ver controle_v2.html) â nÃ£o Ã© um ES module, entÃ£o todo
-// estado (let/const de topo) e funÃ§Ãµes aqui continuam visÃ­veis pros
-// outros arquivos, exatamente como estavam quando tudo era um sÃ³
-// <script>. controle-core.js precisa carregar ANTES dos demais (Ã©
+// Parte do controle_v2.html, extraído do <script> único original pra
+// facilitar manutenção. Carregado via <script src> junto com os outros
+// módulos (ver controle_v2.html) — não é um ES module, então todo
+// estado (let/const de topo) e funções aqui continuam visíveis pros
+// outros arquivos, exatamente como estavam quando tudo era um só
+// <script>. controle-core.js precisa carregar ANTES dos demais (é
 // quem declara o estado global: _processos, _user, FASES etc.).
 //
 async function exportarRelatorio(){
@@ -35,15 +35,15 @@ async function exportarRelatorio(){
   lista.forEach(p=>{
     const ctrs = p.containers_json ? JSON.parse(p.containers_json) : [{numero:p.container||'',tipo:p.tipo_container||'',lacre:''}];
     const ctStr = ctrs.map(c=>`${c.numero}${c.tipo?' ('+c.tipo+')':''}${c.lacre?' L:'+c.lacre:''}`).join(' | ');
-    // Fechamento (estimado Ã real) â ver calcularFechamento(); vazio quando o
-    // processo nÃ£o tem estimativa_json (criado direto no Controle) ou ainda nÃ£o
-    // tem NF SaÃ­da lanÃ§ada.
+    // Fechamento (estimado × real) — ver calcularFechamento(); vazio quando o
+    // processo não tem estimativa_json (criado direto no Controle) ou ainda não
+    // tem NF Saída lançada.
     const f = calcularFechamento(p);
     // Vendas multi-cliente: quando o processo foi vendido a mais de um
-    // cliente, nÃ£o existe "a" NF SaÃ­da â usa a soma (f.nfSaida, jÃ¡ calculada
-    // por calcularFechamento a partir das vendas) e sinaliza no nÃºmero em
+    // cliente, não existe "a" NF Saída — usa a soma (f.nfSaida, já calculada
+    // por calcularFechamento a partir das vendas) e sinaliza no número em
     // vez de mostrar o campo legado nf_saida_numero (que fica vazio/errado
-    // nesse caso, jÃ¡ que cada venda tem seu prÃ³prio nÃºmero de NF).
+    // nesse caso, já que cada venda tem seu próprio número de NF).
     const nfSaidaNumeroCol = f.vendasResumo
       ? `Múltiplos (${f.vendasResumo.linhas.length} clientes — ver aba Vendas)`
       : (p.nf_saida_numero||'');
@@ -83,10 +83,10 @@ async function exportarExcel(){
 
     const linhas = lista.map(p=>{
     // Vendas multi-cliente: quando o processo foi vendido a mais de um
-    // cliente, o campo legado NF SaÃ­da nÃ£o representa mais o processo
+    // cliente, o campo legado NF Saída não representa mais o processo
     // inteiro â troca pelo resumo (soma das NFs) e sinaliza quantos
     // clientes levaram parte deste processo, em vez de mostrar um valor
-    // vazio ou de uma venda sÃ³.
+    // vazio ou de uma venda só.
     let vendasResumoExport = null;
     try{
       const vs = p.vendas_json ? JSON.parse(p.vendas_json) : [];
@@ -162,12 +162,12 @@ async function exportarExcel(){
 }
 
 // ââ MODAL: "Exportar p/ Cliente" â confirmar status + ordenar por chegada ââ
-// Pedido: antes de gerar a planilha de follow-up, deixar o usuÃ¡rio confirmar
+// Pedido: antes de gerar a planilha de follow-up, deixar o usuário confirmar
 // quais status/fases entram (PI Recebida, Ag. Embarque, Embarcado etc), e
 // garantir que o resultado saia ordenado por Data de Chegada. Em vez de
-// exportar direto no clique do botÃ£o, abre este popup com um checkbox por
+// exportar direto no clique do botão, abre este popup com um checkbox por
 // fase (lido de FASES, controle-core.js, pra nunca ficar desalinhado com as
-// fases reais do sistema) e sÃ³ chama exportarFormatoCliente() depois de
+// fases reais do sistema) e só chama exportarFormatoCliente() depois de
 // confirmado.
 function abrirModalExportCliente(){
   const cont = document.getElementById('exportcliente-status-list');
@@ -203,18 +203,18 @@ function confirmarExportClientePDF(){
   exportarFormatoClientePDF(statusSelecionados);
 }
 
-// ExportaÃ§Ã£o no formato de planilha enviada aos clientes (modelo "PNEUS
-// EXPRESS"): uma linha por produto/medida (nÃ£o por processo), agrupado por
+// Exportação no formato de planilha enviada aos clientes (modelo "PNEUS
+// EXPRESS"): uma linha por produto/medida (não por processo), agrupado por
 // Fornecedor, com mapeamento:
-//   Data do Pedido = Data da PI Â· Medida = descriÃ§Ã£o do produto Â·
-//   Quantidade = quantidade preenchida daquele item Â· Data de ProntidÃ£o na
-//   FÃ¡brica = data_prontidao (real) ou previsao_prontidao Â· Data de Embarque =
-//   ETD Â· Data Chegada = Data Chegada Â· POD = Porto Destino.
+//   Data do Pedido = Data da PI · Medida = descrição do produto ·
+//   Quantidade = quantidade preenchida daquele item · Data de Prontidão na
+//   Fábrica = data_prontidao (real) ou previsao_prontidao · Data de Embarque =
+//   ETD · Data Chegada = Data Chegada · POD = Porto Destino.
 //
 // statusSelecionados (opcional): array com os ids de fase (FASES[].id) que
 // devem entrar na planilha, escolhidos no popup abrirModalExportCliente().
 // Quando omitido/vazio, exporta todos os status (mesmo comportamento de
-// antes do popup existir) â mantÃ©m a funÃ§Ã£o utilizÃ¡vel de outros lugares
+// antes do popup existir) — mantém a função utilizável de outros lugares
 // sem quebrar nada.
 // ── DRE (Demonstrativo de Resultado) — exporta pro mesmo layout da
 // planilha "IA - <referencia>" usada internamente antes do Controle
@@ -608,23 +608,23 @@ function montarLinhasFollowUpCliente(statusSelecionados){
     lista = lista.filter(p => !p.cancelado);
 
     // Filtro de status escolhido no popup (pedido: confirmar quais fases
-    // entram antes de exportar). Sem seleÃ§Ã£o (chamada antiga/direta) exporta
+    // entram antes de exportar). Sem seleção (chamada antiga/direta) exporta
     // todos os status, igual ao comportamento original.
     if(Array.isArray(statusSelecionados) && statusSelecionados.length){
       lista = lista.filter(p=>statusSelecionados.includes(p.fase));
     }
 
-    // Ordena por Data de Chegada, do mais prÃ³ximo pro mais distante (pedido:
+    // Ordena por Data de Chegada, do mais próximo pro mais distante (pedido:
     // "tem que ser ordenado pela data de chegada"). Processos sem chegada
-    // lanÃ§ada ainda vÃ£o pro final, nÃ£o pro topo. parseDataLocal() (nÃ£o
-    // `new Date()` direto) pra nÃ£o reintroduzir o bug de UTCÃlocal jÃ¡
+    // lançada ainda vão pro final, não pro topo. parseDataLocal() (não
+    // `new Date()` direto) pra não reintroduzir o bug de UTC×local já
     // corrigido no resto do sistema.
-    // Data Chegada (real) tem prioridade; processos que ainda nÃ£o chegaram
+    // Data Chegada (real) tem prioridade; processos que ainda não chegaram
     // (ex.: Ag. Embarque, PI Recebida) usam a ETA (estimada) no lugar â mesma
     // regra da coluna "ETA / Chegada" da tela principal (ver dataDisplay em
     // render(), controle-core.js: `chegadaDate || etaDate`). Sem esse
-    // fallback, todo processo ainda nÃ£o chegado ficava jogado pro fim da
-    // planilha (Infinity), fora de ordem em relaÃ§Ã£o Ã  previsÃ£o de chegada.
+    // fallback, todo processo ainda não chegado ficava jogado pro fim da
+    // planilha (Infinity), fora de ordem em relação à previsão de chegada.
     lista = [...lista].sort((a,b)=>{
       const dtA = a.data_chegada || a.eta;
       const dtB = b.data_chegada || b.eta;
@@ -634,25 +634,25 @@ function montarLinhasFollowUpCliente(statusSelecionados){
     });
 
     // Toggle manual (checkbox dentro do popup) â decide se a coluna "Valor
-    // do Frete" entra ou nÃ£o nesse export. Fica marcado sÃ³ quando o usuÃ¡rio
-    // realmente quer que o cliente veja esse valor (ex: negociaÃ§Ã£o FOB onde
-    // o frete Ã© por conta do cliente); por padrÃ£o vem desmarcado/oculto.
+    // do Frete" entra ou não nesse export. Fica marcado só quando o usuário
+    // realmente quer que o cliente veja esse valor (ex: negociação FOB onde
+    // o frete é por conta do cliente); por padrão vem desmarcado/oculto.
     const incluirFrete = !!document.getElementById('exportcliente-incluir-frete')?.checked;
 
     // Nome do cliente selecionado no filtro da tela (se houver) â usado no
-    // tÃ­tulo da planilha e no nome do arquivo, pra deixar claro pra quem Ã©
+    // título da planilha e no nome do arquivo, pra deixar claro pra quem é
     // esse follow-up quando for reenviado por e-mail.
     const clienteFiltro = document.getElementById('filtro-cliente')?.value || '';
 
     // Montar 1 linha por produto. Quando o processo tem vendas cadastradas
     // (aba Vendas, vendas_json) e mais de uma delas tem cliente preenchido,
-    // cada linha nasce a partir dos itens DA VENDA (venda.itens) â nÃ£o de
+    // cada linha nasce a partir dos itens DA VENDA (venda.itens) — não de
     // produtos_json â e carrega o cliente daquela venda especificamente
     // (pedido: "quando fizermos o follow up/exportar para cliente, tem que
     // puxar os dados de cada pedido separado por cliente da aba vendas").
-    // Processos sem vendas cadastradas (ou com sÃ³ 1 venda) continuam usando
+    // Processos sem vendas cadastradas (ou com só 1 venda) continuam usando
     // produtos_json/produto legado e o campo p.cliente, como antes.
-    // lista jÃ¡ estÃ¡ ordenada por chegada, entÃ£o as linhas nascem nessa
+    // lista já está ordenada por chegada, então as linhas nascem nessa
     // ordem dentro de cada fornecedor/cliente.
     const linhas = [];
     lista.forEach(p=>{
@@ -660,9 +660,9 @@ function montarLinhasFollowUpCliente(statusSelecionados){
       try{ vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; }catch(e){ vendas = []; }
       const temMultiCliente = Array.isArray(vendas) && vendas.filter(v=>v && (v.itens||[]).length).length > 1;
 
-      // Idem ao sort acima: sem chegada real ainda, usa a ETA â senÃ£o a
+      // Idem ao sort acima: sem chegada real ainda, usa a ETA — senão a
       // coluna "Data Chegada" ficava em branco pra qualquer processo em
-      // Ag. Embarque/PI Recebida, mesmo jÃ¡ tendo previsÃ£o de chegada.
+      // Ag. Embarque/PI Recebida, mesmo já tendo previsão de chegada.
       const dtChegadaOuEta = p.data_chegada || p.eta;
       const dtEmbarqueOuEtd = p.data_embarque || p.etd;
       const dtProntidaoOuPrevisao = p.data_prontidao || p.previsao_prontidao;
@@ -673,7 +673,7 @@ function montarLinhasFollowUpCliente(statusSelecionados){
           // Pedido: na planilha de follow-up, mostrar a MARCA do produto
           // (ex: "Maxam") em vez do Fornecedor (ex: "Sailun Group", quem
           // efetivamente fatura/exporta) quando a marca estiver preenchida â
-          // sÃ£o coisas diferentes e o cliente final reconhece a marca, nÃ£o
+          // são coisas diferentes e o cliente final reconhece a marca, não
           // necessariamente o nome do fornecedor real. Sem marca preenchida,
           // cai no fornecedor, como sempre foi.
           fornecedor: p.brand || p.fornecedor || '—',
@@ -686,8 +686,8 @@ function montarLinhasFollowUpCliente(statusSelecionados){
           'Data de Prontidão na Fábrica': dtProntidaoOuPrevisao ? parseDataLocal(dtProntidaoOuPrevisao).toLocaleDateString('pt-BR') + (p.data_prontidao?'':' (previsto)') : '',
           'Data de Embarque':        dtEmbarqueOuEtd ? parseDataLocal(dtEmbarqueOuEtd).toLocaleDateString('pt-BR') + (p.data_embarque?'':' (previsto)') : '',
           // Pedido da Emanuelly (03/09): tirar o "(estimado)" daqui â o
-          // disclaimer no topo do arquivo jÃ¡ deixa claro que a chegada Ã©
-          // previsÃ£o; nÃ£o precisa repetir em cada linha.
+          // disclaimer no topo do arquivo já deixa claro que a chegada é
+          // previsão; não precisa repetir em cada linha.
           'Data Chegada':            dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).toLocaleDateString('pt-BR') : '',
           'POD':                     formatarPortoDestino(p.porto_destino),
         };
@@ -718,10 +718,10 @@ function montarLinhasFollowUpCliente(statusSelecionados){
 
     if(!linhas.length){ showToast('Nenhum produto encontrado para exportar','err'); return null; }
 
-    // Separar por cliente â pedido: "um arquivo por cliente" quando hÃ¡ mais
+    // Separar por cliente — pedido: "um arquivo por cliente" quando há mais
     // de um cliente envolvido nas linhas selecionadas (seja porque a lista
-    // tem processos de clientes diferentes, seja porque um Ãºnico processo
-    // foi vendido a mais de um cliente na aba Vendas). Com um cliente sÃ³,
+    // tem processos de clientes diferentes, seja porque um único processo
+    // foi vendido a mais de um cliente na aba Vendas). Com um cliente só,
     // gera 1 arquivo, igual ao comportamento de sempre.
     const porCliente = {};
     linhas.forEach(l=>{ (porCliente[l.cliente] = porCliente[l.cliente]||[]).push(l); });
@@ -750,14 +750,14 @@ async function exportarFormatoCliente(statusSelecionados){
     const largurasMinimas = {Invoice:14,Medida:26,Qte:8,'Data do Pedido':16,'Data de Prontidão na Fábrica':22,'Data de Embarque':16,'Data Chegada':16,POD:10,'Valor do Frete':16};
     const dataArq = new Date().toISOString().split('T')[0];
 
-    // Monta e baixa 1 arquivo .xlsx pra um cliente especÃ­fico (reaproveitado
-    // tanto no caso de 1 cliente sÃ³ quanto no loop multi-cliente abaixo).
+    // Monta e baixa 1 arquivo .xlsx pra um cliente específico (reaproveitado
+    // tanto no caso de 1 cliente só quanto no loop multi-cliente abaixo).
     async function gerarArquivoCliente(nomeCliente, linhasCliente){
       const porForn = {};
       linhasCliente.forEach(l=>{ (porForn[l.fornecedor] = porForn[l.fornecedor]||[]).push(l); });
 
-      // Grupos de fornecedor em ordem de chegada mais prÃ³xima primeiro (nÃ£o
-      // mais alfabÃ©tica) â pega a menor Data de Chegada de cada grupo pra
+      // Grupos de fornecedor em ordem de chegada mais próxima primeiro (não
+      // mais alfabética) — pega a menor Data de Chegada de cada grupo pra
       // decidir a ordem, mantendo o pedido de "ordenado pela data de chegada"
       // mesmo com a planilha agrupada por fornecedor.
       const fornOrdenados = Object.keys(porForn).sort((fa,fb)=>{
@@ -766,7 +766,7 @@ async function exportarFormatoCliente(statusSelecionados){
         return da - db;
       });
 
-      // Paleta/bordas/estilizaÃ§Ã£o compartilhadas com calculador.html e
+      // Paleta/bordas/estilização compartilhadas com calculador.html e
       // tyredesk.html â ver excel-styles.js (window.ExcelStyles).
       const wb = new ExcelJS.Workbook();
       wb.creator = 'IMPAK';
@@ -776,14 +776,14 @@ async function exportarFormatoCliente(statusSelecionados){
       const ws = wb.addWorksheet(nomeAbaBruto || 'Follow-up');
       ws.views = [{state:'frozen', ySplit:4}];
 
-      // Linha 1 â tÃ­tulo (nome do cliente)
+      // Linha 1 — título (nome do cliente)
       ws.mergeCells(1,1,1,numCols);
       const titulo = ws.getCell(1,1);
       titulo.value = `IMPAK — Follow-up de Importação${nomeClienteExibir?' · '+nomeClienteExibir:(clienteFiltro?' · '+clienteFiltro:'')}`;
       estilizarTitulo(titulo);
       ws.getRow(1).height = 30;
 
-      // Linha 2 â subtÃ­tulo (data de geraÃ§Ã£o)
+      // Linha 2 — subtítulo (data de geração)
       ws.mergeCells(2,1,2,numCols);
       const agora = new Date();
       const sub = ws.getCell(2,1);
@@ -799,7 +799,7 @@ disclaimerCell.alignment = {vertical:'middle', horizontal:'left', indent:1};
 disclaimerCell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFFEF3C7'}};
 ws.getRow(3).height = 26;
 
-      // Linha 4 â cabeÃ§alho das colunas
+      // Linha 4 — cabeçalho das colunas
       const headerRow = ws.getRow(4);
       colunas.forEach((c,i)=>{
         const cell = headerRow.getCell(i+1);
@@ -810,7 +810,7 @@ ws.getRow(3).height = 26;
       ws.autoFilter = {from:{row:4,column:1}, to:{row:4,column:numCols}};
 
       // Linhas de dados, agrupadas por fornecedor (cada grupo com uma linha
-      // de cabeÃ§alho destacada, igual ao modelo original) â grupos e linhas
+      // de cabeçalho destacada, igual ao modelo original) — grupos e linhas
       // dentro de cada grupo em ordem de Data de Chegada.
       let rowIdx = 5;
       fornOrdenados.forEach(forn=>{
@@ -889,9 +889,9 @@ ws.getRow(3).height = 26;
       const nForn = await gerarArquivoCliente(nomeUnico, linhas);
       showToast(`✓ ${linhas.length} item(ns) exportado(s), agrupados em ${nForn} fornecedor(es), ordenado por chegada${incluirFrete?' — com Valor do Frete':''}`,'ok');
     }else{
-      // MÃºltiplos clientes: 1 arquivo por cliente (pedido confirmado com o
-      // usuÃ¡rio: "Um arquivo por cliente"). O navegador bloqueia downloads
-      // mÃºltiplos disparados sem pausa em alguns casos â um pequeno delay
+      // Múltiplos clientes: 1 arquivo por cliente (pedido confirmado com o
+      // usuário: "Um arquivo por cliente"). O navegador bloqueia downloads
+      // múltiplos disparados sem pausa em alguns casos — um pequeno delay
       // entre cada `a.click()` evita isso.
       for(let i=0;i<clientesOrdenados.length;i++){
         const nome = clientesOrdenados[i];

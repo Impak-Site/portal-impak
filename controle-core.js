@@ -1,22 +1,22 @@
 // controle-core.js
 // 
-// Estado global, boot (login/DOMContentLoaded), cÃÂÃÂ¢mbio, CRUD de processos (API), cÃÂÃÂ¡lculo de fase/demurrage/fechamento, notificaÃÂÃÂ§ÃÂÃÂµes, filtros/stats e a renderizaÃÂÃÂ§ÃÂÃÂ£o da lista principal.
+// Estado global, boot (login/DOMContentLoaded), câmbio, CRUD de processos (API), cálculo de fase/demurrage/fechamento, notificações, filtros/stats e a renderização da lista principal.
 //
-// Parte do controle_v2.html, extraÃÂÃÂ­do do <script> ÃÂÃÂºnico original pra
-// facilitar manutenÃÂÃÂ§ÃÂÃÂ£o. Carregado via <script src> junto com os outros
-// mÃÂÃÂ³dulos (ver controle_v2.html) ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o ÃÂÃÂ© um ES module, entÃÂÃÂ£o todo
-// estado (let/const de topo) e funÃÂÃÂ§ÃÂÃÂµes aqui continuam visÃÂÃÂ­veis pros
-// outros arquivos, exatamente como estavam quando tudo era um sÃÂÃÂ³
-// <script>. controle-core.js precisa carregar ANTES dos demais (ÃÂÃÂ©
+// Parte do controle_v2.html, extraído do <script> único original pra
+// facilitar manutenção. Carregado via <script src> junto com os outros
+// módulos (ver controle_v2.html) — não é um ES module, então todo
+// estado (let/const de topo) e funções aqui continuam visíveis pros
+// outros arquivos, exatamente como estavam quando tudo era um só
+// <script>. controle-core.js precisa carregar ANTES dos demais (é
 // quem declara o estado global: _processos, _user, FASES etc.).
 //
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ SESSÃÂÃÂO EXPIRADA: mensagem clara em vez de erro de parse ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// Quando a sessÃÂÃÂ£o cai (ex.: reinÃÂÃÂ­cio do servidor), as rotas protegidas
-// redirecionam pra /login (HTML) em vez de responder JSON. O cÃÂÃÂ³digo que
-// chama fetch(...).then(r=>r.json()) entÃÂÃÂ£o quebra com um erro confuso tipo
+// Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
+// redirecionam pra /login (HTML) em vez de responder JSON. O código que
+// chama fetch(...).then(r=>r.json()) então quebra com um erro confuso tipo
 // "Unexpected token '<' ... is not valid JSON". Este wrapper detecta esse
-// redirecionamento e troca por uma mensagem que o usuÃÂÃÂ¡rio entende, usando os
-// mesmos catch() que jÃÂÃÂ¡ existem em cada tela.
+// redirecionamento e troca por uma mensagem que o usuário entende, usando os
+// mesmos catch() que já existem em cada tela.
 (function(){
   const _fetch = window.fetch.bind(window);
   window.fetch = async function(...args){
@@ -28,11 +28,11 @@
   };
 })();
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// UUID ÃÂ¢ÃÂÃÂ compatÃÂÃÂ­vel com Safari, Chrome, Firefox
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// UUID — compatível com Safari, Chrome, Firefox
+// ════════════════════════════════════════════════════════════════
 function gerarUUID(){
-  // Usar crypto.randomUUID se disponÃÂÃÂ­vel (Chrome, Firefox, Edge)
+  // Usar crypto.randomUUID se disponível (Chrome, Firefox, Edge)
   if(typeof crypto !== 'undefined' && crypto.randomUUID){
     return crypto.randomUUID();
   }
@@ -42,7 +42,7 @@ function gerarUUID(){
       (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
     );
   }
-  // ÃÂÃÂltimo fallback: Math.random
+  // Último fallback: Math.random
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random()*16|0;
     return (c==='x' ? r : (r&0x3|0x8)).toString(16);
@@ -51,27 +51,27 @@ function gerarUUID(){
 
 // Analisa uma data "sem hora" (ex.: "2026-07-18", vinda de <input type=date>
 // ou do banco) SEMPRE no fuso LOCAL do navegador, nunca em UTC.
-// `new Date('2026-07-18')` (sem hora) ÃÂÃÂ© interpretado pelo JS como meia-noite
-// UTC ÃÂ¢ÃÂÃÂ em fusos negativos (ex.: Brasil, UTC-3) isso exibe/compara como o
+// `new Date('2026-07-18')` (sem hora) é interpretado pelo JS como meia-noite
+// UTC — em fusos negativos (ex.: Brasil, UTC-3) isso exibe/compara como o
 // dia ANTERIOR (17/07) em vez do dia certo. `new Date('2026-07-18T00:00:00')`
-// (sem "Z") ÃÂÃÂ© interpretado em horÃÂÃÂ¡rio LOCAL, entÃÂÃÂ£o bate com o que a pessoa
+// (sem "Z") é interpretado em horário LOCAL, então bate com o que a pessoa
 // realmente digitou. Antes deste helper, os dois estilos apareciam
 // misturados neste arquivo (e em controle-dashboards.js/controle-export.js)
-// pro MESMO tipo de campo ÃÂ¢ÃÂÃÂ ex.: renderDemurInfo() lia data_chegada sem
+// pro MESMO tipo de campo — ex.: renderDemurInfo() lia data_chegada sem
 // sufixo (UTC) enquanto calcularFase() lia o mesmo campo com sufixo (local),
 // podendo mostrar dias diferentes pro mesmo processo em telas diferentes.
-// Use esta funÃÂÃÂ§ÃÂÃÂ£o pra qualquer campo de data-sÃÂÃÂ³ (data_chegada, eta,
+// Use esta função pra qualquer campo de data-só (data_chegada, eta,
 // demurrage_vencimento, pi_data_saldo, nf_entrada_data, nf_saida_data etc.).
-// Para timestamps completos (created_at/updated_at, que jÃÂÃÂ¡ vÃÂÃÂªm com hora e
-// "Z" de toISOString()), continue usando new Date(...) direto ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o passar
+// Para timestamps completos (created_at/updated_at, que já vêm com hora e
+// "Z" de toISOString()), continue usando new Date(...) direto — não passar
 // por aqui.
 function parseDataLocal(str){
   return str ? new Date(str + 'T00:00:00') : null;
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // ESTADO
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 let _user = null;
 let _processos = [];
 let _faseFilter = '';
@@ -80,15 +80,15 @@ let _pagina = 1;
 const POR_PAGINA = 50;
 let _editando = null; // processo sendo editado
 // Snapshot do processo exatamente como veio do servidor quando o modal foi
-// aberto (ou {} pra um processo novo) ÃÂ¢ÃÂÃÂ usado sÃÂÃÂ³ pra saber quais campos o
-// usuÃÂÃÂ¡rio de fato alterou nesta sessÃÂÃÂ£o de ediÃÂÃÂ§ÃÂÃÂ£o (ver coletarESalvar). Nunca
-// ÃÂÃÂ© mutado depois de setado; existe sÃÂÃÂ³ pra comparaÃÂÃÂ§ÃÂÃÂ£o, nÃÂÃÂ£o ÃÂÃÂ© enviado ao
-// servidor. ConcorrÃÂÃÂªncia: com vÃÂÃÂ¡rios usuÃÂÃÂ¡rios editando processos ao mesmo
-// tempo, salvar o processo inteiro sempre que alguÃÂÃÂ©m clica em Salvar
+// aberto (ou {} pra um processo novo) — usado só pra saber quais campos o
+// usuário de fato alterou nesta sessão de edição (ver coletarESalvar). Nunca
+// é mutado depois de setado; existe só pra comparação, não é enviado ao
+// servidor. Concorrência: com vários usuários editando processos ao mesmo
+// tempo, salvar o processo inteiro sempre que alguém clica em Salvar
 // sobrescrevia silenciosamente qualquer campo que outra pessoa tivesse
-// alterado nesse meio tempo (quem salvasse por ÃÂÃÂºltimo "vencia" em TUDO, nÃÂÃÂ£o
-// sÃÂÃÂ³ no que de fato editou). Agora sÃÂÃÂ³ os campos realmente alterados nesta
-// sessÃÂÃÂ£o sÃÂÃÂ£o enviados ÃÂ¢ÃÂÃÂ os demais ficam intocados no banco.
+// alterado nesse meio tempo (quem salvasse por último "vencia" em TUDO, não
+// só no que de fato editou). Agora só os campos realmente alterados nesta
+// sessão são enviados — os demais ficam intocados no banco.
 let _editandoOriginal = null;
 // Rastreia se o usuário alterou algo no painel do processo desde que ele
 // abriu (input/change delegado, ver listener em INIT) — usado pelo ESC (ver
@@ -98,10 +98,10 @@ let _painelDirty = false;
 let _notifAberto = false;
 let _cambio = { USD: 1, BRL: 1, EUR: 1 };
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ URL por processo (task #59) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// _baseUrlPath ÃÂÃÂ© a tela "de baixo" (/controle ou /financeiro) ÃÂ¢ÃÂÃÂ pra onde
-// a URL volta quando o painel lateral do processo fecha. Se a pÃÂÃÂ¡gina jÃÂÃÂ¡
-// carregou num deep link (ex: /controle/UD26-005), guardamos a referÃÂÃÂªncia
+// ── URL por processo (task #59) ──────────────────────────────────
+// _baseUrlPath é a tela "de baixo" (/controle ou /financeiro) — pra onde
+// a URL volta quando o painel lateral do processo fecha. Se a página já
+// carregou num deep link (ex: /controle/UD26-005), guardamos a referência
 // pedida em _refPendenteDeepLink pra abrir o painel assim que a lista de
 // processos terminar de carregar (ver carregarProcessos).
 const _pathPartsInicial = location.pathname.split('/').filter(Boolean);
@@ -137,22 +137,22 @@ function faseParaExibir(p){
   return FASES.find(f=>f.id===(p&&p.fase))||FASES[0];
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // INIT
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', function(){
   fetch('/api/me').then(r=>r.json()).then(d=>{
     if(!d.logado){ location.href='/login?destino='+encodeURIComponent(location.pathname); return; }
     _user = d;
     document.getElementById('user-badge').textContent = d.displayName || d.usuario;
-    // Link do Dashboard NarcÃÂÃÂ©lio sÃÂÃÂ³ aparece pro prÃÂÃÂ³prio usuÃÂÃÂ¡rio narcelio ÃÂ¢ÃÂÃÂ
-    // cosmÃÂÃÂ©tico (a proteÃÂÃÂ§ÃÂÃÂ£o real ÃÂÃÂ© o back-end em GET /narcelio, ver
-    // server.js), mas evita mostrar um link "quebrado" (403) pra quem nÃÂÃÂ£o
+    // Link do Dashboard Narcélio só aparece pro próprio usuário narcelio —
+    // cosmético (a proteção real é o back-end em GET /narcelio, ver
+    // server.js), mas evita mostrar um link "quebrado" (403) pra quem não
     // tem acesso.
     document.getElementById('menu-narcelio')?.style.setProperty('display', ['narcelio','suporte'].includes(d.usuario) ? '' : 'none');
-// BotÃÂÃÂ£o "Gerar Follow-up Semanal" (task #327): sÃÂÃÂ³ visÃÂÃÂ­vel pra usuÃÂÃÂ¡rios
-// gerente ÃÂ¢ÃÂÃÂ mesma role jÃÂÃÂ¡ usada pelo back-end em POST /api/admin/
-// followup-semanal (ver server.js), cosmÃÂÃÂ©tico aqui (a proteÃÂÃÂ§ÃÂÃÂ£o real ÃÂÃÂ©
+// Botão "Gerar Follow-up Semanal" (task #327): só visível pra usuários
+// gerente — mesma role já usada pelo back-end em POST /api/admin/
+// followup-semanal (ver server.js), cosmético aqui (a proteção real é
 // o back-end checar req.session.role==='gerente').
 document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.role==='gerente' ? '' : 'none');
     carregarCambio();
@@ -161,10 +161,10 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
       if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
       if(location.pathname==='/tv') ativarTelaTVExclusiva();
-      // Deep-link ?processo=<id> ÃÂ¢ÃÂÃÂ usado pelo Calculador pra abrir direto o
-      // processo recÃÂÃÂ©m-criado ao aprovar uma cotaÃÂÃÂ§ÃÂÃÂ£o (ver aprovarCotacao()
-      // em calculador.html). SÃÂÃÂ³ tenta abrir depois que a lista carregou,
-      // senÃÂÃÂ£o abrirProcesso() nÃÂÃÂ£o acha o processo em _processos ainda.
+      // Deep-link ?processo=<id> — usado pelo Calculador pra abrir direto o
+      // processo recém-criado ao aprovar uma cotação (ver aprovarCotacao()
+      // em calculador.html). Só tenta abrir depois que a lista carregou,
+      // senão abrirProcesso() não acha o processo em _processos ainda.
       const idDeepLink = new URLSearchParams(location.search).get('processo');
       if(idDeepLink){
         const achou = _processos.some(p=>p.id===idDeepLink);
@@ -215,17 +215,17 @@ document.addEventListener('keydown', function(e){
   }
 });
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// TELA EXCLUSIVA /financeiro ÃÂ¢ÃÂÃÂ mesma pÃÂÃÂ¡gina (controle_v2.html) e mesmo
-// JS do Controle normal, sÃÂÃÂ³ que ao carregar em /financeiro a tela jÃÂÃÂ¡ abre
-// direto no Dashboard Financeiro, com o que ÃÂÃÂ© sobre "lista de processos"
-// (busca, filtros de fase, cards de status) escondido ÃÂ¢ÃÂÃÂ foco sÃÂÃÂ³ no
-// financeiro. A TABELA de processos continua existindo mais abaixo (nÃÂÃÂ£o ÃÂÃÂ©
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /financeiro — mesma página (controle_v2.html) e mesmo
+// JS do Controle normal, só que ao carregar em /financeiro a tela já abre
+// direto no Dashboard Financeiro, com o que é sobre "lista de processos"
+// (busca, filtros de fase, cards de status) escondido — foco só no
+// financeiro. A TABELA de processos continua existindo mais abaixo (não é
 // removida do DOM), porque os cards e a lista de pagamentos do Dashboard
 // Financeiro contam com ela pra "abrir o processo" ao clicar numa linha e
-// pro drill-down dos filtros (Saldo a Pagar, ExposiÃÂÃÂ§ÃÂÃÂ£o, Capital Parado)
-// funcionar exatamente como jÃÂÃÂ¡ funciona dentro do Controle ÃÂ¢ÃÂÃÂ reaproveitar
-// em vez de duplicar essa lÃÂÃÂ³gica evita ter duas versÃÂÃÂµes de "abrir
+// pro drill-down dos filtros (Saldo a Pagar, Exposição, Capital Parado)
+// funcionar exatamente como já funciona dentro do Controle — reaproveitar
+// em vez de duplicar essa lógica evita ter duas versões de "abrir
 // processo" pra manter sincronizadas.
 function ativarTelaFinanceiroExclusiva(){
   document.title = 'IMPAK — Dashboard Financeiro';
@@ -238,8 +238,8 @@ function ativarTelaFinanceiroExclusiva(){
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
 
-  // Sidebar: esconde "VisÃÂÃÂ£o" e "Por fase" (nÃÂÃÂ£o fazem sentido sem a busca/
-  // lista principal em destaque) ÃÂ¢ÃÂÃÂ mantÃÂÃÂ©m Dashboard Executivo e Cadastros.
+  // Sidebar: esconde "Visão" e "Por fase" (não fazem sentido sem a busca/
+  // lista principal em destaque) — mantém Dashboard Executivo e Cadastros.
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
   });
@@ -251,13 +251,13 @@ function ativarTelaFinanceiroExclusiva(){
   renderDashFinanceiro();
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// TELA EXCLUSIVA /resultado ÃÂ¢ÃÂÃÂ mesmo esquema do /financeiro acima: o
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /resultado — mesmo esquema do /financeiro acima: o
 // Dashboard Resultado responde "quanto lucramos de verdade" cruzando o
-// estimado na cotaÃÂÃÂ§ÃÂÃÂ£o (estimativa_json, gravado ao aprovar no Calculador)
-// com o resultado real de cada processo (calcularFechamento ÃÂ¢ÃÂÃÂ NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ
+// estimado na cotação (estimativa_json, gravado ao aprovar no Calculador)
+// com o resultado real de cada processo (calcularFechamento — NF Saída −
 // Custo Real Total). Reaproveita _processos e calcularFechamento() em vez
-// de duplicar essa lÃÂÃÂ³gica.
+// de duplicar essa lógica.
 function ativarTelaResultadoExclusiva(){
   document.title = 'IMPAK — Dashboard Resultado';
   const titulo = document.querySelector('.topbar-title');
@@ -280,20 +280,20 @@ function ativarTelaResultadoExclusiva(){
   renderDashResultado();
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// TRAVA DE PROCESSO ("Fechar Processo") ÃÂ¢ÃÂÃÂ ver server.js (POST /api/
-// controle/v2/processo) pra a validaÃÂÃÂ§ÃÂÃÂ£o que de fato importa (o front-end
-// aqui sÃÂÃÂ³ evita o usuÃÂÃÂ¡rio clicar sem querer; quem garante que ninguÃÂÃÂ©m
-// edita um processo fechado ÃÂÃÂ© o servidor).
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// TELA EXCLUSIVA /narcelio ÃÂ¢ÃÂÃÂ visÃÂÃÂ£o do dono da empresa: containers por fase
-// (PI recebida/previsÃÂÃÂ£o de embarque/embarcado/chegando), faturamento por
-// perÃÂÃÂ­odo, estoque parado no armazÃÂÃÂ©m (NF entrada lanÃÂÃÂ§ada + NF saÃÂÃÂ­da com
-// CFOP 5905 ou ainda nÃÂÃÂ£o emitida) e previsÃÂÃÂ£o de recurso de numerÃÂÃÂ¡rio
+// ════════════════════════════════════════════════════════════════
+// TRAVA DE PROCESSO ("Fechar Processo") — ver server.js (POST /api/
+// controle/v2/processo) pra a validação que de fato importa (o front-end
+// aqui só evita o usuário clicar sem querer; quem garante que ninguém
+// edita um processo fechado é o servidor).
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /narcelio — visão do dono da empresa: containers por fase
+// (PI recebida/previsão de embarque/embarcado/chegando), faturamento por
+// período, estoque parado no armazém (NF entrada lançada + NF saída com
+// CFOP 5905 ou ainda não emitida) e previsão de recurso de numerário
 // (fluxo de caixa combinando pagamentos de PI com custos reais do
-// processo). Acesso jÃÂÃÂ¡ ÃÂÃÂ© restrito no back-end (ver /narcelio em
-// server.js) ÃÂ¢ÃÂÃÂ aqui ÃÂÃÂ© sÃÂÃÂ³ a apresentaÃÂÃÂ§ÃÂÃÂ£o.
+// processo). Acesso já é restrito no back-end (ver /narcelio em
+// server.js) — aqui é só a apresentação.
 function ativarTelaNarcelioExclusiva(){
   document.title = 'IMPAK — Dashboard Narcélio';
   const titulo = document.querySelector('.topbar-title');
@@ -509,11 +509,11 @@ async function reverterCancelamento(id){
   } else showToast('Erro ao reverter'+(d.erro?': '+d.erro:''),'err');
 }
 
-// Dispara na hora o e-mail de follow-up semanal (task #327) ÃÂ¢ÃÂÃÂ mesma rota
-// usada pelo job automÃÂÃÂ¡tico de domingo (ver server.js,
-// POST /api/admin/followup-semanal), sÃÂÃÂ³ que sob demanda. Restrito a
-// gerente no back-end; o botÃÂÃÂ£o em si jÃÂÃÂ¡ fica escondido no boot (ver
-// DOMContentLoaded acima) pra quem nÃÂÃÂ£o ÃÂÃÂ© gerente.
+// Dispara na hora o e-mail de follow-up semanal (task #327) — mesma rota
+// usada pelo job automático de domingo (ver server.js,
+// POST /api/admin/followup-semanal), só que sob demanda. Restrito a
+// gerente no back-end; o botão em si já fica escondido no boot (ver
+// DOMContentLoaded acima) pra quem não é gerente.
 async function gerarFollowUpManual(){
 showToast('Gerando follow-up semanal...','info');
 try{
@@ -524,14 +524,14 @@ else showToast('Erro ao gerar follow-up: '+(d.erro||''),'err');
 }catch(e){ showToast('Erro de rede ao gerar follow-up: '+e.message,'err'); }
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // CÃÂÃÂMBIO
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 async function carregarCambio(){
   try{
     const r = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,CNY-BRL');
     const d = await r.json();
-    // Valor bruto sem arredondar ÃÂ¢ÃÂÃÂ DÃÂÃÂ³lar Comercial (bid da AwesomeAPI)
+    // Valor bruto sem arredondar — Dólar Comercial (bid da AwesomeAPI)
     _cambio.USD = parseFloat(d.USDBRL?.bid||5.2)||5.2;
     _cambio.EUR = parseFloat(d.EURBRL?.bid||5.7)||5.7;
     _cambio.CNY = parseFloat(d.CNYBRL?.bid||0.72)||0.72;
@@ -546,9 +546,9 @@ async function carregarCambio(){
   setTimeout(carregarCambio, 5*60*1000);
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // DADOS
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 async function carregarProcessos(silencioso){
   if(!silencioso) showToast('Carregando...','info');
   try{
@@ -569,7 +569,7 @@ async function carregarProcessos(silencioso){
       renderFaseFilter();
       carregarNotificacoes();
       if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
-      // Deep link (task #59) ÃÂ¢ÃÂÃÂ se a pÃÂÃÂ¡gina abriu direto em /controle/UD26-005,
+      // Deep link (task #59) — se a página abriu direto em /controle/UD26-005,
       // abre o painel do processo assim que a lista termina de carregar.
       if(_refPendenteDeepLink){
         _abrirProcessoPorReferencia(_refPendenteDeepLink);
@@ -581,10 +581,10 @@ async function carregarProcessos(silencioso){
   }
 }
 
-// Abre o painel de um processo pela referÃÂÃÂªncia (usado por deep link e pelo
-// botÃÂÃÂ£o voltar/avanÃÂÃÂ§ar do navegador), SEM mexer no histÃÂÃÂ³rico ÃÂ¢ÃÂÃÂ quem decide
-// se pushState/popstate acontece ÃÂÃÂ© sempre o chamador (abrirProcesso ou o
-// listener de popstate), nunca esta funÃÂÃÂ§ÃÂÃÂ£o.
+// Abre o painel de um processo pela referência (usado por deep link e pelo
+// botão voltar/avançar do navegador), SEM mexer no histórico — quem decide
+// se pushState/popstate acontece é sempre o chamador (abrirProcesso ou o
+// listener de popstate), nunca esta função.
 function _abrirProcessoPorReferencia(ref){
   const proc = _processos.find(p=>p.referencia===ref);
   if(!proc) return;
@@ -593,9 +593,9 @@ function _abrirProcessoPorReferencia(ref){
   renderModal();
 }
 
-// BotÃÂÃÂ£o voltar/avanÃÂÃÂ§ar do navegador ÃÂ¢ÃÂÃÂ mantÃÂÃÂ©m o painel lateral sincronizado
-// com a URL (ex: abrir processo A, abrir processo B, voltar ÃÂ¢ÃÂÃÂ reabre A;
-// voltar de novo ÃÂ¢ÃÂÃÂ fecha o painel e volta pra lista).
+// Botão voltar/avançar do navegador — mantém o painel lateral sincronizado
+// com a URL (ex: abrir processo A, abrir processo B, voltar → reabre A;
+// voltar de novo → fecha o painel e volta pra lista).
 window.addEventListener('popstate', function(){
   const partes = location.pathname.split('/').filter(Boolean);
   const ref = partes[1] ? decodeURIComponent(partes[1]) : null;
@@ -614,7 +614,7 @@ async function salvarProcesso(proc, patchFields){
   proc.updated_at = new Date().toISOString();
   if(isNovo){ proc.created_by = _user.usuario; proc.created_at = new Date().toISOString(); }
 
-  // Registrar cÃÂÃÂ¢mbio USD no momento do pedido se nÃÂÃÂ£o preenchido
+  // Registrar câmbio USD no momento do pedido se não preenchido
   if(!proc.pi_cambio && proc.pi_valor_usd && _cambio.USD){
     proc.pi_cambio = _cambio.USD;
     if(patchFields) patchFields.push('pi_cambio');
@@ -676,7 +676,7 @@ async function salvarProcesso(proc, patchFields){
     proc.armazenagem_vencimento = presenca.toISOString().split('T')[0];
   }
 
-  // demurrage_pago agora Ã© derivado automaticamente da Data de Pagamento da
+  // demurrage_pago agora é derivado automaticamente da Data de Pagamento da
   // Demurrage (aba Demurrage) em vez de um dropdown Sim/NÃ£o editado Ã  mÃ£o
   // (pedido Emanuelly 03/09/2026, junto com o desmembramento da aba).
   proc.demurrage_pago = !!proc.data_pagamento_demurrage;
@@ -698,14 +698,14 @@ async function salvarProcesso(proc, patchFields){
     proc.fase = calcularFase(proc);
   }
 
-  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CONCORRÃÂÃÂNCIA: enviar sÃÂÃÂ³ o que mudou ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+  // ── CONCORRÊNCIA: enviar só o que mudou ──────────────────────────
   // Se quem chamou informou patchFields (lista de campos de fato alterados
-  // nesta sessÃÂÃÂ£o de ediÃÂÃÂ§ÃÂÃÂ£o), manda ao servidor sÃÂÃÂ³ esses campos + os
-  // metadados/calculados de sempre ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o o processo inteiro. Isso evita que
+  // nesta sessão de edição), manda ao servidor só esses campos + os
+  // metadados/calculados de sempre — não o processo inteiro. Isso evita que
   // duas pessoas editando o mesmo processo ao mesmo tempo apaguem uma a
-  // mudanÃÂÃÂ§a da outra: cada save sÃÂÃÂ³ toca nos campos que aquele usuÃÂÃÂ¡rio de
-  // fato mexeu. Sem patchFields (chamada antiga/desconhecida), mantÃÂÃÂ©m o
-  // comportamento de sempre ÃÂ¢ÃÂÃÂ manda o processo inteiro.
+  // mudança da outra: cada save só toca nos campos que aquele usuário de
+  // fato mexeu. Sem patchFields (chamada antiga/desconhecida), mantém o
+  // comportamento de sempre — manda o processo inteiro.
   let payload = proc;
   if(patchFields && Array.isArray(patchFields)){
     const camposFixos = ['id','referencia','fase','demurrage_vencimento','armazenagem_vencimento','demurrage_pago','pi_cambio',
@@ -730,7 +730,7 @@ async function salvarProcesso(proc, patchFields){
   }
   if(d.ok){
     showToast('✓ Salvo','ok');
-    // Criar notificaÃÂÃÂ§ÃÂÃÂ£o se houver alerta
+    // Criar notificação se houver alerta
     verificarAlertas(proc, true);
     await carregarProcessos(true);
     return true;
@@ -751,22 +751,22 @@ async function excluirProcesso(id){
   else showToast('Erro ao excluir'+(d.erro?': '+d.erro:''),'err');
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// FASE AUTOMÃÂÃÂTICA
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// FASE AUTOMÁTICA
+// ════════════════════════════════════════════════════════════════
 function calcularFase(p){
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  // "Data Chegada", "Data PresenÃÂÃÂ§a" e "Data de Embarque" sÃÂÃÂ³ contam pra
-  // avanÃÂÃÂ§ar a fase se jÃÂÃÂ¡ aconteceram de fato. Se alguÃÂÃÂ©m preencher uma data
-  // futura ali (comum quando o booking jÃÂÃÂ¡ traz uma previsÃÂÃÂ£o e a pessoa
+  // "Data Chegada", "Data Presença" e "Data de Embarque" só contam pra
+  // avançar a fase se já aconteceram de fato. Se alguém preencher uma data
+  // futura ali (comum quando o booking já traz uma previsão e a pessoa
   // preenche no campo errado por hÃÂÃÂ¡bito), NÃÂÃÂO trata como jÃÂÃÂ¡ embarcado/
-  // desembarcado ÃÂ¢ÃÂÃÂ fica na fase anterior atÃÂÃÂ© a data realmente chegar. Use
-  // os campos de previsÃÂÃÂ£o (ETD/ETA/PrevisÃÂÃÂ£o ProntidÃÂÃÂ£o) pra isso ÃÂ¢ÃÂÃÂ e na
-  // prÃÂÃÂ¡tica o prÃÂÃÂ³prio formulÃÂÃÂ¡rio jÃÂÃÂ¡ move a data automaticamente pro campo
-  // de previsÃÂÃÂ£o certo quando detecta uma data futura nesses campos (ver
-  // moverDataFuturaParaPrevisao) ÃÂ¢ÃÂÃÂ isso aqui ÃÂÃÂ© sÃÂÃÂ³ a segunda camada de
-  // proteÃÂÃÂ§ÃÂÃÂ£o, pro caso de a data chegar aqui por outro caminho (ex: leitura
-  // por IA), sem depender sÃÂÃÂ³ do que roda no onchange do campo.
+  // desembarcado — fica na fase anterior até a data realmente chegar. Use
+  // os campos de previsão (ETD/ETA/Previsão Prontidão) pra isso — e na
+  // prática o próprio formulário já move a data automaticamente pro campo
+  // de previsão certo quando detecta uma data futura nesses campos (ver
+  // moverDataFuturaParaPrevisao) — isso aqui é só a segunda camada de
+  // proteção, pro caso de a data chegar aqui por outro caminho (ex: leitura
+  // por IA), sem depender só do que roda no onchange do campo.
   const chegadaPassada  = p.data_chegada  && new Date(p.data_chegada+'T00:00:00')  <= hoje ? p.data_chegada  : null;
   const presencaPassada = p.data_presenca && new Date(p.data_presenca+'T00:00:00') <= hoje ? p.data_presenca : null;
   const embarquePassado = p.data_embarque && new Date(p.data_embarque+'T00:00:00') <= hoje ? p.data_embarque : null;
@@ -779,36 +779,36 @@ function calcularFase(p){
   // 'preso' em Devolucao do Vazio ate alguem lembrar de conferir RIC/
   // lavagem manualmente.
   if(p.data_devolucao_vazio && (p.ric_status === 'Isento' || p.data_pagamento_lavagem)) return 'FINALIZADO';
-  // Quando AMBAS as NFs (entrada e saÃÂÃÂ­da) estÃÂÃÂ£o emitidas, isso jÃÂÃÂ¡ ÃÂÃÂ© prova
-  // suficiente de que o carregamento aconteceu de fato ÃÂ¢ÃÂÃÂ avanÃÂÃÂ§a direto para
-  // DevoluÃÂÃÂ§ÃÂÃÂ£o do Vazio, mesmo sem a data_carregamento manual preenchida,
-  // para jÃÂÃÂ¡ acionar o alerta de demurrage dessa etapa.
+  // Quando AMBAS as NFs (entrada e saída) estão emitidas, isso já é prova
+  // suficiente de que o carregamento aconteceu de fato — avança direto para
+  // Devolução do Vazio, mesmo sem a data_carregamento manual preenchida,
+  // para já acionar o alerta de demurrage dessa etapa.
   if(p.data_carregamento || (p.nf_entrada_numero && p.nf_saida_numero)) return 'DEVOLUCAO_VAZIO';
   if(p.data_agendamento || p.nf_saida_numero || p.nf_entrada_numero) return 'CARREGAMENTO';
   if(p.data_liberacao || (p.canal==='VERDE' && p.data_parametrizacao)) return 'FATURAMENTO';
   if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
   if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
   if(presencaPassada || chegadaPassada)                             return 'DESEMBARCADO';
-  // Igual ao caso do Booking acima: o NÃÂÃÂº HBL costuma ser preenchido antes
-  // do embarque acontecer de fato (o armador/agente jÃÂÃÂ¡ manda o HBL com
-  // antecedÃÂÃÂªncia), entÃÂÃÂ£o usar sÃÂÃÂ³ "p.hbl" aqui fazia o status pular pra
-  // "Embarcado" antes da hora ÃÂ¢ÃÂÃÂ mesmo com o embarque real ainda previsto
-  // pra outro dia. Agora sÃÂÃÂ³ a Data de Embarque (Efetiva) ÃÂ¢ÃÂÃÂ quando jÃÂÃÂ¡
-  // passou ÃÂ¢ÃÂÃÂ conta como embarque de verdade.
+  // Igual ao caso do Booking acima: o Nº HBL costuma ser preenchido antes
+  // do embarque acontecer de fato (o armador/agente já manda o HBL com
+  // antecedência), então usar só "p.hbl" aqui fazia o status pular pra
+  // "Embarcado" antes da hora — mesmo com o embarque real ainda previsto
+  // pra outro dia. Agora só a Data de Embarque (Efetiva) — quando já
+  // passou — conta como embarque de verdade.
   if(embarquePassado)                                               return 'EMBARCADO';
-  // O status avanÃÂÃÂ§a pra "Ag. Embarque" sÃÂÃÂ³ com a PrevisÃÂÃÂ£o de Embarque (ETD)
+  // O status avança pra "Ag. Embarque" só com a Previsão de Embarque (ETD)
   // preenchida ÃÂ¢ÃÂÃÂ NÃÂÃÂO mais com o NÃÂÃÂº Booking. Motivo: como o booking real
-  // muitas vezes nÃÂÃÂ£o chega a tempo, o time preenche esse campo com a
-  // referÃÂÃÂªncia da Royal (nÃÂÃÂ£o o booking de verdade), e o status mudava
-  // prematuramente/erradamente por causa disso. O ETD ÃÂÃÂ© um dado mais
-  // confiÃÂÃÂ¡vel desse ponto do processo.
+  // muitas vezes não chega a tempo, o time preenche esse campo com a
+  // referência da Royal (não o booking de verdade), e o status mudava
+  // prematuramente/erradamente por causa disso. O ETD é um dado mais
+  // confiável desse ponto do processo.
   if(p.etd)                                                         return 'AGUARDANDO_EMBARQUE';
   return 'PI';
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // DEMURRAGE
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 function demurrageDias(proc){
   if(!proc.demurrage_vencimento) return null;
   const venc = parseDataLocal(proc.demurrage_vencimento);
@@ -825,11 +825,11 @@ function armazenagemDias(proc){
   return Math.ceil((venc-hoje)/86400000);
 }
 
-// Processo com chegada prevista (ETA) nos prÃÂÃÂ³ximos N dias e que ainda nÃÂÃÂ£o
-// desembarcou de fato (sem data_chegada preenchida ÃÂ¢ÃÂÃÂ assim que a chegada
-// efetiva ÃÂÃÂ© registrada, o processo sai naturalmente deste card). Usado
+// Processo com chegada prevista (ETA) nos próximos N dias e que ainda não
+// desembarcou de fato (sem data_chegada preenchida — assim que a chegada
+// efetiva é registrada, o processo sai naturalmente deste card). Usado
 // pelo card "Chegada em 7 dias" do Dashboard e pelo filtro correspondente
-// na tabela ÃÂ¢ÃÂÃÂ mesma regra nos dois lugares, pra nÃÂÃÂ£o desalinhar contagem e
+// na tabela — mesma regra nos dois lugares, pra não desalinhar contagem e
 // lista exibida ao clicar no card.
 function chegandoEmDias(proc, dias){
   if(proc.data_chegada || proc.fase==='FINALIZADO' || !proc.eta) return false;
@@ -839,23 +839,23 @@ function chegandoEmDias(proc, dias){
   return eta>=hoje && eta<=limite;
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// PAGAMENTOS DE PI ÃÂ¢ÃÂÃÂ fonte ÃÂÃÂºnica pro Dashboard Financeiro
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// PAGAMENTOS DE PI — fonte única pro Dashboard Financeiro
+// ════════════════════════════════════════════════════════════════
 // Um processo com forma "Entrada+Saldo" na verdade tem DUAS datas de
-// vencimento e DOIS cÃÂÃÂ¢mbios diferentes ÃÂ¢ÃÂÃÂ tratar isso como "um pagamento sÃÂÃÂ³"
+// vencimento e DOIS câmbios diferentes — tratar isso como "um pagamento só"
 // (como o resto do sistema faz) esconde a parcela de Entrada inteira do
-// fluxo de caixa e do controle cambial. Essa funÃÂÃÂ§ÃÂÃÂ£o "achata" cada processo
-// em 1 ou 2 parcelas de pagamento individuais, cada uma jÃÂÃÂ¡ com fornecedor,
-// paÃÂÃÂ­s (via porto de origem), valor, vencimento, cÃÂÃÂ¢mbio previsto/fechado e
-// se jÃÂÃÂ¡ foi paga ÃÂ¢ÃÂÃÂ pra nÃÂÃÂ£o reimplementar essa lÃÂÃÂ³gica 3x (KPIs, calendÃÂÃÂ¡rio,
-// cÃÂÃÂ¢mbio) de formas ligeiramente diferentes e desalinhadas entre si.
+// fluxo de caixa e do controle cambial. Essa função "achata" cada processo
+// em 1 ou 2 parcelas de pagamento individuais, cada uma já com fornecedor,
+// país (via porto de origem), valor, vencimento, câmbio previsto/fechado e
+// se já foi paga — pra não reimplementar essa lógica 3x (KPIs, calendário,
+// câmbio) de formas ligeiramente diferentes e desalinhadas entre si.
 //
-// "Pago" por parcela (nÃÂÃÂ£o usa sÃÂÃÂ³ o pi_pago geral do processo, que sÃÂÃÂ³ vira
+// "Pago" por parcela (não usa só o pi_pago geral do processo, que só vira
 // true quando TUDO foi pago):
-//  - ÃÂÃÂºnica (Vista/Prazo): usa pi_pago mesmo ÃÂ¢ÃÂÃÂ ÃÂÃÂ© o ÃÂÃÂºnico pagamento do processo.
-//  - entrada: considera paga se jÃÂÃÂ¡ tem cÃÂÃÂ¢mbio de entrada fechado registrado.
-//  - saldo: usa pi_pago ÃÂ¢ÃÂÃÂ ÃÂÃÂ© a parcela que fecha o processo (ver confirmarCambioComo).
+//  - única (Vista/Prazo): usa pi_pago mesmo — é o único pagamento do processo.
+//  - entrada: considera paga se já tem câmbio de entrada fechado registrado.
+//  - saldo: usa pi_pago — é a parcela que fecha o processo (ver confirmarCambioComo).
 function listarPagamentosPI(processos){
   const pagamentos = [];
   (processos||[]).forEach(p=>{
@@ -874,11 +874,11 @@ function listarPagamentosPI(processos){
         cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_saldo)||null,
         pago: !!p.pi_pago });
     } else if(p.pi_pagamento==='PARCELADO'){
-      // "Parcelado" (N cÃÂÃÂ¢mbios, valor fixo em USD cada) ÃÂ¢ÃÂÃÂ achata cada linha
-      // de pi_parcelas_json num pagamento prÃÂÃÂ³prio, mesmo espÃÂÃÂ­rito de
-      // Entrada+Saldo acima, sÃÂÃÂ³ que sem limite de 2. "Paga" por parcela usa
-      // a presenÃÂÃÂ§a de cÃÂÃÂ¢mbio fechado (mesma regra da parcela "entrada"), jÃÂÃÂ¡
-      // que aqui nÃÂÃÂ£o existe um pi_pago ÃÂÃÂºnico cobrindo "a ÃÂÃÂºltima parcela".
+      // "Parcelado" (N câmbios, valor fixo em USD cada) — achata cada linha
+      // de pi_parcelas_json num pagamento próprio, mesmo espírito de
+      // Entrada+Saldo acima, só que sem limite de 2. "Paga" por parcela usa
+      // a presença de câmbio fechado (mesma regra da parcela "entrada"), já
+      // que aqui não existe um pi_pago único cobrindo "a última parcela".
       let parcelas = [];
       try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
       parcelas.forEach((pc,i)=>{
@@ -896,9 +896,9 @@ function listarPagamentosPI(processos){
         cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(p.pi_cambio_fechado)||null,
         pago: !!p.pi_pago });
     }
-    // Sem pi_pagamento definido ainda (processo recÃÂÃÂ©m-criado, sÃÂÃÂ³ com valor
-    // da PI preenchido): nÃÂÃÂ£o dÃÂÃÂ¡ pra saber vencimento nem parcelas, mas ainda
-    // conta pra ExposiÃÂÃÂ§ÃÂÃÂ£o em USD ÃÂ¢ÃÂÃÂ entra como pagamento "sem forma definida".
+    // Sem pi_pagamento definido ainda (processo recém-criado, só com valor
+    // da PI preenchido): não dá pra saber vencimento nem parcelas, mas ainda
+    // conta pra Exposição em USD — entra como pagamento "sem forma definida".
     else {
       pagamentos.push({...base, parcela:'indefinido',
         valorUsd: valorTotal, vencimento: null,
@@ -1009,41 +1009,41 @@ function renderArmazenInfo(p){
   </div>`;
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// FECHAMENTO ÃÂ¢ÃÂÃÂ estimado (da cotaÃÂÃÂ§ÃÂÃÂ£o aprovada) ÃÂÃÂ real (NF Entrada/SaÃÂÃÂ­da)
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// FunÃÂÃÂ§ÃÂÃÂ£o pura (sem DOM) que compara o que foi cotado no Calculador
+// ════════════════════════════════════════════════════════════════
+// FECHAMENTO — estimado (da cotação aprovada) × real (NF Entrada/Saída)
+// ════════════════════════════════════════════════════════════════
+// Função pura (sem DOM) que compara o que foi cotado no Calculador
 // (p.estimativa_json, gravado em POST /api/calculador/cotacoes/:id/aprovar)
-// com o resultado real do processo (NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ NF Entrada, jÃÂÃÂ¡ preenchidos
-// na aba Documentos). Compara sempre contra o cenÃÂÃÂ¡rio Com S.T. (ÃÂÃÂ© o mais
-// comum na prÃÂÃÂ¡tica ÃÂ¢ÃÂÃÂ resumo antigo, salvo antes dos dois cenÃÂÃÂ¡rios existirem,
-// cai no faturamento genÃÂÃÂ©rico que tinha na ÃÂÃÂ©poca).
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CUSTOS REAIS ÃÂ¢ÃÂÃÂ apuraÃÂÃÂ§ÃÂÃÂ£o de lucro por processo, item a item ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// com o resultado real do processo (NF Saída − NF Entrada, já preenchidos
+// na aba Documentos). Compara sempre contra o cenário Com S.T. (é o mais
+// comum na prática — resumo antigo, salvo antes dos dois cenários existirem,
+// cai no faturamento genérico que tinha na época).
+// ── CUSTOS REAIS — apuração de lucro por processo, item a item ────
 // Mesmos grupos/campos usados no Calculador (TAXAS_CONFIG + FOB/Frete/
-// Seguro/Taxa C.E. + Impostos + ComissÃÂÃÂµes) ÃÂ¢ÃÂÃÂ pra dar pra apurar o lucro
-// real de QUALQUER processo, com ou sem cotaÃÂÃÂ§ÃÂÃÂ£o aprovada. `cotado(c)` lÃÂÃÂª o
+// Seguro/Taxa C.E. + Impostos + Comissões) — pra dar pra apurar o lucro
+// real de QUALQUER processo, com ou sem cotação aprovada. `cotado(c)` lê o
 // valor cotado de dentro de p.estimativa_json.custos_cotados_json (gravado
-// por resumoParaLista() no calculador.html, ao salvar a cotaÃÂÃÂ§ÃÂÃÂ£o) ÃÂ¢ÃÂÃÂ usado sÃÂÃÂ³
-// como REFERÃÂÃÂNCIA/ponto de partida na aba Custos Reais; o cÃÂÃÂ¡lculo do lucro
-// real (ver calcularCustoRealTotal) usa exclusivamente o que estÃÂÃÂ¡ em
-// p.real_json/p.real_cambio, preenchido pelo usuÃÂÃÂ¡rio no Controle.
+// por resumoParaLista() no calculador.html, ao salvar a cotação) — usado só
+// como REFERÊNCIA/ponto de partida na aba Custos Reais; o cálculo do lucro
+// real (ver calcularCustoRealTotal) usa exclusivamente o que está em
+// p.real_json/p.real_cambio, preenchido pelo usuário no Controle.
 //
-// p.real_json e p.real_cambio jÃÂÃÂ¡ existem no banco (migration
-// 0004_add_custos_reais_processo.sql, aplicada em produÃÂÃÂ§ÃÂÃÂ£o e no lab em
-// 2026-07-19) ÃÂ¢ÃÂÃÂ a coluna foi criada antes pra essa mesma finalidade, mas o
-// cÃÂÃÂ³digo que a usava nunca chegou a ser commitado. Reaproveitada aqui em vez
-// de criar coluna nova. real_json guarda um valor TOTAL (jÃÂÃÂ¡ em R$ ou US$,
-// conforme a unidade do item) por chave de item (ver custosReaisItensFlat) ÃÂ¢ÃÂÃÂ
+// p.real_json e p.real_cambio já existem no banco (migration
+// 0004_add_custos_reais_processo.sql, aplicada em produção e no lab em
+// 2026-07-19) — a coluna foi criada antes pra essa mesma finalidade, mas o
+// código que a usava nunca chegou a ser commitado. Reaproveitada aqui em vez
+// de criar coluna nova. real_json guarda um valor TOTAL (já em R$ ou US$,
+// conforme a unidade do item) por chave de item (ver custosReaisItensFlat) —
 // mais simples que o { fixas, usd } por-container original documentado na
-// migration, e cobre tambÃÂÃÂ©m Compra/Impostos/ComissÃÂÃÂµes, nÃÂÃÂ£o sÃÂÃÂ³ as 21 taxas.
-// FIX (a pedido do usuÃÂÃÂ¡rio): FOB/Frete/Seguro/Taxa C.E. e as Taxas em USD
-// (destino) eram unidade:'USD' aqui ÃÂ¢ÃÂÃÂ exigia conversÃÂÃÂ£o manual toda vez que
-// alguÃÂÃÂ©m abria a aba, mesmo o Calculador jÃÂÃÂ¡ parametrizando um cÃÂÃÂ¢mbio
-// especÃÂÃÂ­fico pra cada um desses itens (cÃÂÃÂ¢mbio ponderado pelas parcelas pro
-// FOB, cÃÂÃÂ¢mbio de abertura+2% pro Frete/Seguro/Taxas em USD, cÃÂÃÂ¢mbio ÃÂÃÂºnico da
-// simulaÃÂÃÂ§ÃÂÃÂ£o pra Taxa C.E ÃÂ¢ÃÂÃÂ ver resumoParaLista() em calculador.html). Agora
-// unidade:'BRL' em todos ÃÂ¢ÃÂÃÂ os valores que chegam em custos_cotados_json jÃÂÃÂ¡
-// vÃÂÃÂªm convertidos pelo cÃÂÃÂ¢mbio correto de cada item, nÃÂÃÂ£o mais em dÃÂÃÂ³lar puro.
+// migration, e cobre também Compra/Impostos/Comissões, não só as 21 taxas.
+// FIX (a pedido do usuário): FOB/Frete/Seguro/Taxa C.E. e as Taxas em USD
+// (destino) eram unidade:'USD' aqui — exigia conversão manual toda vez que
+// alguém abria a aba, mesmo o Calculador já parametrizando um câmbio
+// específico pra cada um desses itens (câmbio ponderado pelas parcelas pro
+// FOB, câmbio de abertura+2% pro Frete/Seguro/Taxas em USD, câmbio único da
+// simulação pra Taxa C.E — ver resumoParaLista() em calculador.html). Agora
+// unidade:'BRL' em todos — os valores que chegam em custos_cotados_json já
+// vêm convertidos pelo câmbio correto de cada item, não mais em dólar puro.
 // pc(id) = "porContainer" derivado do catálogo único de taxas
 // (window.TaxasCatalogo, ver taxas-catalogo.js) — fonte única com o
 // Calculador (TAXAS_CONFIG em calculador.html) pra saber se uma taxa
@@ -1069,10 +1069,10 @@ const CUSTOS_REAIS_CONFIG = [
     // calcularCustoRealTotal/calcularReceitaRealTotal/calcularTotalizadorPorGrupo).
     { id:'taxa_ce',  label:'Taxa C.E. (CE Mercante)', unidade:'BRL', unidadeLegado:'USD', excluirDosTotais:true, cotado:c=>c?.compra?.taxa_ce },
   ]},
-  // apenasPago:true = imposto nÃÂÃÂ£o tem "compra ÃÂÃÂ venda" ÃÂ¢ÃÂÃÂ ÃÂÃÂ© sÃÂÃÂ³ um valor a
+  // apenasPago:true = imposto não tem "compra × venda" — é só um valor a
   // pagar pro governo, sempre em R$, sem contrapartida cobrada do cliente
   // (diferente das taxas operacionais, que podem ter margem). A aba mostra
-  // sÃÂÃÂ³ um campo "Valor a pagar", sem Cobrado/Margem nem seletor de moeda.
+  // só um campo "Valor a pagar", sem Cobrado/Margem nem seletor de moeda.
   { grupo:'Impostos de Importação', slug:'impostos', itens:[
     // II (Imposto de Importacao) e a UNICA excecao do grupo: confirmado na
     // planilha (UD26-052, aba "Demonstrativo COM S.T") que ele ENTRA no
@@ -1092,8 +1092,8 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'ibs',    label:'IBS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.ibs },
     { id:'cbs',    label:'CBS',    unidade:'BRL', apenasPago:true, temCredito:true, cotado:c=>c?.impostos?.cbs },
     // Antidumping: direito antidumping (encargo governamental cobrado quando o
-    // toggle "dump" estÃÂÃÂ¡ SIM no Calculador) ÃÂ¢ÃÂÃÂ igual aos demais impostos, sem
-    // compraÃÂÃÂvenda, sÃÂÃÂ³ existe quando a cotaÃÂÃÂ§ÃÂÃÂ£o de origem teve o toggle ativo.
+    // toggle "dump" está SIM no Calculador) — igual aos demais impostos, sem
+    // compra×venda, só existe quando a cotação de origem teve o toggle ativo.
     { id:'antidumping', label:'Antidumping', unidade:'BRL', apenasPago:true, cotado:c=>c?.impostos?.antidumping },
   ]},
   { grupo:'Comissões', slug:'comissoes', itens:[
@@ -1101,10 +1101,10 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'comissao_china', label:'Comissão China',              unidade:'BRL', cotado:c=>c?.comissoes?.china },
     { id:'comissao_boss',  label:'Comissão Boss/Lopes',         unidade:'BRL', cotado:c=>c?.comissoes?.boss },
   ]},
-  // porContainer:true = no Calculador esse valor ÃÂÃÂ© POR container (r.txOp);
-  // usado sÃÂÃÂ³ pra multiplicar corretamente ao calcular o "Cotado" total abaixo
-  // (calcularCustoCotadoItem). Os valores REAIS lanÃÂÃÂ§ados na aba sÃÂÃÂ£o sempre o
-  // TOTAL do item pro processo inteiro ÃÂ¢ÃÂÃÂ o usuÃÂÃÂ¡rio nÃÂÃÂ£o precisa multiplicar.
+  // porContainer:true = no Calculador esse valor é POR container (r.txOp);
+  // usado só pra multiplicar corretamente ao calcular o "Cotado" total abaixo
+  // (calcularCustoCotadoItem). Os valores REAIS lançados na aba são sempre o
+  // TOTAL do item pro processo inteiro — o usuário não precisa multiplicar.
   { grupo:'Taxas Operacionais', slug:'taxas', itens:[
     { id:'siscomex',         label:'Siscomex',                unidade:'BRL', porContainer:pc('siscomex'),  cotado:c=>c?.taxas_fixas?.siscomex },
     { id:'marinha',          label:'Marinha/AFRMM',           unidade:'BRL', porContainer:pc('marinha'),  cotado:c=>c?.taxas_fixas?.marinha },
@@ -1120,8 +1120,8 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'agente',           label:'Agente Carga',            unidade:'BRL', porContainer:pc('agente'),  cotado:c=>c?.taxas_fixas?.agente },
     { id:'custos_diversos',  label:'Custos Diversos',         unidade:'BRL', porContainer:pc('custos_diversos'), cotado:c=>c?.custos_diversos },
     // Seguro de Venda: distinto do Seguro (Compra e Frete acima, custo interno
-    // da importaÃÂÃÂ§ÃÂÃÂ£o) ÃÂ¢ÃÂÃÂ ÃÂÃÂ© a taxa de seguro cobrada na proposta ao cliente, que
-    // compÃÂÃÂµe total_taxas/custo_total no Calculador (ver comentÃÂÃÂ¡rio em
+    // da importação) — é a taxa de seguro cobrada na proposta ao cliente, que
+    // compõe total_taxas/custo_total no Calculador (ver comentário em
     // calcular(), "deve compor as Taxas Operacionais").
     { id:'seguro_venda',    label:'Seguro de Venda',         unidade:'BRL', porContainer:pc('seguro_venda'), cotado:c=>c?.seguro_venda },
     { id:'handling',         label:'Handling at Destination', unidade:'BRL', unidadeLegado:'USD', porContainer:pc('handling'),  cotado:c=>c?.taxas_usd?.handling },
@@ -1184,29 +1184,29 @@ function custosReaisItensFlat(){
   return CUSTOS_REAIS_CONFIG.flatMap(g => g.itens.map(it => ({...it, grupo:g.grupo})));
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ MULTI-MOEDA + QUEBRA POR CONTAINER (Pago ÃÂÃÂ Cobrado por taxa) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// Igual ÃÂÃÂ  tela de Taxas do Conexos: cada taxa pode ter Pago e Cobrado em
-// moedas diferentes (BRL/USD/EUR, cada lado com sua prÃÂÃÂ³pria moeda ÃÂ¢ÃÂÃÂ ex.:
+// ── MULTI-MOEDA + QUEBRA POR CONTAINER (Pago × Cobrado por taxa) ──────
+// Igual à tela de Taxas do Conexos: cada taxa pode ter Pago e Cobrado em
+// moedas diferentes (BRL/USD/EUR, cada lado com sua própria moeda — ex.:
 // paga o representante em BRL, recebe do importador em USD), e quando o
 // processo tem mais de um container, cada taxa "porContainer" pode ser
-// detalhada container a container em vez de um valor ÃÂÃÂºnico pro processo
+// detalhada container a container em vez de um valor único pro processo
 // inteiro. Formato salvo em real_json[item.id] (e o mesmo com sufixo
-// "_cobrado"), aceita 3 formatos pra manter compatibilidade com dados jÃÂÃÂ¡
-// salvos antes dessa mudanÃÂÃÂ§a:
-//   nÃÂÃÂºmero puro            ÃÂ¢ÃÂÃÂ legado: valor na moeda padrÃÂÃÂ£o do item (unidade)
-//   { valor, moeda }       ÃÂ¢ÃÂÃÂ valor ÃÂÃÂºnico, moeda escolhida pelo usuÃÂÃÂ¡rio
-//   { porContainer:{ 'CONTAINER1':{valor,moeda}, ... } } ÃÂ¢ÃÂÃÂ detalhado
+// "_cobrado"), aceita 3 formatos pra manter compatibilidade com dados já
+// salvos antes dessa mudança:
+//   número puro            → legado: valor na moeda padrão do item (unidade)
+//   { valor, moeda }       → valor único, moeda escolhida pelo usuário
+//   { porContainer:{ 'CONTAINER1':{valor,moeda}, ... } } → detalhado
 const MOEDAS_REAIS = [
   { code:'BRL', simbolo:'R$' },
   { code:'USD', simbolo:'US$' },
   { code:'EUR', simbolo:'€' },
 ];
 
-// CÃÂÃÂ¢mbio de uma moeda em relaÃÂÃÂ§ÃÂÃÂ£o a R$ pra este processo. USD usa a mesma
-// coluna jÃÂÃÂ¡ existente (p.real_cambio, com fallback pro cÃÂÃÂ¢mbio da PI); EUR
-// nÃÂÃÂ£o tem coluna prÃÂÃÂ³pria ÃÂ¢ÃÂÃÂ pra nÃÂÃÂ£o precisar de migration nova, fica salvo
-// dentro do prÃÂÃÂ³prio real_json (_cambio_eur), com fallback pro cÃÂÃÂ¢mbio do dia
-// (_cambio.EUR, jÃÂÃÂ¡ buscado no boot pra barra do topo).
+// Câmbio de uma moeda em relação a R$ pra este processo. USD usa a mesma
+// coluna já existente (p.real_cambio, com fallback pro câmbio da PI); EUR
+// não tem coluna própria — pra não precisar de migration nova, fica salvo
+// dentro do próprio real_json (_cambio_eur), com fallback pro câmbio do dia
+// (_cambio.EUR, já buscado no boot pra barra do topo).
 function taxaCambioMoedaReal(moeda, p){
   if(moeda === 'BRL') return 1;
   if(moeda === 'USD'){
@@ -1219,18 +1219,18 @@ function taxaCambioMoedaReal(moeda, p){
   return null;
 }
 
-// Lista de containers do processo ÃÂ¢ÃÂÃÂ usada sÃÂÃÂ³ pra oferecer o detalhamento
-// por container nas taxas "porContainer". Sem containers cadastrados (ou sÃÂÃÂ³
-// 1), a taxa fica como valor ÃÂÃÂºnico, sem opÃÂÃÂ§ÃÂÃÂ£o de detalhar.
+// Lista de containers do processo — usada só pra oferecer o detalhamento
+// por container nas taxas "porContainer". Sem containers cadastrados (ou só
+// 1), a taxa fica como valor único, sem opção de detalhar.
 //
 // Fonte da verdade: p.containers_json, o MESMO campo preenchido na tela
 // "+ Adicionar Container" da aba Documentos (ver controle-campos.js,
-// renderMultiContainers/sincronizarContainerLegado) ÃÂ¢ÃÂÃÂ array de
-// {numero, tipo, lacre}. Antes esta funÃÂÃÂ§ÃÂÃÂ£o lia p.container (o campo texto
-// legado, que sÃÂÃÂ³ guarda o nÃÂÃÂºmero do PRIMEIRO container, sincronizado
-// automaticamente a partir de containers_json) ÃÂ¢ÃÂÃÂ por isso processos com
-// mais de um container apareciam com sÃÂÃÂ³ 1 na aba Custos Reais. MantÃÂÃÂ©m
-// fallback pro campo legado sÃÂÃÂ³ pra processos antigos que nunca chegaram a
+// renderMultiContainers/sincronizarContainerLegado) — array de
+// {numero, tipo, lacre}. Antes esta função lia p.container (o campo texto
+// legado, que só guarda o número do PRIMEIRO container, sincronizado
+// automaticamente a partir de containers_json) — por isso processos com
+// mais de um container apareciam com só 1 na aba Custos Reais. Mantém
+// fallback pro campo legado só pra processos antigos que nunca chegaram a
 // usar a tela de multi-container (containers_json ainda vazio).
 function containersDoProcesso(p){
   if(!p) return [];
@@ -1248,8 +1248,8 @@ function containersDoProcesso(p){
 }
 
 // Converte o valor bruto salvo em real_json[item.id] (nos 3 formatos
-// possÃÂÃÂ­veis, ver comentÃÂÃÂ¡rio acima) pro total em R$ desse item. Retorna
-// null quando nÃÂÃÂ£o hÃÂÃÂ¡ nada lanÃÂÃÂ§ado.
+// possíveis, ver comentário acima) pro total em R$ desse item. Retorna
+// null quando não há nada lançado.
 function normalizarValorRealItem(raw, item, p){
   if(raw == null || raw === '') return null;
   if(typeof raw === 'object'){
@@ -1276,13 +1276,13 @@ function normalizarValorRealItem(raw, item, p){
     }
     return null;
   }
-  // legado: nÃÂÃÂºmero (ou string numÃÂÃÂ©rica) puro, sem objeto {valor,moeda} ÃÂ¢ÃÂÃÂ sÃÂÃÂ³
+  // legado: número (ou string numérica) puro, sem objeto {valor,moeda} — só
   // existe em processos criados ANTES do multi-moeda (task #159). Usa
-  // unidadeLegado quando existe (itens que mudaram de padrÃÂÃÂ£o USD->BRL nesta
-  // correÃÂÃÂ§ÃÂÃÂ£o ÃÂ¢ÃÂÃÂ ver comentÃÂÃÂ¡rio no topo de CUSTOS_REAIS_CONFIG) pra nÃÂÃÂ£o
+  // unidadeLegado quando existe (itens que mudaram de padrão USD->BRL nesta
+  // correção — ver comentário no topo de CUSTOS_REAIS_CONFIG) pra não
   // reinterpretar retroativamente valores antigos que foram salvos em USD
-  // como se jÃÂÃÂ¡ fossem BRL. Itens que sempre foram BRL nÃÂÃÂ£o tÃÂÃÂªm
-  // unidadeLegado, entÃÂÃÂ£o caem direto em item.unidade (sem mudanÃÂÃÂ§a).
+  // como se já fossem BRL. Itens que sempre foram BRL não têm
+  // unidadeLegado, então caem direto em item.unidade (sem mudança).
   const unidadeParaLegado = item.unidadeLegado || item.unidade;
   const valor = parseFloat(raw);
   if(isNaN(valor)) return null;
@@ -1290,10 +1290,10 @@ function normalizarValorRealItem(raw, item, p){
   return { totalBrl: unidadeParaLegado === 'BRL' ? valor : valor * (cambio || 0), count:1, moeda:unidadeParaLegado };
 }
 
-// Valor COTADO de um item, jÃÂÃÂ¡ no TOTAL do processo (multiplicado pelos
-// containers quando for porContainer) ÃÂ¢ÃÂÃÂ usado sÃÂÃÂ³ pra prÃÂÃÂ©-preencher/mostrar
-// como referÃÂÃÂªncia na aba Custos Reais, nunca entra direto no cÃÂÃÂ¡lculo do
-// lucro real (ver calcularCustoRealTotal, que sÃÂÃÂ³ olha p.real_json).
+// Valor COTADO de um item, já no TOTAL do processo (multiplicado pelos
+// containers quando for porContainer) — usado só pra pré-preencher/mostrar
+// como referência na aba Custos Reais, nunca entra direto no cálculo do
+// lucro real (ver calcularCustoRealTotal, que só olha p.real_json).
 function calcularCustoCotadoItem(item, cotado){
   if(!cotado) return null;
   const base = item.cotado(cotado);
@@ -1301,13 +1301,13 @@ function calcularCustoCotadoItem(item, cotado){
   return item.porContainer ? base * (cotado.containers || 1) : base;
 }
 
-// Soma tudo que estiver preenchido em p.real_json (valores TOTAIS, jÃÂÃÂ¡
-// digitados pelo usuÃÂÃÂ¡rio na aba Custos Reais ÃÂ¢ÃÂÃÂ sem fallback automÃÂÃÂ¡tico pro
-// cotado aqui; o fallback acontece sÃÂÃÂ³ visualmente, prÃÂÃÂ©-preenchendo o campo
-// quando a aba abre). Itens em USD convertem pelo cÃÂÃÂ¢mbio salvo em
-// p.real_cambio ou, na falta dele, pelo cÃÂÃÂ¢mbio da PI do processo. Retorna
-// null quando nÃÂÃÂ£o hÃÂÃÂ¡ NENHUM custo real lanÃÂÃÂ§ado ainda ÃÂ¢ÃÂÃÂ nesse caso
-// calcularFechamento() cai no cÃÂÃÂ¡lculo antigo (NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ NF Entrada),
+// Soma tudo que estiver preenchido em p.real_json (valores TOTAIS, já
+// digitados pelo usuário na aba Custos Reais — sem fallback automático pro
+// cotado aqui; o fallback acontece só visualmente, pré-preenchendo o campo
+// quando a aba abre). Itens em USD convertem pelo câmbio salvo em
+// p.real_cambio ou, na falta dele, pelo câmbio da PI do processo. Retorna
+// null quando não há NENHUM custo real lançado ainda — nesse caso
+// calcularFechamento() cai no cálculo antigo (NF Saída − NF Entrada),
 // preservando o comportamento de processos que nunca abriram essa aba.
 function calcularCustoRealTotal(p){
   const reais = p.real_json;
@@ -1332,11 +1332,11 @@ function calcularCustoRealTotal(p){
 }
 
 // Espelha calcularCustoRealTotal, mas soma o que foi COBRADO DO CLIENTE por
-// item (nÃÂÃÂ£o o que foi pago ao fornecedor/agente) ÃÂ¢ÃÂÃÂ guardado nas mesmas
+// item (não o que foi pago ao fornecedor/agente) — guardado nas mesmas
 // chaves de real_json, com sufixo "_cobrado" (ex.: reais.siscomex = pago,
-// reais.siscomex_cobrado = cobrado). Isso dÃÂÃÂ¡ pra ver a margem de CADA taxa
-// individualmente (compra ÃÂÃÂ venda), igual ao Conexos mostra na aba Taxas ÃÂ¢ÃÂÃÂ
-// nÃÂÃÂ£o sÃÂÃÂ³ o total do processo (NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ Custo Real Total).
+// reais.siscomex_cobrado = cobrado). Isso dá pra ver a margem de CADA taxa
+// individualmente (compra × venda), igual ao Conexos mostra na aba Taxas —
+// não só o total do processo (NF Saída − Custo Real Total).
 function calcularReceitaRealTotal(p){
   const reais = p.real_json;
   if(!reais || typeof reais !== 'object') return null;
@@ -1599,24 +1599,24 @@ function calcularJurosVenda(p, venda, qtdVendas){
   return 0;
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ VENDAS MULTI-CLIENTE (rateio de custo) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ── VENDAS MULTI-CLIENTE (rateio de custo) ────────────────────────
 // Um processo (de qualquer finalidade) pode ser vendido a mais de um
-// cliente ÃÂ¢ÃÂÃÂ ex.: meio contÃÂÃÂªiner pra um, meio pra outro. p.vendas_json guarda
-// um array de vendas, cada uma com seu prÃÂÃÂ³prio cliente, NF SaÃÂÃÂ­da e a
+// cliente — ex.: meio contêiner pra um, meio pra outro. p.vendas_json guarda
+// um array de vendas, cada uma com seu próprio cliente, NF Saída e a
 // quantidade que levou de cada item. Quando existe pelo menos uma venda
-// cadastrada, o Lucro Real deixa de ser um nÃÂÃÂºmero ÃÂÃÂºnico do processo (NF
-// SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ Custo Real Total) e passa a ser calculado VENDA A VENDA: cada
-// custo real lanÃÂÃÂ§ado na aba Custos Reais ÃÂÃÂ© rateado proporcionalmente ÃÂÃÂ 
+// cadastrada, o Lucro Real deixa de ser um número único do processo (NF
+// Saída − Custo Real Total) e passa a ser calculado VENDA A VENDA: cada
+// custo real lançado na aba Custos Reais é rateado proporcionalmente à
 // quantidade que aquela venda levou (sobre a quantidade total de produtos do
 // processo, ver totalQuantidadeProdutos), e alguns custos podem ser
-// lanÃÂÃÂ§ados DIRETO numa venda especÃÂÃÂ­fica (custos_diretos), sem entrar no
-// rateio ÃÂ¢ÃÂÃÂ ex.: um frete rodoviÃÂÃÂ¡rio que sÃÂÃÂ³ existiu porque aquele cliente
+// lançados DIRETO numa venda específica (custos_diretos), sem entrar no
+// rateio — ex.: um frete rodoviário que só existiu porque aquele cliente
 // pediu entrega em outra cidade.
 // Sem nenhuma venda cadastrada (vendas_json vazio/null), calcularFechamento
-// continua exatamente como antes ÃÂ¢ÃÂÃÂ 100% retrocompatÃÂÃÂ­vel com todo processo
-// jÃÂÃÂ¡ cadastrado.
+// continua exatamente como antes — 100% retrocompatível com todo processo
+// já cadastrado.
 
-// Soma a quantidade de todos os itens em produtos_json ÃÂ¢ÃÂÃÂ ÃÂÃÂ© o "tamanho
+// Soma a quantidade de todos os itens em produtos_json — é o "tamanho
 // total" do processo (ex.: 1400 pneus), denominador do rateio.
 function totalQuantidadeProdutos(p){
   if(!p || !p.produtos_json) return 0;
@@ -1627,8 +1627,8 @@ function totalQuantidadeProdutos(p){
   }catch(e){ return 0; }
 }
 
-// LÃÂÃÂª e normaliza p.vendas_json ÃÂ¢ÃÂÃÂ nunca lanÃÂÃÂ§a, sempre devolve array (vazio
-// se nÃÂÃÂ£o houver nada salvo ou o JSON estiver corrompido).
+// Lê e normaliza p.vendas_json — nunca lança, sempre devolve array (vazio
+// se não houver nada salvo ou o JSON estiver corrompido).
 function parseVendas(p){
   if(!p || !p.vendas_json) return [];
   try{
@@ -1649,15 +1649,15 @@ function quantidadeVenda(venda){
   return (venda.itens||[]).reduce((s,it)=> s + (parseFloat(it.quantidade)||0), 0);
 }
 
-// Soma dos custos diretos (nÃÂÃÂ£o-rateados) de uma venda ÃÂ¢ÃÂÃÂ cada um jÃÂÃÂ¡ ÃÂÃÂ© um
-// valor TOTAL em R$, lanÃÂÃÂ§ado manualmente (ex.: "Frete RodoviÃÂÃÂ¡rio Extra").
+// Soma dos custos diretos (não-rateados) de uma venda — cada um já é um
+// valor TOTAL em R$, lançado manualmente (ex.: "Frete Rodoviário Extra").
 function custosDiretosVenda(venda){
   return (venda.custos_diretos||[]).reduce((s,c)=> s + (parseFloat(c.valor)||0), 0);
 }
 
-// Rateia o Custo Real Total do processo por uma venda especÃÂÃÂ­fica,
-// proporcional ÃÂÃÂ  quantidade que ela levou, e soma os custos diretos dela
-// por cima (esses nÃÂÃÂ£o sÃÂÃÂ£o rateados ÃÂ¢ÃÂÃÂ sÃÂÃÂ£o sÃÂÃÂ³ dessa venda).
+// Rateia o Custo Real Total do processo por uma venda específica,
+// proporcional à quantidade que ela levou, e soma os custos diretos dela
+// por cima (esses não são rateados — são só dessa venda).
 function calcularRateioVenda(p, venda, custoRealTotal){
   const totalQtd = totalQuantidadeProdutos(p);
   const qtdVenda = quantidadeVenda(venda);
@@ -1667,9 +1667,9 @@ function calcularRateioVenda(p, venda, custoRealTotal){
   return { totalQtd, qtdVenda, fracao, custoRateado, custoDireto, custoTotal: custoRateado + custoDireto };
 }
 
-// Lucro de uma venda especÃÂÃÂ­fica: NF SaÃÂÃÂ­da DELA (nÃÂÃÂ£o do processo) ÃÂ¢ÃÂÃÂ a fatia
-// de custo que lhe cabe (rateado + direto). null quando a venda ainda nÃÂÃÂ£o
-// tem NF SaÃÂÃÂ­da lanÃÂÃÂ§ada (mesma convenÃÂÃÂ§ÃÂÃÂ£o do Lucro Real do processo inteiro).
+// Lucro de uma venda específica: NF Saída DELA (não do processo) − a fatia
+// de custo que lhe cabe (rateado + direto). null quando a venda ainda não
+// tem NF Saída lançada (mesma convenção do Lucro Real do processo inteiro).
 function calcularLucroVenda(p, venda, custoRealTotal){
   const rateio = calcularRateioVenda(p, venda, custoRealTotal);
   const nfSaida = parseFloat(venda.nf_saida_valor);
@@ -1708,12 +1708,12 @@ function calcularVencimentoVenda(venda){
   return null;
 }
 
-// Ajusta uma lista de valores fracionÃÂÃÂ¡rios (em R$) que deveriam somar
-// "totalAlvo" pra somarem EXATAMENTE isso atÃÂÃÂ© o centavo ÃÂ¢ÃÂÃÂ mÃÂÃÂ©todo do maior
+// Ajusta uma lista de valores fracionários (em R$) que deveriam somar
+// "totalAlvo" pra somarem EXATAMENTE isso até o centavo — método do maior
 // resto (largest remainder / Hamilton), o mesmo usado pra distribuir
 // cadeiras em sistemas proporcionais. Sem isso, ratear R$100.000,00 em 3
 // partes de 33.333,33... e converter cada uma pra centavos pode deixar 1-2
-// centavos "perdidos" ou "sobrando" que nunca aparecem em lugar nenhum ÃÂ¢ÃÂÃÂ
+// centavos "perdidos" ou "sobrando" que nunca aparecem em lugar nenhum —
 // pequeno, mas incomoda numa tela financeira onde a soma devia bater exato.
 function arredondarComRestoExato(valores, totalAlvo){
   const totalCentavosAlvo = Math.round((totalAlvo||0) * 100);
@@ -1721,7 +1721,7 @@ function arredondarComRestoExato(valores, totalAlvo){
   const somaBase = centavosBase.reduce((s,c)=> s+c, 0);
   let restante = totalCentavosAlvo - somaBase;
   // Distribui o restante (positivo ou negativo) 1 centavo de cada vez,
-  // priorizando quem tem a maior parte fracionÃÂÃÂ¡ria "perdida" no floor.
+  // priorizando quem tem a maior parte fracionária "perdida" no floor.
   const ordem = valores
     .map((v,i)=>({ i, frac: (v||0)*100 - Math.floor((v||0)*100) }))
     .sort((a,b)=> b.frac - a.frac);
@@ -1731,9 +1731,9 @@ function arredondarComRestoExato(valores, totalAlvo){
   return resultado.map(c => c/100);
 }
 
-// Resumo agregado de todas as vendas de um processo ÃÂ¢ÃÂÃÂ null quando nÃÂÃÂ£o hÃÂÃÂ¡
-// nenhuma venda cadastrada (processo continua no modelo antigo, 1 NF SaÃÂÃÂ­da
-// ÃÂÃÂºnica pro processo inteiro).
+// Resumo agregado de todas as vendas de um processo — null quando não há
+// nenhuma venda cadastrada (processo continua no modelo antigo, 1 NF Saída
+// única pro processo inteiro).
 function itensFaltantesVenda(p){
   if(!p || !p.produtos_json) return [];
   try{
@@ -1774,10 +1774,10 @@ function calcularVendasResumo(p){
   const totalQtd = totalQuantidadeProdutos(p);
   const qtdAlocada = linhas.reduce((s,l)=> s + l.qtdVenda, 0);
 
-  // CorreÃÂÃÂ§ÃÂÃÂ£o de arredondamento (maior resto): sÃÂÃÂ³ faz sentido quando o
-  // processo estÃÂÃÂ¡ 100% alocado entre as vendas (senÃÂÃÂ£o a soma parcial dos
-  // custos rateados ÃÂÃÂ o comportamento correto ÃÂ¢ÃÂÃÂ ver saldoNaoAlocado) e
-  // quando hÃÂÃÂ¡ mais de 1 venda (com 1 venda sÃÂÃÂ³ nÃÂÃÂ£o existe erro de soma pra
+  // Correção de arredondamento (maior resto): só faz sentido quando o
+  // processo está 100% alocado entre as vendas (senão a soma parcial dos
+  // custos rateados É o comportamento correto — ver saldoNaoAlocado) e
+  // quando há mais de 1 venda (com 1 venda só não existe erro de soma pra
   // corrigir). Recalcula custoTotal/lucro/pctLucro de cada linha em cima
   // do custoRateado ajustado.
   if(totalQtd > 0 && qtdAlocada === totalQtd && custoRealTotal > 0 && linhas.length > 1){
@@ -1806,27 +1806,27 @@ function calcularFechamento(p){
   const est = p.estimativa_json || null;
   const nfEntrada = parseFloat(p.nf_entrada_valor);
 
-  // Custo real detalhado (aba "Custos Reais") ÃÂ¢ÃÂÃÂ quando o processo tem pelo
-  // menos um item lanÃÂÃÂ§ado ali, ele ÃÂÃÂ© MAIS PRECISO que o cÃÂÃÂ¡lculo grosseiro
-  // NF SaÃÂÃÂ­da ÃÂ¢ÃÂÃÂ NF Entrada (que ignora frete, seguro, impostos, comissÃÂÃÂµes e
-  // taxas operacionais ÃÂ¢ÃÂÃÂ cada processo tem uma combinaÃÂÃÂ§ÃÂÃÂ£o diferente do que
-  // teve ou nÃÂÃÂ£o). Sem nenhum item lanÃÂÃÂ§ado, mantÃÂÃÂ©m o cÃÂÃÂ¡lculo antigo por NF.
+  // Custo real detalhado (aba "Custos Reais") — quando o processo tem pelo
+  // menos um item lançado ali, ele é MAIS PRECISO que o cálculo grosseiro
+  // NF Saída − NF Entrada (que ignora frete, seguro, impostos, comissões e
+  // taxas operacionais — cada processo tem uma combinação diferente do que
+  // teve ou não). Sem nenhum item lançado, mantém o cálculo antigo por NF.
   const custosReais = calcularCustoRealTotal(p);
   const custoRealTotal = custosReais ? custosReais.total : null;
-  // Margem por taxa (compra ÃÂÃÂ venda) ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ existe quando o usuÃÂÃÂ¡rio tambÃÂÃÂ©m
-  // lanÃÂÃÂ§ou valores "cobrado do cliente" na aba Custos Reais, nÃÂÃÂ£o ÃÂÃÂ©
-  // obrigatÃÂÃÂ³rio preencher. Independente do Lucro Real (que usa a NF SaÃÂÃÂ­da
-  // inteira); esta ÃÂÃÂ© uma visÃÂÃÂ£o ÃÂÃÂ  parte, item a item, das taxas especÃÂÃÂ­ficas.
+  // Margem por taxa (compra × venda) — só existe quando o usuário também
+  // lançou valores "cobrado do cliente" na aba Custos Reais, não é
+  // obrigatório preencher. Independente do Lucro Real (que usa a NF Saída
+  // inteira); esta é uma visão à parte, item a item, das taxas específicas.
   const receitaReais = calcularReceitaRealTotal(p);
   const margemTaxas = (custosReais && receitaReais)
     ? { total: receitaReais.total - custosReais.total, custoTotal: custosReais.total, receitaTotal: receitaReais.total }
     : null;
 
-  // Vendas multi-cliente (rateio de custo) ÃÂ¢ÃÂÃÂ quando o processo foi vendido
+  // Vendas multi-cliente (rateio de custo) — quando o processo foi vendido
   // a mais de um cliente (ver calcularVendasResumo acima), o Lucro Real do
-  // processo vira a SOMA do lucro de cada venda (NF dela ÃÂ¢ÃÂÃÂ sua fatia de
-  // custo), e a "NF SaÃÂÃÂ­da" do processo vira a soma das NFs de cada venda.
-  // Sem nenhuma venda cadastrada, cai exatamente no cÃÂÃÂ¡lculo antigo abaixo.
+  // processo vira a SOMA do lucro de cada venda (NF dela − sua fatia de
+  // custo), e a "NF Saída" do processo vira a soma das NFs de cada venda.
+  // Sem nenhuma venda cadastrada, cai exatamente no cálculo antigo abaixo.
   const vendasResumo = calcularVendasResumo(p);
   let nfSaida, temReal, lucroReal, pctLucroReal;
   if(vendasResumo){
@@ -2180,9 +2180,9 @@ function renderFechamentoInfo(p){
 }
 
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// ALERTAS E NOTIFICAÃÂÃÂÃÂÃÂES
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// ALERTAS E NOTIFICAÇÕES
+// ════════════════════════════════════════════════════════════════
 function verificarAlertas(proc, criarNotif){
   const alertas = [];
   const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -2214,7 +2214,7 @@ function verificarAlertas(proc, criarNotif){
     alertas.push({tipo:'urgente', titulo:`Armazenagem VENCIDA: ${proc.referencia}`, mensagem:`Venceu há ${Math.abs(diasArmaz)} dia(s). Armazenagem adicional em andamento.`});
   }
 
-  // Alerta ETA: ETA passou e processo ainda estÃÂÃÂ¡ Embarcado
+  // Alerta ETA: ETA passou e processo ainda está Embarcado
   if(proc.eta && proc.fase === 'EMBARCADO'){
     const eta = parseDataLocal(proc.eta);
     const diff = Math.ceil((hoje - eta)/86400000);
@@ -2223,7 +2223,7 @@ function verificarAlertas(proc, criarNotif){
     }
   }
 
-  // Alerta ETA prÃÂÃÂ³ximo (2 dias)
+  // Alerta ETA próximo (2 dias)
   if(proc.eta && proc.fase === 'EMBARCADO'){
     const eta = parseDataLocal(proc.eta);
     const diff = Math.ceil((eta - hoje)/86400000);
@@ -2232,7 +2232,7 @@ function verificarAlertas(proc, criarNotif){
     }
   }
 
-  // Alerta PI vencimento (prazo pagamento nos prÃÂÃÂ³ximos 5 dias)
+  // Alerta PI vencimento (prazo pagamento nos próximos 5 dias)
   if(proc.pi_data_saldo && !proc.pi_pago){
     const venc = parseDataLocal(proc.pi_data_saldo);
     const diff = Math.ceil((venc - hoje)/86400000);
@@ -2286,14 +2286,14 @@ function verificarAlertas(proc, criarNotif){
   return alertas;
 }
 
-// Cache em memÃÂÃÂ³ria das notificaÃÂÃÂ§ÃÂÃÂµes jÃÂÃÂ¡ carregadas nesta sessÃÂÃÂ£o, usado sÃÂÃÂ³
-// para evitar duplicatas ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o substitui carregarNotificacoes().
+// Cache em memória das notificações já carregadas nesta sessão, usado só
+// para evitar duplicatas — não substitui carregarNotificacoes().
 let _notifsCache = [];
 
 async function criarNotificacao(processoId, tipo, titulo, mensagem){
-  // Evita criar a mesma notificaÃÂÃÂ§ÃÂÃÂ£o de novo a cada save do processo: se jÃÂÃÂ¡
-  // existe uma notificaÃÂÃÂ§ÃÂÃÂ£o idÃÂÃÂªntica (mesmo processo + mesmo tÃÂÃÂ­tulo) criada
-  // nas ÃÂÃÂºltimas 24h, nÃÂÃÂ£o cria outra. Sem isso, salvar o processo vÃÂÃÂ¡rias
+  // Evita criar a mesma notificação de novo a cada save do processo: se já
+  // existe uma notificação idêntica (mesmo processo + mesmo título) criada
+  // nas últimas 24h, não cria outra. Sem isso, salvar o processo várias
   // vezes no mesmo dia (comum durante ajustes) gerava um alerta duplicado
   // a cada save, mesmo sem nada relacionado ao alerta ter mudado.
   try{
@@ -2365,9 +2365,9 @@ async function marcarLida(id){
   }).then(()=>carregarNotificacoes()).catch(()=>{});
 }
 
-// Clicar numa notificaÃÂÃÂ§ÃÂÃÂ£o deve marcÃÂÃÂ¡-la como lida E abrir o processo que ela
-// se refere ÃÂ¢ÃÂÃÂ antes sÃÂÃÂ³ marcava como lida, sem nenhuma forma de chegar ao
-// processo a partir da notificaÃÂÃÂ§ÃÂÃÂ£o (era preciso buscar manualmente na lista).
+// Clicar numa notificação deve marcá-la como lida E abrir o processo que ela
+// se refere — antes só marcava como lida, sem nenhuma forma de chegar ao
+// processo a partir da notificação (era preciso buscar manualmente na lista).
 function abrirNotificacao(id, processoId){
   marcarLida(id);
   toggleNotif(); // fecha o painel de notificações
@@ -2412,12 +2412,12 @@ function tempoRelativo(isoDate){
   return `${d}d atrás`;
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // RENDER
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// RÃÂÃÂ³tulos amigÃÂÃÂ¡veis para os filtros financeiros especiais (usados pelos
-// cards clicÃÂÃÂ¡veis do Dashboard) ÃÂ¢ÃÂÃÂ sem isso, o usuÃÂÃÂ¡rio nÃÂÃÂ£o tem como saber
-// qual filtro estÃÂÃÂ¡ ativo depois de clicar num card e ir para a tabela.
+// ════════════════════════════════════════════════════════════════
+// Rótulos amigáveis para os filtros financeiros especiais (usados pelos
+// cards clicáveis do Dashboard) — sem isso, o usuário não tem como saber
+// qual filtro está ativo depois de clicar num card e ir para a tabela.
 const FILTRO_FINANCEIRO_LABEL = {
   __chegada_7d:         '🚢 Chegada prevista (ETA) nos próximos 7 dias',
   __pi_vence_30d:       '💰 Saldo a pagar nos próximos 30 dias',
@@ -2454,7 +2454,7 @@ function renderFaseFilter(){
     `<div class="fase-pill ${_faseFilter==='__fechado'?'active':''}" onclick="setFaseFilter('__fechado')">🔒 Fechado</div>`;
 }
 
-// Fecha todos os dashboards (Executivo, Financeiro, Resultado, NarcÃÂÃÂ©lio,
+// Fecha todos os dashboards (Executivo, Financeiro, Resultado, Narcélio,
 // Carregamento) e desmarca seus itens no menu lateral. Chamado ao trocar
 // de aba/fase ou ao abrir outro dashboard, para a tela trocar de fato em
 // vez de empilhar dashboard + tabela (ou dois dashboards ao mesmo tempo).
@@ -2505,10 +2505,10 @@ function setFaseFilter(fase){
   else if(fase==='__cancelamento_solicitado') document.getElementById('menu-solicitacoes-cancelamento')?.classList.add('active');
 }
 
-// Usada pelos cards clicÃÂÃÂ¡veis do Dashboard Executivo/Financeiro: fecha o
-// dashboard que estiver aberto e mostra a tabela principal jÃÂÃÂ¡ filtrada,
-// para o usuÃÂÃÂ¡rio poder ver e agir diretamente nos processos daquele nÃÂÃÂºmero
-// (em vez do card ser sÃÂÃÂ³ um nÃÂÃÂºmero estÃÂÃÂ¡tico no topo).
+// Usada pelos cards clicáveis do Dashboard Executivo/Financeiro: fecha o
+// dashboard que estiver aberto e mostra a tabela principal já filtrada,
+// para o usuário poder ver e agir diretamente nos processos daquele número
+// (em vez do card ser só um número estático no topo).
 function abrirComFiltro(filtro){
   const dashExec = document.getElementById('dash-executivo');
   const dashFin  = document.getElementById('dash-financeiro');
@@ -2533,7 +2533,7 @@ function renderStats(){
   // Mantido para o badge "Com alertas" da sidebar (o card do topo agora
   // mostra "Chegada em 7d" no lugar, mas o item do menu lateral continua).
   const comAlerta = processosAtivos.filter(p => verificarAlertas(p,false).length > 0).length;
-  // Demurrage crÃÂÃÂ­tico
+  // Demurrage crítico
   const demurCrit = processosAtivos.filter(p => { const d=demurrageDias(p); return d!==null&&d<=5&&!p.data_devolucao_vazio; }).length;
   const armazCrit = processosAtivos.filter(p => { const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada&&!p.data_carregamento; }).length;
   const chegando7d = processosAtivos.filter(p => chegandoEmDias(p,7)).length;
@@ -2595,11 +2595,11 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
     </div>`).join('');
 }
 
-// Mapa de filtros especiais por "fase" virtual (chaves comeÃÂÃÂ§ando com "__",
-// usadas pelos cards clicÃÂÃÂ¡veis dos dashboards Executivo/Financeiro). Cada
-// funÃÂÃÂ§ÃÂÃÂ£o recebe a lista jÃÂÃÂ¡ filtrada por busca/data e devolve a lista final.
-// Antes isso era uma cadeia crescente de if/else (uma comparaÃÂÃÂ§ÃÂÃÂ£o de string
-// atrÃÂÃÂ¡s da outra) ÃÂ¢ÃÂÃÂ um mapa deixa mais fÃÂÃÂ¡cil ver todos os filtros disponÃÂÃÂ­veis
+// Mapa de filtros especiais por "fase" virtual (chaves começando com "__",
+// usadas pelos cards clicáveis dos dashboards Executivo/Financeiro). Cada
+// função recebe a lista já filtrada por busca/data e devolve a lista final.
+// Antes isso era uma cadeia crescente de if/else (uma comparação de string
+// atrás da outra) — um mapa deixa mais fácil ver todos os filtros disponíveis
 // de uma vez, e adicionar um novo sem alterar uma cadeia gigante.
 const FILTROS_FASE_ESPECIAIS = {
   __alertas:    lista => lista.filter(p=>verificarAlertas(p,false).length>0),
@@ -2616,7 +2616,7 @@ const cont = {};
 lista.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont[r]||0)+1; });
 return lista.filter(p => cont[norm(p.referencia)] > 1);
 },
-  // Filtros financeiros ÃÂ¢ÃÂÃÂ usados pelos cards clicÃÂÃÂ¡veis do Dashboard Financeiro/Executivo
+  // Filtros financeiros — usados pelos cards clicáveis do Dashboard Financeiro/Executivo
   __pi_aberto:  lista => lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && !p.pi_pago),
   __pi_pago:    lista => lista.filter(p=>p.fase!=='FINALIZADO' && p.pi_valor_usd && p.pi_pago),
   __pi_vencido: lista => lista.filter(p=>{
@@ -2638,9 +2638,9 @@ return lista.filter(p => cont[norm(p.referencia)] > 1);
     const dentro = d => { if(!d) return false; const dt=new Date(d+'T00:00:00'); return dt>=hoje && dt<=lim; };
     return dentro(p.pi_data_entrada) || dentro(p.pi_data_saldo);
   }),
-  // Capital parado em estoque/trÃÂÃÂ¢nsito ÃÂ¢ÃÂÃÂ usado pelo card do Dashboard
-  // Financeiro (v2): jÃÂÃÂ¡ pago integralmente, mas o processo ainda nÃÂÃÂ£o foi
-  // finalizado (mercadoria ainda nÃÂÃÂ£o virou venda concluÃÂÃÂ­da).
+  // Capital parado em estoque/trânsito — usado pelo card do Dashboard
+  // Financeiro (v2): já pago integralmente, mas o processo ainda não foi
+  // finalizado (mercadoria ainda não virou venda concluída).
   __capital_parado: lista => lista.filter(p=>p.pi_pago && p.fase!=='FINALIZADO'),
   __nf_entrada_periodo: lista => lista.filter(p=>{
     if(p.fase==='FINALIZADO'||!p.nf_entrada_data) return false;
@@ -2709,7 +2709,7 @@ clientesDoProcesso(p).some(cl=>cl.toLowerCase().includes(q))
   const filtroFinalidade = document.getElementById('filtro-finalidade')?.value||'';
   if(filtroFinalidade) lista = lista.filter(p=>p.finalidade === filtroFinalidade);
 
-  // Filtro por pendÃÂÃÂªncia de revisÃÂÃÂ£o
+  // Filtro por pendência de revisão
   const filtroPendencia = document.getElementById('filtro-pendencia')?.checked;
   if(filtroPendencia) lista = lista.filter(p=>!!p.pendencia_revisao);
 
@@ -2739,10 +2739,10 @@ function render(){
       const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
       const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
       const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">⚠ Revisar</span>` : '';
-      // referencia/fornecedor sÃÂÃÂ£o texto livre (fornecedor ÃÂÃÂ s vezes vem de
-      // extraÃÂÃÂ§ÃÂÃÂ£o por IA de documento externo) ÃÂ¢ÃÂÃÂ escapar sempre antes de
-      // colocar em innerHTML, senÃÂÃÂ£o um valor malicioso/malformado vira HTML
-      // executÃÂÃÂ¡vel pra QUALQUER usuÃÂÃÂ¡rio que abrir esta lista (XSS
+      // referencia/fornecedor são texto livre (fornecedor às vezes vem de
+      // extração por IA de documento externo) — escapar sempre antes de
+      // colocar em innerHTML, senão um valor malicioso/malformado vira HTML
+      // executável pra QUALQUER usuário que abrir esta lista (XSS
       // persistente). Ver esc() em controle-campos.js.
       const canceladoBadge = p.cancelado ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Processo cancelado'}" style="font-size:9px;font-weight:700;background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#64748b;">🚫 CANCELADO</span>` : '';
     const solicitacaoCancelamentoBadge = (p.cancelamento_solicitado && !p.cancelado) ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Cancelamento solicitado'}" style="font-size:9px;font-weight:700;background:rgba(217,119,6,.15);border:1px solid rgba(217,119,6,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#d97706;">📨 CANCEL. SOLICITADO</span>` : '';
@@ -2770,7 +2770,7 @@ function render(){
     }).join('');
   }
 
-  // PaginaÃÂÃÂ§ÃÂÃÂ£o
+  // Paginação
   const pag = document.getElementById('paginacao');
   if(pag){
     if(totalPags <= 1){ pag.innerHTML=''; return; }
@@ -2787,9 +2787,9 @@ function render(){
   }
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// MODAL ÃÂ¢ÃÂÃÂ ABRIR / NOVO
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// MODAL — ABRIR / NOVO
+// ════════════════════════════════════════════════════════════════
 
 // ── ALERTA DE CAMPOS-CHAVE NAO PREENCHIDOS (pedido Emanuelly, 27/08/2026) ──
 //
