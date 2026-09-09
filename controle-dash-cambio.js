@@ -323,6 +323,18 @@ function renderDashCambio(){
     ${avisosConcentracao.map(a=>`<div>• ${a}</div>`).join('')}
   </div>`;
 
+  // ── Alerta "fora do radar" — pedido do Ayslan (09/09/2026, revisão do
+  // que um controller/financeiro gostaria de ver): antes esse aviso era só
+  // uma nota de rodapé de 11px embaixo da tabela, fácil de nunca ser vista
+  // — mas é o pior tipo de risco cambial (parcela que nem aparece nos KPIs
+  // de prazo porque ainda não tem Entrada+Saldo/Parcelado/À Vista/Prazo
+  // definido na PI). Vira alerta vermelho no topo, clicável, igual peso
+  // visual do aviso de concentração.
+  const alertaSemDataHtml = !semData.length ? '' : `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:#7f1d1d;display:flex;flex-direction:column;gap:3px;">
+    <div style="font-weight:700;color:#991b1b;">🚨 ${fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0))} fora do radar — sem forma de pagamento definida</div>
+    <div>${semData.length} parcela(s) ainda sem Entrada+Saldo/Parcelado/À Vista/Prazo definido na PI — esse valor NÃO entra em nenhum KPI de prazo acima, então pode vencer sem ninguém perceber. <a href="#" onclick="_cambioFiltro={tipo:'semdata'};renderDashCambio();document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});return false;" style="color:#991b1b;font-weight:700;">Ver processos →</a></div>
+  </div>`;
+
   // ── Mark-to-Market — o número que mais importa pra decidir comprar
   // dólar agora ou esperar: "se eu pagasse tudo hoje, eu ganharia ou
   // perderia vs o que estava planejado?". Só entra na conta a fatia que
@@ -480,6 +492,9 @@ function renderDashCambio(){
       mostrandoPagos = true;
       linhasFiltradas = pagos;
       tituloFiltro = `Câmbios já pagos (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
+    } else if(_cambioFiltro.tipo==='semdata'){
+      linhasFiltradas = semData;
+      tituloFiltro = `Sem forma de pagamento definida — fora dos KPIs de prazo (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
     }
   }
   // Sem uma data de pagamento própria guardada por parcela (só existe o
@@ -553,10 +568,9 @@ function renderDashCambio(){
       </tbody>
     </table>
     </div>
-    ${semData.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">⚠ ${semData.length} parcela(s) sem forma de pagamento definida ainda (${fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0))}) — não entram nos KPIs de prazo acima. Abra o processo e defina Entrada+Saldo/Parcelado/À Vista/Prazo na aba PI.</div>` : ''}
   </div>`;
 
-  el.innerHTML = kpisHtml + concentracaoHtml + mtmHtml
+  el.innerHTML = kpisHtml + alertaSemDataHtml + concentracaoHtml + mtmHtml
     + `<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">${fornecedorHtml}${simulacaoHtml}</div>`
     + consolidacaoHtml + tabelaHtml
     + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
