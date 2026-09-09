@@ -895,11 +895,11 @@ function listarPagamentosPI(processos){
     if(p.pi_pagamento==='ENTRADA_SALDO'){
       const pct = parseFloat(p.pi_entrada_pct||30)/100;
       const cambioPrevisto = parseFloat(p.pi_cambio)||null;
-      pagamentos.push({...base, parcela:'entrada',
+      pagamentos.push({...base, parcela:'entrada', _tipo:'entrada',
         valorUsd: valorTotal*pct, vencimento: p.pi_data_entrada||null,
         cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_entrada)||null,
         pago: !!p.pi_cambio_entrada });
-      pagamentos.push({...base, parcela:'saldo',
+      pagamentos.push({...base, parcela:'saldo', _tipo:'saldo',
         valorUsd: valorTotal*(1-pct), vencimento: p.pi_data_saldo||null,
         cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_saldo)||null,
         pago: !!p.pi_pago });
@@ -914,14 +914,14 @@ function listarPagamentosPI(processos){
       parcelas.forEach((pc,i)=>{
         const v = parseFloat(pc.valor_usd)||0;
         if(!v) return;
-        pagamentos.push({...base, parcela: pc.label || ('parcela '+(i+1)),
+        pagamentos.push({...base, parcela: pc.label || ('parcela '+(i+1)), _tipo:'parcelado', _parcelaIndex:i,
           valorUsd: v, vencimento: pc.data_vencimento||null,
           cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(pc.cambio_fechado)||null,
           pago: !!pc.cambio_fechado });
       });
     } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
       const vencimento = p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada;
-      pagamentos.push({...base, parcela:'unico',
+      pagamentos.push({...base, parcela:'unico', _tipo:'unico',
         valorUsd: valorTotal, vencimento: vencimento||null,
         cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(p.pi_cambio_fechado)||null,
         pago: !!p.pi_pago });
@@ -930,7 +930,7 @@ function listarPagamentosPI(processos){
     // da PI preenchido): não dá pra saber vencimento nem parcelas, mas ainda
     // conta pra Exposição em USD — entra como pagamento "sem forma definida".
     else {
-      pagamentos.push({...base, parcela:'indefinido',
+      pagamentos.push({...base, parcela:'indefinido', _tipo:'indefinido',
         valorUsd: valorTotal, vencimento: null,
         cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: null,
         pago: !!p.pi_pago });
