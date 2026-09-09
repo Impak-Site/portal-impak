@@ -351,8 +351,8 @@ function renderDashCambio(){
   const maxSemana = Math.max(1, ...semanas.map(s=>s.total));
   const PALETA_URGENCIA = ['#b91c1c','#dc2626','#ea580c','#d97706','#0891b2','#0e7490','#1e6091','#2a5298'];
   const semanasHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:700;margin-bottom:2px;">📅 Por Semana — próximas 8 semanas</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Clique numa semana pra ver só as parcelas dela na tabela abaixo.</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:2px;">📅 Por Semana — próximas 8 semanas</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Clique numa semana pra ver só as parcelas dela na tabela abaixo.</div>
     <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px;align-items:end;height:150px;">
       ${semanas.map((s,idx) => {
         const alturaPct = s.total>0 ? Math.max(6, Math.round((s.total/maxSemana)*100)) : 3;
@@ -361,9 +361,9 @@ function renderDashCambio(){
         return `<div onclick="_cambioFiltro=${ativo?'null':`{tipo:'semana',ini:'${s.ini.toISOString().slice(0,10)}',fim:'${s.fim.toISOString().slice(0,10)}',label:'${s.label}'}`};renderDashCambio()"
           title="${fmtUSD(s.total)} · ${s.qtd} parcela(s)"
           style="cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;${ativo?'background:#f1f5f9;border-radius:8px;':''}">
-          <div style="font-size:10px;font-weight:700;color:${s.total>0?'#334155':'var(--muted)'};margin-bottom:3px;white-space:nowrap;">${s.total>0?fmtUSD(s.total):''}</div>
+          <div style="font-size:13px;font-weight:700;color:${s.total>0?'#334155':'var(--muted)'};margin-bottom:3px;white-space:nowrap;">${s.total>0?fmtUSD(s.total):''}</div>
           <div style="width:70%;background:${cor};border-radius:4px 4px 0 0;height:${alturaPct}%;min-height:3px;${ativo?'outline:2px solid #0f1f3d;':''}"></div>
-          <div style="font-size:9px;color:var(--muted);margin-top:4px;white-space:nowrap;">${s.label}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;white-space:nowrap;">${s.label}</div>
         </div>`;
       }).join('')}
     </div>
@@ -433,19 +433,19 @@ function renderDashCambio(){
     return { nome, porJanela };
   }).filter(f => f.porJanela[2].qtd >= 2); // 2+ parcelas nos próximos 30 dias
   const consolidacaoHtml = !candidatosConsolidacao.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:700;margin-bottom:2px;">🔗 Consolidar Câmbio por Fornecedor</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Fornecedores com 2 ou mais parcelas vencendo nos próximos 30 dias — dá pra negociar 1 operação de câmbio só em vez de fechar parcela por parcela. Marque as parcelas dele na tabela abaixo pra fechar em lote.</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <div style="font-size:16px;font-weight:700;margin-bottom:2px;">🔗 Consolidar Câmbio por Fornecedor</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Fornecedores com 2 ou mais parcelas vencendo nos próximos 30 dias — dá pra negociar 1 operação de câmbio só em vez de fechar parcela por parcela. Marque as parcelas dele na tabela abaixo pra fechar em lote.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
       <thead><tr style="border-bottom:1px solid var(--border);">
-        <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
-        <th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 7d</th>
-        <th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 15d</th>
-        <th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 30d</th>
+        <th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
+        <th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 7d</th>
+        <th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 15d</th>
+        <th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 30d</th>
       </tr></thead>
       <tbody>
         ${candidatosConsolidacao.map(f => `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:8px;font-weight:600;">${esc(f.nome)}</td>
-          ${f.porJanela.map(j => `<td style="padding:8px;text-align:right;">${j.qtd ? `${fmtUSD(j.usd)} <span style="color:var(--muted);font-weight:400;">(${j.qtd}x)</span>` : '<span style="color:var(--muted);">—</span>'}</td>`).join('')}
+          <td style="padding:10px;font-weight:600;">${esc(f.nome)}</td>
+          ${f.porJanela.map(j => `<td style="padding:10px;text-align:right;">${j.qtd ? `${fmtUSD(j.usd)} <span style="color:var(--muted);font-weight:400;">(${j.qtd}x)</span>` : '<span style="color:var(--muted);">—</span>'}</td>`).join('')}
         </tr>`).join('')}
       </tbody>
     </table>
