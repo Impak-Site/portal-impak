@@ -1316,7 +1316,25 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
     // a checagem é feita por nome de arquivo (ver verificarAlertas,
     // controle-core.js). 1 query em lote em vez de 1 por processo.
     try {
-      const { data: arquivos } = await sb().from('controle_arquivos').select('processo_id, nome');
+      // Supabase/PostgREST aplica um limite padrão de 1000 linhas por
+      // select() sem paginação explícita. Com a tabela controle_arquivos já
+      // passando disso, processos com uploads mais recentes ficavam de fora
+      // da resposta e o alerta de CI/PL/Draft (e a lista de nomes no GED)
+      // ficava vazio mesmo com arquivo anexado (bug reportado por Emanuelly
+      // 08/09/2026 no processo QD-IMK-LPL-2605-1589). Corrigido paginando
+      // em blocos de 1000 até não vir mais nada.
+      const arquivos = [];
+      const PAGINA = 1000;
+      for (let offset = 0; ; offset += PAGINA) {
+        const { data: bloco, error: erroArquivos } = await sb()
+          .from('controle_arquivos')
+          .select('processo_id, nome')
+          .range(offset, offset + PAGINA - 1);
+        if (erroArquivos) throw new Error(erroArquivos.message);
+        if (!bloco || !bloco.length) break;
+        arquivos.push(...bloco);
+        if (bloco.length < PAGINA) break;
+      }
       if (arquivos && arquivos.length) {
         const porProcesso = {};
         arquivos.forEach(a => { (porProcesso[a.processo_id] = porProcesso[a.processo_id] || []).push(a.nome); });
