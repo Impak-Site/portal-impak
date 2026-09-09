@@ -1307,6 +1307,49 @@ app.get('/controle/:ref', auth('controle'), (req, res) => res.sendFile(path.join
 app.get('/tv', auth('tv'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
 
+// ── PTAX histórico (Banco Central) — pedido do Ayslan (09/09/2026, "usar a
+// API do Banco Central pra PTAX"): fonte oficial de referência do dólar
+// (https://www.bcb.gov.br/estabilidadefinanceira/fechamentodolar), usada no
+// Dashboard Câmbio pra comparar contra o que a Impak efetivamente fechou.
+// Proxy pelo backend (não dá pra chamar direto do navegador: a API da
+// Olinda/BCB não libera CORS pra outros domínios) + cache em memória de 6h
+// pra não bater no BCB a cada F5 da tela.
+let _ptaxCache = { chave: null, ts: 0, dados: null };
+app.get('/api/cambio/ptax-historico', auth('financeiro'), async (req, res) => {
+  try {
+    const dias = Math.min(180, Math.max(1, parseInt(req.query.dias) || 90));
+    const fim = new Date();
+    const ini = new Date(fim); ini.setDate(fim.getDate() - dias);
+    const fmtBcb = d => String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '-' + d.getFullYear();
+    const chave = fmtBcb(ini) + '_' + fmtBcb(fim);
+
+    const SEIS_HORAS_MS = 6*60*60*1000;
+    if (_ptaxCache.chave === chave && (Date.now() - _ptaxCache.ts) < SEIS_HORAS_MS) {
+      return res.json({ ok:true, dados: _ptaxCache.dados, fonte:'cache' });
+    }
+
+    const url = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='${fmtBcb(ini)}'&@dataFinalCotacao='${fmtBcb(fim)}'&$top=10000&$format=json&$select=cotacaoCompra,cotacaoVenda,dataHoraCotacao`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('BCB respondeu status ' + r.status);
+    const json = await r.json();
+    const dados = (json.value || []).map(x => ({
+      data: (x.dataHoraCotacao || '').slice(0,10), // "YYYY-MM-DD HH:mm:ss..." -> "YYYY-MM-DD"
+      compra: parseFloat(x.cotacaoCompra),
+      venda: parseFloat(x.cotacaoVenda),
+    })).filter(x => x.data && isFinite(x.venda));
+
+    _ptaxCache = { chave, ts: Date.now(), dados };
+    res.json({ ok:true, dados, fonte:'bcb' });
+  } catch (e) {
+    console.warn('PTAX histórico erro:', e.message);
+    // Se já tiver algo em cache (mesmo de uma janela de datas um pouco
+    // diferente) é melhor devolver dado velho do que nada — o gráfico avisa
+    // a data da última atualização.
+    if (_ptaxCache.dados) return res.json({ ok:true, dados: _ptaxCache.dados, fonte:'cache_stale' });
+    res.status(502).json({ ok:false, erro: 'Não foi possível consultar o PTAX no Banco Central agora: ' + e.message });
+  }
+});
+
 app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()

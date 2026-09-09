@@ -54,6 +54,77 @@ function atualizarSimulacaoCambio(valorStr){
 // desmarcar manualmente).
 let _cambioLoteSelecao = new Map();
 
+// ── PTAX x Câmbio Fechado (gráfico) ─────────────────────────────────────
+// Cache em memória do lado do cliente (o backend já cacheia por 6h também,
+// isso aqui só evita re-buscar toda vez que o usuário clica num KPI e
+// renderDashCambio() roda de novo — o gráfico não muda com o filtro).
+let _ptaxHistoricoCache = null;
+async function carregarGraficoPtaxCambio(pagos){
+  const el = document.getElementById('cambio-grafico-ptax');
+  if(!el) return;
+  try{
+    if(!_ptaxHistoricoCache){
+      const r = await fetch('/api/cambio/ptax-historico?dias=90');
+      const d = await r.json();
+      if(!d.ok) throw new Error(d.erro || 'erro desconhecido');
+      _ptaxHistoricoCache = d.dados;
+    }
+    el.innerHTML = renderGraficoPtaxCambioSvg(_ptaxHistoricoCache, pagos);
+  }catch(e){
+    el.innerHTML = `<div style="font-size:11px;color:var(--muted);">Não foi possível carregar o PTAX do Banco Central agora (${esc(e.message)}).</div>`;
+  }
+}
+
+function renderGraficoPtaxCambioSvg(ptax, pagos){
+  if(!ptax || !ptax.length) return `<div style="font-size:11px;color:var(--muted);">Sem dados de PTAX no período.</div>`;
+  const fmtBRL4 = v => v.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4});
+
+  const pontos = [...ptax].sort((a,b)=>a.data.localeCompare(b.data))
+    .map(p=>({t:new Date(p.data+'T00:00:00').getTime(), v:p.venda}))
+    .filter(p=>isFinite(p.v));
+  if(!pontos.length) return `<div style="font-size:11px;color:var(--muted);">Sem dados de PTAX no período.</div>`;
+
+  const minT = pontos[0].t, maxT = pontos[pontos.length-1].t;
+  const valores = pontos.map(p=>p.v);
+  const minY = Math.min(...valores) * 0.998, maxY = Math.max(...valores) * 1.002;
+
+  const W = 760, H = 210, PAD_X = 8, PAD_Y = 18;
+  const x = t => PAD_X + (maxT>minT ? (t-minT)/(maxT-minT) : 0) * (W-2*PAD_X);
+  const y = v => (H-PAD_Y) - (maxY>minY ? (v-minY)/(maxY-minY) : 0.5) * (H-2*PAD_Y);
+
+  const linha = pontos.map((p,i)=>`${i===0?'M':'L'} ${x(p.t).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
+
+  // Pontos da Impak: câmbios pagos com vencimento dentro da janela do PTAX
+  // (proxy de data — ver comentário no card "Câmbios Pagos" acima sobre a
+  // ausência de um campo de data de fechamento próprio).
+  const pontosEmpresa = (pagos||[]).filter(p=>p.vencimento && p.cambioFechado).map(p=>{
+    const t = new Date(p.vencimento+'T00:00:00').getTime();
+    return {t, v:p.cambioFechado, ref:p.referencia};
+  }).filter(p=>p.t>=minT && p.t<=maxT);
+
+  const circulos = pontosEmpresa.map(p=>
+    `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3.5" fill="var(--ac)" fill-opacity="0.85" stroke="#fff" stroke-width="1"><title>${esc(p.ref)} · R$ ${fmtBRL4(p.v)}</title></circle>`
+  ).join('');
+
+  const dataIni = new Date(minT).toLocaleDateString('pt-BR');
+  const dataFim = new Date(maxT).toLocaleDateString('pt-BR');
+
+  return `<div style="width:100%;">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:210px;display:block;">
+      <path d="${linha}" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+      ${circulos}
+    </svg>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:6px;">
+      <div style="display:flex;gap:16px;font-size:11px;color:var(--muted);">
+        <span><span style="display:inline-block;width:10px;height:2px;background:#94a3b8;margin-right:4px;vertical-align:middle;"></span>PTAX venda (BCB)</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ac);margin-right:4px;vertical-align:middle;"></span>Fechado pela Impak (${pontosEmpresa.length})</span>
+      </div>
+      <div style="font-size:10.5px;color:var(--dim);">${dataIni} — ${dataFim}</div>
+    </div>
+  </div>`;
+}
+
+
 function chaveLoteCambio(processoId, tipo, parcelaIndex){
   return `${processoId}__${tipo}__${parcelaIndex!=null?parcelaIndex:''}`;
 }
@@ -360,6 +431,17 @@ function renderDashCambio(){
     <span style="font-size:12px;color:var(--muted);">${diffMtm > 0.5 ? 'a mais do que o previsto nas PIs, se pagasse tudo hoje' : diffMtm < -0.5 ? 'de economia vs. o previsto nas PIs, se pagasse tudo hoje' : 'câmbio previsto e atual praticamente iguais'} · câmbio atual ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})} · base: ${fmtUSD(usdComPrevisto)}</span>
   </div>`;
 
+  // ── PTAX x Câmbio Fechado — pedido do Ayslan (09/09/2026: "usar a API
+  // do Banco Central pra PTAX", https://www.bcb.gov.br/estabilidadefinanceira/fechamentodolar).
+  // O gráfico em si é montado depois, de forma assíncrona (carregarGraficoPtaxCambio),
+  // porque depende de uma chamada de rede ao backend (que por sua vez consulta
+  // o BCB) — aqui só entra o placeholder que reserva o espaço.
+  const graficoPtaxHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">📈 PTAX (Banco Central) x Câmbio Fechado pela Impak</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Linha cinza = PTAX de venda, cotação oficial do BCB. Pontos azuis = câmbio que a Impak fechou em cada parcela paga (usa o vencimento original como data, já que o sistema não guarda a data exata do fechamento).</div>
+    <div id="cambio-grafico-ptax" style="min-height:200px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);">Carregando PTAX do Banco Central...</div>
+  </div>`;
+
   // ── Simular câmbio (what-if) — pedido do Ayslan (09/09/2026): antes de
   // decidir travar câmbio ou esperar, o CFO quer ver "e se o dólar for a
   // R$X" sem precisar abrir planilha. _cambioSimulBase guarda os totais em
@@ -570,8 +652,10 @@ function renderDashCambio(){
     </div>
   </div>`;
 
-  el.innerHTML = kpisHtml + alertaSemDataHtml + concentracaoHtml + mtmHtml
+  el.innerHTML = kpisHtml + alertaSemDataHtml + concentracaoHtml + mtmHtml + graficoPtaxHtml
     + `<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">${fornecedorHtml}${simulacaoHtml}</div>`
     + consolidacaoHtml + tabelaHtml
     + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
+
+  carregarGraficoPtaxCambio(pagos);
 }
