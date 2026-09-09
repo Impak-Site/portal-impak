@@ -14,6 +14,36 @@
 // (controle-core.js) e renderFluxoCaixaHtml()/renderControleCambialHtml()
 // (controle-dashboards.js — precisa carregar ANTES deste arquivo).
 
+// Helpers de formatação em escopo de arquivo (não dentro de renderDashCambio)
+// porque atualizarSimulacaoCambio() precisa deles sem disparar um re-render
+// inteiro da tela — só atualiza 4 números na tela a cada tecla digitada.
+function cambFmtBRL(v){ return `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
+function cambFmtUSD(v){ return `USD ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
+
+// Base numérica do card "Simular câmbio" (pedido Ayslan 09/09/2026, depois
+// de perguntar "isso é legal pra um CFO? melhoraria em algo?") — guarda só
+// os totais em USD (que não mudam com a simulação) pra recalcular em BRL
+// na hora, sem precisar rodar listarPagamentosPI() de novo a cada tecla.
+let _cambioSimulBase = { totalUsd:0, semanaUsd:0, mesUsd:0, cambioAtual:5.10 };
+function atualizarSimulacaoCambio(valorStr){
+  const c = parseFloat(String(valorStr).replace(',','.'));
+  const b = _cambioSimulBase;
+  const totalEl = document.getElementById('sim-total-aberto');
+  const semEl = document.getElementById('sim-semana');
+  const mesEl = document.getElementById('sim-mes');
+  const diffEl = document.getElementById('sim-diff');
+  if(!totalEl || !isFinite(c) || c<=0) return;
+  totalEl.textContent = cambFmtBRL(b.totalUsd*c);
+  if(semEl) semEl.textContent = cambFmtBRL(b.semanaUsd*c);
+  if(mesEl) mesEl.textContent = cambFmtBRL(b.mesUsd*c);
+  if(diffEl){
+    const diffTotal = (b.totalUsd*c) - (b.totalUsd*b.cambioAtual);
+    if(Math.abs(diffTotal) < 0.01){ diffEl.textContent = '≈ igual ao atual'; diffEl.style.color = 'var(--muted)'; }
+    else if(diffTotal > 0){ diffEl.textContent = '+' + cambFmtBRL(diffTotal) + ' vs. hoje'; diffEl.style.color = 'var(--err)'; }
+    else { diffEl.textContent = '-' + cambFmtBRL(Math.abs(diffTotal)) + ' vs. hoje'; diffEl.style.color = 'var(--ok)'; }
+  }
+}
+
 function toggleDashCambio(){
   const el = document.getElementById('dash-cambio');
   if(!el) return;
@@ -75,6 +105,111 @@ function renderDashCambio(){
     ${kpiCard('Vencido', vencidosUsd, vencidos.length+' parcela(s) atrasada(s)', vencidosUsd>0?'var(--err)':'var(--ok)')}
     ${kpiCard('Vence Esta Semana', estaSemanaUsd, estaSemana.length+' parcela(s)', estaSemanaUsd>0?'var(--warn)':'var(--ok)')}
     ${kpiCard('Vence Este Mês', esteMesUsd, esteMes.length+' parcela(s)', 'var(--ac)')}
+  </div>`;
+
+  // ── Por Fornecedor (calculado aqui, ANTES dos alertas de concentração,
+  // pra poder reaproveitar o ranking tanto no aviso quanto no bloco visual
+  // "Por Fornecedor" mais abaixo — sem rodar o agrupamento duas vezes).
+  const porFornecedor = {};
+  abertos.forEach(x => { porFornecedor[x.fornecedor] = (porFornecedor[x.fornecedor]||0) + x.valorUsd; });
+  const listaFornecedor = Object.entries(porFornecedor).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  // ── Concentração de risco — pedido do Ayslan (09/09/2026): além de "o
+  // que vence", alertar quando o vencimento está concentrado demais num
+  // fornecedor só (risco de negociação: se precisar esticar prazo ou tiver
+  // problema de caixa, é só 1 conversa) — tanto no total em aberto quanto,
+  // de forma mais urgente, no que vence JÁ esta semana.
+  const avisosConcentracao = [];
+  if(totalAbertoUsd > 0 && listaFornecedor.length){
+    const [topNome, topVal] = listaFornecedor[0];
+    const pctTop = topVal/totalAbertoUsd;
+    if(pctTop >= 0.35){
+      avisosConcentracao.push(`<b>${esc(topNome)}</b> concentra ${(pctTop*100).toFixed(0)}% de todo o USD em aberto (${fmtUSD(topVal)}) — vale negociar prazo/câmbio com esse fornecedor primeiro se precisar aliviar o caixa.`);
+    }
+  }
+  if(estaSemanaUsd > 0){
+    const porFornecedorSemana = {};
+    estaSemana.forEach(x => { porFornecedorSemana[x.fornecedor] = (porFornecedorSemana[x.fornecedor]||0) + x.valorUsd; });
+    const topSemana = Object.entries(porFornecedorSemana).sort((a,b)=>b[1]-a[1])[0];
+    if(topSemana){
+      const pctSemana = topSemana[1]/estaSemanaUsd;
+      if(pctSemana >= 0.6){
+        avisosConcentracao.push(`${(pctSemana*100).toFixed(0)}% do que vence <b>esta semana</b> é de um fornecedor só (<b>${esc(topSemana[0])}</b>, ${fmtUSD(topSemana[1])}) — se atrasar, é um só telefonema.`);
+      }
+    }
+  }
+  const concentracaoHtml = !avisosConcentracao.length ? '' : `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;">⚠️ Concentração de risco</div>
+    ${avisosConcentracao.map(a=>`<div style="font-size:12px;color:#78350f;margin-bottom:4px;">• ${a}</div>`).join('')}
+  </div>`;
+
+  // ── Mark-to-Market — pedido do Ayslan (09/09/2026): o card "Em Aberto"
+  // já mostra o total ao câmbio ATUAL, mas não diz se isso é bom ou ruim
+  // comparado ao câmbio que estava PREVISTO quando cada PI foi fechada.
+  // Esse é o número que mais importa pra decidir comprar dólar agora ou
+  // esperar: "se eu pagasse tudo hoje, eu ganharia ou perderia vs o que
+  // estava planejado?". Só entra na conta a fatia que TEM câmbio previsto
+  // definido na PI (usdComPrevisto) — parcelas sem previsto não geram
+  // ganho/perda artificial (contam igual dos dois lados).
+  const todosEmAberto = abertos.concat(semData);
+  let expostoComAtual = 0, expostoComPrevisto = 0, usdComPrevisto = 0;
+  todosEmAberto.forEach(x => {
+    expostoComAtual += x.valorUsd * cambioAtual;
+    if(x.cambioPrevisto){
+      expostoComPrevisto += x.valorUsd * x.cambioPrevisto;
+      usdComPrevisto += x.valorUsd;
+    } else {
+      expostoComPrevisto += x.valorUsd * cambioAtual;
+    }
+  });
+  const diffMtm = expostoComAtual - expostoComPrevisto; // >0: dólar subiu, pagaria mais (perda) · <0: dólar caiu, pagaria menos (ganho)
+  const mtmCor = diffMtm > 0.5 ? 'var(--err)' : (diffMtm < -0.5 ? 'var(--ok)' : 'var(--muted)');
+  const mtmTexto = diffMtm > 0.5
+    ? `Se pagasse tudo hoje, gastaria <b>${fmtBRL(Math.abs(diffMtm))} a mais</b> do que o câmbio previsto nas PIs — o dólar subiu desde que essas compras foram fechadas.`
+    : diffMtm < -0.5
+    ? `Se pagasse tudo hoje, gastaria <b>${fmtBRL(Math.abs(diffMtm))} a menos</b> do que o câmbio previsto nas PIs — o dólar caiu desde que essas compras foram fechadas.`
+    : `Câmbio previsto e atual estão praticamente iguais — sem ganho ou perda relevante no book aberto.`;
+  const mtmHtml = usdComPrevisto <= 0 ? '' : `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${mtmCor};border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">📊 Mark-to-Market — câmbio previsto x atual</div>
+    <div style="font-size:18px;font-weight:700;color:${mtmCor};font-family:'DM Sans',sans-serif;">${Math.abs(diffMtm)<0.5?'≈ R$ 0,00':fmtBRL(Math.abs(diffMtm))}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">${mtmTexto}</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;">Câmbio atual: ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})} · base comparável: ${fmtUSD(usdComPrevisto)} com câmbio previsto definido na PI.</div>
+  </div>`;
+
+  // ── Simular câmbio (what-if) — pedido do Ayslan (09/09/2026): antes de
+  // decidir travar câmbio ou esperar, o CFO quer ver "e se o dólar for a
+  // R$X" sem precisar abrir planilha. _cambioSimulBase guarda os totais em
+  // USD (que não mudam) pra atualizarSimulacaoCambio() recalcular só o BRL
+  // a cada tecla digitada, sem re-renderizar a tela inteira (perderia o
+  // foco do campo).
+  _cambioSimulBase = { totalUsd: totalAbertoUsd, semanaUsd: estaSemanaUsd, mesUsd: esteMesUsd, cambioAtual };
+  const simulacaoHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:700;margin-bottom:2px;">🧮 Simular câmbio</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Digite um câmbio hipotético pra ver o impacto no total em aberto e no que vence esta semana/mês — útil antes de decidir travar câmbio.</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <label style="font-size:12px;font-weight:600;">Câmbio simulado (R$):</label>
+      <input id="cambio-simulado-input" type="number" step="0.01" value="${cambioAtual.toFixed(4)}" oninput="atualizarSimulacaoCambio(this.value)"
+        style="width:100px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;">
+      <button type="button" onclick="document.getElementById('cambio-simulado-input').value='${cambioAtual.toFixed(4)}';atualizarSimulacaoCambio('${cambioAtual.toFixed(4)}');" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;">↺ câmbio atual</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:14px;">
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Total em aberto</div>
+        <div id="sim-total-aberto" style="font-size:16px;font-weight:700;">${fmtBRL(totalAbertoUsd*cambioAtual)}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Vence esta semana</div>
+        <div id="sim-semana" style="font-size:16px;font-weight:700;">${fmtBRL(estaSemanaUsd*cambioAtual)}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Vence este mês</div>
+        <div id="sim-mes" style="font-size:16px;font-weight:700;">${fmtBRL(esteMesUsd*cambioAtual)}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Vs. câmbio atual</div>
+        <div id="sim-diff" style="font-size:16px;font-weight:700;color:var(--muted);">≈ igual ao atual</div>
+      </div>
+    </div>
   </div>`;
 
   // ── Calendário por SEMANA (próximas 8 semanas, começando na semana
@@ -145,10 +280,9 @@ function renderDashCambio(){
   </div>`;
 
   // ── Por Fornecedor — quem concentra mais USD em aberto agora, pra saber
-  // com quem negociar prazo/câmbio primeiro se precisar.
-  const porFornecedor = {};
-  abertos.forEach(x => { porFornecedor[x.fornecedor] = (porFornecedor[x.fornecedor]||0) + x.valorUsd; });
-  const listaFornecedor = Object.entries(porFornecedor).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  // com quem negociar prazo/câmbio primeiro se precisar. (porFornecedor/
+  // listaFornecedor já foram calculados mais acima, reaproveitados pelo
+  // alerta de concentração de risco.)
   const fornecedorHtml = !listaFornecedor.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
     <div style="font-size:13px;font-weight:700;margin-bottom:10px;">🏭 Por Fornecedor — maior exposição em aberto</div>
     ${listaFornecedor.map(([nome,val]) => {
@@ -219,6 +353,6 @@ function renderDashCambio(){
     ${semData.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">⚠ ${semData.length} parcela(s) sem forma de pagamento definida ainda (${fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0))}) — não entram no calendário acima. Abra o processo e defina Entrada+Saldo/Parcelado/À Vista/Prazo na aba PI.</div>` : ''}
   </div>`;
 
-  el.innerHTML = kpisHtml + semanasHtml + mesesHtml + fornecedorHtml + tabelaHtml
+  el.innerHTML = kpisHtml + concentracaoHtml + mtmHtml + simulacaoHtml + semanasHtml + mesesHtml + fornecedorHtml + tabelaHtml
     + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
 }
