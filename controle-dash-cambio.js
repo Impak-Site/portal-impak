@@ -248,10 +248,28 @@ function renderDashCambio(){
   }
   const j7 = janela(7), j14 = janela(14), j30 = janela(30);
 
+  // ── Câmbios pagos — pedido da Paula (09/09/2026): "adiciona os cambios
+  // pagos". Até aqui a tela só falava do que estava EM ABERTO (a
+  // liquidar); os que já tinham câmbio fechado só apareciam (parcialmente,
+  // só quando tinham previsto E fechado registrados) lá embaixo, na tabela
+  // "Controle Cambial — Previsto x Fechado". Esse card cobre TODOS os
+  // pagos (com ou sem previsto registrado) e, clicando, abre a lista
+  // completa na tabela detalhada — mesmo padrão de clique dos outros KPIs.
+  const pagos = todosPagamentos.filter(x => x.pago);
+  const pagosUsd = pagos.reduce((s,x)=>s+x.valorUsd,0);
+
   function kpiCard(label, valorUsd, sub, cor, filtro){
-    const ativo = _cambioFiltro && _cambioFiltro.tipo==='prazo' && _cambioFiltro.dias===filtro.dias;
-    const onclick = `_cambioFiltro=${ativo?'null':`{tipo:'prazo',dias:${typeof filtro.dias==='string'?`'${filtro.dias}'`:filtro.dias},label:'${filtro.label}'}`};renderDashCambio()`;
-    return `<div onclick="${onclick}" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;${ativo?'box-shadow:0 0 0 2px '+cor+';':''}">
+    const tipoFiltro = filtro.tipo || 'prazo';
+    const ativo = _cambioFiltro && _cambioFiltro.tipo===tipoFiltro && (tipoFiltro==='pagos' || _cambioFiltro.dias===filtro.dias);
+    const proximoFiltro = tipoFiltro==='pagos' ? `{tipo:'pagos',label:'pagas'}` : `{tipo:'prazo',dias:${typeof filtro.dias==='string'?`'${filtro.dias}'`:filtro.dias},label:'${filtro.label}'}`;
+    // Ao clicar, além de aplicar o filtro, rola a tela até a tabela
+    // detalhada — pedido do Ayslan (09/09/2026): "os cards conseguem ser
+    // interativos, apertar e abrir a lista com os processos?". O clique já
+    // filtrava a tabela de baixo, mas sem indicação nenhuma de que algo
+    // tinha acontecido se a tabela estivesse fora da tela — agora rola até
+    // ela ficar visível, ficando óbvio que "abriu a lista".
+    const onclick = `_cambioFiltro=${ativo?'null':proximoFiltro};renderDashCambio();document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});`;
+    return `<div onclick="${onclick}" title="Clique para ver os processos na tabela abaixo" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;${ativo?'box-shadow:0 0 0 2px '+cor+';':''}">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
       <div style="font-size:20px;font-weight:600;color:${cor};${MONO}white-space:nowrap;">${fmtUSD(valorUsd)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
@@ -263,6 +281,7 @@ function renderDashCambio(){
     ${kpiCard('A Liquidar · 7 dias', j7.usd, j7.itens.length+' parcela(s)', 'var(--err)', {dias:7,label:'próx. 7 dias'})}
     ${kpiCard('A Liquidar · 14 dias', j14.usd, j14.itens.length+' parcela(s)', 'var(--warn)', {dias:14,label:'próx. 14 dias'})}
     ${kpiCard('A Liquidar · 30 dias', j30.usd, j30.itens.length+' parcela(s)', 'var(--ac)', {dias:30,label:'próx. 30 dias'})}
+    ${kpiCard('💰 Câmbios Pagos', pagosUsd, pagos.length+' parcela(s) já fechada(s)', 'var(--ok)', {tipo:'pagos'})}
   </div>`;
 
   // ── Por Fornecedor (calculado aqui, ANTES dos alertas de concentração,
@@ -440,6 +459,10 @@ function renderDashCambio(){
   // definida ainda (sem data pra entrar nos buckets).
   let linhasFiltradas = abertos;
   let tituloFiltro = 'Todas as parcelas em aberto';
+  // mostrandoPagos controla as colunas da tabela logo abaixo: parcela já
+  // paga não tem sentido de "selecionar pra fechar em lote" nem de mostrar
+  // "Câmbio Previsto" (o que importa ali é o que foi de fato Fechado).
+  let mostrandoPagos = false;
   if(_cambioFiltro){
     if(_cambioFiltro.tipo==='prazo'){
       if(_cambioFiltro.dias==='vencidas'){
@@ -453,9 +476,19 @@ function renderDashCambio(){
     } else if(_cambioFiltro.tipo==='fornecedor'){
       linhasFiltradas = abertos.filter(x=>x.fornecedor===_cambioFiltro.nome);
       tituloFiltro = `Parcelas de ${esc(_cambioFiltro.nome)} (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
+    } else if(_cambioFiltro.tipo==='pagos'){
+      mostrandoPagos = true;
+      linhasFiltradas = pagos;
+      tituloFiltro = `Câmbios já pagos (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
     }
   }
-  linhasFiltradas = [...linhasFiltradas].sort((a,b)=>(a.vencimento||'9999').localeCompare(b.vencimento||'9999'));
+  // Sem uma data de pagamento própria guardada por parcela (só existe o
+  // vencimento original + o câmbio fechado como marca de "pago"), a
+  // ordenação por vencimento desc é a melhor aproximação de "mais recente
+  // primeiro" pros câmbios já pagos.
+  linhasFiltradas = [...linhasFiltradas].sort((a,b)=> mostrandoPagos
+    ? (b.vencimento||'0000').localeCompare(a.vencimento||'0000')
+    : (a.vencimento||'9999').localeCompare(b.vencimento||'9999'));
 
   function badgeDias(vencimento){
     const d = new Date(vencimento+'T00:00:00');
@@ -472,14 +505,14 @@ function renderDashCambio(){
   // diferente antes de fechar o lote. Barra de ação (contagem + botão)
   // fica no cabeçalho da própria tabela — sempre visível, sem precisar
   // rolar até o fim pra achar o botão de lote.
-  const tabelaHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+  const tabelaHtml = `<div id="cambio-tabela-detalhada" style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;scroll-margin-top:14px;">
     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--bg);">
       <div style="font-size:13px;font-weight:700;">${tituloFiltro} — ${linhasFiltradas.length} parcela(s)</div>
-      <div style="display:flex;align-items:center;gap:10px;">
+      ${mostrandoPagos ? '' : `<div style="display:flex;align-items:center;gap:10px;">
         <span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote.'}</span>
         <button id="lote-cambio-btn" type="button" onclick="abrirPainelFechamentoLoteCambio()" ${_cambioLoteSelecao.size ? '' : 'disabled'}
           style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;${_cambioLoteSelecao.size ? '' : 'opacity:.5;cursor:not-allowed;'}">💱 Fechar câmbio em lote</button>
-      </div>
+      </div>`}
     </div>
     <div id="lote-cambio-painel" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);background:#f0f9ff;align-items:center;gap:12px;flex-wrap:wrap;">
       <b id="lote-cambio-titulo-painel" style="font-size:12px;">Fechar câmbio de ${_cambioLoteSelecao.size} parcela(s) selecionada(s):</b>
@@ -492,31 +525,31 @@ function renderDashCambio(){
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="background:var(--bg);position:sticky;top:0;">
         <th style="padding:8px 8px 8px 16px;width:24px;"></th>
-        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Vencimento</th>
+        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">${mostrandoPagos ? 'Venc. Original' : 'Vencimento'}</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Processo</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Fornecedor</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Parcela</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">DI/DUIMP</th>
         <th style="text-align:right;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Valor USD</th>
-        <th style="text-align:right;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Câmbio Previsto</th>
-        <th style="text-align:right;padding:8px 8px 8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">BRL Estimado</th>
+        <th style="text-align:right;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">${mostrandoPagos ? 'Câmbio Fechado' : 'Câmbio Previsto'}</th>
+        <th style="text-align:right;padding:8px 8px 8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">${mostrandoPagos ? 'BRL Pago' : 'BRL Estimado'}</th>
       </tr></thead>
       <tbody>
         ${linhasFiltradas.map(x => {
           const key = chaveLoteCambio(x.processoId, x._tipo, x._parcelaIndex);
           const marcada = _cambioLoteSelecao.has(key);
           return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-          <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()"><input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,'${x.processoId}','${x._tipo}',${x._parcelaIndex!=null?x._parcelaIndex:'null'},${x.valorUsd},'${(x.fornecedor||'').replace(/'/g,"\\'")}','${(x.referencia||'').replace(/'/g,"\\'")}')"></td>
-          <td style="padding:8px 8px;white-space:nowrap;">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${x.vencimento ? badgeDias(x.vencimento) : ''}</td>
+          <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()">${mostrandoPagos ? '' : `<input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,'${x.processoId}','${x._tipo}',${x._parcelaIndex!=null?x._parcelaIndex:'null'},${x.valorUsd},'${(x.fornecedor||'').replace(/'/g,"\\'")}','${(x.referencia||'').replace(/'/g,"\\'")}')">`}</td>
+          <td style="padding:8px 8px;white-space:nowrap;">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${(x.vencimento && !mostrandoPagos) ? badgeDias(x.vencimento) : ''}</td>
           <td style="padding:8px 8px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}</td>
           <td style="padding:8px 8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.fornecedor)}">${esc(x.fornecedor)}</td>
           <td style="padding:8px 8px;text-transform:capitalize;white-space:nowrap;">${esc(x.parcela)}</td>
           <td style="padding:8px 8px;white-space:nowrap;${MONO}color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
           <td style="padding:8px 8px;text-align:right;font-weight:700;white-space:nowrap;${MONO}">${fmtUSD(x.valorUsd)}</td>
-          <td style="padding:8px 8px;text-align:right;color:var(--muted);white-space:nowrap;${MONO}">${x.cambioPrevisto ? x.cambioPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
-          <td style="padding:8px 8px;text-align:right;white-space:nowrap;${MONO}">${fmtBRL(x.valorUsd*(x.cambioPrevisto||cambioAtual))}</td>
+          <td style="padding:8px 8px;text-align:right;color:${mostrandoPagos?'var(--ok)':'var(--muted)'};font-weight:${mostrandoPagos?'700':'400'};white-space:nowrap;${MONO}">${(mostrandoPagos ? x.cambioFechado : x.cambioPrevisto) ? (mostrandoPagos ? x.cambioFechado : x.cambioPrevisto).toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
+          <td style="padding:8px 8px;text-align:right;white-space:nowrap;${MONO}">${fmtBRL(x.valorUsd*((mostrandoPagos ? x.cambioFechado : x.cambioPrevisto)||cambioAtual))}</td>
         </tr>`;
-        }).join('') || `<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted);">Nenhuma parcela em aberto neste filtro.</td></tr>`}
+        }).join('') || `<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted);">${mostrandoPagos ? 'Nenhum câmbio pago ainda.' : 'Nenhuma parcela em aberto neste filtro.'}</td></tr>`}
       </tbody>
     </table>
     </div>
