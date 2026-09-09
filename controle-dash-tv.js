@@ -863,22 +863,11 @@ function ajustarFonteColunasTV(raiz){
     }
   }
 
-  // Badge de diagnóstico TEMPORÁRIO (Ayslan/Emanuelly 09/09/2026) — a
-  // correção por resolução (fatorEscalaResolucaoTV) não bateu com o
-  // esperado na TV física real (foto mostrou fonte minúscula em vez de
-  // legível, mesmo a 100% de zoom). Em vez de continuar ajustando o fator
-  // no escuro, mostra os números reais medidos no canto da tela pra poder
-  // fotografar e mandar de volta. Fonte fixa em px (não herda o fontSize
-  // calculado acima) pra sempre ficar legível não importa o resultado do
-  // cálculo. Remover depois que o ajuste de resolução estiver calibrado.
-  let badge = document.getElementById('tv-debug-resolucao');
-  if(!badge){
-    badge = document.createElement('div');
-    badge.id = 'tv-debug-resolucao';
-    badge.style.cssText = 'position:fixed;bottom:6px;right:6px;font-size:11px !important;line-height:1.4;color:#e2e8f0;background:rgba(15,23,42,.85);padding:5px 9px;border-radius:6px;z-index:99999;font-family:monospace;pointer-events:none;';
-    document.body.appendChild(badge);
-  }
-  badge.innerHTML = `screen ${window.screen.width}x${window.screen.height} dpr${window.devicePixelRatio}<br>fisica~${Math.round(window.screen.width*(window.devicePixelRatio||1))}px &rarr; fator ${fatorResolucao}<br>linha ${Math.round(menorAltura)}px &rarr; fonte ${fonte}px (-${tentativasAjuste})`;
+  // Badge de diagnóstico removido (Ayslan 09/09/2026) — já serviu pra
+  // calibrar o ajuste de resolução com fotos reais das 3 TVs, não precisa
+  // mais ficar poluindo o canto da tela.
+  const badgeAntigo = document.getElementById('tv-debug-resolucao');
+  if(badgeAntigo) badgeAntigo.remove();
 
   // Só revela o painel agora que o tamanho final foi decidido — ver
   // comentário em renderDashTV() sobre o "esconde até ajustar" acima.
