@@ -2310,10 +2310,46 @@ function verificarAlertas(proc, criarNotif){
     }
   }
 
-  if(criarNotif && alertas.length){
-    alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
+  if(criarNotif){
+    if(alertas.length) alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
+    // Limpa notificações antigas do processo cuja condição não é mais
+    // verdadeira (pedido Emanuelly 09/09/2026: "os que já estejam
+    // finalizados não fiquem com o alerta dos docs" — ex: alerta de
+    // "sem documentos" criado quando faltava CI/PL/Draft continuava no
+    // sino de notificações pra sempre, mesmo depois de anexar os
+    // documentos ou do processo já ter avançado de fase/sido finalizado.
+    // Roda a cada save (mesmo gatilho que cria notificação nova acima) —
+    // compara o que está com o que DEVERIA estar ativo agora e apaga o
+    // resto.
+    limparNotificacoesResolvidas(proc.id, alertas.map(a=>a.titulo));
   }
   return alertas;
+}
+
+// Função pura (fácil de testar): dado o que já existe no sino de
+// notificações pra um processo e a lista de títulos que estão ativos
+// AGORA (saída de verificarAlertas), devolve os ids que não representam
+// mais uma condição verdadeira e por isso devem ser apagados.
+function idsNotificacoesResolvidas(notifsExistentes, titulosAtivos){
+  return (notifsExistentes||[])
+    .filter(n => !titulosAtivos.includes(n.titulo))
+    .map(n => n.id);
+}
+
+async function limparNotificacoesResolvidas(processoId, titulosAtivos){
+  try{
+    const r = await fetch('/api/controle/v2/notificacoes');
+    const d = await r.json();
+    if(!d.ok) return;
+    const doProcesso = (d.notificacoes||[]).filter(n => n.processo_id===processoId);
+    const ids = idsNotificacoesResolvidas(doProcesso, titulosAtivos);
+    if(!ids.length) return;
+    await fetch('/api/controle/v2/notificacoes/limpar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ids })
+    });
+    _notifsCache = [];
+  }catch(e){ /* limpeza é best-effort — não bloqueia o save */ }
 }
 
 // Cache em memória das notificações já carregadas nesta sessão, usado só

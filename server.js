@@ -2104,6 +2104,24 @@ app.post('/api/controle/v2/notificacao', auth('controle','financeiro','resultado
   }
 });
 
+// Limpeza de notificações resolvidas (pedido Emanuelly 09/09/2026): o
+// front-end recalcula os alertas de um processo a cada save e manda aqui
+// só os ids que não representam mais nenhuma condição ativa (ex: alerta de
+// "sem documentos" depois que CI/PL/Draft foram anexados, ou processo que
+// avançou de fase/foi finalizado) — sem isso a notificação ficava no sino
+// pra sempre, mesmo com o problema já resolvido.
+app.post('/api/controle/v2/notificacoes/limpar', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(id => Number.isInteger(id)) : [];
+    if (!ids.length) return res.json({ ok: true, removidas: 0 });
+    const { error } = await sb().from('controle_notificacoes').delete().in('id', ids);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, removidas: ids.length });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 app.post('/api/controle/v2/notificacao/:id/lida', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const usuario = req.session.usuario;

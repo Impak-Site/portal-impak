@@ -1069,6 +1069,36 @@ teste('formatarPortoDestino: sempre devolve o nome completo do porto, não o có
   iguais(sandbox.formatarPortoDestino(null), 'N/I');
 });
 
+teste('idsNotificacoesResolvidas: mantém só as notificações cujo título ainda está ativo, apaga o resto', () => {
+  const notifs = [
+    { id: 1, titulo: 'Embarque esta semana sem documentos: UD26-001' },
+    { id: 2, titulo: 'Demurrage: UD26-001' },
+    { id: 3, titulo: 'Pendência pós-embarque: UD26-001' },
+  ];
+  // Só o alerta de Demurrage continua ativo agora (docs foram anexados,
+  // HBL/LI aprovados) — os outros dois devem ser marcados pra apagar.
+  const ativos = ['Demurrage: UD26-001'];
+  const ids = sandbox.idsNotificacoesResolvidas(notifs, ativos);
+  iguais(ids.length, 2, 'deve marcar 2 notificações pra apagar');
+  iguais(ids.includes(1), true, 'notificação de docs (resolvida) deve estar na lista de apagar');
+  iguais(ids.includes(3), true, 'notificação de pendência pós-embarque (resolvida) deve estar na lista de apagar');
+  iguais(ids.includes(2), false, 'notificação de Demurrage (ainda ativa) NÃO deve ser apagada');
+});
+
+teste('idsNotificacoesResolvidas: processo finalizado sem alertas ativos -> apaga todas as notificações antigas dele', () => {
+  const notifs = [
+    { id: 10, titulo: 'Embarque esta semana sem documentos: UD26-050' },
+  ];
+  const ids = sandbox.idsNotificacoesResolvidas(notifs, []);
+  iguais(ids.length, 1);
+  iguais(ids[0], 10);
+});
+
+teste('idsNotificacoesResolvidas: sem notificações existentes -> não quebra, devolve lista vazia', () => {
+  const ids = sandbox.idsNotificacoesResolvidas([], ['Demurrage: UD26-001']);
+  iguais(ids.length, 0);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
