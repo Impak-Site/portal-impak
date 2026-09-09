@@ -366,7 +366,14 @@ function ativarTelaTVExclusiva(){
   // do chat.js) — ele é injetado depois deste script rodar, então some com
   // um pequeno atraso; sem isso a TV ficaria com uma barra de links inútil
   // no topo por cima do conteúdo em tela cheia.
-  const esconderNavGlobal = () => { const nav = document.getElementById('impak-nav'); if(nav) nav.style.display = 'none'; };
+  // Mesma lógica pro botão flutuante do assistente de IA (bolha de chat,
+  // injetada por chat.js junto com o nav) — pedido do Ayslan (08/09/2026):
+  // numa TV espelhada na parede ninguém vai clicar nele, só fica cobrindo
+  // dado no canto da tela.
+  const esconderNavGlobal = () => {
+    const nav = document.getElementById('impak-nav'); if(nav) nav.style.display = 'none';
+    const chat = document.getElementById('impak-chat-root'); if(chat) chat.style.display = 'none';
+  };
   esconderNavGlobal();
   setTimeout(esconderNavGlobal, 500);
 
