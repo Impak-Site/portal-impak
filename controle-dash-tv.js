@@ -300,14 +300,14 @@ function renderDashTV(){
     if(solo){
       return `<div style="height:100vh;display:flex;flex-direction:column;background:#fff;">
         ${botaoVoltarTV()}
-        <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:8px 26px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
+        <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:1.1vh 26px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;box-shadow:0 2px 10px rgba(0,0,0,.12);">
           <div>
-            <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
-            <div style="font-size:10px;color:rgba(255,255,255,.75);margin-top:1px;">${subtitulo}</div>
+            <div style="font-family:'Syne',sans-serif;font-size:clamp(18px,2.5vh,34px);font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+            <div style="font-size:clamp(10px,1.15vh,16px);color:rgba(255,255,255,.8);margin-top:1px;">${subtitulo}</div>
           </div>
-          <div style="font-family:'DM Sans',sans-serif;font-size:30px;font-weight:800;color:#fff;">${numero}</div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:clamp(26px,4.4vh,66px);font-weight:800;color:#fff;line-height:1;">${numero}</div>
         </div>
-        <div style="flex:1;min-height:0;padding:12px 22px;display:flex;flex-direction:column;">${conteudoHtml}</div>
+        <div style="flex:1;min-height:0;padding:1.4vh 22px;display:flex;flex-direction:column;">${conteudoHtml}</div>
       </div>`;
     }
     return `<div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
@@ -593,31 +593,31 @@ function renderDashTV(){
     const totalBO = linhas.reduce((s,l)=>s+l.bo,0);
     const totalEA = linhas.reduce((s,l)=>s+l.ea,0);
     const totalMes = linhas.reduce((s,l)=>s+l.mes,0);
-    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;height:100%;display:flex;flex-direction:column;">
-      <div style="padding:8px 12px;font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;flex:0 0 auto;">Por Marca</div>
+    return `<div style="background:#fff;border-radius:12px;overflow:hidden;height:100%;display:flex;flex-direction:column;box-shadow:0 2px 8px rgba(15,23,42,.08);">
+      <div style="padding:.6em .9em;font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;flex:0 0 auto;">Por Marca</div>
       <div style="overflow-y:auto;flex:1;min-height:0;">
-      <table style="width:100%;border-collapse:collapse;font-size:.8em;">
-        <thead><tr style="background:#f1f5f9;text-align:left;color:#475569;text-transform:uppercase;letter-spacing:.3px;font-size:.85em;position:sticky;top:0;">
-          <th style="padding:8px 12px;">Marca</th>
-          <th style="padding:8px 12px;text-align:right;">Total</th>
-          <th style="padding:8px 12px;text-align:right;">Backorders</th>
-          <th style="padding:8px 12px;text-align:right;">Em Águas</th>
-          <th style="padding:8px 12px;text-align:right;">Mês</th>
+      <table style="width:100%;border-collapse:collapse;font-size:1em;">
+        <thead><tr style="background:#f1f5f9;text-align:left;color:#475569;text-transform:uppercase;letter-spacing:.3px;font-size:.8em;position:sticky;top:0;">
+          <th style="padding:.55em .9em;">Marca</th>
+          <th style="padding:.55em .9em;text-align:right;">Total</th>
+          <th style="padding:.55em .9em;text-align:right;">Backorders</th>
+          <th style="padding:.55em .9em;text-align:right;">Em Águas</th>
+          <th style="padding:.55em .9em;text-align:right;">Mês</th>
         </tr></thead>
         <tbody>
-        ${linhas.map((l,idx) => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;${idx%2===1?'background:#e7edf5;':''}">
-          <td style="padding:6px 12px;font-weight:700;">${esc(l.nome)}</td>
-          <td style="padding:6px 12px;text-align:right;font-weight:800;">${fmtN(l.total)}</td>
-          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.bo)}</td>
-          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.ea)}</td>
-          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.mes)}</td>
+        ${linhas.map((l,idx) => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;${idx%2===1?'background:#f1f5f9;':''}">
+          <td style="padding:.45em .9em;font-weight:700;">${esc(l.nome)}</td>
+          <td style="padding:.45em .9em;text-align:right;font-weight:800;">${fmtN(l.total)}</td>
+          <td style="padding:.45em .9em;text-align:right;color:#475569;">${fmtN(l.bo)}</td>
+          <td style="padding:.45em .9em;text-align:right;color:#475569;">${fmtN(l.ea)}</td>
+          <td style="padding:.45em .9em;text-align:right;color:#475569;">${fmtN(l.mes)}</td>
         </tr>`).join('')}
-        <tr style="border-top:2px solid #cbd5e1;font-weight:800;color:#0f1f3d;">
-          <td style="padding:8px 12px;">TOTAL</td>
-          <td style="padding:8px 12px;text-align:right;">${fmtN(totalGeral)}</td>
-          <td style="padding:8px 12px;text-align:right;">${fmtN(totalBO)}</td>
-          <td style="padding:8px 12px;text-align:right;">${fmtN(totalEA)}</td>
-          <td style="padding:8px 12px;text-align:right;">${fmtN(totalMes)}</td>
+        <tr style="border-top:2px solid #cbd5e1;font-weight:800;color:#0f1f3d;background:#f8fafc;">
+          <td style="padding:.55em .9em;">TOTAL</td>
+          <td style="padding:.55em .9em;text-align:right;">${fmtN(totalGeral)}</td>
+          <td style="padding:.55em .9em;text-align:right;">${fmtN(totalBO)}</td>
+          <td style="padding:.55em .9em;text-align:right;">${fmtN(totalEA)}</td>
+          <td style="padding:.55em .9em;text-align:right;">${fmtN(totalMes)}</td>
         </tr>
         </tbody>
       </table>
@@ -629,23 +629,25 @@ function renderDashTV(){
   // (mesmo padrão de emAguasEmColunas/noChaoEmColunas), colunas ETA/Processo/Qtd.
   function linhaProcessoMesChaoTV(x){
     const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
-    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;gap:6px;border-top:1px solid var(--border);overflow:hidden;padding:2px 0;white-space:nowrap;">
+    return `<div class="tv-row" style="display:flex;align-items:center;gap:.5em;border-top:1px solid var(--border);overflow:hidden;padding:.35em 0;white-space:nowrap;">
         <div style="flex:0 0 auto;font-weight:700;white-space:nowrap;">${etaFmt}</div>
         <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(x.referencia||'')}">${esc(x.referencia||'—')}</div>
-        <div style="flex:0 0 auto;text-align:right;font-weight:700;">${x.n}</div>
+        <div style="flex:0 0 auto;text-align:right;font-weight:700;color:#475569;">${x.n}</div>
       </div>`;
   }
   function blocoProcessosDoMesChaoTV(lista){
-    if(!lista.length) return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;height:100%;"><div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Processos do Mês</div><div style="font-size:13px;color:var(--muted);">Nenhum processo com ETA neste mês.</div></div>`;
-    const ALVO_POR_COLUNA = 12;
-    let nCols = Math.max(1, Math.ceil(lista.length / ALVO_POR_COLUNA));
-    nCols = Math.min(nCols, 3);
+    if(!lista.length) return `<div style="background:#fff;border-radius:12px;padding:.6em .9em;height:100%;box-shadow:0 2px 8px rgba(15,23,42,.08);"><div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.5em;">Processos do Mês</div><div style="font-size:.9em;color:var(--muted);">Nenhum processo com ETA neste mês.</div></div>`;
+    // 2 colunas fixas (em vez de até 3) — pedido do Ayslan (08/09/2026):
+    // "bem visual, pra ver de longe". Com fonte maior, menos colunas cabem
+    // de forma legível; o que não couber sem cortar rola dentro do card
+    // (overflow-y:auto), já que a tela inteira recarrega a cada 5min.
+    const nCols = lista.length > 14 ? 2 : 1;
     const porColuna = Math.ceil(lista.length / nCols);
     const colunas = [];
     for(let i=0;i<nCols;i++) colunas.push(lista.slice(i*porColuna,(i+1)*porColuna));
-    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;height:100%;display:flex;flex-direction:column;overflow:hidden;">
-      <div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;flex:0 0 auto;">Processos do Mês · ${fmtN(lista.length)} processo(s)</div>
-      <div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:10px;flex:1;min-height:0;font-size:.78em;">
+    return `<div style="background:#fff;border-radius:12px;padding:.6em .9em;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
+      <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">Processos do Mês · ${fmtN(lista.length)} processo(s)</div>
+      <div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:.9em;flex:1;min-height:0;overflow-y:auto;font-size:1em;">
         ${colunas.map(col => `<div style="display:flex;flex-direction:column;overflow:hidden;">${col.map(linhaProcessoMesChaoTV).join('')}</div>`).join('')}
       </div>
     </div>`;
@@ -654,13 +656,13 @@ function renderDashTV(){
   // ── Gráfico de barras simples (CSS puro, sem lib externa) ─────────
   function graficoBarrasChaoTV(titulo, itens, corBarra){
     const max = Math.max(1, ...itens.map(i => i.qtd));
-    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;height:100%;display:flex;flex-direction:column;overflow:hidden;">
-      <div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;flex:0 0 auto;">${esc(titulo)}</div>
-      <div style="flex:1;min-height:0;display:flex;align-items:flex-end;gap:${itens.length>15?'2px':'6px'};">
+    return `<div style="background:#fff;border-radius:12px;padding:.7em 1em;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
+      <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.6em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">${esc(titulo)}</div>
+      <div style="flex:1;min-height:0;display:flex;align-items:flex-end;gap:${itens.length>15?'3px':'8px'};">
         ${itens.map(i => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0;">
-          <div style="font-size:.65em;font-weight:700;color:#334155;margin-bottom:2px;">${i.qtd || ''}</div>
-          <div style="width:100%;background:${corBarra};border-radius:3px 3px 0 0;height:${Math.max(2, Math.round((i.qtd/max)*100))}%;"></div>
-          <div style="font-size:.6em;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(String(i.label))}</div>
+          <div style="font-size:.8em;font-weight:700;color:#334155;margin-bottom:3px;">${i.qtd || ''}</div>
+          <div style="width:100%;background:${corBarra};border-radius:4px 4px 0 0;height:${Math.max(2, Math.round((i.qtd/max)*100))}%;"></div>
+          <div style="font-size:.75em;color:var(--muted);margin-top:5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(String(i.label))}</div>
         </div>`).join('')}
       </div>
     </div>`;
@@ -668,12 +670,12 @@ function renderDashTV(){
 
   // ── KPI row (Backorders / Em Águas / Previsto Mês / No Mês) ───────
   function kpiCardChaoTV(label, valor, cor){
-    return `<div style="background:${cor};border-radius:10px;padding:10px 16px;display:flex;flex-direction:column;justify-content:center;min-width:0;flex:1;">
-      <div style="font-size:.7em;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.4px;">${esc(label)}</div>
-      <div style="font-size:1.9em;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;">${fmtN(valor)}</div>
+    return `<div style="background:linear-gradient(160deg,${cor} 0%,#132038 130%);border-radius:12px;padding:.9em 1.2em;display:flex;flex-direction:column;justify-content:center;min-width:0;flex:1;box-shadow:0 2px 8px rgba(15,23,42,.18);">
+      <div style="font-size:.85em;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.4px;">${esc(label)}</div>
+      <div style="font-size:2.5em;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;line-height:1.1;">${fmtN(valor)}</div>
     </div>`;
   }
-  const kpiRowChaoHtml = `<div style="display:flex;gap:10px;flex:0 0 auto;">
+  const kpiRowChaoHtml = `<div style="display:flex;gap:.9em;flex:0 0 auto;">
     ${kpiCardChaoTV('Backorders', backordersTotal, '#2a5298')}
     ${kpiCardChaoTV('Em Águas', emAguasTotal, '#1e6091')}
     ${kpiCardChaoTV('Previsto Mês', previstoMesContainers, '#0f766e')}
@@ -682,9 +684,9 @@ function renderDashTV(){
 
   const tabelaMarcaChaoHtml = blocoTabelaMarcaChaoTV(backordersPorMarca, emAguasPorMarca, noMesPorMarca, backordersLabel);
   const processosDoMesChaoHtml = blocoProcessosDoMesChaoTV(previstoMesProcessos);
-  const armazemChaoHtml = `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;height:100%;display:flex;flex-direction:column;overflow:hidden;">
-    <div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;flex:0 0 auto;">Armazém · ${fmtN(noChaoProcessos)} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades</div>
-    <div style="flex:1;min-height:0;overflow-y:auto;">${noChaoLista.length ? noChaoLista.map(([desc,qtd]) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border);"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(desc)}">${esc(desc)}</span><span style="font-weight:700;white-space:nowrap;">${fmtN(Math.round(qtd))} un.</span></div>`).join('') : '<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado.</div>'}</div>
+  const armazemChaoHtml = `<div style="background:#fff;border-radius:12px;padding:.6em .9em;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
+    <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">Armazém · ${fmtN(noChaoProcessos)} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades</div>
+    <div style="flex:1;min-height:0;overflow-y:auto;font-size:1em;">${noChaoLista.length ? noChaoLista.map(([desc,qtd],idx) => `<div style="display:flex;justify-content:space-between;gap:.6em;padding:.4em .2em;border-top:1px solid var(--border);${idx%2===1?'background:#f8fafc;':''}"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(desc)}">${esc(desc)}</span><span style="font-weight:700;white-space:nowrap;color:#0f1f3d;">${fmtN(Math.round(qtd))} un.</span></div>`).join('') : '<div style="font-size:.9em;color:var(--muted);">Nenhum processo com estoque parado.</div>'}</div>
   </div>`;
   const graficoMesChaoHtml = graficoBarrasChaoTV('Container por Mês (Registro DI)', containerPorMes, '#2a5298');
   const graficoDiaChaoHtml = graficoBarrasChaoTV('Container por Dia (ETA, mês corrente)', containerPorDiaEta.length ? containerPorDiaEta.map(i => ({label:i.dia, qtd:i.qtd})) : [{label:'—', qtd:0}], '#0f766e');
@@ -697,26 +699,38 @@ function renderDashTV(){
   function painelChaoCompletoTV(){
     const corpo = `
       ${kpiRowChaoHtml}
-      <div style="display:grid;grid-template-columns:1.3fr 1.4fr 1fr;gap:12px;flex:1;min-height:0;margin-top:12px;">
+      <div style="display:grid;grid-template-columns:1.3fr 1.4fr 1fr;gap:.9em;flex:1;min-height:0;margin-top:.9em;">
         <div style="min-height:0;overflow:hidden;">${tabelaMarcaChaoHtml}</div>
         <div style="min-height:0;overflow:hidden;">${processosDoMesChaoHtml}</div>
         <div style="min-height:0;overflow:hidden;">${armazemChaoHtml}</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:0 0 auto;height:22vh;margin-top:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9em;flex:0 0 auto;height:24vh;margin-top:.9em;">
         <div>${graficoMesChaoHtml}</div>
         <div>${graficoDiaChaoHtml}</div>
       </div>
     `;
+    // Fonte base em clamp(vh) — igual ao cabeçalho de painel() — pra escalar
+    // com a resolução real da tela (TV grande = texto grande), pedido do
+    // Ayslan (08/09/2026): "bem visual, pra ver de longe". Como quase todo
+    // o resto do painel usa unidades em em/1em relativas a essa base, um
+    // único font-size no wrapper já escala tudo dentro (KPIs, tabelas,
+    // gráficos) sem precisar mexer em cada elemento individualmente.
     if(solo){
-      return `<div style="height:100vh;display:flex;flex-direction:column;background:#f1f5f9;padding:14px 22px;box-sizing:border-box;">
+      return `<div style="height:100vh;display:flex;flex-direction:column;background:#eef2f7;box-sizing:border-box;font-size:clamp(13px,1.5vh,20px);">
         ${botaoVoltarTV()}
-        <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0f1f3d;margin-bottom:10px;flex:0 0 auto;">NO CHÃO — No porto ou Armazém</div>
-        ${corpo}
+        <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:1.1vh 26px;flex:0 0 auto;box-shadow:0 2px 10px rgba(0,0,0,.12);">
+          <div style="font-family:'Syne',sans-serif;font-size:clamp(18px,2.5vh,34px);font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
+          <div style="font-size:clamp(10px,1.15vh,16px);color:rgba(255,255,255,.8);margin-top:1px;">No porto ou Armazém</div>
+        </div>
+        <div style="flex:1;min-height:0;padding:1.4vh 22px;display:flex;flex-direction:column;">${corpo}</div>
       </div>`;
     }
-    return `<div style="background:#f1f5f9;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;padding:16px 22px;">
-      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0f1f3d;margin-bottom:10px;">NO CHÃO — No porto ou Armazém</div>
-      <div style="display:flex;flex-direction:column;gap:0;height:640px;">${corpo}</div>
+    return `<div style="background:#eef2f7;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
+      <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:16px 24px;">
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">No porto ou Armazém</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0;height:640px;padding:18px 24px;box-sizing:border-box;">${corpo}</div>
     </div>`;
   }
 
