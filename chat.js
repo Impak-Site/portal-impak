@@ -182,7 +182,7 @@ const navModulos = [
 { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
 { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
 { label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
-{ label: '📊 Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
+{ label: '💰 Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' }, // icone unificado com o menu lateral/titulo do Dashboard Financeiro (controle_v2.html) - antes usava 📊, igual ao Executivo, o que confundia os dois (pedido Ayslan 08/09/2026)
   { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
   { label: '📺 TV', href: '/tv', key: 'tv', modulo: 'tv' },
 ];
