@@ -492,14 +492,14 @@ function renderDashCambio(){
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="background:var(--bg);position:sticky;top:0;">
         <th style="padding:8px 8px 8px 16px;width:24px;"></th>
-        <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Vencimento</th>
-        <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Processo</th>
-        <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
-        <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Parcela</th>
-        <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">DI/DUIMP</th>
-        <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor USD</th>
-        <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Câmbio Previsto</th>
-        <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">BRL Estimado</th>
+        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Vencimento</th>
+        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Processo</th>
+        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Fornecedor</th>
+        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Parcela</th>
+        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">DI/DUIMP</th>
+        <th style="text-align:right;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Valor USD</th>
+        <th style="text-align:right;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Câmbio Previsto</th>
+        <th style="text-align:right;padding:8px 8px 8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">BRL Estimado</th>
       </tr></thead>
       <tbody>
         ${linhasFiltradas.map(x => {
@@ -507,14 +507,14 @@ function renderDashCambio(){
           const marcada = _cambioLoteSelecao.has(key);
           return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
           <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()"><input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,'${x.processoId}','${x._tipo}',${x._parcelaIndex!=null?x._parcelaIndex:'null'},${x.valorUsd},'${(x.fornecedor||'').replace(/'/g,"\\'")}','${(x.referencia||'').replace(/'/g,"\\'")}')"></td>
-          <td style="padding:8px 16px;white-space:nowrap;">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${x.vencimento ? badgeDias(x.vencimento) : ''}</td>
-          <td style="padding:8px 16px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}</td>
-          <td style="padding:8px 16px;color:var(--muted);">${esc(x.fornecedor)}</td>
-          <td style="padding:8px 16px;text-transform:capitalize;">${esc(x.parcela)}</td>
-          <td style="padding:8px 16px;${MONO}color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
-          <td style="padding:8px 16px;text-align:right;font-weight:700;${MONO}">${fmtUSD(x.valorUsd)}</td>
-          <td style="padding:8px 16px;text-align:right;color:var(--muted);${MONO}">${x.cambioPrevisto ? x.cambioPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
-          <td style="padding:8px 16px;text-align:right;${MONO}">${fmtBRL(x.valorUsd*(x.cambioPrevisto||cambioAtual))}</td>
+          <td style="padding:8px 8px;white-space:nowrap;">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${x.vencimento ? badgeDias(x.vencimento) : ''}</td>
+          <td style="padding:8px 8px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}</td>
+          <td style="padding:8px 8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.fornecedor)}">${esc(x.fornecedor)}</td>
+          <td style="padding:8px 8px;text-transform:capitalize;white-space:nowrap;">${esc(x.parcela)}</td>
+          <td style="padding:8px 8px;white-space:nowrap;${MONO}color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
+          <td style="padding:8px 8px;text-align:right;font-weight:700;white-space:nowrap;${MONO}">${fmtUSD(x.valorUsd)}</td>
+          <td style="padding:8px 8px;text-align:right;color:var(--muted);white-space:nowrap;${MONO}">${x.cambioPrevisto ? x.cambioPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
+          <td style="padding:8px 8px;text-align:right;white-space:nowrap;${MONO}">${fmtBRL(x.valorUsd*(x.cambioPrevisto||cambioAtual))}</td>
         </tr>`;
         }).join('') || `<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted);">Nenhuma parcela em aberto neste filtro.</td></tr>`}
       </tbody>
