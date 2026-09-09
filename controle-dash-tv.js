@@ -195,6 +195,86 @@ function renderDashTV(){
   });
   const noChaoLista = Object.entries(noChaoPorProduto).sort((a,b) => b[1]-a[1]);
 
+  // ── Métricas extras do "NO CHÃO" (layout da planilha antiga "00-
+  // DASHBOARDOPERACIONAL V7"), pedido do Ayslan (08/09/2026) — redesenhar
+  // o painel /tv?painel=chao pra bater com a tela "NO CHÃO - No porto ou
+  // Armazém" que a Emanuelly usava antes do sistema. Definições confirmadas
+  // com o Ayslan:
+  //   PREVISTO MÊS = containers de processos (não cancelados) cujo ETA cai
+  //                   no mês corrente (independente da fase).
+  //   NO MÊS       = containers de processos cuja Data de Registro da DI
+  //                   cai no mês corrente — MESMO critério já usado em
+  //                   calcularRelatorioNarcelio() (controle-dashboards.js),
+  //                   recalculado aqui pra não depender de outro arquivo
+  //                   ter carregado primeiro.
+  const _hojeChao = new Date();
+  const _mesRefChao = _hojeChao.getMonth(), _anoRefChao = _hojeChao.getFullYear();
+  const _noMesChao = dataStr => {
+    if(!dataStr) return false;
+    const dt = parseDataLocal(dataStr);
+    return !!dt && dt.getMonth() === _mesRefChao && dt.getFullYear() === _anoRefChao;
+  };
+
+  const previstoMesPorMarca = {}; // chave normalizada -> containers
+  const previstoMesProcessos = []; // {referencia,cliente,eta,n}
+  let previstoMesContainers = 0;
+  _processos.forEach(p => {
+    if(p.cancelado) return;
+    if(!_noMesChao(p.eta)) return;
+    const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || (parseInt(p.qtd_containers_prevista, 10) || 0) || 1;
+    const chaveMarca = (p.brand || p.fornecedor || 'Sem marca').trim().toUpperCase();
+    previstoMesPorMarca[chaveMarca] = (previstoMesPorMarca[chaveMarca] || 0) + n;
+    previstoMesProcessos.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n });
+    previstoMesContainers += n;
+  });
+  previstoMesProcessos.sort((a,b) => (a.eta||'9999').localeCompare(b.eta||'9999'));
+
+  const noMesPorMarca = {}; // chave normalizada -> containers
+  let noMesContainers = 0;
+  _processos.forEach(p => {
+    if(p.cancelado) return;
+    if(!_noMesChao(p.data_registro_di)) return;
+    const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
+    const chaveMarca = (p.brand || p.fornecedor || 'Sem marca').trim().toUpperCase();
+    noMesPorMarca[chaveMarca] = (noMesPorMarca[chaveMarca] || 0) + n;
+    noMesContainers += n;
+  });
+
+  // Container por mês (últimos 6 meses, incl. o corrente) — por Data de
+  // Registro da DI, mesma fonte do "NO MÊS" acima. Container por dia (ETA)
+  // — só os dias do mês corrente, mesma fonte do "PREVISTO MÊS".
+  const containerPorMes = []; // [{label, qtd}] mais antigo -> mais recente
+  {
+    const contagem = {};
+    _processos.forEach(p => {
+      if(p.cancelado) return;
+      const dt = parseDataLocal(p.data_registro_di);
+      if(!dt) return;
+      const chave = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
+      contagem[chave] = (contagem[chave] || 0) + (containersDoProcesso(p).length || 1);
+    });
+    for(let i=5; i>=0; i--){
+      const d = new Date(_anoRefChao, _mesRefChao - i, 1);
+      const chave = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+      containerPorMes.push({ label: d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','').toUpperCase(), qtd: contagem[chave] || 0 });
+    }
+  }
+  const containerPorDiaEta = []; // [{dia, qtd}] só dias do mês corrente
+  {
+    const contagem = {};
+    _processos.forEach(p => {
+      if(p.cancelado) return;
+      if(!_noMesChao(p.eta)) return;
+      const dt = parseDataLocal(p.eta);
+      if(!dt) return;
+      contagem[dt.getDate()] = (contagem[dt.getDate()] || 0) + (containersDoProcesso(p).length || (p.container?1:0) || (parseInt(p.qtd_containers_prevista,10)||0) || 1);
+    });
+    const ultimoDia = new Date(_anoRefChao, _mesRefChao+1, 0).getDate();
+    for(let dia=1; dia<=ultimoDia; dia++){
+      if(contagem[dia]) containerPorDiaEta.push({ dia, qtd: contagem[dia] });
+    }
+  }
+
   const fmtN = v => v.toLocaleString('pt-BR');
 
   // No modo solo (1 TV = 1 painel) tudo fica maior — é pra ler de longe,
@@ -484,10 +564,153 @@ function renderDashTV(){
     </div>
   ` : `<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado no armazém.</div>`);
 
+
+  // ── Tabela por Marca (Total/Backorders/Em Águas/Mês) — extensão de
+  // blocoTotalizadorMarcasTV com a 4ª coluna "Mês" (containers registrados
+  // no mês, noMesPorMarca), só usada no painel "NO CHÃO" redesenhado.
+  function blocoTabelaMarcaChaoTV(porBackorders, porEmAguas, porMes, labelMap){
+    const chaves = new Set([...Object.keys(porBackorders), ...Object.keys(porEmAguas), ...Object.keys(porMes)]);
+    const linhas = Array.from(chaves).map(chave => {
+      const bo = porBackorders[chave] || 0;
+      const ea = porEmAguas[chave] || 0;
+      const mes = porMes[chave] || 0;
+      return { chave, nome: labelMap[chave] || chave, bo, ea, mes, total: bo + ea };
+    }).sort((a,b) => b.total - a.total);
+    if(!linhas.length) return '<div style="font-size:13px;color:var(--muted);">Sem dados de marca no momento.</div>';
+    const totalGeral = linhas.reduce((s,l)=>s+l.total,0);
+    const totalBO = linhas.reduce((s,l)=>s+l.bo,0);
+    const totalEA = linhas.reduce((s,l)=>s+l.ea,0);
+    const totalMes = linhas.reduce((s,l)=>s+l.mes,0);
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;height:100%;display:flex;flex-direction:column;">
+      <div style="padding:8px 12px;font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;flex:0 0 auto;">Por Marca</div>
+      <div style="overflow-y:auto;flex:1;min-height:0;">
+      <table style="width:100%;border-collapse:collapse;font-size:.8em;">
+        <thead><tr style="background:#f1f5f9;text-align:left;color:#475569;text-transform:uppercase;letter-spacing:.3px;font-size:.85em;position:sticky;top:0;">
+          <th style="padding:8px 12px;">Marca</th>
+          <th style="padding:8px 12px;text-align:right;">Total</th>
+          <th style="padding:8px 12px;text-align:right;">Backorders</th>
+          <th style="padding:8px 12px;text-align:right;">Em Águas</th>
+          <th style="padding:8px 12px;text-align:right;">Mês</th>
+        </tr></thead>
+        <tbody>
+        ${linhas.map((l,idx) => `<tr style="border-top:1px solid #e2e8f0;color:#1e293b;${idx%2===1?'background:#e7edf5;':''}">
+          <td style="padding:6px 12px;font-weight:700;">${esc(l.nome)}</td>
+          <td style="padding:6px 12px;text-align:right;font-weight:800;">${fmtN(l.total)}</td>
+          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.bo)}</td>
+          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.ea)}</td>
+          <td style="padding:6px 12px;text-align:right;color:#475569;">${fmtN(l.mes)}</td>
+        </tr>`).join('')}
+        <tr style="border-top:2px solid #cbd5e1;font-weight:800;color:#0f1f3d;">
+          <td style="padding:8px 12px;">TOTAL</td>
+          <td style="padding:8px 12px;text-align:right;">${fmtN(totalGeral)}</td>
+          <td style="padding:8px 12px;text-align:right;">${fmtN(totalBO)}</td>
+          <td style="padding:8px 12px;text-align:right;">${fmtN(totalEA)}</td>
+          <td style="padding:8px 12px;text-align:right;">${fmtN(totalMes)}</td>
+        </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  }
+
+  // ── "Processos do Mês" — processos com ETA no mês corrente, em colunas
+  // (mesmo padrão de emAguasEmColunas/noChaoEmColunas), colunas ETA/Processo/Qtd.
+  function linhaProcessoMesChaoTV(x){
+    const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
+    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);overflow:hidden;padding:2px 0;">
+        <div style="width:20%;font-weight:700;overflow:hidden;">${etaFmt}</div>
+        <div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(x.referencia||'')}">${esc(x.referencia||'—')}</div>
+        <div style="width:16%;text-align:right;font-weight:700;">${x.n}</div>
+      </div>`;
+  }
+  function blocoProcessosDoMesChaoTV(lista){
+    if(!lista.length) return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;height:100%;"><div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Processos do Mês</div><div style="font-size:13px;color:var(--muted);">Nenhum processo com ETA neste mês.</div></div>`;
+    const ALVO_POR_COLUNA = 12;
+    let nCols = Math.max(1, Math.ceil(lista.length / ALVO_POR_COLUNA));
+    nCols = Math.min(nCols, 3);
+    const porColuna = Math.ceil(lista.length / nCols);
+    const colunas = [];
+    for(let i=0;i<nCols;i++) colunas.push(lista.slice(i*porColuna,(i+1)*porColuna));
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;height:100%;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;flex:0 0 auto;">Processos do Mês · ${fmtN(lista.length)} processo(s)</div>
+      <div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:10px;flex:1;min-height:0;">
+        ${colunas.map(col => `<div style="display:flex;flex-direction:column;overflow:hidden;">${col.map(linhaProcessoMesChaoTV).join('')}</div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // ── Gráfico de barras simples (CSS puro, sem lib externa) ─────────
+  function graficoBarrasChaoTV(titulo, itens, corBarra){
+    const max = Math.max(1, ...itens.map(i => i.qtd));
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;height:100%;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;flex:0 0 auto;">${esc(titulo)}</div>
+      <div style="flex:1;min-height:0;display:flex;align-items:flex-end;gap:${itens.length>15?'2px':'6px'};">
+        ${itens.map(i => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0;">
+          <div style="font-size:.65em;font-weight:700;color:#334155;margin-bottom:2px;">${i.qtd || ''}</div>
+          <div style="width:100%;background:${corBarra};border-radius:3px 3px 0 0;height:${Math.max(2, Math.round((i.qtd/max)*100))}%;"></div>
+          <div style="font-size:.6em;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(String(i.label))}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // ── KPI row (Backorders / Em Águas / Previsto Mês / No Mês) ───────
+  function kpiCardChaoTV(label, valor, cor){
+    return `<div style="background:${cor};border-radius:10px;padding:10px 16px;display:flex;flex-direction:column;justify-content:center;min-width:0;flex:1;">
+      <div style="font-size:.7em;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.4px;">${esc(label)}</div>
+      <div style="font-size:1.9em;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;">${fmtN(valor)}</div>
+    </div>`;
+  }
+  const kpiRowChaoHtml = `<div style="display:flex;gap:10px;flex:0 0 auto;">
+    ${kpiCardChaoTV('Backorders', backordersTotal, '#2a5298')}
+    ${kpiCardChaoTV('Em Águas', emAguasTotal, '#1e6091')}
+    ${kpiCardChaoTV('Previsto Mês', previstoMesContainers, '#0f766e')}
+    ${kpiCardChaoTV('No Mês', noMesContainers, '#184e77')}
+  </div>`;
+
+  const tabelaMarcaChaoHtml = blocoTabelaMarcaChaoTV(backordersPorMarca, emAguasPorMarca, noMesPorMarca, backordersLabel);
+  const processosDoMesChaoHtml = blocoProcessosDoMesChaoTV(previstoMesProcessos);
+  const armazemChaoHtml = `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;height:100%;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="font-weight:800;font-size:.82em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;flex:0 0 auto;">Armazém · ${fmtN(noChaoProcessos)} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades</div>
+    <div style="flex:1;min-height:0;overflow-y:auto;">${noChaoLista.length ? noChaoLista.map(([desc,qtd]) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border);"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(desc)}">${esc(desc)}</span><span style="font-weight:700;white-space:nowrap;">${fmtN(Math.round(qtd))} un.</span></div>`).join('') : '<div style="font-size:13px;color:var(--muted);">Nenhum processo com estoque parado.</div>'}</div>
+  </div>`;
+  const graficoMesChaoHtml = graficoBarrasChaoTV('Container por Mês (Registro DI)', containerPorMes, '#2a5298');
+  const graficoDiaChaoHtml = graficoBarrasChaoTV('Container por Dia (ETA, mês corrente)', containerPorDiaEta.length ? containerPorDiaEta.map(i => ({label:i.dia, qtd:i.qtd})) : [{label:'—', qtd:0}], '#0f766e');
+
+  // Layout completo do painel "NO CHÃO" (espelha a planilha antiga "00-
+  // DASHBOARDOPERACIONAL V7" — tela "NO CHÃO - No porto ou Armazém"),
+  // pedido do Ayslan (08/09/2026). Diferente dos outros 2 painéis, não usa
+  // a função genérica painel() — tem cabeçalho próprio (linha de 4 KPIs em
+  // vez de 1 número só).
+  function painelChaoCompletoTV(){
+    const corpo = `
+      ${kpiRowChaoHtml}
+      <div style="display:grid;grid-template-columns:1.3fr 1.4fr 1fr;gap:12px;flex:1;min-height:0;margin-top:12px;">
+        <div style="min-height:0;overflow:hidden;">${tabelaMarcaChaoHtml}</div>
+        <div style="min-height:0;overflow:hidden;">${processosDoMesChaoHtml}</div>
+        <div style="min-height:0;overflow:hidden;">${armazemChaoHtml}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:0 0 auto;height:22vh;margin-top:12px;">
+        <div>${graficoMesChaoHtml}</div>
+        <div>${graficoDiaChaoHtml}</div>
+      </div>
+    `;
+    if(solo){
+      return `<div style="height:100vh;display:flex;flex-direction:column;background:#f1f5f9;padding:14px 22px;box-sizing:border-box;">
+        <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0f1f3d;margin-bottom:10px;flex:0 0 auto;">NO CHÃO — No porto ou Armazém</div>
+        ${corpo}
+      </div>`;
+    }
+    return `<div style="background:#f1f5f9;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;padding:16px 22px;">
+      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0f1f3d;margin-bottom:10px;">NO CHÃO — No porto ou Armazém</div>
+      <div style="display:flex;flex-direction:column;gap:0;height:640px;">${corpo}</div>
+    </div>`;
+  }
+
   const paineis = {
     backorders: painel('BACKORDERS', `Visão por marca / fábrica — ainda não embarcados · ${fmtN(backordersProcessosTotal)} processos e ${fmtN(backordersTotal)} containers`, fmtN(backordersTotal), '#2a5298', backordersHtml),
     aguas: painel('EM ÁGUAS', 'Em trânsito para o Brasil', fmtN(emAguasTotal), '#1e6091', emAguasHtml),
-    chao: painel('NO CHÃO', 'NF de Entrada lançada, ainda sem venda', fmtN(noChaoProcessos), '#184e77', noChaoHtml),
+    chao: painelChaoCompletoTV(),
   };
 
   // No modo "todos" (visão de conferência, não a TV física), mostra links
