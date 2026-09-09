@@ -750,6 +750,17 @@ function renderDashTV(){
     <a href="/tv?painel=chao" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;text-decoration:none;color:var(--text);font-weight:600;">No Chão ↗</a>
   </div>` : '';
 
+  // Esconde o painel ATÉ o ajuste de fonte terminar (Ayslan/Emanuelly
+  // 09/09/2026: fotos da TV física mostraram o texto "duplicado"/fantasma
+  // ao abrir uma tela solo). Causa raiz: o HTML entra no DOM com o
+  // font-size padrão do navegador (bem maior que o calculado), o browser
+  // pinta ESSE frame gigante/estourado na tela, e só DEPOIS o
+  // requestAnimationFrame roda ajustarFonteColunasTV() pra encolher pro
+  // tamanho certo — nas TVs físicas (mais lentas pra atualizar a imagem)
+  // esse instante de transição fica visível como se fosse 2 textos
+  // sobrepostos em tamanhos diferentes. Escondendo o painel até o tamanho
+  // final estar decidido, só o frame já certo chega a ser exibido.
+  if(solo) el.style.visibility = 'hidden';
   el.innerHTML = solo ? paineis[painelAtivo] : (linksSolo + paineis.backorders + paineis.aguas + paineis.chao);
   el.classList.toggle('dash-tv-solo', solo);
   // Só depois do HTML estar no DOM dá pra medir a altura REAL de uma linha
@@ -868,6 +879,10 @@ function ajustarFonteColunasTV(raiz){
     document.body.appendChild(badge);
   }
   badge.innerHTML = `screen ${window.screen.width}x${window.screen.height} dpr${window.devicePixelRatio}<br>fisica~${Math.round(window.screen.width*(window.devicePixelRatio||1))}px &rarr; fator ${fatorResolucao}<br>linha ${Math.round(menorAltura)}px &rarr; fonte ${fonte}px (-${tentativasAjuste})`;
+
+  // Só revela o painel agora que o tamanho final foi decidido — ver
+  // comentário em renderDashTV() sobre o "esconde até ajustar" acima.
+  raiz.style.visibility = 'visible';
 }
 
 // ── Modal "quais processos estão nesse número" (Backorders) ──────────
