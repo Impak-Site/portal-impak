@@ -178,8 +178,12 @@ function fecharPainelFechamentoLoteCambio(){
 async function executarFechamentoLoteCambio(){
   const taxaInput = document.getElementById('lote-cambio-taxa');
   const dataInput = document.getElementById('lote-cambio-data');
+  const bancoInput = document.getElementById('lote-cambio-banco');
+  const custoInput = document.getElementById('lote-cambio-custo');
   const taxa = parseFloat(String(taxaInput?.value||'').replace(',','.'));
   const dataFechamento = dataInput?.value || new Date().toISOString().slice(0,10);
+  const banco = (bancoInput?.value||'').trim() || null;
+  const custo = parseFloat(String(custoInput?.value||'').replace(',','.')) || null;
   if(!taxa || taxa<=0){ showToast('Digite um câmbio válido pra fechar o lote','err'); return; }
   if(!_cambioLoteSelecao.size){ showToast('Nenhuma parcela selecionada','err'); return; }
 
@@ -202,19 +206,26 @@ async function executarFechamentoLoteCambio(){
       if(sel.tipo==='entrada'){
         patch.pi_cambio_entrada = taxa.toFixed(4);
         patch.pi_data_entrada = proc.pi_data_entrada || dataFechamento;
+        if(banco) patch.pi_cambio_banco = banco;
+        if(custo) patch.pi_cambio_custo = custo;
       } else if(sel.tipo==='saldo'){
         patch.pi_cambio_saldo = taxa.toFixed(4);
         patch.pi_data_saldo = proc.pi_data_saldo || dataFechamento;
         patch.pi_pago = true;
+        if(banco) patch.pi_cambio_banco = banco;
+        if(custo) patch.pi_cambio_custo = custo;
       } else if(sel.tipo==='unico'){
         patch.pi_cambio_fechado = taxa.toFixed(4);
         patch.pi_pago = true;
+        if(banco) patch.pi_cambio_banco = banco;
+        if(custo) patch.pi_cambio_custo = custo;
       } else if(sel.tipo==='parcelado'){
         if(!parcelasArr){
           try{ parcelasArr = proc.pi_parcelas_json ? JSON.parse(proc.pi_parcelas_json) : []; }catch(e){ parcelasArr = []; }
         }
         if(parcelasArr[sel.parcelaIndex]){
-          parcelasArr[sel.parcelaIndex] = {...parcelasArr[sel.parcelaIndex], cambio_fechado: taxa.toFixed(4)};
+          parcelasArr[sel.parcelaIndex] = {...parcelasArr[sel.parcelaIndex], cambio_fechado: taxa.toFixed(4),
+            ...(banco ? {banco} : {}), ...(custo ? {custo_operacao: custo} : {})};
         }
       }
     });
@@ -508,6 +519,42 @@ function renderDashCambio(){
     </div>
   </div>`;
 
+  // ── Concentração por Banco/Corretora + Custo da Operação — pedido do
+  // Ayslan (09/09/2026, "se você fosse o financeiro, o que gostaria de
+  // ver"). Só entra o que já foi FECHADO (banco/custo só se sabe depois de
+  // fechar o câmbio, não faz sentido pro que ainda está em aberto) e só
+  // conta o que tiver os campos novos preenchidos — dados históricos antes
+  // desses campos existirem ficam de fora até alguém voltar e preencher.
+  const pagosComBanco = pagos.filter(x=>x.banco);
+  const porBanco = {};
+  pagosComBanco.forEach(x=>{ porBanco[x.banco] = (porBanco[x.banco]||0) + x.valorUsd; });
+  const rankingBanco = Object.entries(porBanco).sort((a,b)=>b[1]-a[1]);
+  const totalBancoUsd = rankingBanco.reduce((s,[,v])=>s+v,0);
+  const custoTotalOperacoes = pagos.reduce((s,x)=>s+(x.custoOperacao||0),0);
+  const pagosComCusto = pagos.filter(x=>x.custoOperacao).length;
+
+  const bancoCustoHtml = (!pagos.length) ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">🏦 Concentração por Banco/Corretora + Custo da Operação</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Baseado nos câmbios já fechados com Banco/Corretora e Custo da Operação preenchidos (campos novos — registre ao fechar um câmbio pra essa seção ir enchendo).</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;">
+        ${!rankingBanco.length ? `<div style="font-size:12px;color:var(--muted);">Nenhum câmbio fechado com Banco/Corretora informado ainda.</div>` : rankingBanco.map(([nome,val])=>{
+          const pct = totalBancoUsd>0 ? Math.round(val/totalBancoUsd*100) : 0;
+          return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px;">
+            <span style="flex:1;font-weight:600;">${esc(nome)}</span>
+            <span style="color:var(--muted);">${pct}%</span>
+            <span style="font-weight:700;${MONO}">${fmtUSD(val)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="flex:1;min-width:200px;border-left:1px solid var(--border);padding-left:20px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Custo total das operações</div>
+        <div style="font-size:20px;font-weight:800;${MONO}">${fmtBRL(custoTotalOperacoes)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${pagosComCusto} de ${pagos.length} câmbio(s) pago(s) com custo informado</div>
+      </div>
+    </div>
+  </div>`;
+
   // ── Consolidar câmbio por Fornecedor+Prazo — pedido do Ayslan
   // (09/09/2026): "são poucos fornecedores, podendo consolidar os
   // câmbios". Em vez de fechar câmbio parcela por parcela, mostra quanto
@@ -615,6 +662,8 @@ function renderDashCambio(){
       <b id="lote-cambio-titulo-painel" style="font-size:12px;">Fechar câmbio de ${_cambioLoteSelecao.size} parcela(s) selecionada(s):</b>
       <label style="font-size:12px;">Câmbio: <input id="lote-cambio-taxa" type="number" step="0.0001" placeholder="ex: 5,15" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;${MONO}"></label>
       <label style="font-size:12px;">Data: <input id="lote-cambio-data" type="date" value="${hoje.toISOString().slice(0,10)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
+      <label style="font-size:12px;">Banco/Corretora: <input id="lote-cambio-banco" type="text" placeholder="opcional" style="width:130px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
+      <label style="font-size:12px;">Custo (R$): <input id="lote-cambio-custo" type="number" step="0.01" placeholder="opcional" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;${MONO}"></label>
       <button type="button" onclick="executarFechamentoLoteCambio()" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:6px;background:var(--ok);color:#fff;cursor:pointer;">✓ Confirmar fechamento</button>
       <button type="button" onclick="fecharPainelFechamentoLoteCambio()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;">Cancelar</button>
     </div>
@@ -654,7 +703,7 @@ function renderDashCambio(){
 
   el.innerHTML = kpisHtml + alertaSemDataHtml + concentracaoHtml + mtmHtml + graficoPtaxHtml
     + `<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">${fornecedorHtml}${simulacaoHtml}</div>`
-    + consolidacaoHtml + tabelaHtml
+    + bancoCustoHtml + consolidacaoHtml + tabelaHtml
     + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
 
   carregarGraficoPtaxCambio(pagos);

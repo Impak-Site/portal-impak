@@ -322,6 +322,14 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="number" id="f_pi_cambio_fechado" value="${p.pi_cambio_fechado||''}" placeholder="preenchido ao confirmar o câmbio" step="0.0001"
               title="Taxa que realmente foi paga (vem do comprovante de câmbio, pra Pagamento Único/Prazo). Fica separado de 'Câmbio na PI' de propósito — aquele é a previsão, este é o fechado, pra dar pra comparar os dois no Dashboard Financeiro.">
           </div>
+          <div class="form-group"><label class="form-label">Banco/Corretora do Câmbio</label>
+            <input class="form-input" id="f_pi_cambio_banco" value="${esc(p.pi_cambio_banco)}" placeholder="Ex: Banco X, Corretora Y"
+              title="Onde o câmbio foi fechado (pedido Ayslan 09/09/2026: concentração de risco por contraparte). Só faz sentido depois que o câmbio já foi fechado.">
+          </div>
+          <div class="form-group"><label class="form-label">Custo da Operação (R$)</label>
+            <input class="form-input" type="number" id="f_pi_cambio_custo" value="${p.pi_cambio_custo||''}" placeholder="IOF, spread, tarifas..." step="0.01"
+              title="Custo da OPERAÇÃO de câmbio em si (IOF, spread do banco, tarifas) — separado da taxa. Pedido Ayslan 09/09/2026: 'quanto custou de verdade', não só a taxa.">
+          </div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
               <option value="">—</option>

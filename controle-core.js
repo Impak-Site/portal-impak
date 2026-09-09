@@ -899,16 +899,28 @@ function listarPagamentosPI(processos){
     // câmbio pertence, sem precisar abrir o processo. Pode vir vazio (DI só
     // é registrada depois, na fase Registro DI) — tratado como '—' na UI.
     const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'' };
+    // banco/custoOperacao: registrados a pedido do Ayslan (09/09/2026,
+    // "se você fosse o financeiro, o que gostaria de ver") -- só fazem
+    // sentido depois que o câmbio foi de fato fechado (não dá pra saber o
+    // banco/custo de algo ainda em aberto). Pagamento único/Entrada+Saldo
+    // legado usam os 2 campos do processo (pi_cambio_banco/pi_cambio_custo)
+    // pros dois lados -- é uma aproximação (não dá pra ter banco/custo
+    // diferente pra entrada e saldo nesse modelo legado), documentada aqui
+    // porque Parcelado (abaixo) já tem os campos por parcela de verdade.
+    const bancoProc = p.pi_cambio_banco || null;
+    const custoProc = parseFloat(p.pi_cambio_custo) || null;
     if(p.pi_pagamento==='ENTRADA_SALDO'){
       const pct = parseFloat(p.pi_entrada_pct||30)/100;
       const cambioPrevisto = parseFloat(p.pi_cambio)||null;
       pagamentos.push({...base, parcela:'entrada', _tipo:'entrada',
         valorUsd: valorTotal*pct, vencimento: p.pi_data_entrada||null,
         cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_entrada)||null,
+        banco: bancoProc, custoOperacao: custoProc,
         pago: !!p.pi_cambio_entrada });
       pagamentos.push({...base, parcela:'saldo', _tipo:'saldo',
         valorUsd: valorTotal*(1-pct), vencimento: p.pi_data_saldo||null,
         cambioPrevisto, cambioFechado: parseFloat(p.pi_cambio_saldo)||null,
+        banco: bancoProc, custoOperacao: custoProc,
         pago: !!p.pi_pago });
     } else if(p.pi_pagamento==='PARCELADO'){
       // "Parcelado" (N câmbios, valor fixo em USD cada) — achata cada linha
@@ -924,6 +936,7 @@ function listarPagamentosPI(processos){
         pagamentos.push({...base, parcela: pc.label || ('parcela '+(i+1)), _tipo:'parcelado', _parcelaIndex:i,
           valorUsd: v, vencimento: pc.data_vencimento||null,
           cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(pc.cambio_fechado)||null,
+          banco: pc.banco || null, custoOperacao: parseFloat(pc.custo_operacao) || null,
           pago: !!pc.cambio_fechado });
       });
     } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
@@ -931,6 +944,7 @@ function listarPagamentosPI(processos){
       pagamentos.push({...base, parcela:'unico', _tipo:'unico',
         valorUsd: valorTotal, vencimento: vencimento||null,
         cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(p.pi_cambio_fechado)||null,
+        banco: bancoProc, custoOperacao: custoProc,
         pago: !!p.pi_pago });
     }
     // Sem pi_pagamento definido ainda (processo recém-criado, só com valor

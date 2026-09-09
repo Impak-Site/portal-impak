@@ -195,7 +195,7 @@ function coletarESalvar(){
     'nf_saida_numero','nf_saida_data','nf_saida_valor','nf_saida_cfop',
     'data_devolucao_vazio','demurrage_valor','armazem',
     'ric_status','depot','data_solicitacao_demurrage','data_isencao_demurrage','data_envio_termo','data_pagamento_lavagem','data_pagamento_demurrage',
-    'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','containers_json','produtos_json','vendas_json','pi_parcelas_json',
+    'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','pi_cambio_banco','pi_cambio_custo','containers_json','produtos_json','vendas_json','pi_parcelas_json',
   ];
 
   const proc = {..._editando};
@@ -686,7 +686,7 @@ let _parcelas = []; // [{label, valor_usd, data_vencimento, cambio_fechado, valo
 // inconsistentes (ex: "Pré embarque" vs "Pre-embarque" vs "Embarque").
 const PARCELA_ETAPAS = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
 
-function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', valor_recebido_cliente:'', data_recebimento:'' }; }
+function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'' }; }
 
 function renderParcelas(){
   const wrap = document.getElementById('parcelas-list');
@@ -709,11 +709,18 @@ function renderParcelas(){
           ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
           : '<div></div>'}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
         <input class="form-input" type="number" step="0.01" placeholder="Valor recebido do cliente (USD)" value="${pc.valor_recebido_cliente!=null?pc.valor_recebido_cliente:''}"
           oninput="_parcelas[${i}].valor_recebido_cliente=this.value;sincronizarParcelasLegado()">
         <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
           oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()">
+        <div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;">
+        <input class="form-input" placeholder="Banco/Corretora" value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
+          oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()">
+        <input class="form-input" type="number" step="0.01" placeholder="Custo da operação (R$)" value="${pc.custo_operacao!=null?pc.custo_operacao:''}" title="IOF, spread, tarifas desta operação"
+          oninput="_parcelas[${i}].custo_operacao=this.value;sincronizarParcelasLegado()">
         <div></div>
       </div>
     </div>
