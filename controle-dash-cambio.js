@@ -73,8 +73,14 @@ function atualizarBarraLoteCambio(){
   let totalUsd = 0; _cambioLoteSelecao.forEach(v=>totalUsd+=v.valorUsd);
   const resumo = document.getElementById('lote-cambio-resumo');
   const btn = document.getElementById('lote-cambio-btn');
+  const tituloPainel = document.getElementById('lote-cambio-titulo-painel');
   if(resumo) resumo.textContent = n ? `${n} parcela(s) selecionada(s) · ${cambFmtUSD(totalUsd)}` : 'Marque parcelas na tabela abaixo pra fechar câmbio em lote.';
   if(btn) btn.disabled = n===0;
+  // O painel de confirmação pode já estar aberto quando o usuário marca/
+  // desmarca mais uma parcela (não fecha sozinho) — mantém a contagem
+  // exibida nele sincronizada em vez de deixar o número travado no que
+  // era verdade só no instante em que a tabela foi renderizada.
+  if(tituloPainel) tituloPainel.textContent = `Fechar câmbio de ${n} parcela(s) selecionada(s):`;
 }
 
 function abrirPainelFechamentoLoteCambio(){
@@ -486,7 +492,7 @@ function renderDashCambio(){
       </div>
     </div>
     <div id="lote-cambio-painel" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);background:#f0f9ff;align-items:center;gap:12px;flex-wrap:wrap;">
-      <b style="font-size:12px;">Fechar câmbio de ${_cambioLoteSelecao.size} parcela(s) selecionada(s):</b>
+      <b id="lote-cambio-titulo-painel" style="font-size:12px;">Fechar câmbio de ${_cambioLoteSelecao.size} parcela(s) selecionada(s):</b>
       <label style="font-size:12px;">Câmbio: <input id="lote-cambio-taxa" type="number" step="0.0001" placeholder="ex: 5,15" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
       <label style="font-size:12px;">Data: <input id="lote-cambio-data" type="date" value="${hoje.toISOString().slice(0,10)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
       <button type="button" onclick="executarFechamentoLoteCambio()" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:6px;background:var(--ok);color:#fff;cursor:pointer;">✓ Confirmar fechamento</button>
