@@ -585,6 +585,10 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             </select></div>
           <div class="form-group"><label class="form-label">Depot</label>
             <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução"></div>
+          <div class="form-group"><label class="form-label">Data Solicitação</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_solicitacao_demurrage" value="${esc(p.data_solicitacao_demurrage)}"></div>
+          <div class="form-group"><label class="form-label">Data Isenção</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_isencao_demurrage" value="${esc(p.data_isencao_demurrage)}"></div>
           <div class="form-group"><label class="form-label">Data de Envio do Termo</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_envio_termo" value="${esc(p.data_envio_termo)}"></div>
           <div class="form-group"><label class="form-label">Data Pagamento Lavagem</label>
