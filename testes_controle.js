@@ -1099,6 +1099,20 @@ teste('idsNotificacoesResolvidas: sem notificações existentes -> não quebra, 
   iguais(ids.length, 0);
 });
 
+teste('verificarAlertas: processo embarcado sem HBL/LI aprovado gera alerta de pendência pós-embarque', () => {
+  const p = { id:'x1', referencia:'UD26-999', fase:'DESEMBARCADO', data_embarque:'2026-08-01', aprovacao_hbl:null, solicitacao_li:null };
+  const alertas = sandbox.verificarAlertas(p, false);
+  const temPendencia = alertas.some(a => a.titulo.startsWith('Pendência pós-embarque'));
+  iguais(temPendencia, true, 'processo em andamento sem HBL/LI deveria alertar');
+});
+
+teste('verificarAlertas: processo FINALIZADO não gera mais o alerta de HBL/LI mesmo com os campos vazios (pedido Emanuelly 09/09/2026)', () => {
+  const p = { id:'x2', referencia:'UD26-998', fase:'FINALIZADO', data_embarque:'2026-06-01', aprovacao_hbl:null, solicitacao_li:null, pi_valor_usd:1000 };
+  const alertas = sandbox.verificarAlertas(p, false);
+  const temPendencia = alertas.some(a => a.titulo.startsWith('Pendência pós-embarque'));
+  iguais(temPendencia, false, 'processo finalizado não deve mais alertar HBL/LI pendente');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

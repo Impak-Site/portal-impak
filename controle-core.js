@@ -2301,7 +2301,13 @@ function verificarAlertas(proc, criarNotif){
   // & Embarque e Carregamento) precisam estar marcados "Sim" — se o
   // processo já embarcou (Data de Embarque preenchida) e algum dos dois
   // ainda não foi marcado como Sim, entra como alerta pra não passar batido.
-  if(proc.data_embarque){
+  // Só faz sentido ENQUANTO o processo ainda está em andamento — uma vez
+  // Finalizado não tem mais nada a fazer com HBL/LI, e processos antigos
+  // (finalizados antes desses 2 campos existirem, 04/09/2026) nunca vão
+  // ter isso preenchido retroativamente. Sem esse corte, ficava alertando
+  // pra sempre em processo já encerrado (pedido Emanuelly 09/09/2026: "os
+  // que já estejam finalizados não fiquem com o alerta").
+  if(proc.data_embarque && proc.fase !== 'FINALIZADO'){
     const pendentes = [];
     if(proc.aprovacao_hbl !== 'Sim') pendentes.push('Aprovação HBL');
     if(proc.solicitacao_li !== 'Sim') pendentes.push('Solicitação LI');
