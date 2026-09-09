@@ -344,6 +344,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div class="sidebar-label">Dashboard</div>
 <div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
 <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💰 Dashboard Financeiro</div>
+<div class="sidebar-item" id="menu-cambio" onclick="toggleDashCambio()">💱 Dashboard Câmbio</div>
   <div class="sidebar-item" id="menu-resultado" onclick="toggleDashResultado()">📈 Dashboard Resultado</div>
   <div class="sidebar-item" id="menu-narcelio" style="display:none;" onclick="toggleDashNarcelio()">👔 Dashboard Narcélio</div>
 <div class="sidebar-item" id="menu-carregamento" onclick="toggleDashCarregamento()">🚛 Dashboard de Carregamentos</div>
@@ -441,6 +442,14 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
       <div id="periodo-seletor-resultado"></div>
     </div>
     <div id="dash-resultado-content"></div>
+  </div>
+
+  <!-- DASHBOARD CÂMBIO -->
+  <div id="dash-cambio" style="display:none;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">💱 Dashboard Câmbio</div>
+    </div>
+    <div id="dash-cambio-content"></div>
   </div>
 
   <!-- DASHBOARD NARCÉLIO -->
@@ -669,6 +678,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <script src="/controle-import-ia.js"></script>
 <script src="/controle-nf-import.js"></script>
 <script src="/controle-dashboards.js"></script>
+<script src="/controle-dash-cambio.js"></script>
 <script src="/controle-dash-narcelio.js"></script>
 <script src="/controle-dash-carregamento.js"></script>
 <script src="/controle-dash-tv.js"></script>

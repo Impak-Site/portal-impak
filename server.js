@@ -1272,6 +1272,13 @@ app.get('/controle', auth('controle'), (req, res) => res.sendFile(path.join(__di
 // upload de documentos, autocomplete de contatos etc. num arquivo separado
 // que rapidamente ficaria desatualizado em relação ao Controle de verdade.
 app.get('/financeiro', auth('financeiro'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+// "Tela exclusiva" do Dashboard Câmbio (controle de pagamentos de câmbio
+// por processo — entrada/saldo/parcelado, calendário semana/mês) — mesmo
+// esquema do /financeiro acima, mesmo módulo de permissão (é a mesma
+// fonte de dados, só com outra apresentação focada em vencimento). Ver
+// ativarTelaCambioExclusiva() em controle-core.js e renderDashCambio() em
+// controle-dash-cambio.js.
+app.get('/cambio', auth('financeiro'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // "Tela exclusiva" do Dashboard Resultado (lucro estimado x real de todos
 // os processos) — mesmo esquema do /financeiro acima: serve o MESMO
 // controle_v2.html, e o front-end detecta location.pathname==='/resultado'

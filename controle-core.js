@@ -161,6 +161,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
       if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
       if(location.pathname==='/tv') ativarTelaTVExclusiva();
+      if(location.pathname==='/cambio') ativarTelaCambioExclusiva();
       // Deep-link ?processo=<id> — usado pelo Calculador pra abrir direto o
       // processo recém-criado ao aprovar uma cotação (ver aprovarCotacao()
       // em calculador.html). Só tenta abrir depois que a lista carregou,
@@ -278,6 +279,35 @@ function ativarTelaResultadoExclusiva(){
   const dashRes = document.getElementById('dash-resultado');
   if(dashRes) dashRes.style.display = 'block';
   renderDashResultado();
+}
+
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /cambio — controle de pagamentos de câmbio por processo
+// (entrada/saldo/parcelado), com foco em "o que vence essa semana/mês"
+// (pedido do Ayslan, 09/09/2026). Mesma fonte de dados do Dashboard
+// Financeiro (listarPagamentosPI), só que reorganizada em calendário
+// semanal/mensal em vez de tabela única — ver renderDashCambio() em
+// controle-dash-cambio.js.
+function ativarTelaCambioExclusiva(){
+  document.title = 'IMPAK — Dashboard Câmbio';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Dashboard Câmbio';
+
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+
+  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('menu-cambio')?.classList.add('active');
+
+  const dashCam = document.getElementById('dash-cambio');
+  if(dashCam) dashCam.style.display = 'block';
+  renderDashCambio();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2469,7 +2499,7 @@ function renderFaseFilter(){
 const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'];
 
 function fecharTodosDashboards(){
-  ['executivo','financeiro','resultado','narcelio','carregamento','tv','clientemedida'].forEach(function(id){
+  ['executivo','financeiro','resultado','narcelio','carregamento','tv','clientemedida','cambio'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
     if(el) el.style.display = 'none';
     var menu = document.getElementById('menu-'+id);
