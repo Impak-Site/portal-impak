@@ -439,7 +439,7 @@ function renderDashTV(){
     ? `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`
     : (solo ? `
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
-      <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:stretch;">
+      <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;grid-auto-rows:1fr;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:stretch;">
         ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
       </div>
       ${backordersResto.length ? backordersRestoEmColunas(backordersResto) : ''}
@@ -778,15 +778,21 @@ function ajustarFonteColunasTV(raiz){
   });
   // Fallback pro Backorders quando há poucas marcas (só os 4 cards
   // principais, sem lista "resto" pra medir) — pedido do Ayslan
-  // (08/09/2026): mede o card (.tv-card) em vez de uma linha de tabela. O
-  // card empilha ~3 "linhas" de conteúdo (nome/número/barra), daí dividir
-  // a altura por 3 pra chegar numa referência comparável à altura de uma
-  // linha normal antes de aplicar a mesma proporção.
+  // (09/09/2026): "pega a fonte que colocou no Em Águas e coloca no
+  // Backorders" (a fonte da tela de Backorders ficava visivelmente menor
+  // que a de Em Águas). Causa raiz: o card de marca (.tv-card) ficava
+  // dentro de um grid de altura de CONTEÚDO (auto) — mesmo com o wrapper
+  // esticando pra ocupar a tela toda (flex:1), o card em si continuava do
+  // tamanho do próprio conteúdo, sobrando espaço vazio embaixo em vez do
+  // card crescer. Corrigido lá embaixo (grid-auto-rows:1fr no wrapper dos
+  // cards principais) pra o card esticar e preencher a altura toda, igual
+  // uma linha de Em Águas já fazia — então aqui só precisa medir o card
+  // direto (sem dividir por 3): ele já vem do tamanho certo.
   if(!isFinite(menorAltura)){
     const card = raiz.querySelector('.tv-card');
     if(card){
       const h = card.getBoundingClientRect().height;
-      if(h > 0) menorAltura = h / 3;
+      if(h > 0) menorAltura = h / 2.4;
     }
   }
   if(!isFinite(menorAltura)) return;
