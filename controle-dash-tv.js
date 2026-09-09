@@ -279,6 +279,17 @@ function renderDashTV(){
 
   // No modo solo (1 TV = 1 painel) tudo fica maior — é pra ler de longe,
   // não numa tela de notebook a 40cm do rosto.
+  // Botão "Voltar" — só aparece no modo solo (1 TV = 1 painel via
+  // ?painel=X), pedido do Ayslan (08/09/2026): "quando entrar em alguma
+  // tela da tv" precisa de um jeito de sair de volta pra visão geral
+  // (/tv, sem parâmetro — mostra os 3 painéis empilhados + os links pra
+  // abrir cada 1 sozinho). Fixo no canto superior esquerdo, por cima do
+  // cabeçalho colorido de cada painel, com z-index alto pra não ficar
+  // escondido atrás de nada.
+  function botaoVoltarTV(){
+    return `<a href="/tv" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(15,23,42,.55);color:#fff;text-decoration:none;font-size:12px;font-weight:700;padding:6px 12px;border-radius:6px;display:flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;">&larr; Voltar</a>`;
+  }
+
   function painel(titulo, subtitulo, numero, corBg, conteudoHtml){
     // Modo solo (1 TV = 1 painel): cabeçalho enxuto e o corpo ocupa TODA a
     // altura restante da tela (flex:1) — pedido do Ayslan (08/09/2026):
@@ -288,6 +299,7 @@ function renderDashTV(){
     // edge) — cada pixel de borda é espaço a menos pra caber processo.
     if(solo){
       return `<div style="height:100vh;display:flex;flex-direction:column;background:#fff;">
+        ${botaoVoltarTV()}
         <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:8px 26px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
           <div>
             <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
@@ -697,6 +709,7 @@ function renderDashTV(){
     `;
     if(solo){
       return `<div style="height:100vh;display:flex;flex-direction:column;background:#f1f5f9;padding:14px 22px;box-sizing:border-box;">
+        ${botaoVoltarTV()}
         <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0f1f3d;margin-bottom:10px;flex:0 0 auto;">NO CHÃO — No porto ou Armazém</div>
         ${corpo}
       </div>`;
