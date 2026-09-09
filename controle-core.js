@@ -375,7 +375,12 @@ function ativarTelaTVExclusiva(){
     const chat = document.getElementById('impak-chat-root'); if(chat) chat.style.display = 'none';
   };
   esconderNavGlobal();
-  setTimeout(esconderNavGlobal, 500);
+  // Um unico setTimeout(500) as vezes perdia a corrida com chat.js em
+  // loads frios (ele so injeta o nav/bolha depois do DOMContentLoaded
+  // quando o <script> esta no <head> - ver comentario no topo do
+  // chat.js). Insiste por alguns segundos em vez de confiar num unico
+  // atraso fixo.
+  [100,300,500,1000,2000,3000].forEach(ms => setTimeout(esconderNavGlobal, ms));
 
   document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
 
