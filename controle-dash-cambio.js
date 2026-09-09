@@ -163,6 +163,26 @@ async function executarFechamentoLoteCambio(){
   else showToast(`Fechado em ${ok} parcela(s) — ${falhas} falharam, confira e tente de novo`,'err');
 }
 
+// Selecionar de uma vez todas as parcelas de um fornecedor nos próximos 30
+// dias (botão "Selecionar Nx" no bloco de Consolidação) — evita ter que
+// caçar cada linha dele na tabela abaixo pra marcar o checkbox uma por
+// uma. Reaproveita _cambioLoteSelecao (mesma seleção da tabela) e só
+// re-renderiza a tela pra refletir os checkboxes marcados.
+function selecionarFornecedorLote(nome){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const lim = new Date(hoje); lim.setDate(hoje.getDate()+30);
+  const todosPagamentos = listarPagamentosPI(_processos);
+  const doFornecedor = todosPagamentos.filter(x => !x.pago && x.vencimento && x.fornecedor===nome).filter(x => {
+    const d = new Date(x.vencimento+'T00:00:00'); return d>=hoje && d<=lim;
+  });
+  doFornecedor.forEach(x => {
+    const key = chaveLoteCambio(x.processoId, x._tipo, x._parcelaIndex);
+    _cambioLoteSelecao.set(key, { processoId:x.processoId, tipo:x._tipo, parcelaIndex:x._parcelaIndex, valorUsd:x.valorUsd, fornecedor:x.fornecedor, referencia:x.referencia });
+  });
+  renderDashCambio();
+  showToast(`${doFornecedor.length} parcela(s) de ${nome} selecionada(s) — role até a tabela pra confirmar o fechamento em lote`, 'info');
+}
+
 function toggleDashCambio(){
   const el = document.getElementById('dash-cambio');
   if(!el) return;
@@ -177,11 +197,25 @@ function toggleDashCambio(){
   document.getElementById('menu-cambio')?.classList.toggle('active', !visivel);
 }
 
-// Filtro do calendário (clicar numa semana/mês/fornecedor filtra a tabela
-// de baixo) — estado simples em memória, resetado toda vez que a tela é
-// reaberta (não precisa persistir entre sessões).
-let _cambioFiltro = null; // {tipo:'semana'|'mes'|'fornecedor', ini, fim, label} ou {tipo:'fornecedor', nome}
+// Filtro (clicar num KPI de prazo, no donut de fornecedor, ou num item da
+// consolidação filtra a tabela de baixo) — estado simples em memória,
+// resetado toda vez que a tela é reaberta (não precisa persistir entre
+// sessões).
+let _cambioFiltro = null; // {tipo:'prazo', dias:7|14|30|'vencidas', label} ou {tipo:'fornecedor', nome}
 
+// Redesign completo da tela (pedido do Ayslan, 09/09/2026): a versão
+// anterior empilhava 8 blocos verticais (KPIs, alerta, mark-to-market,
+// simulação, semana, mês, fornecedor, consolidação, tabela) — cada um
+// disputando a largura toda da tela, forçando 3+ telas de scroll pra
+// enxergar tudo. Essa versão organiza em: (1) faixa de KPIs por prazo
+// (pronto/7/14/30 dias, substituindo os gráficos "Por Semana"/"Por Mês"
+// que ficavam redundantes com esses buckets), (2) grid de 2 colunas com
+// exposição por fornecedor em donut chart (mais fácil de "bater o olho"
+// que barras de progresso) + simulador de câmbio lado a lado, (3)
+// consolidação por fornecedor com botão de seleção direta (marca as
+// parcelas na tabela sem precisar caçar linha por linha), (4) tabela
+// detalhada com a barra de ação (seleção + botão de lote) sempre visível
+// no topo da própria tabela.
 function renderDashCambio(){
   const el = document.getElementById('dash-cambio-content');
   if(!el) return;
@@ -190,86 +224,92 @@ function renderDashCambio(){
   const fmtBRL = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const fmtUSD = v => `USD ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const cambioAtual = (_cambio && _cambio.USD) ? _cambio.USD : 5.10;
+  const MONO = "font-family:'DM Mono',monospace;";
 
   // Fonte única de dados — mesma usada no Dashboard Financeiro. Cada linha
   // já vem "achatada" por parcela (entrada/saldo/parcela N/único), pronta
-  // pra agrupar por semana/mês sem repetir a lógica de Entrada+Saldo x
+  // pra agrupar por prazo sem repetir a lógica de Entrada+Saldo x
   // Parcelado x À Vista/Prazo (ver listarPagamentosPI em controle-core.js).
   const todosPagamentos = listarPagamentosPI(_processos);
   const abertos = todosPagamentos.filter(x => !x.pago && x.vencimento);
   const semData = todosPagamentos.filter(x => !x.pago && !x.vencimento);
 
-  // ── KPIs ───────────────────────────────────────────────────────
-  const fimSemana = new Date(hoje); fimSemana.setDate(hoje.getDate() + (7 - hoje.getDay() === 0 ? 7 : (7 - hoje.getDay())));
-  const fimMes = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  // ── KPIs por prazo — pedido do Ayslan (09/09/2026): "prontos pra
+  // fechamento" (parcelas já vencidas, sem câmbio fechado — ação imediata)
+  // + 3 janelas cumulativas (7/14/30 dias) em vez dos gráficos de barra
+  // separados por semana/mês, que ocupavam 2 blocos inteiros de tela pra
+  // mostrar basicamente a mesma informação.
+  const prontas = abertos.filter(x => new Date(x.vencimento+'T00:00:00') < hoje);
+  const prontasUsd = prontas.reduce((s,x)=>s+x.valorUsd,0);
+  function janela(dias){
+    const lim = new Date(hoje); lim.setDate(hoje.getDate()+dias);
+    const itens = abertos.filter(x => { const d = new Date(x.vencimento+'T00:00:00'); return d>=hoje && d<=lim; });
+    return { itens, usd: itens.reduce((s,x)=>s+x.valorUsd,0) };
+  }
+  const j7 = janela(7), j14 = janela(14), j30 = janela(30);
 
-  const totalAbertoUsd = abertos.reduce((s,x)=>s+x.valorUsd,0) + semData.reduce((s,x)=>s+x.valorUsd,0);
-  const vencidos = abertos.filter(x => new Date(x.vencimento+'T00:00:00') < hoje);
-  const vencidosUsd = vencidos.reduce((s,x)=>s+x.valorUsd,0);
-  const estaSemana = abertos.filter(x => { const d = new Date(x.vencimento+'T00:00:00'); return d >= hoje && d <= fimSemana; });
-  const estaSemanaUsd = estaSemana.reduce((s,x)=>s+x.valorUsd,0);
-  const esteMes = abertos.filter(x => { const d = new Date(x.vencimento+'T00:00:00'); return d >= hoje && d <= fimMes; });
-  const esteMesUsd = esteMes.reduce((s,x)=>s+x.valorUsd,0);
-
-  function kpiCard(label, valorUsd, sub, cor){
-    return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
+  function kpiCard(label, valorUsd, sub, cor, filtro){
+    const ativo = _cambioFiltro && _cambioFiltro.tipo==='prazo' && _cambioFiltro.dias===filtro.dias;
+    const onclick = `_cambioFiltro=${ativo?'null':`{tipo:'prazo',dias:${typeof filtro.dias==='string'?`'${filtro.dias}'`:filtro.dias},label:'${filtro.label}'}`};renderDashCambio()`;
+    return `<div onclick="${onclick}" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;${ativo?'box-shadow:0 0 0 2px '+cor+';':''}">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
-      <div style="font-size:20px;font-weight:600;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${fmtUSD(valorUsd)}</div>
+      <div style="font-size:20px;font-weight:600;color:${cor};${MONO}white-space:nowrap;">${fmtUSD(valorUsd)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
     </div>`;
   }
 
-  const kpisHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;">
-    ${kpiCard('Em Aberto (Total)', totalAbertoUsd, fmtBRL(totalAbertoUsd*cambioAtual)+' (câmbio atual)', 'var(--ac)')}
-    ${kpiCard('Vencido', vencidosUsd, vencidos.length+' parcela(s) atrasada(s)', vencidosUsd>0?'var(--err)':'var(--ok)')}
-    ${kpiCard('Vence Esta Semana', estaSemanaUsd, estaSemana.length+' parcela(s)', estaSemanaUsd>0?'var(--warn)':'var(--ok)')}
-    ${kpiCard('Vence Este Mês', esteMesUsd, esteMes.length+' parcela(s)', 'var(--ac)')}
+  const kpisHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px;">
+    ${kpiCard('✅ Prontos p/ Fechamento', prontasUsd, prontas.length+' parcela(s) atrasada(s) — ação imediata', prontas.length?'var(--err)':'var(--ok)', {dias:'vencidas',label:'atrasadas'})}
+    ${kpiCard('A Liquidar · 7 dias', j7.usd, j7.itens.length+' parcela(s)', 'var(--err)', {dias:7,label:'próx. 7 dias'})}
+    ${kpiCard('A Liquidar · 14 dias', j14.usd, j14.itens.length+' parcela(s)', 'var(--warn)', {dias:14,label:'próx. 14 dias'})}
+    ${kpiCard('A Liquidar · 30 dias', j30.usd, j30.itens.length+' parcela(s)', 'var(--ac)', {dias:30,label:'próx. 30 dias'})}
   </div>`;
 
   // ── Por Fornecedor (calculado aqui, ANTES dos alertas de concentração,
-  // pra poder reaproveitar o ranking tanto no aviso quanto no bloco visual
-  // "Por Fornecedor" mais abaixo — sem rodar o agrupamento duas vezes).
+  // pra poder reaproveitar o ranking tanto no aviso quanto no donut chart
+  // "Exposição por Fornecedor" mais abaixo — sem rodar o agrupamento duas
+  // vezes).
   const porFornecedor = {};
   abertos.forEach(x => { porFornecedor[x.fornecedor] = (porFornecedor[x.fornecedor]||0) + x.valorUsd; });
-  const listaFornecedor = Object.entries(porFornecedor).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const rankingFornecedor = Object.entries(porFornecedor).sort((a,b)=>b[1]-a[1]);
+  const listaFornecedor = rankingFornecedor.slice(0,8); // usado pelo alerta de concentração e pela Consolidação
 
   // ── Concentração de risco — pedido do Ayslan (09/09/2026): além de "o
   // que vence", alertar quando o vencimento está concentrado demais num
   // fornecedor só (risco de negociação: se precisar esticar prazo ou tiver
   // problema de caixa, é só 1 conversa) — tanto no total em aberto quanto,
-  // de forma mais urgente, no que vence JÁ esta semana.
+  // de forma mais urgente, no que vence JÁ nos próximos 7 dias.
+  const totalAbertoUsd = abertos.reduce((s,x)=>s+x.valorUsd,0) + semData.reduce((s,x)=>s+x.valorUsd,0);
   const avisosConcentracao = [];
-  if(totalAbertoUsd > 0 && listaFornecedor.length){
-    const [topNome, topVal] = listaFornecedor[0];
+  if(totalAbertoUsd > 0 && rankingFornecedor.length){
+    const [topNome, topVal] = rankingFornecedor[0];
     const pctTop = topVal/totalAbertoUsd;
     if(pctTop >= 0.35){
       avisosConcentracao.push(`<b>${esc(topNome)}</b> concentra ${(pctTop*100).toFixed(0)}% de todo o USD em aberto (${fmtUSD(topVal)}) — vale negociar prazo/câmbio com esse fornecedor primeiro se precisar aliviar o caixa.`);
     }
   }
-  if(estaSemanaUsd > 0){
+  if(j7.usd > 0){
     const porFornecedorSemana = {};
-    estaSemana.forEach(x => { porFornecedorSemana[x.fornecedor] = (porFornecedorSemana[x.fornecedor]||0) + x.valorUsd; });
+    j7.itens.forEach(x => { porFornecedorSemana[x.fornecedor] = (porFornecedorSemana[x.fornecedor]||0) + x.valorUsd; });
     const topSemana = Object.entries(porFornecedorSemana).sort((a,b)=>b[1]-a[1])[0];
     if(topSemana){
-      const pctSemana = topSemana[1]/estaSemanaUsd;
+      const pctSemana = topSemana[1]/j7.usd;
       if(pctSemana >= 0.6){
-        avisosConcentracao.push(`${(pctSemana*100).toFixed(0)}% do que vence <b>esta semana</b> é de um fornecedor só (<b>${esc(topSemana[0])}</b>, ${fmtUSD(topSemana[1])}) — se atrasar, é um só telefonema.`);
+        avisosConcentracao.push(`${(pctSemana*100).toFixed(0)}% do que vence nos <b>próximos 7 dias</b> é de um fornecedor só (<b>${esc(topSemana[0])}</b>, ${fmtUSD(topSemana[1])}) — se atrasar, é um só telefonema.`);
       }
     }
   }
-  const concentracaoHtml = !avisosConcentracao.length ? '' : `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
-    <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;">⚠️ Concentração de risco</div>
-    ${avisosConcentracao.map(a=>`<div style="font-size:12px;color:#78350f;margin-bottom:4px;">• ${a}</div>`).join('')}
+  const concentracaoHtml = !avisosConcentracao.length ? '' : `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:#78350f;display:flex;flex-direction:column;gap:3px;">
+    <div style="font-weight:700;color:#92400e;">⚠️ Concentração de risco</div>
+    ${avisosConcentracao.map(a=>`<div>• ${a}</div>`).join('')}
   </div>`;
 
-  // ── Mark-to-Market — pedido do Ayslan (09/09/2026): o card "Em Aberto"
-  // já mostra o total ao câmbio ATUAL, mas não diz se isso é bom ou ruim
-  // comparado ao câmbio que estava PREVISTO quando cada PI foi fechada.
-  // Esse é o número que mais importa pra decidir comprar dólar agora ou
-  // esperar: "se eu pagasse tudo hoje, eu ganharia ou perderia vs o que
-  // estava planejado?". Só entra na conta a fatia que TEM câmbio previsto
-  // definido na PI (usdComPrevisto) — parcelas sem previsto não geram
-  // ganho/perda artificial (contam igual dos dois lados).
+  // ── Mark-to-Market — o número que mais importa pra decidir comprar
+  // dólar agora ou esperar: "se eu pagasse tudo hoje, eu ganharia ou
+  // perderia vs o que estava planejado?". Só entra na conta a fatia que
+  // TEM câmbio previsto definido na PI (usdComPrevisto) — parcelas sem
+  // previsto não geram ganho/perda artificial (contam igual dos dois
+  // lados). Fica compacto (1 linha) porque é contexto, não o foco da tela.
   const todosEmAberto = abertos.concat(semData);
   let expostoComAtual = 0, expostoComPrevisto = 0, usdComPrevisto = 0;
   todosEmAberto.forEach(x => {
@@ -281,18 +321,12 @@ function renderDashCambio(){
       expostoComPrevisto += x.valorUsd * cambioAtual;
     }
   });
-  const diffMtm = expostoComAtual - expostoComPrevisto; // >0: dólar subiu, pagaria mais (perda) · <0: dólar caiu, pagaria menos (ganho)
+  const diffMtm = expostoComAtual - expostoComPrevisto; // >0: dólar subiu (perda) · <0: dólar caiu (ganho)
   const mtmCor = diffMtm > 0.5 ? 'var(--err)' : (diffMtm < -0.5 ? 'var(--ok)' : 'var(--muted)');
-  const mtmTexto = diffMtm > 0.5
-    ? `Se pagasse tudo hoje, gastaria <b>${fmtBRL(Math.abs(diffMtm))} a mais</b> do que o câmbio previsto nas PIs — o dólar subiu desde que essas compras foram fechadas.`
-    : diffMtm < -0.5
-    ? `Se pagasse tudo hoje, gastaria <b>${fmtBRL(Math.abs(diffMtm))} a menos</b> do que o câmbio previsto nas PIs — o dólar caiu desde que essas compras foram fechadas.`
-    : `Câmbio previsto e atual estão praticamente iguais — sem ganho ou perda relevante no book aberto.`;
-  const mtmHtml = usdComPrevisto <= 0 ? '' : `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${mtmCor};border-radius:10px;padding:14px 16px;margin-bottom:16px;">
-    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">📊 Mark-to-Market — câmbio previsto x atual</div>
-    <div style="font-size:18px;font-weight:700;color:${mtmCor};font-family:'DM Sans',sans-serif;">${Math.abs(diffMtm)<0.5?'≈ R$ 0,00':fmtBRL(Math.abs(diffMtm))}</div>
-    <div style="font-size:12px;color:var(--muted);margin-top:4px;">${mtmTexto}</div>
-    <div style="font-size:10px;color:var(--muted);margin-top:6px;">Câmbio atual: ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})} · base comparável: ${fmtUSD(usdComPrevisto)} com câmbio previsto definido na PI.</div>
+  const mtmHtml = usdComPrevisto <= 0 ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:12px;font-weight:700;color:var(--muted);">📊 Mark-to-Market:</span>
+    <span style="font-size:15px;font-weight:800;color:${mtmCor};${MONO}">${Math.abs(diffMtm)<0.5?'≈ R$ 0,00':fmtBRL(Math.abs(diffMtm))}</span>
+    <span style="font-size:12px;color:var(--muted);">${diffMtm > 0.5 ? 'a mais do que o previsto nas PIs, se pagasse tudo hoje' : diffMtm < -0.5 ? 'de economia vs. o previsto nas PIs, se pagasse tudo hoje' : 'câmbio previsto e atual praticamente iguais'} · câmbio atual ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})} · base: ${fmtUSD(usdComPrevisto)}</span>
   </div>`;
 
   // ── Simular câmbio (what-if) — pedido do Ayslan (09/09/2026): antes de
@@ -301,128 +335,75 @@ function renderDashCambio(){
   // USD (que não mudam) pra atualizarSimulacaoCambio() recalcular só o BRL
   // a cada tecla digitada, sem re-renderizar a tela inteira (perderia o
   // foco do campo).
-  _cambioSimulBase = { totalUsd: totalAbertoUsd, semanaUsd: estaSemanaUsd, mesUsd: esteMesUsd, cambioAtual };
-  const simulacaoHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:700;margin-bottom:2px;">🧮 Simular câmbio</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Digite um câmbio hipotético pra ver o impacto no total em aberto e no que vence esta semana/mês — útil antes de decidir travar câmbio.</div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <label style="font-size:12px;font-weight:600;">Câmbio simulado (R$):</label>
+  _cambioSimulBase = { totalUsd: totalAbertoUsd, semanaUsd: j7.usd, mesUsd: j30.usd, cambioAtual };
+  const simulacaoHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;height:100%;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">🧮 Simular câmbio</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">E se o dólar fosse a R$X? Veja o impacto antes de decidir travar câmbio.</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
       <input id="cambio-simulado-input" type="number" step="0.01" value="${cambioAtual.toFixed(4)}" oninput="atualizarSimulacaoCambio(this.value)"
-        style="width:100px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;">
-      <button type="button" onclick="document.getElementById('cambio-simulado-input').value='${cambioAtual.toFixed(4)}';atualizarSimulacaoCambio('${cambioAtual.toFixed(4)}');" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;">↺ câmbio atual</button>
+        style="width:100px;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;${MONO}">
+      <button type="button" onclick="document.getElementById('cambio-simulado-input').value='${cambioAtual.toFixed(4)}';atualizarSimulacaoCambio('${cambioAtual.toFixed(4)}');" style="font-size:11px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;">↺ atual</button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:14px;">
-      <div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Total em aberto</div>
-        <div id="sim-total-aberto" style="font-size:16px;font-weight:700;">${fmtBRL(totalAbertoUsd*cambioAtual)}</div>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Vence esta semana</div>
-        <div id="sim-semana" style="font-size:16px;font-weight:700;">${fmtBRL(estaSemanaUsd*cambioAtual)}</div>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Vence este mês</div>
-        <div id="sim-mes" style="font-size:16px;font-weight:700;">${fmtBRL(esteMesUsd*cambioAtual)}</div>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Vs. câmbio atual</div>
-        <div id="sim-diff" style="font-size:16px;font-weight:700;color:var(--muted);">≈ igual ao atual</div>
-      </div>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Total em aberto</span><span id="sim-total-aberto" style="font-weight:700;${MONO}">${fmtBRL(totalAbertoUsd*cambioAtual)}</span></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Próx. 7 dias</span><span id="sim-semana" style="font-weight:700;${MONO}">${fmtBRL(j7.usd*cambioAtual)}</span></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Próx. 30 dias</span><span id="sim-mes" style="font-weight:700;${MONO}">${fmtBRL(j30.usd*cambioAtual)}</span></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;"><span style="color:var(--muted);font-weight:700;">vs. câmbio atual</span><span id="sim-diff" style="font-weight:800;color:var(--muted);${MONO}">≈ igual ao atual</span></div>
     </div>
   </div>`;
 
-  // ── Calendário por SEMANA (próximas 8 semanas, começando na semana
-  // corrente) — o "coração" da tela: pedido do Ayslan foi justamente ver
-  // de forma fácil o que vem pela frente semana a semana. Cor mais quente
-  // (vermelho) pra semana atual, esfriando (azul) conforme se afasta —
-  // mesma leitura visual de "urgência" que o resto do sistema já usa
-  // (Demurrage, alertas).
-  const inicioSemanaAtual = new Date(hoje);
-  inicioSemanaAtual.setDate(hoje.getDate() - hoje.getDay()); // domingo da semana atual
-  const semanas = [];
-  for(let i=0;i<8;i++){
-    const ini = new Date(inicioSemanaAtual); ini.setDate(inicioSemanaAtual.getDate() + i*7);
-    const fim = new Date(ini); fim.setDate(ini.getDate()+6);
-    const doPeriodo = abertos.filter(x => { const d = new Date(x.vencimento+'T00:00:00'); return d>=ini && d<=fim; });
-    const total = doPeriodo.reduce((s,x)=>s+x.valorUsd,0);
-    semanas.push({ ini, fim, total, qtd: doPeriodo.length,
-      label: `${ini.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}–${fim.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}` });
+  // ── Exposição por Fornecedor — donut chart (pedido do Ayslan,
+  // 09/09/2026: "algo como um dashboard mesmo, com gráficos em pizza") em
+  // vez das barras de progresso: dá pra ver de cara quem concentra o risco
+  // sem precisar ler número por número. Top 6 fornecedores nomeados +
+  // "Outros" agregando o resto, pra não virar uma legenda de 15 linhas.
+  const DONUT_CORES = ['#1e3a5f','#2a5298','#3b6ea5','#5b84c4','#7ba3cf','#9dbfe0','#c3d4ec'];
+  const totalDonut = rankingFornecedor.reduce((s,[,v])=>s+v,0);
+  let donutLista = rankingFornecedor.slice(0,6);
+  if(rankingFornecedor.length > 6){
+    const outrosVal = rankingFornecedor.slice(6).reduce((s,[,v])=>s+v,0);
+    donutLista = [...donutLista, ['Outros fornecedores', outrosVal]];
   }
-  const maxSemana = Math.max(1, ...semanas.map(s=>s.total));
-  const PALETA_URGENCIA = ['#b91c1c','#dc2626','#ea580c','#d97706','#0891b2','#0e7490','#1e6091','#2a5298'];
-  const semanasHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:16px;font-weight:700;margin-bottom:2px;">📅 Por Semana — próximas 8 semanas</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Clique numa semana pra ver só as parcelas dela na tabela abaixo.</div>
-    <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px;align-items:end;height:150px;">
-      ${semanas.map((s,idx) => {
-        const alturaPct = s.total>0 ? Math.max(6, Math.round((s.total/maxSemana)*100)) : 3;
-        const cor = s.total>0 ? PALETA_URGENCIA[idx] : '#e2e8f0';
-        const ativo = _cambioFiltro && _cambioFiltro.tipo==='semana' && _cambioFiltro.label===s.label;
-        return `<div onclick="_cambioFiltro=${ativo?'null':`{tipo:'semana',ini:'${s.ini.toISOString().slice(0,10)}',fim:'${s.fim.toISOString().slice(0,10)}',label:'${s.label}'}`};renderDashCambio()"
-          title="${fmtUSD(s.total)} · ${s.qtd} parcela(s)"
-          style="cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;${ativo?'background:#f1f5f9;border-radius:8px;':''}">
-          <div style="font-size:13px;font-weight:700;color:${s.total>0?'#334155':'var(--muted)'};margin-bottom:3px;white-space:nowrap;">${s.total>0?fmtUSD(s.total):''}</div>
-          <div style="width:70%;background:${cor};border-radius:4px 4px 0 0;height:${alturaPct}%;min-height:3px;${ativo?'outline:2px solid #0f1f3d;':''}"></div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px;white-space:nowrap;">${s.label}</div>
-        </div>`;
-      }).join('')}
-    </div>
-  </div>`;
-
-  // ── Calendário por MÊS (próximos 6 meses) — mesmo estilo visual da
-  // semana, só que agregado por mês, pra ver mais pra frente.
-  const meses = [];
-  for(let i=0;i<6;i++){
-    const ini = new Date(hoje.getFullYear(), hoje.getMonth()+i, 1);
-    const fim = new Date(hoje.getFullYear(), hoje.getMonth()+i+1, 0);
-    const doPeriodo = abertos.filter(x => { const d = new Date(x.vencimento+'T00:00:00'); return d>=ini && d<=fim; });
-    const total = doPeriodo.reduce((s,x)=>s+x.valorUsd,0);
-    meses.push({ ini, fim, total, qtd: doPeriodo.length, label: ini.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}).replace('.','') });
-  }
-  const maxMes = Math.max(1, ...meses.map(m=>m.total));
-  const mesesHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:700;margin-bottom:2px;">🗓️ Por Mês — próximos 6 meses</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Clique num mês pra ver só as parcelas dele na tabela abaixo.</div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:end;height:130px;">
-      ${meses.map((m,idx) => {
-        const alturaPct = m.total>0 ? Math.max(6, Math.round((m.total/maxMes)*100)) : 3;
-        const ativo = _cambioFiltro && _cambioFiltro.tipo==='mes' && _cambioFiltro.label===m.label;
-        return `<div onclick="_cambioFiltro=${ativo?'null':`{tipo:'mes',ini:'${m.ini.toISOString().slice(0,10)}',fim:'${m.fim.toISOString().slice(0,10)}',label:'${m.label}'}`};renderDashCambio()"
-          title="${fmtUSD(m.total)} · ${m.qtd} parcela(s)"
-          style="cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;${ativo?'background:#f1f5f9;border-radius:8px;':''}">
-          <div style="font-size:10px;font-weight:700;color:${m.total>0?'#334155':'var(--muted)'};margin-bottom:3px;white-space:nowrap;">${m.total>0?fmtUSD(m.total):''}</div>
-          <div style="width:60%;background:#2a5298;border-radius:5px 5px 0 0;height:${alturaPct}%;min-height:3px;${ativo?'outline:2px solid #0f1f3d;':''}"></div>
-          <div style="font-size:10px;color:var(--muted);margin-top:4px;text-transform:capitalize;">${m.label}</div>
-        </div>`;
-      }).join('')}
-    </div>
-  </div>`;
-
-  // ── Por Fornecedor — quem concentra mais USD em aberto agora, pra saber
-  // com quem negociar prazo/câmbio primeiro se precisar. (porFornecedor/
-  // listaFornecedor já foram calculados mais acima, reaproveitados pelo
-  // alerta de concentração de risco.)
-  const fornecedorHtml = !listaFornecedor.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:700;margin-bottom:10px;">🏭 Por Fornecedor — maior exposição em aberto</div>
-    ${listaFornecedor.map(([nome,val]) => {
-      const pct = Math.round((val/listaFornecedor[0][1])*100);
-      const ativo = _cambioFiltro && _cambioFiltro.tipo==='fornecedor' && _cambioFiltro.nome===nome;
-      return `<div onclick="_cambioFiltro=${ativo?'null':`{tipo:'fornecedor',nome:'${nome.replace(/'/g,"\\'")}'}`};renderDashCambio()" style="cursor:pointer;margin-bottom:8px;${ativo?'background:#f1f5f9;border-radius:6px;padding:4px 6px;margin:-4px -6px 4px -6px;':''}">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-          <span style="font-weight:600;">${esc(nome)}</span><span style="font-weight:700;">${fmtUSD(val)}</span>
+  let accDonut = 0;
+  const donutStops = donutLista.map(([,val],i) => {
+    const pct = totalDonut>0 ? (val/totalDonut*100) : 0;
+    const start = accDonut; accDonut += pct;
+    return `${DONUT_CORES[i]||'#e2e8f0'} ${start.toFixed(2)}% ${accDonut.toFixed(2)}%`;
+  }).join(', ');
+  const fornecedorHtml = !donutLista.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;height:100%;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:14px;">🏭 Exposição por Fornecedor</div>
+    <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;">
+      <div style="width:140px;height:140px;border-radius:50%;flex-shrink:0;background:conic-gradient(${donutStops || '#e2e8f0 0% 100%'});position:relative;">
+        <div style="position:absolute;inset:20px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <div style="font-size:9.5px;color:var(--muted);font-weight:700;">TOTAL</div>
+          <div style="font-size:14px;font-weight:800;${MONO}">${fmtUSD(totalDonut).replace('USD ','')}</div>
         </div>
-        <div style="background:var(--bg);border-radius:4px;height:6px;"><div style="width:${pct}%;background:var(--ac);border-radius:4px;height:6px;"></div></div>
-      </div>`;
-    }).join('')}
+      </div>
+      <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:7px;">
+        ${donutLista.map(([nome,val],i) => {
+          const pct = totalDonut>0 ? Math.round(val/totalDonut*100) : 0;
+          const ativo = _cambioFiltro && _cambioFiltro.tipo==='fornecedor' && _cambioFiltro.nome===nome;
+          const clicavel = nome !== 'Outros fornecedores';
+          return `<div ${clicavel?`onclick="_cambioFiltro=${ativo?'null':`{tipo:'fornecedor',nome:'${nome.replace(/'/g,"\\'")}'}`};renderDashCambio()"`:''} style="display:flex;align-items:center;gap:8px;font-size:12px;${clicavel?'cursor:pointer;':''}${ativo?'background:#f1f5f9;border-radius:6px;padding:3px 6px;margin:-3px -6px;':''}">
+            <span style="width:10px;height:10px;border-radius:2px;background:${DONUT_CORES[i]||'#e2e8f0'};flex-shrink:0;"></span>
+            <span style="flex:1;font-weight:600;">${esc(nome)}</span>
+            <span style="color:var(--muted);">${pct}%</span>
+            <span style="font-weight:700;${MONO}">${fmtUSD(val)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
   </div>`;
 
   // ── Consolidar câmbio por Fornecedor+Prazo — pedido do Ayslan
-  // (09/09/2026): "são poucos fornecedores, podendo consolidar os câmbios".
-  // Em vez de fechar câmbio parcela por parcela, mostra quanto cada
-  // fornecedor tem vencendo nos próximos 7/15/30 dias — só entra na lista
-  // quem tem 2+ parcelas nesses 30 dias (candidato real a virar 1 operação
-  // de câmbio só em vez de várias).
-  const JANELAS_CONSOLIDACAO = [7,15,30];
+  // (09/09/2026): "são poucos fornecedores, podendo consolidar os
+  // câmbios". Em vez de fechar câmbio parcela por parcela, mostra quanto
+  // cada fornecedor tem vencendo nos próximos 7/14/30 dias — só entra na
+  // lista quem tem 2+ parcelas nesses 30 dias (candidato real a virar 1
+  // operação de câmbio só em vez de várias). Botão "Selecionar" marca
+  // direto as parcelas dele na tabela abaixo, sem precisar caçar linha por
+  // linha.
+  const JANELAS_CONSOLIDACAO = [7,14,30];
   const candidatosConsolidacao = listaFornecedor.map(([nome]) => {
     const doFornecedor = abertos.filter(x=>x.fornecedor===nome);
     const porJanela = JANELAS_CONSOLIDACAO.map(dias => {
@@ -432,36 +413,43 @@ function renderDashCambio(){
     });
     return { nome, porJanela };
   }).filter(f => f.porJanela[2].qtd >= 2); // 2+ parcelas nos próximos 30 dias
-  const consolidacaoHtml = !candidatosConsolidacao.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:16px;font-weight:700;margin-bottom:2px;">🔗 Consolidar Câmbio por Fornecedor</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Fornecedores com 2 ou mais parcelas vencendo nos próximos 30 dias — dá pra negociar 1 operação de câmbio só em vez de fechar parcela por parcela. Marque as parcelas dele na tabela abaixo pra fechar em lote.</div>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+  const consolidacaoHtml = !candidatosConsolidacao.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">🔗 Consolidar Câmbio por Fornecedor</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Fornecedores com 2 ou mais parcelas vencendo nos próximos 30 dias — dá pra negociar 1 operação de câmbio só em vez de fechar parcela por parcela.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="border-bottom:1px solid var(--border);">
-        <th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
-        <th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 7d</th>
-        <th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 15d</th>
-        <th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 30d</th>
+        <th style="text-align:left;padding:8px 10px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
+        <th style="text-align:right;padding:8px 10px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 7d</th>
+        <th style="text-align:right;padding:8px 10px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 14d</th>
+        <th style="text-align:right;padding:8px 10px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Próx. 30d</th>
+        <th style="text-align:center;padding:8px 10px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Ação</th>
       </tr></thead>
       <tbody>
         ${candidatosConsolidacao.map(f => `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:10px;font-weight:600;">${esc(f.nome)}</td>
-          ${f.porJanela.map(j => `<td style="padding:10px;text-align:right;">${j.qtd ? `${fmtUSD(j.usd)} <span style="color:var(--muted);font-weight:400;">(${j.qtd}x)</span>` : '<span style="color:var(--muted);">—</span>'}</td>`).join('')}
+          <td style="padding:10px;font-weight:700;">${esc(f.nome)}</td>
+          ${f.porJanela.map(j => `<td style="padding:10px;text-align:right;${MONO}">${j.qtd ? `${fmtUSD(j.usd)} <span style="color:var(--muted);font-weight:400;">(${j.qtd}x)</span>` : '<span style="color:var(--muted);">—</span>'}</td>`).join('')}
+          <td style="padding:10px;text-align:center;"><button type="button" onclick="selecionarFornecedorLote('${f.nome.replace(/'/g,"\\'")}')" style="border:none;background:var(--ac);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Selecionar ${f.porJanela[2].qtd}</button></td>
         </tr>`).join('')}
       </tbody>
     </table>
   </div>`;
 
-  // ── Tabela detalhada — aplica o filtro do calendário/fornecedor, se
+  // ── Tabela detalhada — aplica o filtro do KPI de prazo/fornecedor, se
   // algum estiver ativo; senão mostra tudo que está em aberto (vencidas
   // primeiro), mais uma seção separada pro que não tem forma de pagamento
-  // definida ainda (sem data pra entrar no calendário).
+  // definida ainda (sem data pra entrar nos buckets).
   let linhasFiltradas = abertos;
   let tituloFiltro = 'Todas as parcelas em aberto';
   if(_cambioFiltro){
-    if(_cambioFiltro.tipo==='semana' || _cambioFiltro.tipo==='mes'){
-      const ini = new Date(_cambioFiltro.ini+'T00:00:00'), fim = new Date(_cambioFiltro.fim+'T00:00:00');
-      linhasFiltradas = abertos.filter(x=>{ const d=new Date(x.vencimento+'T00:00:00'); return d>=ini && d<=fim; });
-      tituloFiltro = `Parcelas de ${_cambioFiltro.label} (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
+    if(_cambioFiltro.tipo==='prazo'){
+      if(_cambioFiltro.dias==='vencidas'){
+        linhasFiltradas = prontas;
+        tituloFiltro = `Parcelas atrasadas — prontas pra fechar (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
+      } else {
+        const lim = new Date(hoje); lim.setDate(hoje.getDate()+_cambioFiltro.dias);
+        linhasFiltradas = abertos.filter(x=>{ const d=new Date(x.vencimento+'T00:00:00'); return d>=hoje && d<=lim; });
+        tituloFiltro = `Parcelas dos ${_cambioFiltro.label} (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
+      }
     } else if(_cambioFiltro.tipo==='fornecedor'){
       linhasFiltradas = abertos.filter(x=>x.fornecedor===_cambioFiltro.nome);
       tituloFiltro = `Parcelas de ${esc(_cambioFiltro.nome)} (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
@@ -478,22 +466,24 @@ function renderDashCambio(){
     return `<span style="background:var(--bg);color:var(--muted);font-weight:600;padding:2px 7px;border-radius:20px;font-size:11px;white-space:nowrap;">em ${dias}d</span>`;
   }
 
-  // Fechamento em lote — pedido Ayslan (09/09/2026): checkbox por linha,
-  // sempre reaplicando a seleção que já estava marcada (_cambioLoteSelecao
-  // sobrevive a re-renders do filtro/clique), pra não perder a marcação ao
-  // clicar numa semana/fornecedor diferente antes de fechar o lote.
+  // Fechamento em lote — checkbox por linha, sempre reaplicando a seleção
+  // que já estava marcada (_cambioLoteSelecao sobrevive a re-renders do
+  // filtro/clique), pra não perder a marcação ao clicar num KPI/fornecedor
+  // diferente antes de fechar o lote. Barra de ação (contagem + botão)
+  // fica no cabeçalho da própria tabela — sempre visível, sem precisar
+  // rolar até o fim pra achar o botão de lote.
   const tabelaHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
-    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--bg);">
       <div style="font-size:13px;font-weight:700;">${tituloFiltro} — ${linhasFiltradas.length} parcela(s)</div>
       <div style="display:flex;align-items:center;gap:10px;">
-        <span id="lote-cambio-resumo" style="font-size:11px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote.'}</span>
+        <span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote.'}</span>
         <button id="lote-cambio-btn" type="button" onclick="abrirPainelFechamentoLoteCambio()" ${_cambioLoteSelecao.size ? '' : 'disabled'}
-          style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:6px;background:var(--ac);color:#fff;cursor:pointer;${_cambioLoteSelecao.size ? '' : 'opacity:.5;cursor:not-allowed;'}">💱 Fechar câmbio em lote</button>
+          style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;${_cambioLoteSelecao.size ? '' : 'opacity:.5;cursor:not-allowed;'}">💱 Fechar câmbio em lote</button>
       </div>
     </div>
     <div id="lote-cambio-painel" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);background:#f0f9ff;align-items:center;gap:12px;flex-wrap:wrap;">
       <b id="lote-cambio-titulo-painel" style="font-size:12px;">Fechar câmbio de ${_cambioLoteSelecao.size} parcela(s) selecionada(s):</b>
-      <label style="font-size:12px;">Câmbio: <input id="lote-cambio-taxa" type="number" step="0.0001" placeholder="ex: 5,15" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
+      <label style="font-size:12px;">Câmbio: <input id="lote-cambio-taxa" type="number" step="0.0001" placeholder="ex: 5,15" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;${MONO}"></label>
       <label style="font-size:12px;">Data: <input id="lote-cambio-data" type="date" value="${hoje.toISOString().slice(0,10)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
       <button type="button" onclick="executarFechamentoLoteCambio()" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:6px;background:var(--ok);color:#fff;cursor:pointer;">✓ Confirmar fechamento</button>
       <button type="button" onclick="fecharPainelFechamentoLoteCambio()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;">Cancelar</button>
@@ -517,20 +507,22 @@ function renderDashCambio(){
           return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
           <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()"><input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,'${x.processoId}','${x._tipo}',${x._parcelaIndex!=null?x._parcelaIndex:'null'},${x.valorUsd},'${(x.fornecedor||'').replace(/'/g,"\\'")}','${(x.referencia||'').replace(/'/g,"\\'")}')"></td>
           <td style="padding:8px 16px;white-space:nowrap;">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${x.vencimento ? badgeDias(x.vencimento) : ''}</td>
-          <td style="padding:8px 16px;font-weight:600;white-space:nowrap;">${esc(x.referencia)}</td>
+          <td style="padding:8px 16px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}</td>
           <td style="padding:8px 16px;color:var(--muted);">${esc(x.fornecedor)}</td>
           <td style="padding:8px 16px;text-transform:capitalize;">${esc(x.parcela)}</td>
-          <td style="padding:8px 16px;text-align:right;font-weight:700;">${fmtUSD(x.valorUsd)}</td>
-          <td style="padding:8px 16px;text-align:right;color:var(--muted);">${x.cambioPrevisto ? x.cambioPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
-          <td style="padding:8px 16px;text-align:right;">${fmtBRL(x.valorUsd*(x.cambioPrevisto||cambioAtual))}</td>
+          <td style="padding:8px 16px;text-align:right;font-weight:700;${MONO}">${fmtUSD(x.valorUsd)}</td>
+          <td style="padding:8px 16px;text-align:right;color:var(--muted);${MONO}">${x.cambioPrevisto ? x.cambioPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
+          <td style="padding:8px 16px;text-align:right;${MONO}">${fmtBRL(x.valorUsd*(x.cambioPrevisto||cambioAtual))}</td>
         </tr>`;
         }).join('') || `<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted);">Nenhuma parcela em aberto neste filtro.</td></tr>`}
       </tbody>
     </table>
     </div>
-    ${semData.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">⚠ ${semData.length} parcela(s) sem forma de pagamento definida ainda (${fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0))}) — não entram no calendário acima. Abra o processo e defina Entrada+Saldo/Parcelado/À Vista/Prazo na aba PI.</div>` : ''}
+    ${semData.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">⚠ ${semData.length} parcela(s) sem forma de pagamento definida ainda (${fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0))}) — não entram nos KPIs de prazo acima. Abra o processo e defina Entrada+Saldo/Parcelado/À Vista/Prazo na aba PI.</div>` : ''}
   </div>`;
 
-  el.innerHTML = kpisHtml + concentracaoHtml + mtmHtml + simulacaoHtml + semanasHtml + mesesHtml + fornecedorHtml + consolidacaoHtml + tabelaHtml
+  el.innerHTML = kpisHtml + concentracaoHtml + mtmHtml
+    + `<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">${fornecedorHtml}${simulacaoHtml}</div>`
+    + consolidacaoHtml + tabelaHtml
     + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
 }
