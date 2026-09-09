@@ -695,6 +695,7 @@ function renderControleCambialHtml(pagamentos){
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:var(--bg);">
           <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
+          <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">DI/DUIMP</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Previsto</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fechado</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Diferença</th>
@@ -702,6 +703,7 @@ function renderControleCambialHtml(pagamentos){
         <tbody>
           ${linhas.map(x=>`<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}');toggleDashFinanceiro()">
             <td style="padding:8px 16px;font-family:DM Mono,monospace;font-weight:600;">${x.referencia}</td>
+            <td style="padding:8px 16px;font-family:DM Mono,monospace;color:${x.numeroDi?'var(--text)':'var(--dim)'};">${x.numeroDi||'—'}</td>
             <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioPrevisto.toFixed(4)}</td>
             <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioFechado.toFixed(4)}</td>
             <td style="padding:8px 16px;text-align:right;font-weight:700;color:${x.diff>=0?'var(--ok)':'var(--err)'};">${x.diff>=0?'+':''}${fmtBRL(x.diff)}</td>

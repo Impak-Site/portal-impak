@@ -891,7 +891,11 @@ function listarPagamentosPI(processos){
   (processos||[]).forEach(p=>{
     const valorTotal = parseFloat(p.pi_valor_usd)||0;
     if(!valorTotal || p.fase==='FINALIZADO') return;
-    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—' };
+    // numeroDi incluído a pedido do Ayslan (09/09/2026): campo "extremamente
+    // útil" pra identificar rapidamente a qual DI/DUIMP um pagamento de
+    // câmbio pertence, sem precisar abrir o processo. Pode vir vazio (DI só
+    // é registrada depois, na fase Registro DI) — tratado como '—' na UI.
+    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'' };
     if(p.pi_pagamento==='ENTRADA_SALDO'){
       const pct = parseFloat(p.pi_entrada_pct||30)/100;
       const cambioPrevisto = parseFloat(p.pi_cambio)||null;

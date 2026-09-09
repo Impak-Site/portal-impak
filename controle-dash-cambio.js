@@ -496,6 +496,7 @@ function renderDashCambio(){
         <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Processo</th>
         <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
         <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Parcela</th>
+        <th style="text-align:left;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">DI/DUIMP</th>
         <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor USD</th>
         <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Câmbio Previsto</th>
         <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">BRL Estimado</th>
@@ -510,11 +511,12 @@ function renderDashCambio(){
           <td style="padding:8px 16px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}</td>
           <td style="padding:8px 16px;color:var(--muted);">${esc(x.fornecedor)}</td>
           <td style="padding:8px 16px;text-transform:capitalize;">${esc(x.parcela)}</td>
+          <td style="padding:8px 16px;${MONO}color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
           <td style="padding:8px 16px;text-align:right;font-weight:700;${MONO}">${fmtUSD(x.valorUsd)}</td>
           <td style="padding:8px 16px;text-align:right;color:var(--muted);${MONO}">${x.cambioPrevisto ? x.cambioPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
           <td style="padding:8px 16px;text-align:right;${MONO}">${fmtBRL(x.valorUsd*(x.cambioPrevisto||cambioAtual))}</td>
         </tr>`;
-        }).join('') || `<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted);">Nenhuma parcela em aberto neste filtro.</td></tr>`}
+        }).join('') || `<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted);">Nenhuma parcela em aberto neste filtro.</td></tr>`}
       </tbody>
     </table>
     </div>
