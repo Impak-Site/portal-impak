@@ -442,9 +442,7 @@ function renderDashTV(){
       <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;grid-auto-rows:1fr;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:stretch;">
         ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
       </div>
-      ${backordersResto.length ? `<div style="flex:1;min-height:0;display:grid;grid-auto-rows:min-content;grid-template-columns:repeat(auto-fill,minmax(11em,1fr));gap:.7em;overflow-y:auto;align-content:start;">
-        ${backordersResto.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
-      </div>` : ''}
+      ${backordersResto.length ? backordersRestoEmColunas(backordersResto) : ''}
       ${totalizadorMarcasHtml ? `<div style="flex:0 0 auto;max-height:34vh;overflow-y:auto;">${totalizadorMarcasHtml}</div>` : ''}
     </div>
   ` : `
@@ -779,8 +777,10 @@ function renderDashTV(){
 // então funciona pras 2 resoluções reais em uso sem precisar de mais
 // faixas por enquanto.
 function fatorEscalaResolucaoTV(){
-  const largura = (typeof window !== 'undefined' && window.screen && window.screen.width) || (typeof window !== 'undefined' && window.innerWidth) || 1920;
-  return largura >= 2560 ? 0.67 : 1.75;
+  const larguraLogica = (typeof window !== 'undefined' && window.screen && window.screen.width) || (typeof window !== 'undefined' && window.innerWidth) || 1920;
+  const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  const larguraFisica = larguraLogica * dpr;
+  return larguraFisica >= 2560 ? 0.67 : 1.75;
 }
 
 function ajustarFonteColunasTV(raiz){
@@ -830,6 +830,23 @@ function ajustarFonteColunasTV(raiz){
   // raiz é o próprio #dash-tv-content (é nele que o classList.toggle
   // 'dash-tv-solo' foi aplicado) — o font-size herda pra tudo dentro.
   raiz.style.fontSize = fonte + 'px';
+
+  // Badge de diagnóstico TEMPORÁRIO (Ayslan/Emanuelly 09/09/2026) — a
+  // correção por resolução (fatorEscalaResolucaoTV) não bateu com o
+  // esperado na TV física real (foto mostrou fonte minúscula em vez de
+  // legível, mesmo a 100% de zoom). Em vez de continuar ajustando o fator
+  // no escuro, mostra os números reais medidos no canto da tela pra poder
+  // fotografar e mandar de volta. Fonte fixa em px (não herda o fontSize
+  // calculado acima) pra sempre ficar legível não importa o resultado do
+  // cálculo. Remover depois que o ajuste de resolução estiver calibrado.
+  let badge = document.getElementById('tv-debug-resolucao');
+  if(!badge){
+    badge = document.createElement('div');
+    badge.id = 'tv-debug-resolucao';
+    badge.style.cssText = 'position:fixed;bottom:6px;right:6px;font-size:11px !important;line-height:1.4;color:#e2e8f0;background:rgba(15,23,42,.85);padding:5px 9px;border-radius:6px;z-index:99999;font-family:monospace;pointer-events:none;';
+    document.body.appendChild(badge);
+  }
+  badge.innerHTML = `screen ${window.screen.width}x${window.screen.height} dpr${window.devicePixelRatio}<br>fisica~${Math.round(window.screen.width*(window.devicePixelRatio||1))}px &rarr; fator ${fatorResolucao}<br>linha ${Math.round(menorAltura)}px &rarr; fonte ${fonte}px`;
 }
 
 // ── Modal "quais processos estão nesse número" (Backorders) ──────────
