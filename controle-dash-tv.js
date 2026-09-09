@@ -795,83 +795,98 @@ function fatorEscalaResolucaoTV(){
 }
 
 function ajustarFonteColunasTV(raiz){
-  let menorAltura = Infinity;
-  raiz.querySelectorAll('.tv-col').forEach(col => {
-    const linha = col.querySelector('.tv-row');
-    if(!linha) return;
-    const h = linha.getBoundingClientRect().height;
-    if(h > 0 && h < menorAltura) menorAltura = h;
-  });
-  // Fallback pro Backorders quando há poucas marcas (só os 4 cards
-  // principais, sem lista "resto" pra medir) — pedido do Ayslan
-  // (09/09/2026): "pega a fonte que colocou no Em Águas e coloca no
-  // Backorders" (a fonte da tela de Backorders ficava visivelmente menor
-  // que a de Em Águas). Causa raiz: o card de marca (.tv-card) ficava
-  // dentro de um grid de altura de CONTEÚDO (auto) — mesmo com o wrapper
-  // esticando pra ocupar a tela toda (flex:1), o card em si continuava do
-  // tamanho do próprio conteúdo, sobrando espaço vazio embaixo em vez do
-  // card crescer. Corrigido lá embaixo (grid-auto-rows:1fr no wrapper dos
-  // cards principais) pra o card esticar e preencher a altura toda, igual
-  // uma linha de Em Águas já fazia — então aqui só precisa medir o card
-  // direto (sem dividir por 3): ele já vem do tamanho certo.
-  if(!isFinite(menorAltura)){
-    const card = raiz.querySelector('.tv-card');
-    if(card){
-      const h = card.getBoundingClientRect().height;
-      if(h > 0) menorAltura = h / 2.4;
+  // TUDO dentro de try/finally (Ayslan 09/09/2026, achado testando ao
+  // vivo): o painel "No Chão" NÃO usa .tv-col/.tv-row nem .tv-card no seu
+  // layout principal (é montado por painelChaoCompletoTV, com KPIs/tabela/
+  // gráficos, estrutura bem diferente dos outros 2 painéis) — então
+  // menorAltura nunca vira um número finito ali, e o "return" antecipado
+  // logo abaixo saía da função ANTES de restaurar a visibilidade que
+  // renderDashTV() tinha escondido, deixando a tela em branco pra sempre
+  // nesse painel. Qualquer caminho de saída (early return, exceção
+  // inesperada) agora sempre libera raiz.style.visibility no finally, não
+  // importa em qual painel ou o que acontecer no meio do cálculo.
+  try{
+    let menorAltura = Infinity;
+    raiz.querySelectorAll('.tv-col').forEach(col => {
+      const linha = col.querySelector('.tv-row');
+      if(!linha) return;
+      const h = linha.getBoundingClientRect().height;
+      if(h > 0 && h < menorAltura) menorAltura = h;
+    });
+    // Fallback pro Backorders quando há poucas marcas (só os 4 cards
+    // principais, sem lista "resto" pra medir) — pedido do Ayslan
+    // (09/09/2026): "pega a fonte que colocou no Em Águas e coloca no
+    // Backorders" (a fonte da tela de Backorders ficava visivelmente menor
+    // que a de Em Águas). Causa raiz: o card de marca (.tv-card) ficava
+    // dentro de um grid de altura de CONTEÚDO (auto) — mesmo com o wrapper
+    // esticando pra ocupar a tela toda (flex:1), o card em si continuava do
+    // tamanho do próprio conteúdo, sobrando espaço vazio embaixo em vez do
+    // card crescer. Corrigido lá embaixo (grid-auto-rows:1fr no wrapper dos
+    // cards principais) pra o card esticar e preencher a altura toda, igual
+    // uma linha de Em Águas já fazia — então aqui só precisa medir o card
+    // direto (sem dividir por 3): ele já vem do tamanho certo.
+    if(!isFinite(menorAltura)){
+      const card = raiz.querySelector('.tv-card');
+      if(card){
+        const h = card.getBoundingClientRect().height;
+        if(h > 0) menorAltura = h / 2.4;
+      }
     }
-  }
-  if(!isFinite(menorAltura)) return;
-  // ~42% da altura da linha costuma preencher bem sem estourar (sobra
-  // espaço pro padding/borda) — testado visualmente com 1, 3 e 5 colunas.
-  //
-  // Correção de resolução (Emanuelly 09/09/2026): as 3 TVs físicas NÃO
-  // têm a mesma resolução — Em Águas e No Chão rodam num painel 4K
-  // (3840x2160), Backorders roda num painel Full HD (1920x1080). Como
-  // esse cálculo usa a altura MEDIDA em pixels CSS (getBoundingClientRect),
-  // e as TVs aparentemente rodam sem escala de SO (devicePixelRatio~1), o
-  // viewport 4K mede o DOBRO de pixels CSS do que o Full HD pro MESMO
-  // layout relativo — por isso hoje precisam compensar na mão com zoom do
-  // navegador (Em Águas em 67%, Backorders em 175%) pra ficar no tamanho
-  // certo. Em vez de depender de zoom manual (frágil — cada TV tem que
-  // ser configurada à parte e se perde num reboot/troca de player), aplica
-  // esse mesmo fator direto aqui, detectando a resolução real da tela.
-  const fatorResolucao = fatorEscalaResolucaoTV();
-  let fonte = Math.max(13, Math.min(70, Math.round(menorAltura * 0.5 * fatorResolucao)));
-  // raiz é o próprio #dash-tv-content (é nele que o classList.toggle
-  // 'dash-tv-solo' foi aplicado) — o font-size herda pra tudo dentro.
-  raiz.style.fontSize = fonte + 'px';
+    if(!isFinite(menorAltura)) return; // ex: painel "No Chão" — sem medida pra ajustar, mantém o font-size padrão do CSS (já em "em"/"vh" nesse painel)
+    // ~42% da altura da linha costuma preencher bem sem estourar (sobra
+    // espaço pro padding/borda) — testado visualmente com 1, 3 e 5 colunas.
+    //
+    // Correção de resolução (Emanuelly 09/09/2026): as 3 TVs físicas NÃO
+    // têm a mesma resolução — Em Águas e No Chão rodam num painel 4K
+    // (3840x2160), Backorders roda num painel Full HD (1920x1080). Como
+    // esse cálculo usa a altura MEDIDA em pixels CSS (getBoundingClientRect),
+    // e as TVs aparentemente rodam sem escala de SO (devicePixelRatio~1), o
+    // viewport 4K mede o DOBRO de pixels CSS do que o Full HD pro MESMO
+    // layout relativo — por isso hoje precisam compensar na mão com zoom do
+    // navegador (Em Águas em 67%, Backorders em 175%) pra ficar no tamanho
+    // certo. Em vez de depender de zoom manual (frágil — cada TV tem que
+    // ser configurada à parte e se perde num reboot/troca de player), aplica
+    // esse mesmo fator direto aqui, detectando a resolução real da tela.
+    const fatorResolucao = fatorEscalaResolucaoTV();
+    let fonte = Math.max(13, Math.min(70, Math.round(menorAltura * 0.5 * fatorResolucao)));
+    // raiz é o próprio #dash-tv-content (é nele que o classList.toggle
+    // 'dash-tv-solo' foi aplicado) — o font-size herda pra tudo dentro.
+    raiz.style.fontSize = fonte + 'px';
 
-  // Ajuste de segurança pós-aplicação (Ayslan/Emanuelly 09/09/2026) — os
-  // cards de marca (cardMarca) usam unidades "em", então CRESCEM junto com
-  // o font-size calculado acima. Só que menorAltura foi medido ANTES desse
-  // crescimento acontecer — o cálculo não previa o próprio efeito colateral
-  // dele nos cards, o que causava overflow real na TV física (cards e
-  // lista cortados, precisando rolar, mesmo com a fonte "certa" na conta).
-  // Em vez de tentar prever isso analiticamente (frágil pra qualquer
-  // combinação de resolução/zoom/qtd de marcas), mede o overflow de
-  // verdade depois de aplicar e vai diminuindo a fonte até caber, com um
-  // piso de 11px pra nunca ficar ilegível. Isso também corrige por baixo
-  // qualquer erro do fatorEscalaResolucaoTV() pra mais.
-  const wrapperSolo = raiz.querySelector(':scope > div');
-  let tentativasAjuste = 0;
-  if(wrapperSolo){
-    while(wrapperSolo.scrollHeight > wrapperSolo.clientHeight + 2 && fonte > 11 && tentativasAjuste < 40){
-      fonte -= 1;
-      raiz.style.fontSize = fonte + 'px';
-      tentativasAjuste++;
+    // Ajuste de segurança pós-aplicação (Ayslan/Emanuelly 09/09/2026) — os
+    // cards de marca (cardMarca) usam unidades "em", então CRESCEM junto com
+    // o font-size calculado acima. Só que menorAltura foi medido ANTES desse
+    // crescimento acontecer — o cálculo não previa o próprio efeito colateral
+    // dele nos cards, o que causava overflow real na TV física (cards e
+    // lista cortados, precisando rolar, mesmo com a fonte "certa" na conta).
+    // Em vez de tentar prever isso analiticamente (frágil pra qualquer
+    // combinação de resolução/zoom/qtd de marcas), mede o overflow de
+    // verdade depois de aplicar e vai diminuindo a fonte até caber, com um
+    // piso de 11px pra nunca ficar ilegível. Isso também corrige por baixo
+    // qualquer erro do fatorEscalaResolucaoTV() pra mais.
+    const wrapperSolo = raiz.querySelector(':scope > div');
+    let tentativasAjuste = 0;
+    if(wrapperSolo){
+      while(wrapperSolo.scrollHeight > wrapperSolo.clientHeight + 2 && fonte > 11 && tentativasAjuste < 40){
+        fonte -= 1;
+        raiz.style.fontSize = fonte + 'px';
+        tentativasAjuste++;
+      }
     }
+  } finally {
+    // Badge de diagnóstico removido (Ayslan 09/09/2026) — já serviu pra
+    // calibrar o ajuste de resolução com fotos reais das 3 TVs, não precisa
+    // mais ficar poluindo o canto da tela.
+    const badgeAntigo = document.getElementById('tv-debug-resolucao');
+    if(badgeAntigo) badgeAntigo.remove();
+
+    // Só revela o painel agora que o cálculo terminou (com ou sem ajuste
+    // de fonte) — ver comentário em renderDashTV() sobre o "esconde até
+    // ajustar" acima. Fica no finally pra NUNCA deixar a tela em branco,
+    // nem quando o painel não tem nada pra medir (No Chão) nem se algo
+    // inesperado quebrar no meio do cálculo.
+    raiz.style.visibility = 'visible';
   }
-
-  // Badge de diagnóstico removido (Ayslan 09/09/2026) — já serviu pra
-  // calibrar o ajuste de resolução com fotos reais das 3 TVs, não precisa
-  // mais ficar poluindo o canto da tela.
-  const badgeAntigo = document.getElementById('tv-debug-resolucao');
-  if(badgeAntigo) badgeAntigo.remove();
-
-  // Só revela o painel agora que o tamanho final foi decidido — ver
-  // comentário em renderDashTV() sobre o "esconde até ajustar" acima.
-  raiz.style.visibility = 'visible';
 }
 
 // ── Modal "quais processos estão nesse número" (Backorders) ──────────
