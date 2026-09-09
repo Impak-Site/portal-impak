@@ -826,10 +826,31 @@ function ajustarFonteColunasTV(raiz){
   // ser configurada à parte e se perde num reboot/troca de player), aplica
   // esse mesmo fator direto aqui, detectando a resolução real da tela.
   const fatorResolucao = fatorEscalaResolucaoTV();
-  const fonte = Math.max(13, Math.min(70, Math.round(menorAltura * 0.5 * fatorResolucao)));
+  let fonte = Math.max(13, Math.min(70, Math.round(menorAltura * 0.5 * fatorResolucao)));
   // raiz é o próprio #dash-tv-content (é nele que o classList.toggle
   // 'dash-tv-solo' foi aplicado) — o font-size herda pra tudo dentro.
   raiz.style.fontSize = fonte + 'px';
+
+  // Ajuste de segurança pós-aplicação (Ayslan/Emanuelly 09/09/2026) — os
+  // cards de marca (cardMarca) usam unidades "em", então CRESCEM junto com
+  // o font-size calculado acima. Só que menorAltura foi medido ANTES desse
+  // crescimento acontecer — o cálculo não previa o próprio efeito colateral
+  // dele nos cards, o que causava overflow real na TV física (cards e
+  // lista cortados, precisando rolar, mesmo com a fonte "certa" na conta).
+  // Em vez de tentar prever isso analiticamente (frágil pra qualquer
+  // combinação de resolução/zoom/qtd de marcas), mede o overflow de
+  // verdade depois de aplicar e vai diminuindo a fonte até caber, com um
+  // piso de 11px pra nunca ficar ilegível. Isso também corrige por baixo
+  // qualquer erro do fatorEscalaResolucaoTV() pra mais.
+  const wrapperSolo = raiz.querySelector(':scope > div');
+  let tentativasAjuste = 0;
+  if(wrapperSolo){
+    while(wrapperSolo.scrollHeight > wrapperSolo.clientHeight + 2 && fonte > 11 && tentativasAjuste < 40){
+      fonte -= 1;
+      raiz.style.fontSize = fonte + 'px';
+      tentativasAjuste++;
+    }
+  }
 
   // Badge de diagnóstico TEMPORÁRIO (Ayslan/Emanuelly 09/09/2026) — a
   // correção por resolução (fatorEscalaResolucaoTV) não bateu com o
@@ -846,7 +867,7 @@ function ajustarFonteColunasTV(raiz){
     badge.style.cssText = 'position:fixed;bottom:6px;right:6px;font-size:11px !important;line-height:1.4;color:#e2e8f0;background:rgba(15,23,42,.85);padding:5px 9px;border-radius:6px;z-index:99999;font-family:monospace;pointer-events:none;';
     document.body.appendChild(badge);
   }
-  badge.innerHTML = `screen ${window.screen.width}x${window.screen.height} dpr${window.devicePixelRatio}<br>fisica~${Math.round(window.screen.width*(window.devicePixelRatio||1))}px &rarr; fator ${fatorResolucao}<br>linha ${Math.round(menorAltura)}px &rarr; fonte ${fonte}px`;
+  badge.innerHTML = `screen ${window.screen.width}x${window.screen.height} dpr${window.devicePixelRatio}<br>fisica~${Math.round(window.screen.width*(window.devicePixelRatio||1))}px &rarr; fator ${fatorResolucao}<br>linha ${Math.round(menorAltura)}px &rarr; fonte ${fonte}px (-${tentativasAjuste})`;
 }
 
 // ── Modal "quais processos estão nesse número" (Backorders) ──────────
