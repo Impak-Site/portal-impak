@@ -442,7 +442,9 @@ function renderDashTV(){
       <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;grid-auto-rows:1fr;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:stretch;">
         ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
       </div>
-      ${backordersResto.length ? backordersRestoEmColunas(backordersResto) : ''}
+      ${backordersResto.length ? `<div style="flex:1;min-height:0;display:grid;grid-auto-rows:min-content;grid-template-columns:repeat(auto-fill,minmax(11em,1fr));gap:.7em;overflow-y:auto;align-content:start;">
+        ${backordersResto.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
+      </div>` : ''}
       ${totalizadorMarcasHtml ? `<div style="flex:0 0 auto;max-height:34vh;overflow-y:auto;">${totalizadorMarcasHtml}</div>` : ''}
     </div>
   ` : `
@@ -768,6 +770,19 @@ function renderDashTV(){
 // resolução real de cada TV em vez de um zoom fixo. Usa a MENOR altura de
 // linha entre todas as colunas (a mais "apertada") como referência, pra
 // garantir que o texto cabe em TODAS as colunas, não só na primeira.
+// Fator de correção por resolução física da TV (pedido Emanuelly
+// 09/09/2026, ver comentário detalhado dentro de ajustarFonteColunasTV
+// logo abaixo). window.screen.width é a resolução nativa da tela (não
+// muda com zoom do navegador, ao contrário de window.innerWidth) — é o
+// jeito certo de detectar em qual das 2 TVs físicas o painel está
+// rodando. Corte em 2560 fica bem no meio de 1920 (Full HD) e 3840 (4K),
+// então funciona pras 2 resoluções reais em uso sem precisar de mais
+// faixas por enquanto.
+function fatorEscalaResolucaoTV(){
+  const largura = (typeof window !== 'undefined' && window.screen && window.screen.width) || (typeof window !== 'undefined' && window.innerWidth) || 1920;
+  return largura >= 2560 ? 0.67 : 1.75;
+}
+
 function ajustarFonteColunasTV(raiz){
   let menorAltura = Infinity;
   raiz.querySelectorAll('.tv-col').forEach(col => {
@@ -798,7 +813,20 @@ function ajustarFonteColunasTV(raiz){
   if(!isFinite(menorAltura)) return;
   // ~42% da altura da linha costuma preencher bem sem estourar (sobra
   // espaço pro padding/borda) — testado visualmente com 1, 3 e 5 colunas.
-  const fonte = Math.max(13, Math.min(40, Math.round(menorAltura * 0.5)));
+  //
+  // Correção de resolução (Emanuelly 09/09/2026): as 3 TVs físicas NÃO
+  // têm a mesma resolução — Em Águas e No Chão rodam num painel 4K
+  // (3840x2160), Backorders roda num painel Full HD (1920x1080). Como
+  // esse cálculo usa a altura MEDIDA em pixels CSS (getBoundingClientRect),
+  // e as TVs aparentemente rodam sem escala de SO (devicePixelRatio~1), o
+  // viewport 4K mede o DOBRO de pixels CSS do que o Full HD pro MESMO
+  // layout relativo — por isso hoje precisam compensar na mão com zoom do
+  // navegador (Em Águas em 67%, Backorders em 175%) pra ficar no tamanho
+  // certo. Em vez de depender de zoom manual (frágil — cada TV tem que
+  // ser configurada à parte e se perde num reboot/troca de player), aplica
+  // esse mesmo fator direto aqui, detectando a resolução real da tela.
+  const fatorResolucao = fatorEscalaResolucaoTV();
+  const fonte = Math.max(13, Math.min(70, Math.round(menorAltura * 0.5 * fatorResolucao)));
   // raiz é o próprio #dash-tv-content (é nele que o classList.toggle
   // 'dash-tv-solo' foi aplicado) — o font-size herda pra tudo dentro.
   raiz.style.fontSize = fonte + 'px';
