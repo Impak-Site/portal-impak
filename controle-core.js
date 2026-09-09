@@ -299,11 +299,14 @@ function ativarTelaCambioExclusiva(){
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
 
-  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
-    el.style.display = 'none';
-  });
-  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
-  document.getElementById('menu-cambio')?.classList.add('active');
+  // Esconde a barra lateral INTEIRA (não só a seção "processos" como nas
+  // outras telas exclusivas) — pedido do Ayslan (09/09/2026): a tabela de
+  // câmbio tem 8 colunas de dados financeiros e precisa de toda a largura
+  // possível. Os links de Dashboard/Cadastros que ficavam na barra lateral
+  // continuam a 1 clique via "🚢 Controle" na nav do topo (chat.js), então
+  // não perde acesso, só deixa de ficar sempre visível aqui.
+  const sidebar = document.querySelector('.sidebar');
+  if(sidebar) sidebar.style.display = 'none';
 
   const dashCam = document.getElementById('dash-cambio');
   if(dashCam) dashCam.style.display = 'block';
