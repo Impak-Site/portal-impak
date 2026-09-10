@@ -397,6 +397,41 @@ function sincronizarContainerLegado(){
   const ft = document.getElementById('f_tipo_container');
   if(fc && _containers[0]) fc.value = _containers[0].numero||'';
   if(ft && _containers[0]) ft.value = _containers[0].tipo||'40HC';
+  atualizarQtdContainersUI();
+}
+
+// Campo único de Qtd. Containers (pedido do Ayslan, 10/09/2026): antes
+// existiam dois números que podiam divergir — o "previsto" (aba
+// Identificação) e a contagem real de containers (aba Documentos), e o
+// sistema usava um ou outro sem avisar qual. Em vez de só sinalizar o
+// conflito, agora o campo "previsto" trava e passa a REFLETIR
+// automaticamente a contagem real assim que existe pelo menos 1 container
+// cadastrado em Documentos — o valor exibido (e salvo, já que o input
+// continua sendo o que vai pro banco em qtd_containers_prevista) fica
+// sempre igual ao que os dashboards usam, eliminando a divergência na
+// raiz. Antes de existir container real, o campo continua editável
+// normalmente como estimativa (única forma de saber a quantidade antes
+// do booking).
+function atualizarQtdContainersUI(){
+  const input = document.getElementById('f_qtd_containers_prevista');
+  if(!input) return;
+  const label = document.getElementById('label-qtd-containers');
+  const hint = document.getElementById('hint-qtd-containers');
+  const reais = (_containers||[]).filter(c => c && c.numero && c.numero.trim()).length;
+  if(reais > 0){
+    input.value = reais;
+    input.disabled = true;
+    input.style.background = '#f3f4f6';
+    input.style.color = 'var(--dim)';
+    if(label) label.textContent = 'Qtd. Containers';
+    if(hint) hint.innerHTML = `🔒 Sincronizado automaticamente com os ${reais} container(s) real(is) da aba Documentos.`;
+  } else {
+    input.disabled = false;
+    input.style.background = '';
+    input.style.color = '';
+    if(label) label.textContent = 'Qtd. Containers (previsto)';
+    if(hint) hint.innerHTML = '';
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
