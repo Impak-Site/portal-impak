@@ -258,6 +258,19 @@ function renderModal(){
           </div>
           <div class="form-group"><label class="form-label">Qtd. Containers (previsto)</label>
             <input class="form-input" type="number" min="0" step="1" id="f_qtd_containers_prevista" value="${p.qtd_containers_prevista ?? ''}" placeholder="Ex: 3 — preencha assim que souber, mesmo antes do booking">
+            ${(() => {
+              // Aviso de "qual campo manda" — pedido da Emanuelly (10/09/2026):
+              // ela editava este campo (previsto) achando que era ele que
+              // alimentava os dashboards (TV/Backorders), mas assim que a
+              // aba Documentos ganha os números REAIS dos containers, todo
+              // dashboard passa a contar por ali (containersDoProcesso), e
+              // este campo vira só um registro histórico da estimativa —
+              // sem nenhum aviso disso na tela, parecia que o sistema tava
+              // "trocando de campo sozinho" sem explicação nenhuma.
+              const reais = (typeof containersDoProcesso === 'function' ? containersDoProcesso(p).length : 0);
+              if(!reais) return '';
+              return `<div style="font-size:11px;color:var(--warn);margin-top:4px;">⚠️ Já tem ${reais} container(s) REAL(is) cadastrado(s) na aba Documentos — os dashboards (TV/Backorders) contam por lá, não por este campo.</div>`;
+            })()}
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
             <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
