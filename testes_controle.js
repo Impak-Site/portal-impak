@@ -1113,6 +1113,55 @@ teste('verificarAlertas: processo FINALIZADO não gera mais o alerta de HBL/LI m
   iguais(temPendencia, false, 'processo finalizado não deve mais alertar HBL/LI pendente');
 });
 
+// _processos e _filProcessoAvancado são declarados com "let" no topo de
+// controle-core.js — bindings léxicas de módulo, não propriedades do objeto
+// global do sandbox (diferente das "function nome(){}", que viram
+// propriedades e por isso dá pra chamar sandbox.filtrarProcessos() direto).
+// Pra alterá-las de fora é preciso rodar código NA MESMA vm.context (o
+// ambiente léxico top-level é compartilhado entre execuções na mesma
+// context), não só atribuir em sandbox.window.
+function setEstadoProcessos(processos, condicoesAvancado){
+  vm.runInContext(
+    `_processos = ${JSON.stringify(processos)}; _filProcessoAvancado = { condicoes: ${JSON.stringify(condicoesAvancado)} };`,
+    sandbox
+  );
+}
+
+teste('filtrarProcessos: filtro avançado (Fase 2) — margem numérica combinada com país (select)', () => {
+  setEstadoProcessos([
+    { id:'a', referencia:'UD1', fornecedor:'F1', nf_saida_valor:1000, nf_entrada_valor:800, porto_origem:'SHANGHAI' },   // margem 20%, China
+    { id:'b', referencia:'UD2', fornecedor:'F2', nf_saida_valor:1000, nf_entrada_valor:500, porto_origem:'SHANGHAI' },   // margem 50%, China
+    { id:'c', referencia:'UD3', fornecedor:'F3', nf_saida_valor:1000, nf_entrada_valor:500, porto_origem:'HO CHI MINH' }, // margem 50%, Vietnã
+  ], [
+    { campo:'margemReal', operador:'gte', valor:'30', valor2:'' },
+    { campo:'pais', operador:'eq', valor:'China', valor2:'' },
+  ]);
+  const lista = sandbox.filtrarProcessos(true);
+  iguais(lista.length, 1, 'só o processo b (margem 50%, China) deveria passar nos dois filtros combinados');
+  iguais(lista[0].id, 'b');
+});
+
+teste('filtrarProcessos: filtro avançado sem nenhuma condição não altera a lista', () => {
+  setEstadoProcessos([
+    { id:'x', referencia:'UD9', nf_saida_valor:100, nf_entrada_valor:50 },
+  ], []);
+  const lista = sandbox.filtrarProcessos(true);
+  iguais(lista.length, 1);
+});
+
+teste('filtrarProcessos: condição de filtro avançado em branco (campo escolhido mas sem valor ainda) não derruba a lista', () => {
+  setEstadoProcessos([
+    { id:'y', referencia:'UD8', fornecedor:'ForneY', nf_saida_valor:100, nf_entrada_valor:50 },
+  ], [ { campo:'fornecedor', operador:'contem', valor:'', valor2:'' } ]);
+  const lista = sandbox.filtrarProcessos(true);
+  iguais(lista.length, 1, 'condição em branco enquanto o usuário monta o filtro não deve esconder tudo');
+});
+
+teste('filtrarProcessos: limpar o estado avançado de volta (não deixar resíduo pros demais testes do arquivo)', () => {
+  setEstadoProcessos([], []);
+  iguais(sandbox.filtrarProcessos(true).length, 0);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

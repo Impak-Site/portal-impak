@@ -612,6 +612,7 @@ async function carregarProcessos(silencioso){
       render();
       renderStats();
       renderFaseFilter();
+      renderFiltroProcessoAvancado();
       carregarNotificacoes();
       if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
       // Deep link (task #59) — se a página abriu direto em /controle/UD26-005,
@@ -2772,6 +2773,90 @@ return lista.filter(p => cont[norm(p.referencia)] > 1);
   }),
 };
 
+// ════════════════════════════════════════════════════════════════
+// FILTRO AVANÇADO (Fase 2 do filtro inteligente, pedido Ayslan
+// 10/09/2026) — reaproveita o mesmo motor genérico criado pro Dashboard
+// Resultado (OPERADORES_FILTRO/avaliarCondicaoFiltro/aplicarFiltrosGenericos/
+// renderBarraFiltrosGenerico, em controle-dashboards.js) aplicado agora na
+// tabela principal de processos, além dos filtros fixos que já existiam
+// (busca, cliente, finalidade, pendência, data). Combinável com eles: os
+// filtros avançados rodam POR CIMA do resultado dos filtros fixos.
+// ════════════════════════════════════════════════════════════════
+let _filProcessoAvancado = { condicoes: [] };
+
+// Monta a "linha achatada" de 1 processo pros campos filtráveis — mistura
+// campos de cadastro direto (fase, país, forma de pagamento) com campos
+// calculados de resultado (margem/lucro real), pra permitir a mesma
+// pergunta que motivou o pedido ("margem de lucro por cliente") só que já
+// na tela principal, sem precisar abrir o Dashboard Resultado.
+function linhaFiltroProcesso(p){
+  const fch = calcularFechamento(p);
+  const nfSaida = fch.nfSaida != null ? fch.nfSaida : null;
+  const margemReal = (fch.pctLucroReal != null) ? fch.pctLucroReal * 100 : null;
+  return {
+    p,
+    referencia: p.referencia || '',
+    fornecedor: p.fornecedor || '',
+    cliente: (clientesDoProcesso(p)[0] || p.cliente || ''),
+    marca: p.brand || '',
+    pais: paisDoProcesso(p) || '',
+    fase: faseParaExibir(p).label,
+    finalidade: {IMPORTACAO_DIRETA:'Importação Própria (Direto)', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '',
+    formaPagamento: (typeof LABEL_PI_PAGAMENTO !== 'undefined' ? LABEL_PI_PAGAMENTO[p.pi_pagamento] : null) || '',
+    margemReal,
+    lucroReal: fch.lucroReal,
+    faturamento: nfSaida,
+    demurrageDias: demurrageDias(p),
+  };
+}
+
+// Campos filtráveis da tabela principal — opções de select derivadas dos
+// próprios processos carregados (só lista o que de fato existe).
+function camposFiltroProcesso(linhas){
+  const paises = [...new Set(linhas.map(l=>l.pais).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const formas = [...new Set(linhas.map(l=>l.formaPagamento).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return {
+    referencia:     { label:'Referência', tipo:'texto' },
+    fornecedor:     { label:'Fornecedor', tipo:'texto' },
+    cliente:        { label:'Cliente', tipo:'texto' },
+    marca:          { label:'Marca', tipo:'texto' },
+    pais:           { label:'País de Origem', tipo:'select', opcoes:paises },
+    fase:           { label:'Fase', tipo:'select', opcoes:FASES.map(f=>f.label) },
+    finalidade:     { label:'Finalidade', tipo:'select', opcoes:['Importação Própria (Direto)','Encomenda','Conta e Ordem'] },
+    formaPagamento: { label:'Forma de Pagamento', tipo:'select', opcoes:formas },
+    margemReal:     { label:'Margem Real (%)', tipo:'numero' },
+    lucroReal:      { label:'Lucro Real (R$)', tipo:'numero' },
+    faturamento:    { label:'Faturamento / NF Saída (R$)', tipo:'numero' },
+    demurrageDias:  { label:'Dias de Demurrage', tipo:'numero' },
+  };
+}
+
+function filtroProcessoAdd(){
+  _filProcessoAvancado.condicoes.push({ campo:'', operador:'', valor:'', valor2:'' });
+  renderFiltroProcessoAvancado();
+  render();
+}
+function filtroProcessoRemove(i){
+  _filProcessoAvancado.condicoes.splice(i,1);
+  renderFiltroProcessoAvancado();
+  render();
+}
+function filtroProcessoChange(i, campo, valor){
+  if(!_filProcessoAvancado.condicoes[i]) return;
+  _filProcessoAvancado.condicoes[i][campo] = valor;
+  if(campo === 'campo'){ _filProcessoAvancado.condicoes[i].operador=''; _filProcessoAvancado.condicoes[i].valor=''; _filProcessoAvancado.condicoes[i].valor2=''; }
+  renderFiltroProcessoAvancado();
+  render();
+}
+// Redesenha só a barra de filtros (chamado no boot e depois de cada
+// add/remove/change) — separado de render() pra não remontar a barra a
+// cada digitação de busca/paginação, só quando o próprio filtro muda.
+function renderFiltroProcessoAvancado(){
+  const linhas = _processos.map(linhaFiltroProcesso);
+  const defs = camposFiltroProcesso(linhas);
+  renderBarraFiltrosGenerico('filtros-processo-avancados', _filProcessoAvancado.condicoes, defs, 'filtroProcessoAdd', 'filtroProcessoRemove', 'filtroProcessoChange');
+}
+
 function filtrarProcessos(ignorarFaseFilter){
   let lista = [..._processos];
   const q = (document.getElementById('search')?.value||'').toLowerCase().trim();
@@ -2821,6 +2906,16 @@ clientesDoProcesso(p).some(cl=>cl.toLowerCase().includes(q))
   // Filtro por pendência de revisão
   const filtroPendencia = document.getElementById('filtro-pendencia')?.checked;
   if(filtroPendencia) lista = lista.filter(p=>!!p.pendencia_revisao);
+
+  // Filtro avançado (Fase 2 do filtro inteligente) — combinável com todos
+  // os filtros acima, roda por último sobre o que já sobrou.
+  if(_filProcessoAvancado.condicoes.length){
+    const linhasAv = lista.map(linhaFiltroProcesso);
+    const defsAv = camposFiltroProcesso(linhasAv);
+    const linhasFiltradas = aplicarFiltrosGenericos(linhasAv, _filProcessoAvancado.condicoes, defsAv);
+    const idsOk = new Set(linhasFiltradas.map(l=>l.p.id));
+    lista = lista.filter(p=>idsOk.has(p.id));
+  }
 
   return lista;
 }
