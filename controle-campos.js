@@ -422,6 +422,26 @@ function renderDemurrageContainers(){
     multi.innerHTML = '';
     return;
   }
+  // Primeira vez que o processo passa a ter 2+ containers: se o 1º
+  // container ainda não tem NENHUM dado próprio de demurrage, herda os
+  // valores que já estavam nos campos únicos do processo. Sem isso, um
+  // processo que já tinha RIC/depot/datas preenchidos (de quando só
+  // existia 1 container) perderia esses dados no próximo Salvar, porque
+  // sincronizarDemurrageAgregado() sobrescreve os campos únicos com base
+  // nos containers -- e o container novo começa vazio.
+  const c0 = _containers[0];
+  const CAMPOS_DEMUR_CONTAINER = ['demurrage_valor','devolucao','ric_status','depot','data_solicitacao_demurrage','data_isencao_demurrage','data_envio_termo','data_pagamento_lavagem','data_pagamento_demurrage'];
+  if(!CAMPOS_DEMUR_CONTAINER.some(k => c0[k])){
+    c0.demurrage_valor = document.getElementById('f_demurrage_valor')?.value || '';
+    c0.devolucao = document.getElementById('f_data_devolucao_vazio')?.value || '';
+    c0.ric_status = document.getElementById('f_ric_status')?.value || '';
+    c0.depot = document.getElementById('f_depot')?.value || '';
+    c0.data_solicitacao_demurrage = document.getElementById('f_data_solicitacao_demurrage')?.value || '';
+    c0.data_isencao_demurrage = document.getElementById('f_data_isencao_demurrage')?.value || '';
+    c0.data_envio_termo = document.getElementById('f_data_envio_termo')?.value || '';
+    c0.data_pagamento_lavagem = document.getElementById('f_data_pagamento_lavagem')?.value || '';
+    c0.data_pagamento_demurrage = document.getElementById('f_data_pagamento_demurrage')?.value || '';
+  }
   single.style.display = 'none';
   multi.style.display = '';
   multi.innerHTML = _containers.map((c,i) => {
@@ -431,7 +451,7 @@ function renderDemurrageContainers(){
         <div style="font-weight:600;font-size:12px;color:var(--ac);margin-bottom:8px;">📦 ${escContainerLocal(num)}</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
-            <input class="form-input" type="text" inputmode="decimal" value="${exibirMoeda(c.demurrage_valor||'')}" placeholder="0,00"
+            <input class="form-input" type="text" inputmode="decimal" value="${escContainerLocal(c.demurrage_valor||'')}" placeholder="0,00"
               oninput="formatarMoedaInput(this);_containers[${i}].demurrage_valor=this.value;sincronizarDemurrageAgregado()"></div>
           <div class="form-group"><label class="form-label">Data Devolução</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" value="${escContainerLocal(c.devolucao||'')}"
