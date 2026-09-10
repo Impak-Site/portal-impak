@@ -785,8 +785,21 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // foi operacionalmente desembarcada em "Itapoa"). Por isso, se vierem de
     // um BL/DI, esses campos também sobrescrevem o que já estiver preenchido.
     const ehBlOuDi = !!(extracted.hbl || extracted.mbl || extracted.numero_di || extracted.data_registro_di);
+    // Quando o documento é uma PI/Sales Contract (traz pi_numero e/ou a
+    // tabela de itens), os TERMOS COMERCIAIS que ele carrega (data, valor,
+    // incoterm, forma de pagamento) são desse documento específico — se o
+    // fornecedor manda uma PI "-update"/"(1)" com preço e data novos pro
+    // MESMO PO#, essa nova leitura tem que sobrescrever o que a PI anterior
+    // tinha preenchido, senão a Aba Financeiro fica com a Data PI/Valor USD
+    // da PI velha enquanto os Itens (que já são sempre substituídos, ver
+    // bloco de "itens" acima) mostram os dados novos — foi exatamente esse
+    // descompasso que o Jean reportou em 10/09/2026 (2 PIs atualizadas:
+    // PID2608-G e PCN2608-G, itens atualizaram OK mas Data PI/Valor USD
+    // ficaram travados na leitura anterior e precisaram de correção manual).
+    const ehPI = !!(extracted.pi_numero || extracted.pi_data);
     const camposSobrescritosPorCe = ehCeMercante ? ['navio','armador'] : [];
     const camposSobrescritosPorBlDi = ehBlOuDi ? ['porto_destino','container','navio'] : [];
+    const camposSobrescritosPorPI = ehPI ? ['pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento'] : [];
     // Regra de negócio: o processo só pode ser considerado DESEMBARCADO de
     // fato com base na DI/Extrato da DI — qualquer outro documento (CE
     // Mercante, BL, invoice etc.) só traz uma PREVISÃO de chegada. Por isso
@@ -874,7 +887,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       // (que não é CE Mercante e não deveria mexer nesses campos).
       const camposRestritosATipoDoc = ['ce_master','ce_house','ce_data_embarque'];
       const restritoEBloqueado = camposRestritosATipoDoc.includes(campo) && !ehCeMercante;
-      const podeSobrescrever = !restritoEBloqueado && (camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo) || foiPreenchidoPorIA(campo));
+      const podeSobrescrever = !restritoEBloqueado && (camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo) || camposSobrescritosPorPI.includes(campo) || foiPreenchidoPorIA(campo));
       // Porto Destino é <select> agora — não aceita texto livre direto.
       // Normaliza pro código (ITJ/IOA/NVT) e, se não bater com nenhum,
       // reconstrói as opções incluindo o valor extraído como fallback
@@ -986,6 +999,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       : ehCeMercante
       ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
       : ehBlOuDi ? `✓ ${preenchidos} campos preenchidos (BL/DI — porto e container atualizados)`
+      : ehPI ? `✓ ${preenchidos} campos preenchidos (PI — data e valor USD atualizados)`
       : `✓ ${preenchidos} campos preenchidos`;
     if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
 
