@@ -730,6 +730,30 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // NENHUMA referência no documento.
     if(!extracted.referencia && extracted.ci_numero) extracted.referencia = extracted.ci_numero;
 
+    // ── Aviso de documento de OUTRO processo — pedido direto da Emanuelly
+    // (10/09/2026): ela testou de propósito subir a CI do processo UD26-079
+    // dentro do processo TVN2605B-2 (aberto por engano) e o sistema aplicou
+    // os dados sem avisar nada — Itens/Produtos, Navio e Porto de destino
+    // foram sobrescritos com dados de um processo errado, em silêncio.
+    // Compara a referência que o PRÓPRIO documento traz (ou o nº da CI,
+    // já com o fallback acima) com a referência do processo ABERTO agora;
+    // se não bater nem por substring (cobre prefixos como "IMPAK-"), pede
+    // confirmação ANTES de aplicar qualquer campo — e cancela a leitura
+    // inteira se a pessoa disser que não é o documento certo.
+    const refProcessoAtual = (document.getElementById('f_referencia')?.value || '').trim().toUpperCase();
+    const refDocumentoLido = (extracted.referencia || '').trim().toUpperCase();
+    if(refProcessoAtual && refDocumentoLido){
+      const bateSubstring = refProcessoAtual.includes(refDocumentoLido) || refDocumentoLido.includes(refProcessoAtual);
+      if(!bateSubstring){
+        const confirmaMesmoAssim = confirm(`⚠️ Este documento parece ser do processo "${extracted.referencia}", mas você está no processo "${refProcessoAtual}".\n\nTem certeza que quer aplicar os dados deste documento aqui mesmo assim?`);
+        if(!confirmaMesmoAssim){
+          if(status) status.textContent = '❌ Leitura cancelada — documento parece ser de outro processo';
+          showToast('Leitura cancelada — documento parece ser de outro processo','err');
+          return;
+        }
+      }
+    }
+
     // CNPJ do encomendante (extraído do Comprovante de Importação/Extrato da
     // DI) — cruza com o cadastro de contatos pra usar o nome OFICIAL já
     // cadastrado em vez de confiar na grafia exata do documento (evita
@@ -815,6 +839,34 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // registrar no Historico o que essa leitura de documento trouxe.
     const camposLidosNestaLeitura = [];
 
+    // ── Conflitos: campo já preenchido com um valor DIFERENTE do que este
+    // documento trouxe, e o tipo de documento não é um dos "mais confiáveis"
+    // pra esse campo (CE/BL-DI/PI) nem já foi preenchido pela própria IA
+    // antes — em vez de descartar a leitura em silêncio (comportamento
+    // antigo, que escondia a divergência do usuário sem nenhum aviso),
+    // guarda pra mostrar tudo junto num pop-up de revisão ao final da
+    // leitura (pedido do Ayslan, 10/09/2026). Declarado aqui (antes do
+    // bloco de Itens logo abaixo) porque Itens/Produtos também passou a
+    // usar esse mesmo mecanismo — ver comentário no bloco de itens.
+    const conflitos = [];
+    function valoresDivergem(a, b){
+      const na = (a==null?'':String(a)).trim().toLowerCase();
+      const nb = (b==null?'':String(b)).trim().toLowerCase();
+      return na !== nb;
+    }
+    function registrarConflito(campo, el, valorNovo, valorNovoExibicao, aplicar, valorAtualExibicao){
+      if(!el.value) return; // vazio não é conflito, é só preenchimento normal (já tratado no if principal)
+      const exibicao = valorNovoExibicao!=null ? valorNovoExibicao : valorNovo;
+      if(!valoresDivergem(el.value, exibicao)) return; // já é o mesmo valor — não é divergência real
+      conflitos.push({
+        campo,
+        label: LABELS_CAMPOS_IA[campo] || campo,
+        valorAtual: valorAtualExibicao!=null ? valorAtualExibicao : el.value,
+        valorNovo: exibicao,
+        aplicar: aplicar || (() => { el.value = valorNovo; }),
+      });
+    }
+
     // Itens estruturados (Size/Pattern/L.I.S.R./Quantidade por linha da tabela do
     // documento) — populam a LISTA VISUAL de produtos (_produtos), não o campo
     // legado escondido. Sem isso, a extração "preenchia" um campo que o usuário
@@ -823,13 +875,37 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(Array.isArray(extracted.itens) && extracted.itens.length){
       const itensValidos = extracted.itens.filter(it=>it && (it.size||it.pattern||it.quantidade));
       if(itensValidos.length){
-        _produtos = itensValidos.map(it=>{
+        const novosProdutos = itensValidos.map(it=>{
           const partes = [it.size, it.pattern, it.li_sr, it.pr].filter(Boolean);
           return { descricao: partes.join(' '), quantidade: it.quantidade!=null?it.quantidade:'' };
         });
-        renderMultiProdutos();
-        preenchidos += _produtos.length;
-        camposLidosNestaLeitura.push('itens');
+        // Itens/Produtos sempre substituíam a lista inteira sem nenhuma
+        // verificação — problema real reportado pela Emanuelly (10/09/2026):
+        // ela testou de propósito subir a CI de OUTRO processo (UD26-079) no
+        // processo TVN2605B-2 e os itens corretos foram trocados pelos itens
+        // errados em silêncio. Agora, se o processo já tem itens REAIS
+        // cadastrados (não é só o placeholder vazio) e a leitura nova traz
+        // uma lista diferente, isso vira um conflito como qualquer outro
+        // campo — entra no mesmo pop-up de revisão em vez de substituir na
+        // hora. Só continua substituindo direto quando a lista ainda está
+        // vazia (primeira leitura) ou quando o conteúdo é o mesmo.
+        const temItensReais = _produtos.some(p => p && p.descricao && p.descricao.trim());
+        const resumoAtual = _produtos.filter(p=>p&&p.descricao&&p.descricao.trim()).map(p=>`${p.descricao} (${p.quantidade||'?'})`).join('; ');
+        const resumoNovo = novosProdutos.map(p=>`${p.descricao} (${p.quantidade||'?'})`).join('; ');
+        if(temItensReais && valoresDivergem(resumoAtual, resumoNovo)){
+          conflitos.push({
+            campo: 'itens',
+            label: LABELS_CAMPOS_IA.itens || 'Itens/Produtos',
+            valorAtual: resumoAtual,
+            valorNovo: resumoNovo,
+            aplicar: () => { _produtos = novosProdutos; renderMultiProdutos(); },
+          });
+        } else {
+          _produtos = novosProdutos;
+          renderMultiProdutos();
+          preenchidos += _produtos.length;
+          camposLidosNestaLeitura.push('itens');
+        }
       }
     }
     delete extracted.itens; // não é um campo de input direto — já tratado acima
@@ -870,34 +946,6 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(!_editando._camposIA) _editando._camposIA = {};
     const foiPreenchidoPorIA = campo => !!_editando._camposIA[campo];
     const marcarComoIA = campo => { _editando._camposIA[campo] = true; camposLidosNestaLeitura.push(campo); };
-
-    // ── Conflitos: campo já preenchido com um valor DIFERENTE do que este
-    // documento trouxe, e o tipo de documento não é um dos "mais confiáveis"
-    // pra esse campo (CE/BL-DI/PI) nem já foi preenchido pela própria IA
-    // antes — em vez de descartar a leitura em silêncio (comportamento
-    // antigo, que escondia a divergência do usuário sem nenhum aviso),
-    // guarda pra mostrar tudo junto num pop-up de revisão ao final da
-    // leitura (pedido do Ayslan, 10/09/2026): o usuário vê lado a lado o
-    // valor atual x o valor lido no documento novo e escolhe campo a campo
-    // qual considerar, em vez de precisar adivinhar que houve divergência.
-    const conflitos = [];
-    function valoresDivergem(a, b){
-      const na = (a==null?'':String(a)).trim().toLowerCase();
-      const nb = (b==null?'':String(b)).trim().toLowerCase();
-      return na !== nb;
-    }
-    function registrarConflito(campo, el, valorNovo, valorNovoExibicao, aplicar, valorAtualExibicao){
-      if(!el.value) return; // vazio não é conflito, é só preenchimento normal (já tratado no if principal)
-      const exibicao = valorNovoExibicao!=null ? valorNovoExibicao : valorNovo;
-      if(!valoresDivergem(el.value, exibicao)) return; // já é o mesmo valor — não é divergência real
-      conflitos.push({
-        campo,
-        label: LABELS_CAMPOS_IA[campo] || campo,
-        valorAtual: valorAtualExibicao!=null ? valorAtualExibicao : el.value,
-        valorNovo: exibicao,
-        aplicar: aplicar || (() => { el.value = valorNovo; }),
-      });
-    }
 
     Object.keys(extracted).forEach(campo=>{
       let val = extracted[campo];
