@@ -434,6 +434,18 @@ function setIntervalAtualizacaoTV(){
     await carregarProcessos(true);
     renderDashTV();
   }, 5 * 60 * 1000);
+
+  // Essa tela fica aberta 24h num monitor físico, sem ninguém pra apertar
+  // F5 — então quando o código muda (deploy de melhoria visual, correção
+  // de bug, etc.), a TV continua rodando a versão antiga em memória
+  // indefinidamente, só os DADOS são atualizados a cada 5 min acima, nunca
+  // o HTML/JS da página em si (achado 10/09/2026: Emanuelly reportou a TV
+  // mostrando um layout antigo mesmo depois do redesign já estar no ar).
+  // Recarrega a página inteira 1x por hora — intervalo curto o bastante
+  // pra qualquer deploy chegar na TV em no máximo ~1h sem intervenção
+  // manual, longo o bastante pra não incomodar quem eventualmente estiver
+  // olhando a tela no momento do reload (pisca menos de 1seg).
+  setInterval(() => { location.reload(); }, 60 * 60 * 1000);
 }
 
 async function fecharProcesso(id){
