@@ -308,8 +308,8 @@ function renderBarraFiltrosGenerico(containerId, condicoes, defs, fnAdd, fnRemov
             <option value="">valor…</option>
             ${(def.opcoes||[]).map(v=>`<option value="${esc(v)}" ${c.valor===v?'selected':''}>${esc(v)}</option>`).join('')}
           </select>` : ''}
-          ${def && def.tipo!=='select' ? `<input data-fil-idx="${i}" data-fil-campo="valor" type="${def.tipo==='numero'?'number':'text'}" value="${esc(c.valor||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor',this.value,this.selectionStart)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
-          ${def && def.tipo==='numero' && c.operador==='entre' ? `<span style="font-size:11px;color:var(--muted);">e</span><input data-fil-idx="${i}" data-fil-campo="valor2" type="number" value="${esc(c.valor2||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor2',this.value,this.selectionStart)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
+          ${def && def.tipo!=='select' ? `<input data-fil-idx="${i}" data-fil-campo="valor" type="text" inputmode="${def.tipo==='numero'?'decimal':'text'}" value="${esc(c.valor||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor',this.value,this.selectionStart)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
+          ${def && def.tipo==='numero' && c.operador==='entre' ? `<span style="font-size:11px;color:var(--muted);">e</span><input data-fil-idx="${i}" data-fil-campo="valor2" type="text" inputmode="decimal" value="${esc(c.valor2||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor2',this.value,this.selectionStart)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
           <button type="button" onclick="${fnRemove}(${i})" title="Remover filtro" style="border:none;background:none;color:var(--err);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">✕</button>
         </div>`;
       }).join('')}
