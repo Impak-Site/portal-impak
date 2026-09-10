@@ -179,7 +179,9 @@ async function carregarGraficoPtaxCambio(pagos){
 
 function renderGraficoPtaxCambioSvg(ptax, pagos){
   if(!ptax || !ptax.length) return `<div style="font-size:11px;color:var(--muted);">Sem dados de PTAX no período.</div>`;
+  const fmtBRL2 = v => v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtBRL4 = v => v.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4});
+  const fmtDataCurta = t => new Date(t).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
 
   const pontos = [...ptax].sort((a,b)=>a.data.localeCompare(b.data))
     .map(p=>({t:new Date(p.data+'T00:00:00').getTime(), v:p.venda}))
@@ -188,11 +190,34 @@ function renderGraficoPtaxCambioSvg(ptax, pagos){
 
   const minT = pontos[0].t, maxT = pontos[pontos.length-1].t;
   const valores = pontos.map(p=>p.v);
-  const minY = Math.min(...valores) * 0.998, maxY = Math.max(...valores) * 1.002;
+  const minY = Math.min(...valores) * 0.997, maxY = Math.max(...valores) * 1.003;
 
-  const W = 760, H = 210, PAD_X = 8, PAD_Y = 18;
-  const x = t => PAD_X + (maxT>minT ? (t-minT)/(maxT-minT) : 0) * (W-2*PAD_X);
-  const y = v => (H-PAD_Y) - (maxY>minY ? (v-minY)/(maxY-minY) : 0.5) * (H-2*PAD_Y);
+  // Área útil do gráfico: reserva espaço à esquerda pros rótulos do eixo Y
+  // (valores do câmbio) e embaixo pros rótulos do eixo X (datas) — antes o
+  // gráfico não tinha nenhuma referência de escala, só a linha "boiando".
+  const W = 780, H = 260, PAD_L = 46, PAD_R = 10, PAD_T = 14, PAD_B = 26;
+  const x = t => PAD_L + (maxT>minT ? (t-minT)/(maxT-minT) : 0) * (W-PAD_L-PAD_R);
+  const y = v => (H-PAD_B) - (maxY>minY ? (v-minY)/(maxY-minY) : 0.5) * (H-PAD_T-PAD_B);
+
+  // Grade horizontal com 4 faixas (5 linhas), rotuladas com o valor do câmbio
+  const N_FAIXAS = 4;
+  const gradeH = [];
+  for(let i=0;i<=N_FAIXAS;i++){
+    const v = minY + (maxY-minY) * (i/N_FAIXAS);
+    const yy = y(v).toFixed(1);
+    gradeH.push(`<line x1="${PAD_L}" y1="${yy}" x2="${W-PAD_R}" y2="${yy}" stroke="#e5e7eb" stroke-width="1"/>`);
+    gradeH.push(`<text x="${PAD_L-6}" y="${(+yy+3).toFixed(1)}" text-anchor="end" font-size="9.5" fill="#94a3b8">${fmtBRL2(v)}</text>`);
+  }
+
+  // Grade vertical com rótulos de data (até 6 marcas, espaçadas no tempo)
+  const N_DATAS = Math.min(6, pontos.length);
+  const gradeV = [];
+  for(let i=0;i<N_DATAS;i++){
+    const t = minT + (maxT-minT) * (i/(N_DATAS-1||1));
+    const xx = x(t).toFixed(1);
+    gradeV.push(`<line x1="${xx}" y1="${PAD_T}" x2="${xx}" y2="${H-PAD_B}" stroke="#f1f5f9" stroke-width="1"/>`);
+    gradeV.push(`<text x="${xx}" y="${H-PAD_B+14}" text-anchor="middle" font-size="9.5" fill="#94a3b8">${fmtDataCurta(t)}</text>`);
+  }
 
   const linha = pontos.map((p,i)=>`${i===0?'M':'L'} ${x(p.t).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
 
@@ -204,24 +229,38 @@ function renderGraficoPtaxCambioSvg(ptax, pagos){
     return {t, v:p.cambioFechado, ref:p.referencia};
   }).filter(p=>p.t>=minT && p.t<=maxT);
 
-  const circulos = pontosEmpresa.map(p=>
-    `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3.5" fill="var(--ac)" fill-opacity="0.85" stroke="#fff" stroke-width="1"><title>${esc(p.ref)} · R$ ${fmtBRL4(p.v)}</title></circle>`
-  ).join('');
+  // Cor por posição relativa ao PTAX do dia (ponto acima = pagou mais caro
+  // que a referência oficial; abaixo = pagou mais barato) — facilita
+  // identificar de longe se o câmbio fechado foi bom ou ruim sem precisar
+  // passar o mouse em cada ponto.
+  const ptaxNoDia = t => {
+    let melhor = pontos[0];
+    for(const p of pontos){ if(Math.abs(p.t-t) < Math.abs(melhor.t-t)) melhor = p; }
+    return melhor.v;
+  };
+  const circulos = pontosEmpresa.map(p=>{
+    const ref = ptaxNoDia(p.t);
+    const cor = p.v > ref ? '#dc2626' : (p.v < ref ? '#16a34a' : 'var(--ac)');
+    return `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="4" fill="${cor}" fill-opacity="0.9" stroke="#fff" stroke-width="1.2"><title>${esc(p.ref)} · Fechado: R$ ${fmtBRL4(p.v)} · PTAX do dia: R$ ${fmtBRL4(ref)}</title></circle>`;
+  }).join('');
 
   const dataIni = new Date(minT).toLocaleDateString('pt-BR');
   const dataFim = new Date(maxT).toLocaleDateString('pt-BR');
 
   return `<div style="width:100%;">
-    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:210px;display:block;">
-      <path d="${linha}" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:260px;display:block;">
+      ${gradeV.join('')}
+      ${gradeH.join('')}
+      <path d="${linha}" fill="none" stroke="#94a3b8" stroke-width="1.75"/>
       ${circulos}
     </svg>
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:6px;">
-      <div style="display:flex;gap:16px;font-size:11px;color:var(--muted);">
+      <div style="display:flex;gap:14px;font-size:11px;color:var(--muted);flex-wrap:wrap;">
         <span><span style="display:inline-block;width:10px;height:2px;background:#94a3b8;margin-right:4px;vertical-align:middle;"></span>PTAX venda (BCB)</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ac);margin-right:4px;vertical-align:middle;"></span>Fechado pela Impak (${pontosEmpresa.length})</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:4px;vertical-align:middle;"></span>Abaixo do PTAX (mais barato)</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:4px;vertical-align:middle;"></span>Acima do PTAX (mais caro)</span>
       </div>
-      <div style="font-size:10.5px;color:var(--dim);">${dataIni} — ${dataFim}</div>
+      <div style="font-size:10.5px;color:var(--dim);">${pontosEmpresa.length} câmbios · ${dataIni} — ${dataFim}</div>
     </div>
   </div>`;
 }
