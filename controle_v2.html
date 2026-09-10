@@ -346,6 +346,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💰 Dashboard Financeiro</div>
 <div class="sidebar-item" id="menu-cambio" onclick="toggleDashCambio()">💱 Dashboard Câmbio</div>
   <div class="sidebar-item" id="menu-resultado" onclick="toggleDashResultado()">📈 Dashboard Resultado</div>
+  <div class="sidebar-item" id="menu-analises" onclick="toggleDashAnalises()">📊 Análises</div>
   <div class="sidebar-item" id="menu-narcelio" style="display:none;" onclick="toggleDashNarcelio()">👔 Dashboard Narcélio</div>
 <div class="sidebar-item" id="menu-carregamento" onclick="toggleDashCarregamento()">🚛 Dashboard de Carregamentos</div>
 <div class="sidebar-item" id="menu-tv" onclick="toggleDashTV()">📺 Dashboard TV</div>
@@ -450,6 +451,14 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
       <div id="periodo-seletor-resultado"></div>
     </div>
     <div id="dash-resultado-content"></div>
+  </div>
+
+  <!-- ANÁLISES -->
+  <div id="dash-analises" style="display:none;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📊 Análises</div>
+    </div>
+    <div id="dash-analises-content"></div>
   </div>
 
   <!-- DASHBOARD CÂMBIO -->

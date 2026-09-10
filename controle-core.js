@@ -159,6 +159,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     carregarProcessos().then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
       if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
+      if(location.pathname==='/analises') ativarTelaAnalisesExclusiva();
       if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
       if(location.pathname==='/tv') ativarTelaTVExclusiva();
       if(location.pathname==='/cambio') ativarTelaCambioExclusiva();
@@ -279,6 +280,34 @@ function ativarTelaResultadoExclusiva(){
   const dashRes = document.getElementById('dash-resultado');
   if(dashRes) dashRes.style.display = 'block';
   renderDashResultado();
+}
+
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /analises — Fase 3 (mesmo esquema do /resultado acima):
+// reaproveita _processos e calcularFechamento(), só que numa janela de
+// vários meses (série temporal + rankings + cruzamento Cliente x
+// Fornecedor) em vez de um período único — ver renderDashAnalises() em
+// controle-dashboards.js.
+function ativarTelaAnalisesExclusiva(){
+  document.title = 'IMPAK — Análises';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Análises';
+
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+
+  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('menu-analises')?.classList.add('active');
+
+  const dashAn = document.getElementById('dash-analises');
+  if(dashAn) dashAn.style.display = 'block';
+  renderDashAnalises();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2575,7 +2604,7 @@ function renderFaseFilter(){
 const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'];
 
 function fecharTodosDashboards(){
-  ['executivo','financeiro','resultado','narcelio','carregamento','tv','clientemedida','cambio'].forEach(function(id){
+  ['executivo','financeiro','resultado','analises','narcelio','carregamento','tv','clientemedida','cambio'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
     if(el) el.style.display = 'none';
     var menu = document.getElementById('menu-'+id);

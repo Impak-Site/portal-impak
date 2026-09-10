@@ -1285,6 +1285,7 @@ app.get('/cambio', auth('financeiro'), (req, res) => res.sendFile(path.join(__di
 // pra abrir direto no Dashboard Resultado (ver ativarTelaResultadoExclusiva
 // em controle-core.js).
 app.get('/resultado', auth('resultado'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
+app.get('/analises', auth('resultado'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html'))) // reaproveita o modulo 'resultado' (mesma area de trabalho / mesmos dados) em vez de criar modulo de permissao novo
 // "Tela exclusiva" do Dashboard Narcélio (visão do dono da empresa) —
 // diferente de /financeiro e /resultado (visíveis a qualquer usuário com o
 // módulo "processos"), aqui o back-end também confere o usuário logado:

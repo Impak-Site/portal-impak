@@ -601,6 +601,278 @@ function renderDashResultado(){
 
   
 
+// ══════════════════════════════════════════════════════════════════
+// TELA ANÁLISES — Fase 3 do pedido do Ayslan (10/09/2026: "conseguir
+// filtrar tudo que quiser... margem de lucro por cliente, qual cliente
+// da mais resultado, qual da menos"). Reaproveita 100% o motor de
+// filtro genérico e o calcularFechamento() já usados no Dashboard
+// Resultado (Fase 1) — não duplica nenhuma conta. A diferença é que
+// aqui a janela é de vários meses de uma vez (não um período único),
+// pra responder 3 perguntas que o Resultado sozinho não responde:
+// (1) como o resultado evolui mês a mês, (2) quem são os melhores/
+// piores clientes/fornecedores/marcas/países, e (3) como margem cruza
+// Cliente × Fornecedor (achar, por ex., "esse cliente só dá lucro com
+// ESSE fornecedor específico").
+// ══════════════════════════════════════════════════════════════════
+let _filAnalises = { janelaMeses: 12, cliente:'', condicoes:[], ordenarCampo:'lucroReal', ordenarDir:'desc' };
+
+function toggleDashAnalises(){
+  const el = document.getElementById('dash-analises');
+  if(!el) return;
+  const visivel = el.style.display !== 'none';
+  if(!visivel) fecharTodosDashboards();
+  document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = visivel ? '' : 'none');
+  el.style.display = visivel ? 'none' : 'block';
+  ELEMENTOS_TOPO_DASHBOARD.forEach(id => { const alvo = document.getElementById(id); if(alvo) alvo.style.display = visivel ? '' : 'none'; });
+  const toolbarAn = document.querySelector('.toolbar');
+  if(toolbarAn) toolbarAn.style.display = visivel ? '' : 'none';
+  if(!visivel) renderDashAnalises();
+  document.getElementById('menu-analises')?.classList.toggle('active', !visivel);
+}
+
+function janelaAnalisesSet(meses){
+  _filAnalises.janelaMeses = meses;
+  renderDashAnalises();
+}
+function atualizarFiltroAnalises(campo, valor){
+  _filAnalises[campo] = valor;
+  renderDashAnalises();
+}
+function filtroAnalisesAdd(){
+  _filAnalises.condicoes.push({ campo:'', operador:'', valor:'', valor2:'' });
+  renderDashAnalises();
+}
+function filtroAnalisesRemove(i){
+  _filAnalises.condicoes.splice(i,1);
+  renderDashAnalises();
+}
+function filtroAnalisesChange(i, campo, valor){
+  if(!_filAnalises.condicoes[i]) return;
+  _filAnalises.condicoes[i][campo] = valor;
+  // Mesma regra do Resultado: trocar de campo reseta operador/valor.
+  if(campo === 'campo'){ _filAnalises.condicoes[i].operador=''; _filAnalises.condicoes[i].valor=''; _filAnalises.condicoes[i].valor2=''; }
+  renderDashAnalises();
+}
+
+function renderDashAnalises(){
+  const el = document.getElementById('dash-analises-content');
+  if(!el) return;
+
+  // Captura ANTES do innerHTML=... logo abaixo — mesmo motivo do
+  // Resultado (ver capturarFocoFiltro/renderBarraFiltrosGenerico).
+  const focoFiltroAvancado = capturarFocoFiltro('filtros-analises-avancados');
+  const f = _filAnalises;
+
+  const fmtBRL = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const fmtPct = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
+
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const ini = new Date(hoje.getFullYear(), hoje.getMonth() - (f.janelaMeses-1), 1);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0); fim.setHours(23,59,59,999);
+
+  const opClientes = [...new Set(_processos.map(p=>p.cliente||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+
+  // Realizado na janela — mesmo critério do Resultado (NF Saída emitida
+  // dentro do intervalo), só que abrangendo N meses de uma vez em vez de
+  // um período único.
+  const realizados = _processos.filter(p=>{
+    if(!p.nf_saida_data) return false;
+    const d = parseDataLocal(p.nf_saida_data);
+    if(d < ini || d > fim) return false;
+    if(f.cliente && p.cliente !== f.cliente) return false;
+    return true;
+  }).map(p => ({ p, fch: calcularFechamento(p) }));
+
+  // Linha achatada — igual à do Resultado (mesmas propriedades, mesmos
+  // defsFiltro/camposFiltroResultado — reaproveitados sem duplicar), só
+  // acrescentando "mes" (YYYY-MM) pra série temporal.
+  const linhasBase = realizados.map(({p,fch}) => ({
+    p, fch,
+    cliente: p.cliente || '',
+    fornecedor: p.fornecedor || '',
+    marca: p.brand || p.fornecedor || '',
+    pais: paisDoProcesso(p),
+    formaPagamento: LABEL_PI_PAGAMENTO[p.pi_pagamento] || p.pi_pagamento || '',
+    mes: p.nf_saida_data ? p.nf_saida_data.slice(0,7) : '',
+    margemReal: fch.nfSaida ? ((fch.lucroReal||0)/fch.nfSaida)*100 : null,
+    lucroReal: fch.lucroReal,
+    lucroEstimado: fch.lucroEstimado,
+    faturamento: fch.nfSaida,
+    deltaValor: fch.deltaValor,
+  }));
+
+  const defsFiltro = camposFiltroResultado(linhasBase);
+  const linhas = aplicarFiltrosGenericos(linhasBase, f.condicoes, defsFiltro);
+
+  const totalLucroReal   = linhas.reduce((s,x)=> s + (x.fch.lucroReal||0), 0);
+  const totalFaturamento = linhas.reduce((s,x)=> s + (x.fch.nfSaida||0), 0);
+  const margemMedia      = totalFaturamento > 0 ? totalLucroReal / totalFaturamento : null;
+
+  function card(label, val, sub, cor){
+    return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
+    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
+    </div>`;
+  }
+  const kpis = [
+    card('Lucro Real (janela)', fmtBRL(totalLucroReal), `${linhas.length} processo${linhas.length!==1?'s':''} faturado(s)`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
+    card('Faturamento (janela)', fmtBRL(totalFaturamento), `${f.janelaMeses} meses considerados`, 'var(--ac)'),
+    card('Margem Real Média', fmtPct(margemMedia), 'sobre o faturamento da janela', 'var(--info)'),
+  ];
+
+  // ── Série temporal: soma por mês (YYYY-MM), ordenada cronologicamente.
+  const porMes = {};
+  linhas.forEach(l=>{
+    if(!l.mes) return;
+    if(!porMes[l.mes]) porMes[l.mes] = { mes:l.mes, lucroReal:0, faturamento:0, qtd:0 };
+    porMes[l.mes].lucroReal += (l.lucroReal||0);
+    porMes[l.mes].faturamento += (l.faturamento||0);
+    porMes[l.mes].qtd += 1;
+  });
+  const serieMeses = Object.values(porMes).sort((a,b)=>a.mes.localeCompare(b.mes));
+  const maxLucroSerie = Math.max(1, ...serieMeses.map(m=>Math.abs(m.lucroReal)));
+  const NOMES_MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const mesLabel = m => { const [y,mm] = m.split('-'); return `${NOMES_MES[parseInt(mm,10)-1]}/${y.slice(2)}`; };
+
+  const serieHtml = serieMeses.length ? `
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+  <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">Evolução mensal — Lucro Real</div>
+  <div style="padding:12px 16px;display:flex;flex-direction:column;gap:6px;">
+    ${serieMeses.map(m=>{
+      const pct = Math.max(2, Math.round(Math.abs(m.lucroReal)/maxLucroSerie*100));
+      const cor = m.lucroReal>=0 ? 'var(--ok)' : 'var(--err)';
+      const margemMes = m.faturamento ? m.lucroReal/m.faturamento : null;
+      return `<div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:48px;font-size:11px;color:var(--muted);flex-shrink:0;">${mesLabel(m.mes)}</div>
+        <div style="flex:1;background:var(--bg);border-radius:4px;overflow:hidden;height:18px;position:relative;">
+          <div style="width:${pct}%;height:100%;background:${cor};"></div>
+        </div>
+        <div style="width:110px;text-align:right;font-size:11px;font-weight:700;color:${cor};flex-shrink:0;">${fmtBRL(m.lucroReal)}</div>
+        <div style="width:60px;text-align:right;font-size:11px;color:var(--muted);flex-shrink:0;">${fmtPct(margemMes)}</div>
+      </div>`;
+    }).join('')}
+  </div>
+  </div>` : '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Nenhum processo faturado na janela selecionada.</div>';
+
+  // ── Rankings por dimensão (Cliente/Fornecedor/Marca/País) — melhores e
+  // piores por Lucro Real, mesmo pedido do Resultado ("qual cliente da
+  // mais resultado, qual da menos"), agora com 4 dimensões ao mesmo tempo
+  // numa janela maior, em vez de escolher 1 só no agrupamento.
+  const DIMENSOES_ANALISES = [['cliente','Cliente'],['fornecedor','Fornecedor'],['marca','Marca'],['pais','País de Origem']];
+  function agruparPorAnalises(campo){
+    const grupos = {};
+    linhas.forEach(l=>{
+      const chave = l[campo] || '(sem informação)';
+      if(!grupos[chave]) grupos[chave] = { chave, lucroReal:0, faturamento:0, qtd:0 };
+      grupos[chave].lucroReal += (l.lucroReal||0);
+      grupos[chave].faturamento += (l.faturamento||0);
+      grupos[chave].qtd += 1;
+    });
+    return Object.values(grupos).map(g=>({...g, margem: g.faturamento ? g.lucroReal/g.faturamento : null}));
+  }
+
+  const rankingsHtml = DIMENSOES_ANALISES.map(([campo,label])=>{
+    const grupos = agruparPorAnalises(campo).sort((a,b)=>b.lucroReal-a.lucroReal);
+    const melhores = grupos.slice(0,5);
+    const piores = grupos.slice(-5).reverse().filter(g=>!melhores.includes(g));
+    function linhaRanking(g){
+      return `<tr><td style="padding:6px 10px;font-weight:600;">${esc(g.chave)}</td>
+        <td style="padding:6px 10px;text-align:right;color:${g.lucroReal>=0?'var(--ok)':'var(--err)'};font-weight:700;">${fmtBRL(g.lucroReal)}</td>
+        <td style="padding:6px 10px;text-align:right;">${fmtPct(g.margem)}</td>
+        <td style="padding:6px 10px;text-align:right;color:var(--muted);">${g.qtd}</td></tr>`;
+    }
+    return `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;">${label}</div>
+      <div style="display:flex;gap:0;flex-wrap:wrap;">
+        <div style="flex:1;min-width:220px;padding:8px 0;">
+          <div style="padding:0 14px;font-size:10px;font-weight:700;color:var(--ok);text-transform:uppercase;margin-bottom:4px;">Melhores</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">${melhores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
+        </div>
+        <div style="flex:1;min-width:220px;padding:8px 0;border-left:1px solid var(--border);">
+          <div style="padding:0 14px;font-size:10px;font-weight:700;color:var(--err);text-transform:uppercase;margin-bottom:4px;">Piores</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">${piores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── Cruzamento Cliente × Fornecedor — top 10 combinações por Lucro
+  // Real, pra achar "esse cliente só dá lucro com ESSE fornecedor"
+  // (pedido do Ayslan de "conseguir fazer mais de um filtro junto").
+  const cruzGrupos = {};
+  linhas.forEach(l=>{
+    const chave = `${l.cliente||'(sem cliente)'}|||${l.fornecedor||'(sem fornecedor)'}`;
+    if(!cruzGrupos[chave]) cruzGrupos[chave] = { cliente:l.cliente||'(sem cliente)', fornecedor:l.fornecedor||'(sem fornecedor)', lucroReal:0, faturamento:0, qtd:0 };
+    cruzGrupos[chave].lucroReal += (l.lucroReal||0);
+    cruzGrupos[chave].faturamento += (l.faturamento||0);
+    cruzGrupos[chave].qtd += 1;
+  });
+  const cruzTop = Object.values(cruzGrupos).sort((a,b)=>b.lucroReal-a.lucroReal).slice(0,10);
+
+  const cruzamentoHtml = `
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-top:16px;">
+  <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">Cruzamento Cliente × Fornecedor (top 10 por Lucro Real)</div>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+  <thead><tr style="background:var(--bg);">
+    <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Cliente</th>
+    <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
+    <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Processos</th>
+    <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Faturamento</th>
+    <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Lucro Real</th>
+    <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Margem</th>
+  </tr></thead>
+  <tbody>
+  ${cruzTop.map(g=>`<tr style="border-top:1px solid var(--border);">
+    <td style="padding:8px 12px;">${esc(g.cliente)}</td>
+    <td style="padding:8px 12px;">${esc(g.fornecedor)}</td>
+    <td style="padding:8px 12px;text-align:right;">${g.qtd}</td>
+    <td style="padding:8px 12px;text-align:right;">${fmtBRL(g.faturamento)}</td>
+    <td style="padding:8px 12px;text-align:right;font-weight:700;color:${g.lucroReal>=0?'var(--ok)':'var(--err)'};">${fmtBRL(g.lucroReal)}</td>
+    <td style="padding:8px 12px;text-align:right;">${fmtPct(g.faturamento ? g.lucroReal/g.faturamento : null)}</td>
+  </tr>`).join('') || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--muted);">Nenhum processo bate com os filtros atuais.</td></tr>'}
+  </tbody>
+  </table>
+  </div>
+  </div>`;
+
+  el.innerHTML = `
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
+  <div>
+  <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Cliente</label>
+  <select onchange="atualizarFiltroAnalises('cliente', this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;max-width:180px;">
+  <option value="">Todos</option>
+  ${opClientes.map(v=>`<option value="${esc(v)}" ${f.cliente===v?'selected':''}>${esc(v)}</option>`).join('')}
+  </select>
+  </div>
+  <div>
+  <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Janela</label>
+  <div style="display:flex;gap:4px;">
+    ${[[6,'6 meses'],[12,'12 meses'],[24,'24 meses']].map(([v,l])=>`<button type="button" onclick="janelaAnalisesSet(${v})" style="padding:5px 10px;border-radius:6px;border:1px solid ${f.janelaMeses===v?'var(--ac)':'var(--border)'};background:${f.janelaMeses===v?'var(--ac)':'#fff'};color:${f.janelaMeses===v?'#fff':'var(--text)'};font-size:11px;font-weight:600;cursor:pointer;">${l}</button>`).join('')}
+  </div>
+  </div>
+  <div style="font-size:11px;color:var(--muted);">Considerando processos com NF Saída emitida nos últimos ${f.janelaMeses} meses (até ${hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})})</div>
+  </div>
+
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;">
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Filtros avançados (combináveis)</div>
+  <div id="filtros-analises-avancados"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px;">${kpis.join('')}</div>
+
+  ${serieHtml}
+
+  <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Rankings — melhores e piores</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;">${rankingsHtml}</div>
+
+  ${cruzamentoHtml}
+  `;
+
+  renderBarraFiltrosGenerico('filtros-analises-avancados', f.condicoes, defsFiltro, 'filtroAnalisesAdd', 'filtroAnalisesRemove', 'filtroAnalisesChange', focoFiltroAvancado);
+}
+
 // ════════════════════════════════════════════════════════════════
 // FILTRO DE PERÍODO — cada dashboard (executivo/financeiro) tem seu
 // próprio estado independente, identificado por um namespace.

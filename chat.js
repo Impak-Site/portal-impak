@@ -185,6 +185,7 @@ const navModulos = [
 { label: '💰 Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' }, // icone unificado com o menu lateral/titulo do Dashboard Financeiro (controle_v2.html) - antes usava 📊, igual ao Executivo, o que confundia os dois (pedido Ayslan 08/09/2026)
 { label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'financeiro' }, // mesmo modulo de permissao do Financeiro (mesma fonte de dados, so outra visualizacao) - pedido Ayslan 09/09/2026
   { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
+  { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'resultado' }, // mesmo modulo de permissao do Resultado (mesma area de trabalho / mesmos dados, so outra visualizacao) - Fase 3, pedido Ayslan 10/09/2026
   { label: '📺 TV', href: '/tv', key: 'tv', modulo: 'tv' },
 ];
 
@@ -194,6 +195,7 @@ const navModulos = [
 // segurança caso isso mude no futuro).
 const path = window.location.pathname;
 const modAtual = path === '/' ? 'tyredesk'
+  : path.includes('analises') ? 'analises'
   : path.includes('resultado') ? 'resultado'
 : path.includes('financeiro') ? 'financeiro'
 : path.includes('/tv') ? 'tv'

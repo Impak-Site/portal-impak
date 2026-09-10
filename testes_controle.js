@@ -1162,6 +1162,57 @@ teste('filtrarProcessos: limpar o estado avançado de volta (não deixar resídu
   iguais(sandbox.filtrarProcessos(true).length, 0);
 });
 
+// ── TESTES: renderDashAnalises() — Fase 3 (Análises/BI, 10/09/2026) ─
+// Reaproveita o MESMO motor de filtro genérico já testado acima (Fase 1/2)
+// — não retesta avaliarCondicaoFiltro/aplicarFiltrosGenericos de novo,
+// só confirma que a tela nova monta o HTML esperado (KPIs, série mensal,
+// rankings) a partir de _processos, sem lançar erro nos stubs de DOM.
+function setEstadoAnalises(processos, filAnalises){
+  vm.runInContext(
+    `_processos = ${JSON.stringify(processos)}; _filAnalises = ${JSON.stringify(filAnalises)};`,
+    sandbox
+  );
+}
+
+teste('renderDashAnalises: roda sem lançar erro e monta KPIs/série/rankings a partir de _processos', () => {
+  const hoje = new Date().toISOString().slice(0,10);
+  setEstadoAnalises([
+    { id:'p1', cliente:'Cliente A', fornecedor:'Forn X', brand:'Marca X', nf_saida_data:hoje, nf_saida_valor:100000, nf_entrada_valor:60000 }, // lucro 40000
+    { id:'p2', cliente:'Cliente B', fornecedor:'Forn Y', brand:'Marca Y', nf_saida_data:hoje, nf_saida_valor:50000,  nf_entrada_valor:70000 }, // lucro -20000
+  ], { janelaMeses:12, cliente:'', condicoes:[], ordenarCampo:'lucroReal', ordenarDir:'desc' });
+  sandbox.renderDashAnalises();
+  const html = sandbox.document.getElementById('dash-analises-content').innerHTML;
+  verdadeiro(html.includes('Lucro Real (janela)'), 'deveria mostrar o KPI de Lucro Real da janela');
+  verdadeiro(html.includes('Evolução mensal'), 'deveria mostrar a série temporal mensal');
+  verdadeiro(html.includes('Cliente A'), 'Cliente A (melhor lucro) deveria aparecer no ranking');
+  verdadeiro(html.includes('Cliente B'), 'Cliente B (pior lucro) deveria aparecer no ranking');
+  verdadeiro(html.includes('Cruzamento Cliente'), 'deveria mostrar a tabela de cruzamento Cliente × Fornecedor');
+});
+
+teste('renderDashAnalises: filtro avançado combinável (mesmo motor genérico da Fase 1/2) reduz os rankings corretamente', () => {
+  const hoje = new Date().toISOString().slice(0,10);
+  setEstadoAnalises([
+    { id:'p1', cliente:'Cliente A', fornecedor:'Forn X', nf_saida_data:hoje, nf_saida_valor:100000, nf_entrada_valor:60000 }, // margem 40%
+    { id:'p2', cliente:'Cliente B', fornecedor:'Forn Y', nf_saida_data:hoje, nf_saida_valor:50000,  nf_entrada_valor:45000 }, // margem 10%
+  ], { janelaMeses:12, cliente:'', condicoes:[ { campo:'margemReal', operador:'gte', valor:'30', valor2:'' } ], ordenarCampo:'lucroReal', ordenarDir:'desc' });
+  sandbox.renderDashAnalises();
+  const html = sandbox.document.getElementById('dash-analises-content').innerHTML;
+  verdadeiro(html.includes('Cliente A'), 'Cliente A (margem 40%) deveria passar no filtro >=30%');
+  // Cliente B ainda aparece no <select> de cliente (lista sempre todos os clientes de _processos,
+  // não só os filtrados) — então checamos a ausência dele na seção de RANKING, não no HTML inteiro.
+  const iniRanking = html.indexOf('Cruzamento Cliente');
+  const secaoRankings = html.slice(0, iniRanking);
+  const rankingSemSelect = secaoRankings.slice(secaoRankings.indexOf('</select>'));
+  verdadeiro(!rankingSemSelect.includes('Cliente B'), 'Cliente B (margem 10%) deveria ter sido filtrado fora dos rankings');
+});
+
+teste('renderDashAnalises: limpar o estado de volta (não deixar resíduo pros demais testes do arquivo)', () => {
+  setEstadoAnalises([], { janelaMeses:12, cliente:'', condicoes:[], ordenarCampo:'lucroReal', ordenarDir:'desc' });
+  sandbox.renderDashAnalises();
+  const html = sandbox.document.getElementById('dash-analises-content').innerHTML;
+  verdadeiro(html.includes('Nenhum processo faturado na janela selecionada'), 'sem processos, deveria mostrar o aviso de janela vazia');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
