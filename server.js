@@ -3546,6 +3546,14 @@ html += `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automatico
 let destinatarios = (process.env.ALERTA_EMAIL_PARA || '').split(',').map(s => s.trim()).filter(Boolean);
 if (!destinatarios.length) {
 destinatarios = [..._usuariosCache.values()].filter(u => u.role === 'gerente' && u.email).map(u => u.email);
+// Emanuelly (importacao1@impak.com.br) pediu pra receber os alertas diarios
+// tambem (10/09/2026), mas o role dela e 'analista', entao o filtro acima
+// nao pegava o email dela -- adiciona explicitamente aqui. IMPORTANTE: a
+// conta Resend ainda esta em modo sandbox sem dominio verificado (task #147
+// pendente), entao no sandbox so entrega de fato pro email dono da conta
+// Resend -- este destinatario extra so vai comecar a chegar na pratica
+// depois que o dominio impak.com.br for verificado no Resend.
+if (!destinatarios.includes('importacao1@impak.com.br')) destinatarios.push('importacao1@impak.com.br');
 }
 for (const email of destinatarios) {
 try { await enviarEmail(email, `IMPAK Portal - ${total} alerta(s) hoje`, html); }
