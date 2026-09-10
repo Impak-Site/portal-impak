@@ -187,10 +187,163 @@ document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').
 // tem itens lançados, senão NF Saída − NF Entrada). Reaproveita
 // calcularFechamento() em vez de duplicar essa conta.
 // ══════════════════════════════════════════════════════════════════
-let _filResultado = { cliente:'' };
+let _filResultado = { cliente:'', agrupar:'processo', condicoes:[], ordenarCampo:'lucroReal', ordenarDir:'desc' };
 
 function atualizarFiltroResultado(campo, valor){
   _filResultado[campo] = valor;
+  renderDashResultado();
+}
+
+// ════════════════════════════════════════════════════════════════
+// MOTOR DE FILTRO GENÉRICO — reaproveitável em qualquer tela que
+// precise de "filtro inteligente": várias condições combinadas com E
+// (campo + operador + valor), sobre uma lista de objetos "achatados"
+// (todo campo filtrável já como propriedade direta, sem precisar
+// navegar em p.fch.x etc — ver montarLinhasResultado()). Pedido do
+// Ayslan (10/09/2026): "conseguir filtrar tudo que quiser... margem de
+// lucro por cliente, qual cliente da mais resultado, qual da menos,
+// mais de um filtro junto". Fase 1 usa isso no Dashboard Resultado;
+// fases seguintes reaproveitam o mesmo motor na tabela de processos e
+// numa tela de Análises.
+// ════════════════════════════════════════════════════════════════
+const OPERADORES_FILTRO = {
+  texto:  [['contem','contém'], ['eq','é exatamente'], ['dif','é diferente de']],
+  numero: [['eq','='], ['gt','maior que'], ['gte','maior ou igual a'], ['lt','menor que'], ['lte','menor ou igual a'], ['entre','entre']],
+  select: [['eq','é'], ['dif','não é']],
+};
+
+// Avalia UMA condição {campo,operador,valor,valor2} contra uma linha já
+// achatada, usando a definição de campo (defs[cond.campo] = {label,tipo,
+// opcoes?}). Sem valor informado ainda, não filtra nada (condição "em
+// branco" não derruba a lista toda enquanto o usuário está montando).
+function avaliarCondicaoFiltro(linha, cond, defs){
+  const def = defs[cond.campo];
+  if(!def || !cond.operador) return true;
+  if(def.tipo === 'numero'){
+    const n = parseFloat(linha[cond.campo]);
+    if(cond.operador === 'entre'){
+      if(cond.valor === '' || cond.valor2 === '' || cond.valor == null || cond.valor2 == null) return true;
+      const a = parseFloat(cond.valor), b = parseFloat(cond.valor2);
+      if(isNaN(n)) return false;
+      return n >= Math.min(a,b) && n <= Math.max(a,b);
+    }
+    if(cond.valor === '' || cond.valor == null) return true;
+    const alvo = parseFloat(cond.valor);
+    if(isNaN(alvo)) return true;
+    if(isNaN(n)) return false;
+    if(cond.operador === 'eq')  return n === alvo;
+    if(cond.operador === 'gt')  return n > alvo;
+    if(cond.operador === 'gte') return n >= alvo;
+    if(cond.operador === 'lt')  return n < alvo;
+    if(cond.operador === 'lte') return n <= alvo;
+    return true;
+  }
+  // texto/select
+  if(!cond.valor) return true;
+  const s = String(linha[cond.campo]||'').toUpperCase();
+  const alvo = String(cond.valor).toUpperCase();
+  if(cond.operador === 'contem') return s.includes(alvo);
+  if(cond.operador === 'eq')  return s === alvo;
+  if(cond.operador === 'dif') return s !== alvo;
+  return true;
+}
+
+function aplicarFiltrosGenericos(linhas, condicoes, defs){
+  if(!condicoes || !condicoes.length) return linhas;
+  return linhas.filter(l => condicoes.every(c => !c.campo || avaliarCondicaoFiltro(l, c, defs)));
+}
+
+// Desenha a barra de "+ Adicionar filtro" — genérica, recebe os NOMES (em
+// string) das 3 funções de callback específicas da tela que a usa (add/
+// remove/change), porque cada tela guarda seu próprio array de condições
+// num estado independente (mesmo padrão de renderPeriodoSeletor acima,
+// que já recebe callback.name).
+function renderBarraFiltrosGenerico(containerId, condicoes, defs, fnAdd, fnRemove, fnChange){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${condicoes.map((c,i)=>{
+        const def = defs[c.campo] || null;
+        const ops = def ? (OPERADORES_FILTRO[def.tipo]||OPERADORES_FILTRO.texto) : [];
+        return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <select onchange="${fnChange}(${i},'campo',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
+            <option value="">Campo…</option>
+            ${Object.entries(defs).map(([k,d])=>`<option value="${k}" ${c.campo===k?'selected':''}>${esc(d.label)}</option>`).join('')}
+          </select>
+          ${def ? `<select onchange="${fnChange}(${i},'operador',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
+            <option value="">operador…</option>
+            ${ops.map(([v,l])=>`<option value="${v}" ${c.operador===v?'selected':''}>${l}</option>`).join('')}
+          </select>` : ''}
+          ${def && def.tipo==='select' ? `<select onchange="${fnChange}(${i},'valor',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
+            <option value="">valor…</option>
+            ${(def.opcoes||[]).map(v=>`<option value="${esc(v)}" ${c.valor===v?'selected':''}>${esc(v)}</option>`).join('')}
+          </select>` : ''}
+          ${def && def.tipo!=='select' ? `<input type="${def.tipo==='numero'?'number':'text'}" value="${esc(c.valor||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor',this.value)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
+          ${def && def.tipo==='numero' && c.operador==='entre' ? `<span style="font-size:11px;color:var(--muted);">e</span><input type="number" value="${esc(c.valor2||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor2',this.value)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
+          <button type="button" onclick="${fnRemove}(${i})" title="Remover filtro" style="border:none;background:none;color:var(--err);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">✕</button>
+        </div>`;
+      }).join('')}
+      <div>
+        <button type="button" onclick="${fnAdd}()" style="font-size:11px;padding:6px 12px;border:1px dashed var(--border);background:#fff;border-radius:6px;cursor:pointer;color:var(--ac);font-weight:600;">+ Adicionar filtro</button>
+      </div>
+    </div>`;
+}
+
+// Campos filtráveis do Dashboard Resultado — cada um mapeado pra uma
+// propriedade da "linha achatada" montada em montarLinhasResultado().
+// As opções de País/Forma de Pagamento são preenchidas dinamicamente (só
+// com valores que realmente aparecem nos processos), pra não listar país
+// que a Impak nunca importou de lá.
+// Rótulo em português da forma de pagamento (mesmo texto do <option> em
+// controle-modal.js) — usado só pra exibição/filtro no Dashboard Resultado.
+const LABEL_PI_PAGAMENTO = {
+  VISTA: '100% à Vista', PRAZO: '100% a Prazo', PARCELADO: 'Parcelado', ENTRADA_SALDO: 'Entrada + Saldo',
+};
+
+function camposFiltroResultado(linhas){
+  const paises = [...new Set(linhas.map(l=>l.pais).filter(v=>v && v!=='—'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const formas = [...new Set(linhas.map(l=>l.formaPagamento).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return {
+    cliente:        { label:'Cliente', tipo:'texto' },
+    fornecedor:     { label:'Fornecedor', tipo:'texto' },
+    marca:          { label:'Marca', tipo:'texto' },
+    pais:           { label:'País de Origem', tipo:'select', opcoes:paises },
+    formaPagamento: { label:'Forma de Pagamento', tipo:'select', opcoes:formas },
+    margemReal:     { label:'Margem Real (%)', tipo:'numero' },
+    lucroReal:      { label:'Lucro Real (R$)', tipo:'numero' },
+    faturamento:    { label:'Faturamento / NF Saída (R$)', tipo:'numero' },
+    deltaValor:     { label:'Δ Real − Estimado (R$)', tipo:'numero' },
+  };
+}
+
+function filtroResultadoAdd(){
+  _filResultado.condicoes.push({ campo:'', operador:'', valor:'', valor2:'' });
+  renderDashResultado();
+}
+function filtroResultadoRemove(i){
+  _filResultado.condicoes.splice(i,1);
+  renderDashResultado();
+}
+function filtroResultadoChange(i, campo, valor){
+  if(!_filResultado.condicoes[i]) return;
+  _filResultado.condicoes[i][campo] = valor;
+  // Trocar de campo reseta operador/valor (evita "Margem > China", que
+  // não faz sentido nenhum) — mesma ideia de qualquer filtro de planilha.
+  if(campo === 'campo'){ _filResultado.condicoes[i].operador=''; _filResultado.condicoes[i].valor=''; _filResultado.condicoes[i].valor2=''; }
+  renderDashResultado();
+}
+function agruparResultadoSet(valor){
+  _filResultado.agrupar = valor;
+  renderDashResultado();
+}
+function ordenarResultadoSet(campo){
+  if(_filResultado.ordenarCampo === campo){
+    _filResultado.ordenarDir = _filResultado.ordenarDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    _filResultado.ordenarCampo = campo;
+    _filResultado.ordenarDir = 'desc';
+  }
   renderDashResultado();
 }
 
@@ -218,15 +371,37 @@ function renderDashResultado(){
     return true;
   }).map(p => ({ p, fch: calcularFechamento(p) }));
 
-  const totalLucroReal     = realizados.reduce((s,x)=> s + (x.fch.lucroReal||0), 0);
-  const totalLucroEstimado = realizados.reduce((s,x)=> s + (x.fch.lucroEstimado||0), 0);
-  const totalFaturamento   = realizados.reduce((s,x)=> s + (x.fch.nfSaida||0), 0);
+  // Linha "achatada" pra cada processo realizado — o motor de filtro
+  // genérico (aplicarFiltrosGenericos) trabalha em cima disso, não em cima
+  // de {p,fch} aninhado, pra ficar igual em qualquer tela que reaproveitar
+  // o motor (ver comentário acima de OPERADORES_FILTRO).
+  const linhasBase = realizados.map(({p,fch}) => ({
+    p, fch,
+    cliente: p.cliente || '',
+    fornecedor: p.fornecedor || '',
+    marca: p.brand || p.fornecedor || '',
+    pais: paisDoProcesso(p),
+    formaPagamento: LABEL_PI_PAGAMENTO[p.pi_pagamento] || p.pi_pagamento || '',
+    margemReal: fch.nfSaida ? ((fch.lucroReal||0)/fch.nfSaida)*100 : null,
+    lucroReal: fch.lucroReal,
+    lucroEstimado: fch.lucroEstimado,
+    faturamento: fch.nfSaida,
+    deltaValor: fch.deltaValor,
+  }));
+
+  const defsFiltro = camposFiltroResultado(linhasBase);
+  const linhasFiltradas = aplicarFiltrosGenericos(linhasBase, f.condicoes, defsFiltro);
+
+  const totalLucroReal     = linhasFiltradas.reduce((s,x)=> s + (x.fch.lucroReal||0), 0);
+  const totalLucroEstimado = linhasFiltradas.reduce((s,x)=> s + (x.fch.lucroEstimado||0), 0);
+  const totalFaturamento   = linhasFiltradas.reduce((s,x)=> s + (x.fch.nfSaida||0), 0);
   const margemMedia        = totalFaturamento > 0 ? totalLucroReal / totalFaturamento : null;
   const deltaTotal         = totalLucroReal - totalLucroEstimado;
 
   // Processos já cotados (têm estimativa) mas ainda sem NF Saída no período
   // — só um contador informativo, não entra nos totais (evita inflar o
-  // resultado com venda que ainda não aconteceu).
+  // resultado com venda que ainda não aconteceu). Não passa pelos filtros
+  // avançados (não teria "margem real" nem "faturamento" pra filtrar).
   const emAndamento = _processos.filter(p=>{
     if(f.cliente && p.cliente !== f.cliente) return false;
     if(p.nf_saida_data){ const d = parseDataLocal(p.nf_saida_data); if(d>=ini && d<=fim) return false; }
@@ -242,15 +417,80 @@ function renderDashResultado(){
   }
 
   const kpis = [
-    card('Lucro Real', fmtBRL(totalLucroReal), `${realizados.length} processo${realizados.length!==1?'s':''} faturado(s) no período`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
+    card('Lucro Real', fmtBRL(totalLucroReal), `${linhasFiltradas.length} processo${linhasFiltradas.length!==1?'s':''} faturado(s) no filtro atual`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
     card('Lucro Estimado (cotado)', fmtBRL(totalLucroEstimado), 'previsto no Calculador', 'var(--ac)'),
     card('Diferença (Real − Estimado)', (deltaTotal>=0?'+':'')+fmtBRL(deltaTotal), deltaTotal>=0?'rendeu a mais que o cotado':'rendeu a menos que o cotado', deltaTotal>=0?'var(--ok)':'var(--err)'),
     card('Margem Real Média', fmtPct(margemMedia), fmtBRL(totalFaturamento)+' faturado', 'var(--info)'),
     ];
 
-  const linhas = realizados.slice().sort((a,b)=>(b.fch.lucroReal??-Infinity)-(a.fch.lucroReal??-Infinity));
+  // ── Agrupamento — "processo" mostra 1 linha por processo (como sempre
+  // foi); Cliente/Fornecedor/Marca/País somam tudo daquele grupo e ordenam
+  // do maior pro menor lucro por padrão, respondendo direto "quem dá mais/
+  // menos resultado" sem precisar montar filtro nenhum (pedido Ayslan
+  // 10/09/2026).
+  const AGRUPAR_OPCOES = [['processo','Processo'],['cliente','Cliente'],['fornecedor','Fornecedor'],['marca','Marca'],['pais','País de Origem']];
+  const agrupar = f.agrupar || 'processo';
+
+  let linhasTabela; // cada item: {chave, sub-linhas usadas pro onclick, campos exibidos}
+  if(agrupar === 'processo'){
+    linhasTabela = linhasFiltradas.map(l => ({
+      chave: l.p.referencia,
+      onClick: `abrirProcesso('${l.p.id}');toggleDashResultado()`,
+      colUnica: `${esc(l.p.referencia)}${l.p.fechado?' 🔒':''}`,
+      cliente: l.cliente, fornecedor: l.fornecedor,
+      nfSaida: l.faturamento, lucroEstimado: l.lucroEstimado, lucroReal: l.lucroReal,
+      margemReal: l.margemReal!=null ? l.margemReal/100 : null, deltaValor: l.deltaValor,
+      qtd: 1,
+    }));
+  } else {
+    const grupos = {};
+    linhasFiltradas.forEach(l => {
+      const chave = l[agrupar] || '(sem informação)';
+      if(!grupos[chave]) grupos[chave] = { chave, lucroReal:0, lucroEstimado:0, nfSaida:0, qtd:0, temEstimado:false };
+      const g = grupos[chave];
+      g.lucroReal += (l.lucroReal||0);
+      g.nfSaida += (l.faturamento||0);
+      if(l.lucroEstimado != null){ g.lucroEstimado += l.lucroEstimado; g.temEstimado = true; }
+      g.qtd += 1;
+    });
+    linhasTabela = Object.values(grupos).map(g => ({
+      chave: g.chave,
+      onClick: `atualizarFiltroResultado('cliente','${agrupar==='cliente'?esc(g.chave).replace(/'/g,"\\'"):''}')`,
+      colUnica: esc(g.chave),
+      cliente: agrupar==='cliente' ? g.chave : null,
+      nfSaida: g.nfSaida, lucroEstimado: g.temEstimado ? g.lucroEstimado : null, lucroReal: g.lucroReal,
+      margemReal: g.nfSaida ? g.lucroReal/g.nfSaida : null,
+      deltaValor: g.temEstimado ? (g.lucroReal - g.lucroEstimado) : null,
+      qtd: g.qtd,
+    }));
+  }
+
+  // Ordenação — clicar no cabeçalho da coluna alterna asc/desc (mesmo
+  // padrão de toggle de estado usado em ordenarResultadoSet acima). Dir
+  // 'desc' (padrão) = maior valor primeiro; 'asc' = menor primeiro (ou
+  // A→Z quando o campo é texto, ex.: nome do cliente/referência).
+  const ordCampo = f.ordenarCampo || 'lucroReal';
+  const dirAsc = f.ordenarDir === 'asc';
+  linhasTabela.sort((a,b) => {
+    if(ordCampo === 'chave') return dirAsc ? String(a.chave||'').localeCompare(String(b.chave||''),'pt-BR') : String(b.chave||'').localeCompare(String(a.chave||''),'pt-BR');
+    const va = a[ordCampo], vb = b[ordCampo];
+    return dirAsc ? ((va??-Infinity) - (vb??-Infinity)) : ((vb??-Infinity) - (va??-Infinity));
+  });
+
+  const setaOrdenacao = campo => ordCampo === campo ? (dirAsc ? ' ▲' : ' ▼') : '';
+  const th = (label, campo) => {
+    const ativo = ordCampo === campo;
+    return `<th onclick="ordenarResultadoSet('${campo}')" style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:${ativo?'var(--ac)':'var(--muted)'};text-transform:uppercase;cursor:pointer;white-space:nowrap;user-select:none;">${label}${setaOrdenacao(campo)}</th>`;
+  };
+  const thEsq = (label, campo) => {
+    const ativo = ordCampo === campo;
+    return `<th onclick="ordenarResultadoSet('${campo}')" style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:${ativo?'var(--ac)':'var(--muted)'};text-transform:uppercase;cursor:pointer;white-space:nowrap;user-select:none;">${label}${setaOrdenacao(campo)}</th>`;
+  };
+
+  const colunaLabel = agrupar==='processo' ? 'Referência' : (AGRUPAR_OPCOES.find(o=>o[0]===agrupar)||[])[1] || 'Grupo';
+
   el.innerHTML = `
-  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
   <div>
   <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Cliente</label>
   <select onchange="atualizarFiltroResultado('cliente', this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;max-width:180px;">
@@ -258,7 +498,18 @@ function renderDashResultado(){
   ${opClientes.map(v=>`<option value="${esc(v)}" ${f.cliente===v?'selected':''}>${esc(v)}</option>`).join('')}
   </select>
   </div>
+  <div>
+  <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Agrupar por</label>
+  <div style="display:flex;gap:4px;">
+    ${AGRUPAR_OPCOES.map(([v,l])=>`<button type="button" onclick="agruparResultadoSet('${v}')" style="padding:5px 10px;border-radius:6px;border:1px solid ${agrupar===v?'var(--ac)':'var(--border)'};background:${agrupar===v?'var(--ac)':'#fff'};color:${agrupar===v?'#fff':'var(--text)'};font-size:11px;font-weight:600;cursor:pointer;">${l}</button>`).join('')}
+  </div>
+  </div>
   <div style="font-size:11px;color:var(--muted);">Considerando processos com NF Saída emitida em: <strong>${periodoLabel}</strong></div>
+  </div>
+
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;">
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Filtros avançados (combináveis)</div>
+  <div id="filtros-resultado-avancados"></div>
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px;">${kpis.join('')}</div>
@@ -266,39 +517,41 @@ function renderDashResultado(){
   ${emAndamento.length ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">+ ${emAndamento.length} processo${emAndamento.length!==1?'s':''} cotado(s) ainda sem NF Saída neste período (não entram nos totais acima).</div>` : ''}
 
   <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
-  <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">Lucro por processo</div>
+  <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">Lucro por ${colunaLabel.toLowerCase()}${agrupar!=='processo'?' — clique numa coluna pra ordenar; clique numa linha de Cliente pra filtrar só ele':''}</div>
   <div style="overflow-x:auto;">
   <table style="width:100%;border-collapse:collapse;font-size:12px;">
   <thead>
   <tr style="background:var(--bg);">
-  <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Referência</th>
-  <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Cliente</th>
-  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">NF Saída</th>
-  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Lucro Estimado</th>
-  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Lucro Real</th>
-  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Margem Real</th>
-  <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Δ (Real − Estimado)</th>
+  ${thEsq(colunaLabel, 'chave')}
+  ${agrupar!=='processo' ? `<th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Processos</th>` : `<th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Cliente</th>`}
+  ${th('NF Saída','nfSaida')}
+  ${th('Lucro Estimado','lucroEstimado')}
+  ${th('Lucro Real','lucroReal')}
+  ${th('Margem Real','margemReal')}
+  ${th('Δ (Real − Estimado)','deltaValor')}
   </tr>
   </thead>
   <tbody>
-  ${linhas.map(({p,fch})=>{
-    const margem = fch.nfSaida ? (fch.lucroReal||0)/fch.nfSaida : null;
-    return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${p.id}');toggleDashResultado()">
-    <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${esc(p.referencia)}${p.fechado?' 🔒':''}</td>
-    <td style="padding:8px 12px;">${esc(p.cliente||'—')}</td>
-    <td style="padding:8px 12px;text-align:right;">${fmtBRL(fch.nfSaida)}</td>
-    <td style="padding:8px 12px;text-align:right;">${fmtBRL(fch.lucroEstimado)}</td>
-    <td style="padding:8px 12px;text-align:right;font-weight:700;color:${(fch.lucroReal||0)>=0?'var(--ok)':'var(--err)'};">${fmtBRL(fch.lucroReal)}</td>
-    <td style="padding:8px 12px;text-align:right;">${fmtPct(margem)}</td>
-    <td style="padding:8px 12px;text-align:right;font-weight:700;color:${fch.deltaValor==null?'var(--muted)':fch.deltaValor>=0?'var(--ok)':'var(--err)'};">${fch.deltaValor==null?'—':(fch.deltaValor>=0?'+':'')+fmtBRL(fch.deltaValor)}</td>
+  ${linhasTabela.map(l=>{
+    return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="${l.onClick}">
+    <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${l.colUnica}</td>
+    ${agrupar!=='processo' ? `<td style="padding:8px 12px;text-align:right;">${l.qtd}</td>` : `<td style="padding:8px 12px;">${esc(l.cliente||'—')}</td>`}
+    <td style="padding:8px 12px;text-align:right;">${fmtBRL(l.nfSaida)}</td>
+    <td style="padding:8px 12px;text-align:right;">${fmtBRL(l.lucroEstimado)}</td>
+    <td style="padding:8px 12px;text-align:right;font-weight:700;color:${(l.lucroReal||0)>=0?'var(--ok)':'var(--err)'};">${fmtBRL(l.lucroReal)}</td>
+    <td style="padding:8px 12px;text-align:right;">${fmtPct(l.margemReal)}</td>
+    <td style="padding:8px 12px;text-align:right;font-weight:700;color:${l.deltaValor==null?'var(--muted)':l.deltaValor>=0?'var(--ok)':'var(--err)'};">${l.deltaValor==null?'—':(l.deltaValor>=0?'+':'')+fmtBRL(l.deltaValor)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted);">Nenhum processo com NF Saída emitida neste período.</td></tr>'}
+  }).join('') || '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted);">Nenhum processo bate com os filtros atuais.</td></tr>'}
   </tbody>
   </table>
   </div>
   </div>
   `;
+
+  renderBarraFiltrosGenerico('filtros-resultado-avancados', f.condicoes, defsFiltro, 'filtroResultadoAdd', 'filtroResultadoRemove', 'filtroResultadoChange');
 }
+
   
 
 // ════════════════════════════════════════════════════════════════
