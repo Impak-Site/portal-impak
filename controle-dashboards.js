@@ -261,26 +261,41 @@ function aplicarFiltrosGenericos(linhas, condicoes, defs){
 function renderBarraFiltrosGenerico(containerId, condicoes, defs, fnAdd, fnRemove, fnChange){
   const el = document.getElementById(containerId);
   if(!el) return;
+  // Guarda quem tinha foco ANTES de reconstruir o innerHTML — necessário
+  // porque digitar num campo de valor numérico dispara oninput a cada
+  // tecla, e cada chamada de fnChange reconstrói esta barra inteira
+  // (el.innerHTML=...), o que por padrão destruiria o <input> e jogaria o
+  // foco pro <body>, perdendo o restante do que a pessoa ainda ia digitar
+  // (bug real: digitar "30" só registrava o "3"). Ver refoco no final.
+  const ativoAntes = document.activeElement;
+  let refoco = null;
+  if(ativoAntes && el.contains(ativoAntes) && ativoAntes.dataset && ativoAntes.dataset.filIdx != null){
+    refoco = {
+      idx: ativoAntes.dataset.filIdx,
+      campo: ativoAntes.dataset.filCampo,
+      cursor: (typeof ativoAntes.selectionStart === 'number') ? ativoAntes.selectionStart : null,
+    };
+  }
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:6px;">
       ${condicoes.map((c,i)=>{
         const def = defs[c.campo] || null;
         const ops = def ? (OPERADORES_FILTRO[def.tipo]||OPERADORES_FILTRO.texto) : [];
         return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <select onchange="${fnChange}(${i},'campo',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
+          <select data-fil-idx="${i}" data-fil-campo="campo" onchange="${fnChange}(${i},'campo',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
             <option value="">Campo…</option>
             ${Object.entries(defs).map(([k,d])=>`<option value="${k}" ${c.campo===k?'selected':''}>${esc(d.label)}</option>`).join('')}
           </select>
-          ${def ? `<select onchange="${fnChange}(${i},'operador',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
+          ${def ? `<select data-fil-idx="${i}" data-fil-campo="operador" onchange="${fnChange}(${i},'operador',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
             <option value="">operador…</option>
             ${ops.map(([v,l])=>`<option value="${v}" ${c.operador===v?'selected':''}>${l}</option>`).join('')}
           </select>` : ''}
-          ${def && def.tipo==='select' ? `<select onchange="${fnChange}(${i},'valor',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
+          ${def && def.tipo==='select' ? `<select data-fil-idx="${i}" data-fil-campo="valor" onchange="${fnChange}(${i},'valor',this.value)" style="font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;">
             <option value="">valor…</option>
             ${(def.opcoes||[]).map(v=>`<option value="${esc(v)}" ${c.valor===v?'selected':''}>${esc(v)}</option>`).join('')}
           </select>` : ''}
-          ${def && def.tipo!=='select' ? `<input type="${def.tipo==='numero'?'number':'text'}" value="${esc(c.valor||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor',this.value)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
-          ${def && def.tipo==='numero' && c.operador==='entre' ? `<span style="font-size:11px;color:var(--muted);">e</span><input type="number" value="${esc(c.valor2||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor2',this.value)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
+          ${def && def.tipo!=='select' ? `<input data-fil-idx="${i}" data-fil-campo="valor" type="${def.tipo==='numero'?'number':'text'}" value="${esc(c.valor||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor',this.value,this.selectionStart)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
+          ${def && def.tipo==='numero' && c.operador==='entre' ? `<span style="font-size:11px;color:var(--muted);">e</span><input data-fil-idx="${i}" data-fil-campo="valor2" type="number" value="${esc(c.valor2||'')}" placeholder="valor" oninput="${fnChange}(${i},'valor2',this.value,this.selectionStart)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;width:120px;">` : ''}
           <button type="button" onclick="${fnRemove}(${i})" title="Remover filtro" style="border:none;background:none;color:var(--err);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">✕</button>
         </div>`;
       }).join('')}
@@ -288,6 +303,18 @@ function renderBarraFiltrosGenerico(containerId, condicoes, defs, fnAdd, fnRemov
         <button type="button" onclick="${fnAdd}()" style="font-size:11px;padding:6px 12px;border:1px dashed var(--border);background:#fff;border-radius:6px;cursor:pointer;color:var(--ac);font-weight:600;">+ Adicionar filtro</button>
       </div>
     </div>`;
+  // Restaura o foco + posição do cursor no MESMO campo de valor (só faz
+  // sentido pra inputs de texto/número — selects não perdem uma "digitação
+  // em progresso" porque cada escolha já é 1 evento completo).
+  if(refoco && (refoco.campo === 'valor' || refoco.campo === 'valor2')){
+    const novoEl = el.querySelector(`[data-fil-idx="${refoco.idx}"][data-fil-campo="${refoco.campo}"]`);
+    if(novoEl && novoEl.tagName === 'INPUT'){
+      novoEl.focus();
+      if(refoco.cursor != null && novoEl.setSelectionRange){
+        try{ novoEl.setSelectionRange(refoco.cursor, refoco.cursor); }catch(e){ /* type=number não suporta em alguns browsers, ok ignorar */ }
+      }
+    }
+  }
 }
 
 // Campos filtráveis do Dashboard Resultado — cada um mapeado pra uma
