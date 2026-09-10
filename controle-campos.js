@@ -398,6 +398,109 @@ function sincronizarContainerLegado(){
   if(fc && _containers[0]) fc.value = _containers[0].numero||'';
   if(ft && _containers[0]) ft.value = _containers[0].tipo||'40HC';
   atualizarQtdContainersUI();
+  renderDemurrageContainers();
+}
+
+// ════════════════════════════════════════════════════════════════
+// DEMURRAGE POR CONTAINER (pedido da Emanuelly, 10/09/2026): quando o
+// processo tem 2+ containers, a devolucao/RIC/depot/datas sao tratadas
+// separadamente por container pela operacao. Com 1 container so, os
+// campos legados do processo (f_ric_status, f_depot etc.) continuam
+// sendo a fonte direta, sem duplicar UI. Com 2+, escondemos o bloco
+// unico e mostramos um bloco por container; os valores digitados ali
+// sao agregados de volta nos campos legados (sincronizarDemurrageAgregado)
+// para que calcularFase/demurrageDias/dashboards continuem funcionando
+// sem qualquer mudanca -- eles so enxergam os campos "achatados" do
+// processo, nunca _containers diretamente.
+function renderDemurrageContainers(){
+  const single = document.getElementById('demurrage-campos-single');
+  const multi = document.getElementById('demurrage-campos-multi');
+  if(!single || !multi) return; // aba Demurrage ainda nao foi renderizada nesta sessao do modal
+  if(!_containers || _containers.length <= 1){
+    single.style.display = '';
+    multi.style.display = 'none';
+    multi.innerHTML = '';
+    return;
+  }
+  single.style.display = 'none';
+  multi.style.display = '';
+  multi.innerHTML = _containers.map((c,i) => {
+    const num = (c.numero||'').trim() || ('Container ' + (i+1));
+    return `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <div style="font-weight:600;font-size:12px;color:var(--ac);margin-bottom:8px;">📦 ${escContainerLocal(num)}</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
+            <input class="form-input" type="text" inputmode="decimal" value="${exibirMoeda(c.demurrage_valor||'')}" placeholder="0,00"
+              oninput="formatarMoedaInput(this);_containers[${i}].demurrage_valor=this.value;sincronizarDemurrageAgregado()"></div>
+          <div class="form-group"><label class="form-label">Data Devolução</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" value="${escContainerLocal(c.devolucao||'')}"
+              onchange="_containers[${i}].devolucao=this.value;sincronizarDemurrageAgregado();atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Status RIC</label>
+            <select class="form-input" onchange="_containers[${i}].ric_status=this.value;sincronizarDemurrageAgregado();atualizarFaseEmTempoReal()">
+              <option value="" ${!c.ric_status?'selected':''}>—</option>
+              <option value="Isento" ${c.ric_status==='Isento'?'selected':''}>Isento</option>
+              <option value="Termo" ${c.ric_status==='Termo'?'selected':''}>Termo</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Depot</label>
+            <input class="form-input" value="${escContainerLocal(c.depot||'')}" placeholder="Depot de devolução"
+              oninput="_containers[${i}].depot=this.value;sincronizarDemurrageAgregado()"></div>
+          <div class="form-group"><label class="form-label">Data Solicitação</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" value="${escContainerLocal(c.data_solicitacao_demurrage||'')}"
+              onchange="_containers[${i}].data_solicitacao_demurrage=this.value;sincronizarDemurrageAgregado()"></div>
+          <div class="form-group"><label class="form-label">Data Isenção</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" value="${escContainerLocal(c.data_isencao_demurrage||'')}"
+              onchange="_containers[${i}].data_isencao_demurrage=this.value;sincronizarDemurrageAgregado()"></div>
+          <div class="form-group"><label class="form-label">Data de Envio do Termo</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" value="${escContainerLocal(c.data_envio_termo||'')}"
+              onchange="_containers[${i}].data_envio_termo=this.value;sincronizarDemurrageAgregado()"></div>
+          <div class="form-group"><label class="form-label">Data Pagamento Lavagem</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" value="${escContainerLocal(c.data_pagamento_lavagem||'')}"
+              onchange="_containers[${i}].data_pagamento_lavagem=this.value;sincronizarDemurrageAgregado();atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Data de Pagamento da Demurrage</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" value="${escContainerLocal(c.data_pagamento_demurrage||'')}"
+              onchange="_containers[${i}].data_pagamento_demurrage=this.value;sincronizarDemurrageAgregado()"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  sincronizarDemurrageAgregado();
+}
+
+// Recalcula os campos legados (f_data_devolucao_vazio, f_ric_status etc.)
+// a partir dos dados por container, só quando há 2+ containers (com 1 só,
+// os campos legados já são preenchidos diretamente e não devem ser
+// mexidos aqui). Regra de "Finalizado" confirmada com o Ayslan
+// (10/09/2026): só quando TODOS os containers estiverem devolvidos E
+// (isentos de RIC OU com lavagem paga) -- daí o data_devolucao_vazio
+// agregado só é preenchido quando esse "todos resolvidos" é verdadeiro,
+// que é exatamente a condição que calcularFase() já checa.
+function sincronizarDemurrageAgregado(){
+  if(!_containers || _containers.length <= 1) return;
+  const parseVal = s => { if(!s) return 0; const n = parseFloat(String(s).replace(/\./g,'').replace(',','.')); return isNaN(n) ? 0 : n; };
+  const datasOrdenadas = arr => arr.filter(Boolean).slice().sort();
+  const todosResolvidos = _containers.every(c => c.devolucao && (c.ric_status === 'Isento' || c.data_pagamento_lavagem));
+
+  const fDevol = document.getElementById('f_data_devolucao_vazio');
+  const fRic = document.getElementById('f_ric_status');
+  const fLavagem = document.getElementById('f_data_pagamento_lavagem');
+  const fValor = document.getElementById('f_demurrage_valor');
+  const fDepot = document.getElementById('f_depot');
+  const fSolic = document.getElementById('f_data_solicitacao_demurrage');
+  const fIsencao = document.getElementById('f_data_isencao_demurrage');
+  const fEnvio = document.getElementById('f_data_envio_termo');
+  const fPagDemur = document.getElementById('f_data_pagamento_demurrage');
+
+  if(fDevol) fDevol.value = todosResolvidos ? (datasOrdenadas(_containers.map(c=>c.devolucao)).pop() || '') : '';
+  if(fRic) fRic.value = todosResolvidos ? (_containers.every(c=>c.ric_status==='Isento') ? 'Isento' : 'Termo') : '';
+  if(fLavagem) fLavagem.value = todosResolvidos ? (datasOrdenadas(_containers.map(c=>c.data_pagamento_lavagem)).pop() || '') : '';
+  const total = _containers.reduce((s,c)=>s+parseVal(c.demurrage_valor),0);
+  if(fValor) fValor.value = total ? exibirMoeda(total) : '';
+  if(fDepot) fDepot.value = [...new Set(_containers.map(c=>c.depot).filter(Boolean))].join(' / ');
+  if(fSolic) fSolic.value = datasOrdenadas(_containers.map(c=>c.data_solicitacao_demurrage)).shift() || '';
+  if(fIsencao) fIsencao.value = datasOrdenadas(_containers.map(c=>c.data_isencao_demurrage)).pop() || '';
+  if(fEnvio) fEnvio.value = datasOrdenadas(_containers.map(c=>c.data_envio_termo)).pop() || '';
+  if(fPagDemur) fPagDemur.value = datasOrdenadas(_containers.map(c=>c.data_pagamento_demurrage)).pop() || '';
 }
 
 // Campo único de Qtd. Containers (pedido do Ayslan, 10/09/2026): antes
@@ -1004,33 +1107,6 @@ function exibirMoeda(v){
   return parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
-
-// === Devolucao de vazio por container (extensao da lista de containers) ===
-(function(){
-  if (typeof renderMultiContainers === 'function') {
-    var _origRenderMultiContainers = renderMultiContainers;
-    renderMultiContainers = function(){
-      _origRenderMultiContainers();
-      renderDevolucoesPorContainer();
-    };
-  }
-})();
-
-function renderDevolucoesPorContainer(){
-  var box = document.getElementById('container-devolucoes-list');
-  if(!box) return;
-  if(!_containers || !_containers.length){ box.innerHTML=''; return; }
-  box.innerHTML = '<label class="form-label" style="margin-top:10px;display:block;">Devolu\u00e7\u00e3o de Vazio (por container)</label>' +
-    _containers.map(function(c,i){
-      var num = (c.numero||'').trim();
-      var label = num ? num : ('Container ' + (i+1));
-      return '<div style="display:grid;grid-template-columns:1fr 160px;gap:6px;align-items:center;margin-bottom:6px;">' +
-        '<span style="font-size:12px;color:var(--dim);">' + escContainerLocal(label) + '</span>' +
-        '<input class="form-input" type="date" value="' + escContainerLocal(c.devolucao||'') + '" ' +
-        'oninput="_containers[' + i + '].devolucao=this.value">' +
-        '</div>';
-    }).join('');
-}
 
 function escContainerLocal(s){
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');

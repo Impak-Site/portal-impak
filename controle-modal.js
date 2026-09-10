@@ -582,29 +582,37 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Data Devolução</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Status RIC</label>
-            <select class="form-input" id="f_ric_status">
-              <option value="" ${!p.ric_status?'selected':''}>—</option>
-              <option value="Isento" ${p.ric_status==='Isento'?'selected':''}>Isento</option>
-              <option value="Termo" ${p.ric_status==='Termo'?'selected':''}>Termo</option>
-            </select></div>
-          <div class="form-group"><label class="form-label">Depot</label>
-            <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução"></div>
-          <div class="form-group"><label class="form-label">Data Solicitação</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_solicitacao_demurrage" value="${esc(p.data_solicitacao_demurrage)}"></div>
-          <div class="form-group"><label class="form-label">Data Isenção</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_isencao_demurrage" value="${esc(p.data_isencao_demurrage)}"></div>
-          <div class="form-group"><label class="form-label">Data de Envio do Termo</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_envio_termo" value="${esc(p.data_envio_termo)}"></div>
-          <div class="form-group"><label class="form-label">Data Pagamento Lavagem</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_lavagem" value="${esc(p.data_pagamento_lavagem)}"></div>
-          <div class="form-group"><label class="form-label">Data de Pagamento da Demurrage</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_demurrage" value="${esc(p.data_pagamento_demurrage)}" onchange="atualizarFaseEmTempoReal()"></div>
         </div>
+        <div id="demurrage-campos-single">
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Valor Demurrage (R$)</label>
+              <input class="form-input" type="text" inputmode="decimal" id="f_demurrage_valor" value="${exibirMoeda(p.demurrage_valor)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarFaseEmTempoReal()"></div>
+            <div class="form-group"><label class="form-label">Data Devolução</label>
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <div class="form-group"><label class="form-label">Status RIC</label>
+              <select class="form-input" id="f_ric_status">
+                <option value="" ${!p.ric_status?'selected':''}>—</option>
+                <option value="Isento" ${p.ric_status==='Isento'?'selected':''}>Isento</option>
+                <option value="Termo" ${p.ric_status==='Termo'?'selected':''}>Termo</option>
+              </select></div>
+            <div class="form-group"><label class="form-label">Depot</label>
+              <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução"></div>
+            <div class="form-group"><label class="form-label">Data Solicitação</label>
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_solicitacao_demurrage" value="${esc(p.data_solicitacao_demurrage)}"></div>
+            <div class="form-group"><label class="form-label">Data Isenção</label>
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_isencao_demurrage" value="${esc(p.data_isencao_demurrage)}"></div>
+            <div class="form-group"><label class="form-label">Data de Envio do Termo</label>
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_envio_termo" value="${esc(p.data_envio_termo)}"></div>
+            <div class="form-group"><label class="form-label">Data Pagamento Lavagem</label>
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_lavagem" value="${esc(p.data_pagamento_lavagem)}"></div>
+            <div class="form-group"><label class="form-label">Data de Pagamento da Demurrage</label>
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_demurrage" value="${esc(p.data_pagamento_demurrage)}" onchange="atualizarFaseEmTempoReal()"></div>
+          </div>
+        </div>
+        <!-- Preenchido via JS (renderDemurrageContainers, controle-campos.js) quando o
+             processo tem 2+ containers -- cada um com sua propria devolucao/RIC/depot,
+             em vez do bloco unico acima. Pedido da Emanuelly (10/09/2026). -->
+        <div id="demurrage-campos-multi" style="display:none;margin-top:4px;"></div>
         <div id="demur-info-wrap">${demurInfo}</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
@@ -627,7 +635,6 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <label class="form-label">Containers</label>
             <div id="multi-containers-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
             <button type="button" onclick="adicionarContainer()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Container</button>
-            <div id="container-devolucoes-list" style="margin-top:10px;"></div>
             <input type="hidden" id="f_containers_json">
             <input type="hidden" id="f_container" value="${esc(p.container||'')}">
             <input type="hidden" id="f_tipo_container" value="${esc(p.tipo_container||'40HC')}">
