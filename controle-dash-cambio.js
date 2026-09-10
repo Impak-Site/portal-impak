@@ -640,25 +640,26 @@ function renderDashCambio(){
     const start = accDonut; accDonut += pct;
     return `${DONUT_CORES[i]||'#e2e8f0'} ${start.toFixed(2)}% ${accDonut.toFixed(2)}%`;
   }).join(', ');
-  const fornecedorHtml = !donutLista.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;height:100%;">
-    <div style="font-size:14px;font-weight:700;margin-bottom:14px;">🏭 Exposição por Fornecedor</div>
-    <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;">
-      <div style="width:140px;height:140px;border-radius:50%;flex-shrink:0;background:conic-gradient(${donutStops || '#e2e8f0 0% 100%'});position:relative;">
-        <div style="position:absolute;inset:20px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-          <div style="font-size:9.5px;color:var(--muted);font-weight:700;">TOTAL</div>
+  const fornecedorHtml = !donutLista.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:20px 22px;height:100%;box-sizing:border-box;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:18px;">🏭 Exposição por Fornecedor</div>
+    <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap;">
+      <div style="width:150px;height:150px;border-radius:50%;flex-shrink:0;background:conic-gradient(${donutStops || '#e2e8f0 0% 100%'});position:relative;">
+        <div style="position:absolute;inset:22px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <div style="font-size:9.5px;color:var(--muted);font-weight:700;letter-spacing:0.03em;">TOTAL</div>
           <div style="font-size:14px;font-weight:800;${MONO}">${fmtUSD(totalDonut).replace('USD ','')}</div>
         </div>
       </div>
-      <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:7px;">
+      <div style="flex:1;min-width:260px;display:flex;flex-direction:column;">
         ${donutLista.map(([nome,val],i) => {
           const pct = totalDonut>0 ? Math.round(val/totalDonut*100) : 0;
           const ativo = _cambioFiltro && _cambioFiltro.tipo==='fornecedor' && _cambioFiltro.nome===nome;
           const clicavel = nome !== 'Outros fornecedores';
-          return `<div ${clicavel?`onclick="_cambioFiltro=${ativo?'null':`{tipo:'fornecedor',nome:'${nome.replace(/'/g,"\\'")}'}`};renderDashCambio()"`:''} style="display:flex;align-items:center;gap:8px;font-size:12px;${clicavel?'cursor:pointer;':''}${ativo?'background:#f1f5f9;border-radius:6px;padding:3px 6px;margin:-3px -6px;':''}">
-            <span style="width:10px;height:10px;border-radius:2px;background:${DONUT_CORES[i]||'#e2e8f0'};flex-shrink:0;"></span>
-            <span style="flex:1;font-weight:600;">${esc(nome)}</span>
-            <span style="color:var(--muted);">${pct}%</span>
-            <span style="font-weight:700;${MONO}">${fmtUSD(val)}</span>
+          const ultima = i === donutLista.length-1;
+          return `<div ${clicavel?`onclick="_cambioFiltro=${ativo?'null':`{tipo:'fornecedor',nome:'${nome.replace(/'/g,"\\'")}'}`};renderDashCambio()"`:''} style="display:flex;align-items:center;gap:10px;font-size:12.5px;padding:9px 8px;${ultima?'':'border-bottom:1px solid #f1f5f9;'}${clicavel?'cursor:pointer;':''}${ativo?'background:#f1f5f9;border-radius:6px;':''}">
+            <span style="width:11px;height:11px;border-radius:3px;background:${DONUT_CORES[i]||'#e2e8f0'};flex-shrink:0;"></span>
+            <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
+            <span style="color:var(--muted);width:34px;text-align:right;flex-shrink:0;">${pct}%</span>
+            <span style="font-weight:700;width:130px;text-align:right;flex-shrink:0;${MONO}">${fmtUSD(val)}</span>
           </div>`;
         }).join('')}
       </div>
