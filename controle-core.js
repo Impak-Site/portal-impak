@@ -2681,9 +2681,13 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
   if(badgeSolicCancelamento){ badgeSolicCancelamento.textContent=solicitacoesCancelamento; badgeSolicCancelamento.style.display=solicitacoesCancelamento>0?'block':'none'; }
   document.getElementById('badge-total').textContent = total;
 
+  // O "0" na fonte Syne (usada em .stat-num) renderiza como uma forma
+  // oval/rosquinha decorativa, quase ilegível como numeral -- troca pra
+  // fonte padrão só quando o valor é zero, sem mexer na aparência dos
+  // outros números (achado na auditoria visual, 10/09/2026).
   el.innerHTML = stats.map(s=>`
     <div class="stat-card" onclick="setFaseFilter('${s.filtro}')">
-      <div class="stat-num" style="color:${s.cor}">${s.num}</div>
+      <div class="stat-num" style="color:${s.cor}${s.num===0 ? ';font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;font-weight:700;' : ''}">${s.num}</div>
       <div class="stat-label">${s.label}</div>
     </div>`).join('');
 }

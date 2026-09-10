@@ -563,7 +563,7 @@ function renderDashFinanceiro(){
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Fornecedor</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">País</th>
               <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Moeda</th>
-              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor (USD)</th>
+              <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Valor (USD)</th>
               <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Câmbio</th>
               <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Valor (BRL)</th>
               <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Vencimento</th>
@@ -591,9 +591,9 @@ function renderDashFinanceiro(){
                 <td style="padding:8px 12px;">${x.fornecedor}</td>
                 <td style="padding:8px 12px;">${x.pais}</td>
                 <td style="padding:8px 12px;">${x.moeda}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmt(x.valorUsd)}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;" title="${cambioReal?'Câmbio fechado (real)':'Câmbio previsto — ainda não fechado'}">R$ ${cambioLabel}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;">${fmtBRL(valorBRL)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;">${fmt(x.valorUsd)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;" title="${cambioReal?'Câmbio fechado (real)':'Câmbio previsto — ainda não fechado'}">R$ ${cambioLabel}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;">${fmtBRL(valorBRL)}</td>
                 <td style="padding:8px 12px;text-align:center;">${x.vencimento?new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR'):'—'}</td>
                 <td style="padding:8px 12px;text-align:center;">${statusHtml}</td>
               </tr>`;

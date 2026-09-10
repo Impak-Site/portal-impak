@@ -1014,8 +1014,8 @@ function renderCustosReaisTab(p){
           <span>Margem: <strong style="color:${(totG.margem||0)>=0?'var(--ok)':'var(--err)'};">${r2g(totG.margem||0)}</strong></span>
         </div>`
     ) : '';
-    return `<div style="margin-bottom:22px;">
-      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">${g.grupo}</div>
+    return `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:14px 16px;">
+      <div style="font-size:12px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">${g.grupo}</div>
       <table style="width:100%;border-collapse:collapse;">
         <thead>
           <tr style="border-bottom:2px solid var(--border);">
@@ -1061,8 +1061,8 @@ function renderNotasBossBlock(p){
   const valorSalvo = (reais.notas_boss_valor != null && reais.notas_boss_valor !== '') ? reais.notas_boss_valor : '';
   const nb = calcularNotasBoss(p);
   const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  return `<div style="margin-bottom:22px;">
-    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Notas Fiscais BOSS (opcional)</div>
+  return `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:14px 16px;">
+    <div style="font-size:12px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">Notas Fiscais BOSS (opcional)</div>
     <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Quando o processo tambem fatura por uma nota separada da NF Saída principal, lance aqui o valor total dela — os impostos (IR retido, ISS, PIS, COFINS, IRPJ, CSLL, IBS, CBS) são calculados automaticamente e o líquido entra somado ao Lucro Real.</div>
     <div class="form-group" style="max-width:220px;margin-bottom:8px;">
       <label class="form-label">Valor das Notas Boss (R$)</label>
@@ -1088,8 +1088,8 @@ function renderJurosCobradoBlock(p){
   const reais = p.real_json || {};
   const valorSalvo = (reais.juros_valor != null && reais.juros_valor !== '') ? reais.juros_valor : '';
   const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  return `<div style="margin-bottom:22px;">
-    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Juros Cobrado do Cliente (opcional)</div>
+  return `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:14px 16px;">
+    <div style="font-size:12px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">Juros Cobrado do Cliente (opcional)</div>
     <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Quando o processo cobra juro à parte (parcelamento/financiamento), lance aqui o valor — soma direto à receita (junto com a NF Saída) pro Lucro Real. Os custos operacionais desse juro (PIS 0,65% + COFINS 4%, tipicamente) devem ser somados manualmente nos campos "Diferença PIS/COFINS" (aba Diferenças de Impostos), igual a planilha já faz.</div>
     <div class="form-group" style="max-width:220px;">
       <label class="form-label">Valor do Juro Cobrado (R$)</label>
@@ -1282,18 +1282,40 @@ async function salvarCustosReaisTab(){
 // documento e preencheu estes campos" (ver extrairComIA() e o render abaixo).
 const LOG_CAMPO_LEITURA_IA = '📄_leitura_ia';
 const LABELS_CAMPOS_IA = {
-  referencia:'Referência', fornecedor:'Fornecedor/Exportador', cliente:'Cliente',
+  referencia:'Referência', finalidade:'Finalidade', fornecedor:'Fornecedor/Exportador', brand:'Marca',
+  qtd_containers_prevista:'Qtd. Containers (previsto)', cliente:'Cliente', produto:'Produto', obs:'Observações',
   itens:'Itens/Produtos', pi_numero:'Nº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
-  pi_incoterm:'Incoterm', pi_pagamento:'Forma de pagamento', etd:'ETD', eta:'ETA',
-  armador:'Armador', navio:'Navio', porto_origem:'Porto de origem', porto_destino:'Porto de destino',
-  hbl:'HBL', mbl:'MBL', container:'Container', lacre:'Lacre', valor_frete:'Valor do frete',
-  moeda_frete:'Moeda do frete', numero_di:'Nº DI', data_registro_di:'Data registro DI',
-  canal:'Canal', data_liberacao:'Data liberação', ci_numero:'Nº CI', ci_valor_usd:'Valor CI (USD)',
-  ci_data:'Data CI', data_chegada:'Data de chegada', ce_master:'CE Master', ce_house:'CE House',
-  ce_data_embarque:'Data embarque (CE)', nf_entrada_numero:'Nº NF entrada', nf_entrada_data:'Data NF entrada',
-  nf_entrada_valor:'Valor NF entrada', nf_saida_numero:'Nº NF saída', nf_saida_data:'Data NF saída',
-  nf_saida_valor:'Valor NF saída', nf_saida_cfop:'CFOP NF saída', data_devolucao_vazio:'Data devolução vazio',
+  pi_incoterm:'Incoterm', pi_pagamento:'Forma de pagamento', pi_pago:'PI paga',
+  pi_entrada_pct:'% Entrada', pi_prazo_dias:'Prazo (dias)', pi_data_entrada:'Data Entrada', pi_data_saldo:'Data Saldo',
+  previsao_prontidao:'Previsão de prontidão', data_prontidao:'Data de prontidão',
+  booking_numero:'Nº Booking', armador:'Armador', agente:'Agente de carga', navio:'Navio', viagem:'Viagem',
+  valor_frete:'Valor do frete', moeda_frete:'Moeda do frete', porto_origem:'Porto de origem', porto_destino:'Porto de destino',
+  etd:'ETD', eta:'ETA', free_time:'Free time', data_embarque:'Data de embarque', hbl:'HBL', mbl:'MBL',
+  consignatario:'Consignatário', notify:'Notify', container:'Container', tipo_container:'Tipo de container',
+  aprovacao_hbl:'Aprovação HBL', solicitacao_li:'Solicitação LI',
+  peso_bruto:'Peso bruto', volumes:'Volumes', data_chegada:'Data de chegada', data_presenca:'Data de presença de carga',
+  demurrage_vencimento:'Vencimento Demurrage', armazenagem_vencimento:'Vencimento Armazenagem',
+  data_registro_di:'Data registro DI', numero_di:'Nº DI', canal:'Canal',
+  data_parametrizacao:'Data parametrização', data_liberacao:'Data liberação',
+  ci_numero:'Nº CI', ci_data:'Data CI', ci_valor_usd:'Valor CI (USD)',
+  ce_master:'CE Master', ce_house:'CE House', ce_data_embarque:'Data embarque (CE)', pendencia_revisao:'Pendência/Revisão',
+  data_agendamento:'Data de agendamento', data_carregamento:'Data de carregamento',
+  transportadora:'Transportadora', placa:'Placa', horario_retirada:'Horário de retirada',
+  agendamento_cancelado:'Agendamento cancelado', motivo_cancelamento:'Motivo do cancelamento',
+  nf_entrada_numero:'Nº NF entrada', nf_entrada_data:'Data NF entrada', nf_entrada_valor:'Valor NF entrada',
+  nf_saida_numero:'Nº NF saída', nf_saida_data:'Data NF saída', nf_saida_valor:'Valor NF saída', nf_saida_cfop:'CFOP NF saída',
+  data_devolucao_vazio:'Data devolução vazio', demurrage_valor:'Valor Demurrage', armazem:'Armazém',
+  ric_status:'Status RIC', depot:'Depot',
+  data_solicitacao_demurrage:'Data solicitação Demurrage', data_isencao_demurrage:'Data isenção Demurrage',
+  data_envio_termo:'Data envio do termo', data_pagamento_lavagem:'Data pagamento lavagem', data_pagamento_demurrage:'Data pagamento Demurrage',
+  despachante:'Despachante', pi_cambio:'Câmbio PI', pi_cambio_fechado:'Câmbio fechado',
+  pi_cambio_entrada:'Câmbio Entrada', pi_cambio_saldo:'Câmbio Saldo', pi_cambio_banco:'Banco do câmbio', pi_cambio_custo:'Custo do câmbio',
+  containers_json:'Containers', produtos_json:'Produtos', vendas_json:'Vendas', pi_parcelas_json:'Parcelas de pagamento',
 };
+// Campos cujo valor bruto e um blob JSON (lista de containers/produtos/
+// vendas/parcelas) — no Historico nao faz sentido despejar o JSON inteiro
+// na tela, so avisar que aquele bloco foi atualizado.
+const CAMPOS_JSON_HISTORICO = new Set(['containers_json','produtos_json','vendas_json','pi_parcelas_json']);
 async function carregarHistorico(processoId){
   const lista = document.getElementById('historico-lista');
   if(!lista) return;
@@ -1308,9 +1330,13 @@ async function carregarHistorico(processoId){
     }
     lista.innerHTML = '<div class="log-list">' + d.log.map(l=>{
       const isLeituraIA = l.campo === LOG_CAMPO_LEITURA_IA;
+      const isCampoJson = CAMPOS_JSON_HISTORICO.has(l.campo);
+      const labelCampo = LABELS_CAMPOS_IA[l.campo] || l.campo || '';
       const texto = isLeituraIA
         ? ` leu o documento <strong>${esc(l.valor_antes||'?')}</strong> com IA e preencheu: ${esc(l.valor_depois||'—')}`
-        : ` alterou <strong>${esc(l.campo||'')}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}`;
+        : isCampoJson
+        ? ` atualizou <strong>${esc(labelCampo)}</strong>`
+        : ` alterou <strong>${esc(labelCampo)}</strong>: ${esc(String(l.valor_antes||'—'))} → ${esc(String(l.valor_depois||'—'))}`;
       return `<div class="log-item">
         <div class="log-avatar">${isLeituraIA ? '🤖' : esc((l.usuario||'?').slice(0,2).toUpperCase())}</div>
         <div class="log-content">
@@ -1640,19 +1666,19 @@ function renderPagamentoInfo(p){
   const brl = val * _cambio.USD;
   let rows = '';
   if(p.pi_pagamento==='VISTA'){
-    rows=`<div class="pagamento-row"><span>Pagamento à vista</span><span>USD ${val.toFixed(2)}</span></div>
-    <div class="pagamento-row"><span>Estimativa BRL</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    rows=`<div class="pagamento-row"><span>Pagamento à vista</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Estimativa BRL</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PRAZO'){
-    rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toFixed(2)}</span></div>`;
+    rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='ENTRADA_SALDO'){
     const pct = parseFloat(p.pi_entrada_pct||30)/100;
     const ent = val*pct; const sld = val*(1-pct);
     const cambioEnt = parseFloat(p.pi_cambio_entrada) || _cambio.USD;
     const cambioSld = parseFloat(p.pi_cambio_saldo)   || _cambio.USD;
     const entBRL = ent*cambioEnt; const sldBRL = sld*cambioSld;
-    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) · câmbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toFixed(2)} · R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) · câmbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toFixed(2)} · R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Total</span><span>USD ${val.toFixed(2)} · R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) · câmbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) · câmbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
+    <div class="pagamento-row"><span>Total</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${(entBRL+sldBRL).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PARCELADO'){
     let parcelas = [];
     try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
@@ -1663,14 +1689,14 @@ function renderPagamentoInfo(p){
       const brlPc = v*c;
       totalUsd += v; totalBrl += brlPc;
       const venc = pc.data_vencimento ? ' · ' + parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '';
-      rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} · câmbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toFixed(2)} · R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+      rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} · câmbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
     });
-    rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toFixed(2)} · R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`;
+    rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
     // Como cada parcela usa valor fixo em USD (nÃÂÃÂ£o %), nÃÂÃÂ£o hÃÂÃÂ¡ garantia
     // automÃÂÃÂ¡tica de que a soma bate com o Valor USD da PI ÃÂ¢ÃÂÃÂ sinalizar em vez
     // de deixar passar batido (percentual, ao contrÃÂÃÂ¡rio, sempre soma 100%).
     if(val && Math.abs(totalUsd-val) > 0.01){
-      rows += `<div class="pagamento-row" style="color:#b45309;"><span>⚠ Parcelas somam USD ${totalUsd.toFixed(2)}, mas o Valor USD da PI é USD ${val.toFixed(2)}</span><span></span></div>`;
+      rows += `<div class="pagamento-row" style="color:#b45309;"><span>⚠ Parcelas somam USD ${totalUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}, mas o Valor USD da PI é USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span><span></span></div>`;
     }
   }
   return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
