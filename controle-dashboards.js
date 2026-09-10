@@ -258,24 +258,38 @@ function aplicarFiltrosGenericos(linhas, condicoes, defs){
 // remove/change), porque cada tela guarda seu próprio array de condições
 // num estado independente (mesmo padrão de renderPeriodoSeletor acima,
 // que já recebe callback.name).
-function renderBarraFiltrosGenerico(containerId, condicoes, defs, fnAdd, fnRemove, fnChange){
+// Captura foco/cursor ATUAL num campo de valor da barra de filtro — precisa
+// ser chamado ANTES de qualquer el.innerHTML=... que vá reconstruir o
+// container (mesmo um innerHTML "de fora", como o do próprio
+// renderDashResultado, que reconstrói a tela inteira ANTES de chamar
+// renderBarraFiltrosGenerico pra preencher só o pedaço da barra — se a
+// captura for feita só dentro de renderBarraFiltrosGenerico, já é tarde:
+// o foco já foi perdido pelo innerHTML de fora). Ver uso em
+// renderDashResultado().
+function capturarFocoFiltro(containerId){
   const el = document.getElementById(containerId);
-  if(!el) return;
-  // Guarda quem tinha foco ANTES de reconstruir o innerHTML — necessário
-  // porque digitar num campo de valor numérico dispara oninput a cada
-  // tecla, e cada chamada de fnChange reconstrói esta barra inteira
-  // (el.innerHTML=...), o que por padrão destruiria o <input> e jogaria o
-  // foco pro <body>, perdendo o restante do que a pessoa ainda ia digitar
-  // (bug real: digitar "30" só registrava o "3"). Ver refoco no final.
-  const ativoAntes = document.activeElement;
-  let refoco = null;
-  if(ativoAntes && el.contains(ativoAntes) && ativoAntes.dataset && ativoAntes.dataset.filIdx != null){
-    refoco = {
-      idx: ativoAntes.dataset.filIdx,
-      campo: ativoAntes.dataset.filCampo,
-      cursor: (typeof ativoAntes.selectionStart === 'number') ? ativoAntes.selectionStart : null,
+  const ativo = document.activeElement;
+  if(el && ativo && el.contains(ativo) && ativo.dataset && ativo.dataset.filIdx != null){
+    return {
+      idx: ativo.dataset.filIdx,
+      campo: ativo.dataset.filCampo,
+      cursor: (typeof ativo.selectionStart === 'number') ? ativo.selectionStart : null,
     };
   }
+  return null;
+}
+
+function renderBarraFiltrosGenerico(containerId, condicoes, defs, fnAdd, fnRemove, fnChange, focoPreCapturado){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  // Foco/cursor de quem estava digitando — ou já veio capturado de fora
+  // (renderDashResultado captura ANTES do seu próprio innerHTML de tela
+  // inteira, que rodaria antes desta função e já teria destruído o
+  // <input>), ou captura agora mesmo (telas como a Fase 2, onde esta barra
+  // é o único innerHTML tocado nesse fluxo, então o foco ainda está vivo
+  // neste ponto). Sem isso, digitar "30" só registrava o "3" — cada
+  // oninput reconstruía o campo do zero e jogava o foco pro <body>.
+  const refoco = focoPreCapturado !== undefined ? focoPreCapturado : capturarFocoFiltro(containerId);
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:6px;">
       ${condicoes.map((c,i)=>{
@@ -377,6 +391,12 @@ function ordenarResultadoSet(campo){
 function renderDashResultado(){
   const el = document.getElementById('dash-resultado-content');
   if(!el) return;
+
+  // Captura ANTES do innerHTML=... logo abaixo (que reconstrói a tela
+  // inteira, incluindo o placeholder da barra de filtro avançado) — se
+  // capturasse só dentro de renderBarraFiltrosGenerico, já seria tarde: o
+  // innerHTML=... já teria destruído o <input> e jogado o foco pro <body>.
+  const focoFiltroAvancado = capturarFocoFiltro('filtros-resultado-avancados');
 
   renderPeriodoSeletor('periodo-seletor-resultado', 'resultado', renderDashResultado);
   const {ini, fim, label: periodoLabel} = calcularPeriodo('resultado');
@@ -576,7 +596,7 @@ function renderDashResultado(){
   </div>
   `;
 
-  renderBarraFiltrosGenerico('filtros-resultado-avancados', f.condicoes, defsFiltro, 'filtroResultadoAdd', 'filtroResultadoRemove', 'filtroResultadoChange');
+  renderBarraFiltrosGenerico('filtros-resultado-avancados', f.condicoes, defsFiltro, 'filtroResultadoAdd', 'filtroResultadoRemove', 'filtroResultadoChange', focoFiltroAvancado);
 }
 
   
