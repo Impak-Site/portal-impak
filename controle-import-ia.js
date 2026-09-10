@@ -870,6 +870,35 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(!_editando._camposIA) _editando._camposIA = {};
     const foiPreenchidoPorIA = campo => !!_editando._camposIA[campo];
     const marcarComoIA = campo => { _editando._camposIA[campo] = true; camposLidosNestaLeitura.push(campo); };
+
+    // ── Conflitos: campo já preenchido com um valor DIFERENTE do que este
+    // documento trouxe, e o tipo de documento não é um dos "mais confiáveis"
+    // pra esse campo (CE/BL-DI/PI) nem já foi preenchido pela própria IA
+    // antes — em vez de descartar a leitura em silêncio (comportamento
+    // antigo, que escondia a divergência do usuário sem nenhum aviso),
+    // guarda pra mostrar tudo junto num pop-up de revisão ao final da
+    // leitura (pedido do Ayslan, 10/09/2026): o usuário vê lado a lado o
+    // valor atual x o valor lido no documento novo e escolhe campo a campo
+    // qual considerar, em vez de precisar adivinhar que houve divergência.
+    const conflitos = [];
+    function valoresDivergem(a, b){
+      const na = (a==null?'':String(a)).trim().toLowerCase();
+      const nb = (b==null?'':String(b)).trim().toLowerCase();
+      return na !== nb;
+    }
+    function registrarConflito(campo, el, valorNovo, valorNovoExibicao, aplicar, valorAtualExibicao){
+      if(!el.value) return; // vazio não é conflito, é só preenchimento normal (já tratado no if principal)
+      const exibicao = valorNovoExibicao!=null ? valorNovoExibicao : valorNovo;
+      if(!valoresDivergem(el.value, exibicao)) return; // já é o mesmo valor — não é divergência real
+      conflitos.push({
+        campo,
+        label: LABELS_CAMPOS_IA[campo] || campo,
+        valorAtual: valorAtualExibicao!=null ? valorAtualExibicao : el.value,
+        valorNovo: exibicao,
+        aplicar: aplicar || (() => { el.value = valorNovo; }),
+      });
+    }
+
     Object.keys(extracted).forEach(campo=>{
       let val = extracted[campo];
       if(!val) return;
@@ -900,6 +929,12 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
           el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
           preenchidos++; marcarComoIA(campo);
           setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+        } else {
+          const normalizado = normalizarPortoDestino(val);
+          registrarConflito(campo, el, normalizado, formatarPortoDestino(normalizado), () => {
+            if(!PORTOS_DESTINO.some(p=>p.codigo===normalizado)) el.innerHTML = gerarOptionsPortoDestino(normalizado);
+            else el.value = normalizado;
+          }, formatarPortoDestino(el.value));
         }
         return;
       }
@@ -917,6 +952,19 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
           el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
           preenchidos++; marcarComoIA(campo);
           setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+        } else {
+          const vu = val.trim().toUpperCase();
+          const outro = document.getElementById('f_porto_origem_outro');
+          const valorAtualExibicao = el.value==='OUTRO' ? (outro?.value || 'OUTRO') : el.value;
+          registrarConflito(campo, el, vu, val, () => {
+            if(PORTOS_ORIGEM.includes(vu)){
+              el.value = vu;
+              if(outro) outro.style.display = 'none';
+            } else {
+              el.value = 'OUTRO';
+              if(outro){ outro.value = val; outro.style.display = 'block'; }
+            }
+          }, valorAtualExibicao);
         }
         return;
       }
@@ -927,14 +975,20 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
             el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
             preenchidos++; marcarComoIA(campo);
             setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+          } else {
+            registrarConflito(campo, el, val);
           }
         } else {
           const elEta = document.getElementById('f_eta');
-          if(elEta && (!elEta.value || foiPreenchidoPorIA('eta'))){
-            elEta.value = val;
-            elEta.style.borderColor='var(--ok)'; elEta.style.background='rgba(22,163,74,.04)';
-            preenchidos++; marcarComoIA('eta');
-            setTimeout(()=>{ elEta.style.borderColor=''; elEta.style.background=''; }, 3000);
+          if(elEta){
+            if(!elEta.value || foiPreenchidoPorIA('eta')){
+              elEta.value = val;
+              elEta.style.borderColor='var(--ok)'; elEta.style.background='rgba(22,163,74,.04)';
+              preenchidos++; marcarComoIA('eta');
+              setTimeout(()=>{ elEta.style.borderColor=''; elEta.style.background=''; }, 3000);
+            } else {
+              registrarConflito('eta', elEta, val);
+            }
           }
         }
         return;
@@ -945,6 +999,8 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         el.style.background='rgba(22,163,74,.04)';
         preenchidos++; marcarComoIA(campo);
         setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
+      } else {
+        registrarConflito(campo, el, val);
       }
     });
 
@@ -994,14 +1050,15 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       preenchidos++; marcarComoIA('container');
     }
 
-    if(status) status.textContent = abriuModalCambio
+    const sufixoConflitos = conflitos.length ? ` — ⚠ ${conflitos.length} divergência(s) aguardando revisão` : '';
+    if(status) status.textContent = (abriuModalCambio
       ? `💱 Comprovante de câmbio lido — confirme no modal a qual parcela pertence`
       : ehCeMercante
       ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
       : ehBlOuDi ? `✓ ${preenchidos} campos preenchidos (BL/DI — porto e container atualizados)`
       : ehPI ? `✓ ${preenchidos} campos preenchidos (PI — data e valor USD atualizados)`
-      : `✓ ${preenchidos} campos preenchidos`;
-    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente`,'ok');
+      : `✓ ${preenchidos} campos preenchidos`) + sufixoConflitos;
+    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}`, conflitos.length ? 'warn' : 'ok');
 
     // Preenchimento programático não dispara onchange/oninput dos campos —
     // por isso a regra de parametrização e o recálculo de fase/demurrage
@@ -1017,6 +1074,13 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
 
     // Atualizar _editando com os valores extraídos
     if(_editando) Object.assign(_editando, extracted);
+
+    // Se sobrou alguma divergência sem regra automática de prioridade,
+    // abre o pop-up de revisão — só interrompe o fluxo quando existe algo
+    // de fato pra decidir (a maioria das leituras não vai ter nenhuma).
+    if(conflitos.length){
+      abrirModalConflitosIA(conflitos, file.name);
+    }
 
     // Salva automaticamente no GED do processo o documento que acabou de ser
     // lido pela IA — antes disso, o único jeito de guardar o arquivo era um
@@ -1174,4 +1238,98 @@ async function handleDropIA(ev){
   const arquivos = Array.from(dt.files).filter(f => /\.(pdf|png|jpe?g)$/i.test(f.name));
   if(!arquivos.length) return;
   await processarFilaIA(arquivos);
+}
+
+// ════════════════════════════════════════════════════════════════
+// POP-UP DE CONFLITOS DA EXTRAÇÃO POR IA
+// ════════════════════════════════════════════════════════════════
+// Quando um documento novo traz um valor DIFERENTE de um campo que já
+// estava preenchido (e não é um caso de prioridade automática conhecida —
+// ver camposSobrescritosPorCe/BlDi/PI acima), em vez de descartar a leitura
+// da IA em silêncio, esses conflitos são coletados e mostrados aqui, todos
+// juntos, num único pop-up ao final da leitura do documento — o usuário
+// escolhe campo a campo se mantém o valor atual ou usa o valor lido no
+// documento novo. Modal montado dinamicamente (sem markup fixo no HTML)
+// porque a lista de campos divergentes muda a cada leitura.
+let _conflitosIAPendentes = [];
+
+function abrirModalConflitosIA(conflitos, nomeArquivo){
+  document.getElementById('modal-conflitos-ia-bg')?.remove();
+  _conflitosIAPendentes = conflitos;
+  const linhas = conflitos.map((c,i) => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">${esc(c.label)}</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0;cursor:pointer;">
+        <input type="radio" name="conflito-ia-${i}" value="atual" checked>
+        Manter atual: <strong>${esc(String(c.valorAtual))}</strong>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0;cursor:pointer;">
+        <input type="radio" name="conflito-ia-${i}" value="novo">
+        Usar valor lido no documento: <strong style="color:var(--ok);">${esc(String(c.valorNovo))}</strong>
+      </label>
+    </div>
+  `).join('');
+  const html = `
+    <div class="modal-bg open" id="modal-conflitos-ia-bg">
+      <div class="modal" style="max-width:520px;">
+        <div class="modal-header">
+          <div class="modal-title">⚠️ ${conflitos.length} campo(s) com valor divergente</div>
+          <button class="modal-close" onclick="fecharModalConflitosIA()">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:4px;">Documento lido: <strong>${esc(nomeArquivo)}</strong></p>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Estes campos já tinham um valor preenchido diferente do que este documento trouxe. Escolha qual considerar em cada um (por padrão, mantém o valor atual):</p>
+          <div id="conflitos-ia-lista">${linhas}</div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:16px;">
+            <button class="btn btn-outline" onclick="fecharModalConflitosIA()">Manter tudo como está</button>
+            <button class="btn btn-primary" onclick="aplicarConflitosIA()">✓ Aplicar escolhidas</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function fecharModalConflitosIA(){
+  document.getElementById('modal-conflitos-ia-bg')?.remove();
+  _conflitosIAPendentes = [];
+}
+
+function aplicarConflitosIA(){
+  const lista = _conflitosIAPendentes || [];
+  let aplicados = 0;
+  const camposAplicados = [];
+  lista.forEach((c,i) => {
+    const escolha = document.querySelector(`input[name="conflito-ia-${i}"]:checked`)?.value;
+    if(escolha === 'novo'){
+      c.aplicar();
+      if(_editando){
+        if(!_editando._camposIA) _editando._camposIA = {};
+        _editando._camposIA[c.campo] = true;
+      }
+      aplicados++;
+      camposAplicados.push(c.label);
+    }
+  });
+  if(aplicados){
+    // Mesma necessidade do fluxo principal: preenchimento programático não
+    // dispara onchange/oninput, então a fase e a parametrização precisam
+    // ser recalculadas manualmente depois de aplicar as escolhas.
+    aplicarRegraParametrizacaoVerde();
+    atualizarFaseEmTempoReal();
+    if(_editando){
+      _editando.log = _editando.log || [];
+      _editando.log.push({
+        campo: LOG_CAMPO_LEITURA_IA,
+        valor_antes: 'Revisão de divergências',
+        valor_depois: camposAplicados.join(', '),
+        usuario: _user.usuario,
+        created_at: new Date().toISOString(),
+      });
+    }
+    showToast(`✓ ${aplicados} campo(s) atualizado(s) com o valor do documento`,'ok');
+  } else {
+    showToast('Nenhuma alteração aplicada — valores atuais mantidos','ok');
+  }
+  fecharModalConflitosIA();
 }
