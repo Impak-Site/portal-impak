@@ -414,46 +414,27 @@ function renderDashTV(){
     </div>`;
   }
 
-  // Linha em flex pra cada marca da lista "resto" (fora do top 4) — mesmo
-  // padrão .tv-row de Em Águas/No Chão, agrupada em colunas que preenchem
-  // 100% da altura restante. Antes era uma lista simples com font-size fixo
-  // de 12px; agora escala junto com o resto do painel.
-  function linhaBackordersRestoFlex(nome, qtd, chave, idx){
-    const zebra = idx % 2 === 1 ? 'background:rgba(255,255,255,.16);' : '';
-    return `<div class="tv-row" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;flex:1;min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px;${zebra}padding:0 8px;margin:0 -8px;border-radius:4px;overflow:hidden;color:#fff;">
-      <span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
-      <span style="font-weight:800;white-space:nowrap;">${fmtN(qtd)}</span>
-    </div>`;
-  }
-  function backordersRestoEmColunas(lista){
-    const ALVO_POR_COLUNA = 16;
-    let nCols = Math.max(1, Math.ceil(lista.length / ALVO_POR_COLUNA));
-    nCols = Math.min(nCols, 5);
-    const porColuna = Math.ceil(lista.length / nCols);
-    const colunas = [];
-    for(let i=0; i<nCols; i++) colunas.push(lista.slice(i*porColuna, (i+1)*porColuna));
-    return `<div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:14px;flex:1;min-height:0;">
-      ${colunas.map(col => `<div class="tv-col" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:#0f1f3d;border-radius:8px;padding:4px 10px;">
-        ${col.map(([m,q,chave],idx) => linhaBackordersRestoFlex(m,q,chave,idx)).join('')}
-      </div>`).join('')}
-    </div>`;
-  }
+  // (linhaBackordersRestoFlex/backordersRestoEmColunas removidas 11/09/2026 —
+  // eram só do modo solo antigo, que agora usa a mesma grade de pills do
+  // modo combinado; ver comentário acima de backordersHtml.)
 
   // Totalizador MARCA/TOTAL/BACKORDERS/EM ÁGUAS (ver blocoTotalizadorMarcasTV
   // acima) — mesmo em ambos os modos (solo/todos), pedido do Ayslan
   // (08/09/2026).
+  // Ajustado 11/09/2026 (pedido do Ayslan, com print de referência — 3a
+  // rodada de ajuste da TV): o modo solo (?painel=backorders) tinha um
+  // conteudo DIFERENTE do modo combinado (/tv) pra essa area -- o "resto"
+  // das marcas aparecia como 2 caixas de lista (backordersRestoEmColunas),
+  // enquanto o combinado usa uma grade de "pills" individuais. O cabecalho/
+  // card do painel() ja foi corrigido numa rodada anterior, mas esse
+  // conteudo interno ainda divergia por causa do branch `solo ? ... : ...`
+  // aqui embaixo. Igual ao ajuste de painel(), agora backordersHtml usa
+  // SEMPRE a mesma marcacao (a que ja era usada no modo combinado) nos
+  // dois modos -- pixel-igual, como pedido.
   const totalizadorMarcasHtml = blocoTotalizadorMarcasTV(backordersPorMarca, emAguasPorMarca, backordersLabel);
   const backordersHtml = !backordersLista.length
     ? `<div style="font-size:13px;color:var(--muted);">Nenhum processo aguardando embarque.</div>`
-    : (solo ? `
-    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
-      <div style="${backordersResto.length ? 'flex:0 0 auto;' : 'flex:1;min-height:0;grid-auto-rows:1fr;'}display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:stretch;">
-        ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
-      </div>
-      ${backordersResto.length ? backordersRestoEmColunas(backordersResto) : ''}
-      ${totalizadorMarcasHtml ? `<div style="flex:0 0 auto;max-height:34vh;overflow-y:auto;">${totalizadorMarcasHtml}</div>` : ''}
-    </div>
-  ` : `
+    : `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:${backordersResto.length?'14px':'0'};">
       ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
     </div>
@@ -463,7 +444,7 @@ function renderDashTV(){
       </div>`).join('')}
     </div>` : ''}
     ${totalizadorMarcasHtml}
-  `);
+  `;
 
   // Linha de 1 processo — usada tanto na tabela única (modo "todos") quanto
   // nas colunas do modo solo abaixo. table-layout:fixed + nowrap/ellipsis
