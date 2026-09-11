@@ -180,7 +180,14 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
         if(achou) abrirProcesso(idDeepLink);
         else showToast('Processo recém-criado ainda não apareceu na lista — atualize a página em alguns segundos', 'err');
       }
-    });
+      // Layout dedicado já está montado — revela a página (ver classe
+      // boot-tela-exclusiva/CSS injetados no <head> do controle_v2.html).
+      finalizarBootExclusivo();
+    }).catch(finalizarBootExclusivo);
+    // Fallback de segurança: se por algum motivo carregarProcessos() nunca
+    // resolver/rejeitar (ex: rede caiu no meio), não deixa a TV travada
+    // com a tela em branco pra sempre.
+    setTimeout(finalizarBootExclusivo, 15000);
     renderFaseFilter();
     // Auto-refresh a cada 30s
     setInterval(function(){ if(!document.getElementById('modal-bg').classList.contains('open')) carregarProcessos(true); }, 30000);
@@ -397,6 +404,13 @@ function ativarTelaNarcelioExclusiva(){
 // estado ATUAL) e com auto-atualização: busca os processos de novo a cada
 // alguns minutos e re-renderiza sozinha, sem precisar de F5 nem de alguém
 // digitando números — ver setIntervalAtualizacaoTV() logo abaixo.
+// Remove a classe que esconde o body (ver <head> de controle_v2.html) assim
+// que o layout de uma tela exclusiva termina de montar — idempotente (pode
+// ser chamado mais de uma vez, ex. sucesso + timeout de segurança).
+function finalizarBootExclusivo(){
+  document.documentElement.classList.remove('boot-tela-exclusiva');
+}
+
 function ativarTelaTVExclusiva(){
   document.title = 'IMPAK — Dashboard TV';
   const titulo = document.querySelector('.topbar-title');

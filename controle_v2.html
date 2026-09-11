@@ -19,7 +19,25 @@ tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
 <!-- Catálogo único de Taxas Operacionais (base_rateio: processo/container),
      compartilhado com o Calculador — ver taxas-catalogo.js -->
 <script src="/taxas-catalogo.js"></script>
+<!-- Evita o "flash" da tela normal (menu/sidebar/filtros/tabela) nas telas
+     exclusivas (Financeiro/Resultado/Análises/Narcélio/TV/Câmbio) enquanto
+     JS ainda está buscando os processos e montando o layout dedicado —
+     pedido do Ayslan (11/09/2026): no /tv isso pisca por alguns segundos
+     toda vez que a página recarrega (auto-refresh na TV física). Roda
+     síncrono ANTES do body pintar, então precisa ficar aqui no <head>. A
+     classe é removida por ativarTelaXExclusiva()/finalizarBootExclusivo()
+     em controle-core.js assim que o layout dedicado está pronto (com um
+     fallback por timeout pra nunca deixar a tela travada em branco). -->
+<script>
+(function(){
+  var TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio'];
+  if(TELAS_EXCLUSIVAS.indexOf(location.pathname)!==-1){
+    document.documentElement.classList.add('boot-tela-exclusiva');
+  }
+})();
+</script>
 <style>
+html.boot-tela-exclusiva body{visibility:hidden}
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
 --bg:#f5f7fb;--card:#fff;--border:#e4e9f1;--border-strong:#d2dae6;--ac:#1a7fd4;--ac2:#1567b8;--ac-soft:#eaf3fc;
