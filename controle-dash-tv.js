@@ -382,9 +382,18 @@ function renderDashTV(){
       // + pills + tabela) numa TV física real. Com height fixo em 100vh o
       // mesmo mecanismo que já funciona no Em Águas passa a funcionar
       // aqui também.
-      return `<div style="height:100vh;box-sizing:border-box;background:#f5f7fb;padding:28px;overflow:hidden;">
+      return `<div style="height:100vh;box-sizing:border-box;background:#f5f7fb;padding:28px;display:flex;flex-direction:column;overflow:hidden;">
         ${botaoVoltarTV()}
-        ${cardFixo}
+        <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
+            <div>
+              <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
+            </div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
+          </div>
+          <div style="padding:18px 24px;font-size:1em;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">${conteudoHtml}</div>
+        </div>
       </div>`;
     }
     return `<div style="margin-bottom:22px;">${cardFixo}</div>`;
@@ -514,7 +523,7 @@ function renderDashTV(){
         <span style="font-weight:700;">${esc(m)}</span><span style="font-weight:800;">${fmtN(q)}</span>
       </div>`).join('')}
     </div>` : ''}
-    ${totalizadorMarcasHtml}
+    ${solo ? `<div style="flex:1;min-height:0;overflow-y:auto;">${totalizadorMarcasHtml}</div>` : totalizadorMarcasHtml}
   `;
 
   // Linha de 1 processo — usada tanto na tabela única (modo "todos") quanto
