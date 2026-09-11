@@ -1213,6 +1213,60 @@ teste('renderDashAnalises: limpar o estado de volta (não deixar resíduo pros d
   verdadeiro(html.includes('Nenhum processo faturado na janela selecionada'), 'sem processos, deveria mostrar o aviso de janela vazia');
 });
 
+// ── TESTES: sincronizarDemurrageAgregado() — bug OID2602-02 (10/09/2026) ─
+// A Emanuelly/Ayslan reportaram que um processo com 2 containers, ambos
+// já com Data Devolução preenchida mas o RIC ainda em "Termo" (lavagem
+// pendente de pagar), continuava mostrando "Atenção: vence em Xd" no
+// card de Cálculo do Demurrage — como se o container ainda estivesse
+// retido no porto. Causa: o campo agregado f_data_devolucao_vazio só era
+// preenchido quando TODOS os containers estavam "resolvidos" (devolvidos
+// E isentos/lavagem paga), então devolução sozinha não bastava. Corrigido
+// pra separar "devolvido" de "resolvido pra Finalizado".
+function setContainersDemurrage(containers){
+  vm.runInContext(`_containers = ${JSON.stringify(containers)};`, sandbox);
+}
+
+teste('sincronizarDemurrageAgregado: todos devolvidos mas RIC pendente (Termo, sem lavagem paga) -> data_devolucao_vazio agregado É preenchida', () => {
+  setContainersDemurrage([
+    { numero:'PCIU8714241', devolucao:'2026-09-08', ric_status:'Termo', data_pagamento_lavagem:'' },
+    { numero:'PCIU8871507', devolucao:'2026-09-08', ric_status:'Termo', data_pagamento_lavagem:'' },
+  ]);
+  sandbox.sincronizarDemurrageAgregado();
+  iguais(sandbox.document.getElementById('f_data_devolucao_vazio').value, '2026-09-08');
+});
+
+teste('sincronizarDemurrageAgregado: RIC pendente -> f_ric_status agregado continua vazio (Finalizado não deve liberar sem RIC/lavagem)', () => {
+  setContainersDemurrage([
+    { numero:'PCIU8714241', devolucao:'2026-09-08', ric_status:'Termo', data_pagamento_lavagem:'' },
+    { numero:'PCIU8871507', devolucao:'2026-09-08', ric_status:'Termo', data_pagamento_lavagem:'' },
+  ]);
+  sandbox.sincronizarDemurrageAgregado();
+  iguais(sandbox.document.getElementById('f_ric_status').value, '', 'sem Isento/lavagem, o agregado de RIC não deve fechar como resolvido');
+});
+
+teste('sincronizarDemurrageAgregado: 1 container ainda sem devolução -> data_devolucao_vazio agregado fica vazia', () => {
+  setContainersDemurrage([
+    { numero:'PCIU8714241', devolucao:'2026-09-08', ric_status:'Termo', data_pagamento_lavagem:'' },
+    { numero:'PCIU8871507', devolucao:'', ric_status:'', data_pagamento_lavagem:'' },
+  ]);
+  sandbox.sincronizarDemurrageAgregado();
+  iguais(sandbox.document.getElementById('f_data_devolucao_vazio').value, '', 'com 1 container ainda não devolvido, não deve marcar o processo como devolvido');
+});
+
+teste('sincronizarDemurrageAgregado: todos devolvidos E isentos de RIC -> f_ric_status agregado fecha como Isento (Finalizado libera)', () => {
+  setContainersDemurrage([
+    { numero:'PCIU8714241', devolucao:'2026-09-08', ric_status:'Isento', data_pagamento_lavagem:'' },
+    { numero:'PCIU8871507', devolucao:'2026-09-08', ric_status:'Isento', data_pagamento_lavagem:'' },
+  ]);
+  sandbox.sincronizarDemurrageAgregado();
+  iguais(sandbox.document.getElementById('f_data_devolucao_vazio').value, '2026-09-08');
+  iguais(sandbox.document.getElementById('f_ric_status').value, 'Isento');
+});
+
+teste('sincronizarDemurrageAgregado: limpar o estado de volta (não deixar resíduo pros demais testes do arquivo)', () => {
+  setContainersDemurrage([]);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

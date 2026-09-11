@@ -491,15 +491,32 @@ function renderDemurrageContainers(){
 // Recalcula os campos legados (f_data_devolucao_vazio, f_ric_status etc.)
 // a partir dos dados por container, só quando há 2+ containers (com 1 só,
 // os campos legados já são preenchidos diretamente e não devem ser
-// mexidos aqui). Regra de "Finalizado" confirmada com o Ayslan
-// (10/09/2026): só quando TODOS os containers estiverem devolvidos E
-// (isentos de RIC OU com lavagem paga) -- daí o data_devolucao_vazio
-// agregado só é preenchido quando esse "todos resolvidos" é verdadeiro,
-// que é exatamente a condição que calcularFase() já checa.
+// mexidos aqui).
+//
+// IMPORTANTE: "devolvido" (data_devolucao_vazio) e "resolvido pra
+// Finalizado" (RIC isento ou lavagem paga) são coisas DIFERENTES. Antes
+// (09/09/2026) os dois ficavam amarrados na mesma condição
+// "todosResolvidos", então um processo com os 2 containers já devolvidos
+// mas o RIC ainda em "Termo" (lavagem pendente de pagar) ficava com
+// data_devolucao_vazio vazio -- e isso é o que calcula o card "Cálculo do
+// Demurrage"/os alertas de vencimento (ver renderDemurInfo/demurrageDisplay
+// em controle-core.js): o container já voltou fisicamente, o relógio do
+// demurrage já parou, mas o sistema continuava mostrando "vence em Xd"
+// como se ele ainda estivesse retido no porto. Bug relatado pelo Ayslan
+// (processo OID2602-02, 10/09/2026).
+// Corrigido: data_devolucao_vazio agora reflete só "todos os containers
+// têm data de devolução" (todosDevolvidos) -- já RIC/lavagem continuam
+// exigindo "todos resolvidos" separadamente, então a fase FINALIZADO (ver
+// calcularFase() em controle-core.js, que checa
+// data_devolucao_vazio && (ric_status==='Isento' || data_pagamento_lavagem))
+// continua corretamente travada até a pendência de RIC/lavagem ser
+// resolvida -- só o alerta de demurrage é que para de contar mais cedo,
+// que é o comportamento certo.
 function sincronizarDemurrageAgregado(){
   if(!_containers || _containers.length <= 1) return;
   const parseVal = s => { if(!s) return 0; const n = parseFloat(String(s).replace(/\./g,'').replace(',','.')); return isNaN(n) ? 0 : n; };
   const datasOrdenadas = arr => arr.filter(Boolean).slice().sort();
+  const todosDevolvidos = _containers.every(c => c.devolucao);
   const todosResolvidos = _containers.every(c => c.devolucao && (c.ric_status === 'Isento' || c.data_pagamento_lavagem));
 
   const fDevol = document.getElementById('f_data_devolucao_vazio');
@@ -512,7 +529,7 @@ function sincronizarDemurrageAgregado(){
   const fEnvio = document.getElementById('f_data_envio_termo');
   const fPagDemur = document.getElementById('f_data_pagamento_demurrage');
 
-  if(fDevol) fDevol.value = todosResolvidos ? (datasOrdenadas(_containers.map(c=>c.devolucao)).pop() || '') : '';
+  if(fDevol) fDevol.value = todosDevolvidos ? (datasOrdenadas(_containers.map(c=>c.devolucao)).pop() || '') : '';
   if(fRic) fRic.value = todosResolvidos ? (_containers.every(c=>c.ric_status==='Isento') ? 'Isento' : 'Termo') : '';
   if(fLavagem) fLavagem.value = todosResolvidos ? (datasOrdenadas(_containers.map(c=>c.data_pagamento_lavagem)).pop() || '') : '';
   const total = _containers.reduce((s,c)=>s+parseVal(c.demurrage_valor),0);
