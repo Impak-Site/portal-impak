@@ -234,7 +234,7 @@ function ativarTelaFinanceiroExclusiva(){
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Financeiro';
 
-  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
   const toolbar = document.querySelector('.toolbar');
@@ -265,7 +265,7 @@ function ativarTelaResultadoExclusiva(){
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Resultado';
 
-  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
   const toolbar = document.querySelector('.toolbar');
@@ -295,7 +295,7 @@ function ativarTelaAnalisesExclusiva(){
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Análises';
 
-  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
   const toolbar = document.querySelector('.toolbar');
@@ -326,7 +326,7 @@ function ativarTelaCambioExclusiva(){
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Câmbio';
 
-  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
   const toolbar = document.querySelector('.toolbar');
@@ -365,7 +365,7 @@ function ativarTelaNarcelioExclusiva(){
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Narcélio';
 
-  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
   const toolbar = document.querySelector('.toolbar');
@@ -410,7 +410,7 @@ function ativarTelaTVExclusiva(){
   // em controle-dash-tv.js. Por isso essa tela também esconde TUDO que não
   // é o painel em si (barra de câmbio, rótulo "Dashboard TV", paddings) —
   // cada pixel de sobra é 1 processo a menos visível na TV.
-  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
   const toolbar = document.querySelector('.toolbar');
@@ -2605,7 +2605,7 @@ function renderFaseFilter(){
 // (toggleDashExecutivo/Financeiro/Resultado/Narcelio/Carregamento/TV/
 // ClienteMedida) quanto por fecharTodosDashboards() abaixo, que restaura
 // tudo sempre que nenhum dashboard fica aberto.
-const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'];
+const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'];
 
 function fecharTodosDashboards(){
   ['executivo','financeiro','resultado','analises','narcelio','carregamento','tv','clientemedida','cambio'].forEach(function(id){
