@@ -74,7 +74,10 @@ const FASE_COLUNA_LABEL = {
 let _cmFiltroTexto = '';       // busca livre (medida)
 let _cmFiltroCliente = '';     // '' = todos
 let _cmFiltroFornecedor = '';  // '' = todos
-let _cmFiltroMarca = '';       // '' = todas
+let _cmFiltroMarcas = new Set(); // vazio = todas (multi-select — pedido da
+                                  // Emanuelly 11/09/2026: "tem como eu selecionar
+                                  // mais de uma marca para tirar um relatorio")
+let _cmMarcaDropdownAberto = false; // painel do multi-select de marca, aberto/fechado
 let _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA); // fases marcadas nos checkboxes
 let _cmIntervaloId = null; // id do setInterval de auto-refresh (null = parado)
 // Snapshot da última lista renderizada (Cliente → Marca → Pedidos), usado
@@ -169,7 +172,24 @@ function _cmAtualizarFiltroTexto(valor){
 function _cmSetFiltroSelect(campo, valor){
   if(campo === 'cliente') _cmFiltroCliente = valor;
   else if(campo === 'fornecedor') _cmFiltroFornecedor = valor;
-  else if(campo === 'marca') _cmFiltroMarca = valor;
+  renderDashClienteMedida();
+}
+function _cmToggleMarcaFiltro(chave, marcado){
+  if(marcado) _cmFiltroMarcas.add(chave);
+  else _cmFiltroMarcas.delete(chave);
+  renderDashClienteMedida();
+}
+function _cmLimparMarcasFiltro(){
+  _cmFiltroMarcas.clear();
+  renderDashClienteMedida();
+}
+function _cmToggleMarcaDropdown(ev){
+  if(ev) ev.stopPropagation();
+  _cmMarcaDropdownAberto = !_cmMarcaDropdownAberto;
+  renderDashClienteMedida();
+}
+function _cmFecharMarcaDropdown(){
+  _cmMarcaDropdownAberto = false;
   renderDashClienteMedida();
 }
 function _cmToggleFase(fase, marcado){
@@ -182,7 +202,8 @@ function _cmLimparFiltros(){
   _cmFiltroTexto = '';
   _cmFiltroCliente = '';
   _cmFiltroFornecedor = '';
-  _cmFiltroMarca = '';
+  _cmFiltroMarcas.clear();
+  _cmMarcaDropdownAberto = false;
   _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA);
   renderDashClienteMedida();
 }
@@ -314,7 +335,7 @@ function renderDashClienteMedida(){
     const fornecedor = (p.fornecedor || 'Sem fornecedor').trim() || 'Sem fornecedor';
     if(_cmFiltroFornecedor && _cmChaveEmpresa(fornecedor) !== _cmFiltroFornecedor) return;
     const marca = (p.brand || p.fornecedor || 'Sem marca').trim() || 'Sem marca';
-    if(_cmFiltroMarca && _cmChaveEmpresa(marca) !== _cmFiltroMarca) return;
+    if(_cmFiltroMarcas.size && !_cmFiltroMarcas.has(_cmChaveEmpresa(marca))) return;
 
     let produtos = [];
     try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ /* ignora produtos_json inválido */ }
@@ -514,7 +535,37 @@ function renderDashClienteMedida(){
 
   const corpoHtml = clientesLista.length
     ? clientesLista.map(blocoCliente).join('')
-    : `<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center;">${(termo||_cmFiltroCliente||_cmFiltroFornecedor||_cmFiltroMarca) ? 'Nenhum resultado para os filtros escolhidos.' : 'Nenhum processo em andamento no momento.'}</div>`;
+    : `<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center;">${(termo||_cmFiltroCliente||_cmFiltroFornecedor||_cmFiltroMarcas.size) ? 'Nenhum resultado para os filtros escolhidos.' : 'Nenhum processo em andamento no momento.'}</div>`;
+
+  function multiSelectMarcaHtml(opcoesMap){
+    const entradas = [...opcoesMap.entries()].sort((a,b) => a[1].localeCompare(b[1],'pt-BR'));
+    const qtd = _cmFiltroMarcas.size;
+    const label = qtd === 0
+      ? 'Todas as marcas'
+      : (qtd === 1
+          ? (entradas.find(([c]) => _cmFiltroMarcas.has(c))?.[1] || '1 marca')
+          : `${qtd} marcas selecionadas`);
+    const backdrop = _cmMarcaDropdownAberto
+      ? `<div onclick="_cmFecharMarcaDropdown()" style="position:fixed;inset:0;z-index:100;"></div>`
+      : '';
+    const painel = _cmMarcaDropdownAberto ? `
+      <div onclick="event.stopPropagation()" style="position:absolute;top:calc(100% + 4px);left:0;z-index:101;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:230px;max-width:300px;max-height:280px;overflow-y:auto;padding:6px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;padding:2px 6px 8px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+          <button type="button" onclick="_cmLimparMarcasFiltro()" style="background:none;border:none;color:var(--ac);font-size:11px;font-weight:700;cursor:pointer;padding:0;">Limpar</button>
+          <button type="button" onclick="_cmFecharMarcaDropdown()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:0;">Fechar ✕</button>
+        </div>
+        ${entradas.map(([chave,lbl]) => `
+          <label style="display:flex;align-items:center;gap:6px;padding:5px 6px;font-size:12px;color:var(--text);cursor:pointer;border-radius:5px;">
+            <input type="checkbox" ${_cmFiltroMarcas.has(chave)?'checked':''} onchange="_cmToggleMarcaFiltro('${chave}',this.checked)"> ${esc(lbl)}
+          </label>`).join('')}
+      </div>` : '';
+    return `${backdrop}<div style="position:relative;flex:1;min-width:170px;${_cmMarcaDropdownAberto?'z-index:101;':''}">
+      <button type="button" onclick="_cmToggleMarcaDropdown(event)" style="width:100%;text-align:left;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(label)}</span><span style="opacity:.5;flex-shrink:0;">▾</span>
+      </button>
+      ${painel}
+    </div>`;
+  }
 
   function selectFiltro(campo, label, valorAtual, opcoesMap){
     // opcoesMap: chave normalizada -> label exibido. O <option value> é a
@@ -528,7 +579,7 @@ function renderDashClienteMedida(){
     </select>`;
   }
 
-  const temFiltroAtivo = _cmFiltroTexto || _cmFiltroCliente || _cmFiltroFornecedor || _cmFiltroMarca || _cmFasesAtivas.size !== FASES_CLIENTE_MEDIDA.length;
+  const temFiltroAtivo = _cmFiltroTexto || _cmFiltroCliente || _cmFiltroFornecedor || _cmFiltroMarcas.size || _cmFasesAtivas.size !== FASES_CLIENTE_MEDIDA.length;
 
   el.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
@@ -548,7 +599,7 @@ function renderDashClienteMedida(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
         ${selectFiltro('cliente','Cliente',_cmFiltroCliente,clientesDisponiveis)}
         ${selectFiltro('fornecedor','Fornecedor',_cmFiltroFornecedor,fornecedoresDisponiveis)}
-        ${selectFiltro('marca','Marca',_cmFiltroMarca,marcasDisponiveis)}
+        ${multiSelectMarcaHtml(marcasDisponiveis)}
         <input id="cm-filtro-texto" class="form-input" placeholder="Buscar invoice, medida ou marca (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
           oninput="_cmAtualizarFiltroTexto(this.value)" style="flex:2;min-width:200px;">
         ${temFiltroAtivo ? `<button class="btn btn-outline" onclick="_cmLimparFiltros()" style="white-space:nowrap;">✕ Limpar filtros</button>` : ''}
