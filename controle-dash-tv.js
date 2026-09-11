@@ -313,7 +313,7 @@ function renderDashTV(){
     return `<a href="/tv" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(15,23,42,.55);color:#fff;text-decoration:none;font-size:12px;font-weight:700;padding:6px 12px;border-radius:6px;display:flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;">&larr; Voltar</a>`;
   }
 
-  function painel(titulo, subtitulo, numero, corBg, conteudoHtml){
+  function painel(titulo, subtitulo, numero, corBg, conteudoHtml, opts){
     // Modo solo (1 TV = 1 painel): cabeçalho enxuto e o corpo ocupa TODA a
     // altura restante da tela (flex:1) — pedido do Ayslan (08/09/2026):
     // "diminuir um pouco o cabeçalho" pra sobrar mais espaço vertical pras
@@ -322,13 +322,26 @@ function renderDashTV(){
     // Ajustado 11/09/2026 (pedido do Ayslan, com 2 prints de referência —
     // a 1a tentativa (edge-to-edge) e a 2a (card maior com fontes clamp/vh)
     // foram ambas rejeitadas: "nao esta o que eu te pedi" / "coloca
-    // exatamente essa tela no backorders: /tv"). O pedido real é: o modo
-    // solo (?painel=X) tem que ficar PIXEL-IGUAL ao card da visão combinada
-    // — mesmo card branco arredondado, mesmas fontes fixas (19px/38px),
-    // mesmo padding — só que sozinho na página (com o padding padrão da
-    // área de conteúdo, 28px, ao redor) em vez de empilhado com os outros
-    // 2 painéis. Por isso agora reaproveita o MESMO template do card
-    // combinado (fixedPx abaixo) em vez de ter uma versão própria maior.
+    // exatamente essa tela no backorders: /tv"). O pedido real (só pro
+    // BACKORDERS) é: o modo solo tem que ficar PIXEL-IGUAL ao card da visão
+    // combinada — mesmo card branco arredondado, mesmas fontes fixas
+    // (19px/38px), mesmo padding, mesma altura de conteúdo (340px rolável)
+    // — só que sozinho na página em vez de empilhado com os outros 2
+    // painéis.
+    //
+    // MAS isso quebrou o EM ÁGUAS solo (reportado pela Emanuelly,
+    // 11/09/2026: "Em aguas não esta a tela toda com os processos,
+    // diminuiu") — o card, sem altura própria, parava de esticar pra
+    // preencher a TV inteira, sobrando um vão branco embaixo (a tabela em
+    // colunas de emAguasEmColunas() é feita com flex:1 pensando em ocupar
+    // 100% da altura do pai, que sumiu quando o card passou a ter altura
+    // "natural" em vez de esticar). Em Águas nunca foi pedido pra ficar
+    // pixel-igual ao combinado (só Backorders foi) — o comportamento certo
+    // pra ele é o de sempre: ocupar a tela toda. Por isso agora só
+    // Backorders (que não passa opts.expandirAltura) usa o card de altura
+    // natural; quem passa opts.expandirAltura=true (Em Águas) ganha um
+    // card que estica via flex e preenche 100vh.
+    opts = opts || {};
     const cardFixo = `<div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);">
       <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
         <div>
@@ -339,6 +352,21 @@ function renderDashTV(){
       </div>
       <div style="padding:18px 24px;font-size:1em;">${conteudoHtml}</div>
     </div>`;
+    if(solo && opts.expandirAltura){
+      return `<div style="height:100vh;box-sizing:border-box;background:#f5f7fb;padding:28px;display:flex;flex-direction:column;overflow:hidden;">
+        ${botaoVoltarTV()}
+        <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
+            <div>
+              <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
+            </div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
+          </div>
+          <div style="padding:18px 24px;font-size:1em;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">${conteudoHtml}</div>
+        </div>
+      </div>`;
+    }
     if(solo){
       return `<div style="min-height:100vh;box-sizing:border-box;background:#f5f7fb;padding:28px;">
         ${botaoVoltarTV()}
@@ -747,7 +775,7 @@ function renderDashTV(){
 
   const paineis = {
     backorders: painel('BACKORDERS', `Visão por marca / fábrica — ainda não embarcados · ${fmtN(backordersProcessosTotal)} processos e ${fmtN(backordersTotal)} containers`, fmtN(backordersTotal), '#2a5298', backordersHtml),
-    aguas: painel('EM ÁGUAS', 'Em trânsito para o Brasil', fmtN(emAguasTotal), '#1e6091', emAguasHtml),
+    aguas: painel('EM ÁGUAS', 'Em trânsito para o Brasil', fmtN(emAguasTotal), '#1e6091', emAguasHtml, {expandirAltura:true}),
     chao: painelChaoCompletoTV(),
   };
 
