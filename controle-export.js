@@ -283,14 +283,19 @@ async function exportarDREExcel(dre, p){
 
     const adiRow = linha('    Adiantamento Porto (Liberação)', null, null, dre.totalAdiantamento); fmtMoeda(adiRow.getCell(4));
     dre.adiantamentoItens.forEach(it=>{
-      const row = linha('          '+it.label, it.valor, null, null);
-      fmtMoeda(row.getCell(2));
+      // Valor na MESMA coluna (D) que todas as outras linhas — antes ia
+      // pra coluna B, o que fazia o Excel exportado parecer "diferente"
+      // do PDF/tela (pedido do Ayslan, 11/09/2026: "o DRE em pdf do
+      // processo nao esta no mesmo formato do excel" — a causa raiz era
+      // essa divergência de coluna aqui no Excel, não no PDF).
+      const row = linha('          '+it.label, null, null, it.valor);
+      fmtMoeda(row.getCell(4));
     });
 
     const agRow = linha('    Agente Frete', null, null, dre.totalAgenteFrete); fmtMoeda(agRow.getCell(4));
     dre.agenteFreteItens.forEach(it=>{
-      const row = linha('          '+it.label, it.valor, null, null);
-      fmtMoeda(row.getCell(2));
+      const row = linha('          '+it.label, null, null, it.valor);
+      fmtMoeda(row.getCell(4));
     });
 
     const hdrRow = ws.getRow(r);
@@ -518,7 +523,18 @@ async function exportarDREPDF(dre, p){
     if(dre.notasBoss){
       linhaSimples('Nfe BOSS', dre.notasBoss.valorBoss);
       const impostosBoss = dre.notasBoss.irRetido+dre.notasBoss.iss+dre.notasBoss.pis+dre.notasBoss.cofins+dre.notasBoss.irpj+dre.notasBoss.csll;
-      linhaSimples('Custos (Impostos IR+ISS+PIS+COFINS+IRPJ+CSLL)', impostosBoss);
+      linhaSimples('Custos', impostosBoss);
+      // Nota explicativa (mesma estrutura em 2 linhas do Excel: total em
+      // negrito + linha itálica cinza logo abaixo restatando a fórmula) —
+      // antes era 1 linha só aqui no PDF, diferente do Excel (pedido do
+      // Ayslan, 11/09/2026: "o DRE em pdf do processo nao esta no mesmo
+      // formato do excel").
+      body.push([
+        { content:'  Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)', styles:{fontStyle:'italic', fontSize:6.5, textColor:[100,116,139]} },
+        '',
+        { content: r2(impostosBoss), styles:{halign:'right', fontStyle:'italic', fontSize:6.5, textColor:[100,116,139]} },
+        '',
+      ]);
       linhaSimples('Total a Receber (somado ao Lucro Real)', dre.notasBoss.totalReceber, {bold:true});
       linhaSimples('LUCRO BRUTO do PROCESSO' + (dre.pctLucro!=null?` (${(dre.pctLucro*100).toFixed(1)}%)`:''), dre.lucroBruto, {bold:true});
     }
