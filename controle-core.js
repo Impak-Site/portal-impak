@@ -156,7 +156,14 @@ window.addEventListener('DOMContentLoaded', function(){
 // o back-end checar req.session.role==='gerente').
 document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.role==='gerente' ? '' : 'none');
     carregarCambio();
-    carregarProcessos().then(()=>{
+    // Telas exclusivas (Financeiro/Resultado/Análises/Narcélio/TV/Câmbio) não
+    // precisam do toast "N processos carregados" no load inicial — pedido do
+    // Ayslan (10/09/2026, viu o toast cobrindo o canto do painel Backorders
+    // na TV): elas têm o próprio cabeçalho/KPI mostrando os dados, o toast só
+    // seria ruído (e numa TV física não tem ninguém pra ler e dispensar).
+    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio'];
+    const carregamentoSilencioso = TELAS_EXCLUSIVAS.includes(location.pathname);
+    carregarProcessos(carregamentoSilencioso).then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
       if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
       if(location.pathname==='/analises') ativarTelaAnalisesExclusiva();
