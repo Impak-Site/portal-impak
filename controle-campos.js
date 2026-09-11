@@ -460,6 +460,7 @@ function renderDemurrageContainers(){
             <select class="form-input" onchange="_containers[${i}].ric_status=this.value;sincronizarDemurrageAgregado();atualizarFaseEmTempoReal()">
               <option value="" ${!c.ric_status?'selected':''}>—</option>
               <option value="Isento" ${c.ric_status==='Isento'?'selected':''}>Isento</option>
+              <option value="Parcial Isento" ${c.ric_status==='Parcial Isento'?'selected':''}>Parcial Isento</option>
               <option value="Termo" ${c.ric_status==='Termo'?'selected':''}>Termo</option>
             </select></div>
           <div class="form-group"><label class="form-label">Depot</label>
@@ -547,7 +548,7 @@ function atualizarQtdContainersUI(){
     input.style.background = '#f3f4f6';
     input.style.color = 'var(--dim)';
     if(label) label.textContent = 'Qtd. Containers';
-    if(hint) hint.innerHTML = `🔒 Sincronizado automaticamente com os ${reais} container(s) real(is) da aba Documentos.`;
+    if(hint) hint.innerHTML = `<span title="Sincronizado automaticamente com os ${reais} container(s) real(is) da aba Documentos." style="cursor:help;">🔒 sincronizado</span>`;
   } else {
     input.disabled = false;
     input.style.background = '';

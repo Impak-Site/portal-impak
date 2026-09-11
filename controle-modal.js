@@ -593,6 +593,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               <select class="form-input" id="f_ric_status">
                 <option value="" ${!p.ric_status?'selected':''}>—</option>
                 <option value="Isento" ${p.ric_status==='Isento'?'selected':''}>Isento</option>
+                <option value="Parcial Isento" ${p.ric_status==='Parcial Isento'?'selected':''}>Parcial Isento</option>
                 <option value="Termo" ${p.ric_status==='Termo'?'selected':''}>Termo</option>
               </select></div>
             <div class="form-group"><label class="form-label">Depot</label>
