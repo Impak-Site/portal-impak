@@ -882,6 +882,7 @@ let _periodoEstado = {
   financeiro: { tipo:'mes', ini:'', fim:'' },
   resultado:  { tipo:'mes', ini:'', fim:'' },
   narcelio:   { tipo:'mes', ini:'', fim:'' },
+  dre:        { tipo:'mes', ini:'', fim:'' },
 };
 
 // Calcula {ini, fim, label} a partir do tipo de período selecionado para

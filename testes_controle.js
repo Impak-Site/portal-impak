@@ -1267,6 +1267,94 @@ teste('sincronizarDemurrageAgregado: limpar o estado de volta (não deixar resí
   setContainersDemurrage([]);
 });
 
+// ── TESTES: montarDREConsolidado() — DRE Consolidado (11/09/2026) ─
+// Pedido do Ayslan: "fizemos um DRE por processo. tem como fazermos um
+// DRE consolidado por semana, mes, ano... por cliente e alguns outros
+// filtros?". Reusa montarDRE() por processo (já teria seus próprios bugs
+// pegos pelos outros testes de calcularVendasResumo/calcularFechamento
+// acima) — aqui testamos especificamente a SOMA: período por Data NF de
+// Saída, filtro de cliente isolando só a venda certa (rateio por fração),
+// e fluxo legado (sem vendas_json).
+
+teste('montarDREConsolidado: processo legado (sem vendas_json) dentro do período entra inteiro (fração 1)', () => {
+  setEstadoProcessos([
+    { id:'p1', referencia:'UD1', cliente:'Cliente Único', fornecedor:'FornA', brand:'MarcaA',
+      real_json:{ fob: 8000 }, real_cambio: 5, // custo real total = 40000
+      nf_saida_data:'2026-09-15', nf_saida_valor: 60000 },
+  ], []);
+  const dre = sandbox.montarDREConsolidado({
+    periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59'),
+  });
+  verdadeiro(dre !== null, 'deveria encontrar o processo dentro do período');
+  iguais(dre.nfSaidaValor, 60000);
+  aproxIgual(dre.totalCustos, 40000, 0.01);
+  aproxIgual(dre.lucroBrutoImpak, 20000, 0.01);
+  iguais(dre._meta.qtdProcessos, 1);
+});
+
+teste('montarDREConsolidado: processo fora do período (Data NF de Saída) não entra na soma', () => {
+  setEstadoProcessos([
+    { id:'p2', referencia:'UD2', cliente:'Cliente X', real_json:{ fob: 1000 }, real_cambio: 5,
+      nf_saida_data:'2026-05-10', nf_saida_valor: 10000 },
+  ], []);
+  const dre = sandbox.montarDREConsolidado({
+    periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59'),
+  });
+  iguais(dre, null, 'processo com NF de Saída em maio não deveria aparecer num período de setembro');
+});
+
+teste('montarDREConsolidado: filtro de cliente isola só a venda daquele cliente (rateio por fração, não o processo inteiro)', () => {
+  setEstadoProcessos([
+    { id:'p3', referencia:'UD3', fornecedor:'FornB',
+      produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
+      real_json:{ fob: 8000 }, real_cambio: 5, // custo real total = 40000
+      vendas_json: JSON.stringify([
+        { cliente:'Cliente A', itens:[{descricao:'Pneu A', quantidade:600}], nf_saida_valor: 40000, nf_saida_data:'2026-09-10', custos_diretos: [] },
+        { cliente:'Cliente B', itens:[{descricao:'Pneu A', quantidade:400}], nf_saida_valor: 25000, nf_saida_data:'2026-09-12', custos_diretos: [] },
+      ]) },
+  ], []);
+  const dreA = sandbox.montarDREConsolidado({
+    periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59'),
+    cliente: 'Cliente A',
+  });
+  verdadeiro(dreA !== null);
+  iguais(dreA.nfSaidaValor, 40000, 'só a NF do Cliente A deveria entrar');
+  aproxIgual(dreA.totalCustos, 24000, 0.01, 'Cliente A levou 60% do processo -> 60% de 40000 = 24000 (mesmo rateio de calcularVendasResumo)');
+  aproxIgual(dreA.lucroBrutoImpak, 40000-24000, 0.01);
+
+  const dreTodos = sandbox.montarDREConsolidado({
+    periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59'),
+  });
+  iguais(dreTodos.nfSaidaValor, 65000, 'sem filtro de cliente, soma as 2 vendas');
+  aproxIgual(dreTodos.totalCustos, 40000, 0.01, 'sem filtro, as 2 frações somam 100% do custo real (sem duplicar)');
+});
+
+teste('montarDREConsolidado: filtro de fornecedor exclui processos de outro fornecedor', () => {
+  setEstadoProcessos([
+    { id:'p4', referencia:'UD4', cliente:'C1', fornecedor:'Fornecedor Certo',
+      real_json:{ fob: 1000 }, real_cambio: 5, nf_saida_data:'2026-09-05', nf_saida_valor: 10000 },
+    { id:'p5', referencia:'UD5', cliente:'C1', fornecedor:'Outro Fornecedor',
+      real_json:{ fob: 1000 }, real_cambio: 5, nf_saida_data:'2026-09-06', nf_saida_valor: 10000 },
+  ], []);
+  const dre = sandbox.montarDREConsolidado({
+    periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59'),
+    fornecedor: 'Fornecedor Certo',
+  });
+  iguais(dre._meta.qtdProcessos, 1);
+  iguais(dre._meta.referencias[0], 'UD4');
+});
+
+teste('montarDREConsolidado: processo cancelado nunca entra na soma, mesmo com NF de Saída no período', () => {
+  setEstadoProcessos([
+    { id:'p6', referencia:'UD6', cliente:'C1', cancelado:true,
+      real_json:{ fob: 1000 }, real_cambio: 5, nf_saida_data:'2026-09-05', nf_saida_valor: 10000 },
+  ], []);
+  const dre = sandbox.montarDREConsolidado({
+    periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59'),
+  });
+  iguais(dre, null, 'processo cancelado não deveria aparecer no DRE consolidado');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

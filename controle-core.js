@@ -1661,6 +1661,175 @@ function montarDRE(p){
   };
 }
 
+// DRE CONSOLIDADO — pedido do Ayslan (11/09/2026): "tem como fazermos um
+// DRE consolidado por semana, mes, ano... por cliente e alguns outros
+// filtros?". Em vez de recalcular tudo do zero, reagrupa a MESMA conta já
+// feita por montarDRE() (por processo), só que somando vários processos
+// ao mesmo tempo — sem duplicar nenhuma fórmula.
+//
+// Cada processo pode ter mais de 1 venda (vendas_json, ver
+// calcularVendasResumo) — cada venda tem sua PRÓPRIA data de NF de Saída
+// e seu próprio cliente, então quem decide se um processo "cai" dentro do
+// período/cliente filtrado é a VENDA, não o processo inteiro. Os custos
+// (FOB, impostos, frete, comissão etc.) são do PROCESSO como um todo
+// (compartilhados entre as vendas), então cada venda que passa no filtro
+// entra com sua FRAÇÃO de rateio (l.fracao — a mesma fração já usada pra
+// dividir o custo real entre clientes na aba Vendas), garantindo que a
+// soma das frações de um processo nunca ultrapasse 100% dele (sem
+// duplicar custo quando 2 vendas do mesmo processo caem no mesmo
+// filtro).
+//
+// Processos sem aba Vendas preenchida (fluxo antigo, 1 venda implícita)
+// viram uma única "linha" sintética com fração 1 (processo inteiro),
+// usando os campos legados (p.cliente/p.nf_saida_data/p.nf_saida_valor).
+//
+// Data de referência pro período: Data da NF de Saída (nf_saida_data) —
+// confirmado com o Ayslan: é a mais próxima do conceito contábil de
+// "quando entrou a receita". Uma venda sem essa data (ainda não faturada)
+// nunca entra em nenhum período, o que é o comportamento certo.
+function montarDREConsolidado(filtros){
+  filtros = filtros || {};
+  const ini = filtros.periodoIni || null;
+  const fim = filtros.periodoFim || null;
+  const clienteF = (filtros.cliente || '').trim();
+  const statusF = filtros.status || '';
+  const norm = nome => (nome || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,'');
+  const fornecedorFN = norm(filtros.fornecedor || '');
+  const marcaFN = norm(filtros.marca || '');
+
+  let acc = null; // inicializado com o "molde" (labels) do 1º processo incluído
+  let totalNfSaida = 0, totalJuros = 0;
+  const referenciasIncluidas = [];
+
+  (typeof _processos !== 'undefined' ? _processos : []).forEach(p => {
+    if(!p || p.cancelado) return;
+    if(statusF === 'FECHADO' && !p.fechado) return;
+    if(statusF === 'FINALIZADO' && p.fase !== 'FINALIZADO') return;
+    if(fornecedorFN && norm(p.fornecedor) !== fornecedorFN) return;
+    const marcaProcesso = p.brand || p.fornecedor || '';
+    if(marcaFN && norm(marcaProcesso) !== marcaFN) return;
+
+    const vendas = parseVendas(p);
+    let linhas;
+    if(vendas.length){
+      const resumo = calcularVendasResumo(p);
+      linhas = resumo ? resumo.linhas.map(l => ({
+        venda: l.venda, fracao: l.fracao,
+        cliente: l.venda.cliente || '',
+        dataNf: l.venda.nf_saida_data || '',
+        nfValor: l.temNf ? l.nfSaida : 0,
+        qtdVendasProcesso: resumo.linhas.length,
+      })) : [];
+    } else {
+      linhas = [{
+        venda: {}, fracao: 1,
+        cliente: p.cliente || '',
+        dataNf: p.nf_saida_data || '',
+        nfValor: parseFloat(p.nf_saida_valor) || 0,
+        qtdVendasProcesso: 1,
+      }];
+    }
+
+    let dreProcesso = null; // só calcula se alguma linha realmente bater (evita custo à toa)
+    let processoIncluido = false;
+
+    linhas.forEach(linha => {
+      if(!linha.dataNf || !linha.fracao || !linha.nfValor) return;
+      const d = parseDataLocal(linha.dataNf);
+      if(!d || isNaN(d.getTime())) return;
+      if(ini && d < ini) return;
+      if(fim && d > fim) return;
+      if(clienteF && linha.cliente !== clienteF) return;
+
+      if(!dreProcesso) dreProcesso = montarDRE(p);
+      const w = linha.fracao;
+
+      if(!acc){
+        acc = {
+          fob:0,
+          adiantamentoItens: dreProcesso.adiantamentoItens.map(i=>({label:i.label, valor:0})),
+          totalAdiantamento:0,
+          agenteFreteItens: dreProcesso.agenteFreteItens.map(i=>({label:i.label, valor:0})),
+          totalAgenteFrete:0,
+          diferencasItens: dreProcesso.diferencasItens.map(i=>({label:i.label, valorNfe:0, creditoEntrada:0, diferenca:0})),
+          reciclagem:0,
+          comissaoItens: dreProcesso.comissaoItens.map(i=>({label:i.label, valor:0})),
+          comissao:0, despesasBaixaPatio:0, lavacao:0, seguro:0,
+          totalCustos:0,
+          notasBoss: null,
+        };
+      }
+
+      acc.fob += dreProcesso.fob * w;
+      dreProcesso.adiantamentoItens.forEach((it,i) => { acc.adiantamentoItens[i].valor += it.valor * w; });
+      acc.totalAdiantamento += dreProcesso.totalAdiantamento * w;
+      dreProcesso.agenteFreteItens.forEach((it,i) => { acc.agenteFreteItens[i].valor += it.valor * w; });
+      acc.totalAgenteFrete += dreProcesso.totalAgenteFrete * w;
+      dreProcesso.diferencasItens.forEach((it,i) => {
+        acc.diferencasItens[i].valorNfe += it.valorNfe * w;
+        acc.diferencasItens[i].creditoEntrada += it.creditoEntrada * w;
+        acc.diferencasItens[i].diferenca += it.diferenca * w;
+      });
+      acc.reciclagem += dreProcesso.reciclagem * w;
+      dreProcesso.comissaoItens.forEach((it,i) => { acc.comissaoItens[i].valor += it.valor * w; });
+      acc.comissao += dreProcesso.comissao * w;
+      acc.despesasBaixaPatio += dreProcesso.despesasBaixaPatio * w;
+      acc.lavacao += dreProcesso.lavacao * w;
+      acc.seguro += dreProcesso.seguro * w;
+      acc.totalCustos += dreProcesso.totalCustos * w;
+
+      if(dreProcesso.notasBoss){
+        if(!acc.notasBoss) acc.notasBoss = {valorBoss:0, irRetido:0, iss:0, pis:0, cofins:0, irpj:0, csll:0, ibs:0, cbs:0, totalReceber:0};
+        const nb = dreProcesso.notasBoss;
+        acc.notasBoss.valorBoss += nb.valorBoss * w;
+        acc.notasBoss.irRetido += nb.irRetido * w;
+        acc.notasBoss.iss += nb.iss * w;
+        acc.notasBoss.pis += nb.pis * w;
+        acc.notasBoss.cofins += nb.cofins * w;
+        acc.notasBoss.irpj += nb.irpj * w;
+        acc.notasBoss.csll += nb.csll * w;
+        acc.notasBoss.ibs += nb.ibs * w;
+        acc.notasBoss.cbs += nb.cbs * w;
+        acc.notasBoss.totalReceber += nb.totalReceber * w;
+      }
+
+      totalNfSaida += linha.nfValor;
+      totalJuros += calcularJurosVenda(p, linha.venda, linha.qtdVendasProcesso);
+      processoIncluido = true;
+    });
+
+    if(processoIncluido) referenciasIncluidas.push(p.referencia || p.id);
+  });
+
+  if(!acc) return null; // nenhum processo bateu com período/filtros
+
+  const totalReceita = totalNfSaida + totalJuros;
+  const lucroBrutoImpak = totalReceita - acc.totalCustos;
+  const pctLucroBrutoImpak = totalReceita ? (lucroBrutoImpak / totalReceita) : null;
+  const lucroBruto = acc.notasBoss ? (lucroBrutoImpak + acc.notasBoss.totalReceber) : lucroBrutoImpak;
+  const denomFinal = totalReceita + (acc.notasBoss ? acc.notasBoss.valorBoss : 0);
+  const pctLucro = denomFinal ? (lucroBruto / denomFinal) : null;
+
+  return {
+    referencia: filtros.rotulo || 'Consolidado',
+    nfSaidaNumero: '',
+    nfSaidaValor: totalNfSaida,
+    jurosCobrado: totalJuros > 0 ? { valor: totalJuros } : null,
+    totalReceita,
+    fob: acc.fob,
+    adiantamentoItens: acc.adiantamentoItens, totalAdiantamento: acc.totalAdiantamento,
+    agenteFreteItens: acc.agenteFreteItens, totalAgenteFrete: acc.totalAgenteFrete,
+    diferencasItens: acc.diferencasItens,
+    reciclagem: acc.reciclagem, comissaoItens: acc.comissaoItens, comissao: acc.comissao,
+    despesasBaixaPatio: acc.despesasBaixaPatio, lavacao: acc.lavacao, seguro: acc.seguro,
+    totalCustos: acc.totalCustos,
+    lucroBrutoImpak, pctLucroBrutoImpak,
+    notasBoss: acc.notasBoss,
+    lucroBruto, pctLucro,
+    _meta: { qtdProcessos: referenciasIncluidas.length, referencias: referenciasIncluidas },
+  };
+}
+
 function calcularNotasBoss(p){
   const reais = p.real_json;
   if(!reais || typeof reais !== 'object') return null;
@@ -2629,7 +2798,7 @@ function renderFaseFilter(){
 const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'];
 
 function fecharTodosDashboards(){
-  ['executivo','financeiro','resultado','analises','narcelio','carregamento','tv','clientemedida','cambio'].forEach(function(id){
+  ['executivo','financeiro','resultado','analises','narcelio','carregamento','tv','clientemedida','cambio','dre'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
     if(el) el.style.display = 'none';
     var menu = document.getElementById('menu-'+id);
