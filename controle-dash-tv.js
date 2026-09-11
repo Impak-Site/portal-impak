@@ -295,19 +295,28 @@ function renderDashTV(){
     // altura restante da tela (flex:1) — pedido do Ayslan (08/09/2026):
     // "diminuir um pouco o cabeçalho" pra sobrar mais espaço vertical pras
     // linhas de processos, igual a planilha antiga (que não tinha cabeçalho
-    // nenhum, só a tabela). Sem card/sombra/margem em modo solo (edge-to-
-    // edge) — cada pixel de borda é espaço a menos pra caber processo.
+    // nenhum, só a tabela).
+    // Ajustado 11/09/2026 (pedido do Ayslan, com print de referência): o
+    // modo solo estava edge-to-edge (sem gutter/card), diferente do card
+    // arredondado com margem que ele quer ver na TV física também no modo
+    // solo — não só na visão combinada (/tv sem ?painel=). Agora o modo
+    // solo usa a mesma linguagem visual (card branco arredondado, sombra,
+    // gutter ao redor), só que ocupando a tela toda (flex:1 dentro do
+    // wrapper com padding) e com fontes maiores (clamp/vh) pra continuar
+    // legível de longe.
     if(solo){
-      return `<div style="height:100vh;display:flex;flex-direction:column;background:#fff;">
+      return `<div style="min-height:100vh;box-sizing:border-box;background:#f5f7fb;padding:22px;display:flex;flex-direction:column;">
         ${botaoVoltarTV()}
-        <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:1.1vh 26px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;box-shadow:0 2px 10px rgba(0,0,0,.12);">
-          <div>
-            <div style="font-family:'Syne',sans-serif;font-size:clamp(18px,2.5vh,34px);font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
-            <div style="font-size:clamp(10px,1.15vh,16px);color:rgba(255,255,255,.8);margin-top:1px;">${subtitulo}</div>
+        <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(15,23,42,.12);flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:1.6vh 32px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
+            <div>
+              <div style="font-family:'Syne',sans-serif;font-size:clamp(22px,3vh,38px);font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+              <div style="font-size:clamp(11px,1.3vh,16px);color:rgba(255,255,255,.8);margin-top:2px;">${subtitulo}</div>
+            </div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:clamp(30px,5vh,56px);font-weight:800;color:#fff;line-height:1;">${numero}</div>
           </div>
-          <div style="font-family:'DM Sans',sans-serif;font-size:clamp(26px,4.4vh,66px);font-weight:800;color:#fff;line-height:1;">${numero}</div>
+          <div style="flex:1;min-height:0;padding:24px 28px;display:flex;flex-direction:column;overflow:auto;">${conteudoHtml}</div>
         </div>
-        <div style="flex:1;min-height:0;padding:1.4vh 22px;display:flex;flex-direction:column;">${conteudoHtml}</div>
       </div>`;
     }
     return `<div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
