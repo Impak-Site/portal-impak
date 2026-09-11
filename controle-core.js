@@ -270,6 +270,8 @@ function ativarTelaResultadoExclusiva(){
   });
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
+  const tableWrapRes = document.querySelector('.table-wrap');
+  if(tableWrapRes) tableWrapRes.style.display = 'none';
 
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
@@ -298,6 +300,8 @@ function ativarTelaAnalisesExclusiva(){
   });
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
+  const tableWrapAn = document.querySelector('.table-wrap');
+  if(tableWrapAn) tableWrapAn.style.display = 'none';
 
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
