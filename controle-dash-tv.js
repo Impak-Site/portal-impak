@@ -368,7 +368,21 @@ function renderDashTV(){
       </div>`;
     }
     if(solo){
-      return `<div style="min-height:100vh;box-sizing:border-box;background:#f5f7fb;padding:28px;">
+      // height:100vh + overflow:hidden (em vez de min-height:100vh, que
+      // deixa a página crescer e rolar à vontade) — pedido da Emanuelly
+      // (11/09/2026, foto da TV física de Backorders): "diminuir um pouco
+      // esses cards grandes para caber o restante na mesma tela sem
+      // rolar". Com min-height a página simplesmente virava mais alta que
+      // a tela (barra de rolagem), porque o loop de auto-ajuste de fonte
+      // em ajustarFonteColunasTV() só reduz a fonte enquanto detecta
+      // overflow real (wrapperSolo.scrollHeight > wrapperSolo.clientHeight)
+      // — com a altura "elástica" (min-height) esse overflow nunca
+      // acontecia, então a fonte calculada pro card de marca (em "em",
+      // ver cardMarca) nunca encolhia o suficiente pra caber tudo (4 cards
+      // + pills + tabela) numa TV física real. Com height fixo em 100vh o
+      // mesmo mecanismo que já funciona no Em Águas passa a funcionar
+      // aqui também.
+      return `<div style="height:100vh;box-sizing:border-box;background:#f5f7fb;padding:28px;overflow:hidden;">
         ${botaoVoltarTV()}
         ${cardFixo}
       </div>`;
