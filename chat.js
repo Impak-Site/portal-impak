@@ -24,41 +24,59 @@ if (document.getElementById('impak-chat-root')) return;
 
 const CSS = `
 
-/* ── NAV GLOBAL ── */
+/* ── NAV GLOBAL ──
+   Ajustado 11/09/2026 (pedido do Ayslan): com Câmbio/Resultado/Análises/
+   Narcélio/Permissões somados aos links originais, a barra passou a ter
+   itens de mais pra caber numa janela comum — o texto "Suporte"/usuário e
+   o botão Sair ficavam cortados fora da tela, sem jeito de alcançar (a nav
+   é position:fixed, então não acompanhava nem o scroll horizontal do
+   body). Duas mudanças: (1) espaçamento mais enxuto (padding/gap/fonte
+   menores) pra caber mais itens sem cortar nada; (2) os links do meio
+   agora ficam num container próprio com flex:1 + overflow-x:auto — se
+   ainda não couber tudo (tela bem estreita), esse trecho vira scrollável
+   em vez de simplesmente sumir, e a área do usuário + Sair (nav-right)
+   fica sempre fixa e visível à direita. */
 #impak-nav {
 position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
 background: #0a2340;
 height: 52px;
 display: flex; align-items: center;
-padding: 0 20px; gap: 4px;
+padding: 0 14px; gap: 8px;
 box-shadow: 0 1px 0 rgba(255,255,255,.06), 0 4px 12px rgba(16,24,40,.08);
 font-family: 'DM Sans', sans-serif;
 }
 #impak-nav .nav-logo {
 font-family: 'Syne', 'DM Sans', sans-serif;
-font-size: 16px; font-weight: 800;
-color: #fff; letter-spacing: 1px;
-margin-right: 14px; flex-shrink: 0;
+font-size: 15px; font-weight: 800;
+color: #fff; letter-spacing: .5px;
+margin-right: 4px; flex-shrink: 0;
 }
+#impak-nav .nav-links-wrap {
+display: flex; align-items: center; gap: 2px;
+flex: 1 1 auto; min-width: 0; overflow-x: auto;
+scrollbar-width: thin;
+}
+#impak-nav .nav-links-wrap::-webkit-scrollbar { height: 4px; }
+#impak-nav .nav-links-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 2px; }
 #impak-nav .nav-link {
 color: rgba(255,255,255,.65);
 text-decoration: none;
-font-size: 12px; font-weight: 600;
-padding: 6px 12px; border-radius: 8px;
-transition: all .15s; white-space: nowrap;
+font-size: 11.5px; font-weight: 600;
+padding: 6px 8px; border-radius: 8px;
+transition: all .15s; white-space: nowrap; flex-shrink: 0;
 border: none; background: none; cursor: pointer;
 }
 #impak-nav .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
 #impak-nav .nav-link.active { color: #fff; background: rgba(255,255,255,.15); }
-#impak-nav .nav-sep { color: rgba(255,255,255,.2); margin: 0 2px; font-size: 11px; }
-#impak-nav .nav-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-#impak-nav .nav-user { font-size: 12px; color: rgba(255,255,255,.55); }
+#impak-nav .nav-sep { color: rgba(255,255,255,.2); margin: 0; font-size: 11px; flex-shrink: 0; }
+#impak-nav .nav-right { flex-shrink: 0; margin-left: 10px; display: flex; align-items: center; gap: 10px; }
+#impak-nav .nav-user { font-size: 11.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
 #impak-nav .nav-sair {
 color: rgba(255,255,255,.65); text-decoration: none;
-font-size: 12px; font-weight: 600;
-padding: 6px 12px; border-radius: 8px;
+font-size: 11.5px; font-weight: 600;
+padding: 6px 10px; border-radius: 8px;
 border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06);
-transition: all .15s; white-space: nowrap;
+transition: all .15s; white-space: nowrap; flex-shrink: 0;
 }
 #impak-nav .nav-sair:hover { color: #fff; background: rgba(255,255,255,.16); }
 /* Empurrar conteúdo para baixo */
@@ -218,6 +236,7 @@ const navEl = document.createElement('div');
 navEl.id = 'impak-nav';
 navEl.innerHTML = `
 <div class="nav-logo">IMPAK</div>
+<div class="nav-links-wrap" id="nav-links-wrap"></div>
 <div class="nav-right">
 <span class="nav-user" id="nav-user-label">—</span>
 <a class="nav-sair" href="/logout">Sair</a>
@@ -231,37 +250,51 @@ if(el && d.displayName) el.textContent = d.displayName;
 
 const modulosDoUsuario = d.modulos || [];
 const linksPermitidos = navModulos.filter(m => modulosDoUsuario.includes(m.modulo));
-const navRight = navEl.querySelector('.nav-right');
-linksPermitidos.forEach(m => {
+const linksWrap = navEl.querySelector('#nav-links-wrap');
+linksPermitidos.forEach((m, idx) => {
+  if(idx > 0){
+    const sep = document.createElement('span');
+    sep.className = 'nav-sep';
+    sep.textContent = '·';
+    linksWrap.appendChild(sep);
+  }
   const link = document.createElement('a');
   link.className = 'nav-link' + (modAtual === m.key ? ' active' : '');
   link.href = m.href;
   link.textContent = m.label;
-  navEl.insertBefore(link, navRight);
-  const sep = document.createElement('span');
-  sep.className = 'nav-sep';
-  sep.textContent = '·';
-  navEl.insertBefore(sep, navRight);
+  linksWrap.appendChild(link);
 });
 
 // Link do Dashboard Narcélio — depende do módulo "narcelio" (dado sensível
 // de faturamento/margem, liberado só pra quem a tela de Permissões marcar).
 if(modulosDoUsuario.includes('narcelio')){
+  if(linksWrap.children.length){
+    const sep = document.createElement('span');
+    sep.className = 'nav-sep';
+    sep.textContent = '·';
+    linksWrap.appendChild(sep);
+  }
   const link = document.createElement('a');
   link.className = 'nav-link' + (path.includes('narcelio') ? ' active' : '');
   link.href = '/narcelio';
   link.textContent = '👔 Narcélio';
-  navRight.parentNode.insertBefore(link, navRight);
+  linksWrap.appendChild(link);
 }
 
 // Link da tela de Permissões — só pra quem pode gerenciar acesso de outros
 // (Narcelio, Paula, Ayslan/"suporte" — ver ADMINS_PERMISSOES em server.js).
 if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
+  if(linksWrap.children.length){
+    const sep = document.createElement('span');
+    sep.className = 'nav-sep';
+    sep.textContent = '·';
+    linksWrap.appendChild(sep);
+  }
   const link = document.createElement('a');
   link.className = 'nav-link' + (path.includes('permissoes') ? ' active' : '');
   link.href = '/permissoes';
   link.textContent = '🔐 Permissões';
-  navRight.parentNode.insertBefore(link, navRight);
+  linksWrap.appendChild(link);
 }
 }).catch(()=>{});
 
