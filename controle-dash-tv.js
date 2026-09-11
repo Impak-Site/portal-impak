@@ -229,7 +229,25 @@ function renderDashTV(){
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || (parseInt(p.qtd_containers_prevista, 10) || 0) || 1;
     const chaveMarca = (p.brand || p.fornecedor || 'Sem marca').trim().toUpperCase();
     previstoMesPorMarca[chaveMarca] = (previstoMesPorMarca[chaveMarca] || 0) + n;
-    previstoMesProcessos.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n });
+    // nfStatus da linha — pedido da Emanuelly (11/09/2026): "tem como
+    // mudar a cor da linha do processo sempre que for lançado uma nf? ...
+    // foi lançado uma nf de entrada e uma nf de remessa (ainda em
+    // estoque) fica verde ... incluido uma nf de saida (cfop de saida e
+    // não de estoque) fica cinza claro". Reaproveita o MESMO critério já
+    // usado no painel "NO CHÃO" acima (linha ~186: semVenda = CFOP 5905
+    // "remessa interna" OU sem NF de Saída ainda) pra não duplicar a
+    // regra de negócio com uma definição diferente em outro lugar:
+    //   'estoque' (verde)      = NF Entrada lançada E (sem NF Saída ainda
+    //                            OU NF Saída é remessa interna CFOP 5905)
+    //   'saiu'    (cinza claro) = NF Saída lançada com CFOP que NÃO é
+    //                            remessa (venda/saída real de estoque)
+    const _nfEntradaLancada = !!(p.nf_entrada_numero && String(p.nf_entrada_numero).trim());
+    const _nfSaidaLancada = !!(p.nf_saida_numero && String(p.nf_saida_numero).trim());
+    const _nfEhRemessa = p.nf_saida_cfop === '5905';
+    let nfStatus = null;
+    if(_nfEntradaLancada && (_nfEhRemessa || !_nfSaidaLancada)) nfStatus = 'estoque';
+    else if(_nfSaidaLancada && !_nfEhRemessa) nfStatus = 'saiu';
+    previstoMesProcessos.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n, nfStatus });
     previstoMesContainers += n;
   });
   previstoMesProcessos.sort((a,b) => (a.eta||'9999').localeCompare(b.eta||'9999'));
@@ -618,7 +636,11 @@ function renderDashTV(){
   // (mesmo padrão de emAguasEmColunas/noChaoEmColunas), colunas ETA/Processo/Qtd.
   function linhaProcessoMesChaoTV(x){
     const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
-    return `<div class="tv-row" style="display:flex;align-items:center;gap:.5em;border-top:1px solid var(--border);overflow:hidden;padding:.35em 0;white-space:nowrap;">
+    const corFundo = x.nfStatus === 'estoque' ? '#dcfce7' : (x.nfStatus === 'saiu' ? '#eef2f7' : 'transparent');
+    const corBorda = x.nfStatus === 'estoque' ? '#16a34a' : (x.nfStatus === 'saiu' ? '#94a3b8' : 'transparent');
+    const titulo = x.nfStatus === 'estoque' ? 'NF Entrada + Remessa lançadas — ainda em estoque'
+      : (x.nfStatus === 'saiu' ? 'NF de Saída (venda real) lançada — já saiu do estoque' : '');
+    return `<div class="tv-row" title="${esc(titulo)}" style="display:flex;align-items:center;gap:.5em;border-top:1px solid var(--border);border-left:3px solid ${corBorda};overflow:hidden;padding:.35em .5em .35em .4em;white-space:nowrap;background:${corFundo};border-radius:0 4px 4px 0;">
         <div style="flex:0 0 auto;font-weight:700;white-space:nowrap;">${etaFmt}</div>
         <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(x.referencia||'')}">${esc(x.referencia||'—')}</div>
         <div style="flex:0 0 auto;text-align:right;font-weight:700;color:#475569;">${x.n}</div>
