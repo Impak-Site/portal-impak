@@ -421,19 +421,24 @@ function renderDashTV(){
   function cardMarca(nome, qtd, maxQtd, chave){
     const pct = maxQtd > 0 ? Math.round((qtd/maxQtd)*100) : 0;
     const cor = corMarcaTV(chave);
-    // Card um pouco mais compacto (pedido da Emanuelly 11/09/2026, foto da
-    // TV física de Backorders: "diminuir um pouco esses cards grandes para
-    // caber o restante na mesma tela sem rolar") — padding e número
-    // reduzidos, mesma estrutura/cores/clique de antes, só ocupando menos
-    // espaço vertical (em cima do auto-encolhimento de fonte, que já foi
-    // ativado pra esse painel solo no mesmo commit).
-    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:.8em 1.1em;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.1);">
-      <div style="display:flex;align-items:center;gap:.5em;margin-bottom:.3em;overflow:hidden;">
-        <div style="flex:0 0 auto;width:2em;height:2em;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:.68em;font-weight:800;font-family:'DM Sans',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
-        <div style="font-size:.8em;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
+    // Pedido do Ayslan (11/09/2026, depois do ajuste anterior): "coloca o
+    // eudemon, rovelo, sunfull e sunwide o dobro do tamanho que o azul
+    // debaixo" (os cards brancos de marca vs. as pills azuis do "resto"
+    // logo abaixo). As pills (backordersHtml, ~10 linhas abaixo) usam
+    // padding/font em PX FIXO (9px 13px / 14px — não em "em"), então pra
+    // ter uma proporção previsível e estável (2x a altura da pill,
+    // independente da fonte automática que a TV calcula pro resto da
+    // tela — ver ajustarFonteColunasTV) o card de marca também passa a
+    // usar px fixo em vez de "em". Pill ≈ 36px de altura (9+9 padding +
+    // ~18 de linha do texto 14px); card alvo ≈ 76px (pouco mais de 2x,
+    // pela estrutura em 2 linhas + barra que a pill não tem).
+    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.1);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;overflow:hidden;">
+        <div style="flex:0 0 auto;width:24px;height:24px;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:'DM Sans',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
+        <div style="font-size:13px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
       </div>
-      <div style="font-size:1.7em;font-weight:800;color:#0f1f3d;font-family:'DM Sans',sans-serif;white-space:nowrap;">${fmtN(qtd)} <span style="font-size:.42em;font-weight:600;color:#94a3b8;">containers</span></div>
-      <div style="background:#e2e8f0;border-radius:4px;height:.3em;margin-top:.35em;overflow:hidden;"><div style="background:${cor};height:100%;width:${pct}%;"></div></div>
+      <div style="font-size:26px;font-weight:800;color:#0f1f3d;font-family:'DM Sans',sans-serif;white-space:nowrap;line-height:1.1;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:#94a3b8;">containers</span></div>
+      <div style="background:#e2e8f0;border-radius:4px;height:5px;margin-top:6px;overflow:hidden;"><div style="background:${cor};height:100%;width:${pct}%;"></div></div>
     </div>`;
   }
 
