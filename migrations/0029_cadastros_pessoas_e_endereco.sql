@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS cadastros_pessoas (
   email TEXT,
   aniversario DATE,
   tipo TEXT DEFAULT 'CONTATO',        -- 'CONTATO' (pessoa de empresa) | 'FUNCIONARIO' | 'OUTRO'
-  empresa_id UUID REFERENCES contatos_clientes(id) ON DELETE CASCADE,
+  empresa_id TEXT REFERENCES contatos_clientes(id) ON DELETE CASCADE,
   usuario_vinculado TEXT REFERENCES usuarios(usuario) ON DELETE SET NULL,
   principal BOOLEAN DEFAULT false,    -- destinatário preferencial de follow-up/e-mails da empresa
   obs TEXT,
