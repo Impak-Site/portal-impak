@@ -161,7 +161,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     // Ayslan (10/09/2026, viu o toast cobrindo o canto do painel Backorders
     // na TV): elas têm o próprio cabeçalho/KPI mostrando os dados, o toast só
     // seria ruído (e numa TV física não tem ninguém pra ler e dispensar).
-    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio'];
+    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros'];
     const carregamentoSilencioso = TELAS_EXCLUSIVAS.includes(location.pathname);
     carregarProcessos(carregamentoSilencioso).then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
@@ -170,6 +170,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
       if(location.pathname==='/tv') ativarTelaTVExclusiva();
       if(location.pathname==='/cambio') ativarTelaCambioExclusiva();
+      if(location.pathname==='/cadastros') ativarTelaCadastrosExclusiva();
       // Deep-link ?processo=<id> — usado pelo Calculador pra abrir direto o
       // processo recém-criado ao aprovar uma cotação (ver aprovarCotacao()
       // em calculador.html). Só tenta abrir depois que a lista carregou,
@@ -265,6 +266,34 @@ function ativarTelaFinanceiroExclusiva(){
   const dashFin = document.getElementById('dash-financeiro');
   if(dashFin) dashFin.style.display = 'block';
   renderDashFinanceiro();
+}
+
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /cadastros — Empresas/Pessoas/Funcionários. Mesmo
+// esquema do /financeiro acima. Ver renderDashCadastros() em
+// controle-dash-cadastros.js.
+function ativarTelaCadastrosExclusiva(){
+  document.title = 'IMPAK — Cadastros';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Cadastros';
+
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+  document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
+
+  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('menu-cadastros')?.classList.add('active');
+
+  const dashCad = document.getElementById('dash-cadastros');
+  if(dashCad) dashCad.style.display = 'block';
+  renderDashCadastros();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2798,7 +2827,7 @@ function renderFaseFilter(){
 const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'];
 
 function fecharTodosDashboards(){
-  ['executivo','financeiro','resultado','analises','narcelio','carregamento','tv','clientemedida','cambio','dre'].forEach(function(id){
+  ['executivo','financeiro','resultado','analises','narcelio','carregamento','tv','clientemedida','cambio','dre','cadastros'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
     if(el) el.style.display = 'none';
     var menu = document.getElementById('menu-'+id);

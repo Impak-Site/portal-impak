@@ -64,14 +64,6 @@ document.addEventListener('click', e=>{
 let _contatosTipoAtivo = 'CLIENTE';
 let _contatosLista = [];
 
-function abrirContatos(){
-  document.getElementById('modal-contatos-bg').classList.add('open');
-  filtrarContatosTipo('CLIENTE');
-}
-function fecharModalContatos(){
-  document.getElementById('modal-contatos-bg').classList.remove('open');
-}
-
 async function filtrarContatosTipo(tipo){
   _contatosTipoAtivo = tipo;
   document.querySelectorAll('#contatos-tipo-filter button').forEach(b=>{
@@ -97,7 +89,7 @@ function renderListaContatos(){
   let lista = _contatosLista;
   if(q) lista = lista.filter(c=>
     (c.razao_social||'').toLowerCase().includes(q) ||
-    (c.cnpj||'').includes(q) ||
+    (c.documento||c.cnpj||'').includes(q) ||
     (c.nome_fantasia||'').toLowerCase().includes(q)
   );
   if(!lista.length){
@@ -105,7 +97,10 @@ function renderListaContatos(){
     return;
   }
   tbody.innerHTML = lista.map(c=>{
-    const cnpjFmt = c.cnpj ? c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5') : '—';
+    const doc = c.documento || c.cnpj || '';
+    const cnpjFmt = doc
+      ? (c.tipo_pessoa==='FISICA' ? doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'))
+      : '—';
     return `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:9px 16px;font-weight:600;">${esc(c.razao_social)}</td>
       <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-size:11px;">${cnpjFmt}</td>
@@ -126,6 +121,43 @@ function formatarCnpjInput(input){
   else if(v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
   else if(v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
   input.value = v;
+}
+
+// Formata CPF (000.000.000-00), pra pessoa física.
+function formatarCpfInput(input){
+  let v = input.value.replace(/\D/g,'').slice(0,11);
+  if(v.length > 9) v = v.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2})/, '$1.$2.$3-$4');
+  else if(v.length > 6) v = v.replace(/^(\d{3})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if(v.length > 3) v = v.replace(/^(\d{3})(\d{0,3})/, '$1.$2');
+  input.value = v;
+}
+
+// O campo "Documento" muda de máscara/comportamento conforme Tipo de
+// Pessoa + País: Jurídica+Brasil = CNPJ (com busca automática na Receita),
+// Física+Brasil = CPF (só máscara, sem busca pública), qualquer coisa do
+// exterior = texto livre, sem máscara nem regra (ainda não há uma fonte
+// pública única de documento por país pra automatizar isso).
+function _ceAtualizarCamposDocumento(){
+  const tipoPessoa = document.getElementById('ce_tipo_pessoa').value;
+  const pais = (document.getElementById('ce_pais').value||'').trim().toLowerCase();
+  const label = document.getElementById('ce_documento_label');
+  const isBrasil = pais === 'brasil' || pais === '';
+  if(!isBrasil){ label.textContent = 'Documento'; return; }
+  label.textContent = tipoPessoa === 'FISICA' ? 'CPF' : 'CNPJ';
+}
+function _ceFormatarDocumento(input){
+  const tipoPessoa = document.getElementById('ce_tipo_pessoa').value;
+  const pais = (document.getElementById('ce_pais').value||'').trim().toLowerCase();
+  const isBrasil = pais === 'brasil' || pais === '';
+  if(!isBrasil) return; // exterior: sem máscara, digita livre
+  if(tipoPessoa === 'FISICA') formatarCpfInput(input);
+  else formatarCnpjInput(input);
+}
+function _ceBuscarCnpjSeAplicavel(valor){
+  const tipoPessoa = document.getElementById('ce_tipo_pessoa').value;
+  const pais = (document.getElementById('ce_pais').value||'').trim().toLowerCase();
+  const isBrasil = pais === 'brasil' || pais === '';
+  if(isBrasil && tipoPessoa === 'JURIDICA') buscarDadosCnpj(valor);
 }
 
 async function buscarDadosCnpj(valor){
@@ -149,6 +181,11 @@ async function buscarDadosCnpj(valor){
     const ufEl = document.getElementById('ce_uf');
     const emailEl = document.getElementById('ce_email');
     const telEl = document.getElementById('ce_telefone');
+    const logradouroEl = document.getElementById('ce_logradouro');
+    const numeroEl = document.getElementById('ce_numero');
+    const complementoEl = document.getElementById('ce_complemento');
+    const bairroEl = document.getElementById('ce_bairro');
+    const cepEl = document.getElementById('ce_cep');
     // Só preenche campos vazios, não sobrescreve o que o usuário já digitou
     if(razaoEl && !razaoEl.value) razaoEl.value = d.razao_social || '';
     if(fantasiaEl && !fantasiaEl.value) fantasiaEl.value = d.nome_fantasia || '';
@@ -156,6 +193,11 @@ async function buscarDadosCnpj(valor){
     if(ufEl && !ufEl.value) ufEl.value = d.uf || '';
     if(emailEl && !emailEl.value && d.email) emailEl.value = d.email || '';
     if(telEl && !telEl.value && d.ddd_telefone_1) telEl.value = d.ddd_telefone_1 || '';
+    if(logradouroEl && !logradouroEl.value) logradouroEl.value = d.logradouro || '';
+    if(numeroEl && !numeroEl.value) numeroEl.value = d.numero || '';
+    if(complementoEl && !complementoEl.value) complementoEl.value = d.complemento || '';
+    if(bairroEl && !bairroEl.value) bairroEl.value = d.bairro || '';
+    if(cepEl && !cepEl.value) cepEl.value = d.cep || '';
     if(statusEl){
       const situacao = d.descricao_situacao_cadastral || '';
       statusEl.textContent = '✓ Dados preenchidos automaticamente'+(situacao?' · Situação: '+situacao:'');
@@ -168,10 +210,14 @@ async function buscarDadosCnpj(valor){
 
 function abrirNovoContato(){
   document.getElementById('contato-edit-title').textContent = 'Novo Contato';
-  ['ce_id','ce_razao_social','ce_nome_fantasia','ce_cnpj','ce_uf','ce_cidade','ce_email','ce_telefone','ce_obs'].forEach(id=>{
+  ['ce_id','ce_razao_social','ce_nome_fantasia','ce_documento','ce_uf','ce_cidade','ce_email','ce_telefone','ce_obs',
+   'ce_logradouro','ce_numero','ce_complemento','ce_bairro','ce_cep'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('ce_tipo').value = _contatosTipoAtivo;
+  document.getElementById('ce_tipo_pessoa').value = 'JURIDICA';
+  document.getElementById('ce_pais').value = 'Brasil';
+  _ceAtualizarCamposDocumento();
   const statusEl = document.getElementById('ce_cnpj_status');
   if(statusEl) statusEl.textContent = '';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
@@ -183,14 +229,22 @@ function editarContato(id){
   document.getElementById('contato-edit-title').textContent = 'Editar Contato';
   document.getElementById('ce_id').value = c.id;
   document.getElementById('ce_tipo').value = c.tipo||'CLIENTE';
+  document.getElementById('ce_tipo_pessoa').value = c.tipo_pessoa||'JURIDICA';
+  document.getElementById('ce_pais').value = c.pais||'Brasil';
   document.getElementById('ce_razao_social').value = c.razao_social||'';
   document.getElementById('ce_nome_fantasia').value = c.nome_fantasia||'';
-  document.getElementById('ce_cnpj').value = c.cnpj||'';
+  document.getElementById('ce_documento').value = c.documento||c.cnpj||'';
   document.getElementById('ce_uf').value = c.uf||'';
   document.getElementById('ce_cidade').value = c.cidade||'';
   document.getElementById('ce_email').value = c.email||'';
   document.getElementById('ce_telefone').value = c.telefone||'';
   document.getElementById('ce_obs').value = c.obs||'';
+  document.getElementById('ce_logradouro').value = c.logradouro||'';
+  document.getElementById('ce_numero').value = c.numero||'';
+  document.getElementById('ce_complemento').value = c.complemento||'';
+  document.getElementById('ce_bairro').value = c.bairro||'';
+  document.getElementById('ce_cep').value = c.cep||'';
+  _ceAtualizarCamposDocumento();
   const statusEl = document.getElementById('ce_cnpj_status');
   if(statusEl) statusEl.textContent = '';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
@@ -203,17 +257,28 @@ function fecharModalContatoEdit(){
 async function salvarContato(){
   const razao = document.getElementById('ce_razao_social').value.trim();
   if(!razao){ showToast('Razão social é obrigatória','err'); return; }
+  const tipoPessoa = document.getElementById('ce_tipo_pessoa').value;
+  const pais = document.getElementById('ce_pais').value.trim() || 'Brasil';
+  const documentoRaw = document.getElementById('ce_documento').value;
+  const isBrasil = pais.toLowerCase() === 'brasil';
   const payload = {
     id: document.getElementById('ce_id').value || undefined,
     tipo: document.getElementById('ce_tipo').value,
+    tipo_pessoa: tipoPessoa,
+    pais: pais,
     razao_social: razao,
     nome_fantasia: document.getElementById('ce_nome_fantasia').value.trim(),
-    cnpj: document.getElementById('ce_cnpj').value.replace(/\D/g,''),
+    documento: isBrasil ? documentoRaw.replace(/\D/g,'') : documentoRaw.trim(),
     uf: document.getElementById('ce_uf').value.trim().toUpperCase(),
     cidade: document.getElementById('ce_cidade').value.trim(),
     email: document.getElementById('ce_email').value.trim(),
     telefone: document.getElementById('ce_telefone').value.trim(),
     obs: document.getElementById('ce_obs').value.trim(),
+    logradouro: document.getElementById('ce_logradouro').value.trim(),
+    numero: document.getElementById('ce_numero').value.trim(),
+    complemento: document.getElementById('ce_complemento').value.trim(),
+    bairro: document.getElementById('ce_bairro').value.trim(),
+    cep: document.getElementById('ce_cep').value.trim(),
   };
   try{
     const r = await fetch('/api/contatos', {

@@ -196,6 +196,7 @@ document.head.appendChild(style);
 // (mesmo módulo do TyreDesk — são a mesma área de trabalho no back-end).
 const navModulos = [
 { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
+{ label: '📇 Cadastros', href: '/cadastros', key: 'cadastros', modulo: 'controle' }, // tela unificada de Empresas/Pessoas/Funcionarios - pedido Ayslan 12/09/2026
 { label: '📄 Conferência', href: '/processos', key: 'processos', modulo: 'conferencia' },
 { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
 { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
@@ -217,6 +218,7 @@ const modAtual = path === '/' ? 'tyredesk'
   : path.includes('resultado') ? 'resultado'
 : path.includes('financeiro') ? 'financeiro'
 : path.includes('/tv') ? 'tv'
+: path.includes('cadastros') ? 'cadastros'
 : path.includes('controle') ? 'controle'
 : path.includes('processos') ? 'processos'
 : path.includes('calculador')? 'calculador'

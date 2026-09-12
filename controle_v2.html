@@ -373,7 +373,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 </div>
 <div class="sidebar-section">
 <div class="sidebar-label">Cadastros</div>
-<div class="sidebar-item" onclick="abrirContatos()">📇 Fornecedores / Clientes / Despachantes / Agentes</div>
+<div class="sidebar-item" id="menu-cadastros" onclick="location.href='/cadastros'">📇 Cadastros (Empresas / Pessoas / Funcionários)</div>
 </div>
 <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
 <div class="sidebar-label">API Anthropic</div>
@@ -529,6 +529,11 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
     <div id="dash-dre-content"></div>
   </div>
 
+  <!-- CADASTROS (Empresas / Pessoas / Funcionários) -->
+  <div id="dash-cadastros" style="display:none;margin-bottom:20px;">
+    <div id="dash-cadastros-content"></div>
+  </div>
+
 <!-- TABELA -->
 <div class="table-wrap">
 <div class="table-header">
@@ -581,47 +586,8 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 </div>
 </div>
 
-<!-- MODAL: CADASTRO DE CONTATOS -->
-<div class="modal-bg" id="modal-contatos-bg">
-<div class="modal" style="max-width:880px;">
-<div class="modal-header">
-<div class="modal-title">📇 Cadastro de Contatos</div>
-<button class="modal-close" onclick="fecharModalContatos()">×</button>
-</div>
-<div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-<div style="display:flex;gap:6px;margin:0;flex-wrap:wrap;" id="contatos-tipo-filter">
-<button class="btn btn-sm btn-primary" data-tipo="CLIENTE" onclick="filtrarContatosTipo('CLIENTE')">👤 Clientes</button>
-<button class="btn btn-sm btn-outline" data-tipo="FORNECEDOR" onclick="filtrarContatosTipo('FORNECEDOR')">🏭 Fornecedores</button>
-<button class="btn btn-sm btn-outline" data-tipo="EXPORTADOR" onclick="filtrarContatosTipo('EXPORTADOR')">🏗 Exportadores</button>
-<button class="btn btn-sm btn-outline" data-tipo="DESPACHANTE" onclick="filtrarContatosTipo('DESPACHANTE')">📋 Despachantes</button>
-<button class="btn btn-sm btn-outline" data-tipo="AGENTE" onclick="filtrarContatosTipo('AGENTE')">🚢 Agentes</button>
-<button class="btn btn-sm btn-outline" data-tipo="ARMADOR" onclick="filtrarContatosTipo('ARMADOR')">⚓ Armadores</button>
-<button class="btn btn-sm btn-outline" data-tipo="TRANSPORTADORA" onclick="filtrarContatosTipo('TRANSPORTADORA')">🚚 Transportadoras</button>
-<button class="btn btn-sm btn-outline" data-tipo="ARMAZEM_ALFANDEGADO" onclick="filtrarContatosTipo('ARMAZEM_ALFANDEGADO')">🏢 Armazém Alfandegado</button>
-<button class="btn btn-sm btn-outline" data-tipo="PORTO_ARMAZEM" onclick="filtrarContatosTipo('PORTO_ARMAZEM')">🏗 Porto/Armazém</button>
-<button class="btn btn-sm btn-outline" data-tipo="DEPOT_DEVOLUCAO" onclick="filtrarContatosTipo('DEPOT_DEVOLUCAO')">🔄 Depot Devolução</button>
-</div>
-<input class="search-box" id="contatos-search" placeholder="🔍 Buscar por razão social, CNPJ..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
-<button class="btn btn-primary" onclick="abrirNovoContato()">+ Novo</button>
-</div>
-<div class="modal-body" style="padding:0;max-height:480px;overflow-y:auto;">
-<table style="width:100%;border-collapse:collapse;font-size:13px;">
-<thead style="position:sticky;top:0;background:var(--card);z-index:1;">
-<tr style="border-bottom:1px solid var(--border);">
-<th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Razão Social</th>
-<th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">CNPJ</th>
-<th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Cidade/UF</th>
-<th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Contato</th>
-<th style="text-align:right;padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">Ações</th>
-</tr>
-</thead>
-<tbody id="contatos-tbody"></tbody>
-</table>
-</div>
-</div>
-</div>
-
-<!-- MODAL: EDITAR/NOVO CONTATO -->
+<!-- MODAL: EDITAR/NOVO CONTATO (lista antiga foi substituída pela tela /cadastros;
+     esse modal de edição continua sendo reaproveitado por ela) -->
 <div class="modal-bg" id="modal-contato-edit-bg">
 <div class="modal" style="max-width:480px;">
 <div class="modal-header">
@@ -648,14 +614,39 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div class="form-group"><label class="form-label">Nome Fantasia</label>
 <input class="form-input" id="ce_nome_fantasia"></div>
 <div class="form-row">
-<div class="form-group"><label class="form-label">CNPJ</label>
-<input class="form-input" id="ce_cnpj" placeholder="00.000.000/0000-00" oninput="formatarCnpjInput(this)" onblur="buscarDadosCnpj(this.value)">
+<div class="form-group"><label class="form-label">Tipo de Pessoa</label>
+<select class="form-input" id="ce_tipo_pessoa" onchange="_ceAtualizarCamposDocumento()">
+<option value="JURIDICA">Jurídica (empresa)</option>
+<option value="FISICA">Física</option>
+</select></div>
+<div class="form-group"><label class="form-label">País</label>
+<input class="form-input" id="ce_pais" value="Brasil" onchange="_ceAtualizarCamposDocumento()"></div>
+</div>
+<div class="form-row">
+<div class="form-group"><label class="form-label" id="ce_documento_label">CNPJ</label>
+<input class="form-input" id="ce_documento" placeholder="00.000.000/0000-00" oninput="_ceFormatarDocumento(this)" onblur="_ceBuscarCnpjSeAplicavel(this.value)">
 <div id="ce_cnpj_status" style="font-size:10px;color:var(--dim);margin-top:2px;"></div></div>
 <div class="form-group"><label class="form-label">UF</label>
 <input class="form-input" id="ce_uf" maxlength="2" style="text-transform:uppercase;"></div>
 </div>
+<div class="form-row">
+<div class="form-group" style="flex:2;"><label class="form-label">Logradouro</label>
+<input class="form-input" id="ce_logradouro"></div>
+<div class="form-group"><label class="form-label">Número</label>
+<input class="form-input" id="ce_numero"></div>
+</div>
+<div class="form-row">
+<div class="form-group"><label class="form-label">Complemento</label>
+<input class="form-input" id="ce_complemento"></div>
+<div class="form-group"><label class="form-label">Bairro</label>
+<input class="form-input" id="ce_bairro"></div>
+</div>
+<div class="form-row">
 <div class="form-group"><label class="form-label">Cidade</label>
 <input class="form-input" id="ce_cidade"></div>
+<div class="form-group"><label class="form-label">CEP</label>
+<input class="form-input" id="ce_cep"></div>
+</div>
 <div class="form-row">
 <div class="form-group"><label class="form-label">E-mail</label>
 <input class="form-input" id="ce_email"></div>
@@ -667,6 +658,63 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:12px;">
 <button class="btn btn-outline" onclick="fecharModalContatoEdit()">Cancelar</button>
 <button class="btn btn-primary" onclick="salvarContato()">💾 Salvar</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- MODAL: EDITAR/NOVO PESSOA (Cadastros — contato individual/funcionário) -->
+<div class="modal-bg" id="modal-pessoa-edit-bg">
+<div class="modal" style="max-width:480px;">
+<div class="modal-header">
+<div class="modal-title" id="pessoa-edit-title">Nova Pessoa</div>
+<button class="modal-close" onclick="fecharModalPessoaEdit()">×</button>
+</div>
+<div class="modal-body">
+<input type="hidden" id="cp_id">
+<div class="form-group"><label class="form-label">Tipo</label>
+<select class="form-input" id="cp_tipo" onchange="_cpAtualizarCamposTipo()">
+<option value="CONTATO">Contato de uma empresa (cliente/fornecedor/etc.)</option>
+<option value="FUNCIONARIO">Funcionário interno</option>
+<option value="OUTRO">Outro</option>
+</select></div>
+<div class="form-group"><label class="form-label">Nome *</label>
+<input class="form-input" id="cp_nome"></div>
+<div class="form-row">
+<div class="form-group"><label class="form-label">Cargo</label>
+<input class="form-input" id="cp_cargo"></div>
+<div class="form-group"><label class="form-label">Aniversário</label>
+<input class="form-input" type="date" id="cp_aniversario"></div>
+</div>
+<div class="form-group" id="cp_empresa_wrap"><label class="form-label">Empresa (se for contato de cliente/fornecedor/etc.)</label>
+<input class="form-input" id="cp_empresa_nome" placeholder="Digite pra buscar..." autocomplete="off" oninput="_cpAutocompleteEmpresa(this)">
+<input type="hidden" id="cp_empresa_id">
+<div id="cp-empresa-dropdown" style="display:none;position:absolute;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+</div>
+<div class="form-group" id="cp_usuario_wrap" style="display:none;"><label class="form-label">Usuário de login vinculado</label>
+<select class="form-input" id="cp_usuario_vinculado"><option value="">— nenhum —</option></select>
+</div>
+<div class="form-row">
+<div class="form-group"><label class="form-label">CPF</label>
+<input class="form-input" id="cp_cpf" placeholder="000.000.000-00" oninput="formatarCpfInput(this)"></div>
+<div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:8px;">
+<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">
+<input type="checkbox" id="cp_principal"> Contato principal da empresa (recebe follow-up/e-mails)
+</label></div>
+</div>
+<div class="form-row">
+<div class="form-group"><label class="form-label">Telefone</label>
+<input class="form-input" id="cp_telefone"></div>
+<div class="form-group"><label class="form-label">WhatsApp</label>
+<input class="form-input" id="cp_whatsapp"></div>
+</div>
+<div class="form-group"><label class="form-label">E-mail</label>
+<input class="form-input" id="cp_email"></div>
+<div class="form-group"><label class="form-label">Observações</label>
+<textarea class="form-input" id="cp_obs" rows="2"></textarea></div>
+<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:12px;">
+<button class="btn btn-outline" onclick="fecharModalPessoaEdit()">Cancelar</button>
+<button class="btn btn-primary" onclick="salvarPessoa()">💾 Salvar</button>
 </div>
 </div>
 </div>
@@ -729,6 +777,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <script src="/controle-dash-tv.js"></script>
 <script src="/controle-dash-cliente-medida.js"></script>
 <script src="/controle-dash-dre.js"></script>
+<script src="/controle-dash-cadastros.js"></script>
 
 <script src="/chat.js"></script>
 </body>

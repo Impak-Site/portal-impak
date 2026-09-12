@@ -1272,6 +1272,11 @@ app.get('/controle', auth('controle'), (req, res) => res.sendFile(path.join(__di
 // upload de documentos, autocomplete de contatos etc. num arquivo separado
 // que rapidamente ficaria desatualizado em relação ao Controle de verdade.
 app.get('/financeiro', auth('financeiro'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+// "Tela exclusiva" de Cadastros (Empresas/Pessoas/Funcionários) — mesmo
+// esquema do /financeiro acima. Aberta a qualquer módulo que já enxergava
+// o antigo modal de Contatos (não é dado sensível por natureza, é o
+// cadastro base usado em todo o sistema).
+app.get('/cadastros', auth('controle','financeiro','resultado','tv','narcelio'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // "Tela exclusiva" do Dashboard Câmbio (controle de pagamentos de câmbio
 // por processo — entrada/saldo/parcelado, calendário semana/mês) — mesmo
 // esquema do /financeiro acima, mesmo módulo de permissão (é a mesma
@@ -2620,12 +2625,17 @@ app.delete('/api/controle/v2/arquivos/:id', auth('controle','financeiro','result
   }
 });
 
+// ── VALIDAÇÃO DE DOCUMENTO (CNPJ/CPF) POR TIPO DE PESSOA/PAÍS ──
+// Lógica pura extraída pra lib/validacao-documento.js (testada em
+// testes_cadastros.js, ver justificativa lá).
+const { validarDocumento } = require('./lib/validacao-documento.js');
+
 // ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
 app.get('/api/contatos', auth(), async (req, res) => {
   try {
     const { q, tipo, uf, limit } = req.query;
     const lim = Math.min(parseInt(limit) || 30, 1000);
-    let query = sb().from('contatos_clientes').select('id,cnpj,razao_social,nome_fantasia,cidade,uf,email,telefone,tipo,obs').eq('ativo', true);
+    let query = sb().from('contatos_clientes').select('id,cnpj,documento,tipo_pessoa,pais,razao_social,nome_fantasia,cidade,uf,logradouro,numero,complemento,bairro,cep,email,telefone,tipo,obs').eq('ativo', true);
     // tipo aceita mais de um valor separado por vírgula (ex: "FORNECEDOR,EXPORTADOR")
     // — usado pelo campo "Fornecedor (Exportador)" do processo, que precisa achar
     // contatos cadastrados em QUALQUER uma dessas duas categorias (antes buscava
@@ -2657,6 +2667,17 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
   try {
     const c = req.body;
     if (!c.razao_social) return res.status(400).json({ erro: 'Razão social obrigatória' });
+    c.tipo_pessoa = c.tipo_pessoa === 'FISICA' ? 'FISICA' : 'JURIDICA';
+    c.pais = (c.pais || 'Brasil').trim();
+    // documento é o campo novo/genérico; cnpj continua espelhado por
+    // compatibilidade com o autocomplete e telas antigas que ainda leem
+    // direto dele (só faz sentido pra pessoa jurídica brasileira).
+    if (!c.documento && c.cnpj) c.documento = c.cnpj;
+    const erroDoc = validarDocumento(c.tipo_pessoa, c.pais, c.documento);
+    if (erroDoc) return res.status(400).json({ erro: erroDoc });
+    if (c.tipo_pessoa === 'JURIDICA' && (c.pais||'').toLowerCase() === 'brasil') {
+      c.cnpj = String(c.documento || '').replace(/\D/g, '');
+    }
     const isNovo = !c.id;
     if (!c.id) c.id = require('crypto').randomUUID();
 
@@ -2711,6 +2732,78 @@ app.delete('/api/contatos/:id', auth('controle','financeiro','resultado','tv','n
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
+
+// ── CADASTRO DE PESSOAS (contato individual da empresa, funcionário interno ou avulso) ──
+// Lista leve de usuários de login (só usuario+nome), pra popular o dropdown
+// "vincular a um usuário de login" na aba Funcionários — sem os dados de
+// permissão/role que /api/admin/permissoes expõe (essa é restrita a admins,
+// a aba de Cadastros não deveria depender disso pra funcionar no dia a dia).
+app.get('/api/cadastros/usuarios-login', auth(), async (req, res) => {
+  try {
+    await recarregarCacheUsuarios();
+    const usuarios = [..._usuariosCache.values()]
+      .map(u => ({ usuario: u.usuario, nome: u.nome || u.display_name || u.usuario }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    res.json({ ok: true, usuarios });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.get('/api/cadastros/pessoas', auth(), async (req, res) => {
+  try {
+    const { empresa_id, tipo, q, limit } = req.query;
+    const lim = Math.min(parseInt(limit) || 200, 1000);
+    let query = sb().from('cadastros_pessoas').select('*').eq('ativo', true);
+    if (empresa_id) query = query.eq('empresa_id', empresa_id);
+    if (tipo) query = query.eq('tipo', tipo.toUpperCase());
+    if (q && q.length >= 2) {
+      const qSeguro = q.replace(/[,%*()]/g, '').trim();
+      if (qSeguro.length >= 2) query = query.or(`nome.ilike.%${qSeguro}%,email.ilike.%${qSeguro}%,cargo.ilike.%${qSeguro}%`);
+    }
+    query = query.order('nome').limit(lim);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, pessoas: data || [] });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.post('/api/cadastros/pessoas', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    const p = req.body;
+    if (!p.nome || !p.nome.trim()) return res.status(400).json({ erro: 'Nome é obrigatório' });
+    if (!p.id) p.id = require('crypto').randomUUID();
+    // Um funcionário vinculado a um usuário de login não deve também estar
+    // preso a uma empresa (são papéis diferentes) — evita cadastro ambíguo.
+    if (p.usuario_vinculado) p.empresa_id = null;
+    p.updated_at = new Date().toISOString();
+    const { error } = await sb().from('cadastros_pessoas').upsert(p, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, id: p.id });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.delete('/api/cadastros/pessoas/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
+  try {
+    const { error } = await sb().from('cadastros_pessoas').update({ ativo: false }).eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Contatos "principais" de uma empresa (pelo nome/razão social) — quem
+// deve receber follow-up/e-mails daquela empresa. Usado hoje só pra
+// enriquecer o e-mail interno de follow-up (mostrar quem seria o
+// destinatário real quando o envio direto ao cliente for habilitado —
+// depende do domínio verificado no Resend, ver tarefa pendente #147).
+async function contatosPrincipaisDaEmpresa(nomeEmpresa){
+  if (!nomeEmpresa) return [];
+  try {
+    const { data: empresas } = await sb().from('contatos_clientes').select('id').ilike('razao_social', nomeEmpresa).eq('ativo', true).limit(1);
+    const empresaId = empresas && empresas[0] && empresas[0].id;
+    if (!empresaId) return [];
+    const { data: pessoas } = await sb().from('cadastros_pessoas').select('nome,email').eq('empresa_id', empresaId).eq('principal', true).eq('ativo', true);
+    return (pessoas || []).filter(p => p.email);
+  } catch(e) { return []; }
+}
 
 // ── API: CATALOGO DE PRODUTOS (vinculo com Conexos) ────────────
 app.get('/api/catalogo-produtos', auth(), async (req, res) => {
@@ -3376,7 +3469,7 @@ function linhasFollowUpPorCliente(processos){
     return linhas;
 }
 
-function montarHtmlFollowUpSemanal(processos){
+async function montarHtmlFollowUpSemanal(processos){
   const escHtml = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
   const fmtData = iso => { try { return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR'); } catch(e) { return iso || '—'; } };
 
@@ -3386,7 +3479,13 @@ function montarHtmlFollowUpSemanal(processos){
     (porCliente[chave] = porCliente[chave] || []).push(p);
   });
 
-  const blocosCliente = Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(cliente => {
+  const blocosCliente = (await Promise.all(Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(async cliente => {
+    // Contato(s) cadastrado(s) como "principal" no Cadastro de Pessoas
+    // dessa empresa — só informativo por enquanto (ver contatosPrincipaisDaEmpresa).
+    const principais = await contatosPrincipaisDaEmpresa(cliente);
+    const linhaPrincipais = principais.length
+      ? `<div style="font-size:11px;color:#555;margin-bottom:6px;">Contato principal: ${principais.map(p=>escHtml(p.nome)+' &lt;'+escHtml(p.email)+'&gt;').join(', ')}</div>`
+      : '';
     const linhas = porCliente[cliente].map(p => `
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-weight:600;">${escHtml(p.referencia)}</td>
@@ -3399,7 +3498,8 @@ function montarHtmlFollowUpSemanal(processos){
       </tr>`).join('');
     return `
       <div style="margin-bottom:24px;">
-        <div style="font-size:15px;font-weight:700;color:#0a2d5e;margin-bottom:8px;">${escHtml(cliente)}</div>
+        <div style="font-size:15px;font-weight:700;color:#0a2d5e;margin-bottom:2px;">${escHtml(cliente)}</div>
+        ${linhaPrincipais}
         <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:sans-serif;">
           <thead>
             <tr style="background:#f3f4f6;">
@@ -3415,7 +3515,7 @@ function montarHtmlFollowUpSemanal(processos){
           <tbody>${linhas}</tbody>
         </table>
       </div>`;
-  }).join('');
+  }))).join('');
 
   return `
     <div style="font-family:sans-serif;max-width:760px;margin:0 auto;">
@@ -3454,7 +3554,7 @@ async function marcarFollowUpEnviadoHoje(){
 
 async function enviarFollowUpSemanal(){
   const processos = await processosParaFollowUpSemanal();
-  const html = montarHtmlFollowUpSemanal(processos);
+  const html = await montarHtmlFollowUpSemanal(processos);
   const assunto = `IMPAK — Follow-up Semanal (${processos.length} processo${processos.length===1?'':'s'} com ETA próxima)`;
   for (const destinatario of FOLLOWUP_DESTINATARIOS) {
     await enviarEmail(destinatario, assunto, html);
