@@ -267,19 +267,19 @@ function envSenhaHash(key) {
 }
 
 const USUARIOS = [
-  { usuario: 'narcelio',  senhaHashEnv: envSenhaHash('SENHA_NARCELIO'),  email: 'narcelio@impak.com.br',      modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
-  { usuario: 'jean',      senhaHashEnv: envSenhaHash('SENHA_JEAN'),      email: 'jean@impak.com.br',          modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
-  { usuario: 'paula',     senhaHashEnv: envSenhaHash('SENHA_PAULA'),     email: 'paula@impak.com.br',         modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
-  { usuario: 'amanda',    senhaHashEnv: envSenhaHash('SENHA_AMANDA'),    email: 'amanda@findcomex.com.br',    modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Amanda',    role: 'analista',  displayName: 'Amanda',    home: '/processos'  },
-  { usuario: 'bianca',    senhaHashEnv: envSenhaHash('SENHA_BIANCA'),    email: 'financeiro@impak.com.br',    modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Bianca',    role: 'analista',  displayName: 'Bianca',    home: '/processos'  },
-  { usuario: 'emanuelly', senhaHashEnv: envSenhaHash('SENHA_EMANUELLY'), email: 'importacao1@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
-  { usuario: 'italo',     senhaHashEnv: envSenhaHash('SENHA_ITALO'),     email: 'fiscal01@impak.com.br',      modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
-  { usuario: 'maria',     senhaHashEnv: envSenhaHash('SENHA_MARIA'),     email: 'fiscal@impak.com.br',        modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
-  { usuario: 'nfe@impak.com.br',           senhaHashEnv: envSenhaHash('SENHA_JOYCE'),     email: 'nfe@impak.com.br',           modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'nfe@impak.com.br',           role: 'analista', displayName: 'nfe@impak.com.br',           home: '/processos'  }, // pedido Ayslan 07/09/2026: Joyce saiu, login/nome viram o proprio e-mail (generico, sem pessoa nomeada) ate outra substituicao
-  { usuario: 'operacional01@impak.com.br', senhaHashEnv: envSenhaHash('SENHA_NEIDE'),     email: 'operacional01@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'operacional01@impak.com.br', role: 'analista', displayName: 'operacional01@impak.com.br', home: '/processos'  }, // pedido Ayslan 07/09/2026: Neide saiu, login/nome viram o proprio e-mail (generico, sem pessoa nomeada) ate outra substituicao
-  { usuario: 'everton',   senhaHashEnv: envSenhaHash('SENHA_EVERTON'),   email: 'administrativo@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Everton',   role: 'analista', displayName: 'Everton',   home: '/processos'  },
-  { usuario: 'isabella',  senhaHashEnv: envSenhaHash('SENHA_ISABELLA'),  email: 'operacional@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv'], nome: 'Isabella',  role: 'analista', displayName: 'Isabella',  home: '/processos'  },
-  { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',       modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
+  { usuario: 'narcelio',  senhaHashEnv: envSenhaHash('SENHA_NARCELIO'),  email: 'narcelio@impak.com.br',      modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio','cadastros','cambio','analises'], nome: 'Narcelio',  role: 'gerente',  displayName: 'Narcelio',  home: '/'           },
+  { usuario: 'jean',      senhaHashEnv: envSenhaHash('SENHA_JEAN'),      email: 'jean@impak.com.br',          modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Jean',      role: 'gerente',  displayName: 'Jean',      home: '/'           },
+  { usuario: 'paula',     senhaHashEnv: envSenhaHash('SENHA_PAULA'),     email: 'paula@impak.com.br',         modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio','cadastros','cambio','analises'], nome: 'Paula',     role: 'gerente',  displayName: 'Paula',     home: '/processos'  },
+  { usuario: 'amanda',    senhaHashEnv: envSenhaHash('SENHA_AMANDA'),    email: 'amanda@findcomex.com.br',    modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Amanda',    role: 'analista',  displayName: 'Amanda',    home: '/processos'  },
+  { usuario: 'bianca',    senhaHashEnv: envSenhaHash('SENHA_BIANCA'),    email: 'financeiro@impak.com.br',    modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Bianca',    role: 'analista',  displayName: 'Bianca',    home: '/processos'  },
+  { usuario: 'emanuelly', senhaHashEnv: envSenhaHash('SENHA_EMANUELLY'), email: 'importacao1@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Emanuelly', role: 'analista', displayName: 'Emanuelly', home: '/processos'  },
+  { usuario: 'italo',     senhaHashEnv: envSenhaHash('SENHA_ITALO'),     email: 'fiscal01@impak.com.br',      modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Italo',     role: 'analista', displayName: 'Italo',     home: '/processos'  },
+  { usuario: 'maria',     senhaHashEnv: envSenhaHash('SENHA_MARIA'),     email: 'fiscal@impak.com.br',        modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Maria',     role: 'analista', displayName: 'Maria',     home: '/processos'  },
+  { usuario: 'nfe@impak.com.br',           senhaHashEnv: envSenhaHash('SENHA_JOYCE'),     email: 'nfe@impak.com.br',           modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'nfe@impak.com.br',           role: 'analista', displayName: 'nfe@impak.com.br',           home: '/processos'  }, // pedido Ayslan 07/09/2026: Joyce saiu, login/nome viram o proprio e-mail (generico, sem pessoa nomeada) ate outra substituicao
+  { usuario: 'operacional01@impak.com.br', senhaHashEnv: envSenhaHash('SENHA_NEIDE'),     email: 'operacional01@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'operacional01@impak.com.br', role: 'analista', displayName: 'operacional01@impak.com.br', home: '/processos'  }, // pedido Ayslan 07/09/2026: Neide saiu, login/nome viram o proprio e-mail (generico, sem pessoa nomeada) ate outra substituicao
+  { usuario: 'everton',   senhaHashEnv: envSenhaHash('SENHA_EVERTON'),   email: 'administrativo@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Everton',   role: 'analista', displayName: 'Everton',   home: '/processos'  },
+  { usuario: 'isabella',  senhaHashEnv: envSenhaHash('SENHA_ISABELLA'),  email: 'operacional@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Isabella',  role: 'analista', displayName: 'Isabella',  home: '/processos'  },
+  { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',       modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio','cadastros','cambio','analises'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
 ];
 
 // Cache em memória dos usuários carregados do Supabase (recarregado no boot
@@ -1098,7 +1098,12 @@ app.post('/api/admin/permissoes/:usuario', requireAdminPermissoes, async (req, r
 // Lista de todos os módulos/telas que existem hoje no sistema — usada pra
 // validar o que a tela de Permissões pode gravar (evita salvar um nome de
 // módulo digitado errado que nunca vai bater com nenhum auth()).
-const MODULOS_VALIDOS = ['tyredesk', 'conferencia', 'controle', 'financeiro', 'resultado', 'tv', 'narcelio'];
+// Ampliado 14/09/2026 (pedido Ayslan): Cadastros, Cambio e Analises tinham
+// telas proprias mas nenhuma permissao dedicada — dependiam por baixo dos
+// panos de outros modulos (ver comentario antigo nas rotas abaixo), o que
+// nao aparecia na tela de Permissoes e confundia quem estava configurando
+// acesso. Agora cada um tem sua propria coluna/checkbox.
+const MODULOS_VALIDOS = ['tyredesk', 'conferencia', 'controle', 'financeiro', 'resultado', 'tv', 'narcelio', 'cadastros', 'cambio', 'analises'];
 
 // Usuários que podem abrir a tela de Permissões e mudar o acesso de
 // qualquer outro usuário — combinado explicitamente com o Ayslan
@@ -1276,21 +1281,21 @@ app.get('/financeiro', auth('financeiro'), (req, res) => res.sendFile(path.join(
 // esquema do /financeiro acima. Aberta a qualquer módulo que já enxergava
 // o antigo modal de Contatos (não é dado sensível por natureza, é o
 // cadastro base usado em todo o sistema).
-app.get('/cadastros', auth('controle','financeiro','resultado','tv','narcelio'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/cadastros', auth('cadastros'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // "Tela exclusiva" do Dashboard Câmbio (controle de pagamentos de câmbio
 // por processo — entrada/saldo/parcelado, calendário semana/mês) — mesmo
 // esquema do /financeiro acima, mesmo módulo de permissão (é a mesma
 // fonte de dados, só com outra apresentação focada em vencimento). Ver
 // ativarTelaCambioExclusiva() em controle-core.js e renderDashCambio() em
 // controle-dash-cambio.js.
-app.get('/cambio', auth('financeiro'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/cambio', auth('cambio'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // "Tela exclusiva" do Dashboard Resultado (lucro estimado x real de todos
 // os processos) — mesmo esquema do /financeiro acima: serve o MESMO
 // controle_v2.html, e o front-end detecta location.pathname==='/resultado'
 // pra abrir direto no Dashboard Resultado (ver ativarTelaResultadoExclusiva
 // em controle-core.js).
 app.get('/resultado', auth('resultado'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
-app.get('/analises', auth('resultado'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html'))) // reaproveita o modulo 'resultado' (mesma area de trabalho / mesmos dados) em vez de criar modulo de permissao novo
+app.get('/analises', auth('analises'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
 // "Tela exclusiva" do Dashboard Narcélio (visão do dono da empresa) —
 // diferente de /financeiro e /resultado (visíveis a qualquer usuário com o
 // módulo "processos"), aqui o back-end também confere o usuário logado:

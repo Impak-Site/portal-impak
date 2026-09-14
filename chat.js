@@ -196,15 +196,15 @@ document.head.appendChild(style);
 // (mesmo módulo do TyreDesk — são a mesma área de trabalho no back-end).
 const navModulos = [
 { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
-{ label: '📇 Cadastros', href: '/cadastros', key: 'cadastros', modulo: 'controle' }, // tela unificada de Empresas/Pessoas/Funcionarios - pedido Ayslan 12/09/2026
+{ label: '📇 Cadastros', href: '/cadastros', key: 'cadastros', modulo: 'cadastros' }, // tela unificada de Empresas/Pessoas/Funcionarios - pedido Ayslan 12/09/2026; modulo proprio (antes reaproveitava controle/financeiro/resultado/tv/narcelio) - pedido Ayslan 14/09/2026
 { label: '📄 Conferência', href: '/processos', key: 'processos', modulo: 'conferencia' },
 { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
 { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
 { label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
 { label: '💰 Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' }, // icone unificado com o menu lateral/titulo do Dashboard Financeiro (controle_v2.html) - antes usava 📊, igual ao Executivo, o que confundia os dois (pedido Ayslan 08/09/2026)
-{ label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'financeiro' }, // mesmo modulo de permissao do Financeiro (mesma fonte de dados, so outra visualizacao) - pedido Ayslan 09/09/2026
+{ label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'cambio' }, // modulo proprio (antes reaproveitava o Financeiro) - pedido Ayslan 14/09/2026
   { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
-  { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'resultado' }, // mesmo modulo de permissao do Resultado (mesma area de trabalho / mesmos dados, so outra visualizacao) - Fase 3, pedido Ayslan 10/09/2026
+  { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'analises' }, // modulo proprio (antes reaproveitava o Resultado) - pedido Ayslan 14/09/2026
   { label: '📺 TV', href: '/tv', key: 'tv', modulo: 'tv' },
 ];
 
@@ -216,6 +216,7 @@ const path = window.location.pathname;
 const modAtual = path === '/' ? 'tyredesk'
   : path.includes('analises') ? 'analises'
   : path.includes('resultado') ? 'resultado'
+: path.includes('cambio') ? 'cambio'
 : path.includes('financeiro') ? 'financeiro'
 : path.includes('/tv') ? 'tv'
 : path.includes('cadastros') ? 'cadastros'
