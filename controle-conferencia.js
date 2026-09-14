@@ -276,10 +276,11 @@ function _confRenderResultado(p, analise){
           ${d.observacao?`<div style="font-size:11px;color:var(--muted);margin-top:4px;">${esc(d.observacao)}</div>`:''}
           ${resolvedMap[d.key]?`<div style="font-size:11px;color:var(--ok);margin-top:6px;">✓ Aceito por ${esc(resolvedMap[d.key].por||'')} em ${esc(resolvedMap[d.key].time||'')} — ${esc(resolvedMap[d.key].motivo||'')}</div>`:''}
         </div>
-        <div style="flex-shrink:0;">
+        <div style="flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+          <button class="btn btn-sm btn-outline" onclick="copiarDivergenciaConferencia(this, '${d.key}')">📋 Copiar</button>
           ${resolvedMap[d.key]
             ? `<button class="btn btn-sm btn-outline" onclick="desfazerAceiteConferencia('${d.key}')">Desfazer</button>`
-            : `<button class="btn btn-sm btn-primary" onclick="aceitarDivergenciaConferencia('${d.key}', ${JSON.stringify(d.motivo_sugerido||'').replace(/"/g,'&quot;')})">Aceitar</button>`
+            : `<button class="btn btn-sm btn-primary" onclick="abrirModalMotivoConferencia('${d.key}')">Aceitar</button>`
           }
         </div>
       </div>
@@ -320,14 +321,95 @@ async function _confSalvarResolvedMap(p, analise){
   return d.ok;
 }
 
-async function aceitarDivergenciaConferencia(key, motivoSugerido){
+// Reconstrói a lista de divergências (mesma lógica de filtro de _confRenderResultado)
+// a partir da análise salva, pra achar uma divergência específica pela key
+// (gi+'-'+ci) sem precisar repassar o objeto inteiro em cada onclick.
+function _confBuscarDivergencia(analise, key){
+  for(let gi=0; gi<(analise.grupos||[]).length; gi++){
+    const grupo = analise.grupos[gi];
+    for(let ci=0; ci<(grupo.campos||[]).length; ci++){
+      if((gi+'-'+ci) === key) return { ...grupo.campos[ci], grupo: grupo.titulo, key };
+    }
+  }
+  return null;
+}
+
+// ── Copiar texto de uma divergência (pedido Ayslan, 14/09/2026) — mesmo
+// formato do copiarTexto()/processos.html, um clique copia pro clipboard
+// com fallback pro método antigo (execCommand) se a API moderna falhar
+// (ex: página não estar em foco).
+function copiarDivergenciaConferencia(btn, key){
   const p = _editando;
   const analise = _confLerAnalise(p);
   if(!analise) return;
-  const motivo = prompt('Motivo do aceite:', motivoSugerido||'') ;
-  if(motivo === null) return; // cancelou
+  const d = _confBuscarDivergencia(analise, key);
+  if(!d) return;
+  let texto = `${d.campo||''} (${d.grupo||''})\n`;
+  if(d.doc1_label||d.doc1_valor) texto += `${d.doc1_label||''}: ${d.doc1_valor||'—'}\n`;
+  if(d.doc2_label||d.doc2_valor) texto += `${d.doc2_label||''}: ${d.doc2_valor||'—'}\n`;
+  if(d.observacao) texto += `Obs: ${d.observacao}\n`;
+  if(d.severidade) texto += `Severidade: ${d.severidade}\n`;
+  const feedback = () => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copiado!';
+    setTimeout(()=>{ btn.textContent = orig; }, 2000);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(feedback).catch(()=>_confCopiarFallback(texto, feedback));
+  } else {
+    _confCopiarFallback(texto, feedback);
+  }
+}
+function _confCopiarFallback(texto, feedback){
+  const ta = document.createElement('textarea');
+  ta.value = texto; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); feedback(); }catch(e){ showToast('Não foi possível copiar', 'err'); }
+  document.body.removeChild(ta);
+}
+
+// ── Modal de motivo (substitui o prompt() do navegador, pedido Ayslan
+// 14/09/2026) — overlay simples criado/removido dinamicamente, mesmo
+// espírito do dre-overlay em controle-modal.js.
+function abrirModalMotivoConferencia(key){
+  const p = _editando;
+  const analise = _confLerAnalise(p);
+  if(!analise) return;
+  const d = _confBuscarDivergencia(analise, key);
+  if(!d) return;
+  document.getElementById('conf-motivo-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'conf-motivo-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.onclick = e => { if(e.target === overlay) fecharModalMotivoConferencia(); };
+  overlay.innerHTML = `
+    <div style="background:var(--card,#fff);border-radius:12px;max-width:460px;width:92%;padding:20px;box-shadow:var(--shadow-lg);">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:4px;">Aceitar divergência</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">${esc(d.campo||'')} — ${esc(d.grupo||'')}</div>
+      <label class="form-label" style="display:block;margin-bottom:6px;">Motivo do aceite</label>
+      <textarea id="conf-motivo-texto" class="form-input" rows="3" style="width:100%;resize:vertical;" placeholder="Ex: diferença de arredondamento, padrão do fornecedor...">${esc(d.motivo_sugerido||'')}</textarea>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="btn btn-outline" onclick="fecharModalMotivoConferencia()">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmarMotivoConferencia('${key}')">✓ Aceitar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('conf-motivo-texto')?.focus();
+}
+function fecharModalMotivoConferencia(){
+  document.getElementById('conf-motivo-overlay')?.remove();
+}
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  if(document.getElementById('conf-motivo-overlay')) fecharModalMotivoConferencia();
+});
+async function confirmarMotivoConferencia(key){
+  const p = _editando;
+  const analise = _confLerAnalise(p);
+  if(!analise) return;
+  const motivo = document.getElementById('conf-motivo-texto')?.value.trim() || 'Aceito sem motivo informado';
+  fecharModalMotivoConferencia();
   analise.divResolvedMap = analise.divResolvedMap || {};
-  analise.divResolvedMap[key] = { motivo: motivo||'Aceito sem motivo informado', por:(_user && (_user.displayName||_user.usuario)) || '', time:new Date().toLocaleString('pt-BR') };
+  analise.divResolvedMap[key] = { motivo, por:(_user && (_user.displayName||_user.usuario)) || '', time:new Date().toLocaleString('pt-BR') };
   const ok = await _confSalvarResolvedMap(p, analise);
   if(ok){
     showToast('✓ Divergência aceita', 'ok');
