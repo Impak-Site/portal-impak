@@ -30,7 +30,7 @@ tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
      fallback por timeout pra nunca deixar a tela travada em branco). -->
 <script>
 (function(){
-  var TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio'];
+  var TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/conferencia-fila'];
   if(TELAS_EXCLUSIVAS.indexOf(location.pathname)!==-1){
     document.documentElement.classList.add('boot-tela-exclusiva');
   }
@@ -374,6 +374,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div class="sidebar-section">
 <div class="sidebar-label">Cadastros</div>
 <div class="sidebar-item" id="menu-cadastros" onclick="location.href='/cadastros'">📇 Cadastros (Empresas / Pessoas / Funcionários)</div>
+<div class="sidebar-item" id="menu-conferencia-fila" onclick="location.href='/conferencia-fila'">🔍 Fila de Conferência</div>
 </div>
 <div class="sidebar-section" style="margin-top:auto;border-top:1px solid var(--border);padding-top:12px;">
 <div class="sidebar-label">API Anthropic</div>
@@ -532,6 +533,9 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
   <!-- CADASTROS (Empresas / Pessoas / Funcionários) -->
   <div id="dash-cadastros" style="display:none;margin-bottom:20px;">
     <div id="dash-cadastros-content"></div>
+  </div>
+  <div id="dash-conferencia-fila" style="display:none;margin-bottom:20px;">
+    <div id="dash-conferencia-fila-content"></div>
   </div>
 
 <!-- TABELA -->
@@ -817,6 +821,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <script src="/controle-dash-cliente-medida.js"></script>
 <script src="/controle-dash-dre.js"></script>
 <script src="/controle-dash-cadastros.js"></script>
+<script src="/controle-dash-conferencia.js"></script>
 
 <script src="/chat.js"></script>
 </body>

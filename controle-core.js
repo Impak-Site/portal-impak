@@ -161,7 +161,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     // Ayslan (10/09/2026, viu o toast cobrindo o canto do painel Backorders
     // na TV): elas têm o próprio cabeçalho/KPI mostrando os dados, o toast só
     // seria ruído (e numa TV física não tem ninguém pra ler e dispensar).
-    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros'];
+    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros','/conferencia-fila'];
     const carregamentoSilencioso = TELAS_EXCLUSIVAS.includes(location.pathname);
     carregarProcessos(carregamentoSilencioso).then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
@@ -171,6 +171,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(location.pathname==='/tv') ativarTelaTVExclusiva();
       if(location.pathname==='/cambio') ativarTelaCambioExclusiva();
       if(location.pathname==='/cadastros') ativarTelaCadastrosExclusiva();
+      if(location.pathname==='/conferencia-fila') ativarTelaConferenciaFilaExclusiva();
       // Deep-link ?processo=<id> — usado pelo Calculador pra abrir direto o
       // processo recém-criado ao aprovar uma cotação (ver aprovarCotacao()
       // em calculador.html). Só tenta abrir depois que a lista carregou,
@@ -294,6 +295,37 @@ function ativarTelaCadastrosExclusiva(){
   const dashCad = document.getElementById('dash-cadastros');
   if(dashCad) dashCad.style.display = 'block';
   renderDashCadastros();
+}
+
+// ════════════════════════════════════════════════════════════════
+// TELA EXCLUSIVA /conferencia-fila — fila de Conferência (task #636/#645,
+// pedido Ayslan 14/09/2026). Mesmo esquema do /financeiro acima: lista
+// TODOS os processos com divergência pendente de aceite na aba
+// Conferência (ver controle-conferencia.js/conferencia_json), pra não
+// depender de abrir processo por processo pra achar quem está pendente —
+// era exatamente pra isso que servia a tela antiga em processos.html.
+// Ver renderDashConferenciaFila() em controle-dash-conferencia.js.
+function ativarTelaConferenciaFilaExclusiva(){
+  document.title = 'IMPAK — Fila de Conferência';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Fila de Conferência';
+
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter','filtros-processo-avancados-wrap'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+  document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
+
+  document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('menu-conferencia-fila')?.classList.add('active');
+
+  const dashConf = document.getElementById('dash-conferencia-fila');
+  if(dashConf) dashConf.style.display = 'block';
+  renderDashConferenciaFila();
 }
 
 // ════════════════════════════════════════════════════════════════

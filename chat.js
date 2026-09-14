@@ -197,7 +197,7 @@ document.head.appendChild(style);
 const navModulos = [
 { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
 { label: '📇 Cadastros', href: '/cadastros', key: 'cadastros', modulo: 'cadastros' }, // tela unificada de Empresas/Pessoas/Funcionarios - pedido Ayslan 12/09/2026; modulo proprio (antes reaproveitava controle/financeiro/resultado/tv/narcelio) - pedido Ayslan 14/09/2026
-{ label: '📄 Conferência', href: '/processos', key: 'processos', modulo: 'conferencia' },
+{ label: '📄 Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // aponta pra fila nova dentro do Controle (task #636/#645, pedido Ayslan 14/09/2026) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
 { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
 { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
 { label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
@@ -220,6 +220,7 @@ const modAtual = path === '/' ? 'tyredesk'
 : path.includes('financeiro') ? 'financeiro'
 : path.includes('/tv') ? 'tv'
 : path.includes('cadastros') ? 'cadastros'
+: path.includes('conferencia-fila') ? 'conferencia-fila'
 : path.includes('controle') ? 'controle'
 : path.includes('processos') ? 'processos'
 : path.includes('calculador')? 'calculador'

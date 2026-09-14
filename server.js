@@ -1296,6 +1296,15 @@ app.get('/cambio', auth('cambio'), (req, res) => res.sendFile(path.join(__dirnam
 // em controle-core.js).
 app.get('/resultado', auth('resultado'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
 app.get('/analises', auth('analises'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
+// "Tela exclusiva" da fila de Conferência (/conferencia) — task #636/#645,
+// pedido Ayslan (14/09/2026): lista os processos com divergências
+// pendentes de aceite, sem precisar abrir processo por processo. Mesmo
+// esquema do /financeiro acima — o front-end detecta o path e monta o
+// dashboard renderDashConferenciaFila() (controle-dash-conferencia.js) em
+// vez da tabela de processos normal. Aberta ao módulo 'conferencia' (quem
+// via a tela antiga em processos.html) e também 'controle' (já enxerga a
+// aba Conferência dentro do processo).
+app.get('/conferencia-fila', auth('conferencia','controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 // "Tela exclusiva" do Dashboard Narcélio (visão do dono da empresa) —
 // diferente de /financeiro e /resultado (visíveis a qualquer usuário com o
 // módulo "processos"), aqui o back-end também confere o usuário logado:

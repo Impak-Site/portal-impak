@@ -225,6 +225,25 @@ async function rodarConferencia(){
       grupos: result.grupos,
       alertas: result.alertas||[],
       divResolvedMap: (analiseAnterior && analiseAnterior.divResolvedMap) || {}, // preserva aceites de análises anteriores
+      // Histórico de análises anteriores deste processo (task #644, pedido
+      // Ayslan 14/09/2026 — "pegou o histórico do sistema antigo de
+      // análise?"): cada vez que uma NOVA análise roda por cima de uma já
+      // existente, a análise que está saindo de cena vira uma entrada aqui
+      // em vez de ser simplesmente descartada (era o que acontecia antes —
+      // só a última análise sobrevivia). Guarda só um resumo enxuto (não os
+      // grupos/campos completos, que ficariam pesados) — o objetivo é dar
+      // contexto de "quando foi conferido antes e o que deu", não reabrir
+      // uma análise antiga campo a campo. Limitado às últimas 15 pra não
+      // crescer sem limite.
+      analisesAnteriores: (analiseAnterior && analiseAnterior.data) ? [
+        {
+          data: analiseAnterior.data,
+          docs: analiseAnterior.docs,
+          analisadoPor: analiseAnterior.analisadoPor || '',
+          resumo: analiseAnterior.resumo || {},
+        },
+        ...(analiseAnterior.analisesAnteriores||[]),
+      ].slice(0, 15) : (analiseAnterior && analiseAnterior.analisesAnteriores) || [],
     };
 
     p.conferencia_json = JSON.stringify(novaAnalise);
@@ -307,7 +326,30 @@ function _confRenderResultado(p, analise){
       ${pendentes.map(linhaDiv).join('')}
       ${resolvidas.length ? `<div style="font-size:11px;font-weight:700;color:var(--muted);margin:14px 0 6px;">ACEITAS</div>${resolvidas.map(linhaDiv).join('')}` : ''}
       ${(analise.alertas||[]).length ? `<div class="form-section-title" style="margin-top:16px;">⚠ Observações gerais</div><ul style="font-size:12px;color:var(--text);">${analise.alertas.map(a=>`<li>${esc(typeof a==='string'?a:(a.descricao||a.mensagem||''))}</li>`).join('')}</ul>` : ''}
+      ${_confRenderHistoricoAnteriores(analise)}
     </div>`;
+}
+
+// Histórico de análises anteriores (task #644) — bloco recolhido por
+// padrão, só a contagem de OK/pendentes/aceitas de cada rodada passada,
+// pra não sobrecarregar a tela com o resultado completo de conferências
+// que já foram substituídas por uma mais recente.
+function _confRenderHistoricoAnteriores(analise){
+  const lista = analise.analisesAnteriores || [];
+  if(!lista.length) return '';
+  const linha = a => {
+    const r = a.resumo || {};
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:12px;">
+      <div style="color:var(--dim);">${esc(a.data||'')}${a.analisadoPor?' — por '+esc(a.analisadoPor):''}</div>
+      <div style="color:var(--muted);margin-top:2px;">docs: ${esc(a.docs||'—')}</div>
+      <div style="margin-top:4px;">${r.campos_ok!=null?`<span style="color:var(--ok);">${r.campos_ok} OK</span>`:''}</div>
+    </div>`;
+  };
+  return `
+    <details style="margin-top:16px;">
+      <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--muted);">📜 Histórico de análises anteriores (${lista.length})</summary>
+      <div style="margin-top:8px;">${lista.map(linha).join('')}</div>
+    </details>`;
 }
 
 async function _confSalvarResolvedMap(p, analise){
