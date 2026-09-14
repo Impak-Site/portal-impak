@@ -20,6 +20,9 @@ const PORTOS_DESTINO = [
   { codigo:'ITJ', nome:'Itajaí' },
   { codigo:'IOA', nome:'Itapoá' },
   { codigo:'NVT', nome:'Navegantes' },
+  // Porto de Imbituba (SC) — pedido Emanuelly (14/09/2026). Código BRIBB é
+  // o UN/LOCODE oficial usado no CE Mercante/Siscomex Carga.
+  { codigo:'BRIBB', nome:'Imbituba' },
 ];
 
 // Dias de armazenagem grátis (1º período) no porto por código de destino —
@@ -81,7 +84,7 @@ function paisDoProcesso(proc){
 function normalizarPortoDestino(valor){
   if(!valor) return valor;
   const va = valor.trim().toUpperCase();
-  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT' };
+  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT', 'IMBITUBA':'BRIBB' };
   if(APELIDOS[va]) return APELIDOS[va];
   if(PORTOS_DESTINO.some(p=>p.codigo===va)) return va;
   // Fallback por substring — cobre variações tipo "NAVEGANTES, BRAZIL" ou
@@ -105,7 +108,7 @@ function formatarPortoDestino(valor){
 
 function gerarOptionsPortoDestino(valorAtual){
   const va = (valorAtual||'').trim().toUpperCase();
-  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA' };
+  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'IMBITUBA':'BRIBB' };
   const codigoResolvido = APELIDOS[va] || va;
   const match = PORTOS_DESTINO.find(p => p.codigo === codigoResolvido);
   let html = '<option value="">— selecionar —</option>';

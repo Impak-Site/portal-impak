@@ -1484,8 +1484,8 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro','resultado','
 function normalizarPortoDestinoDespachante(valor) {
   if (!valor) return valor;
   const va = String(valor).trim().toUpperCase();
-  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT' };
-  const CODIGOS = ['ITJ','IOA','NVT'];
+  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT', 'IMBITUBA':'BRIBB' };
+  const CODIGOS = ['ITJ','IOA','NVT','BRIBB'];
   if (APELIDOS[va]) return APELIDOS[va];
   if (CODIGOS.includes(va)) return va;
   // Fallback por substring — cobre variações tipo "NAVEGANTES, BRAZIL" que
@@ -1497,7 +1497,7 @@ function normalizarPortoDestinoDespachante(valor) {
 // Emanuelly (03/09/2026): o follow-up semanal estava saindo com ITJ/NVT/IOA
 // misturado com grafias completas ("NAVEGANTES, BRAZIL") dependendo de como
 // cada processo foi cadastrado/extraído. Sempre normaliza pro nome cheio.
-const NOMES_PORTO_DESTINO = { ITJ: 'Itajaí', IOA: 'Itapoá', NVT: 'Navegantes' };
+const NOMES_PORTO_DESTINO = { ITJ: 'Itajaí', IOA: 'Itapoá', NVT: 'Navegantes', BRIBB: 'Imbituba' };
 function formatarPortoDestinoEmail(valor) {
   if (!valor || !String(valor).trim()) return 'N/I';
   const codigo = normalizarPortoDestinoDespachante(valor);
