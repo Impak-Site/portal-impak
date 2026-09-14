@@ -765,13 +765,12 @@ async function salvarProcesso(proc, patchFields){
   // Usa parseDataLocal (meio-dia local, T00:00:00) em vez de `new Date(string)`
   // direto — evita depender de coincidência de fuso horário nesse cálculo,
   // que tem impacto financeiro direto (multa por atraso na devolução do container).
-  // Base da contagem: Presença de Carga (pedido Emanuelly 03/09/2026,
-  // confirmado com teste no UD26-110 — presença 24/08 + 21 dias, contando
-  // 24/08 como o 1º dia, vence em 13/09, não Data de Chegada). Fica com
-  // fallback pra Data de Chegada só pra processos antigos que nunca
-  // chegaram a preencher Presença de Carga.
+  // Base da contagem: Data de Chegada (pedido Emanuelly 14/09/2026 — reverte
+  // o ajuste de 03/09/2026 que usava Presença de Carga). Fica com fallback
+  // pra Presença de Carga só pra processos antigos que nunca chegaram a
+  // preencher Data de Chegada.
   if(patchTocaCampos(['data_presenca','data_chegada','free_time'])){
-    const baseDemurrage = proc.data_presenca || proc.data_chegada;
+    const baseDemurrage = proc.data_chegada || proc.data_presenca;
     if(baseDemurrage && proc.free_time){
       const inicioDemur = parseDataLocal(baseDemurrage);
       // O dia inicial já conta como o 1º dia do free time (pedido Emanuelly
@@ -1070,10 +1069,10 @@ function demurrageDisplay(proc){
 // atualizarFaseEmTempoReal), e não apenas uma vez quando o modal abre.
 function renderDemurInfo(p){
   if(!p.data_chegada && !p.data_presenca && !p.demurrage_vencimento) return '';
-  // Base da contagem: Presença de Carga, com fallback pra Data de Chegada
-  // (ver mesmo ajuste em salvarProcesso acima — pedido Emanuelly 03/09/2026,
-  // confirmado com o teste do UD26-110).
-  const baseDemur = p.data_presenca || p.data_chegada;
+  // Base da contagem: Data de Chegada, com fallback pra Presença de Carga
+  // (ver mesmo ajuste em salvarProcesso acima — pedido Emanuelly 14/09/2026,
+  // reverte o ajuste de 03/09/2026).
+  const baseDemur = p.data_chegada || p.data_presenca;
   const inicioDemur = parseDataLocal(baseDemur);
   const chegada   = parseDataLocal(p.data_chegada);
   const freeTime  = parseInt(p.free_time||21);
@@ -1097,7 +1096,7 @@ function renderDemurInfo(p){
   return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:10px;">
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📊 Cálculo do Demurrage</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
-      ${inicioDemur ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 ${p.data_presenca?'Presença de carga':'Data de chegada'}</span><strong>${inicioDemur.toLocaleDateString('pt-BR')}</strong></div>` : ''}
+      ${inicioDemur ? `<div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">📅 ${p.data_chegada?'Data de chegada':'Presença de carga'}</span><strong>${inicioDemur.toLocaleDateString('pt-BR')}</strong></div>` : ''}
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">⏱ Free time</span><strong>${freeTime} dias</strong></div>
       ${vencReal ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">📌 Vencimento</span><strong style="color:${cor}">${vencReal.toLocaleDateString('pt-BR')}</strong></div>` : ''}
       ${statusTxt ? `<div style="margin-top:4px;padding:8px 12px;background:${dias!==null&&dias<0?'rgba(220,38,38,.08)':dias!==null&&dias<=5?'rgba(217,119,6,.08)':'rgba(22,163,74,.08)'};border-radius:6px;font-weight:600;color:${cor};">${statusIcon} ${statusTxt}</div>` : ''}
