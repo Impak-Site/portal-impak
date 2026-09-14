@@ -1,0 +1,21 @@
+-- 0031_conferencia_no_processo.sql
+--
+-- Pedido Ayslan (14/09/2026): unificar a tela de Conferência (hoje
+-- separada, em processos.html, com armazenamento próprio via
+-- /api/conferencia/*) para dentro do Controle de Embarques, começando
+-- pela nova aba "Conferência" no painel do processo.
+--
+-- Antes desta migration, o resultado da análise (divergências, alertas,
+-- histórico) só existia em duas formas: na memória do navegador durante a
+-- sessão, ou espalhado numa tabela própria (conferencia_processos, fora do
+-- controle_processos). Isso criava dois "universos" de processo que só se
+-- sincronizavam parcialmente (ver sincronizarComControle() em
+-- processos.html, que empurra alguns campos extraídos pro Controle, mas
+-- não trazia nada de volta).
+--
+-- conferencia_json guarda a ÚLTIMA análise (resumo/grupos/alertas) mais o
+-- mapa de divergências já aceitas (motivo + quem aceitou), direto no
+-- processo do Controle — mesmo padrão aditivo de custos_reais_json,
+-- vendas_json etc.
+
+alter table controle_processos add column if not exists conferencia_json text;
