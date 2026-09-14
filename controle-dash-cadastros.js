@@ -132,6 +132,16 @@ function _cadFmtData(iso){
   try{ return new Date(iso+'T00:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}); }catch(e){ return iso; }
 }
 
+// Papéis de uma Pessoa (pedido Ayslan 14/09/2026: "preciso ter se a
+// pessoa é diretor, contato comercial, contato operacional") — lista
+// fechada, uma pessoa pode acumular vários. Ver migration 0030
+// (cadastros_pessoas.papeis, text[]).
+const PAPEIS_PESSOA = { DIRETOR: '👔 Diretor', COMERCIAL: '💼 Comercial', OPERACIONAL: '📦 Operacional', FINANCEIRO: '💰 Financeiro' };
+function _cadRenderBadgesPapeis(papeis){
+  if(!papeis || !papeis.length) return '';
+  return papeis.map(p=>`<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--ac-soft);color:var(--ac);margin-right:4px;">${esc(PAPEIS_PESSOA[p]||p)}</span>`).join('');
+}
+
 function _cadRenderTabelaPessoas(){
   const tbody = document.getElementById('cad-pessoas-tbody');
   if(!tbody) return;
@@ -150,8 +160,9 @@ function _cadRenderTabelaPessoas(){
       ? (p.usuario_vinculado ? `🔑 ${esc(p.usuario_vinculado)}` : '—')
       : (p._empresaNome ? esc(p._empresaNome) : '—');
     const principalBadge = p.principal ? ' <span style="color:var(--ok);font-size:10px;font-weight:700;">★ principal</span>' : '';
+    const papeisBadges = _cadRenderBadgesPapeis(p.papeis);
     return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:9px 16px;font-weight:600;">${esc(p.nome)}${principalBadge}</td>
+      <td style="padding:9px 16px;font-weight:600;">${esc(p.nome)}${principalBadge}${papeisBadges?'<div style="margin-top:4px;">'+papeisBadges+'</div>':''}</td>
       <td style="padding:9px 16px;">${esc(p.cargo||'—')}</td>
       <td style="padding:9px 16px;">${terceiraColuna}</td>
       <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${esc(p.telefone||p.email||'—')}</td>
@@ -250,6 +261,7 @@ function abrirNovaPessoa(tipoDefault){
     const el = document.getElementById(id); if(el) el.value = '';
   });
   document.getElementById('cp_principal').checked = false;
+  document.querySelectorAll('.cp-papel').forEach(cb=>{ cb.checked = false; });
   document.getElementById('cp_tipo').value = tipoDefault || 'CONTATO';
   _cpAtualizarCamposTipo();
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
@@ -277,6 +289,8 @@ async function editarPessoa(id){
   document.getElementById('cp_email').value = p.email || '';
   document.getElementById('cp_obs').value = p.obs || '';
   document.getElementById('cp_principal').checked = !!p.principal;
+  const papeisAtuais = p.papeis || [];
+  document.querySelectorAll('.cp-papel').forEach(cb=>{ cb.checked = papeisAtuais.includes(cb.value); });
   _cpAtualizarCamposTipo();
   if(p.usuario_vinculado){
     await _cpCarregarUsuariosLogin();
@@ -306,6 +320,7 @@ async function salvarPessoa(){
     whatsapp: document.getElementById('cp_whatsapp').value.trim(),
     email: document.getElementById('cp_email').value.trim(),
     principal: document.getElementById('cp_principal').checked,
+    papeis: [...document.querySelectorAll('.cp-papel:checked')].map(cb=>cb.value),
     obs: document.getElementById('cp_obs').value.trim(),
   };
   try{

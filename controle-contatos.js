@@ -295,9 +295,10 @@ function _ceRenderPessoasLista(){
   }
   tbody.innerHTML = _cePessoasLista.map(p=>{
     const principalBadge = p.principal ? ' <span style="color:var(--ok);font-size:10px;font-weight:700;">★ principal</span>' : '';
+    const papeisBadges = (typeof _cadRenderBadgesPapeis === 'function') ? _cadRenderBadgesPapeis(p.papeis) : '';
     const contatoInfo = [p.telefone, p.email].filter(Boolean).map(esc).join(' · ') || '—';
     return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:7px 10px;font-weight:600;font-size:12px;">${esc(p.nome)}${principalBadge}</td>
+      <td style="padding:7px 10px;font-weight:600;font-size:12px;">${esc(p.nome)}${principalBadge}${papeisBadges?'<div style="margin-top:4px;">'+papeisBadges+'</div>':''}</td>
       <td style="padding:7px 10px;font-size:12px;">${esc(p.cargo||'—')}</td>
       <td style="padding:7px 10px;font-size:11px;color:var(--muted);">${contatoInfo}</td>
       <td style="padding:7px 10px;text-align:right;white-space:nowrap;">
@@ -335,6 +336,8 @@ function _ceEditarPessoa(id){
   document.getElementById('cp_email').value = p.email || '';
   document.getElementById('cp_obs').value = p.obs || '';
   document.getElementById('cp_principal').checked = !!p.principal;
+  const papeisAtuais = p.papeis || [];
+  document.querySelectorAll('.cp-papel').forEach(cb=>{ cb.checked = papeisAtuais.includes(cb.value); });
   _cpAtualizarCamposTipo();
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
   _ceModalPessoaOrigem = 'contato-edit';
