@@ -220,6 +220,14 @@ function abrirNovoContato(){
   _ceAtualizarCamposDocumento();
   const statusEl = document.getElementById('ce_cnpj_status');
   if(statusEl) statusEl.textContent = '';
+  // Empresa ainda não existe (sem ID) — não dá pra vincular pessoas a ela
+  // ainda (ver payload.empresa_id em cadastros_pessoas), então some a
+  // lista e mostra a dica "salve primeiro" (pedido Ayslan 14/09/2026).
+  _cePessoasLista = [];
+  const wrap = document.getElementById('ce-pessoas-wrap');
+  const hint = document.getElementById('ce-pessoas-hint');
+  if(wrap) wrap.style.display = 'none';
+  if(hint) hint.style.display = '';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
 }
 
@@ -247,7 +255,99 @@ function editarContato(id){
   _ceAtualizarCamposDocumento();
   const statusEl = document.getElementById('ce_cnpj_status');
   if(statusEl) statusEl.textContent = '';
+  const hint = document.getElementById('ce-pessoas-hint');
+  if(hint) hint.style.display = 'none';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
+  _ceCarregarPessoas(c.id);
+}
+
+// ── PESSOAS DE CONTATO DA EMPRESA (dentro do próprio modal de Empresa) ──
+// Pedido Ayslan (14/09/2026): "preciso conseguir colocar varias pessoas
+// no contato, com email, telefone e tudo mais" — antes só dava pra
+// vincular pessoas a uma empresa indo na aba "Pessoas" separada e
+// buscando a empresa pelo autocomplete. Agora dá pra ver, adicionar,
+// editar e excluir as pessoas direto no modal da própria empresa.
+let _cePessoasLista = [];
+// Marca de onde o modal de Pessoa foi aberto, pra salvarPessoa() (em
+// controle-dash-cadastros.js) saber se deve recarregar a lista da aba
+// "Pessoas" (fluxo normal) ou a lista embutida aqui no modal de Empresa.
+let _ceModalPessoaOrigem = null;
+
+async function _ceCarregarPessoas(empresaId){
+  const wrap = document.getElementById('ce-pessoas-wrap');
+  if(!wrap) return;
+  if(!empresaId){ wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  try{
+    const r = await fetch('/api/cadastros/pessoas?empresa_id='+encodeURIComponent(empresaId)+'&tipo=CONTATO&limit=200');
+    const d = await r.json();
+    _cePessoasLista = d.ok ? d.pessoas : [];
+  }catch(e){ _cePessoasLista = []; }
+  _ceRenderPessoasLista();
+}
+
+function _ceRenderPessoasLista(){
+  const tbody = document.getElementById('ce-pessoas-tbody');
+  if(!tbody) return;
+  if(!_cePessoasLista.length){
+    tbody.innerHTML = `<tr><td style="padding:10px;color:var(--dim);font-size:12px;text-align:center;">Nenhuma pessoa cadastrada ainda.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = _cePessoasLista.map(p=>{
+    const principalBadge = p.principal ? ' <span style="color:var(--ok);font-size:10px;font-weight:700;">★ principal</span>' : '';
+    const contatoInfo = [p.telefone, p.email].filter(Boolean).map(esc).join(' · ') || '—';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:7px 10px;font-weight:600;font-size:12px;">${esc(p.nome)}${principalBadge}</td>
+      <td style="padding:7px 10px;font-size:12px;">${esc(p.cargo||'—')}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--muted);">${contatoInfo}</td>
+      <td style="padding:7px 10px;text-align:right;white-space:nowrap;">
+        <button class="btn btn-sm btn-outline" onclick="_ceEditarPessoa('${p.id}')">Editar</button>
+        <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="_ceExcluirPessoa('${p.id}')">×</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function _ceNovaPessoa(){
+  const empresaId = document.getElementById('ce_id').value;
+  const empresaNome = document.getElementById('ce_razao_social').value;
+  if(!empresaId){ showToast('Salve a empresa antes de adicionar pessoas', 'warn'); return; }
+  abrirNovaPessoa('CONTATO');
+  document.getElementById('cp_empresa_id').value = empresaId;
+  document.getElementById('cp_empresa_nome').value = empresaNome;
+  _ceModalPessoaOrigem = 'contato-edit';
+}
+
+function _ceEditarPessoa(id){
+  const p = _cePessoasLista.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('pessoa-edit-title').textContent = 'Editar Pessoa';
+  document.getElementById('cp_id').value = p.id;
+  document.getElementById('cp_tipo').value = p.tipo || 'CONTATO';
+  document.getElementById('cp_nome').value = p.nome || '';
+  document.getElementById('cp_cargo').value = p.cargo || '';
+  document.getElementById('cp_aniversario').value = p.aniversario || '';
+  document.getElementById('cp_empresa_id').value = p.empresa_id || document.getElementById('ce_id').value || '';
+  document.getElementById('cp_empresa_nome').value = document.getElementById('ce_razao_social').value || '';
+  document.getElementById('cp_cpf').value = p.cpf || '';
+  document.getElementById('cp_telefone').value = p.telefone || '';
+  document.getElementById('cp_whatsapp').value = p.whatsapp || '';
+  document.getElementById('cp_email').value = p.email || '';
+  document.getElementById('cp_obs').value = p.obs || '';
+  document.getElementById('cp_principal').checked = !!p.principal;
+  _cpAtualizarCamposTipo();
+  document.getElementById('modal-pessoa-edit-bg').classList.add('open');
+  _ceModalPessoaOrigem = 'contato-edit';
+}
+
+async function _ceExcluirPessoa(id){
+  if(!confirm('Excluir esta pessoa?')) return;
+  try{
+    const r = await fetch('/api/cadastros/pessoas/'+id, { method:'DELETE' });
+    const d = await r.json();
+    if(d.ok){ showToast('Removido', 'ok'); await _ceCarregarPessoas(document.getElementById('ce_id').value); }
+    else showToast('Erro ao excluir', 'err');
+  }catch(e){ showToast('Erro ao excluir', 'err'); }
 }
 
 function fecharModalContatoEdit(){
@@ -280,6 +380,7 @@ async function salvarContato(){
     bairro: document.getElementById('ce_bairro').value.trim(),
     cep: document.getElementById('ce_cep').value.trim(),
   };
+  const eraNovo = !payload.id;
   try{
     const r = await fetch('/api/contatos', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -288,8 +389,21 @@ async function salvarContato(){
     const d = await r.json();
     if(d.ok){
       showToast('✓ Contato salvo','ok');
-      fecharModalContatoEdit();
       await carregarContatos();
+      if(eraNovo && d.id){
+        // Empresa acabou de ser criada agora — em vez de fechar o modal,
+        // deixa ele aberto em modo "editar" e já revela a seção de
+        // Pessoas, pra dar pra cadastrar os contatos dela na sequência
+        // sem precisar reabrir (pedido Ayslan 14/09/2026).
+        document.getElementById('ce_id').value = d.id;
+        document.getElementById('contato-edit-title').textContent = 'Editar Contato';
+        const hint = document.getElementById('ce-pessoas-hint');
+        if(hint) hint.style.display = 'none';
+        await _ceCarregarPessoas(d.id);
+        showToast('✓ Agora já dá pra adicionar as pessoas de contato desta empresa', 'ok');
+      } else {
+        fecharModalContatoEdit();
+      }
     } else if(d.duplicado_id){
       // Trava de duplicidade (ver POST /api/contatos no server) — não é bem
       // um "erro" do sistema, é um aviso de negócio, por isso toast 'warn'

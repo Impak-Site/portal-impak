@@ -253,11 +253,16 @@ function abrirNovaPessoa(tipoDefault){
   document.getElementById('cp_tipo').value = tipoDefault || 'CONTATO';
   _cpAtualizarCamposTipo();
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
+  // Chamado a partir da aba "Pessoas" da tela de Cadastros (fluxo normal,
+  // não o atalho de dentro do modal de Empresa — ver _ceNovaPessoa em
+  // controle-contatos.js, que seta essa flag depois de chamar esta função).
+  _ceModalPessoaOrigem = null;
 }
 
 async function editarPessoa(id){
   const p = _cadPessoasLista.find(x=>x.id===id);
   if(!p) return;
+  _ceModalPessoaOrigem = null; // fluxo normal (aba Pessoas), não o modal de Empresa
   document.getElementById('pessoa-edit-title').textContent = 'Editar Pessoa';
   document.getElementById('cp_id').value = p.id;
   document.getElementById('cp_tipo').value = p.tipo || 'CONTATO';
@@ -311,7 +316,15 @@ async function salvarPessoa(){
     if(d.ok){
       showToast('✓ Cadastro salvo', 'ok');
       fecharModalPessoaEdit();
-      await _cadRenderPessoas(_cadAba === 'funcionarios' ? 'FUNCIONARIO' : 'CONTATO');
+      if(_ceModalPessoaOrigem === 'contato-edit'){
+        // Veio do atalho "+ Adicionar pessoa" dentro do modal de Empresa
+        // (ver _ceNovaPessoa/_ceEditarPessoa em controle-contatos.js) —
+        // recarrega a lista embutida ali, não a tabela da aba Pessoas.
+        await _ceCarregarPessoas(document.getElementById('ce_id').value);
+        _ceModalPessoaOrigem = null;
+      } else {
+        await _cadRenderPessoas(_cadAba === 'funcionarios' ? 'FUNCIONARIO' : 'CONTATO');
+      }
     } else {
       showToast('Erro: '+(d.erro||''), 'err');
     }

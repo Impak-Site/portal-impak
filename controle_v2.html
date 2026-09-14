@@ -587,14 +587,20 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 </div>
 
 <!-- MODAL: EDITAR/NOVO CONTATO (lista antiga foi substituída pela tela /cadastros;
-     esse modal de edição continua sendo reaproveitado por ela) -->
+     esse modal de edição continua sendo reaproveitado por ela). Largura e
+     padding aumentados (pedido Ayslan 14/09/2026: "ficou muito ruim essa
+     tela, precisamos deixar ela maior e mais facil de ver") — antes tinha
+     max-width:480px e o conteúdo ficava encostado nas bordas porque
+     .modal-body tem padding:0 por padrão (cada modal precisa embrulhar o
+     próprio conteúdo num container com padding, o que faltava aqui). -->
 <div class="modal-bg" id="modal-contato-edit-bg">
-<div class="modal" style="max-width:480px;">
+<div class="modal" style="max-width:760px;">
 <div class="modal-header">
 <div class="modal-title" id="contato-edit-title">Novo Contato</div>
 <button class="modal-close" onclick="fecharModalContatoEdit()">×</button>
 </div>
 <div class="modal-body">
+<div style="padding:22px 26px;">
 <input type="hidden" id="ce_id">
 <div class="form-group"><label class="form-label">Tipo</label>
 <select class="form-input" id="ce_tipo">
@@ -655,9 +661,31 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 </div>
 <div class="form-group"><label class="form-label">Observações</label>
 <textarea class="form-input" id="ce_obs" rows="2"></textarea></div>
-<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:12px;">
+
+<!-- Pessoas de contato desta empresa (pedido Ayslan 14/09/2026: "preciso
+     conseguir colocar varias pessoas no contato, com email, telefone e
+     tudo mais") — lista + adicionar/editar/excluir sem sair do modal da
+     empresa. Só aparece depois que a empresa já tem um ID (precisa
+     existir antes de vincular pessoas a ela via empresa_id). -->
+<div id="ce-pessoas-wrap" style="display:none;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+<div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);">👥 Pessoas de contato</div>
+<button class="btn btn-sm btn-outline" onclick="_ceNovaPessoa()">+ Adicionar pessoa</button>
+</div>
+<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+<table style="width:100%;border-collapse:collapse;">
+<tbody id="ce-pessoas-tbody"><tr><td style="padding:10px;color:var(--dim);font-size:12px;text-align:center;">Nenhuma pessoa cadastrada ainda.</td></tr></tbody>
+</table>
+</div>
+</div>
+<div id="ce-pessoas-hint" style="display:none;margin-top:18px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted);">
+💡 Salve a empresa primeiro — depois disso dá pra cadastrar as pessoas de contato dela (com e-mail, telefone, etc.) direto por aqui.
+</div>
+
+<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;">
 <button class="btn btn-outline" onclick="fecharModalContatoEdit()">Cancelar</button>
 <button class="btn btn-primary" onclick="salvarContato()">💾 Salvar</button>
+</div>
 </div>
 </div>
 </div>
@@ -665,12 +693,13 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 
 <!-- MODAL: EDITAR/NOVO PESSOA (Cadastros — contato individual/funcionário) -->
 <div class="modal-bg" id="modal-pessoa-edit-bg">
-<div class="modal" style="max-width:480px;">
+<div class="modal" style="max-width:560px;">
 <div class="modal-header">
 <div class="modal-title" id="pessoa-edit-title">Nova Pessoa</div>
 <button class="modal-close" onclick="fecharModalPessoaEdit()">×</button>
 </div>
 <div class="modal-body">
+<div style="padding:22px 26px;">
 <input type="hidden" id="cp_id">
 <div class="form-group"><label class="form-label">Tipo</label>
 <select class="form-input" id="cp_tipo" onchange="_cpAtualizarCamposTipo()">
@@ -715,6 +744,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:12px;">
 <button class="btn btn-outline" onclick="fecharModalPessoaEdit()">Cancelar</button>
 <button class="btn btn-primary" onclick="salvarPessoa()">💾 Salvar</button>
+</div>
 </div>
 </div>
 </div>
