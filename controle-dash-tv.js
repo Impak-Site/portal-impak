@@ -788,20 +788,33 @@ function renderDashTV(){
     // o resto do painel usa unidades em em/1em relativas a essa base, um
     // único font-size no wrapper já escala tudo dentro (KPIs, tabelas,
     // gráficos) sem precisar mexer em cada elemento individualmente.
+    // Backorders + Em Águas somados, exibido no canto superior direito do
+    // cabeçalho (pedido Emanuelly 14/09/2026: "somar a quantidade de
+    // backorders mais o em aguas e colocar no topo no canto direito igual
+    // o em aguas") — mesmo estilo do número grande que os painéis
+    // Backorders/Em Águas já mostram no canto direito do próprio cabeçalho
+    // (ver painel() acima: font 38px/800/branco).
+    const backordersEmAguasSoma = fmtN(backordersTotal + emAguasTotal);
     if(solo){
       return `<div style="height:100vh;display:flex;flex-direction:column;background:#eef2f7;box-sizing:border-box;font-size:clamp(13px,1.5vh,20px);">
         ${botaoVoltarTV()}
-        <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:1.1vh 26px;flex:0 0 auto;box-shadow:0 2px 10px rgba(0,0,0,.12);">
-          <div style="font-family:'Syne',sans-serif;font-size:clamp(18px,2.5vh,34px);font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
-          <div style="font-size:clamp(10px,1.15vh,16px);color:rgba(255,255,255,.8);margin-top:1px;">No porto ou Armazém</div>
+        <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:1.1vh 26px;flex:0 0 auto;box-shadow:0 2px 10px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-size:clamp(18px,2.5vh,34px);font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
+            <div style="font-size:clamp(10px,1.15vh,16px);color:rgba(255,255,255,.8);margin-top:1px;">No porto ou Armazém</div>
+          </div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:clamp(22px,3.4vh,46px);font-weight:800;color:#fff;">${backordersEmAguasSoma}</div>
         </div>
         <div style="flex:1;min-height:0;padding:1.4vh 22px;display:flex;flex-direction:column;">${corpo}</div>
       </div>`;
     }
     return `<div style="background:#eef2f7;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
-      <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:16px 24px;">
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">No porto ou Armazém</div>
+      <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">No porto ou Armazém</div>
+        </div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${backordersEmAguasSoma}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:0;height:640px;padding:18px 24px;box-sizing:border-box;">${corpo}</div>
     </div>`;
