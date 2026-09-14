@@ -265,6 +265,7 @@ function abrirNovaPessoa(tipoDefault){
   document.getElementById('cp_tipo').value = tipoDefault || 'CONTATO';
   _cpAtualizarCamposTipo();
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
+  _cpPessoaDirty = false;
   // Chamado a partir da aba "Pessoas" da tela de Cadastros (fluxo normal,
   // não o atalho de dentro do modal de Empresa — ver _ceNovaPessoa em
   // controle-contatos.js, que seta essa flag depois de chamar esta função).
@@ -297,6 +298,7 @@ async function editarPessoa(id){
     document.getElementById('cp_usuario_vinculado').value = p.usuario_vinculado;
   }
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
+  _cpPessoaDirty = false;
 }
 
 function fecharModalPessoaEdit(){
@@ -329,6 +331,7 @@ async function salvarPessoa(){
     });
     const d = await r.json();
     if(d.ok){
+      _cpPessoaDirty = false;
       showToast('✓ Cadastro salvo', 'ok');
       fecharModalPessoaEdit();
       if(_ceModalPessoaOrigem === 'contato-edit'){

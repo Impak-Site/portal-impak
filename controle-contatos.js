@@ -101,14 +101,14 @@ function renderListaContatos(){
     const cnpjFmt = doc
       ? (c.tipo_pessoa==='FISICA' ? doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'))
       : '—';
-    return `<tr style="border-bottom:1px solid var(--border);">
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="editarContato('${c.id}')" title="Clique para abrir">
       <td style="padding:9px 16px;font-weight:600;">${esc(c.razao_social)}</td>
       <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-size:11px;">${cnpjFmt}</td>
       <td style="padding:9px 16px;">${esc(c.cidade||'')}${c.uf?'/'+c.uf:''}</td>
       <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${esc(c.email||c.telefone||'—')}</td>
       <td style="padding:9px 16px;text-align:right;">
-        <button class="btn btn-sm btn-outline" onclick="editarContato('${c.id}')">Editar</button>
-        <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="excluirContato('${c.id}')">Excluir</button>
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();editarContato('${c.id}')">Editar</button>
+        <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="event.stopPropagation();excluirContato('${c.id}')">Excluir</button>
       </td>
     </tr>`;
   }).join('');
@@ -229,6 +229,7 @@ function abrirNovoContato(){
   if(wrap) wrap.style.display = 'none';
   if(hint) hint.style.display = '';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
+  _ceContatoDirty = false;
 }
 
 function editarContato(id){
@@ -258,6 +259,7 @@ function editarContato(id){
   const hint = document.getElementById('ce-pessoas-hint');
   if(hint) hint.style.display = 'none';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
+  _ceContatoDirty = false;
   _ceCarregarPessoas(c.id);
 }
 
@@ -340,6 +342,7 @@ function _ceEditarPessoa(id){
   document.querySelectorAll('.cp-papel').forEach(cb=>{ cb.checked = papeisAtuais.includes(cb.value); });
   _cpAtualizarCamposTipo();
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
+  _cpPessoaDirty = false;
   _ceModalPessoaOrigem = 'contato-edit';
 }
 
@@ -391,6 +394,7 @@ async function salvarContato(){
     });
     const d = await r.json();
     if(d.ok){
+      _ceContatoDirty = false;
       showToast('✓ Contato salvo','ok');
       await carregarContatos();
       if(eraNovo && d.id){
@@ -427,6 +431,44 @@ async function excluirContato(id){
     else showToast('Erro ao excluir','err');
   }catch(e){ showToast('Erro ao excluir','err'); }
 }
+
+// ── ESC fecha Editar Contato / Editar Pessoa (pedido Ayslan, 14/09/2026) ──
+// Mesmo padrão do painel do processo (ver _painelDirty em controle-core.js):
+// marca "sujo" em qualquer input/change dentro do modal aberto, e ESC só
+// pergunta se realmente houver algo não salvo — senão fecha direto. Os dois
+// modais entram no mesmo listener porque o de Pessoa pode abrir por cima do
+// de Contato (atalho "+ Adicionar pessoa"), então o ESC precisa fechar o de
+// cima primeiro sem derrubar o de baixo junto.
+let _ceContatoDirty = false;
+let _cpPessoaDirty = false;
+
+['input','change'].forEach(function(evt){
+  document.addEventListener(evt, function(e){
+    if(e.target.closest('#modal-pessoa-edit-bg')) _cpPessoaDirty = true;
+    else if(e.target.closest('#modal-contato-edit-bg')) _ceContatoDirty = true;
+  }, true);
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  const pessoaBg = document.getElementById('modal-pessoa-edit-bg');
+  if(pessoaBg && pessoaBg.classList.contains('open')){
+    if(_cpPessoaDirty){
+      if(confirm('Você tem alterações não salvas nesta pessoa. Deseja descartar e fechar?')) fecharModalPessoaEdit();
+    } else {
+      fecharModalPessoaEdit();
+    }
+    return;
+  }
+  const contatoBg = document.getElementById('modal-contato-edit-bg');
+  if(contatoBg && contatoBg.classList.contains('open')){
+    if(_ceContatoDirty){
+      if(confirm('Você tem alterações não salvas neste contato. Deseja descartar e fechar?')) fecharModalContatoEdit();
+    } else {
+      fecharModalContatoEdit();
+    }
+  }
+});
 
 // ════════════════════════════════════════════════════════════════
 // IMPORTAR PLANILHA EXCEL
