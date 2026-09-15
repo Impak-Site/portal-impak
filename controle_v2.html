@@ -359,17 +359,26 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <div class="sidebar-item" onclick="setFaseFilter('__fechado')">🔒 Fechado <span class="badge" id="sb-__fechado" style="display:none;background:#334155">0</span></div>
 </div>
 <div class="sidebar-section">
-<div class="sidebar-label">Dashboard</div>
-<div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
+<!-- Dashboards agrupados pelos mesmos 4 setores do menu do topo (chat.js) -
+     pedido Ayslan 15/09/2026: mesma logica de classificacao usada na nav
+     global, aplicada aqui tambem pra ficar consistente em vez de uma lista
+     unica de 10 itens sem organizacao. IDs/onclick inalterados (varios
+     controle-dash-*.js fazem getElementById direto neles), so a ordem e os
+     sidebar-label de sub-grupo mudaram. -->
+<div class="sidebar-label">🚚 Operacional</div>
+<div class="sidebar-item" id="menu-carregamento" onclick="toggleDashCarregamento()">🚛 Dashboard de Carregamentos</div>
+<div class="sidebar-label">💰 Financeiro</div>
 <div class="sidebar-item" id="menu-financeiro" onclick="toggleDashFinanceiro()">💰 Dashboard Financeiro</div>
 <div class="sidebar-item" id="menu-cambio" onclick="toggleDashCambio()">💱 Dashboard Câmbio</div>
-  <div class="sidebar-item" id="menu-resultado" onclick="toggleDashResultado()">📈 Dashboard Resultado</div>
-  <div class="sidebar-item" id="menu-analises" onclick="toggleDashAnalises()">📊 Análises</div>
-  <div class="sidebar-item" id="menu-narcelio" style="display:none;" onclick="toggleDashNarcelio()">👔 Dashboard Narcélio</div>
-<div class="sidebar-item" id="menu-carregamento" onclick="toggleDashCarregamento()">🚛 Dashboard de Carregamentos</div>
-<div class="sidebar-item" id="menu-tv" onclick="toggleDashTV()">📺 Dashboard TV</div>
-<div class="sidebar-item" id="menu-clientemedida" onclick="toggleDashClienteMedida()">🛞 Por Cliente/Medida</div>
 <div class="sidebar-item" id="menu-dre" onclick="toggleDashDRE()">📊 DRE Consolidado</div>
+<div class="sidebar-label">📊 Executivo / BI</div>
+<div class="sidebar-item" id="menu-executivo" onclick="toggleDashExecutivo()">📊 Dashboard Executivo</div>
+<div class="sidebar-item" id="menu-resultado" onclick="toggleDashResultado()">📈 Dashboard Resultado</div>
+<div class="sidebar-item" id="menu-analises" onclick="toggleDashAnalises()">📊 Análises</div>
+<div class="sidebar-item" id="menu-clientemedida" onclick="toggleDashClienteMedida()">🛞 Por Cliente/Medida</div>
+<div class="sidebar-item" id="menu-narcelio" style="display:none;" onclick="toggleDashNarcelio()">👔 Dashboard Narcélio</div>
+<div class="sidebar-label">📺 Outros</div>
+<div class="sidebar-item" id="menu-tv" onclick="toggleDashTV()">📺 Dashboard TV</div>
 </div>
 <div class="sidebar-section">
 <div class="sidebar-label">Cadastros</div>
