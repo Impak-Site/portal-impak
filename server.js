@@ -458,6 +458,16 @@ app.use(session({
   })(),
   resave: false,
   saveUninitialized: false,
+  // rolling:true renova o cookie (e o expire salvo no SupabaseSessionStore,
+  // via touch()) a cada requisição — sem isso, maxAge era contado só a
+  // partir do login, então a TV (pensada pra "ficar aberta o dia inteiro
+  // num monitor", ver comentário em controle-core.js) deslogava sozinha no
+  // meio do dia mesmo continuando a recarregar dados a cada 30s (pedido
+  // Ayslan 15/09/2026: "esta deslogando durante o dia, e da retrabalho
+  // ficar logando, passar a etapa 2FA"). Com rolling, qualquer requisição
+  // (inclusive o polling automático da TV) estende a sessão por mais
+  // 8h — só expira de verdade depois de 8h sem NENHUMA requisição.
+  rolling: true,
   cookie: { secure: true, maxAge: 8 * 60 * 60 * 1000, sameSite: 'lax' },
 }));
 app.use(express.static(__dirname));
