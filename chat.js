@@ -249,7 +249,7 @@ document.head.appendChild(style);
 const navSetores = [
   { setor: '🚢 Operacional', itens: [
     { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
-    { label: '📄 Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // aponta pra fila nova dentro do Controle (task #636/#645, pedido Ayslan 14/09/2026) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
+    { label: '🔍 Fila de Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
     { label: '🚛 Dashboard de Carregamentos', href: '/controle?dash=carregamento', key: 'dash-carregamento', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026) — sem rota própria, usa toggleDashCarregamento() via ?dash= (ver controle-core.js)
   ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
   { setor: '💰 Financeiro', itens: [
