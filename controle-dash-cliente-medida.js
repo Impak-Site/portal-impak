@@ -87,6 +87,18 @@ let _cmIntervaloId = null; // id do setInterval de auto-refresh (null = parado)
 // ativos), sem recalcular a agregação de novo nem arriscar divergir dela.
 let _cmUltimoResultado = null;
 
+// Incluir Valor de Frete no export PDF (opcional — pedido Emanuelly
+// 15/09/2026: "da pra por uma opção de incluir valor de frete? mas
+// gostaria que fosse opcional pois não é todo cliente que precisa dessa
+// informação... talvez algum lugar que dê pra flegar e sair no exportar
+// pdf"). Fica marcado/desmarcado só na sessão (não persiste), lido na hora
+// de montar o PDF — não mexe no Excel nem na tela.
+let _cmIncluirFretePdf = false;
+function _cmToggleFretePdf(checked){
+  _cmIncluirFretePdf = checked;
+}
+
+
 // Elementos do topo da tela normal do Controle (KPI cards, busca/botões,
 // filtro de data, abas de fase) — pedido do Ayslan (08/09/2026, olhando o
 // Por Cliente/Medida aberto): "porque fica essa parte em cima... acho que
@@ -310,6 +322,11 @@ function renderDashClienteMedida(){
         // p/ Cliente (montarLinhasFollowUpCliente). Sem nenhuma das duas,
         // fica pro final (Infinity), nunca no topo.
         _chegadaTs: dtChegadaOuEta ? parseDataLocal(dtChegadaOuEta).getTime() : Infinity,
+        // Valor do frete do PROCESSO (aba Logística/Documentos, campo
+        // "Valor do frete") — não é por item/medida, é um valor único do
+        // processo inteiro. Só usado quando a Emanuelly liga o checkbox
+        // "Incluir Valor de Frete" no export PDF (ver _cmIncluirFretePdf).
+        frete: (p.valor_frete!=null && p.valor_frete!=='') ? { valor: parseFloat(p.valor_frete), moeda: p.moeda_frete || 'USD' } : null,
         itens: [],
         qtd: 0,
       };
@@ -610,6 +627,9 @@ function renderDashClienteMedida(){
         <input id="cm-filtro-texto" class="form-input" placeholder="Buscar invoice, medida ou marca (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
           oninput="_cmAtualizarFiltroTexto(this.value)" style="flex:2;min-width:200px;">
         ${temFiltroAtivo ? `<button class="btn btn-outline" onclick="_cmLimparFiltros()" style="white-space:nowrap;">✕ Limpar filtros</button>` : ''}
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--text);white-space:nowrap;" title="Inclui uma coluna com o Valor do Frete (aba Logística do processo) só no PDF exportado — não aparece na tela nem no Excel.">
+          <input type="checkbox" ${_cmIncluirFretePdf?'checked':''} onchange="_cmToggleFretePdf(this.checked)"> Incluir Valor de Frete (PDF)
+        </label>
         <button class="btn btn-outline" onclick="exportarCMExcel()" style="white-space:nowrap;">📊 Exportar Excel</button>
         <button class="btn btn-outline" onclick="exportarCMPDF()" style="white-space:nowrap;">📄 Exportar PDF</button>
       </div>
@@ -994,9 +1014,21 @@ async function exportarCMPDF(){
       const alturaPagina = doc.internal.pageSize.getHeight();
       let startY = 66;
 
+      // Colunas deste PDF — as fixas de sempre + "Valor Frete" no final,
+      // só quando a Emanuelly marcou o checkbox (ver _cmIncluirFretePdf).
+      // Local a cada chamada (não mexe na constante CM_EXPORT_COLUNAS
+      // compartilhada com o Excel, que não tem essa opção).
+      const colunasPdf = _cmIncluirFretePdf ? [...CM_EXPORT_COLUNAS, 'Valor Frete'] : CM_EXPORT_COLUNAS;
+      const colunasPedidoPdf = _cmIncluirFretePdf ? new Set([...CM_EXPORT_COLUNAS_PEDIDO, 'Valor Frete']) : CM_EXPORT_COLUNAS_PEDIDO;
+      function textoFrete(pedido){
+        if(!pedido.frete || pedido.frete.valor == null || isNaN(pedido.frete.valor)) return '—';
+        const simbolo = (typeof MOEDAS_REAIS !== 'undefined' ? (MOEDAS_REAIS.find(m => m.code === pedido.frete.moeda)||{}).simbolo : null) || pedido.frete.moeda;
+        return `${simbolo} ${pedido.frete.valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+      }
+
       marcas.forEach((m, mi) => {
         const pedidos = Object.values(m.pedidos).sort((a,b) => a._chegadaTs - b._chegadaTs || (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
-        const body = [[{ content: m.nome.toUpperCase(), colSpan: CM_EXPORT_COLUNAS.length, styles:{fillColor:[234,243,252], textColor:[16,42,69], fontStyle:'bold', halign:'center'} }]];
+        const body = [[{ content: m.nome.toUpperCase(), colSpan: colunasPdf.length, styles:{fillColor:[234,243,252], textColor:[16,42,69], fontStyle:'bold', halign:'center'} }]];
         let qtdLinhasItem = 0;
         pedidos.forEach(pedido => {
           const itens = pedido.itens.length ? pedido.itens : [{descricao:'—', qtd:0}];
@@ -1009,11 +1041,12 @@ async function exportarCMPDF(){
               'Data de Embarque': _cmTextoData(pedido.embarque),
               'Data Chegada': _cmTextoData(pedido.chegada),
               Porto: pedido.porto || '—',
+              'Valor Frete': textoFrete(pedido),
             };
-            const row = CM_EXPORT_COLUNAS.map(col => {
+            const row = colunasPdf.map(col => {
               if(col === 'Medida') return it.descricao || '';
               if(col === 'Qte') return it.qtd != null ? it.qtd.toLocaleString('pt-BR') : '';
-              if(CM_EXPORT_COLUNAS_PEDIDO.has(col)){
+              if(colunasPedidoPdf.has(col)){
                 if(ii !== 0) return null; // coberto pelo rowSpan da linha âncora
                 return span > 1 ? { content: valoresPedido[col]||'', rowSpan: span, styles:{valign:'middle'} } : (valoresPedido[col]||'');
               }
@@ -1035,7 +1068,7 @@ async function exportarCMPDF(){
 
         doc.autoTable({
           startY,
-          head: [CM_EXPORT_COLUNAS],
+          head: [colunasPdf],
           body,
           theme: 'grid',
           styles: { fontSize:8, cellPadding:4, valign:'middle', halign:'center', lineColor:[226,232,240], lineWidth:0.5 },
