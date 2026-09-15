@@ -329,6 +329,11 @@ function ativarTelaConferenciaFilaExclusiva(){
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
   document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
+  // #paginacao é irmão de .table-wrap, não filho — escondendo só a tabela
+  // ele ficava visível "flutuando" embaixo sempre que a lista da fila
+  // fosse curta o bastante pra página inteira caber na tela (bug achado
+  // ao testar a busca nova — pedido Emanuelly 15/09/2026).
+  document.getElementById('paginacao') && (document.getElementById('paginacao').style.display = 'none');
 
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
