@@ -234,22 +234,34 @@ document.head.appendChild(style);
 // pedido Ayslan 15/09/2026: antes eram 11 links soltos, sem organização
 // por área do negócio, o que já tinha até forçado um ajuste de CSS pra
 // caber tudo na barra (ver comentário 11/09/2026 acima). Cada setor só
-// aparece na nav se o usuário tiver acesso a pelo menos 1 item dele. TV e
-// Permissões ficam fora dos setores (TV é uma tela de exibição física,
-// Permissões é administrativo — nenhum dos dois é "área de negócio").
+// aparece na nav se o usuário tiver acesso a pelo menos 1 item dele.
+//
+// 15/09/2026 (2ª parte do mesmo pedido): os "Dashboards" que ficavam numa
+// seção separada da barra lateral do Controle subiram pra cá também —
+// cada um foi pro setor correspondente. Os 4 que ainda não tinham rota
+// própria (Executivo, Carregamentos, Por Cliente/Medida, DRE Consolidado)
+// usam /controle?dash=X, que controle-core.js lê no load e chama o mesmo
+// toggleDashX() de antes (ver controle-core.js). TV, Cadastros e
+// Permissões ficam fora dos setores — TV é uma tela de exibição física,
+// Cadastros é cadastro-base (não é "dashboard" nem some de nenhum setor
+// específico) e Permissões é administrativo — nenhum dos três é "área de
+// negócio".
 const navSetores = [
   { setor: '🚢 Operacional', itens: [
     { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
     { label: '📄 Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // aponta pra fila nova dentro do Controle (task #636/#645, pedido Ayslan 14/09/2026) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
-    { label: '📇 Cadastros', href: '/cadastros', key: 'cadastros', modulo: 'cadastros' }, // tela unificada de Empresas/Pessoas/Funcionarios - pedido Ayslan 12/09/2026
-  ]},
+    { label: '🚛 Dashboard de Carregamentos', href: '/controle?dash=carregamento', key: 'dash-carregamento', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026) — sem rota própria, usa toggleDashCarregamento() via ?dash= (ver controle-core.js)
+  ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
   { setor: '💰 Financeiro', itens: [
     { label: '💰 Dashboard Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
     { label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'cambio' },
+    { label: '📑 DRE Consolidado', href: '/controle?dash=dre', key: 'dash-dre', modulo: 'financeiro' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
   ]},
   { setor: '📊 Executivo / BI', itens: [
+    { label: '👔 Dashboard Executivo', href: '/controle?dash=executivo', key: 'dash-executivo', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
     { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
     { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'analises' },
+    { label: '🧮 Por Cliente/Medida', href: '/controle?dash=clientemedida', key: 'dash-clientemedida', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
     { label: '👔 Dashboard Narcélio', href: '/narcelio', key: 'narcelio', modulo: 'narcelio' }, // dado sensível de faturamento/margem, liberado só pra quem a tela de Permissões marcar
   ]},
   { setor: '🛞 Comercial', itens: [
@@ -368,8 +380,19 @@ navSetores.forEach(setor => {
   linksWrap.appendChild(wrap);
 });
 
-// TV fica solta fora dos setores — é uma tela de exibição física, não
-// bem uma "área" do negócio como as demais.
+// Cadastros, TV e Permissões ficam soltos fora dos setores — Cadastros é
+// cadastro-base (não é "área de negócio" nem "dashboard"), TV é uma tela
+// de exibição física, e Permissões é administrativo. Pedido Ayslan
+// 15/09/2026: "ter um especifico para cadastros, tipo a tv, permissoes".
+if(modulosDoUsuario.includes('cadastros')){
+  addSep();
+  const link = document.createElement('a');
+  link.className = 'nav-link' + (modAtual === 'cadastros' ? ' active' : '');
+  link.href = '/cadastros';
+  link.textContent = '📇 Cadastros';
+  linksWrap.appendChild(link);
+}
+
 if(modulosDoUsuario.includes('tv')){
   addSep();
   const link = document.createElement('a');

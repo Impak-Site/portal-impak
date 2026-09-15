@@ -172,6 +172,19 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(location.pathname==='/cambio') ativarTelaCambioExclusiva();
       if(location.pathname==='/cadastros') ativarTelaCadastrosExclusiva();
       if(location.pathname==='/conferencia-fila') ativarTelaConferenciaFilaExclusiva();
+      // Dashboards que ainda não têm rota/tela exclusiva própria (Executivo,
+      // Carregamentos, Por Cliente/Medida, DRE Consolidado) — chamados via
+      // /controle?dash=X pelo link do menu do topo (pedido Ayslan 15/09/2026:
+      // tirar o menu de Dashboards da lateral e subir tudo pro nav global).
+      // Reusa os toggleDashX() já existentes (mesmos que o antigo botão da
+      // lateral chamava) em vez de criar 4 telas exclusivas novas do zero.
+      if(location.pathname==='/controle'){
+        const dashParam = new URLSearchParams(location.search).get('dash');
+        if(dashParam==='executivo') toggleDashExecutivo();
+        if(dashParam==='carregamento') toggleDashCarregamento();
+        if(dashParam==='clientemedida') toggleDashClienteMedida();
+        if(dashParam==='dre') toggleDashDRE();
+      }
       // Deep-link ?processo=<id> — usado pelo Calculador pra abrir direto o
       // processo recém-criado ao aprovar uma cotação (ver aprovarCotacao()
       // em calculador.html). Só tenta abrir depois que a lista carregou,
