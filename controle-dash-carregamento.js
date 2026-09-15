@@ -52,6 +52,23 @@ function renderDashCarregamento(){
     return Math.floor((hoje - d) / 86400000);
   }
 
+  // Data de vencimento da armazenagem pra exibir na tabela (pedido
+  // Emanuelly 15/09/2026: "acrescentar nesse painel a data que vence a
+  // armazenagem... sempre dar preferência para o campo 'Armazenagem Vence'").
+  // Mesma lógica do "📌 Vencimento" mostrado em renderArmazenInfo()
+  // (controle-core.js): usa o campo digitado manualmente (armazenagem_vencimento)
+  // quando preenchido; senão calcula ao vivo a partir de Presença de Carga +
+  // dias grátis do porto de destino (PORTO_ARMAZENAGEM_FREE_DIAS).
+  function vencimentoArmazenagem(p){
+    if(p.armazenagem_vencimento) return parseDataLocal(p.armazenagem_vencimento);
+    const freeDias = PORTO_ARMAZENAGEM_FREE_DIAS[p.porto_destino];
+    if(!p.data_presenca || !freeDias) return null;
+    const presenca = parseDataLocal(p.data_presenca);
+    if(!presenca) return null;
+    presenca.setDate(presenca.getDate() + freeDias - 1);
+    return presenca;
+  }
+
   function card(label, val, sub, cor){
     return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
@@ -103,6 +120,10 @@ function renderDashCarregamento(){
     const statusAgendamento = p.agendamento_cancelado
       ? `<span style="color:var(--err);font-weight:600;">Cancelado</span>${p.motivo_cancelamento ? ' — ' + esc(p.motivo_cancelamento) : ''}`
       : (p.data_agendamento ? fmtData(p.data_agendamento) : `<span style="color:var(--err);">Sem agendamento</span>`);
+    const vencArm = vencimentoArmazenagem(p);
+    const diasArm = vencArm ? Math.floor((hoje - vencArm) / 86400000) : null;
+    const vencArmCor = diasArm===null ? 'var(--muted)' : diasArm > 0 ? 'var(--err)' : diasArm >= -2 ? '#b45309' : 'var(--text)';
+    const vencArmTxt = vencArm ? vencArm.toLocaleDateString('pt-BR') : '—';
     return `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:6px 8px;font-weight:600;cursor:pointer;color:var(--ac);" onclick="abrirProcesso('${p.id}')">${esc(p.referencia)}</td>
       <td style="padding:6px 8px;">${esc(p.cliente || p.fornecedor || '—')}</td>
@@ -111,6 +132,7 @@ function renderDashCarregamento(){
       <td style="padding:6px 8px;">${p.data_carregamento ? fmtData(p.data_carregamento) : '<span style="color:var(--err);">Pendente</span>'}</td>
       <td style="padding:6px 8px;">${p.horario_retirada || '—'}</td>
       <td style="padding:6px 8px;">${fmtData(p.data_presenca)}</td>
+      <td style="padding:6px 8px;color:${vencArmCor};font-weight:${diasArm!==null && diasArm>0 ? '600':'400'};">${vencArmTxt}</td>
       <td style="padding:6px 8px;text-align:right;color:${diasCor};font-weight:600;">${diasTxt}</td>
     </tr>`;
   }).join('');
@@ -125,6 +147,7 @@ function renderDashCarregamento(){
         <th style="padding:6px 8px;">Data Carregamento</th>
         <th style="padding:6px 8px;">Horário Retirada</th>
         <th style="padding:6px 8px;">Presença de Carga</th>
+        <th style="padding:6px 8px;">Vencimento Armazenagem</th>
         <th style="padding:6px 8px;text-align:right;">Dias no Porto</th>
       </tr></thead>
       <tbody>${linhas}</tbody>
