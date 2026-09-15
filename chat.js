@@ -82,19 +82,28 @@ transition: all .15s; font-family: inherit;
 }
 #impak-nav .nav-sector-btn:hover, #impak-nav .nav-sector-btn.active { color: #fff; background: rgba(255,255,255,.1); }
 #impak-nav .nav-sector-btn .caret { font-size: 9px; opacity: .6; }
-#impak-nav .nav-sector-panel {
-display: none; position: absolute; top: 100%; left: 0; margin-top: 6px;
+/* O painel NÃO fica dentro de #impak-nav .nav-links-wrap — esse container
+   tem overflow-x:auto (pro scroll horizontal quando não cabe tudo, ver
+   comentário 11/09/2026 acima), e overflow-x:auto corta o overflow no eixo Y
+   também (regra do CSS: só um eixo pode ficar "visible" por vez). Um
+   position:absolute allá dentro nunca aparecia — o clique funcionava mas o
+   dropdown ficava invisível, cortado pela própria barra de 52px. Por isso o
+   painel é anexado direto no body como position:fixed (ver JS), e essa
+   classe cuida só da aparência dele, não do posicionamento dentro da nav. */
+.impak-nav-sector-panel {
+display: none; position: fixed; margin-top: 6px;
 background: #0a2340; border: 1px solid rgba(255,255,255,.14); border-radius: 10px;
 min-width: 210px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); z-index: 10001;
+font-family: 'DM Sans', sans-serif;
 }
-#impak-nav .nav-sector-panel.open { display: block; }
-#impak-nav .nav-sector-panel a {
+.impak-nav-sector-panel.open { display: block; }
+.impak-nav-sector-panel a {
 display: block; padding: 8px 10px; border-radius: 6px;
 color: rgba(255,255,255,.75); text-decoration: none;
 font-size: 12.5px; font-weight: 600; white-space: nowrap;
 }
-#impak-nav .nav-sector-panel a:hover { color: #fff; background: rgba(255,255,255,.1); }
-#impak-nav .nav-sector-panel a.active { color: #fff; background: rgba(255,255,255,.15); }
+.impak-nav-sector-panel a:hover { color: #fff; background: rgba(255,255,255,.1); }
+.impak-nav-sector-panel a.active { color: #fff; background: rgba(255,255,255,.15); }
 #impak-nav .nav-right { flex-shrink: 0; margin-left: 10px; display: flex; align-items: center; gap: 10px; }
 #impak-nav .nav-user { font-size: 11.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
 #impak-nav .nav-sair {
@@ -310,20 +319,27 @@ const addSep = () => {
 
 // Setores em dropdown — cada um só aparece se o usuário tiver acesso a
 // pelo menos 1 item dele (mesma lógica de antes, só que agrupada).
+//
+// Os painéis são anexados no <body> (não dentro de #nav-links-wrap) e
+// posicionados via getBoundingClientRect() no clique — ver comentário no
+// CSS acima (.impak-nav-sector-panel) sobre por que dentro da nav eles
+// ficavam invisíveis (overflow-x:auto cortava o eixo Y também).
+const todosPaineis = [];
+const fecharPaineis = () => todosPaineis.forEach(p => p.classList.remove('open'));
+
 navSetores.forEach(setor => {
   const itensPermitidos = setor.itens.filter(m => modulosDoUsuario.includes(m.modulo));
   if(!itensPermitidos.length) return;
   addSep();
 
   const setorAtivo = itensPermitidos.some(m => modAtual === m.key);
-  const wrap = document.createElement('div');
-  wrap.className = 'nav-sector';
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'nav-sector-btn' + (setorAtivo ? ' active' : '');
   btn.innerHTML = setor.setor + ' <span class="caret">▾</span>';
+
   const panel = document.createElement('div');
-  panel.className = 'nav-sector-panel';
+  panel.className = 'impak-nav-sector-panel';
   itensPermitidos.forEach(m => {
     const link = document.createElement('a');
     link.className = (modAtual === m.key ? 'active' : '');
@@ -331,14 +347,24 @@ navSetores.forEach(setor => {
     link.textContent = m.label;
     panel.appendChild(link);
   });
+  document.body.appendChild(panel);
+  todosPaineis.push(panel);
+
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     const jaAberto = panel.classList.contains('open');
-    document.querySelectorAll('#impak-nav .nav-sector-panel.open').forEach(p => p.classList.remove('open'));
-    if(!jaAberto) panel.classList.add('open');
+    fecharPaineis();
+    if(!jaAberto){
+      const r = btn.getBoundingClientRect();
+      panel.style.top = r.bottom + 'px';
+      panel.style.left = r.left + 'px';
+      panel.classList.add('open');
+    }
   });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'nav-sector';
   wrap.appendChild(btn);
-  wrap.appendChild(panel);
   linksWrap.appendChild(wrap);
 });
 
@@ -364,10 +390,12 @@ if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
   linksWrap.appendChild(link);
 }
 
-// Fecha qualquer dropdown de setor aberto ao clicar fora dele.
-document.addEventListener('click', () => {
-  document.querySelectorAll('#impak-nav .nav-sector-panel.open').forEach(p => p.classList.remove('open'));
-});
+// Fecha qualquer dropdown de setor aberto ao clicar fora dele, ou ao
+// rolar/redimensionar a tela (o painel é position:fixed e recalculado só
+// no clique — sem isso ele ficaria "flutuando" fora do lugar do botão).
+document.addEventListener('click', fecharPaineis);
+window.addEventListener('scroll', fecharPaineis, true);
+window.addEventListener('resize', fecharPaineis);
 }).catch(()=>{});
 
 // ── CHAT ─────────────────────────────────────────────────────
