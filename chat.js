@@ -69,6 +69,32 @@ border: none; background: none; cursor: pointer;
 #impak-nav .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
 #impak-nav .nav-link.active { color: #fff; background: rgba(255,255,255,.15); }
 #impak-nav .nav-sep { color: rgba(255,255,255,.2); margin: 0; font-size: 11px; flex-shrink: 0; }
+/* Setores em dropdown — pedido Ayslan 15/09/2026: agrupar os 11 links soltos
+   em 4 áreas do negócio (Operacional/Financeiro/Executivo/Comercial) pra
+   ficar óbvio o que é o que, em vez de uma lista plana crescendo sem fim
+   (ver comentário 11/09/2026 acima — mesmo problema, solução definitiva). */
+#impak-nav .nav-sector { position: relative; flex-shrink: 0; }
+#impak-nav .nav-sector-btn {
+color: rgba(255,255,255,.65); background: none; border: none; cursor: pointer;
+font-size: 11.5px; font-weight: 600; padding: 6px 8px; border-radius: 8px;
+display: flex; align-items: center; gap: 4px; white-space: nowrap;
+transition: all .15s; font-family: inherit;
+}
+#impak-nav .nav-sector-btn:hover, #impak-nav .nav-sector-btn.active { color: #fff; background: rgba(255,255,255,.1); }
+#impak-nav .nav-sector-btn .caret { font-size: 9px; opacity: .6; }
+#impak-nav .nav-sector-panel {
+display: none; position: absolute; top: 100%; left: 0; margin-top: 6px;
+background: #0a2340; border: 1px solid rgba(255,255,255,.14); border-radius: 10px;
+min-width: 210px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); z-index: 10001;
+}
+#impak-nav .nav-sector-panel.open { display: block; }
+#impak-nav .nav-sector-panel a {
+display: block; padding: 8px 10px; border-radius: 6px;
+color: rgba(255,255,255,.75); text-decoration: none;
+font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+#impak-nav .nav-sector-panel a:hover { color: #fff; background: rgba(255,255,255,.1); }
+#impak-nav .nav-sector-panel a.active { color: #fff; background: rgba(255,255,255,.15); }
 #impak-nav .nav-right { flex-shrink: 0; margin-left: 10px; display: flex; align-items: center; gap: 10px; }
 #impak-nav .nav-user { font-size: 11.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
 #impak-nav .nav-sair {
@@ -194,18 +220,34 @@ document.head.appendChild(style);
 // em server.js) — cada usuário só tem os módulos marcados pra ele na tela
 // de Permissões (/permissoes). Calculador é gated pelo módulo "tyredesk"
 // (mesmo módulo do TyreDesk — são a mesma área de trabalho no back-end).
-const navModulos = [
-{ label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
-{ label: '📇 Cadastros', href: '/cadastros', key: 'cadastros', modulo: 'cadastros' }, // tela unificada de Empresas/Pessoas/Funcionarios - pedido Ayslan 12/09/2026; modulo proprio (antes reaproveitava controle/financeiro/resultado/tv/narcelio) - pedido Ayslan 14/09/2026
-{ label: '📄 Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // aponta pra fila nova dentro do Controle (task #636/#645, pedido Ayslan 14/09/2026) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
-{ label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
-{ label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
-{ label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
-{ label: '💰 Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' }, // icone unificado com o menu lateral/titulo do Dashboard Financeiro (controle_v2.html) - antes usava 📊, igual ao Executivo, o que confundia os dois (pedido Ayslan 08/09/2026)
-{ label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'cambio' }, // modulo proprio (antes reaproveitava o Financeiro) - pedido Ayslan 14/09/2026
-  { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
-  { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'analises' }, // modulo proprio (antes reaproveitava o Resultado) - pedido Ayslan 14/09/2026
-  { label: '📺 TV', href: '/tv', key: 'tv', modulo: 'tv' },
+//
+// Setorizado em 4 grupos (Operacional/Financeiro/Executivo/Comercial) —
+// pedido Ayslan 15/09/2026: antes eram 11 links soltos, sem organização
+// por área do negócio, o que já tinha até forçado um ajuste de CSS pra
+// caber tudo na barra (ver comentário 11/09/2026 acima). Cada setor só
+// aparece na nav se o usuário tiver acesso a pelo menos 1 item dele. TV e
+// Permissões ficam fora dos setores (TV é uma tela de exibição física,
+// Permissões é administrativo — nenhum dos dois é "área de negócio").
+const navSetores = [
+  { setor: '🚢 Operacional', itens: [
+    { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
+    { label: '📄 Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // aponta pra fila nova dentro do Controle (task #636/#645, pedido Ayslan 14/09/2026) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
+    { label: '📇 Cadastros', href: '/cadastros', key: 'cadastros', modulo: 'cadastros' }, // tela unificada de Empresas/Pessoas/Funcionarios - pedido Ayslan 12/09/2026
+  ]},
+  { setor: '💰 Financeiro', itens: [
+    { label: '💰 Dashboard Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
+    { label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'cambio' },
+  ]},
+  { setor: '📊 Executivo / BI', itens: [
+    { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
+    { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'analises' },
+    { label: '👔 Dashboard Narcélio', href: '/narcelio', key: 'narcelio', modulo: 'narcelio' }, // dado sensível de faturamento/margem, liberado só pra quem a tela de Permissões marcar
+  ]},
+  { setor: '🛞 Comercial', itens: [
+    { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
+    { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
+    { label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
+  ]},
 ];
 
 // Detectar módulo atual pelo path — "financeiro" precisa vir ANTES de
@@ -219,6 +261,7 @@ const modAtual = path === '/' ? 'tyredesk'
 : path.includes('cambio') ? 'cambio'
 : path.includes('financeiro') ? 'financeiro'
 : path.includes('/tv') ? 'tv'
+: path.includes('narcelio') ? 'narcelio'
 : path.includes('cadastros') ? 'cadastros'
 : path.includes('conferencia-fila') ? 'conferencia-fila'
 : path.includes('controle') ? 'controle'
@@ -253,53 +296,78 @@ const el = document.getElementById('nav-user-label');
 if(el && d.displayName) el.textContent = d.displayName;
 
 const modulosDoUsuario = d.modulos || [];
-const linksPermitidos = navModulos.filter(m => modulosDoUsuario.includes(m.modulo));
 const linksWrap = navEl.querySelector('#nav-links-wrap');
-linksPermitidos.forEach((m, idx) => {
-  if(idx > 0){
+let precisaSep = false;
+const addSep = () => {
+  if(precisaSep){
     const sep = document.createElement('span');
     sep.className = 'nav-sep';
     sep.textContent = '·';
     linksWrap.appendChild(sep);
   }
-  const link = document.createElement('a');
-  link.className = 'nav-link' + (modAtual === m.key ? ' active' : '');
-  link.href = m.href;
-  link.textContent = m.label;
-  linksWrap.appendChild(link);
+  precisaSep = true;
+};
+
+// Setores em dropdown — cada um só aparece se o usuário tiver acesso a
+// pelo menos 1 item dele (mesma lógica de antes, só que agrupada).
+navSetores.forEach(setor => {
+  const itensPermitidos = setor.itens.filter(m => modulosDoUsuario.includes(m.modulo));
+  if(!itensPermitidos.length) return;
+  addSep();
+
+  const setorAtivo = itensPermitidos.some(m => modAtual === m.key);
+  const wrap = document.createElement('div');
+  wrap.className = 'nav-sector';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'nav-sector-btn' + (setorAtivo ? ' active' : '');
+  btn.innerHTML = setor.setor + ' <span class="caret">▾</span>';
+  const panel = document.createElement('div');
+  panel.className = 'nav-sector-panel';
+  itensPermitidos.forEach(m => {
+    const link = document.createElement('a');
+    link.className = (modAtual === m.key ? 'active' : '');
+    link.href = m.href;
+    link.textContent = m.label;
+    panel.appendChild(link);
+  });
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const jaAberto = panel.classList.contains('open');
+    document.querySelectorAll('#impak-nav .nav-sector-panel.open').forEach(p => p.classList.remove('open'));
+    if(!jaAberto) panel.classList.add('open');
+  });
+  wrap.appendChild(btn);
+  wrap.appendChild(panel);
+  linksWrap.appendChild(wrap);
 });
 
-// Link do Dashboard Narcélio — depende do módulo "narcelio" (dado sensível
-// de faturamento/margem, liberado só pra quem a tela de Permissões marcar).
-if(modulosDoUsuario.includes('narcelio')){
-  if(linksWrap.children.length){
-    const sep = document.createElement('span');
-    sep.className = 'nav-sep';
-    sep.textContent = '·';
-    linksWrap.appendChild(sep);
-  }
+// TV fica solta fora dos setores — é uma tela de exibição física, não
+// bem uma "área" do negócio como as demais.
+if(modulosDoUsuario.includes('tv')){
+  addSep();
   const link = document.createElement('a');
-  link.className = 'nav-link' + (path.includes('narcelio') ? ' active' : '');
-  link.href = '/narcelio';
-  link.textContent = '👔 Narcélio';
+  link.className = 'nav-link' + (modAtual === 'tv' ? ' active' : '');
+  link.href = '/tv';
+  link.textContent = '📺 TV';
   linksWrap.appendChild(link);
 }
 
 // Link da tela de Permissões — só pra quem pode gerenciar acesso de outros
 // (Narcelio, Paula, Ayslan/"suporte" — ver ADMINS_PERMISSOES em server.js).
 if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
-  if(linksWrap.children.length){
-    const sep = document.createElement('span');
-    sep.className = 'nav-sep';
-    sep.textContent = '·';
-    linksWrap.appendChild(sep);
-  }
+  addSep();
   const link = document.createElement('a');
   link.className = 'nav-link' + (path.includes('permissoes') ? ' active' : '');
   link.href = '/permissoes';
   link.textContent = '🔐 Permissões';
   linksWrap.appendChild(link);
 }
+
+// Fecha qualquer dropdown de setor aberto ao clicar fora dele.
+document.addEventListener('click', () => {
+  document.querySelectorAll('#impak-nav .nav-sector-panel.open').forEach(p => p.classList.remove('open'));
+});
 }).catch(()=>{});
 
 // ── CHAT ─────────────────────────────────────────────────────
