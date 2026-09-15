@@ -415,11 +415,18 @@ function renderDashClienteMedida(){
   // de 1 Produto) só repetem Medida/Qte — igual ao formato da planilha
   // "PEDIDOS TWI" mostrada pelo Ayslan (linhas de produto extra do mesmo
   // Invoice não repetem Invoice/Datas/Porto).
-  function linhasPedido(pedido){
+  // Zebra striping (pedido do Ayslan 15/09/2026: "deixar as linhas de forma
+  // intercaladas cor sim cor não num tom de cinza clarinho, tipo como está
+  // na linha do UD26-093") — alterna por PEDIDO (Invoice), não por linha de
+  // tabela, pra pedidos com múltiplos produtos (rowspan) manterem uma única
+  // cor sólida em todas as suas linhas em vez de listrar dentro do mesmo
+  // Invoice. pedidoIdx vem do índice do pedido na lista (0-based).
+  function linhasPedido(pedido, pedidoIdx){
     const itens = pedido.itens.length ? pedido.itens : [{ descricao: '—', qtd: 0 }];
     const n = itens.length;
+    const bgBase = (pedidoIdx % 2 === 1) ? '#f8fafc' : '#fff';
     return itens.map((it, i) => {
-      const onclick = `onclick="abrirProcesso('${pedido.id}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''" style="cursor:pointer;${i===0?'border-top:1px solid var(--border);':''}"`;
+      const onclick = `onclick="abrirProcesso('${pedido.id}')" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${bgBase}'" style="cursor:pointer;background:${bgBase};${i===0?'border-top:1px solid var(--border);':''}"`;
       if(i === 0){
         return `<tr ${onclick}>
           <td rowspan="${n}" style="padding:6px 10px;font-weight:700;white-space:nowrap;text-align:center;vertical-align:middle;border-right:1px solid var(--border);">${esc(pedido.referencia)}</td>
@@ -458,7 +465,7 @@ function renderDashClienteMedida(){
           <th style="padding:6px 10px;text-align:center;">Data Chegada</th>
           <th style="padding:6px 10px;text-align:center;">Porto</th>
         </tr></thead>
-        <tbody>${pedidos.map(linhasPedido).join('')}</tbody>
+        <tbody>${pedidos.map((p, idx) => linhasPedido(p, idx)).join('')}</tbody>
       </table>
       </div>
     </div>`;
