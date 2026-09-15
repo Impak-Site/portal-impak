@@ -13,6 +13,7 @@
 // direto de controle_processos.conferencia_json de cada processo.
 
 let _confFilaFiltro = 'pendentes'; // 'pendentes' | 'todos' | 'nunca'
+let _confFilaBusca = ''; // pedido Emanuelly 15/09/2026: buscar processo por referência/fornecedor/cliente na fila
 
 function _confFilaDados(){
   const linhas = (_processos||[]).filter(p => !p.cancelado).map(p => {
@@ -61,13 +62,19 @@ function renderDashConferenciaFila(){
         <div style="font-size:11px;color:var(--muted);">nunca conferidos</div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
       ${aba('pendentes','⚠ Com pendência', comPendente)}
       ${aba('nunca','◻ Nunca conferidos', nuncaConferidos)}
       ${aba('todos','Todos já conferidos', todos.length - nuncaConferidos)}
+      <input type="text" id="conf-fila-busca" placeholder="🔍 Buscar por referência, fornecedor ou cliente..." value="${esc(_confFilaBusca)}" oninput="_confFilaMudarBusca(this.value)" style="margin-left:auto;min-width:260px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
     </div>
     <div id="conf-fila-lista"></div>
   `;
+  _confFilaRenderLista();
+}
+
+function _confFilaMudarBusca(valor){
+  _confFilaBusca = valor;
   _confFilaRenderLista();
 }
 
@@ -86,13 +93,31 @@ function _confFilaRenderLista(){
   else if(_confFilaFiltro === 'nunca') lista = todos.filter(l => !l.analise);
   else lista = todos.filter(l => l.analise);
 
+  // Busca por referência/fornecedor/cliente — pedido Emanuelly 15/09/2026
+  // ("da pra colocar uma lupa aqui? pra pesquisar e achar mais facil o
+  // processo"). Não distingue maiúscula/minúscula nem acento, pra achar
+  // mesmo digitando diferente do cadastro.
+  const termo = _confFilaBusca.trim().toLowerCase();
+  if(termo){
+    const normalizar = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const termoNorm = normalizar(termo);
+    lista = lista.filter(l => {
+      const p = l.p;
+      return normalizar(p.referencia).includes(termoNorm)
+        || normalizar(p.fornecedor).includes(termoNorm)
+        || normalizar(p.cliente).includes(termoNorm);
+    });
+  }
+
   // Prioriza quem tem mais divergência bloqueante, depois pendente, depois
   // mais recente — pra quem tem menos tempo separar o que precisa de
   // atenção primeiro sem precisar reordenar manualmente.
   lista = lista.slice().sort((a,b) => (b.bloqueantes-a.bloqueantes) || (b.pendentes-a.pendentes) || 0);
 
   if(!lista.length){
-    cont.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><div class="empty-text">Nada por aqui — nenhum processo nessa condição no momento.</div></div>';
+    cont.innerHTML = termo
+      ? '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Nenhum processo encontrado pra "'+esc(_confFilaBusca)+'".</div></div>'
+      : '<div class="empty"><div class="empty-icon">✓</div><div class="empty-text">Nada por aqui — nenhum processo nessa condição no momento.</div></div>';
     return;
   }
 
