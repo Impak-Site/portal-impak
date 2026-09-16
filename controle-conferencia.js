@@ -30,6 +30,17 @@ const CONF_DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (P
 const CONF_DOC_PT  = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',bl_draft:'Draft BL',bl_original:'BL Original',proforma:'Proforma Invoice (PI)',ce:'CE Mercante',outros:'Outro Documento'};
 
 let _confArquivos = {}; // { nomeArquivo: {file, type} }
+// Cache dos arquivos da ULTIMA conferencia rodada neste processo (so em
+// memoria, dura enquanto a aba do navegador ficar aberta nesta sessao) --
+// pedido Emanuelly 16/09/2026: "a ideia era pra nao rodar a mesma
+// documentacao mais vezes". Como e rarissimo uma conferencia ja sair com
+// 0 pendencias na hora (quase sempre tem alguma divergencia esperada,
+// tipo NCM de 4 digitos no BL ou porto divergente no Sales Contract, que
+// ela aceita uma a uma), o preenchimento automatico nao pode depender so
+// do momento em que rodarConferencia() termina -- precisa tambem disparar
+// depois, quando a ULTIMA pendencia for aceita via confirmarMotivoConferencia(),
+// sem pedir pra subir os documentos de novo.
+let _confArquivosUltimaAnalise = [];
 
 function _confGuessType(name){
   const n = name.toLowerCase();
@@ -216,10 +227,12 @@ async function rodarConferencia(){
     }
     if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
 
-    // Capturado ANTES de _confArquivos ser limpo no final, pra poder reler
-    // os mesmos documentos na extração automática de campos logo abaixo
-    // (ver _confAutoPreencherSemPendencia) sem pedir upload de novo.
-    const arquivosOriginaisDesteEnvio = Object.values(_confArquivos).map(f=>f.file);
+    // Guardado no cache de sessão (fora da função) ANTES de _confArquivos
+    // ser limpo no final, pra poder reler os mesmos documentos mais tarde
+    // sem pedir upload de novo — seja agora (se já sair sem pendência) ou
+    // quando a ÚLTIMA pendência for aceita (ver _confTentarPreencherAutomatico
+    // e seu uso em confirmarMotivoConferencia).
+    _confArquivosUltimaAnalise = Object.values(_confArquivos).map(f=>f.file);
 
     const analiseAnterior = _confLerAnalise(p);
     const novaAnalise = {
@@ -265,31 +278,11 @@ async function rodarConferencia(){
     _confRenderChips();
     atualizarBadgeConferencia(p);
 
-    // ── Análise SEM pendência → também preenche o processo automaticamente ──
-    // Pedido Emanuelly (16/09/2026): "quando eu faço a conferencia ele
-    // confere mas não preenche as outras abas... a função é só analise e
-    // não inclusão... tem como fazer com que ele analise e inclua quando o
-    // processo estiver sem pendencia?" — ou seja, só HABILITAR o
-    // preenchimento automático quando a conferência não deixou nenhuma
-    // divergência/ausência pendente pra revisar (0 pendentes), pra não
-    // preencher o processo com dados de documentos que ainda têm algo
-    // errado entre si. Reaproveita a MESMA extração por IA + preenchimento
-    // de campos com proteção contra conflito que já roda na aba Documentos
-    // (extrairComIA_umArquivo/processarFilaIA, em controle-import-ia.js) —
-    // relendo os mesmos arquivos que acabaram de ser usados na conferência,
-    // sem pedir upload de novo. Continua só analisando (comportamento de
-    // antes) quando sobrar alguma pendência.
-    const pendentesFinal = _confListarDivergencias(novaAnalise).filter(d => !(novaAnalise.divResolvedMap||{})[d.key]);
-    if(pendentesFinal.length === 0 && arquivosOriginaisDesteEnvio.length && typeof processarFilaIA === 'function'){
-      showToast('Nenhuma pendência — lendo os documentos pra preencher o processo automaticamente...', 'ok');
-      try{
-        await processarFilaIA(arquivosOriginaisDesteEnvio);
-        if(typeof coletarESalvar === 'function') coletarESalvar();
-      }catch(e){
-        console.error('Preenchimento automático pós-conferência falhou:', e);
-        showToast('Conferência OK, mas o preenchimento automático falhou — confira/preencha manualmente as outras abas.', 'warn');
-      }
-    }
+    // Só sai já sem pendência de cara em casos raros (quase sempre sobra
+    // alguma divergência esperada pra aceitar uma a uma) — o caso comum é
+    // tratado em confirmarMotivoConferencia(), que chama esta mesma função
+    // de novo a cada aceite, até zerar as pendências.
+    await _confTentarPreencherAutomatico(p, novaAnalise);
   }catch(err){
     showToast('Erro: '+err.message, 'err');
     console.error(err);
@@ -313,6 +306,37 @@ function _confListarDivergencias(analise){
     });
   });
   return divs;
+}
+
+// Preenchimento automático do processo quando a conferência não deixou
+// NENHUMA pendência (nem divergência sem aceitar, nem ausência) — pedido
+// Emanuelly 16/09/2026: "coloco os documentos - aparece as pendencias -
+// aceito essas que ta tudo bem ou coloco novos documentos para cumprir -
+// quando estiverem todas aceitas ou sem pendencia o sistema começa a
+// preencher". Chamada tanto ao final de rodarConferencia() (pro raro caso
+// de já sair com 0 pendências) quanto ao final de confirmarMotivoConferencia()
+// (o caso comum: ela aceita as divergências uma a uma até zerar). Reaproveita
+// os arquivos da última conferência guardados em _confArquivosUltimaAnalise
+// (ver comentário lá) — "a ideia era pra não rodar a mesma documentação mais
+// vezes". Um flag na própria análise (_autoPreenchido) evita rodar de novo
+// se ela reabrir a aba ou aceitar/desfazer outra coisa depois.
+async function _confTentarPreencherAutomatico(p, analise){
+  if(analise._autoPreenchido) return;
+  const pendentes = _confListarDivergencias(analise).filter(d => !(analise.divResolvedMap||{})[d.key]);
+  if(pendentes.length !== 0) return;
+  if(!_confArquivosUltimaAnalise.length || typeof processarFilaIA !== 'function') return;
+  showToast('Nenhuma pendência — lendo os documentos pra preencher o processo automaticamente...', 'ok');
+  try{
+    await processarFilaIA(_confArquivosUltimaAnalise);
+    if(typeof coletarESalvar === 'function') coletarESalvar();
+    analise._autoPreenchido = true;
+    // Persiste o flag junto da análise, pra não repetir a extração se ela
+    // reabrir o processo mais tarde e mexer em algum aceite de novo.
+    await _confSalvarResolvedMap(p, analise);
+  }catch(e){
+    console.error('Preenchimento automático pós-conferência falhou:', e);
+    showToast('Sem pendências, mas o preenchimento automático falhou — confira/preencha manualmente as outras abas.', 'warn');
+  }
 }
 
 function _confRenderResultado(p, analise){
@@ -497,6 +521,9 @@ async function confirmarMotivoConferencia(key){
     showToast('✓ Divergência aceita', 'ok');
     document.getElementById('conf-resultado').innerHTML = _confRenderResultado(p, analise);
     atualizarBadgeConferencia(p);
+    // Essa pode ter sido a ÚLTIMA pendência — tenta preencher automaticamente
+    // (não faz nada se ainda sobrar alguma, ver _confTentarPreencherAutomatico).
+    await _confTentarPreencherAutomatico(p, analise);
   }
 }
 
