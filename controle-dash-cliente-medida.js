@@ -1030,7 +1030,24 @@ async function exportarCMPDF(){
         const pedidos = Object.values(m.pedidos).sort((a,b) => a._chegadaTs - b._chegadaTs || (a.referencia||'').localeCompare(b.referencia||'','pt-BR',{numeric:true}));
         const body = [[{ content: m.nome.toUpperCase(), colSpan: colunasPdf.length, styles:{fillColor:[234,243,252], textColor:[16,42,69], fontStyle:'bold', halign:'center'} }]];
         let qtdLinhasItem = 0;
-        pedidos.forEach(pedido => {
+        // Zebra striping igual à tela (pedido Emanuelly 16/09/2026: "a
+        // questão da cor, ela aparece aqui na tela mas não fica no
+        // relatório") — mesmo cinza clarinho (#f8fafc) alternado por
+        // pedido/Invoice, agora também no PDF exportado. Cada célula da
+        // linha carrega seu próprio fillColor porque autoTable não herda
+        // estilo entre linhas de um rowSpan.
+        const CINZA_ZEBRA = [248, 250, 252]; // #f8fafc
+        function comZebra(valor, fillColor, rowSpan){
+          const base = (valor && typeof valor === 'object') ? valor : { content: valor };
+          const styles = { ...(base.styles||{}) };
+          if(fillColor) styles.fillColor = fillColor;
+          if(rowSpan) styles.valign = 'middle';
+          const out = { ...base, styles };
+          if(rowSpan) out.rowSpan = rowSpan;
+          return out;
+        }
+        pedidos.forEach((pedido, pedidoIdx) => {
+          const fillColor = (pedidoIdx % 2 === 1) ? CINZA_ZEBRA : null;
           const itens = pedido.itens.length ? pedido.itens : [{descricao:'—', qtd:0}];
           const span = itens.length;
           itens.forEach((it, ii) => {
@@ -1044,13 +1061,13 @@ async function exportarCMPDF(){
               'Valor Frete': textoFrete(pedido),
             };
             const row = colunasPdf.map(col => {
-              if(col === 'Medida') return it.descricao || '';
-              if(col === 'Qte') return it.qtd != null ? it.qtd.toLocaleString('pt-BR') : '';
+              if(col === 'Medida') return comZebra(it.descricao || '', fillColor);
+              if(col === 'Qte') return comZebra(it.qtd != null ? it.qtd.toLocaleString('pt-BR') : '', fillColor);
               if(colunasPedidoPdf.has(col)){
                 if(ii !== 0) return null; // coberto pelo rowSpan da linha âncora
-                return span > 1 ? { content: valoresPedido[col]||'', rowSpan: span, styles:{valign:'middle'} } : (valoresPedido[col]||'');
+                return comZebra(valoresPedido[col]||'', fillColor, span > 1 ? span : null);
               }
-              return '';
+              return comZebra('', fillColor);
             }).filter(v => v !== null);
             body.push(row);
             qtdLinhasItem++;
