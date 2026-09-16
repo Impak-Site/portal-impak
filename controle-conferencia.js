@@ -328,7 +328,10 @@ async function _confTentarPreencherAutomatico(p, analise){
   showToast('Nenhuma pendência — lendo os documentos pra preencher o processo automaticamente...', 'ok');
   try{
     await processarFilaIA(_confArquivosUltimaAnalise);
-    if(typeof coletarESalvar === 'function') coletarESalvar();
+    // fecharAoSalvar:false -- ver comentário em coletarESalvar() (controle-campos.js):
+    // isso roda sozinho depois da última divergência aceita, sem o usuário clicar
+    // em Salvar, então não deve fechar o painel do processo.
+    if(typeof coletarESalvar === 'function') coletarESalvar({fecharAoSalvar:false});
     analise._autoPreenchido = true;
     // Persiste o flag junto da análise, pra não repetir a extração se ela
     // reabrir o processo mais tarde e mexer em algum aceite de novo.

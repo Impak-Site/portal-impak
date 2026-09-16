@@ -137,7 +137,15 @@ function togglePortoOutro(tipo){
   outro.style.display = sel.value === 'OUTRO' ? 'block' : 'none';
 }
 
-function coletarESalvar(){
+// opts.fecharAoSalvar (default true) -- quando false, salva mas NÃO fecha o
+// painel do processo. Usado pelo preenchimento automático pós-Conferência
+// (controle-conferencia.js/_confTentarPreencherAutomatico), que roda em
+// segundo plano sem o usuário clicar em Salvar -- fechar o painel sozinho
+// nesse caso parecia bug pro usuário ("ele só fecha do nada", Emanuelly
+// 16/09/2026). O botão "Salvar" continua chamando coletarESalvar() sem
+// argumento, então mantém o fechamento normal ao clicar.
+function coletarESalvar(opts){
+  const fecharAoSalvar = !(opts && opts.fecharAoSalvar === false);
   if(window._salvandoProcesso) return;
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
@@ -339,7 +347,8 @@ function coletarESalvar(){
   salvarProcesso(proc, patchFields).then(ok=>{
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
-    if(ok) fecharModal();
+    if(ok && fecharAoSalvar) fecharModal();
+    else if(ok) showToast('Processo atualizado automaticamente pela Conferência.', 'ok');
   }).catch(()=>{
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
