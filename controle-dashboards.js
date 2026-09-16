@@ -782,10 +782,10 @@ function renderDashAnalises(){
     // tela Análises): "coloca o que é o % que tem ao lado" -- ou seja,
     // deixar claro o que cada coluna representa.
     const headerRanking = `<tr style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">
-        <td style="padding:2px 10px;">${esc(label)}</td>
-        <td style="padding:2px 10px;text-align:right;">Lucro Real</td>
-        <td style="padding:2px 10px;text-align:right;">Margem</td>
-        <td style="padding:2px 10px;text-align:right;" title="Quantidade de processos">Proc.</td>
+        <td style="padding:4px 14px;">${esc(label)}</td>
+        <td style="padding:4px 10px;text-align:right;">Lucro Real</td>
+        <td style="padding:4px 10px;text-align:right;">Margem</td>
+        <td style="padding:4px 14px;text-align:right;" title="Quantidade de processos">Proc.</td>
       </tr>`;
     function linhaRanking(g){
       // Nome truncado com "…" + title (tooltip com o nome completo) em vez
@@ -793,22 +793,27 @@ function renderDashAnalises(){
       // TRUEMAX MACHINERY AND EQUIPMENT CO., LTD" estavam esticando a
       // altura da linha e desalinhando as colunas de valor/%/qtd (mesmo
       // print do Ayslan).
-      return `<tr><td style="padding:6px 10px;font-weight:600;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(g.chave)}">${esc(g.chave)}</td>
-        <td style="padding:6px 10px;text-align:right;color:${g.lucroReal>=0?'var(--ok)':'var(--err)'};font-weight:700;white-space:nowrap;">${fmtBRL(g.lucroReal)}</td>
-        <td style="padding:6px 10px;text-align:right;white-space:nowrap;">${fmtPct(g.margem)}</td>
-        <td style="padding:6px 10px;text-align:right;color:var(--muted);white-space:nowrap;" title="${g.qtd} processo(s)">${g.qtd}</td></tr>`;
+      return `<tr><td style="padding:7px 14px;font-weight:600;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(g.chave)}">${esc(g.chave)}</td>
+        <td style="padding:7px 10px;text-align:right;color:${g.lucroReal>=0?'var(--ok)':'var(--err)'};font-weight:700;white-space:nowrap;">${fmtBRL(g.lucroReal)}</td>
+        <td style="padding:7px 10px;text-align:right;white-space:nowrap;">${fmtPct(g.margem)}</td>
+        <td style="padding:7px 14px;text-align:right;color:var(--muted);white-space:nowrap;" title="${g.qtd} processo(s)">${g.qtd}</td></tr>`;
     }
+    // Melhores e Piores empilhados (um embaixo do outro) em vez de lado a
+    // lado -- pedido Ayslan 16/09/2026 (print da tela Análises): "divida
+    // os cards para visualizar melhor e coloca os cards embaixo, faca o
+    // espacamento melhor". Empilhar dá o dobro da largura pra cada tabela,
+    // resolvendo também a Margem colidindo com Proc. que a divisão lado a
+    // lado (cada metade com só ~210px) causava.
+    const colgroupRanking = `<colgroup><col style="width:42%;"><col style="width:26%;"><col style="width:16%;"><col style="width:16%;"></colgroup>`;
     return `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-      <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;">${label}</div>
-      <div style="display:flex;gap:0;flex-wrap:wrap;">
-        <div style="flex:1;min-width:220px;max-width:100%;padding:8px 0;overflow:hidden;">
-          <div style="padding:0 14px;font-size:10px;font-weight:700;color:var(--ok);text-transform:uppercase;margin-bottom:4px;">Melhores</div>
-          <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;"><colgroup><col style="width:46%;"><col style="width:24%;"><col style="width:15%;"><col style="width:15%;"></colgroup>${headerRanking}${melhores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
-        </div>
-        <div style="flex:1;min-width:220px;max-width:100%;padding:8px 0;border-left:1px solid var(--border);overflow:hidden;">
-          <div style="padding:0 14px;font-size:10px;font-weight:700;color:var(--err);text-transform:uppercase;margin-bottom:4px;">Piores</div>
-          <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;"><colgroup><col style="width:46%;"><col style="width:24%;"><col style="width:15%;"><col style="width:15%;"></colgroup>${headerRanking}${piores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
-        </div>
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;">${label}</div>
+      <div style="padding:10px 0 4px;">
+        <div style="padding:0 16px;font-size:10px;font-weight:700;color:var(--ok);text-transform:uppercase;margin-bottom:6px;">Melhores</div>
+        <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;">${colgroupRanking}${headerRanking}${melhores.map(linhaRanking).join('') || '<tr><td style="padding:7px 16px;color:var(--muted);">—</td></tr>'}</table>
+      </div>
+      <div style="padding:10px 0 12px;border-top:1px solid var(--border);margin-top:6px;">
+        <div style="padding:10px 16px 0;font-size:10px;font-weight:700;color:var(--err);text-transform:uppercase;margin-bottom:6px;">Piores</div>
+        <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;">${colgroupRanking}${headerRanking}${piores.map(linhaRanking).join('') || '<tr><td style="padding:7px 16px;color:var(--muted);">—</td></tr>'}</table>
       </div>
     </div>`;
   }).join('');
@@ -881,7 +886,7 @@ function renderDashAnalises(){
   ${serieHtml}
 
   <div style="font-size:13px;font-weight:700;margin-bottom:8px;">Rankings — melhores e piores</div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;">${rankingsHtml}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;">${rankingsHtml}</div>
 
   ${cruzamentoHtml}
   `;
