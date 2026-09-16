@@ -271,6 +271,14 @@ function ativarTelaFinanceiroExclusiva(){
 
   // Sidebar: esconde "Visão" e "Por fase" (não fazem sentido sem a busca/
   // lista principal em destaque) — mantém Dashboard Executivo e Cadastros.
+  // Esconde a barra lateral INTEIRA (nao so a secao "processos") -- sem
+  // isso, os links "Fila de Conferencia" e o rodape "API Anthropic" (que
+  // nao tem data-secao="processos") continuavam aparecendo como uma
+  // coluna estreita ao lado do conteudo, espremendo o layout. Bug
+  // reportado por Ayslan no Dashboard Analises, 16/09/2026: "nao precisa
+  // dessa coluna lateral, nao pode quebrar linha" -- mesmo padrao ja usado
+  // em ativarTelaCambioExclusiva().
+  document.querySelector('.sidebar')?.style.setProperty('display','none');
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
   });
@@ -299,6 +307,14 @@ function ativarTelaCadastrosExclusiva(){
   if(toolbar) toolbar.style.display = 'none';
   document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
 
+  // Esconde a barra lateral INTEIRA (nao so a secao "processos") -- sem
+  // isso, os links "Fila de Conferencia" e o rodape "API Anthropic" (que
+  // nao tem data-secao="processos") continuavam aparecendo como uma
+  // coluna estreita ao lado do conteudo, espremendo o layout. Bug
+  // reportado por Ayslan no Dashboard Analises, 16/09/2026: "nao precisa
+  // dessa coluna lateral, nao pode quebrar linha" -- mesmo padrao ja usado
+  // em ativarTelaCambioExclusiva().
+  document.querySelector('.sidebar')?.style.setProperty('display','none');
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
   });
@@ -366,6 +382,14 @@ function ativarTelaResultadoExclusiva(){
   const tableWrapRes = document.querySelector('.table-wrap');
   if(tableWrapRes) tableWrapRes.style.display = 'none';
 
+  // Esconde a barra lateral INTEIRA (nao so a secao "processos") -- sem
+  // isso, os links "Fila de Conferencia" e o rodape "API Anthropic" (que
+  // nao tem data-secao="processos") continuavam aparecendo como uma
+  // coluna estreita ao lado do conteudo, espremendo o layout. Bug
+  // reportado por Ayslan no Dashboard Analises, 16/09/2026: "nao precisa
+  // dessa coluna lateral, nao pode quebrar linha" -- mesmo padrao ja usado
+  // em ativarTelaCambioExclusiva().
+  document.querySelector('.sidebar')?.style.setProperty('display','none');
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
   });
@@ -396,6 +420,14 @@ function ativarTelaAnalisesExclusiva(){
   const tableWrapAn = document.querySelector('.table-wrap');
   if(tableWrapAn) tableWrapAn.style.display = 'none';
 
+  // Esconde a barra lateral INTEIRA (nao so a secao "processos") -- sem
+  // isso, os links "Fila de Conferencia" e o rodape "API Anthropic" (que
+  // nao tem data-secao="processos") continuavam aparecendo como uma
+  // coluna estreita ao lado do conteudo, espremendo o layout. Bug
+  // reportado por Ayslan no Dashboard Analises, 16/09/2026: "nao precisa
+  // dessa coluna lateral, nao pode quebrar linha" -- mesmo padrao ja usado
+  // em ativarTelaCambioExclusiva().
+  document.querySelector('.sidebar')?.style.setProperty('display','none');
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
   });
@@ -464,6 +496,14 @@ function ativarTelaNarcelioExclusiva(){
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
 
+  // Esconde a barra lateral INTEIRA (nao so a secao "processos") -- sem
+  // isso, os links "Fila de Conferencia" e o rodape "API Anthropic" (que
+  // nao tem data-secao="processos") continuavam aparecendo como uma
+  // coluna estreita ao lado do conteudo, espremendo o layout. Bug
+  // reportado por Ayslan no Dashboard Analises, 16/09/2026: "nao precisa
+  // dessa coluna lateral, nao pode quebrar linha" -- mesmo padrao ja usado
+  // em ativarTelaCambioExclusiva().
+  document.querySelector('.sidebar')?.style.setProperty('display','none');
   document.querySelectorAll('.sidebar-section[data-secao="processos"]').forEach(el=>{
     el.style.display = 'none';
   });
