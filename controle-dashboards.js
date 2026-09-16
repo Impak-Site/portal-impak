@@ -776,22 +776,38 @@ function renderDashAnalises(){
     const grupos = agruparPorAnalises(campo).sort((a,b)=>b.lucroReal-a.lucroReal);
     const melhores = grupos.slice(0,5);
     const piores = grupos.slice(-5).reverse().filter(g=>!melhores.includes(g));
+    // Cabeçalho das colunas -- antes só tinha os números soltos (o "qtd"
+    // no fim da linha aparecia como um número sem rótulo nenhum, do lado
+    // do %, e parecia lixo visual). Pedido Ayslan 16/09/2026 (print da
+    // tela Análises): "coloca o que é o % que tem ao lado" -- ou seja,
+    // deixar claro o que cada coluna representa.
+    const headerRanking = `<tr style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">
+        <td style="padding:2px 10px;">${esc(label)}</td>
+        <td style="padding:2px 10px;text-align:right;">Lucro Real</td>
+        <td style="padding:2px 10px;text-align:right;">Margem</td>
+        <td style="padding:2px 10px;text-align:right;" title="Quantidade de processos">Proc.</td>
+      </tr>`;
     function linhaRanking(g){
-      return `<tr><td style="padding:6px 10px;font-weight:600;">${esc(g.chave)}</td>
-        <td style="padding:6px 10px;text-align:right;color:${g.lucroReal>=0?'var(--ok)':'var(--err)'};font-weight:700;">${fmtBRL(g.lucroReal)}</td>
-        <td style="padding:6px 10px;text-align:right;">${fmtPct(g.margem)}</td>
-        <td style="padding:6px 10px;text-align:right;color:var(--muted);">${g.qtd}</td></tr>`;
+      // Nome truncado com "…" + title (tooltip com o nome completo) em vez
+      // de deixar quebrar linha livremente -- nomes longos tipo "HANGZHOU
+      // TRUEMAX MACHINERY AND EQUIPMENT CO., LTD" estavam esticando a
+      // altura da linha e desalinhando as colunas de valor/%/qtd (mesmo
+      // print do Ayslan).
+      return `<tr><td style="padding:6px 10px;font-weight:600;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(g.chave)}">${esc(g.chave)}</td>
+        <td style="padding:6px 10px;text-align:right;color:${g.lucroReal>=0?'var(--ok)':'var(--err)'};font-weight:700;white-space:nowrap;">${fmtBRL(g.lucroReal)}</td>
+        <td style="padding:6px 10px;text-align:right;white-space:nowrap;">${fmtPct(g.margem)}</td>
+        <td style="padding:6px 10px;text-align:right;color:var(--muted);white-space:nowrap;" title="${g.qtd} processo(s)">${g.qtd}</td></tr>`;
     }
     return `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
       <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;">${label}</div>
       <div style="display:flex;gap:0;flex-wrap:wrap;">
-        <div style="flex:1;min-width:220px;padding:8px 0;">
+        <div style="flex:1;min-width:220px;max-width:100%;padding:8px 0;overflow:hidden;">
           <div style="padding:0 14px;font-size:10px;font-weight:700;color:var(--ok);text-transform:uppercase;margin-bottom:4px;">Melhores</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">${melhores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
+          <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;"><colgroup><col style="width:46%;"><col style="width:24%;"><col style="width:15%;"><col style="width:15%;"></colgroup>${headerRanking}${melhores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
         </div>
-        <div style="flex:1;min-width:220px;padding:8px 0;border-left:1px solid var(--border);">
+        <div style="flex:1;min-width:220px;max-width:100%;padding:8px 0;border-left:1px solid var(--border);overflow:hidden;">
           <div style="padding:0 14px;font-size:10px;font-weight:700;color:var(--err);text-transform:uppercase;margin-bottom:4px;">Piores</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">${piores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
+          <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;"><colgroup><col style="width:46%;"><col style="width:24%;"><col style="width:15%;"><col style="width:15%;"></colgroup>${headerRanking}${piores.map(linhaRanking).join('') || '<tr><td style="padding:6px 14px;color:var(--muted);">—</td></tr>'}</table>
         </div>
       </div>
     </div>`;
