@@ -93,6 +93,12 @@ let _cmFiltroFornecedor = '';  // '' = todos
 let _cmFiltroMarcas = new Set(); // vazio = todas (multi-select — pedido da
                                   // Emanuelly 11/09/2026: "tem como eu selecionar
                                   // mais de uma marca para tirar um relatorio")
+let _cmFiltroMes = ''; // '' = todos os meses; senão 'YYYY-MM' — pedido Emanuelly
+                        // 16/09/2026: "consegue colocar um filtro de mes?...
+                        // selecionar por exemplo o mes de agosto e ai mostraria
+                        // só os de agosto". Usa a Data de Chegada (real, com
+                        // fallback pro ETA) — mesmo critério já usado em
+                        // "Processos do Mês" na TV (controle-dash-tv.js).
 let _cmMarcaDropdownAberto = false; // painel do multi-select de marca, aberto/fechado
 let _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA); // fases marcadas nos checkboxes
 let _cmIntervaloId = null; // id do setInterval de auto-refresh (null = parado)
@@ -202,6 +208,10 @@ function _cmSetFiltroSelect(campo, valor){
   else if(campo === 'fornecedor') _cmFiltroFornecedor = valor;
   renderDashClienteMedida();
 }
+function _cmSetFiltroMes(valor){
+  _cmFiltroMes = valor || '';
+  renderDashClienteMedida();
+}
 function _cmToggleMarcaFiltro(chave, marcado){
   if(marcado) _cmFiltroMarcas.add(chave);
   else _cmFiltroMarcas.delete(chave);
@@ -232,6 +242,7 @@ function _cmLimparFiltros(){
   _cmFiltroFornecedor = '';
   _cmFiltroMarcas.clear();
   _cmMarcaDropdownAberto = false;
+  _cmFiltroMes = '';
   _cmFasesAtivas = new Set(FASES_CLIENTE_MEDIDA);
   renderDashClienteMedida();
 }
@@ -263,6 +274,10 @@ function renderDashClienteMedida(){
   _processos.forEach(p => {
     if(p.cancelado) return;
     if(!FASES_CLIENTE_MEDIDA_SET.has(_cmFaseAgrupada(calcularFase(p)))) return;
+    if(_cmFiltroMes){
+      const dtChegadaOpcoes = p.data_chegada || p.eta;
+      if(!dtChegadaOpcoes || dtChegadaOpcoes.slice(0,7) !== _cmFiltroMes) return;
+    }
     const vendas = typeof parseVendas === 'function' ? parseVendas(p) : [];
     if(vendas.length) vendas.forEach(v => _cmAddOpcao(clientesDisponiveis, v.cliente || p.cliente || 'Sem cliente'));
     else _cmAddOpcao(clientesDisponiveis, p.cliente || 'Sem cliente');
@@ -362,6 +377,10 @@ function renderDashClienteMedida(){
 
   _processos.forEach(p => {
     if(p.cancelado) return;
+    if(_cmFiltroMes){
+      const dtChegadaFiltro = p.data_chegada || p.eta;
+      if(!dtChegadaFiltro || dtChegadaFiltro.slice(0,7) !== _cmFiltroMes) return;
+    }
     const fase = _cmFaseAgrupada(calcularFase(p));
     if(!_cmFasesAtivas.has(fase)) return;
 
@@ -575,7 +594,7 @@ function renderDashClienteMedida(){
 
   const corpoHtml = clientesLista.length
     ? clientesLista.map(blocoCliente).join('')
-    : `<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center;">${(termo||_cmFiltroCliente||_cmFiltroFornecedor||_cmFiltroMarcas.size) ? 'Nenhum resultado para os filtros escolhidos.' : 'Nenhum processo em andamento no momento.'}</div>`;
+    : `<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center;">${(termo||_cmFiltroCliente||_cmFiltroFornecedor||_cmFiltroMarcas.size||_cmFiltroMes) ? 'Nenhum resultado para os filtros escolhidos.' : 'Nenhum processo em andamento no momento.'}</div>`;
 
   function multiSelectMarcaHtml(opcoesMap){
     const entradas = [...opcoesMap.entries()].sort((a,b) => a[1].localeCompare(b[1],'pt-BR'));
@@ -619,7 +638,7 @@ function renderDashClienteMedida(){
     </select>`;
   }
 
-  const temFiltroAtivo = _cmFiltroTexto || _cmFiltroCliente || _cmFiltroFornecedor || _cmFiltroMarcas.size || _cmFasesAtivas.size !== FASES_CLIENTE_MEDIDA.length;
+  const temFiltroAtivo = _cmFiltroTexto || _cmFiltroCliente || _cmFiltroFornecedor || _cmFiltroMarcas.size || _cmFiltroMes || _cmFasesAtivas.size !== FASES_CLIENTE_MEDIDA.length;
 
   el.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
@@ -642,6 +661,7 @@ function renderDashClienteMedida(){
         ${multiSelectMarcaHtml(marcasDisponiveis)}
         <input id="cm-filtro-texto" class="form-input" placeholder="Buscar invoice, medida ou marca (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
           oninput="_cmAtualizarFiltroTexto(this.value)" style="flex:2;min-width:200px;">
+        <input type="month" value="${esc(_cmFiltroMes)}" onchange="_cmSetFiltroMes(this.value)" title="Filtra pela Data de Chegada (ou ETA, se ainda não chegou)" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;">
         ${temFiltroAtivo ? `<button class="btn btn-outline" onclick="_cmLimparFiltros()" style="white-space:nowrap;">✕ Limpar filtros</button>` : ''}
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--text);white-space:nowrap;" title="Inclui uma coluna com o Valor do Frete (aba Logística do processo) só no PDF exportado — não aparece na tela nem no Excel.">
           <input type="checkbox" ${_cmIncluirFretePdf?'checked':''} onchange="_cmToggleFretePdf(this.checked)"> Incluir Valor de Frete (PDF)
