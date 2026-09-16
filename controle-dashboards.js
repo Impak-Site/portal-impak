@@ -738,7 +738,13 @@ function renderDashAnalises(){
   const serieHtml = serieMeses.length ? `
   <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
   <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;">Evolução mensal — Lucro Real</div>
-  <div style="padding:12px 16px;display:flex;flex-direction:column;gap:6px;">
+  <div style="padding:8px 16px 0;display:flex;align-items:center;gap:8px;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">
+    <div style="width:48px;flex-shrink:0;">Mês</div>
+    <div style="flex:1;"></div>
+    <div style="width:110px;text-align:right;flex-shrink:0;">Lucro Real</div>
+    <div style="width:60px;text-align:right;flex-shrink:0;" title="Margem = Lucro Real ÷ Faturamento do mês">Margem</div>
+  </div>
+  <div style="padding:6px 16px 12px;display:flex;flex-direction:column;gap:6px;">
     ${serieMeses.map(m=>{
       const pct = Math.max(2, Math.round(Math.abs(m.lucroReal)/maxLucroSerie*100));
       const cor = m.lucroReal>=0 ? 'var(--ok)' : 'var(--err)';
@@ -749,7 +755,7 @@ function renderDashAnalises(){
           <div style="width:${pct}%;height:100%;background:${cor};"></div>
         </div>
         <div style="width:110px;text-align:right;font-size:11px;font-weight:700;color:${cor};flex-shrink:0;">${fmtBRL(m.lucroReal)}</div>
-        <div style="width:60px;text-align:right;font-size:11px;color:var(--muted);flex-shrink:0;">${fmtPct(margemMes)}</div>
+        <div style="width:60px;text-align:right;font-size:11px;color:var(--muted);flex-shrink:0;" title="Margem: ${fmtPct(margemMes)} de ${fmtBRL(m.faturamento)} faturados">${fmtPct(margemMes)}</div>
       </div>`;
     }).join('')}
   </div>
