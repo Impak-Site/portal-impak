@@ -216,6 +216,11 @@ async function rodarConferencia(){
     }
     if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
 
+    // Capturado ANTES de _confArquivos ser limpo no final, pra poder reler
+    // os mesmos documentos na extração automática de campos logo abaixo
+    // (ver _confAutoPreencherSemPendencia) sem pedir upload de novo.
+    const arquivosOriginaisDesteEnvio = Object.values(_confArquivos).map(f=>f.file);
+
     const analiseAnterior = _confLerAnalise(p);
     const novaAnalise = {
       data: new Date().toLocaleString('pt-BR'),
@@ -259,6 +264,32 @@ async function rodarConferencia(){
     _confArquivos = {};
     _confRenderChips();
     atualizarBadgeConferencia(p);
+
+    // ── Análise SEM pendência → também preenche o processo automaticamente ──
+    // Pedido Emanuelly (16/09/2026): "quando eu faço a conferencia ele
+    // confere mas não preenche as outras abas... a função é só analise e
+    // não inclusão... tem como fazer com que ele analise e inclua quando o
+    // processo estiver sem pendencia?" — ou seja, só HABILITAR o
+    // preenchimento automático quando a conferência não deixou nenhuma
+    // divergência/ausência pendente pra revisar (0 pendentes), pra não
+    // preencher o processo com dados de documentos que ainda têm algo
+    // errado entre si. Reaproveita a MESMA extração por IA + preenchimento
+    // de campos com proteção contra conflito que já roda na aba Documentos
+    // (extrairComIA_umArquivo/processarFilaIA, em controle-import-ia.js) —
+    // relendo os mesmos arquivos que acabaram de ser usados na conferência,
+    // sem pedir upload de novo. Continua só analisando (comportamento de
+    // antes) quando sobrar alguma pendência.
+    const pendentesFinal = _confListarDivergencias(novaAnalise).filter(d => !(novaAnalise.divResolvedMap||{})[d.key]);
+    if(pendentesFinal.length === 0 && arquivosOriginaisDesteEnvio.length && typeof processarFilaIA === 'function'){
+      showToast('Nenhuma pendência — lendo os documentos pra preencher o processo automaticamente...', 'ok');
+      try{
+        await processarFilaIA(arquivosOriginaisDesteEnvio);
+        if(typeof coletarESalvar === 'function') coletarESalvar();
+      }catch(e){
+        console.error('Preenchimento automático pós-conferência falhou:', e);
+        showToast('Conferência OK, mas o preenchimento automático falhou — confira/preencha manualmente as outras abas.', 'warn');
+      }
+    }
   }catch(err){
     showToast('Erro: '+err.message, 'err');
     console.error(err);
@@ -268,8 +299,11 @@ async function rodarConferencia(){
 }
 
 // ── Render do resultado (resumo + lista de divergências/alertas/ausências) ──
-function _confRenderResultado(p, analise){
-  const resumo = analise.resumo || {};
+// Lista de divergências/ausências/alertas-com-campo de uma análise, na
+// mesma ordem/critério usado no resumo visual (_confRenderResultado) —
+// extraído pra função própria porque rodarConferencia() também precisa
+// saber se sobrou alguma pendência (ver _confAutoPreencherSemPendencia).
+function _confListarDivergencias(analise){
   const divs = [];
   (analise.grupos||[]).forEach((grupo, gi)=>{
     (grupo.campos||[]).forEach((c, ci)=>{
@@ -278,6 +312,12 @@ function _confRenderResultado(p, analise){
       }
     });
   });
+  return divs;
+}
+
+function _confRenderResultado(p, analise){
+  const resumo = analise.resumo || {};
+  const divs = _confListarDivergencias(analise);
   const resolvedMap = analise.divResolvedMap || {};
   const pendentes = divs.filter(d=>!resolvedMap[d.key]);
   const resolvidas = divs.filter(d=>resolvedMap[d.key]);
