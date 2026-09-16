@@ -57,6 +57,22 @@ function _cmChaveEmpresa(nome){
 
 const FASES_CLIENTE_MEDIDA = ['PI','AGUARDANDO_EMBARQUE','EMBARCADO','DESEMBARCADO','REGISTRO_DI'];
 const FASES_CLIENTE_MEDIDA_SET = new Set(FASES_CLIENTE_MEDIDA);
+// calcularFase() (controle-core.js) tem mais fases do que essas 5 — depois de
+// Registro DI ainda vêm Parametrização, Faturamento, Carregamento, Devolução
+// do Vazio e Finalizado. Sem agrupar essas fases "de depois", um processo que
+// avançasse um passo a mais (ex.: canal já definido = Parametrização) sumia
+// da tela por completo, mesmo com o checkbox "Registro DI" marcado — não
+// tinha checkbox nenhum que cobrisse essas fases. Pedido Emanuelly
+// 16/09/2026: "os processos que ficam com presença de carga saem
+// automaticamente dessa aba... o correto seria permanecer, já que temos
+// esse filtro de desembarcado e registro DI, e só não aparecer quando
+// flegamos essas opções". Por isso, qualquer fase igual ou posterior a
+// Registro DI é tratada como "Registro DI" pros filtros/checkboxes desta
+// tela — só some se o usuário desmarcar o checkbox de Registro DI.
+function _cmFaseAgrupada(fase){
+  if(FASES_CLIENTE_MEDIDA_SET.has(fase)) return fase;
+  return 'REGISTRO_DI';
+}
 // Cabeçalho curto de cada coluna — mais enxuto que o label completo de
 // FASE_LABEL ("Ag. Embarque" em vez de repetir "Aguardando Embarque" numa
 // coluna estreita).
@@ -246,7 +262,7 @@ function renderDashClienteMedida(){
   }
   _processos.forEach(p => {
     if(p.cancelado) return;
-    if(!FASES_CLIENTE_MEDIDA_SET.has(calcularFase(p))) return;
+    if(!FASES_CLIENTE_MEDIDA_SET.has(_cmFaseAgrupada(calcularFase(p)))) return;
     const vendas = typeof parseVendas === 'function' ? parseVendas(p) : [];
     if(vendas.length) vendas.forEach(v => _cmAddOpcao(clientesDisponiveis, v.cliente || p.cliente || 'Sem cliente'));
     else _cmAddOpcao(clientesDisponiveis, p.cliente || 'Sem cliente');
@@ -346,7 +362,7 @@ function renderDashClienteMedida(){
 
   _processos.forEach(p => {
     if(p.cancelado) return;
-    const fase = calcularFase(p);
+    const fase = _cmFaseAgrupada(calcularFase(p));
     if(!_cmFasesAtivas.has(fase)) return;
 
     const fornecedor = (p.fornecedor || 'Sem fornecedor').trim() || 'Sem fornecedor';
