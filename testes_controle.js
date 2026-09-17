@@ -1492,6 +1492,82 @@ teste('atualizarDataPagamentoPrazo: forma de pagamento diferente de PRAZO -- nã
   iguais(saldo, '2026-01-01', 'forma de pagamento não é PRAZO -- função não deveria alterar nada');
 });
 
+// ── atualizarVencimentoSaldoPorETA: vencimento do saldo = ETA Previsto -
+// 10 dias, pra 100% a Prazo e pra parcela Final do Parcelado (pedido do
+// Ayslan, 17/09/2026: "sempre que o processo for 100% a prazo ou
+// Parcelado (parcela final), deve ter a regra de preencher o saldo a
+// pagar 10 dias antes do ETA (Previsto) ... assim ele lança
+// automaticamente os câmbios futuro"). Fill-if-empty: nunca sobrescreve
+// data já digitada nem parcela com câmbio já fechado. ────────────────
+
+teste('atualizarVencimentoSaldoPorETA: PRAZO com Data Pagamento vazia -- preenche com ETA - 10 dias', () => {
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = 'PRAZO';
+    document.getElementById('f_eta').value = '2026-11-20';
+    document.getElementById('f_pi_data_saldo').value = '';
+  `, sandbox);
+  sandbox.atualizarVencimentoSaldoPorETA();
+  const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
+  iguais(saldo, '2026-11-10', 'ETA 20/11 - 10 dias = 10/11');
+});
+
+teste('atualizarVencimentoSaldoPorETA: PRAZO com Data Pagamento já preenchida -- não sobrescreve', () => {
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = 'PRAZO';
+    document.getElementById('f_eta').value = '2026-11-20';
+    document.getElementById('f_pi_data_saldo').value = '2026-10-01';
+  `, sandbox);
+  sandbox.atualizarVencimentoSaldoPorETA();
+  const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
+  iguais(saldo, '2026-10-01', 'data já digitada pelo usuário (ou calculada por atualizarDataPagamentoPrazo) não pode ser sobrescrita');
+});
+
+teste('atualizarVencimentoSaldoPorETA: sem ETA preenchido -- não faz nada', () => {
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = 'PRAZO';
+    document.getElementById('f_eta').value = '';
+    document.getElementById('f_pi_data_saldo').value = '';
+  `, sandbox);
+  sandbox.atualizarVencimentoSaldoPorETA();
+  const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
+  iguais(saldo, '', 'sem ETA não dá pra calcular nada');
+});
+
+teste('atualizarVencimentoSaldoPorETA: PARCELADO -- preenche Data Vencimento da parcela Final vazia', () => {
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = 'PARCELADO';
+    document.getElementById('f_eta').value = '2026-11-20';
+    _parcelas = [
+      {label:'Inicial', valor_usd:'5054.40', data_vencimento:'2026-09-15', cambio_fechado:'5.1340'},
+      {label:'Final', valor_usd:'20217.60', data_vencimento:'', cambio_fechado:''},
+    ];
+  `, sandbox);
+  sandbox.atualizarVencimentoSaldoPorETA();
+  iguais(vm.runInContext('_parcelas[1].data_vencimento', sandbox), '2026-11-10', 'parcela Final deveria receber ETA - 10 dias');
+  iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '2026-09-15', 'parcela Inicial não deveria ser mexida');
+});
+
+teste('atualizarVencimentoSaldoPorETA: PARCELADO -- não sobrescreve Data Vencimento já preenchida na Final', () => {
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = 'PARCELADO';
+    document.getElementById('f_eta').value = '2026-11-20';
+    _parcelas = [{label:'Final', valor_usd:'20217.60', data_vencimento:'2026-10-05', cambio_fechado:''}];
+  `, sandbox);
+  sandbox.atualizarVencimentoSaldoPorETA();
+  iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '2026-10-05', 'não pode sobrescrever data já digitada');
+});
+
+teste('atualizarVencimentoSaldoPorETA: PARCELADO -- não mexe na Final se o câmbio já foi fechado', () => {
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = 'PARCELADO';
+    document.getElementById('f_eta').value = '2026-11-20';
+    _parcelas = [{label:'Final', valor_usd:'20217.60', data_vencimento:'', cambio_fechado:'5.20'}];
+  `, sandbox);
+  sandbox.atualizarVencimentoSaldoPorETA();
+  iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '', 'câmbio já fechado -- pagamento já em andamento, não faz sentido provisionar vencimento');
+});
+
+
 // ── ORDENAÇÃO POR COLUNA (ETA crescente/decrescente) ────────────
 // Pedido do Ayslan (17/09/2026): "Fazer o filtro ficar por ordem de
 // chegada / ETA Crescente no controle". aplicarOrdenacao() é a função

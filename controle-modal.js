@@ -344,7 +344,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               <option value="CPT" ${p.pi_incoterm==='CPT'?'selected':''}>CPT</option>
             </select></div>
           <div class="form-group"><label class="form-label">Forma de Pagamento</label>
-            <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos()" onwheel="this.blur()">
+            <select class="form-input" id="f_pi_pagamento" onchange="renderPagamentoCampos();atualizarVencimentoSaldoPorETA()" onwheel="this.blur()">
               <option value="">—</option>
               <option value="VISTA"        ${p.pi_pagamento==='VISTA'?'selected':''}>100% à Vista</option>
               <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
@@ -503,7 +503,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">ETA (Previsão de Chegada)</label>
-            <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_eta" value="${esc(p.eta)}">
+            <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_eta" value="${esc(p.eta)}" onchange="atualizarVencimentoSaldoPorETA()">
           </div>
           <div class="form-group"><label class="form-label">Data de Embarque (Efetiva)</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_embarque" value="${esc(p.data_embarque)}"
@@ -1665,6 +1665,33 @@ function renderPagamentoCampos(){
 // mudar a Data Pagamento manualmente depois, prevalece o valor calculado na
 // ÃÂÃÂºltima ediÃÂÃÂ§ÃÂÃÂ£o de Data PI/Prazo (mesmo comportamento de "provisionar", nÃÂÃÂ£o
 // de travar o campo).
+// Sempre que a forma de pagamento for "100% a Prazo" ou "Parcelado"
+// (parcela Final), preenche o vencimento do saldo a pagar como ETA
+// Previsto - 10 dias -- ver comentário detalhado acima de
+// atualizarDataPagamentoPrazo(). Isso faz o câmbio futuro já aparecer no
+// Controle Cambial antes mesmo de haver Data de Embarque Efetiva (que só
+// existe mais pra frente no processo).
+function atualizarVencimentoSaldoPorETA(){
+  const eta = document.getElementById('f_eta')?.value;
+  if(!eta) return;
+  const d = parseDataLocal(eta);
+  if(!d) return;
+  d.setDate(d.getDate() - 10);
+  const vencimento = d.toISOString().split('T')[0];
+  const tipo = document.getElementById('f_pi_pagamento')?.value;
+  if(tipo === 'PRAZO'){
+    const destino = document.getElementById('f_pi_data_saldo');
+    if(destino && !destino.value) destino.value = vencimento;
+  } else if(tipo === 'PARCELADO' && Array.isArray(_parcelas)){
+    const idx = _parcelas.findIndex(pc => pc.label === 'Final');
+    if(idx !== -1 && !_parcelas[idx].data_vencimento && !_parcelas[idx].cambio_fechado){
+      _parcelas[idx].data_vencimento = vencimento;
+      renderParcelas();
+      renderPagamentoInfoLive();
+    }
+  }
+}
+
 function atualizarDataPagamentoPrazo(){
   if(document.getElementById('f_pi_pagamento')?.value !== 'PRAZO') return;
   // Prazo SÓ conta a partir da Data de Embarque Efetiva (pedido Paula/Ayslan

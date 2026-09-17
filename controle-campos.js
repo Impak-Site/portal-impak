@@ -978,7 +978,7 @@ function renderParcelas(){
   wrap.innerHTML = _parcelas.map((pc,i)=>`
     <div style="border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px;background:#fff;">
       ${secao({cols:'1.3fr 1fr 1fr 1fr 32px', html:`
-        <div>${lblParcela('Etapa')}<select class="form-input" onchange="_parcelas[${i}].label=this.value;sincronizarParcelasLegado()">
+        <div>${lblParcela('Etapa')}<select class="form-input" onchange="_parcelas[${i}].label=this.value;sincronizarParcelasLegado();atualizarVencimentoSaldoPorETA()">
           <option value="">Etapa...</option>
           ${PARCELA_ETAPAS.map(et=>`<option value="${esc(et)}" ${pc.label===et?'selected':''}>${esc(et)}</option>`).join('')}
         </select></div>
