@@ -316,7 +316,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Data PI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" oninput="atualizarDataPagamentoPrazo()" id="f_pi_data" value="${esc(p.pi_data)}"></div>
           <div class="form-group"><label class="form-label">Valor USD</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+            <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div></div>
           <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
             <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
           </div>
@@ -328,9 +328,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" id="f_pi_cambio_banco" value="${esc(p.pi_cambio_banco)}" placeholder="Ex: Banco X, Corretora Y"
               title="Onde o câmbio foi fechado (pedido Ayslan 09/09/2026: concentração de risco por contraparte). Só faz sentido depois que o câmbio já foi fechado.">
           </div>
-          <div class="form-group"><label class="form-label">Custo da Operação (R$)</label>
-            <input class="form-input" type="number" id="f_pi_cambio_custo" value="${p.pi_cambio_custo||''}" placeholder="IOF, spread, tarifas..." step="0.01"
-              title="Custo da OPERAÇÃO de câmbio em si (IOF, spread do banco, tarifas) — separado da taxa. Pedido Ayslan 09/09/2026: 'quanto custou de verdade', não só a taxa.">
+          <div class="form-group" id="grp-pi-cambio-custo" style="${p.pi_pagamento==='PARCELADO'?'display:none':''}"><label class="form-label">Custo da Operação (R$)</label>
+            <div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_custo" value="${exibirMoeda(p.pi_cambio_custo)}" placeholder="0,00" oninput="formatarMoedaInput(this)"
+              title="Custo da OPERAÇÃO de câmbio em si (IOF, spread do banco, tarifas) — separado da taxa. Só aparece pra Único/Entrada+Saldo; em Parcelado o custo já é por parcela, mais abaixo."></div>
           </div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
@@ -1608,6 +1608,8 @@ function renderPagamentoCampos(){
   const tipo = document.getElementById('f_pi_pagamento')?.value;
   const p = _editando || {};
   const el = document.getElementById('pagamento-campos');
+  const grpCusto = document.getElementById('grp-pi-cambio-custo');
+  if(grpCusto) grpCusto.style.display = (tipo==='PARCELADO') ? 'none' : '';
   if(!el) return;
   if(!tipo){ el.innerHTML=''; return; }
 

@@ -225,7 +225,7 @@ function coletarESalvar(opts){
   const patchFields = [];
 
   // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
-  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete'];
+  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','pi_cambio_custo'];
 
   // Remover campo interno de controle
   delete proc._fasePrevista;
@@ -916,8 +916,8 @@ function renderParcelas(){
           <option value="">Etapa...</option>
           ${PARCELA_ETAPAS.map(et=>`<option value="${esc(et)}" ${pc.label===et?'selected':''}>${esc(et)}</option>`).join('')}
         </select>
-        <input class="form-input" type="number" step="0.01" placeholder="Valor USD" value="${pc.valor_usd!=null?pc.valor_usd:''}"
-          oninput="_parcelas[${i}].valor_usd=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
+        <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"></div>
         <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
           oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()">
         <input class="form-input" type="number" step="0.0001" placeholder="Câmbio fechado" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
@@ -927,8 +927,8 @@ function renderParcelas(){
           : '<div></div>'}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
-        <input class="form-input" type="number" step="0.01" placeholder="Valor recebido do cliente (USD)" value="${pc.valor_recebido_cliente!=null?pc.valor_recebido_cliente:''}"
-          oninput="_parcelas[${i}].valor_recebido_cliente=this.value;sincronizarParcelasLegado()">
+        <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="Valor recebido do cliente" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_recebido_cliente=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div>
         <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
           oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()">
         <div></div>
@@ -936,8 +936,8 @@ function renderParcelas(){
       <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;">
         <input class="form-input" placeholder="Banco/Corretora" value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
           oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()">
-        <input class="form-input" type="number" step="0.01" placeholder="Custo da operação (R$)" value="${pc.custo_operacao!=null?pc.custo_operacao:''}" title="IOF, spread, tarifas desta operação"
-          oninput="_parcelas[${i}].custo_operacao=this.value;sincronizarParcelasLegado()">
+        <div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="IOF, spread, tarifas desta operação"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].custo_operacao=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div>
         <div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1.4fr 32px;gap:6px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
@@ -1235,9 +1235,19 @@ function formatarMoedaInput(el){
 function valorMoeda(id){
   const el = document.getElementById(id);
   if(!el || !el.value) return null;
-  const limpo = el.value.replace(/\./g,'').replace(',','.');
+  const n = parseValorMoeda(el.value);
+  return n===''||n==null ? null : n;
+}
+// Mesmo parsing de valorMoeda(id), mas recebendo a string direto -- usado
+// nos campos de Parcela, que são gerados num loop e não têm id fixo (não
+// dá pra usar getElementById). Devolve '' (não null) em vazio/inválido pra
+// bater com o que _parcelas[i].campo já guardava antes (era this.value de
+// um <input type=\"number\">, que também vem '' quando vazio).
+function parseValorMoeda(str){
+  if(!str) return '';
+  const limpo = String(str).replace(/\./g,'').replace(',','.');
   const n = parseFloat(limpo);
-  return isNaN(n) ? null : n;
+  return isNaN(n) ? '' : n;
 }
 function exibirMoeda(v){
   if(v===null||v===undefined||v==='') return '';
