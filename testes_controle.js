@@ -1657,6 +1657,43 @@ teste('confirmarCambioParcela: Custo da Operação = Valor USD x Câmbio quando 
   iguais(pc.custo_operacao, (5054.40*5.1340).toFixed(2), 'deveria ser Valor USD x Câmbio Fechado, igual ao exemplo do Ayslan');
 });
 
+// ── calcularParcelaResidualAuto: saldo automático da parcela vazia ──────
+// Pedido do Ayslan (17/09/2026), caso real QD-IMK-LPL-2605-1740: PI de
+// USD 25.272,00, parcela Inicial USD 5.054,40 certa, mas a Final tinha
+// sido digitada manualmente como USD 17.577,00 -- não fecha com a PI
+// (o certo seria USD 20.217,60 = 25.272,00 - 5.054,40). Esta regra evita
+// que o usuário precise fazer essa conta de cabeça e erre.
+teste('calcularParcelaResidualAuto: preenche o saldo da única parcela vazia (caso real QD-IMK-LPL-2605-1740)', () => {
+  vm.runInContext(`document.getElementById('f_pi_valor_usd').value = '25.272,00';`, sandbox);
+  vm.runInContext(`_parcelas = [
+    {label:'Inicial', valor_usd:'5054.40'},
+    {label:'Final', valor_usd:''},
+  ];`, sandbox);
+  sandbox.calcularParcelaResidualAuto();
+  iguais(vm.runInContext('_parcelas[1].valor_usd', sandbox), (25272-5054.40).toFixed(2), 'saldo deveria ser PI total menos a parcela Inicial já preenchida');
+});
+
+teste('calcularParcelaResidualAuto: nunca sobrescreve um valor que o usuário já digitou', () => {
+  vm.runInContext(`document.getElementById('f_pi_valor_usd').value = '25.272,00';`, sandbox);
+  vm.runInContext(`_parcelas = [
+    {label:'Inicial', valor_usd:'5054.40'},
+    {label:'Final', valor_usd:'17577.00'},
+  ];`, sandbox);
+  sandbox.calcularParcelaResidualAuto();
+  iguais(vm.runInContext('_parcelas[1].valor_usd', sandbox), '17577.00', 'não deveria mexer em campo já preenchido, mesmo que a soma não bata (o aviso de divergência cuida de avisar)');
+});
+
+teste('calcularParcelaResidualAuto: com 2+ parcelas vazias, não arrisca adivinhar -- não faz nada', () => {
+  vm.runInContext(`document.getElementById('f_pi_valor_usd').value = '25.272,00';`, sandbox);
+  vm.runInContext(`_parcelas = [
+    {label:'Inicial', valor_usd:''},
+    {label:'Final', valor_usd:''},
+  ];`, sandbox);
+  sandbox.calcularParcelaResidualAuto();
+  iguais(vm.runInContext('_parcelas[0].valor_usd', sandbox), '', 'não deveria preencher nada com 2 parcelas vazias');
+  iguais(vm.runInContext('_parcelas[1].valor_usd', sandbox), '', 'não deveria preencher nada com 2 parcelas vazias');
+});
+
 teste('calcularCustoOperacaoAuto: preenche Custo da Operação ao digitar Valor USD/Câmbio manualmente, sem sobrescrever edição do usuário', () => {
   vm.runInContext(`_parcelas = [{label:'Final', valor_usd:'1000.00', cambio_fechado:'5.20', custo_operacao:''}];`, sandbox);
   sandbox.calcularCustoOperacaoAuto(0);

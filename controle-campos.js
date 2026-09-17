@@ -902,6 +902,27 @@ function normalizarBancoCambio(texto){
 // Ayslan, 17/09/2026 -- ver comentário acima). Só preenche se o campo
 // ainda estiver vazio, pra nunca sobrescrever o que o usuário já digitou
 // (mesmo padrão de "fill-if-empty" usado no resto do fluxo de câmbio).
+// Preenche automaticamente o Valor USD da ÚNICA parcela que ainda está
+// vazia com o saldo restante (Valor USD da PI - soma das parcelas já
+// preenchidas). Só age quando sobra exatamente 1 parcela vazia (com 2+
+// vazias não dá pra saber como dividir) e nunca sobrescreve um valor que
+// o usuário já digitou -- mesmo padrão fill-if-empty do resto do fluxo.
+function calcularParcelaResidualAuto(){
+  const val = valorMoeda('f_pi_valor_usd');
+  if(!val || !_parcelas.length) return;
+  const vazias = [];
+  let somaPreenchidas = 0;
+  _parcelas.forEach((pc,i)=>{
+    const v = pc.valor_usd;
+    if(v===''||v==null) vazias.push(i);
+    else somaPreenchidas += parseFloat(v)||0;
+  });
+  if(vazias.length===1){
+    const resto = val - somaPreenchidas;
+    if(resto > 0) _parcelas[vazias[0]].valor_usd = resto.toFixed(2);
+  }
+}
+
 function calcularCustoOperacaoAuto(i){
   if(!_parcelas[i] || _parcelas[i].custo_operacao) return;
   const v = parseFloat(_parcelas[i].valor_usd) || 0;
@@ -963,7 +984,7 @@ function renderParcelas(){
         </select></div>
         <div>${lblParcela('Valor USD')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
           oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"
-          onchange="calcularCustoOperacaoAuto(${i});renderParcelas()"></div></div>
+          onchange="calcularParcelaResidualAuto();calcularCustoOperacaoAuto(${i});renderParcelas()"></div></div>
         <div>${lblParcela('Data Vencimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
           oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Câmbio Fechado')}<input class="form-input" type="number" step="0.0001" placeholder="5,0000" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
