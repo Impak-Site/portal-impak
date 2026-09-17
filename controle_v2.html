@@ -136,10 +136,11 @@ no nav global. */
 .table-row{display:grid;grid-template-columns:110px 1fr 1fr 130px 150px 100px 70px 90px 90px 80px;gap:0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
 .table-row:hover{background:var(--ac-soft);}
 .table-row:last-child{border-bottom:none;}
-.td{padding:13px 14px;font-size:13px;display:flex;align-items:center;}
+.td{padding:13px 14px;font-size:13px;display:flex;align-items:center;min-width:0;}
 .td-ref{font-family:'DM Mono',monospace;font-weight:600;color:var(--ac);font-size:12px;}
 .td-forn{font-size:12px;font-weight:500;}
 .td-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
+.td-etiquetas{overflow:hidden;}
 
 /* ── FASE BADGE ── */
 .fase-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;}

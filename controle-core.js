@@ -3329,7 +3329,7 @@ function valoresDaColuna(def, p){
 // etiquetas_manuais_json (ver toggleEtiquetaManual() em controle-modal.js).
 // ════════════════════════════════════════════════════════════════
 const ETIQUETAS_MANUAIS_DEFS = {
-  OUTRO_AGENTE_CARGA: { label:'Outro agente de carga solicitado', cor:'#b45309', bg:'rgba(217,119,6,.13)', borda:'rgba(217,119,6,.4)' },
+  OUTRO_AGENTE_CARGA: { label:'Outro agente de carga solicitado', labelCurto:'Outro agente', cor:'#b45309', bg:'rgba(217,119,6,.13)', borda:'rgba(217,119,6,.4)' },
 };
 
 function etiquetasDoProcesso(p){
@@ -3340,7 +3340,7 @@ function etiquetasDoProcesso(p){
   // embarcados, mas ainda não enviados por Manu pra Amanda"). Aqui o
   // gatilho é HBL aprovado (ver verificarAlertas acima, mesma condição).
   if(p.aprovacao_hbl === 'Sim' && p.solicitacao_li !== 'Sim' && !p.docs_enviados_despachante){
-    out.push({ id:'ENVIAR_DESPACHANTE', label:'Enviar docs à despachante', icone:'📨', cor:'#7c3aed', bg:'rgba(124,58,237,.13)', borda:'rgba(124,58,237,.4)' });
+    out.push({ id:'ENVIAR_DESPACHANTE', label:'Enviar docs à despachante', labelCurto:'Enviar p/ despach.', icone:'📨', cor:'#7c3aed', bg:'rgba(124,58,237,.13)', borda:'rgba(124,58,237,.4)' });
   }
 
   // "Câmbio não fechado" (amarelo: embarque previsto no mês, câmbio
@@ -3352,7 +3352,7 @@ function etiquetasDoProcesso(p){
     if(dataRef.getMonth() === hoje.getMonth() && dataRef.getFullYear() === hoje.getFullYear()){
       const pagamentos = listarPagamentosPI([p]).filter(pg => pg.processoId === p.id);
       if(pagamentos.some(pg => !pg.pago)){
-        out.push({ id:'CAMBIO_ABERTO', label:'Câmbio não fechado (embarque no mês)', icone:'💱', cor:'#a16207', bg:'rgba(202,138,4,.13)', borda:'rgba(202,138,4,.4)' });
+        out.push({ id:'CAMBIO_ABERTO', label:'Câmbio não fechado (embarque no mês)', labelCurto:'Câmbio aberto', icone:'💱', cor:'#a16207', bg:'rgba(202,138,4,.13)', borda:'rgba(202,138,4,.4)' });
       }
     }
   }
@@ -3361,7 +3361,7 @@ function etiquetasDoProcesso(p){
   // já está pronta na fábrica mas ainda não tem semana de booking
   // atribuída. Só faz sentido antes do embarque de fato.
   if(p.data_prontidao && !p.semana_booking && p.fase !== 'EMBARCADO' && !p.data_embarque){
-    out.push({ id:'PRONTO_SEM_BOOKING', label:'Pronto sem semana de booking', icone:'🟧', cor:'#c2410c', bg:'rgba(234,88,12,.13)', borda:'rgba(234,88,12,.4)' });
+    out.push({ id:'PRONTO_SEM_BOOKING', label:'Pronto sem semana de booking', labelCurto:'Sem booking', icone:'🟧', cor:'#c2410c', bg:'rgba(234,88,12,.13)', borda:'rgba(234,88,12,.4)' });
   }
 
   // Manuais (etiquetas_manuais_json)
@@ -3551,9 +3551,9 @@ function linhaProcessoHtml(p){
             <span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>
           </span>
         </div>
-        <div class="td" data-label="Etiquetas">${etiquetasDoProcesso(p).map(e=>
-          `<span title="${esc(e.label)}" style="font-size:9px;font-weight:700;background:${e.bg};border:1px solid ${e.borda};border-radius:4px;padding:1px 6px;margin:1px 3px 1px 0;color:${e.cor};display:inline-block;white-space:nowrap;">${e.icone} ${esc(e.label)}</span>`
-        ).join('') || '<span style="opacity:.4;">—</span>'}</div>
+        <div class="td td-etiquetas" data-label="Etiquetas"><div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;">${etiquetasDoProcesso(p).map(e=>
+          `<span title="${esc(e.label)}" style="font-size:9px;font-weight:700;background:${e.bg};border:1px solid ${e.borda};border-radius:4px;padding:1px 6px;color:${e.cor};display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.icone} ${esc(e.labelCurto||e.label)}</span>`
+        ).join('') || '<span style="opacity:.4;">—</span>'}</div></div>
         <div class="td td-date" data-label="ETA / Chegada" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditData('${p.id}','eta',this)" title="Clique para editar ETA">${dataDisplay}</span>
         </div>
