@@ -875,6 +875,29 @@ let _parcelas = []; // [{label, valor_usd, data_vencimento, cambio_fechado, valo
 // inconsistentes (ex: "Pré embarque" vs "Pre-embarque" vs "Embarque").
 const PARCELA_ETAPAS = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
 
+// Contas bancárias da própria Impak usadas pra fechar câmbio (cadastradas a
+// pedido do Ayslan, 17/09/2026). agencia/conta/pix ficam guardados aqui pra
+// uso futuro (ex: planilha de dados bancários), hoje só nome/cnpj entram
+// nos campos de Banco/Corretora do Câmbio.
+const BANCOS_CAMBIO = [
+  { nome:'Itaú', cnpj:'16.554.796/0001-64', codigo_banco:'341', agencia:'2941', conta:'96446-8', pix:'' },
+  { nome:'Santander', cnpj:'16.554.796/0001-64', codigo_banco:'033', agencia:'4401', conta:'130014510', pix:'importacao@impak.com.br' },
+];
+function datalistBancosCambioHtml(){
+  return `<datalist id="lista-bancos-cambio">${BANCOS_CAMBIO.map(b=>`<option value="${esc(b.nome)}">`).join('')}</datalist>`;
+}
+// Normaliza o texto de banco extraído pela IA de um comprovante (ex:
+// "Itaú Unibanco S.A.", "BANCO SANTANDER (BRASIL) S.A.") pro nome curto
+// cadastrado (ex: "Itaú"), quando reconhece um dos bancos da lista. Se não
+// reconhecer, devolve o texto original sem alterar (banco/corretora fora
+// da lista continua podendo ser digitado livremente).
+function normalizarBancoCambio(texto){
+  if(!texto) return texto;
+  const t = String(texto).toLowerCase();
+  const achou = BANCOS_CAMBIO.find(b => t.includes(b.nome.toLowerCase()));
+  return achou ? achou.nome : texto;
+}
+
 function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:false, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
 
 // Prazo de comprovação de DI/DUIMP ao banco em pagamentos antecipados de
@@ -915,6 +938,9 @@ function lblParcela(texto){
 function renderParcelas(){
   const wrap = document.getElementById('parcelas-list');
   if(!wrap) return;
+  if(!document.getElementById('lista-bancos-cambio')){
+    document.body.insertAdjacentHTML('beforeend', datalistBancosCambioHtml());
+  }
   if(!_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
   wrap.innerHTML = _parcelas.map((pc,i)=>`
     <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;">
@@ -941,7 +967,7 @@ function renderParcelas(){
         <div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:end;">
-        <div>${lblParcela('Banco/Corretora')}<input class="form-input" placeholder="Ex: Banco X, Corretora Y" value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
+        <div>${lblParcela('Banco/Corretora')}<input class="form-input" list="lista-bancos-cambio" placeholder="Ex: Itaú, Santander..." value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
           oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Custo da Operação')}<div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="IOF, spread, tarifas desta operação"
           oninput="formatarMoedaInput(this);_parcelas[${i}].custo_operacao=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
@@ -1088,7 +1114,7 @@ function confirmarCambioParcela(idx){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
   }
   if(!_parcelas[idx].banco && _cambioPendente.banco){
-    _parcelas[idx].banco = _cambioPendente.banco;
+    _parcelas[idx].banco = normalizarBancoCambio(_cambioPendente.banco);
   }
   if(!_parcelas[idx].codigo_bacen && _cambioPendente.codigo_bacen){
     _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
@@ -1134,7 +1160,7 @@ function aplicarCambioNaParcelaPendente(taxa){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
   }
   if(!_parcelas[idx].banco && _cambioPendente?.banco){
-    _parcelas[idx].banco = _cambioPendente.banco;
+    _parcelas[idx].banco = normalizarBancoCambio(_cambioPendente.banco);
   }
   if(!_parcelas[idx].codigo_bacen && _cambioPendente?.codigo_bacen){
     _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
@@ -1217,7 +1243,7 @@ function confirmarCambioComo(tipo){
 function aplicarBancoCustoLegado(){
   if(_cambioPendente?.banco){
     const elBanco = document.getElementById('f_pi_cambio_banco');
-    if(elBanco && !elBanco.value) elBanco.value = _cambioPendente.banco;
+    if(elBanco && !elBanco.value) elBanco.value = normalizarBancoCambio(_cambioPendente.banco);
   }
   if(_cambioPendente?.custo_operacao){
     const elCusto = document.getElementById('f_pi_cambio_custo');

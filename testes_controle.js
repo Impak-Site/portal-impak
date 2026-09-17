@@ -1599,6 +1599,25 @@ teste('confirmarCambioComo("unico"): aplica Banco/Custo nos campos do processo (
   iguais(sandbox.document.getElementById('f_pi_cambio_custo').value, 55.30, 'custo da operação deveria ser preenchido no campo do processo');
 });
 
+// ── CATÁLOGO DE BANCOS DA IMPAK (cadastro + normalização) ───────
+// Pedido do Ayslan (17/09/2026): cadastrar Itaú/Santander (contas da
+// própria Impak) pra selecionar no campo Banco/Corretora do Câmbio, e a IA
+// normalizar o nome ao ler um comprovante (evita fragmentar o agrupamento
+// "por banco" do Dashboard Câmbio por variação de escrita).
+teste('normalizarBancoCambio: reconhece variações de escrita e devolve o nome curto cadastrado', () => {
+  iguais(sandbox.normalizarBancoCambio('Itaú Unibanco S.A.'), 'Itaú', 'deveria normalizar pro nome curto');
+  iguais(sandbox.normalizarBancoCambio('BANCO SANTANDER (BRASIL) S.A.'), 'Santander', 'deveria reconhecer mesmo maiúsculo/com sufixo');
+  iguais(sandbox.normalizarBancoCambio('itaú'), 'Itaú', 'case-insensitive');
+});
+
+teste('normalizarBancoCambio: banco fora do catálogo mantém o texto original (não força a lista)', () => {
+  iguais(sandbox.normalizarBancoCambio('Banco XP'), 'Banco XP', 'banco não cadastrado deve continuar digitável livremente');
+});
+
+teste('normalizarBancoCambio: vazio devolve vazio', () => {
+  iguais(sandbox.normalizarBancoCambio(''), '', 'sem texto não tem o que normalizar');
+});
+
 // ── PENDÊNCIAS DE DI (planilha mensal pro banco) ────────────────
 // Pedido do Ayslan (17/09/2026): câmbios "Pagamento Antecipado" fechados
 // no mês entram na planilha "Pendências de DI" enviada ao banco.

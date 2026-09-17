@@ -308,6 +308,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
 
     <!-- ABA: FINANCEIRO -->
     <div class="tab-pane" id="pane-financeiro">
+      ${datalistBancosCambioHtml()}
       <div class="form-section">
         <div class="form-section-title">💰 Proforma Invoice (PI)</div>
         <div class="form-grid">
@@ -325,7 +326,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               title="Taxa que realmente foi paga (vem do comprovante de câmbio, pra Pagamento Único/Prazo). Fica separado de 'Câmbio na PI' de propósito — aquele é a previsão, este é o fechado, pra dar pra comparar os dois no Dashboard Financeiro.">
           </div>
           <div class="form-group"><label class="form-label">Banco/Corretora do Câmbio</label>
-            <input class="form-input" id="f_pi_cambio_banco" value="${esc(p.pi_cambio_banco)}" placeholder="Ex: Banco X, Corretora Y"
+            <input class="form-input" list="lista-bancos-cambio" id="f_pi_cambio_banco" value="${esc(p.pi_cambio_banco)}" placeholder="Ex: Itaú, Santander..."
               title="Onde o câmbio foi fechado (pedido Ayslan 09/09/2026: concentração de risco por contraparte). Só faz sentido depois que o câmbio já foi fechado.">
           </div>
           <div class="form-group" id="grp-pi-cambio-custo" style="${p.pi_pagamento==='PARCELADO'?'display:none':''}"><label class="form-label">Custo da Operação (R$)</label>
