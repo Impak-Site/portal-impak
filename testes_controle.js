@@ -1834,8 +1834,11 @@ teste('calcularCustoOperacaoAuto: preenche Custo da Operação ao digitar Valor 
 });
 
 // ── PENDÊNCIAS DE DI (planilha mensal pro banco) ────────────────
-// Pedido do Ayslan (17/09/2026): câmbios "Pagamento Antecipado" fechados
-// no mês entram na planilha "Pendências de DI" enviada ao banco.
+// Pedido do Ayslan (17/09/2026): câmbios fechados no mês entram na planilha
+// "Pendências de DI" enviada ao banco. Atualizado no mesmo dia (2ª
+// instrução, com print): "pagamento antecipado (exige DI/DUIMP)... ELE
+// SEMPRE PRECISA, nao tem que ter a opcao de nao ter" -- toda parcela
+// Parcelado com câmbio fechado entra, não existe mais opt-out.
 teste('calcularVencimentoDI: soma 180 dias corridos à data do câmbio fechado', () => {
   const out = vm.runInContext(`calcularVencimentoDI('2026-09-15')`, sandbox);
   iguais(out, '2027-03-14', '15/09/2026 + 180 dias = 14/03/2027');
@@ -1846,11 +1849,11 @@ teste('calcularVencimentoDI: sem data base, devolve string vazia', () => {
   iguais(out, '', 'sem dataBase não tem o que calcular');
 });
 
-teste('listarPendenciasDI: inclui só parcelas Pagamento Antecipado com câmbio fechado dentro do mês', () => {
+teste('listarPendenciasDI: inclui toda parcela Parcelado com câmbio fechado dentro do mês (não depende mais de pagto_antecipado)', () => {
   const processos = [
     { id:'P1', referencia:'REF1', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
       { label:'Inicial', valor_usd:6375.28, data_vencimento:'2026-09-15', cambio_fechado:5.135, pagto_antecipado:true, codigo_bacen:'632806455', venc_di:'2027-03-14', duimp_numero:'', duimp_protocolo:'' },
-      { label:'Final', valor_usd:1000, data_vencimento:'2026-09-20', cambio_fechado:5.20, pagto_antecipado:false }, // não é pagto antecipado -- fora
+      { label:'Final', valor_usd:1000, data_vencimento:'2026-09-20', cambio_fechado:5.20, pagto_antecipado:false }, // pagto_antecipado false mas tem câmbio fechado no mês -- entra assim mesmo (regra não usa mais esse campo)
     ])},
     { id:'P2', referencia:'REF2', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
       { label:'Inicial', valor_usd:28460.09, data_vencimento:'2026-08-20', cambio_fechado:5.1932, pagto_antecipado:true, codigo_bacen:'000624901400', venc_di:'2027-02-16' }, // mês errado -- fora
@@ -1861,10 +1864,11 @@ teste('listarPendenciasDI: inclui só parcelas Pagamento Antecipado com câmbio 
     { id:'P4', referencia:'REF4', pi_pagamento:'ENTRADA_SALDO', pi_data_entrada:'2026-09-10', pi_cambio_entrada:5.1 }, // não é Parcelado -- fora do escopo desta planilha
   ];
   const out = vm.runInContext(`listarPendenciasDI(${JSON.stringify(processos)}, '2026-09-01', '2026-09-30')`, sandbox);
-  iguais(out.length, 1, 'só REF1/parcela Inicial entra (Pagamento Antecipado + câmbio fechado + dentro do mês + Parcelado)');
-  iguais(out[0].referencia, 'REF1', 'referência correta');
-  iguais(out[0].codigoBacen, '632806455', 'Código BACEN correto (referência do banco)');
-  iguais(out[0].valorUsd, 6375.28, 'Valor M.E. correto');
+  iguais(out.length, 2, 'REF1/Inicial e REF1/Final entram (câmbio fechado + dentro do mês + Parcelado, pagto_antecipado não filtra mais)');
+  iguais(out.map(l=>l.referencia).sort().join(','), 'REF1,REF1', 'as duas linhas são da REF1 (REF2 mês errado, REF3 sem câmbio, REF4 não é Parcelado)');
+  const inicial = out.find(l=>l.codigoBacen==='632806455');
+  iguais(inicial.referencia, 'REF1', 'referência correta');
+  iguais(inicial.valorUsd, 6375.28, 'Valor M.E. correto');
 });
 
 teste('listarPendenciasDI: ordena pelo vencimento da DI mais próximo primeiro, sem data por último', () => {

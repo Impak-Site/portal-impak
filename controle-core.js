@@ -1150,13 +1150,17 @@ function listarPagamentosPI(processos){
 // enviar pro banco... e essa planilha a gente gera e envia mensalmente ao
 // banco. entao o ideal é pegar o dia 1 ate o ultimo dia do mes, os cambios
 // fechados". Regra de inclusão (resposta dele, "a regra é pela DI/DUIMP"):
-// entram as parcelas marcadas como Pagamento Antecipado (pc.pagto_antecipado
-// -- é essa marcação que diz "este câmbio exige comprovação de DI/DUIMP ao
-// banco", não literalmente "só quando o campo DUIMP já foi preenchido" --
-// a planilha modelo enviada tem várias linhas com DUIMP/Protocolo ainda em
-// branco, exatamente as pendências que ainda faltam resolver). Só considera
-// forma de pagamento "Parcelado" (onde os campos de contrato de câmbio
-// foram cadastrados, resposta "Direto na parcela (Aba Financeiro)").
+// entram todas as parcelas com câmbio fechado dentro do mês -- desde
+// 17/09/2026 (2ª instrução do Ayslan: "ELE SEMPRE PRECISA, nao tem que ter
+// a opcao de nao ter") toda parcela Parcelado sempre exige DI/DUIMP ao
+// banco, não existe mais opção de desligar isso, então o filtro por
+// pc.pagto_antecipado foi removido daqui (senão parcelas antigas salvas
+// antes desta mudança, com pagto_antecipado false/ausente, sumiriam da
+// planilha mesmo já tendo câmbio fechado). A planilha modelo enviada tem
+// várias linhas com DUIMP/Protocolo ainda em branco, exatamente as
+// pendências que ainda faltam resolver. Só considera forma de pagamento
+// "Parcelado" (onde os campos de contrato de câmbio foram cadastrados,
+// resposta "Direto na parcela (Aba Financeiro)").
 // dataDe/dataAte: strings ISO (yyyy-mm-dd), comparação por data do câmbio
 // fechado (pc.data_vencimento) dentro do mês, inclusive nas duas pontas.
 function listarPendenciasDI(processos, dataDe, dataAte){
@@ -1166,7 +1170,6 @@ function listarPendenciasDI(processos, dataDe, dataAte){
     let parcelas = [];
     try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
     parcelas.forEach((pc,i)=>{
-      if(!pc.pagto_antecipado) return;
       if(!pc.cambio_fechado) return;
       const dataCambio = pc.data_vencimento;
       if(!dataCambio) return;

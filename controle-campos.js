@@ -930,7 +930,7 @@ function calcularCustoOperacaoAuto(i){
   if(v && c) _parcelas[i].custo_operacao = (v*c).toFixed(2);
 }
 
-function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', data_fechamento_cambio:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:false, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
+function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', data_fechamento_cambio:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:true, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
 
 // Prazo de comprovação de DI/DUIMP ao banco em pagamentos antecipados de
 // importação -- pedido do Ayslan (17/09/2026, resposta "Calcular automático
@@ -951,15 +951,6 @@ function calcularVencimentoDI(dataBase){
 // não tiver um preenchido -- nunca sobrescreve data já digitada à mão,
 // mesmo padrão já usado nos campos auto-preenchidos pela confirmação de
 // comprovante de câmbio (ver confirmarCambioParcela/aplicarCambioNaParcelaPendente).
-function togglePagtoAntecipado(i, ligar){
-  _parcelas[i].pagto_antecipado = ligar;
-  if(ligar && !_parcelas[i].venc_di && _parcelas[i].data_vencimento){
-    _parcelas[i].venc_di = calcularVencimentoDI(_parcelas[i].data_vencimento);
-  }
-  sincronizarParcelasLegado();
-  renderParcelas();
-}
-
 // Rótulo fixo em cima de cada campo de parcela -- pedido do Ayslan
 // (17/09/2026): "todos os campos que a gente preencheu nao tem o cabecalho
 // pra saber o que é o que. pro exmeplo ta escrito 7533, isso é o que?".
@@ -1003,16 +994,14 @@ function renderParcelas(){
           oninput="_parcelas[${i}].data_fechamento_cambio=this.value;sincronizarParcelasLegado()"></div>
         <div></div>
       `})}
-      ${secao({cols:'1fr 1.4fr 32px', html:`
+      ${secao({cols:'1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Código BACEN')}<input class="form-input" placeholder="Nº do contrato de câmbio" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
           oninput="_parcelas[${i}].codigo_bacen=this.value;sincronizarParcelasLegado()"></div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text);padding-bottom:9px;">
-          <input type="checkbox" ${pc.pagto_antecipado?'checked':''} onchange="togglePagtoAntecipado(${i}, this.checked)">
-          Pagamento Antecipado (exige DI/DUIMP ao banco)
-        </label>
+        <div></div>
+        <div></div>
         <div></div>
       `})}
-      ${pc.pagto_antecipado ? secao({cols:'1fr 1fr 1fr 32px', html:`
+      ${secao({cols:'1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Venc. DI/DUIMP')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.venc_di||'')}" title="Prazo p/ comprovar DI/DUIMP ao banco (padrão: 180 dias do câmbio fechado)"
           oninput="_parcelas[${i}].venc_di=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Nº DUIMP')}<input class="form-input" placeholder="Nº DUIMP" value="${esc(pc.duimp_numero||'')}"
@@ -1021,7 +1010,7 @@ function renderParcelas(){
           oninput="_parcelas[${i}].duimp_protocolo=this.value;sincronizarParcelasLegado()"></div>
         <button type="button" title="Recalcular prazo (180 dias do câmbio fechado)" onclick="_parcelas[${i}].venc_di=calcularVencimentoDI(_parcelas[${i}].data_vencimento);sincronizarParcelasLegado();renderParcelas()"
           style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:36px;">↻</button>
-      `}) : ''}
+      `})}
     </div>
     <div style="border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px;background:var(--bg);">
       ${secao({cols:'1fr 1fr 32px', html:`
