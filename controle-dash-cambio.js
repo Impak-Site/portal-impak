@@ -574,7 +574,9 @@ function renderDashCambio(){
     </div>`;
   }
 
-  const toolbarHtml = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+  const toolbarHtml = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;">
+    <button onclick="exportarPendenciasDI()" title="Planilha mensal de Pendências de DI/DUIMP pro banco — só os câmbios de Pagamento Antecipado fechados no mês escolhido"
+      style="font-size:12px;font-weight:700;padding:7px 14px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">📄 Exportar Pendências de DI</button>
     <button onclick="exportarRelatorioMensalCambio()" title="Baixa um Excel com Resumo, Câmbios Pagos e Em Aberto — pronto pra levar numa reunião"
       style="font-size:12px;font-weight:700;padding:7px 14px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">📥 Exportar Relatório (Excel)</button>
   </div>`;
