@@ -3558,7 +3558,6 @@ function linhaProcessoHtml(p){
           <span class="inline-edit" onclick="inlineEditData('${p.id}','eta',this)" title="Clique para editar ETA">${dataDisplay}</span>
         </div>
         <div class="td" data-label="Semana Booking">${p.semana_booking || '—'}</div>
-        <div class="td" data-label="Demurrage">${demurrageDisplay(p)}</div>
         <div class="td" data-label="Financeiro">${finBadge}</div>
       </div>`;
 }
