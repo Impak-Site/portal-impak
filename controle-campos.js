@@ -984,12 +984,12 @@ function renderParcelas(){
         </select></div>
         <div>${lblParcela('Valor USD')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
           oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"
-          onchange="calcularParcelaResidualAuto();calcularCustoOperacaoAuto(${i});renderParcelas()"></div></div>
+          onchange="calcularParcelaResidualAuto();calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive()"></div></div>
         <div>${lblParcela('Data Vencimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
           oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Câmbio Fechado')}<input class="form-input" type="number" step="0.0001" placeholder="5,0000" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
           oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()"
-          onchange="calcularCustoOperacaoAuto(${i});renderParcelas()"></div>
+          onchange="calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive()"></div>
         ${_parcelas.length>1
           ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0 0 9px;">✕</button>`
           : '<div></div>'}
