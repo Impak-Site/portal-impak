@@ -905,59 +905,66 @@ function togglePagtoAntecipado(i, ligar){
   renderParcelas();
 }
 
+// Rótulo fixo em cima de cada campo de parcela -- pedido do Ayslan
+// (17/09/2026): "todos os campos que a gente preencheu nao tem o cabecalho
+// pra saber o que é o que. pro exmeplo ta escrito 7533, isso é o que?".
+// Antes só tinham placeholder, que some assim que o campo é preenchido.
+function lblParcela(texto){
+  return `<label style="display:block;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;">${texto}</label>`;
+}
 function renderParcelas(){
   const wrap = document.getElementById('parcelas-list');
   if(!wrap) return;
   if(!_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
   wrap.innerHTML = _parcelas.map((pc,i)=>`
     <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;">
-      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
-        <select class="form-input" onchange="_parcelas[${i}].label=this.value;sincronizarParcelasLegado()">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 32px;gap:6px;align-items:end;margin-bottom:6px;">
+        <div>${lblParcela('Etapa')}<select class="form-input" onchange="_parcelas[${i}].label=this.value;sincronizarParcelasLegado()">
           <option value="">Etapa...</option>
           ${PARCELA_ETAPAS.map(et=>`<option value="${esc(et)}" ${pc.label===et?'selected':''}>${esc(et)}</option>`).join('')}
-        </select>
-        <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
-          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"></div>
-        <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
-          oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()">
-        <input class="form-input" type="number" step="0.0001" placeholder="Câmbio fechado" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
-          oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()">
+        </select></div>
+        <div>${lblParcela('Valor USD')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"></div></div>
+        <div>${lblParcela('Data Vencimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
+          oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()"></div>
+        <div>${lblParcela('Câmbio Fechado')}<input class="form-input" type="number" step="0.0001" placeholder="5,0000" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
+          oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()"></div>
         ${_parcelas.length>1
-          ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
+          ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0 0 9px;">✕</button>`
           : '<div></div>'}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;">
-        <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="Valor recebido do cliente" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
-          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_recebido_cliente=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div>
-        <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
-          oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()">
+      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:end;margin-bottom:6px;">
+        <div>${lblParcela('Valor Recebido do Cliente')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_recebido_cliente=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
+        <div>${lblParcela('Data Recebimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
+          oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()"></div>
         <div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center;">
-        <input class="form-input" placeholder="Banco/Corretora" value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
-          oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()">
-        <div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="IOF, spread, tarifas desta operação"
-          oninput="formatarMoedaInput(this);_parcelas[${i}].custo_operacao=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:end;">
+        <div>${lblParcela('Banco/Corretora')}<input class="form-input" placeholder="Ex: Banco X, Corretora Y" value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
+          oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()"></div>
+        <div>${lblParcela('Custo da Operação')}<div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="IOF, spread, tarifas desta operação"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].custo_operacao=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
         <div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1.4fr 32px;gap:6px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
-        <input class="form-input" placeholder="Código BACEN (nº contrato de câmbio)" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
-          oninput="_parcelas[${i}].codigo_bacen=this.value;sincronizarParcelasLegado()">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text);">
+      <div style="display:grid;grid-template-columns:1fr 1.4fr 32px;gap:6px;align-items:end;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
+        <div>${lblParcela('Código BACEN')}<input class="form-input" placeholder="Nº do contrato de câmbio" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
+          oninput="_parcelas[${i}].codigo_bacen=this.value;sincronizarParcelasLegado()"></div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text);padding-bottom:9px;">
           <input type="checkbox" ${pc.pagto_antecipado?'checked':''} onchange="togglePagtoAntecipado(${i}, this.checked)">
           Pagamento Antecipado (exige DI/DUIMP ao banco)
         </label>
         <div></div>
       </div>
-      ${pc.pagto_antecipado ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:6px;align-items:center;margin-top:6px;">
-        <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.venc_di||'')}" title="Prazo p/ comprovar DI/DUIMP ao banco (padrão: 180 dias do câmbio fechado)"
-          oninput="_parcelas[${i}].venc_di=this.value;sincronizarParcelasLegado()">
-        <input class="form-input" placeholder="Nº DUIMP" value="${esc(pc.duimp_numero||'')}"
-          oninput="_parcelas[${i}].duimp_numero=this.value;sincronizarParcelasLegado()">
-        <input class="form-input" placeholder="Protocolo / Chave de Acesso" value="${esc(pc.duimp_protocolo||'')}"
-          oninput="_parcelas[${i}].duimp_protocolo=this.value;sincronizarParcelasLegado()">
+      ${pc.pagto_antecipado ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:6px;align-items:end;margin-top:6px;">
+        <div>${lblParcela('Venc. DI/DUIMP')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.venc_di||'')}" title="Prazo p/ comprovar DI/DUIMP ao banco (padrão: 180 dias do câmbio fechado)"
+          oninput="_parcelas[${i}].venc_di=this.value;sincronizarParcelasLegado()"></div>
+        <div>${lblParcela('Nº DUIMP')}<input class="form-input" placeholder="Nº DUIMP" value="${esc(pc.duimp_numero||'')}"
+          oninput="_parcelas[${i}].duimp_numero=this.value;sincronizarParcelasLegado()"></div>
+        <div>${lblParcela('Protocolo / Chave de Acesso')}<input class="form-input" placeholder="Protocolo / Chave de Acesso" value="${esc(pc.duimp_protocolo||'')}"
+          oninput="_parcelas[${i}].duimp_protocolo=this.value;sincronizarParcelasLegado()"></div>
         <button type="button" title="Recalcular prazo (180 dias do câmbio fechado)" onclick="_parcelas[${i}].venc_di=calcularVencimentoDI(_parcelas[${i}].data_vencimento);sincronizarParcelasLegado();renderParcelas()"
-          style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:30px;">↻</button>
+          style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:36px;">↻</button>
       </div>` : ''}
     </div>
   `).join('');
