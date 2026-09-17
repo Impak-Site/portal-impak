@@ -772,7 +772,7 @@ function renderDashCambio(){
         }).join('')}
       </div>
       <div style="flex:1;min-width:200px;border-left:1px solid var(--border);padding-left:20px;">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Custo total das operações</div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total pago em BRL (câmbio × valor + tarifas)</div>
         <div style="font-size:20px;font-weight:800;${MONO}">${fmtBRL(custoTotalOperacoes)}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">${pagosComCusto} de ${pagos.length} câmbio(s) pago(s) com custo informado</div>
       </div>

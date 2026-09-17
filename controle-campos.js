@@ -898,6 +898,17 @@ function normalizarBancoCambio(texto){
   return achou ? achou.nome : texto;
 }
 
+// Custo da Operação = Valor USD × Câmbio Fechado desta parcela (pedido do
+// Ayslan, 17/09/2026 -- ver comentário acima). Só preenche se o campo
+// ainda estiver vazio, pra nunca sobrescrever o que o usuário já digitou
+// (mesmo padrão de "fill-if-empty" usado no resto do fluxo de câmbio).
+function calcularCustoOperacaoAuto(i){
+  if(!_parcelas[i] || _parcelas[i].custo_operacao) return;
+  const v = parseFloat(_parcelas[i].valor_usd) || 0;
+  const c = parseFloat(_parcelas[i].cambio_fechado) || 0;
+  if(v && c) _parcelas[i].custo_operacao = (v*c).toFixed(2);
+}
+
 function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:false, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
 
 // Prazo de comprovação de DI/DUIMP ao banco em pagamentos antecipados de
@@ -942,47 +953,50 @@ function renderParcelas(){
     document.body.insertAdjacentHTML('beforeend', datalistBancosCambioHtml());
   }
   if(!_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
+  const secao = (conteudo, primeira) => `<div style="display:grid;gap:14px;align-items:end;${primeira?'':'margin-top:16px;padding-top:16px;border-top:1px solid var(--border);'}grid-template-columns:${conteudo.cols};">${conteudo.html}</div>`;
   wrap.innerHTML = _parcelas.map((pc,i)=>`
-    <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;">
-      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 32px;gap:6px;align-items:end;margin-bottom:6px;">
+    <div style="border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px;background:#fff;">
+      ${secao({cols:'1.3fr 1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Etapa')}<select class="form-input" onchange="_parcelas[${i}].label=this.value;sincronizarParcelasLegado()">
           <option value="">Etapa...</option>
           ${PARCELA_ETAPAS.map(et=>`<option value="${esc(et)}" ${pc.label===et?'selected':''}>${esc(et)}</option>`).join('')}
         </select></div>
         <div>${lblParcela('Valor USD')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
-          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"></div></div>
+          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"
+          onchange="calcularCustoOperacaoAuto(${i});renderParcelas()"></div></div>
         <div>${lblParcela('Data Vencimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
           oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Câmbio Fechado')}<input class="form-input" type="number" step="0.0001" placeholder="5,0000" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
-          oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()"></div>
+          oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()"
+          onchange="calcularCustoOperacaoAuto(${i});renderParcelas()"></div>
         ${_parcelas.length>1
           ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0 0 9px;">✕</button>`
           : '<div></div>'}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:end;margin-bottom:6px;">
+      `}, true)}
+      ${secao({cols:'1fr 1fr 32px', html:`
         <div>${lblParcela('Valor Recebido do Cliente')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
           oninput="formatarMoedaInput(this);_parcelas[${i}].valor_recebido_cliente=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
         <div>${lblParcela('Data Recebimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
           oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()"></div>
         <div></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:end;">
+      `})}
+      ${secao({cols:'1fr 1fr 32px', html:`
         <div>${lblParcela('Banco/Corretora')}<input class="form-input" list="lista-bancos-cambio" placeholder="Ex: Itaú, Santander..." value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
           oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()"></div>
-        <div>${lblParcela('Custo da Operação')}<div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="IOF, spread, tarifas desta operação"
+        <div>${lblParcela('Custo da Operação')}<div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="Valor USD × Câmbio Fechado desta parcela, mais IOF/tarifas se o banco cobrar algo além (calculado automaticamente, mas pode editar)"
           oninput="formatarMoedaInput(this);_parcelas[${i}].custo_operacao=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
         <div></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1.4fr 32px;gap:6px;align-items:end;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
+      `})}
+      ${secao({cols:'1fr 1.4fr 32px', html:`
         <div>${lblParcela('Código BACEN')}<input class="form-input" placeholder="Nº do contrato de câmbio" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
           oninput="_parcelas[${i}].codigo_bacen=this.value;sincronizarParcelasLegado()"></div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text);padding-bottom:9px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text);padding-bottom:9px;">
           <input type="checkbox" ${pc.pagto_antecipado?'checked':''} onchange="togglePagtoAntecipado(${i}, this.checked)">
           Pagamento Antecipado (exige DI/DUIMP ao banco)
         </label>
         <div></div>
-      </div>
-      ${pc.pagto_antecipado ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:6px;align-items:end;margin-top:6px;">
+      `})}
+      ${pc.pagto_antecipado ? secao({cols:'1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Venc. DI/DUIMP')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.venc_di||'')}" title="Prazo p/ comprovar DI/DUIMP ao banco (padrão: 180 dias do câmbio fechado)"
           oninput="_parcelas[${i}].venc_di=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Nº DUIMP')}<input class="form-input" placeholder="Nº DUIMP" value="${esc(pc.duimp_numero||'')}"
@@ -991,12 +1005,11 @@ function renderParcelas(){
           oninput="_parcelas[${i}].duimp_protocolo=this.value;sincronizarParcelasLegado()"></div>
         <button type="button" title="Recalcular prazo (180 dias do câmbio fechado)" onclick="_parcelas[${i}].venc_di=calcularVencimentoDI(_parcelas[${i}].data_vencimento);sincronizarParcelasLegado();renderParcelas()"
           style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:36px;">↻</button>
-      </div>` : ''}
+      `}) : ''}
     </div>
   `).join('');
   sincronizarParcelasLegado();
 }
-
 function adicionarParcela(){
   _parcelas.push(parcelaVazia());
   renderParcelas();
@@ -1059,14 +1072,16 @@ function abrirModalConfirmarCambio(match, refAtual){
   const valorUsdImplicito = valorUsdRef || (taxa ? (valorPago/taxa) : 0);
   const info = document.getElementById('cambio-modal-info');
   if(info){
-    const custoOp = parseFloat(match.custo_operacao) || 0;
+    const custoExtra = parseFloat(match.custo_operacao) || 0;
+    const custoTotal = valorUsdImplicito && taxa ? (valorUsdImplicito*taxa + custoExtra) : custoExtra;
     info.innerHTML = `<b>Referência:</b> ${esc(match.referencia||refAtual||'(não identificada no documento)')}<br>`
       + `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}<br>`
       + (valorUsdRef ? `<b>Valor desta referência:</b> US$ ${valorUsdRef.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ R$ ${(valorUsdRef*taxa).toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>`
         : valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '')
       + (match.banco ? `<b>Banco:</b> ${esc(match.banco)}<br>` : '')
       + (match.codigo_bacen ? `<b>Código BACEN:</b> ${esc(match.codigo_bacen)}<br>` : '')
-      + (custoOp ? `<b>Custo da operação:</b> R$ ${custoOp.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>` : '');
+      + (custoExtra ? `<b>Tarifa/IOF discriminado no comprovante:</b> R$ ${custoExtra.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>` : '')
+      + (custoTotal ? `<b>Custo total da operação (Valor USD × Câmbio${custoExtra?' + tarifas':''}):</b> R$ ${custoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>` : '');
   }
   // Se a Forma de Pagamento atual e "Parcelado", mostra um botao por
   // parcela (pelo rotulo da Etapa) em vez das opcoes fixas de
@@ -1124,8 +1139,14 @@ function confirmarCambioParcela(idx){
   if(!_parcelas[idx].codigo_bacen && _cambioPendente.codigo_bacen){
     _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
   }
-  if(!_parcelas[idx].custo_operacao && _cambioPendente.custo_operacao){
-    _parcelas[idx].custo_operacao = _cambioPendente.custo_operacao;
+  if(!_parcelas[idx].custo_operacao){
+    const custoExtra = parseFloat(_cambioPendente.custo_operacao) || 0;
+    const valorUsdFinal = parseFloat(_parcelas[idx].valor_usd) || 0;
+    if(valorUsdFinal && taxa){
+      _parcelas[idx].custo_operacao = (valorUsdFinal*taxa + custoExtra).toFixed(2);
+    } else if(custoExtra){
+      _parcelas[idx].custo_operacao = custoExtra.toFixed(2);
+    }
   }
   renderParcelas();
   renderPagamentoInfoLive();
@@ -1173,8 +1194,14 @@ function aplicarCambioNaParcelaPendente(taxa){
   if(!_parcelas[idx].codigo_bacen && _cambioPendente?.codigo_bacen){
     _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
   }
-  if(!_parcelas[idx].custo_operacao && _cambioPendente?.custo_operacao){
-    _parcelas[idx].custo_operacao = _cambioPendente.custo_operacao;
+  if(!_parcelas[idx].custo_operacao){
+    const custoExtra2 = parseFloat(_cambioPendente?.custo_operacao) || 0;
+    const valorUsdFinal2 = parseFloat(_parcelas[idx].valor_usd) || 0;
+    if(valorUsdFinal2 && taxa){
+      _parcelas[idx].custo_operacao = (valorUsdFinal2*taxa + custoExtra2).toFixed(2);
+    } else if(custoExtra2){
+      _parcelas[idx].custo_operacao = custoExtra2.toFixed(2);
+    }
   }
   renderParcelas();
   renderPagamentoInfoLive();
@@ -1253,9 +1280,18 @@ function aplicarBancoCustoLegado(){
     const elBanco = document.getElementById('f_pi_cambio_banco');
     if(elBanco && !elBanco.value) elBanco.value = normalizarBancoCambio(_cambioPendente.banco);
   }
-  if(_cambioPendente?.custo_operacao){
-    const elCusto = document.getElementById('f_pi_cambio_custo');
-    if(elCusto && !elCusto.value) elCusto.value = _cambioPendente.custo_operacao;
+  const elCusto = document.getElementById('f_pi_cambio_custo');
+  if(elCusto && !elCusto.value){
+    const taxaL = parseFloat(_cambioPendente?.taxa_cambio) || 0;
+    const valorUsdRefL = parseFloat(_cambioPendente?.valor_usd_referencia) || 0;
+    const valorPagoL = parseFloat(_cambioPendente?.valor_pago) || 0;
+    const valorUsdImplicitoL = valorUsdRefL || (taxaL ? (valorPagoL/taxaL) : 0);
+    const custoExtraL = parseFloat(_cambioPendente?.custo_operacao) || 0;
+    if(valorUsdImplicitoL && taxaL){
+      elCusto.value = (valorUsdImplicitoL*taxaL + custoExtraL).toFixed(2);
+    } else if(custoExtraL){
+      elCusto.value = custoExtraL.toFixed(2);
+    }
   }
 }
 

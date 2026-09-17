@@ -1566,7 +1566,9 @@ teste('confirmarCambioParcela: aplica banco/código BACEN/custo da operação na
   const pc = vm.runInContext('_parcelas[0]', sandbox);
   iguais(pc.banco, 'Itaú', 'banco deveria vir do comprovante');
   iguais(pc.codigo_bacen, '632806455', 'código BACEN deveria vir do comprovante');
-  iguais(pc.custo_operacao, 120.50, 'custo da operação deveria vir do comprovante');
+  // Custo da Operação agora é Valor USD x Câmbio + tarifa extra discriminada
+  // no comprovante (pedido do Ayslan, 17/09/2026) -- não só a tarifa isolada.
+  iguais(pc.custo_operacao, '32857.56', 'custo da operação deveria ser valor USD x câmbio + tarifa extra do comprovante');
 });
 
 teste('confirmarCambioParcela: NUNCA sobrescreve banco/código BACEN/custo já preenchidos pelo usuário', () => {
@@ -1596,7 +1598,7 @@ teste('confirmarCambioComo("unico"): aplica Banco/Custo nos campos do processo (
   vm.runInContext(`_cambioPendente = {taxa_cambio:5.20, valor_pago:10000, referencia:'UD26-Y', data_pagamento:'2026-09-01', banco:'Itaú', codigo_bacen:'999888777', custo_operacao:55.30};`, sandbox);
   sandbox.confirmarCambioComo('unico');
   iguais(sandbox.document.getElementById('f_pi_cambio_banco').value, 'Itaú', 'banco deveria ser preenchido no campo do processo');
-  iguais(sandbox.document.getElementById('f_pi_cambio_custo').value, 55.30, 'custo da operação deveria ser preenchido no campo do processo');
+  iguais(sandbox.document.getElementById('f_pi_cambio_custo').value, '10055.30', 'custo da operação deveria ser valor USD x câmbio + tarifa extra do comprovante');
 });
 
 // ── CATÁLOGO DE BANCOS DA IMPAK (cadastro + normalização) ───────
@@ -1639,6 +1641,30 @@ teste('confirmarCambioParcela: sem valor_usd_referencia, continua calculando val
   sandbox.confirmarCambioParcela(0);
   const pc = vm.runInContext('_parcelas[0]', sandbox);
   iguais(pc.valor_usd, (26120.83/5.134).toFixed(2), 'sem valor em USD explícito, mantém o cálculo antigo via reais/taxa');
+});
+
+// ── CUSTO DA OPERAÇÃO = Valor USD x Câmbio (+ tarifas) ──────────
+// Pedido explícito do Ayslan (17/09/2026): "O CUSTO DA OPERACAO e o valor
+// em USD x cambio, nesse caso do QD-IMK-LPL-2605-1740, e USD 5.054,40 x
+// 5,1340 = BRL 25.949,2896". Antes o campo só recebia tarifas/IOF
+// discriminadas separadamente no comprovante e ficava 0,00 quando o banco
+// não cobra nada além do câmbio em si (caso mais comum).
+teste('confirmarCambioParcela: Custo da Operação = Valor USD x Câmbio quando o comprovante não discrimina tarifa extra', () => {
+  vm.runInContext(`_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:'', custo_operacao:''}];`, sandbox);
+  vm.runInContext(`_cambioPendente = {taxa_cambio:5.1340, valor_pago:0, valor_usd_referencia:5054.40, referencia:'QD-IMK-LPL-2605-1740', data_pagamento:'2026-09-15', custo_operacao:0};`, sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const pc = vm.runInContext('_parcelas[0]', sandbox);
+  iguais(pc.custo_operacao, (5054.40*5.1340).toFixed(2), 'deveria ser Valor USD x Câmbio Fechado, igual ao exemplo do Ayslan');
+});
+
+teste('calcularCustoOperacaoAuto: preenche Custo da Operação ao digitar Valor USD/Câmbio manualmente, sem sobrescrever edição do usuário', () => {
+  vm.runInContext(`_parcelas = [{label:'Final', valor_usd:'1000.00', cambio_fechado:'5.20', custo_operacao:''}];`, sandbox);
+  sandbox.calcularCustoOperacaoAuto(0);
+  iguais(vm.runInContext('_parcelas[0].custo_operacao', sandbox), (1000*5.20).toFixed(2), 'deveria auto-calcular quando o campo está vazio');
+
+  vm.runInContext(`_parcelas = [{label:'Final', valor_usd:'1000.00', cambio_fechado:'5.20', custo_operacao:'999.00'}];`, sandbox);
+  sandbox.calcularCustoOperacaoAuto(0);
+  iguais(vm.runInContext('_parcelas[0].custo_operacao', sandbox), '999.00', 'nunca sobrescreve um valor já digitado pelo usuário');
 });
 
 // ── PENDÊNCIAS DE DI (planilha mensal pro banco) ────────────────
