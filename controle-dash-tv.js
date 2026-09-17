@@ -558,9 +558,10 @@ function renderDashTV(){
   // (flex:1), pra que a coluna inteira sempre preencha 100% da tela sem
   // sobrar nem faltar espaço — e ajustarFonteColunasTV() (abaixo) mede essa
   // altura já renderizada pra escolher o tamanho de fonte que cabe.
-  function linhaEmAguasFlex(x){
+  function linhaEmAguasFlex(x, idx){
     const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
-    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;border-top:1px solid var(--border);overflow:hidden;">
+    const zebra = idx % 2 === 1 ? 'background:#eef2f8;' : '';
+    return `<div class="tv-row" style="flex:1;min-height:0;display:flex;align-items:center;border-top:1px solid var(--border);overflow:hidden;${zebra}">
         <div style="width:14%;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${etaFmt}</div>
         <div style="width:32%;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.referencia)}">${esc(x.referencia)}</div>
         <div style="width:34%;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.cliente||'')}">${esc(x.cliente||'')}</div>

@@ -577,8 +577,11 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armazenagem Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_armazenagem_vencimento" value="${esc(p.armazenagem_vencimento)}" style="color:var(--warn);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Armazém</label>
-            <input class="form-input" id="f_armazem" value="${esc(p.armazem)}" placeholder="Onde a carga está armazenada (útil p/ LCL — não é container cheio)"></div>
+          <div class="form-group" style="position:relative"><label class="form-label">Armazém</label>
+            <input class="form-input" id="f_armazem" value="${esc(p.armazem)}" placeholder="Onde a carga está armazenada (útil p/ LCL — não é container cheio)" autocomplete="off"
+              oninput="autocompletarValorLocal(this,'armazem','armazem-dropdown')">
+            <div id="armazem-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+          </div>
         </div>
         <div id="armazen-info-wrap">${armazenInfo}</div>
       </div>
@@ -609,8 +612,11 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
                 <option value="Parcial Isento" ${p.ric_status==='Parcial Isento'?'selected':''}>Parcial Isento</option>
                 <option value="Termo" ${p.ric_status==='Termo'?'selected':''}>Termo</option>
               </select></div>
-            <div class="form-group"><label class="form-label">Depot</label>
-              <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução"></div>
+            <div class="form-group" style="position:relative"><label class="form-label">Depot</label>
+              <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução" autocomplete="off"
+                oninput="autocompletarValorLocal(this,'depot','depot-dropdown')">
+              <div id="depot-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
+            </div>
             <div class="form-group"><label class="form-label">Data Solicitação</label>
               <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_solicitacao_demurrage" value="${esc(p.data_solicitacao_demurrage)}"></div>
             <div class="form-group"><label class="form-label">Data Isenção</label>

@@ -44,6 +44,35 @@ async function autocompletarContato(input, tipo, dropdownId, onSelect){
     }catch(e){ dd.style.display='none'; }
   }, 300);
 }
+// Autocomplete client-side pra campos de texto livre que se repetem entre
+// processos (Armazém, Depot) -- sem cadastro próprio, então as sugestões
+// vêm dos valores já usados nos processos carregados (_processos), não do
+// servidor. Filtra por substring (não só prefixo) pra achar mais rápido.
+function autocompletarValorLocal(input, campo, dropdownId){
+  const dd = document.getElementById(dropdownId);
+  if(!dd) return;
+  const q = input.value.trim().toLowerCase();
+  if(q.length < 1){ dd.style.display='none'; return; }
+  const vistos = new Set();
+  const sugestoes = [];
+  (typeof _processos !== 'undefined' ? _processos : []).forEach(p=>{
+    const v = (p[campo]||'').trim();
+    if(!v) return;
+    const chave = v.toLowerCase();
+    if(chave === q || vistos.has(chave)) return;
+    if(!chave.includes(q)) return;
+    vistos.add(chave);
+    sugestoes.push(v);
+  });
+  if(!sugestoes.length){ dd.style.display='none'; return; }
+  sugestoes.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  dd.innerHTML = sugestoes.slice(0,8).map(v=>
+    `<div data-nome="${esc(v)}" onclick="_acSelecionar('${input.id}','${dropdownId}',this.dataset.nome,null)"
+      style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
+      onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${esc(v)}</div>`
+  ).join('');
+  dd.style.display='block';
+}
 function _acSelecionar(inputId, dropdownId, nome, callback){
   const el = document.getElementById(inputId);
   if(el) el.value = nome;
@@ -52,7 +81,7 @@ function _acSelecionar(inputId, dropdownId, nome, callback){
   if(typeof callback === 'function') callback(nome);
 }
 document.addEventListener('click', e=>{
-  ['cliente-dropdown','fornecedor-dropdown','armador-dropdown','agente-dropdown','despachante-dropdown','transportadora-dropdown','consignatario-dropdown','notify-dropdown'].forEach(id=>{
+  ['cliente-dropdown','fornecedor-dropdown','armador-dropdown','agente-dropdown','despachante-dropdown','transportadora-dropdown','consignatario-dropdown','notify-dropdown','armazem-dropdown','depot-dropdown'].forEach(id=>{
     const dd = document.getElementById(id);
     if(dd && !dd.contains(e.target) && e.target.id!=='f_'+id.replace('-dropdown','')) dd.style.display='none';
   });
