@@ -599,7 +599,7 @@ async function extrairComIA_umArquivo(input){
   "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
   "encomendante_cnpj": "",  // CNPJ do encomendante/adquirente — ver instruções específicas na seção do Comprovante de Importação/Extrato da DI abaixo. Deixar "" se o documento não for esse tipo ou não trouxer esse campo.
   "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
-  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD"}. Deixar [] para qualquer outro tipo de documento.
+  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0}. Deixar [] para qualquer outro tipo de documento.
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
