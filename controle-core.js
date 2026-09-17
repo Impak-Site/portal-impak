@@ -3261,43 +3261,205 @@ clientesDoProcesso(p).some(cl=>cl.toLowerCase().includes(q))
   return lista;
 }
 
-function render(){
-  const lista = filtrarProcessos();
-  const total = lista.length;
-  const totalPags = Math.max(1, Math.ceil(total/POR_PAGINA));
-  _pagina = Math.min(_pagina, totalPags);
-  const inicio = (_pagina-1)*POR_PAGINA;
-  const pagina = lista.slice(inicio, inicio+POR_PAGINA);
+// ════════════════════════════════════════════════════════════════
+// FILTRO POR COLUNA (estilo Excel) + AGRUPAR POR COLUNA — pedido Ayslan
+// 17/09/2026: "tem como apertar em cima do nome, e filtrar e flegar mais
+// de uma opção... e consegue incluir o cliente?... e eu clicar em cima
+// da fase, por exemplo, ele agrupar tudo que ta embarcado, depois tudo
+// que ta PI recebida". Cada cabeçalho de coluna abre um dropdown com
+// checkboxes dos valores existentes (com busca), combináveis entre
+// colunas e com os filtros que já existiam (busca, fase, avançado —
+// ver filtrarProcessos()). O mesmo dropdown tem a opção de agrupar a
+// tabela por aquela coluna (só uma coluna por vez).
+// ════════════════════════════════════════════════════════════════
+const COLUNAS_TABELA = [
+  { campo:'referencia', label:'Referência',     agrupavel:false, valor:p => p.referencia || '—' },
+  { campo:'fornecedor', label:'Fornecedor',     agrupavel:true,  valor:p => p.fornecedor || '—' },
+  { campo:'cliente',    label:'Cliente',        agrupavel:true,  valor:p => (clientesDoProcesso(p)[0] || p.cliente || '—') },
+  { campo:'fase',       label:'Fase',           agrupavel:true,  valor:p => faseParaExibir(p).label },
+  { campo:'eta',        label:'ETA / Chegada',  agrupavel:false, valor:p => (p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : (p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—')) },
+  { campo:'demurrage',  label:'Demurrage',      agrupavel:true,  valor:p => {
+      if(p.fase === 'FINALIZADO' || p.data_devolucao_vazio) return 'Devolvido';
+      const dias = demurrageDias(p);
+      if(dias === null) return 'Sem dados';
+      if(dias < 0) return 'Vencido';
+      if(dias <= 5) return 'Alerta (≤5d)';
+      return 'No prazo';
+    } },
+  { campo:'financeiro', label:'Financeiro',     agrupavel:true,  valor:p => (p.pi_pagamento ? (p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento) : '—') },
+];
 
-  const tbody = document.getElementById('table-body');
-  if(!tbody) return;
+let _filtrosColuna = {};        // campo -> Set(valores selecionados); ausente/vazio = "todos"
+let _agruparPor = null;         // campo agrupável (de COLUNAS_TABELA) ou null
+let _filtroColunaAberto = null; // campo do dropdown aberto agora
 
-  if(!pagina.length){
-    tbody.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
-  } else {
-    tbody.innerHTML = pagina.map(p=>{
-      const fase = faseParaExibir(p);
-      const etaDate = p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—';
-      const chegadaDate = p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '';
-      const dataDisplay = chegadaDate || etaDate;
-      const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
-      const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
-      const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
-      const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">⚠ Revisar</span>` : '';
-      // referencia/fornecedor são texto livre (fornecedor às vezes vem de
-      // extração por IA de documento externo) — escapar sempre antes de
-      // colocar em innerHTML, senão um valor malicioso/malformado vira HTML
-      // executável pra QUALQUER usuário que abrir esta lista (XSS
-      // persistente). Ver esc() em controle-campos.js.
-      const canceladoBadge = p.cancelado ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Processo cancelado'}" style="font-size:9px;font-weight:700;background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#64748b;">🚫 CANCELADO</span>` : '';
-    const solicitacaoCancelamentoBadge = (p.cancelamento_solicitado && !p.cancelado) ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Cancelamento solicitado'}" style="font-size:9px;font-weight:700;background:rgba(217,119,6,.15);border:1px solid rgba(217,119,6,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#d97706;">📨 CANCEL. SOLICITADO</span>` : '';
-      return `<div class="table-row" onclick="abrirProcesso('${p.id}')" style="${p.cancelado?'opacity:.6;':''}">
+// Lista já filtrada por TODOS os filtros de coluna, exceto o de `campoExcluir`
+// (pra montar as opções/contagens do dropdown daquela própria coluna sem
+// que ela se auto-filtre e as opções desmarcadas desapareçam da lista).
+function listaBaseParaColuna(campoExcluir){
+  let lista = filtrarProcessos();
+  const campos = Object.keys(_filtrosColuna).filter(c => c !== campoExcluir && _filtrosColuna[c] && _filtrosColuna[c].size);
+  if(!campos.length) return lista;
+  return lista.filter(p => campos.every(campo => {
+    const d = COLUNAS_TABELA.find(c=>c.campo===campo);
+    return d && _filtrosColuna[campo].has(d.valor(p));
+  }));
+}
+
+function aplicarFiltrosColuna(lista){
+  const campos = Object.keys(_filtrosColuna).filter(c => _filtrosColuna[c] && _filtrosColuna[c].size);
+  if(!campos.length) return lista;
+  return lista.filter(p => campos.every(campo => {
+    const def = COLUNAS_TABELA.find(c=>c.campo===campo);
+    return def && _filtrosColuna[campo].has(def.valor(p));
+  }));
+}
+
+function toggleFiltroColuna(ev, campo){
+  ev.stopPropagation();
+  if(_filtroColunaAberto === campo){ fecharFiltroColuna(); return; }
+  _filtroColunaAberto = campo;
+  renderFiltroColunaDropdown(ev.currentTarget);
+}
+
+function fecharFiltroColuna(){
+  _filtroColunaAberto = null;
+  const el = document.getElementById('filtro-coluna-dropdown');
+  if(el) el.style.display = 'none';
+}
+// Fecha o dropdown ao clicar fora dele (o próprio dropdown e os
+// cabeçalhos param a propagação nos seus próprios cliques).
+document.addEventListener('click', fecharFiltroColuna);
+
+function renderFiltroColunaDropdown(anchorEl){
+  const def = COLUNAS_TABELA.find(c=>c.campo===_filtroColunaAberto);
+  const el = document.getElementById('filtro-coluna-dropdown');
+  if(!def || !el) return;
+
+  const base = listaBaseParaColuna(_filtroColunaAberto);
+  const contagem = new Map();
+  base.forEach(p => { const v = def.valor(p); contagem.set(v, (contagem.get(v)||0)+1); });
+  const valores = [...contagem.keys()].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const selecionados = _filtrosColuna[_filtroColunaAberto];
+  const todosSelecionados = !selecionados || !selecionados.size;
+
+  const linhasCheckbox = valores.map(v => {
+    const marcado = todosSelecionados || selecionados.has(v);
+    return `<label class="filtro-coluna-item" data-valor="${esc(v).toLowerCase()}">
+      <input type="checkbox" ${marcado?'checked':''} onchange="filtroColunaToggleValor('${_filtroColunaAberto}', this)" data-valor-raw="${esc(v)}">
+      <span>${esc(v)}</span><span class="filtro-coluna-count">${contagem.get(v)}</span>
+    </label>`;
+  }).join('') || `<div style="padding:10px;font-size:12px;color:var(--muted);">Nenhum valor</div>`;
+
+  el.innerHTML = `
+    <div style="padding:8px 10px;border-bottom:1px solid var(--border);">
+      <input type="text" placeholder="Buscar..." oninput="filtroColunaBuscar(this.value)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;outline:none;box-sizing:border-box;">
+    </div>
+    ${def.agrupavel ? `<div style="padding:6px 10px;border-bottom:1px solid var(--border);">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ac);">
+        <input type="checkbox" ${_agruparPor===_filtroColunaAberto?'checked':''} onchange="toggleAgruparPor('${_filtroColunaAberto}', this.checked)">
+        Agrupar por ${esc(def.label)}
+      </label>
+    </div>` : ''}
+    <div style="padding:6px 10px;display:flex;gap:10px;border-bottom:1px solid var(--border);">
+      <button type="button" onclick="filtroColunaMarcarTodos('${_filtroColunaAberto}', true)" style="background:none;border:none;color:var(--ac);font-size:11px;font-weight:600;cursor:pointer;padding:0;">Marcar todos</button>
+      <button type="button" onclick="filtroColunaMarcarTodos('${_filtroColunaAberto}', false)" style="background:none;border:none;color:var(--ac);font-size:11px;font-weight:600;cursor:pointer;padding:0;">Desmarcar todos</button>
+    </div>
+    <div id="filtro-coluna-lista" style="max-height:240px;overflow-y:auto;padding:4px 0;">${linhasCheckbox}</div>
+    <div style="padding:8px 10px;border-top:1px solid var(--border);display:flex;gap:8px;">
+      <button type="button" class="btn btn-sm btn-primary" onclick="fecharFiltroColuna()" style="flex:1;">Aplicar</button>
+      <button type="button" class="btn btn-sm btn-outline" onclick="filtroColunaLimpar('${_filtroColunaAberto}')">Limpar</button>
+    </div>`;
+
+  const rect = anchorEl.getBoundingClientRect();
+  el.style.display = 'block';
+  el.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+  el.style.left = (rect.left + window.scrollX) + 'px';
+}
+
+function filtroColunaBuscar(q){
+  q = (q||'').toLowerCase();
+  document.querySelectorAll('#filtro-coluna-lista .filtro-coluna-item').forEach(el=>{
+    const v = el.getAttribute('data-valor')||'';
+    el.style.display = v.includes(q) ? '' : 'none';
+  });
+}
+
+function filtroColunaToggleValor(campo, checkbox){
+  const valor = checkbox.getAttribute('data-valor-raw');
+  if(!_filtrosColuna[campo] || !_filtrosColuna[campo].size){
+    // estava em "todos" -- ao desmarcar o 1º valor, os demais precisam
+    // virar selecionados explicitamente, senão a mudança não teria efeito
+    const def = COLUNAS_TABELA.find(c=>c.campo===campo);
+    const base = listaBaseParaColuna(campo);
+    _filtrosColuna[campo] = new Set(base.map(p=>def.valor(p)));
+  }
+  if(checkbox.checked) _filtrosColuna[campo].add(valor);
+  else _filtrosColuna[campo].delete(valor);
+  atualizarBotaoFiltroColuna(campo);
+  render();
+}
+
+function filtroColunaMarcarTodos(campo, marcar){
+  // "Desmarcar todos" usa um Set não-vazio com um valor-sentinela que
+  // nenhum processo real tem, pra distinguir de "sem filtro" (Set vazio)
+  // e ainda assim filtrar tudo -- ver aplicarFiltrosColuna().
+  _filtrosColuna[campo] = marcar ? new Set() : new Set(['__NENHUM_SELECIONADO__']);
+  const th = document.querySelector(`.th-filtro[data-campo="${campo}"]`);
+  if(th) renderFiltroColunaDropdown(th);
+  atualizarBotaoFiltroColuna(campo);
+  render();
+}
+
+function filtroColunaLimpar(campo){
+  delete _filtrosColuna[campo];
+  fecharFiltroColuna();
+  atualizarBotaoFiltroColuna(campo);
+  render();
+}
+
+function toggleAgruparPor(campo, ligar){
+  _agruparPor = ligar ? campo : null;
+  document.querySelectorAll('.th-filtro').forEach(el=>el.classList.toggle('agrupado', el.getAttribute('data-campo')===_agruparPor));
+  render();
+}
+
+function atualizarBotaoFiltroColuna(campo){
+  const th = document.querySelector(`.th-filtro[data-campo="${campo}"]`);
+  if(!th) return;
+  const ativo = _filtrosColuna[campo] && _filtrosColuna[campo].size;
+  th.classList.toggle('filtro-ativo', !!ativo);
+}
+
+// Monta o HTML de 1 linha da tabela — extraído do render() pra poder ser
+// reaproveitado tanto na lista normal paginada quanto na lista agrupada
+// (renderTabelaAgrupada), que não pagina.
+function linhaProcessoHtml(p){
+  const fase = faseParaExibir(p);
+  const etaDate = p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—';
+  const chegadaDate = p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '';
+  const dataDisplay = chegadaDate || etaDate;
+  const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
+  const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
+  const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
+  const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">⚠ Revisar</span>` : '';
+  // referencia/fornecedor são texto livre (fornecedor às vezes vem de
+  // extração por IA de documento externo) — escapar sempre antes de
+  // colocar em innerHTML, senão um valor malicioso/malformado vira HTML
+  // executável pra QUALQUER usuário que abrir esta lista (XSS
+  // persistente). Ver esc() em controle-campos.js.
+  const canceladoBadge = p.cancelado ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Processo cancelado'}" style="font-size:9px;font-weight:700;background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#64748b;">🚫 CANCELADO</span>` : '';
+  const solicitacaoCancelamentoBadge = (p.cancelamento_solicitado && !p.cancelado) ? `<span title="${p.cancelado_motivo?esc(p.cancelado_motivo):'Cancelamento solicitado'}" style="font-size:9px;font-weight:700;background:rgba(217,119,6,.15);border:1px solid rgba(217,119,6,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#d97706;">📨 CANCEL. SOLICITADO</span>` : '';
+  const clientesLista = clientesDoProcesso(p);
+  const clienteDisplay = clientesLista.length ? (esc(clientesLista[0]) + (clientesLista.length>1 ? ` <span style="opacity:.6;">+${clientesLista.length-1}</span>` : '')) : (esc(p.cliente)||'—');
+  return `<div class="table-row" onclick="abrirProcesso('${p.id}')" style="${p.cancelado?'opacity:.6;':''}">
         <div class="td td-ref" data-label="">
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;row-gap:2px;">
             <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}${canceladoBadge}${solicitacaoCancelamentoBadge}
           </div>
         </div>
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>
+        <div class="td td-forn" data-label="Cliente">${clienteDisplay}</div>
         <div class="td" data-label="Fase" onclick="event.stopPropagation()" style="min-width:0;">
           <span class="inline-edit" onclick="inlineEditFase('${p.id}',this)" style="display:inline-block;max-width:100%;">
             <span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>
@@ -3312,7 +3474,75 @@ function render(){
           <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();abrirProcesso('${p.id}')">Abrir</button>
         </div>
       </div>`;
-    }).join('');
+}
+
+// Tabela agrupada (Excel-style "agrupar por esta coluna") — pedido Ayslan
+// 17/09/2026: "eu clicar em cima da fase, por exemplo, ele agrupar tudo
+// que ta embarcado, depois tudo que ta PI recebida e etc". Mostra TODOS
+// os processos filtrados de uma vez (sem paginação) dentro de cada grupo,
+// já que o objetivo é justamente ver o conjunto inteiro organizado.
+function renderTabelaAgrupada(lista){
+  const tbody = document.getElementById('table-body');
+  const def = COLUNAS_TABELA.find(c=>c.campo===_agruparPor);
+  if(!def){ _agruparPor = null; return; }
+  const grupos = new Map();
+  lista.forEach(p=>{
+    const chave = def.valor(p);
+    if(!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(p);
+  });
+  let chaves = [...grupos.keys()];
+  if(_agruparPor === 'fase'){
+    // ordem das fases (FASES, mesma ordem da timeline), não alfabética
+    chaves.sort((a,b)=> FASES.findIndex(f=>f.label===a) - FASES.findIndex(f=>f.label===b));
+  } else {
+    chaves.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  }
+  if(!chaves.length){
+    tbody.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
+    return;
+  }
+  tbody.innerHTML = chaves.map(chave=>{
+    const itens = grupos.get(chave);
+    return `<div class="group-header-row">${esc(chave)} <span class="group-count">${itens.length}</span></div>`
+      + itens.map(linhaProcessoHtml).join('');
+  }).join('');
+}
+
+function render(){
+  let lista = filtrarProcessos();
+  lista = aplicarFiltrosColuna(lista);
+  const total = lista.length;
+
+  const tbody = document.getElementById('table-body');
+  if(!tbody) return;
+  const grupoBar = document.getElementById('grupo-ativo-bar');
+
+  if(_agruparPor){
+    const def = COLUNAS_TABELA.find(c=>c.campo===_agruparPor);
+    if(grupoBar) grupoBar.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--ac-soft);font-size:12px;font-weight:600;color:var(--ac);">
+      📊 Agrupado por ${esc(def?def.label:_agruparPor)}
+      <button onclick="toggleAgruparPor('${_agruparPor}', false)" style="background:none;border:none;color:var(--ac);cursor:pointer;font-weight:700;font-size:13px;line-height:1;">✕</button>
+    </div>`;
+    renderTabelaAgrupada(lista);
+    const pag = document.getElementById('paginacao');
+    if(pag){
+      const nGrupos = def ? new Set(lista.map(p=>def.valor(p))).size : 0;
+      pag.innerHTML = `<span class="pag-info">${total} processos em ${nGrupos} grupos</span>`;
+    }
+    return;
+  }
+  if(grupoBar) grupoBar.innerHTML = '';
+
+  const totalPags = Math.max(1, Math.ceil(total/POR_PAGINA));
+  _pagina = Math.min(_pagina, totalPags);
+  const inicio = (_pagina-1)*POR_PAGINA;
+  const pagina = lista.slice(inicio, inicio+POR_PAGINA);
+
+  if(!pagina.length){
+    tbody.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhum processo encontrado</div></div>`;
+  } else {
+    tbody.innerHTML = pagina.map(linhaProcessoHtml).join('');
   }
 
   // Paginação
