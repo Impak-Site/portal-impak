@@ -3560,9 +3560,6 @@ function linhaProcessoHtml(p){
         <div class="td" data-label="Semana Booking">${p.semana_booking || '—'}</div>
         <div class="td" data-label="Demurrage">${demurrageDisplay(p)}</div>
         <div class="td" data-label="Financeiro">${finBadge}</div>
-        <div class="td" data-label="Ações">
-          <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();abrirProcesso('${p.id}')">Abrir</button>
-        </div>
       </div>`;
 }
 
