@@ -1658,14 +1658,25 @@ function renderPagamentoCampos(){
 // de travar o campo).
 function atualizarDataPagamentoPrazo(){
   if(document.getElementById('f_pi_pagamento')?.value !== 'PRAZO') return;
-  // Base do prazo: Data de Embarque Efetiva quando já preenchida (regra #413 - o prazo
-  // de pagamento conta a partir do embarque, não da data do pedido/PI); antes do
-  // embarque acontecer, cai de volta pra Data PI como estimativa provisória.
-  const dataBase = document.getElementById('f_data_embarque')?.value || document.getElementById('f_pi_data')?.value;
-  const prazo = parseInt(document.getElementById('f_pi_prazo_dias')?.value, 10);
+  // Prazo SÓ conta a partir da Data de Embarque Efetiva (pedido Paula/Ayslan
+  // 17/09/2026, revisando a regra #413) -- NUNCA mais cai de volta pra Data
+  // PI. Calcular em cima da PI dava uma Data Pagamento "estimada" cedo
+  // demais e enganosa (o pedido pode levar meses pra embarcar de verdade),
+  // fazendo o processo parecer com vencimento definido quando na prática
+  // ainda nem embarcou. Sem embarque, limpa o campo -- o pagamento entra
+  // como "sem vencimento calculável" no Dashboard Financeiro (grupo já
+  // existente pra isso), sinalizando a pendência real em vez de escondê-la
+  // atrás de uma data inventada.
   const destino = document.getElementById('f_pi_data_saldo');
-  if(!dataBase || !prazo || !destino) return;
-  const d = parseDataLocal(dataBase);
+  if(!destino) return;
+  const dataEmbarque = document.getElementById('f_data_embarque')?.value;
+  const prazo = parseInt(document.getElementById('f_pi_prazo_dias')?.value, 10);
+  if(!dataEmbarque || !prazo){
+    destino.value = '';
+    renderPagamentoInfoLive();
+    return;
+  }
+  const d = parseDataLocal(dataEmbarque);
   if(!d) return;
   d.setDate(d.getDate() + prazo);
   destino.value = d.toISOString().split('T')[0];

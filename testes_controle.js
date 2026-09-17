@@ -1439,6 +1439,59 @@ teste('montarDREConsolidado: processo cancelado nunca entra na soma, mesmo com N
   iguais(dre, null, 'processo cancelado não deveria aparecer no DRE consolidado');
 });
 
+// ── atualizarDataPagamentoPrazo: prazo só conta a partir da Data de
+// Embarque Efetiva (pedido Paula/Ayslan 17/09/2026, revisando a regra
+// #413 -- não pode mais cair de volta pra Data PI) ─────────────────────
+
+function setCampoModalPrazo({pagamento, dataPi, dataEmbarque, prazoDias, dataSaldoInicial}){
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = ${JSON.stringify(pagamento||'')};
+    document.getElementById('f_pi_data').value = ${JSON.stringify(dataPi||'')};
+    document.getElementById('f_data_embarque').value = ${JSON.stringify(dataEmbarque||'')};
+    document.getElementById('f_pi_prazo_dias').value = ${JSON.stringify(prazoDias!=null?String(prazoDias):'')};
+    document.getElementById('f_pi_data_saldo').value = ${JSON.stringify(dataSaldoInicial||'')};
+    document.getElementById('f_pi_valor_usd').value = '1000';
+    _editando = { pi_pagamento: ${JSON.stringify(pagamento||'')} };
+  `, sandbox);
+}
+
+teste('atualizarDataPagamentoPrazo: SEM Data de Embarque -- não cai mais pra Data PI, limpa o campo', () => {
+  setCampoModalPrazo({ pagamento:'PRAZO', dataPi:'2026-07-22', dataEmbarque:'', prazoDias:60, dataSaldoInicial:'' });
+  sandbox.atualizarDataPagamentoPrazo();
+  const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
+  iguais(saldo, '', 'sem embarque ainda -- não deveria inventar uma Data Pagamento a partir da Data PI');
+});
+
+teste('atualizarDataPagamentoPrazo: COM Data de Embarque -- calcula Data PI + prazo a partir do embarque', () => {
+  setCampoModalPrazo({ pagamento:'PRAZO', dataPi:'2026-07-22', dataEmbarque:'2026-08-10', prazoDias:60, dataSaldoInicial:'' });
+  sandbox.atualizarDataPagamentoPrazo();
+  const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
+  iguais(saldo, '2026-10-09', '60 dias a partir do embarque (10/08), não da Data PI (22/07)');
+});
+
+teste('atualizarDataPagamentoPrazo: embarque preenchido depois -- recalcula e sobrescreve o "sem vencimento" anterior', () => {
+  setCampoModalPrazo({ pagamento:'PRAZO', dataPi:'2026-07-22', dataEmbarque:'', prazoDias:60, dataSaldoInicial:'' });
+  sandbox.atualizarDataPagamentoPrazo();
+  iguais(vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox), '');
+  vm.runInContext(`document.getElementById('f_data_embarque').value = '2026-08-10';`, sandbox);
+  sandbox.atualizarDataPagamentoPrazo();
+  iguais(vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox), '2026-10-09');
+});
+
+teste('atualizarDataPagamentoPrazo: embarque preenchido mas SEM prazo (dias) definido -- também limpa, não calcula parcial', () => {
+  setCampoModalPrazo({ pagamento:'PRAZO', dataPi:'2026-07-22', dataEmbarque:'2026-08-10', prazoDias:null, dataSaldoInicial:'2026-10-09' });
+  sandbox.atualizarDataPagamentoPrazo();
+  const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
+  iguais(saldo, '', 'sem Prazo (dias) preenchido não dá pra calcular nada, mesmo com embarque OK');
+});
+
+teste('atualizarDataPagamentoPrazo: forma de pagamento diferente de PRAZO -- não mexe no campo', () => {
+  setCampoModalPrazo({ pagamento:'VISTA', dataPi:'2026-07-22', dataEmbarque:'', prazoDias:60, dataSaldoInicial:'2026-01-01' });
+  sandbox.atualizarDataPagamentoPrazo();
+  const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
+  iguais(saldo, '2026-01-01', 'forma de pagamento não é PRAZO -- função não deveria alterar nada');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
