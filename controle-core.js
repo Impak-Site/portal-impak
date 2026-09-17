@@ -3296,7 +3296,7 @@ const COLUNAS_TABELA = [
   // de forma uniforme. Não é agrupável -- agrupar por algo multivalorado
   // duplicaria processo em vários grupos, mais confuso que útil aqui.
   { campo:'etiquetas',  label:'Etiquetas',      agrupavel:false, multiplo:true, valores:p => etiquetasDoProcesso(p).map(e=>e.label) },
-  { campo:'eta',        label:'ETA / Chegada',  agrupavel:false, valor:p => (p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : (p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—')) },
+  { campo:'eta',        label:'ETA / Chegada',  agrupavel:false, ordenavel:true, chaveOrdenacao:p => (p.data_chegada || p.eta || ''), valor:p => (p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : (p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—')) },
   // Semana de Booking (pedido Ayslan 17/09/2026, espelhando a aba
   // "PROCESSOS DA SEMANA" da planilha da Paula) -- agrupável, pra dar a
   // visão "Programação Semanal de Embarques" via "Agrupar por coluna".
@@ -3377,6 +3377,7 @@ function etiquetasDoProcesso(p){
 
 let _filtrosColuna = {};        // campo -> Set(valores selecionados); ausente/vazio = "todos"
 let _agruparPor = null;         // campo agrupável (de COLUNAS_TABELA) ou null
+let _ordenacao = null;          // {campo, dir:'asc'|'desc'} ou null (ordem padrão)
 let _filtroColunaAberto = null; // campo do dropdown aberto agora
 
 // Lista já filtrada por TODOS os filtros de coluna, exceto o de `campoExcluir`
@@ -3447,6 +3448,11 @@ function renderFiltroColunaDropdown(anchorEl){
         Agrupar por ${esc(def.label)}
       </label>
     </div>` : ''}
+    ${def.ordenavel ? `<div style="padding:6px 10px;border-bottom:1px solid var(--border);display:flex;gap:6px;">
+      <button type="button" onclick="ordenarPorColuna('${_filtroColunaAberto}','asc')" style="flex:1;background:${_ordenacao&&_ordenacao.campo===_filtroColunaAberto&&_ordenacao.dir==='asc'?'var(--ac-soft)':'none'};border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:11px;font-weight:600;color:var(--ac);cursor:pointer;">▲ Crescente</button>
+      <button type="button" onclick="ordenarPorColuna('${_filtroColunaAberto}','desc')" style="flex:1;background:${_ordenacao&&_ordenacao.campo===_filtroColunaAberto&&_ordenacao.dir==='desc'?'var(--ac-soft)':'none'};border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:11px;font-weight:600;color:var(--ac);cursor:pointer;">▼ Decrescente</button>
+      ${_ordenacao&&_ordenacao.campo===_filtroColunaAberto ? `<button type="button" onclick="ordenarPorColuna(null)" title="Remover ordenação" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--muted);cursor:pointer;">✕</button>` : ''}
+    </div>` : ''}
     <div style="padding:6px 10px;display:flex;gap:10px;border-bottom:1px solid var(--border);">
       <button type="button" onclick="filtroColunaMarcarTodos('${_filtroColunaAberto}', true)" style="background:none;border:none;color:var(--ac);font-size:11px;font-weight:600;cursor:pointer;padding:0;">Marcar todos</button>
       <button type="button" onclick="filtroColunaMarcarTodos('${_filtroColunaAberto}', false)" style="background:none;border:none;color:var(--ac);font-size:11px;font-weight:600;cursor:pointer;padding:0;">Desmarcar todos</button>
@@ -3508,6 +3514,39 @@ function toggleAgruparPor(campo, ligar){
   _agruparPor = ligar ? campo : null;
   document.querySelectorAll('.th-filtro').forEach(el=>el.classList.toggle('agrupado', el.getAttribute('data-campo')===_agruparPor));
   render();
+}
+
+// Ordenação por coluna (ex.: ETA crescente = ordem de chegada) --
+// combinável com todos os filtros e com "Agrupar por" (aplicada sobre a
+// lista já filtrada, antes de paginar/agrupar). campo=null remove a
+// ordenação e volta pra ordem padrão da lista.
+function ordenarPorColuna(campo, dir){
+  _ordenacao = campo ? { campo, dir } : null;
+  document.querySelectorAll('.th-filtro').forEach(el=>el.classList.toggle('ordenado', !!_ordenacao && el.getAttribute('data-campo')===_ordenacao.campo));
+  const th = document.querySelector(`.th-filtro[data-campo="${campo||(_ordenacao?_ordenacao.campo:'')}"]`);
+  if(th && _filtroColunaAberto) renderFiltroColunaDropdown(th);
+  render();
+}
+
+// Valores vazios (processo sem ETA/Data Chegada, por ex.) sempre vão pro
+// fim da lista, em qualquer direção -- senão "sem data" apareceria
+// misturado com datas reais (string vazia ordena antes de qualquer data
+// em ordem crescente, o que ia parecer bug: "processo sem ETA no topo").
+function aplicarOrdenacao(lista){
+  if(!_ordenacao) return lista;
+  const def = COLUNAS_TABELA.find(c=>c.campo===_ordenacao.campo);
+  if(!def || !def.chaveOrdenacao) return lista;
+  const sinal = _ordenacao.dir === 'desc' ? -1 : 1;
+  return [...lista].sort((a,b)=>{
+    const va = def.chaveOrdenacao(a) || '';
+    const vb = def.chaveOrdenacao(b) || '';
+    if(!va && !vb) return 0;
+    if(!va) return 1;   // sem valor sempre por último
+    if(!vb) return -1;
+    if(va < vb) return -1*sinal;
+    if(va > vb) return 1*sinal;
+    return 0;
+  });
 }
 
 function atualizarBotaoFiltroColuna(campo){
@@ -3604,6 +3643,7 @@ function renderTabelaAgrupada(lista){
 function render(){
   let lista = filtrarProcessos();
   lista = aplicarFiltrosColuna(lista);
+  lista = aplicarOrdenacao(lista);
   const total = lista.length;
 
   const tbody = document.getElementById('table-body');

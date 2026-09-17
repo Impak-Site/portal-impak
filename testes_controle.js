@@ -1492,6 +1492,65 @@ teste('atualizarDataPagamentoPrazo: forma de pagamento diferente de PRAZO -- nã
   iguais(saldo, '2026-01-01', 'forma de pagamento não é PRAZO -- função não deveria alterar nada');
 });
 
+// ── ORDENAÇÃO POR COLUNA (ETA crescente/decrescente) ────────────
+// Pedido do Ayslan (17/09/2026): "Fazer o filtro ficar por ordem de
+// chegada / ETA Crescente no controle". aplicarOrdenacao() é a função
+// pura (sem DOM) que faz o trabalho -- ordenarPorColuna() só seta o
+// estado global _ordenacao e chama render(), então testamos direto a
+// função pura com uma lista de processos controlada.
+teste('aplicarOrdenacao: ETA crescente -- ordena pela Data Chegada/ETA mais próxima primeiro', () => {
+  const lista = [
+    { id:'A', eta:'2026-10-05', data_chegada:'' },
+    { id:'B', eta:'2026-09-20', data_chegada:'' },
+    { id:'C', eta:'2026-09-28', data_chegada:'' },
+  ];
+  vm.runInContext(`_ordenacao = { campo:'eta', dir:'asc' };`, sandbox);
+  const out = vm.runInContext(`aplicarOrdenacao(${JSON.stringify(lista)})`, sandbox);
+  iguais(out.map(p=>p.id).join(','), 'B,C,A', 'esperado ordem crescente por ETA: B(20/09), C(28/09), A(05/10)');
+});
+
+teste('aplicarOrdenacao: ETA decrescente -- inverte a ordem', () => {
+  const lista = [
+    { id:'A', eta:'2026-10-05', data_chegada:'' },
+    { id:'B', eta:'2026-09-20', data_chegada:'' },
+    { id:'C', eta:'2026-09-28', data_chegada:'' },
+  ];
+  vm.runInContext(`_ordenacao = { campo:'eta', dir:'desc' };`, sandbox);
+  const out = vm.runInContext(`aplicarOrdenacao(${JSON.stringify(lista)})`, sandbox);
+  iguais(out.map(p=>p.id).join(','), 'A,C,B', 'esperado ordem decrescente por ETA: A(05/10), C(28/09), B(20/09)');
+});
+
+teste('aplicarOrdenacao: Data Chegada tem prioridade sobre ETA quando as duas existem', () => {
+  const lista = [
+    { id:'A', eta:'2026-09-01', data_chegada:'2026-10-15' }, // já chegou -- usa data_chegada, não o ETA antigo
+    { id:'B', eta:'2026-09-20', data_chegada:'' },
+  ];
+  vm.runInContext(`_ordenacao = { campo:'eta', dir:'asc' };`, sandbox);
+  const out = vm.runInContext(`aplicarOrdenacao(${JSON.stringify(lista)})`, sandbox);
+  iguais(out.map(p=>p.id).join(','), 'B,A', 'B (ETA 20/09) vem antes de A (Data Chegada real 15/10, não o ETA 01/09)');
+});
+
+teste('aplicarOrdenacao: processo sem ETA/Data Chegada vai sempre pro fim, em qualquer direção', () => {
+  const lista = [
+    { id:'SEM_DATA', eta:'', data_chegada:'' },
+    { id:'A', eta:'2026-10-05', data_chegada:'' },
+    { id:'B', eta:'2026-09-20', data_chegada:'' },
+  ];
+  vm.runInContext(`_ordenacao = { campo:'eta', dir:'asc' };`, sandbox);
+  let out = vm.runInContext(`aplicarOrdenacao(${JSON.stringify(lista)})`, sandbox);
+  iguais(out[out.length-1].id, 'SEM_DATA', 'crescente: sem data fica por último');
+  vm.runInContext(`_ordenacao = { campo:'eta', dir:'desc' };`, sandbox);
+  out = vm.runInContext(`aplicarOrdenacao(${JSON.stringify(lista)})`, sandbox);
+  iguais(out[out.length-1].id, 'SEM_DATA', 'decrescente: sem data continua por último (não vira "maior data")');
+});
+
+teste('aplicarOrdenacao: sem _ordenacao ativa, devolve a lista na mesma ordem (não mexe em nada)', () => {
+  const lista = [{ id:'B' }, { id:'A' }, { id:'C' }];
+  vm.runInContext(`_ordenacao = null;`, sandbox);
+  const out = vm.runInContext(`aplicarOrdenacao(${JSON.stringify(lista)})`, sandbox);
+  iguais(out.map(p=>p.id).join(','), 'B,A,C', 'sem ordenação ativa, a ordem original é preservada');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
