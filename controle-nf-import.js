@@ -194,6 +194,16 @@ async function importarNFSaidaProcesso(input){
   const file = input.files[0];
   if(!file) return;
   input.value = '';
+  await importarNFSaidaProcessoArquivo(file);
+}
+
+// Núcleo real do import, separado de importarNFSaidaProcesso(input) pra poder
+// ser chamado tanto pelo <input type=file> (onchange) quanto por
+// arrastar-e-soltar (handleDropIA_NF, controle-import-ia.js) -- ambos
+// convergem aqui, mesmo padrão já usado em processarFilaIA/extrairComIA na
+// Extração com IA da aba Documentos (task #405).
+async function importarNFSaidaProcessoArquivo(file){
+  if(!file) return;
 
   const status = document.getElementById('ia-nf-saida-status');
   const isXml = /\.xml$/i.test(file.name) || file.type.includes('xml');

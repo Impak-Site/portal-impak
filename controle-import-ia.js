@@ -1276,6 +1276,38 @@ function handleDragLeaveIA(ev){
   if(zone){ zone.style.borderColor = 'rgba(26,127,212,.15)'; zone.style.background = 'rgba(26,127,212,.04)'; }
 }
 
+// ── Drag-and-drop pra "Extrair NF (Entrada ou Saida) com IA" (aba
+// Faturamento) -- mesmo padrão de handleDragOverIA/handleDragLeaveIA/
+// handleDropIA acima (task #405), só que apontando pro drop-zone e pro
+// arquivo único dessa seção (aceita XML também, além de PDF/imagem), e
+// chamando importarNFSaidaProcessoArquivo (controle-nf-import.js) em vez
+// de processarFilaIA. Pedido Ayslan 17/09/2026.
+function handleDragOverIA_NF(ev){
+  ev.preventDefault();
+  ev.stopPropagation();
+  const zone = document.getElementById('ia-nf-saida-drop-zone');
+  if(zone){ zone.style.borderColor = 'rgba(26,127,212,.6)'; zone.style.background = 'rgba(26,127,212,.10)'; }
+}
+
+function handleDragLeaveIA_NF(ev){
+  ev.preventDefault();
+  ev.stopPropagation();
+  const zone = document.getElementById('ia-nf-saida-drop-zone');
+  if(zone){ zone.style.borderColor = 'rgba(26,127,212,.15)'; zone.style.background = 'rgba(26,127,212,.04)'; }
+}
+
+async function handleDropIA_NF(ev){
+  ev.preventDefault();
+  ev.stopPropagation();
+  const zone = document.getElementById('ia-nf-saida-drop-zone');
+  if(zone){ zone.style.borderColor = 'rgba(26,127,212,.15)'; zone.style.background = 'rgba(26,127,212,.04)'; }
+  const dt = ev.dataTransfer;
+  if(!dt || !dt.files || !dt.files.length) return;
+  const arquivo = Array.from(dt.files).find(f => /\.(pdf|png|jpe?g|xml)$/i.test(f.name));
+  if(!arquivo) return;
+  if(typeof importarNFSaidaProcessoArquivo === 'function') await importarNFSaidaProcessoArquivo(arquivo);
+}
+
 async function handleDropIA(ev){
   ev.preventDefault();
   ev.stopPropagation();

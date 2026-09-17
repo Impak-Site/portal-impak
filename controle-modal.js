@@ -698,9 +698,15 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           try{ vendas2 = p.vendas_json ? JSON.parse(p.vendas_json) : []; }catch(e){ vendas2 = []; }
           if(!Array.isArray(vendas2)) vendas2 = [];
           if(vendas2.length) return '';
-          return `<div style="background:rgba(26,127,212,.04);border:1px solid rgba(26,127,212,.15);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+          // Drag-and-drop igual à Extração com IA da aba Documentos (task #405) --
+          // pedido Ayslan 17/09/2026: "Tem como arrastar e soltar o arquivo aqui
+          // na parte de NF tb?". handleDragOverIA_NF/handleDragLeaveIA_NF/
+          // handleDropIA_NF (controle-import-ia.js) reaproveitam
+          // importarNFSaidaProcessoArquivo(file) -- mesma função que o
+          // <input type=file> onchange já chama.
+          return `<div id="ia-nf-saida-drop-zone" style="background:rgba(26,127,212,.04);border:1px dashed rgba(26,127,212,.15);border-radius:10px;padding:12px 14px;margin-bottom:14px;transition:border-color .15s,background .15s;" ondragover="handleDragOverIA_NF(event)" ondragleave="handleDragLeaveIA_NF(event)" ondrop="handleDropIA_NF(event)">
             <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Extrair NF (Entrada ou Saida) com IA</div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE — o sistema identifica se e Entrada ou Saida e preenche os campos certos automaticamente</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Envie o XML da NFe ou o PDF/foto do DANFE (ou arraste o arquivo aqui) — o sistema identifica se e Entrada ou Saida e preenche os campos certos automaticamente</div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <input type="file" id="ia-nf-saida-file" accept=".pdf,.png,.jpg,.jpeg,.xml" style="display:none" onchange="importarNFSaidaProcesso(this)">
               <button class="btn btn-outline" onclick="document.getElementById('ia-nf-saida-file').click()">Selecionar NF (Entrada ou Saida)</button>
