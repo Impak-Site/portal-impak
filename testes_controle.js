@@ -1618,6 +1618,29 @@ teste('normalizarBancoCambio: vazio devolve vazio', () => {
   iguais(sandbox.normalizarBancoCambio(''), '', 'sem texto não tem o que normalizar');
 });
 
+// ── COMPROVANTE DE CÂMBIO: rateio por referência em USD ─────────
+// Bug real do Ayslan (17/09/2026): comprovante Itaú 632806609, rateio de
+// duas referências mostrado em DÓLAR ($5.088,00 / $5.054,40, não reais) --
+// o código antigo sempre dividia "valor_pago" pela taxa achando que vinha
+// em reais, gerando um Valor USD errado (5088/5,134 ≈ 991 em vez de
+// 5088,00). valor_usd_referencia resolve isso: quando vem preenchido, usa
+// direto, sem dividir pela taxa de novo.
+teste('confirmarCambioParcela: usa valor_usd_referencia direto quando o rateio já vem em dólar (não divide pela taxa de novo)', () => {
+  vm.runInContext(`_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:''}];`, sandbox);
+  vm.runInContext(`_cambioPendente = {taxa_cambio:5.134, valor_pago:0, valor_usd_referencia:5088.00, referencia:'QD-IMK-LPL-2605-1742', data_pagamento:'2026-09-15'};`, sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const pc = vm.runInContext('_parcelas[0]', sandbox);
+  iguais(pc.valor_usd, '5088.00', 'deveria usar o valor em USD do comprovante direto, sem dividir pela taxa de novo');
+});
+
+teste('confirmarCambioParcela: sem valor_usd_referencia, continua calculando valor_usd a partir de valor_pago (reais) / taxa', () => {
+  vm.runInContext(`_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:''}];`, sandbox);
+  vm.runInContext(`_cambioPendente = {taxa_cambio:5.134, valor_pago:26120.83, valor_usd_referencia:0, referencia:'UD26-X', data_pagamento:'2026-09-15'};`, sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const pc = vm.runInContext('_parcelas[0]', sandbox);
+  iguais(pc.valor_usd, (26120.83/5.134).toFixed(2), 'sem valor em USD explícito, mantém o cálculo antigo via reais/taxa');
+});
+
 // ── PENDÊNCIAS DE DI (planilha mensal pro banco) ────────────────
 // Pedido do Ayslan (17/09/2026): câmbios "Pagamento Antecipado" fechados
 // no mês entram na planilha "Pendências de DI" enviada ao banco.

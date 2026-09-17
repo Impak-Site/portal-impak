@@ -1055,13 +1055,15 @@ function abrirModalConfirmarCambio(match, refAtual){
   _cambioPendente = match;
   const taxa = parseFloat(match.taxa_cambio) || 0;
   const valorPago = parseFloat(match.valor_pago) || 0;
-  const valorUsdImplicito = taxa ? (valorPago/taxa) : 0;
+  const valorUsdRef = parseFloat(match.valor_usd_referencia) || 0;
+  const valorUsdImplicito = valorUsdRef || (taxa ? (valorPago/taxa) : 0);
   const info = document.getElementById('cambio-modal-info');
   if(info){
     const custoOp = parseFloat(match.custo_operacao) || 0;
     info.innerHTML = `<b>Referência:</b> ${esc(match.referencia||refAtual||'(não identificada no documento)')}<br>`
       + `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}<br>`
-      + (valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '')
+      + (valorUsdRef ? `<b>Valor desta referência:</b> US$ ${valorUsdRef.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ R$ ${(valorUsdRef*taxa).toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>`
+        : valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '')
       + (match.banco ? `<b>Banco:</b> ${esc(match.banco)}<br>` : '')
       + (match.codigo_bacen ? `<b>Código BACEN:</b> ${esc(match.codigo_bacen)}<br>` : '')
       + (custoOp ? `<b>Custo da operação:</b> R$ ${custoOp.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>` : '');
@@ -1106,8 +1108,11 @@ function confirmarCambioParcela(idx){
   // taxa de câmbio era gravada e o usuário tinha que digitar o resto na mão
   // de novo (reclamação da Emanuelly: "só salva o câmbio"). Só preenche se o
   // campo ainda estiver vazio, pra nunca sobrescrever o que o usuário já digitou.
+  const valorUsdRefP = parseFloat(_cambioPendente.valor_usd_referencia) || 0;
   const valorPagoP = parseFloat(_cambioPendente.valor_pago) || 0;
-  if(!_parcelas[idx].valor_usd && valorPagoP && taxa){
+  if(!_parcelas[idx].valor_usd && valorUsdRefP){
+    _parcelas[idx].valor_usd = valorUsdRefP.toFixed(2);
+  } else if(!_parcelas[idx].valor_usd && valorPagoP && taxa){
     _parcelas[idx].valor_usd = (valorPagoP/taxa).toFixed(2);
   }
   if(!_parcelas[idx].data_vencimento && _cambioPendente.data_pagamento){
@@ -1152,8 +1157,11 @@ function aplicarCambioNaParcelaPendente(taxa){
   // Mesma correção do confirmarCambioParcela: também preenche Valor USD e
   // Data do comprovante quando ainda estiverem vazios (não sobrescreve o
   // que o usuário já preencheu).
+  const valorUsdRefP2 = parseFloat(_cambioPendente?.valor_usd_referencia) || 0;
   const valorPagoP2 = parseFloat(_cambioPendente?.valor_pago) || 0;
-  if(!_parcelas[idx].valor_usd && valorPagoP2 && taxa){
+  if(!_parcelas[idx].valor_usd && valorUsdRefP2){
+    _parcelas[idx].valor_usd = valorUsdRefP2.toFixed(2);
+  } else if(!_parcelas[idx].valor_usd && valorPagoP2 && taxa){
     _parcelas[idx].valor_usd = (valorPagoP2/taxa).toFixed(2);
   }
   if(!_parcelas[idx].data_vencimento && _cambioPendente?.data_pagamento){
