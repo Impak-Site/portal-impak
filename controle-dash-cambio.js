@@ -61,6 +61,71 @@ let _cambioLoteSelecao = new Map();
 // é um snapshot no momento em que o botão é clicado, não um recorte de um
 // mês específico (por isso o nome genérico "Relatório Câmbio", a data de
 // geração já fica no subtítulo).
+async function exportarPendenciasDI(){
+  if(typeof ExcelJS === 'undefined'){
+    showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  const hoje = new Date();
+  const padrao = `${String(hoje.getMonth()+1).padStart(2,'0')}/${hoje.getFullYear()}`;
+  const resp = window.prompt('Mês de referência (MM/AAAA) — pega os câmbios de Pagamento Antecipado fechados do dia 1 ao último dia desse mês:', padrao);
+  if(!resp) return;
+  const m = resp.trim().match(/^(\d{1,2})\/(\d{4})$/);
+  if(!m){
+    showToast('Formato inválido — use MM/AAAA, ex: 09/2026','err');
+    return;
+  }
+  const mes = parseInt(m[1],10), ano = parseInt(m[2],10);
+  if(mes<1 || mes>12){
+    showToast('Mês inválido','err');
+    return;
+  }
+  const dataDe = `${ano}-${String(mes).padStart(2,'0')}-01`;
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  const dataAte = `${ano}-${String(mes).padStart(2,'0')}-${String(ultimoDia).padStart(2,'0')}`;
+
+  const linhas = listarPendenciasDI(_processos, dataDe, dataAte);
+  if(!linhas.length){
+    showToast(`Nenhum câmbio de Pagamento Antecipado fechado em ${m[1]}/${ano}`,'warn');
+    return;
+  }
+
+  try{
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'IMPAK';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Planilha3');
+    ws.columns = [
+      { header: 'Vencimento', key: 'vencimento', width: 14 },
+      { header: 'Valor M.E.', key: 'valor_me', width: 14 },
+      { header: 'D/ DUIMP ', key: 'duimp', width: 20 },
+      { header: 'PROTOCOLO / CHAVE DE ACESSO', key: 'protocolo', width: 30 },
+    ];
+    linhas.forEach(l=>{
+      ws.addRow({
+        vencimento: l.vencimentoDi ? new Date(l.vencimentoDi+'T00:00:00') : null,
+        valor_me: l.valorUsd || 0,
+        duimp: l.duimp || '',
+        protocolo: l.protocolo || '',
+      });
+    });
+    ws.getColumn('vencimento').numFmt = 'dd/mm/yyyy';
+    ws.getColumn('valor_me').numFmt = '#,##0.00';
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Pendencias_de_DI_${String(mes).padStart(2,'0')}-${ano}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`✓ Pendências de DI exportadas (${linhas.length} câmbio(s))`,'ok');
+  }catch(e){
+    console.error(e);
+    showToast('Erro ao exportar Pendências de DI: '+e.message,'err');
+  }
+}
+
 async function exportarRelatorioMensalCambio(){
   if(typeof ExcelJS === 'undefined'){
     showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');

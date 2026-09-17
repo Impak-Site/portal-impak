@@ -1551,6 +1551,56 @@ teste('aplicarOrdenacao: sem _ordenacao ativa, devolve a lista na mesma ordem (n
   iguais(out.map(p=>p.id).join(','), 'B,A,C', 'sem ordenação ativa, a ordem original é preservada');
 });
 
+// ── PENDÊNCIAS DE DI (planilha mensal pro banco) ────────────────
+// Pedido do Ayslan (17/09/2026): câmbios "Pagamento Antecipado" fechados
+// no mês entram na planilha "Pendências de DI" enviada ao banco.
+teste('calcularVencimentoDI: soma 180 dias corridos à data do câmbio fechado', () => {
+  const out = vm.runInContext(`calcularVencimentoDI('2026-09-15')`, sandbox);
+  iguais(out, '2027-03-14', '15/09/2026 + 180 dias = 14/03/2027');
+});
+
+teste('calcularVencimentoDI: sem data base, devolve string vazia', () => {
+  const out = vm.runInContext(`calcularVencimentoDI('')`, sandbox);
+  iguais(out, '', 'sem dataBase não tem o que calcular');
+});
+
+teste('listarPendenciasDI: inclui só parcelas Pagamento Antecipado com câmbio fechado dentro do mês', () => {
+  const processos = [
+    { id:'P1', referencia:'REF1', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { label:'Inicial', valor_usd:6375.28, data_vencimento:'2026-09-15', cambio_fechado:5.135, pagto_antecipado:true, codigo_bacen:'632806455', venc_di:'2027-03-14', duimp_numero:'', duimp_protocolo:'' },
+      { label:'Final', valor_usd:1000, data_vencimento:'2026-09-20', cambio_fechado:5.20, pagto_antecipado:false }, // não é pagto antecipado -- fora
+    ])},
+    { id:'P2', referencia:'REF2', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { label:'Inicial', valor_usd:28460.09, data_vencimento:'2026-08-20', cambio_fechado:5.1932, pagto_antecipado:true, codigo_bacen:'000624901400', venc_di:'2027-02-16' }, // mês errado -- fora
+    ])},
+    { id:'P3', referencia:'REF3', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { label:'Inicial', valor_usd:5000, data_vencimento:'2026-09-30', cambio_fechado:0, pagto_antecipado:true }, // sem câmbio fechado ainda -- fora
+    ])},
+    { id:'P4', referencia:'REF4', pi_pagamento:'ENTRADA_SALDO', pi_data_entrada:'2026-09-10', pi_cambio_entrada:5.1 }, // não é Parcelado -- fora do escopo desta planilha
+  ];
+  const out = vm.runInContext(`listarPendenciasDI(${JSON.stringify(processos)}, '2026-09-01', '2026-09-30')`, sandbox);
+  iguais(out.length, 1, 'só REF1/parcela Inicial entra (Pagamento Antecipado + câmbio fechado + dentro do mês + Parcelado)');
+  iguais(out[0].referencia, 'REF1', 'referência correta');
+  iguais(out[0].codigoBacen, '632806455', 'Código BACEN correto (referência do banco)');
+  iguais(out[0].valorUsd, 6375.28, 'Valor M.E. correto');
+});
+
+teste('listarPendenciasDI: ordena pelo vencimento da DI mais próximo primeiro, sem data por último', () => {
+  const processos = [
+    { id:'P1', referencia:'A', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { valor_usd:100, data_vencimento:'2026-09-05', cambio_fechado:5.1, pagto_antecipado:true, venc_di:'2027-03-04' },
+    ])},
+    { id:'P2', referencia:'B', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { valor_usd:200, data_vencimento:'2026-09-10', cambio_fechado:5.1, pagto_antecipado:true, venc_di:'' },
+    ])},
+    { id:'P3', referencia:'C', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { valor_usd:300, data_vencimento:'2026-09-15', cambio_fechado:5.1, pagto_antecipado:true, venc_di:'2027-01-10' },
+    ])},
+  ];
+  const out = vm.runInContext(`listarPendenciasDI(${JSON.stringify(processos)}, '2026-09-01', '2026-09-30')`, sandbox);
+  iguais(out.map(l=>l.referencia).join(','), 'C,A,B', 'C (venc. mais próximo) primeiro, A depois, B (sem venc. de DI) por último');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

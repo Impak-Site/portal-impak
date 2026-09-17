@@ -1145,6 +1145,56 @@ function listarPagamentosPI(processos){
   return pagamentos;
 }
 
+// Monta as linhas da planilha mensal "Pendências de DI" que a Impak envia
+// pro banco -- pedido do Ayslan (17/09/2026): "a planilha que temos que
+// enviar pro banco... e essa planilha a gente gera e envia mensalmente ao
+// banco. entao o ideal é pegar o dia 1 ate o ultimo dia do mes, os cambios
+// fechados". Regra de inclusão (resposta dele, "a regra é pela DI/DUIMP"):
+// entram as parcelas marcadas como Pagamento Antecipado (pc.pagto_antecipado
+// -- é essa marcação que diz "este câmbio exige comprovação de DI/DUIMP ao
+// banco", não literalmente "só quando o campo DUIMP já foi preenchido" --
+// a planilha modelo enviada tem várias linhas com DUIMP/Protocolo ainda em
+// branco, exatamente as pendências que ainda faltam resolver). Só considera
+// forma de pagamento "Parcelado" (onde os campos de contrato de câmbio
+// foram cadastrados, resposta "Direto na parcela (Aba Financeiro)").
+// dataDe/dataAte: strings ISO (yyyy-mm-dd), comparação por data do câmbio
+// fechado (pc.data_vencimento) dentro do mês, inclusive nas duas pontas.
+function listarPendenciasDI(processos, dataDe, dataAte){
+  const linhas = [];
+  (processos||[]).forEach(p=>{
+    if(p.pi_pagamento !== 'PARCELADO') return;
+    let parcelas = [];
+    try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
+    parcelas.forEach((pc,i)=>{
+      if(!pc.pagto_antecipado) return;
+      if(!pc.cambio_fechado) return;
+      const dataCambio = pc.data_vencimento;
+      if(!dataCambio) return;
+      if(dataDe && dataCambio < dataDe) return;
+      if(dataAte && dataCambio > dataAte) return;
+      linhas.push({
+        referencia: p.referencia,
+        processoId: p.id,
+        parcelaIndex: i,
+        codigoBacen: pc.codigo_bacen || '',
+        dataCambio,
+        vencimentoDi: pc.venc_di || '',
+        valorUsd: parseFloat(pc.valor_usd) || 0,
+        duimp: pc.duimp_numero || '',
+        protocolo: pc.duimp_protocolo || '',
+      });
+    });
+  });
+  // Ordena por vencimento da DI (mais urgente primeiro) -- sem data fica no fim.
+  linhas.sort((a,b)=>{
+    if(!a.vencimentoDi && !b.vencimentoDi) return 0;
+    if(!a.vencimentoDi) return 1;
+    if(!b.vencimentoDi) return -1;
+    return a.vencimentoDi < b.vencimentoDi ? -1 : (a.vencimentoDi > b.vencimentoDi ? 1 : 0);
+  });
+  return linhas;
+}
+
 function demurrageDisplay(proc){
   if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
   const dias = demurrageDias(proc);

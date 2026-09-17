@@ -875,7 +875,35 @@ let _parcelas = []; // [{label, valor_usd, data_vencimento, cambio_fechado, valo
 // inconsistentes (ex: "Pré embarque" vs "Pre-embarque" vs "Embarque").
 const PARCELA_ETAPAS = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
 
-function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'' }; }
+function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:false, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
+
+// Prazo de comprovação de DI/DUIMP ao banco em pagamentos antecipados de
+// importação -- pedido do Ayslan (17/09/2026, resposta "Calcular automático
+// (180 dias)"). dataBase é a data do câmbio fechado (data_vencimento da
+// parcela, que já é preenchida com a data real do contrato via o fluxo de
+// confirmação de comprovante). Retorna string ISO (yyyy-mm-dd) ou '' se
+// sem data base.
+function calcularVencimentoDI(dataBase){
+  if(!dataBase) return '';
+  const d = parseDataLocal(dataBase);
+  if(!d || isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + 180);
+  return d.toISOString().slice(0,10);
+}
+
+// Liga/desliga a exigência de DI/DUIMP numa parcela. Ao ligar, calcula
+// automaticamente o prazo (180 dias a partir do câmbio fechado) SE ainda
+// não tiver um preenchido -- nunca sobrescreve data já digitada à mão,
+// mesmo padrão já usado nos campos auto-preenchidos pela confirmação de
+// comprovante de câmbio (ver confirmarCambioParcela/aplicarCambioNaParcelaPendente).
+function togglePagtoAntecipado(i, ligar){
+  _parcelas[i].pagto_antecipado = ligar;
+  if(ligar && !_parcelas[i].venc_di && _parcelas[i].data_vencimento){
+    _parcelas[i].venc_di = calcularVencimentoDI(_parcelas[i].data_vencimento);
+  }
+  sincronizarParcelasLegado();
+  renderParcelas();
+}
 
 function renderParcelas(){
   const wrap = document.getElementById('parcelas-list');
@@ -912,6 +940,25 @@ function renderParcelas(){
           oninput="_parcelas[${i}].custo_operacao=this.value;sincronizarParcelasLegado()">
         <div></div>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1.4fr 32px;gap:6px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
+        <input class="form-input" placeholder="Código BACEN (nº contrato de câmbio)" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
+          oninput="_parcelas[${i}].codigo_bacen=this.value;sincronizarParcelasLegado()">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text);">
+          <input type="checkbox" ${pc.pagto_antecipado?'checked':''} onchange="togglePagtoAntecipado(${i}, this.checked)">
+          Pagamento Antecipado (exige DI/DUIMP ao banco)
+        </label>
+        <div></div>
+      </div>
+      ${pc.pagto_antecipado ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:6px;align-items:center;margin-top:6px;">
+        <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.venc_di||'')}" title="Prazo p/ comprovar DI/DUIMP ao banco (padrão: 180 dias do câmbio fechado)"
+          oninput="_parcelas[${i}].venc_di=this.value;sincronizarParcelasLegado()">
+        <input class="form-input" placeholder="Nº DUIMP" value="${esc(pc.duimp_numero||'')}"
+          oninput="_parcelas[${i}].duimp_numero=this.value;sincronizarParcelasLegado()">
+        <input class="form-input" placeholder="Protocolo / Chave de Acesso" value="${esc(pc.duimp_protocolo||'')}"
+          oninput="_parcelas[${i}].duimp_protocolo=this.value;sincronizarParcelasLegado()">
+        <button type="button" title="Recalcular prazo (180 dias do câmbio fechado)" onclick="_parcelas[${i}].venc_di=calcularVencimentoDI(_parcelas[${i}].data_vencimento);sincronizarParcelasLegado();renderParcelas()"
+          style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:30px;">↻</button>
+      </div>` : ''}
     </div>
   `).join('');
   sincronizarParcelasLegado();
