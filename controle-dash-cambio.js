@@ -425,6 +425,12 @@ function toggleDashCambio(){
 // resetado toda vez que a tela é reaberta (não precisa persistir entre
 // sessões).
 let _cambioFiltro = null; // {tipo:'prazo', dias:7|14|30|'vencidas', label} ou {tipo:'fornecedor', nome}
+// Filtro de Cliente + busca livre por Processo na tabela "parcelas em
+// aberto" (pedido Ayslan 17/09/2026) -- combinam com o _cambioFiltro
+// acima (KPI/fornecedor), não substituem: dá pra estar vendo "Prontos p/
+// Fechamento" E filtrar só um cliente/processo específico dentro disso.
+let _cambioFiltroCliente = '';
+let _cambioFiltroTexto = '';
 
 // Redesign completo da tela (pedido do Ayslan, 09/09/2026): a versão
 // anterior empilhava 8 blocos verticais (KPIs, alerta, mark-to-market,
@@ -442,6 +448,10 @@ let _cambioFiltro = null; // {tipo:'prazo', dias:7|14|30|'vencidas', label} ou {
 function renderDashCambio(){
   const el = document.getElementById('dash-cambio-content');
   if(!el) return;
+  const _cambioBuscaAtiva = document.activeElement;
+  const _cambioRefoco = (el.contains(_cambioBuscaAtiva) && _cambioBuscaAtiva && _cambioBuscaAtiva.id === 'cambio-busca-processo')
+    ? { cursor: (typeof _cambioBuscaAtiva.selectionStart === 'number') ? _cambioBuscaAtiva.selectionStart : null }
+    : null;
 
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const fmtBRL = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -777,6 +787,14 @@ function renderDashCambio(){
   // vencimento original + o câmbio fechado como marca de "pago"), a
   // ordenação por vencimento desc é a melhor aproximação de "mais recente
   // primeiro" pros câmbios já pagos.
+  const _clientesCambio = [...new Set(abertos.map(x=>x.cliente).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  if(_cambioFiltroCliente){
+    linhasFiltradas = linhasFiltradas.filter(x => x.cliente === _cambioFiltroCliente);
+  }
+  if(_cambioFiltroTexto){
+    const termo = _cambioFiltroTexto.trim().toLowerCase();
+    linhasFiltradas = linhasFiltradas.filter(x => (x.referencia||'').toLowerCase().includes(termo));
+  }
   linhasFiltradas = [...linhasFiltradas].sort((a,b)=> mostrandoPagos
     ? (b.vencimento||'0000').localeCompare(a.vencimento||'0000')
     : (a.vencimento||'9999').localeCompare(b.vencimento||'9999'));
@@ -798,7 +816,17 @@ function renderDashCambio(){
   // rolar até o fim pra achar o botão de lote.
   const tabelaHtml = `<div id="cambio-tabela-detalhada" style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;scroll-margin-top:14px;">
     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--bg);">
-      <div style="font-size:13px;font-weight:700;">${tituloFiltro} — ${linhasFiltradas.length} parcela(s)</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;font-weight:700;">${tituloFiltro} — ${linhasFiltradas.length} parcela(s)</div>
+        <select onchange="_cambioFiltroCliente=this.value;renderDashCambio();" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;max-width:180px;">
+          <option value="">Todos os clientes</option>
+          ${_clientesCambio.map(cli=>`<option value="${esc(cli)}" ${_cambioFiltroCliente===cli?'selected':''}>${esc(cli)}</option>`).join('')}
+        </select>
+        <input id="cambio-busca-processo" type="text" value="${esc(_cambioFiltroTexto)}" placeholder="Buscar processo…"
+          oninput="_cambioFiltroTexto=this.value;renderDashCambio();"
+          style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;width:140px;">
+        ${(_cambioFiltroCliente || _cambioFiltroTexto) ? `<a href="#" onclick="_cambioFiltroCliente='';_cambioFiltroTexto='';renderDashCambio();return false;" style="font-size:11px;color:var(--ac);">limpar</a>` : ''}
+      </div>
       ${mostrandoPagos ? '' : `<div style="display:flex;align-items:center;gap:10px;">
         <span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote.'}</span>
         <button id="lote-cambio-btn" type="button" onclick="abrirPainelFechamentoLoteCambio()" ${_cambioLoteSelecao.size ? '' : 'disabled'}
@@ -852,6 +880,16 @@ function renderDashCambio(){
     + `<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">${fornecedorHtml}${simulacaoHtml}</div>`
     + bancoCustoHtml + consolidacaoHtml + tabelaHtml
     + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
+
+  if(_cambioRefoco){
+    const novoEl = document.getElementById('cambio-busca-processo');
+    if(novoEl){
+      novoEl.focus();
+      if(_cambioRefoco.cursor != null && novoEl.setSelectionRange){
+        try{ novoEl.setSelectionRange(_cambioRefoco.cursor, _cambioRefoco.cursor); }catch(e){ /* ok ignorar */ }
+      }
+    }
+  }
 
   carregarGraficoPtaxCambio(pagos);
 }
