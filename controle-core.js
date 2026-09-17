@@ -2691,6 +2691,18 @@ function verificarAlertas(proc, criarNotif){
     }
   }
 
+  // Enviar documentos (HBL/CI) pra despachante (Amanda/Find Comex)
+  // solicitar a LI (pedido Ayslan 17/09/2026): "se tivermos Aprovação
+  // HBL: Sim, precisamos enviar a Amanda/Find Comex (despachante), e ela
+  // que solicita a LI". Ou seja, HBL aprovado é o gatilho pra esse passo
+  // — não precisa esperar o embarque (diferente do alerta acima, que só
+  // olha pendência PÓS-embarque). Some quando os docs já foram marcados
+  // como enviados (docs_enviados_despachante) ou quando a LI já foi
+  // solicitada (não faz mais sentido reenviar).
+  if(proc.aprovacao_hbl === 'Sim' && proc.solicitacao_li !== 'Sim' && !proc.docs_enviados_despachante && proc.fase !== 'FINALIZADO'){
+    alertas.push({tipo:'alerta', titulo:`Enviar docs à despachante: ${proc.referencia}`, mensagem:`HBL aprovado — enviar HBL/CI pra Amanda/Find Comex solicitar a LI.`});
+  }
+
   if(criarNotif){
     if(alertas.length) alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
     // Limpa notificações antigas do processo cuja condição não é mais
@@ -3277,7 +3289,18 @@ const COLUNAS_TABELA = [
   { campo:'fornecedor', label:'Fornecedor',     agrupavel:true,  valor:p => p.fornecedor || '—' },
   { campo:'cliente',    label:'Cliente',        agrupavel:true,  valor:p => (clientesDoProcesso(p)[0] || p.cliente || '—') },
   { campo:'fase',       label:'Fase',           agrupavel:true,  valor:p => faseParaExibir(p).label },
+  // multiplo:true -- um processo pode ter 0, 1 ou várias etiquetas ao
+  // mesmo tempo (ver etiquetasDoProcesso() logo abaixo). O motor de
+  // filtro (listaBaseParaColuna/aplicarFiltrosColuna/dropdown) usa
+  // valoresDaColuna() pra tratar `valor`(1 string) e `valores`(array)
+  // de forma uniforme. Não é agrupável -- agrupar por algo multivalorado
+  // duplicaria processo em vários grupos, mais confuso que útil aqui.
+  { campo:'etiquetas',  label:'Etiquetas',      agrupavel:false, multiplo:true, valores:p => etiquetasDoProcesso(p).map(e=>e.label) },
   { campo:'eta',        label:'ETA / Chegada',  agrupavel:false, valor:p => (p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : (p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—')) },
+  // Semana de Booking (pedido Ayslan 17/09/2026, espelhando a aba
+  // "PROCESSOS DA SEMANA" da planilha da Paula) -- agrupável, pra dar a
+  // visão "Programação Semanal de Embarques" via "Agrupar por coluna".
+  { campo:'semana_booking', label:'Semana Booking', agrupavel:true, valor:p => (p.semana_booking ? `Semana ${String(p.semana_booking).padStart(2,'0')}` : 'Sem semana definida') },
   { campo:'demurrage',  label:'Demurrage',      agrupavel:true,  valor:p => {
       if(p.fase === 'FINALIZADO' || p.data_devolucao_vazio) return 'Devolvido';
       const dias = demurrageDias(p);
@@ -3288,6 +3311,69 @@ const COLUNAS_TABELA = [
     } },
   { campo:'financeiro', label:'Financeiro',     agrupavel:true,  valor:p => (p.pi_pagamento ? (p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento) : '—') },
 ];
+
+// Um único ponto de leitura pros dois formatos de coluna: `valor(p)`
+// (a maioria, retorna 1 string) e `valores(p)` (colunas multiplo:true,
+// retorna array de strings, ex: Etiquetas). Sempre retorna array.
+function valoresDaColuna(def, p){
+  if(def.multiplo) return def.valores(p) || [];
+  return [def.valor(p)];
+}
+
+// ════════════════════════════════════════════════════════════════
+// ETIQUETAS — substituem as cores da planilha da Paula (pedido Ayslan
+// 17/09/2026). A maioria é AUTOMÁTICA (calculada aqui, sem precisar que
+// ninguém marque nada -- ao contrário da planilha, que dependia de
+// lembrar de pintar a célula certa). Só "outro agente de carga" é
+// manual (não tem de onde derivar sozinha), guardada em
+// etiquetas_manuais_json (ver toggleEtiquetaManual() em controle-modal.js).
+// ════════════════════════════════════════════════════════════════
+const ETIQUETAS_MANUAIS_DEFS = {
+  OUTRO_AGENTE_CARGA: { label:'Outro agente de carga solicitado', cor:'#b45309', bg:'rgba(217,119,6,.13)', borda:'rgba(217,119,6,.4)' },
+};
+
+function etiquetasDoProcesso(p){
+  const out = [];
+  if(p.cancelado || p.fase === 'FINALIZADO') return out; // processo encerrado não precisa mais de etiqueta operacional
+
+  // "Enviar docs à despachante" (roxo na planilha da Paula: "documentos
+  // embarcados, mas ainda não enviados por Manu pra Amanda"). Aqui o
+  // gatilho é HBL aprovado (ver verificarAlertas acima, mesma condição).
+  if(p.aprovacao_hbl === 'Sim' && p.solicitacao_li !== 'Sim' && !p.docs_enviados_despachante){
+    out.push({ id:'ENVIAR_DESPACHANTE', label:'Enviar docs à despachante', icone:'📨', cor:'#7c3aed', bg:'rgba(124,58,237,.13)', borda:'rgba(124,58,237,.4)' });
+  }
+
+  // "Câmbio não fechado" (amarelo: embarque previsto no mês, câmbio
+  // ainda não fechado). Usa listarPagamentosPI() (já existente) pra
+  // achar pagamentos deste processo sem câmbio fechado.
+  if(p.etd || p.eta){
+    const dataRef = parseDataLocal(p.etd || p.eta);
+    const hoje = new Date();
+    if(dataRef.getMonth() === hoje.getMonth() && dataRef.getFullYear() === hoje.getFullYear()){
+      const pagamentos = listarPagamentosPI([p]).filter(pg => pg.processoId === p.id);
+      if(pagamentos.some(pg => !pg.pago)){
+        out.push({ id:'CAMBIO_ABERTO', label:'Câmbio não fechado (embarque no mês)', icone:'💱', cor:'#a16207', bg:'rgba(202,138,4,.13)', borda:'rgba(202,138,4,.4)' });
+      }
+    }
+  }
+
+  // "Pronto sem encaixe em semana de booking" (amarelo forte): mercadoria
+  // já está pronta na fábrica mas ainda não tem semana de booking
+  // atribuída. Só faz sentido antes do embarque de fato.
+  if(p.data_prontidao && !p.semana_booking && p.fase !== 'EMBARCADO' && !p.data_embarque){
+    out.push({ id:'PRONTO_SEM_BOOKING', label:'Pronto sem semana de booking', icone:'🟧', cor:'#c2410c', bg:'rgba(234,88,12,.13)', borda:'rgba(234,88,12,.4)' });
+  }
+
+  // Manuais (etiquetas_manuais_json)
+  let manuais = [];
+  try{ manuais = JSON.parse(p.etiquetas_manuais_json || '[]') || []; }catch(e){ manuais = []; }
+  manuais.forEach(id=>{
+    const def = ETIQUETAS_MANUAIS_DEFS[id];
+    if(def) out.push({ id, label:def.label, icone:'🏷️', cor:def.cor, bg:def.bg, borda:def.borda });
+  });
+
+  return out;
+}
 
 let _filtrosColuna = {};        // campo -> Set(valores selecionados); ausente/vazio = "todos"
 let _agruparPor = null;         // campo agrupável (de COLUNAS_TABELA) ou null
@@ -3302,7 +3388,7 @@ function listaBaseParaColuna(campoExcluir){
   if(!campos.length) return lista;
   return lista.filter(p => campos.every(campo => {
     const d = COLUNAS_TABELA.find(c=>c.campo===campo);
-    return d && _filtrosColuna[campo].has(d.valor(p));
+    return d && valoresDaColuna(d,p).some(v => _filtrosColuna[campo].has(v));
   }));
 }
 
@@ -3311,7 +3397,7 @@ function aplicarFiltrosColuna(lista){
   if(!campos.length) return lista;
   return lista.filter(p => campos.every(campo => {
     const def = COLUNAS_TABELA.find(c=>c.campo===campo);
-    return def && _filtrosColuna[campo].has(def.valor(p));
+    return def && valoresDaColuna(def,p).some(v => _filtrosColuna[campo].has(v));
   }));
 }
 
@@ -3338,7 +3424,7 @@ function renderFiltroColunaDropdown(anchorEl){
 
   const base = listaBaseParaColuna(_filtroColunaAberto);
   const contagem = new Map();
-  base.forEach(p => { const v = def.valor(p); contagem.set(v, (contagem.get(v)||0)+1); });
+  base.forEach(p => { valoresDaColuna(def,p).forEach(v => contagem.set(v, (contagem.get(v)||0)+1)); });
   const valores = [...contagem.keys()].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const selecionados = _filtrosColuna[_filtroColunaAberto];
   const todosSelecionados = !selecionados || !selecionados.size;
@@ -3392,7 +3478,7 @@ function filtroColunaToggleValor(campo, checkbox){
     // virar selecionados explicitamente, senão a mudança não teria efeito
     const def = COLUNAS_TABELA.find(c=>c.campo===campo);
     const base = listaBaseParaColuna(campo);
-    _filtrosColuna[campo] = new Set(base.map(p=>def.valor(p)));
+    _filtrosColuna[campo] = new Set(base.flatMap(p=>valoresDaColuna(def,p)));
   }
   if(checkbox.checked) _filtrosColuna[campo].add(valor);
   else _filtrosColuna[campo].delete(valor);
@@ -3465,9 +3551,13 @@ function linhaProcessoHtml(p){
             <span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>
           </span>
         </div>
+        <div class="td" data-label="Etiquetas">${etiquetasDoProcesso(p).map(e=>
+          `<span title="${esc(e.label)}" style="font-size:9px;font-weight:700;background:${e.bg};border:1px solid ${e.borda};border-radius:4px;padding:1px 6px;margin:1px 3px 1px 0;color:${e.cor};display:inline-block;white-space:nowrap;">${e.icone} ${esc(e.label)}</span>`
+        ).join('') || '<span style="opacity:.4;">—</span>'}</div>
         <div class="td td-date" data-label="ETA / Chegada" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditData('${p.id}','eta',this)" title="Clique para editar ETA">${dataDisplay}</span>
         </div>
+        <div class="td" data-label="Semana Booking">${p.semana_booking || '—'}</div>
         <div class="td" data-label="Demurrage">${demurrageDisplay(p)}</div>
         <div class="td" data-label="Financeiro">${finBadge}</div>
         <div class="td" data-label="Ações">
@@ -3495,6 +3585,12 @@ function renderTabelaAgrupada(lista){
   if(_agruparPor === 'fase'){
     // ordem das fases (FASES, mesma ordem da timeline), não alfabética
     chaves.sort((a,b)=> FASES.findIndex(f=>f.label===a) - FASES.findIndex(f=>f.label===b));
+  } else if(_agruparPor === 'semana_booking'){
+    // ordem numérica da semana ("Semana 07" < "Semana 41"), com "Sem
+    // semana definida" sempre por último (senão entraria no meio, já
+    // que "S" de "Sem" ordena antes de vários números por acaso).
+    const numDe = s => { const m = /Semana (\d+)/.exec(s); return m ? parseInt(m[1],10) : Infinity; };
+    chaves.sort((a,b)=> numDe(a) - numDe(b));
   } else {
     chaves.sort((a,b)=>a.localeCompare(b,'pt-BR'));
   }

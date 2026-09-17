@@ -509,6 +509,15 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               onchange="moverDataFuturaParaPrevisao('f_data_embarque','f_etd','Previsão de Embarque (ETD)');atualizarFaseEmTempoReal();atualizarDataPagamentoPrazo()"></div>
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
             <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher após emissão do BL"></div>
+          <div class="form-group"><label class="form-label">Semana de Booking</label>
+            <input class="form-input" type="number" id="f_semana_booking" value="${p.semana_booking||''}" placeholder="Ex: 40" min="1" max="53"
+              title="Semana do booking (calendário) — permite agrupar/filtrar a tabela de processos por semana de embarque, igual à antiga planilha de Programação Semanal."></div>
+          <div class="form-group"><label class="form-label">Cliente pediu outro agente de carga?</label>
+            <label style="display:flex;align-items:center;gap:8px;height:38px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="f_tag_outro_agente" ${etiquetasManuaisTem(p,'OUTRO_AGENTE_CARGA')?'checked':''} onchange="toggleEtiquetaManual('OUTRO_AGENTE_CARGA', this.checked)">
+              Sim, cliente solicitou outro agente
+            </label>
+            <input type="hidden" id="f_etiquetas_manuais_json" value="${esc(p.etiquetas_manuais_json || '[]')}"></div>
         </div>
       </div>
       <div class="form-section">
@@ -520,6 +529,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               <option value="Sim" ${p.aprovacao_hbl==='Sim'?'selected':''}>Sim</option>
               <option value="Não" ${p.aprovacao_hbl==='Não'?'selected':''}>Não</option>
             </select></div>
+          <div class="form-group"><label class="form-label">Docs enviados à despachante (Amanda)</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_docs_enviados_despachante" value="${esc(p.docs_enviados_despachante)}"
+              title="Assim que Aprovação HBL = Sim, envie HBL/CI pra Amanda/Find Comex solicitar a LI — marque a data aqui pra não esquecer. Some o alerta/etiqueta automaticamente quando preenchido."></div>
           <div class="form-group"><label class="form-label">Solicitação LI</label>
             <select class="form-input" id="f_solicitacao_li" onchange="atualizarFaseEmTempoReal()">
               <option value="" ${!p.solicitacao_li?'selected':''}>Selecione...</option>
@@ -1295,6 +1307,23 @@ async function salvarCustosReaisTab(){
 // Marcador usado no campo "campo" de uma entrada de log pra indicar que ela
 // nÃÂÃÂ£o ÃÂÃÂ© uma alteraÃÂÃÂ§ÃÂÃÂ£o normal de campo, e sim o registro de "a IA leu este
 // documento e preencheu estes campos" (ver extrairComIA() e o render abaixo).
+// Etiquetas manuais (pedido Ayslan 17/09/2026, substituindo as cores da
+// planilha da Paula) — hoje só existe uma: "cliente pediu outro agente de
+// carga" (a "amarelo grifado" da planilha antiga). Guardadas como array de
+// ids em etiquetas_manuais_json (ex: ["OUTRO_AGENTE_CARGA"]) num input
+// hidden, no mesmo padrão de containers_json/produtos_json.
+function etiquetasManuaisTem(p, id){
+  try{ return (JSON.parse(p.etiquetas_manuais_json||'[]')||[]).includes(id); }catch(e){ return false; }
+}
+function toggleEtiquetaManual(id, marcado){
+  const el = document.getElementById('f_etiquetas_manuais_json');
+  if(!el) return;
+  let lista = [];
+  try{ lista = JSON.parse(el.value||'[]')||[]; }catch(e){ lista = []; }
+  if(marcado){ if(!lista.includes(id)) lista.push(id); }
+  else { lista = lista.filter(x=>x!==id); }
+  el.value = JSON.stringify(lista);
+}
 const LOG_CAMPO_LEITURA_IA = '📄_leitura_ia';
 const LABELS_CAMPOS_IA = {
   referencia:'Referência', finalidade:'Finalidade', fornecedor:'Fornecedor/Exportador', brand:'Marca',
@@ -1307,7 +1336,8 @@ const LABELS_CAMPOS_IA = {
   valor_frete:'Valor do frete', moeda_frete:'Moeda do frete', porto_origem:'Porto de origem', porto_destino:'Porto de destino',
   etd:'ETD', eta:'ETA', free_time:'Free time', data_embarque:'Data de embarque', hbl:'HBL', mbl:'MBL',
   consignatario:'Consignatário', notify:'Notify', container:'Container', tipo_container:'Tipo de container',
-  aprovacao_hbl:'Aprovação HBL', solicitacao_li:'Solicitação LI',
+  aprovacao_hbl:'Aprovação HBL', solicitacao_li:'Solicitação LI', docs_enviados_despachante:'Docs enviados à despachante',
+  semana_booking:'Semana de Booking', etiquetas_manuais_json:'Etiquetas manuais',
   peso_bruto:'Peso bruto', volumes:'Volumes', data_chegada:'Data de chegada', data_presenca:'Data de presença de carga',
   demurrage_vencimento:'Vencimento Demurrage', armazenagem_vencimento:'Vencimento Armazenagem',
   data_registro_di:'Data registro DI', numero_di:'Nº DI', canal:'Canal',
@@ -1330,7 +1360,7 @@ const LABELS_CAMPOS_IA = {
 // Campos cujo valor bruto e um blob JSON (lista de containers/produtos/
 // vendas/parcelas) — no Historico nao faz sentido despejar o JSON inteiro
 // na tela, so avisar que aquele bloco foi atualizado.
-const CAMPOS_JSON_HISTORICO = new Set(['containers_json','produtos_json','vendas_json','pi_parcelas_json']);
+const CAMPOS_JSON_HISTORICO = new Set(['containers_json','produtos_json','vendas_json','pi_parcelas_json','etiquetas_manuais_json']);
 async function carregarHistorico(processoId){
   const lista = document.getElementById('historico-lista');
   if(!lista) return;

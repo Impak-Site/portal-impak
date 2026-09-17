@@ -1116,6 +1116,87 @@ teste('verificarAlertas: processo FINALIZADO não gera mais o alerta de HBL/LI m
   iguais(temPendencia, false, 'processo finalizado não deve mais alertar HBL/LI pendente');
 });
 
+// ── Etiquetas + "enviar docs à despachante" (pedido Ayslan 17/09/2026,
+// substituindo as cores manuais da planilha da Paula) ──────────────────
+
+teste('verificarAlertas: HBL aprovado sem docs enviados à despachante gera alerta MESMO antes do embarque', () => {
+  const p = { id:'x3', referencia:'UD26-997', fase:'AGUARDANDO_EMBARQUE', data_embarque:null, aprovacao_hbl:'Sim', solicitacao_li:null, docs_enviados_despachante:null };
+  const alertas = sandbox.verificarAlertas(p, false);
+  const tem = alertas.some(a => a.titulo.startsWith('Enviar docs à despachante'));
+  iguais(tem, true, 'HBL=Sim sem docs enviados deveria alertar pra mandar pra Amanda, mesmo sem embarque ainda');
+});
+
+teste('verificarAlertas: docs já enviados à despachante -> não repete o alerta', () => {
+  const p = { id:'x4', referencia:'UD26-996', fase:'AGUARDANDO_EMBARQUE', data_embarque:null, aprovacao_hbl:'Sim', solicitacao_li:null, docs_enviados_despachante:'2026-09-10' };
+  const alertas = sandbox.verificarAlertas(p, false);
+  const tem = alertas.some(a => a.titulo.startsWith('Enviar docs à despachante'));
+  iguais(tem, false, 'já marcou que enviou os docs -- não deveria mais alertar');
+});
+
+teste('verificarAlertas: LI já solicitada -> não precisa mais alertar pra enviar docs', () => {
+  const p = { id:'x5', referencia:'UD26-995', fase:'AGUARDANDO_EMBARQUE', data_embarque:null, aprovacao_hbl:'Sim', solicitacao_li:'Sim', docs_enviados_despachante:null };
+  const alertas = sandbox.verificarAlertas(p, false);
+  const tem = alertas.some(a => a.titulo.startsWith('Enviar docs à despachante'));
+  iguais(tem, false, 'LI já solicitada -- o passo intermediário já foi superado');
+});
+
+teste('etiquetasDoProcesso: HBL aprovado sem docs enviados -> badge "Enviar docs à despachante"', () => {
+  const p = { id:'x6', referencia:'UD26-994', fase:'AGUARDANDO_EMBARQUE', aprovacao_hbl:'Sim', solicitacao_li:null, docs_enviados_despachante:null };
+  const etiquetas = sandbox.etiquetasDoProcesso(p);
+  iguais(etiquetas.some(e => e.id === 'ENVIAR_DESPACHANTE'), true);
+});
+
+teste('etiquetasDoProcesso: pronto na fábrica sem semana de booking -> badge "Pronto sem semana de booking"', () => {
+  const p = { id:'x7', referencia:'UD26-993', fase:'FABRICA', data_prontidao:'2026-09-10', semana_booking:null, data_embarque:null };
+  const etiquetas = sandbox.etiquetasDoProcesso(p);
+  iguais(etiquetas.some(e => e.id === 'PRONTO_SEM_BOOKING'), true);
+});
+
+teste('etiquetasDoProcesso: pronto MAS já tem semana de booking -> sem essa badge', () => {
+  const p = { id:'x8', referencia:'UD26-992', fase:'FABRICA', data_prontidao:'2026-09-10', semana_booking:41, data_embarque:null };
+  const etiquetas = sandbox.etiquetasDoProcesso(p);
+  iguais(etiquetas.some(e => e.id === 'PRONTO_SEM_BOOKING'), false);
+});
+
+teste('etiquetasDoProcesso: etiqueta manual "outro agente de carga" aparece quando marcada', () => {
+  const p = { id:'x9', referencia:'UD26-991', fase:'FABRICA', etiquetas_manuais_json: JSON.stringify(['OUTRO_AGENTE_CARGA']) };
+  const etiquetas = sandbox.etiquetasDoProcesso(p);
+  iguais(etiquetas.some(e => e.id === 'OUTRO_AGENTE_CARGA'), true);
+});
+
+teste('etiquetasDoProcesso: processo FINALIZADO ou cancelado nunca tem etiquetas operacionais', () => {
+  const p1 = { id:'x10', referencia:'UD26-990', fase:'FINALIZADO', aprovacao_hbl:'Sim', solicitacao_li:null, docs_enviados_despachante:null };
+  const p2 = { id:'x11', referencia:'UD26-989', fase:'FABRICA', cancelado:true, data_prontidao:'2026-09-10', semana_booking:null };
+  iguais(sandbox.etiquetasDoProcesso(p1).length, 0, 'finalizado não precisa mais de etiqueta operacional');
+  iguais(sandbox.etiquetasDoProcesso(p2).length, 0, 'cancelado não precisa mais de etiqueta operacional');
+});
+
+teste('COLUNAS_TABELA / valoresDaColuna: coluna Etiquetas (multiplo) devolve array com todas as etiquetas do processo', () => {
+  // COLUNAS_TABELA é `const` no top-level do módulo -- não vira propriedade
+  // de sandbox (mesmo motivo de _processos/_filProcessoAvancado, ver
+  // comentário acima) -- roda dentro da própria vm.context em vez de
+  // acessar de fora.
+  vm.runInContext(`_pTesteEtiquetas = { id:'x12', referencia:'UD26-988', fase:'FABRICA', aprovacao_hbl:'Sim', solicitacao_li:null, docs_enviados_despachante:null,
+    data_prontidao:'2026-09-10', semana_booking:null, data_embarque:null,
+    etiquetas_manuais_json: JSON.stringify(['OUTRO_AGENTE_CARGA']) };`, sandbox);
+  const defExiste = vm.runInContext(`!!COLUNAS_TABELA.find(c => c.campo === 'etiquetas')`, sandbox);
+  iguais(defExiste, true, 'coluna etiquetas deveria existir em COLUNAS_TABELA');
+  const ehMultiplo = vm.runInContext(`!!COLUNAS_TABELA.find(c => c.campo === 'etiquetas').multiplo`, sandbox);
+  iguais(ehMultiplo, true, 'coluna etiquetas deveria ser multiplo:true');
+  const nValores = vm.runInContext(`valoresDaColuna(COLUNAS_TABELA.find(c => c.campo === 'etiquetas'), _pTesteEtiquetas).length`, sandbox);
+  iguais(nValores, 3, 'deveria ter 3 etiquetas simultâneas: despachante + sem booking + outro agente');
+});
+
+teste('COLUNAS_TABELA: coluna Semana Booking agrupa e ordena numericamente (não alfabeticamente)', () => {
+  const defExiste = vm.runInContext(`!!COLUNAS_TABELA.find(c => c.campo === 'semana_booking')`, sandbox);
+  iguais(defExiste, true, 'coluna semana_booking deveria existir em COLUNAS_TABELA');
+  const agrupavel = vm.runInContext(`COLUNAS_TABELA.find(c => c.campo === 'semana_booking').agrupavel`, sandbox);
+  iguais(agrupavel, true, 'semana_booking deveria ser agrupável (view "Programação Semanal")');
+  iguais(vm.runInContext(`COLUNAS_TABELA.find(c => c.campo === 'semana_booking').valor({semana_booking:7})`, sandbox), 'Semana 07');
+  iguais(vm.runInContext(`COLUNAS_TABELA.find(c => c.campo === 'semana_booking').valor({semana_booking:41})`, sandbox), 'Semana 41');
+  iguais(vm.runInContext(`COLUNAS_TABELA.find(c => c.campo === 'semana_booking').valor({})`, sandbox), 'Sem semana definida');
+});
+
 // _processos e _filProcessoAvancado são declarados com "let" no topo de
 // controle-core.js — bindings léxicas de módulo, não propriedades do objeto
 // global do sandbox (diferente das "function nome(){}", que viram
