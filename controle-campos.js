@@ -976,7 +976,7 @@ function renderParcelas(){
   if(!_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
   const secao = (conteudo, primeira) => `<div style="display:grid;gap:14px;align-items:end;${primeira?'':'margin-top:16px;padding-top:16px;border-top:1px solid var(--border);'}grid-template-columns:${conteudo.cols};">${conteudo.html}</div>`;
   wrap.innerHTML = _parcelas.map((pc,i)=>`
-    <div style="border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px;background:#fff;">
+    <div style="border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:12px;background:#fff;">
       ${secao({cols:'1.3fr 1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Etapa')}<select class="form-input" onchange="_parcelas[${i}].label=this.value;sincronizarParcelasLegado();atualizarVencimentoSaldoPorETA()">
           <option value="">Etapa...</option>
@@ -994,13 +994,6 @@ function renderParcelas(){
           ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0 0 9px;">✕</button>`
           : '<div></div>'}
       `}, true)}
-      ${secao({cols:'1fr 1fr 32px', html:`
-        <div>${lblParcela('Valor Recebido do Cliente')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
-          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_recebido_cliente=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
-        <div>${lblParcela('Data Recebimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
-          oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()"></div>
-        <div></div>
-      `})}
       ${secao({cols:'1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Banco/Corretora')}<input class="form-input" list="lista-bancos-cambio" placeholder="Ex: Itaú, Santander..." value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
           oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()"></div>
@@ -1029,6 +1022,15 @@ function renderParcelas(){
         <button type="button" title="Recalcular prazo (180 dias do câmbio fechado)" onclick="_parcelas[${i}].venc_di=calcularVencimentoDI(_parcelas[${i}].data_vencimento);sincronizarParcelasLegado();renderParcelas()"
           style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:36px;">↻</button>
       `}) : ''}
+    </div>
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px;background:var(--bg);">
+      ${secao({cols:'1fr 1fr 32px', html:`
+        <div>${lblParcela('Valor Recebido do Cliente')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_recebido_cliente=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
+        <div>${lblParcela('Data Recebimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
+          oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()"></div>
+        <div></div>
+      `}, true)}
     </div>
   `).join('');
   sincronizarParcelasLegado();
