@@ -1567,6 +1567,59 @@ teste('atualizarVencimentoSaldoPorETA: PARCELADO -- não mexe na Final se o câm
   iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '', 'câmbio já fechado -- pagamento já em andamento, não faz sentido provisionar vencimento');
 });
 
+// ── caso real 26CFXPAK-001 (17/09/2026): a Paula preencheu o câmbio da
+// parcela Inicial, o ETA já estava preenchido, mas a Final continuou sem
+// Data Vencimento -- porque a regra só disparava no onchange de ETA/Forma
+// de Pagamento, não quando o usuário edita Valor USD ou Câmbio Fechado de
+// uma parcela (nem quando o processo é só reaberto já com tudo
+// preenchido). Corrigido chamando atualizarVencimentoSaldoPorETA() também
+// nesses pontos.
+teste('atualizarVencimentoSaldoPorETA: caso real 26CFXPAK-001 -- ainda dispara mesmo sem tocar ETA/Forma de Pagamento', () => {
+  vm.runInContext(`
+    document.getElementById('f_pi_pagamento').value = 'PARCELADO';
+    document.getElementById('f_eta').value = '2026-09-28';
+    _parcelas = [
+      {label:'Inicial', valor_usd:'9969.60', data_vencimento:'2026-07-09', cambio_fechado:'5.1173'},
+      {label:'Final', valor_usd:'23262.40', data_vencimento:'', cambio_fechado:''},
+    ];
+  `, sandbox);
+  // Simula o que renderPagamentoCampos() agora faz sempre que renderiza
+  // Parcelado (abertura do processo/aba, sem precisar editar ETA de novo).
+  sandbox.atualizarVencimentoSaldoPorETA();
+  iguais(vm.runInContext('_parcelas[1].data_vencimento', sandbox), '2026-09-18', 'ETA 28/09 - 10 dias = 18/09 -- deveria preencher mesmo com a Inicial já tendo câmbio fechado');
+});
+
+// ── data_fechamento_cambio: campo novo, separado de data_vencimento.
+// Pedido do Ayslan (17/09/2026): "tem que ter a data do fechamento do
+// câmbio e a data do vencimento" -- antes data_vencimento fazia as duas
+// funções (previsão E, em alguns fluxos, data do comprovante de
+// pagamento), misturando planejamento com execução.
+teste('parcelaVazia: já vem com data_fechamento_cambio (vazio)', () => {
+  const pv = sandbox.parcelaVazia();
+  iguais('data_fechamento_cambio' in pv, true, 'campo novo precisa existir na parcela vazia, senão sincronizarParcelasLegado/renderParcelas quebram');
+  iguais(pv.data_fechamento_cambio, '', 'começa vazio');
+});
+
+teste('confirmarCambioParcela: grava data_fechamento_cambio a partir da data do comprovante, sem sobrescrever data_vencimento', () => {
+  vm.runInContext(`
+    _parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:'', data_fechamento_cambio:'', banco:'', custo_operacao:'', codigo_bacen:''}];
+    _cambioPendente = { taxa_cambio: 5.15, valor_usd_referencia: 9969.60, data_pagamento: '2026-07-09', banco: 'Santander' };
+  `, sandbox);
+  sandbox.confirmarCambioParcela(0);
+  iguais(vm.runInContext('_parcelas[0].data_fechamento_cambio', sandbox), '2026-07-09', 'data do comprovante deveria ir pra data_fechamento_cambio');
+  iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '2026-07-09', 'continua preenchendo data_vencimento também (fill-if-empty, comportamento existente preservado)');
+});
+
+teste('confirmarCambioParcela: não sobrescreve data_fechamento_cambio já preenchida manualmente', () => {
+  vm.runInContext(`
+    _parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'2026-07-01', cambio_fechado:'', data_fechamento_cambio:'2026-06-30', banco:'', custo_operacao:'', codigo_bacen:''}];
+    _cambioPendente = { taxa_cambio: 5.15, valor_usd_referencia: 9969.60, data_pagamento: '2026-07-09', banco: 'Santander' };
+  `, sandbox);
+  sandbox.confirmarCambioParcela(0);
+  iguais(vm.runInContext('_parcelas[0].data_fechamento_cambio', sandbox), '2026-06-30', 'data que o usuário já tinha digitado não pode ser sobrescrita pelo comprovante');
+});
+
+
 
 // ── ORDENAÇÃO POR COLUNA (ETA crescente/decrescente) ────────────
 // Pedido do Ayslan (17/09/2026): "Fazer o filtro ficar por ordem de

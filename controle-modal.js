@@ -1654,7 +1654,7 @@ function renderPagamentoCampos(){
   html+='</div>';
   el.innerHTML=html;
   // #parcelas-list sÃÂÃÂ³ existe no DOM depois do innerHTML acima ÃÂ¢ÃÂÃÂ preencher aqui.
-  if(tipo==='PARCELADO') renderParcelas();
+  if(tipo==='PARCELADO'){ renderParcelas(); atualizarVencimentoSaldoPorETA(); }
 }
 
 // Forma "100% a Prazo": provisiona a Data Pagamento automaticamente como

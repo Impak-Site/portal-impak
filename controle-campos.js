@@ -930,7 +930,7 @@ function calcularCustoOperacaoAuto(i){
   if(v && c) _parcelas[i].custo_operacao = (v*c).toFixed(2);
 }
 
-function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:false, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
+function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', data_fechamento_cambio:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:false, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
 
 // Prazo de comprovação de DI/DUIMP ao banco em pagamentos antecipados de
 // importação -- pedido do Ayslan (17/09/2026, resposta "Calcular automático
@@ -984,12 +984,12 @@ function renderParcelas(){
         </select></div>
         <div>${lblParcela('Valor USD')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
           oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"
-          onchange="calcularParcelaResidualAuto();calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive()"></div></div>
+          onchange="calcularParcelaResidualAuto();calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive();atualizarVencimentoSaldoPorETA()"></div></div>
         <div>${lblParcela('Data Vencimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
           oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Câmbio Fechado')}<input class="form-input" type="number" step="0.0001" placeholder="5,0000" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
           oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()"
-          onchange="calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive()"></div>
+          onchange="if(this.value&&!_parcelas[${i}].data_fechamento_cambio)_parcelas[${i}].data_fechamento_cambio=new Date().toISOString().slice(0,10);calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive();atualizarVencimentoSaldoPorETA()"></div>
         ${_parcelas.length>1
           ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0 0 9px;">✕</button>`
           : '<div></div>'}
@@ -1006,7 +1006,8 @@ function renderParcelas(){
           oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Custo da Operação')}<div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="Valor USD × Câmbio Fechado desta parcela, mais IOF/tarifas se o banco cobrar algo além (calculado automaticamente, mas pode editar)"
           oninput="formatarMoedaInput(this);_parcelas[${i}].custo_operacao=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
-        <div></div>
+        <div>${lblParcela('Data Fechamento Câmbio')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_fechamento_cambio||'')}" title="Data em que o câmbio foi efetivamente travado/pago (diferente da Data Vencimento, que é a previsão)"
+          oninput="_parcelas[${i}].data_fechamento_cambio=this.value;sincronizarParcelasLegado()"></div>
       `})}
       ${secao({cols:'1fr 1.4fr 32px', html:`
         <div>${lblParcela('Código BACEN')}<input class="form-input" placeholder="Nº do contrato de câmbio" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
@@ -1154,6 +1155,9 @@ function confirmarCambioParcela(idx){
   if(!_parcelas[idx].data_vencimento && _cambioPendente.data_pagamento){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
   }
+  if(!_parcelas[idx].data_fechamento_cambio){
+    _parcelas[idx].data_fechamento_cambio = _cambioPendente.data_pagamento || new Date().toISOString().slice(0,10);
+  }
   if(!_parcelas[idx].banco && _cambioPendente.banco){
     _parcelas[idx].banco = normalizarBancoCambio(_cambioPendente.banco);
   }
@@ -1208,6 +1212,9 @@ function aplicarCambioNaParcelaPendente(taxa){
   }
   if(!_parcelas[idx].data_vencimento && _cambioPendente?.data_pagamento){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
+  }
+  if(!_parcelas[idx].data_fechamento_cambio){
+    _parcelas[idx].data_fechamento_cambio = _cambioPendente?.data_pagamento || new Date().toISOString().slice(0,10);
   }
   if(!_parcelas[idx].banco && _cambioPendente?.banco){
     _parcelas[idx].banco = normalizarBancoCambio(_cambioPendente.banco);
