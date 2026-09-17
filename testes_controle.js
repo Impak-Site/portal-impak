@@ -640,12 +640,15 @@ teste('Câmbio fechado MENOR que o previsto -> mensagem de economia', () => {
   const pagamentos = [{ referencia:'UD26-200', processoId:'x1', pago:true, cambioPrevisto:5.50, cambioFechado:5.30, valorUsd:1000 }];
   const html = sandbox.renderControleCambialHtml(pagamentos);
   verdadeiro(html.includes('Você economizou'), 'câmbio fechado mais barato que o previsto deveria ser economia');
-  verdadeiro(!html.includes('Você perdeu'));
+  verdadeiro(!html.includes('Você pagou') || !html.includes('a mais no câmbio'));
 });
-teste('Câmbio fechado MAIOR que o previsto -> mensagem de perda', () => {
+// Texto trocado de "Você perdeu" para "Você pagou X a mais" -- pedido
+// Emanuelly 17/09/2026: "a palavra perdeu é ruim, tem como mudar?".
+teste('Câmbio fechado MAIOR que o previsto -> mensagem "pagou a mais"', () => {
   const pagamentos = [{ referencia:'UD26-201', processoId:'x2', pago:true, cambioPrevisto:5.00, cambioFechado:5.40, valorUsd:1000 }];
   const html = sandbox.renderControleCambialHtml(pagamentos);
-  verdadeiro(html.includes('Você perdeu'), 'câmbio fechado mais caro que o previsto deveria ser perda');
+  verdadeiro(html.includes('Você pagou') && html.includes('a mais no câmbio'), 'câmbio fechado mais caro que o previsto deveria mostrar "Você pagou X a mais no câmbio"');
+  verdadeiro(!html.includes('Você perdeu'), 'não deveria mais usar a palavra "perdeu"');
 });
 teste('Pagamento sem câmbio fechado ainda (só previsto) não entra na comparação', () => {
   const pagamentos = [{ referencia:'UD26-202', processoId:'x3', pago:false, cambioPrevisto:5.00, cambioFechado:null, valorUsd:1000 }];

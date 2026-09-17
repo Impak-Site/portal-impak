@@ -1312,9 +1312,13 @@ function renderControleCambialHtml(pagamentos){
   const diffTotal = linhas.reduce((s,x)=>s+x.diff,0);
   const economizou = diffTotal >= 0;
   const corDiff = economizou ? 'var(--ok)' : 'var(--err)';
+  // "perdeu" soava como fracasso pessoal, nao uma descricao neutra do
+  // resultado -- pedido Emanuelly 17/09/2026: "a palavra perdeu é ruim,
+  // tem como mudar? qual sua sugestao". Troquei por "pagou a mais",
+  // mais factual (mesmo padrao do "economizou" do lado favoravel).
   const fraseDiff = economizou
     ? `✓ Você economizou ${fmtBRL(Math.abs(diffTotal))} no câmbio`
-    : `⚠ Você perdeu ${fmtBRL(Math.abs(diffTotal))} no câmbio`;
+    : `⚠ Você pagou ${fmtBRL(Math.abs(diffTotal))} a mais no câmbio`;
 
   return `
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
