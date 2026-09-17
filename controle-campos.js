@@ -1001,13 +1001,14 @@ function renderParcelas(){
           oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()"></div>
         <div></div>
       `})}
-      ${secao({cols:'1fr 1fr 32px', html:`
+      ${secao({cols:'1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Banco/Corretora')}<input class="form-input" list="lista-bancos-cambio" placeholder="Ex: Itaú, Santander..." value="${esc(pc.banco||'')}" title="Onde este câmbio foi fechado"
           oninput="_parcelas[${i}].banco=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Custo da Operação')}<div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.custo_operacao!=null&&pc.custo_operacao!==''?exibirMoeda(pc.custo_operacao):''}" title="Valor USD × Câmbio Fechado desta parcela, mais IOF/tarifas se o banco cobrar algo além (calculado automaticamente, mas pode editar)"
           oninput="formatarMoedaInput(this);_parcelas[${i}].custo_operacao=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
         <div>${lblParcela('Data Fechamento Câmbio')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_fechamento_cambio||'')}" title="Data em que o câmbio foi efetivamente travado/pago (diferente da Data Vencimento, que é a previsão)"
           oninput="_parcelas[${i}].data_fechamento_cambio=this.value;sincronizarParcelasLegado()"></div>
+        <div></div>
       `})}
       ${secao({cols:'1fr 1.4fr 32px', html:`
         <div>${lblParcela('Código BACEN')}<input class="form-input" placeholder="Nº do contrato de câmbio" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
