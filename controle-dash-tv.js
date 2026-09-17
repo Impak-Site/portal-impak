@@ -698,7 +698,13 @@ function renderDashTV(){
   // (mesmo padrão de emAguasEmColunas/noChaoEmColunas), colunas ETA/Processo/Qtd.
   function linhaProcessoMesChaoTV(x){
     const etaFmt = x.eta ? new Date(x.eta+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
-    const corFundo = x.nfStatus === 'estoque' ? '#dcfce7' : (x.nfStatus === 'saiu' ? '#eef2f7' : 'transparent');
+    // Cinza da linha "saiu" (NF de Saida ja lancada) escurecido de
+    // #eef2f7 para #d7dee7 -- pedido Emanuelly 17/09/2026: "Tom de cinza
+    // esta muito claro, tem como deixar um pouco mais escuro?" (visto de
+    // longe na TV). Escopo so aqui -- o mesmo #eef2f7 tambem aparece no
+    // fundo da pagina e no wrapper do card (mais abaixo neste arquivo),
+    // deixados como estao de proposito.
+    const corFundo = x.nfStatus === 'estoque' ? '#dcfce7' : (x.nfStatus === 'saiu' ? '#d7dee7' : 'transparent');
     const corBorda = x.nfStatus === 'estoque' ? '#16a34a' : (x.nfStatus === 'saiu' ? '#94a3b8' : 'transparent');
     const titulo = x.nfStatus === 'estoque' ? 'NF Entrada + Remessa lançadas — ainda em estoque'
       : (x.nfStatus === 'saiu' ? 'NF de Saída (venda real) lançada — já saiu do estoque' : '');
