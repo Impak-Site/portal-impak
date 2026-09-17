@@ -1551,6 +1551,54 @@ teste('aplicarOrdenacao: sem _ordenacao ativa, devolve a lista na mesma ordem (n
   iguais(out.map(p=>p.id).join(','), 'B,A,C', 'sem ordenação ativa, a ordem original é preservada');
 });
 
+// ── COMPROVANTE DE CÂMBIO: Banco/Código BACEN/Custo da operação ──
+// Pedido do Ayslan (17/09/2026): "eu coloquei pra ler esse pdf, com o
+// contrato de cambio de 2 processos. Porem, ele nao preencheu o banco, o
+// codigo bacen, o custo total da operacao". A extração da IA nunca pediu
+// esses campos e o código que aplica o resultado da confirmação também
+// não os escrevia na parcela — corrigido nos dois lados.
+console.log('\n📋 Comprovante de câmbio — Banco/Código BACEN/Custo da operação');
+
+teste('confirmarCambioParcela: aplica banco/código BACEN/custo da operação na parcela (campos vazios)', () => {
+  vm.runInContext(`_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', codigo_bacen:''}];`, sandbox);
+  vm.runInContext(`_cambioPendente = {taxa_cambio:5.135, valor_pago:32737.06, referencia:'UD26-X', data_pagamento:'2026-09-15', banco:'Itaú', codigo_bacen:'632806455', custo_operacao:120.50};`, sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const pc = vm.runInContext('_parcelas[0]', sandbox);
+  iguais(pc.banco, 'Itaú', 'banco deveria vir do comprovante');
+  iguais(pc.codigo_bacen, '632806455', 'código BACEN deveria vir do comprovante');
+  iguais(pc.custo_operacao, 120.50, 'custo da operação deveria vir do comprovante');
+});
+
+teste('confirmarCambioParcela: NUNCA sobrescreve banco/código BACEN/custo já preenchidos pelo usuário', () => {
+  vm.runInContext(`_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'Santander (digitado à mão)', custo_operacao:99, codigo_bacen:'000111222'}];`, sandbox);
+  vm.runInContext(`_cambioPendente = {taxa_cambio:5.135, valor_pago:32737.06, referencia:'UD26-X', data_pagamento:'2026-09-15', banco:'Itaú', codigo_bacen:'632806455', custo_operacao:120.50};`, sandbox);
+  sandbox.confirmarCambioParcela(0);
+  const pc = vm.runInContext('_parcelas[0]', sandbox);
+  iguais(pc.banco, 'Santander (digitado à mão)', 'banco já preenchido não deveria ser sobrescrito');
+  iguais(pc.codigo_bacen, '000111222', 'código BACEN já preenchido não deveria ser sobrescrito');
+  iguais(pc.custo_operacao, 99, 'custo já preenchido não deveria ser sobrescrito');
+});
+
+teste('aplicarCambioNaParcelaPendente: aplica banco/código BACEN/custo igual confirmarCambioParcela', () => {
+  vm.runInContext(`_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:'', banco:'', custo_operacao:'', codigo_bacen:''}];`, sandbox);
+  vm.runInContext(`_cambioPendente = {taxa_cambio:5.1932, valor_pago:147798.94, referencia:'', data_pagamento:'2026-08-20', banco:'Santander', codigo_bacen:'000624901400', custo_operacao:0};`, sandbox);
+  vm.runInContext(`aplicarCambioNaParcelaPendente(5.1932)`, sandbox);
+  const pc = vm.runInContext('_parcelas[0]', sandbox);
+  iguais(pc.banco, 'Santander', 'banco deveria vir do comprovante');
+  iguais(pc.codigo_bacen, '000624901400', 'código BACEN deveria vir do comprovante');
+});
+
+teste('confirmarCambioComo("unico"): aplica Banco/Custo nos campos do processo (legado, sem Código BACEN)', () => {
+  sandbox.document.getElementById('f_pi_pagamento').value = 'VISTA';
+  sandbox.document.getElementById('f_pi_cambio_fechado').value = '';
+  sandbox.document.getElementById('f_pi_cambio_banco').value = '';
+  sandbox.document.getElementById('f_pi_cambio_custo').value = '';
+  vm.runInContext(`_cambioPendente = {taxa_cambio:5.20, valor_pago:10000, referencia:'UD26-Y', data_pagamento:'2026-09-01', banco:'Itaú', codigo_bacen:'999888777', custo_operacao:55.30};`, sandbox);
+  sandbox.confirmarCambioComo('unico');
+  iguais(sandbox.document.getElementById('f_pi_cambio_banco').value, 'Itaú', 'banco deveria ser preenchido no campo do processo');
+  iguais(sandbox.document.getElementById('f_pi_cambio_custo').value, 55.30, 'custo da operação deveria ser preenchido no campo do processo');
+});
+
 // ── PENDÊNCIAS DE DI (planilha mensal pro banco) ────────────────
 // Pedido do Ayslan (17/09/2026): câmbios "Pagamento Antecipado" fechados
 // no mês entram na planilha "Pendências de DI" enviada ao banco.

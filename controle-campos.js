@@ -1025,9 +1025,13 @@ function abrirModalConfirmarCambio(match, refAtual){
   const valorUsdImplicito = taxa ? (valorPago/taxa) : 0;
   const info = document.getElementById('cambio-modal-info');
   if(info){
+    const custoOp = parseFloat(match.custo_operacao) || 0;
     info.innerHTML = `<b>Referência:</b> ${esc(match.referencia||refAtual||'(não identificada no documento)')}<br>`
       + `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}<br>`
-      + (valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '');
+      + (valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '')
+      + (match.banco ? `<b>Banco:</b> ${esc(match.banco)}<br>` : '')
+      + (match.codigo_bacen ? `<b>Código BACEN:</b> ${esc(match.codigo_bacen)}<br>` : '')
+      + (custoOp ? `<b>Custo da operação:</b> R$ ${custoOp.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>` : '');
   }
   // Se a Forma de Pagamento atual e "Parcelado", mostra um botao por
   // parcela (pelo rotulo da Etapa) em vez das opcoes fixas de
@@ -1076,6 +1080,15 @@ function confirmarCambioParcela(idx){
   if(!_parcelas[idx].data_vencimento && _cambioPendente.data_pagamento){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
   }
+  if(!_parcelas[idx].banco && _cambioPendente.banco){
+    _parcelas[idx].banco = _cambioPendente.banco;
+  }
+  if(!_parcelas[idx].codigo_bacen && _cambioPendente.codigo_bacen){
+    _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
+  }
+  if(!_parcelas[idx].custo_operacao && _cambioPendente.custo_operacao){
+    _parcelas[idx].custo_operacao = _cambioPendente.custo_operacao;
+  }
   renderParcelas();
   renderPagamentoInfoLive();
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
@@ -1112,6 +1125,15 @@ function aplicarCambioNaParcelaPendente(taxa){
   }
   if(!_parcelas[idx].data_vencimento && _cambioPendente?.data_pagamento){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
+  }
+  if(!_parcelas[idx].banco && _cambioPendente?.banco){
+    _parcelas[idx].banco = _cambioPendente.banco;
+  }
+  if(!_parcelas[idx].codigo_bacen && _cambioPendente?.codigo_bacen){
+    _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
+  }
+  if(!_parcelas[idx].custo_operacao && _cambioPendente?.custo_operacao){
+    _parcelas[idx].custo_operacao = _cambioPendente.custo_operacao;
   }
   renderParcelas();
   renderPagamentoInfoLive();
@@ -1150,6 +1172,7 @@ function confirmarCambioComo(tipo){
     if(elData) elData.value = dataPagamento;
     const elPago = document.getElementById('f_pi_pago');
     if(elPago) elPago.value = 'true';
+    aplicarBancoCustoLegado();
     renderPagamentoInfoLive();
   } else if(tipo==='entrada' || tipo==='saldo'){
     const selPagamento = document.getElementById('f_pi_pagamento');
@@ -1173,10 +1196,26 @@ function confirmarCambioComo(tipo){
       const elPago = document.getElementById('f_pi_pago');
       if(elPago) elPago.value = 'true';
     }
+    aplicarBancoCustoLegado();
     renderPagamentoInfoLive();
   }
   showToast(`✓ Câmbio (${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}) aplicado como ${tipo==='unico'?'Pagamento Único':tipo==='entrada'?'Entrada':'Saldo'} — PI marcada de acordo`,'ok');
   fecharModalCambio();
+}
+
+// Banco/Custo da operação a nível de processo (Único/Entrada+Saldo legado
+// -- ver comentário acima sobre Código BACEN não ter equivalente aqui).
+// Só preenche se o campo ainda estiver vazio, mesmo padrão do resto do
+// fluxo de confirmação de comprovante.
+function aplicarBancoCustoLegado(){
+  if(_cambioPendente?.banco){
+    const elBanco = document.getElementById('f_pi_cambio_banco');
+    if(elBanco && !elBanco.value) elBanco.value = _cambioPendente.banco;
+  }
+  if(_cambioPendente?.custo_operacao){
+    const elCusto = document.getElementById('f_pi_cambio_custo');
+    if(elCusto && !elCusto.value) elCusto.value = _cambioPendente.custo_operacao;
+  }
 }
 
 // ── MÁSCARA NUMÉRICA xx.xxx,xx (campos monetários) ──────────────
