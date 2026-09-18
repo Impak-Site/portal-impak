@@ -487,9 +487,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Navio</label>
             <input class="form-input" id="f_navio" value="${esc(p.navio)}"></div>
           <div class="form-group"><label class="form-label">Valor do Frete</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_valor_frete" value="${exibirMoeda(p.valor_frete)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+            <input class="form-input" type="text" inputmode="decimal" id="f_valor_frete" value="${exibirMoeda(p.valor_frete)}" placeholder="0,00" oninput="formatarMoedaInput(this);sincronizarFreteCustosReais()"></div>
           <div class="form-group"><label class="form-label">Moeda do Frete</label>
-            <select class="form-input" id="f_moeda_frete">
+            <select class="form-input" id="f_moeda_frete" onchange="sincronizarFreteCustosReais()">
               <option value="USD" ${(!p.moeda_frete||p.moeda_frete==='USD')?'selected':''}>USD (US$)</option>
               <option value="BRL" ${p.moeda_frete==='BRL'?'selected':''}>BRL (R$)</option>
               <option value="EUR" ${p.moeda_frete==='EUR'?'selected':''}>EUR (€)</option>
@@ -930,6 +930,27 @@ function renderDREModalHtml(dre){
       </div>
     </div>
   </div>`;
+}
+
+// Pedido do Ayslan (18/09/2026): "quando o valor do frete for preenchido
+// na aba logistica no campo Valor do Frete preencher automaticamente igual
+// na aba custos reais no campo: frete internacional - cobrado (nao
+// preencher campo pago)". Fill-if-empty: só preenche se o Cobrado ainda
+// estiver vazio -- não sobrescreve um valor já ajustado manualmente ali.
+function sincronizarFreteCustosReais(){
+  const valorEl = document.getElementById('f_valor_frete');
+  const moedaEl = document.getElementById('f_moeda_frete');
+  const cobradoEl = document.getElementById('f_cr_cobrado_frete');
+  const cobradoMoedaEl = document.getElementById('f_cr_cobrado_moeda_frete');
+  if(!valorEl || !cobradoEl) return;
+  const valor = parseValorMoeda(valorEl.value);
+  if(!valor) return;
+  if(cobradoEl.readOnly) return;
+  if(cobradoEl.value === '' || cobradoEl.value == null){
+    cobradoEl.value = valor.toFixed(2);
+    if(cobradoMoedaEl && moedaEl) cobradoMoedaEl.value = moedaEl.value;
+    if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
+  }
 }
 
 function renderCustosReaisTab(p){
