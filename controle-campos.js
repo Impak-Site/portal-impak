@@ -333,6 +333,29 @@ function coletarESalvar(opts){
     proc.pi_parcelas_json = novasParcelasJson;
   }
 
+  // Salvar Custos Reais (real_json/real_cambio) mesmo quando quem salvou foi
+  // o botão Salvar GERAL, não o botão próprio da aba Custos Reais (bug
+  // reportado pela Emanuelly, 18/09/2026 — ver comentário acima). Mesmo
+  // padrão de containers_json/vendas_json: só entra no patch se mudou.
+  if(typeof coletarCustosReaisDoForm === 'function'){
+    const novoRealJson = coletarCustosReaisDoForm();
+    const novoRealJsonStr = JSON.stringify(novoRealJson);
+    const antigoRealJsonStr = JSON.stringify(antigo.real_json || {});
+    if(antigoRealJsonStr !== novoRealJsonStr){
+      log.push({
+        campo:'real_json', valor_antes: antigoRealJsonStr, valor_depois: novoRealJsonStr,
+        usuario: _user.usuario, created_at: new Date().toISOString()
+      });
+    }
+    const originalRealJsonStr = JSON.stringify(original.real_json || {});
+    if(originalRealJsonStr !== novoRealJsonStr) patchFields.push('real_json');
+    proc.real_json = novoRealJson;
+
+    const novoRealCambio = typeof coletarCambioCustosReaisDoForm === 'function' ? coletarCambioCustosReaisDoForm() : null;
+    if(String(original.real_cambio||'') !== String(novoRealCambio||'')) patchFields.push('real_cambio');
+    proc.real_cambio = novoRealCambio;
+  }
+
   // Alerta de campos-chave nao preenchidos de fases anteriores (pedido Emanuelly, 27/08/2026)
     document.querySelectorAll('.campo-faltando').forEach(el => el.classList.remove('campo-faltando'));
     const faseFaltantes = camposFaseFaltantes(proc);
