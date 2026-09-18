@@ -221,116 +221,6 @@ async function exportarRelatorioMensalCambio(){
   }
 }
 
-// ── PTAX x Câmbio Fechado (gráfico) ─────────────────────────────────────
-// Cache em memória do lado do cliente (o backend já cacheia por 6h também,
-// isso aqui só evita re-buscar toda vez que o usuário clica num KPI e
-// renderDashCambio() roda de novo — o gráfico não muda com o filtro).
-let _ptaxHistoricoCache = null;
-async function carregarGraficoPtaxCambio(pagos){
-  const el = document.getElementById('cambio-grafico-ptax');
-  if(!el) return;
-  try{
-    if(!_ptaxHistoricoCache){
-      const r = await fetch('/api/cambio/ptax-historico?dias=90');
-      const d = await r.json();
-      if(!d.ok) throw new Error(d.erro || 'erro desconhecido');
-      _ptaxHistoricoCache = d.dados;
-    }
-    el.innerHTML = renderGraficoPtaxCambioSvg(_ptaxHistoricoCache, pagos);
-  }catch(e){
-    el.innerHTML = `<div style="font-size:11px;color:var(--muted);">Não foi possível carregar o PTAX do Banco Central agora (${esc(e.message)}).</div>`;
-  }
-}
-
-function renderGraficoPtaxCambioSvg(ptax, pagos){
-  if(!ptax || !ptax.length) return `<div style="font-size:11px;color:var(--muted);">Sem dados de PTAX no período.</div>`;
-  const fmtBRL2 = v => v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const fmtBRL4 = v => v.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4});
-  const fmtDataCurta = t => new Date(t).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
-
-  const pontos = [...ptax].sort((a,b)=>a.data.localeCompare(b.data))
-    .map(p=>({t:new Date(p.data+'T00:00:00').getTime(), v:p.venda}))
-    .filter(p=>isFinite(p.v));
-  if(!pontos.length) return `<div style="font-size:11px;color:var(--muted);">Sem dados de PTAX no período.</div>`;
-
-  const minT = pontos[0].t, maxT = pontos[pontos.length-1].t;
-  const valores = pontos.map(p=>p.v);
-  const minY = Math.min(...valores) * 0.997, maxY = Math.max(...valores) * 1.003;
-
-  // Área útil do gráfico: reserva espaço à esquerda pros rótulos do eixo Y
-  // (valores do câmbio) e embaixo pros rótulos do eixo X (datas) — antes o
-  // gráfico não tinha nenhuma referência de escala, só a linha "boiando".
-  const W = 780, H = 260, PAD_L = 46, PAD_R = 10, PAD_T = 14, PAD_B = 26;
-  const x = t => PAD_L + (maxT>minT ? (t-minT)/(maxT-minT) : 0) * (W-PAD_L-PAD_R);
-  const y = v => (H-PAD_B) - (maxY>minY ? (v-minY)/(maxY-minY) : 0.5) * (H-PAD_T-PAD_B);
-
-  // Grade horizontal com 4 faixas (5 linhas), rotuladas com o valor do câmbio
-  const N_FAIXAS = 4;
-  const gradeH = [];
-  for(let i=0;i<=N_FAIXAS;i++){
-    const v = minY + (maxY-minY) * (i/N_FAIXAS);
-    const yy = y(v).toFixed(1);
-    gradeH.push(`<line x1="${PAD_L}" y1="${yy}" x2="${W-PAD_R}" y2="${yy}" stroke="#e5e7eb" stroke-width="1"/>`);
-    gradeH.push(`<text x="${PAD_L-6}" y="${(+yy+3).toFixed(1)}" text-anchor="end" font-size="9.5" fill="#94a3b8">${fmtBRL2(v)}</text>`);
-  }
-
-  // Grade vertical com rótulos de data (até 6 marcas, espaçadas no tempo)
-  const N_DATAS = Math.min(6, pontos.length);
-  const gradeV = [];
-  for(let i=0;i<N_DATAS;i++){
-    const t = minT + (maxT-minT) * (i/(N_DATAS-1||1));
-    const xx = x(t).toFixed(1);
-    gradeV.push(`<line x1="${xx}" y1="${PAD_T}" x2="${xx}" y2="${H-PAD_B}" stroke="#f1f5f9" stroke-width="1"/>`);
-    gradeV.push(`<text x="${xx}" y="${H-PAD_B+14}" text-anchor="middle" font-size="9.5" fill="#94a3b8">${fmtDataCurta(t)}</text>`);
-  }
-
-  const linha = pontos.map((p,i)=>`${i===0?'M':'L'} ${x(p.t).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
-
-  // Pontos da Impak: câmbios pagos com vencimento dentro da janela do PTAX
-  // (proxy de data — ver comentário no card "Câmbios Pagos" acima sobre a
-  // ausência de um campo de data de fechamento próprio).
-  const pontosEmpresa = (pagos||[]).filter(p=>p.vencimento && p.cambioFechado).map(p=>{
-    const t = new Date(p.vencimento+'T00:00:00').getTime();
-    return {t, v:p.cambioFechado, ref:p.referencia};
-  }).filter(p=>p.t>=minT && p.t<=maxT);
-
-  // Cor por posição relativa ao PTAX do dia (ponto acima = pagou mais caro
-  // que a referência oficial; abaixo = pagou mais barato) — facilita
-  // identificar de longe se o câmbio fechado foi bom ou ruim sem precisar
-  // passar o mouse em cada ponto.
-  const ptaxNoDia = t => {
-    let melhor = pontos[0];
-    for(const p of pontos){ if(Math.abs(p.t-t) < Math.abs(melhor.t-t)) melhor = p; }
-    return melhor.v;
-  };
-  const circulos = pontosEmpresa.map(p=>{
-    const ref = ptaxNoDia(p.t);
-    const cor = p.v > ref ? '#dc2626' : (p.v < ref ? '#16a34a' : 'var(--ac)');
-    return `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="4" fill="${cor}" fill-opacity="0.9" stroke="#fff" stroke-width="1.2"><title>${esc(p.ref)} · Fechado: R$ ${fmtBRL4(p.v)} · PTAX do dia: R$ ${fmtBRL4(ref)}</title></circle>`;
-  }).join('');
-
-  const dataIni = new Date(minT).toLocaleDateString('pt-BR');
-  const dataFim = new Date(maxT).toLocaleDateString('pt-BR');
-
-  return `<div style="width:100%;">
-    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:260px;display:block;">
-      ${gradeV.join('')}
-      ${gradeH.join('')}
-      <path d="${linha}" fill="none" stroke="#94a3b8" stroke-width="1.75"/>
-      ${circulos}
-    </svg>
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:6px;">
-      <div style="display:flex;gap:14px;font-size:11px;color:var(--muted);flex-wrap:wrap;">
-        <span><span style="display:inline-block;width:10px;height:2px;background:#94a3b8;margin-right:4px;vertical-align:middle;"></span>PTAX venda (BCB)</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:4px;vertical-align:middle;"></span>Abaixo do PTAX (mais barato)</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:4px;vertical-align:middle;"></span>Acima do PTAX (mais caro)</span>
-      </div>
-      <div style="font-size:10.5px;color:var(--dim);">${pontosEmpresa.length} câmbios · ${dataIni} — ${dataFim}</div>
-    </div>
-  </div>`;
-}
-
-
 function chaveLoteCambio(processoId, tipo, parcelaIndex){
   return `${processoId}__${tipo}__${parcelaIndex!=null?parcelaIndex:''}`;
 }
@@ -640,42 +530,6 @@ function renderDashCambio(){
     <div>${semData.length} parcela(s) ainda sem Entrada+Saldo/Parcelado/À Vista/Prazo definido na PI — esse valor NÃO entra em nenhum KPI de prazo acima, então pode vencer sem ninguém perceber. <a href="#" onclick="_cambioFiltro={tipo:'semdata'};renderDashCambio();document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});return false;" style="color:#991b1b;font-weight:700;">Ver processos →</a></div>
   </div>`;
 
-  // ── Mark-to-Market — o número que mais importa pra decidir comprar
-  // dólar agora ou esperar: "se eu pagasse tudo hoje, eu ganharia ou
-  // perderia vs o que estava planejado?". Só entra na conta a fatia que
-  // TEM câmbio previsto definido na PI (usdComPrevisto) — parcelas sem
-  // previsto não geram ganho/perda artificial (contam igual dos dois
-  // lados). Fica compacto (1 linha) porque é contexto, não o foco da tela.
-  const todosEmAberto = abertos.concat(semData);
-  let expostoComAtual = 0, expostoComPrevisto = 0, usdComPrevisto = 0;
-  todosEmAberto.forEach(x => {
-    expostoComAtual += x.valorUsd * cambioAtual;
-    if(x.cambioPrevisto){
-      expostoComPrevisto += x.valorUsd * x.cambioPrevisto;
-      usdComPrevisto += x.valorUsd;
-    } else {
-      expostoComPrevisto += x.valorUsd * cambioAtual;
-    }
-  });
-  const diffMtm = expostoComAtual - expostoComPrevisto; // >0: dólar subiu (perda) · <0: dólar caiu (ganho)
-  const mtmCor = diffMtm > 0.5 ? 'var(--err)' : (diffMtm < -0.5 ? 'var(--ok)' : 'var(--muted)');
-  const mtmHtml = usdComPrevisto <= 0 ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-    <span style="font-size:12px;font-weight:700;color:var(--muted);">📊 Mark-to-Market:</span>
-    <span style="font-size:15px;font-weight:800;color:${mtmCor};${MONO}">${Math.abs(diffMtm)<0.5?'≈ R$ 0,00':fmtBRL(Math.abs(diffMtm))}</span>
-    <span style="font-size:12px;color:var(--muted);">${diffMtm > 0.5 ? 'a mais do que o previsto nas PIs, se pagasse tudo hoje' : diffMtm < -0.5 ? 'de economia vs. o previsto nas PIs, se pagasse tudo hoje' : 'câmbio previsto e atual praticamente iguais'} · câmbio atual ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})} · base: ${fmtUSD(usdComPrevisto)}</span>
-  </div>`;
-
-  // ── PTAX x Câmbio Fechado — pedido do Ayslan (09/09/2026: "usar a API
-  // do Banco Central pra PTAX", https://www.bcb.gov.br/estabilidadefinanceira/fechamentodolar).
-  // O gráfico em si é montado depois, de forma assíncrona (carregarGraficoPtaxCambio),
-  // porque depende de uma chamada de rede ao backend (que por sua vez consulta
-  // o BCB) — aqui só entra o placeholder que reserva o espaço.
-  const graficoPtaxHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
-    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">📈 PTAX (Banco Central) x Câmbio Fechado pela Impak</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Linha cinza = PTAX de venda, cotação oficial do BCB. Pontos azuis = câmbio que a Impak fechou em cada parcela paga (usa o vencimento original como data, já que o sistema não guarda a data exata do fechamento).</div>
-    <div id="cambio-grafico-ptax" style="min-height:200px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);">Carregando PTAX do Banco Central...</div>
-  </div>`;
-
   // ── Simular câmbio (what-if) — pedido do Ayslan (09/09/2026): antes de
   // decidir travar câmbio ou esperar, o CFO quer ver "e se o dólar for a
   // R$X" sem precisar abrir planilha. _cambioSimulBase guarda os totais em
@@ -696,50 +550,6 @@ function renderDashCambio(){
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Próx. 7 dias</span><span id="sim-semana" style="font-weight:700;${MONO}">${fmtBRL(j7.usd*cambioAtual)}</span></div>
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Próx. 30 dias</span><span id="sim-mes" style="font-weight:700;${MONO}">${fmtBRL(j30.usd*cambioAtual)}</span></div>
       <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;"><span style="color:var(--muted);font-weight:700;">vs. câmbio atual</span><span id="sim-diff" style="font-weight:800;color:var(--muted);${MONO}">≈ igual ao atual</span></div>
-    </div>
-  </div>`;
-
-  // ── Exposição por Fornecedor — donut chart (pedido do Ayslan,
-  // 09/09/2026: "algo como um dashboard mesmo, com gráficos em pizza") em
-  // vez das barras de progresso: dá pra ver de cara quem concentra o risco
-  // sem precisar ler número por número. Top 6 fornecedores nomeados +
-  // "Outros" agregando o resto, pra não virar uma legenda de 15 linhas.
-  const DONUT_CORES = ['#1e3a5f','#2a5298','#3b6ea5','#5b84c4','#7ba3cf','#9dbfe0','#c3d4ec'];
-  const totalDonut = rankingFornecedor.reduce((s,[,v])=>s+v,0);
-  let donutLista = rankingFornecedor.slice(0,6);
-  if(rankingFornecedor.length > 6){
-    const outrosVal = rankingFornecedor.slice(6).reduce((s,[,v])=>s+v,0);
-    donutLista = [...donutLista, ['Outros fornecedores', outrosVal]];
-  }
-  let accDonut = 0;
-  const donutStops = donutLista.map(([,val],i) => {
-    const pct = totalDonut>0 ? (val/totalDonut*100) : 0;
-    const start = accDonut; accDonut += pct;
-    return `${DONUT_CORES[i]||'#e2e8f0'} ${start.toFixed(2)}% ${accDonut.toFixed(2)}%`;
-  }).join(', ');
-  const fornecedorHtml = !donutLista.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:20px 22px;height:100%;box-sizing:border-box;">
-    <div style="font-size:14px;font-weight:700;margin-bottom:18px;">🏭 Exposição por Fornecedor</div>
-    <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap;">
-      <div style="width:150px;height:150px;border-radius:50%;flex-shrink:0;background:conic-gradient(${donutStops || '#e2e8f0 0% 100%'});position:relative;">
-        <div style="position:absolute;inset:22px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-          <div style="font-size:9.5px;color:var(--muted);font-weight:700;letter-spacing:0.03em;">TOTAL</div>
-          <div style="font-size:14px;font-weight:800;${MONO}">${fmtUSD(totalDonut).replace('USD ','')}</div>
-        </div>
-      </div>
-      <div style="flex:1;min-width:260px;display:flex;flex-direction:column;">
-        ${donutLista.map(([nome,val],i) => {
-          const pct = totalDonut>0 ? Math.round(val/totalDonut*100) : 0;
-          const ativo = _cambioFiltro && _cambioFiltro.tipo==='fornecedor' && _cambioFiltro.nome===nome;
-          const clicavel = nome !== 'Outros fornecedores';
-          const ultima = i === donutLista.length-1;
-          return `<div ${clicavel?`onclick="_cambioFiltro=${ativo?'null':`{tipo:'fornecedor',nome:'${nome.replace(/'/g,"\\'")}'}`};renderDashCambio()"`:''} style="display:flex;align-items:center;gap:10px;font-size:12.5px;padding:9px 8px;${ultima?'':'border-bottom:1px solid #f1f5f9;'}${clicavel?'cursor:pointer;':''}${ativo?'background:#f1f5f9;border-radius:6px;':''}">
-            <span style="width:11px;height:11px;border-radius:3px;background:${DONUT_CORES[i]||'#e2e8f0'};flex-shrink:0;"></span>
-            <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
-            <span style="color:var(--muted);width:34px;text-align:right;flex-shrink:0;">${pct}%</span>
-            <span style="font-weight:700;width:130px;text-align:right;flex-shrink:0;${MONO}">${fmtUSD(val)}</span>
-          </div>`;
-        }).join('')}
-      </div>
     </div>
   </div>`;
 
@@ -943,10 +753,10 @@ function renderDashCambio(){
     </div>
   </div>`;
 
-  el.innerHTML = toolbarHtml + kpisHtml + alertaSemDataHtml + concentracaoHtml + mtmHtml + graficoPtaxHtml
-    + `<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">${fornecedorHtml}${simulacaoHtml}</div>`
+  el.innerHTML = toolbarHtml + kpisHtml + alertaSemDataHtml + concentracaoHtml
+    + `<div style="margin-bottom:14px;">${simulacaoHtml}</div>`
     + bancoCustoHtml + consolidacaoHtml + tabelaHtml
-    + renderFluxoCaixaHtml(todosPagamentos) + renderControleCambialHtml(todosPagamentos);
+    + renderFluxoCaixaHtml(todosPagamentos);
 
   if(_cambioRefoco){
     const novoEl = document.getElementById('cambio-busca-processo');
@@ -958,5 +768,4 @@ function renderDashCambio(){
     }
   }
 
-  carregarGraficoPtaxCambio(pagos);
 }
