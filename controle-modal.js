@@ -946,19 +946,15 @@ function sincronizarFreteCustosReais(){
   if(cobradoEl.readOnly) return;
   const valor = parseValorMoeda(valorEl.value);
   if(!valor) return;
-  // Só sobrescreve se o Cobrado ainda estiver vazio OU se o valor nele for
-  // exatamente o que NÓS sincronizamos da última vez (permite continuar
-  // atualizando a cada tecla digitada no Valor do Frete, sem travar depois
-  // da 1a tecla). Se o usuário editou o Cobrado com a mão, o valor diverge
-  // do que guardamos em data-frete-auto-sync e paramos de mexer nele.
-  const aindaAutoSincronizado = cobradoEl.value === '' || cobradoEl.value === cobradoEl.dataset.freteAutoSync;
-  if(aindaAutoSincronizado){
-    const novoValor = valor.toFixed(2);
-    cobradoEl.value = novoValor;
-    cobradoEl.dataset.freteAutoSync = novoValor;
-    if(cobradoMoedaEl && moedaEl) cobradoMoedaEl.value = moedaEl.value;
-    if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
-  }
+  // Sempre espelha o Cobrado no Valor do Frete (só o Pago fica de fora,
+  // pedido original do Ayslan) -- inclusive sobrescrevendo um valor já
+  // salvo antes. Antes só preenchia se o Cobrado estivesse vazio, o que
+  // travava a sincronização depois do primeiro salvamento (bug reportado
+  // pela Emanuelly 18/09/2026: mudou o Frete de 1.850 pra 2.000 e o
+  // Cobrado ficou parado em 1.850).
+  cobradoEl.value = valor.toFixed(2);
+  if(cobradoMoedaEl && moedaEl) cobradoMoedaEl.value = moedaEl.value;
+  if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
 }
 
 function renderCustosReaisTab(p){

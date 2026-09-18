@@ -82,7 +82,7 @@ transition: all .15s; font-family: inherit;
 }
 #impak-nav .nav-sector-btn:hover, #impak-nav .nav-sector-btn.active { color: #fff; background: rgba(255,255,255,.1); }
 #impak-nav .nav-sector-btn .caret { font-size: 9px; opacity: .6; }
-#impak-nav .nav-icon { width: 14px; height: 14px; flex-shrink: 0; vertical-align: -2px; margin-right: 5px; opacity: .85; }
+#impak-nav .nav-icon, .impak-nav-sector-panel .nav-icon { width: 14px; height: 14px; flex-shrink: 0; vertical-align: -2px; margin-right: 5px; opacity: .85; }
 /* O painel NÃO fica dentro de #impak-nav .nav-links-wrap — esse container
    tem overflow-x:auto (pro scroll horizontal quando não cabe tudo, ver
    comentário 11/09/2026 acima), e overflow-x:auto corta o overflow no eixo Y
