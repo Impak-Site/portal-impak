@@ -268,30 +268,45 @@ const ICONES_NAV = {
   tv: `<svg ${ICONE_SVG_BASE}><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
   // Permissões: cadeado.
   permissoes: `<svg ${ICONE_SVG_BASE}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`,
+  // ── Itens dentro dos menus suspensos (pedido Ayslan 18/09/2026: "faça em todos") ──
+  controle: `<svg ${ICONE_SVG_BASE}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
+  conferenciaFila: `<svg ${ICONE_SVG_BASE}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  carregamento: `<svg ${ICONE_SVG_BASE}><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+  dashFinanceiro: `<svg ${ICONE_SVG_BASE}><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>`,
+  cambio: `<svg ${ICONE_SVG_BASE}><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>`,
+  dre: `<svg ${ICONE_SVG_BASE}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  dashExecutivo: `<svg ${ICONE_SVG_BASE}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>`,
+  resultado: `<svg ${ICONE_SVG_BASE}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
+  analises: `<svg ${ICONE_SVG_BASE}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
+  clienteMedida: `<svg ${ICONE_SVG_BASE}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
+  narcelio: `<svg ${ICONE_SVG_BASE}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  tyredesk: `<svg ${ICONE_SVG_BASE}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`,
+  calculador: `<svg ${ICONE_SVG_BASE}><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`,
+  catalogo: `<svg ${ICONE_SVG_BASE}><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>`,
 };
 
 const navSetores = [
   { setor: 'Operacional', icone: 'operacional', itens: [
-    { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
-    { label: '🔍 Fila de Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
-    { label: '🚛 Dashboard de Carregamentos', href: '/controle?dash=carregamento', key: 'dash-carregamento', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026) — sem rota própria, usa toggleDashCarregamento() via ?dash= (ver controle-core.js)
+    { label: 'Controle', icone: 'controle', href: '/controle', key: 'controle', modulo: 'controle' },
+    { label: 'Fila de Conferência', icone: 'conferenciaFila', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
+    { label: 'Dashboard de Carregamentos', icone: 'carregamento', href: '/controle?dash=carregamento', key: 'dash-carregamento', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026) — sem rota própria, usa toggleDashCarregamento() via ?dash= (ver controle-core.js)
   ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
   { setor: 'Financeiro', icone: 'financeiro', itens: [
-    { label: '💰 Dashboard Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
-    { label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'cambio' },
-    { label: '📑 DRE Consolidado', href: '/controle?dash=dre', key: 'dash-dre', modulo: 'financeiro' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
+    { label: 'Dashboard Financeiro', icone: 'dashFinanceiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
+    { label: 'Câmbio', icone: 'cambio', href: '/cambio', key: 'cambio', modulo: 'cambio' },
+    { label: 'DRE Consolidado', icone: 'dre', href: '/controle?dash=dre', key: 'dash-dre', modulo: 'financeiro' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
   ]},
   { setor: 'Executivo / BI', icone: 'executivo', itens: [
-    { label: '👔 Dashboard Executivo', href: '/controle?dash=executivo', key: 'dash-executivo', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
-    { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
-    { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'analises' },
-    { label: '🧮 Por Cliente/Medida', href: '/controle?dash=clientemedida', key: 'dash-clientemedida', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
-    { label: '👔 Dashboard Narcélio', href: '/narcelio', key: 'narcelio', modulo: 'narcelio' }, // dado sensível de faturamento/margem, liberado só pra quem a tela de Permissões marcar
+    { label: 'Dashboard Executivo', icone: 'dashExecutivo', href: '/controle?dash=executivo', key: 'dash-executivo', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
+    { label: 'Resultado', icone: 'resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
+    { label: 'Análises', icone: 'analises', href: '/analises', key: 'analises', modulo: 'analises' },
+    { label: 'Por Cliente/Medida', icone: 'clienteMedida', href: '/controle?dash=clientemedida', key: 'dash-clientemedida', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
+    { label: 'Dashboard Narcélio', icone: 'narcelio', href: '/narcelio', key: 'narcelio', modulo: 'narcelio' }, // dado sensível de faturamento/margem, liberado só pra quem a tela de Permissões marcar
   ]},
   { setor: 'Comercial', icone: 'comercial', itens: [
-    { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
-    { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
-    { label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
+    { label: 'TyreDesk', icone: 'tyredesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
+    { label: 'Calculador', icone: 'calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
+    { label: 'Catálogo', icone: 'catalogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
   ]},
 ];
 
@@ -380,7 +395,7 @@ navSetores.forEach(setor => {
     const link = document.createElement('a');
     link.className = (modAtual === m.key ? 'active' : '');
     link.href = m.href;
-    link.textContent = m.label;
+    link.innerHTML = (ICONES_NAV[m.icone] || '') + m.label;
     panel.appendChild(link);
   });
   document.body.appendChild(panel);
