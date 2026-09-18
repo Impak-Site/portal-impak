@@ -82,6 +82,7 @@ transition: all .15s; font-family: inherit;
 }
 #impak-nav .nav-sector-btn:hover, #impak-nav .nav-sector-btn.active { color: #fff; background: rgba(255,255,255,.1); }
 #impak-nav .nav-sector-btn .caret { font-size: 9px; opacity: .6; }
+#impak-nav .nav-icon { width: 14px; height: 14px; flex-shrink: 0; vertical-align: -2px; margin-right: 5px; opacity: .85; }
 /* O painel NÃO fica dentro de #impak-nav .nav-links-wrap — esse container
    tem overflow-x:auto (pro scroll horizontal quando não cabe tudo, ver
    comentário 11/09/2026 acima), e overflow-x:auto corta o overflow no eixo Y
@@ -246,25 +247,48 @@ document.head.appendChild(style);
 // Cadastros é cadastro-base (não é "dashboard" nem some de nenhum setor
 // específico) e Permissões é administrativo — nenhum dos três é "área de
 // negócio".
+// Ícones de linha (estilo Feather) pros 7 itens da barra principal —
+// substituem os emojis antigos (pedido Ayslan 18/09/2026: "deixar algo
+// mais profissional"). SVG inline (sem dependência externa), herdam a cor
+// do texto via stroke="currentColor", então acompanham o hover/active da
+// nav de graça.
+const ICONE_SVG_BASE = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"';
+const ICONES_NAV = {
+  // Operacional: âncora — remete a operação portuária/logística.
+  operacional: `<svg ${ICONE_SVG_BASE}><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0020 0h-3"/></svg>`,
+  // Financeiro: cifrão.
+  financeiro: `<svg ${ICONE_SVG_BASE}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>`,
+  // Executivo/BI: gráfico de barras.
+  executivo: `<svg ${ICONE_SVG_BASE}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  // Comercial: sacola de compras.
+  comercial: `<svg ${ICONE_SVG_BASE}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>`,
+  // Cadastros: pessoas.
+  cadastros: `<svg ${ICONE_SVG_BASE}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
+  // TV: monitor.
+  tv: `<svg ${ICONE_SVG_BASE}><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+  // Permissões: cadeado.
+  permissoes: `<svg ${ICONE_SVG_BASE}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`,
+};
+
 const navSetores = [
-  { setor: '🚢 Operacional', itens: [
+  { setor: 'Operacional', icone: 'operacional', itens: [
     { label: '🚢 Controle', href: '/controle', key: 'controle', modulo: 'controle' },
     { label: '🔍 Fila de Conferência', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
     { label: '🚛 Dashboard de Carregamentos', href: '/controle?dash=carregamento', key: 'dash-carregamento', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026) — sem rota própria, usa toggleDashCarregamento() via ?dash= (ver controle-core.js)
   ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
-  { setor: '💰 Financeiro', itens: [
+  { setor: 'Financeiro', icone: 'financeiro', itens: [
     { label: '💰 Dashboard Financeiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
     { label: '💱 Câmbio', href: '/cambio', key: 'cambio', modulo: 'cambio' },
     { label: '📑 DRE Consolidado', href: '/controle?dash=dre', key: 'dash-dre', modulo: 'financeiro' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
   ]},
-  { setor: '📊 Executivo / BI', itens: [
+  { setor: 'Executivo / BI', icone: 'executivo', itens: [
     { label: '👔 Dashboard Executivo', href: '/controle?dash=executivo', key: 'dash-executivo', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
     { label: '📈 Resultado', href: '/resultado', key: 'resultado', modulo: 'resultado' },
     { label: '📊 Análises', href: '/analises', key: 'analises', modulo: 'analises' },
     { label: '🧮 Por Cliente/Medida', href: '/controle?dash=clientemedida', key: 'dash-clientemedida', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
     { label: '👔 Dashboard Narcélio', href: '/narcelio', key: 'narcelio', modulo: 'narcelio' }, // dado sensível de faturamento/margem, liberado só pra quem a tela de Permissões marcar
   ]},
-  { setor: '🛞 Comercial', itens: [
+  { setor: 'Comercial', icone: 'comercial', itens: [
     { label: '📦 TyreDesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
     { label: '💰 Calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
     { label: '📋 Catálogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
@@ -348,7 +372,7 @@ navSetores.forEach(setor => {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'nav-sector-btn' + (setorAtivo ? ' active' : '');
-  btn.innerHTML = setor.setor + ' <span class="caret">▾</span>';
+  btn.innerHTML = ICONES_NAV[setor.icone] + setor.setor + ' <span class="caret">▾</span>';
 
   const panel = document.createElement('div');
   panel.className = 'impak-nav-sector-panel';
@@ -389,7 +413,7 @@ if(modulosDoUsuario.includes('cadastros')){
   const link = document.createElement('a');
   link.className = 'nav-link' + (modAtual === 'cadastros' ? ' active' : '');
   link.href = '/cadastros';
-  link.textContent = '📇 Cadastros';
+  link.innerHTML = ICONES_NAV.cadastros + 'Cadastros';
   linksWrap.appendChild(link);
 }
 
@@ -398,7 +422,7 @@ if(modulosDoUsuario.includes('tv')){
   const link = document.createElement('a');
   link.className = 'nav-link' + (modAtual === 'tv' ? ' active' : '');
   link.href = '/tv';
-  link.textContent = '📺 TV';
+  link.innerHTML = ICONES_NAV.tv + 'TV';
   linksWrap.appendChild(link);
 }
 
@@ -409,7 +433,7 @@ if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
   const link = document.createElement('a');
   link.className = 'nav-link' + (path.includes('permissoes') ? ' active' : '');
   link.href = '/permissoes';
-  link.textContent = '🔐 Permissões';
+  link.innerHTML = ICONES_NAV.permissoes + 'Permissões';
   linksWrap.appendChild(link);
 }
 
