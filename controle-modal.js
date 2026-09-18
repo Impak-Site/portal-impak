@@ -943,11 +943,19 @@ function sincronizarFreteCustosReais(){
   const cobradoEl = document.getElementById('f_cr_cobrado_frete');
   const cobradoMoedaEl = document.getElementById('f_cr_cobrado_moeda_frete');
   if(!valorEl || !cobradoEl) return;
+  if(cobradoEl.readOnly) return;
   const valor = parseValorMoeda(valorEl.value);
   if(!valor) return;
-  if(cobradoEl.readOnly) return;
-  if(cobradoEl.value === '' || cobradoEl.value == null){
-    cobradoEl.value = valor.toFixed(2);
+  // Só sobrescreve se o Cobrado ainda estiver vazio OU se o valor nele for
+  // exatamente o que NÓS sincronizamos da última vez (permite continuar
+  // atualizando a cada tecla digitada no Valor do Frete, sem travar depois
+  // da 1a tecla). Se o usuário editou o Cobrado com a mão, o valor diverge
+  // do que guardamos em data-frete-auto-sync e paramos de mexer nele.
+  const aindaAutoSincronizado = cobradoEl.value === '' || cobradoEl.value === cobradoEl.dataset.freteAutoSync;
+  if(aindaAutoSincronizado){
+    const novoValor = valor.toFixed(2);
+    cobradoEl.value = novoValor;
+    cobradoEl.dataset.freteAutoSync = novoValor;
     if(cobradoMoedaEl && moedaEl) cobradoMoedaEl.value = moedaEl.value;
     if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
   }
