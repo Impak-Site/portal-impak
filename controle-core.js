@@ -3066,15 +3066,36 @@ processosAtivos.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont
 return processosAtivos.filter(p => cont[norm(p.referencia)] > 1).length;
 })();
 
+const STAT_ICON_BASE = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+const STAT_ICONES = {
+  total:       `<svg ${STAT_ICON_BASE}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  andamento:   `<svg ${STAT_ICON_BASE}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  chegada:     `<svg ${STAT_ICON_BASE}><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0020 0h-3"/></svg>`,
+  demurrage:   `<svg ${STAT_ICON_BASE}><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  armazenagem: `<svg ${STAT_ICON_BASE}><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+  finalizados: `<svg ${STAT_ICON_BASE}><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+  duplicada:   `<svg ${STAT_ICON_BASE}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`,
+};
+// Tom claro de fundo da pastilha do ícone, um por cor usada nos cards —
+// mesmos hex de --ac/--warn/--info/--err/--ok (ver :root, controle_v2.html)
+// só que a ~12% de opacidade, pra combinar com a borda/ícone de cor cheia.
+const STAT_COR_SOFT = {
+  'var(--ac)':  'rgba(26,127,212,.12)',
+  'var(--warn)':'rgba(217,119,6,.12)',
+  'var(--info)':'rgba(8,145,178,.12)',
+  'var(--err)': 'rgba(220,38,38,.12)',
+  'var(--ok)':  'rgba(22,163,74,.12)',
+};
+
 const stats = [
-    {num:total,       label:'Total',          cor:'var(--ac)',  filtro:''},
-    {num:emAndamento, label:'Em andamento',    cor:'var(--warn)',filtro:'__andamento'},
-    {num:chegando7d,  label:'Chegada em 7d',  cor:'var(--info)',filtro:'__chegada_7d'},
-    {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur'},
-    {num:armazCrit,   label:'Armazenagem ≤2d', cor:'var(--err)', filtro:'__armazenagem'},
-    {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO'},
+    {num:total,       label:'Total',          cor:'var(--ac)',  filtro:'',              icone:'total'},
+    {num:emAndamento, label:'Em andamento',    cor:'var(--warn)',filtro:'__andamento',   icone:'andamento'},
+    {num:chegando7d,  label:'Chegada em 7d',  cor:'var(--info)',filtro:'__chegada_7d',  icone:'chegada'},
+    {num:demurCrit,   label:'Demurrage ≤5d',  cor:'var(--err)', filtro:'__demur',        icone:'demurrage'},
+    {num:armazCrit,   label:'Armazenagem ≤2d', cor:'var(--err)', filtro:'__armazenagem', icone:'armazenagem'},
+    {num:finalizados, label:'Finalizados',     cor:'var(--ok)',  filtro:'FINALIZADO',    icone:'finalizados'},
   ];
-if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência duplicada', cor:'var(--err)', filtro:'__ref_duplicada'});
+if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência duplicada', cor:'var(--err)', filtro:'__ref_duplicada', icone:'duplicada'});
 
   // Badges sidebar por fase — processo fechado (p.fechado) não conta na
   // fase real dele aqui (ex: FINALIZADO), e sim só no badge próprio
@@ -3114,7 +3135,8 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
   // fonte padrão só quando o valor é zero, sem mexer na aparência dos
   // outros números (achado na auditoria visual, 10/09/2026).
   el.innerHTML = stats.map(s=>`
-    <div class="stat-card" onclick="setFaseFilter('${s.filtro}')">
+    <div class="stat-card" onclick="setFaseFilter('${s.filtro}')" style="--stat-cor:${s.cor};--stat-cor-soft:${STAT_COR_SOFT[s.cor]||'var(--ac-soft)'};">
+      <div class="stat-icon">${STAT_ICONES[s.icone]||''}</div>
       <div class="stat-num" style="color:${s.cor}${s.num===0 ? ';font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;font-weight:700;' : ''}">${s.num}</div>
       <div class="stat-label">${s.label}</div>
     </div>`).join('');
