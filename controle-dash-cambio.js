@@ -269,6 +269,22 @@ function fecharPainelFechamentoLoteCambio(){
   const painel = document.getElementById('lote-cambio-painel');
   if(painel) painel.style.display = 'none';
 }
+// ESC fecha (pedido Ayslan 18/09/2026) -- avisa se já tem taxa/data/banco/
+// custo digitados e ainda não aplicados (executarFechamentoLoteCambio),
+// senão fecha direto.
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  const painel = document.getElementById('lote-cambio-painel');
+  if(!painel || painel.style.display === 'none' || !painel.style.display) return;
+  const campos = ['lote-cambio-taxa','lote-cambio-data','lote-cambio-banco','lote-cambio-custo']
+    .map(id => document.getElementById(id));
+  const temAlgoDigitado = campos.some(el => el && String(el.value||'').trim());
+  if(temAlgoDigitado){
+    if(confirm('Você preencheu dados de fechamento de câmbio em lote que ainda não foram aplicados. Deseja descartar e fechar?')) fecharPainelFechamentoLoteCambio();
+  } else {
+    fecharPainelFechamentoLoteCambio();
+  }
+});
 
 // Aplica UM câmbio fechado (+ data) em todas as parcelas selecionadas, de
 // uma vez. Agrupa por processo antes de salvar porque um mesmo processo

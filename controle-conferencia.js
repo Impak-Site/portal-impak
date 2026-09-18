@@ -503,13 +503,25 @@ function abrirModalMotivoConferencia(key){
     </div>`;
   document.body.appendChild(overlay);
   document.getElementById('conf-motivo-texto')?.focus();
+  // Guarda o texto inicial pra saber, no ESC, se o usuário alterou o
+  // motivo sem confirmar (pedido Ayslan 18/09/2026: avisar antes de
+  // fechar se tiver algo pra salvar).
+  _confMotivoInicial = document.getElementById('conf-motivo-texto')?.value || '';
 }
 function fecharModalMotivoConferencia(){
   document.getElementById('conf-motivo-overlay')?.remove();
 }
+let _confMotivoInicial = '';
 document.addEventListener('keydown', function(e){
   if(e.key !== 'Escape') return;
-  if(document.getElementById('conf-motivo-overlay')) fecharModalMotivoConferencia();
+  if(!document.getElementById('conf-motivo-overlay')) return;
+  const textarea = document.getElementById('conf-motivo-texto');
+  const mudou = textarea && textarea.value !== _confMotivoInicial;
+  if(mudou){
+    if(confirm('Você alterou o motivo do aceite e ainda não confirmou. Deseja descartar e fechar?')) fecharModalMotivoConferencia();
+  } else {
+    fecharModalMotivoConferencia();
+  }
 });
 async function confirmarMotivoConferencia(key){
   const p = _editando;

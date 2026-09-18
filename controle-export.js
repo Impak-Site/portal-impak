@@ -182,6 +182,13 @@ function abrirModalExportCliente(){
 function fecharModalExportCliente(){
   document.getElementById('modal-exportcliente-bg').classList.remove('open');
 }
+// ESC fecha (pedido Ayslan 18/09/2026) -- só checkboxes de filtro antes do
+// export, nada é salvo aqui, fecha direto.
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  const bg = document.getElementById('modal-exportcliente-bg');
+  if(bg && bg.classList.contains('open')) fecharModalExportCliente();
+});
 
 function marcarTodosStatusExport(valor){
   document.querySelectorAll('.exportcliente-status-chk').forEach(chk=>{ chk.checked = valor; });

@@ -1439,6 +1439,13 @@ function fecharRelatorioNarcelio(){
   const overlay = document.getElementById('relatorio-narcelio-overlay');
   if(overlay) overlay.innerHTML = '';
 }
+// ESC fecha (pedido Ayslan 18/09/2026) -- só visualização/export, sem
+// edição perdível, fecha direto.
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  const overlay = document.getElementById('relatorio-narcelio-overlay');
+  if(overlay && overlay.innerHTML.trim()) fecharRelatorioNarcelio();
+});
 function renderRelatorioNarcelioModalHtml(rel){
   const linha = (label, valor) => `
     <tr>

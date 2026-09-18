@@ -323,4 +323,11 @@ function fecharListaNarcelio(){
   const modal = document.getElementById('narcelio-lista-modal');
   if(modal) modal.style.display = 'none';
 }
+// ESC fecha (pedido Ayslan 18/09/2026) -- popup só de leitura, sem edição
+// perdível, fecha direto.
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  const modal = document.getElementById('narcelio-lista-modal');
+  if(modal && modal.style.display !== 'none') fecharListaNarcelio();
+});
 

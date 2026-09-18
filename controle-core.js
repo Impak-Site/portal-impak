@@ -233,6 +233,15 @@ document.addEventListener('keydown', function(e){
   if(e.key !== 'Escape') return;
   const dreOverlay = document.getElementById('dre-overlay');
   if(dreOverlay && dreOverlay.innerHTML.trim()){ fecharDRE(); return; }
+  // Estes dois podem abrir POR CIMA do painel do processo (comprovante de
+  // câmbio na aba Financeiro, conflitos de IA na aba Documentos) -- checa
+  // antes do painel pra ESC fechar só o popup de cima, não o painel inteiro.
+  // Nenhum dos dois guarda edição perdível (só confirmação/escolha, e a
+  // escolha default de conflitos já é "manter valor atual"), fecham direto.
+  const conflitosIABg = document.getElementById('modal-conflitos-ia-bg');
+  if(conflitosIABg){ if(typeof fecharModalConflitosIA === 'function') fecharModalConflitosIA(); return; }
+  const cambioBg = document.getElementById('modal-cambio-bg');
+  if(cambioBg && cambioBg.classList.contains('open')){ if(typeof fecharModalCambio === 'function') fecharModalCambio(); return; }
   const modalBg = document.getElementById('modal-bg');
   if(!modalBg || !modalBg.classList.contains('open')) return;
   if(_painelDirty){
