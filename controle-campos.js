@@ -31,7 +31,12 @@ const PORTOS_DESTINO = [
 // adicional. Pedido da Emanuelly (03/09/2026): Navegantes = 5 dias, Itapoá =
 // 4 dias. Itajaí ainda não tem prazo confirmado com o time — usando 5 dias
 // (mesmo de Navegantes) até alguém confirmar o valor real do terminal.
-const PORTO_ARMAZENAGEM_FREE_DIAS = { NVT: 5, IOA: 4, ITJ: 5 };
+// Imbituba (BRIBB) entrou em PORTOS_DESTINO em 14/09/2026 mas ficou de fora
+// daqui -- sem entrada aqui, renderArmazenInfo() (controle-core.js) não
+// mostrava o quadro "Cálculo da Armazenagem" pra nenhum processo desse
+// porto (bug reportado pela Emanuelly, 17/09/2026). Mesmo tratamento
+// provisório de Itajaí: 5 dias até confirmar com o terminal.
+const PORTO_ARMAZENAGEM_FREE_DIAS = { NVT: 5, IOA: 4, ITJ: 5, BRIBB: 5 };
 // Origem varia mais (várias cidades/países), então fica uma lista das mais
 // usadas + "Outro" pra digitar livre quando aparecer uma nova.
 // Lista ampliada cobrindo os principais polos de fabricação de pneus na Ásia
