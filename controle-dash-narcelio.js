@@ -182,6 +182,19 @@ function renderDashNarcelio(){
     return { id, referencia: p ? p.referencia : id, fornecedor: p ? p.fornecedor : '', valor: contribPorProcesso[id] };
   }).sort((a,b) => b.valor - a.valor);
 
+  // ── DRE Consolidado embutido (pedido Ayslan 18/09/2026: "o DRE
+  // consolidado tem que ir pra dentro do dashboard do narcelio") -- usa o
+  // MESMO período já selecionado acima pro resto da tela, sem filtro
+  // próprio de cliente/fornecedor/status (é a visão consolidada geral).
+  // Continua existindo também em Financeiro > DRE Consolidado, com seus
+  // próprios filtros -- este aqui é só um espelho embutido, mais simples.
+  const dreNarcelio = typeof montarDREConsolidado === 'function' ? montarDREConsolidado({
+    periodoIni: periodo.ini, periodoFim: periodo.fim,
+    cliente: '', fornecedor: '', marca: '', status: '',
+    rotulo: periodo.label,
+  }) : null;
+  window._narcelioDreUltimoResultado = dreNarcelio;
+
   const kpis = [
     card('Containers Pedidos (PI)', `${qtdPedido} containers`, `${pedidoLista.length} processo${pedidoLista.length!==1?'s':''} — ${periodo.label}`, 'var(--ac)', 'pedido'),
     card('Previsão de Embarque', `${qtdPrevisaoEmbarque} containers`, `aguardando embarque — ${periodo.label}`, '#b45309', 'embarque'),
@@ -267,6 +280,20 @@ function renderDashNarcelio(){
       <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">📅 Previsão de Recurso de Numerário</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Cronograma de pagamento da PI (FOB, por vencimento e câmbio previsto/fechado — cobre FOB a prazo) + demais custos reais do processo (aproximados no mês do ETA). Só processos ainda não fechados.</div>
       ${tabelaFluxo}
+    </div>
+
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);">📊 DRE Consolidado — ${periodo.label}</div>
+        ${dreNarcelio ? `<div style="display:flex;gap:8px;">
+          <button class="btn btn-outline" onclick="exportarDREPDF(window._narcelioDreUltimoResultado, null)" style="font-size:12px;">📄 PDF</button>
+          <button class="btn btn-outline" onclick="exportarDREExcel(window._narcelioDreUltimoResultado, null)" style="font-size:12px;">⬇️ Excel</button>
+        </div>` : ''}
+      </div>
+      ${dreNarcelio ? `
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">${dreNarcelio._meta.qtdProcessos} processo${dreNarcelio._meta.qtdProcessos===1?'':'s'} incluído${dreNarcelio._meta.qtdProcessos===1?'':'s'} nesta soma</div>
+        ${typeof _dreConsolidadoTabelaHtml === 'function' ? _dreConsolidadoTabelaHtml(dreNarcelio) : ''}
+      ` : `<div style="font-size:12px;color:var(--muted);">Nenhum processo com NF de Saída lançada no período selecionado.</div>`}
     </div>
   `;
 
