@@ -134,6 +134,134 @@ async function exportarPendenciasDI(){
   }
 }
 
+// ── Exportar a tabela detalhada de câmbio (Excel/PDF) — pedido do Ayslan
+// (18/09/2026): "a gente consegue exportar essa tela em excel? ou pdf?
+// Consegue flegar e exportar so o que flegamos pra mandar pros clientes o
+// que tme pra pagar e afins?" Reaproveita os MESMOS checkboxes já usados
+// pra fechar câmbio em lote (_cambioLoteSelecao): se algo estiver
+// marcado, exporta só o marcado; senão, exporta tudo que está visível na
+// tela (já com o filtro de cliente/texto/período aplicado).
+function _cambioLinhasParaExportar(){
+  const todas = window._cambioTabelaAtual || [];
+  if(!_cambioLoteSelecao.size) return todas;
+  return todas.filter(x => _cambioLoteSelecao.has(chaveLoteCambio(x.processoId, x._tipo, x._parcelaIndex)));
+}
+
+async function exportarTabelaCambioExcel(){
+  if(typeof ExcelJS === 'undefined'){
+    showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  const linhas = _cambioLinhasParaExportar();
+  if(!linhas.length){ showToast('Nenhuma parcela pra exportar neste filtro','err'); return; }
+  const mostrandoPagos = window._cambioTabelaMostrandoPagos;
+  const cambioAtual = window._cambioTabelaCambioAtual;
+  try{
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'IMPAK';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Câmbio');
+    ws.columns = [
+      { header: mostrandoPagos ? 'Venc. Original' : 'Vencimento', key: 'vencimento', width: 14 },
+      { header: 'Processo', key: 'processo', width: 16 },
+      { header: 'Fornecedor', key: 'fornecedor', width: 28 },
+      { header: 'Parcela', key: 'parcela', width: 14 },
+      { header: 'DI/DUIMP', key: 'di', width: 22 },
+      { header: 'Valor USD', key: 'usd', width: 15 },
+      { header: mostrandoPagos ? 'Câmbio Fechado' : 'Câmbio Previsto', key: 'cambio', width: 15 },
+      { header: mostrandoPagos ? 'BRL Pago' : 'BRL Estimado', key: 'brl', width: 16 },
+    ];
+    linhas.forEach(x => {
+      const cambio = (mostrandoPagos ? x.cambioFechado : x.cambioPrevisto) || cambioAtual;
+      ws.addRow({
+        vencimento: x.vencimento ? new Date(x.vencimento+'T00:00:00') : null,
+        processo: x.referencia || '',
+        fornecedor: x.fornecedor || '',
+        parcela: x.parcela || '',
+        di: x.numeroDi || '',
+        usd: x.valorUsd || 0,
+        cambio: cambio || 0,
+        brl: (x.valorUsd||0) * (cambio||0),
+      });
+    });
+    ws.getColumn('vencimento').numFmt = 'dd/mm/yyyy';
+    ws.getColumn('usd').numFmt = '#,##0.00';
+    ws.getColumn('cambio').numFmt = '0.0000';
+    ws.getColumn('brl').numFmt = '#,##0.00';
+    ws.eachRow((row, rowNumber) => {
+      row.eachCell({ includeEmpty: true }, cell => {
+        cell.font = { name: 'Arial', size: 11, bold: rowNumber === 1 };
+        cell.alignment = { horizontal: rowNumber === 1 ? 'left' : 'left', vertical: 'middle' };
+      });
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dataArq = new Date().toISOString().split('T')[0];
+    a.href = url; a.download = `Cambio_${_cambioLoteSelecao.size ? 'Selecionadas' : 'Tabela'}_${dataArq}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`✓ ${linhas.length} parcela(s) exportada(s) em Excel`,'ok');
+  }catch(e){
+    console.error(e);
+    showToast('Erro ao exportar Excel: '+e.message,'err');
+  }
+}
+
+async function exportarTabelaCambioPDF(){
+  if(typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined'){
+    showToast('Biblioteca de PDF ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  const linhas = _cambioLinhasParaExportar();
+  if(!linhas.length){ showToast('Nenhuma parcela pra exportar neste filtro','err'); return; }
+  const mostrandoPagos = window._cambioTabelaMostrandoPagos;
+  const cambioAtual = window._cambioTabelaCambioAtual;
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+    doc.setFontSize(14);
+    doc.setTextColor(30,41,59);
+    doc.text('IMPAK — Relatório de Câmbio' + (_cambioLoteSelecao.size ? ' (selecionadas)' : ''), 40, 40);
+    doc.setFontSize(9);
+    doc.setTextColor(100,116,139);
+    const agora = new Date();
+    doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} — ${linhas.length} parcela(s)`, 40, 56);
+
+    const colunas = [mostrandoPagos ? 'Venc. Original' : 'Vencimento', 'Processo', 'Fornecedor', 'Parcela', 'DI/DUIMP', 'Valor USD', mostrandoPagos ? 'Câmbio Fechado' : 'Câmbio Previsto', mostrandoPagos ? 'BRL Pago' : 'BRL Estimado'];
+    const body = linhas.map(x => {
+      const cambio = (mostrandoPagos ? x.cambioFechado : x.cambioPrevisto) || cambioAtual;
+      return [
+        x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—',
+        x.referencia || '',
+        x.fornecedor || '',
+        x.parcela || '',
+        x.numeroDi || '—',
+        `US$ ${(x.valorUsd||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+        cambio ? cambio.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—',
+        `R$ ${((x.valorUsd||0)*(cambio||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+      ];
+    });
+    doc.autoTable({
+      startY: 68,
+      head: [colunas],
+      body,
+      theme: 'grid',
+      styles: { fontSize:8, cellPadding:4, valign:'middle', lineColor:[226,232,240], lineWidth:0.5 },
+      headStyles: { fillColor:[37,99,235], textColor:255, fontStyle:'bold', fontSize:8.5 },
+      columnStyles: { 5:{halign:'right'}, 6:{halign:'right'}, 7:{halign:'right'} },
+      margin: { left:40, right:40 },
+    });
+    const dataArq = new Date().toISOString().split('T')[0];
+    doc.save(`Cambio_${_cambioLoteSelecao.size ? 'Selecionadas' : 'Tabela'}_${dataArq}.pdf`);
+    showToast(`✓ ${linhas.length} parcela(s) exportada(s) em PDF`,'ok');
+  }catch(e){
+    console.error(e);
+    showToast('Erro ao exportar PDF: '+e.message,'err');
+  }
+}
+
 async function exportarRelatorioMensalCambio(){
   if(typeof ExcelJS === 'undefined'){
     showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
@@ -715,6 +843,13 @@ function renderDashCambio(){
   // diferente antes de fechar o lote. Barra de ação (contagem + botão)
   // fica no cabeçalho da própria tabela — sempre visível, sem precisar
   // rolar até o fim pra achar o botão de lote.
+  // Snapshot pras funções de export (exportarTabelaCambioExcel/PDF, abaixo)
+  // lerem exatamente o que está na tela agora (mesmo filtro de cliente/
+  // texto/período já aplicado) sem duplicar a lógica de filtragem.
+  window._cambioTabelaAtual = linhasFiltradas;
+  window._cambioTabelaMostrandoPagos = mostrandoPagos;
+  window._cambioTabelaCambioAtual = cambioAtual;
+
   const tabelaHtml = `<div id="cambio-tabela-detalhada" style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;scroll-margin-top:14px;">
     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--bg);">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -728,11 +863,15 @@ function renderDashCambio(){
           style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;width:140px;">
         ${(_cambioFiltroCliente || _cambioFiltroTexto) ? `<a href="#" onclick="_cambioFiltroCliente='';_cambioFiltroTexto='';renderDashCambio();return false;" style="font-size:11px;color:var(--ac);">limpar</a>` : ''}
       </div>
-      ${mostrandoPagos ? '' : `<div style="display:flex;align-items:center;gap:10px;">
-        <span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote.'}</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        ${mostrandoPagos ? '' : `<span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote ou exportar só elas.'}</span>
         <button id="lote-cambio-btn" type="button" onclick="abrirPainelFechamentoLoteCambio()" ${_cambioLoteSelecao.size ? '' : 'disabled'}
-          style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;${_cambioLoteSelecao.size ? '' : 'opacity:.5;cursor:not-allowed;'}">💱 Fechar câmbio em lote</button>
-      </div>`}
+          style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;${_cambioLoteSelecao.size ? '' : 'opacity:.5;cursor:not-allowed;'}">💱 Fechar câmbio em lote</button>`}
+        <button type="button" onclick="exportarTabelaCambioExcel()" title="${_cambioLoteSelecao.size ? 'Exporta só as '+_cambioLoteSelecao.size+' parcela(s) marcada(s)' : 'Exporta todas as linhas mostradas'}"
+          style="font-size:12px;font-weight:600;padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;">⬇️ Excel${_cambioLoteSelecao.size ? ` (${_cambioLoteSelecao.size})` : ''}</button>
+        <button type="button" onclick="exportarTabelaCambioPDF()" title="${_cambioLoteSelecao.size ? 'Exporta só as '+_cambioLoteSelecao.size+' parcela(s) marcada(s)' : 'Exporta todas as linhas mostradas'}"
+          style="font-size:12px;font-weight:600;padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;">📄 PDF${_cambioLoteSelecao.size ? ` (${_cambioLoteSelecao.size})` : ''}</button>
+      </div>
     </div>
     <div id="lote-cambio-painel" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);background:#f0f9ff;align-items:center;gap:12px;flex-wrap:wrap;">
       <b id="lote-cambio-titulo-painel" style="font-size:12px;">Fechar câmbio de ${_cambioLoteSelecao.size} parcela(s) selecionada(s):</b>
