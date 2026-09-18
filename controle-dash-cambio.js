@@ -96,10 +96,10 @@ async function exportarPendenciasDI(){
     wb.created = new Date();
     const ws = wb.addWorksheet('Planilha3');
     ws.columns = [
-      { header: 'Vencimento', key: 'vencimento', width: 14 },
-      { header: 'Valor M.E.', key: 'valor_me', width: 14 },
-      { header: 'D/ DUIMP ', key: 'duimp', width: 20 },
-      { header: 'PROTOCOLO / CHAVE DE ACESSO', key: 'protocolo', width: 30 },
+      { header: 'Vencimento', key: 'vencimento', width: 15 },
+      { header: 'Valor M.E.', key: 'valor_me', width: 13.33 },
+      { header: 'D/ DUIMP ', key: 'duimp', width: 40.5 },
+      { header: 'PROTOCOLO / CHAVE DE ACESSO', key: 'protocolo', width: 35.5 },
     ];
     linhas.forEach(l=>{
       ws.addRow({
@@ -111,6 +111,14 @@ async function exportarPendenciasDI(){
     });
     ws.getColumn('vencimento').numFmt = 'dd/mm/yyyy';
     ws.getColumn('valor_me').numFmt = '#,##0.00';
+    // Mesma fonte/alinhamento do arquivo real que o banco recebe: Arial 11,
+    // cabeçalho em negrito, alinhado à esquerda e centralizado verticalmente.
+    ws.eachRow((row, rowNumber) => {
+      row.eachCell({ includeEmpty: true }, cell => {
+        cell.font = { name: 'Arial', size: 11, bold: rowNumber === 1 };
+        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+      });
+    });
 
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
