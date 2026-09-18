@@ -259,7 +259,7 @@ document.addEventListener('keydown', function(e){
 // em vez de duplicar essa lógica evita ter duas versões de "abrir
 // processo" pra manter sincronizadas.
 function ativarTelaFinanceiroExclusiva(){
-  document.title = 'IMPAK — Dashboard Financeiro';
+  document.title = 'ImpakOS - Dashboard Financeiro';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Financeiro';
 
@@ -296,7 +296,7 @@ function ativarTelaFinanceiroExclusiva(){
 // esquema do /financeiro acima. Ver renderDashCadastros() em
 // controle-dash-cadastros.js.
 function ativarTelaCadastrosExclusiva(){
-  document.title = 'IMPAK — Cadastros';
+  document.title = 'ImpakOS - Cadastros';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Cadastros';
 
@@ -335,7 +335,7 @@ function ativarTelaCadastrosExclusiva(){
 // era exatamente pra isso que servia a tela antiga em processos.html.
 // Ver renderDashConferenciaFila() em controle-dash-conferencia.js.
 function ativarTelaConferenciaFilaExclusiva(){
-  document.title = 'IMPAK — Fila de Conferência';
+  document.title = 'ImpakOS - Fila de Conferência';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Fila de Conferência';
 
@@ -370,7 +370,7 @@ function ativarTelaConferenciaFilaExclusiva(){
 // Custo Real Total). Reaproveita _processos e calcularFechamento() em vez
 // de duplicar essa lógica.
 function ativarTelaResultadoExclusiva(){
-  document.title = 'IMPAK — Dashboard Resultado';
+  document.title = 'ImpakOS - Dashboard Resultado';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Resultado';
 
@@ -408,7 +408,7 @@ function ativarTelaResultadoExclusiva(){
 // Fornecedor) em vez de um período único — ver renderDashAnalises() em
 // controle-dashboards.js.
 function ativarTelaAnalisesExclusiva(){
-  document.title = 'IMPAK — Análises';
+  document.title = 'ImpakOS - Análises';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Análises';
 
@@ -447,7 +447,7 @@ function ativarTelaAnalisesExclusiva(){
 // semanal/mensal em vez de tabela única — ver renderDashCambio() em
 // controle-dash-cambio.js.
 function ativarTelaCambioExclusiva(){
-  document.title = 'IMPAK — Dashboard Câmbio';
+  document.title = 'ImpakOS - Dashboard Câmbio';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Câmbio';
 
@@ -486,7 +486,7 @@ function ativarTelaCambioExclusiva(){
 // processo). Acesso já é restrito no back-end (ver /narcelio em
 // server.js) — aqui é só a apresentação.
 function ativarTelaNarcelioExclusiva(){
-  document.title = 'IMPAK — Dashboard Narcélio';
+  document.title = 'ImpakOS - Dashboard Narcélio';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard Narcélio';
 
@@ -531,7 +531,7 @@ function finalizarBootExclusivo(){
 }
 
 function ativarTelaTVExclusiva(){
-  document.title = 'IMPAK — Dashboard TV';
+  document.title = 'ImpakOS - Dashboard TV';
   const titulo = document.querySelector('.topbar-title');
   if(titulo) titulo.textContent = 'Dashboard TV';
 

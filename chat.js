@@ -303,7 +303,7 @@ if (isLoginPage) return;
 const navEl = document.createElement('div');
 navEl.id = 'impak-nav';
 navEl.innerHTML = `
-<div class="nav-logo">IMPAK</div>
+<div class="nav-logo">ImpakOS</div>
 <div class="nav-links-wrap" id="nav-links-wrap"></div>
 <div class="nav-right">
 <span class="nav-user" id="nav-user-label">—</span>

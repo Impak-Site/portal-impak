@@ -478,7 +478,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IMPAK — Acesso</title>
+<title>ImpakOS - Acesso</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -543,7 +543,7 @@ function esqueciSenhaPage(){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IMPAK — Esqueci minha senha</title>
+<title>ImpakOS - Esqueci minha senha</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 </head>
@@ -593,7 +593,7 @@ function redefinirSenhaPage(tokenValido){
   if(!tokenValido){
     return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IMPAK — Link inválido</title>
+<title>ImpakOS - Link inválido</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 </head><body><div class="wrap">
@@ -610,7 +610,7 @@ ${AUTH_CSS}
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IMPAK — Definir nova senha</title>
+<title>ImpakOS - Definir nova senha</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 </head>
@@ -675,7 +675,7 @@ function configurar2faPage(qrDataUrl, secretTexto, erro) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IMPAK — Configurar autenticação em duas etapas</title>
+<title>ImpakOS - Configurar autenticação em duas etapas</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 <style>.qr-box{text-align:center;margin-bottom:18px;}.qr-box img{width:180px;height:180px;border:1px solid #c8d8e8;border-radius:8px;}
@@ -733,7 +733,7 @@ function verificar2faPage(erro) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IMPAK — Código de verificação</title>
+<title>ImpakOS - Código de verificação</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 <style>.codigo-input{letter-spacing:6px;font-size:22px;text-align:center;font-weight:700;}</style>
