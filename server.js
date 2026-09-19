@@ -3642,12 +3642,40 @@ const { error } = await sb().from('app_job_runs').upsert({ job_name: 'alertas_di
 if (error) console.error('marcarAlertasEnviadosHoje: falha ao gravar app_job_runs (job pode repetir!):', error.message);
 }
 
+// Colunas que os jobs de alerta por e-mail de fato leem -- união do que
+// verificarAlertasDiarios/Demurrage/PedidoLI/AjusteDocumentos/CambioSemana/
+// Transportadora usam (conferido função por função em 19/09/2026). Antes
+// todos faziam select('*') e traziam os JSONs pesados (real_json,
+// estimativa_json, produtos_json, containers_json, log...) de todos os
+// processos, várias vezes por dia, à toa. conferencia_json, vendas_json e
+// pi_parcelas_json ficam porque 1 job cada usa de verdade.
+const COLS_ALERTAS = [
+  'id','referencia','cliente','fornecedor','fase','cancelado',
+  'eta','etd','data_chegada','transportadora',
+  'demurrage_vencimento','data_devolucao_vazio',
+  'aprovacao_hbl','solicitacao_li','docs_enviados_despachante',
+  'pi_valor_usd','pi_pagamento','pi_pago','pi_cambio','pi_entrada_pct',
+  'pi_data_entrada','pi_data_saldo','pi_cambio_entrada','pi_parcelas_json',
+  'vendas_json','conferencia_json','updated_at',
+].join(',');
+// Processos ativos (não finalizados) só com as colunas acima -- usado por
+// todos os jobs de alerta. O filtro de FINALIZADO vai no banco; o de
+// cancelado continua no JS porque a coluna pode ser null (não é false).
+async function _processosAtivosParaAlertas(){
+  const { data, error } = await sb().from('controle_processos')
+    .select(COLS_ALERTAS)
+    .neq('fase', 'FINALIZADO')
+    .order('updated_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
 async function verificarAlertasDiarios(){
-const { data: processos, error } = await sb().from('controle_processos').select('*').order('updated_at', { ascending: false });
-if (error) { console.error('Erro ao buscar processos p/ alertas diarios:', error.message); return 0; }
+let ativos;
+try { ativos = await _processosAtivosParaAlertas(); }
+catch (e) { console.error('Erro ao buscar processos p/ alertas diarios:', e.message); return 0; }
 const hoje = new Date();
 const semana = new Date(hoje); semana.setDate(hoje.getDate() + 7);
-const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO');
 function demDias(p){
 if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
 const d = new Date(p.demurrage_vencimento);
@@ -3750,10 +3778,10 @@ function _rodapeAlertaHtml(){
 // ── 1) Pendências de Demurrage ──────────────────────────────────────
 async function verificarAlertaDemurrage(){
   const jobName = 'alerta_demurrage';
-  const { data: processos, error } = await sb().from('controle_processos').select('*');
-  if (error) { console.error('Erro ao buscar processos p/ alerta demurrage:', error.message); return 0; }
+  let ativos;
+  try { ativos = (await _processosAtivosParaAlertas()).filter(p => !p.cancelado); }
+  catch (e) { console.error('Erro ao buscar processos p/ alerta demurrage:', e.message); return 0; }
   const hoje = new Date();
-  const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO' && !p.cancelado);
   function demDias(p){
     if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
     return Math.ceil((new Date(p.demurrage_vencimento) - hoje) / 86400000);
@@ -3777,9 +3805,9 @@ async function verificarAlertaDemurrage(){
 // ── 2) Envio de pedido de LI ────────────────────────────────────────
 async function verificarAlertaPedidoLI(){
   const jobName = 'alerta_pedido_li';
-  const { data: processos, error } = await sb().from('controle_processos').select('*');
-  if (error) { console.error('Erro ao buscar processos p/ alerta LI:', error.message); return 0; }
-  const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO' && !p.cancelado);
+  let ativos;
+  try { ativos = (await _processosAtivosParaAlertas()).filter(p => !p.cancelado); }
+  catch (e) { console.error('Erro ao buscar processos p/ alerta LI:', e.message); return 0; }
   // Mesma condição de verificarAlertas() (controle-core.js): HBL aprovado é
   // o gatilho pra enviar os docs à despachante solicitar a LI; some quando
   // a LI já foi confirmada como solicitada (solicitacao_li === 'Sim').
@@ -3818,9 +3846,9 @@ function _contarPendentesConferencia(analiseStr){
 
 async function verificarAlertaAjusteDocumentos(){
   const jobName = 'alerta_ajuste_documentos';
-  const { data: processos, error } = await sb().from('controle_processos').select('*');
-  if (error) { console.error('Erro ao buscar processos p/ alerta ajuste documentos:', error.message); return 0; }
-  const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO' && !p.cancelado);
+  let ativos;
+  try { ativos = (await _processosAtivosParaAlertas()).filter(p => !p.cancelado); }
+  catch (e) { console.error('Erro ao buscar processos p/ alerta ajuste documentos:', e.message); return 0; }
 
   // Nomes de arquivo do GED, em lote (mesma paginação usada em
   // GET /api/controle/v2/processos, pro alerta CI/PL/Draft).
@@ -3928,9 +3956,9 @@ function _clientesResumoProcesso(p){
 
 async function verificarAlertaCambioSemana(){
   const jobName = 'alerta_cambio_semana';
-  const { data: processos, error } = await sb().from('controle_processos').select('*');
-  if (error) { console.error('Erro ao buscar processos p/ alerta câmbio da semana:', error.message); return 0; }
-  const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO' && !p.cancelado);
+  let ativos;
+  try { ativos = (await _processosAtivosParaAlertas()).filter(p => !p.cancelado); }
+  catch (e) { console.error('Erro ao buscar processos p/ alerta câmbio da semana:', e.message); return 0; }
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const daqui7 = new Date(hoje); daqui7.setDate(hoje.getDate()+7);
   const inicioStr = hoje.toISOString().slice(0,10);
@@ -3955,6 +3983,105 @@ async function verificarAlertaCambioSemana(){
   return linhas.length;
 }
 
+// ── BACKUP SEMANAL (pedido Ayslan, 19/09/2026) ──────────────────────
+// Exporta todas as tabelas em JSON pro bucket privado BACKUP_BUCKET, um
+// arquivo por tabela, numa pasta por data (backups/2026-09-21/...). Mantém
+// as últimas BACKUP_MANTER_SEMANAS pastas. Roda toda segunda ~03h BRT via
+// agendarBackupSemanal() (controlado por app_job_runs, job 'backup_semanal',
+// então não repete se o servidor reiniciar no mesmo dia) ou na mão por
+// POST /api/admin/backup. Complementa (não substitui) o backup nativo do
+// Supabase: este aqui fica num lugar que a gente controla, em formato
+// legível, e cobre o caso de "apaguei/alterei errado e só percebi depois".
+const BACKUP_BUCKET = process.env.BACKUP_BUCKET || 'backups';
+const BACKUP_MANTER_SEMANAS = parseInt(process.env.BACKUP_MANTER_SEMANAS || '8', 10);
+const BACKUP_TABELAS = [
+  'controle_processos','controle_arquivos','controle_log','controle_notificacoes',
+  'calculador_cotacoes','contatos_clientes','cadastros_pessoas','catalogo_produtos',
+  'tyredesk_fornecedores','tyredesk_base','tyredesk_historico',
+  'usuarios','app_job_runs',
+];
+
+async function _garantirBucketBackup(){
+  const { data: buckets } = await sb().storage.listBuckets();
+  if ((buckets || []).some(b => b.name === BACKUP_BUCKET)) return;
+  const { error } = await sb().storage.createBucket(BACKUP_BUCKET, { public: false });
+  if (error && !/already exists/i.test(error.message)) throw new Error('criar bucket de backup: ' + error.message);
+}
+
+async function _lerTabelaInteira(tabela){
+  const PAGINA = 1000;
+  const linhas = [];
+  for (let offset = 0; ; offset += PAGINA) {
+    const { data, error } = await sb().from(tabela).select('*').range(offset, offset + PAGINA - 1);
+    if (error) throw new Error(`${tabela}: ${error.message}`);
+    if (!data || !data.length) break;
+    linhas.push(...data);
+    if (data.length < PAGINA) break;
+  }
+  return linhas;
+}
+
+async function executarBackup(){
+  await _garantirBucketBackup();
+  const dia = new Date().toISOString().slice(0,10);
+  const resumo = { dia, tabelas: {}, erros: [] };
+  for (const tabela of BACKUP_TABELAS) {
+    try {
+      const linhas = await _lerTabelaInteira(tabela);
+      // usuarios: nunca gravar hash de senha/segredo TOTP no backup
+      const seguras = tabela === 'usuarios'
+        ? linhas.map(u => { const c = { ...u }; delete c.senha_hash; delete c.senha; delete c.totp_secret; return c; })
+        : linhas;
+      const conteudo = Buffer.from(JSON.stringify(seguras), 'utf8');
+      const { error } = await sb().storage.from(BACKUP_BUCKET)
+        .upload(`${dia}/${tabela}.json`, conteudo, { contentType: 'application/json', upsert: true });
+      if (error) throw new Error(error.message);
+      resumo.tabelas[tabela] = { linhas: linhas.length, bytes: conteudo.length };
+    } catch (e) {
+      resumo.erros.push(`${tabela}: ${e.message}`);
+      console.error('Backup falhou em', tabela, e.message);
+    }
+  }
+  // Limpeza: mantém só as N pastas (datas) mais recentes.
+  try {
+    const { data: pastas } = await sb().storage.from(BACKUP_BUCKET).list('', { limit: 500 });
+    const datas = (pastas || []).map(x => x.name).filter(n => /^\d{4}-\d{2}-\d{2}$/.test(n)).sort();
+    const remover = datas.slice(0, Math.max(0, datas.length - BACKUP_MANTER_SEMANAS));
+    for (const d of remover) {
+      const { data: arquivos } = await sb().storage.from(BACKUP_BUCKET).list(d, { limit: 500 });
+      const paths = (arquivos || []).map(a => `${d}/${a.name}`);
+      if (paths.length) await sb().storage.from(BACKUP_BUCKET).remove(paths);
+    }
+    resumo.removidas = remover;
+  } catch (e) { resumo.erros.push('limpeza: ' + e.message); }
+  console.log('Backup semanal concluído:', JSON.stringify(resumo));
+  return resumo;
+}
+
+function agendarBackupSemanal(){
+  const checar = async () => {
+    try {
+      const agora = new Date();
+      const hBrt = (agora.getUTCHours() - 3 + 24) % 24;
+      const diaSemanaBrt = new Date(agora.getTime() - 3*3600*1000).getUTCDay(); // 1 = segunda
+      if (diaSemanaBrt !== 1 || hBrt < 3) return;
+      if (await jaEnviouJobHoje('backup_semanal')) return;
+      await executarBackup();
+      await marcarJobEnviadoHoje('backup_semanal');
+    } catch (e) { console.error('agendarBackupSemanal:', e.message); }
+  };
+  setTimeout(checar, 60 * 1000);
+  setInterval(checar, 30 * 60 * 1000);
+}
+
+app.post('/api/admin/backup', (req, res) => {
+  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+  executarBackup()
+    .then(resumo => res.json({ ok: true, resumo }))
+    .catch(e => res.status(500).json({ ok: false, erro: e.message }));
+});
+
 // ── 5) Transportadora pendente (chegou sem transportadora anotada) ──
 // Pedido Paula (18/09/2026): "se o processo chegou tem que estar anotado
 // qual vai ser a transportadora e não tem começar a dar alerto no outro
@@ -3965,9 +4092,9 @@ async function verificarAlertaCambioSemana(){
 // por processo, diário, e olha pra Data de Chegada.
 async function verificarAlertaTransportadora(){
   const jobName = 'alerta_transportadora';
-  const { data: processos, error } = await sb().from('controle_processos').select('*');
-  if (error) { console.error('Erro ao buscar processos p/ alerta transportadora:', error.message); return 0; }
-  const ativos = (processos || []).filter(p => p.fase !== 'FINALIZADO' && !p.cancelado);
+  let ativos;
+  try { ativos = (await _processosAtivosParaAlertas()).filter(p => !p.cancelado); }
+  catch (e) { console.error('Erro ao buscar processos p/ alerta transportadora:', e.message); return 0; }
   const pendentes = ativos.filter(p => p.data_chegada && !p.transportadora && !p.data_devolucao_vazio);
   if (!pendentes.length) { await marcarJobEnviadoHoje(jobName); return 0; }
   const hoje = new Date();
@@ -4064,5 +4191,6 @@ app.listen(PORT, () => {
   console.log(`ANTHROPIC_API_KEY configurada: ${!!process.env.ANTHROPIC_API_KEY} | SUPABASE_URL configurada: ${!!process.env.SUPABASE_URL}`);
   agendarAlertasDiarios();
   agendarAlertasSeparados();
+  agendarBackupSemanal();
 sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
 });
