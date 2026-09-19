@@ -579,8 +579,9 @@ async function extrairComIA_umArquivo(input){
   "containers": [],  // ARRAY com TODOS os containers do documento — um item por container: {"numero":"TCKU7973104","lacre":"2299285"}. IMPORTANTE: BL e CE Mercante frequentemente listam 2 OU MAIS containers na mesma tabela (ex: "3X40HQ CONTAINER FCL/FCL" com 3 linhas de número+lacre). Inclua UM item no array PARA CADA linha de container encontrada — nunca junte vários números numa única string separada por vírgula. Mesmo se houver só 1 container no documento, retorne um array com 1 item.
   "valor_frete": 0,  // valor do frete marítimo — extrair de: BL (campo "Freight", "Ocean Freight", "Freight Charges", geralmente no rodapé/seção de charges do BL — usar o valor "Prepaid" OU "Collect", o que estiver preenchido com valor) ou CE Mercante (campo "Frete"). Se não encontrar um valor de frete explícito no documento, deixar 0.
   "moeda_frete": "",  // moeda em que o valor_frete veio no documento: "USD", "BRL" ou "EUR". Deixar "" se valor_frete for 0.
-  "numero_di": "",  // número da Declaração de Importação — ex: "26/0672265-4"
-  "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI
+  "numero_di": "",  // número da Declaração de Importação (DI) — ex: "26/0672265-4". Se o documento for uma DUIMP (não uma DI), usar aqui o próprio número da DUIMP, ex: "26BR0001279136-0" (costuma aparecer no topo do documento, tipo "Extrato da Duimp 26BR0001279136-0" ou "Duimp Nº").
+  "duimp_numero": "",  // preencher SOMENTE quando o documento for especificamente uma DUIMP (não uma DI antiga) — repete o mesmo número de "numero_di" acima nesse caso. Útil pra localizar depois qual parcela de pagamento essa DUIMP se refere. Deixar "" se o documento não for uma DUIMP.
+  "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI. Se for uma DUIMP, usar a data do evento "Declaração registrada" no histórico/timeline do documento (ex: "27/07/2026, 19:13" → "2026-07-27").
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
   "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
   "ci_numero": "",  // número da CI (Commercial Invoice/Fatura Comercial) — extrair de rótulos como "Invoice No", "Invoice Number", "INV. NO", "INV NO", "INV. NO:", "CI No", "Commercial Invoice No" (aceitar variações de pontuação/abreviação do rótulo, ex: com ou sem ponto, com ou sem dois-pontos)
@@ -608,8 +609,8 @@ Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RI
 - se o campo "Gate In Date/Time" estiver vazio mas "Gate Out Date/Time" estiver preenchido, este documento é de SAÍDA do container vazio do depósito (não de devolução) — não preencher data_devolucao_vazio neste caso.
 Se o documento for um Comprovante de Importação, Extrato da Declaração de Importação (DI) ou uma DUIMP (Declaração Única de Importação — o novo formato que está substituindo a DI), emitidos pela Receita Federal/Siscomex:
 - NUNCA preencha ce_master, ce_house ou ce_data_embarque a partir desse documento, mesmo que ele mencione ou referencie um número de CE Mercante em algum trecho (a DUIMP costuma citar o CE vinculado à carga como parte dos próprios dados da declaração) — esses 3 campos só podem vir de um CE Mercante emitido de verdade, nunca de uma DI/DUIMP. Preenchê-los a partir daqui troca ou apaga o CE Master/House corretos já registrados no processo.
-- numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4").
-- data_registro_di vem de "DATA DO REGISTRO".
+- Se for uma DI (documento antigo): numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4"); data_registro_di vem de "DATA DO REGISTRO".
+- Se for uma DUIMP (documento novo, geralmente chamado "Extrato da Duimp"): numero_di E duimp_numero recebem os DOIS o número da própria DUIMP, impresso no topo do documento (ex: "Extrato da Duimp 26BR0001279136-0" → usar "26BR0001279136-0"); data_registro_di vem da data do evento "Declaração registrada" listado no Histórico do documento (ignorar o horário, só a data).
 - canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
 - data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
 - se o documento trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
@@ -938,6 +939,31 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       }
     }
     delete extracted.cambio_referencias; // tratado à parte acima, nunca vai pro loop genérico
+
+    // Nº DUIMP (aba Financeiro, por parcela) — pedido do Ayslan (18/09/2026):
+    // subiu o Extrato da DUIMP e o campo não foi preenchido porque ele é
+    // por PARCELA (_parcelas[i].duimp_numero), não um input direto "f_..."
+    // como os demais campos, então precisa de tratamento à parte aqui,
+    // igual containers/câmbio acima. Espalha o número em toda parcela que
+    // já tem câmbio fechado (cambio_fechado preenchido) e ainda não tem
+    // Nº DUIMP — cobre o caso comum de uma DUIMP só valendo pro processo
+    // inteiro, sem precisar adivinhar a qual parcela específica ela pertence.
+    if(extracted.duimp_numero && typeof _parcelas !== 'undefined' && Array.isArray(_parcelas) && _parcelas.length){
+      let parcelasAtualizadas = 0;
+      _parcelas.forEach(pc => {
+        if(pc && pc.cambio_fechado && !pc.duimp_numero){
+          pc.duimp_numero = extracted.duimp_numero;
+          parcelasAtualizadas++;
+        }
+      });
+      if(parcelasAtualizadas){
+        if(typeof renderParcelas === 'function') renderParcelas();
+        if(typeof sincronizarParcelasLegado === 'function') sincronizarParcelasLegado();
+        preenchidos += parcelasAtualizadas;
+        camposLidosNestaLeitura.push('duimp_numero');
+      }
+    }
+    delete extracted.duimp_numero; // tratado à parte acima, nunca vai pro loop genérico
 
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete'];

@@ -1388,6 +1388,7 @@ const LABELS_CAMPOS_IA = {
   despachante:'Despachante', pi_cambio:'Câmbio PI', pi_cambio_fechado:'Câmbio fechado',
   pi_cambio_entrada:'Câmbio Entrada', pi_cambio_saldo:'Câmbio Saldo', pi_cambio_banco:'Banco do câmbio', pi_cambio_custo:'Custo do câmbio',
   containers_json:'Containers', produtos_json:'Produtos', vendas_json:'Vendas', pi_parcelas_json:'Parcelas de pagamento',
+  duimp_numero:'Nº DUIMP',
 };
 // Campos cujo valor bruto e um blob JSON (lista de containers/produtos/
 // vendas/parcelas) — no Historico nao faz sentido despejar o JSON inteiro
