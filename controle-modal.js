@@ -301,7 +301,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
         <div style="display:flex;gap:10px;">
           <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-          <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+          <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
         </div>
       </div>
     </div>
@@ -380,7 +380,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
 
@@ -407,7 +407,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
 
@@ -453,7 +453,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
 
@@ -588,7 +588,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
 
@@ -638,7 +638,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
 
@@ -762,7 +762,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="coletarESalvar()">💾 Salvar</button>
+        <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
 

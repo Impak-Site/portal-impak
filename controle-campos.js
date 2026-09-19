@@ -147,8 +147,11 @@ function togglePortoOutro(tipo){
 // (controle-conferencia.js/_confTentarPreencherAutomatico), que roda em
 // segundo plano sem o usuário clicar em Salvar -- fechar o painel sozinho
 // nesse caso parecia bug pro usuário ("ele só fecha do nada", Emanuelly
-// 16/09/2026). O botão "Salvar" continua chamando coletarESalvar() sem
-// argumento, então mantém o fechamento normal ao clicar.
+// 16/09/2026). Desde 18/09/2026 (pedido do Ayslan: "quando apertamos o
+// salvar, o processo fecha sozinho, pq?"), o botão "Salvar" TAMBÉM passou a
+// chamar coletarESalvar({fecharAoSalvar:false}) -- grava e avisa por toast,
+// mas mantém o painel aberto pra continuar editando outras abas do mesmo
+// processo, em vez de fechar e voltar pra lista a cada clique.
 function coletarESalvar(opts){
   const fecharAoSalvar = !(opts && opts.fecharAoSalvar === false);
   if(window._salvandoProcesso) return;
@@ -371,13 +374,13 @@ function coletarESalvar(opts){
   _editando = proc;
 
   window._salvandoProcesso = true;
-  const btnsSalvar = document.querySelectorAll('.btn-primary[onclick="coletarESalvar()"]');
+  const btnsSalvar = document.querySelectorAll('.btn-primary[onclick^="coletarESalvar("]');
   btnsSalvar.forEach(b=>b.disabled = true);
   salvarProcesso(proc, patchFields).then(ok=>{
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
     if(ok && fecharAoSalvar) fecharModal();
-    else if(ok) showToast('Processo atualizado automaticamente pela Conferência.', 'ok');
+    else if(ok) showToast('✓ Processo salvo', 'ok');
   }).catch(()=>{
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
