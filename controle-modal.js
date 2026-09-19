@@ -257,6 +257,10 @@ function renderModal(){
           <div class="form-group"><label class="form-label">Marca (Brand)</label>
             <input class="form-input" id="f_brand" value="${esc(p.brand)}" placeholder="Ex: Maxam — deixe em branco se marca = fornecedor">
           </div>
+          <div class="form-group"><label class="form-label">ID no Conexos</label>
+            <input class="form-input" id="f_conexos_id" value="${esc(p.conexos_id)}" placeholder="Nº/código deste processo no Conexos" title="Identificador do mesmo processo no Conexos Cloud — usado pela integração (em preparação) pra casar os dois sistemas">
+            ${p.conexos_ultima_sync ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Última sincronização: ${esc(new Date(p.conexos_ultima_sync).toLocaleString('pt-BR'))}</div>` : ''}
+          </div>
           <div class="form-group"><label class="form-label" id="label-qtd-containers">Qtd. Containers (previsto)</label>
             <input class="form-input" type="number" min="0" step="1" id="f_qtd_containers_prevista" value="${p.qtd_containers_prevista ?? ''}" placeholder="Ex: 3 — preencha assim que souber, mesmo antes do booking">
             <div id="hint-qtd-containers" style="font-size:11px;color:var(--warn);margin-top:4px;"></div>
@@ -1358,7 +1362,7 @@ function toggleEtiquetaManual(id, marcado){
 }
 const LOG_CAMPO_LEITURA_IA = '📄_leitura_ia';
 const LABELS_CAMPOS_IA = {
-  referencia:'Referência', finalidade:'Finalidade', fornecedor:'Fornecedor/Exportador', brand:'Marca',
+  referencia:'Referência', finalidade:'Finalidade', fornecedor:'Fornecedor/Exportador', brand:'Marca', conexos_id:'ID no Conexos',
   qtd_containers_prevista:'Qtd. Containers (previsto)', cliente:'Cliente', produto:'Produto', obs:'Observações',
   itens:'Itens/Produtos', pi_numero:'Nº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
   pi_incoterm:'Incoterm', pi_pagamento:'Forma de pagamento', pi_pago:'PI paga',
