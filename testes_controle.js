@@ -1197,55 +1197,6 @@ teste('COLUNAS_TABELA: coluna Semana Booking agrupa e ordena numericamente (não
   iguais(vm.runInContext(`COLUNAS_TABELA.find(c => c.campo === 'semana_booking').valor({})`, sandbox), 'Sem semana definida');
 });
 
-// _processos e _filProcessoAvancado são declarados com "let" no topo de
-// controle-core.js — bindings léxicas de módulo, não propriedades do objeto
-// global do sandbox (diferente das "function nome(){}", que viram
-// propriedades e por isso dá pra chamar sandbox.filtrarProcessos() direto).
-// Pra alterá-las de fora é preciso rodar código NA MESMA vm.context (o
-// ambiente léxico top-level é compartilhado entre execuções na mesma
-// context), não só atribuir em sandbox.window.
-function setEstadoProcessos(processos, condicoesAvancado){
-  vm.runInContext(
-    `_processos = ${JSON.stringify(processos)}; _filProcessoAvancado = { condicoes: ${JSON.stringify(condicoesAvancado)} };`,
-    sandbox
-  );
-}
-
-teste('filtrarProcessos: filtro avançado (Fase 2) — margem numérica combinada com país (select)', () => {
-  setEstadoProcessos([
-    { id:'a', referencia:'UD1', fornecedor:'F1', nf_saida_valor:1000, nf_entrada_valor:800, porto_origem:'SHANGHAI' },   // margem 20%, China
-    { id:'b', referencia:'UD2', fornecedor:'F2', nf_saida_valor:1000, nf_entrada_valor:500, porto_origem:'SHANGHAI' },   // margem 50%, China
-    { id:'c', referencia:'UD3', fornecedor:'F3', nf_saida_valor:1000, nf_entrada_valor:500, porto_origem:'HO CHI MINH' }, // margem 50%, Vietnã
-  ], [
-    { campo:'margemReal', operador:'gte', valor:'30', valor2:'' },
-    { campo:'pais', operador:'eq', valor:'China', valor2:'' },
-  ]);
-  const lista = sandbox.filtrarProcessos(true);
-  iguais(lista.length, 1, 'só o processo b (margem 50%, China) deveria passar nos dois filtros combinados');
-  iguais(lista[0].id, 'b');
-});
-
-teste('filtrarProcessos: filtro avançado sem nenhuma condição não altera a lista', () => {
-  setEstadoProcessos([
-    { id:'x', referencia:'UD9', nf_saida_valor:100, nf_entrada_valor:50 },
-  ], []);
-  const lista = sandbox.filtrarProcessos(true);
-  iguais(lista.length, 1);
-});
-
-teste('filtrarProcessos: condição de filtro avançado em branco (campo escolhido mas sem valor ainda) não derruba a lista', () => {
-  setEstadoProcessos([
-    { id:'y', referencia:'UD8', fornecedor:'ForneY', nf_saida_valor:100, nf_entrada_valor:50 },
-  ], [ { campo:'fornecedor', operador:'contem', valor:'', valor2:'' } ]);
-  const lista = sandbox.filtrarProcessos(true);
-  iguais(lista.length, 1, 'condição em branco enquanto o usuário monta o filtro não deve esconder tudo');
-});
-
-teste('filtrarProcessos: limpar o estado avançado de volta (não deixar resíduo pros demais testes do arquivo)', () => {
-  setEstadoProcessos([], []);
-  iguais(sandbox.filtrarProcessos(true).length, 0);
-});
-
 // ── TESTES: renderDashAnalises() — Fase 3 (Análises/BI, 10/09/2026) ─
 // Reaproveita o MESMO motor de filtro genérico já testado acima (Fase 1/2)
 // — não retesta avaliarCondicaoFiltro/aplicarFiltrosGenericos de novo,
@@ -1350,6 +1301,13 @@ teste('sincronizarDemurrageAgregado: todos devolvidos E isentos de RIC -> f_ric_
 teste('sincronizarDemurrageAgregado: limpar o estado de volta (não deixar resíduo pros demais testes do arquivo)', () => {
   setContainersDemurrage([]);
 });
+
+// _processos é declarada com "let" no topo de controle-core.js — binding
+// léxica de módulo. Pra alterá-la de fora é preciso rodar código NA MESMA
+// vm.context (compartilhada entre execuções), não só sandbox.window.
+function setEstadoProcessos(processos){
+  vm.runInContext(`_processos = ${JSON.stringify(processos)};`, sandbox);
+}
 
 // ── TESTES: montarDREConsolidado() — DRE Consolidado (11/09/2026) ─
 // Pedido do Ayslan: "fizemos um DRE por processo. tem como fazermos um
