@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "test": "node testes_controle.js && node testes_tyredesk.js && node testes_calculador.js && node testes_aprovacao.js && node testes_totp.js && node testes_rotas.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -19,5 +20,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "supertest": "^6.3.4"
   }
 }

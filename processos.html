@@ -1264,6 +1264,7 @@ var _procCache = {}; // cache em memória por sessão
 
 // Detecta HTML de redirect (sessão expirada) e redireciona para login
 function safeJsonConf(r){
+  if(r.status===401){ window.location.href='/login'; return Promise.resolve(null); }
   var ct = r.headers.get('content-type')||'';
   if(!ct.includes('application/json')){
     return r.text().then(function(t){

@@ -748,7 +748,10 @@ function escJs(v){
   const _fetch = window.fetch.bind(window);
   window.fetch = async function(...args){
     const res = await _fetch(...args);
-    if (res.redirected && res.url.startsWith(location.origin) && res.url.includes('/login')) {
+    // Sessão expirada: rotas de API agora devolvem 401 JSON (19/09/2026, auth()
+    // no server.js); páginas continuam redirecionando pro /login. Trata os dois.
+    const url401 = res.status === 401 && typeof args[0] === 'string' && args[0].includes('/api/');
+    if (url401 || (res.redirected && res.url.startsWith(location.origin) && res.url.includes('/login'))) {
       throw new Error('Sessão expirada. Abra outra aba, faça login novamente e tente de novo (seus dados não foram perdidos).');
     }
     return res;

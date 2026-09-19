@@ -1126,16 +1126,27 @@ const ADMINS_PERMISSOES = ['narcelio', 'paula', 'suporte'];
 // exige estar logado (qualquer módulo).
 function auth(...modulos) {
   return (req, res, next) => {
-    if (!req.session.usuario) return res.redirect('/login?destino=' + req.path);
+    // Chamada de API (fetch do front) x navegação de página: sem sessão,
+    // a página redireciona pro login, mas a API tem que devolver 401 em
+    // JSON. Antes redirecionava as duas -- o fetch seguia o redirect, recebia
+    // o HTML do login e quebrava com "Unexpected token '<'" (sintoma real
+    // das tarefas #18/#149). Descoberto pelos testes de rota (19/09/2026).
+    const ehApi = req.path.startsWith('/api/');
+    const semSessao = () => ehApi
+      ? res.status(401).json({ ok: false, erro: 'Não autenticado' })
+      : res.redirect('/login?destino=' + req.path);
+    if (!req.session.usuario) return semSessao();
     // Se a versão da sessão estiver desatualizada (alguém forçou logout
     // deste usuário, ex: ao trocar a senha ou mudar suas permissões),
     // invalida mesmo com cookie válido.
     const versaoAtual = _sessaoVersao.get(req.session.usuario) || 1;
     if (req.session.versao !== versaoAtual) {
-      return req.session.destroy(() => res.redirect('/login?destino=' + req.path));
+      return req.session.destroy(() => semSessao());
     }
     if (modulos.length && !modulos.some(m => req.session.modulos.includes(m))) {
-      return res.status(403).send('<h2>Acesso negado</h2>');
+      return ehApi
+        ? res.status(403).json({ ok: false, erro: 'Acesso negado a este módulo' })
+        : res.status(403).send('<h2>Acesso negado</h2>');
     }
     next();
   };
@@ -4180,13 +4191,22 @@ verificarAlertasDiarios()
 // erro padrão — que pode incluir stack trace e detalhes da estrutura
 // interna do código, úteis para quem estiver tentando mapear o sistema.
 app.use((err, req, res, next) => {
-  console.error('Erro não tratado:', err.stack || err.message || err);
   if (res.headersSent) return next(err);
+  // Corpo inválido (JSON malformado / grande demais) é erro do cliente, não
+  // do servidor: devolve 400 sem poluir o log com stack trace do body-parser.
+  if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large' || err.status === 400 || err.status === 413)) {
+    return res.status(err.status || 400).json({ ok: false, erro: err.type === 'entity.too.large' ? 'Corpo da requisição grande demais.' : 'Requisição inválida (JSON malformado).' });
+  }
+  console.error('Erro não tratado:', err.stack || err.message || err);
   res.status(500).json({ ok: false, erro: 'Erro interno no servidor. Tente novamente em alguns instantes.' });
 });
 
 // ── START ─────────────────────────────────────────────────────
-app.listen(PORT, () => {
+// Exporta o app pra testes de rota (testes_rotas.js) poderem montar o
+// Express sem abrir porta nem agendar jobs -- só sobe o servidor de
+// verdade quando este arquivo é o ponto de entrada (node server.js).
+module.exports = app;
+if (require.main === module) app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
   console.log(`ANTHROPIC_API_KEY configurada: ${!!process.env.ANTHROPIC_API_KEY} | SUPABASE_URL configurada: ${!!process.env.SUPABASE_URL}`);
   agendarAlertasDiarios();
