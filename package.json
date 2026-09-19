@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "migrate": "node scripts/migrate.js",
-    "test": "node testes_controle.js && node testes_tyredesk.js && node testes_calculador.js && node testes_aprovacao.js && node testes_totp.js && node testes_rotas.js"
+    "test": "node testes_controle.js && node testes_tyredesk.js && node testes_calculador.js && node testes_aprovacao.js && node testes_totp.js && node testes_rotas.js && node testes_conexos.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

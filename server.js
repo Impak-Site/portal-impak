@@ -1689,10 +1689,12 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
       const { error: errUpdate } = await sb().from('controle_processos').update(patch).eq('id', proc.id);
       if (errUpdate) {
         resumo.push({ referencia: proc.referencia, status: 'erro', erro: errUpdate.message });
+        conexos.registrarLog(sb(), { origem:'despachante', processo_id: proc.id, referencia: proc.referencia, status:'erro', erro: errUpdate.message, campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
         continue;
       }
       logsGlobais.push(...logsProc);
       resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados });
+      conexos.registrarLog(sb(), { origem:'despachante', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
     }
 
     if (logsGlobais.length) {
@@ -1810,10 +1812,12 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
       const { error: errUpdate } = await sb().from('controle_processos').update(patch).eq('id', proc.id);
       if (errUpdate) {
         resumo.push({ referencia: proc.referencia, status: 'erro', erro: errUpdate.message });
+        conexos.registrarLog(sb(), { origem:'planilha_interna', processo_id: proc.id, referencia: proc.referencia, status:'erro', erro: errUpdate.message, campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
         continue;
       }
       logsGlobais.push(...logsProc);
       resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados });
+      conexos.registrarLog(sb(), { origem:'planilha_interna', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
     }
 
     if (logsGlobais.length) {
@@ -2664,6 +2668,7 @@ app.delete('/api/controle/v2/arquivos/:id', auth('controle','financeiro','result
 // Lógica pura extraída pra lib/validacao-documento.js (testada em
 // testes_cadastros.js, ver justificativa lá).
 const { validarDocumento } = require('./lib/validacao-documento.js');
+const conexos = require('./services/conexos.js');
 
 // ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
 app.get('/api/contatos', auth(), async (req, res) => {
@@ -4091,6 +4096,32 @@ app.post('/api/admin/backup', (req, res) => {
   executarBackup()
     .then(resumo => res.json({ ok: true, resumo }))
     .catch(e => res.status(500).json({ ok: false, erro: e.message }));
+});
+
+// ── INTEGRAÇÃO CONEXOS (preparação, 19/09/2026) ─────────────────────
+// Esqueleto pronto, transporte vazio -- ver services/conexos.js e
+// docs/CONEXOS_INTEGRACAO.md. Enquanto CONEXOS_API_URL/TOKEN não existem,
+// a sincronização responde 'nao_configurado' e não altera nada.
+app.get('/api/integracao/conexos/status', auth('controle','financeiro','resultado','tv','narcelio'), (req, res) => {
+  res.json({ ok: true, ...conexos.statusIntegracao() });
+});
+app.post('/api/integracao/conexos/sincronizar/:id', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    const { data: processo, error } = await sb().from('controle_processos')
+      .select('id, referencia, conexos_id, conexos_ultima_sync, ' + conexos.MAPA_CAMPOS.map(m => m.nosso).join(', '))
+      .eq('id', req.params.id).single();
+    if (error || !processo) return res.status(404).json({ ok: false, erro: 'Processo não encontrado' });
+    const resultado = await conexos.sincronizarProcesso(sb(), processo, { usuario: req.session.usuario });
+    res.json(resultado);
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+// Trilha de integração de um processo (Conexos + imports de planilha).
+app.get('/api/integracao/log/:processoId', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  const { data, error } = await sb().from('integracao_log')
+    .select('id, origem, direcao, status, campos_aplicados, erro, usuario, created_at')
+    .eq('processo_id', req.params.processoId).order('created_at', { ascending: false }).limit(50);
+  if (error) return res.status(500).json({ ok: false, erro: error.message });
+  res.json({ ok: true, log: data || [] });
 });
 
 // ── 5) Transportadora pendente (chegou sem transportadora anotada) ──
