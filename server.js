@@ -3912,6 +3912,20 @@ function _parcelasAbertasSemana(p, inicioStr, fimStr){
   return linhas;
 }
 
+// Nome(s) do(s) cliente(s) do processo, pra exibir no e-mail de Câmbio da
+// semana -- pedido do Ayslan (18/09/2026): "da pra incluir o nome do
+// cliente em cada linha pra saber?". Processo pode ter vendas_json com mais
+// de um cliente (mesmo raciocínio de linhasFollowUpPorCliente, acima); como
+// a parcela de câmbio é paga ao FORNECEDOR (não por venda individual), só
+// lista os nomes juntos em vez de duplicar a linha por cliente.
+function _clientesResumoProcesso(p){
+  let vendas = [];
+  try { vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; } catch(e) { vendas = []; }
+  const nomes = Array.isArray(vendas) ? vendas.map(v => v && v.cliente).filter(Boolean) : [];
+  if (nomes.length) return [...new Set(nomes)].join(', ');
+  return p.cliente || '';
+}
+
 async function verificarAlertaCambioSemana(){
   const jobName = 'alerta_cambio_semana';
   const { data: processos, error } = await sb().from('controle_processos').select('*');
@@ -3930,11 +3944,11 @@ async function verificarAlertaCambioSemana(){
   const totalUsd = linhas.reduce((s,l) => s + l.valorUsd, 0);
   const corpo = linhas.map(l => {
     const brl = l.cambioPrevisto ? `R$ ${(l.valorUsd*l.cambioPrevisto).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '—';
-    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${l.vencimento ? new Date(l.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${_escA(l.p.referencia)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${_escA(l.p.fornecedor)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${_escA(l.parcela)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">US$ ${l.valorUsd.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">${brl}</td></tr>`;
+    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${l.vencimento ? new Date(l.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${_escA(l.p.referencia)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${_escA(_clientesResumoProcesso(l.p))||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${_escA(l.p.fornecedor)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${_escA(l.parcela)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">US$ ${l.valorUsd.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">${brl}</td></tr>`;
   }).join('');
   const html = _cabecalhoAlertaHtml('Câmbio da semana', hoje)
     + `<p style="font-size:13px;color:#555;">${linhas.length} parcela(s) vencendo nos próximos 7 dias — total aproximado US$ ${totalUsd.toLocaleString('pt-BR',{minimumFractionDigits:2})}.</p>`
-    + _tabelaAlertaHtml(['Vencimento','Processo','Fornecedor','Parcela','Valor USD','BRL Estimado'], corpo)
+    + _tabelaAlertaHtml(['Vencimento','Processo','Cliente','Fornecedor','Parcela','Valor USD','BRL Estimado'], corpo)
     + _rodapeAlertaHtml();
   await enviarParaDestinatariosAlerta(`IMPAK Portal - Câmbio da semana (${linhas.length} parcela(s))`, html);
   await marcarJobEnviadoHoje(jobName);
