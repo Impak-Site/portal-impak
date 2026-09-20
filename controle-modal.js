@@ -354,13 +354,14 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               <option value="PRAZO"        ${p.pi_pagamento==='PRAZO'?'selected':''}>100% a Prazo</option>
               <option value="PARCELADO"    ${p.pi_pagamento==='PARCELADO'?'selected':''}>Parcelado</option>
               <!-- "Entrada + Saldo" foi substituída por "Parcelado" (suporta quantos
-                   câmbios forem necessários, não só 2) — este option some do
-                   dropdown pra processos novos, mas continua aqui (só oculto via
-                   CSS) e SELECIONÁVEL/exibido quando o processo já usa esse valor,
-                   pra não quebrar/perder a forma de pagamento de processos antigos
-                   ao simplesmente abrir e salvar o cadastro de novo. -->
-              <option disabled${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>──────────</option>
-<option value="ENTRADA_SALDO"${p.pi_pagamento==='ENTRADA_SALDO'?'selected':''}${p.pi_pagamento!=='ENTRADA_SALDO'?' style="display:none"':''}>Entrada + Saldo (legado)</option>
+                   câmbios forem necessários, não só 2). Pedido do Ayslan (20/09/2026):
+                   esse option ainda aparecia em processos que não o usam (ex: UD26-221,
+                   "100% a Prazo") porque tentava esconder via CSS (display:none), que
+                   o seletor nativo do SO não respeita de forma confiável. Agora o
+                   <option> nem entra no HTML quando o processo não usa ENTRADA_SALDO
+                   -- só é montado (e fica selecionável) pra não quebrar processos
+                   antigos que já têm esse valor salvo. -->
+              ${p.pi_pagamento==='ENTRADA_SALDO'?'<option disabled>──────────</option><option value="ENTRADA_SALDO" selected>Entrada + Saldo (legado)</option>':''}
             </select></div>
           <div class="form-group"><label class="form-label">PI Paga?</label>
             <select class="form-input" id="f_pi_pago">
