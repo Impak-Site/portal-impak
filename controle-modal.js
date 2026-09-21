@@ -500,9 +500,13 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               <option value="EUR" ${p.moeda_frete==='EUR'?'selected':''}>EUR (€)</option>
             </select></div>
           <div class="form-group"><label class="form-label">Porto Origem</label>
-            <select class="form-input" id="f_porto_origem" onchange="togglePortoOutro('origem')">${gerarOptionsPortoOrigem(p.porto_origem)}</select>
+            <div style="position:relative">
+            <select class="form-input" id="f_porto_origem" onchange="togglePortoOutro('origem')" style="display:${(p.porto_origem && !PORTOS_ORIGEM.includes((p.porto_origem||'').toUpperCase()))?'none':''}">${gerarOptionsPortoOrigem(p.porto_origem)}</select>
             <input class="form-input" id="f_porto_origem_outro" value="${esc(PORTOS_ORIGEM.includes((p.porto_origem||'').toUpperCase())?'':p.porto_origem)}"
-              placeholder="Digite o porto de origem" style="display:${(p.porto_origem && !PORTOS_ORIGEM.includes(p.porto_origem.toUpperCase()))?'block':'none'};margin-top:6px;"></div>
+              placeholder="Digite o porto de origem" style="display:${(p.porto_origem && !PORTOS_ORIGEM.includes((p.porto_origem||'').toUpperCase()))?'block':'none'};padding-right:74px;">
+            <button type="button" id="f_porto_origem_voltar" onclick="voltarPortoLista('origem')" title="Voltar à lista de portos"
+              style="display:${(p.porto_origem && !PORTOS_ORIGEM.includes((p.porto_origem||'').toUpperCase()))?'inline-block':'none'};position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;color:var(--muted);">↺ lista</button>
+            </div></div>
           <div class="form-group"><label class="form-label">Porto Destino</label>
             <select class="form-input" id="f_porto_destino">${gerarOptionsPortoDestino(p.porto_destino)}</select></div>
           <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>

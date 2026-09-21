@@ -45,7 +45,7 @@ const PORTOS_ORIGEM = [
   // China
   'SHANGHAI','NINGBO','QINGDAO','TIANJIN','XIAMEN','SHENZHEN','GUANGZHOU','NANSHA','YANTIAN','DALIAN','LIANYUNGANG',
   // Vietnã
-  'HO CHI MINH','HAI PHONG',
+  'HO CHI MINH','HAI PHONG','VUNG TAU',
   // Camboja
   'SIHANOUKVILLE','PHNOM PENH',
   // Tailândia
@@ -67,7 +67,7 @@ const PORTOS_ORIGEM = [
 const PORTO_PAIS = {
   'SHANGHAI':'China','NINGBO':'China','QINGDAO':'China','TIANJIN':'China','XIAMEN':'China',
   'SHENZHEN':'China','GUANGZHOU':'China','NANSHA':'China','YANTIAN':'China','DALIAN':'China','LIANYUNGANG':'China',
-  'HO CHI MINH':'Vietnã','HAI PHONG':'Vietnã',
+  'HO CHI MINH':'Vietnã','HAI PHONG':'Vietnã','VUNG TAU':'Vietnã',
   'SIHANOUKVILLE':'Camboja','PHNOM PENH':'Camboja',
   'LAEM CHABANG':'Tailândia','BANGKOK':'Tailândia',
   'JAKARTA':'Indonésia','SURABAYA':'Indonésia',
@@ -135,11 +135,34 @@ function gerarOptionsPortoOrigem(valorAtual){
   return html;
 }
 
+// Pedido da Emanuelly (21/09/2026): o campo de digitar "Outro" aparecia
+// embaixo do dropdown (os dois visíveis juntos), crescendo a altura só
+// daquele campo e desalinhando a grade do formulário. Agora troca um pelo
+// outro no mesmo lugar -- esconde o select e mostra o input na hora de
+// escolher "Outro"; voltarPortoLista() (botão "↺ lista" dentro do campo)
+// faz o caminho inverso sem precisar apagar o texto digitado na mão.
 function togglePortoOutro(tipo){
   const sel = document.getElementById('f_porto_'+tipo);
   const outro = document.getElementById('f_porto_'+tipo+'_outro');
+  const voltar = document.getElementById('f_porto_'+tipo+'_voltar');
   if(!sel || !outro) return;
-  outro.style.display = sel.value === 'OUTRO' ? 'block' : 'none';
+  const usarOutro = sel.value === 'OUTRO';
+  sel.style.display = usarOutro ? 'none' : '';
+  outro.style.display = usarOutro ? 'block' : 'none';
+  if(voltar) voltar.style.display = usarOutro ? 'inline-block' : 'none';
+  if(usarOutro) outro.focus();
+}
+function voltarPortoLista(tipo){
+  const sel = document.getElementById('f_porto_'+tipo);
+  const outro = document.getElementById('f_porto_'+tipo+'_outro');
+  const voltar = document.getElementById('f_porto_'+tipo+'_voltar');
+  if(!sel || !outro) return;
+  outro.value = '';
+  outro.style.display = 'none';
+  if(voltar) voltar.style.display = 'none';
+  sel.style.display = '';
+  sel.value = '';
+  sel.focus();
 }
 
 // opts.fecharAoSalvar (default true) -- quando false, salva mas NÃO fecha o
