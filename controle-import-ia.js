@@ -625,6 +625,7 @@ Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pe
 - extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Se o documento for um Comprovante de Câmbio (operação de câmbio bancária — compra de moeda estrangeira para pagamento ao exterior):
+- NUNCA preencha o campo "referencia" (o de nível superior, fora de "cambio_referencias") a partir deste tipo de documento — deixe-o sempre "". A referência de cada processo/invoice coberto pela operação vai DENTRO de cada item de "cambio_referencias" (campo "referencia" de cada item), nunca no campo solto. Em especial, NUNCA use a "Referência Interna" do banco, o número do Contrato de Câmbio/código BACEN, ou qualquer identificador interno da instituição financeira para preencher o campo "referencia" solto — esses números não identificam nenhum processo da IMPAK, mesmo parecendo uma referência.
 - extrair "taxa_cambio" (a taxa/PTAX da operação, em R$ por US$) — normalmente é UMA só para o comprovante inteiro, mesmo que ele cubra várias referências/faturas.
 - o comprovante pode listar UMA OU VÁRIAS referências de processo/invoice na mesma operação (ex: numa tabela ou lista de "faturas pagas" dentro do comprovante, às vezes só uma anotação com os números das referências e o valor de cada uma). Para CADA referência encontrada, criar um item em "cambio_referencias" com "referencia" (o número/código da referência ou invoice, exatamente como aparece no documento) e o valor específico dela — preste MUITA atenção em que MOEDA esse valor está escrito, porque comprovantes de bancos diferentes mostram isso de jeitos diferentes:
   - se o valor daquela referência estiver em DÓLAR (símbolo "$" ou "US$" ou "USD" antes do número, ex: "$5.088,00"), preencher "valor_usd_referencia" com esse valor e deixar "valor_pago" como 0.
@@ -929,6 +930,15 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       const refAtual = (document.getElementById('f_referencia')?.value||'').trim().toUpperCase();
       const itensCambio = extracted.cambio_referencias.filter(c=>c && c.taxa_cambio);
       let match = itensCambio.find(c=>(c.referencia||'').trim().toUpperCase()===refAtual);
+      // Se não bateu exato, tenta por substring nos dois sentidos — cobre casos como
+      // referência do processo com prefixo ("IMPAK-OID2605A") vs. documento que só
+      // mostra "OID2605A" (sem prefixo), ou uma anotação manual truncada/cortada que
+      // não coube inteira no comprovante (relato da Paula, 21/09/2026: "ele só le se a
+      // referencia estiver completa, e as vezes ela é longa e nao cabe").
+      if(!match) match = itensCambio.find(c=>{
+        const rc = (c.referencia||'').trim().toUpperCase();
+        return rc.length>=4 && (refAtual.includes(rc) || rc.includes(refAtual));
+      });
       if(!match && itensCambio.length===1 && !itensCambio[0].referencia) match = itensCambio[0];
       if(match){
         abrirModalConfirmarCambio(match, refAtual);
