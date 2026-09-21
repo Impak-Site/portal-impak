@@ -223,6 +223,7 @@ function coletarESalvar(opts){
     'referencia','finalidade','fornecedor','brand','conexos_id','qtd_containers_prevista','cliente','produto','obs',
     'pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento','pi_pago',
     'pi_entrada_pct','pi_prazo_dias','pi_data_entrada','pi_data_saldo',
+    'pi_valor_recebido_cliente','pi_data_recebimento',
     'previsao_prontidao','data_prontidao',
     'booking_numero','armador','agente','navio','viagem','valor_frete','moeda_frete','porto_origem','porto_destino',
     'etd','eta','free_time','data_embarque','hbl','mbl','consignatario','notify','container','tipo_container',
@@ -256,7 +257,7 @@ function coletarESalvar(opts){
   const patchFields = [];
 
   // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
-  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','pi_cambio_custo'];
+  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','pi_cambio_custo','pi_valor_recebido_cliente'];
 
   // Remover campo interno de controle
   delete proc._fasePrevista;

@@ -1372,6 +1372,7 @@ const LABELS_CAMPOS_IA = {
   itens:'Itens/Produtos', pi_numero:'Nº PI', pi_data:'Data PI', pi_valor_usd:'Valor PI (USD)',
   pi_incoterm:'Incoterm', pi_pagamento:'Forma de pagamento', pi_pago:'PI paga',
   pi_entrada_pct:'% Entrada', pi_prazo_dias:'Prazo (dias)', pi_data_entrada:'Data Entrada', pi_data_saldo:'Data Saldo',
+  pi_valor_recebido_cliente:'Valor Recebido do Cliente', pi_data_recebimento:'Data Recebimento',
   previsao_prontidao:'Previsão de prontidão', data_prontidao:'Data de prontidão',
   booking_numero:'Nº Booking', armador:'Armador', agente:'Agente de carga', navio:'Navio', viagem:'Viagem',
   valor_frete:'Valor do frete', moeda_frete:'Moeda do frete', porto_origem:'Porto de origem', porto_destino:'Porto de destino',
@@ -1650,14 +1651,27 @@ function renderPagamentoCampos(){
   if(!tipo){ el.innerHTML=''; return; }
 
   let html = '<div class="form-grid" style="margin-top:12px;">';
+  // Valor Recebido do Cliente + Data Recebimento -- pedido do Ayslan
+  // (21/09/2026): "quando a forma de pagamento for diferente do parcelado,
+  // precisa ter o valor recebido do cliente e a data também". Mesmo par de
+  // campos que já existe por parcela em PARCELADO (task #226), só que aqui
+  // em nível de processo (colunas pi_valor_recebido_cliente/
+  // pi_data_recebimento, migration 0035) -- VISTA e PRAZO têm um único
+  // recebimento do cliente, não vários como no parcelado.
+  const camposRecebimento = `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-top:14px;background:var(--bg);grid-column:1/-1;display:grid;gap:14px;grid-template-columns:1fr 1fr;">
+      <div><label class="form-label">Valor Recebido do Cliente</label><div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_recebido_cliente" placeholder="0,00" value="${p.pi_valor_recebido_cliente!=null&&p.pi_valor_recebido_cliente!==''?exibirMoeda(p.pi_valor_recebido_cliente):''}" oninput="formatarMoedaInput(this)"></div></div>
+      <div><label class="form-label">Data Recebimento</label><input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_recebimento" value="${esc(p.pi_data_recebimento)}" title="Data em que o cliente pagou o câmbio pra IMPAK"></div>
+    </div>`;
   if(tipo==='VISTA'){
     html+=`<div class="form-group"><label class="form-label">Data Pagamento</label>
-      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>`;
+      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_entrada" value="${esc(p.pi_data_entrada)}"></div>`
+      + camposRecebimento;
   } else if(tipo==='PRAZO'){
     html+=`<div class="form-group"><label class="form-label">Prazo (dias)</label>
       <input class="form-input" type="number" id="f_pi_prazo_dias" value="${p.pi_prazo_dias||''}" oninput="atualizarDataPagamentoPrazo()"></div>
       <div class="form-group"><label class="form-label">Data Pagamento</label>
-      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`;
+      <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>`
+      + camposRecebimento;
   } else if(tipo==='ENTRADA_SALDO'){
     html+=`<div class="form-group"><label class="form-label">% Entrada</label>
       <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct||30}" min="1" max="99" oninput="renderPagamentoInfoLive()"></div>
