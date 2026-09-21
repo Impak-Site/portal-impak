@@ -443,9 +443,9 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <button class="btn btn-outline" onclick="abrirRelatorioNarcelio()" title="Monta o relatório semanal (processos em fábrica/booking/embarcados + containers do mês) pra copiar/exportar e enviar pro Sr. Narcélio, enquanto ele não usa o sistema">📊 Relatório Narcélio</button>
 </div>
 <!-- FILTRO POR DATA -->
-<div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
-<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">📅 Filtrar por data:</span>
-<select id="filtro-data-campo" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
+<div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;white-space:nowrap;">📅 Filtrar por data:</span>
+<select id="filtro-data-campo" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
 <option value="eta">ETA</option>
 <option value="data_chegada">Chegada</option>
 <option value="data_embarque">Embarque</option>
@@ -455,12 +455,12 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <option value="data_presenca">Presença de Carga</option>
 <option value="data_carregamento">Data Carregamento</option>
 </select>
-<input type="date" onpaste="colarData(event,this)" id="filtro-data-de" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
-<span style="font-size:12px;color:var(--muted);">até</span>
-<input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;">
-<button class="btn btn-sm btn-outline" onclick="limparFiltroData()">Limpar</button>
-<button class="btn btn-sm btn-outline" onclick="filtroEssaSemana()">Esta semana</button>
-<button class="btn btn-sm btn-outline" onclick="filtroEsseMes()">Este mês</button>
+<input type="date" onpaste="colarData(event,this)" id="filtro-data-de" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
+<span style="font-size:12px;color:var(--muted);flex-shrink:0;">até</span>
+<input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
+<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;" onclick="limparFiltroData()">Limpar</button>
+<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;" onclick="filtroEssaSemana()">Esta semana</button>
+<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;" onclick="filtroEsseMes()">Este mês</button>
 </div>
 
 <!-- FASE FILTER -->
