@@ -46,10 +46,14 @@ box-shadow: 0 1px 0 rgba(255,255,255,.06), 0 4px 12px rgba(16,24,40,.08);
 font-family: 'DM Sans', sans-serif;
 }
 #impak-nav .nav-logo {
+display: flex; align-items: center; gap: 7px;
 font-family: 'Syne', 'DM Sans', sans-serif;
 font-size: 15px; font-weight: 800;
 color: #fff; letter-spacing: .5px;
 margin-right: 4px; flex-shrink: 0;
+}
+#impak-nav .nav-logo img {
+height: 24px; width: auto; flex-shrink: 0;
 }
 #impak-nav .nav-links-wrap {
 display: flex; align-items: center; gap: 2px;
@@ -342,7 +346,7 @@ if (isLoginPage) return;
 const navEl = document.createElement('div');
 navEl.id = 'impak-nav';
 navEl.innerHTML = `
-<div class="nav-logo">ImpakOS</div>
+<div class="nav-logo"><img src="/assets/impak-icon-32.png" alt=""> ImpakOS</div>
 <div class="nav-links-wrap" id="nav-links-wrap"></div>
 <div class="nav-right">
 <span class="nav-user" id="nav-user-label">—</span>
