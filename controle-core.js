@@ -137,6 +137,22 @@ const FASE_ICON  = Object.fromEntries(FASES.map(f=>[f.id, f.icon]));
 // FILTROS_FASE_ESPECIAIS.__fechado (pill "Fechado" na barra de filtro).
 function faseParaExibir(p){
   if(p && p.fechado) return {id:'FECHADO', label:'Fechado', icon:'🔒'};
+  // Pedido da Emanuelly (22/09/2026): depois que o container já foi
+  // devolvido mas o processo ainda não pode virar FINALIZADO (falta
+  // resolver a pendência do RIC — Isento ou lavagem paga, ver
+  // calcularFase), o badge "Dev. Vazio" dava a entender que ainda falta
+  // devolver, quando na verdade a devolução já aconteceu e o que falta é
+  // tratar a isenção. Troca só a EXIBIÇÃO do badge nesse intervalo — a
+  // fase real por baixo (p.fase) continua 'DEVOLUCAO_VAZIO', então todos
+  // os filtros/dashboards que já comparam p.fase (mesmo padrão do
+  // 'FECHADO' acima) continuam funcionando sem precisar mexer em nenhum
+  // deles. Se já tem Data Solicitação preenchida, mostra que está
+  // aguardando resposta; senão, que ainda precisa solicitar.
+  if(p && p.fase==='DEVOLUCAO_VAZIO' && p.data_devolucao_vazio && p.ric_status!=='Isento' && !p.data_pagamento_lavagem){
+    return p.data_solicitacao_demurrage
+      ? {id:'AGUARDANDO_ISENCAO', label:'Aguardando Isenção', icon:'⏳'}
+      : {id:'AGUARDANDO_ISENCAO', label:'Solicitar Isenção',  icon:'📝'};
+  }
   return FASES.find(f=>f.id===(p&&p.fase))||FASES[0];
 }
 
