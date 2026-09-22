@@ -337,6 +337,10 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" id="f_pi_cambio_custo" value="${exibirMoeda(p.pi_cambio_custo)}" placeholder="0,00" oninput="formatarMoedaInput(this)"
               title="Custo da OPERAÇÃO de câmbio em si (IOF, spread do banco, tarifas) — separado da taxa. Só aparece pra Único/Entrada+Saldo; em Parcelado o custo já é por parcela, mais abaixo."></div>
           </div>
+          <div class="form-group" id="grp-pi-cambio-bacen" style="${p.pi_pagamento==='PARCELADO'?'display:none':''}"><label class="form-label">Código BACEN</label>
+            <input class="form-input" id="f_pi_cambio_codigo_bacen" value="${esc(p.pi_cambio_codigo_bacen)}" placeholder="Nº do contrato de câmbio"
+              title="Nº do contrato de câmbio / referência do banco junto ao Banco Central. Existe também por parcela em Parcelado — aqui é o equivalente pra Único/Entrada+Saldo/Prazo, senão a extração por IA não tinha onde gravar esse dado (relato da Paula, 22/09/2026: comprovante lido mas Código BACEN sumia)."></div>
+          </div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
               <option value="">—</option>
@@ -1396,7 +1400,7 @@ const LABELS_CAMPOS_IA = {
   data_solicitacao_demurrage:'Data solicitação Demurrage', data_isencao_demurrage:'Data isenção Demurrage',
   data_envio_termo:'Data envio do termo', data_pagamento_lavagem:'Data pagamento lavagem', data_pagamento_demurrage:'Data pagamento Demurrage',
   despachante:'Despachante', pi_cambio:'Câmbio PI', pi_cambio_fechado:'Câmbio fechado',
-  pi_cambio_entrada:'Câmbio Entrada', pi_cambio_saldo:'Câmbio Saldo', pi_cambio_banco:'Banco do câmbio', pi_cambio_custo:'Custo do câmbio',
+  pi_cambio_entrada:'Câmbio Entrada', pi_cambio_saldo:'Câmbio Saldo', pi_cambio_banco:'Banco do câmbio', pi_cambio_custo:'Custo do câmbio', pi_cambio_codigo_bacen:'Código BACEN',
   containers_json:'Containers', produtos_json:'Produtos', vendas_json:'Vendas', pi_parcelas_json:'Parcelas de pagamento',
   duimp_numero:'Nº DUIMP',
 };
