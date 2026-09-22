@@ -447,11 +447,13 @@ function renderMultiContainers(){
 }
 
 function adicionarContainer(){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _containers.push({numero:'', tipo:'40HC', lacre:''});
   renderMultiContainers();
 }
 
 function removerContainer(i){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _containers.splice(i,1);
   if(!_containers.length) _containers = [{numero:'', tipo:'40HC', lacre:''}];
   renderMultiContainers();
@@ -667,11 +669,13 @@ function renderMultiProdutos(){
 }
 
 function adicionarProdutoItem(){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _produtos.push({descricao:'', quantidade:''});
   renderMultiProdutos();
 }
 
 function removerProdutoItem(i){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _produtos.splice(i,1);
   if(!_produtos.length) _produtos = [{descricao:'', quantidade:''}];
   renderMultiProdutos();
@@ -782,6 +786,7 @@ function renderVendas(){
 }
 
 function adicionarVenda(){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _vendas.push(vendaVazia());
   renderVendas();
 }
@@ -799,6 +804,7 @@ function removerVenda(vi){
     (v.custos_diretos||[]).length
   );
   if(temDados && !confirm(`Remover a venda ${vi+1}${v.cliente?' ('+v.cliente+')':''}? Os dados digitados nela serão perdidos (isso só é gravado de verdade quando você clicar em Salvar).`)) return;
+  _painelDirty = true;
   _vendas.splice(vi,1);
   renderVendas();
 }
@@ -843,23 +849,27 @@ function campoDescricaoItemVenda(vi, ii, it){
     + '</select>';
 }
 function adicionarItemVenda(vi){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _vendas[vi].itens.push({descricao:'', quantidade:''});
   renderVendas();
 }
 
 function removerItemVenda(vi,ii){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _vendas[vi].itens.splice(ii,1);
   if(!_vendas[vi].itens.length) _vendas[vi].itens = [{descricao:'', quantidade:''}];
   renderVendas();
 }
 
 function adicionarCustoDiretoVenda(vi){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   if(!_vendas[vi].custos_diretos) _vendas[vi].custos_diretos = [];
   _vendas[vi].custos_diretos.push({label:'', valor:''});
   renderVendas();
 }
 
 function removerCustoDiretoVenda(vi,ci){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _vendas[vi].custos_diretos.splice(ci,1);
   renderVendas();
 }
@@ -1080,12 +1090,14 @@ function renderParcelas(){
   sincronizarParcelasLegado();
 }
 function adicionarParcela(){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _parcelas.push(parcelaVazia());
   renderParcelas();
   renderPagamentoInfoLive();
 }
 
 function removerParcela(i){
+  _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _parcelas.splice(i,1);
   if(!_parcelas.length) _parcelas = [parcelaVazia()];
   renderParcelas();
@@ -1220,6 +1232,7 @@ function confirmarCambioParcela(idx){
   const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
   if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
   if(!_parcelas[idx]){ fecharModalCambio(); return; }
+  _painelDirty = true; // confirmar câmbio muda estado só via JS -- marca sujo manualmente (ver ESC em controle-core.js)
   _parcelas[idx].cambio_fechado = taxa.toFixed(4);
   // Preenche Valor USD e Data também a partir do comprovante — sem isso só a
   // taxa de câmbio era gravada e o usuário tinha que digitar o resto na mão
@@ -1276,6 +1289,7 @@ function fecharModalCambio(){
 // de outro fluxo (repasse do cliente) e não têm relação com o câmbio pago
 // ao fornecedor.
 function aplicarCambioNaParcelaPendente(taxa){
+  _painelDirty = true; // confirmar câmbio muda estado só via JS -- marca sujo manualmente (ver ESC em controle-core.js)
   let idx = _parcelas.findIndex(pc => !pc.cambio_fechado);
   if(idx===-1){
     adicionarParcela(); // já chama renderParcelas()+renderPagamentoInfoLive()
@@ -1322,6 +1336,7 @@ function confirmarCambioComo(tipo){
   const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
   if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
 
+  _painelDirty = true; // confirmar câmbio muda estado só via JS -- marca sujo manualmente (ver ESC em controle-core.js)
   // Data em que o pagamento/câmbio foi efetivado — vem da extração da IA
   // (ver "data_pagamento" no comprovante) ou, se o documento não trouxer
   // essa data, usa hoje como aproximação razoável (o usuário pode corrigir

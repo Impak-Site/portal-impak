@@ -680,6 +680,46 @@ teste('confirmarCambioParcela: quando o valor do comprovante bate com o já digi
   iguais(parcela.valor_usd, '5088.00', 'valor deveria continuar o mesmo');
 });
 
+// Bug relatado pelo Ayslan (22/09/2026): apertar ESC pra sair do painel do
+// processo sem salvar deveria SEMPRE perguntar antes de fechar quando há
+// alteração pendente -- mas _painelDirty só era marcado por eventos nativos
+// 'input'/'change' do DOM (ver listener em controle-core.js). Ações feitas
+// só por clique de botão (confirmar câmbio, adicionar/remover parcela,
+// container, produto, venda) mudavam o estado inteiramente via JS, sem
+// disparar esses eventos -- então _painelDirty continuava 'false' e o ESC
+// fechava/descartava tudo sem perguntar. Fix: marcar _painelDirty=true
+// explicitamente em cada uma dessas funções.
+console.log('\n📋 _painelDirty -- ações via clique marcam "sujo" pro aviso do ESC funcionar');
+
+teste('confirmarCambioParcela marca _painelDirty mesmo sendo acionado só por clique (sem evento input/change)', () => {
+  vm.runInContext("_painelDirty = false;", sandbox);
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.30, valor_pago:26500, referencia:'UD26-993', data_pagamento:'2026-07-20'};", sandbox);
+  sandbox.confirmarCambioParcela(0);
+  verdadeiro(vm.runInContext("_painelDirty", sandbox), 'confirmar câmbio numa parcela deveria marcar o painel como sujo');
+});
+
+teste('adicionarParcela/removerParcela marcam _painelDirty', () => {
+  vm.runInContext("_painelDirty = false; _parcelas = [];", sandbox);
+  sandbox.adicionarParcela();
+  verdadeiro(vm.runInContext("_painelDirty", sandbox), 'adicionar parcela deveria marcar o painel como sujo');
+  vm.runInContext("_painelDirty = false;", sandbox);
+  sandbox.removerParcela(0);
+  verdadeiro(vm.runInContext("_painelDirty", sandbox), 'remover parcela deveria marcar o painel como sujo');
+});
+
+teste('adicionarContainer/adicionarProdutoItem/adicionarVenda marcam _painelDirty', () => {
+  vm.runInContext("_painelDirty = false; _containers = [];", sandbox);
+  sandbox.adicionarContainer();
+  verdadeiro(vm.runInContext("_painelDirty", sandbox), 'adicionar container deveria marcar o painel como sujo');
+  vm.runInContext("_painelDirty = false; _produtos = [];", sandbox);
+  sandbox.adicionarProdutoItem();
+  verdadeiro(vm.runInContext("_painelDirty", sandbox), 'adicionar item de produto deveria marcar o painel como sujo');
+  vm.runInContext("_painelDirty = false; _vendas = [];", sandbox);
+  sandbox.adicionarVenda();
+  verdadeiro(vm.runInContext("_painelDirty", sandbox), 'adicionar venda deveria marcar o painel como sujo');
+});
+
 // ── 9. TESTES: renderControleCambialHtml / renderFluxoCaixaHtml (Dashboard Financeiro v2) ─
 console.log('\n📋 Dashboard Financeiro v2 — controle cambial e fluxo de caixa');
 teste('Sem pagamentos comparáveis (previsto+fechado), mostra aviso em vez de inventar número', () => {
