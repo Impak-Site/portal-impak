@@ -1182,6 +1182,39 @@ function abrirModalConfirmarCambio(match, refAtual){
 // Aplica o cambio confirmado do comprovante numa parcela especifica,
 // escolhida explicitamente pelo usuario no modal (em vez de tentar
 // adivinhar qual parcela esta pendente).
+// Resolve o Valor USD de uma parcela a partir do comprovante confirmado.
+// Se a parcela ainda estiver vazia, preenche direto (comportamento de
+// sempre). Se já tiver um valor digitado que DIVERGE do valor real do
+// comprovante, pergunta antes de sobrescrever -- em vez de silenciosamente
+// manter o valor antigo (que pode estar errado, ex.: um % estimado que não
+// bateu com o câmbio realmente fechado) ou perdê-lo sem avisar. Relato da
+// Paula (22/09/2026): "posso fechar algum câmbio com valor errado e o
+// sistema não vai identificar" + "o ideal é que ele leia o documento
+// depois que eu coloco o câmbio, e recalcule o valor a pagar". Retorna
+// true se o valor da parcela mudou (pra quem chamou saber se deve rodar
+// o recálculo do residual das demais parcelas).
+function resolverValorUsdParcela(idx, valorDoc){
+  if(!valorDoc) return false;
+  const atual = parseFloat(_parcelas[idx].valor_usd) || 0;
+  if(!atual){
+    _parcelas[idx].valor_usd = valorDoc.toFixed(2);
+    return true;
+  }
+  if(Math.abs(atual - valorDoc) < 0.01) return false; // já bate, nada a fazer
+  const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
+  const ok = confirm(
+    '"' + label + '" já está com Valor USD ' + atual.toLocaleString('pt-BR',{minimumFractionDigits:2}) +
+    ', mas este comprovante mostra USD ' + valorDoc.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' para essa referência.\n\n' +
+    'Substituir pelo valor do comprovante e recalcular o saldo das demais parcelas?'
+  );
+  if(ok){
+    _parcelas[idx].valor_usd = valorDoc.toFixed(2);
+    _parcelas[idx].custo_operacao = ''; // força recalcular com o valor novo
+    return true;
+  }
+  return false;
+}
+
 function confirmarCambioParcela(idx){
   if(!_cambioPendente){ fecharModalCambio(); return; }
   const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
@@ -1194,11 +1227,8 @@ function confirmarCambioParcela(idx){
   // campo ainda estiver vazio, pra nunca sobrescrever o que o usuário já digitou.
   const valorUsdRefP = parseFloat(_cambioPendente.valor_usd_referencia) || 0;
   const valorPagoP = parseFloat(_cambioPendente.valor_pago) || 0;
-  if(!_parcelas[idx].valor_usd && valorUsdRefP){
-    _parcelas[idx].valor_usd = valorUsdRefP.toFixed(2);
-  } else if(!_parcelas[idx].valor_usd && valorPagoP && taxa){
-    _parcelas[idx].valor_usd = (valorPagoP/taxa).toFixed(2);
-  }
+  const valorDocP = valorUsdRefP || (valorPagoP && taxa ? valorPagoP/taxa : 0);
+  const valorMudouP = resolverValorUsdParcela(idx, valorDocP);
   if(!_parcelas[idx].data_vencimento && _cambioPendente.data_pagamento){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
   }
@@ -1220,6 +1250,11 @@ function confirmarCambioParcela(idx){
       _parcelas[idx].custo_operacao = custoExtra.toFixed(2);
     }
   }
+  // Se o Valor USD desta parcela mudou (preenchido ou corrigido a partir
+  // do comprovante), recalcula automaticamente o saldo das demais parcelas
+  // que ainda não têm valor definido -- pedido direto da Paula: depois de
+  // aplicar o câmbio real, o valor a pagar do resto deve se ajustar sozinho.
+  if(valorMudouP) calcularParcelaResidualAuto();
   renderParcelas();
   renderPagamentoInfoLive();
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
@@ -1247,16 +1282,14 @@ function aplicarCambioNaParcelaPendente(taxa){
     idx = _parcelas.length - 1;
   }
   _parcelas[idx].cambio_fechado = taxa.toFixed(4);
-  // Mesma correção do confirmarCambioParcela: também preenche Valor USD e
-  // Data do comprovante quando ainda estiverem vazios (não sobrescreve o
-  // que o usuário já preencheu).
+  // Mesma correção do confirmarCambioParcela: também preenche/corrige o
+  // Valor USD e Data a partir do comprovante -- usa resolverValorUsdParcela
+  // pra perguntar antes de sobrescrever um valor já digitado que divergir
+  // do documento real (ver comentário da função).
   const valorUsdRefP2 = parseFloat(_cambioPendente?.valor_usd_referencia) || 0;
   const valorPagoP2 = parseFloat(_cambioPendente?.valor_pago) || 0;
-  if(!_parcelas[idx].valor_usd && valorUsdRefP2){
-    _parcelas[idx].valor_usd = valorUsdRefP2.toFixed(2);
-  } else if(!_parcelas[idx].valor_usd && valorPagoP2 && taxa){
-    _parcelas[idx].valor_usd = (valorPagoP2/taxa).toFixed(2);
-  }
+  const valorDocP2 = valorUsdRefP2 || (valorPagoP2 && taxa ? valorPagoP2/taxa : 0);
+  const valorMudouP2 = resolverValorUsdParcela(idx, valorDocP2);
   if(!_parcelas[idx].data_vencimento && _cambioPendente?.data_pagamento){
     _parcelas[idx].data_vencimento = _cambioPendente.data_pagamento;
   }
@@ -1278,6 +1311,7 @@ function aplicarCambioNaParcelaPendente(taxa){
       _parcelas[idx].custo_operacao = custoExtra2.toFixed(2);
     }
   }
+  if(valorMudouP2) calcularParcelaResidualAuto();
   renderParcelas();
   renderPagamentoInfoLive();
   return idx;

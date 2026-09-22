@@ -96,6 +96,12 @@ function criarSandbox() {
     URL: typeof URL !== 'undefined' ? URL : undefined,
     Event: typeof Event !== 'undefined' ? Event : undefined, // usado por confirmarCambioComo (dispatchEvent de 'change')
     addEventListener: () => {}, // o código real registra listeners de window.onload etc.
+    // Stub de confirm() -- usado por resolverValorUsdParcela() quando o Valor
+    // USD já preenchido diverge do valor real do comprovante. Default 'false'
+    // (usuário recusa) pra preservar o comportamento histórico dos testes que
+    // checam 'não sobrescreve' -- testes que querem simular o usuário aceitando
+    // a substituição trocam sandbox.confirm antes de chamar.
+    confirm: () => false,
   };
   sandbox.window = sandbox; // padrão comum: window === global scope no browser
   return sandbox;
@@ -628,6 +634,50 @@ teste('aplicarCambioNaParcelaPendente NÃO sobrescreve Valor USD e Data já pree
   iguais(parcela.cambio_fechado, '5.4500', 'câmbio fechado deveria ser gravado normalmente');
   iguais(parcela.valor_usd, '500.00', 'Valor USD já preenchido pelo usuário não deveria ser sobrescrito');
   iguais(parcela.data_vencimento, '2026-05-01', 'Data já preenchida pelo usuário não deveria ser sobrescrita');
+});
+
+// Caso real relatado pela Paula (22/09/2026, PI QD-IMK-LPL-2605-1742): ela
+// tinha digitado/estimado um Valor USD errado (ex.: 30% do total) na
+// parcela "Inicial", e quando o comprovante de câmbio real chegava com o
+// valor correto, o sistema mantinha o valor errado sem avisar --
+// "posso fechar algum câmbio com valor errado e o sistema não vai
+// identificar". Fix: resolverValorUsdParcela() agora pergunta (confirm())
+// antes de sobrescrever, e se o usuário aceitar, corrige o valor E
+// recalcula automaticamente o saldo das demais parcelas vazias.
+teste('confirmarCambioParcela: se o usuário CONFIRMA a substituição, corrige o Valor USD e recalcula o saldo das demais parcelas', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'7596.00', data_vencimento:'', cambio_fechado:'', custo_operacao:''}, {label:'Final', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.13, valor_usd_referencia:5088.00, referencia:'QD-IMK-LPL-2605-1742', data_pagamento:'2026-09-15'};", sandbox);
+  vm.runInContext("_parcelas.__totalPI = 0;", sandbox); // n/a -- valor total vem de f_pi_valor_usd no DOM
+  sandbox.document.getElementById('f_pi_valor_usd').value = '25.440,00';
+  const confirmChamadas = [];
+  sandbox.confirm = (msg) => { confirmChamadas.push(msg); return true; };
+  sandbox.confirmarCambioParcela(0);
+  const parcelas = JSON.parse(vm.runInContext("JSON.stringify(_parcelas);", sandbox));
+  iguais(confirmChamadas.length, 1, 'deveria ter perguntado uma vez antes de sobrescrever o valor divergente');
+  iguais(parcelas[0].valor_usd, '5088.00', 'Valor USD da parcela Inicial deveria ser corrigido pro valor real do comprovante');
+  iguais(parcelas[1].valor_usd, (25440 - 5088).toFixed(2), 'a parcela Final (única vazia) deveria recalcular o saldo automaticamente com o valor corrigido');
+});
+
+teste('confirmarCambioParcela: se o usuário CANCELA a substituição, mantém o Valor USD antigo e não mexe nas demais parcelas', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'7596.00', data_vencimento:'', cambio_fechado:'', custo_operacao:''}, {label:'Final', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.13, valor_usd_referencia:5088.00, referencia:'QD-IMK-LPL-2605-1742', data_pagamento:'2026-09-15'};", sandbox);
+  sandbox.document.getElementById('f_pi_valor_usd').value = '25.440,00';
+  sandbox.confirm = () => false;
+  sandbox.confirmarCambioParcela(0);
+  const parcelas = JSON.parse(vm.runInContext("JSON.stringify(_parcelas);", sandbox));
+  iguais(parcelas[0].valor_usd, '7596.00', 'usuário recusou -- Valor USD antigo deveria ser mantido');
+  iguais(parcelas[1].valor_usd, '', 'parcela Final não deveria ser recalculada quando o valor não mudou');
+});
+
+teste('confirmarCambioParcela: quando o valor do comprovante bate com o já digitado, não pergunta nada', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'5088.00', data_vencimento:'', cambio_fechado:'', custo_operacao:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.13, valor_usd_referencia:5088.00, referencia:'QD-IMK-LPL-2605-1742', data_pagamento:'2026-09-15'};", sandbox);
+  let perguntou = false;
+  sandbox.confirm = () => { perguntou = true; return true; };
+  sandbox.confirmarCambioParcela(0);
+  const parcela = JSON.parse(vm.runInContext("JSON.stringify(_parcelas[0]);", sandbox));
+  verdadeiro(!perguntou, 'valores já batem -- não deveria interromper com confirm()');
+  iguais(parcela.valor_usd, '5088.00', 'valor deveria continuar o mesmo');
 });
 
 // ── 9. TESTES: renderControleCambialHtml / renderFluxoCaixaHtml (Dashboard Financeiro v2) ─
