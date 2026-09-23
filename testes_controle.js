@@ -1935,6 +1935,22 @@ teste('listarPendenciasDI: ordena pelo vencimento da DI mais próximo primeiro, 
   iguais(out.map(l=>l.referencia).join(','), 'C,A,B', 'C (venc. mais próximo) primeiro, A depois, B (sem venc. de DI) por último');
 });
 
+// ── HTML: <div> abertas x fechadas em cada módulo da tela ──────
+// Bug de 23/09/2026 (relato da Emanuelly): um </div> sobrando no campo
+// "Código BACEN" (aba Financeiro) fechava o container da aba antes da
+// hora, e o bloco "Commercial Invoice (CI)" + botões Salvar/Cancelar
+// vazaram pra fora da aba e apareciam no topo de TODAS as abas do painel.
+// Contagem simples, mas pega exatamente esse tipo de erro antes do deploy.
+console.log('\n📋 Estrutura HTML — <div> balanceadas nos módulos da tela');
+['controle-modal.js','controle-campos.js','controle-core.js','controle_v2.html'].forEach(arq => {
+  teste(`${arq}: mesma quantidade de <div e </div>`, () => {
+    const txt = fs.readFileSync(path.join(__dirname, arq), 'utf-8');
+    const abre = (txt.match(/<div/g)||[]).length;
+    const fecha = (txt.match(/<\/div>/g)||[]).length;
+    iguais(fecha, abre, `${arq}: ${abre} <div abertas x ${fecha} </div> fechadas`);
+  });
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

@@ -339,7 +339,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           </div>
           <div class="form-group" id="grp-pi-cambio-bacen" style="${p.pi_pagamento==='PARCELADO'?'display:none':''}"><label class="form-label">Código BACEN</label>
             <input class="form-input" id="f_pi_cambio_codigo_bacen" value="${esc(p.pi_cambio_codigo_bacen)}" placeholder="Nº do contrato de câmbio"
-              title="Nº do contrato de câmbio / referência do banco junto ao Banco Central. Existe também por parcela em Parcelado — aqui é o equivalente pra Único/Entrada+Saldo/Prazo, senão a extração por IA não tinha onde gravar esse dado (relato da Paula, 22/09/2026: comprovante lido mas Código BACEN sumia)."></div>
+              title="Nº do contrato de câmbio / referência do banco junto ao Banco Central. Existe também por parcela em Parcelado — aqui é o equivalente pra Único/Entrada+Saldo/Prazo, senão a extração por IA não tinha onde gravar esse dado (relato da Paula, 22/09/2026: comprovante lido mas Código BACEN sumia).">
           </div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
