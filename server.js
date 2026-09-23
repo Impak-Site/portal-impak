@@ -22,6 +22,7 @@
 
 const express = require('express');
 const helmet  = require('helmet');
+const compression = require('compression');
 const { generateSecret: gerarSegredo2FA, generate: gerarCodigo2FA, verify: verificarCodigoOtplib, generateURI: gerarURI2FA } = require('./lib/totp');
 const qrcode  = require('qrcode');
 
@@ -444,6 +445,12 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }));
+// Compressão gzip das respostas (revisão de desempenho 23/09/2026): a
+// lista de processos (/api/controle/v2/processos) vem com todos os JSONs
+// de cada processo (parcelas, vendas, custos, conferência...) e é
+// recarregada a cada 30s por cada aba aberta -- JSON comprime ~5-10x, então
+// isso reduz direto o tempo de carregamento, principalmente fora do escritório.
+app.use(compression());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Necessário para o Express reconhecer conexões como HTTPS mesmo estando
@@ -526,6 +533,12 @@ button:hover{background:#1567b8;}
     <div class="footer">IMPAK Comercial Importadora · Portal v2.0 · Confidencial</div>
   </div>
 </div>
+<script>
+// Apaga a cópia local da lista de processos (cache do Controle, ver
+// lerCacheProcessos em controle-core.js) sempre que a tela de login
+// aparece -- logout, sessão expirada ou troca de usuário no mesmo PC.
+try{ indexedDB.deleteDatabase('impakos-cache'); }catch(e){}
+</script>
 </body>
 </html>`;
 
@@ -1394,14 +1407,48 @@ app.get('/api/cambio/ptax-historico', auth('financeiro'), async (req, res) => {
   }
 });
 
+// "Mudou alguma coisa?" -- consulta levíssima usada pelo auto-refresh de
+// 30s do Controle: o navegador só baixa a lista inteira de processos de
+// novo quando a data da última alteração ou a quantidade de processos
+// mudou (inclusão/edição/exclusão). Antes, cada aba aberta baixava a
+// tabela completa a cada 30s mesmo sem nada ter mudado.
+app.get('/api/controle/v2/processos/versao', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    const { data, error, count } = await sb()
+      .from('controle_processos')
+      .select('updated_at', { count: 'exact' })
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    // Anexos do GED também entram (a lista traz os nomes dos arquivos pro
+    // alerta de CI/PL/Draft) -- subir um arquivo não mexe no processo.
+    const { count: nArq } = await sb().from('controle_arquivos').select('id', { count: 'exact', head: true });
+    res.json({ ok: true, versao: `${count || 0}|${(data && data[0] && data[0].updated_at) || ''}|${nArq || 0}` });
+  } catch (e) {
+    res.json({ ok: false });
+  }
+});
+
 app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
-    const { data, error } = await sb()
-      .from('controle_processos')
-      .select('*')
-      .order('updated_at', { ascending: false });
-    if (error) throw new Error(error.message);
-    const processos = data || [];
+    // Paginado em blocos de 1000: o Supabase/PostgREST corta qualquer
+    // select() sem paginação em 1000 linhas -- mesmo problema que já tinha
+    // acontecido com controle_arquivos logo abaixo. Quando a tabela de
+    // processos passar de 1000, os mais antigos sumiriam da lista em
+    // silêncio. Ordenado por updated_at + id pra paginação estável.
+    const processos = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data: bloco, error } = await sb()
+        .from('controle_processos')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + 999);
+      if (error) throw new Error(error.message);
+      if (!bloco || !bloco.length) break;
+      processos.push(...bloco);
+      if (bloco.length < 1000) break;
+    }
 
     // Anexa a cada processo só os NOMES dos arquivos anexados no GED (não o
     // conteúdo/URL — isso é buscado à parte quando o modal abre). Usado pelo
@@ -3427,6 +3474,7 @@ app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (re
     if (estimativa) patch.estimativa_json = estimativa;
     if (realInicial) patch.real_json = realInicial;
     if (Object.keys(patch).length) {
+      patch.updated_at = new Date().toISOString(); // sinaliza mudança pro auto-refresh (/processos/versao)
       const { error: eUpd } = await sb().from('controle_processos').update(patch).eq('id', processo_id);
       if (eUpd) throw new Error(eUpd.message);
     }

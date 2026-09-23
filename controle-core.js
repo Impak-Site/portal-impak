@@ -223,8 +223,10 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     // com a tela em branco pra sempre.
     setTimeout(finalizarBootExclusivo, 15000);
     renderFaseFilter();
-    // Auto-refresh a cada 30s
-    setInterval(function(){ if(!document.getElementById('modal-bg').classList.contains('open')) carregarProcessos(true); }, 30000);
+    // Auto-refresh a cada 30s -- agora só baixa a lista se algo mudou
+    // (ver atualizarProcessosSeMudou logo abaixo).
+    setInterval(atualizarProcessosSeMudou, 30000);
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) atualizarProcessosSeMudou(); });
   });
 });
 
@@ -795,32 +797,125 @@ async function carregarCambio(){
 // ════════════════════════════════════════════════════════════════
 // DADOS
 // ════════════════════════════════════════════════════════════════
+// Auto-refresh inteligente (revisão de desempenho 23/09/2026). Antes, cada
+// aba aberta do Controle baixava a tabela INTEIRA de processos (com todos os
+// JSONs) a cada 30s, mesmo sem nada ter mudado -- e continuava fazendo isso
+// com a aba minimizada/em segundo plano. Agora:
+//  - aba escondida: não faz nada (volta a checar assim que ela aparece);
+//  - painel de processo aberto: não recarrega (comportamento de antes);
+//  - pergunta ao servidor só a "versão" da lista (qtd. de processos +
+//    última alteração + qtd. de anexos) e baixa tudo só se ela mudou;
+//  - rede de segurança: recarrega completo no máximo a cada 5 min mesmo
+//    que a versão pareça igual.
+let _versaoProcessos = null;
+let _ultimaCargaCompleta = 0;
+async function atualizarProcessosSeMudou(){
+  if(document.hidden) return;
+  if(document.getElementById('modal-bg')?.classList.contains('open')) return;
+  let versao = null;
+  try{
+    const r = await fetch('/api/controle/v2/processos/versao');
+    const d = await r.json();
+    if(d && d.ok) versao = d.versao;
+  }catch(e){ /* sem versão -> cai no recarregamento completo */ }
+  const venceu = Date.now() - _ultimaCargaCompleta > 5*60*1000;
+  if(versao && versao === _versaoProcessos && !venceu) return;
+  _versaoProcessos = versao;
+  await carregarProcessos(true);
+}
+
+// ── CACHE LOCAL DA LISTA DE PROCESSOS (revisão de desempenho 23/09/2026) ──
+// Relato do Ayslan: "sempre que mudamos de tela, ele demora um pouco para
+// carregar a base de dados". Cada tela (Controle, Financeiro, Câmbio, TV,
+// Análises...) é uma página nova que baixava a tabela INTEIRA de processos
+// do zero. Agora a última lista baixada fica guardada no navegador
+// (IndexedDB) junto com a "versão" dela (ver /api/controle/v2/processos/
+// versao). Ao abrir uma tela, se a versão no servidor ainda for a mesma,
+// usa a cópia local na hora -- sem baixar nada. Se mudou, baixa normalmente.
+// A cópia é apagada no logout/tela de login (ver LOGIN_HTML em server.js).
+const _CACHE_DB = 'impakos-cache';
+function _abrirCacheDB(){
+  return new Promise((resolve, reject)=>{
+    if(typeof indexedDB === 'undefined') return reject(new Error('sem indexedDB'));
+    const req = indexedDB.open(_CACHE_DB, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore('kv'); };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function lerCacheProcessos(){
+  try{
+    const db = await _abrirCacheDB();
+    return await new Promise((resolve)=>{
+      const g = db.transaction('kv','readonly').objectStore('kv').get('processos');
+      g.onsuccess = ()=>resolve(g.result || null);
+      g.onerror = ()=>resolve(null);
+    });
+  }catch(e){ return null; }
+}
+async function salvarCacheProcessos(versao, processos){
+  if(!versao) return;
+  try{
+    const db = await _abrirCacheDB();
+    db.transaction('kv','readwrite').objectStore('kv').put({ versao, processos, salvo_em: Date.now() }, 'processos');
+  }catch(e){ /* cache é só otimização -- falhar aqui não pode quebrar nada */ }
+}
+async function buscarVersaoProcessos(){
+  try{
+    const r = await fetch('/api/controle/v2/processos/versao');
+    const d = await r.json();
+    return (d && d.ok) ? d.versao : null;
+  }catch(e){ return null; }
+}
+
+function aplicarListaProcessos(lista, silencioso){
+  _processos = lista || [];
+  _ultimaCargaCompleta = Date.now();
+  // Popular select de clientes
+  const selCliente = document.getElementById('filtro-cliente');
+  if(selCliente){
+    const clientesUnicos = [...new Set(_processos.flatMap(p=>clientesDoProcesso(p)))].sort();
+    const valAtual = selCliente.value;
+    selCliente.innerHTML = '<option value="">👤 Todos os clientes</option>' +
+      clientesUnicos.map(c=>`<option value="${c}" ${c===valAtual?'selected':''}>${c}</option>`).join('');
+  }
+  render();
+  renderStats();
+  renderFaseFilter();
+  carregarNotificacoes();
+  if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
+  // Deep link (task #59) — se a página abriu direto em /controle/UD26-005,
+  // abre o painel do processo assim que a lista termina de carregar.
+  if(_refPendenteDeepLink){
+    _abrirProcessoPorReferencia(_refPendenteDeepLink);
+    _refPendenteDeepLink = null;
+  }
+}
+
+let _cacheInicialTentado = false;
 async function carregarProcessos(silencioso){
+  // 1ª carga da página: tenta a cópia local se ela ainda estiver atual.
+  if(!_cacheInicialTentado){
+    _cacheInicialTentado = true;
+    const [cache, versaoAtual] = await Promise.all([lerCacheProcessos(), buscarVersaoProcessos()]);
+    if(cache && versaoAtual && cache.versao === versaoAtual && Array.isArray(cache.processos)){
+      _versaoProcessos = versaoAtual;
+      aplicarListaProcessos(cache.processos, true);
+      return;
+    }
+  }
   if(!silencioso) showToast('Carregando...','info');
   try{
+    // A versão é pedida ANTES da lista (não em paralelo): se algo mudar entre
+    // as duas, a lista baixada é mais nova que a versão gravada, e o próximo
+    // auto-refresh vê a diferença e baixa de novo. O contrário (versão mais
+    // nova que a lista) deixaria uma cópia velha passando por atual.
+    const versao = await buscarVersaoProcessos();
     const r = await fetch('/api/controle/v2/processos');
     const d = await r.json();
     if(d.ok){
-      _processos = d.processos || [];
-      // Popular select de clientes
-      const selCliente = document.getElementById('filtro-cliente');
-      if(selCliente){
-        const clientesUnicos = [...new Set(_processos.flatMap(p=>clientesDoProcesso(p)))].sort();
-        const valAtual = selCliente.value;
-        selCliente.innerHTML = '<option value="">👤 Todos os clientes</option>' +
-          clientesUnicos.map(c=>`<option value="${c}" ${c===valAtual?'selected':''}>${c}</option>`).join('');
-      }
-      render();
-      renderStats();
-      renderFaseFilter();
-      carregarNotificacoes();
-      if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
-      // Deep link (task #59) — se a página abriu direto em /controle/UD26-005,
-      // abre o painel do processo assim que a lista termina de carregar.
-      if(_refPendenteDeepLink){
-        _abrirProcessoPorReferencia(_refPendenteDeepLink);
-        _refPendenteDeepLink = null;
-      }
+      aplicarListaProcessos(d.processos || [], silencioso);
+      if(versao){ _versaoProcessos = versao; salvarCacheProcessos(versao, _processos); }
     }
   }catch(e){
     showToast('Erro ao carregar processos','err');
