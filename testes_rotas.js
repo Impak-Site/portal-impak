@@ -76,6 +76,18 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     if (r.status === 403) throw new Error('bloqueou requisição legítima do próprio site');
   });
 
+  console.log('\n── Segurança: arquivos internos não são servidos ──');
+  for (const caminho of ['/server.js', '/package.json', '/migrations/0036_pi_cambio_codigo_bacen.sql', '/testes_rotas.js', '/lib/totp.js']) {
+    await teste(`GET ${caminho} → 404`, async () => {
+      const r = await request(app).get(caminho);
+      iguais(r.status, 404, caminho);
+    });
+  }
+  await teste('GET /chat.js (arquivo público do front) continua 200', async () => {
+    const r = await request(app).get('/chat.js');
+    iguais(r.status, 200);
+  });
+
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
   process.exit(passaram === total ? 0 : 1);

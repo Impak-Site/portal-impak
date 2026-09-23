@@ -318,6 +318,7 @@ const USUARIOS = [
   { usuario: 'everton',   senhaHashEnv: envSenhaHash('SENHA_EVERTON'),   email: 'administrativo@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Everton',   role: 'analista', displayName: 'Everton',   home: '/processos'  },
   { usuario: 'isabella',  senhaHashEnv: envSenhaHash('SENHA_ISABELLA'),  email: 'operacional@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Isabella',  role: 'analista', displayName: 'Isabella',  home: '/processos'  },
   { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',       modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio','cadastros','cambio','analises'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
+  { usuario: 'tv',            senhaHashEnv: process.env.SENHA_TV || null, email: 'tv@impak.com.br',            modulos: ['tv'], nome: 'TV', role: 'visualizador', displayName: 'TV (somente leitura)', home: '/tv' },
 ];
 
 // Cache em memória dos usuários carregados do Supabase (recarregado no boot
@@ -505,6 +506,16 @@ app.use(compression());
 // consulta de sessão no Supabase (+ uma gravação, por causa do rolling)
 // antes de ser entregue. Nada muda em segurança: os estáticos já eram
 // servidos sem checar login (a proteção está nas rotas /api e nas páginas).
+// Arquivos internos do servidor que NÃO devem ser baixáveis pelo navegador
+// (revisão de segurança 23/09/2026): express.static serve a pasta inteira do
+// projeto, então server.js, migrations, testes, node_modules etc. ficavam
+// acessíveis a qualquer um, mesmo sem login. Não há senha/chave neles, mas
+// não tem por que expor o código do servidor.
+const CAMINHOS_INTERNOS = /^\/(server\.js|planilha-import\.js|mapeamento_cotacao_processo\.js|testes_[^/]*|package(-lock)?\.json|(migrations|node_modules|scripts|services|docs|tests|lib)(\/.*)?)$|\.(md|sql)$/i;
+app.use((req, res, next) => {
+  if (CAMINHOS_INTERNOS.test(req.path)) return res.status(404).send('Not found');
+  next();
+});
 app.use(express.static(__dirname));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -1235,6 +1246,11 @@ const ADMINS_PERMISSOES = ['narcelio', 'paula', 'suporte'];
 // se o usuário tiver PELO MENOS UM deles (ex: auth('controle','financeiro')
 // libera pra quem tem controle OU financeiro). Sem nenhum argumento, só
 // exige estar logado (qualquer módulo).
+// Acesso somente leitura: usuário cujo ÚNICO módulo é a TV.
+function somenteLeitura(modulos) {
+  return Array.isArray(modulos) && modulos.length > 0 && modulos.every(m => m === 'tv');
+}
+
 function auth(...modulos) {
   return (req, res, next) => {
     // Chamada de API (fetch do front) x navegação de página: sem sessão,
@@ -1258,6 +1274,12 @@ function auth(...modulos) {
       return ehApi
         ? res.status(403).json({ ok: false, erro: 'Acesso negado a este módulo' })
         : res.status(403).send('<h2>Acesso negado</h2>');
+    }
+    // Conta SÓ de TV (pedido Ayslan 23/09/2026): a TV fica logada o dia todo
+    // num monitor -- quem estiver na frente não pode alterar/importar/excluir
+    // nada. Qualquer requisição que muda dados é recusada no servidor.
+    if (somenteLeitura(req.session.modulos) && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      return res.status(403).json({ ok: false, erro: 'Este acesso (TV) é somente leitura.' });
     }
     next();
   };
