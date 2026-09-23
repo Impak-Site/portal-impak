@@ -1457,16 +1457,16 @@ app.get('/api/cambio/ptax-historico', auth('financeiro'), async (req, res) => {
 // tabela completa a cada 30s mesmo sem nada ter mudado.
 app.get('/api/controle/v2/processos/versao', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
-    const { data, error, count } = await sb()
-      .from('controle_processos')
-      .select('updated_at', { count: 'exact' })
-      .order('updated_at', { ascending: false })
-      .limit(1);
-    if (error) throw new Error(error.message);
+    // As duas contagens em paralelo (medido: ~0,2s cada no Supabase).
     // Anexos do GED também entram (a lista traz os nomes dos arquivos pro
     // alerta de CI/PL/Draft) -- subir um arquivo não mexe no processo.
-    const { count: nArq } = await sb().from('controle_arquivos').select('id', { count: 'exact', head: true });
-    res.json({ ok: true, versao: `${count || 0}|${(data && data[0] && data[0].updated_at) || ''}|${nArq || 0}` });
+    const [proc, arq] = await Promise.all([
+      sb().from('controle_processos').select('updated_at', { count: 'exact' }).order('updated_at', { ascending: false }).limit(1),
+      sb().from('controle_arquivos').select('id', { count: 'exact', head: true }),
+    ]);
+    if (proc.error) throw new Error(proc.error.message);
+    const ultimo = (proc.data && proc.data[0] && proc.data[0].updated_at) || '';
+    res.json({ ok: true, versao: `${proc.count || 0}|${ultimo}|${arq.count || 0}` });
   } catch (e) {
     res.json({ ok: false });
   }
