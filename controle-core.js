@@ -1849,6 +1849,10 @@ function montarDRE(p){
     { label:'PIS',                     valor:v('pis') },
     { label:'COFINS',                  valor:v('cofins') },
     { label:'Taxa Siscomex',           valor:v('siscomex') },
+    // Emissão L.I. -- pedido do Jean (23/09/2026): já entrava no TOTAL CUSTOS
+    // (soma o real_json inteiro), mas não tinha linha própria no DRE, então
+    // parecia que não tinha sido considerada. Valor PAGO (não o cobrado).
+    { label:'Emissão L.I.',            valor:v('emissao_li') },
     { label:'Marinha Mercante/AFRMM',  valor:v('marinha') },
     { label:'ICMS',                    valor:v('icms') },
     { label:'Armazenagem',             valor:v('armazenagem') },

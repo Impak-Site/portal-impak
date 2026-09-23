@@ -1421,6 +1421,14 @@ function setEstadoProcessos(processos){
   vm.runInContext(`_processos = ${JSON.stringify(processos)};`, sandbox);
 }
 
+// Pedido do Jean (23/09/2026): Emissão L.I. não aparecia como linha no DRE.
+teste('montarDRE: Emissão L.I. (valor pago) aparece como linha no Adiantamento', () => {
+  const dre = sandbox.montarDRE({ real_json: { emissao_li: 850, emissao_li_cobrado: 1200, siscomex: 154 } });
+  const li = dre.adiantamentoItens.find(i => i.label === 'Emissão L.I.');
+  verdadeiro(!!li, 'deveria existir a linha Emissão L.I.');
+  iguais(li.valor, 850, 'deveria usar o valor PAGO, não o cobrado');
+});
+
 // ── TESTES: montarDREConsolidado() — DRE Consolidado (11/09/2026) ─
 // Pedido do Ayslan: "fizemos um DRE por processo. tem como fazermos um
 // DRE consolidado por semana, mes, ano... por cliente e alguns outros
