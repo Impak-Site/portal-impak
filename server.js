@@ -370,8 +370,30 @@ async function recarregarCacheUsuarios(){
 // no navegador da pessoa — sem precisar de um banco de sessões externo.
 const _sessaoVersao = new Map(USUARIOS.map(u => [u.usuario, 1]));
 
+// Relatório de segurança (item 7): a versão ficava SÓ na memória e voltava
+// pra 1 a cada deploy, enquanto as sessões sobrevivem no Supabase — um
+// logout forçado deixava de valer no deploy seguinte. Agora a versão também
+// é gravada em usuarios.sessao_versao (migration 0038) e lida junto com o
+// cache de usuários; vale sempre a maior das duas. Sem a coluna ainda,
+// continua funcionando como antes (só memória).
+function versaoSessaoAtual(usuario) {
+  const u = _usuariosCache.get(usuario);
+  const doBanco = u && Number.isFinite(Number(u.sessao_versao)) ? Number(u.sessao_versao) : 1;
+  return Math.max(_sessaoVersao.get(usuario) || 1, doBanco);
+}
 function forcarLogoutUsuario(usuario) {
-  _sessaoVersao.set(usuario, (_sessaoVersao.get(usuario) || 1) + 1);
+  const nova = versaoSessaoAtual(usuario) + 1;
+  _sessaoVersao.set(usuario, nova);
+  const u = _usuariosCache.get(usuario);
+  if (u) u.sessao_versao = nova;
+  try {
+    sb().from('usuarios').update({ sessao_versao: nova }).eq('usuario', usuario)
+      .then(({ error }) => { if (error) console.warn('sessao_versao não gravada (rode a migration 0038):', error.message); })
+      .catch(() => {});
+  } catch (e) { /* sem Supabase (testes) — fica só em memória */ }
+}
+function usuarioExiste(usuario) {
+  return USUARIOS.some(u => u.usuario === usuario) || _usuariosCache.has(usuario);
 }
 
 // ── RATE LIMITING NO LOGIN ────────────────────────────────────
@@ -938,7 +960,7 @@ function completarLogin(req, u, destino) {
   // A senha (nem em hash) nunca é guardada na sessão — ela só precisa
   // existir no momento do login. Guardá-la aqui não tem uso real e só
   // criava o risco de ser devolvida de volta ao navegador via /api/me.
-  req.session.versao      = _sessaoVersao.get(u.usuario) || 1;
+  req.session.versao      = versaoSessaoAtual(u.usuario);
   req.session.home        = u.home || '/';
   const destinoSeguro = sanitizeDestino(destino);
   return destinoSeguro !== '/' ? destinoSeguro : (u.home || '/');
@@ -1165,11 +1187,9 @@ app.post('/api/auth/redefinir-senha', rateLimitLogin, async (req, res) => {
 // Força o logout de um usuário em TODOS os dispositivos/sessões abertas —
 // útil ao trocar a senha de alguém, ou se houver suspeita de acesso
 // indevido (ex: notebook perdido). Restrito a gerentes.
-app.post('/api/usuarios/:usuario/forcar-logout', (req, res) => {
-  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
-  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+app.post('/api/usuarios/:usuario/forcar-logout', auth(), requireGerente, (req, res) => {
   const alvo = (req.params.usuario || '').trim().toLowerCase();
-  if (!USUARIOS.some(u => u.usuario === alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+  if (!usuarioExiste(alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
   forcarLogoutUsuario(alvo);
   res.json({ ok: true, mensagem: `Todas as sessões de "${alvo}" foram invalidadas.` });
 });
@@ -1180,11 +1200,9 @@ app.post('/api/usuarios/:usuario/forcar-logout', (req, res) => {
 // logout de todas as sessões abertas daquele usuário por segurança (se
 // alguém pediu esse reset por suspeita de conta comprometida, não faz
 // sentido deixar uma sessão antiga válida).
-app.post('/api/usuarios/:usuario/resetar-2fa', rateLimitLogin, async (req, res) => {
-  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
-  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+app.post('/api/usuarios/:usuario/resetar-2fa', rateLimitLogin, auth(), requireGerente, async (req, res) => {
   const alvo = (req.params.usuario || '').trim().toLowerCase();
-  if (!USUARIOS.some(u => u.usuario === alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+  if (!usuarioExiste(alvo)) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
   try {
     await sb().from('usuarios').update({
       totp_secret: null, totp_enabled: false, totp_confirmed_at: null,
@@ -1204,9 +1222,7 @@ app.post('/api/usuarios/:usuario/resetar-2fa', rateLimitLogin, async (req, res) 
 // os dados antigos em memória até o próximo restart/deploy. Restrito a
 // gerentes, e sujeito ao mesmo rate limit do login (evita brute-force via
 // esse endpoint também).
-app.post('/api/admin/recarregar-cache', rateLimitLogin, (req, res) => {
-  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
-  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+app.post('/api/admin/recarregar-cache', rateLimitLogin, auth(), requireGerente, (req, res) => {
   recarregarCacheUsuarios()
     .then(() => res.json({ ok: true, mensagem: `Cache recarregado (${_usuariosCache.size} usuários).` }))
     .catch(e => {
@@ -1219,7 +1235,7 @@ app.post('/api/admin/recarregar-cache', rateLimitLogin, (req, res) => {
 // Restrito a Narcelio, Paula e Ayslan (usuário "suporte") — ver
 // ADMINS_PERMISSOES logo acima de auth(). Lista todo mundo com os módulos
 // que cada um tem hoje, pra montar a tabela usuário x módulo na tela.
-app.get('/api/admin/permissoes', requireAdminPermissoes, async (req, res) => {
+app.get('/api/admin/permissoes', auth(), requireAdminPermissoes, async (req, res) => {
   try {
     await recarregarCacheUsuarios();
     const usuarios = [..._usuariosCache.values()]
@@ -1240,7 +1256,7 @@ app.get('/api/admin/permissoes', requireAdminPermissoes, async (req, res) => {
 // são aceitos — qualquer coisa fora disso é ignorada, pra nunca gravar lixo
 // no banco que quebre o auth() depois. Força logout do usuário afetado pra
 // a mudança valer imediatamente (sem esperar a sessão antiga expirar).
-app.post('/api/admin/permissoes/:usuario', requireAdminPermissoes, async (req, res) => {
+app.post('/api/admin/permissoes/:usuario', auth(), requireAdminPermissoes, async (req, res) => {
   const alvo = (req.params.usuario || '').trim().toLowerCase();
   if (!USUARIOS.some(u => u.usuario === alvo)) {
     return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
@@ -1305,9 +1321,16 @@ function auth(...modulos) {
     // Se a versão da sessão estiver desatualizada (alguém forçou logout
     // deste usuário, ex: ao trocar a senha ou mudar suas permissões),
     // invalida mesmo com cookie válido.
-    const versaoAtual = _sessaoVersao.get(req.session.usuario) || 1;
+    const versaoAtual = versaoSessaoAtual(req.session.usuario);
     if (req.session.versao !== versaoAtual) {
       return req.session.destroy(() => semSessao());
+    }
+    // Permissões sempre as ATUAIS do cadastro (não as do momento do login):
+    // quem perdeu um módulo ou o cargo de gerente perde na hora.
+    const cad = _usuariosCache.get(req.session.usuario);
+    if (cad) {
+      if (Array.isArray(cad.modulos)) req.session.modulos = cad.modulos;
+      if (cad.role) req.session.role = cad.role;
     }
     if (modulos.length && !modulos.some(m => req.session.modulos.includes(m))) {
       return ehApi
@@ -3945,9 +3968,7 @@ checarFollowUpSemanal();
 setInterval(checarFollowUpSemanal, 30 * 60 * 1000);
 
 // Disparo manual pra testar sem esperar domingo — restrito a gerente.
-app.post('/api/admin/followup-semanal', (req, res) => {
-  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
-  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+app.post('/api/admin/followup-semanal', auth(), requireGerente, (req, res) => {
   enviarFollowUpSemanal()
     .then(n => res.json({ ok: true, processos: n }))
     .catch(e => res.status(500).json({ ok: false, erro: e.message }));
@@ -4406,9 +4427,7 @@ function agendarBackupSemanal(){
   setInterval(checar, 30 * 60 * 1000);
 }
 
-app.post('/api/admin/backup', (req, res) => {
-  if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
-  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
+app.post('/api/admin/backup', auth(), requireGerente, (req, res) => {
   executarBackup()
     .then(resumo => res.json({ ok: true, resumo }))
     .catch(e => res.status(500).json({ ok: false, erro: e.message }));
@@ -4491,7 +4510,7 @@ function agendarAlertasSeparados(){
   setInterval(checar, 30 * 60 * 1000); // checa a cada 30min; cada alerta só dispara 1x/dia (app_job_runs)
 }
 
-app.post('/api/admin/alertas-separados', (req, res) => {
+app.post('/api/admin/alertas-separados', auth(), requireGerente, (req, res) => {
   if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
   if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
   Promise.all([
@@ -4524,7 +4543,7 @@ checar();
 setInterval(checar, 30 * 60 * 1000); // checa a cada 30min; só dispara 1x/dia (controlado por app_job_runs)
 }
 
-app.post('/api/admin/alertas-diarios', (req, res) => {
+app.post('/api/admin/alertas-diarios', auth(), requireGerente, (req, res) => {
 if (!req.session.usuario) return res.status(401).json({ ok: false, erro: 'Não autenticado' });
 if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem fazer isso' });
 verificarAlertasDiarios()
