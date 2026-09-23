@@ -512,8 +512,17 @@ app.use(compression());
 // acessíveis a qualquer um, mesmo sem login. Não há senha/chave neles, mas
 // não tem por que expor o código do servidor.
 const CAMINHOS_INTERNOS = /^\/(server\.js|planilha-import\.js|mapeamento_cotacao_processo\.js|testes_[^/]*|package(-lock)?\.json|(migrations|node_modules|scripts|services|docs|tests|lib)(\/.*)?)$|\.(md|sql)$/i;
+// Relatório de segurança (23/09/2026): o filtro testava o caminho ainda
+// codificado (/%73erver.js passava) e o express.static decodifica depois.
+// Agora decodifica e normaliza (resolve ./, //, ..) antes de testar — o
+// mesmo caminho que o express.static vai de fato servir. URL malformada ou
+// com caractere nulo/barra invertida é recusada.
 app.use((req, res, next) => {
-  if (CAMINHOS_INTERNOS.test(req.path)) return res.status(404).send('Not found');
+  let caminho;
+  try { caminho = decodeURIComponent(req.path); } catch (e) { return res.status(400).send('Bad request'); }
+  if (caminho.includes('\0') || caminho.includes('\\')) return res.status(400).send('Bad request');
+  caminho = path.posix.normalize(caminho);
+  if (CAMINHOS_INTERNOS.test(caminho) || /(^|\/)\./.test(caminho)) return res.status(404).send('Not found');
   next();
 });
 app.use(express.static(__dirname));

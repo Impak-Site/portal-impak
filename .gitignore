@@ -1,0 +1,6 @@
+.idea/
+.env
+.env.*
+*.log
+.DS_Store
+RELATORIO_SEGURANCA*.md

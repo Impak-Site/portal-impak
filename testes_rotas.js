@@ -77,12 +77,19 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
   });
 
   console.log('\n── Segurança: arquivos internos não são servidos ──');
-  for (const caminho of ['/server.js', '/package.json', '/migrations/0036_pi_cambio_codigo_bacen.sql', '/testes_rotas.js', '/lib/totp.js']) {
+  for (const caminho of ['/server.js', '/package.json', '/migrations/0036_pi_cambio_codigo_bacen.sql', '/testes_rotas.js', '/lib/totp.js',
+      '/%73erver.js', '/%6cib/totp.js', '/README.m%64', '/./server.js', '//server.js', '/x/../server.js', '/%2e/server.js', '/SERVER.JS', '/.git/config', '/.idea/dataSources.xml']) {
     await teste(`GET ${caminho} → 404`, async () => {
       const r = await request(app).get(caminho);
       iguais(r.status, 404, caminho);
     });
   }
+  await teste('processos.html não contém senha nem config do Firebase', async () => {
+    const r = await request(app).get('/processos.html');
+    iguais(r.status, 200);
+    if (/password\s*:/i.test(r.text)) throw new Error('ainda tem password: no HTML');
+    if (/apiKey\s*:/i.test(r.text)) throw new Error('ainda tem apiKey no HTML');
+  });
   await teste('GET /chat.js (arquivo público do front) continua 200', async () => {
     const r = await request(app).get('/chat.js');
     iguais(r.status, 200);

@@ -13,8 +13,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <!-- Nav global (Controle/Conferência/TyreDesk/Calculador/Financeiro) + assistente IA —
      mesmo script já usado no controle_v2.html; faltava aqui, por isso essa tela
      não mostrava a barra com os outros módulos. -->
@@ -1151,53 +1149,22 @@ function guessType(name){
 
 
 // ─── USER SYSTEM ──────────────────────────────────────────────────────
+// Relatório de segurança (23/09/2026): este array guardava usuário+senha
+// em texto puro de um login antigo feito no navegador. O login é 100% no
+// servidor agora; aqui só sobram os nomes usados no dropdown da Gestão.
 var USERS = [
-  { username: 'narcelio',  email: 'narcelio@impak.com.br',    password: 'Narcelio@2026',      role: 'gerente',  displayName: 'Narcelio'  },
-  { username: 'jean',      email: 'jean@impak.com.br',        password: 'Jeanimpak2026',      role: 'gerente',  displayName: 'Jean'      },
-  { username: 'paula',     email: 'paula@impak.com.br',       password: 'Paula@2026',         role: 'gerente',  displayName: 'Paula'     },
-  { username: 'bianca',    email: 'bianca@impak.com.br',      password: 'Bianca@2026',        role: 'gerente',  displayName: 'Bianca'    },
-  { username: 'emanuelly', email: 'importacao1@impak.com.br', password: 'EmanuellyImpak2026', role: 'analista', displayName: 'Emanuelly' },
+  { username: 'narcelio',  displayName: 'Narcelio'  },
+  { username: 'jean',      displayName: 'Jean'      },
+  { username: 'paula',     displayName: 'Paula'     },
+  { username: 'bianca',    displayName: 'Bianca'    },
+  { username: 'emanuelly', displayName: 'Emanuelly' },
 ];
 
 var _currentUser = null;
 
 function getCurrentUser(){ return _currentUser; }
 
-function doLogin(){
-  var u = (document.getElementById('loginUser').value||'').trim().toLowerCase();
-  var p = (document.getElementById('loginPass').value||'').trim();
-  var found = USERS.find(function(x){ return x.username===u && x.password===p; });
-  if(!found){
-    document.getElementById('loginErr').textContent='Usuário ou senha incorretos.';
-    document.getElementById('loginErr').style.display='block';
-    return;
-  }
-  _currentUser = found;
-  document.getElementById('loginScreen').style.display='none';
-  // Show user badge
-  document.getElementById('userBadgeName').textContent = found.displayName;
-  document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
-  // Show gestao tab for manager
-  // Aba Gestão removida — tudo em Processos
-  // if(found.role==='gerente'){ document.getElementById('navGestao').style.display='flex'; }
-  // Load user processes (Firebase async, localStorage como cache imediato)
-  _processes = loadUserProcesses(); // cache local imediato
-  _processes = migrateAlerts(_processes);
-  updateSheetsStatus();
-  renderDashboard();
-  renderProcessos();
-  showPage('dashboard');
-  // Sincronizar: busca do Drive e faz upload de processos locais que não estão lá
-  // Carregar TODOS os processos do Drive — compartilhado entre todos os usuários
-  dbGetAllProcesses(function(todos){
-    if(todos && todos.length){
-      _processes = migrateAlerts(todos);
-      renderDashboard();
-      renderProcessos();
-      verificarDivergenciasCriticas();
-    }
-  });
-}
+function doLogin(){ location.href = '/login'; }
 
 function loginClearErr(){
   document.getElementById('loginErr').style.display='none';
@@ -1241,14 +1208,7 @@ function getAllProcesses(){
 // ─── FIREBASE CONFIG ──────────────────────────────────────────────────
 // 🔧 CONFIGURAÇÃO: Cole aqui as credenciais do seu projeto Firebase
 // Acesse: console.firebase.google.com → Seu projeto → ⚙️ Configurações → "Seus aplicativos" → SDK
-var FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyDCCtgy81b_n7VvRaXwy1_XoGGmedgAtTg",
-  authDomain:        "impak-sistema.firebaseapp.com",
-  projectId:         "impak-sistema",
-  storageBucket:     "impak-sistema.firebasestorage.app",
-  messagingSenderId: "79766710857",
-  appId:             "1:79766710857:web:aad1c9c93ba1cb3fcd2d98"
-};
+var FIREBASE_CONFIG = null; // removido (projeto Firebase antigo, não usado)
 
 // Firebase SDK (carregado via CDN no <head>)
 var _db = null;
