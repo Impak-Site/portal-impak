@@ -441,7 +441,7 @@ function renderDashTV(){
     // usar px fixo em vez de "em". Pill ≈ 36px de altura (9+9 padding +
     // ~18 de linha do texto 14px); card alvo ≈ 76px (pouco mais de 2x,
     // pela estrutura em 2 linhas + barra que a pill não tem).
-    return `<div class="tv-card" onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.1);">
+    return `<div class="tv-card" onclick="abrirListaTV(${jsArg(chave)})" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.1);">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;overflow:hidden;">
         <div style="flex:0 0 auto;width:24px;height:24px;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:'DM Sans',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
         <div style="font-size:13px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
@@ -519,7 +519,7 @@ function renderDashTV(){
       ${backordersPrincipais.map(([m,q,chave]) => cardMarca(m, q, backordersPrincipais[0][1], chave)).join('')}
     </div>
     ${backordersResto.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:14px;">
-      ${backordersResto.map(([m,q,chave],idx) => `<div onclick="abrirListaTV('${chave.replace(/'/g,"\\'")}')" title="Clique para ver os processos" style="cursor:pointer;display:flex;justify-content:space-between;background:${idx%2===1?'#16294d':'#0f1f3d'};color:#fff;border-radius:6px;padding:9px 13px;font-size:14px;">
+      ${backordersResto.map(([m,q,chave],idx) => `<div onclick="abrirListaTV(${jsArg(chave)})" title="Clique para ver os processos" style="cursor:pointer;display:flex;justify-content:space-between;background:${idx%2===1?'#16294d':'#0f1f3d'};color:#fff;border-radius:6px;padding:9px 13px;font-size:14px;">
         <span style="font-weight:700;">${esc(m)}</span><span style="font-weight:800;">${fmtN(q)}</span>
       </div>`).join('')}
     </div>` : ''}

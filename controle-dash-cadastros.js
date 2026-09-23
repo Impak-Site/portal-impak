@@ -238,7 +238,7 @@ async function _cpAutocompleteEmpresa(input){
       const d = await r.json();
       if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
       dd.innerHTML = d.contatos.map(c=>`<div data-id="${c.id}" data-nome="${esc(c.razao_social)}"
-        onclick="_cpSelecionarEmpresa('${c.id}','${esc(c.razao_social).replace(/'/g,"\\'")}')"
+        onclick="_cpSelecionarEmpresa(${jsArg(c.id)},${jsArg(c.razao_social)})"
         style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
         onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${esc(c.razao_social)}${c.tipo?' · '+esc(c.tipo):''}</div>`).join('');
       dd.style.display = 'block';

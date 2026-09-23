@@ -109,10 +109,10 @@ function _confRenderChips(){
     const item = _confArquivos[nome];
     return `<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;">
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
-      <select class="form-input" style="width:auto;padding:2px 6px;font-size:11px;" onchange="_confArquivos['${esc(nome).replace(/'/g,"\\'")}'].type=this.value">
+      <select class="form-input" style="width:auto;padding:2px 6px;font-size:11px;" onchange="_confArquivos[${jsArg(nome)}].type=this.value">
         ${Object.entries(CONF_DOC_PT).map(([k,label])=>`<option value="${k}" ${item.type===k?'selected':''}>${esc(label)}</option>`).join('')}
       </select>
-      <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="delete _confArquivos['${esc(nome).replace(/'/g,"\\'")}']; _confRenderChips();">×</button>
+      <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="delete _confArquivos[${jsArg(nome)}]; _confRenderChips();">×</button>
     </div>`;
   }).join('');
   const btn = document.getElementById('conf-btn-analisar');

@@ -482,7 +482,7 @@ function renderDashResultado(){
   if(agrupar === 'processo'){
     linhasTabela = linhasFiltradas.map(l => ({
       chave: l.p.referencia,
-      onClick: `abrirProcesso('${l.p.id}');toggleDashResultado()`,
+      onClick: `abrirProcesso(${jsArg(l.p.id)});toggleDashResultado()`,
       colUnica: `${esc(l.p.referencia)}${l.p.fechado?' 🔒':''}`,
       cliente: l.cliente, fornecedor: l.fornecedor,
       nfSaida: l.faturamento, lucroEstimado: l.lucroEstimado, lucroReal: l.lucroReal,
@@ -502,7 +502,7 @@ function renderDashResultado(){
     });
     linhasTabela = Object.values(grupos).map(g => ({
       chave: g.chave,
-      onClick: `atualizarFiltroResultado('cliente','${agrupar==='cliente'?esc(g.chave).replace(/'/g,"\\'"):''}')`,
+      onClick: `atualizarFiltroResultado('cliente',${jsArg(agrupar==='cliente'?g.chave:'')})`,
       colUnica: esc(g.chave),
       cliente: agrupar==='cliente' ? g.chave : null,
       nfSaida: g.nfSaida, lucroEstimado: g.temEstimado ? g.lucroEstimado : null, lucroReal: g.lucroReal,
@@ -1186,10 +1186,10 @@ function renderDashFinanceiro(){
               const cambioUsado = cambioReal || x.cambioPrevisto || _cambio.USD;
               const cambioLabel = cambioReal ? cambioReal.toFixed(4) : `~${cambioUsado.toFixed(4)}`;
               const valorBRL = x.valorUsd * cambioUsado;
-              return `<tr style="border-top:1px solid var(--border);cursor:pointer;${vencido?'background:rgba(220,38,38,.03)':''}" onclick="abrirProcesso('${x.processoId}');toggleDashFinanceiro()">
-                <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${x.referencia}${x.parcela==='entrada'?' <span style="color:var(--muted);font-weight:400;">(entrada)</span>':x.parcela==='saldo'?' <span style="color:var(--muted);font-weight:400;">(saldo)</span>':''}</td>
-                <td style="padding:8px 12px;">${x.fornecedor}</td>
-                <td style="padding:8px 12px;">${x.pais}</td>
+              return `<tr style="border-top:1px solid var(--border);cursor:pointer;${vencido?'background:rgba(220,38,38,.03)':''}" onclick="abrirProcesso(${jsArg(x.processoId)});toggleDashFinanceiro()">
+                <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${esc(x.referencia)}${x.parcela==='entrada'?' <span style="color:var(--muted);font-weight:400;">(entrada)</span>':x.parcela==='saldo'?' <span style="color:var(--muted);font-weight:400;">(saldo)</span>':''}</td>
+                <td style="padding:8px 12px;">${esc(x.fornecedor)}</td>
+                <td style="padding:8px 12px;">${esc(x.pais)}</td>
                 <td style="padding:8px 12px;">${x.moeda}</td>
                 <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;">${fmt(x.valorUsd)}</td>
                 <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;" title="${cambioReal?'Câmbio fechado (real)':'Câmbio previsto — ainda não fechado'}">R$ ${cambioLabel}</td>
@@ -1335,9 +1335,9 @@ function renderControleCambialHtml(pagamentos){
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Diferença</th>
         </tr></thead>
         <tbody>
-          ${linhas.map(x=>`<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}');toggleDashFinanceiro()">
-            <td style="padding:8px 16px;font-family:DM Mono,monospace;font-weight:600;">${x.referencia}</td>
-            <td style="padding:8px 16px;font-family:DM Mono,monospace;color:${x.numeroDi?'var(--text)':'var(--dim)'};">${x.numeroDi||'—'}</td>
+          ${linhas.map(x=>`<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso(${jsArg(x.processoId)});toggleDashFinanceiro()">
+            <td style="padding:8px 16px;font-family:DM Mono,monospace;font-weight:600;">${esc(x.referencia)}</td>
+            <td style="padding:8px 16px;font-family:DM Mono,monospace;color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
             <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioPrevisto.toFixed(4)}</td>
             <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioFechado.toFixed(4)}</td>
             <td style="padding:8px 16px;text-align:right;font-weight:700;color:${x.diff>=0?'var(--ok)':'var(--err)'};">${x.diff>=0?'+':''}${fmtBRL(x.diff)}</td>

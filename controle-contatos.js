@@ -35,7 +35,7 @@ async function autocompletarContato(input, tipo, dropdownId, onSelect){
         // identificar visualmente na lista, quando existir e for diferente.
         const nomeCompleto = c.razao_social || c.nome_fantasia;
         const label = `${esc(nomeCompleto)}${c.nome_fantasia && c.nome_fantasia!==c.razao_social ? ' ('+esc(c.nome_fantasia)+')' : ''}${c.uf?' · '+esc(c.uf):''}${c.cnpj?' · '+esc(c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5')):''}`;
-        return `<div data-nome="${esc(nomeCompleto)}" onclick="_acSelecionar('${input.id}','${dropdownId}',this.dataset.nome,${onSelect?'window._acCallback':'null'})"
+        return `<div data-nome="${esc(nomeCompleto)}" onclick="_acSelecionar(${jsArg(input.id)},${jsArg(dropdownId)},this.dataset.nome,${onSelect?'window._acCallback':'null'})"
           style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
           onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
       }).join('');
@@ -67,7 +67,7 @@ function autocompletarValorLocal(input, campo, dropdownId){
   if(!sugestoes.length){ dd.style.display='none'; return; }
   sugestoes.sort((a,b)=>a.localeCompare(b,'pt-BR'));
   dd.innerHTML = sugestoes.slice(0,8).map(v=>
-    `<div data-nome="${esc(v)}" onclick="_acSelecionar('${input.id}','${dropdownId}',this.dataset.nome,null)"
+    `<div data-nome="${esc(v)}" onclick="_acSelecionar(${jsArg(input.id)},${jsArg(dropdownId)},this.dataset.nome,null)"
       style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
       onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${esc(v)}</div>`
   ).join('');

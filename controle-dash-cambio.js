@@ -774,7 +774,7 @@ function renderDashCambio(){
         ${candidatosConsolidacao.map(f => `<tr style="border-bottom:1px solid var(--border);">
           <td style="padding:10px;font-weight:700;">${esc(f.nome)}</td>
           ${f.porJanela.map(j => `<td style="padding:10px;text-align:right;${MONO}">${j.qtd ? `${fmtUSD(j.usd)} <span style="color:var(--muted);font-weight:400;">(${j.qtd}x)</span>` : '<span style="color:var(--muted);">—</span>'}</td>`).join('')}
-          <td style="padding:10px;text-align:center;"><button type="button" onclick="selecionarFornecedorLote('${f.nome.replace(/'/g,"\\'")}')" style="border:none;background:var(--ac);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Selecionar ${f.porJanela[2].qtd}</button></td>
+          <td style="padding:10px;text-align:center;"><button type="button" onclick="selecionarFornecedorLote(${jsArg(f.nome)})" style="border:none;background:var(--ac);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Selecionar ${f.porJanela[2].qtd}</button></td>
         </tr>`).join('')}
       </tbody>
     </table>
@@ -900,7 +900,7 @@ function renderDashCambio(){
           const key = chaveLoteCambio(x.processoId, x._tipo, x._parcelaIndex);
           const marcada = _cambioLoteSelecao.has(key);
           return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-          <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()">${mostrandoPagos ? '' : `<input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,'${x.processoId}','${x._tipo}',${x._parcelaIndex!=null?x._parcelaIndex:'null'},${x.valorUsd},'${(x.fornecedor||'').replace(/'/g,"\\'")}','${(x.referencia||'').replace(/'/g,"\\'")}')">`}</td>
+          <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()">${mostrandoPagos ? '' : `<input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,${jsArg(x.processoId)},${jsArg(x._tipo)},${x._parcelaIndex!=null?Number(x._parcelaIndex):'null'},${Number(x.valorUsd)||0},${jsArg(x.fornecedor||'')},${jsArg(x.referencia||'')})">`}</td>
           <td style="padding:8px 8px;white-space:nowrap;">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${(x.vencimento && !mostrandoPagos) ? badgeDias(x.vencimento) : ''}</td>
           <td style="padding:8px 8px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}</td>
           <td style="padding:8px 8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.fornecedor)}">${esc(x.fornecedor)}</td>

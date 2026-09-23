@@ -151,7 +151,7 @@ function renderModal(){
   // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ ALERTAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
   const alertas = verificarAlertas(p, false);
   const alertasHtml = alertas.map(a=>
-    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">🚨 ${a.titulo}: ${a.mensagem}</div>`
+    `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">🚨 ${esc(a.titulo)}: ${esc(a.mensagem)}</div>`
   ).join('');
 
   // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CONTEÃÂÃÂDO DAS ABAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ

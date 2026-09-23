@@ -2105,6 +2105,9 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     // edições concorrentes de outro usuário) o payload pode legitimamente
     // não incluir "referencia" se ela não foi um dos campos alterados.
     if (!processo.id && !processo.referencia) return res.status(400).json({ erro: 'Referência obrigatória' });
+    // Segurança: o id vai parar em atributos onclick do front — só aceita
+    // letras, números, hífen e _ (os ids gerados são UUID).
+    if (processo.id && !/^[A-Za-z0-9_-]{1,64}$/.test(String(processo.id))) return res.status(400).json({ erro: 'id inválido' });
 
     // ── TRAVA DE PROCESSO ("Fechar Processo") ────────────────────────
     // Depois de conferido, o processo pode ser fechado (ver botão 🔒 no

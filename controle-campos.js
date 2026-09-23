@@ -1113,6 +1113,11 @@ function sincronizarParcelasLegado(){
 // RELATÓRIO COM FILTROS
 // ════════════════════════════════════════════════════════════════
 function esc(v){ return v ? String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+// Argumento de função JS dentro de atributo HTML (onclick="f(${jsArg(x)})").
+// Relatório de segurança (item 4): o padrão antigo esc(x).replace(/'/g,"\\'")
+// não protege — o navegador desfaz o escape HTML antes de rodar o JS.
+// JSON.stringify gera um literal JS válido e o esc() protege o atributo.
+function jsArg(v){ return esc(JSON.stringify(v==null ? '' : String(v))); }
 
 // ── COLAR DATA (DD/MM/AAAA) EM CAMPOS type="date" ────────────────
 function colarData(ev, el){

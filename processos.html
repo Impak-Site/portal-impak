@@ -1008,9 +1008,9 @@ function renderGuiaUpload(){
   el.innerHTML = '<div style="font-size:11px;color:#4a6480;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Documentos recomendados:</div>'+
     guia.docs.map(function(d){
       return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;">'+
-        '<span>'+d.icone+'</span>'+
-        '<span style="font-weight:600;color:#0d1e2e">'+(d.obrig?'<span style="color:#dc2626;font-size:10px;margin-right:3px">*</span>':'')+d.nome+'</span>'+
-        '<span style="color:#4a6480;font-size:11px">'+d.desc+'</span>'+
+        '<span>'+escHtml(d.icone)+'</span>'+
+        '<span style="font-weight:600;color:#0d1e2e">'+(d.obrig?'<span style="color:#dc2626;font-size:10px;margin-right:3px">*</span>':'')+escHtml(d.nome)+'</span>'+
+        '<span style="color:#4a6480;font-size:11px">'+escHtml(d.desc)+'</span>'+
       '</div>';
     }).join('')+
     '<div style="font-size:11px;color:#1a7fd4;margin-top:6px;padding:6px 8px;background:rgba(26,127,212,.06);border-radius:5px">💡 '+guia.dica+'</div>';
@@ -1536,7 +1536,7 @@ function abrirEstatisticas(){
       parseFloat(mediaDivs)<2 ? '<span style="color:#d97706;font-weight:700">⚠ Regular</span>' :
       '<span style="color:#dc2626;font-weight:700">✗ Crítico</span>';
     return '<tr>'+
-      '<td style="padding:10px 12px;font-weight:600">'+exp+'</td>'+
+      '<td style="padding:10px 12px;font-weight:600">'+escHtml(exp)+'</td>'+
       '<td style="padding:10px 12px;text-align:center">'+s.total+'</td>'+
       '<td style="padding:10px 12px;text-align:center">'+s.analises+'</td>'+
       '<td style="padding:10px 12px;text-align:center;color:#dc2626;font-weight:600">'+s.divTotal+'</td>'+
@@ -1631,9 +1631,9 @@ function renderChips(){
       return '<option value="'+o[0]+'"'+(o[0]===type?' selected':'')+'>'+o[1]+'</option>';
     }).join('');
     html+='<div class="chip" style="'+(isOther?'border-color:var(--warn);background:rgba(217,119,6,0.04);':'')+'">'
-      +'<span style="flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;" title="'+n+'">'+short+'</span>'
-      +'<select data-filename="'+n.replace(/"/g,'&quot;')+'" class="type-select" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid '+(isOther?'#d97706':'var(--border2)')+';background:var(--surface);color:'+(isOther?'#d97706':'var(--accent)')+';font-family:monospace;font-weight:700;cursor:pointer;flex-shrink:0;margin:0 6px;">'+opts+'</select>'
-      +'<button data-remove="'+n.replace(/"/g,'&quot;')+'" class="chip-rm" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-dim);padding:0 2px;flex-shrink:0;">✕</button>'
+      +'<span style="flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;" title="'+escHtml(n)+'">'+escHtml(short)+'</span>'
+      +'<select data-filename="'+escHtml(n)+'" class="type-select" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid '+(isOther?'#d97706':'var(--border2)')+';background:var(--surface);color:'+(isOther?'#d97706':'var(--accent)')+';font-family:monospace;font-weight:700;cursor:pointer;flex-shrink:0;margin:0 6px;">'+opts+'</select>'
+      +'<button data-remove="'+escHtml(n)+'" class="chip-rm" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-dim);padding:0 2px;flex-shrink:0;">✕</button>'
       +'</div>';
   });
   c.innerHTML=html;
@@ -1966,7 +1966,7 @@ function renderResult(r){
     const docsEl=document.getElementById('docCards');
     const docsIdentEl=document.createElement('div');
     docsIdentEl.style.cssText='margin-bottom:10px;padding:8px 12px;background:rgba(26,127,212,.06);border:1px solid rgba(26,127,212,.15);border-radius:8px;font-size:12px;color:#1a7fd4;';
-    docsIdentEl.innerHTML='🔍 Documentos identificados pela IA: <strong>'+r.resumo.docs_identificados.join(' · ')+'</strong>';
+    docsIdentEl.innerHTML='🔍 Documentos identificados pela IA: <strong>'+escHtml(r.resumo.docs_identificados.join(' · '))+'</strong>';
     if(docsEl) docsEl.prepend(docsIdentEl);
   }
 
@@ -2031,7 +2031,7 @@ function renderResult(r){
         emailBox.innerHTML=
           '<div style="font-size:10px;font-weight:700;color:#dc2626;margin-bottom:4px">📧 Texto sugerido para o fornecedor:</div>'+
           '<div style="color:#4a6480;font-style:italic;line-height:1.5">'+escHtml(c.email_fornecedor)+'</div>'+
-          '<button onclick="copiarTexto(this,'+JSON.stringify(c.email_fornecedor)+')" style="margin-top:6px;font-size:10px;padding:2px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;">📋 Copiar</button>';
+          '<button onclick="copiarTexto(this,'+escHtml(JSON.stringify(c.email_fornecedor))+')" style="margin-top:6px;font-size:10px;padding:2px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;">📋 Copiar</button>';
         el.appendChild(emailBox);
       }
     }
@@ -2148,7 +2148,7 @@ function verificarDivergenciasCriticas(){
       notif.style.display='flex';
       notif.innerHTML = '<span style="font-size:16px">🔴</span>'+
         '<span style="flex:1"><strong>'+criticos.length+' processo(s)</strong> com divergências não resolvidas: '+
-        criticos.slice(0,3).map(function(p){return p.ref;}).join(', ')+(criticos.length>3?'...':'')+'</span>'+
+        escHtml(criticos.slice(0,3).map(function(p){return p.ref;}).join(', '))+(criticos.length>3?'...':'')+'</span>'+
         '<button onclick="sessionStorage.setItem(\'divNotifBloqueada\',\'1\');this.parentNode.style.display=\'none\'" style="background:transparent;border:none;cursor:pointer;font-size:16px;opacity:.6">✕</button>';
     }
   }
@@ -2202,10 +2202,10 @@ function renderDashboard(){
       var sc={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'}[p.status]||'var(--text-dim)';
       var sl={ok:'✓ OK',warn:'⚠ Alertas',err:'✗ Divergências'}[p.status]||'—';
       var analises=(p.analises||[]).length;
-      var nomeAnalista = p._userName ? ' · <span style="color:var(--accent)">'+p._userName+'</span>' : '';
-      return '<div data-proc-id="'+p.id+'" data-proc-user="'+(p._user||'')+'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s;" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">'
-        +'<div><div style="font-weight:600;font-size:13px;color:var(--text-bright);">'+p.ref+'</div>'
-        +'<div style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'—')+' · '+p.data+' · '+analises+' análise(s)'+nomeAnalista+'</div></div>'
+      var nomeAnalista = p._userName ? ' · <span style="color:var(--accent)">'+escHtml(p._userName)+'</span>' : '';
+      return '<div data-proc-id="'+escHtml(p.id)+'" data-proc-user="'+escHtml(p._user||'')+'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s;" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">'
+        +'<div><div style="font-weight:600;font-size:13px;color:var(--text-bright);">'+escHtml(p.ref)+'</div>'
+        +'<div style="font-size:11px;color:var(--text-dim);">'+escHtml(p.exportador||'—')+' · '+escHtml(p.data)+' · '+analises+' análise(s)'+nomeAnalista+'</div></div>'
         +'<span style="font-size:11px;font-weight:700;color:'+sc+';font-family:monospace;">'+sl+'</span>'
         +'</div>';
     }).join('');
@@ -2320,9 +2320,9 @@ function renderGestao(){
       var divs=last&&last.resumo?last.resumo.divergencias:0;
       var alerts=last&&last.resumo?last.resumo.alertas:0;
       var badge=divs?'<span style="color:var(--danger);font-size:11px;font-weight:700;">✗ '+divs+' diverg.</span>':alerts?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>':'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
-      var approved=p._approved?'<span style="color:var(--ok);font-size:10px;margin-left:6px;">✓ Aprovado por '+p._approvedBy+'</span>':'';
+      var approved=p._approved?'<span style="color:var(--ok);font-size:10px;margin-left:6px;">✓ Aprovado por '+escHtml(p._approvedBy)+'</span>':'';
       var hasComment=p._managerComment?'<span style="color:var(--accent);font-size:10px;margin-left:6px;">💬 comentário</span>':'';
-      return '<div data-gestao-id="'+p.id+'" data-gestao-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span><span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span><span style="font-size:11px;padding:2px 8px;border-radius:100px;background:var(--accent-dim);color:var(--accent);">'+(p._userName||p._user||'?')+'</span>'+approved+hasComment+'</div>'+badge+'</div><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);"><span>'+(p.data||'')+'</span><span>'+analises.length+' análise(s)</span>'+(last?'<span>Última: '+last.data+'</span>':'')+(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')+'</div></div>';
+      return '<div data-gestao-id="'+escHtml(p.id)+'" data-gestao-user="'+escHtml(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+escHtml(p.ref)+'</span><span style="font-size:11px;color:var(--text-dim);">'+escHtml(p.exportador||'')+'</span><span style="font-size:11px;padding:2px 8px;border-radius:100px;background:var(--accent-dim);color:var(--accent);">'+escHtml(p._userName||p._user||'?')+'</span>'+approved+hasComment+'</div>'+badge+'</div><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);"><span>'+escHtml(p.data||'')+'</span><span>'+analises.length+' análise(s)</span>'+(last?'<span>Última: '+escHtml(last.data)+'</span>':'')+(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escHtml(last.docs)+'</span>':'')+'</div></div>';
     }).join('');
     list.onclick=function(e){
       var card=e.target.closest('[data-gestao-id]');
@@ -2353,21 +2353,21 @@ function _renderGestaoModal(p, username){
   body += '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2,var(--surface));border-radius:8px;border:1px solid var(--border);">';
   body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">Aprovação Gerencial</div>';
   if(p._approved){
-    body += '<div style="color:var(--ok);font-size:13px;font-weight:600;margin-bottom:8px;">✓ Aprovado por '+p._approvedBy+' em '+p._approvedAt+'</div>';
-    body += '<button data-action="revoke" data-id="'+id+'" data-user="'+username+'" style="font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
+    body += '<div style="color:var(--ok);font-size:13px;font-weight:600;margin-bottom:8px;">✓ Aprovado por '+escHtml(p._approvedBy)+' em '+escHtml(p._approvedAt)+'</div>';
+    body += '<button data-action="revoke" data-id="'+escHtml(id)+'" data-user="'+escHtml(username)+'" style="font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
   } else {
-    body += '<button data-action="approve" data-id="'+id+'" data-user="'+username+'" style="font-size:13px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 20px;cursor:pointer;">✓ Aprovar processo</button>';
+    body += '<button data-action="approve" data-id="'+escHtml(id)+'" data-user="'+escHtml(username)+'" style="font-size:13px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 20px;cursor:pointer;">✓ Aprovar processo</button>';
   }
   body += '</div>';
 
   // ── Manager comment ───────────────────────────────────────────────
   body += '<div style="margin-bottom:16px;">';
   body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Comentário do Gerente</div>';
-  body += '<textarea id="gestaoComment" style="width:100%;min-height:72px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;" placeholder="Orientações, observações ou aprovações parciais...">'+(p._managerComment||'')+'</textarea>';
+  body += '<textarea id="gestaoComment" style="width:100%;min-height:72px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;" placeholder="Orientações, observações ou aprovações parciais...">'+escHtml(p._managerComment||'')+'</textarea>';
   if(p._managerCommentBy){
-    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Último comentário por '+p._managerCommentBy+' em '+p._managerCommentAt+'</div>';
+    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Último comentário por '+escHtml(p._managerCommentBy)+' em '+escHtml(p._managerCommentAt)+'</div>';
   }
-  body += '<button data-action="savecomment" data-id="'+id+'" data-user="'+username+'" style="margin-top:8px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;">Salvar comentário</button>';
+  body += '<button data-action="savecomment" data-id="'+escHtml(id)+'" data-user="'+escHtml(username)+'" style="margin-top:8px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;">Salvar comentário</button>';
   body += '</div>';
 
   // ── Analyses with full divergences ────────────────────────────────
@@ -2386,7 +2386,7 @@ function _renderGestaoModal(p, username){
     body += '<div style="padding:12px 16px;background:var(--surface-2,var(--surface));display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">';
     body += '<div><span style="font-size:13px;font-weight:700;">Análise '+analIdx+'</span>';
     if(isLast) body += ' <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--accent);color:white;font-weight:600;margin-left:6px;">ÚLTIMA</span>';
-    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+a.data+' · '+a.docs+'</div></div>';
+    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+escHtml(a.data)+' · '+escHtml(a.docs)+'</div></div>';
     body += '<div style="display:flex;gap:8px;align-items:center;">';
     if(divs) body += '<span style="font-size:11px;font-weight:700;color:var(--danger);">✗ '+divs+' diverg.</span>';
     if(alts) body += '<span style="font-size:11px;font-weight:700;color:var(--warn);">⚠ '+alts+' alertas</span>';
@@ -2399,7 +2399,7 @@ function _renderGestaoModal(p, username){
         var campos = (g.campos||[]).filter(function(c){ return c.status && c.status !== 'OK'; });
         if(!campos.length) return;
         body += '<div style="padding:10px 16px;border-bottom:1px solid var(--border);">';
-        body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">'+g.titulo+'</div>';
+        body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">'+escHtml(g.titulo)+'</div>';
         campos.forEach(function(c){
           var color = c.status==='DIVERGENCIA' ? 'var(--danger)' : 'var(--warn)';
           var divKey = g.titulo+'-'+c.campo;
@@ -2409,18 +2409,18 @@ function _renderGestaoModal(p, username){
           var confBadge='';
           if(c.confianca!==undefined && c.confianca<85){
             var confColor=c.confianca<70?'#dc2626':'#d97706';
-            confBadge='<span style="font-size:9px;font-weight:700;color:'+confColor+';background:'+confColor+'18;padding:1px 5px;border-radius:3px;margin-left:4px" title="Confiança da IA: '+c.confianca+'%">IA '+c.confianca+'%</span>';
+            confBadge='<span style="font-size:9px;font-weight:700;color:'+confColor+';background:'+confColor+'18;padding:1px 5px;border-radius:3px;margin-left:4px" title="Confiança da IA: '+escHtml(c.confianca)+'%">IA '+escHtml(c.confianca)+'%</span>';
           }
           body += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
-          body += '<span style="font-size:12px;font-weight:600;">'+c.campo+confBadge+'</span>';
+          body += '<span style="font-size:12px;font-weight:600;">'+escHtml(c.campo)+confBadge+'</span>';
           body += '<span style="font-size:10px;font-weight:700;color:'+color+';">'+(aceito?'✓ ACEITO':c.status)+'</span>';
           body += '</div>';
           body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
-          body += '<div style="font-size:11px;"><span style="color:var(--text-dim);">'+c.doc1_label+':</span> '+c.doc1_valor+'</div>';
-          body += '<div style="font-size:11px;color:'+color+';font-weight:600;"><span style="color:var(--text-dim);">'+c.doc2_label+':</span> '+c.doc2_valor+'</div>';
+          body += '<div style="font-size:11px;"><span style="color:var(--text-dim);">'+escHtml(c.doc1_label)+':</span> '+escHtml(c.doc1_valor)+'</div>';
+          body += '<div style="font-size:11px;color:'+color+';font-weight:600;"><span style="color:var(--text-dim);">'+escHtml(c.doc2_label)+':</span> '+escHtml(c.doc2_valor)+'</div>';
           body += '</div>';
-          if(aceito) body += '<div style="font-size:11px;color:#16a34a;margin-top:5px;padding:4px 8px;background:rgba(22,163,74,0.08);border-radius:4px;">✓ Aceito por '+aceito.por+' em '+aceito.time+': <em>'+aceito.nota+'</em></div>';
-          if(c.observacao && !aceito) body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic;">'+c.observacao+'</div>';
+          if(aceito) body += '<div style="font-size:11px;color:#16a34a;margin-top:5px;padding:4px 8px;background:rgba(22,163,74,0.08);border-radius:4px;">✓ Aceito por '+escHtml(aceito.por)+' em '+escHtml(aceito.time)+': <em>'+escHtml(aceito.nota)+'</em></div>';
+          if(c.observacao && !aceito) body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic;">'+escHtml(c.observacao)+'</div>';
           body += '</div>';
         });
         body += '</div>';
@@ -2577,18 +2577,18 @@ function _renderProcessosList(procs, filter){
       :alerts
       ?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>'
       :'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
-    return '<div data-proc-id="'+p.id+'" data-proc-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
+    return '<div data-proc-id="'+escHtml(p.id)+'" data-proc-user="'+escHtml(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
       +'<div style="display:flex;align-items:center;gap:10px;">'
-      +'<span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
-      +'<span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span>'
-      +(p._userName?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--accent-dim);color:var(--accent);">'+p._userName+'</span>':'')
+      +'<span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+escHtml(p.ref)+'</span>'
+      +'<span style="font-size:11px;color:var(--text-dim);">'+escHtml(p.exportador||'')+'</span>'
+      +(p._userName?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--accent-dim);color:var(--accent);">'+escHtml(p._userName)+'</span>':'')
       +'</div>'+badge+'</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);">'
-      +'<span>'+p.data+'</span>'
+      +'<span>'+escHtml(p.data)+'</span>'
       +'<span>'+analises.length+' análise(s)</span>'
-      +(last?'<span>Última: '+last.data+'</span>':'')
-      +(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')
+      +(last?'<span>Última: '+escHtml(last.data)+'</span>':'')
+      +(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escHtml(last.docs)+'</span>':'')
       +'</div></div>';
   }).join('');
   // Click handler via delegation
@@ -2666,7 +2666,7 @@ function _renderProcessModal(p){
       html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">';
       html+='<div>';
       html+='<div style="font-size:13px;font-weight:700;color:var(--text-bright);">Análise '+(idx+1)+(isLast?' <span style="font-size:10px;font-family:monospace;background:var(--accent);color:#fff;padding:2px 6px;border-radius:3px;">ÚLTIMA</span>':'')+'</div>';
-      html+='<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+a.data+' · '+a.docs+'</div>';
+      html+='<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+escHtml(a.data)+' · '+escHtml(a.docs)+'</div>';
       html+='</div>';
       html+='<div style="display:flex;gap:6px;">';
       if(okCount) html+='<span style="font-size:10px;padding:3px 8px;border-radius:100px;background:rgba(22,163,74,0.1);color:var(--ok);font-family:monospace;">✓ '+okCount+' OK</span>';
@@ -2698,21 +2698,21 @@ function _renderProcessModal(p){
           html+='<div style="'+(di>0?'border-top:1px solid var(--border);':'')+'">';
           html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:'+(aceito?'rgba(22,163,74,0.04)':'rgba(220,38,38,0.03)')+';border-left:3px solid '+corBorda+';">';
           html+='<span style="font-size:10px;color:'+corBorda+';font-family:monospace;font-weight:700;">'+(aceito?'✓ ACEITO':c2.status)+'</span>';
-          html+='<span style="font-size:12px;font-weight:600;color:var(--text-bright);">'+c2.campo+'</span>';
-          html+='<span style="font-size:10px;color:var(--text-dim);margin-left:auto;">'+d.grupo+'</span>';
+          html+='<span style="font-size:12px;font-weight:600;color:var(--text-bright);">'+escHtml(c2.campo)+'</span>';
+          html+='<span style="font-size:10px;color:var(--text-dim);margin-left:auto;">'+escHtml(d.grupo)+'</span>';
           if(!aceito){
-            html+='<button onclick="aceitarDivHistorico(\''+id+'\',\''+ownerUser+'\',\''+divKey.replace(/'/g,"\\'")+'\')" style="margin-left:8px;font-size:10px;padding:2px 8px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;">Aceitar</button>';
+            html+='<button onclick="aceitarDivHistorico('+escHtml(JSON.stringify(String(id)))+','+escHtml(JSON.stringify(String(ownerUser)))+','+escHtml(JSON.stringify(divKey))+')" style="margin-left:8px;font-size:10px;padding:2px 8px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;">Aceitar</button>';
           }
           html+='</div>';
           html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
           html+='<div style="padding:6px 12px;border-right:1px solid var(--border);">';
-          html+='<div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">'+(c2.doc1_label||'')+'</div>';
-          html+='<div style="font-size:12px;color:var(--text);">'+(c2.doc1_valor||'—')+'</div></div>';
+          html+='<div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">'+escHtml(c2.doc1_label||'')+'</div>';
+          html+='<div style="font-size:12px;color:var(--text);">'+escHtml(c2.doc1_valor||'—')+'</div></div>';
           html+='<div style="padding:6px 12px;border-left:2px solid '+corBorda+';">';
-          html+='<div style="font-size:9px;color:'+corBorda+';margin-bottom:2px;">'+(c2.doc2_label||'')+'</div>';
-          html+='<div style="font-size:12px;font-weight:600;color:'+corBorda+';">'+(c2.doc2_valor||'—')+'</div></div></div>';
-          if(c2.observacao && !aceito) html+='<div style="padding:4px 12px 6px;font-size:11px;color:var(--warn);font-style:italic;">'+c2.observacao+'</div>';
-          if(aceito) html+='<div style="padding:4px 12px 6px;font-size:11px;color:#16a34a;font-style:italic;">✓ Aceito por '+aceito.por+' em '+aceito.time+': '+aceito.nota+'</div>';
+          html+='<div style="font-size:9px;color:'+corBorda+';margin-bottom:2px;">'+escHtml(c2.doc2_label||'')+'</div>';
+          html+='<div style="font-size:12px;font-weight:600;color:'+corBorda+';">'+escHtml(c2.doc2_valor||'—')+'</div></div></div>';
+          if(c2.observacao && !aceito) html+='<div style="padding:4px 12px 6px;font-size:11px;color:var(--warn);font-style:italic;">'+escHtml(c2.observacao)+'</div>';
+          if(aceito) html+='<div style="padding:4px 12px 6px;font-size:11px;color:#16a34a;font-style:italic;">✓ Aceito por '+escHtml(aceito.por)+' em '+escHtml(aceito.time)+': '+escHtml(aceito.nota)+'</div>';
           html+='</div>';
         });
         html+='</div>';
@@ -2726,11 +2726,11 @@ function _renderProcessModal(p){
           var aKey = 'alerta-' + at;
           var aAceito = p._divResolvedMap && p._divResolvedMap[aKey];
           html+='<li style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">'
-            +'<span style="flex:1;'+(aAceito?'text-decoration:line-through;opacity:.5;':'')+'">'+at+'</span>'
+            +'<span style="flex:1;'+(aAceito?'text-decoration:line-through;opacity:.5;':'')+'">'+escHtml(at)+'</span>'
             +(aAceito
               ? '<span style="font-size:10px;color:#16a34a;white-space:nowrap;">✓ Aceito</span>'
-                +'<button data-action="aceitar-alerta" data-key="'+aKey.replace(/"/g,'&quot;')+'" data-pid="'+p.id+'" data-puser="'+(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
-              : '<button data-action="aceitar-alerta" data-key="'+aKey.replace(/"/g,'&quot;')+'" data-pid="'+p.id+'" data-puser="'+(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
+                +'<button data-action="aceitar-alerta" data-key="'+escHtml(aKey)+'" data-pid="'+escHtml(p.id)+'" data-puser="'+escHtml(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer;white-space:nowrap;">Desfazer</button>'
+              : '<button data-action="aceitar-alerta" data-key="'+escHtml(aKey)+'" data-pid="'+escHtml(p.id)+'" data-puser="'+escHtml(p._user||'')+'" style="font-size:10px;padding:1px 7px;border:1px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;border-radius:4px;cursor:pointer;white-space:nowrap;">Aceitar</button>'
             )
             +'</li>';
         });
@@ -2788,7 +2788,7 @@ function _renderProcessModal(p){
   // ── CTA: new analysis ─────────────────────────────────────────────
   html+='<div style="padding:14px;background:var(--accent-dim);border-radius:8px;border:1px solid rgba(10,45,94,0.15);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;">';
   html+='<div style="font-size:13px;color:var(--accent);">Recebeu novos documentos? Adicione-os e faça uma nova análise.</div>';
-  html+='<button data-ref="'+p.ref+'" class="btn btn-primary btn-sm" style="flex-shrink:0;">+ Nova Análise</button>';
+  html+='<button data-ref="'+escHtml(p.ref)+'" class="btn btn-primary btn-sm" style="flex-shrink:0;">+ Nova Análise</button>';
   html+='</div>';
 
   // ── Histórico de Resoluções ──────────────────────────────────────────
@@ -2807,9 +2807,9 @@ function _renderProcessModal(p){
       html+='<div style="'+(i>0?'border-top:1px solid var(--border);':'')+';padding:10px 14px;display:flex;gap:12px;align-items:flex-start;background:rgba(22,163,74,.03);">';
       html+='<div style="margin-top:2px;font-size:14px;">'+icon+'</div>';
       html+='<div style="flex:1;">';
-      html+='<div style="font-size:12px;font-weight:700;color:'+cor+';">'+label+'</div>';
-      html+='<div style="font-size:12px;color:var(--text);margin-top:2px;font-style:italic;">"'+(val.nota||'—')+'"</div>';
-      html+='<div style="font-size:10px;color:var(--text-dim);margin-top:3px;">por <strong>'+(val.por||'?')+'</strong> · '+(val.time||'')+'</div>';
+      html+='<div style="font-size:12px;font-weight:700;color:'+cor+';">'+escHtml(label)+'</div>';
+      html+='<div style="font-size:12px;color:var(--text);margin-top:2px;font-style:italic;">"'+escHtml(val.nota||'—')+'"</div>';
+      html+='<div style="font-size:10px;color:var(--text-dim);margin-top:3px;">por <strong>'+escHtml(val.por||'?')+'</strong> · '+escHtml(val.time||'')+'</div>';
       html+='</div>';
       html+='</div>';
     });
@@ -2820,14 +2820,14 @@ function _renderProcessModal(p){
   html+='<div class="detail-section"><div class="sec" style="margin-bottom:12px">Log do Processo</div>';
   html+='<div class="log-list">';
   (p.log||[]).forEach(function(l){
-    html+='<div class="log-item"><div class="log-dot '+(l.type||'')+'"></div>';
-    html+='<div class="log-content"><div class="log-msg">'+l.msg+'</div>';
-    html+='<div class="log-time">'+l.time+'</div></div></div>';
+    html+='<div class="log-item"><div class="log-dot '+escHtml(l.type||'')+'"></div>';
+    html+='<div class="log-content"><div class="log-msg">'+escHtml(l.msg)+'</div>';
+    html+='<div class="log-time">'+escHtml(l.time)+'</div></div></div>';
   });
   html+='</div>';
   html+='<div style="margin-top:14px;display:flex;gap:8px;">';
   html+='<input class="field-input" id="logInput" placeholder="Adicionar anotação..." style="flex:1;font-size:12px">';
-  html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+id+', \''+(p._ownerUser||'')+'\')">+ Adicionar</button>';
+  html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+escHtml(JSON.stringify(id))+', '+escHtml(JSON.stringify(p._ownerUser||''))+')">+ Adicionar</button>';
   html+='</div></div>';
 
   // html setado no modal acima
@@ -3262,30 +3262,30 @@ function renderDivPanel(){
       var isDiv=d.status==='DIVERGENCIA';
       var ac=isDiv?'#dc2626':'#d97706';
       var bg=isDiv?'rgba(220,38,38,0.04)':'rgba(217,119,6,0.04)';
-      var v1=(d.doc1_valor||'Nao informado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      var v2=(d.doc2_valor||'Nao encontrado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var v1=escHtml(d.doc1_valor||'Nao informado');
+      var v2=escHtml(d.doc2_valor||'Nao encontrado');
       var bt=i>0?'border-top:1px solid var(--border);':'';
       html+='<div style="'+bt+'background:var(--surface);">';
       html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:'+bg+';border-left:3px solid '+ac+';">';
       html+='<div style="display:flex;align-items:center;gap:8px;">';
       html+='<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;color:'+ac+';font-family:monospace;background:'+bg+';">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
-      html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+d.campo+'</span></div>';
+      html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+escHtml(d.campo)+'</span></div>';
       html+='<span id="div-status-'+gi+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
       html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
       html+='<div style="padding:10px 16px;border-right:1px solid var(--border);">';
-      html+='<div style="font-size:9px;font-weight:700;color:var(--text-dim);font-family:monospace;text-transform:uppercase;margin-bottom:4px;">'+(d.doc1_label||'DOC 1')+'</div>';
+      html+='<div style="font-size:9px;font-weight:700;color:var(--text-dim);font-family:monospace;text-transform:uppercase;margin-bottom:4px;">'+escHtml(d.doc1_label||'DOC 1')+'</div>';
       html+='<div style="font-size:13px;color:var(--text);line-height:1.4;">'+v1+'</div></div>';
       html+='<div style="padding:10px 16px;border-left:2px solid '+ac+';">';
       html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
-      html+='<span style="font-size:9px;font-weight:700;color:'+ac+';font-family:monospace;text-transform:uppercase;">'+(d.doc2_label||'DOC 2')+'</span>';
+      html+='<span style="font-size:9px;font-weight:700;color:'+ac+';font-family:monospace;text-transform:uppercase;">'+escHtml(d.doc2_label||'DOC 2')+'</span>';
       html+='<span style="font-size:9px;color:'+ac+';font-weight:700;">&#9888; DIFERE</span></div>';
       html+='<div style="font-size:13px;font-weight:600;color:'+ac+';line-height:1.4;">'+v2+'</div></div></div>';
       if(d.observacao){
-        var obs=d.observacao.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        var obs=escHtml(d.observacao);
         html+='<div style="padding:8px 16px;background:rgba(217,119,6,0.05);border-top:1px solid rgba(217,119,6,0.15);font-size:12px;color:#d97706;font-style:italic;">'+obs+'</div>';
       }
       html+='<div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border);align-items:center;">';
-      var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
+      var nv=(resolved&&resolved.nota)?escHtml(resolved.nota):'';
       html+='<input id="div-nota-'+gi+'" class="field-input" placeholder="Motivo para aceitar (ex: transbordo normal, formato diferente...)" value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
       var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
       html+='<button data-action="resolve" data-idx="'+gi+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
@@ -3371,7 +3371,7 @@ if(divergResolved[key]){
   }
   divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
   var s2=document.getElementById('div-status-'+i);
-  if(s2){s2.innerHTML='&#10003; Aceito — '+nota.substring(0,30)+(nota.length>30?'...':'');s2.style.color='#16a34a';}
+  if(s2){s2.innerHTML='&#10003; Aceito — '+escHtml(nota.substring(0,30))+(nota.length>30?'...':'');s2.style.color='#16a34a';}
   btn.textContent='Desfazer';
   btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
   var notaEl3=document.getElementById('div-nota-'+i);
@@ -3534,21 +3534,21 @@ function exportPDF(){
         ?`<span style="color:${d.confianca<70?'#dc2626':'#d97706'};font-size:10px;font-weight:700">${d.confianca}%</span>`
         :'—';
       return `<tr style="background:${i%2===0?'#fff':'#fafafa'}">
-        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:600">${d.campo}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#666;font-size:12px">${d.grupo}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #eee">${d.doc1_valor||'—'}<br><small style="color:#999">${d.doc1_label||''}</small></td>
-        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#e84040">${d.doc2_valor||'—'}<br><small style="color:#999">${d.doc2_label||''}</small></td>
-        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${resolved?`<span style="color:green">✅ ${resolved.por||''}</span>`:'<span style="color:orange">⚠️ Pendente</span>'}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:600">${escHtml(d.campo)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#666;font-size:12px">${escHtml(d.grupo)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee">${escHtml(d.doc1_valor||'—')}<br><small style="color:#999">${escHtml(d.doc1_label||'')}</small></td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#e84040">${escHtml(d.doc2_valor||'—')}<br><small style="color:#999">${escHtml(d.doc2_label||'')}</small></td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${resolved?`<span style="color:green">✅ ${escHtml(resolved.por||'')}</span>`:'<span style="color:orange">⚠️ Pendente</span>'}</td>
         <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${confCell}</td>
       </tr>`;
     }).join('');
-  const alertRows=(currentResult?.alertas||[]).map(a=>`<li style="padding:6px 0;border-bottom:1px solid #fde;">${a}</li>`).join('');
+  const alertRows=(currentResult?.alertas||[]).map(a=>`<li style="padding:6px 0;border-bottom:1px solid #fde;">${escHtml(a)}</li>`).join('');
   const win=window.open('','_blank');
   if(!win){
     showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
     return;
   }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${L.relatorio}</title>
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escHtml(L.relatorio)}</title>
   <style>
     body{font-family:Arial,sans-serif;margin:0;color:#0d1e2e}
     .header{background:#0a2d5e;color:#fff;padding:24px 36px;display:flex;justify-content:space-between;align-items:flex-end}
@@ -3571,15 +3571,15 @@ function exportPDF(){
   </style>
   </head><body>
   <div class="header">
-    <div><h1>IMPAK — Relatório de Conferência Documental</h1><p>Gerado em ${date} às ${hora} por ${analista}</p></div>
+    <div><h1>IMPAK — Relatório de Conferência Documental</h1><p>Gerado em ${date} às ${hora} por ${escHtml(analista)}</p></div>
     <div class="conf-badge">IA ${confMedia}% confiança</div>
   </div>
   <div class="meta">
-    <div class="meta-item"><strong>Processo</strong>${ref}</div>
-    <div class="meta-item"><strong>Exportador</strong>${exp||'—'}</div>
+    <div class="meta-item"><strong>Processo</strong>${escHtml(ref)}</div>
+    <div class="meta-item"><strong>Exportador</strong>${escHtml(exp||'—')}</div>
     <div class="meta-item"><strong>Divergências</strong><span style="color:${divs.length?'#dc2626':'#16a34a'};font-weight:700">${divs.length}</span></div>
   </div>
-  <div class="docs-row">📎 Documentos analisados: <strong>${docsUsados}</strong></div>
+  <div class="docs-row">📎 Documentos analisados: <strong>${escHtml(docsUsados)}</strong></div>
   <div class="section"><h2>Divergências encontradas</h2>
     <table><thead><tr><th>Campo</th><th>Grupo</th><th>Doc 1</th><th>Doc 2 (divergente)</th><th>Status</th><th>Conf. IA</th></tr></thead>
     <tbody>${rows}</tbody></table>
@@ -3728,7 +3728,7 @@ function exportMsgPDF(){
     showToast ? showToast('Permita popups neste site para gerar o relatório','err') : alert('Permita popups neste site para gerar o relatório');
     return;
   }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mensagem - ${ref}</title>
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mensagem - ${escHtml(ref)}</title>
   <style>body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;color:#1c1a16;line-height:1.7;}
   .header{background:#1a3a2a;color:#fff;padding:20px 28px;border-radius:8px;margin-bottom:24px;}
   .header h1{margin:0;font-size:18px;} .header p{margin:4px 0 0;font-size:12px;opacity:.7;}

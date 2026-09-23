@@ -653,7 +653,10 @@ function esc(v){
   return v==null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function escJs(v){
-  return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Relatório de segurança (item 4): '&' também precisa virar &amp; — senão
+  // um texto com "&#39;" vira aspa quando o navegador lê o atributo e fecha
+  // a string JS antes da hora.
+  return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 // ── SESSÃO EXPIRADA: mensagem clara em vez de erro de parse ──────
 // Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
