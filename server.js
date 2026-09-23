@@ -1897,6 +1897,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
         processo.fechado_por = null;
       } else {
         delete processo.fechado; // não deixa alterar a trava por acidente num save comum
+        delete processo.fechado_em; delete processo.fechado_por; // só o servidor registra quem/quando
       }
 
       // ── CANCELAMENTO DE PROCESSO ("Cancelar Processo") ──────────────
@@ -1936,6 +1937,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
         processo.cancelado_motivo = null;
       } else {
         delete processo.cancelado; // não deixa alterar por acidente num save comum
+        delete processo.cancelado_em; delete processo.cancelado_por;
         if (!tentandoSolicitar && !tentandoRejeitar) delete processo.cancelado_motivo;
       }
 
@@ -1961,6 +1963,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
         processo.cancelado_motivo = null;
       } else if (!tentandoCancelar) {
         delete processo.cancelamento_solicitado; // não deixa alterar por acidente num save comum
+        delete processo.cancelamento_solicitado_em; delete processo.cancelamento_solicitado_por;
       }
     }
 
@@ -1972,7 +1975,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     if (logEntries.length) {
       const rows = logEntries.map(l => ({
         processo_id: processo.id,
-        usuario: l.usuario || req.session.usuario,
+        usuario: req.session.usuario, // sempre quem está logado -- nunca aceitar o nome vindo do navegador (log de auditoria)
         campo: l.campo || '',
         valor_antes: String(l.valor_antes || ''),
         valor_depois: String(l.valor_depois || ''),
@@ -2018,19 +2021,46 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     }
     if (error) throw new Error(error.message);
 
-    // Criar notificação de demurrage se necessário
-    if (processo.demurrage_vencimento) {
-      const venc = new Date(processo.demurrage_vencimento);
+    // Os alertas abaixo precisam do processo COMPLETO, não só do payload:
+    // desde o salvamento parcial, o navegador manda só os campos alterados
+    // (+ alguns fixos). Antes eles liam direto do payload, e um campo já
+    // preenchido no banco mas ausente do payload era tratado como vazio --
+    // ex.: todo save de um processo com demurrage vencendo em até 5 dias
+    // gerava uma notificação NOVA (sem checar duplicata), mesmo com o
+    // container já devolvido; e editar só a Presença de Carga gerava
+    // "Carregamento pendente" mesmo com Data de Carregamento preenchida.
+    const { data: salvo } = await sb()
+      .from('controle_processos')
+      .select('referencia, demurrage_vencimento, data_devolucao_vazio, data_presenca, data_carregamento, data_agendamento, transportadora, cancelado')
+      .eq('id', processo.id)
+      .maybeSingle();
+    const pAlerta = salvo || processo;
+    const pularAlertas = !!(salvo && salvo.cancelado);
+
+    // Criar notificação de demurrage se necessário (1 por processo por dia)
+    if (!pularAlertas && pAlerta.demurrage_vencimento) {
+      const venc = new Date(pAlerta.demurrage_vencimento);
       const dias = Math.ceil((venc - new Date()) / 86400000);
-      if (dias <= 5 && dias >= 0 && !processo.data_devolucao_vazio) {
+      if (dias <= 5 && dias >= 0 && !pAlerta.data_devolucao_vazio) {
         try {
-          await sb().from('controle_notificacoes').insert({
-            processo_id: processo.id,
-            tipo: 'urgente',
-            titulo: `Demurrage: ${processo.referencia}`,
-            mensagem: `Container vence em ${dias} dia(s)!`,
-            created_by: req.session.usuario,
-          });
+          const tituloDem = `Demurrage: ${pAlerta.referencia}`;
+          const hoje = new Date().toISOString().slice(0,10);
+          const { data: jaTem } = await sb()
+            .from('controle_notificacoes')
+            .select('id')
+            .eq('processo_id', processo.id)
+            .eq('titulo', tituloDem)
+            .gte('created_at', hoje)
+            .limit(1);
+          if (!jaTem || !jaTem.length) {
+            await sb().from('controle_notificacoes').insert({
+              processo_id: processo.id,
+              tipo: 'urgente',
+              titulo: tituloDem,
+              mensagem: `Container vence em ${dias} dia(s)!`,
+              created_by: req.session.usuario,
+            });
+          }
         } catch(notifErr) {
           console.warn('notificacao erro:', notifErr.message);
         }
@@ -2038,20 +2068,20 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     }
 
     // Alerta: Carregamento pendente (data de presenca preenchida mas sem data de carregamento)
-    if (processo.data_presenca && !processo.data_carregamento && !processo.data_devolucao_vazio) {
+    if (!pularAlertas && pAlerta.data_presenca && !pAlerta.data_carregamento && !pAlerta.data_devolucao_vazio) {
       try {
         const { data: existenteCarreg } = await sb()
           .from('controle_notificacoes')
           .select('id')
           .eq('processo_id', processo.id)
           .eq('tipo', 'urgente')
-          .eq('titulo', `Carregamento pendente: ${processo.referencia}`)
+          .eq('titulo', `Carregamento pendente: ${pAlerta.referencia}`)
           .limit(1);
         if (!existenteCarreg || existenteCarreg.length === 0) {
           await sb().from('controle_notificacoes').insert({
             processo_id: processo.id,
             tipo: 'urgente',
-            titulo: `Carregamento pendente: ${processo.referencia}`,
+            titulo: `Carregamento pendente: ${pAlerta.referencia}`,
             mensagem: 'Presença de carga registrada, mas ainda sem Data de Carregamento.',
             created_by: req.session.usuario,
           });
@@ -2062,9 +2092,9 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     }
 
     // Alerta: Transportadora pendente (agregado semanal, limiar configuravel)
-    if (processo.data_agendamento && !processo.transportadora && !processo.data_devolucao_vazio) {
+    if (!pularAlertas && pAlerta.data_agendamento && !pAlerta.transportadora && !pAlerta.data_devolucao_vazio) {
       try {
-        const dataAg = new Date(processo.data_agendamento + 'T00:00:00');
+        const dataAg = new Date(pAlerta.data_agendamento + 'T00:00:00');
         const diaSemana = dataAg.getDay(); // 0=domingo
         const offsetSegunda = diaSemana === 0 ? 6 : diaSemana - 1;
         const inicio = new Date(dataAg); inicio.setDate(dataAg.getDate() - offsetSegunda);
