@@ -87,6 +87,20 @@ const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa,
 
 function gerarUUID(){ return randomUUID(); }
 
+// Lê planilha enviada pelo usuário numa worker thread isolada, com tempo
+// máximo (ver lib/planilha-worker.js — relatório de segurança, item 11).
+const { Worker } = require('worker_threads');
+function lerPlanilhaIsolada(funcao, buffer, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    const w = new Worker(path.join(__dirname, 'lib', 'planilha-worker.js'), { workerData: { funcao, buffer } });
+    let fim = false;
+    const t = setTimeout(() => { if (!fim) { fim = true; w.terminate(); reject(new Error('A planilha demorou demais para ser lida — confira se o arquivo está correto.')); } }, timeoutMs);
+    w.once('message', m => { if (fim) return; fim = true; clearTimeout(t); w.terminate(); m.ok ? resolve(m.resultado) : reject(new Error(m.erro)); });
+    w.once('error', e => { if (fim) return; fim = true; clearTimeout(t); reject(new Error('Erro ao ler a planilha: ' + e.message)); });
+    w.once('exit', code => { if (!fim) { fim = true; clearTimeout(t); reject(new Error('Leitura da planilha interrompida.')); } });
+  });
+}
+
 // ── HASH DE SENHA (scrypt nativo do Node — sem dependência externa) ──
 // Formato do hash armazenado: "salt:hash" (ambos em hex).
 function hashSenha(senhaPura){
@@ -1927,7 +1941,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
 
     let parsed;
     try {
-      parsed = importarDespachanteBase(buffer);
+      parsed = await lerPlanilhaIsolada('importarDespachanteBase', buffer);
     } catch (parseErr) {
       return res.status(400).json({ erro: parseErr.message });
     }
@@ -2079,7 +2093,7 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
     const buffer = Buffer.from(arquivo_base64, 'base64');
     let parsed;
     try {
-      parsed = importarManuBase(buffer);
+      parsed = await lerPlanilhaIsolada('importarManuBase', buffer);
     } catch (parseErr) {
       return res.status(400).json({ erro: parseErr.message });
     }
@@ -3320,7 +3334,7 @@ app.post('/api/catalogo-produtos/importar', auth('tyredesk'), async (req, res) =
     const { arquivo_base64 } = req.body;
     if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' });
     const buffer = Buffer.from(arquivo_base64, 'base64');
-    const resultado = importarCatalogoProdutos(buffer);
+    const resultado = await lerPlanilhaIsolada('importarCatalogoProdutos', buffer);
     if (resultado.erro) return res.status(400).json({ ok: false, erro: resultado.erro });
     const comConexos = resultado.itens.filter(it => it.codigo_conexos !== null);
     const semConexos = resultado.itens.filter(it => it.codigo_conexos === null);
@@ -3346,8 +3360,8 @@ app.post('/api/catalogo-produtos/importar', auth('tyredesk'), async (req, res) =
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
-app.post('/api/calculador/importar-planilha', auth('tyredesk'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarPlanilhaBase(buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
-app.post('/api/controle/importar-fechamento', auth('controle','financeiro','resultado','tv','narcelio'), (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = importarFechamentoBase(buffer); res.json({ ok: true, datas: resultado.datas, real_json: resultado.real_json, moedas: resultado.moedas, avisos: resultado.avisos }); } catch (e) { console.error('Erro ao importar fechamento:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
+app.post('/api/calculador/importar-planilha', auth('tyredesk'), async (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = await lerPlanilhaIsolada('importarPlanilhaBase', buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
+app.post('/api/controle/importar-fechamento', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = await lerPlanilhaIsolada('importarFechamentoBase', buffer); res.json({ ok: true, datas: resultado.datas, real_json: resultado.real_json, moedas: resultado.moedas, avisos: resultado.avisos }); } catch (e) { console.error('Erro ao importar fechamento:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
 // ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
 // Lista leve (só o resumo, não o formulário inteiro) pra tela de listagem.
 app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
@@ -4026,7 +4040,27 @@ As datas de chegada (ETA) informadas sao previsoes e podem sofrer alteracoes ou 
     </div>`;
 }
 
+// Relatório de segurança (item baixo): "já enviou hoje?" + "marcar enviado"
+// eram dois passos separados — com dois servidores no ar ao mesmo tempo
+// (deploy sobreposto) os dois podiam enviar o mesmo e-mail. Agora é uma
+// "reserva" atômica: só quem consegue gravar a data de hoje primeiro envia.
+async function reivindicarJobHoje(jobName) {
+  const agora = new Date();
+  const inicioHoje = new Date(agora); inicioHoje.setHours(0, 0, 0, 0);
+  const { data, error } = await sb().from('app_job_runs')
+    .update({ last_run_at: agora.toISOString() })
+    .eq('job_name', jobName).lt('last_run_at', inicioHoje.toISOString())
+    .select('job_name');
+  if (error) { console.error(`reivindicarJobHoje(${jobName}): erro, pulando por segurança:`, error.message); return false; }
+  if (data && data.length) return true;
+  // Nenhuma linha antiga: ou já rodou hoje, ou o job nunca rodou (sem linha).
+  const { error: errIns } = await sb().from('app_job_runs').insert({ job_name: jobName, last_run_at: agora.toISOString() });
+  if (!errIns) return true;
+  return false; // conflito de chave = já existe linha de hoje (outro servidor pegou)
+}
+
 async function jaEnviouFollowUpHoje(){
+  return !(await reivindicarJobHoje('followup_semanal'));
   const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'followup_semanal').maybeSingle();
   if (error) {
     // Falha ao consultar (tabela ausente, permissão, etc): assume que JÁ
@@ -4091,6 +4125,7 @@ app.post('/api/admin/followup-semanal', auth(), requireGerente, (req, res) => {
 
 // ── ALERTAS DIÁRIOS (demurrage crítico, ETA vencido, ETA na semana, PI vencida) ──
 async function jaEnviouAlertasHoje(){
+return !(await reivindicarJobHoje('alertas_diarios'));
 const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'alertas_diarios').maybeSingle();
 if (error) {
   // Mesmo raciocínio do jaEnviouFollowUpHoje: se a consulta falhar, assume
@@ -4194,6 +4229,7 @@ return total;
 // ════════════════════════════════════════════════════════════════
 
 async function jaEnviouJobHoje(jobName){
+  return !(await reivindicarJobHoje(jobName));
   const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', jobName).maybeSingle();
   if (error) {
     console.error(`jaEnviouJobHoje(${jobName}): erro ao consultar app_job_runs, assumindo já enviado por segurança:`, error.message);
