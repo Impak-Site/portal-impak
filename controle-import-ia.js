@@ -367,6 +367,7 @@ async function importarPlanilhaDespachante(input){
     addLog(`${data.total_linhas} linha(s) na planilha`, '#7dd3fc');
     addLog(`✓ ${data.total_atualizados} processo(s) atualizado(s)`, '#86efac');
     if(data.total_sem_mudancas) addLog(`• ${data.total_sem_mudancas} sem mudanca (ja estavam com esses dados)`, '#93c5fd');
+    if(data.total_travados) addLog(`🔒 ${data.total_travados} processo(s) fechado(s)/cancelado(s) ignorado(s): ${(data.resumo||[]).filter(r=>r.status==='travado').map(r=>r.referencia).join(', ')}`, '#fcd34d');
     if(data.total_nao_encontrados){
       addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
       (data.resumo||[]).filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${r.referencia}`, '#fcd34d'));
@@ -436,6 +437,7 @@ async function importarPlanilhaManu(input){
     addLog(`${data.total_linhas} linha(s) na planilha`, '#7dd3fc');
     addLog(`✓ ${data.total_atualizados} processo(s) atualizado(s)`, '#86efac');
     if(data.total_sem_mudancas) addLog(`• ${data.total_sem_mudancas} sem mudanca (ja estavam com esses dados)`, '#93c5fd');
+    if(data.total_travados) addLog(`🔒 ${data.total_travados} processo(s) fechado(s)/cancelado(s) ignorado(s): ${(data.resumo||[]).filter(r=>r.status==='travado').map(r=>r.referencia).join(', ')}`, '#fcd34d');
     if(data.total_nao_encontrados){
       addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
       (data.resumo||[]).filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${r.referencia}`, '#fcd34d'));

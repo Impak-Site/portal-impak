@@ -397,8 +397,22 @@ const LOGIN_JANELA_MS = 10 * 60 * 1000;
 function rateLimitLogin(req, res, next) {
   const ip = ipCliente(req);
   const agora = Date.now();
-  const tentativas = (_loginTentativas.get(ip) || []).filter(t => agora - t < LOGIN_JANELA_MS);
-  if (tentativas.length >= LOGIN_MAX_TENTATIVAS) {
+  // Relatório de segurança (item 9): nas rotas de login só contam as
+  // tentativas que FALHARAM (limite maior, 20) — antes cada login certo
+  // (senha + 2FA = 2 requisições) contava, e como o escritório inteiro sai
+  // pelo mesmo IP, a 3ª pessoa já via "Muitas tentativas". As demais rotas
+  // (esqueci-senha, redefinir etc.) continuam contando toda requisição.
+  const soFalhas = LOGIN_ROTAS_SO_FALHA.has(req.path);
+  const mapa = soFalhas ? _loginFalhasIP : _loginTentativas;
+  const limite = soFalhas ? LOGIN_MAX_FALHAS_IP : LOGIN_MAX_TENTATIVAS;
+  const tentativas = (mapa.get(ip) || []).filter(t => agora - t < LOGIN_JANELA_MS);
+  mapa.set(ip, tentativas);
+  req.registrarFalhaIP = () => {
+    const lista = (_loginFalhasIP.get(ip) || []).filter(t => Date.now() - t < LOGIN_JANELA_MS);
+    lista.push(Date.now());
+    _loginFalhasIP.set(ip, lista);
+  };
+  if (tentativas.length >= limite) {
     const minutosRestantes = Math.ceil((LOGIN_JANELA_MS - (agora - tentativas[0])) / 60000);
     const mensagem = `Muitas tentativas. Tente novamente em ${minutosRestantes} minuto(s).`;
     // /login (form tradicional) espera uma pagina HTML de volta; ja
@@ -412,10 +426,12 @@ function rateLimitLogin(req, res, next) {
     }
     return res.send(loginPage(mensagem, req.body?.destino || '/'));
   }
-  tentativas.push(agora);
-  _loginTentativas.set(ip, tentativas);
+  if (!soFalhas) { tentativas.push(agora); _loginTentativas.set(ip, tentativas); }
   next();
 }
+const _loginFalhasIP = new Map(); // ip -> [timestamps de falhas]
+const LOGIN_MAX_FALHAS_IP = 20;
+const LOGIN_ROTAS_SO_FALHA = new Set(['/login', '/login/verificar-2fa', '/login/configurar-2fa']);
 
 // ── BLOQUEIO POR CONTA (além do limite por IP acima) ───────────
 // O limite por IP acima não segura um ataque que troca de IP a cada
@@ -426,20 +442,34 @@ const _loginFalhasPorUsuario = new Map(); // usuario -> [timestamps]
 const CONTA_MAX_FALHAS = 5;
 const CONTA_JANELA_MS = 15 * 60 * 1000;
 
-function contaBloqueada(usuario) {
+// Relatório de segurança (item 9): o bloqueio passou a ser por
+// usuário+IP (5 erros) — assim alguém de fora não consegue travar a conta
+// de quem está no escritório errando a senha de propósito. Continua
+// existindo um teto global por usuário (30 erros de qualquer lugar) contra
+// ataque distribuído, e o 2FA obrigatório segue como segunda barreira.
+const CONTA_MAX_FALHAS_GLOBAL = 30;
+function _falhasRecentes(chave) {
+  const falhas = (_loginFalhasPorUsuario.get(chave) || []).filter(t => Date.now() - t < CONTA_JANELA_MS);
+  _loginFalhasPorUsuario.set(chave, falhas);
+  return falhas;
+}
+function contaBloqueada(usuario, req) {
   if (!usuario) return false;
-  const falhas = (_loginFalhasPorUsuario.get(usuario) || []).filter(t => Date.now() - t < CONTA_JANELA_MS);
-  _loginFalhasPorUsuario.set(usuario, falhas);
-  return falhas.length >= CONTA_MAX_FALHAS;
+  if (_falhasRecentes(usuario).length >= CONTA_MAX_FALHAS_GLOBAL) return true;
+  if (req && _falhasRecentes(usuario + '|' + ipCliente(req)).length >= CONTA_MAX_FALHAS) return true;
+  if (!req && _falhasRecentes(usuario).length >= CONTA_MAX_FALHAS) return true;
+  return false;
 }
-function registrarFalhaLogin(usuario) {
+function registrarFalhaLogin(usuario, req) {
+  if (req && typeof req.registrarFalhaIP === 'function') req.registrarFalhaIP();
   if (!usuario) return;
-  const falhas = (_loginFalhasPorUsuario.get(usuario) || []).filter(t => Date.now() - t < CONTA_JANELA_MS);
-  falhas.push(Date.now());
-  _loginFalhasPorUsuario.set(usuario, falhas);
+  const chaves = [usuario];
+  if (req) chaves.push(usuario + '|' + ipCliente(req));
+  chaves.forEach(k => { const f = _falhasRecentes(k); f.push(Date.now()); _loginFalhasPorUsuario.set(k, f); });
 }
-function limparFalhasLogin(usuario) {
-  _loginFalhasPorUsuario.delete(usuario);
+function limparFalhasLogin(usuario, req) {
+  if (req) _loginFalhasPorUsuario.delete(usuario + '|' + ipCliente(req));
+  else _loginFalhasPorUsuario.delete(usuario);
 }
 // ── RATE LIMITING GENÉRICO (IA: /api/analisar e /api/chat) ────
 // Mesmas ideias do rateLimitLogin acima (em memória, por IP), mas em fábrica
@@ -662,7 +692,7 @@ ${AUTH_CSS}
     <div class="sub">Digite seu usuário ou e-mail</div>
     <div id="msg"></div>
     <label>Usuário ou e-mail</label>
-    <input id="identificador" type="text" placeholder="ex: narcelio ou narcelio@impak.com.br" autofocus>
+    <input id="identificador" type="text" placeholder="seu usuário ou e-mail" autofocus>
     <button onclick="enviar()">Enviar link de redefinição</button>
     <div style="text-align:center;margin-top:14px;">
       <a href="/login" style="font-size:12px;color:#1a7fd4;text-decoration:none;font-weight:600;">Voltar pro login</a>
@@ -922,7 +952,7 @@ app.post('/login', rateLimitLogin, (req, res) => {
   // lógica de busca já usada em /api/auth/esqueci-senha. Sem isso, quem
   // digitasse o e-mail (rotulado como "Login" na planilha de cadastro)
   // caía em "usuário ou senha incorretos" mesmo com a senha certa.
-  if (contaBloqueada(login)) {
+  if (contaBloqueada(login, req)) {
     return res.send(loginPage('Muitas tentativas erradas para esse usuário. Tente novamente em alguns minutos, ou use "Esqueci minha senha".', destino || '/'));
   }
   const u = _usuariosCache.get(login) || [..._usuariosCache.values()].find(x => (x.email||'').toLowerCase() === login);
@@ -932,10 +962,10 @@ app.post('/login', rateLimitLogin, (req, res) => {
     // IP, e o horário, suficiente para notar um padrão de ataque sem criar
     // outro vazamento de dado sensível dentro dos próprios logs.
     console.warn(`[LOGIN FALHOU] usuário="${login}" ip=${ip} em ${new Date().toISOString()}`);
-    registrarFalhaLogin(login);
+    registrarFalhaLogin(login, req);
     return res.send(loginPage('Usuário ou senha incorretos.', destino || '/'));
   }
-  limparFalhasLogin(login);
+  limparFalhasLogin(login, req);
   // ── 2FA (obrigatório pra todo mundo, pedido do Ayslan 22/08/2026) ──
   // Senha certa não é mais suficiente sozinha: se o usuário já tem o
   // autenticador configurado, pede o código de 6 dígitos antes de abrir
@@ -966,12 +996,12 @@ app.post('/login/configurar-2fa', rateLimitLogin, async (req, res) => {
     const pend = req.session.pendingSetup2fa;
     if (!pend) return res.json({ ok: false, erro: 'Sessão de configuração expirada. Faça login novamente.' });
     const codigo = (req.body.codigo || '').trim();
-    if (contaBloqueada(pend.usuario)) {
+    if (contaBloqueada(pend.usuario, req)) {
       delete req.session.pendingSetup2fa;
       return res.json({ ok: false, erro: 'Muitas tentativas erradas. Aguarde alguns minutos e faça login de novo.' });
     }
     if (!(await verificarCodigo2FA(pend.secret, codigo))) {
-      registrarFalhaLogin(pend.usuario);
+      registrarFalhaLogin(pend.usuario, req);
       return res.json({ ok: false, erro: 'Código inválido. Confira o horário do celular e tente de novo.' });
     }
     await sb().from('usuarios').update({
@@ -1004,7 +1034,7 @@ app.post('/login/verificar-2fa', rateLimitLogin, async (req, res) => {
   // senha errada contava): quem já tem a senha não pode ficar chutando os 6
   // dígitos indefinidamente. Bloqueou -> descarta a etapa pendente e obriga a
   // recomeçar pelo login (que também está bloqueado pelos próximos minutos).
-  if (contaBloqueada(pend.usuario)) {
+  if (contaBloqueada(pend.usuario, req)) {
     delete req.session.pending2fa;
     return res.json({ ok: false, erro: 'Muitas tentativas erradas. Aguarde alguns minutos e faça login de novo.' });
   }
@@ -1013,10 +1043,10 @@ app.post('/login/verificar-2fa', rateLimitLogin, async (req, res) => {
   if (!u || !u.totp_secret || !(await verificarCodigo2FA(u.totp_secret, codigo))) {
     const ip = ipCliente(req);
     console.warn(`[2FA FALHOU] usuário="${pend.usuario}" ip=${ip} em ${new Date().toISOString()}`);
-    registrarFalhaLogin(pend.usuario);
+    registrarFalhaLogin(pend.usuario, req);
     return res.json({ ok: false, erro: 'Código inválido.' });
   }
-  limparFalhasLogin(pend.usuario);
+  limparFalhasLogin(pend.usuario, req);
   const destinoPend = pend.destino;
   // Sessão NOVA ao concluir o login (id de sessão trocado) -- evita "fixação
   // de sessão": um id de sessão plantado antes do login nunca vira um id logado.
@@ -1394,6 +1424,9 @@ app.post('/api/conferencia/processo', auth('conferencia'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
+    // Segurança (item 5): autor original não pode ser forjado nem trocado.
+    const { data: confExistente } = await sb().from('conferencia_processos')
+      .select('created_by').eq('id', processo.id).maybeSingle();
     const row = {
       id:         processo.id,
       ref:        processo.ref        || '',
@@ -1401,7 +1434,7 @@ app.post('/api/conferencia/processo', auth('conferencia'), async (req, res) => {
       obs:        processo.obs        || '',
       status:     processo.status     || 'ok',
       data:       processo.data       || new Date().toLocaleDateString('pt-BR'),
-      created_by: processo._user      || req.session.usuario,
+      created_by: (confExistente && confExistente.created_by) || req.session.usuario,
       updated_by: req.session.usuario,
       updated_at: new Date().toISOString(),
       dados:      processo,
@@ -1775,6 +1808,19 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
   }
 }
 
+// Busca todas as linhas de controle_processos (paginado — o Supabase
+// devolve no máximo 1000 por consulta).
+async function buscarTodosProcessos(colunas){
+  const todos = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sb().from('controle_processos').select(colunas).order('id').range(offset, offset + 999);
+    if (error) return { data: null, error };
+    todos.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return { data: todos, error: null };
+}
+
 app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { arquivo_base64 } = req.body;
@@ -1791,9 +1837,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
     const linhas = parsed.linhas || [];
     if (!linhas.length) return res.json({ ok: true, resumo: [], total_linhas: 0 });
 
-    const { data: processos, error: errBusca } = await sb()
-      .from('controle_processos')
-      .select('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs');
+    const { data: processos, error: errBusca } = await buscarTodosProcessos('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs, fechado, cancelado');
     if (errBusca) throw new Error(errBusca.message);
 
     const porRef = new Map();
@@ -1807,6 +1851,11 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
       const proc = porRef.get(normRefDespachante(linha.referencia));
       if (!proc) {
         resumo.push({ referencia: linha.referencia, status: 'nao_encontrado' });
+        continue;
+      }
+      // Segurança (item 6): processo fechado/cancelado não muda por planilha.
+      if (proc.fechado || proc.cancelado) {
+        resumo.push({ referencia: proc.referencia, status: 'travado', motivo: proc.fechado ? 'fechado' : 'cancelado' });
         continue;
       }
 
@@ -1888,6 +1937,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
       total_atualizados: totalAtualizados,
       total_nao_encontrados: totalNaoEncontrados,
       total_sem_mudancas: totalSemMudancas,
+      total_travados: resumo.filter(r => r.status === 'travado').length,
     });
   } catch (e) {
     console.error('importar-despachante erro:', e.message);
@@ -1939,9 +1989,7 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
     const linhas = parsed.linhas || [];
     if (!linhas.length) return res.json({ ok: true, resumo: [], total_linhas: 0 });
 
-    const { data: processos, error: errBusca } = await sb()
-      .from('controle_processos')
-      .select('id, referencia, data_prontidao, agente, etd');
+    const { data: processos, error: errBusca } = await buscarTodosProcessos('id, referencia, data_prontidao, agente, etd, fechado, cancelado');
     if (errBusca) throw new Error(errBusca.message);
 
     const porRef = new Map();
@@ -1955,6 +2003,11 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
       const proc = porRef.get(normRefManu(linha.referencia));
       if (!proc) {
         resumo.push({ referencia: linha.referencia, status: 'nao_encontrado' });
+        continue;
+      }
+      // Segurança (item 6): processo fechado/cancelado não muda por planilha.
+      if (proc.fechado || proc.cancelado) {
+        resumo.push({ referencia: proc.referencia, status: 'travado', motivo: proc.fechado ? 'fechado' : 'cancelado' });
         continue;
       }
       const patch = {};
@@ -2011,6 +2064,7 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
       total_atualizados: totalAtualizados,
       total_nao_encontrados: totalNaoEncontrados,
       total_sem_mudancas: totalSemMudancas,
+      total_travados: resumo.filter(r => r.status === 'travado').length,
     });
   } catch (e) {
     console.error('importar-manu erro:', e.message);
@@ -2136,6 +2190,22 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
       }
     }
 
+    // Relatório de segurança (23/09/2026, item 5 — mass assignment): campos
+    // de controle/auditoria só o servidor define. Processo NOVO não nasce
+    // fechado/cancelado nem com autor forjado; vínculo com cotação
+    // (cotacao_id/estimativa_json) só pelos fluxos próprios do Calculador.
+    if (!processoExistente) {
+      ['fechado','fechado_em','fechado_por','cancelado','cancelado_em','cancelado_por','cancelado_motivo',
+       'cancelamento_solicitado','cancelamento_solicitado_em','cancelamento_solicitado_por']
+        .forEach(k => { delete processo[k]; });
+      processo.created_by = req.session.usuario;
+      processo.created_at = new Date().toISOString();
+    } else {
+      delete processo.created_by; delete processo.created_at;
+    }
+    delete processo.cotacao_id; delete processo.estimativa_json;
+    processo.updated_by = req.session.usuario;
+
     if (!processo.id) processo.id = gerarUUID();
     processo.updated_at = new Date().toISOString();
 
@@ -2148,7 +2218,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
         campo: l.campo || '',
         valor_antes: String(l.valor_antes || ''),
         valor_depois: String(l.valor_depois || ''),
-        created_at: l.created_at || new Date().toISOString(),
+        created_at: new Date().toISOString(), // sempre a hora do servidor (auditoria)
       }));
       try {
         await sb().from('controle_log').insert(rows);
@@ -2922,6 +2992,10 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
     }
     const isNovo = !c.id;
     if (!c.id) c.id = require('crypto').randomUUID();
+    // Segurança (item 5): 'ativo' só muda pela exclusão (gerente); cadastro
+    // novo nasce ativo. Evita reativar/sobrescrever cadastro excluído via API.
+    delete c.ativo; delete c.created_at; delete c.created_by;
+    if (isNovo) c.ativo = true;
 
     // Trava de duplicidade — só entra em ação na CRIAÇÃO de um contato novo
     // (editar um contato existente passa direto, mesmo mantendo o nome).
@@ -3012,7 +3086,11 @@ app.post('/api/cadastros/pessoas', auth('controle','financeiro','resultado','tv'
   try {
     const p = req.body;
     if (!p.nome || !p.nome.trim()) return res.status(400).json({ erro: 'Nome é obrigatório' });
+    const pessoaNova = !p.id;
     if (!p.id) p.id = require('crypto').randomUUID();
+    // Segurança (item 5): mesma regra dos contatos — 'ativo' só pela exclusão.
+    delete p.ativo; delete p.created_at; delete p.created_by;
+    if (pessoaNova) p.ativo = true;
     // Um funcionário vinculado a um usuário de login não deve também estar
     // preso a uma empresa (são papéis diferentes) — evita cadastro ambíguo.
     if (p.usuario_vinculado) p.empresa_id = null;
@@ -3087,7 +3165,7 @@ app.post('/api/catalogo-produtos', auth('tyredesk'), async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
-app.delete('/api/catalogo-produtos/:id', auth('tyredesk'), async (req, res) => {
+app.delete('/api/catalogo-produtos/:id', auth('tyredesk'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb().from('catalogo_produtos').update({ ativo: false, updated_at: new Date().toISOString() }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
@@ -3177,19 +3255,33 @@ app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
   try {
     const c = req.body;
     if (!c.cliente) return res.status(400).json({ erro: 'Cliente obrigatório' });
+    // Segurança (item 5): status de aprovação/rejeição e vínculo com
+    // processo só mudam pelas rotas próprias (aprovar/rejeitar/vincular);
+    // 'ativo' só pela exclusão (gerente) — salvar não reativa excluída.
+    const CAMPOS_RESUMO_PROTEGIDOS = ['status','processo_id','processo_referencia','data_aprovacao','aprovado_por',
+      'motivo_perda','data_rejeicao','rejeitado_por'];
+    const resumoCliente = { ...(c.resumo || {}) };
+    CAMPOS_RESUMO_PROTEGIDOS.forEach(k => { delete resumoCliente[k]; });
+    delete c.ativo;
+    let existente = null;
     if (c.id) {
-      const { data: existente } = await sb()
+      ({ data: existente } = await sb()
         .from('calculador_cotacoes')
-        .select('resumo')
+        .select('resumo, ativo')
         .eq('id', c.id)
-        .maybeSingle();
-      if (existente && existente.resumo) {
-        c.resumo = { ...existente.resumo, ...(c.resumo || {}) };
+        .maybeSingle());
+      if (existente && existente.ativo === false) {
+        return res.status(409).json({ erro: 'Esta cotação foi excluída — salve como nova cotação.' });
       }
     } else {
       c.id = require('crypto').randomUUID();
     }
-    c.ativo = true;
+    if (existente) {
+      c.resumo = { ...(existente.resumo || {}), ...resumoCliente };
+    } else {
+      c.resumo = resumoCliente;
+      c.ativo = true;
+    }
     c.updated_at = new Date().toISOString();
     c.updated_by = req.session.usuario || null;
     const { error } = await sb().from('calculador_cotacoes').upsert(c, { onConflict: 'id' });
@@ -3520,10 +3612,20 @@ app.post('/api/drive/historico', auth('tyredesk'), async (req, res) => {
   try {
     const { entrada } = req.body;
     if (!entrada) return res.json({ ok: true });
-    entrada.id = entrada.id || gerarUUID();
+    // Segurança (item 5): só os campos do histórico; usuário e data vêm do servidor.
+    const txt = (v, max) => (v == null ? null : String(v).slice(0, max));
+    const linha = {
+      id: txt(entrada.id, 60) || gerarUUID(),
+      fornecedor: txt(entrada.fornecedor, 200),
+      email: txt(entrada.email, 200),
+      tipo: txt(entrada.tipo, 50),
+      lang: txt(entrada.lang, 10),
+      data: new Date().toISOString(),
+      usuario: req.session.displayName || req.session.usuario,
+    };
     const { error } = await sb()
       .from('tyredesk_historico')
-      .insert([entrada]);
+      .insert([linha]);
     // Ignorar erro se tabela não existir — não é crítico
     res.json({ ok: true });
   } catch(e) {
@@ -3531,7 +3633,7 @@ app.post('/api/drive/historico', auth('tyredesk'), async (req, res) => {
   }
 });
 
-app.post('/api/drive/historico/limpar', auth('tyredesk'), async (req, res) => {
+app.post('/api/drive/historico/limpar', auth('tyredesk'), requireGerente, async (req, res) => {
   try {
     await sb().from('tyredesk_historico').delete().neq('id', '');
     res.json({ ok: true });
@@ -3584,9 +3686,20 @@ app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (re
     if (eCot) throw new Error(eCot.message);
 
     const { data: proc, error: eProc } = await sb()
-      .from('controle_processos').select('id, referencia, estimativa_json, real_json')
+      .from('controle_processos').select('id, referencia, estimativa_json, real_json, fechado, cancelado')
       .eq('id', processo_id).single();
     if (eProc) throw new Error(eProc.message);
+
+    // Segurança (item 6): não mexe em processo fechado/cancelado, nem usa
+    // cotação excluída ou já aprovada/vinculada a OUTRO processo.
+    if (proc.fechado || proc.cancelado) {
+      return res.status(403).json({ erro: `Processo ${proc.referencia} está ${proc.fechado ? 'fechado' : 'cancelado'} — reabra antes de vincular.` });
+    }
+    if (cot.ativo === false) return res.status(409).json({ erro: 'Esta cotação foi excluída.' });
+    const vinculadaA = cot.resumo && cot.resumo.processo_id;
+    if (vinculadaA && vinculadaA !== proc.id) {
+      return res.status(409).json({ erro: `Esta cotação já está vinculada ao processo ${cot.resumo.processo_referencia || vinculadaA}.` });
+    }
 
     const estimativa = extrairEstimativa(cot.resumo);
     const custosCotados = (cot.resumo && cot.resumo.custos_cotados_json) || null;

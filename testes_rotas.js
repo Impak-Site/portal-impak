@@ -76,6 +76,26 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     if (r.status === 403) throw new Error('bloqueou requisição legítima do próprio site');
   });
 
+  console.log('\n── Segurança: limite de login (item 9) ──');
+  await teste('8 logins errados de usuários diferentes no mesmo IP não bloqueiam o IP (limite agora é 20 falhas)', async () => {
+    for (let i = 0; i < 8; i++) {
+      const r = await request(app).post('/login').set('Host', 'portal.teste').set('Origin', 'https://portal.teste').set('X-Forwarded-For', '10.9.9.9')
+        .type('form').send({ usuario: 'naoexiste' + i, senha: 'errada' });
+      if (/Muitas tentativas/.test(r.text)) throw new Error('bloqueou na tentativa ' + (i + 1));
+    }
+  });
+  await teste('5 erros no mesmo usuário (mesmo IP) bloqueiam só aquele usuário naquele IP', async () => {
+    let r;
+    for (let i = 0; i < 6; i++) {
+      r = await request(app).post('/login').set('Host', 'portal.teste').set('Origin', 'https://portal.teste').set('X-Forwarded-For', '10.8.8.8')
+        .type('form').send({ usuario: 'alvo', senha: 'errada' });
+    }
+    if (!/Muitas tentativas erradas para esse usu/.test(r.text)) throw new Error('deveria bloquear o usuário "alvo" nesse IP');
+    const outroIp = await request(app).post('/login').set('Host', 'portal.teste').set('Origin', 'https://portal.teste').set('X-Forwarded-For', '10.7.7.7')
+      .type('form').send({ usuario: 'alvo', senha: 'errada' });
+    if (/Muitas tentativas/.test(outroIp.text)) throw new Error('outro IP não deveria estar bloqueado');
+  });
+
   console.log('\n── Segurança: arquivos internos não são servidos ──');
   for (const caminho of ['/server.js', '/package.json', '/migrations/0036_pi_cambio_codigo_bacen.sql', '/testes_rotas.js', '/lib/totp.js',
       '/%73erver.js', '/%6cib/totp.js', '/README.m%64', '/./server.js', '//server.js', '/x/../server.js', '/%2e/server.js', '/SERVER.JS', '/.git/config', '/.idea/dataSources.xml']) {
