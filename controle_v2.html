@@ -463,9 +463,14 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <input type="date" onpaste="colarData(event,this)" id="filtro-data-de" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
 <span style="font-size:12px;color:var(--muted);flex-shrink:0;">até</span>
 <input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
-<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;" onclick="limparFiltroData()">Limpar</button>
-<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;" onclick="filtroEssaSemana()">Esta semana</button>
-<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;" onclick="filtroEsseMes()">Este mês</button>
+<!-- Botões agrupados num bloco próprio que nunca quebra por dentro (pedido
+Ayslan 23/09/2026: eles apareciam empilhados um embaixo do outro em vez de
+ao lado das datas). -->
+<div style="display:flex;flex-wrap:nowrap;gap:6px;flex-shrink:0;align-items:center;">
+<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;width:auto;" onclick="limparFiltroData()">Limpar</button>
+<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;width:auto;" onclick="filtroEssaSemana()">Esta semana</button>
+<button class="btn btn-sm btn-outline" style="flex-shrink:0;white-space:nowrap;width:auto;" onclick="filtroEsseMes()">Este mês</button>
+</div>
 </div>
 
 <!-- FASE FILTER -->
