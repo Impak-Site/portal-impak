@@ -1210,7 +1210,7 @@ function resolverValorUsdParcela(idx, valorDoc){
   const atual = parseFloat(_parcelas[idx].valor_usd) || 0;
   if(!atual){
     _parcelas[idx].valor_usd = valorDoc.toFixed(2);
-    return true;
+    return 'preenchido';
   }
   if(Math.abs(atual - valorDoc) < 0.01) return false; // já bate, nada a fazer
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
@@ -1222,9 +1222,34 @@ function resolverValorUsdParcela(idx, valorDoc){
   if(ok){
     _parcelas[idx].valor_usd = valorDoc.toFixed(2);
     _parcelas[idx].custo_operacao = ''; // força recalcular com o valor novo
-    return true;
+    return 'corrigido';
   }
   return false;
+}
+
+// Depois de corrigir o Valor USD de uma parcela pelo comprovante, o saldo
+// das outras precisa acompanhar. calcularParcelaResidualAuto() só mexe em
+// parcela VAZIA -- mas no caso real da Paula a parcela Final já estava
+// preenchida com o saldo calculado a partir do valor errado (ex.: 25.440 -
+// 7.596 = 17.844) e ficava assim, sem bater com o total. Aqui: se sobrar
+// exatamente UMA outra parcela ainda não paga (sem câmbio fechado), ela
+// recebe o saldo (Valor da PI - soma das demais). Parcela já paga nunca é
+// mexida; com 2+ em aberto não dá pra saber como dividir -> só preenche
+// vazias (comportamento antigo) e o aviso "Parcelas somam X" continua
+// aparecendo no resumo. O usuário já confirmou no confirm() anterior
+// ("...e recalcular o saldo das demais parcelas?").
+function ajustarSaldoAposCorrecao(idx){
+  const total = valorMoeda('f_pi_valor_usd');
+  const abertas = _parcelas.map((pc,i)=>i).filter(i => i!==idx && !_parcelas[i].cambio_fechado);
+  if(!total || abertas.length !== 1){ calcularParcelaResidualAuto(); return; }
+  const alvo = abertas[0];
+  const somaOutras = _parcelas.reduce((s,pc,i)=> i===alvo ? s : s + (parseFloat(pc.valor_usd)||0), 0);
+  const resto = total - somaOutras;
+  if(resto > 0){
+    _parcelas[alvo].valor_usd = resto.toFixed(2);
+    _parcelas[alvo].custo_operacao = ''; // recalculado a partir do novo valor
+    if(typeof calcularCustoOperacaoAuto === 'function') calcularCustoOperacaoAuto(alvo);
+  }
 }
 
 function confirmarCambioParcela(idx){
@@ -1267,7 +1292,8 @@ function confirmarCambioParcela(idx){
   // do comprovante), recalcula automaticamente o saldo das demais parcelas
   // que ainda não têm valor definido -- pedido direto da Paula: depois de
   // aplicar o câmbio real, o valor a pagar do resto deve se ajustar sozinho.
-  if(valorMudouP) calcularParcelaResidualAuto();
+  if(valorMudouP==='corrigido') ajustarSaldoAposCorrecao(idx);
+  else if(valorMudouP) calcularParcelaResidualAuto();
   renderParcelas();
   renderPagamentoInfoLive();
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
@@ -1325,7 +1351,8 @@ function aplicarCambioNaParcelaPendente(taxa){
       _parcelas[idx].custo_operacao = custoExtra2.toFixed(2);
     }
   }
-  if(valorMudouP2) calcularParcelaResidualAuto();
+  if(valorMudouP2==='corrigido') ajustarSaldoAposCorrecao(idx);
+  else if(valorMudouP2) calcularParcelaResidualAuto();
   renderParcelas();
   renderPagamentoInfoLive();
   return idx;

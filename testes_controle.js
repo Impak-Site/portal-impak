@@ -658,6 +658,28 @@ teste('confirmarCambioParcela: se o usuário CONFIRMA a substituição, corrige 
   iguais(parcelas[1].valor_usd, (25440 - 5088).toFixed(2), 'a parcela Final (única vazia) deveria recalcular o saldo automaticamente com o valor corrigido');
 });
 
+teste('confirmarCambioParcela: corrige também a parcela Final que já tinha o saldo antigo (não paga)', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'7596.00', cambio_fechado:'', custo_operacao:''}, {label:'Final', valor_usd:'17844.00', cambio_fechado:'', custo_operacao:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.13, valor_usd_referencia:5088.00, referencia:'QD-IMK-LPL-2605-1742', data_pagamento:'2026-09-15'};", sandbox);
+  sandbox.document.getElementById('f_pi_valor_usd').value = '25.440,00';
+  sandbox.confirm = () => true;
+  sandbox.confirmarCambioParcela(0);
+  const ps = JSON.parse(vm.runInContext("JSON.stringify(_parcelas);", sandbox));
+  iguais(ps[0].valor_usd, '5088.00', 'Inicial corrigida');
+  iguais(ps[1].valor_usd, '20352.00', 'Final (em aberto) deveria virar 25.440 - 5.088 = 20.352');
+});
+
+teste('confirmarCambioParcela: nunca mexe numa parcela que já teve câmbio fechado ao recalcular o saldo', () => {
+  vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'7596.00', cambio_fechado:'', custo_operacao:''}, {label:'Pré-embarque', valor_usd:'5000.00', cambio_fechado:'5.2000', custo_operacao:'26000.00'}, {label:'Final', valor_usd:'12844.00', cambio_fechado:'', custo_operacao:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.13, valor_usd_referencia:5088.00, referencia:'X', data_pagamento:'2026-09-15'};", sandbox);
+  sandbox.document.getElementById('f_pi_valor_usd').value = '25.440,00';
+  sandbox.confirm = () => true;
+  sandbox.confirmarCambioParcela(0);
+  const ps = JSON.parse(vm.runInContext("JSON.stringify(_parcelas);", sandbox));
+  iguais(ps[1].valor_usd, '5000.00', 'parcela já paga não pode mudar');
+  iguais(ps[2].valor_usd, (25440-5088-5000).toFixed(2), 'Final em aberto recebe o saldo');
+});
+
 teste('confirmarCambioParcela: se o usuário CANCELA a substituição, mantém o Valor USD antigo e não mexe nas demais parcelas', () => {
   vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'7596.00', data_vencimento:'', cambio_fechado:'', custo_operacao:''}, {label:'Final', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
   vm.runInContext("_cambioPendente = {taxa_cambio:5.13, valor_usd_referencia:5088.00, referencia:'QD-IMK-LPL-2605-1742', data_pagamento:'2026-09-15'};", sandbox);
