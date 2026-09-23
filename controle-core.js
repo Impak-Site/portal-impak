@@ -876,6 +876,19 @@ async function buscarVersaoProcessos(){
 function aplicarListaProcessos(lista, silencioso){
   _processos = lista || [];
   _ultimaCargaCompleta = Date.now();
+  // A fase gravada no banco (p.fase) só é recalculada quando alguém salva o
+  // processo — mas várias transições dependem só da data (ex: ETA/Chegada
+  // passou → DESEMBARCADO). Sem salvar, a lateral/tabela mostravam a fase
+  // velha enquanto a TV (que usa calcularFase ao vivo) já mostrava a nova,
+  // e os números não batiam (Emanuelly, 23/09/2026). Alinha aqui na carga.
+  // Exceção: FINALIZADO gravado é mantido — são processos antigos encerrados
+  // antes da regra do RIC (Isento/lavagem paga) existir; não reabrir.
+  if(typeof calcularFase === 'function'){
+    _processos.forEach(p=>{
+      if(!p || p.cancelado || p.fase==='FINALIZADO') return;
+      try { const f = calcularFase(p); if(f && f!==p.fase) p.fase = f; } catch(e){}
+    });
+  }
   // Popular select de clientes
   const selCliente = document.getElementById('filtro-cliente');
   if(selCliente){
