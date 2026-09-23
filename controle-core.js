@@ -160,6 +160,11 @@ function faseParaExibir(p){
 // INIT
 // ════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', function(){
+  // Já começa a buscar a versão da lista e a cópia local EM PARALELO com o
+  // /api/me (antes só começava depois dele -- ~0,5s a mais em cada troca de
+  // tela). carregarProcessos() usa essas promessas na 1ª carga.
+  _prefetchVersao = buscarVersaoProcessos();
+  _prefetchCache = lerCacheProcessos();
   fetch('/api/me').then(r=>r.json()).then(d=>{
     if(!d.logado){ location.href='/login?destino='+encodeURIComponent(location.pathname); return; }
     _user = d;
@@ -893,11 +898,13 @@ function aplicarListaProcessos(lista, silencioso){
 }
 
 let _cacheInicialTentado = false;
+let _prefetchVersao = null, _prefetchCache = null;
 async function carregarProcessos(silencioso){
   // 1ª carga da página: tenta a cópia local se ela ainda estiver atual.
   if(!_cacheInicialTentado){
     _cacheInicialTentado = true;
-    const [cache, versaoAtual] = await Promise.all([lerCacheProcessos(), buscarVersaoProcessos()]);
+    const [cache, versaoAtual] = await Promise.all([_prefetchCache || lerCacheProcessos(), _prefetchVersao || buscarVersaoProcessos()]);
+    _prefetchCache = _prefetchVersao = null;
     if(cache && versaoAtual && cache.versao === versaoAtual && Array.isArray(cache.processos)){
       _versaoProcessos = versaoAtual;
       aplicarListaProcessos(cache.processos, true);
