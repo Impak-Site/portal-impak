@@ -1079,7 +1079,7 @@ function renderParcelas(){
     </div>
     <div style="border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px;background:var(--bg);">
       ${secao({cols:'1fr 1fr 32px', html:`
-        <div>${lblParcela('Valor Recebido do Cliente')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
+        <div>${lblParcela('Valor Recebido do Cliente (R$)')}<div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_recebido_cliente!=null&&pc.valor_recebido_cliente!==''?exibirMoeda(pc.valor_recebido_cliente):''}"
           oninput="formatarMoedaInput(this);_parcelas[${i}].valor_recebido_cliente=parseValorMoeda(this.value);sincronizarParcelasLegado()"></div></div>
         <div>${lblParcela('Data Recebimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_recebimento||'')}" title="Data do recebimento do cliente"
           oninput="_parcelas[${i}].data_recebimento=this.value;sincronizarParcelasLegado()"></div>
