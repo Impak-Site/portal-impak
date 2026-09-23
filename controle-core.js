@@ -1340,6 +1340,63 @@ function listarPendenciasDI(processos, dataDe, dataAte){
   return linhas;
 }
 
+// ── Adiantamento do Cliente — pedido do Jean/Paula (23/09/2026): o Jean
+// preenche na planilha dele a linha "adiantamento do cliente" com o que o
+// cliente pagou à IMPAK (em R$) por processo, referente aos câmbios. Hoje a
+// Paula imprime o comprovante e anota à mão; o valor já é lançado no campo
+// "Valor Recebido do Cliente (R$)" (por parcela no Parcelado, ou no nível
+// do processo em À Vista/A Prazo). Pode ser diferente do câmbio pago (ex.:
+// câmbio R$ 170 mil, cliente pagou R$ 180 mil) — por isso mostra os dois e
+// a diferença. Um processo entra na lista se tem ao menos um câmbio fechado
+// ou um recebimento lançado. Cancelados ficam de fora.
+function listarAdiantamentosCliente(processos){
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+  const out = [];
+  (processos||[]).forEach(p=>{
+    if(!p || p.cancelado) return;
+    const cambios = [];
+    if(p.pi_pagamento==='PARCELADO'){
+      let parcelas = [];
+      try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
+      parcelas.forEach((pc,i)=>{
+        const usd = num(pc.valor_usd), taxa = num(pc.cambio_fechado), rec = num(pc.valor_recebido_cliente);
+        if(!taxa && !rec) return;
+        cambios.push({ parcela: pc.label || ('Parcela '+(i+1)), parcelaIndex:i, valorUsd: usd, cambioFechado: taxa||null,
+          dataFechamento: pc.data_fechamento_cambio || pc.data_vencimento || '', banco: pc.banco || '',
+          brlPago: usd*taxa, recebido: rec, dataRecebimento: pc.data_recebimento || '' });
+      });
+    } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
+      const usd = num(p.pi_valor_usd), taxa = num(p.pi_cambio_fechado), rec = num(p.pi_valor_recebido_cliente);
+      if(taxa || rec){
+        cambios.push({ parcela: p.pi_pagamento==='VISTA' ? 'À Vista' : 'A Prazo', parcelaIndex:null, valorUsd: usd, cambioFechado: taxa||null,
+          dataFechamento: (p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada) || '', banco: p.pi_cambio_banco || '',
+          brlPago: usd*taxa, recebido: rec, dataRecebimento: p.pi_data_recebimento || '' });
+      }
+    } else if(p.pi_pagamento==='ENTRADA_SALDO'){
+      const total = num(p.pi_valor_usd), pct = num(p.pi_entrada_pct||30)/100;
+      [['Entrada', total*pct, num(p.pi_cambio_entrada), p.pi_data_entrada],
+       ['Saldo', total*(1-pct), num(p.pi_cambio_saldo), p.pi_data_saldo]].forEach(([lbl,usd,taxa,dt])=>{
+        if(!taxa) return;
+        cambios.push({ parcela: lbl, parcelaIndex:null, valorUsd: usd, cambioFechado: taxa, dataFechamento: dt||'',
+          banco: p.pi_cambio_banco || '', brlPago: usd*taxa, recebido: 0, dataRecebimento: '' });
+      });
+    }
+    if(!cambios.length) return;
+    const totalPago = cambios.reduce((s,c)=>s+c.brlPago,0);
+    const totalRecebido = cambios.reduce((s,c)=>s+c.recebido,0);
+    const datas = cambios.map(c=>c.dataRecebimento||c.dataFechamento).filter(Boolean).sort();
+    out.push({
+      processoId: p.id, referencia: p.referencia || '', cliente: p.cliente || '—', fornecedor: p.fornecedor || '—',
+      numeroDi: p.numero_di || '', cambios, totalPago, totalRecebido,
+      diferenca: totalRecebido - totalPago,
+      pendentes: cambios.filter(c=>c.cambioFechado && !c.recebido).length,
+      ultimaData: datas.length ? datas[datas.length-1] : '',
+    });
+  });
+  out.sort((a,b)=> (b.ultimaData||'').localeCompare(a.ultimaData||'') || (a.referencia||'').localeCompare(b.referencia||''));
+  return out;
+}
+
 function demurrageDisplay(proc){
   if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
   const dias = demurrageDias(proc);

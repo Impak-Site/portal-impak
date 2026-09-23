@@ -919,6 +919,7 @@ function renderDashCambio(){
   el.innerHTML = toolbarHtml + kpisHtml + alertaSemDataHtml + concentracaoHtml
     + `<div style="margin-bottom:14px;">${simulacaoHtml}</div>`
     + bancoCustoHtml + consolidacaoHtml + tabelaHtml
+    + (()=>{ try{ return renderAdiantamentoClienteHtml(); }catch(e){ console.error('Adiantamento do Cliente:', e); return ''; } })()
     + renderFluxoCaixaHtml(todosPagamentos);
 
   if(_cambioRefoco){
@@ -931,4 +932,164 @@ function renderDashCambio(){
     }
   }
 
+}
+
+// ════════════════════════════════════════════════════════════════
+// ADIANTAMENTO DO CLIENTE — pedido do Jean/Paula (23/09/2026): "vai ser
+// via sistema". O Jean preenche a linha "adiantamento do cliente" da
+// planilha dele com o que o cliente pagou à IMPAK (R$) por processo,
+// referente aos câmbios. Antes vinha de uma folha impressa pela Paula.
+// Dados: listarAdiantamentosCliente() (controle-core.js). Filtros próprios
+// (não mexem nos filtros da tabela de câmbio acima) e re-render só deste
+// bloco, sem redesenhar a tela inteira a cada tecla.
+// ════════════════════════════════════════════════════════════════
+let _adiantFiltro = { busca:'', cliente:'', mes:'', pendentes:false };
+
+function _adiantDataRef(c){ return c.dataRecebimento || c.dataFechamento || ''; }
+
+function _adiantLinhasFiltradas(){
+  const f = _adiantFiltro;
+  const busca = (f.busca||'').trim().toLowerCase();
+  const out = [];
+  listarAdiantamentosCliente(_processos).forEach(g=>{
+    if(f.cliente && g.cliente !== f.cliente) return;
+    if(busca && !(`${g.referencia} ${g.cliente} ${g.fornecedor} ${g.numeroDi}`.toLowerCase().includes(busca))) return;
+    let cambios = g.cambios;
+    if(f.mes) cambios = cambios.filter(c => _adiantDataRef(c).slice(0,7) === f.mes);
+    if(f.pendentes) cambios = cambios.filter(c => c.cambioFechado && !c.recebido);
+    if(!cambios.length) return;
+    const totalPago = cambios.reduce((s,c)=>s+c.brlPago,0);
+    const totalRecebido = cambios.reduce((s,c)=>s+c.recebido,0);
+    out.push({...g, cambios, totalPago, totalRecebido, diferenca: totalRecebido-totalPago,
+      pendentes: cambios.filter(c=>c.cambioFechado && !c.recebido).length});
+  });
+  return out;
+}
+
+function setAdiantFiltro(campo, valor){
+  _adiantFiltro[campo] = valor;
+  const box = document.getElementById('adiant-cliente-box');
+  if(!box) return;
+  const ativo = document.activeElement;
+  const refocar = ativo && ativo.id === 'adiant-busca' ? (ativo.selectionStart ?? null) : undefined;
+  box.outerHTML = renderAdiantamentoClienteHtml();
+  if(refocar !== undefined){
+    const el = document.getElementById('adiant-busca');
+    if(el){ el.focus(); if(refocar!=null && el.setSelectionRange){ try{ el.setSelectionRange(refocar, refocar); }catch(e){} } }
+  }
+}
+
+function renderAdiantamentoClienteHtml(){
+  const fmtBRL = cambFmtBRL, fmtUSD = cambFmtUSD;
+  const MONO = "font-family:'DM Mono',monospace;";
+  const fData = d => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '—';
+  const todos = listarAdiantamentosCliente(_processos);
+  const clientes = [...new Set(todos.map(g=>g.cliente))].sort();
+  const meses = [...new Set(todos.flatMap(g=>g.cambios.map(c=>_adiantDataRef(c).slice(0,7))).filter(Boolean))].sort().reverse();
+  const nomeMes = m => { const [a,mm] = m.split('-'); return `${mm}/${a}`; };
+  const linhas = _adiantLinhasFiltradas();
+  const totPago = linhas.reduce((s,g)=>s+g.totalPago,0);
+  const totRec = linhas.reduce((s,g)=>s+g.totalRecebido,0);
+  const totPend = linhas.reduce((s,g)=>s+g.pendentes,0);
+  const f = _adiantFiltro;
+  const th = (t,al) => `<th style="text-align:${al||'left'};padding:8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">${t}</th>`;
+  const corDif = v => Math.abs(v)<0.01 ? 'var(--muted)' : (v>0 ? 'var(--ok)' : 'var(--err)');
+  const sinal = v => Math.abs(v)<0.01 ? '—' : (v>0?'+':'−') + fmtBRL(Math.abs(v));
+
+  const corpo = linhas.map(g=>{
+    const cab = `<tr style="border-top:2px solid var(--border);background:#f8fafc;cursor:pointer;" onclick="abrirProcesso('${g.processoId}')">
+      <td style="padding:8px;font-weight:700;${MONO}color:var(--ac);white-space:nowrap;">${esc(g.referencia)}</td>
+      <td style="padding:8px;font-weight:600;">${esc(g.cliente)}</td>
+      <td style="padding:8px;color:var(--muted);">${esc(g.fornecedor)}</td>
+      <td style="padding:8px;"></td><td style="padding:8px;"></td>
+      <td style="padding:8px;text-align:right;font-weight:700;${MONO}white-space:nowrap;">${fmtBRL(g.totalPago)}</td>
+      <td style="padding:8px;text-align:right;font-weight:700;${MONO}white-space:nowrap;">${g.totalRecebido?fmtBRL(g.totalRecebido):'<span style="color:var(--warn)">não lançado</span>'}</td>
+      <td style="padding:8px;"></td>
+      <td style="padding:8px;text-align:right;font-weight:700;${MONO}white-space:nowrap;color:${corDif(g.diferenca)};">${g.totalRecebido?sinal(g.diferenca):'—'}</td>
+    </tr>`;
+    const subs = g.cambios.map(c=>`<tr style="border-top:1px solid var(--border);font-size:11px;">
+      <td style="padding:6px 8px 6px 20px;color:var(--muted);" colspan="3">↳ ${esc(c.parcela)}${c.banco?` · ${esc(c.banco)}`:''}</td>
+      <td style="padding:6px 8px;text-align:right;${MONO}white-space:nowrap;">${c.valorUsd?fmtUSD(c.valorUsd):'—'}</td>
+      <td style="padding:6px 8px;text-align:right;${MONO}white-space:nowrap;">${c.cambioFechado?c.cambioFechado.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}):'—'} <span style="color:var(--dim)">${fData(c.dataFechamento)}</span></td>
+      <td style="padding:6px 8px;text-align:right;${MONO}white-space:nowrap;">${c.brlPago?fmtBRL(c.brlPago):'—'}</td>
+      <td style="padding:6px 8px;text-align:right;${MONO}white-space:nowrap;">${c.recebido?fmtBRL(c.recebido):'<span style="color:var(--warn)">—</span>'}</td>
+      <td style="padding:6px 8px;white-space:nowrap;color:var(--muted);">${c.recebido?fData(c.dataRecebimento):''}</td>
+      <td style="padding:6px 8px;text-align:right;${MONO}white-space:nowrap;color:${corDif(c.recebido-c.brlPago)};">${c.recebido&&c.brlPago?sinal(c.recebido-c.brlPago):''}</td>
+    </tr>`).join('');
+    return cab + subs;
+  }).join('');
+
+  return `<div id="adiant-cliente-box" style="background:#fff;border:1px solid var(--border);border-radius:12px;margin:14px 0;overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-size:14px;font-weight:700;">Adiantamento do Cliente</div>
+        <div style="font-size:11px;color:var(--muted);">Quanto o cliente pagou à IMPAK (R$) por processo, referente aos câmbios. Lançado em "Valor Recebido do Cliente (R$)" no processo.</div>
+      </div>
+      <input id="adiant-busca" type="text" placeholder="Buscar processo, cliente, DI..." value="${esc(f.busca)}" oninput="setAdiantFiltro('busca', this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:200px;">
+      <select onchange="setAdiantFiltro('cliente', this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;max-width:220px;">
+        <option value="">Todos os clientes</option>
+        ${clientes.map(c=>`<option value="${esc(c)}" ${c===f.cliente?'selected':''}>${esc(c)}</option>`).join('')}
+      </select>
+      <select onchange="setAdiantFiltro('mes', this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;" title="Mês do recebimento (ou do fechamento do câmbio, se o recebimento ainda não foi lançado)">
+        <option value="">Todos os meses</option>
+        ${meses.map(m=>`<option value="${m}" ${m===f.mes?'selected':''}>${nomeMes(m)}</option>`).join('')}
+      </select>
+      <label style="font-size:12px;display:flex;align-items:center;gap:4px;white-space:nowrap;"><input type="checkbox" ${f.pendentes?'checked':''} onchange="setAdiantFiltro('pendentes', this.checked)"> Só sem recebimento lançado</label>
+      <button type="button" onclick="exportarAdiantamentoClienteExcel()" style="font-size:11px;font-weight:700;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap;">⬇ Excel</button>
+    </div>
+    <div style="display:flex;gap:24px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap;">
+      <div>Processos: <b>${linhas.length}</b></div>
+      <div>Câmbio pago: <b style="${MONO}">${fmtBRL(totPago)}</b></div>
+      <div>Recebido do cliente: <b style="${MONO}">${fmtBRL(totRec)}</b></div>
+      <div>Câmbios sem recebimento lançado: <b style="color:${totPend?'var(--warn)':'var(--ok)'};">${totPend}</b></div>
+    </div>
+    <div style="max-height:480px;overflow-y:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="background:var(--bg);position:sticky;top:0;">
+        ${th('Processo')}${th('Cliente')}${th('Fornecedor')}${th('Valor USD','right')}${th('Câmbio / Data','right')}${th('Câmbio Pago (R$)','right')}${th('Recebido do Cliente (R$)','right')}${th('Data Receb.')}${th('Diferença','right')}
+      </tr></thead>
+      <tbody>${corpo || `<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted);">Nenhum câmbio ou recebimento neste filtro.</td></tr>`}</tbody>
+    </table>
+    </div>
+  </div>`;
+}
+
+async function exportarAdiantamentoClienteExcel(){
+  if(typeof ExcelJS === 'undefined'){ showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err'); return; }
+  const linhas = _adiantLinhasFiltradas();
+  if(!linhas.length){ showToast('Nada pra exportar neste filtro','err'); return; }
+  try{
+    const wb = new ExcelJS.Workbook(); wb.creator = 'IMPAK'; wb.created = new Date();
+    const dt = d => d ? new Date(d+'T00:00:00') : null;
+    const ws1 = wb.addWorksheet('Por Processo');
+    ws1.columns = [
+      { header:'Processo', key:'ref', width:22 }, { header:'Cliente', key:'cli', width:34 }, { header:'Fornecedor', key:'forn', width:30 },
+      { header:'DI/DUIMP', key:'di', width:18 }, { header:'Qtd Câmbios', key:'qtd', width:12 },
+      { header:'Câmbio Pago (R$)', key:'pago', width:18 }, { header:'Adiantamento do Cliente (R$)', key:'rec', width:26 }, { header:'Diferença (R$)', key:'dif', width:16 },
+    ];
+    linhas.forEach(g => ws1.addRow({ ref:g.referencia, cli:g.cliente, forn:g.fornecedor, di:g.numeroDi, qtd:g.cambios.length,
+      pago:g.totalPago, rec:g.totalRecebido, dif:g.totalRecebido ? g.diferenca : null }));
+    const tot = ws1.addRow({ ref:'TOTAL', pago: linhas.reduce((s,g)=>s+g.totalPago,0), rec: linhas.reduce((s,g)=>s+g.totalRecebido,0) });
+    tot.font = { bold:true };
+    ['pago','rec','dif'].forEach(k => ws1.getColumn(k).numFmt = '#,##0.00');
+    const ws2 = wb.addWorksheet('Detalhe por Câmbio');
+    ws2.columns = [
+      { header:'Processo', key:'ref', width:22 }, { header:'Cliente', key:'cli', width:34 }, { header:'Parcela', key:'parc', width:16 },
+      { header:'Banco', key:'banco', width:16 }, { header:'Valor USD', key:'usd', width:14 }, { header:'Taxa', key:'taxa', width:10 },
+      { header:'Data Câmbio', key:'dtc', width:13 }, { header:'Câmbio Pago (R$)', key:'pago', width:18 },
+      { header:'Recebido do Cliente (R$)', key:'rec', width:22 }, { header:'Data Recebimento', key:'dtr', width:16 },
+    ];
+    linhas.forEach(g => g.cambios.forEach(c => ws2.addRow({ ref:g.referencia, cli:g.cliente, parc:c.parcela, banco:c.banco,
+      usd:c.valorUsd||null, taxa:c.cambioFechado||null, dtc:dt(c.dataFechamento), pago:c.brlPago||null, rec:c.recebido||null, dtr:dt(c.dataRecebimento) })));
+    ws2.getColumn('usd').numFmt = '#,##0.00'; ws2.getColumn('taxa').numFmt = '0.0000';
+    ws2.getColumn('pago').numFmt = '#,##0.00'; ws2.getColumn('rec').numFmt = '#,##0.00';
+    ws2.getColumn('dtc').numFmt = 'dd/mm/yyyy'; ws2.getColumn('dtr').numFmt = 'dd/mm/yyyy';
+    [ws1, ws2].forEach(ws => { ws.getRow(1).font = { bold:true }; ws.views = [{ state:'frozen', ySplit:1 }]; });
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = `Adiantamento_Cliente_${_adiantFiltro.mes || new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    showToast(`✓ ${linhas.length} processo(s) exportado(s)`,'ok');
+  }catch(e){ console.error(e); showToast('Erro ao exportar Excel: '+e.message,'err'); }
 }

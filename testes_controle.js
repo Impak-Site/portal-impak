@@ -1983,6 +1983,28 @@ console.log('\n📋 Estrutura HTML — <div> balanceadas nos módulos da tela');
 
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
+teste('listarAdiantamentosCliente: soma câmbio pago (USD x taxa) e recebido do cliente por processo, ignora cancelado e sem câmbio', () => {
+  const processos = [
+    { id:'A', referencia:'UD-A', cliente:'CLI A', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { label:'Inicial', valor_usd:10000, cambio_fechado:5.0, data_vencimento:'2026-09-01', valor_recebido_cliente:52000, data_recebimento:'2026-09-02' },
+      { label:'Final', valor_usd:20000, cambio_fechado:5.5, data_vencimento:'2026-09-10' },
+      { label:'Ajuste', valor_usd:500 },
+    ])},
+    { id:'B', referencia:'UD-B', cliente:'CLI B', pi_pagamento:'VISTA', pi_valor_usd:1000, pi_cambio_fechado:5.2, pi_valor_recebido_cliente:5300, pi_data_recebimento:'2026-08-20' },
+    { id:'C', referencia:'UD-C', cancelado:true, pi_pagamento:'VISTA', pi_valor_usd:1000, pi_cambio_fechado:5 },
+    { id:'D', referencia:'UD-D', pi_pagamento:'PRAZO', pi_valor_usd:1000 },
+  ];
+  const out = vm.runInContext(`listarAdiantamentosCliente(${JSON.stringify(processos)})`, sandbox);
+  iguais(out.length, 2, 'só A e B (C cancelado, D sem câmbio nem recebimento)');
+  const a = out.find(g=>g.referencia==='UD-A');
+  iguais(a.cambios.length, 2, 'parcela sem câmbio e sem recebimento fica fora');
+  aproxIgual(a.totalPago, 160000, 0.01);
+  aproxIgual(a.totalRecebido, 52000, 0.01);
+  iguais(a.pendentes, 1, 'Final tem câmbio fechado sem recebimento lançado');
+  const b = out.find(g=>g.referencia==='UD-B');
+  aproxIgual(b.diferenca, 100, 0.01, 'cliente pagou R$ 100 a mais que o câmbio');
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');
