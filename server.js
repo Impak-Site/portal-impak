@@ -378,12 +378,23 @@ function forcarLogoutUsuario(usuario) {
 // IP a cada 10 minutos. Em memória (sem dependência externa) — suficiente
 // para o volume de uso deste sistema; reinicia se o servidor reiniciar,
 // o que é aceitável aqui (não é uma defesa contra ataque distribuído).
+// IP real de quem está acessando (revisão de segurança 23/09/2026). Antes
+// usávamos o PRIMEIRO item do cabeçalho X-Forwarded-For -- só que esse item
+// é escrito pelo próprio navegador/atacante (o proxy do Railway só ACRESCENTA
+// o IP real no fim da lista). Mandando um X-Forwarded-For falso diferente a
+// cada tentativa, dava pra furar o limite de tentativas por IP. req.ip, com
+// 'trust proxy' = 1 (configurado mais abaixo), pega o IP que o proxy do
+// Railway de fato viu -- não dá pra forjar.
+function ipCliente(req) {
+  return req.ip || req.socket.remoteAddress || 'desconhecido';
+}
+
 const _loginTentativas = new Map(); // ip -> [timestamps]
 const LOGIN_MAX_TENTATIVAS = 5;
 const LOGIN_JANELA_MS = 10 * 60 * 1000;
 
 function rateLimitLogin(req, res, next) {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+  const ip = ipCliente(req);
   const agora = Date.now();
   const tentativas = (_loginTentativas.get(ip) || []).filter(t => agora - t < LOGIN_JANELA_MS);
   if (tentativas.length >= LOGIN_MAX_TENTATIVAS) {
@@ -446,7 +457,7 @@ function criarRateLimiter(nome, maxTentativas, janelaMs) {
   }, 5 * 60 * 1000).unref?.();
 
   return function rateLimitMiddleware(req, res, next) {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+    const ip = ipCliente(req);
     const agora = Date.now();
     const tentativas = (tentativasPorIp.get(ip) || []).filter(t => agora - t < janelaMs);
     if (tentativas.length >= maxTentativas) {
@@ -521,6 +532,23 @@ app.use(session({
   rolling: true,
   cookie: { secure: true, maxAge: 8 * 60 * 60 * 1000, sameSite: 'lax' },
 }));
+
+// Proteção extra contra CSRF (revisão de segurança 23/09/2026): o cookie já é
+// SameSite=Lax (navegadores não mandam ele em POST vindo de outro site), mas
+// aqui também recusamos qualquer requisição que ALTERA dados (POST/PUT/PATCH/
+// DELETE) cujo cabeçalho Origin seja de outro site. Requisições sem Origin
+// (ex.: scripts internos, alguns navegadores antigos em GET) passam normal.
+app.use((req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const origin = req.headers.origin;
+  if (!origin || origin === 'null') return next();
+  let hostOrigem;
+  try { hostOrigem = new URL(origin).host; } catch (e) { return res.status(403).json({ ok: false, erro: 'Origem inválida.' }); }
+  const hostsValidos = [req.get('host'), req.get('x-forwarded-host')].filter(Boolean);
+  if (hostsValidos.includes(hostOrigem)) return next();
+  console.warn(`[CSRF BLOQUEADO] ${req.method} ${req.path} origin=${origin} host=${req.get('host')} ip=${ipCliente(req)}`);
+  return res.status(403).json({ ok: false, erro: 'Requisição bloqueada (origem não permitida).' });
+});
 
 // ── LOGIN PAGE ────────────────────────────────────────────────
 const LOGIN_HTML = `<!DOCTYPE html>
@@ -879,7 +907,7 @@ app.post('/login', rateLimitLogin, (req, res) => {
   }
   const u = _usuariosCache.get(login) || [..._usuariosCache.values()].find(x => (x.email||'').toLowerCase() === login);
   if (!u || !u.senha_hash || !verificarSenha(senha || '', u.senha_hash)) {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+    const ip = ipCliente(req);
     // Nunca logar a senha digitada, mesmo errada — só o usuário tentado, o
     // IP, e o horário, suficiente para notar um padrão de ataque sem criar
     // outro vazamento de dado sensível dentro dos próprios logs.
@@ -918,7 +946,12 @@ app.post('/login/configurar-2fa', rateLimitLogin, async (req, res) => {
     const pend = req.session.pendingSetup2fa;
     if (!pend) return res.json({ ok: false, erro: 'Sessão de configuração expirada. Faça login novamente.' });
     const codigo = (req.body.codigo || '').trim();
+    if (contaBloqueada(pend.usuario)) {
+      delete req.session.pendingSetup2fa;
+      return res.json({ ok: false, erro: 'Muitas tentativas erradas. Aguarde alguns minutos e faça login de novo.' });
+    }
     if (!(await verificarCodigo2FA(pend.secret, codigo))) {
+      registrarFalhaLogin(pend.usuario);
       return res.json({ ok: false, erro: 'Código inválido. Confira o horário do celular e tente de novo.' });
     }
     await sb().from('usuarios').update({
@@ -926,9 +959,13 @@ app.post('/login/configurar-2fa', rateLimitLogin, async (req, res) => {
     }).eq('usuario', pend.usuario);
     await recarregarCacheUsuarios();
     const u = _usuariosCache.get(pend.usuario);
-    const destinoFinal = completarLogin(req, u, pend.destino);
-    delete req.session.pendingSetup2fa;
-    res.json({ ok: true, destino: destinoFinal });
+    const destinoPend = pend.destino;
+    // Sessão nova ao concluir o login (ver comentário em /login/verificar-2fa).
+    req.session.regenerate(err => {
+      if (err) { console.error('regenerate sessão:', err.message); return res.json({ ok: false, erro: 'Erro interno. Tente novamente.' }); }
+      const destinoFinal = completarLogin(req, u, destinoPend);
+      req.session.save(() => res.json({ ok: true, destino: destinoFinal }));
+    });
   } catch (e) {
     console.error('Erro ao confirmar setup 2FA:', e.message);
     res.json({ ok: false, erro: 'Erro interno. Tente novamente.' });
@@ -943,16 +980,31 @@ app.get('/login/verificar-2fa', (req, res) => {
 app.post('/login/verificar-2fa', rateLimitLogin, async (req, res) => {
   const pend = req.session.pending2fa;
   if (!pend) return res.json({ ok: false, erro: 'Sessão expirada. Faça login novamente.' });
+  // Código errado do autenticador também conta pro bloqueio da CONTA (antes só
+  // senha errada contava): quem já tem a senha não pode ficar chutando os 6
+  // dígitos indefinidamente. Bloqueou -> descarta a etapa pendente e obriga a
+  // recomeçar pelo login (que também está bloqueado pelos próximos minutos).
+  if (contaBloqueada(pend.usuario)) {
+    delete req.session.pending2fa;
+    return res.json({ ok: false, erro: 'Muitas tentativas erradas. Aguarde alguns minutos e faça login de novo.' });
+  }
   const u = _usuariosCache.get(pend.usuario);
   const codigo = (req.body.codigo || '').trim();
   if (!u || !u.totp_secret || !(await verificarCodigo2FA(u.totp_secret, codigo))) {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'desconhecido';
+    const ip = ipCliente(req);
     console.warn(`[2FA FALHOU] usuário="${pend.usuario}" ip=${ip} em ${new Date().toISOString()}`);
+    registrarFalhaLogin(pend.usuario);
     return res.json({ ok: false, erro: 'Código inválido.' });
   }
-  const destinoFinal = completarLogin(req, u, pend.destino);
-  delete req.session.pending2fa;
-  res.json({ ok: true, destino: destinoFinal });
+  limparFalhasLogin(pend.usuario);
+  const destinoPend = pend.destino;
+  // Sessão NOVA ao concluir o login (id de sessão trocado) -- evita "fixação
+  // de sessão": um id de sessão plantado antes do login nunca vira um id logado.
+  req.session.regenerate(err => {
+    if (err) { console.error('regenerate sessão:', err.message); return res.json({ ok: false, erro: 'Erro interno. Tente novamente.' }); }
+    const destinoFinal = completarLogin(req, u, destinoPend);
+    req.session.save(() => res.json({ ok: true, destino: destinoFinal }));
+  });
 });
 
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));

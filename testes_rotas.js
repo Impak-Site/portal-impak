@@ -66,6 +66,16 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     if (/at .*\.js:\d+/.test(r.text)) throw new Error('vazou stack trace');
   });
 
+  console.log('\n── Segurança: CSRF por Origin ──');
+  await teste('POST vindo de outro site (Origin estrangeiro) → 403', async () => {
+    const r = await request(app).post('/login').set('Origin', 'https://site-malicioso.com').type('form').send({ usuario: 'x', senha: 'y' });
+    iguais(r.status, 403);
+  });
+  await teste('POST do próprio site (Origin = Host) passa pela checagem', async () => {
+    const r = await request(app).post('/login').set('Host', 'portal.teste').set('Origin', 'https://portal.teste').type('form').send({ usuario: 'x', senha: 'y' });
+    if (r.status === 403) throw new Error('bloqueou requisição legítima do próprio site');
+  });
+
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
   process.exit(passaram === total ? 0 : 1);
