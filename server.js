@@ -196,8 +196,37 @@ function avisarErroSessao(error, operacao) {
   return tabelaAusente;
 }
 
+// Cache em memória das sessões (revisão de desempenho 23/09/2026): toda
+// requisição autenticada fazia 1 leitura + 1 gravação (touch/rolling) na
+// tabela app_sessions do Supabase antes de responder. Agora a leitura fica
+// em cache por 60s e o touch só grava no banco se a última gravação tiver
+// mais de 5 min (a sessão dura 8h, rolling -- 5 min de folga é irrelevante).
+// Seguro com 1 instância do servidor (o Railway roda 1); o logout forçado
+// já é controlado em memória (_sessaoVersao), então não depende disto.
+const _cacheSessoes = new Map(); // sid -> { sess, expire, lidoEm, gravadoEm }
+const CACHE_SESSAO_MS = 60 * 1000;
+const TOUCH_MIN_MS = 5 * 60 * 1000;
+setInterval(() => {
+  const agora = Date.now();
+  for (const [sid, v] of _cacheSessoes) if (agora - v.lidoEm > 10 * 60 * 1000) _cacheSessoes.delete(sid);
+}, 10 * 60 * 1000);
+
 class SupabaseSessionStore extends session.Store {
   get(sid, callback) {
+    const cache = _cacheSessoes.get(sid);
+    if (cache && Date.now() - cache.lidoEm < CACHE_SESSAO_MS && new Date(cache.expire) > new Date()) {
+      return callback(null, JSON.parse(JSON.stringify(cache.sess)));
+    }
+    this._getDoBanco(sid, (err, sess, expire) => {
+      if (!err && sess) {
+        const anterior = _cacheSessoes.get(sid);
+        _cacheSessoes.set(sid, { sess, expire, lidoEm: Date.now(), gravadoEm: anterior ? anterior.gravadoEm : Date.now() });
+      }
+      callback(err, sess);
+    });
+  }
+
+  _getDoBanco(sid, callback) {
     sb().from('app_sessions').select('sess, expire').eq('sid', sid).maybeSingle()
       .then(({ data, error }) => {
         if (error) {
@@ -215,7 +244,7 @@ class SupabaseSessionStore extends session.Store {
           this.destroy(sid, () => {});
           return callback(null, null);
         }
-        callback(null, data.sess);
+        callback(null, data.sess, data.expire);
       })
       .catch(err => {
         const tabelaAusente = avisarErroSessao(err, 'get');
@@ -226,12 +255,14 @@ class SupabaseSessionStore extends session.Store {
   set(sid, sessionData, callback) {
     const maxAge = (sessionData.cookie && sessionData.cookie.maxAge) || 8 * 60 * 60 * 1000;
     const expire = new Date(Date.now() + maxAge).toISOString();
+    _cacheSessoes.set(sid, { sess: JSON.parse(JSON.stringify(sessionData)), expire, lidoEm: Date.now(), gravadoEm: Date.now() });
     sb().from('app_sessions').upsert({ sid, sess: sessionData, expire }, { onConflict: 'sid' })
       .then(({ error }) => { if (error) avisarErroSessao(error, 'set'); callback && callback(null); })
       .catch(err => { avisarErroSessao(err, 'set'); callback && callback(null); });
   }
 
   destroy(sid, callback) {
+    _cacheSessoes.delete(sid);
     sb().from('app_sessions').delete().eq('sid', sid)
       .then(({ error }) => { if (error) avisarErroSessao(error, 'destroy'); callback && callback(null); })
       .catch(err => { avisarErroSessao(err, 'destroy'); callback && callback(null); });
@@ -240,6 +271,12 @@ class SupabaseSessionStore extends session.Store {
   touch(sid, sessionData, callback) {
     const maxAge = (sessionData.cookie && sessionData.cookie.maxAge) || 8 * 60 * 60 * 1000;
     const expire = new Date(Date.now() + maxAge).toISOString();
+    const cache = _cacheSessoes.get(sid);
+    if (cache) {
+      cache.expire = expire;
+      if (Date.now() - cache.gravadoEm < TOUCH_MIN_MS) return callback && callback(null);
+      cache.gravadoEm = Date.now();
+    }
     sb().from('app_sessions').update({ expire }).eq('sid', sid)
       .then(({ error }) => { if (error) avisarErroSessao(error, 'touch'); callback && callback(null); })
       .catch(err => { avisarErroSessao(err, 'touch'); callback && callback(null); });
@@ -451,6 +488,13 @@ app.use(helmet({
 // recarregada a cada 30s por cada aba aberta -- JSON comprime ~5-10x, então
 // isso reduz direto o tempo de carregamento, principalmente fora do escritório.
 app.use(compression());
+// Arquivos estáticos (JS/CSS/imagens) ANTES da sessão (revisão de desempenho
+// 23/09/2026, medido ao vivo: ~0,45s até pra um ícone de 2KB). Com a sessão
+// na frente, CADA um dos ~25 arquivos de uma tela do Controle fazia uma
+// consulta de sessão no Supabase (+ uma gravação, por causa do rolling)
+// antes de ser entregue. Nada muda em segurança: os estáticos já eram
+// servidos sem checar login (a proteção está nas rotas /api e nas páginas).
+app.use(express.static(__dirname));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Necessário para o Express reconhecer conexões como HTTPS mesmo estando
@@ -477,7 +521,6 @@ app.use(session({
   rolling: true,
   cookie: { secure: true, maxAge: 8 * 60 * 60 * 1000, sameSite: 'lax' },
 }));
-app.use(express.static(__dirname));
 
 // ── LOGIN PAGE ────────────────────────────────────────────────
 const LOGIN_HTML = `<!DOCTYPE html>
@@ -1431,11 +1474,35 @@ app.get('/api/controle/v2/processos/versao', auth('controle','financeiro','resul
 
 app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
-    // Paginado em blocos de 1000: o Supabase/PostgREST corta qualquer
-    // select() sem paginação em 1000 linhas -- mesmo problema que já tinha
-    // acontecido com controle_arquivos logo abaixo. Quando a tabela de
-    // processos passar de 1000, os mais antigos sumiriam da lista em
-    // silêncio. Ordenado por updated_at + id pra paginação estável.
+    // Nomes dos arquivos do GED de cada processo (usado pelo alerta "embarque
+    // essa semana sem CI/PL/Draft", pedido Emanuelly 03/09/2026 -- checagem
+    // por nome de arquivo). Buscado EM PARALELO com os processos (revisão de
+    // desempenho 23/09/2026 -- antes era um depois do outro). Paginado em
+    // blocos de 1000 (limite padrão do Supabase; bug QD-IMK-LPL-2605-1589,
+    // 08/09/2026) e ordenado por id pra paginação estável.
+    const buscarNomesGED = (async () => {
+      try {
+        const arquivos = [];
+        for (let offset = 0; ; offset += 1000) {
+          const { data: bloco, error: erroArquivos } = await sb()
+            .from('controle_arquivos')
+            .select('processo_id, nome')
+            .order('id', { ascending: true })
+            .range(offset, offset + 999);
+          if (erroArquivos) throw new Error(erroArquivos.message);
+          if (!bloco || !bloco.length) break;
+          arquivos.push(...bloco);
+          if (bloco.length < 1000) break;
+        }
+        return arquivos;
+      } catch (e) {
+        console.warn('controle v2 GET: falha ao buscar nomes de arquivos GED (alerta CI/PL/Draft fica sem dado):', e.message);
+        return null;
+      }
+    })();
+
+    // Processos paginados em blocos de 1000 (acima disso os mais antigos
+    // sumiriam da lista em silêncio). Ordenado por updated_at + id.
     const processos = [];
     for (let offset = 0; ; offset += 1000) {
       const { data: bloco, error } = await sb()
@@ -1450,39 +1517,11 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
       if (bloco.length < 1000) break;
     }
 
-    // Anexa a cada processo só os NOMES dos arquivos anexados no GED (não o
-    // conteúdo/URL — isso é buscado à parte quando o modal abre). Usado pelo
-    // alerta "embarque essa semana sem CI/PL/Draft" (pedido Emanuelly
-    // 03/09/2026): como não existe campo estruturado pra Packing List/Draft,
-    // a checagem é feita por nome de arquivo (ver verificarAlertas,
-    // controle-core.js). 1 query em lote em vez de 1 por processo.
-    try {
-      // Supabase/PostgREST aplica um limite padrão de 1000 linhas por
-      // select() sem paginação explícita. Com a tabela controle_arquivos já
-      // passando disso, processos com uploads mais recentes ficavam de fora
-      // da resposta e o alerta de CI/PL/Draft (e a lista de nomes no GED)
-      // ficava vazio mesmo com arquivo anexado (bug reportado por Emanuelly
-      // 08/09/2026 no processo QD-IMK-LPL-2605-1589). Corrigido paginando
-      // em blocos de 1000 até não vir mais nada.
-      const arquivos = [];
-      const PAGINA = 1000;
-      for (let offset = 0; ; offset += PAGINA) {
-        const { data: bloco, error: erroArquivos } = await sb()
-          .from('controle_arquivos')
-          .select('processo_id, nome')
-          .range(offset, offset + PAGINA - 1);
-        if (erroArquivos) throw new Error(erroArquivos.message);
-        if (!bloco || !bloco.length) break;
-        arquivos.push(...bloco);
-        if (bloco.length < PAGINA) break;
-      }
-      if (arquivos && arquivos.length) {
-        const porProcesso = {};
-        arquivos.forEach(a => { (porProcesso[a.processo_id] = porProcesso[a.processo_id] || []).push(a.nome); });
-        processos.forEach(p => { p.ged_nomes = porProcesso[p.id] || []; });
-      }
-    } catch (e) {
-      console.warn('controle v2 GET: falha ao buscar nomes de arquivos GED (alerta CI/PL/Draft fica sem dado):', e.message);
+    const arquivos = await buscarNomesGED;
+    if (arquivos && arquivos.length) {
+      const porProcesso = {};
+      arquivos.forEach(a => { (porProcesso[a.processo_id] = porProcesso[a.processo_id] || []).push(a.nome); });
+      processos.forEach(p => { p.ged_nomes = porProcesso[p.id] || []; });
     }
 
     res.json({ ok: true, processos });
