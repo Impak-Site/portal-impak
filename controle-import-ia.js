@@ -37,7 +37,8 @@ async function importarPlanilha(input){
   addLog('Lendo arquivo...', '#7dd3fc');
 
   try{
-    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    if(!window.XLSX){ await new Promise((ok,falha)=>{ const sc=document.createElement('script'); sc.src='/vendor/xlsx-0.18.5.full.min.js'; sc.onload=ok; sc.onerror=falha; document.head.appendChild(sc); }); } // servido localmente (relatório de segurança, item 13)
+    const XLSX = window.XLSX;
     const buf = await file.arrayBuffer();
     // raw:true para não converter datas automaticamente (evita conflito com cellDates)
     const wb = XLSX.read(buf, {type:'array', cellDates:true, raw:false});

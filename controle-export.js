@@ -63,6 +63,8 @@ async function exportarRelatorio(){
   });
 
   try{
+    if(!window.XLSX){ await new Promise((ok,falha)=>{ const sc=document.createElement('script'); sc.src='/vendor/xlsx-0.18.5.full.min.js'; sc.onload=ok; sc.onerror=falha; document.head.appendChild(sc); }); }
+    const XLSX = window.XLSX;
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [12,18,18,16,11,11,11,11,14,16,22,14,14,14,8,13,8,14,14,14,14,16,30].map(w=>({wch:w}));
@@ -78,7 +80,8 @@ async function exportarRelatorio(){
 async function exportarExcel(){
   showToast('Gerando planilha...','info');
   try{
-    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+    if(!window.XLSX){ await new Promise((ok,falha)=>{ const sc=document.createElement('script'); sc.src='/vendor/xlsx-0.18.5.full.min.js'; sc.onload=ok; sc.onerror=falha; document.head.appendChild(sc); }); } // servido localmente (relatório de segurança, item 13)
+    const XLSX = window.XLSX;
     const lista = filtrarProcessos(); // exporta a visão atual (com filtros aplicados)
 
     const linhas = lista.map(p=>{
