@@ -1849,13 +1849,13 @@ function montarDRE(p){
     { label:'PIS',                     valor:v('pis') },
     { label:'COFINS',                  valor:v('cofins') },
     { label:'Taxa Siscomex',           valor:v('siscomex') },
-    // Emissão L.I. -- pedido do Jean (23/09/2026): já entrava no TOTAL CUSTOS
-    // (soma o real_json inteiro), mas não tinha linha própria no DRE, então
-    // parecia que não tinha sido considerada. Valor PAGO (não o cobrado).
-    { label:'Emissão L.I.',            valor:v('emissao_li') },
     { label:'Marinha Mercante/AFRMM',  valor:v('marinha') },
     { label:'ICMS',                    valor:v('icms') },
     { label:'Armazenagem',             valor:v('armazenagem') },
+    // Emissão L.I. -- pedido do Jean (23/09/2026): já entrava no TOTAL CUSTOS,
+    // mas não tinha linha própria no DRE. Faz parte do Adiantamento Porto
+    // (Liberação), logo depois de Armazenagem. Valor PAGO (não o cobrado).
+    { label:'Emissão L.I.',            valor:v('emissao_li') },
   ];
   const agenteFreteItens = [
     { label:'Frete Internacional',              valor:v('frete') },
