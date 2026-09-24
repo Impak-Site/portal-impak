@@ -1058,7 +1058,7 @@ function renderParcelas(){
   if(!document.getElementById('lista-bancos-cambio')){
     document.body.insertAdjacentHTML('beforeend', datalistBancosCambioHtml());
   }
-  if(!_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
+  if(!_parcelas.length) _parcelas = [{...parcelaVazia(), label:'Inicial'}, {...parcelaVazia(), label:'Final'}];
   const secao = (conteudo, primeira) => `<div style="display:grid;gap:14px;align-items:end;${primeira?'':'margin-top:16px;padding-top:16px;border-top:1px solid var(--border);'}grid-template-columns:${conteudo.cols};">${conteudo.html}</div>`;
   wrap.innerHTML = _parcelas.map((pc,i)=>`
     <div style="border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:12px;background:#fff;">
