@@ -839,6 +839,8 @@ async function atualizarProcessosSeMudou(){
 // usa a cópia local na hora -- sem baixar nada. Se mudou, baixa normalmente.
 // A cópia é apagada no logout/tela de login (ver LOGIN_HTML em server.js).
 const _CACHE_DB = 'impakos-cache';
+// Formato 2 (24/09/2026): lista sem conferencia_json. Cópias antigas são ignoradas.
+const _CACHE_FORMATO = 2;
 function _abrirCacheDB(){
   return new Promise((resolve, reject)=>{
     if(typeof indexedDB === 'undefined') return reject(new Error('sem indexedDB'));
@@ -862,7 +864,7 @@ async function salvarCacheProcessos(versao, processos){
   if(!versao) return;
   try{
     const db = await _abrirCacheDB();
-    db.transaction('kv','readwrite').objectStore('kv').put({ versao, processos, salvo_em: Date.now() }, 'processos');
+    db.transaction('kv','readwrite').objectStore('kv').put({ versao, processos, formato: _CACHE_FORMATO, salvo_em: Date.now() }, 'processos');
   }catch(e){ /* cache é só otimização -- falhar aqui não pode quebrar nada */ }
 }
 async function buscarVersaoProcessos(){
@@ -910,19 +912,76 @@ function aplicarListaProcessos(lista, silencioso){
   }
 }
 
+// ── ATUALIZAÇÃO INCREMENTAL (24/09/2026) ──
+// Em vez de baixar a lista inteira sempre que algo muda, pede ao servidor só
+// os processos alterados desde a última alteração que já temos (?desde=) e
+// junta com a cópia local. Qualquer dúvida (resposta estranha, quantidade não
+// bate com a versão) devolve null e o chamador baixa a lista completa.
+function _maiorUpdatedAt(lista){
+  let m = '';
+  (lista||[]).forEach(p=>{ if(p && p.updated_at && p.updated_at > m) m = p.updated_at; });
+  return m;
+}
+async function _buscarIncremental(base, versao){
+  if(!Array.isArray(base) || !base.length || !versao) return null;
+  const desde = _maiorUpdatedAt(base);
+  if(!desde) return null;
+  const r = await fetch('/api/controle/v2/processos?desde=' + encodeURIComponent(desde));
+  if(!r.ok) return null;
+  const d = await r.json();
+  if(!d || !d.ok || !d.incremental || !Array.isArray(d.ids) || !Array.isArray(d.processos) || !d.ged) return null;
+  const porId = new Map(base.map(p=>[p.id, p]));
+  d.processos.forEach(p=>{ if(p && p.id) porId.set(p.id, p); });
+  const ids = new Set(d.ids);
+  const lista = [...porId.values()].filter(p=>ids.has(p.id));
+  lista.forEach(p=>{ p.ged_nomes = d.ged[p.id] || []; });
+  const qtd = parseInt(String(versao).split('|')[0], 10);
+  if(!Number.isFinite(qtd) || lista.length !== qtd) return null;
+  lista.sort((a,b)=> String(b.updated_at||'').localeCompare(String(a.updated_at||'')) || String(a.id).localeCompare(String(b.id)));
+  return lista;
+}
+
 let _cacheInicialTentado = false;
 let _prefetchVersao = null, _prefetchCache = null;
-async function carregarProcessos(silencioso){
+let _ultimaCargaTotal = 0; // última vez que a lista veio INTEIRA do servidor
+async function carregarProcessos(silencioso, forcarCompleto){
   // 1ª carga da página: tenta a cópia local se ela ainda estiver atual.
   if(!_cacheInicialTentado){
     _cacheInicialTentado = true;
     const [cache, versaoAtual] = await Promise.all([_prefetchCache || lerCacheProcessos(), _prefetchVersao || buscarVersaoProcessos()]);
     _prefetchCache = _prefetchVersao = null;
-    if(cache && versaoAtual && cache.versao === versaoAtual && Array.isArray(cache.processos)){
+    const cacheOk = cache && cache.formato === _CACHE_FORMATO && Array.isArray(cache.processos);
+    if(cacheOk && versaoAtual && cache.versao === versaoAtual){
       _versaoProcessos = versaoAtual;
+      _ultimaCargaTotal = cache.salvo_em || 0;
       aplicarListaProcessos(cache.processos, true);
       return;
     }
+    // Cópia local existe mas está desatualizada: baixa só o que mudou.
+    if(cacheOk && versaoAtual && !forcarCompleto){
+      try{
+        const lista = await _buscarIncremental(cache.processos, versaoAtual);
+        if(lista){
+          _versaoProcessos = versaoAtual;
+          _ultimaCargaTotal = cache.salvo_em || 0;
+          aplicarListaProcessos(lista, true);
+          salvarCacheProcessos(versaoAtual, _processos);
+          return;
+        }
+      }catch(e){ /* cai na carga completa */ }
+    }
+  } else if(!forcarCompleto && _processos && _processos.length && Date.now() - _ultimaCargaTotal < 30*60*1000){
+    // Auto-refresh com a página aberta: também só o que mudou.
+    try{
+      const versao = await buscarVersaoProcessos();
+      const lista = await _buscarIncremental(_processos, versao);
+      if(lista){
+        _versaoProcessos = versao;
+        aplicarListaProcessos(lista, true);
+        salvarCacheProcessos(versao, _processos);
+        return;
+      }
+    }catch(e){ /* cai na carga completa */ }
   }
   if(!silencioso) showToast('Carregando...','info');
   try{
@@ -934,6 +993,7 @@ async function carregarProcessos(silencioso){
     const r = await fetch('/api/controle/v2/processos');
     const d = await r.json();
     if(d.ok){
+      _ultimaCargaTotal = Date.now();
       aplicarListaProcessos(d.processos || [], silencioso);
       if(versao){ _versaoProcessos = versao; salvarCacheProcessos(versao, _processos); }
     }

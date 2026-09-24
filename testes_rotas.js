@@ -48,6 +48,14 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     const r = await request(app).get('/api/controle/v2/processos');
     iguais(r.status, 401);
   });
+  await teste('GET /api/controle/v2/processos?desde= sem sessão → 401', async () => {
+    const r = await request(app).get('/api/controle/v2/processos?desde=2026-09-24T10:00:00.000000%2B00:00');
+    iguais(r.status, 401);
+  });
+  await teste('GET /api/controle/v2/processo/:id sem sessão → 401', async () => {
+    const r = await request(app).get('/api/controle/v2/processo/abc');
+    iguais(r.status, 401);
+  });
 
   console.log('\n── Rotas: respostas públicas ──');
   await teste('GET /health responde 200 sem expor segredos', async () => {

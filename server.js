@@ -1760,13 +1760,25 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
       }
     })();
 
+    // Atualização incremental (24/09/2026): com ?desde=<updated_at>, devolve
+    // só os processos alterados depois dessa data + a lista de ids de todos
+    // (pro navegador remover os excluídos). Os nomes do GED vêm completos
+    // (são leves) porque subir um anexo não mexe no updated_at do processo.
+    const desde = typeof req.query.desde === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.+Z-]{8,40}$/.test(req.query.desde) ? req.query.desde : null;
+    let todosIds = null;
+    if (desde) {
+      const r = await buscarTodosProcessos('id');
+      if (r.error) throw new Error(r.error.message);
+      todosIds = r.data.map(x => x.id);
+    }
+
     // Processos paginados em blocos de 1000 (acima disso os mais antigos
     // sumiriam da lista em silêncio). Ordenado por updated_at + id.
     const processos = [];
     for (let offset = 0; ; offset += 1000) {
-      const { data: bloco, error } = await sb()
-        .from('controle_processos')
-        .select('*')
+      let q = sb().from('controle_processos').select('*');
+      if (desde) q = q.gte('updated_at', desde);
+      const { data: bloco, error } = await q
         .order('updated_at', { ascending: false })
         .order('id', { ascending: true })
         .range(offset, offset + 999);
@@ -1777,10 +1789,11 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
     }
 
     const arquivos = await buscarNomesGED;
-    if (arquivos && arquivos.length) {
-      const porProcesso = {};
-      arquivos.forEach(a => { (porProcesso[a.processo_id] = porProcesso[a.processo_id] || []).push(a.nome); });
-      processos.forEach(p => { p.ged_nomes = porProcesso[p.id] || []; });
+    let gedPorProcesso = null;
+    if (arquivos) {
+      gedPorProcesso = {};
+      arquivos.forEach(a => { (gedPorProcesso[a.processo_id] = gedPorProcesso[a.processo_id] || []).push(a.nome); });
+      processos.forEach(p => { p.ged_nomes = gedPorProcesso[p.id] || []; });
     }
 
     // Desempenho (24/09/2026): conferencia_json (histórico completo das
@@ -1798,9 +1811,11 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
     // na frente do monitor não deve conseguir ler pelo DevTools.
     if (somenteLeitura(req.session.modulos)) processos.forEach(removerCamposFinanceiros);
 
+    if (desde) return res.json({ ok: true, incremental: true, processos, ids: todosIds, ged: gedPorProcesso });
     res.json({ ok: true, processos });
   } catch (e) {
     console.error('controle v2 GET erro:', e.message);
+    if (req.query.desde) return res.status(500).json({ ok: false, erro: e.message });
     res.json({ ok: true, processos: [] });
   }
 });
