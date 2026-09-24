@@ -587,7 +587,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Chegada</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_data_chegada" value="${esc(p.data_chegada)}"
-              onchange="moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (Previsão de Chegada)');atualizarFaseEmTempoReal()"></div>
+              onchange="moverDataFuturaParaPrevisao('f_data_chegada','f_eta','ETA (Previsão de Chegada)');atualizarFaseEmTempoReal();atualizarVencimentoSaldoPorETA()"></div>
           <div class="form-group"><label class="form-label">Presença de Carga</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armazenagem Vence</label>
@@ -1725,8 +1725,14 @@ function renderPagamentoCampos(){
 // atualizarDataPagamentoPrazo(). Isso faz o câmbio futuro já aparecer no
 // Controle Cambial antes mesmo de haver Data de Embarque Efetiva (que só
 // existe mais pra frente no processo).
+// 24/09/2026 (Paula): passou a ACOMPANHAR o ETA/Chegada -- antes só
+// preenchia se estivesse vazio, e quando o navio atrasava o vencimento
+// ficava no ETA antigo (processo aparecia como câmbio "atrasado"). Regra da
+// planilha dela: pagamento = chegada - 10 dias. Exceções: câmbio já
+// fechado/pago, e 100% a Prazo com "Prazo (dias)" (conta do embarque).
 function atualizarVencimentoSaldoPorETA(){
-  const eta = document.getElementById('f_eta')?.value;
+  const chegada = document.getElementById('f_data_chegada')?.value;
+  const eta = chegada || document.getElementById('f_eta')?.value;
   if(!eta) return;
   const d = parseDataLocal(eta);
   if(!d) return;
@@ -1735,10 +1741,12 @@ function atualizarVencimentoSaldoPorETA(){
   const tipo = document.getElementById('f_pi_pagamento')?.value;
   if(tipo === 'PRAZO'){
     const destino = document.getElementById('f_pi_data_saldo');
-    if(destino && !destino.value) destino.value = vencimento;
+    const prazoDias = parseInt(document.getElementById('f_pi_prazo_dias')?.value, 10);
+    const pago = document.getElementById('f_pi_pago')?.value === 'true';
+    if(destino && !prazoDias && !pago && destino.value !== vencimento){ destino.value = vencimento; try{ renderPagamentoInfoLive(); }catch(e){} }
   } else if(tipo === 'PARCELADO' && Array.isArray(_parcelas)){
     const idx = _parcelas.findIndex(pc => pc.label === 'Final');
-    if(idx !== -1 && !_parcelas[idx].data_vencimento && !_parcelas[idx].cambio_fechado){
+    if(idx !== -1 && !_parcelas[idx].cambio_fechado && _parcelas[idx].data_vencimento !== vencimento){
       _parcelas[idx].data_vencimento = vencimento;
       renderParcelas();
       renderPagamentoInfoLive();

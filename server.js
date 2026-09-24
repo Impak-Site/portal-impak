@@ -1686,6 +1686,23 @@ app.get('/api/controle/v2/processos/versao', auth('controle','financeiro','resul
   }
 });
 
+// Vencimento do saldo 100% a Prazo (sem "Prazo (dias)") = chegada - 10 dias,
+// igual ao Controle Cambial (controle-core.js vencimentoPelaChegada). Evita
+// alerta de "PI vencida" quando o navio atrasou e o ETA mudou (Paula, 24/09/2026).
+function vencimentoPelaChegada(p) {
+  const base = String(p.data_chegada || p.eta || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return null;
+  const d = new Date(base + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 10);
+  return d.toISOString().slice(0, 10);
+}
+function vencimentoSaldoPI(p) {
+  if (p.pi_pagamento === 'PRAZO' && !parseInt(p.pi_prazo_dias, 10)) {
+    const v = vencimentoPelaChegada(p);
+    if (v) return v;
+  }
+  return p.pi_data_saldo || null;
+}
+
 const CAMPOS_FINANCEIROS_PROCESSO = ['pi_valor_usd','ci_valor_usd','pi_parcelas_json','pi_cambio','pi_cambio_entrada','pi_cambio_saldo',
   'pi_cambio_fechado','pi_cambio_custo','pi_cambio_banco','pi_valor_recebido_cliente','real_json','real_cambio','estimativa_json',
   'custos_cotados_json','nf_entrada_valor','nf_saida_valor','valor_frete','demurrage_valor'];
@@ -3686,7 +3703,7 @@ app.post('/api/chat', auth(...MODULOS_TRABALHO), rateLimitChat, async (req, res)
     const etaVenc = ativos.filter(p => p.eta && p.fase === 'EMBARCADO' && new Date(p.eta) < hoje);
     const semana  = new Date(hoje); semana.setDate(hoje.getDate() + 7);
     const etaSem  = ativos.filter(p => p.eta && new Date(p.eta) >= hoje && new Date(p.eta) <= semana && p.fase === 'EMBARCADO');
-    const piVenc  = ativos.filter(p => p.pi_data_saldo && !p.pi_pago && new Date(p.pi_data_saldo) < hoje);
+    const piVenc  = ativos.filter(p => { const v = vencimentoSaldoPI(p); return v && !p.pi_pago && new Date(v) < hoje; });
 
     // Montar contexto compacto (evitar context window enorme)
     const ctx = {
@@ -4222,7 +4239,7 @@ const COLS_ALERTAS = [
   'demurrage_vencimento','data_devolucao_vazio',
   'aprovacao_hbl','solicitacao_li','docs_enviados_despachante',
   'pi_valor_usd','pi_pagamento','pi_pago','pi_cambio','pi_entrada_pct',
-  'pi_data_entrada','pi_data_saldo','pi_cambio_entrada','pi_parcelas_json',
+  'pi_data_entrada','pi_data_saldo','pi_cambio_entrada','pi_parcelas_json','pi_prazo_dias','finalidade',
   'vendas_json','conferencia_json','updated_at',
 ].join(',');
 // Processos ativos (não finalizados) só com as colunas acima -- usado por
@@ -4251,7 +4268,7 @@ return Math.ceil((d - hoje) / 86400000);
 const demCrit = ativos.filter(p => { const d = demDias(p); return d !== null && d <= 5; });
 const etaVenc = ativos.filter(p => p.eta && p.fase === 'EMBARCADO' && new Date(p.eta) < hoje);
 const etaSem = ativos.filter(p => p.eta && new Date(p.eta) >= hoje && new Date(p.eta) <= semana && p.fase === 'EMBARCADO');
-const piVenc = ativos.filter(p => p.pi_data_saldo && !p.pi_pago && new Date(p.pi_data_saldo) < hoje);
+const piVenc = ativos.filter(p => { const v = vencimentoSaldoPI(p); return v && !p.pi_pago && new Date(v) < hoje; });
 const total = demCrit.length + etaVenc.length + etaSem.length + piVenc.length;
 if (!total) { await marcarAlertasEnviadosHoje(); return 0; }
 const escHtmlAlerta = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
@@ -4261,7 +4278,7 @@ let html = `<div style="font-family:sans-serif;max-width:640px;margin:0 auto;"><
 html += tabela('Demurrage critico (ate 5 dias)', demCrit, p => { const d = demDias(p); return d < 0 ? `Vencido ha ${-d}d` : `Vence em ${d}d`; });
 html += tabela('ETA vencido (ainda embarcado)', etaVenc, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
 html += tabela('Chegando essa semana', etaSem, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
-html += tabela('PI vencida (saldo nao pago)', piVenc, p => `Venceu: ${new Date(p.pi_data_saldo).toLocaleDateString('pt-BR')}${p.pi_valor_usd ? ' - US$ ' + Number(p.pi_valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2}) : ''}`);
+html += tabela('PI vencida (saldo nao pago)', piVenc, p => `Venceu: ${new Date(vencimentoSaldoPI(p)).toLocaleDateString('pt-BR')}${p.pi_valor_usd ? ' - US$ ' + Number(p.pi_valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2}) : ''}`);
 html += `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automatico diario do IMPAK Portal.</p></div>`;
 let destinatarios = (process.env.ALERTA_EMAIL_PARA || '').split(',').map(s => s.trim()).filter(Boolean);
 if (!destinatarios.length) {
@@ -4488,8 +4505,9 @@ function _parcelasAbertasSemana(p, inicioStr, fimStr){
     parcelas.forEach((pc, i) => {
       const v = parseFloat(pc.valor_usd) || 0;
       if (!v || pc.cambio_fechado) return; // já pago/fechado, não é mais pendência da semana
-      if (!pc.data_vencimento || pc.data_vencimento < inicioStr || pc.data_vencimento > fimStr) return;
-      linhas.push({ parcela: pc.label || ('Parcela '+(i+1)), valorUsd: v, vencimento: pc.data_vencimento, cambioPrevisto: parseFloat(p.pi_cambio)||null });
+      const venc = (pc.label === 'Final' && vencimentoPelaChegada(p)) || pc.data_vencimento;
+      if (!venc || venc < inicioStr || venc > fimStr) return;
+      linhas.push({ parcela: pc.label || ('Parcela '+(i+1)), valorUsd: v, vencimento: venc, cambioPrevisto: parseFloat(p.pi_cambio)||null });
     });
   } else if (p.pi_pagamento === 'ENTRADA_SALDO') {
     const pct = parseFloat(p.pi_entrada_pct||30)/100;
@@ -4500,7 +4518,7 @@ function _parcelasAbertasSemana(p, inicioStr, fimStr){
       linhas.push({ parcela: 'Saldo', valorUsd: valorTotal*(1-pct), vencimento: p.pi_data_saldo, cambioPrevisto: parseFloat(p.pi_cambio)||null });
     }
   } else if (p.pi_pagamento === 'VISTA' || p.pi_pagamento === 'PRAZO') {
-    const vencimento = p.pi_pagamento === 'PRAZO' ? p.pi_data_saldo : p.pi_data_entrada;
+    const vencimento = p.pi_pagamento === 'PRAZO' ? vencimentoSaldoPI(p) : p.pi_data_entrada;
     if (!p.pi_pago && vencimento && vencimento >= inicioStr && vencimento <= fimStr) {
       linhas.push({ parcela: 'Único', valorUsd: valorTotal, vencimento, cambioPrevisto: parseFloat(p.pi_cambio)||null });
     }

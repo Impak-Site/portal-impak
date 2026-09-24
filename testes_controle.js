@@ -1582,6 +1582,9 @@ teste('atualizarVencimentoSaldoPorETA: PRAZO com Data Pagamento vazia -- preench
   vm.runInContext(`
     document.getElementById('f_pi_pagamento').value = 'PRAZO';
     document.getElementById('f_eta').value = '2026-11-20';
+    document.getElementById('f_pi_prazo_dias').value = '';
+    document.getElementById('f_pi_pago').value = 'false';
+    document.getElementById('f_data_chegada').value = '';
     document.getElementById('f_pi_data_saldo').value = '';
   `, sandbox);
   sandbox.atualizarVencimentoSaldoPorETA();
@@ -1589,15 +1592,18 @@ teste('atualizarVencimentoSaldoPorETA: PRAZO com Data Pagamento vazia -- preench
   iguais(saldo, '2026-11-10', 'ETA 20/11 - 10 dias = 10/11');
 });
 
-teste('atualizarVencimentoSaldoPorETA: PRAZO com Data Pagamento já preenchida -- não sobrescreve', () => {
+teste('atualizarVencimentoSaldoPorETA: PRAZO com Data Pagamento de ETA antigo -- acompanha o ETA novo (Paula 24/09/2026)', () => {
   vm.runInContext(`
     document.getElementById('f_pi_pagamento').value = 'PRAZO';
     document.getElementById('f_eta').value = '2026-11-20';
+    document.getElementById('f_pi_prazo_dias').value = '';
+    document.getElementById('f_pi_pago').value = 'false';
+    document.getElementById('f_data_chegada').value = '';
     document.getElementById('f_pi_data_saldo').value = '2026-10-01';
   `, sandbox);
   sandbox.atualizarVencimentoSaldoPorETA();
   const saldo = vm.runInContext(`document.getElementById('f_pi_data_saldo').value`, sandbox);
-  iguais(saldo, '2026-10-01', 'data já digitada pelo usuário (ou calculada por atualizarDataPagamentoPrazo) não pode ser sobrescrita');
+  iguais(saldo, '2026-11-10', 'navio atrasou: vencimento tem que acompanhar o ETA novo (ETA - 10)');
 });
 
 teste('atualizarVencimentoSaldoPorETA: sem ETA preenchido -- não faz nada', () => {
@@ -1625,14 +1631,14 @@ teste('atualizarVencimentoSaldoPorETA: PARCELADO -- preenche Data Vencimento da 
   iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '2026-09-15', 'parcela Inicial não deveria ser mexida');
 });
 
-teste('atualizarVencimentoSaldoPorETA: PARCELADO -- não sobrescreve Data Vencimento já preenchida na Final', () => {
+teste('atualizarVencimentoSaldoPorETA: PARCELADO -- Final em aberto acompanha o ETA novo', () => {
   vm.runInContext(`
     document.getElementById('f_pi_pagamento').value = 'PARCELADO';
     document.getElementById('f_eta').value = '2026-11-20';
     _parcelas = [{label:'Final', valor_usd:'20217.60', data_vencimento:'2026-10-05', cambio_fechado:''}];
   `, sandbox);
   sandbox.atualizarVencimentoSaldoPorETA();
-  iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '2026-10-05', 'não pode sobrescrever data já digitada');
+  iguais(vm.runInContext('_parcelas[0].data_vencimento', sandbox), '2026-11-10', 'Final sem câmbio fechado segue ETA - 10');
 });
 
 teste('atualizarVencimentoSaldoPorETA: PARCELADO -- não mexe na Final se o câmbio já foi fechado', () => {
@@ -2003,6 +2009,25 @@ teste('listarAdiantamentosCliente: soma câmbio pago (USD x taxa) e recebido do 
   iguais(a.pendentes, 1, 'Final tem câmbio fechado sem recebimento lançado');
   const b = out.find(g=>g.referencia==='UD-B');
   aproxIgual(b.diferenca, 100, 0.01, 'cliente pagou R$ 100 a mais que o câmbio');
+});
+
+
+teste('listarPagamentosPI: PRAZO em aberto usa chegada/ETA - 10 (não o vencimento gravado com ETA antigo)', () => {
+  const r = sandbox.listarPagamentosPI([{ id:'x', referencia:'UD26-103', pi_valor_usd:35332.56, pi_pagamento:'PRAZO', pi_data_saldo:'2026-09-18', eta:'2026-10-05', finalidade:'ENCOMENDA', cliente:'IRMAOS SILVA S/A' }]);
+  iguais(r[0].vencimento, '2026-09-25', 'ETA 05/10 - 10 = 25/09 (igual à planilha da Paula)');
+  iguais(r[0].impakPaga, false, 'Encomenda: cliente paga');
+  iguais(r[0].cliente, 'IRMAOS SILVA S/A', 'cliente vem junto');
+});
+teste('listarPagamentosPI: PRAZO com Prazo (dias) mantém vencimento gravado (conta do embarque)', () => {
+  const r = sandbox.listarPagamentosPI([{ id:'x', referencia:'A', pi_valor_usd:1000, pi_pagamento:'PRAZO', pi_prazo_dias:60, pi_data_saldo:'2026-09-18', eta:'2026-10-05' }]);
+  iguais(r[0].vencimento, '2026-09-18', 'regra de prazo a partir do embarque prevalece');
+});
+teste('listarPagamentosPI: Parcelado — Final em aberto segue chegada; Importação Direta marca IMPAK paga', () => {
+  const r = sandbox.listarPagamentosPI([{ id:'x', referencia:'26CFXPAK-001', pi_valor_usd:33232, pi_pagamento:'PARCELADO', eta:'2026-10-05', data_chegada:'2026-10-08', finalidade:'IMPORTACAO_DIRETA',
+    pi_parcelas_json: JSON.stringify([{label:'Inicial', valor_usd:9969.6, data_vencimento:'2026-07-09', cambio_fechado:'5.1173'},{label:'Final', valor_usd:23262.4, data_vencimento:'2026-09-18', cambio_fechado:''}]) }]);
+  iguais(r[0].vencimento, '2026-07-09', 'Inicial (paga) não muda');
+  iguais(r[1].vencimento, '2026-09-28', 'Data de Chegada real 08/10 tem prioridade sobre o ETA: 08/10 - 10 = 28/09');
+  iguais(r[1].impakPaga, true, 'Importação Direta: IMPAK paga');
 });
 
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

@@ -1291,6 +1291,24 @@ function chegandoEmDias(proc, dias){
 //  - única (Vista/Prazo): usa pi_pago mesmo — é o único pagamento do processo.
 //  - entrada: considera paga se já tem câmbio de entrada fechado registrado.
 //  - saldo: usa pi_pago — é a parcela que fecha o processo (ver confirmarCambioComo).
+// Vencimento do saldo a pagar = chegada - 10 dias (regra da planilha de
+// câmbios da Paula: PAG = DATA de chegada - 10). Usa a Data de Chegada real
+// se existir, senão o ETA previsto. Relato Paula 24/09/2026: o vencimento
+// ficava gravado com o ETA antigo (ex.: UD26-103 aparecia "6d atrasado" com
+// vencimento 18/09, mas o navio atrasou e o ETA agora é 05/10 → 25/09).
+function vencimentoPelaChegada(p){
+  const base = (p && (p.data_chegada || p.eta)) || '';
+  if(!/^\d{4}-\d{2}-\d{2}/.test(base)) return null;
+  const d = new Date(base.slice(0,10)+'T12:00:00');
+  if(isNaN(d)) return null;
+  d.setDate(d.getDate() - 10);
+  return d.toISOString().slice(0,10);
+}
+// Quem fecha o câmbio com dinheiro próprio: na Importação Direta é a IMPAK
+// (risco cambial nosso — a Paula acompanha esses de perto e fecha antes se o
+// dólar cair); na Encomenda o cliente adianta o valor.
+function impakPagaCambio(p){ return (p && p.finalidade) === 'IMPORTACAO_DIRETA'; }
+
 function listarPagamentosPI(processos){
   const pagamentos = [];
   (processos||[]).forEach(p=>{
@@ -1300,7 +1318,8 @@ function listarPagamentosPI(processos){
     // útil" pra identificar rapidamente a qual DI/DUIMP um pagamento de
     // câmbio pertence, sem precisar abrir o processo. Pode vir vazio (DI só
     // é registrada depois, na fase Registro DI) — tratado como '—' na UI.
-    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'' };
+    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'', impakPaga: impakPagaCambio(p) };
+    const vencChegada = vencimentoPelaChegada(p);
     // banco/custoOperacao: registrados a pedido do Ayslan (09/09/2026,
     // "se você fosse o financeiro, o que gostaria de ver") -- só fazem
     // sentido depois que o câmbio foi de fato fechado (não dá pra saber o
@@ -1335,16 +1354,21 @@ function listarPagamentosPI(processos){
       parcelas.forEach((pc,i)=>{
         const v = parseFloat(pc.valor_usd)||0;
         if(!v) return;
+        // Parcela Final ainda em aberto segue a chegada (ver vencimentoPelaChegada).
+        const segueChegada = pc.label === 'Final' && !pc.cambio_fechado && vencChegada;
         pagamentos.push({...base, parcela: pc.label || ('parcela '+(i+1)), _tipo:'parcelado', _parcelaIndex:i,
-          valorUsd: v, vencimento: pc.data_vencimento||null,
+          valorUsd: v, vencimento: segueChegada ? vencChegada : (pc.data_vencimento||null), vencimentoPelaChegada: !!segueChegada,
           cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(pc.cambio_fechado)||null,
           banco: pc.banco || null, custoOperacao: parseFloat(pc.custo_operacao) || null,
           pago: !!pc.cambio_fechado });
       });
     } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
-      const vencimento = p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada;
+      // 100% a Prazo sem "Prazo (dias)" (que conta a partir do embarque) e
+      // ainda não pago: vencimento segue a chegada.
+      const segueChegada = p.pi_pagamento==='PRAZO' && !p.pi_pago && !parseInt(p.pi_prazo_dias,10) && vencChegada;
+      const vencimento = segueChegada ? vencChegada : (p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada);
       pagamentos.push({...base, parcela:'unico', _tipo:'unico',
-        valorUsd: valorTotal, vencimento: vencimento||null,
+        valorUsd: valorTotal, vencimento: vencimento||null, vencimentoPelaChegada: !!segueChegada,
         cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(p.pi_cambio_fechado)||null,
         banco: bancoProc, custoOperacao: custoProc,
         pago: !!p.pi_pago });

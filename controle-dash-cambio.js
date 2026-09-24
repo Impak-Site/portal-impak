@@ -164,6 +164,8 @@ async function exportarTabelaCambioExcel(){
     ws.columns = [
       { header: mostrandoPagos ? 'Venc. Original' : 'Vencimento', key: 'vencimento', width: 14 },
       { header: 'Processo', key: 'processo', width: 16 },
+      { header: 'Cliente', key: 'cliente', width: 28 },
+      { header: 'Quem paga', key: 'pagador', width: 12 },
       { header: 'Fornecedor', key: 'fornecedor', width: 28 },
       { header: 'Parcela', key: 'parcela', width: 14 },
       { header: 'DI/DUIMP', key: 'di', width: 22 },
@@ -176,6 +178,8 @@ async function exportarTabelaCambioExcel(){
       ws.addRow({
         vencimento: x.vencimento ? new Date(x.vencimento+'T00:00:00') : null,
         processo: x.referencia || '',
+        cliente: x.cliente || '',
+        pagador: x.impakPaga ? 'IMPAK' : 'Cliente',
         fornecedor: x.fornecedor || '',
         parcela: x.parcela || '',
         di: x.numeroDi || '',
@@ -229,12 +233,13 @@ async function exportarTabelaCambioPDF(){
     const agora = new Date();
     doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} — ${linhas.length} parcela(s)`, 40, 56);
 
-    const colunas = [mostrandoPagos ? 'Venc. Original' : 'Vencimento', 'Processo', 'Fornecedor', 'Parcela', 'DI/DUIMP', 'Valor USD', mostrandoPagos ? 'Câmbio Fechado' : 'Câmbio Previsto', mostrandoPagos ? 'BRL Pago' : 'BRL Estimado'];
+    const colunas = [mostrandoPagos ? 'Venc. Original' : 'Vencimento', 'Processo', 'Cliente', 'Fornecedor', 'Parcela', 'DI/DUIMP', 'Valor USD', mostrandoPagos ? 'Câmbio Fechado' : 'Câmbio Previsto', mostrandoPagos ? 'BRL Pago' : 'BRL Estimado'];
     const body = linhas.map(x => {
       const cambio = (mostrandoPagos ? x.cambioFechado : x.cambioPrevisto) || cambioAtual;
       return [
         x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—',
-        x.referencia || '',
+        (x.referencia || '') + (x.impakPaga ? ' (IMPAK)' : ''),
+        x.cliente || '',
         x.fornecedor || '',
         x.parcela || '',
         x.numeroDi || '—',
@@ -250,7 +255,7 @@ async function exportarTabelaCambioPDF(){
       theme: 'grid',
       styles: { fontSize:8, cellPadding:4, valign:'middle', lineColor:[226,232,240], lineWidth:0.5 },
       headStyles: { fillColor:[37,99,235], textColor:255, fontStyle:'bold', fontSize:8.5 },
-      columnStyles: { 5:{halign:'right'}, 6:{halign:'right'}, 7:{halign:'right'} },
+      columnStyles: { 6:{halign:'right'}, 7:{halign:'right'}, 8:{halign:'right'} },
       margin: { left:40, right:40 },
     });
     const dataArq = new Date().toISOString().split('T')[0];
@@ -538,6 +543,8 @@ let _cambioFiltro = null; // {tipo:'prazo', dias:7|14|30|'vencidas', label} ou {
 // Fechamento" E filtrar só um cliente/processo específico dentro disso.
 let _cambioFiltroCliente = '';
 let _cambioFiltroTexto = '';
+// Quem fecha o câmbio: '' = todos, 'impak' = Importação Direta (IMPAK paga), 'cliente' = Encomenda.
+let _cambioFiltroPagador = '';
 
 // Redesign completo da tela (pedido do Ayslan, 09/09/2026): a versão
 // anterior empilhava 8 blocos verticais (KPIs, alerta, mark-to-market,
@@ -820,9 +827,12 @@ function renderDashCambio(){
   if(_cambioFiltroCliente){
     linhasFiltradas = linhasFiltradas.filter(x => x.cliente === _cambioFiltroCliente);
   }
+  if(_cambioFiltroPagador){
+    linhasFiltradas = linhasFiltradas.filter(x => _cambioFiltroPagador==='impak' ? x.impakPaga : !x.impakPaga);
+  }
   if(_cambioFiltroTexto){
     const termo = _cambioFiltroTexto.trim().toLowerCase();
-    linhasFiltradas = linhasFiltradas.filter(x => (x.referencia||'').toLowerCase().includes(termo));
+    linhasFiltradas = linhasFiltradas.filter(x => `${x.referencia||''} ${x.cliente||''}`.toLowerCase().includes(termo));
   }
   linhasFiltradas = [...linhasFiltradas].sort((a,b)=> mostrandoPagos
     ? (b.vencimento||'0000').localeCompare(a.vencimento||'0000')
@@ -858,10 +868,15 @@ function renderDashCambio(){
           <option value="">Todos os clientes</option>
           ${_clientesCambio.map(cli=>`<option value="${esc(cli)}" ${_cambioFiltroCliente===cli?'selected':''}>${esc(cli)}</option>`).join('')}
         </select>
-        <input id="cambio-busca-processo" type="text" value="${esc(_cambioFiltroTexto)}" placeholder="Buscar processo…"
+        <select onchange="_cambioFiltroPagador=this.value;renderDashCambio();" title="Quem fecha o câmbio" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;${_cambioFiltroPagador==='impak'?'background:#fef9c3;':''}">
+          <option value="">Quem paga: todos</option>
+          <option value="impak" ${_cambioFiltroPagador==='impak'?'selected':''}>🟨 IMPAK paga (Imp. Direta)</option>
+          <option value="cliente" ${_cambioFiltroPagador==='cliente'?'selected':''}>Cliente paga (Encomenda)</option>
+        </select>
+        <input id="cambio-busca-processo" type="text" value="${esc(_cambioFiltroTexto)}" placeholder="Buscar processo ou cliente…"
           oninput="_cambioFiltroTexto=this.value;renderDashCambio();"
           style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;width:140px;">
-        ${(_cambioFiltroCliente || _cambioFiltroTexto) ? `<a href="#" onclick="_cambioFiltroCliente='';_cambioFiltroTexto='';renderDashCambio();return false;" style="font-size:11px;color:var(--ac);">limpar</a>` : ''}
+        ${(_cambioFiltroCliente || _cambioFiltroTexto || _cambioFiltroPagador) ? `<a href="#" onclick="_cambioFiltroCliente='';_cambioFiltroTexto='';_cambioFiltroPagador='';renderDashCambio();return false;" style="font-size:11px;color:var(--ac);">limpar</a>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         ${mostrandoPagos ? '' : `<span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote ou exportar só elas.'}</span>
@@ -888,6 +903,7 @@ function renderDashCambio(){
         <th style="padding:8px 8px 8px 16px;width:24px;"></th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">${mostrandoPagos ? 'Venc. Original' : 'Vencimento'}</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Processo</th>
+        <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Cliente</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Fornecedor</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">Parcela</th>
         <th style="text-align:left;padding:8px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap;">DI/DUIMP</th>
@@ -899,10 +915,12 @@ function renderDashCambio(){
         ${linhasFiltradas.map(x => {
           const key = chaveLoteCambio(x.processoId, x._tipo, x._parcelaIndex);
           const marcada = _cambioLoteSelecao.has(key);
-          return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso('${x.processoId}')" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+          const fundo = x.impakPaga ? '#fefce8' : '';
+          return `<tr style="border-top:1px solid var(--border);cursor:pointer;background:${fundo};" onclick="abrirProcesso(${jsArg(x.processoId)})" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${fundo}'">
           <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()">${mostrandoPagos ? '' : `<input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,${jsArg(x.processoId)},${jsArg(x._tipo)},${x._parcelaIndex!=null?Number(x._parcelaIndex):'null'},${Number(x.valorUsd)||0},${jsArg(x.fornecedor||'')},${jsArg(x.referencia||'')})">`}</td>
-          <td style="padding:8px 8px;white-space:nowrap;">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${(x.vencimento && !mostrandoPagos) ? badgeDias(x.vencimento) : ''}</td>
-          <td style="padding:8px 8px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}</td>
+          <td style="padding:8px 8px;white-space:nowrap;" title="${x.vencimentoPelaChegada ? 'Chegada (ETA) − 10 dias — acompanha automaticamente se o navio atrasar' : ''}">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${(x.vencimento && !mostrandoPagos) ? badgeDias(x.vencimento) : ''}</td>
+          <td style="padding:8px 8px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}${x.impakPaga ? ' <span title="Importação Direta — a IMPAK fecha o câmbio" style="background:#fde047;color:#713f12;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;font-family:inherit;">IMPAK</span>' : ''}</td>
+          <td style="padding:8px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.cliente)}">${esc(x.cliente)}</td>
           <td style="padding:8px 8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.fornecedor)}">${esc(x.fornecedor)}</td>
           <td style="padding:8px 8px;text-transform:capitalize;white-space:nowrap;">${esc(x.parcela)}</td>
           <td style="padding:8px 8px;white-space:nowrap;${MONO}color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
@@ -910,7 +928,7 @@ function renderDashCambio(){
           <td style="padding:8px 8px;text-align:right;color:${mostrandoPagos?'var(--ok)':'var(--muted)'};font-weight:${mostrandoPagos?'700':'400'};white-space:nowrap;${MONO}">${(mostrandoPagos ? x.cambioFechado : x.cambioPrevisto) ? (mostrandoPagos ? x.cambioFechado : x.cambioPrevisto).toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>
           <td style="padding:8px 8px;text-align:right;white-space:nowrap;${MONO}">${fmtBRL(x.valorUsd*((mostrandoPagos ? x.cambioFechado : x.cambioPrevisto)||cambioAtual))}</td>
         </tr>`;
-        }).join('') || `<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted);">${mostrandoPagos ? 'Nenhum câmbio pago ainda.' : 'Nenhuma parcela em aberto neste filtro.'}</td></tr>`}
+        }).join('') || `<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--muted);">${mostrandoPagos ? 'Nenhum câmbio pago ainda.' : 'Nenhuma parcela em aberto neste filtro.'}</td></tr>`}
       </tbody>
     </table>
     </div>
