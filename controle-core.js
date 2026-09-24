@@ -1367,10 +1367,12 @@ function listarPagamentosPI(processos){
       // da planilha da Paula). Se tiver "Prazo (dias)" (embarque + N), vale a
       // data MAIS CEDO das duas -- na prática a IMPAK paga antes da chegada
       // pra liberar os documentos, mesmo com prazo contratual maior.
-      const temPrazoDias = !!parseInt(p.pi_prazo_dias,10);
+      const prazoDias = parseInt(p.pi_prazo_dias,10) || 0;
+      let vencPrazo = p.pi_data_saldo || null;
+      if(prazoDias && p.data_embarque){ const de = new Date(String(p.data_embarque).slice(0,10)+'T12:00:00'); if(!isNaN(de)){ de.setDate(de.getDate()+prazoDias); vencPrazo = de.toISOString().slice(0,10); } }
       const segueChegada = p.pi_pagamento==='PRAZO' && !p.pi_pago && vencChegada
-        && (!temPrazoDias || !p.pi_data_saldo || vencChegada < p.pi_data_saldo);
-      const vencimento = segueChegada ? vencChegada : (p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada);
+        && (!prazoDias || !vencPrazo || vencChegada < vencPrazo);
+      const vencimento = segueChegada ? vencChegada : (p.pi_pagamento==='PRAZO' ? (prazoDias ? vencPrazo : p.pi_data_saldo) : p.pi_data_entrada);
       pagamentos.push({...base, parcela:'unico', _tipo:'unico',
         valorUsd: valorTotal, vencimento: vencimento||null, vencimentoPelaChegada: !!segueChegada,
         cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(p.pi_cambio_fechado)||null,

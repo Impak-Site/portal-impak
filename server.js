@@ -1698,8 +1698,15 @@ function vencimentoPelaChegada(p) {
 function vencimentoSaldoPI(p) {
   if (p.pi_pagamento === 'PRAZO') {
     const v = vencimentoPelaChegada(p);
+    const prazoDias = parseInt(p.pi_prazo_dias, 10) || 0;
+    let vPrazo = p.pi_data_saldo || null;
+    if (prazoDias && p.data_embarque) {
+      const d = new Date(String(p.data_embarque).slice(0, 10) + 'T12:00:00Z');
+      if (!isNaN(d)) { d.setUTCDate(d.getUTCDate() + prazoDias); vPrazo = d.toISOString().slice(0, 10); }
+    }
     // Com "Prazo (dias)": vale a data mais cedo (igual ao Controle Cambial).
-    if (v && (!parseInt(p.pi_prazo_dias, 10) || !p.pi_data_saldo || v < p.pi_data_saldo)) return v;
+    if (v && (!prazoDias || !vPrazo || v < vPrazo)) return v;
+    return vPrazo;
   }
   return p.pi_data_saldo || null;
 }
@@ -4240,7 +4247,7 @@ const COLS_ALERTAS = [
   'demurrage_vencimento','data_devolucao_vazio',
   'aprovacao_hbl','solicitacao_li','docs_enviados_despachante',
   'pi_valor_usd','pi_pagamento','pi_pago','pi_cambio','pi_entrada_pct',
-  'pi_data_entrada','pi_data_saldo','pi_cambio_entrada','pi_parcelas_json','pi_prazo_dias','finalidade',
+  'pi_data_entrada','pi_data_saldo','pi_cambio_entrada','pi_parcelas_json','pi_prazo_dias','finalidade','data_embarque',
   'vendas_json','conferencia_json','updated_at',
 ].join(',');
 // Processos ativos (não finalizados) só com as colunas acima -- usado por
