@@ -185,6 +185,7 @@ function coletarESalvar(opts){
   // validação de vendas logo abaixo: barrar ANTES de gravar, não deixar
   // parcela sem valor virar um "USD 0,00" silencioso no Financeiro.
   if(document.getElementById('f_pi_pagamento')?.value === 'PARCELADO'){
+    completarSaldoParcelas();
     sincronizarParcelasLegado();
     const parcelasValidas = _parcelas.filter(pc => parseFloat(pc.valor_usd) > 0);
     if(!parcelasValidas.length){
@@ -985,6 +986,34 @@ function calcularParcelaResidualAuto(){
   if(vazias.length===1){
     const resto = val - somaPreenchidas;
     if(resto > 0) _parcelas[vazias[0]].valor_usd = resto.toFixed(2);
+  }
+}
+
+// Trava (24/09/2026): 6 processos tinham a parcela do saldo vazia ou nem
+// criada -- ~US$ 137 mil de câmbio sumiam do Controle Cambial. Ao salvar um
+// Parcelado, o saldo que falta (PI - parcelas) vai pra parcela vazia em
+// aberto (vira "Final" se estiver sem etapa) ou é criada uma parcela Final.
+// Se mesmo assim a soma não bater com a PI, avisa (não bloqueia o save).
+function completarSaldoParcelas(){
+  const val = valorMoeda('f_pi_valor_usd');
+  if(!val || !Array.isArray(_parcelas)) return;
+  const num = v => parseFloat(String(v??'').replace(',','.')) || 0;
+  let soma = _parcelas.reduce((a,pc)=>a+num(pc.valor_usd),0);
+  const resto = +(val - soma).toFixed(2);
+  if(resto > 1){
+    const vazias = _parcelas.map((pc,i)=>i).filter(i=>!num(_parcelas[i].valor_usd) && !_parcelas[i].cambio_fechado);
+    if(vazias.length === 1){
+      const i = vazias[0];
+      _parcelas[i].valor_usd = resto.toFixed(2);
+      if(!_parcelas[i].label) _parcelas[i].label = 'Final';
+    } else if(!vazias.length && !_parcelas.some(pc=>pc.label==='Final' && !pc.cambio_fechado)){
+      _parcelas.push({...parcelaVazia(), label:'Final', valor_usd: resto.toFixed(2)});
+    }
+    try{ atualizarVencimentoSaldoPorETA(); }catch(e){}
+  }
+  soma = _parcelas.reduce((a,pc)=>a+num(pc.valor_usd),0);
+  if(Math.abs(soma - val) > 1 && typeof showToast === 'function'){
+    showToast(`⚠️ Parcelas somam US$ ${soma.toFixed(2)} e a PI é US$ ${val.toFixed(2)} (diferença US$ ${(val-soma).toFixed(2)}). Confira as parcelas.`, 'warn');
   }
 }
 

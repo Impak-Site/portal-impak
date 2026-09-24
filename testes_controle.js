@@ -2034,6 +2034,17 @@ teste('listarPagamentosPI: Parcelado — Final em aberto segue chegada; Importa�
   iguais(r[1].impakPaga, true, 'Importação Direta: IMPAK paga');
 });
 
+
+teste('verificarCadastroCambio: aponta parcela sem valor e soma diferente da PI; ignora processo todo pago', () => {
+  const r = sandbox.verificarCadastroCambio([
+    { id:'a', referencia:'QD-1589', cliente:'IMPAK', pi_valor_usd:25064.97, pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([{label:'Inicial',valor_usd:'4967.79',cambio_fechado:'4.92'},{label:'Final',valor_usd:'',cambio_fechado:''}]) },
+    { id:'b', referencia:'HK60684', cliente:'X', pi_valor_usd:22911.64, pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([{label:'Inicial',valor_usd:'6847.14',cambio_fechado:'4.96'},{label:'Final',valor_usd:'15976.66',cambio_fechado:'5.08'}]) },
+    { id:'c', referencia:'OK', cliente:'Y', pi_valor_usd:1000, pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([{label:'Inicial',valor_usd:'300'},{label:'Final',valor_usd:'700'}]) },
+  ]);
+  iguais(r.filter(x=>x.referencia==='QD-1589').length, 2, 'soma diferente + Final sem valor');
+  iguais(r.filter(x=>x.referencia!=='QD-1589').length, 0, 'todo pago e ok não aparecem');
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');

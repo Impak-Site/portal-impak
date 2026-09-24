@@ -1696,7 +1696,7 @@ function renderPagamentoCampos(){
     // dÃÂÃÂ¡ pra ter "quantas parcelas forem necessÃÂÃÂ¡rias" com um botÃÂÃÂ£o +).
     if(!Array.isArray(_parcelas) || !_parcelas.length){
         try{ _parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ _parcelas = []; }
-    if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [parcelaVazia(), parcelaVazia()];
+    if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [{...parcelaVazia(), label:'Inicial'}, {...parcelaVazia(), label:'Final'}];
       }
     html+=`<div class="form-group full">
       <label class="form-label">Parcelas (quantos câmbios forem necessários — ex.: confirmação do pedido, embarque, chegada)</label>

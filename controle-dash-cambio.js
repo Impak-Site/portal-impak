@@ -689,6 +689,14 @@ function renderDashCambio(){
     <div>${semData.length} parcela(s) ainda sem Entrada+Saldo/Parcelado/À Vista/Prazo definido na PI — esse valor NÃO entra em nenhum KPI de prazo acima, então pode vencer sem ninguém perceber. <a href="#" onclick="_cambioFiltro={tipo:'semdata'};renderDashCambio();document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});return false;" style="color:#991b1b;font-weight:700;">Ver processos →</a></div>
   </div>`;
 
+  // Conferência de cadastro (24/09/2026) -- ver verificarCadastroCambio().
+  const _probCad = (typeof verificarCadastroCambio==='function') ? verificarCadastroCambio(_processos) : [];
+  const alertaCadastroHtml = !_probCad.length ? '' : `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:#78350f;">
+    <div style="font-weight:700;color:#92400e;margin-bottom:4px;">⚠️ ${_probCad.length} problema(s) de cadastro que afetam o câmbio — corrija pra não sumir nada desta tela</div>
+    ${_probCad.slice(0,12).map(x=>`<div><a href="#" onclick="abrirProcesso(${jsArg(x.processoId)});return false;" style="color:#92400e;font-weight:700;">${esc(x.referencia)}</a> ${x.cliente?'('+esc(x.cliente)+')':''} — ${esc(x.problema)}</div>`).join('')}
+    ${_probCad.length>12?`<div>… e mais ${_probCad.length-12}</div>`:''}
+  </div>`;
+
   // ── Simular câmbio (what-if) — pedido do Ayslan (09/09/2026): antes de
   // decidir travar câmbio ou esperar, o CFO quer ver "e se o dólar for a
   // R$X" sem precisar abrir planilha. _cambioSimulBase guarda os totais em
@@ -934,7 +942,7 @@ function renderDashCambio(){
     </div>
   </div>`;
 
-  el.innerHTML = toolbarHtml + kpisHtml + alertaSemDataHtml + concentracaoHtml
+  el.innerHTML = toolbarHtml + kpisHtml + alertaSemDataHtml + alertaCadastroHtml + concentracaoHtml
     + `<div style="margin-bottom:14px;">${simulacaoHtml}</div>`
     + bancoCustoHtml + consolidacaoHtml + tabelaHtml
     + (()=>{ try{ return renderAdiantamentoClienteHtml(); }catch(e){ console.error('Adiantamento do Cliente:', e); return ''; } })()

@@ -1309,6 +1309,29 @@ function vencimentoPelaChegada(p){
 // dólar cair); na Encomenda o cliente adianta o valor.
 function impakPagaCambio(p){ return (p && p.finalidade) === 'IMPORTACAO_DIRETA'; }
 
+// Conferência de cadastro do câmbio (24/09/2026): problemas que fazem um
+// câmbio sumir ou aparecer errado no Controle Cambial. Mostrado como alerta
+// na tela de Câmbio pra ser corrigido na hora, antes de virar surpresa.
+function verificarCadastroCambio(processos){
+  const num = v => parseFloat(String(v??'').replace(',','.')) || 0;
+  const out = [];
+  (processos||[]).forEach(p=>{
+    if(!p || p.cancelado || p.fase==='FINALIZADO' || p.pi_pago) return;
+    const pi = num(p.pi_valor_usd);
+    const add = (problema)=>out.push({ processoId:p.id, referencia:p.referencia, cliente:p.cliente||'', problema });
+    if(!pi) return;
+    if(!p.cliente) add('sem cliente');
+    if(p.pi_pagamento==='PARCELADO'){
+      let pc=[]; try{ pc = JSON.parse(p.pi_parcelas_json||'[]'); }catch(e){ add('parcelas ilegíveis'); return; }
+      if(pc.length && pc.every(x=>x.cambio_fechado)) return; // tudo pago
+      const soma = pc.reduce((a,x)=>a+num(x.valor_usd),0);
+      if(Math.abs(soma-pi) > 1) add(`parcelas somam US$ ${soma.toLocaleString('pt-BR',{minimumFractionDigits:2})} e a PI é US$ ${pi.toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
+      pc.forEach((x,i)=>{ if(!num(x.valor_usd) && !x.cambio_fechado) add(`parcela ${x.label||('#'+(i+1))} sem valor`); });
+    }
+  });
+  return out;
+}
+
 function listarPagamentosPI(processos){
   const pagamentos = [];
   (processos||[]).forEach(p=>{
