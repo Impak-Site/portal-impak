@@ -36,8 +36,8 @@ const qrcode  = require('qrcode');
 // quando a variável TOTP_ENC_KEY existir no Railway — sem ela, continua
 // como antes. Segredos antigos em texto puro seguem funcionando e são
 // cifrados automaticamente no próximo login bem-sucedido.
-const _ultimoPasso2FA = new Map(); // usuario -> último contador TOTP aceito
-async function verificarCodigo2FA(secret, codigoDigitado, usuario) {
+const _ultimoPasso2FA = new Map(); // usuario -> { passo: último contador TOTP aceito, ip }
+async function verificarCodigo2FA(secret, codigoDigitado, usuario, ip) {
   const codigo = String(codigoDigitado || '').trim();
   if (!/^\d{6}$/.test(codigo)) return false;
   try {
@@ -47,8 +47,12 @@ async function verificarCodigo2FA(secret, codigoDigitado, usuario) {
     if (!(r && r.valid)) return false;
     if (usuario) {
       const passo = Math.floor(Date.now() / 30000) + (r.delta || 0);
-      if ((_ultimoPasso2FA.get(usuario) || -1) >= passo) return false;
-      _ultimoPasso2FA.set(usuario, passo);
+      // Mesmo código reaproveitado só é recusado se vier de OUTRA rede (IP)
+      // — no escritório várias TVs/computadores entram na mesma conta ao
+      // mesmo tempo, com o mesmo código (pedido Emanuelly 24/09/2026).
+      const ult = _ultimoPasso2FA.get(usuario);
+      if (ult && ult.passo >= passo && ult.ip !== ip) return false;
+      if (!ult || passo >= ult.passo) _ultimoPasso2FA.set(usuario, { passo, ip });
     }
     return true;
   } catch (e) {
@@ -1082,7 +1086,7 @@ app.post('/login/configurar-2fa', rateLimitLogin, async (req, res) => {
       delete req.session.pendingSetup2fa;
       return res.json({ ok: false, erro: 'Muitas tentativas erradas. Aguarde alguns minutos e faça login de novo.' });
     }
-    if (!(await verificarCodigo2FA(pend.secret, codigo, pend.usuario))) {
+    if (!(await verificarCodigo2FA(pend.secret, codigo, pend.usuario, ipCliente(req)))) {
       registrarFalhaLogin(pend.usuario, req);
       return res.json({ ok: false, erro: 'Código inválido. Confira o horário do celular e tente de novo.' });
     }
@@ -1122,7 +1126,7 @@ app.post('/login/verificar-2fa', rateLimitLogin, async (req, res) => {
   }
   const u = _usuariosCache.get(pend.usuario);
   const codigo = (req.body.codigo || '').trim();
-  if (!u || !u.totp_secret || !(await verificarCodigo2FA(u.totp_secret, codigo, pend.usuario))) {
+  if (!u || !u.totp_secret || !(await verificarCodigo2FA(u.totp_secret, codigo, pend.usuario, ipCliente(req)))) {
     const ip = ipCliente(req);
     console.warn(`[2FA FALHOU] usuário="${pend.usuario}" ip=${ip} em ${new Date().toISOString()}`);
     registrarFalhaLogin(pend.usuario, req);
