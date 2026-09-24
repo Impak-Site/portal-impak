@@ -1696,9 +1696,10 @@ function vencimentoPelaChegada(p) {
   return d.toISOString().slice(0, 10);
 }
 function vencimentoSaldoPI(p) {
-  if (p.pi_pagamento === 'PRAZO' && !parseInt(p.pi_prazo_dias, 10)) {
+  if (p.pi_pagamento === 'PRAZO') {
     const v = vencimentoPelaChegada(p);
-    if (v) return v;
+    // Com "Prazo (dias)": vale a data mais cedo (igual ao Controle Cambial).
+    if (v && (!parseInt(p.pi_prazo_dias, 10) || !p.pi_data_saldo || v < p.pi_data_saldo)) return v;
   }
   return p.pi_data_saldo || null;
 }

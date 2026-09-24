@@ -1363,9 +1363,13 @@ function listarPagamentosPI(processos){
           pago: !!pc.cambio_fechado });
       });
     } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
-      // 100% a Prazo sem "Prazo (dias)" (que conta a partir do embarque) e
-      // ainda não pago: vencimento segue a chegada.
-      const segueChegada = p.pi_pagamento==='PRAZO' && !p.pi_pago && !parseInt(p.pi_prazo_dias,10) && vencChegada;
+      // 100% a Prazo ainda não pago: vencimento segue a chegada - 10 (regra
+      // da planilha da Paula). Se tiver "Prazo (dias)" (embarque + N), vale a
+      // data MAIS CEDO das duas -- na prática a IMPAK paga antes da chegada
+      // pra liberar os documentos, mesmo com prazo contratual maior.
+      const temPrazoDias = !!parseInt(p.pi_prazo_dias,10);
+      const segueChegada = p.pi_pagamento==='PRAZO' && !p.pi_pago && vencChegada
+        && (!temPrazoDias || !p.pi_data_saldo || vencChegada < p.pi_data_saldo);
       const vencimento = segueChegada ? vencChegada : (p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada);
       pagamentos.push({...base, parcela:'unico', _tipo:'unico',
         valorUsd: valorTotal, vencimento: vencimento||null, vencimentoPelaChegada: !!segueChegada,

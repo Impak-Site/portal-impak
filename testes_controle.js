@@ -2018,9 +2018,11 @@ teste('listarPagamentosPI: PRAZO em aberto usa chegada/ETA - 10 (não o vencimen
   iguais(r[0].impakPaga, false, 'Encomenda: cliente paga');
   iguais(r[0].cliente, 'IRMAOS SILVA S/A', 'cliente vem junto');
 });
-teste('listarPagamentosPI: PRAZO com Prazo (dias) mantém vencimento gravado (conta do embarque)', () => {
-  const r = sandbox.listarPagamentosPI([{ id:'x', referencia:'A', pi_valor_usd:1000, pi_pagamento:'PRAZO', pi_prazo_dias:60, pi_data_saldo:'2026-09-18', eta:'2026-10-05' }]);
-  iguais(r[0].vencimento, '2026-09-18', 'regra de prazo a partir do embarque prevalece');
+teste('listarPagamentosPI: PRAZO com Prazo (dias) — vale a data mais cedo entre embarque+N e chegada-10', () => {
+  const a = sandbox.listarPagamentosPI([{ id:'x', referencia:'A', pi_valor_usd:1000, pi_pagamento:'PRAZO', pi_prazo_dias:60, pi_data_saldo:'2026-09-18', eta:'2026-10-05' }]);
+  iguais(a[0].vencimento, '2026-09-18', 'embarque+60 (18/09) é mais cedo que chegada-10 (25/09)');
+  const b = sandbox.listarPagamentosPI([{ id:'y', referencia:'UD26-129', pi_valor_usd:1000, pi_pagamento:'PRAZO', pi_prazo_dias:60, pi_data_saldo:'2026-10-01', eta:'2026-10-05' }]);
+  iguais(b[0].vencimento, '2026-09-25', 'chegada-10 (25/09) é mais cedo que embarque+60 (01/10) — igual à planilha da Paula');
 });
 teste('listarPagamentosPI: Parcelado — Final em aberto segue chegada; Importação Direta marca IMPAK paga', () => {
   const r = sandbox.listarPagamentosPI([{ id:'x', referencia:'26CFXPAK-001', pi_valor_usd:33232, pi_pagamento:'PARCELADO', eta:'2026-10-05', data_chegada:'2026-10-08', finalidade:'IMPORTACAO_DIRETA',
