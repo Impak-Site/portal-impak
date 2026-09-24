@@ -946,9 +946,24 @@ async function carregarProcessos(silencioso){
 // botão voltar/avançar do navegador), SEM mexer no histórico — quem decide
 // se pushState/popstate acontece é sempre o chamador (abrirProcesso ou o
 // listener de popstate), nunca esta função.
-function _abrirProcessoPorReferencia(ref){
+// Desempenho (24/09/2026): a lista não traz mais o histórico completo da
+// Conferência (conferencia_json, o campo mais pesado) — ele é buscado aqui,
+// só do processo que está sendo aberto. Se a busca falhar, abre com o que
+// já tem (a aba Conferência mostra só o resumo nesse caso).
+async function garantirProcessoCompleto(proc){
+  if(!proc || proc._completo || !proc.id) return proc;
+  try{
+    const r = await fetch('/api/controle/v2/processo/' + encodeURIComponent(proc.id));
+    const d = await r.json();
+    if(d && d.ok && d.processo){ Object.assign(proc, d.processo, { _completo:true }); }
+  }catch(e){ console.warn('garantirProcessoCompleto:', e.message); }
+  return proc;
+}
+
+async function _abrirProcessoPorReferencia(ref){
   const proc = _processos.find(p=>p.referencia===ref);
   if(!proc) return;
+  await garantirProcessoCompleto(proc);
   _editando = {...proc, _camposIA: {}};
   _editandoOriginal = {...proc};
   renderModal();

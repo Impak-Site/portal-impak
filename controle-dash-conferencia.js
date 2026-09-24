@@ -19,6 +19,12 @@ function _confFilaDados(){
   const linhas = (_processos||[]).filter(p => !p.cancelado).map(p => {
     let analise = null;
     try{ analise = p.conferencia_json ? JSON.parse(p.conferencia_json) : null; }catch(e){}
+    // A lista agora traz só o resumo (conferencia_resumo, calculado no
+    // servidor); o histórico completo vem ao abrir o processo.
+    if(!analise && p.conferencia_resumo){
+      const r = p.conferencia_resumo;
+      return { p, analise: { data: r.data }, pendentes: r.pendentes||0, bloqueantes: r.bloqueantes||0, aceitas: r.aceitas||0 };
+    }
     if(!analise) return { p, analise: null, pendentes: 0, bloqueantes: 0, aceitas: 0 };
     const resolvedMap = analise.divResolvedMap || {};
     let pendentes = 0, bloqueantes = 0, aceitas = 0;

@@ -1699,6 +1699,38 @@ function removerCamposFinanceiros(p) {
   }
 }
 
+// Resumo da última conferência (mesma contagem da Fila de Conferência em
+// controle-dash-conferencia.js: divergências/ausências/alertas com campo,
+// aceitas = marcadas em divResolvedMap).
+function resumoConferencia(json) {
+  let a; try { a = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return null; }
+  if (!a) return null;
+  const aceitoMap = a.divResolvedMap || {};
+  let pendentes = 0, bloqueantes = 0, aceitas = 0;
+  (a.grupos || []).forEach((g, gi) => (g.campos || []).forEach((c, ci) => {
+    if (c.status === 'DIVERGENCIA' || c.status === 'AUSENTE' || (c.status === 'ALERTA' && c.campo)) {
+      if (aceitoMap[gi + '-' + ci]) aceitas++;
+      else { pendentes++; if (c.severidade === 'BLOQUEANTE') bloqueantes++; }
+    }
+  }));
+  return { data: a.data || '', pendentes, bloqueantes, aceitas };
+}
+
+// Processo completo (com conferencia_json) — carregado ao abrir o processo.
+app.get('/api/controle/v2/processo/:id', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(req.params.id)) return res.status(400).json({ ok: false, erro: 'id inválido' });
+    const { data, error } = await sb().from('controle_processos').select('*').eq('id', req.params.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return res.status(404).json({ ok: false, erro: 'Processo não encontrado' });
+    if (somenteLeitura(req.session.modulos)) removerCamposFinanceiros(data);
+    res.json({ ok: true, processo: data });
+  } catch (e) {
+    console.error('controle v2 GET processo erro:', e.message);
+    res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
 app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     // Nomes dos arquivos do GED de cada processo (usado pelo alerta "embarque
@@ -1750,6 +1782,16 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
       arquivos.forEach(a => { (porProcesso[a.processo_id] = porProcesso[a.processo_id] || []).push(a.nome); });
       processos.forEach(p => { p.ged_nomes = porProcesso[p.id] || []; });
     }
+
+    // Desempenho (24/09/2026): conferencia_json (histórico completo das
+    // conferências de documentos com IA) era metade de tudo que a lista
+    // baixava (~2,4 MB de 4,6 MB) e só é usado ao abrir o processo. A lista
+    // leva só um resumo (usado pela Fila de Conferência); o completo vem de
+    // GET /api/controle/v2/processo/:id quando alguém abre o processo.
+    processos.forEach(p => {
+      if (p.conferencia_json) p.conferencia_resumo = resumoConferencia(p.conferencia_json);
+      delete p.conferencia_json;
+    });
 
     // Relatório de segurança (item 10): a conta só-TV (monitor da sala) não
     // recebe valores financeiros — a TV não usa nenhum deles, e quem estiver
@@ -2357,6 +2399,9 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
 
     // Remover campos internos antes de salvar no banco
     const { log: _log, _fasePrevista, _savedAt, ...processoLimpo } = processo;
+    // Campos só de tela (não são colunas): vêm na lista/abertura do processo.
+    delete processoLimpo.ged_nomes; delete processoLimpo.conferencia_resumo;
+    Object.keys(processoLimpo).forEach(k => { if (k.startsWith('_')) delete processoLimpo[k]; });
 
     // Processos já existentes usam UPDATE (não upsert): ações como Fechar/
     // Cancelar/Reabrir mandam só {id, campo} — um upsert nesse caso monta um

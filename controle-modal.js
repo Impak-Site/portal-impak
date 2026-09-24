@@ -42,6 +42,7 @@ function abrirNovo(){
 async function abrirProcesso(id){
   const proc = _processos.find(p=>p.id===id);
   if(!proc) return;
+  await garantirProcessoCompleto(proc);
   _editando = {...proc, _camposIA: {}};
     _parcelas = []; // task #340b: força recarregar parcelas do processo certo ao trocar de processo
   _editandoOriginal = {...proc};
