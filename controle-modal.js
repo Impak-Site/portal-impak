@@ -693,7 +693,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Data Registro DI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
-          <div class="form-group"><label class="form-label">Número DI</label>
+          <div class="form-group"><label class="form-label">Número da DI/DUIMP</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Canal</label>
             <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
@@ -1387,7 +1387,7 @@ const LABELS_CAMPOS_IA = {
   semana_booking:'Semana de Booking', etiquetas_manuais_json:'Etiquetas manuais',
   peso_bruto:'Peso bruto', volumes:'Volumes', data_chegada:'Data de chegada', data_presenca:'Data de presença de carga',
   demurrage_vencimento:'Vencimento Demurrage', armazenagem_vencimento:'Vencimento Armazenagem',
-  data_registro_di:'Data registro DI', numero_di:'Nº DI', canal:'Canal',
+  data_registro_di:'Data registro DI', numero_di:'Nº DI/DUIMP', canal:'Canal',
   data_parametrizacao:'Data parametrização', data_liberacao:'Data liberação',
   ci_numero:'Nº CI', ci_data:'Data CI', ci_valor_usd:'Valor CI (USD)',
   ce_master:'CE Master', ce_house:'CE House', ce_data_embarque:'Data embarque (CE)', pendencia_revisao:'Pendência/Revisão',

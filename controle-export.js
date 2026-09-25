@@ -27,7 +27,7 @@ async function exportarRelatorio(){
     [`Gerado em: ${new Date().toLocaleString('pt-BR')}`],
     [],
     ['REF','FORNECEDOR','CLIENTE','FASE','ETA','ETD','EMBARQUE','CHEGADA',
-     'ARMADOR','NAVIO','CONTAINER','HBL','MBL','Nº DI','CANAL',
+     'ARMADOR','NAVIO','CONTAINER','HBL','MBL','Nº DI/DUIMP','CANAL',
      'PI VALOR USD','PI PAGO','NF SAÍDA Nº','NF SAÍDA VALOR',
      'LUCRO ESTIMADO','LUCRO REAL','DIFERENÇA (REAL − ESTIMADO)','OBS'],
   ];
@@ -122,7 +122,7 @@ async function exportarExcel(){
       'Demurrage Valor R$':  p.demurrage_valor||'',
       'Demurrage Pago':      p.demurrage_pago?'Sim':'Não',
       'Data Devolução Vazio':p.data_devolucao_vazio||'',
-      'Nº DI':               p.numero_di||'',
+      'Nº DI/DUIMP':         p.numero_di||'',
       'Data Registro DI':    p.data_registro_di||'',
       'Canal':               p.canal||'',
       'Data Liberação':      p.data_liberacao||'',
