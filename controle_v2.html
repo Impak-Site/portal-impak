@@ -443,6 +443,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <input type="file" id="import-despachante-xlsx" accept=".xlsx" style="display:none" onchange="importarPlanilhaDespachante(this)">
 <button class="btn btn-outline" onclick="exportarExcel()">📤 Exportar</button>
 <button class="btn btn-outline" onclick="abrirModalExportCliente()" title="Exporta no formato de planilha enviado aos clientes (1 linha por produto, agrupado por fornecedor, ordenado por Data de Chegada) — confirme os status antes de gerar">📋 Exportar p/ Cliente</button>
+<button class="btn btn-outline" onclick="abrirModalAverbacao()" title="Planilha mensal de averbação do seguro de importação (processos com DI/DUIMP registrada no mês)">🛡️ Averbação Seguro</button>
 <button class="btn btn-outline" onclick="exportarRelatorio()" title="Exportar relatório com filtros aplicados">📋 Relatório</button>
 <button id="btn-followup-semanal" class="btn btn-outline" onclick="gerarFollowUpManual()" title="Gera e envia agora o e-mail de follow-up semanal (processos com ETA nos próximos 10 dias, por cliente) — visível só para gerentes" style="display:none;">📧 Gerar Follow-up Semanal</button>
 <button class="btn btn-outline" onclick="abrirRelatorioNarcelio()" title="Monta o relatório semanal (processos em fábrica/booking/embarcados + containers do mês) pra copiar/exportar e enviar pro Sr. Narcélio, enquanto ele não usa o sistema">📊 Relatório Narcélio</button>
@@ -849,6 +850,7 @@ ao lado das datas). -->
 <script src="/controle-conferencia.js"></script>
 <script src="/controle-campos.js"></script>
 <script src="/controle-export.js"></script>
+<script src="/controle-averbacao.js"></script>
 <script src="/controle-contatos.js"></script>
 <script src="/controle-import-ia.js"></script>
 <script src="/controle-nf-import.js"></script>
