@@ -870,7 +870,9 @@ function parseTBR(rows, fornecedor){
   const iPat  =hdr.findIndex(c=>c.toUpperCase()==='PATTERN');
   const iWgt  =hdr.findIndex(c=>c.toUpperCase().includes('WEIGHT'));
   // LI/SR: match só cabeçalhos claros (evita falso-positivo tipo "APLICAÇÃO" que contém "LI")
-  const iLi   =hdr.findIndex(c=>/^LI(\/SR)?$/i.test(c.trim())||/LI\s*\/\s*SR/i.test(c)||/LOAD\s*INDEX/i.test(c));
+  const iLi   =hdr.findIndex(c=>/^LI(\/SR)?$/i.test(c.trim())||/LI\s*[\/&]\s*SR/i.test(c)||/LOAD\s*INDEX/i.test(c));
+  // Coluna de tipo de banda (Rovelo 2026: "TRA" = Liso/Tração/AP) — mais confiável que o código do pattern pra liso x tração
+  const iTra  =hdr.findIndex(c=>/^(TRA|TREAD|TREAD TYPE|TIPO)$/i.test(c.trim()));
   const iPr   =hdr.findIndex(c=>c.toUpperCase()==='PR');
   const iMoq  =hdr.findIndex(c=>c.toString().includes('40'));
   const iFob  =hdr.findIndex(c=>c.toUpperCase().includes('FOB PRICE'));
@@ -890,7 +892,9 @@ function parseTBR(rows, fornecedor){
     if(!size||size.length<5)continue;
     const preco=iSpc>=0&&r[iSpc]?parseFloat(r[iSpc]):iFob>=0?parseFloat(r[iFob]):0;
     if(!preco||preco<=0)continue;
-    const borVal = classificarPattern(r[iPat]);
+    let traTxt = iTra>=0 && r[iTra] ? String(r[iTra]).trim() : '';
+    if(/^AP$/i.test(traTxt)) traTxt='ALL POSITION'; else if(/^D$/i.test(traTxt)) traTxt='DRIVE';
+    const borVal = classificarPattern(traTxt || r[iPat]);
     items.push({f:fornecedor,s:size,medida:size,m:(r[iBrand]||fornecedor).toString(),
       md:(r[iPat]||'').toString(),pat:(r[iPat]||'').toString(),
       cat:iCat>=0?(r[iCat]||'').toString():'',cur:'USD',
