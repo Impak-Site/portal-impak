@@ -1062,7 +1062,8 @@ async function handleImport(files){
       // (ex: 295/80 R22.5 em LISO, TRAÇÃO, MISTO, TRAÇÃO-CANAVIEIRO) se sobrescrevem
       // umas às outras, sobrando só a última processada por medida.
       const tipoNovos = novos[0]&&novos[0].t ? novos[0].t : null;
-      const chaveDe = c => (c.f||forn)+'||'+(c.medida||c.m||'')+'||'+(c.pat||c.md||'')+'||'+(c.t||'');
+      // Inclui o índice de carga (LI): a mesma medida+desenho pode vir em 2 índices (ex: 175/65R14 82H e 86T).
+      const chaveDe = c => (c.f||forn)+'||'+norm(c.medida||c.s||c.m||'')+'||'+(c.pat||c.md||'')+'||'+(c.t||'')+'||'+String(c.li||'').trim().toUpperCase();
       const novosPorChave = {};
       novos.forEach(c => {
         novosPorChave[chaveDe(c)] = Object.assign({},c,{f:forn,pat:c.pat||c.md||''});
