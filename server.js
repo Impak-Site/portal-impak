@@ -2336,7 +2336,11 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
       const tentandoDestravar = estavaFechado && processo.fechado === false;
       const tentandoTravar    = !estavaFechado && processo.fechado === true;
 
-      if (estavaFechado && !tentandoDestravar) {
+      // Exceção (25/09/2026): peso/NCM da DI/DUIMP são dados da Reciclagem
+      // (relação trimestral pro cliente) e não mexem em nada financeiro —
+      // podem ser completados mesmo com o processo fechado.
+      const soDadosReciclagem = Object.keys(processo).every(k => ['id','di_peso_liquido','di_ncms'].includes(k));
+      if (estavaFechado && !tentandoDestravar && !soDadosReciclagem) {
         return res.status(403).json({ erro: 'Processo fechado — reabra para editar (só gerente pode reabrir).' });
       }
       if (tentandoDestravar && req.session.role !== 'gerente') {
