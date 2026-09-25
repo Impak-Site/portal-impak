@@ -702,12 +702,12 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
               <option value="AMARELO" ${p.canal==='AMARELO'?'selected':''}>🟡 Amarelo</option>
               <option value="VERMELHO"${p.canal==='VERMELHO'?'selected':''}>🔴 Vermelho</option>
             </select></div>
-          <div class="form-group"><label class="form-label">Data Parametrização</label>
+          <div class="form-group"><label class="form-label">Data de Parametrização da DI/DUIMP</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_parametrizacao" value="${esc(p.data_parametrizacao)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Liberação</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI/DUIMP (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data de Parametrização da DI/DUIMP automaticamente com a Data de Registro da DI/DUIMP (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
@@ -1388,7 +1388,7 @@ const LABELS_CAMPOS_IA = {
   peso_bruto:'Peso bruto', volumes:'Volumes', data_chegada:'Data de chegada', data_presenca:'Data de presença de carga',
   demurrage_vencimento:'Vencimento Demurrage', armazenagem_vencimento:'Vencimento Armazenagem',
   data_registro_di:'Data de Registro da DI/DUIMP', numero_di:'Nº DI/DUIMP', canal:'Canal',
-  data_parametrizacao:'Data parametrização', data_liberacao:'Data liberação',
+  data_parametrizacao:'Data de Parametrização da DI/DUIMP', data_liberacao:'Data liberação',
   ci_numero:'Nº CI', ci_data:'Data CI', ci_valor_usd:'Valor CI (USD)',
   ce_master:'CE Master', ce_house:'CE House', ce_data_embarque:'Data embarque (CE)', pendencia_revisao:'Pendência/Revisão',
   data_agendamento:'Data de agendamento', data_carregamento:'Data de carregamento',
