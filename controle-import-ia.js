@@ -604,13 +604,15 @@ async function extrairComIA_umArquivo(input){
   "encomendante_cnpj": "",  // CNPJ do encomendante/adquirente — ver instruções específicas na seção do Comprovante de Importação/Extrato da DI abaixo. Deixar "" se o documento não for esse tipo ou não trouxer esse campo.
   "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
   "depot": "",  // SOMENTE para RIC/EIR de devolução: nome do terminal/depósito onde o vazio foi devolvido (cabeçalho do documento, ex: "LECHMAN TERMINAIS NAVEGANTES")
-  "eh_ric": false,  // true SOMENTE se o documento for um RIC/EIR/Intercâmbio/Gate Pass de container (comprovante de entrada/saída de container em terminal/depósito)
+  "eh_ric": false,
+  "ric_avaria": false,  // SOMENTE para RIC: true se o RIC registrar avaria/dano, lavagem ou limpeza (ex: "recebido com AVARIA", "CHEMICAL CLEAN", "LAVAGEM", "LIMPEZA", "DAMAGE", "REPARO", "ESTIMATIVA DE REPARO"); false se o container foi recebido sem nenhuma observação desse tipo  // true SOMENTE se o documento for um RIC/EIR/Intercâmbio/Gate Pass de container (comprovante de entrada/saída de container em terminal/depósito)
   "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0}. Deixar [] para qualquer outro tipo de documento.
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
 - também é RIC o "INTERCAMBIO DE ENTRADA" / "INTERCÂMBIO" / "EIR" de terminais como LECHMAN, Portonave, Poly, etc. Marque "eh_ric": true.
 - extrair um item no array "containers" com o número do container (campo "Container No." ou a linha logo abaixo da data, ex: "PIDU 452832-3 40HC"). O número do container é SEMPRE 4 letras + 7 dígitos: devolva sem espaços, hífens ou pontos (ex: "PIDU 452832-3" → "PIDU4528323"). Não inclua o tipo (40HC) no número. Deixe "lacre" vazio se o campo LACRE do RIC estiver em branco.
+- extrair "ric_avaria": true quando o RIC mencionar avaria, dano, reparo, lavagem ou limpeza do container (inclusive limpeza química / "CHEMICAL CLEAN").
 - extrair "depot": nome do terminal/depósito que emitiu o RIC (cabeçalho, ex: "LECHMAN TERMINAIS NAVEGANTES").
 - num RIC, NÃO preencha nenhum outro campo além de containers, data_devolucao_vazio, depot e eh_ric — em especial NÃO preencha armador (o RIC traz só a sigla, ex: "PIL"), transportadora (é quem levou o vazio, não a transportadora do processo), navio, cliente/importador, referencia ou lacre.
 - data_devolucao_vazio vem do campo "Gate In Date/Time" (nos RICs brasileiros de entrada, o campo "ENTRADA: dd/mm/aaaa hh:mm" — converta para "YYYY-MM-DD"; NÃO use "REGISTRO") — esta é a data e hora em que o container vazio deu entrada no depósito, ou seja, a devolução física de fato. O formato no documento costuma ser "YYYY/MM/DD HH:MM" (ex: "2026/05/30 10:54") — converta apenas a parte da data para "YYYY-MM-DD" (ex: "2026-05-30"), descartando a hora.
@@ -1002,6 +1004,10 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       const itensRic = (extracted.containers||[]).filter(c=>c && c.numero);
       const devolRic = extracted.data_devolucao_vazio || '';
       const depotRic = extracted.depot || '';
+      // RIC com avaria/lavagem → Status RIC "Termo" (pedido do Ayslan,
+      // 25/09/2026). Só preenche se o status ainda estiver vazio — nunca
+      // troca um "Isento"/"Parcial Isento" já decidido.
+      const statusRic = extracted.ric_avaria ? 'Termo' : '';
       const achados = [], faltando = [];
       itensRic.forEach(it=>{
         const i = _containers.findIndex(c => normCont(c.numero) === it.numero);
@@ -1014,6 +1020,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       if(_containers.length > 1){
         achados.forEach(i=>{
           if(devolRic) _containers[i].devolucao = devolRic;
+          if(statusRic && !_containers[i].ric_status) _containers[i].ric_status = statusRic;
           if(depotRic && !_containers[i].depot) _containers[i].depot = depotRic;
         });
         if(achados.length){
@@ -1027,11 +1034,16 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       } else if(!itensRic.length && temContainerCadastrado && _containers.filter(c=>c.numero).length > 1){
         delete extracted.data_devolucao_vazio; delete extracted.depot;
       }
+      // Processo com 1 container: Status RIC vai no campo normal.
+      if(statusRic && _containers.length <= 1 && !(faltando.length && temContainerCadastrado)){
+        const selRic = document.getElementById('f_ric_status');
+        if(selRic && !selRic.value){ selRic.value = statusRic; preenchidos++; camposLidosNestaLeitura.push('ric_status'); try{ marcarComoIA('ric_status'); }catch(e){} }
+      }
       // Um RIC não cria/edita containers e não mexe em outros dados do processo.
       extracted.containers = [];
       ['container','lacre','armador','transportadora','navio','cliente','referencia','consignatario','notify'].forEach(k=>delete extracted[k]);
     }
-    delete extracted.eh_ric;
+    delete extracted.eh_ric; delete extracted.ric_avaria;
 
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete'];
