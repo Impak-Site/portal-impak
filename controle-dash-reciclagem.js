@@ -25,6 +25,8 @@ function _recQtd(p){
 // ok = NCM lido e é 4011/4012 · presumido = NCM não lido, mas o produto é pneu
 // fora = NCM lido e não é 4011/4012 · desconhecido = sem NCM e sem cara de pneu
 function _recStatusNcm(p){
+  // Marcação manual "NÃO É PNEU" no campo de NCMs da DI → fora da reciclagem.
+  if(/N[ÃA]O\s*(É|E)?\s*PNEU/i.test(String(p.di_ncms||''))) return 'fora';
   const n = String(p.di_ncms||'').replace(/\D/g,' ');
   if(n.trim()){
     return /(^|\s)401[12]/.test(n) ? 'ok' : 'fora';
