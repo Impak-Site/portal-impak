@@ -123,7 +123,7 @@ async function exportarExcel(){
       'Demurrage Pago':      p.demurrage_pago?'Sim':'Não',
       'Data Devolução Vazio':p.data_devolucao_vazio||'',
       'Nº DI/DUIMP':         p.numero_di||'',
-      'Data Registro DI':    p.data_registro_di||'',
+      'Data Registro DI/DUIMP':    p.data_registro_di||'',
       'Canal':               p.canal||'',
       'Data Liberação':      p.data_liberacao||'',
       'Nº PI':               p.pi_numero||'',

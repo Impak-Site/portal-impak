@@ -116,7 +116,7 @@ const FASES = [
   { id:'AGUARDANDO_EMBARQUE',label:'Ag. Embarque',      icon:'⏳' },
   { id:'EMBARCADO',          label:'Embarcado',          icon:'🚢' },
   { id:'DESEMBARCADO',       label:'Desembarcado',       icon:'⚓' },
-  { id:'REGISTRO_DI',        label:'Registro DI',        icon:'📋' },
+  { id:'REGISTRO_DI',        label:'Registro DI/DUIMP',      icon:'📋' },
   { id:'PARAMETRIZACAO',     label:'Parametrização',     icon:'🔍' },
   { id:'CARREGAMENTO',       label:'Carregamento',       icon:'🚛' },
   { id:'FATURAMENTO',        label:'Faturamento',        icon:'💰' },
