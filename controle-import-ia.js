@@ -603,12 +603,17 @@ async function extrairComIA_umArquivo(input){
   "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
   "encomendante_cnpj": "",  // CNPJ do encomendante/adquirente — ver instruções específicas na seção do Comprovante de Importação/Extrato da DI abaixo. Deixar "" se o documento não for esse tipo ou não trouxer esse campo.
   "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
+  "depot": "",  // SOMENTE para RIC/EIR de devolução: nome do terminal/depósito onde o vazio foi devolvido (cabeçalho do documento, ex: "LECHMAN TERMINAIS NAVEGANTES")
+  "eh_ric": false,  // true SOMENTE se o documento for um RIC/EIR/Intercâmbio/Gate Pass de container (comprovante de entrada/saída de container em terminal/depósito)
   "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0}. Deixar [] para qualquer outro tipo de documento.
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
-- extrair um item no array "containers" com o número do campo "Container No." (RIC costuma ter 1 container por documento, mas se listar mais de um, inclua um item por container).
-- data_devolucao_vazio vem do campo "Gate In Date/Time" — esta é a data e hora em que o container vazio deu entrada no depósito, ou seja, a devolução física de fato. O formato no documento costuma ser "YYYY/MM/DD HH:MM" (ex: "2026/05/30 10:54") — converta apenas a parte da data para "YYYY-MM-DD" (ex: "2026-05-30"), descartando a hora.
+- também é RIC o "INTERCAMBIO DE ENTRADA" / "INTERCÂMBIO" / "EIR" de terminais como LECHMAN, Portonave, Poly, etc. Marque "eh_ric": true.
+- extrair um item no array "containers" com o número do container (campo "Container No." ou a linha logo abaixo da data, ex: "PIDU 452832-3 40HC"). O número do container é SEMPRE 4 letras + 7 dígitos: devolva sem espaços, hífens ou pontos (ex: "PIDU 452832-3" → "PIDU4528323"). Não inclua o tipo (40HC) no número. Deixe "lacre" vazio se o campo LACRE do RIC estiver em branco.
+- extrair "depot": nome do terminal/depósito que emitiu o RIC (cabeçalho, ex: "LECHMAN TERMINAIS NAVEGANTES").
+- num RIC, NÃO preencha nenhum outro campo além de containers, data_devolucao_vazio, depot e eh_ric — em especial NÃO preencha armador (o RIC traz só a sigla, ex: "PIL"), transportadora (é quem levou o vazio, não a transportadora do processo), navio, cliente/importador, referencia ou lacre.
+- data_devolucao_vazio vem do campo "Gate In Date/Time" (nos RICs brasileiros de entrada, o campo "ENTRADA: dd/mm/aaaa hh:mm" — converta para "YYYY-MM-DD"; NÃO use "REGISTRO") — esta é a data e hora em que o container vazio deu entrada no depósito, ou seja, a devolução física de fato. O formato no documento costuma ser "YYYY/MM/DD HH:MM" (ex: "2026/05/30 10:54") — converta apenas a parte da data para "YYYY-MM-DD" (ex: "2026-05-30"), descartando a hora.
 - se o campo "Gate In Date/Time" estiver vazio mas "Gate Out Date/Time" estiver preenchido, este documento é de SAÍDA do container vazio do depósito (não de devolução) — não preencher data_devolucao_vazio neste caso.
 Se o documento for um Comprovante de Importação, Extrato da Declaração de Importação (DI) ou uma DUIMP (Declaração Única de Importação — o novo formato que está substituindo a DI), emitidos pela Receita Federal/Siscomex:
 - NUNCA preencha ce_master, ce_house ou ce_data_embarque a partir desse documento, mesmo que ele mencione ou referencie um número de CE Mercante em algum trecho (a DUIMP costuma citar o CE vinculado à carga como parte dos próprios dados da declaração) — esses 3 campos só podem vir de um CE Mercante emitido de verdade, nunca de uma DI/DUIMP. Preenchê-los a partir daqui troca ou apaga o CE Master/House corretos já registrados no processo.
@@ -979,6 +984,55 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     delete extracted.duimp_numero; // tratado à parte acima, nunca vai pro loop genérico
 
+    // ── Número de container normalizado (25/09/2026, RIC da UD26-047) ──
+    // Alguns documentos escrevem o container com espaço/hífen antes do
+    // dígito verificador ("PIDU 452832-3"); no processo ele está como
+    // "PIDU4528323". Comparar sem normalizar fazia o sistema achar que era
+    // um container NOVO e adicioná-lo à lista.
+    const normCont = v => String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(Array.isArray(extracted.containers)) extracted.containers.forEach(c=>{ if(c && c.numero) c.numero = normCont(c.numero); });
+
+    // ── RIC / EIR de devolução do vazio ──
+    // O RIC nunca cria container: só registra a devolução (data + depot) do
+    // container que JÁ está no processo. Com 2+ containers, a data vai para
+    // o container certo (aba Demurrage por container); com 1, para os campos
+    // normais. Se o container do RIC não for deste processo, avisa e não
+    // aplica nada.
+    if(extracted.eh_ric){
+      const itensRic = (extracted.containers||[]).filter(c=>c && c.numero);
+      const devolRic = extracted.data_devolucao_vazio || '';
+      const depotRic = extracted.depot || '';
+      const achados = [], faltando = [];
+      itensRic.forEach(it=>{
+        const i = _containers.findIndex(c => normCont(c.numero) === it.numero);
+        if(i >= 0) achados.push(i); else faltando.push(it.numero);
+      });
+      const temContainerCadastrado = _containers.some(c => c && c.numero);
+      if(faltando.length && temContainerCadastrado){
+        showToast(`⚠️ RIC do container ${faltando.join(', ')} — esse container não está neste processo (${_containers.filter(c=>c.numero).map(c=>c.numero).join(', ')}). Nada foi alterado.`, 'warn');
+      }
+      if(_containers.length > 1){
+        achados.forEach(i=>{
+          if(devolRic) _containers[i].devolucao = devolRic;
+          if(depotRic && !_containers[i].depot) _containers[i].depot = depotRic;
+        });
+        if(achados.length){
+          if(typeof renderDemurrageContainers === 'function') renderDemurrageContainers();
+          preenchidos += achados.length;
+          camposLidosNestaLeitura.push('data_devolucao_vazio');
+        }
+        delete extracted.data_devolucao_vazio; delete extracted.depot;
+      } else if(faltando.length && temContainerCadastrado){
+        delete extracted.data_devolucao_vazio; delete extracted.depot;
+      } else if(!itensRic.length && temContainerCadastrado && _containers.filter(c=>c.numero).length > 1){
+        delete extracted.data_devolucao_vazio; delete extracted.depot;
+      }
+      // Um RIC não cria/edita containers e não mexe em outros dados do processo.
+      extracted.containers = [];
+      ['container','lacre','armador','transportadora','navio','cliente','referencia','consignatario','notify'].forEach(k=>delete extracted[k]);
+    }
+    delete extracted.eh_ric;
+
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete'];
     const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
@@ -1112,18 +1166,18 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(Array.isArray(extracted.containers) && extracted.containers.length){
       listaContainersExtraidos = extracted.containers
         .filter(x => x && x.numero)
-        .map(x => ({numero: String(x.numero).trim(), lacre: x.lacre ? String(x.lacre).trim() : ''}));
+        .map(x => ({numero: normCont(x.numero), lacre: x.lacre ? String(x.lacre).trim() : ''}));
     } else if(extracted.container){
       // Fallback defensivo pro formato antigo (string única) — caso a IA ainda devolva
       // vários números concatenados numa string só (ex: documento com 2+ containers).
       const numsPart = String(extracted.container).split(/[,;\/]+/).map(s => s.trim()).filter(Boolean);
       const lacresPart = extracted.lacre ? String(extracted.lacre).split(/[,;\/]+/).map(s => s.trim()).filter(Boolean) : [];
-      listaContainersExtraidos = numsPart.map((numero, i) => ({numero, lacre: lacresPart[i] || ''}));
+      listaContainersExtraidos = numsPart.map((numero, i) => ({numero: normCont(numero), lacre: lacresPart[i] || ''}));
     }
     if(listaContainersExtraidos.length){
       listaContainersExtraidos.forEach(item => {
         const numNovo = item.numero.toUpperCase();
-        const idxExistente = _containers.findIndex(c => c.numero && c.numero.trim().toUpperCase() === numNovo);
+        const idxExistente = _containers.findIndex(c => c.numero && normCont(c.numero) === normCont(numNovo));
         if(idxExistente !== -1){
           // Mesmo container já estava na lista (re-leitura do mesmo documento, ou
           // outro documento confirmando o mesmo container) — só completa o lacre.
