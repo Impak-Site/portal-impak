@@ -2227,7 +2227,7 @@ function montarDREConsolidado(filtros){
         venda: {}, fracao: 1,
         cliente: p.cliente || '',
         dataNf: p.nf_saida_data || '',
-        nfValor: nfSaidaLegadoEhVenda(p) ? (parseFloat(p.nf_saida_valor) || 0) : 0,
+        nfValor: !ehCfopRemessaEstoque(p.nf_saida_cfop) ? (parseFloat(p.nf_saida_valor) || 0) : 0,
         qtdVendasProcesso: 1,
       }];
     }
@@ -2711,7 +2711,7 @@ function calcularFechamento(p){
     pctLucroReal = (lucroReal != null && nfSaida) ? (lucroReal / nfSaida) : null;
   } else {
     // NF única com CFOP 5905 = remessa p/ estoque → não é faturamento.
-    const nfSaidaRaw = nfSaidaLegadoEhVenda(p) ? parseFloat(p.nf_saida_valor) : NaN;
+    const nfSaidaRaw = !ehCfopRemessaEstoque(p.nf_saida_cfop) ? parseFloat(p.nf_saida_valor) : NaN;
     temReal = !isNaN(nfSaidaRaw) && nfSaidaRaw > 0;
     nfSaida = isNaN(nfSaidaRaw) ? null : nfSaidaRaw;
     lucroReal = custosReais
