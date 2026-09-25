@@ -612,3 +612,79 @@ setTimeout(() => enviar(btn.textContent), 100);
 }
 
 })();
+
+// ── Navegação por TAB campo a campo (todas as telas) ─────────────────────
+// Problema: vários campos re-renderizam o bloco inteiro no onchange (parcelas,
+// vendas, pagamento...). Ao apertar TAB, o change dispara, o HTML é recriado,
+// o campo seguinte some e o foco cai no <body> — o próximo TAB ia pra qualquer
+// lugar. Além disso o TAB parava em botões de ícone (copiar, 📎, ×).
+// Solução: TAB/Shift+TAB saindo de um campo vai direto pro próximo CAMPO
+// editável visível (pula botões, readonly e desabilitados). Se o bloco for
+// re-renderizado, reencontra o campo pelo id ou pela posição.
+// Para desligar em um elemento/bloco específico: atributo data-tab-nativo.
+(function(){
+  if (window.__tabNavInstalado) return; window.__tabNavInstalado = true;
+  var SEL = 'input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=reset]):not([type=file]):not([type=image]),select,textarea';
+  function ehCampo(el){
+    return el && el.matches && el.matches(SEL) && !el.disabled && !el.readOnly &&
+      el.tabIndex >= 0 && !el.closest('[data-tab-nativo]') && el.getClientRects().length > 0 &&
+      getComputedStyle(el).visibility !== 'hidden';
+  }
+  function escopo(el){
+    return el.closest('.modal-bg,.modal,[role=dialog]') || document;
+  }
+  function campos(root){
+    return Array.prototype.filter.call(root.querySelectorAll(SEL), ehCampo);
+  }
+  function caminho(el){ // posição estável caso não tenha id
+    var p = [], n = el;
+    while (n && n.parentElement && n !== document.body){
+      p.unshift(Array.prototype.indexOf.call(n.parentElement.children, n)); n = n.parentElement;
+    }
+    return p.join('.');
+  }
+  function porCaminho(c){
+    var n = document.body, idx = c.split('.');
+    for (var i=0;i<idx.length;i++){ if(!n) return null; n = n.children[+idx[i]]; }
+    return n || null;
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || e.defaultPrevented) return;
+    var cur = document.activeElement;
+    if (!ehCampo(cur)) return;
+    var root = escopo(cur);
+    var lista = campos(root);
+    var i = lista.indexOf(cur);
+    if (i < 0) return;
+    var alvoIdx = i + (e.shiftKey ? -1 : 1);
+    if (alvoIdx < 0 || alvoIdx >= lista.length) return; // fim do bloco: comportamento normal
+    e.preventDefault();
+    var alvo = lista[alvoIdx];
+    var alvoId = alvo.id, alvoCam = caminho(alvo);
+    var curId = cur.id;
+    // dispara change/blur do campo atual (pode recriar o HTML)
+    try { cur.blur(); } catch(_){}
+    function focar(){
+      var el = alvo;
+      if (!el.isConnected || !ehCampo(el)){
+        el = (alvoId && document.getElementById(alvoId)) || porCaminho(alvoCam);
+        if (!ehCampo(el)){
+          // re-render mudou a estrutura: usa a posição relativa ao campo de origem
+          var novaLista = campos(root.isConnected ? root : document);
+          var origem = curId ? document.getElementById(curId) : null;
+          var j = origem ? novaLista.indexOf(origem) : -1;
+          el = j >= 0 ? novaLista[j + (e.shiftKey ? -1 : 1)] : novaLista[Math.min(alvoIdx, novaLista.length-1)];
+        }
+      }
+      if (!el) return;
+      el.focus();
+      try { if (el.select && /^(text|search|tel|email|number|url|)$/.test(el.type||'')) el.select(); } catch(_){}
+    }
+    focar();
+    // alguns blocos re-renderizam com setTimeout; confere de novo no próximo tick
+    setTimeout(function(){
+      var a = document.activeElement;
+      if (!a || a === document.body || !a.isConnected) focar();
+    }, 30);
+  }, true);
+})();
