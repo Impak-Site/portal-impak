@@ -680,9 +680,17 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         <button class="cenario-btn active" id="cen-3" onclick="setCenario(3)">Lucro<br>Bruto %</button>
       </div>
       <div class="form-group" id="cenario-input-group">
-        <label id="cenario-label">Lucro Bruto %</label>
-        <input type="number" id="cenario_valor" step="0.01" value="4" placeholder="ex: 4">
-        <div style="font-size:10px;color:var(--dim);margin-top:2px;" id="cenario-hint">% sobre o faturamento total</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label><span id="cenario-label">Lucro Bruto %</span> — COM S.T</label>
+            <input type="number" id="cenario_valor" step="0.01" value="4" placeholder="ex: 4">
+          </div>
+          <div>
+            <label><span id="cenario-label-sem">Lucro Bruto %</span> — SEM S.T</label>
+            <input type="number" id="cenario_valor_sem_st" step="0.01" value="" placeholder="igual ao COM S.T">
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin-top:2px;"><span id="cenario-hint">% sobre o faturamento total</span> · SEM S.T em branco = usa a mesma margem do COM S.T</div>
       </div>
     </div>
 
@@ -1478,6 +1486,7 @@ function setCenario(n) {
   const labels = ['Lucro Alvo %','Lucro Alvo R$','Lucro Bruto %'];
   const hints = ['% de lucro líquido desejado','Valor absoluto de lucro (R$)','% bruto sobre faturamento'];
   document.getElementById('cenario-label').textContent = labels[n-1];
+  { const l2 = document.getElementById('cenario-label-sem'); if (l2) l2.textContent = labels[n-1]; }
   document.getElementById('cenario-hint').textContent = hints[n-1];
 }
 
@@ -1736,6 +1745,9 @@ function calcular() {
   const cliente  = document.getElementById('cliente').value;
   const custos_div = parseFloat(document.getElementById('custos_diversos').value) || 0;
   const cenario_val = parseFloat(document.getElementById('cenario_valor').value) || 0;
+  // Margem SEM S.T própria (opcional) — vazio = mesma margem do COM S.T.
+  const _vSem = parseFloat(String(document.getElementById('cenario_valor_sem_st').value).replace(',', '.'));
+  const cenario_val_sem = isNaN(_vSem) ? cenario_val : _vSem;
   const taxa_seguro_compra = (parseFloat(document.getElementById('taxa_seguro_compra').value) || 0.04) / 100;
   // Câmbio de abertura do dia da chegada — específico pro Seguro Venda (diferente
   // do câmbio principal usado no resto do cálculo). Se vazio, usa o câmbio principal
@@ -2128,13 +2140,14 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // a planilha, que copia os custos da aba COM S.T pra aba SEM S.T e só muda
   // se o ICMS ST entra ou não. Cada cenário resolve seu próprio Fator NFe.
   function resolverCenario(temStCenario, tx, ufx){
+    const alvo = temStCenario ? cenario_val : cenario_val_sem;
     if(_estado.cenario === 1){
-      const alvo_pct = cenario_val / 100;
+      const alvo_pct = alvo / 100;
       return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario, tx, ufx);
     } else if(_estado.cenario === 2){
-      return resolverFatorNfe(r => r.lucro_bruto - cenario_val, temStCenario, tx, ufx);
+      return resolverFatorNfe(r => r.lucro_bruto - alvo, temStCenario, tx, ufx);
     } else {
-      const alvo_pct = cenario_val / 100;
+      const alvo_pct = alvo / 100;
       return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario, tx, ufx);
     }
   }
@@ -2239,7 +2252,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     },
     br_nome: document.getElementById('br_nome').value,
     boss_nome: document.getElementById('boss_nome')?.value,
-    cenario_val,
+    cenario_val, cenario_val_sem,
   };
 
   renderResultado(_estado.ultimoResultado);
@@ -2350,7 +2363,7 @@ function porUfHtmlCapa(r, fmtR){
         <span>Preço COM S.T por Estado (representantes)</span>
         <button type="button" onclick="exportarPrecosPorUf()" style="font-size:12px;font-weight:700;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;">⬇️ Excel por estado</button>
       </div>
-      <div style="font-size:11px;color:var(--dim);margin-bottom:6px;">Mesmo custo e mesma margem (${pctF(sst.pct_lucro)}); muda só o ICMS S.T de cada estado. SEM S.T é igual em todos.</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:6px;">Mesmo custo e mesma margem COM S.T (${pctF(r.cenarios.com_st.pct_lucro)}) em todos os estados; muda só o ICMS S.T. SEM S.T (margem ${pctF(sst.pct_lucro)}) é igual em todos.</div>
       <div style="overflow-x:auto;"><table class="mix-result-table">
         <thead><tr>${temMix?'<th>Medida</th><th>Modelo</th><th>Qtd</th>':''}<th>SEM S.T</th>${ok.map(x=>`<th title="MVA ${pct(x.mva)} · Alíq. interna ${pct(x.aliq_interna)}">COM S.T ${x.uf}</th>`).join('')}</tr></thead>
         <tbody>
@@ -3303,7 +3316,7 @@ const CAMPOS_COTACAO = [
   'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
   'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_tsc',
   'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao','tx_reciclagem',
-  'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor',
+  'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor','cenario_valor_sem_st',
 ];
 
 // ── AUTOSAVE (evita perder o que foi preenchido ao atualizar a pagina) ──
@@ -3361,6 +3374,7 @@ function aplicarEstadoFormulario(estado){
   // Cotações salvas antes do campo ICMS de Saída existir usavam 1,4% fixo.
   { const el = document.getElementById('icms_saida_pct'); if (el) el.value = '1.4'; }
   { const el = document.getElementById('ufs_extra'); if (el) el.value = ''; }
+  { const el = document.getElementById('cenario_valor_sem_st'); if (el) el.value = ''; }
   Object.entries(estado.campos||{}).forEach(([id,val]) => {
     const el = document.getElementById(id);
     if(el) el.value = val;
