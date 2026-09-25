@@ -348,6 +348,10 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
             <option value="TO">TO</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>ICMS de Saída (Próprio) %</label>
+          <input type="number" id="icms_saida_pct" step="0.01" min="0" value="1.4" placeholder="1,4">
+        </div>
       </div>
       <div class="form-group">
         <label>Alíq. NCM carregada</label>
@@ -1540,14 +1544,6 @@ function onUFChange() {
 
 function pct(v){ return v != null ? (v*100).toFixed(2)+'%' : '0%'; }
 
-function icmsProprioPorCliente(nome){
-  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
-  const tem = w => new RegExp('(^|[^A-Z0-9])' + w + '([^A-Z0-9]|$)').test(n);
-  if (['PRODOESTE','MARDISA','NOVOS','COSMAR','DISCAMARA'].some(tem)) return 0.04;
-  if (['SILCAR','NSA','OST','VACHILESKI','LAUXEN'].some(tem)) return 0.026;
-  return null;
-}
-
 // ── Split COM/SEM ST por item do Mix ──
 // A chave era só a medida — com a mesma medida em 2 modelos (ex: 295/80R22.5
 // RSR21 + RDR3) o split de um sobrescrevia o do outro. Agora a chave é
@@ -1695,11 +1691,10 @@ function calcular() {
   const chave = `${ncm}${uf}`;
   let t = TABELA_NCM[chave];
   if(!t) { showToast(`NCM ${ncm}/${uf} não encontrado na tabela NCM`,'err'); return; }
-  // ICMS Próprio por cliente — mesma regra da planilha (MODELO - COM S.T!K28):
-  // PRODOESTE/MARDISA/NOVOS/COSMAR/DISCAMARA = 4%; SILCAR/NSA/OST/VACHILESKI/
-  // LAUXEN = 2,6%; demais clientes = alíquota da tabela NCM (1,4%).
-  { const icmsCli = icmsProprioPorCliente(document.getElementById('cliente').value);
-    if (icmsCli != null) t = { ...t, icms_prop: icmsCli }; }
+  // ICMS de Saída (Próprio) — campo manual, padrão 1,4%. Substitui a
+  // alíquota fixa da tabela NCM (quem preenche decide: 1,4 / 2,6 / 4 etc.).
+  { const v = parseFloat(String(document.getElementById('icms_saida_pct').value).replace(',', '.'));
+    if (!isNaN(v) && v >= 0) t = { ...t, icms_prop: v / 100 }; }
 
   // ── 1. SEGURO (compra e venda) ──
   // FIX: reproduzindo a fórmula exata da planilha (MODELO-COM/SEM S.T!D7) contra
@@ -3197,7 +3192,7 @@ function pctF(v){ return v.toFixed(2)+'%'; }
 // adicionar o id aqui também.
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
-  'taxa_seguro_compra','cambio_chegada','cambio_medio_di','produto','origem','uf_destino',
+  'taxa_seguro_compra','cambio_chegada','cambio_medio_di','produto','origem','uf_destino','icms_saida_pct',
   'tipo_importacao','dump_valor','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
@@ -3259,6 +3254,8 @@ function coletarEstadoFormulario(){
 
 function aplicarEstadoFormulario(estado){
   if(!estado) return;
+  // Cotações salvas antes do campo ICMS de Saída existir usavam 1,4% fixo.
+  { const el = document.getElementById('icms_saida_pct'); if (el) el.value = '1.4'; }
   Object.entries(estado.campos||{}).forEach(([id,val]) => {
     const el = document.getElementById(id);
     if(el) el.value = val;
