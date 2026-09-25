@@ -872,6 +872,7 @@ function parseTBR(rows, fornecedor){
   // LI/SR: match só cabeçalhos claros (evita falso-positivo tipo "APLICAÇÃO" que contém "LI")
   const iLi   =hdr.findIndex(c=>/^LI(\/SR)?$/i.test(c.trim())||/LI\s*[\/&]\s*SR/i.test(c)||/LOAD\s*INDEX/i.test(c));
   // Coluna de tipo de banda (Rovelo 2026: "TRA" = Liso/Tração/AP) — mais confiável que o código do pattern pra liso x tração
+  const iFab  =hdr.findIndex(c=>/^(FACTORY|ORIGIN|ORIGEM)$/i.test(c.trim()));
   const iTra  =hdr.findIndex(c=>/^(TRA|TREAD|TREAD TYPE|TIPO)$/i.test(c.trim()));
   const iPr   =hdr.findIndex(c=>c.toUpperCase()==='PR');
   const iMoq  =hdr.findIndex(c=>c.toString().includes('40'));
@@ -904,7 +905,7 @@ function parseTBR(rows, fornecedor){
       moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
       ctnr:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
       p:Math.round(preco*100)/100,preco:Math.round(preco*100)/100,
-      bor:borVal,t:'TBR',orig:'VIETNAM'});
+      bor:borVal,t:'TBR',orig:(iFab>=0&&r[iFab]?String(r[iFab]).trim().toUpperCase():'VIETNAM')});
   }
   return items;
 }
@@ -1633,7 +1634,11 @@ function analisar(){
     origMap[o].forns.add(c.forn); origMap[o].count++;
   });
   const origKeys=Object.keys(origMap);
-  const multiOrig=origKeys.length>1;
+  // Origem "VIETNAM/CAMBODIA" = a fábrica pode embarcar de qualquer um dos dois:
+  // só é conflito se NÃO existir um país em comum entre todas as origens do mix.
+  const _paisesDe=o=>new Set(String(o).toUpperCase().split(/[\/,]/).map(x=>x.trim()).filter(Boolean));
+  const _comum=origKeys.filter(o=>o!=='Não informado').map(_paisesDe).reduce((acc,st)=>acc===null?st:new Set([...acc].filter(x=>st.has(x))),null);
+  const multiOrig=origKeys.length>1 && !(_comum && _comum.size>0);
   let origHtml='<div style="padding:14px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">';
   origKeys.forEach(o=>{
     const badge=`<span class="badge-orig${multiOrig?'-warn':''}">${esc(o)}</span>`;
