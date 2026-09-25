@@ -726,6 +726,12 @@ function norm(s){
 function normalizarAcento(s){
   return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
 }
+// Tag de produto que não veio na última planilha do fornecedor (mantido na base por causa de estoque)
+function tagForaTabela(c){
+  if(!c||!c.fora) return '';
+  const dt=c.fora_desde?new Date(c.fora_desde).toLocaleDateString('pt-BR'):'';
+  return `<span title="Não veio na planilha ${esc(c.fora_arq||'')}${dt?' de '+dt:''}. Mantido na base (pode haver estoque); preço é da última planilha em que apareceu." style="display:inline-block;background:#fdecea;color:#b42318;border:1px solid #f5c2bd;border-radius:4px;font-size:9.5px;font-weight:800;padding:1px 5px;margin-left:4px;white-space:nowrap">FORA DA TABELA${dt?' · '+dt:''}</span>`;
+}
 function diasDesde(d){if(!d)return 999;return Math.floor((Date.now()-new Date(d))/86400000);}
 
 // ── NAVIGATION ────────────────────────────────────────
@@ -765,6 +771,7 @@ function renderDash(){
     const precos=sub.map(c=>c.p).filter(Boolean);
     const mn=Math.min(...precos),mx=Math.max(...precos);
     const sizes2=[...new Set(sub.map(c=>c.s))].length;
+    const nFora=sub.filter(c=>c.fora).length;
     const scls=d>=DIAS?'cslate':d>=20?'cswarn':'csok';
     const slbl=d>=DIAS?'Atrasado':d>=20?'Atualizar em breve':'Em dia';
     const dt = ult ? new Date(ult.upd) : null;
@@ -774,7 +781,7 @@ function renderDash(){
     const tr=document.createElement('tr');
     tr.innerHTML=`<td class="fw7">${esc(f)}</td>
       <td><span class="tag t${tipo}">${tipo}</span></td>
-      <td class="cor fw7">${sub.length}</td>
+      <td class="cor fw7">${sub.length}${nFora?`<div style="font-size:10px;color:#b42318;font-weight:700">${nFora} fora da tabela</div>`:''}</td>
       <td class="cm">${sizes2}</td>
       <td style="font-size:11px">$${fmtP(mn)} — $${fmtP(mx)}</td>
       <td style="font-size:11px">${ultHtml}</td>
@@ -1107,7 +1114,17 @@ async function handleImport(files){
         if(chaveSemLi(c) in novosSemLi) return false;
         return true;
       });
+      // Itens do mesmo fornecedor+tipo que NÃO vieram nesta planilha: ficam na base
+      // (pode haver estoque), mas marcados "FORA DA TABELA" + aviso no log.
+      const agoraIso=new Date().toISOString(); const foraLista=[];
+      mantidos.forEach(c=>{
+        if(c.f!==forn || (tipoNovos && c.t!==tipoNovos)) return;
+        if(!c.fora){ c.fora=true; c.fora_desde=agoraIso; c.fora_arq=file.name; foraLista.push(c); }
+      });
       COTACOES = [...mantidos, ...Object.values(novosPorChave)];
+      const jaFora = mantidos.filter(c=>c.f===forn && (!tipoNovos||c.t===tipoNovos) && c.fora).length;
+      if(foraLista.length) logImport(`⚠ ${foraLista.length} produto(s) de ${forn} NÃO vieram nesta planilha — mantidos na base com a tag "FORA DA TABELA": ${foraLista.slice(0,25).map(c=>(c.s||c.medida)+' '+(c.pat||'')+(c.li?' '+c.li:'')).join(' · ')}${foraLista.length>25?' …':''}`,'err');
+      if(jaFora>foraLista.length) logImport(`(${jaFora-foraLista.length} já estavam marcados como fora da tabela em planilhas anteriores)`,'info');
 
       // marcar fornecedor como atualizado
       const fo=fornecedores.find(x=>x.nome===forn);
@@ -1869,7 +1886,7 @@ function renderCat(){
   document.getElementById('cat-body').innerHTML=slice.map(c=>`<tr>
     <td class="fw7">${esc(c.f)}</td>
     <td><span class="mpill">${esc(c.s)}</span></td>
-    <td class="cm">${esc(c.pat||c.md||'—')}</td>
+    <td class="cm">${esc(c.pat||c.md||'—')}${tagForaTabela(c)}</td>
     <td class="cm">${esc(c.li||'—')}</td>
     <td class="cm">${c.pe!=null?c.pe:'—'}</td>
     <td class="cm">—</td>
@@ -2021,7 +2038,7 @@ function renderSelTable() {
         const patLabel = item.pat ? `<span class="cmp-info" style="font-weight:600;color:#1a7fd4;">${esc(item.pat)}</span>` : '';
         t += `<td><div class="cmp-cell-yes ${picked?'picked':''}" onclick="toggleCmpSel(this,'${key}')">
           <span class="cmp-price">${esc(item.cur||'USD')} ${fmtP(item.p)}</span>
-          ${patLabel}
+          ${patLabel}${tagForaTabela(item)}
           ${item.pe ? `<span class="cmp-info">${fmtKg(item.pe)} kg${pkg?' · '+pkg+' $/kg':''}</span>` : ''}
         </div></td>`;
       }
