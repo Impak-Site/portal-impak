@@ -32,6 +32,7 @@ function _recStatusNcm(p){
   const txt = (p.produto||'') + ' ' + (p.produtos_json||'');
   return /\d{3}\s*\/\s*\d{2}\s*Z?R\s*\d{2}|PNEU|TYRE|TIRE/i.test(txt) ? 'presumido' : 'desconhecido';
 }
+function _recIdb(cliente){ let h=0; for(const ch of String(cliente)) h=(h*31+ch.charCodeAt(0))|0; return 'rec-'+(h>>>0).toString(36); }
 function _recPeso(p){ const v = parseFloat(p.di_peso_liquido); return isFinite(v) && v > 0 ? v : null; }
 
 function listarReciclagem(ano, tri){
@@ -123,10 +124,10 @@ async function renderDashReciclagem(){
       <td style="padding:6px 8px;text-align:right;font-weight:700;">${l.peso==null?'—':fmtKg(l.peso*REC_PCT)}</td>
     </tr>`).join('');
     const campo = (lbl,id,val,tipo)=>`<label style="font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px;">${lbl}<input id="${id}" type="${tipo||'date'}" value="${esc(val||'')}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;"></label>`;
-    const idb = 'rec-' + btoa(unescape(encodeURIComponent(cliente))).replace(/[^A-Za-z0-9]/g,'').slice(0,24);
+    const idb = _recIdb(cliente);
     return `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;">
       <div style="padding:10px 16px;background:var(--bg);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);">
-        <div><div style="font-weight:800;font-size:14px;">${esc(cliente)}</div><div style="font-size:11px;color:var(--muted);">CNPJ: ${cnpj?esc(_recFmtCnpj(cnpj)):'<span style="color:var(--err);">não encontrado no Cadastro</span>'} · ${ls.length} processo(s) · ${tQtd} pneus · ${fmtKg(tPeso)} kg · <b>a reciclar ${fmtKg(tPeso*REC_PCT)} kg</b></div></div>
+        <div><div style="font-weight:800;font-size:14px;">${esc(cliente)}</div><div style="font-size:11px;color:var(--muted);">CNPJ: ${cnpj?esc(_recFmtCnpj(cnpj)):'<span style="color:var(--err);">não está no Cadastro — digite abaixo e salve</span>'} · ${ls.length} processo(s) · ${tQtd} pneus · ${fmtKg(tPeso)} kg · <b>a reciclar ${fmtKg(tPeso*REC_PCT)} kg</b></div></div>
         <div style="display:flex;gap:8px;align-items:center;">
           <span style="background:${st.fundo};color:${st.cor};font-weight:800;font-size:11px;padding:3px 10px;border-radius:20px;">${st.txt}</span>
           <button type="button" onclick="exportarReciclagemExcel(decodeURIComponent('${key}'))" style="font-size:12px;font-weight:700;padding:6px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;">⬇️ Excel p/ cliente</button>
@@ -138,6 +139,7 @@ async function renderDashReciclagem(){
           <th style="padding:6px 8px;text-align:right;">Peso total DI (kg)</th><th style="padding:6px 8px;text-align:right;">Qtd</th><th style="padding:6px 8px;text-align:right;">Peso a reciclar (70%)</th></tr></thead>
         <tbody>${linhasHtml}</tbody></table></div>
       <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;background:#fcfcfd;">
+        ${campo('CNPJ do cliente', idb+'-cnpj', cnpj?_recFmtCnpj(cnpj):'', 'text')}
         ${campo('📤 Enviada ao cliente em', idb+'-env', lote&&lote.data_envio)}
         ${campo('♻️ Reciclagem realizada em', idb+'-real', lote&&lote.data_realizacao)}
         ${campo('💰 Paga pelo cliente em', idb+'-pag', lote&&lote.data_pagamento)}
@@ -174,7 +176,7 @@ async function salvarLoteReciclagem(cliente, idb){
   const g = s => (document.getElementById(idb+'-'+s)?.value || '').trim();
   const { linhas } = listarReciclagem(_recAno, _recTri);
   const ls = linhas.filter(l=>l.cliente===cliente);
-  const body = { cliente, ano:_recAno, trimestre:_recTri, cliente_cnpj: _recCnpjCliente(cliente) || null,
+  const body = { cliente, ano:_recAno, trimestre:_recTri, cliente_cnpj: g('cnpj') || _recCnpjCliente(cliente) || null,
     data_envio:g('env'), data_realizacao:g('real'), data_pagamento:g('pag'), valor:g('val'), obs:g('obs'),
     processos: ls.map(l=>({ referencia:l.referencia, numero_di:l.numeroDi, peso:l.peso, qtd:l.qtd })) };
   try{
@@ -195,7 +197,8 @@ async function exportarReciclagemExcel(cliente){
   if(!ls.length){ showToast('Nenhum processo deste cliente no trimestre','err'); return; }
   if(ls.some(l=>l.peso==null) && !confirm('Há processo(s) sem o peso da DI/DUIMP — a planilha sai com essas linhas em branco. Exportar mesmo assim?')) return;
   const lote = _recLote(cliente,_recAno,_recTri);
-  const cnpj = (lote && lote.cliente_cnpj) || _recCnpjCliente(cliente);
+  const inpCnpj = document.getElementById(_recIdb(cliente)+'-cnpj');
+  const cnpj = (inpCnpj && inpCnpj.value.trim()) || (lote && lote.cliente_cnpj) || _recCnpjCliente(cliente);
   const ncms = [...new Set(ls.flatMap(l=>String(l.ncms||'').split(/[,;]\s*/).filter(Boolean)))];
   const wb = new ExcelJS.Workbook(); wb.creator='IMPAK';
   const ws = wb.addWorksheet(`${_recTri} TRIMESTRE DE ${_recAno}`);
