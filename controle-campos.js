@@ -201,7 +201,7 @@ function coletarESalvar(opts){
   if(_vendas.length){
     for(let vi=0; vi<_vendas.length; vi++){
       const v = _vendas[vi];
-      if(vendaEhRemessa(v)) continue; // remessa p/ estoque (CFOP 5905) não é venda — não exige cliente/itens
+      if(ehCfopSemVenda(v.nf_saida_cfop)) continue; // remessa (5905) / retorno (5907) não é venda — não exige cliente/itens
       if(!v.cliente || !v.cliente.trim()){
         showToast(`Venda ${vi+1}: informe o cliente antes de salvar (ou remova a venda, se não for usar esta aba)`,'err');
         return;
@@ -215,7 +215,7 @@ function coletarESalvar(opts){
     const totalQtdProc = totalQuantidadeProdutos({..._editando, produtos_json: JSON.stringify(_produtos)});
     // Só vendas de verdade — a remessa p/ estoque (CFOP 5905) leva as mesmas
     // unidades que depois são vendidas; somar as duas seria duplicar.
-    const qtdAlocadaVendas = _vendas.filter(v=>!vendaEhRemessa(v)).reduce((s,v)=> s + (v.itens||[]).reduce((s2,it)=> s2 + (parseFloat(it.quantidade)||0), 0), 0);
+    const qtdAlocadaVendas = _vendas.filter(v=>!ehCfopSemVenda(v.nf_saida_cfop)).reduce((s,v)=> s + (v.itens||[]).reduce((s2,it)=> s2 + (parseFloat(it.quantidade)||0), 0), 0);
     // Mesma NF cadastrada duas vezes = duplicidade.
     const numsNF = _vendas.map(v=>String(v.nf_saida_numero||'').replace(/\D/g,'').replace(/^0+/,'')).filter(Boolean);
     const dupNF = numsNF.find((n,i)=>numsNF.indexOf(n)!==i);
@@ -755,7 +755,7 @@ function renderVendas(){
       </div>`).join('') || '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;">Nenhum custo direto nesta venda.</div>';
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--bg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">${vendaEhRemessa(v) ? '📦 Remessa p/ estoque' : 'Venda '+(vi+1)}${vendaEhRemessa(v) ? ' <span style="text-transform:none;font-weight:600;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP 5905 — não conta como venda, a mercadoria continua no estoque</span>' : ''}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">${vendaEhRemessa(v) ? '📦 Remessa p/ estoque' : vendaEhRetorno(v) ? '↩️ Retorno da remessa' : 'Venda '+(vi+1)}${vendaEhRemessa(v) ? ' <span style="text-transform:none;font-weight:600;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP 5905 — não conta como venda, a mercadoria continua no estoque</span>' : vendaEhRetorno(v) ? ' <span style="text-transform:none;font-weight:600;color:#475569;background:#e2e8f0;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP '+esc(v.nf_saida_cfop)+' — retorno simbólico: só registro, não mexe em estoque nem em venda</span>' : ''}</div>
         <div style="display:flex;gap:14px;align-items:center;">
           <button type="button" onclick="document.getElementById('nf-import-${vi}').click()" style="background:none;border:none;color:var(--ac);cursor:pointer;font-size:12px;font-weight:600;">📎 Importar NF (XML ou PDF)</button>
           <input type="file" id="nf-import-${vi}" accept=".xml,application/pdf,image/*" style="display:none" onchange="importarNFVenda(${vi},this)">

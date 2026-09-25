@@ -2085,6 +2085,22 @@ teste('CFOP 5905 na NF única do processo: não é faturamento nem baixa estoque
   iguais(sandbox.nfSaidaLegadoEhVenda({nf_saida_numero:'201', nf_saida_cfop:'6102'}), true, 'outro CFOP = venda');
 });
 
+
+teste('Fluxo Jean: chegou 248, remessa 248 (5905), venda 100, retorno simbólico 100 (5907) → estoque 148, venda 100, nada duplica', () => {
+  const p = { nf_entrada_numero:'1', produtos_json: JSON.stringify([{descricao:'295/80R22.5 UF195 154/149M 18PR',quantidade:248}]),
+    vendas_json: JSON.stringify([
+      {cliente:'RF LOGISTICA', nf_saida_numero:'10', nf_saida_cfop:'5905', nf_saida_valor:700000, itens:[{descricao:'PNEU 295/80R22.5 UF195 154/149M',quantidade:'248'}]},
+      {cliente:'CLIENTE X', nf_saida_numero:'11', nf_saida_cfop:'5102', nf_saida_valor:300000, itens:[{descricao:'PNEU 295/80R22.5 UF195 154/149M',quantidade:'100'}]},
+      {cliente:'IMPAK', nf_saida_numero:'900', nf_saida_cfop:'5907', nf_saida_valor:280000, itens:[{descricao:'PNEU 295/80R22.5 UF195 154/149M',quantidade:'100'}]}]) };
+  const e = sandbox.estoqueDoProcesso(p);
+  iguais(e.restante, 148, 'saldo 148 em estoque');
+  iguais(e.saiuTudo, false, 'ainda tem estoque');
+  const r = sandbox.calcularVendasResumo(p);
+  iguais(r.qtdAlocada, 100, 'só a venda conta');
+  iguais(r.nfSaidaTotal, 300000, 'faturamento = só a venda');
+  iguais(sandbox.temRemessaEstoque(p), true, 'aparece como ESTOQUE na TV');
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');

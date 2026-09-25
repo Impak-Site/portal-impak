@@ -2227,7 +2227,7 @@ function montarDREConsolidado(filtros){
         venda: {}, fracao: 1,
         cliente: p.cliente || '',
         dataNf: p.nf_saida_data || '',
-        nfValor: !ehCfopRemessaEstoque(p.nf_saida_cfop) ? (parseFloat(p.nf_saida_valor) || 0) : 0,
+        nfValor: !ehCfopSemVenda(p.nf_saida_cfop) ? (parseFloat(p.nf_saida_valor) || 0) : 0,
         qtdVendasProcesso: 1,
       }];
     }
@@ -2433,11 +2433,19 @@ function parseVendas(p){
 // (rateio, sobrevenda, faturamento, lucro, baixa de estoque) usa só
 // vendasReaisDoProcesso() / nfSaidaLegadoEhVenda().
 function ehCfopRemessaEstoque(cfop){ return String(cfop||'').replace(/\D/g,'') === '5905'; }
+// Retorno (simbólico) da remessa — o armazém devolve "no papel" o que foi
+// vendido (Jean, 25/09/2026: usam 5907; 1907/5906/1906 e interestaduais
+// também). Não mexe em nada: nem estoque, nem venda, nem faturamento.
+const _CFOPS_RETORNO_REMESSA = new Set(['5907','6907','1907','2907','5906','6906','1906','2906']);
+function ehCfopRetornoRemessa(cfop){ return _CFOPS_RETORNO_REMESSA.has(String(cfop||'').replace(/\D/g,'')); }
+// CFOP que é só movimentação de estoque (remessa ou retorno) — nunca é venda.
+function ehCfopSemVenda(cfop){ return ehCfopRemessaEstoque(cfop) || ehCfopRetornoRemessa(cfop); }
+function vendaEhRetorno(v){ return !!v && ehCfopRetornoRemessa(v.nf_saida_cfop); }
 function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop); }
-function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !vendaEhRemessa(v)); }
+function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !ehCfopSemVenda(v && v.nf_saida_cfop)); }
 // Processo tem NF de remessa p/ estoque (CFOP 5905) — no processo ou numa venda.
 function temRemessaEstoque(p){ return !!p && (ehCfopRemessaEstoque(p.nf_saida_cfop) || parseVendas(p).some(vendaEhRemessa)); }
-function nfSaidaLegadoEhVenda(p){ return !!(p && p.nf_saida_numero && String(p.nf_saida_numero).trim() && !ehCfopRemessaEstoque(p.nf_saida_cfop)); }
+function nfSaidaLegadoEhVenda(p){ return !!(p && p.nf_saida_numero && String(p.nf_saida_numero).trim() && !ehCfopSemVenda(p.nf_saida_cfop)); }
 
 function clientesDoProcesso(p){
 const nomes = new Set();
@@ -2565,7 +2573,7 @@ function casarItemComProduto(descItem, produtos){
   });
   return melhorScore >= 2 ? melhor : -1;
 }
-function _vendaEhReal(v){ return !!(v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && !vendaEhRemessa(v)); }
+function _vendaEhReal(v){ return !!(v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && !ehCfopSemVenda(v.nf_saida_cfop)); }
 // Quanto ainda está em estoque (NF Entrada lançada, sem NF de venda).
 // Retorna { temEntrada, vendeuAlgo, saiuTudo, total, restante, itens:[{descricao,quantidade}] }
 function estoqueDoProcesso(p){
@@ -2713,7 +2721,7 @@ function calcularFechamento(p){
     pctLucroReal = (lucroReal != null && nfSaida) ? (lucroReal / nfSaida) : null;
   } else {
     // NF única com CFOP 5905 = remessa p/ estoque → não é faturamento.
-    const nfSaidaRaw = !ehCfopRemessaEstoque(p.nf_saida_cfop) ? parseFloat(p.nf_saida_valor) : NaN;
+    const nfSaidaRaw = !ehCfopSemVenda(p.nf_saida_cfop) ? parseFloat(p.nf_saida_valor) : NaN;
     temReal = !isNaN(nfSaidaRaw) && nfSaidaRaw > 0;
     nfSaida = isNaN(nfSaidaRaw) ? null : nfSaidaRaw;
     lucroReal = custosReais

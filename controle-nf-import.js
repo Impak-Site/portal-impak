@@ -37,6 +37,36 @@ async function importarNFVenda(vi, input){
     // da mercadoria importada), avisa em vez de aplicar campos vazios sem
     // explicação (cliente só vem preenchido quando tipo=SAIDA, ver prompt
     // em extrairNFComIA).
+    // Retorno (simbólico) da remessa do armazém — CFOP 5907/1907/5906/1906
+    // (Jean, 25/09/2026). Fica registrado na venda como retorno e não mexe
+    // em estoque, venda nem faturamento. Vem antes do teste de ENTRADA porque
+    // o retorno chega com a IMPAK como destinatária.
+    if(ehCfopRetornoRemessa(dados.cfop)){
+      const dupR = nfSaidaJaCadastrada(dados.nf_numero, vi);
+      if(dupR){ showToast(`A NF ${dados.nf_numero} já está cadastrada (${dupR}) — nada foi alterado.`, 'err', 12000); return; }
+      aplicarDadosNFNaVenda(vi, dados);
+      showToast(`↩️ NF ${dados.nf_numero||''} é RETORNO da remessa (CFOP ${dados.cfop}) — registrada só para controle, não mexe em estoque nem em venda.`, 'info', 12000);
+      return;
+    }
+    // Retorno (simbólico) da remessa (CFOP 5907/1907/5906/1906): NÃO é NF de
+    // Entrada da importação nem venda — registra na aba Vendas como retorno
+    // (só controle) sem tocar em NF Entrada/Saída do processo.
+    if(ehCfopRetornoRemessa(dados.cfop)){
+      const dupR = nfSaidaJaCadastrada(dados.nf_numero, 'processo');
+      if(dupR || _normNumNF(document.getElementById('f_nf_saida_numero')?.value) === _normNumNF(dados.nf_numero)){ if(status) status.textContent = `A NF ${dados.nf_numero} já está cadastrada — nada foi alterado.`; return; }
+      if(typeof _vendas !== 'undefined'){
+        const r = vendaVazia();
+        r.cliente = dados.cliente || '';
+        r.nf_saida_numero = dados.nf_numero || ''; r.nf_saida_data = dados.nf_data || '';
+        r.nf_saida_valor = dados.nf_valor || ''; r.nf_saida_cfop = dados.cfop || '';
+        if(dados.itens && dados.itens.length) r.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):''}));
+        _vendas.push(r); _painelDirty = true;
+        if(typeof renderVendas === 'function') renderVendas();
+        if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
+      }
+      if(status) status.textContent = `↩️ NF ${dados.nf_numero||''} é RETORNO da remessa (CFOP ${dados.cfop}) — registrada na aba Vendas só para controle. Não mexe em estoque, venda nem na NF de Entrada. Confira e salve.`;
+      return;
+    }
     if(dados.tipo === 'ENTRADA'){
       showToast('Esse documento parece ser uma NF de ENTRADA (compra), não de Saída — nada foi preenchido. Confira o arquivo anexado.', 'err', 12000);
       return;
