@@ -2523,6 +2523,73 @@ function arredondarComRestoExato(valores, totalAlvo){
 // Resumo agregado de todas as vendas de um processo — null quando não há
 // nenhuma venda cadastrada (processo continua no modelo antigo, 1 NF Saída
 // única pro processo inteiro).
+// ── ESTOQUE POR PROCESSO (25/09/2026, UD25-368) ────────────────────
+// A TV ("Processos do Mês" / "No Chão") e o Narcélio olhavam só a NF de
+// Saída ÚNICA do processo (campo antigo). Processos com várias vendas
+// guardam as NFs em vendas_json, então nunca "baixavam" o estoque. Além
+// disso a descrição do item na NF ("PNEU EUDEMON 295/80R22.5 18PR
+// 154/149M LISO UF195") é diferente da do produto na PI ("295/80R22.5
+// UF195 154/149M 18PR") — casar por texto exato não funciona. Aqui o item
+// da venda é casado com o produto de MESMA MEDIDA que tiver mais palavras
+// em comum (desenho, índice de carga, lonas).
+function _tokensProduto(desc){
+  const s = String(desc||'').toUpperCase();
+  const mm = s.match(/\d{3}\s*\/\s*\d{2}\s*Z?R\s*\d{2}(?:[.,]\d)?/);
+  const medida = mm ? mm[0].replace(/\s/g,'').replace(',','.').replace('ZR','R') : '';
+  const tokens = new Set(s.replace(/,/g,'.').replace(/[^A-Z0-9\/.]/g,' ').split(/\s+/).filter(t => t.length >= 2));
+  return { medida, tokens };
+}
+function casarItemComProduto(descItem, produtos){
+  const a = _tokensProduto(descItem);
+  let melhor = -1, melhorScore = 0;
+  produtos.forEach((pr, i) => {
+    const b = pr._tk || (pr._tk = _tokensProduto(pr.descricao));
+    if(a.medida && b.medida && a.medida !== b.medida) return;
+    let score = 0; a.tokens.forEach(t => { if(b.tokens.has(t)) score++; });
+    if(a.medida && a.medida === b.medida) score += 2;
+    if(score > melhorScore){ melhorScore = score; melhor = i; }
+  });
+  return melhorScore >= 2 ? melhor : -1;
+}
+function _vendaEhReal(v){ return !!(v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && String(v.nf_saida_cfop||'') !== '5905'); }
+// Quanto ainda está em estoque (NF Entrada lançada, sem NF de venda).
+// Retorna { temEntrada, vendeuAlgo, saiuTudo, total, restante, itens:[{descricao,quantidade}] }
+function estoqueDoProcesso(p){
+  const out = { temEntrada: !!(p && p.nf_entrada_numero && String(p.nf_entrada_numero).trim()), vendeuAlgo:false, saiuTudo:false, total:0, restante:0, itens:[] };
+  if(!p) return out;
+  let produtos = [];
+  try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ produtos = []; }
+  if(!Array.isArray(produtos)) produtos = [];
+  produtos = produtos.filter(x => x && x.descricao).map(x => ({ descricao: String(x.descricao).trim(), quantidade: parseFloat(x.quantidade) || 0 }));
+  if(!produtos.length && p.produto) produtos = [{ descricao: p.produto, quantidade: 0 }];
+  out.total = produtos.reduce((s,x)=>s+x.quantidade,0);
+  const legadoReal = !!(p.nf_saida_numero && String(p.nf_saida_numero).trim() && String(p.nf_saida_cfop||'') !== '5905');
+  const vendasReais = parseVendas(p).filter(_vendaEhReal);
+  if(vendasReais.length){
+    out.vendeuAlgo = true;
+    let semItens = false;
+    vendasReais.forEach(v => {
+      if(!(v.itens||[]).length){ semItens = true; return; }
+      v.itens.forEach(it => {
+        const q = parseFloat(it && it.quantidade) || 0;
+        if(!q) return;
+        const i = casarItemComProduto(it.descricao, produtos);
+        if(i >= 0) produtos[i].quantidade -= q;
+      });
+    });
+    // Venda com NF mas sem itens: não dá pra saber o que saiu — trata como
+    // venda do processo inteiro (mesmo comportamento da NF antiga única).
+    if(semItens) produtos.forEach(x => { x.quantidade = 0; });
+  } else if(legadoReal){
+    out.vendeuAlgo = true;
+    produtos.forEach(x => { x.quantidade = 0; });
+  }
+  out.itens = produtos.filter(x => x.quantidade > 0.009).map(x => ({ descricao: x.descricao, quantidade: x.quantidade }));
+  out.restante = out.itens.reduce((s,x)=>s+x.quantidade,0);
+  out.saiuTudo = out.vendeuAlgo && out.restante <= 0.009;
+  return out;
+}
+
 function itensFaltantesVenda(p){
   if(!p || !p.produtos_json) return [];
   try{
@@ -2539,11 +2606,18 @@ function itensFaltantesVenda(p){
       if(!labels[k]) labels[k] = it.descricao;
     });
     const vendas = parseVendas(p);
+    const chaves = Object.keys(totais);
+    const listaCasar = chaves.map(k => ({ descricao: labels[k] }));
     vendas.forEach(venda => {
       (venda.itens||[]).forEach(it => {
         if(!it || !it.descricao) return;
-        const k = norm(it.descricao);
-        if(!(k in totais)) return;
+        let k = norm(it.descricao);
+        if(!(k in totais)){
+          // descrição da NF diferente da PI → casa por medida + palavras em comum
+          const i = casarItemComProduto(it.descricao, listaCasar);
+          if(i < 0) return;
+          k = chaves[i];
+        }
         totais[k] -= (parseFloat(it.quantidade)||0);
       });
     });

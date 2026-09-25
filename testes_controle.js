@@ -2045,6 +2045,26 @@ teste('verificarCadastroCambio: aponta parcela sem valor e soma diferente da PI;
   iguais(r.filter(x=>x.referencia!=='QD-1589').length, 0, 'todo pago e ok não aparecem');
 });
 
+
+teste('estoqueDoProcesso: 2 vendas com NF e descrições diferentes da PI baixam todo o estoque (UD25-368)', () => {
+  const p = { nf_entrada_numero:'8735',
+    produtos_json: JSON.stringify([{descricao:'275/80R22.5 UD188 149/146L 18PR',quantidade:14},{descricao:'275/80R22.5 UF195 149/146L 18PR',quantidade:62},{descricao:'295/80R22.5 UD188 154/149L 18PR',quantidade:110},{descricao:'295/80R22.5 UF195 154/149M 18PR',quantidade:70}]),
+    vendas_json: JSON.stringify([
+      {nf_saida_numero:'8743', itens:[{descricao:'PNEU EUDEMON 275/80R22.5 18PR 149/146L UD188 BORR',quantidade:'10'},{descricao:'PNEU EUDEMON 295/80R22.5 18PR 154/149L BOR UD188',quantidade:'20'},{descricao:'PNEU EUDEMON 295/80R22.5 18PR 154/149M LISO UF195',quantidade:'10'}]},
+      {nf_saida_numero:'8744', itens:[{descricao:'PNEU EUDEMON 275/80R22.5 18PR 149/146L UD188 BORR',quantidade:'4'},{descricao:'PNEU EUDEMON 275/80R22.5 18PR 149/146L UF195',quantidade:'62'},{descricao:'PNEU EUDEMON 295/80R22.5 18PR 154/149L BOR UD188',quantidade:'90'},{descricao:'PNEU EUDEMON 295/80R22.5 18PR 154/149M LISO UF195',quantidade:'60'}]}]) };
+  const e = sandbox.estoqueDoProcesso(p);
+  iguais(e.saiuTudo, true, 'tudo vendido');
+  iguais(e.restante, 0, 'estoque zerado');
+  iguais(sandbox.itensFaltantesVenda(p).length, 0, 'aba Vendas também não aponta faltante');
+});
+teste('estoqueDoProcesso: venda parcial deixa o resto no estoque; venda sem NF não baixa', () => {
+  const p = { nf_entrada_numero:'1', produtos_json: JSON.stringify([{descricao:'295/80R22.5 UF195 154/149M 18PR',quantidade:70}]),
+    vendas_json: JSON.stringify([{nf_saida_numero:'9', itens:[{descricao:'PNEU X 295/80R22.5 UF195 154/149M',quantidade:'20'}]},{nf_saida_numero:'', itens:[{descricao:'295/80R22.5 UF195',quantidade:'30'}]}]) };
+  const e = sandbox.estoqueDoProcesso(p);
+  iguais(e.saiuTudo, false, 'ainda tem estoque');
+  iguais(e.restante, 50, '70 - 20 (só a venda com NF baixa)');
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');

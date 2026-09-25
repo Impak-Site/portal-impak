@@ -183,13 +183,17 @@ function renderDashTV(){
   _processos.forEach(p => {
     if(p.cancelado) return; // processo cancelado não conta como estoque parado
     if(!p.nf_entrada_numero) return;
-    const semVenda = p.nf_saida_cfop === '5905' || !p.nf_saida_numero;
-    if(!semVenda) return;
+    // Baixa de estoque pelas NFs de Saída de TODAS as vendas (vendas_json),
+    // não só a NF única antiga — ver estoqueDoProcesso() (controle-core.js).
+    const est = estoqueDoProcesso(p);
+    if(est.saiuTudo) return;
     noChaoProcessos++;
-    let produtos = [];
-    try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ /* ignora produtos_json inválido */ }
-    if(!Array.isArray(produtos) || !produtos.length){
-      if(p.produto) produtos = [{ descricao: p.produto, quantidade: null }];
+    let produtos = est.vendeuAlgo ? est.itens : [];
+    if(!est.vendeuAlgo){
+      try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ /* ignora produtos_json inválido */ }
+      if(!Array.isArray(produtos) || !produtos.length){
+        if(p.produto) produtos = [{ descricao: p.produto, quantidade: null }];
+      }
     }
     produtos.forEach(it => {
       const desc = (it.descricao || 'Sem descrição').trim();
@@ -241,12 +245,12 @@ function renderDashTV(){
     //                            OU NF Saída é remessa interna CFOP 5905)
     //   'saiu'    (cinza claro) = NF Saída lançada com CFOP que NÃO é
     //                            remessa (venda/saída real de estoque)
-    const _nfEntradaLancada = !!(p.nf_entrada_numero && String(p.nf_entrada_numero).trim());
-    const _nfSaidaLancada = !!(p.nf_saida_numero && String(p.nf_saida_numero).trim());
-    const _nfEhRemessa = p.nf_saida_cfop === '5905';
+    // 25/09/2026: considera as NFs de Saída de todas as vendas (vendas_json).
+    // Cinza só quando TUDO saiu; venda parcial continua verde (ainda tem estoque).
+    const _est = estoqueDoProcesso(p);
     let nfStatus = null;
-    if(_nfEntradaLancada && (_nfEhRemessa || !_nfSaidaLancada)) nfStatus = 'estoque';
-    else if(_nfSaidaLancada && !_nfEhRemessa) nfStatus = 'saiu';
+    if(_est.saiuTudo) nfStatus = 'saiu';
+    else if(_est.temEntrada) nfStatus = 'estoque';
     previstoMesProcessos.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n, nfStatus });
     previstoMesContainers += n;
   });

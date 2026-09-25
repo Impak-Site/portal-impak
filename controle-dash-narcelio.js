@@ -118,14 +118,17 @@ function renderDashNarcelio(){
   const estoqueProcessosLista = [];
   _processos.forEach(p => {
     if(!p.nf_entrada_numero) return;
-    const semVenda = p.nf_saida_cfop === '5905' || !p.nf_saida_numero;
-    if(!semVenda) return;
+    // 25/09/2026: baixa pelas NFs de Saída de todas as vendas (vendas_json).
+    const est = estoqueDoProcesso(p);
+    if(est.saiuTudo) return;
     processosEstoqueParado++;
     estoqueProcessosLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.fornecedor });
-    let produtos = [];
-    try { produtos = JSON.parse(p.produtos_json || '[]'); } catch(e) { /* ignora produtos_json inválido */ }
-    if(!Array.isArray(produtos) || !produtos.length){
-      if(p.produto) produtos = [{ descricao: p.produto, quantidade: null }];
+    let produtos = est.vendeuAlgo ? est.itens : [];
+    if(!est.vendeuAlgo){
+      try { produtos = JSON.parse(p.produtos_json || '[]'); } catch(e) { /* ignora produtos_json inválido */ }
+      if(!Array.isArray(produtos) || !produtos.length){
+        if(p.produto) produtos = [{ descricao: p.produto, quantidade: null }];
+      }
     }
     produtos.forEach(it => {
       const desc = (it.descricao || 'Sem descrição').trim();
