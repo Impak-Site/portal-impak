@@ -180,6 +180,10 @@ function renderDashTV(){
   // vazia OU CFOP 5905 (remessa interna, não representa venda).
   const noChaoPorProduto = {};
   let noChaoTotalUn = 0, noChaoProcessos = 0;
+  // 25/09/2026 (Ayslan): separa o que está no ARMAZÉM (remessa CFOP 5905)
+  // do que chegou e ainda não tem NF de saída nenhuma.
+  const chaoRemessa = { porProduto:{}, un:0, proc:0 };
+  const chaoSemNf   = { porProduto:{}, un:0, proc:0 };
   _processos.forEach(p => {
     if(p.cancelado) return; // processo cancelado não conta como estoque parado
     if(!p.nf_entrada_numero) return;
@@ -188,6 +192,8 @@ function renderDashTV(){
     const est = estoqueDoProcesso(p);
     if(est.saiuTudo) return;
     noChaoProcessos++;
+    const grupoChao = temRemessaEstoque(p) ? chaoRemessa : chaoSemNf;
+    grupoChao.proc++;
     let produtos = est.vendeuAlgo ? est.itens : [];
     if(!est.vendeuAlgo){
       try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ /* ignora produtos_json inválido */ }
@@ -200,6 +206,8 @@ function renderDashTV(){
       const qtd = parseFloat(it.quantidade) || 0;
       noChaoPorProduto[desc] = (noChaoPorProduto[desc] || 0) + qtd;
       noChaoTotalUn += qtd;
+      grupoChao.porProduto[desc] = (grupoChao.porProduto[desc] || 0) + qtd;
+      grupoChao.un += qtd;
     });
   });
   const noChaoLista = Object.entries(noChaoPorProduto).sort((a,b) => b[1]-a[1]);
@@ -250,8 +258,10 @@ function renderDashTV(){
     const _est = estoqueDoProcesso(p);
     let nfStatus = null;
     if(_est.saiuTudo) nfStatus = 'saiu';
-    else if(_est.temEntrada) nfStatus = 'estoque';
-    previstoMesProcessos.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n, nfStatus });
+    else if(temRemessaEstoque(p)) nfStatus = 'remessa';   // azul — no armazém (CFOP 5905)
+    else if(_est.temEntrada) nfStatus = 'estoque';        // verde — chegou, sem NF de saída
+    const restanteTxt = (nfStatus === 'remessa' && _est.vendeuAlgo && _est.total > 0) ? `${Math.round(_est.restante)}/${Math.round(_est.total)}` : '';
+    previstoMesProcessos.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n, nfStatus, restanteTxt });
     previstoMesContainers += n;
   });
   previstoMesProcessos.sort((a,b) => (a.eta||'9999').localeCompare(b.eta||'9999'));
@@ -709,13 +719,18 @@ function renderDashTV(){
     // longe na TV). Escopo so aqui -- o mesmo #eef2f7 tambem aparece no
     // fundo da pagina e no wrapper do card (mais abaixo neste arquivo),
     // deixados como estao de proposito.
-    const corFundo = x.nfStatus === 'estoque' ? '#dcfce7' : (x.nfStatus === 'saiu' ? '#d7dee7' : 'transparent');
-    const corBorda = x.nfStatus === 'estoque' ? '#16a34a' : (x.nfStatus === 'saiu' ? '#94a3b8' : 'transparent');
-    const titulo = x.nfStatus === 'estoque' ? 'NF Entrada + Remessa lançadas — ainda em estoque'
-      : (x.nfStatus === 'saiu' ? 'NF de Saída (venda real) lançada — já saiu do estoque' : '');
+    const CORES = { estoque:['#dcfce7','#16a34a'], remessa:['#dbeafe','#2563eb'], saiu:['#d7dee7','#94a3b8'] };
+    const [corFundo, corBorda] = CORES[x.nfStatus] || ['transparent','transparent'];
+    const titulo = x.nfStatus === 'estoque' ? 'NF de Entrada lançada — chegou, ainda sem NF de saída'
+      : x.nfStatus === 'remessa' ? 'Remessa para o estoque (CFOP 5905) — mercadoria no armazém'
+      : (x.nfStatus === 'saiu' ? 'NF de Saída (venda) lançada — já saiu do estoque' : '');
+    const etiqueta = x.nfStatus === 'remessa'
+      ? `<span style="flex:0 0 auto;background:#2563eb;color:#fff;font-weight:800;font-size:.72em;padding:.15em .5em;border-radius:4px;letter-spacing:.3px;">📦 ESTOQUE${x.restanteTxt ? ' ' + x.restanteTxt : ''}</span>`
+      : '';
     return `<div class="tv-row" title="${esc(titulo)}" style="display:flex;align-items:center;gap:.5em;border-top:1px solid var(--border);border-left:3px solid ${corBorda};overflow:hidden;padding:.35em .5em .35em .4em;white-space:nowrap;background:${corFundo};border-radius:0 4px 4px 0;">
         <div style="flex:0 0 auto;font-weight:700;white-space:nowrap;">${etaFmt}</div>
         <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(x.referencia||'')}">${esc(x.referencia||'—')}</div>
+        ${etiqueta}
         <div style="flex:0 0 auto;text-align:right;font-weight:700;color:#475569;">${x.n}</div>
       </div>`;
   }
@@ -730,7 +745,12 @@ function renderDashTV(){
     const colunas = [];
     for(let i=0;i<nCols;i++) colunas.push(lista.slice(i*porColuna,(i+1)*porColuna));
     return `<div style="background:#fff;border-radius:12px;padding:.6em .9em;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
-      <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">Processos do Mês · ${fmtN(lista.length)} processo(s)</div>
+      <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.25em;flex:0 0 auto;">Processos do Mês · ${fmtN(lista.length)} processo(s)${(()=>{const n=lista.filter(x=>x.nfStatus==='remessa').length;return n?` · <span style="color:#2563eb;">${n} em estoque</span>`:'';})()}</div>
+      <div style="display:flex;gap:1em;flex-wrap:wrap;font-size:.72em;color:#475569;font-weight:600;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">
+        <span><span style="display:inline-block;width:.8em;height:.8em;background:#dcfce7;border:2px solid #16a34a;border-radius:2px;vertical-align:-1px;"></span> Chegou (sem NF saída)</span>
+        <span><span style="display:inline-block;width:.8em;height:.8em;background:#dbeafe;border:2px solid #2563eb;border-radius:2px;vertical-align:-1px;"></span> No estoque (remessa 5905)</span>
+        <span><span style="display:inline-block;width:.8em;height:.8em;background:#d7dee7;border:2px solid #94a3b8;border-radius:2px;vertical-align:-1px;"></span> Vendido</span>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:.9em;flex:1;min-height:0;overflow-y:auto;font-size:1em;">
         ${colunas.map(col => `<div style="display:flex;flex-direction:column;overflow:hidden;">${col.map(linhaProcessoMesChaoTV).join('')}</div>`).join('')}
       </div>
@@ -768,9 +788,15 @@ function renderDashTV(){
 
   const tabelaMarcaChaoHtml = blocoTabelaMarcaChaoTV(backordersPorMarca, emAguasPorMarca, noMesPorMarca, backordersLabel);
   const processosDoMesChaoHtml = blocoProcessosDoMesChaoTV(previstoMesProcessos);
+  const _listaGrupoChao = (g) => Object.entries(g.porProduto).sort((a,b)=>b[1]-a[1]).map(([desc,qtd],idx) => `<div style="display:flex;justify-content:space-between;gap:.6em;padding:.35em .2em;border-top:1px solid var(--border);${idx%2===1?'background:#f8fafc;':''}"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(desc)}">${esc(desc)}</span><span style="font-weight:700;white-space:nowrap;color:#0f1f3d;">${fmtN(Math.round(qtd))} un.</span></div>`).join('');
+  const _secaoGrupoChao = (titulo, cor, fundo, g) => g.proc ? `<div style="margin-bottom:.5em;">
+      <div style="background:${fundo};border-left:4px solid ${cor};color:${cor};font-weight:800;font-size:.8em;text-transform:uppercase;letter-spacing:.3px;padding:.3em .5em;border-radius:0 4px 4px 0;">${titulo} · ${fmtN(g.proc)} proc. · ${fmtN(Math.round(g.un))} un.</div>
+      ${_listaGrupoChao(g)}</div>` : '';
   const armazemChaoHtml = `<div style="background:#fff;border-radius:12px;padding:.6em .9em;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
     <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">Armazém · ${fmtN(noChaoProcessos)} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades</div>
-    <div style="flex:1;min-height:0;overflow-y:auto;font-size:1em;">${noChaoLista.length ? noChaoLista.map(([desc,qtd],idx) => `<div style="display:flex;justify-content:space-between;gap:.6em;padding:.4em .2em;border-top:1px solid var(--border);${idx%2===1?'background:#f8fafc;':''}"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(desc)}">${esc(desc)}</span><span style="font-weight:700;white-space:nowrap;color:#0f1f3d;">${fmtN(Math.round(qtd))} un.</span></div>`).join('') : '<div style="font-size:.9em;color:var(--muted);">Nenhum processo com estoque parado.</div>'}</div>
+    <div style="flex:1;min-height:0;overflow-y:auto;font-size:1em;">${noChaoProcessos
+      ? _secaoGrupoChao('📦 No estoque (remessa 5905)', '#2563eb', '#dbeafe', chaoRemessa) + _secaoGrupoChao('Chegou — sem NF de saída', '#16a34a', '#dcfce7', chaoSemNf)
+      : '<div style="font-size:.9em;color:var(--muted);">Nenhum processo com estoque parado.</div>'}</div>
   </div>`;
   const graficoMesChaoHtml = graficoBarrasChaoTV('Container por Mês (Registro DI)', containerPorMes, '#2a5298');
   const graficoDiaChaoHtml = graficoBarrasChaoTV('Container por Dia (ETA, mês corrente)', containerPorDiaEta.length ? containerPorDiaEta.map(i => ({label:i.dia, qtd:i.qtd})) : [{label:'—', qtd:0}], '#0f766e');

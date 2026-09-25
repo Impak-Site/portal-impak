@@ -2435,6 +2435,8 @@ function parseVendas(p){
 function ehCfopRemessaEstoque(cfop){ return String(cfop||'').replace(/\D/g,'') === '5905'; }
 function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop); }
 function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !vendaEhRemessa(v)); }
+// Processo tem NF de remessa p/ estoque (CFOP 5905) — no processo ou numa venda.
+function temRemessaEstoque(p){ return !!p && (ehCfopRemessaEstoque(p.nf_saida_cfop) || parseVendas(p).some(vendaEhRemessa)); }
 function nfSaidaLegadoEhVenda(p){ return !!(p && p.nf_saida_numero && String(p.nf_saida_numero).trim() && !ehCfopRemessaEstoque(p.nf_saida_cfop)); }
 
 function clientesDoProcesso(p){
