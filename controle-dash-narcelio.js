@@ -100,6 +100,7 @@ function renderDashNarcelio(){
   const faturadosLista = [];
   _processos.forEach(p => {
     if(!p.nf_saida_data || !p.nf_saida_valor) return;
+    if(!nfSaidaLegadoEhVenda(p)) return; // CFOP 5905 = remessa p/ estoque, não é faturamento
     const d = parseDataLocal(p.nf_saida_data);
     if(!d || d < periodo.ini || d > periodo.fim) return;
     faturamento += parseFloat(p.nf_saida_valor) || 0;

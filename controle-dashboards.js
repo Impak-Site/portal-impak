@@ -51,7 +51,7 @@ function renderDashExecutivo(){
   const porForn      = {};
   ativos.forEach(p=>{ if(p.fornecedor) porForn[p.fornecedor]=(porForn[p.fornecedor]||0)+1; });
   const topForn      = Object.entries(porForn).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const nfSaidaPeriodo = ativos.filter(p=>p.nf_saida_data&&parseDataLocal(p.nf_saida_data)>=mesIni&&parseDataLocal(p.nf_saida_data)<=mesFim);
+  const nfSaidaPeriodo = ativos.filter(p=>p.nf_saida_data&&nfSaidaLegadoEhVenda(p)&&parseDataLocal(p.nf_saida_data)>=mesIni&&parseDataLocal(p.nf_saida_data)<=mesFim);
   const nfEntradaPeriodo = ativos.filter(p=>p.nf_entrada_data&&parseDataLocal(p.nf_entrada_data)>=mesIni&&parseDataLocal(p.nf_entrada_data)<=mesFim);
   const totalNfMes   = nfSaidaPeriodo.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
 

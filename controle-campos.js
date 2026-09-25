@@ -201,6 +201,7 @@ function coletarESalvar(opts){
   if(_vendas.length){
     for(let vi=0; vi<_vendas.length; vi++){
       const v = _vendas[vi];
+      if(vendaEhRemessa(v)) continue; // remessa p/ estoque (CFOP 5905) não é venda — não exige cliente/itens
       if(!v.cliente || !v.cliente.trim()){
         showToast(`Venda ${vi+1}: informe o cliente antes de salvar (ou remova a venda, se não for usar esta aba)`,'err');
         return;
@@ -212,7 +213,16 @@ function coletarESalvar(opts){
       }
     }
     const totalQtdProc = totalQuantidadeProdutos({..._editando, produtos_json: JSON.stringify(_produtos)});
-    const qtdAlocadaVendas = _vendas.reduce((s,v)=> s + (v.itens||[]).reduce((s2,it)=> s2 + (parseFloat(it.quantidade)||0), 0), 0);
+    // Só vendas de verdade — a remessa p/ estoque (CFOP 5905) leva as mesmas
+    // unidades que depois são vendidas; somar as duas seria duplicar.
+    const qtdAlocadaVendas = _vendas.filter(v=>!vendaEhRemessa(v)).reduce((s,v)=> s + (v.itens||[]).reduce((s2,it)=> s2 + (parseFloat(it.quantidade)||0), 0), 0);
+    // Mesma NF cadastrada duas vezes = duplicidade.
+    const numsNF = _vendas.map(v=>String(v.nf_saida_numero||'').replace(/\D/g,'').replace(/^0+/,'')).filter(Boolean);
+    const dupNF = numsNF.find((n,i)=>numsNF.indexOf(n)!==i);
+    if(dupNF){
+      showToast(`A NF ${dupNF} está cadastrada em duas vendas — remova a duplicada antes de salvar`,'err');
+      return;
+    }
     if(totalQtdProc > 0 && qtdAlocadaVendas > totalQtdProc){
       showToast(`As vendas somam ${qtdAlocadaVendas} unidades, mas o processo só tem ${totalQtdProc} — corrija a quantidade de alguma venda antes de salvar (sobrevenda)`,'err');
       return;
@@ -715,7 +725,7 @@ function sincronizarProdutoLegado(){
 let _vendas = []; // [{cliente, itens:[{descricao,quantidade}], nf_saida_numero, nf_saida_data, nf_saida_valor, custos_diretos:[{label,valor}], obs}]
 
 function vendaVazia(){
-  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_texto:'', juros_valor:'' };
+  return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', nf_saida_cfop:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_texto:'', juros_valor:'' };
 }
 
 function renderVendas(){
@@ -745,7 +755,7 @@ function renderVendas(){
       </div>`).join('') || '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;">Nenhum custo direto nesta venda.</div>';
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--bg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">Venda ${vi+1}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">${vendaEhRemessa(v) ? '📦 Remessa p/ estoque' : 'Venda '+(vi+1)}${vendaEhRemessa(v) ? ' <span style="text-transform:none;font-weight:600;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP 5905 — não conta como venda, a mercadoria continua no estoque</span>' : ''}</div>
         <div style="display:flex;gap:14px;align-items:center;">
           <button type="button" onclick="document.getElementById('nf-import-${vi}').click()" style="background:none;border:none;color:var(--ac);cursor:pointer;font-size:12px;font-weight:600;">📎 Importar NF (XML ou PDF)</button>
           <input type="file" id="nf-import-${vi}" accept=".xml,application/pdf,image/*" style="display:none" onchange="importarNFVenda(${vi},this)">
@@ -760,6 +770,8 @@ function renderVendas(){
         </div>
         <div class="form-group"><label class="form-label">Nº NF Saída</label>
           <input class="form-input" value="${esc(v.nf_saida_numero||'')}" oninput="_vendas[${vi}].nf_saida_numero=this.value;sincronizarVendasLegado()"></div>
+        <div class="form-group"><label class="form-label">CFOP</label>
+          <input class="form-input" value="${esc(v.nf_saida_cfop||'')}" placeholder="ex: 5102, 6102, 5905" onchange="_vendas[${vi}].nf_saida_cfop=this.value.trim();sincronizarVendasLegado();renderVendas()"></div>
         <div class="form-group"><label class="form-label">Data NF Saída</label>
           <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(v.nf_saida_data||'')}" oninput="_vendas[${vi}].nf_saida_data=this.value;sincronizarVendasLegado()"></div>
         <div class="form-group"><label class="form-label">Valor NF Saída (R$)</label>

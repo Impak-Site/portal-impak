@@ -278,7 +278,7 @@ function renderDashClienteMedida(){
       const dtChegadaOpcoes = p.data_chegada || p.eta;
       if(!dtChegadaOpcoes || dtChegadaOpcoes.slice(0,7) !== _cmFiltroMes) return;
     }
-    const vendas = typeof parseVendas === 'function' ? parseVendas(p) : [];
+    const vendas = typeof vendasReaisDoProcesso === 'function' ? vendasReaisDoProcesso(p) : [];
     if(vendas.length) vendas.forEach(v => _cmAddOpcao(clientesDisponiveis, v.cliente || p.cliente || 'Sem cliente'));
     else _cmAddOpcao(clientesDisponiveis, p.cliente || 'Sem cliente');
     _cmAddOpcao(fornecedoresDisponiveis, p.fornecedor || 'Sem fornecedor', _cmChaveEmpresa);
@@ -400,7 +400,7 @@ function renderDashClienteMedida(){
     // corretamente quem vai ficar com qual medida. Sem venda cadastrada
     // (o normal pra processo ainda em andamento), cai no caso simples:
     // 1 cliente (proc.cliente), a lista de Produtos inteira.
-    const vendas = typeof parseVendas === 'function' ? parseVendas(p) : [];
+    const vendas = typeof vendasReaisDoProcesso === 'function' ? vendasReaisDoProcesso(p) : [];
     if(vendas.length){
       vendas.forEach(v => {
         const itens = (v.itens && v.itens.length) ? v.itens : produtos;

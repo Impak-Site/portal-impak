@@ -51,12 +51,31 @@ async function importarNFVenda(vi, input){
       showToast('Não consegui ler os dados desse documento (nenhum campo reconhecido). Tente novamente ou preencha manualmente.', 'err', 12000);
       return;
     }
+    // Anti-duplicidade: a mesma NF já cadastrada em outra venda ou no processo.
+    const dup = nfSaidaJaCadastrada(dados.nf_numero, vi);
+    if(dup){ showToast(`A NF ${dados.nf_numero} já está cadastrada (${dup}) — nada foi alterado.`, 'err', 12000); return; }
     aplicarDadosNFNaVenda(vi, dados);
+    if(ehCfopRemessaEstoque(dados.cfop)) showToast('NF com CFOP 5905 = remessa para o estoque: fica registrada, mas NÃO conta como venda.', 'info', 10000);
     const itensMsg = dados.itens.length ? `${dados.itens.length} ite${dados.itens.length===1?'m':'ns'} preenchido${dados.itens.length===1?'':'s'}` : 'sem itens de produto reconhecidos (confira a lista manualmente)';
     showToast(`✓ NF importada: ${itensMsg}`, dados.itens.length ? 'ok' : 'warn', 10000);
   }catch(e){
     showToast('Erro ao importar NF: '+e.message, 'err', 12000);
   }
+}
+
+// Nº de NF já cadastrado em alguma venda (exceto a venda "ignorarVi") ou nos
+// campos de NF de Saída do processo. Retorna onde está, ou '' se não achou.
+function _normNumNF(n){ return String(n||'').replace(/\D/g,'').replace(/^0+/,''); }
+function nfSaidaJaCadastrada(numero, ignorarVi){
+  const alvo = _normNumNF(numero);
+  if(!alvo) return '';
+  const vs = (typeof _vendas !== 'undefined' && Array.isArray(_vendas)) ? _vendas : [];
+  for(let i=0;i<vs.length;i++){
+    if(i === ignorarVi) continue;
+    if(_normNumNF(vs[i].nf_saida_numero) === alvo) return vendaEhRemessa(vs[i]) ? 'como remessa p/ estoque na aba Vendas' : `na Venda ${i+1}`;
+  }
+  if(ignorarVi !== 'processo' && _normNumNF(document.getElementById('f_nf_saida_numero')?.value) === alvo) return 'na NF de Saída do processo (aba Documentos)';
+  return '';
 }
 
 // ── XML da NFe (parse 100% local, sem chamar servidor) ──────────────────
@@ -178,6 +197,7 @@ function aplicarDadosNFNaVenda(vi, dados){
   if(dados.nf_numero) v.nf_saida_numero = dados.nf_numero;
   if(dados.nf_data) v.nf_saida_data = dados.nf_data;
   if(dados.nf_valor) v.nf_saida_valor = dados.nf_valor;
+  if(dados.cfop) v.nf_saida_cfop = dados.cfop;
   if(dados.itens && dados.itens.length) v.itens = dados.itens;
   renderVendas();
 }
@@ -230,7 +250,37 @@ async function importarNFSaidaProcessoArquivo(file){
     const elNumChk = document.getElementById('f_nf_saida_numero');
     const elDataChk = document.getElementById('f_nf_saida_data');
     const elValorChk = document.getElementById('f_nf_saida_valor');
-    const jaPreenchido = (elNumChk && elNumChk.value) || (elDataChk && elDataChk.value) || (elValorChk && elValorChk.value && elValorChk.value !== '0,00');
+
+    // Anti-duplicidade: mesma NF já lançada numa venda.
+    const dupVenda = nfSaidaJaCadastrada(dados.nf_numero, 'processo');
+    if(dupVenda){ if(status) status.textContent = `A NF ${dados.nf_numero} já está cadastrada (${dupVenda}) — nada foi alterado.`; return; }
+
+    // Regra CFOP (25/09/2026): se o processo já tem uma NF de Saída e a nova
+    // é de OUTRO tipo (remessa 5905 x venda), as duas precisam ficar — a
+    // nova vai para a aba Vendas em vez de apagar a anterior. Assim a
+    // remessa p/ estoque e a venda posterior ficam registradas sem que a
+    // mercadoria conte duas vezes (remessa nunca soma como venda).
+    const cfopAtual = document.getElementById('f_nf_saida_cfop')?.value || '';
+    const mesmaNF = _normNumNF(elNumChk && elNumChk.value) === _normNumNF(dados.nf_numero);
+    if(elNumChk && elNumChk.value && !mesmaNF && ehCfopRemessaEstoque(cfopAtual) !== ehCfopRemessaEstoque(dados.cfop) && typeof _vendas !== 'undefined'){
+      const nova = vendaVazia();
+      nova.cliente = dados.cliente || '';
+      nova.nf_saida_numero = dados.nf_numero || '';
+      nova.nf_saida_data = dados.nf_data || '';
+      nova.nf_saida_valor = dados.nf_valor || '';
+      nova.nf_saida_cfop = dados.cfop || '';
+      if(dados.itens && dados.itens.length) nova.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):''}));
+      _vendas.push(nova);
+      _painelDirty = true;
+      if(typeof renderVendas === 'function') renderVendas();
+      if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
+      if(status) status.textContent = ehCfopRemessaEstoque(dados.cfop)
+        ? `NF ${dados.nf_numero} (CFOP 5905, remessa p/ estoque) registrada na aba Vendas — não conta como venda. A NF ${elNumChk.value} continua no processo.`
+        : `NF ${dados.nf_numero} (venda) registrada na aba Vendas. A NF ${elNumChk.value} (remessa p/ estoque, CFOP 5905) continua registrada e não conta como venda. Confira e salve.`;
+      return;
+    }
+
+    const jaPreenchido = !mesmaNF && ((elNumChk && elNumChk.value) || (elDataChk && elDataChk.value) || (elValorChk && elValorChk.value && elValorChk.value !== '0,00'));
     if(jaPreenchido){
       const ok = window.confirm('Ja existe NF Saida preenchida nesse processo (No ' + (elNumChk ? elNumChk.value : '') + '). Sobrescrever com os dados extraidos da NF anexada?');
       if(!ok){ if(status) status.textContent = 'Importacao cancelada (dados existentes mantidos).'; return; }

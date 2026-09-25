@@ -2211,7 +2211,7 @@ function montarDREConsolidado(filtros){
     const marcaProcesso = p.brand || p.fornecedor || '';
     if(marcaFN && norm(marcaProcesso) !== marcaFN) return;
 
-    const vendas = parseVendas(p);
+    const vendas = vendasReaisDoProcesso(p);
     let linhas;
     if(vendas.length){
       const resumo = calcularVendasResumo(p);
@@ -2227,7 +2227,7 @@ function montarDREConsolidado(filtros){
         venda: {}, fracao: 1,
         cliente: p.cliente || '',
         dataNf: p.nf_saida_data || '',
-        nfValor: parseFloat(p.nf_saida_valor) || 0,
+        nfValor: nfSaidaLegadoEhVenda(p) ? (parseFloat(p.nf_saida_valor) || 0) : 0,
         qtdVendasProcesso: 1,
       }];
     }
@@ -2425,6 +2425,18 @@ function parseVendas(p){
     return Array.isArray(vendas) ? vendas : [];
   }catch(e){ return []; }
 }
+// ── REGRA CFOP (Ayslan, 25/09/2026) ──────────────────────────────
+// NF de Saída com CFOP 5905 = remessa da mercadoria para o armazém/estoque:
+// NÃO é venda (continua no estoque, não é faturamento, não entra no lucro).
+// Qualquer outro CFOP = venda de verdade. Uma remessa e depois as vendas do
+// mesmo lote NÃO podem contar duas vezes — por isso tudo que soma venda
+// (rateio, sobrevenda, faturamento, lucro, baixa de estoque) usa só
+// vendasReaisDoProcesso() / nfSaidaLegadoEhVenda().
+function ehCfopRemessaEstoque(cfop){ return String(cfop||'').replace(/\D/g,'') === '5905'; }
+function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop); }
+function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !vendaEhRemessa(v)); }
+function nfSaidaLegadoEhVenda(p){ return !!(p && p.nf_saida_numero && String(p.nf_saida_numero).trim() && !ehCfopRemessaEstoque(p.nf_saida_cfop)); }
+
 function clientesDoProcesso(p){
 const nomes = new Set();
 if(p && p.cliente) nomes.add(p.cliente);
@@ -2551,7 +2563,7 @@ function casarItemComProduto(descItem, produtos){
   });
   return melhorScore >= 2 ? melhor : -1;
 }
-function _vendaEhReal(v){ return !!(v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && String(v.nf_saida_cfop||'') !== '5905'); }
+function _vendaEhReal(v){ return !!(v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && !vendaEhRemessa(v)); }
 // Quanto ainda está em estoque (NF Entrada lançada, sem NF de venda).
 // Retorna { temEntrada, vendeuAlgo, saiuTudo, total, restante, itens:[{descricao,quantidade}] }
 function estoqueDoProcesso(p){
@@ -2563,7 +2575,7 @@ function estoqueDoProcesso(p){
   produtos = produtos.filter(x => x && x.descricao).map(x => ({ descricao: String(x.descricao).trim(), quantidade: parseFloat(x.quantidade) || 0 }));
   if(!produtos.length && p.produto) produtos = [{ descricao: p.produto, quantidade: 0 }];
   out.total = produtos.reduce((s,x)=>s+x.quantidade,0);
-  const legadoReal = !!(p.nf_saida_numero && String(p.nf_saida_numero).trim() && String(p.nf_saida_cfop||'') !== '5905');
+  const legadoReal = nfSaidaLegadoEhVenda(p);
   const vendasReais = parseVendas(p).filter(_vendaEhReal);
   if(vendasReais.length){
     out.vendeuAlgo = true;
@@ -2605,7 +2617,7 @@ function itensFaltantesVenda(p){
       totais[k] = (totais[k]||0) + (parseFloat(it.quantidade)||0);
       if(!labels[k]) labels[k] = it.descricao;
     });
-    const vendas = parseVendas(p);
+    const vendas = vendasReaisDoProcesso(p);
     const chaves = Object.keys(totais);
     const listaCasar = chaves.map(k => ({ descricao: labels[k] }));
     vendas.forEach(venda => {
@@ -2629,7 +2641,7 @@ function itensFaltantesVenda(p){
 }
 
 function calcularVendasResumo(p){
-  const vendas = parseVendas(p);
+  const vendas = vendasReaisDoProcesso(p); // remessas (CFOP 5905) não são venda
   if(!vendas.length) return null;
   const custosReais = calcularCustoRealTotal(p);
   const custoRealTotal = custosReais ? custosReais.total : 0;
@@ -2698,7 +2710,8 @@ function calcularFechamento(p){
     lucroReal = vendasResumo.todasComNf ? vendasResumo.lucroTotal : null;
     pctLucroReal = (lucroReal != null && nfSaida) ? (lucroReal / nfSaida) : null;
   } else {
-    const nfSaidaRaw = parseFloat(p.nf_saida_valor);
+    // NF única com CFOP 5905 = remessa p/ estoque → não é faturamento.
+    const nfSaidaRaw = nfSaidaLegadoEhVenda(p) ? parseFloat(p.nf_saida_valor) : NaN;
     temReal = !isNaN(nfSaidaRaw) && nfSaidaRaw > 0;
     nfSaida = isNaN(nfSaidaRaw) ? null : nfSaidaRaw;
     lucroReal = custosReais
