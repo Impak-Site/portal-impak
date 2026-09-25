@@ -548,7 +548,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
             <th onclick="sortCat('md')">Modelo ↕</th>
             <th onclick="sortCat('li')">LI/SR</th>
             <th onclick="sortCat('pe')">Peso ↕</th>
-            
+            <th onclick="sortCat('ctnr')" title="Quantidade que cabe num container 40HC">Cont. 40HC ↕</th>
             <th onclick="sortCat('p')">FOB USD ↕</th>
             <th onclick="sortCat('pkg')">USD/kg ↕</th>
             <th onclick="sortCat('orig')">Origem ↕</th>
@@ -1889,11 +1889,11 @@ function renderCat(){
     <td class="cm">${esc(c.pat||c.md||'—')}${tagForaTabela(c)}</td>
     <td class="cm">${esc(c.li||'—')}</td>
     <td class="cm">${c.pe!=null?c.pe:'—'}</td>
-    <td class="cm">—</td>
+    <td class="cm">${c.ctnr||'—'}</td>
     <td class="cor fw7">${esc(c.cur||'USD')} ${fmtP(c.p)}</td>
     <td>${(()=>{const pkg=c.p&&c.pe&&c.pe>0?c.p/c.pe:null;if(!pkg)return '<span class="peso-missing">—</span>';return `<span class="pkg-badge pkg-info">${fmtPkg(pkg)}</span>`;})()}</td>
     <td>${c.orig?`<span class="badge-orig">${esc(c.orig)}</span>`:'<span class="cm">—</span>'}</td>
-    <td>${c.bor==='borrachudo'?'<span class="badge-borr">BORRACHUDO</span>':'<span class="badge-liso">LISO</span>'}</td>
+    <td>${c.bor==='borrachudo'?'<span class="badge-borr">BORRACHUDO</span>':c.bor==='tracao'?'<span class="badge-borr">TRAÇÃO</span>':c.bor==='misto'?'<span class="badge-borr">MISTO</span>':'<span class="badge-liso">LISO</span>'}</td>
     <td><span class="tag t${esc(c.t)}">${esc(c.t)}</span></td>
   </tr>`).join('');
   document.getElementById('cat-count').textContent=total+' itens';
@@ -2581,8 +2581,11 @@ async function init(){
     }
   } catch(e){ console.warn('Base Supabase indisponível, mantendo base local'); }
 
-  // IndexedDB por cima (importações mais recentes feitas neste browser)
-  await carregarCotacoesSalvas();
+  // IndexedDB (cópia local do navegador) SÓ quando o servidor não respondeu.
+  // Antes ela era aplicada POR CIMA da base do servidor: quem tinha importado
+  // uma planilha dias atrás continuava vendo (e regravando) a versão velha
+  // — causa dos catálogos desatualizados/duplicados em 25/09/2026.
+  if(!COTACOES.length) await carregarCotacoesSalvas();
 
   renderForn();renderDash();updateSizeDl();
   document.getElementById('forn-dl').innerHTML=fornecedores.map(f=>`<option value="${esc(f.nome)}">`).join('');
