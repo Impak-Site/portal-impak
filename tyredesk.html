@@ -122,7 +122,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 
 /* ANALISAR */
 .alayout{display:grid;grid-template-columns:370px 1fr;gap:18px;align-items:start}
-.mr{display:grid;grid-template-columns:1fr 76px 28px;gap:6px;margin-bottom:6px;align-items:center}
+.mr{display:grid;grid-template-columns:1fr 92px 64px 28px;gap:6px;margin-bottom:6px;align-items:center}
 .brem{background:transparent;border:1px solid var(--b1);border-radius:5px;color:var(--mu);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s}
 .brem:hover{border-color:var(--rd);color:var(--rd)}
 .badd{background:transparent;border:1px dashed var(--b2);border-radius:6px;color:var(--mu);cursor:pointer;width:100%;padding:7px;font-size:12px;font-weight:600;margin-top:3px;transition:all .15s}
@@ -130,8 +130,8 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 
 /* COT TABLE */
 .ctw{background:var(--sf2);border:1px solid var(--b1);border-radius:7px;overflow:hidden}
-.cth{display:grid;grid-template-columns:120px 120px 72px 65px 60px 26px;padding:7px 9px;border-bottom:1px solid var(--b1);font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.8px;text-transform:uppercase}
-.ctr{display:grid;grid-template-columns:120px 120px 72px 65px 60px 26px;padding:3px 5px;border-bottom:1px solid var(--b1);align-items:center}
+.cth{display:grid;grid-template-columns:1.15fr 1.15fr .95fr 62px 54px 22px;padding:7px 9px;border-bottom:1px solid var(--b1);font-size:10px;font-weight:700;color:var(--mu);letter-spacing:.8px;text-transform:uppercase}
+.ctr{display:grid;grid-template-columns:1.15fr 1.15fr .95fr 62px 54px 22px;padding:3px 5px;border-bottom:1px solid var(--b1);align-items:center}
 .ctr:last-child{border-bottom:none}
 .ci{background:transparent;border:1px solid transparent;border-radius:4px;color:var(--tx);font-size:12px;padding:4px 5px;outline:none;width:100%;transition:border-color .15s}
 .ci:focus{border-color:var(--or);background:var(--sf)}
@@ -487,8 +487,9 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
           </div>
         </div>
         <div class="cb">
-          <div style="display:grid;grid-template-columns:1fr 76px 28px;gap:6px;margin-bottom:6px">
+          <div style="display:grid;grid-template-columns:1fr 92px 64px 28px;gap:6px;margin-bottom:6px">
             <span style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.5px">Medida</span>
+            <span style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.5px" title="Opcional. Use quando a mesma medida aparece mais de uma vez com modelos (desenhos) diferentes">Modelo</span>
             <span style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.5px">Qtde</span>
             <span></span>
           </div>
@@ -500,7 +501,8 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
         <div class="ch"><h3>Cotações</h3><span class="cm ml" style="font-size:11px;font-weight:500" id="cot-count">0 linhas</span></div>
         <div id="aviso-sem-cotacao"></div>
         <div class="ctw" style="border:none;border-radius:0">
-          <div class="cth"><span>Fornecedor</span><span>Medida</span><span>Preço/un</span><span>Peso(kg)</span></div>
+          <div class="cth"><span>Fornecedor</span><span>Medida</span><span>Modelo</span><span>Preço/un</span><span>Peso(kg)</span></div>
+          <datalist id="pat-dl"></datalist>
           <div id="cot-list"></div>
           <button class="badc" onclick="addCot()">+ adicionar linha</button>
         </div>
@@ -1386,8 +1388,34 @@ function updateSizeDl(){
   const sizes=[...new Set(COTACOES.filter(c=>c.t===tipoAtivo).map(c=>c.s))].sort();
   dl.innerHTML=sizes.map(s=>`<option value="${esc(s)}">`).join('');
 }
-function addMix(med='',qtd=''){
-  const id=uid();mixRows.push({id,medida:med,qtde:qtd});renderMix();
+function addMix(med='',qtd='',mod=''){
+  const id=uid();mixRows.push({id,medida:med,modelo:mod,qtde:qtd});renderMix();
+}
+// Modelo (desenho) por linha do mix — pedido Ayslan 25/09/2026: a mesma medida
+// pode vir 2x no mix com modelos diferentes (ex: 295/80R22.5 RSR21 e RDR3).
+// Sem modelo, as duas linhas viravam uma só na análise e não dava pra escolher.
+function _normMod(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function baseMed(s){ return String(s||'').split(' · ')[0]; }
+function patCasa(pat, modelo){ const m=_normMod(modelo); return !m || _normMod(pat).includes(m) || (m.length>=3 && m.includes(_normMod(pat)) && _normMod(pat).length>=3); }
+function atualizarPatDl(medida){
+  const dl=document.getElementById('pat-dl'); if(!dl) return;
+  const mn=norm(medida||'');
+  const pats=[...new Set(COTACOES.filter(c=>c.t===tipoAtivo && (!mn || norm(c.s)===mn)).map(c=>c.pat).filter(Boolean))].sort();
+  dl.innerHTML=pats.map(p=>`<option value="${esc(p)}">`).join('');
+}
+// Rótulo que a análise usa como "medida": medida + modelo quando o modelo foi
+// informado; se a mesma medida aparecer 2x sem modelo, numera (#2, #3…).
+function rotulosMix(){
+  const vistos={}; const out={};
+  mixRows.forEach(r=>{
+    if(!r.medida) return;
+    const base=norm(r.medida);
+    let rot = r.modelo && String(r.modelo).trim() ? base+' · '+String(r.modelo).trim().toUpperCase() : base;
+    vistos[rot]=(vistos[rot]||0)+1;
+    if(vistos[rot]>1) rot = rot+' · #'+vistos[rot];
+    out[r.id]=rot;
+  });
+  return out;
 }
 function removeMix(id){mixRows=mixRows.filter(r=>r.id!==id);renderMix();}
 function renderMix(){
@@ -1395,6 +1423,7 @@ function renderMix(){
   mixRows.forEach(r=>{
     const d=document.createElement('div');d.className='mr';
     d.innerHTML=`<input class="fi" type="text" placeholder="295/80R22.5" value="${esc(r.medida)}" list="size-dl" oninput="updM('${r.id}','medida',this.value)" style="font-size:13px">
+    <input class="fi" type="text" placeholder="ex: RSR21" value="${esc(r.modelo||'')}" list="pat-dl" onfocus="atualizarPatDl(mixRows.find(x=>x.id==='${r.id}')?.medida)" oninput="updM('${r.id}','modelo',this.value)" style="font-size:12px" title="Modelo/desenho (opcional)">
     <input class="fi" type="number" placeholder="100" value="${r.qtde}" min="1" oninput="updM('${r.id}','qtde',this.value)" style="font-size:13px">
     <button class="brem" onclick="removeMix('${r.id}')">×</button>`;
     el.appendChild(d);
@@ -1403,8 +1432,8 @@ function renderMix(){
 function updM(id,f,v){const r=mixRows.find(r=>r.id===id);if(r)r[f]=v;}
 
 // ── COTAÇÕES ──────────────────────────────────────────
-function addCot(fo='',me='',pr='',pe='',mo=''){
-  const id=uid();cotRows.push({id,forn:fo,medida:me,preco:pr,peso:pe,moq:mo});renderCot();
+function addCot(fo='',me='',pr='',pe='',mo='',pat=''){
+  const id=uid();cotRows.push({id,forn:fo,medida:me,preco:pr,peso:pe,moq:mo,pat});renderCot();
 }
 function removeCot(id){cotRows=cotRows.filter(r=>r.id!==id);renderCot();}
 function renderCot(){
@@ -1413,6 +1442,7 @@ function renderCot(){
     const d=document.createElement('div');d.className='ctr';
     d.innerHTML=`<input class="ci" type="text" placeholder="Fornecedor" value="${esc(r.forn)}" oninput="updC('${r.id}','forn',this.value)" list="forn-dl">
     <input class="ci" type="text" placeholder="295/80R22.5" value="${esc(r.medida)}" oninput="updC('${r.id}','medida',this.value)" list="size-dl">
+    <input class="ci" type="text" placeholder="modelo" value="${esc(r.pat||'')}" oninput="updC('${r.id}','pat',this.value)" list="pat-dl" onfocus="atualizarPatDl(cotRows.find(x=>x.id==='${r.id}')?.medida)">
     <input class="ci" type="number" placeholder="0.00" value="${r.preco}" step="0.01" oninput="updC('${r.id}','preco',this.value)">
     <input class="ci" type="number" placeholder="kg" value="${r.peso}" step="0.1" oninput="updC('${r.id}','peso',this.value)">
     <button class="brem" style="width:24px;height:24px;font-size:12px" onclick="removeCot('${r.id}')">×</button>`;
@@ -1443,9 +1473,9 @@ function processarProxima(){
   if(!mixSelPendente.length){
     // Todas processadas — montar cotRows
     cotRows=[];
-    Object.entries(mixSelecoes).forEach(([med,sels])=>{
+    Object.entries(mixSelecoes).forEach(([mixId,sels])=>{
       sels.forEach(c=>{
-        cotRows.push({id:uid(),forn:c.f,medida:c.s,preco:c.p,peso:c.pe||'',moq:c.moq||'',
+        cotRows.push({id:uid(),mixId,forn:c.f,medida:c.s,preco:c.p,peso:c.pe||'',moq:c.moq||'',
           orig:c.orig||'',pat:c.pat||'',bor:c.bor||'liso',li:c.li||'',pr:c.pr||'',ctnr:c.ctnr||c.moq||null,cur:c.cur||'USD'});
       });
     });
@@ -1462,7 +1492,11 @@ function processarProxima(){
   }
   const m=mixSelPendente.shift();
   const mn=norm(m.medida);
-  const opcoes=COTACOES.filter(c=>norm(c.s)===mn&&c.t===tipoAtivo);
+  let opcoes=COTACOES.filter(c=>norm(c.s)===mn&&c.t===tipoAtivo);
+  if(m.modelo && String(m.modelo).trim()){
+    const f=opcoes.filter(c=>patCasa(c.pat,m.modelo));
+    if(f.length) opcoes=f; else { medidasSemCotacao.push(m.medida+' '+m.modelo); processarProxima(); return; }
+  }
   if(!opcoes.length){
     medidasSemCotacao.push(m.medida);
     processarProxima(); return;
@@ -1475,8 +1509,12 @@ function processarProxima(){
   // Múltiplas opções — abrir seleção
   abrirSelecao(m, (sels)=>{
     mixSelecoes[m.id]=sels;
+    // Sem modelo na linha e todas as escolhas do mesmo desenho: preenche o
+    // modelo da linha (deixa claro qual 295/80R22.5 é qual no resultado).
+    const pats=[...new Set((sels||[]).map(c=>c.pat).filter(Boolean))];
+    if(!(m.modelo&&String(m.modelo).trim()) && pats.length===1){ const r=mixRows.find(x=>x.id===m.id); if(r){ r.modelo=pats[0]; renderMix(); } }
     processarProxima();
-  });
+  }, opcoes);
 }
 
 // Mostra um aviso persistente (não desaparece como o toast) listando as
@@ -1502,15 +1540,28 @@ let _analiseBest = null;
 function analisar(){
   const moeda=document.getElementById('moeda-sel').value;
   const tp=document.getElementById('tp-sel').value;
-  const mix=mixRows.filter(r=>r.medida&&r.qtde>0).map(r=>({medida:norm(r.medida),qtde:parseInt(r.qtde)||0}));
+  const _rot=rotulosMix();
+  const _mixVal=mixRows.filter(r=>r.medida&&r.qtde>0);
+  const mix=_mixVal.map(r=>({medida:_rot[r.id],qtde:parseInt(r.qtde)||0,_id:r.id,_base:norm(r.medida),_mod:r.modelo||''}));
   if(!mix.length){toast('Adicione medidas ao mix');return;}
-  const cots=cotRows.filter(r=>r.forn&&r.medida&&r.preco>0).map(r=>({
-    forn:r.forn.trim(),medida:norm(r.medida),preco:parseFloat(r.preco)||0,
-    peso:parseFloat(r.peso)||0,moq:parseInt(r.moq)||0,
-    orig:r.orig||'',pat:r.pat||'',bor:r.bor||'',
-    li:r.li||'',pr:r.pr||'',
-    ctnr:r.ctnr||r.moq||0, cur:r.cur||moeda
-  }));
+  // Cada cotação vai pra(s) linha(s) do mix a que pertence: a linha em que foi
+  // escolhida (Preencher da base) ou, se digitada à mão, toda linha da mesma
+  // medida cujo modelo bate (linha sem modelo aceita qualquer modelo).
+  const cots=[];
+  cotRows.filter(r=>r.forn&&r.medida&&r.preco>0).forEach(r=>{
+    const base={
+      forn:r.forn.trim(),preco:parseFloat(r.preco)||0,
+      peso:parseFloat(r.peso)||0,moq:parseInt(r.moq)||0,
+      orig:r.orig||'',pat:r.pat||'',bor:r.bor||'',
+      li:r.li||'',pr:r.pr||'',
+      ctnr:r.ctnr||r.moq||0, cur:r.cur||moeda
+    };
+    const alvos = r.mixId && mix.some(m=>m._id===r.mixId)
+      ? mix.filter(m=>m._id===r.mixId)
+      : mix.filter(m=>m._base===norm(r.medida) && patCasa(r.pat, m._mod));
+    if(!alvos.length) cots.push({...base, medida:norm(r.medida)});
+    alvos.forEach(m=>cots.push({...base, medida:m.medida}));
+  });
   if(!cots.length){toast('Adicione cotações');return;}
 
   // mapear moeda por fornecedor (da base; fallback = seletor)
@@ -1605,7 +1656,7 @@ function analisar(){
     const detalhesMedidas = [];
     mixF.forEach(m=>{
       const cot = linhas.find(l=>l.medida===m.medida);
-      const cap = (cot && cot.ctnr > 0) ? cot.ctnr : (CAPACIDADE_POR_MEDIDA[m.medida] || capCtnrDefault);
+      const cap = (cot && cot.ctnr > 0) ? cot.ctnr : (CAPACIDADE_POR_MEDIDA[baseMed(m.medida)] || capCtnrDefault);
       const fracao = m.qtde / cap;
       totalFracao += fracao;
       detalhesMedidas.push({
@@ -1816,13 +1867,13 @@ let selData = [];
 let selPicked = {};
 let selMixItem = null;
 
-function abrirSelecao(mixItem, callback) {
+function abrirSelecao(mixItem, callback, opcoesPre) {
   const med = norm(mixItem.medida);
-  const opcoes = COTACOES.filter(c => norm(c.s) === med && c.t === tipoAtivo);
+  const opcoes = opcoesPre || COTACOES.filter(c => norm(c.s) === med && c.t === tipoAtivo);
   if (!opcoes.length) { toast('Sem cotações para ' + mixItem.medida); return; }
   selData = opcoes; selCallback = callback; selPicked = {}; selMixItem = mixItem;
 
-  document.getElementById('sel-title').textContent = mixItem.medida + ' — selecione os pneus para comparar';
+  document.getElementById('sel-title').textContent = mixItem.medida + (mixItem.modelo ? ' '+String(mixItem.modelo).toUpperCase() : '') + ' — selecione os pneus para comparar';
   document.getElementById('sel-subtitle').textContent =
     opcoes.length + ' opções disponíveis · ' + mixItem.qtde + ' un solicitadas · clique no preço para selecionar';
 
@@ -2041,7 +2092,7 @@ function _detalheQtd(el, idx){
   let totalFracao = 0;
   best.det.forEach(d=>{
     const cot = linhas.find(l=>l.medida===d.medida);
-    const cap = (cot && cot.ctnr > 0) ? cot.ctnr : (CAPACIDADE_POR_MEDIDA[d.medida] || capCtnrDefault);
+    const cap = (cot && cot.ctnr > 0) ? cot.ctnr : (CAPACIDADE_POR_MEDIDA[baseMed(d.medida)] || capCtnrDefault);
     const fracao = (d.qtde||0) / cap;
     totalFracao += fracao;
 
@@ -2276,7 +2327,7 @@ function enviarParaCalculador() {
     const subtotal = cot.preco * qtd;
     fob_total += subtotal;
     itens.push({
-      medida:  m.medida,
+      medida:  baseMed(m.medida),
       pat:     cot.pat || cot.m || '—',
       forn:    forn,
       preco:   cot.preco,
@@ -2295,7 +2346,7 @@ function enviarParaCalculador() {
   let totalFracaoContainer = 0;
   mix.forEach(m => {
     const cotItem = cots.find(c => c.forn === forn && c.medida === m.medida);
-    const cap = (cotItem && cotItem.ctnr > 0) ? cotItem.ctnr : (CAPACIDADE_POR_MEDIDA[m.medida] || capCtnrDefault);
+    const cap = (cotItem && cotItem.ctnr > 0) ? cotItem.ctnr : (CAPACIDADE_POR_MEDIDA[baseMed(m.medida)] || capCtnrDefault);
     totalFracaoContainer += (m.qtde || 0) / cap;
   });
   const containers_necessarios = totalFracaoContainer > 1.05 ? Math.ceil(totalFracaoContainer) : 1;
@@ -2359,8 +2410,8 @@ async function exportarExcel() {
 
       linhasDados.push([
         'Pneu Automóvel',
-        `PNEU ${forn} ${m.medida} ${cot.li||''} ${cot.pat||''} - Cod.Prod ${idx+1}`,
-        m.medida,
+        `PNEU ${forn} ${baseMed(m.medida)} ${cot.li||''} ${cot.pat||''} - Cod.Prod ${idx+1}`,
+        baseMed(m.medida),
         cot.li || '-',
         cot.pr || '-',
         cot.pat || '-',
@@ -2396,7 +2447,7 @@ async function exportarExcel() {
     const pesoT = (o.peso||0)*o.qtde;
     totOtPed+=o.qtde; totOtPeso+=pesoT; totOtFob+=(o.sub||0);
     linhasOtim.push([
-      o.medida, o.li||'-', o.pr||'-', o.pat||'-', o.melhor,
+      baseMed(o.medida), o.li||'-', o.pr||'-', o.pat||'-', o.melhor,
       o.qtde, o.peso||'-', pesoT||'-', o.preco, o.sub
     ]);
   });
