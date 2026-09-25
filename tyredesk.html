@@ -445,7 +445,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
   <div class="card">
     <div class="ch"><h3>Base atual por fornecedor</h3></div>
     <table class="rtable" id="dash-table">
-      <thead><tr><th>Fornecedor</th><th>Tipo</th><th>Produtos</th><th>Medidas</th><th>Faixa de preço (USD FOB)</th><th>Status cotação</th></tr></thead>
+      <thead><tr><th>Fornecedor</th><th>Tipo</th><th>Produtos</th><th>Medidas</th><th>Faixa de preço (USD FOB)</th><th>Última planilha</th><th>Status cotação</th></tr></thead>
       <tbody id="dash-body"></tbody>
     </table>
   </div>
@@ -744,29 +744,40 @@ function pg(id,btn){
 function renderDash(){
   const forns=[...new Set(COTACOES.map(c=>c.f))];
   const sizes=[...new Set(COTACOES.map(c=>c.s))];
-  const pend=fornecedores.filter(f=>diasDesde(f.ultimaCot)>=DIAS).length;
+  // Uma linha por fornecedor + tipo (ex: ROVELO TBR e ROVELO PCR são planilhas diferentes)
+  const grupos={};
+  COTACOES.forEach(c=>{ const k=(c.f||'')+'||'+(c.t||''); (grupos[k]=grupos[k]||[]).push(c); });
+  const linhas=Object.entries(grupos).map(([k,sub])=>{
+    const [f,tipo]=k.split('||');
+    const ult=sub.filter(c=>c.upd).sort((a,b)=>String(b.upd).localeCompare(String(a.upd)))[0]||null;
+    const fobj=fornecedores.find(x=>x.nome===f);
+    const dataRef = ult ? ult.upd : (fobj ? fobj.ultimaCot : null);
+    return {f,tipo,sub,ult,d:diasDesde(dataRef)};
+  }).sort((a,b)=>(a.f+a.tipo).localeCompare(b.f+b.tipo));
+  const pend=linhas.filter(l=>l.d>=DIAS).length;
   document.getElementById('ds-total').textContent=COTACOES.length.toLocaleString('pt-BR');
   document.getElementById('ds-forn').textContent=forns.length;
   document.getElementById('ds-sizes').textContent=sizes.length.toLocaleString('pt-BR');
   document.getElementById('ds-pend').textContent=pend;
 
   const tbody=document.getElementById('dash-body'); tbody.innerHTML='';
-  forns.sort().forEach(f=>{
-    const sub=COTACOES.filter(c=>c.f===f);
-    const tipo=sub[0].t;
+  linhas.forEach(({f,tipo,sub,ult,d})=>{
     const precos=sub.map(c=>c.p).filter(Boolean);
     const mn=Math.min(...precos),mx=Math.max(...precos);
     const sizes2=[...new Set(sub.map(c=>c.s))].length;
-    const fobj=fornecedores.find(x=>x.nome===f);
-    const d=fobj?diasDesde(fobj.ultimaCot):999;
     const scls=d>=DIAS?'cslate':d>=20?'cswarn':'csok';
     const slbl=d>=DIAS?'Atrasado':d>=20?'Atualizar em breve':'Em dia';
+    const dt = ult ? new Date(ult.upd) : null;
+    const ultHtml = dt
+      ? `<span title="${esc(ult.arq||'')}">${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}${ult.upd_by?' · '+esc(ult.upd_by):''}</span><div style="font-size:10px;color:var(--mu)">${esc(ult.arq||'')}</div>`
+      : '<span class="cm" style="font-size:11px">sem registro — reimporte a planilha</span>';
     const tr=document.createElement('tr');
     tr.innerHTML=`<td class="fw7">${esc(f)}</td>
       <td><span class="tag t${tipo}">${tipo}</span></td>
       <td class="cor fw7">${sub.length}</td>
       <td class="cm">${sizes2}</td>
       <td style="font-size:11px">$${fmtP(mn)} — $${fmtP(mx)}</td>
+      <td style="font-size:11px">${ultHtml}</td>
       <td><span class="cs ${scls} bsm">${slbl}</span></td>`;
     tbody.appendChild(tr);
   });
@@ -1068,8 +1079,10 @@ async function handleImport(files){
       const novosSemLi = {};
       novos.forEach(c=>{ novosSemLi[chaveSemLi(c)]=1; });
       const novosPorChave = {};
+      // Carimbo da planilha (data/quem/arquivo) — mostrado no Dashboard em "Última planilha"
+      const _carimbo = { upd:new Date().toISOString(), upd_by:window._usuarioTD||'', arq:file.name };
       novos.forEach(c => {
-        novosPorChave[chaveDe(c)] = Object.assign({},c,{f:forn,pat:c.pat||c.md||''});
+        novosPorChave[chaveDe(c)] = Object.assign({},c,{f:forn,pat:c.pat||c.md||''},_carimbo);
       });
       // Manter itens antigos do mesmo forn+tipo que NÃO vieram na planilha nova.
       // Antes esse filtro calculava a chave mas nunca checava ela — descartava
@@ -1878,6 +1891,7 @@ window.addEventListener('load', async function(){
     const r = await fetch('/api/me');
     const d = await r.json();
     if(d.logado && d.modulos && d.modulos.includes('tyredesk')){
+      window._usuarioTD = d.usuario || '';
       init();
       return;
     }
