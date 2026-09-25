@@ -357,6 +357,12 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         <label>Alíq. NCM carregada</label>
         <input type="text" id="ncm_aliq_info" readonly class="locked" placeholder="Selecione produto e UF">
       </div>
+      <div class="form-group">
+        <label>Calcular também para outros estados (representantes)</label>
+        <input type="hidden" id="ufs_extra" value="">
+        <div id="ufs-extra-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;"></div>
+        <div style="font-size:11px;color:var(--dim);margin-top:4px;">Marque os estados: o resultado mostra o preço COM S.T de cada um (o SEM S.T é o mesmo em todos). A UF Destino acima continua sendo o cálculo principal.</div>
+      </div>
     </div>
 
     <!-- TIPO E CONFIGURAÇÕES -->
@@ -1544,6 +1550,62 @@ function onUFChange() {
 
 function pct(v){ return v != null ? (v*100).toFixed(2)+'%' : '0%'; }
 
+// ── UFs extras (preço COM S.T por estado p/ representantes) ──
+function ufsExtraSelecionadas(){
+  const el = document.getElementById('ufs_extra');
+  return String(el && el.value || '').split(',').map(x => x.trim()).filter(Boolean);
+}
+function renderUfsExtraChips(){
+  const box = document.getElementById('ufs-extra-chips'); if(!box) return;
+  const ufs = [...document.querySelectorAll('#uf_destino option')].map(o => o.value);
+  const sel = new Set(ufsExtraSelecionadas());
+  box.innerHTML = ufs.map(u => `<label style="display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;background:${sel.has(u)?'#dbeafe':'#fff'};"><input type="checkbox" value="${u}" ${sel.has(u)?'checked':''} onchange="toggleUfExtra(this)" style="margin:0;">${u}</label>`).join('')
+    + `<button type="button" onclick="document.getElementById('ufs_extra').value='';renderUfsExtraChips()" style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;">limpar</button>`;
+}
+function toggleUfExtra(cb){
+  const sel = new Set(ufsExtraSelecionadas());
+  if (cb.checked) sel.add(cb.value); else sel.delete(cb.value);
+  const ordem = [...document.querySelectorAll('#uf_destino option')].map(o => o.value);
+  document.getElementById('ufs_extra').value = ordem.filter(u => sel.has(u)).join(',');
+  cb.parentElement.style.background = cb.checked ? '#dbeafe' : '#fff';
+}
+document.addEventListener('DOMContentLoaded', renderUfsExtraChips);
+setTimeout(renderUfsExtraChips, 0);
+
+async function exportarPrecosPorUf(){
+  const r = _estado.ultimoResultado;
+  if(!r || !r.por_uf){ showToast('Marque outros estados na etapa 3 e calcule de novo','err'); return; }
+  if(typeof ExcelJS === 'undefined'){ showToast('Biblioteca de exportação carregando, tente de novo','err'); return; }
+  const ok = r.por_uf.filter(x => !x.erro);
+  const wb = new ExcelJS.Workbook(); wb.creator = 'IMPAK';
+  const ws = wb.addWorksheet('Preços por Estado');
+  const marca = (_estado.mix && _estado.mix.forn) || '';
+  ws.mergeCells(1,1,1,4+ok.length);
+  ws.getCell(1,1).value = `Tabela de preços por estado — ${marca} ${r.tipo||''} · ${new Date().toLocaleDateString('pt-BR')}`;
+  ws.getCell(1,1).font = { bold:true, size:13 };
+  ws.getCell(2,1).value = 'Preço unitário em R$ (produto + serviço). SEM S.T é igual para todos os estados.';
+  ws.getCell(2,1).font = { italic:true, size:9, color:{argb:'FF666666'} };
+  const head = ['Medida','Modelo','Qtd','SEM S.T', ...ok.map(x => 'COM S.T ' + x.uf)];
+  const hr = ws.getRow(4); head.forEach((h,i)=>{ const c=hr.getCell(i+1); c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF0F1F3D'}}; c.alignment={horizontal:'center'}; });
+  const sst = r.cenarios.sem_st.mix;
+  (r.mix_result||[]).forEach((it, i) => {
+    const row = ws.getRow(5+i);
+    row.values = [it.medida, it.pat||'', it.qtd, +(sst[i].vlr_unit_brl).toFixed(2), ...ok.map(x => +(x.mix[i].vlr_unit_brl).toFixed(2))];
+    for(let c=4;c<=head.length;c++) row.getCell(c).numFmt = '"R$" #,##0.00';
+  });
+  const tr = ws.getRow(6 + (r.mix_result||[]).length);
+  tr.values = ['Total da operação','','', +r.cenarios.sem_st.faturamento_total.toFixed(2), ...ok.map(x => +x.faturamento_total.toFixed(2))];
+  tr.font = { bold:true }; for(let c=4;c<=head.length;c++) tr.getCell(c).numFmt = '"R$" #,##0.00';
+  ws.getColumn(1).width = 18; ws.getColumn(2).width = 14; ws.getColumn(3).width = 7;
+  for(let c=4;c<=head.length;c++) ws.getColumn(c).width = 15;
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  a.download = `IMPAK_precos_por_estado_${marca||'cotacao'}_${new Date().toISOString().slice(0,10)}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  showToast('✓ Excel por estado exportado','ok');
+}
+
 // ── Split COM/SEM ST por item do Mix ──
 // A chave era só a medida — com a mesma medida em 2 modelos (ex: 295/80R22.5
 // RSR21 + RDR3) o split de um sobrescrevia o do outro. Agora a chave é
@@ -1937,7 +1999,8 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // temStCenario é passado explicitamente (não lido do toggle) pra poder rodar
   // os dois cenários (COM ST / SEM ST) em cima do MESMO custo_total — exatamente
   // como a planilha faz "cópia fiel" da aba COM S.T pra aba SEM S.T.
-  function calcularCadeiaSaida(fatorNfe, temStCenario){
+  function calcularCadeiaSaida(fatorNfe, temStCenario, tx, ufx){
+    tx = tx || t; ufx = ufx || uf; // UF alternativa (preço por estado p/ representantes)
     // IMPORTANTE: Vlr.Produto é calculado sobre o CUSTO TOTAL (não sobre FOB) — fórmula real da planilha (L17=F48×L11)
     const vlr_produto = custo_total * fatorNfe;
     const IPI_s        = vlr_produto * aliq_ipi_s;
@@ -1946,23 +2009,23 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     // o ICMS Normal usa sempre o Vlr.Produto CHEIO, sem redução — tanto COM quanto
     // SEM S.T. A redução (K20/RBC) só entra na BASE ICMS ST (linha L20), que só
     // existe no cenário COM S.T. Produtos SEM S.T não podem reduzir a base.
-    const vlr_produto_reduzido = vlr_produto - (vlr_produto * t.rbc);
+    const vlr_produto_reduzido = vlr_produto - (vlr_produto * tx.rbc);
     // ICMS NFe "normal" — alíquota INTERESTADUAL (ex: 4% SP). Regra de negócio
     // (confirmada com o usuário, substitui a suposição anterior): no cenário
     // SEM S.T NUNCA reduz a base (usa vlr_produto cheio, igual antes). No
     // cenário COM S.T, reduz a base (RBC) em TODOS os estados, EXCETO Santa
     // Catarina (SC) — SC continua usando o valor cheio mesmo com S.T.
-    const usaBaseReduzidaIcmsNormal = temStCenario && uf !== 'SC';
+    const usaBaseReduzidaIcmsNormal = temStCenario && ufx !== 'SC';
     const baseIcmsNormal = usaBaseReduzidaIcmsNormal ? vlr_produto_reduzido : vlr_produto;
-    const ICMS_nfe_normal = baseIcmsNormal * t.aliq_inter;
+    const ICMS_nfe_normal = baseIcmsNormal * tx.aliq_inter;
     // ICMS Próprio — alíquota da coluna ICMS-Próprio da tabela NCM (ex: 1,4%), abate direto do lucro
     // (esse NÃO leva redução — confirmado com o exemplo real, usa vlr_produto cheio)
     const ICMS_proprio = vlr_produto * aliq_icms_nfe;
 
     let icms_st = 0, base_st = 0;
     if(temStCenario){
-      base_st  = (vlr_produto_reduzido + IPI_s) * (1 + t.mva);
-      icms_st  = Math.max(0, (base_st * aliq_icms_s) - ICMS_nfe_normal);
+      base_st  = (vlr_produto_reduzido + IPI_s) * (1 + tx.mva);
+      icms_st  = Math.max(0, (base_st * tx.aliq_interna) - ICMS_nfe_normal);
     }
     const vlr_total_nfe = vlr_produto + IPI_s + icms_st;
 
@@ -2051,28 +2114,28 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   }
 
   // ── Resolver o Fator NFe necessário para o cenário escolhido (busca binária) ──
-  function resolverFatorNfe(alvoFn, temStCenario){
+  function resolverFatorNfe(alvoFn, temStCenario, tx, ufx){
     let lo = 1.0, hi = 5.0;
     for(let i=0;i<60;i++){
       const mid = (lo+hi)/2;
-      const r = calcularCadeiaSaida(mid, temStCenario);
+      const r = calcularCadeiaSaida(mid, temStCenario, tx, ufx);
       if(alvoFn(r) > 0) hi = mid; else lo = mid;
     }
-    return calcularCadeiaSaida((lo+hi)/2, temStCenario);
+    return calcularCadeiaSaida((lo+hi)/2, temStCenario, tx, ufx);
   }
 
   // Roda os DOIS cenários (COM ST e SEM ST) sobre o MESMO custo_total — igual
   // a planilha, que copia os custos da aba COM S.T pra aba SEM S.T e só muda
   // se o ICMS ST entra ou não. Cada cenário resolve seu próprio Fator NFe.
-  function resolverCenario(temStCenario){
+  function resolverCenario(temStCenario, tx, ufx){
     if(_estado.cenario === 1){
       const alvo_pct = cenario_val / 100;
-      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario);
+      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario, tx, ufx);
     } else if(_estado.cenario === 2){
-      return resolverFatorNfe(r => r.lucro_bruto - cenario_val, temStCenario);
+      return resolverFatorNfe(r => r.lucro_bruto - cenario_val, temStCenario, tx, ufx);
     } else {
       const alvo_pct = cenario_val / 100;
-      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario);
+      return resolverFatorNfe(r => r.pct_lucro/100 - alvo_pct, temStCenario, tx, ufx);
     }
   }
 
@@ -2128,6 +2191,20 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   const mix_com_st = calcularMixCenario(cenario_com_st.faturamento_total);
   const mix_sem_st = calcularMixCenario(cenario_sem_st.faturamento_total);
 
+  // ── Preço COM S.T por estado (cotação p/ representantes) ──
+  // Mesmo custo e mesma margem; só mudam MVA, alíquota interna e RBC da UF.
+  // O SEM S.T é igual em todos os estados (ICMS interestadual 4%).
+  const ufsCalc = [uf, ...ufsExtraSelecionadas().filter(u => u !== uf)];
+  const por_uf = ufsCalc.length > 1 ? ufsCalc.map(u => {
+    const base = TABELA_NCM[`${ncm}${u}`];
+    if (!base) return { uf: u, erro: 'NCM/UF não está na tabela' };
+    const tx = { ...base, icms_prop: t.icms_prop };
+    const c = u === uf ? cenario_com_st : resolverCenario(true, tx, u);
+    return { uf: u, mva: tx.mva, aliq_interna: tx.aliq_interna, rbc: tx.rbc,
+      faturamento_total: c.faturamento_total, lucro_bruto: c.lucro_bruto, pct_lucro: c.pct_lucro,
+      icms_st: c.icms_st, vlr_total_nfe: c.vlr_total_nfe, mix: calcularMixCenario(c.faturamento_total) };
+  }) : null;
+
   // ── Apuração de Lucro Real (compra x venda das Taxas Operacionais) ──
   // O Lucro Bruto acima assume que pagamos exatamente o que cobramos em cada
   // taxa operacional. Na prática às vezes pagamos menos (ou nada) — essa
@@ -2155,6 +2232,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     lucro_bruto, pct_lucro, fator,
     lucro_real, pct_lucro_real, diferenca_taxas_real, detalhe_diferenca_real,
     tem_st: tem_st_toggle, mix_result,
+    por_uf,
     cenarios: {
       com_st: { ...cenario_com_st, mix: mix_com_st },
       sem_st: { ...cenario_sem_st, mix: mix_sem_st },
@@ -2261,6 +2339,30 @@ const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCap
 }
 
 // ── RENDER HTML — secao "Capa" na tela de Resultado ────────────────
+function porUfHtmlCapa(r, fmtR){
+  if(!r.por_uf) return '';
+  const ok = r.por_uf.filter(x => !x.erro), erros = r.por_uf.filter(x => x.erro);
+  const temMix = r.mix_result && r.mix_result.length;
+  const sst = r.cenarios.sem_st;
+  return `
+    <div class="detail-section">
+      <div class="detail-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span>Preço COM S.T por Estado (representantes)</span>
+        <button type="button" onclick="exportarPrecosPorUf()" style="font-size:12px;font-weight:700;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;">⬇️ Excel por estado</button>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:6px;">Mesmo custo e mesma margem (${pctF(sst.pct_lucro)}); muda só o ICMS S.T de cada estado. SEM S.T é igual em todos.</div>
+      <div style="overflow-x:auto;"><table class="mix-result-table">
+        <thead><tr>${temMix?'<th>Medida</th><th>Modelo</th><th>Qtd</th>':''}<th>SEM S.T</th>${ok.map(x=>`<th title="MVA ${pct(x.mva)} · Alíq. interna ${pct(x.aliq_interna)}">COM S.T ${x.uf}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${temMix ? r.mix_result.map((it,i)=>`<tr><td>${it.medida}</td><td>${it.pat||'—'}</td><td class="num">${it.qtd}</td><td class="num">${fmtR(sst.mix[i].vlr_unit_brl)}</td>${ok.map(x=>`<td class="num">${fmtR(x.mix[i].vlr_unit_brl)}</td>`).join('')}</tr>`).join('') : ''}
+          <tr style="font-weight:700;background:var(--bg);">${temMix?'<td colspan="3">Total da operação</td>':''}<td class="num">${fmtR(sst.faturamento_total)}</td>${ok.map(x=>`<td class="num">${fmtR(x.faturamento_total)}</td>`).join('')}</tr>
+          <tr style="font-size:11px;color:var(--dim);">${temMix?'<td colspan="3">MVA / Alíq. interna</td>':''}<td></td>${ok.map(x=>`<td class="num">${pct(x.mva)} / ${pct(x.aliq_interna)}</td>`).join('')}</tr>
+        </tbody>
+      </table></div>
+      ${erros.length?`<div style="font-size:11px;color:var(--err);margin-top:4px;">Sem tabela NCM para: ${erros.map(x=>x.uf).join(', ')}</div>`:''}
+    </div>`;
+}
+
 function renderCapaHtml(r) {
   const d = dadosCapa(r);
   const fmtR = v => 'R$ ' + fmt(v);
@@ -2381,6 +2483,8 @@ function renderCapaHtml(r) {
       ${blocoCenarioCapa('SEM S.T', d.sst)}
 
       ${mixHtmlCapa}
+
+      ${porUfHtmlCapa(r, fmtR)}
 
       <div style="font-size:10px;color:var(--dim);margin-top:6px;">Dolar do fechamento do processo: ${r.cambio}</div>
     </div>
@@ -3192,7 +3296,7 @@ function pctF(v){ return v.toFixed(2)+'%'; }
 // adicionar o id aqui também.
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
-  'taxa_seguro_compra','cambio_chegada','cambio_medio_di','produto','origem','uf_destino','icms_saida_pct',
+  'taxa_seguro_compra','cambio_chegada','cambio_medio_di','produto','origem','uf_destino','icms_saida_pct','ufs_extra',
   'tipo_importacao','dump_valor','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
@@ -3256,10 +3360,12 @@ function aplicarEstadoFormulario(estado){
   if(!estado) return;
   // Cotações salvas antes do campo ICMS de Saída existir usavam 1,4% fixo.
   { const el = document.getElementById('icms_saida_pct'); if (el) el.value = '1.4'; }
+  { const el = document.getElementById('ufs_extra'); if (el) el.value = ''; }
   Object.entries(estado.campos||{}).forEach(([id,val]) => {
     const el = document.getElementById(id);
     if(el) el.value = val;
   });
+  renderUfsExtraChips();
   if(estado.toggles){
     Object.entries(estado.toggles).forEach(([k,v]) => {
       if(k==='ttd') setToggleTTD(v); else setToggle(k,v);
