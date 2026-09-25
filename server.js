@@ -1584,6 +1584,7 @@ app.get('/cadastros', auth('cadastros'), (req, res) => res.sendFile(path.join(__
 // controle-dash-cambio.js.
 app.get('/cambio', auth('cambio'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 app.get('/reciclagem', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/averbacao', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
 
 // ── RECICLAGEM (25/09/2026) ─────────────────────────────────────────
 // Acompanhamento das relações trimestrais de reciclagem por cliente

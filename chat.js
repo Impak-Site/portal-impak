@@ -287,6 +287,7 @@ const ICONES_NAV = {
   tyredesk: `<svg ${ICONE_SVG_BASE}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`,
   calculador: `<svg ${ICONE_SVG_BASE}><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`,
   reciclagem: `<svg ${ICONE_SVG_BASE}><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>`,
+  seguro: `<svg ${ICONE_SVG_BASE}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
   catalogo: `<svg ${ICONE_SVG_BASE}><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>`,
 };
 
@@ -294,7 +295,8 @@ const navSetores = [
   { setor: 'Operacional', icone: 'operacional', itens: [
     { label: 'Controle', icone: 'controle', href: '/controle', key: 'controle', modulo: 'controle' },
     { label: 'Fila de Conferência', icone: 'conferenciaFila', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
-    { label: 'Reciclagem', icone: 'reciclagem', href: '/reciclagem', key: 'reciclagem', modulo: 'controle' }, // NCM 4011/4012 trimestral por cliente (pedido Ayslan 25/09/2026)
+    { label: 'Reciclagem', icone: 'reciclagem', href: '/reciclagem', key: 'reciclagem', modulo: 'controle' },
+    { label: 'Averbação Seguro', icone: 'seguro', href: '/averbacao', key: 'averbacao', modulo: 'controle' }, // planilha mensal da seguradora (pedido Ayslan 25/09/2026) // NCM 4011/4012 trimestral por cliente (pedido Ayslan 25/09/2026)
     { label: 'Dashboard de Carregamentos', icone: 'carregamento', href: '/controle?dash=carregamento', key: 'dash-carregamento', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026) — sem rota própria, usa toggleDashCarregamento() via ?dash= (ver controle-core.js)
   ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
   { setor: 'Financeiro', icone: 'financeiro', itens: [
@@ -326,6 +328,7 @@ const modAtual = path === '/' ? 'tyredesk'
   : path.includes('resultado') ? 'resultado'
 : path.includes('cambio') ? 'cambio'
 : path.includes('reciclagem') ? 'reciclagem'
+: path.includes('averbacao') ? 'averbacao'
 : path.includes('financeiro') ? 'financeiro'
 : path.includes('/tv') ? 'tv'
 : path.includes('narcelio') ? 'narcelio'

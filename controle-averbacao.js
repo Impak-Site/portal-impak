@@ -40,48 +40,49 @@ function _avbPaisOrigem(p){
 function _avbNum(v){ const n = parseFloat(v); return isFinite(n) ? n : null; }
 function _avbData(s){ if(!s) return null; const [a,m,d] = String(s).slice(0,10).split('-').map(Number); return (a&&m&&d) ? new Date(a, m-1, d) : null; }
 
-function abrirModalAverbacao(){
-  let bg = document.getElementById('modal-averbacao-bg');
-  if (!bg){
-    bg = document.createElement('div');
-    bg.id = 'modal-averbacao-bg';
-    bg.className = 'modal-bg';
-    bg.innerHTML = `<div class="modal" style="max-width:440px;">
-      <div class="modal-title">🛡️ Planilha de Averbação de Seguro</div>
-      <div style="font-size:12px;color:var(--muted);margin:6px 0 12px;">Gera a planilha mensal no formato da seguradora com os processos cuja DI/DUIMP foi registrada no mês escolhido.</div>
-      <label style="font-size:12px;font-weight:700;">Mês de competência</label>
-      <input type="month" id="avb-mes" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;margin:4px 0 14px;">
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn btn-outline" type="button" onclick="document.getElementById('modal-averbacao-bg').classList.remove('open')">Cancelar</button>
-        <button class="btn" type="button" onclick="exportarAverbacaoSeguro(document.getElementById('avb-mes').value)">⬇️ Gerar Excel</button>
-      </div>
-    </div>`;
-    document.body.appendChild(bg);
-  }
-  const hoje = new Date();
-  document.getElementById('avb-mes').value = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-  bg.classList.add('open');
+// Cache dos processos completos por mês (a lista da tela é enxuta).
+const _avbCache = {};
+async function carregarAverbacao(anoMes, forcar){
+  if (_avbCache[anoMes] && !forcar) return _avbCache[anoMes];
+  const candidatos = (_processos || []).filter(p => p && !p.cancelado && String(p.data_registro_di || '').slice(0,7) === anoMes);
+  const procs = [];
+  await Promise.all(candidatos.map(async c => {
+    try { const r = await fetch('/api/controle/v2/processo/' + c.id); const j = await r.json(); procs.push(j.processo || j); }
+    catch(e) { procs.push(c); }
+  }));
+  procs.sort((a,b) => String(a.data_registro_di).localeCompare(String(b.data_registro_di)) || String(a.referencia).localeCompare(String(b.referencia)));
+  const linhas = procs.map(p => {
+    const fob = _avbNum(p.ci_valor_usd) ?? _avbNum(p.pi_valor_usd);
+    const frete = _avbNum(p.valor_frete);
+    const moedaFrete = (p.moeda_frete || 'USD').toUpperCase();
+    const benef = _avbBeneficiario(p);
+    const falta = [];
+    if (fob == null) falta.push('valor CI');
+    if (frete == null) falta.push('frete');
+    if (!benef) falta.push('beneficiário (Cliente)');
+    if (!p.numero_di) falta.push('nº DUIMP');
+    if (moedaFrete !== 'USD' && frete != null) falta.push('frete em ' + moedaFrete);
+    const paisOrig = _avbPaisOrigem(p);
+    if (!paisOrig) falta.push('país de origem');
+    const base = (fob||0) + (moedaFrete === 'USD' ? (frete||0) : 0);
+    const desp = base * 0.10, lucro = (base + desp) * 0.10, is = base + desp + lucro;
+    return { p, id:p.id, referencia:p.referencia||'', benef, descricao:_avbEhPneu(p)?'PNEU':'', paisOrig,
+      cidadeOrig:(p.porto_origem||'').toUpperCase(), cidadeDest:_avbCidadeDestino(p),
+      embarque:(p.data_embarque || p.ce_data_embarque || p.etd || ''), incoterm:(p.pi_incoterm||'FOB').toUpperCase(),
+      navio:(p.navio||'').toUpperCase(), fob, frete, moedaFrete, desp, lucro, is, premio: is*AVB_TAXA,
+      duimp:p.numero_di||'', falta };
+  });
+  _avbCache[anoMes] = linhas;
+  return linhas;
 }
 
 async function exportarAverbacaoSeguro(anoMes){
   if (!/^\d{4}-\d{2}$/.test(anoMes || '')) { showToast('Escolha o mês', 'err'); return; }
   if (typeof ExcelJS === 'undefined') { showToast('Biblioteca de Excel ainda carregando, tente de novo', 'err'); return; }
   const [ano, mes] = anoMes.split('-').map(Number);
-  const candidatos = (_processos || []).filter(p => p && !p.cancelado && String(p.data_registro_di || '').slice(0,7) === anoMes);
-  if (!candidatos.length) { showToast('Nenhum processo com DI/DUIMP registrada em ' + AVB_MESES[mes-1].toLowerCase() + '/' + ano, 'err'); return; }
-  showToast('Montando planilha de averbação (' + candidatos.length + ' processos)...', 'info');
-
-  // Busca o processo completo (a lista da tela é enxuta).
-  const procs = [];
-  for (const c of candidatos){
-    try {
-      const r = await fetch('/api/controle/v2/processo/' + c.id);
-      const j = await r.json();
-      procs.push(j.processo || j);
-    } catch(e) { procs.push(c); }
-  }
-  procs.sort((a,b) => String(a.data_registro_di).localeCompare(String(b.data_registro_di)) || String(a.referencia).localeCompare(String(b.referencia)));
-
+  const linhas = await carregarAverbacao(anoMes);
+  if (!linhas.length) { showToast('Nenhum processo com DI/DUIMP registrada em ' + AVB_MESES[mes-1].toLowerCase() + '/' + ano, 'err'); return; }
+  const procs = linhas.map(l => l.p);
   const wb = new ExcelJS.Workbook(); wb.creator = 'IMPAK';
   const ws = wb.addWorksheet(`${AVB_MESES[mes-1]} ${ano}`);
   const bold = { bold: true };
@@ -98,17 +99,8 @@ async function exportarAverbacaoSeguro(anoMes){
 
   const pend = [];
   let r = 7;
-  procs.forEach(p => {
-    const fob = _avbNum(p.ci_valor_usd) ?? _avbNum(p.pi_valor_usd);
-    const frete = _avbNum(p.valor_frete);
-    const moedaFrete = (p.moeda_frete || 'USD').toUpperCase();
-    const benef = _avbBeneficiario(p);
-    const falta = [];
-    if (fob == null) falta.push('valor CI');
-    if (frete == null) falta.push('frete');
-    if (!benef) falta.push('beneficiário (Cliente)');
-    if (!p.numero_di) falta.push('nº DUIMP');
-    if (moedaFrete !== 'USD' && frete != null) falta.push('frete em ' + moedaFrete + ' (converter)');
+  linhas.forEach(l => {
+    const p = l.p, fob = l.fob, frete = l.frete, moedaFrete = l.moedaFrete, benef = l.benef, falta = l.falta;
     if (falta.length) pend.push(p.referencia + ': ' + falta.join(', '));
 
     const row = ws.getRow(r);
@@ -152,6 +144,55 @@ async function exportarAverbacaoSeguro(anoMes){
   a.href = URL.createObjectURL(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   a.download = `AVERBACAO SEGURO IMPORTACAO ${AVB_MESES[mes-1]} ${ano}.xlsx`;
   document.body.appendChild(a); a.click(); a.remove();
-  const bg = document.getElementById('modal-averbacao-bg'); if (bg) bg.classList.remove('open');
   showToast(`✓ Averbação gerada: ${procs.length} processo(s)` + (pend.length ? ` · ${pend.length} para conferir (amarelo)` : ''), pend.length ? 'warn' : 'ok');
+}
+
+
+// ── Tela /averbacao (Operacional) ─────────────────────────────────────────
+let _avbMes = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
+async function renderDashAverbacao(forcar){
+  const el = document.getElementById('dash-averbacao-content'); if (!el) return;
+  const [ano, mes] = _avbMes.split('-').map(Number);
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);">Carregando processos de ' + AVB_MESES[mes-1].toLowerCase() + '/' + ano + '...</div>';
+  const linhas = await carregarAverbacao(_avbMes, forcar);
+  const f2 = v => v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const fd = s => s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
+  const tot = linhas.reduce((a,l) => ({ fob:a.fob+(l.fob||0), frete:a.frete+(l.moedaFrete==='USD'?(l.frete||0):0), is:a.is+l.is, premio:a.premio+l.premio }), { fob:0, frete:0, is:0, premio:0 });
+  const pend = linhas.filter(l => l.falta.length);
+  const kpi = (t,v,c) => `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;min-width:150px;"><div style="font-size:11px;color:var(--muted);">${t}</div><div style="font-size:18px;font-weight:800;color:${c||'var(--text)'};">${v}</div></div>`;
+  const nImpak = linhas.filter(l => l.benef === AVB_IMPAK_NOME).length;
+  el.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <label style="font-size:12px;font-weight:700;">Mês de competência</label>
+      <input type="month" value="${_avbMes}" onchange="_avbMes=this.value;renderDashAverbacao()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      <button type="button" onclick="renderDashAverbacao(true)" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;">↻ Atualizar</button>
+      <button type="button" onclick="exportarAverbacaoSeguro(_avbMes)" ${linhas.length?'':'disabled'} style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;">⬇️ Excel p/ seguradora</button>
+      <span style="font-size:11px;color:var(--muted);">Processos com DI/DUIMP registrada no mês · Beneficiário: Importação Própria = IMPAK; Encomenda/Conta e Ordem = Cliente · IS = (CI + frete) +10% despesas +10% lucros · taxa 0,04%</span>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+      ${kpi('Processos', linhas.length)}${kpi('Beneficiário IMPAK', nImpak)}
+      ${kpi('Valor CI (USD)', f2(tot.fob))}${kpi('Frete (USD)', f2(tot.frete))}
+      ${kpi('Importância segurada (USD)', f2(tot.is))}${kpi('Prêmio (USD)', f2(tot.premio), '#15803d')}
+    </div>
+    ${pend.length ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:#78350f;"><b>${pend.length} processo(s) para conferir:</b> ${pend.map(l=>`<a href="#" onclick="abrirProcesso(${jsArg(l.id)});return false;" style="color:#92400e;font-weight:700;">${esc(l.referencia)}</a> (${esc(l.falta.join(', '))})`).join(' · ')}</div>` : ''}
+    ${linhas.length ? `<div style="overflow-x:auto;background:#fff;border:1px solid var(--border);border-radius:10px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:#0f1f3d;color:#fff;text-align:left;">
+          ${['Ref.','Beneficiário','Descrição','Origem','Destino','Embarque','Navio','Valor CI','Frete','IS (USD)','Prêmio','DUIMP'].map(h=>`<th style="padding:7px 8px;white-space:nowrap;">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${linhas.map(l => `<tr style="border-top:1px solid var(--border);${l.falta.length?'background:#fffbeb;':''}">
+          <td style="padding:6px 8px;white-space:nowrap;"><a href="#" onclick="abrirProcesso(${jsArg(l.id)});return false;" style="font-weight:700;">${esc(l.referencia)}</a></td>
+          <td style="padding:6px 8px;max-width:220px;">${esc(l.benef||'—')}</td>
+          <td style="padding:6px 8px;">${l.descricao || '<span style="color:var(--muted);">manual</span>'}</td>
+          <td style="padding:6px 8px;white-space:nowrap;">${esc([l.paisOrig,l.cidadeOrig].filter(Boolean).join(' · ')||'—')}</td>
+          <td style="padding:6px 8px;">${esc(l.cidadeDest||'—')}</td>
+          <td style="padding:6px 8px;">${fd(l.embarque)}</td>
+          <td style="padding:6px 8px;white-space:nowrap;">${esc(l.navio||'—')}</td>
+          <td style="padding:6px 8px;text-align:right;">${f2(l.fob)}</td>
+          <td style="padding:6px 8px;text-align:right;">${l.moedaFrete!=='USD'&&l.frete!=null?esc(l.moedaFrete)+' ':''}${f2(l.frete)}</td>
+          <td style="padding:6px 8px;text-align:right;font-weight:700;">${f2(l.is)}</td>
+          <td style="padding:6px 8px;text-align:right;color:#15803d;font-weight:700;">${f2(l.premio)}</td>
+          <td style="padding:6px 8px;white-space:nowrap;">${esc(l.duimp||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : `<div style="padding:30px;text-align:center;color:var(--muted);background:#fff;border:1px solid var(--border);border-radius:10px;">Nenhum processo com DI/DUIMP registrada em ${AVB_MESES[mes-1].toLowerCase()}/${ano}.</div>`}`;
 }
