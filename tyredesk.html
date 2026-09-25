@@ -852,6 +852,14 @@ function detectFornecedor(filename,data){
   return null;
 }
 
+// Medida e índice de carga vêm colados na coluna "SIZE COMPLETE" da Rovelo PCR
+// (ex: "165/70R14 81T" → espaços removidos → "165/70R1481T"). Separa em medida
+// ("165/70R14") + LI ("81T") — sem isso a medida não casava com o mix.
+function separarMedidaLi(raw){
+  const compacto=String(raw||'').replace(/\s+/g,'');
+  const m=compacto.match(/^((?:LT)?(?:\d{3}\/\d{2}|\d{3}|\d{2}[×X]\d{1,2}\.\d{2})(?:ZR|RF|R)\d{2}(?:\.\d)?(?:C|LT)?)(\d{2,3}(?:\/\d{2,3})?[A-Z]{1,2}(?:XL)?)$/i);
+  return m ? {s:m[1], li:m[2]} : {s:compacto, li:''};
+}
 function parseTBR(rows, fornecedor){
   // encontrar linha de header
   let hi=-1;
@@ -889,7 +897,8 @@ function parseTBR(rows, fornecedor){
   const items=[];
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i];
-    const size=(r[iSize]||'').toString().trim().replace(/\s+/g,'');
+    const _sp=separarMedidaLi(r[iSize]);
+    const size=_sp.s;
     if(!size||size.length<5)continue;
     const preco=iSpc>=0&&r[iSpc]?parseFloat(r[iSpc]):iFob>=0?parseFloat(r[iFob]):0;
     if(!preco||preco<=0)continue;
@@ -900,7 +909,7 @@ function parseTBR(rows, fornecedor){
       md:(r[iPat]||'').toString(),pat:(r[iPat]||'').toString(),
       cat:iCat>=0?(r[iCat]||'').toString():'',cur:'USD',
       pe:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,peso:iWgt>=0&&r[iWgt]?parseFloat(r[iWgt]):null,
-      li:iLi>=0?(r[iLi]||'').toString():'',
+      li:(iLi>=0&&r[iLi]?String(r[iLi]).trim():'')||_sp.li,
       pr:iPr>=0?(r[iPr]||'').toString():'',
       moq:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
       ctnr:iMoq>=0&&r[iMoq]?parseInt(r[iMoq]):null,
@@ -927,7 +936,8 @@ function parsePCR_DELMAX(rows){
   const items=[];
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i];
-    const size=(r[iSize]||'').toString().trim().replace(/\s+/g,'');
+    const _sp=separarMedidaLi(r[iSize]);
+    const size=_sp.s;
     if(!size||size.length<5)continue;
     const fob=iFob>=0?parseFloat(r[iFob]):0;
     const spc=iSpc>=0&&r[iSpc]?parseFloat(r[iSpc]):null;
@@ -986,7 +996,8 @@ function parsePCR_INVOVIC(rows){
   const items=[];
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i];
-    const size=(r[iSize]||'').toString().trim().replace(/\s+/g,'');
+    const _sp=separarMedidaLi(r[iSize]);
+    const size=_sp.s;
     if(!size||size.length<5)continue;
     const preco=iFob>=0?parseFloat(r[iFob]):0;
     if(!preco||preco<=0)continue;
