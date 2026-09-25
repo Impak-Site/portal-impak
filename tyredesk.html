@@ -1101,9 +1101,10 @@ async function handleImport(files){
       const mantidos = COTACOES.filter(c => {
         if(c.f !== forn) return true; // outro fornecedor: sempre manter
         if(tipoNovos && c.t !== tipoNovos) return true; // mesmo forn, tipo diferente: manter
-        if(chaveDe(c) in novosPorChave) return false; // veio atualização pra essa combinação exata
-        // Item antigo SEM LI (bases importadas antes de ler o LI) é substituído pelo novo da mesma medida+desenho
-        if(!String(c.li||'').trim() && (chaveSemLi(c) in novosSemLi)) return false;
+        // Se a planilha nova traz essa medida+desenho, TODAS as versões antigas
+        // dela saem e ficam só as da planilha nova — assim qualquer campo que
+        // mudou (inclusive o LI) é atualizado, sem sobrar item duplicado/antigo.
+        if(chaveSemLi(c) in novosSemLi) return false;
         return true;
       });
       COTACOES = [...mantidos, ...Object.values(novosPorChave)];
