@@ -689,9 +689,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div style="font-size:11px;color:var(--dim);margin-top:6px;">Ao subir o CE Mercante na extração por IA, os campos Navio e Armador (aba Booking &amp; Embarque) são atualizados automaticamente — em caso de transbordo no exterior, o navio de conexão/último navio.</div>
       </div>
       <div class="form-section">
-        <div class="form-section-title">📋 DI e Parametrização</div>
+        <div class="form-section-title">📋 DI/DUIMP e Parametrização</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">Data Registro DI</label>
+          <div class="form-group"><label class="form-label">Data de Registro da DI/DUIMP</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Número da DI/DUIMP</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
@@ -707,7 +707,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Data Liberação</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_liberacao" value="${esc(p.data_liberacao)}" onchange="atualizarFaseEmTempoReal()" placeholder="Data do desembaraço (CI)"></div>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:6px;">Canal Verde preenche a Data Parametrização automaticamente com a Data de Registro da DI/DUIMP (sem conferência separada). Data Liberação é a Data do Desembaraço informada no Comprovante de Importação.</div>
       </div>
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
@@ -1387,7 +1387,7 @@ const LABELS_CAMPOS_IA = {
   semana_booking:'Semana de Booking', etiquetas_manuais_json:'Etiquetas manuais',
   peso_bruto:'Peso bruto', volumes:'Volumes', data_chegada:'Data de chegada', data_presenca:'Data de presença de carga',
   demurrage_vencimento:'Vencimento Demurrage', armazenagem_vencimento:'Vencimento Armazenagem',
-  data_registro_di:'Data registro DI', numero_di:'Nº DI/DUIMP', canal:'Canal',
+  data_registro_di:'Data de Registro da DI/DUIMP', numero_di:'Nº DI/DUIMP', canal:'Canal',
   data_parametrizacao:'Data parametrização', data_liberacao:'Data liberação',
   ci_numero:'Nº CI', ci_data:'Data CI', ci_valor_usd:'Valor CI (USD)',
   ce_master:'CE Master', ce_house:'CE House', ce_data_embarque:'Data embarque (CE)', pendencia_revisao:'Pendência/Revisão',
