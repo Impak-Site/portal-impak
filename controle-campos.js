@@ -241,7 +241,7 @@ function coletarESalvar(opts){
     'aprovacao_hbl','solicitacao_li','docs_enviados_despachante',
     'semana_booking','etiquetas_manuais_json',
     'peso_bruto','volumes','data_chegada','data_presenca','demurrage_vencimento','armazenagem_vencimento',
-    'data_registro_di','numero_di','canal','data_parametrizacao','data_liberacao',
+    'data_registro_di','numero_di','di_peso_liquido','di_ncms','canal','data_parametrizacao','data_liberacao',
     'ci_numero','ci_data','ci_valor_usd',
     'ce_master','ce_house','ce_data_embarque','pendencia_revisao',
     'data_agendamento','data_carregamento','transportadora','placa',
@@ -268,7 +268,7 @@ function coletarESalvar(opts){
   const patchFields = [];
 
   // Campos monetários com máscara xx.xxx,xx (texto) — precisam de parsing próprio
-  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','pi_cambio_custo','pi_valor_recebido_cliente'];
+  const camposMoeda = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','pi_cambio_custo','pi_valor_recebido_cliente','di_peso_liquido'];
 
   // Remover campo interno de controle
   delete proc._fasePrevista;

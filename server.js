@@ -1583,6 +1583,38 @@ app.get('/cadastros', auth('cadastros'), (req, res) => res.sendFile(path.join(__
 // ativarTelaCambioExclusiva() em controle-core.js e renderDashCambio() em
 // controle-dash-cambio.js.
 app.get('/cambio', auth('cambio'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/reciclagem', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+
+// ── RECICLAGEM (25/09/2026) ─────────────────────────────────────────
+// Acompanhamento das relações trimestrais de reciclagem por cliente
+// (enviado ao cliente / reciclagem realizada / pago). Os processos e pesos
+// são calculados no navegador a partir da lista de processos; aqui só fica
+// o status de cada relação (tabela reciclagem_lotes, migration 0039).
+const CAMPOS_RECICLAGEM = ['cliente','cliente_cnpj','ano','trimestre','data_envio','data_realizacao','data_pagamento','valor','obs','processos'];
+app.get('/api/reciclagem/lotes', auth('controle'), async (req, res) => {
+  try {
+    const { data, error } = await sb().from('reciclagem_lotes').select('*').order('ano', { ascending: false }).order('trimestre', { ascending: false });
+    if (error) return res.json({ ok: false, erro: error.message, semTabela: /reciclagem_lotes/.test(error.message) });
+    res.json({ ok: true, lotes: data || [] });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/reciclagem/lote', auth('controle'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const row = {};
+    CAMPOS_RECICLAGEM.forEach(k => { if (b[k] !== undefined) row[k] = (b[k] === '' ? null : b[k]); });
+    row.ano = parseInt(row.ano, 10); row.trimestre = parseInt(row.trimestre, 10);
+    if (!row.cliente || !String(row.cliente).trim() || !(row.ano > 2000) || !(row.trimestre >= 1 && row.trimestre <= 4)) return res.status(400).json({ ok: false, erro: 'cliente/ano/trimestre inválidos' });
+    ['data_envio','data_realizacao','data_pagamento'].forEach(k => { if (row[k] && !/^\d{4}-\d{2}-\d{2}$/.test(row[k])) row[k] = null; });
+    if (row.valor != null) row.valor = parseFloat(String(row.valor).replace(/\./g,'').replace(',', '.')) || null;
+    if (row.obs) row.obs = String(row.obs).slice(0, 2000);
+    row.atualizado_por = req.session.usuario || null;
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await sb().from('reciclagem_lotes').upsert(row, { onConflict: 'cliente,ano,trimestre' }).select().maybeSingle();
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, lote: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
 // "Tela exclusiva" do Dashboard Resultado (lucro estimado x real de todos
 // os processos) — mesmo esquema do /financeiro acima: serve o MESMO
 // controle_v2.html, e o front-end detecta location.pathname==='/resultado'

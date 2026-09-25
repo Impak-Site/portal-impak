@@ -185,7 +185,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     // Ayslan (10/09/2026, viu o toast cobrindo o canto do painel Backorders
     // na TV): elas têm o próprio cabeçalho/KPI mostrando os dados, o toast só
     // seria ruído (e numa TV física não tem ninguém pra ler e dispensar).
-    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros','/conferencia-fila'];
+    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros','/conferencia-fila','/reciclagem'];
     const carregamentoSilencioso = TELAS_EXCLUSIVAS.includes(location.pathname);
     carregarProcessos(carregamentoSilencioso).then(()=>{
       if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
@@ -194,6 +194,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
       if(location.pathname==='/tv') ativarTelaTVExclusiva();
       if(location.pathname==='/cambio') ativarTelaCambioExclusiva();
+      if(location.pathname==='/reciclagem') ativarTelaReciclagemExclusiva();
       if(location.pathname==='/cadastros') ativarTelaCadastrosExclusiva();
       if(location.pathname==='/conferencia-fila') ativarTelaConferenciaFilaExclusiva();
       // Dashboards que ainda não têm rota/tela exclusiva própria (Executivo,
@@ -504,6 +505,24 @@ function ativarTelaCambioExclusiva(){
   const dashCam = document.getElementById('dash-cambio');
   if(dashCam) dashCam.style.display = 'block';
   renderDashCambio();
+}
+
+// TELA EXCLUSIVA /reciclagem — relação trimestral por cliente dos processos
+// NCM 4011/4012 (ver controle-dash-reciclagem.js). Pedido Ayslan 25/09/2026.
+function ativarTelaReciclagemExclusiva(){
+  document.title = 'ImpakOS - Reciclagem';
+  const titulo = document.querySelector('.topbar-title');
+  if(titulo) titulo.textContent = 'Reciclagem';
+  ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  const toolbar = document.querySelector('.toolbar');
+  if(toolbar) toolbar.style.display = 'none';
+  const sidebar = document.querySelector('.sidebar');
+  if(sidebar) sidebar.style.display = 'none';
+  const d = document.getElementById('dash-reciclagem');
+  if(d) d.style.display = 'block';
+  renderDashReciclagem();
 }
 
 // ════════════════════════════════════════════════════════════════

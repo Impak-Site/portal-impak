@@ -695,6 +695,10 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_registro_di" value="${esc(p.data_registro_di)}" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Número da DI/DUIMP</label>
             <input class="form-input" id="f_numero_di" value="${esc(p.numero_di)}" oninput="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Peso Total da DI/DUIMP (kg)</label>
+            <input class="form-input" id="f_di_peso_liquido" inputmode="decimal" value="${p.di_peso_liquido!=null&&p.di_peso_liquido!==''?esc(String(p.di_peso_liquido).replace('.',',')):''}" placeholder="ex: 15780,76 — usado na Reciclagem (70%)"></div>
+          <div class="form-group"><label class="form-label">NCM(s) da DI/DUIMP</label>
+            <input class="form-input" id="f_di_ncms" value="${esc(p.di_ncms||'')}" placeholder="ex: 4011.20.90"></div>
           <div class="form-group"><label class="form-label">Canal</label>
             <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
               <option value="">—</option>
@@ -1387,7 +1391,7 @@ const LABELS_CAMPOS_IA = {
   semana_booking:'Semana de Booking', etiquetas_manuais_json:'Etiquetas manuais',
   peso_bruto:'Peso bruto', volumes:'Volumes', data_chegada:'Data de chegada', data_presenca:'Data de presença de carga',
   demurrage_vencimento:'Vencimento Demurrage', armazenagem_vencimento:'Vencimento Armazenagem',
-  data_registro_di:'Data de Registro da DI/DUIMP', numero_di:'Nº DI/DUIMP', canal:'Canal',
+  data_registro_di:'Data de Registro da DI/DUIMP', di_peso_liquido:'Peso Total da DI/DUIMP', di_ncms:'NCM(s) da DI/DUIMP', numero_di:'Nº DI/DUIMP', canal:'Canal',
   data_parametrizacao:'Data de Parametrização da DI/DUIMP', data_liberacao:'Data liberação',
   ci_numero:'Nº CI', ci_data:'Data CI', ci_valor_usd:'Valor CI (USD)',
   ce_master:'CE Master', ce_house:'CE House', ce_data_embarque:'Data embarque (CE)', pendencia_revisao:'Pendência/Revisão',
