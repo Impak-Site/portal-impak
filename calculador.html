@@ -1540,6 +1540,37 @@ function onUFChange() {
 
 function pct(v){ return v != null ? (v*100).toFixed(2)+'%' : '0%'; }
 
+function icmsProprioPorCliente(nome){
+  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  const tem = w => new RegExp('(^|[^A-Z0-9])' + w + '([^A-Z0-9]|$)').test(n);
+  if (['PRODOESTE','MARDISA','NOVOS','COSMAR','DISCAMARA'].some(tem)) return 0.04;
+  if (['SILCAR','NSA','OST','VACHILESKI','LAUXEN'].some(tem)) return 0.026;
+  return null;
+}
+
+// ── Split COM/SEM ST por item do Mix ──
+// A chave era só a medida — com a mesma medida em 2 modelos (ex: 295/80R22.5
+// RSR21 + RDR3) o split de um sobrescrevia o do outro. Agora a chave é
+// medida|modelo; cotações antigas (chave só medida) continuam sendo lidas
+// quando a medida aparece uma vez só no mix.
+function _splitKey(it){ return (it.medida||'') + '|' + (it.pat||''); }
+function splitGet(it){
+  const st = _estado.splitST || {};
+  const k = _splitKey(it);
+  if (st[k] !== undefined) return st[k];
+  if (st[it.medida] !== undefined) {
+    const itens = (_estado.mix && _estado.mix.itens) || [];
+    const mesmos = itens.filter(x => x.medida === it.medida).length;
+    if (mesmos <= 1) return st[it.medida];
+  }
+  return undefined;
+}
+function splitSet(it, v){
+  _estado.splitST = _estado.splitST || {};
+  if (_estado.splitST[it.medida] !== undefined) delete _estado.splitST[it.medida];
+  _estado.splitST[_splitKey(it)] = v;
+}
+
 // ── MIX ──────────────────────────────────────────────────
 function renderMix() {
   if(!_estado.mix || !_estado.mix.itens || !_estado.mix.itens.length) return;
@@ -1591,13 +1622,13 @@ function atualizarSplitST(idx){
   document.getElementById('split-sem-'+idx).textContent = qSemSt;
   const totalRow = qComSt*comStItem.vlr_unit_brl + qSemSt*semStItem.vlr_unit_brl;
   document.getElementById('split-total-'+idx).textContent = 'R$ '+fmt(totalRow);
-  _estado.splitST[it.medida] = qComSt;
+  splitSet(it, qComSt);
 
   // Recalcula o total geral combinado
   let totalGeral = 0;
   r.mix_result.forEach((item, i) => {
     const cs = r.cenarios.com_st.mix[i], ss = r.cenarios.sem_st.mix[i];
-    const qcs = _estado.splitST[item.medida] ?? item.qtd;
+    const qcs = splitGet(item) ?? item.qtd;
     const qss = item.qtd - qcs;
     totalGeral += qcs*cs.vlr_unit_brl + qss*ss.vlr_unit_brl;
   });
@@ -1610,7 +1641,7 @@ function atualizarSplitST(idx){
   const cs2 = r.cenarios.com_st, ss2 = r.cenarios.sem_st;
   const qtdTotalMix2 = r.mix_result.reduce((a, item) => a + item.qtd, 0);
   const qtdComStMix2 = r.mix_result.reduce((a, item) => {
-    const s = _estado.splitST[item.medida];
+    const s = splitGet(item);
     return a + (s !== undefined ? Math.min(s, item.qtd) : (r.tem_st ? item.qtd : 0));
   }, 0);
   const temSplit2 = qtdTotalMix2 > 0;
@@ -1664,6 +1695,11 @@ function calcular() {
   const chave = `${ncm}${uf}`;
   let t = TABELA_NCM[chave];
   if(!t) { showToast(`NCM ${ncm}/${uf} não encontrado na tabela NCM`,'err'); return; }
+  // ICMS Próprio por cliente — mesma regra da planilha (MODELO - COM S.T!K28):
+  // PRODOESTE/MARDISA/NOVOS/COSMAR/DISCAMARA = 4%; SILCAR/NSA/OST/VACHILESKI/
+  // LAUXEN = 2,6%; demais clientes = alíquota da tabela NCM (1,4%).
+  { const icmsCli = icmsProprioPorCliente(document.getElementById('cliente').value);
+    if (icmsCli != null) t = { ...t, icms_prop: icmsCli }; }
 
   // ── 1. SEGURO (compra e venda) ──
   // FIX: reproduzindo a fórmula exata da planilha (MODELO-COM/SEM S.T!D7) contra
@@ -2394,7 +2430,7 @@ function renderResultado(r) {
     const temBoss = cs.boss_fora_val > 0 || ss.boss_fora_val > 0;
     const qtdTotalMix = (r.mix_result || []).reduce((a, it) => a + it.qtd, 0);
     const qtdComStMix = (r.mix_result || []).reduce((a, it) => {
-      const s = _estado.splitST[it.medida];
+      const s = splitGet(it);
       return a + (s !== undefined ? Math.min(s, it.qtd) : (r.tem_st ? it.qtd : 0));
     }, 0);
     const temSplit = !!(r.mix_result && r.mix_result.length && qtdTotalMix > 0);
@@ -2448,10 +2484,10 @@ function renderResultado(r) {
           ${r.mix_result.map((it, idx) => {
             const comSt = r.cenarios.com_st.mix[idx];
             const semSt = r.cenarios.sem_st.mix[idx];
-            const qComSt = (_estado.splitST[it.medida] !== undefined) ? Math.min(_estado.splitST[it.medida], it.qtd) : (r.tem_st ? it.qtd : 0);
+            const qComSt = (splitGet(it) !== undefined) ? Math.min(splitGet(it), it.qtd) : (r.tem_st ? it.qtd : 0);
             const qSemSt = it.qtd - qComSt;
             const totalRow = qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
-            _estado.splitST[it.medida] = qComSt; // fixa default calculado, se ainda não existia
+            splitSet(it, qComSt); // fixa default calculado, se ainda não existia
             return `<tr>
               <td>${it.medida}</td><td>${it.pat||'—'}</td>
               <td class="num">${it.qtd}</td>
@@ -2470,7 +2506,7 @@ function renderResultado(r) {
             <td colspan="7" style="text-align:right;padding:8px;">Faturamento combinado (conforme o split acima)</td>
             <td class="num" id="split-total-geral" style="padding:8px;">${fmtR(r.mix_result.reduce((acc,it,idx)=>{
               const comSt=r.cenarios.com_st.mix[idx], semSt=r.cenarios.sem_st.mix[idx];
-              const qComSt=_estado.splitST[it.medida]??0, qSemSt=it.qtd-qComSt;
+              const qComSt=splitGet(it)??0, qSemSt=it.qtd-qComSt;
               return acc + qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
             },0))}</td>
           </tr>
@@ -2909,7 +2945,7 @@ async function exportarExcel() {
 
       let rowIdx = 5, totalGeral = 0, count = 0;
       (r.mix_result||[]).forEach((it, idx) => {
-        const qComSt = _estado.splitST[it.medida] ?? it.qtd;
+        const qComSt = splitGet(it) ?? it.qtd;
         const qSemSt = it.qtd - qComSt;
         const linhasItem = [];
         if(qComSt > 0){
