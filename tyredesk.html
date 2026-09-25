@@ -1026,6 +1026,17 @@ async function handleImport(files){
   prog.style.display='block';
   document.getElementById('import-log').innerHTML='';
   setBar(0);
+  // Recarrega a base do servidor ANTES de mesclar: a gravação substitui a base
+  // inteira, então uma aba aberta há horas (base antiga na memória) desfazia o
+  // que outra pessoa tinha salvo depois (aconteceu em 25/09/2026).
+  try{
+    const rb=await fetch('/api/base/carregar'); const db2=await rb.json();
+    if(db2.ok && Array.isArray(db2.base) && db2.base.length){
+      COTACOES = db2.base.map(c=>({...c, cur:c.cur||'USD', orig:c.orig||'', pat:c.pat||c.md||'', bor:c.bor||'liso', moq:c.moq||null, ctnr:c.ctnr||c.moq||null,
+        f:(c.f||'').replace('ROVELO - TBR','ROVELO').replace('ROVELO - PCR','ROVELO')}));
+      logImport('Base atualizada do servidor ('+COTACOES.length+' itens) antes de importar','info');
+    }
+  }catch(e){ logImport('⚠ Não consegui recarregar a base do servidor: '+e.message,'err'); }
 
   let totalNovos=0, totalErros=0;
   const totalFiles=files.length;
