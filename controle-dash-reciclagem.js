@@ -35,6 +35,15 @@ function _recStatusNcm(p){
 function _recIdb(cliente){ let h=0; for(const ch of String(cliente)) h=(h*31+ch.charCodeAt(0))|0; return 'rec-'+(h>>>0).toString(36); }
 function _recPeso(p){ const v = parseFloat(p.di_peso_liquido); return isFinite(v) && v > 0 ? v : null; }
 
+// Responsável pela reciclagem (regra definida pela Emanuelly, 25/09/2026):
+//  - Importação Própria (Direto) → a própria IMPAK
+//  - Encomenda / Conta e Ordem  → o que estiver no campo Cliente do processo
+const REC_NOME_IMPAK = 'IMPAK COMERCIAL E IMPORTADORA LTDA';
+function _recResponsavel(p){
+  if (p && p.finalidade === 'IMPORTACAO_DIRETA') return REC_NOME_IMPAK;
+  return (p && p.cliente || 'Sem cliente').trim();
+}
+
 function listarReciclagem(ano, tri){
   const linhas = [], aConferir = [];
   (_processos||[]).forEach(p=>{
@@ -43,7 +52,7 @@ function listarReciclagem(ano, tri){
     if(!t || t.ano !== ano || t.tri !== tri) return;
     const st = _recStatusNcm(p);
     if(st === 'fora') return;
-    const linha = { p, id:p.id, referencia:p.referencia, cliente:(p.cliente||'Sem cliente').trim(), dataDi:p.data_registro_di,
+    const linha = { p, id:p.id, referencia:p.referencia, cliente:_recResponsavel(p), clienteProc:(p.cliente||'').trim(), finalidade:p.finalidade||'', dataDi:p.data_registro_di,
       numeroDi:p.numero_di||'', peso:_recPeso(p), qtd:_recQtd(p), ncms:p.di_ncms||'', ncmStatus:st };
     if(st === 'desconhecido'){ aConferir.push(linha); return; }
     linhas.push(linha);
@@ -155,7 +164,7 @@ async function renderDashReciclagem(){
       <select onchange="_recAno=+this.value;renderDashReciclagem()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">${anos.map(a=>`<option ${a===_recAno?'selected':''}>${a}</option>`).join('')}</select>
       <select onchange="_recTri=+this.value;renderDashReciclagem()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">${[1,2,3,4].map(t=>`<option value="${t}" ${t===_recTri?'selected':''}>${t}º trimestre</option>`).join('')}</select>
       <select onchange="_recCliente=this.value;renderDashReciclagem()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;max-width:260px;"><option value="">Todos os clientes</option>${clientes.map(c=>`<option value="${esc(c)}" ${c===_recCliente?'selected':''}>${esc(c)}</option>`).join('')}</select>
-      <span style="font-size:11px;color:var(--muted);">NCM 4011/4012 · trimestre pela Data de Registro da DI/DUIMP · peso a reciclar = 70% do peso total da DI/DUIMP</span>
+      <span style="font-size:11px;color:var(--muted);">NCM 4011/4012 · trimestre pela Data de Registro da DI/DUIMP · peso a reciclar = 70% do peso total da DI/DUIMP · responsável: Importação Própria = IMPAK; Encomenda/Conta e Ordem = Cliente do processo</span>
     </div>
     ${_recLotesErro?`<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:12px;">⚠️ ${esc(_recLotesErro)}</div>`:''}
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
