@@ -37,6 +37,40 @@ function _avbPaisOrigem(p){
   const pais = (typeof paisDoProcesso === 'function') ? paisDoProcesso(p) : '';
   return pais && pais !== '—' ? pais.toUpperCase() : '';
 }
+// Frete para a averbação (Emanuelly 28/09/2026): o frete internacional PAGO
+// lançado em Custos Reais (não o cobrado). Sem ele, usa o frete do BL/CE do
+// processo e marca a origem. Retorna { usd, fonte, obs }.
+function _avbFrete(p){
+  let rj = p.real_json;
+  if (typeof rj === 'string') { try { rj = JSON.parse(rj || '{}'); } catch(e) { rj = {}; } }
+  rj = rj || {};
+  const cambioUsd = parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || null;
+  const paraUsd = (valor, moeda) => {
+    const v = parseFloat(valor); if (!isFinite(v)) return null;
+    moeda = (moeda || 'USD').toUpperCase();
+    if (moeda === 'USD') return v;
+    if (moeda === 'BRL') return cambioUsd ? v / cambioUsd : null;
+    return null; // EUR etc.: não converte
+  };
+  const raw = rj.frete;
+  let usd = null, emReais = false;
+  if (raw != null && raw !== '') {
+    if (typeof raw === 'object' && raw.porContainer) {
+      let tot = 0, n = 0;
+      Object.values(raw.porContainer).forEach(e => { if (!e) return; const u = paraUsd(e.valor, e.moeda || 'BRL'); if (u != null) { tot += u; n++; if ((e.moeda||'BRL').toUpperCase()==='BRL') emReais = true; } });
+      if (n) usd = tot;
+    } else if (typeof raw === 'object') {
+      usd = paraUsd(raw.valor, raw.moeda || 'BRL'); emReais = (raw.moeda || 'BRL').toUpperCase() === 'BRL';
+    } else {
+      usd = paraUsd(raw, 'USD'); // legado: número puro era em USD
+    }
+  }
+  if (usd != null && usd > 0) return { usd, fonte: 'Custos Reais (pago)', obs: emReais ? 'frete pago lançado em R$ nos Custos Reais — confira a moeda' : '' };
+  const vf = _avbNum(p.valor_frete);
+  const moedaVf = (p.moeda_frete || 'USD').toUpperCase();
+  if (vf != null) return { usd: moedaVf === 'USD' ? vf : null, fonte: 'BL/CE', obs: 'sem frete pago em Custos Reais (usado frete do BL/CE)' + (moedaVf !== 'USD' ? ' em ' + moedaVf : '') };
+  return { usd: null, fonte: '', obs: 'sem frete' };
+}
 function _avbNum(v){ const n = parseFloat(v); return isFinite(n) ? n : null; }
 function _avbData(s){ if(!s) return null; const [a,m,d] = String(s).slice(0,10).split('-').map(Number); return (a&&m&&d) ? new Date(a, m-1, d) : null; }
 
@@ -53,23 +87,24 @@ async function carregarAverbacao(anoMes, forcar){
   procs.sort((a,b) => String(a.data_registro_di).localeCompare(String(b.data_registro_di)) || String(a.referencia).localeCompare(String(b.referencia)));
   const linhas = procs.map(p => {
     const fob = _avbNum(p.ci_valor_usd) ?? _avbNum(p.pi_valor_usd);
-    const frete = _avbNum(p.valor_frete);
-    const moedaFrete = (p.moeda_frete || 'USD').toUpperCase();
+    const fr = _avbFrete(p);
+    const frete = fr.usd;
+    const moedaFrete = 'USD';
     const benef = _avbBeneficiario(p);
     const falta = [];
     if (fob == null) falta.push('valor CI');
     if (frete == null) falta.push('frete');
+    else if (fr.obs) falta.push(fr.obs);
     if (!benef) falta.push('beneficiário (Cliente)');
     if (!p.numero_di) falta.push('nº DUIMP');
-    if (moedaFrete !== 'USD' && frete != null) falta.push('frete em ' + moedaFrete);
     const paisOrig = _avbPaisOrigem(p);
     if (!paisOrig) falta.push('país de origem');
-    const base = (fob||0) + (moedaFrete === 'USD' ? (frete||0) : 0);
+    const base = (fob||0) + (frete||0);
     const desp = base * 0.10, lucro = (base + desp) * 0.10, is = base + desp + lucro;
     return { p, id:p.id, referencia:p.referencia||'', benef, descricao:_avbEhPneu(p)?'PNEU':'', paisOrig,
       cidadeOrig:(p.porto_origem||'').toUpperCase(), cidadeDest:_avbCidadeDestino(p),
       embarque:(p.data_embarque || p.ce_data_embarque || p.etd || ''), incoterm:(p.pi_incoterm||'FOB').toUpperCase(),
-      navio:(p.navio||'').toUpperCase(), fob, frete, moedaFrete, desp, lucro, is, premio: is*AVB_TAXA,
+      navio:(p.navio||'').toUpperCase(), fob, frete, moedaFrete, freteFonte: fr.fonte, desp, lucro, is, premio: is*AVB_TAXA,
       duimp:p.numero_di||'', falta };
   });
   _avbCache[anoMes] = linhas;
@@ -167,7 +202,7 @@ async function renderDashAverbacao(forcar){
       <input type="month" value="${_avbMes}" onchange="_avbMes=this.value;renderDashAverbacao()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
       <button type="button" onclick="renderDashAverbacao(true)" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;">↻ Atualizar</button>
       <button type="button" onclick="exportarAverbacaoSeguro(_avbMes)" ${linhas.length?'':'disabled'} style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;">⬇️ Excel p/ seguradora</button>
-      <span style="font-size:11px;color:var(--muted);">Processos com DI/DUIMP registrada no mês · Beneficiário: Importação Própria = IMPAK; Encomenda/Conta e Ordem = Cliente · IS = (CI + frete) +10% despesas +10% lucros · taxa 0,04%</span>
+      <span style="font-size:11px;color:var(--muted);">Processos com DI/DUIMP registrada no mês · Beneficiário: Importação Própria = IMPAK; Encomenda/Conta e Ordem = Cliente · Frete = pago em Custos Reais (sem ele, o do BL/CE) · IS = (CI + frete) +10% despesas +10% lucros · taxa 0,04%</span>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
       ${kpi('Processos', linhas.length)}${kpi('Beneficiário IMPAK', nImpak)}
@@ -189,7 +224,7 @@ async function renderDashAverbacao(forcar){
           <td style="padding:6px 8px;">${fd(l.embarque)}</td>
           <td style="padding:6px 8px;white-space:nowrap;">${esc(l.navio||'—')}</td>
           <td style="padding:6px 8px;text-align:right;">${f2(l.fob)}</td>
-          <td style="padding:6px 8px;text-align:right;">${l.moedaFrete!=='USD'&&l.frete!=null?esc(l.moedaFrete)+' ':''}${f2(l.frete)}</td>
+          <td style="padding:6px 8px;text-align:right;" title="${esc(l.freteFonte||'')}">${f2(l.frete)}<div style="font-size:9px;color:var(--muted);">${esc(l.freteFonte||'')}</div></td>
           <td style="padding:6px 8px;text-align:right;font-weight:700;">${f2(l.is)}</td>
           <td style="padding:6px 8px;text-align:right;color:#15803d;font-weight:700;">${f2(l.premio)}</td>
           <td style="padding:6px 8px;white-space:nowrap;">${esc(l.duimp||'—')}</td>
