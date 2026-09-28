@@ -85,6 +85,24 @@ function decifrarSegredo2FA(valor) {
 }
 const session = require('express-session');
 const path    = require('path');
+
+// controle_v2.html com ?v=<versão do deploy> nos scripts do sistema — garante
+// que cada deploy baixe os .js novos mesmo em navegadores com cache teimoso
+// (TV do escritório). Montado 1x no boot.
+const BUILD_ID = String(process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || Date.now()).slice(0, 12);
+let _htmlControleV2 = null;
+function enviarControleV2(res) {
+  try {
+    if (!_htmlControleV2) {
+      _htmlControleV2 = require('fs').readFileSync(path.join(__dirname, 'controle_v2.html'), 'utf8')
+        .replace(/(<script src="\/)(?!vendor\/)([\w.\-]+\.js)(")/g, `$1$2?v=${BUILD_ID}$3`);
+    }
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('html').send(_htmlControleV2);
+  } catch (e) {
+    res.sendFile(path.join(__dirname, 'controle_v2.html'));
+  }
+}
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
 const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase, importarManuBase, importarCatalogoProdutos } = require('./planilha-import.js');
@@ -632,6 +650,17 @@ app.use((req, res, next) => {
   if (caminho.includes('\0') || caminho.includes('\\')) return res.status(400).send('Bad request');
   caminho = path.posix.normalize(caminho);
   if (CAMINHOS_INTERNOS.test(caminho) || /(^|\/)\./.test(caminho)) return res.status(404).send('Not found');
+  next();
+});
+// Cache (28/09/2026 — TV não atualizava): sem Cache-Control o navegador da TV
+// guardava os .js/.html por "heurística" e seguia rodando código velho mesmo
+// depois de recarregar. Agora HTML/JS/CSS do sistema sempre revalidam (ETag →
+// 304 barato quando nada mudou); só /vendor e /assets (libs e imagens que não
+// mudam) continuam em cache.
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !/^\/(vendor|assets)\//.test(req.path) && (/\.(js|css|html)$/i.test(req.path) || !path.extname(req.path))) {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
   next();
 });
 app.use(express.static(__dirname));
@@ -1564,27 +1593,27 @@ app.delete('/api/conferencia/processo/:id', auth('conferencia'), requireGerente,
 });
 
 // ── API: CONTROLE v2 ──────────────────────────────────────────
-app.get('/controle', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/controle', auth('controle'), (req, res) => enviarControleV2(res));
 // "Tela exclusiva" do Dashboard Financeiro — serve o MESMO controle_v2.html
 // (o front-end detecta location.pathname==='/financeiro' e ajusta o que
 // aparece na tela). Evita duplicar toda a lógica de abrir/editar processo,
 // upload de documentos, autocomplete de contatos etc. num arquivo separado
 // que rapidamente ficaria desatualizado em relação ao Controle de verdade.
-app.get('/financeiro', auth('financeiro'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/financeiro', auth('financeiro'), (req, res) => enviarControleV2(res));
 // "Tela exclusiva" de Cadastros (Empresas/Pessoas/Funcionários) — mesmo
 // esquema do /financeiro acima. Aberta a qualquer módulo que já enxergava
 // o antigo modal de Contatos (não é dado sensível por natureza, é o
 // cadastro base usado em todo o sistema).
-app.get('/cadastros', auth('cadastros'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/cadastros', auth('cadastros'), (req, res) => enviarControleV2(res));
 // "Tela exclusiva" do Dashboard Câmbio (controle de pagamentos de câmbio
 // por processo — entrada/saldo/parcelado, calendário semana/mês) — mesmo
 // esquema do /financeiro acima, mesmo módulo de permissão (é a mesma
 // fonte de dados, só com outra apresentação focada em vencimento). Ver
 // ativarTelaCambioExclusiva() em controle-core.js e renderDashCambio() em
 // controle-dash-cambio.js.
-app.get('/cambio', auth('cambio'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
-app.get('/reciclagem', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
-app.get('/averbacao', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/cambio', auth('cambio'), (req, res) => enviarControleV2(res));
+app.get('/reciclagem', auth('controle'), (req, res) => enviarControleV2(res));
+app.get('/averbacao', auth('controle'), (req, res) => enviarControleV2(res));
 
 // ── RECICLAGEM (25/09/2026) ─────────────────────────────────────────
 // Acompanhamento das relações trimestrais de reciclagem por cliente
@@ -1621,8 +1650,8 @@ app.post('/api/reciclagem/lote', auth('controle'), async (req, res) => {
 // controle_v2.html, e o front-end detecta location.pathname==='/resultado'
 // pra abrir direto no Dashboard Resultado (ver ativarTelaResultadoExclusiva
 // em controle-core.js).
-app.get('/resultado', auth('resultado'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
-app.get('/analises', auth('analises'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')))
+app.get('/resultado', auth('resultado'), (req, res) => enviarControleV2(res))
+app.get('/analises', auth('analises'), (req, res) => enviarControleV2(res))
 // "Tela exclusiva" da fila de Conferência (/conferencia) — task #636/#645,
 // pedido Ayslan (14/09/2026): lista os processos com divergências
 // pendentes de aceite, sem precisar abrir processo por processo. Mesmo
@@ -1631,7 +1660,7 @@ app.get('/analises', auth('analises'), (req, res) => res.sendFile(path.join(__di
 // vez da tabela de processos normal. Aberta ao módulo 'conferencia' (quem
 // via a tela antiga em processos.html) e também 'controle' (já enxerga a
 // aba Conferência dentro do processo).
-app.get('/conferencia-fila', auth('conferencia','controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/conferencia-fila', auth('conferencia','controle'), (req, res) => enviarControleV2(res));
 // "Tela exclusiva" do Dashboard Narcélio (visão do dono da empresa) —
 // diferente de /financeiro e /resultado (visíveis a qualquer usuário com o
 // módulo "processos"), aqui o back-end também confere o usuário logado:
@@ -1640,18 +1669,18 @@ app.get('/conferencia-fila', auth('conferencia','controle'), (req, res) => res.s
 // renderDashNarcelio() em controle-dash-narcelio.js e
 // ativarTelaNarcelioExclusiva() em controle-core.js.
 app.get('/narcelio', auth('narcelio'), (req, res) => {
-  res.sendFile(path.join(__dirname, 'controle_v2.html'))
+  enviarControleV2(res)
 });
 // Deep-link por processo — /controle/UD26-005 serve o mesmo controle_v2.html;
 // o front-end lê location.pathname no load e abre o painel lateral do
 // processo correspondente automaticamente (ver abrirProcessoPorURL()).
-app.get('/controle/:ref', auth('controle'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/controle/:ref', auth('controle'), (req, res) => enviarControleV2(res));
 // Tela TV — espelhada num monitor da empresa, substitui a planilha Excel
 // manual (Backorders/Em Águas/No Chão). Sem restrição extra de usuário:
 // qualquer um autenticado no Controle pode abrir (é só leitura ao vivo,
 // nada sensível tipo o Dashboard Narcélio). Ver ativarTelaTVExclusiva()
 // em controle-core.js e renderDashTV() em controle-dash-tv.js.
-app.get('/tv', auth('tv'), (req, res) => res.sendFile(path.join(__dirname, 'controle_v2.html')));
+app.get('/tv', auth('tv'), (req, res) => enviarControleV2(res));
 app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
 
 // ── PTAX histórico (Banco Central) — pedido do Ayslan (09/09/2026, "usar a
