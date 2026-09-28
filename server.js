@@ -2370,7 +2370,20 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
       // (relação trimestral pro cliente) e não mexem em nada financeiro —
       // podem ser completados mesmo com o processo fechado.
       const soDadosReciclagem = Object.keys(processo).every(k => ['id','di_peso_liquido','di_ncms'].includes(k));
-      if (estavaFechado && !tentandoDestravar && !soDadosReciclagem) {
+      // Exceção (29/09/2026): CFOP das NFs de saída é só classificação fiscal
+      // (não muda valor nenhum). Em processo fechado, aceita um vendas_json
+      // que seja IDÊNTICO ao salvo exceto pelo nf_saida_cfop de cada venda.
+      let soCfopVendas = false;
+      if (estavaFechado && Object.keys(processo).every(k => ['id','vendas_json'].includes(k)) && processo.vendas_json != null) {
+        try {
+          const { data: atualV } = await sb().from('controle_processos').select('vendas_json').eq('id', processo.id).maybeSingle();
+          const parse = v => { const x = typeof v === 'string' ? JSON.parse(v || '[]') : (v || []); return Array.isArray(x) ? x : []; };
+          const velhas = parse(atualV && atualV.vendas_json), novas = parse(processo.vendas_json);
+          const semCfop = arr => JSON.stringify(arr.map(v => { const c = { ...v }; delete c.nf_saida_cfop; return c; }));
+          soCfopVendas = velhas.length === novas.length && semCfop(velhas) === semCfop(novas);
+        } catch (e) { soCfopVendas = false; }
+      }
+      if (estavaFechado && !tentandoDestravar && !soDadosReciclagem && !soCfopVendas) {
         return res.status(403).json({ erro: 'Processo fechado — reabra para editar (só gerente pode reabrir).' });
       }
       if (tentandoDestravar && req.session.role !== 'gerente') {
