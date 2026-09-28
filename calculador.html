@@ -565,19 +565,25 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         </div>
         <div style="font-size:10px;color:var(--dim);margin:6px 0 10px;border-top:1px solid var(--border);padding-top:8px;">Taxas em USD (convertidas pelo câmbio de abertura do dia da chegada +2%)</div>
         <div class="form-row">
-          <div class="form-group"><label>Handling at Destination (US$)</label><input type="number" id="tx_handling" onchange="onAutoTaxaDepChange()" step="0.01" value="0"></div>
+          <div class="form-group"><label>Disbursement Fee (US$)</label><input type="number" id="tx_handling" onchange="onAutoTaxaDepChange()" step="0.01" value="15"></div>
           <div class="form-group"><label>Additional Costs (US$)</label><input type="number" id="tx_additional_costs" onchange="onAutoTaxaDepChange()" step="0.01" value="95"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Import Logistics (US$)</label><input type="number" id="tx_import_logistics" onchange="onAutoTaxaDepChange()" step="0.01" value="32.16"></div>
+          <!-- Royal / Rev96 (Jean 28/09/2026): Import Logistics Fee e CRS são
+               valores FIXOS EM REAIS (R$164 e R$180 por container) — o US$
+               equivalente é derivado do câmbio de chegada +2% (=164/E5 na
+               planilha), então o R$ nunca muda com o dólar. Os campos US$
+               (tx_import_logistics / tx_trs) ficam ocultos e são recalculados
+               em calcular(); com o R$ zerado, vale o US$ digitado (legado). -->
+          <div class="form-group"><label>Import Logistics Fee (R$ fixo)</label><input type="number" id="tx_import_logistics_brl" onchange="onAutoTaxaDepChange()" step="0.01" value="164"><input type="hidden" id="tx_import_logistics" value="0"></div>
+          <div class="form-group"><label>CRS (R$ fixo)</label><input type="number" id="tx_crs_brl" onchange="onAutoTaxaDepChange()" step="0.01" value="180"><input type="hidden" id="tx_trs" value="0"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>TRS (US$)</label><input type="number" id="tx_trs" onchange="onAutoTaxaDepChange()" step="0.01" value="19.61"></div>
-          <div class="form-group"><label>TSC (US$)</label><input type="number" id="tx_tsc" onchange="onAutoTaxaDepChange()" step="0.01" value="35"></div>
+          <div class="form-group"><label>TSC - Terminal Sec. Charge (US$)</label><input type="number" id="tx_tsc" onchange="onAutoTaxaDepChange()" step="0.01" value="25"></div>
+          <div class="form-group"><label>Drop Off Fee (US$)</label><input type="number" id="tx_drop_off" onchange="onAutoTaxaDepChange()" step="0.01" value="40"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Drop Off (US$)</label><input type="number" id="tx_drop_off" onchange="onAutoTaxaDepChange()" step="0.01" value="25"></div>
-          <div class="form-group"><label>ISPS (US$)</label><input type="number" id="tx_isps" onchange="onAutoTaxaDepChange()" step="0.01" value="25"></div>
+          <div class="form-group"><label>ISPS - Destination (US$)</label><input type="number" id="tx_isps" onchange="onAutoTaxaDepChange()" step="0.01" value="15"></div>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -949,13 +955,17 @@ const TAXAS_FIXAS_CONTAINER = {
   administrativo:300,
   agente:        476,
 };
+// Royal / Rev96 (28/09/2026). import_logistics e trs (CRS) aqui são só
+// referência em US$ — o valor real é FIXO em R$ (TAXAS_BRL_FIXO_USD_DERIVADO).
+const TAXAS_BRL_FIXO_USD_DERIVADO = { import_logistics: 164, trs: 180 };
 const TAXAS_USD_CONTAINER = {
+  handling:            15,   // Disbursement Fee
   additional_costs:    95,
-  import_logistics:    32.15686274509804,
-  trs:                 19.607843137254903,
-  tsc:                 35,
-  drop_off:            25,
-  isps:                25,
+  import_logistics:    30.920060331825034, // = R$164 / 5,304
+  trs:                 33.93665158371041,  // CRS = R$180 / 5,304
+  tsc:                 25,
+  drop_off:            40,
+  isps:                15,
   iof:                 138.66176470588238,
   desconsolidacao:     80,
 };
@@ -1873,6 +1883,15 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // e nas fórmulas de Marinha/AFRMM e Agente de Carga, replicando a planilha
   // (coluna "Tx Cambio" / "Dólar de Abertura dia da chegada (+) 2%").
   const cambio_chegada_markup = cambio_chegada * 1.02;
+
+  // Import Logistics Fee / CRS: R$ fixo → US$ derivado (=R$/câmbio+2%), igual
+  // à planilha Rev96 (D30 = 164/E5, D31 = 180/E5). Sem precisão cortada, pra
+  // US$ × câmbio voltar exatamente ao R$ fixo.
+  [['tx_import_logistics_brl','tx_import_logistics'],['tx_crs_brl','tx_trs']].forEach(([idBrl,idUsd]) => {
+    const brl = parseFloat(document.getElementById(idBrl)?.value) || 0;
+    const elUsd = document.getElementById(idUsd);
+    if(brl > 0 && elUsd && cambio_chegada_markup > 0) elUsd.value = String(brl / cambio_chegada_markup);
+  });
 
   // Leitura prévia das taxas operacionais (antes de sobrescrever Marinha/Agente,
   // pra ter capatazia, liberação BL e taxas USD disponíveis nas fórmulas abaixo).
@@ -3325,7 +3344,7 @@ const CAMPOS_COTACAO = [
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
   'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
-  'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_tsc',
+  'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_import_logistics_brl','tx_crs_brl','tx_tsc',
   'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao','tx_reciclagem',
   'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor','cenario_valor_sem_st',
 ];
@@ -3386,6 +3405,10 @@ function aplicarEstadoFormulario(estado){
   { const el = document.getElementById('icms_saida_pct'); if (el) el.value = '1.4'; }
   { const el = document.getElementById('ufs_extra'); if (el) el.value = ''; }
   { const el = document.getElementById('cenario_valor_sem_st'); if (el) el.value = ''; }
+  // Cotações salvas antes do R$ fixo (Rev96) não têm esses campos → usa o
+  // padrão R$164 / R$180 (o US$ salvo é recalculado a partir dele).
+  { const el = document.getElementById('tx_import_logistics_brl'); if (el) el.value = '164'; }
+  { const el = document.getElementById('tx_crs_brl'); if (el) el.value = '180'; }
   Object.entries(estado.campos||{}).forEach(([id,val]) => {
     const el = document.getElementById(id);
     if(el) el.value = val;

@@ -1783,10 +1783,10 @@ const CUSTOS_REAIS_CONFIG = [
     // compõe total_taxas/custo_total no Calculador (ver comentário em
     // calcular(), "deve compor as Taxas Operacionais").
     { id:'seguro_venda',    label:'Seguro de Venda',         unidade:'BRL', porContainer:pc('seguro_venda'), cotado:c=>c?.seguro_venda },
-    { id:'handling',         label:'Handling at Destination', unidade:'BRL', unidadeLegado:'USD', porContainer:pc('handling'),  cotado:c=>c?.taxas_usd?.handling },
+    { id:'handling',         label:'Disbursement Fee', unidade:'BRL', unidadeLegado:'USD', porContainer:pc('handling'),  cotado:c=>c?.taxas_usd?.handling },
     { id:'additional_costs', label:'Additional Costs',        unidade:'BRL', unidadeLegado:'USD', porContainer:pc('additional_costs'),  cotado:c=>c?.taxas_usd?.additional_costs },
-    { id:'import_logistics', label:'Import Logistics',        unidade:'BRL', unidadeLegado:'USD', porContainer:pc('import_logistics'),  cotado:c=>c?.taxas_usd?.import_logistics },
-    { id:'trs',              label:'TRS',                     unidade:'BRL', unidadeLegado:'USD', porContainer:pc('trs'),  cotado:c=>c?.taxas_usd?.trs },
+    { id:'import_logistics', label:'Import Logistics Fee',    unidade:'BRL', unidadeLegado:'USD', porContainer:pc('import_logistics'),  cotado:c=>c?.taxas_usd?.import_logistics },
+    { id:'trs',              label:'CRS',                     unidade:'BRL', unidadeLegado:'USD', porContainer:pc('trs'),  cotado:c=>c?.taxas_usd?.trs },
     { id:'tsc',              label:'TSC',                     unidade:'BRL', unidadeLegado:'USD', porContainer:pc('tsc'),  cotado:c=>c?.taxas_usd?.tsc },
     { id:'drop_off',         label:'Drop Off',                unidade:'BRL', unidadeLegado:'USD', porContainer:pc('drop_off'),  cotado:c=>c?.taxas_usd?.drop_off },
     { id:'isps',             label:'ISPS',                    unidade:'BRL', unidadeLegado:'USD', porContainer:pc('isps'),  cotado:c=>c?.taxas_usd?.isps },

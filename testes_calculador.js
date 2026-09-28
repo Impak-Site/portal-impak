@@ -262,6 +262,19 @@ teste('sem câmbio de abertura preenchido (fallback = câmbio principal), ainda 
   aproxIgual(r.seguro_brl, esperado, 0.01, `sem câmbio de chegada explícito, deveria cair no fallback (câmbio principal ×1,02)`);
 });
 
+// ── TESTE: Royal/Rev96 — Import Logistics Fee e CRS são R$ fixos (164/180) ──
+console.log('\n📋 Regra: Import Logistics Fee = R$164 e CRS = R$180 fixos, qualquer câmbio (Jean 28/09/2026)');
+[4.9, 5.2, 6.1].forEach(cc => {
+  teste(`Import Logistics R$164 e CRS R$180 com câmbio de chegada ${cc}`, () => {
+    const sandbox = criarSandbox({ cambio_chegada: String(cc), tx_import_logistics_brl: '164', tx_crs_brl: '180' });
+    carregarNoSandbox(sandbox);
+    sandbox.calcular();
+    const mk = cc * 1.02;
+    aproxIgual(parseFloat(sandbox._elementos['tx_import_logistics'].value) * mk, 164, 0.0001, 'Import Logistics em R$ deveria ser 164');
+    aproxIgual(parseFloat(sandbox._elementos['tx_trs'].value) * mk, 180, 0.0001, 'CRS em R$ deveria ser 180');
+  });
+});
+
 // ── TESTE: IOF automático = Frete USD × 3,5% (bug real corrigido — UD25-305) ──
 // Fórmula antiga somava outras taxas em USD (destino) + frete antes de aplicar
 // 3,5% — confirmado com o usuário que o valor real é só Frete×3,5%.
