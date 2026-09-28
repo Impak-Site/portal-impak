@@ -206,6 +206,14 @@ teste('AMBAS as NFs preenchidas SEM Data de Carregamento -> fica em CARREGAMENTO
 teste('NF de Saída só nas vendas (aba Vendas) conta pra fase', () => {
   iguais(sandbox.calcularFase({ data_liberacao:'2026-09-01', vendas_json: JSON.stringify([{cliente:'A', nf_saida_numero:'8743', nf_saida_cfop:'6403', itens:[]}]) }), 'CARREGAMENTO');
 });
+teste('Baixa sem NF (CFOP BAIXA) tira do estoque mas não é venda', () => {
+  const p = { nf_entrada_numero:'1', produtos_json: JSON.stringify([{descricao:'PNEU 295/80R22.5 UF195', quantidade:10}]),
+    vendas_json: JSON.stringify([{cliente:'A', nf_saida_numero:'9', nf_saida_cfop:'5102', itens:[{descricao:'PNEU 295/80R22.5 UF195', quantidade:6}]},
+                                 {cliente:'', nf_saida_numero:'', nf_saida_cfop:'BAIXA', itens:[{descricao:'PNEU 295/80R22.5 UF195', quantidade:2}]}]) };
+  const e = sandbox.estoqueDoProcesso(p);
+  iguais(e.restante, 2);
+  iguais(sandbox.vendasReaisDoProcesso(p).length, 1);
+});
 teste('Data de Carregamento -> DEVOLUCAO_VAZIO', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '1', data_carregamento: '2026-09-20' }), 'DEVOLUCAO_VAZIO');
 });

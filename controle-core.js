@@ -2482,7 +2482,11 @@ function ehCfopRemessaEstoque(cfop){ return String(cfop||'').replace(/\D/g,'') =
 const _CFOPS_RETORNO_REMESSA = new Set(['5907','6907','1907','2907','5906','6906','1906','2906']);
 function ehCfopRetornoRemessa(cfop){ return _CFOPS_RETORNO_REMESSA.has(String(cfop||'').replace(/\D/g,'')); }
 // CFOP que é só movimentação de estoque (remessa ou retorno) — nunca é venda.
-function ehCfopSemVenda(cfop){ return ehCfopRemessaEstoque(cfop) || ehCfopRetornoRemessa(cfop); }
+// Baixa de estoque SEM NF (ex.: rodas em exposição no escritório — Italo 29/09/2026):
+// lançada na aba Vendas com CFOP "BAIXA". Tira do estoque, mas NÃO é venda
+// (não entra em faturamento, rateio, lucro nem cliente).
+function ehCfopBaixa(cfop){ return String(cfop||'').trim().toUpperCase() === 'BAIXA'; }
+function ehCfopSemVenda(cfop){ return ehCfopRemessaEstoque(cfop) || ehCfopRetornoRemessa(cfop) || ehCfopBaixa(cfop); }
 function vendaEhRetorno(v){ return !!v && ehCfopRetornoRemessa(v.nf_saida_cfop); }
 function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop); }
 function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !ehCfopSemVenda(v && v.nf_saida_cfop)); }
@@ -2661,6 +2665,15 @@ function estoqueDoProcesso(p){
     out.vendeuAlgo = true;
     produtos.forEach(x => { x.quantidade = 0; });
   }
+  // Baixas sem NF (CFOP "BAIXA") também saem do estoque.
+  parseVendas(p).filter(v => v && ehCfopBaixa(v.nf_saida_cfop)).forEach(v => {
+    (v.itens||[]).forEach(it => {
+      const q = parseFloat(it && it.quantidade) || 0;
+      if(!q) return;
+      const i = casarItemComProduto(it.descricao, produtos);
+      if(i >= 0){ produtos[i].quantidade -= q; out.baixado = (out.baixado||0) + q; }
+    });
+  });
   out.itens = produtos.filter(x => x.quantidade > 0.009).map(x => ({ descricao: x.descricao, quantidade: x.quantidade }));
   out.restante = out.itens.reduce((s,x)=>s+x.quantidade,0);
   out.saiuTudo = out.vendeuAlgo && out.restante <= 0.009;
