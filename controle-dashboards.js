@@ -51,9 +51,10 @@ function renderDashExecutivo(){
   const porForn      = {};
   ativos.forEach(p=>{ if(p.fornecedor) porForn[p.fornecedor]=(porForn[p.fornecedor]||0)+1; });
   const topForn      = Object.entries(porForn).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const nfSaidaPeriodo = ativos.filter(p=>p.nf_saida_data&&!ehCfopSemVenda(p.nf_saida_cfop)&&parseDataLocal(p.nf_saida_data)>=mesIni&&parseDataLocal(p.nf_saida_data)<=mesFim);
+  const _nfsMes = p => nfsSaidaVenda(p).filter(nf=>nf.data&&parseDataLocal(nf.data)>=mesIni&&parseDataLocal(nf.data)<=mesFim);
+  const nfSaidaPeriodo = ativos.filter(p=>_nfsMes(p).length>0);
   const nfEntradaPeriodo = ativos.filter(p=>p.nf_entrada_data&&parseDataLocal(p.nf_entrada_data)>=mesIni&&parseDataLocal(p.nf_entrada_data)<=mesFim);
-  const totalNfMes   = nfSaidaPeriodo.reduce((s,p)=>s+(parseFloat(p.nf_saida_valor)||0),0);
+  const totalNfMes   = nfSaidaPeriodo.reduce((s,p)=>s+_nfsMes(p).reduce((t,nf)=>t+nf.valor,0),0);
 
   function card(label, val, sub, cor, fmt, filtro){
     const display = fmt==='usd' ? usd(val) : val;

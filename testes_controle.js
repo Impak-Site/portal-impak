@@ -200,8 +200,14 @@ teste('Data de Embarque efetiva é obrigatória pra EMBARCADO — HBL sozinho n�
   iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'HBLX123', data_embarque: ontem.toISOString().slice(0,10) }), 'EMBARCADO');
   iguais(sandbox.calcularFase({ etd: '2026-01-01', hbl: 'HBLX123' }), 'AGUARDANDO_EMBARQUE');
 });
-teste('AMBAS as NFs preenchidas -> avança para DEVOLUCAO_VAZIO (regra de negócio confirmada com o usuário)', () => {
-  iguais(sandbox.calcularFase({ nf_entrada_numero: '8305', nf_saida_numero: '8309' }), 'DEVOLUCAO_VAZIO');
+teste('AMBAS as NFs preenchidas SEM Data de Carregamento -> fica em CARREGAMENTO (Emanuelly 28/09/2026)', () => {
+  iguais(sandbox.calcularFase({ nf_entrada_numero: '8305', nf_saida_numero: '8309' }), 'CARREGAMENTO');
+});
+teste('NF de Saída só nas vendas (aba Vendas) conta pra fase', () => {
+  iguais(sandbox.calcularFase({ data_liberacao:'2026-09-01', vendas_json: JSON.stringify([{cliente:'A', nf_saida_numero:'8743', nf_saida_cfop:'6403', itens:[]}]) }), 'CARREGAMENTO');
+});
+teste('Data de Carregamento -> DEVOLUCAO_VAZIO', () => {
+  iguais(sandbox.calcularFase({ nf_entrada_numero: '1', data_carregamento: '2026-09-20' }), 'DEVOLUCAO_VAZIO');
 });
 teste('Devolução do vazio sozinha NÃO finaliza mais — precisa RIC Isento ou Lavagem paga (pedido Emanuelly 04/09/2026)', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero:'1', nf_saida_numero:'2', data_devolucao_vazio: '2026-06-30' }), 'DEVOLUCAO_VAZIO');

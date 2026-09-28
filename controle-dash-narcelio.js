@@ -98,14 +98,17 @@ function renderDashNarcelio(){
   // ── 5: faturamento por período (NF de Saída) ─────────────────
   let faturamento = 0, qtdFaturados = 0;
   const faturadosLista = [];
+  // 28/09/2026: considera as NFs de Saída das vendas (aba Vendas), não só o campo antigo.
   _processos.forEach(p => {
-    if(!p.nf_saida_data || !p.nf_saida_valor) return;
-    if(ehCfopSemVenda(p.nf_saida_cfop)) return; // CFOP 5905 = remessa p/ estoque, não é faturamento
-    const d = parseDataLocal(p.nf_saida_data);
-    if(!d || d < periodo.ini || d > periodo.fim) return;
-    faturamento += parseFloat(p.nf_saida_valor) || 0;
-    qtdFaturados++;
-    faturadosLista.push({ id:p.id, referencia:p.referencia, fornecedor:p.cliente||p.fornecedor, valor: parseFloat(p.nf_saida_valor)||0, data: p.nf_saida_data });
+    if(p.cancelado) return;
+    nfsSaidaVenda(p).forEach(nf => {
+      if(!nf.data || !nf.valor) return;
+      const d = parseDataLocal(nf.data);
+      if(!d || d < periodo.ini || d > periodo.fim) return;
+      faturamento += nf.valor;
+      qtdFaturados++;
+      faturadosLista.push({ id:p.id, referencia:p.referencia, fornecedor:nf.cliente||p.cliente||p.fornecedor, valor: nf.valor, data: nf.data });
+    });
   });
 
   // ── 6: estoque parado no armazém (importado, ainda sem venda) ─

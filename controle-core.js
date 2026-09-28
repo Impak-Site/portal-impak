@@ -149,6 +149,8 @@ function faseParaExibir(p){
   // deles. Se já tem Data Solicitação preenchida, mostra que está
   // aguardando resposta; senão, que ainda precisa solicitar.
   if(p && p.fase==='DEVOLUCAO_VAZIO' && p.data_devolucao_vazio && p.ric_status!=='Isento' && !p.data_pagamento_lavagem){
+    // Emanuelly (28/09/2026): termo já enviado → falta só pagar a lavagem.
+    if(p.data_envio_termo) return {id:'AGUARDANDO_PAGAMENTO', label:'Aguardando Pagamento', icon:'💰'};
     return p.data_solicitacao_demurrage
       ? {id:'AGUARDANDO_ISENCAO', label:'Aguardando Isenção', icon:'⏳'}
       : {id:'AGUARDANDO_ISENCAO', label:'Solicitar Isenção',  icon:'📝'};
@@ -1157,7 +1159,7 @@ async function salvarProcesso(proc, patchFields){
   // Avançar fase automaticamente — só recalcula se um dos campos que
   // calcularFase() realmente olha mudou nesta sessão (ver patchTocaCampos
   // acima).
-  if(patchTocaCampos(['data_devolucao_vazio','data_carregamento','nf_entrada_numero','nf_saida_numero',
+  if(patchTocaCampos(['data_devolucao_vazio','data_carregamento','nf_entrada_numero','nf_saida_numero','vendas_json','data_envio_termo',
     'data_agendamento','data_liberacao','canal','data_parametrizacao','numero_di','data_registro_di',
     'data_chegada','data_presenca','data_embarque','etd','ric_status','data_pagamento_lavagem'])){
     // ric_status e data_pagamento_lavagem entraram aqui em 04/09/2026: a
@@ -1256,8 +1258,11 @@ function calcularFase(p){
   // suficiente de que o carregamento aconteceu de fato — avança direto para
   // Devolução do Vazio, mesmo sem a data_carregamento manual preenchida,
   // para já acionar o alerta de demurrage dessa etapa.
-  if(p.data_carregamento || (p.nf_entrada_numero && p.nf_saida_numero)) return 'DEVOLUCAO_VAZIO';
-  if(p.data_agendamento || p.nf_saida_numero || p.nf_entrada_numero) return 'CARREGAMENTO';
+  // Emanuelly (28/09/2026): só a Data de Carregamento leva pra Devolução do
+  // Vazio (antes NF Entrada + NF Saída também levavam, sem carregamento).
+  if(p.data_carregamento || p.data_devolucao_vazio) return 'DEVOLUCAO_VAZIO';
+  // NF de Saída vale tanto no campo antigo quanto nas vendas (aba Vendas).
+  if(p.data_agendamento || temNfSaidaVenda(p) || p.nf_entrada_numero) return 'CARREGAMENTO';
   if(p.data_liberacao || (p.canal==='VERDE' && p.data_parametrizacao)) return 'FATURAMENTO';
   if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
   if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
@@ -2483,6 +2488,18 @@ function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop);
 function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !ehCfopSemVenda(v && v.nf_saida_cfop)); }
 // Processo tem NF de remessa p/ estoque (CFOP 5905) — no processo ou numa venda.
 function temRemessaEstoque(p){ return !!p && (ehCfopRemessaEstoque(p.nf_saida_cfop) || parseVendas(p).some(vendaEhRemessa)); }
+// NFs de saída que são venda de verdade: as da aba Vendas (quando existem)
+// ou, sem vendas cadastradas, a NF do campo antigo da aba Documentos.
+function nfsSaidaVenda(p){
+  if(!p) return [];
+  const vendas = parseVendas(p);
+  if(vendas.length){
+    return vendas.filter(v => v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && !ehCfopSemVenda(v.nf_saida_cfop))
+      .map(v => ({ numero:v.nf_saida_numero, data:v.nf_saida_data, valor:parseFloat(v.nf_saida_valor)||0, cfop:v.nf_saida_cfop, cliente:v.cliente }));
+  }
+  return nfSaidaLegadoEhVenda(p) ? [{ numero:p.nf_saida_numero, data:p.nf_saida_data, valor:parseFloat(p.nf_saida_valor)||0, cfop:p.nf_saida_cfop, cliente:p.cliente }] : [];
+}
+function temNfSaidaVenda(p){ return !!(p && (p.nf_saida_numero || nfsSaidaVenda(p).length)); }
 function nfSaidaLegadoEhVenda(p){ return !!(p && p.nf_saida_numero && String(p.nf_saida_numero).trim() && !ehCfopSemVenda(p.nf_saida_cfop)); }
 
 function clientesDoProcesso(p){
@@ -3702,7 +3719,7 @@ clientesDoProcesso(p).some(cl=>cl.toLowerCase().includes(q))
 
   if(_faseFilter && !ignorarFaseFilter){
     const filtroEspecial = FILTROS_FASE_ESPECIAIS[_faseFilter];
-    lista = filtroEspecial ? filtroEspecial(lista) : lista.filter(p=>p.fase===_faseFilter);
+    lista = filtroEspecial ? filtroEspecial(lista) : lista.filter(p=>p.fase===_faseFilter && !p.fechado); // fechado tem pill própria (Emanuelly 28/09/2026)
   }
 
   // Filtro por cliente
@@ -4160,7 +4177,7 @@ const FASE_CAMPOS_ORDEM = [
   { label: 'Nº DI/DUIMP / Data de Registro', ok: p => !!(p.numero_di || p.data_registro_di), ids: ['f_numero_di','f_data_registro_di'] },
   { label: 'Canal / Data de Parametrização', ok: p => !!(p.canal || p.data_parametrizacao), ids: ['f_canal','f_data_parametrizacao'] },
   { label: 'Data de Liberação', ok: p => !!p.data_liberacao, ids: ['f_data_liberacao'] },
-  { label: 'Data de Agendamento / NF Saída / NF Entrada', ok: p => !!(p.data_agendamento || p.nf_saida_numero || p.nf_entrada_numero), ids: ['f_data_agendamento','f_nf_saida_numero','f_nf_entrada_numero'] },
+  { label: 'Data de Agendamento / NF Saída / NF Entrada', ok: p => !!(p.data_agendamento || temNfSaidaVenda(p) || p.nf_entrada_numero), ids: ['f_data_agendamento','f_nf_saida_numero','f_nf_entrada_numero'] },
   { label: 'Data de Carregamento', ok: p => !!p.data_carregamento, ids: ['f_data_carregamento'] },
   { label: 'Data de Devolução de Vazio', ok: p => !!p.data_devolucao_vazio, ids: ['f_data_devolucao_vazio'] },
   ];
