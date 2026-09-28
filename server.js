@@ -1628,6 +1628,79 @@ app.get('/api/reciclagem/lotes', auth('controle'), async (req, res) => {
     res.json({ ok: true, lotes: data || [] });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
+// ── Clientes principais x avulsos (pedido Emanuelly 28/09/2026) ─────────
+// Toda NF de venda (aba Vendas) vira "cliente" no Por Cliente/Medida e no
+// follow-up — inclusive pessoa física que comprou 4 pneus. Classificação:
+//  - manual (checkbox na tela) sempre vence;
+//  - senão, é PRINCIPAL quem aparece no campo Cliente de algum processo ou
+//    soma >= CLIENTE_PRINCIPAL_MIN_PNEUS pneus vendidos no histórico; o resto
+//    é AVULSO (agrupado em "Outros clientes" e fora do follow-up).
+// Guardado como JSON no bucket privado do GED (não precisa de migration).
+const CLIENTE_PRINCIPAL_MIN_PNEUS = 100;
+const CLASSIF_CLIENTES_PATH = '_config/clientes-classificacao.json';
+let _classifClientesCache = null, _classifClientesCacheEm = 0;
+function chaveClienteClassif(nome){
+  return String(nome || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9]/g,'');
+}
+async function lerClassificacaoClientes(){
+  if (_classifClientesCache && Date.now() - _classifClientesCacheEm < 60000) return _classifClientesCache;
+  let obj = { manual: {} };
+  try {
+    const { data, error } = await sb().storage.from(GED_BUCKET).download(CLASSIF_CLIENTES_PATH);
+    if (!error && data) {
+      const txt = typeof data.text === 'function' ? await data.text() : Buffer.from(await data.arrayBuffer()).toString('utf8');
+      const j = JSON.parse(txt);
+      if (j && typeof j.manual === 'object') obj = j;
+    }
+  } catch(e) { /* sem arquivo ainda: tudo pela regra automática */ }
+  _classifClientesCache = obj; _classifClientesCacheEm = Date.now();
+  return obj;
+}
+// Devolve fn(nome) -> true se principal. Usa todos os processos não
+// cancelados (campo Cliente + vendas_json) pra regra automática.
+async function montarClassificadorClientes(){
+  const classif = await lerClassificacaoClientes();
+  const { data } = await sb().from('controle_processos').select('cliente, vendas_json, cancelado');
+  const doCampoCliente = new Set(), qtd = {};
+  (data || []).forEach(p => {
+    if (p.cancelado) return;
+    const k = chaveClienteClassif(p.cliente); if (k) doCampoCliente.add(k);
+    let vendas = []; try { vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; } catch(e) {}
+    (Array.isArray(vendas) ? vendas : []).forEach(v => {
+      const kv = chaveClienteClassif(v && v.cliente); if (!kv) return;
+      const q = (Array.isArray(v.itens) ? v.itens : []).reduce((s, it) => s + (parseFloat(it && it.quantidade) || 0), 0);
+      qtd[kv] = (qtd[kv] || 0) + q;
+    });
+  });
+  return nome => {
+    const k = chaveClienteClassif(nome);
+    if (!k) return true;
+    const m = classif.manual[k];
+    if (m && m.status) return m.status === 'principal';
+    return doCampoCliente.has(k) || (qtd[k] || 0) >= CLIENTE_PRINCIPAL_MIN_PNEUS;
+  };
+}
+app.get('/api/clientes-classificacao', auth(...MODULOS_TRABALHO, 'tv'), async (req, res) => {
+  try { res.json({ ok: true, minPneus: CLIENTE_PRINCIPAL_MIN_PNEUS, ...(await lerClassificacaoClientes()) }); }
+  catch(e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/clientes-classificacao', auth('controle'), async (req, res) => {
+  try {
+    const entrada = (req.body && req.body.manual) || {};
+    const manual = {};
+    Object.entries(entrada).slice(0, 5000).forEach(([k, v]) => {
+      const chave = chaveClienteClassif(k);
+      if (!chave || !v || !['principal','avulso'].includes(v.status)) return;
+      manual[chave] = { status: v.status, nome: String(v.nome || '').slice(0, 200), por: (req.session && req.session.usuario) || '', em: new Date().toISOString() };
+    });
+    const corpo = Buffer.from(JSON.stringify({ manual, atualizado_em: new Date().toISOString() }), 'utf8');
+    const { error } = await sb().storage.from(GED_BUCKET).upload(CLASSIF_CLIENTES_PATH, corpo, { contentType: 'application/json', upsert: true });
+    if (error) throw new Error(error.message);
+    _classifClientesCache = null;
+    res.json({ ok: true, total: Object.keys(manual).length });
+  } catch(e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.post('/api/reciclagem/lote', auth('controle'), async (req, res) => {
   try {
     const b = req.body || {};
@@ -4150,8 +4223,15 @@ async function montarHtmlFollowUpSemanal(processos){
   const fmtData = iso => { try { return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR'); } catch(e) { return iso || '—'; } };
 
   const porCliente = {};
+  // Clientes avulsos (NF pra pessoa física/compra pontual) não recebem
+  // follow-up — só aparecem numa lista no fim do rascunho (pedido Emanuelly
+  // 28/09/2026). Se a classificação falhar, segue com todos (comportamento antigo).
+  let ehPrincipal = () => true;
+  try { ehPrincipal = await montarClassificadorClientes(); } catch(e) { console.warn('[followup] classificação de clientes indisponível:', e.message); }
+  const avulsos = {};
   linhasFollowUpPorCliente(processos).forEach(p => {
     const chave = p.cliente || '(cliente não definido)';
+    if (p.cliente && !ehPrincipal(p.cliente)) { (avulsos[chave] = avulsos[chave] || new Set()).add(p.referencia); return; }
     (porCliente[chave] = porCliente[chave] || []).push(p);
   });
 
@@ -4204,6 +4284,7 @@ async function montarHtmlFollowUpSemanal(processos){
 As datas de chegada (ETA) informadas sao previsoes e podem sofrer alteracoes ou atrasos - inclua esse aviso ao repassar o follow-up para os clientes. Para os processos com chegada prevista NESTA SEMANA, pergunte ao cliente qual transportadora sera utilizada, para termos tempo habil de organizar o fluxo do processo.
 </div>
       ${blocosCliente || '<p style="color:#666;">Nenhum processo com ETA nos próximos ' + FOLLOWUP_DIAS_JANELA + ' dias.</p>'}
+      ${Object.keys(avulsos).length ? `<div style="font-size:11px;color:#666;border-top:1px dashed #ddd;padding-top:10px;margin-top:10px;"><strong>Clientes avulsos (fora do follow-up):</strong> ${Object.keys(avulsos).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(c => escHtml(c) + ' (' + [...avulsos[c]].map(escHtml).join(', ') + ')').join('; ')}. Para incluir algum, marque como principal no Por Cliente/Medida → ⚙ Clientes principais.</div>` : ''}
       <p style="font-size:11px;color:#888;margin-top:24px;">Este e-mail é um rascunho interno para conferência — Emanuelly revisa e repassa manualmente aos clientes depois de confirmar os dados.</p>
     </div>`;
 }

@@ -116,6 +116,18 @@ let _cmUltimoResultado = null;
 // pdf"). Fica marcado/desmarcado só na sessão (não persiste), lido na hora
 // de montar o PDF — não mexe no Excel nem na tela.
 let _cmIncluirFretePdf = false;
+
+// Clientes avulsos (pedido Emanuelly 28/09/2026: "o sistema está incluindo
+// como cliente toda a pessoa física ou jurídica a qual foi realizado nota...
+// a lista de cliente será enorme... colocar um flegar para considerar ou não
+// esse cliente"). Por padrão, quem não é cliente principal (ver
+// clienteEhPrincipal em controle-core.js) cai num único grupo "Outros
+// clientes (avulsos)" — os pneus continuam somando, só não poluem a lista.
+// Checkbox na tela abre eles separados; "⚙ Clientes principais" marca/desmarca.
+const CM_NOME_AVULSOS = 'OUTROS CLIENTES (avulsos)';
+let _cmMostrarAvulsos = false;
+let _cmClassifCarregada = false;
+function _cmToggleAvulsos(checked){ _cmMostrarAvulsos = checked; renderDashClienteMedida(); }
 function _cmToggleFretePdf(checked){
   _cmIncluirFretePdf = checked;
 }
@@ -145,6 +157,7 @@ function toggleDashClienteMedida(){
   if(toolbar) toolbar.style.display = visivel ? '' : 'none';
   if(!visivel){
     renderDashClienteMedida();
+    if(typeof carregarClassificacaoClientes === 'function') carregarClassificacaoClientes().then(() => { _cmClassifCarregada = true; renderDashClienteMedida(); });
     _cmIniciarAutoRefresh();
   } else {
     _cmPararAutoRefresh();
@@ -271,6 +284,12 @@ function renderDashClienteMedida(){
     const chave = (chaveFn || (s => s.toUpperCase()))(label);
     if(!mapa.has(chave)) mapa.set(chave, label);
   }
+  const statsClientes = typeof estatisticasClientes === 'function' ? estatisticasClientes(_processos) : {};
+  const nomeClienteExibido = (nome) => {
+    const n = (nome || 'Sem cliente').trim() || 'Sem cliente';
+    if(_cmMostrarAvulsos || n === 'Sem cliente' || typeof clienteEhPrincipal !== 'function') return n;
+    return clienteEhPrincipal(n, statsClientes) ? n : CM_NOME_AVULSOS;
+  };
   _processos.forEach(p => {
     if(p.cancelado) return;
     if(!FASES_CLIENTE_MEDIDA_SET.has(_cmFaseAgrupada(calcularFase(p)))) return;
@@ -279,8 +298,8 @@ function renderDashClienteMedida(){
       if(!dtChegadaOpcoes || dtChegadaOpcoes.slice(0,7) !== _cmFiltroMes) return;
     }
     const vendas = typeof vendasReaisDoProcesso === 'function' ? vendasReaisDoProcesso(p) : [];
-    if(vendas.length) vendas.forEach(v => _cmAddOpcao(clientesDisponiveis, v.cliente || p.cliente || 'Sem cliente'));
-    else _cmAddOpcao(clientesDisponiveis, p.cliente || 'Sem cliente');
+    if(vendas.length) vendas.forEach(v => _cmAddOpcao(clientesDisponiveis, nomeClienteExibido(v.cliente || p.cliente)));
+    else _cmAddOpcao(clientesDisponiveis, nomeClienteExibido(p.cliente));
     _cmAddOpcao(fornecedoresDisponiveis, p.fornecedor || 'Sem fornecedor', _cmChaveEmpresa);
     _cmAddOpcao(marcasDisponiveis, p.brand || p.fornecedor || 'Sem marca', _cmChaveEmpresa);
   });
@@ -314,8 +333,10 @@ function renderDashClienteMedida(){
     return { texto: '—', previsto: false };
   }
 
+  let avulsosAgrupados = new Set();
   function addPedido(clienteNomeOriginal, marcaOriginal, p, itens, fase){
-    const clienteNome = (clienteNomeOriginal || 'Sem cliente').trim() || 'Sem cliente';
+    const clienteNome = nomeClienteExibido(clienteNomeOriginal);
+    if(clienteNome === CM_NOME_AVULSOS) avulsosAgrupados.add(chaveClienteClassif(clienteNomeOriginal));
     if(_cmFiltroCliente && clienteNome.toUpperCase() !== _cmFiltroCliente.toUpperCase()) return;
     const chaveCliente = clienteNome.toUpperCase();
     const marcaNome = (marcaOriginal || 'Sem marca').trim() || 'Sem marca';
@@ -444,7 +465,7 @@ function renderDashClienteMedida(){
       })
       .filter(c => Object.keys(c.porMarca).length > 0);
   }
-  clientesLista.sort((a,b) => b.total - a.total);
+  clientesLista.sort((a,b) => (a.nome === CM_NOME_AVULSOS) - (b.nome === CM_NOME_AVULSOS) || b.total - a.total);
 
   // Snapshot pros exports Excel/PDF (ver exportarCMExcel/exportarCMPDF mais
   // abaixo) — sempre o que está na tela agora, com os mesmos filtros.
@@ -649,8 +670,8 @@ function renderDashClienteMedida(){
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid #64748b;border-radius:10px;padding:12px 16px;flex:1;min-width:160px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Clientes</div>
-        <div style="font-size:22px;font-weight:800;color:var(--text);font-family:'DM Sans',sans-serif;">${Object.keys(porCliente).length}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${processosConsiderados} processo(s) considerados</div>
+        <div style="font-size:22px;font-weight:800;color:var(--text);font-family:'DM Sans',sans-serif;">${Object.values(porCliente).filter(c => c.nome !== CM_NOME_AVULSOS).length}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${processosConsiderados} processo(s) considerados${avulsosAgrupados.size ? ` · + ${avulsosAgrupados.size} avulso(s) agrupado(s)` : ''}</div>
       </div>
     </div>
 
@@ -666,6 +687,10 @@ function renderDashClienteMedida(){
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--text);white-space:nowrap;" title="Inclui uma coluna com o Valor do Frete (aba Logística do processo) só no PDF exportado — não aparece na tela nem no Excel.">
           <input type="checkbox" ${_cmIncluirFretePdf?'checked':''} onchange="_cmToggleFretePdf(this.checked)"> Incluir Valor de Frete (PDF)
         </label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:var(--text);white-space:nowrap;" title="Desmarcado: clientes avulsos (NF pontual, pessoa física etc.) ficam somados num único grupo no fim da lista.">
+          <input type="checkbox" ${_cmMostrarAvulsos?'checked':''} onchange="_cmToggleAvulsos(this.checked)"> Mostrar avulsos separados
+        </label>
+        <button class="btn btn-outline" onclick="abrirModalClientesPrincipais()" style="white-space:nowrap;" title="Marcar quais clientes são principais (aparecem sozinhos aqui e recebem follow-up)">⚙ Clientes principais</button>
         <button class="btn btn-outline" onclick="exportarCMExcel()" style="white-space:nowrap;">📊 Exportar Excel</button>
         <button class="btn btn-outline" onclick="exportarCMPDF()" style="white-space:nowrap;">📄 Exportar PDF</button>
       </div>
@@ -1185,5 +1210,85 @@ async function exportarCMPDF(){
   }catch(e){
     showToast('Erro ao exportar PDF: '+e.message,'err');
     console.error(e);
+  }
+}
+
+
+// ── Modal "Clientes principais" ─────────────────────────────────────────
+// Lista todo mundo que já apareceu como Cliente de processo ou em NF de
+// venda (não cancelados), com a regra automática e um checkbox. Só grava
+// como "manual" o que ficar DIFERENTE da regra automática — assim, se a
+// regra mudar, quem nunca foi mexido acompanha.
+let _cpLinhas = [];
+async function abrirModalClientesPrincipais(){
+  await carregarClassificacaoClientes();
+  const stats = estatisticasClientes(_processos);
+  const manual = _clientesClassif.manual || {};
+  _cpLinhas = Object.entries(stats).map(([k, e]) => ({
+    chave: k, nome: e.nome, pneus: e.pneus, procs: e.processos.size, campoCliente: e.campoCliente,
+    auto: clientePrincipalAutomatico(e),
+    principal: manual[k] && manual[k].status ? manual[k].status === 'principal' : clientePrincipalAutomatico(e),
+  })).sort((a,b) => (b.principal - a.principal) || b.pneus - a.pneus || a.nome.localeCompare(b.nome,'pt-BR'));
+  let bg = document.getElementById('modal-clientes-principais-bg');
+  if(!bg){
+    bg = document.createElement('div');
+    bg.id = 'modal-clientes-principais-bg';
+    bg.className = 'modal-bg';
+    document.body.appendChild(bg);
+  }
+  bg.innerHTML = `<div class="modal" style="max-width:760px;width:95vw;">
+    <div class="modal-title">⚙ Clientes principais</div>
+    <div style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.5;">
+      <strong>Principal</strong>: aparece sozinho no Por Cliente/Medida e recebe o follow-up semanal.
+      <strong>Avulso</strong>: fica somado em "Outros clientes (avulsos)" e fora do follow-up.<br>
+      Regra automática: é principal quem está no campo <em>Cliente</em> de algum processo ou já comprou ${CLIENTE_PRINCIPAL_MIN_PNEUS}+ pneus. Marque/desmarque para mudar.
+    </div>
+    <input id="cp-busca" class="form-input" placeholder="Buscar cliente..." oninput="_cpRenderLista()" style="width:100%;margin-bottom:8px;">
+    <div id="cp-lista" style="max-height:55vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+      <button class="btn btn-outline" type="button" onclick="document.getElementById('modal-clientes-principais-bg').classList.remove('open')">Cancelar</button>
+      <button class="btn" type="button" id="cp-salvar" onclick="_cpSalvar()">Salvar</button>
+    </div>
+  </div>`;
+  bg.classList.add('open');
+  _cpRenderLista();
+}
+function _cpRenderLista(){
+  const el = document.getElementById('cp-lista'); if(!el) return;
+  const termo = (document.getElementById('cp-busca')?.value || '').trim().toLowerCase();
+  const fmt = v => (v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+  const linhas = _cpLinhas.map((l, i) => ({ l, i })).filter(({ l }) => !termo || l.nome.toLowerCase().includes(termo));
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="position:sticky;top:0;background:var(--bg);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;">
+      <th style="padding:6px 8px;text-align:center;width:70px;">Principal</th>
+      <th style="padding:6px 8px;text-align:left;">Cliente</th>
+      <th style="padding:6px 8px;text-align:right;">Pneus vendidos</th>
+      <th style="padding:6px 8px;text-align:right;">Processos</th>
+      <th style="padding:6px 8px;text-align:left;">Situação</th>
+    </tr></thead>
+    <tbody>${linhas.map(({ l, i }) => `<tr style="border-top:1px solid var(--border);${l.principal?'':'color:var(--muted);'}">
+      <td style="padding:5px 8px;text-align:center;"><input type="checkbox" ${l.principal?'checked':''} onchange="_cpLinhas[${i}].principal=this.checked;_cpRenderLista()"></td>
+      <td style="padding:5px 8px;">${esc(l.nome)}${l.campoCliente?' <span title="Está no campo Cliente de algum processo" style="font-size:10px;color:var(--ac);">● cliente de processo</span>':''}</td>
+      <td style="padding:5px 8px;text-align:right;">${fmt(l.pneus)}</td>
+      <td style="padding:5px 8px;text-align:right;">${l.procs}</td>
+      <td style="padding:5px 8px;font-size:11px;">${l.principal === l.auto ? '<span style="color:var(--muted);">automático</span>' : '<strong style="color:#b45309;">manual</strong>'}</td>
+    </tr>`).join('') || '<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--muted);">Nenhum cliente encontrado.</td></tr>'}</tbody>
+  </table>`;
+}
+async function _cpSalvar(){
+  const btn = document.getElementById('cp-salvar'); if(btn){ btn.disabled = true; btn.textContent = 'Salvando...'; }
+  const manual = {};
+  _cpLinhas.forEach(l => { if(l.principal !== l.auto) manual[l.chave] = { status: l.principal ? 'principal' : 'avulso', nome: l.nome }; });
+  try{
+    const d = await fetch('/api/clientes-classificacao', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ manual }) }).then(r => r.json());
+    if(!d || !d.ok) throw new Error((d && d.erro) || 'falha ao salvar');
+    await carregarClassificacaoClientes();
+    document.getElementById('modal-clientes-principais-bg')?.classList.remove('open');
+    showToast('✓ Clientes principais salvos', 'ok');
+    renderDashClienteMedida();
+  }catch(e){
+    showToast('Erro ao salvar: ' + e.message, 'err');
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = 'Salvar'; }
   }
 }

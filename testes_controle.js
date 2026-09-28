@@ -214,6 +214,22 @@ teste('Baixa sem NF (CFOP BAIXA) tira do estoque mas não é venda', () => {
   iguais(e.restante, 2);
   iguais(sandbox.vendasReaisDoProcesso(p).length, 1);
 });
+teste('Clientes principais x avulsos: campo Cliente, volume e marcação manual', () => {
+  const V = (cli, q) => ({cliente: cli, nf_saida_numero:'1', nf_saida_cfop:'5102', itens:[{descricao:'PNEU 295/80R22.5', quantidade:q}]});
+  const procs = [
+    { id:'a', cliente:'UNICAP', vendas_json: JSON.stringify([V('Maria Silva', 4), V('Grande Revenda Ltda', 150), V('Unicap', 50)]) },
+    { id:'b', cliente:'', cancelado:true, vendas_json: JSON.stringify([V('Cancelada SA', 999)]) },
+  ];
+  const st = sandbox.estatisticasClientes(procs);
+  const sem = { manual: {} };
+  iguais(sandbox.clienteEhPrincipal('Unicap', st, sem), true);
+  iguais(sandbox.clienteEhPrincipal('Grande Revenda Ltda', st, sem), true);
+  iguais(sandbox.clienteEhPrincipal('MARIA SILVA', st, sem), false);
+  iguais(sandbox.clienteEhPrincipal('Cancelada SA', st, sem), false);
+  const man = { manual: { MARIASILVA: {status:'principal'}, GRANDEREVENDALTDA: {status:'avulso'} } };
+  iguais(sandbox.clienteEhPrincipal('Maria Silva', st, man), true);
+  iguais(sandbox.clienteEhPrincipal('Grande Revenda Ltda', st, man), false);
+});
 teste('Data de Carregamento -> DEVOLUCAO_VAZIO', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '1', data_carregamento: '2026-09-20' }), 'DEVOLUCAO_VAZIO');
 });

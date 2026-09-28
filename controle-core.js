@@ -2490,6 +2490,51 @@ function ehCfopSemVenda(cfop){ return ehCfopRemessaEstoque(cfop) || ehCfopRetorn
 function vendaEhRetorno(v){ return !!v && ehCfopRetornoRemessa(v.nf_saida_cfop); }
 function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop); }
 function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !ehCfopSemVenda(v && v.nf_saida_cfop)); }
+
+// ── Clientes principais x avulsos (pedido Emanuelly 28/09/2026) ─────────
+// Cada NF de venda vira "cliente" — inclusive pessoa física com 4 pneus.
+// Regra (espelhada no server.js/montarClassificadorClientes, que usa no
+// follow-up): marcação manual vence; senão é PRINCIPAL quem está no campo
+// Cliente de algum processo ou soma >= CLIENTE_PRINCIPAL_MIN_PNEUS pneus
+// vendidos no histórico. O resto é AVULSO.
+const CLIENTE_PRINCIPAL_MIN_PNEUS = 100;
+let _clientesClassif = { manual: {} };
+function chaveClienteClassif(nome){
+  return String(nome || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9]/g,'');
+}
+async function carregarClassificacaoClientes(){
+  try {
+    const d = await fetch('/api/clientes-classificacao').then(r => r.json());
+    if (d && d.manual && typeof d.manual === 'object') _clientesClassif = { manual: d.manual };
+  } catch(e) { /* sem classificação salva: só a regra automática */ }
+  return _clientesClassif;
+}
+// { CHAVE: {nome, pneus, processos:Set, campoCliente:bool} } — todos os
+// processos não cancelados (qualquer fase), pra regra automática.
+function estatisticasClientes(processos){
+  const out = {};
+  const pega = (nome) => { const k = chaveClienteClassif(nome); if(!k) return null; return out[k] = out[k] || { nome: String(nome).trim(), pneus: 0, processos: new Set(), campoCliente: false }; };
+  (processos || []).forEach(p => {
+    if (!p || p.cancelado) return;
+    const c = pega(p.cliente); if (c) { c.campoCliente = true; c.processos.add(p.id); }
+    vendasReaisDoProcesso(p).forEach(v => {
+      const e = pega(v && v.cliente); if (!e) return;
+      e.processos.add(p.id);
+      e.pneus += (Array.isArray(v.itens) ? v.itens : []).reduce((s, it) => s + (parseFloat(it && it.quantidade) || 0), 0);
+    });
+  });
+  return out;
+}
+function clientePrincipalAutomatico(est){
+  return !!est && (est.campoCliente || est.pneus >= CLIENTE_PRINCIPAL_MIN_PNEUS);
+}
+function clienteEhPrincipal(nome, stats, classif){
+  const k = chaveClienteClassif(nome);
+  if (!k) return true;
+  const m = ((classif || _clientesClassif).manual || {})[k];
+  if (m && m.status) return m.status === 'principal';
+  return clientePrincipalAutomatico((stats || {})[k]);
+}
 // Processo tem NF de remessa p/ estoque (CFOP 5905) — no processo ou numa venda.
 function temRemessaEstoque(p){ return !!p && (ehCfopRemessaEstoque(p.nf_saida_cfop) || parseVendas(p).some(vendaEhRemessa)); }
 // NFs de saída que são venda de verdade: as da aba Vendas (quando existem)
