@@ -230,6 +230,16 @@ teste('Clientes principais x avulsos: campo Cliente, volume e marcação manual'
   iguais(sandbox.clienteEhPrincipal('Maria Silva', st, man), true);
   iguais(sandbox.clienteEhPrincipal('Grande Revenda Ltda', st, man), false);
 });
+teste('NCMs da DI com quebra por NCM (reciclagem): formata, lê e mantém formato antigo', () => {
+  const txt = sandbox.formatarNcmsDetalhe([{ncm:'4011.8090',quantidade:24,peso_liquido:1091.76},{ncm:'40118090',quantidade:'24',peso_liquido:'1.135,92'},{ncm:'4011.70.90',quantidade:20,peso_liquido:6304}]);
+  iguais(txt, '4011.80.90: 48 un, 2227.68 kg; 4011.70.90: 20 un, 6304.00 kg');
+  const d = sandbox.parseNcmsDetalhe(txt);
+  iguais(d.ncms.join('|'), '4011.80.90|4011.70.90');
+  iguais(d.detalhe['4011.80.90'].qtd, 48); iguais(d.detalhe['4011.70.90'].peso, 6304);
+  const antigo = sandbox.parseNcmsDetalhe('4011.10.00, 4011.90.90');
+  iguais(antigo.ncms.length, 2); iguais(antigo.detalhe, null);
+  iguais(sandbox.formatarNcmsDetalhe([{ncm:'4011.20.90',quantidade:null,peso_liquido:5}]), '4011.20.90');
+});
 teste('Data de Carregamento -> DEVOLUCAO_VAZIO', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '1', data_carregamento: '2026-09-20' }), 'DEVOLUCAO_VAZIO');
 });

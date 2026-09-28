@@ -2491,6 +2491,47 @@ function vendaEhRetorno(v){ return !!v && ehCfopRetornoRemessa(v.nf_saida_cfop);
 function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop); }
 function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !ehCfopSemVenda(v && v.nf_saida_cfop)); }
 
+// ── NCMs da DI/DUIMP com quebra de quantidade/peso (pedido Emanuelly
+// 28/09/2026: reciclagem precisa de qtd e peso SEPARADOS por NCM). Guardado
+// no próprio campo di_ncms (texto), sem migration:
+//   "4011.80.90: 48 un, 2227.68 kg; 4011.70.90: 20 un, 6304.00 kg"
+// Formato antigo (só a lista "4011.20.90, 4011.70.90") continua valendo.
+function _fmtNcm8(d){ d = String(d||'').replace(/\D/g,''); return d.length >= 8 ? d.slice(0,4)+'.'+d.slice(4,6)+'.'+d.slice(6,8) : ''; }
+function _numFlex(s){
+  s = String(s||'').trim(); if(!s) return null;
+  if(s.includes(',')) s = s.replace(/\./g,'').replace(',','.');
+  const n = parseFloat(s); return isFinite(n) ? n : null;
+}
+// -> { ncms:['4011.80.90',...], detalhe: {'4011.80.90':{qtd,peso}} | null }
+function parseNcmsDetalhe(txt){
+  const t = String(txt||'');
+  const ncms = [...new Set((t.match(/\d{4}\.?\d{2}\.?\d{2}/g)||[]).map(_fmtNcm8).filter(Boolean))];
+  const detalhe = {};
+  let achou = 0;
+  t.split(';').forEach(seg => {
+    const m = seg.match(/(\d{4}\.?\d{2}\.?\d{2})\s*[:=]\s*([\d.,]+)\s*un\b[^\d]*([\d.,]+)\s*kg/i);
+    if(!m) return;
+    const k = _fmtNcm8(m[1]); const q = _numFlex(m[2]), p = _numFlex(m[3]);
+    if(!k || q == null || p == null) return;
+    detalhe[k] = { qtd: (detalhe[k]?.qtd||0) + q, peso: (detalhe[k]?.peso||0) + p }; achou++;
+  });
+  return { ncms, detalhe: achou && ncms.every(n => detalhe[n]) ? detalhe : null };
+}
+// [{ncm, quantidade, peso_liquido}] (itens/adições, podem repetir NCM) -> texto
+function formatarNcmsDetalhe(itens){
+  const acc = {};
+  (itens||[]).forEach(it => {
+    const k = _fmtNcm8(it && it.ncm); if(!k) return;
+    const q = _numFlex(it.quantidade), p = _numFlex(it.peso_liquido);
+    acc[k] = acc[k] || { qtd: 0, peso: 0, ok: true };
+    if(q == null || p == null) acc[k].ok = false; else { acc[k].qtd += q; acc[k].peso += p; }
+  });
+  const ks = Object.keys(acc);
+  if(!ks.length) return '';
+  if(ks.some(k => !acc[k].ok)) return ks.join(', ');
+  return ks.map(k => `${k}: ${+acc[k].qtd.toFixed(3)} un, ${acc[k].peso.toFixed(2)} kg`).join('; ');
+}
+
 // ── Clientes principais x avulsos (pedido Emanuelly 28/09/2026) ─────────
 // Cada NF de venda vira "cliente" — inclusive pessoa física com 4 pneus.
 // Regra (espelhada no server.js/montarClassificadorClientes, que usa no

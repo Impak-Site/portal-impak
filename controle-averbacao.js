@@ -20,9 +20,8 @@ const AVB_TAXA = 0.0004;
 const AVB_MESES = ['JANEIRO','FEVEREIRO','MARÇO','ABRIL','MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO'];
 
 function _avbEhPneu(p){
-  const n = String(p.di_ncms || '').replace(/\D/g, ' ');
   if (/N[ÃA]O\s*(É|E)?\s*PNEU/i.test(String(p.di_ncms || ''))) return false;
-  return /(^|\s)401[12]/.test(n);
+  return parseNcmsDetalhe(p.di_ncms).ncms.some(n => /^401[12]/.test(n.replace(/\D/g,'')));
 }
 function _avbBeneficiario(p){
   if (p.finalidade === 'IMPORTACAO_DIRETA') return AVB_IMPAK_NOME;

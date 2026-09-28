@@ -586,6 +586,7 @@ async function extrairComIA_umArquivo(input){
   "duimp_numero": "",  // preencher SOMENTE quando o documento for especificamente uma DUIMP (não uma DI antiga) — repete o mesmo número de "numero_di" acima nesse caso. Útil pra localizar depois qual parcela de pagamento essa DUIMP se refere. Deixar "" se o documento não for uma DUIMP.
   "di_peso_liquido": 0,  // SOMENTE para DI/DUIMP: PESO LÍQUIDO TOTAL da declaração em kg (campo "PESO LIQUIDO" das Informações Complementares ou "Peso Líquido (kg)" dos Dados da Carga), ex: 15780.76. Usado na relação de Reciclagem.
   "di_ncms": "",  // SOMENTE para DI/DUIMP: NCM(s) distintos dos itens/adições, no formato "4011.20.90" (com pontos), separados por vírgula se houver mais de um
+  "di_ncms_detalhe": [],  // SOMENTE para DI/DUIMP: UM objeto por item/adição da declaração: {"ncm":"4011.80.90","quantidade":24,"peso_liquido":1091.76} — "quantidade" = "Quantidade na unidade estatística" do item e "peso_liquido" = "Peso líquido (kg)" DAQUELE item. Liste TODOS os itens (não some você mesmo). Deixar [] para outros documentos.
   "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI. Se for uma DUIMP, usar a data do evento "Declaração registrada" no histórico/timeline do documento (ex: "27/07/2026, 19:13" → "2026-07-27").
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
   "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
@@ -621,7 +622,7 @@ Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RI
 - se o campo "Gate In Date/Time" estiver vazio mas "Gate Out Date/Time" estiver preenchido, este documento é de SAÍDA do container vazio do depósito (não de devolução) — não preencher data_devolucao_vazio neste caso.
 Se o documento for um Comprovante de Importação, Extrato da Declaração de Importação (DI) ou uma DUIMP (Declaração Única de Importação — o novo formato que está substituindo a DI), emitidos pela Receita Federal/Siscomex:
 - NUNCA preencha ce_master, ce_house ou ce_data_embarque a partir desse documento, mesmo que ele mencione ou referencie um número de CE Mercante em algum trecho (a DUIMP costuma citar o CE vinculado à carga como parte dos próprios dados da declaração) — esses 3 campos só podem vir de um CE Mercante emitido de verdade, nunca de uma DI/DUIMP. Preenchê-los a partir daqui troca ou apaga o CE Master/House corretos já registrados no processo.
-- extrair "di_peso_liquido" (peso líquido TOTAL da declaração, em kg — nas DUIMPs aparece em "Informações Complementares" como "PESO LIQUIDO: 15.780,76 KGS"; se não houver, use o "Peso Líquido (kg)" dos Dados da Carga; NÃO use o peso de um item/adição isolado) e "di_ncms" (todos os NCMs distintos das adições/itens, ex.: "4011.20.90").
+- extrair "di_peso_liquido" (peso líquido TOTAL da declaração, em kg — nas DUIMPs aparece em "Informações Complementares" como "PESO LIQUIDO: 15.780,76 KGS"; se não houver, use o "Peso Líquido (kg)" dos Dados da Carga; NÃO use o peso de um item/adição isolado) e "di_ncms" (todos os NCMs distintos das adições/itens, ex.: "4011.20.90"). Extraia também "di_ncms_detalhe": um objeto por item/adição com o NCM, a "Quantidade na unidade estatística" e o "Peso líquido (kg)" daquele item — usado para separar quantidade e peso por NCM na reciclagem.
 - Se for uma DI (documento antigo): numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4"); data_registro_di vem de "DATA DO REGISTRO".
 - Se for uma DUIMP (documento novo, geralmente chamado "Extrato da Duimp"): numero_di E duimp_numero recebem os DOIS o número da própria DUIMP, impresso no topo do documento (ex: "Extrato da Duimp 26BR0001279136-0" → usar "26BR0001279136-0"); data_registro_di vem da data do evento "Declaração registrada" listado no Histórico do documento (ignorar o horário, só a data).
 - canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
@@ -746,7 +747,16 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(extracted.nf_entrada_valor) extracted.nf_entrada_valor = normNum(extracted.nf_entrada_valor);
     if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
     if(extracted.di_peso_liquido)  extracted.di_peso_liquido  = normNum(extracted.di_peso_liquido);
-    if(extracted.di_ncms){
+    // Quebra por NCM (qtd/peso de cada item da DI/DUIMP) → vai pro próprio
+    // di_ncms no formato "4011.80.90: 48 un, 2227.68 kg; ..." (Reciclagem).
+    let _ncmsDet = '';
+    if(Array.isArray(extracted.di_ncms_detalhe) && extracted.di_ncms_detalhe.length && typeof formatarNcmsDetalhe === 'function'){
+      _ncmsDet = formatarNcmsDetalhe(extracted.di_ncms_detalhe);
+      if(!/un,/.test(_ncmsDet)) _ncmsDet = '';
+    }
+    delete extracted.di_ncms_detalhe;
+    if(_ncmsDet){ extracted.di_ncms = _ncmsDet; }
+    else if(extracted.di_ncms){
       // normaliza "4011.2090" / "40112090" → "4011.20.90"
       extracted.di_ncms = String(extracted.di_ncms).split(/[,;\s]+/).map(n=>n.replace(/\D/g,'')).filter(n=>n.length>=8)
         .map(n=>n.slice(0,4)+'.'+n.slice(4,6)+'.'+n.slice(6,8)).filter((n,i,a)=>a.indexOf(n)===i).join(', ');
