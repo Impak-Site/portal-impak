@@ -197,11 +197,16 @@ async function _gerarPendenciasDI(dataDe, dataAte, rotulo){
       .forEach(l => { const k = chaveContratoCambio(l); if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(l); });
     const toDate = iso => iso ? new Date(String(iso).slice(0,10)+'T12:00:00') : null;
     let totalGeral = 0;
+    let gi = 0;
     grupos.forEach((ls, chave) => {
       const primeira = ls[0];
+      const corGrupo = ls.length > 1 ? (gi++ % 2 ? 'FFFEF3C7' : 'FFE0F2FE') : null;
       ls.forEach((l, idx) => {
         const r = ws.addRow([
-          idx === 0 ? chave : '', idx === 0 ? (l.tipoCambio === 'FUTURO' ? 'Futuro' : 'Normal') : '',
+          // Contrato/Tipo repetidos em TODA linha (29/09: Ayslan não entendeu
+          // por que HK60684 e HK60687 estavam juntos — a 2ª linha vinha com o
+          // contrato em branco). Cada contrato ganha uma cor de fundo própria.
+          chave, (l.tipoCambio === 'FUTURO' ? 'Futuro' : 'Normal'),
           toDate(l.dataCambio), l.banco || '', l.referencia || '', l.cliente || '', l.moeda || 'USD',
           l.valorUsd || 0, l.taxa || null, null,
           toDate(l.vencimentoDi), l.duimp || '', l.protocolo || '',
@@ -209,12 +214,16 @@ async function _gerarPendenciasDI(dataDe, dataAte, rotulo){
         const n = r.number;
         r.getCell(10).value = l.taxa ? { formula: `H${n}*I${n}` } : null;
         if(l.vencimentoCalculado) r.getCell(11).note = 'Calculado: 180 dias da data do câmbio (não digitado na parcela)';
-        r.eachCell({includeEmpty:true}, c => { c.font = F(idx===0); c.border = borda; });
+        r.eachCell({includeEmpty:true}, c => {
+          c.font = F(false); c.border = borda;
+          if(corGrupo) c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:corGrupo}};
+        });
+        if(ls.length > 1) r.getCell(1).note = `Este câmbio (${chave}) pagou ${ls.length} processos: ${ls.map(x=>x.referencia).join(', ')}`;
         totalGeral += l.valorUsd || 0;
       });
       if(ls.length > 1){
         const ini = ws.rowCount - ls.length + 1, fim = ws.rowCount;
-        const t = ws.addRow(['', '', '', '', `Total do contrato (${ls.length} processos)`, '', primeira.moeda || 'USD', null, null, null, '', '', '']);
+        const t = ws.addRow([chave, '', '', '', `Total do contrato (${ls.length} processos)`, '', primeira.moeda || 'USD', null, null, null, '', '', '']);
         t.getCell(8).value = { formula: `SUM(H${ini}:H${fim})` };
         t.getCell(10).value = { formula: `SUM(J${ini}:J${fim})` };
         t.eachCell({includeEmpty:true}, c => { c.font = F(true); c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFEEF2F7'}}; });
