@@ -95,7 +95,7 @@ function exportarPendenciasDI(){
       onclick="_pdiSelecionar(this.dataset.de,this.dataset.ate,this.dataset.rotulo,this)"
       style="text-align:left;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;cursor:pointer;opacity:${r.ls.length?1:.55};">
       <div style="font-weight:800;font-size:14px;color:var(--text);">${_PDI_MESES[mes-1]}/${ano}${d===0?' <span style="font-size:10px;font-weight:700;color:#2563eb;">atual</span>':''}</div>
-      <div style="font-size:11px;color:var(--text-muted,#64748b);margin-top:2px;">${r.ls.length ? `${r.ls.length} parcela(s) · ${_pdiFmtUsd(r.usd)}` : 'nenhum câmbio'}</div>
+      <div style="font-size:11px;color:var(--text-muted,#64748b);margin-top:2px;">${r.ls.length ? `${r.ls.length} parcela(s)<br><b style="color:var(--text);">${_pdiFmtUsd(r.usd)}</b>` : 'nenhum câmbio'}</div>
     </button>`);
   }
   const m = document.createElement('div');
