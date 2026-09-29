@@ -1238,6 +1238,38 @@ function _aplicarTipoCambioNaParcela(idx){
   if(_cambioPendente.swift_id && !_parcelas[idx].swift_id) _parcelas[idx].swift_id = _cambioPendente.swift_id;
 }
 
+// Identidade do comprovante (contrato BACEN ou mensagem SWIFT).
+function _chaveComprovanteCambio(o){
+  return String((o && (o.codigo_bacen || o.swift_id)) || '').trim().toUpperCase();
+}
+// Bug de 29/09/2026 (Ayslan: "às vezes ele puxa 2 lançamentos em 1 arquivo
+// só"): o MESMO comprovante acabava gravado em duas parcelas do processo
+// (ex.: BR-260714-015CN — o contrato 632806455 de 15/09 ficou na Inicial de
+// julho E na Pré-embarque). Acontecia ao reler o comprovante e escolher outra
+// parcela: a primeira continuava com taxa/BACEN/data do documento. Agora,
+// antes de gravar, avisa e oferece MOVER (limpa o câmbio da parcela antiga).
+// Retorna false se o usuário desistiu.
+function _resolverComprovanteDuplicado(idx){
+  const chave = _chaveComprovanteCambio(_cambioPendente);
+  if(!chave) return true;
+  const outras = _parcelas.map((p,i)=>({p,i})).filter(({p,i}) => i !== idx && p && _chaveComprovanteCambio(p) === chave);
+  if(!outras.length) return true;
+  const nomes = outras.map(({p,i}) => '"' + (p.label || ('Parcela ' + (i+1))) + '"' + (p.valor_usd ? ' (US$ ' + fmtUsdBR(p.valor_usd) + ')' : '')).join(', ');
+  const destino = '"' + ((_parcelas[idx] && _parcelas[idx].label) || ('Parcela ' + (idx+1))) + '"';
+  const mover = confirm(`Este comprovante (${chave}) já está lançado na parcela ${nomes}.\n\n`
+    + `OK = MOVER para ${destino} (limpa taxa, BACEN/SWIFT, banco e datas do câmbio da parcela antiga)\n`
+    + `Cancelar = não aplicar agora`);
+  if(!mover) return false;
+  outras.forEach(({i}) => _limparCambioDaParcela(i));
+  return true;
+}
+function _limparCambioDaParcela(i){
+  const p = _parcelas[i]; if(!p) return;
+  p.cambio_fechado = ''; p.data_fechamento_cambio = ''; p.banco = ''; p.custo_operacao = '';
+  p.codigo_bacen = ''; p.swift_id = ''; p.tipo_cambio = '';
+}
+function fmtUsdBR(v){ return (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
 function abrirModalConfirmarCambio(match, refAtual){
   _cambioPendente = match;
   const taxa = parseFloat(match.taxa_cambio) || 0;
@@ -1280,7 +1312,9 @@ function abrirModalConfirmarCambio(match, refAtual){
     // comprovante e a parcela em aberto restante é recalculada com o saldo.
     const existentes = _parcelas.map((p,i)=>{
       const label = p.label || ('Parcela ' + (i+1));
-      const jaTemCambio = p.cambio_fechado ? (' (câmbio atual: ' + p.cambio_fechado + ')') : '';
+      const mesmoDoc = _chaveComprovanteCambio(p) && _chaveComprovanteCambio(p) === _chaveComprovanteCambio(match);
+      const jaTemCambio = mesmoDoc ? ' ✓ (este comprovante já está aqui)'
+        : (p.cambio_fechado ? (' (câmbio atual: ' + p.cambio_fechado + ')') : '');
       const valor = parseFloat(p.valor_usd) ? (' — US$ ' + parseFloat(p.valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2})) : '';
       return '<button class="btn btn-outline" onclick="confirmarCambioParcela(' + i + ')">' + esc(label) + valor + jaTemCambio + '</button>';
     }).join('');
@@ -1365,6 +1399,7 @@ function confirmarCambioParcela(idx){
   const taxa = _taxaCambioPendente();
   if(!taxa){ showToast('Informe a taxa de câmbio antes de confirmar','err'); return; }
   if(!_parcelas[idx]){ fecharModalCambio(); return; }
+  if(!_resolverComprovanteDuplicado(idx)) return false;
   _painelDirty = true; // confirmar câmbio muda estado só via JS -- marca sujo manualmente (ver ESC em controle-core.js)
   _parcelas[idx].cambio_fechado = taxa.toFixed(4);
   // Preenche Valor USD e Data também a partir do comprovante — sem isso só a
@@ -1428,7 +1463,7 @@ function confirmarCambioNovaParcela(etapa){
   if(valorDoc) _parcelas[idx].valor_usd = valorDoc.toFixed(2);
   // O saldo da parcela em aberto é refeito abaixo; aqui só aplica câmbio/datas/banco.
   const antes = _parcelas[idx].valor_usd;
-  confirmarCambioParcela(idx);
+  if(confirmarCambioParcela(idx) === false){ _parcelas.splice(idx, 1); renderParcelas(); renderPagamentoInfoLive(); return; }
   if(_parcelas[idx] && _parcelas[idx].valor_usd === antes) ajustarSaldoAposCorrecao(idx);
   renderParcelas();
   renderPagamentoInfoLive();
@@ -1454,6 +1489,7 @@ function aplicarCambioNaParcelaPendente(taxa){
     adicionarParcela(); // já chama renderParcelas()+renderPagamentoInfoLive()
     idx = _parcelas.length - 1;
   }
+  if(!_resolverComprovanteDuplicado(idx)) return idx;
   _parcelas[idx].cambio_fechado = taxa.toFixed(4);
   // Mesma correção do confirmarCambioParcela: também preenche/corrige o
   // Valor USD e Data a partir do comprovante -- usa resolverValorUsdParcela

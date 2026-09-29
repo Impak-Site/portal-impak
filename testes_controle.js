@@ -691,6 +691,31 @@ teste('Câmbio numa NOVA parcela (Pré-embarque) entra antes da Final e a Final 
   iguais(ps[0].tipo_cambio, 'FUTURO'); iguais(ps[0].swift_id, 'IF058503659905');
   if(sandbox.valorMoeda('f_pi_valor_usd')) iguais(ps[1].valor_usd, '14680.00', 'Final deveria virar o saldo');
 });
+teste('Mesmo comprovante em 2 parcelas: OK move (limpa a antiga), Cancelar não grava nada (bug BR-260714-015CN, 29/09/2026)', () => {
+  const base = "_parcelas = [{label:'Inicial', valor_usd:'3187.64', data_vencimento:'2026-07-21', cambio_fechado:'5.1350', data_fechamento_cambio:'2026-09-15', banco:'Itaú', codigo_bacen:'632806455', custo_operacao:'16368.53'}, {label:'Pré-embarque', valor_usd:'6375.28', data_vencimento:'2026-09-15', cambio_fechado:'', codigo_bacen:''}];";
+  const doc = "_cambioPendente = {taxa_cambio:5.135, valor_usd_referencia:6375.28, referencia:'BR-260714-015CN', data_pagamento:'2026-09-15', banco:'Itaú', codigo_bacen:'632806455', tipo_cambio:'NORMAL'};";
+  const confirmOrig = sandbox.confirm;
+  try {
+    // Cancelar: nada muda
+    vm.runInContext(base, sandbox); vm.runInContext(doc, sandbox);
+    sandbox.confirm = () => false;
+    sandbox.confirmarCambioParcela(1);
+    let ps = JSON.parse(vm.runInContext("JSON.stringify(_parcelas)", sandbox));
+    iguais(ps[1].cambio_fechado, '', 'cancelou: Pré-embarque não recebe o câmbio');
+    iguais(ps[0].codigo_bacen, '632806455', 'cancelou: Inicial fica como estava');
+    // OK: move
+    vm.runInContext(base, sandbox); vm.runInContext(doc, sandbox);
+    sandbox.confirm = () => true;
+    sandbox.confirmarCambioParcela(1);
+    ps = JSON.parse(vm.runInContext("JSON.stringify(_parcelas)", sandbox));
+    iguais(ps[1].codigo_bacen, '632806455', 'Pré-embarque recebe o contrato');
+    iguais(ps[1].cambio_fechado, '5.1350', 'Pré-embarque recebe a taxa');
+    iguais(ps[0].codigo_bacen, '', 'Inicial perde o contrato duplicado');
+    iguais(ps[0].cambio_fechado, '', 'Inicial perde a taxa duplicada');
+    iguais(ps[0].valor_usd, '3187.64', 'valor da Inicial é preservado');
+  } finally { sandbox.confirm = confirmOrig; }
+});
+
 teste('confirmarCambioParcela preenche Valor USD e Data quando a parcela está vazia', () => {
   vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
   vm.runInContext("_cambioPendente = {taxa_cambio:5.30, valor_pago:26500, referencia:'UD26-993', data_pagamento:'2026-07-20'};", sandbox);
