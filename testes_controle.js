@@ -270,6 +270,17 @@ teste('TV = PC: estoque/remessa/cor calculados com o processo filtrado da TV sã
     iguais(tv.nf_saida_valor, undefined);
   });
 });
+teste('GED duplicados: mantém a cópia mais antiga, remove só idênticos (nome+tamanho) do mesmo processo', () => {
+  const { arquivosDuplicados } = require('./lib/ged-duplicados');
+  const A = (id,proc,nome,tam,dt) => ({ id, processo_id:proc, nome, tamanho:tam, created_at:dt });
+  const rem = arquivosDuplicados([
+    A('1','p1','CI.pdf',100,'2026-07-20'), A('2','p1','CI.pdf',100,'2026-07-22'), A('3','p1','CI.pdf',100,'2026-07-21'),
+    A('4','p1','CI.pdf',101,'2026-07-23'),          // tamanho diferente = outro arquivo
+    A('5','p2','CI.pdf',100,'2026-07-25'),          // outro processo
+    A('6','p1','PL.pdf',50,'2026-07-20'),
+  ]).map(a=>a.id).sort().join(',');
+  iguais(rem, '2,3');
+});
 teste('Data de Carregamento -> DEVOLUCAO_VAZIO', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '1', data_carregamento: '2026-09-20' }), 'DEVOLUCAO_VAZIO');
 });

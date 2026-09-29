@@ -3311,6 +3311,43 @@ app.post('/api/controle/v2/arquivos', auth('controle','financeiro','resultado','
   }
 });
 
+// ── Remover arquivos duplicados do GED (pedido Ayslan 29/09/2026) ──
+// Só gerente (mesma regra do ✕ de excluir). Mantém a cópia mais antiga de
+// cada arquivo (mesmo nome + mesmo tamanho) e apaga as demais (storage +
+// registro). :processoId = 'todos' limpa todos os processos de uma vez.
+const { arquivosDuplicados } = require('./lib/ged-duplicados');
+app.post('/api/controle/v2/arquivos/:processoId/remover-duplicados', auth('controle'), requireGerente, async (req, res) => {
+  try {
+    const alvo = req.params.processoId;
+    if (alvo !== 'todos' && !/^[A-Za-z0-9_-]{1,64}$/.test(alvo)) return res.status(400).json({ ok: false, erro: 'processo inválido' });
+    const arquivos = [];
+    for (let offset = 0; ; offset += 1000) {
+      let q = sb().from('controle_arquivos').select('id, processo_id, nome, tamanho, created_at, storage_path');
+      if (alvo !== 'todos') q = q.eq('processo_id', alvo);
+      const { data: bloco, error } = await q.order('id', { ascending: true }).range(offset, offset + 999);
+      if (error) throw new Error(error.message);
+      if (!bloco || !bloco.length) break;
+      arquivos.push(...bloco);
+      if (bloco.length < 1000) break;
+    }
+    const remover = arquivosDuplicados(arquivos);
+    let removidos = 0; const falhas = [];
+    for (let i = 0; i < remover.length; i += 50) {
+      const lote = remover.slice(i, i + 50);
+      const paths = lote.map(a => a.storage_path).filter(Boolean);
+      if (paths.length) { try { await sb().storage.from(GED_BUCKET).remove(paths); } catch (e) { /* segue: o registro é o que aparece na tela */ } }
+      const { error } = await sb().from('controle_arquivos').delete().in('id', lote.map(a => a.id));
+      if (error) falhas.push(error.message); else removidos += lote.length;
+    }
+    const processos = new Set(remover.map(a => a.processo_id)).size;
+    console.log(`ged remover-duplicados: ${removidos} cópia(s) em ${processos} processo(s) [${alvo}] por ${req.session.usuario}`);
+    res.json({ ok: !falhas.length, removidos, processos, erro: falhas[0] || undefined });
+  } catch (e) {
+    console.error('ged remover-duplicados erro:', e.message);
+    res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
 app.delete('/api/controle/v2/arquivos/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
   try {
     const { data: arquivo } = await sb()

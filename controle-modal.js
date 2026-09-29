@@ -1463,7 +1463,17 @@ async function carregarArquivosGed(processoId){
       lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Nenhum arquivo enviado ainda.</div>';
       return;
     }
-    lista.innerHTML = d.arquivos.map(a=>{
+    // Cópias repetidas (mesmo nome + tamanho) — botão "Remover duplicados"
+    // pro gerente (pedido Ayslan 29/09/2026). Mantém sempre a mais antiga.
+    const _vistos = {}; let _dups = 0;
+    d.arquivos.forEach(a => { const k = a.nome+'|'+a.tamanho; if(_vistos[k]) _dups++; else _vistos[k] = 1; });
+    const _souGerente = _user && _user.role === 'gerente';
+    const bannerDup = _dups ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:4px;">
+        <span style="flex:1;">⚠ ${_dups} cópia(s) repetida(s) neste processo (mesmo arquivo anexado mais de uma vez).</span>
+        ${_souGerente ? `<button type="button" onclick="removerDuplicadosGed('${processoId}')" style="font-size:11px;font-weight:700;padding:5px 10px;border:1px solid #d97706;border-radius:6px;background:#fff;color:#92400e;cursor:pointer;">🧹 Remover duplicados</button>
+        <button type="button" onclick="removerDuplicadosGed('todos','${processoId}')" style="font-size:11px;padding:5px 10px;border:1px solid #fde68a;border-radius:6px;background:transparent;color:#92400e;cursor:pointer;">Limpar todos os processos</button>` : `<span style="font-size:11px;">Peça a um gerente para remover.</span>`}
+      </div>` : '';
+    lista.innerHTML = bannerDup + d.arquivos.map(a=>{
       const icon = a.nome.toLowerCase().endsWith('.pdf') ? '📄' : '🖼️';
       const urlOk = /^https?:\/\//i.test(a.url||''); const hrefSafe = urlOk ? a.url : '#';
       const tamanho = a.tamanho ? (a.tamanho/1024).toFixed(0)+' KB' : '';
@@ -1521,6 +1531,22 @@ async function uploadArquivosGed(files){
     }
   }
   carregarArquivosGed(p.id);
+}
+
+async function removerDuplicadosGed(alvo, processoAtual){
+  const todos = alvo === 'todos';
+  const msg = todos
+    ? 'Remover as cópias repetidas de TODOS os processos?\n\nFica sempre a cópia mais antiga de cada arquivo (mesmo nome e tamanho); as outras são apagadas de vez.'
+    : 'Remover as cópias repetidas deste processo?\n\nFica a cópia mais antiga de cada arquivo; as outras são apagadas de vez.';
+  if(!confirm(msg)) return;
+  try{
+    showToast('Removendo duplicados...','info');
+    const r = await fetch('/api/controle/v2/arquivos/'+encodeURIComponent(alvo)+'/remover-duplicados', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok) throw new Error(d.erro || ('HTTP '+r.status));
+    showToast(`✓ ${d.removidos} cópia(s) removida(s)` + (todos ? ` em ${d.processos} processo(s)` : ''),'ok');
+  }catch(e){ showToast('Não foi possível remover: '+e.message,'err'); }
+  carregarArquivosGed(processoAtual || alvo);
 }
 
 async function excluirArquivoGed(arquivoId, processoId){
