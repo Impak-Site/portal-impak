@@ -1846,28 +1846,9 @@ function vencimentoSaldoPI(p) {
   return p.pi_data_saldo || null;
 }
 
-const CAMPOS_FINANCEIROS_PROCESSO = ['pi_valor_usd','ci_valor_usd','pi_parcelas_json','pi_cambio','pi_cambio_entrada','pi_cambio_saldo',
-  'pi_cambio_fechado','pi_cambio_custo','pi_cambio_banco','pi_valor_recebido_cliente','real_json','real_cambio','estimativa_json',
-  'custos_cotados_json','nf_entrada_valor','nf_saida_valor','valor_frete','demurrage_valor'];
-function removerCamposFinanceiros(p) {
-  CAMPOS_FINANCEIROS_PROCESSO.forEach(k => { delete p[k]; });
-  if (typeof p.vendas_json === 'string') {
-    try {
-      const vendas = JSON.parse(p.vendas_json);
-      // A TV precisa dos dados NÃO financeiros de cada venda pra calcular o
-      // estoque (No Chão/Armazém e a cor dos Processos do Mês): nº/data/CFOP
-      // da NF de saída e os itens (descrição + quantidade). Antes só ia
-      // cliente+nf_numero, então na TV nenhuma venda "baixava" estoque e os
-      // números ficavam diferentes do PC (Ayslan 29/09/2026). Valores (R$,
-      // preço, juros, forma de pagamento) continuam fora.
-      if (Array.isArray(vendas)) p.vendas_json = JSON.stringify(vendas.map(v => v ? ({
-        cliente: v.cliente, nf_numero: v.nf_numero,
-        nf_saida_numero: v.nf_saida_numero, nf_saida_data: v.nf_saida_data, nf_saida_cfop: v.nf_saida_cfop,
-        itens: Array.isArray(v.itens) ? v.itens.map(it => it ? ({ descricao: it.descricao, quantidade: it.quantidade }) : it) : v.itens,
-      }) : v));
-    } catch (e) { delete p.vendas_json; }
-  }
-}
+// Filtro da conta só-TV (sem valores financeiros) — em lib/ pra ser testado
+// contra o cálculo de estoque da TV (testes_controle.js). Ver o arquivo.
+const { CAMPOS_FINANCEIROS_PROCESSO, removerCamposFinanceiros } = require('./lib/filtro-tv');
 
 // Resumo da última conferência (mesma contagem da Fila de Conferência em
 // controle-dash-conferencia.js: divergências/ausências/alertas com campo,

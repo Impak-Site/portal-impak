@@ -240,6 +240,36 @@ teste('NCMs da DI com quebra por NCM (reciclagem): formata, lê e mantém format
   iguais(antigo.ncms.length, 2); iguais(antigo.detalhe, null);
   iguais(sandbox.formatarNcmsDetalhe([{ncm:'4011.20.90',quantidade:null,peso_liquido:5}]), '4011.20.90');
 });
+teste('TV = PC: estoque/remessa/cor calculados com o processo filtrado da TV são IGUAIS aos do processo completo', () => {
+  const { removerCamposFinanceiros } = require('./lib/filtro-tv');
+  const IT = (d,q,extra) => Object.assign({ descricao:d, quantidade:q, preco_unit:123.45 }, extra||{});
+  const V = (o) => JSON.stringify(o);
+  const casos = [
+    { nome:'sem venda', nf_entrada_numero:'1', produtos_json: V([IT('PNEU 295/80R22.5 X',100)]) },
+    { nome:'venda parcial', nf_entrada_numero:'1', produtos_json: V([IT('PNEU 295/80R22.5 X',100)]),
+      vendas_json: V([{ cliente:'A', nf_saida_numero:'10', nf_saida_data:'2026-09-01', nf_saida_cfop:'5102', nf_saida_valor:9999, juros_valor:50, forma_pagamento:'PRAZO', itens:[IT('PNEU 295/80R22.5 X',40)] }]) },
+    { nome:'venda total', nf_entrada_numero:'1', produtos_json: V([IT('PNEU 295/80R22.5 X',100)]),
+      vendas_json: V([{ cliente:'A', nf_saida_numero:'10', nf_saida_cfop:'6102', nf_saida_valor:1, itens:[IT('PNEU 295/80R22.5 X',100)] }]) },
+    { nome:'remessa 5905 + venda', nf_entrada_numero:'1', produtos_json: V([IT('PNEU 175/70R14 RHP',500), IT('PNEU 185/65R15 88H',300)]),
+      vendas_json: V([{ cliente:'IMPAK', nf_saida_numero:'20', nf_saida_cfop:'5905', itens:[IT('PNEU 175/70R14 RHP',500), IT('PNEU 185/65R15 88H',300)] },
+                      { cliente:'B', nf_saida_numero:'21', nf_saida_cfop:'5102', nf_saida_valor:5, itens:[IT('PNEU 175/70R14 RHP',120)] }]) },
+    { nome:'retorno + baixa', nf_entrada_numero:'1', produtos_json: V([IT('PNEU 295/80R22.5 UF195',10)]),
+      vendas_json: V([{ cliente:'IMPAK', nf_saida_numero:'30', nf_saida_cfop:'5905', itens:[IT('PNEU 295/80R22.5 UF195',10)] },
+                      { cliente:'IMPAK', nf_saida_numero:'31', nf_saida_cfop:'5907', itens:[IT('PNEU 295/80R22.5 UF195',10)] },
+                      { cliente:'', nf_saida_cfop:'BAIXA', itens:[IT('PNEU 295/80R22.5 UF195',2)] }]) },
+    { nome:'NF saída legada', nf_entrada_numero:'1', nf_saida_numero:'99', nf_saida_cfop:'5102', nf_saida_valor:777, produtos_json: V([IT('PNEU X',8)]) },
+  ];
+  casos.forEach(c => {
+    const completo = JSON.parse(JSON.stringify(c));
+    const tv = JSON.parse(JSON.stringify(c)); removerCamposFinanceiros(tv);
+    const resumo = p => JSON.stringify({ e: sandbox.estoqueDoProcesso(p), r: sandbox.temRemessaEstoque(p), n: sandbox.nfsSaidaVenda(p).length,
+      v: sandbox.vendasReaisDoProcesso(p).map(x => [x.cliente, x.nf_saida_numero, x.nf_saida_cfop]), f: sandbox.calcularFase(p) });
+    iguais(resumo(tv), resumo(completo), 'caso "' + c.nome + '": TV diferente do PC');
+    // e continua sem valores financeiros
+    if(tv.vendas_json) iguais(/valor|juros|preco|forma_pagamento/.test(tv.vendas_json), false, 'caso "' + c.nome + '": valor financeiro vazou pra TV');
+    iguais(tv.nf_saida_valor, undefined);
+  });
+});
 teste('Data de Carregamento -> DEVOLUCAO_VAZIO', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '1', data_carregamento: '2026-09-20' }), 'DEVOLUCAO_VAZIO');
 });
