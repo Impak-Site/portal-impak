@@ -350,7 +350,8 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         </div>
         <div class="form-group">
           <label>ICMS de Saída (Próprio) %</label>
-          <input type="number" id="icms_saida_pct" step="0.01" min="0" value="1.4" placeholder="1,4">
+          <input type="number" id="icms_saida_pct" step="0.01" min="0" value="1.4" placeholder="1,4" oninput="this.dataset.manual='1'">
+          <div id="icms_saida_hint" style="font-size:10px;color:var(--dim);margin-top:3px;display:none;"></div>
         </div>
       </div>
       <div class="form-group">
@@ -414,7 +415,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       </div>
       <div class="form-group" style="position:relative;">
         <label>Cliente</label>
-        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)">
+        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)" onchange="aplicarIcmsPadraoCliente()">
         <div id="cliente-calc-dropdown" style="display:none;position:fixed;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
     </div>
@@ -1150,6 +1151,38 @@ function posicionarClienteCalcDropdown(input, dd){
   dd.style.left = rect.left + 'px';
   dd.style.width = rect.width + 'px';
 }
+// ICMS de Saída padrão por cliente (pedido Ayslan, 29/09/2026): Vachileski,
+// Ost, Lauxen e Pneuscar usam 2,6% nos orçamentos; os demais seguem 1,4%.
+// Só troca sozinho se o usuário não tiver digitado o ICMS à mão.
+const ICMS_SAIDA_POR_CLIENTE = [
+  { re: /VACHILESKI/, pct: 2.6, nome: 'Vachileski' },
+  { re: /(^|[^A-Z])OST([^A-Z]|$)/, pct: 2.6, nome: 'Ost' },
+  { re: /LAUXEN/, pct: 2.6, nome: 'Lauxen' },
+  { re: /PNEUS\s*CAR/, pct: 2.6, nome: 'Pneuscar' },
+];
+const ICMS_SAIDA_PADRAO = 1.4;
+function icmsPadraoDoCliente(nome){
+  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  return ICMS_SAIDA_POR_CLIENTE.find(r => r.re.test(n)) || null;
+}
+function aplicarIcmsPadraoCliente(){
+  const el = document.getElementById('icms_saida_pct');
+  const hint = document.getElementById('icms_saida_hint');
+  if(!el) return;
+  const regra = icmsPadraoDoCliente(document.getElementById('cliente')?.value);
+  if(el.dataset.manual === '1'){
+    if(hint && regra){ hint.style.display='block'; hint.textContent = `Padrão de ${regra.nome}: ${String(regra.pct).replace('.',',')}% (mantido o valor digitado)`; }
+    return;
+  }
+  if(regra){
+    el.value = regra.pct; el.dataset.auto = '1';
+    if(hint){ hint.style.display='block'; hint.textContent = `ICMS padrão de ${regra.nome}: ${String(regra.pct).replace('.',',')}%`; }
+  } else {
+    if(el.dataset.auto === '1'){ el.value = ICMS_SAIDA_PADRAO; el.dataset.auto = ''; }
+    if(hint){ hint.style.display='none'; hint.textContent=''; }
+  }
+}
+
 async function autocompletarClienteCalc(input){
   clearTimeout(_estado.acClienteCalcTimer);
   const q = input.value.trim();
@@ -1179,6 +1212,7 @@ async function autocompletarClienteCalc(input){
         item.addEventListener('mouseout', ()=>{ item.style.background=''; });
         item.addEventListener('click', ()=>{
 document.getElementById('cliente').value = c.razao_social;
+aplicarIcmsPadraoCliente();
 if(c.uf){
 const ufSel = document.getElementById('uf_destino');
 if(ufSel){ ufSel.value = c.uf; if(typeof onUFChange==='function') onUFChange(); }
@@ -3402,7 +3436,7 @@ function coletarEstadoFormulario(){
 function aplicarEstadoFormulario(estado){
   if(!estado) return;
   // Cotações salvas antes do campo ICMS de Saída existir usavam 1,4% fixo.
-  { const el = document.getElementById('icms_saida_pct'); if (el) el.value = '1.4'; }
+  { const el = document.getElementById('icms_saida_pct'); if (el){ el.value = '1.4'; el.dataset.manual = ''; el.dataset.auto = ''; } }
   { const el = document.getElementById('ufs_extra'); if (el) el.value = ''; }
   { const el = document.getElementById('cenario_valor_sem_st'); if (el) el.value = ''; }
   // Cotações salvas antes do R$ fixo (Rev96) não têm esses campos → usa o
