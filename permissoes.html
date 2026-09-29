@@ -115,7 +115,7 @@ function renderTabela(usuarios){
   usuarios.forEach(u => {
     const ehAdmin = admins.includes(u.usuario);
     html += `<tr data-usuario="${escapeHtml(u.usuario)}" class="${ehAdmin ? 'admin-linha' : ''}">`;
-    html += `<td><span class="usuario-nome">${escapeHtml(u.nome)}</span><span class="role-tag ${escapeHtml(u.role)}">${escapeHtml(u.role)}</span><br><span class="usuario-login">${escapeHtml(u.usuario)}</span></td>`;
+    html += `<td><span class="usuario-nome">${escapeHtml(u.nome)}</span><span class="role-tag ${escapeHtml(u.role)}">${escapeHtml(u.role)}</span><br><span class="usuario-login">${escapeHtml(u.usuario)}</span>${u.senhaPendente ? ' <span style="font-size:10px;font-weight:700;color:#b45309;">· senha não definida</span>' : ''}<br><a href="#" onclick="gerarLinkSenha('${escapeHtml(u.usuario)}');return false;" style="font-size:11px;color:#1a7fd4;">🔑 gerar link de senha</a></td>`;
     MODULOS.forEach(m => {
       const marcado = (u.modulos || []).includes(m.key);
       html += `<td><input type="checkbox" data-modulo="${m.key}" ${marcado ? 'checked' : ''}></td>`;
@@ -157,6 +157,17 @@ function salvarLinha(tr){
       tr.classList.remove('linha-salvando');
     }
   }, 300);
+}
+
+async function gerarLinkSenha(usuario){
+  if(!confirm(`Gerar um link para "${usuario}" definir a própria senha? (vale 24h; se já tinha senha, ela só muda quando a pessoa usar o link)`)) return;
+  try{
+    const r = await fetch('/api/admin/usuarios/' + encodeURIComponent(usuario) + '/link-senha', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if(!r.ok || !d.ok){ mostrarToast(d.erro || 'Erro ao gerar link.', true); return; }
+    try{ await navigator.clipboard.writeText(d.link); mostrarToast('Link copiado — envie para ' + usuario + ' (vale 24h).'); }catch(e){}
+    prompt('Link para ' + usuario + ' definir a senha (vale 24h). Copie e envie só para ela:', d.link);
+  }catch(e){ mostrarToast('Erro de rede.', true); }
 }
 
 carregar();

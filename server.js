@@ -392,6 +392,10 @@ const USUARIOS = [
   { usuario: 'operacional01@impak.com.br', senhaHashEnv: envSenhaHash('SENHA_NEIDE'),     email: 'operacional01@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'operacional01@impak.com.br', role: 'analista', displayName: 'operacional01@impak.com.br', home: '/processos'  }, // pedido Ayslan 07/09/2026: Neide saiu, login/nome viram o proprio e-mail (generico, sem pessoa nomeada) ate outra substituicao
   { usuario: 'everton',   senhaHashEnv: envSenhaHash('SENHA_EVERTON'),   email: 'administrativo@impak.com.br', modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Everton',   role: 'analista', displayName: 'Everton',   home: '/processos'  },
   { usuario: 'isabella',  senhaHashEnv: envSenhaHash('SENHA_ISABELLA'),  email: 'operacional@impak.com.br',   modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','cadastros','cambio','analises'], nome: 'Isabella',  role: 'analista', displayName: 'Isabella',  home: '/processos'  },
+  // Franciele (Comercial) — pedido Ayslan 29/09/2026: TyreDesk + Calculador + Catálogo.
+  // Criada SEM senha: ela mesma define no 1º acesso via "Esqueci minha senha"
+  // (link vai pro comercial@impak.com.br). Ninguém mais conhece a senha dela.
+  { usuario: 'franciele', senhaHashEnv: envSenhaHash('SENHA_FRANCIELE'), senhaDefinidaPeloUsuario: true, email: 'comercial@impak.com.br', modulos: ['tyredesk'], nome: 'Franciele', role: 'analista', displayName: 'Franciele', home: '/' },
   { usuario: 'suporte',   senhaHashEnv: envSenhaHash('SENHA_SUPORTE'),   email: 'suporte@impak.com.br',       modulos: ['tyredesk','conferencia','controle','financeiro','resultado','tv','narcelio','cadastros','cambio','analises'], nome: 'Suporte',   role: 'gerente',  displayName: 'Suporte',   home: '/'           },
   { usuario: 'tv',            senhaHashEnv: process.env.SENHA_TV || null, email: 'tv@impak.com.br',            modulos: ['tv'], nome: 'TV', role: 'visualizador', displayName: 'TV (somente leitura)', home: '/tv' },
 ];
@@ -404,7 +408,11 @@ async function sincronizarUsuarios(){
   for(const u of USUARIOS){
     try{
       const { data: existente } = await sb().from('usuarios').select('senha_hash, modulos, role, home').eq('usuario', u.usuario).maybeSingle();
-      const senha_hash = existente ? existente.senha_hash : u.senhaHashEnv;
+      // Usuário novo sem senha no env: cria com marcador inválido (não loga
+      // com nenhuma senha — verificarSenha exige "salt:hash") só pra ele
+      // existir e poder usar "Esqueci minha senha" e definir a própria.
+      const senha_hash = existente ? existente.senha_hash
+        : (u.senhaHashEnv || (u.senhaDefinidaPeloUsuario ? 'PENDENTE_DEFINIR_SENHA' : null));
       if(!senha_hash){
         console.error(`⚠️  Usuário "${u.usuario}" sem senha (nem no Supabase, nem no env var) — login vai falhar.`);
         continue;
@@ -1343,12 +1351,37 @@ app.get('/api/admin/permissoes', auth(), requireAdminPermissoes, async (req, res
       .map(u => ({
         usuario: u.usuario, nome: u.nome || u.display_name || u.usuario,
         role: u.role, modulos: u.modulos || [],
+        senhaPendente: !u.senha_hash || !String(u.senha_hash).includes(':'),
       }))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     res.json({ ok: true, usuarios, modulosValidos: MODULOS_VALIDOS, admins: ADMINS_PERMISSOES });
   } catch (e) {
     console.error('Erro ao listar permissões:', e.message);
     res.status(500).json({ ok: false, erro: 'Erro ao carregar permissões.' });
+  }
+});
+
+// Gera um link de definição/redefinição de senha pra um usuário, pra o admin
+// copiar e mandar pela pessoa (WhatsApp/Teams) — não depende do e-mail
+// (Resend) funcionar. Pedido Ayslan 29/09/2026 (login da Franciele). O link
+// vale 24h e só o hash do token fica no banco; ninguém além da pessoa fica
+// sabendo a senha.
+app.post('/api/admin/usuarios/:usuario/link-senha', auth(), requireAdminPermissoes, async (req, res) => {
+  const alvo = (req.params.usuario || '').trim().toLowerCase();
+  try {
+    await recarregarCacheUsuarios();
+    const u = _usuariosCache.get(alvo) || [..._usuariosCache.values()].find(x => x.usuario === alvo);
+    if (!u) return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+    const token = randomBytes(32).toString('hex');
+    const expira = new Date(Date.now() + 24*60*60*1000);
+    await sb().from('usuarios').update({ reset_token: hashToken(token), reset_token_expira: expira.toISOString() }).eq('usuario', alvo);
+    await recarregarCacheUsuarios();
+    const baseUrl = (process.env.APP_URL || 'https://portal-impak-production.up.railway.app').replace(/\/+$/, '');
+    console.log(`[SENHA] link de definição gerado para "${alvo}" por ${req.session.usuario}`);
+    res.json({ ok: true, link: `${baseUrl}/redefinir-senha?token=${token}`, expira: expira.toISOString(), usuario: alvo });
+  } catch (e) {
+    console.error('Erro ao gerar link de senha:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro ao gerar link.' });
   }
 });
 
