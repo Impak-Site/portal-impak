@@ -61,32 +61,115 @@ let _cambioLoteSelecao = new Map();
 // é um snapshot no momento em que o botão é clicado, não um recorte de um
 // mês específico (por isso o nome genérico "Relatório Câmbio", a data de
 // geração já fica no subtítulo).
-async function exportarPendenciasDI(){
+// Seletor de período (29/09/2026, pedido Ayslan: "tem como melhorar esse
+// seletor?") — antes era um window.prompt pedindo MM/AAAA digitado. Agora é
+// um modal com os meses em botões (cada um já mostra quantas parcelas e
+// quanto US$ tem), campo de mês e período personalizado (de/até).
+const _PDI_MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function _pdiIntervaloMes(ano, mes){ // mes 1-12
+  const ult = new Date(ano, mes, 0).getDate();
+  const mm = String(mes).padStart(2,'0');
+  return [`${ano}-${mm}-01`, `${ano}-${mm}-${String(ult).padStart(2,'0')}`];
+}
+function _pdiResumo(de, ate){
+  const ls = (de && ate && de <= ate) ? listarPendenciasDI(_processos, de, ate) : [];
+  const contratos = new Set(ls.map(chaveContratoCambio)).size;
+  const usd = ls.reduce((s,l)=>s+(l.valorUsd||0),0);
+  return { ls, contratos, usd };
+}
+function _pdiFmtUsd(v){ return 'US$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function exportarPendenciasDI(){
   if(typeof ExcelJS === 'undefined'){
     showToast('Biblioteca de exportação ainda carregando, tente novamente em 1 segundo','err');
     return;
   }
+  document.getElementById('pdiModal')?.remove();
   const hoje = new Date();
-  const padrao = `${String(hoje.getMonth()+1).padStart(2,'0')}/${hoje.getFullYear()}`;
-  const resp = window.prompt('Mês de referência (MM/AAAA) — pega os câmbios de Pagamento Antecipado fechados do dia 1 ao último dia desse mês:', padrao);
-  if(!resp) return;
-  const m = resp.trim().match(/^(\d{1,2})\/(\d{4})$/);
-  if(!m){
-    showToast('Formato inválido — use MM/AAAA, ex: 09/2026','err');
-    return;
+  const chips = [];
+  for(let d = 0; d < 6; d++){
+    const dt = new Date(hoje.getFullYear(), hoje.getMonth() - d, 1);
+    const ano = dt.getFullYear(), mes = dt.getMonth()+1;
+    const [de, ate] = _pdiIntervaloMes(ano, mes);
+    const r = _pdiResumo(de, ate);
+    chips.push(`<button type="button" class="pdi-chip" data-de="${de}" data-ate="${ate}" data-rotulo="${String(mes).padStart(2,'0')}-${ano}"
+      onclick="_pdiSelecionar(this.dataset.de,this.dataset.ate,this.dataset.rotulo,this)"
+      style="text-align:left;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;cursor:pointer;opacity:${r.ls.length?1:.55};">
+      <div style="font-weight:800;font-size:14px;color:var(--text);">${_PDI_MESES[mes-1]}/${ano}${d===0?' <span style="font-size:10px;font-weight:700;color:#2563eb;">atual</span>':''}</div>
+      <div style="font-size:11px;color:var(--text-muted,#64748b);margin-top:2px;">${r.ls.length ? `${r.ls.length} parcela(s) · ${_pdiFmtUsd(r.usd)}` : 'nenhum câmbio'}</div>
+    </button>`);
   }
-  const mes = parseInt(m[1],10), ano = parseInt(m[2],10);
-  if(mes<1 || mes>12){
-    showToast('Mês inválido','err');
-    return;
-  }
-  const dataDe = `${ano}-${String(mes).padStart(2,'0')}-01`;
-  const ultimoDia = new Date(ano, mes, 0).getDate();
-  const dataAte = `${ano}-${String(mes).padStart(2,'0')}-${String(ultimoDia).padStart(2,'0')}`;
+  const m = document.createElement('div');
+  m.id = 'pdiModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  m.onclick = e => { if(e.target === m) m.remove(); };
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(560px,94vw);padding:22px 24px;box-shadow:0 20px 50px rgba(0,0,0,.25);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <div style="font-size:17px;font-weight:800;color:var(--text);">📄 Pendências de DI</div>
+      <button type="button" onclick="document.getElementById('pdiModal').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#94a3b8;">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted,#64748b);margin-bottom:14px;">Câmbios de Pagamento Antecipado (Parcelado) fechados no período.</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">${chips.join('')}</div>
+    <details id="pdiPersonalizado" style="margin-bottom:14px;">
+      <summary style="font-size:12px;font-weight:700;cursor:pointer;color:#2563eb;">Outro mês ou período personalizado</summary>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;">
+        <label style="font-size:11px;font-weight:700;color:#64748b;">Mês<br><input type="month" id="pdiMes" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:13px;"></label>
+        <span style="font-size:11px;color:#94a3b8;padding-bottom:9px;">ou</span>
+        <label style="font-size:11px;font-weight:700;color:#64748b;">De<br><input type="date" id="pdiDe" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:13px;"></label>
+        <label style="font-size:11px;font-weight:700;color:#64748b;">Até<br><input type="date" id="pdiAte" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:13px;"></label>
+      </div>
+    </details>
+    <div id="pdiPreview" style="background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--text);min-height:20px;margin-bottom:14px;">Escolha um mês acima.</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button type="button" onclick="document.getElementById('pdiModal').remove()" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;font-weight:700;">Cancelar</button>
+      <button type="button" id="pdiExportar" disabled onclick="_pdiExportarSelecionado()" style="padding:8px 18px;border:none;border-radius:8px;background:#0f1f3d;color:#fff;cursor:pointer;font-weight:800;opacity:.4;">📥 Exportar Excel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  const esc = e => { if(e.key === 'Escape'){ m.remove(); document.removeEventListener('keydown', esc, true); } };
+  document.addEventListener('keydown', esc, true);
+  document.getElementById('pdiMes').addEventListener('change', e => {
+    const v = e.target.value; if(!v) return;
+    const [a, mm] = v.split('-').map(Number);
+    const [de, ate] = _pdiIntervaloMes(a, mm);
+    document.getElementById('pdiDe').value = ''; document.getElementById('pdiAte').value = '';
+    _pdiSelecionar(de, ate, `${String(mm).padStart(2,'0')}-${a}`, null);
+  });
+  const perso = () => {
+    const de = document.getElementById('pdiDe').value, ate = document.getElementById('pdiAte').value;
+    document.getElementById('pdiMes').value = '';
+    if(de && ate) _pdiSelecionar(de, ate, `${de.split('-').reverse().join('-')}_a_${ate.split('-').reverse().join('-')}`, null);
+  };
+  document.getElementById('pdiDe').addEventListener('change', perso);
+  document.getElementById('pdiAte').addEventListener('change', perso);
+  // Já deixa o mês atual selecionado (era o padrão do prompt antigo).
+  const primeiro = m.querySelector('.pdi-chip');
+  if(primeiro) _pdiSelecionar(primeiro.dataset.de, primeiro.dataset.ate, primeiro.dataset.rotulo, primeiro);
+}
+let _pdiSel = null;
+function _pdiSelecionar(de, ate, rotulo, chip){
+  document.querySelectorAll('#pdiModal .pdi-chip').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.background = '#fff'; });
+  if(chip){ chip.style.borderColor = '#2563eb'; chip.style.background = '#eff6ff'; }
+  const prev = document.getElementById('pdiPreview'), btn = document.getElementById('pdiExportar');
+  if(de > ate){ prev.innerHTML = '⚠ A data "De" é depois da data "Até".'; btn.disabled = true; btn.style.opacity = .4; _pdiSel = null; return; }
+  const r = _pdiResumo(de, ate);
+  const fmt = iso => iso.split('-').reverse().join('/');
+  _pdiSel = { de, ate, rotulo };
+  prev.innerHTML = r.ls.length
+    ? `<b>${fmt(de)} a ${fmt(ate)}</b> — ${r.ls.length} parcela(s) em ${r.contratos} contrato(s) de câmbio · <b>${_pdiFmtUsd(r.usd)}</b>`
+    : `<b>${fmt(de)} a ${fmt(ate)}</b> — nenhum câmbio de Pagamento Antecipado fechado nesse período.`;
+  btn.disabled = !r.ls.length; btn.style.opacity = r.ls.length ? 1 : .4;
+}
+function _pdiExportarSelecionado(){
+  if(!_pdiSel) return;
+  const { de, ate, rotulo } = _pdiSel;
+  document.getElementById('pdiModal')?.remove();
+  _gerarPendenciasDI(de, ate, rotulo);
+}
 
+async function _gerarPendenciasDI(dataDe, dataAte, rotulo){
   const linhas = listarPendenciasDI(_processos, dataDe, dataAte);
   if(!linhas.length){
-    showToast(`Nenhum câmbio de Pagamento Antecipado fechado em ${m[1]}/${ano}`,'warn');
+    showToast('Nenhum câmbio de Pagamento Antecipado fechado nesse período','warn');
     return;
   }
 
@@ -170,7 +253,7 @@ async function exportarPendenciasDI(){
     const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `Pendencias_de_DI_${String(mes).padStart(2,'0')}-${ano}.xlsx`;
+    a.href = url; a.download = `Pendencias_de_DI_${rotulo}.xlsx`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     showToast(`✓ Pendências de DI exportadas (${linhas.length} câmbio(s))`,'ok');
