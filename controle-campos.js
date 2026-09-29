@@ -1036,7 +1036,7 @@ function calcularCustoOperacaoAuto(i){
   if(v && c) _parcelas[i].custo_operacao = (v*c).toFixed(2);
 }
 
-function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', data_fechamento_cambio:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', pagto_antecipado:true, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
+function parcelaVazia(){ return { label:'', valor_usd:'', data_vencimento:'', cambio_fechado:'', data_fechamento_cambio:'', banco:'', custo_operacao:'', valor_recebido_cliente:'', data_recebimento:'', codigo_bacen:'', tipo_cambio:'', swift_id:'', pagto_antecipado:true, venc_di:'', duimp_numero:'', duimp_protocolo:'' }; }
 
 // Prazo de comprovação de DI/DUIMP ao banco em pagamentos antecipados de
 // importação -- pedido do Ayslan (17/09/2026, resposta "Calcular automático
@@ -1101,9 +1101,17 @@ function renderParcelas(){
         <div></div>
       `})}
       ${secao({cols:'1fr 1fr 1fr 32px', html:`
-        <div>${lblParcela('Código BACEN')}<input class="form-input" placeholder="Nº do contrato de câmbio" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
-          oninput="_parcelas[${i}].codigo_bacen=this.value;sincronizarParcelasLegado()"></div>
-        <div></div>
+        <div>${lblParcela('Tipo de câmbio')}<select class="form-input" title="Normal = contrato com código BACEN. Futuro = só a mensagem SWIFT do banco (sem BACEN)"
+          onchange="_parcelas[${i}].tipo_cambio=this.value;sincronizarParcelasLegado();renderParcelas()">
+          <option value="" ${!pc.tipo_cambio?'selected':''}>—</option>
+          <option value="NORMAL" ${pc.tipo_cambio==='NORMAL'?'selected':''}>Normal (BACEN)</option>
+          <option value="FUTURO" ${pc.tipo_cambio==='FUTURO'?'selected':''}>Câmbio futuro (SWIFT)</option>
+        </select></div>
+        ${pc.tipo_cambio==='FUTURO'
+          ? `<div>${lblParcela('Mensagem SWIFT')}<input class="form-input" placeholder="Ex: IF058503659905" value="${esc(pc.swift_id||'')}" title="Identificador da mensagem SWIFT do pagamento (câmbio futuro não tem código BACEN)"
+          oninput="_parcelas[${i}].swift_id=this.value;sincronizarParcelasLegado()"></div>`
+          : `<div>${lblParcela('Código BACEN')}<input class="form-input" placeholder="Nº do contrato de câmbio" value="${esc(pc.codigo_bacen||'')}" title="Nº do contrato de câmbio / referência do banco"
+          oninput="_parcelas[${i}].codigo_bacen=this.value;sincronizarParcelasLegado()"></div>`}
         <div></div>
         <div></div>
       `})}
@@ -1191,9 +1199,28 @@ function colarData(ev, el){
 // ── COMPROVANTE DE CÂMBIO (confirmação manual Entrada/Saldo/Único) ──
 let _cambioPendente = null;
 
+// Taxa do câmbio pendente: a do documento ou, se não veio (câmbio futuro
+// com anotação ilegível), a digitada no campo do modal.
+function _taxaCambioPendente(){
+  const doc = parseFloat(_cambioPendente && _cambioPendente.taxa_cambio) || 0;
+  if(doc) return doc;
+  const el = document.getElementById('cambio-modal-taxa-manual');
+  const v = el ? parseFloat(String(el.value).replace(/\./g, el.value.includes(',') ? '' : '.').replace(',', '.')) : 0;
+  if(v > 0 && _cambioPendente) _cambioPendente.taxa_cambio = v;
+  return v > 0 ? v : 0;
+}
+// Grava tipo/SWIFT do comprovante na parcela (câmbio futuro não tem BACEN).
+function _aplicarTipoCambioNaParcela(idx){
+  if(!_cambioPendente || !_parcelas[idx]) return;
+  const tipo = _cambioPendente.tipo_cambio || '';
+  if(tipo && !_parcelas[idx].tipo_cambio) _parcelas[idx].tipo_cambio = tipo;
+  if(_cambioPendente.swift_id && !_parcelas[idx].swift_id) _parcelas[idx].swift_id = _cambioPendente.swift_id;
+}
+
 function abrirModalConfirmarCambio(match, refAtual){
   _cambioPendente = match;
   const taxa = parseFloat(match.taxa_cambio) || 0;
+  const futuro = match.tipo_cambio === 'FUTURO';
   const valorPago = parseFloat(match.valor_pago) || 0;
   const valorUsdRef = parseFloat(match.valor_usd_referencia) || 0;
   const valorUsdImplicito = valorUsdRef || (taxa ? (valorPago/taxa) : 0);
@@ -1201,8 +1228,13 @@ function abrirModalConfirmarCambio(match, refAtual){
   if(info){
     const custoExtra = parseFloat(match.custo_operacao) || 0;
     const custoTotal = valorUsdImplicito && taxa ? (valorUsdImplicito*taxa + custoExtra) : custoExtra;
-    info.innerHTML = `<b>Referência:</b> ${esc(match.referencia||refAtual||'(não identificada no documento)')}<br>`
-      + `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}<br>`
+    info.innerHTML = (futuro
+        ? `<div style="background:#ede9fe;color:#5b21b6;font-weight:700;font-size:12px;padding:6px 10px;border-radius:6px;margin-bottom:8px;">🔮 Câmbio futuro — mensagem SWIFT${match.swift_id ? ' ' + esc(match.swift_id) : ''} (sem código BACEN)</div>`
+        : '')
+      + `<b>Referência:</b> ${esc(match.referencia||refAtual||'(não identificada no documento)')}<br>`
+      + (taxa
+        ? `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}${futuro ? ' <span style="color:var(--muted);font-size:11px;">(anotada no documento — confira)</span>' : ''}<br>`
+        : `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;margin:4px 0 8px;"><b>Taxa de câmbio não encontrada no documento.</b> Digite a taxa fechada: <input id="cambio-modal-taxa-manual" class="form-input" inputmode="decimal" placeholder="ex: 5,0840" style="width:120px;display:inline-block;margin-left:6px;"></div>`)
       + (valorUsdRef ? `<b>Valor desta referência:</b> US$ ${valorUsdRef.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ R$ ${(valorUsdRef*taxa).toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>`
         : valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '')
       + (match.banco ? `<b>Banco:</b> ${esc(match.banco)}<br>` : '')
@@ -1300,8 +1332,8 @@ function ajustarSaldoAposCorrecao(idx){
 
 function confirmarCambioParcela(idx){
   if(!_cambioPendente){ fecharModalCambio(); return; }
-  const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
-  if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
+  const taxa = _taxaCambioPendente();
+  if(!taxa){ showToast('Informe a taxa de câmbio antes de confirmar','err'); return; }
   if(!_parcelas[idx]){ fecharModalCambio(); return; }
   _painelDirty = true; // confirmar câmbio muda estado só via JS -- marca sujo manualmente (ver ESC em controle-core.js)
   _parcelas[idx].cambio_fechado = taxa.toFixed(4);
@@ -1325,6 +1357,7 @@ function confirmarCambioParcela(idx){
   if(!_parcelas[idx].codigo_bacen && _cambioPendente.codigo_bacen){
     _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
   }
+  _aplicarTipoCambioNaParcela(idx);
   if(!_parcelas[idx].custo_operacao){
     const custoExtra = parseFloat(_cambioPendente.custo_operacao) || 0;
     const valorUsdFinal = parseFloat(_parcelas[idx].valor_usd) || 0;
@@ -1388,6 +1421,7 @@ function aplicarCambioNaParcelaPendente(taxa){
   if(!_parcelas[idx].codigo_bacen && _cambioPendente?.codigo_bacen){
     _parcelas[idx].codigo_bacen = _cambioPendente.codigo_bacen;
   }
+  _aplicarTipoCambioNaParcela(idx);
   if(!_parcelas[idx].custo_operacao){
     const custoExtra2 = parseFloat(_cambioPendente?.custo_operacao) || 0;
     const valorUsdFinal2 = parseFloat(_parcelas[idx].valor_usd) || 0;
@@ -1406,8 +1440,8 @@ function aplicarCambioNaParcelaPendente(taxa){
 
 function confirmarCambioComo(tipo){
   if(!_cambioPendente){ fecharModalCambio(); return; }
-  const taxa = parseFloat(_cambioPendente.taxa_cambio) || 0;
-  if(!taxa){ showToast('Taxa de câmbio inválida no comprovante','err'); fecharModalCambio(); return; }
+  const taxa = _taxaCambioPendente();
+  if(!taxa){ showToast('Informe a taxa de câmbio antes de confirmar','err'); return; }
 
   _painelDirty = true; // confirmar câmbio muda estado só via JS -- marca sujo manualmente (ver ESC em controle-core.js)
   // Data em que o pagamento/câmbio foi efetivado — vem da extração da IA
@@ -1477,9 +1511,14 @@ function aplicarBancoCustoLegado(){
     const elBanco = document.getElementById('f_pi_cambio_banco');
     if(elBanco && !elBanco.value) elBanco.value = normalizarBancoCambio(_cambioPendente.banco);
   }
-  if(_cambioPendente?.codigo_bacen){
+  // Câmbio futuro (pagamento único/entrada+saldo): sem campo próprio no
+  // processo — grava "SWIFT <id>" no Código BACEN, e o Controle Cambial
+  // reconhece como câmbio futuro por esse prefixo (tipoCambioDe).
+  const idOperacao = _cambioPendente?.codigo_bacen
+    || (_cambioPendente?.tipo_cambio === 'FUTURO' ? ('SWIFT ' + (_cambioPendente.swift_id || '')).trim() : '');
+  if(idOperacao){
     const elBacen = document.getElementById('f_pi_cambio_codigo_bacen');
-    if(elBacen && !elBacen.value) elBacen.value = _cambioPendente.codigo_bacen;
+    if(elBacen && !elBacen.value) elBacen.value = idOperacao;
   }
   const elCusto = document.getElementById('f_pi_cambio_custo');
   if(elCusto && !elCusto.value){

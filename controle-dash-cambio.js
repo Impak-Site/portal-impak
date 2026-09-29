@@ -545,6 +545,7 @@ let _cambioFiltroCliente = '';
 let _cambioFiltroTexto = '';
 // Quem fecha o câmbio: '' = todos, 'impak' = Importação Direta (IMPAK paga), 'cliente' = Encomenda.
 let _cambioFiltroPagador = '';
+let _cambioFiltroTipo = ''; // '' | 'FUTURO' | 'NORMAL' — câmbio futuro (SWIFT) x normal (BACEN)
 
 // Redesign completo da tela (pedido do Ayslan, 09/09/2026): a versão
 // anterior empilhava 8 blocos verticais (KPIs, alerta, mark-to-market,
@@ -838,6 +839,9 @@ function renderDashCambio(){
   if(_cambioFiltroPagador){
     linhasFiltradas = linhasFiltradas.filter(x => _cambioFiltroPagador==='impak' ? x.impakPaga : !x.impakPaga);
   }
+  if(_cambioFiltroTipo){
+    linhasFiltradas = linhasFiltradas.filter(x => _cambioFiltroTipo==='FUTURO' ? x.tipoCambio==='FUTURO' : (x.pago && x.tipoCambio!=='FUTURO'));
+  }
   if(_cambioFiltroTexto){
     const termo = _cambioFiltroTexto.trim().toLowerCase();
     linhasFiltradas = linhasFiltradas.filter(x => `${x.referencia||''} ${x.cliente||''}`.toLowerCase().includes(termo));
@@ -881,10 +885,15 @@ function renderDashCambio(){
           <option value="impak" ${_cambioFiltroPagador==='impak'?'selected':''}>🟨 IMPAK paga (Imp. Direta)</option>
           <option value="cliente" ${_cambioFiltroPagador==='cliente'?'selected':''}>Cliente paga (Encomenda)</option>
         </select>
+        <select onchange="_cambioFiltroTipo=this.value;renderDashCambio();" title="Câmbio futuro = pago via mensagem SWIFT, sem código BACEN" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;${_cambioFiltroTipo?'background:#ede9fe;':''}">
+          <option value="">Tipo: todos</option>
+          <option value="FUTURO" ${_cambioFiltroTipo==='FUTURO'?'selected':''}>🔮 Câmbio futuro</option>
+          <option value="NORMAL" ${_cambioFiltroTipo==='NORMAL'?'selected':''}>Câmbio normal (BACEN)</option>
+        </select>
         <input id="cambio-busca-processo" type="text" value="${esc(_cambioFiltroTexto)}" placeholder="Buscar processo ou cliente…"
           oninput="_cambioFiltroTexto=this.value;renderDashCambio();"
           style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;width:140px;">
-        ${(_cambioFiltroCliente || _cambioFiltroTexto || _cambioFiltroPagador) ? `<a href="#" onclick="_cambioFiltroCliente='';_cambioFiltroTexto='';_cambioFiltroPagador='';renderDashCambio();return false;" style="font-size:11px;color:var(--ac);">limpar</a>` : ''}
+        ${(_cambioFiltroCliente || _cambioFiltroTexto || _cambioFiltroPagador || _cambioFiltroTipo) ? `<a href="#" onclick="_cambioFiltroCliente='';_cambioFiltroTexto='';_cambioFiltroPagador='';_cambioFiltroTipo='';renderDashCambio();return false;" style="font-size:11px;color:var(--ac);">limpar</a>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         ${mostrandoPagos ? '' : `<span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote ou exportar só elas.'}</span>
@@ -930,7 +939,7 @@ function renderDashCambio(){
           <td style="padding:8px 8px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}${x.impakPaga ? ' <span title="Importação Direta — a IMPAK fecha o câmbio" style="background:#fde047;color:#713f12;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;font-family:inherit;">IMPAK</span>' : ''}</td>
           <td style="padding:8px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.cliente)}">${esc(x.cliente)}</td>
           <td style="padding:8px 8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.fornecedor)}">${esc(x.fornecedor)}</td>
-          <td style="padding:8px 8px;text-transform:capitalize;white-space:nowrap;">${esc(x.parcela)}</td>
+          <td style="padding:8px 8px;text-transform:capitalize;white-space:nowrap;">${esc(x.parcela)}${x.tipoCambio==='FUTURO' ? ' <span title="Câmbio futuro — pago via mensagem SWIFT, sem código BACEN" style="background:#ede9fe;color:#5b21b6;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;text-transform:none;">futuro</span>' : ''}</td>
           <td style="padding:8px 8px;white-space:nowrap;${MONO}color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
           <td style="padding:8px 8px;text-align:right;font-weight:700;white-space:nowrap;${MONO}">${fmtUSD(x.valorUsd)}</td>
           <td style="padding:8px 8px;text-align:right;color:${mostrandoPagos?'var(--ok)':'var(--muted)'};font-weight:${mostrandoPagos?'700':'400'};white-space:nowrap;${MONO}">${(mostrandoPagos ? x.cambioFechado : x.cambioPrevisto) ? (mostrandoPagos ? x.cambioFechado : x.cambioPrevisto).toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—'}</td>

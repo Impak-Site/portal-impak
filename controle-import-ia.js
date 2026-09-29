@@ -609,7 +609,7 @@ async function extrairComIA_umArquivo(input){
   "depot": "",  // SOMENTE para RIC/EIR de devolução: nome do terminal/depósito onde o vazio foi devolvido (cabeçalho do documento, ex: "LECHMAN TERMINAIS NAVEGANTES")
   "eh_ric": false,
   "ric_avaria": false,  // SOMENTE para RIC: true se o RIC registrar avaria/dano, lavagem ou limpeza (ex: "recebido com AVARIA", "CHEMICAL CLEAN", "LAVAGEM", "LIMPEZA", "DAMAGE", "REPARO", "ESTIMATIVA DE REPARO"); false se o container foi recebido sem nenhuma observação desse tipo  // true SOMENTE se o documento for um RIC/EIR/Intercâmbio/Gate Pass de container (comprovante de entrada/saída de container em terminal/depósito)
-  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0}. Deixar [] para qualquer outro tipo de documento.
+  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio (inclusive mensagem SWIFT de pagamento — câmbio futuro) — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0, "tipo_cambio":"NORMAL|FUTURO", "swift_id":""}. Deixar [] para qualquer outro tipo de documento.
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
@@ -653,6 +653,14 @@ Se o documento for um Comprovante de Câmbio (operação de câmbio bancária �
 - extrair "banco": o nome do banco ou corretora que emitiu o comprovante (ex: "Itaú", "Santander", "Banco do Brasil") — normalmente identificável pelo logo/cabeçalho do documento ou pelo nome que aparece no rodapé/timbre. Repetir em cada item de "cambio_referencias".
 - extrair "codigo_bacen": o número do CONTRATO DE CÂMBIO junto ao Banco Central — é a referência que identifica a operação perante o BACEN, não o número da fatura/invoice comercial. Costuma aparecer como "Referência", "Nº do Contrato de Câmbio", "Contrato de Câmbio Nº" ou "Número do Contrato" — geralmente um número de 8 a 12 dígitos, diferente da referência do processo/invoice. Repetir o mesmo código em cada item de "cambio_referencias" (é um único contrato por operação, mesmo quando cobre várias referências).
   - ATENÇÃO (erro comum, já aconteceu): nos comprovantes do Itaú o layout tem uma tabelinha no topo do documento com as colunas "Tipo de Operação | Evento | Referência | Data da operação" — o valor dessa coluna "Referência" (ex: "632806455") é SEMPRE o código do contrato de câmbio junto ao BACEN, vai SEMPRE em "codigo_bacen", e NUNCA deve ser usado como o campo "referencia" de um item de "cambio_referencias", mesmo sendo o campo mais visível/rotulado "Referência" do documento. O mesmo vale pro Santander, onde esse número aparece como "Referência Interna" ou "N° do Contrato de Câmbio" numa tabela semelhante no topo. Esses números identificam a OPERAÇÃO BANCÁRIA perante o banco/BACEN, nunca um processo/invoice da IMPAK — só use como "referencia" de "cambio_referencias" um número/código que apareça claramente vinculado a uma fatura/invoice/processo específico (ex: anotação manual, carimbo, ou uma tabela separada de "faturas pagas" dentro do comprovante).
+- "tipo_cambio": "NORMAL" para o comprovante brasileiro de operação de câmbio (em português, com nº do contrato/código BACEN e taxa impressa). "FUTURO" quando o documento for uma MENSAGEM SWIFT de pagamento internacional (em inglês — tem marcas como "pacs.008", "MT103", "UETR", "BICFI", "Interbank Settlement Amount", "Debtor"/"Creditor", "Message Identifier"): é o câmbio futuro da IMPAK, que NÃO tem código BACEN.
+- Se for câmbio FUTURO (mensagem SWIFT):
+  - "codigo_bacen" fica SEMPRE "" (não existe). NUNCA use o UETR, o MUR, o nº da mensagem ou a conta como codigo_bacen.
+  - "swift_id": o identificador da mensagem — "Business Message Identifier" / "Message Identification" / "MUR" / "Instruction Identification" (normalmente começa com letras, ex.: "IF058503659905"). Repetir em cada item.
+  - valor: o total está em "Amount" / "Interbank Settlement Amount" (em USD). As referências dos processos e o valor de cada uma vêm ANOTADOS À MÃO/carimbados no documento (ex.: "HK60684 $7.806,51") — um item por referência anotada, valor em "valor_usd_referencia". Uma referência anotada SEM valor ao lado recebe o valor total (Amount).
+  - "taxa_cambio": a taxa NÃO vem impressa na mensagem SWIFT — procure um número anotado à mão no formato de taxa de câmbio (entre 3 e 8, com 2 a 4 casas, ex.: "5,03", "taxa 5,084"). Não confunda com valores em dólar nem com a "Priority". Se não houver anotação legível, deixe 0 (o sistema pede a taxa ao usuário).
+  - "data_pagamento": "Value Date" / "Interbank Settlement Date" / "Creation Date".
+  - "banco": o banco remetente (Sender/Debtor Agent — ex.: BSCHBRSP = Santander).
 - extrair "custo_operacao": o custo total da operação em REAIS, somando IOF + tarifas/spread bancário, SE o comprovante discriminar esses valores separadamente (campos como "IOF", "Tarifa", "Despesas", "Encargos"). Some todos os valores dessa natureza que aparecerem. Se o documento não discriminar nenhum custo separado do valor da operação, deixar 0 — nunca estimar ou inventar um valor. Repetir o mesmo total em cada item de "cambio_referencias".
 Não preencha free_time — deixe sempre null. Free time só é preenchido manualmente após emissão do BL.
 Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos não encontrados.`;
@@ -960,7 +968,13 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     let abriuModalCambio = false;
     if(Array.isArray(extracted.cambio_referencias) && extracted.cambio_referencias.length){
       const refAtual = (document.getElementById('f_referencia')?.value||'').trim().toUpperCase();
-      const itensCambio = extracted.cambio_referencias.filter(c=>c && c.taxa_cambio);
+      // Câmbio futuro (SWIFT) às vezes vem SEM taxa legível — não descarta
+      // mais o item (antes sumia sem aviso); o modal pede a taxa ao usuário.
+      const itensCambio = extracted.cambio_referencias.filter(c=>c && (c.taxa_cambio || c.valor_usd_referencia || c.valor_pago || c.swift_id));
+      itensCambio.forEach(c=>{
+        c.tipo_cambio = (typeof tipoCambioDe === 'function' ? tipoCambioDe(c) : '') || 'NORMAL';
+        if(c.tipo_cambio === 'FUTURO') c.codigo_bacen = ''; // SWIFT não tem contrato BACEN
+      });
       let match = itensCambio.find(c=>(c.referencia||'').trim().toUpperCase()===refAtual);
       // Se não bateu exato, tenta por substring nos dois sentidos — cobre casos como
       // referência do processo com prefixo ("IMPAK-OID2605A") vs. documento que só

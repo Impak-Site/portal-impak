@@ -1390,7 +1390,7 @@ function listarPagamentosPI(processos){
     // útil" pra identificar rapidamente a qual DI/DUIMP um pagamento de
     // câmbio pertence, sem precisar abrir o processo. Pode vir vazio (DI só
     // é registrada depois, na fase Registro DI) — tratado como '—' na UI.
-    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'', impakPaga: impakPagaCambio(p) };
+    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'', impakPaga: impakPagaCambio(p), tipoCambio: tipoCambioDe({ codigo_bacen: p.pi_cambio_codigo_bacen }) };
     const vencChegada = vencimentoPelaChegada(p);
     // banco/custoOperacao: registrados a pedido do Ayslan (09/09/2026,
     // "se você fosse o financeiro, o que gostaria de ver") -- só fazem
@@ -1432,6 +1432,7 @@ function listarPagamentosPI(processos){
           valorUsd: v, vencimento: segueChegada ? vencChegada : (pc.data_vencimento||null), vencimentoPelaChegada: !!segueChegada,
           cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(pc.cambio_fechado)||null,
           banco: pc.banco || null, custoOperacao: parseFloat(pc.custo_operacao) || null,
+          tipoCambio: pc.cambio_fechado ? tipoCambioDe(pc) : '',
           pago: !!pc.cambio_fechado });
       });
     } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
@@ -1482,6 +1483,21 @@ function listarPagamentosPI(processos){
 // resposta "Direto na parcela (Aba Financeiro)").
 // dataDe/dataAte: strings ISO (yyyy-mm-dd), comparação por data do câmbio
 // fechado (pc.data_vencimento) dentro do mês, inclusive nas duas pontas.
+// ── Câmbio FUTURO x NORMAL (pedido Ayslan 29/09/2026) ──────────────────
+// Normal: "Comprovante de Operação de Câmbio" em português, com o nº do
+// contrato no BACEN (codigo_bacen) e a taxa impressa.
+// Futuro: só a mensagem SWIFT (pacs.008/MT103) do banco, em inglês, SEM
+// código BACEN — a taxa vem anotada à mão. Identificador = código da
+// mensagem SWIFT (ex.: IF058503659905), guardado em swift_id.
+function tipoCambioDe(obj){
+  if(!obj) return '';
+  const t = String(obj.tipo_cambio || '').toUpperCase();
+  if(t === 'FUTURO' || t === 'NORMAL') return t;
+  if(/^\s*SWIFT/i.test(obj.codigo_bacen || '') || obj.swift_id) return 'FUTURO';
+  if(obj.codigo_bacen) return 'NORMAL';
+  return '';
+}
+
 function listarPendenciasDI(processos, dataDe, dataAte){
   const linhas = [];
   (processos||[]).forEach(p=>{

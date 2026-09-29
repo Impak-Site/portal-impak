@@ -281,6 +281,18 @@ teste('GED duplicados: mantém a cópia mais antiga, remove só idênticos (nome
   ]).map(a=>a.id).sort().join(',');
   iguais(rem, '2,3');
 });
+teste('Câmbio futuro x normal: tipoCambioDe reconhece SWIFT (sem BACEN) e contrato BACEN', () => {
+  iguais(sandbox.tipoCambioDe({ tipo_cambio:'FUTURO' }), 'FUTURO');
+  iguais(sandbox.tipoCambioDe({ swift_id:'IF058503659905' }), 'FUTURO');
+  iguais(sandbox.tipoCambioDe({ codigo_bacen:'SWIFT IF061546583801' }), 'FUTURO');
+  iguais(sandbox.tipoCambioDe({ codigo_bacen:'587921691' }), 'NORMAL');
+  iguais(sandbox.tipoCambioDe({}), '');
+  const p = { id:'x', referencia:'HK60684', pi_pagamento:'PARCELADO', pi_valor_usd:'10000',
+    pi_parcelas_json: JSON.stringify([{label:'Inicial', valor_usd:'3000', cambio_fechado:'5.03', tipo_cambio:'FUTURO', swift_id:'IF058503659905'},
+                                      {label:'Final', valor_usd:'7000', cambio_fechado:'4.9635', codigo_bacen:'587921691'}]) };
+  const pg = sandbox.listarPagamentosPI([p]).filter(x=>x._tipo==='parcelado').map(x=>x.tipoCambio).join(',');
+  iguais(pg, 'FUTURO,NORMAL');
+});
 teste('Data de Carregamento -> DEVOLUCAO_VAZIO', () => {
   iguais(sandbox.calcularFase({ nf_entrada_numero: '1', data_carregamento: '2026-09-20' }), 'DEVOLUCAO_VAZIO');
 });
