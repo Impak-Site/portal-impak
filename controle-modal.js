@@ -1515,6 +1515,7 @@ async function uploadArquivosGed(files){
       });
       const d = await r.json();
       if(!d.ok) showToast('Erro ao enviar '+file.name+': '+(d.erro||''),'err');
+      else if(d.duplicado) showToast(file.name+' já estava anexado — não duplicado','info');
     }catch(e){
       showToast('Erro ao enviar '+file.name,'err');
     }

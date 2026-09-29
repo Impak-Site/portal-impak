@@ -3269,6 +3269,16 @@ app.post('/api/controle/v2/arquivos', auth('controle','financeiro','resultado','
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ erro: 'Arquivo maior que 15MB' });
 
+    // Anti-duplicado (29/09/2026, HK60684 com CI/PL repetidos): o mesmo
+    // arquivo (mesmo nome + mesmo tamanho) já anexado a este processo não é
+    // gravado de novo — acontecia ao reenviar o documento pra Extração com IA
+    // ou ao rodar de novo uma importação. Devolve o id do que já existe.
+    {
+      const { data: jaExiste } = await sb().from('controle_arquivos').select('id')
+        .eq('processo_id', processo_id).eq('nome', nome).eq('tamanho', buffer.length).limit(1);
+      if (jaExiste && jaExiste.length) return res.json({ ok: true, id: jaExiste[0].id, duplicado: true });
+    }
+
     const arquivoId = gerarUUID();
     // Extensão vem de um mapa fixo baseado no MIME já validado acima (tiposPermitidos),
     // não do nome enviado pelo cliente — evita caminho de storage com conteúdo inesperado.
