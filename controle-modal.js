@@ -1733,6 +1733,7 @@ function renderPagamentoCampos(){
       <label class="form-label">Parcelas (quantos câmbios forem necessários — ex.: confirmação do pedido, embarque, chegada)</label>
       <div id="parcelas-list"></div>
       <button type="button" onclick="adicionarParcela()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Parcela</button>
+      <button type="button" onclick="limparParcelas()" title="Apaga todas as parcelas (depois é só Salvar)" style="background:none;border:1px dashed #fecaca;border-radius:6px;padding:5px 12px;font-size:11px;color:var(--err);cursor:pointer;font-weight:600;margin-top:4px;margin-left:6px;">🗑 Limpar parcelas</button>
       <input type="hidden" id="f_pi_parcelas_json">
     </div>`;
   }

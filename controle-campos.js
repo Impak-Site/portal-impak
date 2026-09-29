@@ -187,9 +187,14 @@ function coletarESalvar(opts){
   if(document.getElementById('f_pi_pagamento')?.value === 'PARCELADO'){
     completarSaldoParcelas();
     sincronizarParcelasLegado();
-    const parcelasValidas = _parcelas.filter(pc => parseFloat(pc.valor_usd) > 0);
-    if(!parcelasValidas.length){
-      showToast('Preencha o Valor USD de ao menos uma parcela para salvar — so o Cambio Fechado nao e suficiente, o Valor USD tambem precisa estar preenchido (ou troque a Forma de Pagamento)','err');
+    // Bloqueia só o caso perigoso: câmbio fechado SEM valor (viraria US$ 0
+    // no Financeiro). Parcelas totalmente em branco podem ser salvas (ex.:
+    // limpar tudo pra reler os comprovantes — Ayslan 29/09/2026); o aviso
+    // "Parcelas somam X e a PI é Y" continua aparecendo.
+    const cambioSemValor = _parcelas.map((pc,i)=>({pc,i})).filter(({pc}) => String(pc.cambio_fechado||'').trim() && !(parseFloat(pc.valor_usd) > 0));
+    if(cambioSemValor.length){
+      const nomes = cambioSemValor.map(({pc,i}) => '"' + (pc.label || ('Parcela ' + (i+1))) + '"').join(', ');
+      showToast('A parcela ' + nomes + ' tem Câmbio Fechado mas está sem Valor USD. Preencha o valor ou apague o câmbio (ou use "Limpar parcelas").','err');
       return;
     }
   }
@@ -1147,6 +1152,18 @@ function adicionarParcela(){
   _parcelas.push(parcelaVazia());
   renderParcelas();
   renderPagamentoInfoLive();
+}
+
+// Zera todas as parcelas (pede confirmação). A parcela vazia que fica NÃO
+// é preenchida de novo com o saldo automático (valor_vazio_manual).
+function limparParcelas(){
+  if(!confirm('Apagar TODAS as parcelas deste processo (valores, câmbios, datas, banco, BACEN/SWIFT, DUIMP)?\n\nSó vale depois de clicar em Salvar.')) return;
+  _painelDirty = true;
+  _parcelas = [{...parcelaVazia(), valor_vazio_manual: true}];
+  sincronizarParcelasLegado();
+  renderParcelas();
+  renderPagamentoInfoLive();
+  showToast('Parcelas limpas — clique em Salvar para gravar','info');
 }
 
 function removerParcela(i){
