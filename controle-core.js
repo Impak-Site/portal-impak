@@ -1498,6 +1498,22 @@ function tipoCambioDe(obj){
   return '';
 }
 
+function _mais180dias(iso){
+  if(!iso) return '';
+  const d = new Date(String(iso).slice(0,10)+'T12:00:00');
+  if(isNaN(d.getTime())) return '';
+  d.setDate(d.getDate()+180);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// Chave do CONTRATO de câmbio (pra agrupar processos pagos no mesmo câmbio):
+// código BACEN; se for câmbio futuro, a mensagem SWIFT; sem nenhum dos dois,
+// data + banco + taxa (mesma operação no mesmo dia, mesmo banco, mesma taxa).
+function chaveContratoCambio(l){
+  if(l.codigoBacen) return 'BACEN ' + String(l.codigoBacen).trim();
+  if(l.swiftId) return 'SWIFT ' + String(l.swiftId).trim();
+  return 'SEM Nº ' + (l.dataCambio||'') + ' · ' + (l.banco||'banco?') + ' · ' + (l.taxa ? l.taxa.toFixed(4) : 'taxa?');
+}
+
 function listarPendenciasDI(processos, dataDe, dataAte){
   const linhas = [];
   (processos||[]).forEach(p=>{
@@ -1515,8 +1531,17 @@ function listarPendenciasDI(processos, dataDe, dataAte){
         processoId: p.id,
         parcelaIndex: i,
         codigoBacen: pc.codigo_bacen || '',
+        swiftId: pc.swift_id || '',
+        tipoCambio: tipoCambioDe(pc),
+        banco: pc.banco || '',
+        taxa: parseFloat(pc.cambio_fechado) || 0,
+        moeda: 'USD', // PI/parcelas do Controle são sempre em dólar
+        cliente: p.cliente || '',
         dataCambio,
-        vencimentoDi: pc.venc_di || '',
+        // Sem "Venc. DI/DUIMP" digitado na parcela → 180 dias do câmbio (mesma
+        // regra do botão ↻ da parcela), pra planilha nunca sair em branco.
+        vencimentoDi: pc.venc_di || _mais180dias(dataCambio),
+        vencimentoCalculado: !pc.venc_di,
         valorUsd: parseFloat(pc.valor_usd) || 0,
         duimp: pc.duimp_numero || '',
         protocolo: pc.duimp_protocolo || '',

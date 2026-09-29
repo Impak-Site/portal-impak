@@ -2075,6 +2075,33 @@ teste('listarPendenciasDI: ordena pelo vencimento da DI mais próximo primeiro, 
   iguais(out.map(l=>l.referencia).join(','), 'C,A,B', 'C (venc. mais próximo) primeiro, A depois, B (sem venc. de DI) por último');
 });
 
+teste('listarPendenciasDI: traz BACEN/SWIFT, moeda, taxa, vencimento 180d e agrupa por contrato (pedido 29/09/2026)', () => {
+  const processos = [
+    { id:'P1', referencia:'HK1', cliente:'CLI A', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { valor_usd:1000, data_vencimento:'2026-09-10', cambio_fechado:5.2, codigo_bacen:'587921691', banco:'Itaú' },
+    ])},
+    { id:'P2', referencia:'HK2', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { valor_usd:2000, data_vencimento:'2026-09-10', cambio_fechado:5.2, codigo_bacen:'587921691', banco:'Itaú', venc_di:'2027-01-01' },
+    ])},
+    { id:'P3', referencia:'HK3', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([
+      { valor_usd:500, data_vencimento:'2026-09-12', cambio_fechado:5.3, swift_id:'IF058503659905', tipo_cambio:'FUTURO' },
+    ])},
+  ];
+  const out = vm.runInContext(`listarPendenciasDI(${JSON.stringify(processos)}, '2026-09-01', '2026-09-30')`, sandbox);
+  const h1 = out.find(l=>l.referencia==='HK1');
+  iguais(h1.vencimentoDi, '2027-03-09', 'sem venc_di digitado -> câmbio + 180 dias');
+  iguais(h1.vencimentoCalculado, true, 'marca que foi calculado');
+  iguais(h1.moeda, 'USD', 'moeda');
+  iguais(h1.taxa, 5.2, 'taxa');
+  iguais(h1.cliente, 'CLI A', 'cliente');
+  iguais(out.find(l=>l.referencia==='HK2').vencimentoDi, '2027-01-01', 'venc_di digitado é respeitado');
+  const h3 = out.find(l=>l.referencia==='HK3');
+  iguais(h3.tipoCambio, 'FUTURO', 'câmbio futuro');
+  const chaves = out.map(l => vm.runInContext(`chaveContratoCambio(${JSON.stringify(l)})`, sandbox));
+  iguais(new Set(chaves).size, 2, 'HK1 e HK2 no mesmo contrato BACEN, HK3 no contrato SWIFT');
+  iguais(vm.runInContext(`chaveContratoCambio(${JSON.stringify(h3)})`, sandbox), 'SWIFT IF058503659905', 'chave SWIFT');
+});
+
 // ── HTML: <div> abertas x fechadas em cada módulo da tela ──────
 // Bug de 23/09/2026 (relato da Emanuelly): um </div> sobrando no campo
 // "Código BACEN" (aba Financeiro) fechava o container da aba antes da

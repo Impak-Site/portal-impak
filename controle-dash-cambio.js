@@ -94,26 +94,72 @@ async function exportarPendenciasDI(){
     const wb = new ExcelJS.Workbook();
     wb.creator = 'IMPAK';
     wb.created = new Date();
-    const ws = wb.addWorksheet('Planilha3');
-    ws.columns = [
+    // Aba 1 (29/09/2026, pedido Ayslan): agrupada por CONTRATO de câmbio —
+    // processos pagos no mesmo câmbio ficam um embaixo do outro, com o total
+    // do contrato. Traz Referência, Código BACEN (ou SWIFT no câmbio futuro),
+    // moeda, taxa e vencimento sempre preenchido (180 dias se não digitado).
+    const ws = wb.addWorksheet('Pendências por contrato');
+    const cols = [
+      ['Contrato (BACEN / SWIFT)', 26], ['Tipo', 12], ['Data do câmbio', 13], ['Banco', 16],
+      ['Referência', 20], ['Cliente', 26], ['Moeda', 8], ['Valor M.E.', 14], ['Taxa', 10], ['Valor R$', 15],
+      ['Vencimento DI/DUIMP', 16], ['Nº DUIMP', 22], ['Protocolo / Chave de acesso', 30],
+    ];
+    ws.columns = cols.map(([h,w]) => ({ header: h, width: w }));
+    const F = (b, cor) => ({ name:'Arial', size:10, bold:!!b, color: cor ? {argb:cor} : undefined });
+    const borda = { top:{style:'thin',color:{argb:'FFD0D5DD'}}, bottom:{style:'thin',color:{argb:'FFD0D5DD'}} };
+    ws.getRow(1).eachCell(c => { c.font = F(true,'FFFFFFFF'); c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF0F1F3D'}}; c.alignment = {vertical:'middle',wrapText:true}; });
+    ws.getRow(1).height = 30;
+    const grupos = new Map();
+    linhas.slice().sort((a,b)=> String(a.dataCambio).localeCompare(String(b.dataCambio)) || String(a.referencia).localeCompare(String(b.referencia)))
+      .forEach(l => { const k = chaveContratoCambio(l); if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(l); });
+    const toDate = iso => iso ? new Date(String(iso).slice(0,10)+'T12:00:00') : null;
+    let totalGeral = 0;
+    grupos.forEach((ls, chave) => {
+      const primeira = ls[0];
+      ls.forEach((l, idx) => {
+        const r = ws.addRow([
+          idx === 0 ? chave : '', idx === 0 ? (l.tipoCambio === 'FUTURO' ? 'Futuro' : 'Normal') : '',
+          toDate(l.dataCambio), l.banco || '', l.referencia || '', l.cliente || '', l.moeda || 'USD',
+          l.valorUsd || 0, l.taxa || null, null,
+          toDate(l.vencimentoDi), l.duimp || '', l.protocolo || '',
+        ]);
+        const n = r.number;
+        r.getCell(10).value = l.taxa ? { formula: `H${n}*I${n}` } : null;
+        if(l.vencimentoCalculado) r.getCell(11).note = 'Calculado: 180 dias da data do câmbio (não digitado na parcela)';
+        r.eachCell({includeEmpty:true}, c => { c.font = F(idx===0); c.border = borda; });
+        totalGeral += l.valorUsd || 0;
+      });
+      if(ls.length > 1){
+        const ini = ws.rowCount - ls.length + 1, fim = ws.rowCount;
+        const t = ws.addRow(['', '', '', '', `Total do contrato (${ls.length} processos)`, '', primeira.moeda || 'USD', null, null, null, '', '', '']);
+        t.getCell(8).value = { formula: `SUM(H${ini}:H${fim})` };
+        t.getCell(10).value = { formula: `SUM(J${ini}:J${fim})` };
+        t.eachCell({includeEmpty:true}, c => { c.font = F(true); c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFEEF2F7'}}; });
+      }
+    });
+    const tg = ws.addRow(['TOTAL DO MÊS', '', '', '', `${linhas.length} parcela(s) · ${grupos.size} contrato(s)`, '', 'USD', totalGeral, null, null, '', '', '']);
+    tg.eachCell({includeEmpty:true}, c => { c.font = F(true,'FFFFFFFF'); c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF334155'}}; });
+    [3,11].forEach(ci => ws.getColumn(ci).numFmt = 'dd/mm/yyyy');
+    [8,10].forEach(ci => ws.getColumn(ci).numFmt = '#,##0.00');
+    ws.getColumn(9).numFmt = '0.0000';
+    ws.views = [{ state:'frozen', ySplit:1 }];
+    ws.autoFilter = { from:'A1', to:'M1' };
+
+    // Aba 2: o modelo exato que o banco recebe (4 colunas), agora com o
+    // vencimento preenchido e uma linha por parcela.
+    const wsB = wb.addWorksheet('Modelo banco');
+    wsB.columns = [
       { header: 'Vencimento', key: 'vencimento', width: 15 },
       { header: 'Valor M.E.', key: 'valor_me', width: 13.33 },
       { header: 'D/ DUIMP ', key: 'duimp', width: 40.5 },
       { header: 'PROTOCOLO / CHAVE DE ACESSO', key: 'protocolo', width: 35.5 },
     ];
     linhas.forEach(l=>{
-      ws.addRow({
-        vencimento: l.vencimentoDi ? new Date(l.vencimentoDi+'T00:00:00') : null,
-        valor_me: l.valorUsd || 0,
-        duimp: l.duimp || '',
-        protocolo: l.protocolo || '',
-      });
+      wsB.addRow({ vencimento: toDate(l.vencimentoDi), valor_me: l.valorUsd || 0, duimp: l.duimp || '', protocolo: l.protocolo || '' });
     });
-    ws.getColumn('vencimento').numFmt = 'dd/mm/yyyy';
-    ws.getColumn('valor_me').numFmt = '#,##0.00';
-    // Mesma fonte/alinhamento do arquivo real que o banco recebe: Arial 11,
-    // cabeçalho em negrito, alinhado à esquerda e centralizado verticalmente.
-    ws.eachRow((row, rowNumber) => {
+    wsB.getColumn('vencimento').numFmt = 'dd/mm/yyyy';
+    wsB.getColumn('valor_me').numFmt = '#,##0.00';
+    wsB.eachRow((row, rowNumber) => {
       row.eachCell({ includeEmpty: true }, cell => {
         cell.font = { name: 'Arial', size: 11, bold: rowNumber === 1 };
         cell.alignment = { horizontal: 'left', vertical: 'middle' };
