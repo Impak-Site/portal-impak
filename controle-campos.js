@@ -992,7 +992,7 @@ function calcularParcelaResidualAuto(){
   let somaPreenchidas = 0;
   _parcelas.forEach((pc,i)=>{
     const v = pc.valor_usd;
-    if(v===''||v==null) vazias.push(i);
+    if(v===''||v==null){ if(!pc.valor_vazio_manual) vazias.push(i); }
     else somaPreenchidas += parseFloat(v)||0;
   });
   if(vazias.length===1){
@@ -1012,7 +1012,11 @@ function completarSaldoParcelas(){
   const num = v => parseFloat(String(v??'').replace(',','.')) || 0;
   let soma = _parcelas.reduce((a,pc)=>a+num(pc.valor_usd),0);
   const resto = +(val - soma).toFixed(2);
-  if(resto > 1){
+  // Parcela que o usuário APAGOU de propósito (valor_vazio_manual) não é
+  // preenchida de novo sozinha — Ayslan 29/09/2026: "não consigo apagar o
+  // valor e salvar". O aviso de soma diferente da PI continua aparecendo.
+  const apagouManual = _parcelas.some(pc => pc.valor_vazio_manual && !num(pc.valor_usd));
+  if(resto > 1 && !apagouManual){
     const vazias = _parcelas.map((pc,i)=>i).filter(i=>!num(_parcelas[i].valor_usd) && !_parcelas[i].cambio_fechado);
     if(vazias.length === 1){
       const i = vazias[0];
@@ -1080,7 +1084,7 @@ function renderParcelas(){
           ${PARCELA_ETAPAS.map(et=>`<option value="${esc(et)}" ${pc.label===et?'selected':''}>${esc(et)}</option>`).join('')}
         </select></div>
         <div>${lblParcela('Valor USD')}<div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" placeholder="0,00" value="${pc.valor_usd!=null&&pc.valor_usd!==''?exibirMoeda(pc.valor_usd):''}"
-          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);sincronizarParcelasLegado();renderPagamentoInfoLive()"
+          oninput="formatarMoedaInput(this);_parcelas[${i}].valor_usd=parseValorMoeda(this.value);if(_parcelas[${i}].valor_usd===''||_parcelas[${i}].valor_usd==null){_parcelas[${i}].valor_vazio_manual=true}else{delete _parcelas[${i}].valor_vazio_manual};sincronizarParcelasLegado();renderPagamentoInfoLive()"
           onchange="calcularParcelaResidualAuto();calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive();atualizarVencimentoSaldoPorETA()"></div></div>
         <div>${lblParcela('Data Vencimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
           oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()"></div>
@@ -1288,6 +1292,7 @@ function resolverValorUsdParcela(idx, valorDoc){
   const atual = parseFloat(_parcelas[idx].valor_usd) || 0;
   if(!atual){
     _parcelas[idx].valor_usd = valorDoc.toFixed(2);
+    delete _parcelas[idx].valor_vazio_manual;
     return 'preenchido';
   }
   if(Math.abs(atual - valorDoc) < 0.01) return false; // já bate, nada a fazer
