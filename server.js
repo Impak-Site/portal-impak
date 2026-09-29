@@ -1854,7 +1854,17 @@ function removerCamposFinanceiros(p) {
   if (typeof p.vendas_json === 'string') {
     try {
       const vendas = JSON.parse(p.vendas_json);
-      if (Array.isArray(vendas)) p.vendas_json = JSON.stringify(vendas.map(v => ({ cliente: v && v.cliente, nf_numero: v && v.nf_numero })));
+      // A TV precisa dos dados NÃO financeiros de cada venda pra calcular o
+      // estoque (No Chão/Armazém e a cor dos Processos do Mês): nº/data/CFOP
+      // da NF de saída e os itens (descrição + quantidade). Antes só ia
+      // cliente+nf_numero, então na TV nenhuma venda "baixava" estoque e os
+      // números ficavam diferentes do PC (Ayslan 29/09/2026). Valores (R$,
+      // preço, juros, forma de pagamento) continuam fora.
+      if (Array.isArray(vendas)) p.vendas_json = JSON.stringify(vendas.map(v => v ? ({
+        cliente: v.cliente, nf_numero: v.nf_numero,
+        nf_saida_numero: v.nf_saida_numero, nf_saida_data: v.nf_saida_data, nf_saida_cfop: v.nf_saida_cfop,
+        itens: Array.isArray(v.itens) ? v.itens.map(it => it ? ({ descricao: it.descricao, quantidade: it.quantidade }) : it) : v.itens,
+      }) : v));
     } catch (e) { delete p.vendas_json; }
   }
 }

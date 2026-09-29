@@ -880,7 +880,7 @@ async function atualizarProcessosSeMudou(){
 // A cópia é apagada no logout/tela de login (ver LOGIN_HTML em server.js).
 const _CACHE_DB = 'impakos-cache';
 // Formato 2 (24/09/2026): lista sem conferencia_json. Cópias antigas são ignoradas.
-const _CACHE_FORMATO = 2;
+const _CACHE_FORMATO = 3; // 3 (29/09/2026): descarta caches da TV com vendas_json incompleto
 function _abrirCacheDB(){
   return new Promise((resolve, reject)=>{
     if(typeof indexedDB === 'undefined') return reject(new Error('sem indexedDB'));
@@ -900,11 +900,16 @@ async function lerCacheProcessos(){
     });
   }catch(e){ return null; }
 }
+// total_em = quando a lista veio INTEIRA do servidor pela última vez. As
+// atualizações incrementais NÃO renovam essa data (antes renovavam via
+// salvo_em, e a TV — que só recebe incrementais — nunca mais baixava a lista
+// completa; qualquer diferença ficava pra sempre). Depois de 30 min a
+// próxima carga é completa.
 async function salvarCacheProcessos(versao, processos){
   if(!versao) return;
   try{
     const db = await _abrirCacheDB();
-    db.transaction('kv','readwrite').objectStore('kv').put({ versao, processos, formato: _CACHE_FORMATO, salvo_em: Date.now() }, 'processos');
+    db.transaction('kv','readwrite').objectStore('kv').put({ versao, processos, formato: _CACHE_FORMATO, salvo_em: Date.now(), total_em: _ultimaCargaTotal || 0 }, 'processos');
   }catch(e){ /* cache é só otimização -- falhar aqui não pode quebrar nada */ }
 }
 async function buscarVersaoProcessos(){
@@ -990,10 +995,11 @@ async function carregarProcessos(silencioso, forcarCompleto){
     _cacheInicialTentado = true;
     const [cache, versaoAtual] = await Promise.all([_prefetchCache || lerCacheProcessos(), _prefetchVersao || buscarVersaoProcessos()]);
     _prefetchCache = _prefetchVersao = null;
-    const cacheOk = cache && cache.formato === _CACHE_FORMATO && Array.isArray(cache.processos);
+    const cacheOk = cache && cache.formato === _CACHE_FORMATO && Array.isArray(cache.processos)
+      && !forcarCompleto && (Date.now() - (cache.total_em || 0)) < 30*60*1000;
     if(cacheOk && versaoAtual && cache.versao === versaoAtual){
       _versaoProcessos = versaoAtual;
-      _ultimaCargaTotal = cache.salvo_em || 0;
+      _ultimaCargaTotal = cache.total_em || 0;
       aplicarListaProcessos(cache.processos, true);
       return;
     }
@@ -1003,7 +1009,7 @@ async function carregarProcessos(silencioso, forcarCompleto){
         const lista = await _buscarIncremental(cache.processos, versaoAtual);
         if(lista){
           _versaoProcessos = versaoAtual;
-          _ultimaCargaTotal = cache.salvo_em || 0;
+          _ultimaCargaTotal = cache.total_em || 0;
           aplicarListaProcessos(lista, true);
           salvarCacheProcessos(versaoAtual, _processos);
           return;
