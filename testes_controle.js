@@ -680,6 +680,17 @@ teste('Sem data_pagamento no comprovante, usa a data de hoje como aproximação'
 // refatoração futura sem ninguém notar.
 console.log('\n📋 confirmarCambioParcela() / aplicarCambioNaParcelaPendente() — preenche Valor USD e Data');
 
+teste('Câmbio numa NOVA parcela (Pré-embarque) entra antes da Final e a Final vira o saldo da PI', () => {
+  const el = sandbox.document.getElementById('f_pi_valor_usd'); if(el) el.value = '22.911,64';
+  vm.runInContext("_parcelas = [{label:'Final', valor_usd:'22911.64', data_vencimento:'2026-09-01', cambio_fechado:''}];", sandbox);
+  vm.runInContext("_cambioPendente = {taxa_cambio:5.03, valor_usd_referencia:8231.64, referencia:'HK60684', data_pagamento:'2026-09-03', tipo_cambio:'FUTURO', swift_id:'IF058503659905'};", sandbox);
+  sandbox.confirmarCambioNovaParcela('Pré-embarque');
+  const ps = JSON.parse(vm.runInContext("JSON.stringify(_parcelas);", sandbox));
+  iguais(ps.map(p=>p.label).join(','), 'Pré-embarque,Final');
+  iguais(ps[0].valor_usd, '8231.64'); iguais(ps[0].cambio_fechado, '5.0300');
+  iguais(ps[0].tipo_cambio, 'FUTURO'); iguais(ps[0].swift_id, 'IF058503659905');
+  if(sandbox.valorMoeda('f_pi_valor_usd')) iguais(ps[1].valor_usd, '14680.00', 'Final deveria virar o saldo');
+});
 teste('confirmarCambioParcela preenche Valor USD e Data quando a parcela está vazia', () => {
   vm.runInContext("_parcelas = [{label:'Inicial', valor_usd:'', data_vencimento:'', cambio_fechado:''}];", sandbox);
   vm.runInContext("_cambioPendente = {taxa_cambio:5.30, valor_pago:26500, referencia:'UD26-993', data_pagamento:'2026-07-20'};", sandbox);

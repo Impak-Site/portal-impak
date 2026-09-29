@@ -1239,12 +1239,12 @@ function abrirModalConfirmarCambio(match, refAtual){
       + (taxa
         ? `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}${futuro ? ' <span style="color:var(--muted);font-size:11px;">(anotada no documento — confira)</span>' : ''}<br>`
         : `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;margin:4px 0 8px;"><b>Taxa de câmbio não encontrada no documento.</b> Digite a taxa fechada: <input id="cambio-modal-taxa-manual" class="form-input" inputmode="decimal" placeholder="ex: 5,0840" style="width:120px;display:inline-block;margin-left:6px;"></div>`)
-      + (valorUsdRef ? `<b>Valor desta referência:</b> US$ ${valorUsdRef.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ R$ ${(valorUsdRef*taxa).toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>`
-        : valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2})} nessa taxa)<br>` : '')
+      + (valorUsdRef ? `<b>Valor desta referência:</b> US$ ${valorUsdRef.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} (≈ R$ ${(valorUsdRef*taxa).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} nessa taxa)<br>`
+        : valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} nessa taxa)<br>` : '')
       + (match.banco ? `<b>Banco:</b> ${esc(match.banco)}<br>` : '')
       + (match.codigo_bacen ? `<b>Código BACEN:</b> ${esc(match.codigo_bacen)}<br>` : '')
-      + (custoExtra ? `<b>Tarifa/IOF discriminado no comprovante:</b> R$ ${custoExtra.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>` : '')
-      + (custoTotal ? `<b>Custo total da operação (Valor USD × Câmbio${custoExtra?' + tarifas':''}):</b> R$ ${custoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>` : '');
+      + (custoExtra ? `<b>Tarifa/IOF discriminado no comprovante:</b> R$ ${custoExtra.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}<br>` : '')
+      + (custoTotal ? `<b>Custo total da operação (Valor USD × Câmbio${custoExtra?' + tarifas':''}):</b> R$ ${custoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}<br>` : '');
   }
   // Se a Forma de Pagamento atual e "Parcelado", mostra um botao por
   // parcela (pelo rotulo da Etapa) em vez das opcoes fixas de
@@ -1257,15 +1257,22 @@ function abrirModalConfirmarCambio(match, refAtual){
   if(formaPagamento==='PARCELADO' && boxParcelas && boxLegado){
     boxLegado.style.display = 'none';
     boxParcelas.style.display = 'flex';
-    if(!_parcelas.length){
-      boxParcelas.innerHTML = '<p style="font-size:12px;color:var(--muted);">Nenhuma parcela cadastrada ainda — adicione uma parcela na aba Financeiro antes de confirmar este comprovante.</p>';
-    } else {
-      boxParcelas.innerHTML = _parcelas.map((p,i)=>{
-        const label = p.label || ('Parcela ' + (i+1));
-        const jaTemCambio = p.cambio_fechado ? (' (câmbio atual: ' + p.cambio_fechado + ')') : '';
-        return '<button class="btn btn-outline" onclick="confirmarCambioParcela(' + i + ')">' + esc(label) + jaTemCambio + '</button>';
-      }).join('');
-    }
+    // Parcelas existentes + "nova parcela" por etapa (Ayslan 29/09/2026: o
+    // câmbio era de Pré-embarque, mas o processo só tinha a parcela Final
+    // e o modal não deixava escolher). A nova parcela recebe o valor do
+    // comprovante e a parcela em aberto restante é recalculada com o saldo.
+    const existentes = _parcelas.map((p,i)=>{
+      const label = p.label || ('Parcela ' + (i+1));
+      const jaTemCambio = p.cambio_fechado ? (' (câmbio atual: ' + p.cambio_fechado + ')') : '';
+      const valor = parseFloat(p.valor_usd) ? (' — US$ ' + parseFloat(p.valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2})) : '';
+      return '<button class="btn btn-outline" onclick="confirmarCambioParcela(' + i + ')">' + esc(label) + valor + jaTemCambio + '</button>';
+    }).join('');
+    const novas = PARCELA_ETAPAS.map(et =>
+      '<button class="btn btn-outline" style="font-size:12px;padding:6px 10px;" onclick="confirmarCambioNovaParcela(' + jsArg(et) + ')">+ ' + esc(et) + '</button>'
+    ).join('');
+    boxParcelas.innerHTML = (existentes ? '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Parcela existente</div>' + existentes : '')
+      + '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-top:6px;">Ou criar nova parcela</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + novas + '</div>';
   } else if(boxParcelas && boxLegado){
     boxParcelas.style.display = 'none';
     boxLegado.style.display = 'flex';
@@ -1331,6 +1338,7 @@ function ajustarSaldoAposCorrecao(idx){
   if(resto > 0){
     _parcelas[alvo].valor_usd = resto.toFixed(2);
     _parcelas[alvo].custo_operacao = ''; // recalculado a partir do novo valor
+    delete _parcelas[alvo].valor_vazio_manual;
     if(typeof calcularCustoOperacaoAuto === 'function') calcularCustoOperacaoAuto(alvo);
   }
 }
@@ -1383,6 +1391,30 @@ function confirmarCambioParcela(idx){
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
   showToast('✓ Câmbio (' + taxa.toLocaleString('pt-BR',{minimumFractionDigits:4}) + ') aplicado em "' + label + '"','ok');
   fecharModalCambio();
+}
+
+// Cria uma parcela nova (etapa escolhida no modal) com o valor/taxa do
+// comprovante. A parcela em aberto que sobrar (ex.: Final) passa a ter o
+// saldo = Valor da PI − demais parcelas (ajustarSaldoAposCorrecao).
+function confirmarCambioNovaParcela(etapa){
+  if(!_cambioPendente){ fecharModalCambio(); return; }
+  if(!_taxaCambioPendente()){ showToast('Informe a taxa de câmbio antes de confirmar','err'); return; }
+  const nova = {...parcelaVazia(), label: etapa};
+  // Entra antes da Final pra manter a ordem natural das etapas.
+  const idxFinal = _parcelas.findIndex(pc => pc.label === 'Final');
+  const idx = (etapa !== 'Final' && etapa !== 'Ajuste de câmbio' && idxFinal >= 0) ? idxFinal : _parcelas.length;
+  _parcelas.splice(idx, 0, nova);
+  const valorUsdRef = parseFloat(_cambioPendente.valor_usd_referencia) || 0;
+  const valorPago = parseFloat(_cambioPendente.valor_pago) || 0;
+  const taxa = _taxaCambioPendente();
+  const valorDoc = valorUsdRef || (valorPago && taxa ? valorPago/taxa : 0);
+  if(valorDoc) _parcelas[idx].valor_usd = valorDoc.toFixed(2);
+  // O saldo da parcela em aberto é refeito abaixo; aqui só aplica câmbio/datas/banco.
+  const antes = _parcelas[idx].valor_usd;
+  confirmarCambioParcela(idx);
+  if(_parcelas[idx] && _parcelas[idx].valor_usd === antes) ajustarSaldoAposCorrecao(idx);
+  renderParcelas();
+  renderPagamentoInfoLive();
 }
 
 function fecharModalCambio(){
