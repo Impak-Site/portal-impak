@@ -292,6 +292,7 @@ function renderDashClienteMedida(){
   };
   _processos.forEach(p => {
     if(p.cancelado) return;
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // só acompanhamos (Emanuelly 29/09)
     if(!FASES_CLIENTE_MEDIDA_SET.has(_cmFaseAgrupada(calcularFase(p)))) return;
     if(_cmFiltroMes){
       const dtChegadaOpcoes = p.data_chegada || p.eta;
@@ -398,6 +399,7 @@ function renderDashClienteMedida(){
 
   _processos.forEach(p => {
     if(p.cancelado) return;
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // só acompanhamos (Emanuelly 29/09)
     if(_cmFiltroMes){
       const dtChegadaFiltro = p.data_chegada || p.eta;
       if(!dtChegadaFiltro || dtChegadaFiltro.slice(0,7) !== _cmFiltroMes) return;

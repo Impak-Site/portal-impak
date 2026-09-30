@@ -1259,6 +1259,11 @@ function calcularFase(p){
   // Pedido da Emanuelly (04/09/2026): antes disso o processo ficava
   // 'preso' em Devolucao do Vazio ate alguem lembrar de conferir RIC/
   // lavagem manualmente.
+  // Acompanhamento: a IMPAK não controla NF, DUIMP, demurrage nem devolução.
+  // Finaliza quando a carga chegou e foi liberada/retirada (ou devolvida).
+  if(ehAcompanhamento(p)){
+    if(p.data_devolucao_vazio || p.data_carregamento || (p.data_liberacao && (chegadaPassada || presencaPassada))) return 'FINALIZADO';
+  }
   if(p.data_devolucao_vazio && (p.ric_status === 'Isento' || p.data_pagamento_lavagem)) return 'FINALIZADO';
   // Quando AMBAS as NFs (entrada e saída) estão emitidas, isso já é prova
   // suficiente de que o carregamento aconteceu de fato — avança direto para
@@ -1358,6 +1363,34 @@ function vencimentoPelaChegada(p){
 // dólar cair); na Encomenda o cliente adianta o valor.
 function impakPagaCambio(p){ return (p && p.finalidade) === 'IMPORTACAO_DIRETA'; }
 
+// ── ACOMPANHAMENTO (pedido Emanuelly, 29/09/2026) ──────────────────
+// Processos em que a IMPAK só ACOMPANHA a importação de outra empresa (hoje
+// sempre a CCN): não tem câmbio, NF nem DUIMP no sistema. A IMPAK cuida de
+// documentos, agente de carga e LI, mas NÃO de demurrage / devolução do
+// vazio. Guardado como finalidade = 'ACOMPANHAMENTO' (sem migration). Esses
+// processos ficam fora de: pagamentos/câmbio/Pendências de DI, alertas de
+// pagamento e demurrage, Por Cliente/Medida, Reciclagem, DRE, Narcélio e
+// "em andamento" do Resultado. O histórico fica guardado normalmente.
+function ehAcompanhamento(p){ return !!p && p.finalidade === 'ACOMPANHAMENTO'; }
+// Sugestão automática: cliente é a CCN (única empresa nesse modelo hoje).
+function clienteSugereAcompanhamento(nome){ return /\bCCN\b/i.test(String(nome||'')); }
+// Chamado ao escolher/alterar o Cliente no painel do processo: se for a CCN e
+// o processo ainda não estiver como Acompanhamento, PERGUNTA (não marca
+// sozinho — há processo da CCN que é Encomenda da IMPAK, ex. UD26-027).
+let _acompSugeridoPara = null;
+function sugerirAcompanhamentoPorCliente(){
+  const sel = document.getElementById('f_finalidade');
+  const nome = (document.getElementById('f_cliente')?.value || '').trim();
+  if(!sel || sel.value === 'ACOMPANHAMENTO' || !clienteSugereAcompanhamento(nome)) return;
+  if(_acompSugeridoPara === nome) return; // não pergunta de novo pro mesmo nome
+  _acompSugeridoPara = nome;
+  if(confirm('Cliente CCN: este processo é só de ACOMPANHAMENTO (sem câmbio, NF e DUIMP da IMPAK)?\n\nOK = marcar como Acompanhamento\nCancelar = manter a finalidade atual')){
+    sel.value = 'ACOMPANHAMENTO';
+    if(typeof _painelDirty !== 'undefined') _painelDirty = true;
+    showToast('Finalidade: Acompanhamento — salve o processo para gravar','ok');
+  }
+}
+
 // Conferência de cadastro do câmbio (24/09/2026): problemas que fazem um
 // câmbio sumir ou aparecer errado no Controle Cambial. Mostrado como alerta
 // na tela de Câmbio pra ser corrigido na hora, antes de virar surpresa.
@@ -1386,6 +1419,7 @@ function listarPagamentosPI(processos){
   (processos||[]).forEach(p=>{
     const valorTotal = parseFloat(p.pi_valor_usd)||0;
     if(!valorTotal || p.fase==='FINALIZADO') return;
+    if(ehAcompanhamento(p)) return; // IMPAK não paga câmbio desses (só acompanha)
     // numeroDi incluído a pedido do Ayslan (09/09/2026): campo "extremamente
     // útil" pra identificar rapidamente a qual DI/DUIMP um pagamento de
     // câmbio pertence, sem precisar abrir o processo. Pode vir vazio (DI só
@@ -1518,6 +1552,7 @@ function listarPendenciasDI(processos, dataDe, dataAte){
   const linhas = [];
   (processos||[]).forEach(p=>{
     if(p.pi_pagamento !== 'PARCELADO') return;
+    if(ehAcompanhamento(p)) return;
     let parcelas = [];
     try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
     parcelas.forEach((pc,i)=>{
@@ -2295,6 +2330,7 @@ function montarDREConsolidado(filtros){
 
   (typeof _processos !== 'undefined' ? _processos : []).forEach(p => {
     if(!p || p.cancelado) return;
+    if(ehAcompanhamento(p)) return; // só acompanhamos: não é resultado da IMPAK
     if(statusF === 'FECHADO' && !p.fechado) return;
     if(statusF === 'FINALIZADO' && p.fase !== 'FINALIZADO') return;
     if(fornecedorFN && norm(p.fornecedor) !== fornecedorFN) return;
@@ -3274,8 +3310,8 @@ function verificarAlertas(proc, criarNotif){
   const alertas = [];
   const hoje = new Date(); hoje.setHours(0,0,0,0);
 
-  // Demurrage
-  const diasDemur = demurrageDias(proc);
+  // Demurrage (não vale pra Acompanhamento: a IMPAK não cuida de demurrage/devolução)
+  const diasDemur = ehAcompanhamento(proc) ? null : demurrageDias(proc);
   if(diasDemur !== null && diasDemur <= 5 && diasDemur >= 0 && !proc.data_devolucao_vazio){
     alertas.push({tipo:'urgente', titulo:`Demurrage: ${proc.referencia}`, mensagem:`Vence em ${diasDemur} dia(s)! Container ainda não devolvido.`});
   }
@@ -3320,7 +3356,7 @@ function verificarAlertas(proc, criarNotif){
   }
 
   // Alerta PI vencimento (prazo pagamento nos próximos 5 dias)
-  if(proc.pi_data_saldo && !proc.pi_pago){
+  if(proc.pi_data_saldo && !proc.pi_pago && !ehAcompanhamento(proc)){
     const venc = parseDataLocal(proc.pi_data_saldo);
     const diff = Math.ceil((venc - hoje)/86400000);
     if(diff <= 5 && diff >= 0){
@@ -4175,7 +4211,7 @@ function linhaProcessoHtml(p){
   const chegadaDate = p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : '';
   const dataDisplay = chegadaDate || etaDate;
   const finBadge = p.pi_pagamento ? `<span class="fin-badge fin-${p.pi_pagamento}">${p.pi_pagamento==='ENTRADA_SALDO'?'ENT+SLD':p.pi_pagamento}</span>` : '—';
-  const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem'}[p.finalidade] || '';
+  const finalidadeLabel = {IMPORTACAO_DIRETA:'Direto', ENCOMENDA:'Encomenda', CONTA_E_ORDEM:'Conta e Ordem', ACOMPANHAMENTO:'Acompanhamento'}[p.finalidade] || '';
   const finalidadeBadge = finalidadeLabel ? `<span style="font-size:9px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted);">${finalidadeLabel}</span>` : '';
   const pendenciaBadge = p.pendencia_revisao ? `<span title="${esc(p.pendencia_revisao).replace(/"/g,'&quot;')}" style="font-size:10px;font-weight:700;background:rgba(243,156,18,.15);border:1px solid rgba(243,156,18,.4);border-radius:4px;padding:1px 6px;margin-left:4px;color:#f39c12;">⚠ Revisar</span>` : '';
   // referencia/fornecedor são texto livre (fornecedor às vezes vem de

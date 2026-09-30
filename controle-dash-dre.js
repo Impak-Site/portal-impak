@@ -73,7 +73,7 @@ function renderDashDRE(){
   // Opções dos selects sempre com base em TODOS os processos não
   // cancelados (não só nos já filtrados) — senão a lista ia encolhendo
   // conforme o usuário filtrava, igual ao Dashboard Financeiro.
-  const processosBase = (_processos||[]).filter(p=>p && !p.cancelado);
+  const processosBase = (_processos||[]).filter(p=>p && !p.cancelado && !(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)));
   const uniq = arr => [...new Set(arr.filter(v=>v && v.trim()))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const opClientes = uniq(processosBase.flatMap(p => typeof clientesDoProcesso==='function' ? clientesDoProcesso(p) : [p.cliente]));
   const opFornecedores = uniq(processosBase.map(p=>p.fornecedor));

@@ -157,7 +157,7 @@ function renderDashTV(){
   });
 
   // ── 2: EM ÁGUAS — fase Embarcado, ordenado por ETA ────────────
-  const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'D', ENCOMENDA:'E', CONTA_E_ORDEM:'C'};
+  const FINALIDADE_LABEL_TV = {IMPORTACAO_DIRETA:'D', ENCOMENDA:'E', CONTA_E_ORDEM:'C', ACOMPANHAMENTO:'A'};
   const emAguasLista = [];
   // Tally por marca também aqui — usado no totalizador MARCA/TOTAL/BACKORDERS/
   // EM ÁGUAS do painel Backorders (pedido do Ayslan 08/09/2026, baseado na

@@ -2100,6 +2100,30 @@ teste('listarPendenciasDI: ordena pelo vencimento da DI mais próximo primeiro, 
   iguais(out.map(l=>l.referencia).join(','), 'C,A,B', 'C (venc. mais próximo) primeiro, A depois, B (sem venc. de DI) por último');
 });
 
+teste('Acompanhamento (CCN): fora de pagamentos/câmbio/Pendências DI, sem demurrage e com fase própria (Emanuelly 29/09/2026)', () => {
+  const futuro = new Date(); futuro.setDate(futuro.getDate()+3);
+  const iso = d => d.toISOString().slice(0,10);
+  const base = { id:'A1', referencia:'ACOMP-1', cliente:'RECAPADORA DE PNEUS CCN LTDA', pi_valor_usd:40000, pi_pagamento:'PARCELADO',
+    pi_parcelas_json: JSON.stringify([{label:'Final', valor_usd:40000, data_vencimento:'2026-09-10', cambio_fechado:5.2}]),
+    demurrage_vencimento: iso(futuro) };
+  const normal = {...base, id:'N1', referencia:'NORMAL-1', finalidade:'ENCOMENDA'};
+  const acomp  = {...base, finalidade:'ACOMPANHAMENTO'};
+  iguais(vm.runInContext(`ehAcompanhamento(${JSON.stringify(acomp)})`, sandbox), true, 'detecta acompanhamento');
+  iguais(vm.runInContext(`clienteSugereAcompanhamento('RECAPADORA DE PNEUS CCN LTDA')`, sandbox), true, 'CCN sugere');
+  iguais(vm.runInContext(`clienteSugereAcompanhamento('UNICAP')`, sandbox), false, 'outro cliente não sugere');
+  iguais(vm.runInContext(`listarPagamentosPI([${JSON.stringify(acomp)}]).length`, sandbox), 0, 'sem pagamentos/câmbio');
+  verdadeiro(vm.runInContext(`listarPagamentosPI([${JSON.stringify(normal)}]).length`, sandbox) > 0, 'processo normal continua com pagamentos');
+  iguais(vm.runInContext(`listarPendenciasDI([${JSON.stringify(acomp)}], '2026-09-01', '2026-09-30').length`, sandbox), 0, 'fora da Pendências de DI');
+  const alertasA = JSON.parse(vm.runInContext(`JSON.stringify(verificarAlertas(${JSON.stringify(acomp)}, false).map(a=>a.titulo))`, sandbox));
+  verdadeiro(!alertasA.some(t=>/Demurrage/.test(t)), 'sem alerta de demurrage');
+  const alertasN = JSON.parse(vm.runInContext(`JSON.stringify(verificarAlertas(${JSON.stringify(normal)}, false).map(a=>a.titulo))`, sandbox));
+  verdadeiro(alertasN.some(t=>/Demurrage/.test(t)), 'processo normal mantém alerta de demurrage');
+  const faseA = vm.runInContext(`calcularFase(${JSON.stringify({...acomp, data_chegada:'2026-09-01', data_liberacao:'2026-09-05'})})`, sandbox);
+  iguais(faseA, 'FINALIZADO', 'acompanhamento finaliza com chegada + liberação (sem NF/DUIMP/devolução)');
+  const faseN = vm.runInContext(`calcularFase(${JSON.stringify({...normal, data_chegada:'2026-09-01', data_liberacao:'2026-09-05'})})`, sandbox);
+  iguais(faseN, 'FATURAMENTO', 'processo normal segue o fluxo completo');
+});
+
 teste('listarPendenciasDI: traz BACEN/SWIFT, moeda, taxa, vencimento 180d e agrupa por contrato (pedido 29/09/2026)', () => {
   const processos = [
     { id:'P1', referencia:'HK1', cliente:'CLI A', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([

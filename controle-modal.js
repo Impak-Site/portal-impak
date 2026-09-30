@@ -249,7 +249,9 @@ function renderModal(){
               <option value="IMPORTACAO_DIRETA" ${p.finalidade==='IMPORTACAO_DIRETA'?'selected':''}>Importação Própria (Direto)</option>
               <option value="ENCOMENDA" ${p.finalidade==='ENCOMENDA'?'selected':''}>Encomenda</option>
               <option value="CONTA_E_ORDEM" ${p.finalidade==='CONTA_E_ORDEM'?'selected':''}>Conta e Ordem</option>
-            </select></div>
+              <option value="ACOMPANHAMENTO" ${p.finalidade==='ACOMPANHAMENTO'?'selected':''}>Acompanhamento (só acompanhamos)</option>
+            </select>
+            ${p.finalidade==='ACOMPANHAMENTO' ? '<div style="font-size:11px;color:#0369a1;margin-top:4px;line-height:1.35;">👁 Só acompanhamos: sem câmbio, NF ou DUIMP. Fica fora do Financeiro, Câmbio, Cliente/Medida, Reciclagem e DRE; sem alerta de demurrage.</div>' : ''}</div>
           <div class="form-group" style="position:relative"><label class="form-label">Fornecedor (Exportador)</label>
             <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON" autocomplete="off"
               oninput="autocompletarContato(this,'FORNECEDOR,EXPORTADOR','fornecedor-dropdown')">
@@ -268,7 +270,7 @@ function renderModal(){
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
             <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
-              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown')" placeholder="Digite razão social, CNPJ ou cidade...">
+              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown',function(){sugerirAcompanhamentoPorCliente();})" onchange="sugerirAcompanhamentoPorCliente()" placeholder="Digite razão social, CNPJ ou cidade...">
             <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Consignatário</label>

@@ -451,6 +451,7 @@ function renderDashResultado(){
   // resultado com venda que ainda não aconteceu). Não passa pelos filtros
   // avançados (não teria "margem real" nem "faturamento" pra filtrar).
   const emAndamento = _processos.filter(p=>{
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return false;
     if(f.cliente && p.cliente !== f.cliente) return false;
     if(p.nf_saida_data){ const d = parseDataLocal(p.nf_saida_data); if(d>=ini && d<=fim) return false; }
     return !!p.estimativa_json && !p.nf_saida_valor;

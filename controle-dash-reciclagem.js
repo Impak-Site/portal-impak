@@ -68,6 +68,7 @@ function listarReciclagem(ano, tri){
   const linhas = [], aConferir = [];
   (_processos||[]).forEach(p=>{
     if(!p || p.cancelado) return;
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // reciclagem é de quem importa (Emanuelly 29/09)
     const t = _recTrimestreDe(p.data_registro_di);
     if(!t || t.ano !== ano || t.tri !== tri) return;
     const st = _recStatusNcm(p);

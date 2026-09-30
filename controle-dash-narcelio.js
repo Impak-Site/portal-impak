@@ -156,7 +156,7 @@ function renderDashNarcelio(){
     const chave = String(dataStr).slice(0,7);
     meses[chave] = (meses[chave]||0) + valor;
   }
-  const processosAbertos = _processos.filter(p => !p.fechado);
+  const processosAbertos = _processos.filter(p => !p.fechado && !(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)));
   const contribPorProcesso = {}; // processoId -> valor
   function addContrib(id, valor){ if(!id) return; contribPorProcesso[id] = (contribPorProcesso[id]||0) + valor; }
   let totalUsdFob = 0, totalFobBRL = 0, totalCustosBRL = 0;

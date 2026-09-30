@@ -2650,14 +2650,14 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     // "Carregamento pendente" mesmo com Data de Carregamento preenchida.
     const { data: salvo } = await sb()
       .from('controle_processos')
-      .select('referencia, demurrage_vencimento, data_devolucao_vazio, data_presenca, data_carregamento, data_agendamento, transportadora, cancelado')
+      .select('referencia, demurrage_vencimento, data_devolucao_vazio, data_presenca, data_carregamento, data_agendamento, transportadora, cancelado, finalidade')
       .eq('id', processo.id)
       .maybeSingle();
     const pAlerta = salvo || processo;
     const pularAlertas = !!(salvo && salvo.cancelado);
 
     // Criar notificação de demurrage se necessário (1 por processo por dia)
-    if (!pularAlertas && pAlerta.demurrage_vencimento) {
+    if (!pularAlertas && pAlerta.demurrage_vencimento && pAlerta.finalidade !== 'ACOMPANHAMENTO') {
       const venc = new Date(pAlerta.demurrage_vencimento);
       const dias = Math.ceil((venc - new Date()) / 86400000);
       if (dias <= 5 && dias >= 0 && !pAlerta.data_devolucao_vazio) {
@@ -3921,7 +3921,7 @@ app.post('/api/chat', auth(...MODULOS_TRABALHO), rateLimitChat, async (req, res)
 
     // Calcular demurrage para cada processo ativo
     function demDias(p) {
-      if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
+      if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO') return null; // Acompanhamento: IMPAK não cuida de demurrage
       const d = new Date(p.demurrage_vencimento);
       return Math.ceil((d - hoje) / 86400000);
     }
@@ -4500,7 +4500,7 @@ catch (e) { console.error('Erro ao buscar processos p/ alertas diarios:', e.mess
 const hoje = new Date();
 const semana = new Date(hoje); semana.setDate(hoje.getDate() + 7);
 function demDias(p){
-if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
+if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO') return null; // Acompanhamento: IMPAK não cuida de demurrage
 const d = new Date(p.demurrage_vencimento);
 return Math.ceil((d - hoje) / 86400000);
 }
@@ -4607,7 +4607,7 @@ async function verificarAlertaDemurrage(){
   catch (e) { console.error('Erro ao buscar processos p/ alerta demurrage:', e.message); return 0; }
   const hoje = new Date();
   function demDias(p){
-    if (!p.demurrage_vencimento || p.data_devolucao_vazio) return null;
+    if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO') return null; // Acompanhamento: IMPAK não cuida de demurrage
     return Math.ceil((new Date(p.demurrage_vencimento) - hoje) / 86400000);
   }
   const pendentes = ativos.map(p => ({ p, d: demDias(p) })).filter(x => x.d !== null).sort((a,b) => a.d - b.d);
@@ -4737,7 +4737,7 @@ async function verificarAlertaAjusteDocumentos(){
 function _parcelasAbertasSemana(p, inicioStr, fimStr){
   const linhas = [];
   const valorTotal = parseFloat(p.pi_valor_usd) || 0;
-  if (!valorTotal) return linhas;
+  if (!valorTotal || p.finalidade === 'ACOMPANHAMENTO') return linhas; // só acompanhamos: sem câmbio da IMPAK
   if (p.pi_pagamento === 'PARCELADO') {
     let parcelas = [];
     try { parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; } catch(e) { parcelas = []; }
