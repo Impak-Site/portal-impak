@@ -77,7 +77,7 @@ function _avbData(s){ if(!s) return null; const [a,m,d] = String(s).slice(0,10).
 const _avbCache = {};
 async function carregarAverbacao(anoMes, forcar){
   if (_avbCache[anoMes] && !forcar) return _avbCache[anoMes];
-  const candidatos = (_processos || []).filter(p => p && !p.cancelado && String(p.data_registro_di || '').slice(0,7) === anoMes);
+  const candidatos = (_processos || []).filter(p => p && !p.cancelado && !(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) && String(p.data_registro_di || '').slice(0,7) === anoMes); // Acompanhamento (CCN) não entra na averbação (Emanuelly 30/09/2026)
   const procs = [];
   await Promise.all(candidatos.map(async c => {
     try { const r = await fetch('/api/controle/v2/processo/' + c.id); const j = await r.json(); procs.push(j.processo || j); }

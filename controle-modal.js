@@ -251,7 +251,7 @@ function renderModal(){
               <option value="CONTA_E_ORDEM" ${p.finalidade==='CONTA_E_ORDEM'?'selected':''}>Conta e Ordem</option>
               <option value="ACOMPANHAMENTO" ${p.finalidade==='ACOMPANHAMENTO'?'selected':''}>Acompanhamento (só acompanhamos)</option>
             </select>
-            ${p.finalidade==='ACOMPANHAMENTO' ? '<div style="font-size:11px;color:#0369a1;margin-top:4px;line-height:1.35;">👁 Só acompanhamos: sem câmbio, NF ou DUIMP. Fica fora do Financeiro, Câmbio, Cliente/Medida, Reciclagem e DRE; sem alerta de demurrage.</div>' : ''}</div>
+            ${p.finalidade==='ACOMPANHAMENTO' ? '<div style="font-size:11px;color:#0369a1;margin-top:4px;line-height:1.35;">👁 Só acompanhamos: sem câmbio, NF ou DUIMP. Fica fora do Financeiro, Câmbio, Cliente/Medida, Reciclagem, DRE, Averbação e dos totais da TV (só aparece na lista Em Águas); sem alerta de demurrage.</div>' : ''}</div>
           <div class="form-group" style="position:relative"><label class="form-label">Fornecedor (Exportador)</label>
             <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON" autocomplete="off"
               oninput="autocompletarContato(this,'FORNECEDOR,EXPORTADOR','fornecedor-dropdown')">

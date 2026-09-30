@@ -121,6 +121,7 @@ function renderDashTV(){
   let backordersProcessosTotal = 0;
   _processos.forEach(p => {
     if(p.cancelado) return; // processo cancelado não conta como backorder
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
     const fase = calcularFase(p);
     if(fase !== 'PI' && fase !== 'AGUARDANDO_EMBARQUE') return;
     // Prioridade pra saber a quantidade de containers: containers já
@@ -168,12 +169,16 @@ function renderDashTV(){
     if(p.cancelado) return; // processo cancelado não conta como em águas
     if(calcularFase(p) !== 'EMBARCADO') return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
-    emAguasLista.push({ referencia: p.referencia, cliente: abreviarClienteTV(p.cliente), eta: p.eta, n, finalidade: FINALIDADE_LABEL_TV[p.finalidade] || '—' });
+    // Acompanhamento (CCN): aparece na lista pra acompanhar, mas NÃO soma
+    // nas quantidades (Emanuelly 30/09/2026).
+    const acomp = typeof ehAcompanhamento==='function' && ehAcompanhamento(p);
+    emAguasLista.push({ referencia: p.referencia, cliente: abreviarClienteTV(p.cliente), eta: p.eta, n, acomp, finalidade: FINALIDADE_LABEL_TV[p.finalidade] || '—' });
+    if(acomp) return;
     const chaveMarca = (p.brand || p.fornecedor || 'Sem marca').trim().toUpperCase();
     emAguasPorMarca[chaveMarca] = (emAguasPorMarca[chaveMarca] || 0) + n;
   });
   emAguasLista.sort((a,b) => (a.eta||'9999').localeCompare(b.eta||'9999'));
-  const emAguasTotal = emAguasLista.reduce((s,x)=> s+x.n, 0);
+  const emAguasTotal = emAguasLista.reduce((s,x)=> s+(x.acomp?0:x.n), 0);
 
   // ── 3: NO CHÃO — NF Entrada lançada + sem venda real ──────────
   // Mesmo critério de "estoque parado" do Dashboard Narcélio: NF Saída
@@ -186,6 +191,7 @@ function renderDashTV(){
   const chaoSemNf   = { porProduto:{}, un:0, proc:0 };
   _processos.forEach(p => {
     if(p.cancelado) return; // processo cancelado não conta como estoque parado
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
     if(!p.nf_entrada_numero) return;
     // Baixa de estoque pelas NFs de Saída de TODAS as vendas (vendas_json),
     // não só a NF única antiga — ver estoqueDoProcesso() (controle-core.js).
@@ -237,6 +243,7 @@ function renderDashTV(){
   let previstoMesContainers = 0;
   _processos.forEach(p => {
     if(p.cancelado) return;
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
     if(!_noMesChao(p.eta)) return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || (parseInt(p.qtd_containers_prevista, 10) || 0) || 1;
     const chaveMarca = (p.brand || p.fornecedor || 'Sem marca').trim().toUpperCase();
@@ -270,6 +277,7 @@ function renderDashTV(){
   let noMesContainers = 0;
   _processos.forEach(p => {
     if(p.cancelado) return;
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
     if(!_noMesChao(p.data_registro_di)) return;
     const n = containersDoProcesso(p).length || (p.container ? 1 : 0) || 1;
     const chaveMarca = (p.brand || p.fornecedor || 'Sem marca').trim().toUpperCase();
@@ -285,6 +293,8 @@ function renderDashTV(){
     const contagem = {};
     _processos.forEach(p => {
       if(p.cancelado) return;
+      if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
       const dt = parseDataLocal(p.data_registro_di);
       if(!dt) return;
       const chave = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
@@ -301,6 +311,8 @@ function renderDashTV(){
     const contagem = {};
     _processos.forEach(p => {
       if(p.cancelado) return;
+      if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
+    if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
       if(!_noMesChao(p.eta)) return;
       const dt = parseDataLocal(p.eta);
       if(!dt) return;
@@ -555,7 +567,7 @@ function renderDashTV(){
         <td style="${CEL_TV}font-weight:600;" title="${esc(x.referencia)}">${esc(x.referencia)}</td>
         <td style="${CEL_TV}color:var(--muted);" title="${esc(x.cliente||'')}">${esc(x.cliente||'')}</td>
         <td style="${CEL_TV}text-align:center;">${esc(x.finalidade)}</td>
-        <td style="${CEL_TV}text-align:right;font-weight:700;">${x.n}</td>
+        <td style="${CEL_TV}text-align:right;font-weight:700;${x.acomp?'color:#94a3b8;':''}" title="${x.acomp?'Só acompanhamento — não entra nas quantidades':''}">${x.acomp?'('+x.n+')':x.n}</td>
       </tr>`;
   }
   // Larguras fixas por coluna (soma 100%) — com table-layout:fixed elas
@@ -580,7 +592,7 @@ function renderDashTV(){
         <div style="width:32%;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.referencia)}">${esc(x.referencia)}</div>
         <div style="width:34%;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.cliente||'')}">${esc(x.cliente||'')}</div>
         <div style="width:10%;text-align:center;overflow:hidden;">${esc(x.finalidade)}</div>
-        <div style="width:10%;text-align:right;font-weight:700;overflow:hidden;">${x.n}</div>
+        <div style="width:10%;text-align:right;font-weight:700;overflow:hidden;${x.acomp?'color:#94a3b8;':''}">${x.acomp?'('+x.n+')':x.n}</div>
       </div>`;
   }
   const cabecalhoColFlex = `<div style="display:flex;color:var(--muted);font-size:.72em;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);padding-bottom:4px;flex:0 0 auto;">

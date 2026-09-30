@@ -1369,8 +1369,9 @@ function impakPagaCambio(p){ return (p && p.finalidade) === 'IMPORTACAO_DIRETA';
 // documentos, agente de carga e LI, mas NÃO de demurrage / devolução do
 // vazio. Guardado como finalidade = 'ACOMPANHAMENTO' (sem migration). Esses
 // processos ficam fora de: pagamentos/câmbio/Pendências de DI, alertas de
-// pagamento e demurrage, Por Cliente/Medida, Reciclagem, DRE, Narcélio e
-// "em andamento" do Resultado. O histórico fica guardado normalmente.
+// pagamento e demurrage, Por Cliente/Medida, Reciclagem, DRE, Narcélio,
+// "em andamento" do Resultado, Averbação de seguro e dos totais da TV (na TV
+// só aparecem na lista Em Águas, sem somar — Emanuelly 30/09/2026). O histórico fica guardado normalmente.
 function ehAcompanhamento(p){ return !!p && p.finalidade === 'ACOMPANHAMENTO'; }
 // Sugestão automática: cliente é a CCN (única empresa nesse modelo hoje).
 function clienteSugereAcompanhamento(nome){ return /\bCCN\b/i.test(String(nome||'')); }
