@@ -2,6 +2,49 @@
 // IMPAK CHAT — Janela flutuante de IA (injetado em todos os módulos)
 // ════════════════════════════════════════════════════════════════
 (function() {
+
+// ── TAMANHO DA TELA (pedido Jean, 30/09/2026: monitor ultrawide 34" Pichau
+// NEXUS WIDE — tudo ficava pequeno). Em telas grandes o sistema aumenta a
+// escala sozinho (CSS zoom no <html>); cada pessoa pode fixar outro tamanho
+// no botão "Aa" da barra do topo (fica salvo neste navegador). A TV tem
+// escala própria e fica de fora. Como o zoom também multiplica vh/vw, as
+// alturas "100vh" do sistema usam var(--vhz)/var(--vwz), que compensam.
+const IMPAK_ZOOM_OPCOES = ['auto', 1, 1.1, 1.25, 1.4, 1.5];
+function impakZoomAuto(){
+  const z = Math.min(window.innerWidth / 1920, window.innerHeight / 1000);
+  if(z < 1.12) return 1;
+  return Math.min(1.5, Math.round(z * 20) / 20);
+}
+function impakZoomPreferido(){
+  try { const v = localStorage.getItem('impak_zoom'); if(v && v !== 'auto') return parseFloat(v) || 'auto'; } catch(e){}
+  return 'auto';
+}
+function aplicarZoomImpak(){
+  if(/^\/tv/.test(location.pathname)) { window.impakZoom = 1; return; }
+  const pref = impakZoomPreferido();
+  const z = pref === 'auto' ? impakZoomAuto() : pref;
+  const root = document.documentElement;
+  root.style.zoom = z === 1 ? '' : String(z);
+  root.style.setProperty('--vhz', (window.innerHeight / 100 / z) + 'px');
+  root.style.setProperty('--vwz', (window.innerWidth / 100 / z) + 'px');
+  window.impakZoom = z;
+  const b = document.getElementById('nav-zoom-btn');
+  if(b) b.textContent = 'Aa ' + Math.round(z * 100) + '%' + (pref === 'auto' ? '' : ' •');
+}
+window.impakZoom = 1;
+window.aplicarZoomImpak = aplicarZoomImpak;
+window.trocarZoomImpak = function(){
+  const pref = impakZoomPreferido();
+  const idx = IMPAK_ZOOM_OPCOES.indexOf(pref);
+  const prox = IMPAK_ZOOM_OPCOES[(idx + 1) % IMPAK_ZOOM_OPCOES.length];
+  try { localStorage.setItem('impak_zoom', String(prox)); } catch(e){}
+  aplicarZoomImpak();
+  const z = window.impakZoom;
+  if(typeof showToast === 'function') showToast('Tamanho da tela: ' + (prox === 'auto' ? 'automático (' + Math.round(z*100) + '%)' : Math.round(z*100) + '%'), 'ok');
+};
+aplicarZoomImpak();
+window.addEventListener('resize', aplicarZoomImpak);
+
 // Evitar duplicata
 if (document.getElementById('impak-chat-root')) return;
 
@@ -110,6 +153,8 @@ font-size: 12.5px; font-weight: 600; white-space: nowrap;
 .impak-nav-sector-panel a:hover { color: #fff; background: rgba(255,255,255,.1); }
 .impak-nav-sector-panel a.active { color: #fff; background: rgba(255,255,255,.15); }
 #impak-nav .nav-right { flex-shrink: 0; margin-left: 10px; display: flex; align-items: center; gap: 10px; }
+#impak-nav .nav-zoom { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.8); border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; white-space: nowrap; margin-right: 6px; }
+#impak-nav .nav-zoom:hover { background: rgba(255,255,255,.16); }
 #impak-nav .nav-user { font-size: 11.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
 #impak-nav .nav-sair {
 color: rgba(255,255,255,.65); text-decoration: none;
@@ -355,6 +400,7 @@ navEl.innerHTML = `
 <div class="nav-logo"><img src="/assets/impak-icon-32.png" alt=""> ImpakOS</div>
 <div class="nav-links-wrap" id="nav-links-wrap"></div>
 <div class="nav-right">
+<button type="button" class="nav-zoom" id="nav-zoom-btn" onclick="trocarZoomImpak()" title="Tamanho da tela: clique para trocar (Automático → 100% → 110% → 125% → 140% → 150%). Fica salvo neste computador.">Aa</button>
 <span class="nav-user" id="nav-user-label">—</span>
 <a class="nav-sair" href="/logout">Sair</a>
 </div>
@@ -417,8 +463,9 @@ navSetores.forEach(setor => {
     fecharPaineis();
     if(!jaAberto){
       const r = btn.getBoundingClientRect();
-      panel.style.top = r.bottom + 'px';
-      panel.style.left = r.left + 'px';
+      const zf = window.impakZoom || 1; // rect vem em px visuais; style é multiplicado pelo zoom
+      panel.style.top = (r.bottom / zf) + 'px';
+      panel.style.left = (r.left / zf) + 'px';
       panel.classList.add('open');
     }
   });

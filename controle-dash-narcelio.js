@@ -317,7 +317,7 @@ function abrirListaNarcelio(key){
     modal = document.createElement('div');
     modal.id = 'narcelio-lista-modal';
     modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;align-items:center;justify-content:center;';
-    modal.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:720px;width:92%;max-height:82vh;overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.25);">' +
+    modal.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:720px;width:92%;max-height:calc(var(--vhz,1vh)*82);overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.25);">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
       '<h3 id="narcelio-lista-titulo" style="margin:0;font-size:16px;"></h3>' +
       '<button onclick="fecharListaNarcelio()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--muted);">&times;</button>' +

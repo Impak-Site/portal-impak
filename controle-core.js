@@ -4111,8 +4111,9 @@ function renderFiltroColunaDropdown(anchorEl){
 
   const rect = anchorEl.getBoundingClientRect();
   el.style.display = 'block';
-  el.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-  el.style.left = (rect.left + window.scrollX) + 'px';
+  const zf = window.impakZoom || 1; // tela com zoom (monitor grande): converte px visuais
+  el.style.top = ((rect.bottom + window.scrollY) / zf + 4) + 'px';
+  el.style.left = ((rect.left + window.scrollX) / zf) + 'px';
 }
 
 function filtroColunaBuscar(q){

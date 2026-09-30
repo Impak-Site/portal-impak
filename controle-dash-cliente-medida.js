@@ -1238,7 +1238,7 @@ async function abrirModalClientesPrincipais(){
     bg.className = 'modal-bg';
     document.body.appendChild(bg);
   }
-  bg.innerHTML = `<div class="modal" style="max-width:760px;width:95vw;">
+  bg.innerHTML = `<div class="modal" style="max-width:760px;width:calc(var(--vwz,1vw)*95);">
     <div class="modal-title">⚙ Clientes principais</div>
     <div style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.5;">
       <strong>Principal</strong>: aparece sozinho no Por Cliente/Medida e recebe o follow-up semanal.
@@ -1246,7 +1246,7 @@ async function abrirModalClientesPrincipais(){
       Regra automática: é principal quem está no campo <em>Cliente</em> de algum processo ou já comprou ${CLIENTE_PRINCIPAL_MIN_PNEUS}+ pneus. Marque/desmarque para mudar.
     </div>
     <input id="cp-busca" class="form-input" placeholder="Buscar cliente..." oninput="_cpRenderLista()" style="width:100%;margin-bottom:8px;">
-    <div id="cp-lista" style="max-height:55vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;"></div>
+    <div id="cp-lista" style="max-height:calc(var(--vhz,1vh)*55);overflow-y:auto;border:1px solid var(--border);border-radius:8px;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn btn-outline" type="button" onclick="document.getElementById('modal-clientes-principais-bg').classList.remove('open')">Cancelar</button>
       <button class="btn" type="button" id="cp-salvar" onclick="_cpSalvar()">Salvar</button>

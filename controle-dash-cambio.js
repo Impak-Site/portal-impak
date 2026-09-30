@@ -102,7 +102,7 @@ function exportarPendenciasDI(){
   m.id = 'pdiModal';
   m.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
   m.onclick = e => { if(e.target === m) m.remove(); };
-  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(560px,94vw);padding:22px 24px;box-shadow:0 20px 50px rgba(0,0,0,.25);">
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(560px,calc(var(--vwz,1vw)*94));padding:22px 24px;box-shadow:0 20px 50px rgba(0,0,0,.25);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <div style="font-size:17px;font-weight:800;color:var(--text);">📄 Pendências de DI</div>
       <button type="button" onclick="document.getElementById('pdiModal').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#94a3b8;">×</button>

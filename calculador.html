@@ -21,7 +21,7 @@
   --shadow-lg:0 16px 40px rgba(16,24,40,.14),0 4px 10px rgba(16,24,40,.06);
   --shadow:var(--shadow-sm);
 }
-body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:calc(var(--vhz,1vh)*100);-webkit-font-smoothing:antialiased;}
 .topbar{background:#0a2340;color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 1px 0 rgba(255,255,255,.06),var(--shadow-md);}
 .topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:.5px;}
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:14px;}
@@ -30,7 +30,7 @@ body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min
 .btn-topbar:hover{background:rgba(255,255,255,.2);}
 
 /* LAYOUT */
-.main{display:flex;gap:0;min-height:calc(100vh - 56px);}
+.main{display:flex;gap:0;min-height:calc(calc(var(--vhz,1vh)*100) - 56px);}
 .sidebar-calc{width:340px;background:var(--card);border-right:1px solid var(--border);padding:22px;overflow-y:auto;flex-shrink:0;}
 .content-calc{flex:1;padding:24px;overflow-y:auto;min-width:0;}
 
@@ -179,7 +179,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
 /* MODAL COTAÇÕES */
 .mbg{display:none;position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:200;align-items:center;justify-content:center;}
 .mbg.open{display:flex;}
-.modal-cot{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--ac);border-radius:var(--r-lg);width:680px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow-lg);}
+.modal-cot{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--ac);border-radius:var(--r-lg);width:680px;max-width:calc(var(--vwz,1vw)*95);max-height:calc(var(--vhz,1vh)*85);overflow-y:auto;box-shadow:var(--shadow-lg);}
 .modal-cot-h{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .modal-cot-h h3{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;}
 .modal-cot-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;border-radius:var(--r-sm);}
@@ -1147,9 +1147,10 @@ function posicionarClienteCalcDropdown(input, dd){
   // da sidebar), então a posição precisa ser calculada em pixels reais da tela
   // toda vez que o dropdown aparece.
   const rect = input.getBoundingClientRect();
-  dd.style.top = (rect.bottom) + 'px';
-  dd.style.left = rect.left + 'px';
-  dd.style.width = rect.width + 'px';
+  const zf = window.impakZoom || 1; // tela com zoom: rect em px visuais
+  dd.style.top = (rect.bottom / zf) + 'px';
+  dd.style.left = (rect.left / zf) + 'px';
+  dd.style.width = (rect.width / zf) + 'px';
 }
 // ICMS de Saída padrão por cliente (pedido Ayslan, 29/09/2026): Vachileski,
 // Ost, Lauxen e Pneuscar usam 2,6% nos orçamentos; os demais seguem 1,4%.

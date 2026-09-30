@@ -914,7 +914,7 @@ function renderDREModalHtml(dre){
 
   return `
   <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this) fecharDRE()">
-    <div style="background:var(--bg,#fff);border-radius:12px;max-width:760px;width:92%;max-height:88vh;overflow:auto;padding:20px;">
+    <div style="background:var(--bg,#fff);border-radius:12px;max-width:760px;width:92%;max-height:calc(var(--vhz,1vh)*88);overflow:auto;padding:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <h3 style="margin:0;">📊 DRE — Processo ${esc(dre.referencia)}</h3>
         <button class="btn btn-outline" onclick="fecharDRE()">✕</button>

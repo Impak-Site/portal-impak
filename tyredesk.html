@@ -35,7 +35,7 @@
   --cond:'Syne',sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100vh;font-size:14px}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:calc(var(--vhz,1vh)*100);font-size:14px}
 
 /* NAV */
 /* Renomeado de .nav pra .td-nav — nome próprio pra não ser pego pela regra
@@ -100,7 +100,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 /* MODAL */
 .mbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:200;align-items:center;justify-content:center}
 .mbg.open{display:flex}
-.modal{background:var(--sf);border:1px solid var(--b2);border-top:3px solid var(--or);border-radius:10px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.modal{background:var(--sf);border:1px solid var(--b2);border-top:3px solid var(--or);border-radius:10px;width:520px;max-width:calc(var(--vwz,1vw)*95);max-height:calc(var(--vhz,1vh)*90);overflow-y:auto}
 .mh{padding:16px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between}
 .mh h3{font-family:var(--cond);font-size:17px;font-weight:700;letter-spacing:.2px}
 .mc{background:transparent;border:none;color:var(--mu);font-size:20px;cursor:pointer;line-height:1}
@@ -231,7 +231,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 /* ── SELEÇÃO DE PATTERNS ──────────────────────────────── */
 .sel-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:300;align-items:center;justify-content:center}
 .sel-modal-bg.open{display:flex}
-.sel-modal{background:#ffffff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:12px;width:780px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column}
+.sel-modal{background:#ffffff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:12px;width:780px;max-width:calc(var(--vwz,1vw)*96);max-height:calc(var(--vhz,1vh)*90);display:flex;flex-direction:column}
 .sel-head{padding:14px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px;flex-shrink:0}
 .sel-head h3{font-family:var(--cond);font-size:16px;font-weight:700;letter-spacing:.2px}
 .sel-filters{padding:12px 20px;border-bottom:1px solid #c8d8e8;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;align-items:center}
@@ -348,7 +348,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100
 
 <!-- ══ MODAL SELEÇÃO LADO A LADO ════════════════════════════════════════ -->
 <div class="sel-modal-bg" id="sel-modal">
-  <div class="sel-modal" style="width:940px;max-width:98vw">
+  <div class="sel-modal" style="width:940px;max-width:calc(var(--vwz,1vw)*98)">
     <div class="sel-head">
       <div>
         <h3 id="sel-title">Selecionar pneus</h3>

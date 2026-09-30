@@ -1457,7 +1457,7 @@ function renderRelatorioNarcelioModalHtml(rel){
   const mesCap = rel.mesLabel.charAt(0).toUpperCase() + rel.mesLabel.slice(1);
   return `
   <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this) fecharRelatorioNarcelio()">
-    <div style="background:var(--bg,#fff);border-radius:12px;max-width:560px;width:92%;max-height:88vh;overflow:auto;padding:20px;">
+    <div style="background:var(--bg,#fff);border-radius:12px;max-width:560px;width:92%;max-height:calc(var(--vhz,1vh)*88);overflow:auto;padding:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <h3 style="margin:0;">📊 Relatório Narcélio</h3>
         <button class="btn btn-outline" onclick="fecharRelatorioNarcelio()">✕</button>

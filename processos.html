@@ -42,7 +42,7 @@ body{
   background:var(--bg);
   color:var(--text);
   font-family:'DM Sans',sans-serif;
-  min-height:100vh;
+  min-height:calc(var(--vhz,1vh)*100);
   overflow-x:hidden;
 }
 
@@ -53,7 +53,7 @@ body{
 body{box-shadow:inset 0 0 0 1px transparent;}
 
 /* Layout */
-.shell{min-height:100vh;}
+.shell{min-height:calc(var(--vhz,1vh)*100);}
 
 /* Sidebar */
 .sidebar{
@@ -154,7 +154,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 .api-dot.err{background:var(--danger);}
 
 /* Main */
-.main,main.main{margin-left:220px;min-height:100vh;}
+.main,main.main{margin-left:220px;min-height:calc(var(--vhz,1vh)*100);}
 .page{display:none;padding:28px 32px 60px;}
 .page.active{display:block;}
 
@@ -438,7 +438,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 .modal{
   background:var(--surface);border:1px solid var(--border2);
   border-radius:12px;padding:32px;width:90%;max-width:520px;
-  max-height:90vh;overflow-y:auto;
+  max-height:calc(var(--vhz,1vh)*90);overflow-y:auto;
 }
 .modal-title{
   font-family:'Syne',sans-serif;font-size:20px;font-weight:700;
@@ -542,7 +542,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <!-- LOGIN SCREEN -->
 <div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:flex;align-items:center;justify-content:center;z-index:9999;">
-  <div style="width:400px;max-width:94vw;">
+  <div style="width:400px;max-width:calc(var(--vwz,1vw)*94);">
     <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;">
       <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
       <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;">Portal</div>
@@ -622,7 +622,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </aside>
 
 <!-- Main -->
-<main class="main" style="margin-left:220px;min-height:100vh;">
+<main class="main" style="margin-left:220px;min-height:calc(var(--vhz,1vh)*100);">
 
 <!-- DASHBOARD -->
 <div class="page" id="page-dashboard">
@@ -699,7 +699,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <!-- GESTÃO MODAL - approval -->
 <div class="modal-bg" id="gestaoModalBg" onclick="closeGestaoModal(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
-  <div class="modal" style="max-width:720px;width:95%;max-height:85vh;overflow-y:auto;">
+  <div class="modal" style="max-width:720px;width:95%;max-height:calc(var(--vhz,1vh)*85);overflow-y:auto;">
     <div class="modal-title" id="gestaoModalTitle">Processo</div>
     <div class="modal-sub" id="gestaoModalSub"></div>
     <div id="gestaoModalBody"></div>
@@ -2911,7 +2911,7 @@ function aceitarAlertaHistorico(procId, ownerUser, alertKey){
   var overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
   var box = document.createElement('div');
-  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:calc(var(--vwz,1vw)*95);box-shadow:0 8px 32px rgba(0,0,0,.4);';
   var title = document.createElement('div');
   title.style.cssText = 'font-size:14px;font-weight:700;color:#e6edf4;margin-bottom:6px;';
   title.textContent = 'Aceitar Alerta';
@@ -2990,7 +2990,7 @@ function aceitarDivHistorico(procId, ownerUser, divKey){
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
   
   var box = document.createElement('div');
-  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+  box.style.cssText = 'background:#1e2a3a;border:1px solid #2a3d55;border-radius:12px;padding:28px 32px;width:480px;max-width:calc(var(--vwz,1vw)*95);box-shadow:0 8px 32px rgba(0,0,0,.4);';
   
   var title = document.createElement('div');
   title.style.cssText = 'font-size:14px;font-weight:700;color:#e6edf4;margin-bottom:6px;';
@@ -3590,7 +3590,7 @@ function exportPDF(){
   
 <!-- MODAL FULLSCREEN DETALHE PROCESSO -->
 <div id="modalDetalhe" style="display:none;position:fixed;inset:0;z-index:9998;background:#e8f0f8;overflow-y:auto;">
-  <div style="min-height:100vh;padding:0;">
+  <div style="min-height:calc(var(--vhz,1vh)*100);padding:0;">
     <!-- Header fixo do modal -->
     <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
       <div>

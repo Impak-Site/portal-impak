@@ -22,12 +22,12 @@
 --shadow-md:0 4px 12px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
 }
 *{box-sizing:border-box;}
-body{margin:0;background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;}
+body{margin:0;background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:calc(var(--vhz,1vh)*100);-webkit-font-smoothing:antialiased;}
 .wrap{max-width:1500px;margin:0 auto;padding:28px 24px 60px;}
 h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin:0 0 4px;}
 .sub{color:var(--muted);font-size:13px;margin:0 0 24px;line-height:1.5;}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden;}
-#tabelaWrap{overflow:auto;max-height:calc(100vh - 190px);} /* rola dentro do card: nenhuma coluna fica escondida (Ayslan 29/09) */
+#tabelaWrap{overflow:auto;max-height:calc(calc(var(--vhz,1vh)*100) - 190px);} /* rola dentro do card: nenhuma coluna fica escondida (Ayslan 29/09) */
 table{width:100%;border-collapse:collapse;font-size:13px;}
 thead th{background:#eef4fb;color:var(--ac2);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.3px;padding:10px 6px;text-align:center;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2;white-space:normal;line-height:1.2;}
 thead th:first-child{text-align:left;padding-left:16px;min-width:190px;left:0;z-index:3;}
