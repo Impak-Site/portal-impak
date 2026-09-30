@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ImpakOS - Backup</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/impak-icon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--border:#e4e9f1;--ac:#1a7fd4;--ac2:#1567b8;--text:#101a2b;--muted:#5c7089;--dim:#98a7ba;
+--ok:#16a34a;--warn:#d97706;--err:#dc2626;--ok-bg:#eafaf1;--warn-bg:#fdf6e9;--err-bg:#fdedee;}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);-webkit-font-smoothing:antialiased;}
+.wrap{max-width:820px;margin:0 auto;padding:28px 24px 60px;}
+h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin:0 0 4px;}
+.sub{color:var(--muted);font-size:13px;margin:0 0 22px;line-height:1.5;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:14px;box-shadow:0 1px 2px rgba(16,24,40,.06);}
+.card h2{font-size:14px;margin:0 0 10px;}
+.linha{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:5px 0;border-bottom:1px dashed var(--border);}
+.linha:last-child{border-bottom:none;}
+.linha span:first-child{color:var(--muted);}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;}
+.tag.ok{background:var(--ok-bg);color:var(--ok);} .tag.warn{background:var(--warn-bg);color:var(--warn);} .tag.err{background:var(--err-bg);color:var(--err);}
+button{font-family:inherit;font-size:13px;font-weight:600;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;background:var(--ac);color:#fff;}
+button:hover{background:var(--ac2);} button.sec{background:#eef4fb;color:var(--ac2);}
+button:disabled{opacity:.5;cursor:default;}
+.acoes{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
+.aviso{font-size:12px;color:var(--muted);line-height:1.6;}
+.msg{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;}
+.msg.ok{background:var(--ok-bg);color:var(--ok);} .msg.err{background:var(--err-bg);color:var(--err);}
+code{background:#f1f4f9;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;}
+ul.erros{margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--err);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🗄️ Backup</h1>
+  <p class="sub">Cópias de segurança do ImpakOS. O Supabase já guarda o banco todo dia; aqui fica a cópia <b>fora do Supabase</b>, no Dropbox da empresa — incluindo os arquivos do GED (PDFs de CI, PL, BL, NF…). Arquivo excluído do sistema continua guardado no Dropbox.</p>
+  <div id="msg"></div>
+  <div class="card" id="cardDropbox"><div class="aviso">Carregando…</div></div>
+</div>
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function dt(iso){ if(!iso) return '—'; const d=new Date(iso); return d.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}); }
+function mb(b){ return (b/1048576).toLocaleString('pt-BR',{maximumFractionDigits:1})+' MB'; }
+
+(function(){
+  const q=new URLSearchParams(location.search), m=document.getElementById('msg');
+  if(q.get('ok')) m.innerHTML='<div class="msg ok">✓ Dropbox conectado. O primeiro backup começa em alguns minutos (ou clique em "Rodar agora").</div>';
+  if(q.get('erro')) m.innerHTML='<div class="msg err">'+esc(q.get('erro'))+'</div>';
+  if(q.get('ok')||q.get('erro')) history.replaceState(null,'','/backup');
+})();
+
+let _timer=null;
+async function carregar(){
+  const el=document.getElementById('cardDropbox');
+  try{
+    const r=await fetch('/api/admin/dropbox/status'); const d=await r.json();
+    if(!d.ok) throw new Error(d.erro||'erro');
+    let h='<h2>Dropbox</h2>';
+    if(!d.configurado){
+      h+='<div class="linha"><span>Situação</span><span class="tag warn">Falta configurar</span></div>'+
+         '<p class="aviso">Falta a variável <code>DROPBOX_APP_KEY</code> no Railway. No app do Dropbox (App Console → Settings → OAuth 2 → Redirect URIs) cadastre exatamente:<br><code>'+esc(d.redirect_uri)+'</code></p>';
+      el.innerHTML=h; return;
+    }
+    const u=d.ultimo;
+    const sit = d.rodando ? '<span class="tag warn">Rodando agora…</span>'
+      : !d.conectado ? '<span class="tag warn">Não conectado</span>'
+      : (u && !u.ok) ? '<span class="tag err">Último backup com erro</span>'
+      : u ? '<span class="tag ok">OK</span>' : '<span class="tag warn">Aguardando 1º backup</span>';
+    h+='<div class="linha"><span>Situação</span><span>'+sit+'</span></div>';
+    if(d.conectado) h+='<div class="linha"><span>Conectado em</span><span>'+dt(d.conectado_em)+(d.conectado_por?' por '+esc(d.conectado_por):'')+'</span></div>';
+    h+='<div class="linha"><span>Último backup sem erro</span><span>'+dt(d.ultimo_ok_em)+'</span></div>';
+    h+='<div class="linha"><span>Últimas tabelas (semanal)</span><span>'+dt(d.ultimas_tabelas_em)+'</span></div>';
+    if(u){
+      h+='<div class="linha"><span>Última execução</span><span>'+dt(u.inicio)+' → '+dt(u.fim)+'</span></div>';
+      h+='<div class="linha"><span>Arquivos GED enviados</span><span>'+u.ged.enviados+' novos ('+mb(u.ged.bytes||0)+')'+(u.ged.ja_existiam?' · '+u.ged.ja_existiam+' já estavam lá':'')+(u.ged.erros?' · <b style="color:var(--err)">'+u.ged.erros+' com erro</b>':'')+'</span></div>';
+      if(u.erros && u.erros.length) h+='<ul class="erros">'+u.erros.slice(0,10).map(e=>'<li>'+esc(e)+'</li>').join('')+'</ul>';
+    }
+    h+='<div class="acoes">'+
+       '<button onclick="location.href=\'/api/admin/dropbox/conectar\'" class="'+(d.conectado?'sec':'')+'">'+(d.conectado?'Reconectar Dropbox':'Conectar Dropbox')+'</button>'+
+       (d.conectado?'<button onclick="rodar()" '+(d.rodando?'disabled':'')+'>Rodar agora</button>':'')+'</div>';
+    h+='<p class="aviso" style="margin-top:12px">Roda sozinho todo dia de madrugada (a partir das 4h): envia os arquivos novos do GED. Uma vez por semana envia também uma cópia das tabelas (sem senhas). No Dropbox fica em <b>Aplicativos › (nome do app) › GED</b> e <b>› Tabelas</b>.</p>';
+    el.innerHTML=h;
+    clearTimeout(_timer); if(d.rodando) _timer=setTimeout(carregar,10000);
+  }catch(e){ el.innerHTML='<div class="aviso">Erro ao carregar: '+esc(e.message)+'</div>'; }
+}
+async function rodar(){
+  try{
+    const r=await fetch('/api/admin/dropbox/rodar',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    if(!d.ok) throw new Error(d.erro||'erro');
+    setTimeout(carregar,1500);
+  }catch(e){ alert('Não foi possível iniciar: '+e.message); }
+}
+carregar();
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>

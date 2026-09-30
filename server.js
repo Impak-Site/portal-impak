@@ -4905,6 +4905,94 @@ app.post('/api/admin/backup', auth(), requireGerente, (req, res) => {
     .catch(e => res.status(500).json({ ok: false, erro: e.message }));
 });
 
+// ── BACKUP NO DROPBOX (fora do Supabase, 30/09/2026) ────────────────
+// Ver services/dropbox-backup.js. Precisa só de DROPBOX_APP_KEY no Railway
+// (identificador público do app — não é senha). A conexão é feita por um
+// admin em /backup → "Conectar Dropbox" (OAuth PKCE; o token volta direto
+// pro servidor, ninguém copia/cola token). Roda todo dia ~04h BRT: GED
+// incremental; tabelas 1x por semana.
+const dropboxBackup = require('./services/dropbox-backup.js');
+const DROPBOX_APP_KEY = () => (process.env.DROPBOX_APP_KEY || '').trim();
+function _dropboxRedirectUri(req) {
+  if (process.env.DROPBOX_REDIRECT_URI) return process.env.DROPBOX_REDIRECT_URI.trim();
+  const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+  return `${proto}://${req.get('x-forwarded-host') || req.get('host')}/api/admin/dropbox/callback`;
+}
+function _rodarDropbox(incluirTabelas) {
+  return dropboxBackup.executar({
+    sb: sb(), fetchFn: fetch, appKey: DROPBOX_APP_KEY(),
+    tabelas: BACKUP_TABELAS, incluirTabelas,
+  });
+}
+
+app.get('/backup', (req, res) => {
+  if (!req.session.usuario) return res.redirect('/login?destino=/backup');
+  if (!ADMINS_PERMISSOES.includes(req.session.usuario)) return res.status(403).send('<h2>Acesso restrito.</h2>');
+  res.sendFile(path.join(__dirname, 'backup.html'));
+});
+
+app.get('/api/admin/dropbox/status', auth(), requireAdminPermissoes, async (req, res) => {
+  try {
+    const st = await dropboxBackup.status(sb());
+    res.json({ ok: true, configurado: !!DROPBOX_APP_KEY(), redirect_uri: _dropboxRedirectUri(req), ...st });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+app.get('/api/admin/dropbox/conectar', auth(), requireAdminPermissoes, (req, res) => {
+  if (!DROPBOX_APP_KEY()) return res.status(400).send('DROPBOX_APP_KEY não configurada no Railway.');
+  const { verifier, challenge } = dropboxBackup.gerarPkce();
+  const state = require('crypto').randomBytes(16).toString('hex');
+  req.session.dropboxOauth = { verifier, state, em: Date.now() };
+  req.session.save(() => res.redirect(dropboxBackup.urlAutorizacao({
+    appKey: DROPBOX_APP_KEY(), redirectUri: _dropboxRedirectUri(req), state, challenge,
+  })));
+});
+
+app.get('/api/admin/dropbox/callback', auth(), requireAdminPermissoes, async (req, res) => {
+  const pend = req.session.dropboxOauth;
+  delete req.session.dropboxOauth;
+  if (req.query.error) return res.redirect('/backup?erro=' + encodeURIComponent(String(req.query.error_description || req.query.error).slice(0, 200)));
+  if (!pend || !req.query.code || req.query.state !== pend.state || Date.now() - pend.em > 15 * 60 * 1000) {
+    return res.redirect('/backup?erro=' + encodeURIComponent('Autorização expirada ou inválida. Clique em Conectar de novo.'));
+  }
+  try {
+    await dropboxBackup.trocarCodigo({
+      sb: sb(), fetchFn: fetch, appKey: DROPBOX_APP_KEY(), code: String(req.query.code),
+      verifier: pend.verifier, redirectUri: _dropboxRedirectUri(req), usuario: req.session.usuario,
+    });
+    res.redirect('/backup?ok=1');
+  } catch (e) {
+    console.error('dropbox callback:', e.message);
+    res.redirect('/backup?erro=' + encodeURIComponent(e.message.slice(0, 200)));
+  }
+});
+
+// Dispara em segundo plano (o 1º envio do GED pode levar bastante tempo).
+app.post('/api/admin/dropbox/rodar', auth(), requireAdminPermissoes, (req, res) => {
+  if (!DROPBOX_APP_KEY()) return res.status(400).json({ ok: false, erro: 'DROPBOX_APP_KEY não configurada.' });
+  if (dropboxBackup.estaRodando()) return res.json({ ok: true, jaRodando: true });
+  _rodarDropbox(true).catch(e => console.error('dropbox manual:', e.message));
+  res.json({ ok: true, iniciado: true });
+});
+
+function agendarBackupDropbox(){
+  const checar = async () => {
+    try {
+      if (!DROPBOX_APP_KEY()) return;
+      const hBrt = (new Date().getUTCHours() - 3 + 24) % 24;
+      if (hBrt < 4) return;
+      const st = await dropboxBackup.status(sb());
+      if (!st.conectado || st.rodando) return;
+      if (await jaEnviouJobHoje('backup_dropbox')) return;
+      const ultTab = st.ultimas_tabelas_em ? new Date(st.ultimas_tabelas_em).getTime() : 0;
+      const incluirTabelas = Date.now() - ultTab > 6.5 * 24 * 3600 * 1000;
+      await _rodarDropbox(incluirTabelas);
+    } catch (e) { console.error('agendarBackupDropbox:', e.message); }
+  };
+  setTimeout(checar, 3 * 60 * 1000);
+  setInterval(checar, 30 * 60 * 1000);
+}
+
 // ── INTEGRAÇÃO CONEXOS (preparação, 19/09/2026) ─────────────────────
 // Esqueleto pronto, transporte vazio -- ver services/conexos.js e
 // docs/CONEXOS_INTEGRACAO.md. Enquanto CONEXOS_API_URL/TOKEN não existem,
@@ -5050,5 +5138,6 @@ if (require.main === module) app.listen(PORT, () => {
   agendarAlertasDiarios();
   agendarAlertasSeparados();
   agendarBackupSemanal();
+  agendarBackupDropbox();
 sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
 });
