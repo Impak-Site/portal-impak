@@ -415,54 +415,146 @@ function numVal(v) {
     return (isNaN(n) || v === '' || v === undefined) ? 0 : n;
 }
 
+// ── ABA "FECHAMENTO" ────────────────────────────────────────────────────
+//
+// A aba Fechamento NAO tem posicao fixa: o bloco "NOTAS SAIDAS" cresce uma
+// linha por nota fiscal e mais uma linha "JUROS" por nota vendida a prazo.
+// Com 3 notas a prazo (ex.: BR26T056A, BR26R034B) tudo abaixo desce 3 linhas
+// e a leitura por celula fixa (G22, G26, G29...) passa a devolver o valor da
+// linha errada: "Agente Frete" entrava como Marjoracao, "ICMS Sub. Tributaria"
+// como Comissao Vendedor, "Reciclagem" como Comissao Chines, "Lavacao" como
+// Timp (auditoria #580, 30/09/2026). Por isso cada linha e localizada pelo
+// ROTULO da coluna B (ou D/E nos blocos de datas, notas e Boss), nunca pela
+// posicao.
+function semAcento(s) {
+    return norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Lê a aba inteira uma vez: [{ r, B, D, E, F, G, H, I, K }] por linha.
+function linhasFechamento(ws) {
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+    const linhas = [];
+    for (let r = range.s.r; r <= range.e.r; r++) {
+        const l = { r: r + 1 };
+        ['B', 'D', 'E', 'F', 'G', 'H', 'I', 'K'].forEach(function(col) { l[col] = cellVal(ws, col + (r + 1)); });
+        linhas.push(l);
+    }
+    return linhas;
+}
+
+// Rotulos da coluna B → chave do real_json (ordem irrelevante). A regex casa
+// com o INICIO do rotulo sem acento, em maiusculas.
+const FECHAMENTO_LINHAS_B = [
+    { re: /^ADIANTAMENTO PORTO/, chave: 'adiantamento_porto', importar: false },
+    { re: /^AGENTE FRETE/, chave: 'agente_frete', importar: false },
+    { re: /^DIFERENCA PIS/, chave: 'diferenca_pis' },
+    { re: /^DIFERENCA COFINS/, chave: 'diferenca_cofins' },
+    { re: /^MA[RJ]+ORACAO/, chave: 'marjoracao' },
+    { re: /^DIFERENCA IPI/, chave: 'diferenca_ipi' },
+    { re: /^DIFERENCA ICMS/, chave: 'diferenca_icms_proprio' },
+    { re: /^ICMS SUB/, chave: 'icms_st' },
+    { re: /^IBS$/, chave: 'diferenca_ibs' },
+    { re: /^CBS$/, chave: 'diferenca_cbs' },
+    { re: /^COMISSAO VENDEDOR/, chave: 'comissao_vendedor' },
+    { re: /^RECICLAGEM/, chave: 'reciclagem_fechamento' },
+    { re: /^LAVACAO/, chave: 'lavacao' },
+    { re: /^DESPESAS/, chave: 'despesas_baixa_patio_venda' },
+    { re: /^COMISSAO CHIN/, chave: 'comissao_china' },
+    { re: /^TIMP/, chave: 'timp' },
+    { re: /^TRADEMASTER/, chave: 'trademaster' },
+    { re: /^SEGURO$/, chave: 'seguro', moeda: 'BRL' },
+];
+
 function parseFechamento(wb) {
     const ws = wb.Sheets['Fechamento'];
     if (!ws) throw new Error('Aba "Fechamento" nao encontrada na planilha.');
 
-  const avisos = [];
+    const avisos = [];
+    const linhas = linhasFechamento(ws);
+    const porRotuloB = function(re) { return linhas.find(function(l) { return re.test(semAcento(l.B)); }); };
+    const porRotuloD = function(re) { return linhas.find(function(l) { return re.test(semAcento(l.D)); }); };
+    const porRotuloE = function(re) { return linhas.find(function(l) { return re.test(semAcento(l.E)); }); };
 
-  const dataRegistroDi = isoDate(cellVal(ws, 'I4'));
-    const dataEmbarque = isoDate(cellVal(ws, 'F61'));
-    const dataChegada = isoDate(cellVal(ws, 'F62'));
-    const dataPedido = isoDate(cellVal(ws, 'F60'));
+    // Datas: "Data Registro D.I" fica em G4/I4 (cabecalho fixo); as outras
+    // tres ficam na coluna D com o valor em F, no rodape.
+    const lDi = linhas.find(function(l) { return /^DATA REGISTRO/.test(semAcento(l.G)); });
+    const dataRegistroDi = isoDate(lDi ? lDi.I : cellVal(ws, 'I4'));
+    const lPedido = porRotuloD(/^DATA DO PEDIDO/);
+    const lEmbarque = porRotuloD(/^EMBARQUE$/);
+    const lChegada = porRotuloD(/^CHEGADA/);
+    const dataPedido = isoDate(lPedido && lPedido.F);
+    const dataEmbarque = isoDate(lEmbarque && lEmbarque.F);
+    const dataChegada = isoDate(lChegada && lChegada.F);
 
-  const datas = {};
+    const datas = {};
     if (dataEmbarque) datas.data_embarque = dataEmbarque;
     if (dataChegada) datas.data_chegada = dataChegada;
     if (dataRegistroDi) datas.data_registro_di = dataRegistroDi;
     if (dataPedido) avisos.push('Data do Pedido na planilha: ' + dataPedido + ' (sem campo correspondente no Controle - confira manualmente).');
 
-  const fobPago = numVal(cellVal(ws, 'G17')) + numVal(cellVal(ws, 'G18')) + numVal(cellVal(ws, 'G19')) + numVal(cellVal(ws, 'G20'));
+    // Notas de saida: do rotulo "NOTAS SAIDAS" (coluna B) ate a linha "TOTAL"
+    // (coluna E). Cada nota tem numero em E, valor em G, cliente em H, data em
+    // K; a linha seguinte pode ser "JUROS" (valor em G, % em H, prazo em I).
+    const notas = [];
+    const lNotas = porRotuloB(/^NOTAS SAIDAS/);
+    let totalNotasPlanilha = null;
+    if (lNotas) {
+        for (let i = linhas.indexOf(lNotas); i < linhas.length; i++) {
+            const l = linhas[i];
+            const e = semAcento(l.E);
+            if (e === 'TOTAL') { totalNotasPlanilha = numVal(l.G); break; }
+            if (e === 'JUROS') {
+                if (notas.length) { const n = notas[notas.length - 1]; n.juros = Math.round(numVal(l.G) * 100) / 100; n.juros_pct = numVal(l.H) || null; n.prazo = l.I != null ? String(l.I).trim() : null; }
+                continue;
+            }
+            if (/^\d{3,}$/.test(e) && numVal(l.G) > 0) {
+                notas.push({ numero: e, valor: Math.round(numVal(l.G) * 100) / 100, cliente: l.H != null ? String(l.H).trim() : '', data: isoDate(l.K) || (l.K != null ? String(l.K).trim() : null), juros: 0, juros_pct: null, prazo: null });
+            }
+        }
+    }
+    const jurosTotal = notas.reduce(function(s, n) { return s + (n.juros || 0); }, 0);
 
-  const seguroBrl = numVal(cellVal(ws, 'G39'));
+    // FOB pago: toda linha "Adance/Advance Payment" (valor em R$ na coluna G).
+    const fobPago = linhas.filter(function(l) { return /^ADV?ANCE PAYMENT/.test(semAcento(l.B)); })
+        .reduce(function(s, l) { return s + numVal(l.G); }, 0);
 
-  const real_json = {};
+    const real_json = {};
     const moedas = {};
+    const resumo = { notas: notas, juros_total: jurosTotal, total_notas: totalNotasPlanilha, fob_pago: fobPago };
     if (fobPago > 0) { real_json.fob = fobPago; moedas.fob = 'BRL'; }
-    if (seguroBrl > 0) { real_json.seguro = seguroBrl; moedas.seguro = 'BRL'; }
-    const lavacao = numVal(cellVal(ws, 'G34')); if (lavacao > 0) real_json.lavacao = lavacao;
-    const comissaoChina = numVal(cellVal(ws, 'G36')); if (comissaoChina > 0) real_json.comissao_china = comissaoChina;
 
-  // Adiantamento Porto (G22) e Agente Frete (G23) NAO sao importados: sao valores de
-  // adiantamento/caixa que ja estao contabilizados item a item em outros campos (II, IPI,
-  // PIS, COFINS, ICMS, IBS, CBS e Frete/Siscomex/Armazenagem/Capatazia/etc.). Importar
-  // esses dois campos soma o mesmo dinheiro duas vezes no Fechamento.
-    const diferencaPis = numVal(cellVal(ws, 'G24')); if (diferencaPis > 0) real_json.diferenca_pis = diferencaPis;
-    const diferencaCofins = numVal(cellVal(ws, 'G25')); if (diferencaCofins > 0) real_json.diferenca_cofins = diferencaCofins;
-    const marjoracao = numVal(cellVal(ws, 'G26')); if (marjoracao > 0) real_json.marjoracao = marjoracao;
-    const diferencaIpi = numVal(cellVal(ws, 'G27')); if (diferencaIpi > 0) real_json.diferenca_ipi = diferencaIpi;
-    const diferencaIcmsProprio = numVal(cellVal(ws, 'G28')); if (diferencaIcmsProprio > 0) real_json.diferenca_icms_proprio = diferencaIcmsProprio;
-    const icmsSt = numVal(cellVal(ws, 'G29')); if (icmsSt > 0) real_json.icms_st = icmsSt;
-    const comissaoVendedor = numVal(cellVal(ws, 'G32')); if (comissaoVendedor > 0) real_json.comissao_vendedor = comissaoVendedor;
-    const reciclagem = numVal(cellVal(ws, 'G33')); if (reciclagem > 0) real_json.reciclagem_fechamento = reciclagem;
-    const despesasBaixaPatioVenda = numVal(cellVal(ws, 'G35')); if (despesasBaixaPatioVenda > 0) real_json.despesas_baixa_patio_venda = despesasBaixaPatioVenda;
-    const timp = numVal(cellVal(ws, 'G37')); if (timp > 0) real_json.timp = timp;
-    const trademaster = numVal(cellVal(ws, 'G38')); if (trademaster > 0) real_json.trademaster = trademaster;
+    // Adiantamento Porto e Agente Frete NAO entram no real_json: sao os pacotes
+    // (numerario do despachante / fatura do agente) que ja estao contabilizados
+    // item a item em II, IPI, PIS, COFINS, ICMS, Siscomex, Marinha, Armazenagem,
+    // Frete, Capatazia etc. Importar os dois soma o mesmo dinheiro duas vezes.
+    // Ficam so no resumo, para conferencia.
+    FECHAMENTO_LINHAS_B.forEach(function(def) {
+        const l = porRotuloB(def.re);
+        if (!l) return;
+        const v = numVal(l.G);
+        resumo[def.chave] = v;
+        if (def.importar === false) return;
+        if (v > 0) { real_json[def.chave] = v; if (def.moeda) moedas[def.chave] = def.moeda; }
+    });
 
-  const ibs = numVal(cellVal(ws, 'G30')); if (ibs > 0) real_json.diferenca_ibs = ibs;
-    const cbs = numVal(cellVal(ws, 'G31')); if (cbs > 0) real_json.diferenca_cbs = cbs;
+    // "Dif. de Seguro" (seguro de venda) fica na coluna F; TOTAL e lucros em G.
+    const lDifSeguro = porRotuloB(/^DIF\.? DE SEGURO/);
+    if (lDifSeguro) resumo.dif_seguro = numVal(lDifSeguro.F);
+    const lTotal = porRotuloB(/^TOTAL$/);
+    if (lTotal) resumo.total_custos = numVal(lTotal.G);
+    // Lucro antes das notas Boss ("LUCRO BRUTO da IMPAK"; planilhas antigas
+    // repetem "do PROCESSO" nas duas linhas) e lucro final (ultima linha).
+    const lLucros = linhas.filter(function(l) { return /^LUCRO BRUTO/.test(semAcento(l.B)); });
+    if (lLucros.length) { resumo.lucro_impak = numVal(lLucros[0].G); resumo.lucro_processo = numVal(lLucros[lLucros.length - 1].G); }
+    const lBoss = porRotuloE(/^NOTAS FISCAIS BOSS/);
+    if (lBoss) resumo.notas_boss = numVal(lBoss.G);
+    const lReceber = porRotuloE(/^TOTAL A RECEBER/);
+    if (lReceber) resumo.boss_liquido = numVal(lReceber.G);
 
-  return { datas: datas, real_json: real_json, moedas: moedas, avisos: avisos };
+    if (!lNotas || !lTotal) avisos.push('Aba Fechamento fora do padrao (nao achei o bloco "NOTAS SAIDAS" ou a linha "TOTAL") - confira os valores importados.');
+    if (jurosTotal > 0) avisos.push('A planilha tem R$ ' + jurosTotal.toFixed(2) + ' de juros cobrados do cliente em ' + notas.filter(function(n) { return n.juros > 0; }).length + ' nota(s); lance como venda a prazo na aba Vendas para a receita bater.');
+
+    return { datas: datas, real_json: real_json, moedas: moedas, avisos: avisos, resumo: resumo };
 }
 
 function importarFechamentoBase(buffer) {
