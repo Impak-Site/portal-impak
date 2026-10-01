@@ -12,37 +12,131 @@
 //
 // ── AUTOCOMPLETE GENÉRICO (Cliente, Fornecedor, Armador, Agente, Despachante, Transportadora) ──
 let _acTimer = null;
+// ── Campos de empresa no processo: seleção do cadastro + "cadastrar" ──
+// Cadastros fase 1c (01/10/2026): armador, agente, despachante,
+// transportadora, armazém e depot deixam de ser texto livre "de fato": o
+// campo abre a lista do cadastro já no foco (sem precisar digitar), o nome
+// que vai pro processo é o canônico (nome fantasia pra armador/despachante/
+// armazém/depot — ex. "PIL", "FIND COMEX" —, razão social pros demais,
+// mesma regra do servidor em lib/cadastros-normalizar.js), e quando o que
+// foi digitado não existe aparece "+ Cadastrar" que abre o modal de Empresa
+// já preenchido e devolve o nome pro campo. Um aviso "⚠ não cadastrado"
+// fica ao lado do rótulo enquanto o valor não bate com nenhum cadastro.
+const PAPEIS_NOME_CURTO_CLIENTE = ['ARMADOR','DESPACHANTE','ARMAZEM_ALFANDEGADO','PORTO_ARMAZEM','DEPOT_DEVOLUCAO'];
+const TIPOS_EMPRESA_LABEL = { CLIENTE:'Cliente', FORNECEDOR:'Fornecedor', EXPORTADOR:'Exportador', DESPACHANTE:'Despachante', AGENTE:'Agente de Carga', ARMADOR:'Armador', TRANSPORTADORA:'Transportadora', ARMAZEM_ALFANDEGADO:'Armazém', PORTO_ARMAZEM:'Porto/Armazém', DEPOT_DEVOLUCAO:'Depot' };
+function papelPrincipalDe(tipo){ return String(tipo||'').split(',')[0].trim().toUpperCase(); }
+function nomeContatoParaCampo(c, tipo){
+  const papel = papelPrincipalDe(tipo);
+  if(PAPEIS_NOME_CURTO_CLIENTE.includes(papel) && c.nome_fantasia && String(c.nome_fantasia).trim()) return String(c.nome_fantasia).trim();
+  return c.razao_social || c.nome_fantasia || '';
+}
+// Mesma "chave" do servidor (sem acento, maiúsculas, só letras/números).
+function chaveCadastro(t){ return String(t==null?'':t).normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim(); }
+function contatoBateComValor(c, valor){
+  const k = chaveCadastro(valor); if(!k) return false;
+  return [c.razao_social, c.nome_fantasia].concat(Array.isArray(c.sinonimos)?c.sinonimos:[]).some(g => chaveCadastro(g) === k);
+}
+async function buscarContatos(q, tipo, limit){
+  const r = await fetch('/api/contatos?q='+encodeURIComponent(q||'')+'&tipo='+encodeURIComponent(tipo||'')+'&limit='+(limit||15));
+  const d = await r.json();
+  return d.ok ? (d.contatos||[]) : [];
+}
 // onSelect (opcional): callback(nomeCompleto) chamado quando o usuário clica
 // numa sugestão do dropdown. Necessário pra campos cujo valor não é lido
 // direto do DOM no momento de salvar, e sim espelhado numa variável JS a
 // cada tecla (ex.: _vendas[vi].cliente, na aba Vendas) — sem isso, clicar
 // numa sugestão só atualizava o texto visível do input, e o array que
 // realmente é salvo ficava com o texto parcial digitado antes de escolher.
+// Com texto vazio (foco no campo) lista os primeiros cadastros do tipo.
 async function autocompletarContato(input, tipo, dropdownId, onSelect){
   clearTimeout(_acTimer);
   const q = input.value.trim();
   const dd = document.getElementById(dropdownId);
   if(!dd) return;
-  if(q.length < 2){ dd.style.display='none'; return; }
+  if(q.length === 1){ dd.style.display='none'; return; }
   _acTimer = setTimeout(async ()=>{
     try{
-      const r = await fetch('/api/contatos?q='+encodeURIComponent(q)+'&tipo='+encodeURIComponent(tipo));
-      const d = await r.json();
-      if(!d.ok || !d.contatos.length){ dd.style.display='none'; return; }
-      dd.innerHTML = d.contatos.map((c,ci)=>{
-        // Nome completo (razão social) é o que vai pro campo — é o nome que
-        // bate com o CNPJ/contrato social. Nome fantasia só ajuda a
-        // identificar visualmente na lista, quando existir e for diferente.
-        const nomeCompleto = c.razao_social || c.nome_fantasia;
-        const label = `${esc(nomeCompleto)}${c.nome_fantasia && c.nome_fantasia!==c.razao_social ? ' ('+esc(c.nome_fantasia)+')' : ''}${c.uf?' · '+esc(c.uf):''}${c.cnpj?' · '+esc(c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5')):''}`;
-        return `<div data-nome="${esc(nomeCompleto)}" onclick="_acSelecionar(${jsArg(input.id)},${jsArg(dropdownId)},this.dataset.nome,${onSelect?'window._acCallback':'null'})"
+      const contatos = await buscarContatos(q, tipo, q ? 15 : 12);
+      // Se o usuário continuou digitando enquanto a busca rodava, ignora esta resposta.
+      if(input.value.trim() !== q) return;
+      const papel = papelPrincipalDe(tipo);
+      const temMatch = contatos.some(c => contatoBateComValor(c, q));
+      let html = contatos.map(c=>{
+        const nomeCampo = nomeContatoParaCampo(c, tipo);
+        const extra = [];
+        if(c.razao_social && c.razao_social !== nomeCampo) extra.push(esc(c.razao_social));
+        else if(c.nome_fantasia && c.nome_fantasia !== nomeCampo) extra.push(esc(c.nome_fantasia));
+        if(c.uf) extra.push(esc(c.uf));
+        if(c.cnpj) extra.push(esc(c.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5')));
+        return `<div data-nome="${esc(nomeCampo)}" onclick="_acSelecionar(${jsArg(input.id)},${jsArg(dropdownId)},this.dataset.nome,${onSelect?'window._acCallback':'null'})"
           style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border2);"
-          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${label}</div>`;
+          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''"><b style="font-weight:600;">${esc(nomeCampo)}</b>${extra.length?' <span style="color:var(--muted);">· '+extra.join(' · ')+'</span>':''}</div>`;
       }).join('');
+      if(q.length >= 2 && !temMatch && TIPOS_EMPRESA_LABEL[papel]){
+        html += `<div onclick="cadastrarContatoRapido(${jsArg(tipo)},${jsArg(q)},${jsArg(input.id)},${jsArg(dropdownId)},${onSelect?'window._acCallback':'null'})"
+          style="padding:8px 12px;font-size:12px;cursor:pointer;color:var(--ac);font-weight:600;background:rgba(26,127,212,.04);"
+          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='rgba(26,127,212,.04)'">+ Cadastrar “${esc(q)}” como ${esc(TIPOS_EMPRESA_LABEL[papel])}</div>`;
+      }
+      if(!html){ dd.style.display='none'; return; }
+      dd.innerHTML = html;
       window._acCallback = onSelect || null;
       dd.style.display='block';
     }catch(e){ dd.style.display='none'; }
-  }, 300);
+  }, q ? 300 : 80);
+}
+// "+ Cadastrar" do dropdown: abre o modal de Empresa (o mesmo de /cadastros,
+// que também existe na página do Controle) com o tipo e o nome já
+// preenchidos; ao salvar, o nome canônico volta pro campo que originou.
+let _ceAposSalvar = null;
+function cadastrarContatoRapido(tipo, texto, inputId, dropdownId, callback){
+  const papel = papelPrincipalDe(tipo);
+  const dd = document.getElementById(dropdownId); if(dd) dd.style.display='none';
+  if(typeof abrirNovoContato !== 'function' || !document.getElementById('modal-contato-edit-bg')){
+    showToast('O cadastro de empresas não está disponível nesta tela — use a tela Cadastros.', 'warn'); return;
+  }
+  _contatosTipoAtivo = papel;
+  abrirNovoContato();
+  const rs = document.getElementById('ce_razao_social'); if(rs) rs.value = texto;
+  const nf = document.getElementById('ce_nome_fantasia'); if(nf && PAPEIS_NOME_CURTO_CLIENTE.includes(papel)) nf.value = texto;
+  _ceAposSalvar = function(contato){
+    const el = document.getElementById(inputId);
+    if(!el) return;
+    const nome = nomeContatoParaCampo(contato, papel);
+    el.value = nome;
+    if(typeof callback === 'function') callback(nome);
+    el.dispatchEvent(new Event('change', {bubbles:true}));
+  };
+  if(rs) rs.focus();
+}
+// Aviso "⚠ não cadastrado" ao lado do rótulo do campo (badgeId), com atalho
+// pra cadastrar. Chamado no change do campo e logo depois de abrir o painel.
+const _verificaCadastroCache = new Map();
+async function verificarCadastroCampo(input, tipo, badgeId){
+  const badge = document.getElementById(badgeId);
+  if(!badge) return;
+  const valor = (input.value||'').trim();
+  if(!valor){ badge.style.display='none'; return; }
+  const chave = tipo+'|'+chaveCadastro(valor);
+  let ok = _verificaCadastroCache.get(chave);
+  if(ok === undefined){
+    try{ ok = (await buscarContatos(valor, tipo, 20)).some(c => contatoBateComValor(c, valor)); }
+    catch(e){ return; } // sem rede: não acusa nada
+    _verificaCadastroCache.set(chave, ok);
+  }
+  if((input.value||'').trim() !== valor) return; // mudou enquanto buscava
+  if(ok){ badge.style.display='none'; return; }
+  const papel = papelPrincipalDe(tipo);
+  badge.innerHTML = `⚠ não cadastrado <a href="#" onclick="event.preventDefault();cadastrarContatoRapido(${jsArg(tipo)},${jsArg(valor)},${jsArg(input.id)},${jsArg(input.id.replace(/^f_/,'')+'-dropdown')},null)" style="color:var(--ac);font-weight:600;">cadastrar</a>`;
+  badge.title = 'Esse nome não bate com nenhum cadastro de ' + (TIPOS_EMPRESA_LABEL[papel]||papel) + ' — cadastre pra padronizar (o sistema troca pelo nome do cadastro ao salvar).';
+  badge.style.display = 'inline';
+}
+// Roda a verificação nos campos de empresa do painel que já têm valor
+// (chamado no fim de renderModal, quando os inputs existem no DOM).
+function verificarCadastrosDoPainel(){
+  document.querySelectorAll('#modal-bg input[data-cadastro-tipo]').forEach(el=>{
+    if(el.value && el.value.trim()) verificarCadastroCampo(el, el.dataset.cadastroTipo, el.id + '_warn');
+    else { const b = document.getElementById(el.id + '_warn'); if(b) b.style.display='none'; }
+  });
 }
 // Autocomplete client-side pra campos de texto livre que se repetem entre
 // processos (Armazém, Depot) -- sem cadastro próprio, então as sugestões
@@ -79,6 +173,9 @@ function _acSelecionar(inputId, dropdownId, nome, callback){
   const dd = document.getElementById(dropdownId);
   if(dd) dd.style.display = 'none';
   if(typeof callback === 'function') callback(nome);
+  // 'change' (não 'input', que reabriria o dropdown): marca o painel como
+  // alterado e dispara o onchange do campo (aviso de cadastro, etc.).
+  if(el) el.dispatchEvent(new Event('change', {bubbles:true}));
 }
 document.addEventListener('click', e=>{
   ['cliente-dropdown','fornecedor-dropdown','armador-dropdown','agente-dropdown','despachante-dropdown','transportadora-dropdown','consignatario-dropdown','notify-dropdown','armazem-dropdown','depot-dropdown'].forEach(id=>{
@@ -431,6 +528,7 @@ async function _ceExcluirPessoa(id){
 
 function fecharModalContatoEdit(){
   document.getElementById('modal-contato-edit-bg').classList.remove('open');
+  _ceAposSalvar = null;
 }
 
 async function salvarContato(){
@@ -473,6 +571,15 @@ async function salvarContato(){
       showToast('✓ Contato salvo','ok');
       if(d.aviso) showToast(d.aviso, 'warn');
       await carregarContatos();
+      if(_ceAposSalvar){
+        // Veio do "+ Cadastrar" de um campo do processo: devolve o nome pro
+        // campo e fecha (as pessoas de contato ficam pra tela Cadastros).
+        const cb = _ceAposSalvar; _ceAposSalvar = null;
+        try{ cb(Object.assign({}, payload, { id: d.id || payload.id })); }catch(e){}
+        _verificaCadastroCache.clear();
+        fecharModalContatoEdit();
+        return;
+      }
       if(eraNovo && d.id){
         // Empresa acabou de ser criada agora — em vez de fechar o modal,
         // deixa ele aberto em modo "editar" e já revela a seção de

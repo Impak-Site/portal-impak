@@ -276,6 +276,10 @@ document.addEventListener('keydown', function(e){
   if(conflitosIABg){ if(typeof fecharModalConflitosIA === 'function') fecharModalConflitosIA(); return; }
   const cambioBg = document.getElementById('modal-cambio-bg');
   if(cambioBg && cambioBg.classList.contains('open')){ if(typeof fecharModalCambio === 'function') fecharModalCambio(); return; }
+  // Modal de Empresa/Pessoa/Lista aberto por cima do painel (ex.: "+ Cadastrar"
+  // num campo do processo, cadastros fase 1c): quem fecha é o listener de
+  // controle-contatos.js — aqui só não deixa o ESC vazar pro painel.
+  if(['modal-contato-edit-bg','modal-pessoa-edit-bg','modal-lista-edit-bg'].some(id=>document.getElementById(id)?.classList.contains('open'))) return;
   const modalBg = document.getElementById('modal-bg');
   if(!modalBg || !modalBg.classList.contains('open')) return;
   if(_painelDirty){

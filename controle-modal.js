@@ -13,6 +13,9 @@
 // Whitelist de armadores (ocean carriers) conhecidos, para alertar quando o campo Armador
 // vier preenchido com o nome do emissor de um House B/L (agente de carga/NVOCC) em vez do
 // armador real. Não bloqueia o salvamento, é só um aviso visual (ver #407/#408).
+// Desde 01/10/2026 (cadastros fase 1c) o aviso vem do CADASTRO de armadores
+// (verificarCadastroCampo em controle-contatos.js), não mais desta lista fixa.
+// A lista fica só como apoio da extração por IA (armadorReconhecido).
 const ARMADORES_CONHECIDOS = ['MSC','CMA CGM','CMA-CGM','COSCO','MAERSK','HAPAG-LLOYD','HAPAG LLOYD','ONE','OCEAN NETWORK EXPRESS','EVERGREEN','YANG MING','PIL','PACIFIC INTERNATIONAL LINES','ZIM','HMM','WAN HAI','OOCL','APL','ANL','SITC','KMTC','TS LINES','IRIS LINES'];
 function armadorReconhecido(valor){
   if(!valor || !valor.trim()) return true; // campo vazio não gera aviso
@@ -20,9 +23,7 @@ function armadorReconhecido(valor){
   return ARMADORES_CONHECIDOS.some(a => v.includes(a));
 }
 function verificarArmadorConhecido(el){
-  const warn = document.getElementById('f_armador_warn');
-  if(!warn) return;
-  warn.style.display = armadorReconhecido(el.value) ? 'none' : 'inline';
+  if(typeof verificarCadastroCampo === 'function') verificarCadastroCampo(el, 'ARMADOR', 'f_armador_warn');
 }
 
 function abrirNovo(){
@@ -254,7 +255,7 @@ function renderModal(){
             ${p.finalidade==='ACOMPANHAMENTO' ? '<div style="font-size:11px;color:#0369a1;margin-top:4px;line-height:1.35;">👁 Só acompanhamos: sem câmbio, NF ou DUIMP. Fica fora do Financeiro, Câmbio, Cliente/Medida, Reciclagem, DRE, Averbação e dos totais da TV (só aparece na lista Em Águas); sem alerta de demurrage.</div>' : ''}</div>
           <div class="form-group" style="position:relative"><label class="form-label">Fornecedor (Exportador)</label>
             <input class="form-input" id="f_fornecedor" value="${esc(p.fornecedor)}" placeholder="Ex: EUDEMON" autocomplete="off"
-              oninput="autocompletarContato(this,'FORNECEDOR,EXPORTADOR','fornecedor-dropdown')">
+              onfocus="autocompletarContato(this,'FORNECEDOR,EXPORTADOR','fornecedor-dropdown')" oninput="autocompletarContato(this,'FORNECEDOR,EXPORTADOR','fornecedor-dropdown')">
             <div id="fornecedor-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group"><label class="form-label">Marca (Brand)</label>
@@ -270,7 +271,7 @@ function renderModal(){
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Cliente</label>
             <input class="form-input" id="f_cliente" value="${esc(p.cliente)}" autocomplete="off"
-              oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown',function(){sugerirAcompanhamentoPorCliente();})" onchange="sugerirAcompanhamentoPorCliente()" placeholder="Digite razão social, CNPJ ou cidade...">
+              onfocus="autocompletarContato(this,'CLIENTE','cliente-dropdown',function(){sugerirAcompanhamentoPorCliente();})" oninput="autocompletarContato(this,'CLIENTE','cliente-dropdown',function(){sugerirAcompanhamentoPorCliente();})" onchange="sugerirAcompanhamentoPorCliente()" placeholder="Digite razão social, CNPJ ou cidade...">
             <div id="cliente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group" style="position:relative"><label class="form-label">Consignatário</label>
@@ -290,9 +291,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input type="hidden" id="f_produtos_json">
             <input type="hidden" id="f_produto" value="${esc(p.produto||'')}">
           </div>
-          <div class="form-group" style="position:relative"><label class="form-label">Despachante</label>
-            <input class="form-input" id="f_despachante" value="${esc(p.despachante)}" autocomplete="off"
-              oninput="autocompletarContato(this,'DESPACHANTE','despachante-dropdown')">
+          <div class="form-group" style="position:relative"><label class="form-label">Despachante <span id="f_despachante_warn" style="display:none;color:#f39c12;font-weight:600;font-size:11px;margin-left:6px;"></span></label>
+            <input class="form-input" id="f_despachante" value="${esc(p.despachante)}" placeholder="Selecione do cadastro (ex: FIND COMEX)" autocomplete="off" data-cadastro-tipo="DESPACHANTE"
+              onfocus="autocompletarContato(this,'DESPACHANTE','despachante-dropdown')" oninput="autocompletarContato(this,'DESPACHANTE','despachante-dropdown')" onchange="verificarCadastroCampo(this,'DESPACHANTE','f_despachante_warn')">
             <div id="despachante-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group full"><label class="form-label">Observações</label>
@@ -503,14 +504,14 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Nº Booking</label>
             <input class="form-input" id="f_booking_numero" value="${esc(p.booking_numero)}" oninput="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group" style="position:relative"><label class="form-label">Armador <span id="f_armador_warn" style="display:${armadorReconhecido(p.armador)?'none':'inline'};color:#f39c12;font-weight:600;font-size:11px;" title="Armador não reconhecido — confira se não é o emissor do House B/L (agente de carga); o armador real (ocean carrier) deve vir do Master B/L">⚠ verificar</span></label>
-            <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Ex: PIL, COSCO, MSC" autocomplete="off"
-              oninput="autocompletarContato(this,'ARMADOR','armador-dropdown');verificarArmadorConhecido(this)">
+          <div class="form-group" style="position:relative"><label class="form-label">Armador <span id="f_armador_warn" style="display:none;color:#f39c12;font-weight:600;font-size:11px;margin-left:6px;"></span></label>
+            <input class="form-input" id="f_armador" value="${esc(p.armador)}" placeholder="Selecione do cadastro (ex: PIL, COSCO, MSC)" autocomplete="off" data-cadastro-tipo="ARMADOR"
+              onfocus="autocompletarContato(this,'ARMADOR','armador-dropdown')" oninput="autocompletarContato(this,'ARMADOR','armador-dropdown')" onchange="verificarCadastroCampo(this,'ARMADOR','f_armador_warn')">
             <div id="armador-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
-          <div class="form-group" style="position:relative"><label class="form-label">Agente de Carga</label>
-            <input class="form-input" id="f_agente" value="${esc(p.agente)}" placeholder="Ex: ROYAL" autocomplete="off"
-              oninput="autocompletarContato(this,'AGENTE','agente-dropdown')">
+          <div class="form-group" style="position:relative"><label class="form-label">Agente de Carga <span id="f_agente_warn" style="display:none;color:#f39c12;font-weight:600;font-size:11px;margin-left:6px;"></span></label>
+            <input class="form-input" id="f_agente" value="${esc(p.agente)}" placeholder="Selecione do cadastro (ex: ROYAL CARGO DO BRASIL)" autocomplete="off" data-cadastro-tipo="AGENTE"
+              onfocus="autocompletarContato(this,'AGENTE','agente-dropdown')" oninput="autocompletarContato(this,'AGENTE','agente-dropdown')" onchange="verificarCadastroCampo(this,'AGENTE','f_agente_warn')">
             <div id="agente-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group"><label class="form-label">Navio</label>
@@ -581,9 +582,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_agendamento" value="${esc(p.data_agendamento)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Data Carregamento</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_carregamento" value="${esc(p.data_carregamento)}" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group" style="position:relative"><label class="form-label">Transportadora</label>
-            <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}" autocomplete="off"
-              oninput="autocompletarContato(this,'TRANSPORTADORA','transportadora-dropdown')">
+          <div class="form-group" style="position:relative"><label class="form-label">Transportadora <span id="f_transportadora_warn" style="display:none;color:#f39c12;font-weight:600;font-size:11px;margin-left:6px;"></span></label>
+            <input class="form-input" id="f_transportadora" value="${esc(p.transportadora)}" placeholder="Selecione do cadastro" autocomplete="off" data-cadastro-tipo="TRANSPORTADORA"
+              onfocus="autocompletarContato(this,'TRANSPORTADORA','transportadora-dropdown')" oninput="autocompletarContato(this,'TRANSPORTADORA','transportadora-dropdown')" onchange="verificarCadastroCampo(this,'TRANSPORTADORA','f_transportadora_warn')">
             <div id="transportadora-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
           <div class="form-group"><label class="form-label">Placa</label>
@@ -611,9 +612,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armazenagem Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_armazenagem_vencimento" value="${esc(p.armazenagem_vencimento)}" style="color:var(--warn);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
-          <div class="form-group" style="position:relative"><label class="form-label">Armazém</label>
-            <input class="form-input" id="f_armazem" value="${esc(p.armazem)}" placeholder="Onde a carga está armazenada (útil p/ LCL — não é container cheio)" autocomplete="off"
-              oninput="autocompletarValorLocal(this,'armazem','armazem-dropdown')">
+          <div class="form-group" style="position:relative"><label class="form-label">Armazém <span id="f_armazem_warn" style="display:none;color:#f39c12;font-weight:600;font-size:11px;margin-left:6px;"></span></label>
+            <input class="form-input" id="f_armazem" value="${esc(p.armazem)}" placeholder="Onde a carga está armazenada (útil p/ LCL) — selecione do cadastro" autocomplete="off" data-cadastro-tipo="ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM"
+              onfocus="autocompletarContato(this,'ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM','armazem-dropdown')" oninput="autocompletarContato(this,'ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM','armazem-dropdown')" onchange="verificarCadastroCampo(this,'ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM','f_armazem_warn')">
             <div id="armazem-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
           </div>
         </div>
@@ -646,9 +647,9 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
                 <option value="Parcial Isento" ${p.ric_status==='Parcial Isento'?'selected':''}>Parcial Isento</option>
                 <option value="Termo" ${p.ric_status==='Termo'?'selected':''}>Termo</option>
               </select></div>
-            <div class="form-group" style="position:relative"><label class="form-label">Depot</label>
-              <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução" autocomplete="off"
-                oninput="autocompletarValorLocal(this,'depot','depot-dropdown')">
+            <div class="form-group" style="position:relative"><label class="form-label">Depot <span id="f_depot_warn" style="display:none;color:#f39c12;font-weight:600;font-size:11px;margin-left:6px;"></span></label>
+              <input class="form-input" id="f_depot" value="${esc(p.depot)}" placeholder="Depot de devolução — selecione do cadastro" autocomplete="off" data-cadastro-tipo="DEPOT_DEVOLUCAO"
+                onfocus="autocompletarContato(this,'DEPOT_DEVOLUCAO','depot-dropdown')" oninput="autocompletarContato(this,'DEPOT_DEVOLUCAO','depot-dropdown')" onchange="verificarCadastroCampo(this,'DEPOT_DEVOLUCAO','f_depot_warn')">
               <div id="depot-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
             </div>
             <div class="form-group"><label class="form-label">Data Solicitação</label>
@@ -821,6 +822,8 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
   `;
 
   renderPagamentoCampos();
+  // Aviso "não cadastrado" nos campos de empresa já preenchidos (cadastros 1c).
+  if(typeof verificarCadastrosDoPainel === 'function') setTimeout(verificarCadastrosDoPainel, 0);
   atualizarTotalCustosReais();
   // Inicializar multi-containers
   try{
