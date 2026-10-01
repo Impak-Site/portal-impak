@@ -231,7 +231,7 @@ let _cadEmpresaTipoAtivo = 'CLIENTE';
 async function _cadRenderEmpresas(){
   const cont = document.getElementById('cad-aba-content');
   const tipos = [
-    ['CLIENTE','👤 Clientes'], ['FORNECEDOR','🏭 Fornecedores'], ['EXPORTADOR','🏗 Exportadores'],
+    ['CLIENTE','👤 Clientes'], ['FORNECEDOR','🏭 Fornecedores (exportadores)'],
     ['DESPACHANTE','📋 Despachantes'], ['AGENTE','🚢 Agentes'], ['ARMADOR','⚓ Armadores'],
     ['TRANSPORTADORA','🚚 Transportadoras'], ['ARMAZEM_ALFANDEGADO','🏢 Armazém Alfandegado'],
     ['PORTO_ARMAZEM','🏗 Porto/Armazém'], ['DEPOT_DEVOLUCAO','🔄 Depot Devolução'],
@@ -241,7 +241,8 @@ async function _cadRenderEmpresas(){
       <div style="display:flex;gap:6px;flex-wrap:wrap;" id="contatos-tipo-filter">
         ${tipos.map(([v,l])=>`<button class="btn btn-sm ${v===_cadEmpresaTipoAtivo?'btn-primary':'btn-outline'}" data-tipo="${v}" onclick="_cadFiltrarEmpresaTipo('${v}')">${l}</button>`).join('')}
       </div>
-      <input class="search-box" id="contatos-search" placeholder="🔍 Buscar por razão social, CNPJ/CPF..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
+      <input class="search-box" id="contatos-search" placeholder="🔍 Buscar por razão social, nome fantasia, sinônimo, CNPJ/CPF..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
+      ${(typeof _user !== 'undefined' && _user && _user.role === 'gerente') ? `<button class="btn btn-sm btn-outline" onclick="revincularProcessosCadastros()" title="Passa por todos os processos e grava o vínculo (id) com o cadastro de cliente, fornecedor, armador etc., padronizando o texto como o Salvar faz. Mostra o resumo antes de aplicar.">🔗 Revincular processos</button>` : ''}
       <button class="btn btn-primary" onclick="abrirNovoContato()">+ Nova Empresa</button>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
@@ -536,4 +537,41 @@ async function excluirPessoa(id){
     if(d.ok){ showToast('Removido', 'ok'); await _cadRenderPessoas(_cadAba === 'funcionarios' ? 'FUNCIONARIO' : 'CONTATO'); }
     else showToast('Erro ao excluir', 'err');
   }catch(e){ showToast('Erro ao excluir', 'err'); }
+}
+
+// ── Revincular processos ↔ cadastros (fase 2a, 01/10/2026) ──────────────
+// Chama POST /api/admin/cadastros/revincular primeiro em modo simulação,
+// mostra o resumo (vínculos novos, trocas de texto, grafias sem cadastro,
+// fechados que precisariam de ajuste manual) e só aplica se o gerente
+// confirmar. O relatório completo (de-para) fica no console do navegador.
+async function revincularProcessosCadastros(){
+  const rotulos = { cliente_id:'Cliente', fornecedor_id:'Fornecedor', armador_id:'Armador', agente_id:'Agente', transportadora_id:'Transportadora', despachante_id:'Despachante', armazem_id:'Armazém', depot_id:'Depot' };
+  const chamar = async (simular) => {
+    const r = await fetch('/api/admin/cadastros/revincular', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ simular }) });
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.erro || 'Falha ao revincular');
+    return d;
+  };
+  try{
+    showToast('Simulando revinculação…', 'ok');
+    const sim = await chamar(true);
+    console.log('[revincular] simulação', sim);
+    const vinc = Object.keys(sim.vinculos_novos||{}).map(k=>`${rotulos[k]||k}: ${sim.vinculos_novos[k]}`).join(', ') || 'nenhum';
+    const semCad = Object.keys(sim.sem_cadastro||{}).map(c=>`${c}: ${Object.keys(sim.sem_cadastro[c]).length} grafia(s)`).join(', ') || 'nenhuma';
+    const trocas = Object.keys(sim.depara||{}).reduce((s,c)=>s+Object.keys(sim.depara[c]).length, 0);
+    const msg = `Revincular processos ↔ cadastros\n\n`+
+      `Processos analisados: ${sim.processos}\n`+
+      `Processos que seriam atualizados: ${sim.atualizados}\n`+
+      `Vínculos novos (id do cadastro): ${vinc}\n`+
+      `Processos com texto padronizado: ${sim.texto_alterado} (${trocas} troca(s) distinta(s))\n`+
+      `Grafias sem cadastro (ficam como estão): ${semCad}\n`+
+      `Fechados que precisariam de ajuste manual no texto: ${(sim.fechados_com_texto||[]).length}\n\n`+
+      `O detalhe completo está no console (F12). Aplicar agora?`;
+    if(!confirm(msg)) { showToast('Nada foi alterado.', 'ok'); return; }
+    const real = await chamar(false);
+    console.log('[revincular] aplicado', real);
+    showToast(`✓ Revinculação aplicada: ${real.atualizados} processo(s) atualizado(s)${real.erros && real.erros.length ? ', ' + real.erros.length + ' erro(s) — veja o console' : ''}`, real.erros && real.erros.length ? 'warn' : 'ok');
+  }catch(e){
+    showToast('Erro: ' + e.message, 'err');
+  }
 }

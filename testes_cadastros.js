@@ -178,10 +178,78 @@ teste('sem índice ou payload vazio: nada muda', () => {
   assert.deepStrictEqual(N.normalizarProcesso(null, IDX), []);
 });
 
+// ── Fase 2a (01/10/2026): vínculo por ID + cliente/fornecedor/marca ──
+console.log('\n── vínculo por id (<campo>_id) ──');
+const EMPRESAS_ID = [
+  { id: 'c-silvas', razao_social: 'SILVAS COMERCIO DE PNEUS LTDA', nome_fantasia: 'SILVAS', tipo: 'CLIENTE', sinonimos: ['SB LITORAL'] },
+  { id: 'c-matriz', razao_social: 'OST PNEUS LTDA', nome_fantasia: 'OST', tipo: 'CLIENTE' },
+  { id: 'c-filial', razao_social: 'OST PNEUS LTDA', nome_fantasia: 'OST', tipo: 'CLIENTE', cnpj: '2' },
+  { id: 'f-sailun', razao_social: 'SAILUN GROUP(HONGKONG)CO.,LIMITED', nome_fantasia: 'SAILUN', tipo: 'EXPORTADOR' },
+  { id: 'f-tyre', razao_social: 'TYRE EXPORT INC', tipo: 'FORNECEDOR' },
+  { id: 'a-pil', razao_social: 'PACIFIC INTERNATIONAL LINES', nome_fantasia: 'PIL', tipo: 'ARMADOR', sinonimos: ['PILL'] },
+];
+const LISTAS_ID = Object.assign(ListasPadrao.listasPadrao(), {
+  marca: [{ codigo: 'ROADCRUZA', nome: 'Roadcruza', sinonimos: ['ROAD CRUZA', 'ROADCRUZA TYRES'], ativo: true }],
+});
+const IDX2 = N.montarIndice(EMPRESAS_ID, LISTAS_ID);
+
+teste('resolverCampo devolve nome canônico + id do cadastro (cliente/fornecedor usam o nome curto)', () => {
+  assert.deepStrictEqual(N.resolverCampo('cliente', 'sb litoral', IDX2), { nome: 'SILVAS', id: 'c-silvas' });
+  assert.deepStrictEqual(N.resolverCampo('cliente', 'SILVAS COMERCIO DE PNEUS LTDA', IDX2), { nome: 'SILVAS', id: 'c-silvas' });
+  assert.deepStrictEqual(N.resolverCampo('fornecedor', 'Sailun Group (HongKong) Co., Limited', IDX2), { nome: 'SAILUN', id: 'f-sailun' });
+  assert.deepStrictEqual(N.resolverCampo('fornecedor', 'Tyre Export, Inc.', IDX2), { nome: 'TYRE EXPORT INC', id: 'f-tyre' }, 'FORNECEDOR e EXPORTADOR valem pro mesmo campo');
+  assert.strictEqual(N.resolverCampo('fornecedor', 'QINGDAO DITRIP TYRE CO LIMITED', IDX2), null);
+  assert.strictEqual(N.resolverCampo('cliente', '', IDX2), null);
+});
+teste('matriz/filial com o mesmo nome: texto padroniza, id fica null (não dá pra escolher)', () => {
+  assert.deepStrictEqual(N.resolverCampo('cliente', 'ost pneus ltda', IDX2), { nome: 'OST', id: null });
+  assert.strictEqual(N.normalizarValorCampo('cliente', 'ost pneus ltda', IDX2), 'OST');
+});
+teste('normalizarProcesso grava <campo>_id (id, ou null quando não reconhece) só pros campos presentes', () => {
+  const p = { id: 'x', cliente: 'SB LITORAL', fornecedor: 'QINGDAO DITRIP TYRE CO LIMITED', armador: 'PILL', obs: 'nada' };
+  const mudancas = N.normalizarProcesso(p, IDX2);
+  assert.deepStrictEqual(mudancas, [
+    { campo: 'cliente', antes: 'SB LITORAL', depois: 'SILVAS' },
+    { campo: 'armador', antes: 'PILL', depois: 'PIL' },
+  ]);
+  assert.strictEqual(p.cliente_id, 'c-silvas');
+  assert.strictEqual(p.fornecedor_id, null, 'fornecedor desconhecido: texto fica, id null');
+  assert.strictEqual(p.fornecedor, 'QINGDAO DITRIP TYRE CO LIMITED');
+  assert.strictEqual(p.armador_id, 'a-pil');
+  assert.ok(!('agente_id' in p), 'campo que não veio no payload não ganha id');
+});
+teste('vendas_json: cada venda ganha cliente_id e o nome padronizado; string continua string', () => {
+  const p = { vendas_json: JSON.stringify([{ cliente: 'sb litoral', itens: [] }, { cliente: 'DESCONHECIDO LTDA' }, { cliente: '' }]) };
+  const mudancas = N.normalizarProcesso(p, IDX2);
+  assert.deepStrictEqual(mudancas, [{ campo: 'vendas[1].cliente', antes: 'sb litoral', depois: 'SILVAS' }]);
+  const vendas = JSON.parse(p.vendas_json);
+  assert.strictEqual(vendas[0].cliente, 'SILVAS'); assert.strictEqual(vendas[0].cliente_id, 'c-silvas');
+  assert.strictEqual(vendas[1].cliente, 'DESCONHECIDO LTDA'); assert.strictEqual(vendas[1].cliente_id, null);
+  assert.strictEqual(vendas[2].cliente_id, null);
+  assert.deepStrictEqual(vendas[0].itens, []);
+});
+teste('vendas_json malformado não quebra nem é alterado', () => {
+  const p = { vendas_json: '{nao-e-json' };
+  assert.deepStrictEqual(N.normalizarProcesso(p, IDX2), []);
+  assert.strictEqual(p.vendas_json, '{nao-e-json');
+});
+teste('marca (brand) padroniza pela lista de marcas; sem lista fica como veio', () => {
+  const p = { brand: 'Road Cruza' };
+  assert.deepStrictEqual(N.normalizarProcesso(p, IDX2), [{ campo: 'brand', antes: 'Road Cruza', depois: 'ROADCRUZA' }]);
+  assert.ok(!('brand_id' in p), 'marca é lista, não cadastro — sem id');
+  const p2 = { brand: 'Road Cruza' };
+  assert.deepStrictEqual(N.normalizarProcesso(p2, IDX), []);
+  assert.strictEqual(p2.brand, 'Road Cruza');
+});
+teste('COLUNAS_ID cobre os 8 campos de empresa do processo', () => {
+  assert.deepStrictEqual(N.COLUNAS_ID, ['cliente_id','fornecedor_id','armador_id','agente_id','transportadora_id','despachante_id','armazem_id','depot_id']);
+});
+
 console.log('\n── listas-padrao.js ──');
-teste('listas padrão têm as 3 categorias e os 4 portos de destino com dias grátis', () => {
+teste('listas padrão têm as 4 categorias e os 4 portos de destino com dias grátis', () => {
   const l = ListasPadrao.listasPadrao();
-  assert.deepStrictEqual(Object.keys(l).sort(), ['banco_cambio', 'porto_destino', 'porto_origem']);
+  assert.deepStrictEqual(Object.keys(l).sort(), ['banco_cambio', 'marca', 'porto_destino', 'porto_origem']);
+  assert.deepStrictEqual(l.marca, [], 'marcas começam vazias (vêm da aba Listas / de-para)');
   const dias = {}; l.porto_destino.forEach(p => { dias[p.codigo] = p.dados.dias_gratis; });
   assert.deepStrictEqual(dias, { ITJ: 5, IOA: 4, NVT: 5, BRIBB: 5 });
   assert.ok(l.porto_origem.length >= 27);

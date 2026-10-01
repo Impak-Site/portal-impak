@@ -2658,15 +2658,16 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     // constraint" (bug relatado pela Paula, 21/08/2026). UPDATE só toca nas
     // colunas presentes no payload, então não tem esse problema.
     let error;
-    if (processoExistente) {
-      ({ error } = await sb()
-        .from('controle_processos')
-        .update(processoLimpo)
-        .eq('id', processo.id));
-    } else {
-      ({ error } = await sb()
-        .from('controle_processos')
-        .upsert(processoLimpo, { onConflict: 'id' }));
+    const gravar = async (obj) => processoExistente
+      ? sb().from('controle_processos').update(obj).eq('id', processo.id)
+      : sb().from('controle_processos').upsert(obj, { onConflict: 'id' });
+    ({ error } = await gravar(processoLimpo));
+    if (error && erroColunasVinculo(error)) {
+      // Migration 0043 (cliente_id, fornecedor_id...) ainda não rodou:
+      // grava sem os vínculos — o texto padronizado continua indo.
+      const semIds = Object.assign({}, processoLimpo);
+      CadastrosNormalizar.COLUNAS_ID.forEach(c => { delete semIds[c]; });
+      ({ error } = await gravar(semIds));
     }
     if (error) throw new Error(error.message);
 
@@ -3454,6 +3455,11 @@ function erroColunasNovasCadastro(err) {
   const msg = String(err && err.message || err || '');
   return /papeis|sinonimos|regras_json/i.test(msg) && /column|coluna|schema cache|does not exist/i.test(msg);
 }
+// Colunas <campo>_id do processo (migration 0043, cadastros fase 2a).
+function erroColunasVinculo(err) {
+  const msg = String(err && err.message || err || '');
+  return /(cliente|fornecedor|armador|agente|transportadora|despachante|armazem|depot)_id/i.test(msg) && /column|coluna|schema cache|does not exist/i.test(msg);
+}
 // Regras por cadastro (migration 0042, contatos_clientes.regras_json) —
 // pedido Emanuelly 01/10/2026 (Tyre Export: referência do processo vem do
 // "Number PO" da proforma). Só entram chaves conhecidas, com valores
@@ -3569,6 +3575,13 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
     // sempre entra. Sem papéis no payload (telas antigas) → papeis = [tipo].
     // Sinônimos: outras grafias do mesmo cadastro (texto livre, até 50).
     c.tipo = String(c.tipo || '').toUpperCase();
+    // Fase 2a (01/10/2026): FORNECEDOR e EXPORTADOR eram dois tipos pra mesma
+    // coisa (quem vende/embarca pra IMPAK) — o campo do processo se chama
+    // "Fornecedor (Exportador)" e não havia nenhum cadastro FORNECEDOR, só
+    // EXPORTADOR. Unificado em FORNECEDOR; EXPORTADOR continua aceito na
+    // entrada (telas/scripts antigos) e vira FORNECEDOR ao gravar.
+    if (c.tipo === 'EXPORTADOR') c.tipo = 'FORNECEDOR';
+    if (Array.isArray(c.papeis)) c.papeis = c.papeis.map(p => String(p || '').toUpperCase() === 'EXPORTADOR' ? 'FORNECEDOR' : p);
     if (!TIPOS_EMPRESA.includes(c.tipo)) {
       const primeiroPapel = Array.isArray(c.papeis) ? c.papeis.map(p => String(p || '').toUpperCase()).find(p => TIPOS_EMPRESA.includes(p)) : null;
       if (!primeiroPapel) return res.status(400).json({ erro: 'Tipo/papel inválido' });
@@ -3789,8 +3802,8 @@ function invalidarIndiceCadastros() { _cadIndice = { at: 0, indice: null }; }
 async function obterIndiceCadastros() {
   if (_cadIndice.indice && Date.now() - _cadIndice.at < 60 * 1000) return _cadIndice.indice;
   try {
-    let { data, error } = await sb().from('contatos_clientes').select('razao_social,nome_fantasia,tipo,papeis,sinonimos').eq('ativo', true).limit(5000);
-    if (error && erroColunasNovasCadastro(error)) ({ data, error } = await sb().from('contatos_clientes').select('razao_social,nome_fantasia,tipo').eq('ativo', true).limit(5000));
+    let { data, error } = await sb().from('contatos_clientes').select('id,razao_social,nome_fantasia,tipo,papeis,sinonimos').eq('ativo', true).limit(5000);
+    if (error && erroColunasNovasCadastro(error)) ({ data, error } = await sb().from('contatos_clientes').select('id,razao_social,nome_fantasia,tipo').eq('ativo', true).limit(5000));
     if (error) throw new Error(error.message);
     const { listas } = await carregarListas();
     _cadIndice = { at: Date.now(), indice: CadastrosNormalizar.montarIndice(data || [], listas) };
@@ -3800,6 +3813,104 @@ async function obterIndiceCadastros() {
   }
   return _cadIndice.indice;
 }
+
+// ── REVINCULAÇÃO EM MASSA processo ↔ cadastro (cadastros fase 2a, 01/10/2026) ──
+// Passa por TODOS os processos e grava <campo>_id (cliente_id, fornecedor_id,
+// armador_id...) + vendas[].cliente_id a partir do índice de cadastros, e
+// padroniza o texto como o save faz. Uso: depois de rodar a migration 0043
+// (processos antigos sem id), depois de mesclar/renomear cadastros, ou
+// depois que a equipe cadastrar/marcar sinônimos em lote.
+//   body.simular = true  → não grava nada, só devolve o que faria (é o
+//                          relatório de-para: grafias sem cadastro, trocas
+//                          de texto, vínculos novos).
+//   body.so_ids  = true  → grava só os ids, nunca mexe no texto.
+// Processo FECHADO: só recebe id (o texto fica como está e entra na lista
+// fechados_com_texto pra decisão humana — reabrir/ajustar/fechar, como
+// feito em 01/10 nos 8 fechados do de-para).
+app.post('/api/admin/cadastros/revincular', auth('cadastros'), requireGerente, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const simular = body.simular === true || req.query.simular === '1';
+    const soIds = body.so_ids === true;
+    const camposEmpresa = CadastrosNormalizar.CAMPOS_COM_ID;
+    const colunasId = CadastrosNormalizar.COLUNAS_ID;
+    const colunas = ['id', 'referencia', 'fechado', 'cancelado', 'vendas_json', 'brand', 'porto_origem'].concat(camposEmpresa, colunasId).join(',');
+    let r = await buscarTodosProcessos(colunas);
+    if (r.error && erroColunasVinculo(r.error)) {
+      return res.status(409).json({ ok: false, erro: 'A migration 0043 (colunas cliente_id, fornecedor_id...) ainda não foi aplicada no banco.' });
+    }
+    if (r.error) throw new Error(r.error.message);
+    invalidarIndiceCadastros();
+    const indice = await obterIndiceCadastros();
+
+    const stats = {
+      simulado: simular, so_ids: soIds, processos: r.data.length, atualizados: 0,
+      vinculos_novos: {}, vinculos_removidos: {}, texto_alterado: 0,
+      depara: {}, sem_cadastro: {}, fechados_com_texto: [], erros: [],
+    };
+    const conta = (obj, k, sub) => { if (!obj[k]) obj[k] = {}; obj[k][sub] = (obj[k][sub] || 0) + 1; };
+    const logRows = [];
+    for (const p of r.data) {
+      const copia = {};
+      camposEmpresa.forEach(c => { copia[c] = p[c]; });
+      copia.vendas_json = p.vendas_json; copia.brand = p.brand; copia.porto_origem = p.porto_origem;
+      const mudancas = CadastrosNormalizar.normalizarProcesso(copia, indice);
+      const patch = {};
+      colunasId.forEach(col => {
+        const novo = copia[col] || null;
+        const atual = p[col] || null;
+        if (atual !== novo) {
+          patch[col] = novo;
+          if (novo) stats.vinculos_novos[col] = (stats.vinculos_novos[col] || 0) + 1;
+          else stats.vinculos_removidos[col] = (stats.vinculos_removidos[col] || 0) + 1;
+        }
+      });
+      // Grafias que não bateram com nenhum cadastro (relatório pra equipe).
+      camposEmpresa.forEach(c => {
+        const v = copia[c];
+        if (v && String(v).trim() && !copia[c + '_id']) conta(stats.sem_cadastro, c, String(v).trim());
+      });
+      const textoPermitido = !p.fechado && !soIds;
+      if (mudancas.length) {
+        mudancas.forEach(m => conta(stats.depara, m.campo.replace(/\[\d+\]/, '[n]'), `${m.antes} → ${m.depois}`));
+        if (textoPermitido) {
+          mudancas.forEach(m => {
+            const campoBase = m.campo.split('[')[0];
+            if (campoBase === 'vendas') patch.vendas_json = copia.vendas_json;
+            else patch[campoBase] = copia[campoBase];
+            logRows.push({ processo_id: p.id, usuario: req.session.usuario, campo: m.campo + ' (padronizado pelo cadastro)', valor_antes: String(m.antes || ''), valor_depois: String(m.depois || ''), created_at: new Date().toISOString() });
+          });
+          stats.texto_alterado++;
+        } else {
+          stats.fechados_com_texto.push({ referencia: p.referencia, fechado: !!p.fechado, mudancas });
+        }
+      }
+      // vendas[].cliente_id mudou sem mudar texto: só grava se o texto for
+      // permitido (fechado: nem o JSON das vendas é tocado).
+      if (!patch.vendas_json && copia.vendas_json !== p.vendas_json && textoPermitido) patch.vendas_json = copia.vendas_json;
+      if (!Object.keys(patch).length) continue;
+      stats.atualizados++;
+      if (simular) continue;
+      patch.updated_at = new Date().toISOString();
+      const { error } = await sb().from('controle_processos').update(patch).eq('id', p.id);
+      if (error) stats.erros.push({ referencia: p.referencia, erro: error.message });
+    }
+    if (!simular && logRows.length) {
+      for (let i = 0; i < logRows.length; i += 500) {
+        const { error } = await sb().from('controle_log').insert(logRows.slice(i, i + 500));
+        if (error) console.warn('revincular: log erro:', error.message);
+      }
+      try {
+        await sb().from('integracao_log').insert({
+          origem: 'cadastros_revincular', direcao: 'entrada', status: stats.erros.length ? 'erro' : 'ok',
+          campos_aplicados: { atualizados: stats.atualizados, vinculos_novos: stats.vinculos_novos, texto_alterado: stats.texto_alterado },
+          payload: null, usuario: req.session.usuario,
+        });
+      } catch (e) { /* tabela opcional */ }
+    }
+    res.json(Object.assign({ ok: true }, stats));
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
 
 // ── CADASTRO DE PESSOAS (contato individual da empresa, funcionário interno ou avulso) ──
 // Lista leve de usuários de login (só usuario+nome), pra popular o dropdown
@@ -3866,11 +3977,20 @@ app.delete('/api/cadastros/pessoas/:id', auth('controle','financeiro','resultado
 // enriquecer o e-mail interno de follow-up (mostrar quem seria o
 // destinatário real quando o envio direto ao cliente for habilitado —
 // depende do domínio verificado no Resend, ver tarefa pendente #147).
-async function contatosPrincipaisDaEmpresa(nomeEmpresa){
-  if (!nomeEmpresa) return [];
+async function contatosPrincipaisDaEmpresa(nomeEmpresa, empresaIdVinculado){
+  if (!nomeEmpresa && !empresaIdVinculado) return [];
   try {
-    const { data: empresas } = await sb().from('contatos_clientes').select('id').ilike('razao_social', nomeEmpresa).eq('ativo', true).limit(1);
-    const empresaId = empresas && empresas[0] && empresas[0].id;
+    // Fase 2a (01/10/2026): o processo guarda o id do cadastro (cliente_id /
+    // vendas[].cliente_id) — vale ele. Sem id (processo antigo ainda não
+    // revinculado), cai na busca por nome como antes, agora também pelo
+    // nome fantasia (o campo Cliente costuma ter o nome curto).
+    let empresaId = empresaIdVinculado || null;
+    if (!empresaId && nomeEmpresa) {
+      const nomeSeguro = String(nomeEmpresa).replace(/[,%*(){}]/g, '').trim();
+      const { data: empresas } = await sb().from('contatos_clientes').select('id')
+        .or(`razao_social.ilike.${nomeSeguro},nome_fantasia.ilike.${nomeSeguro}`).eq('ativo', true).limit(2);
+      if (empresas && empresas.length === 1) empresaId = empresas[0].id;
+    }
     if (!empresaId) return [];
     const { data: pessoas } = await sb().from('cadastros_pessoas').select('nome,email').eq('empresa_id', empresaId).eq('principal', true).eq('ativo', true);
     return (pessoas || []).filter(p => p.email);
@@ -4568,10 +4688,10 @@ function linhasFollowUpPorCliente(processos){
           vendas = Array.isArray(vendas) ? vendas.filter(v => v && v.cliente) : [];
           if (vendas.length) {
                   vendas.forEach(v => {
-                            linhas.push(Object.assign({}, p, { cliente: v.cliente, _produtosTexto: descricaoItensDaVenda(v) || descricaoProdutos(p) }));
+                            linhas.push(Object.assign({}, p, { cliente: v.cliente, _clienteId: v.cliente_id || null, _produtosTexto: descricaoItensDaVenda(v) || descricaoProdutos(p) }));
                   });
           } else {
-                  linhas.push(Object.assign({}, p, { _produtosTexto: descricaoProdutos(p) }));
+                  linhas.push(Object.assign({}, p, { _clienteId: p.cliente_id || null, _produtosTexto: descricaoProdutos(p) }));
           }
     });
     return linhas;
@@ -4588,16 +4708,18 @@ async function montarHtmlFollowUpSemanal(processos){
   let ehPrincipal = () => true;
   try { ehPrincipal = await montarClassificadorClientes(); } catch(e) { console.warn('[followup] classificação de clientes indisponível:', e.message); }
   const avulsos = {};
+  const idPorCliente = {};
   linhasFollowUpPorCliente(processos).forEach(p => {
     const chave = p.cliente || '(cliente não definido)';
     if (p.cliente && !ehPrincipal(p.cliente)) { (avulsos[chave] = avulsos[chave] || new Set()).add(p.referencia); return; }
     (porCliente[chave] = porCliente[chave] || []).push(p);
+    if (p._clienteId && !idPorCliente[chave]) idPorCliente[chave] = p._clienteId;
   });
 
   const blocosCliente = (await Promise.all(Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(async cliente => {
     // Contato(s) cadastrado(s) como "principal" no Cadastro de Pessoas
     // dessa empresa — só informativo por enquanto (ver contatosPrincipaisDaEmpresa).
-    const principais = await contatosPrincipaisDaEmpresa(cliente);
+    const principais = await contatosPrincipaisDaEmpresa(cliente, idPorCliente[cliente]);
     const linhaPrincipais = principais.length
       ? `<div style="font-size:11px;color:#555;margin-bottom:6px;">Contato principal: ${principais.map(p=>escHtml(p.nome)+' &lt;'+escHtml(p.email)+'&gt;').join(', ')}</div>`
       : '';

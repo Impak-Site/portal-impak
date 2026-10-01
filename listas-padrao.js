@@ -64,10 +64,18 @@
     { codigo: 'SANTANDER', nome: 'Santander', dados: { codigo_banco: '033' }, ordem: 2 },
   ];
 
+  // Marcas de pneu (cadastros fase 2a, 01/10/2026): o campo Marca (brand)
+  // do processo tinha 36 grafias e nenhuma entidade por trás. Código = nome
+  // canônico em maiúsculas (ex.: ROADCRUZA), sinônimos = outras grafias;
+  // "fornecedor" é informativo (quem costuma vender a marca). Começa vazia:
+  // é preenchida pela aba Listas / de-para aprovado, não por semente.
+  const MARCAS = [];
+
   const CATEGORIAS = {
     porto_destino: { nome: 'Portos de destino', campos: [['dias_gratis', 'Dias grátis (armazenagem)', 'number']] },
     porto_origem:  { nome: 'Portos de origem',  campos: [['pais', 'País', 'text']] },
     banco_cambio:  { nome: 'Bancos de câmbio',  campos: [['codigo_banco', 'Cód. banco', 'text'], ['agencia', 'Agência', 'text'], ['conta', 'Conta', 'text'], ['pix', 'PIX', 'text']] },
+    marca:         { nome: 'Marcas (pneus)',    campos: [['fornecedor', 'Fornecedor(es) habituais', 'text']] },
   };
 
   function clonar(lista) {
@@ -84,6 +92,7 @@
       porto_destino: clonar(PORTOS_DESTINO),
       porto_origem: clonar(PORTOS_ORIGEM),
       banco_cambio: clonar(BANCOS_CAMBIO),
+      marca: clonar(MARCAS),
     };
   }
 

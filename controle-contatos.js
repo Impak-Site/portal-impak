@@ -241,7 +241,10 @@ async function filtrarContatosTipo(tipo){
 
 async function carregarContatos(){
   try{
-    const r = await fetch('/api/contatos?tipo='+_contatosTipoAtivo+'&limit=500');
+    // FORNECEDOR e EXPORTADOR foram unificados (fase 2a) — a lista de
+    // fornecedores mostra os dois enquanto houver cadastro antigo EXPORTADOR.
+    const tipoBusca = _contatosTipoAtivo === 'FORNECEDOR' ? 'FORNECEDOR,EXPORTADOR' : _contatosTipoAtivo;
+    const r = await fetch('/api/contatos?tipo='+encodeURIComponent(tipoBusca)+'&limit=500');
     const d = await r.json();
     _contatosLista = d.ok ? d.contatos : [];
   }catch(e){ _contatosLista = []; }
@@ -256,7 +259,8 @@ function renderListaContatos(){
   if(q) lista = lista.filter(c=>
     (c.razao_social||'').toLowerCase().includes(q) ||
     (c.documento||c.cnpj||'').includes(q) ||
-    (c.nome_fantasia||'').toLowerCase().includes(q)
+    (c.nome_fantasia||'').toLowerCase().includes(q) ||
+    (Array.isArray(c.sinonimos) && c.sinonimos.some(s=>String(s||'').toLowerCase().includes(q)))
   );
   if(!lista.length){
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--dim);font-size:13px;">Nenhum contato cadastrado neste tipo.</td></tr>`;
@@ -382,14 +386,14 @@ async function buscarDadosCnpj(valor){
 // Cadastros fase 1b (01/10/2026): uma empresa pode ter vários papéis — o
 // tipo principal (select) sempre fica marcado; os demais são checkboxes.
 const PAPEIS_EMPRESA = {
-  CLIENTE:'Cliente', FORNECEDOR:'Fornecedor', EXPORTADOR:'Exportador', DESPACHANTE:'Despachante',
+  CLIENTE:'Cliente', FORNECEDOR:'Fornecedor (exportador)', DESPACHANTE:'Despachante',
   AGENTE:'Agente de Carga', ARMADOR:'Armador', TRANSPORTADORA:'Transportadora',
   ARMAZEM_ALFANDEGADO:'Armazém Alfandegado', PORTO_ARMAZEM:'Porto/Armazém', DEPOT_DEVOLUCAO:'Depot Devolução',
 };
 function _ceRenderPapeis(marcados){
   const wrap = document.getElementById('ce_papeis');
   if(!wrap) return;
-  const set = new Set((marcados||[]).map(x=>String(x).toUpperCase()));
+  const set = new Set((marcados||[]).map(x=>String(x).toUpperCase()==='EXPORTADOR' ? 'FORNECEDOR' : String(x).toUpperCase()));
   wrap.innerHTML = Object.keys(PAPEIS_EMPRESA).map(k=>
     `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;"><input type="checkbox" data-papel="${k}" ${set.has(k)?'checked':''} onchange="_ceContatoDirty=true"> ${esc(PAPEIS_EMPRESA[k])}</label>`
   ).join('');
@@ -444,8 +448,11 @@ function editarContato(id){
   if(!c) return;
   document.getElementById('contato-edit-title').textContent = 'Editar Contato';
   document.getElementById('ce_id').value = c.id;
-  document.getElementById('ce_tipo').value = c.tipo||'CLIENTE';
-  _ceRenderPapeis((Array.isArray(c.papeis) && c.papeis.length) ? c.papeis : [c.tipo||'CLIENTE']);
+  // EXPORTADOR foi unificado em FORNECEDOR (fase 2a): cadastro antigo abre
+  // como Fornecedor e é regravado assim ao salvar.
+  const tipoTela = (c.tipo||'CLIENTE') === 'EXPORTADOR' ? 'FORNECEDOR' : (c.tipo||'CLIENTE');
+  document.getElementById('ce_tipo').value = tipoTela;
+  _ceRenderPapeis((Array.isArray(c.papeis) && c.papeis.length) ? c.papeis : [tipoTela]);
   const elSin = document.getElementById('ce_sinonimos');
   if(elSin) elSin.value = (Array.isArray(c.sinonimos) ? c.sinonimos : []).join('\n');
   const elRef = document.getElementById('ce_ref_origem');
