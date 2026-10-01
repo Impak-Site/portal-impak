@@ -171,9 +171,9 @@ function _dreConsolidadoTabelaHtml(dre){
     <tr><td colspan="4" style="padding:10px 8px 4px;font-weight:700;border-top:1px solid var(--border);">CUSTOS</td></tr>
     ${linhaSimples('FOB', dre.fob)}
     <tr><td style="padding:5px 8px;">Adiantamento Porto (Liberação)</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalAdiantamento)}</td></tr>
-    ${linhaGrupo(dre.adiantamentoItens)}
+    ${linhaGrupo(dreLinhasVisiveis(dre.adiantamentoItens))}
     <tr><td style="padding:5px 8px;">Agente Frete</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalAgenteFrete)}</td></tr>
-    ${linhaGrupo(dre.agenteFreteItens)}
+    ${linhaGrupo(dreLinhasVisiveis(dre.agenteFreteItens))}
     <tr><td></td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Valores ref. NFe</td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Créditos entrada</td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Diferença</td></tr>
     ${dre.diferencasItens.map(linhaDif).join('')}
     ${linhaSimples('Reciclagem', dre.reciclagem)}

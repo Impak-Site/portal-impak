@@ -1903,8 +1903,13 @@ const CUSTOS_REAIS_CONFIG = [
   // exclui essas duas linhas do total de custo (formula G42 da aba
   // Fechamento: =SOMA(G17:G41)-G30-G31).
   { grupo:'Diferenças de Impostos (Fechamento)', slug:'diferencas', itens:[
-    { id:'adiantamento_porto',        label:'Adiantamento Porto (Liberação/Aduaneiras)', unidade:'BRL', apenasPago:true, cotado:c=>null },
-    { id:'agente_frete',              label:'Agente Frete',                              unidade:'BRL', apenasPago:true, cotado:c=>null },
+    // Os dois "pacotes" do modo planilha: o total da nota do despachante
+    // (impostos + taxas de liberação) e o total da fatura do agente de carga
+    // (frete + taxas). São uma ALTERNATIVA ao lançamento item a item — nunca
+    // os dois juntos (ver custosReaisDuplicidadePacote abaixo e o aviso na
+    // aba). planilha-import.js pula G22/G23 pelo mesmo motivo.
+    { id:'adiantamento_porto',        label:'Adiantamento Porto — pacote do despachante', unidade:'BRL', apenasPago:true, pacote:'adiantamento', cotado:c=>null },
+    { id:'agente_frete',              label:'Agente Frete — pacote do agente de carga',   unidade:'BRL', apenasPago:true, pacote:'agente', cotado:c=>null },
     { id:'diferenca_ipi',             label:'Diferença IPI (NFe × D.I.)',                unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'diferenca_pis',             label:'Diferença PIS (NFe × D.I.)',                unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'diferenca_cofins',          label:'Diferença COFINS (NFe × D.I.)',             unidade:'BRL', apenasPago:true, cotado:c=>null },
@@ -2114,7 +2119,34 @@ function cobradoEfetivo(reais, item){
 // e os dois "pacotes" da planilha de fechamento — Adiantamento Porto e
 // Agente Frete). Os outros ~45 só aparecem quando têm valor cotado/real
 // ou quando alguém os adiciona pelo "+ adicionar item".
-const CUSTOS_REAIS_SEMPRE_VISIVEIS = ['fob','frete','seguro','ii','ipi','pis','cofins','icms','adiantamento_porto','agente_frete'];
+const CUSTOS_REAIS_SEMPRE_VISIVEIS = ['fob','frete','seguro','ii','ipi','pis','cofins','icms'];
+
+// Itens detalhados que o pacote correspondente substitui (modo planilha ×
+// modo item a item). Mesma composição dos grupos do DRE (montarDRE).
+const CUSTOS_REAIS_PACOTES = {
+  adiantamento: { id:'adiantamento_porto', nome:'Adiantamento Porto (nota do despachante)', itens:['ii','ipi','pis','cofins','icms','siscomex','marinha','armazenagem','emissao_li'] },
+  agente:       { id:'agente_frete',       nome:'Agente Frete (fatura do agente de carga)', itens:['frete','capatazia','liberacao_bl','additional_costs','import_logistics','drop_off','isps','iof','desconsolidacao','agente','handling','trs','tsc'] },
+};
+
+// Detecta pacote e itens detalhados lançados ao mesmo tempo (o mesmo
+// dinheiro contado duas vezes no Custo real). Devolve [] quando está tudo
+// certo; senão uma entrada por pacote com os dois valores em R$.
+function custosReaisDuplicidadePacote(p){
+  const reais = (p && p.real_json && typeof p.real_json === 'object') ? p.real_json : null;
+  if(!reais) return [];
+  const porId = {}; custosReaisItensFlat().forEach(it => { porId[it.id] = it; });
+  const brl = id => { const n = porId[id] ? normalizarValorRealItem(reais[id], porId[id], p) : null; return n ? n.totalBrl : 0; };
+  const out = [];
+  Object.values(CUSTOS_REAIS_PACOTES).forEach(pac => {
+    const pacote = brl(pac.id);
+    if(!(pacote > 0)) return;
+    const itens = pac.itens.filter(id => brl(id) > 0);
+    if(!itens.length) return;
+    const totalItens = itens.reduce((s, id) => s + brl(id), 0);
+    out.push({ pacoteId: pac.id, nome: pac.nome, pacote, totalItens, itens: itens.map(id => ({ id, label: porId[id].label, valorBrl: brl(id) })) });
+  });
+  return out;
+}
 
 // Custo da mercadoria a partir das parcelas já pagas (Financeiro): soma de
 // valor US$ × câmbio fechado de cada parcela (é a conta da planilha,
@@ -2266,6 +2298,10 @@ function valorRealItemBRL(p, id){
 // (NFe x D.I.), com o mesmo Total de Custos e Lucro Bruto que ja aparecem
 // na aba Fechamento (calcularCustoRealTotal) — nao introduz nenhuma conta
 // nova, so reorganiza a apresentacao pro formato que a empresa ja usava.
+// Linhas de pacote (modo planilha) só aparecem no DRE quando foram usadas —
+// as outras linhas continuam fixas (com 0,00) como na planilha.
+function dreLinhasVisiveis(itens){ return (itens||[]).filter(i => !(i.pacote && !(Math.abs(i.valor||0) >= 0.005))); }
+
 function montarDRE(p){
   const v = id => valorRealItemBRL(p, id);
 
@@ -2282,6 +2318,13 @@ function montarDRE(p){
     // mas não tinha linha própria no DRE. Faz parte do Adiantamento Porto
     // (Liberação), logo depois de Armazenagem. Valor PAGO (não o cobrado).
     { label:'Emissão L.I.',            valor:v('emissao_li') },
+    // Pacote (30/09/2026): processo lançado "modo planilha", com o total da
+    // nota do despachante numa linha só em vez de item a item. Já entrava no
+    // TOTAL CUSTOS (calcularCustoRealTotal soma o real_json inteiro) mas não
+    // tinha linha no DRE — a soma visível não batia com o total. Sempre
+    // presente (valor 0 quando não usado) porque montarDREConsolidado soma
+    // os itens por índice e a lista precisa ter o mesmo tamanho em todos.
+    { label:'Adiantamento Porto (pacote do despachante)', valor:v('adiantamento_porto'), pacote:true },
   ];
   const agenteFreteItens = [
     { label:'Frete Internacional',              valor:v('frete') },
@@ -2294,6 +2337,7 @@ function montarDRE(p){
     { label:'IOF',                               valor:v('iof') },
     { label:'Desconsolidação',                   valor:v('desconsolidacao') },
     { label:'Taxa Agente de Carga (IR/PCC/ISS)', valor:v('agente') },
+    { label:'Agente Frete (pacote do agente de carga)', valor:v('agente_frete'), pacote:true },
   ];
   const par = (label, idPago, idDif) => {
     const credito = v(idPago), diferenca = v(idDif);
@@ -2478,9 +2522,9 @@ function montarDREConsolidado(filtros){
       if(!acc){
         acc = {
           fob:0,
-          adiantamentoItens: dreProcesso.adiantamentoItens.map(i=>({label:i.label, valor:0})),
+          adiantamentoItens: dreProcesso.adiantamentoItens.map(i=>({label:i.label, valor:0, pacote:!!i.pacote})),
           totalAdiantamento:0,
-          agenteFreteItens: dreProcesso.agenteFreteItens.map(i=>({label:i.label, valor:0})),
+          agenteFreteItens: dreProcesso.agenteFreteItens.map(i=>({label:i.label, valor:0, pacote:!!i.pacote})),
           totalAgenteFrete:0,
           diferencasItens: dreProcesso.diferencasItens.map(i=>({label:i.label, valorNfe:0, creditoEntrada:0, diferenca:0})),
           reciclagem:0,

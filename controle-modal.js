@@ -974,9 +974,9 @@ function renderDREModalHtml(dre){
         <tr><td colspan="4" style="padding:10px 8px 4px;font-weight:700;border-top:1px solid var(--border);">CUSTOS</td></tr>
         ${linhaSimples('FOB', dre.fob)}
         <tr><td style="padding:5px 8px;">Adiantamento Porto (Liberação)</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalAdiantamento)}</td></tr>
-        ${linhaGrupo(dre.adiantamentoItens)}
+        ${linhaGrupo(dreLinhasVisiveis(dre.adiantamentoItens))}
         <tr><td style="padding:5px 8px;">Agente Frete</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalAgenteFrete)}</td></tr>
-        ${linhaGrupo(dre.agenteFreteItens)}
+        ${linhaGrupo(dreLinhasVisiveis(dre.agenteFreteItens))}
         <tr><td></td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Valores ref. NFe</td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Créditos entrada</td><td style="padding:8px 8px 4px;color:var(--muted);font-size:11px;">Diferença</td></tr>
         ${dre.diferencasItens.map(linhaDif).join('')}
         ${linhaSimples('Reciclagem', dre.reciclagem)}
@@ -1058,6 +1058,7 @@ function renderCustosReaisTab(p){
 
   return `<div id="custos-reais-wrap">
     <div id="cr_cards" class="cr-cards"></div>
+    <div id="cr_aviso"></div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">
       <div class="form-group" style="max-width:150px;margin:0;">
         <label class="form-label">Câmbio USD</label>
@@ -1108,6 +1109,9 @@ function crLinhaHtml(item, st, reais, containers, p){
   const notas = [];
   if(item.temCredito) notas.push('crédito tributário — fora do custo');
   if(item.excluirDosTotais) notas.push('fora dos totais');
+  if(item.pacote) notas.push(item.pacote === 'adiantamento'
+    ? 'total da nota do despachante — OU isto, OU II/IPI/PIS/COFINS/ICMS/Siscomex/AFRMM/armazenagem item a item'
+    : 'total da fatura do agente — OU isto, OU Frete Internacional + taxas do agente item a item');
   const detalharLink = podeDetalhar
     ? `<a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" class="cr-link">📦 <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total único' : `Detalhar por container (${containers.length})`}</span></a>`
     : '';
@@ -1564,6 +1568,13 @@ function atualizarTotalCustosReais(){
   }
 
   crRenderCards(snapshot, estado);
+
+  // Pacote + itens detalhados ao mesmo tempo = dinheiro contado em dobro.
+  const avisoEl = document.getElementById('cr_aviso');
+  if(avisoEl){
+    const dup = custosReaisDuplicidadePacote(snapshot);
+    avisoEl.innerHTML = dup.map(d => `<div class="cr-aviso">⚠ <strong>${esc(d.nome)}</strong> lançado como pacote (${r2(d.pacote)}) e também item a item (${d.itens.map(i => esc(i.label)).join(', ')} = ${r2(d.totalItens)}). O Custo real está contando esse dinheiro duas vezes — zere o pacote ou os itens.</div>`).join('');
+  }
 
   // Rodapé: a mesma conta do Fechamento, pra quem rolou até o fim ver o
   // resultado sem voltar ao topo.

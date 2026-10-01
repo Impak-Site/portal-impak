@@ -292,7 +292,7 @@ async function exportarDREExcel(dre, p){
     const fobRow = linha('    FOB', null, null, dre.fob); fmtMoeda(fobRow.getCell(4));
 
     const adiRow = linha('    Adiantamento Porto (Liberação)', null, null, dre.totalAdiantamento); fmtMoeda(adiRow.getCell(4));
-    dre.adiantamentoItens.forEach(it=>{
+    dreLinhasVisiveis(dre.adiantamentoItens).forEach(it=>{
       // Valor na MESMA coluna (D) que todas as outras linhas — antes ia
       // pra coluna B, o que fazia o Excel exportado parecer "diferente"
       // do PDF/tela (pedido do Ayslan, 11/09/2026: "o DRE em pdf do
@@ -303,7 +303,7 @@ async function exportarDREExcel(dre, p){
     });
 
     const agRow = linha('    Agente Frete', null, null, dre.totalAgenteFrete); fmtMoeda(agRow.getCell(4));
-    dre.agenteFreteItens.forEach(it=>{
+    dreLinhasVisiveis(dre.agenteFreteItens).forEach(it=>{
       const row = linha('          '+it.label, null, null, it.valor);
       fmtMoeda(row.getCell(4));
     });
@@ -502,9 +502,9 @@ async function exportarDREPDF(dre, p){
     body.push([{ content:'CUSTOS', colSpan:4, styles:{fontStyle:'bold', fillColor:[241,245,249]} }]);
     linhaSimples('    FOB', dre.fob);
     linhaSimples('    Adiantamento Porto (Liberação)', dre.totalAdiantamento);
-    dre.adiantamentoItens.forEach(it => linhaSimples('          '+it.label, it.valor));
+    dreLinhasVisiveis(dre.adiantamentoItens).forEach(it => linhaSimples('          '+it.label, it.valor));
     linhaSimples('    Agente Frete', dre.totalAgenteFrete);
-    dre.agenteFreteItens.forEach(it => linhaSimples('          '+it.label, it.valor));
+    dreLinhasVisiveis(dre.agenteFreteItens).forEach(it => linhaSimples('          '+it.label, it.valor));
     if(dre.diferencasItens && dre.diferencasItens.length){
       // Mini-cabecalho so aqui (igual a linha 28 da planilha Excel: "Valores
       // ref. NFe" / "Créditos entrada" aparecem SO acima das linhas de

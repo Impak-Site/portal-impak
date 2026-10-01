@@ -2354,10 +2354,29 @@ teste('custosReaisEstado: só aparece quem tem valor real/cotado, os 10 básicos
   verdadeiro(!por.marinha.visivel, 'cotado zero não aparece');
   verdadeiro(por.isps.visivel, 'adicionado na sessão');
   verdadeiro(!por.tsc.visivel && !por.drop_off.visivel, 'sem nada → escondido');
-  ['fob','frete','seguro','ii','ipi','pis','cofins','icms','adiantamento_porto','agente_frete'].forEach(id => verdadeiro(por[id].visivel, id + ' é básico'));
+  ['fob','frete','seguro','ii','ipi','pis','cofins','icms'].forEach(id => verdadeiro(por[id].visivel, id + ' é básico'));
+  verdadeiro(!por.adiantamento_porto.visivel && !por.agente_frete.visivel, 'pacotes só aparecem quando têm valor (ou pelo + adicionar item)');
   iguais(est.total, 2, 'itens visíveis com valor pago: timp e fob');
   iguais(est.conferidos, 1, 'só fob tem _conf');
   verdadeiro(por.fob.conferido && !por.timp.conferido);
+});
+teste('custosReaisDuplicidadePacote: pacote + itens detalhados ao mesmo tempo é apontado; só um dos dois não', () => {
+  const dup = sandbox.custosReaisDuplicidadePacote({ real_json: { adiantamento_porto: { valor: 72252, moeda: 'BRL' }, ii: { valor: 32534, moeda: 'BRL' }, siscomex: { valor: 480, moeda: 'BRL' }, agente_frete: { valor: 13127, moeda: 'BRL' } } });
+  iguais(dup.length, 1, 'só o adiantamento tem itens detalhados junto');
+  iguais(dup[0].pacoteId, 'adiantamento_porto'); aproxIgual(dup[0].pacote, 72252, 0.01); aproxIgual(dup[0].totalItens, 33014, 0.01);
+  iguais(sandbox.custosReaisDuplicidadePacote({ real_json: { adiantamento_porto: { valor: 72252, moeda: 'BRL' } } }).length, 0, 'só pacote: ok');
+  iguais(sandbox.custosReaisDuplicidadePacote({ real_json: { ii: { valor: 100, moeda: 'BRL' }, frete: { valor: 50, moeda: 'BRL' } } }).length, 0, 'só itens: ok');
+  iguais(sandbox.custosReaisDuplicidadePacote({}).length, 0);
+});
+teste('montarDRE: os pacotes aparecem como linha própria (sempre presentes, zero quando não usados) e o total continua batendo', () => {
+  const dre = sandbox.montarDRE({ real_json: { adiantamento_porto: { valor: 66317.2, moeda: 'BRL' }, agente_frete: { valor: 13187.22, moeda: 'BRL' }, fob: { valor: 174387.99, moeda: 'BRL' } } });
+  const a = dre.adiantamentoItens.find(i => /pacote do despachante/.test(i.label));
+  const g = dre.agenteFreteItens.find(i => /pacote do agente/.test(i.label));
+  verdadeiro(a && g, 'linhas dos pacotes deveriam existir');
+  aproxIgual(a.valor, 66317.2, 0.01); aproxIgual(g.valor, 13187.22, 0.01);
+  aproxIgual(dre.totalAdiantamento, 66317.2, 0.01); aproxIgual(dre.totalAgenteFrete, 13187.22, 0.01);
+  const dre2 = sandbox.montarDRE({ real_json: { ii: { valor: 10, moeda: 'BRL' } } });
+  iguais(dre2.adiantamentoItens.find(i => /pacote do despachante/.test(i.label)).valor, 0, 'sem pacote: linha presente com zero (DRE consolidado soma por índice)');
 });
 teste('calcularCustoRealTotal continua ignorando _conf e demais chaves auxiliares de real_json', () => {
   const r = sandbox.calcularCustoRealTotal({ real_json: { ii: { valor: 300, moeda: 'BRL' }, _conf: { ii: { por: 'x', em: 'y' } }, _cambio_eur: 6 } });
