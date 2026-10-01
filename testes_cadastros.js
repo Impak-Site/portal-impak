@@ -193,23 +193,23 @@ const LISTAS_ID = Object.assign(ListasPadrao.listasPadrao(), {
 });
 const IDX2 = N.montarIndice(EMPRESAS_ID, LISTAS_ID);
 
-teste('resolverCampo devolve nome canônico + id do cadastro (cliente/fornecedor usam o nome curto)', () => {
-  assert.deepStrictEqual(N.resolverCampo('cliente', 'sb litoral', IDX2), { nome: 'SILVAS', id: 'c-silvas' });
-  assert.deepStrictEqual(N.resolverCampo('cliente', 'SILVAS COMERCIO DE PNEUS LTDA', IDX2), { nome: 'SILVAS', id: 'c-silvas' });
-  assert.deepStrictEqual(N.resolverCampo('fornecedor', 'Sailun Group (HongKong) Co., Limited', IDX2), { nome: 'SAILUN', id: 'f-sailun' });
+teste('resolverCampo devolve nome canônico + id do cadastro (cliente/fornecedor usam a razão social)', () => {
+  assert.deepStrictEqual(N.resolverCampo('cliente', 'sb litoral', IDX2), { nome: 'SILVAS COMERCIO DE PNEUS LTDA', id: 'c-silvas' });
+  assert.deepStrictEqual(N.resolverCampo('cliente', 'SILVAS', IDX2), { nome: 'SILVAS COMERCIO DE PNEUS LTDA', id: 'c-silvas' }, 'nome fantasia reconhece, mas o canônico é a razão social');
+  assert.deepStrictEqual(N.resolverCampo('fornecedor', 'Sailun Group (HongKong) Co., Limited', IDX2), { nome: 'SAILUN GROUP(HONGKONG)CO.,LIMITED', id: 'f-sailun' });
   assert.deepStrictEqual(N.resolverCampo('fornecedor', 'Tyre Export, Inc.', IDX2), { nome: 'TYRE EXPORT INC', id: 'f-tyre' }, 'FORNECEDOR e EXPORTADOR valem pro mesmo campo');
   assert.strictEqual(N.resolverCampo('fornecedor', 'QINGDAO DITRIP TYRE CO LIMITED', IDX2), null);
   assert.strictEqual(N.resolverCampo('cliente', '', IDX2), null);
 });
 teste('matriz/filial com o mesmo nome: texto padroniza, id fica null (não dá pra escolher)', () => {
-  assert.deepStrictEqual(N.resolverCampo('cliente', 'ost pneus ltda', IDX2), { nome: 'OST', id: null });
-  assert.strictEqual(N.normalizarValorCampo('cliente', 'ost pneus ltda', IDX2), 'OST');
+  assert.deepStrictEqual(N.resolverCampo('cliente', 'ost pneus ltda', IDX2), { nome: 'OST PNEUS LTDA', id: null });
+  assert.strictEqual(N.normalizarValorCampo('cliente', 'OST', IDX2), 'OST PNEUS LTDA');
 });
 teste('normalizarProcesso grava <campo>_id (id, ou null quando não reconhece) só pros campos presentes', () => {
   const p = { id: 'x', cliente: 'SB LITORAL', fornecedor: 'QINGDAO DITRIP TYRE CO LIMITED', armador: 'PILL', obs: 'nada' };
   const mudancas = N.normalizarProcesso(p, IDX2);
   assert.deepStrictEqual(mudancas, [
-    { campo: 'cliente', antes: 'SB LITORAL', depois: 'SILVAS' },
+    { campo: 'cliente', antes: 'SB LITORAL', depois: 'SILVAS COMERCIO DE PNEUS LTDA' },
     { campo: 'armador', antes: 'PILL', depois: 'PIL' },
   ]);
   assert.strictEqual(p.cliente_id, 'c-silvas');
@@ -221,9 +221,9 @@ teste('normalizarProcesso grava <campo>_id (id, ou null quando não reconhece) s
 teste('vendas_json: cada venda ganha cliente_id e o nome padronizado; string continua string', () => {
   const p = { vendas_json: JSON.stringify([{ cliente: 'sb litoral', itens: [] }, { cliente: 'DESCONHECIDO LTDA' }, { cliente: '' }]) };
   const mudancas = N.normalizarProcesso(p, IDX2);
-  assert.deepStrictEqual(mudancas, [{ campo: 'vendas[1].cliente', antes: 'sb litoral', depois: 'SILVAS' }]);
+  assert.deepStrictEqual(mudancas, [{ campo: 'vendas[1].cliente', antes: 'sb litoral', depois: 'SILVAS COMERCIO DE PNEUS LTDA' }]);
   const vendas = JSON.parse(p.vendas_json);
-  assert.strictEqual(vendas[0].cliente, 'SILVAS'); assert.strictEqual(vendas[0].cliente_id, 'c-silvas');
+  assert.strictEqual(vendas[0].cliente, 'SILVAS COMERCIO DE PNEUS LTDA'); assert.strictEqual(vendas[0].cliente_id, 'c-silvas');
   assert.strictEqual(vendas[1].cliente, 'DESCONHECIDO LTDA'); assert.strictEqual(vendas[1].cliente_id, null);
   assert.strictEqual(vendas[2].cliente_id, null);
   assert.deepStrictEqual(vendas[0].itens, []);
