@@ -514,9 +514,17 @@ function parseFechamento(wb) {
     }
     const jurosTotal = notas.reduce(function(s, n) { return s + (n.juros || 0); }, 0);
 
-    // FOB pago: toda linha "Adance/Advance Payment" (valor em R$ na coluna G).
-    const fobPago = linhas.filter(function(l) { return /^ADV?ANCE PAYMENT/.test(semAcento(l.B)); })
-        .reduce(function(s, l) { return s + numVal(l.G); }, 0);
+    // FOB pago: o bloco de pagamentos fica entre o cabecalho "Dolar / Real /
+    // TX Dolar" e a linha "Adiantamento Porto". Entram TODAS as linhas com
+    // rotulo e valor em R$ (coluna G): "Adance/Advance Payment" e tambem
+    // "Credit Note" (credito do fornecedor, valor negativo, ex.: UD26-051,
+    // PVN2512, PVN2601-8). Somar so "Adance Payment" deixava o FOB maior que
+    // o da planilha.
+    const iCab = linhas.findIndex(function(l) { return semAcento(l.F) === 'DOLAR' && semAcento(l.G) === 'REAL'; });
+    const iAdi = linhas.findIndex(function(l) { return /^ADIANTAMENTO PORTO/.test(semAcento(l.B)); });
+    let fobPago = 0;
+    const blocoPagamentos = (iCab >= 0 && iAdi > iCab) ? linhas.slice(iCab + 1, iAdi) : linhas.filter(function(l) { return /^ADV?ANCE PAYMENT|^CREDIT NOTE/.test(semAcento(l.B)); });
+    blocoPagamentos.forEach(function(l) { if (semAcento(l.B) && typeof l.G === 'number') fobPago += l.G; });
 
     const real_json = {};
     const moedas = {};

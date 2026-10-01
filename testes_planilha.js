@@ -31,7 +31,7 @@ function montarFechamento(notas, opt){
   set(r, 'E', 'TOTAL'); set(r, 'G', notas.reduce((s,n)=>s+n.valor+(n.juros||0),0)); r++;
   set(r, 'F', 'Dolar'); set(r, 'G', 'Real'); set(r, 'H', 'TX Dolar'); set(r, 'I', 'Data'); r++;
   const adv = opt.advances || [[10000, 50000, 5.0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
-  adv.forEach(function(a){ set(r, 'B', 'Adance Payment'); set(r, 'F', a[0]); set(r, 'G', a[1]); set(r, 'H', a[2]); r++; });
+  adv.forEach(function(a){ set(r, 'B', a[3] || 'Adance Payment'); set(r, 'F', a[0]); set(r, 'G', a[1]); set(r, 'H', a[2]); r++; });
   r++;
   const v = Object.assign({ adiantamento: 30000, agente: 9000, difPis: 100, difCofins: 500, marj: 0, difIpi: 200, difIcms: 300, icmsSt: 7000, ibs: 10, cbs: 90, comVend: 0, recicl: 1500, lavacao: 505, baixaPatio: 0, comChin: 0, timp: 0, trade: 0, seguroUsd: 10, seguroTx: 5, difSeguro: 400 }, opt.valores || {});
   const linhasB = [
@@ -99,6 +99,10 @@ teste('juros por nota + total, com aviso para lançar como venda a prazo', () =>
 });
 teste('notas Boss (bruto e líquido) no resumo', () => {
   iguais([prazo.resumo.notas_boss, prazo.resumo.boss_liquido], [8174.29, 6782.21]);
+});
+teste('Credit Note (crédito do fornecedor) entra no FOB pago com sinal negativo', () => {
+  const r = pi.importarFechamentoBase(montarFechamento([{ numero: '8543', valor: 380595.94, cliente: 'CLIENTE B' }], { advances: [[27693, 142436.18, 5.1434], [-1000, -5143.4, 5.1434, 'Credit Note'], [0, 0, 0], [0, 0, 0]] }));
+  iguais(Math.round(r.real_json.fob * 100) / 100, 137292.78);
 });
 teste('planilha sem aba Fechamento dá erro claro', () => {
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['x']]), 'DADOS');
