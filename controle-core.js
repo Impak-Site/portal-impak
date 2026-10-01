@@ -349,6 +349,11 @@ function ativarTelaCadastrosExclusiva(){
   const toolbar = document.querySelector('.toolbar');
   if(toolbar) toolbar.style.display = 'none';
   document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').style.display = 'none');
+  // #paginacao é irmão de .table-wrap — sem isso o "1 2 … 12 › 578 processos"
+  // da lista principal ficava flutuando embaixo das abas de Cadastros
+  // (visto ao testar a aba Listas, 01/10/2026; mesmo bug já corrigido na
+  // fila de Conferência).
+  document.getElementById('paginacao') && (document.getElementById('paginacao').style.display = 'none');
 
   // Esconde a barra lateral INTEIRA (nao so a secao "processos") -- sem
   // isso, os links "Fila de Conferencia" e o rodape "API Anthropic" (que
