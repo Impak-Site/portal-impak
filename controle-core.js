@@ -1562,8 +1562,32 @@ function chaveContratoCambio(l){
 function listarPendenciasDI(processos, dataDe, dataAte){
   const linhas = [];
   (processos||[]).forEach(p=>{
-    if(p.pi_pagamento !== 'PARCELADO') return;
     if(ehAcompanhamento(p)) return;
+    // Pagamento único (À Vista / 100% a Prazo) com câmbio fechado: uma linha
+    // com os campos em nível de processo (pi_venc_di/pi_duimp_*, migration
+    // 0041 — pedido Emanuelly 01/10/2026). Data do câmbio = a mesma que o
+    // Controle Cambial usa (Data Pagamento: pi_data_saldo no Prazo,
+    // pi_data_entrada na Vista). Entrada+Saldo continua fora (2 câmbios num
+    // processo só, sem campo próprio por câmbio).
+    if(p.pi_pagamento === 'VISTA' || p.pi_pagamento === 'PRAZO'){
+      if(!parseFloat(p.pi_cambio_fechado)) return;
+      const dataCambio = (p.pi_pagamento === 'PRAZO' ? (p.pi_data_saldo || p.pi_data_entrada) : (p.pi_data_entrada || p.pi_data_saldo)) || '';
+      if(!dataCambio) return;
+      if(dataDe && dataCambio < dataDe) return;
+      if(dataAte && dataCambio > dataAte) return;
+      linhas.push({
+        referencia: p.referencia, processoId: p.id, parcelaIndex: null,
+        codigoBacen: p.pi_cambio_codigo_bacen || '', swiftId: '',
+        tipoCambio: tipoCambioDe({ codigo_bacen: p.pi_cambio_codigo_bacen }),
+        banco: p.pi_cambio_banco || '', taxa: parseFloat(p.pi_cambio_fechado) || 0, moeda: 'USD',
+        cliente: p.cliente || '', dataCambio,
+        vencimentoDi: p.pi_venc_di || _mais180dias(dataCambio), vencimentoCalculado: !p.pi_venc_di,
+        valorUsd: parseFloat(p.pi_valor_usd) || 0,
+        duimp: p.pi_duimp_numero || '', protocolo: p.pi_duimp_protocolo || '',
+      });
+      return;
+    }
+    if(p.pi_pagamento !== 'PARCELADO') return;
     let parcelas = [];
     try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
     parcelas.forEach((pc,i)=>{

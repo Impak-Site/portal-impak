@@ -344,6 +344,23 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" id="f_pi_cambio_codigo_bacen" value="${esc(p.pi_cambio_codigo_bacen)}" placeholder="Nº do contrato de câmbio"
               title="Nº do contrato de câmbio / referência do banco junto ao Banco Central. Existe também por parcela em Parcelado — aqui é o equivalente pra Único/Entrada+Saldo/Prazo, senão a extração por IA não tinha onde gravar esse dado (relato da Paula, 22/09/2026: comprovante lido mas Código BACEN sumia).">
           </div>
+          <!-- DI/DUIMP pra pagamento único (À Vista / 100% a Prazo / Entrada+Saldo) —
+               pedido Emanuelly 01/10/2026: antes só existia dentro de cada parcela
+               (Parcelado), então em "100% a Prazo" não tinha onde pôr a chave da
+               DUIMP (IMPAK-OID2605A). Colunas pi_venc_di/pi_duimp_numero/
+               pi_duimp_protocolo (migration 0041). Em Parcelado some, igual ao BACEN. -->
+          <div class="form-group" id="grp-pi-duimp-venc" style="${p.pi_pagamento==='PARCELADO'?'display:none':''}"><label class="form-label">Venc. DI/DUIMP</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_venc_di" value="${esc(p.pi_venc_di)}" title="Prazo p/ comprovar DI/DUIMP ao banco (padrão: 180 dias da data do câmbio/pagamento)" style="flex:1;">
+              <button type="button" title="Calcular 180 dias a partir da Data Pagamento" onclick="calcularVencDIPagamentoUnico()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:36px;width:32px;flex:none;">↻</button>
+            </div>
+          </div>
+          <div class="form-group" id="grp-pi-duimp-numero" style="${p.pi_pagamento==='PARCELADO'?'display:none':''}"><label class="form-label">Nº DUIMP</label>
+            <input class="form-input" id="f_pi_duimp_numero" value="${esc(p.pi_duimp_numero)}" placeholder="Nº DUIMP"
+              title="Número da DUIMP deste processo (em Parcelado fica dentro de cada parcela)"></div>
+          <div class="form-group" id="grp-pi-duimp-protocolo" style="${p.pi_pagamento==='PARCELADO'?'display:none':''}"><label class="form-label">Protocolo / Chave de Acesso</label>
+            <input class="form-input" id="f_pi_duimp_protocolo" value="${esc(p.pi_duimp_protocolo)}" placeholder="Protocolo / Chave de Acesso"
+              title="Chave de acesso / protocolo da DUIMP que o banco pede pra vincular ao contrato de câmbio"></div>
           <div class="form-group"><label class="form-label">Incoterm</label>
             <select class="form-input" id="f_pi_incoterm">
               <option value="">—</option>
@@ -1721,7 +1738,7 @@ const LABELS_CAMPOS_IA = {
   data_solicitacao_demurrage:'Data solicitação Demurrage', data_isencao_demurrage:'Data isenção Demurrage',
   data_envio_termo:'Data envio do termo', data_pagamento_lavagem:'Data pagamento lavagem', data_pagamento_demurrage:'Data pagamento Demurrage',
   despachante:'Despachante', pi_cambio:'Câmbio PI', pi_cambio_fechado:'Câmbio fechado',
-  pi_cambio_entrada:'Câmbio Entrada', pi_cambio_saldo:'Câmbio Saldo', pi_cambio_banco:'Banco do câmbio', pi_cambio_custo:'Custo do câmbio', pi_cambio_codigo_bacen:'Código BACEN',
+  pi_cambio_entrada:'Câmbio Entrada', pi_cambio_saldo:'Câmbio Saldo', pi_cambio_banco:'Banco do câmbio', pi_cambio_custo:'Custo do câmbio', pi_cambio_codigo_bacen:'Código BACEN', pi_venc_di:'Venc. DI/DUIMP', pi_duimp_numero:'Nº DUIMP', pi_duimp_protocolo:'Chave de acesso DUIMP',
   containers_json:'Containers', produtos_json:'Produtos', vendas_json:'Vendas', pi_parcelas_json:'Parcelas de pagamento',
   duimp_numero:'Nº DUIMP',
 };
@@ -1997,8 +2014,12 @@ function renderPagamentoCampos(){
   const tipo = document.getElementById('f_pi_pagamento')?.value;
   const p = _editando || {};
   const el = document.getElementById('pagamento-campos');
-  const grpCusto = document.getElementById('grp-pi-cambio-custo');
-  if(grpCusto) grpCusto.style.display = (tipo==='PARCELADO') ? 'none' : '';
+  // Campos que só valem pra pagamento único (em Parcelado existem por parcela):
+  // custo da operação, código BACEN e DI/DUIMP (venc/nº/chave — 01/10/2026).
+  ['grp-pi-cambio-custo','grp-pi-cambio-bacen','grp-pi-duimp-venc','grp-pi-duimp-numero','grp-pi-duimp-protocolo'].forEach(id=>{
+    const g = document.getElementById(id);
+    if(g) g.style.display = (tipo==='PARCELADO') ? 'none' : '';
+  });
   if(!el) return;
   if(!tipo){ el.innerHTML=''; return; }
 
@@ -2057,6 +2078,21 @@ function renderPagamentoCampos(){
   el.innerHTML=html;
   // #parcelas-list sÃÂÃÂ³ existe no DOM depois do innerHTML acima ÃÂ¢ÃÂÃÂ preencher aqui.
   if(tipo==='PARCELADO'){ renderParcelas(); atualizarVencimentoSaldoPorETA(); }
+}
+
+// Venc. DI/DUIMP do pagamento único = 180 dias da Data Pagamento (mesma regra
+// do botão ↻ de cada parcela em Parcelado, ver calcularVencimentoDI em
+// controle-campos.js). Data Pagamento = f_pi_data_saldo (100% a Prazo) ou
+// f_pi_data_entrada (À Vista) — os mesmos campos que o Controle Cambial usa
+// como data do câmbio nesses dois casos.
+function calcularVencDIPagamentoUnico(){
+  const tipo = document.getElementById('f_pi_pagamento')?.value;
+  const base = (tipo==='VISTA') ? document.getElementById('f_pi_data_entrada')?.value : (document.getElementById('f_pi_data_saldo')?.value || document.getElementById('f_pi_data_entrada')?.value);
+  const el = document.getElementById('f_pi_venc_di');
+  if(!el) return;
+  if(!base){ showToast('Preencha a Data Pagamento primeiro (o prazo é 180 dias a partir dela)', 'warn'); return; }
+  el.value = calcularVencimentoDI(base);
+  el.dispatchEvent(new Event('input', {bubbles:true}));
 }
 
 // Forma "100% a Prazo": provisiona a Data Pagamento automaticamente como

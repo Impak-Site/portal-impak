@@ -2091,6 +2091,32 @@ teste('listarPendenciasDI: inclui toda parcela Parcelado com câmbio fechado den
   iguais(inicial.valorUsd, 6375.28, 'Valor M.E. correto');
 });
 
+teste('listarPendenciasDI: pagamento único (100% a Prazo / À Vista) com câmbio fechado entra com os campos pi_duimp_* do processo (pedido Emanuelly 01/10/2026)', () => {
+  const processos = [
+    { id:'P5', referencia:'OID2605A', pi_pagamento:'PRAZO', pi_valor_usd:16909, pi_cambio_fechado:5.1115, pi_data_saldo:'2026-10-16', pi_cambio_banco:'Santander', pi_cambio_codigo_bacen:'PFX2026092114080', pi_duimp_numero:'26BR000123', pi_duimp_protocolo:'CHAVE123', pi_venc_di:'' },
+    { id:'P6', referencia:'VISTA1', pi_pagamento:'VISTA', pi_valor_usd:5000, pi_cambio_fechado:5.2, pi_data_entrada:'2026-10-02', pi_venc_di:'2027-01-15' },
+    { id:'P7', referencia:'SEMCAMBIO', pi_pagamento:'PRAZO', pi_valor_usd:5000, pi_cambio_fechado:'', pi_data_saldo:'2026-10-10' }, // sem câmbio fechado -- fora
+    { id:'P8', referencia:'FORAMES', pi_pagamento:'PRAZO', pi_valor_usd:5000, pi_cambio_fechado:5.1, pi_data_saldo:'2026-11-10' }, // mês errado -- fora
+    { id:'P9', referencia:'ACOMP', pi_pagamento:'PRAZO', finalidade:'ACOMPANHAMENTO', pi_valor_usd:5000, pi_cambio_fechado:5.1, pi_data_saldo:'2026-10-10' }, // acompanhamento -- fora
+  ];
+  const out = vm.runInContext(`listarPendenciasDI(${JSON.stringify(processos)}, '2026-10-01', '2026-10-31')`, sandbox);
+  iguais(out.map(l=>l.referencia).join(','), 'VISTA1,OID2605A', 'Vista (venc. 15/01) antes do Prazo (venc. calculado 14/04); sem câmbio, fora do mês e acompanhamento ficam de fora');
+  const prazo = out.find(l=>l.referencia==='OID2605A');
+  iguais(prazo.parcelaIndex, null, 'pagamento único não tem índice de parcela');
+  iguais(prazo.dataCambio, '2026-10-16', 'data do câmbio = Data Pagamento (pi_data_saldo) no Prazo');
+  iguais(prazo.vencimentoDi, '2027-04-14', 'sem Venc. DI digitado → 180 dias da data do câmbio');
+  iguais(prazo.vencimentoCalculado, true, 'marcado como calculado');
+  iguais(prazo.duimp, '26BR000123', 'Nº DUIMP do processo');
+  iguais(prazo.protocolo, 'CHAVE123', 'chave de acesso do processo');
+  iguais(prazo.codigoBacen, 'PFX2026092114080', 'BACEN do processo');
+  iguais(prazo.tipoCambio, 'NORMAL', 'com BACEN é câmbio normal');
+  iguais(prazo.valorUsd, 16909, 'valor da PI');
+  const vista = out.find(l=>l.referencia==='VISTA1');
+  iguais(vista.dataCambio, '2026-10-02', 'À Vista usa pi_data_entrada');
+  iguais(vista.vencimentoDi, '2027-01-15', 'Venc. DI digitado prevalece');
+  iguais(vista.vencimentoCalculado, false, 'não calculado');
+});
+
 teste('listarPendenciasDI: ordena pelo vencimento da DI mais próximo primeiro, sem data por último', () => {
   const processos = [
     { id:'P1', referencia:'A', pi_pagamento:'PARCELADO', pi_parcelas_json: JSON.stringify([

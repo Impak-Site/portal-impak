@@ -85,9 +85,10 @@ const EMPRESAS = [
   { razao_social: 'PACIFIC INTERNATIONAL LINES', nome_fantasia: 'PIL', tipo: 'ARMADOR', papeis: ['ARMADOR'], sinonimos: ['PILL', 'PIL SHIPPING'] },
   { razao_social: 'COSCO SHIPPING LINES CO LTD', nome_fantasia: 'COSCO', tipo: 'ARMADOR' },
   { razao_social: 'ROYAL CARGO DO BRASIL', nome_fantasia: 'ROYAL', tipo: 'AGENTE' },
-  { razao_social: 'FIND COMEX LOGISTIC ASSESSORIA ADUANEIRA LTDA', tipo: 'DESPACHANTE', sinonimos: ['FIND COMEX LOGISTC ASSESORIA ADUANEIRA LTDA'] },
-  { razao_social: 'RF LOGISTICA LTDA', tipo: 'TRANSPORTADORA', papeis: ['TRANSPORTADORA', 'ARMAZEM_ALFANDEGADO'], sinonimos: ['RF LOGÍSTICA'] },
-  { razao_social: 'LECHMAN TERMINAIS (NAVEGANTES)', nome_fantasia: 'LECHMAN', tipo: 'DEPOT_DEVOLUCAO', sinonimos: ['LACHMAN', 'LECHMAN TERMINAIS NAVEGANTES'] },
+  { razao_social: 'FIND COMEX LOGISTC ASSESORIA ADUANEIRA LTDA', nome_fantasia: 'FIND COMEX', tipo: 'DESPACHANTE', sinonimos: ['FIND COMEX LOGISTIC ASSESSORIA ADUANEIRA LTDA'] },
+  { razao_social: 'RF LOGISTICA LTDA', nome_fantasia: 'RF LOGISTICA LTDA', tipo: 'TRANSPORTADORA', papeis: ['TRANSPORTADORA', 'ARMAZEM_ALFANDEGADO'], sinonimos: ['RF LOGÍSTICA', 'R & F LOG'] },
+  { razao_social: 'LECHMAN TERMINAIS LTDA', nome_fantasia: 'LECHMAN TERMINAIS (NAVEGANTES)', tipo: 'DEPOT_DEVOLUCAO', sinonimos: ['LECHMAN', 'LACHMAN', 'LECHMAN TERMINAIS NAVEGANTES'] },
+  { razao_social: 'PORTONAVE S/A - TERMINAIS PORTUARIOS DE NAVEGANTES', nome_fantasia: 'PORTONAVE', tipo: 'ARMAZEM_ALFANDEGADO', papeis: ['ARMAZEM_ALFANDEGADO', 'PORTO_ARMAZEM'] },
   { razao_social: 'EMPRESA INATIVA', nome_fantasia: 'INATIVA', tipo: 'ARMADOR', ativo: false, sinonimos: ['PIL'] },
 ];
 const IDX = N.montarIndice(EMPRESAS, ListasPadrao.listasPadrao());
@@ -107,12 +108,20 @@ teste('armador: sinônimo e razão social viram o nome curto (nome fantasia)', (
   assert.strictEqual(N.normalizarValorCampo('armador', 'pacific international lines', IDX), 'PIL');
   assert.strictEqual(N.normalizarValorCampo('armador', 'COSCO SHIPPING LINES CO LTD', IDX), 'COSCO');
 });
-teste('agente/despachante: canônico é a razão social', () => {
+teste('agente: canônico é a razão social', () => {
   assert.strictEqual(N.normalizarValorCampo('agente', 'ROYAL', IDX), 'ROYAL CARGO DO BRASIL');
-  assert.strictEqual(N.normalizarValorCampo('despachante', 'FIND COMEX LOGISTC ASSESORIA ADUANEIRA LTDA', IDX), 'FIND COMEX LOGISTIC ASSESSORIA ADUANEIRA LTDA');
+});
+teste('despachante/depot/armazém: canônico é o nome curto (nome fantasia), como armador', () => {
+  assert.strictEqual(N.normalizarValorCampo('despachante', 'FIND COMEX LOGISTC ASSESORIA ADUANEIRA LTDA', IDX), 'FIND COMEX');
+  assert.strictEqual(N.normalizarValorCampo('despachante', 'FIND COMEX LOGISTIC ASSESSORIA ADUANEIRA LTDA', IDX), 'FIND COMEX');
+  assert.strictEqual(N.normalizarValorCampo('depot', 'LACHMAN', IDX), 'LECHMAN TERMINAIS (NAVEGANTES)');
+  assert.strictEqual(N.normalizarValorCampo('depot', 'Lechman Terminais Ltda', IDX), 'LECHMAN TERMINAIS (NAVEGANTES)');
+  assert.strictEqual(N.normalizarValorCampo('armazem', 'portonave', IDX), 'PORTONAVE');
+  assert.strictEqual(N.normalizarValorCampo('armazem', 'PORTONAVE S/A - TERMINAIS PORTUARIOS DE NAVEGANTES', IDX), 'PORTONAVE');
 });
 teste('papéis múltiplos: RF LOGISTICA vale como transportadora E armazém', () => {
   assert.strictEqual(N.normalizarValorCampo('transportadora', 'rf logistica ltda', IDX), 'RF LOGISTICA LTDA');
+  assert.strictEqual(N.normalizarValorCampo('transportadora', 'R & F LOG', IDX), 'RF LOGISTICA LTDA');
   assert.strictEqual(N.normalizarValorCampo('armazem', 'RF LOGÍSTICA', IDX), 'RF LOGISTICA LTDA');
 });
 teste('não cruza papéis: "ROYAL" no campo armador não vira o agente', () => {
@@ -120,7 +129,7 @@ teste('não cruza papéis: "ROYAL" no campo armador não vira o agente', () => {
 });
 teste('valor desconhecido fica exatamente como veio', () => {
   assert.strictEqual(N.normalizarValorCampo('armador', 'Parisi Grand Smooth Logistics Ltd.', IDX), 'Parisi Grand Smooth Logistics Ltd.');
-  assert.strictEqual(N.normalizarValorCampo('transportadora', 'R & F LOG', IDX), 'R & F LOG');
+  assert.strictEqual(N.normalizarValorCampo('transportadora', 'TRANSPORTES ZECA', IDX), 'TRANSPORTES ZECA');
   assert.strictEqual(N.normalizarValorCampo('armador', '', IDX), '');
   assert.strictEqual(N.normalizarValorCampo('armador', null, IDX), null);
 });
