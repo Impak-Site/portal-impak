@@ -682,7 +682,7 @@ ao lado das datas). -->
 <div class="modal-bg" id="modal-contato-edit-bg">
 <div class="modal" style="max-width:760px;">
 <div class="modal-header">
-<div class="modal-title" id="contato-edit-title">Novo Contato</div>
+<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;"><div class="modal-title" id="contato-edit-title">Novo Contato</div><span id="ce_uso" style="font-size:11px;color:var(--muted);"></span></div>
 <button class="modal-close" onclick="fecharModalContatoEdit()">×</button>
 </div>
 <div class="modal-body">
@@ -718,7 +718,8 @@ ao lado das datas). -->
 <option value="FISICA">Física</option>
 </select></div>
 <div class="form-group"><label class="form-label">País</label>
-<input class="form-input" id="ce_pais" value="Brasil" onchange="_ceAtualizarCamposDocumento()"></div>
+<input class="form-input" id="ce_pais" value="Brasil" list="ce_paises_lista" onchange="_ceAtualizarCamposDocumento()">
+<datalist id="ce_paises_lista"><option value="Brasil"><option value="China"><option value="Estados Unidos"><option value="Índia"><option value="Tailândia"><option value="Vietnã"><option value="Indonésia"><option value="Hong Kong"><option value="Taiwan"><option value="Coreia do Sul"><option value="Japão"><option value="Singapura"><option value="Malásia"><option value="Camboja"><option value="Turquia"><option value="Emirados Árabes Unidos"><option value="Catar"><option value="Alemanha"><option value="Itália"><option value="Espanha"><option value="Portugal"><option value="Argentina"><option value="Paraguai"><option value="Uruguai"><option value="Chile"><option value="México"><option value="Panamá"></datalist></div>
 </div>
 <div class="form-row">
 <div class="form-group"><label class="form-label" id="ce_documento_label">CNPJ</label>
@@ -783,6 +784,28 @@ ao lado das datas). -->
 </div>
 <div id="ce-pessoas-hint" style="display:none;margin-top:18px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted);">
 💡 Salve a empresa primeiro — depois disso dá pra cadastrar as pessoas de contato dela (com e-mail, telefone, etc.) direto por aqui.
+</div>
+
+<!-- Mesclar duplicados (fase 2a-2, 01/10/2026): este cadastro é inativado e
+     tudo que aponta pra ele (processos, vendas, pessoas) passa pro escolhido;
+     razão social/nome fantasia/sinônimos dele viram sinônimos do que fica.
+     Só gerente; só cadastro já salvo. -->
+<div id="ce-mesclar-wrap" style="display:none;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+<div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">🔀 Este cadastro é duplicado de outro?</div>
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Escolha o cadastro que FICA. Este será inativado; os processos, vendas e pessoas de contato passam pro escolhido, e as grafias deste viram sinônimos dele (nada se perde, tudo fica no histórico).</div>
+<div style="display:flex;gap:8px;align-items:center;position:relative;">
+<input class="form-input" id="ce_mesclar_busca" placeholder="Buscar o cadastro que fica (razão social, nome fantasia, sinônimo)…" autocomplete="off" style="flex:1;" oninput="_ceMesclarBuscar(this)">
+<button class="btn btn-sm btn-outline" id="ce_mesclar_btn" disabled onclick="_ceMesclarConfirmar()">Mesclar</button>
+<div id="ce_mesclar_dropdown" style="display:none;position:absolute;top:100%;left:0;right:90px;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:600;max-height:220px;overflow-y:auto;"></div>
+</div>
+<input type="hidden" id="ce_mesclar_id">
+</div>
+
+<!-- Histórico do cadastro (cadastros_log) -->
+<div id="ce-historico-wrap" style="display:none;margin-top:18px;">
+<details><summary style="cursor:pointer;font-size:12px;color:var(--muted);">🕘 Histórico de alterações deste cadastro</summary>
+<div id="ce-historico" style="font-size:11px;color:var(--text);margin-top:8px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:8px 10px;">Carregando…</div>
+</details>
 </div>
 
 <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;">

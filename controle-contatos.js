@@ -439,6 +439,7 @@ function abrirNovoContato(){
   const hint = document.getElementById('ce-pessoas-hint');
   if(wrap) wrap.style.display = 'none';
   if(hint) hint.style.display = '';
+  _ceResetExtras();
   document.getElementById('modal-contato-edit-bg').classList.add('open');
   _ceContatoDirty = false;
 }
@@ -480,6 +481,115 @@ function editarContato(id){
   document.getElementById('modal-contato-edit-bg').classList.add('open');
   _ceContatoDirty = false;
   _ceCarregarPessoas(c.id);
+  _ceResetExtras();
+  _ceCarregarUso(c.id);
+  _ceCarregarHistorico(c.id);
+  const mesclar = document.getElementById('ce-mesclar-wrap');
+  if(mesclar) mesclar.style.display = (typeof _user !== 'undefined' && _user && _user.role === 'gerente') ? '' : 'none';
+}
+
+// ── Uso em processos, histórico e mesclar (fase 2a-2, 01/10/2026) ──
+function _ceResetExtras(){
+  const uso = document.getElementById('ce_uso'); if(uso) uso.textContent = '';
+  const h = document.getElementById('ce-historico-wrap'); if(h) h.style.display = 'none';
+  const m = document.getElementById('ce-mesclar-wrap'); if(m) m.style.display = 'none';
+  const b = document.getElementById('ce_mesclar_busca'); if(b) b.value = '';
+  const id = document.getElementById('ce_mesclar_id'); if(id) id.value = '';
+  const btn = document.getElementById('ce_mesclar_btn'); if(btn) btn.disabled = true;
+  const dd = document.getElementById('ce_mesclar_dropdown'); if(dd) dd.style.display = 'none';
+}
+const _ceRotuloCampo = { cliente:'cliente', fornecedor:'fornecedor', armador:'armador', agente:'agente', transportadora:'transportadora', despachante:'despachante', armazem:'armazém', depot:'depot', vendas:'vendas' };
+async function _ceCarregarUso(id){
+  const el = document.getElementById('ce_uso'); if(!el) return;
+  el.textContent = 'verificando uso…';
+  try{
+    const r = await fetch('/api/contatos/'+encodeURIComponent(id)+'/uso');
+    const d = await r.json();
+    if(!d.ok){ el.textContent = ''; return; }
+    if(!d.total){ el.textContent = 'não usado em nenhum processo'; return; }
+    const partes = Object.keys(d.por_campo||{}).map(k=>`${_ceRotuloCampo[k]||k} ${d.por_campo[k]}`).join(' · ');
+    el.textContent = `usado em ${d.total} processo(s)${d.fechados ? ' ('+d.fechados+' fechado(s))' : ''} — ${partes}`;
+    el.title = (d.referencias||[]).join(', ');
+  }catch(e){ el.textContent = ''; }
+}
+async function _ceCarregarHistorico(id){
+  const wrap = document.getElementById('ce-historico-wrap'); const box = document.getElementById('ce-historico');
+  if(!wrap || !box) return;
+  try{
+    const r = await fetch('/api/cadastros/log?tabela=contatos_clientes&registro_id='+encodeURIComponent(id));
+    if(r.status === 403){ wrap.style.display = 'none'; return; }
+    const d = await r.json();
+    if(!d.ok){ wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    const log = (d.log||[]).slice(0, 15);
+    if(!log.length){ box.innerHTML = '<span style="color:var(--dim);">Sem alterações registradas (histórico começou em 01/10/2026).</span>'; return; }
+    const ignorar = new Set(['updated_at','created_at','_mesclado_de','_mesclado_em']);
+    box.innerHTML = log.map(l=>{
+      const antes = l.antes || {}, depois = l.depois || {};
+      const chaves = Array.from(new Set(Object.keys(antes).concat(Object.keys(depois)))).filter(k=>!ignorar.has(k));
+      const difs = chaves.filter(k => JSON.stringify(antes[k] ?? null) !== JSON.stringify(depois[k] ?? null))
+        .map(k => `<div style="margin-left:10px;"><b>${esc(k)}</b>: <span style="color:var(--dim);">${esc(_ceFmtVal(antes[k]))}</span> → ${esc(_ceFmtVal(depois[k]))}</div>`).join('');
+      const quando = l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : '';
+      return `<div style="padding:4px 0;border-bottom:1px dashed var(--border);"><span style="color:var(--muted);">${esc(quando)}</span> · <b>${esc(l.acao||'')}</b> · ${esc(l.usuario||'')}${difs}</div>`;
+    }).join('');
+  }catch(e){ wrap.style.display = 'none'; }
+}
+function _ceFmtVal(v){
+  if(v == null || v === '') return '—';
+  if(Array.isArray(v)) return v.join('; ');
+  if(typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+let _ceMesclarTimer = null;
+function _ceMesclarBuscar(input){
+  clearTimeout(_ceMesclarTimer);
+  const dd = document.getElementById('ce_mesclar_dropdown');
+  const btn = document.getElementById('ce_mesclar_btn');
+  document.getElementById('ce_mesclar_id').value = ''; if(btn) btn.disabled = true;
+  const q = input.value.trim();
+  if(q.length < 2){ if(dd) dd.style.display = 'none'; return; }
+  _ceMesclarTimer = setTimeout(async ()=>{
+    const atualId = document.getElementById('ce_id').value;
+    let lista = [];
+    try{ lista = await buscarContatos(q, '', 15); }catch(e){ lista = []; }
+    lista = lista.filter(c => c.id !== atualId);
+    if(!dd) return;
+    if(!lista.length){ dd.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--dim);">Nenhum cadastro encontrado</div>'; dd.style.display = ''; return; }
+    dd.innerHTML = lista.map(c => `<div style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);" onmousedown="_ceMesclarEscolher('${esc(c.id)}','${esc((c.razao_social||'').replace(/'/g,'’'))}')"><b>${esc(c.razao_social||'')}</b>${c.nome_fantasia && c.nome_fantasia !== c.razao_social ? ' <span style="color:var(--muted);">(' + esc(c.nome_fantasia) + ')</span>' : ''} <span style="color:var(--dim);font-size:11px;">${esc(TIPOS_EMPRESA_LABEL[c.tipo]||c.tipo||'')}${c.documento ? ' · ' + esc(c.documento) : ''}</span></div>`).join('');
+    dd.style.display = '';
+  }, 250);
+}
+function _ceMesclarEscolher(id, nome){
+  document.getElementById('ce_mesclar_id').value = id;
+  document.getElementById('ce_mesclar_busca').value = nome;
+  document.getElementById('ce_mesclar_dropdown').style.display = 'none';
+  document.getElementById('ce_mesclar_btn').disabled = false;
+}
+async function _ceMesclarConfirmar(){
+  const removerId = document.getElementById('ce_id').value;
+  const manterId = document.getElementById('ce_mesclar_id').value;
+  const nomeManter = document.getElementById('ce_mesclar_busca').value;
+  const nomeEste = document.getElementById('ce_razao_social').value;
+  if(!removerId || !manterId) return;
+  if(!confirm(`Mesclar "${nomeEste}" em "${nomeManter}"?
+
+• "${nomeEste}" será inativado
+• processos, vendas e pessoas passam pra "${nomeManter}"
+• as grafias de "${nomeEste}" viram sinônimos de "${nomeManter}"
+
+Isso reescreve o texto dos processos (com registro no histórico de cada um). Continuar?`)) return;
+  try{
+    const r = await fetch('/api/contatos/mesclar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ remover_id: removerId, manter_id: manterId }) });
+    const d = await r.json();
+    if(!d.ok){ showToast('Erro: ' + (d.erro||''), 'err'); return; }
+    const rv = d.revinculo || {};
+    showToast(`✓ Mesclado. ${d.pessoas_movidas||0} pessoa(s) movida(s); ${rv.atualizados != null ? rv.atualizados + ' processo(s) revinculado(s)' : 'revinculação: ' + (rv.erro||'?')}${rv.fechados_com_texto && rv.fechados_com_texto.length ? '; ' + rv.fechados_com_texto.length + ' fechado(s) precisam de ajuste manual (veja o console)' : ''}`, 'ok');
+    console.log('[mesclar]', d);
+    _ceContatoDirty = false;
+    _verificaCadastroCache.clear();
+    fecharModalContatoEdit();
+    await carregarContatos();
+  }catch(e){ showToast('Erro: ' + e.message, 'err'); }
 }
 
 // ── PESSOAS DE CONTATO DA EMPRESA (dentro do próprio modal de Empresa) ──
@@ -661,7 +771,8 @@ async function excluirContato(id){
     const r = await fetch('/api/contatos/'+id, { method:'DELETE' });
     const d = await r.json();
     if(d.ok){ showToast('Contato removido','ok'); await carregarContatos(); }
-    else showToast('Erro ao excluir','err');
+    else if(r.status === 409 && d.uso){ alert(d.erro); }
+    else showToast('Erro ao excluir: ' + (d.erro||''),'err');
   }catch(e){ showToast('Erro ao excluir','err'); }
 }
 

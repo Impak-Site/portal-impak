@@ -3666,6 +3666,15 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
 app.delete('/api/contatos/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
   try {
     const { data: antes } = await sb().from('contatos_clientes').select('*').eq('id', req.params.id).maybeSingle();
+    // Fase 2a-2: cadastro usado em processos não some — tem que mesclar
+    // (senão o processo fica apontando pra um cadastro inativo e a
+    // padronização/follow-up perdem a referência). ?forcar=1 pula a trava.
+    if (antes && req.query.forcar !== '1') {
+      try {
+        const uso = await usoDoCadastro(antes);
+        if (uso.total > 0) return res.status(409).json({ erro: `Este cadastro está em uso em ${uso.total} processo(s) (${uso.referencias.slice(0, 5).join(', ')}${uso.total > 5 ? '…' : ''}). Use "Mesclar" pra apontar tudo pro cadastro certo em vez de inativar.`, uso });
+      } catch (e) { console.warn('uso do cadastro indisponível:', e.message); }
+    }
     const { error } = await sb().from('contatos_clientes').update({ ativo: false }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
     invalidarIndiceCadastros();
@@ -3827,89 +3836,200 @@ async function obterIndiceCadastros() {
 // Processo FECHADO: só recebe id (o texto fica como está e entra na lista
 // fechados_com_texto pra decisão humana — reabrir/ajustar/fechar, como
 // feito em 01/10 nos 8 fechados do de-para).
+// Núcleo reaproveitado pelo endpoint abaixo e pelo "mesclar cadastros".
+async function revincularProcessosCadastros({ simular = false, soIds = false, usuario = null } = {}) {
+  const camposEmpresa = CadastrosNormalizar.CAMPOS_COM_ID;
+  const colunasId = CadastrosNormalizar.COLUNAS_ID;
+  const colunas = ['id', 'referencia', 'fechado', 'cancelado', 'vendas_json', 'brand', 'porto_origem'].concat(camposEmpresa, colunasId).join(',');
+  const r = await buscarTodosProcessos(colunas);
+  if (r.error && erroColunasVinculo(r.error)) {
+    const e = new Error('A migration 0043 (colunas cliente_id, fornecedor_id...) ainda não foi aplicada no banco.');
+    e.status = 409; throw e;
+  }
+  if (r.error) throw new Error(r.error.message);
+  invalidarIndiceCadastros();
+  const indice = await obterIndiceCadastros();
+
+  const stats = {
+    simulado: simular, so_ids: soIds, processos: r.data.length, atualizados: 0,
+    vinculos_novos: {}, vinculos_removidos: {}, texto_alterado: 0,
+    depara: {}, sem_cadastro: {}, fechados_com_texto: [], erros: [],
+  };
+  const conta = (obj, k, sub) => { if (!obj[k]) obj[k] = {}; obj[k][sub] = (obj[k][sub] || 0) + 1; };
+  const logRows = [];
+  for (const p of r.data) {
+    const copia = {};
+    camposEmpresa.forEach(c => { copia[c] = p[c]; });
+    copia.vendas_json = p.vendas_json; copia.brand = p.brand; copia.porto_origem = p.porto_origem;
+    const mudancas = CadastrosNormalizar.normalizarProcesso(copia, indice);
+    const patch = {};
+    colunasId.forEach(col => {
+      const novo = copia[col] || null;
+      const atual = p[col] || null;
+      if (atual !== novo) {
+        patch[col] = novo;
+        if (novo) stats.vinculos_novos[col] = (stats.vinculos_novos[col] || 0) + 1;
+        else stats.vinculos_removidos[col] = (stats.vinculos_removidos[col] || 0) + 1;
+      }
+    });
+    // Grafias que não bateram com nenhum cadastro (relatório pra equipe).
+    camposEmpresa.forEach(c => {
+      const v = copia[c];
+      if (v && String(v).trim() && !copia[c + '_id']) conta(stats.sem_cadastro, c, String(v).trim());
+    });
+    const textoPermitido = !p.fechado && !soIds;
+    if (mudancas.length) {
+      mudancas.forEach(m => conta(stats.depara, m.campo.replace(/\[\d+\]/, '[n]'), `${m.antes} → ${m.depois}`));
+      if (textoPermitido) {
+        mudancas.forEach(m => {
+          const campoBase = m.campo.split('[')[0];
+          if (campoBase === 'vendas') patch.vendas_json = copia.vendas_json;
+          else patch[campoBase] = copia[campoBase];
+          logRows.push({ processo_id: p.id, usuario, campo: m.campo + ' (padronizado pelo cadastro)', valor_antes: String(m.antes || ''), valor_depois: String(m.depois || ''), created_at: new Date().toISOString() });
+        });
+        stats.texto_alterado++;
+      } else {
+        stats.fechados_com_texto.push({ referencia: p.referencia, fechado: !!p.fechado, mudancas });
+      }
+    }
+    // vendas[].cliente_id mudou sem mudar texto: só grava se o texto for
+    // permitido (fechado: nem o JSON das vendas é tocado).
+    if (!patch.vendas_json && copia.vendas_json !== p.vendas_json && textoPermitido) patch.vendas_json = copia.vendas_json;
+    if (!Object.keys(patch).length) continue;
+    stats.atualizados++;
+    if (simular) continue;
+    patch.updated_at = new Date().toISOString();
+    const { error } = await sb().from('controle_processos').update(patch).eq('id', p.id);
+    if (error) stats.erros.push({ referencia: p.referencia, erro: error.message });
+  }
+  if (!simular && logRows.length) {
+    for (let i = 0; i < logRows.length; i += 500) {
+      const { error } = await sb().from('controle_log').insert(logRows.slice(i, i + 500));
+      if (error) console.warn('revincular: log erro:', error.message);
+    }
+  }
+  if (!simular) {
+    try {
+      await sb().from('integracao_log').insert({
+        origem: 'cadastros_revincular', direcao: 'entrada', status: stats.erros.length ? 'erro' : 'ok',
+        campos_aplicados: { atualizados: stats.atualizados, vinculos_novos: stats.vinculos_novos, texto_alterado: stats.texto_alterado },
+        payload: null, usuario,
+      });
+    } catch (e) { /* tabela opcional */ }
+  }
+  return stats;
+}
+
 app.post('/api/admin/cadastros/revincular', auth('cadastros'), requireGerente, async (req, res) => {
   try {
     const body = req.body || {};
-    const simular = body.simular === true || req.query.simular === '1';
-    const soIds = body.so_ids === true;
-    const camposEmpresa = CadastrosNormalizar.CAMPOS_COM_ID;
-    const colunasId = CadastrosNormalizar.COLUNAS_ID;
-    const colunas = ['id', 'referencia', 'fechado', 'cancelado', 'vendas_json', 'brand', 'porto_origem'].concat(camposEmpresa, colunasId).join(',');
-    let r = await buscarTodosProcessos(colunas);
-    if (r.error && erroColunasVinculo(r.error)) {
-      return res.status(409).json({ ok: false, erro: 'A migration 0043 (colunas cliente_id, fornecedor_id...) ainda não foi aplicada no banco.' });
-    }
-    if (r.error) throw new Error(r.error.message);
-    invalidarIndiceCadastros();
-    const indice = await obterIndiceCadastros();
-
-    const stats = {
-      simulado: simular, so_ids: soIds, processos: r.data.length, atualizados: 0,
-      vinculos_novos: {}, vinculos_removidos: {}, texto_alterado: 0,
-      depara: {}, sem_cadastro: {}, fechados_com_texto: [], erros: [],
-    };
-    const conta = (obj, k, sub) => { if (!obj[k]) obj[k] = {}; obj[k][sub] = (obj[k][sub] || 0) + 1; };
-    const logRows = [];
-    for (const p of r.data) {
-      const copia = {};
-      camposEmpresa.forEach(c => { copia[c] = p[c]; });
-      copia.vendas_json = p.vendas_json; copia.brand = p.brand; copia.porto_origem = p.porto_origem;
-      const mudancas = CadastrosNormalizar.normalizarProcesso(copia, indice);
-      const patch = {};
-      colunasId.forEach(col => {
-        const novo = copia[col] || null;
-        const atual = p[col] || null;
-        if (atual !== novo) {
-          patch[col] = novo;
-          if (novo) stats.vinculos_novos[col] = (stats.vinculos_novos[col] || 0) + 1;
-          else stats.vinculos_removidos[col] = (stats.vinculos_removidos[col] || 0) + 1;
-        }
-      });
-      // Grafias que não bateram com nenhum cadastro (relatório pra equipe).
-      camposEmpresa.forEach(c => {
-        const v = copia[c];
-        if (v && String(v).trim() && !copia[c + '_id']) conta(stats.sem_cadastro, c, String(v).trim());
-      });
-      const textoPermitido = !p.fechado && !soIds;
-      if (mudancas.length) {
-        mudancas.forEach(m => conta(stats.depara, m.campo.replace(/\[\d+\]/, '[n]'), `${m.antes} → ${m.depois}`));
-        if (textoPermitido) {
-          mudancas.forEach(m => {
-            const campoBase = m.campo.split('[')[0];
-            if (campoBase === 'vendas') patch.vendas_json = copia.vendas_json;
-            else patch[campoBase] = copia[campoBase];
-            logRows.push({ processo_id: p.id, usuario: req.session.usuario, campo: m.campo + ' (padronizado pelo cadastro)', valor_antes: String(m.antes || ''), valor_depois: String(m.depois || ''), created_at: new Date().toISOString() });
-          });
-          stats.texto_alterado++;
-        } else {
-          stats.fechados_com_texto.push({ referencia: p.referencia, fechado: !!p.fechado, mudancas });
-        }
-      }
-      // vendas[].cliente_id mudou sem mudar texto: só grava se o texto for
-      // permitido (fechado: nem o JSON das vendas é tocado).
-      if (!patch.vendas_json && copia.vendas_json !== p.vendas_json && textoPermitido) patch.vendas_json = copia.vendas_json;
-      if (!Object.keys(patch).length) continue;
-      stats.atualizados++;
-      if (simular) continue;
-      patch.updated_at = new Date().toISOString();
-      const { error } = await sb().from('controle_processos').update(patch).eq('id', p.id);
-      if (error) stats.erros.push({ referencia: p.referencia, erro: error.message });
-    }
-    if (!simular && logRows.length) {
-      for (let i = 0; i < logRows.length; i += 500) {
-        const { error } = await sb().from('controle_log').insert(logRows.slice(i, i + 500));
-        if (error) console.warn('revincular: log erro:', error.message);
-      }
-      try {
-        await sb().from('integracao_log').insert({
-          origem: 'cadastros_revincular', direcao: 'entrada', status: stats.erros.length ? 'erro' : 'ok',
-          campos_aplicados: { atualizados: stats.atualizados, vinculos_novos: stats.vinculos_novos, texto_alterado: stats.texto_alterado },
-          payload: null, usuario: req.session.usuario,
-        });
-      } catch (e) { /* tabela opcional */ }
-    }
+    const stats = await revincularProcessosCadastros({
+      simular: body.simular === true || req.query.simular === '1',
+      soIds: body.so_ids === true,
+      usuario: req.session.usuario,
+    });
     res.json(Object.assign({ ok: true }, stats));
-  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+  } catch (e) { res.status(e.status || 500).json({ ok: false, erro: e.message }); }
+});
+
+// ── USO DE UM CADASTRO NOS PROCESSOS (fase 2a-2) ──
+// Quantos processos apontam pra esta empresa (pelo id, ou pelo texto quando
+// o processo ainda não foi revinculado). Alimenta o "usado em N processos"
+// do modal e a trava de inativar.
+async function usoDoCadastro(contato) {
+  const camposEmpresa = CadastrosNormalizar.CAMPOS_COM_ID;
+  const colunas = ['id', 'referencia', 'fechado', 'cancelado', 'vendas_json'].concat(camposEmpresa, CadastrosNormalizar.COLUNAS_ID).join(',');
+  let r = await buscarTodosProcessos(colunas);
+  if (r.error && erroColunasVinculo(r.error)) r = await buscarTodosProcessos(['id', 'referencia', 'fechado', 'cancelado', 'vendas_json'].concat(camposEmpresa).join(','));
+  if (r.error) throw new Error(r.error.message);
+  const chaves = new Set([contato.razao_social, contato.nome_fantasia].concat(Array.isArray(contato.sinonimos) ? contato.sinonimos : [])
+    .map(g => CadastrosNormalizar.chaveNormalizada(g)).filter(Boolean));
+  const id = String(contato.id);
+  const uso = { total: 0, por_campo: {}, referencias: [], fechados: 0 };
+  r.data.forEach(p => {
+    const campos = [];
+    camposEmpresa.forEach(c => {
+      if (p[c + '_id'] === id || (!p[c + '_id'] && chaves.has(CadastrosNormalizar.chaveNormalizada(p[c])))) campos.push(c);
+    });
+    let vendas = [];
+    try { vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; } catch (e) { vendas = []; }
+    if (Array.isArray(vendas) && vendas.some(v => v && (v.cliente_id === id || (!v.cliente_id && chaves.has(CadastrosNormalizar.chaveNormalizada(v.cliente)))))) campos.push('vendas');
+    if (!campos.length) return;
+    uso.total++;
+    if (p.fechado) uso.fechados++;
+    campos.forEach(c => { uso.por_campo[c] = (uso.por_campo[c] || 0) + 1; });
+    if (uso.referencias.length < 30) uso.referencias.push(p.referencia);
+  });
+  return uso;
+}
+
+app.get('/api/contatos/:id/uso', auth(...MODULOS_TRABALHO), async (req, res) => {
+  try {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(req.params.id)) return res.status(400).json({ erro: 'id inválido' });
+    const { data: c } = await sb().from('contatos_clientes').select('id,razao_social,nome_fantasia,sinonimos').eq('id', req.params.id).maybeSingle();
+    if (!c) return res.status(404).json({ erro: 'Cadastro não encontrado' });
+    res.json(Object.assign({ ok: true }, await usoDoCadastro(c)));
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// ── MESCLAR CADASTROS DUPLICADOS (fase 2a-2) ──
+// body: { remover_id, manter_id }. O cadastro "remover" é inativado; razão
+// social, nome fantasia e sinônimos dele viram sinônimos do "manter" (assim
+// qualquer processo/documento que use a grafia antiga passa a reconhecer o
+// cadastro certo), papéis são somados, campos vazios do "manter" são
+// completados com os do "remover", as pessoas de contato mudam de empresa,
+// e os processos são revinculados (texto + id) com log. Gerente só.
+app.post('/api/contatos/mesclar', auth('cadastros'), requireGerente, async (req, res) => {
+  try {
+    const removerId = String((req.body || {}).remover_id || '');
+    const manterId = String((req.body || {}).manter_id || '');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(removerId) || !/^[A-Za-z0-9_-]{1,64}$/.test(manterId)) return res.status(400).json({ erro: 'ids inválidos' });
+    if (removerId === manterId) return res.status(400).json({ erro: 'Escolha dois cadastros diferentes' });
+    const { data: remover } = await sb().from('contatos_clientes').select('*').eq('id', removerId).maybeSingle();
+    const { data: manter } = await sb().from('contatos_clientes').select('*').eq('id', manterId).maybeSingle();
+    if (!remover || !manter) return res.status(404).json({ erro: 'Cadastro não encontrado' });
+    if (manter.ativo === false) return res.status(400).json({ erro: 'O cadastro que fica precisa estar ativo' });
+
+    const antesManter = Object.assign({}, manter);
+    const chaveM = new Set([manter.razao_social, manter.nome_fantasia].map(CadastrosNormalizar.chaveNormalizada).filter(Boolean));
+    const sinonimos = limparArrayTexto(
+      (Array.isArray(manter.sinonimos) ? manter.sinonimos : [])
+        .concat([remover.razao_social, remover.nome_fantasia], Array.isArray(remover.sinonimos) ? remover.sinonimos : [])
+        .filter(g => g && !chaveM.has(CadastrosNormalizar.chaveNormalizada(g))),
+      50);
+    const papeis = limparArrayTexto(
+      (Array.isArray(manter.papeis) ? manter.papeis : [manter.tipo]).concat(Array.isArray(remover.papeis) ? remover.papeis : [remover.tipo])
+        .map(p => String(p || '').toUpperCase() === 'EXPORTADOR' ? 'FORNECEDOR' : String(p || '').toUpperCase()).filter(p => TIPOS_EMPRESA.includes(p)),
+      20);
+    if (!papeis.includes(manter.tipo)) papeis.unshift(manter.tipo);
+    const patchManter = { sinonimos, papeis, updated_at: new Date().toISOString() };
+    // Completa só o que está vazio no cadastro que fica.
+    ['documento', 'cnpj', 'email', 'telefone', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf', 'cep', 'nome_fantasia', 'obs'].forEach(k => {
+      if (!String(manter[k] || '').trim() && String(remover[k] || '').trim()) patchManter[k] = remover[k];
+    });
+    if ((!manter.regras_json || !Object.keys(manter.regras_json).length) && remover.regras_json && Object.keys(remover.regras_json).length) patchManter.regras_json = remover.regras_json;
+
+    let { error: e1 } = await sb().from('contatos_clientes').update(patchManter).eq('id', manterId);
+    if (e1 && erroColunasNovasCadastro(e1)) {
+      const semNovas = Object.assign({}, patchManter); delete semNovas.regras_json;
+      ({ error: e1 } = await sb().from('contatos_clientes').update(semNovas).eq('id', manterId));
+    }
+    if (e1) throw new Error(e1.message);
+    const obsRemover = `${remover.obs ? remover.obs + '\n' : ''}[Mesclado em ${new Date().toLocaleDateString('pt-BR')} no cadastro "${manter.razao_social}" por ${req.session.usuario}]`;
+    const { error: e2 } = await sb().from('contatos_clientes').update({ ativo: false, obs: obsRemover, updated_at: new Date().toISOString() }).eq('id', removerId);
+    if (e2) throw new Error(e2.message);
+    const { data: pessoasMovidas } = await sb().from('cadastros_pessoas').update({ empresa_id: manterId }).eq('empresa_id', removerId).select('id');
+    invalidarIndiceCadastros();
+    registrarLogCadastro('contatos_clientes', manterId, 'mesclar', antesManter, Object.assign({}, manter, patchManter, { _mesclado_de: removerId }), req.session.usuario);
+    registrarLogCadastro('contatos_clientes', removerId, 'mesclar', remover, Object.assign({}, remover, { ativo: false, _mesclado_em: manterId }), req.session.usuario);
+
+    // Processos: a grafia antiga agora é sinônimo do cadastro que fica, então
+    // a revinculação troca texto + id em tudo que apontava pro removido.
+    let revinculo = null;
+    try { revinculo = await revincularProcessosCadastros({ usuario: req.session.usuario }); }
+    catch (e) { revinculo = { erro: e.message }; }
+    res.json({ ok: true, manter_id: manterId, remover_id: removerId, sinonimos, papeis, pessoas_movidas: (pessoasMovidas || []).length, revinculo });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
 // ── CADASTRO DE PESSOAS (contato individual da empresa, funcionário interno ou avulso) ──
