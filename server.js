@@ -3446,9 +3446,25 @@ const conexos = require('./services/conexos.js');
 // derrubar o autocomplete/cadastro no meio do dia.
 const TIPOS_EMPRESA = ['CLIENTE','FORNECEDOR','EXPORTADOR','DESPACHANTE','AGENTE','ARMADOR','TRANSPORTADORA','ARMAZEM_ALFANDEGADO','PORTO_ARMAZEM','DEPOT_DEVOLUCAO'];
 const CONTATO_CAMPOS_BASE = 'id,cnpj,documento,tipo_pessoa,pais,razao_social,nome_fantasia,cidade,uf,logradouro,numero,complemento,bairro,cep,email,telefone,tipo,obs';
+// Colunas que só existem depois das migrations 0040 (papeis/sinonimos) e
+// 0042 (regras_json) — consultadas juntas; se o banco reclamar de qualquer
+// uma, a consulta repete só com CONTATO_CAMPOS_BASE.
+const CONTATO_CAMPOS_NOVOS = ',papeis,sinonimos,regras_json';
 function erroColunasNovasCadastro(err) {
   const msg = String(err && err.message || err || '');
-  return /papeis|sinonimos/i.test(msg) && /column|coluna|schema cache|does not exist/i.test(msg);
+  return /papeis|sinonimos|regras_json/i.test(msg) && /column|coluna|schema cache|does not exist/i.test(msg);
+}
+// Regras por cadastro (migration 0042, contatos_clientes.regras_json) —
+// pedido Emanuelly 01/10/2026 (Tyre Export: referência do processo vem do
+// "Number PO" da proforma). Só entram chaves conhecidas, com valores
+// válidos; o resto é descartado em silêncio.
+const REGRAS_REFERENCIA_ORIGEM = ['PO', 'PI', 'CI'];
+function limparRegrasCadastro(v) {
+  const entrada = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  const saida = {};
+  const refOrigem = String(entrada.referencia_origem || '').toUpperCase().trim();
+  if (REGRAS_REFERENCIA_ORIGEM.includes(refOrigem)) saida.referencia_origem = refOrigem;
+  return saida;
 }
 function limparArrayTexto(v, maxItens) {
   if (!Array.isArray(v)) return [];
@@ -3478,9 +3494,14 @@ app.get('/api/contatos', auth(...MODULOS_TRABALHO), async (req, res) => {
     // (.or/.in), então nada de vírgula, parêntese ou chave vindo da URL.
     const tipos = tipo ? String(tipo).split(',').map(t => t.trim().toUpperCase()).filter(t => /^[A-Z_]{1,40}$/.test(t)) : [];
     const qSeguro = (q && q.length >= 2) ? q.replace(/[,%*(){}]/g, '').trim() : '';
-    const montar = (comPapeis) => {
+    // nivel 2 = com papéis/sinônimos/regras (0040+0042); 1 = só papéis/
+    // sinônimos (0042 ainda não rodou); 0 = colunas base (nem 0040).
+    const montar = (nivel) => {
+      const comPapeis = nivel >= 1;
+      const colunas = nivel >= 2 ? CONTATO_CAMPOS_BASE + CONTATO_CAMPOS_NOVOS
+        : comPapeis ? CONTATO_CAMPOS_BASE + ',papeis,sinonimos' : CONTATO_CAMPOS_BASE;
       let query = sb().from('contatos_clientes')
-        .select(comPapeis ? CONTATO_CAMPOS_BASE + ',papeis,sinonimos' : CONTATO_CAMPOS_BASE)
+        .select(colunas)
         .eq('ativo', true);
       // tipo aceita mais de um valor separado por vírgula (ex: "FORNECEDOR,EXPORTADOR")
       // — usado pelo campo "Fornecedor (Exportador)" do processo, que precisa achar
@@ -3500,8 +3521,11 @@ app.get('/api/contatos', auth(...MODULOS_TRABALHO), async (req, res) => {
       }
       return query.order('razao_social').limit(lim);
     };
-    let { data, error } = await montar(true);
-    if (error && erroColunasNovasCadastro(error)) ({ data, error } = await montar(false));
+    let { data, error } = await montar(2);
+    if (error && erroColunasNovasCadastro(error)) {
+      ({ data, error } = await montar(/regras_json/i.test(String(error.message || '')) ? 1 : 0));
+      if (error && erroColunasNovasCadastro(error)) ({ data, error } = await montar(0));
+    }
     if (error) throw new Error(error.message);
     res.json({ ok: true, contatos: data || [] });
   } catch(e) { res.status(500).json({ erro: e.message }); }
@@ -3554,6 +3578,11 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
     if (!papeis.includes(c.tipo)) papeis.unshift(c.tipo);
     c.papeis = papeis;
     c.sinonimos = limparArrayTexto(c.sinonimos, 50);
+    // Regras (migration 0042): só salva se a tela mandou a chave — tela
+    // antiga sem o campo não apaga regra já configurada.
+    const mandouRegras = Object.prototype.hasOwnProperty.call(c, 'regras_json');
+    if (mandouRegras) c.regras_json = limparRegrasCadastro(c.regras_json);
+    else delete c.regras_json;
 
     // Trava de duplicidade — só entra em ação na CRIAÇÃO de um contato novo
     // (editar um contato existente passa direto, mesmo mantendo o nome).
@@ -3608,8 +3637,10 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
     }
     let { error } = await sb().from('contatos_clientes').upsert(c, { onConflict: 'id' });
     if (error && erroColunasNovasCadastro(error)) {
-      // Migration 0040 ainda não rodou: grava sem as colunas novas.
-      const semNovas = Object.assign({}, c); delete semNovas.papeis; delete semNovas.sinonimos;
+      // Migration 0040/0042 ainda não rodou: grava sem as colunas novas.
+      const semNovas = Object.assign({}, c);
+      if (/regras_json/i.test(String(error.message || ''))) delete semNovas.regras_json;
+      else { delete semNovas.papeis; delete semNovas.sinonimos; delete semNovas.regras_json; }
       ({ error } = await sb().from('contatos_clientes').upsert(semNovas, { onConflict: 'id' }));
     }
     if (error) throw new Error(error.message);

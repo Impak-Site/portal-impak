@@ -41,6 +41,46 @@ async function buscarContatos(q, tipo, limit){
   const d = await r.json();
   return d.ok ? (d.contatos||[]) : [];
 }
+// ── Regras por cadastro (regras_json, migration 0042) ──
+// Pedido Emanuelly 01/10/2026: na proforma da Tyre Export, Inc. a referência
+// do processo é o campo "Number PO" (ex.: BR26R124) — e isso deve valer
+// "sempre que for ele". A regra fica no cadastro do fornecedor (campo
+// "Referência do processo ao ler PI/CI" no modal de Empresa), não no código,
+// pra outros exportadores entrarem sem nova versão.
+function regrasDoCadastro(c){
+  const r = c && c.regras_json;
+  if(!r) return {};
+  if(typeof r === 'string'){ try{ return JSON.parse(r) || {}; }catch(e){ return {}; } }
+  return (typeof r === 'object' && !Array.isArray(r)) ? r : {};
+}
+// Dado o JSON extraído pela IA e as regras do fornecedor, devolve a
+// referência que a regra manda usar — ou '' quando não há regra/valor.
+function referenciaPelaRegraDoFornecedor(extracted, regras){
+  const origem = String((regras||{}).referencia_origem || '').toUpperCase();
+  const campo = { PO:'po_numero', PI:'pi_numero', CI:'ci_numero' }[origem];
+  if(!campo || !extracted) return '';
+  return String(extracted[campo] || '').trim();
+}
+// Acha o cadastro de fornecedor/exportador que bate com o nome (razão
+// social, nome fantasia ou sinônimo) — busca no servidor, compara com a
+// mesma chave normalizada do autocomplete. null quando não bate ou é ambíguo.
+async function acharCadastroFornecedor(nome){
+  const n = String(nome||'').trim();
+  if(n.length < 2) return null;
+  let lista = [];
+  try{ lista = await buscarContatos(n, 'FORNECEDOR,EXPORTADOR', 20); }catch(e){ return null; }
+  const exatos = lista.filter(c => contatoBateComValor(c, n));
+  if(exatos.length === 1) return exatos[0];
+  if(exatos.length > 1) return null;
+  // Sem batida exata: aceita quando a busca devolveu um único cadastro e o
+  // nome digitado está contido nele (ex.: "Tyre Export" x "Tyre Export, Inc.").
+  if(lista.length === 1){
+    const k = chaveCadastro(n);
+    const alvo = [lista[0].razao_social, lista[0].nome_fantasia].map(chaveCadastro);
+    if(alvo.some(a => a && (a.includes(k) || k.includes(a)))) return lista[0];
+  }
+  return null;
+}
 // onSelect (opcional): callback(nomeCompleto) chamado quando o usuário clica
 // numa sugestão do dropdown. Necessário pra campos cujo valor não é lido
 // direto do DOM no momento de salvar, e sim espelhado numa variável JS a
@@ -377,7 +417,7 @@ function _ceSinonimosLidos(){
 function abrirNovoContato(){
   document.getElementById('contato-edit-title').textContent = 'Novo Contato';
   ['ce_id','ce_razao_social','ce_nome_fantasia','ce_documento','ce_uf','ce_cidade','ce_email','ce_telefone','ce_obs',
-   'ce_logradouro','ce_numero','ce_complemento','ce_bairro','ce_cep','ce_sinonimos'].forEach(id=>{
+   'ce_logradouro','ce_numero','ce_complemento','ce_bairro','ce_cep','ce_sinonimos','ce_ref_origem'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('ce_tipo').value = _contatosTipoAtivo;
@@ -408,6 +448,8 @@ function editarContato(id){
   _ceRenderPapeis((Array.isArray(c.papeis) && c.papeis.length) ? c.papeis : [c.tipo||'CLIENTE']);
   const elSin = document.getElementById('ce_sinonimos');
   if(elSin) elSin.value = (Array.isArray(c.sinonimos) ? c.sinonimos : []).join('\n');
+  const elRef = document.getElementById('ce_ref_origem');
+  if(elRef) elRef.value = regrasDoCadastro(c).referencia_origem || '';
   document.getElementById('ce_tipo_pessoa').value = c.tipo_pessoa||'JURIDICA';
   document.getElementById('ce_pais').value = c.pais||'Brasil';
   document.getElementById('ce_razao_social').value = c.razao_social||'';
@@ -543,6 +585,7 @@ async function salvarContato(){
     tipo: document.getElementById('ce_tipo').value,
     papeis: _cePapeisMarcados(),
     sinonimos: _ceSinonimosLidos(),
+    regras_json: { referencia_origem: document.getElementById('ce_ref_origem')?.value || '' },
     tipo_pessoa: tipoPessoa,
     pais: pais,
     razao_social: razao,

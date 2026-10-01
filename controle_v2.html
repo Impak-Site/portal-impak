@@ -754,6 +754,17 @@ ao lado das datas). -->
 </div>
 <div class="form-group"><label class="form-label">Observações</label>
 <textarea class="form-input" id="ce_obs" rows="2"></textarea></div>
+<!-- Regras de leitura dos documentos deste fornecedor (migration 0042,
+     regras_json) — pedido Emanuelly 01/10/2026: na proforma da Tyre Export
+     a referência do processo é o campo "Number PO". Só faz sentido pra
+     fornecedor/exportador; os outros papéis ignoram. -->
+<div class="form-group" id="ce_regras_wrap"><label class="form-label">Referência do processo ao ler PI/CI deste fornecedor <span style="font-weight:400;color:var(--muted);font-size:11px;">(só fornecedor/exportador — vale pra leitura com IA na aba Documentos)</span></label>
+<select class="form-input" id="ce_ref_origem" onchange="_ceContatoDirty=true">
+<option value="">Padrão (a IA identifica a referência no documento)</option>
+<option value="PO">Número do pedido — "Number PO" / "PO No." / "Purchase Order"</option>
+<option value="PI">Nº da Proforma Invoice (PI)</option>
+<option value="CI">Nº da Commercial Invoice (CI)</option>
+</select></div>
 
 <!-- Pessoas de contato desta empresa (pedido Ayslan 14/09/2026: "preciso
      conseguir colocar varias pessoas no contato, com email, telefone e

@@ -573,6 +573,7 @@ async function extrairComIA_umArquivo(input){
   "produto": "",  // usar SOMENTE quando o documento tiver um único item/descrição corrida (ex: CI com texto livre) — extrair de: Description of Goods, Cargo Description, Item Description. Se o documento tiver uma TABELA com múltiplos itens (Size/Pattern/Quantity por linha, comum em PI/Sales Contract), deixar "produto" vazio e usar "itens" abaixo.
   "itens": [],  // ARRAY com um objeto por LINHA DE PRODUTO da tabela do documento (comum em PI/Sales Contract com colunas Size, Pattern, L.I./S.R., P.R., Quantity — mas também vale para uma tabela de item único com colunas tipo Description/Brand/NCM/Qty, comum em Proforma Invoice). Cada objeto: {"size":"","pattern":"","li_sr":"","pr":"","quantidade":0}. "pr" é a coluna PR / P.R. / Ply Rating (ex: "18PR") QUANDO ela existir como coluna separada na tabela — preencha SEMPRE que a tabela tiver essa coluna, mesmo que pareça redundante com L.I./S.R., senão a informação de lonas se perde. Ex. de uma tabela com 3 linhas (600/65R28, 600/70R30, 710/70R42): retornar 3 objetos, um por linha, cada um com sua própria quantidade — NUNCA somar as quantidades num único item. Se a tabela trouxer a descrição do produto já combinada numa única coluna (ex: "215/75R17.5 16PR 135/133L TL TR685"), sem separação clara entre Size/Pattern/L.I. S.R./PR, preencha "size" com o texto COMPLETO dessa descrição e deixe "pattern"/"li_sr"/"pr" vazios (já está tudo dentro de "size") — NUNCA deixe "size" e "pattern" vazios ao mesmo tempo numa linha que tiver quantidade preenchida, senão o item é descartado. Se o documento não tiver tabela de itens (só descrição corrida, sem coluna de quantidade), deixar "itens" como array vazio [] e usar "produto" acima.
   "pi_numero": "",  // extrair APENAS o número principal; ignorar números secundários entre parênteses (ex: "PI-001 (JY-999)" → usar "PI-001")
+  "po_numero": "",  // número do PEDIDO DE COMPRA quando o documento tiver um campo próprio pra isso: "Number PO", "PO No.", "P.O. Number", "Purchase Order No." (ex: "Number PO: BR26R124" → "BR26R124"). Só o valor, sem o rótulo. Deixe "" se o documento não tiver esse campo — NUNCA copie o nº da PI/CI pra cá.
   "pi_data": "YYYY-MM-DD",
   "pi_valor_usd": 0,
   "pi_incoterm": "",
@@ -785,6 +786,28 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // o campo obrigatório em branco. Só entra em ação quando a IA não achou
     // NENHUMA referência no documento.
     if(!extracted.referencia && extracted.ci_numero) extracted.referencia = extracted.ci_numero;
+
+    // ── Regra do cadastro do fornecedor: de onde vem a referência ──
+    // Pedido Emanuelly (01/10/2026): "sempre que for ele [Tyre Export], ler
+    // o nº da proforma no campo Number PO" como referência do processo. A
+    // regra fica no cadastro da empresa (regras_json.referencia_origem, ver
+    // modal de Empresa em /cadastros), então vale pra qualquer fornecedor
+    // configurado — aqui só procuramos o cadastro pelo nome que o documento
+    // traz (ou o já preenchido no processo) e aplicamos. Sobrescreve o que a
+    // IA tinha chutado em "referencia", nunca o campo já salvo no processo
+    // (isso continua passando pelo aviso/divergência abaixo).
+    const nomeFornecedorDoc = String(extracted.fornecedor || document.getElementById('f_fornecedor')?.value || '').trim();
+    if(nomeFornecedorDoc && typeof acharCadastroFornecedor === 'function'){
+      try{
+        const cadForn = await acharCadastroFornecedor(nomeFornecedorDoc);
+        const refRegra = cadForn ? referenciaPelaRegraDoFornecedor(extracted, regrasDoCadastro(cadForn)) : '';
+        if(refRegra && refRegra.toUpperCase() !== String(extracted.referencia||'').toUpperCase()){
+          extracted.referencia = refRegra;
+          showToast(`Referência "${refRegra}" lida pela regra do cadastro de ${cadForn.razao_social}`, 'ok');
+        }
+      }catch(e){ console.warn('regra de referência do fornecedor:', e); }
+    }
+    delete extracted.po_numero; // só serve pra regra acima; não existe campo f_po_numero
 
     // ── Aviso de documento de OUTRO processo — pedido direto da Emanuelly
     // (10/09/2026): ela testou de propósito subir a CI do processo UD26-079
@@ -1010,10 +1033,24 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // já tem câmbio fechado (cambio_fechado preenchido) e ainda não tem
     // Nº DUIMP — cobre o caso comum de uma DUIMP só valendo pro processo
     // inteiro, sem precisar adivinhar a qual parcela específica ela pertence.
-    if(extracted.duimp_numero && typeof _parcelas !== 'undefined' && Array.isArray(_parcelas) && _parcelas.length){
+    //
+    // Pagamento ÚNICO (À Vista / 100% a Prazo / Entrada+Saldo) — Emanuelly,
+    // 01/10/2026 (IMPAK-OID2605C, "estou importando a Duimp mas ele não está
+    // puxando o nº da Duimp pra aba financeiro"): nesses casos não existe
+    // parcela, o Nº DUIMP fica no campo do processo (f_pi_duimp_numero,
+    // migration 0041). Então o número vai pro loop genérico abaixo com o nome
+    // do campo da tela — se o campo já tiver outro valor, vira divergência
+    // pro usuário decidir, igual aos demais campos.
+    const formaPagamentoAtual = document.getElementById('f_pi_pagamento')?.value || '';
+    if(extracted.duimp_numero && formaPagamentoAtual !== 'PARCELADO'){
+      extracted.pi_duimp_numero = extracted.duimp_numero;
+    } else if(extracted.duimp_numero && typeof _parcelas !== 'undefined' && Array.isArray(_parcelas) && _parcelas.length){
       let parcelasAtualizadas = 0;
+      let jaTinha = 0;
       _parcelas.forEach(pc => {
-        if(pc && pc.cambio_fechado && !pc.duimp_numero){
+        if(!pc) return;
+        if(pc.duimp_numero) jaTinha++;
+        else if(pc.cambio_fechado){
           pc.duimp_numero = extracted.duimp_numero;
           parcelasAtualizadas++;
         }
@@ -1023,6 +1060,10 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         if(typeof sincronizarParcelasLegado === 'function') sincronizarParcelasLegado();
         preenchidos += parcelasAtualizadas;
         camposLidosNestaLeitura.push('duimp_numero');
+      } else if(!jaTinha){
+        // Parcelado sem nenhuma parcela com câmbio fechado: antes o número
+        // sumia em silêncio e parecia que a leitura não tinha funcionado.
+        showToast(`Nº DUIMP lido (${extracted.duimp_numero}), mas nenhuma parcela tem câmbio fechado — informe na parcela certa.`, 'warn');
       }
     }
     delete extracted.duimp_numero; // tratado à parte acima, nunca vai pro loop genérico

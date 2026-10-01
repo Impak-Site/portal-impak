@@ -2412,6 +2412,27 @@ teste('calcularCustoRealTotal continua ignorando _conf e demais chaves auxiliare
   iguais(r.count, 1); iguais(r.total, 300);
 });
 
+// ── Regras por cadastro: referência do processo vem do "Number PO" (Tyre Export, Emanuelly 01/10/2026) ──
+teste('regrasDoCadastro: aceita objeto, string JSON e lixo sem quebrar', () => {
+  iguais(sandbox.regrasDoCadastro({ regras_json: { referencia_origem: 'PO' } }).referencia_origem, 'PO');
+  iguais(sandbox.regrasDoCadastro({ regras_json: '{"referencia_origem":"CI"}' }).referencia_origem, 'CI');
+  iguais(JSON.stringify(sandbox.regrasDoCadastro({ regras_json: 'não é json' })), '{}');
+  iguais(JSON.stringify(sandbox.regrasDoCadastro({ regras_json: null })), '{}');
+  iguais(JSON.stringify(sandbox.regrasDoCadastro(null)), '{}');
+  iguais(JSON.stringify(sandbox.regrasDoCadastro({ regras_json: ['PO'] })), '{}', 'array não é regra');
+});
+teste('referenciaPelaRegraDoFornecedor: PO → po_numero da proforma (BR26R124); PI/CI → nº da PI/CI; sem regra ou sem valor → vazio', () => {
+  const ext = { referencia: 'TYRE-123', po_numero: 'BR26R124', pi_numero: 'PI-77', ci_numero: 'CI-88' };
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'PO' }), 'BR26R124');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'po' }), 'BR26R124', 'caixa baixa também vale');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'PI' }), 'PI-77');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'CI' }), 'CI-88');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, {}), '', 'sem regra: deixa a IA decidir');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'XYZ' }), '', 'regra desconhecida é ignorada');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor({ referencia: 'X' }, { referencia_origem: 'PO' }), '', 'documento sem Number PO (ex.: BL do mesmo fornecedor) não mexe na referência');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor({ po_numero: '  BR26R124 ' }, { referencia_origem: 'PO' }), 'BR26R124', 'sem espaços');
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');
