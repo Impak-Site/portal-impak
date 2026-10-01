@@ -3811,8 +3811,8 @@ function invalidarIndiceCadastros() { _cadIndice = { at: 0, indice: null }; }
 async function obterIndiceCadastros() {
   if (_cadIndice.indice && Date.now() - _cadIndice.at < 60 * 1000) return _cadIndice.indice;
   try {
-    let { data, error } = await sb().from('contatos_clientes').select('id,razao_social,nome_fantasia,tipo,papeis,sinonimos').eq('ativo', true).limit(5000);
-    if (error && erroColunasNovasCadastro(error)) ({ data, error } = await sb().from('contatos_clientes').select('id,razao_social,nome_fantasia,tipo').eq('ativo', true).limit(5000));
+    let { data, error } = await sb().from('contatos_clientes').select('id,razao_social,nome_fantasia,tipo,papeis,sinonimos,cnpj,documento').eq('ativo', true).limit(5000);
+    if (error && erroColunasNovasCadastro(error)) ({ data, error } = await sb().from('contatos_clientes').select('id,razao_social,nome_fantasia,tipo,cnpj,documento').eq('ativo', true).limit(5000));
     if (error) throw new Error(error.message);
     const { listas } = await carregarListas();
     _cadIndice = { at: Date.now(), indice: CadastrosNormalizar.montarIndice(data || [], listas) };

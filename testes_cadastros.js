@@ -182,8 +182,10 @@ teste('sem índice ou payload vazio: nada muda', () => {
 console.log('\n── vínculo por id (<campo>_id) ──');
 const EMPRESAS_ID = [
   { id: 'c-silvas', razao_social: 'SILVAS COMERCIO DE PNEUS LTDA', nome_fantasia: 'SILVAS', tipo: 'CLIENTE', sinonimos: ['SB LITORAL'] },
-  { id: 'c-matriz', razao_social: 'OST PNEUS LTDA', nome_fantasia: 'OST', tipo: 'CLIENTE' },
-  { id: 'c-filial', razao_social: 'OST PNEUS LTDA', nome_fantasia: 'OST', tipo: 'CLIENTE', cnpj: '2' },
+  { id: 'c-matriz', razao_social: 'OST PNEUS LTDA', nome_fantasia: 'OST', tipo: 'CLIENTE', cnpj: '2' },
+  { id: 'c-filial', razao_social: 'OST PNEUS LTDA', nome_fantasia: 'OST', tipo: 'CLIENTE', cnpj: '3' },
+  { id: 'u-filial', razao_social: 'UNICAP LTDA', tipo: 'CLIENTE', cnpj: '15331210000644' },
+  { id: 'u-matriz', razao_social: 'UNICAP LTDA', tipo: 'CLIENTE', cnpj: '15331210000130' },
   { id: 'f-sailun', razao_social: 'SAILUN GROUP(HONGKONG)CO.,LIMITED', nome_fantasia: 'SAILUN', tipo: 'EXPORTADOR' },
   { id: 'f-tyre', razao_social: 'TYRE EXPORT INC', tipo: 'FORNECEDOR' },
   { id: 'a-pil', razao_social: 'PACIFIC INTERNATIONAL LINES', nome_fantasia: 'PIL', tipo: 'ARMADOR', sinonimos: ['PILL'] },
@@ -201,9 +203,12 @@ teste('resolverCampo devolve nome canônico + id do cadastro (cliente/fornecedor
   assert.strictEqual(N.resolverCampo('fornecedor', 'QINGDAO DITRIP TYRE CO LIMITED', IDX2), null);
   assert.strictEqual(N.resolverCampo('cliente', '', IDX2), null);
 });
-teste('matriz/filial com o mesmo nome: texto padroniza, id fica null (não dá pra escolher)', () => {
+teste('mesmo nome em dois cadastros: vincula à matriz (CNPJ /0001); sem matriz identificável, id fica null', () => {
+  assert.deepStrictEqual(N.resolverCampo('cliente', 'unicap ltda', IDX2), { nome: 'UNICAP LTDA', id: 'u-matriz' });
   assert.deepStrictEqual(N.resolverCampo('cliente', 'ost pneus ltda', IDX2), { nome: 'OST PNEUS LTDA', id: null });
   assert.strictEqual(N.normalizarValorCampo('cliente', 'OST', IDX2), 'OST PNEUS LTDA');
+  assert.strictEqual(N.ehMatriz({ cnpj: '15.331.210/0001-30' }), true);
+  assert.strictEqual(N.ehMatriz({ documento: '15331210000644' }), false);
 });
 teste('normalizarProcesso grava <campo>_id (id, ou null quando não reconhece) só pros campos presentes', () => {
   const p = { id: 'x', cliente: 'SB LITORAL', fornecedor: 'QINGDAO DITRIP TYRE CO LIMITED', armador: 'PILL', obs: 'nada' };
