@@ -507,18 +507,24 @@ async function importarFechamentoProcesso(input){
     // Custos reais — cada chave do real_json vira o campo "Pago" do item
     // correspondente na aba Custos Reais (f_cr_<id>). Só preenche campo
     // vazio, pra não sobrescrever o que o usuário já tiver lançado à mão.
-    Object.entries(d.real_json||{}).forEach(([itemId, valor])=>{
-      const el = document.getElementById('f_cr_'+itemId);
-      if(el && !el.value){
-        el.value = valor;
-        const selMoeda = document.getElementById('f_cr_moeda_'+itemId);
-        if(selMoeda && d.moedas && d.moedas[itemId]) selMoeda.value = d.moedas[itemId];
-        el.style.borderColor='var(--ok)'; el.style.background='rgba(22,163,74,.04)';
-        setTimeout(()=>{ el.style.borderColor=''; el.style.background=''; }, 3000);
-        preenchidos++;
-      }
-    });
-    if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
+    // Aba redesenhada (30/09/2026): crAplicarImportado garante que a linha
+    // exista na tela (itens sem valor ficam escondidos), aplica a máscara
+    // 1.234,56, não sobrescreve o que alguém já conferiu à mão e marca a
+    // linha como conferida "pela planilha".
+    if(typeof crAplicarImportado === 'function'){
+      preenchidos += crAplicarImportado(d.real_json||{}, d.moedas||{});
+    } else {
+      Object.entries(d.real_json||{}).forEach(([itemId, valor])=>{
+        const el = document.getElementById('f_cr_'+itemId);
+        if(el && !el.value){
+          el.value = valor;
+          const selMoeda = document.getElementById('f_cr_moeda_'+itemId);
+          if(selMoeda && d.moedas && d.moedas[itemId]) selMoeda.value = d.moedas[itemId];
+          preenchidos++;
+        }
+      });
+      if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
+    }
 
     showToast(`✓ Planilha lida: ${preenchidos} campo${preenchidos===1?'':'s'} preenchido${preenchidos===1?'':'s'}. Revise e clique em Salvar.`, 'ok');
     if(Array.isArray(d.avisos) && d.avisos.length){

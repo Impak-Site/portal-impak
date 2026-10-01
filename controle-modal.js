@@ -844,20 +844,65 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
 // lado) ÃÂ¢ÃÂÃÂ usada tanto pro Pago quanto pro Cobrado, tanto na linha principal
 // quanto em cada sub-linha de container, sempre com o mesmo par de ids
 // (valorId/moedaId) montado pelo chamador.
-function celulaValorMoedaHtml(valorId, moedaId, valor, moeda, placeholder, readonly, cotado){
-  const dis = readonly ? 'readonly style="width:100%;background:var(--bg);color:var(--muted);"' : 'style="width:100%;"';
-  return `<div style="display:flex;gap:4px;">
-    <input class="form-input" type="number" step="0.01" id="${valorId}" value="${valor}" placeholder="${placeholder}" ${dis} oninput="atualizarTotalCustosReais()"${(cotado!==undefined&&cotado!==null)?` data-cotado="${cotado}"`:''}>
-    <select class="form-input" id="${moedaId}" ${readonly?'disabled':''} onchange="atualizarTotalCustosReais()" style="width:62px;flex-shrink:0;padding-left:4px;padding-right:4px;">
-      ${MOEDAS_REAIS.map(m=>`<option value="${m.code}" ${m.code===moeda?'selected':''}>${m.code}</option>`).join('')}
-    </select>
+// ══════════════════════════════════════════════════════════════════════
+// CUSTOS REAIS — aba redesenhada (30/09/2026, pedido Ayslan: "pensa a
+// melhor forma de ver e preencher isso")
+//
+// Como a tela funciona agora:
+//   - Cards no topo: Receita (NF saída) / Custo real / Lucro real (com o
+//     cotado ao lado) / Conferidos N de M. Tudo recalculado a cada tecla.
+//   - UMA coluna de valor por item ("Real (pago)"), com máscara 1.234,56 e
+//     a moeda dentro do campo. Os valores são arredondados a 2 casas tanto
+//     na exibição quanto ao salvar (antes vazava 174387,9905459328).
+//   - Coluna "Cotado · origem": o cotado do Calculador com a diferença
+//     (Δ) em R$ e %, e de onde o valor pode ser puxado (parcelas pagas do
+//     Financeiro, Valor do Frete da Logística) — um clique preenche.
+//   - "Cobrado do cliente" fica recolhido. Sem nada gravado = repasse igual
+//     ao pago (ver cobradoEfetivo em controle-core.js). Só abre quando é
+//     diferente (markup, ou o cotado que a aprovação da cotação gravou em
+//     _cobrado) — mostra "cobrado X · margem ±Y" e um link pra editar.
+//   - Só aparecem as linhas que têm valor (real ou cotado), as 10 básicas
+//     (CUSTOS_REAIS_SEMPRE_VISIVEIS) e as que o usuário adicionar pelo
+//     "+ adicionar item" de cada grupo. Caiu de ~55 linhas pra ~12-15.
+//   - Bolinha de status por linha: verde = conferido por alguém (digitou,
+//     puxou de outra aba, importou da planilha ou clicou na bolinha); azul
+//     = tem valor mas é só o cotado pré-preenchido, ninguém conferiu;
+//     vazia = sem valor. Guardado em real_json._conf = {id:{por,em,origem}}.
+//   - Enter pula pro próximo campo de valor (igual Excel).
+//
+// Formato salvo em real_json NÃO mudou (número | {valor,moeda} |
+// {porContainer}), só ganhou a chave _conf — DRE, Fechamento, Resultado e
+// Análises continuam lendo exatamente o que liam.
+// ══════════════════════════════════════════════════════════════════════
+
+// Estado da aba pro processo aberto (reinicia quando troca de processo).
+let _crExtras = new Set();   // itens adicionados pelo "+ adicionar item" nesta sessão
+let _crConf = {};            // real_json._conf em edição
+let _crProcId = null;
+
+function crFmt(v){ return (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function crSimbolo(m){ return m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'R$'; }
+function crData(iso){ if(!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR'); }
+function crQuem(){ return (_user && (_user.displayName || _user.nome || _user.usuario)) || ''; }
+
+// Célula "moeda + valor" (select da moeda dentro do campo, à esquerda, e o
+// valor com máscara). Usada no Pago, no Cobrado e nas sub-linhas por
+// container. `extraOnInput` é o gancho da linha principal pra marcar a
+// linha como conferida quando alguém digita.
+function celulaValorMoedaHtml(valorId, moedaId, valor, moeda, placeholder, readonly, cotado, extraOnInput){
+  const exib = (valor === '' || valor == null) ? '' : exibirMoeda(valor);
+  const roStyle = readonly ? 'background:var(--bg);color:var(--muted);' : '';
+  const onInput = `formatarMoedaInput(this);${extraOnInput || 'atualizarTotalCustosReais()'}`;
+  return `<div class="moeda-wrap cr-wrap">
+    <select class="cr-moeda" id="${moedaId}" ${readonly?'disabled':''} onchange="atualizarTotalCustosReais()" title="Moeda deste valor">${MOEDAS_REAIS.map(m=>`<option value="${m.code}" ${m.code===moeda?'selected':''}>${m.simbolo}</option>`).join('')}</select>
+    <input class="form-input cr-valor" type="text" inputmode="decimal" id="${valorId}" value="${exib}" placeholder="${placeholder||'0,00'}"${readonly?' readonly':''} style="width:100%;${roStyle}" oninput="${onInput}" onkeydown="crEnter(event,this)"${(cotado!==undefined&&cotado!==null)?` data-cotado="${exibirMoeda(cotado)}"`:''}>
   </div>`;
 }
 
-// Extrai { valor, moeda } pra prÃÂÃÂ©-preencher a cÃÂÃÂ©lula ÃÂÃÂºnica (nÃÂÃÂ£o-detalhada) a
-// partir do que estÃÂÃÂ¡ salvo em real_json ÃÂ¢ÃÂÃÂ aceita os 3 formatos possÃÂÃÂ­veis
+// Extrai { valor, moeda } pra pré-preencher a célula única (não-detalhada) a
+// partir do que está salvo em real_json — aceita os 3 formatos possíveis
 // (ver normalizarValorRealItem em controle-core.js); quando salvo em modo
-// "por container", devolve null (tratado ÃÂÃÂ  parte).
+// "por container", devolve null (tratado à parte).
 function valorMoedaInicial(raw, item){
   if(raw == null || raw === '') return { valor:'', moeda:item.unidade };
   if(typeof raw === 'object'){
@@ -865,10 +910,12 @@ function valorMoedaInicial(raw, item){
     if(raw.valor != null && raw.valor !== '') return { valor: raw.valor, moeda: raw.moeda || item.unidade };
     return { valor:'', moeda:item.unidade };
   }
-  return { valor: raw, moeda: item.unidade };
+  // legado: número puro na moeda antiga do item (ver unidadeLegado)
+  return { valor: raw, moeda: item.unidadeLegado || item.unidade };
 }
 
-function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx === null) ? '' : ('__c' + idx); var val = document.getElementById('f_cr_' + itemId + suf); var moeda = document.getElementById('f_cr_moeda_' + itemId + suf); var valCobrado = document.getElementById('f_cr_cobrado_' + itemId + suf); var moedaCobrado = document.getElementById('f_cr_cobrado_moeda_' + itemId + suf); if (val && valCobrado) valCobrado.value = val.value; if (moeda && moedaCobrado) moedaCobrado.value = moeda.value; if (typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais(); } // ── DRE (Demonstrativo de Resultado) — modal com o mesmo layout da
+function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx === null) ? '' : ('__c' + idx); var val = document.getElementById('f_cr_' + itemId + suf); var moeda = document.getElementById('f_cr_moeda_' + itemId + suf); var valCobrado = document.getElementById('f_cr_cobrado_' + itemId + suf); var moedaCobrado = document.getElementById('f_cr_cobrado_moeda_' + itemId + suf); if (val && valCobrado) valCobrado.value = val.value; if (moeda && moedaCobrado) moedaCobrado.value = moeda.value; if (typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais(); }
+// ── DRE (Demonstrativo de Resultado) — modal com o mesmo layout da
 // planilha "IA - <referencia>" usada internamente antes do Controle
 // existir, montado a partir de montarDRE() (controle-core.js), que so
 // reorganiza os MESMOS lancamentos ja feitos na aba Custos Reais
@@ -955,8 +1002,12 @@ function renderDREModalHtml(dre){
 // Pedido do Ayslan (18/09/2026): "quando o valor do frete for preenchido
 // na aba logistica no campo Valor do Frete preencher automaticamente igual
 // na aba custos reais no campo: frete internacional - cobrado (nao
-// preencher campo pago)". Fill-if-empty: só preenche se o Cobrado ainda
-// estiver vazio -- não sobrescreve um valor já ajustado manualmente ali.
+// preencher campo pago)". Sempre espelha o Cobrado no Valor do Frete
+// (inclusive sobrescrevendo um valor já salvo — bug Emanuelly 18/09/2026:
+// mudou o Frete de 1.850 pra 2.000 e o Cobrado ficou parado). No redesenho
+// (30/09/2026) o Cobrado fica recolhido: aqui ele sai do modo "espelho do
+// pago" e passa a ter o valor da Logística, mostrado como "cobrado US$ X ·
+// margem" na linha do frete.
 function sincronizarFreteCustosReais(){
   const valorEl = document.getElementById('f_valor_frete');
   const moedaEl = document.getElementById('f_moeda_frete');
@@ -966,165 +1017,140 @@ function sincronizarFreteCustosReais(){
   if(cobradoEl.readOnly) return;
   const valor = parseValorMoeda(valorEl.value);
   if(!valor) return;
-  // Sempre espelha o Cobrado no Valor do Frete (só o Pago fica de fora,
-  // pedido original do Ayslan) -- inclusive sobrescrevendo um valor já
-  // salvo antes. Antes só preenchia se o Cobrado estivesse vazio, o que
-  // travava a sincronização depois do primeiro salvamento (bug reportado
-  // pela Emanuelly 18/09/2026: mudou o Frete de 1.850 pra 2.000 e o
-  // Cobrado ficou parado em 1.850).
-  cobradoEl.value = valor.toFixed(2);
+  const wrap = document.getElementById('cr_cobrado_wrap_frete');
+  if(wrap) wrap.dataset.espelho = '0';
+  cobradoEl.value = exibirMoeda(valor);
   if(cobradoMoedaEl && moedaEl) cobradoMoedaEl.value = moedaEl.value;
   if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
 }
 
 function renderCustosReaisTab(p){
-  const reais = p.real_json || {};
+  const reais = (p.real_json && typeof p.real_json === 'object') ? p.real_json : {};
+  if(_crProcId !== p.id){ _crExtras = new Set(); _crProcId = p.id; }
+  _crConf = (reais._conf && typeof reais._conf === 'object') ? JSON.parse(JSON.stringify(reais._conf)) : {};
   const cotado = (p.estimativa_json && p.estimativa_json.custos_cotados_json) || null;
   const cambioDefault = p.real_cambio ?? (cotado && cotado.cambio) ?? p.pi_cambio ?? _cambio.USD;
   const cambioEurDefault = (reais._cambio_eur != null && reais._cambio_eur !== '') ? reais._cambio_eur : _cambio.EUR;
   const containers = containersDoProcesso(p);
+  const estado = custosReaisEstado(p, [..._crExtras]);
+  const porId = {}; estado.itens.forEach(i => { porId[i.id] = i; });
 
-  // Tabela em largura total (em vez do form-grid de 2-3 colunas) ÃÂ¢ÃÂÃÂ com dois
-  // campos por item (Pago/Cobrado) + hint do cotado, a versÃÂÃÂ£o em grid
-  // espremia demais e cortava o campo "Cobrado" na tela. Uma linha por item,
-  // ocupando toda a largura do painel, dÃÂÃÂ¡ espaÃÂÃÂ§o de sobra pros 2 campos +
-  // a margem, e ainda fica mais fÃÂÃÂ¡cil de escanear vÃÂÃÂ¡rias taxas em sequÃÂÃÂªncia
-  // (mesma lÃÂÃÂ³gica da tabela Pagamento ÃÂÃÂ Recebimento do Conexos).
-  //
-  // Cada lado (Pago/Cobrado) tem sua PRÃÂÃÂPRIA moeda (BRL/USD/EUR) ÃÂ¢ÃÂÃÂ igual ao
-  // Conexos, que deixa pagar num moeda e receber em outra. E taxas marcadas
-  // como porContainer podem ser detalhadas container a container quando o
-  // processo tem mais de um (link "ÃÂ°ÃÂÃÂÃÂ¦ Detalhar por container").
-  const totalizadorGrupos = calcularTotalizadorPorGrupo(p) || [];
   const gruposHtml = CUSTOS_REAIS_CONFIG.map(g => {
-    const linhasHtml = g.itens.map(item => {
-      const valorCotado = calcularCustoCotadoItem(item, cotado);
-      const rawPago = reais[item.id];
-
-      // Imposto (apenasPago) nÃÂÃÂ£o tem compra ÃÂÃÂ venda ÃÂ¢ÃÂÃÂ ÃÂÃÂ© sÃÂÃÂ³ um valor a pagar
-      // pro governo, sempre em R$, sem Cobrado/Margem nem seletor de moeda.
-      if(item.apenasPago){
-        const valorInicialImposto = (rawPago != null && rawPago !== '')
-          ? (typeof rawPago === 'object' ? rawPago.valor : rawPago)
-          : (valorCotado != null ? valorCotado.toFixed(2) : '');
-        const hintCotadoImposto = valorCotado != null
-          ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">Cotado: R$ ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`
-          : '';
-        return `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">${item.label}${hintCotadoImposto}</td>
-          <td colspan="2" style="padding:8px 6px;">
-            <div style="display:flex;align-items:center;gap:6px;max-width:220px;">
-              <span style="font-size:12px;color:var(--muted);flex-shrink:0;">R$</span>
-              <input class="form-input" type="number" step="0.01" id="f_cr_${item.id}" value="${valorInicialImposto}" data-cotado="${valorCotado !== null ? valorCotado.toFixed(2) : ''}" placeholder="Valor a pagar" oninput="atualizarTotalCustosReais()" style="width:100%;">
-            </div>
-          </td>
-          <td style="padding:8px 0 8px 10px;width:16%;font-size:11px;color:var(--dim);font-style:italic;">custo direto</td>
-        </tr>`;
-      }
-
-      const rawCobrado = reais[item.id+'_cobrado'];
-      const podeDetalhar = !!item.porContainer && containers.length > 1;
-      const breakdownAtivo = podeDetalhar && ((rawPago && rawPago.porContainer) || (rawCobrado && rawCobrado.porContainer));
-
-      const iniPago = valorMoedaInicial(rawPago, item) || { valor:'', moeda:item.unidade };
-      const iniCobrado = valorMoedaInicial(rawCobrado, item) || { valor:'', moeda:item.unidade };
-      // Sem nada salvo ainda (nem detalhado, nem valor ÃÂÃÂºnico), prÃÂÃÂ©-preenche
-      // com o cotado ÃÂ¢ÃÂÃÂ sÃÂÃÂ³ faz sentido no modo valor ÃÂÃÂºnico.
-      if(!breakdownAtivo && iniPago.valor === '' && valorCotado != null) iniPago.valor = valorCotado.toFixed(2);
-
-      const simboloUnidade = item.unidade === 'USD' ? 'US$' : 'R$';
-      const hintCotado = valorCotado != null
-        ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">Cotado: ${simboloUnidade} ${valorCotado.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>`
-        : '';
-      const detalharLink = podeDetalhar
-        ? `<div style="margin-top:3px;"><a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" style="font-size:10px;color:var(--ac);text-decoration:none;">📦 <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total único' : `Detalhar por container (${containers.length})`}</span></a></div>`
-        : '';
-
-      // Se jÃÂÃÂ¡ estÃÂÃÂ¡ em modo detalhado, o valor mostrado na linha principal ÃÂÃÂ©
-      // sÃÂÃÂ³ um resumo somado em R$ (read-only) ÃÂ¢ÃÂÃÂ a ediÃÂÃÂ§ÃÂÃÂ£o de verdade acontece
-      // nas sub-linhas por container, logo abaixo.
-      let pagoValorExibido = iniPago.valor, pagoMoedaExibida = iniPago.moeda;
-      let cobradoValorExibido = iniCobrado.valor, cobradoMoedaExibida = iniCobrado.moeda;
-      if(breakdownAtivo){
-        const normP = normalizarValorRealItem(rawPago, item, p);
-        const normC = normalizarValorRealItem(rawCobrado, item, p);
-        pagoValorExibido = normP ? normP.totalBrl.toFixed(2) : '';
-        cobradoValorExibido = normC ? normC.totalBrl.toFixed(2) : '';
-        pagoMoedaExibida = 'BRL'; cobradoMoedaExibida = 'BRL';
-      }
-
-      const containersLinhasHtml = podeDetalhar ? containers.map((nome, idx) => {
-        const savedPago = (rawPago && rawPago.porContainer && rawPago.porContainer[nome]) || null;
-        const savedCobrado = (rawCobrado && rawCobrado.porContainer && rawCobrado.porContainer[nome]) || null;
-        return `<tr>
-          <td style="padding:4px 10px 4px 0;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;">${esc(nome)}</td>
-          <td style="padding:4px 6px;">${celulaValorMoedaHtml('f_cr_'+item.id+'__c'+idx, 'f_cr_moeda_'+item.id+'__c'+idx, savedPago?savedPago.valor:'', savedPago?savedPago.moeda:item.unidade, 'Pago', false)}</td>
-          <td style="padding:4px 6px;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id+'__c'+idx, 'f_cr_cobrado_moeda_'+item.id+'__c'+idx, savedCobrado?savedCobrado.valor:'', savedCobrado?savedCobrado.moeda:item.unidade, 'Cobrado', false)}</td><td style="padding:4px 0 4px 4px;"><button type="button" title="Usar o mesmo valor do Pago" onclick="igualarCobradoPago('${item.id}', ${idx})" style="width:22px;height:26px;border:1px solid var(--border);background:var(--bg2);border-radius:6px;cursor:pointer;font-size:12px;color:var(--ac);">=</button></td>
-        </tr>`;
-      }).join('') : '';
-
-      return `<tr style="border-bottom:1px solid var(--border);">
-        <td style="padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">${item.label}${hintCotado}${detalharLink}</td>
-        <td style="padding:8px 6px;width:24%;">${celulaValorMoedaHtml('f_cr_'+item.id, 'f_cr_moeda_'+item.id, pagoValorExibido, pagoMoedaExibida, 'Pago', breakdownAtivo, valorCotado!==null?valorCotado.toFixed(2):'')}</td>
-        <td style="padding:8px 6px;width:24%;"><div style="display:flex;align-items:center;gap:4px;">${!breakdownAtivo ? `<button type="button" title="Usar o mesmo valor do Pago" onclick="igualarCobradoPago('${item.id}')" style="flex-shrink:0;width:22px;height:28px;border:1px solid var(--border);background:var(--bg2);border-radius:6px;cursor:pointer;font-size:12px;color:var(--ac);">=</button>` : ''}<div style="flex:1;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id, 'f_cr_cobrado_moeda_'+item.id, cobradoValorExibido, cobradoMoedaExibida, 'Cobrado', breakdownAtivo)}</div></div></td>
-        <td style="padding:8px 0 8px 10px;width:16%;font-size:11px;" id="cr_margem_${item.id}"></td>
-      </tr>
-      ${podeDetalhar ? `<tr id="cr_containers_row_${item.id}" style="display:${breakdownAtivo?'table-row':'none'};background:var(--bg);">
-        <td colspan="4" style="padding:2px 0 10px 14px;">
-          <table style="width:100%;border-collapse:collapse;">
-            <tbody>${containersLinhasHtml}</tbody>
-          </table>
-        </td>
-      </tr>` : ''}`;
-    }).join('');
-    // Totalizador da etapa - soma Pago/Cobrado/Margem de todos os itens do
-    // grupo (ver calcularTotalizadorPorGrupo em controle-core.js). Em
-    // "Impostos de Importacao" mostra so o custo real (II + Antidumping,
-    // sem os impostos com credito) ja que esse grupo nao tem Cobrado.
-    const totG = totalizadorGrupos.find(t => t.slug === g.slug);
-    const r2g = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-    const subtotalHtml = totG ? (totG.apenasPago
-      ? `<div id="cr_grupo_total_${g.slug}" style="display:flex;justify-content:flex-end;padding:6px 2px 0;font-size:11px;color:var(--muted);">
-          <span>Total ${g.grupo} (custo real - so itens sem credito): <strong style="color:var(--text);">${r2g(totG.totalPago)}</strong></span>
-        </div>`
-      : `<div id="cr_grupo_total_${g.slug}" style="display:flex;justify-content:flex-end;gap:18px;padding:6px 2px 0;font-size:11px;color:var(--muted);flex-wrap:wrap;">
-          <span>Total Pago: <strong style="color:var(--text);">${r2g(totG.totalPago)}</strong></span>
-          <span>Total Cobrado: <strong style="color:var(--text);">${r2g(totG.totalCobrado)}</strong></span>
-          <span>Margem: <strong style="color:${(totG.margem||0)>=0?'var(--ok)':'var(--err)'};">${r2g(totG.margem||0)}</strong></span>
-        </div>`
-    ) : '';
-    return `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:14px 16px;">
-      <div style="font-size:12px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">${g.grupo}</div>
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="border-bottom:2px solid var(--border);">
-            <th style="text-align:left;padding:0 10px 6px 0;font-size:10px;color:var(--dim);text-transform:uppercase;">Taxa</th>
-            <th style="text-align:left;padding:0 6px 6px;font-size:10px;color:var(--dim);text-transform:uppercase;">Pago</th>
-            <th style="text-align:left;padding:0 6px 6px;font-size:10px;color:var(--dim);text-transform:uppercase;">Cobrado</th>
-            <th style="text-align:left;padding:0 0 6px 10px;font-size:10px;color:var(--dim);text-transform:uppercase;">Margem</th>
-          </tr>
-        </thead>
-        <tbody>${linhasHtml}</tbody>
-      </table>
-      ${subtotalHtml}
+    const visiveis = g.itens.filter(it => porId[it.id] && porId[it.id].visivel);
+    const ocultos = g.itens.filter(it => !porId[it.id] || !porId[it.id].visivel);
+    const linhas = visiveis.map(item => crLinhaHtml(item, porId[item.id], reais, containers, p)).join('');
+    const addSel = ocultos.length
+      ? `<select class="form-input cr-add" onchange="crAdicionarItem(this)" title="Mostra um item deste grupo que ainda não tem valor">
+          <option value="">+ adicionar item…</option>
+          ${ocultos.map(it => `<option value="${it.id}">${esc(it.label)}</option>`).join('')}
+        </select>`
+      : '';
+    return `<div class="cr-grupo">
+      <div class="cr-grupo-head"><span class="cr-grupo-titulo">${g.grupo}</span><span class="cr-grupo-total" id="cr_grupo_total_${g.slug}"></span></div>
+      ${visiveis.length ? `<table class="cr-tabela">
+        <colgroup><col style="width:22px"><col style="width:25%"><col style="width:200px"><col><col style="width:27%"></colgroup>
+        <thead><tr><th></th><th>Item</th><th>Real (pago)</th><th>Cotado · origem</th><th>Cobrado do cliente</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>` : `<div class="cr-muted" style="padding:4px 0;">Nenhum item lançado neste grupo.</div>`}
+      ${addSel ? `<div style="margin-top:8px;">${addSel}</div>` : ''}
     </div>`;
   }).join('');
 
-  return `<div style="font-size:11px;color:var(--dim);margin-bottom:16px;"><strong>Pago</strong> = o que saiu do bolso (custo). <strong>Cobrado</strong> = o que foi repassado ao cliente (receita), cada um com sua própria moeda. Taxas por container podem ser detalhadas container a container.</div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
-      <div class="form-group" style="max-width:200px;">
+  return `<div id="custos-reais-wrap">
+    <div id="cr_cards" class="cr-cards"></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">
+      <div class="form-group" style="max-width:150px;margin:0;">
         <label class="form-label">Câmbio USD</label>
-        <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()">
+        <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()" title="Usado pra converter valores lançados em US$ pra R$">
       </div>
-      <div class="form-group" style="max-width:200px;">
+      <div class="form-group" style="max-width:150px;margin:0;">
         <label class="form-label">Câmbio EUR</label>
         <input class="form-input" type="number" step="0.0001" id="f_cr_cambio_eur" value="${cambioEurDefault||''}" placeholder="${_cambio.EUR.toFixed(4)}" oninput="atualizarTotalCustosReais()">
+      </div>
+      <div class="cr-muted" style="padding-bottom:8px;line-height:1.7;">
+        <span class="cr-dot ok" style="cursor:default;vertical-align:middle;"></span> conferido &nbsp;
+        <span class="cr-dot cotado" style="cursor:default;vertical-align:middle;"></span> só o cotado, ninguém conferiu &nbsp;
+        <span class="cr-dot" style="cursor:default;vertical-align:middle;"></span> sem valor
+        <br>Clique na bolinha pra marcar como conferido · Enter pula pro próximo campo · "Cobrado" só precisa ser mexido quando o cliente paga diferente do custo.
       </div>
     </div>
     ${gruposHtml}
     ${renderNotasBossBlock(p)}
     ${renderJurosCobradoBlock(p)}
-    <div id="custos-reais-total" style="margin-top:6px;"></div>`;
+    <div id="custos-reais-total" style="margin-top:6px;"></div>
+  </div>`;
+}
+
+// Uma linha da tabela de um grupo (+ a sub-linha de containers quando a
+// taxa é porContainer e o processo tem mais de um container).
+function crLinhaHtml(item, st, reais, containers, p){
+  const rawPago = reais[item.id], rawCobrado = reais[item.id + '_cobrado'];
+  const podeDetalhar = !!item.porContainer && containers.length > 1;
+  const breakdownAtivo = podeDetalhar && ((rawPago && rawPago.porContainer) || (rawCobrado && rawCobrado.porContainer));
+  const iniPago = valorMoedaInicial(rawPago, item) || { valor:'', moeda:item.unidade };
+  const iniCobrado = valorMoedaInicial(rawCobrado, item) || { valor:'', moeda:item.unidade };
+  // Sem nada salvo, pré-preenche com o cotado (fica azul = "só cotado" até
+  // alguém conferir). Só no modo valor único.
+  const prefill = !breakdownAtivo && iniPago.valor === '' && st.valorCotado != null;
+  if(prefill){ iniPago.valor = st.valorCotado; iniPago.moeda = 'BRL'; }
+  const temCobradoExplicito = custoRealTemValor(rawCobrado);
+  let pagoExib = iniPago.valor, pagoMoeda = iniPago.moeda, cobradoExib = iniCobrado.valor, cobradoMoeda = iniCobrado.moeda;
+  if(breakdownAtivo){
+    const nP = normalizarValorRealItem(rawPago, item, p), nC = normalizarValorRealItem(rawCobrado, item, p);
+    pagoExib = nP ? nP.totalBrl.toFixed(2) : ''; cobradoExib = nC ? nC.totalBrl.toFixed(2) : '';
+    pagoMoeda = 'BRL'; cobradoMoeda = 'BRL';
+  }
+  const aberto = breakdownAtivo;                    // input do Cobrado visível de cara só no modo detalhado
+  const espelho = !temCobradoExplicito && !breakdownAtivo; // sem cobrado gravado = repasse igual ao pago
+  const temValor = custoRealTemValor(rawPago) || prefill;
+  const dotClass = (temValor && st.conferido) ? 'ok' : (temValor ? 'cotado' : '');
+
+  const notas = [];
+  if(item.temCredito) notas.push('crédito tributário — fora do custo');
+  if(item.excluirDosTotais) notas.push('fora dos totais');
+  const detalharLink = podeDetalhar
+    ? `<a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" class="cr-link">📦 <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total único' : `Detalhar por container (${containers.length})`}</span></a>`
+    : '';
+
+  const pagoCell = item.apenasPago
+    ? `<div class="moeda-wrap cr-wrap"><span class="moeda-prefix" style="left:14px;">R$</span><input class="form-input cr-valor" type="text" inputmode="decimal" id="f_cr_${item.id}" value="${pagoExib===''?'':exibirMoeda(pagoExib)}" data-cotado="${st.valorCotado!=null?exibirMoeda(st.valorCotado):''}" placeholder="0,00" oninput="formatarMoedaInput(this);crAoDigitar('${item.id}')" onkeydown="crEnter(event,this)" style="width:100%;padding-left:40px;"></div>`
+    : celulaValorMoedaHtml('f_cr_'+item.id, 'f_cr_moeda_'+item.id, pagoExib, pagoMoeda, '0,00', breakdownAtivo, st.valorCotado, `crAoDigitar('${item.id}')`);
+
+  const cobradoCell = item.apenasPago
+    ? `<span class="cr-muted">custo direto (não é cobrado do cliente)</span>`
+    : `<div id="cr_cobrado_wrap_${item.id}" data-aberto="${aberto?1:0}" data-espelho="${espelho?1:0}">
+        <div class="cr-cobrado-fechado" style="display:${aberto?'none':'block'};"><span id="cr_cobrado_resumo_${item.id}" class="cr-info"></span></div>
+        <div class="cr-cobrado-aberto" style="display:${aberto?'flex':'none'};align-items:center;gap:6px;">
+          <div style="flex:1;min-width:0;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id, 'f_cr_cobrado_moeda_'+item.id, cobradoExib, cobradoMoeda, '0,00', breakdownAtivo)}</div>
+          ${breakdownAtivo ? '' : `<a href="javascript:void(0)" class="cr-link" onclick="crFecharCobrado('${item.id}')" title="Volta a cobrar do cliente exatamente o valor pago">= pago</a>`}
+        </div>
+        <div id="cr_margem_${item.id}" class="cr-margem"></div>
+      </div>`;
+
+  const containersLinhasHtml = podeDetalhar ? containers.map((nome, idx) => {
+    const savedPago = (rawPago && rawPago.porContainer && rawPago.porContainer[nome]) || null;
+    const savedCobrado = (rawCobrado && rawCobrado.porContainer && rawCobrado.porContainer[nome]) || null;
+    return `<tr>
+      <td style="padding:4px 10px 4px 0;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;width:160px;">${esc(nome)}</td>
+      <td style="padding:4px 6px;width:200px;">${celulaValorMoedaHtml('f_cr_'+item.id+'__c'+idx, 'f_cr_moeda_'+item.id+'__c'+idx, savedPago?savedPago.valor:'', savedPago?savedPago.moeda:item.unidade, 'pago', false)}</td>
+      <td style="padding:4px 6px;width:200px;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id+'__c'+idx, 'f_cr_cobrado_moeda_'+item.id+'__c'+idx, savedCobrado?savedCobrado.valor:'', savedCobrado?savedCobrado.moeda:item.unidade, 'cobrado', false)}</td>
+      <td style="padding:4px 0 4px 4px;"><button type="button" title="Cobrado = Pago neste container" onclick="igualarCobradoPago('${item.id}', ${idx})" style="width:22px;height:26px;border:1px solid var(--border);background:var(--bg2);border-radius:6px;cursor:pointer;font-size:12px;color:var(--ac);">=</button></td>
+    </tr>`;
+  }).join('') : '';
+
+  return `<tr id="cr_row_${item.id}">
+    <td><span id="cr_dot_${item.id}" class="cr-dot ${dotClass}" onclick="crToggleConferido('${item.id}')"></span></td>
+    <td><div class="cr-label">${item.label}</div>${notas.length ? `<div class="cr-muted">${notas.join(' · ')}</div>` : ''}${detalharLink ? `<div>${detalharLink}</div>` : ''}</td>
+    <td>${pagoCell}</td>
+    <td><div id="cr_info_${item.id}" class="cr-info"></div></td>
+    <td>${cobradoCell}</td>
+  </tr>
+  ${podeDetalhar ? `<tr id="cr_containers_row_${item.id}" style="display:${breakdownAtivo?'table-row':'none'};background:var(--bg);">
+    <td colspan="5" style="padding:2px 0 10px 24px;">
+      <div class="cr-muted" style="margin-bottom:4px;">Por container (pago · cobrado):</div>
+      <table style="width:100%;border-collapse:collapse;"><tbody>${containersLinhasHtml}</tbody></table>
+    </td>
+  </tr>` : ''}`;
 }
 
 // Bloco "Notas Fiscais BOSS" (sub-livro da aba Fechamento, linhas 46-56 da
@@ -1139,13 +1165,13 @@ function renderNotasBossBlock(p){
   const reais = p.real_json || {};
   const valorSalvo = (reais.notas_boss_valor != null && reais.notas_boss_valor !== '') ? reais.notas_boss_valor : '';
   const nb = calcularNotasBoss(p);
-  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  return `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:14px 16px;">
-    <div style="font-size:12px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">Notas Fiscais BOSS (opcional)</div>
-    <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Quando o processo tambem fatura por uma nota separada da NF Saída principal, lance aqui o valor total dela — os impostos (IR retido, ISS, PIS, COFINS, IRPJ, CSLL, IBS, CBS) são calculados automaticamente e o líquido entra somado ao Lucro Real.</div>
+  const r2 = v => 'R$ ' + crFmt(v);
+  return `<div class="cr-grupo">
+    <div class="cr-grupo-head"><span class="cr-grupo-titulo">Notas Fiscais BOSS (opcional)</span></div>
+    <div class="cr-muted" style="margin-bottom:10px;">Quando o processo também fatura por uma nota separada da NF Saída principal, lance aqui o valor total dela — os impostos (IR retido, ISS, PIS, COFINS, IRPJ, CSLL, IBS, CBS) são calculados automaticamente e o líquido entra somado ao Lucro Real.</div>
     <div class="form-group" style="max-width:220px;margin-bottom:8px;">
-      <label class="form-label">Valor das Notas Boss (R$)</label>
-      <input class="form-input" type="number" step="0.01" id="f_cr_notas_boss" value="${valorSalvo}" placeholder="0,00" oninput="atualizarTotalCustosReais()">
+      <label class="form-label">Valor das Notas Boss</label>
+      <div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" id="f_cr_notas_boss" value="${valorSalvo===''?'':exibirMoeda(valorSalvo)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarTotalCustosReais()"></div>
     </div>
     <div id="notas-boss-detalhe" style="font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px;">${nb ? `
       <span>IR Retido (1,5%): ${r2(nb.irRetido)} · ISS (2,5%): ${r2(nb.iss)} · PIS (0,65%): ${r2(nb.pis)} · COFINS (3%): ${r2(nb.cofins)}</span>
@@ -1160,33 +1186,173 @@ function renderNotasBossBlock(p){
 // (que é uma segunda nota, com seu próprio conjunto de impostos calculado
 // automaticamente), o juro é só um valor de receita — os custos
 // operacionais dele (PIS 0,65% + COFINS 4%) o próprio usuário soma junto
-// com a diferença NFe×D.I. normal nos campos "Diferença PIS/COFINS" (grupo
-// Diferenças de Impostos, mesmo padrão que a planilha já usa nas linhas
-// G24/G25, que já vêm combinadas).
+// com a diferença NFe×D.I. normal nos campos "Diferença PIS/COFINS".
 function renderJurosCobradoBlock(p){
   const reais = p.real_json || {};
   const valorSalvo = (reais.juros_valor != null && reais.juros_valor !== '') ? reais.juros_valor : '';
-  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  return `<div style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:14px 16px;">
-    <div style="font-size:12px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">Juros Cobrado do Cliente (opcional)</div>
-    <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Quando o processo cobra juro à parte (parcelamento/financiamento), lance aqui o valor — soma direto à receita (junto com a NF Saída) pro Lucro Real. Os custos operacionais desse juro (PIS 0,65% + COFINS 4%, tipicamente) devem ser somados manualmente nos campos "Diferença PIS/COFINS" (aba Diferenças de Impostos), igual a planilha já faz.</div>
-    <div class="form-group" style="max-width:220px;">
-      <label class="form-label">Valor do Juro Cobrado (R$)</label>
-      <input class="form-input" type="number" step="0.01" id="f_cr_juros" value="${valorSalvo}" placeholder="0,00" oninput="atualizarTotalCustosReais()">
+  return `<div class="cr-grupo">
+    <div class="cr-grupo-head"><span class="cr-grupo-titulo">Juros Cobrado do Cliente (opcional)</span></div>
+    <div class="cr-muted" style="margin-bottom:10px;">Quando o processo cobra juro à parte (parcelamento/financiamento), lance aqui o valor — soma direto à receita (junto com a NF Saída) pro Lucro Real. Os custos operacionais desse juro (PIS 0,65% + COFINS 4%, tipicamente) devem ser somados manualmente nos campos "Diferença PIS/COFINS", igual a planilha já faz.</div>
+    <div class="form-group" style="max-width:220px;margin:0;">
+      <label class="form-label">Valor do Juro Cobrado</label>
+      <div class="moeda-wrap"><span class="moeda-prefix">R$</span><input class="form-input" type="text" inputmode="decimal" id="f_cr_juros" value="${valorSalvo===''?'':exibirMoeda(valorSalvo)}" placeholder="0,00" oninput="formatarMoedaInput(this);atualizarTotalCustosReais()"></div>
     </div>
   </div>`;
 }
 
-// Alterna uma taxa entre "valor ÃÂÃÂºnico pro processo" e "detalhado container a
-// container" ÃÂ¢ÃÂÃÂ ativa/desativa a sub-linha de containers e trava (readonly) a
-// linha principal, que passa a mostrar sÃÂÃÂ³ o total somado em R$.
+// ── ações da aba ──────────────────────────────────────────────────────
+function crValorCampo(id){
+  const el = document.getElementById(id);
+  if(!el) return null;
+  const n = parseValorMoeda(el.value);
+  return (n === '' || n == null || isNaN(n)) ? null : round2(n);
+}
+function crMarcar(id, origem){
+  _crConf[id] = { por: crQuem(), em: new Date().toISOString(), origem: origem || 'digitado' };
+}
+// Digitou no campo Real: passa a "conferido" (apagou tudo: volta a vazio).
+function crAoDigitar(id){
+  if(crValorCampo('f_cr_' + id) == null) delete _crConf[id]; else crMarcar(id, 'digitado');
+  atualizarTotalCustosReais();
+}
+function crToggleConferido(id){
+  if(crValorCampo('f_cr_' + id) == null){ if(typeof showToast === 'function') showToast('Lance um valor antes de marcar como conferido.', 'warn'); return; }
+  if(_crConf[id]) delete _crConf[id]; else crMarcar(id, 'conferido');
+  atualizarTotalCustosReais();
+}
+function crConferirTodos(){
+  custosReaisItensFlat().forEach(item => {
+    if(crValorCampo('f_cr_' + item.id) == null) return;
+    if(!_crConf[item.id]) crMarcar(item.id, 'conferido');
+  });
+  atualizarTotalCustosReais();
+}
+function crUsarCotado(id){
+  const el = document.getElementById('f_cr_' + id);
+  if(!el || el.readOnly || !el.dataset.cotado) return;
+  el.value = el.dataset.cotado;
+  const sel = document.getElementById('f_cr_moeda_' + id);
+  if(sel) sel.value = 'BRL';
+  crMarcar(id, 'cotado');
+  atualizarTotalCustosReais();
+}
+// Puxa o valor de outra aba (parcelas pagas do Financeiro → Custo da
+// mercadoria; Valor do Frete da Logística → Cobrado do frete).
+function crUsarFonte(id){
+  if(!_editando) return;
+  const fontes = fontesCustosReais(_editando);
+  const f = fontes[id];
+  if(!f) return;
+  if(f.lado === 'cobrado'){
+    crAbrirCobrado(id, true);
+    const el = document.getElementById('f_cr_cobrado_' + id), sel = document.getElementById('f_cr_cobrado_moeda_' + id);
+    if(el){ el.value = exibirMoeda(f.valor); }
+    if(sel) sel.value = f.moeda;
+  } else {
+    const el = document.getElementById('f_cr_' + id), sel = document.getElementById('f_cr_moeda_' + id);
+    if(!el || el.readOnly) return;
+    el.value = exibirMoeda(f.valor);
+    if(sel) sel.value = f.moeda;
+    crMarcar(id, f.origem);
+  }
+  atualizarTotalCustosReais();
+}
+// Abre o campo Cobrado de uma linha. Vindo do modo espelho, começa igual
+// ao pago (o usuário só ajusta a diferença).
+function crAbrirCobrado(id, silencioso){
+  const wrap = document.getElementById('cr_cobrado_wrap_' + id);
+  if(!wrap) return;
+  const foiEspelho = wrap.dataset.espelho === '1';
+  wrap.dataset.aberto = '1'; wrap.dataset.espelho = '0';
+  const fechado = wrap.querySelector('.cr-cobrado-fechado'), abertoEl = wrap.querySelector('.cr-cobrado-aberto');
+  if(fechado) fechado.style.display = 'none';
+  if(abertoEl) abertoEl.style.display = 'flex';
+  const inp = document.getElementById('f_cr_cobrado_' + id), sel = document.getElementById('f_cr_cobrado_moeda_' + id);
+  if(foiEspelho && inp && !inp.value){
+    const pago = document.getElementById('f_cr_' + id), pagoMoeda = document.getElementById('f_cr_moeda_' + id);
+    if(pago) inp.value = pago.value;
+    if(sel && pagoMoeda) sel.value = pagoMoeda.value;
+  }
+  atualizarTotalCustosReais();
+  if(!silencioso && inp){ inp.focus(); inp.select(); }
+}
+// Volta a linha pro modo espelho (cobrado = pago): o _cobrado explícito
+// deixa de ser gravado no próximo salvar.
+function crFecharCobrado(id){
+  const wrap = document.getElementById('cr_cobrado_wrap_' + id);
+  if(!wrap) return;
+  wrap.dataset.aberto = '0'; wrap.dataset.espelho = '1';
+  const fechado = wrap.querySelector('.cr-cobrado-fechado'), abertoEl = wrap.querySelector('.cr-cobrado-aberto');
+  if(fechado) fechado.style.display = 'block';
+  if(abertoEl) abertoEl.style.display = 'none';
+  const inp = document.getElementById('f_cr_cobrado_' + id);
+  if(inp) inp.value = '';
+  atualizarTotalCustosReais();
+}
+function crAdicionarItem(sel){
+  const id = sel && sel.value;
+  if(!id) return;
+  _crExtras.add(id);
+  crRerender();
+  setTimeout(() => { const el = document.getElementById('f_cr_' + id); if(el){ el.focus(); el.scrollIntoView({ block:'center', behavior:'smooth' }); } }, 0);
+}
+// Redesenha a aba inteira preservando o que já foi digitado (coleta o
+// formulário num snapshot e renderiza a partir dele).
+function crRerender(){
+  if(!_editando) return;
+  const wrap = document.getElementById('custos-reais-wrap');
+  if(!wrap) return;
+  const snapshot = { ..._editando, real_json: coletarCustosReaisDoForm(), real_cambio: coletarCambioCustosReaisDoForm() };
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderCustosReaisTab(snapshot);
+  wrap.replaceWith(tmp.firstElementChild);
+  atualizarTotalCustosReais();
+}
+// Enter = próximo campo de valor (igual Excel). Tab continua normal.
+function crEnter(ev, el){
+  if(!ev || ev.key !== 'Enter') return;
+  ev.preventDefault();
+  const wrap = document.getElementById('custos-reais-wrap');
+  if(!wrap) return;
+  const campos = [...wrap.querySelectorAll('input.cr-valor')].filter(i => !i.readOnly && i.offsetParent !== null);
+  const idx = campos.indexOf(el);
+  const prox = campos[idx + 1];
+  if(prox){ prox.focus(); prox.select(); } else el.blur();
+}
+// Valores vindos da planilha de Fechamento (controle-import-ia.js):
+// garante que as linhas existam (mesmo as que estavam escondidas), preenche
+// o que ainda não foi conferido e marca como conferido pela planilha.
+function crAplicarImportado(realJson, moedas){
+  const ids = Object.keys(realJson || {}).filter(id => custosReaisItensFlat().some(it => it.id === id));
+  ids.forEach(id => _crExtras.add(id));
+  crRerender();
+  let n = 0;
+  ids.forEach(id => {
+    const el = document.getElementById('f_cr_' + id);
+    if(!el || el.readOnly) return;
+    if(el.value && _crConf[id] && _crConf[id].origem !== 'planilha') return; // alguém já conferiu à mão: não sobrescreve
+    el.value = exibirMoeda(realJson[id]);
+    const sel = document.getElementById('f_cr_moeda_' + id);
+    if(sel && moedas && moedas[id]) sel.value = moedas[id];
+    crMarcar(id, 'planilha');
+    el.style.borderColor = 'var(--ok)'; el.style.background = 'rgba(22,163,74,.04)';
+    setTimeout(() => { el.style.borderColor = ''; el.style.background = ''; }, 3000);
+    n++;
+  });
+  atualizarTotalCustosReais();
+  return n;
+}
+
+// Alterna uma taxa entre "valor único pro processo" e "detalhado container a
+// container" — ativa/desativa a sub-linha de containers e trava (readonly) a
+// linha principal, que passa a mostrar só o total somado em R$.
 function toggleCrContainerBreakdown(itemId){
   const row = document.getElementById('cr_containers_row_'+itemId);
   const label = document.getElementById('cr_toggle_label_'+itemId);
   if(!row) return;
   const ativar = row.style.display === 'none';
   row.style.display = ativar ? 'table-row' : 'none';
-  if(label) label.textContent = ativar ? 'Ver total único' : `Detalhar por container`;
+  if(label) label.textContent = ativar ? 'Ver total único' : 'Detalhar por container';
   ['f_cr_'+itemId, 'f_cr_cobrado_'+itemId].forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.readOnly = ativar; el.style.background = ativar ? 'var(--bg)' : ''; el.style.color = ativar ? 'var(--muted)' : ''; }
@@ -1195,57 +1361,72 @@ function toggleCrContainerBreakdown(itemId){
     const el = document.getElementById(id);
     if(el) el.disabled = ativar;
   });
+  const wrap = document.getElementById('cr_cobrado_wrap_'+itemId);
+  if(wrap){
+    // detalhado: o cobrado é lido das sub-linhas, então o campo principal
+    // fica aberto (como resumo somado) e sai do modo espelho
+    if(ativar){ wrap.dataset.aberto = '1'; wrap.dataset.espelho = '0'; }
+    const fechado = wrap.querySelector('.cr-cobrado-fechado'), abertoEl = wrap.querySelector('.cr-cobrado-aberto');
+    if(fechado) fechado.style.display = wrap.dataset.aberto === '1' ? 'none' : 'block';
+    if(abertoEl) abertoEl.style.display = wrap.dataset.aberto === '1' ? 'flex' : 'none';
+  }
   atualizarTotalCustosReais();
 }
 
-// LÃÂÃÂª os valores atualmente digitados nos campos f_cr_* (sem depender de
-// _editando estar sincronizado ainda) ÃÂ¢ÃÂÃÂ usado tanto pra atualizar o total ao
-// vivo quanto pra montar o que vai salvo em real_json/real_cambio. O cÃÂÃÂ¢mbio
-// vem separado (real_cambio ÃÂÃÂ© coluna prÃÂÃÂ³pria, nÃÂÃÂ£o fica dentro do real_json)
-// pra bater com a migration 0004_add_custos_reais_processo.sql, que jÃÂÃÂ¡
-// criou as duas colunas assim.
+// Lê os valores atualmente digitados nos campos f_cr_* (sem depender de
+// _editando estar sincronizado ainda) — usado tanto pra atualizar o total ao
+// vivo quanto pra montar o que vai salvo em real_json/real_cambio. O câmbio
+// vem separado (real_cambio é coluna própria, não fica dentro do real_json)
+// pra bater com a migration 0004_add_custos_reais_processo.sql.
+//
+// Tudo que é valor passa por round2: o que o usuário vê (2 casas) é o que
+// fica gravado. Linhas sem campo na tela (escondidas por não ter valor) não
+// têm nada a gravar — toda linha com valor salvo é sempre renderizada
+// (ver custosReaisEstado em controle-core.js).
 function coletarCustosReaisDoForm(soConfirmados){
   const obj = {};
   const aindaDefault = (el) => soConfirmados && el.dataset && el.dataset.cotado !== undefined && el.value === el.dataset.cotado;
   const eurEl = document.getElementById('f_cr_cambio_eur');
   if(eurEl && eurEl.value !== '') obj._cambio_eur = parseFloat(eurEl.value);
-  const bossEl = document.getElementById('f_cr_notas_boss');
-  if(bossEl && bossEl.value !== '') obj.notas_boss_valor = parseFloat(bossEl.value);
-  const jurosEl = document.getElementById('f_cr_juros');
-  if(jurosEl && jurosEl.value !== '') obj.juros_valor = parseFloat(jurosEl.value);
+  const boss = crValorCampo('f_cr_notas_boss');
+  if(boss != null) obj.notas_boss_valor = boss;
+  const juros = crValorCampo('f_cr_juros');
+  if(juros != null) obj.juros_valor = juros;
   const containers = containersDoProcesso(_editando || {});
   custosReaisItensFlat().forEach(item => {
-    // "Cobrado do Cliente" fica na MESMA real_json, com sufixo _cobrado ÃÂ¢ÃÂÃÂ
-    // nÃÂÃÂ£o precisa de coluna nova (ver calcularReceitaRealTotal em
-    // controle-core.js, que lÃÂÃÂª exatamente essa convenÃÂÃÂ§ÃÂÃÂ£o). Cada lado (Pago/
-    // Cobrado) ÃÂÃÂ© coletado com o mesmo par de prefixos, valor+moeda; quando a
-    // taxa estÃÂÃÂ¡ em modo "detalhado por container" (sub-linha visÃÂÃÂ­vel), lÃÂÃÂª os
-    // campos por container em vez do campo ÃÂÃÂºnico da linha principal.
-    [
-      { sufixo:'',         prefV:'f_cr_',          prefM:'f_cr_moeda_' },
-      { sufixo:'_cobrado', prefV:'f_cr_cobrado_',  prefM:'f_cr_cobrado_moeda_' },
-    ].forEach(({sufixo, prefV, prefM}) => {
-      const containersRow = document.getElementById('cr_containers_row_'+item.id);
-      const emBreakdown = containersRow && containersRow.style.display !== 'none';
+    const containersRow = document.getElementById('cr_containers_row_'+item.id);
+    const emBreakdown = !!(containersRow && containersRow.style.display !== 'none');
+    const lados = [{ sufixo:'', prefV:'f_cr_', prefM:'f_cr_moeda_' }];
+    if(!item.apenasPago){
+      const wrapC = document.getElementById('cr_cobrado_wrap_'+item.id);
+      const espelho = wrapC ? wrapC.dataset.espelho === '1' : true;
+      if(emBreakdown || !espelho) lados.push({ sufixo:'_cobrado', prefV:'f_cr_cobrado_', prefM:'f_cr_cobrado_moeda_' });
+    }
+    lados.forEach(({sufixo, prefV, prefM}) => {
       if(emBreakdown){
         const porContainer = {};
         containers.forEach((nome, idx) => {
           const el = document.getElementById(prefV+item.id+'__c'+idx);
-          const moedaEl = document.getElementById(prefM+item.id+'__c'+idx);
-          if(el && el.value !== '' && !aindaDefault(el)){
-            porContainer[nome] = { valor: parseFloat(el.value), moeda: moedaEl ? moedaEl.value : item.unidade };
+          const v = el ? crValorCampo(prefV+item.id+'__c'+idx) : null;
+          if(el && v != null && !aindaDefault(el)){
+            const moedaEl = document.getElementById(prefM+item.id+'__c'+idx);
+            porContainer[nome] = { valor: v, moeda: moedaEl ? moedaEl.value : item.unidade };
           }
         });
         if(Object.keys(porContainer).length) obj[item.id+sufixo] = { porContainer };
         return;
       }
       const el = document.getElementById(prefV+item.id);
+      if(!el) return;
+      const v = crValorCampo(prefV+item.id);
+      if(v == null || aindaDefault(el)) return;
       const moedaEl = document.getElementById(prefM+item.id);
-      if(el && el.value !== '' && !aindaDefault(el)){
-        obj[item.id+sufixo] = { valor: parseFloat(el.value), moeda: moedaEl ? moedaEl.value : item.unidade };
-      }
+      obj[item.id+sufixo] = { valor: v, moeda: moedaEl ? moedaEl.value : item.unidade };
     });
   });
+  const conf = {};
+  Object.keys(_crConf || {}).forEach(id => { if(obj[id] != null) conf[id] = _crConf[id]; });
+  if(Object.keys(conf).length) obj._conf = conf;
   return obj;
 }
 
@@ -1254,61 +1435,125 @@ function coletarCambioCustosReaisDoForm(){
   return (el && el.value !== '') ? parseFloat(el.value) : null;
 }
 
-// Recalcula e redesenha o resumo (Custo Total Real / Lucro Real) conforme o
-// usuÃÂÃÂ¡rio digita, sem precisar salvar ÃÂ¢ÃÂÃÂ mesmo padrÃÂÃÂ£o do renderPagamentoInfoLive().
+// Recalcula tudo que é derivado (cards, Δ vs cotado, origem, cobrado/margem,
+// totais por grupo, Notas Boss) conforme o usuário digita — sem salvar.
 function atualizarTotalCustosReais(){
   if(!_editando) return;
-  const wrap = document.getElementById('custos-reais-total');
+  const wrap = document.getElementById('custos-reais-wrap');
   if(!wrap) return;
   const cambio = coletarCambioCustosReaisDoForm();
-  const r2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-
   const obj = coletarCustosReaisDoForm();
   const snapshot = { ..._editando, real_json: obj, real_cambio: cambio };
+  if(typeof _vendas !== 'undefined' && Array.isArray(_vendas) && _vendas.length) snapshot.vendas_json = JSON.stringify(_vendas);
+  const estado = custosReaisEstado(snapshot, [..._crExtras]);
+  const porId = {}; estado.itens.forEach(i => { porId[i.id] = i; });
+  const r2 = v => 'R$ ' + crFmt(v);
 
-  // Margem por LINHA (pago ÃÂÃÂ cobrado), atualizada a cada tecla ÃÂ¢ÃÂÃÂ igual ao
-  // Conexos mostra Pagamento ÃÂÃÂ Recebimento lado a lado por taxa. Sempre em
-  // R$: Pago e Cobrado podem estar em moedas diferentes entre si (ex.: paga
-  // o representante em BRL, recebe do importador em USD), entÃÂÃÂ£o R$ ÃÂÃÂ© a
-  // ÃÂÃÂºnica unidade em que dÃÂÃÂ¡ pra comparar os dois lados direto.
   custosReaisItensFlat().forEach(item => {
-    const badge = document.getElementById('cr_margem_'+item.id);
+    const st = porId[item.id];
+    if(!st || !document.getElementById('cr_row_'+item.id)) return;
     const normPago = normalizarValorRealItem(obj[item.id], item, snapshot);
-    const normCobrado = normalizarValorRealItem(obj[item.id+'_cobrado'], item, snapshot);
-    // Quando a taxa estÃÂÃÂ¡ em modo "detalhado por container", a linha
-    // principal fica sÃÂÃÂ³ como resumo somado em R$ (readonly) ÃÂ¢ÃÂÃÂ atualiza o
-    // valor mostrado a cada tecla digitada nas sub-linhas.
+    const rawCobradoExp = obj[item.id+'_cobrado'];
+    const normCobradoExp = normalizarValorRealItem(rawCobradoExp, item, snapshot);
+
+    // modo detalhado por container: a linha principal vira resumo somado
     const containersRow = document.getElementById('cr_containers_row_'+item.id);
     if(containersRow && containersRow.style.display !== 'none'){
       const pagoInput = document.getElementById('f_cr_'+item.id);
       const cobradoInput = document.getElementById('f_cr_cobrado_'+item.id);
-      if(pagoInput) pagoInput.value = normPago ? normPago.totalBrl.toFixed(2) : '';
-      if(cobradoInput) cobradoInput.value = normCobrado ? normCobrado.totalBrl.toFixed(2) : '';
+      if(pagoInput) pagoInput.value = normPago ? exibirMoeda(normPago.totalBrl) : '';
+      if(cobradoInput) cobradoInput.value = normCobradoExp ? exibirMoeda(normCobradoExp.totalBrl) : '';
     }
-    if(!badge) return;
-    if(!normPago || !normCobrado){ badge.innerHTML = ''; return; }
-    const margem = normCobrado.totalBrl - normPago.totalBrl;
-    badge.innerHTML = `<span style="color:${margem>=0?'var(--ok)':'var(--err)'};font-weight:600;">${margem>=0?'▲':'▼'} margem: R$ ${margem.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
+
+    // bolinha de status
+    const temValor = !!normPago;
+    const conferido = temValor && !!_crConf[item.id];
+    const dot = document.getElementById('cr_dot_'+item.id);
+    if(dot){
+      dot.className = 'cr-dot ' + (conferido ? 'ok' : temValor ? 'cotado' : '');
+      dot.title = conferido ? `Conferido por ${_crConf[item.id].por || '?'} em ${crData(_crConf[item.id].em)} — clique pra desmarcar`
+        : temValor ? 'Tem valor, mas ninguém conferiu — clique pra marcar como conferido' : 'Sem valor';
+    }
+
+    // coluna "Cotado · origem"
+    const info = document.getElementById('cr_info_'+item.id);
+    if(info){
+      const partes = [];
+      if(st.valorCotado != null){
+        let txt = `cotado ${r2(st.valorCotado)}`;
+        if(normPago){
+          const d = normPago.totalBrl - st.valorCotado;
+          if(Math.abs(d) >= 0.01){
+            const pct = st.valorCotado ? (d / st.valorCotado * 100) : null;
+            txt += ` <span style="color:${d > 0 ? 'var(--err)' : 'var(--ok)'};font-weight:600;" title="Real − cotado">${d > 0 ? '+' : '−'}${crFmt(Math.abs(d))}${pct != null ? ` (${pct > 0 ? '+' : ''}${pct.toFixed(1).replace('.', ',')}%)` : ''}</span>`;
+            if(!(containersRow && containersRow.style.display !== 'none')) txt += ` <a class="cr-link" onclick="crUsarCotado('${item.id}')">usar cotado</a>`;
+          } else txt += ' <span class="cr-muted">= real</span>';
+        }
+        partes.push(txt);
+      }
+      if(st.fonte && st.fonte.lado === 'pago'){
+        const atual = normPago ? normPago.totalBrl : null;
+        const difere = atual == null || Math.abs(atual - st.fonte.valor) >= 0.01;
+        partes.push(difere
+          ? `<a class="cr-link" onclick="crUsarFonte('${item.id}')" title="${esc(st.fonte.descricao)}">puxar ${r2(st.fonte.valor)} do ${esc(st.fonte.origem)}</a>${st.fonte.pendentes ? ` <span class="cr-muted" title="Parcelas ainda sem câmbio fechado não entram na soma">(+${st.fonte.pendentes} parcela${st.fonte.pendentes===1?'':'s'} em aberto)</span>` : ''}`
+          : `<span class="cr-muted" title="${esc(st.fonte.descricao)}">= ${esc(st.fonte.origem)}</span>`);
+      }
+      if(conferido){
+        const c = _crConf[item.id];
+        const origem = c.origem && !['digitado','conferido'].includes(c.origem) ? ` · ${esc(c.origem)}` : '';
+        partes.push(`<span class="cr-muted">✓ ${esc(c.por || '')} ${crData(c.em)}${origem}</span>`);
+      }
+      info.innerHTML = partes.join('<span class="cr-sep">·</span>') || '<span class="cr-muted">—</span>';
+    }
+
+    // Cobrado do cliente (recolhido ou aberto) + margem
+    const wrapC = document.getElementById('cr_cobrado_wrap_'+item.id);
+    if(wrapC){
+      const aberto = wrapC.dataset.aberto === '1';
+      const espelho = wrapC.dataset.espelho === '1';
+      const resumo = document.getElementById('cr_cobrado_resumo_'+item.id);
+      const margemEl = document.getElementById('cr_margem_'+item.id);
+      let margemHtml = '';
+      if(!espelho && normPago && normCobradoExp){
+        const m = normCobradoExp.totalBrl - normPago.totalBrl;
+        margemHtml = Math.abs(m) >= 0.01
+          ? `<span style="color:${m >= 0 ? 'var(--ok)' : 'var(--err)'};font-weight:600;">margem ${m >= 0 ? '+' : '−'}${crFmt(Math.abs(m))}</span>`
+          : '<span class="cr-muted">margem 0,00</span>';
+      }
+      const fonteCobrado = (st.fonte && st.fonte.lado === 'cobrado') ? st.fonte : null;
+      const fonteDifere = fonteCobrado && (!normCobradoExp || espelho || Math.abs((parseFloat(rawCobradoExp && rawCobradoExp.valor) || 0) - fonteCobrado.valor) >= 0.01 || (rawCobradoExp && rawCobradoExp.moeda && rawCobradoExp.moeda !== fonteCobrado.moeda));
+      const fonteHtml = fonteCobrado
+        ? (fonteDifere ? `<a class="cr-link" onclick="crUsarFonte('${item.id}')" title="${esc(fonteCobrado.descricao)}">puxar ${crSimbolo(fonteCobrado.moeda)} ${crFmt(fonteCobrado.valor)} da ${esc(fonteCobrado.origem)}</a>` : `<span class="cr-muted">= ${esc(fonteCobrado.origem)}</span>`)
+        : '';
+      if(resumo && !aberto){
+        if(espelho){
+          resumo.innerHTML = [`<span class="cr-muted">= pago</span>`, `<a class="cr-link" onclick="crAbrirCobrado('${item.id}')">cobrar diferente</a>`, fonteHtml].filter(Boolean).join('<span class="cr-sep">·</span>');
+        } else {
+          const valorTxt = rawCobradoExp && rawCobradoExp.porContainer
+            ? (normCobradoExp ? `cobrado ${r2(normCobradoExp.totalBrl)}` : '')
+            : (normCobradoExp ? `cobrado ${crSimbolo(rawCobradoExp.moeda || 'BRL')} ${crFmt(rawCobradoExp.valor)}` : '<span class="cr-muted">cobrado: vazio</span>');
+          resumo.innerHTML = [valorTxt, margemHtml, `<a class="cr-link" onclick="crAbrirCobrado('${item.id}')">editar</a>`, fonteHtml].filter(Boolean).join('<span class="cr-sep">·</span>');
+        }
+      }
+      if(margemEl) margemEl.innerHTML = aberto ? [margemHtml, fonteHtml].filter(Boolean).join('<span class="cr-sep">·</span>') : '';
+    }
   });
 
-  // Totalizador por etapa (Pago/Cobrado/Margem) ao vivo - mesmo calculo do
-  // render inicial (ver calcularTotalizadorPorGrupo em controle-core.js),
-  // recalculado a cada tecla igual a margem por linha acima.
+  // Totais por grupo
   (calcularTotalizadorPorGrupo(snapshot) || []).forEach(totG => {
     const el = document.getElementById('cr_grupo_total_'+totG.slug);
     if(!el) return;
-    el.innerHTML = totG.apenasPago
-      ? `<span>Total ${totG.grupo} (custo real - so itens sem credito): <strong style="color:var(--text);">${r2(totG.totalPago)}</strong></span>`
-      : `<span>Total Pago: <strong style="color:var(--text);">${r2(totG.totalPago)}</strong></span>
-         <span>Total Cobrado: <strong style="color:var(--text);">${r2(totG.totalCobrado)}</strong></span>
-         <span>Margem: <strong style="color:${(totG.margem||0)>=0?'var(--ok)':'var(--err)'};">${r2(totG.margem||0)}</strong></span>`;
+    if(!totG.temPago && !totG.temCobrado){ el.innerHTML = ''; return; }
+    if(totG.apenasPago){ el.innerHTML = `custo real <strong style="color:var(--text);">${r2(totG.totalPago)}</strong>`; return; }
+    const partes = [`pago <strong style="color:var(--text);">${r2(totG.totalPago)}</strong>`];
+    if(totG.margem != null && Math.abs(totG.margem) >= 0.01){
+      partes.push(`cobrado <strong style="color:var(--text);">${r2(totG.totalCobrado)}</strong>`);
+      partes.push(`<span style="color:${totG.margem >= 0 ? 'var(--ok)' : 'var(--err)'};font-weight:600;">margem ${totG.margem >= 0 ? '+' : '−'}${crFmt(Math.abs(totG.margem))}</span>`);
+    }
+    el.innerHTML = partes.join(' · ');
   });
 
-  // Notas Fiscais BOSS ao vivo - mesma logica de calcularNotasBoss em
-  // controle-core.js, atualizada a cada tecla no campo "Valor das Notas
-  // Boss". Fica FORA do early-return de custosReais logo abaixo porque essa
-  // caixa existe mesmo em processo que ainda nao lancou nenhum Custo Real
-  // (so a nota Boss).
+  // Notas Fiscais BOSS ao vivo
   const notasBoss = calcularNotasBoss(snapshot);
   const detalheBoss = document.getElementById('notas-boss-detalhe');
   if(detalheBoss){
@@ -1318,32 +1563,50 @@ function atualizarTotalCustosReais(){
       <span style="color:var(--text);font-weight:600;">Total a Receber (soma ao Lucro Real): ${r2(notasBoss.totalReceber)}</span>` : '';
   }
 
-  const custosReais = calcularCustoRealTotal(snapshot);
-  if(!custosReais){ wrap.innerHTML = ''; return; }
-  const receitaReais = calcularReceitaRealTotal(snapshot);
-  const nfSaida = parseFloat(snapshot.nf_saida_valor);
-  const temNf = !isNaN(nfSaida) && nfSaida > 0;
-  let lucro = temNf ? (nfSaida - custosReais.total) : null;
-  // Juros cobrado do cliente (ver calcularJurosCobrado em controle-core.js)
-  // - soma direto como receita adicional, igual a Notas Boss abaixo mas sem
-  // sub-livro de impostos proprio (o custo do juro ja entra via diferenca_
-  // pis/diferenca_cofins, lancados a parte pelo usuario).
-  const jurosCobrado = calcularJurosCobrado(snapshot);
-  if(jurosCobrado && lucro != null) lucro += jurosCobrado.valor;
-  if(notasBoss && lucro != null) lucro += notasBoss.totalReceber;
-  const linhaMargemTaxas = ''; // Removido a pedido do usuario (2026-08-25): nao existe na planilha
-  const rotuloLucro = ['NF Saída − Custo Real Total', jurosCobrado?'+ Juros':'', notasBoss?'+ Notas Boss':''].filter(Boolean).join(' ');
-  wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
-    <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Custo Total Real (${custosReais.count} ${custosReais.count===1?'item':'itens'} lançados)</span><strong>${r2(custosReais.total)}</strong></div>
-    ${linhaMargemTaxas}
-    ${temNf
-      ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;"><span style="color:var(--muted);">Lucro Real (${rotuloLucro})</span><strong style="color:${lucro>=0?'var(--ok)':'var(--err)'}">${r2(lucro)}</strong></div>`
-      : `<div style="color:var(--dim);">Preencha a NF Saída na aba Documentos pra ver o lucro real aqui.</div>`}
-  </div>`;
+  crRenderCards(snapshot, estado);
+
+  // Rodapé: a mesma conta do Fechamento, pra quem rolou até o fim ver o
+  // resultado sem voltar ao topo.
+  const rodape = document.getElementById('custos-reais-total');
+  if(rodape){
+    const f = calcularFechamento(snapshot);
+    rodape.innerHTML = f.custoRealTotal != null
+      ? `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <span style="color:var(--muted);">Custo real total: <strong style="color:var(--text);">${r2(f.custoRealTotal)}</strong></span>
+          ${f.lucroReal != null ? `<span style="color:var(--muted);">Lucro real: <strong style="color:${f.lucroReal >= 0 ? 'var(--ok)' : 'var(--err)'};">${r2(f.lucroReal)}</strong>${f.pctLucroReal != null ? ` (${(f.pctLucroReal*100).toFixed(1).replace('.', ',')}%)` : ''}</span>` : `<span class="cr-muted">Informe a NF de saída na aba Documentos pra ver o lucro real.</span>`}
+        </div>`
+      : '';
+  }
 }
 
-// Salva sÃÂÃÂ³ os custos reais ÃÂ¢ÃÂÃÂ segue o mesmo mecanismo de patchFields das
-// outras abas (salvarProcesso em controle-core.js), entÃÂÃÂ£o nÃÂÃÂ£o sobrescreve
+// Cards do topo: Receita / Custo real / Lucro real (vs cotado) / Conferidos.
+// Usa calcularFechamento (controle-core.js) — a MESMA conta da aba
+// Fechamento e do Dashboard Resultado, pra nunca mostrar dois lucros
+// diferentes pro mesmo processo.
+function crRenderCards(snapshot, estado){
+  const el = document.getElementById('cr_cards');
+  if(!el) return;
+  const f = calcularFechamento(snapshot);
+  const r2 = v => (v == null || isNaN(v)) ? '—' : 'R$ ' + crFmt(v);
+  const receitaLabel = f.vendasResumo ? 'Receita (vendas)' : 'Receita (NF saída)';
+  const extrasReceita = [f.jurosCobrado ? '+ juros' : '', f.notasBoss ? '+ notas Boss' : ''].filter(Boolean).join(' ');
+  const lucroCor = f.lucroReal == null ? 'var(--muted)' : f.lucroReal >= 0 ? 'var(--ok)' : 'var(--err)';
+  const pct = f.pctLucroReal != null ? ` <span style="font-size:12px;font-weight:600;">(${(f.pctLucroReal*100).toFixed(1).replace('.', ',')}%)</span>` : '';
+  let estTxt = 'sem cotação vinculada';
+  if(f.lucroEstimado != null){
+    estTxt = `cotado ${r2(f.lucroEstimado)}`;
+    if(f.deltaValor != null) estTxt += ` · <span style="color:${f.deltaValor >= 0 ? 'var(--ok)' : 'var(--err)'};">${f.deltaValor >= 0 ? '+' : '−'}${crFmt(Math.abs(f.deltaValor))}</span>`;
+  }
+  const faltam = estado.total - estado.conferidos;
+  el.innerHTML = `
+    <div class="cr-card"><div class="cr-card-l">${receitaLabel}</div><div class="cr-card-v">${r2(f.nfSaida)}</div><div class="cr-card-s">${f.nfSaida ? (extrasReceita || '&nbsp;') : 'informe a NF de saída na aba Documentos'}</div></div>
+    <div class="cr-card"><div class="cr-card-l">Custo real</div><div class="cr-card-v">${r2(f.custoRealTotal)}</div><div class="cr-card-s">${f.custosReais ? `${f.custosReais.count} ${f.custosReais.count === 1 ? 'item' : 'itens'} no custo` : 'nenhum item lançado'}</div></div>
+    <div class="cr-card"><div class="cr-card-l">Lucro real</div><div class="cr-card-v" style="color:${lucroCor};">${r2(f.lucroReal)}${pct}</div><div class="cr-card-s">${estTxt}</div></div>
+    <div class="cr-card"><div class="cr-card-l">Conferidos</div><div class="cr-card-v">${estado.conferidos} <span style="font-size:12px;color:var(--muted);font-weight:500;">de ${estado.total}</span></div><div class="cr-card-s">${faltam > 0 ? `<a class="cr-link" onclick="crConferirTodos()">marcar ${faltam === 1 ? 'o restante' : `os ${faltam} restantes`} como conferido${faltam === 1 ? '' : 's'}</a>` : (estado.total ? 'tudo conferido ✓' : '&nbsp;')}</div></div>`;
+}
+
+// Salva só os custos reais — segue o mesmo mecanismo de patchFields das
+// outras abas (salvarProcesso em controle-core.js), então não sobrescreve
 // nenhum outro campo alterado por outra pessoa nesse meio tempo.
 async function salvarCustosReaisTab(){
   if(!_editando) return;

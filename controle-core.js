@@ -2073,6 +2073,107 @@ function calcularCustoRealTotal(p){
   return { total, detalhe, cambio, count };
 }
 
+// ── CUSTOS REAIS: apoio da aba (redesenho 30/09/2026) ─────────────────
+// Regras que a tela e os totais compartilham, pra não divergirem:
+//   - "Cobrado" ausente em real_json = repasse igual ao Pago (o cliente
+//     paga exatamente o que a IMPAK pagou). Só se grava um _cobrado
+//     explícito quando é DIFERENTE do pago (markup, ou o cotado que veio
+//     da aprovação da cotação — gerarRealJsonInicial grava o cotado em
+//     _cobrado). Antes, cobrado ausente contava como zero nos totais por
+//     grupo, o que dava margens negativas enormes em processo que nunca
+//     usou o botão "=" em todas as linhas.
+//   - real_json._conf = { itemId: { por, em, origem } } marca quais linhas
+//     já foram CONFERIDAS por alguém (digitou/puxou de outra aba/importou
+//     da planilha). Valor pré-preenchido com o cotado e nunca tocado fica
+//     "só cotado" até alguém conferir — é o que a bolinha de status e o
+//     contador "N de M conferidos" mostram.
+function round2(v){ const n = parseFloat(v); return isNaN(n) ? null : Math.round(n * 100) / 100; }
+
+function custoRealTemValor(raw){
+  if(raw == null || raw === '') return false;
+  if(typeof raw === 'object'){
+    if(raw.porContainer && typeof raw.porContainer === 'object'){
+      return Object.values(raw.porContainer).some(e => e && e.valor != null && e.valor !== '' && !isNaN(parseFloat(e.valor)));
+    }
+    return raw.valor != null && raw.valor !== '' && !isNaN(parseFloat(raw.valor));
+  }
+  return !isNaN(parseFloat(raw));
+}
+
+// Cobrado "efetivo" de um item: o _cobrado explícito quando existe, senão
+// o próprio Pago (repasse igual). Impostos (apenasPago) não têm cobrado.
+function cobradoEfetivo(reais, item){
+  if(!reais || item.apenasPago) return null;
+  const explicito = reais[item.id + '_cobrado'];
+  if(custoRealTemValor(explicito)) return explicito;
+  return reais[item.id];
+}
+
+// Itens que aparecem sempre na aba, mesmo sem valor nenhum: o esqueleto
+// de qualquer importação (mercadoria, frete, seguro, os 5 impostos da D.I.
+// e os dois "pacotes" da planilha de fechamento — Adiantamento Porto e
+// Agente Frete). Os outros ~45 só aparecem quando têm valor cotado/real
+// ou quando alguém os adiciona pelo "+ adicionar item".
+const CUSTOS_REAIS_SEMPRE_VISIVEIS = ['fob','frete','seguro','ii','ipi','pis','cofins','icms','adiantamento_porto','agente_frete'];
+
+// Custo da mercadoria a partir das parcelas já pagas (Financeiro): soma de
+// valor US$ × câmbio fechado de cada parcela (é a conta da planilha,
+// "Adance Payment" = Dolar × TX Dolar). Reaproveita listarPagamentosPI —
+// que pula processo FINALIZADO (porque lá ele serve ao fluxo de caixa), por
+// isso a fase é mascarada aqui: no fechamento o processo normalmente JÁ
+// está finalizado e é exatamente quando este número interessa.
+function custoMercadoriaDasParcelas(p){
+  if(!p || typeof listarPagamentosPI !== 'function') return null;
+  const pagamentos = listarPagamentosPI([{ ...p, fase: p.fase === 'FINALIZADO' ? 'DESEMBARACADO' : p.fase }]);
+  const pagos = pagamentos.filter(x => x.pago && x.cambioFechado && x.valorUsd);
+  if(!pagos.length) return null;
+  const usd = pagos.reduce((s, x) => s + x.valorUsd, 0);
+  const brl = pagos.reduce((s, x) => s + x.valorUsd * x.cambioFechado, 0);
+  const taxaMedia = usd ? brl / usd : null;
+  const fmt = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return {
+    valorBrl: round2(brl), usd: round2(usd), taxaMedia, parcelas: pagos.length,
+    pendentes: pagamentos.length - pagos.length,
+    descricao: `${pagos.length} parcela${pagos.length === 1 ? '' : 's'} paga${pagos.length === 1 ? '' : 's'}: US$ ${fmt(usd)} × ${taxaMedia.toFixed(4)}`,
+  };
+}
+
+// Onde cada item pode ser "puxado" de outra aba do processo, pra não
+// redigitar o que o sistema já sabe. lado 'pago' preenche o valor real;
+// lado 'cobrado' preenche o cobrado (frete: o Valor do Frete da Logística é
+// o que vai pro cliente — pedido do Ayslan 18/09/2026, ver
+// sincronizarFreteCustosReais).
+function fontesCustosReais(p){
+  const fontes = {};
+  if(!p) return fontes;
+  const fob = custoMercadoriaDasParcelas(p);
+  if(fob) fontes.fob = { lado:'pago', valor: fob.valorBrl, moeda:'BRL', origem:'Financeiro', descricao: fob.descricao, pendentes: fob.pendentes };
+  const frete = parseFloat(p.valor_frete);
+  if(frete > 0) fontes.frete = { lado:'cobrado', valor: round2(frete), moeda: p.moeda_frete || 'USD', origem:'Logística', descricao:'Valor do Frete lançado na aba Logística' };
+  return fontes;
+}
+
+// Estado de cada linha pra tela: visível?, tem valor?, conferida?, cotado,
+// fonte disponível. `extras` = ids adicionados nesta sessão pelo usuário.
+function custosReaisEstado(p, extras){
+  const reais = (p && p.real_json && typeof p.real_json === 'object') ? p.real_json : {};
+  const conf = (reais._conf && typeof reais._conf === 'object') ? reais._conf : {};
+  const cotado = (p && p.estimativa_json && p.estimativa_json.custos_cotados_json) || null;
+  const fontes = fontesCustosReais(p);
+  const extrasSet = new Set(extras || []);
+  const itens = custosReaisItensFlat().map(item => {
+    const temPago = custoRealTemValor(reais[item.id]);
+    const temCobrado = !item.apenasPago && custoRealTemValor(reais[item.id + '_cobrado']);
+    const vc = calcularCustoCotadoItem(item, cotado);
+    const valorCotado = (vc != null && !isNaN(vc) && Math.abs(vc) > 0.004) ? round2(vc) : null;
+    const visivel = temPago || temCobrado || valorCotado != null
+      || CUSTOS_REAIS_SEMPRE_VISIVEIS.includes(item.id) || extrasSet.has(item.id) || !!fontes[item.id];
+    return { id:item.id, grupo:item.grupo, visivel, temPago, temCobrado, conferido: !!conf[item.id], conf: conf[item.id] || null, valorCotado, fonte: fontes[item.id] || null };
+  });
+  const comValor = itens.filter(i => i.visivel && i.temPago);
+  return { itens, total: comValor.length, conferidos: comValor.filter(i => i.conferido).length, fontes };
+}
+
 // Espelha calcularCustoRealTotal, mas soma o que foi COBRADO DO CLIENTE por
 // item (não o que foi pago ao fornecedor/agente) — guardado nas mesmas
 // chaves de real_json, com sufixo "_cobrado" (ex.: reais.siscomex = pago,
@@ -2086,7 +2187,8 @@ function calcularReceitaRealTotal(p){
   let total = 0, count = 0;
   const detalhe = [];
   custosReaisItensFlat().forEach(item => {
-    const norm = normalizarValorRealItem(reais[item.id+'_cobrado'], item, p);
+    if(item.apenasPago) return; // imposto: não existe "cobrado do cliente"
+    const norm = normalizarValorRealItem(cobradoEfetivo(reais, item), item, p);
     if(!norm) return;
     const excluido = !!item.excluirDosTotais; // Taxa C.E./CE Mercante - nem custo nem receita
     if(!excluido){ total += norm.totalBrl; count++; }
@@ -2120,7 +2222,7 @@ function calcularTotalizadorPorGrupo(p){
       const normPago = normalizarValorRealItem(reais[item.id], item, p);
       if(normPago){ totalPago += normPago.totalBrl; temPago = true; if(item.apenasPago) totalCredito += normPago.totalBrl; else totalPagoCobravel += normPago.totalBrl; }
       if(!item.apenasPago){
-        const normCobrado = normalizarValorRealItem(reais[item.id+'_cobrado'], item, p);
+        const normCobrado = normalizarValorRealItem(cobradoEfetivo(reais, item), item, p);
         if(normCobrado){ totalCobrado += normCobrado.totalBrl; temCobrado = true; }
       }
     });

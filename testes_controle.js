@@ -1451,7 +1451,11 @@ function setEstadoAnalises(processos, filAnalises){
 }
 
 teste('renderDashAnalises: roda sem lançar erro e monta KPIs/série/rankings a partir de _processos', () => {
-  const hoje = new Date().toISOString().slice(0,10);
+  // data LOCAL (não toISOString, que é UTC): entre 21h e 0h no fuso de
+  // Brasília o dia UTC já virou e o processo caía fora da janela mensal da
+  // tela, que é calculada em horário local — falha fantasma só à noite.
+  const _d = new Date();
+  const hoje = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   setEstadoAnalises([
     { id:'p1', cliente:'Cliente A', fornecedor:'Forn X', brand:'Marca X', nf_saida_data:hoje, nf_saida_valor:100000, nf_entrada_valor:60000 }, // lucro 40000
     { id:'p2', cliente:'Cliente B', fornecedor:'Forn Y', brand:'Marca Y', nf_saida_data:hoje, nf_saida_valor:50000,  nf_entrada_valor:70000 }, // lucro -20000
@@ -2279,6 +2283,85 @@ teste('Fluxo Jean: chegou 248, remessa 248 (5905), venda 100, retorno simbólico
   iguais(r.qtdAlocada, 100, 'só a venda conta');
   iguais(r.nfSaidaTotal, 300000, 'faturamento = só a venda');
   iguais(sandbox.temRemessaEstoque(p), true, 'aparece como ESTOQUE na TV');
+});
+
+
+// ── Custos Reais: aba redesenhada (30/09/2026) ──────────────────────
+console.log('\n=== Custos Reais redesenhada: cobrado ausente = pago, parcelas → mercadoria, estado das linhas ===');
+teste('round2: arredonda a 2 casas e devolve null pra lixo', () => {
+  iguais(sandbox.round2(174387.9905459328), 174387.99);
+  iguais(sandbox.round2('9604.455'), 9604.46);
+  iguais(sandbox.round2(''), null);
+  iguais(sandbox.round2('abc'), null);
+});
+teste('custoRealTemValor: reconhece os 3 formatos e rejeita vazio', () => {
+  verdadeiro(sandbox.custoRealTemValor(10));
+  verdadeiro(sandbox.custoRealTemValor('10'));
+  verdadeiro(sandbox.custoRealTemValor({ valor: 0, moeda: 'BRL' }), 'zero explícito é valor');
+  verdadeiro(sandbox.custoRealTemValor({ porContainer: { A: { valor: 1 } } }));
+  verdadeiro(!sandbox.custoRealTemValor({ porContainer: { A: { valor: '' } } }));
+  verdadeiro(!sandbox.custoRealTemValor({ valor: '' }));
+  verdadeiro(!sandbox.custoRealTemValor(null));
+  verdadeiro(!sandbox.custoRealTemValor(''));
+});
+teste('cobradoEfetivo: explícito vence; ausente cai no pago; imposto não tem cobrado', () => {
+  const itemTaxa = sandbox.custosReaisItensFlat().find(i => i.id === 'lavacao');
+  const itemImposto = sandbox.custosReaisItensFlat().find(i => i.id === 'ipi');
+  iguais(sandbox.cobradoEfetivo({ lavacao: { valor: 450, moeda: 'BRL' }, lavacao_cobrado: { valor: 900, moeda: 'BRL' } }, itemTaxa).valor, 900);
+  iguais(sandbox.cobradoEfetivo({ lavacao: { valor: 450, moeda: 'BRL' } }, itemTaxa).valor, 450);
+  verdadeiro(sandbox.cobradoEfetivo({ ipi: 100 }, itemImposto) === null);
+});
+teste('calcularTotalizadorPorGrupo: linhas sem cobrado contam como repasse igual (margem só do que é diferente)', () => {
+  const tot = sandbox.calcularTotalizadorPorGrupo({ real_json: { siscomex: { valor: 1000, moeda: 'BRL' }, lavacao: { valor: 450, moeda: 'BRL' }, lavacao_cobrado: { valor: 900, moeda: 'BRL' } } });
+  const taxas = tot.find(g => g.slug === 'taxas');
+  aproxIgual(taxas.totalPago, 1450, 0.01);
+  aproxIgual(taxas.totalCobrado, 1900, 0.01, 'siscomex sem cobrado deveria entrar como 1000 (igual ao pago)');
+  aproxIgual(taxas.margem, 450, 0.01, 'antes dava -550 (siscomex contava como cobrado zero)');
+});
+teste('calcularReceitaRealTotal: cobrado ausente = pago; impostos (apenasPago) ficam fora', () => {
+  const r = sandbox.calcularReceitaRealTotal({ real_json: { fob: { valor: 100, moeda: 'BRL' }, ipi: { valor: 50, moeda: 'BRL' }, frete: { valor: 20, moeda: 'BRL' }, frete_cobrado: { valor: 30, moeda: 'BRL' } } });
+  aproxIgual(r.total, 130, 0.01);
+  iguais(r.count, 2);
+});
+teste('custoMercadoriaDasParcelas: soma US$ × câmbio fechado só das parcelas pagas, mesmo com processo FINALIZADO', () => {
+  const p = { id: 'x', referencia: 'UD26-036', fase: 'FINALIZADO', finalidade: 'ENCOMENDA', pi_valor_usd: 44303.36, pi_pagamento: 'PARCELADO',
+    pi_parcelas_json: JSON.stringify([{ label: 'Inicial', valor_usd: 34303.36, cambio_fechado: 5.0837 }, { label: 'Final', valor_usd: 10000 }]) };
+  const r = sandbox.custoMercadoriaDasParcelas(p);
+  verdadeiro(r !== null, 'deveria achar a parcela paga');
+  aproxIgual(r.valorBrl, 174387.99, 0.01, 'planilha UD26-036: 34.303,36 × 5,0837 = 174.387,99');
+  iguais(r.parcelas, 1); iguais(r.pendentes, 1);
+  verdadeiro(/34\.303,36/.test(r.descricao) && /5\.0837/.test(r.descricao), r.descricao);
+});
+teste('custoMercadoriaDasParcelas: pagamento único pago usa pi_cambio_fechado; nada pago → null; acompanhamento → null', () => {
+  const unico = sandbox.custoMercadoriaDasParcelas({ id: 'y', fase: 'DESEMBARACADO', finalidade: 'ENCOMENDA', pi_valor_usd: 1000, pi_pagamento: 'VISTA', pi_pago: true, pi_cambio_fechado: 5.2 });
+  aproxIgual(unico.valorBrl, 5200, 0.01);
+  verdadeiro(sandbox.custoMercadoriaDasParcelas({ id: 'z', fase: 'EMBARCADO', finalidade: 'ENCOMENDA', pi_valor_usd: 1000, pi_pagamento: 'VISTA', pi_pago: false }) === null);
+  verdadeiro(sandbox.custoMercadoriaDasParcelas({ id: 'w', fase: 'EMBARCADO', finalidade: 'ACOMPANHAMENTO', pi_valor_usd: 1000, pi_pagamento: 'VISTA', pi_pago: true, pi_cambio_fechado: 5 }) === null);
+});
+teste('fontesCustosReais: frete da Logística vai pro lado cobrado; fob das parcelas pro lado pago', () => {
+  const f = sandbox.fontesCustosReais({ id: 'a', fase: 'EMBARCADO', finalidade: 'ENCOMENDA', valor_frete: 1850, moeda_frete: 'USD', pi_valor_usd: 1000, pi_pagamento: 'VISTA', pi_pago: true, pi_cambio_fechado: 5 });
+  iguais(f.frete.lado, 'cobrado'); iguais(f.frete.valor, 1850); iguais(f.frete.moeda, 'USD');
+  iguais(f.fob.lado, 'pago'); aproxIgual(f.fob.valor, 5000, 0.01);
+  iguais(Object.keys(sandbox.fontesCustosReais({})).length, 0);
+});
+teste('custosReaisEstado: só aparece quem tem valor real/cotado, os 10 básicos e os adicionados; conta conferidos', () => {
+  const est = sandbox.custosReaisEstado({ real_json: { timp: { valor: 10, moeda: 'BRL' }, lavacao_cobrado: { valor: 5, moeda: 'BRL' }, fob: { valor: 100, moeda: 'BRL' }, _conf: { fob: { por: 'bianca', em: '2026-09-30T10:00:00Z' } } },
+    estimativa_json: { custos_cotados_json: { containers: 1, taxas_fixas: { siscomex: 154.23, marinha: 0 } } } }, ['isps']);
+  const por = {}; est.itens.forEach(i => { por[i.id] = i; });
+  verdadeiro(por.timp.visivel, 'tem valor real');
+  verdadeiro(por.lavacao.visivel, 'tem cobrado explícito');
+  verdadeiro(por.siscomex.visivel && por.siscomex.valorCotado === 154.23, 'cotado diferente de zero');
+  verdadeiro(!por.marinha.visivel, 'cotado zero não aparece');
+  verdadeiro(por.isps.visivel, 'adicionado na sessão');
+  verdadeiro(!por.tsc.visivel && !por.drop_off.visivel, 'sem nada → escondido');
+  ['fob','frete','seguro','ii','ipi','pis','cofins','icms','adiantamento_porto','agente_frete'].forEach(id => verdadeiro(por[id].visivel, id + ' é básico'));
+  iguais(est.total, 2, 'itens visíveis com valor pago: timp e fob');
+  iguais(est.conferidos, 1, 'só fob tem _conf');
+  verdadeiro(por.fob.conferido && !por.timp.conferido);
+});
+teste('calcularCustoRealTotal continua ignorando _conf e demais chaves auxiliares de real_json', () => {
+  const r = sandbox.calcularCustoRealTotal({ real_json: { ii: { valor: 300, moeda: 'BRL' }, _conf: { ii: { por: 'x', em: 'y' } }, _cambio_eur: 6 } });
+  iguais(r.count, 1); iguais(r.total, 300);
 });
 
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
