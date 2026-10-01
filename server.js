@@ -2081,6 +2081,14 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro','resultado','
 function normalizarPortoDestinoDespachante(valor) {
   if (!valor) return valor;
   const va = String(valor).trim().toUpperCase();
+  // Primeiro a lista do banco (cadastros_listas, com os sinônimos editáveis
+  // em /cadastros → Listas), se já estiver carregada no índice em memória
+  // (ver obterIndiceCadastros). Depois os apelidos fixos de sempre.
+  const idx = _cadIndice && _cadIndice.indice;
+  if (idx && idx.porto_destino) {
+    const cod = idx.porto_destino.get(CadastrosNormalizar.chaveNormalizada(va));
+    if (cod) return cod;
+  }
   const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT', 'IMBITUBA':'BRIBB' };
   const CODIGOS = ['ITJ','IOA','NVT','BRIBB'];
   if (APELIDOS[va]) return APELIDOS[va];
@@ -2585,6 +2593,28 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
 
     if (!processo.id) processo.id = gerarUUID();
     processo.updated_at = new Date().toISOString();
+
+    // Padronização pelos cadastros (01/10/2026, lib/cadastros-normalizar.js):
+    // armador/agente/transportadora/despachante/armazém/depot/porto de origem
+    // que baterem com a razão social, nome fantasia ou um sinônimo de uma
+    // empresa cadastrada naquele papel são gravados com o nome canônico
+    // ("PILL" → "PIL"). Valor desconhecido fica como veio. Feito ANTES do log
+    // pra que o histórico mostre o valor que realmente foi gravado — e, se o
+    // navegador não logou a mudança daquele campo, o servidor registra.
+    try {
+      const indice = await obterIndiceCadastros();
+      const padronizados = CadastrosNormalizar.normalizarProcesso(processo, indice);
+      if (padronizados.length) {
+        processo.log = Array.isArray(processo.log) ? processo.log : [];
+        padronizados.forEach(m => {
+          const entrada = processo.log.find(l => !l._saved && l.campo === m.campo);
+          if (entrada) entrada.valor_depois = m.depois;
+          else processo.log.push({ campo: m.campo + ' (padronizado pelo cadastro)', valor_antes: m.antes, valor_depois: m.depois });
+        });
+      }
+    } catch (normErr) {
+      console.warn('padronização de cadastros ignorada:', normErr.message);
+    }
 
     // Log de auditoria no banco
     const logEntries = (processo.log || []).filter(l => !l._saved);
@@ -3407,33 +3437,71 @@ const { validarDocumento } = require('./lib/validacao-documento.js');
 const conexos = require('./services/conexos.js');
 
 // ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
+//
+// Cadastros fase 1b (01/10/2026, migration 0040): uma empresa pode ter
+// vários PAPÉIS (papeis text[]) além do tipo principal, e SINÔNIMOS (outras
+// grafias) usados pra padronizar o que vai pro processo. Enquanto a
+// migration não roda, as colunas não existem — todas as consultas abaixo
+// tentam com elas e, se o banco reclamar, repetem sem (fallback), pra não
+// derrubar o autocomplete/cadastro no meio do dia.
+const TIPOS_EMPRESA = ['CLIENTE','FORNECEDOR','EXPORTADOR','DESPACHANTE','AGENTE','ARMADOR','TRANSPORTADORA','ARMAZEM_ALFANDEGADO','PORTO_ARMAZEM','DEPOT_DEVOLUCAO'];
+const CONTATO_CAMPOS_BASE = 'id,cnpj,documento,tipo_pessoa,pais,razao_social,nome_fantasia,cidade,uf,logradouro,numero,complemento,bairro,cep,email,telefone,tipo,obs';
+function erroColunasNovasCadastro(err) {
+  const msg = String(err && err.message || err || '');
+  return /papeis|sinonimos/i.test(msg) && /column|coluna|schema cache|does not exist/i.test(msg);
+}
+function limparArrayTexto(v, maxItens) {
+  if (!Array.isArray(v)) return [];
+  const vistos = new Set();
+  return v.map(x => String(x == null ? '' : x).trim()).filter(x => {
+    if (!x || vistos.has(x.toUpperCase())) return false;
+    vistos.add(x.toUpperCase());
+    return true;
+  }).slice(0, maxItens || 50);
+}
+// Histórico dos cadastros (cadastros_log, migration 0040) — best-effort:
+// se a tabela ainda não existir, só avisa no console.
+async function registrarLogCadastro(tabela, registroId, acao, antes, depois, usuario) {
+  try {
+    const { error } = await sb().from('cadastros_log').insert({
+      tabela, registro_id: String(registroId), acao, antes: antes || null, depois: depois || null, usuario: usuario || null,
+    });
+    if (error) console.warn('cadastros_log:', error.message);
+  } catch (e) { console.warn('cadastros_log:', e.message); }
+}
+
 app.get('/api/contatos', auth(...MODULOS_TRABALHO), async (req, res) => {
   try {
     const { q, tipo, uf, limit } = req.query;
     const lim = Math.min(parseInt(limit) || 30, 1000);
-    let query = sb().from('contatos_clientes').select('id,cnpj,documento,tipo_pessoa,pais,razao_social,nome_fantasia,cidade,uf,logradouro,numero,complemento,bairro,cep,email,telefone,tipo,obs').eq('ativo', true);
-    // tipo aceita mais de um valor separado por vírgula (ex: "FORNECEDOR,EXPORTADOR")
-    // — usado pelo campo "Fornecedor (Exportador)" do processo, que precisa achar
-    // contatos cadastrados em QUALQUER uma dessas duas categorias (antes buscava
-    // só EXPORTADOR, então um contato cadastrado como Fornecedor nunca aparecia
-    // no autocomplete daquele campo, mesmo existindo no cadastro).
-    if (tipo) {
-      const tipos = tipo.split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
-      query = tipos.length > 1 ? query.in('tipo', tipos) : query.eq('tipo', tipos[0]);
-    }
-    if (uf)   query = query.eq('uf', uf.toUpperCase());
-    if (q && q.length >= 2) {
+    // Só letras/underscore: o valor entra na sintaxe de filtro do PostgREST
+    // (.or/.in), então nada de vírgula, parêntese ou chave vindo da URL.
+    const tipos = tipo ? String(tipo).split(',').map(t => t.trim().toUpperCase()).filter(t => /^[A-Z_]{1,40}$/.test(t)) : [];
+    const qSeguro = (q && q.length >= 2) ? q.replace(/[,%*(){}]/g, '').trim() : '';
+    const montar = (comPapeis) => {
+      let query = sb().from('contatos_clientes')
+        .select(comPapeis ? CONTATO_CAMPOS_BASE + ',papeis,sinonimos' : CONTATO_CAMPOS_BASE)
+        .eq('ativo', true);
+      // tipo aceita mais de um valor separado por vírgula (ex: "FORNECEDOR,EXPORTADOR")
+      // — usado pelo campo "Fornecedor (Exportador)" do processo, que precisa achar
+      // contatos cadastrados em QUALQUER uma dessas categorias. Com papéis, um
+      // cadastro entra se o tipo principal OU qualquer papel extra bater.
+      if (tipos.length) {
+        if (comPapeis) query = query.or(`tipo.in.(${tipos.join(',')}),papeis.ov.{${tipos.join(',')}}`);
+        else query = tipos.length > 1 ? query.in('tipo', tipos) : query.eq('tipo', tipos[0]);
+      }
+      if (uf) query = query.eq('uf', uf.toUpperCase());
       // Remove caracteres com significado especial na sintaxe do filtro
       // .or() do PostgREST (vírgula separa condições, % é wildcard do
       // ilike, parênteses/asterisco também têm sentido sintático) — sem
       // isso, buscar por algo como "Silva, Lima" quebrava a query com erro.
-      const qSeguro = q.replace(/[,%*()]/g, '').trim();
       if (qSeguro.length >= 2) {
         query = query.or(`razao_social.ilike.%${qSeguro}%,cnpj.ilike.%${qSeguro}%,nome_fantasia.ilike.%${qSeguro}%`);
       }
-    }
-    query = query.order('razao_social').limit(lim);
-    const { data, error } = await query;
+      return query.order('razao_social').limit(lim);
+    };
+    let { data, error } = await montar(true);
+    if (error && erroColunasNovasCadastro(error)) ({ data, error } = await montar(false));
     if (error) throw new Error(error.message);
     res.json({ ok: true, contatos: data || [] });
   } catch(e) { res.status(500).json({ erro: e.message }); }
@@ -3461,6 +3529,20 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
     delete c.ativo; delete c.created_at; delete c.created_by;
     if (isNovo) c.ativo = true;
 
+    // Papéis (migration 0040): lista de tipos válidos; o tipo principal
+    // sempre entra. Sem papéis no payload (telas antigas) → papeis = [tipo].
+    // Sinônimos: outras grafias do mesmo cadastro (texto livre, até 50).
+    c.tipo = String(c.tipo || '').toUpperCase();
+    if (!TIPOS_EMPRESA.includes(c.tipo)) {
+      const primeiroPapel = Array.isArray(c.papeis) ? c.papeis.map(p => String(p || '').toUpperCase()).find(p => TIPOS_EMPRESA.includes(p)) : null;
+      if (!primeiroPapel) return res.status(400).json({ erro: 'Tipo/papel inválido' });
+      c.tipo = primeiroPapel;
+    }
+    const papeis = limparArrayTexto(Array.isArray(c.papeis) ? c.papeis.map(p => String(p || '').toUpperCase()) : [], 20).filter(p => TIPOS_EMPRESA.includes(p));
+    if (!papeis.includes(c.tipo)) papeis.unshift(c.tipo);
+    c.papeis = papeis;
+    c.sinonimos = limparArrayTexto(c.sinonimos, 50);
+
     // Trava de duplicidade — só entra em ação na CRIAÇÃO de um contato novo
     // (editar um contato existente passa direto, mesmo mantendo o nome).
     // Considera duplicado quando: (a) o CNPJ informado já existe em outro
@@ -3487,31 +3569,194 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
         // limpeza dos duplicados existentes).
         if (cnpjDigits || e.cnpj) return false;
         const eNome = (e.razao_social || '').trim().toUpperCase().replace(/\s+/g, ' ');
-        return eNome === nomeNorm && e.tipo === c.tipo;
+        // Com papéis (01/10/2026): mesmo nome sem CNPJ é a MESMA empresa,
+        // mesmo que em outro papel — o certo é abrir o cadastro existente e
+        // marcar o papel novo, não criar um segundo (era assim que RF
+        // LOGISTICA virou 2 cadastros, transportadora e armazém).
+        return eNome === nomeNorm;
       });
       if (duplicado) {
-        const motivo = cnpjDigits && duplicado.cnpj === cnpjDigits ? 'esse CNPJ' : 'esse nome e tipo';
+        const motivo = cnpjDigits && duplicado.cnpj === cnpjDigits ? 'esse CNPJ' : 'esse nome';
+        const dica = duplicado.tipo && duplicado.tipo !== c.tipo
+          ? ` Ele está cadastrado como ${duplicado.tipo} — abra-o e marque também o papel ${c.tipo}.`
+          : ' Edite o cadastro existente em vez de criar outro.';
         return res.status(409).json({
-          erro: `Já existe um cadastro ativo com ${motivo}: "${duplicado.razao_social}". Edite o cadastro existente em vez de criar outro.`,
+          erro: `Já existe um cadastro ativo com ${motivo}: "${duplicado.razao_social}".${dica}`,
           duplicado_id: duplicado.id,
         });
       }
     }
 
     c.updated_at = new Date().toISOString();
-    const { error } = await sb().from('contatos_clientes').upsert(c, { onConflict: 'id' });
+    // Histórico (cadastros_log): guarda o "antes" de edições.
+    let antes = null;
+    if (!isNovo) {
+      const { data: atual } = await sb().from('contatos_clientes').select('*').eq('id', c.id).maybeSingle();
+      antes = atual || null;
+    }
+    let { error } = await sb().from('contatos_clientes').upsert(c, { onConflict: 'id' });
+    if (error && erroColunasNovasCadastro(error)) {
+      // Migration 0040 ainda não rodou: grava sem as colunas novas.
+      const semNovas = Object.assign({}, c); delete semNovas.papeis; delete semNovas.sinonimos;
+      ({ error } = await sb().from('contatos_clientes').upsert(semNovas, { onConflict: 'id' }));
+    }
     if (error) throw new Error(error.message);
+    invalidarIndiceCadastros();
+    registrarLogCadastro('contatos_clientes', c.id, isNovo ? 'criar' : 'editar', antes, c, req.session.usuario);
     res.json({ ok: true, id: c.id });
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
 app.delete('/api/contatos/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
   try {
+    const { data: antes } = await sb().from('contatos_clientes').select('*').eq('id', req.params.id).maybeSingle();
     const { error } = await sb().from('contatos_clientes').update({ ativo: false }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
+    invalidarIndiceCadastros();
+    registrarLogCadastro('contatos_clientes', req.params.id, 'excluir', antes || null, null, req.session.usuario);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
+
+// ── LISTAS / PARÂMETROS DO SISTEMA (cadastros_listas, migration 0040) ──
+// Portos de destino (dias grátis de armazenagem), portos de origem (país) e
+// bancos de câmbio — antes fixos em controle-campos.js, agora editáveis em
+// /cadastros → Listas. Se a tabela não existir ou estiver vazia, devolve a
+// lista padrão embutida (listas-padrao.js), que é idêntica à semente da
+// migration — o sistema nunca fica sem lista.
+const ListasPadrao = require('./listas-padrao.js');
+const CATEGORIAS_LISTA = Object.keys(ListasPadrao.CATEGORIAS);
+async function carregarListas() {
+  const padrao = ListasPadrao.listasPadrao();
+  try {
+    const { data, error } = await sb().from('cadastros_listas')
+      .select('id,categoria,codigo,nome,dados,sinonimos,ativo,ordem,updated_at,atualizado_por')
+      .order('ordem').order('nome');
+    if (error) throw new Error(error.message);
+    if (!data || !data.length) return { listas: padrao, origem: 'padrao' };
+    const listas = {};
+    CATEGORIAS_LISTA.forEach(cat => { listas[cat] = []; });
+    data.forEach(l => {
+      if (!listas[l.categoria]) listas[l.categoria] = [];
+      listas[l.categoria].push(Object.assign({}, l, { dados: l.dados || {}, sinonimos: l.sinonimos || [] }));
+    });
+    // Categoria que ainda não tem nenhuma linha no banco cai no padrão.
+    CATEGORIAS_LISTA.forEach(cat => { if (!listas[cat].length) listas[cat] = padrao[cat]; });
+    return { listas, origem: 'banco' };
+  } catch (e) {
+    console.warn('cadastros_listas indisponível, usando padrão:', e.message);
+    return { listas: padrao, origem: 'padrao' };
+  }
+}
+
+app.get('/api/listas', auth(...MODULOS_TRABALHO), async (req, res) => {
+  try {
+    const r = await carregarListas();
+    // Só os ativos saem pros formulários; a tela de Listas pede ?todos=1.
+    if (!req.query.todos) Object.keys(r.listas).forEach(cat => { r.listas[cat] = r.listas[cat].filter(x => x.ativo !== false); });
+    res.json({ ok: true, listas: r.listas, origem: r.origem });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.post('/api/listas', auth('cadastros'), async (req, res) => {
+  try {
+    const l = req.body || {};
+    const categoria = String(l.categoria || '').trim();
+    if (!CATEGORIAS_LISTA.includes(categoria)) return res.status(400).json({ erro: 'Categoria inválida' });
+    const codigo = String(l.codigo || '').trim().toUpperCase();
+    const nome = String(l.nome || '').trim();
+    if (!codigo || !nome) return res.status(400).json({ erro: 'Código e nome são obrigatórios' });
+    if (!/^[A-Z0-9 .\-_/]{1,40}$/.test(codigo)) return res.status(400).json({ erro: 'Código inválido (use letras, números, espaço, ponto, hífen)' });
+    const dados = (l.dados && typeof l.dados === 'object' && !Array.isArray(l.dados)) ? l.dados : {};
+    // Só os campos previstos pra categoria entram em dados (nada de lixo no jsonb).
+    const permitidos = ListasPadrao.CATEGORIAS[categoria].campos.map(c => c[0]);
+    const dadosLimpos = {};
+    permitidos.forEach(k => {
+      if (dados[k] === undefined || dados[k] === null || dados[k] === '') return;
+      dadosLimpos[k] = typeof dados[k] === 'number' ? dados[k] : String(dados[k]).trim().slice(0, 120);
+    });
+    if (categoria === 'porto_destino') {
+      const d = parseInt(dadosLimpos.dias_gratis, 10);
+      if (!(d >= 0 && d <= 60)) return res.status(400).json({ erro: 'Dias grátis deve ser um número entre 0 e 60' });
+      dadosLimpos.dias_gratis = d;
+    }
+    const registro = {
+      categoria, codigo, nome, dados: dadosLimpos,
+      sinonimos: limparArrayTexto(l.sinonimos, 50).map(s => s.toUpperCase()),
+      ordem: Number.isFinite(parseInt(l.ordem, 10)) ? parseInt(l.ordem, 10) : 0,
+      ativo: l.ativo === false ? false : true,
+      atualizado_por: req.session.usuario,
+      updated_at: new Date().toISOString(),
+    };
+    if (l.id) {
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(l.id))) return res.status(400).json({ erro: 'id inválido' });
+      registro.id = String(l.id);
+    }
+    // Reativar/editar: se já existe (categoria, codigo) com outro id, é duplicado.
+    const { data: existente } = await sb().from('cadastros_listas').select('*').eq('categoria', categoria).eq('codigo', codigo).maybeSingle();
+    if (existente && registro.id && existente.id !== registro.id) return res.status(409).json({ erro: `Já existe "${codigo}" em ${ListasPadrao.CATEGORIAS[categoria].nome}` });
+    if (existente && !registro.id) registro.id = existente.id;
+    let antes = null;
+    if (registro.id) {
+      const { data: atual } = await sb().from('cadastros_listas').select('*').eq('id', registro.id).maybeSingle();
+      antes = atual || null;
+    }
+    const { data: salvo, error } = await sb().from('cadastros_listas').upsert(registro, { onConflict: registro.id ? 'id' : 'categoria,codigo' }).select('id').maybeSingle();
+    if (error) throw new Error(error.message);
+    const id = (salvo && salvo.id) || registro.id;
+    invalidarIndiceCadastros();
+    registrarLogCadastro('cadastros_listas', id, antes ? 'editar' : 'criar', antes, registro, req.session.usuario);
+    res.json({ ok: true, id });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.delete('/api/listas/:id', auth('cadastros'), requireGerente, async (req, res) => {
+  try {
+    const { data: antes } = await sb().from('cadastros_listas').select('*').eq('id', req.params.id).maybeSingle();
+    if (!antes) return res.status(404).json({ erro: 'Item não encontrado' });
+    const { error } = await sb().from('cadastros_listas').update({ ativo: false, atualizado_por: req.session.usuario, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    invalidarIndiceCadastros();
+    registrarLogCadastro('cadastros_listas', req.params.id, 'excluir', antes, null, req.session.usuario);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Histórico de um cadastro (empresa/pessoa/lista) — lido pela tela /cadastros.
+app.get('/api/cadastros/log', auth('cadastros'), async (req, res) => {
+  try {
+    const tabela = String(req.query.tabela || '');
+    const registroId = String(req.query.registro_id || '');
+    if (!['contatos_clientes','cadastros_pessoas','cadastros_listas'].includes(tabela)) return res.status(400).json({ erro: 'tabela inválida' });
+    let q = sb().from('cadastros_log').select('id,tabela,registro_id,acao,antes,depois,usuario,created_at').eq('tabela', tabela).order('created_at', { ascending: false }).limit(100);
+    if (registroId) q = q.eq('registro_id', registroId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, log: data || [] });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// ── ÍNDICE DE PADRONIZAÇÃO (lib/cadastros-normalizar.js) ──
+// Cache em memória (60s) das empresas ativas + listas, usado no save do
+// processo pra trocar "PILL"/"PIL SHIPPING" por "PIL", "ITAJAI" por "ITJ"
+// etc. Invalidado em qualquer alteração de cadastro/lista.
+const CadastrosNormalizar = require('./lib/cadastros-normalizar.js');
+let _cadIndice = { at: 0, indice: null };
+function invalidarIndiceCadastros() { _cadIndice = { at: 0, indice: null }; }
+async function obterIndiceCadastros() {
+  if (_cadIndice.indice && Date.now() - _cadIndice.at < 60 * 1000) return _cadIndice.indice;
+  try {
+    let { data, error } = await sb().from('contatos_clientes').select('razao_social,nome_fantasia,tipo,papeis,sinonimos').eq('ativo', true).limit(5000);
+    if (error && erroColunasNovasCadastro(error)) ({ data, error } = await sb().from('contatos_clientes').select('razao_social,nome_fantasia,tipo').eq('ativo', true).limit(5000));
+    if (error) throw new Error(error.message);
+    const { listas } = await carregarListas();
+    _cadIndice = { at: Date.now(), indice: CadastrosNormalizar.montarIndice(data || [], listas) };
+  } catch (e) {
+    console.warn('índice de cadastros indisponível:', e.message);
+    _cadIndice = { at: Date.now(), indice: CadastrosNormalizar.montarIndice([], ListasPadrao.listasPadrao()) };
+  }
+  return _cadIndice.indice;
+}
 
 // ── CADASTRO DE PESSOAS (contato individual da empresa, funcionário interno ou avulso) ──
 // Lista leve de usuários de login (só usuario+nome), pra popular o dropdown

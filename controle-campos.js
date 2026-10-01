@@ -14,67 +14,89 @@
 //
 // ── PORTOS PADRONIZADOS ──────────────────────────────────────────
 // Objetivo: acabar com grafias diferentes pro mesmo porto (NAVEGANTES vs NVT
-// vs Navegantes-SC...). Destino usa os MESMOS 3 códigos do Calculador
+// vs Navegantes-SC...). Destino usa os MESMOS códigos do Calculador
 // (armazenagem por porto) — mantém os dois sistemas 100% consistentes.
-const PORTOS_DESTINO = [
-  { codigo:'ITJ', nome:'Itajaí' },
-  { codigo:'IOA', nome:'Itapoá' },
-  { codigo:'NVT', nome:'Navegantes' },
-  // Porto de Imbituba (SC) — pedido Emanuelly (14/09/2026). Código BRIBB é
-  // o UN/LOCODE oficial usado no CE Mercante/Siscomex Carga.
-  { codigo:'BRIBB', nome:'Imbituba' },
-];
-
+//
+// Desde 01/10/2026 (cadastros fase 1b) estas listas vêm do banco
+// (cadastros_listas, editável em /cadastros → Listas) via GET /api/listas —
+// ver carregarListas()/aplicarListas() no fim desta seção. O que está aqui
+// é só o PADRÃO embutido (listas-padrao.js, mesmo arquivo que o servidor
+// usa), usado até a resposta chegar ou se ela falhar. As constantes são
+// atualizadas "no lugar" (mesmo array/objeto), então todo código que já
+// referencia PORTOS_DESTINO/PORTOS_ORIGEM/PORTO_ARMAZENAGEM_FREE_DIAS/
+// PORTO_PAIS/BANCOS_CAMBIO continua funcionando sem mudar nada.
+const _LISTAS_INICIAIS = (typeof ListasPadrao !== 'undefined') ? ListasPadrao.listasPadrao() : { porto_destino: [], porto_origem: [], banco_cambio: [] };
+const PORTOS_DESTINO = [];          // [{codigo, nome, sinonimos}]
 // Dias de armazenagem grátis (1º período) no porto por código de destino —
 // depois desse prazo a partir da Presença de Carga (chegada física da carga
 // no terminal, não a atracação do navio), o porto passa a cobrar armazenagem
 // adicional. Pedido da Emanuelly (03/09/2026): Navegantes = 5 dias, Itapoá =
-// 4 dias. Itajaí ainda não tem prazo confirmado com o time — usando 5 dias
-// (mesmo de Navegantes) até alguém confirmar o valor real do terminal.
-// Imbituba (BRIBB) entrou em PORTOS_DESTINO em 14/09/2026 mas ficou de fora
-// daqui -- sem entrada aqui, renderArmazenInfo() (controle-core.js) não
-// mostrava o quadro "Cálculo da Armazenagem" pra nenhum processo desse
-// porto (bug reportado pela Emanuelly, 17/09/2026). Mesmo tratamento
-// provisório de Itajaí: 5 dias até confirmar com o terminal.
-const PORTO_ARMAZENAGEM_FREE_DIAS = { NVT: 5, IOA: 4, ITJ: 5, BRIBB: 5 };
+// 4 dias; Itajaí e Imbituba provisórios (5) até confirmar com o terminal.
+// Agora editável em /cadastros → Listas → Portos de destino.
+const PORTO_ARMAZENAGEM_FREE_DIAS = {};
 // Origem varia mais (várias cidades/países), então fica uma lista das mais
 // usadas + "Outro" pra digitar livre quando aparecer uma nova.
-// Lista ampliada cobrindo os principais polos de fabricação de pneus na Ásia
-// (China, Vietnã, Camboja, Tailândia, Indonésia, Índia, Coreia do Sul, Malásia).
-const PORTOS_ORIGEM = [
-  // China
-  'SHANGHAI','NINGBO','QINGDAO','TIANJIN','XIAMEN','SHENZHEN','GUANGZHOU','NANSHA','YANTIAN','DALIAN','LIANYUNGANG',
-  // Vietnã
-  'HO CHI MINH','HAI PHONG','VUNG TAU',
-  // Camboja
-  'SIHANOUKVILLE','PHNOM PENH',
-  // Tailândia
-  'LAEM CHABANG','BANGKOK',
-  // Indonésia
-  'JAKARTA','SURABAYA',
-  // Índia
-  'CHENNAI','NHAVA SHEVA','MUNDRA',
-  // Coreia do Sul
-  'BUSAN',
-  // Malásia
-  'PORT KLANG',
-];
+const PORTOS_ORIGEM = [];           // ['SHANGHAI', 'NINGBO', ...] (códigos)
+// Mapa porto de origem → país — usado no Dashboard Financeiro pra mostrar de
+// qual país cada pagamento é (reusa o porto de origem do processo).
+const PORTO_PAIS = {};
+// Contas da própria Impak usadas pra fechar câmbio (pedido Ayslan, 17/09/2026).
+// Agência/conta/PIX ficam só no banco (aba Listas), não no código.
+const BANCOS_CAMBIO = [];           // [{nome, codigo, codigo_banco, agencia, conta, pix}]
+let _listasOrigem = 'padrao';       // 'padrao' | 'banco' — de onde vieram as listas atuais
+let _listasCompletas = _LISTAS_INICIAIS; // objeto cru de /api/listas (usado pela aba Listas)
 
-// Mesmo agrupamento por país da lista PORTOS_ORIGEM acima, só que como mapa
-// direto porto→país — usado no Dashboard Financeiro pra mostrar de qual
-// país cada pagamento é, sem precisar de um campo novo no cadastro (reusa
-// o porto de origem que já é preenchido em todo processo).
-const PORTO_PAIS = {
-  'SHANGHAI':'China','NINGBO':'China','QINGDAO':'China','TIANJIN':'China','XIAMEN':'China',
-  'SHENZHEN':'China','GUANGZHOU':'China','NANSHA':'China','YANTIAN':'China','DALIAN':'China','LIANYUNGANG':'China',
-  'HO CHI MINH':'Vietnã','HAI PHONG':'Vietnã','VUNG TAU':'Vietnã',
-  'SIHANOUKVILLE':'Camboja','PHNOM PENH':'Camboja',
-  'LAEM CHABANG':'Tailândia','BANGKOK':'Tailândia',
-  'JAKARTA':'Indonésia','SURABAYA':'Indonésia',
-  'CHENNAI':'Índia','NHAVA SHEVA':'Índia','MUNDRA':'Índia',
-  'BUSAN':'Coreia do Sul',
-  'PORT KLANG':'Malásia',
-};
+function aplicarListas(listas){
+  if(!listas) return;
+  _listasCompletas = listas;
+  if(Array.isArray(listas.porto_destino) && listas.porto_destino.length){
+    PORTOS_DESTINO.length = 0;
+    Object.keys(PORTO_ARMAZENAGEM_FREE_DIAS).forEach(k=>{ delete PORTO_ARMAZENAGEM_FREE_DIAS[k]; });
+    listas.porto_destino.filter(p=>p.ativo!==false).forEach(p=>{
+      PORTOS_DESTINO.push({ codigo:p.codigo, nome:p.nome, sinonimos:(p.sinonimos||[]).slice() });
+      const d = p.dados && p.dados.dias_gratis;
+      if(d!==undefined && d!==null && d!=='' && !isNaN(parseInt(d,10))) PORTO_ARMAZENAGEM_FREE_DIAS[p.codigo] = parseInt(d,10);
+    });
+  }
+  if(Array.isArray(listas.porto_origem) && listas.porto_origem.length){
+    PORTOS_ORIGEM.length = 0;
+    Object.keys(PORTO_PAIS).forEach(k=>{ delete PORTO_PAIS[k]; });
+    listas.porto_origem.filter(p=>p.ativo!==false).forEach(p=>{
+      PORTOS_ORIGEM.push(p.codigo);
+      if(p.dados && p.dados.pais) PORTO_PAIS[p.codigo] = p.dados.pais;
+    });
+  }
+  if(Array.isArray(listas.banco_cambio) && listas.banco_cambio.length){
+    BANCOS_CAMBIO.length = 0;
+    listas.banco_cambio.filter(b=>b.ativo!==false).forEach(b=>{
+      BANCOS_CAMBIO.push(Object.assign({ nome:b.nome, codigo:b.codigo }, b.dados||{}));
+    });
+  }
+}
+aplicarListas(_LISTAS_INICIAIS);
+
+// Busca as listas do banco (GET /api/listas). Chamado no boot (controle-core.js)
+// em paralelo com /api/me; se falhar, fica o padrão embutido.
+async function carregarListas(){
+  try{
+    const r = await fetch('/api/listas');
+    const d = await r.json();
+    if(d && d.ok && d.listas){ aplicarListas(d.listas); _listasOrigem = d.origem || 'banco'; }
+  }catch(e){ /* mantém o padrão embutido */ }
+  return _listasCompletas;
+}
+
+// Sinônimo → código, montado a partir das listas (normalização no front).
+function _apelidosPortoDestino(){
+  const m = {};
+  PORTOS_DESTINO.forEach(p=>{
+    (p.sinonimos||[]).forEach(s=>{ m[String(s).trim().toUpperCase()] = p.codigo; });
+    m[String(p.nome).trim().toUpperCase()] = p.codigo;
+  });
+  // Apelidos históricos (continuam valendo mesmo se alguém apagar o sinônimo da lista)
+  Object.assign(m, { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT', 'IMBITUBA':'BRIBB' });
+  return m;
+}
 // País do processo a partir do porto de origem já cadastrado — se for um
 // porto fora da lista (ou "Outro" com texto livre), mostra "—" em vez de
 // arriscar um palpite errado.
@@ -89,7 +111,7 @@ function paisDoProcesso(proc){
 function normalizarPortoDestino(valor){
   if(!valor) return valor;
   const va = valor.trim().toUpperCase();
-  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'PORTONAVE':'NVT', 'IMBITUBA':'BRIBB' };
+  const APELIDOS = _apelidosPortoDestino();
   if(APELIDOS[va]) return APELIDOS[va];
   if(PORTOS_DESTINO.some(p=>p.codigo===va)) return va;
   // Fallback por substring — cobre variações tipo "NAVEGANTES, BRAZIL" ou
@@ -113,7 +135,7 @@ function formatarPortoDestino(valor){
 
 function gerarOptionsPortoDestino(valorAtual){
   const va = (valorAtual||'').trim().toUpperCase();
-  const APELIDOS = { 'NAVEGANTES':'NVT', 'ITAJAI':'ITJ', 'ITAJAÍ':'ITJ', 'ITAPOA':'IOA', 'ITAPOÁ':'IOA', 'IMBITUBA':'BRIBB' };
+  const APELIDOS = _apelidosPortoDestino();
   const codigoResolvido = APELIDOS[va] || va;
   const match = PORTOS_DESTINO.find(p => p.codigo === codigoResolvido);
   let html = '<option value="">— selecionar —</option>';
@@ -958,14 +980,9 @@ let _parcelas = []; // [{label, valor_usd, data_vencimento, cambio_fechado, valo
 // inconsistentes (ex: "Pré embarque" vs "Pre-embarque" vs "Embarque").
 const PARCELA_ETAPAS = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
 
-// Contas bancárias da própria Impak usadas pra fechar câmbio (cadastradas a
-// pedido do Ayslan, 17/09/2026). agencia/conta/pix ficam guardados aqui pra
-// uso futuro (ex: planilha de dados bancários), hoje só nome/cnpj entram
-// nos campos de Banco/Corretora do Câmbio.
-const BANCOS_CAMBIO = [
-  { nome:'Itaú', cnpj:'16.554.796/0001-64', codigo_banco:'341', agencia:'2941', conta:'96446-8', pix:'' },
-  { nome:'Santander', cnpj:'16.554.796/0001-64', codigo_banco:'033', agencia:'4401', conta:'130014510', pix:'importacao@impak.com.br' },
-];
+// Contas bancárias da própria Impak usadas pra fechar câmbio — lista
+// BANCOS_CAMBIO declarada no topo deste arquivo (vem de /api/listas →
+// cadastros_listas, categoria banco_cambio; editável em /cadastros → Listas).
 function datalistBancosCambioHtml(){
   return `<datalist id="lista-bancos-cambio">${BANCOS_CAMBIO.map(b=>`<option value="${esc(b.nome)}">`).join('')}</datalist>`;
 }

@@ -130,8 +130,12 @@ function renderListaContatos(){
     const cnpjFmt = doc
       ? (c.tipo_pessoa==='FISICA' ? doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'))
       : '—';
+    // Papéis extras além do tipo que está sendo filtrado (cadastros fase 1b)
+    const extras = (Array.isArray(c.papeis) ? c.papeis : []).filter(pp => pp && pp !== _contatosTipoAtivo);
+    const badges = extras.map(pp => `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;background:var(--bg);border:1px solid var(--border);font-size:10px;color:var(--muted);font-weight:500;" title="Também cadastrada como ${esc(PAPEIS_EMPRESA[pp]||pp)}">${esc(PAPEIS_EMPRESA[pp]||pp)}</span>`).join('');
+    const fantasia = c.nome_fantasia && c.nome_fantasia !== c.razao_social ? `<div style="font-size:11px;color:var(--muted);font-weight:400;">${esc(c.nome_fantasia)}</div>` : '';
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="editarContato('${c.id}')" title="Clique para abrir">
-      <td style="padding:9px 16px;font-weight:600;">${esc(c.razao_social)}</td>
+      <td style="padding:9px 16px;font-weight:600;">${esc(c.razao_social)}${badges}${fantasia}</td>
       <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-size:11px;">${cnpjFmt}</td>
       <td style="padding:9px 16px;">${esc(c.cidade||'')}${c.uf?'/'+c.uf:''}</td>
       <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${esc(c.email||c.telefone||'—')}</td>
@@ -237,13 +241,50 @@ async function buscarDadosCnpj(valor){
   }
 }
 
+// Papéis possíveis de uma empresa (mesma lista de TIPOS_EMPRESA no server).
+// Cadastros fase 1b (01/10/2026): uma empresa pode ter vários papéis — o
+// tipo principal (select) sempre fica marcado; os demais são checkboxes.
+const PAPEIS_EMPRESA = {
+  CLIENTE:'Cliente', FORNECEDOR:'Fornecedor', EXPORTADOR:'Exportador', DESPACHANTE:'Despachante',
+  AGENTE:'Agente de Carga', ARMADOR:'Armador', TRANSPORTADORA:'Transportadora',
+  ARMAZEM_ALFANDEGADO:'Armazém Alfandegado', PORTO_ARMAZEM:'Porto/Armazém', DEPOT_DEVOLUCAO:'Depot Devolução',
+};
+function _ceRenderPapeis(marcados){
+  const wrap = document.getElementById('ce_papeis');
+  if(!wrap) return;
+  const set = new Set((marcados||[]).map(x=>String(x).toUpperCase()));
+  wrap.innerHTML = Object.keys(PAPEIS_EMPRESA).map(k=>
+    `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;"><input type="checkbox" data-papel="${k}" ${set.has(k)?'checked':''} onchange="_ceContatoDirty=true"> ${esc(PAPEIS_EMPRESA[k])}</label>`
+  ).join('');
+  _ceSincronizarPapeis();
+}
+// O tipo principal sempre fica marcado (e travado) entre os papéis.
+function _ceSincronizarPapeis(){
+  const tipo = document.getElementById('ce_tipo')?.value;
+  document.querySelectorAll('#ce_papeis input[type=checkbox]').forEach(cb=>{
+    const ehPrincipal = cb.dataset.papel === tipo;
+    if(ehPrincipal) cb.checked = true;
+    cb.disabled = ehPrincipal;
+  });
+}
+function _cePapeisMarcados(){
+  return Array.from(document.querySelectorAll('#ce_papeis input[type=checkbox]:checked')).map(cb=>cb.dataset.papel);
+}
+// Sinônimos: textarea com uma grafia por linha (ou separadas por ;).
+function _ceSinonimosLidos(){
+  const t = document.getElementById('ce_sinonimos')?.value || '';
+  const vistos = new Set();
+  return t.split(/[\n;]+/).map(x=>x.trim()).filter(x=>{ if(!x||vistos.has(x.toUpperCase())) return false; vistos.add(x.toUpperCase()); return true; });
+}
+
 function abrirNovoContato(){
   document.getElementById('contato-edit-title').textContent = 'Novo Contato';
   ['ce_id','ce_razao_social','ce_nome_fantasia','ce_documento','ce_uf','ce_cidade','ce_email','ce_telefone','ce_obs',
-   'ce_logradouro','ce_numero','ce_complemento','ce_bairro','ce_cep'].forEach(id=>{
+   'ce_logradouro','ce_numero','ce_complemento','ce_bairro','ce_cep','ce_sinonimos'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('ce_tipo').value = _contatosTipoAtivo;
+  _ceRenderPapeis([_contatosTipoAtivo]);
   document.getElementById('ce_tipo_pessoa').value = 'JURIDICA';
   document.getElementById('ce_pais').value = 'Brasil';
   _ceAtualizarCamposDocumento();
@@ -267,6 +308,9 @@ function editarContato(id){
   document.getElementById('contato-edit-title').textContent = 'Editar Contato';
   document.getElementById('ce_id').value = c.id;
   document.getElementById('ce_tipo').value = c.tipo||'CLIENTE';
+  _ceRenderPapeis((Array.isArray(c.papeis) && c.papeis.length) ? c.papeis : [c.tipo||'CLIENTE']);
+  const elSin = document.getElementById('ce_sinonimos');
+  if(elSin) elSin.value = (Array.isArray(c.sinonimos) ? c.sinonimos : []).join('\n');
   document.getElementById('ce_tipo_pessoa').value = c.tipo_pessoa||'JURIDICA';
   document.getElementById('ce_pais').value = c.pais||'Brasil';
   document.getElementById('ce_razao_social').value = c.razao_social||'';
@@ -399,6 +443,8 @@ async function salvarContato(){
   const payload = {
     id: document.getElementById('ce_id').value || undefined,
     tipo: document.getElementById('ce_tipo').value,
+    papeis: _cePapeisMarcados(),
+    sinonimos: _ceSinonimosLidos(),
     tipo_pessoa: tipoPessoa,
     pais: pais,
     razao_social: razao,
@@ -480,6 +526,9 @@ let _cpPessoaDirty = false;
 
 document.addEventListener('keydown', function(e){
   if(e.key !== 'Escape') return;
+  // Modal de item de lista (Cadastros → Listas): formulário curto, fecha direto.
+  const listaBg = document.getElementById('modal-lista-edit-bg');
+  if(listaBg && listaBg.classList.contains('open')){ fecharModalListaEdit(); return; }
   const pessoaBg = document.getElementById('modal-pessoa-edit-bg');
   if(pessoaBg && pessoaBg.classList.contains('open')){
     if(_cpPessoaDirty){

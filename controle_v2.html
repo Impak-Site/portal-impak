@@ -23,6 +23,9 @@ tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
 <!-- Catálogo único de Taxas Operacionais (base_rateio: processo/container),
      compartilhado com o Calculador — ver taxas-catalogo.js -->
 <script src="/taxas-catalogo.js"></script>
+<!-- Listas padrão (portos/dias grátis/bancos) — fallback do que vem de /api/listas;
+     mesmo arquivo que o servidor usa, ver listas-padrao.js e migration 0040 -->
+<script src="/listas-padrao.js"></script>
 <!-- Evita o "flash" da tela normal (menu/sidebar/filtros/tabela) nas telas
      exclusivas (Financeiro/Resultado/Análises/Narcélio/TV/Câmbio) enquanto
      JS ainda está buscando os processos e montando o layout dedicado —
@@ -685,8 +688,8 @@ ao lado das datas). -->
 <div class="modal-body">
 <div style="padding:22px 26px;">
 <input type="hidden" id="ce_id">
-<div class="form-group"><label class="form-label">Tipo</label>
-<select class="form-input" id="ce_tipo">
+<div class="form-group"><label class="form-label">Tipo principal</label>
+<select class="form-input" id="ce_tipo" onchange="_ceSincronizarPapeis()">
 <option value="CLIENTE">Cliente</option>
 <option value="FORNECEDOR">Fornecedor</option>
 <option value="EXPORTADOR">Exportador</option>
@@ -698,10 +701,17 @@ ao lado das datas). -->
 <option value="PORTO_ARMAZEM">Porto/Armazém</option>
 <option value="DEPOT_DEVOLUCAO">Depot Devolução</option>
 </select></div>
+<!-- Papéis (cadastros fase 1b, 01/10/2026): a mesma empresa pode ser, por
+     exemplo, transportadora E armazém — um cadastro só, vários papéis. O
+     tipo principal acima sempre fica marcado. -->
+<div class="form-group"><label class="form-label">Papéis (marque todos que se aplicam)</label>
+<div id="ce_papeis" style="display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-size:12px;"></div></div>
 <div class="form-group"><label class="form-label">Razão Social *</label>
 <input class="form-input" id="ce_razao_social"></div>
-<div class="form-group"><label class="form-label">Nome Fantasia</label>
+<div class="form-group"><label class="form-label">Nome Fantasia <span style="font-weight:400;color:var(--muted);font-size:11px;">(pra armador, é o nome curto que vai pro processo — ex.: PIL)</span></label>
 <input class="form-input" id="ce_nome_fantasia"></div>
+<div class="form-group"><label class="form-label">Outras grafias / sinônimos <span style="font-weight:400;color:var(--muted);font-size:11px;">(uma por linha ou separadas por ; — o sistema troca por este cadastro ao salvar o processo)</span></label>
+<textarea class="form-input" id="ce_sinonimos" rows="2" placeholder="Ex.: PILL&#10;PIL SHIPPING&#10;PACIFIC INTERNATIONAL LINES"></textarea></div>
 <div class="form-row">
 <div class="form-group"><label class="form-label">Tipo de Pessoa</label>
 <select class="form-input" id="ce_tipo_pessoa" onchange="_ceAtualizarCamposDocumento()">
@@ -768,6 +778,40 @@ ao lado das datas). -->
 <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;">
 <button class="btn btn-outline" onclick="fecharModalContatoEdit()">Cancelar</button>
 <button class="btn btn-primary" onclick="salvarContato()">💾 Salvar</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- MODAL: ITEM DE LISTA (Cadastros → Listas: portos de destino/origem, bancos de câmbio) -->
+<div class="modal-bg" id="modal-lista-edit-bg">
+<div class="modal" style="max-width:520px;">
+<div class="modal-header">
+<div class="modal-title" id="lista-edit-title">Novo item</div>
+<button class="modal-close" onclick="fecharModalListaEdit()">×</button>
+</div>
+<div class="modal-body">
+<div style="padding:22px 26px;">
+<input type="hidden" id="cl_id"><input type="hidden" id="cl_categoria">
+<div class="form-row">
+<div class="form-group"><label class="form-label">Código *</label>
+<input class="form-input" id="cl_codigo" style="text-transform:uppercase;" placeholder="Ex.: ITJ"></div>
+<div class="form-group"><label class="form-label">Nome *</label>
+<input class="form-input" id="cl_nome" placeholder="Ex.: Itajaí"></div>
+</div>
+<div id="cl_dados"></div>
+<div class="form-group"><label class="form-label">Outras grafias / sinônimos <span style="font-weight:400;color:var(--muted);font-size:11px;">(uma por linha ou separadas por ;)</span></label>
+<textarea class="form-input" id="cl_sinonimos" rows="3"></textarea></div>
+<div class="form-row">
+<div class="form-group"><label class="form-label">Ordem na lista</label>
+<input class="form-input" type="number" id="cl_ordem" value="0"></div>
+<div class="form-group"><label class="form-label">Situação</label>
+<select class="form-input" id="cl_ativo"><option value="1">Ativo</option><option value="0">Inativo (não aparece nos formulários)</option></select></div>
+</div>
+<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;">
+<button class="btn btn-outline" onclick="fecharModalListaEdit()">Cancelar</button>
+<button class="btn btn-primary" onclick="salvarItemLista()">💾 Salvar</button>
 </div>
 </div>
 </div>

@@ -167,6 +167,10 @@ window.addEventListener('DOMContentLoaded', function(){
   // tela). carregarProcessos() usa essas promessas na 1ª carga.
   _prefetchVersao = buscarVersaoProcessos();
   _prefetchCache = lerCacheProcessos();
+  // Listas do banco (portos/dias grátis/bancos — cadastros fase 1b, 01/10/2026):
+  // em paralelo com /api/me; até chegar, vale o padrão embutido (listas-padrao.js).
+  // Quem precisa das listas prontas (ex.: aba Listas de /cadastros) usa a promessa.
+  _listasPromise = (typeof carregarListas === 'function') ? carregarListas() : Promise.resolve(null);
   fetch('/api/me').then(r=>r.json()).then(d=>{
     if(!d.logado){ location.href='/login?destino='+encodeURIComponent(location.pathname); return; }
     _user = d;
@@ -988,6 +992,7 @@ async function _buscarIncremental(base, versao){
 
 let _cacheInicialTentado = false;
 let _prefetchVersao = null, _prefetchCache = null;
+let _listasPromise = null; // promessa de carregarListas() disparada no boot (ver DOMContentLoaded)
 let _ultimaCargaTotal = 0; // última vez que a lista veio INTEIRA do servidor
 async function carregarProcessos(silencioso, forcarCompleto){
   // 1ª carga da página: tenta a cópia local se ela ainda estiver atual.

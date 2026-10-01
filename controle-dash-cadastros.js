@@ -13,7 +13,7 @@
 // abrirNovoContato/editarContato/salvarContato — ver controle-contatos.js)
 // e adiciona um modal próprio de Pessoa (#modal-pessoa-edit-bg).
 
-let _cadAba = 'empresas'; // 'empresas' | 'pessoas' | 'funcionarios'
+let _cadAba = 'empresas'; // 'empresas' | 'pessoas' | 'funcionarios' | 'listas'
 let _cadUsuariosLoginCache = null;
 
 function renderDashCadastros(){
@@ -25,6 +25,7 @@ function renderDashCadastros(){
       ${aba('empresas','🏢 Empresas')}
       ${aba('pessoas','👤 Pessoas (contatos)')}
       ${aba('funcionarios','🧑‍💼 Funcionários')}
+      ${aba('listas','📚 Listas (portos, bancos)')}
     </div>
     <div id="cad-aba-content"></div>
   `;
@@ -39,7 +40,185 @@ function _cadMudarAba(aba){
 function _cadRenderAbaAtiva(){
   if(_cadAba === 'empresas') _cadRenderEmpresas();
   else if(_cadAba === 'pessoas') _cadRenderPessoas('CONTATO');
+  else if(_cadAba === 'listas') _cadRenderListas();
   else _cadRenderPessoas('FUNCIONARIO');
+}
+
+// ── ABA LISTAS (cadastros fase 1b, 01/10/2026) ─────────────────────
+// Portos de destino (com dias grátis de armazenagem), portos de origem (com
+// país) e bancos de câmbio. Antes eram constantes fixas em controle-campos.js
+// (só mudavam com deploy); agora vivem em cadastros_listas (migration 0040)
+// e qualquer gerente/analista com acesso a Cadastros edita aqui. Os
+// formulários do processo leem as mesmas listas (ver aplicarListas()).
+let _cadListaCat = 'porto_destino';
+let _cadListasCache = null; // resposta de /api/listas?todos=1 (inclui inativos)
+
+async function _cadRenderListas(){
+  const cont = document.getElementById('cad-aba-content');
+  const cats = (typeof ListasPadrao !== 'undefined') ? ListasPadrao.CATEGORIAS : {};
+  cont.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${Object.keys(cats).map(c=>`<button class="btn btn-sm ${c===_cadListaCat?'btn-primary':'btn-outline'}" onclick="_cadFiltrarListaCat('${c}')">${esc(cats[c].nome)}</button>`).join('')}
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" onclick="abrirNovoItemLista()">+ Adicionar</button>
+    </div>
+    <div id="cad-listas-aviso"></div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead style="background:var(--bg);" id="cad-listas-thead"></thead>
+        <tbody id="cad-listas-tbody"><tr><td colspan="8" style="text-align:center;padding:30px;color:var(--dim);font-size:13px;">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;">
+      💡 <b>Código</b> é o que fica gravado no processo (ex.: NVT); <b>Nome</b> é o que aparece nas telas e relatórios.
+      <b>Sinônimos</b> são outras grafias que o time usa — ao salvar um processo com uma delas, o sistema troca pelo código.
+      Item inativo some dos formulários mas continua valendo nos processos antigos.
+    </div>
+  `;
+  try{
+    const r = await fetch('/api/listas?todos=1');
+    const d = await r.json();
+    _cadListasCache = d.ok ? d : null;
+  }catch(e){ _cadListasCache = null; }
+  _cadRenderTabelaListas();
+}
+
+function _cadFiltrarListaCat(c){
+  _cadListaCat = c;
+  _cadRenderListas();
+}
+
+function _cadRenderTabelaListas(){
+  const thead = document.getElementById('cad-listas-thead');
+  const tbody = document.getElementById('cad-listas-tbody');
+  const aviso = document.getElementById('cad-listas-aviso');
+  if(!thead || !tbody) return;
+  const cats = (typeof ListasPadrao !== 'undefined') ? ListasPadrao.CATEGORIAS : {};
+  const campos = (cats[_cadListaCat] && cats[_cadListaCat].campos) || [];
+  const th = (t, dir) => `<th style="text-align:${dir||'left'};padding:10px 16px;font-size:10px;color:var(--muted);text-transform:uppercase;">${t}</th>`;
+  thead.innerHTML = `<tr style="border-bottom:1px solid var(--border);">${th('Código')}${th('Nome')}${campos.map(c=>th(esc(c[1]))).join('')}${th('Sinônimos')}${th('Situação')}${th('Ações','right')}</tr>`;
+  if(aviso){
+    aviso.innerHTML = (_cadListasCache && _cadListasCache.origem === 'padrao')
+      ? `<div style="margin-bottom:10px;padding:10px 12px;background:#fff7e6;border:1px solid #f0c36d;border-radius:8px;font-size:12px;color:#7a4d00;">⚠ Mostrando a <b>lista padrão embutida</b> — a tabela <code>cadastros_listas</code> ainda não existe no banco (rode a migration 0040 no Supabase). Até lá, não dá pra salvar alterações aqui.</div>`
+      : '';
+  }
+  const itens = ((_cadListasCache && _cadListasCache.listas && _cadListasCache.listas[_cadListaCat]) || []).slice()
+    .sort((a,b)=> (a.ordem||0)-(b.ordem||0) || String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+  if(!itens.length){
+    tbody.innerHTML = `<tr><td colspan="${4+campos.length}" style="text-align:center;padding:30px;color:var(--dim);font-size:13px;">Nenhum item nesta lista.</td></tr>`;
+    return;
+  }
+  const ehGerente = (typeof _user !== 'undefined' && _user && _user.role === 'gerente');
+  tbody.innerHTML = itens.map(it=>{
+    const dados = it.dados || {};
+    const inativo = it.ativo === false;
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;${inativo?'opacity:.55;':''}" onclick="editarItemLista('${esc(it.id||'')}','${esc(it.codigo)}')" title="Clique para abrir">
+      <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-weight:600;">${esc(it.codigo)}</td>
+      <td style="padding:9px 16px;font-weight:600;">${esc(it.nome)}</td>
+      ${campos.map(c=>`<td style="padding:9px 16px;">${esc(dados[c[0]]!==undefined && dados[c[0]]!==null ? String(dados[c[0]]) : '—')}</td>`).join('')}
+      <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${(it.sinonimos||[]).length ? esc((it.sinonimos||[]).join(', ')) : '—'}</td>
+      <td style="padding:9px 16px;font-size:11px;">${inativo ? '<span style="color:var(--err);">Inativo</span>' : '<span style="color:var(--ok,#16a34a);">Ativo</span>'}</td>
+      <td style="padding:9px 16px;text-align:right;white-space:nowrap;">
+        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();editarItemLista('${esc(it.id||'')}','${esc(it.codigo)}')">Editar</button>
+        ${ehGerente && it.id && !inativo ? `<button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="event.stopPropagation();excluirItemLista('${esc(it.id)}')">Inativar</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function _clRenderCamposDados(categoria, dados){
+  const cats = (typeof ListasPadrao !== 'undefined') ? ListasPadrao.CATEGORIAS : {};
+  const campos = (cats[categoria] && cats[categoria].campos) || [];
+  const wrap = document.getElementById('cl_dados');
+  if(!wrap) return;
+  wrap.innerHTML = campos.map(c=>`<div class="form-group"><label class="form-label">${esc(c[1])}</label>
+    <input class="form-input" type="${c[2]==='number'?'number':'text'}" data-dado="${esc(c[0])}" value="${esc(dados && dados[c[0]]!==undefined && dados[c[0]]!==null ? String(dados[c[0]]) : '')}"></div>`).join('');
+}
+
+function abrirNovoItemLista(){
+  const cats = (typeof ListasPadrao !== 'undefined') ? ListasPadrao.CATEGORIAS : {};
+  document.getElementById('lista-edit-title').textContent = 'Novo item — ' + ((cats[_cadListaCat] && cats[_cadListaCat].nome) || _cadListaCat);
+  document.getElementById('cl_id').value = '';
+  document.getElementById('cl_categoria').value = _cadListaCat;
+  document.getElementById('cl_codigo').value = '';
+  document.getElementById('cl_codigo').disabled = false;
+  document.getElementById('cl_nome').value = '';
+  document.getElementById('cl_sinonimos').value = '';
+  document.getElementById('cl_ordem').value = '0';
+  document.getElementById('cl_ativo').value = '1';
+  _clRenderCamposDados(_cadListaCat, {});
+  document.getElementById('modal-lista-edit-bg').classList.add('open');
+}
+
+function editarItemLista(id, codigo){
+  const itens = (_cadListasCache && _cadListasCache.listas && _cadListasCache.listas[_cadListaCat]) || [];
+  const it = itens.find(x => (id && x.id === id) || (!id && x.codigo === codigo));
+  if(!it) return;
+  const cats = (typeof ListasPadrao !== 'undefined') ? ListasPadrao.CATEGORIAS : {};
+  document.getElementById('lista-edit-title').textContent = 'Editar — ' + ((cats[_cadListaCat] && cats[_cadListaCat].nome) || _cadListaCat);
+  document.getElementById('cl_id').value = it.id || '';
+  document.getElementById('cl_categoria').value = _cadListaCat;
+  document.getElementById('cl_codigo').value = it.codigo || '';
+  // Código é a chave gravada nos processos — não muda em edição (crie outro item se precisar).
+  document.getElementById('cl_codigo').disabled = !!it.id;
+  document.getElementById('cl_nome').value = it.nome || '';
+  document.getElementById('cl_sinonimos').value = (it.sinonimos||[]).join('\n');
+  document.getElementById('cl_ordem').value = String(it.ordem||0);
+  document.getElementById('cl_ativo').value = it.ativo === false ? '0' : '1';
+  _clRenderCamposDados(_cadListaCat, it.dados || {});
+  document.getElementById('modal-lista-edit-bg').classList.add('open');
+}
+
+function fecharModalListaEdit(){
+  document.getElementById('modal-lista-edit-bg').classList.remove('open');
+}
+
+async function salvarItemLista(){
+  const codigo = document.getElementById('cl_codigo').value.trim().toUpperCase();
+  const nome = document.getElementById('cl_nome').value.trim();
+  if(!codigo || !nome){ showToast('Código e nome são obrigatórios','err'); return; }
+  const dados = {};
+  document.querySelectorAll('#cl_dados input[data-dado]').forEach(inp=>{
+    const v = inp.value.trim();
+    if(v !== '') dados[inp.dataset.dado] = inp.type === 'number' ? Number(v) : v;
+  });
+  const vistos = new Set();
+  const sinonimos = document.getElementById('cl_sinonimos').value.split(/[\n;]+/).map(x=>x.trim()).filter(x=>{ if(!x||vistos.has(x.toUpperCase())) return false; vistos.add(x.toUpperCase()); return true; });
+  const payload = {
+    id: document.getElementById('cl_id').value || undefined,
+    categoria: document.getElementById('cl_categoria').value,
+    codigo, nome, dados, sinonimos,
+    ordem: parseInt(document.getElementById('cl_ordem').value,10) || 0,
+    ativo: document.getElementById('cl_ativo').value === '1',
+  };
+  try{
+    const r = await fetch('/api/listas', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if(d.ok){
+      showToast('✓ Lista atualizada','ok');
+      fecharModalListaEdit();
+      // Recarrega as listas usadas pelos formulários (portos/dias grátis/bancos) e a tabela.
+      if(typeof carregarListas === 'function') await carregarListas();
+      await _cadRenderListas();
+    } else {
+      showToast(d.erro || 'Erro ao salvar', 'err');
+    }
+  }catch(e){ showToast('Erro ao salvar item da lista','err'); }
+}
+
+async function excluirItemLista(id){
+  if(!confirm('Inativar este item? Ele some dos formulários, mas os processos antigos continuam com o valor.')) return;
+  try{
+    const r = await fetch('/api/listas/'+encodeURIComponent(id), { method:'DELETE' });
+    const d = await r.json();
+    if(d.ok){
+      showToast('Item inativado','ok');
+      if(typeof carregarListas === 'function') await carregarListas();
+      await _cadRenderListas();
+    } else showToast(d.erro || 'Erro ao inativar','err');
+  }catch(e){ showToast('Erro ao inativar','err'); }
 }
 
 // ── ABA EMPRESAS ────────────────────────────────────────────────

@@ -74,6 +74,122 @@ teste('País vazio assume Brasil (mantém a regra)', () => {
   assert.ok(validarDocumento('JURIDICA', '', '').includes('CNPJ'));
 });
 
+// ════════════════════════════════════════════════════════════════
+// lib/cadastros-normalizar.js + listas-padrao.js (cadastros fase 1b, 01/10/2026)
+// Padronização dos campos texto livre do processo pelos cadastros/listas.
+// ════════════════════════════════════════════════════════════════
+const N = require('./lib/cadastros-normalizar.js');
+const ListasPadrao = require('./listas-padrao.js');
+
+const EMPRESAS = [
+  { razao_social: 'PACIFIC INTERNATIONAL LINES', nome_fantasia: 'PIL', tipo: 'ARMADOR', papeis: ['ARMADOR'], sinonimos: ['PILL', 'PIL SHIPPING'] },
+  { razao_social: 'COSCO SHIPPING LINES CO LTD', nome_fantasia: 'COSCO', tipo: 'ARMADOR' },
+  { razao_social: 'ROYAL CARGO DO BRASIL', nome_fantasia: 'ROYAL', tipo: 'AGENTE' },
+  { razao_social: 'FIND COMEX LOGISTIC ASSESSORIA ADUANEIRA LTDA', tipo: 'DESPACHANTE', sinonimos: ['FIND COMEX LOGISTC ASSESORIA ADUANEIRA LTDA'] },
+  { razao_social: 'RF LOGISTICA LTDA', tipo: 'TRANSPORTADORA', papeis: ['TRANSPORTADORA', 'ARMAZEM_ALFANDEGADO'], sinonimos: ['RF LOGÍSTICA'] },
+  { razao_social: 'LECHMAN TERMINAIS (NAVEGANTES)', nome_fantasia: 'LECHMAN', tipo: 'DEPOT_DEVOLUCAO', sinonimos: ['LACHMAN', 'LECHMAN TERMINAIS NAVEGANTES'] },
+  { razao_social: 'EMPRESA INATIVA', nome_fantasia: 'INATIVA', tipo: 'ARMADOR', ativo: false, sinonimos: ['PIL'] },
+];
+const IDX = N.montarIndice(EMPRESAS, ListasPadrao.listasPadrao());
+
+console.log('\n── chaveNormalizada ──');
+teste('ignora acento, caixa, pontuação e espaços extras', () => {
+  assert.strictEqual(N.chaveNormalizada('  Itajaí '), 'ITAJAI');
+  assert.strictEqual(N.chaveNormalizada('CMA-CGM'), N.chaveNormalizada('CMA CGM'));
+  assert.strictEqual(N.chaveNormalizada('HMM CO., LTD.'), 'HMM CO LTD');
+  assert.strictEqual(N.chaveNormalizada(null), '');
+});
+
+console.log('\n── normalizarValorCampo (empresas) ──');
+teste('armador: sinônimo e razão social viram o nome curto (nome fantasia)', () => {
+  assert.strictEqual(N.normalizarValorCampo('armador', 'PILL', IDX), 'PIL');
+  assert.strictEqual(N.normalizarValorCampo('armador', 'Pil Shipping', IDX), 'PIL');
+  assert.strictEqual(N.normalizarValorCampo('armador', 'pacific international lines', IDX), 'PIL');
+  assert.strictEqual(N.normalizarValorCampo('armador', 'COSCO SHIPPING LINES CO LTD', IDX), 'COSCO');
+});
+teste('agente/despachante: canônico é a razão social', () => {
+  assert.strictEqual(N.normalizarValorCampo('agente', 'ROYAL', IDX), 'ROYAL CARGO DO BRASIL');
+  assert.strictEqual(N.normalizarValorCampo('despachante', 'FIND COMEX LOGISTC ASSESORIA ADUANEIRA LTDA', IDX), 'FIND COMEX LOGISTIC ASSESSORIA ADUANEIRA LTDA');
+});
+teste('papéis múltiplos: RF LOGISTICA vale como transportadora E armazém', () => {
+  assert.strictEqual(N.normalizarValorCampo('transportadora', 'rf logistica ltda', IDX), 'RF LOGISTICA LTDA');
+  assert.strictEqual(N.normalizarValorCampo('armazem', 'RF LOGÍSTICA', IDX), 'RF LOGISTICA LTDA');
+});
+teste('não cruza papéis: "ROYAL" no campo armador não vira o agente', () => {
+  assert.strictEqual(N.normalizarValorCampo('armador', 'ROYAL', IDX), 'ROYAL');
+});
+teste('valor desconhecido fica exatamente como veio', () => {
+  assert.strictEqual(N.normalizarValorCampo('armador', 'Parisi Grand Smooth Logistics Ltd.', IDX), 'Parisi Grand Smooth Logistics Ltd.');
+  assert.strictEqual(N.normalizarValorCampo('transportadora', 'R & F LOG', IDX), 'R & F LOG');
+  assert.strictEqual(N.normalizarValorCampo('armador', '', IDX), '');
+  assert.strictEqual(N.normalizarValorCampo('armador', null, IDX), null);
+});
+teste('cadastro inativo não entra no índice (sinônimo "PIL" da inativa não gera ambiguidade)', () => {
+  assert.strictEqual(N.normalizarValorCampo('armador', 'PIL', IDX), 'PIL');
+});
+teste('grafia ambígua (2 cadastros ativos no mesmo papel) não é padronizada', () => {
+  const idx = N.montarIndice([
+    { razao_social: 'ALFA LOGISTICA', tipo: 'AGENTE', sinonimos: ['ALFA'] },
+    { razao_social: 'ALFA TRANSPORTES INTERNACIONAIS', tipo: 'AGENTE', sinonimos: ['ALFA'] },
+  ], ListasPadrao.listasPadrao());
+  assert.strictEqual(N.normalizarValorCampo('agente', 'ALFA', idx), 'ALFA');
+  assert.strictEqual(N.normalizarValorCampo('agente', 'alfa logistica', idx), 'ALFA LOGISTICA');
+});
+
+console.log('\n── normalizarValorCampo (listas) ──');
+teste('porto de origem: 8 grafias de Ho Chi Minh viram o código', () => {
+  ['Ho Chi Minh Port, Vietnam', 'HO CHI MINH CITY PORT, VIETNAM', 'HOCHIMINH, VIETNAM', 'HO CHI MINH - VIETNAM', 'ho chi minh'].forEach(v => {
+    assert.strictEqual(N.normalizarValorCampo('porto_origem', v, IDX), 'HO CHI MINH', v);
+  });
+  assert.strictEqual(N.normalizarValorCampo('porto_origem', 'Qingdao, CHINA', IDX), 'QINGDAO');
+  assert.strictEqual(N.normalizarValorCampo('porto_origem', 'SEMARANG PORT, INDONESIA', IDX), 'SEMARANG');
+  assert.strictEqual(N.normalizarValorCampo('porto_origem', 'Many, China', IDX), 'Many, China');
+});
+teste('porto de destino: nome, sinônimo e código', () => {
+  assert.strictEqual(N.normalizarValorCampo('porto_destino', 'Itajaí', IDX), 'ITJ');
+  assert.strictEqual(N.normalizarValorCampo('porto_destino', 'PORTONAVE', IDX), 'NVT');
+  assert.strictEqual(N.normalizarValorCampo('porto_destino', 'bribb', IDX), 'BRIBB');
+});
+
+console.log('\n── normalizarProcesso ──');
+teste('só toca nos campos presentes no payload e devolve o que mudou', () => {
+  const p = { id: 'x', armador: 'PILL', agente: 'ROYAL CARGO DO BRASIL', porto_origem: 'Vung Tau Port, Vietnam', obs: 'PILL' };
+  const mudancas = N.normalizarProcesso(p, IDX);
+  assert.deepStrictEqual(mudancas, [
+    { campo: 'armador', antes: 'PILL', depois: 'PIL' },
+    { campo: 'porto_origem', antes: 'Vung Tau Port, Vietnam', depois: 'VUNG TAU' },
+  ]);
+  assert.strictEqual(p.armador, 'PIL');
+  assert.strictEqual(p.agente, 'ROYAL CARGO DO BRASIL');
+  assert.strictEqual(p.obs, 'PILL');
+  assert.ok(!('transportadora' in p));
+});
+teste('sem índice ou payload vazio: nada muda', () => {
+  assert.deepStrictEqual(N.normalizarProcesso({ armador: 'PILL' }, null), []);
+  assert.deepStrictEqual(N.normalizarProcesso(null, IDX), []);
+});
+
+console.log('\n── listas-padrao.js ──');
+teste('listas padrão têm as 3 categorias e os 4 portos de destino com dias grátis', () => {
+  const l = ListasPadrao.listasPadrao();
+  assert.deepStrictEqual(Object.keys(l).sort(), ['banco_cambio', 'porto_destino', 'porto_origem']);
+  const dias = {}; l.porto_destino.forEach(p => { dias[p.codigo] = p.dados.dias_gratis; });
+  assert.deepStrictEqual(dias, { ITJ: 5, IOA: 4, NVT: 5, BRIBB: 5 });
+  assert.ok(l.porto_origem.length >= 27);
+  assert.ok(l.porto_origem.every(p => p.dados && p.dados.pais));
+});
+teste('listasPadrao() devolve cópias independentes (mutar uma não afeta a outra)', () => {
+  const a = ListasPadrao.listasPadrao(); const b = ListasPadrao.listasPadrao();
+  a.porto_destino[0].dados.dias_gratis = 99; a.porto_destino[0].sinonimos.push('X');
+  assert.strictEqual(b.porto_destino[0].dados.dias_gratis, 5);
+  assert.ok(!b.porto_destino[0].sinonimos.includes('X'));
+});
+teste('bancos de câmbio padrão não carregam agência/conta (ficam só no banco de dados)', () => {
+  ListasPadrao.listasPadrao().banco_cambio.forEach(b => {
+    assert.strictEqual(b.dados.agencia, undefined); assert.strictEqual(b.dados.conta, undefined);
+  });
+});
+
 console.log(`\n════════════════════════════════════════`);
 console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);
 console.log(`════════════════════════════════════════\n`);

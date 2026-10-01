@@ -44,6 +44,9 @@ const MODULOS_JS = [
   // usa window.TaxasCatalogo.porId() pra derivar porContainer (ver comentário
   // em controle-core.js), mesma ordem do <script src> real em controle_v2.html.
   'taxas-catalogo.js',
+  // listas-padrao.js idem: controle-campos.js monta PORTOS_DESTINO/PORTOS_ORIGEM/
+  // PORTO_PAIS/BANCOS_CAMBIO a partir de window.ListasPadrao (cadastros fase 1b).
+  'listas-padrao.js',
   'controle-core.js',
   'controle-modal.js',
   'controle-campos.js',
