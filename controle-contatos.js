@@ -471,6 +471,7 @@ async function salvarContato(){
     if(d.ok){
       _ceContatoDirty = false;
       showToast('✓ Contato salvo','ok');
+      if(d.aviso) showToast(d.aviso, 'warn');
       await carregarContatos();
       if(eraNovo && d.id){
         // Empresa acabou de ser criada agora — em vez de fechar o modal,

@@ -3518,7 +3518,19 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
     // direto dele (só faz sentido pra pessoa jurídica brasileira).
     if (!c.documento && c.cnpj) c.documento = c.cnpj;
     const erroDoc = validarDocumento(c.tipo_pessoa, c.pais, c.documento);
-    if (erroDoc) return res.status(400).json({ erro: erroDoc });
+    // Cadastro novo: CNPJ/CPF obrigatório e válido (regra do Ayslan, 12/09).
+    // EDIÇÃO de cadastro antigo que nunca teve documento (muitos vieram do
+    // autocomplete/planilha sem CNPJ): deixa salvar sem documento — senão
+    // ninguém consegue marcar papel/sinônimo/telefone nesses cadastros sem
+    // antes descobrir o CNPJ (visto em 01/10: ROYAL, RF LOGISTICA, LECHMAN,
+    // ATLANTIS... todos sem CNPJ). Documento DIGITADO continua sendo
+    // validado sempre; o aviso volta na resposta pra tela mostrar.
+    let avisoDoc = null;
+    if (erroDoc) {
+      const soFaltaDocumento = !String(c.documento || '').trim() && !!c.id;
+      if (!soFaltaDocumento) return res.status(400).json({ erro: erroDoc });
+      avisoDoc = erroDoc + ' Cadastro salvo mesmo assim — complete o documento quando tiver.';
+    }
     if (c.tipo_pessoa === 'JURIDICA' && (c.pais||'').toLowerCase() === 'brasil') {
       c.cnpj = String(c.documento || '').replace(/\D/g, '');
     }
@@ -3603,7 +3615,7 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
     if (error) throw new Error(error.message);
     invalidarIndiceCadastros();
     registrarLogCadastro('contatos_clientes', c.id, isNovo ? 'criar' : 'editar', antes, c, req.session.usuario);
-    res.json({ ok: true, id: c.id });
+    res.json({ ok: true, id: c.id, aviso: avisoDoc || undefined });
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 

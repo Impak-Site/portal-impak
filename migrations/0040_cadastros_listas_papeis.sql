@@ -140,6 +140,14 @@ CREATE TABLE IF NOT EXISTS cadastros_log (
 CREATE INDEX IF NOT EXISTS idx_cadastros_log_registro ON cadastros_log (tabela, registro_id, created_at DESC);
 ALTER TABLE cadastros_log ENABLE ROW LEVEL SECURITY;
 
+-- 4) Permissões pro backend. Neste projeto, tabela nova criada pelo SQL
+-- Editor NÃO herda os grants pra service_role (mesmo caso de app_sessions e
+-- analise_jobs, que precisaram de GRANT à parte) — sem isto o servidor
+-- recebe "permission denied for table cadastros_listas" e cai no fallback.
+GRANT ALL ON TABLE public.cadastros_listas TO service_role;
+GRANT ALL ON TABLE public.cadastros_log    TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE public.cadastros_log_id_seq TO service_role;
+
 -- Conferência:
 -- select categoria, count(*) from cadastros_listas group by 1;          -- porto_destino 4, porto_origem 27, banco_cambio 2
 -- select tipo, papeis from contatos_clientes where ativo limit 10;       -- papeis = {tipo}
