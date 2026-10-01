@@ -1084,15 +1084,32 @@ function renderCustosReaisTab(p){
 
 // Uma linha da tabela de um grupo (+ a sub-linha de containers quando a
 // taxa é porContainer e o processo tem mais de um container).
+// Pacote (Adiantamento Porto / Agente Frete) com valor real lançado = os
+// itens daquele grupo já estão dentro dele. Nessas linhas a aba NÃO pode
+// pré-preencher o cotado nem deixar "marcar restantes" confirmar o valor,
+// senão o mesmo dinheiro entra duas vezes (auditoria 30/09/2026: foi assim
+// que 9 processos ficaram com pacote + item a item).
+function crPacoteAtivoDoItem(itemId, reais){
+  if(typeof CUSTOS_REAIS_PACOTES === 'undefined' || !reais) return null;
+  for(const k of Object.keys(CUSTOS_REAIS_PACOTES)){
+    const pk = CUSTOS_REAIS_PACOTES[k];
+    if(pk.itens.includes(itemId) && custoRealTemValor(reais[pk.id])) return pk;
+  }
+  return null;
+}
 function crLinhaHtml(item, st, reais, containers, p){
   const rawPago = reais[item.id], rawCobrado = reais[item.id + '_cobrado'];
   const podeDetalhar = !!item.porContainer && containers.length > 1;
   const breakdownAtivo = podeDetalhar && ((rawPago && rawPago.porContainer) || (rawCobrado && rawCobrado.porContainer));
   const iniPago = valorMoedaInicial(rawPago, item) || { valor:'', moeda:item.unidade };
   const iniCobrado = valorMoedaInicial(rawCobrado, item) || { valor:'', moeda:item.unidade };
+  const pacoteAtivo = crPacoteAtivoDoItem(item.id, reais);
   // Sem nada salvo, pré-preenche com o cotado (fica azul = "só cotado" até
-  // alguém conferir). Só no modo valor único.
-  const prefill = !breakdownAtivo && iniPago.valor === '' && st.valorCotado != null;
+  // alguém conferir). Só no modo valor único e só quando o grupo não está
+  // lançado como pacote. O valor pré-preenchido NÃO é gravado ao salvar
+  // (ver aindaDefault em coletarCustosReaisDoForm) — só vira real quando
+  // alguém digita, usa o cotado ou marca como conferido.
+  const prefill = !breakdownAtivo && iniPago.valor === '' && st.valorCotado != null && !pacoteAtivo;
   if(prefill){ iniPago.valor = st.valorCotado; iniPago.moeda = 'BRL'; }
   const temCobradoExplicito = custoRealTemValor(rawCobrado);
   let pagoExib = iniPago.valor, pagoMoeda = iniPago.moeda, cobradoExib = iniCobrado.valor, cobradoMoeda = iniCobrado.moeda;
@@ -1112,6 +1129,7 @@ function crLinhaHtml(item, st, reais, containers, p){
   if(item.pacote) notas.push(item.pacote === 'adiantamento'
     ? 'total da nota do despachante — OU isto, OU II/IPI/PIS/COFINS/ICMS/Siscomex/AFRMM/armazenagem item a item'
     : 'total da fatura do agente — OU isto, OU Frete Internacional + taxas do agente item a item');
+  if(pacoteAtivo) notas.push('já está dentro do pacote ' + pacoteAtivo.nome.replace(/ \(.*\)$/, '') + ' — deixe vazio');
   const detalharLink = podeDetalhar
     ? `<a href="javascript:void(0)" onclick="toggleCrContainerBreakdown('${item.id}')" class="cr-link">📦 <span id="cr_toggle_label_${item.id}">${breakdownAtivo ? 'Ver total único' : `Detalhar por container (${containers.length})`}</span></a>`
     : '';
@@ -1142,7 +1160,7 @@ function crLinhaHtml(item, st, reais, containers, p){
     </tr>`;
   }).join('') : '';
 
-  return `<tr id="cr_row_${item.id}">
+  return `<tr id="cr_row_${item.id}" data-prefill="${prefill ? 1 : 0}">
     <td><span id="cr_dot_${item.id}" class="cr-dot ${dotClass}" onclick="crToggleConferido('${item.id}')"></span></td>
     <td><div class="cr-label">${item.label}</div>${notas.length ? `<div class="cr-muted">${notas.join(' · ')}</div>` : ''}${detalharLink ? `<div>${detalharLink}</div>` : ''}</td>
     <td>${pagoCell}</td>
@@ -1216,6 +1234,8 @@ function crMarcar(id, origem){
 }
 // Digitou no campo Real: passa a "conferido" (apagou tudo: volta a vazio).
 function crAoDigitar(id){
+  const tr = document.getElementById('cr_row_' + id);
+  if(tr) tr.dataset.prefill = '0';
   if(crValorCampo('f_cr_' + id) == null) delete _crConf[id]; else crMarcar(id, 'digitado');
   atualizarTotalCustosReais();
 }
@@ -1224,9 +1244,17 @@ function crToggleConferido(id){
   if(_crConf[id]) delete _crConf[id]; else crMarcar(id, 'conferido');
   atualizarTotalCustosReais();
 }
+// "Marcar restantes": só o que tem valor REAL lançado (digitado ou salvo).
+// Linha ainda só com o cotado pré-preenchido não entra — quem quiser aceitar
+// o cotado usa "usar cotado" linha a linha. Item coberto por pacote ativo
+// também fica de fora (já está dentro do pacote).
 function crConferirTodos(){
+  const reais = coletarCustosReaisDoForm();
   custosReaisItensFlat().forEach(item => {
     if(crValorCampo('f_cr_' + item.id) == null) return;
+    const tr = document.getElementById('cr_row_' + item.id);
+    if(tr && tr.dataset.prefill === '1') return;
+    if(crPacoteAtivoDoItem(item.id, reais)) return;
     if(!_crConf[item.id]) crMarcar(item.id, 'conferido');
   });
   atualizarTotalCustosReais();
@@ -1234,6 +1262,8 @@ function crConferirTodos(){
 function crUsarCotado(id){
   const el = document.getElementById('f_cr_' + id);
   if(!el || el.readOnly || !el.dataset.cotado) return;
+  const tr = document.getElementById('cr_row_' + id);
+  if(tr) tr.dataset.prefill = '0';
   el.value = el.dataset.cotado;
   const sel = document.getElementById('f_cr_moeda_' + id);
   if(sel) sel.value = 'BRL';
@@ -1389,7 +1419,17 @@ function toggleCrContainerBreakdown(itemId){
 // (ver custosReaisEstado em controle-core.js).
 function coletarCustosReaisDoForm(soConfirmados){
   const obj = {};
-  const aindaDefault = (el) => soConfirmados && el.dataset && el.dataset.cotado !== undefined && el.value === el.dataset.cotado;
+  // Linha pré-preenchida com o cotado (data-prefill="1" no <tr>) e ainda com
+  // o valor do cotado, sem ninguém ter conferido: NÃO é custo real — fica de
+  // fora do real_json. Antes (30/09/2026) qualquer Salvar gravava todos os
+  // cotados como se fossem reais, inclusive por cima dos pacotes.
+  const aindaDefault = (el) => {
+    const tr = el && el.closest ? el.closest('tr') : null;
+    if(!tr || tr.dataset.prefill !== '1') return false;
+    const id = tr.id.replace('cr_row_', '');
+    if(_crConf && _crConf[id]) return false;
+    return !!(el.dataset && el.dataset.cotado !== undefined && el.value === el.dataset.cotado);
+  };
   const eurEl = document.getElementById('f_cr_cambio_eur');
   if(eurEl && eurEl.value !== '') obj._cambio_eur = parseFloat(eurEl.value);
   const boss = crValorCampo('f_cr_notas_boss');
