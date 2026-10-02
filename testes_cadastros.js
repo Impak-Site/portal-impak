@@ -209,6 +209,8 @@ teste('mesmo nome em dois cadastros: vincula à matriz (CNPJ /0001); sem matriz 
   assert.strictEqual(N.normalizarValorCampo('cliente', 'OST', IDX2), 'OST PNEUS LTDA');
   assert.strictEqual(N.ehMatriz({ cnpj: '15.331.210/0001-30' }), true);
   assert.strictEqual(N.ehMatriz({ documento: '15331210000644' }), false);
+  assert.strictEqual(N.ehMatriz({ cnpj: '2911700000163' }), true, 'CNPJ sem o zero à esquerda');
+  assert.strictEqual(N.ehMatriz({ cnpj: '2911700000325' }), false);
 });
 teste('normalizarProcesso grava <campo>_id (id, ou null quando não reconhece) só pros campos presentes', () => {
   const p = { id: 'x', cliente: 'SB LITORAL', fornecedor: 'QINGDAO DITRIP TYRE CO LIMITED', armador: 'PILL', obs: 'nada' };
