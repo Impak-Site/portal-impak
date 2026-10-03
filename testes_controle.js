@@ -2093,22 +2093,22 @@ teste('listarPendenciasDI: inclui toda parcela Parcelado com câmbio fechado den
 
 teste('listarPendenciasDI: pagamento único (100% a Prazo / À Vista) com câmbio fechado entra com os campos pi_duimp_* do processo (pedido Emanuelly 01/10/2026)', () => {
   const processos = [
-    { id:'P5', referencia:'OID2605A', pi_pagamento:'PRAZO', pi_valor_usd:16909, pi_cambio_fechado:5.1115, pi_data_saldo:'2026-10-16', pi_cambio_banco:'Santander', pi_cambio_codigo_bacen:'PFX2026092114080', pi_duimp_numero:'26BR000123', pi_duimp_protocolo:'CHAVE123', pi_venc_di:'' },
+    { id:'P5', referencia:'PRAZO1', pi_pagamento:'PRAZO', pi_valor_usd:16909, pi_cambio_fechado:5.1115, pi_data_saldo:'2026-10-16', pi_cambio_banco:'Santander', pi_cambio_codigo_bacen:'PFX-TESTE-0001', pi_duimp_numero:'26BR000123', pi_duimp_protocolo:'CHAVE123', pi_venc_di:'' },
     { id:'P6', referencia:'VISTA1', pi_pagamento:'VISTA', pi_valor_usd:5000, pi_cambio_fechado:5.2, pi_data_entrada:'2026-10-02', pi_venc_di:'2027-01-15' },
     { id:'P7', referencia:'SEMCAMBIO', pi_pagamento:'PRAZO', pi_valor_usd:5000, pi_cambio_fechado:'', pi_data_saldo:'2026-10-10' }, // sem câmbio fechado -- fora
     { id:'P8', referencia:'FORAMES', pi_pagamento:'PRAZO', pi_valor_usd:5000, pi_cambio_fechado:5.1, pi_data_saldo:'2026-11-10' }, // mês errado -- fora
     { id:'P9', referencia:'ACOMP', pi_pagamento:'PRAZO', finalidade:'ACOMPANHAMENTO', pi_valor_usd:5000, pi_cambio_fechado:5.1, pi_data_saldo:'2026-10-10' }, // acompanhamento -- fora
   ];
   const out = vm.runInContext(`listarPendenciasDI(${JSON.stringify(processos)}, '2026-10-01', '2026-10-31')`, sandbox);
-  iguais(out.map(l=>l.referencia).join(','), 'VISTA1,OID2605A', 'Vista (venc. 15/01) antes do Prazo (venc. calculado 14/04); sem câmbio, fora do mês e acompanhamento ficam de fora');
-  const prazo = out.find(l=>l.referencia==='OID2605A');
+  iguais(out.map(l=>l.referencia).join(','), 'VISTA1,PRAZO1', 'Vista (venc. 15/01) antes do Prazo (venc. calculado 14/04); sem câmbio, fora do mês e acompanhamento ficam de fora');
+  const prazo = out.find(l=>l.referencia==='PRAZO1');
   iguais(prazo.parcelaIndex, null, 'pagamento único não tem índice de parcela');
   iguais(prazo.dataCambio, '2026-10-16', 'data do câmbio = Data Pagamento (pi_data_saldo) no Prazo');
   iguais(prazo.vencimentoDi, '2027-04-14', 'sem Venc. DI digitado → 180 dias da data do câmbio');
   iguais(prazo.vencimentoCalculado, true, 'marcado como calculado');
   iguais(prazo.duimp, '26BR000123', 'Nº DUIMP do processo');
   iguais(prazo.protocolo, 'CHAVE123', 'chave de acesso do processo');
-  iguais(prazo.codigoBacen, 'PFX2026092114080', 'BACEN do processo');
+  iguais(prazo.codigoBacen, 'PFX-TESTE-0001', 'BACEN do processo');
   iguais(prazo.tipoCambio, 'NORMAL', 'com BACEN é câmbio normal');
   iguais(prazo.valorUsd, 16909, 'valor da PI');
   const vista = out.find(l=>l.referencia==='VISTA1');
@@ -2421,16 +2421,16 @@ teste('regrasDoCadastro: aceita objeto, string JSON e lixo sem quebrar', () => {
   iguais(JSON.stringify(sandbox.regrasDoCadastro(null)), '{}');
   iguais(JSON.stringify(sandbox.regrasDoCadastro({ regras_json: ['PO'] })), '{}', 'array não é regra');
 });
-teste('referenciaPelaRegraDoFornecedor: PO → po_numero da proforma (BR26R124); PI/CI → nº da PI/CI; sem regra ou sem valor → vazio', () => {
-  const ext = { referencia: 'TYRE-123', po_numero: 'BR26R124', pi_numero: 'PI-77', ci_numero: 'CI-88' };
-  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'PO' }), 'BR26R124');
-  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'po' }), 'BR26R124', 'caixa baixa também vale');
+teste('referenciaPelaRegraDoFornecedor: PO → po_numero da proforma; PI/CI → nº da PI/CI; sem regra ou sem valor → vazio', () => {
+  const ext = { referencia: 'TYRE-123', po_numero: 'PO-0001', pi_numero: 'PI-77', ci_numero: 'CI-88' };
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'PO' }), 'PO-0001');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'po' }), 'PO-0001', 'caixa baixa também vale');
   iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'PI' }), 'PI-77');
   iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'CI' }), 'CI-88');
   iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, {}), '', 'sem regra: deixa a IA decidir');
   iguais(sandbox.referenciaPelaRegraDoFornecedor(ext, { referencia_origem: 'XYZ' }), '', 'regra desconhecida é ignorada');
   iguais(sandbox.referenciaPelaRegraDoFornecedor({ referencia: 'X' }, { referencia_origem: 'PO' }), '', 'documento sem Number PO (ex.: BL do mesmo fornecedor) não mexe na referência');
-  iguais(sandbox.referenciaPelaRegraDoFornecedor({ po_numero: '  BR26R124 ' }, { referencia_origem: 'PO' }), 'BR26R124', 'sem espaços');
+  iguais(sandbox.referenciaPelaRegraDoFornecedor({ po_numero: '  PO-0001 ' }, { referencia_origem: 'PO' }), 'PO-0001', 'sem espaços');
 });
 
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

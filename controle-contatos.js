@@ -43,7 +43,7 @@ async function buscarContatos(q, tipo, limit){
 }
 // ── Regras por cadastro (regras_json, migration 0042) ──
 // Pedido Emanuelly 01/10/2026: na proforma da Tyre Export, Inc. a referência
-// do processo é o campo "Number PO" (ex.: BR26R124) — e isso deve valer
+// do processo é o campo "Number PO" — e isso deve valer
 // "sempre que for ele". A regra fica no cadastro do fornecedor (campo
 // "Referência do processo ao ler PI/CI" no modal de Empresa), não no código,
 // pra outros exportadores entrarem sem nova versão.
