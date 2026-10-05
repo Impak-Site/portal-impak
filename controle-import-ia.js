@@ -577,7 +577,8 @@ async function extrairComIA_umArquivo(input){
   "pi_data": "YYYY-MM-DD",
   "pi_valor_usd": 0,
   "pi_incoterm": "",
-  "pi_pagamento": "VISTA|PRAZO|ENTRADA_SALDO",
+  "pi_pagamento": "VISTA|PRAZO|PARCELADO",  // forma de pagamento pelos TERMOS DE PAGAMENTO da PI/CI ("Payment Terms", "Terms of Payment"): PARCELADO quando há adiantamento + saldo (ex.: "20% T/T in advance, 80% balance against copy of B/L"); VISTA quando 100% antecipado; PRAZO quando 100% depois (ex.: "100% T/T 90 days after B/L date"). Deixe "" se o documento não trouxer os termos.
+  "pi_adiantamento_pct": 0,  // % do valor pago ANTES do embarque (deposit / advance / down payment / prepayment) nos termos de pagamento — ex.: "20% T/T in advance" → 20; "30% deposit, balance before shipment" → 30. Só o número. 0 quando não houver adiantamento ou o documento não disser.
   "etd": "YYYY-MM-DD",
   "eta": "YYYY-MM-DD",
   "armador": "",  // NÃO inferir armador pelo nome do navio (ex: navio MSC XXXX não significa armador MSC — extrair apenas de campos explícitos como Carrier, Shipping Line, Armador) NÃO usar o emissor de um House B/L (agente de carga/NVOCC, ex: nomes com "Logistics", "Forwarding", "Cargo") como armador — o armador real (ocean carrier) deve vir do Master B/L ou Booking Confirmation. Exemplos de armadores reais: MSC, CMA CGM, COSCO, MAERSK, HAPAG-LLOYD, ONE, EVERGREEN, YANG MING, PIL, ZIM, HMM, WAN HAI.
@@ -759,6 +760,17 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     if(extracted.pi_valor_usd) extracted.pi_valor_usd = normNum(extracted.pi_valor_usd);
     if(extracted.ci_valor_usd) extracted.ci_valor_usd = normNum(extracted.ci_valor_usd);
+    // Termos de pagamento (05/10/2026, processos 26DTPI0476-x): "Entrada + Saldo" é legado
+    // (o <select> nem tem mais essa opção em processo novo — setar esse valor
+    // deixava a Forma de Pagamento em branco); adiantamento + saldo = Parcelado.
+    // O % de adiantamento vai pro campo "% Entrada (PI)" do Parcelado.
+    if(extracted.pi_pagamento === 'ENTRADA_SALDO') extracted.pi_pagamento = 'PARCELADO';
+    if(extracted.pi_pagamento && !['VISTA','PRAZO','PARCELADO'].includes(extracted.pi_pagamento)) delete extracted.pi_pagamento;
+    {
+      const pct = Math.round(parseFloat(String(extracted.pi_adiantamento_pct ?? '').replace(',','.').replace('%','')) || 0);
+      extracted.pi_adiantamento_pct = (pct > 0 && pct < 100) ? pct : 0;
+      if(extracted.pi_adiantamento_pct && !extracted.pi_pagamento) extracted.pi_pagamento = 'PARCELADO';
+    }
     if(extracted.nf_entrada_valor) extracted.nf_entrada_valor = normNum(extracted.nf_entrada_valor);
     if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
     if(extracted.di_peso_liquido)  extracted.di_peso_liquido  = normNum(extracted.di_peso_liquido);
@@ -1127,6 +1139,11 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     delete extracted.eh_ric; delete extracted.ric_avaria;
 
+    // % de adiantamento dos termos de pagamento: não é um input direto do
+    // formulário — aplicado nas parcelas depois de renderPagamentoCampos().
+    const pctAdiantamentoDoc = extracted.pi_adiantamento_pct || 0;
+    delete extracted.pi_adiantamento_pct;
+
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','di_peso_liquido'];
     const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
@@ -1315,6 +1332,21 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     aplicarRegraParametrizacaoVerde();
     atualizarFaseEmTempoReal();
     if(extracted.pi_pagamento) renderPagamentoCampos();
+
+    // Parcelado (05/10/2026, processos 26DTPI0476-x): o % de entrada lido dos termos de
+    // pagamento vai pro campo "% Entrada (PI)" e refaz a Inicial (se ainda sem
+    // câmbio) e o saldo; uma CI lida com valor novo faz o saldo fechar com ela.
+    if(document.getElementById('f_pi_pagamento')?.value === 'PARCELADO'){
+      const inpPct = document.getElementById('f_pi_entrada_pct');
+      if(pctAdiantamentoDoc && inpPct && String(inpPct.value) !== String(pctAdiantamentoDoc)){
+        inpPct.value = String(pctAdiantamentoDoc);
+        if(typeof aplicarPctEntradaParcelas === 'function') aplicarPctEntradaParcelas({ origem: 'documento' });
+        camposLidosNestaLeitura.push('pi_entrada_pct');
+        preenchidos++;
+      } else if(camposLidosNestaLeitura.includes('ci_valor_usd') && typeof aoMudarValorCI === 'function'){
+        aoMudarValorCI();
+      }
+    }
 
     // Atualizar _editando com os valores extraídos
     if(_editando) Object.assign(_editando, extracted);
@@ -1593,6 +1625,11 @@ function aplicarConflitosIA(){
     // ser recalculadas manualmente depois de aplicar as escolhas.
     aplicarRegraParametrizacaoVerde();
     atualizarFaseEmTempoReal();
+    // Valor da PI/CI aceito do documento: parcelas do Parcelado acompanham
+    // (05/10/2026 — saldo fecha com a CI; Inicial = % da PI).
+    const camposEscolhidos = lista.filter((c,i) => document.querySelector(`input[name="conflito-ia-${i}"]:checked`)?.value === 'novo').map(c => c.campo);
+    if(camposEscolhidos.includes('pi_valor_usd') && typeof aoMudarValorPI === 'function') aoMudarValorPI();
+    if(camposEscolhidos.includes('ci_valor_usd') && typeof aoMudarValorCI === 'function') aoMudarValorCI();
     if(_editando){
       _editando.log = _editando.log || [];
       _editando.log.push({

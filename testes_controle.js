@@ -2433,6 +2433,85 @@ teste('referenciaPelaRegraDoFornecedor: PO → po_numero da proforma; PI/CI → 
   iguais(sandbox.referenciaPelaRegraDoFornecedor({ po_numero: '  PO-0001 ' }, { referencia_origem: 'PO' }), 'PO-0001', 'sem espaços');
 });
 
+// ── Parcelado: base CI/PI, % de entrada explícito, saldo acompanha a CI (05/10/2026) ──
+// Valores fictícios (repositório público). Caso real: PI e CI com 20% de
+// entrada, parcelas em 30/70 (padrão do formato antigo "Entrada + Saldo") e o
+// saldo calculado pela PI mesmo depois da CI chegar com outro valor.
+console.log('\n📋 Parcelado — % de entrada da PI, saldo pela CI');
+function prepararParcelado({ pi, ci, pct, parcelas }){
+  const d = sandbox.document;
+  d.getElementById('f_pi_pagamento').value = 'PARCELADO';
+  d.getElementById('f_pi_valor_usd').value = pi || '';
+  d.getElementById('f_ci_valor_usd').value = ci || '';
+  d.getElementById('f_pi_entrada_pct').value = pct == null ? '' : String(pct);
+  vm.runInContext('_parcelas = ' + JSON.stringify(parcelas) + ';', sandbox);
+}
+function lerParcelas(){ return JSON.parse(vm.runInContext('JSON.stringify(_parcelas)', sandbox)); }
+teste('baseTotalParcelas: CI quando existe, senão PI', () => {
+  prepararParcelado({ pi: '10.000,00', ci: '9.500,00', parcelas: [] });
+  let b = sandbox.baseTotalParcelas(); iguais(b.valor, 9500); iguais(b.origem, 'CI');
+  prepararParcelado({ pi: '10.000,00', ci: '', parcelas: [] });
+  b = sandbox.baseTotalParcelas(); iguais(b.valor, 10000); iguais(b.origem, 'PI');
+});
+teste('CI diferente da PI: a Final (em aberto) fecha com a CI; a Inicial não muda', () => {
+  prepararParcelado({ pi: '10.000,00', ci: '9.500,00', parcelas: [
+    { label:'Inicial', valor_usd: 3000, cambio_fechado:'' }, { label:'Final', valor_usd: 7000, cambio_fechado:'' } ] });
+  const r = sandbox.recalcularSaldoPelaBase({ silencioso: true });
+  const ps = lerParcelas();
+  iguais(ps[0].valor_usd, 3000, 'Inicial intocada');
+  iguais(ps[1].valor_usd, '6500.00', 'Final = CI − Inicial');
+  iguais(r.origem, 'CI');
+});
+teste('% de entrada 20: Inicial em aberto vira 20% da PI e a Final fecha com a CI', () => {
+  prepararParcelado({ pi: '10.000,00', ci: '9.500,00', pct: 20, parcelas: [
+    { label:'Inicial', valor_usd: 3000, cambio_fechado:'' }, { label:'Final', valor_usd: 7000, cambio_fechado:'' } ] });
+  sandbox.aplicarPctEntradaParcelas({ silencioso: true, semRender: true });
+  const ps = lerParcelas();
+  iguais(ps[0].valor_usd, '2000.00', 'Inicial = 20% da PI');
+  iguais(ps[1].valor_usd, '7500.00', 'Final = CI − Inicial');
+});
+teste('% de entrada sem CI: Final fecha com a PI', () => {
+  prepararParcelado({ pi: '10.000,00', ci: '', pct: 20, parcelas: [
+    { label:'Inicial', valor_usd: 3000, cambio_fechado:'' }, { label:'Final', valor_usd: 7000, cambio_fechado:'' } ] });
+  sandbox.aplicarPctEntradaParcelas({ silencioso: true, semRender: true });
+  const ps = lerParcelas();
+  iguais(ps[0].valor_usd, '2000.00'); iguais(ps[1].valor_usd, '8000.00');
+});
+teste('Inicial já paga (câmbio fechado) não é alterada pelo %; só a Final acompanha a CI', () => {
+  prepararParcelado({ pi: '10.000,00', ci: '9.500,00', pct: 20, parcelas: [
+    { label:'Inicial', valor_usd: 3000, cambio_fechado:'5.1000' }, { label:'Final', valor_usd: 7000, cambio_fechado:'' } ] });
+  sandbox.aplicarPctEntradaParcelas({ silencioso: true, semRender: true });
+  const ps = lerParcelas();
+  iguais(ps[0].valor_usd, 3000, 'paga: valor do comprovante fica');
+  iguais(ps[1].valor_usd, '6500.00');
+});
+teste('Sem parcela em aberto (tudo pago) nada é recalculado; % vazio não mexe em nada', () => {
+  prepararParcelado({ pi: '10.000,00', ci: '9.500,00', parcelas: [
+    { label:'Inicial', valor_usd: 3000, cambio_fechado:'5.1' }, { label:'Final', valor_usd: 7000, cambio_fechado:'5.2' } ] });
+  iguais(sandbox.recalcularSaldoPelaBase({ silencioso: true }), null);
+  prepararParcelado({ pi: '10.000,00', ci: '', pct: '', parcelas: [
+    { label:'Inicial', valor_usd: 3000, cambio_fechado:'' }, { label:'Final', valor_usd: 7000, cambio_fechado:'' } ] });
+  iguais(sandbox.aplicarPctEntradaParcelas({ silencioso: true, semRender: true }), false);
+  iguais(lerParcelas()[0].valor_usd, 3000);
+});
+teste('Fora do Parcelado, recalcularSaldoPelaBase não faz nada', () => {
+  prepararParcelado({ pi: '10.000,00', ci: '9.500,00', parcelas: [ { label:'Final', valor_usd: 10000, cambio_fechado:'' } ] });
+  sandbox.document.getElementById('f_pi_pagamento').value = 'PRAZO';
+  iguais(sandbox.recalcularSaldoPelaBase({ silencioso: true }), null);
+  iguais(lerParcelas()[0].valor_usd, 10000);
+});
+teste('Alerta de cadastro do câmbio compara as parcelas com a CI quando ela existe', () => {
+  const base = { id:'x', referencia:'T-1', cliente:'C', pi_pagamento:'PARCELADO', pi_valor_usd:10000, fase:'EMBARCADO',
+    pi_parcelas_json: JSON.stringify([{ label:'Inicial', valor_usd:2000, cambio_fechado:'5.1' }, { label:'Final', valor_usd:7500, cambio_fechado:'' }]) };
+  iguais(sandbox.verificarCadastroCambio([{ ...base, ci_valor_usd: 9500 }]).length, 0, 'soma = CI: sem alerta');
+  const sem = sandbox.verificarCadastroCambio([{ ...base, ci_valor_usd: null }]);
+  iguais(sem.length, 1, 'sem CI: compara com a PI e alerta');
+  iguais(/a PI é/.test(sem[0].problema), true);
+});
+// Limpa os campos usados acima pra não vazar para outros testes.
+prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
+sandbox.document.getElementById('f_pi_pagamento').value = '';
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');

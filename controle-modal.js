@@ -325,7 +325,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Data PI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" oninput="atualizarDataPagamentoPrazo()" id="f_pi_data" value="${esc(p.pi_data)}"></div>
           <div class="form-group"><label class="form-label">Valor USD</label>
-            <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()" onchange="calcularParcelaResidualAuto();renderParcelas();renderPagamentoInfoLive()"></div></div>
+            <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()" onchange="aoMudarValorPI()"></div></div>
           <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
             <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
           </div>
@@ -405,7 +405,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Data CI</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_ci_data" value="${esc(p.ci_data)}"></div>
           <div class="form-group"><label class="form-label">Valor CI (USD)</label>
-            <input class="form-input" type="text" inputmode="decimal" id="f_ci_valor_usd" value="${exibirMoeda(p.ci_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)"></div>
+            <input class="form-input" type="text" inputmode="decimal" id="f_ci_valor_usd" value="${exibirMoeda(p.ci_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this)" onchange="aoMudarValorCI()" title="No pagamento Parcelado, o saldo (parcela Final em aberto) fecha com o valor da CI"></div>
         </div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
@@ -2069,6 +2069,14 @@ function renderPagamentoCampos(){
         try{ _parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ _parcelas = []; }
     if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [{...parcelaVazia(), label:'Inicial'}, {...parcelaVazia(), label:'Final'}];
       }
+    // % de entrada (adiantamento) dos termos de pagamento da PI — explícito,
+    // SEM valor padrão (05/10/2026, processos 26DTPI0476-x: PI/CI com 20% e a Inicial em
+    // 30% porque o formato antigo "Entrada + Saldo" assumia 30). Ao mudar:
+    // Inicial (sem câmbio) = % × PI; Final = CI (ou PI, sem CI) − demais.
+    html+=`<div class="form-group"><label class="form-label">% Entrada (PI)</label>
+      <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct!=null&&p.pi_entrada_pct!==''?esc(p.pi_entrada_pct):''}" min="1" max="99" step="1" placeholder="ex.: 20"
+        onchange="aplicarPctEntradaParcelas()" title="Percentual de adiantamento dos termos de pagamento da PI (ex.: 20% T/T in advance). A parcela Inicial vira esse % da PI e a Final fecha o saldo pela CI (ou pela PI, enquanto não houver CI). Parcela com câmbio fechado não é alterada."></div>
+      <div class="form-group" style="grid-column:span 2;align-self:end;font-size:11px;color:var(--muted);padding-bottom:10px;">Saldo (parcela Final) fecha com a <b>CI</b> quando ela existe; sem CI, com a PI.</div>`;
     html+=`<div class="form-group full">
       <label class="form-label">Parcelas (quantos câmbios forem necessários — ex.: confirmação do pedido, embarque, chegada)</label>
       <div id="parcelas-list"></div>
@@ -2196,6 +2204,12 @@ function renderPagamentoInfoLive(){
   // Parcelado: usa o array em memÃÂÃÂ³ria (ainda nÃÂÃÂ£o salvo) pra refletir ao vivo
   // toda linha adicionada/editada/removida, igual ao resto do resumo.
   if(tipoAtual==='PARCELADO') snapshot.pi_parcelas_json = JSON.stringify(_parcelas);
+  // Valor da CI ao vivo (05/10/2026): no Parcelado o aviso de soma compara
+  // com a CI quando ela existe (ver renderPagamentoInfo).
+  const ciLive = typeof valorMoeda === 'function' ? valorMoeda('f_ci_valor_usd') : null;
+  snapshot.ci_valor_usd = ciLive;
+  const piLive = typeof valorMoeda === 'function' ? valorMoeda('f_pi_valor_usd') : null;
+  if(piLive) snapshot.pi_valor_usd = piLive;
   const box = document.querySelector('#pane-financeiro .pagamento-box');
   const novoHtml = renderPagamentoInfo(snapshot);
   if(box && box.parentElement) box.outerHTML = novoHtml || box.outerHTML;
@@ -2236,8 +2250,13 @@ function renderPagamentoInfo(p){
     // Como cada parcela usa valor fixo em USD (nÃÂÃÂ£o %), nÃÂÃÂ£o hÃÂÃÂ¡ garantia
     // automÃÂÃÂ¡tica de que a soma bate com o Valor USD da PI ÃÂ¢ÃÂÃÂ sinalizar em vez
     // de deixar passar batido (percentual, ao contrÃÂÃÂ¡rio, sempre soma 100%).
-    if(val && Math.abs(totalUsd-val) > 0.01){
-      rows += `<div class="pagamento-row" style="color:#b45309;"><span>⚠ Parcelas somam USD ${totalUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}, mas o Valor USD da PI é USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span><span></span></div>`;
+    // Base do saldo = CI quando existir (05/10/2026 — ver baseTotalParcelas
+    // em controle-campos.js); sem CI, a PI.
+    const ciVal = parseFloat(p.ci_valor_usd) || 0;
+    const baseVal = ciVal || val;
+    const baseNome = ciVal ? 'da CI' : 'da PI';
+    if(baseVal && Math.abs(totalUsd-baseVal) > 0.01){
+      rows += `<div class="pagamento-row" style="color:#b45309;"><span>⚠ Parcelas somam USD ${totalUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}, mas o Valor USD ${baseNome} é USD ${baseVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span><span></span></div>`;
     }
   }
   return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;

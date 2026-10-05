@@ -1422,7 +1422,11 @@ function verificarCadastroCambio(processos){
       let pc=[]; try{ pc = JSON.parse(p.pi_parcelas_json||'[]'); }catch(e){ add('parcelas ilegíveis'); return; }
       if(pc.length && pc.every(x=>x.cambio_fechado)) return; // tudo pago
       const soma = pc.reduce((a,x)=>a+num(x.valor_usd),0);
-      if(Math.abs(soma-pi) > 1) add(`parcelas somam US$ ${soma.toLocaleString('pt-BR',{minimumFractionDigits:2})} e a PI é US$ ${pi.toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
+      // Base = CI quando existir (é o valor que o fornecedor cobra pelo que
+      // embarcou), senão PI — 05/10/2026, processos 26DTPI0476-x.
+      const ci = num(p.ci_valor_usd);
+      const base = ci || pi;
+      if(Math.abs(soma-base) > 1) add(`parcelas somam US$ ${soma.toLocaleString('pt-BR',{minimumFractionDigits:2})} e a ${ci ? 'CI' : 'PI'} é US$ ${base.toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
       pc.forEach((x,i)=>{ if(!num(x.valor_usd) && !x.cambio_fechado) add(`parcela ${x.label||('#'+(i+1))} sem valor`); });
     }
   });

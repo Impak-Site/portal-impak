@@ -1007,8 +1007,121 @@ function normalizarBancoCambio(texto){
 // preenchidas). Só age quando sobra exatamente 1 parcela vazia (com 2+
 // vazias não dá pra saber como dividir) e nunca sobrescreve um valor que
 // o usuário já digitou -- mesmo padrão fill-if-empty do resto do fluxo.
+// ── Base do Parcelado: CI quando existir, senão PI ─────────────────────
+// Pedido da equipe (05/10/2026, processos 26DTPI0476-x): "o
+// sistema está puxando o valor da PI e não atualiza quando incluímos uma
+// CI". A CI é o que o fornecedor de fato cobra pelo que embarcou (pode ser
+// menor ou maior que a PI), então o SALDO a pagar tem que fechar com ela.
+// Sem CI ainda, vale a PI. A ENTRADA (adiantamento) continua sendo % da PI,
+// porque é paga no pedido, antes de existir CI.
+function baseTotalParcelas(){
+  const ci = valorMoeda('f_ci_valor_usd');
+  if(ci && ci > 0) return { valor: ci, origem: 'CI' };
+  const pi = valorMoeda('f_pi_valor_usd');
+  return { valor: pi || 0, origem: 'PI' };
+}
+
+// Recalcula a parcela do SALDO (a "Final" em aberto, ou a única parcela em
+// aberto se não houver Final) = base − soma das demais parcelas. Parcela com
+// câmbio fechado nunca é mexida. Devolve {idx, antes, depois, origem} quando
+// mudou algo, ou null. Chamado quando a CI muda (digitada ou lida pela IA),
+// quando o % de entrada muda e quando a PI muda com % definido.
+function recalcularSaldoPelaBase(opts){
+  opts = opts || {};
+  if(document.getElementById('f_pi_pagamento')?.value !== 'PARCELADO') return null;
+  if(!Array.isArray(_parcelas) || !_parcelas.length) return null;
+  const base = baseTotalParcelas();
+  if(!base.valor) return null;
+  const num = v => parseFloat(String(v??'').replace(',','.')) || 0;
+  const abertas = _parcelas.map((pc,i)=>i).filter(i => !String(_parcelas[i].cambio_fechado||'').trim());
+  if(!abertas.length) return null;
+  let alvo = abertas.find(i => _parcelas[i].label === 'Final');
+  if(alvo == null){
+    if(abertas.length !== 1) return null; // 2+ em aberto e nenhuma Final: não dá pra saber qual é o saldo
+    alvo = abertas[0];
+  }
+  const somaOutras = _parcelas.reduce((s,pc,i)=> i===alvo ? s : s + num(pc.valor_usd), 0);
+  const resto = +(base.valor - somaOutras).toFixed(2);
+  if(!(resto > 0)) return null;
+  const antes = num(_parcelas[alvo].valor_usd);
+  if(Math.abs(antes - resto) < 0.01) return null;
+  _parcelas[alvo].valor_usd = resto.toFixed(2);
+  _parcelas[alvo].custo_operacao = '';
+  delete _parcelas[alvo].valor_vazio_manual;
+  if(!_parcelas[alvo].label) _parcelas[alvo].label = 'Final';
+  if(!opts.silencioso && typeof showToast === 'function'){
+    showToast(`Parcela "${_parcelas[alvo].label}" recalculada pela ${base.origem}: US$ ${fmtUsdBR(antes)} → US$ ${fmtUsdBR(resto)}`, 'ok');
+  }
+  return { idx: alvo, antes, depois: resto, origem: base.origem };
+}
+
+// % de entrada (adiantamento) do Parcelado — mesmo pedido de 05/10/2026: a
+// PI e a CI dos processos 26DTPI0476-x dizem 20% de entrada e o sistema mostrava 30%. O 30%
+// vinha do formato antigo "Entrada + Saldo", que mostrava 30 como padrão no
+// campo % e gravava esse número mesmo sem ninguém digitar; na conversão para
+// "Parcelado" a Inicial nasceu com 30%. Agora o % é explícito (campo
+// f_pi_entrada_pct no bloco Parcelado, sem valor padrão) e a IA lê o % dos
+// termos de pagamento da PI. Inicial (se ainda sem câmbio) = % × PI; o saldo
+// (Final) fecha com a base (CI/PI).
+function aplicarPctEntradaParcelas(opts){
+  opts = opts || {};
+  if(document.getElementById('f_pi_pagamento')?.value !== 'PARCELADO') return false;
+  const pct = parseFloat(String(document.getElementById('f_pi_entrada_pct')?.value ?? '').replace(',','.'));
+  if(!(pct > 0 && pct < 100)) return false;
+  const pi = valorMoeda('f_pi_valor_usd');
+  if(!pi){ if(!opts.silencioso && typeof showToast==='function') showToast('Preencha o Valor USD da PI para calcular a entrada','warn'); return false; }
+  if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [{...parcelaVazia(), label:'Inicial'}, {...parcelaVazia(), label:'Final'}];
+  let iIni = _parcelas.findIndex(pc => pc.label === 'Inicial');
+  if(iIni < 0 && !_parcelas[0].label) { iIni = 0; _parcelas[0].label = 'Inicial'; }
+  let mudou = false;
+  const valorEntrada = +(pi * pct / 100).toFixed(2);
+  if(iIni >= 0){
+    const ini = _parcelas[iIni];
+    const pago = !!String(ini.cambio_fechado||'').trim();
+    if(!pago && Math.abs((parseFloat(ini.valor_usd)||0) - valorEntrada) >= 0.01){
+      ini.valor_usd = valorEntrada.toFixed(2);
+      ini.custo_operacao = '';
+      delete ini.valor_vazio_manual;
+      mudou = true;
+    } else if(pago && Math.abs((parseFloat(ini.valor_usd)||0) - valorEntrada) >= 0.01 && !opts.silencioso && typeof showToast === 'function'){
+      // Inicial já paga com outro valor: não mexe (o valor pago vem do
+      // comprovante), só avisa pra conferir.
+      showToast(`A parcela Inicial já tem câmbio fechado com US$ ${fmtUsdBR(ini.valor_usd)}; ${pct}% da PI daria US$ ${fmtUsdBR(valorEntrada)}. Confira o comprovante.`, 'warn');
+    }
+  }
+  if(!_parcelas.some(pc => pc.label === 'Final')) _parcelas.push({...parcelaVazia(), label:'Final'});
+  const saldo = recalcularSaldoPelaBase({ silencioso: true });
+  if(typeof sincronizarParcelasLegado === 'function') sincronizarParcelasLegado();
+  if(!opts.semRender){ try{ renderParcelas(); renderPagamentoInfoLive(); atualizarVencimentoSaldoPorETA(); }catch(e){} }
+  if((mudou || saldo) && !opts.silencioso && typeof showToast === 'function'){
+    const base = baseTotalParcelas();
+    showToast(`Entrada de ${pct}% da PI aplicada${mudou ? ' (Inicial US$ ' + fmtUsdBR(valorEntrada) + ')' : ''}${saldo ? '; Final = ' + base.origem + ' − demais = US$ ' + fmtUsdBR(saldo.depois) : ''}${opts.origem ? ' — lido do documento' : ''}`, 'ok');
+  }
+  return mudou || !!saldo;
+}
+
+// Valor USD da PI mudou (digitado): com % de entrada definido, refaz a
+// Inicial (em aberto) e o saldo; sem %, só completa parcela vazia (antigo).
+function aoMudarValorPI(){
+  if(document.getElementById('f_pi_pagamento')?.value === 'PARCELADO' && parseFloat(document.getElementById('f_pi_entrada_pct')?.value) > 0){
+    aplicarPctEntradaParcelas({ silencioso: true });
+    return;
+  }
+  calcularParcelaResidualAuto();
+  try{ renderParcelas(); renderPagamentoInfoLive(); }catch(e){}
+}
+
+// Valor USD da CI mudou (digitado, lido pela IA ou aceito no pop-up de
+// divergências): o saldo em aberto acompanha a CI.
+function aoMudarValorCI(){
+  const r = recalcularSaldoPelaBase();
+  if(r){ if(typeof sincronizarParcelasLegado === 'function') sincronizarParcelasLegado(); try{ renderParcelas(); renderPagamentoInfoLive(); }catch(e){} }
+  else { try{ renderPagamentoInfoLive(); }catch(e){} }
+  return r;
+}
+
 function calcularParcelaResidualAuto(){
-  const val = valorMoeda('f_pi_valor_usd');
+  const val = baseTotalParcelas().valor;
   if(!val || !_parcelas.length) return;
   const vazias = [];
   let somaPreenchidas = 0;
@@ -1029,7 +1142,9 @@ function calcularParcelaResidualAuto(){
 // aberto (vira "Final" se estiver sem etapa) ou é criada uma parcela Final.
 // Se mesmo assim a soma não bater com a PI, avisa (não bloqueia o save).
 function completarSaldoParcelas(){
-  const val = valorMoeda('f_pi_valor_usd');
+  // Base = CI quando houver, senão PI (05/10/2026 — ver baseTotalParcelas).
+  const base = baseTotalParcelas();
+  const val = base.valor;
   if(!val || !Array.isArray(_parcelas)) return;
   const num = v => parseFloat(String(v??'').replace(',','.')) || 0;
   let soma = _parcelas.reduce((a,pc)=>a+num(pc.valor_usd),0);
@@ -1051,7 +1166,7 @@ function completarSaldoParcelas(){
   }
   soma = _parcelas.reduce((a,pc)=>a+num(pc.valor_usd),0);
   if(Math.abs(soma - val) > 1 && typeof showToast === 'function'){
-    showToast(`⚠️ Parcelas somam US$ ${soma.toFixed(2)} e a PI é US$ ${val.toFixed(2)} (diferença US$ ${(val-soma).toFixed(2)}). Confira as parcelas.`, 'warn');
+    showToast(`⚠️ Parcelas somam US$ ${soma.toFixed(2)} e a ${base.origem} é US$ ${val.toFixed(2)} (diferença US$ ${(val-soma).toFixed(2)}). Confira as parcelas.`, 'warn');
   }
 }
 
@@ -1397,7 +1512,8 @@ function resolverValorUsdParcela(idx, valorDoc){
 // aparecendo no resumo. O usuário já confirmou no confirm() anterior
 // ("...e recalcular o saldo das demais parcelas?").
 function ajustarSaldoAposCorrecao(idx){
-  const total = valorMoeda('f_pi_valor_usd');
+  // Base = CI quando houver, senão PI (05/10/2026 — ver baseTotalParcelas).
+  const total = baseTotalParcelas().valor;
   const abertas = _parcelas.map((pc,i)=>i).filter(i => i!==idx && !_parcelas[i].cambio_fechado);
   if(!total || abertas.length !== 1){ calcularParcelaResidualAuto(); return; }
   const alvo = abertas[0];
