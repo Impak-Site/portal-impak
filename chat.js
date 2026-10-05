@@ -266,6 +266,40 @@ transition: background .15s; flex-shrink: 0;
 }
 #chat-send:hover { background: #1567b8; }
 #chat-send:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── RESPONSIVO (pedido Ayslan 05/10/2026: "todas as telas têm que ser
+   responsivas — celular, tablet, notebook, computador") ──
+   Este arquivo é carregado em TODAS as telas, então as regras comuns ficam
+   aqui: menu ☰ no lugar dos setores em tela estreita, tabelas largas com
+   rolagem lateral (em vez de cortar colunas), campos com fonte 16px no
+   celular (abaixo disso o iPhone dá zoom sozinho ao tocar no campo),
+   janelas/modais nunca mais largos que a tela e o chat ocupando a largura
+   do celular. Ajustes específicos de cada tela ficam no próprio arquivo. */
+#impak-nav .nav-menu-btn { display: none; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: #fff; border-radius: 8px; width: 38px; height: 34px; font-size: 18px; line-height: 1; cursor: pointer; flex-shrink: 0; }
+#impak-nav-drawer { display: none; position: fixed; top: 52px; left: 0; right: 0; bottom: 0; z-index: 10002; background: rgba(10,35,64,.98); overflow-y: auto; padding: 10px 14px 40px; font-family: 'DM Sans', sans-serif; -webkit-overflow-scrolling: touch; }
+#impak-nav-drawer.open { display: block; }
+#impak-nav-drawer .dr-setor { color: rgba(255,255,255,.45); font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; margin: 14px 4px 6px; }
+#impak-nav-drawer a { display: flex; align-items: center; padding: 12px 10px; border-radius: 8px; color: rgba(255,255,255,.85); text-decoration: none; font-size: 15px; font-weight: 600; }
+#impak-nav-drawer a.active { background: rgba(255,255,255,.15); color: #fff; }
+#impak-nav-drawer .nav-icon { width: 16px; height: 16px; margin-right: 10px; }
+#impak-nav-drawer .dr-rodape { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.12); display: flex; align-items: center; justify-content: space-between; gap: 10px; color: rgba(255,255,255,.6); font-size: 13px; }
+#impak-nav-drawer .dr-rodape a { padding: 8px 14px; border: 1px solid rgba(255,255,255,.25); }
+@media (max-width: 900px) {
+  #impak-nav { padding: 0 10px; }
+  #impak-nav .nav-links-wrap, #impak-nav .nav-user, #impak-nav .nav-zoom { display: none !important; }
+  #impak-nav .nav-menu-btn { display: block; }
+  #impak-nav .nav-right { margin-left: auto; }
+  .impak-nav-sector-panel { display: none !important; }
+  img, video, canvas, svg { max-width: 100%; }
+  .modal, .modal-content, .modal-box, .modal-card, [class*="modal"] > .modal-inner { max-width: calc(100vw - 16px) !important; }
+}
+@media (max-width: 700px) {
+  table:not(.sem-rolagem) { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px !important; }
+  #impak-chat-window { width: calc(100vw - 16px); right: 8px; bottom: 76px; height: calc(100vh - 150px); max-height: 560px; }
+  #impak-chat-root { right: 12px; bottom: 12px; }
+  #impak-chat-btn { width: 46px; height: 46px; font-size: 20px; }
+}
 `;
 
 // Injetar CSS
@@ -400,12 +434,27 @@ navEl.innerHTML = `
 <div class="nav-logo"><img src="/assets/impak-icon-32.png" alt=""> ImpakOS</div>
 <div class="nav-links-wrap" id="nav-links-wrap"></div>
 <div class="nav-right">
+<button type="button" class="nav-menu-btn" id="nav-menu-btn" aria-label="Menu" title="Menu">☰</button>
 <button type="button" class="nav-zoom" id="nav-zoom-btn" onclick="trocarZoomImpak()" title="Tamanho da tela: clique para trocar (Automático → 100% → 110% → 125% → 140% → 150%). Fica salvo neste computador.">Aa</button>
 <span class="nav-user" id="nav-user-label">—</span>
 <a class="nav-sair" href="/logout">Sair</a>
 </div>
 `;
 document.body.insertBefore(navEl, document.body.firstChild);
+
+// Menu ☰ (celular/tablet): mesma lista de setores/telas da barra, em tela
+// cheia. Montado depois do /api/me (só com as telas que a pessoa acessa).
+const drawer = document.createElement('div');
+drawer.id = 'impak-nav-drawer';
+document.body.appendChild(drawer);
+const btnMenu = navEl.querySelector('#nav-menu-btn');
+btnMenu.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const abrir = !drawer.classList.contains('open');
+  drawer.classList.toggle('open', abrir);
+  btnMenu.textContent = abrir ? '✕' : '☰';
+});
+drawer.addEventListener('click', (e) => { if(e.target.closest('a')) { drawer.classList.remove('open'); btnMenu.textContent = '☰'; } });
 
 fetch('/api/me').then(r=>r.json()).then(d=>{
 const el = document.getElementById('nav-user-label');
@@ -512,6 +561,26 @@ if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
 // Fecha qualquer dropdown de setor aberto ao clicar fora dele, ou ao
 // rolar/redimensionar a tela (o painel é position:fixed e recalculado só
 // no clique — sem isso ele ficaria "flutuando" fora do lugar do botão).
+// Menu ☰: setores e links soltos (Cadastros/TV/Permissões) + usuário/Sair.
+let htmlDrawer = '';
+navSetores.forEach(setor => {
+  const itens = setor.itens.filter(m => modulosDoUsuario.includes(m.modulo));
+  if(!itens.length) return;
+  htmlDrawer += '<div class="dr-setor">' + setor.setor + '</div>';
+  itens.forEach(m => { htmlDrawer += '<a href="' + m.href + '" class="' + (modAtual === m.key ? 'active' : '') + '">' + (ICONES_NAV[m.icone] || '') + m.label + '</a>'; });
+});
+const soltos = [];
+if(modulosDoUsuario.includes('cadastros')) soltos.push(['/cadastros', 'cadastros', 'Cadastros', modAtual === 'cadastros']);
+if(modulosDoUsuario.includes('tv')) soltos.push(['/tv', 'tv', 'TV', modAtual === 'tv']);
+if(['narcelio', 'paula', 'suporte'].includes(d.usuario)) soltos.push(['/permissoes', 'permissoes', 'Permissões', path.includes('permissoes')]);
+if(soltos.length){
+  htmlDrawer += '<div class="dr-setor">Outros</div>';
+  soltos.forEach(([href, ic, label, ativo]) => { htmlDrawer += '<a href="' + href + '" class="' + (ativo ? 'active' : '') + '">' + (ICONES_NAV[ic] || '') + label + '</a>'; });
+}
+const nomeUsuario = String(d.displayName || d.usuario || '').replace(/[<>&"]/g, '');
+htmlDrawer += '<div class="dr-rodape"><span>' + nomeUsuario + '</span><a href="/logout">Sair</a></div>';
+drawer.innerHTML = htmlDrawer;
+
 document.addEventListener('click', fecharPaineis);
 window.addEventListener('scroll', fecharPaineis, true);
 window.addEventListener('resize', fecharPaineis);

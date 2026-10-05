@@ -324,6 +324,23 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:cal
 .ctnr-over{color:#c0392b!important;font-weight:800}
 .ctnr-bar-fill-over{background:#c0392b!important}
 
+
+/* Responsivo (05/10/2026): tablet/celular. */
+@media (max-width: 900px){
+  .td-nav{padding:0 10px;overflow-x:auto;}
+  .nl{margin-right:12px;}
+  .nt{padding:0 10px;white-space:nowrap;}
+  .stats{grid-template-columns:repeat(2,1fr);}
+  .alayout,.clayout{grid-template-columns:1fr;}
+  .fg{grid-template-columns:1fr;}
+  .sh{flex-wrap:wrap;gap:10px;}
+}
+@media (max-width: 520px){
+  .stats{grid-template-columns:1fr 1fr;gap:8px;}
+  .mr{grid-template-columns:1fr 80px 56px 28px;}
+  .page{padding:14px;}
+  .sel-filters{padding:10px;}
+}
 </style>
 </head>
 <body>

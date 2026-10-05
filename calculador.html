@@ -192,6 +192,21 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
 .cot-actions button{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 9px;font-size:11px;cursor:pointer;color:var(--text);transition:all .15s;}
 .cot-actions button:hover{background:var(--border);}
 .cot-actions button.danger{color:var(--err);}
+
+/* Responsivo (05/10/2026): em tablet/celular o formulário e o resultado
+   ficam um embaixo do outro (antes o resultado era espremido à direita). */
+@media (max-width: 900px){
+  .main{flex-direction:column;}
+  .sidebar-calc{width:auto;border-right:none;border-bottom:1px solid var(--border);overflow:visible;}
+  .content-calc{padding:16px;overflow:visible;}
+  .wizard-label{font-size:9px;max-width:60px;}
+}
+@media (max-width: 520px){
+  .form-row,.form-row3{grid-template-columns:1fr;}
+  .sidebar-calc{padding:16px;}
+  .cards-grid{grid-template-columns:1fr 1fr;}
+  [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important;}
+}
 </style>
 <!-- Carregada antecipadamente (não no clique do botão) — no Safari, gerar o
      blob de download muito tempo depois do carregamento dinâmico da lib via

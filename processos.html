@@ -518,8 +518,13 @@ textarea.field-input{resize:vertical;min-height:80px;}
 .toast.err{border-left:3px solid var(--danger);}
 
 /* Responsive */
+@media(max-width:900px){
+  /* 05/10/2026: a barra lateral virava faixa no topo, mas o conteúdo
+     continuava com margin-left de 220px e ficava atrás dela. */
+  .sidebar{width:100%;height:auto;position:relative;top:auto;flex-direction:row;flex-wrap:wrap;}
+  .main,main.main{margin-left:0;}
+}
 @media(max-width:600px){
-  .sidebar{width:100%;height:auto;position:relative;flex-direction:row;flex-wrap:wrap;}
   .process-row{grid-template-columns:1fr;}
   .c-row,.col-head{grid-template-columns:1fr;}
   .col-head{display:none;}

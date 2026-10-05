@@ -4424,6 +4424,10 @@ app.delete('/api/calculador/cotacoes/:id', auth('tyredesk'), requireGerente, asy
 // Servir chat.js
 app.get('/chat.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
+  // no-cache = o navegador confere a versão (ETag) a cada carga — sem isso
+  // uma mudança na barra/menu podia demorar a chegar pra quem já tinha a
+  // página em cache (05/10/2026, menu ☰ do celular).
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'chat.js'));
 });
 
