@@ -1303,7 +1303,10 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
             // Já existe container diferente cadastrado — em processo multi-container,
             // cada documento novo (ou cada linha da tabela do mesmo documento) pode
             // revelar um container adicional. Adiciona em vez de sobrescrever.
-            _containers.push({numero: item.numero, tipo:'40HC', lacre: item.lacre || ''});
+            // Carga LCL (05/10/2026): container novo herda o tipo LCL, senão o
+            // processo deixaria de ser LCL e voltaria a cobrar devolução.
+            const tipoNovo = (typeof cargaEhLCLNaTela === 'function' && cargaEhLCLNaTela()) ? 'LCL' : '40HC';
+            _containers.push({numero: item.numero, tipo: tipoNovo, lacre: item.lacre || ''});
           }
         }
       });

@@ -630,7 +630,16 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <div class="tab-pane" id="pane-demurrage">
       <div class="form-section">
         <div class="form-section-title">⚓ Demurrage</div>
-        <div class="form-grid">
+        <!-- Carga LCL (pedido Emanuelly 05/10/2026): sem devolução de container.
+             Marca o tipo dos containers como LCL (ver alternarLCL em controle-campos.js). -->
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 12px;">
+          <input type="checkbox" id="f_lcl" ${ehLCL(p)?'checked':''} onchange="alternarLCL(this.checked)" style="width:16px;height:16px;">
+          📦 Carga LCL (consolidada) — sem devolução de container
+        </label>
+        <div id="lcl-nota" style="display:${ehLCL(p)?'':'none'};background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--muted);margin-bottom:10px;">
+          Carga LCL: devolução de vazio, RIC, lavagem e demurrage não se aplicam a este processo. Ele finaliza com a <b>Data de Carregamento</b> (retirada no armazém). A armazenagem continua sendo controlada na aba Logística.
+        </div>
+        <div class="form-grid" id="demurrage-venc-wrap" style="${ehLCL(p)?'display:none;':''}">
           <div class="form-group"><label class="form-label">Demurrage Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_demurrage_vencimento" value="${esc(p.demurrage_vencimento)}" style="color:var(--err);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
         </div>
@@ -1965,6 +1974,13 @@ function atualizarFaseEmTempoReal(){
   // demurrage_valor usa mÃÂÃÂ¡scara monetÃÂÃÂ¡ria ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o pode ser lido como texto puro
   const valorDemurAtual = valorMoeda('f_demurrage_valor');
   if(valorDemurAtual!=null) snapshot.demurrage_valor = valorDemurAtual;
+
+  // Carga LCL (05/10/2026): o tipo dos containers decide a regra do
+  // FINALIZADO — usa o que está na tela, não o salvo.
+  if(typeof _containers !== 'undefined' && Array.isArray(_containers) && _containers.length){
+    snapshot.containers_json = JSON.stringify(_containers);
+    snapshot.tipo_container = _containers[0].tipo || snapshot.tipo_container;
+  }
 
   const novaFase = calcularFase(snapshot);
 

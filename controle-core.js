@@ -1136,7 +1136,11 @@ async function salvarProcesso(proc, patchFields){
   // o ajuste de 03/09/2026 que usava Presença de Carga). Fica com fallback
   // pra Presença de Carga só pra processos antigos que nunca chegaram a
   // preencher Data de Chegada.
-  if(patchTocaCampos(['data_presenca','data_chegada','free_time'])){
+  if(ehLCL(proc)){
+    // Carga LCL (05/10/2026): sem container próprio, não existe demurrage —
+    // limpa o vencimento pra nenhum alerta/painel cobrar devolução.
+    proc.demurrage_vencimento = null;
+  } else if(patchTocaCampos(['data_presenca','data_chegada','free_time','containers_json','tipo_container'])){
     const baseDemurrage = proc.data_chegada || proc.data_presenca;
     if(baseDemurrage && proc.free_time){
       const inicioDemur = parseDataLocal(baseDemurrage);
@@ -1181,7 +1185,8 @@ async function salvarProcesso(proc, patchFields){
   // acima).
   if(patchTocaCampos(['data_devolucao_vazio','data_carregamento','nf_entrada_numero','nf_saida_numero','vendas_json','data_envio_termo',
     'data_agendamento','data_liberacao','canal','data_parametrizacao','numero_di','data_registro_di',
-    'data_chegada','data_presenca','data_embarque','etd','ric_status','data_pagamento_lavagem'])){
+    'data_chegada','data_presenca','data_embarque','etd','ric_status','data_pagamento_lavagem',
+    'containers_json','tipo_container'])){ // containers/tipo: marcar/desmarcar Carga LCL muda a regra do FINALIZADO (05/10/2026)
     // ric_status e data_pagamento_lavagem entraram aqui em 04/09/2026: a
     // regra do FINALIZADO (calcularFase) passou a depender desses dois
     // campos (Isento OU Lavagem paga, ver comentário em calcularFase), mas
@@ -1278,6 +1283,10 @@ function calcularFase(p){
   if(ehAcompanhamento(p)){
     if(p.data_devolucao_vazio || p.data_carregamento || (p.data_liberacao && (chegadaPassada || presencaPassada))) return 'FINALIZADO';
   }
+  // Carga LCL: não há container próprio pra devolver — finaliza com a
+  // retirada no armazém (Data de Carregamento), sem passar por Devolução do
+  // Vazio nem exigir RIC/lavagem. Pedido Emanuelly 05/10/2026.
+  if(ehLCL(p) && p.data_carregamento) return 'FINALIZADO';
   if(p.data_devolucao_vazio && (p.ric_status === 'Isento' || p.data_pagamento_lavagem)) return 'FINALIZADO';
   // Quando AMBAS as NFs (entrada e saída) estão emitidas, isso já é prova
   // suficiente de que o carregamento aconteceu de fato — avança direto para
@@ -1314,6 +1323,7 @@ function calcularFase(p){
 // ════════════════════════════════════════════════════════════════
 function demurrageDias(proc){
   if(!proc.demurrage_vencimento) return null;
+  if(ehLCL(proc)) return null; // carga LCL: sem demurrage (05/10/2026)
   const venc = parseDataLocal(proc.demurrage_vencimento);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   return Math.ceil((venc-hoje)/86400000);
@@ -1387,6 +1397,21 @@ function impakPagaCambio(p){ return (p && p.finalidade) === 'IMPORTACAO_DIRETA';
 // "em andamento" do Resultado, Averbação de seguro e dos totais da TV (na TV
 // só aparecem na lista Em Águas, sem somar — Emanuelly 30/09/2026). O histórico fica guardado normalmente.
 function ehAcompanhamento(p){ return !!p && p.finalidade === 'ACOMPANHAMENTO'; }
+// Carga LCL (consolidada) — pedido da Emanuelly (05/10/2026): "quando é LCL
+// não precisamos das tratativas de devolução". Marcada no checkbox "Carga
+// LCL" da aba Demurrage, que grava o tipo do container como 'LCL'
+// (containers_json[].tipo e tipo_container — sem coluna nova no banco; o
+// tipo também aparece como opção na lista de containers da aba Documentos).
+// LCL não tem container próprio: sem devolução de vazio, RIC, lavagem nem
+// demurrage; o processo finaliza com a Data de Carregamento (retirada da
+// carga no armazém). Armazenagem continua valendo normalmente.
+function ehLCL(p){
+  if(!p) return false;
+  let cs = p.containers_json;
+  if(typeof cs === 'string'){ try{ cs = JSON.parse(cs || '[]'); }catch(e){ cs = null; } }
+  if(Array.isArray(cs) && cs.length) return cs.every(c => String((c && c.tipo) || '').toUpperCase() === 'LCL');
+  return String(p.tipo_container || '').toUpperCase() === 'LCL';
+}
 // Sugestão automática: cliente é a CCN (única empresa nesse modelo hoje).
 function clienteSugereAcompanhamento(nome){ return /\bCCN\b/i.test(String(nome||'')); }
 // Chamado ao escolher/alterar o Cliente no painel do processo: se for a CCN e
@@ -1694,6 +1719,7 @@ function listarAdiantamentosCliente(processos){
 }
 
 function demurrageDisplay(proc){
+  if(ehLCL(proc)) return '<span style="color:var(--dim)" title="Carga LCL: sem devolução de container">LCL</span>';
   if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
   const dias = demurrageDias(proc);
   if(dias === null) return '<span style="color:var(--dim)">—</span>';
@@ -1706,6 +1732,7 @@ function demurrageDisplay(proc){
 // para poder ser recalculada em tempo real conforme o usuário digita (ver
 // atualizarFaseEmTempoReal), e não apenas uma vez quando o modal abre.
 function renderDemurInfo(p){
+  if(ehLCL(p)) return ''; // carga LCL: sem cálculo de demurrage (05/10/2026)
   if(!p.data_chegada && !p.data_presenca && !p.demurrage_vencimento) return '';
   // Base da contagem: Data de Chegada, com fallback pra Presença de Carga
   // (ver mesmo ajuste em salvarProcesso acima — pedido Emanuelly 14/09/2026,
@@ -4046,7 +4073,7 @@ return lista.filter(p => cont[norm(p.referencia)] > 1);
     const d=parseDataLocal(p.nf_saida_data);
     return d>=ini && d<=fim;
   }),
-  __demur_aberto: lista => lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento),
+  __demur_aberto: lista => lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento && !ehLCL(p)),
   __cambio_periodo: lista => lista.filter(p=>{
     if(p.fase==='FINALIZADO'||p.pi_pago||!p.pi_valor_usd) return false;
     const {ini,fim} = calcularPeriodo('financeiro');
@@ -4137,6 +4164,7 @@ const COLUNAS_TABELA = [
   // visão "Programação Semanal de Embarques" via "Agrupar por coluna".
   { campo:'semana_booking', label:'Semana Booking', agrupavel:true, valor:p => (p.semana_booking ? `Semana ${String(p.semana_booking).padStart(2,'0')}` : 'Sem semana definida') },
   { campo:'demurrage',  label:'Demurrage',      agrupavel:true,  valor:p => {
+      if(ehLCL(p)) return 'LCL (sem devolução)';
       if(p.fase === 'FINALIZADO' || p.data_devolucao_vazio) return 'Devolvido';
       const dias = demurrageDias(p);
       if(dias === null) return 'Sem dados';

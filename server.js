@@ -2681,14 +2681,14 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     // "Carregamento pendente" mesmo com Data de Carregamento preenchida.
     const { data: salvo } = await sb()
       .from('controle_processos')
-      .select('referencia, demurrage_vencimento, data_devolucao_vazio, data_presenca, data_carregamento, data_agendamento, transportadora, cancelado, finalidade')
+      .select('referencia, demurrage_vencimento, data_devolucao_vazio, data_presenca, data_carregamento, data_agendamento, transportadora, cancelado, finalidade, tipo_container')
       .eq('id', processo.id)
       .maybeSingle();
     const pAlerta = salvo || processo;
     const pularAlertas = !!(salvo && salvo.cancelado);
 
     // Criar notificação de demurrage se necessário (1 por processo por dia)
-    if (!pularAlertas && pAlerta.demurrage_vencimento && pAlerta.finalidade !== 'ACOMPANHAMENTO') {
+    if (!pularAlertas && pAlerta.demurrage_vencimento && pAlerta.finalidade !== 'ACOMPANHAMENTO' && !ehLCLServidor(pAlerta)) {
       const venc = new Date(pAlerta.demurrage_vencimento);
       const dias = Math.ceil((venc - new Date()) / 86400000);
       if (dias <= 5 && dias >= 0 && !pAlerta.data_devolucao_vazio) {
@@ -4449,7 +4449,7 @@ app.post('/api/chat', auth(...MODULOS_TRABALHO), rateLimitChat, async (req, res)
 
     // Calcular demurrage para cada processo ativo
     function demDias(p) {
-      if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO') return null; // Acompanhamento: IMPAK não cuida de demurrage
+      if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO' || ehLCLServidor(p)) return null; // Acompanhamento e carga LCL: sem demurrage
       const d = new Date(p.demurrage_vencimento);
       return Math.ceil((d - hoje) / 86400000);
     }
@@ -5002,10 +5002,16 @@ if (error) console.error('marcarAlertasEnviadosHoje: falha ao gravar app_job_run
 // estimativa_json, produtos_json, containers_json, log...) de todos os
 // processos, várias vezes por dia, à toa. conferencia_json, vendas_json e
 // pi_parcelas_json ficam porque 1 job cada usa de verdade.
+// Carga LCL (pedido Emanuelly 05/10/2026): marcada no painel como tipo de
+// container 'LCL' (tipo_container = tipo do 1º container). Sem container
+// próprio: não tem devolução de vazio nem demurrage — mesmos filtros que já
+// existiam pro Acompanhamento.
+function ehLCLServidor(p){ return String((p && p.tipo_container) || '').toUpperCase() === 'LCL'; }
+
 const COLS_ALERTAS = [
   'id','referencia','cliente','fornecedor','fase','cancelado',
   'eta','etd','data_chegada','transportadora',
-  'demurrage_vencimento','data_devolucao_vazio',
+  'demurrage_vencimento','data_devolucao_vazio','tipo_container',
   'aprovacao_hbl','solicitacao_li','docs_enviados_despachante',
   'pi_valor_usd','pi_pagamento','pi_pago','pi_cambio','pi_entrada_pct',
   'pi_data_entrada','pi_data_saldo','pi_cambio_entrada','pi_parcelas_json','pi_prazo_dias','finalidade','data_embarque',
@@ -5030,7 +5036,7 @@ catch (e) { console.error('Erro ao buscar processos p/ alertas diarios:', e.mess
 const hoje = new Date();
 const semana = new Date(hoje); semana.setDate(hoje.getDate() + 7);
 function demDias(p){
-if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO') return null; // Acompanhamento: IMPAK não cuida de demurrage
+if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO' || ehLCLServidor(p)) return null; // Acompanhamento e carga LCL: sem demurrage
 const d = new Date(p.demurrage_vencimento);
 return Math.ceil((d - hoje) / 86400000);
 }
@@ -5137,7 +5143,7 @@ async function verificarAlertaDemurrage(){
   catch (e) { console.error('Erro ao buscar processos p/ alerta demurrage:', e.message); return 0; }
   const hoje = new Date();
   function demDias(p){
-    if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO') return null; // Acompanhamento: IMPAK não cuida de demurrage
+    if (!p.demurrage_vencimento || p.data_devolucao_vazio || p.finalidade === 'ACOMPANHAMENTO' || ehLCLServidor(p)) return null; // Acompanhamento e carga LCL: sem demurrage
     return Math.ceil((new Date(p.demurrage_vencimento) - hoje) / 86400000);
   }
   const pendentes = ativos.map(p => ({ p, d: demDias(p) })).filter(x => x.d !== null).sort((a,b) => a.d - b.d);

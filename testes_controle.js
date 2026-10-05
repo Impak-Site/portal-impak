@@ -2508,6 +2508,30 @@ teste('Alerta de cadastro do câmbio compara as parcelas com a CI quando ela exi
   iguais(sem.length, 1, 'sem CI: compara com a PI e alerta');
   iguais(/a PI é/.test(sem[0].problema), true);
 });
+// ── Carga LCL: sem devolução de container (pedido Emanuelly 05/10/2026) ──
+console.log('\n📋 Carga LCL — sem devolução/demurrage, finaliza no carregamento');
+teste('ehLCL: todos os containers LCL → sim; misto ou FCL → não; sem containers usa tipo_container', () => {
+  iguais(sandbox.ehLCL({ containers_json: JSON.stringify([{ numero:'', tipo:'LCL' }]) }), true);
+  iguais(sandbox.ehLCL({ containers_json: [{ tipo:'LCL' }, { tipo:'LCL' }] }), true, 'array já parseado');
+  iguais(sandbox.ehLCL({ containers_json: JSON.stringify([{ tipo:'LCL' }, { tipo:'40HC' }]) }), false, 'misto: o FCL ainda precisa devolver');
+  iguais(sandbox.ehLCL({ containers_json: JSON.stringify([{ tipo:'40HC' }]) }), false);
+  iguais(sandbox.ehLCL({ tipo_container: 'LCL' }), true, 'sem containers_json');
+  iguais(sandbox.ehLCL({}), false);
+  iguais(sandbox.ehLCL(null), false);
+});
+teste('calcularFase: LCL finaliza com a Data de Carregamento (sem passar por Devolução do Vazio)', () => {
+  const base = { etd:'2026-01-05', data_embarque:'2026-01-06', data_chegada:'2026-02-01', numero_di:'X', data_liberacao:'2026-02-05', data_agendamento:'2026-02-06', data_carregamento:'2026-02-07' };
+  iguais(sandbox.calcularFase({ ...base, containers_json: JSON.stringify([{ tipo:'LCL' }]) }), 'FINALIZADO');
+  iguais(sandbox.calcularFase({ ...base, containers_json: JSON.stringify([{ tipo:'40HC' }]) }), 'DEVOLUCAO_VAZIO', 'FCL continua exigindo devolução');
+  const semCarreg = { ...base }; delete semCarreg.data_carregamento;
+  iguais(sandbox.calcularFase({ ...semCarreg, containers_json: JSON.stringify([{ tipo:'LCL' }]) }), 'CARREGAMENTO', 'LCL sem carregamento ainda não finaliza');
+});
+teste('demurrageDias: carga LCL não tem demurrage (mesmo com vencimento antigo gravado)', () => {
+  iguais(sandbox.demurrageDias({ demurrage_vencimento: '2026-01-10', tipo_container: 'LCL' }), null);
+  iguais(sandbox.demurrageDias({ demurrage_vencimento: '2026-01-10', containers_json: JSON.stringify([{ tipo:'LCL' }]) }), null);
+  iguais(typeof sandbox.demurrageDias({ demurrage_vencimento: '2026-01-10', tipo_container: '40HC' }), 'number', 'FCL continua calculando');
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';

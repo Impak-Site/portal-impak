@@ -468,11 +468,12 @@ function renderMultiContainers(){
     <div style="display:grid;grid-template-columns:1fr 100px 1fr 32px;gap:6px;align-items:center;">
       <input class="form-input" placeholder="Nº Container (ex: MSCU1234567)" value="${c.numero||''}"
         oninput="_containers[${i}].numero=this.value;sincronizarContainerLegado()">
-      <select class="form-input" onchange="_containers[${i}].tipo=this.value;sincronizarContainerLegado()">
+      <select class="form-input" onchange="_containers[${i}].tipo=this.value;sincronizarContainerLegado();atualizarFaseEmTempoReal()">
         <option value="20GP" ${c.tipo==='20GP'?'selected':''}>20GP</option>
         <option value="40GP" ${c.tipo==='40GP'?'selected':''}>40GP</option>
         <option value="40HC" ${(!c.tipo||c.tipo==='40HC')?'selected':''}>40HC</option>
         <option value="40NOR" ${c.tipo==='40NOR'?'selected':''}>40NOR</option>
+        <option value="LCL" ${c.tipo==='LCL'?'selected':''} title="Carga consolidada: sem devolução de container (Emanuelly 05/10/2026)">LCL</option>
       </select>
       <input class="form-input" placeholder="Lacre (opcional)" value="${c.lacre||''}"
         oninput="_containers[${i}].lacre=this.value">
@@ -520,10 +521,52 @@ function sincronizarContainerLegado(){
 // para que calcularFase/demurrageDias/dashboards continuem funcionando
 // sem qualquer mudanca -- eles so enxergam os campos "achatados" do
 // processo, nunca _containers diretamente.
+// ── Carga LCL (pedido Emanuelly, 05/10/2026) ───────────────────────
+// "Quando é LCL não precisamos das tratativas de devolução": o checkbox
+// "Carga LCL" da aba Demurrage marca o tipo de todos os containers como
+// 'LCL' (o tipo anterior fica guardado em tipo_antes_lcl pra voltar se
+// desmarcar). Com LCL a aba esconde devolução/RIC/depot/lavagem/demurrage e
+// a fase finaliza com a Data de Carregamento (ver ehLCL/calcularFase em
+// controle-core.js).
+function cargaEhLCLNaTela(){
+  return Array.isArray(_containers) && _containers.length > 0 && _containers.every(c => String((c && c.tipo) || '').toUpperCase() === 'LCL');
+}
+function alternarLCL(marcado){
+  _painelDirty = true; // ação via clique não dispara 'input' nos campos do formulário (ver ESC em controle-core.js)
+  if(!Array.isArray(_containers) || !_containers.length) _containers = [{numero:'', tipo:'40HC', lacre:''}];
+  if(marcado){
+    _containers.forEach(c => { if(String(c.tipo||'').toUpperCase() !== 'LCL') c.tipo_antes_lcl = c.tipo || '40HC'; c.tipo = 'LCL'; });
+  } else {
+    _containers.forEach(c => { c.tipo = c.tipo_antes_lcl || '40HC'; delete c.tipo_antes_lcl; });
+  }
+  renderMultiContainers(); // sincroniza containers_json/tipo_container e redesenha a aba Demurrage
+  try{ atualizarFaseEmTempoReal(); }catch(e){}
+  if(typeof showToast === 'function') showToast(marcado
+    ? '📦 Carga LCL: devolução de container, RIC, lavagem e demurrage não se aplicam. Finaliza com a Data de Carregamento. Salve para gravar.'
+    : 'Carga LCL desmarcada: a devolução do container volta a ser controlada. Salve para gravar.', 'ok');
+}
+function aplicarVisualLCL(){
+  const lcl = cargaEhLCLNaTela();
+  const chk = document.getElementById('f_lcl');
+  if(chk) chk.checked = lcl;
+  ['demurrage-venc-wrap','demurrage-campos-single','demurrage-campos-multi','demur-info-wrap'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el && lcl) el.style.display = 'none';
+  });
+  const nota = document.getElementById('lcl-nota');
+  if(nota) nota.style.display = lcl ? '' : 'none';
+  if(!lcl){
+    const venc = document.getElementById('demurrage-venc-wrap'); if(venc) venc.style.display = '';
+    const info = document.getElementById('demur-info-wrap'); if(info) info.style.display = '';
+  }
+  return lcl;
+}
+
 function renderDemurrageContainers(){
   const single = document.getElementById('demurrage-campos-single');
   const multi = document.getElementById('demurrage-campos-multi');
   if(!single || !multi) return; // aba Demurrage ainda nao foi renderizada nesta sessao do modal
+  if(aplicarVisualLCL()) return; // carga LCL: sem campos de devolução/demurrage
   if(!_containers || _containers.length <= 1){
     single.style.display = '';
     multi.style.display = 'none';
