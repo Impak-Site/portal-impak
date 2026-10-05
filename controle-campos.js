@@ -1793,10 +1793,14 @@ function aplicarBancoCustoLegado(){
     const valorPagoL = parseFloat(_cambioPendente?.valor_pago) || 0;
     const valorUsdImplicitoL = valorUsdRefL || (taxaL ? (valorPagoL/taxaL) : 0);
     const custoExtraL = parseFloat(_cambioPendente?.custo_operacao) || 0;
+    // Bug (Emanuelly 05/10/2026): gravava "12345.67" (ponto decimal do JS)
+    // num campo com máscara pt-BR; ao salvar, valorMoeda() tirava o ponto
+    // como se fosse milhar e o custo ficava 100x maior (R$ 1.234.567,00).
+    // Agora preenche no formato da máscara (12.345,67). Valores fictícios.
     if(valorUsdImplicitoL && taxaL){
-      elCusto.value = (valorUsdImplicitoL*taxaL + custoExtraL).toFixed(2);
+      elCusto.value = exibirMoeda(+(valorUsdImplicitoL*taxaL + custoExtraL).toFixed(2));
     } else if(custoExtraL){
-      elCusto.value = custoExtraL.toFixed(2);
+      elCusto.value = exibirMoeda(+custoExtraL.toFixed(2));
     }
   }
 }
@@ -1828,7 +1832,16 @@ function valorMoeda(id){
 // um <input type=\"number\">, que também vem '' quando vazio).
 function parseValorMoeda(str){
   if(!str) return '';
-  const limpo = String(str).replace(/\./g,'').replace(',','.');
+  const s = String(str).trim();
+  // Número com ponto decimal (ex.: "12345.67", vindo de código ou colado de
+  // outro sistema) e sem vírgula: o ponto é decimal, não milhar — senão o
+  // valor ficava 100x maior (bug do Custo da Operação, 05/10/2026). "1.234"
+  // (3 dígitos depois do ponto) continua sendo milhar, como na máscara.
+  if(!s.includes(',') && /^-?\d+\.\d{1,2}$/.test(s)){
+    const n0 = parseFloat(s);
+    return isNaN(n0) ? '' : n0;
+  }
+  const limpo = s.replace(/\./g,'').replace(',','.');
   const n = parseFloat(limpo);
   return isNaN(n) ? '' : n;
 }

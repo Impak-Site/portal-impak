@@ -1947,7 +1947,10 @@ teste('confirmarCambioComo("unico"): aplica Banco/Custo nos campos do processo (
   vm.runInContext(`_cambioPendente = {taxa_cambio:5.20, valor_pago:10000, referencia:'UD26-Y', data_pagamento:'2026-09-01', banco:'Itaú', codigo_bacen:'999888777', custo_operacao:55.30};`, sandbox);
   sandbox.confirmarCambioComo('unico');
   iguais(sandbox.document.getElementById('f_pi_cambio_banco').value, 'Itaú', 'banco deveria ser preenchido no campo do processo');
-  iguais(sandbox.document.getElementById('f_pi_cambio_custo').value, '10055.30', 'custo da operação deveria ser valor USD x câmbio + tarifa extra do comprovante');
+  // 05/10/2026: o campo tem máscara pt-BR — antes este teste esperava
+  // "10055.30" (ponto decimal), que ao salvar virava 1.005.530 (bug do 100x).
+  iguais(sandbox.document.getElementById('f_pi_cambio_custo').value, '10.055,30', 'custo da operação deveria ser valor USD x câmbio + tarifa extra do comprovante, no formato da máscara');
+  iguais(sandbox.valorMoeda('f_pi_cambio_custo'), 10055.3, 'e ao salvar vale R$ 10.055,30');
 });
 
 // ── CATÁLOGO DE BANCOS DA IMPAK (cadastro + normalização) ───────
@@ -2530,6 +2533,26 @@ teste('demurrageDias: carga LCL não tem demurrage (mesmo com vencimento antigo 
   iguais(sandbox.demurrageDias({ demurrage_vencimento: '2026-01-10', tipo_container: 'LCL' }), null);
   iguais(sandbox.demurrageDias({ demurrage_vencimento: '2026-01-10', containers_json: JSON.stringify([{ tipo:'LCL' }]) }), null);
   iguais(typeof sandbox.demurrageDias({ demurrage_vencimento: '2026-01-10', tipo_container: '40HC' }), 'number', 'FCL continua calculando');
+});
+
+// ── Custo da Operação 100x maior (Emanuelly 05/10/2026) — valores fictícios ──
+console.log('\n📋 Campos monetários — ponto decimal x milhar');
+teste('parseValorMoeda: "12345.67" (ponto decimal) não vira 1234567; máscara pt-BR continua igual', () => {
+  iguais(sandbox.parseValorMoeda('12345.67'), 12345.67, 'ponto decimal');
+  iguais(sandbox.parseValorMoeda('12.345,67'), 12345.67, 'máscara pt-BR');
+  iguais(sandbox.parseValorMoeda('1.234'), 1234, '3 dígitos após o ponto = milhar');
+  iguais(sandbox.parseValorMoeda('1.234.567,8'), 1234567.8);
+  iguais(sandbox.parseValorMoeda('0,5'), 0.5);
+  iguais(sandbox.parseValorMoeda('12.5'), 12.5);
+  iguais(sandbox.parseValorMoeda(''), '');
+});
+teste('Comprovante de câmbio (pagamento único) preenche o Custo da Operação no formato da máscara', () => {
+  const el = sandbox.document.getElementById('f_pi_cambio_custo'); el.value = '';
+  vm.runInContext("_cambioPendente = {taxa_cambio: 5.0, valor_usd_referencia: 10000.5, referencia:'T-1'};", sandbox);
+  sandbox.aplicarBancoCustoLegado();
+  iguais(el.value, '50.002,50');
+  iguais(sandbox.valorMoeda('f_pi_cambio_custo'), 50002.5, 'ao salvar volta o valor certo');
+  el.value = '';
 });
 
 // Limpa os campos usados acima pra não vazar para outros testes.
