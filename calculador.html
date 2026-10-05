@@ -50,7 +50,7 @@ body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min
 .wizard-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--border);background:#fff;color:var(--muted);transition:all .15s;}
 .wizard-step-btn.done .wizard-dot{background:var(--ac);border-color:var(--ac);color:#fff;}
 .wizard-step-btn.active .wizard-dot{border-color:var(--ac);color:var(--ac);box-shadow:0 0 0 3px var(--ac-soft);}
-.wizard-label{font-size:8px;font-weight:700;color:var(--muted);text-align:center;letter-spacing:.2px;line-height:1.2;max-width:48px;}
+.wizard-label{font-size:8px;font-weight:700;color:var(--muted);text-align:center;letter-spacing:.2px;line-height:1.2;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} /* reticências: "Classificação" sobrepunha "Taxas" (05/10/2026) */
 .wizard-step-btn.active .wizard-label{color:var(--ac);}
 .wizard-step-btn.done .wizard-label{color:var(--text);}
 .wizard-line{flex:1;height:2px;background:var(--border);margin-top:11px;min-width:6px;}
@@ -199,7 +199,6 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
   .main{flex-direction:column;}
   .sidebar-calc{width:auto;border-right:none;border-bottom:1px solid var(--border);overflow:visible;}
   .content-calc{padding:16px;overflow:visible;}
-  .wizard-label{font-size:9px;max-width:60px;}
 }
 @media (max-width: 520px){
   .form-row,.form-row3{grid-template-columns:1fr;}
