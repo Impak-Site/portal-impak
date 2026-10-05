@@ -2076,7 +2076,7 @@ function renderPagamentoCampos(){
     html+=`<div class="form-group"><label class="form-label">% Entrada (PI)</label>
       <input class="form-input" type="number" id="f_pi_entrada_pct" value="${p.pi_entrada_pct!=null&&p.pi_entrada_pct!==''?esc(p.pi_entrada_pct):''}" min="1" max="99" step="1" placeholder="ex.: 20"
         onchange="aplicarPctEntradaParcelas()" title="Percentual de adiantamento dos termos de pagamento da PI (ex.: 20% T/T in advance). A parcela Inicial vira esse % da PI e a Final fecha o saldo pela CI (ou pela PI, enquanto não houver CI). Parcela com câmbio fechado não é alterada."></div>
-      <div class="form-group" style="grid-column:span 2;align-self:end;font-size:11px;color:var(--muted);padding-bottom:10px;">Saldo (parcela Final) fecha com a <b>CI</b> quando ela existe; sem CI, com a PI.</div>`;
+      <div style="grid-column:span 2;align-self:end;font-size:11px;color:var(--muted);padding-bottom:12px;"><span>Inicial = % da PI. Saldo (parcela Final) fecha com a <b>CI</b> quando ela existe; sem CI, com a PI.</span></div>`;
     html+=`<div class="form-group full">
       <label class="form-label">Parcelas (quantos câmbios forem necessários — ex.: confirmação do pedido, embarque, chegada)</label>
       <div id="parcelas-list"></div>
