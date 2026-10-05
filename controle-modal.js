@@ -650,7 +650,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <div class="form-group"><label class="form-label">Data Devolução</label>
               <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_devolucao_vazio" value="${esc(p.data_devolucao_vazio)}" onchange="atualizarFaseEmTempoReal()"></div>
             <div class="form-group"><label class="form-label">Status RIC</label>
-              <select class="form-input" id="f_ric_status">
+              <select class="form-input" id="f_ric_status" onchange="atualizarFaseEmTempoReal()">
                 <option value="" ${!p.ric_status?'selected':''}>—</option>
                 <option value="Isento" ${p.ric_status==='Isento'?'selected':''}>Isento</option>
                 <option value="Parcial Isento" ${p.ric_status==='Parcial Isento'?'selected':''}>Parcial Isento</option>
@@ -668,7 +668,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <div class="form-group"><label class="form-label">Data de Envio do Termo</label>
               <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_envio_termo" value="${esc(p.data_envio_termo)}"></div>
             <div class="form-group"><label class="form-label">Data Pagamento Lavagem</label>
-              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_lavagem" value="${esc(p.data_pagamento_lavagem)}"></div>
+              <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_lavagem" value="${esc(p.data_pagamento_lavagem)}" onchange="atualizarFaseEmTempoReal()"></div>
             <div class="form-group"><label class="form-label">Data de Pagamento da Demurrage</label>
               <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_pagamento_demurrage" value="${esc(p.data_pagamento_demurrage)}" onchange="atualizarFaseEmTempoReal()"></div>
           </div>
@@ -840,6 +840,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     else if(p.container) _containers = [{numero:p.container||'', tipo:p.tipo_container||'40HC', lacre:p.lacre||''}];
     else _containers = [{numero:'', tipo:'40HC', lacre:''}];
   }catch(e){ _containers = [{numero:'', tipo:'40HC', lacre:''}]; }
+  if(typeof reiniciarModoDemurrage === 'function') reiniciarModoDemurrage(); // painel novo: ainda não houve troca 1 <-> 2+ containers
   renderMultiContainers();
   // Inicializar multi-produtos (com retrocompatibilidade do campo "produto" legado em texto ÃÂÃÂºnico)
   try{
@@ -1962,6 +1963,10 @@ function atualizarFaseEmTempoReal(){
     'data_agendamento','data_carregamento',
     'data_devolucao_vazio','demurrage_vencimento','armazenagem_vencimento','free_time',
     'data_pagamento_demurrage',
+    // RIC e lavagem decidem o FINALIZADO (calcularFase) — sem eles aqui o selo
+    // e a linha do tempo do painel ficavam em "Dev. Vazio" mesmo com a lavagem
+    // paga (PVN2602-10, Emanuelly 05/10/2026).
+    'ric_status','data_pagamento_lavagem',
   ];
 
   const snapshot = {..._editando};

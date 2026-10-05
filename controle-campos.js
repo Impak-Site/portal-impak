@@ -442,7 +442,14 @@ function coletarESalvar(opts){
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
     if(ok && fecharAoSalvar) fecharModal();
-    else if(ok) showToast('✓ Processo salvo', 'ok');
+    else if(ok){
+      showToast('✓ Processo salvo', 'ok');
+      // Painel continua aberto: atualiza o selo da fase e a linha do tempo
+      // com o que acabou de ser gravado (antes ficavam como estavam ao abrir —
+      // PVN2602-10, 05/10/2026: gravou como Finalizado mas o painel seguia
+      // mostrando "Dev. Vazio").
+      try{ if(typeof atualizarFaseEmTempoReal === 'function') atualizarFaseEmTempoReal(); }catch(e){}
+    }
   }).catch(()=>{
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
@@ -562,12 +569,47 @@ function aplicarVisualLCL(){
   return lcl;
 }
 
+// Modo em que a aba Demurrage foi desenhada pela última vez neste painel:
+// 'single' (1 container: campos únicos do processo), 'multi' (2+: um bloco
+// por container) ou null (painel acabou de abrir — ver renderModal). Serve
+// pra saber quando a tela TROCA de modo (05/10/2026, PVN2602-10): ao
+// adicionar um 2º container o 1º herda os campos únicos (que são a fonte
+// de verdade com 1 container) e, ao remover e voltar pra 1, os campos
+// únicos voltam a mostrar os dados do container que ficou. Antes, com 2
+// containers os campos únicos viravam o agregado (em branco quando algum
+// container não tinha RIC/lavagem) e continuavam em branco depois de
+// remover o 2º — o próximo Salvar apagava a Data Pagamento Lavagem e o
+// processo voltava pra Devolução do Vazio.
+let _demurModoAnterior = null;
+function reiniciarModoDemurrage(){ _demurModoAnterior = null; }
+
+// Campos de demurrage por container -> campo único do processo (aba Demurrage).
+const MAPA_DEMUR_CONTAINER_UNICO = [
+  ['demurrage_valor','f_demurrage_valor'], ['devolucao','f_data_devolucao_vazio'], ['ric_status','f_ric_status'],
+  ['depot','f_depot'], ['data_solicitacao_demurrage','f_data_solicitacao_demurrage'],
+  ['data_isencao_demurrage','f_data_isencao_demurrage'], ['data_envio_termo','f_data_envio_termo'],
+  ['data_pagamento_lavagem','f_data_pagamento_lavagem'], ['data_pagamento_demurrage','f_data_pagamento_demurrage'],
+];
+function restaurarCamposUnicosDoContainer(c){
+  if(!c) return;
+  MAPA_DEMUR_CONTAINER_UNICO.forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const v = c[k];
+    el.value = (k === 'demurrage_valor' && typeof v === 'number') ? exibirMoeda(v) : (v == null ? '' : String(v));
+  });
+}
+
 function renderDemurrageContainers(){
   const single = document.getElementById('demurrage-campos-single');
   const multi = document.getElementById('demurrage-campos-multi');
   if(!single || !multi) return; // aba Demurrage ainda nao foi renderizada nesta sessao do modal
   if(aplicarVisualLCL()) return; // carga LCL: sem campos de devolução/demurrage
   if(!_containers || _containers.length <= 1){
+    // Voltou de 2+ pra 1 container: os campos únicos ainda mostram o
+    // agregado — passam a mostrar os dados do container que ficou.
+    if(_demurModoAnterior === 'multi' && _containers && _containers[0]) restaurarCamposUnicosDoContainer(_containers[0]);
+    _demurModoAnterior = 'single';
     single.style.display = '';
     multi.style.display = 'none';
     multi.innerHTML = '';
@@ -582,7 +624,10 @@ function renderDemurrageContainers(){
   // nos containers -- e o container novo começa vazio.
   const c0 = _containers[0];
   const CAMPOS_DEMUR_CONTAINER = ['demurrage_valor','devolucao','ric_status','depot','data_solicitacao_demurrage','data_isencao_demurrage','data_envio_termo','data_pagamento_lavagem','data_pagamento_demurrage'];
-  if(!CAMPOS_DEMUR_CONTAINER.some(k => c0[k])){
+  // Também herda quando a tela estava com 1 container até agora: nesse modo
+  // os campos únicos é que valem, e o que estiver guardado no 1º container
+  // pode ser de uma vez anterior (desatualizado).
+  if(_demurModoAnterior === 'single' || !CAMPOS_DEMUR_CONTAINER.some(k => c0[k])){
     c0.demurrage_valor = document.getElementById('f_demurrage_valor')?.value || '';
     c0.devolucao = document.getElementById('f_data_devolucao_vazio')?.value || '';
     c0.ric_status = document.getElementById('f_ric_status')?.value || '';
@@ -593,6 +638,7 @@ function renderDemurrageContainers(){
     c0.data_pagamento_lavagem = document.getElementById('f_data_pagamento_lavagem')?.value || '';
     c0.data_pagamento_demurrage = document.getElementById('f_data_pagamento_demurrage')?.value || '';
   }
+  _demurModoAnterior = 'multi';
   single.style.display = 'none';
   multi.style.display = '';
   multi.innerHTML = _containers.map((c,i) => {

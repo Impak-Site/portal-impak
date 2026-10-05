@@ -2555,6 +2555,61 @@ teste('Comprovante de câmbio (pagamento único) preenche o Custo da Operação 
   el.value = '';
 });
 
+// ── Fase no painel com RIC/Lavagem + troca 1 <-> 2 containers (Emanuelly 05/10/2026) ──
+console.log('\n📋 Demurrage — selo da fase no painel e campos únicos ao remover container');
+const elD = id => sandbox.document.getElementById(id);
+function prepararDemurrage(valores){
+  const ids = ['f_data_devolucao_vazio','f_ric_status','f_data_pagamento_lavagem','f_depot','f_demurrage_valor',
+    'f_data_solicitacao_demurrage','f_data_isencao_demurrage','f_data_envio_termo','f_data_pagamento_demurrage','f_data_carregamento'];
+  ids.forEach(id => { elD(id).value = (valores && valores[id]) || ''; });
+}
+teste('atualizarFaseEmTempoReal: preencher a Data Pagamento Lavagem leva o selo do painel pra Finalizado (antes ficava em Dev. Vazio)', () => {
+  vm.runInContext("_containers = [{numero:'TSTU0000001', tipo:'40HC', lacre:''}]; _editando = {id:'t-1', referencia:'T-1', fase:'DEVOLUCAO_VAZIO', data_carregamento:'2026-08-28', data_devolucao_vazio:'2026-09-01', ric_status:'Termo'};", sandbox);
+  prepararDemurrage({ f_data_carregamento:'2026-08-28', f_data_devolucao_vazio:'2026-09-01', f_ric_status:'Termo' });
+  sandbox.atualizarFaseEmTempoReal();
+  iguais(vm.runInContext('_editando._fasePrevista', sandbox), 'DEVOLUCAO_VAZIO', 'sem lavagem paga e RIC em Termo continua em Devolução do Vazio');
+  elD('f_data_pagamento_lavagem').value = '2026-09-21';
+  sandbox.atualizarFaseEmTempoReal();
+  iguais(vm.runInContext('_editando._fasePrevista', sandbox), 'FINALIZADO', 'lavagem paga finaliza');
+  elD('f_data_pagamento_lavagem').value = '';
+  elD('f_ric_status').value = 'Isento';
+  sandbox.atualizarFaseEmTempoReal();
+  iguais(vm.runInContext('_editando._fasePrevista', sandbox), 'FINALIZADO', 'RIC Isento também finaliza');
+});
+teste('Adicionar e remover um 2º container não apaga RIC/Lavagem/Devolução dos campos únicos', () => {
+  vm.runInContext("_containers = [{numero:'TSTU0000001', tipo:'40HC', lacre:''}]; reiniciarModoDemurrage();", sandbox);
+  prepararDemurrage({ f_data_devolucao_vazio:'2026-09-01', f_ric_status:'Termo', f_data_pagamento_lavagem:'2026-09-21', f_depot:'DEPOT TESTE', f_data_isencao_demurrage:'2026-09-10' });
+  sandbox.renderMultiContainers();
+  sandbox.adicionarContainer();
+  iguais(vm.runInContext('_containers.length', sandbox), 2);
+  iguais(vm.runInContext('_containers[0].data_pagamento_lavagem', sandbox), '2026-09-21', 'o 1º container herda os campos únicos');
+  iguais(elD('f_data_pagamento_lavagem').value, '', 'com 2 containers o campo único mostra o agregado (o 2º ainda sem lavagem)');
+  sandbox.removerContainer(1);
+  iguais(vm.runInContext('_containers.length', sandbox), 1);
+  iguais(elD('f_data_pagamento_lavagem').value, '2026-09-21', 'voltou a 1 container: lavagem volta');
+  iguais(elD('f_ric_status').value, 'Termo', 'RIC volta');
+  iguais(elD('f_data_devolucao_vazio').value, '2026-09-01', 'devolução volta');
+  iguais(elD('f_depot').value, 'DEPOT TESTE');
+});
+teste('Ao passar de 1 para 2 containers, o 1º container pega os campos únicos atuais (não um valor antigo guardado nele)', () => {
+  vm.runInContext("_containers = [{numero:'TSTU0000001', tipo:'40HC', lacre:'', data_pagamento_lavagem:'2026-01-01', ric_status:'Termo', devolucao:'2026-01-01'}]; reiniciarModoDemurrage();", sandbox);
+  prepararDemurrage({ f_data_devolucao_vazio:'2026-09-01', f_ric_status:'Isento', f_data_pagamento_lavagem:'' });
+  sandbox.renderMultiContainers();
+  sandbox.adicionarContainer();
+  iguais(vm.runInContext('_containers[0].devolucao', sandbox), '2026-09-01');
+  iguais(vm.runInContext('_containers[0].ric_status', sandbox), 'Isento');
+  iguais(vm.runInContext('_containers[0].data_pagamento_lavagem', sandbox), '');
+});
+teste('Painel aberto já com 2 containers: dados próprios de cada container não são sobrescritos', () => {
+  vm.runInContext("_containers = [{numero:'A', tipo:'40HC', devolucao:'2026-09-02', ric_status:'Isento'}, {numero:'B', tipo:'40HC', devolucao:'2026-09-03', ric_status:'Isento'}]; reiniciarModoDemurrage();", sandbox);
+  prepararDemurrage({ f_data_devolucao_vazio:'2026-09-03', f_ric_status:'Isento' });
+  sandbox.renderMultiContainers();
+  iguais(vm.runInContext('_containers[0].devolucao', sandbox), '2026-09-02', 'mantém a devolução do container A');
+  iguais(elD('f_data_devolucao_vazio').value, '2026-09-03', 'agregado = última devolução');
+  vm.runInContext("_containers = [{numero:'', tipo:'40HC', lacre:''}]; reiniciarModoDemurrage();", sandbox);
+  prepararDemurrage({});
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';
