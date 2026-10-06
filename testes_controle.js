@@ -2645,6 +2645,38 @@ teste('ALERTA sem campo e OK não contam como pendência', () => {
   iguais(CC.contarConferencia(a).pendentes, 1);
 });
 
+// ── Câmbio: parcelas sem data de vencimento (alerta "fora do radar") ─
+console.log('\n📋 classificarSemData() — status e prioridade das parcelas sem data');
+teste('Sem forma de pagamento → crítico', () => {
+  const [x] = sandbox.listarPagamentosPI([{ id:'t1', referencia:'TESTE-1', pi_valor_usd:'1000', fase:'PI' }]);
+  const c = sandbox.classificarSemData(x);
+  iguais(c.status, 'sem_forma'); iguais(c.grupo, 'critico');
+});
+teste('Parcelado já embarcado com Inicial sem data → crítico (pode ter sido paga)', () => {
+  const p = { id:'t2', referencia:'TESTE-2', pi_valor_usd:'1000', fase:'EMBARCADO', pi_pagamento:'PARCELADO',
+    pi_parcelas_json: JSON.stringify([{ label:'Inicial', valor_usd:300, data_vencimento:'' }, { label:'Final', valor_usd:700, data_vencimento:'2026-11-01' }]) };
+  const semData = sandbox.listarPagamentosPI([p]).filter(x => !x.pago && !x.vencimento);
+  iguais(semData.length, 1);
+  const c = sandbox.classificarSemData(semData[0]);
+  iguais(c.status, 'inicial_pago'); iguais(c.grupo, 'critico');
+});
+teste('Fase PI: Inicial sem data → atenção; Final sem ETA → aguardando', () => {
+  const p = { id:'t3', referencia:'TESTE-3', pi_valor_usd:'1000', fase:'PI', pi_pagamento:'PARCELADO',
+    pi_parcelas_json: JSON.stringify([{ label:'Inicial', valor_usd:300 }, { label:'Final', valor_usd:700 }]) };
+  const cs = sandbox.listarPagamentosPI([p]).map(x => sandbox.classificarSemData(x));
+  iguais(cs.map(c => c.status+'/'+c.grupo).join(','), 'inicial/atencao,final_eta/aguardando');
+});
+teste('100% a prazo em PI → aguardando; À vista aguardando embarque → atenção', () => {
+  const [a] = sandbox.listarPagamentosPI([{ id:'t4', referencia:'TESTE-4', pi_valor_usd:'1000', fase:'PI', pi_pagamento:'PRAZO' }]);
+  const [b] = sandbox.listarPagamentosPI([{ id:'t5', referencia:'TESTE-5', pi_valor_usd:'1000', fase:'AGUARDANDO_EMBARQUE', pi_pagamento:'VISTA' }]);
+  iguais(sandbox.classificarSemData(a).status+'/'+sandbox.classificarSemData(a).grupo, 'prazo_eta/aguardando');
+  iguais(sandbox.classificarSemData(b).status+'/'+sandbox.classificarSemData(b).grupo, 'vista/atencao');
+});
+teste('Cadastro do câmbio: problema vem com tipo (pra agrupar no alerta)', () => {
+  const r = sandbox.verificarCadastroCambio([{ id:'t6', referencia:'TESTE-6', pi_valor_usd:'1000', pi_pagamento:'PARCELADO', pi_parcelas_json:'[]' }]);
+  iguais(r.map(x => x.tipo).join(','), 'sem_cliente,sem_parcelas');
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';

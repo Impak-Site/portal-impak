@@ -1440,19 +1440,19 @@ function verificarCadastroCambio(processos){
   (processos||[]).forEach(p=>{
     if(!p || p.cancelado || p.fase==='FINALIZADO' || p.pi_pago) return;
     const pi = num(p.pi_valor_usd);
-    const add = (problema)=>out.push({ processoId:p.id, referencia:p.referencia, cliente:p.cliente||'', problema });
+    const add = (problema, tipo)=>out.push({ processoId:p.id, referencia:p.referencia, cliente:p.cliente||'', problema, tipo: tipo||'outro' });
     if(!pi) return;
-    if(!p.cliente) add('sem cliente');
+    if(!p.cliente) add('sem cliente', 'sem_cliente');
     if(p.pi_pagamento==='PARCELADO'){
-      let pc=[]; try{ pc = JSON.parse(p.pi_parcelas_json||'[]'); }catch(e){ add('parcelas ilegíveis'); return; }
+      let pc=[]; try{ pc = JSON.parse(p.pi_parcelas_json||'[]'); }catch(e){ add('parcelas ilegíveis', 'ilegivel'); return; }
       if(pc.length && pc.every(x=>x.cambio_fechado)) return; // tudo pago
       const soma = pc.reduce((a,x)=>a+num(x.valor_usd),0);
       // Base = CI quando existir (é o valor que o fornecedor cobra pelo que
       // embarcou), senão PI — 05/10/2026, processos 26DTPI0476-x.
       const ci = num(p.ci_valor_usd);
       const base = ci || pi;
-      if(Math.abs(soma-base) > 1) add(`parcelas somam US$ ${soma.toLocaleString('pt-BR',{minimumFractionDigits:2})} e a ${ci ? 'CI' : 'PI'} é US$ ${base.toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
-      pc.forEach((x,i)=>{ if(!num(x.valor_usd) && !x.cambio_fechado) add(`parcela ${x.label||('#'+(i+1))} sem valor`); });
+      if(Math.abs(soma-base) > 1) add(`parcelas somam US$ ${soma.toLocaleString('pt-BR',{minimumFractionDigits:2})} e a ${ci ? 'CI' : 'PI'} é US$ ${base.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, pc.length ? 'soma' : 'sem_parcelas');
+      pc.forEach((x,i)=>{ if(!num(x.valor_usd) && !x.cambio_fechado) add(`parcela ${x.label||('#'+(i+1))} sem valor`, 'parcela_sem_valor'); });
     }
   });
   return out;
@@ -1468,7 +1468,8 @@ function listarPagamentosPI(processos){
     // útil" pra identificar rapidamente a qual DI/DUIMP um pagamento de
     // câmbio pertence, sem precisar abrir o processo. Pode vir vazio (DI só
     // é registrada depois, na fase Registro DI) — tratado como '—' na UI.
-    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'', impakPaga: impakPagaCambio(p), tipoCambio: tipoCambioDe({ codigo_bacen: p.pi_cambio_codigo_bacen }) };
+    const base = { referencia:p.referencia, processoId:p.id, fornecedor:p.fornecedor||'—', pais:paisDoProcesso(p), moeda:'USD', cliente:p.cliente||'—', numeroDi:p.numero_di||'', impakPaga: impakPagaCambio(p), tipoCambio: tipoCambioDe({ codigo_bacen: p.pi_cambio_codigo_bacen }),
+      fase: p.fase||'', formaPagamento: p.pi_pagamento||'' };
     const vencChegada = vencimentoPelaChegada(p);
     // banco/custoOperacao: registrados a pedido do Ayslan (09/09/2026,
     // "se você fosse o financeiro, o que gostaria de ver") -- só fazem
@@ -1541,6 +1542,55 @@ function listarPagamentosPI(processos){
     }
   });
   return pagamentos;
+}
+
+// Parcela em aberto SEM data de vencimento (fica fora dos KPIs de prazo do
+// Câmbio). Pedido do Ayslan (06/10/2026): o alerta "fora do radar" dizia só
+// "sem forma de pagamento", mas a maioria tinha forma de pagamento e faltava
+// a DATA. Aqui cada parcela ganha um status (o que falta) e uma prioridade:
+//   critico    — sem forma de pagamento, ou o processo já embarcou e a
+//                parcela segue sem data/câmbio (pode já ter sido paga sem
+//                registro, ou vencer sem ninguém ver);
+//   atencao    — Inicial/Entrada sem data (vence antes do embarque) ou
+//                processo aguardando embarque;
+//   aguardando — pedido em fase PI: a data depende de embarque/chegada, é
+//                esperado não ter ainda.
+const SEM_DATA_STATUS = {
+  sem_forma:      { titulo:'Sem forma de pagamento',            acao:'Escolher a forma de pagamento (aba Financeiro)' },
+  inicial_pago:   { titulo:'Inicial sem data nem câmbio — já embarcou', acao:'Se já foi paga, registrar o câmbio; senão, informar o vencimento' },
+  inicial:        { titulo:'Inicial sem data de vencimento',    acao:'Informar a data de vencimento da parcela Inicial' },
+  final_eta:      { titulo:'Final aguardando ETA',               acao:'Informar ETA/chegada (vence ETA − 10 dias) ou a data da parcela' },
+  parcela:        { titulo:'Parcela sem data de vencimento',     acao:'Informar a data de vencimento da parcela' },
+  prazo_eta:      { titulo:'100% a prazo aguardando ETA/embarque', acao:'Informar ETA, ou Prazo (dias) + data de embarque' },
+  vista:          { titulo:'À vista sem data de pagamento',      acao:'Informar a data de pagamento' },
+  entrada:        { titulo:'Entrada sem data',                   acao:'Informar a data da entrada' },
+  saldo:          { titulo:'Saldo sem data',                     acao:'Informar a data do saldo' },
+};
+const SEM_DATA_GRUPOS = {
+  critico:    { titulo:'Ação imediata', subtitulo:'sem forma de pagamento ou já embarcado', cor:'#b91c1c', fundo:'#fef2f2', borda:'#fecaca', icone:'🚨' },
+  atencao:    { titulo:'Atenção',       subtitulo:'Inicial sem data ou embarque próximo',                  cor:'#b45309', fundo:'#fffbeb', borda:'#fde68a', icone:'⚠️' },
+  aguardando: { titulo:'Aguardando',    subtitulo:'pedido em fase PI — data vem do embarque/chegada', cor:'#475569', fundo:'#f8fafc', borda:'#e2e8f0', icone:'⏳' },
+};
+function classificarSemData(x){
+  const fasesDepoisDoEmbarque = ['EMBARCADO','DESEMBARCADO','REGISTRO_DI','PARAMETRIZACAO','CARREGAMENTO','FATURAMENTO','DEVOLUCAO_VAZIO'];
+  const embarcou = fasesDepoisDoEmbarque.includes(x && x.fase);
+  let status;
+  if(!x || x._tipo === 'indefinido') status = 'sem_forma';
+  else if(x._tipo === 'parcelado'){
+    const lb = String(x.parcela||'').toLowerCase();
+    if(lb === 'inicial') status = embarcou ? 'inicial_pago' : 'inicial';
+    else if(lb === 'final') status = 'final_eta';
+    else status = 'parcela';
+  }
+  else if(x._tipo === 'entrada') status = 'entrada';
+  else if(x._tipo === 'saldo') status = 'saldo';
+  else if(x._tipo === 'unico') status = x.formaPagamento === 'VISTA' ? 'vista' : 'prazo_eta';
+  else status = 'parcela';
+  // Inicial/Entrada costuma vencer na confirmação do pedido (antes do
+  // embarque), então sem data já pede atenção mesmo em fase PI.
+  const grupo = (status === 'sem_forma' || embarcou) ? 'critico'
+    : (x.fase === 'AGUARDANDO_EMBARQUE' || status === 'inicial' || status === 'entrada') ? 'atencao' : 'aguardando';
+  return { grupo, status, titulo: SEM_DATA_STATUS[status].titulo, acao: SEM_DATA_STATUS[status].acao };
 }
 
 // Monta as linhas da planilha mensal "Pendências de DI" que a Impak envia

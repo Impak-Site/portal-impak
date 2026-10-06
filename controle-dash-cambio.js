@@ -451,7 +451,7 @@ async function exportarRelatorioMensalCambio(){
       ['A Liquidar · 14 dias', fmtUSD(j14.reduce((s,x)=>s+x.valorUsd,0)) + ` (${j14.length})`],
       ['A Liquidar · 30 dias', fmtUSD(j30.reduce((s,x)=>s+x.valorUsd,0)) + ` (${j30.length})`],
       ['Câmbios Pagos (total)', fmtUSD(pagos.reduce((s,x)=>s+x.valorUsd,0)) + ` (${pagos.length})`],
-      ['Sem forma de pagamento definida', fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0)) + ` (${semData.length})`],
+      ['Sem data de vencimento',fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0)) + ` (${semData.length})`],
       ['Economia de câmbio acumulada (Previsto x Fechado)', fmtBRL(economiaTotal)],
     ];
     let rr = 4;
@@ -823,18 +823,90 @@ function renderDashCambio(){
   // de prazo porque ainda não tem Entrada+Saldo/Parcelado/À Vista/Prazo
   // definido na PI). Vira alerta vermelho no topo, clicável, igual peso
   // visual do aviso de concentração.
-  const alertaSemDataHtml = !semData.length ? '' : `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:#7f1d1d;display:flex;flex-direction:column;gap:3px;">
-    <div style="font-weight:700;color:#991b1b;">🚨 ${fmtUSD(semData.reduce((s,x)=>s+x.valorUsd,0))} fora do radar — sem forma de pagamento definida</div>
-    <div>${semData.length} parcela(s) ainda sem Entrada+Saldo/Parcelado/À Vista/Prazo definido na PI — esse valor NÃO entra em nenhum KPI de prazo acima, então pode vencer sem ninguém perceber. <a href="#" onclick="_cambioFiltro={tipo:'semdata'};renderDashCambio();document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});return false;" style="color:#991b1b;font-weight:700;">Ver processos →</a></div>
-  </div>`;
+  // Redesenho 06/10/2026 (Ayslan: "alertas válidos, mas melhorados, com
+  // mais status e melhor desenhados"). O título antigo dizia "sem forma de
+  // pagamento", mas a maioria TEM forma de pagamento e falta a DATA. Agora as
+  // parcelas sem data são separadas por prioridade (classificarSemData, em
+  // controle-core.js) e, dentro de cada uma, pelo que falta preencher. Cada
+  // status é clicável e filtra a tabela detalhada abaixo.
+  const _irTabela = "document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});";
+  const _semDataClass = semData.map(x => ({ x, c: classificarSemData(x) }));
+  const alertaSemDataHtml = !semData.length ? '' : (()=>{
+    const totalUsd = semData.reduce((s,x)=>s+x.valorUsd,0);
+    const totalProcs = new Set(semData.map(x=>x.processoId)).size;
+    const cards = ['critico','atencao','aguardando'].map(gk => {
+      const g = SEM_DATA_GRUPOS[gk];
+      const itens = _semDataClass.filter(i => i.c.grupo === gk);
+      const usd = itens.reduce((s,i)=>s+i.x.valorUsd,0);
+      const procs = new Set(itens.map(i=>i.x.processoId)).size;
+      const porStatus = {};
+      itens.forEach(i => { const k = i.c.status; (porStatus[k] = porStatus[k] || { titulo:i.c.titulo, acao:i.c.acao, qtd:0, usd:0 }); porStatus[k].qtd++; porStatus[k].usd += i.x.valorUsd; });
+      const linhas = Object.entries(porStatus).sort((a,b)=>b[1].usd-a[1].usd).map(([sk,s]) => `
+        <a href="#" title="${esc(s.acao)}" onclick="_cambioFiltro={tipo:'semdata',grupo:${jsArg(gk)},status:${jsArg(sk)}};renderDashCambio();${_irTabela}return false;"
+          style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:6px 8px;border-radius:6px;text-decoration:none;color:var(--text);background:#fff;border:1px solid ${g.borda};">
+          <span style="font-size:12px;line-height:1.3;">${esc(s.titulo)}<br><span style="font-size:10.5px;color:var(--muted);">${esc(s.acao)}</span></span>
+          <span style="text-align:right;white-space:nowrap;"><b style="font-size:12px;${MONO}">${s.qtd}</b><br><span style="font-size:10.5px;color:var(--muted);${MONO}">${fmtUSD(s.usd)}</span></span>
+        </a>`).join('');
+      const vazio = `<div style="font-size:12px;color:var(--muted);padding:6px 0;">Nada aqui ✓</div>`;
+      return `<div style="background:${g.fundo};border:1px solid ${g.borda};border-top:3px solid ${g.cor};border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:${g.cor};text-transform:uppercase;letter-spacing:.03em;">${g.icone} ${esc(g.titulo)}</div>
+            <div style="font-size:11px;color:var(--muted);">${esc(g.subtitulo)}</div>
+          </div>
+          ${itens.length ? `<a href="#" onclick="_cambioFiltro={tipo:'semdata',grupo:${jsArg(gk)}};renderDashCambio();${_irTabela}return false;" style="font-size:11px;font-weight:700;color:${g.cor};white-space:nowrap;">Ver ${itens.length} →</a>` : ''}
+        </div>
+        <div style="${MONO}font-size:18px;font-weight:800;color:${itens.length ? g.cor : 'var(--muted)'};">${fmtUSD(usd)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:-6px;">${itens.length} parcela(s) · ${procs} processo(s)</div>
+        <div style="display:flex;flex-direction:column;gap:5px;">${linhas || vazio}</div>
+      </div>`;
+    }).join('');
+    return `<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:800;">🧭 ${fmtUSD(totalUsd)} sem data de vencimento — fora dos KPIs de prazo</div>
+          <div style="font-size:12px;color:var(--muted);">${semData.length} parcela(s) em ${totalProcs} processo(s). Sem data, a parcela não entra em "atrasadas" nem nas janelas de 7/14/30 dias. Clique num status pra ver os processos.</div>
+        </div>
+        <a href="#" onclick="_cambioFiltro={tipo:'semdata'};renderDashCambio();${_irTabela}return false;" style="font-size:12px;font-weight:700;color:var(--ac);white-space:nowrap;">Ver todas →</a>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;">${cards}</div>
+    </div>`;
+  })();
 
   // Conferência de cadastro (24/09/2026) -- ver verificarCadastroCambio().
+  // Redesenho 06/10/2026: agrupado por tipo de problema, com os processos
+  // de cada tipo em etiquetas clicáveis (o detalhe aparece ao passar o mouse).
   const _probCad = (typeof verificarCadastroCambio==='function') ? verificarCadastroCambio(_processos) : [];
-  const alertaCadastroHtml = !_probCad.length ? '' : `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:#78350f;">
-    <div style="font-weight:700;color:#92400e;margin-bottom:4px;">⚠️ ${_probCad.length} problema(s) de cadastro que afetam o câmbio — corrija pra não sumir nada desta tela</div>
-    ${_probCad.slice(0,12).map(x=>`<div><a href="#" onclick="abrirProcesso(${jsArg(x.processoId)});return false;" style="color:#92400e;font-weight:700;">${esc(x.referencia)}</a> ${x.cliente?'('+esc(x.cliente)+')':''} — ${esc(x.problema)}</div>`).join('')}
-    ${_probCad.length>12?`<div>… e mais ${_probCad.length-12}</div>`:''}
-  </div>`;
+  const _TIPOS_CAD = {
+    soma:              { titulo:'Parcelas não fecham com a CI/PI', acao:'Ajustar o valor das parcelas (a Final fecha com a CI)' },
+    sem_parcelas:      { titulo:'Parcelado sem nenhuma parcela',   acao:'Lançar as parcelas ou trocar a forma de pagamento' },
+    parcela_sem_valor: { titulo:'Parcela sem valor',               acao:'Preencher o valor ou excluir a parcela' },
+    sem_cliente:       { titulo:'Processo sem cliente',             acao:'Informar o cliente na aba Identificação' },
+    ilegivel:          { titulo:'Parcelas ilegíveis',               acao:'Abrir o processo e salvar as parcelas de novo' },
+    outro:             { titulo:'Outros',                           acao:'' },
+  };
+  const alertaCadastroHtml = !_probCad.length ? '' : (()=>{
+    const porTipo = {};
+    _probCad.forEach(x => { (porTipo[x.tipo||'outro'] = porTipo[x.tipo||'outro'] || []).push(x); });
+    const blocos = Object.keys(_TIPOS_CAD).filter(t => porTipo[t]).map(t => {
+      const tp = _TIPOS_CAD[t], lista = porTipo[t];
+      return `<div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap;">
+          <span style="font-size:12px;font-weight:700;color:#92400e;">${esc(tp.titulo)} <span style="background:#fef3c7;color:#92400e;border-radius:20px;padding:1px 7px;font-size:11px;${MONO}">${lista.length}</span></span>
+          ${tp.acao ? `<span style="font-size:10.5px;color:var(--muted);">${esc(tp.acao)}</span>` : ''}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">
+          ${lista.map(x => `<a href="#" onclick="abrirProcesso(${jsArg(x.processoId)});return false;" title="${esc((x.cliente ? x.cliente+' — ' : '') + x.problema)}"
+            style="font-size:11px;font-weight:700;${MONO}color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:2px 7px;text-decoration:none;">${esc(x.referencia)}</a>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px 16px;margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:800;color:#92400e;">⚠️ ${_probCad.length} problema(s) de cadastro que afetam o câmbio</div>
+      <div style="font-size:11.5px;color:#78350f;margin-bottom:8px;">Corrija pra nenhum valor sumir ou aparecer errado nesta tela. Passe o mouse no processo pra ver o detalhe; clique pra abrir.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;">${blocos}</div>
+    </div>`;
+  })();
 
   // ── Simular câmbio (what-if) — pedido do Ayslan (09/09/2026): antes de
   // decidir travar câmbio ou esperar, o CFO quer ver "e se o dólar for a
@@ -962,8 +1034,10 @@ function renderDashCambio(){
       linhasFiltradas = pagos;
       tituloFiltro = `Câmbios já pagos (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
     } else if(_cambioFiltro.tipo==='semdata'){
-      linhasFiltradas = semData;
-      tituloFiltro = `Sem forma de pagamento definida — fora dos KPIs de prazo (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
+      const fg = _cambioFiltro.grupo, fs = _cambioFiltro.status;
+      linhasFiltradas = _semDataClass.filter(i => (!fg || i.c.grupo===fg) && (!fs || i.c.status===fs)).map(i => i.x);
+      const rotulo = fs ? SEM_DATA_STATUS[fs]?.titulo : fg ? SEM_DATA_GRUPOS[fg]?.titulo + ' — ' + SEM_DATA_GRUPOS[fg]?.subtitulo : 'Sem data de vencimento';
+      tituloFiltro = `${esc(rotulo||'Sem data de vencimento')} — fora dos KPIs de prazo (<a href="#" onclick="_cambioFiltro=null;renderDashCambio();return false;" style="color:var(--ac);">limpar filtro</a>)`;
     }
   }
   // Sem uma data de pagamento própria guardada por parcela (só existe o
@@ -995,6 +1069,12 @@ function renderDashCambio(){
     if(dias === 0) return `<span style="background:rgba(217,119,6,.12);color:var(--warn);font-weight:700;padding:2px 7px;border-radius:20px;font-size:11px;white-space:nowrap;">hoje</span>`;
     if(dias <= 7) return `<span style="background:rgba(217,119,6,.12);color:var(--warn);font-weight:700;padding:2px 7px;border-radius:20px;font-size:11px;white-space:nowrap;">em ${dias}d</span>`;
     return `<span style="background:var(--bg);color:var(--muted);font-weight:600;padding:2px 7px;border-radius:20px;font-size:11px;white-space:nowrap;">em ${dias}d</span>`;
+  }
+
+  // Linha sem vencimento: mostra o que falta, na cor da prioridade.
+  function badgeSemData(x){
+    const c = classificarSemData(x), g = SEM_DATA_GRUPOS[c.grupo];
+    return `<span title="${esc(c.acao)}" style="background:${g.fundo};color:${g.cor};border:1px solid ${g.borda};font-weight:700;padding:2px 7px;border-radius:20px;font-size:10.5px;white-space:nowrap;">${g.icone} ${esc(c.titulo)}</span>`;
   }
 
   // Fechamento em lote — checkbox por linha, sempre reaplicando a seleção
@@ -1073,7 +1153,7 @@ function renderDashCambio(){
           const fundo = x.impakPaga ? '#fefce8' : '';
           return `<tr style="border-top:1px solid var(--border);cursor:pointer;background:${fundo};" onclick="abrirProcesso(${jsArg(x.processoId)})" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${fundo}'">
           <td style="padding:8px 8px 8px 16px;" onclick="event.stopPropagation()">${mostrandoPagos ? '' : `<input type="checkbox" ${marcada?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelecaoLoteCambio(this,${jsArg(x.processoId)},${jsArg(x._tipo)},${x._parcelaIndex!=null?Number(x._parcelaIndex):'null'},${Number(x.valorUsd)||0},${jsArg(x.fornecedor||'')},${jsArg(x.referencia||'')})">`}</td>
-          <td style="padding:8px 8px;white-space:nowrap;" title="${x.vencimentoPelaChegada ? 'Chegada (ETA) − 10 dias — acompanha automaticamente se o navio atrasar' : ''}">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : '—'} ${(x.vencimento && !mostrandoPagos) ? badgeDias(x.vencimento) : ''}</td>
+          <td style="padding:8px 8px;white-space:nowrap;" title="${x.vencimentoPelaChegada ? 'Chegada (ETA) − 10 dias — acompanha automaticamente se o navio atrasar' : ''}">${x.vencimento ? new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR') : (mostrandoPagos ? '—' : badgeSemData(x))} ${(x.vencimento && !mostrandoPagos) ? badgeDias(x.vencimento) : ''}</td>
           <td style="padding:8px 8px;font-weight:600;white-space:nowrap;${MONO}color:var(--ac);">${esc(x.referencia)}${x.impakPaga ? ' <span title="Importação Direta — a IMPAK fecha o câmbio" style="background:#fde047;color:#713f12;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;font-family:inherit;">IMPAK</span>' : ''}</td>
           <td style="padding:8px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.cliente)}">${esc(x.cliente)}</td>
           <td style="padding:8px 8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:1px;" title="${esc(x.fornecedor)}">${esc(x.fornecedor)}</td>
