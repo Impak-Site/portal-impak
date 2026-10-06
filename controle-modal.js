@@ -1826,7 +1826,8 @@ async function carregarArquivosGed(processoId){
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;">
         <span>${icon}</span>
         <a href="${esc(hrefSafe)}" target="_blank" rel="noopener noreferrer" style="flex:1;color:var(--ac);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.nome)}</a>
-        <span style="color:var(--dim);font-size:10px;">${tamanho}</span>
+        <span style="color:var(--muted);font-size:11px;white-space:nowrap;" title="Enviado por ${esc(a.created_by||'?')}${a.created_at ? ' em ' + esc(new Date(a.created_at).toLocaleString('pt-BR')) : ''}">${a.created_by ? esc(a.created_by) : '—'}${a.created_at ? ' · ' + esc(new Date(a.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})) : ''}</span>
+        <span style="color:var(--dim);font-size:10px;white-space:nowrap;">${tamanho}</span>
         <button onclick="excluirArquivoGed('${a.id}','${processoId}')" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;padding:2px 6px;" title="Excluir">✕</button>
       </div>`;
     }).join('');
