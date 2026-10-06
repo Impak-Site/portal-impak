@@ -1019,7 +1019,12 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         // substituem os da PI direto — só pergunta se nenhuma medida bater
         // (sinal de CI de outro processo).
         const ciSubstituiDireto = ehCI && itensTemMedidaEmComum(_produtos.map(p=>p&&p.descricao), novosProdutos.map(p=>p.descricao));
-        if(temItensReais && valoresDivergem(resumoAtual, resumoNovo) && !ciSubstituiDireto){
+        // Mesmas medidas e quantidades, só escritas diferente (ex.: a PL
+        // repete a marca na descrição): não é divergência — mantém o atual.
+        const mesmoPedido = temItensReais && itensEquivalentes(_produtos, novosProdutos);
+        if(mesmoPedido){
+          /* nada a fazer */
+        } else if(temItensReais && valoresDivergem(resumoAtual, resumoNovo) && !ciSubstituiDireto){
           conflitos.push({
             campo: 'itens',
             label: LABELS_CAMPOS_IA.itens || 'Itens/Produtos',
@@ -1239,6 +1244,11 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         return;
       }
       if(campo==='porto_origem'){
+        // "QINGDAO, CHINA" é o mesmo porto que "QINGDAO" (06/10/2026).
+        const semPais = portoSemPais(val);
+        if(PORTOS_ORIGEM.includes(semPais)) val = semPais;
+        const atualPorto = el.value === 'OUTRO' ? (document.getElementById('f_porto_origem_outro')?.value || '') : el.value;
+        if(el.value && portoSemPais(atualPorto) === semPais) return;
         if(!el.value || podeSobrescrever){
           const vu = val.trim().toUpperCase();
           const outro = document.getElementById('f_porto_origem_outro');
@@ -1353,7 +1363,30 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       preenchidos++; marcarComoIA('container');
     }
 
-    const sufixoConflitos = conflitos.length ? ` — ⚠ ${conflitos.length} divergência(s) aguardando revisão` : '';
+    // ── Valor da CI diferente do valor da PI (Ayslan, 06/10/2026): "se o
+    // valor da PI está 20 mil USD e na CI veio 19.900, tem que perguntar —
+    // às vezes são negociações e descontos; não pode ficar só o valor da PI
+    // e não mudar nunca". Pergunta se o valor do processo passa a ser o da CI.
+    if(ehCI && extracted.ci_valor_usd){
+      const elPi = document.getElementById('f_pi_valor_usd');
+      const valorPi = typeof valorMoeda === 'function' ? (valorMoeda('f_pi_valor_usd') || 0) : 0;
+      const valorCi = Number(extracted.ci_valor_usd) || 0;
+      if(elPi && valorPi > 0 && valorCi > 0 && Math.abs(valorPi - valorCi) >= 0.01){
+        const dif = valorCi - valorPi;
+        const fmt = v => 'US$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+        conflitos.push({
+          campo: 'pi_valor_usd',
+          label: 'Valor do processo (USD) — PI × CI',
+          valorAtual: fmt(valorPi),
+          valorNovo: fmt(valorCi),
+          aplicar: () => { elPi.value = exibirMoeda(valorCi); },
+          padrao: 'novo',
+          motivo: `A CI veio ${dif < 0 ? 'menor' : 'maior'} que a PI em ${fmt(Math.abs(dif))} (${(Math.abs(dif)/valorPi*100).toLocaleString('pt-BR',{maximumFractionDigits:2})}%). Desconto ou renegociação? Se usar o valor da CI, o Valor USD do processo passa a ser ${fmt(valorCi)}.`,
+        });
+      }
+    }
+
+    const sufixoConflitos = conflitos.length ?` — ⚠ ${conflitos.length} divergência(s) aguardando revisão` : '';
     if(status) status.textContent = (abriuModalCambio
       ? `💱 Comprovante de câmbio lido — confirme no modal a qual parcela pertence`
       : ehCeMercante
@@ -1398,7 +1431,8 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // abre o pop-up de revisão — só interrompe o fluxo quando existe algo
     // de fato pra decidir (a maioria das leituras não vai ter nenhuma).
     if(conflitos.length){
-      abrirModalConflitosIA(conflitos, file.name);
+      const tipoDocLido = ehCI ? 'CI — Commercial Invoice' : ehPI ? 'PI — Proforma' : ehCeMercante ? 'CE Mercante' : ehDI ? 'DI/DUIMP' : ehBlOuDi ? 'BL' : '';
+      abrirModalConflitosIA(conflitos, file.name, tipoDocLido);
     }
 
     // Salva automaticamente no GED do processo o documento que acabou de ser
@@ -1630,35 +1664,111 @@ function itensTemMedidaEmComum(descricoesAtuais, descricoesNovas){
   return b.some(x => a.has(x));
 }
 
-function abrirModalConflitosIA(conflitos, nomeArquivo){
+// Medida + quantidade de cada item: "195/60R16|100". Usado pra ver se duas
+// listas são o MESMO pedido escrito de jeitos diferentes (ex.: a PL repete
+// a marca "SAILFISH" na descrição) — aí não é divergência de verdade.
+function assinaturaItens(lista){
+  const out = [];
+  for(const it of (lista||[])){
+    if(!it || !String(it.descricao||'').trim()) continue;
+    const med = medidasDoTexto(it.descricao);
+    if(med.length !== 1) return null; // sem medida clara: não dá pra comparar
+    out.push(med[0] + '|' + (parseFloat(String(it.quantidade??'').replace(',','.')) || 0));
+  }
+  return out.length ? out.sort().join(';') : null;
+}
+function itensEquivalentes(listaA, listaB){
+  const a = assinaturaItens(listaA), b = assinaturaItens(listaB);
+  return !!a && a === b;
+}
+// "QINGDAO, CHINA" → "QINGDAO"; "Qingdao Port" fica como está.
+function portoSemPais(v){ return String(v||'').split(',')[0].trim().toUpperCase(); }
+
+// ── De onde veio o valor ATUAL de um campo (pop-up de divergências) ──
+// Pedido do Ayslan (06/10/2026): "tem que avisar de qual documento é a
+// informação atual, e qual documento ele quer usar". Procura no histórico do
+// processo (mais recente primeiro): a leitura de documento por IA que
+// preencheu o campo, ou a alteração manual. Ao salvar, o sistema também
+// grava "alterou campo" no nome do usuário para o que a IA preencheu — por
+// isso uma alteração logo depois (até 3h) de uma leitura que cobriu o mesmo
+// campo, pelo mesmo usuário, é atribuída ao documento.
+function origemDoValorAtual(campo, log, labels){
+  const label = (labels && labels[campo]) || campo;
+  const nomesLog = campo === 'itens' ? ['itens','produtos_json'] : [campo];
+  const leuCampo = l => l.campo === LOG_CAMPO_LEITURA_IA && String(l.valor_depois||'').split(', ').includes(label);
+  const ord = (log||[]).slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  const doc = l => {
+    const nome = String(l.valor_antes||'').replace(/^Revisão de divergências( — )?/, '') || 'escolhido na revisão de divergências';
+    return { tipo:'doc', documento: nome, quando: l.created_at || '', usuario: l.usuario || '' };
+  };
+  for(const l of ord){
+    if(leuCampo(l)) return doc(l);
+    if(nomesLog.includes(l.campo)){
+      const t = new Date(l.created_at||0).getTime();
+      const leitura = ord.find(x => leuCampo(x) && x.usuario === l.usuario
+        && new Date(x.created_at||0).getTime() <= t && t - new Date(x.created_at||0).getTime() <= 3*3600*1000);
+      if(leitura) return doc(leitura);
+      return { tipo:'manual', documento:'', quando: l.created_at || '', usuario: l.usuario || '' };
+    }
+  }
+  return null;
+}
+function textoOrigem(o){
+  if(!o) return 'origem não registrada (preenchido antes do histórico)';
+  const quando = o.quando ? new Date(o.quando).toLocaleDateString('pt-BR') : '';
+  return o.tipo === 'doc'
+    ? `📄 ${o.documento}${quando ? ' · lido em '+quando : ''}${o.usuario ? ' por '+o.usuario : ''}`
+    : `✍️ digitado por ${o.usuario || '?'}${quando ? ' em '+quando : ''}`;
+}
+
+let _conflitosIAArquivo = '';
+async function abrirModalConflitosIA(conflitos, nomeArquivo, tipoDoc){
   document.getElementById('modal-conflitos-ia-bg')?.remove();
   _conflitosIAPendentes = conflitos;
+  _conflitosIAArquivo = nomeArquivo || '';
+  // Histórico do processo (salvo + o que ainda está pendente nesta edição).
+  let log = [];
+  try{
+    if(_editando && _editando.id){
+      const r = await fetch('/api/controle/v2/processo/'+_editando.id+'/log');
+      const d = await r.json();
+      if(d && d.ok) log = d.log || [];
+    }
+  }catch(e){ /* sem histórico: mostra "origem não registrada" */ }
+  if(_editando && Array.isArray(_editando.log)) log = log.concat(_editando.log.filter(l => l.valor_antes !== nomeArquivo));
+  const origemNovo = `📄 ${nomeArquivo}${tipoDoc ? ' ('+tipoDoc+')' : ''} — documento que você acabou de enviar`;
+  const bloco = (i, valor, marcado, titulo, origem, cor) => `
+      <label style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid ${marcado?cor:'var(--border)'};border-radius:8px;cursor:pointer;background:#fff;flex:1;min-width:220px;">
+        <input type="radio" name="conflito-ia-${i}" value="${titulo==='atual'?'atual':'novo'}" ${marcado?'checked':''} style="margin-top:3px;"
+          onchange="this.closest('.conf-ia-op').querySelectorAll('label').forEach(l=>l.style.borderColor='var(--border)');this.closest('label').style.borderColor='${cor}'">
+        <span style="min-width:0;">
+          <span style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);">${titulo==='atual'?'Manter o atual':'Usar o do documento novo'}</span>
+          <strong style="display:block;font-size:12.5px;color:${titulo==='atual'?'var(--text)':'var(--ok)'};word-break:break-word;">${esc(String(valor))}</strong>
+          <span style="display:block;font-size:11px;color:var(--muted);margin-top:3px;">${esc(origem)}</span>
+        </span>
+      </label>`;
   const linhas = conflitos.map((c,i) => `
-    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
-      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">${esc(c.label)}</div>
-      ${c.motivo ? `<div style="font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:5px 8px;margin-bottom:6px;">❓ ${esc(c.motivo)}</div>` : ''}
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0;cursor:pointer;">
-        <input type="radio" name="conflito-ia-${i}" value="atual" ${c.padrao === 'novo' ? '' : 'checked'}>
-        Manter atual: <strong>${esc(String(c.valorAtual))}</strong>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0;cursor:pointer;">
-        <input type="radio" name="conflito-ia-${i}" value="novo" ${c.padrao === 'novo' ? 'checked' : ''}>
-        Usar valor lido no documento: <strong style="color:var(--ok);">${esc(String(c.valorNovo))}</strong>
-      </label>
+    <div style="padding:12px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(c.label)}</div>
+      ${c.motivo ? `<div style="font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:5px 8px;margin-bottom:8px;">❓ ${esc(c.motivo)}</div>` : ''}
+      <div class="conf-ia-op" style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${bloco(i, c.valorAtual, c.padrao !== 'novo', 'atual', c.origemAtualTexto || textoOrigem(origemDoValorAtual(c.campoOrigem || c.campo, log, LABELS_CAMPOS_IA)), 'var(--ac)')}
+        ${bloco(i, c.valorNovo, c.padrao === 'novo', 'novo', c.origemNovoTexto || origemNovo, 'var(--ok)')}
+      </div>
     </div>
   `).join('');
   const html = `
     <div class="modal-bg open" id="modal-conflitos-ia-bg">
-      <div class="modal" style="max-width:520px;">
+      <div class="modal" style="max-width:760px;">
         <div class="modal-header">
           <div class="modal-title">⚠️ ${conflitos.length} campo(s) com valor divergente</div>
           <button class="modal-close" onclick="fecharModalConflitosIA()">×</button>
         </div>
         <div class="modal-body">
-          <p style="font-size:12px;color:var(--muted);margin-bottom:4px;">Documento lido: <strong>${esc(nomeArquivo)}</strong></p>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Estes campos já tinham um valor preenchido diferente do que este documento trouxe. Escolha qual considerar em cada um (já vem marcada a opção sugerida — numa CI, o valor da CI, que é o documento final):</p>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:4px;">Documento lido: <strong>${esc(nomeArquivo)}</strong>${tipoDoc ? ` · identificado como <strong>${esc(tipoDoc)}</strong>` : ''}</p>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:6px;">Cada campo mostra de onde veio o valor atual e o valor deste documento. A opção sugerida já vem marcada (numa CI, o valor da CI, que é o documento final).</p>
           <div id="conflitos-ia-lista">${linhas}</div>
-          <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:16px;">
+          <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:16px;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="fecharModalConflitosIA()">Manter tudo como está</button>
             <button class="btn btn-primary" onclick="aplicarConflitosIA()">✓ Aplicar escolhidas</button>
           </div>
@@ -1708,7 +1818,7 @@ function aplicarConflitosIA(){
       _editando.log = _editando.log || [];
       _editando.log.push({
         campo: LOG_CAMPO_LEITURA_IA,
-        valor_antes: 'Revisão de divergências',
+        valor_antes: 'Revisão de divergências — ' + (_conflitosIAArquivo || ''),
         valor_depois: camposAplicados.join(', '),
         usuario: _user.usuario,
         created_at: new Date().toISOString(),

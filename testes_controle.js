@@ -2695,6 +2695,29 @@ teste('itensTemMedidaEmComum: CI com quantidade diferente substitui; medidas tot
   verdadeiro(!sandbox.itensTemMedidaEmComum(['215/75R17.5 TR685'], ['600/65R28 IND']), 'nenhuma medida em comum = dúvida');
   verdadeiro(sandbox.itensTemMedidaEmComum(['PNEU AGRICOLA'], ['600/65R28']), 'sem medida reconhecível: vale a CI');
 });
+teste('itensEquivalentes: mesma medida e quantidade com descrição diferente não é divergência', () => {
+  const pi = [{ descricao:'195/60R16 89H NS601', quantidade:100 }, { descricao:'205/60R16 92V NS601', quantidade:387 }];
+  const pl = [{ descricao:'205/60R16 92V MARCA NS601', quantidade:387 }, { descricao:'195/60R16 89H MARCA NS601', quantidade:100 }];
+  verdadeiro(sandbox.itensEquivalentes(pi, pl));
+  verdadeiro(!sandbox.itensEquivalentes(pi, [{ descricao:'195/60R16 89H', quantidade:90 }, { descricao:'205/60R16 92V', quantidade:387 }]), 'quantidade mudou = divergência');
+});
+teste('portoSemPais: "QINGDAO, CHINA" = "QINGDAO"', () => {
+  iguais(sandbox.portoSemPais('Qingdao, China'), 'QINGDAO');
+});
+teste('origemDoValorAtual: documento que preencheu x digitado à mão', () => {
+  const L = '📄_leitura_ia'; // = LOG_CAMPO_LEITURA_IA (const não aparece no sandbox)
+  const LBL = { etd:'ETD', mbl:'MBL', hbl:'HBL' };
+  const log = [
+    { campo:L, valor_antes:'PI-TESTE.pdf', valor_depois:'Nº PI, ETD, Porto de origem', usuario:'ana', created_at:'2026-01-10T10:00:00Z' },
+    { campo:'etd', valor_antes:'', valor_depois:'2026-02-01', usuario:'ana', created_at:'2026-01-10T10:05:00Z' }, // gravado no Salvar logo após a leitura
+    { campo:'mbl', valor_antes:'', valor_depois:'MBL-TESTE', usuario:'bia', created_at:'2026-01-12T09:00:00Z' },
+  ];
+  const etd = sandbox.origemDoValorAtual('etd', log, LBL);
+  iguais(etd.tipo, 'doc'); iguais(etd.documento, 'PI-TESTE.pdf');
+  const mbl = sandbox.origemDoValorAtual('mbl', log, LBL);
+  iguais(mbl.tipo, 'manual'); iguais(mbl.usuario, 'bia');
+  iguais(sandbox.origemDoValorAtual('hbl', log, LBL), null);
+});
 teste('normalizarNumeroDoc ignora pontuação/espaço', () => {
   iguais(sandbox.normalizarNumeroDoc('inv. no 26-001'), sandbox.normalizarNumeroDoc('INV NO 26001'));
 });
