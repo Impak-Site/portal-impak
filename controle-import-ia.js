@@ -539,6 +539,7 @@ async function importarFechamentoProcesso(input){
 // EXTRAÇÃO COM IA
 // ════════════════════════════════════════════════════════════════
 async function extrairComIA_umArquivo(input){
+  let _prazoDiasTermos = 0; // "N days after B/L" lido dos termos de pagamento
   const file = input.files[0];
   if(!file) return;
   input.value='';
@@ -577,7 +578,8 @@ async function extrairComIA_umArquivo(input){
   "pi_data": "YYYY-MM-DD",
   "pi_valor_usd": 0,
   "pi_incoterm": "",
-  "pi_pagamento": "VISTA|PRAZO|PARCELADO",  // forma de pagamento pelos TERMOS DE PAGAMENTO da PI/CI ("Payment Terms", "Terms of Payment"): PARCELADO quando há adiantamento + saldo (ex.: "20% T/T in advance, 80% balance against copy of B/L"); VISTA quando 100% antecipado; PRAZO quando 100% depois (ex.: "100% T/T 90 days after B/L date"). Deixe "" se o documento não trouxer os termos.
+  "pi_termos_pagamento": "",  // copie LITERALMENTE o texto dos termos de pagamento ("Payment Terms", "Terms of Payment"), sem traduzir nem resumir (ex.: "USD 1.000,00 100% At Sight 10 days before ETA"). "" se não houver.
+  "pi_pagamento": "VISTA|PRAZO|PARCELADO",  // forma de pagamento pelos TERMOS DE PAGAMENTO da PI/CI: PARCELADO quando há adiantamento + saldo (ex.: "20% T/T in advance, 80% balance against copy of B/L"); VISTA SOMENTE quando 100% é pago ANTES DO EMBARQUE (ex.: "100% T/T in advance", "100% before shipment"); PRAZO quando 100% é pago DEPOIS do embarque — inclui pagamento referido ao ETA/chegada ou ao B/L, mesmo que o texto diga "at sight" (ex.: "100% T/T 90 days after B/L date", "100% At Sight 10 days before ETA", "100% against copy of B/L"). "At sight" sozinho NÃO significa à vista antecipado. Deixe "" se o documento não trouxer os termos.
   "pi_adiantamento_pct": 0,  // % do valor pago ANTES do embarque (deposit / advance / down payment / prepayment) nos termos de pagamento — ex.: "20% T/T in advance" → 20; "30% deposit, balance before shipment" → 30. Só o número. 0 quando não houver adiantamento ou o documento não disser.
   "etd": "YYYY-MM-DD",
   "eta": "YYYY-MM-DD",
@@ -768,6 +770,20 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // deixava a Forma de Pagamento em branco); adiantamento + saldo = Parcelado.
     // O % de adiantamento vai pro campo "% Entrada (PI)" do Parcelado.
     if(extracted.pi_pagamento === 'ENTRADA_SALDO') extracted.pi_pagamento = 'PARCELADO';
+    // PF BR26R142 (Tyre Export, 06/10/2026): "100% At Sight 10 days before ETA"
+    // vinha como À Vista. O texto literal dos termos é reclassificado por
+    // regra fixa (classificarTermosPagamento) e prevalece sobre o palpite da IA.
+    {
+      const termos = extracted.pi_termos_pagamento;
+      delete extracted.pi_termos_pagamento;
+      const cls = classificarTermosPagamento(termos);
+      if(cls){
+        extracted.pi_pagamento = cls.pagamento;
+        if(cls.pagamento === 'PARCELADO' && cls.adiantamento_pct) extracted.pi_adiantamento_pct = cls.adiantamento_pct;
+        if(cls.pagamento !== 'PARCELADO') extracted.pi_adiantamento_pct = 0;
+        if(cls.prazo_dias) _prazoDiasTermos = cls.prazo_dias;
+      }
+    }
     if(extracted.pi_pagamento && !['VISTA','PRAZO','PARCELADO'].includes(extracted.pi_pagamento)) delete extracted.pi_pagamento;
     {
       const pct = Math.round(parseFloat(String(extracted.pi_adiantamento_pct ?? '').replace(',','.').replace('%','')) || 0);
@@ -1411,6 +1427,19 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     aplicarRegraParametrizacaoVerde();
     atualizarFaseEmTempoReal();
     if(extracted.pi_pagamento) renderPagamentoCampos();
+    // 100% a Prazo: "N days after B/L" vai pro Prazo (dias), que conta do
+    // embarque; sem prazo em dias o vencimento fica Chegada/ETA - 10 dias.
+    if(document.getElementById('f_pi_pagamento')?.value === 'PRAZO'){
+      const inpPrazo = document.getElementById('f_pi_prazo_dias');
+      if(_prazoDiasTermos && inpPrazo && !inpPrazo.value){
+        inpPrazo.value = String(_prazoDiasTermos);
+        if(typeof atualizarDataPagamentoPrazo === 'function') atualizarDataPagamentoPrazo();
+        camposLidosNestaLeitura.push('pi_prazo_dias');
+        preenchidos++;
+      } else if(typeof atualizarVencimentoSaldoPorETA === 'function'){
+        atualizarVencimentoSaldoPorETA();
+      }
+    }
 
     // Parcelado (05/10/2026, processos 26DTPI0476-x): o % de entrada lido dos termos de
     // pagamento vai pro campo "% Entrada (PI)" e refaz a Inicial (se ainda sem
@@ -1721,6 +1750,26 @@ function itensEquivalentes(listaA, listaB){
   return !!a && a === b;
 }
 // "QINGDAO, CHINA" → "QINGDAO"; "Qingdao Port" fica como está.
+// Classifica o texto literal dos termos de pagamento da PI/CI.
+// Retorna {pagamento, adiantamento_pct, prazo_dias} ou null quando o texto
+// não permite decidir com segurança (aí vale o que a IA respondeu).
+function classificarTermosPagamento(texto){
+  const t = String(texto||'').toLowerCase().replace(/\s+/g,' ').trim();
+  if(!t) return null;
+  const antes = /\b(in advance|advance(d)?|prepay(ment)?|pre-payment|deposit|down ?payment|before (shipment|loading|shipping|delivery)|prior to (shipment|loading|shipping))\b/;
+  const depois = /\b(after|before (eta|arrival)|prior to (eta|arrival)|against (the )?(copy|bl|b\/l|bill|documents?)|upon (arrival|receipt)|on arrival|eta|b\/l|bill of lading|o\/a|open account|d\/p|d\/a|l\/c|balance)\b/;
+  const pcts = (t.match(/(\d{1,3})(?:[.,]\d+)?\s?%/g) || []).map(x => parseFloat(x)).filter(n => n > 0 && n <= 100);
+  const parcial = pcts.find(n => n < 100);
+  if(parcial && antes.test(t)) return { pagamento:'PARCELADO', adiantamento_pct: Math.round(parcial), prazo_dias: 0 };
+  if(parcial && pcts.length >= 2) return { pagamento:'PARCELADO', adiantamento_pct: Math.round(parcial), prazo_dias: 0 };
+  const m = t.match(/(\d{1,3})\s*days?\s*(after|from)\s*(the\s*)?(b\/l|bl|bill of lading|shipment|shipping|loading|on board)/);
+  const prazo = m ? parseInt(m[1],10) : 0;
+  const temDepois = depois.test(t.replace(antes, ''));
+  if(temDepois && !antes.test(t)) return { pagamento:'PRAZO', adiantamento_pct: 0, prazo_dias: prazo };
+  if(antes.test(t) && !temDepois) return { pagamento:'VISTA', adiantamento_pct: 0, prazo_dias: 0 };
+  return null;
+}
+
 function portoSemPais(v){ return String(v||'').split(',')[0].trim().toUpperCase(); }
 
 // ── De onde veio o valor ATUAL de um campo (pop-up de divergências) ──

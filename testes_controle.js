@@ -2704,6 +2704,18 @@ teste('itensEquivalentes: mesma medida e quantidade com descrição diferente n�
 teste('portoSemPais: "QINGDAO, CHINA" = "QINGDAO"', () => {
   iguais(sandbox.portoSemPais('Qingdao, China'), 'QINGDAO');
 });
+teste('classificarTermosPagamento: "at sight N days before ETA" = 100% a Prazo (não À Vista)', () => {
+  const c = t => { const r = sandbox.classificarTermosPagamento(t); return r ? r.pagamento + (r.adiantamento_pct ? ':' + r.adiantamento_pct : '') + (r.prazo_dias ? '/' + r.prazo_dias : '') : null; };
+  iguais(c('USD 1.000,00 100% At Sight 10 days before ETA'), 'PRAZO');
+  iguais(c('100% T/T 90 days after B/L date'), 'PRAZO/90');
+  iguais(c('100% against copy of B/L'), 'PRAZO');
+  iguais(c('100% T/T in advance'), 'VISTA');
+  iguais(c('100% before shipment'), 'VISTA');
+  iguais(c('20% T/T in advance, 80% balance against copy of B/L'), 'PARCELADO:20');
+  iguais(c('30% deposit, balance before shipment'), 'PARCELADO:30');
+  iguais(c('T/T at sight'), null, 'ambíguo: vale a resposta da IA');
+  iguais(c(''), null);
+});
 teste('origemDoValorAtual: documento que preencheu x digitado à mão', () => {
   const L = '📄_leitura_ia'; // = LOG_CAMPO_LEITURA_IA (const não aparece no sandbox)
   const LBL = { etd:'ETD', mbl:'MBL', hbl:'HBL' };
