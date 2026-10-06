@@ -777,7 +777,7 @@ function renderDashTV(){
       <div style="flex:1;min-height:0;display:flex;align-items:flex-end;gap:${itens.length>15?'3px':'8px'};">
         ${itens.map(i => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0;">
           <div style="font-size:.8em;font-weight:700;color:#334155;margin-bottom:3px;">${i.qtd || ''}</div>
-          <div style="width:100%;background:${corBarra};border-radius:4px 4px 0 0;height:${Math.max(2, Math.round((i.qtd/max)*100))}%;"></div>
+          <div style="flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:flex-end;"><div style="width:100%;background:${corBarra};border-radius:4px 4px 0 0;height:${Math.max(2, Math.round((i.qtd/max)*100))}%;"></div></div>
           <div style="font-size:.75em;color:var(--muted);margin-top:5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(String(i.label))}</div>
         </div>`).join('')}
       </div>
