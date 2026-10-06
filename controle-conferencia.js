@@ -56,6 +56,47 @@ function _confAtualizarSubstituicoes(){
 }
 function _confAnterioresEfetivos(){ return _confAnteriores.filter(a => !a.substituido && !a.excluidoManual); }
 
+// ── Leitura só do documento novo (pedido Ayslan 06/10/2026) ──────────
+// "Sempre que colocarmos documentos novos, para conferir com algo que já
+// tinha no sistema, a leitura por IA deve ler somente o documento novo."
+// Cada conferência guarda os dados que a IA extraiu de cada documento
+// (dadosDocs, por arquivo_id). Na conferência seguinte, se todos os
+// documentos anteriores já têm esses dados, a IA recebe SÓ os documentos
+// novos + os dados dos anteriores em texto, e compara o novo contra eles.
+// As divergências antigas entre documentos que não mudaram continuam (não
+// são recalculadas). "Reler todos" força a conferência completa.
+function _confGruposDoLabel(label){
+  const s = String(label||'').toUpperCase();
+  const g = new Set();
+  if(/\bHBL\b|\bMBL\b|\bBL\b|DRAFT|BILL OF LADING/.test(s)) g.add('bl');
+  if(/\bCE\b|MERCANTE/.test(s)) g.add('ce');
+  if(/\bPL\b|PACKING/.test(s)) g.add('packing');
+  if(/\bPI\b|PROFORMA/.test(s)) g.add('proforma');
+  if(/\bCI\b|COMMERCIAL INVOICE|\bINVOICE\b/.test(s)) g.add('invoice');
+  return g;
+}
+function _confModoIncremental(analise){
+  const efetivos = _confAnterioresEfetivos();
+  const dados = (analise && analise.dadosDocs) || {};
+  const forcar = !!document.getElementById('conf-reler-tudo')?.checked;
+  return !forcar && Object.keys(_confArquivos).length > 0 && efetivos.length > 0 && efetivos.every(a => dados[a.arquivo_id]);
+}
+// Divergências da conferência anterior que continuam valendo: as que não
+// envolvem nenhum tipo de documento que saiu ou foi substituído agora.
+function _confDivergenciasQueContinuam(analiseAnterior, gruposFora){
+  const out = [];
+  ((analiseAnterior && analiseAnterior.grupos) || []).forEach(g => {
+    const campos = (g.campos||[]).filter(c => {
+      if(!ConferenciaChave.ehPendenciaConferencia(c)) return false;
+      const envolvidos = new Set([..._confGruposDoLabel(c.doc1_label), ..._confGruposDoLabel(c.doc2_label)]);
+      for(const x of envolvidos) if(gruposFora.has(x)) return false;
+      return true;
+    });
+    if(campos.length) out.push({ titulo: g.titulo, campos });
+  });
+  return out;
+}
+
 function _confGuessType(name){
   const n = name.toLowerCase();
   if(n.includes('draft')) return 'bl_draft';
@@ -93,6 +134,7 @@ function renderConferencia(p){
         <div style="color:var(--muted);font-size:13px;">📎 Clique ou arraste os documentos aqui</div>
       </div>
       <div id="conf-chips" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"></div>
+      <div id="conf-modo" style="font-size:11px;color:var(--muted);margin-bottom:8px;"></div>
       <button class="btn btn-primary" id="conf-btn-analisar" onclick="rodarConferencia()" disabled>🔍 Rodar Conferência</button>
       <div id="conf-loading" style="display:none;margin-top:10px;font-size:12px;color:var(--muted);">⏳ Analisando documentos... pode levar até 2 minutos. Não feche esta tela.</div>
     </div>
@@ -144,6 +186,20 @@ function _confRenderChips(){
   }).join('');
   const btn = document.getElementById('conf-btn-analisar');
   if(btn) btn.disabled = (nomes.length + _confAnterioresEfetivos().length) < 2; // precisa de pelo menos 2 docs pra ter o que cruzar
+  const modo = document.getElementById('conf-modo');
+  if(modo){
+    const an = (typeof _editando !== 'undefined' && _editando) ? _confLerAnalise(_editando) : null;
+    const efetivos = _confAnterioresEfetivos();
+    const marcado = !!document.getElementById('conf-reler-tudo')?.checked;
+    if(!efetivos.length || !nomes.length){ modo.innerHTML = ''; }
+    else {
+      const temDados = efetivos.every(a => an && an.dadosDocs && an.dadosDocs[a.arquivo_id]);
+      modo.innerHTML = (temDados
+        ? (marcado ? '🔁 A IA vai reler todos os documentos.' : '⚡ A IA vai ler só o(s) documento(s) novo(s) e comparar com os dados dos documentos já conferidos.')
+        : 'ℹ️ Desta vez a IA relê todos os documentos (a conferência anterior foi feita antes desta melhoria). Das próximas vezes, só os novos.')
+        + (temDados ? ` <label style="margin-left:8px;cursor:pointer;"><input type="checkbox" id="conf-reler-tudo" ${marcado?'checked':''} onchange="_confRenderChips()"> Reler todos (conferência completa)</label>` : '');
+    }
+  }
 }
 
 function _confB64ParaFile(b64, nome, mime){
@@ -173,8 +229,11 @@ async function rodarConferencia(){
     // Itens desta rodada: documentos da conferência anterior que continuam
     // valendo (baixados dos Arquivos do processo) + os enviados agora (que
     // são guardados nos Arquivos pra próxima conferência).
+    const analisePre = _confLerAnalise(p);
+    const incremental = _confModoIncremental(analisePre);
+    const anterioresMeta = _confAnterioresEfetivos().map(a => ({ arquivo_id:a.arquivo_id, nome:a.nome, type:a.type, mime:a.mime||'application/pdf', tamanho:a.tamanho||null }));
     const itens = [];
-    for(const a of _confAnterioresEfetivos()){
+    for(const a of (incremental ? [] : _confAnterioresEfetivos())){
       const r = await fetch('/api/controle/v2/arquivo/' + encodeURIComponent(a.arquivo_id) + '/conteudo');
       const d = await r.json().catch(()=>({}));
       if(!r.ok || !d.ok) throw new Error('Não consegui abrir "' + a.nome + '" da conferência anterior' + (d.erro ? ': ' + d.erro : '') + '. Envie esse documento de novo.');
@@ -203,7 +262,9 @@ async function rodarConferencia(){
         : {type:'image', source:{type:'base64', media_type:it.mime, data:it.b64}});
       content.push({type:'text', text:`[DOCUMENTO ACIMA: ${CONF_DOC_LBL[it.type]||CONF_DOC_LBL.outros} — arquivo: ${it.nome}]`});
     }
-    _confDocsUsados = itens.map(it => it.meta).filter(Boolean);
+    _confDocsUsados = incremental
+      ? [...anterioresMeta, ...itens.map(it => it.meta).filter(Boolean)]
+      : itens.map(it => it.meta).filter(Boolean);
 
     const docList = [...new Set(itens.map(it=>CONF_DOC_LBL[it.type]||CONF_DOC_LBL.outros))].join(', ');
 
@@ -239,7 +300,16 @@ async function rodarConferencia(){
       + 'REGRAS POR FORNECEDOR: ROVELO/SAILUN: peso liquido=bruto aceitavel. TRACMAX/WINDFORCE: modelo pode vir como codigo alfanumerico, nao alertar. DELMAX: volumes podem usar caixas em vez de pallets, aceitavel. '
       + 'REGRA CAMPO alertas (MUITO IMPORTANTE): o array "alertas" do schema e SOMENTE para observacoes gerais sem um campo/documento especifico a comparar (ex: recomendacao de revisar manualmente, lembrete de procedimento). QUALQUER divergencia, ausencia ou alerta que se refira a um campo especifico (ex: Porto de Destino, Forma de Pagamento, Dados Bancarios, Fabricante na PL, Frete/Taxas) DEVE OBRIGATORIAMENTE ser um item dentro de grupos[].campos[] (com campo, doc1_label, doc2_label, status=DIVERGENCIA/AUSENTE/ALERTA e severidade=BLOQUEANTE/INFORMATIVA), NUNCA como uma string solta em "alertas". Isso vale mesmo quando o texto da regra abaixo usa a palavra "alerta" — sempre gerar como item estruturado em grupos, nunca como texto solto. ';
 
-    content.push({type:'text', text:prompt});
+    // Extensões ao prompt (06/10/2026): (a) dados extraídos de cada documento
+    // enviado, guardados pra próxima conferência ler só o documento novo;
+    // (b) no modo incremental, os dados dos documentos já conferidos.
+    let extra = ' DADOS POR DOCUMENTO: inclua tambem no JSON o campo "dados_por_documento": [{"arquivo":"<nome do arquivo>","tipo":"CI|PL|BL|PI|CE|...","dados":{"exportador":"","importador":"","encomendante":"","fabricante":"","descricao_itens":"","quantidade":"","volumes":"","valor_unitario":"","valor_total":"","moeda":"","incoterm":"","forma_pagamento":"","dados_bancarios":"","porto_origem":"","porto_destino":"","pais_origem":"","peso_bruto":"","peso_liquido":"","ncm":"","containers":"","lacres":"","navio":"","data_embarque":"","frete":"","prepaid_collect":"","free_time":""}}] — um item para CADA documento enviado nesta mensagem (anexo), com os valores exatamente como aparecem no documento (vazio se nao houver). ';
+    if(incremental){
+      const dadosAnt = analisePre.dadosDocs || {};
+      const anteriores = anterioresMeta.map(a => ({ documento: CONF_DOC_LBL[a.type]||a.type, arquivo: a.nome, dados: (dadosAnt[a.arquivo_id]||{}).dados || dadosAnt[a.arquivo_id] }));
+      extra += 'MODO INCREMENTAL: os documentos ANEXADOS nesta mensagem sao NOVOS. Os outros documentos do processo ja foram conferidos entre si antes e NAO estao anexados — estao descritos abaixo apenas pelos dados extraidos deles. Compare SOMENTE os documentos novos contra os dados desses documentos ja conferidos (e os novos entre si, se houver mais de um). NAO compare os documentos ja conferidos entre si (isso ja foi feito). Use o nome real de cada documento nos labels (CI, PL, BL, PI, CE). Documentos ja conferidos: ' + JSON.stringify(anteriores) + ' ';
+    }
+    content.push({type:'text', text:prompt + extra});
 
     const bodyStr = JSON.stringify({ content });
     const sizeMB = (bodyStr.length / 1024 / 1024).toFixed(1);
@@ -290,16 +360,50 @@ async function rodarConferencia(){
     // sem pedir upload de novo — seja agora (se já sair sem pendência) ou
     // quando a ÚLTIMA pendência for aceita (ver _confTentarPreencherAutomatico
     // e seu uso em confirmarMotivoConferencia).
-    _confArquivosUltimaAnalise = itens.map(it => it.file || _confB64ParaFile(it.b64, it.nome, it.mime));
+    // Preenchimento automático lê só o que ainda não foi lido (no modo
+    // incremental, só os documentos novos — os anteriores já foram lidos).
+    _confArquivosUltimaAnalise = itens.map(it => ({ file: it.file || _confB64ParaFile(it.b64, it.nome, it.mime), arquivo_id: it.meta && it.meta.arquivo_id }));
 
     const analiseAnterior = _confLerAnalise(p);
+    // Dados por documento: os anteriores que continuam + os desta leitura.
+    const dadosDocs = {};
+    if(incremental) anterioresMeta.forEach(a => { const d = (analiseAnterior.dadosDocs||{})[a.arquivo_id]; if(d) dadosDocs[a.arquivo_id] = d; });
+    (result.dados_por_documento || []).forEach(dd => {
+      const nome = String(dd && dd.arquivo || '').trim().toLowerCase();
+      const it = itens.find(x => x.meta && String(x.nome).trim().toLowerCase() === nome) || null;
+      if(it && it.meta) dadosDocs[it.meta.arquivo_id] = { tipo: dd.tipo || '', dados: dd.dados || {} };
+    });
+    // Modo incremental: divergências antigas entre documentos que não mudaram
+    // continuam; as que envolvem documento novo/substituído/retirado saem
+    // (os novos foram conferidos agora).
+    let gruposFinal = result.grupos, resumoFinal = result.resumo, alertasFinal = result.alertas || [];
+    if(incremental){
+      const gruposFora = new Set([
+        ...Object.values(_confArquivos).map(f => _confGrupoTipo(f.type)),
+        ..._confAnteriores.filter(a => a.substituido || a.excluidoManual).map(a => _confGrupoTipo(a.type)),
+      ]);
+      const continuam = _confDivergenciasQueContinuam(analiseAnterior, gruposFora);
+      gruposFinal = (result.grupos || []).map(g => ({ titulo: g.titulo, campos: [...(g.campos||[])] }));
+      continuam.forEach(g => {
+        const alvo = gruposFinal.find(x => String(x.titulo||'').toLowerCase() === String(g.titulo||'').toLowerCase());
+        const chaves = new Set((alvo ? alvo.campos : []).map(c => ConferenciaChave.chaveDivergencia(c)));
+        const novos = g.campos.filter(c => !chaves.has(ConferenciaChave.chaveDivergencia(c)));
+        if(alvo) alvo.campos.push(...novos); else gruposFinal.push({ titulo: g.titulo, campos: novos });
+      });
+      alertasFinal = [...new Set([...(analiseAnterior.alertas||[]), ...alertasFinal].map(a => typeof a === 'string' ? a : (a.descricao||a.mensagem||'')))].filter(Boolean);
+      resumoFinal = { ...(result.resumo||{}), campos_ok: ((analiseAnterior.resumo||{}).campos_ok||0) + ((result.resumo||{}).campos_ok||0) };
+    }
     const novaAnalise = {
       data: new Date().toLocaleString('pt-BR'),
-      docs: itens.map(it=>CONF_DOC_PT[it.type]||it.nome).join(', '),
+      docs: (incremental ? [...anterioresMeta.map(a => CONF_DOC_PT[a.type]||a.nome), ...itens.map(it=>(CONF_DOC_PT[it.type]||it.nome)+' (novo)')] : itens.map(it=>CONF_DOC_PT[it.type]||it.nome)).join(', '),
       analisadoPor: (_user && (_user.displayName||_user.usuario)) || '',
-      resumo: result.resumo,
-      grupos: result.grupos,
-      alertas: result.alertas||[],
+      resumo: resumoFinal,
+      grupos: gruposFinal,
+      alertas: alertasFinal,
+      dadosDocs,
+      modo: incremental ? 'incremental' : 'completa',
+      // Documentos que o preenchimento automático já leu (não relê).
+      docsExtraidos: ((analiseAnterior && analiseAnterior.docsExtraidos) || []).filter(id => _confDocsUsados.some(d => d.arquivo_id === id)),
       // Aceites de conferências anteriores passam SÓ quando a divergência é
       // exatamente a mesma (campo + documentos + valores) — 06/10/2026.
       divResolvedMap: ConferenciaChave.migrarAceites(analiseAnterior),
@@ -402,10 +506,15 @@ async function _confTentarPreencherAutomatico(p, analise){
   const _aceites = _confMapaAceites(analise);
   const pendentes = _confListarDivergencias(analise).filter(d => !_aceites[d.key]);
   if(pendentes.length !== 0) return;
-  if(!_confArquivosUltimaAnalise.length || typeof processarFilaIA !== 'function') return;
-  showToast('Nenhuma pendência — lendo os documentos pra preencher o processo automaticamente...', 'ok');
+  if(typeof processarFilaIA !== 'function') return;
+  // Só os documentos que ainda não foram lidos pela extração (06/10/2026).
+  const jaLidos = new Set(analise.docsExtraidos || []);
+  const aLer = _confArquivosUltimaAnalise.filter(x => x && x.file && !(x.arquivo_id && jaLidos.has(x.arquivo_id)));
+  if(!aLer.length) return;
+  showToast('Nenhuma pendência — lendo ' + (aLer.length === 1 ? 'o documento novo' : 'os ' + aLer.length + ' documentos novos') + ' pra preencher o processo automaticamente...', 'ok');
   try{
-    await processarFilaIA(_confArquivosUltimaAnalise);
+    await processarFilaIA(aLer.map(x => x.file));
+    analise.docsExtraidos = [...jaLidos, ...aLer.map(x => x.arquivo_id).filter(Boolean)];
     // fecharAoSalvar:false -- ver comentário em coletarESalvar() (controle-campos.js):
     // isso roda sozinho depois da última divergência aceita, sem o usuário clicar
     // em Salvar, então não deve fechar o painel do processo.
