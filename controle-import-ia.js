@@ -911,7 +911,35 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // descompasso que o Jean reportou em 10/09/2026 (2 PIs atualizadas:
     // PID2608-G e PCN2608-G, itens atualizaram OK mas Data PI/Valor USD
     // ficaram travados na leitura anterior e precisaram de correção manual).
-    const ehPI = !!(extracted.pi_numero || extracted.pi_data);
+    // ── CI = dados finais (pedido do Ayslan, 06/10/2026): "sempre que
+    // colocarmos a CI para ler, ela tem os dados finais e deve ser
+    // considerada e sobrescrever a PI. Se tiver dúvidas, pode abrir o pop-up
+    // e questionar." Regras (ver também regrasCI* mais abaixo):
+    //  • Itens/quantidades, Produto, Incoterm e os campos da CI (Nº, Data,
+    //    Valor) são sobrescritos direto, sem perguntar.
+    //  • Nº/Data/Valor da PI ficam como estão — a CI costuma citar o nº da PI
+    //    e a IA às vezes devolvia a data/valor da CI nos campos da PI.
+    //  • Pop-up (dúvida): outra CI já lançada com número diferente; itens sem
+    //    nenhuma medida em comum com os atuais (pode ser a CI de outro
+    //    processo); forma de pagamento diferente; fornecedor/marca diferentes.
+    const ehCI = ehDocumentoCI(extracted);
+    if(ehCI){ delete extracted.pi_data; delete extracted.pi_valor_usd; }
+    const ehPI = !ehCI && !!(extracted.pi_numero || extracted.pi_data);
+    const ciNumeroAtual = (document.getElementById('f_ci_numero')?.value || '').trim();
+    const outraCI = ehCI && !!ciNumeroAtual && !!extracted.ci_numero
+      && normalizarNumeroDoc(ciNumeroAtual) !== normalizarNumeroDoc(extracted.ci_numero);
+    const camposSobrescritosPorCI = !ehCI ? [] : ['produto','pi_incoterm', ...(outraCI ? [] : ['ci_numero','ci_data','ci_valor_usd'])];
+    // Dúvida da CI que já vem marcada "usar o valor da CI" no pop-up.
+    const camposCIPadraoNovo = ['ci_numero','ci_data','ci_valor_usd','pi_pagamento'];
+    function extraConflitoCI(campo){
+      if(!ehCI) return null;
+      if(outraCI && ['ci_numero','ci_data','ci_valor_usd'].includes(campo))
+        return { padrao:'novo', motivo:`Já existe a CI ${ciNumeroAtual} neste processo e este documento é a CI ${extracted.ci_numero}. É uma CI corrigida/substituta (usar a nova) ou uma segunda invoice?` };
+      if(campo === 'pi_pagamento') return { padrao:'novo', motivo:'A CI traz termos de pagamento diferentes da PI. A CI é o documento final — confirme antes de trocar a forma de pagamento (as parcelas mudam).' };
+      if(campo === 'fornecedor' || campo === 'brand') return { padrao:'atual', motivo:'A CI traz um nome diferente — pode ser só grafia diferente do mesmo cadastro.' };
+      if(campo === 'pi_numero') return { padrao:'atual', motivo:'A CI cita outro nº de PI. Confira se é a CI deste processo.' };
+      return camposCIPadraoNovo.includes(campo) ? { padrao:'novo', motivo:'Valor da CI (documento final).' } : null;
+    }
     const camposSobrescritosPorCe = ehCeMercante ? ['navio','armador'] : [];
     const camposSobrescritosPorBlDi = ehBlOuDi ? ['porto_destino','container','navio'] : [];
     const camposSobrescritosPorPI = ehPI ? ['pi_numero','pi_data','pi_valor_usd','pi_incoterm','pi_pagamento'] : [];
@@ -940,6 +968,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // bloco de Itens logo abaixo) porque Itens/Produtos também passou a
     // usar esse mesmo mecanismo — ver comentário no bloco de itens.
     const conflitos = [];
+    let itensSubstituidosPelaCI = false;
     function valoresDivergem(a, b){
       const na = (a==null?'':String(a)).trim().toLowerCase();
       const nb = (b==null?'':String(b)).trim().toLowerCase();
@@ -949,12 +978,15 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       if(!el.value) return; // vazio não é conflito, é só preenchimento normal (já tratado no if principal)
       const exibicao = valorNovoExibicao!=null ? valorNovoExibicao : valorNovo;
       if(!valoresDivergem(el.value, exibicao)) return; // já é o mesmo valor — não é divergência real
+      const extra = extraConflitoCI(campo) || {};
       conflitos.push({
         campo,
         label: LABELS_CAMPOS_IA[campo] || campo,
         valorAtual: valorAtualExibicao!=null ? valorAtualExibicao : el.value,
         valorNovo: exibicao,
         aplicar: aplicar || (() => { el.value = valorNovo; }),
+        padrao: extra.padrao || 'atual',
+        motivo: extra.motivo || '',
       });
     }
 
@@ -983,15 +1015,22 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         const temItensReais = _produtos.some(p => p && p.descricao && p.descricao.trim());
         const resumoAtual = _produtos.filter(p=>p&&p.descricao&&p.descricao.trim()).map(p=>`${p.descricao} (${p.quantidade||'?'})`).join('; ');
         const resumoNovo = novosProdutos.map(p=>`${p.descricao} (${p.quantidade||'?'})`).join('; ');
-        if(temItensReais && valoresDivergem(resumoAtual, resumoNovo)){
+        // CI (06/10/2026): itens e quantidades da CI são os finais e
+        // substituem os da PI direto — só pergunta se nenhuma medida bater
+        // (sinal de CI de outro processo).
+        const ciSubstituiDireto = ehCI && itensTemMedidaEmComum(_produtos.map(p=>p&&p.descricao), novosProdutos.map(p=>p.descricao));
+        if(temItensReais && valoresDivergem(resumoAtual, resumoNovo) && !ciSubstituiDireto){
           conflitos.push({
             campo: 'itens',
             label: LABELS_CAMPOS_IA.itens || 'Itens/Produtos',
             valorAtual: resumoAtual,
             valorNovo: resumoNovo,
             aplicar: () => { _produtos = novosProdutos; renderMultiProdutos(); },
+            padrao: 'atual',
+            motivo: ehCI ? 'Os itens desta CI não têm nenhuma medida em comum com os atuais. Confira se é a CI deste processo antes de substituir.' : '',
           });
         } else {
+          if(ehCI && temItensReais && valoresDivergem(resumoAtual, resumoNovo)) itensSubstituidosPelaCI = true;
           _produtos = novosProdutos;
           renderMultiProdutos();
           preenchidos += _produtos.length;
@@ -1177,7 +1216,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       // (que não é CE Mercante e não deveria mexer nesses campos).
       const camposRestritosATipoDoc = ['ce_master','ce_house','ce_data_embarque'];
       const restritoEBloqueado = camposRestritosATipoDoc.includes(campo) && !ehCeMercante;
-      const podeSobrescrever = !restritoEBloqueado && (camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo) || camposSobrescritosPorPI.includes(campo) || foiPreenchidoPorIA(campo));
+      const podeSobrescrever = !restritoEBloqueado && (camposSobrescritosPorCe.includes(campo) || camposSobrescritosPorBlDi.includes(campo) || camposSobrescritosPorPI.includes(campo) || camposSobrescritosPorCI.includes(campo) || foiPreenchidoPorIA(campo));
       // Porto Destino é <select> agora — não aceita texto livre direto.
       // Normaliza pro código (ITJ/IOA/NVT) e, se não bater com nenhum,
       // reconstrói as opções incluindo o valor extraído como fallback
@@ -1320,6 +1359,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       : ehCeMercante
       ? `✓ ${preenchidos} campos preenchidos (CE Mercante — navio de chegada atualizado)`
       : ehBlOuDi ? `✓ ${preenchidos} campos preenchidos (BL/DI — porto e container atualizados)`
+      : ehCI ? `✓ ${preenchidos} campos preenchidos (CI — dados finais${itensSubstituidosPelaCI ? ': itens e quantidades da CI substituíram os da PI' : ''})`
       : ehPI ? `✓ ${preenchidos} campos preenchidos (PI — data e valor USD atualizados)`
       : `✓ ${preenchidos} campos preenchidos`) + sufixoConflitos;
     if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}`, conflitos.length ? 'warn' : 'ok');
@@ -1564,18 +1604,45 @@ async function handleDropIA(ev){
 // porque a lista de campos divergentes muda a cada leitura.
 let _conflitosIAPendentes = [];
 
+// ── CI (Commercial Invoice) = dados finais — 06/10/2026 ──
+// Documento é CI quando a IA leu Nº ou Valor da CI e NÃO é uma DI/DUIMP
+// (o "Comprovante de Importação" da Receita também é chamado de CI).
+function ehDocumentoCI(ex){
+  if(!ex) return false;
+  const ehDiOuDuimp = !!(ex.numero_di || ex.data_registro_di || ex.duimp_numero || ex.canal);
+  return !ehDiOuDuimp && !!(ex.ci_numero || ex.ci_valor_usd);
+}
+function normalizarNumeroDoc(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+// Medidas de pneu numa descrição ("215/75R17.5 16PR", "12.00R20", "18.4-30",
+// "600/65R28") normalizadas pra comparar listas de itens de PI x CI.
+function medidasDoTexto(t){
+  const s = String(t||'').toUpperCase().replace(/,/g,'.');
+  const m = s.match(/\d{1,3}(?:\.\d{1,2})?(?:\/\d{2,3})?\s*(?:ZR|R|-)\s*\d{2}(?:\.\d)?/g) || [];
+  return m.map(x => x.replace(/\s+/g,''));
+}
+// true se as duas listas têm ao menos uma medida em comum — ou se não dá
+// pra saber (alguma das listas sem medida reconhecível): na dúvida sobre o
+// FORMATO, vale a regra "CI é final".
+function itensTemMedidaEmComum(descricoesAtuais, descricoesNovas){
+  const a = new Set((descricoesAtuais||[]).flatMap(medidasDoTexto));
+  const b = (descricoesNovas||[]).flatMap(medidasDoTexto);
+  if(!a.size || !b.length) return true;
+  return b.some(x => a.has(x));
+}
+
 function abrirModalConflitosIA(conflitos, nomeArquivo){
   document.getElementById('modal-conflitos-ia-bg')?.remove();
   _conflitosIAPendentes = conflitos;
   const linhas = conflitos.map((c,i) => `
     <div style="padding:10px 0;border-bottom:1px solid var(--border);">
       <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">${esc(c.label)}</div>
+      ${c.motivo ? `<div style="font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:5px 8px;margin-bottom:6px;">❓ ${esc(c.motivo)}</div>` : ''}
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0;cursor:pointer;">
-        <input type="radio" name="conflito-ia-${i}" value="atual" checked>
+        <input type="radio" name="conflito-ia-${i}" value="atual" ${c.padrao === 'novo' ? '' : 'checked'}>
         Manter atual: <strong>${esc(String(c.valorAtual))}</strong>
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);padding:4px 0;cursor:pointer;">
-        <input type="radio" name="conflito-ia-${i}" value="novo">
+        <input type="radio" name="conflito-ia-${i}" value="novo" ${c.padrao === 'novo' ? 'checked' : ''}>
         Usar valor lido no documento: <strong style="color:var(--ok);">${esc(String(c.valorNovo))}</strong>
       </label>
     </div>
@@ -1589,7 +1656,7 @@ function abrirModalConflitosIA(conflitos, nomeArquivo){
         </div>
         <div class="modal-body">
           <p style="font-size:12px;color:var(--muted);margin-bottom:4px;">Documento lido: <strong>${esc(nomeArquivo)}</strong></p>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Estes campos já tinham um valor preenchido diferente do que este documento trouxe. Escolha qual considerar em cada um (por padrão, mantém o valor atual):</p>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Estes campos já tinham um valor preenchido diferente do que este documento trouxe. Escolha qual considerar em cada um (já vem marcada a opção sugerida — numa CI, o valor da CI, que é o documento final):</p>
           <div id="conflitos-ia-lista">${linhas}</div>
           <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:16px;">
             <button class="btn btn-outline" onclick="fecharModalConflitosIA()">Manter tudo como está</button>
@@ -1631,6 +1698,10 @@ function aplicarConflitosIA(){
     // Valor da PI/CI aceito do documento: parcelas do Parcelado acompanham
     // (05/10/2026 — saldo fecha com a CI; Inicial = % da PI).
     const camposEscolhidos = lista.filter((c,i) => document.querySelector(`input[name="conflito-ia-${i}"]:checked`)?.value === 'novo').map(c => c.campo);
+    // Forma de pagamento trocada pelo pop-up (ex.: CI com termos diferentes):
+    // .value programático não dispara o onchange que monta os campos.
+    if(camposEscolhidos.includes('pi_pagamento') && typeof renderPagamentoCampos === 'function') renderPagamentoCampos();
+    if(typeof _painelDirty !== 'undefined') _painelDirty = true;
     if(camposEscolhidos.includes('pi_valor_usd') && typeof aoMudarValorPI === 'function') aoMudarValorPI();
     if(camposEscolhidos.includes('ci_valor_usd') && typeof aoMudarValorCI === 'function') aoMudarValorCI();
     if(_editando){

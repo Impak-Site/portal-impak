@@ -2677,6 +2677,28 @@ teste('Cadastro do câmbio: problema vem com tipo (pra agrupar no alerta)', () =
   iguais(r.map(x => x.tipo).join(','), 'sem_cliente,sem_parcelas');
 });
 
+// ── Leitura de CI pela IA: CI é o documento final ─
+console.log('\n📋 CI = dados finais (leitura por IA)');
+teste('ehDocumentoCI: CI comercial sim; DI/DUIMP com nº CI não', () => {
+  verdadeiro(sandbox.ehDocumentoCI({ ci_numero:'INV-TESTE-1', ci_valor_usd:1000 }));
+  verdadeiro(!sandbox.ehDocumentoCI({ ci_numero:'X', numero_di:'26/0000000-0' }), 'DI não é Commercial Invoice');
+  verdadeiro(!sandbox.ehDocumentoCI({ pi_numero:'PI-TESTE' }), 'PI não é CI');
+});
+teste('medidasDoTexto reconhece formatos de pneu comuns', () => {
+  iguais(sandbox.medidasDoTexto('215/75R17.5 16PR TL').join(','), '215/75R17.5');
+  iguais(sandbox.medidasDoTexto('12.00R20 18PR').join(','), '12.00R20');
+  iguais(sandbox.medidasDoTexto('18.4-30 12PR').join(','), '18.4-30');
+  iguais(sandbox.medidasDoTexto('600/65 R28 IND').join(','), '600/65R28');
+});
+teste('itensTemMedidaEmComum: CI com quantidade diferente substitui; medidas totalmente diferentes perguntam', () => {
+  verdadeiro(sandbox.itensTemMedidaEmComum(['215/75R17.5 TR685'], ['215/75R17.5 16PR TR685', '11R22.5 TR697']));
+  verdadeiro(!sandbox.itensTemMedidaEmComum(['215/75R17.5 TR685'], ['600/65R28 IND']), 'nenhuma medida em comum = dúvida');
+  verdadeiro(sandbox.itensTemMedidaEmComum(['PNEU AGRICOLA'], ['600/65R28']), 'sem medida reconhecível: vale a CI');
+});
+teste('normalizarNumeroDoc ignora pontuação/espaço', () => {
+  iguais(sandbox.normalizarNumeroDoc('inv. no 26-001'), sandbox.normalizarNumeroDoc('INV NO 26001'));
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';
