@@ -739,7 +739,7 @@ function renderDashTV(){
     const etiqueta = x.nfStatus === 'remessa'
       ? `<span style="flex:0 0 auto;background:#2563eb;color:#fff;font-weight:800;font-size:.72em;padding:.15em .5em;border-radius:4px;letter-spacing:.3px;">📦 ESTOQUE${x.restanteTxt ? ' ' + x.restanteTxt : ''}</span>`
       : '';
-    return `<div class="tv-row" title="${esc(titulo)}" style="display:flex;align-items:center;gap:.5em;border-top:1px solid var(--border);border-left:3px solid ${corBorda};overflow:hidden;padding:.35em .5em .35em .4em;white-space:nowrap;background:${corFundo};border-radius:0 4px 4px 0;">
+    return `<div class="tv-row" title="${esc(titulo)}" style="flex:0 0 auto;display:flex;align-items:center;gap:.5em;border-top:1px solid var(--border);border-left:3px solid ${corBorda};overflow:hidden;padding:.35em .5em .35em .4em;white-space:nowrap;background:${corFundo};border-radius:0 4px 4px 0;">
         <div style="flex:0 0 auto;font-weight:700;white-space:nowrap;">${etaFmt}</div>
         <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(x.referencia||'')}">${esc(x.referencia||'—')}</div>
         ${etiqueta}
@@ -821,14 +821,16 @@ function renderDashTV(){
   function painelChaoCompletoTV(){
     const corpo = `
       ${kpiRowChaoHtml}
-      <div style="display:grid;grid-template-columns:1.3fr 1.4fr 1fr;gap:.9em;flex:1;min-height:0;margin-top:.9em;">
+      <!-- 06/10/2026 (Ayslan): Armazém no meio com os 2 gráficos compactos
+           embaixo dele; Processos do Mês na direita, com a altura toda. -->
+      <div style="display:grid;grid-template-columns:1.15fr 1.05fr 1.4fr;gap:.9em;flex:1;min-height:0;margin-top:.9em;">
         <div style="min-height:0;overflow:hidden;">${tabelaMarcaChaoHtml}</div>
+        <div style="min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:.9em;">
+          <div style="flex:1 1 auto;min-height:0;overflow:hidden;">${armazemChaoHtml}</div>
+          <div style="flex:0 0 auto;height:15.5vh;font-size:.85em;">${graficoMesChaoHtml}</div>
+          <div style="flex:0 0 auto;height:15.5vh;font-size:.85em;">${graficoDiaChaoHtml}</div>
+        </div>
         <div style="min-height:0;overflow:hidden;">${processosDoMesChaoHtml}</div>
-        <div style="min-height:0;overflow:hidden;">${armazemChaoHtml}</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9em;flex:0 0 auto;height:24vh;margin-top:.9em;">
-        <div>${graficoMesChaoHtml}</div>
-        <div>${graficoDiaChaoHtml}</div>
       </div>
     `;
     // Fonte base em clamp(vh) — igual ao cabeçalho de painel() — pra escalar
