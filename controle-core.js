@@ -4333,7 +4333,11 @@ function etiquetasDoProcesso(p){
         out.push({ id:'CAMBIO_ABERTO', label: atrasado ? 'Câmbio vencido sem fechar' : 'Câmbio a fechar no mês', labelCurto: atrasado ? 'Câmbio vencido' : 'Câmbio do mês', icone:'💱',
           cor: atrasado ? '#b91c1c' : '#a16207', bg: atrasado ? 'rgba(220,38,38,.12)' : 'rgba(202,138,4,.13)', borda: atrasado ? 'rgba(220,38,38,.4)' : 'rgba(202,138,4,.4)' });
       }
-      if(pagamentos.some(pg => !pg.vencimento)){
+      // Só cobra o vencimento de quem embarca até o fim do mês (ou já
+      // embarcou) — backorder sem data ainda não tem como ter vencimento.
+      const refEmb = String(p.data_embarque || p.etd || p.eta || '').slice(0,10);
+      const embarcaAteFimMes = !!refEmb && refEmb <= fimMesIso;
+      if(embarcaAteFimMes && pagamentos.some(pg => !pg.vencimento)){
         out.push({ id:'PAGAMENTO_SEM_VENCIMENTO', label:'Pagamento sem vencimento', labelCurto:'Sem vencimento', icone:'📅', cor:'#475569', bg:'rgba(100,116,139,.13)', borda:'rgba(100,116,139,.4)' });
       }
     }

@@ -1399,7 +1399,8 @@ teste('etiquetasDoProcesso: câmbio do mês = vencimento até o fim do mês (ven
   const vencido = ids({ ...base, pi_data_saldo: d(-1) }).join('|');
   verdadeiro(/CAMBIO_ABERTO:Câmbio vencido/.test(vencido), 'mês anterior sem fechar continua marcado');
   verdadeiro(!/CAMBIO_ABERTO/.test(ids({ ...base, pi_data_saldo: d(2) }).join('|')), 'vence daqui a 2 meses: não marca');
-  const semVenc = ids({ ...base, pi_pagamento:'VISTA' }).join('|');
+  verdadeiro(!/PAGAMENTO_SEM_VENCIMENTO/.test(ids({ ...base, pi_pagamento:'VISTA' }).join('|')), 'backorder sem ETD: não cobra vencimento');
+  const semVenc = ids({ ...base, pi_pagamento:'VISTA', etd: d(0) }).join('|');
   verdadeiro(/PAGAMENTO_SEM_VENCIMENTO/.test(semVenc) && !/CAMBIO_ABERTO/.test(semVenc), 'sem vencimento: só a etiqueta própria');
 });
 teste('etiquetasDoProcesso: pronto na fábrica sem semana de booking -> badge "Pronto sem semana de booking"', () => {
