@@ -1502,6 +1502,35 @@ function _limparCambioDaParcela(i){
 }
 function fmtUsdBR(v){ return (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
+// ── Sugestão de parcela para um comprovante de câmbio (06/10/2026) ──
+// Ayslan: "precisa melhorar a tela e a visualização, para fazer a melhor
+// escolha, e a opção correta". Ordem de preferência:
+//  1. a parcela onde este mesmo comprovante já está lançado;
+//  2. parcela cujo valor bate com o do comprovante (± US$ 0,01) e que ainda
+//     não tem câmbio, ou tem a mesma taxa;
+//  3. parcela que já tem a MESMA taxa lançada (o câmbio foi registrado, só o
+//     valor estava errado — ex.: Inicial a 30% e comprovante de 20%);
+//  4. a primeira parcela ainda sem câmbio.
+// Retorna { idx, motivo } (idx = -1 se não houver parcela).
+function sugerirParcelaCambio(parcelas, valorDoc, taxa, chaveDoc){
+  const lista = parcelas || [];
+  const num = v => parseFloat(String(v ?? '').replace(',', '.')) || 0;
+  if(chaveDoc){
+    const i = lista.findIndex(p => typeof _chaveComprovanteCambio === 'function' && _chaveComprovanteCambio(p) === chaveDoc);
+    if(i >= 0) return { idx: i, motivo: 'este comprovante já está lançado nesta parcela' };
+  }
+  const mesmaTaxa = p => taxa && Math.abs(num(p.cambio_fechado) - taxa) < 0.00005;
+  if(valorDoc){
+    const i = lista.findIndex(p => Math.abs(num(p.valor_usd) - valorDoc) < 0.01 && (!num(p.cambio_fechado) || mesmaTaxa(p)));
+    if(i >= 0) return { idx: i, motivo: 'o valor da parcela bate com o comprovante' };
+  }
+  const iTaxa = lista.findIndex(mesmaTaxa);
+  if(iTaxa >= 0) return { idx: iTaxa, motivo: 'esta parcela já tem a taxa ' + String(taxa).replace('.', ',') + ' lançada — o comprovante corrige o valor dela' };
+  const iAberta = lista.findIndex(p => !num(p.cambio_fechado));
+  if(iAberta >= 0) return { idx: iAberta, motivo: 'é a primeira parcela ainda sem câmbio' };
+  return { idx: -1, motivo: '' };
+}
+
 function abrirModalConfirmarCambio(match, refAtual){
   _cambioPendente = match;
   const taxa = parseFloat(match.taxa_cambio) || 0;
@@ -1509,60 +1538,83 @@ function abrirModalConfirmarCambio(match, refAtual){
   const valorPago = parseFloat(match.valor_pago) || 0;
   const valorUsdRef = parseFloat(match.valor_usd_referencia) || 0;
   const valorUsdImplicito = valorUsdRef || (taxa ? (valorPago/taxa) : 0);
+  const fmtUsd = v => 'US$ ' + (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtBrl = v => 'R$ ' + (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtData = d => d ? String(d).slice(0,10).split('-').reverse().join('/') : '';
+  const modalEl = document.querySelector('#modal-cambio-bg .modal');
+  if(modalEl) modalEl.style.maxWidth = '640px';
   const info = document.getElementById('cambio-modal-info');
   if(info){
     const custoExtra = parseFloat(match.custo_operacao) || 0;
     const custoTotal = valorUsdImplicito && taxa ? (valorUsdImplicito*taxa + custoExtra) : custoExtra;
+    const linha = (rot, val) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed var(--border);"><span style="color:var(--muted);">${rot}</span><span style="font-weight:600;text-align:right;">${val}</span></div>`;
     info.innerHTML = (futuro
         ? `<div style="background:#ede9fe;color:#5b21b6;font-weight:700;font-size:12px;padding:6px 10px;border-radius:6px;margin-bottom:8px;">🔮 Câmbio futuro — mensagem SWIFT${match.swift_id ? ' ' + esc(match.swift_id) : ''} (sem código BACEN)</div>`
         : '')
-      + `<b>Referência:</b> ${esc(match.referencia||refAtual||'(não identificada no documento)')}<br>`
+      + `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">`
+      + `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">📄 O que o comprovante diz</div>`
+      + `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">`
+      +   `<span style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;color:var(--ac);">${valorUsdImplicito ? fmtUsd(valorUsdImplicito) : '—'}</span>`
+      +   `<span style="font-size:12px;color:var(--muted);">${esc(match.referencia||refAtual||'(referência não identificada)')}</span>`
+      + `</div>`
       + (taxa
-        ? `<b>Taxa de câmbio:</b> R$ ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}${futuro ? ' <span style="color:var(--muted);font-size:11px;">(anotada no documento — confira)</span>' : ''}<br>`
+        ? linha('Taxa', 'R$ ' + taxa.toLocaleString('pt-BR',{minimumFractionDigits:4}) + (futuro ? ' <span style="color:var(--muted);font-weight:400;">(anotada — confira)</span>' : ''))
         : `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;margin:4px 0 8px;"><b>Taxa de câmbio não encontrada no documento.</b> Digite a taxa fechada: <input id="cambio-modal-taxa-manual" class="form-input" inputmode="decimal" placeholder="ex: 5,0840" style="width:120px;display:inline-block;margin-left:6px;"></div>`)
-      + (valorUsdRef ? `<b>Valor desta referência:</b> US$ ${valorUsdRef.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} (≈ R$ ${(valorUsdRef*taxa).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} nessa taxa)<br>`
-        : valorPago ? `<b>Valor pago:</b> R$ ${valorPago.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} (≈ US$ ${valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} nessa taxa)<br>` : '')
-      + (match.banco ? `<b>Banco:</b> ${esc(match.banco)}<br>` : '')
-      + (match.codigo_bacen ? `<b>Código BACEN:</b> ${esc(match.codigo_bacen)}<br>` : '')
-      + (custoExtra ? `<b>Tarifa/IOF discriminado no comprovante:</b> R$ ${custoExtra.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}<br>` : '')
-      + (custoTotal ? `<b>Custo total da operação (Valor USD × Câmbio${custoExtra?' + tarifas':''}):</b> R$ ${custoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}<br>` : '');
+      + (!valorUsdRef && valorPago ? linha('Valor pago', fmtBrl(valorPago)) : '')
+      + (match.data_pagamento ? linha('Data', fmtData(match.data_pagamento)) : '')
+      + (match.banco ? linha('Banco', esc(match.banco)) : '')
+      + (match.codigo_bacen ? linha('Código BACEN', esc(match.codigo_bacen)) : '')
+      + (custoExtra ? linha('Tarifa/IOF no comprovante', fmtBrl(custoExtra)) : '')
+      + (custoTotal ? linha('Custo total da operação', fmtBrl(custoTotal)) : '')
+      + `</div>`;
   }
-  // Se a Forma de Pagamento atual e "Parcelado", mostra um botao por
-  // parcela (pelo rotulo da Etapa) em vez das opcoes fixas de
-  // Unico/Entrada/Saldo -- o usuario escolhe explicitamente a qual
-  // parcela esse comprovante se refere (pedido direto da Emanuelly,
-  // que queria escolher a etapa igual escolhe a NF na aba Vendas).
+  // Se a Forma de Pagamento atual e "Parcelado", mostra um card por parcela
+  // com o que está no processo x o que o comprovante diz, o que acontece ao
+  // escolher, e a parcela sugerida destacada.
   const formaPagamento = document.getElementById('f_pi_pagamento')?.value;
   const boxParcelas = document.getElementById('cambio-modal-parcelas');
   const boxLegado = document.getElementById('cambio-modal-botoes-legado');
   if(formaPagamento==='PARCELADO' && boxParcelas && boxLegado){
     boxLegado.style.display = 'none';
     boxParcelas.style.display = 'flex';
-    // Parcelas existentes + "nova parcela" por etapa (Ayslan 29/09/2026: o
-    // câmbio era de Pré-embarque, mas o processo só tinha a parcela Final
-    // e o modal não deixava escolher). A nova parcela recebe o valor do
-    // comprovante e a parcela em aberto restante é recalculada com o saldo.
+    const chaveDoc = _chaveComprovanteCambio(match);
+    const sug = sugerirParcelaCambio(_parcelas, valorUsdImplicito, taxa, chaveDoc);
     const existentes = _parcelas.map((p,i)=>{
       const label = p.label || ('Parcela ' + (i+1));
-      const mesmoDoc = _chaveComprovanteCambio(p) && _chaveComprovanteCambio(p) === _chaveComprovanteCambio(match);
-      const jaTemCambio = mesmoDoc ? ' ✓ (este comprovante já está aqui)'
-        : (p.cambio_fechado ? (' (câmbio atual: ' + p.cambio_fechado + ')') : '');
-      const valor = parseFloat(p.valor_usd) ? (' — US$ ' + parseFloat(p.valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2})) : '';
-      // 06/10/2026 (26DTPI0476-3): a parcela estava com o valor de 30% e o
-      // comprovante era de 20% — o botão mostrava só o valor antigo e parecia
-      // que o sistema queria usar ele. Agora avisa a diferença no próprio botão.
       const vParc = parseFloat(p.valor_usd) || 0;
-      const difere = valorUsdImplicito && vParc && Math.abs(vParc - valorUsdImplicito) >= 0.01 && !mesmoDoc;
-      const avisoDif = difere
-        ? '<span style="display:block;font-size:11px;font-weight:600;color:#b45309;margin-top:2px;">⚠️ no processo está US$ ' + vParc.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ', o comprovante é US$ ' + valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' — ao escolher, o sistema pergunta se corrige a parcela para o valor do comprovante e recalcula o saldo.</span>'
-        : '';
-      return '<button class="btn btn-outline" style="text-align:left;' + (difere ? 'border-color:#f59e0b;' : '') + '" onclick="confirmarCambioParcela(' + i + ')">' + esc(label) + valor + jaTemCambio + avisoDif + '</button>';
+      const mesmoDoc = chaveDoc && _chaveComprovanteCambio(p) === chaveDoc;
+      const temCambio = parseFloat(p.cambio_fechado) || 0;
+      const sugerida = i === sug.idx;
+      const difere = valorUsdImplicito && vParc && Math.abs(vParc - valorUsdImplicito) >= 0.01;
+      const dif = valorUsdImplicito - vParc;
+      const status = [];
+      status.push(temCambio
+        ? `câmbio ${String(temCambio).replace('.', ',')}${p.data_fechamento_cambio ? ' em ' + fmtData(p.data_fechamento_cambio) : ''}${p.banco ? ' · ' + esc(p.banco) : ''}`
+        : 'sem câmbio');
+      if(p.data_vencimento) status.push('venc. ' + fmtData(p.data_vencimento));
+      let efeito;
+      if(mesmoDoc) efeito = '✓ Este comprovante já está nesta parcela.';
+      else if(!vParc) efeito = `Recebe ${fmtUsd(valorUsdImplicito)}, a taxa, a data e o banco do comprovante.`;
+      else if(difere) efeito = `⚠️ Valor diferente do comprovante (${dif < 0 ? '−' : '+'}${fmtUsd(Math.abs(dif))}). Ao escolher, o sistema pergunta se corrige para ${fmtUsd(valorUsdImplicito)} e recalcula o saldo das outras parcelas.`;
+      else efeito = '✓ Valor bate. Registra a taxa, a data e o banco do comprovante.';
+      if(temCambio && taxa && Math.abs(temCambio - taxa) >= 0.00005 && !mesmoDoc) efeito += ` A taxa ${String(temCambio).replace('.', ',')} já lançada será trocada por ${String(taxa).replace('.', ',')}.`;
+      const cor = sugerida ? 'var(--ok)' : (difere && !mesmoDoc ? '#f59e0b' : 'var(--border)');
+      return `<button type="button" class="btn btn-outline" onclick="confirmarCambioParcela(${i})"
+        style="display:block;width:100%;text-align:left;white-space:normal;padding:10px 12px;border:2px solid ${cor};border-radius:10px;background:${sugerida ? 'rgba(22,163,74,.05)' : '#fff'};">
+        <span style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">
+          <span style="font-size:14px;font-weight:800;color:var(--text);">${sugerida ? '<span style="background:var(--ok);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;margin-right:6px;vertical-align:middle;">SUGERIDA</span>' : ''}${esc(label)}</span>
+          <span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--text);">no processo: <b>${vParc ? fmtUsd(vParc) : '—'}</b></span>
+        </span>
+        <span style="display:block;font-size:11.5px;color:var(--muted);margin-top:2px;">${status.join(' · ')}</span>
+        <span style="display:block;font-size:12px;color:${difere && !mesmoDoc ? '#92400e' : 'var(--text)'};margin-top:5px;">${efeito}</span>
+        ${sugerida && sug.motivo ? `<span style="display:block;font-size:11px;color:var(--ok);margin-top:3px;">Sugerida porque ${esc(sug.motivo)}.</span>` : ''}
+      </button>`;
     }).join('');
     const novas = PARCELA_ETAPAS.map(et =>
       '<button class="btn btn-outline" style="font-size:12px;padding:6px 10px;" onclick="confirmarCambioNovaParcela(' + jsArg(et) + ')">+ ' + esc(et) + '</button>'
     ).join('');
-    boxParcelas.innerHTML = (existentes ? '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Parcela existente</div>' + existentes : '')
-      + '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-top:6px;">Ou criar nova parcela</div>'
+    boxParcelas.innerHTML = (existentes ? '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Aplicar em qual parcela deste processo?</div>' + existentes : '')
+      + '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-top:8px;">Ou criar uma parcela nova com o valor do comprovante</div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + novas + '</div>';
   } else if(boxParcelas && boxLegado){
     boxParcelas.style.display = 'none';

@@ -2718,6 +2718,16 @@ teste('origemDoValorAtual: documento que preencheu x digitado à mão', () => {
   iguais(mbl.tipo, 'manual'); iguais(mbl.usuario, 'bia');
   iguais(sandbox.origemDoValorAtual('hbl', log, LBL), null);
 });
+teste('sugerirParcelaCambio: valor que bate > mesma taxa > primeira em aberto', () => {
+  const s = sandbox.sugerirParcelaCambio;
+  // valor bate com a Final (ainda sem câmbio)
+  iguais(s([{label:'Inicial',valor_usd:'300',cambio_fechado:'5.0'},{label:'Final',valor_usd:'700'}], 700, 5.2, '').idx, 1);
+  // Inicial já tem a mesma taxa mas valor errado (caso 30% x 20%)
+  const r = s([{label:'Inicial',valor_usd:'300',cambio_fechado:'5.11'},{label:'Final',valor_usd:'700'}], 200, 5.11, '');
+  iguais(r.idx, 0); verdadeiro(/taxa/.test(r.motivo));
+  // nada bate: primeira sem câmbio
+  iguais(s([{label:'Inicial',valor_usd:'300',cambio_fechado:'5.0'},{label:'Final',valor_usd:'700'}], 123, 5.3, '').idx, 1);
+});
 teste('normalizarNumeroDoc ignora pontuação/espaço', () => {
   iguais(sandbox.normalizarNumeroDoc('inv. no 26-001'), sandbox.normalizarNumeroDoc('INV NO 26001'));
 });
