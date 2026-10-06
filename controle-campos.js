@@ -1598,7 +1598,9 @@ function abrirModalConfirmarCambio(match, refAtual){
       else if(difere) efeito = `⚠️ Valor diferente do comprovante (${dif < 0 ? '−' : '+'}${fmtUsd(Math.abs(dif))}). Ao escolher, o sistema pergunta se corrige para ${fmtUsd(valorUsdImplicito)} e recalcula o saldo das outras parcelas.`;
       else efeito = '✓ Valor bate. Registra a taxa, a data e o banco do comprovante.';
       if(temCambio && taxa && Math.abs(temCambio - taxa) >= 0.00005 && !mesmoDoc) efeito += ` A taxa ${String(temCambio).replace('.', ',')} já lançada será trocada por ${String(taxa).replace('.', ',')}.`;
-      const cor = sugerida ? 'var(--ok)' : (difere && !mesmoDoc ? '#f59e0b' : 'var(--border)');
+      // Só a sugerida chama atenção (verde); as outras ficam neutras pra não
+      // parecer que todas têm problema.
+      const cor = sugerida ? 'var(--ok)' : 'var(--border)';
       return `<button type="button" class="btn btn-outline" onclick="confirmarCambioParcela(${i})"
         style="display:block;width:100%;text-align:left;white-space:normal;padding:10px 12px;border:2px solid ${cor};border-radius:10px;background:${sugerida ? 'rgba(22,163,74,.05)' : '#fff'};">
         <span style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">
@@ -1606,7 +1608,7 @@ function abrirModalConfirmarCambio(match, refAtual){
           <span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--text);">no processo: <b>${vParc ? fmtUsd(vParc) : '—'}</b></span>
         </span>
         <span style="display:block;font-size:11.5px;color:var(--muted);margin-top:2px;">${status.join(' · ')}</span>
-        <span style="display:block;font-size:12px;color:${difere && !mesmoDoc ? '#92400e' : 'var(--text)'};margin-top:5px;">${efeito}</span>
+        <span style="display:block;font-size:12px;color:${!sugerida ? 'var(--muted)' : (difere && !mesmoDoc ? '#92400e' : 'var(--text)')};margin-top:5px;">${efeito}</span>
         ${sugerida && sug.motivo ? `<span style="display:block;font-size:11px;color:var(--ok);margin-top:3px;">Sugerida porque ${esc(sug.motivo)}.</span>` : ''}
       </button>`;
     }).join('');
