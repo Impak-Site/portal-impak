@@ -225,7 +225,12 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:cal
 .flex{display:flex;align-items:center}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.mb10{margin-bottom:10px}.mb14{margin-bottom:14px}
 .divider{height:1px;background:var(--b1);margin:14px 0}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--sf2);border:1px solid var(--b2);border-left:3px solid var(--or);border-radius:8px;padding:10px 16px;font-size:12px;font-weight:600;z-index:9999;opacity:0;transform:translateY(6px);transition:all .2s;pointer-events:none}
-.toast.show{opacity:1;transform:translateY(0)}
+.toast.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.toast{display:flex;align-items:flex-start;gap:10px;}
+.toast .toast-msg{flex:1;min-width:0;}
+.toast .toast-x{border:none;background:transparent;color:inherit;opacity:.75;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;margin:-2px -6px 0 0;flex-shrink:0;}
+.toast .toast-x:hover{opacity:1;}
+
 .badge-novo{background:var(--or);color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;letter-spacing:.5px;margin-left:4px;vertical-align:middle}
 
 /* ── SELEÇÃO DE PATTERNS ──────────────────────────────── */
@@ -1923,8 +1928,15 @@ function renderCat(){
 function closeM(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.mbg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeM(m.id);}));
 function toast(msg){
-  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2400);
+  const t=document.getElementById('toast');
+  t.innerHTML='';
+  const txt=document.createElement('span'); txt.className='toast-msg'; txt.textContent=msg;
+  const x=document.createElement('button'); x.type='button'; x.className='toast-x'; x.title='Fechar'; x.textContent='×';
+  x.onclick=()=>{ clearTimeout(toast._t); t.classList.remove('show'); };
+  t.appendChild(txt); t.appendChild(x);
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove('show'),2400);
 }
 
 

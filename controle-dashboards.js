@@ -1382,7 +1382,15 @@ function showToast(msg, tipo, duracao){
   if(!wrap) return;
   const t = document.createElement('div');
   t.className = 'toast '+(tipo||'');
-  t.textContent = msg;
+  // Botão × pra fechar na hora (Ayslan, 06/10/2026: "se tivermos com pressa").
+  const txt = document.createElement('span');
+  txt.className = 'toast-msg';
+  txt.textContent = msg;
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'toast-x'; x.title = 'Fechar'; x.setAttribute('aria-label','Fechar notificação');
+  x.textContent = '×';
+  x.onclick = () => t.remove();
+  t.appendChild(txt); t.appendChild(x);
   wrap.appendChild(t);
   setTimeout(()=>t.remove(), duracao || 8000);
 }

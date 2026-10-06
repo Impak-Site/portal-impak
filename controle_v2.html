@@ -303,6 +303,10 @@ select.form-input{cursor:pointer;}
 /* ── TOAST ── */
 .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
 .toast{background:#0a2340;color:#fff;padding:11px 18px;border-radius:var(--r-md);font-size:13px;font-weight:500;box-shadow:var(--shadow-lg);animation:slideIn .2s ease;max-width:320px;}
+.toast{display:flex;align-items:flex-start;gap:10px;}
+.toast .toast-msg{flex:1;min-width:0;}
+.toast .toast-x{border:none;background:transparent;color:inherit;opacity:.75;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;margin:-2px -6px 0 0;flex-shrink:0;}
+.toast .toast-x:hover{opacity:1;}
 .toast.ok{background:#15803d;}
 .toast.err{background:#b91c1c;}
 .toast.warn{background:#b45309;}

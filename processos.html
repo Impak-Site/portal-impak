@@ -513,7 +513,12 @@ textarea.field-input{resize:vertical;min-height:80px;}
   transition:all 0.3s ease;pointer-events:none;
   max-width:300px;
 }
-.toast.show{transform:translateY(0);opacity:1;}
+.toast.show{transform:translateY(0);opacity:1;pointer-events:auto;}
+.toast{display:flex;align-items:flex-start;gap:10px;}
+.toast .toast-msg{flex:1;min-width:0;}
+.toast .toast-x{border:none;background:transparent;color:inherit;opacity:.75;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;margin:-2px -6px 0 0;flex-shrink:0;}
+.toast .toast-x:hover{opacity:1;}
+
 .toast.ok{border-left:3px solid var(--ok);}
 .toast.err{border-left:3px solid var(--danger);}
 
@@ -955,7 +960,11 @@ function entrarDireto(found){
 function showToast(msg,type){
   const t=document.getElementById('toast');
   if(!t) return;
-  t.textContent=msg;
+  t.innerHTML='';
+  const txt=document.createElement('span'); txt.className='toast-msg'; txt.textContent=msg;
+  const x=document.createElement('button'); x.type='button'; x.className='toast-x'; x.title='Fechar'; x.textContent='×';
+  x.onclick=()=>{ clearTimeout(showToast._t); t.className='toast'; };
+  t.appendChild(txt); t.appendChild(x);
   t.className='toast show '+(type||'');
   clearTimeout(showToast._t);
   showToast._t=setTimeout(()=>t.className='toast',3500);
