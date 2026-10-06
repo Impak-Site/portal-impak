@@ -1559,6 +1559,32 @@ function listarPagamentosPI(processos){
 //                processo aguardando embarque;
 //   aguardando — pedido em fase PI: a data depende de embarque/chegada, é
 //                esperado não ter ainda.
+// Ícones de linha (mesmo estilo da nav do topo — chat.js/ICONES_NAV) para
+// as telas do Controle, no lugar de emojis (Ayslan, 06/10/2026: "deixe mais
+// profissional, sem tanto emoji"). icoUI('download', 14) → <svg …>.
+const ICONES_UI = {
+  arquivo:   '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  download:  '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  lista:     '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+  alerta:    '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  aviso:     '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  urgente:   '<polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  relogio:   '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  grafico:   '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+  carteira:  '<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
+  calendario:'<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  percentual:'<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  banco:     '<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
+  camadas:   '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  cambio:    '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>',
+  ok:        '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  bussola:   '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+};
+function icoUI(nome, tam){
+  const t = tam || 14;
+  const d = ICONES_UI[nome]; if(!d) return '';
+  return `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:-2px;" aria-hidden="true">${d}</svg>`;
+}
 const SEM_DATA_STATUS = {
   sem_forma:      { titulo:'Sem forma de pagamento',            acao:'Escolher a forma de pagamento (aba Financeiro)' },
   inicial_pago:   { titulo:'Inicial sem data nem câmbio — já embarcou', acao:'Se já foi paga, registrar o câmbio; senão, informar o vencimento' },
@@ -1571,9 +1597,9 @@ const SEM_DATA_STATUS = {
   saldo:          { titulo:'Saldo sem data',                     acao:'Informar a data do saldo' },
 };
 const SEM_DATA_GRUPOS = {
-  critico:    { titulo:'Ação imediata', subtitulo:'sem forma de pagamento ou já embarcado', cor:'#b91c1c', fundo:'#fef2f2', borda:'#fecaca', icone:'🚨' },
-  atencao:    { titulo:'Atenção',       subtitulo:'Inicial sem data ou embarque próximo',                  cor:'#b45309', fundo:'#fffbeb', borda:'#fde68a', icone:'⚠️' },
-  aguardando: { titulo:'Aguardando',    subtitulo:'pedido em fase PI — data vem do embarque/chegada', cor:'#475569', fundo:'#f8fafc', borda:'#e2e8f0', icone:'⏳' },
+  critico:    { titulo:'Ação imediata', subtitulo:'sem forma de pagamento ou já embarcado', cor:'#b91c1c', fundo:'#fef2f2', borda:'#fecaca', icone:'urgente' },
+  atencao:    { titulo:'Atenção',       subtitulo:'Inicial sem data ou embarque próximo',                  cor:'#b45309', fundo:'#fffbeb', borda:'#fde68a', icone:'aviso' },
+  aguardando: { titulo:'Aguardando',    subtitulo:'pedido em fase PI — data vem do embarque/chegada', cor:'#475569', fundo:'#f8fafc', borda:'#e2e8f0', icone:'relogio' },
 };
 function classificarSemData(x){
   const fasesDepoisDoEmbarque = ['EMBARCADO','DESEMBARCADO','REGISTRO_DI','PARAMETRIZACAO','CARREGAMENTO','FATURAMENTO','DEVOLUCAO_VAZIO'];

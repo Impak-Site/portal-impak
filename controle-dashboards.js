@@ -1262,7 +1262,7 @@ function renderFluxoCaixaHtml(pagamentos){
   return `
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
       <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
-        <div style="font-size:13px;font-weight:700;">📅 Fluxo de Caixa — Saídas por mês</div>
+        <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;">${typeof icoUI==='function' ? icoUI('calendario',15) : ''} Fluxo de caixa — saídas por mês</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">Só pagamentos a fornecedor por enquanto — entradas de clientes ainda não são rastreadas no sistema. "Se dólar +5%" é o cenário de estresse: quanto a mais separar em caixa se o câmbio subir 5% até o vencimento.</div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -1290,7 +1290,7 @@ function renderFluxoCaixaHtml(pagamentos){
           </tr>
         </tbody>
       </table>
-      ${semVencimento.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">⚠ Fora desta tabela: ${semVencimento.length} parcela(s) sem vencimento definido ainda (${fmtBRL(semVencimentoBRL)}) — não dá pra saber em qual mês cairiam.</div>` : ''}
+      ${semVencimento.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">Fora desta tabela: ${semVencimento.length} parcela(s) sem vencimento definido ainda (${fmtBRL(semVencimentoBRL)}) — não dá pra saber em qual mês cairiam.</div>` : ''}
     </div>`;
 }
 

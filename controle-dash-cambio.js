@@ -104,7 +104,7 @@ function exportarPendenciasDI(){
   m.onclick = e => { if(e.target === m) m.remove(); };
   m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(560px,calc(var(--vwz,1vw)*94));padding:22px 24px;box-shadow:0 20px 50px rgba(0,0,0,.25);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-      <div style="font-size:17px;font-weight:800;color:var(--text);">📄 Pendências de DI</div>
+      <div style="font-size:17px;font-weight:800;color:var(--text);">${icoUI('arquivo',16)} Pendências de DI</div>
       <button type="button" onclick="document.getElementById('pdiModal').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#94a3b8;">×</button>
     </div>
     <div style="font-size:12px;color:var(--text-muted,#64748b);margin-bottom:14px;">Câmbios de Pagamento Antecipado (Parcelado) fechados no período.</div>
@@ -121,7 +121,7 @@ function exportarPendenciasDI(){
     <div id="pdiPreview" style="background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--text);min-height:20px;margin-bottom:14px;">Escolha um mês acima.</div>
     <div style="display:flex;justify-content:flex-end;gap:8px;">
       <button type="button" onclick="document.getElementById('pdiModal').remove()" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;font-weight:700;">Cancelar</button>
-      <button type="button" id="pdiExportar" disabled onclick="_pdiExportarSelecionado()" style="padding:8px 18px;border:none;border-radius:8px;background:#0f1f3d;color:#fff;cursor:pointer;font-weight:800;opacity:.4;">📥 Exportar Excel</button>
+      <button type="button" id="pdiExportar" disabled onclick="_pdiExportarSelecionado()" style="padding:8px 18px;border:none;border-radius:8px;background:#0f1f3d;color:#fff;cursor:pointer;font-weight:800;opacity:.4;display:inline-flex;align-items:center;gap:6px;">${icoUI('download')} Exportar Excel</button>
     </div>
   </div>`;
   document.body.appendChild(m);
@@ -783,17 +783,17 @@ function renderDashCambio(){
 
   const toolbarHtml = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;">
     <button onclick="exportarPendenciasDI()" title="Planilha mensal de Pendências de DI/DUIMP pro banco — só os câmbios de Pagamento Antecipado fechados no mês escolhido"
-      style="font-size:12px;font-weight:700;padding:7px 14px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">📄 Exportar Pendências de DI</button>
+      style="font-size:12px;font-weight:700;padding:7px 14px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">${icoUI('arquivo')} Exportar Pendências de DI</button>
     <button onclick="exportarRelatorioMensalCambio()" title="Baixa um Excel com Resumo, Câmbios Pagos e Em Aberto — pronto pra levar numa reunião"
-      style="font-size:12px;font-weight:700;padding:7px 14px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">📥 Exportar Relatório (Excel)</button>
+      style="font-size:12px;font-weight:700;padding:7px 14px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">${icoUI('download')} Exportar Relatório (Excel)</button>
   </div>`;
 
   const kpisHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px;">
-    ${kpiCard('✅ Prontos p/ Fechamento', prontasUsd, prontas.length+' parcela(s) atrasada(s) — ação imediata', prontas.length?'var(--err)':'var(--ok)', {dias:'vencidas',label:'atrasadas'})}
+    ${kpiCard('Prontos p/ fechamento', prontasUsd, prontas.length+' parcela(s) atrasada(s) — ação imediata', prontas.length?'var(--err)':'var(--ok)', {dias:'vencidas',label:'atrasadas'})}
     ${kpiCard('A Liquidar · 7 dias', j7.usd, j7.itens.length+' parcela(s)', 'var(--err)', {dias:7,label:'próx. 7 dias'})}
     ${kpiCard('A Liquidar · 14 dias', j14.usd, j14.itens.length+' parcela(s)', 'var(--warn)', {dias:14,label:'próx. 14 dias'})}
     ${kpiCard('A Liquidar · 30 dias', j30.usd, j30.itens.length+' parcela(s)', 'var(--ac)', {dias:30,label:'próx. 30 dias'})}
-    ${kpiCard('💰 Câmbios Pagos', pagosUsd, pagos.length+' parcela(s) já fechada(s)', 'var(--ok)', {tipo:'pagos'})}
+    ${kpiCard('Câmbios pagos', pagosUsd, pagos.length+' parcela(s) já fechada(s)', 'var(--ok)', {tipo:'pagos'})}
   </div>`;
 
   // ── Por Fornecedor (calculado aqui, ANTES dos alertas de concentração,
@@ -831,7 +831,7 @@ function renderDashCambio(){
     }
   }
   const concentracaoHtml = !avisosConcentracao.length ? '' : `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:#78350f;display:flex;flex-direction:column;gap:3px;">
-    <div style="font-weight:700;color:#92400e;">⚠️ Concentração de risco</div>
+    <div style="font-weight:700;color:#92400e;display:flex;align-items:center;gap:6px;">${icoUI('aviso')} Concentração de risco</div>
     ${avisosConcentracao.map(a=>`<div>• ${a}</div>`).join('')}
   </div>`;
 
@@ -866,11 +866,11 @@ function renderDashCambio(){
           <span style="font-size:12px;line-height:1.3;">${esc(s.titulo)}<br><span style="font-size:10.5px;color:var(--muted);">${esc(s.acao)}</span></span>
           <span style="text-align:right;white-space:nowrap;"><b style="font-size:12px;${MONO}">${s.qtd}</b><br><span style="font-size:10.5px;color:var(--muted);${MONO}">${fmtUSD(s.usd)}</span></span>
         </a>`).join('');
-      const vazio = `<div style="font-size:12px;color:var(--muted);padding:6px 0;">Nada aqui ✓</div>`;
+      const vazio = `<div style="font-size:12px;color:var(--muted);padding:6px 0;">Nenhuma pendência</div>`;
       return `<div style="background:${g.fundo};border:1px solid ${g.borda};border-top:3px solid ${g.cor};border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <div>
-            <div style="font-size:12px;font-weight:800;color:${g.cor};text-transform:uppercase;letter-spacing:.03em;">${g.icone} ${esc(g.titulo)}</div>
+            <div style="font-size:12px;font-weight:800;color:${g.cor};text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:6px;">${icoUI(g.icone)} ${esc(g.titulo)}</div>
             <div style="font-size:11px;color:var(--muted);">${esc(g.subtitulo)}</div>
           </div>
           ${itens.length ? `<a href="#" onclick="_cambioFiltro={tipo:'semdata',grupo:${jsArg(gk)}};renderDashCambio();${_irTabela}return false;" style="font-size:11px;font-weight:700;color:${g.cor};white-space:nowrap;">Ver ${itens.length} →</a>` : ''}
@@ -883,7 +883,7 @@ function renderDashCambio(){
     return `<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
         <div>
-          <div style="font-size:14px;font-weight:800;">🧭 ${fmtUSD(totalUsd)} sem data de vencimento — fora dos KPIs de prazo</div>
+          <div style="font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;">${icoUI('calendario',16)} ${fmtUSD(totalUsd)} sem data de vencimento — fora dos KPIs de prazo</div>
           <div style="font-size:12px;color:var(--muted);">${semData.length} parcela(s) em ${totalProcs} processo(s). Sem data, a parcela não entra em "atrasadas" nem nas janelas de 7/14/30 dias. Clique num status pra ver os processos.</div>
         </div>
         <a href="#" onclick="_cambioFiltro={tipo:'semdata'};renderDashCambio();${_irTabela}return false;" style="font-size:12px;font-weight:700;color:var(--ac);white-space:nowrap;">Ver todas →</a>
@@ -921,7 +921,7 @@ function renderDashCambio(){
       </div>`;
     }).join('');
     return `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px 16px;margin-bottom:14px;">
-      <div style="font-size:13px;font-weight:800;color:#92400e;">⚠️ ${_probCad.length} problema(s) de cadastro que afetam o câmbio</div>
+      <div style="font-size:13px;font-weight:800;color:#92400e;display:flex;align-items:center;gap:6px;">${icoUI('aviso')} ${_probCad.length} problema(s) de cadastro que afetam o câmbio</div>
       <div style="font-size:11.5px;color:#78350f;margin-bottom:8px;">Corrija pra nenhum valor sumir ou aparecer errado nesta tela. Passe o mouse no processo pra ver o detalhe; clique pra abrir.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;">${blocos}</div>
     </div>`;
@@ -935,7 +935,7 @@ function renderDashCambio(){
   // foco do campo).
   _cambioSimulBase = { totalUsd: totalAbertoUsd, semanaUsd: j7.usd, mesUsd: j30.usd, cambioAtual };
   const simulacaoHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;height:100%;">
-    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">🧮 Simular câmbio</div>
+    <div style="font-size:14px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:8px;">${icoUI('percentual',16)} Simular câmbio</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">E se o dólar fosse a R$X? Veja o impacto antes de decidir travar câmbio.</div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
       <input id="cambio-simulado-input" type="number" step="0.01" value="${cambioAtual.toFixed(4)}" oninput="atualizarSimulacaoCambio(this.value)"
@@ -965,7 +965,7 @@ function renderDashCambio(){
   const pagosComCusto = pagos.filter(x=>x.custoOperacao).length;
 
   const bancoCustoHtml = (!pagos.length) ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
-    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">🏦 Concentração por Banco/Corretora + Custo da Operação</div>
+    <div style="font-size:14px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:8px;">${icoUI('banco',16)} Concentração por banco/corretora e custo da operação</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Baseado nos câmbios já fechados com Banco/Corretora e Custo da Operação preenchidos (campos novos — registre ao fechar um câmbio pra essa seção ir enchendo).</div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;">
       <div style="flex:1;min-width:220px;">
@@ -1005,7 +1005,7 @@ function renderDashCambio(){
     return { nome, porJanela };
   }).filter(f => f.porJanela[2].qtd >= 2); // 2+ parcelas nos próximos 30 dias
   const consolidacaoHtml = !candidatosConsolidacao.length ? '' : `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
-    <div style="font-size:14px;font-weight:700;margin-bottom:2px;">🔗 Consolidar Câmbio por Fornecedor</div>
+    <div style="font-size:14px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:8px;">${icoUI('camadas',16)} Consolidar câmbio por fornecedor</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Fornecedores com 2 ou mais parcelas vencendo nos próximos 30 dias — dá pra negociar 1 operação de câmbio só em vez de fechar parcela por parcela.</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="border-bottom:1px solid var(--border);">
@@ -1093,7 +1093,7 @@ function renderDashCambio(){
   // Linha sem vencimento: mostra o que falta, na cor da prioridade.
   function badgeSemData(x){
     const c = classificarSemData(x), g = SEM_DATA_GRUPOS[c.grupo];
-    return `<span title="${esc(c.acao)}" style="background:${g.fundo};color:${g.cor};border:1px solid ${g.borda};font-weight:700;padding:2px 7px;border-radius:20px;font-size:10.5px;white-space:nowrap;">${g.icone} ${esc(c.titulo)}</span>`;
+    return `<span title="${esc(c.acao)}" style="background:${g.fundo};color:${g.cor};border:1px solid ${g.borda};font-weight:700;padding:2px 7px;border-radius:20px;font-size:10.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">${icoUI(g.icone,11)} ${esc(c.titulo)}</span>`;
   }
 
   // Fechamento em lote — checkbox por linha, sempre reaplicando a seleção
@@ -1119,12 +1119,12 @@ function renderDashCambio(){
         </select>
         <select onchange="_cambioFiltroPagador=this.value;renderDashCambio();" title="Quem fecha o câmbio" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;${_cambioFiltroPagador==='impak'?'background:#fef9c3;':''}">
           <option value="">Quem paga: todos</option>
-          <option value="impak" ${_cambioFiltroPagador==='impak'?'selected':''}>🟨 IMPAK paga (Imp. Direta)</option>
+          <option value="impak" ${_cambioFiltroPagador==='impak'?'selected':''}>IMPAK paga (importação direta)</option>
           <option value="cliente" ${_cambioFiltroPagador==='cliente'?'selected':''}>Cliente paga (Encomenda)</option>
         </select>
         <select onchange="_cambioFiltroTipo=this.value;renderDashCambio();" title="Câmbio futuro = pago via mensagem SWIFT, sem código BACEN" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;${_cambioFiltroTipo?'background:#ede9fe;':''}">
           <option value="">Tipo: todos</option>
-          <option value="FUTURO" ${_cambioFiltroTipo==='FUTURO'?'selected':''}>🔮 Câmbio futuro</option>
+          <option value="FUTURO" ${_cambioFiltroTipo==='FUTURO'?'selected':''}>Câmbio futuro</option>
           <option value="NORMAL" ${_cambioFiltroTipo==='NORMAL'?'selected':''}>Câmbio normal (BACEN)</option>
         </select>
         <input id="cambio-busca-processo" type="text" value="${esc(_cambioFiltroTexto)}" placeholder="Buscar processo ou cliente…"
@@ -1135,11 +1135,11 @@ function renderDashCambio(){
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         ${mostrandoPagos ? '' : `<span id="lote-cambio-resumo" style="font-size:12px;color:var(--muted);">${_cambioLoteSelecao.size ? `${_cambioLoteSelecao.size} parcela(s) selecionada(s)` : 'Marque parcelas pra fechar câmbio em lote ou exportar só elas.'}</span>
         <button id="lote-cambio-btn" type="button" onclick="abrirPainelFechamentoLoteCambio()" ${_cambioLoteSelecao.size ? '' : 'disabled'}
-          style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;${_cambioLoteSelecao.size ? '' : 'opacity:.5;cursor:not-allowed;'}">💱 Fechar câmbio em lote</button>`}
+          style="font-size:12px;font-weight:700;padding:7px 14px;border:none;border-radius:7px;background:var(--ok);color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;${_cambioLoteSelecao.size ? '' : 'opacity:.5;cursor:not-allowed;'}">${icoUI('cambio')} Fechar câmbio em lote</button>`}
         <button type="button" onclick="exportarTabelaCambioExcel()" title="${_cambioLoteSelecao.size ? 'Exporta só as '+_cambioLoteSelecao.size+' parcela(s) marcada(s)' : 'Exporta todas as linhas mostradas'}"
-          style="font-size:12px;font-weight:600;padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;">⬇️ Excel${_cambioLoteSelecao.size ? ` (${_cambioLoteSelecao.size})` : ''}</button>
+          style="font-size:12px;font-weight:600;padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">${icoUI('download')} Excel${_cambioLoteSelecao.size ? ` (${_cambioLoteSelecao.size})` : ''}</button>
         <button type="button" onclick="exportarTabelaCambioPDF()" title="${_cambioLoteSelecao.size ? 'Exporta só as '+_cambioLoteSelecao.size+' parcela(s) marcada(s)' : 'Exporta todas as linhas mostradas'}"
-          style="font-size:12px;font-weight:600;padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;">📄 PDF${_cambioLoteSelecao.size ? ` (${_cambioLoteSelecao.size})` : ''}</button>
+          style="font-size:12px;font-weight:600;padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">${icoUI('arquivo')} PDF${_cambioLoteSelecao.size ? ` (${_cambioLoteSelecao.size})` : ''}</button>
       </div>
     </div>
     <div id="lote-cambio-painel" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);background:#f0f9ff;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -1148,7 +1148,7 @@ function renderDashCambio(){
       <label style="font-size:12px;">Data: <input id="lote-cambio-data" type="date" value="${hoje.toISOString().slice(0,10)}" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
       <label style="font-size:12px;">Banco/Corretora: <input id="lote-cambio-banco" type="text" placeholder="opcional" style="width:130px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;"></label>
       <label style="font-size:12px;">Custo (R$): <input id="lote-cambio-custo" type="number" step="0.01" placeholder="opcional" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-left:4px;${MONO}"></label>
-      <button type="button" onclick="executarFechamentoLoteCambio()" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:6px;background:var(--ok);color:#fff;cursor:pointer;">✓ Confirmar fechamento</button>
+      <button type="button" onclick="executarFechamentoLoteCambio()" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:6px;background:var(--ok);color:#fff;cursor:pointer;">Confirmar fechamento</button>
       <button type="button" onclick="fecharPainelFechamentoLoteCambio()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;">Cancelar</button>
     </div>
     <div style="max-height:420px;overflow-y:auto;">
@@ -1191,23 +1191,23 @@ function renderDashCambio(){
   // ── Abas ──
   const qtdPend = semData.length + _probCad.length;
   const ABAS_CAMBIO = [
-    { id:'parcelas',     icone:'📋', titulo:'A pagar',     badge: prontas.length ? `<span style="background:var(--err);color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${prontas.length}</span>` : '' },
-    { id:'pendencias',   icone:'🧭', titulo:'Pendências',  badge: qtdPend ? `<span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${qtdPend}</span>` : '' },
-    { id:'analises',     icone:'📊', titulo:'Análises',    badge:'' },
-    { id:'adiantamento', icone:'💵', titulo:'Adiantamento do cliente', badge:'' },
-    { id:'fluxo',        icone:'📅', titulo:'Fluxo de caixa', badge:'' },
+    { id:'parcelas',     icone:'lista', titulo:'A pagar',     badge: prontas.length ? `<span style="background:var(--err);color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${prontas.length}</span>` : '' },
+    { id:'pendencias',   icone:'alerta', titulo:'Pendências',  badge: qtdPend ? `<span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${qtdPend}</span>` : '' },
+    { id:'analises',     icone:'grafico', titulo:'Análises',    badge:'' },
+    { id:'adiantamento', icone:'carteira', titulo:'Adiantamento do cliente', badge:'' },
+    { id:'fluxo',        icone:'calendario', titulo:'Fluxo de caixa', badge:'' },
   ];
   const abasHtml = `<div style="display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--border);margin-bottom:16px;">
     ${ABAS_CAMBIO.map(a => {
       const on = a.id === _cambioAba;
-      return `<button type="button" onclick="trocarAbaCambio('${a.id}')" style="border:none;background:${on ? '#fff' : 'transparent'};cursor:pointer;padding:10px 16px;font-size:13px;font-weight:${on ? 800 : 600};color:${on ? 'var(--ac)' : 'var(--muted)'};border-bottom:3px solid ${on ? 'var(--ac)' : 'transparent'};margin-bottom:-2px;border-radius:8px 8px 0 0;">${a.icone} ${a.titulo}${a.badge}</button>`;
+      return `<button type="button" onclick="trocarAbaCambio('${a.id}')" style="border:none;background:${on ? '#fff' : 'transparent'};cursor:pointer;padding:10px 16px;font-size:13px;font-weight:${on ? 800 : 600};color:${on ? 'var(--ac)' : 'var(--muted)'};border-bottom:3px solid ${on ? 'var(--ac)' : 'transparent'};margin-bottom:-2px;border-radius:8px 8px 0 0;display:inline-flex;align-items:center;gap:7px;">${icoUI(a.icone,15)} ${a.titulo}${a.badge}</button>`;
     }).join('')}
   </div>`;
   const dicaAba = (txt) => `<div style="font-size:12px;color:var(--muted);margin:-6px 0 12px;">${txt}</div>`;
   let conteudoAba = '';
   if(_cambioAba === 'pendencias'){
     conteudoAba = dicaAba('Parcelas sem data de vencimento e problemas de cadastro. Clique num status para filtrar a lista logo abaixo.')
-      + (alertaSemDataHtml || '<div style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:14px;color:var(--ok);font-weight:700;">✓ Nenhuma parcela sem data de vencimento.</div>')
+      + (alertaSemDataHtml || `<div style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:14px;color:var(--ok);font-weight:700;display:flex;align-items:center;gap:8px;">${icoUI('ok',16)} Nenhuma parcela sem data de vencimento.</div>`)
       + alertaCadastroHtml
       + (semData.length ? tabelaHtml : '');
   } else if(_cambioAba === 'analises'){
