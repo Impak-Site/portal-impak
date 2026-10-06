@@ -520,6 +520,10 @@ function ativarTelaCambioExclusiva(){
 
   const dashCam = document.getElementById('dash-cambio');
   if(dashCam) dashCam.style.display = 'block';
+  // A tabela geral de processos (e a paginação) não faz parte desta tela —
+  // com as abas (06/10/2026) o conteúdo ficou curto e ela aparecia embaixo.
+  const twCam = document.querySelector('.table-wrap'); if(twCam) twCam.style.display = 'none';
+  const pagCam = document.getElementById('paginacao'); if(pagCam) pagCam.style.display = 'none';
   renderDashCambio();
 }
 
