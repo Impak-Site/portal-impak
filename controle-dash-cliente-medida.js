@@ -479,6 +479,16 @@ function renderDashClienteMedida(){
 
   // Snapshot pros exports Excel/PDF (ver exportarCMExcel/exportarCMPDF mais
   // abaixo) — sempre o que está na tela agora, com os mesmos filtros.
+  // Com busca ativa, os cards do topo mostram o resultado da busca (antes
+  // ignoravam o texto digitado e continuavam com o total geral).
+  let kpiTotal = totalGeral, kpiClientes = Object.values(porCliente).filter(c => c.nome !== CM_NOME_AVULSOS).length, kpiProcessos = processosConsiderados;
+  if(tokensBusca.length){
+    const idsBusca = new Set();
+    clientesLista.forEach(c => Object.values(c.porMarca).forEach(m => Object.values(m.pedidos).forEach(ped => idsBusca.add(ped.id))));
+    kpiTotal = clientesLista.reduce((s, c) => s + c.total, 0);
+    kpiClientes = clientesLista.filter(c => c.nome !== CM_NOME_AVULSOS).length;
+    kpiProcessos = idsBusca.size;
+  }
   _cmUltimoResultado = { clientesLista, totalGeral, processosConsiderados };
 
   const fmtN = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
@@ -675,13 +685,13 @@ function renderDashClienteMedida(){
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:12px 16px;flex:1;min-width:160px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Total de Pneus</div>
-        <div style="font-size:22px;font-weight:800;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(totalGeral)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Considerando os filtros abaixo</div>
+        <div style="font-size:22px;font-weight:800;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(kpiTotal)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${tokensBusca.length ? `Resultado da busca "${esc(termo)}"` : 'Considerando os filtros abaixo'}</div>
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid #64748b;border-radius:10px;padding:12px 16px;flex:1;min-width:160px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Clientes</div>
-        <div style="font-size:22px;font-weight:800;color:var(--text);font-family:'DM Sans',sans-serif;">${Object.values(porCliente).filter(c => c.nome !== CM_NOME_AVULSOS).length}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${processosConsiderados} processo(s) considerados${avulsosAgrupados.size ? ` · + ${avulsosAgrupados.size} avulso(s) agrupado(s)` : ''}</div>
+        <div style="font-size:22px;font-weight:800;color:var(--text);font-family:'DM Sans',sans-serif;">${kpiClientes}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${kpiProcessos} processo(s) considerados${avulsosAgrupados.size && !tokensBusca.length ? ` · + ${avulsosAgrupados.size} avulso(s) agrupado(s)` : ''}</div>
       </div>
     </div>
 
