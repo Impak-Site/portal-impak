@@ -308,7 +308,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           ${p.id && !bloqueado?`<button class="btn btn-outline" onclick="fecharProcesso('${p.id}')" title="Trava NF, Custos Reais e o resultado — só gerente pode reabrir depois">🔒 Fechar Processo</button>`:''}
         </div>
         <div style="display:flex;gap:10px;">
-          <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+          <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
           <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
         </div>
       </div>
@@ -409,7 +409,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         </div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
@@ -436,7 +436,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div id="dre-overlay" style="pointer-events:auto;"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
@@ -464,7 +464,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         ${renderCustosReaisTab(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
         <button class="btn btn-primary" onclick="salvarCustosReaisTab()">💾 Salvar Custos Reais</button>
       </div>
     </div>
@@ -482,7 +482,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div id="vendas-resumo"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
@@ -621,7 +621,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div id="armazen-info-wrap">${armazenInfo}</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
@@ -680,7 +680,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div id="demur-info-wrap">${demurInfo}</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>
@@ -808,7 +808,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div id="ged-lista-arquivos" style="display:flex;flex-direction:column;gap:6px;"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+        <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
         <button class="btn btn-primary" onclick="coletarESalvar({fecharAoSalvar:false})">💾 Salvar</button>
       </div>
     </div>

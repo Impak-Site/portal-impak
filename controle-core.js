@@ -292,6 +292,8 @@ document.addEventListener('keydown', function(e){
   }
 });
 
+// × e Cancelar do painel também perguntam antes de descartar.
+function fecharModalComAviso(){ if(_painelDirty) abrirAvisoNaoSalvo(); else fecharModal(); }
 function fecharAvisoNaoSalvo(){ document.getElementById('aviso-nao-salvo-bg')?.remove(); }
 function abrirAvisoNaoSalvo(){
   if(document.getElementById('aviso-nao-salvo-bg')) return;
