@@ -200,6 +200,7 @@ function voltarPortoLista(tipo){
 function coletarESalvar(opts){
   const fecharAoSalvar = !(opts && opts.fecharAoSalvar === false);
   if(window._salvandoProcesso) return;
+  const eraNovo = !(_editando && _editando.id);
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
 
@@ -442,6 +443,16 @@ function coletarESalvar(opts){
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
     if(ok && fecharAoSalvar) fecharModal();
+    else if(ok && eraNovo && _editando && _editando.id && typeof abrirProcesso === 'function'){
+      // Processo NOVO salvo com o painel aberto (06/10/2026): as abas que
+      // dependem do processo já existir (Conferência, Arquivos/GED,
+      // Histórico) foram desenhadas quando ele ainda não tinha id e
+      // continuavam dizendo "Salve o processo..." até recarregar a página.
+      // Reabre o painel já como processo gravado, na mesma aba.
+      const abaAtiva = (document.querySelector('.modal-tab.active')?.id || '').replace(/^tab-/, '');
+      showToast('✓ Processo salvo', 'ok');
+      abrirProcesso(_editando.id).then(() => { if(abaAtiva && typeof trocarAba === 'function') trocarAba(abaAtiva); }).catch(()=>{});
+    }
     else if(ok){
       showToast('✓ Processo salvo', 'ok');
       // Painel continua aberto: atualiza o selo da fase e a linha do tempo
