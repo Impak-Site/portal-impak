@@ -1221,6 +1221,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // ficar protegido como sempre foi.
     if(!_editando._camposIA) _editando._camposIA = {};
     const foiPreenchidoPorIA = campo => !!_editando._camposIA[campo];
+    const alteracoesPeloDocumento = [];
     const marcarComoIA = campo => { _editando._camposIA[campo] = true; camposLidosNestaLeitura.push(campo); };
 
     Object.keys(extracted).forEach(campo=>{
@@ -1323,7 +1324,14 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         return;
       }
       if(!el.value || podeSobrescrever){
+        // Valor que já estava e foi TROCADO pelo documento (06/10/2026,
+        // PF BR26R142: a forma de pagamento mudava sem ninguém perceber).
+        const textoCampo = e => e.tagName === 'SELECT' ? ((e.options[e.selectedIndex] || {}).text || e.value) : e.value;
+        const antesVal = el.value, antesTxt = antesVal ? textoCampo(el) : '';
         el.value = val;
+        if(antesVal && String(antesVal) !== String(el.value)){
+          alteracoesPeloDocumento.push({ campo, label: LABELS_CAMPOS_IA[campo] || campo, antes: antesTxt, depois: textoCampo(el) });
+        }
         el.style.borderColor='var(--ok)';
         el.style.background='rgba(22,163,74,.04)';
         preenchidos++; marcarComoIA(campo);
@@ -1414,7 +1422,16 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       : ehCI ? `✓ ${preenchidos} campos preenchidos (CI — dados finais${itensSubstituidosPelaCI ? ': itens e quantidades da CI substituíram os da PI' : ''})`
       : ehPI ? `✓ ${preenchidos} campos preenchidos (PI — data e valor USD atualizados)`
       : `✓ ${preenchidos} campos preenchidos`) + sufixoConflitos;
-    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}`, conflitos.length ? 'warn' : 'ok');
+    const listaAlteracoes = alteracoesPeloDocumento.map(a => `${a.label}: ${a.antes} → ${a.depois}`);
+    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}` + (listaAlteracoes.length ? ` — alterado: ${listaAlteracoes.join('; ')}` : ''), (conflitos.length || listaAlteracoes.length) ? 'warn' : 'ok');
+    if(status && listaAlteracoes.length && !abriuModalCambio){
+      const box = document.createElement('div');
+      box.className = 'ia-alteracoes';
+      box.style.cssText = 'margin-top:6px;padding:8px 10px;border:1px solid var(--warn,#d97706);border-radius:6px;background:rgba(217,119,6,.06);font-size:12px;line-height:1.5';
+      box.innerHTML = '<strong>Alterado pelo documento</strong> (confira antes de salvar):<br>' +
+        alteracoesPeloDocumento.map(a => `${esc(a.label)}: <s style="opacity:.7">${esc(a.antes)}</s> → <strong>${esc(a.depois)}</strong>`).join('<br>');
+      status.appendChild(box);
+    }
 
     // Preenchimento programático não dispara onchange/oninput dos campos —
     // por isso a regra de parametrização e o recálculo de fase/demurrage
@@ -1427,6 +1444,18 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     aplicarRegraParametrizacaoVerde();
     atualizarFaseEmTempoReal();
     if(extracted.pi_pagamento) renderPagamentoCampos();
+    // Aviso fixo junto da Forma de Pagamento quando a leitura a trocou.
+    {
+      const alt = alteracoesPeloDocumento.find(a => a.campo === 'pi_pagamento');
+      const sel = document.getElementById('f_pi_pagamento');
+      if(alt && sel && sel.parentNode){
+        let av = document.getElementById('pi-pagamento-aviso-ia');
+        if(!av){ av = document.createElement('div'); av.id = 'pi-pagamento-aviso-ia'; sel.parentNode.appendChild(av); }
+        av.style.cssText = 'margin-top:4px;font-size:11.5px;color:var(--warn,#b45309)';
+        av.textContent = `Alterado pela leitura de ${file.name}: era "${alt.antes}". Confira antes de salvar.`;
+        sel.style.borderColor = 'var(--warn,#d97706)';
+      }
+    }
     // 100% a Prazo: "N days after B/L" vai pro Prazo (dias), que conta do
     // embarque; sem prazo em dias o vencimento fica Chegada/ETA - 10 dias.
     if(document.getElementById('f_pi_pagamento')?.value === 'PRAZO'){
