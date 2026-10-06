@@ -512,13 +512,10 @@ async function _confSalvarResolvedMap(p, analise){
 // a partir da análise salva, pra achar uma divergência específica pela key
 // (gi+'-'+ci) sem precisar repassar o objeto inteiro em cada onclick.
 function _confBuscarDivergencia(analise, key){
-  for(let gi=0; gi<(analise.grupos||[]).length; gi++){
-    const grupo = analise.grupos[gi];
-    for(let ci=0; ci<(grupo.campos||[]).length; ci++){
-      if((gi+'-'+ci) === key) return { ...grupo.campos[ci], grupo: grupo.titulo, key };
-    }
-  }
-  return null;
+  // 06/10/2026: a key agora é o conteúdo da divergência (conferencia-chave.js).
+  // Esta busca ainda procurava pela posição antiga ("0-1") e não achava nada —
+  // o botão Aceitar/Copiar não abria (relato Emanuelly, LADJ-IM-UNI-2605VTBR1).
+  return _confListarDivergencias(analise).find(d => d.key === key || (d.gi+'-'+d.ci) === key) || null;
 }
 
 // ── Copiar texto de uma divergência (pedido Ayslan, 14/09/2026) — mesmo
