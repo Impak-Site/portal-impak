@@ -805,8 +805,8 @@ function renderDashTV(){
       <div style="background:${fundo};border-left:4px solid ${cor};color:${cor};font-weight:800;font-size:.8em;text-transform:uppercase;letter-spacing:.3px;padding:.3em .5em;border-radius:0 4px 4px 0;">${titulo} · ${fmtN(g.proc)} proc. · ${fmtN(Math.round(g.un))} un.</div>
       ${_listaGrupoChao(g)}</div>` : '';
   const armazemChaoHtml = `<div style="background:#fff;border-radius:12px;padding:.6em .9em;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
-    <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">Armazém · ${fmtN(noChaoProcessos)} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades</div>
-    <div style="flex:1;min-height:0;overflow-y:auto;font-size:1em;">${noChaoProcessos
+    <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;display:flex;justify-content:space-between;align-items:center;gap:.5em;"><span>Armazém · ${fmtN(noChaoProcessos)} processo(s) · ${fmtN(Math.round(noChaoTotalUn))} unidades</span><span data-tv-pag-ind style="font-size:.75em;color:#64748b;font-weight:700;letter-spacing:0;white-space:nowrap;"></span></div>
+    <div data-tv-autopagina style="flex:1;min-height:0;overflow-y:auto;font-size:1em;scrollbar-width:none;">${noChaoProcessos
       ? _secaoGrupoChao('📦 No estoque (remessa 5905)', '#2563eb', '#dbeafe', chaoRemessa) + _secaoGrupoChao('Chegou — sem NF de saída', '#16a34a', '#dcfce7', chaoSemNf)
       : '<div style="font-size:.9em;color:var(--muted);">Nenhum processo com estoque parado.</div>'}</div>
   </div>`;
