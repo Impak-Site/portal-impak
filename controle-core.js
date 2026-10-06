@@ -280,18 +280,44 @@ document.addEventListener('keydown', function(e){
   // num campo do processo, cadastros fase 1c): quem fecha é o listener de
   // controle-contatos.js — aqui só não deixa o ESC vazar pro painel.
   if(['modal-contato-edit-bg','modal-pessoa-edit-bg','modal-lista-edit-bg'].some(id=>document.getElementById(id)?.classList.contains('open'))) return;
+  // Aviso de não salvo aberto: ESC = continuar editando (06/10/2026 — com o
+  // confirm() do navegador, um 2º ESC valia "Cancelar" e descartava tudo).
+  if(document.getElementById('aviso-nao-salvo-bg')){ fecharAvisoNaoSalvo(); return; }
   const modalBg = document.getElementById('modal-bg');
   if(!modalBg || !modalBg.classList.contains('open')) return;
   if(_painelDirty){
-    if(confirm('Você tem alterações não salvas neste processo. Deseja salvar antes de fechar?')){
-      coletarESalvar();
-    } else {
-      fecharModal();
-    }
+    abrirAvisoNaoSalvo();
   } else {
     fecharModal();
   }
 });
+
+function fecharAvisoNaoSalvo(){ document.getElementById('aviso-nao-salvo-bg')?.remove(); }
+function abrirAvisoNaoSalvo(){
+  if(document.getElementById('aviso-nao-salvo-bg')) return;
+  const bg = document.createElement('div');
+  bg.id = 'aviso-nao-salvo-bg';
+  bg.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px';
+  bg.innerHTML = `
+    <div role="dialog" aria-modal="true" style="background:var(--bg,#fff);border-radius:12px;max-width:440px;width:100%;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px">Alterações não salvas</div>
+      <div style="font-size:13px;color:var(--tx2,#475569);margin-bottom:16px">Este processo tem alterações que ainda não foram salvas. O que deseja fazer?</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <button type="button" class="btn btn-outline" id="ans-descartar" style="color:var(--err,#dc2626)">Descartar e fechar</button>
+        <button type="button" class="btn btn-outline" id="ans-continuar">Continuar editando</button>
+        <button type="button" class="btn btn-primary" id="ans-salvar">Salvar e fechar</button>
+      </div>
+    </div>`;
+  bg.addEventListener('click', e => { if(e.target === bg) fecharAvisoNaoSalvo(); });
+  document.body.appendChild(bg);
+  bg.querySelector('#ans-continuar').onclick = fecharAvisoNaoSalvo;
+  bg.querySelector('#ans-salvar').onclick = () => { fecharAvisoNaoSalvo(); coletarESalvar(); };
+  bg.querySelector('#ans-descartar').onclick = () => {
+    if(!confirm('Descartar as alterações deste processo? Essa ação não pode ser desfeita.')) return;
+    fecharAvisoNaoSalvo(); fecharModal();
+  };
+  bg.querySelector('#ans-salvar').focus();
+}
 
 // ════════════════════════════════════════════════════════════════
 // TELA EXCLUSIVA /financeiro — mesma página (controle_v2.html) e mesmo
