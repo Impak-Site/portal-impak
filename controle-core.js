@@ -1495,6 +1495,7 @@ function listarPagamentosPI(processos){
   (processos||[]).forEach(p=>{
     const valorTotal = parseFloat(p.pi_valor_usd)||0;
     if(!valorTotal || p.fase==='FINALIZADO') return;
+    if(p.cancelado) return; // cancelado é cancelado (Ayslan 06/10/2026): fora de Financeiro, Câmbio e fluxo de caixa
     if(ehAcompanhamento(p)) return; // IMPAK não paga câmbio desses (só acompanha)
     // numeroDi incluído a pedido do Ayslan (09/09/2026): campo "extremamente
     // útil" pra identificar rapidamente a qual DI/DUIMP um pagamento de

@@ -2704,6 +2704,12 @@ teste('itensEquivalentes: mesma medida e quantidade com descrição diferente n�
 teste('portoSemPais: "QINGDAO, CHINA" = "QINGDAO"', () => {
   iguais(sandbox.portoSemPais('Qingdao, China'), 'QINGDAO');
 });
+teste('listarPagamentosPI: processo cancelado não entra (Financeiro/Câmbio)', () => {
+  const base = { pi_valor_usd:1000, pi_pagamento:'PARCELADO', fase:'PI', pi_parcelas_json: JSON.stringify([{label:'Inicial', valor_usd:200},{label:'Final', valor_usd:800}]) };
+  const ativo = sandbox.listarPagamentosPI([{ ...base, id:'a', referencia:'TESTE-A' }]);
+  verdadeiro(ativo.length > 0, 'ativo aparece');
+  iguais(sandbox.listarPagamentosPI([{ ...base, id:'c', referencia:'TESTE-C', cancelado:true }]).length, 0);
+});
 teste('classificarTermosPagamento: "at sight N days before ETA" = 100% a Prazo (não À Vista)', () => {
   const c = t => { const r = sandbox.classificarTermosPagamento(t); return r ? r.pagamento + (r.adiantamento_pct ? ':' + r.adiantamento_pct : '') + (r.prazo_dias ? '/' + r.prazo_dias : '') : null; };
   iguais(c('USD 1.000,00 100% At Sight 10 days before ETA'), 'PRAZO');
