@@ -436,27 +436,35 @@ function renderDashClienteMedida(){
   const processosConsiderados = processosContadosIds.size;
 
   // ── Filtro de busca livre (medida/invoice/marca) ────────────────────
-  // Mesma lógica de antes: se o termo bate no nome do CLIENTE, mantém
-  // tudo dele; senão, filtra Marca → Pedido pelo termo (referência,
-  // marca ou descrição de algum item) e descarta o que sobrar vazio.
-  const termo = _cmFiltroTexto.trim().toLowerCase();
+  // Busca por palavras em qualquer ordem (06/10/2026, ex.: "295 UF195" acha
+  // "295/80R22.5 18PR UF195"): cada palavra pode estar no cliente, na marca,
+  // na invoice ou na medida. Se a busca já bate no cliente/marca/invoice, o
+  // pedido aparece inteiro; senão aparecem só as medidas que batem (e os
+  // totais somam só elas).
+  const tokensBusca = typeof buscaTokens === 'function' ? buscaTokens(_cmFiltroTexto) : [];
+  const termo = tokensBusca.length ? _cmFiltroTexto.trim() : '';
   let clientesLista = Object.entries(porCliente).map(([chave, dados]) => ({ chave, ...dados }));
-  if(termo){
+  if(tokensBusca.length){
     clientesLista = clientesLista
       .map(c => {
-        const nomeBate = c.nome.toLowerCase().includes(termo);
-        if(nomeBate) return c;
         const porMarcaFiltrado = {};
         let totalFiltrado = 0;
         Object.entries(c.porMarca).forEach(([chaveMarca, m]) => {
-          const marcaBate = m.nome.toLowerCase().includes(termo);
           const pedidosFiltrados = {};
           let totalMarca = 0;
           Object.entries(m.pedidos).forEach(([chavePedido, ped]) => {
-            const bate = marcaBate
-              || (ped.referencia || '').toLowerCase().includes(termo)
-              || ped.itens.some(it => it.descricao.toLowerCase().includes(termo));
-            if(bate){ pedidosFiltrados[chavePedido] = ped; totalMarca += ped.qtd; }
+            const base = [c.nome, m.nome, ped.referencia];
+            if(buscaBate(tokensBusca, ...base)){
+              pedidosFiltrados[chavePedido] = ped;
+              totalMarca += ped.qtd;
+              return;
+            }
+            const itens = ped.itens.filter(it => buscaBate(tokensBusca, ...base, it.descricao));
+            if(itens.length){
+              const qtd = itens.reduce((s, it) => s + (it.qtd || 0), 0);
+              pedidosFiltrados[chavePedido] = { ...ped, itens, qtd };
+              totalMarca += qtd;
+            }
           });
           if(Object.keys(pedidosFiltrados).length){
             porMarcaFiltrado[chaveMarca] = { nome: m.nome, pedidos: pedidosFiltrados, total: totalMarca };
@@ -682,7 +690,7 @@ function renderDashClienteMedida(){
         ${selectFiltro('cliente','Cliente',_cmFiltroCliente,clientesDisponiveis)}
         ${selectFiltro('fornecedor','Fornecedor',_cmFiltroFornecedor,fornecedoresDisponiveis)}
         ${multiSelectMarcaHtml(marcasDisponiveis)}
-        <input id="cm-filtro-texto" class="form-input" placeholder="Buscar invoice, medida ou marca (ex: 295/80R22.5)..." value="${esc(_cmFiltroTexto)}"
+        <input id="cm-filtro-texto" class="form-input" placeholder="Buscar invoice, medida ou marca, em qualquer ordem (ex: 295 UF195)..." value="${esc(_cmFiltroTexto)}"
           oninput="_cmAtualizarFiltroTexto(this.value)" style="flex:2;min-width:200px;">
         <input type="month" value="${esc(_cmFiltroMes)}" onchange="_cmSetFiltroMes(this.value)" title="Filtra pela Data de Chegada (ou ETA, se ainda não chegou)" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;">
         ${temFiltroAtivo ? `<button class="btn btn-outline" onclick="_cmLimparFiltros()" style="white-space:nowrap;">✕ Limpar filtros</button>` : ''}

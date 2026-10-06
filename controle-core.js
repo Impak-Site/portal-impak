@@ -4192,6 +4192,25 @@ return lista.filter(p => cont[norm(p.referencia)] > 1);
   }),
 };
 
+// ── Busca por palavras (Ayslan 06/10/2026, Por Cliente/Medida: "295 UF195"
+// não achava nada porque no texto a ordem é outra, "295/80R22.5 ... UF195").
+// Quebra o que foi digitado em palavras e exige que TODAS apareçam, em
+// qualquer ordem e em qualquer um dos textos informados. Ignora maiúsculas e
+// acentos, e também compara sem pontuação ("29580R225" acha "295/80R22.5").
+function buscaNormalizar(s){ return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+function buscaTokens(q){ return buscaNormalizar(q).split(/\s+/).filter(Boolean); }
+function buscaBate(tokens, ...textos){
+  if(!tokens || !tokens.length) return true;
+  const partes = textos.filter(t => t != null && t !== '').map(buscaNormalizar);
+  const junto = partes.join(' \u0001 ');
+  const compactos = partes.map(t => t.replace(/[^a-z0-9]/g, ''));
+  return tokens.every(tk => {
+    if(junto.includes(tk)) return true;
+    const tc = tk.replace(/[^a-z0-9]/g, '');
+    return !!tc && compactos.some(c => c.includes(tc));
+  });
+}
+
 function filtrarProcessos(ignorarFaseFilter){
   let lista = [..._processos];
   const q = (document.getElementById('search')?.value||'').toLowerCase().trim();

@@ -1403,6 +1403,15 @@ teste('etiquetasDoProcesso: câmbio do mês = vencimento até o fim do mês (ven
   const semVenc = ids({ ...base, pi_pagamento:'VISTA', etd: d(0) }).join('|');
   verdadeiro(/PAGAMENTO_SEM_VENCIMENTO/.test(semVenc) && !/CAMBIO_ABERTO/.test(semVenc), 'sem vencimento: só a etiqueta própria');
 });
+teste('buscaBate: palavras em qualquer ordem, sem acento/maiúscula e sem pontuação', () => {
+  const t = sandbox.buscaTokens;
+  verdadeiro(sandbox.buscaBate(t('295 UF195'), '295/80R22.5 18PR 152/149M UF195 TL'));
+  verdadeiro(sandbox.buscaBate(t('uf195 295'), '295/80R22.5 18PR UF195'));
+  verdadeiro(!sandbox.buscaBate(t('295 UF200'), '295/80R22.5 18PR UF195'));
+  verdadeiro(sandbox.buscaBate(t('29580r225'), '295/80R22.5 UF195'), 'sem pontuação');
+  verdadeiro(sandbox.buscaBate(t('irmaos 295'), 'IRMÃOS SILVA S/A', 'MARCA X', '295/80R22.5'), 'palavras em textos diferentes');
+  verdadeiro(sandbox.buscaBate(t(''), 'qualquer'), 'busca vazia não filtra');
+});
 teste('semanaIsoDe/semanaBookingEfetiva: semana ISO; campo manual vence o ETD; sem nada = null', () => {
   iguais(sandbox.semanaIsoDe('2026-10-06').semana, 41);
   iguais(sandbox.semanaIsoDe('2026-01-01').semana, 1);
