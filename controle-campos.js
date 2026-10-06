@@ -1548,7 +1548,15 @@ function abrirModalConfirmarCambio(match, refAtual){
       const jaTemCambio = mesmoDoc ? ' ✓ (este comprovante já está aqui)'
         : (p.cambio_fechado ? (' (câmbio atual: ' + p.cambio_fechado + ')') : '');
       const valor = parseFloat(p.valor_usd) ? (' — US$ ' + parseFloat(p.valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2})) : '';
-      return '<button class="btn btn-outline" onclick="confirmarCambioParcela(' + i + ')">' + esc(label) + valor + jaTemCambio + '</button>';
+      // 06/10/2026 (26DTPI0476-3): a parcela estava com o valor de 30% e o
+      // comprovante era de 20% — o botão mostrava só o valor antigo e parecia
+      // que o sistema queria usar ele. Agora avisa a diferença no próprio botão.
+      const vParc = parseFloat(p.valor_usd) || 0;
+      const difere = valorUsdImplicito && vParc && Math.abs(vParc - valorUsdImplicito) >= 0.01 && !mesmoDoc;
+      const avisoDif = difere
+        ? '<span style="display:block;font-size:11px;font-weight:600;color:#b45309;margin-top:2px;">⚠️ no processo está US$ ' + vParc.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ', o comprovante é US$ ' + valorUsdImplicito.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' — ao escolher, o sistema pergunta se corrige a parcela para o valor do comprovante e recalcula o saldo.</span>'
+        : '';
+      return '<button class="btn btn-outline" style="text-align:left;' + (difere ? 'border-color:#f59e0b;' : '') + '" onclick="confirmarCambioParcela(' + i + ')">' + esc(label) + valor + jaTemCambio + avisoDif + '</button>';
     }).join('');
     const novas = PARCELA_ETAPAS.map(et =>
       '<button class="btn btn-outline" style="font-size:12px;padding:6px 10px;" onclick="confirmarCambioNovaParcela(' + jsArg(et) + ')">+ ' + esc(et) + '</button>'
@@ -1671,6 +1679,18 @@ function confirmarCambioParcela(idx){
   // aplicar o câmbio real, o valor a pagar do resto deve se ajustar sozinho.
   if(valorMudouP==='corrigido') ajustarSaldoAposCorrecao(idx);
   else if(valorMudouP) calcularParcelaResidualAuto();
+  // Inicial corrigida pelo comprovante: o "% Entrada (PI)" acompanha quando
+  // o valor bate com um % inteiro da PI (ex.: 4.811,40 / 24.057 = 20%) —
+  // senão o campo continuava 30% e contradizia a parcela (06/10/2026).
+  if(valorMudouP==='corrigido' && _parcelas[idx].label === 'Inicial'){
+    const inpPct = document.getElementById('f_pi_entrada_pct');
+    const pi = typeof valorMoeda === 'function' ? (valorMoeda('f_pi_valor_usd') || 0) : 0;
+    const pctReal = pi ? (parseFloat(_parcelas[idx].valor_usd) || 0) / pi * 100 : 0;
+    if(inpPct && pctReal > 0 && pctReal < 100 && Math.abs(pctReal - Math.round(pctReal)) < 0.05 && String(inpPct.value) !== String(Math.round(pctReal))){
+      inpPct.value = String(Math.round(pctReal));
+      showToast('% Entrada (PI) ajustado para ' + Math.round(pctReal) + '% conforme o comprovante','ok');
+    }
+  }
   renderParcelas();
   renderPagamentoInfoLive();
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
