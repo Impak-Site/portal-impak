@@ -1390,6 +1390,18 @@ teste('etiquetasDoProcesso: HBL aprovado sem docs enviados -> badge "Enviar docs
   iguais(etiquetas.some(e => e.id === 'ENVIAR_DESPACHANTE'), true);
 });
 
+teste('etiquetasDoProcesso: câmbio do mês = vencimento até o fim do mês (vencido continua); a prazo depois do mês não; sem vencimento = etiqueta própria', () => {
+  const d = n => { const x = new Date(); x.setDate(1); x.setMonth(x.getMonth()+n); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-10`; };
+  const base = { id:'t1', referencia:'TESTE-1', fase:'PI', pi_valor_usd:1000, pi_pagamento:'PRAZO' };
+  const ids = p => sandbox.etiquetasDoProcesso(p).map(e => e.id + ':' + e.label);
+  const noMes = ids({ ...base, pi_data_saldo: d(0) }).join('|');
+  verdadeiro(/CAMBIO_ABERTO/.test(noMes), 'vence neste mês');
+  const vencido = ids({ ...base, pi_data_saldo: d(-1) }).join('|');
+  verdadeiro(/CAMBIO_ABERTO:Câmbio vencido/.test(vencido), 'mês anterior sem fechar continua marcado');
+  verdadeiro(!/CAMBIO_ABERTO/.test(ids({ ...base, pi_data_saldo: d(2) }).join('|')), 'vence daqui a 2 meses: não marca');
+  const semVenc = ids({ ...base, pi_pagamento:'VISTA' }).join('|');
+  verdadeiro(/PAGAMENTO_SEM_VENCIMENTO/.test(semVenc) && !/CAMBIO_ABERTO/.test(semVenc), 'sem vencimento: só a etiqueta própria');
+});
 teste('etiquetasDoProcesso: pronto na fábrica sem semana de booking -> badge "Pronto sem semana de booking"', () => {
   const p = { id:'x7', referencia:'UD26-993', fase:'FABRICA', data_prontidao:'2026-09-10', semana_booking:null, data_embarque:null };
   const etiquetas = sandbox.etiquetasDoProcesso(p);

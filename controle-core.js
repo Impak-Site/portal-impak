@@ -4315,16 +4315,26 @@ function etiquetasDoProcesso(p){
     out.push({ id:'ENVIAR_DESPACHANTE', label:'Enviar docs à despachante', labelCurto:'Enviar p/ despach.', icone:'📨', cor:'#7c3aed', bg:'rgba(124,58,237,.13)', borda:'rgba(124,58,237,.4)' });
   }
 
-  // "Câmbio não fechado" (amarelo: embarque previsto no mês, câmbio
-  // ainda não fechado). Usa listarPagamentosPI() (já existente) pra
-  // achar pagamentos deste processo sem câmbio fechado.
-  if(p.etd || p.eta){
-    const dataRef = parseDataLocal(p.etd || p.eta);
-    const hoje = new Date();
-    if(dataRef.getMonth() === hoje.getMonth() && dataRef.getFullYear() === hoje.getFullYear()){
-      const pagamentos = listarPagamentosPI([p]).filter(pg => pg.processoId === p.id);
-      if(pagamentos.some(pg => !pg.pago)){
-        out.push({ id:'CAMBIO_ABERTO', label:'Câmbio não fechado (embarque no mês)', labelCurto:'Câmbio aberto', icone:'💱', cor:'#a16207', bg:'rgba(202,138,4,.13)', borda:'rgba(202,138,4,.4)' });
+  // "Câmbio a fechar no mês" (regra Ayslan/Paula 06/10/2026): pagamento sem
+  // câmbio fechado com vencimento até o último dia do mês corrente — inclui
+  // os vencidos de meses anteriores que ainda não foram fechados (continuam
+  // marcados até fechar). Compra a prazo que vence depois do mês não entra.
+  // Pagamento em aberto sem vencimento cadastrado ganha etiqueta própria.
+  {
+    const pagamentos = listarPagamentosPI([p]).filter(pg => pg.processoId === p.id && !pg.pago);
+    if(pagamentos.length){
+      const hoje = new Date();
+      const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+      const fimMesIso = `${fimMes.getFullYear()}-${String(fimMes.getMonth()+1).padStart(2,'0')}-${String(fimMes.getDate()).padStart(2,'0')}`;
+      const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+      const doMes = pagamentos.filter(pg => pg.vencimento && String(pg.vencimento).slice(0,10) <= fimMesIso);
+      if(doMes.length){
+        const atrasado = doMes.some(pg => String(pg.vencimento).slice(0,10) < hojeIso);
+        out.push({ id:'CAMBIO_ABERTO', label: atrasado ? 'Câmbio vencido sem fechar' : 'Câmbio a fechar no mês', labelCurto: atrasado ? 'Câmbio vencido' : 'Câmbio do mês', icone:'💱',
+          cor: atrasado ? '#b91c1c' : '#a16207', bg: atrasado ? 'rgba(220,38,38,.12)' : 'rgba(202,138,4,.13)', borda: atrasado ? 'rgba(220,38,38,.4)' : 'rgba(202,138,4,.4)' });
+      }
+      if(pagamentos.some(pg => !pg.vencimento)){
+        out.push({ id:'PAGAMENTO_SEM_VENCIMENTO', label:'Pagamento sem vencimento', labelCurto:'Sem vencimento', icone:'📅', cor:'#475569', bg:'rgba(100,116,139,.13)', borda:'rgba(100,116,139,.4)' });
       }
     }
   }
