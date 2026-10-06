@@ -652,8 +652,11 @@ function selecionarFornecedorLote(nome){
     const key = chaveLoteCambio(x.processoId, x._tipo, x._parcelaIndex);
     _cambioLoteSelecao.set(key, { processoId:x.processoId, tipo:x._tipo, parcelaIndex:x._parcelaIndex, valorUsd:x.valorUsd, fornecedor:x.fornecedor, referencia:x.referencia });
   });
+  _cambioAba = 'parcelas';
+  _cambioFiltro = { tipo:'fornecedor', nome };
   renderDashCambio();
-  showToast(`${doFornecedor.length} parcela(s) de ${nome} selecionada(s) — role até a tabela pra confirmar o fechamento em lote`, 'info');
+  document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth', block:'start'});
+  showToast(`${doFornecedor.length} parcela(s) de ${nome} selecionada(s) — confira na lista e clique em "Fechar câmbio em lote"`, 'info');
 }
 
 function toggleDashCambio(){
@@ -674,6 +677,18 @@ function toggleDashCambio(){
 // consolidação filtra a tabela de baixo) — estado simples em memória,
 // resetado toda vez que a tela é reaberta (não precisa persistir entre
 // sessões).
+// Abas da tela (06/10/2026 — Ayslan: "ficou um negócio embaixo do outro;
+// os cards ficam em cima e quando clica vai pra uma tela lá embaixo").
+// Cada parte em sua aba; a lista filtrada aparece logo abaixo do que foi
+// clicado, na mesma aba.
+let _cambioAba = 'parcelas'; // 'parcelas' | 'pendencias' | 'analises' | 'adiantamento' | 'fluxo'
+function trocarAbaCambio(aba){
+  _cambioAba = aba;
+  if(aba === 'pendencias' && !(_cambioFiltro && _cambioFiltro.tipo === 'semdata')) _cambioFiltro = { tipo:'semdata' };
+  if(aba !== 'pendencias' && _cambioFiltro && _cambioFiltro.tipo === 'semdata') _cambioFiltro = null;
+  renderDashCambio();
+  document.getElementById('dash-cambio-content')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
 let _cambioFiltro = null; // {tipo:'prazo', dias:7|14|30|'vencidas', label} ou {tipo:'fornecedor', nome}
 // Filtro de Cliente + busca livre por Processo na tabela "parcelas em
 // aberto" (pedido Ayslan 17/09/2026) -- combinam com o _cambioFiltro
@@ -706,6 +721,10 @@ function renderDashCambio(){
     ? { cursor: (typeof _cambioBuscaAtiva.selectionStart === 'number') ? _cambioBuscaAtiva.selectionStart : null }
     : null;
 
+  // Aba x filtro sempre coerentes: filtro "sem data" vive na aba Pendências
+  // (e lá, "limpar filtro" volta pra todas as sem data, não pra lista geral).
+  if(_cambioFiltro && _cambioFiltro.tipo === 'semdata') _cambioAba = 'pendencias';
+  else if(_cambioAba === 'pendencias') _cambioFiltro = { tipo:'semdata' };
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const fmtBRL = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const fmtUSD = v => `USD ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -754,8 +773,8 @@ function renderDashCambio(){
     // filtrava a tabela de baixo, mas sem indicação nenhuma de que algo
     // tinha acontecido se a tabela estivesse fora da tela — agora rola até
     // ela ficar visível, ficando óbvio que "abriu a lista".
-    const onclick = `_cambioFiltro=${ativo?'null':proximoFiltro};renderDashCambio();document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});`;
-    return `<div onclick="${onclick}" title="Clique para ver os processos na tabela abaixo" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;${ativo?'box-shadow:0 0 0 2px '+cor+';':''}">
+    const onclick = `_cambioAba='parcelas';_cambioFiltro=${ativo?'null':proximoFiltro};renderDashCambio();document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'nearest'});`;
+    return `<div onclick="${onclick}" title="Clique para filtrar a lista logo abaixo" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;${ativo?'box-shadow:0 0 0 2px '+cor+';':''}">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
       <div style="font-size:20px;font-weight:600;color:${cor};${MONO}white-space:nowrap;">${fmtUSD(valorUsd)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
@@ -829,7 +848,7 @@ function renderDashCambio(){
   // parcelas sem data são separadas por prioridade (classificarSemData, em
   // controle-core.js) e, dentro de cada uma, pelo que falta preencher. Cada
   // status é clicável e filtra a tabela detalhada abaixo.
-  const _irTabela = "document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'start'});";
+  const _irTabela = "document.getElementById('cambio-tabela-detalhada')?.scrollIntoView({behavior:'smooth',block:'nearest'});";
   const _semDataClass = semData.map(x => ({ x, c: classificarSemData(x) }));
   const alertaSemDataHtml = !semData.length ? '' : (()=>{
     const totalUsd = semData.reduce((s,x)=>s+x.valorUsd,0);
@@ -1169,11 +1188,42 @@ function renderDashCambio(){
     </div>
   </div>`;
 
-  el.innerHTML = toolbarHtml + kpisHtml + alertaSemDataHtml + alertaCadastroHtml + concentracaoHtml
-    + `<div style="margin-bottom:14px;">${simulacaoHtml}</div>`
-    + bancoCustoHtml + consolidacaoHtml + tabelaHtml
-    + (()=>{ try{ return renderAdiantamentoClienteHtml(); }catch(e){ console.error('Adiantamento do Cliente:', e); return ''; } })()
-    + renderFluxoCaixaHtml(todosPagamentos);
+  // ── Abas ──
+  const qtdPend = semData.length + _probCad.length;
+  const ABAS_CAMBIO = [
+    { id:'parcelas',     icone:'📋', titulo:'A pagar',     badge: prontas.length ? `<span style="background:var(--err);color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${prontas.length}</span>` : '' },
+    { id:'pendencias',   icone:'🧭', titulo:'Pendências',  badge: qtdPend ? `<span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${qtdPend}</span>` : '' },
+    { id:'analises',     icone:'📊', titulo:'Análises',    badge:'' },
+    { id:'adiantamento', icone:'💵', titulo:'Adiantamento do cliente', badge:'' },
+    { id:'fluxo',        icone:'📅', titulo:'Fluxo de caixa', badge:'' },
+  ];
+  const abasHtml = `<div style="display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--border);margin-bottom:16px;">
+    ${ABAS_CAMBIO.map(a => {
+      const on = a.id === _cambioAba;
+      return `<button type="button" onclick="trocarAbaCambio('${a.id}')" style="border:none;background:${on ? '#fff' : 'transparent'};cursor:pointer;padding:10px 16px;font-size:13px;font-weight:${on ? 800 : 600};color:${on ? 'var(--ac)' : 'var(--muted)'};border-bottom:3px solid ${on ? 'var(--ac)' : 'transparent'};margin-bottom:-2px;border-radius:8px 8px 0 0;">${a.icone} ${a.titulo}${a.badge}</button>`;
+    }).join('')}
+  </div>`;
+  const dicaAba = (txt) => `<div style="font-size:12px;color:var(--muted);margin:-6px 0 12px;">${txt}</div>`;
+  let conteudoAba = '';
+  if(_cambioAba === 'pendencias'){
+    conteudoAba = dicaAba('Parcelas sem data de vencimento e problemas de cadastro. Clique num status para filtrar a lista logo abaixo.')
+      + (alertaSemDataHtml || '<div style="padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:14px;color:var(--ok);font-weight:700;">✓ Nenhuma parcela sem data de vencimento.</div>')
+      + alertaCadastroHtml
+      + (semData.length ? tabelaHtml : '');
+  } else if(_cambioAba === 'analises'){
+    conteudoAba = dicaAba('Simulação de câmbio, concentração de risco, bancos/custos e consolidação por fornecedor.')
+      + concentracaoHtml
+      + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:14px;"><div>${simulacaoHtml}</div><div>${bancoCustoHtml || '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;font-size:12px;color:var(--muted);height:100%;">Nenhum câmbio pago ainda para analisar bancos/custos.</div>'}</div></div>`
+      + (consolidacaoHtml || '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;font-size:12px;color:var(--muted);">Nenhum fornecedor com 2+ parcelas nos próximos 30 dias para consolidar.</div>');
+  } else if(_cambioAba === 'adiantamento'){
+    conteudoAba = (()=>{ try{ return renderAdiantamentoClienteHtml(); }catch(e){ console.error('Adiantamento do Cliente:', e); return ''; } })();
+  } else if(_cambioAba === 'fluxo'){
+    conteudoAba = renderFluxoCaixaHtml(todosPagamentos);
+  } else {
+    conteudoAba = dicaAba('Clique num card para filtrar a lista logo abaixo. Clique de novo para limpar.')
+      + kpisHtml + tabelaHtml;
+  }
+  el.innerHTML = toolbarHtml + abasHtml + conteudoAba;
 
   if(_cambioRefoco){
     const novoEl = document.getElementById('cambio-busca-processo');
