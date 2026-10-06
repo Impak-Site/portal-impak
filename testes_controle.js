@@ -2610,6 +2610,41 @@ teste('Painel aberto já com 2 containers: dados próprios de cada container nã
   prepararDemurrage({});
 });
 
+// ── Conferência: aceite preso à divergência (conteúdo), não à posição (06/10/2026) ──
+console.log('\n📋 Conferência — chave dos aceites por conteúdo');
+const CC = require('./conferencia-chave');
+const divX = { campo:'Peso Bruto', doc1_label:'CI', doc1_valor:'18.500 kg', doc2_label:'PL', doc2_valor:'18.720 kg', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+const divY = { campo:'Porto de Destino', doc1_label:'BL', doc1_valor:'ITAPOA', doc2_label:'CI', doc2_valor:'NAVEGANTES', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+teste('chaveDivergencia: mesma divergência = mesma chave (ignora acento/maiúscula/espaços); valor diferente = outra chave', () => {
+  iguais(CC.chaveDivergencia(divX), CC.chaveDivergencia({ ...divX, campo:'  peso   bruto ' }));
+  iguais(CC.chaveDivergencia({ ...divY, doc2_valor:'Navegantes' }), CC.chaveDivergencia(divY));
+  verdadeiro(CC.chaveDivergencia(divX) !== CC.chaveDivergencia({ ...divX, doc2_valor:'18.700 kg' }), 'valor mudou → precisa aceitar de novo');
+  verdadeiro(/^k[0-9a-z]+$/.test(CC.chaveDivergencia(divX)), 'chave segura pra usar em onclick');
+});
+teste('Conferência nova com a lista em outra ordem: aceite antigo (por posição) vai pra divergência certa', () => {
+  const antiga = { grupos:[{ titulo:'Pesos', campos:[divX] }, { titulo:'Logística', campos:[divY] }],
+    divResolvedMap: { '0-0': { motivo:'Tolerância', por:'Teste' } } }; // X aceita, Y pendente
+  const contAntiga = CC.contarConferencia(antiga);
+  iguais(contAntiga.aceitas, 1); iguais(contAntiga.pendentes, 1);
+  const nova = { chaveVersao:2, grupos:[{ titulo:'Logística', campos:[divY] }, { titulo:'Pesos', campos:[divX] }],
+    divResolvedMap: CC.migrarAceites(antiga) };
+  verdadeiro(!('0-0' in nova.divResolvedMap), 'chave por posição não passa pra conferência nova');
+  verdadeiro(!CC.aceiteDe(nova, divY, 0, 0), 'Y (agora na posição 0-0) NÃO pode aparecer como aceita');
+  iguais(CC.aceiteDe(nova, divX, 1, 0).motivo, 'Tolerância', 'X continua aceita na posição nova');
+  const cont = CC.contarConferencia(nova);
+  iguais(cont.aceitas, 1); iguais(cont.pendentes, 1); iguais(cont.bloqueantes, 1);
+});
+teste('Conferência nova em que o valor mudou: aceite não passa', () => {
+  const antiga = { chaveVersao:2, grupos:[{ titulo:'Pesos', campos:[divX] }], divResolvedMap:{ [CC.chaveDivergencia(divX)]:{ motivo:'ok' } } };
+  const divX2 = { ...divX, doc1_valor:'18.600 kg' };
+  const nova = { chaveVersao:2, grupos:[{ titulo:'Pesos', campos:[divX2] }], divResolvedMap: CC.migrarAceites(antiga) };
+  iguais(CC.contarConferencia(nova).pendentes, 1);
+});
+teste('ALERTA sem campo e OK não contam como pendência', () => {
+  const a = { chaveVersao:2, grupos:[{ titulo:'G', campos:[{ status:'OK', campo:'X' }, { status:'ALERTA', campo:'' }, { status:'AUSENTE', campo:'Fabricante' }] }] };
+  iguais(CC.contarConferencia(a).pendentes, 1);
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';

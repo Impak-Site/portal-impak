@@ -26,17 +26,8 @@ function _confFilaDados(){
       return { p, analise: { data: r.data }, pendentes: r.pendentes||0, bloqueantes: r.bloqueantes||0, aceitas: r.aceitas||0 };
     }
     if(!analise) return { p, analise: null, pendentes: 0, bloqueantes: 0, aceitas: 0 };
-    const resolvedMap = analise.divResolvedMap || {};
-    let pendentes = 0, bloqueantes = 0, aceitas = 0;
-    (analise.grupos||[]).forEach((grupo, gi) => {
-      (grupo.campos||[]).forEach((c, ci) => {
-        if(c.status==='DIVERGENCIA' || c.status==='AUSENTE' || (c.status==='ALERTA' && c.campo)){
-          const key = gi+'-'+ci;
-          if(resolvedMap[key]) aceitas++;
-          else { pendentes++; if(c.severidade==='BLOQUEANTE') bloqueantes++; }
-        }
-      });
-    });
+    // Aceites por conteúdo da divergência (06/10/2026) — conferencia-chave.js.
+    const { pendentes, bloqueantes, aceitas } = ConferenciaChave.contarConferencia(analise);
     return { p, analise, pendentes, bloqueantes, aceitas };
   });
   return linhas;

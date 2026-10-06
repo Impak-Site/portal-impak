@@ -42,6 +42,20 @@ let _confArquivos = {}; // { nomeArquivo: {file, type} }
 // sem pedir pra subir os documentos de novo.
 let _confArquivosUltimaAnalise = [];
 
+// Documentos da conferência anterior (06/10/2026, pedido Ayslan): cada
+// conferência guarda os documentos usados nos Arquivos do processo
+// (docsArquivos na análise). A próxima já começa com eles — quem recebe um
+// documento novo envia só ele. Documento novo do mesmo tipo substitui o
+// anterior (BL, Draft BL e BL Original contam como o mesmo tipo).
+let _confAnteriores = [];   // [{arquivo_id, nome, type, mime, tamanho, excluidoManual, substituido}]
+let _confDocsUsados = [];   // o que vai pra docsArquivos da análise nova
+function _confGrupoTipo(t){ return (t==='bl'||t==='bl_draft'||t==='bl_original') ? 'bl' : t; }
+function _confAtualizarSubstituicoes(){
+  const gruposNovos = new Set(Object.values(_confArquivos).map(f=>_confGrupoTipo(f.type)).filter(g=>g!=='outros'));
+  _confAnteriores.forEach(a => { a.substituido = gruposNovos.has(_confGrupoTipo(a.type)); });
+}
+function _confAnterioresEfetivos(){ return _confAnteriores.filter(a => !a.substituido && !a.excluidoManual); }
+
 function _confGuessType(name){
   const n = name.toLowerCase();
   if(n.includes('draft')) return 'bl_draft';
@@ -68,10 +82,12 @@ function renderConferencia(p){
   }
   _confArquivos = {};
   const analise = _confLerAnalise(p);
+  _confAnteriores = ((analise && analise.docsArquivos) || []).filter(d => d && d.arquivo_id)
+    .map(d => ({ ...d, excluidoManual:false, substituido:false }));
   wrap.innerHTML = `
     <div class="form-section">
       <div class="form-section-title">📤 Documentos para conferência</div>
-      <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Suba CI, PL, BL (ou Draft), CE Mercante etc. — a IA compara todos entre si e aponta divergências, campos ausentes e alertas. Pode enviar de novo depois pra atualizar (ex: depois de receber o BL original).</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Suba CI, PL, BL (ou Draft), CE Mercante etc. — a IA compara todos entre si e aponta divergências, campos ausentes e alertas. Recebeu um documento novo depois? Envie só ele: os documentos da última conferência entram junto automaticamente (o novo substitui o anterior do mesmo tipo).</div>
       <div id="conf-dropzone" style="border:2px dashed var(--border);border-radius:8px;padding:18px;text-align:center;cursor:pointer;margin-bottom:10px;" onclick="document.getElementById('conf-file-input').click()">
         <input type="file" id="conf-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="_confAddFiles(this.files)">
         <div style="color:var(--muted);font-size:13px;">📎 Clique ou arraste os documentos aqui</div>
@@ -83,6 +99,7 @@ function renderConferencia(p){
     <div id="conf-resultado">${analise ? _confRenderResultado(p, analise) : '<div style="font-size:12px;color:var(--dim);">Nenhuma conferência feita ainda neste processo.</div>'}</div>
   `;
   _confSetupDropzone();
+  _confRenderChips();
 }
 
 function _confSetupDropzone(){
@@ -98,6 +115,7 @@ function _confSetupDropzone(){
 
 function _confAddFiles(list){
   for(const f of list) _confArquivos[f.name] = { file:f, type:_confGuessType(f.name) };
+  _confAtualizarSubstituicoes();
   _confRenderChips();
 }
 
@@ -105,18 +123,33 @@ function _confRenderChips(){
   const box = document.getElementById('conf-chips');
   if(!box) return;
   const nomes = Object.keys(_confArquivos);
-  box.innerHTML = nomes.map(nome=>{
+  const anteriores = _confAnteriores.map((a, i) => {
+    const fora = a.substituido || a.excluidoManual;
+    return `<div style="display:flex;align-items:center;gap:8px;background:${fora?'transparent':'#f0f7ff'};border:1px dashed var(--border);border-radius:6px;padding:6px 10px;font-size:12px;${fora?'opacity:.55;':''}">
+      <span title="Documento da conferência anterior">📁</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${fora?'text-decoration:line-through;':''}">${esc(a.nome)}</span>
+      <span style="font-size:11px;color:var(--muted);">${esc(CONF_DOC_PT[a.type]||a.type||'')}${a.substituido?' · substituído pelo novo':(a.excluidoManual?' · fora desta conferência':' · da conferência anterior')}</span>
+      ${a.substituido ? '' : `<button class="btn btn-sm" style="background:none;" onclick="_confAnteriores[${i}].excluidoManual=!_confAnteriores[${i}].excluidoManual; _confRenderChips();">${a.excluidoManual?'Incluir':'×'}</button>`}
+    </div>`;
+  }).join('');
+  box.innerHTML = anteriores + nomes.map(nome=>{
     const item = _confArquivos[nome];
     return `<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;">
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</span>
-      <select class="form-input" style="width:auto;padding:2px 6px;font-size:11px;" onchange="_confArquivos[${jsArg(nome)}].type=this.value">
+      <select class="form-input" style="width:auto;padding:2px 6px;font-size:11px;" onchange="_confArquivos[${jsArg(nome)}].type=this.value; _confAtualizarSubstituicoes(); _confRenderChips();">
         ${Object.entries(CONF_DOC_PT).map(([k,label])=>`<option value="${k}" ${item.type===k?'selected':''}>${esc(label)}</option>`).join('')}
       </select>
-      <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="delete _confArquivos[${jsArg(nome)}]; _confRenderChips();">×</button>
+      <button class="btn btn-sm" style="color:var(--err);border-color:var(--err);background:none;" onclick="delete _confArquivos[${jsArg(nome)}]; _confAtualizarSubstituicoes(); _confRenderChips();">×</button>
     </div>`;
   }).join('');
   const btn = document.getElementById('conf-btn-analisar');
-  if(btn) btn.disabled = nomes.length < 2; // precisa de pelo menos 2 docs pra ter o que cruzar
+  if(btn) btn.disabled = (nomes.length + _confAnterioresEfetivos().length) < 2; // precisa de pelo menos 2 docs pra ter o que cruzar
+}
+
+function _confB64ParaFile(b64, nome, mime){
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], nome, { type: mime || 'application/pdf' });
 }
 
 async function _confToB64(file){
@@ -137,17 +170,42 @@ async function rodarConferencia(){
   if(loading) loading.style.display = '';
 
   try{
-    const content = [];
+    // Itens desta rodada: documentos da conferência anterior que continuam
+    // valendo (baixados dos Arquivos do processo) + os enviados agora (que
+    // são guardados nos Arquivos pra próxima conferência).
+    const itens = [];
+    for(const a of _confAnterioresEfetivos()){
+      const r = await fetch('/api/controle/v2/arquivo/' + encodeURIComponent(a.arquivo_id) + '/conteudo');
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) throw new Error('Não consegui abrir "' + a.nome + '" da conferência anterior' + (d.erro ? ': ' + d.erro : '') + '. Envie esse documento de novo.');
+      itens.push({ nome:a.nome, type:a.type, mime:d.tipo || a.mime, b64:d.base64, meta:{ arquivo_id:a.arquivo_id, nome:a.nome, type:a.type, mime:d.tipo || a.mime, tamanho:a.tamanho||null } });
+    }
     for(const [name,{file,type}] of Object.entries(_confArquivos)){
       const b64 = await _confToB64(file);
-      const isPdf = file.type === 'application/pdf';
-      content.push(isPdf
-        ? {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}}
-        : {type:'image', source:{type:'base64', media_type:file.type, data:b64}});
-      content.push({type:'text', text:`[DOCUMENTO ACIMA: ${CONF_DOC_LBL[type]} — arquivo: ${name}]`});
+      let meta = null;
+      if(file.size <= 15*1024*1024 && ['application/pdf','image/jpeg','image/jpg','image/png'].includes(file.type)){
+        try{
+          const rg = await fetch('/api/controle/v2/arquivos', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ processo_id:p.id, nome:name, tipo:file.type, base64:b64 }) });
+          const dg = await rg.json().catch(()=>({}));
+          if(rg.ok && dg.ok && dg.id) meta = { arquivo_id:dg.id, nome:name, type, mime:file.type, tamanho:file.size };
+        }catch(e){ console.warn('conferência: não guardou nos Arquivos', name, e); }
+      }
+      if(!meta) showToast('"' + name + '" não foi guardado nos Arquivos — na próxima conferência envie de novo.', 'warn');
+      itens.push({ nome:name, type, mime:file.type, b64, file, meta });
     }
 
-    const docList = [...new Set(Object.values(_confArquivos).map(f=>CONF_DOC_LBL[f.type]))].join(', ');
+    const content = [];
+    for(const it of itens){
+      const isPdf = it.mime === 'application/pdf';
+      content.push(isPdf
+        ? {type:'document', source:{type:'base64', media_type:'application/pdf', data:it.b64}}
+        : {type:'image', source:{type:'base64', media_type:it.mime, data:it.b64}});
+      content.push({type:'text', text:`[DOCUMENTO ACIMA: ${CONF_DOC_LBL[it.type]||CONF_DOC_LBL.outros} — arquivo: ${it.nome}]`});
+    }
+    _confDocsUsados = itens.map(it => it.meta).filter(Boolean);
+
+    const docList = [...new Set(itens.map(it=>CONF_DOC_LBL[it.type]||CONF_DOC_LBL.outros))].join(', ');
 
     // ── PROMPT — copiado literalmente de runAnalysis() em processos.html (ver comentário no topo do arquivo) ──
     const prompt = 'JSON ONLY. No markdown. Especialista em conferencia documental importacao pneus Brasil. '
@@ -232,17 +290,23 @@ async function rodarConferencia(){
     // sem pedir upload de novo — seja agora (se já sair sem pendência) ou
     // quando a ÚLTIMA pendência for aceita (ver _confTentarPreencherAutomatico
     // e seu uso em confirmarMotivoConferencia).
-    _confArquivosUltimaAnalise = Object.values(_confArquivos).map(f=>f.file);
+    _confArquivosUltimaAnalise = itens.map(it => it.file || _confB64ParaFile(it.b64, it.nome, it.mime));
 
     const analiseAnterior = _confLerAnalise(p);
     const novaAnalise = {
       data: new Date().toLocaleString('pt-BR'),
-      docs: Object.values(_confArquivos).map(f=>CONF_DOC_PT[f.type]||f.file.name).join(', '),
+      docs: itens.map(it=>CONF_DOC_PT[it.type]||it.nome).join(', '),
       analisadoPor: (_user && (_user.displayName||_user.usuario)) || '',
       resumo: result.resumo,
       grupos: result.grupos,
       alertas: result.alertas||[],
-      divResolvedMap: (analiseAnterior && analiseAnterior.divResolvedMap) || {}, // preserva aceites de análises anteriores
+      // Aceites de conferências anteriores passam SÓ quando a divergência é
+      // exatamente a mesma (campo + documentos + valores) — 06/10/2026.
+      divResolvedMap: ConferenciaChave.migrarAceites(analiseAnterior),
+      chaveVersao: 2,
+      // Documentos usados nesta conferência (guardados nos Arquivos do
+      // processo) — a próxima conferência já começa com eles.
+      docsArquivos: _confDocsUsados,
       // Histórico de análises anteriores deste processo (task #644, pedido
       // Ayslan 14/09/2026 — "pegou o histórico do sistema antigo de
       // análise?"): cada vez que uma NOVA análise roda por cima de uma já
@@ -275,6 +339,7 @@ async function rodarConferencia(){
     showToast('✓ Conferência concluída', 'ok');
     document.getElementById('conf-resultado').innerHTML = _confRenderResultado(p, novaAnalise);
     _confArquivos = {};
+    _confAnteriores = (novaAnalise.docsArquivos||[]).map(d => ({ ...d, excluidoManual:false, substituido:false }));
     _confRenderChips();
     atualizarBadgeConferencia(p);
 
@@ -287,7 +352,7 @@ async function rodarConferencia(){
     showToast('Erro: '+err.message, 'err');
     console.error(err);
   }
-  if(btn) btn.disabled = Object.keys(_confArquivos).length < 2;
+  if(btn) btn.disabled = (Object.keys(_confArquivos).length + _confAnterioresEfetivos().length) < 2;
   if(loading) loading.style.display = 'none';
 }
 
@@ -296,12 +361,24 @@ async function rodarConferencia(){
 // mesma ordem/critério usado no resumo visual (_confRenderResultado) —
 // extraído pra função própria porque rodarConferencia() também precisa
 // saber se sobrou alguma pendência (ver _confAutoPreencherSemPendencia).
+// Mapa key -> aceite já resolvendo o legado por posição (ver conferencia-chave.js).
+function _confMapaAceites(analise){
+  const mapa = {};
+  _confListarDivergencias(analise).forEach(d => {
+    const a = ConferenciaChave.aceiteDe(analise, d, d.gi, d.ci);
+    if(a) mapa[d.key] = a;
+  });
+  return mapa;
+}
+
 function _confListarDivergencias(analise){
   const divs = [];
   (analise.grupos||[]).forEach((grupo, gi)=>{
     (grupo.campos||[]).forEach((c, ci)=>{
       if(c.status==='DIVERGENCIA' || c.status==='AUSENTE' || (c.status==='ALERTA' && c.campo)){
-        divs.push({ ...c, grupo: grupo.titulo, key: gi+'-'+ci });
+        // key = conteúdo da divergência (06/10/2026, conferencia-chave.js);
+        // gi/ci ficam só pra ler aceites antigos gravados pela posição.
+        divs.push({ ...c, grupo: grupo.titulo, key: ConferenciaChave.chaveDivergencia(c), gi, ci });
       }
     });
   });
@@ -322,7 +399,8 @@ function _confListarDivergencias(analise){
 // se ela reabrir a aba ou aceitar/desfazer outra coisa depois.
 async function _confTentarPreencherAutomatico(p, analise){
   if(analise._autoPreenchido) return;
-  const pendentes = _confListarDivergencias(analise).filter(d => !(analise.divResolvedMap||{})[d.key]);
+  const _aceites = _confMapaAceites(analise);
+  const pendentes = _confListarDivergencias(analise).filter(d => !_aceites[d.key]);
   if(pendentes.length !== 0) return;
   if(!_confArquivosUltimaAnalise.length || typeof processarFilaIA !== 'function') return;
   showToast('Nenhuma pendência — lendo os documentos pra preencher o processo automaticamente...', 'ok');
@@ -345,7 +423,7 @@ async function _confTentarPreencherAutomatico(p, analise){
 function _confRenderResultado(p, analise){
   const resumo = analise.resumo || {};
   const divs = _confListarDivergencias(analise);
-  const resolvedMap = analise.divResolvedMap || {};
+  const resolvedMap = _confMapaAceites(analise);
   const pendentes = divs.filter(d=>!resolvedMap[d.key]);
   const resolvidas = divs.filter(d=>resolvedMap[d.key]);
 
@@ -547,6 +625,9 @@ async function desfazerAceiteConferencia(key){
   const analise = _confLerAnalise(p);
   if(!analise || !analise.divResolvedMap) return;
   delete analise.divResolvedMap[key];
+  // Análise antiga: o aceite pode estar gravado pela posição.
+  const dLeg = _confListarDivergencias(analise).find(x => x.key === key);
+  if(dLeg) delete analise.divResolvedMap[dLeg.gi+'-'+dLeg.ci];
   const ok = await _confSalvarResolvedMap(p, analise);
   if(ok){
     showToast('Aceite desfeito', 'warn');
@@ -563,9 +644,8 @@ function atualizarBadgeConferencia(p){
   tab.querySelector('.tab-alert')?.remove();
   const analise = _confLerAnalise(p);
   if(!analise) return;
-  const resolvedMap = analise.divResolvedMap || {};
   const temPendenteBloqueante = (analise.grupos||[]).some((g,gi)=>(g.campos||[]).some((c,ci)=>
-    (c.status==='DIVERGENCIA'||c.status==='AUSENTE') && c.severidade==='BLOQUEANTE' && !resolvedMap[gi+'-'+ci]
+    (c.status==='DIVERGENCIA'||c.status==='AUSENTE') && c.severidade==='BLOQUEANTE' && !ConferenciaChave.aceiteDe(analise, c, gi, ci)
   ));
   if(temPendenteBloqueante) tab.insertAdjacentHTML('beforeend', '<span class="tab-alert"></span>');
 }

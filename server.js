@@ -1882,6 +1882,7 @@ function vencimentoSaldoPI(p) {
 // Filtro da conta só-TV (sem valores financeiros) — em lib/ pra ser testado
 // contra o cálculo de estoque da TV (testes_controle.js). Ver o arquivo.
 const { CAMPOS_FINANCEIROS_PROCESSO, removerCamposFinanceiros } = require('./lib/filtro-tv');
+const ConferenciaChave = require('./conferencia-chave');
 
 // Resumo da última conferência (mesma contagem da Fila de Conferência em
 // controle-dash-conferencia.js: divergências/ausências/alertas com campo,
@@ -1889,14 +1890,8 @@ const { CAMPOS_FINANCEIROS_PROCESSO, removerCamposFinanceiros } = require('./lib
 function resumoConferencia(json) {
   let a; try { a = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return null; }
   if (!a) return null;
-  const aceitoMap = a.divResolvedMap || {};
-  let pendentes = 0, bloqueantes = 0, aceitas = 0;
-  (a.grupos || []).forEach((g, gi) => (g.campos || []).forEach((c, ci) => {
-    if (c.status === 'DIVERGENCIA' || c.status === 'AUSENTE' || (c.status === 'ALERTA' && c.campo)) {
-      if (aceitoMap[gi + '-' + ci]) aceitas++;
-      else { pendentes++; if (c.severidade === 'BLOQUEANTE') bloqueantes++; }
-    }
-  }));
+  // Aceites por conteúdo da divergência (06/10/2026) — ver conferencia-chave.js.
+  const { pendentes, bloqueantes, aceitas } = ConferenciaChave.contarConferencia(a);
   return { data: a.data || '', pendentes, bloqueantes, aceitas };
 }
 
@@ -3319,6 +3314,27 @@ app.get('/api/controle/v2/arquivos/:processoId', auth('controle','financeiro','r
   } catch (e) {
     console.error('ged listar erro:', e.message);
     res.json({ ok: true, arquivos: [] });
+  }
+});
+
+// Conteúdo de um arquivo do GED em base64 (06/10/2026): a Conferência
+// reaproveita os documentos já enviados numa conferência anterior — quem
+// recebe um documento novo envia só ele, e o navegador busca os outros aqui
+// (o bucket é privado; o navegador não lê o storage direto).
+app.get('/api/controle/v2/arquivo/:id/conteudo', auth('controle'), async (req, res) => {
+  try {
+    const { data: reg, error } = await sb().from('controle_arquivos')
+      .select('id, nome, tipo, storage_path').eq('id', req.params.id).limit(1);
+    if (error) throw new Error(error.message);
+    const a = reg && reg[0];
+    if (!a) return res.status(404).json({ ok: false, erro: 'Arquivo não encontrado' });
+    const { data: blob, error: dlErro } = await sb().storage.from(GED_BUCKET).download(a.storage_path);
+    if (dlErro) throw new Error(dlErro.message);
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.json({ ok: true, nome: a.nome, tipo: a.tipo, base64: buffer.toString('base64') });
+  } catch (e) {
+    console.error('ged conteudo erro:', e.message);
+    res.status(500).json({ ok: false, erro: e.message });
   }
 });
 
@@ -5198,14 +5214,7 @@ function _contarPendentesConferencia(analiseStr){
   if (!analiseStr) return 0;
   let analise;
   try { analise = JSON.parse(analiseStr); } catch(e) { return 0; }
-  const resolvedMap = analise.divResolvedMap || {};
-  let n = 0;
-  (analise.grupos || []).forEach((grupo, gi) => {
-    (grupo.campos || []).forEach((c, ci) => {
-      if ((c.status === 'DIVERGENCIA' || c.status === 'AUSENTE' || (c.status === 'ALERTA' && c.campo)) && !resolvedMap[gi+'-'+ci]) n++;
-    });
-  });
-  return n;
+  return ConferenciaChave.contarConferencia(analise).pendentes;
 }
 
 async function verificarAlertaAjusteDocumentos(){
