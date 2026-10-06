@@ -1110,8 +1110,10 @@ function tvAutoPaginarTudo(){
     const i = _tvAutoPaginaInfo(el);
     if(i.total <= 1){ _tvAutoPaginaIndicador(el); return; }
     const destino = el.scrollTop >= i.max - 4 ? 0 : Math.min(i.max, el.scrollTop + i.passo);
-    el.scrollTo({ top: destino, behavior: 'smooth' });
-    setTimeout(() => _tvAutoPaginaIndicador(el), 900);
+    // Troca com fade (scroll "smooth" não anda em aba/TV em segundo plano).
+    el.style.transition = 'opacity .35s';
+    el.style.opacity = '0';
+    setTimeout(() => { el.scrollTop = destino; el.style.opacity = '1'; _tvAutoPaginaIndicador(el); }, 380);
   });
 }
 if(typeof window !== 'undefined' && !window._tvAutoPaginaTimer){
