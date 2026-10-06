@@ -2728,6 +2728,14 @@ teste('sugerirParcelaCambio: valor que bate > mesma taxa > primeira em aberto', 
   // nada bate: primeira sem câmbio
   iguais(s([{label:'Inicial',valor_usd:'300',cambio_fechado:'5.0'},{label:'Final',valor_usd:'700'}], 123, 5.3, '').idx, 1);
 });
+teste('extrairJsonRespostaIA tolera texto antes/depois, comentários e vírgula sobrando', () => {
+  const f = sandbox.extrairJsonRespostaIA;
+  iguais(f('```json\n{"a":1}\n```').a, 1);
+  iguais(f('Segue o JSON extraído:\n{"ci_numero":"X-1","obs":"valor {com chave}"}\nQualquer dúvida, avise.').obs, 'valor {com chave}');
+  const r = f('{\n "referencia": "TESTE-1", // número do processo\n "url": "http://exemplo.test/a",\n "itens": [1,2,],\n}');
+  iguais(r.referencia, 'TESTE-1'); iguais(r.url, 'http://exemplo.test/a'); iguais(r.itens.length, 2);
+  let erro = false; try{ f('nada aqui'); }catch(e){ erro = true; } verdadeiro(erro);
+});
 teste('normalizarNumeroDoc ignora pontuação/espaço', () => {
   iguais(sandbox.normalizarNumeroDoc('inv. no 26-001'), sandbox.normalizarNumeroDoc('INV NO 26001'));
 });

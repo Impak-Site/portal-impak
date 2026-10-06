@@ -747,9 +747,12 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     const raw = (d.data.content||[]).map(c=>c.text||'').join('');
     let extracted;
     try{
-      const clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
-      extracted = JSON.parse(clean);
-    } catch(e){ throw new Error('Resposta da IA inválida'); }
+      extracted = extrairJsonRespostaIA(raw);
+    } catch(e){
+      console.warn('Resposta da IA não pôde ser lida como JSON:', raw);
+      const motivo = (d.data && d.data.stop_reason === 'max_tokens') ? ' (resposta cortada por ser longa demais)' : '';
+      throw new Error('Resposta da IA inválida' + motivo + ' — tente ler o documento de novo');
+    }
 
     // Normalizar valores numéricos e limpar PI antes de preencher
     function normNum(v){
@@ -1636,6 +1639,42 @@ async function handleDropIA(ev){
 // escolhe campo a campo se mantém o valor atual ou usa o valor lido no
 // documento novo. Modal montado dinamicamente (sem markup fixo no HTML)
 // porque a lista de campos divergentes muda a cada leitura.
+// Lê o JSON devolvido pela IA de forma tolerante (06/10/2026 — comprovante
+// de câmbio da 2605-1737 dava "Resposta da IA inválida"). O modelo às vezes:
+// escreve uma frase antes/depois do JSON, copia os comentários "// ..." do
+// modelo de resposta, ou deixa vírgula sobrando antes de } ou ]. Aqui:
+// 1) tenta direto; 2) recorta do primeiro "{" ao "}" que fecha; 3) remove
+// comentários fora de strings e vírgulas sobrando. Lança erro se nada der.
+function extrairJsonRespostaIA(raw){
+  const semCerca = String(raw || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+  try{ return JSON.parse(semCerca); }catch(e){ /* segue */ }
+  const ini = semCerca.indexOf('{');
+  if(ini < 0) throw new Error('sem JSON');
+  // recorta até a chave que fecha o objeto (respeitando strings)
+  let nivel = 0, emStr = false, esc = false, fim = -1;
+  for(let i = ini; i < semCerca.length; i++){
+    const ch = semCerca[i];
+    if(emStr){ if(esc) esc = false; else if(ch === '\\') esc = true; else if(ch === '"') emStr = false; continue; }
+    if(ch === '"') emStr = true;
+    else if(ch === '{') nivel++;
+    else if(ch === '}'){ nivel--; if(nivel === 0){ fim = i; break; } }
+  }
+  let trecho = fim > 0 ? semCerca.slice(ini, fim + 1) : semCerca.slice(ini);
+  try{ return JSON.parse(trecho); }catch(e){ /* segue */ }
+  // remove comentários // e /* */ fora de strings
+  let out = '', i = 0; emStr = false; esc = false;
+  while(i < trecho.length){
+    const ch = trecho[i], nx = trecho[i+1];
+    if(emStr){ out += ch; if(esc) esc = false; else if(ch === '\\') esc = true; else if(ch === '"') emStr = false; i++; continue; }
+    if(ch === '"'){ emStr = true; out += ch; i++; continue; }
+    if(ch === '/' && nx === '/'){ while(i < trecho.length && trecho[i] !== '\n') i++; continue; }
+    if(ch === '/' && nx === '*'){ i += 2; while(i < trecho.length && !(trecho[i] === '*' && trecho[i+1] === '/')) i++; i += 2; continue; }
+    out += ch; i++;
+  }
+  out = out.replace(/,\s*([}\]])/g, '$1');
+  return JSON.parse(out);
+}
+
 let _conflitosIAPendentes = [];
 
 // ── CI (Commercial Invoice) = dados finais — 06/10/2026 ──
