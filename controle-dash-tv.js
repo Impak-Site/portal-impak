@@ -1096,7 +1096,7 @@ function _tvAutoPaginaInfo(el){
   const passo = Math.max(40, el.clientHeight - (thead ? thead.offsetHeight : 0) - 4);
   const max = Math.max(0, el.scrollHeight - el.clientHeight);
   const total = max > 4 ? Math.ceil(max / passo) + 1 : 1;
-  const atual = max > 4 ? Math.min(total, Math.round(el.scrollTop / passo) + 1) : 1;
+  const atual = max <= 4 ? 1 : (el.scrollTop >= max - 4 ? total : Math.min(total, Math.round(el.scrollTop / passo) + 1));
   return { passo, max, total, atual };
 }
 function _tvAutoPaginaIndicador(el){
