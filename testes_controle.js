@@ -1403,6 +1403,20 @@ teste('etiquetasDoProcesso: câmbio do mês = vencimento até o fim do mês (ven
   const semVenc = ids({ ...base, pi_pagamento:'VISTA', etd: d(0) }).join('|');
   verdadeiro(/PAGAMENTO_SEM_VENCIMENTO/.test(semVenc) && !/CAMBIO_ABERTO/.test(semVenc), 'sem vencimento: só a etiqueta própria');
 });
+teste('semanaIsoDe/semanaBookingEfetiva: semana ISO; campo manual vence o ETD; sem nada = null', () => {
+  iguais(sandbox.semanaIsoDe('2026-10-06').semana, 41);
+  iguais(sandbox.semanaIsoDe('2026-01-01').semana, 1);
+  iguais(sandbox.semanaIsoDe('2027-01-01').semana, 53, '01/01/2027 cai na semana 53 de 2026');
+  iguais(sandbox.semanaBookingEfetiva({ semana_booking: 40, etd: '2026-10-06' }).semana, 40);
+  iguais(sandbox.semanaBookingEfetiva({ etd: '2026-10-06' }).origem, 'etd');
+  iguais(sandbox.semanaBookingEfetiva({}), null);
+  const seg = sandbox.segundaDaSemanaIso(2026, 41).toISOString().slice(0,10);
+  iguais(seg, '2026-10-05');
+});
+teste('etiquetasDoProcesso: pronto com ETD não fica como "sem semana de booking"', () => {
+  const p = { id:'b1', fase:'PI', data_prontidao:'2026-01-10', etd:'2026-01-20' };
+  verdadeiro(!sandbox.etiquetasDoProcesso(p).some(e => e.id === 'PRONTO_SEM_BOOKING'));
+});
 teste('etiquetasDoProcesso: pronto na fábrica sem semana de booking -> badge "Pronto sem semana de booking"', () => {
   const p = { id:'x7', referencia:'UD26-993', fase:'FABRICA', data_prontidao:'2026-09-10', semana_booking:null, data_embarque:null };
   const etiquetas = sandbox.etiquetasDoProcesso(p);

@@ -214,6 +214,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
         const dashParam = new URLSearchParams(location.search).get('dash');
         if(dashParam==='executivo') toggleDashExecutivo();
         if(dashParam==='carregamento') toggleDashCarregamento();
+        if(dashParam==='booking' && typeof toggleDashBooking==='function') toggleDashBooking();
         if(dashParam==='clientemedida') toggleDashClienteMedida();
         if(dashParam==='dre') toggleDashDRE();
       }
@@ -3971,7 +3972,7 @@ function renderFaseFilter(){
 const ELEMENTOS_TOPO_DASHBOARD = ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'];
 
 function fecharTodosDashboards(){
-  ['executivo','financeiro','resultado','analises','narcelio','carregamento','tv','clientemedida','cambio','dre','cadastros'].forEach(function(id){
+  ['executivo','financeiro','resultado','analises','narcelio','carregamento','booking','tv','clientemedida','cambio','dre','cadastros'].forEach(function(id){
     var el = document.getElementById('dash-'+id);
     if(el) el.style.display = 'none';
     var menu = document.getElementById('menu-'+id);
@@ -4271,7 +4272,7 @@ const COLUNAS_TABELA = [
   // Semana de Booking (pedido Ayslan 17/09/2026, espelhando a aba
   // "PROCESSOS DA SEMANA" da planilha da Paula) -- agrupável, pra dar a
   // visão "Programação Semanal de Embarques" via "Agrupar por coluna".
-  { campo:'semana_booking', label:'Semana Booking', agrupavel:true, valor:p => (p.semana_booking ? `Semana ${String(p.semana_booking).padStart(2,'0')}` : 'Sem semana definida') },
+  { campo:'semana_booking', label:'Semana Booking', agrupavel:true, valor:p => { const w = semanaBookingEfetiva(p); return w ? `Semana ${String(w.semana).padStart(2,'0')}` : 'Sem semana definida'; } },
   { campo:'demurrage',  label:'Demurrage',      agrupavel:true,  valor:p => {
       if(ehLCL(p)) return 'LCL (sem devolução)';
       if(p.fase === 'FINALIZADO' || p.data_devolucao_vazio) return 'Devolvido';
@@ -4300,6 +4301,31 @@ function valoresDaColuna(def, p){
 // manual (não tem de onde derivar sozinha), guardada em
 // etiquetas_manuais_json (ver toggleEtiquetaManual() em controle-modal.js).
 // ════════════════════════════════════════════════════════════════
+
+// ── Semana de booking (Ayslan/Paula 06/10/2026) ───────────────────
+// Semana ISO (segunda a domingo). A semana "efetiva" do processo é a
+// digitada no campo Semana de Booking; sem ela, a do ETD (se houver).
+function semanaIsoDe(dataStr){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dataStr||''));
+  if(!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+  const dia = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dia);
+  const inicioAno = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return { ano: d.getUTCFullYear(), semana: Math.ceil(((d - inicioAno) / 86400000 + 1) / 7) };
+}
+function segundaDaSemanaIso(ano, semana){
+  const j4 = new Date(Date.UTC(ano, 0, 4));
+  const seg = new Date(j4); seg.setUTCDate(j4.getUTCDate() - ((j4.getUTCDay() || 7) - 1) + (semana - 1) * 7);
+  return seg;
+}
+function semanaBookingEfetiva(p){
+  const n = parseInt(p && p.semana_booking, 10);
+  if(n >= 1 && n <= 53) return { semana: n, origem: 'manual' };
+  const w = semanaIsoDe(p && p.etd);
+  return w ? { semana: w.semana, ano: w.ano, origem: 'etd' } : null;
+}
+
 const ETIQUETAS_MANUAIS_DEFS = {
   OUTRO_AGENTE_CARGA: { label:'Outro agente de carga solicitado', labelCurto:'Outro agente', cor:'#b45309', bg:'rgba(217,119,6,.13)', borda:'rgba(217,119,6,.4)' },
 };
@@ -4346,7 +4372,7 @@ function etiquetasDoProcesso(p){
   // "Pronto sem encaixe em semana de booking" (amarelo forte): mercadoria
   // já está pronta na fábrica mas ainda não tem semana de booking
   // atribuída. Só faz sentido antes do embarque de fato.
-  if(p.data_prontidao && !p.semana_booking && p.fase !== 'EMBARCADO' && !p.data_embarque){
+  if(p.data_prontidao && !semanaBookingEfetiva(p) && p.fase !== 'EMBARCADO' && !p.data_embarque){
     out.push({ id:'PRONTO_SEM_BOOKING', label:'Pronto sem semana de booking', labelCurto:'Sem booking', icone:'🟧', cor:'#c2410c', bg:'rgba(234,88,12,.13)', borda:'rgba(234,88,12,.4)' });
   }
 
@@ -4583,7 +4609,7 @@ function linhaProcessoHtml(p){
         <div class="td td-date" data-label="ETA / Chegada" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditData('${p.id}','eta',this)" title="Clique para editar ETA">${dataDisplay}</span>
         </div>
-        <div class="td" data-label="Semana Booking">${p.semana_booking || '—'}</div>
+        <div class="td" data-label="Semana Booking">${(()=>{ const w = semanaBookingEfetiva(p); return w ? (w.origem==='etd' ? `<span title="Calculada pelo ETD">${w.semana}</span>` : w.semana) : '—'; })()}</div>
         <div class="td" data-label="Financeiro">${finBadge}</div>
       </div>`;
 }

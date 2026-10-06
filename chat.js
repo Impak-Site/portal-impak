@@ -376,6 +376,7 @@ const navSetores = [
     { label: 'Fila de Conferência', icone: 'conferenciaFila', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
     { label: 'Reciclagem', icone: 'reciclagem', href: '/reciclagem', key: 'reciclagem', modulo: 'controle' },
     { label: 'Averbação Seguro', icone: 'seguro', href: '/averbacao', key: 'averbacao', modulo: 'controle' }, // planilha mensal da seguradora (pedido Ayslan 25/09/2026) // NCM 4011/4012 trimestral por cliente (pedido Ayslan 25/09/2026)
+    { label: 'Programação Semanal', icone: 'carregamento', href: '/controle?dash=booking', key: 'dash-booking', modulo: 'controle' }, // embarques por semana de booking (Ayslan/Paula 06/10/2026)
     { label: 'Dashboard de Carregamentos', icone: 'carregamento', href: '/controle?dash=carregamento', key: 'dash-carregamento', modulo: 'controle' }, // veio da barra lateral (pedido Ayslan 15/09/2026) — sem rota própria, usa toggleDashCarregamento() via ?dash= (ver controle-core.js)
   ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
   { setor: 'Financeiro', icone: 'financeiro', itens: [

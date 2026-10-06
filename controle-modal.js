@@ -535,7 +535,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Porto Destino</label>
             <select class="form-input" id="f_porto_destino">${gerarOptionsPortoDestino(p.porto_destino)}</select></div>
           <div class="form-group"><label class="form-label">Previsão de Embarque (ETD)</label>
-            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal()"></div>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_etd" value="${esc(p.etd)}" onchange="atualizarFaseEmTempoReal();(function(){const sb=document.getElementById('f_semana_booking');const w=semanaIsoDe(document.getElementById('f_etd').value);if(sb&&!sb.value&&w){sb.value=w.semana;}})()"></div>
           <div class="form-group"><label class="form-label">ETA (Previsão de Chegada)</label>
             <input class="form-input highlight" type="date" onpaste="colarData(event,this)" id="f_eta" value="${esc(p.eta)}" onchange="atualizarVencimentoSaldoPorETA()">
           </div>
@@ -545,7 +545,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Free Time (dias)</label>
             <input class="form-input" type="number" id="f_free_time" value="${p.free_time||''}" placeholder="Preencher após emissão do BL"></div>
           <div class="form-group"><label class="form-label">Semana de Booking</label>
-            <input class="form-input" type="number" id="f_semana_booking" value="${p.semana_booking||''}" placeholder="Ex: 40" min="1" max="53"
+            <input class="form-input" type="number" id="f_semana_booking" value="${p.semana_booking||''}" placeholder="${(()=>{const w=semanaIsoDe(p.etd);return w?('Pelo ETD: '+w.semana):'Ex: 40';})()}" min="1" max="53"
               title="Semana do booking (calendário) — permite agrupar/filtrar a tabela de processos por semana de embarque, igual à antiga planilha de Programação Semanal."></div>
           <div class="form-group"><label class="form-label">Cliente pediu outro agente de carga?</label>
             <label style="display:flex;align-items:center;gap:8px;height:38px;font-size:13px;cursor:pointer;">
