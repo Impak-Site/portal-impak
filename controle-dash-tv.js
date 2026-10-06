@@ -690,8 +690,8 @@ function renderDashTV(){
     const totalEA = linhas.reduce((s,l)=>s+l.ea,0);
     const totalMes = linhas.reduce((s,l)=>s+l.mes,0);
     return `<div style="background:#fff;border-radius:12px;overflow:hidden;height:100%;display:flex;flex-direction:column;box-shadow:0 2px 8px rgba(15,23,42,.08);">
-      <div style="padding:.6em .9em;font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;flex:0 0 auto;">Por Marca</div>
-      <div style="overflow-y:auto;flex:1;min-height:0;">
+      <div style="padding:.6em .9em;font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;">Por Marca<span data-tv-pag-ind style="font-size:.75em;color:#64748b;font-weight:700;letter-spacing:0;"></span></div>
+      <div data-tv-autopagina style="overflow-y:auto;flex:1;min-height:0;scrollbar-width:none;">
       <table style="width:100%;border-collapse:collapse;font-size:1em;">
         <thead><tr style="background:#f1f5f9;text-align:left;color:#475569;text-transform:uppercase;letter-spacing:.3px;font-size:.8em;position:sticky;top:0;">
           <th style="padding:.55em .9em;">Marca</th>
@@ -1083,3 +1083,39 @@ document.addEventListener('keydown', function(e){
   const modal = document.getElementById('tv-lista-modal');
   if(modal && modal.style.display !== 'none') fecharListaTV();
 });
+
+
+// ── Paginação automática das listas da TV (Ayslan 06/10/2026: "a cada 30s
+// muda a lista, os de baixo vêm pra cima"). Vale pra qualquer área com
+// data-tv-autopagina: a cada 30s rola uma "página" (a altura visível, sem o
+// cabeçalho fixo); na última volta pro topo. Indicador "1/3" no título
+// (data-tv-pag-ind no mesmo card). Um único timer pra página toda.
+const TV_AUTOPAGINA_MS = 30000;
+function _tvAutoPaginaInfo(el){
+  const thead = el.querySelector('thead');
+  const passo = Math.max(40, el.clientHeight - (thead ? thead.offsetHeight : 0) - 4);
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  const total = max > 4 ? Math.ceil(max / passo) + 1 : 1;
+  const atual = max > 4 ? Math.min(total, Math.round(el.scrollTop / passo) + 1) : 1;
+  return { passo, max, total, atual };
+}
+function _tvAutoPaginaIndicador(el){
+  const ind = el.parentElement && el.parentElement.querySelector('[data-tv-pag-ind]');
+  if(!ind) return;
+  const i = _tvAutoPaginaInfo(el);
+  ind.textContent = i.total > 1 ? `${i.atual}/${i.total}` : '';
+}
+function tvAutoPaginarTudo(){
+  document.querySelectorAll('[data-tv-autopagina]').forEach(el => {
+    const i = _tvAutoPaginaInfo(el);
+    if(i.total <= 1){ _tvAutoPaginaIndicador(el); return; }
+    const destino = el.scrollTop >= i.max - 4 ? 0 : Math.min(i.max, el.scrollTop + i.passo);
+    el.scrollTo({ top: destino, behavior: 'smooth' });
+    setTimeout(() => _tvAutoPaginaIndicador(el), 900);
+  });
+}
+if(typeof window !== 'undefined' && !window._tvAutoPaginaTimer){
+  window._tvAutoPaginaTimer = setInterval(tvAutoPaginarTudo, TV_AUTOPAGINA_MS);
+  // indicador inicial logo depois de cada render
+  setInterval(() => document.querySelectorAll('[data-tv-autopagina]').forEach(_tvAutoPaginaIndicador), 3000);
+}
