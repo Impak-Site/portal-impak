@@ -1467,6 +1467,13 @@ teste('COLUNAS_TABELA / valoresDaColuna: coluna Etiquetas (multiplo) devolve arr
   iguais(nValores, 3, 'deveria ter 3 etiquetas simultâneas: despachante + sem booking + outro agente');
 });
 
+teste('COLUNAS_TABELA: coluna ETD / Embarque ordena pelo embarque efetivo ou, sem ele, pelo ETD', () => {
+  const chave = vm.runInContext(`(() => { const d = COLUNAS_TABELA.find(c => c.campo === 'embarque'); return [d.ordenavel, d.chaveOrdenacao({ etd:'2026-11-03' }), d.chaveOrdenacao({ etd:'2026-11-03', data_embarque:'2026-11-05' }), d.chaveOrdenacao({})]; })()`, sandbox);
+  iguais(chave[0], true);
+  iguais(chave[1], '2026-11-03');
+  iguais(chave[2], '2026-11-05', 'embarque efetivo vence o ETD');
+  iguais(chave[3], '');
+});
 teste('COLUNAS_TABELA: coluna Semana Booking agrupa e ordena numericamente (não alfabeticamente)', () => {
   const defExiste = vm.runInContext(`!!COLUNAS_TABELA.find(c => c.campo === 'semana_booking')`, sandbox);
   iguais(defExiste, true, 'coluna semana_booking deveria existir em COLUNAS_TABELA');

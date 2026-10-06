@@ -4287,6 +4287,10 @@ const COLUNAS_TABELA = [
   // de forma uniforme. Não é agrupável -- agrupar por algo multivalorado
   // duplicaria processo em vários grupos, mais confuso que útil aqui.
   { campo:'etiquetas',  label:'Etiquetas',      agrupavel:false, multiplo:true, valores:p => etiquetasDoProcesso(p).map(e=>e.label) },
+  // ETD / Embarque (pedido Emanuelly 06/10/2026: "em Aguardando Embarque eu
+  // controlo pela data de embarque e não pela de chegada") — data de
+  // embarque efetiva se houver, senão o ETD (previsão). Ordena igual à ETA.
+  { campo:'embarque',   label:'ETD / Embarque', agrupavel:false, ordenavel:true, chaveOrdenacao:p => (p.data_embarque || p.etd || ''), valor:p => (p.data_embarque ? parseDataLocal(p.data_embarque).toLocaleDateString('pt-BR') : (p.etd ? parseDataLocal(p.etd).toLocaleDateString('pt-BR') : '—')) },
   { campo:'eta',        label:'ETA / Chegada',  agrupavel:false, ordenavel:true, chaveOrdenacao:p => (p.data_chegada || p.eta || ''), valor:p => (p.data_chegada ? parseDataLocal(p.data_chegada).toLocaleDateString('pt-BR') : (p.eta ? parseDataLocal(p.eta).toLocaleDateString('pt-BR') : '—')) },
   // Semana de Booking (pedido Ayslan 17/09/2026, espelhando a aba
   // "PROCESSOS DA SEMANA" da planilha da Paula) -- agrupável, pra dar a
@@ -4457,7 +4461,15 @@ function renderFiltroColunaDropdown(anchorEl){
   const base = listaBaseParaColuna(_filtroColunaAberto);
   const contagem = new Map();
   base.forEach(p => { valoresDaColuna(def,p).forEach(v => contagem.set(v, (contagem.get(v)||0)+1)); });
-  const valores = [...contagem.keys()].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  // Datas (dd/mm/aaaa) em ordem cronológica — antes saíam "07/12" antes de
+  // "09/11" (ordem alfabética do texto). Demais valores: alfabética.
+  const chaveData = v => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v); return m ? m[3]+m[2]+m[1] : null; };
+  const valores = [...contagem.keys()].sort((a,b)=>{
+    const da = chaveData(a), db = chaveData(b);
+    if(da && db) return da < db ? -1 : da > db ? 1 : 0;
+    if(da || db) return da ? 1 : -1; // "—"/sem data primeiro, depois as datas
+    return a.localeCompare(b,'pt-BR');
+  });
   const selecionados = _filtrosColuna[_filtroColunaAberto];
   const todosSelecionados = !selecionados || !selecionados.size;
 
@@ -4625,6 +4637,10 @@ function linhaProcessoHtml(p){
         <div class="td td-etiquetas" data-label="Etiquetas"><div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;">${etiquetasDoProcesso(p).map(e=>
           `<span title="${esc(e.label)}" style="font-size:9px;font-weight:700;background:${e.bg};border:1px solid ${e.borda};border-radius:4px;padding:1px 6px;color:${e.cor};display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.icone} ${esc(e.labelCurto||e.label)}</span>`
         ).join('') || '<span style="opacity:.4;">—</span>'}</div></div>
+        <div class="td td-date" data-label="ETD / Embarque" onclick="event.stopPropagation()">${p.data_embarque
+          ? `<span title="Embarque efetivo">${parseDataLocal(p.data_embarque).toLocaleDateString('pt-BR')}</span>`
+          : `<span class="inline-edit" onclick="inlineEditData('${p.id}','etd',this)" title="ETD (previsão de embarque) — clique para editar">${p.etd ? parseDataLocal(p.etd).toLocaleDateString('pt-BR') : '—'}</span>`}
+        </div>
         <div class="td td-date" data-label="ETA / Chegada" onclick="event.stopPropagation()">
           <span class="inline-edit" onclick="inlineEditData('${p.id}','eta',this)" title="Clique para editar ETA">${dataDisplay}</span>
         </div>
