@@ -821,12 +821,12 @@ function renderDashTV(){
   function painelChaoCompletoTV(){
     const corpo = `
       ${kpiRowChaoHtml}
-      <!-- 06/10/2026 (Ayslan): Armazém no meio com os 2 gráficos compactos
-           embaixo dele; Processos do Mês na direita, com a altura toda. -->
+      <!-- 06/10/2026 (Ayslan): Armazém na esquerda com a altura toda; Por Marca
+           no meio com os 2 gráficos compactos embaixo; Processos do Mês na direita. -->
       <div style="display:grid;grid-template-columns:1.15fr 1.05fr 1.4fr;gap:.9em;flex:1;min-height:0;margin-top:.9em;">
-        <div style="min-height:0;overflow:hidden;">${tabelaMarcaChaoHtml}</div>
+        <div style="min-height:0;overflow:hidden;">${armazemChaoHtml}</div>
         <div style="min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:.9em;">
-          <div style="flex:1 1 auto;min-height:0;overflow:hidden;">${armazemChaoHtml}</div>
+          <div style="flex:1 1 auto;min-height:0;overflow:hidden;">${tabelaMarcaChaoHtml}</div>
           <div style="flex:0 0 auto;height:15.5vh;font-size:.85em;">${graficoMesChaoHtml}</div>
           <div style="flex:0 0 auto;height:15.5vh;font-size:.85em;">${graficoDiaChaoHtml}</div>
         </div>
