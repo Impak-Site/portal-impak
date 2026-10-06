@@ -904,7 +904,7 @@ teste('renderFluxoCaixaHtml roda sem erro e lista os 6 meses', () => {
   const vencProximo = new Date(hoje); vencProximo.setDate(hoje.getDate()+5);
   const pagamentos = [{ referencia:'UD26-203', valorUsd:2000, vencimento:vencProximo.toISOString().slice(0,10), pago:false, cambioPrevisto:5.2, cambioFechado:null }];
   const html = sandbox.renderFluxoCaixaHtml(pagamentos);
-  verdadeiro(html.includes('Fluxo de Caixa'));
+  verdadeiro(html.includes('Fluxo de caixa'));
   verdadeiro(html.includes('entradas de clientes ainda não são rastreadas'), 'deveria deixar claro que Entradas não é rastreado ainda');
 });
 
