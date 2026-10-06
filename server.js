@@ -1781,6 +1781,17 @@ app.get('/narcelio', auth('narcelio'), (req, res) => {
 // o front-end lê location.pathname no load e abre o painel lateral do
 // processo correspondente automaticamente (ver abrirProcessoPorURL()).
 app.get('/controle/:ref', auth('controle'), (req, res) => enviarControleV2(res));
+// Mesmo deep link nas telas exclusivas (06/10/2026): ao abrir um processo
+// em /cambio a URL vira /cambio/REF; sem estas rotas um F5 dava
+// "Cannot GET /cambio/REF". Mesma permissão da tela base.
+[
+  ['financeiro', ['financeiro']], ['cambio', ['cambio']], ['resultado', ['resultado']],
+  ['analises', ['analises']], ['narcelio', ['narcelio']], ['tv', ['tv']],
+  ['cadastros', ['cadastros']], ['conferencia-fila', ['conferencia','controle']],
+  ['reciclagem', ['controle']], ['averbacao', ['controle']],
+].forEach(([tela, mods]) => {
+  app.get('/' + tela + '/:ref', auth(...mods), (req, res) => enviarControleV2(res));
+});
 // Tela TV — espelhada num monitor da empresa, substitui a planilha Excel
 // manual (Backorders/Em Águas/No Chão). Sem restrição extra de usuário:
 // qualquer um autenticado no Controle pode abrir (é só leitura ao vivo,

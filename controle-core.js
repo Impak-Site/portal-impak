@@ -192,25 +192,25 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     // na TV): elas têm o próprio cabeçalho/KPI mostrando os dados, o toast só
     // seria ruído (e numa TV física não tem ninguém pra ler e dispensar).
     const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros','/conferencia-fila','/reciclagem','/averbacao'];
-    const carregamentoSilencioso = TELAS_EXCLUSIVAS.includes(location.pathname);
+    const carregamentoSilencioso = TELAS_EXCLUSIVAS.includes(_baseUrlPath);
     carregarProcessos(carregamentoSilencioso).then(()=>{
-      if(location.pathname==='/financeiro') ativarTelaFinanceiroExclusiva();
-      if(location.pathname==='/resultado') ativarTelaResultadoExclusiva();
-      if(location.pathname==='/analises') ativarTelaAnalisesExclusiva();
-      if(location.pathname==='/narcelio') ativarTelaNarcelioExclusiva();
-      if(location.pathname==='/tv') ativarTelaTVExclusiva();
-      if(location.pathname==='/cambio') ativarTelaCambioExclusiva();
-      if(location.pathname==='/reciclagem') ativarTelaReciclagemExclusiva();
-      if(location.pathname==='/averbacao') ativarTelaAverbacaoExclusiva();
-      if(location.pathname==='/cadastros') ativarTelaCadastrosExclusiva();
-      if(location.pathname==='/conferencia-fila') ativarTelaConferenciaFilaExclusiva();
+      if(_baseUrlPath==='/financeiro') ativarTelaFinanceiroExclusiva();
+      if(_baseUrlPath==='/resultado') ativarTelaResultadoExclusiva();
+      if(_baseUrlPath==='/analises') ativarTelaAnalisesExclusiva();
+      if(_baseUrlPath==='/narcelio') ativarTelaNarcelioExclusiva();
+      if(_baseUrlPath==='/tv') ativarTelaTVExclusiva();
+      if(_baseUrlPath==='/cambio') ativarTelaCambioExclusiva();
+      if(_baseUrlPath==='/reciclagem') ativarTelaReciclagemExclusiva();
+      if(_baseUrlPath==='/averbacao') ativarTelaAverbacaoExclusiva();
+      if(_baseUrlPath==='/cadastros') ativarTelaCadastrosExclusiva();
+      if(_baseUrlPath==='/conferencia-fila') ativarTelaConferenciaFilaExclusiva();
       // Dashboards que ainda não têm rota/tela exclusiva própria (Executivo,
       // Carregamentos, Por Cliente/Medida, DRE Consolidado) — chamados via
       // /controle?dash=X pelo link do menu do topo (pedido Ayslan 15/09/2026:
       // tirar o menu de Dashboards da lateral e subir tudo pro nav global).
       // Reusa os toggleDashX() já existentes (mesmos que o antigo botão da
       // lateral chamava) em vez de criar 4 telas exclusivas novas do zero.
-      if(location.pathname==='/controle'){
+      if(_baseUrlPath==='/controle'){
         const dashParam = new URLSearchParams(location.search).get('dash');
         if(dashParam==='executivo') toggleDashExecutivo();
         if(dashParam==='carregamento') toggleDashCarregamento();
