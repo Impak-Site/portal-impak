@@ -439,9 +439,16 @@ function coletarESalvar(opts){
   window._salvandoProcesso = true;
   const btnsSalvar = document.querySelectorAll('.btn-primary[onclick^="coletarESalvar("]');
   btnsSalvar.forEach(b=>b.disabled = true);
+  // Painel passa a "sem alterações" já no envio (07/10/2026, Emanuelly:
+  // salvava pelo botão Salvar, que mantém o painel aberto, e ao fechar ainda
+  // aparecia "Alterações não salvas"). O que for digitado durante o
+  // salvamento volta a marcar o painel pelos listeners de input/change; se o
+  // salvamento falhar, volta a ficar marcado.
+  _painelDirty = false;
   salvarProcesso(proc, patchFields).then(ok=>{
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
+    if(!ok) _painelDirty = true;
     if(ok && fecharAoSalvar) fecharModal();
     else if(ok && eraNovo && _editando && _editando.id && typeof abrirProcesso === 'function'){
       // Processo NOVO salvo com o painel aberto (06/10/2026): as abas que
@@ -464,6 +471,7 @@ function coletarESalvar(opts){
   }).catch(()=>{
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
+    _painelDirty = true;
   });
 }
 
