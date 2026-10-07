@@ -118,7 +118,7 @@ function renderTabela(usuarios){
   usuarios.forEach(u => {
     const ehAdmin = admins.includes(u.usuario);
     html += `<tr data-usuario="${escapeHtml(u.usuario)}" class="${ehAdmin ? 'admin-linha' : ''}">`;
-    html += `<td><span class="usuario-nome">${escapeHtml(u.nome)}</span><span class="role-tag ${escapeHtml(u.role)}">${escapeHtml(u.role)}</span><br><span class="usuario-login">${escapeHtml(u.usuario)}</span>${u.senhaPendente ? ' <span style="font-size:10px;font-weight:700;color:#b45309;">· senha não definida</span>' : ''}<br><a href="#" onclick="gerarLinkSenha('${escapeHtml(u.usuario)}');return false;" style="font-size:11px;color:#1a7fd4;">🔑 gerar link de senha</a></td>`;
+    html += `<td><span class="usuario-nome">${escapeHtml(u.nome)}</span><span class="role-tag ${escapeHtml(u.role)}">${escapeHtml(u.role)}</span><br><span class="usuario-login">${escapeHtml(u.usuario)}</span>${u.senhaPendente ? ' <span style="font-size:10px;font-weight:700;color:#b45309;">· senha não definida</span>' : ''}<br><a href="#" onclick="gerarLinkSenha('${escapeHtml(u.usuario)}');return false;" style="font-size:11px;color:#1a7fd4;">🔑 gerar link de senha</a> <span style="color:#cbd5e1;">·</span> <a href="#" onclick="resetar2FA('${escapeHtml(u.usuario)}');return false;" style="font-size:11px;color:#b45309;">📱 resetar 2FA</a></td>`;
     MODULOS.forEach(m => {
       const marcado = (u.modulos || []).includes(m.key);
       html += `<td><input type="checkbox" data-modulo="${m.key}" ${marcado ? 'checked' : ''}></td>`;
@@ -170,6 +170,19 @@ async function gerarLinkSenha(usuario){
     if(!r.ok || !d.ok){ mostrarToast(d.erro || 'Erro ao gerar link.', true); return; }
     try{ await navigator.clipboard.writeText(d.link); mostrarToast('Link copiado — envie para ' + usuario + ' (vale 24h).'); }catch(e){}
     prompt('Link para ' + usuario + ' definir a senha (vale 24h). Copie e envie só para ela:', d.link);
+  }catch(e){ mostrarToast('Erro de rede.', true); }
+}
+
+// Reseta o 2FA (07/10/2026 — login operacional01 passou para o José): o
+// próximo login dessa conta mostra um QR code novo para a pessoa cadastrar
+// no próprio celular. Derruba as sessões abertas dessa conta.
+async function resetar2FA(usuario){
+  if(!confirm(`Resetar o 2FA de "${usuario}"?\n\nNo próximo login vai aparecer um QR code novo para cadastrar no celular de quem vai usar a conta, e as sessões abertas dessa conta são encerradas.`)) return;
+  try{
+    const r = await fetch('/api/usuarios/' + encodeURIComponent(usuario) + '/resetar-2fa', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.ok){ mostrarToast(d.erro || 'Erro ao resetar o 2FA.', true); return; }
+    mostrarToast(d.mensagem || ('2FA de ' + usuario + ' resetado.'));
   }catch(e){ mostrarToast('Erro de rede.', true); }
 }
 

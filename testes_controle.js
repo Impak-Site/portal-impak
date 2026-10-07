@@ -1423,6 +1423,22 @@ teste('etiquetasDoProcesso: câmbio do mês = vencimento até o fim do mês (ven
   const semVenc = ids({ ...base, pi_pagamento:'VISTA', etd: d(0) }).join('|');
   verdadeiro(/PAGAMENTO_SEM_VENCIMENTO/.test(semVenc) && !/CAMBIO_ABERTO/.test(semVenc), 'sem vencimento: só a etiqueta própria');
 });
+teste('listarEstoqueArmazem: NF de entrada sem venda entra; remessa 5905 separada; vendido, cancelado e sem NF de entrada ficam fora', () => {
+  const prods = JSON.stringify([{ descricao:'205/55R16 TESTE', quantidade:100 }, { descricao:'195/65R15 TESTE', quantidade:50 }]);
+  const r = sandbox.listarEstoqueArmazem([
+    { id:'a1', referencia:'ARM-1', nf_entrada_numero:'1', produtos_json: prods },
+    { id:'a2', referencia:'ARM-2', nf_entrada_numero:'2', produtos_json: prods, nf_saida_numero:'9', nf_saida_cfop:'5905' },
+    { id:'a3', referencia:'ARM-3', nf_entrada_numero:'3', produtos_json: prods, nf_saida_numero:'10', nf_saida_cfop:'5102' },
+    { id:'a4', referencia:'ARM-4', nf_entrada_numero:'4', produtos_json: prods, cancelado:true },
+    { id:'a5', referencia:'ARM-5', produtos_json: prods },
+  ]);
+  iguais(r.totais.proc, 2, 'ARM-1 (sem NF saída) + ARM-2 (remessa)');
+  iguais(r.totais.un, 300);
+  iguais(r.totais.remessa.proc, 1);
+  iguais(r.totais.semnf.un, 150);
+  iguais(r.porProduto['205/55R16 TESTE'].remessa, 100);
+  iguais(r.linhas[0].referencia, 'ARM-2', 'remessa (estoque) vem primeiro');
+});
 teste('buscaBate: palavras em qualquer ordem, sem acento/maiúscula e sem pontuação', () => {
   const t = sandbox.buscaTokens;
   verdadeiro(sandbox.buscaBate(t('295 UF195'), '295/80R22.5 18PR 152/149M UF195 TL'));

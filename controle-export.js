@@ -1109,3 +1109,103 @@ async function exportarRelatorioNarcelioExcel(rel){
     console.error(e);
   }
 }
+
+
+// ── Relatório do Armazém em PDF (Emanuelly 07/10/2026) ─────────────────
+// Quantidades em estoque (mesmo critério do quadro Armazém da TV — ver
+// listarEstoqueArmazem em controle-core.js): resumo, total por produto e
+// detalhe por processo.
+function exportarRelatorioArmazemPDF(){
+  if(typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined'){
+    showToast('Biblioteca de PDF ainda carregando, tente novamente em 1 segundo','err');
+    return;
+  }
+  try{
+    const dados = listarEstoqueArmazem(_processos);
+    if(!dados.linhas.length){ showToast('Nenhum processo com estoque no armazém agora.','warn'); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'portrait', unit:'pt', format:'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const n = v => Math.round(v || 0).toLocaleString('pt-BR');
+    const dataBR = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : '—'; };
+    const agora = new Date();
+    const quando = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    // columnStyles do autotable só valem pro corpo: alinha à direita também o
+    // cabeçalho e o rodapé das colunas de quantidade.
+    const direitaNoTopoERodape = cols => data => {
+      if((data.section === 'head' || data.section === 'foot') && cols.includes(data.column.index)) data.cell.styles.halign = 'right';
+    };
+
+    doc.setFillColor(16,42,69);
+    doc.rect(40, 28, pageW - 80, 26, 'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text('RELATÓRIO DO ARMAZÉM — QUANTIDADES EM ESTOQUE', pageW / 2, 45, { align:'center' });
+    doc.setTextColor(71,85,105); doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+    doc.text(`IMPAK · gerado em ${quando}${(typeof _user !== 'undefined' && _user && _user.usuario) ? ' por ' + _user.usuario : ''}`, pageW / 2, 66, { align:'center' });
+
+    const t = dados.totais;
+    doc.autoTable({
+      startY: 78, theme:'grid', margin:{ left:40, right:40 },
+      styles:{ fontSize:9, cellPadding:5, halign:'center' },
+      headStyles:{ fillColor:[241,245,249], textColor:[51,65,85], fontStyle:'bold' },
+      head:[['Total no armazém', 'No estoque (remessa 5905)', 'Chegou — sem NF de saída']],
+      body:[[ `${t.proc} processo(s) · ${n(t.un)} un.`, `${t.remessa.proc} processo(s) · ${n(t.remessa.un)} un.`, `${t.semnf.proc} processo(s) · ${n(t.semnf.un)} un.` ]],
+      bodyStyles:{ fontStyle:'bold', textColor:[15,31,61] },
+    });
+
+    const produtos = Object.entries(dados.porProduto)
+      .map(([desc, v]) => ({ desc, remessa: v.remessa, semnf: v.semnf, total: v.remessa + v.semnf }))
+      .sort((a, b) => b.total - a.total || a.desc.localeCompare(b.desc, 'pt-BR'));
+    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(15,31,61);
+    doc.text('Quantidade por produto', 40, doc.lastAutoTable.finalY + 22);
+    doc.autoTable({
+      startY: doc.lastAutoTable.finalY + 28, theme:'striped', margin:{ left:40, right:40 },
+      styles:{ fontSize:8, cellPadding:3.5 },
+      headStyles:{ fillColor:[16,42,69], textColor:[255,255,255], fontStyle:'bold' },
+      head:[['Produto', 'No estoque (5905)', 'Sem NF de saída', 'Total']],
+      body: produtos.map(x => [x.desc, x.remessa ? n(x.remessa) : '—', x.semnf ? n(x.semnf) : '—', n(x.total)]),
+      foot:[['TOTAL', n(t.remessa.un), n(t.semnf.un), n(t.un)]],
+      footStyles:{ fillColor:[226,232,240], textColor:[15,31,61], fontStyle:'bold' },
+      columnStyles:{ 1:{ halign:'right', cellWidth:82 }, 2:{ halign:'right', cellWidth:82 }, 3:{ halign:'right', cellWidth:62, fontStyle:'bold' } },
+      didParseCell: direitaNoTopoERodape([1, 2, 3]),
+    });
+
+    doc.addPage();
+    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(15,31,61);
+    doc.text('Detalhe por processo', 40, 44);
+    const corpo = [];
+    dados.linhas.forEach(l => {
+      const situacao = l.grupo === 'remessa' ? 'No estoque (5905)' : 'Sem NF de saída';
+      const itens = l.itens.length ? l.itens : [{ descricao:'Sem produtos informados', qtd:0 }];
+      itens.forEach((it, i) => {
+        corpo.push(i === 0
+          ? [l.referencia, l.cliente, l.marca, dataBR(l.chegada), l.armazem || '—', situacao, it.descricao, it.qtd ? n(it.qtd) : '—']
+          : ['', '', '', '', '', '', it.descricao, it.qtd ? n(it.qtd) : '—']);
+      });
+      if(itens.length > 1) corpo.push([{ content:`Total ${l.referencia}`, colSpan:7, styles:{ halign:'right', fontStyle:'bold', textColor:[71,85,105] } }, { content:n(l.total), styles:{ fontStyle:'bold' } }]);
+    });
+    doc.autoTable({
+      startY: 52, theme:'grid', margin:{ left:28, right:28 },
+      styles:{ fontSize:6.8, cellPadding:2.6, overflow:'linebreak', valign:'middle' },
+      headStyles:{ fillColor:[16,42,69], textColor:[255,255,255], fontStyle:'bold' },
+      head:[['Referência', 'Cliente', 'Marca', 'Chegada', 'Armazém', 'Situação', 'Produto', 'Qtd']],
+      body: corpo,
+      foot:[[{ content:`TOTAL GERAL — ${t.proc} processo(s)`, colSpan:7, styles:{ halign:'right' } }, n(t.un)]],
+      footStyles:{ fillColor:[226,232,240], textColor:[15,31,61], fontStyle:'bold' },
+      columnStyles:{ 0:{ cellWidth:68, fontStyle:'bold' }, 1:{ cellWidth:78 }, 2:{ cellWidth:52 }, 3:{ cellWidth:44 }, 4:{ cellWidth:56 }, 5:{ cellWidth:52 }, 7:{ halign:'right', cellWidth:34 } },
+      didParseCell: direitaNoTopoERodape([7]),
+    });
+
+    const totalPaginas = doc.internal.getNumberOfPages();
+    for(let i = 1; i <= totalPaginas; i++){
+      doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(148,163,184);
+      doc.text(`Página ${i} de ${totalPaginas}`, pageW - 40, doc.internal.pageSize.getHeight() - 18, { align:'right' });
+    }
+    const hojeIso = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}-${String(agora.getDate()).padStart(2,'0')}`;
+    doc.save(`Relatorio_Armazem_${hojeIso}.pdf`);
+    showToast(`Relatório do armazém gerado (${t.proc} processos · ${n(t.un)} un.)`, 'ok');
+  }catch(e){
+    console.error('exportarRelatorioArmazemPDF:', e);
+    showToast('Erro ao gerar o PDF do armazém: ' + e.message, 'err');
+  }
+}

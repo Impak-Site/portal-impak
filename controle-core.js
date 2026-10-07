@@ -3130,6 +3130,47 @@ function casarItemComProduto(descItem, produtos){
 function _vendaEhReal(v){ return !!(v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && !ehCfopSemVenda(v.nf_saida_cfop)); }
 // Quanto ainda está em estoque (NF Entrada lançada, sem NF de venda).
 // Retorna { temEntrada, vendeuAlgo, saiuTudo, total, restante, itens:[{descricao,quantidade}] }
+// ── Estoque no armazém (Emanuelly 07/10/2026: relatório em PDF) ────────
+// MESMO critério do quadro "Armazém" da TV (controle-dash-tv.js, painel No
+// Chão): NF de Entrada lançada e ainda não saiu tudo; separa remessa para o
+// estoque (CFOP 5905) de "chegou — sem NF de saída". Acompanhamento e
+// cancelados ficam fora.
+function listarEstoqueArmazem(processos){
+  const linhas = [];
+  const porProduto = {};
+  const totais = { proc:0, un:0, remessa:{ proc:0, un:0 }, semnf:{ proc:0, un:0 } };
+  (processos || []).forEach(p => {
+    if(!p || p.cancelado || ehAcompanhamento(p)) return;
+    if(!p.nf_entrada_numero) return;
+    const est = estoqueDoProcesso(p);
+    if(est.saiuTudo) return;
+    let produtos = est.vendeuAlgo ? est.itens : [];
+    if(!est.vendeuAlgo){
+      try{ produtos = JSON.parse(p.produtos_json || '[]'); }catch(e){ produtos = []; }
+      if(!Array.isArray(produtos) || !produtos.length) produtos = p.produto ? [{ descricao: p.produto, quantidade: null }] : [];
+    }
+    const grupo = temRemessaEstoque(p) ? 'remessa' : 'semnf';
+    const itens = produtos.map(it => ({ descricao: String((it && it.descricao) || 'Sem descrição').trim(), qtd: parseFloat(it && it.quantidade) || 0 }));
+    const total = itens.reduce((s, it) => s + it.qtd, 0);
+    itens.forEach(it => {
+      const pp = porProduto[it.descricao] || (porProduto[it.descricao] = { remessa:0, semnf:0 });
+      pp[grupo] += it.qtd;
+    });
+    totais.proc++; totais.un += total;
+    totais[grupo].proc++; totais[grupo].un += total;
+    linhas.push({
+      id: p.id, referencia: p.referencia || '—',
+      cliente: (typeof clientesDoProcesso === 'function' ? clientesDoProcesso(p)[0] : null) || p.cliente || '—',
+      marca: p.brand || p.fornecedor || '—',
+      chegada: p.data_chegada || p.eta || '',
+      armazem: p.armazem || '',
+      grupo, itens, total,
+    });
+  });
+  linhas.sort((a, b) => (a.grupo === b.grupo ? 0 : a.grupo === 'remessa' ? -1 : 1) || String(a.chegada).localeCompare(String(b.chegada)) || String(a.referencia).localeCompare(String(b.referencia)));
+  return { linhas, porProduto, totais };
+}
+
 function estoqueDoProcesso(p){
   const out = { temEntrada: !!(p && p.nf_entrada_numero && String(p.nf_entrada_numero).trim()), vendeuAlgo:false, saiuTudo:false, total:0, restante:0, itens:[] };
   if(!p) return out;
