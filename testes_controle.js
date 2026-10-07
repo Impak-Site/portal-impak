@@ -72,7 +72,7 @@ function criarSandbox() {
   const elementosFalsos = {};
   const documentFalso = {
     getElementById: (id) => elementosFalsos[id] || (elementosFalsos[id] = {
-      value: '', innerHTML: '', style: {}, textContent: '', classList: { add(){}, remove(){}, contains(){ return false; } },
+      value: '', innerHTML: '', style: {}, textContent: '', dataset: {}, checked: false, classList: { add(){}, remove(){}, contains(){ return false; } },
       addEventListener(){}, appendChild(){}, querySelector(){ return null; }, querySelectorAll(){ return []; }, dispatchEvent(){ return true; },
     }),
     querySelector: () => null,
@@ -511,6 +511,26 @@ teste('data no passado no campo efetivo NÃO é mexida (é uma data efetiva leg�
 console.log('\n📋 salvarProcesso() — patch de concorrência');
 vm.runInContext("_user = {usuario:'teste'}; _cambio = {USD:5.5};", sandbox);
 
+await testeAsync('coletarESalvar com o painel aberto: depois de salvar, fechar não acusa "alterações não salvas"; se falhar, continua acusando', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  try {
+    sandbox.document.getElementById('f_referencia').value = 'TESTE-DIRTY-1';
+    vm.runInContext(`_editando = { id:'teste-dirty-1', referencia:'TESTE-DIRTY-1', log:[] }; _editandoOriginal = { ..._editando }; _painelDirty = true; window._salvandoProcesso = false;`, sandbox);
+    sandbox.salvarProcesso = async () => true;
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await new Promise(r => setTimeout(r, 20));
+    iguais(vm.runInContext('_painelDirty', sandbox), false, 'salvou: painel deveria ficar sem alterações pendentes');
+    vm.runInContext(`_painelDirty = true; window._salvandoProcesso = false;`, sandbox);
+    sandbox.salvarProcesso = async () => false;
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await new Promise(r => setTimeout(r, 20));
+    iguais(vm.runInContext('_painelDirty', sandbox), true, 'falhou: deveria continuar acusando alterações não salvas');
+  } finally {
+    sandbox.salvarProcesso = salvarOriginal;
+    vm.runInContext(`_painelDirty = false; _editando = null; window._salvandoProcesso = false;`, sandbox);
+    sandbox.document.getElementById('f_referencia').value = '';
+  }
+});
 await testeAsync('com patchFields, manda só os campos alterados + sempre-recalculados (não o processo inteiro)', async () => {
   let corpoEnviado = null;
   sandbox.fetch = (url, opts) => {
