@@ -5080,27 +5080,23 @@ if (!total) { await marcarAlertasEnviadosHoje(); return 0; }
 const escHtmlAlerta = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
 const linhaProc = (p, extra) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${escHtmlAlerta(p.referencia) || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${escHtmlAlerta(p.cliente || p.fornecedor) || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${escHtmlAlerta(p.fase) || '-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${escHtmlAlerta(extra)}</td></tr>`;
 const tabela = (titulo, itens, extraFn) => itens.length ? `<h3 style="margin:20px 0 8px;color:#333;">${titulo} (${itens.length})</h3><table style="width:100%;border-collapse:collapse;font-size:13px;"><tr><th style="text-align:left;padding:6px 10px;">Referencia</th><th style="text-align:left;padding:6px 10px;">Cliente/Fornecedor</th><th style="text-align:left;padding:6px 10px;">Fase</th><th style="text-align:left;padding:6px 10px;"></th></tr>${itens.map(p => linhaProc(p, extraFn(p))).join('')}</table>` : '';
-let html = `<div style="font-family:sans-serif;max-width:640px;margin:0 auto;"><h2 style="color:#1a7fd4;">IMPAK Portal - Alertas do dia (${hoje.toLocaleDateString('pt-BR')})</h2>`;
-html += tabela('Demurrage critico (ate 5 dias)', demCrit, p => { const d = demDias(p); return d < 0 ? `Vencido ha ${-d}d` : `Vence em ${d}d`; });
-html += tabela('ETA vencido (ainda embarcado)', etaVenc, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
-html += tabela('Chegando essa semana', etaSem, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
-html += tabela('PI vencida (saldo nao pago)', piVenc, p => `Venceu: ${new Date(vencimentoSaldoPI(p)).toLocaleDateString('pt-BR')}${p.pi_valor_usd ? ' - US$ ' + Number(p.pi_valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2}) : ''}`);
-html += `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automatico diario do IMPAK Portal.</p></div>`;
-let destinatarios = (process.env.ALERTA_EMAIL_PARA || '').split(',').map(s => s.trim()).filter(Boolean);
-if (!destinatarios.length) {
-destinatarios = [..._usuariosCache.values()].filter(u => u.role === 'gerente' && u.email).map(u => u.email);
-// Emanuelly (importacao1@impak.com.br) pediu pra receber os alertas diarios
-// tambem (10/09/2026), mas o role dela e 'analista', entao o filtro acima
-// nao pegava o email dela -- adiciona explicitamente aqui. IMPORTANTE: a
-// conta Resend ainda esta em modo sandbox sem dominio verificado (task #147
-// pendente), entao no sandbox so entrega de fato pro email dono da conta
-// Resend -- este destinatario extra so vai comecar a chegar na pratica
-// depois que o dominio impak.com.br for verificado no Resend.
-if (!destinatarios.includes('importacao1@impak.com.br')) destinatarios.push('importacao1@impak.com.br');
+// Ayslan 08/10/2026: "Os alertas financeiros devem ir pra paula, e os
+// operacionais para emanuelly e só". O e-mail combinado foi dividido em dois:
+// operacional (Demurrage/ETA) -> Emanuelly; financeiro (PI vencida) -> Paula.
+const cab = titulo => `<div style="font-family:sans-serif;max-width:640px;margin:0 auto;"><h2 style="color:#1a7fd4;">IMPAK Portal - ${titulo} (${hoje.toLocaleDateString('pt-BR')})</h2>`;
+const rod = `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automatico diario do IMPAK Portal.</p></div>`;
+const totalOp = demCrit.length + etaVenc.length + etaSem.length;
+if (totalOp) {
+let htmlOp = cab('Alertas operacionais do dia');
+htmlOp += tabela('Demurrage critico (ate 5 dias)', demCrit, p => { const d = demDias(p); return d < 0 ? `Vencido ha ${-d}d` : `Vence em ${d}d`; });
+htmlOp += tabela('ETA vencido (ainda embarcado)', etaVenc, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
+htmlOp += tabela('Chegando essa semana', etaSem, p => `ETA: ${new Date(p.eta).toLocaleDateString('pt-BR')}`);
+await enviarParaDestinatariosAlerta(`IMPAK Portal - ${totalOp} alerta(s) operacional(is) hoje`, htmlOp + rod, 'operacional');
 }
-for (const email of destinatarios) {
-try { await enviarEmail(email, `IMPAK Portal - ${total} alerta(s) hoje`, html); }
-catch (e) { console.error(`Erro ao enviar e-mail de alerta pra ${email}:`, e.message); }
+if (piVenc.length) {
+let htmlFin = cab('Alertas financeiros do dia');
+htmlFin += tabela('PI vencida (saldo nao pago)', piVenc, p => `Venceu: ${new Date(vencimentoSaldoPI(p)).toLocaleDateString('pt-BR')}${p.pi_valor_usd ? ' - US$ ' + Number(p.pi_valor_usd).toLocaleString('pt-BR',{minimumFractionDigits:2}) : ''}`);
+await enviarParaDestinatariosAlerta(`IMPAK Portal - ${piVenc.length} PI(s) vencida(s)`, htmlFin + rod, 'financeiro');
 }
 await marcarAlertasEnviadosHoje();
 return total;
@@ -5133,20 +5129,22 @@ async function marcarJobEnviadoHoje(jobName){
   if (error) console.error(`marcarJobEnviadoHoje(${jobName}): falha ao gravar app_job_runs (job pode repetir!):`, error.message);
 }
 
-// Mesma lista de destinatários do alerta diário combinado (ALERTA_EMAIL_PARA,
-// ou gerentes + Emanuelly como fallback) -- reaproveitada aqui pra não
-// duplicar a regra em 5 lugares diferentes (ver verificarAlertasDiarios acima).
-function destinatariosAlertas(){
-  let destinatarios = (process.env.ALERTA_EMAIL_PARA || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!destinatarios.length) {
-    destinatarios = [..._usuariosCache.values()].filter(u => u.role === 'gerente' && u.email).map(u => u.email);
-    if (!destinatarios.includes('importacao1@impak.com.br')) destinatarios.push('importacao1@impak.com.br');
-  }
-  return destinatarios;
+// Destinatários por tipo de alerta (Ayslan 08/10/2026): financeiro -> Paula,
+// operacional -> Emanuelly, "e só". Dá pra trocar sem mexer no código criando
+// no Railway ALERTA_FINANCEIRO_PARA / ALERTA_OPERACIONAL_PARA (lista separada
+// por vírgula).
+const ALERTA_DESTINOS_PADRAO = {
+  financeiro:  'paula@impak.com.br',
+  operacional: 'importacao1@impak.com.br',
+};
+function destinatariosAlertas(tipo){
+  const env = tipo === 'financeiro' ? process.env.ALERTA_FINANCEIRO_PARA : process.env.ALERTA_OPERACIONAL_PARA;
+  const lista = (env || ALERTA_DESTINOS_PADRAO[tipo] || ALERTA_DESTINOS_PADRAO.operacional).split(',').map(s => s.trim()).filter(Boolean);
+  return [...new Set(lista)];
 }
 
-async function enviarParaDestinatariosAlerta(assunto, html){
-  const destinatarios = destinatariosAlertas();
+async function enviarParaDestinatariosAlerta(assunto, html, tipo = 'operacional'){
+  const destinatarios = destinatariosAlertas(tipo);
   for (const email of destinatarios) {
     try { await enviarEmail(email, assunto, html); }
     catch (e) { console.error(`Erro ao enviar e-mail "${assunto}" pra ${email}:`, e.message); }
@@ -5363,7 +5361,7 @@ async function verificarAlertaCambioSemana(){
     + `<p style="font-size:13px;color:#555;">${linhas.length} parcela(s) vencendo nos próximos 7 dias — total aproximado US$ ${totalUsd.toLocaleString('pt-BR',{minimumFractionDigits:2})}.</p>`
     + _tabelaAlertaHtml(['Vencimento','Processo','Cliente','Fornecedor','Parcela','Valor USD','BRL Estimado'], corpo)
     + _rodapeAlertaHtml();
-  await enviarParaDestinatariosAlerta(`IMPAK Portal - Câmbio da semana (${linhas.length} parcela(s))`, html);
+  await enviarParaDestinatariosAlerta(`IMPAK Portal - Câmbio da semana (${linhas.length} parcela(s))`, html, 'financeiro');
   await marcarJobEnviadoHoje(jobName);
   return linhas.length;
 }
