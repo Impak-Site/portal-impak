@@ -4784,7 +4784,10 @@ app.get('/api/controle/processos/:id/prefill-cotacao', auth('controle','financei
 // Pede também a transportadora de cada processo, pra dar tempo hábil de
 // organizar a retirada assim que a carga desembaraçar.
 const FOLLOWUP_DIAS_JANELA = 10;
-const FOLLOWUP_DESTINATARIOS = ['suporte@impak.com.br']; // so suporte@impak.com.br por enquanto: a conta Resend ainda nao tem dominio verificado (task #147) e em modo sandbox so entrega pro proprio email da conta. Depois de verificar o dominio, pode voltar a incluir outros destinatarios (Ayslan, Emanuelly, etc).
+// Ayslan 08/10/2026: follow-up vai pra Emanuelly, UM e-mail por cliente --
+// ela confere e decide se encaminha ao cliente ou nao (nunca vai direto pro
+// cliente). Trocavel sem mexer no codigo via FOLLOWUP_PARA no Railway.
+const FOLLOWUP_DESTINATARIOS = (process.env.FOLLOWUP_PARA || 'importacao1@impak.com.br').split(',').map(x => x.trim()).filter(Boolean);
 
 async function processosParaFollowUpSemanal(){
   const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -4848,14 +4851,13 @@ function linhasFollowUpPorCliente(processos){
     return linhas;
 }
 
-async function montarHtmlFollowUpSemanal(processos){
+async function montarEmailsFollowUpPorCliente(processos){
   const escHtml = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
   const fmtData = iso => { try { return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR'); } catch(e) { return iso || '—'; } };
 
   const porCliente = {};
   // Clientes avulsos (NF pra pessoa física/compra pontual) não recebem
-  // follow-up — só aparecem numa lista no fim do rascunho (pedido Emanuelly
-  // 28/09/2026). Se a classificação falhar, segue com todos (comportamento antigo).
+  // follow-up (pedido Emanuelly 28/09/2026) — ficam só no log do servidor. Se a classificação falhar, segue com todos (comportamento antigo).
   let ehPrincipal = () => true;
   try { ehPrincipal = await montarClassificadorClientes(); } catch(e) { console.warn('[followup] classificação de clientes indisponível:', e.message); }
   const avulsos = {};
@@ -4867,13 +4869,14 @@ async function montarHtmlFollowUpSemanal(processos){
     if (p._clienteId && !idPorCliente[chave]) idPorCliente[chave] = p._clienteId;
   });
 
-  const blocosCliente = (await Promise.all(Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(async cliente => {
-    // Contato(s) cadastrado(s) como "principal" no Cadastro de Pessoas
-    // dessa empresa — só informativo por enquanto (ver contatosPrincipaisDaEmpresa).
+  const clientes = Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const emails = await Promise.all(clientes.map(async cliente => {
+    // Contato(s) "principal" da empresa no Cadastro de Pessoas: aparece no
+    // quadro de rascunho pra Emanuelly saber pra quem encaminhar.
     const principais = await contatosPrincipaisDaEmpresa(cliente, idPorCliente[cliente]);
-    const linhaPrincipais = principais.length
-      ? `<div style="font-size:11px;color:#555;margin-bottom:6px;">Contato principal: ${principais.map(p=>escHtml(p.nome)+' &lt;'+escHtml(p.email)+'&gt;').join(', ')}</div>`
-      : '';
+    const paraQuem = principais.length
+      ? `Encaminhar para (contato principal): <strong>${principais.map(p=>escHtml(p.nome)+' &lt;'+escHtml(p.email)+'&gt;').join(', ')}</strong>`
+      : `<strong>Nenhum contato principal cadastrado</strong> para este cliente em Cadastros.`;
     const linhas = porCliente[cliente].map(p => `
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-weight:600;">${escHtml(p.referencia)}</td>
@@ -4884,10 +4887,19 @@ async function montarHtmlFollowUpSemanal(processos){
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;">${escHtml(p.navio)||'—'}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;color:${p.transportadora?'#166534':'#b45309'};font-weight:600;">${escHtml(p.transportadora)||'⚠ a definir'}</td>
       </tr>`).join('');
-    return `
-      <div style="margin-bottom:24px;">
-        <div style="font-size:15px;font-weight:700;color:#0a2d5e;margin-bottom:2px;">${escHtml(cliente)}</div>
-        ${linhaPrincipais}
+    const html = `
+    <div style="font-family:sans-serif;max-width:760px;margin:0 auto;">
+      <div style="background:#f3f4f6;border:1px dashed #9ca3af;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#374151;">
+        <strong>RASCUNHO INTERNO — ainda não foi enviado ao cliente.</strong> Confira os dados; se estiver ok, encaminhe ao cliente apagando este quadro.<br>${paraQuem}
+      </div>
+      <h2 style="color:#1a7fd4;margin-bottom:4px;">IMPAK — Follow-up Semanal · ${escHtml(cliente)}</h2>
+      <p style="color:#444;font-size:13px;margin-top:0;">Processos com chegada prevista (ETA) nos próximos ${FOLLOWUP_DIAS_JANELA} dias.</p>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#92400e;">
+        ⚠ <strong>Pedir a transportadora de cada processo</strong> o quanto antes — as linhas marcadas "a definir" ainda não têm transportadora informada no sistema. Isso dá tempo hábil pra organizar a retirada assim que a carga desembaraçar.
+      </div>
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#1e3a8a;">
+As datas de chegada (ETA) informadas sao previsoes e podem sofrer alteracoes ou atrasos - inclua esse aviso ao repassar o follow-up para os clientes. Para os processos com chegada prevista NESTA SEMANA, pergunte ao cliente qual transportadora sera utilizada, para termos tempo habil de organizar o fluxo do processo.
+</div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:sans-serif;">
           <thead>
             <tr style="background:#f3f4f6;">
@@ -4902,23 +4914,10 @@ async function montarHtmlFollowUpSemanal(processos){
           </thead>
           <tbody>${linhas}</tbody>
         </table>
-      </div>`;
-  }))).join('');
-
-  return `
-    <div style="font-family:sans-serif;max-width:760px;margin:0 auto;">
-      <h2 style="color:#1a7fd4;margin-bottom:4px;">IMPAK — Follow-up Semanal</h2>
-      <p style="color:#444;font-size:13px;margin-top:0;">Processos com chegada prevista (ETA) nos próximos ${FOLLOWUP_DIAS_JANELA} dias, agrupados por cliente.</p>
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#92400e;">
-        ⚠ <strong>Pedir a transportadora de cada processo</strong> o quanto antes — as linhas marcadas "a definir" ainda não têm transportadora informada no sistema. Isso dá tempo hábil pra organizar a retirada assim que a carga desembaraçar.
-      </div>
-<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#1e3a8a;">
-As datas de chegada (ETA) informadas sao previsoes e podem sofrer alteracoes ou atrasos - inclua esse aviso ao repassar o follow-up para os clientes. Para os processos com chegada prevista NESTA SEMANA, pergunte ao cliente qual transportadora sera utilizada, para termos tempo habil de organizar o fluxo do processo.
-</div>
-      ${blocosCliente || '<p style="color:#666;">Nenhum processo com ETA nos próximos ' + FOLLOWUP_DIAS_JANELA + ' dias.</p>'}
-      ${Object.keys(avulsos).length ? `<div style="font-size:11px;color:#666;border-top:1px dashed #ddd;padding-top:10px;margin-top:10px;"><strong>Clientes avulsos (fora do follow-up):</strong> ${Object.keys(avulsos).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(c => escHtml(c) + ' (' + [...avulsos[c]].map(escHtml).join(', ') + ')').join('; ')}. Para incluir algum, marque como principal no Por Cliente/Medida → ⚙ Clientes principais.</div>` : ''}
-      <p style="font-size:11px;color:#888;margin-top:24px;">Este e-mail é um rascunho interno para conferência — Emanuelly revisa e repassa manualmente aos clientes depois de confirmar os dados.</p>
     </div>`;
+    return { cliente, qtd: porCliente[cliente].length, html };
+  }));
+  return { emails, avulsos: Object.keys(avulsos).map(c => `${c} (${[...avulsos[c]].join(', ')})`) };
 }
 
 // Relatório de segurança (item baixo): "já enviou hoje?" + "marcar enviado"
@@ -4963,13 +4962,19 @@ async function marcarFollowUpEnviadoHoje(){
 
 async function enviarFollowUpSemanal(){
   const processos = await processosParaFollowUpSemanal();
-  const html = await montarHtmlFollowUpSemanal(processos);
-  const assunto = `IMPAK — Follow-up Semanal (${processos.length} processo${processos.length===1?'':'s'} com ETA próxima)`;
-  for (const destinatario of FOLLOWUP_DESTINATARIOS) {
-    await enviarEmail(destinatario, assunto, html);
+  const { emails, avulsos } = await montarEmailsFollowUpPorCliente(processos);
+  let enviados = 0;
+  for (const e of emails) {
+    const assunto = `Follow-up semanal — ${e.cliente} (${e.qtd} processo${e.qtd===1?'':'s'} com ETA próxima)`;
+    for (const destinatario of FOLLOWUP_DESTINATARIOS) {
+      try { await enviarEmail(destinatario, assunto, e.html); enviados++; }
+      catch (err) { console.error(`[followup] erro ao enviar ${e.cliente} pra ${destinatario}:`, err.message); }
+      await new Promise(r => setTimeout(r, 700)); // Resend aceita ~2 envios/s; espaça pra não tomar 429
+    }
   }
+  if (avulsos.length) console.log('[followup] clientes avulsos fora do follow-up:', avulsos.join('; '));
   await marcarFollowUpEnviadoHoje();
-  return processos.length;
+  return { emails: emails.length, enviados, processos: processos.length };
 }
 
 // Checagem a cada 30 min: dispara automaticamente todo domingo (uma vez só
@@ -4990,7 +4995,7 @@ function checarFollowUpSemanal(){
   jaEnviouFollowUpHoje().then(ja => {
     if (ja) return;
     enviarFollowUpSemanal()
-      .then(n => console.log(`✓ Follow-up semanal enviado (${n} processos)`))
+      .then(r => console.log(`✓ Follow-up semanal enviado (${r.emails} e-mails, ${r.processos} processos)`))
       .catch(e => console.error('Erro no follow-up semanal:', e.message));
   }).catch(e => console.error('Erro ao checar follow-up semanal:', e.message));
 }
@@ -5000,7 +5005,7 @@ setInterval(checarFollowUpSemanal, 30 * 60 * 1000);
 // Disparo manual pra testar sem esperar domingo — restrito a gerente.
 app.post('/api/admin/followup-semanal', auth(), requireGerente, (req, res) => {
   enviarFollowUpSemanal()
-    .then(n => res.json({ ok: true, processos: n }))
+    .then(r => res.json({ ok: true, ...r }))
     .catch(e => res.status(500).json({ ok: false, erro: e.message }));
 });
 

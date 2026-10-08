@@ -858,7 +858,7 @@ showToast('Gerando follow-up semanal...','info');
 try{
 const r = await fetch('/api/admin/followup-semanal', { method:'POST' });
 const d = await r.json();
-if(d.ok) showToast(`✓ Follow-up enviado (${d.processos} processo${d.processos===1?'':'s'})`,'ok');
+if(d.ok) showToast(`✓ Follow-up enviado: ${d.emails} e-mail${d.emails===1?'':'s'} (1 por cliente, ${d.processos} processo${d.processos===1?'':'s'})`,'ok');
 else showToast('Erro ao gerar follow-up: '+(d.erro||''),'err');
 }catch(e){ showToast('Erro de rede ao gerar follow-up: '+e.message,'err'); }
 }
