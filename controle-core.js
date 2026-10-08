@@ -4153,14 +4153,12 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
   if(badgeSolicCancelamento){ badgeSolicCancelamento.textContent=solicitacoesCancelamento; badgeSolicCancelamento.style.display=solicitacoesCancelamento>0?'block':'none'; }
   document.getElementById('badge-total').textContent = total;
 
-  // O "0" na fonte Syne (usada em .stat-num) renderiza como uma forma
-  // oval/rosquinha decorativa, quase ilegível como numeral -- troca pra
-  // fonte padrão só quando o valor é zero, sem mexer na aparência dos
-  // outros números (achado na auditoria visual, 10/09/2026).
+  // .stat-num usa DM Sans com algarismos tabulares (Ayslan 08/10/2026: a Syne
+  // deixava os números com alturas/larguras desiguais).
   el.innerHTML = stats.map(s=>`
     <div class="stat-card" onclick="setFaseFilter('${s.filtro}')" style="--stat-cor:${s.cor};--stat-cor-soft:${STAT_COR_SOFT[s.cor]||'var(--ac-soft)'};">
       <div class="stat-icon">${STAT_ICONES[s.icone]||''}</div>
-      <div class="stat-num" style="color:${s.cor}${s.num===0 ? ';font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;font-weight:700;' : ''}">${s.num}</div>
+      <div class="stat-num" style="color:${s.cor}">${s.num}</div>
       <div class="stat-label">${s.label}</div>
     </div>`).join('');
 }
