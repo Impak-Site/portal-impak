@@ -1629,8 +1629,56 @@ function abrirModalConfirmarCambio(match, refAtual){
   } else if(boxParcelas && boxLegado){
     boxParcelas.style.display = 'none';
     boxLegado.style.display = 'flex';
+    // Comprovante PARCIAL num processo de pagamento único (Paula, 08/10/2026,
+    // UD26-072: o PFX de 01/04 cobria só os 30% iniciais, e "Pagamento Único"
+    // marcou a PI inteira como paga a 5,1525, sem forma de pagamento). Quando o
+    // valor do comprovante é menor que a PI, a saída certa é virar Parcelado:
+    // Inicial com o valor do comprovante + saldo em aberto. Oferece isso como
+    // primeira opção e avisa no botão de pagamento único.
+    const piTotal = typeof valorMoeda === 'function' ? (valorMoeda('f_pi_valor_usd') || 0) : 0;
+    const parcial = valorUsdImplicito > 0 && piTotal > 0 && valorUsdImplicito < piTotal * 0.98;
+    let avisoParcial = document.getElementById('cambio-modal-parcial');
+    if(!avisoParcial){ avisoParcial = document.createElement('div'); avisoParcial.id = 'cambio-modal-parcial'; boxLegado.parentNode.insertBefore(avisoParcial, boxLegado); }
+    if(parcial){
+      const saldo = piTotal - valorUsdImplicito;
+      avisoParcial.style.display = '';
+      avisoParcial.innerHTML = `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;">`
+        + `<b>Este comprovante cobre só ${fmtUsd(valorUsdImplicito)} de uma PI de ${fmtUsd(piTotal)}.</b> Não é o pagamento total — marcar como "Pagamento Único" deixaria a PI inteira como paga com esta taxa.</div>`
+        + `<button type="button" class="btn btn-primary" style="width:100%;margin-bottom:8px;text-align:left;white-space:normal;" onclick="converterParaParceladoComComprovante()">`
+        + `Lançar como <b>Parcelado</b>: Inicial ${fmtUsd(valorUsdImplicito)} com este câmbio + saldo de ${fmtUsd(saldo)} em aberto</button>`;
+    } else { avisoParcial.style.display = 'none'; avisoParcial.innerHTML = ''; }
   }
   document.getElementById('modal-cambio-bg')?.classList.add('open');
+}
+
+// Vira Parcelado a partir de um comprovante parcial (ver aviso acima): cria
+// Inicial com o valor do comprovante e Final com o saldo (vencimento = o
+// vencimento que o pagamento único tinha), e aplica taxa/data/banco/SWIFT
+// do comprovante na Inicial pelo mesmo caminho de confirmarCambioParcela.
+function converterParaParceladoComComprovante(){
+  if(!_cambioPendente){ fecharModalCambio(); return; }
+  const taxa = _taxaCambioPendente();
+  if(!taxa){ showToast('Informe a taxa de câmbio antes de confirmar','err'); return; }
+  const valorUsdRef = parseFloat(_cambioPendente.valor_usd_referencia) || 0;
+  const valorPago = parseFloat(_cambioPendente.valor_pago) || 0;
+  const valorDoc = valorUsdRef || (valorPago ? valorPago/taxa : 0);
+  const piTotal = typeof valorMoeda === 'function' ? (valorMoeda('f_pi_valor_usd') || 0) : 0;
+  if(!valorDoc || !piTotal || valorDoc >= piTotal){ showToast('Valor do comprovante não é parcial em relação à PI','err'); return; }
+  const sel = document.getElementById('f_pi_pagamento');
+  const vencAntes = document.getElementById('f_pi_data_saldo')?.value || document.getElementById('f_pi_data_entrada')?.value || '';
+  if(sel){ sel.value = 'PARCELADO'; if(typeof renderPagamentoCampos === 'function') renderPagamentoCampos(); }
+  _parcelas = [
+    {...parcelaVazia(), label:'Inicial', valor_usd: valorDoc.toFixed(2), pagto_antecipado:true},
+    {...parcelaVazia(), label:'Final', valor_usd: (piTotal - valorDoc).toFixed(2), data_vencimento: vencAntes, pagto_antecipado:false},
+  ];
+  const pct = Math.round(valorDoc / piTotal * 100);
+  const elPct = document.getElementById('f_pi_entrada_pct'); if(elPct && pct > 0 && pct < 100) elPct.value = pct;
+  // Pagamento único deixa de valer: limpa os campos legados pra não ficar "PI paga" por engano.
+  ['f_pi_cambio_fechado','f_pi_cambio_banco','f_pi_cambio_custo','f_pi_cambio_codigo_bacen'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  const elPago = document.getElementById('f_pi_pago'); if(elPago) elPago.value = 'false';
+  if(confirmarCambioParcela(0) === false){ renderParcelas(); renderPagamentoInfoLive(); return; }
+  renderParcelas(); renderPagamentoInfoLive();
+  showToast(`✓ Parcelado: Inicial ${fmtUsdBR(valorDoc)} com câmbio ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})} + Final ${fmtUsdBR(piTotal - valorDoc)} em aberto`, 'ok');
 }
 
 // Aplica o cambio confirmado do comprovante numa parcela especifica,
@@ -1860,6 +1908,14 @@ function confirmarCambioComo(tipo){
   // "PI Paga?" e a data de pagamento correspondente, além da taxa de câmbio
   // (antes só a taxa era preenchida e o "PI Paga?" nunca era tocado).
   if(tipo==='unico'){
+    // Comprovante parcial (ver converterParaParceladoComComprovante): pede
+    // confirmação explícita antes de marcar a PI inteira como paga.
+    {
+      const vRef = parseFloat(_cambioPendente.valor_usd_referencia) || 0, vPago = parseFloat(_cambioPendente.valor_pago) || 0;
+      const vDoc = vRef || (vPago ? vPago/taxa : 0);
+      const piTotal = typeof valorMoeda === 'function' ? (valorMoeda('f_pi_valor_usd') || 0) : 0;
+      if(vDoc && piTotal && vDoc < piTotal * 0.98 && !confirm(`O comprovante é de US$ ${fmtUsdBR(vDoc)}, mas a PI é de US$ ${fmtUsdBR(piTotal)}.\n\nMarcar como Pagamento Único deixa a PI INTEIRA como paga a ${taxa.toLocaleString('pt-BR',{minimumFractionDigits:4})}. Tem certeza? (Cancelar = voltar e usar "Lançar como Parcelado")`)) return;
+    }
     // Grava no campo "Câmbio Fechado" (separado de "Câmbio na PI", que é a
     // previsão feita lá atrás) — assim o Dashboard Financeiro consegue
     // comparar previsto x fechado e calcular a diferença cambial depois.
