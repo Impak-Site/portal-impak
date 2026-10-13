@@ -1661,6 +1661,31 @@ app.get('/api/reciclagem/lotes', auth('controle'), async (req, res) => {
     res.json({ ok: true, lotes: data || [] });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
+// ── AGENDA DE ATIVIDADES (#675, 13/10/2026) ─────────────────────────
+// Tarefas calculadas no navegador (agenda-core.js). Aqui só ficam as marcações
+// manuais: "feita", "não se aplica" e "reaberta" (nunca apaga — migration 0046).
+app.get('/agenda', auth('controle'), (req, res) => enviarControleV2(res));
+app.get('/api/agenda/conclusoes', auth('controle'), async (req, res) => {
+  try {
+    const { data, error } = await sb().from('agenda_conclusoes').select('chave,codigo,processo_id,tipo,obs,usuario,em');
+    if (error) return res.json({ ok: false, erro: error.message, semTabela: /agenda_conclusoes/.test(error.message), conclusoes: [] });
+    res.json({ ok: true, conclusoes: (data || []).filter(c => c.tipo !== 'reaberta') });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/agenda/conclusao', auth('controle'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const chave = String(b.chave || '').slice(0, 300);
+    const m = /^(A\d{2})\|([^|]*)\|(.*)$/.exec(chave);
+    const tipo = String(b.tipo || '');
+    if (!m || !['feita', 'nao_aplica', 'reaberta'].includes(tipo)) return res.status(400).json({ ok: false, erro: 'chave/tipo inválidos' });
+    const row = { chave, codigo: m[1], processo_id: m[2] && m[2] !== '-' ? m[2] : null, tipo,
+      obs: b.obs ? String(b.obs).slice(0, 1000) : null, usuario: req.session.usuario || null, em: new Date().toISOString() };
+    const { error } = await sb().from('agenda_conclusoes').upsert(row, { onConflict: 'chave' });
+    if (error) return res.status(500).json({ ok: false, erro: error.message, semTabela: /agenda_conclusoes/.test(error.message) });
+    res.json({ ok: true, conclusao: row });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
 // ── Clientes principais x avulsos (pedido Emanuelly 28/09/2026) ─────────
 // Toda NF de venda (aba Vendas) vira "cliente" no Por Cliente/Medida e no
 // follow-up — inclusive pessoa física que comprou 4 pneus. Classificação:
@@ -1788,7 +1813,7 @@ app.get('/controle/:ref', auth('controle'), (req, res) => enviarControleV2(res))
   ['financeiro', ['financeiro']], ['cambio', ['cambio']], ['resultado', ['resultado']],
   ['analises', ['analises']], ['narcelio', ['narcelio']], ['tv', ['tv']],
   ['cadastros', ['cadastros']], ['conferencia-fila', ['conferencia','controle']],
-  ['reciclagem', ['controle']], ['averbacao', ['controle']],
+  ['reciclagem', ['controle']], ['averbacao', ['controle']], ['agenda', ['controle']],
 ].forEach(([tela, mods]) => {
   app.get('/' + tela + '/:ref', auth(...mods), (req, res) => enviarControleV2(res));
 });
@@ -3773,6 +3798,13 @@ async function carregarListas() {
     });
     // Categoria que ainda não tem nenhuma linha no banco cai no padrão.
     CATEGORIAS_LISTA.forEach(cat => { if (!listas[cat].length) listas[cat] = padrao[cat]; });
+    // Agenda (#675): ao editar UMA atividade/função na aba Listas, as outras
+    // continuam valendo pelo padrão — completa por código o que não está no banco.
+    ['agenda_funcao', 'agenda_atividade'].forEach(cat => {
+      const tem = new Set((listas[cat] || []).map(x => x.codigo));
+      (padrao[cat] || []).forEach(x => { if (!tem.has(x.codigo)) listas[cat].push(x); });
+      listas[cat].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+    });
     return { listas, origem: 'banco' };
   } catch (e) {
     console.warn('cadastros_listas indisponível, usando padrão:', e.message);
