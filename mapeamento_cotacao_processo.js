@@ -74,6 +74,7 @@ const ITENS_CUSTOS_REAIS = [
   { id: 'ibs',     unidade: 'BRL', porContainer: pc('ibs'), apenasPago: true, get: c => c?.impostos?.ibs },
   { id: 'cbs',     unidade: 'BRL', porContainer: pc('cbs'), apenasPago: true, get: c => c?.impostos?.cbs },
   { id: 'antidumping', unidade: 'BRL', porContainer: pc('antidumping'), apenasPago: true, get: c => c?.impostos?.antidumping },
+  { id: 'marjoracao',  unidade: 'BRL', porContainer: pc('marjoracao'),  apenasPago: true, get: c => c?.impostos?.marjoracao },
   // Comissões (BRL)
   { id: 'comissao_br',    unidade: 'BRL', porContainer: pc('comissao_br'), get: c => c?.comissoes?.br },
   { id: 'comissao_china', unidade: 'BRL', porContainer: pc('comissao_china'), get: c => c?.comissoes?.china },

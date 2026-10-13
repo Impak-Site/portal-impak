@@ -418,6 +418,14 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         </div>
       </div>
       <div class="form-group">
+        <label>Marjoração COFINS 0,6%?</label>
+        <div class="toggle-group">
+          <button class="toggle-btn active-nao" id="toggle-marj-nao" onclick="setToggle('marj','NAO')">NÃO</button>
+          <button class="toggle-btn" id="toggle-marj-sim" onclick="setToggle('marj','SIM')">SIM</button>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px;">COFINS-importação majorada: 0,6% sobre a base vira custo; o crédito segue em 9,65%. Ex.: elevador, grua, lavanderia.</div>
+      </div>
+      <div class="form-group">
         <label>Uso e Consumo?</label>
         <div class="toggle-group">
           <button class="toggle-btn active-nao" id="toggle-uc-nao" onclick="setToggle('uc','NAO')">NÃO</button>
@@ -433,7 +441,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       </div>
       <div class="form-group" style="position:relative;">
         <label>Cliente</label>
-        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)" onchange="aplicarIcmsPadraoCliente()">
+        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)" onchange="aplicarIcmsPadraoCliente();if(typeof aplicarComissionadosAutoCliente==='function')aplicarComissionadosAutoCliente()">
         <div id="cliente-calc-dropdown" style="display:none;position:fixed;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
     </div>
@@ -450,6 +458,11 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
           <button class="toggle-btn" id="toggle-br-sim" onclick="setToggle('br','SIM')">SIM</button>
         </div>
         <div id="br-detalhe" class="comissao-detalhe">
+          <div id="br-comissionados-box" style="display:none;margin-bottom:8px">
+            <label>Comissionados do cadastro (pode marcar mais de um)</label>
+            <div id="br-comissionados-chips" style="display:flex;flex-wrap:wrap"></div>
+            <div id="br-comissionados-aviso" style="display:none;font-size:11px;color:var(--muted);">Usando os comissionados marcados — % e nome manuais abaixo ficam desligados. Uso interno: não sai na proposta do cliente.</div>
+          </div>
           <div class="form-row" style="margin:0">
             <div class="form-group" style="margin:0">
               <label>% Comissão</label>
@@ -561,7 +574,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
           </div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Baixa Pátio (R$)</label><input type="number" id="tx_baixa_patio" step="0.01" value="0"></div>
+          <div class="form-group"><label>Baixa Pátio (R$ por container)</label><input type="number" id="tx_baixa_patio" step="0.01" value="500" title="Padrão R$ 500 por container. A armazenagem no RF (pós-nacionalização) é calculada à parte, em Vendas previstas RF."></div>
           <div class="form-group"><label>Capatazia/THC (R$)</label><input type="number" id="tx_capatazia" onchange="onAutoTaxaDepChange()" step="0.01" value="1100"></div>
         </div>
         <div class="form-row">
@@ -999,7 +1012,7 @@ const TAXAS_USD_CONTAINER = {
 // formulário). Os nomes das propriedades são os mesmos das variáveis
 // antigas, só sem o "_" na frente — ex.: _estado.toggles virou _estado.toggles.
 let _estado = {
-  toggles:               { ttd:'SIM', st:'NAO', dump:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO' },
+  toggles:               { ttd:'SIM', st:'NAO', dump:'NAO', marj:'NAO', uc:'NAO', ie:'SIM', br:'NAO', china:'NAO', boss:'NAO' },
   togglesInner:          { 'china-modal':'DENTRO' },
   cenario:               3,
   mix:                   null,
@@ -1233,6 +1246,7 @@ async function autocompletarClienteCalc(input){
         item.addEventListener('click', ()=>{
 document.getElementById('cliente').value = c.razao_social;
 aplicarIcmsPadraoCliente();
+if(typeof aplicarComissionadosAutoCliente==='function') aplicarComissionadosAutoCliente();
 if(c.uf){
 const ufSel = document.getElementById('uf_destino');
 if(ufSel){ ufSel.value = c.uf; if(typeof onUFChange==='function') onUFChange(); }
@@ -1956,6 +1970,10 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   const COFINS_e = base_imp_brl * t.cofins_e;
   const RBC      = base_imp_brl * t.rbc;
   const DUMP     = _estado.toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
+  // Marjoração 0,6% (planilha MODELO Z6:AB9 / Fechamento G26): COFINS-importação
+  // majorada. Os 0,6% sobre a base da COFINS-imp não geram crédito → CUSTO;
+  // o crédito continua em 9,65% (não muda nada no COFINS_e normal).
+  const MARJ     = _estado.toggles.marj==='SIM' ? base_imp_brl * 0.006 : 0;
 
   // Câmbio de abertura do dia da chegada + 2% — usado nas Taxas em USD (destino)
   // e nas fórmulas de Marinha/AFRMM e Agente de Carga, replicando a planilha
@@ -2084,12 +2102,15 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   }
 
   // ── 5. Custo total (apenas não recuperáveis) ──
-  const imp_custo   = II; // RBC NÃO entra como custo — é só referência/crédito, confirmado com exemplo real
+  const imp_custo   = II + MARJ; // Marjoração 0,6% é custo (sem crédito). RBC NÃO entra como custo — é só referência/crédito, confirmado com exemplo real
   const custo_total = cif_brl + imp_custo + total_taxas;
 
   // ── 6. Faturamento / Preço de venda ──
   // Comissão BR
-  const br_pct  = _estado.toggles.br==='SIM' ? (parseFloat(document.getElementById('br_pct').value)||0)/100 : 0;
+  // Comissionados do cadastro (Passo 3b): quando marcados, substituem o % manual.
+  const comSel = (_estado.toggles.br==='SIM' && typeof comissionadosSelecionadosCalc==='function') ? comissionadosSelecionadosCalc() : [];
+  const usaComissionados = comSel.length > 0 && typeof calcularComissionadosCalc === 'function';
+  const br_pct  = (_estado.toggles.br==='SIM' && !usaComissionados) ? (parseFloat(document.getElementById('br_pct').value)||0)/100 : 0;
   // Comissão China (dentro)
   const china_pct = (parseFloat(document.getElementById('china_pct').value) || 3)/100;
   const china_dentro = _estado.toggles.china==='SIM' && _estado.togglesInner['china-modal']==='DENTRO' ? china_pct : 0;
@@ -2194,8 +2215,6 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     const boss_fora_val = boss_pct_fora>0 ? vlr_total_nfe * boss_pct_fora : 0;
     const faturamento_total = vlr_total_nfe + china_fora_val + boss_fora_val;
 
-    // Comissão BR (Representante) — sobre o faturamento total, que já inclui China e BOSS
-    const COM_br = faturamento_total * br_pct;
     // Comissão China "dentro" — sobre FOB×câmbio ponderado pelas parcelas, desconta da margem
     const COM_china_dentro = china_dentro>0 ? fobBrlPonderado * china_dentro : 0;
 
@@ -2220,6 +2239,16 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     // Comissão sobre o total do bloco parcelamento (J46 — geralmente 0% salvo cliente específico)
     total_parcelamento += comissao_repr_parcel;
 
+    // Comissão BR (Representante) — % manual: sobre o faturamento total (já inclui China e BOSS).
+    // Comissionados do cadastro: cada um na sua base (faturamento total, NF, FOB ou
+    // lucro bruto antes das comissões de representante — mesma regra do Controle).
+    let COM_br = faturamento_total * br_pct, COM_br_linhas = null;
+    if(usaComissionados){
+      const lucro_antes_com = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_china_dentro - custo_total - IPI_s - juros_parcelamento - nota_servico_val;
+      const rc = calcularComissionadosCalc(comSel, { faturamento: faturamento_total, nf: vlr_total_nfe, fob: fobBrlPonderado, lucro: lucro_antes_com });
+      COM_br = rc.total; COM_br_linhas = rc.linhas;
+    }
+
     // Lucro Bruto = Vlr.Total NFe - ICMS_ST - PIS - COFINS - ICMS_Próprio - Comissão_Repr - Comissão_China_dentro - Custo_Total - IPI - Juros - Nota
     const lucro_bruto = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_br - COM_china_dentro - custo_total - IPI_s - juros_parcelamento - nota_servico_val;
     const pct_lucro = faturamento_total !== 0 ? (lucro_bruto / faturamento_total) * 100 : 0;
@@ -2227,7 +2256,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     return {
       vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
-      china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
+      china_fora_val, boss_fora_val, COM_br, COM_br_linhas, COM_china_dentro,
       valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
       faturamento_total, lucro_bruto, pct_lucro, fatorNfe, tem_st: temStCenario,
     };
@@ -2269,7 +2298,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
 
   const { vlr_produto, IPI_s, ICMS_nfe, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
-          china_fora_val, boss_fora_val, COM_br, COM_china_dentro,
+          china_fora_val, boss_fora_val, COM_br, COM_br_linhas, COM_china_dentro,
           valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
           faturamento_total: faturamento, lucro_bruto, pct_lucro, fatorNfe } = cadeia;
 
@@ -2343,11 +2372,11 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     ncm, t,
     fob_brl, frete_brl, seguro_brl, seguro_venda_brl, seguro_compra_usd, seguro_venda_usd, cif_brl, base_imp_brl,
     taxa_ce_brl, cambioMedio, cambio_chegada_markup,
-    II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP,
+    II, IPI_e, PIS_e, COFINS_e, IBS_e, CBS_e, ICMS_e, RBC, DUMP, MARJ,
     taxas_fixas, taxas_usd_brl, seguro_dif_brl, total_taxas, custos_div,
     imp_custo, custo_total,
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s, usoConsumo,
-    COM_br, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
+    COM_br, COM_br_linhas, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
     lucro_bruto, pct_lucro, fator,
@@ -2358,7 +2387,8 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
       com_st: { ...cenario_com_st, mix: mix_com_st },
       sem_st: { ...cenario_sem_st, mix: mix_sem_st },
     },
-    br_nome: document.getElementById('br_nome').value,
+    br_nome: usaComissionados ? comSel.map(c => c.nome || c.codigo).join(' + ') : document.getElementById('br_nome').value,
+    comissionados: usaComissionados ? comSel.map(c => c.codigo) : [],
     boss_nome: document.getElementById('boss_nome')?.value,
     cenario_val, cenario_val_sem,
   };
@@ -2434,6 +2464,8 @@ const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCap
   // própria na Capa (Ayslan 13/10/2026: total não batia com a soma das linhas).
   if ((r.txOp.fixas.reciclagem || 0) > 0) despesas.splice(despesas.length - 1, 0, { label: 'Reciclagem', brl: r.txOp.fixas.reciclagem });
   if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
+  // Marjoração 0,6%: na CAPA da planilha (B59) fica nas Despesas, não nos tributos.
+  if (r.MARJ > 0) despesas.push({ label: 'Marjoração 0,6%', brl: r.MARJ });
   // Valor FOB/CIF na Capa por Câmbio Fechado de cada parcela (ver
   // PARCELA_ETAPAS_CALC/_estado.parcelas, mesmos campos do Controle) — SÓ
   // afeta as linhas de Valor FOB/Total do CIF exibidas na Capa; impostos,
@@ -2584,7 +2616,7 @@ function renderCapaHtml(r) {
         <div class="detail-title">Despesas Aduaneiras e Diversas</div>
         <table class="calc-table">
           ${d.despesas.map(x => `<tr><td>${x.label}</td><td class="num">${fmtR(x.brl)}</td></tr>`).join('')}
-          <tr class="destaque-row"><td>Total Despesas Aduaneiras e Diversas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
+          <tr class="destaque-row"><td>Total Despesas Aduaneiras e Diversas</td><td class="num">${fmtR(r.total_taxas + (r.MARJ || 0))}</td></tr>
         </table>
       </div>
 
@@ -2805,7 +2837,8 @@ function renderResultado(r) {
             <tr><td>IBS (${pct(r.t.ibs)})</td><td class="num">${fmtR(r.IBS_e)}</td></tr>
             <tr><td>CBS (${pct(r.t.cbs)})</td><td class="num">${fmtR(r.CBS_e)}</td></tr>
             ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
-            <tr class="destaque-row"><td>Custo (II)</td><td class="num">${fmtR(r.imp_custo)}</td></tr>
+            ${r.MARJ > 0 ? `<tr><td>Marjoração 0,6%</td><td class="num">${fmtR(r.MARJ)}</td></tr>` : ''}
+            <tr class="destaque-row"><td>Custo (II${r.MARJ > 0 ? ' + Marjoração' : ''})</td><td class="num">${fmtR(r.imp_custo)}</td></tr>
           </table>
         </div>
       </div>
@@ -2871,7 +2904,8 @@ function renderResultado(r) {
             <tr><td>ICMS Próprio (${pct(r.t.icms_prop)})</td><td class="num">${fmtR(r.ICMS_proprio)}</td></tr>
             <tr><td>IBS-S</td><td class="num">${fmtR(r.IBS_s)}</td></tr>
             <tr><td>CBS-S</td><td class="num">${fmtR(r.CBS_s)}</td></tr>
-            ${r.COM_br > 0 ? `<tr><td>Comissão BR (${r.br_nome})</td><td class="num">${fmtR(r.COM_br)}</td></tr>` : ''}
+            ${(r.COM_br > 0 && Array.isArray(r.COM_br_linhas) && r.COM_br_linhas.length) ? r.COM_br_linhas.map(l => `<tr><td>Comissão ${esc(l.codigo)} (${String(l.pct).replace('.',',')}% s/ ${({FATURAMENTO_TOTAL:'faturamento',NOTA_FISCAL:'NF',FOB_DOLAR:'FOB',LUCRO_BRUTO:'lucro bruto'})[l.base]||'faturamento'})</td><td class="num">${fmtR(l.valor)}</td></tr>`).join('')
+              : (r.COM_br > 0 ? `<tr><td>Comissão BR (${r.br_nome})</td><td class="num">${fmtR(r.COM_br)}</td></tr>` : '')}
             ${r.COM_china_dentro > 0 ? `<tr><td>Comissão China (dentro)</td><td class="num">${fmtR(r.COM_china_dentro)}</td></tr>` : ''}
             <tr class="total-row ok"><td>LUCRO BRUTO</td><td class="num" style="color:var(--ok);font-weight:800;">${fmtR(r.lucro_bruto)} (${fmtP(r.pct_lucro)})</td></tr>
           </table>
@@ -3119,7 +3153,8 @@ async function exportarExcel() {
       add('dado', 'Alíquota IBS', pct(r.t.ibs), '', fmtR(r.IBS_e));
       add('dado', 'Alíquota CBS', pct(r.t.cbs), '', fmtR(r.CBS_e));
       add('dado', 'Dumping', '', '', fmtR(r.DUMP));
-      add('total', 'TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.ICMS_e+r.IBS_e+r.CBS_e+r.DUMP));
+      if(r.MARJ > 0) add('dado', 'Marjoração 0,6%', '', '', fmtR(r.MARJ));
+      add('total', 'TOTAL DOS TRIBUTOS', '', '', fmtR(r.II+r.IPI_e+r.PIS_e+r.COFINS_e+r.ICMS_e+r.IBS_e+r.CBS_e+r.DUMP+(r.MARJ||0)));
       add('blank');
       add('secao', 'CRÉDITOS DE ENTRADA (recuperáveis)');
       add('dado', 'IPI', '', '', fmtR(-r.IPI_e));
@@ -3421,7 +3456,7 @@ async function exportarExcel() {
     addCapa('blank');
     addCapa('secao', 'DESPESAS ADUANEIRAS E DIVERSAS');
     dCapa.despesas.forEach(x => addCapa('dado', x.label, '', '', fmtR(x.brl)));
-    addCapa('total', 'Total Despesas Aduaneiras e Diversas', '', '', fmtR(r.total_taxas));
+    addCapa('total', 'Total Despesas Aduaneiras e Diversas', '', '', fmtR(r.total_taxas + (r.MARJ || 0)));
     addCapa('blank');
     addCapa('totalGrande', 'CUSTO TOTAL', '', '', fmtR(r.custo_total));
     addCapa('blank');
@@ -3649,7 +3684,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
-  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, vendasPrevistasRF: _estado.vendasPrevistasRF, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, ii_override_brl: _estado.iiOverrideBrl, seguro_compra_override_brl: _estado.seguroCompraOverrideBrl };
+  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, vendasPrevistasRF: _estado.vendasPrevistasRF, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, ii_override_brl: _estado.iiOverrideBrl, seguro_compra_override_brl: _estado.seguroCompraOverrideBrl, comissionados: Array.isArray(_estado.comissionados) ? [..._estado.comissionados] : [] };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -3667,6 +3702,7 @@ function aplicarEstadoFormulario(estado){
     if(el) el.value = val;
   });
   renderUfsExtraChips();
+  setToggle('marj','NAO'); // cotações antigas não têm esse toggle
   if(estado.toggles){
     Object.entries(estado.toggles).forEach(([k,v]) => {
       if(k==='ttd') setToggleTTD(v); else setToggle(k,v);
@@ -3697,6 +3733,8 @@ function aplicarEstadoFormulario(estado){
   if(_estado.mix && _estado.mix.itens && _estado.mix.itens.length) renderMix();
   _estado.splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
   _estado.vendasPrevistasRF = estado.vendasPrevistasRF || null;
+  if(typeof restaurarComissionadosCalc === 'function') restaurarComissionadosCalc(estado.comissionados || []);
+  else _estado.comissionados = Array.isArray(estado.comissionados) ? [...estado.comissionados] : [];
   if(typeof onProdutoChange === 'function') onProdutoChange();
   if(typeof onUFChange === 'function') onUFChange();
 }
@@ -3758,7 +3796,7 @@ function resumoParaLista(r){
       // governamental), não tem compra×venda, igual II/IPI/PIS/COFINS/ICMS/IBS/CBS
       // (ver toggle "dump" e cálculo de DUMP em calcular()). Fica 0 quando o
       // toggle "dump" está NÃO — sem impacto no total de Custos Reais.
-      impostos: { ii: r.II, ipi: r.IPI_e, pis: r.PIS_e, cofins: r.COFINS_e, icms: r.ICMS_e, ibs: r.IBS_e, cbs: r.CBS_e, antidumping: r.DUMP },
+      impostos: { ii: r.II, ipi: r.IPI_e, pis: r.PIS_e, cofins: r.COFINS_e, icms: r.ICMS_e, ibs: r.IBS_e, cbs: r.CBS_e, antidumping: r.DUMP, marjoracao: r.MARJ || 0 },
       comissoes: { br: r.COM_br, china: r.china_fora_val, boss: r.boss_fora_val },
       taxas_fixas: (r.txOp && r.txOp.fixas) || {},
       // Taxas em USD (destino) — convertidas pro câmbio de abertura+2%
@@ -3976,6 +4014,7 @@ function showToast(msg, tipo='info') {
 }
 </script>
 <script src="calculador-vincular.js"></script>
+<script src="calculador-comissionados.js"></script>
 <script src="/chat.js"></script>
 </body>
 </html>

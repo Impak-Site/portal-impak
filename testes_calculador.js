@@ -382,6 +382,65 @@ teste('tarifas do cadastro (Listas) substituem o padrão', () => {
   aproxIgual(res.vendas[0].linhas[0].armUnit, 30, 0.001);
 });
 
+// ── Comissionados do cadastro (Passo 3b) — nomes/percentuais fictícios ──
+console.log('\n📋 calculador-comissionados.js — base de cada comissionado');
+const _comCalc = require('./calculador-comissionados.js');
+teste('cada comissionado usa a sua base (faturamento, NF, FOB, lucro)', () => {
+  const itens = [
+    { codigo: 'VEND_A', dados: { percentual: '2', base: 'FATURAMENTO_TOTAL' } },
+    { codigo: 'VEND_B', dados: { percentual: '1,5', base: 'NOTA_FISCAL' } },
+    { codigo: 'VEND_C', dados: { percentual: 1, base: 'FOB_DOLAR' } },
+    { codigo: 'VEND_D', dados: { percentual: 10, base: 'LUCRO_BRUTO' } },
+  ];
+  const r = _comCalc.calcularComissionadosCalc(itens, { faturamento: 1000, nf: 900, fob: 500, lucro: 200 });
+  aproxIgual(r.linhas[0].valor, 20, 1e-9);
+  aproxIgual(r.linhas[1].valor, 13.5, 1e-9);
+  aproxIgual(r.linhas[2].valor, 5, 1e-9);
+  aproxIgual(r.linhas[3].valor, 20, 1e-9);
+  aproxIgual(r.total, 58.5, 1e-9);
+});
+teste('lucro negativo não gera comissão sobre lucro', () => {
+  const r = _comCalc.calcularComissionadosCalc([{ codigo: 'X', dados: { percentual: 10, base: 'LUCRO_BRUTO' } }], { lucro: -50 });
+  aproxIgual(r.total, 0, 0);
+});
+teste('cliente casa por palavra inteira (OST não casa com COSTA)', () => {
+  const c = { dados: { clientes: 'OST, CLIENTE TESTE' } };
+  verdadeiro(_comCalc.comissionadoAtendeClienteCalc(c, 'Comercial Ost Ltda') === true, 'OST deveria casar');
+  verdadeiro(_comCalc.comissionadoAtendeClienteCalc(c, 'Costa Pneus') === false, 'COSTA não deveria casar');
+  verdadeiro(_comCalc.comissionadoAtendeClienteCalc({ dados: { clientes: '' } }, 'Qualquer') === false, 'sem lista não marca sozinho');
+});
+
+console.log('\n📋 Marjoração 0,6% e comissionados dentro do calcular()');
+function _rodarCalc(prep) {
+  const sb = criarSandbox();
+  carregarNoSandbox(sb);
+  if (prep) vm.runInContext(prep, sb);
+  sb.calcular();
+  return vm.runInContext('_estado.ultimoResultado', sb);
+}
+teste('Marjoração SIM soma 0,6% da base de importação ao custo total', () => {
+  const a = _rodarCalc();
+  const b = _rodarCalc("setToggle('marj','SIM');");
+  aproxIgual(a.MARJ, 0, 0);
+  aproxIgual(b.MARJ, b.base_imp_brl * 0.006, 0.01);
+  aproxIgual(b.custo_total - a.custo_total, b.MARJ, 0.01);
+});
+teste('comissionados do cadastro substituem o % manual e cada um usa sua base', () => {
+  const base = _rodarCalc();
+  const prep = `
+    this.calcularComissionadosCalc = ${_comCalc.calcularComissionadosCalc.toString()};
+    this.comissionadosSelecionadosCalc = () => [
+      { codigo: 'VEND_A', nome: 'Vend A', dados: { percentual: 1, base: 'FATURAMENTO_TOTAL' } },
+      { codigo: 'VEND_B', nome: 'Vend B', dados: { percentual: 1, base: 'FOB_DOLAR' } },
+    ];
+    setToggle('br','SIM'); document.getElementById('br_pct').value = '50';`;
+  const r = _rodarCalc(prep);
+  verdadeiro(Array.isArray(r.COM_br_linhas) && r.COM_br_linhas.length === 2, 'deveria ter 2 linhas de comissão');
+  aproxIgual(r.COM_br_linhas[0].valor, r.cenarios[r.tem_st ? 'com_st' : 'sem_st'].faturamento_total * 0.01, 0.01);
+  verdadeiro(r.COM_br < base.faturamento * 0.5, 'o % manual (50%) não pode ser usado quando há comissionado');
+  verdadeiro(r.br_nome === 'Vend A + Vend B', 'nome deveria juntar os comissionados: ' + r.br_nome);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
