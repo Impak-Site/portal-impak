@@ -4422,12 +4422,16 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
     // aprovada) se o resumo no banco ainda for exatamente o que acabamos de
     // ler (compare-and-swap via .eq no valor antigo). Se 0 linhas voltarem,
     // outra requisição venceu a corrida — não cria processo duplicado.
-    const { data: casRows, error: errCas } = await sb()
+    // CAS pelo updated_at (antes era .eq('resumo', objeto) — o supabase-js
+    // manda o objeto como "[object Object]" e o Postgres responde "invalid
+    // input syntax for type json": nenhuma aprovação passava. Bug achado pelo
+    // Ayslan em 13/10/2026.)
+    let casQ = sb()
       .from('calculador_cotacoes')
-      .update({ resumo: novoResumo })
-      .eq('id', req.params.id)
-      .eq('resumo', cot.resumo)
-      .select('id');
+      .update({ resumo: novoResumo, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id);
+    casQ = cot.updated_at ? casQ.eq('updated_at', cot.updated_at) : casQ.is('updated_at', null);
+    const { data: casRows, error: errCas } = await casQ.select('id');
     if (errCas) throw new Error(errCas.message);
     if (!casRows || !casRows.length) {
       const { data: fresco } = await sb().from('calculador_cotacoes').select('resumo').eq('id', req.params.id).maybeSingle();
@@ -4728,12 +4732,12 @@ app.get('/api/controle/processos-abertos', auth('controle','financeiro','resulta
   try {
     const { data, error } = await sb()
       .from('controle_processos')
-      .select('id, referencia, cliente, fase')
+      .select('id, referencia, cliente, fase, fechado, cancelado')
       .neq('fase', 'FINALIZADO')
       .order('referencia', { ascending: true })
-      .limit(500);
+      .limit(3000);
     if (error) throw new Error(error.message);
-    res.json({ ok: true, processos: data || [] });
+    res.json({ ok: true, processos: (data || []).filter(p => !p.fechado && !p.cancelado) });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
@@ -4771,7 +4775,7 @@ app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (re
     const custosCotados = (cot.resumo && cot.resumo.custos_cotados_json) || null;
     const realInicial = proc.real_json ? null : gerarRealJsonInicial(custosCotados);
 
-    const patch = {};
+    const patch = { cotacao_id: cot.id }; // processo passa a contar como "Origem: Cotação"
     if (estimativa) patch.estimativa_json = estimativa;
     if (realInicial) patch.real_json = realInicial;
     if (Object.keys(patch).length) {
