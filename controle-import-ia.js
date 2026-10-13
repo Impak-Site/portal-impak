@@ -1610,7 +1610,39 @@ function inlineEditFase(id, el){
 
 
 // Fila de processamento: processa varios arquivos, um de cada vez, reaproveitando extrairComIA_umArquivo
+// Arquivo de OUTRO processo (Emanuelly 13/10/2026): ao ler os docs do
+// UD26-123/124 vinham junto OHBL_UD26-117.pdf e CE_..._UD26-117.pdf (seleção
+// pegando arquivos de outra pasta/Recentes) e o container PIDU4460624 do
+// UD26-117 era adicionado como 2º container. Se o NOME do arquivo cita uma
+// referência de processo cadastrada que não é a deste processo (e não cita a
+// deste), o arquivo é pulado com aviso. Comparação sem espaço/hífen.
+function _normRefArquivo(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function arquivoDeOutroProcesso(nomeArquivo, refAtual, refsCadastradas){
+  const nome = _normRefArquivo(nomeArquivo);
+  const atual = _normRefArquivo(refAtual);
+  if(!nome || !atual) return null;
+  if(nome.includes(atual)) return null;
+  const outras = (refsCadastradas||[]).map(_normRefArquivo)
+    .filter(r => r && r.length >= 5 && r !== atual && !atual.includes(r) && nome.includes(r));
+  if(!outras.length) return null;
+  // Pega a referência mais longa (UD26-117 e não UD26-11).
+  const r = outras.sort((a,b)=>b.length-a.length)[0];
+  const original = (refsCadastradas||[]).find(x => _normRefArquivo(x) === r) || r;
+  return original;
+}
+
 async function processarFilaIA(arquivos){
+  const refAtual = (document.getElementById('f_referencia') || {}).value || (typeof _editando !== 'undefined' && _editando && _editando.referencia) || '';
+  const refs = (typeof _processos !== 'undefined' && Array.isArray(_processos)) ? _processos.map(p => p && p.referencia).filter(Boolean) : [];
+  const pulados = [];
+  arquivos = Array.from(arquivos || []).filter(a => {
+    const outro = arquivoDeOutroProcesso(a && a.name, refAtual, refs);
+    if(outro){ pulados.push(`${a.name} (é do ${outro})`); return false; }
+    return true;
+  });
+  if(pulados.length){
+    showToast(`⚠️ ${pulados.length} arquivo(s) de outro processo não foram lidos: ${pulados.join('; ')}. Este processo é ${refAtual}.`, 'warn');
+  }
   for(const arquivo of arquivos){
     try{
       await extrairComIA_umArquivo({ files: [arquivo], set value(v){} });

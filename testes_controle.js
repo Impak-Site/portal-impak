@@ -2983,6 +2983,21 @@ teste('simularVendaArmazenagemRF: avisa Custos Reais parciais quando o lançado 
   iguais(sandbox.simularVendaArmazenagemRF({ ...p, estimativa_json: null }, []).base.realParcial, null);
 });
 
+console.log('\n📋 Extração IA: arquivo de outro processo');
+teste('arquivoDeOutroProcesso: pula OHBL_UD26-117.pdf lido no UD26-123', () => {
+  const refs = ['UD26-117','UD26-123','UD26-124','UD26-11'];
+  iguais(sandbox.arquivoDeOutroProcesso('OHBL_UD26-117.pdf', 'UD26-123', refs), 'UD26-117');
+  iguais(sandbox.arquivoDeOutroProcesso('CE_172605317650435_UD26-117.pdf', 'UD26-124', refs), 'UD26-117');
+});
+teste('arquivoDeOutroProcesso: aceita arquivo do próprio processo, sem referência, ou que cita os dois', () => {
+  const refs = ['UD26-117','UD26-123','UD26-124'];
+  iguais(sandbox.arquivoDeOutroProcesso('OHBL_UD26-123.pdf', 'UD26-123', refs), null);
+  iguais(sandbox.arquivoDeOutroProcesso('IMPAK 1109 HBL Draft.pdf', 'UD26-123', refs), null);
+  iguais(sandbox.arquivoDeOutroProcesso('UD26-123 : UD26-124.pdf', 'UD26-124', refs), null);
+  iguais(sandbox.arquivoDeOutroProcesso('ud26 123 ci.pdf', 'UD26-123', refs), null);
+  iguais(sandbox.arquivoDeOutroProcesso('OHBL_UD26-117.pdf', '', refs), null);
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';
