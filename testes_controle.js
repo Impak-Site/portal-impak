@@ -2837,6 +2837,123 @@ teste('normalizarNumeroDoc ignora pontuação/espaço', () => {
   iguais(sandbox.normalizarNumeroDoc('inv. no 26-001'), sandbox.normalizarNumeroDoc('INV NO 26001'));
 });
 
+
+// ── Armazenagem pós-nacionalização (RF) — Ayslan 13/10/2026 ──────────
+// Regra da planilha Modelo Rev97 (MIX - COMPLETO, CJ2/CJ3/CJ7): tarifa por
+// pneu por dia, por tipo, depois de 29 dias de carência contados da entrada
+// no armazém. Exemplo combinado com o Ayslan: 60 TBR, chegada 10/04, carência
+// até 09/05; venda 1 de 20 em 05/05 (dentro da carência) = R$ 0; venda 2 de
+// 25 em 20/06 = 42d × 0,40 = R$ 16,80/pneu = R$ 420; venda 3 de 15 em 04/08
+// = 87d × 0,40 = R$ 34,80/pneu = R$ 522.
+console.log('\n📋 Armazenagem pós-nacionalização (RF)');
+const procRF = () => ({
+  id: 'rf-1', data_chegada: '2026-04-10',
+  produtos_json: JSON.stringify([{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 60 }]),
+  vendas_json: JSON.stringify([
+    { cliente: 'A', nf_saida_numero: '1', nf_saida_data: '2026-05-05', nf_saida_valor: 30000, itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 20 }] },
+    { cliente: 'B', nf_saida_numero: '2', nf_saida_data: '2026-06-20', nf_saida_valor: 40000, itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 25 }] },
+    { cliente: 'C', nf_saida_numero: '3', nf_saida_data: '2026-08-04', nf_saida_valor: 25000, itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 15 }] },
+  ]),
+  real_json: { siscomex: 60000, despachante: 6000 }, real_cambio: 5,
+});
+teste('tarifas padrão (listas-padrao) carregam: TBR 0,40/dia com 29d de carência', () => {
+  const t = sandbox.tarifaArmazenagemRF('TBR');
+  iguais(t.tarifa_dia, 0.4); iguais(t.carencia_dias, 29);
+  iguais(sandbox.tarifaArmazenagemRF('pcr').tarifa_dia, 0.045);
+  iguais(sandbox.tarifaArmazenagemRF('XX'), null);
+});
+teste('detectarTipoArmazenagem: R22.5/TBR → TBR; roda → RODAS; SUV/LT → SUV; resto PCR', () => {
+  iguais(sandbox.detectarTipoArmazenagem('PNEU 295/80R22.5 RAR49'), 'TBR');
+  iguais(sandbox.detectarTipoArmazenagem('PNEU TBR 11R22.5'), 'TBR');
+  iguais(sandbox.detectarTipoArmazenagem('RODA DE ACO 22.5X8.25'), 'RODAS');
+  iguais(sandbox.detectarTipoArmazenagem('PNEU 265/70R16 LT'), 'SUV');
+  iguais(sandbox.detectarTipoArmazenagem('PNEU 205/55R16'), 'PCR');
+});
+teste('calcularArmazenagemItemRF: dentro da carência = 0; depois = tarifa × dias × qtd', () => {
+  const p = procRF();
+  const a = sandbox.calcularArmazenagemItemRF(p, 'PNEU 275/80R22.5 ROVELO', 20, '2026-05-05');
+  iguais(a.tipo, 'TBR'); iguais(a.dias, 0); iguais(a.total, 0);
+  const b = sandbox.calcularArmazenagemItemRF(p, 'PNEU 275/80R22.5 ROVELO', 25, '2026-06-20');
+  iguais(b.diasTotais, 71); iguais(b.dias, 42); iguais(b.unit, 16.8); iguais(b.total, 420);
+  const c = sandbox.calcularArmazenagemItemRF(p, 'PNEU 275/80R22.5 ROVELO', 15, '2026-08-04');
+  iguais(c.dias, 87); iguais(c.unit, 34.8); iguais(c.total, 522);
+});
+teste('calcularArmazenagemItemRF: sem entrada/sem data devolve null com motivo; entrada_armazem tem prioridade sobre data_chegada', () => {
+  const p = procRF();
+  iguais(sandbox.calcularArmazenagemItemRF({ ...p, data_chegada: null }, 'PNEU 275/80R22.5 ROVELO', 1, '2026-06-20').motivo, 'sem_entrada');
+  iguais(sandbox.calcularArmazenagemItemRF(p, 'PNEU 275/80R22.5 ROVELO', 1, null).motivo, 'sem_data');
+  const b = sandbox.calcularArmazenagemItemRF({ ...p, entrada_armazem: '2026-04-20' }, 'PNEU 275/80R22.5 ROVELO', 1, '2026-06-20');
+  iguais(b.dias, 32); iguais(b.unit, 12.8);
+});
+teste('tipo informado em produtos_json vence a detecção automática (PCR a 0,045)', () => {
+  const p = { ...procRF(), produtos_json: JSON.stringify([{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 60, tipo: 'PCR' }]) };
+  const b = sandbox.calcularArmazenagemItemRF(p, 'PNEU 275/80R22.5 ROVELO', 10, '2026-06-20');
+  iguais(b.tipo, 'PCR'); iguais(b.unit, 1.89); iguais(b.total, 18.9);
+});
+teste('calcularArmazenagemRF: soma as saídas com data (vendas reais e BAIXA), ignora remessa 5905', () => {
+  const p = procRF();
+  const r = sandbox.calcularArmazenagemRF(p);
+  iguais(r.saidas.length, 3); iguais(r.total, 942);
+  const vendas = JSON.parse(p.vendas_json);
+  vendas.push({ nf_saida_numero: '9', nf_saida_cfop: '5905', nf_saida_data: '2026-09-01', itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 60 }] });
+  vendas.push({ nf_saida_cfop: 'BAIXA', nf_saida_data: '2026-06-20', itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 2 }] });
+  const r2 = sandbox.calcularArmazenagemRF({ ...p, vendas_json: JSON.stringify(vendas) });
+  iguais(r2.saidas.length, 4); iguais(r2.total, 942 + 33.6);
+});
+teste('rateio por venda: armazenagem RF entra como custo próprio da venda (não rateado) e não conta duas vezes', () => {
+  const p = procRF();
+  const resumo = sandbox.calcularVendasResumo(p);
+  // custo real total = 66.000 (sem armazenagem_rf lançada) → rateio 20/25/15 de 60
+  iguais(resumo.linhas[0].custoArmazenagem, 0);
+  iguais(resumo.linhas[1].custoArmazenagem, 420);
+  iguais(resumo.linhas[2].custoArmazenagem, 522);
+  aproxIgual(resumo.linhas[1].custoTotal, 66000 * 25 / 60 + 420, 0.02);
+  aproxIgual(resumo.linhas[2].lucro, 25000 - (66000 * 15 / 60 + 522), 0.02);
+  // Com o total puxado pra Custos Reais (armazenagem_rf = 942), a base do
+  // rateio continua 66.000 e cada venda segue com a sua própria parte.
+  const p2 = { ...p, real_json: { siscomex: 60000, despachante: 6000, armazenagem_rf: 942 } };
+  const resumo2 = sandbox.calcularVendasResumo(p2);
+  aproxIgual(resumo2.linhas[1].custoTotal, resumo.linhas[1].custoTotal, 0.02);
+  const fontes = sandbox.fontesCustosReais(p);
+  iguais(fontes.armazenagem_rf.valor, 942); iguais(fontes.armazenagem_rf.origem, 'Vendas');
+});
+teste('simularVendaArmazenagemRF: venda futura usa saldo do armazém, custo base + armazenagem, preço pelo fator da cotação', () => {
+  const p = { ...procRF(), estimativa_json: { custo_total: 66000, cenarios: { com_st: { faturamento_total: 82500 }, sem_st: { faturamento_total: 79200 } } } };
+  // já saíram 60 → saldo 0; simula com só 2 vendas lançadas
+  const vendas = JSON.parse(p.vendas_json).slice(0, 2);
+  const p2 = { ...p, vendas_json: JSON.stringify(vendas) }; // saldo 15
+  const sim = sandbox.simularVendaArmazenagemRF(p2, [
+    { data: '2026-09-15', itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 10 }] },
+    { data: '2026-08-04', itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 8 }] },
+  ]);
+  iguais(sim.base.origem, 'real'); iguais(sim.base.rateioPor, 'unidade');
+  aproxIgual(sim.base.fatorComSt, 1.25, 0.0001); aproxIgual(sim.base.fatorSemSt, 1.2, 0.0001);
+  // ordem cronológica: 04/08 (8 un.) primeiro, depois 15/09 (10 un.)
+  const v1 = sim.vendas.find(v => v.indice === 1), v2 = sim.vendas.find(v => v.indice === 0);
+  iguais(v1.itens[0].dias, 87); iguais(v1.itens[0].armazenagemUnit, 34.8);
+  iguais(v1.itens[0].custoUnitBase, 1100); iguais(v1.itens[0].custoUnitAtual, 1134.8);
+  aproxIgual(v1.itens[0].precoComSt, 1418.5, 0.01); aproxIgual(v1.itens[0].precoSemSt, 1361.76, 0.01);
+  iguais(v1.itens[0].saldoAntes, 15); iguais(v1.itens[0].saldoDepois, 7); iguais(v1.itens[0].excedeSaldo, false);
+  iguais(v2.itens[0].dias, 129); iguais(v2.itens[0].saldoAntes, 7); iguais(v2.itens[0].excedeSaldo, true);
+});
+teste('simularVendaArmazenagemRF: rateio por FOB quando produtos têm fob_usd (TBR e PCR no mesmo container)', () => {
+  const p = {
+    id: 'rf-2', data_chegada: '2026-04-10', real_json: { siscomex: 100000 }, real_cambio: 5,
+    produtos_json: JSON.stringify([
+      { descricao: 'PNEU 295/80R22.5', quantidade: 100, fob_usd: 150 },
+      { descricao: 'PNEU 205/55R16', quantidade: 400, fob_usd: 25 },
+    ]),
+    vendas_json: '[]',
+  };
+  const sim = sandbox.simularVendaArmazenagemRF(p, [{ data: '2026-06-20', itens: [{ descricao: 'PNEU 295/80R22.5', quantidade: 1 }, { descricao: 'PNEU 205/55R16', quantidade: 1 }] }]);
+  iguais(sim.base.rateioPor, 'fob');
+  // peso: 100×150=15000 e 400×25=10000 → 60%/40% de 100.000
+  iguais(sim.vendas[0].itens[0].custoUnitBase, 600);  // 60.000/100
+  iguais(sim.vendas[0].itens[1].custoUnitBase, 100);  // 40.000/400
+  iguais(sim.vendas[0].itens[0].tipo, 'TBR'); iguais(sim.vendas[0].itens[0].armazenagemUnit, 16.8);
+  iguais(sim.vendas[0].itens[1].tipo, 'PCR'); iguais(sim.vendas[0].itens[1].armazenagemUnit, 1.89);
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';

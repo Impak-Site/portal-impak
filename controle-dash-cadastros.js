@@ -134,7 +134,7 @@ function _clRenderCamposDados(categoria, dados){
   const wrap = document.getElementById('cl_dados');
   if(!wrap) return;
   wrap.innerHTML = campos.map(c=>`<div class="form-group"><label class="form-label">${esc(c[1])}</label>
-    <input class="form-input" type="${c[2]==='number'?'number':'text'}" data-dado="${esc(c[0])}" value="${esc(dados && dados[c[0]]!==undefined && dados[c[0]]!==null ? String(dados[c[0]]) : '')}"></div>`).join('');
+    <input class="form-input" type="${c[2]==='number'?'number':'text'}"${c[2]==='number'?' step="any"':''} data-dado="${esc(c[0])}" value="${esc(dados && dados[c[0]]!==undefined && dados[c[0]]!==null ? String(dados[c[0]]) : '')}"></div>`).join('');
 }
 
 function abrirNovoItemLista(){

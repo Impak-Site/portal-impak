@@ -2040,6 +2040,13 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'administrativo',   label:'Administrativo',          unidade:'BRL', porContainer:pc('administrativo'),  cotado:c=>c?.taxas_fixas?.administrativo },
     { id:'agente',           label:'Agente Carga',            unidade:'BRL', porContainer:pc('agente'),  cotado:c=>c?.taxas_fixas?.agente },
     { id:'custos_diversos',  label:'Custos Diversos',         unidade:'BRL', porContainer:pc('custos_diversos'), cotado:c=>c?.custos_diversos },
+    // Armazenagem pós-nacionalização no armazém geral (RF) — Ayslan 13/10/2026.
+    // Calculada por venda na aba Vendas (tarifa/pneu/dia × dias após a
+    // carência × qtd); aqui entra o TOTAL do processo (fonte "Vendas").
+    // excluirDoRateio: cada venda já carrega a sua própria parte, então o
+    // rateio proporcional entre vendas NÃO inclui este item (senão contaria
+    // duas vezes). Ver calcularVendasResumo.
+    { id:'armazenagem_rf',   label:'Armazenagem pós-nacionalização (RF)', unidade:'BRL', excluirDoRateio:true, cotado:()=>null },
     // Seguro de Venda: distinto do Seguro (Compra e Frete acima, custo interno
     // da importação) — é a taxa de seguro cobrada na proposta ao cliente, que
     // compõe total_taxas/custo_total no Calculador (ver comentário em
@@ -2361,6 +2368,13 @@ function fontesCustosReais(p){
   if(fob) fontes.fob = { lado:'pago', valor: fob.valorBrl, moeda:'BRL', origem:'Financeiro', descricao: fob.descricao, pendentes: fob.pendentes };
   const frete = parseFloat(p.valor_frete);
   if(frete > 0) fontes.frete = { lado:'cobrado', valor: round2(frete), moeda: p.moeda_frete || 'USD', origem:'Logística', descricao:'Valor do Frete lançado na aba Logística' };
+  try{
+    const rf = calcularArmazenagemRF(p);
+    if(rf && rf.total != null && rf.total > 0){
+      const n = rf.saidas.filter(x => x.total != null).length;
+      fontes.armazenagem_rf = { lado:'pago', valor: rf.total, moeda:'BRL', origem:'Vendas', descricao:`${n} saída${n===1?'':'s'} do armazém (tarifa/pneu/dia após carência) — aba Vendas`, pendentes: rf.semData };
+    }
+  }catch(e){ /* sem vendas/produtos: sem fonte */ }
   return fontes;
 }
 
@@ -3029,7 +3043,11 @@ function calcularRateioVenda(p, venda, custoRealTotal){
   const fracao = totalQtd > 0 ? (qtdVenda / totalQtd) : 0;
   const custoRateado = (custoRealTotal||0) * fracao;
   const custoDireto = custosDiretosVenda(venda);
-  return { totalQtd, qtdVenda, fracao, custoRateado, custoDireto, custoTotal: custoRateado + custoDireto };
+  // Armazenagem pós-nacionalização (RF) desta venda: não é rateada — os
+  // pneus que saíram nesta data pagam a armazenagem acumulada até ela.
+  let custoArmazenagem = 0;
+  try{ const a = calcularArmazenagemVendaRF(p, venda); custoArmazenagem = a.total || 0; }catch(e){ custoArmazenagem = 0; }
+  return { totalQtd, qtdVenda, fracao, custoRateado, custoDireto, custoArmazenagem, custoTotal: custoRateado + custoDireto + custoArmazenagem };
 }
 
 // Lucro de uma venda específica: NF Saída DELA (não do processo) − a fatia
@@ -3216,6 +3234,203 @@ function estoqueDoProcesso(p){
   return out;
 }
 
+// ════════════════════════════════════════════════════════════════
+// ARMAZENAGEM PÓS-NACIONALIZAÇÃO (armazém geral / "RF") — Ayslan 13/10/2026
+// ════════════════════════════════════════════════════════════════
+// O container nacionalizado vai pro armazém geral (RF) pra venda fracionada.
+// A RF cobra POR PNEU POR DIA, por tipo (PCR/SUV/TBR/RODAS/METAIS), depois de
+// uma carência contada da entrada no armazém. Regra e valores vêm da planilha
+// Modelo Rev97 (MIX - COMPLETO, CJ2/CJ3/CJ7): custo por pneu = tarifa ×
+// max(0, data da venda − (entrada + carência)); custo da linha = isso × qtd.
+//
+// Diferente da planilha (que tinha só 3 vendas e subtraía ARMAZ.2/ARMAZ.3),
+// aqui cada venda da aba Vendas calcula a sua: os pneus que saem naquela
+// data pagam a armazenagem acumulada até ela; o que fica no estoque continua
+// acumulando e sai mais caro na próxima venda. Tudo POR ITEM (medida): um
+// container com TBR e PCR tem duas contas separadas, cada uma com a sua
+// tarifa. Tarifas/carência são editáveis em /cadastros → Listas
+// (categoria armazenagem_rf) — aplicarListas() em controle-campos.js
+// preenche ARMAZENAGEM_RF_TARIFAS; vazio = padrão de listas-padrao.js.
+const ARMAZENAGEM_RF_TARIFAS = {}; // { TBR: { tarifa_dia:0.40, carencia_dias:29, nome:'TBR (...)' }, ... }
+const ARMAZENAGEM_RF_TIPOS = ['PCR', 'SUV', 'TBR', 'RODAS', 'METAIS'];
+
+function tarifasArmazenagemRF(){
+  if(Object.keys(ARMAZENAGEM_RF_TARIFAS).length) return ARMAZENAGEM_RF_TARIFAS;
+  const padrao = (typeof ListasPadrao !== 'undefined' && ListasPadrao.listasPadrao) ? (ListasPadrao.listasPadrao().armazenagem_rf || []) : [];
+  const out = {};
+  padrao.forEach(t => { out[t.codigo] = { tarifa_dia: parseFloat(t.dados && t.dados.tarifa_dia) || 0, carencia_dias: parseInt(t.dados && t.dados.carencia_dias, 10) || 0, nome: t.nome }; });
+  return out;
+}
+function tarifaArmazenagemRF(tipo){
+  const t = tarifasArmazenagemRF();
+  const k = String(tipo || '').trim().toUpperCase();
+  return t[k] || null;
+}
+
+// Tipo do item pra tarifa, deduzido da descrição quando não foi informado
+// em produtos_json (campo `tipo`). Medidas de caminhão (R22.5/R20/R19.5/
+// R17.5/R24), "TBR" no texto → TBR; "RODA" → RODAS; "SUV"/"LT"/"4X4" → SUV;
+// senão PCR. Palavras de metais (aço, ferro, metal) → METAIS.
+function detectarTipoArmazenagem(descricao){
+  const d = String(descricao || '').toUpperCase();
+  if(!d) return 'PCR';
+  if(/\bTBR\b/.test(d) || /R\s?(22\.5|20|19\.5|17\.5|24)\b/.test(d) || /\b(CAMINH|ONIBUS|ÔNIBUS|TRUCK)/.test(d)) return 'TBR';
+  if(/\bRODAS?\b|\bARO\b|\bWHEEL/.test(d)) return 'RODAS';
+  if(/\bMETA(L|IS)\b|\bA[CÇ]O\b|\bFERRO\b/.test(d)) return 'METAIS';
+  if(/\bSUV\b|\bLT\b|\b4X4\b|\bPICK\s?UP\b|\bCAMIONETE\b/.test(d)) return 'SUV';
+  return 'PCR';
+}
+function tipoArmazenagemDoItem(descricao, produtos){
+  const lista = Array.isArray(produtos) ? produtos : [];
+  const i = casarItemComProduto(descricao, lista);
+  const pr = i >= 0 ? lista[i] : null;
+  const tipo = pr && pr.tipo ? String(pr.tipo).trim().toUpperCase() : '';
+  return ARMAZENAGEM_RF_TIPOS.includes(tipo) ? tipo : detectarTipoArmazenagem(pr ? pr.descricao : descricao);
+}
+function produtosDoProcessoRF(p){
+  let produtos = [];
+  try{ produtos = JSON.parse((p && p.produtos_json) || '[]'); }catch(e){ produtos = []; }
+  if(!Array.isArray(produtos)) produtos = [];
+  return produtos.filter(x => x && x.descricao).map(x => ({ descricao: String(x.descricao).trim(), quantidade: parseFloat(x.quantidade) || 0, tipo: x.tipo || '', fob_usd: parseFloat(x.fob_usd) || null }));
+}
+
+// Data em que a carga entrou no armazém (RF). Campo próprio na Logística;
+// se vazio, usa a Data de Chegada (igual a planilha, DADOS!E4).
+function dataEntradaArmazemRF(p){
+  if(!p) return null;
+  return p.entrada_armazem || p.data_chegada || null;
+}
+function _diasEntreISO(aISO, bISO){
+  const a = parseDataLocal(aISO), b = parseDataLocal(bISO);
+  if(!a || !b || isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+// Armazenagem de UM item saindo em `dataSaidaISO`:
+//   dias cobrados = max(0, dataSaida − (entrada + carência))
+//   unit = tarifa × dias ; total = unit × qtd
+function calcularArmazenagemItemRF(p, descricao, quantidade, dataSaidaISO, produtos){
+  const prods = produtos || produtosDoProcessoRF(p);
+  const tipo = tipoArmazenagemDoItem(descricao, prods);
+  const tarifa = tarifaArmazenagemRF(tipo) || { tarifa_dia: 0, carencia_dias: 0 };
+  const entrada = dataEntradaArmazemRF(p);
+  const qtd = parseFloat(quantidade) || 0;
+  const base = { descricao, quantidade: qtd, tipo, tarifa_dia: tarifa.tarifa_dia, carencia_dias: tarifa.carencia_dias, entrada, dataSaida: dataSaidaISO || null };
+  if(!entrada || !dataSaidaISO) return { ...base, diasTotais: null, dias: null, unit: null, total: null, motivo: !entrada ? 'sem_entrada' : 'sem_data' };
+  const diasTotais = _diasEntreISO(entrada, dataSaidaISO);
+  if(diasTotais == null) return { ...base, diasTotais: null, dias: null, unit: null, total: null, motivo: 'data_invalida' };
+  const dias = Math.max(0, diasTotais - tarifa.carencia_dias);
+  const unit = round2(tarifa.tarifa_dia * dias);
+  return { ...base, diasTotais, dias, unit, total: round2(unit * qtd), motivo: null };
+}
+
+// Armazenagem de uma venda da aba Vendas (data = Data NF Saída), item a item.
+function calcularArmazenagemVendaRF(p, venda, produtos){
+  const prods = produtos || produtosDoProcessoRF(p);
+  const data = venda && venda.nf_saida_data ? venda.nf_saida_data : null;
+  const itens = ((venda && venda.itens) || []).filter(it => it && it.descricao && (parseFloat(it.quantidade) || 0) > 0)
+    .map(it => calcularArmazenagemItemRF(p, it.descricao, it.quantidade, data, prods));
+  const completo = itens.length > 0 && itens.every(it => it.total != null);
+  const total = completo ? round2(itens.reduce((s, it) => s + it.total, 0)) : (itens.some(it => it.total != null) ? round2(itens.filter(it => it.total != null).reduce((s, it) => s + it.total, 0)) : null);
+  return { data, itens, total, completo };
+}
+
+// Armazenagem do processo inteiro: todas as saídas de estoque com data —
+// vendas reais e baixas (CFOP "BAIXA"). Remessa (5905) e retorno não saem
+// do armazém, então não contam. É o que alimenta "Armazenagem
+// pós-nacionalização (RF)" em Custos Reais (fonte "Vendas").
+function calcularArmazenagemRF(p){
+  const prods = produtosDoProcessoRF(p);
+  const entrada = dataEntradaArmazemRF(p);
+  const vendas = parseVendas(p);
+  const saidas = [];
+  vendas.forEach((v, i) => {
+    if(!v) return;
+    const ehSaida = _vendaEhReal(v) || ehCfopBaixa(v.nf_saida_cfop);
+    if(!ehSaida) return;
+    const r = calcularArmazenagemVendaRF(p, v, prods);
+    saidas.push({ indice: i, venda: v, baixa: ehCfopBaixa(v.nf_saida_cfop), ...r });
+  });
+  const comValor = saidas.filter(s => s.total != null);
+  const total = comValor.length ? round2(comValor.reduce((s, x) => s + x.total, 0)) : null;
+  return { entrada, saidas, total, semData: saidas.filter(s => !s.data).length, temTarifa: Object.keys(tarifasArmazenagemRF()).length > 0 };
+}
+
+// ── Simulação de venda futura ("quanto custa / por quanto vender se eu
+// tirar X pneus da medida Y na data Z") ───────────────────────────────
+// Custo base por unidade de cada item: Custo Real Total do processo (sem a
+// própria armazenagem RF, que é calculada por venda) rateado entre os itens
+// pelo peso FOB (fob_usd × qtd, quando produtos_json tem fob_usd) ou, sem
+// isso, por unidade. Sem Custos Reais lançados, usa o custo cotado
+// (estimativa_json.custo_total) e marca origem 'cotado'.
+function custoBaseUnitarioPorItemRF(p){
+  const prods = produtosDoProcessoRF(p);
+  const totalQtd = prods.reduce((s, x) => s + x.quantidade, 0);
+  const custos = calcularCustoRealTotal(p);
+  let custoTotal = null, origem = null;
+  if(custos && custos.total > 0){
+    const rf = (custos.detalhe || []).find(d => d.id === 'armazenagem_rf');
+    custoTotal = custos.total - (rf ? rf.valorBrl : 0);
+    origem = 'real';
+  } else if(p && p.estimativa_json && parseFloat(p.estimativa_json.custo_total) > 0){
+    custoTotal = parseFloat(p.estimativa_json.custo_total);
+    origem = 'cotado';
+  }
+  const temFob = prods.length > 0 && prods.every(x => x.fob_usd > 0 && x.quantidade > 0);
+  const pesoTotal = temFob ? prods.reduce((s, x) => s + x.fob_usd * x.quantidade, 0) : totalQtd;
+  const itens = prods.map(x => {
+    const peso = temFob ? x.fob_usd * x.quantidade : x.quantidade;
+    const custoItem = (custoTotal != null && pesoTotal > 0) ? custoTotal * peso / pesoTotal : null;
+    return { descricao: x.descricao, quantidade: x.quantidade, tipo: tipoArmazenagemDoItem(x.descricao, prods), custoUnit: (custoItem != null && x.quantidade > 0) ? round2(custoItem / x.quantidade) : null };
+  });
+  // Fator preço/custo da cotação (faturamento ÷ custo) por cenário — serve
+  // pra transformar custo atualizado em preço sugerido. Sem cotação, null.
+  const est = p && p.estimativa_json;
+  const custoCot = est && parseFloat(est.custo_total) > 0 ? parseFloat(est.custo_total) : null;
+  const fatorComSt = (custoCot && est.cenarios && est.cenarios.com_st && parseFloat(est.cenarios.com_st.faturamento_total) > 0) ? parseFloat(est.cenarios.com_st.faturamento_total) / custoCot : null;
+  const fatorSemSt = (custoCot && est.cenarios && est.cenarios.sem_st && parseFloat(est.cenarios.sem_st.faturamento_total) > 0) ? parseFloat(est.cenarios.sem_st.faturamento_total) / custoCot : null;
+  return { itens, custoTotal, origem, rateioPor: temFob ? 'fob' : 'unidade', fatorComSt, fatorSemSt };
+}
+
+// vendasSim: [{ data:'YYYY-MM-DD', itens:[{descricao, quantidade}] }] em
+// ordem cronológica. Devolve, por venda e por item: dias, armazenagem por
+// pneu, custo unitário atualizado (base + armazenagem) e preço sugerido
+// COM/SEM ST (custo atualizado × fator da cotação), além do saldo que ainda
+// está no armazém antes/depois da venda (avisa se pedir mais do que tem).
+function simularVendaArmazenagemRF(p, vendasSim){
+  const prods = produtosDoProcessoRF(p);
+  const base = custoBaseUnitarioPorItemRF(p);
+  const estoque = estoqueDoProcesso(p);
+  // saldo atual por produto (índice em prods)
+  const saldo = prods.map(x => { const e = estoque.itens.find(it => it.descricao === x.descricao); return e ? e.quantidade : 0; });
+  const lista = (vendasSim || []).map((v, i) => ({ ...v, _i: i })).sort((a, b) => String(a.data || '').localeCompare(String(b.data || '')));
+  const vendas = lista.map((v) => {
+    const itens = (v.itens || []).filter(it => it && it.descricao && (parseFloat(it.quantidade) || 0) > 0).map(it => {
+      const idx = casarItemComProduto(it.descricao, prods);
+      const arm = calcularArmazenagemItemRF(p, it.descricao, it.quantidade, v.data, prods);
+      const baseItem = idx >= 0 ? base.itens[idx] : null;
+      const qtd = parseFloat(it.quantidade) || 0;
+      const saldoAntes = idx >= 0 ? saldo[idx] : null;
+      if(idx >= 0) saldo[idx] = saldo[idx] - qtd;
+      const custoUnitBase = baseItem ? baseItem.custoUnit : null;
+      const custoUnitAtual = (custoUnitBase != null && arm.unit != null) ? round2(custoUnitBase + arm.unit) : null;
+      return {
+        descricao: it.descricao, quantidade: qtd, tipo: arm.tipo, tarifa_dia: arm.tarifa_dia, carencia_dias: arm.carencia_dias,
+        diasTotais: arm.diasTotais, dias: arm.dias, armazenagemUnit: arm.unit, armazenagemTotal: arm.total, motivo: arm.motivo,
+        custoUnitBase, custoUnitAtual,
+        precoComSt: (custoUnitAtual != null && base.fatorComSt) ? round2(custoUnitAtual * base.fatorComSt) : null,
+        precoSemSt: (custoUnitAtual != null && base.fatorSemSt) ? round2(custoUnitAtual * base.fatorSemSt) : null,
+        saldoAntes, saldoDepois: saldoAntes != null ? saldoAntes - qtd : null,
+        excedeSaldo: saldoAntes != null && qtd > saldoAntes + 0.009,
+        semProduto: idx < 0,
+      };
+    });
+    const armTotal = itens.every(it => it.armazenagemTotal != null) && itens.length ? round2(itens.reduce((s, it) => s + it.armazenagemTotal, 0)) : null;
+    return { indice: v._i, data: v.data, itens, armazenagemTotal: armTotal };
+  });
+  return { entrada: dataEntradaArmazemRF(p), vendas, base, estoqueAtual: estoque.itens, saldoFinal: prods.map((x, i) => ({ descricao: x.descricao, saldo: saldo[i] })) };
+}
+
 function itensFaltantesVenda(p){
   if(!p || !p.produtos_json) return [];
   try{
@@ -3258,7 +3473,10 @@ function calcularVendasResumo(p){
   const vendas = vendasReaisDoProcesso(p); // remessas (CFOP 5905) não são venda
   if(!vendas.length) return null;
   const custosReais = calcularCustoRealTotal(p);
-  const custoRealTotal = custosReais ? custosReais.total : 0;
+  // Base do rateio proporcional = Custo Real Total SEM os itens marcados
+  // excluirDoRateio (armazenagem RF, que cada venda já carrega por fora).
+  const excluidoRateio = custosReais ? (custosReais.detalhe || []).filter(d => { const it = custosReaisItensFlat().find(x => x.id === d.id); return it && it.excluirDoRateio; }).reduce((s, d) => s + (d.valorBrl || 0), 0) : 0;
+  const custoRealTotal = custosReais ? (custosReais.total - excluidoRateio) : 0;
   let linhas = vendas.map(venda => ({ venda, ...calcularLucroVenda(p, venda, custoRealTotal) }));
   const totalQtd = totalQuantidadeProdutos(p);
   const qtdAlocada = linhas.reduce((s,l)=> s + l.qtdVenda, 0);
@@ -3273,7 +3491,7 @@ function calcularVendasResumo(p){
     const ajustados = arredondarComRestoExato(linhas.map(l=>l.custoRateado), custoRealTotal);
     linhas = linhas.map((l,i) => {
       const custoRateado = ajustados[i];
-      const custoTotal = custoRateado + l.custoDireto;
+      const custoTotal = custoRateado + l.custoDireto + (l.custoArmazenagem || 0);
       const lucro = l.temNf ? (l.nfSaida - custoTotal) : null;
       const pctLucro = (l.temNf && lucro != null && l.nfSaida > 0) ? (lucro / l.nfSaida) : null;
       return { ...l, custoRateado, custoTotal, lucro, pctLucro };

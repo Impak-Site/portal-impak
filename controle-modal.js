@@ -477,7 +477,11 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           Use esta aba quando este processo (Direto, Encomenda ou Conta e Ordem) foi vendido pra mais de um cliente — ex.: meio contêiner pra um, meio pra outro. Cada venda tem seu próprio cliente e NF Saída. Os custos lançados na aba Custos Reais são rateados automaticamente entre as vendas, proporcional à quantidade que cada uma levou; custos que só existiram por causa de um cliente específico (ex.: um frete extra) podem ser lançados direto naquela venda, sem entrar no rateio. Se este processo tem um único cliente/NF Saída, não precisa usar esta aba.
         </div>
         <div id="vendas-list"></div>
-        <button type="button" onclick="adicionarVenda()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;margin-top:4px;">+ Adicionar Venda</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px;">
+          <button type="button" onclick="adicionarVenda()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Venda</button>
+          <button type="button" onclick="abrirSimularVendaRF()" style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 14px;font-size:12px;color:#92400e;cursor:pointer;font-weight:600;" title="Projeta a armazenagem do armazém (RF) até uma data futura e o custo/preço atualizado por medida — não grava nada.">🧮 Simular venda (armazenagem RF)</button>
+        </div>
+        <div id="simular-venda-rf-wrap"></div>
         <input type="hidden" id="f_vendas_json">
         <div id="vendas-resumo"></div>
       </div>
@@ -612,6 +616,8 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_data_presenca" value="${esc(p.data_presenca)}" onchange="atualizarFaseEmTempoReal()"></div>
           <div class="form-group"><label class="form-label">Armazenagem Vence</label>
             <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_armazenagem_vencimento" value="${esc(p.armazenagem_vencimento)}" style="color:var(--warn);font-weight:600;" onchange="atualizarFaseEmTempoReal()"></div>
+          <div class="form-group"><label class="form-label">Entrada no armazém (RF)</label>
+            <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_entrada_armazem" value="${esc(p.entrada_armazem)}" title="Data em que a carga nacionalizada entrou no armazém geral (RF). Conta a carência da armazenagem pós-nacionalização; vazio = usa a Data Chegada." onchange="if(typeof renderVendas==='function')renderVendas()"></div>
           <div class="form-group" style="position:relative"><label class="form-label">Armazém <span id="f_armazem_warn" style="display:none;color:#f39c12;font-weight:600;font-size:11px;margin-left:6px;"></span></label>
             <input class="form-input" id="f_armazem" value="${esc(p.armazem)}" placeholder="Onde a carga está armazenada (útil p/ LCL) — selecione do cadastro" autocomplete="off" data-cadastro-tipo="ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM"
               onfocus="autocompletarContato(this,'ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM','armazem-dropdown')" oninput="autocompletarContato(this,'ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM','armazem-dropdown')" onchange="verificarCadastroCampo(this,'ARMAZEM_ALFANDEGADO,PORTO_ARMAZEM','f_armazem_warn')">
@@ -1746,7 +1752,7 @@ const LABELS_CAMPOS_IA = {
   agendamento_cancelado:'Agendamento cancelado', motivo_cancelamento:'Motivo do cancelamento',
   nf_entrada_numero:'Nº NF entrada', nf_entrada_data:'Data NF entrada', nf_entrada_valor:'Valor NF entrada',
   nf_saida_numero:'Nº NF saída', nf_saida_data:'Data NF saída', nf_saida_valor:'Valor NF saída', nf_saida_cfop:'CFOP NF saída',
-  data_devolucao_vazio:'Data devolução vazio', demurrage_valor:'Valor Demurrage', armazem:'Armazém',
+  data_devolucao_vazio:'Data devolução vazio', demurrage_valor:'Valor Demurrage', armazem:'Armazém', entrada_armazem:'Entrada no armazém (RF)',
   ric_status:'Status RIC', depot:'Depot',
   data_solicitacao_demurrage:'Data solicitação Demurrage', data_isencao_demurrage:'Data isenção Demurrage',
   data_envio_termo:'Data envio do termo', data_pagamento_lavagem:'Data pagamento lavagem', data_pagamento_demurrage:'Data pagamento Demurrage',

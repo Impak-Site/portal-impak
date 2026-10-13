@@ -72,6 +72,14 @@ function aplicarListas(listas){
       BANCOS_CAMBIO.push(Object.assign({ nome:b.nome, codigo:b.codigo }, b.dados||{}));
     });
   }
+  // Armazenagem pós-nacionalização (RF): tarifa R$/pneu/dia + carência por
+  // tipo — usado por calcularArmazenagemItemRF (controle-core.js).
+  if(Array.isArray(listas.armazenagem_rf) && listas.armazenagem_rf.length && typeof ARMAZENAGEM_RF_TARIFAS !== 'undefined'){
+    Object.keys(ARMAZENAGEM_RF_TARIFAS).forEach(k=>{ delete ARMAZENAGEM_RF_TARIFAS[k]; });
+    listas.armazenagem_rf.filter(t=>t.ativo!==false).forEach(t=>{
+      ARMAZENAGEM_RF_TARIFAS[String(t.codigo).toUpperCase()] = { tarifa_dia: parseFloat(t.dados && t.dados.tarifa_dia) || 0, carencia_dias: parseInt(t.dados && t.dados.carencia_dias, 10) || 0, nome: t.nome };
+    });
+  }
 }
 aplicarListas(_LISTAS_INICIAIS);
 
@@ -276,7 +284,7 @@ function coletarESalvar(opts){
     'horario_retirada','agendamento_cancelado','motivo_cancelamento',
     'nf_entrada_numero','nf_entrada_data','nf_entrada_valor',
     'nf_saida_numero','nf_saida_data','nf_saida_valor','nf_saida_cfop',
-    'data_devolucao_vazio','demurrage_valor','armazem',
+    'data_devolucao_vazio','demurrage_valor','armazem','entrada_armazem',
     'ric_status','depot','data_solicitacao_demurrage','data_isencao_demurrage','data_envio_termo','data_pagamento_lavagem','data_pagamento_demurrage',
     'despachante','pi_cambio','pi_cambio_fechado','pi_cambio_entrada','pi_cambio_saldo','pi_cambio_banco','pi_cambio_custo','pi_cambio_codigo_bacen','pi_venc_di','pi_duimp_numero','pi_duimp_protocolo','containers_json','produtos_json','vendas_json','pi_parcelas_json',
   ];
@@ -800,17 +808,25 @@ function renderMultiProdutos(){
   const lista = document.getElementById('multi-produtos-list');
   if(!lista) return;
   if(!_produtos.length) _produtos = [{descricao:'', quantidade:''}];
-  lista.innerHTML = _produtos.map((it,i)=>`
-    <div style="display:grid;grid-template-columns:1fr 110px 32px;gap:6px;align-items:center;">
+  lista.innerHTML = _produtos.map((it,i)=>{
+    const tipoAuto = (typeof detectarTipoArmazenagem === 'function') ? detectarTipoArmazenagem(it.descricao) : 'PCR';
+    const tipos = (typeof ARMAZENAGEM_RF_TIPOS !== 'undefined') ? ARMAZENAGEM_RF_TIPOS : ['PCR','SUV','TBR','RODAS','METAIS'];
+    return `
+    <div style="display:grid;grid-template-columns:1fr 110px 118px 32px;gap:6px;align-items:center;">
       <input class="form-input" placeholder="Descrição (ex: PNEU TBR 295/80R22.5)" value="${esc(it.descricao||'')}"
-        oninput="_produtos[${i}].descricao=this.value;sincronizarProdutoLegado()">
+        oninput="_produtos[${i}].descricao=this.value;sincronizarProdutoLegado()" onchange="renderMultiProdutos()">
       <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
         oninput="_produtos[${i}].quantidade=this.value;sincronizarProdutoLegado()">
+      <select class="form-input" title="Tipo p/ tarifa de armazenagem no armazém (RF). 'auto' = deduzido da descrição." onwheel="this.blur()"
+        onchange="_produtos[${i}].tipo=this.value;sincronizarProdutoLegado()">
+        <option value="" ${!it.tipo?'selected':''}>auto: ${esc(tipoAuto)}</option>
+        ${tipos.map(t=>`<option value="${t}" ${String(it.tipo||'').toUpperCase()===t?'selected':''}>${t}</option>`).join('')}
+      </select>
       ${_produtos.length>1
         ? `<button type="button" onclick="removerProdutoItem(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
         : '<div></div>'}
     </div>
-  `).join('');
+  `;}).join('');
   sincronizarProdutoLegado();
 }
 
@@ -872,14 +888,30 @@ function renderVendas(){
     renderResumoVendas();
     return;
   }
+  const r2 = x => x==null ? '—' : 'R$ ' + Number(x).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const snapshotRF = _editando ? { ..._editando, produtos_json: JSON.stringify(_produtos && _produtos.length ? _produtos : JSON.parse(_editando.produtos_json||'[]')), entrada_armazem: (document.getElementById('f_entrada_armazem')||{}).value || _editando.entrada_armazem, data_chegada: (document.getElementById('f_data_chegada')||{}).value || _editando.data_chegada } : null;
   wrap.innerHTML = _vendas.map((v,vi)=>{
-    const itensHtml = (v.itens||[]).map((it,ii)=>`
+    // Armazenagem pós-nacionalização (RF) desta venda, item a item — só
+    // pra vendas que tiram do estoque (venda real ou BAIXA), com Data NF.
+    const ehSaida = !ehCfopSemVenda(v.nf_saida_cfop) || ehCfopBaixa(v.nf_saida_cfop);
+    const armRF = (snapshotRF && ehSaida && typeof calcularArmazenagemVendaRF === 'function') ? calcularArmazenagemVendaRF(snapshotRF, v) : null;
+    const itensHtml = (v.itens||[]).map((it,ii)=>{
+      const a = armRF && armRF.itens.find(x => x.descricao === it.descricao && Math.abs(x.quantidade - (parseFloat(it.quantidade)||0)) < 0.001);
+      let armHtml = '';
+      if(a){
+        if(a.total != null) armHtml = `<div style="grid-column:1/-1;font-size:11px;color:${a.dias>0?'#92400e':'var(--muted)'};margin:-2px 0 2px 2px;">🏭 Armazenagem RF (${esc(a.tipo)} · R$ ${a.tarifa_dia.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3})}/pneu/dia, carência ${a.carencia_dias}d): ${a.diasTotais} dias no armazém → <strong>${a.dias} dia(s) cobrado(s)</strong> · ${r2(a.unit)}/pneu · <strong>${r2(a.total)}</strong></div>`;
+        else if(a.motivo === 'sem_entrada') armHtml = `<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:-2px 0 2px 2px;">🏭 Armazenagem RF: informe a Data de Chegada ou "Entrada no armazém (RF)" na Logística.</div>`;
+        else if(a.motivo === 'sem_data') armHtml = `<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:-2px 0 2px 2px;">🏭 Armazenagem RF: informe a Data NF Saída pra calcular.</div>`;
+      }
+      return `
       <div style="display:grid;grid-template-columns:1fr 110px 32px;gap:6px;align-items:center;margin-bottom:6px;">
         ${campoDescricaoItemVenda(vi, ii, it)}
         <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
-          oninput="_vendas[${vi}].itens[${ii}].quantidade=this.value;sincronizarVendasLegado();renderResumoVendas()">
+          oninput="_vendas[${vi}].itens[${ii}].quantidade=this.value;sincronizarVendasLegado();renderResumoVendas()" onchange="renderVendas()">
         ${(v.itens.length>1) ? `<button type="button" onclick="removerItemVenda(${vi},${ii})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>` : '<div></div>'}
-      </div>`).join('');
+        ${armHtml}
+      </div>`;}).join('');
+    const armTotalHtml = (armRF && armRF.total != null) ? `<div style="font-size:12px;margin:2px 0 10px;color:var(--text);">🏭 Armazenagem RF desta venda: <strong>${r2(armRF.total)}</strong> <span style="color:var(--muted);">(entra no custo desta venda, sem rateio)</span></div>` : '';
     const custosHtml = (v.custos_diretos||[]).map((c,ci)=>`
       <div style="display:grid;grid-template-columns:1fr 130px 32px;gap:6px;align-items:center;margin-bottom:6px;">
         <input class="form-input" placeholder="Descrição do custo direto (ex: Frete extra)" value="${esc(c.label||'')}"
@@ -908,7 +940,7 @@ function renderVendas(){
         <div class="form-group"><label class="form-label">CFOP</label>
           <input class="form-input" value="${esc(v.nf_saida_cfop||'')}" placeholder="ex: 5102, 6102, 5905, BAIXA" onchange="_vendas[${vi}].nf_saida_cfop=this.value.trim();sincronizarVendasLegado();renderVendas()"></div>
         <div class="form-group"><label class="form-label">Data NF Saída</label>
-          <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(v.nf_saida_data||'')}" oninput="_vendas[${vi}].nf_saida_data=this.value;sincronizarVendasLegado()"></div>
+          <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(v.nf_saida_data||'')}" oninput="_vendas[${vi}].nf_saida_data=this.value;sincronizarVendasLegado()" onchange="renderVendas()"></div>
         <div class="form-group"><label class="form-label">Valor NF Saída (R$)</label>
           <input class="form-input" type="number" step="0.01" value="${v.nf_saida_valor!=null?v.nf_saida_valor:''}" oninput="_vendas[${vi}].nf_saida_valor=this.value;sincronizarVendasLegado();renderResumoVendas()"></div>
         <div class="form-group"><label class="form-label">Forma de Pagamento</label>
@@ -923,6 +955,7 @@ function renderVendas(){
       </div>
       <label class="form-label">Itens vendidos (quantidade alocada a este cliente)</label>
       <div style="margin-bottom:6px;">${itensHtml}</div>
+      ${armTotalHtml}
       <button type="button" onclick="adicionarItemVenda(${vi})" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-bottom:14px;">+ Item</button>
       <label class="form-label">Custos diretos desta venda (não rateados — ex.: frete extra só deste cliente)</label>
       <div style="margin-bottom:6px;">${custosHtml}</div>
@@ -1039,7 +1072,10 @@ function renderResumoVendas(){
   const r2 = v => v==null ? '—' : 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const cambio = typeof coletarCambioCustosReaisDoForm === 'function' ? coletarCambioCustosReaisDoForm() : _editando.real_cambio;
   const realJson = typeof coletarCustosReaisDoForm === 'function' ? coletarCustosReaisDoForm() : (_editando.real_json||{});
-  const snapshot = { ..._editando, real_json: realJson, real_cambio: cambio, vendas_json: JSON.stringify(_vendas) };
+  const snapshot = { ..._editando, real_json: realJson, real_cambio: cambio, vendas_json: JSON.stringify(_vendas),
+    produtos_json: JSON.stringify(_produtos && _produtos.length ? _produtos : JSON.parse(_editando.produtos_json||'[]')),
+    entrada_armazem: (document.getElementById('f_entrada_armazem')||{}).value || _editando.entrada_armazem,
+    data_chegada: (document.getElementById('f_data_chegada')||{}).value || _editando.data_chegada };
   const resumo = calcularVendasResumo(snapshot);
   if(!resumo){ wrap.innerHTML = ''; return; }
   // Volta a mostrar o lucro por venda (pedido Ayslan 08/09/2026 - tinha
@@ -1049,7 +1085,7 @@ function renderResumoVendas(){
   // Fechamento) - por isso o rotulo deixa claro que e' so um preview.
   const linhasHtml = resumo.linhas.map((l,i)=>`
     <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
-      <span style="color:var(--muted);">${esc(l.venda.cliente||('Venda '+(i+1)+' — sem cliente'))} — ${l.qtdVenda||0} un. (${(l.fracao*100).toFixed(1)}% do processo)</span>
+      <span style="color:var(--muted);">${esc(l.venda.cliente||('Venda '+(i+1)+' — sem cliente'))} — ${l.qtdVenda||0} un. (${(l.fracao*100).toFixed(1)}% do processo)${l.custoArmazenagem ? ` · 🏭 armaz. RF ${r2(l.custoArmazenagem)}` : ''}</span>
       <strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?`${r2(l.lucro)}${l.pctLucro!=null?` (${(l.pctLucro*100).toFixed(1)}%)`:''}`:'aguardando NF'}</strong>
     </div>`).join('');
   const saldo = resumo.saldoNaoAlocado;
@@ -1068,6 +1104,133 @@ function renderResumoVendas(){
     ${linhasHtml}
     ${linhaLucroTotal}
     ${alertaSaldo}
+  </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// SIMULAR VENDA — armazenagem pós-nacionalização (RF) (Ayslan 13/10/2026)
+// ════════════════════════════════════════════════════════════════
+// Painel dentro da aba Vendas: o usuário informa vendas FUTURAS (data ou
+// "dias a partir de hoje" + quantidade por medida) e o sistema projeta a
+// armazenagem do armazém até cada data, o custo unitário atualizado (custo
+// base da medida + armazenagem) e o preço sugerido COM/SEM ST (custo
+// atualizado × fator preço/custo da cotação). NADA é gravado — é só uma
+// conta pra cotar. Cálculo em simularVendaArmazenagemRF (controle-core.js).
+let _simRF = []; // [{ data:'YYYY-MM-DD', dias:'', itens:[{descricao, quantidade}] }]
+let _simRFProcId = null; // processo dono da simulação atual (troca de processo zera)
+
+function _simRFHojeISO(){ const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().split('T')[0]; }
+function _simRFSnapshot(){
+  if(!_editando) return null;
+  const realJson = typeof coletarCustosReaisDoForm === 'function' ? coletarCustosReaisDoForm() : (_editando.real_json||{});
+  const cambio = typeof coletarCambioCustosReaisDoForm === 'function' ? coletarCambioCustosReaisDoForm() : _editando.real_cambio;
+  return { ..._editando, real_json: realJson, real_cambio: cambio, vendas_json: JSON.stringify(_vendas),
+    produtos_json: JSON.stringify(_produtos && _produtos.length ? _produtos : JSON.parse(_editando.produtos_json||'[]')),
+    entrada_armazem: (document.getElementById('f_entrada_armazem')||{}).value || _editando.entrada_armazem,
+    data_chegada: (document.getElementById('f_data_chegada')||{}).value || _editando.data_chegada };
+}
+function abrirSimularVendaRF(){
+  const wrap = document.getElementById('simular-venda-rf-wrap');
+  if(!wrap) return;
+  if(wrap.innerHTML.trim()){ wrap.innerHTML = ''; return; } // segundo clique fecha
+  if(_simRFProcId !== (_editando && _editando.id)){ _simRF = []; _simRFProcId = _editando && _editando.id; }
+  if(!_simRF.length){
+    const hoje = new Date(); hoje.setDate(hoje.getDate() + 30);
+    _simRF = [{ data: hoje.toISOString().split('T')[0], dias: 30, itens: [{descricao:'', quantidade:''}] }];
+  }
+  renderSimularVendaRF();
+}
+function fecharSimularVendaRF(){ const w = document.getElementById('simular-venda-rf-wrap'); if(w) w.innerHTML = ''; }
+function _simRFSetDias(vi, dias){
+  const n = parseInt(dias, 10);
+  _simRF[vi].dias = isNaN(n) ? '' : n;
+  if(!isNaN(n)){ const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + n); _simRF[vi].data = d.toISOString().split('T')[0]; }
+  renderSimularVendaRF();
+}
+function _simRFSetData(vi, data){
+  _simRF[vi].data = data;
+  const dias = (typeof _diasEntreISO === 'function' && data) ? _diasEntreISO(_simRFHojeISO(), data) : null;
+  _simRF[vi].dias = dias == null ? '' : dias;
+  renderSimularVendaRF();
+}
+function _simRFAddVenda(){
+  const ult = _simRF[_simRF.length - 1];
+  const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + ((ult && parseInt(ult.dias,10)) || 30) + 30);
+  _simRF.push({ data: d.toISOString().split('T')[0], dias: (typeof _diasEntreISO === 'function') ? _diasEntreISO(_simRFHojeISO(), d.toISOString().split('T')[0]) : '', itens: [{descricao:'', quantidade:''}] });
+  renderSimularVendaRF();
+}
+function _simRFRemVenda(vi){ _simRF.splice(vi,1); if(!_simRF.length) return fecharSimularVendaRF(); renderSimularVendaRF(); }
+function _simRFAddItem(vi){ _simRF[vi].itens.push({descricao:'', quantidade:''}); renderSimularVendaRF(); }
+function _simRFRemItem(vi, ii){ _simRF[vi].itens.splice(ii,1); if(!_simRF[vi].itens.length) _simRF[vi].itens = [{descricao:'', quantidade:''}]; renderSimularVendaRF(); }
+
+function renderSimularVendaRF(){
+  const wrap = document.getElementById('simular-venda-rf-wrap');
+  if(!wrap || !_editando) return;
+  const snap = _simRFSnapshot();
+  const produtos = produtosDoMixVenda();
+  const r2 = x => x==null ? '—' : 'R$ ' + Number(x).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtD = iso => { if(!iso) return '—'; const d = parseDataLocal(iso); return d && !isNaN(d) ? d.toLocaleDateString('pt-BR') : iso; };
+  let sim = null;
+  try{ sim = simularVendaArmazenagemRF(snap, _simRF.map(v => ({ data: v.data, itens: v.itens }))); }catch(e){ sim = null; }
+  const entrada = sim ? sim.entrada : null;
+  const tarifas = (typeof tarifasArmazenagemRF === 'function') ? tarifasArmazenagemRF() : {};
+  const base = sim ? sim.base : null;
+
+  const cab = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:700;color:#92400e;">🧮 Simular venda — armazenagem pós-nacionalização (RF)</div>
+      <button type="button" onclick="fecharSimularVendaRF()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;font-weight:600;">✕ fechar</button>
+    </div>
+    <div style="font-size:11px;color:#78350f;margin-bottom:10px;line-height:1.5;">
+      Entrada no armazém: <strong>${fmtD(entrada)}</strong>${entrada ? '' : ' — <span style="color:var(--err)">informe a Data Chegada ou "Entrada no armazém (RF)" na Logística</span>'} ·
+      Custo base por medida: ${base && base.custoTotal != null ? `<strong>${base.origem === 'real' ? 'Custos Reais' : 'cotação (estimado)'}</strong>, rateado por ${base.rateioPor === 'fob' ? 'FOB' : 'unidade'}` : '<span style="color:var(--err)">sem Custos Reais nem cotação vinculada — só a armazenagem será mostrada</span>'} ·
+      Preço sugerido: ${base && (base.fatorComSt || base.fatorSemSt) ? `custo atualizado × fator da cotação (COM ST ${base.fatorComSt ? base.fatorComSt.toFixed(3) : '—'} / SEM ST ${base.fatorSemSt ? base.fatorSemSt.toFixed(3) : '—'})` : '<span style="color:var(--muted)">sem cotação vinculada (sem fator), mostra só o custo</span>'} ·
+      Estoque atual: ${sim && sim.estoqueAtual.length ? sim.estoqueAtual.map(e => `${esc(e.descricao)} <strong>${e.quantidade}</strong>`).join(', ') : '<span style="color:var(--muted)">tudo vendido ou sem produtos</span>'}.
+      <br>Tarifas (R$/pneu/dia, carência): ${Object.keys(tarifas).map(k => `${k} ${Number(tarifas[k].tarifa_dia).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3})} (${tarifas[k].carencia_dias}d)`).join(' · ')} — editáveis em Cadastros → Listas. Nada aqui é gravado.
+    </div>`;
+
+  const vendasHtml = _simRF.map((v, vi) => {
+    const sv = sim ? sim.vendas.find(x => x.indice === vi) : null;
+    const itensHtml = v.itens.map((it, ii) => {
+      const opts = produtos.map(p => `<option value="${esc(p)}" ${p===it.descricao?'selected':''}>${esc(p)}</option>`).join('');
+      const res = sv ? sv.itens.find(x => x.descricao === it.descricao && Math.abs(x.quantidade - (parseFloat(it.quantidade)||0)) < 0.001) : null;
+      let resHtml = '';
+      if(res){
+        if(res.semProduto) resHtml = `<span style="color:var(--err)">medida não encontrada nos produtos do processo</span>`;
+        else if(res.motivo === 'sem_entrada') resHtml = `<span style="color:var(--err)">sem data de entrada no armazém</span>`;
+        else if(res.motivo) resHtml = `<span style="color:var(--err)">data inválida</span>`;
+        else resHtml = `${res.tipo} · ${res.diasTotais}d no armazém → <strong>${res.dias}d cobrado(s)</strong> · armaz. ${r2(res.armazenagemUnit)}/pneu (${r2(res.armazenagemTotal)} na venda)`
+          + (res.custoUnitBase != null ? ` · custo base ${r2(res.custoUnitBase)} → <strong>custo atualizado ${r2(res.custoUnitAtual)}/pneu</strong>` : '')
+          + (res.precoComSt != null ? ` · <strong style="color:var(--ok)">preço COM ST ${r2(res.precoComSt)}</strong>` : '')
+          + (res.precoSemSt != null ? ` · <strong style="color:var(--ok)">SEM ST ${r2(res.precoSemSt)}</strong>` : '')
+          + (res.saldoAntes != null ? ` · saldo ${res.saldoAntes} → ${res.saldoDepois}` : '')
+          + (res.excedeSaldo ? ` <span style="color:var(--err);font-weight:700;">⚠ pede mais do que tem no armazém</span>` : '');
+      }
+      return `<div style="display:grid;grid-template-columns:1fr 100px 28px;gap:6px;align-items:center;margin-bottom:4px;">
+        ${produtos.length ? `<select class="form-input" onchange="_simRF[${vi}].itens[${ii}].descricao=this.value;renderSimularVendaRF()" onwheel="this.blur()"><option value="">Medida...</option>${opts}</select>`
+                          : `<input class="form-input" placeholder="Medida" value="${esc(it.descricao||'')}" onchange="_simRF[${vi}].itens[${ii}].descricao=this.value;renderSimularVendaRF()">`}
+        <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}" oninput="_simRF[${vi}].itens[${ii}].quantidade=this.value" onchange="renderSimularVendaRF()">
+        <button type="button" onclick="_simRFRemItem(${vi},${ii})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:14px;padding:0;">✕</button>
+        ${resHtml ? `<div style="grid-column:1/-1;font-size:11px;color:var(--text);margin:-2px 0 4px 2px;">${resHtml}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div style="border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#fff;">
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:8px;">
+        <div class="form-group" style="margin:0;"><label class="form-label">Venda prevista ${vi+1} — data</label>
+          <input class="form-input" type="date" value="${esc(v.data||'')}" onchange="_simRFSetData(${vi},this.value)"></div>
+        <div class="form-group" style="margin:0;width:140px;"><label class="form-label">ou dias a partir de hoje</label>
+          <input class="form-input" type="number" min="0" value="${v.dias!==''&&v.dias!=null?v.dias:''}" onchange="_simRFSetDias(${vi},this.value)"></div>
+        <div style="flex:1;font-size:12px;color:var(--muted);">${sv && sv.armazenagemTotal != null ? `Armazenagem desta venda: <strong>${r2(sv.armazenagemTotal)}</strong>` : ''}</div>
+        <button type="button" onclick="_simRFRemVenda(${vi})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:12px;font-weight:600;">🗑 remover</button>
+      </div>
+      ${itensHtml}
+      <button type="button" onclick="_simRFAddItem(${vi})" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;">+ Medida</button>
+    </div>`;
+  }).join('');
+
+  wrap.innerHTML = `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;margin-top:10px;">
+    ${cab}${vendasHtml}
+    <button type="button" onclick="_simRFAddVenda()" style="background:#fff;border:1px dashed #fde68a;border-radius:6px;padding:5px 12px;font-size:11px;color:#92400e;cursor:pointer;font-weight:600;">+ Outra venda futura</button>
   </div>`;
 }
 

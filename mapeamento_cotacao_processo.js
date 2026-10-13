@@ -206,9 +206,16 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
   // ── Produtos ──────────────────────────────────────────────
   let produtosJson;
   if (mix && Array.isArray(mix.itens) && mix.itens.length) {
+    // tipo (PCR/TBR...) e FOB unitário vão junto: a armazenagem
+    // pós-nacionalização (RF) usa o tipo pra escolher a tarifa por pneu/dia
+    // e o FOB pra ratear o custo do processo entre as medidas (ver
+    // custoBaseUnitarioPorItemRF em controle-core.js).
+    const tipoArm = ['PCR', 'TBR'].includes(String(d.produto || '').toUpperCase()) ? String(d.produto).toUpperCase() : undefined;
     produtosJson = mix.itens.map(it => ({
       descricao: it.medida || '',
       quantidade: numOuNull(it.qtd),
+      ...(tipoArm ? { tipo: tipoArm } : {}),
+      ...(numOuNull(it.preco) != null ? { fob_usd: numOuNull(it.preco) } : {}),
     }));
   } else {
     produtosJson = [{

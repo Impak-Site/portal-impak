@@ -71,11 +71,25 @@
   // é preenchida pela aba Listas / de-para aprovado, não por semente.
   const MARCAS = [];
 
+  // Armazenagem pós-nacionalização no armazém geral (RF) — pedido do Ayslan
+  // (13/10/2026): container nacionalizado vai pro armazém pra venda
+  // fracionada; a RF cobra por pneu por dia, por tipo, depois da carência.
+  // Regra e valores vêm da planilha Modelo Rev97 (MIX - COMPLETO, CJ2):
+  // tarifa R$/pneu/dia e 29 dias de carência contados da entrada no armazém.
+  const ARMAZENAGEM_RF = [
+    { codigo: 'PCR',    nome: 'PCR (passeio)',       dados: { tarifa_dia: 0.045, carencia_dias: 29 }, ordem: 1 },
+    { codigo: 'SUV',    nome: 'SUV / LT',            dados: { tarifa_dia: 0.18,  carencia_dias: 29 }, ordem: 2 },
+    { codigo: 'TBR',    nome: 'TBR (caminhão/ônibus)', dados: { tarifa_dia: 0.40, carencia_dias: 29 }, ordem: 3 },
+    { codigo: 'RODAS',  nome: 'Rodas',               dados: { tarifa_dia: 0.40,  carencia_dias: 29 }, ordem: 4 },
+    { codigo: 'METAIS', nome: 'Metais',              dados: { tarifa_dia: 1.65,  carencia_dias: 29 }, ordem: 5 },
+  ];
+
   const CATEGORIAS = {
     porto_destino: { nome: 'Portos de destino', campos: [['dias_gratis', 'Dias grátis (armazenagem)', 'number']] },
     porto_origem:  { nome: 'Portos de origem',  campos: [['pais', 'País', 'text']] },
     banco_cambio:  { nome: 'Bancos de câmbio',  campos: [['codigo_banco', 'Cód. banco', 'text'], ['agencia', 'Agência', 'text'], ['conta', 'Conta', 'text'], ['pix', 'PIX', 'text']] },
     marca:         { nome: 'Marcas (pneus)',    campos: [['fornecedor', 'Fornecedor(es) habituais', 'text']] },
+    armazenagem_rf: { nome: 'Armazenagem pós-nacionalização (RF)', campos: [['tarifa_dia', 'Tarifa (R$ por pneu/dia)', 'number'], ['carencia_dias', 'Carência (dias grátis)', 'number']] },
   };
 
   function clonar(lista) {
@@ -93,6 +107,7 @@
       porto_origem: clonar(PORTOS_ORIGEM),
       banco_cambio: clonar(BANCOS_CAMBIO),
       marca: clonar(MARCAS),
+      armazenagem_rf: clonar(ARMAZENAGEM_RF),
     };
   }
 
