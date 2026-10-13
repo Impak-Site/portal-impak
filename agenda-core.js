@@ -121,11 +121,14 @@
       instancias: p => tem(p.data_prontidao) ? um((tem(p.booking_numero) && tem(p.etd) && tem(p.navio)) || tem(p.data_embarque)) : [] },
     A09: { auto: true, como: 'CI, PL e Draft anexados + conferência sem divergência pendente',
       base: p => p.etd, dias: -3,
-      instancias: p => {
+      instancias: (p, h) => {
         if (!tem(p.etd)) return [];
         const ci = temDoc(p, /\bci\b|invoice/i) || tem(p.ci_numero), pl = temDoc(p, /\bpl\b|packing/i), dr = temDoc(p, /draft|\bbl\b|hbl/i) || tem(p.hbl);
         const falta = [!ci && 'CI', !pl && 'PL', !dr && 'Draft'].filter(Boolean);
         const pend = confPendentes(p);
+        // Já embarcou com HBL e CI registrados: os documentos existem (só não
+        // foram anexados com nome reconhecível) — não fica cobrando depois.
+        if (passou(p.data_embarque, h) && tem(p.hbl) && tem(p.ci_numero) && !pend) return um(true);
         return um(!falta.length && !pend, { detalhe: falta.length ? 'Falta: ' + falta.join(', ') : (pend ? pend + ' divergência(s) na conferência' : '') });
       } },
     A10: { auto: true, como: 'Aprovação HBL = Sim',
@@ -156,9 +159,9 @@
     A20: { auto: true, como: 'Nº DI/DUIMP + Data de Registro preenchidos',
       base: p => p.data_presenca || p.data_chegada, dias: 1, uteis: true,
       instancias: (p, h) => chegou(p, h) ? um(tem(p.numero_di) && tem(p.data_registro_di)) : [] },
-    A21: { auto: false, como: 'Manual', semAcomp: true,
+    A21: { auto: false, como: 'Manual (some sozinha quando sai o canal)', semAcomp: true,
       base: p => p.data_registro_di, dias: 0,
-      instancias: p => (tem(p.numero_di) && tem(p.data_registro_di)) ? um(false) : [] },
+      instancias: p => (tem(p.numero_di) && tem(p.data_registro_di)) ? um(tem(p.canal) || tem(p.data_parametrizacao) || liberado(p)) : [] },
     A22: { auto: true, como: 'Nº DUIMP preenchido nas parcelas com câmbio fechado', semAcomp: true,
       base: p => p.data_registro_di, dias: 5,
       instancias: p => {
@@ -196,7 +199,7 @@
       instancias: (p, h) => liberado(p) && chegou(p, h) ? um((tem(p.data_agendamento) && tem(p.transportadora)) || tem(p.data_carregamento)) : [] },
     A28: { auto: true, como: 'Data de Carregamento preenchida',
       base: p => p.data_agendamento, dias: 0,
-      instancias: p => tem(p.data_agendamento) && !p.agendamento_cancelado ? um(tem(p.data_carregamento)) : [] },
+      instancias: p => tem(p.data_agendamento) && !p.agendamento_cancelado ? um(tem(p.data_carregamento) || tem(p.data_devolucao_vazio)) : [] },
     A29: { auto: true, como: 'Data de Devolução do Vazio preenchida', aplica: p => !ehLCL(p),
       base: p => p.demurrage_vencimento || (tem(p.free_time) && (p.data_chegada || p.data_presenca) ? somaDias(p.data_chegada || p.data_presenca, (parseInt(p.free_time, 10) || 0) - 1) : p.data_carregamento), dias: 0,
       instancias: p => tem(p.data_carregamento) ? um(tem(p.data_devolucao_vazio)) : [] },
