@@ -426,6 +426,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           Compara o que foi cotado no Calculador (na hora de aprovar a cotação) com o resultado real do processo, calculado a partir da NF Entrada e NF Saída lançadas na aba Documentos.
         </div>
         ${renderFechamentoInfo(p)}
+        ${typeof renderComissoesCard==='function' ? renderComissoesCard(p) : ''}
         <!-- pointer-events:auto explicito nos 3 elementos abaixo -- quando o
         processo esta fechado, #modal-body-lockwrap trava TODO o conteudo
         com pointer-events:none (pra impedir edicao), o que sem isso tambem

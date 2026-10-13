@@ -89,6 +89,12 @@
     porto_origem:  { nome: 'Portos de origem',  campos: [['pais', 'País', 'text']] },
     banco_cambio:  { nome: 'Bancos de câmbio',  campos: [['codigo_banco', 'Cód. banco', 'text'], ['agencia', 'Agência', 'text'], ['conta', 'Conta', 'text'], ['pix', 'PIX', 'text']] },
     marca:         { nome: 'Marcas (pneus)',    campos: [['fornecedor', 'Fornecedor(es) habituais', 'text']] },
+    // Comissionados (vendedores/representantes, #517 — 13/10/2026). USO INTERNO:
+    // nomes e percentuais ficam só no banco (aba Listas) — nunca neste arquivo,
+    // o repositório é público. base: FATURAMENTO_TOTAL | NOTA_FISCAL | FOB_DOLAR
+    // | LUCRO_BRUTO. clientes: restrição opcional (vírgula). automatico: S = vale
+    // sozinho sempre que o cliente bate (ex.: representante de um cliente).
+    comissionado:  { nome: 'Comissionados (interno)', campos: [['percentual', '% comissão', 'number'], ['base', 'Base de cálculo', 'select', [['FATURAMENTO_TOTAL','Total faturamento (NF + juros + Boss + chinês)'],['NOTA_FISCAL','Nota fiscal'],['FOB_DOLAR','FOB × dólar médio'],['LUCRO_BRUTO','Lucro bruto da operação']]], ['clientes', 'Só para os clientes (vírgula; vazio = todos)', 'text'], ['automatico', 'Automático pelo cliente? (S/N)', 'select', [['N','Não — marcar no processo'],['S','Sim — sempre que o cliente bater']]], ['observacao', 'Observação', 'text']] },
     armazenagem_rf: { nome: 'Armazenagem pós-nacionalização (RF)', campos: [['tarifa_dia', 'Tarifa (R$ por pneu/dia)', 'number'], ['carencia_dias', 'Carência (dias grátis)', 'number']] },
   };
 
@@ -108,6 +114,7 @@
       banco_cambio: clonar(BANCOS_CAMBIO),
       marca: clonar(MARCAS),
       armazenagem_rf: clonar(ARMAZENAGEM_RF),
+      comissionado: [], // só no banco (dados sensíveis, repositório público)
     };
   }
 

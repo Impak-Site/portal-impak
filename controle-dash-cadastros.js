@@ -133,8 +133,15 @@ function _clRenderCamposDados(categoria, dados){
   const campos = (cats[categoria] && cats[categoria].campos) || [];
   const wrap = document.getElementById('cl_dados');
   if(!wrap) return;
-  wrap.innerHTML = campos.map(c=>`<div class="form-group"><label class="form-label">${esc(c[1])}</label>
-    <input class="form-input" type="${c[2]==='number'?'number':'text'}"${c[2]==='number'?' step="any"':''} data-dado="${esc(c[0])}" value="${esc(dados && dados[c[0]]!==undefined && dados[c[0]]!==null ? String(dados[c[0]]) : '')}"></div>`).join('');
+  wrap.innerHTML = campos.map(c=>{
+    const atual = dados && dados[c[0]]!==undefined && dados[c[0]]!==null ? String(dados[c[0]]) : '';
+    if(c[2]==='select'){
+      const ops = (c[3]||[]).map(o=>`<option value="${esc(o[0])}" ${String(o[0])===atual?'selected':''}>${esc(o[1])}</option>`).join('');
+      return `<div class="form-group"><label class="form-label">${esc(c[1])}</label><select class="form-input" data-dado="${esc(c[0])}"><option value=""></option>${ops}</select></div>`;
+    }
+    return `<div class="form-group"><label class="form-label">${esc(c[1])}</label>
+    <input class="form-input" type="${c[2]==='number'?'number':'text'}"${c[2]==='number'?' step="any"':''} data-dado="${esc(c[0])}" value="${esc(atual)}"></div>`;
+  }).join('');
 }
 
 function abrirNovoItemLista(){
@@ -180,7 +187,7 @@ async function salvarItemLista(){
   const nome = document.getElementById('cl_nome').value.trim();
   if(!codigo || !nome){ showToast('Código e nome são obrigatórios','err'); return; }
   const dados = {};
-  document.querySelectorAll('#cl_dados input[data-dado]').forEach(inp=>{
+  document.querySelectorAll('#cl_dados [data-dado]').forEach(inp=>{
     const v = inp.value.trim();
     if(v !== '') dados[inp.dataset.dado] = inp.type === 'number' ? Number(v) : v;
   });

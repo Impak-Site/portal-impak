@@ -253,10 +253,11 @@ teste('COLUNAS_ID cobre os 8 campos de empresa do processo', () => {
 });
 
 console.log('\n── listas-padrao.js ──');
-teste('listas padrão têm as 5 categorias e os 4 portos de destino com dias grátis', () => {
+teste('listas padrão têm as 6 categorias e os 4 portos de destino com dias grátis', () => {
   const l = ListasPadrao.listasPadrao();
-  assert.deepStrictEqual(Object.keys(l).sort(), ['armazenagem_rf', 'banco_cambio', 'marca', 'porto_destino', 'porto_origem']);
+  assert.deepStrictEqual(Object.keys(l).sort(), ['armazenagem_rf', 'banco_cambio', 'comissionado', 'marca', 'porto_destino', 'porto_origem']);
   assert.deepStrictEqual(l.marca, [], 'marcas começam vazias (vêm da aba Listas / de-para)');
+  assert.deepStrictEqual(l.comissionado, [], 'comissionados nunca no repositório (dado interno, repo público)');
   const dias = {}; l.porto_destino.forEach(p => { dias[p.codigo] = p.dados.dias_gratis; });
   assert.deepStrictEqual(dias, { ITJ: 5, IOA: 4, NVT: 5, BRIBB: 5 });
   assert.ok(l.porto_origem.length >= 27);
