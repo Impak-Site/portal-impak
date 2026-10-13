@@ -306,6 +306,24 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
     obs: observacoes.join(' · '),
   };
 
+  // Venda inicial (aba Vendas) com o que foi negociado na cotação: prazo e
+  // juros no boleto. Só quando houver prazo ou juros — senão o processo
+  // continua sem venda (fluxo antigo, cliente único via campos de topo).
+  const jurosBoleto = opts.resumo && parseFloat(opts.resumo.juros_boleto);
+  const prazoTexto = (opts.resumo && opts.resumo.prazo_texto) || '';
+  if ((jurosBoleto > 0) || prazoTexto) {
+    processo.vendas_json = JSON.stringify([{
+      cliente: cliente || '',
+      itens: produtosJson.map(it => ({ descricao: it.descricao, quantidade: it.quantidade != null ? String(it.quantidade) : '' })),
+      nf_saida_numero: '', nf_saida_data: '', nf_saida_valor: '', nf_saida_cfop: '',
+      custos_diretos: [], obs: 'Criada a partir da cotação (prazo/juros cotados — confira na NF).',
+      forma_pagamento: prazoTexto ? 'prazo' : 'avista',
+      prazo_texto: prazoTexto,
+      juros_valor: jurosBoleto > 0 ? String(Math.round(jurosBoleto * 100) / 100) : '',
+      juros_fora_nf: jurosBoleto > 0,
+    }]);
+  }
+
   return processo;
 }
 

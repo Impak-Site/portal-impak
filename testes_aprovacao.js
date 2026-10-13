@@ -365,6 +365,25 @@ teste('mix sempre null (não reconstrói mix a partir do processo — usuário r
 
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
+console.log('\n📋 Passo 4 — prazo e juros no boleto da cotação viram venda no processo');
+teste('com prazo + juros no boleto no resumo, o processo nasce com 1 venda a prazo (juros fora da NF)', () => {
+  const dados = { campos: { produto: 'PCR', fob_usd: '1000', cambio_usd: '5', qtde_containers: '1', prazo_boleto: '30/60/90dd' }, toggles: { parcelado: 'SIM', jb: 'SIM' },
+    mix: { itens: [{ medida: '175/70R13', qtd: 100 }] } };
+  const p = mapearCotacaoParaProcesso(dados, 'Cliente Teste', { resumo: { juros_boleto: 12345.678, prazo_texto: '30/60/90dd' } });
+  const vendas = JSON.parse(p.vendas_json);
+  iguais(vendas.length, 1);
+  iguais(vendas[0].forma_pagamento, 'prazo');
+  iguais(vendas[0].prazo_texto, '30/60/90dd');
+  iguais(vendas[0].juros_valor, '12345.68');
+  iguais(vendas[0].juros_fora_nf, true);
+  verdadeiro(/Pagamento cotado: parcelado 30\/60\/90dd/.test(p.obs), 'obs deveria citar o prazo: ' + p.obs);
+});
+teste('sem prazo nem juros, o processo continua sem venda (fluxo antigo)', () => {
+  const dados = { campos: { produto: 'PCR', fob_usd: '1000', cambio_usd: '5', qtde_containers: '1' }, toggles: {} };
+  const p = mapearCotacaoParaProcesso(dados, 'Cliente Teste', { resumo: {} });
+  verdadeiro(p.vendas_json === undefined);
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');

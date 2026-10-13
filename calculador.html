@@ -3580,6 +3580,34 @@ async function exportarExcel() {
       totalRow.getCell(6).numFmt = 'R$ #,##0.00';
       totalRow.height = 22;
 
+      // Condição de pagamento (Passo 4): prazo como é e, quando houver, o
+      // juros cobrado no boleto (fora da NF) — o cliente vê NF + juros = total.
+      // Nada de custo, lucro ou comissão aqui.
+      const prazoTxtC = (typeof prazoCotacaoTexto === 'function') ? prazoCotacaoTexto() : '';
+      const jurosBoletoC = (r.juros_boleto > 0) ? r.juros_boleto : 0;
+      if(prazoTxtC || jurosBoletoC > 0){
+        rowIdx += 2;
+        wsC.mergeCells(rowIdx,1,rowIdx,numColsC);
+        const tit = wsC.getCell(rowIdx,1);
+        tit.value = 'CONDIÇÃO DE PAGAMENTO';
+        tit.font = {bold:true, size:11, color:{argb:CORES.AZUL_ESCURO}};
+        rowIdx++;
+        const linhaPg = (label, valor, destaque) => {
+          wsC.mergeCells(rowIdx,1,rowIdx,4);
+          const c1 = wsC.getCell(rowIdx,1); c1.value = label; c1.font = {bold:!!destaque, size:10.5};
+          const c2 = wsC.getCell(rowIdx,6); c2.value = valor; c2.font = {bold:!!destaque, size:10.5};
+          if(typeof valor === 'number') c2.numFmt = 'R$ #,##0.00';
+          c2.alignment = {horizontal:'right'};
+          rowIdx++;
+        };
+        if(prazoTxtC) linhaPg('Prazo de pagamento', prazoTxtC);
+        if(jurosBoletoC > 0){
+          linhaPg('Valor dos produtos (NF)', totalGeral);
+          linhaPg('Juros no boleto (fora da NF)', jurosBoletoC);
+          linhaPg('TOTAL A PAGAR', totalGeral + jurosBoletoC, true);
+        }
+      }
+
       wsC.getColumn(1).width = 18;
       wsC.getColumn(2).width = 14;
       wsC.getColumn(3).width = 12;
@@ -3954,6 +3982,10 @@ function resumoParaLista(r){
     // Faturamento Real do Calculador (que e so uma sugestao, nao um dado
     // negociado) - ver parseFaturamentoReal() em planilha-import.js.
     faturamento_real_planilha: r.faturamento_real_planilha != null ? r.faturamento_real_planilha : undefined,
+    // Passo 4: juros cobrado no boleto (fora da NF) e prazo "como é" — vão
+    // pra venda do processo ao aprovar (server.js / mapeamento).
+    juros_boleto: r.juros_boleto > 0 ? r.juros_boleto : undefined,
+    prazo_texto: r.prazo_texto || undefined,
     lucro_bruto_real_planilha: r.lucro_bruto_real_planilha != null ? r.lucro_bruto_real_planilha : undefined,
     cenarios: cst && sst ? {
       com_st: { faturamento_total: cst.faturamento_total, comissao_china: cst.china_fora_val||0, valor_impak: impak(cst), lucro_bruto: cst.lucro_bruto, pct_lucro: cst.pct_lucro },

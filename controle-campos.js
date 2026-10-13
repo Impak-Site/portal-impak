@@ -955,7 +955,8 @@ function renderVendas(){
         ${v.forma_pagamento==='prazo' ? `<div class="form-group full"><label class="form-label">Prazo (campo livre — ex: "30 dias" ou "30/60/90 dias")</label>
           <input class="form-input" value="${esc(v.prazo_texto||'')}" oninput="_vendas[${vi}].prazo_texto=this.value;sincronizarVendasLegado()" placeholder="ex: 30/60/90 dias"></div>` : ''}
         <div class="form-group"><label class="form-label">Juros Cobrado do Cliente (R$ — se houver)</label>
-          <input class="form-input" type="number" step="0.01" value="${v.juros_valor!=null?v.juros_valor:''}" oninput="_vendas[${vi}].juros_valor=this.value;sincronizarVendasLegado()" placeholder="0,00"></div>
+          <input class="form-input" type="number" step="0.01" value="${v.juros_valor!=null?v.juros_valor:''}" oninput="_vendas[${vi}].juros_valor=this.value;sincronizarVendasLegado()" placeholder="0,00">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" ${v.juros_fora_nf?'checked':''} onchange="_vendas[${vi}].juros_fora_nf=this.checked;_painelDirty=true;sincronizarVendasLegado()"> Juros no boleto, fora da NF</label></div>
       </div>
       <label class="form-label">Itens vendidos deste processo (quantidade · R$ unitário · R$ total do item na NF)</label>
       <div style="margin-bottom:6px;">${itensHtml}</div>
