@@ -4391,7 +4391,7 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
       return res.json({ ok: true, ja_aprovada: true, processo_id: resumoAtual.processo_id, processo_referencia: resumoAtual.processo_referencia });
     }
 
-    const processoBase = mapearCotacaoParaProcesso(cot.dados, cot.cliente);
+    const processoBase = mapearCotacaoParaProcesso(cot.dados, cot.cliente, { resumo: cot.resumo });
     // Guarda o "cotado" (custo/faturamento/lucro estimados dos dois cenários) junto
     // do processo, pra dar pra comparar depois com o resultado real no Fechamento
     // (ver seção 💰 Fechamento na ficha do processo).
