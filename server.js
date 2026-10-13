@@ -5612,6 +5612,38 @@ async function verificarAlertaTransportadora(){
   return pendentes.length;
 }
 
+// ── Processos sem cotação (semanal, segunda-feira → Jean) ─────────────
+// Ayslan 13/10/2026: regra "todo processo nasce no TyreDesk/Calculador";
+// o alerta vai pro comercial (Jean) 1x por semana. Mesma regra de
+// origemProcesso() (controle-core.js): sem cotacao_id e sem estimativa_json.
+// Destinatário trocável pelo Railway: ALERTA_COMERCIAL_PARA.
+const ALERTA_COMERCIAL_PADRAO = 'jean@impak.com.br';
+async function verificarAlertaSemCotacao(){
+  const jobName = 'alerta_sem_cotacao_semanal';
+  const { data, error } = await sb().from('controle_processos')
+    .select('id, referencia, cliente, fornecedor, fase, finalidade, cancelado, pi_data, eta, created_at')
+    .neq('fase', 'FINALIZADO')
+    .is('cotacao_id', null).is('estimativa_json', null)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('Erro ao buscar processos sem cotação:', error.message); return 0; }
+  const pendentes = (data || []).filter(p => !p.cancelado && p.finalidade !== 'ACOMPANHAMENTO');
+  const hoje = new Date();
+  if (!pendentes.length) { await marcarJobEnviadoHoje(jobName); return 0; }
+  const fmtD = v => v ? new Date(String(v).slice(0,10)+'T00:00:00').toLocaleDateString('pt-BR') : '-';
+  const linhas = pendentes.map(p => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${_escA(p.referencia)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${_escA(p.cliente)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;">${_escA(p.fornecedor)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${_escA(p.fase)||'-'}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;">${fmtD(p.pi_data)}</td></tr>`).join('');
+  const html = _cabecalhoAlertaHtml('Processos sem cotação', hoje)
+    + `<p style="font-size:13px;color:#555;">${pendentes.length} processo(s) em andamento criado(s) direto no Controle, sem cotação do TyreDesk/Calculador vinculada. Sem a cotação, a aba Custos Reais não tem o valor cotado para comparar com o real. Para regularizar: abrir a cotação no Calculador e usar "Vincular a processo".</p>`
+    + _tabelaAlertaHtml(['Referência','Cliente','Fornecedor','Fase','Data PI'], linhas)
+    + `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automático semanal (segunda-feira) do IMPAK Portal.</p></div>`;
+  const destinos = (process.env.ALERTA_COMERCIAL_PARA || ALERTA_COMERCIAL_PADRAO).split(',').map(s => s.trim()).filter(Boolean);
+  for (const email of [...new Set(destinos)]) {
+    try { await enviarEmail(email, `IMPAK Portal - ${pendentes.length} processo(s) sem cotação`, html); }
+    catch (e) { console.error('Erro ao enviar alerta sem cotação p/ ' + email + ':', e.message); }
+  }
+  await marcarJobEnviadoHoje(jobName);
+  return pendentes.length;
+}
+
 function agendarAlertasSeparados(){
   const ALERTAS_SEPARADOS = [
     { nome:'demurrage', jobName:'alerta_demurrage', fn:verificarAlertaDemurrage },
@@ -5619,9 +5651,11 @@ function agendarAlertasSeparados(){
     { nome:'ajuste-documentos', jobName:'alerta_ajuste_documentos', fn:verificarAlertaAjusteDocumentos },
     { nome:'cambio-semana', jobName:'alerta_cambio_semana', fn:verificarAlertaCambioSemana },
     { nome:'transportadora', jobName:'alerta_transportadora', fn:verificarAlertaTransportadora },
+    { nome:'sem-cotacao', jobName:'alerta_sem_cotacao_semanal', fn:verificarAlertaSemCotacao, diaSemana:1 }, // só segunda-feira
   ];
   function checar(){
-    ALERTAS_SEPARADOS.forEach(({nome, jobName, fn}) => {
+    ALERTAS_SEPARADOS.forEach(({nome, jobName, fn, diaSemana}) => {
+      if (diaSemana != null && new Date().getDay() !== diaSemana) return; // semanal: nem reserva o job fora do dia
       jaEnviouJobHoje(jobName).then(ja => {
         if (ja) { console.log(`[alerta-${nome}] já enviado hoje, pulando.`); return; }
         fn().then(n => console.log(`[alerta-${nome}] verificação concluída, ${n} pendência(s) encontrada(s).`))
