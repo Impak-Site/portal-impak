@@ -61,7 +61,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') (function 
   };
 
   function recalcularSePronto() {
-    if (_estado.ultimoResultado && typeof calcular === 'function') { try { calcular(); } catch (e) {} }
+    if (_estado.ultimoResultado && typeof calcular === 'function') { try { calcular({ auto: true }); } catch (e) {} }
   }
 
   function render() {

@@ -1545,7 +1545,7 @@ function onToggleAutoTaxa(campo){
   if(!chk || !input) return;
   input.readOnly = chk.checked;
   input.style.background = chk.checked ? '#f5f5f5' : '#fff';
-  if(_estado.ultimoResultado || document.getElementById('cambio_usd').value) calcular();
+  if(_estado.ultimoResultado || document.getElementById('cambio_usd').value) calcular({auto:true});
 }
 
 // Marinha/AFRMM e Agente de Carga "auto" antes só recalculavam quando o botão
@@ -1558,7 +1558,7 @@ function onToggleAutoTaxa(campo){
 // lógica) — só dispara se já houver um cálculo anterior ou câmbio preenchido,
 // pra não interromper quem ainda está preenchendo o formulário pela 1ª vez.
 function onAutoTaxaDepChange(){
-  if(_estado.ultimoResultado || document.getElementById('cambio_usd').value) calcular();
+  if(_estado.ultimoResultado || document.getElementById('cambio_usd').value) calcular({auto:true});
 }
 
 function setToggle(key, val) {
@@ -1850,7 +1850,12 @@ function atualizarSplitST(idx){
 }
 
 // ── CÁLCULO PRINCIPAL ─────────────────────────────────────
-function calcular() {
+function calcular(opts) {
+  // opts.auto = recálculo disparado ao sair de um campo (TAB). Nesse caso NÃO
+  // rola a tela pro resultado e mantém a posição — antes o TAB jogava a tela
+  // pra cima (Ayslan 13/10/2026).
+  const _autoCalc = !!(opts && opts.auto);
+  const _scrollAntes = _autoCalc ? window.scrollY : null;
   const cambio   = parseFloat(document.getElementById('cambio_usd').value) || 0;
   const fob_usd  = parseFloat(document.getElementById('fob_usd').value) || 0;
   const frete_usd= parseFloat(document.getElementById('frete_usd').value) || 0;
@@ -2399,7 +2404,8 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // indicador de etapas e rola o painel de resultado (ao lado) pra vista.
   _estado.wizardResultadoPronto = true;
   renderWizardSteps();
-  irParaResultado();
+  if(!_autoCalc) irParaResultado();
+  else if(_scrollAntes != null && Math.abs(window.scrollY - _scrollAntes) > 2) window.scrollTo(0, _scrollAntes);
 }
 
 
