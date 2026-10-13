@@ -4364,6 +4364,13 @@ app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
 // só cobre isso), também precisa ter acesso a Processos. Hoje todo usuário
 // já tem os dois (ver USUARIOS no topo do arquivo), mas isso evita abrir uma
 // brecha se um dia existir um usuário só com acesso ao Calculador.
+// Comissionados escolhidos no Calculador (dados.comissionados) → códigos
+// limpos pra gravar em controle_processos.comissoes_json.selecionados.
+function comissionadosDaCotacao(dados) {
+  const l = dados && Array.isArray(dados.comissionados) ? dados.comissionados : [];
+  return [...new Set(l.filter(x => typeof x === 'string').map(x => x.trim().toUpperCase().slice(0, 60)).filter(Boolean))].slice(0, 30);
+}
+
 app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, next) => {
   if (!req.session.modulos.includes('controle')) {
     return res.status(403).json({ erro: 'Sem acesso ao Controle — não é possível aprovar cotações' });
@@ -4404,6 +4411,8 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
       real_cambio: (custosCotados && Number.isFinite(parseFloat(custosCotados.cambio)) ? parseFloat(custosCotados.cambio) : null),
       cotacao_id: cot.id,
     };
+    const comSelAprov = comissionadosDaCotacao(cot.dados);
+    if (comSelAprov.length) processo.comissoes_json = { selecionados: comSelAprov, pagamentos: [] };
 
     const novoResumo = {
       ...resumoAtual,
@@ -4756,7 +4765,7 @@ app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (re
     if (eCot) throw new Error(eCot.message);
 
     const { data: proc, error: eProc } = await sb()
-      .from('controle_processos').select('id, referencia, estimativa_json, real_json, fechado, cancelado')
+      .from('controle_processos').select('id, referencia, estimativa_json, real_json, fechado, cancelado, comissoes_json')
       .eq('id', processo_id).single();
     if (eProc) throw new Error(eProc.message);
 
@@ -4778,6 +4787,14 @@ app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (re
     const patch = { cotacao_id: cot.id }; // processo passa a contar como "Origem: Cotação"
     if (estimativa) patch.estimativa_json = estimativa;
     if (realInicial) patch.real_json = realInicial;
+    // Comissionados da cotação somam aos já marcados no processo (não apaga
+    // nada nem mexe nos pagamentos já registrados).
+    const comSelVinc = comissionadosDaCotacao(cot.dados);
+    if (comSelVinc.length) {
+      const atualCom = (proc.comissoes_json && typeof proc.comissoes_json === 'object' && !Array.isArray(proc.comissoes_json)) ? proc.comissoes_json : {};
+      const selAtual = Array.isArray(atualCom.selecionados) ? atualCom.selecionados.map(x => String(x).toUpperCase()) : [];
+      patch.comissoes_json = { ...atualCom, selecionados: [...new Set([...selAtual, ...comSelVinc])], pagamentos: Array.isArray(atualCom.pagamentos) ? atualCom.pagamentos : [] };
+    }
     if (Object.keys(patch).length) {
       patch.updated_at = new Date().toISOString(); // sinaliza mudança pro auto-refresh (/processos/versao)
       const { error: eUpd } = await sb().from('controle_processos').update(patch).eq('id', processo_id);
