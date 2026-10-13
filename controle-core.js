@@ -3778,6 +3778,271 @@ function renderFechamentoTimeline(p){
   </div>`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// COMISSÕES DE VENDEDORES / REPRESENTANTES (#517 + Timp) — pedido do Ayslan
+// (13/10/2026). USO INTERNO: o cliente não sabe dessas comissões, então
+// nada daqui entra em export p/ cliente, Capa ou follow-up — só no painel
+// do processo (aba Fechamento) e no relatório "Comissões a pagar".
+// Cadastro: /cadastros → Listas → Comissionados (categoria comissionado):
+//   percentual, base, clientes (restrição opcional) e automatico (S/N).
+// Bases:
+//   FATURAMENTO_TOTAL = NF + juros + Nota Boss/Lopes + comissão China ("chinês")
+//   NOTA_FISCAL       = só a NF de saída
+//   FOB_DOLAR         = FOB × dólar médio do processo (Custo da mercadoria em R$)
+//   LUCRO_BRUTO       = lucro bruto da operação ANTES das próprias comissões
+// Seleção/pagamentos ficam em p.comissoes_json (migration 0045). Cálculo é só
+// informativo: NÃO altera o Lucro Real — o valor que entra no resultado
+// continua sendo o lançado em Custos Reais (Comissão Vendedor / Timp / BR).
+// ─────────────────────────────────────────────────────────────────────────
+const COMISSAO_BASES = {
+  FATURAMENTO_TOTAL: 'Total faturamento',
+  NOTA_FISCAL: 'Nota fiscal',
+  FOB_DOLAR: 'FOB × dólar médio',
+  LUCRO_BRUTO: 'Lucro bruto da operação',
+};
+const COMISSAO_ITENS_CUSTO = ['comissao_vendedor', 'timp', 'comissao_br'];
+
+function _normNomeComissao(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim(); }
+function _simComissao(v){ return v === true || /^(S|SIM|Y|YES|TRUE|1)$/i.test(String(v||'').trim()); }
+
+function listaComissionados(){
+  const l = (typeof _listasCompletas !== 'undefined' && _listasCompletas && _listasCompletas.comissionado) || [];
+  return l.filter(c => c && c.ativo !== false).map(c => {
+    const d = c.dados || {};
+    const base = String(d.base||'').toUpperCase().replace(/[^A-Z_]/g,'');
+    return { codigo: String(c.codigo||'').toUpperCase(), nome: c.nome || c.codigo, percentual: parseFloat(String(d.percentual).replace(',','.')) || 0,
+      base: COMISSAO_BASES[base] ? base : 'FATURAMENTO_TOTAL', clientes: String(d.clientes||''), automatico: _simComissao(d.automatico) };
+  });
+}
+function comissionadoAtendeCliente(c, cliente){
+  const lista = String(c.clientes||'').split(/[,;\/\n]+/).map(_normNomeComissao).filter(Boolean);
+  if(!lista.length) return true;
+  const cl = ' ' + _normNomeComissao(cliente) + ' ';
+  return lista.some(x => cl.includes(' ' + x + ' ')); // palavra inteira: "OST" não casa com "COSTA"
+}
+function parseComissoes(p){
+  let o = p && p.comissoes_json;
+  if(typeof o === 'string'){ try{ o = JSON.parse(o); }catch(e){ o = null; } }
+  o = (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  return { selecionados: Array.isArray(o.selecionados) ? o.selecionados.map(x=>String(x).toUpperCase()) : [], pagamentos: Array.isArray(o.pagamentos) ? o.pagamentos : [] };
+}
+
+// Fatias de venda do processo (cada NF de saída real) com a base de cada
+// tipo já calculada. Sem vendas_json = uma fatia só (processo inteiro).
+function fatiasComissaoProcesso(p){
+  const fch = calcularFechamento(p);
+  const det = (id) => { const d = ((fch.custosReais && fch.custosReais.detalhe) || []).find(x => x.id === id); return d ? (d.valorBrl || 0) : 0; };
+  const boss = fch.notasBoss ? (fch.notasBoss.valorBoss || 0) : 0;
+  const china = det('comissao_china');
+  let fob = det('fob');
+  if(!(fob > 0)){ const usd = parseFloat(p.ci_valor_usd) || parseFloat(p.pi_valor_usd) || 0; const tx = parseFloat(p.pi_cambio_fechado) || parseFloat(p.pi_cambio) || 0; fob = usd * tx; }
+  const comissoesLancadas = COMISSAO_ITENS_CUSTO.reduce((s,id)=> s + det(id), 0);
+  const lucroAntes = fch.lucroReal != null ? fch.lucroReal + comissoesLancadas : null;
+  const vendas = vendasReaisDoProcesso(p);
+  const fatias = [];
+  if(vendas.length){
+    const nfTotal = vendas.reduce((s,v)=> s + (parseFloat(v.nf_saida_valor)||0), 0);
+    const totalQtd = totalQuantidadeProdutos(p);
+    vendas.forEach(v => {
+      const nf = parseFloat(v.nf_saida_valor) || 0;
+      const shareNf = nfTotal > 0 ? nf / nfTotal : (1 / vendas.length);
+      const qtd = quantidadeVenda(v);
+      const shareQtd = totalQtd > 0 && qtd > 0 ? qtd / totalQtd : shareNf;
+      const juros = calcularJurosVenda(p, v, vendas.length);
+      fatias.push({ chave: String(v.nf_saida_numero || ('V' + (fatias.length+1))), cliente: v.cliente || p.cliente || '', nfNumero: v.nf_saida_numero || '', nfData: v.nf_saida_data || '', temNf: nf > 0,
+        bases: { NOTA_FISCAL: nf, FATURAMENTO_TOTAL: nf + juros + (boss + china) * shareNf, FOB_DOLAR: fob * shareQtd, LUCRO_BRUTO: lucroAntes != null ? lucroAntes * shareNf : null } });
+    });
+  } else {
+    const nf = fch.nfSaida || 0;
+    const juros = fch.jurosCobrado ? fch.jurosCobrado.valor : 0;
+    fatias.push({ chave: String(p.nf_saida_numero || 'P'), cliente: p.cliente || '', nfNumero: p.nf_saida_numero || '', nfData: p.nf_saida_data || '', temNf: nf > 0,
+      bases: { NOTA_FISCAL: nf, FATURAMENTO_TOTAL: nf + juros + boss + china, FOB_DOLAR: fob, LUCRO_BRUTO: lucroAntes } });
+  }
+  return { fatias, comissoesLancadas, lucroAntes };
+}
+
+// Linhas de comissão do processo: (comissionado × fatia). cadastro opcional
+// (testes passam a lista direto).
+function calcularComissoes(p, cadastro){
+  const lista = cadastro || listaComissionados();
+  const cfg = parseComissoes(p);
+  const sel = new Set(cfg.selecionados);
+  const { fatias, comissoesLancadas } = fatiasComissaoProcesso(p);
+  const r2 = v => Math.round(v * 100) / 100;
+  const linhas = [];
+  lista.forEach(c => {
+    const temRestricao = !!String(c.clientes||'').trim();
+    const ativo = sel.has(c.codigo) || (c.automatico && temRestricao);
+    if(!ativo) return;
+    fatias.forEach(f => {
+      if(!comissionadoAtendeCliente(c, f.cliente)) return;
+      const base = f.bases[c.base];
+      const pendente = base == null || !f.temNf;
+      const valor = pendente ? null : r2(base * c.percentual / 100);
+      const chave = c.codigo + '|' + f.chave;
+      const pg = cfg.pagamentos.find(x => x && x.chave === chave) || null;
+      linhas.push({ chave, codigo: c.codigo, nome: c.nome, percentual: c.percentual, base: c.base, baseLabel: COMISSAO_BASES[c.base],
+        automatico: !sel.has(c.codigo), cliente: f.cliente, nfNumero: f.nfNumero, nfData: f.nfData,
+        valorBase: base == null ? null : r2(base), valor, pendente, pago: pg ? { data: pg.data || '', valor: parseFloat(pg.valor) || valor || 0, usuario: pg.usuario || '' } : null });
+    });
+  });
+  const total = r2(linhas.reduce((s,l)=> s + (l.valor||0), 0));
+  const pago = r2(linhas.filter(l=>l.pago).reduce((s,l)=> s + (l.pago.valor||0), 0));
+  return { linhas, total, pago, aPagar: r2(total - pago), lancadoCustosReais: r2(comissoesLancadas), selecionados: cfg.selecionados };
+}
+
+// ── UI: card na aba Fechamento (pointer-events:auto — funciona com o
+// processo fechado, comissão costuma ser paga depois do fechamento) ──
+function renderComissoesCard(p){
+  if(!p || !p.id) return '';
+  const fmt = v => v==null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const e = (typeof esc === 'function') ? esc : (x=>String(x==null?'':x));
+  const lista = listaComissionados();
+  let corpo;
+  if(!lista.length){
+    corpo = `<div style="font-size:12px;color:var(--muted);">Nenhum comissionado cadastrado. Cadastre em <b>Cadastros → Listas → Comissionados</b> (percentual, base e clientes).</div>`;
+  } else {
+    const r = calcularComissoes(p, lista);
+    const sel = new Set(r.selecionados);
+    const chips = lista.map(c => {
+      const auto = c.automatico && String(c.clientes||'').trim();
+      const marcado = sel.has(c.codigo);
+      return `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:14px;padding:3px 10px;font-size:12px;margin:0 6px 6px 0;background:${marcado?'#eef6ff':'var(--bg)'};cursor:pointer;" title="${e(c.percentual+'% — '+COMISSAO_BASES[c.base]+(c.clientes?' — clientes: '+c.clientes:''))}">
+        <input type="checkbox" ${marcado?'checked':''} onchange="toggleComissionado('${e(c.codigo)}', this.checked)"> ${e(c.nome)} <span style="color:var(--muted);">${String(c.percentual).replace('.',',')}%</span>${auto?' <span style="color:#059669;font-size:10px;">auto</span>':''}</label>`;
+    }).join('');
+    const linhasHtml = r.linhas.length ? r.linhas.map(l => `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 8px;">${e(l.nome)}${l.automatico?' <span style="color:#059669;font-size:10px;">auto</span>':''}</td>
+        <td style="padding:6px 8px;">${e(l.cliente)}${l.nfNumero?' · NF '+e(l.nfNumero):''}</td>
+        <td style="padding:6px 8px;">${e(l.baseLabel)} · ${String(l.percentual).replace('.',',')}%</td>
+        <td style="padding:6px 8px;text-align:right;">${fmt(l.valorBase)}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:600;">${l.pendente?'<span style="color:var(--muted);font-weight:400;">aguarda NF/resultado</span>':fmt(l.valor)}</td>
+        <td style="padding:6px 8px;text-align:right;">${l.pago?`<span style="color:#059669;">✓ pago ${e(l.pago.data?String(l.pago.data).split('-').reverse().join('/'):'')}</span> <a href="#" onclick="desmarcarComissaoPaga('${e(l.chave)}');return false;" style="font-size:11px;color:var(--muted);">desfazer</a>`:(l.pendente?'':`<button type="button" onclick="marcarComissaoPaga('${e(l.chave)}', ${l.valor})" style="font-size:11px;border:1px solid var(--border);background:var(--bg);border-radius:5px;padding:2px 8px;cursor:pointer;">Marcar pago</button>`)}</td></tr>`).join('')
+      : `<tr><td colspan="6" style="padding:10px;color:var(--muted);font-size:12px;">Nenhum comissionado marcado para este processo.</td></tr>`;
+    const dif = Math.abs(r.total - r.lancadoCustosReais) >= 0.01 && r.total > 0;
+    corpo = `<div style="margin-bottom:8px;">${chips}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border);">
+        <th style="padding:6px 8px;">Comissionado</th><th style="padding:6px 8px;">Cliente / NF</th><th style="padding:6px 8px;">Base</th><th style="padding:6px 8px;text-align:right;">Valor base</th><th style="padding:6px 8px;text-align:right;">Comissão</th><th style="padding:6px 8px;text-align:right;">Status</th></tr></thead>
+        <tbody>${linhasHtml}</tbody></table>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12px;">
+        <span>Total calculado: <b>${fmt(r.total)}</b></span><span>Pago: <b>${fmt(r.pago)}</b></span><span>A pagar: <b style="color:#b45309;">${fmt(r.aPagar)}</b></span>
+        <span style="color:var(--muted);">Lançado em Custos Reais (Comissão Vendedor + Timp + BR): ${fmt(r.lancadoCustosReais)}${dif?' <b style="color:#b45309;">— diferente do calculado</b>':''}</span></div>`;
+  }
+  return `<div id="comissoes-card" style="pointer-events:auto;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:16px;background:var(--card,#fff);">
+    <div style="font-weight:700;font-size:13px;margin-bottom:4px;">💼 Comissões — uso interno</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Não aparece em nenhum export ou planilha do cliente. Cálculo informativo: o resultado (lucro) só muda pelo que for lançado em Custos Reais.</div>
+    ${corpo}</div>`;
+}
+function _rerenderComissoesCard(){
+  const el = document.getElementById('comissoes-card');
+  if(el && typeof _editando !== 'undefined' && _editando) el.outerHTML = renderComissoesCard(_editando);
+}
+async function _salvarComissoes(cfg){
+  if(typeof _editando === 'undefined' || !_editando || !_editando.id) return false;
+  try{
+    const r = await fetch('/api/controle/v2/processo/' + encodeURIComponent(_editando.id) + '/comissoes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ comissoes_json: cfg }) });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok){ showToast((d && d.erro) || 'Erro ao salvar comissões', 'err'); return false; }
+    _editando.comissoes_json = d.comissoes_json || cfg;
+    if(typeof _editandoOriginal !== 'undefined' && _editandoOriginal) _editandoOriginal.comissoes_json = _editando.comissoes_json;
+    const px = (typeof _processos !== 'undefined') ? _processos.find(x => x.id === _editando.id) : null;
+    if(px) px.comissoes_json = _editando.comissoes_json;
+    _rerenderComissoesCard();
+    return true;
+  }catch(e){ showToast('Erro de rede ao salvar comissões', 'err'); return false; }
+}
+async function toggleComissionado(codigo, marcado){
+  const cfg = parseComissoes(_editando);
+  const s = new Set(cfg.selecionados); codigo = String(codigo).toUpperCase();
+  if(marcado) s.add(codigo); else s.delete(codigo);
+  cfg.selecionados = [...s];
+  if(await _salvarComissoes(cfg)) showToast('Comissões atualizadas', 'ok');
+}
+async function marcarComissaoPaga(chave, valor){
+  const hoje = new Date(); const iso = hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getDate()).padStart(2,'0');
+  const resp = prompt('Data do pagamento da comissão (AAAA-MM-DD):', iso);
+  if(resp == null) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(resp.trim())){ showToast('Data inválida (use AAAA-MM-DD)', 'err'); return; }
+  const cfg = parseComissoes(_editando);
+  cfg.pagamentos = cfg.pagamentos.filter(x => x && x.chave !== chave);
+  cfg.pagamentos.push({ chave, data: resp.trim(), valor: Number(valor)||0, usuario: (typeof _user !== 'undefined' && _user && _user.usuario) || '' });
+  if(await _salvarComissoes(cfg)) showToast('Comissão marcada como paga', 'ok');
+}
+async function desmarcarComissaoPaga(chave){
+  if(!confirm('Desfazer o registro de pagamento desta comissão?')) return;
+  const cfg = parseComissoes(_editando);
+  cfg.pagamentos = cfg.pagamentos.filter(x => x && x.chave !== chave);
+  if(await _salvarComissoes(cfg)) showToast('Pagamento desfeito', 'ok');
+}
+
+// ── Relatório "Comissões a pagar" (Dashboard Resultado) ──
+function listarComissoesGeral(processos, filtro){
+  const f = filtro || {};
+  const lista = listaComissionados();
+  const out = [];
+  (processos || []).forEach(p => {
+    if(!p || p.cancelado) return;
+    let r; try{ r = calcularComissoes(p, lista); }catch(e){ return; }
+    r.linhas.forEach(l => {
+      if(f.codigo && l.codigo !== f.codigo) return;
+      if(f.status === 'apagar' && (l.pago || l.pendente)) return;
+      if(f.status === 'pagos' && !l.pago) return;
+      const d = String(l.nfData||'').slice(0,10);
+      if(f.de && (!d || d < f.de)) return;
+      if(f.ate && (!d || d > f.ate)) return;
+      out.push(Object.assign({ referencia: p.referencia, processoId: p.id }, l));
+    });
+  });
+  return out.sort((a,b)=> String(a.nome).localeCompare(String(b.nome),'pt-BR') || String(a.nfData).localeCompare(String(b.nfData)));
+}
+let _filComissoes = { codigo:'', status:'apagar', de:'', ate:'' };
+function abrirRelatorioComissoes(){
+  let ov = document.getElementById('comissoes-overlay');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'comissoes-overlay'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,31,61,.45);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:60px 16px;overflow:auto;'; ov.onclick = (ev)=>{ if(ev.target===ov) ov.remove(); }; document.body.appendChild(ov); }
+  renderRelatorioComissoes();
+}
+function renderRelatorioComissoes(){
+  const ov = document.getElementById('comissoes-overlay'); if(!ov) return;
+  const e = (typeof esc === 'function') ? esc : (x=>String(x==null?'':x));
+  const fmt = v => v==null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const f = _filComissoes;
+  const linhas = listarComissoesGeral(typeof _processos !== 'undefined' ? _processos : [], f);
+  const porPessoa = {};
+  linhas.forEach(l => { const k = l.nome; porPessoa[k] = porPessoa[k] || { calc:0, pago:0 }; porPessoa[k].calc += l.valor||0; if(l.pago) porPessoa[k].pago += l.pago.valor||0; });
+  const opc = listaComissionados().map(c => `<option value="${e(c.codigo)}" ${f.codigo===c.codigo?'selected':''}>${e(c.nome)}</option>`).join('');
+  const dataBR = d => d ? String(d).slice(0,10).split('-').reverse().join('/') : '';
+  ov.innerHTML = `<div style="background:var(--card,#fff);border-radius:12px;max-width:1100px;width:100%;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div style="font-weight:700;font-size:15px;">💼 Comissões a pagar</div><button type="button" onclick="document.getElementById('comissoes-overlay').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;">×</button></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Uso interno — não compartilhar com cliente. Período pela data da NF de saída.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:12px;">
+      <select onchange="_filComissoes.codigo=this.value;renderRelatorioComissoes()" class="form-input" style="width:auto;"><option value="">Todos os comissionados</option>${opc}</select>
+      <select onchange="_filComissoes.status=this.value;renderRelatorioComissoes()" class="form-input" style="width:auto;"><option value="apagar" ${f.status==='apagar'?'selected':''}>A pagar</option><option value="pagos" ${f.status==='pagos'?'selected':''}>Pagos</option><option value="" ${!f.status?'selected':''}>Todos</option></select>
+      NF de <input type="date" class="form-input" style="width:auto;" value="${e(f.de)}" onchange="_filComissoes.de=this.value;renderRelatorioComissoes()"> até <input type="date" class="form-input" style="width:auto;" value="${e(f.ate)}" onchange="_filComissoes.ate=this.value;renderRelatorioComissoes()">
+      <button type="button" onclick="exportarComissoesExcel()" style="margin-left:auto;border:1px solid var(--border);background:var(--bg);border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:600;">⬇ Excel</button></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">${Object.keys(porPessoa).map(k=>`<div style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;"><b>${e(k)}</b><br>${fmt(porPessoa[k].calc)}${porPessoa[k].pago?` <span style="color:#059669;">(pago ${fmt(porPessoa[k].pago)})</span>`:''}</div>`).join('') || '<span style="font-size:12px;color:var(--muted);">Nada no filtro.</span>'}</div>
+    <div style="max-height:55vh;overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card,#fff);">
+      <th style="padding:6px;">Comissionado</th><th style="padding:6px;">Processo</th><th style="padding:6px;">Cliente</th><th style="padding:6px;">NF</th><th style="padding:6px;">Data NF</th><th style="padding:6px;">Base</th><th style="padding:6px;text-align:right;">Valor base</th><th style="padding:6px;text-align:right;">Comissão</th><th style="padding:6px;">Status</th></tr></thead>
+      <tbody>${linhas.map(l=>`<tr style="border-bottom:1px solid var(--border);"><td style="padding:6px;">${e(l.nome)}</td><td style="padding:6px;"><a href="#" onclick="document.getElementById('comissoes-overlay').remove();abrirProcesso('${e(l.processoId)}');return false;">${e(l.referencia)}</a></td><td style="padding:6px;">${e(l.cliente)}</td><td style="padding:6px;">${e(l.nfNumero)}</td><td style="padding:6px;">${dataBR(l.nfData)}</td><td style="padding:6px;">${e(l.baseLabel)} · ${String(l.percentual).replace('.',',')}%</td><td style="padding:6px;text-align:right;">${fmt(l.valorBase)}</td><td style="padding:6px;text-align:right;font-weight:600;">${l.pendente?'—':fmt(l.valor)}</td><td style="padding:6px;">${l.pago?'Pago '+dataBR(l.pago.data):(l.pendente?'Aguarda NF/resultado':'A pagar')}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+async function exportarComissoesExcel(){
+  if(typeof ExcelJS === 'undefined'){ showToast('Biblioteca de Excel ainda carregando, tente de novo', 'err'); return; }
+  const linhas = listarComissoesGeral(typeof _processos !== 'undefined' ? _processos : [], _filComissoes);
+  if(!linhas.length){ showToast('Nada para exportar neste filtro', 'warn'); return; }
+  const wb = new ExcelJS.Workbook(); wb.creator = 'IMPAK';
+  const ws = wb.addWorksheet('Comissões (interno)');
+  ws.columns = [['Comissionado',22],['Processo',18],['Cliente',28],['NF',12],['Data NF',12],['Base',22],['%',7],['Valor base (R$)',16],['Comissão (R$)',15],['Status',14],['Data pagto',12]].map(([h,w])=>({header:h,width:w}));
+  ws.getRow(1).eachCell(c => { c.font = {name:'Arial',size:10,bold:true,color:{argb:'FFFFFFFF'}}; c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF0F1F3D'}}; });
+  const toDate = iso => iso ? new Date(String(iso).slice(0,10)+'T12:00:00') : null;
+  linhas.forEach(l => ws.addRow([l.nome, l.referencia, l.cliente, l.nfNumero, toDate(l.nfData), l.baseLabel, l.percentual/100, l.valorBase, l.pendente?null:l.valor, l.pago?'Pago':(l.pendente?'Aguarda NF':'A pagar'), l.pago?toDate(l.pago.data):null]));
+  ws.getColumn(5).numFmt = 'dd/mm/yyyy'; ws.getColumn(11).numFmt = 'dd/mm/yyyy'; ws.getColumn(7).numFmt = '0.0%';
+  ws.getColumn(8).numFmt = '#,##0.00'; ws.getColumn(9).numFmt = '#,##0.00';
+  const tot = ws.addRow(['TOTAL','','','','','','',null, linhas.reduce((s,l)=>s+(l.valor||0),0)]); tot.font = {bold:true};
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = `Comissoes_interno_${new Date().toISOString().slice(0,10)}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
 function renderFechamentoInfo(p){
   const f = calcularFechamento(p);
   const r2 = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;

@@ -3019,6 +3019,49 @@ teste('processoExigeCotacao: só processos criados a partir de 13/10/2026 (hist�
   iguais(sandbox.pendenciasFecharProcesso({ referencia: 'X', created_at: '2026-08-01' }).length, 0);
 });
 
+console.log('\n💼 Comissões (uso interno, #517) — nomes fictícios');
+const _cadComTeste = [
+  { codigo:'VEND_A', nome:'Vendedor A', percentual:3,   base:'FATURAMENTO_TOTAL', clientes:'', automatico:false },
+  { codigo:'REP_B',  nome:'Representante B', percentual:0.5, base:'NOTA_FISCAL', clientes:'CLIENTE BETA, CLIENTE GAMA', automatico:true },
+  { codigo:'SOCIO_C',nome:'Sócio C', percentual:30,  base:'LUCRO_BRUTO', clientes:'', automatico:false },
+  { codigo:'AG_D',   nome:'Agente D', percentual:1,   base:'FOB_DOLAR', clientes:'', automatico:false },
+];
+teste('comissões: faturamento total soma NF + juros; só conta quem foi marcado', () => {
+  const p = { id:'t1', cliente:'Cliente Alfa', nf_saida_valor:'100000', nf_saida_numero:'111', real_json:{ juros_valor:10000 }, comissoes_json:{ selecionados:['VEND_A'] } };
+  const r = sandbox.calcularComissoes(p, _cadComTeste);
+  iguais(r.linhas.length, 1);
+  iguais(r.linhas[0].valor, 3300);
+});
+teste('comissões: automático por cliente vale sem marcar; outro cliente não', () => {
+  const p = { id:'t2', cliente:'Cliente Beta Ltda', nf_saida_valor:'80000', nf_saida_numero:'222', comissoes_json:null };
+  const r = sandbox.calcularComissoes(p, _cadComTeste);
+  iguais(r.linhas.length, 1); iguais(r.linhas[0].codigo, 'REP_B'); iguais(r.linhas[0].valor, 400);
+  iguais(sandbox.calcularComissoes({ id:'t3', cliente:'Outro', nf_saida_valor:'80000' }, _cadComTeste).linhas.length, 0);
+});
+teste('comissões: lucro bruto é ANTES das comissões lançadas; FOB usa custo da mercadoria em R$', () => {
+  const p = { id:'t4', cliente:'Cliente Alfa', nf_saida_valor:'100000', nf_saida_numero:'333',
+    real_json:{ fob:{moeda:'BRL',valor:80000}, comissao_vendedor:{moeda:'BRL',valor:1000} }, comissoes_json:{ selecionados:['SOCIO_C','AG_D'] } };
+  const r = sandbox.calcularComissoes(p, _cadComTeste);
+  const soc = r.linhas.find(l=>l.codigo==='SOCIO_C'), ag = r.linhas.find(l=>l.codigo==='AG_D');
+  iguais(soc.valorBase, 20000); iguais(soc.valor, 6000);
+  iguais(ag.valor, 800);
+  iguais(r.lancadoCustosReais, 1000);
+});
+teste('comissões: multi-venda — restrição de cliente por NF + pago abate do a pagar', () => {
+  const p = { id:'t5', cliente:'Cliente Alfa', vendas_json: JSON.stringify([
+      { cliente:'Cliente Alfa', nf_saida_numero:'10', nf_saida_valor:'60000', itens:[] },
+      { cliente:'Cliente Gama', nf_saida_numero:'11', nf_saida_valor:'40000', itens:[] } ]),
+    comissoes_json:{ selecionados:['VEND_A'], pagamentos:[{ chave:'VEND_A|10', data:'2026-10-01', valor:1800 }] } };
+  const r = sandbox.calcularComissoes(p, _cadComTeste);
+  iguais(r.linhas.filter(l=>l.codigo==='VEND_A').length, 2);
+  const rep = r.linhas.filter(l=>l.codigo==='REP_B'); iguais(rep.length, 1); iguais(rep[0].valor, 200);
+  iguais(r.total, 3200); iguais(r.pago, 1800); iguais(r.aPagar, 1400);
+});
+teste('comissões: sem NF de saída fica pendente (sem valor)', () => {
+  const r = sandbox.calcularComissoes({ id:'t6', cliente:'Cliente Alfa', comissoes_json:{ selecionados:['VEND_A'] } }, _cadComTeste);
+  iguais(r.linhas[0].pendente, true); iguais(r.total, 0);
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';
