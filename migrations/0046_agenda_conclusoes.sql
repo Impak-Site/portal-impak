@@ -16,3 +16,5 @@ CREATE TABLE IF NOT EXISTS agenda_conclusoes (
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_conclusoes_proc ON agenda_conclusoes (processo_id);
 ALTER TABLE agenda_conclusoes ENABLE ROW LEVEL SECURITY;
+-- Tabela criada pelo SQL Editor não herda o grant do service_role (mesmo caso de app_sessions).
+GRANT ALL ON TABLE public.agenda_conclusoes TO service_role;
