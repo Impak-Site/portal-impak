@@ -20,8 +20,9 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
             <select class="form-input" id="vincular-cotacao-select"></select>
           </div>
           <div class="form-group" style="position:relative;"><label class="form-label">Processo (busque pela referência)</label>
-            <input class="form-input" id="vincular-processo-busca" placeholder="Digite a referência..." autocomplete="off" oninput="buscarProcessoVincular(this.value)">
-            <div id="vincular-processo-dropdown" style="display:none;position:absolute;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;width:100%;"></div>
+            <input class="form-input" id="vincular-processo-busca" placeholder="Digite a referência ou o cliente..." autocomplete="off" oninput="buscarProcessoVincular(this.value)" style="width:100%;">
+            <div id="vincular-processo-dropdown" style="display:none;margin-top:6px;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);max-height:240px;overflow-y:auto;width:100%;"></div>
+            <div id="vincular-processo-escolhido" style="display:none;margin-top:8px;padding:8px 12px;border-radius:6px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:13px;color:#065f46;"></div>
             <input type="hidden" id="vincular-processo-id">
           </div>
           <button class="btn-calc" style="margin-top:14px;" onclick="confirmarVincularProcesso()">Vincular</button>
@@ -36,6 +37,7 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
     document.getElementById('vincular-processo-id').value = '';
     document.getElementById('vincular-processo-busca').value = '';
     document.getElementById('vincular-processo-dropdown').style.display = 'none';
+    const escAbr = document.getElementById('vincular-processo-escolhido'); if (escAbr) escAbr.style.display = 'none';
     const sel = document.getElementById('vincular-cotacao-select');
     sel.innerHTML = '<option value="">Carregando...</option>';
     try {
@@ -60,6 +62,9 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
   };
 
   window.buscarProcessoVincular = function (q) {
+    const escSel = document.getElementById('vincular-processo-escolhido');
+    if (escSel) escSel.style.display = 'none';
+    document.getElementById('vincular-processo-id').value = '';
     const dd = document.getElementById('vincular-processo-dropdown');
     const termo = (q || '').trim().toUpperCase();
     if (!termo || !_processosAbertosCache) { dd.style.display = 'none'; return; }
@@ -82,6 +87,8 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
     document.getElementById('vincular-processo-id').value = id;
     document.getElementById('vincular-processo-busca').value = referencia;
     document.getElementById('vincular-processo-dropdown').style.display = 'none';
+    const esc = document.getElementById('vincular-processo-escolhido');
+    if (esc) { esc.style.display = 'block'; esc.textContent = '✓ Processo selecionado: ' + referencia; }
   };
 
   window.confirmarVincularProcesso = async function () {
@@ -109,7 +116,8 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
       novoBtn.id = 'btn-vincular-processo';
       novoBtn.className = 'btn-refresh';
       novoBtn.style.flex = '1';
-      novoBtn.textContent = 'Vincular a Processo';
+      novoBtn.style.minWidth = '140px';
+      novoBtn.textContent = '🔗 Vincular a Processo';
       novoBtn.onclick = window.abrirVincularProcesso;
       btnRef.insertAdjacentElement('afterend', novoBtn);
     }

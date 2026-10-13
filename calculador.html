@@ -722,9 +722,9 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
 
     <!-- SALVAR/ABRIR COTAÇÃO: sempre visível (nao so na ultima etapa), pra dar
          pra salvar um rascunho a qualquer momento do preenchimento. -->
-    <div style="display:flex;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border);">
-      <button class="btn-refresh" style="flex:1;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
-      <button class="btn-refresh" style="flex:1;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border);">
+      <button class="btn-refresh" style="flex:1;min-width:140px;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
+      <button class="btn-refresh" style="flex:1;min-width:140px;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
     </div>
     <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
 
