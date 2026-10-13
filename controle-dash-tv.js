@@ -771,7 +771,7 @@ function renderDashTV(){
         <span><span style="display:inline-block;width:.8em;height:.8em;background:#dbeafe;border:2px solid #2563eb;border-radius:2px;vertical-align:-1px;"></span> No estoque (remessa 5905)</span>
         <span><span style="display:inline-block;width:.8em;height:.8em;background:#d7dee7;border:2px solid #94a3b8;border-radius:2px;vertical-align:-1px;"></span> Vendido</span>
       </div>
-      <div data-tv-autopagina style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:.9em;flex:1;min-height:0;overflow-y:auto;font-size:1em;scrollbar-width:none;align-content:start;">
+      <div data-tv-autopagina style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:.9em;flex:1;min-height:0;overflow-y:auto;font-size:1em;scrollbar-width:none;align-content:start;grid-auto-rows:max-content;">
         ${colunas.map(col => `<div style="display:flex;flex-direction:column;overflow:hidden;">${col.map(linhaProcessoMesChaoTV).join('')}</div>`).join('')}
       </div>
     </div>`;
