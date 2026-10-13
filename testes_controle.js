@@ -3012,6 +3012,12 @@ teste('pendenciasFecharProcesso: avisa processo sem cotação, exceto Acompanham
   iguais(sandbox.pendenciasFecharProcesso({ cotacao_id: 'c' }).length, 0);
   iguais(sandbox.pendenciasFecharProcesso({ finalidade: 'ACOMPANHAMENTO' }).length, 0);
 });
+teste('processoExigeCotacao: só processos criados a partir de 13/10/2026 (histórico migrado não)', () => {
+  iguais(sandbox.processoExigeCotacao({ created_at: '2026-07-07T10:00:00Z' }), false);
+  iguais(sandbox.processoExigeCotacao({ created_at: '2026-10-13T09:00:00Z' }), true);
+  iguais(sandbox.processoExigeCotacao({ created_at: '2026-11-01T09:00:00Z', cancelado: true }), false);
+  iguais(sandbox.pendenciasFecharProcesso({ referencia: 'X', created_at: '2026-08-01' }).length, 0);
+});
 
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });

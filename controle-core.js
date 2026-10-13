@@ -756,7 +756,17 @@ function origemProcesso(p){
   return (p.cotacao_id || estimativaTemConteudo(p.estimativa_json)) ? 'COTACAO' : 'DIRETO';
 }
 // Acompanhamento (CCN) não é importação nossa: não exige cotação.
-function processoExigeCotacao(p){ return !!p && p.finalidade !== 'ACOMPANHAMENTO' && !p.cancelado; }
+// A regra "todo processo nasce no TyreDesk/Calculador" vale a partir de
+// 13/10/2026 — os ~460 processos anteriores foram migrados das planilhas e
+// nasceram no Controle por definição; cobrá-los só geraria ruído (alerta do
+// Jean e checklist do Fechar Processo). Mesma data no server.js
+// (ALERTA_SEM_COTACAO_DESDE).
+const REGRA_COTACAO_DESDE = '2026-10-13';
+function processoExigeCotacao(p){
+  if(!p || p.finalidade === 'ACOMPANHAMENTO' || p.cancelado) return false;
+  const criado = String(p.created_at || '').slice(0,10);
+  return !criado || criado >= REGRA_COTACAO_DESDE; // sem created_at = processo novo ainda não salvo
+}
 // Checklist mostrado no "Fechar Processo" — avisa, não bloqueia.
 function pendenciasFecharProcesso(p){
   const l = [];
