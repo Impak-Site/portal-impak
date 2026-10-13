@@ -112,7 +112,10 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:cal
 .fl{font-size:10px;font-weight:700;color:var(--mu);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block}
 .fi{width:100%;background:var(--sf2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-family:var(--sans);font-size:13px;padding:9px 12px;outline:none;transition:border-color .15s}
 .fi:focus{border-color:var(--or)}
-.fi::placeholder{color:#3d424d}
+.fi::placeholder{color:#a9b3c1;opacity:1;font-weight:400}
+/* campo vazio: fundo branco e borda clara, pra não parecer preenchido (Ayslan 13/10) */
+.fi:placeholder-shown{background:#fff;border-color:#e3e8ef}
+.fi:placeholder-shown:focus{border-color:var(--or)}
 .fsel{width:100%;background:var(--sf2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-family:var(--sans);font-size:13px;padding:9px 12px;outline:none;cursor:pointer}
 .ckg{display:flex;flex-wrap:wrap;gap:7px}
 .cki{display:flex;align-items:center;gap:6px;cursor:pointer;padding:7px 12px;border:1px solid var(--b1);border-radius:6px;font-size:12px;font-weight:600;transition:all .15s}
@@ -135,7 +138,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:cal
 .ctr:last-child{border-bottom:none}
 .ci{background:transparent;border:1px solid transparent;border-radius:4px;color:var(--tx);font-size:12px;padding:4px 5px;outline:none;width:100%;transition:border-color .15s}
 .ci:focus{border-color:var(--or);background:var(--sf)}
-.ci::placeholder{color:#3d424d}
+.ci::placeholder{color:#a9b3c1;opacity:1;font-weight:400}
 .badc{background:transparent;border:none;color:var(--mu);cursor:pointer;width:100%;padding:8px;font-size:11px;font-weight:600;transition:color .15s;text-align:center}
 .badc:hover{color:var(--or)}
 
