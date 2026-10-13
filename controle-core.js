@@ -742,8 +742,33 @@ function setIntervalAtualizacaoTV(){
   setInterval(() => { location.reload(); }, 60 * 60 * 1000);
 }
 
+// Origem do processo (Ayslan/Jean 13/10/2026): "todo processo nasce no
+// TyreDesk/Calculador" — com cotação vinculada (aprovada ou vinculada depois)
+// a aba Custos Reais tem o valor cotado pra comparar. Derivado, sem coluna nova:
+// cotacao_id (aprovação) ou estimativa_json (vínculo posterior).
+function estimativaTemConteudo(e){
+  if(!e) return false;
+  if(typeof e === 'string'){ const t = e.trim(); if(!t || t === 'null' || t === '{}') return false; try{ const o = JSON.parse(t); return !!o && Object.keys(o).length > 0; }catch(_){ return true; } }
+  return typeof e === 'object' && Object.keys(e).length > 0;
+}
+function origemProcesso(p){
+  if(!p) return 'DIRETO';
+  return (p.cotacao_id || estimativaTemConteudo(p.estimativa_json)) ? 'COTACAO' : 'DIRETO';
+}
+// Acompanhamento (CCN) não é importação nossa: não exige cotação.
+function processoExigeCotacao(p){ return !!p && p.finalidade !== 'ACOMPANHAMENTO' && !p.cancelado; }
+// Checklist mostrado no "Fechar Processo" — avisa, não bloqueia.
+function pendenciasFecharProcesso(p){
+  const l = [];
+  if(processoExigeCotacao(p) && origemProcesso(p) === 'DIRETO') l.push('Processo sem cotação do TyreDesk/Calculador (Custos Reais sem valor cotado para comparar)');
+  return l;
+}
+
 async function fecharProcesso(id){
-  if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.')) return;
+  const _pFechar = (typeof _processos !== 'undefined' && _processos.find(x => x.id === id)) || (typeof _editando !== 'undefined' ? _editando : null);
+  const _pend = pendenciasFecharProcesso(_pFechar);
+  const _txtPend = _pend.length ? '\n\nChecklist — atenção:\n' + _pend.map(x => '⚠ ' + x).join('\n') + '\n' : '';
+  if(!confirm('Fechar este processo? NF, Custos Reais e o resultado (lucro) ficam travados — só um gerente pode reabrir depois.' + _txtPend)) return;
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ processo:{ id, fechado:true } })

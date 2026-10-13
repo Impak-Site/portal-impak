@@ -2998,6 +2998,21 @@ teste('arquivoDeOutroProcesso: aceita arquivo do próprio processo, sem referên
   iguais(sandbox.arquivoDeOutroProcesso('OHBL_UD26-117.pdf', '', refs), null);
 });
 
+console.log('\n📋 Origem do processo (Cotação × Direto no Controle)');
+teste('origemProcesso: cotacao_id ou estimativa_json = COTACAO; sem nenhum = DIRETO', () => {
+  iguais(sandbox.origemProcesso({ cotacao_id: 'abc' }), 'COTACAO');
+  iguais(sandbox.origemProcesso({ estimativa_json: { custo_total: 100 } }), 'COTACAO');
+  iguais(sandbox.origemProcesso({ estimativa_json: '{"custo_total":1}' }), 'COTACAO');
+  iguais(sandbox.origemProcesso({ estimativa_json: null }), 'DIRETO');
+  iguais(sandbox.origemProcesso({ estimativa_json: '{}' }), 'DIRETO');
+  iguais(sandbox.origemProcesso({}), 'DIRETO');
+});
+teste('pendenciasFecharProcesso: avisa processo sem cotação, exceto Acompanhamento', () => {
+  iguais(sandbox.pendenciasFecharProcesso({ referencia: 'X' }).length, 1);
+  iguais(sandbox.pendenciasFecharProcesso({ cotacao_id: 'c' }).length, 0);
+  iguais(sandbox.pendenciasFecharProcesso({ finalidade: 'ACOMPANHAMENTO' }).length, 0);
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';

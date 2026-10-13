@@ -96,7 +96,11 @@ function renderModal(){
   document.getElementById('modal-title').textContent = isNovo ? 'Novo Processo' : p.referencia;
   const btnCopiarRef = document.getElementById('btn-copiar-ref');
   if(btnCopiarRef) btnCopiarRef.style.display = isNovo ? 'none' : '';
-  document.getElementById('modal-fase-badge').innerHTML = `<span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>`;
+  const _origem = (!isNovo && typeof origemProcesso === 'function') ? origemProcesso(p) : null;
+  const _origemHtml = !_origem ? '' : (_origem === 'COTACAO'
+    ? `<span title="Processo com cotação do TyreDesk/Calculador vinculada" style="font-size:11px;font-weight:600;color:#065f46;background:#d1fae5;border:1px solid #a7f3d0;border-radius:999px;padding:2px 8px;margin-right:6px;">🧮 Origem: Cotação</span>`
+    : (processoExigeCotacao(p) ? `<span title="Sem cotação vinculada — a aba Custos Reais não tem o valor cotado para comparar. Vincule pelo Calculador." style="font-size:11px;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:2px 8px;margin-right:6px;">✍ Origem: Direto no Controle</span>` : ''));
+  document.getElementById('modal-fase-badge').innerHTML = `${_origemHtml}<span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>`;
   document.getElementById('modal-bg').classList.add('open');
 
 
