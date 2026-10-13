@@ -323,6 +323,30 @@ teste('Taxa C.E. não afeta o AFRMM automático (só o Frete e a Capatazia entra
   aproxIgual(marinhaSemTaxaCe, marinhaComTaxaCe, 0.01, `AFRMM não deveria mudar com Taxa C.E. diferente (automático usa só Frete+Capatazia)`);
 });
 
+// ── Câmbio da parcela única (Ayslan 13/10/2026, cotação ROVELO TBR) ──
+console.log('\n📋 Parcelas: câmbio fechado no FOB');
+teste('parcela única com Valor (USD) = o próprio câmbio: câmbio da parcela vale pro FOB inteiro', () => {
+  const r = sandboxBase.fobBrlPelasParcelas([{ label:'Final', valor_usd:'5.20090004', cambio_fechado:'5.20090004' }], 35564.08, 5.0821);
+  aproxIgual(r.cambioMedio, 5.20090004, 0.000001);
+  aproxIgual(r.fobBrl, 35564.08 * 5.20090004, 0.01);
+});
+teste('parcela única com Valor (USD) vazio: cobre o FOB inteiro', () => {
+  const r = sandboxBase.fobBrlPelasParcelas([{ valor_usd:'', cambio_fechado:'5.2' }], 10000, 5);
+  aproxIgual(r.fobBrl, 52000, 0.001);
+});
+teste('2 parcelas com valor: cada fatia no seu câmbio, resto no câmbio da simulação', () => {
+  const r = sandboxBase.fobBrlPelasParcelas([{ valor_usd:'3000', cambio_fechado:'5.1' }, { valor_usd:'5000', cambio_fechado:'5.3' }], 10000, 5);
+  aproxIgual(r.fobBrl, 3000*5.1 + 5000*5.3 + 2000*5, 0.001);
+});
+teste('parcela com valor + parcela de câmbio sem valor: a segunda cobre o restante', () => {
+  const r = sandboxBase.fobBrlPelasParcelas([{ valor_usd:'3000', cambio_fechado:'5.1' }, { valor_usd:'', cambio_fechado:'5.3' }], 10000, 5);
+  aproxIgual(r.fobBrl, 3000*5.1 + 7000*5.3, 0.001);
+});
+teste('sem câmbio fechado: tudo no câmbio da simulação', () => {
+  const r = sandboxBase.fobBrlPelasParcelas([{ valor_usd:'3000', cambio_fechado:'' }], 10000, 5);
+  aproxIgual(r.fobBrl, 50000, 0.001);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

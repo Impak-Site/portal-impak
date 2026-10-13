@@ -1440,6 +1440,39 @@ function normalizarParcelaCalc(p, fobUsdRef){
   }
   return norm;
 }
+
+// FOB em R$ pelas parcelas com Câmbio Fechado (usado por calcular() e
+// dadosCapa(), mesma regra nos dois). Ayslan 13/10/2026: com PARCELA ÚNICA
+// o câmbio dela vale pro FOB inteiro — antes só valia pro "Valor (USD)"
+// digitado, e quando esse valor ficava vazio ou recebia o próprio câmbio
+// por engano (5,2009), quase todo o FOB caía no câmbio da simulação.
+// Regra: parcelas com Valor (USD) válido cobrem esse valor; se sobrar FOB e
+// houver UMA parcela com câmbio sem valor válido, ela cobre o restante.
+// "Valor válido" = > 0, diferente do próprio câmbio e não parecer uma taxa
+// (< 50 com FOB acima de 1.000).
+function valorParcelaPareceCambio(valor, cambioFechado, fobUsd){
+  const v = parseFloat(valor), c = parseFloat(cambioFechado);
+  if(!(v > 0)) return false;
+  if(c > 0 && Math.abs(v - c) < 0.0001) return true;
+  return v < 50 && (parseFloat(fobUsd) || 0) > 1000;
+}
+function fobBrlPelasParcelas(parcelas, fobUsd, cambio){
+  fobUsd = parseFloat(fobUsd) || 0;
+  let cobertoUsd = 0, cobertoBrl = 0;
+  const semValor = [];
+  (parcelas || []).forEach(p => {
+    const c = parseFloat(p && p.cambio_fechado);
+    if(!(c > 0)) return;
+    const v = parseFloat(p.valor_usd);
+    if(v > 0 && !valorParcelaPareceCambio(v, c, fobUsd)){ cobertoUsd += v; cobertoBrl += v * c; }
+    else semValor.push(c);
+  });
+  if(cobertoUsd > fobUsd && cobertoUsd > 0){ cobertoBrl = cobertoBrl * fobUsd / cobertoUsd; cobertoUsd = fobUsd; }
+  let restante = Math.max(0, fobUsd - cobertoUsd);
+  if(restante > 0 && semValor.length === 1){ cobertoBrl += restante * semValor[0]; cobertoUsd += restante; restante = 0; }
+  const fobBrl = cobertoBrl + restante * cambio;
+  return { fobBrl, cambioMedio: fobUsd > 0 ? fobBrl / fobUsd : cambio, cobertoUsd, restanteUsd: restante };
+}
 function renderParcelasCalc(){
   const wrap = document.getElementById('parcelas-calc-list');
   if(!wrap) return;
@@ -1451,8 +1484,9 @@ function renderParcelasCalc(){
       </select>
       <div>
         <span class="parcela-mini-label">Valor (USD)</span>
-        <input type="number" step="0.01" placeholder="0,00" value="${pc.valor_usd!=null?pc.valor_usd:''}"
-          oninput="_estado.parcelas[${i}].valor_usd=this.value">
+        <input type="number" step="0.01" placeholder="${_estado.parcelas.length===1?'vazio = FOB inteiro':'0,00'}" value="${pc.valor_usd!=null?pc.valor_usd:''}"
+          oninput="_estado.parcelas[${i}].valor_usd=this.value" onchange="renderParcelasCalc()">
+        ${valorParcelaPareceCambio(pc.valor_usd, pc.cambio_fechado, (typeof _estado!=='undefined' && _estado.ultimoResultado && _estado.ultimoResultado.fob_usd) || 99999) ? '<span style="display:block;font-size:10px;color:#b91c1c;margin-top:2px;">Isso parece um câmbio, não um valor em USD. Foi ignorado: a parcela cobre o FOB que faltar.</span>' : ''}
       </div>
       <div>
         <span class="parcela-mini-label">Data Vencimento</span>
@@ -1462,7 +1496,7 @@ function renderParcelasCalc(){
       <div>
         <span class="parcela-mini-label">Câmbio Fechado</span>
         <input type="number" step="0.0001" placeholder="Vazio = usa o câmbio principal" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
-          oninput="_estado.parcelas[${i}].cambio_fechado=this.value">
+          oninput="_estado.parcelas[${i}].cambio_fechado=this.value" onchange="renderParcelasCalc()">
       </div>
       <div>
         <span class="parcela-mini-label">Valor Recebido do Cliente (R$)</span>
@@ -1863,19 +1897,9 @@ function calcular() {
   // a PTAX/câmbio de referência na Declaração de Importação, não o câmbio
   // comercial negociado por parcela — só o custo real (CIF/Custo Total/
   // Faturamento/Lucro) e a Comissão China usam o câmbio ponderado.
-  let fobCobertoUsd = 0, fobCobertoBrl = 0;
-  (_estado.parcelas || []).forEach(p => {
-    const cambioP = parseFloat(p.cambio_fechado);
-    const valorP = parseFloat(p.valor_usd);
-    if(cambioP > 0 && valorP > 0){
-      fobCobertoUsd += valorP;
-      fobCobertoBrl += valorP * cambioP;
-    }
-  });
-  fobCobertoUsd = Math.min(fobCobertoUsd, fob_usd);
-  const fobRestanteUsd = Math.max(0, fob_usd - fobCobertoUsd);
-  const fobBrlPonderado = fobCobertoBrl + (fobRestanteUsd * cambio);
-  const cambioMedio = fob_usd > 0 ? (fobBrlPonderado / fob_usd) : cambio;
+  const _fobParc = fobBrlPelasParcelas(_estado.parcelas, fob_usd, cambio);
+  const fobBrlPonderado = _fobParc.fobBrl;
+  const cambioMedio = _fobParc.cambioMedio;
   // Frete sempre usa o câmbio de abertura do dia da chegada × 1,02 — mesmo
   // parâmetro das Taxas em USD (destino) e do Seguro Venda, sem campo manual
   // de override (removido: gerava confusão/divergência quando alguém digitava
@@ -2415,18 +2439,7 @@ const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCap
   // parcela com Câmbio Fechado preenchido converte a fatia do FOB equivalente
   // ao seu Valor (USD) por esse câmbio; o que sobrar do FOB (não coberto por
   // nenhuma parcela) converte pelo câmbio principal da simulação (r.cambio).
-  let fobCobertoUsd = 0, fobCobertoBrl = 0;
-  (_estado.parcelas || []).forEach(p => {
-    const cambioP = parseFloat(p.cambio_fechado);
-    const valorP = parseFloat(p.valor_usd);
-    if(cambioP > 0 && valorP > 0){
-      fobCobertoUsd += valorP;
-      fobCobertoBrl += valorP * cambioP;
-    }
-  });
-  fobCobertoUsd = Math.min(fobCobertoUsd, r.fob_usd); // nunca conta mais do que o FOB total
-  const fobRestanteUsd = Math.max(0, r.fob_usd - fobCobertoUsd);
-  const fobBrlCapa = fobCobertoBrl + (fobRestanteUsd * r.cambio);
+  const fobBrlCapa = fobBrlPelasParcelas(_estado.parcelas, r.fob_usd, r.cambio).fobBrl;
   const cifBrlCapa = fobBrlCapa + r.frete_brl + r.seguro_brl;
   // Câmbio médio efetivo do FOB na Capa (só informativo, pra exibir na nota) —
   // fobBrlCapa/fob_usd; cai pra r.cambio quando nenhuma parcela tem câmbio fechado.
