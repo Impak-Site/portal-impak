@@ -1007,6 +1007,7 @@ let _estado = {
   ultimoResultado:       null,
   cotacaoAtualId:        null, // id da cotação carregada (null = ainda não salva / nova)
   splitST:               {},   // medida -> quantidade que vai COM ST (resto vai SEM ST)
+  vendasPrevistasRF:     null, // { vendas:[{dias, itens:{idx:qtd}}], tipos:{idx:tipo} } — armazenagem pós-nacionalização (RF)
   wizardStep:            1,
   wizardResultadoPronto: false, // vira true após o 1º cálculo bem-sucedido
   acClienteCalcTimer:    null,
@@ -2878,7 +2879,173 @@ function renderResultado(r) {
     ${resumoStHtml}
     ${parcelamento_html}
     ${mix_html}
+    <div id="rf-vendas-previstas-wrap"></div>
   `;
+  try{ renderVendasPrevistasRF(); }catch(e){ console.warn('Vendas previstas RF:', e); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// VENDAS PREVISTAS — ARMAZENAGEM PÓS-NACIONALIZAÇÃO (RF) — Ayslan/Jean 13/10/2026
+// ════════════════════════════════════════════════════════════════
+// Mesma regra do Controle (controle-core.js, calcularArmazenagemItemRF):
+// tarifa R$/pneu/dia por tipo, carência (dias grátis) contada da entrada no
+// armazém (≈ chegada), cobrança = tarifa × max(0, dias − carência), por item.
+// Aqui o comercial informa "vendo X pneus da medida Y N dias após a chegada"
+// e vê o custo e o preço sugerido já com a armazenagem daquele lote. Não
+// altera o cálculo principal da cotação (custo/faturamento/lucro): é um
+// ajuste por lote em cima do preço unitário do Mix (preço + armaz. × fator).
+const ARMAZENAGEM_RF_PADRAO_CALC = {
+  PCR: { tarifa_dia: 0.045, carencia_dias: 29 }, SUV: { tarifa_dia: 0.18, carencia_dias: 29 },
+  TBR: { tarifa_dia: 0.40, carencia_dias: 29 }, RODAS: { tarifa_dia: 0.40, carencia_dias: 29 },
+  METAIS: { tarifa_dia: 1.65, carencia_dias: 29 },
+};
+const ARMAZENAGEM_RF_TIPOS_CALC = Object.keys(ARMAZENAGEM_RF_PADRAO_CALC);
+let _tarifasRFCalc = null; // carregadas de /api/listas (Cadastros → Listas); fallback = padrão
+function tarifasRFCalc(){ return _tarifasRFCalc || ARMAZENAGEM_RF_PADRAO_CALC; }
+async function carregarTarifasRFCalc(){
+  if(_tarifasRFCalc) return _tarifasRFCalc;
+  try{
+    const r = await fetch('/api/listas').then(x => x.json());
+    const lista = (r && r.listas && r.listas.armazenagem_rf) || [];
+    const t = {};
+    lista.forEach(x => {
+      const d = x.dados || {};
+      const tar = parseFloat(d.tarifa_dia), car = parseFloat(d.carencia_dias);
+      if(x.codigo && tar >= 0) t[String(x.codigo).toUpperCase()] = { tarifa_dia: tar, carencia_dias: car >= 0 ? car : 29 };
+    });
+    if(Object.keys(t).length) _tarifasRFCalc = { ...ARMAZENAGEM_RF_PADRAO_CALC, ...t };
+  }catch(e){}
+  return tarifasRFCalc();
+}
+function detectarTipoRFCalc(medida, tipoMix){
+  const d = String(medida || '').toUpperCase();
+  if(/R\s?(22\.5|20|19\.5|17\.5|24)\b/.test(d) || /\bTBR\b/.test(d)) return 'TBR';
+  if(/\bRODAS?\b|\bARO\b|\bWHEEL/.test(d)) return 'RODAS';
+  if(/\bSUV\b|\bLT\b|\b4X4\b/.test(d)) return 'SUV';
+  const t = String(tipoMix || '').toUpperCase();
+  if(ARMAZENAGEM_RF_TIPOS_CALC.includes(t)) return t;
+  return 'PCR';
+}
+// Cálculo puro (testado em testes_calculador.js). r = _estado.ultimoResultado.
+function calcularVendasPrevistasRF(r, mix, cfg, tarifas){
+  tarifas = tarifas || ARMAZENAGEM_RF_PADRAO_CALC;
+  cfg = cfg || {};
+  const itensMix = (mix && mix.itens) || [];
+  const fob = parseFloat(r && r.fob_usd) || 0;
+  const custoTotal = parseFloat(r && r.custo_total) || 0;
+  const cst = r && r.cenarios && r.cenarios.com_st, sst = r && r.cenarios && r.cenarios.sem_st;
+  const fatorCom = (cst && custoTotal > 0) ? cst.faturamento_total / custoTotal : null;
+  const fatorSem = (sst && custoTotal > 0) ? sst.faturamento_total / custoTotal : null;
+  const r2 = v => Math.round(v * 100) / 100;
+  const itens = itensMix.map((it, i) => {
+    const tipo = (cfg.tipos && cfg.tipos[i]) || detectarTipoRFCalc(it.medida, mix && mix.tipo);
+    const t = tarifas[tipo] || ARMAZENAGEM_RF_PADRAO_CALC[tipo] || ARMAZENAGEM_RF_PADRAO_CALC.PCR;
+    return {
+      idx: i, medida: it.medida, qtd: parseFloat(it.qtd) || 0, tipo, tarifa_dia: t.tarifa_dia, carencia_dias: t.carencia_dias,
+      custoUnit: fob > 0 ? r2(custoTotal * (parseFloat(it.preco) || 0) / fob) : null,
+      precoComSt: cst && cst.mix && cst.mix[i] ? r2(cst.mix[i].vlr_unit_brl) : null,
+      precoSemSt: sst && sst.mix && sst.mix[i] ? r2(sst.mix[i].vlr_unit_brl) : null,
+      qtdPrevista: 0,
+    };
+  });
+  let armazenagemTotal = 0;
+  const vendas = (cfg.vendas || []).map((v, vi) => {
+    const dias = Math.max(0, parseInt(v.dias, 10) || 0);
+    const linhas = [];
+    Object.keys(v.itens || {}).forEach(k => {
+      const it = itens[+k]; const qtd = parseFloat(v.itens[k]) || 0;
+      if(!it || qtd <= 0) return;
+      const cobrados = Math.max(0, dias - it.carencia_dias);
+      const armUnit = r2(it.tarifa_dia * cobrados);
+      const armTotal = r2(armUnit * qtd);
+      it.qtdPrevista += qtd; armazenagemTotal += armTotal;
+      linhas.push({ idx: it.idx, medida: it.medida, tipo: it.tipo, qtd, dias, diasCobrados: cobrados, armUnit, armTotal,
+        custoUnitAjust: it.custoUnit != null ? r2(it.custoUnit + armUnit) : null,
+        precoComSt: it.precoComSt != null && fatorCom ? r2(it.precoComSt + armUnit * fatorCom) : null,
+        precoSemSt: it.precoSemSt != null && fatorSem ? r2(it.precoSemSt + armUnit * fatorSem) : null });
+    });
+    return { indice: vi, dias, linhas, armazenagem: r2(linhas.reduce((s, l) => s + l.armTotal, 0)) };
+  });
+  itens.forEach(it => { it.excede = it.qtdPrevista > it.qtd + 1e-9; it.semPrevisao = Math.max(0, it.qtd - it.qtdPrevista); });
+  return { itens, vendas, armazenagemTotal: r2(armazenagemTotal), fatorCom, fatorSem };
+}
+function _vpRF(){
+  if(!_estado.vendasPrevistasRF) _estado.vendasPrevistasRF = { vendas: [], tipos: {} };
+  return _estado.vendasPrevistasRF;
+}
+function vpRFAddLote(){
+  const cfg = _vpRF(); const itens = (_estado.mix && _estado.mix.itens) || [];
+  const ult = cfg.vendas[cfg.vendas.length - 1];
+  cfg.vendas.push({ dias: ult ? (parseInt(ult.dias,10)||0) + 30 : 30, itens: itens.length === 1 ? { 0: '' } : {} });
+  renderVendasPrevistasRF();
+}
+function vpRFRemLote(vi){ _vpRF().vendas.splice(vi, 1); renderVendasPrevistasRF(); }
+function vpRFSetDias(vi, v){ _vpRF().vendas[vi].dias = v; renderVendasPrevistasRF(); }
+function vpRFSetQtd(vi, idx, v){ const it = _vpRF().vendas[vi].itens; if(v === '' || v == null) delete it[idx]; else it[idx] = v; renderVendasPrevistasRF(); }
+function vpRFSetTipo(idx, v){ const t = _vpRF().tipos; if(v) t[idx] = v; else delete t[idx]; renderVendasPrevistasRF(); }
+function renderVendasPrevistasRF(){
+  const wrap = document.getElementById('rf-vendas-previstas-wrap');
+  const r = _estado.ultimoResultado;
+  if(!wrap || !r || !_estado.mix || !(_estado.mix.itens || []).length){ if(wrap) wrap.innerHTML = ''; return; }
+  if(!_tarifasRFCalc){ carregarTarifasRFCalc().then(() => { if(_tarifasRFCalc) renderVendasPrevistasRF(); }); }
+  const cfg = _vpRF();
+  const res = calcularVendasPrevistasRF(r, _estado.mix, cfg, tarifasRFCalc());
+  const R = v => v == null ? '—' : 'R$ ' + fmt(v);
+  const tipoSel = it => `<select onchange="vpRFSetTipo(${it.idx},this.value)" style="font-size:11px;padding:2px 4px;">
+      <option value="">auto: ${detectarTipoRFCalc(it.medida, _estado.mix.tipo)}</option>
+      ${ARMAZENAGEM_RF_TIPOS_CALC.map(t => `<option value="${t}" ${cfg.tipos[it.idx]===t?'selected':''}>${t}</option>`).join('')}
+    </select>`;
+  const cab = `<table class="mix-result-table" style="margin-bottom:10px;">
+      <tr><th>Medida</th><th>Qtd</th><th>Tipo RF</th><th>Tarifa / carência</th><th>Custo unit.</th><th>Preço COM ST</th><th>Preço SEM ST</th><th>Sem previsão</th></tr>
+      ${res.itens.map(it => `<tr>
+        <td>${esc(it.medida)}</td><td class="num">${it.qtd}</td><td>${tipoSel(it)}</td>
+        <td>R$ ${String(it.tarifa_dia).replace('.',',')}/dia · ${it.carencia_dias}d grátis</td>
+        <td class="num">${R(it.custoUnit)}</td><td class="num">${R(it.precoComSt)}</td><td class="num">${R(it.precoSemSt)}</td>
+        <td class="num" style="${it.excede?'color:#b91c1c;font-weight:700':''}">${it.excede ? '⚠ previsto ' + it.qtdPrevista + ' de ' + it.qtd : it.semPrevisao}</td>
+      </tr>`).join('')}
+    </table>`;
+  const lotes = cfg.vendas.map((v, vi) => {
+    const rv = res.vendas[vi] || { linhas: [], armazenagem: 0 };
+    const linhas = res.itens.map(it => {
+      const l = rv.linhas.find(x => x.idx === it.idx);
+      const val = v.itens && v.itens[it.idx] != null ? v.itens[it.idx] : '';
+      return `<tr>
+        <td>${esc(it.medida)}</td>
+        <td><input type="number" min="0" value="${esc(String(val))}" placeholder="0" style="width:80px;" onchange="vpRFSetQtd(${vi},${it.idx},this.value)"></td>
+        <td class="num">${l ? l.diasCobrados + 'd' : '—'}</td>
+        <td class="num">${l ? R(l.armUnit) : '—'}</td>
+        <td class="num">${l ? R(l.custoUnitAjust) : '—'}</td>
+        <td class="num" style="color:var(--ok);font-weight:700;">${l ? R(l.precoComSt) : '—'}</td>
+        <td class="num" style="color:var(--ok);font-weight:700;">${l ? R(l.precoSemSt) : '—'}</td>
+      </tr>`;
+    }).join('');
+    return `<div style="border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#fff;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px;">
+        <strong>Lote ${vi+1}</strong> — vendido
+        <input type="number" min="0" value="${esc(String(v.dias))}" style="width:70px;" onchange="vpRFSetDias(${vi},this.value)"> dias após a chegada
+        <span style="color:var(--muted);">· armazenagem do lote: <strong>${R(rv.armazenagem)}</strong></span>
+        <button type="button" onclick="vpRFRemLote(${vi})" style="margin-left:auto;background:none;border:none;color:#b91c1c;cursor:pointer;font-weight:600;">🗑 remover</button>
+      </div>
+      <table class="mix-result-table">
+        <tr><th>Medida</th><th>Qtd vendida</th><th>Dias cobrados</th><th>Armaz./pneu</th><th>Custo ajustado</th><th>Preço COM ST</th><th>Preço SEM ST</th></tr>
+        ${linhas}
+      </table>
+    </div>`;
+  }).join('');
+  wrap.innerHTML = `<div class="card" style="margin-top:16px;background:#fffbeb;border:1px solid #fde68a;">
+    <div style="font-weight:700;color:#92400e;margin-bottom:4px;">🏭 Vendas previstas — armazenagem pós-nacionalização (RF)</div>
+    <div style="font-size:11px;color:#78350f;margin-bottom:10px;line-height:1.5;">
+      Informe em quantos dias após a chegada cada lote deve sair do armazém. A armazenagem conta a partir da chegada: tarifa por pneu/dia depois da carência (editáveis em Cadastros → Listas).
+      Preço do lote = preço unitário do Mix + armazenagem × fator da cotação (COM ST ${res.fatorCom ? res.fatorCom.toFixed(3) : '—'} / SEM ST ${res.fatorSem ? res.fatorSem.toFixed(3) : '—'}).
+      Não muda o resultado acima; fica salvo junto com a cotação.
+    </div>
+    ${cab}
+    ${lotes || '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Nenhum lote previsto ainda.</div>'}
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button type="button" onclick="vpRFAddLote()" style="background:#fff;border:1px dashed #f59e0b;border-radius:6px;padding:5px 12px;font-size:12px;color:#92400e;cursor:pointer;font-weight:600;">+ Lote de venda</button>
+      ${cfg.vendas.length ? `<span style="font-size:12px;">Armazenagem total prevista: <strong>${R(res.armazenagemTotal)}</strong></span>` : ''}
+    </div>
+  </div>`;
 }
 
 // ── EXPORT EXCEL ──────────────────────────────────────────
@@ -3462,7 +3629,7 @@ function coletarEstadoFormulario(){
     const el = document.getElementById(id);
     if(el) checkboxes[id] = el.checked;
   });
-  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, ii_override_brl: _estado.iiOverrideBrl, seguro_compra_override_brl: _estado.seguroCompraOverrideBrl };
+  return { campos, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, vendasPrevistasRF: _estado.vendasPrevistasRF, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, ii_override_brl: _estado.iiOverrideBrl, seguro_compra_override_brl: _estado.seguroCompraOverrideBrl };
 }
 
 function aplicarEstadoFormulario(estado){
@@ -3509,6 +3676,7 @@ function aplicarEstadoFormulario(estado){
   _estado.mix = estado.mix || null;
   if(_estado.mix && _estado.mix.itens && _estado.mix.itens.length) renderMix();
   _estado.splitST = estado.splitST ? {...estado.splitST} : {}; // depois do renderMix (que zera o split pro mix novo)
+  _estado.vendasPrevistasRF = estado.vendasPrevistasRF || null;
   if(typeof onProdutoChange === 'function') onProdutoChange();
   if(typeof onUFChange === 'function') onUFChange();
 }

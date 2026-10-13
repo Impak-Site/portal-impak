@@ -347,6 +347,41 @@ teste('sem câmbio fechado: tudo no câmbio da simulação', () => {
   aproxIgual(r.fobBrl, 50000, 0.001);
 });
 
+// ── Vendas previstas — armazenagem pós-nacionalização (RF) ──
+console.log('\n📋 Vendas previstas (RF) no Calculador');
+const _rRF = {
+  fob_usd: 10000, custo_total: 60000,
+  cenarios: {
+    com_st: { faturamento_total: 75000, mix: [{ vlr_unit_brl: 1875 }, { vlr_unit_brl: 375 }] },
+    sem_st: { faturamento_total: 72000, mix: [{ vlr_unit_brl: 1800 }, { vlr_unit_brl: 360 }] },
+  },
+};
+const _mixRF = { tipo: 'TBR', itens: [ { medida: '295/80R22.5', qtd: 20, preco: 250 }, { medida: '205/55R16', qtd: 100, preco: 50 } ] };
+teste('tipo automático: R22.5 → TBR, R16 cai no tipo do mix (TBR) a menos que trocado', () => {
+  verdadeiro(sandboxBase.detectarTipoRFCalc('295/80R22.5', 'PCR') === 'TBR');
+  verdadeiro(sandboxBase.detectarTipoRFCalc('205/55R16', 'PCR') === 'PCR');
+});
+teste('lote vendido 60 dias após a chegada: 31 dias cobrados, custo e preço ajustados por item', () => {
+  const res = sandboxBase.calcularVendasPrevistasRF(_rRF, _mixRF, { vendas: [{ dias: 60, itens: { 0: 10, 1: 40 } }], tipos: { 1: 'PCR' } });
+  const [a, b] = res.vendas[0].linhas;
+  aproxIgual(a.diasCobrados, 31, 0); aproxIgual(a.armUnit, 12.4, 0.001);        // TBR 0,40 × 31
+  aproxIgual(res.itens[0].custoUnit, 1500, 0.001);                              // 60000 × 250/10000
+  aproxIgual(a.custoUnitAjust, 1512.4, 0.001);
+  aproxIgual(a.precoComSt, 1875 + 12.4 * 1.25, 0.01);
+  aproxIgual(a.precoSemSt, 1800 + 12.4 * 1.2, 0.01);
+  aproxIgual(b.armUnit, 1.4, 0.001);                                            // PCR 0,045 × 31 = 1,395 → 1,40
+  aproxIgual(res.armazenagemTotal, 12.4 * 10 + 1.4 * 40, 0.01);
+});
+teste('dentro da carência não cobra; quantidade acima do mix é sinalizada', () => {
+  const res = sandboxBase.calcularVendasPrevistasRF(_rRF, _mixRF, { vendas: [{ dias: 20, itens: { 0: 15 } }, { dias: 90, itens: { 0: 10 } }] });
+  aproxIgual(res.vendas[0].linhas[0].armUnit, 0, 0);
+  verdadeiro(res.itens[0].excede === true, 'previsto 25 de 20 deveria exceder');
+});
+teste('tarifas do cadastro (Listas) substituem o padrão', () => {
+  const res = sandboxBase.calcularVendasPrevistasRF(_rRF, _mixRF, { vendas: [{ dias: 40, itens: { 0: 1 } }] }, { TBR: { tarifa_dia: 1, carencia_dias: 10 } });
+  aproxIgual(res.vendas[0].linhas[0].armUnit, 30, 0.001);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
