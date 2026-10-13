@@ -188,7 +188,7 @@ async function renderAgendaProcesso(p){
   if(!el || !p || !p.id || typeof AgendaCore === 'undefined') return;
   const base = (_processos || []).find(x => x.id === p.id) || p;
   const hoje = _agHoje();
-  const { tarefas } = await _agGerar([base], true);
+  const tarefas = (await _agGerar([base], true)).tarefas.filter(t => t.processoId === base.id); // sem as rotinas mensais
   const abertas = tarefas.filter(t => t.status === 'aberta');
   const feitas = tarefas.filter(t => t.status !== 'aberta');
   el.innerHTML = `
