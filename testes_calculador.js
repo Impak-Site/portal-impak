@@ -441,6 +441,37 @@ teste('comissionados do cadastro substituem o % manual e cada um usa sua base', 
   verdadeiro(r.br_nome === 'Vend A + Vend B', 'nome deveria juntar os comissionados: ' + r.br_nome);
 });
 
+console.log('\n📋 Formas de pagamento (Passo 4): juros no boleto, prazo interno, cartão, Trademaster');
+const _prepParc = `setToggle('parcelado','SIM'); document.getElementById('taxa_juros_am').value='2'; document.getElementById('prazo_medio_dias').value='60';`;
+teste('juros no boleto: fórmula da planilha (K44) e NF menor para a mesma margem', () => {
+  const semJb = _rodarCalc(_prepParc);
+  const comJb = _rodarCalc(_prepParc + `setToggle('jb','SIM'); document.getElementById('juros_boleto_fixo').value='10000';`);
+  const base = comJb.valor_saldo * 0.02 / 30 * 60 + 10000;
+  aproxIgual(comJb.juros_boleto, base + (base + base * 0.0465) * 0.0465, 0.01);
+  verdadeiro(comJb.vlr_total_nfe < semJb.vlr_total_nfe, `NF com juros no boleto (${comJb.vlr_total_nfe}) deveria ser menor que sem (${semJb.vlr_total_nfe})`);
+  aproxIgual(comJb.juros_parcelamento, 0, 0, 'no modo boleto o juros não é descontado do lucro');
+});
+teste('comissão sobre faturamento inclui o juros no boleto', () => {
+  const r = _rodarCalc(_prepParc + `setToggle('jb','SIM'); setToggle('br','SIM'); document.getElementById('br_pct').value='1';`);
+  const c = r.cenarios[r.tem_st ? 'com_st' : 'sem_st'];
+  aproxIgual(r.COM_br, (c.faturamento_total + r.juros_boleto) * 0.01, 0.01);
+});
+teste('custo financeiro: prazo interno, cartão REDE e Trademaster', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const pct = (forma, extra) => vm.runInContext(`document.getElementById('forma_custo_fin').value='${forma}'; ${extra||''} pctCustoFinanceiroCalc()`, sb);
+  aproxIgual(pct('prazo', `document.getElementById('cf_taxa_am').value='1.5'; document.getElementById('cf_prazo_medio').value='45';`), 0.015/30*45, 1e-9);
+  aproxIgual(pct('cartao', `document.getElementById('cf_parcelas').value='1';`), 0.0291 + 0.018, 1e-9);
+  aproxIgual(pct('cartao', `document.getElementById('cf_parcelas').value='6';`), 0.0327 + 0.018/30*105, 1e-9);
+  aproxIgual(pct('trademaster', `document.getElementById('cf_parcelas').value='6';`), 0.0928600832612018, 1e-12);
+  aproxIgual(pct(''), 0, 0);
+});
+teste('custo financeiro entra como custo (desconta do lucro / sobe a NF)', () => {
+  const a = _rodarCalc();
+  const b = _rodarCalc(`document.getElementById('forma_custo_fin').value='trademaster'; document.getElementById('cf_parcelas').value='3';`);
+  aproxIgual(b.custo_financeiro, b.vlr_total_nfe * 0.0530629047206867, 0.01);
+  verdadeiro(b.vlr_total_nfe > a.vlr_total_nfe, 'com custo financeiro a NF precisa subir pra manter a margem');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

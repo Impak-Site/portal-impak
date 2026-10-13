@@ -441,7 +441,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       </div>
       <div class="form-group" style="position:relative;">
         <label>Cliente</label>
-        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)" onchange="aplicarIcmsPadraoCliente();if(typeof aplicarComissionadosAutoCliente==='function')aplicarComissionadosAutoCliente()">
+        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)" onchange="aplicarIcmsPadraoCliente();if(typeof aplicarComissionadosAutoCliente==='function')aplicarComissionadosAutoCliente();aplicarRegraGFPneus()">
         <div id="cliente-calc-dropdown" style="display:none;position:fixed;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
     </div>
@@ -686,7 +686,40 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
               </div>
             </div>
             <div style="font-size:10px;color:var(--dim);">Prazo médio: 30dd=30 · 30/60dd=45 · 30/60/90dd=60 · 30/60/90/120dd=75</div>
+            <div class="form-group" style="margin:10px 0 0">
+              <label>Juros no boleto (fora da NF)?</label>
+              <div class="toggle-group">
+                <button class="toggle-btn active-nao" id="toggle-jb-nao" onclick="setToggle('jb','NAO')">NÃO</button>
+                <button class="toggle-btn" id="toggle-jb-sim" onclick="setToggle('jb','SIM')">SIM</button>
+              </div>
+              <div id="jb-detalhe" class="comissao-detalhe">
+                <div class="form-group" style="margin:0">
+                  <label>Valor fixo do processo (R$) — opcional</label>
+                  <input type="number" id="juros_boleto_fixo" step="0.01" value="10000" placeholder="ex: 10000">
+                </div>
+                <div style="font-size:10px;color:var(--dim);margin-top:4px;">Juros = (saldo × taxa ÷ 30 × prazo médio + valor fixo) + PIS/COFINS 4,65%. Vai no boleto, não na NF: a NF e os impostos da NF diminuem. A comissão sobre faturamento inclui esse juros.</div>
+              </div>
+            </div>
+            <div id="regra-gf-info" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;border-radius:6px;padding:6px 8px;margin-top:8px;">Regra GF PNEUS: 2,5% a.m., 28/56/84dd (prazo médio 30), juros no boleto sem valor fixo e 0,5% de representante sobre o total.</div>
           </div>
+        </div>
+        <div class="form-group">
+          <label>Prazo interno / Cartão / Trademaster</label>
+          <select id="forma_custo_fin" onchange="atualizarFormaCustoFin()">
+            <option value="">Nenhum</option>
+            <option value="prazo">Prazo interno</option>
+            <option value="cartao">Cartão (REDE)</option>
+            <option value="trademaster">Trademaster</option>
+          </select>
+          <div id="cf-prazo" class="form-row" style="display:none;margin-top:6px">
+            <div class="form-group" style="margin:0"><label>Taxa (% a.m.)</label><input type="number" id="cf_taxa_am" step="0.01" value="1.5" placeholder="ex: 1,5"></div>
+            <div class="form-group" style="margin:0"><label>Prazo Médio (dias)</label><input type="number" id="cf_prazo_medio" step="1" value="30" placeholder="ex: 30"></div>
+          </div>
+          <div id="cf-parcelas" class="form-group" style="display:none;margin:6px 0 0">
+            <label>Nº de parcelas</label>
+            <select id="cf_parcelas"><option value="1">1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option></select>
+          </div>
+          <div style="font-size:10px;color:var(--dim);margin-top:4px;">Custo sobre o valor total da NF, descontado do lucro. Prazo interno = taxa ÷ 30 × prazo médio · Cartão = taxa REDE (2,91% em 1x, 3,27% de 2x a 6x) + 1,8% a cada 30 dias de prazo médio · Trademaster = 2,65% (1x) a 9,29% (6x).</div>
         </div>
         <div class="form-group">
           <label>Nota de Serviço?</label>
@@ -1247,6 +1280,7 @@ async function autocompletarClienteCalc(input){
 document.getElementById('cliente').value = c.razao_social;
 aplicarIcmsPadraoCliente();
 if(typeof aplicarComissionadosAutoCliente==='function') aplicarComissionadosAutoCliente();
+aplicarRegraGFPneus();
 if(c.uf){
 const ufSel = document.getElementById('uf_destino');
 if(ufSel){ ufSel.value = c.uf; if(typeof onUFChange==='function') onUFChange(); }
@@ -1310,6 +1344,50 @@ function ontem() {
 }
 
 // ── TOGGLES ──────────────────────────────────────────────
+// ── Formas de pagamento (Passo 4 — planilha Rev96, aba DADOS) ──
+// Cartão: tabela REDE (DADOS C160:H165) = taxa REDE + 1,8% a cada 30 dias de prazo médio.
+// Trademaster: tabela própria (DADOS C151:D156).
+const CARTAO_REDE_CALC = [
+  { taxa: 0.0291, medio: 30 }, { taxa: 0.0327, medio: 45 }, { taxa: 0.0327, medio: 60 },
+  { taxa: 0.0327, medio: 75 }, { taxa: 0.0327, medio: 90 }, { taxa: 0.0327, medio: 105 },
+];
+const TRADEMASTER_CALC = [0.0265314523603434, 0.039797178540515, 0.0530629047206867, 0.0663286309008584, 0.0795943570810301, 0.0928600832612018];
+function pctCustoFinanceiroCalc(){
+  const forma = (document.getElementById('forma_custo_fin')||{}).value || '';
+  const n = Math.min(6, Math.max(1, parseInt((document.getElementById('cf_parcelas')||{}).value, 10) || 1));
+  if(forma === 'prazo'){
+    const taxa = (parseFloat((document.getElementById('cf_taxa_am')||{}).value) || 0) / 100;
+    const prazo = parseFloat((document.getElementById('cf_prazo_medio')||{}).value) || 0;
+    return taxa / 30 * prazo;
+  }
+  if(forma === 'cartao'){ const c = CARTAO_REDE_CALC[n-1]; return c.taxa + 0.018 / 30 * c.medio; }
+  if(forma === 'trademaster') return TRADEMASTER_CALC[n-1];
+  return 0;
+}
+function atualizarFormaCustoFin(){
+  const forma = (document.getElementById('forma_custo_fin')||{}).value || '';
+  const a = document.getElementById('cf-prazo'), b = document.getElementById('cf-parcelas');
+  if(a) a.style.display = forma === 'prazo' ? '' : 'none';
+  if(b) b.style.display = (forma === 'cartao' || forma === 'trademaster') ? '' : 'none';
+}
+function ehClienteGFPneus(){
+  const n = String((document.getElementById('cliente')||{}).value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  return /\bGF\s*PNEUS\b/.test(n);
+}
+// GF PNEUS (regra fixa da planilha): parcelado 28/56/84dd (prazo médio 30),
+// 2,5% a.m., juros no boleto sem o valor fixo e 0,5% de representante.
+function aplicarRegraGFPneus(){
+  const gf = ehClienteGFPneus();
+  const info = document.getElementById('regra-gf-info');
+  if(info) info.style.display = gf ? '' : 'none';
+  if(!gf) return;
+  setToggle('parcelado','SIM');
+  setToggle('jb','SIM');
+  const set = (id, v) => { const el = document.getElementById(id); if(el) el.value = v; };
+  set('taxa_juros_am', '2.5'); set('prazo_medio_dias', '30'); set('juros_boleto_fixo', '0');
+  const body = document.getElementById('parcel-body'); if(body && body.style.display === 'none') toggleParcelamento();
+}
+
 function toggleParcelamento(){
   const body = document.getElementById('parcel-body');
   const arrow = document.getElementById('parcel-arrow');
@@ -2225,7 +2303,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
 
     // ── Parcelamento / Nota de Serviço (bloco K42:K48 da planilha) ──
     let valor_entrada = 0, valor_saldo = 0, juros_parcelamento = 0,
-        nota_servico_val = 0, comissao_repr_parcel = 0, total_parcelamento = 0;
+        nota_servico_val = 0, comissao_repr_parcel = 0, total_parcelamento = 0, juros_boleto = 0;
     if(_estado.toggles.parcelado === 'SIM'){
       const pctEntrada = _estado.toggles.entrada==='SIM' ? (parseFloat(document.getElementById('pct_entrada').value)||0)/100 : 0;
       const pctSaldo = 1 - pctEntrada;
@@ -2234,34 +2312,55 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
       const taxaJurosMes = (parseFloat(document.getElementById('taxa_juros_am').value)||0)/100;
       const prazoMedio = parseFloat(document.getElementById('prazo_medio_dias').value)||60;
       juros_parcelamento = ((valor_saldo * prazoMedio) / 30) * taxaJurosMes;
-      total_parcelamento = valor_entrada + valor_saldo + juros_parcelamento;
+      if(_estado.toggles.jb === 'SIM'){
+        // Juros no boleto (fora da NF) — planilha MODELO K44:
+        // base = saldo × taxa ÷ 30 × prazo médio + valor fixo (J48, R$10.000 por processo, opcional);
+        // juros = base + (base + base×4,65%) × 4,65% (gross-up do PIS/COFINS).
+        // É receita da IMPAK cobrada no boleto: entra no lucro (líquida de 4,65%)
+        // em vez de ser descontada dele.
+        const fixo = parseFloat((document.getElementById('juros_boleto_fixo')||{}).value) || 0;
+        const base = juros_parcelamento + fixo;
+        juros_boleto = base + (base + base * 0.0465) * 0.0465;
+        juros_parcelamento = 0;
+      }
+      total_parcelamento = valor_entrada + valor_saldo + juros_parcelamento + juros_boleto;
     }
     if(_estado.toggles.nota === 'SIM'){
       const pctNota = (parseFloat(document.getElementById('pct_nota_servico').value)||0)/100;
       nota_servico_val = faturamento_total * pctNota;
       total_parcelamento += nota_servico_val;
     }
-    // Comissão sobre o total do bloco parcelamento (J46 — geralmente 0% salvo cliente específico)
+    // Comissão sobre o total do bloco parcelamento (J46): 0,5% só pra GF PNEUS.
+    if(_estado.toggles.parcelado === 'SIM' && ehClienteGFPneus()) comissao_repr_parcel = total_parcelamento * 0.005;
     total_parcelamento += comissao_repr_parcel;
+    // Prazo interno / Cartão / Trademaster: custo sobre o valor da NF, descontado do lucro.
+    const custo_fin_pct = (typeof pctCustoFinanceiroCalc === 'function') ? pctCustoFinanceiroCalc() : 0;
+    const custo_financeiro = vlr_total_nfe * custo_fin_pct;
+    const juros_boleto_liq = juros_boleto * (1 - 0.0465);
+    // Base "faturamento total" da comissão inclui o juros (Jean 13/10/2026).
+    const faturamento_com_juros = faturamento_total + juros_boleto;
 
     // Comissão BR (Representante) — % manual: sobre o faturamento total (já inclui China e BOSS).
     // Comissionados do cadastro: cada um na sua base (faturamento total, NF, FOB ou
     // lucro bruto antes das comissões de representante — mesma regra do Controle).
-    let COM_br = faturamento_total * br_pct, COM_br_linhas = null;
+    const lucro_antes_com = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_china_dentro - custo_total - IPI_s - juros_parcelamento - nota_servico_val
+      - custo_financeiro - comissao_repr_parcel + juros_boleto_liq;
+    let COM_br = faturamento_com_juros * br_pct, COM_br_linhas = null;
     if(usaComissionados){
-      const lucro_antes_com = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_china_dentro - custo_total - IPI_s - juros_parcelamento - nota_servico_val;
-      const rc = calcularComissionadosCalc(comSel, { faturamento: faturamento_total, nf: vlr_total_nfe, fob: fobBrlPonderado, lucro: lucro_antes_com });
+      const rc = calcularComissionadosCalc(comSel, { faturamento: faturamento_com_juros, nf: vlr_total_nfe, fob: fobBrlPonderado, lucro: lucro_antes_com });
       COM_br = rc.total; COM_br_linhas = rc.linhas;
     }
 
     // Lucro Bruto = Vlr.Total NFe - ICMS_ST - PIS - COFINS - ICMS_Próprio - Comissão_Repr - Comissão_China_dentro - Custo_Total - IPI - Juros - Nota
-    const lucro_bruto = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_br - COM_china_dentro - custo_total - IPI_s - juros_parcelamento - nota_servico_val;
+    //               - custo financeiro (prazo/cartão/Trademaster) - repr. GF + juros no boleto (líquido de 4,65%)
+    const lucro_bruto = lucro_antes_com - COM_br;
     const pct_lucro = faturamento_total !== 0 ? (lucro_bruto / faturamento_total) * 100 : 0;
 
     return {
       vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
       china_fora_val, boss_fora_val, COM_br, COM_br_linhas, COM_china_dentro,
+      juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel, faturamento_com_juros,
       valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
       faturamento_total, lucro_bruto, pct_lucro, fatorNfe, tem_st: temStCenario,
     };
@@ -2304,6 +2403,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   const { vlr_produto, IPI_s, ICMS_nfe, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
           china_fora_val, boss_fora_val, COM_br, COM_br_linhas, COM_china_dentro,
+          juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel,
           valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
           faturamento_total: faturamento, lucro_bruto, pct_lucro, fatorNfe } = cadeia;
 
@@ -2382,6 +2482,8 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     imp_custo, custo_total,
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s, usoConsumo,
     COM_br, COM_br_linhas, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
+    juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel,
+    forma_custo_fin: (document.getElementById('forma_custo_fin')||{}).value || '',
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
     lucro_bruto, pct_lucro, fator,
@@ -2656,17 +2758,20 @@ function renderResultado(r) {
     </div>
   ` : '';
 
-  const parcelamento_html = (r.total_parcelamento > 0) ? `
+  const parcelamento_html = (r.total_parcelamento > 0 || r.custo_financeiro > 0) ? `
     <div class="detail-section">
       <div class="detail-title">💳 Parcelamento / Nota de Serviço</div>
       <table class="calc-table">
         ${r.valor_entrada > 0 ? `<tr><td>Valor Entrada</td><td class="num">${fmtR(r.valor_entrada)}</td></tr>` : ''}
         ${r.valor_saldo > 0 ? `<tr><td>Valor Saldo</td><td class="num">${fmtR(r.valor_saldo)}</td></tr>` : ''}
         ${r.juros_parcelamento > 0 ? `<tr><td>Juros do Parcelamento</td><td class="num" style="color:var(--warn);">${fmtR(r.juros_parcelamento)}</td></tr>` : ''}
+        ${r.juros_boleto > 0 ? `<tr><td>Juros no boleto (fora da NF) — receita</td><td class="num" style="color:var(--ok);">${fmtR(r.juros_boleto)}</td></tr><tr><td style="padding-left:16px;color:var(--muted);">PIS/COFINS 4,65% sobre o juros</td><td class="num" style="color:var(--warn);">−${fmtR(r.juros_boleto*0.0465)}</td></tr>` : ''}
+        ${r.comissao_repr_parcel > 0 ? `<tr><td>Representante GF PNEUS (0,5%)</td><td class="num" style="color:var(--warn);">${fmtR(r.comissao_repr_parcel)}</td></tr>` : ''}
+        ${r.custo_financeiro > 0 ? `<tr><td>${({prazo:'Prazo interno',cartao:'Cartão (REDE)',trademaster:'Trademaster'})[r.forma_custo_fin]||'Custo financeiro'} (${(r.custo_fin_pct*100).toFixed(2).replace('.',',')}% da NF)</td><td class="num" style="color:var(--warn);">${fmtR(r.custo_financeiro)}</td></tr>` : ''}
         ${r.nota_servico_val > 0 ? `<tr><td>Nota de Serviço</td><td class="num" style="color:var(--warn);">${fmtR(r.nota_servico_val)}</td></tr>` : ''}
         <tr class="destaque-row"><td>Total do Bloco</td><td class="num">${fmtR(r.total_parcelamento)}</td></tr>
       </table>
-      <div style="font-size:10px;color:var(--dim);margin-top:6px;">Juros e Nota de Serviço já foram descontados do Lucro Bruto acima.</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:6px;">Juros (na NF), Nota de Serviço, custo financeiro e representante já foram descontados do Lucro Bruto acima. Juros no boleto entra como receita (líquida de 4,65%).</div>
     </div>
   ` : '';
 
@@ -3641,6 +3746,7 @@ const CAMPOS_COTACAO = [
   'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_import_logistics_brl','tx_crs_brl','tx_tsc',
   'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao','tx_reciclagem',
   'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor','cenario_valor_sem_st',
+  'juros_boleto_fixo','forma_custo_fin','cf_taxa_am','cf_prazo_medio','cf_parcelas',
 ];
 
 // ── AUTOSAVE (evita perder o que foi preenchido ao atualizar a pagina) ──
@@ -3698,6 +3804,8 @@ function aplicarEstadoFormulario(estado){
   // Cotações salvas antes do campo ICMS de Saída existir usavam 1,4% fixo.
   { const el = document.getElementById('icms_saida_pct'); if (el){ el.value = '1.4'; el.dataset.manual = ''; el.dataset.auto = ''; } }
   { const el = document.getElementById('ufs_extra'); if (el) el.value = ''; }
+  { const el = document.getElementById('forma_custo_fin'); if (el) el.value = ''; }
+  { const el = document.getElementById('juros_boleto_fixo'); if (el) el.value = '10000'; }
   { const el = document.getElementById('cenario_valor_sem_st'); if (el) el.value = ''; }
   // Cotações salvas antes do R$ fixo (Rev96) não têm esses campos → usa o
   // padrão R$164 / R$180 (o US$ salvo é recalculado a partir dele).
@@ -3709,6 +3817,7 @@ function aplicarEstadoFormulario(estado){
   });
   renderUfsExtraChips();
   setToggle('marj','NAO'); // cotações antigas não têm esse toggle
+  setToggle('jb','NAO');
   if(estado.toggles){
     Object.entries(estado.toggles).forEach(([k,v]) => {
       if(k==='ttd') setToggleTTD(v); else setToggle(k,v);
@@ -3717,6 +3826,8 @@ function aplicarEstadoFormulario(estado){
   if(estado.togglesInner){
     Object.entries(estado.togglesInner).forEach(([k,v]) => setToggleInner(k,v));
   }
+  atualizarFormaCustoFin();
+  { const info = document.getElementById('regra-gf-info'); if(info) info.style.display = ehClienteGFPneus() ? '' : 'none'; }
   // Restaura o estado dos checkboxes "auto" (Marinha/Agente). Cotações salvas
   // antes dessa feature não têm esse campo — mantém o padrão (auto ligado).
   ['auto_marinha','auto_agente','auto_iof'].forEach(id => {
