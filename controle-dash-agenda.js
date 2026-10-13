@@ -86,7 +86,7 @@ function _agLinha(t, hoje, opts){
     ? `${!t.auto ? `<button class="btn btn-primary" style="padding:3px 10px;font-size:11px;" onclick="agendaMarcar('${_agEsc(t.chave)}','feita')">✓ Feito</button>` : ''}
        <button class="btn btn-outline" style="padding:3px 8px;font-size:11px;" title="Esta atividade não vale para este caso" onclick="agendaMarcar('${_agEsc(t.chave)}','nao_aplica')">Não se aplica</button>`
     : (t.conclusao ? `<span style="font-size:11px;color:var(--muted);">${_agEsc(t.conclusao.usuario||'')} · ${_agDataBR(t.conclusao.em)}</span> <button class="btn btn-outline" style="padding:2px 8px;font-size:11px;" onclick="agendaMarcar('${_agEsc(t.chave)}','reaberta')">Reabrir</button>` : '<span style="font-size:11px;color:#15803d;">concluída automaticamente</span>');
-  return `<div class="ag-linha" style="display:grid;grid-template-columns:110px minmax(0,1fr) ${opts.semProc?'':'minmax(120px,220px) '}150px auto;gap:10px;align-items:center;padding:8px 10px;border-top:1px solid var(--border);">
+  return `<div class="ag-linha" style="display:grid;grid-template-columns:110px minmax(0,1fr) ${opts.semProc?'':'minmax(120px,240px) '}150px 210px;gap:10px;align-items:center;padding:8px 10px;border-top:1px solid var(--border);">
     <div>${_agBadgePrazo(t, hoje)}</div>
     <div style="min-width:0;">
       <div style="font-weight:600;color:var(--text);font-size:13px;">${prio}${_agEsc(t.nome)}</div>

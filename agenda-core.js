@@ -105,7 +105,12 @@
       base: p => p.pi_data || p.created_at, dias: 2, uteis: true, instancias: p => um(tem(p.conexos_id)) },
     A04: { auto: true, como: 'Vendas cobrindo todas as unidades do processo', semAcomp: true,
       base: p => p.etd || (p.pi_data ? somaDias(p.pi_data, 30) : null), dias: 0,
-      instancias: p => { const t = qtdProdutos(p); return um(t > 0 && qtdVendida(p) >= t, { detalhe: t ? `${Math.round(qtdVendida(p))} de ${Math.round(t)} un. vendidas` : '' }); } },
+      // Encomenda / Conta e Ordem com cliente definido: a venda é o próprio cliente
+      // do processo (não precisa de venda separada). Só cobra Importação própria.
+      instancias: p => {
+        if ((p.finalidade === 'ENCOMENDA' || p.finalidade === 'CONTA_E_ORDEM') && tem(p.cliente)) return um(true);
+        const t = qtdProdutos(p); return um(t > 0 && qtdVendida(p) >= t, { detalhe: t ? `${Math.round(qtdVendida(p))} de ${Math.round(t)} un. vendidas` : '' });
+      } },
     A05: { auto: true, como: '"Valor recebido do cliente" preenchido na parcela', semAcomp: true,
       aplica: p => p.finalidade === 'ENCOMENDA' || p.finalidade === 'CONTA_E_ORDEM',
       instancias: (p, h, ctx) => pagamentosDe(p, ctx).filter(pg => !pg.pago && pg.vencimento).map(pg => {
