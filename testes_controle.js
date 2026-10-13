@@ -182,6 +182,8 @@ teste('DUIMP antecipada (Nº DUIMP antes da chegada, navio em águas) mantém EM
   const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   iguais(sandbox.calcularFase({ data_embarque: '2026-01-01', eta: amanha, numero_di: '26BR0000012345' }), 'EMBARCADO');
   iguais(sandbox.calcularFase({ data_embarque: '2026-01-01', data_chegada: amanha, data_registro_di: '2026-01-20' }), 'EMBARCADO');
+  // caso real 26DTPI0476-x: DUIMP + canal verde + liberação antes da chegada
+  iguais(sandbox.calcularFase({ data_embarque: '2026-08-27', eta: amanha, numero_di: '26BR0000012345', data_registro_di: '2026-10-09', canal: 'VERDE', data_parametrizacao: '2026-10-09', data_liberacao: '2026-10-09' }), 'EMBARCADO');
 });
 teste('DUIMP com chegada já ocorrida avança para REGISTRO_DI normalmente', () => {
   iguais(sandbox.calcularFase({ data_embarque: '2026-01-01', data_chegada: '2026-02-01', numero_di: '26BR0000012345' }), 'REGISTRO_DI');

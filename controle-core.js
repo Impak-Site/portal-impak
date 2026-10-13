@@ -1365,16 +1365,17 @@ function calcularFase(p){
   if(p.data_carregamento || p.data_devolucao_vazio) return 'DEVOLUCAO_VAZIO';
   // NF de Saída vale tanto no campo antigo quanto nas vendas (aba Vendas).
   if(p.data_agendamento || temNfSaidaVenda(p) || p.nf_entrada_numero) return 'CARREGAMENTO';
-  // DUIMP registrada ANTES da chegada (DUIMP antecipada): o navio ainda está
-  // em águas, então o processo continua Embarcado até a chegada/presença de
-  // carga de fato. Antes, só o Nº DUIMP já jogava o processo pra Registro DI
-  // e ele sumia do painel "Em Águas" da TV sem aparecer em "No Chão"
-  // (Emanuelly 13/10/2026). Canal/parametrização/liberação/NF continuam
-  // avançando normalmente, porque só acontecem com a carga no porto.
+  // DUIMP antecipada: registro, canal e até liberação podem acontecer ANTES
+  // da chegada do navio. Enquanto a carga não chega (sem Data Chegada /
+  // Presença de Carga passada), o processo continua EMBARCADO — senão ele
+  // sumia do painel "Em Águas" da TV sem aparecer em "No Chão"
+  // (Emanuelly 13/10/2026). Quem já passou de CARREGAMENTO acima não é
+  // afetado (NF de entrada/agendamento só existem com a carga no porto).
   const cargaChegou = !!(presencaPassada || chegadaPassada);
+  if(embarquePassado && !cargaChegou)                               return 'EMBARCADO';
   if(p.data_liberacao || (p.canal==='VERDE' && p.data_parametrizacao)) return 'FATURAMENTO';
   if(p.canal || p.data_parametrizacao)                              return 'PARAMETRIZACAO';
-  if((p.numero_di || p.data_registro_di) && (cargaChegou || !embarquePassado)) return 'REGISTRO_DI';
+  if(p.numero_di || p.data_registro_di)                             return 'REGISTRO_DI';
   if(cargaChegou)                                                   return 'DESEMBARCADO';
   // Igual ao caso do Booking acima: o Nº HBL costuma ser preenchido antes
   // do embarque acontecer de fato (o armador/agente já manda o HBL com
