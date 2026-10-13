@@ -2954,6 +2954,35 @@ teste('simularVendaArmazenagemRF: rateio por FOB quando produtos têm fob_usd (T
   iguais(sim.vendas[0].itens[1].tipo, 'PCR'); iguais(sim.vendas[0].itens[1].armazenagemUnit, 1.89);
 });
 
+teste('simularVendaArmazenagemRF: base escolhida — cotação, manual por medida e margem sem cotação', () => {
+  const p = { ...procRF(), vendas_json: '[]', estimativa_json: { custo_total: 90000, cenarios: { com_st: { faturamento_total: 112500 } } } };
+  const venda = [{ data: '2026-06-20', itens: [{ descricao: 'PNEU 275/80R22.5 ROVELO', quantidade: 10 }] }];
+  const auto = sandbox.simularVendaArmazenagemRF(p, venda);
+  iguais(auto.base.origem, 'real'); iguais(auto.base.custoReal, 66000); iguais(auto.base.custoCotado, 90000);
+  iguais(auto.vendas[0].itens[0].custoUnitBase, 1100);
+  const cot = sandbox.simularVendaArmazenagemRF(p, venda, { base: 'cotado' });
+  iguais(cot.base.origem, 'cotado'); iguais(cot.vendas[0].itens[0].custoUnitBase, 1500);
+  aproxIgual(cot.vendas[0].itens[0].precoComSt, (1500 + 16.8) * 1.25, 0.01);
+  const man = sandbox.simularVendaArmazenagemRF(p, venda, { base: 'manual', manual: { 'PNEU 275/80R22.5 ROVELO': '1234.5' }, margem: '20' });
+  iguais(man.base.origem, 'manual'); iguais(man.vendas[0].itens[0].custoUnitBase, 1234.5);
+  iguais(man.vendas[0].itens[0].custoUnitAtual, 1251.3); aproxIgual(man.vendas[0].itens[0].precoMargem, 1501.56, 0.01);
+  // margem sem cotação vinculada → preço só pela margem
+  const semCot = sandbox.simularVendaArmazenagemRF({ ...p, estimativa_json: null }, venda, { margem: '25' });
+  iguais(semCot.base.temCotado, false); iguais(semCot.vendas[0].itens[0].precoComSt, null);
+  aproxIgual(semCot.vendas[0].itens[0].precoMargem, 1116.8 * 1.25, 0.01);
+});
+teste('simularVendaArmazenagemRF: avisa Custos Reais parciais quando o lançado fica bem abaixo do cotado', () => {
+  const p = { ...procRF(), vendas_json: '[]', estimativa_json: { custo_total: 90000 } };
+  const sim = sandbox.simularVendaArmazenagemRF(p, []);
+  iguais(!!sim.base.realParcial, true);
+  aproxIgual(sim.base.realParcial.pctDoCotado, 66000 / 90000, 0.001);
+  // lançado ≥ 90% do cotado e sem item cotado faltando → sem aviso
+  const p2 = { ...p, estimativa_json: { custo_total: 70000 } };
+  iguais(sandbox.simularVendaArmazenagemRF(p2, []).base.realParcial, null);
+  // sem cotação → nada pra comparar
+  iguais(sandbox.simularVendaArmazenagemRF({ ...p, estimativa_json: null }, []).base.realParcial, null);
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';

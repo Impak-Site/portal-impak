@@ -3363,25 +3363,42 @@ function calcularArmazenagemRF(p){
 // pelo peso FOB (fob_usd × qtd, quando produtos_json tem fob_usd) ou, sem
 // isso, por unidade. Sem Custos Reais lançados, usa o custo cotado
 // (estimativa_json.custo_total) e marca origem 'cotado'.
-function custoBaseUnitarioPorItemRF(p){
+// opts.base: 'auto' (Custos Reais se houver, senão cotação) | 'real' | 'cotado' |
+// 'manual' (opts.manual = { descricao → custo unitário R$ }). Devolve também
+// um aviso quando os Custos Reais parecem incompletos (itens cotados ainda
+// sem lançamento), pra ninguém cotar com custo base parcial sem perceber.
+function custoBaseUnitarioPorItemRF(p, opts){
+  opts = opts || {};
+  const base = opts.base || 'auto';
   const prods = produtosDoProcessoRF(p);
   const totalQtd = prods.reduce((s, x) => s + x.quantidade, 0);
   const custos = calcularCustoRealTotal(p);
+  const rfLancado = custos ? ((custos.detalhe || []).find(d => d.id === 'armazenagem_rf') || {}).valorBrl || 0 : 0;
+  const custoReal = (custos && custos.total > 0) ? custos.total - rfLancado : null;
+  const custoCotado = (p && p.estimativa_json && parseFloat(p.estimativa_json.custo_total) > 0) ? parseFloat(p.estimativa_json.custo_total) : null;
   let custoTotal = null, origem = null;
-  if(custos && custos.total > 0){
-    const rf = (custos.detalhe || []).find(d => d.id === 'armazenagem_rf');
-    custoTotal = custos.total - (rf ? rf.valorBrl : 0);
-    origem = 'real';
-  } else if(p && p.estimativa_json && parseFloat(p.estimativa_json.custo_total) > 0){
-    custoTotal = parseFloat(p.estimativa_json.custo_total);
-    origem = 'cotado';
-  }
+  if(base === 'manual'){ origem = 'manual'; }
+  else if(base === 'real' || (base === 'auto' && custoReal != null)){ custoTotal = custoReal; origem = custoReal != null ? 'real' : null; }
+  else if(base === 'cotado' || base === 'auto'){ custoTotal = custoCotado; origem = custoCotado != null ? 'cotado' : null; }
+  // Custos Reais parciais: itens com valor cotado e nada lançado em "Pago".
+  let realParcial = null;
+  try{
+    if(custoReal != null && custoCotado != null){
+      const est = custosReaisEstado(p, []);
+      const faltam = est.itens.filter(i => i.valorCotado != null && i.valorCotado > 0 && !i.temPago && i.id !== 'armazenagem_rf');
+      const pct = custoReal / custoCotado;
+      if(faltam.length || pct < 0.9) realParcial = { itensFaltando: faltam.length, pctDoCotado: pct, custoReal, custoCotado };
+    }
+  }catch(e){ realParcial = null; }
   const temFob = prods.length > 0 && prods.every(x => x.fob_usd > 0 && x.quantidade > 0);
   const pesoTotal = temFob ? prods.reduce((s, x) => s + x.fob_usd * x.quantidade, 0) : totalQtd;
+  const manual = opts.manual || {};
   const itens = prods.map(x => {
     const peso = temFob ? x.fob_usd * x.quantidade : x.quantidade;
     const custoItem = (custoTotal != null && pesoTotal > 0) ? custoTotal * peso / pesoTotal : null;
-    return { descricao: x.descricao, quantidade: x.quantidade, tipo: tipoArmazenagemDoItem(x.descricao, prods), custoUnit: (custoItem != null && x.quantidade > 0) ? round2(custoItem / x.quantidade) : null };
+    let custoUnit = (custoItem != null && x.quantidade > 0) ? round2(custoItem / x.quantidade) : null;
+    if(origem === 'manual'){ const m = parseFloat(manual[x.descricao]); custoUnit = (!isNaN(m) && m > 0) ? round2(m) : null; }
+    return { descricao: x.descricao, quantidade: x.quantidade, tipo: tipoArmazenagemDoItem(x.descricao, prods), custoUnit };
   });
   // Fator preço/custo da cotação (faturamento ÷ custo) por cenário — serve
   // pra transformar custo atualizado em preço sugerido. Sem cotação, null.
@@ -3389,7 +3406,7 @@ function custoBaseUnitarioPorItemRF(p){
   const custoCot = est && parseFloat(est.custo_total) > 0 ? parseFloat(est.custo_total) : null;
   const fatorComSt = (custoCot && est.cenarios && est.cenarios.com_st && parseFloat(est.cenarios.com_st.faturamento_total) > 0) ? parseFloat(est.cenarios.com_st.faturamento_total) / custoCot : null;
   const fatorSemSt = (custoCot && est.cenarios && est.cenarios.sem_st && parseFloat(est.cenarios.sem_st.faturamento_total) > 0) ? parseFloat(est.cenarios.sem_st.faturamento_total) / custoCot : null;
-  return { itens, custoTotal, origem, rateioPor: temFob ? 'fob' : 'unidade', fatorComSt, fatorSemSt };
+  return { itens, custoTotal, origem, rateioPor: temFob ? 'fob' : 'unidade', fatorComSt, fatorSemSt, realParcial, temReal: custoReal != null, temCotado: custoCotado != null, custoReal, custoCotado };
 }
 
 // vendasSim: [{ data:'YYYY-MM-DD', itens:[{descricao, quantidade}] }] em
@@ -3397,9 +3414,14 @@ function custoBaseUnitarioPorItemRF(p){
 // pneu, custo unitário atualizado (base + armazenagem) e preço sugerido
 // COM/SEM ST (custo atualizado × fator da cotação), além do saldo que ainda
 // está no armazém antes/depois da venda (avisa se pedir mais do que tem).
-function simularVendaArmazenagemRF(p, vendasSim){
+// opts: ver custoBaseUnitarioPorItemRF; opts.margem (%) = preço sugerido
+// quando o processo não tem cotação (sem fator): custo atualizado × (1+margem).
+function simularVendaArmazenagemRF(p, vendasSim, opts){
+  opts = opts || {};
   const prods = produtosDoProcessoRF(p);
-  const base = custoBaseUnitarioPorItemRF(p);
+  const base = custoBaseUnitarioPorItemRF(p, opts);
+  const margem = parseFloat(opts.margem);
+  const fatorMargem = (!isNaN(margem) && margem > -100) ? 1 + margem / 100 : null;
   const estoque = estoqueDoProcesso(p);
   // saldo atual por produto (índice em prods)
   const saldo = prods.map(x => { const e = estoque.itens.find(it => it.descricao === x.descricao); return e ? e.quantidade : 0; });
@@ -3420,6 +3442,7 @@ function simularVendaArmazenagemRF(p, vendasSim){
         custoUnitBase, custoUnitAtual,
         precoComSt: (custoUnitAtual != null && base.fatorComSt) ? round2(custoUnitAtual * base.fatorComSt) : null,
         precoSemSt: (custoUnitAtual != null && base.fatorSemSt) ? round2(custoUnitAtual * base.fatorSemSt) : null,
+        precoMargem: (custoUnitAtual != null && fatorMargem) ? round2(custoUnitAtual * fatorMargem) : null,
         saldoAntes, saldoDepois: saldoAntes != null ? saldoAntes - qtd : null,
         excedeSaldo: saldoAntes != null && qtd > saldoAntes + 0.009,
         semProduto: idx < 0,

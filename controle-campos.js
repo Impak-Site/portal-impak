@@ -1117,6 +1117,10 @@ function renderResumoVendas(){
 // atualizado × fator preço/custo da cotação). NADA é gravado — é só uma
 // conta pra cotar. Cálculo em simularVendaArmazenagemRF (controle-core.js).
 let _simRF = []; // [{ data:'YYYY-MM-DD', dias:'', itens:[{descricao, quantidade}] }]
+let _simRFOpts = { base:'auto', manual:{}, margem:'' }; // base de custo escolhida na simulação (não gravada)
+function _simRFSetBase(v){ _simRFOpts.base = v || 'auto'; renderSimularVendaRF(); }
+function _simRFSetManual(desc, v){ _simRFOpts.manual[desc] = v; renderSimularVendaRF(); }
+function _simRFSetMargem(v){ _simRFOpts.margem = v; renderSimularVendaRF(); }
 let _simRFProcId = null; // processo dono da simulação atual (troca de processo zera)
 
 function _simRFHojeISO(){ const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().split('T')[0]; }
@@ -1133,7 +1137,7 @@ function abrirSimularVendaRF(){
   const wrap = document.getElementById('simular-venda-rf-wrap');
   if(!wrap) return;
   if(wrap.innerHTML.trim()){ wrap.innerHTML = ''; return; } // segundo clique fecha
-  if(_simRFProcId !== (_editando && _editando.id)){ _simRF = []; _simRFProcId = _editando && _editando.id; }
+  if(_simRFProcId !== (_editando && _editando.id)){ _simRF = []; _simRFOpts = { base:'auto', manual:{}, margem:'' }; _simRFProcId = _editando && _editando.id; }
   if(!_simRF.length){
     const hoje = new Date(); hoje.setDate(hoje.getDate() + 30);
     _simRF = [{ data: hoje.toISOString().split('T')[0], dias: 30, itens: [{descricao:'', quantidade:''}] }];
@@ -1171,7 +1175,7 @@ function renderSimularVendaRF(){
   const r2 = x => x==null ? '—' : 'R$ ' + Number(x).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtD = iso => { if(!iso) return '—'; const d = parseDataLocal(iso); return d && !isNaN(d) ? d.toLocaleDateString('pt-BR') : iso; };
   let sim = null;
-  try{ sim = simularVendaArmazenagemRF(snap, _simRF.map(v => ({ data: v.data, itens: v.itens }))); }catch(e){ sim = null; }
+  try{ sim = simularVendaArmazenagemRF(snap, _simRF.map(v => ({ data: v.data, itens: v.itens })), _simRFOpts); }catch(e){ sim = null; }
   const entrada = sim ? sim.entrada : null;
   const tarifas = (typeof tarifasArmazenagemRF === 'function') ? tarifasArmazenagemRF() : {};
   const base = sim ? sim.base : null;
@@ -1183,10 +1187,33 @@ function renderSimularVendaRF(){
     </div>
     <div style="font-size:11px;color:#78350f;margin-bottom:10px;line-height:1.5;">
       Entrada no armazém: <strong>${fmtD(entrada)}</strong>${entrada ? '' : ' — <span style="color:var(--err)">informe a Data Chegada ou "Entrada no armazém (RF)" na Logística</span>'} ·
-      Custo base por medida: ${base && base.custoTotal != null ? `<strong>${base.origem === 'real' ? 'Custos Reais' : 'cotação (estimado)'}</strong>, rateado por ${base.rateioPor === 'fob' ? 'FOB' : 'unidade'}` : '<span style="color:var(--err)">sem Custos Reais nem cotação vinculada — só a armazenagem será mostrada</span>'} ·
-      Preço sugerido: ${base && (base.fatorComSt || base.fatorSemSt) ? `custo atualizado × fator da cotação (COM ST ${base.fatorComSt ? base.fatorComSt.toFixed(3) : '—'} / SEM ST ${base.fatorSemSt ? base.fatorSemSt.toFixed(3) : '—'})` : '<span style="color:var(--muted)">sem cotação vinculada (sem fator), mostra só o custo</span>'} ·
+      Custo base por medida: ${base && base.origem === 'manual' ? '<strong>digitado na mão</strong> (abaixo)' : base && base.custoTotal != null ? `<strong>${base.origem === 'real' ? 'Custos Reais' : 'cotação (estimado)'}</strong> ${r2(base.custoTotal)}, rateado por ${base.rateioPor === 'fob' ? 'FOB' : 'unidade'}` : '<span style="color:var(--err)">sem Custos Reais nem cotação vinculada — só a armazenagem será mostrada</span>'} ·
+      Preço sugerido: ${base && (base.fatorComSt || base.fatorSemSt) ? `custo atualizado × fator da cotação (COM ST ${base.fatorComSt ? base.fatorComSt.toFixed(3) : '—'} / SEM ST ${base.fatorSemSt ? base.fatorSemSt.toFixed(3) : '—'})` : '<span style="color:var(--muted)">sem cotação vinculada (sem fator) — informe uma margem abaixo pra ver o preço</span>'} ·
       Estoque atual: ${sim && sim.estoqueAtual.length ? sim.estoqueAtual.map(e => `${esc(e.descricao)} <strong>${e.quantidade}</strong>`).join(', ') : '<span style="color:var(--muted)">tudo vendido ou sem produtos</span>'}.
       <br>Tarifas (R$/pneu/dia, carência): ${Object.keys(tarifas).map(k => `${k} ${Number(tarifas[k].tarifa_dia).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3})} (${tarifas[k].carencia_dias}d)`).join(' · ')} — editáveis em Cadastros → Listas. Nada aqui é gravado.
+    </div>`;
+
+  const rp = base && base.realParcial;
+  const avisoHtml = (rp && base.origem === 'real') ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;font-size:11px;color:#991b1b;margin-bottom:10px;line-height:1.5;">
+      ⚠ <strong>Custos Reais parciais:</strong> ${rp.itensFaltando ? `${rp.itensFaltando} item(ns) cotado(s) ainda sem lançamento em Pago` : 'total lançado bem abaixo do cotado'} — lançados ${r2(rp.custoReal)} contra ${r2(rp.custoCotado)} cotados (${Math.round(rp.pctDoCotado*100)}%).
+      O custo base abaixo está subestimado; prefira a base <strong>cotação</strong> até fechar os Custos Reais. <button type="button" onclick="_simRFSetBase('cotado')" style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:2px 8px;font-size:11px;color:#991b1b;cursor:pointer;font-weight:600;">usar cotação</button>
+    </div>` : '';
+  const selBase = `<select class="form-input" onchange="_simRFSetBase(this.value)" onwheel="this.blur()">
+      <option value="auto" ${_simRFOpts.base==='auto'?'selected':''}>Automática (Custos Reais → cotação)</option>
+      <option value="real" ${_simRFOpts.base==='real'?'selected':''} ${base && !base.temReal ? 'disabled' : ''}>Custos Reais${base && base.custoReal != null ? ' — ' + r2(base.custoReal) : ' (sem lançamentos)'}</option>
+      <option value="cotado" ${_simRFOpts.base==='cotado'?'selected':''} ${base && !base.temCotado ? 'disabled' : ''}>Cotação vinculada${base && base.custoCotado != null ? ' — ' + r2(base.custoCotado) : ' (nenhuma)'}</option>
+      <option value="manual" ${_simRFOpts.base==='manual'?'selected':''}>Custo unitário digitado por medida</option>
+    </select>`;
+  const manualHtml = _simRFOpts.base === 'manual' ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">${(base ? base.itens : []).map(it => `
+      <div class="form-group" style="margin:0;width:170px;"><label class="form-label" style="font-size:10px;">${esc(it.descricao)} — R$/pneu</label>
+        <input class="form-input" type="number" step="any" min="0" placeholder="custo unitário" value="${_simRFOpts.manual[it.descricao]!=null?esc(String(_simRFOpts.manual[it.descricao])):''}" onchange="_simRFSetManual(${JSON.stringify(it.descricao).replace(/"/g,'&quot;')},this.value)"></div>`).join('')}
+      ${base && base.itens.length ? '' : '<span style="font-size:11px;color:var(--err)">sem produtos no processo</span>'}</div>` : '';
+  const baseHtml = `<div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:10px;">
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;min-width:300px;"><label class="form-label">Base de custo da simulação</label>${selBase}</div>
+        <div class="form-group" style="margin:0;width:150px;"><label class="form-label">Margem p/ preço (%)${base && (base.fatorComSt || base.fatorSemSt) ? ' <span style="color:var(--muted);font-weight:400">opcional</span>' : ''}</label>
+          <input class="form-input" type="number" step="any" placeholder="ex.: 25" value="${esc(String(_simRFOpts.margem ?? ''))}" onchange="_simRFSetMargem(this.value)"></div>
+      </div>${manualHtml}
     </div>`;
 
   const vendasHtml = _simRF.map((v, vi) => {
@@ -1203,6 +1230,7 @@ function renderSimularVendaRF(){
           + (res.custoUnitBase != null ? ` · custo base ${r2(res.custoUnitBase)} → <strong>custo atualizado ${r2(res.custoUnitAtual)}/pneu</strong>` : '')
           + (res.precoComSt != null ? ` · <strong style="color:var(--ok)">preço COM ST ${r2(res.precoComSt)}</strong>` : '')
           + (res.precoSemSt != null ? ` · <strong style="color:var(--ok)">SEM ST ${r2(res.precoSemSt)}</strong>` : '')
+          + (res.precoMargem != null ? ` · <strong style="color:var(--ok)">preço c/ margem ${r2(res.precoMargem)}</strong>` : '')
           + (res.saldoAntes != null ? ` · saldo ${res.saldoAntes} → ${res.saldoDepois}` : '')
           + (res.excedeSaldo ? ` <span style="color:var(--err);font-weight:700;">⚠ pede mais do que tem no armazém</span>` : '');
       }
@@ -1229,7 +1257,7 @@ function renderSimularVendaRF(){
   }).join('');
 
   wrap.innerHTML = `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;margin-top:10px;">
-    ${cab}${vendasHtml}
+    ${cab}${avisoHtml}${baseHtml}${vendasHtml}
     <button type="button" onclick="_simRFAddVenda()" style="background:#fff;border:1px dashed #fde68a;border-radius:6px;padding:5px 12px;font-size:11px;color:#92400e;cursor:pointer;font-weight:600;">+ Outra venda futura</button>
   </div>`;
 }
