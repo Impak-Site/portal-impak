@@ -2430,6 +2430,9 @@ const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCap
     { label: 'Taxas em USD (diversas, destino)', brl: r.taxas_usd_brl + (r.txOp.fixas.baixa_patio * r.containers) },
     { label: 'Custos Diversos', brl: r.custos_div },
   ];
+  // Reciclagem (por processo) já entra no total_taxas — faltava a linha
+  // própria na Capa (Ayslan 13/10/2026: total não batia com a soma das linhas).
+  if ((r.txOp.fixas.reciclagem || 0) > 0) despesas.splice(despesas.length - 1, 0, { label: 'Reciclagem', brl: r.txOp.fixas.reciclagem });
   if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
   // Valor FOB/CIF na Capa por Câmbio Fechado de cada parcela (ver
   // PARCELA_ETAPAS_CALC/_estado.parcelas, mesmos campos do Controle) — SÓ
@@ -2828,6 +2831,7 @@ function renderResultado(r) {
             <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
             <tr><td>Taxa Seguro de Venda</td><td class="num">${fmtR(r.seguro_venda_brl)}</td></tr>
+            ${(r.txOp.fixas.reciclagem||0) > 0 ? `<tr><td>Reciclagem</td><td class="num">${fmtR(r.txOp.fixas.reciclagem)}</td></tr>` : ''}
             <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custos_div)}</td></tr>
             ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
@@ -3140,6 +3144,7 @@ async function exportarExcel() {
       add('dado', 'Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers));
       add('dado', 'Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl));
       add('dado', 'Taxa Seguro de Venda', '', '', fmtR(r.seguro_venda_brl));
+      if((r.txOp.fixas.reciclagem||0) > 0) add('dado', 'Reciclagem', '', '', fmtR(r.txOp.fixas.reciclagem));
       add('dado', 'Custos Diversos', '', '', fmtR(r.custos_div));
       if(r.DUMP > 0) add('dado', 'Dumping', '', '', fmtR(r.DUMP));
       add('total', 'TOTAL DESPESAS', '', '', fmtR(r.total_taxas));
