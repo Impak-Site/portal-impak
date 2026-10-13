@@ -178,6 +178,14 @@ teste('Data de chegada avança para DESEMBARCADO', () => {
 teste('Número da DI avança para REGISTRO_DI', () => {
   iguais(sandbox.calcularFase({ data_chegada: '2026-02-01', numero_di: '26/123456-7' }), 'REGISTRO_DI');
 });
+teste('DUIMP antecipada (Nº DUIMP antes da chegada, navio em águas) mantém EMBARCADO — Emanuelly 13/10/2026', () => {
+  const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  iguais(sandbox.calcularFase({ data_embarque: '2026-01-01', eta: amanha, numero_di: '26BR0000012345' }), 'EMBARCADO');
+  iguais(sandbox.calcularFase({ data_embarque: '2026-01-01', data_chegada: amanha, data_registro_di: '2026-01-20' }), 'EMBARCADO');
+});
+teste('DUIMP com chegada já ocorrida avança para REGISTRO_DI normalmente', () => {
+  iguais(sandbox.calcularFase({ data_embarque: '2026-01-01', data_chegada: '2026-02-01', numero_di: '26BR0000012345' }), 'REGISTRO_DI');
+});
 teste('Canal Verde + Parametrização avança para FATURAMENTO', () => {
   iguais(sandbox.calcularFase({ numero_di: '26/123456-7', canal: 'VERDE', data_parametrizacao: '2026-02-05' }), 'FATURAMENTO');
 });
