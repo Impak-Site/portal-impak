@@ -5618,12 +5618,17 @@ async function verificarAlertaTransportadora(){
 // origemProcesso() (controle-core.js): sem cotacao_id e sem estimativa_json.
 // Destinatário trocável pelo Railway: ALERTA_COMERCIAL_PARA.
 const ALERTA_COMERCIAL_PADRAO = 'jean@impak.com.br';
+// Só processos criados a partir do início da regra — o histórico migrado das
+// planilhas nasceu no Controle por definição (mesma data de
+// REGRA_COTACAO_DESDE em controle-core.js).
+const ALERTA_SEM_COTACAO_DESDE = process.env.ALERTA_SEM_COTACAO_DESDE || '2026-10-13';
 async function verificarAlertaSemCotacao(){
   const jobName = 'alerta_sem_cotacao_semanal';
   const { data, error } = await sb().from('controle_processos')
     .select('id, referencia, cliente, fornecedor, fase, finalidade, cancelado, pi_data, eta, created_at')
     .neq('fase', 'FINALIZADO')
     .is('cotacao_id', null).is('estimativa_json', null)
+    .gte('created_at', ALERTA_SEM_COTACAO_DESDE)
     .order('created_at', { ascending: false });
   if (error) { console.error('Erro ao buscar processos sem cotação:', error.message); return 0; }
   const pendentes = (data || []).filter(p => !p.cancelado && p.finalidade !== 'ACOMPANHAMENTO');
