@@ -59,7 +59,7 @@ async function importarNFVenda(vi, input){
         r.cliente = dados.cliente || '';
         r.nf_saida_numero = dados.nf_numero || ''; r.nf_saida_data = dados.nf_data || '';
         r.nf_saida_valor = dados.nf_valor || ''; r.nf_saida_cfop = dados.cfop || '';
-        if(dados.itens && dados.itens.length) r.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):''}));
+        if(dados.itens && dados.itens.length) r.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):'', valor_total: it.valor_total||'', valor_unit: it.valor_unit||''}));
         _vendas.push(r); _painelDirty = true;
         if(typeof renderVendas === 'function') renderVendas();
         if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
@@ -87,7 +87,7 @@ async function importarNFVenda(vi, input){
     aplicarDadosNFNaVenda(vi, dados);
     if(ehCfopRemessaEstoque(dados.cfop)) showToast('NF com CFOP 5905 = remessa para o estoque: fica registrada, mas NÃO conta como venda.', 'info', 10000);
     const itensMsg = dados.itens.length ? `${dados.itens.length} ite${dados.itens.length===1?'m':'ns'} preenchido${dados.itens.length===1?'':'s'}` : 'sem itens de produto reconhecidos (confira a lista manualmente)';
-    showToast(`✓ NF importada: ${itensMsg}`, dados.itens.length ? 'ok' : 'warn', 10000);
+    showToast(`✓ NF importada: ${itensMsg}` + (dados.itens.length > 1 ? ' — se algum item for de outro processo, remova-o aqui (este processo fica com a soma dos itens dele).' : ''), dados.itens.length ? 'ok' : 'warn', 12000);
   }catch(e){
     showToast('Erro ao importar NF: '+e.message, 'err', 12000);
   }
@@ -139,7 +139,15 @@ async function parseNFeXml(file){
     const xProd = (prod.getElementsByTagName('xProd')[0]||{}).textContent || '';
     const qCom  = (prod.getElementsByTagName('qCom')[0]||{}).textContent || '';
     const cfopItem = (prod.getElementsByTagName('CFOP')[0]||{}).textContent || '';
-    return { descricao: xProd.trim(), quantidade: qCom ? String(parseFloat(qCom)) : '', cfop: cfopItem.trim() };
+    // Valor do item NA NF = mesma composição do vNF, só que do item:
+    // vProd − vDesc + vFrete + vSeg + vOutro + vIPI + vICMSST + vFCPST + vII.
+    // A soma dos itens bate com o total da NF (diferença de centavos).
+    const num = tag => { const el = det.getElementsByTagName(tag)[0]; return el ? (parseFloat(el.textContent) || 0) : 0; };
+    const vItem = num('vProd') - num('vDesc') + num('vFrete') + num('vSeg') + num('vOutro') + num('vIPI') + num('vICMSST') + num('vFCPST') + num('vII');
+    const qtd = qCom ? parseFloat(qCom) : 0;
+    const valorTotal = Math.round(vItem * 100) / 100;
+    return { descricao: xProd.trim(), quantidade: qCom ? String(qtd) : '', cfop: cfopItem.trim(),
+      valor_total: vItem ? String(valorTotal) : '', valor_unit: (vItem && qtd > 0) ? String(Math.round(valorTotal / qtd * 10000) / 10000) : '' };
   }).filter(Boolean);
   const cfop = (itens.find(it=>it.cfop)||{}).cfop || '';
   // tpNF: 0 = entrada, 1 = saída (padrao NFe) — mais confiavel que tentar inferir por outros campos
@@ -169,7 +177,7 @@ async function extrairNFComIA(file){
   "nf_data": "YYYY-MM-DD", // data de emissão
   "nf_valor": 0,        // valor total da nota em R$
   "cfop": "",            // codigo CFOP (ex: 5405, 5117, 5905, 1101, 3101) do item principal da nota
-  "itens": [{"descricao":"", "quantidade":0}]  // um item por linha de produto da nota
+  "itens": [{"descricao":"", "quantidade":0, "valor_total":0}]  // um item por linha de produto da nota; valor_total = V. TOTAL do item + V. IPI do item (em R$)
 }
 Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem texto adicional.`;
 
@@ -208,7 +216,11 @@ Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem t
         nf_data: extracted.nf_data||'',
         nf_valor: parseFloat(extracted.nf_valor)||0,
         cfop: extracted.cfop||'',
-        itens: Array.isArray(extracted.itens) ? extracted.itens.filter(it=>it&&(it.descricao||it.quantidade)).map(it=>({descricao:it.descricao||'', quantidade:it.quantidade!=null?String(it.quantidade):''})) : [],
+        itens: Array.isArray(extracted.itens) ? extracted.itens.filter(it=>it&&(it.descricao||it.quantidade)).map(it=>{
+          const q = parseFloat(it.quantidade) || 0, t = parseFloat(it.valor_total) || 0;
+          return {descricao:it.descricao||'', quantidade:it.quantidade!=null?String(it.quantidade):'',
+            valor_total: t ? String(Math.round(t*100)/100) : '', valor_unit: (t && q > 0) ? String(Math.round(t/q*10000)/10000) : ''};
+        }) : [],
       };
     }
     if(dJob.status === 'erro') throw new Error(dJob.erro || 'Erro na IA');

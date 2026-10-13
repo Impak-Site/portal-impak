@@ -904,10 +904,14 @@ function renderVendas(){
         else if(a.motivo === 'sem_data') armHtml = `<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:-2px 0 2px 2px;">🏭 Armazenagem RF: informe a Data NF Saída pra calcular.</div>`;
       }
       return `
-      <div style="display:grid;grid-template-columns:1fr 110px 32px;gap:6px;align-items:center;margin-bottom:6px;">
+      <div style="display:grid;grid-template-columns:1fr 90px 110px 130px 32px;gap:6px;align-items:center;margin-bottom:6px;">
         ${campoDescricaoItemVenda(vi, ii, it)}
-        <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
-          oninput="_vendas[${vi}].itens[${ii}].quantidade=this.value;sincronizarVendasLegado();renderResumoVendas()" onchange="renderVendas()">
+        <input class="form-input" type="number" placeholder="Qtde" title="Quantidade" value="${it.quantidade!=null?it.quantidade:''}"
+          oninput="alterarValorItemVenda(${vi},${ii},'quantidade',this.value)" onchange="renderVendas()">
+        <input class="form-input" type="number" step="0.01" placeholder="R$ unit." title="Valor unitário na NF (R$)" id="venda-${vi}-item-${ii}-unit" value="${it.valor_unit!=null&&it.valor_unit!==''?it.valor_unit:''}"
+          oninput="alterarValorItemVenda(${vi},${ii},'valor_unit',this.value)" onchange="renderVendas()">
+        <input class="form-input" type="number" step="0.01" placeholder="R$ total" title="Valor total do item na NF (R$, com IPI/ST do item)" id="venda-${vi}-item-${ii}-tot" value="${it.valor_total!=null&&it.valor_total!==''?it.valor_total:''}"
+          oninput="alterarValorItemVenda(${vi},${ii},'valor_total',this.value)" onchange="renderVendas()">
         ${(v.itens.length>1) ? `<button type="button" onclick="removerItemVenda(${vi},${ii})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>` : '<div></div>'}
         ${armHtml}
       </div>`;}).join('');
@@ -941,7 +945,7 @@ function renderVendas(){
           <input class="form-input" value="${esc(v.nf_saida_cfop||'')}" placeholder="ex: 5102, 6102, 5905, BAIXA" onchange="_vendas[${vi}].nf_saida_cfop=this.value.trim();sincronizarVendasLegado();renderVendas()"></div>
         <div class="form-group"><label class="form-label">Data NF Saída</label>
           <input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(v.nf_saida_data||'')}" oninput="_vendas[${vi}].nf_saida_data=this.value;sincronizarVendasLegado()" onchange="renderVendas()"></div>
-        <div class="form-group"><label class="form-label">Valor NF Saída (R$)</label>
+        <div class="form-group"><label class="form-label">Valor total da NF (R$)</label>
           <input class="form-input" type="number" step="0.01" value="${v.nf_saida_valor!=null?v.nf_saida_valor:''}" oninput="_vendas[${vi}].nf_saida_valor=this.value;sincronizarVendasLegado();renderResumoVendas()"></div>
         <div class="form-group"><label class="form-label">Forma de Pagamento</label>
           <select class="form-input" onchange="_vendas[${vi}].forma_pagamento=this.value;if(this.value!=='prazo')_vendas[${vi}].prazo_texto='';sincronizarVendasLegado();renderVendas();" onwheel="this.blur()">
@@ -953,8 +957,9 @@ function renderVendas(){
         <div class="form-group"><label class="form-label">Juros Cobrado do Cliente (R$ — se houver)</label>
           <input class="form-input" type="number" step="0.01" value="${v.juros_valor!=null?v.juros_valor:''}" oninput="_vendas[${vi}].juros_valor=this.value;sincronizarVendasLegado()" placeholder="0,00"></div>
       </div>
-      <label class="form-label">Itens vendidos (quantidade alocada a este cliente)</label>
+      <label class="form-label">Itens vendidos deste processo (quantidade · R$ unitário · R$ total do item na NF)</label>
       <div style="margin-bottom:6px;">${itensHtml}</div>
+      ${totaisItensVendaHtml(v)}
       ${armTotalHtml}
       <button type="button" onclick="adicionarItemVenda(${vi})" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--ac);cursor:pointer;font-weight:600;margin-bottom:14px;">+ Item</button>
       <label class="form-label">Custos diretos desta venda (não rateados — ex.: frete extra só deste cliente)</label>
@@ -1029,6 +1034,53 @@ function campoDescricaoItemVenda(vi, ii, it){
     + '<option value="__outro__">Outro (digitar manualmente)</option>'
     + '</select>';
 }
+// Total de peças + soma dos itens desta venda, e aviso quando a NF tem
+// itens de outro processo (soma dos itens ≠ valor total da NF).
+function totaisItensVendaHtml(v){
+  const r2 = x => 'R$ ' + Number(x||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pecas = quantidadeVenda(v);
+  const somaItens = valorItensVenda(v);
+  const nf = parseFloat(v.nf_saida_valor) || 0;
+  let html = `<div style="display:flex;flex-wrap:wrap;gap:18px;font-size:12px;margin:2px 0 8px;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:6px;">
+    <span>Total de peças: <strong>${pecas.toLocaleString('pt-BR')}</strong></span>
+    <span>Soma dos itens: <strong>${somaItens != null ? r2(somaItens) : '—'}</strong></span>
+    <span>Valor total da NF: <strong>${nf ? r2(nf) : '—'}</strong></span></div>`;
+  if(somaItens == null){
+    if(nf) html += `<div style="font-size:11px;color:var(--muted);margin:-4px 0 8px;">Sem valor em algum item: este processo usa o valor total da NF. Se a NF tiver itens de outro processo, informe o valor de cada item e remova os que não são deste processo.</div>`;
+  } else if(nf && Math.abs(nf - somaItens) > 1){
+    const dif = nf - somaItens;
+    html += `<div style="font-size:12px;color:#92400e;background:#fef3c7;border-radius:6px;padding:6px 10px;margin:-4px 0 8px;">⚠️ ${dif > 0 ? `A NF tem ${r2(dif)} em itens que não estão aqui (de outro processo/referência).` : `Os itens somam ${r2(-dif)} a mais que a NF — confira os valores.`} Para este processo vale a soma dos itens: <strong>${r2(somaItens)}</strong>.</div>`;
+  }
+  return html;
+}
+
+// Qtde / R$ unit. / R$ total do item: mexer num recalcula o outro sem
+// redesenhar a tela (pra não perder o foco no meio da digitação).
+function alterarValorItemVenda(vi, ii, campo, valor){
+  const it = _vendas[vi] && _vendas[vi].itens[ii];
+  if(!it) return;
+  it[campo] = valor;
+  const q = parseFloat(it.quantidade) || 0;
+  const arred = (x, c) => Math.round(x * Math.pow(10, c)) / Math.pow(10, c);
+  if(campo === 'valor_total'){
+    const t = parseFloat(valor);
+    it.valor_unit = (!isNaN(t) && q > 0) ? String(arred(t / q, 4)) : it.valor_unit;
+    const el = document.getElementById(`venda-${vi}-item-${ii}-unit`); if(el && it.valor_unit != null) el.value = it.valor_unit;
+  } else if(campo === 'valor_unit' || campo === 'quantidade'){
+    const u = parseFloat(it.valor_unit);
+    if(!isNaN(u) && q > 0){
+      it.valor_total = String(arred(u * q, 2));
+      const el = document.getElementById(`venda-${vi}-item-${ii}-tot`); if(el) el.value = it.valor_total;
+    } else if(campo === 'valor_unit' && String(valor).trim() === ''){
+      it.valor_total = '';
+      const el = document.getElementById(`venda-${vi}-item-${ii}-tot`); if(el) el.value = '';
+    }
+  }
+  _painelDirty = true;
+  sincronizarVendasLegado();
+  renderResumoVendas();
+}
+
 function adicionarItemVenda(vi){
   _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _vendas[vi].itens.push({descricao:'', quantidade:''});

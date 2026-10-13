@@ -3043,7 +3043,7 @@ function nfsSaidaVenda(p){
   const vendas = parseVendas(p);
   if(vendas.length){
     return vendas.filter(v => v && v.nf_saida_numero && String(v.nf_saida_numero).trim() && !ehCfopSemVenda(v.nf_saida_cfop))
-      .map(v => ({ numero:v.nf_saida_numero, data:v.nf_saida_data, valor:parseFloat(v.nf_saida_valor)||0, cfop:v.nf_saida_cfop, cliente:v.cliente }));
+      .map(v => ({ numero:v.nf_saida_numero, data:v.nf_saida_data, valor:valorVendaProcesso(v), cfop:v.nf_saida_cfop, cliente:v.cliente }));
   }
   return nfSaidaLegadoEhVenda(p) ? [{ numero:p.nf_saida_numero, data:p.nf_saida_data, valor:parseFloat(p.nf_saida_valor)||0, cfop:p.nf_saida_cfop, cliente:p.cliente }] : [];
 }
@@ -3061,6 +3061,29 @@ return [...nomes];
 // Quantidade total alocada pra uma venda (soma de todos os itens dela).
 function quantidadeVenda(venda){
   return (venda.itens||[]).reduce((s,it)=> s + (parseFloat(it.quantidade)||0), 0);
+}
+
+// Valor de cada item NA NF (R$, já com IPI/ST/frete/desconto do próprio item)
+// — soma dos itens desta venda. null quando algum item ainda não tem valor
+// (aí vale o Valor total da NF, como antes). Existe porque uma mesma NF de
+// saída pode levar itens de 2 processos (Ayslan 13/10/2026): cada processo
+// fica só com os itens dele e o faturamento dele é a soma desses itens.
+function valorItensVenda(venda){
+  const itens = ((venda && venda.itens) || []).filter(it => it && ((parseFloat(it.quantidade)||0) > 0 || String(it.descricao||'').trim()));
+  if(!itens.length) return null;
+  let soma = 0;
+  for(const it of itens){
+    const t = parseFloat(it.valor_total);
+    if(isNaN(t)) return null;
+    soma += t;
+  }
+  return Math.round(soma * 100) / 100;
+}
+// Valor desta venda que pertence ao processo: soma dos itens (quando todos
+// têm valor) ou, sem valores por item, o Valor total da NF.
+function valorVendaProcesso(venda){
+  const s = valorItensVenda(venda);
+  return (s != null && s > 0) ? s : (parseFloat(venda && venda.nf_saida_valor) || 0);
 }
 
 // Soma dos custos diretos (não-rateados) de uma venda — cada um já é um
@@ -3090,7 +3113,7 @@ function calcularRateioVenda(p, venda, custoRealTotal){
 // tem NF Saída lançada (mesma convenção do Lucro Real do processo inteiro).
 function calcularLucroVenda(p, venda, custoRealTotal){
   const rateio = calcularRateioVenda(p, venda, custoRealTotal);
-  const nfSaida = parseFloat(venda.nf_saida_valor);
+  const nfSaida = valorVendaProcesso(venda);
   const temNf = !isNaN(nfSaida) && nfSaida > 0;
   const lucro = temNf ? (nfSaida - rateio.custoTotal) : null;
   const pctLucro = (temNf && lucro != null && nfSaida > 0) ? (lucro / nfSaida) : null;
@@ -3841,10 +3864,10 @@ function fatiasComissaoProcesso(p){
   const vendas = vendasReaisDoProcesso(p);
   const fatias = [];
   if(vendas.length){
-    const nfTotal = vendas.reduce((s,v)=> s + (parseFloat(v.nf_saida_valor)||0), 0);
+    const nfTotal = vendas.reduce((s,v)=> s + valorVendaProcesso(v), 0);
     const totalQtd = totalQuantidadeProdutos(p);
     vendas.forEach(v => {
-      const nf = parseFloat(v.nf_saida_valor) || 0;
+      const nf = valorVendaProcesso(v);
       const shareNf = nfTotal > 0 ? nf / nfTotal : (1 / vendas.length);
       const qtd = quantidadeVenda(v);
       const shareQtd = totalQtd > 0 && qtd > 0 ? qtd / totalQtd : shareNf;

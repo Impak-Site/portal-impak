@@ -1187,6 +1187,30 @@ teste('calcularVendasResumo: split 2 vias — soma das NFs, lucro por venda e lu
   aproxIgual(resumo.lucroTotal, (40000-24000)+(25000-16000), 0.01);
 });
 
+teste('NF com itens de 2 processos: venda fica com a soma dos itens deste processo, não com o total da NF', () => {
+  const p = {
+    produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 100}]),
+    real_json: { fob: 1000 }, real_cambio: 5, // custo real total = 5000
+    vendas_json: JSON.stringify([
+      { cliente:'Cliente X', nf_saida_valor: 30000, custos_diretos: [],
+        itens:[{descricao:'Pneu A', quantidade:100, valor_unit:'80', valor_total:'8000'}] },
+    ]),
+  };
+  const v = JSON.parse(p.vendas_json)[0];
+  aproxIgual(sandbox.valorItensVenda(v), 8000, 0.001);
+  aproxIgual(sandbox.valorVendaProcesso(v), 8000, 0.001);
+  const resumo = sandbox.calcularVendasResumo(p);
+  aproxIgual(resumo.nfSaidaTotal, 8000, 0.01, 'faturamento deste processo = soma dos itens dele');
+  aproxIgual(resumo.lucroTotal, 8000 - 5000, 0.01);
+});
+teste('Sem valor por item: continua usando o valor total da NF (comportamento antigo)', () => {
+  const v = { nf_saida_valor: 12345, itens:[{descricao:'Pneu A', quantidade:10}] };
+  verdadeiro(sandbox.valorItensVenda(v) === null);
+  aproxIgual(sandbox.valorVendaProcesso(v), 12345, 0.001);
+  const v2 = { nf_saida_valor: 900, itens:[{descricao:'A', quantidade:1, valor_total:'500'},{descricao:'B', quantidade:1, valor_total:''}] };
+  aproxIgual(sandbox.valorVendaProcesso(v2), 900, 0.001, 'item sem valor → usa a NF inteira');
+});
+
 teste('calcularVendasResumo: venda ainda sem NF Saída não trava as outras — lucroTotal fica null até todas terem NF', () => {
   const p = {
     produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
