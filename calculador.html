@@ -681,11 +681,13 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
                 <input type="number" id="taxa_juros_am" step="0.01" value="0" placeholder="ex: 2,5">
               </div>
               <div class="form-group" style="margin:0">
-                <label>Prazo Médio (dias)</label>
-                <input type="number" id="prazo_medio_dias" step="1" value="60" placeholder="ex: 60">
+                <label>Prazo do boleto</label>
+                <select id="prazo_boleto" onchange="onPrazoSelectChange('prazo_boleto','prazo_boleto_outro','prazo_medio_dias','prazo_medio_info')"><option value="30dd">30dd</option><option value="15/30/45dd">15/30/45dd</option><option value="15/30/45/60dd">15/30/45/60dd</option><option value="28/42/56/70/84dd">28/42/56/70/84dd</option><option value="30/45/60/75/90dd">30/45/60/75/90dd</option><option value="30/60dd">30/60dd</option><option value="30/60/90dd" selected>30/60/90dd</option><option value="30/60/90/120dd">30/60/90/120dd</option><option value="30/60/90/120/150dd">30/60/90/120/150dd</option><option value="30/60/90/120/150/180dd">30/60/90/120/150/180dd</option><option value="__outro__">Outro (digitar)</option></select>
+                <input type="text" id="prazo_boleto_outro" placeholder="ex: 20/40/60dd" style="display:none;margin-top:4px" oninput="onPrazoSelectChange('prazo_boleto','prazo_boleto_outro','prazo_medio_dias','prazo_medio_info')">
+                <input type="hidden" id="prazo_medio_dias" value="60">
               </div>
             </div>
-            <div style="font-size:10px;color:var(--dim);">Prazo médio: 30dd=30 · 30/60dd=45 · 30/60/90dd=60 · 30/60/90/120dd=75</div>
+            <div style="font-size:10px;color:var(--dim);" id="prazo_medio_info">Prazo médio usado no cálculo: 60 dias</div>
             <div class="form-group" style="margin:10px 0 0">
               <label>Juros no boleto (fora da NF)?</label>
               <div class="toggle-group">
@@ -713,13 +715,19 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
           </select>
           <div id="cf-prazo" class="form-row" style="display:none;margin-top:6px">
             <div class="form-group" style="margin:0"><label>Taxa (% a.m.)</label><input type="number" id="cf_taxa_am" step="0.01" value="1.5" placeholder="ex: 1,5"></div>
-            <div class="form-group" style="margin:0"><label>Prazo Médio (dias)</label><input type="number" id="cf_prazo_medio" step="1" value="30" placeholder="ex: 30"></div>
+            <div class="form-group" style="margin:0"><label>Prazo do boleto</label>
+              <select id="cf_prazo" onchange="onPrazoSelectChange('cf_prazo','cf_prazo_outro','cf_prazo_medio','cf_prazo_info')"><option value="30dd" selected>30dd</option><option value="15/30/45dd">15/30/45dd</option><option value="15/30/45/60dd">15/30/45/60dd</option><option value="28/42/56/70/84dd">28/42/56/70/84dd</option><option value="30/45/60/75/90dd">30/45/60/75/90dd</option><option value="30/60dd">30/60dd</option><option value="30/60/90dd">30/60/90dd</option><option value="30/60/90/120dd">30/60/90/120dd</option><option value="30/60/90/120/150dd">30/60/90/120/150dd</option><option value="30/60/90/120/150/180dd">30/60/90/120/150/180dd</option><option value="__outro__">Outro (digitar)</option></select>
+              <input type="text" id="cf_prazo_outro" placeholder="ex: 20/40/60dd" style="display:none;margin-top:4px" oninput="onPrazoSelectChange('cf_prazo','cf_prazo_outro','cf_prazo_medio','cf_prazo_info')">
+              <input type="hidden" id="cf_prazo_medio" value="30">
+            </div>
           </div>
+          <div id="cf_prazo_info" style="display:none;font-size:10px;color:var(--dim);margin-top:2px;">Prazo médio usado no cálculo: 30 dias</div>
           <div id="cf-parcelas" class="form-group" style="display:none;margin:6px 0 0">
             <label>Nº de parcelas</label>
-            <select id="cf_parcelas"><option value="1">1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option></select>
+            <select id="cf_parcelas" onchange="atualizarFormaCustoFin()"><option value="1">1x — 30dd</option><option value="2">2x — 30/60dd</option><option value="3">3x — 30/60/90dd</option><option value="4">4x — 30/60/90/120dd</option><option value="5">5x — 30/60/90/120/150dd</option><option value="6">6x — 30/60/90/120/150/180dd</option></select>
+            <div id="cf_parcelas_info" style="font-size:10px;color:var(--dim);margin-top:2px;"></div>
           </div>
-          <div style="font-size:10px;color:var(--dim);margin-top:4px;">Custo sobre o valor total da NF, descontado do lucro. Prazo interno = taxa ÷ 30 × prazo médio · Cartão = taxa REDE (2,91% em 1x, 3,27% de 2x a 6x) + 1,8% a cada 30 dias de prazo médio · Trademaster = 2,65% (1x) a 9,29% (6x).</div>
+          <div style="font-size:10px;color:var(--dim);margin-top:4px;">Custo sobre o valor total da NF, descontado do lucro (por dentro: entra no preço). Prazo interno = taxa ÷ 30 × média do prazo · Cartão = taxa REDE (2,91% em 1x, 3,27% de 2x a 6x) + 1,8% a cada 30 dias de prazo médio · Trademaster = 2,65% (1x) a 9,29% (6x).</div>
         </div>
         <div class="form-group">
           <label>Nota de Serviço?</label>
@@ -1155,6 +1163,9 @@ document.addEventListener('DOMContentLoaded', () => {
   buscarCambio();
   setToggleTTD('SIM'); // estado inicial padrão: TTD=SIM → sem ICMS ST
   renderCustoRealInputs();
+  onPrazoSelectChange('prazo_boleto','prazo_boleto_outro','prazo_medio_dias','prazo_medio_info');
+  onPrazoSelectChange('cf_prazo','cf_prazo_outro','cf_prazo_medio','cf_prazo_info');
+  atualizarFormaCustoFin();
   aplicarWizardVisibilidade();
 
   // Mix do TyreDesk — fica salvo no sessionStorage durante toda a sessão do
@@ -1352,6 +1363,42 @@ const CARTAO_REDE_CALC = [
   { taxa: 0.0327, medio: 75 }, { taxa: 0.0327, medio: 90 }, { taxa: 0.0327, medio: 105 },
 ];
 const TRADEMASTER_CALC = [0.0265314523603434, 0.039797178540515, 0.0530629047206867, 0.0663286309008584, 0.0795943570810301, 0.0928600832612018];
+// Prazo do boleto "como é" (ex.: 30/60/90dd) → média dos vencimentos em dias
+// (DADOS C121:C130 da planilha; Ayslan 13/10/2026: o vendedor escolhe o prazo
+// de verdade e o sistema calcula a média).
+function prazoMedioDeTexto(txt){
+  const nums = String(txt||'').match(/\d+(?:[.,]\d+)?/g);
+  if(!nums || !nums.length) return null;
+  const v = nums.map(x => parseFloat(x.replace(',','.'))).filter(x => x > 0);
+  if(!v.length) return null;
+  return v.reduce((a,b)=>a+b,0) / v.length;
+}
+function prazoTextoEscolhido(selId, outroId){
+  const sel = document.getElementById(selId); if(!sel) return '';
+  if(sel.value === '__outro__') return String((document.getElementById(outroId)||{}).value || '').trim();
+  return sel.value;
+}
+function onPrazoSelectChange(selId, outroId, hiddenId, infoId){
+  const sel = document.getElementById(selId), outro = document.getElementById(outroId);
+  if(outro) outro.style.display = (sel && sel.value === '__outro__') ? '' : 'none';
+  const txt = prazoTextoEscolhido(selId, outroId);
+  const media = prazoMedioDeTexto(txt);
+  const h = document.getElementById(hiddenId); if(h) h.value = media != null ? String(media) : '';
+  const info = document.getElementById(infoId);
+  if(info) info.textContent = media != null ? `Prazo médio usado no cálculo: ${String(media).replace('.',',')} dias (${txt})` : 'Informe o prazo (ex.: 30/60/90dd)';
+  if(typeof agendarAutosave === 'function') agendarAutosave();
+  if(typeof onAutoTaxaDepChange === 'function') onAutoTaxaDepChange();
+}
+// Ao abrir cotação salva: reposiciona o select a partir do texto gravado.
+function restaurarPrazoSelect(selId, outroId, hiddenId, infoId, texto){
+  const sel = document.getElementById(selId); if(!sel) return;
+  const t = String(texto||'').trim();
+  if(!t){ onPrazoSelectChange(selId, outroId, hiddenId, infoId); return; }
+  const tem = Array.from(sel.options).some(o => o.value === t);
+  sel.value = tem ? t : '__outro__';
+  const outro = document.getElementById(outroId); if(outro && !tem) outro.value = t;
+  onPrazoSelectChange(selId, outroId, hiddenId, infoId);
+}
 function pctCustoFinanceiroCalc(){
   const forma = (document.getElementById('forma_custo_fin')||{}).value || '';
   const n = Math.min(6, Math.max(1, parseInt((document.getElementById('cf_parcelas')||{}).value, 10) || 1));
@@ -1366,9 +1413,28 @@ function pctCustoFinanceiroCalc(){
 }
 function atualizarFormaCustoFin(){
   const forma = (document.getElementById('forma_custo_fin')||{}).value || '';
-  const a = document.getElementById('cf-prazo'), b = document.getElementById('cf-parcelas');
+  const a = document.getElementById('cf-prazo'), b = document.getElementById('cf-parcelas'), i = document.getElementById('cf_prazo_info');
   if(a) a.style.display = forma === 'prazo' ? '' : 'none';
+  if(i) i.style.display = forma === 'prazo' ? '' : 'none';
   if(b) b.style.display = (forma === 'cartao' || forma === 'trademaster') ? '' : 'none';
+  const n = Math.min(6, Math.max(1, parseInt((document.getElementById('cf_parcelas')||{}).value, 10) || 1));
+  const pi = document.getElementById('cf_parcelas_info');
+  if(pi){
+    if(forma === 'cartao'){ const c = CARTAO_REDE_CALC[n-1]; pi.textContent = `REDE ${(c.taxa*100).toFixed(2).replace('.',',')}% + 1,8% × ${c.medio}/30 dias = ${((c.taxa + 0.018/30*c.medio)*100).toFixed(2).replace('.',',')}% da NF`; }
+    else if(forma === 'trademaster') pi.textContent = `Trademaster ${(TRADEMASTER_CALC[n-1]*100).toFixed(2).replace('.',',')}% da NF`;
+    else pi.textContent = '';
+  }
+}
+// Texto do prazo escolhido pra gravar na cotação / levar pro Controle.
+function prazoCotacaoTexto(){
+  if(_estado.toggles.parcelado === 'SIM') return ehClienteGFPneus() ? '28/56/84dd' : prazoTextoEscolhido('prazo_boleto','prazo_boleto_outro');
+  const forma = (document.getElementById('forma_custo_fin')||{}).value || '';
+  if(forma === 'prazo') return prazoTextoEscolhido('cf_prazo','cf_prazo_outro');
+  if(forma === 'cartao' || forma === 'trademaster'){
+    const n = Math.min(6, Math.max(1, parseInt((document.getElementById('cf_parcelas')||{}).value, 10) || 1));
+    return ['30dd','30/60dd','30/60/90dd','30/60/90/120dd','30/60/90/120/150dd','30/60/90/120/150/180dd'][n-1];
+  }
+  return '';
 }
 function ehClienteGFPneus(){
   const n = String((document.getElementById('cliente')||{}).value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
@@ -1384,7 +1450,10 @@ function aplicarRegraGFPneus(){
   setToggle('parcelado','SIM');
   setToggle('jb','SIM');
   const set = (id, v) => { const el = document.getElementById(id); if(el) el.value = v; };
-  set('taxa_juros_am', '2.5'); set('prazo_medio_dias', '30'); set('juros_boleto_fixo', '0');
+  set('taxa_juros_am', '2.5'); set('juros_boleto_fixo', '0');
+  restaurarPrazoSelect('prazo_boleto','prazo_boleto_outro','prazo_medio_dias','prazo_medio_info','28/56/84dd');
+  set('prazo_medio_dias', '30'); // regra fixa GF PNEUS: prazo médio 30 (planilha E32)
+  { const info = document.getElementById('prazo_medio_info'); if(info) info.textContent = 'Prazo médio usado no cálculo: 30 dias (28/56/84dd — regra GF PNEUS)'; }
   const body = document.getElementById('parcel-body'); if(body && body.style.display === 'none') toggleParcelamento();
 }
 
@@ -2310,7 +2379,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
       valor_entrada = vlr_total_nfe * pctEntrada;
       valor_saldo = vlr_total_nfe * pctSaldo;
       const taxaJurosMes = (parseFloat(document.getElementById('taxa_juros_am').value)||0)/100;
-      const prazoMedio = parseFloat(document.getElementById('prazo_medio_dias').value)||60;
+      const prazoMedio = parseFloat(document.getElementById('prazo_medio_dias').value) || (prazoMedioDeTexto(prazoTextoEscolhido('prazo_boleto','prazo_boleto_outro')) || 60);
       juros_parcelamento = ((valor_saldo * prazoMedio) / 30) * taxaJurosMes;
       if(_estado.toggles.jb === 'SIM'){
         // Juros no boleto (fora da NF) — planilha MODELO K44:
@@ -2484,6 +2553,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     COM_br, COM_br_linhas, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
     juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel,
     forma_custo_fin: (document.getElementById('forma_custo_fin')||{}).value || '',
+    prazo_texto: prazoCotacaoTexto(),
     china_fora_val, boss_fora_val, china_pct, txOp,
     valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
     lucro_bruto, pct_lucro, fator,
@@ -3746,7 +3816,7 @@ const CAMPOS_COTACAO = [
   'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_import_logistics_brl','tx_crs_brl','tx_tsc',
   'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao','tx_reciclagem',
   'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor','cenario_valor_sem_st',
-  'juros_boleto_fixo','forma_custo_fin','cf_taxa_am','cf_prazo_medio','cf_parcelas',
+  'juros_boleto_fixo','forma_custo_fin','cf_taxa_am','cf_prazo_medio','cf_parcelas','prazo_boleto','prazo_boleto_outro','cf_prazo','cf_prazo_outro',
 ];
 
 // ── AUTOSAVE (evita perder o que foi preenchido ao atualizar a pagina) ──
@@ -3826,6 +3896,12 @@ function aplicarEstadoFormulario(estado){
   if(estado.togglesInner){
     Object.entries(estado.togglesInner).forEach(([k,v]) => setToggleInner(k,v));
   }
+  // Prazo "como é": cotações antigas só têm prazo_medio_dias numérico → vira "Outro".
+  { const c = estado.campos || {};
+    const txtP = c.prazo_boleto === '__outro__' ? c.prazo_boleto_outro : c.prazo_boleto;
+    restaurarPrazoSelect('prazo_boleto','prazo_boleto_outro','prazo_medio_dias','prazo_medio_info', txtP || (c.prazo_medio_dias ? String(c.prazo_medio_dias)+' dias' : ''));
+    const txtC = c.cf_prazo === '__outro__' ? c.cf_prazo_outro : c.cf_prazo;
+    restaurarPrazoSelect('cf_prazo','cf_prazo_outro','cf_prazo_medio','cf_prazo_info', txtC || (c.cf_prazo_medio ? String(c.cf_prazo_medio)+' dias' : '')); }
   atualizarFormaCustoFin();
   { const info = document.getElementById('regra-gf-info'); if(info) info.style.display = ehClienteGFPneus() ? '' : 'none'; }
   // Restaura o estado dos checkboxes "auto" (Marinha/Agente). Cotações salvas

@@ -264,6 +264,22 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
   if (toggles.dump === 'SIM' && numOuNull(d.dump_valor)) {
     observacoes.push(`Antidumping estimado na cotação: US$ ${d.dump_valor}`);
   }
+  // Forma de pagamento da cotação (Passo 4): prazo "como é" e juros no boleto.
+  {
+    const prazoSel = d.prazo_boleto === '__outro__' ? d.prazo_boleto_outro : d.prazo_boleto;
+    const cfSel = d.cf_prazo === '__outro__' ? d.cf_prazo_outro : d.cf_prazo;
+    const nParc = Math.min(6, Math.max(1, parseInt(d.cf_parcelas, 10) || 1));
+    const prazoParc = ['30dd','30/60dd','30/60/90dd','30/60/90/120dd','30/60/90/120/150dd','30/60/90/120/150/180dd'][nParc - 1];
+    const partes = [];
+    if (toggles.parcelado === 'SIM') {
+      partes.push(`parcelado ${prazoSel || ''}`.trim());
+      if (toggles.jb === 'SIM') partes.push(`juros no boleto (fora da NF${d.juros_boleto_fixo ? `, fixo R$ ${d.juros_boleto_fixo}` : ''})`);
+    }
+    if (d.forma_custo_fin === 'prazo') partes.push(`prazo interno ${cfSel || ''} a ${d.cf_taxa_am || '?'}% a.m.`.trim());
+    else if (d.forma_custo_fin === 'cartao') partes.push(`cartão REDE ${nParc}x (${prazoParc})`);
+    else if (d.forma_custo_fin === 'trademaster') partes.push(`Trademaster ${nParc}x (${prazoParc})`);
+    if (partes.length) observacoes.push(`Pagamento cotado: ${partes.join(' · ')}`);
+  }
 
   // ── Containers ────────────────────────────────────────────
   const qtdeContainers = numOuNull(d.qtde_containers) || 1;

@@ -472,6 +472,16 @@ teste('custo financeiro entra como custo (desconta do lucro / sobe a NF)', () =>
   verdadeiro(b.vlr_total_nfe > a.vlr_total_nfe, 'com custo financeiro a NF precisa subir pra manter a margem');
 });
 
+teste('prazo do boleto "como é" → média dos vencimentos', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const m = t => vm.runInContext(`prazoMedioDeTexto(${JSON.stringify(t)})`, sb);
+  aproxIgual(m('30dd'), 30, 1e-9); aproxIgual(m('30/60dd'), 45, 1e-9); aproxIgual(m('15/30/45/60dd'), 37.5, 1e-9);
+  aproxIgual(m('28/42/56/70/84dd'), 56, 1e-9); aproxIgual(m('30/60/90/120/150/180dd'), 105, 1e-9); aproxIgual(m('20/40/60dd'), 40, 1e-9);
+  verdadeiro(m('') === null);
+  const r = vm.runInContext(`document.getElementById('prazo_boleto').value='30/60/90/120dd'; onPrazoSelectChange('prazo_boleto','prazo_boleto_outro','prazo_medio_dias','prazo_medio_info'); document.getElementById('prazo_medio_dias').value`, sb);
+  aproxIgual(parseFloat(r), 75, 1e-9);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
