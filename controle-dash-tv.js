@@ -189,10 +189,18 @@ function renderDashTV(){
   // do que chegou e ainda não tem NF de saída nenhuma.
   const chaoRemessa = { porProduto:{}, un:0, proc:0 };
   const chaoSemNf   = { porProduto:{}, un:0, proc:0 };
+  // 13/10/2026 (Emanuelly: "tem processos que estão no chão mas não está
+  // aparecendo no chão", ex. UD26-083): carga que já CHEGOU (Data Chegada
+  // ou Presença de Carga até hoje) conta como "no chão" mesmo antes da
+  // NF de Entrada ser lançada — senão o processo ficava num limbo: saía
+  // de "Em Águas" (não está mais embarcado) e não entrava aqui.
+  const _hojeChegou = new Date(); _hojeChegou.setHours(0,0,0,0);
+  const _dataPassou = d => !!d && new Date(String(d).slice(0,10)+'T00:00:00') <= _hojeChegou;
+  const cargaChegouTV = p => !!(p.nf_entrada_numero && String(p.nf_entrada_numero).trim()) || _dataPassou(p.data_chegada) || _dataPassou(p.data_presenca);
   _processos.forEach(p => {
     if(p.cancelado) return; // processo cancelado não conta como estoque parado
     if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
-    if(!p.nf_entrada_numero) return;
+    if(!cargaChegouTV(p)) return;
     // Baixa de estoque pelas NFs de Saída de TODAS as vendas (vendas_json),
     // não só a NF única antiga — ver estoqueDoProcesso() (controle-core.js).
     const est = estoqueDoProcesso(p);
@@ -266,7 +274,7 @@ function renderDashTV(){
     let nfStatus = null;
     if(_est.saiuTudo) nfStatus = 'saiu';
     else if(temRemessaEstoque(p)) nfStatus = 'remessa';   // azul — no armazém (CFOP 5905)
-    else if(_est.temEntrada) nfStatus = 'estoque';        // verde — chegou, sem NF de saída
+    else if(_est.temEntrada || cargaChegouTV(p)) nfStatus = 'estoque'; // verde — chegou (NF Entrada ou Data Chegada/Presença), sem NF de saída
     const restanteTxt = (nfStatus === 'remessa' && _est.vendeuAlgo && _est.total > 0) ? `${Math.round(_est.restante)}/${Math.round(_est.total)}` : '';
     previstoMesProcessos.push({ referencia: p.referencia, cliente: p.cliente, eta: p.eta, n, nfStatus, restanteTxt });
     previstoMesContainers += n;
@@ -757,13 +765,13 @@ function renderDashTV(){
     const colunas = [];
     for(let i=0;i<nCols;i++) colunas.push(lista.slice(i*porColuna,(i+1)*porColuna));
     return `<div style="background:#fff;border-radius:12px;padding:.6em .9em;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.08);">
-      <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.25em;flex:0 0 auto;">Processos do Mês · ${fmtN(lista.length)} processo(s)${(()=>{const n=lista.filter(x=>x.nfStatus==='remessa').length;return n?` · <span style="color:#2563eb;">${n} em estoque</span>`:'';})()}</div>
+      <div style="font-weight:800;font-size:1em;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.25em;flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;gap:.5em;"><span>Processos do Mês · ${fmtN(lista.length)} processo(s)${(()=>{const n=lista.filter(x=>x.nfStatus==='remessa').length;return n?` · <span style="color:#2563eb;">${n} em estoque</span>`:'';})()}</span><span data-tv-pag-ind style="font-size:.75em;color:#64748b;font-weight:700;letter-spacing:0;white-space:nowrap;"></span></div>
       <div style="display:flex;gap:1em;flex-wrap:wrap;font-size:.72em;color:#475569;font-weight:600;margin-bottom:.4em;flex:0 0 auto;border-bottom:1px solid #e2e8f0;padding-bottom:.4em;">
         <span><span style="display:inline-block;width:.8em;height:.8em;background:#dcfce7;border:2px solid #16a34a;border-radius:2px;vertical-align:-1px;"></span> Chegou (sem NF saída)</span>
         <span><span style="display:inline-block;width:.8em;height:.8em;background:#dbeafe;border:2px solid #2563eb;border-radius:2px;vertical-align:-1px;"></span> No estoque (remessa 5905)</span>
         <span><span style="display:inline-block;width:.8em;height:.8em;background:#d7dee7;border:2px solid #94a3b8;border-radius:2px;vertical-align:-1px;"></span> Vendido</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:.9em;flex:1;min-height:0;overflow-y:auto;font-size:1em;">
+      <div data-tv-autopagina style="display:grid;grid-template-columns:repeat(${nCols},1fr);gap:.9em;flex:1;min-height:0;overflow-y:auto;font-size:1em;scrollbar-width:none;align-content:start;">
         ${colunas.map(col => `<div style="display:flex;flex-direction:column;overflow:hidden;">${col.map(linhaProcessoMesChaoTV).join('')}</div>`).join('')}
       </div>
     </div>`;
