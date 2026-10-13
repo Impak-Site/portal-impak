@@ -2494,8 +2494,9 @@ function renderCapaHtml(r) {
         <tr><td>PIS (${pct(r.t.pis_s)})</td><td class="num">${fmtR(c.PIS_s)}</td></tr>
         <tr><td>COFINS (${pct(r.t.cofins_s)})</td><td class="num">${fmtR(c.COFINS_s)}</td></tr>
         <tr><td>ICMS Proprio (${pct(r.t.icms_prop)})</td><td class="num">${fmtR(c.ICMS_proprio)}</td></tr>
+        ${(c.COM_br > 0 && !capaOcultaComissao(r)) ? `<tr><td>Comissao Repr. (${r.br_nome || ''})</td><td class="num">${fmtR(c.COM_br)}</td></tr>` : ''}
         ${c.COM_china_dentro > 0 ? `<tr><td>Comissao China (dentro)</td><td class="num">${fmtR(c.COM_china_dentro)}</td></tr>` : ''}
-        <tr class="total-row ok"><td>Lucro Bruto Impak</td><td class="num" style="color:var(--ok);font-weight:800;">${fmtR(lucroCapaCliente(c).valor)} (${pctF(lucroCapaCliente(c).pct)})</td></tr>
+        <tr class="total-row ok"><td>Lucro Bruto Impak</td><td class="num" style="color:var(--ok);font-weight:800;">${fmtR(lucroCapaCliente(c, r).valor)} (${pctF(lucroCapaCliente(c, r).pct)})</td></tr>
       </table>
       ${(c.china_fora_val > 0 || c.boss_fora_val > 0) ? `
         <div class="nota-servico" style="margin-top:10px;">
@@ -3436,8 +3437,9 @@ async function exportarExcel() {
       addCapa('dado', 'PIS', pct(r.t.pis_s), '', fmtR(c.PIS_s));
       addCapa('dado', 'COFINS', pct(r.t.cofins_s), '', fmtR(c.COFINS_s));
       addCapa('dado', 'ICMS Proprio', pct(r.t.icms_prop), '', fmtR(c.ICMS_proprio));
+      if(c.COM_br > 0 && !capaOcultaComissao(r)) addCapa('dado', 'Comissao Repr.', '', '', fmtR(c.COM_br));
       if(c.COM_china_dentro > 0) addCapa('dado', 'Comissao China (dentro)', '', '', fmtR(c.COM_china_dentro));
-      addCapa('total', 'Lucro Bruto Impak', pctF(lucroCapaCliente(c).pct), '', fmtR(lucroCapaCliente(c).valor));
+      addCapa('total', 'Lucro Bruto Impak', pctF(lucroCapaCliente(c, r).pct), '', fmtR(lucroCapaCliente(c, r).valor));
       addCapa('blank');
       if(c.china_fora_val > 0 || c.boss_fora_val > 0){
         addCapa('secao', 'NOTA DE SERVICO (fora do preco)');
@@ -3567,13 +3569,18 @@ const nome = `IMPAK_${r.cliente||'cliente'}_${r.uf}_${new Date().toISOString().s
   }
 }
 function pctF(v){ return v.toFixed(2)+'%'; }
-// Capa vai para o cliente (ex.: Irmãos Silva/Santa Helena) — a comissão do
-// representante NUNCA aparece (Ayslan, 13/10/2026: o cliente não sabe que
-// pagamos comissão). Na Capa a linha "Comissao Repr." sai e o valor fica
-// dentro do Lucro Bruto Impak, pra conta continuar fechando. O cálculo real
-// (tela Resultado, Excel interno, cotação salva) não muda.
-function lucroCapaCliente(c){
-  const valor = (c.lucro_bruto || 0) + (c.COM_br || 0);
+// Capa — regra SÓ do cliente Irmãos Silva / Santa Helena (Ayslan, 13/10/2026):
+// a comissão do representante não aparece na Capa e o valor fica somado no
+// Lucro Bruto Impak (sai do nosso lucro pra pagar o representante, o cliente
+// não vê). Nos demais clientes a Capa mostra a linha "Comissao Repr." normal.
+// O cálculo real (Resultado, Demonstrativo, cotação salva) não muda.
+function capaOcultaComissao(r){
+  const cli = String((r && r.cliente) || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  return /IRMAOS SILVA|SANTA HELENA/.test(cli);
+}
+function lucroCapaCliente(c, r){
+  const oculta = capaOcultaComissao(r);
+  const valor = (c.lucro_bruto || 0) + (oculta ? (c.COM_br || 0) : 0);
   const pct = c.faturamento_total ? (valor / c.faturamento_total) * 100 : 0;
   return { valor, pct };
 }
