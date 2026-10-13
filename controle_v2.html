@@ -37,7 +37,7 @@ tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
      fallback por timeout pra nunca deixar a tela travada em branco). -->
 <script>
 (function(){
-  var TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/conferencia-fila','/reciclagem','/averbacao'];
+  var TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/conferencia-fila','/reciclagem','/averbacao','/agenda'];
   if(TELAS_EXCLUSIVAS.indexOf(location.pathname)!==-1){
     document.documentElement.classList.add('boot-tela-exclusiva');
   }
@@ -560,6 +560,14 @@ ao lado das datas). -->
     <div id="dash-averbacao-content"></div>
   </div>
 
+  <!-- AGENDA DE ATIVIDADES (#675) -->
+  <div id="dash-agenda" style="display:none;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📅 Agenda de atividades</div>
+    </div>
+    <div id="dash-agenda-content"></div>
+  </div>
+
   <!-- RECICLAGEM (NCM 4011/4012, trimestral por cliente) -->
   <div id="dash-reciclagem" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
@@ -988,6 +996,8 @@ ao lado das datas). -->
 <script src="/controle-dashboards.js"></script>
 <script src="/controle-dash-cambio.js"></script>
 <script src="/controle-dash-reciclagem.js"></script>
+<script src="/agenda-core.js"></script>
+<script src="/controle-dash-agenda.js"></script>
 <script src="/controle-dash-narcelio.js"></script>
 <script src="/controle-dash-carregamento.js"></script>
 <script src="/controle-dash-booking.js"></script>

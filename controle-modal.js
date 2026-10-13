@@ -115,6 +115,7 @@ function renderModal(){
     {id:'demurrage',    label:'⚓ Demurrage'},
     {id:'documentos',    label:'📋 Documentos'},
     {id:'conferencia',   label:'🔍 Conferência'},
+    {id:'agenda',        label:'📅 Agenda'},
     {id:'historico',     label:'📜 Histórico'},
   ];
   const temAlerta = verificarAlertas(p, false).length > 0;
@@ -827,6 +828,11 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
     <!-- ABA: CONFERÊNCIA -->
     <div class="tab-pane" id="pane-conferencia">
       <div id="pane-conferencia-conteudo"></div>
+    </div>
+
+    <!-- ABA: AGENDA (#675) — tarefas deste processo, ver controle-dash-agenda.js -->
+    <div class="tab-pane" id="pane-agenda">
+      <div id="pane-agenda-conteudo"><div style="font-size:11px;color:var(--dim);">${isNovo ? 'Salve o processo para gerar a agenda.' : 'Carregando agenda...'}</div></div>
     </div>
 
     <!-- ABA: HISTÓRICO -->
@@ -2041,6 +2047,7 @@ function trocarAba(id){
   const pane = document.getElementById('pane-'+id);
   if(tab)  tab.classList.add('active');
   if(pane) pane.classList.add('active');
+  if(id==='agenda' && typeof renderAgendaProcesso==='function' && _editando && _editando.id) renderAgendaProcesso(_editando);
 }
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ

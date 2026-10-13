@@ -365,6 +365,7 @@ const ICONES_NAV = {
   narcelio: `<svg ${ICONE_SVG_BASE}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
   tyredesk: `<svg ${ICONE_SVG_BASE}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`,
   calculador: `<svg ${ICONE_SVG_BASE}><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`,
+  agenda: `<svg ${ICONE_SVG_BASE}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
   reciclagem: `<svg ${ICONE_SVG_BASE}><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>`,
   seguro: `<svg ${ICONE_SVG_BASE}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
   catalogo: `<svg ${ICONE_SVG_BASE}><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>`,
@@ -372,6 +373,7 @@ const ICONES_NAV = {
 
 const navSetores = [
   { setor: 'Operacional', icone: 'operacional', itens: [
+    { label: 'Agenda', icone: 'agenda', href: '/agenda', key: 'agenda', modulo: 'controle' }, // agenda de atividades por etapa (#675, 13/10/2026)
     { label: 'Controle', icone: 'controle', href: '/controle', key: 'controle', modulo: 'controle' },
     { label: 'Fila de Conferência', icone: 'conferenciaFila', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
     { label: 'Reciclagem', icone: 'reciclagem', href: '/reciclagem', key: 'reciclagem', modulo: 'controle' },
@@ -407,6 +409,7 @@ const modAtual = path === '/' ? 'tyredesk'
   : path.includes('analises') ? 'analises'
   : path.includes('resultado') ? 'resultado'
 : path.includes('cambio') ? 'cambio'
+: path.includes('/agenda') ? 'agenda'
 : path.includes('reciclagem') ? 'reciclagem'
 : path.includes('averbacao') ? 'averbacao'
 : path.includes('financeiro') ? 'financeiro'

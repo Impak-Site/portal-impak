@@ -84,6 +84,59 @@
     { codigo: 'METAIS', nome: 'Metais',              dados: { tarifa_dia: 1.65,  carencia_dias: 29 }, ordem: 5 },
   ];
 
+  // ── Agenda (#675) — padrão da Matriz de Atividades v2 (13/10/2026). ─────
+  // Funções → logins. Ajuste fino em /cadastros → Listas → "Agenda — Funções".
+  const AGENDA_FUNCOES = [
+    { codigo: 'IMPORTACAO',     nome: 'Importação',     dados: { usuarios: 'emanuelly, isabella' }, ordem: 1 },
+    { codigo: 'LOGISTICA',      nome: 'Logística',      dados: { usuarios: 'emanuelly, isabella, operacional01@impak.com.br' }, ordem: 2 },
+    { codigo: 'FINANCEIRO',     nome: 'Financeiro',     dados: { usuarios: 'paula, bianca' }, ordem: 3 },
+    { codigo: 'FISCAL',         nome: 'Fiscal',         dados: { usuarios: 'italo, maria, nfe@impak.com.br' }, ordem: 4 },
+    { codigo: 'COMERCIAL',      nome: 'Comercial',      dados: { usuarios: 'jean, franciele' }, ordem: 5 },
+    { codigo: 'DESPACHANTE',    nome: 'Despachante',    dados: { usuarios: 'amanda' }, ordem: 6 },
+    { codigo: 'ADMINISTRATIVO', nome: 'Administrativo', dados: { usuarios: 'everton' }, ordem: 7 },
+    { codigo: 'GERENCIA',       nome: 'Gerência',       dados: { usuarios: 'narcelio' }, ordem: 8 },
+  ];
+  // Atividades: código → nome/etapa/função/prioridade padrão. O "como"
+  // (gatilho, prazo, conclusão automática) está em agenda-core.js pelo código.
+  const _a = (codigo, etapa, nome, funcao, prioridade, ordem) => ({ codigo, nome, dados: { etapa, funcao, prioridade }, ordem });
+  const AGENDA_ATIVIDADES = [
+    _a('A01','PI Recebida','Cadastrar o processo no Controle (finalidade, cliente, produtos, forma de pagamento)','IMPORTACAO','ALTA',1),
+    _a('A02','PI Recebida','Conferir PI x cotação aprovada (preço, quantidade, incoterm, prazo)','COMERCIAL','MEDIA',2),
+    _a('A03','PI Recebida','Cadastrar o processo no Conexos e informar o ID','IMPORTACAO','MEDIA',3),
+    _a('A04','PI Recebida','Cadastrar as vendas do processo (clientes, itens e quantidades)','COMERCIAL','ALTA',4),
+    _a('A05','PI Recebida','Receber do cliente o valor do câmbio antes de fechá-lo','FINANCEIRO','ALTA',5),
+    _a('A06','PI Recebida','Fechar o câmbio da entrada (parcela Inicial) e anexar o comprovante','FINANCEIRO','ALTA',6),
+    _a('A07','Ag. Embarque','Acompanhar a prontidão da carga na fábrica','IMPORTACAO','MEDIA',7),
+    _a('A08','Ag. Embarque','Confirmar booking (Nº booking, navio, ETD)','IMPORTACAO','ALTA',8),
+    _a('A09','Ag. Embarque','Receber e conferir CI / PL / Draft do BL','IMPORTACAO','ALTA',9),
+    _a('A10','Ag. Embarque','Aprovar o draft do HBL com o agente de carga','IMPORTACAO','ALTA',10),
+    _a('A11','Ag. Embarque','Enviar HBL e CI à despachante para solicitar a LI','IMPORTACAO','MEDIA',11),
+    _a('A12','Ag. Embarque','Solicitar a LI','DESPACHANTE','ALTA',12),
+    _a('A13','Ag. Embarque','Fechar o câmbio da parcela Pré-embarque e anexar o comprovante','FINANCEIRO','ALTA',13),
+    _a('A14','Embarcado','Registrar embarque efetivo, HBL/MBL e free time','IMPORTACAO','ALTA',14),
+    _a('A15','Embarcado','Fechar o câmbio do saldo e anexar o comprovante','FINANCEIRO','ALTA',15),
+    _a('A16','Embarcado','Câmbio futuro: conferir taxa e nº da mensagem SWIFT','FINANCEIRO','MEDIA',16),
+    _a('A17','Embarcado','Conferir o CE Mercante (frete e taxas BL x CE)','IMPORTACAO','MEDIA',17),
+    _a('A18','Desembarcado','Confirmar a chegada e a presença de carga','IMPORTACAO','ALTA',18),
+    _a('A19','Desembarcado','Informar o armazém e acompanhar a armazenagem (LCL)','LOGISTICA','MEDIA',19),
+    _a('A20','Registro DI/DUIMP','Registrar a DUIMP','DESPACHANTE','ALTA',20),
+    _a('A21','Registro DI/DUIMP','Pagar os impostos da DUIMP','FINANCEIRO','ALTA',21),
+    _a('A22','Registro DI/DUIMP','Informar Nº DUIMP nas parcelas de pagamento antecipado','FINANCEIRO','MEDIA',22),
+    _a('A23','Parametrização','Acompanhar canal e liberação da carga','DESPACHANTE','MEDIA',23),
+    _a('A24','Faturamento','Emitir a NF de entrada','FISCAL','ALTA',24),
+    _a('A25','Faturamento','Emitir a(s) NF(s) de saída conforme as vendas','FISCAL','ALTA',25),
+    _a('A26','Faturamento','Receber do cliente (venda a prazo / parcelada)','FINANCEIRO','MEDIA',26),
+    _a('A27','Carregamento','Agendar a retirada (transportadora, placa, horário)','LOGISTICA','ALTA',27),
+    _a('A28','Carregamento','Confirmar o carregamento','LOGISTICA','ALTA',28),
+    _a('A29','Dev. Vazio','Devolver o container vazio dentro do free time','LOGISTICA','ALTA',29),
+    _a('A30','Dev. Vazio','Resolver o RIC (isenção, termo ou lavagem)','LOGISTICA','MEDIA',30),
+    _a('A31','Finalizado','Lançar os custos reais do processo','FINANCEIRO','MEDIA',31),
+    _a('A32','Finalizado','Conferir o Fechamento / DRE e fechar o processo','GERENCIA','MEDIA',32),
+    _a('A33','Mensal','Exportar e enviar a Pendências de DI ao banco','FINANCEIRO','MEDIA',33),
+    _a('A34','Mensal','Enviar a planilha de averbação de seguro','ADMINISTRATIVO','MEDIA',34),
+    _a('A35','Trimestral','Enviar a relação de reciclagem aos clientes','ADMINISTRATIVO','BAIXA',35),
+  ];
+
   const CATEGORIAS = {
     porto_destino: { nome: 'Portos de destino', campos: [['dias_gratis', 'Dias grátis (armazenagem)', 'number']] },
     porto_origem:  { nome: 'Portos de origem',  campos: [['pais', 'País', 'text']] },
@@ -96,6 +149,11 @@
     // sozinho sempre que o cliente bate (ex.: representante de um cliente).
     comissionado:  { nome: 'Comissionados (interno)', campos: [['percentual', '% comissão', 'number'], ['base', 'Base de cálculo', 'select', [['FATURAMENTO_TOTAL','Total faturamento (NF + juros + Boss + chinês)'],['NOTA_FISCAL','Nota fiscal'],['FOB_DOLAR','FOB × dólar médio'],['LUCRO_BRUTO','Lucro bruto da operação']]], ['clientes', 'Só para os clientes (vírgula; vazio = todos)', 'text'], ['automatico', 'Automático pelo cliente? (S/N)', 'select', [['N','Não — marcar no processo'],['S','Sim — sempre que o cliente bater']]], ['observacao', 'Observação', 'text']] },
     armazenagem_rf: { nome: 'Armazenagem pós-nacionalização (RF)', campos: [['tarifa_dia', 'Tarifa (R$ por pneu/dia)', 'number'], ['carencia_dias', 'Carência (dias grátis)', 'number']] },
+    // Agenda de atividades por etapa (#675 — 13/10/2026). Quem é responsável
+    // por cada função e quais atividades valem: editável aqui, sem deploy.
+    // A lógica (quando nasce / quando se conclui sozinha) fica em agenda-core.js.
+    agenda_funcao: { nome: 'Agenda — Funções e responsáveis', campos: [['usuarios', 'Logins responsáveis (vírgula)', 'text'], ['substitutos', 'Substitutos nas férias (logins, vírgula)', 'text'], ['observacao', 'Observação', 'text']] },
+    agenda_atividade: { nome: 'Agenda — Atividades', campos: [['funcao', 'Responsável (função)', 'select', AGENDA_FUNCOES.map(f => [f.codigo, f.nome])], ['prazo_dias', 'Prazo (dias em relação ao marco; vazio = padrão)', 'number'], ['prioridade', 'Prioridade', 'select', [['ALTA','Alta'],['MEDIA','Média'],['BAIXA','Baixa']]], ['etapa', 'Etapa', 'text'], ['observacao', 'Observação', 'text']] },
   };
 
   function clonar(lista) {
@@ -115,6 +173,8 @@
       marca: clonar(MARCAS),
       armazenagem_rf: clonar(ARMAZENAGEM_RF),
       comissionado: [], // só no banco (dados sensíveis, repositório público)
+      agenda_funcao: clonar(AGENDA_FUNCOES),
+      agenda_atividade: clonar(AGENDA_ATIVIDADES),
     };
   }
 
