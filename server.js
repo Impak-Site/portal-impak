@@ -2443,6 +2443,45 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resulta
   }
 });
 
+// Comissões (uso interno, #517 — 13/10/2026): seleção de comissionados e
+// registro de pagamento ficam em comissoes_json (migration 0045). Rota própria
+// porque comissão costuma ser paga DEPOIS de o processo ser fechado — e isso
+// não mexe no resultado (o lucro só muda pelo que é lançado em Custos Reais),
+// então é aceito mesmo com o processo travado. Só grava esta coluna.
+app.post('/api/controle/v2/processo/:id/comissoes', auth('controle','financeiro','resultado'), async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return res.status(400).json({ erro: 'id inválido' });
+    const c = (req.body && req.body.comissoes_json) || {};
+    const codigo = v => String(v || '').trim().toUpperCase().slice(0, 40);
+    const limpo = {
+      selecionados: [...new Set((Array.isArray(c.selecionados) ? c.selecionados : []).map(codigo).filter(x => /^[A-Z0-9 .\-_/]{1,40}$/.test(x)))].slice(0, 50),
+      pagamentos: (Array.isArray(c.pagamentos) ? c.pagamentos : []).slice(0, 200).map(p => ({
+        chave: String((p && p.chave) || '').slice(0, 120),
+        data: /^\d{4}-\d{2}-\d{2}$/.test(String(p && p.data)) ? String(p.data) : null,
+        valor: Number.isFinite(Number(p && p.valor)) ? Math.round(Number(p.valor) * 100) / 100 : 0,
+        usuario: req.session.usuario,
+      })).filter(p => p.chave && p.data),
+    };
+    const { data: atual, error: e1 } = await sb().from('controle_processos').select('id, comissoes_json').eq('id', id).maybeSingle();
+    if (e1) throw new Error(e1.message);
+    if (!atual) return res.status(404).json({ erro: 'Processo não encontrado' });
+    // Mantém quem registrou cada pagamento antigo (não troca pelo usuário atual).
+    const antigos = (atual.comissoes_json && Array.isArray(atual.comissoes_json.pagamentos)) ? atual.comissoes_json.pagamentos : [];
+    limpo.pagamentos = limpo.pagamentos.map(p => { const a = antigos.find(x => x && x.chave === p.chave && x.data === p.data); return a && a.usuario ? { ...p, usuario: a.usuario } : p; });
+    const { error } = await sb().from('controle_processos').update({ comissoes_json: limpo, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw new Error(error.message);
+    try {
+      await sb().from('controle_log').insert([{ processo_id: id, usuario: req.session.usuario, campo: 'comissoes_json',
+        valor_antes: JSON.stringify(atual.comissoes_json || {}), valor_depois: JSON.stringify(limpo), created_at: new Date().toISOString() }]);
+    } catch (logErr) { console.warn('log comissões:', logErr.message); }
+    res.json({ ok: true, comissoes_json: limpo });
+  } catch (e) {
+    const msg = /comissoes_json/.test(e.message) ? 'Coluna comissoes_json ainda não existe — rodar a migration 0045 no Supabase.' : e.message;
+    res.status(500).json({ erro: msg });
+  }
+});
+
 app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { processo } = req.body;
@@ -3746,6 +3785,10 @@ app.get('/api/listas', auth(...MODULOS_TRABALHO), async (req, res) => {
     const r = await carregarListas();
     // Só os ativos saem pros formulários; a tela de Listas pede ?todos=1.
     if (!req.query.todos) Object.keys(r.listas).forEach(cat => { r.listas[cat] = r.listas[cat].filter(x => x.ativo !== false); });
+    // Comissionados (percentuais de comissão) são dado interno sensível: só
+    // quem enxerga resultado/financeiro/cadastros (ou gerente) recebe a lista.
+    const mods = Array.isArray(req.session.modulos) ? req.session.modulos : [];
+    if (!(req.session.role === 'gerente' || mods.some(m => ['resultado','financeiro','cadastros'].includes(m)))) r.listas.comissionado = [];
     res.json({ ok: true, listas: r.listas, origem: r.origem });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
@@ -3765,7 +3808,7 @@ app.post('/api/listas', auth('cadastros'), async (req, res) => {
     const dadosLimpos = {};
     permitidos.forEach(k => {
       if (dados[k] === undefined || dados[k] === null || dados[k] === '') return;
-      dadosLimpos[k] = typeof dados[k] === 'number' ? dados[k] : String(dados[k]).trim().slice(0, 120);
+      dadosLimpos[k] = typeof dados[k] === 'number' ? dados[k] : String(dados[k]).trim().slice(0, 300);
     });
     if (categoria === 'porto_destino') {
       const d = parseInt(dadosLimpos.dias_gratis, 10);
