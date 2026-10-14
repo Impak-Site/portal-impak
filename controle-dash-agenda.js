@@ -177,7 +177,7 @@ async function renderDashAgenda(){
 
   const kpi = (id, label, n, cor) => `<div onclick="document.getElementById('ag-sec-${id}')?.scrollIntoView({behavior:'smooth'})" style="cursor:pointer;flex:1;min-width:120px;background:#fff;border:1px solid var(--border);border-left:4px solid ${cor};border-radius:10px;padding:10px 14px;">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;">${label}</div>
-      <div style="font-size:26px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;">${n}</div></div>`;
+      <div style="font-size:26px;font-weight:800;color:${cor};font-family:'Inter',sans-serif;">${n}</div></div>`;
   const secao = (id, titulo, arr, cor, recolhida) => !arr.length ? '' : `<div id="ag-sec-${id}" style="background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden;">
       <div style="padding:8px 12px;font-weight:800;font-size:12px;color:${cor};text-transform:uppercase;letter-spacing:.3px;background:var(--surface2,#f8fafc);display:flex;justify-content:space-between;align-items:center;">
         <span>${titulo} · ${arr.length}</span>

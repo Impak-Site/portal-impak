@@ -86,11 +86,11 @@ height: 52px;
 display: flex; align-items: center;
 padding: 0 14px; gap: 8px;
 box-shadow: 0 1px 0 rgba(255,255,255,.06), 0 4px 12px rgba(16,24,40,.08);
-font-family: 'DM Sans', sans-serif;
+font-family: 'Inter', sans-serif;
 }
 #impak-nav .nav-logo {
 display: flex; align-items: center; gap: 7px;
-font-family: 'Syne', 'DM Sans', sans-serif;
+font-family: 'Inter', sans-serif;
 font-size: 15px; font-weight: 800;
 color: #fff; letter-spacing: .5px;
 margin-right: 4px; flex-shrink: 0;
@@ -151,7 +151,7 @@ transition: all .15s; font-family: inherit;
 display: none; position: fixed; margin-top: 6px;
 background: #0a2340; border: 1px solid rgba(255,255,255,.14); border-radius: 10px;
 min-width: 210px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); z-index: 10001;
-font-family: 'DM Sans', sans-serif;
+font-family: 'Inter', sans-serif;
 }
 .impak-nav-sector-panel.open { display: block; }
 .impak-nav-sector-panel a {
@@ -181,7 +181,7 @@ body > .topbar, body > .app > .topbar { display: none !important; }
 
 #impak-chat-root {
 position: fixed; bottom: 24px; right: 24px; z-index: 190;
-font-family: 'DM Sans', sans-serif;
+font-family: 'Inter', sans-serif;
 }
 #impak-chat-btn {
 width: 52px; height: 52px; border-radius: 50%;
@@ -261,7 +261,7 @@ border-top: 1px solid #e8f0f8; background: #fff;
 }
 #chat-input {
 flex: 1; border: 1px solid #c8d8e8; border-radius: 20px;
-padding: 8px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif;
+padding: 8px 14px; font-size: 13px; font-family: 'Inter', sans-serif;
 outline: none; resize: none; max-height: 80px;
 background: #f8fbfe; color: #0d1e2e;
 }
@@ -285,7 +285,7 @@ transition: background .15s; flex-shrink: 0;
    janelas/modais nunca mais largos que a tela e o chat ocupando a largura
    do celular. Ajustes específicos de cada tela ficam no próprio arquivo. */
 #impak-nav .nav-menu-btn { display: none; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: #fff; border-radius: 8px; width: 38px; height: 34px; font-size: 18px; line-height: 1; cursor: pointer; flex-shrink: 0; }
-#impak-nav-drawer { display: none; position: fixed; top: 52px; left: 0; right: 0; bottom: 0; z-index: 10002; background: rgba(10,35,64,.98); overflow-y: auto; padding: 10px 14px 40px; font-family: 'DM Sans', sans-serif; -webkit-overflow-scrolling: touch; }
+#impak-nav-drawer { display: none; position: fixed; top: 52px; left: 0; right: 0; bottom: 0; z-index: 10002; background: rgba(10,35,64,.98); overflow-y: auto; padding: 10px 14px 40px; font-family: 'Inter', sans-serif; -webkit-overflow-scrolling: touch; }
 #impak-nav-drawer.open { display: block; }
 #impak-nav-drawer .dr-setor { color: rgba(255,255,255,.45); font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; margin: 14px 4px 6px; }
 #impak-nav-drawer a { display: flex; align-items: center; padding: 12px 10px; border-radius: 8px; color: rgba(255,255,255,.85); text-decoration: none; font-size: 15px; font-weight: 600; }
@@ -360,6 +360,8 @@ const ICONES_NAV = {
   tv: `<svg ${ICONE_SVG_BASE}><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
   // Permissões: cadeado.
   permissoes: `<svg ${ICONE_SVG_BASE}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`,
+  // Assistente (chat com ferramentas): balão de conversa.
+  assistente: `<svg ${ICONE_SVG_BASE}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`,
   // ── Itens dentro dos menus suspensos (pedido Ayslan 18/09/2026: "faça em todos") ──
   controle: `<svg ${ICONE_SVG_BASE}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
   conferenciaFila: `<svg ${ICONE_SVG_BASE}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
@@ -570,6 +572,17 @@ if(modulosDoUsuario.includes('tv')){
   linksWrap.appendChild(link);
 }
 
+// Assistente (chat com ferramentas, 14/10/2026) — qualquer módulo de
+// trabalho; a conta só-TV não vê. Fica ao lado de Permissões (pedido Ayslan).
+if(modulosDoUsuario.some(m => m !== 'tv')){
+  addSep();
+  const link = document.createElement('a');
+  link.className = 'nav-link' + (path.includes('assistente') ? ' active' : '');
+  link.href = '/assistente';
+  link.innerHTML = ICONES_NAV.assistente + 'Assistente';
+  linksWrap.appendChild(link);
+}
+
 // Link da tela de Permissões — só pra quem pode gerenciar acesso de outros
 // (Narcelio, Paula, Ayslan/"suporte" — ver ADMINS_PERMISSOES em server.js).
 if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
@@ -596,6 +609,7 @@ navSetores.forEach(setor => {
 const soltos = [];
 if(modulosDoUsuario.includes('cadastros')) soltos.push(['/cadastros', 'cadastros', 'Cadastros', modAtual === 'cadastros']);
 if(modulosDoUsuario.includes('tv')) soltos.push(['/tv', 'tv', 'TV', modAtual === 'tv']);
+if(modulosDoUsuario.some(m => m !== 'tv')) soltos.push(['/assistente', 'assistente', 'Assistente', path.includes('assistente')]);
 if(['narcelio', 'paula', 'suporte'].includes(d.usuario)) soltos.push(['/permissoes', 'permissoes', 'Permissões', path.includes('permissoes')]);
 if(soltos.length){
   htmlDrawer += '<div class="dr-setor">Outros</div>';

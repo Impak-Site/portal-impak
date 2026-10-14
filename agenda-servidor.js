@@ -53,7 +53,9 @@ function carregarMotor() {
     vm.createContext(sb);
     vm.runInContext(js, sb, { filename: 'controle-front-sandbox.js' });
     if (typeof sb.calcularFase !== 'function' || typeof sb.listarPagamentosPI !== 'function') throw new Error('calcularFase/listarPagamentosPI não encontrados no sandbox');
-    _motor = { calcularFase: sb.calcularFase, listarPagamentosPI: sb.listarPagamentosPI };
+    _motor = { calcularFase: sb.calcularFase, listarPagamentosPI: sb.listarPagamentosPI,
+      // Usados pelo Assistente (assistente.js): resultado real x estimado do processo.
+      calcularFechamento: sb.calcularFechamento, calcularVendasResumo: sb.calcularVendasResumo, parseVendas: sb.parseVendas };
   } catch (e) {
     _motorErro = e;
     console.error('[agenda-servidor] não consegui carregar o motor do front:', e.message);

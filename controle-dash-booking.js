@@ -92,7 +92,7 @@ function renderDashBooking(){
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
       <div>
-        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">Programação Semanal de Embarques</div>
+        <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">Programação Semanal de Embarques</div>
         <div style="font-size:12px;color:var(--muted);">${lista.length} processo(s) pronto(s) ou programado(s) ainda não embarcado(s) · semana pelo campo Semana de Booking ou, se vazio, pelo ETD. Arraste um processo para outra semana para programar.</div>
       </div>
     </div>

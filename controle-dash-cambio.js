@@ -729,7 +729,7 @@ function renderDashCambio(){
   const fmtBRL = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const fmtUSD = v => `USD ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const cambioAtual = (_cambio && _cambio.USD) ? _cambio.USD : 5.10;
-  const MONO = "font-family:'DM Mono',monospace;";
+  const MONO = "font-family:'JetBrains Mono',monospace;";
 
   // Fonte única de dados — mesma usada no Dashboard Financeiro. Cada linha
   // já vem "achatada" por parcela (entrada/saldo/parcela N/único), pronta
@@ -1284,7 +1284,7 @@ function setAdiantFiltro(campo, valor){
 
 function renderAdiantamentoClienteHtml(){
   const fmtBRL = cambFmtBRL, fmtUSD = cambFmtUSD;
-  const MONO = "font-family:'DM Mono',monospace;";
+  const MONO = "font-family:'JetBrains Mono',monospace;";
   const fData = d => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '—';
   const todos = listarAdiantamentosCliente(_processos);
   const clientes = [...new Set(todos.map(g=>g.cliente))].sort();

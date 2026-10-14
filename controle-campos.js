@@ -1806,7 +1806,7 @@ function abrirModalConfirmarCambio(match, refAtual){
       + `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">`
       + `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">📄 O que o comprovante diz</div>`
       + `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">`
-      +   `<span style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;color:var(--ac);">${valorUsdImplicito ? fmtUsd(valorUsdImplicito) : '—'}</span>`
+      +   `<span style="font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--ac);">${valorUsdImplicito ? fmtUsd(valorUsdImplicito) : '—'}</span>`
       +   `<span style="font-size:12px;color:var(--muted);">${esc(match.referencia||refAtual||'(referência não identificada)')}</span>`
       + `</div>`
       + (taxa
@@ -1857,7 +1857,7 @@ function abrirModalConfirmarCambio(match, refAtual){
         style="display:block;width:100%;text-align:left;white-space:normal;padding:10px 12px;border:2px solid ${cor};border-radius:10px;background:${sugerida ? 'rgba(22,163,74,.05)' : '#fff'};">
         <span style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">
           <span style="font-size:14px;font-weight:800;color:var(--text);">${sugerida ? '<span style="background:var(--ok);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;margin-right:6px;vertical-align:middle;">SUGERIDA</span>' : ''}${esc(label)}</span>
-          <span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--text);">no processo: <b>${vParc ? fmtUsd(vParc) : '—'}</b></span>
+          <span style="font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text);">no processo: <b>${vParc ? fmtUsd(vParc) : '—'}</b></span>
         </span>
         <span style="display:block;font-size:11.5px;color:var(--muted);margin-top:2px;">${status.join(' · ')}</span>
         <span style="display:block;font-size:12px;color:${!sugerida ? 'var(--muted)' : (difere && !mesmoDoc ? '#92400e' : 'var(--text)')};margin-top:5px;">${efeito}</span>

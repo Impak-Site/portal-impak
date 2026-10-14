@@ -72,7 +72,7 @@ function renderDashCarregamento(){
   function card(label, val, sub, cor){
     return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
-    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
+    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'Inter',sans-serif;white-space:nowrap;">${val}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
     </div>`;
   }

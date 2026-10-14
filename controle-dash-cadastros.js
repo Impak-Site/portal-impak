@@ -115,7 +115,7 @@ function _cadRenderTabelaListas(){
     const dados = it.dados || {};
     const inativo = it.ativo === false;
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;${inativo?'opacity:.55;':''}" onclick="editarItemLista('${esc(it.id||'')}','${esc(it.codigo)}')" title="Clique para abrir">
-      <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-weight:600;">${esc(it.codigo)}</td>
+      <td style="padding:9px 16px;font-family:'JetBrains Mono',monospace;font-weight:600;">${esc(it.codigo)}</td>
       <td style="padding:9px 16px;font-weight:600;">${esc(it.nome)}</td>
       ${campos.map(c=>`<td style="padding:9px 16px;">${esc(dados[c[0]]!==undefined && dados[c[0]]!==null ? String(dados[c[0]]) : '—')}</td>`).join('')}
       <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${(it.sinonimos||[]).length ? esc((it.sinonimos||[]).join(', ')) : '—'}</td>

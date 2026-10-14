@@ -157,10 +157,10 @@ async function renderDashReciclagem(){
       ? `<td colspan="${ncmsGrupo.length*2}" style="padding:6px 8px;text-align:center;background:#fffbeb;"><a href="#" onclick="_recEditarNcms(${jsArg(l.id)});return false;" style="color:#92400e;font-weight:700;">⚠ separar qtd/peso por NCM</a></td>`
       : ncmsGrupo.map(n => { const v = l.porNcm[n]; return `<td style="padding:6px 8px;text-align:right;border-left:1px solid var(--border);">${v&&v.qtd!=null?fmtQ(v.qtd):'—'}</td><td style="padding:6px 8px;text-align:right;">${v&&v.peso!=null?fmtKg(v.peso):'—'}</td>`; }).join('');
     const linhasHtml = ls.map(l=>`<tr style="border-top:1px solid var(--border);">
-      <td style="padding:6px 8px;"><a href="#" onclick="abrirProcesso(${jsArg(l.id)});return false;" style="color:var(--ac);font-weight:700;font-family:'DM Mono',monospace;">${esc(l.referencia)}</a>
+      <td style="padding:6px 8px;"><a href="#" onclick="abrirProcesso(${jsArg(l.id)});return false;" style="color:var(--ac);font-weight:700;font-family:'JetBrains Mono',monospace;">${esc(l.referencia)}</a>
         ${l.ncmStatus==='presumido'?' <span title="NCM ainda não lido da DI/DUIMP — considerado pneu (4011) pela descrição do produto" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;">NCM a confirmar</span>':''}</td>
       <td style="padding:6px 8px;">${fmtD(l.dataDi)}</td>
-      <td style="padding:6px 8px;font-family:'DM Mono',monospace;">${esc(l.numeroDi||'—')}</td>
+      <td style="padding:6px 8px;font-family:'JetBrains Mono',monospace;">${esc(l.numeroDi||'—')}</td>
       <td style="padding:6px 8px;text-align:right;${l.peso==null?'color:var(--err);font-weight:700;':''}">${l.peso==null?'falta peso':fmtKg(l.peso)}</td>
       <td style="padding:6px 8px;text-align:right;">${l.qtd==null?'—':l.qtd}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:700;">${l.pesoPneu==null?'—':fmtKg(l.pesoPneu*REC_PCT)}${l.naoPneu&&l.naoPneu.length?` <span title="NCM(s) que não são pneu, fora da reciclagem: ${esc(l.naoPneu.join(', '))}" style="font-size:10px;color:var(--muted);">(só pneu)</span>`:''}</td>

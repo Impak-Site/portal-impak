@@ -624,7 +624,7 @@ function renderDashClienteMedida(){
     return `<details style="background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;" ${clientesLista.length===1?'open':''}>
       <summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;list-style:none;background:var(--bg);">
         <span style="font-weight:700;font-size:13px;">${esc(c.nome)}</span>
-        <span style="font-weight:800;font-size:15px;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(c.total)} <span style="font-size:11px;font-weight:600;color:var(--muted);">pneus</span></span>
+        <span style="font-weight:800;font-size:15px;color:var(--ac);font-family:'Inter',sans-serif;">${fmtN(c.total)} <span style="font-size:11px;font-weight:600;color:var(--muted);">pneus</span></span>
       </summary>
       <div style="padding:10px 12px;">
         ${marcas.map(blocoMarca).join('')}
@@ -685,12 +685,12 @@ function renderDashClienteMedida(){
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid var(--ac);border-radius:10px;padding:12px 16px;flex:1;min-width:160px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Total de Pneus</div>
-        <div style="font-size:22px;font-weight:800;color:var(--ac);font-family:'DM Sans',sans-serif;">${fmtN(kpiTotal)}</div>
+        <div style="font-size:22px;font-weight:800;color:var(--ac);font-family:'Inter',sans-serif;">${fmtN(kpiTotal)}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">${tokensBusca.length ? `Resultado da busca "${esc(termo)}"` : 'Considerando os filtros abaixo'}</div>
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-left:3px solid #64748b;border-radius:10px;padding:12px 16px;flex:1;min-width:160px;">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Clientes</div>
-        <div style="font-size:22px;font-weight:800;color:var(--text);font-family:'DM Sans',sans-serif;">${kpiClientes}</div>
+        <div style="font-size:22px;font-weight:800;color:var(--text);font-family:'Inter',sans-serif;">${kpiClientes}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">${kpiProcessos} processo(s) considerados${avulsosAgrupados.size && !tokensBusca.length ? ` · + ${avulsosAgrupados.size} avulso(s) agrupado(s)` : ''}</div>
       </div>
     </div>

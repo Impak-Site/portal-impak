@@ -676,7 +676,7 @@ function abrirModalMotivoConferencia(key){
   overlay.onclick = e => { if(e.target === overlay) fecharModalMotivoConferencia(); };
   overlay.innerHTML = `
     <div style="background:var(--card,#fff);border-radius:12px;max-width:460px;width:92%;padding:20px;box-shadow:var(--shadow-lg);">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:4px;">Aceitar divergência</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;margin-bottom:4px;">Aceitar divergência</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">${esc(d.campo||'')} — ${esc(d.grupo||'')}</div>
       <label class="form-label" style="display:block;margin-bottom:6px;">Motivo do aceite</label>
       <textarea id="conf-motivo-texto" class="form-input" rows="3" style="width:100%;resize:vertical;" placeholder="Ex: diferença de arredondamento, padrão do fornecedor...">${esc(d.motivo_sugerido||'')}</textarea>

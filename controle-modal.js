@@ -1220,7 +1220,7 @@ function crLinhaHtml(item, st, reais, containers, p){
     const savedPago = (rawPago && rawPago.porContainer && rawPago.porContainer[nome]) || null;
     const savedCobrado = (rawCobrado && rawCobrado.porContainer && rawCobrado.porContainer[nome]) || null;
     return `<tr>
-      <td style="padding:4px 10px 4px 0;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;width:160px;">${esc(nome)}</td>
+      <td style="padding:4px 10px 4px 0;font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;width:160px;">${esc(nome)}</td>
       <td style="padding:4px 6px;width:200px;">${celulaValorMoedaHtml('f_cr_'+item.id+'__c'+idx, 'f_cr_moeda_'+item.id+'__c'+idx, savedPago?savedPago.valor:'', savedPago?savedPago.moeda:item.unidade, 'pago', false)}</td>
       <td style="padding:4px 6px;width:200px;">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id+'__c'+idx, 'f_cr_cobrado_moeda_'+item.id+'__c'+idx, savedCobrado?savedCobrado.valor:'', savedCobrado?savedCobrado.moeda:item.unidade, 'cobrado', false)}</td>
       <td style="padding:4px 0 4px 4px;"><button type="button" title="Cobrado = Pago neste container" onclick="igualarCobradoPago('${item.id}', ${idx})" style="width:22px;height:26px;border:1px solid var(--border);background:var(--bg2);border-radius:6px;cursor:pointer;font-size:12px;color:var(--ac);">=</button></td>

@@ -344,7 +344,7 @@ function renderDashTV(){
   // cabeçalho colorido de cada painel, com z-index alto pra não ficar
   // escondido atrás de nada.
   function botaoVoltarTV(){
-    return `<a href="/tv" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(15,23,42,.55);color:#fff;text-decoration:none;font-size:12px;font-weight:700;padding:6px 12px;border-radius:6px;display:flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;">&larr; Voltar</a>`;
+    return `<a href="/tv" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(15,23,42,.55);color:#fff;text-decoration:none;font-size:12px;font-weight:700;padding:6px 12px;border-radius:6px;display:flex;align-items:center;gap:5px;font-family:'Inter',sans-serif;">&larr; Voltar</a>`;
   }
 
   function painel(titulo, subtitulo, numero, corBg, conteudoHtml, opts){
@@ -379,10 +379,10 @@ function renderDashTV(){
     const cardFixo = `<div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);">
       <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+          <div style="font-family:'Inter',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
         </div>
-        <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
+        <div style="font-family:'Inter',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
       </div>
       <div style="padding:18px 24px;font-size:1em;">${conteudoHtml}</div>
     </div>`;
@@ -392,10 +392,10 @@ function renderDashTV(){
         <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);flex:1;min-height:0;display:flex;flex-direction:column;">
           <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
             <div>
-              <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+              <div style="font-family:'Inter',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
               <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
             </div>
-            <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
+            <div style="font-family:'Inter',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
           </div>
           <div style="padding:18px 24px;font-size:1em;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">${conteudoHtml}</div>
         </div>
@@ -421,10 +421,10 @@ function renderDashTV(){
         <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);flex:1;min-height:0;display:flex;flex-direction:column;">
           <div style="background:linear-gradient(90deg,${corBg} 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;">
             <div>
-              <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
+              <div style="font-family:'Inter',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">${titulo}</div>
               <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">${subtitulo}</div>
             </div>
-            <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
+            <div style="font-family:'Inter',sans-serif;font-size:38px;font-weight:800;color:#fff;">${numero}</div>
           </div>
           <div style="padding:18px 24px;font-size:1em;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">${conteudoHtml}</div>
         </div>
@@ -477,10 +477,10 @@ function renderDashTV(){
     // pela estrutura em 2 linhas + barra que a pill não tem).
     return `<div class="tv-card" onclick="abrirListaTV(${jsArg(chave)})" title="Clique para ver os processos" style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.1);">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;overflow:hidden;">
-        <div style="flex:0 0 auto;width:24px;height:24px;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:'DM Sans',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
+        <div style="flex:0 0 auto;width:24px;height:24px;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:'Inter',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
         <div style="font-size:13px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
       </div>
-      <div style="font-size:26px;font-weight:800;color:#0f1f3d;font-family:'DM Sans',sans-serif;white-space:nowrap;line-height:1.1;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:#94a3b8;">containers</span></div>
+      <div style="font-size:26px;font-weight:800;color:#0f1f3d;font-family:'Inter',sans-serif;white-space:nowrap;line-height:1.1;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:#94a3b8;">containers</span></div>
       <div style="background:#e2e8f0;border-radius:4px;height:5px;margin-top:6px;overflow:hidden;"><div style="background:${cor};height:100%;width:${pct}%;"></div></div>
     </div>`;
   }
@@ -796,7 +796,7 @@ function renderDashTV(){
   function kpiCardChaoTV(label, valor, cor){
     return `<div style="background:linear-gradient(160deg,${cor} 0%,#132038 130%);border-radius:12px;padding:.9em 1.2em;display:flex;flex-direction:column;justify-content:center;min-width:0;flex:1;box-shadow:0 2px 8px rgba(15,23,42,.18);">
       <div style="font-size:.85em;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.4px;">${esc(label)}</div>
-      <div style="font-size:2.5em;font-weight:800;color:#fff;font-family:'DM Sans',sans-serif;line-height:1.1;">${fmtN(valor)}</div>
+      <div style="font-size:2.5em;font-weight:800;color:#fff;font-family:'Inter',sans-serif;line-height:1.1;">${fmtN(valor)}</div>
     </div>`;
   }
   const kpiRowChaoHtml = `<div style="display:flex;gap:.9em;flex:0 0 auto;">
@@ -859,10 +859,10 @@ function renderDashTV(){
         ${botaoVoltarTV()}
         <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:1.1vh 26px;flex:0 0 auto;box-shadow:0 2px 10px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font-family:'Syne',sans-serif;font-size:clamp(18px,2.5vh,34px);font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
+            <div style="font-family:'Inter',sans-serif;font-size:clamp(18px,2.5vh,34px);font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
             <div style="font-size:clamp(10px,1.15vh,16px);color:rgba(255,255,255,.8);margin-top:1px;">No porto ou Armazém</div>
           </div>
-          <div style="font-family:'DM Sans',sans-serif;font-size:clamp(22px,3.4vh,46px);font-weight:800;color:#fff;">${backordersEmAguasSoma}</div>
+          <div style="font-family:'Inter',sans-serif;font-size:clamp(22px,3.4vh,46px);font-weight:800;color:#fff;">${backordersEmAguasSoma}</div>
         </div>
         <div style="flex:1;min-height:0;padding:1.4vh 22px;display:flex;flex-direction:column;">${corpo}</div>
       </div>`;
@@ -870,10 +870,10 @@ function renderDashTV(){
     return `<div style="background:#eef2f7;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:22px;">
       <div style="background:linear-gradient(90deg,#184e77 0%,#1a3a6e 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
+          <div style="font-family:'Inter',sans-serif;font-size:19px;font-weight:800;color:#fff;letter-spacing:.3px;">NO CHÃO</div>
           <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;">No porto ou Armazém</div>
         </div>
-        <div style="font-family:'DM Sans',sans-serif;font-size:38px;font-weight:800;color:#fff;">${backordersEmAguasSoma}</div>
+        <div style="font-family:'Inter',sans-serif;font-size:38px;font-weight:800;color:#fff;">${backordersEmAguasSoma}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:0;height:640px;padding:18px 24px;box-sizing:border-box;">${corpo}</div>
     </div>`;

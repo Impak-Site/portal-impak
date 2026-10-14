@@ -20,7 +20,7 @@ async function importarPlanilha(input){
   if(!logDiv){
     logDiv = document.createElement('div');
     logDiv.id = 'import-log-modal';
-    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"DM Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"JetBrains Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
     document.body.appendChild(logDiv);
   }
   logDiv.innerHTML = `<div style="font-weight:700;margin-bottom:8px;font-size:13px;">📊 Importando: ${file.name}</div>`;
@@ -330,7 +330,7 @@ async function importarPlanilhaDespachante(input){
   if(!logDiv){
     logDiv = document.createElement('div');
     logDiv.id = 'import-log-modal';
-    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"DM Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"JetBrains Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
     document.body.appendChild(logDiv);
   }
   logDiv.innerHTML = `<div style="font-weight:700;margin-bottom:8px;font-size:13px;">📦 Importando planilha do despachante: ${file.name}</div>`;
@@ -400,7 +400,7 @@ async function importarPlanilhaManu(input){
   if(!logDiv){
     logDiv = document.createElement('div');
     logDiv.id = 'import-log-modal';
-    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"DM Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+    logDiv.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:9999;background:#0a2d5e;color:#fff;border-radius:12px;padding:16px 20px;min-width:320px;max-width:420px;font-size:12px;font-family:"JetBrains Mono",monospace;max-height:300px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.4);';
     document.body.appendChild(logDiv);
   }
   logDiv.innerHTML = `<div style="font-weight:700;margin-bottom:8px;font-size:13px;">📋 Importando planilha interna: ${file.name}</div>`;

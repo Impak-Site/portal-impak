@@ -51,7 +51,7 @@ function renderDashNarcelio(){
     const attrs = key ? ` onclick="abrirListaNarcelio('${key}')" title="Clique para ver a lista" style="cursor:pointer;${spanStyle}background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"` : ` style="${spanStyle}background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;"`;
     return `<div${attrs}>
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
-    <div style="font-size:${valSize};font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
+    <div style="font-size:${valSize};font-weight:800;color:${cor};font-family:'Inter',sans-serif;white-space:nowrap;">${val}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
     </div>`;
   }
@@ -268,30 +268,30 @@ function renderDashNarcelio(){
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
       <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
-        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">🚢 Containers Chegando</div>
+        <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">🚢 Containers Chegando</div>
         ${tabelaChegando}
       </div>
       <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
-        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📦 Estoque Parado no Armazém</div>
+        <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">📦 Estoque Parado no Armazém</div>
         ${tabelaEstoque}
       </div>
     </div>
 
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
-      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">💰 Faturamento (NF de Saída)</div>
-      <div style="font-size:20px;font-weight:800;color:var(--ok);font-family:'DM Sans',sans-serif;">${fmtBRL(faturamento)}</div>
+      <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">💰 Faturamento (NF de Saída)</div>
+      <div style="font-size:20px;font-weight:800;color:var(--ok);font-family:'Inter',sans-serif;">${fmtBRL(faturamento)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px;">${qtdFaturados} NF de saída emitida(s) em ${periodo.label}</div>
     </div>
 
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
-      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">📅 Previsão de Recurso de Numerário</div>
+      <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">📅 Previsão de Recurso de Numerário</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Cronograma de pagamento da PI (FOB, por vencimento e câmbio previsto/fechado — cobre FOB a prazo) + demais custos reais do processo (aproximados no mês do ETA). Só processos ainda não fechados.</div>
       ${tabelaFluxo}
     </div>
 
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
-        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);">📊 DRE Consolidado — ${periodo.label}</div>
+        <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);">📊 DRE Consolidado — ${periodo.label}</div>
         ${dreNarcelio ? `<div style="display:flex;gap:8px;">
           <button class="btn btn-outline" onclick="exportarDREPDF(window._narcelioDreUltimoResultado, null)" style="font-size:12px;">📄 PDF</button>
           <button class="btn btn-outline" onclick="exportarDREExcel(window._narcelioDreUltimoResultado, null)" style="font-size:12px;">⬇️ Excel</button>

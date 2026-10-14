@@ -916,7 +916,7 @@ async function carregarCambio(){
       `USD R$ ${_cambio.USD.toFixed(4)}`,
       `EUR R$ ${_cambio.EUR.toFixed(4)}`,
       `CNY R$ ${_cambio.CNY.toFixed(4)}`,
-    ].map(t=>`<span style="font-size:11px;font-family:'DM Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="Atualizado ${hora}">${t}</span>`).join('');
+    ].map(t=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="Atualizado ${hora}">${t}</span>`).join('');
   }catch(e){ console.warn('Câmbio erro:',e.message); }
   setTimeout(carregarCambio, 5*60*1000);
 }

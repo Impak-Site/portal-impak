@@ -61,7 +61,7 @@ function renderDashExecutivo(){
     const clickAttr = filtro!==undefined ? ` onclick="abrirComFiltro('${filtro}')" style="cursor:pointer;` : ' style="';
     return '<div'+clickAttr+'background:#fff;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:14px 16px;">'
       +'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+label+'</div>'
-      +'<div style="font-size:20px;font-weight:600;color:'+cor+';font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+display+'</div>'
+      +'<div style="font-size:20px;font-weight:600;color:'+cor+';font-family:\'Inter\',sans-serif;white-space:nowrap;">'+display+'</div>'
       +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+sub+'</div>'
       +'</div>';
   }
@@ -128,14 +128,14 @@ function renderDashExecutivo(){
         : '');
 
   const secStyle = 'background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;';
-  const secTitle = t => '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;">'+t+'</div>';
+  const secTitle = t => '<div style="font-family:Inter,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;">'+t+'</div>';
   const piSemanaHtml = piSemana.length>0
     ? '<div style="padding:8px 10px;margin-top:6px;background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.15);border-radius:7px;">'
       +'<div style="font-size:11px;font-weight:700;color:var(--warn);">'+piSemana.length+' PI(s) vencem em 7 dias · '+usd(piSemana.reduce((s,p)=>s+(parseFloat(p.pi_valor_usd)||0),0))+'</div></div>' : '';
 
   el.innerHTML =
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
-    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;">Dashboard Executivo</div>'
+    +'<div style="font-family:Inter,sans-serif;font-size:18px;font-weight:800;">Dashboard Executivo</div>'
     +'<div style="font-size:12px;color:var(--muted);">'+hoje.toLocaleDateString('pt-BR')+' · '+_processos.length+' processos</div></div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;">'+kpis.join('')+'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">'
@@ -146,9 +146,9 @@ function renderDashExecutivo(){
     +(totalNfMes>0 || nfEntradaPeriodo.length>0
       ? '<div style="'+secStyle+'margin-bottom:16px;">'+secTitle('Faturamento — '+periodoLabel)
         +'<div style="display:flex;gap:24px;flex-wrap:wrap;">'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Saída emitidas</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+nfSaidaPeriodo.length+'</div></div>'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Entrada emitidas</div><div style="font-size:20px;font-weight:600;color:var(--info);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+nfEntradaPeriodo.length+'</div></div>'
-        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado (saída)</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'DM Sans\',sans-serif;white-space:nowrap;">'+brl(totalNfMes)+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Saída emitidas</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'Inter\',sans-serif;white-space:nowrap;">'+nfSaidaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">NFs Entrada emitidas</div><div style="font-size:20px;font-weight:600;color:var(--info);font-family:\'Inter\',sans-serif;white-space:nowrap;">'+nfEntradaPeriodo.length+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;">Total faturado (saída)</div><div style="font-size:20px;font-weight:600;color:var(--ok);font-family:\'Inter\',sans-serif;white-space:nowrap;">'+brl(totalNfMes)+'</div></div>'
         +'</div></div>' : '');
 }
 
@@ -460,7 +460,7 @@ function renderDashResultado(){
   function card(label, val, sub, cor){
     return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
-    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
+    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'Inter',sans-serif;white-space:nowrap;">${val}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
     </div>`;
   }
@@ -583,7 +583,7 @@ function renderDashResultado(){
   <tbody>
   ${linhasTabela.map(l=>{
     return `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="${l.onClick}">
-    <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${l.colUnica}</td>
+    <td style="padding:8px 12px;font-family:JetBrains Mono,monospace;font-weight:600;color:var(--ac);">${l.colUnica}</td>
     ${agrupar!=='processo' ? `<td style="padding:8px 12px;text-align:right;">${l.qtd}</td>` : `<td style="padding:8px 12px;">${esc(l.cliente||'—')}</td>`}
     <td style="padding:8px 12px;text-align:right;">${fmtBRL(l.nfSaida)}</td>
     <td style="padding:8px 12px;text-align:right;">${fmtBRL(l.lucroEstimado)}</td>
@@ -713,7 +713,7 @@ function renderDashAnalises(){
   function card(label, val, sub, cor){
     return `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:14px 16px;">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${label}</div>
-    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'DM Sans',sans-serif;white-space:nowrap;">${val}</div>
+    <div style="font-size:20px;font-weight:800;color:${cor};font-family:'Inter',sans-serif;white-space:nowrap;">${val}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:2px;">${sub}</div>
     </div>`;
   }
@@ -1189,13 +1189,13 @@ function renderDashFinanceiro(){
               const cambioLabel = cambioReal ? cambioReal.toFixed(4) : `~${cambioUsado.toFixed(4)}`;
               const valorBRL = x.valorUsd * cambioUsado;
               return `<tr style="border-top:1px solid var(--border);cursor:pointer;${vencido?'background:rgba(220,38,38,.03)':''}" onclick="abrirProcesso(${jsArg(x.processoId)});toggleDashFinanceiro()">
-                <td style="padding:8px 12px;font-family:DM Mono,monospace;font-weight:600;color:var(--ac);">${esc(x.referencia)}${x.parcela==='entrada'?' <span style="color:var(--muted);font-weight:400;">(entrada)</span>':x.parcela==='saldo'?' <span style="color:var(--muted);font-weight:400;">(saldo)</span>':''}</td>
+                <td style="padding:8px 12px;font-family:JetBrains Mono,monospace;font-weight:600;color:var(--ac);">${esc(x.referencia)}${x.parcela==='entrada'?' <span style="color:var(--muted);font-weight:400;">(entrada)</span>':x.parcela==='saldo'?' <span style="color:var(--muted);font-weight:400;">(saldo)</span>':''}</td>
                 <td style="padding:8px 12px;">${esc(x.fornecedor)}</td>
                 <td style="padding:8px 12px;">${esc(x.pais)}</td>
                 <td style="padding:8px 12px;">${x.moeda}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;">${fmt(x.valorUsd)}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;" title="${cambioReal?'Câmbio fechado (real)':'Câmbio previsto — ainda não fechado'}">R$ ${cambioLabel}</td>
-                <td style="padding:8px 12px;text-align:right;font-family:DM Mono,monospace;white-space:nowrap;">${fmtBRL(valorBRL)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:JetBrains Mono,monospace;white-space:nowrap;">${fmt(x.valorUsd)}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:JetBrains Mono,monospace;white-space:nowrap;" title="${cambioReal?'Câmbio fechado (real)':'Câmbio previsto — ainda não fechado'}">R$ ${cambioLabel}</td>
+                <td style="padding:8px 12px;text-align:right;font-family:JetBrains Mono,monospace;white-space:nowrap;">${fmtBRL(valorBRL)}</td>
                 <td style="padding:8px 12px;text-align:center;">${x.vencimento?new Date(x.vencimento+'T00:00:00').toLocaleDateString('pt-BR'):'—'}</td>
                 <td style="padding:8px 12px;text-align:center;">${statusHtml}</td>
               </tr>`;
@@ -1338,8 +1338,8 @@ function renderControleCambialHtml(pagamentos){
         </tr></thead>
         <tbody>
           ${linhas.map(x=>`<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="abrirProcesso(${jsArg(x.processoId)});toggleDashFinanceiro()">
-            <td style="padding:8px 16px;font-family:DM Mono,monospace;font-weight:600;">${esc(x.referencia)}</td>
-            <td style="padding:8px 16px;font-family:DM Mono,monospace;color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
+            <td style="padding:8px 16px;font-family:JetBrains Mono,monospace;font-weight:600;">${esc(x.referencia)}</td>
+            <td style="padding:8px 16px;font-family:JetBrains Mono,monospace;color:${x.numeroDi?'var(--text)':'var(--dim)'};">${esc(x.numeroDi||'—')}</td>
             <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioPrevisto.toFixed(4)}</td>
             <td style="padding:8px 16px;text-align:right;">R$ ${x.cambioFechado.toFixed(4)}</td>
             <td style="padding:8px 16px;text-align:right;font-weight:700;color:${x.diff>=0?'var(--ok)':'var(--err)'};">${x.diff>=0?'+':''}${fmtBRL(x.diff)}</td>

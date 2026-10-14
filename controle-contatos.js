@@ -277,7 +277,7 @@ function renderListaContatos(){
     const fantasia = c.nome_fantasia && c.nome_fantasia !== c.razao_social ? `<div style="font-size:11px;color:var(--muted);font-weight:400;">${esc(c.nome_fantasia)}</div>` : '';
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="editarContato('${c.id}')" title="Clique para abrir">
       <td style="padding:9px 16px;font-weight:600;">${esc(c.razao_social)}${badges}${fantasia}</td>
-      <td style="padding:9px 16px;font-family:'DM Mono',monospace;font-size:11px;">${cnpjFmt}</td>
+      <td style="padding:9px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;">${cnpjFmt}</td>
       <td style="padding:9px 16px;">${esc(c.cidade||'')}${c.uf?'/'+c.uf:''}</td>
       <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${esc(c.email||c.telefone||'—')}</td>
       <td style="padding:9px 16px;text-align:right;">
