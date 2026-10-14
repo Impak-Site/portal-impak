@@ -1139,7 +1139,7 @@ function renderCustosReaisTab(p){
       <colgroup><col style="width:22px"><col style="width:215px"><col style="width:165px"><col style="width:165px"><col style="width:120px"><col style="width:150px"><col style="width:165px"><col style="width:105px"><col style="width:95px"></colgroup>
       <thead>
         <tr class="cr-grade-h1"><th></th><th></th><th colspan="3" class="cr-lado-pg">Pagamento — o que a Impak pagou</th><th colspan="3" class="cr-lado-rc">Cliente — como foi cobrado</th><th></th></tr>
-        <tr><th></th><th>Taxa</th><th class="cr-lado-pg">Moeda · valor</th><th class="cr-lado-pg">Pagamos para</th><th class="cr-lado-pg">Documento nº</th><th class="cr-lado-rc">Forma</th><th class="cr-lado-rc">Moeda · valor</th><th class="cr-lado-rc">NF / boleto</th><th style="text-align:right;">Margem R$</th></tr>
+        <tr><th></th><th>Taxa</th><th class="cr-lado-pg">Moeda · valor</th><th class="cr-lado-pg">Pagamos para</th><th class="cr-lado-pg">Documento nº</th><th class="cr-lado-rc">Como cobra</th><th class="cr-lado-rc">Moeda · valor</th><th class="cr-lado-rc">NF / boleto</th><th style="text-align:right;">Margem R$</th></tr>
       </thead>
       <tbody>${corpo || `<tr><td colspan="9" class="cr-muted" style="padding:14px 6px;">Nenhuma taxa lançada ainda — use "+ Adicionar taxa" ou importe a planilha de Fechamento.</td></tr>`}</tbody>
       <tfoot><tr class="cr-grade-tot"><td></td><td>Total das taxas (em R$)</td><td colspan="3" id="cr_tot_pago"></td><td colspan="3" id="cr_tot_cobrado"></td><td id="cr_tot_margem" style="text-align:right;"></td></tr></tfoot>
@@ -1187,11 +1187,18 @@ function crPacoteAtivoDoItem(itemId, reais){
 //   embutido = sem _cobrado explícito (repasse igual ao pago, via markup)
 //   aparte   = _cobrado explícito > 0 (cliente paga separado, com NF)
 //   nao      = _cobrado explícito = 0 (crédito / absorvido)
-function crModoClienteInicial(rawCobrado, breakdownAtivo){
+// Cobrado explícito IGUAL ao pago (mesmo valor e moeda — era como o botão
+// "igualar" e a importação da planilha gravavam) conta como "embutido":
+// não há cobrança separada, e a conta dá o mesmo (cobradoEfetivo = pago).
+function crModoClienteInicial(rawCobrado, breakdownAtivo, rawPago){
   if(breakdownAtivo) return 'aparte';
   if(!custoRealTemValor(rawCobrado)) return 'embutido';
-  const n = rawCobrado && rawCobrado.porContainer ? 1 : parseFloat(rawCobrado.valor);
-  return (n === 0) ? 'nao' : 'aparte';
+  if(rawCobrado && rawCobrado.porContainer) return 'aparte';
+  const n = parseFloat(rawCobrado.valor);
+  if(n === 0) return 'nao';
+  const pg = valorMoedaInicial(rawPago, { unidade: rawCobrado.moeda || 'BRL' });
+  if(pg && pg.valor !== '' && Math.abs(parseFloat(pg.valor) - n) < 0.005 && (pg.moeda || 'BRL') === (rawCobrado.moeda || 'BRL')) return 'embutido';
+  return 'aparte';
 }
 
 // Uma linha da grade (+ a sub-linha de detalhe: containers, data de
@@ -1215,7 +1222,7 @@ function crLinhaHtml(item, st, reais, containers, p, m){
     pagoExib = nP ? nP.totalBrl.toFixed(2) : ''; cobradoExib = nC ? nC.totalBrl.toFixed(2) : '';
     pagoMoeda = 'BRL'; cobradoMoeda = 'BRL';
   }
-  const modo = item.apenasPago ? null : crModoClienteInicial(rawCobrado, breakdownAtivo);
+  const modo = item.apenasPago ? null : crModoClienteInicial(rawCobrado, breakdownAtivo, rawPago);
   const aberto = modo === 'aparte';
   const espelho = modo === 'embutido';
   const temValor = custoRealTemValor(rawPago) || prefill;
@@ -1242,7 +1249,7 @@ function crLinhaHtml(item, st, reais, containers, p, m){
   const clienteCell = item.apenasPago
     ? `<span class="cr-muted">${item.temCredito ? 'crédito — não cobra' : 'imposto · só pago'}</span>`
     : `<select class="form-input cr-meta cr-modo" id="f_cr_modo_${item.id}" onchange="crModoCliente('${item.id}', this.value)" ${breakdownAtivo ? 'disabled' : ''} title="Como esta taxa chega ao cliente">
-        <option value="embutido" ${modo==='embutido'?'selected':''}>Embutido no preço</option>
+        <option value="embutido" ${modo==='embutido'?'selected':''}>No preço</option>
         <option value="aparte" ${modo==='aparte'?'selected':''}>Cobrado à parte</option>
         <option value="nao" ${modo==='nao'?'selected':''}>Não cobrado</option>
       </select>`;
