@@ -1123,7 +1123,7 @@ function renderCustosReaisTab(p){
     return `<optgroup label="${esc(g.grupo)}">${oc.map(it => `<option value="${it.id}">${esc(it.label)}</option>`).join('')}</optgroup>`;
   }).join('');
 
-  return `<div id="custos-reais-wrap">${crDatalistPagarPara(p)}
+  return `<div id="custos-reais-wrap">
     <div id="cr_cards" class="cr-cards"></div>
     <div id="cr_aviso"></div>
     <div class="cr-toolbar">
@@ -1243,7 +1243,11 @@ function crLinhaHtml(item, st, reais, containers, p, m){
     ? `<div class="moeda-wrap cr-wrap"><span class="moeda-prefix" style="left:14px;">R$</span><input class="form-input cr-valor" type="text" inputmode="decimal" id="f_cr_${item.id}" value="${pagoExib===''?'':exibirMoeda(pagoExib)}" data-cotado="${st.valorCotado!=null?exibirMoeda(st.valorCotado):''}" placeholder="0,00" oninput="formatarMoedaInput(this);crAoDigitar('${item.id}')" onkeydown="crEnter(event,this)" style="width:100%;padding-left:40px;"></div>`
     : celulaValorMoedaHtml('f_cr_'+item.id, 'f_cr_moeda_'+item.id, pagoExib, pagoMoeda, '0,00', breakdownAtivo, st.valorCotado, `crAoDigitar('${item.id}')`);
 
-  const paraCell = `<input class="form-input cr-meta" list="cr_dl_pagar" id="f_crm_para_${item.id}" value="${esc(m.para || '')}" placeholder="${esc(CR_PAGAR_PARA_PADRAO[item.id] || '')}" title="Pra quem a Impak pagou esta taxa" onchange="crMetaMudou('${item.id}')">`;
+  // "Pagamos para": autocomplete do Cadastro (qualquer papel — despachante,
+  // armador, agente, seguradora, Receita...). O servidor grava o id do
+  // cadastro em _meta[id].para_id (lib/cadastros-normalizar) — é o vínculo
+  // que vai gerar as faturas por empresa.
+  const paraCell = `<div style="position:relative;"><input class="form-input cr-meta" id="f_crm_para_${item.id}" value="${esc(m.para || '')}" placeholder="${esc(CR_PAGAR_PARA_PADRAO[item.id] || '')}" title="Pra quem a Impak pagou esta taxa (cadastro)${m.para_id ? ' · vinculado ao cadastro' : ''}" autocomplete="off" oninput="autocompletarContato(this,'','cr_dd_para_${item.id}')" onchange="crMetaMudou('${item.id}')"><div id="cr_dd_para_${item.id}" class="cr-dd" style="display:none;"></div>${m.para_id ? '<span class="cr-vinc" title="Vinculado ao cadastro">●</span>' : ''}</div>`;
   const docCell = `<input class="form-input cr-meta" id="f_crm_doc_${item.id}" value="${esc(m.doc || '')}" placeholder="fatura / DARF" title="Nº da fatura, DARF, DI ou nota do despachante" onchange="crMetaMudou('${item.id}')">`;
 
   const clienteCell = item.apenasPago
@@ -1258,7 +1262,13 @@ function crLinhaHtml(item, st, reais, containers, p, m){
         <div class="cr-cobrado-aberto" style="display:${aberto?'block':'none'};">${celulaValorMoedaHtml('f_cr_cobrado_'+item.id, 'f_cr_cobrado_moeda_'+item.id, modo==='nao' ? '' : cobradoExib, cobradoMoeda, '0,00', breakdownAtivo)}</div>
         <div class="cr-cobrado-fechado" style="display:${aberto?'none':'block'};"><span id="cr_cobrado_resumo_${item.id}" class="cr-info"></span></div>
       </div>`;
-  const nfCell = item.apenasPago ? '' : `<input class="form-input cr-meta" id="f_crm_nf_${item.id}" value="${esc(m.nf || '')}" placeholder="NF / boleto" title="NF de serviço, boleto ou nota de débito enviada ao cliente" onchange="crMetaMudou('${item.id}')" style="display:${aberto?'block':'none'};">`;
+  // Cobrado à parte: de quem recebemos (cliente do processo por padrão) +
+  // nº da NF/boleto. Mesmo esquema de vínculo (_meta[id].de_id).
+  const deDefault = m.de || (p.cliente || '');
+  const nfCell = item.apenasPago ? '' : `<div id="cr_nf_wrap_${item.id}" style="display:${aberto?'block':'none'};">
+      <div style="position:relative;"><input class="form-input cr-meta" id="f_crm_de_${item.id}" value="${esc(deDefault)}" placeholder="receber de" title="De quem a Impak recebe esta taxa (cadastro)" autocomplete="off" oninput="autocompletarContato(this,'CLIENTE','cr_dd_de_${item.id}')" onchange="crMetaMudou('${item.id}')"><div id="cr_dd_de_${item.id}" class="cr-dd" style="display:none;"></div></div>
+      <input class="form-input cr-meta" id="f_crm_nf_${item.id}" value="${esc(m.nf || '')}" placeholder="NF / boleto" title="NF de serviço, boleto ou nota de débito enviada ao cliente" onchange="crMetaMudou('${item.id}')" style="margin-top:4px;">
+    </div>`;
 
   const containersLinhasHtml = podeDetalhar ? containers.map((nome, idx) => {
     const savedPago = (rawPago && rawPago.porContainer && rawPago.porContainer[nome]) || null;
@@ -1324,7 +1334,7 @@ function crModoCliente(id, modo){
   wrap.dataset.modo = modo;
   const abertoEl = wrap.querySelector('.cr-cobrado-aberto'), fechado = wrap.querySelector('.cr-cobrado-fechado');
   const inp = document.getElementById('f_cr_cobrado_' + id), sel = document.getElementById('f_cr_cobrado_moeda_' + id);
-  const nf = document.getElementById('f_crm_nf_' + id);
+  const nf = document.getElementById('cr_nf_wrap_' + id);
   if(modo === 'embutido'){
     wrap.dataset.aberto = '0'; wrap.dataset.espelho = '1';
     if(abertoEl) abertoEl.style.display = 'none';
@@ -1567,7 +1577,7 @@ function toggleCrContainerBreakdown(itemId){
     const fechado = wrap.querySelector('.cr-cobrado-fechado'), abertoEl = wrap.querySelector('.cr-cobrado-aberto');
     if(fechado) fechado.style.display = wrap.dataset.aberto === '1' ? 'none' : 'block';
     if(abertoEl) abertoEl.style.display = wrap.dataset.aberto === '1' ? 'block' : 'none';
-    const nf = document.getElementById('f_crm_nf_'+itemId);
+    const nf = document.getElementById('cr_nf_wrap_'+itemId);
     if(nf) nf.style.display = wrap.dataset.aberto === '1' ? 'block' : 'none';
   }
   if(label) label.textContent = ativar ? 'total único' : 'por container';
@@ -1643,9 +1653,17 @@ function coletarCustosReaisDoForm(soConfirmados){
   // explica o lançamento (e alimenta relatórios "quanto pagamos pra X").
   const meta = {};
   custosReaisItensFlat().forEach(item => {
-    const campos = { para:'f_crm_para_', doc:'f_crm_doc_', nf:'f_crm_nf_', pago_em:'f_crm_pago_em_', obs:'f_crm_obs_' };
+    const campos = { para:'f_crm_para_', doc:'f_crm_doc_', de:'f_crm_de_', nf:'f_crm_nf_', pago_em:'f_crm_pago_em_', obs:'f_crm_obs_' };
     const m = {};
     Object.keys(campos).forEach(k => { const el = document.getElementById(campos[k] + item.id); const v = el ? el.value.trim() : ''; if(v) m[k] = v; });
+    // "receber de" só faz sentido quando a taxa é cobrada à parte
+    const wrapC = document.getElementById('cr_cobrado_wrap_' + item.id);
+    if(wrapC && wrapC.dataset.modo !== 'aparte'){ delete m.de; delete m.nf; }
+    // ids de cadastro vêm do servidor (lib/cadastros-normalizar) — mantém
+    // os salvos quando o texto não mudou, pra tela mostrar o vínculo.
+    const salvo = (_editando && _editando.real_json && _editando.real_json._meta && _editando.real_json._meta[item.id]) || {};
+    if(m.para && salvo.para === m.para && salvo.para_id) m.para_id = salvo.para_id;
+    if(m.de && salvo.de === m.de && salvo.de_id) m.de_id = salvo.de_id;
     if(Object.keys(m).length) meta[item.id] = m;
   });
   if(Object.keys(meta).length) obj._meta = meta;

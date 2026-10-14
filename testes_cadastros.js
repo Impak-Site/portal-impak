@@ -212,6 +212,17 @@ teste('mesmo nome em dois cadastros: vincula à matriz (CNPJ /0001); sem matriz 
   assert.strictEqual(N.ehMatriz({ cnpj: '1222333000181' }), true, 'CNPJ sem o zero à esquerda');
   assert.strictEqual(N.ehMatriz({ cnpj: '1222333000262' }), false);
 });
+teste('Custos Reais: real_json._meta.para/de ganham para_id/de_id pelo cadastro (qualquer papel)', () => {
+  const p = { real_json: { frete: { valor: 10, moeda: 'USD' }, _meta: { frete: { para: 'pill', doc: 'INV 1', de: 'sb litoral' }, ii: { para: 'Receita Federal (DI)' }, trs: { doc: 'x' } } } };
+  N.normalizarProcesso(p, IDX2);
+  assert.strictEqual(p.real_json._meta.frete.para_id, 'a-pil');
+  assert.strictEqual(p.real_json._meta.frete.para, 'pill', 'texto fica como foi digitado');
+  assert.strictEqual(p.real_json._meta.frete.de_id, 'c-silvas');
+  assert.strictEqual(p.real_json._meta.ii.para_id, null, 'sem cadastro → null');
+  assert.ok(!('para_id' in p.real_json._meta.trs), 'sem campo para → não inventa para_id');
+  assert.deepStrictEqual(N.resolverEmpresaQualquerPapel('tyre export inc', IDX2), { nome: 'TYRE EXPORT INC', id: 'f-tyre' });
+  assert.strictEqual(N.resolverEmpresaQualquerPapel('', IDX2), null);
+});
 teste('normalizarProcesso grava <campo>_id (id, ou null quando não reconhece) só pros campos presentes', () => {
   const p = { id: 'x', cliente: 'SB LITORAL', fornecedor: 'QINGDAO DITRIP TYRE CO LIMITED', armador: 'PILL', obs: 'nada' };
   const mudancas = N.normalizarProcesso(p, IDX2);

@@ -258,7 +258,9 @@ select.form-input{cursor:pointer;}
 .cr-toolbar-campo .form-input{width:92px;padding:5px 8px;font-size:12px;}
 .cr-toolbar-legenda{margin-left:auto;display:flex;align-items:center;gap:5px;}
 .cr-toolbar-legenda .cr-dot{cursor:default;}
-.cr-grade-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--bg2);}
+.cr-grade-scroll{overflow:visible;border:1px solid var(--border);border-radius:10px;background:var(--bg2);}
+.cr-dd{position:absolute;top:100%;left:0;min-width:100%;width:max-content;max-width:420px;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:600;max-height:220px;overflow-y:auto;text-align:left;}
+.cr-vinc{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--ok);pointer-events:none;}
 .cr-grade{min-width:1180px;}
 .cr-grade th,.cr-grade td{padding:6px 6px;}
 .cr-grade thead th{background:var(--bg);}
