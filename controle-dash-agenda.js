@@ -276,6 +276,7 @@ function ativarTelaAgendaExclusiva(){
   ['stats-grid','filtro-financeiro-ativo','filtro-data-bar','fase-filter'].forEach(id=>{ const e = document.getElementById(id); if(e) e.style.display='none'; });
   const toolbar = document.querySelector('.toolbar'); if(toolbar) toolbar.style.display = 'none';
   const sidebar = document.querySelector('.sidebar'); if(sidebar) sidebar.style.display = 'none';
+  const tw = document.querySelector('.table-wrap'); if(tw) tw.style.display = 'none';
   const d = document.getElementById('dash-agenda'); if(d) d.style.display = 'block';
   renderDashAgenda();
 }
