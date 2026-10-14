@@ -158,6 +158,11 @@
     // vai pra FINALIZADO depois que uma pessoa específica valida que o
     // processo inteiro foi revisto. Logins em `usuarios` (ou `substitutos`)
     // veem o botão "Validar e finalizar". Desative a linha pra tirar a trava.
+    // Meta de lucro por cliente (Rev97 DADOS!N33 — 14/10/2026). O Calculador
+    // usa como Lucro Alvo % ao escolher o cliente e avisa quando o resultado
+    // fica abaixo. `clientes` vazio = padrão para quem não tem linha própria.
+    // Os % por cliente ficam só no banco (repositório público); aqui só o padrão.
+    meta_lucro:    { nome: 'Meta de lucro por cliente (%)', campos: [['percentual', '% de lucro alvo', 'number'], ['clientes', 'Clientes (vírgula; vazio = padrão)', 'text'], ['observacao', 'Observação', 'text']] },
     aprovacao_etapa: { nome: 'Aprovação por etapa (vistos)', campos: [['usuarios', 'Quem valida (logins, vírgula)', 'text'], ['substitutos', 'Substitutos (logins, vírgula)', 'text'], ['observacao', 'Observação', 'text']] },
     agenda_atividade: { nome: 'Agenda — Atividades', campos: [['funcao', 'Responsável (função)', 'select', AGENDA_FUNCOES.map(f => [f.codigo, f.nome])], ['prazo_dias', 'Prazo (dias em relação ao marco; vazio = padrão)', 'number'], ['prioridade', 'Prioridade', 'select', [['ALTA','Alta'],['MEDIA','Média'],['BAIXA','Baixa']]], ['etapa', 'Etapa', 'text'], ['observacao', 'Observação', 'text']] },
   };
@@ -174,6 +179,10 @@
     { codigo: 'FINALIZADO', nome: 'Finalização do processo', dados: { usuarios: 'emanuelly', substitutos: 'paula', observacao: 'Último check antes de Finalizado (pedido Emanuelly 14/10/2026)' }, ordem: 1 },
   ];
 
+  const META_LUCRO = [
+    { codigo: 'PADRAO', nome: 'Padrão (clientes novos)', dados: { percentual: 2, clientes: '', observacao: 'Vale para cliente sem linha própria' }, ordem: 99 },
+  ];
+
   // Objeto completo no formato que GET /api/listas devolve.
   function listasPadrao() {
     return {
@@ -186,6 +195,7 @@
       agenda_funcao: clonar(AGENDA_FUNCOES),
       agenda_atividade: clonar(AGENDA_ATIVIDADES),
       aprovacao_etapa: clonar(APROVACAO_ETAPA),
+      meta_lucro: clonar(META_LUCRO),
     };
   }
 

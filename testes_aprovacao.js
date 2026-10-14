@@ -264,14 +264,16 @@ teste('popula itens simples (não porContainer) com {valor, moeda} — em Cobrad
 teste('multiplica itens porContainer pela quantidade de containers da cotação', () => {
   const custosCotados = {
     containers: 3,
-    taxas_fixas: { siscomex: 200, marinha: 150, armazenagem: 900 },
+    taxas_fixas: { siscomex: 200, capatazia: 150, armazenagem: 900 },
     taxas_usd: { handling: 80 },
   };
   const rj = gerarRealJsonInicial(custosCotados);
-  // siscomex e handling são porContainer:true → valor unitário × 3 containers
+  // capatazia e handling são porContainer:true → valor unitário × 3 containers
   // FIX: handling (e as demais Taxas em USD/destino) agora chegam em BRL
   // (convertidas pelo câmbio de abertura+2% no Calculador), não mais USD puro.
-  iguais(rj.siscomex_cobrado, { valor: 600, moeda: 'BRL' });
+  // Siscomex (14/10/2026) virou valor único por processo — não multiplica.
+  iguais(rj.capatazia_cobrado, { valor: 450, moeda: 'BRL' });
+  iguais(rj.siscomex_cobrado, { valor: 200, moeda: 'BRL' });
   iguais(rj.handling_cobrado, { valor: 240, moeda: 'BRL' });
   // armazenagem é porContainer:false → não multiplica
   iguais(rj.armazenagem_cobrado, { valor: 900, moeda: 'BRL' });

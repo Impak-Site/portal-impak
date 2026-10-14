@@ -42,11 +42,17 @@
   // (Compra e Frete, Impostos, Comissões, Fechamento) continuam só lá —
   // não fazem parte dessa unificação porque não tinham duplicidade: só o
   // Controle os edita, o Calculador não tem campo próprio pra eles.
+  // 14/10/2026 (teste 2 containers × Rev97, pedido Ayslan): Siscomex, AFRMM,
+  // Emissão L.I., Agente de Carga e IOF são valor ÚNICO por processo — na
+  // planilha F19 é fixo, F20 (AFRMM) e D38 (IOF) saem do frete total, F23
+  // (L.I.) do nº de licenças e F40 (agente) de uma fórmula sobre o total.
+  // O Calculador multiplicava os cinco pela qtd de containers (e o AFRMM/
+  // agente, calculados em cima de valores já totais, acabavam dobrados).
   const TAXAS_OPERACIONAIS = [
-    { id: 'siscomex',         label: 'Siscomex',                        moeda: 'BRL', base_rateio: 'container' },
-    { id: 'marinha',          label: 'Marinha/AFRMM',                   moeda: 'BRL', base_rateio: 'container' },
+    { id: 'siscomex',         label: 'Siscomex',                        moeda: 'BRL', base_rateio: 'processo' },
+    { id: 'marinha',          label: 'Marinha/AFRMM',                   moeda: 'BRL', base_rateio: 'processo' },
     { id: 'armazenagem',      label: 'Armazenagem',                     moeda: 'BRL', base_rateio: 'processo' },
-    { id: 'emissao_li',       label: 'Emissão L.I.',                    moeda: 'BRL', base_rateio: 'container' },
+    { id: 'emissao_li',       label: 'Emissão L.I.',                    moeda: 'BRL', base_rateio: 'processo' },
     { id: 'baixa_patio',      label: 'Baixa Pátio',                     moeda: 'BRL', base_rateio: 'container' },
     { id: 'capatazia',        label: 'Capatazia/THC',                   moeda: 'BRL', base_rateio: 'container' },
     { id: 'liberacao_bl',     label: 'Liberação BL',                    moeda: 'BRL', base_rateio: 'container' },
@@ -54,7 +60,7 @@
     { id: 'sda',              label: 'SDA',                             moeda: 'BRL', base_rateio: 'container' },
     { id: 'lavacao',          label: 'Lavação Container',               moeda: 'BRL', base_rateio: 'container' },
     { id: 'administrativo',   label: 'Administrativo',                  moeda: 'BRL', base_rateio: 'container' },
-    { id: 'agente',           label: 'Agente Carga',                    moeda: 'BRL', base_rateio: 'container' },
+    { id: 'agente',           label: 'Agente Carga',                    moeda: 'BRL', base_rateio: 'processo' },
     { id: 'handling',         label: 'Disbursement Fee',                moeda: 'USD', base_rateio: 'container' },
     { id: 'additional_costs', label: 'Additional Costs',                moeda: 'USD', base_rateio: 'container' },
     { id: 'import_logistics', label: 'Import Logistics Fee',            moeda: 'USD', base_rateio: 'container' },
@@ -62,7 +68,7 @@
     { id: 'tsc',              label: 'TSC - Terminal Sec. Charge',      moeda: 'USD', base_rateio: 'container' },
     { id: 'drop_off',         label: 'Drop Off Fee',                    moeda: 'USD', base_rateio: 'container' },
     { id: 'isps',             label: 'ISPS (Destination)',              moeda: 'USD', base_rateio: 'container' },
-    { id: 'iof',              label: 'IOF',                             moeda: 'USD', base_rateio: 'container' },
+    { id: 'iof',              label: 'IOF',                             moeda: 'USD', base_rateio: 'processo' },
     { id: 'desconsolidacao',  label: 'Desconsolidação',                 moeda: 'USD', base_rateio: 'container' },
     // Reciclagem: pedido do Jean (03/09/2026) — em Encomenda é custo do
     // cliente (não entra no processo); em Importação Própria IMPAK é custo

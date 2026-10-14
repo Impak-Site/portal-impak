@@ -512,6 +512,58 @@ teste('antidumping: o valor do dumping vai pro preço só dos itens SIM e o tota
   verdadeiro(razaoCom > razaoSem, 'item com dumping deveria pesar mais no preço');
 });
 
+
+// ── Rev97 (14/10/2026): variação cambial da entrada, frete terrestre, meta de lucro ──
+teste('variação cambial entrada: só parcelas com câmbio abaixo do câmbio DI, × 4,65%', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const r = vm.runInContext(`calcularVariacaoCambialEntrada([{label:'Inicial',valor_usd:10000,cambio_fechado:5.0},{label:'Final',valor_usd:20000,cambio_fechado:5.6}], 5.4)`, sb);
+  aproxIgual(r.variacao_brl, 10000 * (5.4 - 5.0), 1e-9);   // a Final (5,6 > 5,4) não gera variação
+  aproxIgual(r.custo_brl, 4000 * 0.0465, 1e-9);
+  verdadeiro(r.detalhe.length === 1 && !r.manual);
+  const m = vm.runInContext(`calcularVariacaoCambialEntrada([{valor_usd:10000,cambio_fechado:5.0}], 5.4, '1500')`, sb);
+  aproxIgual(m.variacao_brl, 1500, 0); aproxIgual(m.custo_brl, 1500 * 0.0465, 1e-9); verdadeiro(m.manual);
+  const z = vm.runInContext(`calcularVariacaoCambialEntrada([{valor_usd:10000,cambio_fechado:5.5}], 5.4)`, sb);
+  aproxIgual(z.custo_brl, 0, 0);
+});
+teste('variação cambial entra no Total Taxas e no custo total', () => {
+  const a = _rodarCalc();
+  const b = _rodarCalc("document.getElementById('tx_var_cambial').value='2000';");
+  aproxIgual(b.VAR_CAMB, 93, 1e-9);
+  aproxIgual(b.total_taxas - a.total_taxas, 93, 0.01);
+  aproxIgual(b.custo_total - a.custo_total, 93, 0.01);
+});
+teste('frete terrestre: só Transportadora, % do Vlr. Total NFe, desconta do lucro bruto (não do custo)', () => {
+  const a = _rodarCalc("document.getElementById('frete_terrestre_pct').value='2';"); // tipo ENCOMENDA → ignora
+  aproxIgual(a.frete_terrestre, 0, 0);
+  const b = _rodarCalc("document.getElementById('tipo_importacao').value='TRANSPORTADORA'; document.getElementById('frete_terrestre_pct').value='2';");
+  verdadeiro(b.frete_terrestre > 0);
+  aproxIgual(b.frete_terrestre, b.vlr_total_nfe * 0.02, 0.01);
+  aproxIgual(b.custo_total, a.custo_total, 0.01); // custo não muda; o cenário resolve o fator pra manter o lucro-alvo
+});
+teste('meta de lucro por cliente: linha específica vence o padrão', () => {
+  const lista = [
+    { codigo: 'PADRAO', dados: { percentual: 2, clientes: '' } },
+    { codigo: 'META_A', nome: 'Grupo A', dados: { percentual: '3,5', clientes: 'CLIENTE ALFA, BETA' } },
+    { codigo: 'INATIVA', dados: { percentual: 9, clientes: 'ALFA' }, ativo: false },
+  ];
+  const a = _comCalc.metaLucroParaCliente(lista, 'CLIENTE ALFA LTDA');
+  aproxIgual(a.pct, 3.5, 0); verdadeiro(a.especifica);
+  const b = _comCalc.metaLucroParaCliente(lista, 'OUTRO CLIENTE');
+  aproxIgual(b.pct, 2, 0); verdadeiro(!b.especifica);
+  verdadeiro(_comCalc.metaLucroParaCliente([], 'X') === null);
+  verdadeiro(_comCalc.metaLucroParaCliente(lista, 'ALFABETO SA').pct === 2); // palavra inteira: ALFA não casa com ALFABETO
+});
+
+
+teste('2 containers: só as taxas por container dobram (Siscomex/AFRMM/L.I./Agente/IOF são únicas — Rev97)', () => {
+  const a = _rodarCalc("['auto_marinha','auto_agente','auto_iof'].forEach(id=>{document.getElementById(id).checked=false;});");
+  const b = _rodarCalc("['auto_marinha','auto_agente','auto_iof'].forEach(id=>{document.getElementById(id).checked=false;}); document.getElementById('qtde_containers').value='2';");
+  verdadeiro(a.containers === 1 && b.containers === 2);
+  const f = a.txOp.fixas;
+  const porContainer = f.capatazia + f.liberacao_bl + f.despachante + f.sda + f.lavacao + f.administrativo + f.baixa_patio;
+  aproxIgual(b.taxas_fixas - a.taxas_fixas, porContainer, 0.01); // Siscomex, AFRMM, L.I. e Agente NÃO dobram
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

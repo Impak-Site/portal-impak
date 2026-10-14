@@ -253,11 +253,12 @@ teste('COLUNAS_ID cobre os 8 campos de empresa do processo', () => {
 });
 
 console.log('\n── listas-padrao.js ──');
-teste('listas padrão têm as 8 categorias (incl. agenda) e os 4 portos de destino com dias grátis', () => {
+teste('listas padrão têm as 10 categorias (incl. agenda e meta de lucro) e os 4 portos de destino com dias grátis', () => {
   const l = ListasPadrao.listasPadrao();
-  assert.deepStrictEqual(Object.keys(l).sort(), ['agenda_atividade', 'agenda_funcao', 'aprovacao_etapa', 'armazenagem_rf', 'banco_cambio', 'comissionado', 'marca', 'porto_destino', 'porto_origem']);
+  assert.deepStrictEqual(Object.keys(l).sort(), ['agenda_atividade', 'agenda_funcao', 'aprovacao_etapa', 'armazenagem_rf', 'banco_cambio', 'comissionado', 'marca', 'meta_lucro', 'porto_destino', 'porto_origem']);
   assert.deepStrictEqual(l.marca, [], 'marcas começam vazias (vêm da aba Listas / de-para)');
   assert.deepStrictEqual(l.comissionado, [], 'comissionados nunca no repositório (dado interno, repo público)');
+  assert.deepStrictEqual(l.meta_lucro.map(m => m.codigo), ['PADRAO'], 'só a meta padrão no repositório; as metas por cliente ficam no banco');
   const dias = {}; l.porto_destino.forEach(p => { dias[p.codigo] = p.dados.dias_gratis; });
   assert.deepStrictEqual(dias, { ITJ: 5, IOA: 4, NVT: 5, BRIBB: 5 });
   assert.ok(l.porto_origem.length >= 27);

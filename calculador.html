@@ -248,6 +248,15 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       <div style="margin-top:6px;font-size:11px;color:var(--muted);">FOB Total: <strong id="mix-fob-total">—</strong></div>
     </div>
 
+    <!-- Importar planilha Modelo (.xlsm) — de volta em 14/10/2026 (#488): o
+         parser do servidor lê DADOS/MIX (inclusive dumping por item, peso,
+         cartão e prazo interno) e pré-preenche o formulário. -->
+    <div class="form-group" style="margin-bottom:12px;">
+      <input type="file" id="importar-planilha-input" accept=".xlsm,.xlsx" style="display:none;" onchange="importarPlanilhaSelecionada(this)">
+      <button type="button" class="btn btn-outline" style="width:100%;" onclick="document.getElementById('importar-planilha-input').click()">📄 Importar planilha Modelo (.xlsm)</button>
+      <div id="importar-planilha-status" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+    </div>
+
     <!-- WIZARD — indicador de etapas (task #60) -->
     <div class="wizard-steps" id="wizard-steps"></div>
 
@@ -389,12 +398,19 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       <div class="section-title">⚙️ Configurações</div>
       <div class="form-group">
         <label>Tipo de Importação</label>
-        <select id="tipo_importacao">
+        <select id="tipo_importacao" onchange="atualizarFreteTerrestreUI()">
           <option value="ENCOMENDA">Encomenda</option>
           <option value="PROPRIA">Importação Própria (Impak)</option>
           <option value="IMPLEMENTOS">Implementos</option>
           <option value="TRANSPORTADORA">Transportadora</option>
         </select>
+      </div>
+      <!-- Frete terrestre (Rev97 DADOS!H13 → MODELO L29 = Vlr.Total NFe × %): só
+           Transportadora. Desconta do lucro bruto, não entra no custo/preço. -->
+      <div class="form-group" id="frete-terrestre-box" style="display:none;">
+        <label>Frete terrestre (% do total da NF)</label>
+        <input type="number" id="frete_terrestre_pct" step="0.01" value="" placeholder="ex: 2,5">
+        <div style="font-size:10px;color:var(--dim);margin-top:2px;">Só Transportadora. Entrega ao cliente paga pela Impak: % sobre o Vlr. Total NFe, descontado do lucro bruto.</div>
       </div>
       <div class="form-group">
         <label>Cliente tem TTD?</label>
@@ -449,7 +465,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       </div>
       <div class="form-group" style="position:relative;">
         <label>Cliente</label>
-        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)" onchange="aplicarIcmsPadraoCliente();if(typeof aplicarComissionadosAutoCliente==='function')aplicarComissionadosAutoCliente();aplicarRegraGFPneus()">
+        <input type="text" id="cliente" placeholder="Digite razão social, CNPJ ou UF..." autocomplete="off" oninput="autocompletarClienteCalc(this)" onchange="aplicarIcmsPadraoCliente();if(typeof aplicarComissionadosAutoCliente==='function')aplicarComissionadosAutoCliente();if(typeof aplicarMetaLucroCliente==='function')aplicarMetaLucroCliente();aplicarRegraGFPneus()">
         <div id="cliente-calc-dropdown" style="display:none;position:fixed;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:200px;overflow-y:auto;"></div>
       </div>
     </div>
@@ -638,6 +654,12 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
              Custos Diversos por falta de campo próprio. -->
         <div class="form-row">
           <div class="form-group"><label>Reciclagem (R$)</label><input type="number" id="tx_reciclagem" step="0.01" value="0" placeholder="0,00"></div>
+          <!-- Variação cambial da entrada (Rev97 MODELO B46/F46): quando a parcela
+               de entrada foi fechada a um câmbio MENOR que o câmbio da DI, a
+               diferença (entrada US$ × (câmbio DI − câmbio da parcela)) paga
+               4,65% de PIS/COFINS. Automático pelas Parcelas; o campo permite
+               informar a variação (R$) à mão (vazio = automático). -->
+          <div class="form-group"><label>Variação cambial entrada (R$) <span style="font-weight:400;color:var(--dim);">vazio = automático pelas parcelas</span></label><input type="number" id="tx_var_cambial" step="0.01" value="" placeholder="automático"><div id="var-cambial-info" style="font-size:10px;color:var(--dim);margin-top:2px;"></div></div>
         </div>
       </div>
     </div>
@@ -779,6 +801,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
           </div>
         </div>
         <div style="font-size:10px;color:var(--dim);margin-top:2px;"><span id="cenario-hint">% sobre o faturamento total</span> · SEM S.T em branco = usa a mesma margem do COM S.T</div>
+        <div id="meta-lucro-info" style="display:none;font-size:11px;color:var(--muted);margin-top:3px;"></div>
       </div>
     </div>
 
@@ -1174,6 +1197,7 @@ document.addEventListener('DOMContentLoaded', () => {
   onPrazoSelectChange('prazo_boleto','prazo_boleto_outro','prazo_medio_dias','prazo_medio_info');
   onPrazoSelectChange('cf_prazo','cf_prazo_outro','cf_prazo_medio','cf_prazo_info');
   atualizarFormaCustoFin();
+  atualizarFreteTerrestreUI();
   aplicarWizardVisibilidade();
 
   // Mix do TyreDesk — fica salvo no sessionStorage durante toda a sessão do
@@ -1299,6 +1323,7 @@ async function autocompletarClienteCalc(input){
 document.getElementById('cliente').value = c.razao_social;
 aplicarIcmsPadraoCliente();
 if(typeof aplicarComissionadosAutoCliente==='function') aplicarComissionadosAutoCliente();
+if(typeof aplicarMetaLucroCliente==='function') aplicarMetaLucroCliente();
 aplicarRegraGFPneus();
 if(c.uf){
 const ufSel = document.getElementById('uf_destino');
@@ -1397,6 +1422,65 @@ function onPrazoSelectChange(selId, outroId, hiddenId, infoId){
   if(typeof agendarAutosave === 'function') agendarAutosave();
   if(typeof onAutoTaxaDepChange === 'function') onAutoTaxaDepChange();
 }
+// ── Importar planilha Modelo (.xlsm) → formulário (#488, 14/10/2026) ──
+async function importarPlanilhaSelecionada(input){
+  const file = input.files && input.files[0]; if(!file) return;
+  const status = document.getElementById('importar-planilha-status');
+  const st = (t, cor) => { if(status){ status.textContent = t; status.style.color = cor || 'var(--muted)'; } };
+  st('Lendo planilha...');
+  try{
+    const base64 = await new Promise((res, rej) => { const rd = new FileReader(); rd.onload = () => res(rd.result.split(',')[1]); rd.onerror = rej; rd.readAsDataURL(file); });
+    const r = await fetch('/api/calculador/importar-planilha', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ arquivo_base64: base64, nome_arquivo: file.name }) });
+    const d = await r.json();
+    if(!d.ok){ st('Erro: ' + (d.erro || 'falha ao importar'), '#c0392b'); return; }
+    preencherComPlanilha(d.campos || {}, d.mix || []);
+    const avisos = (d.campos && d.campos.avisos || []).join(' ');
+    st('Planilha importada — revise os campos antes de calcular. ' + avisos, '#1a7fd4');
+  }catch(e){ st('Erro ao ler o arquivo: ' + e.message, '#c0392b'); }
+  finally{ input.value = ''; }
+}
+function preencherComPlanilha(c, mix){
+  const set = (id, v) => { const el = document.getElementById(id); if(el && v !== undefined && v !== null && v !== '') el.value = v; };
+  if(c.cambio_usd) set('cambio_usd', c.cambio_usd);
+  if(c.cambio_medio_di) set('cambio_medio_di', c.cambio_medio_di);
+  if(c.cambio_chegada) set('cambio_chegada', c.cambio_chegada);
+  set('fob_usd', c.fob_usd || 0); set('frete_usd', c.frete_usd || 0); set('taxa_ce_usd', c.taxa_ce_usd || 0);
+  set('qtde_containers', c.qtde_containers || 1);
+  set('produto', c.produto || 'TBR'); if(typeof onProdutoChange === 'function') onProdutoChange();
+  set('origem', c.origem || 'DIVERSOS'); set('tipo_importacao', c.tipo_importacao || 'ENCOMENDA');
+  if(c.uf_destino) set('uf_destino', c.uf_destino);
+  set('cliente', c.cliente || ''); set('custos_diversos', c.custos_diversos || 0);
+  setToggleTTD(c.tem_icms_st ? 'NAO' : 'SIM');
+  setToggle('br', c.comissao_br ? 'SIM' : 'NAO'); if(c.comissao_br_pct) set('br_pct', c.comissao_br_pct);
+  setToggle('china', c.comissao_china ? 'SIM' : 'NAO');
+  if(c.comissao_china) setToggleInner('china-modal', c.comissao_china_local || 'FORA');
+  // Overrides lidos da planilha (TOTAL TAXAS, II, Seguro Compra) — mesmos campos que o estado salvo usa.
+  _estado.taxasTotaisOverrideBrl = c.taxas_totais_planilha_brl != null ? Number(c.taxas_totais_planilha_brl) : null;
+  _estado.iiOverrideBrl = c.ii_planilha_brl != null ? Number(c.ii_planilha_brl) : null;
+  _estado.seguroCompraOverrideBrl = c.seguro_compra_planilha_brl != null ? Number(c.seguro_compra_planilha_brl) : null;
+  // Mix (com peso e dumping por item, quando a planilha tem)
+  if(Array.isArray(mix) && mix.length){
+    _estado.mix = { itens: mix.map(it => Object.assign({ medida: it.medida, pat: it.pat, qtd: it.qtd, preco: it.preco }, it.peso_kg != null ? { peso_kg: it.peso_kg } : {}, it.dumping !== undefined ? { dumping: it.dumping } : {})), fob_total: c.fob_usd };
+    try{ sessionStorage.setItem('calculador_mix', JSON.stringify(_estado.mix)); }catch(e){}
+    renderMix();
+  }
+  // Antidumping (DADOS H19/H20 + MIX BG)
+  setToggle('dump', c.tem_dumping ? 'SIM' : 'NAO');
+  if(c.dumping_taxa_kg) set('dump_taxa_kg', c.dumping_taxa_kg);
+  if(typeof renderDumpItens === 'function') renderDumpItens();
+  // Custo financeiro: prazo interno (E24/G24/H24) ou cartão (E26/G26)
+  set('forma_custo_fin', c.forma_custo_fin || '');
+  if(c.forma_custo_fin === 'prazo'){
+    if(c.cf_taxa_am != null) set('cf_taxa_am', c.cf_taxa_am);
+    restaurarPrazoSelect('cf_prazo','cf_prazo_outro','cf_prazo_medio','cf_prazo_info', c.cf_prazo || '');
+  } else if(c.forma_custo_fin === 'cartao' && c.cf_parcelas){ set('cf_parcelas', String(Math.min(6, Math.max(1, c.cf_parcelas)))); }
+  if(typeof atualizarFormaCustoFin === 'function') atualizarFormaCustoFin();
+  atualizarFreteTerrestreUI();
+  if(typeof onAutoTaxaDepChange === 'function') onAutoTaxaDepChange();
+  if(typeof agendarAutosave === 'function') agendarAutosave();
+  if(typeof showToast === 'function') showToast('Planilha importada', 'ok');
+}
+
 // Ao abrir cotação salva: reposiciona o select a partir do texto gravado.
 function restaurarPrazoSelect(selId, outroId, hiddenId, infoId, texto){
   const sel = document.getElementById(selId); if(!sel) return;
@@ -1738,7 +1822,9 @@ function calcularDumpingItens(itens, taxaUsdKg, cambioDI){
   const taxa = Number(taxaUsdKg) || 0, cambio = Number(cambioDI) || 0;
   let pesoSim = 0, pesoTotal = 0, temPeso = false;
   const porItem = (itens || []).map(it => {
-    const peso = (Number(it.peso_kg) || 0) * (Number(it.qtd) || 0);
+    // peso_kg = informado aqui; senão usa o peso da cotação do TyreDesk (it.peso, kg/pneu).
+    const pesoUn = it.peso_kg != null && it.peso_kg !== '' ? Number(it.peso_kg) : Number(it.peso);
+    const peso = (pesoUn || 0) * (Number(it.qtd) || 0);
     if(peso > 0) temPeso = true;
     pesoTotal += peso;
     const sim = it.dumping !== false;
@@ -1759,7 +1845,7 @@ function renderDumpItens(){
     + itens.map((it, i) => `<div style="display:grid;grid-template-columns:1fr 54px 70px 40px;gap:4px;align-items:center;padding:2px 0;border-top:1px solid var(--border);">
         <span>${esc(it.medida)}${it.pat ? ' <span style="color:var(--dim);">' + esc(it.pat) + '</span>' : ''}</span>
         <span style="text-align:right;">${esc(it.qtd)}</span>
-        <input type="number" step="0.01" value="${it.peso_kg != null ? esc(it.peso_kg) : ''}" placeholder="kg" style="width:100%;padding:2px 4px;font-size:11px;text-align:right;" onchange="setDumpItem(${i},'peso_kg',this.value)">
+        <input type="number" step="0.01" value="${it.peso_kg != null ? esc(it.peso_kg) : (it.peso ? esc(it.peso) : '')}" placeholder="kg" style="width:100%;padding:2px 4px;font-size:11px;text-align:right;" onchange="setDumpItem(${i},'peso_kg',this.value)">
         <input type="checkbox" ${it.dumping !== false ? 'checked' : ''} style="justify-self:center;" onchange="setDumpItem(${i},'dumping',this.checked)" title="Item com antidumping">
       </div>`).join('')
     + `<div style="margin-top:6px;padding:6px 8px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;">`
@@ -1796,6 +1882,45 @@ function setToggleInner(key, val) {
   const fora = document.getElementById(`toggle-china-fora`);
   if(den) den.className = 'toggle-btn' + (val==='DENTRO' ? ' active-sim' : '');
   if(fora) fora.className = 'toggle-btn' + (val==='FORA' ? ' active-nao' : '');
+}
+
+// Meta de lucro do cliente (lista meta_lucro): colore o card e avisa se ficou
+// abaixo. Sem meta cadastrada, vale a régua antiga (4% ok / 2% atenção).
+function classeLucroMeta(pct){
+  const m = typeof metaLucroAtualCalc === 'function' ? metaLucroAtualCalc() : null;
+  if(!m) return pct >= 4 ? 'ok' : pct >= 2 ? 'warn' : 'err';
+  return pct >= m.pct - 0.005 ? 'ok' : pct >= m.pct - 1 ? 'warn' : 'err';
+}
+function textoMetaLucro(pct){
+  const m = typeof metaLucroAtualCalc === 'function' ? metaLucroAtualCalc() : null;
+  if(!m) return '';
+  return pct >= m.pct - 0.005 ? ` · meta ${fmtP(m.pct)} ✓` : ` · <b>abaixo da meta ${fmtP(m.pct)}</b>`;
+}
+
+// Variação cambial da entrada (Rev97 MODELO linha 46). Parcelas com câmbio
+// fechado abaixo do câmbio da DI geram variação "passiva" = valor US$ ×
+// (câmbio DI − câmbio fechado); sobre ela incidem 4,65% (PIS/COFINS), que
+// entram no TOTAL TAXAS (F46 ∈ F19:F48). Variação negativa (câmbio maior) = 0.
+// Função pura (testável). variacaoManualBrl: sobrescreve a variação calculada.
+const VAR_CAMBIAL_PCT = 0.0465;
+function calcularVariacaoCambialEntrada(parcelas, cambioDI, variacaoManualBrl){
+  const manual = parseFloat(variacaoManualBrl);
+  let variacao = 0; const detalhe = [];
+  if(!isNaN(manual)){ variacao = Math.max(0, manual); }
+  else {
+    (parcelas || []).forEach(p => {
+      const c = parseFloat(p && p.cambio_fechado), v = parseFloat(p && p.valor_usd);
+      if(!(c > 0) || !(v > 0) || !(cambioDI > 0)) return;
+      const d = v * (cambioDI - c);
+      if(d > 0){ variacao += d; detalhe.push({ label: p.label || '', valor_usd: v, cambio: c, variacao: d }); }
+    });
+  }
+  return { variacao_brl: variacao, custo_brl: variacao * VAR_CAMBIAL_PCT, pct: VAR_CAMBIAL_PCT, detalhe, manual: !isNaN(manual) };
+}
+function atualizarFreteTerrestreUI(){
+  const box = document.getElementById('frete-terrestre-box');
+  const tipo = (document.getElementById('tipo_importacao')||{}).value || '';
+  if(box) box.style.display = tipo === 'TRANSPORTADORA' ? '' : 'none';
 }
 
 // ── CENÁRIO ──────────────────────────────────────────────
@@ -2254,8 +2379,9 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // II+IPI+PIS+COFINS + Siscomex + Dumping + AFRMM) / 0,96) × 1%.
   // FIX: usava cif_brl (sem Taxa C.E.) — planilha usa base_imp_brl (com Taxa
   // C.E.), verificado numérico exato contra o exemplo real (3042,93 vs 3037,58).
-  const siscomex_unit = txOp.fixas.siscomex * containers;
-  const afrmm_unit     = txOp.fixas.marinha * containers;
+  // Siscomex e AFRMM: valor único por processo (ver taxas-catalogo.js, 14/10/2026).
+  const siscomex_unit = txOp.fixas.siscomex;
+  const afrmm_unit     = txOp.fixas.marinha;
   const ICMS_e   = ((base_imp_brl + II + IPI_e + PIS_e + COFINS_e + siscomex_unit + DUMP + afrmm_unit) / 0.96) * 0.01;
   // FIX: confirmado via planilha (MODELO-COM S.T!F15/F16) que IBS-E/CBS-E usam
   // (base_imp_brl + II + Siscomex + Marinha/AFRMM + Dumping) — NÃO o IPI como
@@ -2304,7 +2430,11 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // Taxa de Seguro de Venda (seguro_venda_brl) deve compor as Taxas Operacionais;
   // seguro_dif_brl continua calculado (usado em outro lugar/relatório interno),
   // só não entra mais na soma nem aparece na tabela de Taxas Operacionais.
-  let total_taxas = taxas_fixas + taxas_usd_brl + DUMP + seguro_venda_brl;
+  // Variação cambial da entrada (4,65% s/ a variação) — planilha linha 46, dentro do TOTAL TAXAS.
+  const varCamb = calcularVariacaoCambialEntrada(_estado.parcelas, cambioMedioDI, (document.getElementById('tx_var_cambial')||{}).value);
+  const VAR_CAMB = varCamb.custo_brl;
+  { const info = document.getElementById('var-cambial-info'); if(info) info.textContent = varCamb.variacao_brl > 0 ? `Variação ${varCamb.manual ? 'informada' : 'calculada'}: R$ ${fmt(varCamb.variacao_brl)} × 4,65% = R$ ${fmt(VAR_CAMB)} (entra no Total Taxas)` : (varCamb.manual ? '' : 'Nenhuma parcela com câmbio fechado abaixo do câmbio da DI.'); }
+  let total_taxas = taxas_fixas + taxas_usd_brl + DUMP + seguro_venda_brl + VAR_CAMB;
   // Override: quando a cotação veio de import de planilha, usa o TOTAL TAXAS
   // real apurado na planilha (rótulo fixo, robusto a nomenclatura variada das
   // taxas individuais por fornecedor/agente) em vez do total calculado por
@@ -2467,6 +2597,9 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     // Prazo interno / Cartão / Trademaster: custo sobre o valor da NF, descontado do lucro.
     const custo_fin_pct = (typeof pctCustoFinanceiroCalc === 'function') ? pctCustoFinanceiroCalc() : 0;
     const custo_financeiro = vlr_total_nfe * custo_fin_pct;
+    // Frete terrestre (só Transportadora): % sobre o Vlr. Total NFe, desconta do lucro (planilha L29).
+    const frete_terrestre_pct = ((document.getElementById('tipo_importacao')||{}).value || '') === 'TRANSPORTADORA' ? (parseFloat((document.getElementById('frete_terrestre_pct')||{}).value) || 0) / 100 : 0;
+    const frete_terrestre = vlr_total_nfe * frete_terrestre_pct;
     const juros_boleto_liq = juros_boleto * (1 - 0.0465);
     // Base "faturamento total" da comissão inclui o juros (Jean 13/10/2026).
     const faturamento_com_juros = faturamento_total + juros_boleto;
@@ -2475,7 +2608,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     // Comissionados do cadastro: cada um na sua base (faturamento total, NF, FOB ou
     // lucro bruto antes das comissões de representante — mesma regra do Controle).
     const lucro_antes_com = vlr_total_nfe - icms_st - PIS_s - COFINS_s - ICMS_proprio - COM_china_dentro - custo_total - IPI_s - juros_parcelamento - nota_servico_val
-      - custo_financeiro - comissao_repr_parcel + juros_boleto_liq;
+      - custo_financeiro - comissao_repr_parcel - frete_terrestre + juros_boleto_liq;
     let COM_br = faturamento_com_juros * br_pct, COM_br_linhas = null;
     if(usaComissionados){
       const rc = calcularComissionadosCalc(comSel, { faturamento: faturamento_com_juros, nf: vlr_total_nfe, fob: fobBrlPonderado, lucro: lucro_antes_com });
@@ -2491,7 +2624,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
       vlr_produto, IPI_s, ICMS_nfe: ICMS_nfe_normal, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
       PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
       china_fora_val, boss_fora_val, COM_br, COM_br_linhas, COM_china_dentro,
-      juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel, faturamento_com_juros,
+      juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel, faturamento_com_juros, frete_terrestre, frete_terrestre_pct,
       valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
       faturamento_total, lucro_bruto, pct_lucro, fatorNfe, tem_st: temStCenario,
     };
@@ -2534,7 +2667,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   const { vlr_produto, IPI_s, ICMS_nfe, baseIcmsNormal, icms_st, base_st, vlr_total_nfe,
           PIS_s, COFINS_s, IBS_s, CBS_s, ICMS_proprio,
           china_fora_val, boss_fora_val, COM_br, COM_br_linhas, COM_china_dentro,
-          juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel,
+          juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel, frete_terrestre, frete_terrestre_pct,
           valor_entrada, valor_saldo, juros_parcelamento, nota_servico_val, total_parcelamento,
           faturamento_total: faturamento, lucro_bruto, pct_lucro, fatorNfe } = cadeia;
 
@@ -2624,7 +2757,8 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     imp_custo, custo_total,
     faturamento, vlr_produto, IPI_s, base_icms, ICMS_nfe, ICMS_proprio, PIS_s, COFINS_s, IBS_s, CBS_s, usoConsumo,
     COM_br, COM_br_linhas, COM_china_dentro, icms_st, base_st, vlr_total_nfe,
-    juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel,
+    juros_boleto, custo_financeiro, custo_fin_pct, comissao_repr_parcel, frete_terrestre, frete_terrestre_pct,
+    VAR_CAMB, var_cambial: varCamb,
     forma_custo_fin: (document.getElementById('forma_custo_fin')||{}).value || '',
     prazo_texto: prazoCotacaoTexto(),
     china_fora_val, boss_fora_val, china_pct, txOp,
@@ -2695,12 +2829,12 @@ const cbsCapa = r.CBS_e;
 const totalCreditos = -(ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa);
 const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCapa + r.DUMP;
   const despesas = [
-    { label: 'Taxa SISCOMEX', brl: r.txOp.fixas.siscomex * r.containers },
-    { label: 'A.F.R.M (Marinha Mercante)', brl: r.txOp.fixas.marinha * r.containers },
+    { label: 'Taxa SISCOMEX', brl: r.txOp.fixas.siscomex },
+    { label: 'A.F.R.M (Marinha Mercante)', brl: r.txOp.fixas.marinha },
     { label: 'Capatazia (THC-Container)', brl: r.txOp.fixas.capatazia * r.containers },
     { label: 'Armazenagem e Movimentacao Porto', brl: r.txOp.fixas.armazenagem },
-    { label: 'Taxas Destino (agente de carga)', brl: r.txOp.fixas.agente * r.containers },
-    { label: 'Emissao de L.Is (D.I/DUIMP)', brl: r.txOp.fixas.emissao_li * r.containers },
+    { label: 'Taxas Destino (agente de carga)', brl: r.txOp.fixas.agente },
+    { label: 'Emissao de L.Is (D.I/DUIMP)', brl: r.txOp.fixas.emissao_li },
     { label: 'Despachante - SDA', brl: (r.txOp.fixas.despachante + r.txOp.fixas.sda) * r.containers },
     { label: 'Lavacao (retorno container)', brl: r.txOp.fixas.lavacao * r.containers },
     { label: 'Administrativo', brl: r.txOp.fixas.administrativo * r.containers },
@@ -2715,6 +2849,7 @@ const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCap
   // própria na Capa (Ayslan 13/10/2026: total não batia com a soma das linhas).
   if ((r.txOp.fixas.reciclagem || 0) > 0) despesas.splice(despesas.length - 1, 0, { label: 'Reciclagem', brl: r.txOp.fixas.reciclagem });
   if (r.DUMP > 0) despesas.push({ label: 'Dumping', brl: r.DUMP });
+  if ((r.VAR_CAMB || 0) > 0) despesas.push({ label: 'Variação cambial entrada (4,65%)', brl: r.VAR_CAMB });
   // Marjoração 0,6%: na CAPA da planilha (B59) fica nas Despesas, não nos tributos.
   if (r.MARJ > 0) despesas.push({ label: 'Marjoração 0,6%', brl: r.MARJ });
   // Valor FOB/CIF na Capa por Câmbio Fechado de cada parcela (ver
@@ -2901,7 +3036,7 @@ function renderResultado(r) {
     </div>
   ` : '';
 
-  const parcelamento_html = (r.total_parcelamento > 0 || r.custo_financeiro > 0) ? `
+  const parcelamento_html = (r.total_parcelamento > 0 || r.custo_financeiro > 0 || (r.frete_terrestre||0) > 0) ? `
     <div class="detail-section">
       <div class="detail-title">💳 Parcelamento / Nota de Serviço</div>
       <table class="calc-table">
@@ -2911,6 +3046,7 @@ function renderResultado(r) {
         ${r.juros_boleto > 0 ? `<tr><td>Juros no boleto (fora da NF) — receita</td><td class="num" style="color:var(--ok);">${fmtR(r.juros_boleto)}</td></tr><tr><td style="padding-left:16px;color:var(--muted);">PIS/COFINS 4,65% sobre o juros</td><td class="num" style="color:var(--warn);">−${fmtR(r.juros_boleto*0.0465)}</td></tr>` : ''}
         ${r.comissao_repr_parcel > 0 ? `<tr><td>Representante GF PNEUS (0,5%)</td><td class="num" style="color:var(--warn);">${fmtR(r.comissao_repr_parcel)}</td></tr>` : ''}
         ${r.custo_financeiro > 0 ? `<tr><td>${({prazo:'Prazo interno',cartao:'Cartão (REDE)',trademaster:'Trademaster'})[r.forma_custo_fin]||'Custo financeiro'} (${(r.custo_fin_pct*100).toFixed(2).replace('.',',')}% da NF)</td><td class="num" style="color:var(--warn);">${fmtR(r.custo_financeiro)}</td></tr>` : ''}
+        ${(r.frete_terrestre||0) > 0 ? `<tr><td>Frete terrestre (${(r.frete_terrestre_pct*100).toFixed(2).replace('.',',')}% da NF — Transportadora)</td><td class="num" style="color:var(--warn);">${fmtR(r.frete_terrestre)}</td></tr>` : ''}
         ${r.nota_servico_val > 0 ? `<tr><td>Nota de Serviço</td><td class="num" style="color:var(--warn);">${fmtR(r.nota_servico_val)}</td></tr>` : ''}
         <tr class="destaque-row"><td>Total do Bloco</td><td class="num">${fmtR(r.total_parcelamento)}</td></tr>
       </table>
@@ -3032,10 +3168,10 @@ function renderResultado(r) {
             <div class="card-value">${fmtR(r.faturamento)}</div>
             <div class="card-sub">+ IPI ${fmtR(r.IPI_s)}</div>
           </div>
-          <div class="card-num ${r.pct_lucro >= 4 ? 'ok' : r.pct_lucro >= 2 ? 'warn' : 'err'}">
+          <div class="card-num ${classeLucroMeta(r.pct_lucro)}">
             <div class="card-label">Lucro Bruto</div>
-            <div class="card-value ${r.pct_lucro >= 4 ? 'ok' : r.pct_lucro >= 2 ? 'warn' : 'err'}">${fmtR(r.lucro_bruto)}</div>
-            <div class="card-sub">${fmtP(r.pct_lucro)} s/ faturamento</div>
+            <div class="card-value ${classeLucroMeta(r.pct_lucro)}">${fmtR(r.lucro_bruto)}</div>
+            <div class="card-sub">${fmtP(r.pct_lucro)} s/ faturamento${textoMetaLucro(r.pct_lucro)}</div>
           </div>
           ${Math.abs(r.diferenca_taxas_real) > 0.01 ? `
           <div class="card-num ${r.pct_lucro_real >= 4 ? 'ok' : r.pct_lucro_real >= 2 ? 'warn' : 'err'}">
@@ -3104,10 +3240,10 @@ function renderResultado(r) {
         <div class="resultado-header"><h2>🏦 Taxas Operacionais</h2></div>
         <div class="resultado-body">
           <table class="calc-table">
-            <tr><td>Siscomex</td><td class="num">${fmtR(r.txOp.fixas.siscomex*r.containers)}</td></tr>
-            <tr><td>Marinha Mercante</td><td class="num">${fmtR(r.txOp.fixas.marinha*r.containers)}</td></tr>
+            <tr><td>Siscomex</td><td class="num">${fmtR(r.txOp.fixas.siscomex)}</td></tr>
+            <tr><td>Marinha Mercante</td><td class="num">${fmtR(r.txOp.fixas.marinha)}</td></tr>
             <tr><td>Armazenagem</td><td class="num">${fmtR(r.txOp.fixas.armazenagem)}</td></tr>
-            <tr><td>Emissão L.I.</td><td class="num">${fmtR(r.txOp.fixas.emissao_li*r.containers)}</td></tr>
+            <tr><td>Emissão L.I.</td><td class="num">${fmtR(r.txOp.fixas.emissao_li)}</td></tr>
             <tr><td>Baixa Pátio</td><td class="num">${fmtR(r.txOp.fixas.baixa_patio*r.containers)}</td></tr>
             <tr><td>Capatazia (THC)</td><td class="num">${fmtR(r.txOp.fixas.capatazia*r.containers)}</td></tr>
             <tr><td>Liberação BL</td><td class="num">${fmtR(r.txOp.fixas.liberacao_bl*r.containers)}</td></tr>
@@ -3115,12 +3251,13 @@ function renderResultado(r) {
             <tr><td>SDA</td><td class="num">${fmtR(r.txOp.fixas.sda*r.containers)}</td></tr>
             <tr><td>Lavação Container</td><td class="num">${fmtR(r.txOp.fixas.lavacao*r.containers)}</td></tr>
             <tr><td>Administrativo</td><td class="num">${fmtR(r.txOp.fixas.administrativo*r.containers)}</td></tr>
-            <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente*r.containers)}</td></tr>
+            <tr><td>Agente Carga</td><td class="num">${fmtR(r.txOp.fixas.agente)}</td></tr>
             <tr><td>Taxas USD (BRL)</td><td class="num">${fmtR(r.taxas_usd_brl)}</td></tr>
             <tr><td>Taxa Seguro de Venda</td><td class="num">${fmtR(r.seguro_venda_brl)}</td></tr>
             ${(r.txOp.fixas.reciclagem||0) > 0 ? `<tr><td>Reciclagem</td><td class="num">${fmtR(r.txOp.fixas.reciclagem)}</td></tr>` : ''}
             <tr><td>Custos Diversos</td><td class="num">${fmtR(r.custos_div)}</td></tr>
             ${r.DUMP > 0 ? `<tr><td>Dumping</td><td class="num">${fmtR(r.DUMP)}</td></tr>` : ''}
+            ${(r.VAR_CAMB||0) > 0 ? `<tr><td>Variação cambial entrada (4,65% s/ R$ ${fmt(r.var_cambial.variacao_brl)})</td><td class="num">${fmtR(r.VAR_CAMB)}</td></tr>` : ''}
             <tr class="total-row"><td>Total Taxas</td><td class="num">${fmtR(r.total_taxas)}</td></tr>
             <tr class="destaque-row"><td>CUSTO TOTAL</td><td class="num">${fmtR(r.custo_total)}</td></tr>
           </table>
@@ -3420,22 +3557,23 @@ async function exportarExcel() {
       add('total', 'TOTAL DOS CRÉDITOS', '', '', fmtR(-(r.IPI_e+r.PIS_e+r.COFINS_e+r.ICMS_e+r.IBS_e+r.CBS_e)));
       add('blank');
       add('secao', 'DESPESAS ADUANEIRAS E OPERACIONAIS');
-      add('dado', 'Taxa SISCOMEX', '', '', fmtR(r.txOp.fixas.siscomex*r.containers));
-      add('dado', 'A.F.R.M (Marinha Mercante)', '', '', fmtR(r.txOp.fixas.marinha*r.containers));
+      add('dado', 'Taxa SISCOMEX', '', '', fmtR(r.txOp.fixas.siscomex));
+      add('dado', 'A.F.R.M (Marinha Mercante)', '', '', fmtR(r.txOp.fixas.marinha));
       add('dado', 'Armazenagem e Movimentação Porto', '', '', fmtR(r.txOp.fixas.armazenagem));
       add('dado', 'Capatazia (THC)', '', '', fmtR(r.txOp.fixas.capatazia*r.containers));
       add('dado', 'Liberação BL', '', '', fmtR(r.txOp.fixas.liberacao_bl*r.containers));
-      add('dado', 'Emissão de L.Is', '', '', fmtR(r.txOp.fixas.emissao_li*r.containers));
+      add('dado', 'Emissão de L.Is', '', '', fmtR(r.txOp.fixas.emissao_li));
       add('dado', 'Despachante - SDA', '', '', fmtR((r.txOp.fixas.despachante+r.txOp.fixas.sda)*r.containers));
       add('dado', 'Lavação Container', '', '', fmtR(r.txOp.fixas.lavacao*r.containers));
       add('dado', 'Administrativo', '', '', fmtR(r.txOp.fixas.administrativo*r.containers));
-      add('dado', 'Agente de Carga', '', '', fmtR(r.txOp.fixas.agente*r.containers));
+      add('dado', 'Agente de Carga', '', '', fmtR(r.txOp.fixas.agente));
       add('dado', 'Baixa Pátio', '', '', fmtR(r.txOp.fixas.baixa_patio*r.containers));
       add('dado', 'Taxas em USD (diversas)', '', '', fmtR(r.taxas_usd_brl));
       add('dado', 'Taxa Seguro de Venda', '', '', fmtR(r.seguro_venda_brl));
       if((r.txOp.fixas.reciclagem||0) > 0) add('dado', 'Reciclagem', '', '', fmtR(r.txOp.fixas.reciclagem));
       add('dado', 'Custos Diversos', '', '', fmtR(r.custos_div));
       if(r.DUMP > 0) add('dado', 'Dumping', '', '', fmtR(r.DUMP));
+      if((r.VAR_CAMB||0) > 0) add('dado', 'Variação cambial entrada (4,65%)', '', '', fmtR(r.VAR_CAMB));
       add('total', 'TOTAL DESPESAS', '', '', fmtR(r.total_taxas));
       add('blank');
       add('totalGrande', 'CUSTO TOTAL', '', '', fmtR(r.custo_total));
@@ -3915,7 +4053,7 @@ const CAMPOS_COTACAO = [
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
   'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
   'tx_administrativo','tx_agente','tx_handling','tx_additional_costs','tx_import_logistics','tx_trs','tx_import_logistics_brl','tx_crs_brl','tx_tsc',
-  'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao','tx_reciclagem',
+  'tx_drop_off','tx_isps','tx_iof','tx_desconsolidacao','tx_reciclagem','tx_var_cambial','frete_terrestre_pct',
   'pct_entrada','taxa_juros_am','prazo_medio_dias','pct_nota_servico','nota_beneficiario','cenario_valor','cenario_valor_sem_st',
   'juros_boleto_fixo','forma_custo_fin','cf_taxa_am','cf_prazo_medio','cf_parcelas','prazo_boleto','prazo_boleto_outro','cf_prazo','cf_prazo_outro',
 ];
@@ -4004,6 +4142,8 @@ function aplicarEstadoFormulario(estado){
     const txtC = c.cf_prazo === '__outro__' ? c.cf_prazo_outro : c.cf_prazo;
     restaurarPrazoSelect('cf_prazo','cf_prazo_outro','cf_prazo_medio','cf_prazo_info', txtC || (c.cf_prazo_medio ? String(c.cf_prazo_medio)+' dias' : '')); }
   atualizarFormaCustoFin();
+  atualizarFreteTerrestreUI();
+  if(typeof aplicarMetaLucroCliente === 'function') { const m = metaLucroAtualCalc(); const info = document.getElementById('meta-lucro-info'); if(info && m){ info.style.display=''; info.textContent = `Meta de lucro ${m.especifica ? 'do cliente' : 'padrão'} (${m.nome}): ${String(m.pct).replace('.', ',')}%.`; } }
   { const info = document.getElementById('regra-gf-info'); if(info) info.style.display = ehClienteGFPneus() ? '' : 'none'; }
   // Restaura o estado dos checkboxes "auto" (Marinha/Agente). Cotações salvas
   // antes dessa feature não têm esse campo — mantém o padrão (auto ligado).

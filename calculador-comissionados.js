@@ -36,14 +36,44 @@ function comissionadoAtendeClienteCalc(c, cliente) {
   const cli = ' ' + norm(cliente) + ' ';
   return lista.some(t => cli.includes(' ' + t + ' ')); // palavra inteira: "OST" não casa com "COSTA"
 }
+// Meta de lucro por cliente (lista "meta_lucro", Rev97 N33). Devolve
+// { pct, codigo, nome } — linha específica do cliente (mesma regra de palavra
+// inteira dos comissionados) ou a linha sem clientes (padrão); null se nada.
+function metaLucroParaCliente(lista, cliente) {
+  const itens = (lista || []).filter(x => x && x.ativo !== false);
+  const pct = x => parseFloat(String(((x || {}).dados || {}).percentual == null ? '' : x.dados.percentual).replace(',', '.'));
+  const especifica = itens.find(x => (x.dados || {}).clientes && comissionadoAtendeClienteCalc(x, cliente));
+  const padrao = itens.find(x => !String((x.dados || {}).clientes || '').trim());
+  const m = especifica || padrao;
+  if (!m || isNaN(pct(m))) return null;
+  return { pct: pct(m), codigo: m.codigo, nome: m.nome || m.codigo, especifica: !!especifica };
+}
 const ehSimComissaoCalc = v => v === true || /^(S|SIM|Y|YES|TRUE|1)$/i.test(String(v || '').trim());
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { calcularComissionadosCalc, comissionadoAtendeClienteCalc, ehSimComissaoCalc };
+  module.exports = { calcularComissionadosCalc, comissionadoAtendeClienteCalc, ehSimComissaoCalc, metaLucroParaCliente };
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') (function () {
   let _lista = null; // null = ainda não carregou
+  let _metas = [];   // lista meta_lucro
+
+  // Meta de lucro do cliente digitado (ou null). Usada pelo card de resultado.
+  window.metaLucroAtualCalc = function () {
+    const cliente = (document.getElementById('cliente') || {}).value || '';
+    return metaLucroParaCliente(_metas, cliente);
+  };
+  // Ao trocar o cliente: Lucro Alvo % (cenário em %) recebe a meta do cliente,
+  // como a planilha (DADOS!N33 → MODELO). Cenário 2 (R$) não mexe.
+  window.aplicarMetaLucroCliente = function () {
+    const m = window.metaLucroAtualCalc();
+    const info = document.getElementById('meta-lucro-info');
+    if (!m) { if (info) info.style.display = 'none'; return; }
+    if (info) { info.style.display = ''; info.textContent = `Meta de lucro ${m.especifica ? 'do cliente' : 'padrão'} (${m.nome}): ${String(m.pct).replace('.', ',')}% — aplicada no Lucro Alvo %.`; }
+    if (_estado.cenario === 2) return;
+    const el = document.getElementById('cenario_valor');
+    if (el && parseFloat(el.value) !== m.pct) { el.value = m.pct; if (typeof agendarAutosave === 'function') agendarAutosave(); recalcularSePronto(); }
+  };
 
   const NOME_BASE = { FATURAMENTO_TOTAL: 'Faturamento total', NOTA_FISCAL: 'Nota fiscal', FOB_DOLAR: 'FOB', LUCRO_BRUTO: 'Lucro bruto' };
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -133,7 +163,8 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') (function 
       const r = await fetch('/api/listas').then(x => x.json());
       _lista = ((r && r.listas && r.listas.comissionado) || []).filter(x => x && x.codigo && x.ativo !== false)
         .map(x => ({ ...x, codigo: String(x.codigo).toUpperCase() }));
-    } catch (e) { _lista = []; }
+      _metas = (r && r.listas && r.listas.meta_lucro) || [];
+    } catch (e) { _lista = []; _metas = []; }
     render();
   }
 
