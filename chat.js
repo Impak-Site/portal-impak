@@ -116,6 +116,15 @@ border: none; background: none; cursor: pointer;
 #impak-nav .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
 #impak-nav .nav-link.active { color: #fff; background: rgba(255,255,255,.15); }
 #impak-nav .nav-sep { color: rgba(255,255,255,.2); margin: 0; font-size: 11px; flex-shrink: 0; }
+/* Contador da Agenda ("Agenda 4"): tarefas atrasadas da pessoa em vermelho,
+   ou "hoje" em âmbar quando não há atrasadas. Pedido Ayslan 14/10/2026 —
+   a agenda ficava escondida dentro do dropdown Operacional e ninguém via. */
+#impak-nav .nav-ag-badge, #impak-nav-drawer .nav-ag-badge {
+display: none; margin-left: 5px; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
+background: #dc2626; color: #fff; font-size: 10px; font-weight: 800; line-height: 17px; text-align: center; vertical-align: 1px;
+}
+#impak-nav .nav-ag-badge.hoje, #impak-nav-drawer .nav-ag-badge.hoje { background: #d97706; }
+#impak-nav .nav-ag-badge.on, #impak-nav-drawer .nav-ag-badge.on { display: inline-block; }
 /* Setores em dropdown — pedido Ayslan 15/09/2026: agrupar os 11 links soltos
    em 4 áreas do negócio (Operacional/Financeiro/Executivo/Comercial) pra
    ficar óbvio o que é o que, em vez de uma lista plana crescendo sem fim
@@ -373,7 +382,6 @@ const ICONES_NAV = {
 
 const navSetores = [
   { setor: 'Operacional', icone: 'operacional', itens: [
-    { label: 'Agenda', icone: 'agenda', href: '/agenda', key: 'agenda', modulo: 'controle' }, // agenda de atividades por etapa (#675, 13/10/2026)
     { label: 'Controle', icone: 'controle', href: '/controle', key: 'controle', modulo: 'controle' },
     { label: 'Fila de Conferência', icone: 'conferenciaFila', href: '/conferencia-fila', key: 'conferencia-fila', modulo: 'conferencia' }, // renomeado de 'Conferência' pra deixar claro que é a fila (pedido Ayslan 15/09/2026) — aponta pra fila nova dentro do Controle (task #636/#645) — processos.html (antigo) continua no ar por enquanto, só não tem mais link na nav
     { label: 'Reciclagem', icone: 'reciclagem', href: '/reciclagem', key: 'reciclagem', modulo: 'controle' },
@@ -487,6 +495,17 @@ const addSep = () => {
 const todosPaineis = [];
 const fecharPaineis = () => todosPaineis.forEach(p => p.classList.remove('open'));
 
+// Agenda fica solta e em primeiro (pedido Ayslan 14/10/2026): é a lista do
+// que cada um tem pra fazer, então precisa estar à vista, com o contador.
+if(modulosDoUsuario.includes('controle')){
+  const link = document.createElement('a');
+  link.className = 'nav-link' + (modAtual === 'agenda' ? ' active' : '');
+  link.href = '/agenda';
+  link.innerHTML = ICONES_NAV.agenda + 'Agenda<span class="nav-ag-badge"></span>';
+  linksWrap.appendChild(link);
+  precisaSep = true;
+}
+
 navSetores.forEach(setor => {
   const itensPermitidos = setor.itens.filter(m => modulosDoUsuario.includes(m.modulo));
   if(!itensPermitidos.length) return;
@@ -567,6 +586,7 @@ if(['narcelio', 'paula', 'suporte'].includes(d.usuario)){
 // no clique — sem isso ele ficaria "flutuando" fora do lugar do botão).
 // Menu ☰: setores e links soltos (Cadastros/TV/Permissões) + usuário/Sair.
 let htmlDrawer = '';
+if(modulosDoUsuario.includes('controle')) htmlDrawer += '<a href="/agenda" class="' + (modAtual === 'agenda' ? 'active' : '') + '">' + ICONES_NAV.agenda + 'Agenda<span class="nav-ag-badge"></span></a>';
 navSetores.forEach(setor => {
   const itens = setor.itens.filter(m => modulosDoUsuario.includes(m.modulo));
   if(!itens.length) return;
@@ -588,6 +608,24 @@ drawer.innerHTML = htmlDrawer;
 document.addEventListener('click', fecharPaineis);
 window.addEventListener('scroll', fecharPaineis, true);
 window.addEventListener('resize', fecharPaineis);
+
+// Contador da Agenda. Quem calcula é o Controle (controle-dash-agenda.js →
+// atualizarResumoAgenda), que grava em localStorage; nas outras telas
+// (TyreDesk, Cadastros…) a nav mostra o último valor conhecido da pessoa.
+window.impakAgendaBadge = function(resumo){
+  const r = resumo || {};
+  const n = r.atrasadas || 0, h = r.hoje || 0;
+  document.querySelectorAll('.nav-ag-badge').forEach(b => {
+    b.classList.remove('on', 'hoje');
+    if(n){ b.textContent = n; b.title = n + ' atrasada(s)'; b.classList.add('on'); }
+    else if(h){ b.textContent = h; b.title = h + ' vence(m) hoje'; b.classList.add('on', 'hoje'); }
+    else b.textContent = '';
+  });
+};
+try{
+  const cache = JSON.parse(localStorage.getItem('impak_agenda_resumo') || 'null');
+  if(cache && cache.usuario === String(d.usuario || '').toLowerCase() && Date.now() - (cache.ts || 0) < 24*60*60*1000) window.impakAgendaBadge(cache);
+}catch(e){}
 }).catch(()=>{});
 
 // ── CHAT ─────────────────────────────────────────────────────

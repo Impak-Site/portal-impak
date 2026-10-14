@@ -1030,6 +1030,7 @@ function aplicarListaProcessos(lista, silencioso){
   renderStats();
   renderFaseFilter();
   carregarNotificacoes();
+  if(typeof atualizarResumoAgenda === 'function') atualizarResumoAgenda(); // faixa + contador da Agenda (14/10/2026)
   if(!silencioso) showToast(`${_processos.length} processos carregados`,'ok');
   // Deep link (task #59) — se a página abriu direto em /controle/UD26-005,
   // abre o painel do processo assim que a lista termina de carregar.
@@ -4324,7 +4325,7 @@ function verificarAlertas(proc, criarNotif){
       const temDraft = nomes.some(n => /draft/i.test(n));
       const faltando = [!temCI&&'CI', !temPL&&'PL', !temDraft&&'Draft'].filter(Boolean);
       if(faltando.length){
-        alertas.push({tipo:'alerta', titulo:`Embarque esta semana sem documentos: ${proc.referencia}`, mensagem:`ETD ${etd.toLocaleDateString('pt-BR')} — faltando anexar: ${faltando.join(', ')}.`});
+        alertas.push({tipo:'alerta', naAgenda:true, titulo:`Embarque esta semana sem documentos: ${proc.referencia}`, mensagem:`ETD ${etd.toLocaleDateString('pt-BR')} — faltando anexar: ${faltando.join(', ')}.`});
       }
     }
   }
@@ -4345,7 +4346,7 @@ function verificarAlertas(proc, criarNotif){
     if(proc.aprovacao_hbl !== 'Sim') pendentes.push('Aprovação HBL');
     if(proc.solicitacao_li !== 'Sim') pendentes.push('Solicitação LI');
     if(pendentes.length){
-      alertas.push({tipo:'alerta', titulo:`Pendência pós-embarque: ${proc.referencia}`, mensagem:`Já embarcou e ainda falta: ${pendentes.join(', ')}.`});
+      alertas.push({tipo:'alerta', naAgenda:true, titulo:`Pendência pós-embarque: ${proc.referencia}`, mensagem:`Já embarcou e ainda falta: ${pendentes.join(', ')}.`});
     }
   }
 
@@ -4358,11 +4359,16 @@ function verificarAlertas(proc, criarNotif){
   // como enviados (docs_enviados_despachante) ou quando a LI já foi
   // solicitada (não faz mais sentido reenviar).
   if(proc.aprovacao_hbl === 'Sim' && proc.solicitacao_li !== 'Sim' && !proc.docs_enviados_despachante && proc.fase !== 'FINALIZADO'){
-    alertas.push({tipo:'alerta', titulo:`Enviar docs à despachante: ${proc.referencia}`, mensagem:`HBL aprovado — enviar HBL/CI pra Amanda/Find Comex solicitar a LI.`});
+    alertas.push({tipo:'alerta', naAgenda:true, titulo:`Enviar docs à despachante: ${proc.referencia}`, mensagem:`HBL aprovado — enviar HBL/CI pra Amanda/Find Comex solicitar a LI.`});
   }
 
   if(criarNotif){
-    if(alertas.length) alertas.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
+    // Avisos de "falta fazer X" (naAgenda) continuam como alerta do processo
+    // (badge na linha/painel), mas NÃO vão mais pro sino: já são tarefas da
+    // Agenda, com dono e prazo (A09/A10/A11/A12). O sino fica só pra evento
+    // (demurrage, ETA, pagamento, cancelamento). Pedido Ayslan 14/10/2026.
+    const noSino = alertas.filter(a => !a.naAgenda);
+    if(noSino.length) noSino.forEach(a => criarNotificacao(proc.id, a.tipo, a.titulo, a.mensagem));
     // Limpa notificações antigas do processo cuja condição não é mais
     // verdadeira (pedido Emanuelly 09/09/2026: "os que já estejam
     // finalizados não fiquem com o alerta dos docs" — ex: alerta de
@@ -4372,7 +4378,7 @@ function verificarAlertas(proc, criarNotif){
     // Roda a cada save (mesmo gatilho que cria notificação nova acima) —
     // compara o que está com o que DEVERIA estar ativo agora e apaga o
     // resto.
-    limparNotificacoesResolvidas(proc.id, alertas.map(a=>a.titulo));
+    limparNotificacoesResolvidas(proc.id, noSino.map(a=>a.titulo));
   }
   return alertas;
 }
@@ -4734,6 +4740,7 @@ if (refsDuplicadas > 0) stats.push({num:refsDuplicadas, label:'Referência dupli
       <div class="stat-num" style="color:${s.cor}">${s.num}</div>
       <div class="stat-label">${s.label}</div>
     </div>`).join('');
+  if(typeof renderFaixaAgenda === 'function') renderFaixaAgenda();
 }
 
 // Mapa de filtros especiais por "fase" virtual (chaves começando com "__",

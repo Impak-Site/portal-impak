@@ -1407,6 +1407,19 @@ teste('verificarAlertas: processo embarcado sem HBL/LI aprovado gera alerta de p
   iguais(temPendencia, true, 'processo em andamento sem HBL/LI deveria alertar');
 });
 
+teste('verificarAlertas: avisos de "falta fazer" (HBL/LI, docs, despachante) vêm marcados naAgenda — ficam no processo, não no sino (14/10/2026)', () => {
+  const p = { id:'x9', referencia:'UD26-997', fase:'DESEMBARCADO', data_embarque:'2026-08-01', aprovacao_hbl:'Sim', solicitacao_li:null, docs_enviados_despachante:null };
+  const alertas = sandbox.verificarAlertas(p, false);
+  const pend = alertas.find(a => a.titulo.startsWith('Pendência pós-embarque'));
+  const desp = alertas.find(a => a.titulo.startsWith('Enviar docs à despachante'));
+  iguais(!!pend && pend.naAgenda === true, true, 'pós-embarque deveria ser naAgenda');
+  iguais(!!desp && desp.naAgenda === true, true, 'enviar docs deveria ser naAgenda');
+  // Demurrage continua sendo evento (sem a marca) — vai pro sino.
+  const d = { id:'x10', referencia:'UD26-996', fase:'CARREGAMENTO', demurrage_vencimento: new Date(Date.now()+2*86400000).toISOString().slice(0,10) };
+  const dem = sandbox.verificarAlertas(d, false).find(a => a.titulo.startsWith('Demurrage'));
+  iguais(!!dem && !dem.naAgenda, true, 'demurrage não deveria ser naAgenda');
+});
+
 teste('verificarAlertas: processo FINALIZADO não gera mais o alerta de HBL/LI mesmo com os campos vazios (pedido Emanuelly 09/09/2026)', () => {
   const p = { id:'x2', referencia:'UD26-998', fase:'FINALIZADO', data_embarque:'2026-06-01', aprovacao_hbl:null, solicitacao_li:null, pi_valor_usd:1000 };
   const alertas = sandbox.verificarAlertas(p, false);

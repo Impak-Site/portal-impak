@@ -49,6 +49,7 @@ async function agendaMarcar(chave, tipo){
       return;
     }
     await _agCarregarConclusoes(true);
+    atualizarResumoAgenda();
     showToast(tipo === 'reaberta' ? 'Atividade reaberta' : (tipo === 'feita' ? 'Atividade concluída' : 'Marcada como "não se aplica"'), 'ok');
     if(document.getElementById('dash-agenda')?.style.display === 'block') renderDashAgenda();
     if(_editando && _editando.id && document.getElementById('pane-agenda')?.classList.contains('active')) renderAgendaProcesso(_editando);
@@ -98,6 +99,48 @@ function _agLinha(t, hoje, opts){
   </div>`;
 }
 
+// ── Perfil: quem pode ver a agenda dos outros ────────────────────────
+// Analista vê só a própria função; gerente (role) vê "Toda a equipe" e o
+// filtro por pessoa. Pedido Ayslan 14/10/2026.
+function _agPodeVerEquipe(){ return !!(_user && _user.role === 'gerente'); }
+
+// ── Resumo (atrasadas/hoje da pessoa) → faixa no Controle + contador na nav ──
+let _agResumo = null;
+async function atualizarResumoAgenda(){
+  if(typeof AgendaCore === 'undefined' || !_user) return;
+  try{
+    const hoje = _agHoje();
+    const { cfg, tarefas } = await _agGerar(_processos || [], false);
+    const login = (_user.usuario || '').toLowerCase();
+    const fs = AgendaCore.funcoesDoUsuario(cfg, login);
+    const minhas = tarefas.filter(t => fs.includes(t.funcao));
+    const n = k => minhas.filter(t => AgendaCore.classificar(t, hoje) === k).length;
+    _agResumo = { usuario: login, atrasadas: n('atrasada'), hoje: n('hoje'), semana: n('semana'), temFuncao: fs.length > 0, ts: Date.now() };
+    try{ localStorage.setItem('impak_agenda_resumo', JSON.stringify(_agResumo)); }catch(e){}
+    if(typeof window.impakAgendaBadge === 'function') window.impakAgendaBadge(_agResumo);
+    renderFaixaAgenda();
+  }catch(e){ console.warn('resumo agenda', e); }
+}
+// Faixa "Você tem X atrasadas e Y para hoje" no topo do Controle (dentro do
+// #stats-grid, pra sumir junto com ele nas telas exclusivas/dashboards).
+function renderFaixaAgenda(){
+  const grid = document.getElementById('stats-grid');
+  if(!grid) return;
+  let el = document.getElementById('agenda-faixa');
+  const r = _agResumo;
+  if(!r || !r.temFuncao || (!r.atrasadas && !r.hoje)){ if(el) el.remove(); return; }
+  if(!el){ el = document.createElement('div'); el.id = 'agenda-faixa'; }
+  const atr = r.atrasadas, hj = r.hoje;
+  const cor = atr ? '#b91c1c' : '#b45309', fundo = atr ? '#fef2f2' : '#fffbeb', borda = atr ? '#fecaca' : '#fde68a';
+  const partes = [];
+  if(atr) partes.push(`<b>${atr}</b> atrasada${atr>1?'s':''}`);
+  if(hj) partes.push(`<b>${hj}</b> para hoje`);
+  el.style.cssText = `grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:${fundo};border:1px solid ${borda};border-left:4px solid ${cor};border-radius:10px;padding:9px 14px;font-size:13px;color:${cor};`;
+  el.innerHTML = `<span style="font-size:16px;">📅</span><span>Você tem ${partes.join(' e ')} na sua agenda.</span>
+    <a href="/agenda" style="margin-left:auto;font-weight:700;color:${cor};text-decoration:none;border:1px solid ${cor};border-radius:8px;padding:4px 12px;background:#fff;">Ver agenda →</a>`;
+  if(grid.firstChild !== el) grid.insertBefore(el, grid.firstChild);
+}
+
 // ── Tela /agenda ─────────────────────────────────────────────────────
 async function renderDashAgenda(){
   const el = document.getElementById('dash-agenda-content');
@@ -107,7 +150,9 @@ async function renderDashAgenda(){
   const { cfg, tarefas } = await _agGerar(_processos || [], false);
   const login = (_user && _user.usuario || '').toLowerCase();
   const minhasFuncoes = AgendaCore.funcoesDoUsuario(cfg, login);
-  if(_agFiltro.ver === null) _agFiltro.ver = minhasFuncoes.length ? 'eu' : 'equipe';
+  const podeEquipe = _agPodeVerEquipe();
+  if(_agFiltro.ver === null) _agFiltro.ver = (minhasFuncoes.length || !podeEquipe) ? 'eu' : 'equipe';
+  if(!podeEquipe && _agFiltro.ver !== 'eu') _agFiltro.ver = 'eu';
 
   // Pessoas (todas que aparecem em alguma função)
   const pessoas = [...new Set(Object.values(cfg.funcoes).flatMap(f => f.usuarios))];
@@ -152,9 +197,9 @@ async function renderDashAgenda(){
       </table></div>`;
   }
 
-  const optsVer = [`<option value="eu" ${_agFiltro.ver==='eu'?'selected':''} ${minhasFuncoes.length?'':'disabled'}>Minha agenda${minhasFuncoes.length?'':' (sem função cadastrada)'}</option>`,
-    `<option value="equipe" ${_agFiltro.ver==='equipe'?'selected':''}>Toda a equipe</option>`,
-    ...pessoas.map(l => `<option value="p:${_agEsc(l)}" ${_agFiltro.ver==='p:'+l?'selected':''}>${_agEsc(_agNomePessoas([l]))}</option>`)].join('');
+  const optsVer = [`<option value="eu" ${_agFiltro.ver==='eu'?'selected':''}>Minha agenda${minhasFuncoes.length?'':' (sem função cadastrada)'}</option>`,
+    ...(podeEquipe ? [`<option value="equipe" ${_agFiltro.ver==='equipe'?'selected':''}>Toda a equipe</option>`,
+      ...pessoas.map(l => `<option value="p:${_agEsc(l)}" ${_agFiltro.ver==='p:'+l?'selected':''}>${_agEsc(_agNomePessoas([l]))}</option>`)] : [])].join('');
   const optsFun = `<option value="">Todas as funções</option>` + Object.values(cfg.funcoes).map(f => `<option value="${_agEsc(f.codigo)}" ${_agFiltro.funcao===f.codigo?'selected':''}>${_agEsc(f.nome)}</option>`).join('');
 
   el.innerHTML = `
