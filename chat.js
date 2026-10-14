@@ -366,6 +366,7 @@ const ICONES_NAV = {
   controle: `<svg ${ICONE_SVG_BASE}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
   conferenciaFila: `<svg ${ICONE_SVG_BASE}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
   carregamento: `<svg ${ICONE_SVG_BASE}><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+  faturas: `<svg ${ICONE_SVG_BASE}><path d="M4 2v20l3-2 3 2 2-2 2 2 3-2 3 2V2l-3 2-3-2-2 2-2-2-3 2z"/><path d="M8 9h8M8 13h8"/></svg>`,
   dashFinanceiro: `<svg ${ICONE_SVG_BASE}><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>`,
   cambio: `<svg ${ICONE_SVG_BASE}><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>`,
   dre: `<svg ${ICONE_SVG_BASE}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
@@ -393,6 +394,7 @@ const navSetores = [
   ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
   { setor: 'Financeiro', icone: 'financeiro', itens: [
     { label: 'Dashboard Financeiro', icone: 'dashFinanceiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
+    { label: 'Faturas', icone: 'faturas', href: '/faturas', key: 'faturas', modulo: 'financeiro' }, // contas a pagar / a receber (14/10/2026)
     { label: 'Câmbio', icone: 'cambio', href: '/cambio', key: 'cambio', modulo: 'cambio' },
     { label: 'DRE Consolidado', icone: 'dre', href: '/controle?dash=dre', key: 'dash-dre', modulo: 'financeiro' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
   ]},
@@ -416,6 +418,7 @@ const navSetores = [
 // segurança caso isso mude no futuro).
 const path = window.location.pathname;
 const modAtual = path === '/' ? 'tyredesk'
+  : path.includes('faturas') ? 'faturas'
   : path.includes('analises') ? 'analises'
   : path.includes('resultado') ? 'resultado'
 : path.includes('cambio') ? 'cambio'

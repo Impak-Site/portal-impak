@@ -253,6 +253,33 @@ select.form-input{cursor:pointer;}
 .cr-wrap .form-input{padding-left:58px;padding-top:7px;padding-bottom:7px;font-variant-numeric:tabular-nums;text-align:right;}
 .cr-add{font-size:12px;padding:6px 10px;max-width:280px;color:var(--ac);background:transparent;border-style:dashed;cursor:pointer;}
 .cr-margem{font-size:11px;margin-top:3px;color:var(--muted);}
+.ft-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px;}
+.ft-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;}
+.ft-card-l{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;}
+.ft-card-v{font-size:22px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;}
+.ft-filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
+.ft-filtros .form-input{width:auto;min-width:120px;padding:6px 10px;font-size:12px;}
+.ft-filtros label{display:flex;align-items:center;gap:4px;}
+.ft-tabela-wrap{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:auto;}
+.ft-tabela{width:100%;border-collapse:collapse;font-size:12px;}
+.ft-tabela th{text-align:left;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.3px;padding:8px;border-bottom:2px solid var(--border);background:var(--bg);}
+.ft-tabela td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
+.ft-tabela tfoot td{font-weight:600;background:var(--bg);}
+.ft-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:999px;background:rgba(29,158,117,.12);color:#0f6e56;}
+.ft-tag.receber{background:rgba(55,138,221,.12);color:#185fa5;}
+.ft-badge{display:inline-block;font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--bg);color:var(--muted);border:1px solid var(--border);text-decoration:none;}
+.ft-badge.aberta{color:#185fa5;border-color:#b5d4f4;background:#e6f1fb;}
+.ft-badge.vencida{color:#a32d2d;border-color:#f7c1c1;background:#fcebeb;}
+.ft-badge.paga{color:#0f6e56;border-color:#9fe1cb;background:#e1f5ee;}
+.ft-modal-bg{position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:700;display:flex;align-items:flex-start;justify-content:center;padding:72px 20px 20px;overflow-y:auto;}
+.ft-modal{background:#fff;border-radius:12px;width:100%;max-width:760px;box-shadow:0 12px 40px rgba(16,24,40,.25);display:flex;flex-direction:column;max-height:calc(100vh - 100px);}
+.ft-modal-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px;}
+.ft-modal-body{padding:14px 16px;overflow-y:auto;}
+.ft-modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);}
+.ft-cand{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--bg2);}
+.ft-cand-campos{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
+.ft-cand-campos label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);flex:1;min-width:140px;}
+.ft-cand-campos .form-input{padding:6px 8px;font-size:12px;}
 .cr-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
 .cr-toolbar-campo{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap;}
 .cr-toolbar-campo .form-input{width:92px;padding:5px 8px;font-size:12px;}
@@ -588,6 +615,15 @@ ao lado das datas). -->
       <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🛡️ Averbação de Seguro</div>
     </div>
     <div id="dash-averbacao-content"></div>
+  </div>
+
+  <!-- FATURAS — contas a pagar / a receber (14/10/2026) -->
+  <div id="dash-faturas" style="display:none;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🧾 Faturas — contas a pagar e a receber</div>
+      <div class="cr-muted">Geradas na aba Custos Reais de cada processo ("Gerar faturas") ou avulsas. Cancelar nunca apaga.</div>
+    </div>
+    <div id="dash-faturas-content"></div>
   </div>
 
   <!-- AGENDA DE ATIVIDADES (#675) -->
@@ -1027,6 +1063,8 @@ ao lado das datas). -->
 <script src="/controle-dash-cambio.js"></script>
 <script src="/controle-dash-reciclagem.js"></script>
 <script src="/agenda-core.js"></script>
+<script src="/faturas-core.js"></script>
+<script src="/controle-faturas.js"></script>
 <script src="/controle-dash-agenda.js"></script>
 <script src="/controle-dash-narcelio.js"></script>
 <script src="/controle-dash-carregamento.js"></script>

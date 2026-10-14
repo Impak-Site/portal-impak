@@ -191,7 +191,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
     // Ayslan (10/09/2026, viu o toast cobrindo o canto do painel Backorders
     // na TV): elas têm o próprio cabeçalho/KPI mostrando os dados, o toast só
     // seria ruído (e numa TV física não tem ninguém pra ler e dispensar).
-    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros','/conferencia-fila','/reciclagem','/averbacao','/agenda'];
+    const TELAS_EXCLUSIVAS = ['/financeiro','/resultado','/analises','/narcelio','/tv','/cambio','/cadastros','/conferencia-fila','/reciclagem','/averbacao','/agenda','/faturas'];
     const carregamentoSilencioso = TELAS_EXCLUSIVAS.includes(_baseUrlPath);
     carregarProcessos(carregamentoSilencioso).then(()=>{
       if(_baseUrlPath==='/financeiro') ativarTelaFinanceiroExclusiva();
@@ -203,6 +203,7 @@ document.getElementById('btn-followup-semanal')?.style.setProperty('display', d.
       if(_baseUrlPath==='/reciclagem') ativarTelaReciclagemExclusiva();
       if(_baseUrlPath==='/agenda' && typeof ativarTelaAgendaExclusiva==='function') ativarTelaAgendaExclusiva();
       if(_baseUrlPath==='/averbacao') ativarTelaAverbacaoExclusiva();
+      if(_baseUrlPath==='/faturas' && typeof ativarTelaFaturasExclusiva==='function') ativarTelaFaturasExclusiva();
       if(_baseUrlPath==='/cadastros') ativarTelaCadastrosExclusiva();
       if(_baseUrlPath==='/conferencia-fila') ativarTelaConferenciaFilaExclusiva();
       // Dashboards que ainda não têm rota/tela exclusiva própria (Executivo,

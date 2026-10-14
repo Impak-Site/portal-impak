@@ -946,6 +946,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
 let _crExtras = new Set();   // itens adicionados pelo "+ adicionar item" nesta sessão
 let _crConf = {};            // real_json._conf em edição
 let _crProcId = null;
+const _crFaturasCarregadasPara = {};
 
 function crFmt(v){ return (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function crSimbolo(m){ return m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'R$'; }
@@ -1103,6 +1104,7 @@ function renderCustosReaisTab(p){
   const estado = custosReaisEstado(p, [..._crExtras]);
   const porId = {}; estado.itens.forEach(i => { porId[i.id] = i; });
   const meta = (reais._meta && typeof reais._meta === 'object') ? reais._meta : {};
+  if(typeof crCarregarFaturas === 'function' && Object.values(meta).some(m => m && m.fatura_id) && !_crFaturasCarregadasPara[p.id]){ _crFaturasCarregadasPara[p.id] = true; setTimeout(() => crCarregarFaturas(p.id), 0); }
 
   // Uma grade só (igual à tela de Taxas de um sistema de comex): cada taxa
   // é uma linha com o lado "pagamos" (moeda, valor, pra quem, documento) e
@@ -1132,6 +1134,7 @@ function renderCustosReaisTab(p){
       </select>
       <label class="cr-toolbar-campo">Câmbio USD <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()" title="Usado pra converter valores lançados em US$ pra R$"></label>
       <label class="cr-toolbar-campo">Câmbio EUR <input class="form-input" type="number" step="0.0001" id="f_cr_cambio_eur" value="${cambioEurDefault||''}" placeholder="${_cambio.EUR.toFixed(4)}" oninput="atualizarTotalCustosReais()"></label>
+      <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:12px;" onclick="crGerarFaturas()" title="Agrupa as taxas por empresa + documento e cria as contas a pagar / a receber">🧾 Gerar faturas</button>
       <span class="cr-muted cr-toolbar-legenda"><span class="cr-dot ok"></span> conferido · <span class="cr-dot cotado"></span> só o cotado · <span class="cr-dot"></span> sem valor${containers.length > 1 ? ` · ${containers.length} containers` : ''}</span>
     </div>
     <div class="cr-grade-scroll">
@@ -1664,6 +1667,11 @@ function coletarCustosReaisDoForm(soConfirmados){
     const salvo = (_editando && _editando.real_json && _editando.real_json._meta && _editando.real_json._meta[item.id]) || {};
     if(m.para && salvo.para === m.para && salvo.para_id) m.para_id = salvo.para_id;
     if(m.de && salvo.de === m.de && salvo.de_id) m.de_id = salvo.de_id;
+    // vínculo com fatura (gravado pelo servidor ao gerar/cancelar) — nunca
+    // se perde por um salvar da aba
+    if(salvo.fatura_id) m.fatura_id = salvo.fatura_id;
+    const salvoRec = (_editando && _editando.real_json && _editando.real_json._meta && _editando.real_json._meta[item.id + '_cobrado']) || null;
+    if(salvoRec && salvoRec.fatura_id) meta[item.id + '_cobrado'] = { fatura_id: salvoRec.fatura_id };
     if(Object.keys(m).length) meta[item.id] = m;
   });
   if(Object.keys(meta).length) obj._meta = meta;
@@ -1737,6 +1745,12 @@ function atualizarTotalCustosReais(){
         partes.push(difere
           ? `<a class="cr-link" onclick="crUsarFonte('${item.id}')" title="${esc(st.fonte.descricao)}">puxar ${r2(st.fonte.valor)} do ${esc(st.fonte.origem)}</a>${st.fonte.pendentes ? ` <span class="cr-muted" title="Parcelas ainda sem câmbio fechado não entram na soma">(+${st.fonte.pendentes} parcela${st.fonte.pendentes===1?'':'s'} em aberto)</span>` : ''}`
           : `<span class="cr-muted" title="${esc(st.fonte.descricao)}">= ${esc(st.fonte.origem)}</span>`);
+      }
+      if(typeof crBadgeFatura === 'function'){
+        const mt = (obj._meta && obj._meta[item.id]) || {};
+        const mtR = (obj._meta && obj._meta[item.id + '_cobrado']) || {};
+        if(mt.fatura_id) partes.push(crBadgeFatura(mt.fatura_id));
+        if(mtR.fatura_id) partes.push('cobrança: ' + crBadgeFatura(mtR.fatura_id));
       }
       if(conferido){
         const c = _crConf[item.id];
