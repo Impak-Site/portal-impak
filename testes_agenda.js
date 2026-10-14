@@ -5,7 +5,7 @@
 const assert = require('assert');
 const A = require('./agenda-core.js');
 let passou = 0, falhou = 0;
-function teste(nome, fn) { try { fn(); passou++; console.log(`  ✓ ${nome}`); } catch (e) { falhou++; console.log(`  ✗ ${nome}`); console.log(`    ${e.message}`); } }
+function teste(nome, fn) { try { const r = fn(); if (r && r.then) { r.then(() => { passou++; console.log(`  ✓ ${nome}`); }).catch(e => { falhou++; console.log(`  ✗ ${nome}`); console.log(`    ${e.message}`); }); return; } passou++; console.log(`  ✓ ${nome}`); } catch (e) { falhou++; console.log(`  ✗ ${nome}`); console.log(`    ${e.message}`); } }
 const HOJE = '2026-10-13';
 const gerar = (ps, extra) => A.gerarTarefas(ps, Object.assign({ hoje: HOJE }, extra || {}));
 const cods = (ts, ref) => ts.filter(t => !ref || t.referencia === ref).map(t => t.codigo);
@@ -95,7 +95,63 @@ teste('classificar: atrasada / hoje / semana / futura', () => {
   assert.strictEqual(A.classificar({ status: 'aberta', prazo: '2026-11-30' }, HOJE), 'futura');
 });
 
-console.log(`\n════════════════════════════════════════`);
-console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);
-console.log(`════════════════════════════════════════\n`);
-if (falhou > 0) process.exit(1);
+// ── servidor (agenda-servidor.js): motor do front no sandbox + histórico ──
+console.log('\n── servidor: histórico e resumo ──');
+const S = require('./agenda-servidor.js');
+teste('motor do front carrega no sandbox (calcularFase/listarPagamentosPI)', () => {
+  const m = S.carregarMotor();
+  assert.ok(m && typeof m.calcularFase === 'function' && typeof m.listarPagamentosPI === 'function');
+  assert.strictEqual(m.calcularFase({ etd: '2026-01-01', data_embarque: '2026-01-02' }), 'EMBARCADO');
+});
+// sb() falso em memória: só o que atualizarHistorico usa (select/upsert/update/order/gte).
+function sbFalso(estado) {
+  const q = (tabela) => {
+    const api = { _f: [] };
+    api.select = () => api; api.order = () => api; api.gte = () => api; api.eq = (c, v) => { api._f.push([c, v]); return api; };
+    api.then = (res) => res({ data: (estado[tabela] || []).filter(r => api._f.every(([c, v]) => r[c] === v)), error: null });
+    api.upsert = (rows) => { (Array.isArray(rows) ? rows : [rows]).forEach(r => { const i = (estado[tabela] = estado[tabela] || []).findIndex(x => x.chave === r.chave); if (i >= 0) Object.assign(estado[tabela][i], r); else estado[tabela].push(Object.assign({}, r)); }); return { then: (res) => res({ error: null }) }; };
+    api.update = (patch) => ({ eq: (c, v) => { (estado[tabela] || []).filter(r => r[c] === v).forEach(r => Object.assign(r, patch)); return { then: (res) => res({ error: null }) }; } });
+    return api;
+  };
+  return () => ({ from: q });
+}
+teste('histórico: dia 1 abre, dia 2 (campo preenchido) fecha com data e tipo auto', async () => {
+  const estado = { controle_processos: [{ id: 'p1', referencia: 'P1', pi_data: '2026-10-09', created_at: '2026-10-09' }], agenda_conclusoes: [], agenda_historico: [] };
+  const ctx = { sb: sbFalso(estado), carregarListas: async () => ({ listas: null }) };
+  const r1 = await S.atualizarHistorico(ctx, { hoje: '2026-10-13' });
+  assert.ok(r1.abertas >= 3 && r1.novas === r1.abertas && r1.fechadas === 0);
+  const a03 = estado.agenda_historico.find(h => h.codigo === 'A03');
+  assert.strictEqual(a03.aberta_em, '2026-10-13'); assert.strictEqual(a03.fechada_em, null);
+  estado.controle_processos[0].conexos_id = '999'; // Conexos cadastrado
+  const r2 = await S.atualizarHistorico(ctx, { hoje: '2026-10-14' });
+  assert.strictEqual(r2.fechadas, 1);
+  assert.strictEqual(estado.agenda_historico.find(h => h.codigo === 'A03').fechada_em, '2026-10-14');
+  assert.strictEqual(estado.agenda_historico.find(h => h.codigo === 'A03').tipo, 'auto');
+  const r3 = await S.atualizarHistorico(ctx, { hoje: '2026-10-14' }); // idempotente
+  assert.strictEqual(r3.novas, 0); assert.strictEqual(r3.fechadas, 0);
+});
+teste('histórico: marcada "Não se aplica" fecha com tipo nao_aplica', async () => {
+  const estado = { controle_processos: [{ id: 'p1', referencia: 'P1', pi_data: '2026-10-09', created_at: '2026-10-09' }], agenda_conclusoes: [], agenda_historico: [] };
+  const ctx = { sb: sbFalso(estado), carregarListas: async () => ({ listas: null }) };
+  await S.atualizarHistorico(ctx, { hoje: '2026-10-13' });
+  estado.agenda_conclusoes.push({ chave: A.chaveTarefa('A02', 'p1', ''), codigo: 'A02', tipo: 'nao_aplica' });
+  await S.atualizarHistorico(ctx, { hoje: '2026-10-14' });
+  assert.strictEqual(estado.agenda_historico.find(h => h.codigo === 'A02').tipo, 'nao_aplica');
+});
+teste('resumo por pessoa: atrasadas, mais antiga e fechadas da semana (com atraso)', () => {
+  const c = A.montarConfig(null);
+  const abertas = A.gerarTarefas([{ id: 'p1', referencia: 'P1', pi_data: '2026-10-01', created_at: '2026-10-01' }], { hoje: '2026-10-13', cfg: c });
+  const hist = [{ chave: 'x', funcao: 'IMPORTACAO', prazo: '2026-10-08', fechada_em: '2026-10-10' }, { chave: 'y', funcao: 'IMPORTACAO', prazo: '2026-10-12', fechada_em: '2026-10-10' }, { chave: 'z', funcao: 'IMPORTACAO', prazo: '2026-09-01', fechada_em: '2026-09-05' }];
+  const r = S.resumoPorPessoa(c, abertas, hist, '2026-10-13', 7);
+  const em = r.linhas.find(l => l.login === 'emanuelly');
+  assert.ok(em.atrasadas >= 1 && em.maisAntiga >= 1, 'deveria ter atrasada');
+  assert.strictEqual(em.fechadas, 2); assert.strictEqual(em.comAtraso, 1); assert.strictEqual(em.pctNoPrazo, 50);
+  assert.ok(r.piores.length >= 1 && r.piores[0].atraso >= r.piores[r.piores.length - 1].atraso);
+});
+
+setTimeout(() => {
+  console.log(`\n════════════════════════════════════════`);
+  console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);
+  console.log(`════════════════════════════════════════\n`);
+  if (falhou > 0) process.exit(1);
+}, 300);

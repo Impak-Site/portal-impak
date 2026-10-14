@@ -19,6 +19,15 @@ async function _agCarregarConclusoes(forcar){
   }catch(e){ _agConclusoes = _agConclusoes || []; }
   return _agConclusoes;
 }
+let _agHist = null;
+async function _agHistorico(dias){
+  if(_agHist && _agHist.dias === dias && Date.now() - _agHist.ts < 5*60*1000) return _agHist;
+  try{
+    const r = await fetch('/api/agenda/historico?dias=' + (dias || 7)).then(x => x.json());
+    _agHist = { ok: !!r.ok, dias, lista: r.historico || [], erro: r.erro, ts: Date.now() };
+  }catch(e){ _agHist = { ok: false, dias, lista: [], erro: e.message, ts: Date.now() }; }
+  return _agHist;
+}
 async function _agListas(){
   try{ if(typeof _listasPromise !== 'undefined' && _listasPromise){ const l = await _listasPromise; if(l) return l; } }catch(e){}
   if(typeof _listasCompletas !== 'undefined' && _listasCompletas) return _listasCompletas;
@@ -177,24 +186,35 @@ async function renderDashAgenda(){
       ${recolhida && !_agFiltro.mostrarFuturas ? '' : arr.map(t => _agLinha(t, hoje)).join('')}
     </div>`;
 
-  // Resumo por pessoa (visão da equipe)
+  // Resumo por pessoa (visão da equipe) + histórico dos últimos 7 dias
+  // (agenda_historico, preenchida pelo job diário do servidor — 14/10/2026).
   let resumoEquipe = '';
   if(_agFiltro.ver === 'equipe'){
+    const hist = await _agHistorico(7);
     const linhas = pessoas.map(l => {
       const fs = AgendaCore.funcoesDoUsuario(cfg, l);
       const ts = tarefas.filter(t => fs.includes(t.funcao));
-      const c = k => ts.filter(t => AgendaCore.classificar(t, hoje) === k).length;
-      return { l, atr: c('atrasada'), hoje: c('hoje'), sem: c('semana'), total: ts.length, fs };
-    }).sort((a,b) => b.atr - a.atr || b.hoje - a.hoje);
+      const c = k => ts.filter(t => AgendaCore.classificar(t, hoje) === k);
+      const atrasadas = c('atrasada');
+      const maisAntiga = atrasadas.reduce((m, t) => Math.max(m, t.atraso || 0), 0);
+      const fech = (hist.lista || []).filter(h => fs.includes(h.funcao));
+      const comAtraso = fech.filter(h => h.prazo && h.fechada_em > h.prazo).length;
+      return { l, atr: atrasadas.length, maisAntiga, hoje: c('hoje').length, sem: c('semana').length, total: ts.length, fs, fech: fech.length, comAtraso };
+    }).sort((a,b) => b.atr - a.atr || b.maisAntiga - a.maisAntiga);
+    const th = (t, cor) => `<th style="text-align:center;${cor ? 'color:' + cor + ';' : ''}white-space:nowrap;padding:7px 8px;">${t}</th>`;
     resumoEquipe = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:var(--surface2,#f8fafc);text-align:left;"><th style="padding:7px 10px;">Pessoa</th><th>Funções</th><th style="text-align:center;color:#b91c1c;">Atrasadas</th><th style="text-align:center;color:#b45309;">Hoje</th><th style="text-align:center;color:#1d4ed8;">7 dias</th><th style="text-align:center;">Abertas</th></tr></thead>
+        <thead><tr style="background:var(--surface2,#f8fafc);text-align:left;"><th style="padding:7px 10px;">Pessoa</th><th>Funções</th>${th('Atrasadas','#b91c1c')}${th('Mais antiga','#b91c1c')}${th('Hoje','#b45309')}${th('7 dias','#1d4ed8')}${th('Abertas')}${th('Fechadas 7d','#15803d')}${th('c/ atraso','#b45309')}</tr></thead>
         <tbody>${linhas.map(x => `<tr style="border-top:1px solid var(--border);cursor:pointer;" onclick="_agFiltro.ver='p:${_agEsc(x.l)}';renderDashAgenda()">
           <td style="padding:6px 10px;font-weight:700;">${_agEsc(_agNomePessoas([x.l]))}</td>
           <td style="color:var(--muted);">${_agEsc(x.fs.map(f => (cfg.funcoes[f]||{}).nome || f).join(', '))}</td>
           <td style="text-align:center;font-weight:800;color:${x.atr?'#b91c1c':'var(--muted)'};">${x.atr}</td>
-          <td style="text-align:center;font-weight:700;">${x.hoje}</td><td style="text-align:center;">${x.sem}</td><td style="text-align:center;">${x.total}</td></tr>`).join('')}</tbody>
-      </table></div>`;
+          <td style="text-align:center;color:${x.maisAntiga?'#b91c1c':'var(--muted)'};">${x.maisAntiga ? x.maisAntiga + 'd' : '—'}</td>
+          <td style="text-align:center;font-weight:700;">${x.hoje}</td><td style="text-align:center;">${x.sem}</td><td style="text-align:center;">${x.total}</td>
+          <td style="text-align:center;color:#15803d;font-weight:700;">${hist.ok ? x.fech : '—'}</td>
+          <td style="text-align:center;color:${x.comAtraso?'#b45309':'var(--muted)'};">${hist.ok ? x.comAtraso : '—'}</td></tr>`).join('')}</tbody>
+      </table>
+      <div style="padding:6px 10px;font-size:11px;color:var(--muted);">${hist.ok ? 'Fechadas 7d: tarefas concluídas nos últimos 7 dias (registro diário do servidor); c/ atraso: concluídas depois do prazo. Os gerentes recebem este resumo por e-mail toda segunda.' : 'Histórico indisponível: ' + _agEsc(hist.erro || 'falta a tabela agenda_historico (migration 0047)')}</div></div>`;
   }
 
   const optsVer = [`<option value="eu" ${_agFiltro.ver==='eu'?'selected':''}>Minha agenda${minhasFuncoes.length?'':' (sem função cadastrada)'}</option>`,
