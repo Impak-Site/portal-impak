@@ -733,22 +733,22 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/impak-icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/impak-icon-180.png">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#e8f0f8;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'DM Sans',sans-serif;}
+body{background:#e8f0f8;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Inter',sans-serif;}
 .wrap{width:400px;max-width:94vw;}
 .logo-row{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;}
-.logo-badge{background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;}
-.logo-sub{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;}
+.logo-badge{background:#1a7fd4;color:#fff;font-family:'Inter',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;}
+.logo-sub{font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;}
 .logo-img{height:56px;width:auto;}
 .box{background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:36px 32px;box-shadow:0 8px 32px rgba(26,127,212,.1);}
-h1{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0d1e2e;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+h1{font-family:'Inter',sans-serif;font-size:17px;font-weight:700;color:#0d1e2e;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
 .sub{font-size:11px;color:#1a7fd4;text-align:center;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:28px;}
 label{display:block;font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
-input{width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;transition:all .15s;margin-bottom:16px;}
+input{width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'Inter',sans-serif;font-size:14px;padding:11px 14px;outline:none;transition:all .15s;margin-bottom:16px;}
 input:focus{border-color:#1a7fd4;background:#c8ddf0;}
-button{width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;margin-top:4px;}
+button{width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Inter',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;margin-top:4px;}
 button:hover{background:#1567b8;}
 .err{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;text-align:center;margin-bottom:16px;}
 .footer{text-align:center;margin-top:18px;font-size:10px;color:#a8bfd4;}
@@ -804,7 +804,7 @@ function esqueciSenhaPage(){
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>ImpakOS - Esqueci minha senha</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 </head>
 <body>
@@ -854,7 +854,7 @@ function redefinirSenhaPage(tokenValido){
     return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>ImpakOS - Link inválido</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 </head><body><div class="wrap">
   <div class="logo-row"><div class="logo-badge">IMPAK</div><div class="logo-sub">Portal</div></div>
@@ -871,7 +871,7 @@ ${AUTH_CSS}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>ImpakOS - Definir nova senha</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 </head>
 <body>
@@ -936,7 +936,7 @@ function configurar2faPage(qrDataUrl, secretTexto, erro) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>ImpakOS - Configurar autenticação em duas etapas</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 <style>.qr-box{text-align:center;margin-bottom:18px;}.qr-box img{width:180px;height:180px;border:1px solid #c8d8e8;border-radius:8px;}
 .secret-txt{font-family:monospace;font-size:13px;letter-spacing:1px;background:#dce8f5;border:1px solid #c8d8e8;border-radius:6px;padding:8px 10px;text-align:center;word-break:break-all;margin-bottom:16px;color:#0d1e2e;}
@@ -994,7 +994,7 @@ function verificar2faPage(erro) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>ImpakOS - Código de verificação</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 ${AUTH_CSS}
 <style>.codigo-input{letter-spacing:6px;font-size:22px;text-align:center;font-weight:700;}</style>
 </head>
@@ -1523,7 +1523,73 @@ function requireGerente(req, res, next) {
 }
 
 // ── PÁGINAS ───────────────────────────────────────────────────
+// ── ASSISTENTE (chat com ferramentas, 14/10/2026 — pedido Ayslan) ──────
+// A IA só recebe as ferramentas que o usuário logado pode usar (filtradas
+// pelos módulos da sessão) e este servidor executa cada consulta — nenhuma
+// credencial do banco passa pela IA. Ver assistente.js.
+const Assistente = require('./assistente.js');
+const rateLimitAssistente = criarRateLimiter('/api/assistente', 60, 10 * 60 * 1000);
+app.get('/assistente', auth(...MODULOS_TRABALHO), (req, res) => res.sendFile(path.join(__dirname, 'assistente.html')));
+app.get('/api/assistente/conversas', auth(...MODULOS_TRABALHO), async (req, res) => {
+  try {
+    const { data, error } = await sb().from('assistente_conversas').select('id,titulo,updated_at')
+      .eq('usuario', req.session.usuario).eq('arquivada', false).order('updated_at', { ascending: false }).limit(50);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true, conversas: data || [], ferramentas: Assistente.ferramentasPara(req.session).map(f => f.nome) });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.get('/api/assistente/conversas/:id', auth(...MODULOS_TRABALHO), async (req, res) => {
+  try {
+    const { data, error } = await sb().from('assistente_conversas').select('*').eq('id', req.params.id).eq('usuario', req.session.usuario).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
+    res.json({ ok: true, conversa: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/assistente/conversas/:id/arquivar', auth(...MODULOS_TRABALHO), async (req, res) => {
+  try {
+    const { error } = await sb().from('assistente_conversas').update({ arquivada: true, updated_at: new Date().toISOString() }).eq('id', req.params.id).eq('usuario', req.session.usuario);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/assistente/mensagem', auth(...MODULOS_TRABALHO), rateLimitAssistente, async (req, res) => {
+  try {
+    const mensagem = String(req.body.mensagem || '').trim().slice(0, 4000);
+    if (!mensagem) return res.status(400).json({ ok: false, erro: 'Mensagem vazia' });
+    let conversa = null;
+    if (req.body.conversa_id) {
+      const { data } = await sb().from('assistente_conversas').select('*').eq('id', req.body.conversa_id).eq('usuario', req.session.usuario).maybeSingle();
+      conversa = data || null;
+    }
+    const historico = (conversa && Array.isArray(conversa.mensagens) ? conversa.mensagens : []).map(m => ({ role: m.role, content: m.content }));
+    const r = await Assistente.responder({
+      sessao: { usuario: req.session.usuario, nome: req.session.nome, displayName: req.session.displayName, role: req.session.role, modulos: req.session.modulos || [] },
+      mensagens: historico.concat([{ role: 'user', content: mensagem }]),
+      ctx: { sb, carregarListas, log: (m) => console.log(m) },
+    });
+    const agora = new Date().toISOString();
+    const novas = (conversa ? conversa.mensagens : []).concat([
+      { role: 'user', content: mensagem, em: agora },
+      { role: 'assistant', content: r.texto, ferramentas: r.ferramentas.map(f => f.nome), em: agora },
+    ]);
+    let id = conversa ? conversa.id : null;
+    if (conversa) {
+      await sb().from('assistente_conversas').update({ mensagens: novas, updated_at: agora }).eq('id', id);
+    } else {
+      const titulo = mensagem.length > 60 ? mensagem.slice(0, 57) + '…' : mensagem;
+      const { data, error } = await sb().from('assistente_conversas').insert({ usuario: req.session.usuario, titulo, mensagens: novas, updated_at: agora }).select('id').single();
+      if (error) console.warn('[assistente] não salvou a conversa:', error.message); else id = data.id;
+    }
+    res.json({ ok: true, conversa_id: id, resposta: r.texto, ferramentas: r.ferramentas });
+  } catch (e) {
+    console.error('[assistente]', e.message);
+    res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
 app.get('/permissoes', (req, res) => {
+
   if (!req.session.usuario) return res.redirect('/login?destino=/permissoes');
   if (!ADMINS_PERMISSOES.includes(req.session.usuario)) return res.status(403).send('<h2>Acesso restrito.</h2>');
   res.sendFile(path.join(__dirname, 'permissoes.html'));
