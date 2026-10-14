@@ -110,7 +110,13 @@ function parseDados(wb) {
         // manual mesmo quando a planilha ja tinha a resposta.
         uf_destino: cellVal(ws, 'E13') ? norm(cellVal(ws, 'E13')) : '',
         tipo_importacao: mapearTipoImportacao(cellVal(ws, 'E14')),
-        tem_icms_st: ehSim(cellVal(ws, 'E15')),
+        // DADOS!E15 e "Tem TTD" (rotulo B15: "Tem TTD" / "Tem ICMS ST ou TTD").
+        // TTD = SIM -> cliente tem o tratamento tributario diferenciado -> SEM
+        // ICMS ST (MODELO!K6 = SIM, L21 = 0). Logo tem_icms_st e o INVERSO.
+        // Antes estava ehSim(E15) direto: importava TTD=NAO como "sem ST" e lia
+        // a aba SEM S.T no lugar da COM S.T (conferido em 14/10/2026 contra as
+        // planilhas Rev97: E15=NAO, K6=NAO, L21=79.902 de ICMS ST).
+        tem_icms_st: !ehSim(cellVal(ws, 'E15')),
         comissao_br: ehSim(cellVal(ws, 'E16')),
         comissao_br_pct: Number(cellVal(ws, 'F16')) || null,
         comissao_china: comissaoChinaAtiva,
@@ -340,13 +346,20 @@ function parseIIRealBrl(wb, temIcmsSt) {
         for (let c = range.s.c; c <= range.e.c; c++) {
             const cell = ws[XLSX.utils.encode_cell({ r, c })];
             if (cell && typeof cell.v === 'string' && /^IMP\.\s*IMPORTACAO$/i.test(cell.v.trim())) {
-                let ultimoGrande = null;
-                for (let c2 = c; c2 <= Math.min(c + 10, range.e.c); c2++) {
+                // Padrao da linha: rotulo | aliquota | USD | CAMBIO | BRL (| extras).
+                // O valor em R$ e o primeiro numero >= 1000 logo DEPOIS do cambio
+                // (numero entre 1 e 20). Na aba COM S.T da Rev97 existe um valor
+                // extra mais a direita (G10 = base do ICMS ST, ~240 mil) — pegar
+                // o "ultimo grande" lia esse e estourava o custo (14/10/2026).
+                let ultimoGrande = null, viuCambio = false, aposCambio = null;
+                for (let c2 = c + 1; c2 <= Math.min(c + 10, range.e.c); c2++) {
                     const cell2 = ws[XLSX.utils.encode_cell({ r, c: c2 })];
-                    if (cell2 && typeof cell2.v === 'number' && Math.abs(cell2.v) >= 1000) {
-                        ultimoGrande = cell2.v;
-                    }
+                    if (!cell2 || typeof cell2.v !== 'number') continue;
+                    if (viuCambio && aposCambio === null && Math.abs(cell2.v) >= 1000) aposCambio = cell2.v;
+                    if (!viuCambio && cell2.v > 1 && cell2.v < 20) viuCambio = true;
+                    if (Math.abs(cell2.v) >= 1000) ultimoGrande = cell2.v;
                 }
+                if (aposCambio !== null) return aposCambio;
                 if (ultimoGrande !== null) return ultimoGrande;
             }
         }
