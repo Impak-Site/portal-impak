@@ -1894,7 +1894,8 @@ function classeLucroMeta(pct){
 function textoMetaLucro(pct){
   const m = typeof metaLucroAtualCalc === 'function' ? metaLucroAtualCalc() : null;
   if(!m) return '';
-  return pct >= m.pct - 0.005 ? ` · meta ${fmtP(m.pct)} ✓` : ` · <b>abaixo da meta ${fmtP(m.pct)}</b>`;
+  const p = String(m.pct).replace('.', ',') + '%';
+  return pct >= m.pct - 0.005 ? ` · meta ${p} ✓` : ` · <b>abaixo da meta ${p}</b>`;
 }
 
 // Variação cambial da entrada (Rev97 MODELO linha 46). Parcelas com câmbio

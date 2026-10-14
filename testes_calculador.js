@@ -564,6 +564,15 @@ teste('2 containers: só as taxas por container dobram (Siscomex/AFRMM/L.I./Agen
   aproxIgual(b.taxas_fixas - a.taxas_fixas, porContainer, 0.01); // Siscomex, AFRMM, L.I. e Agente NÃO dobram
 });
 
+
+teste('card de lucro: texto/cor da meta funcionam fora do render (fmtP não é global)', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  vm.runInContext(`window.metaLucroAtualCalc = () => ({ pct: 3.5, nome: 'Meta 3,5%', especifica: true })`, sb);
+  verdadeiro(vm.runInContext(`textoMetaLucro(2)`, sb).includes('abaixo da meta 3,5%'));
+  verdadeiro(vm.runInContext(`textoMetaLucro(3.5)`, sb).includes('✓'));
+  verdadeiro(vm.runInContext(`classeLucroMeta(3.5)`, sb) === 'ok' && vm.runInContext(`classeLucroMeta(3)`, sb) === 'warn' && vm.runInContext(`classeLucroMeta(1)`, sb) === 'err');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
