@@ -1672,6 +1672,29 @@ app.get('/api/agenda/conclusoes', auth('controle'), async (req, res) => {
     res.json({ ok: true, conclusoes: (data || []).filter(c => c.tipo !== 'reaberta') });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
+// Histórico da agenda (14/10/2026): tarefas fechadas nos últimos N dias,
+// pra tela "Toda a equipe" mostrar "fechadas na semana / com atraso".
+app.get('/api/agenda/historico', auth('controle'), async (req, res) => {
+  try {
+    const dias = Math.min(90, Math.max(1, parseInt(req.query.dias, 10) || 7));
+    const desde = new Date(); desde.setDate(desde.getDate() - dias);
+    const { data, error } = await sb().from('agenda_historico')
+      .select('chave,codigo,processo_id,referencia,funcao,atividade,prazo,aberta_em,fechada_em,tipo')
+      .gte('fechada_em', desde.toISOString().slice(0, 10));
+    if (error) return res.json({ ok: false, erro: error.message, semTabela: /agenda_historico/.test(error.message), historico: [] });
+    res.json({ ok: true, dias, historico: data || [] });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+// Gerente: roda agora o job diário do histórico e/ou o resumo semanal
+// (sem esperar o horário), pra testar e pra conferir.
+app.post('/api/admin/agenda/rodar', auth('controle'), requireGerente, async (req, res) => {
+  try {
+    const r = { historico: await atualizarHistoricoAgenda() };
+    if (req.body && req.body.email) r.email = await enviarResumoSemanalAgenda({ forcar: true, para: req.body.para });
+    res.json({ ok: true, ...r });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.post('/api/agenda/conclusao', auth('controle'), async (req, res) => {
   try {
     const b = req.body || {};
@@ -5747,8 +5770,56 @@ async function verificarAlertaSemCotacao(){
   return pendentes.length;
 }
 
+// ════════════════════════════════════════════════════════════════
+// AGENDA — histórico diário + resumo semanal pros gerentes (14/10/2026,
+// pedido Ayslan). O cálculo das tarefas é o mesmo do navegador
+// (agenda-servidor.js carrega o motor do front num sandbox).
+// ════════════════════════════════════════════════════════════════
+const AgendaServidor = require('./agenda-servidor.js');
+const _agendaCtx = () => ({ sb, carregarListas, log: (m) => console.log(m) });
+
+async function atualizarHistoricoAgenda(){
+  return AgendaServidor.atualizarHistorico(_agendaCtx());
+}
+function _destinatariosResumoAgenda(){
+  const env = process.env.AGENDA_RESUMO_PARA;
+  if (env) return [...new Set(env.split(',').map(s => s.trim()).filter(Boolean))];
+  // Padrão: todo mundo com perfil gerente (Narcélio, Paula, Jean, Bianca, suporte).
+  return [...new Set([..._usuariosCache.values()].filter(u => u.role === 'gerente' && u.email).map(u => u.email))];
+}
+async function enviarResumoSemanalAgenda(opts){
+  opts = opts || {};
+  await atualizarHistoricoAgenda(); // garante o histórico do dia antes de somar
+  const ctx = _agendaCtx();
+  const { hoje, cfg, tarefas } = await AgendaServidor.gerarTarefas(ctx);
+  const desde = new Date(); desde.setDate(desde.getDate() - 7);
+  const { data: hist } = await sb().from('agenda_historico').select('chave,funcao,prazo,fechada_em').gte('fechada_em', desde.toISOString().slice(0, 10));
+  const r = AgendaServidor.resumoPorPessoa(cfg, tarefas.filter(t => t.status === 'aberta'), hist || [], hoje, 7);
+  const dBR = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '-';
+  const td = (v, extra) => `<td style="padding:6px 10px;border-bottom:1px solid #eee;${extra || ''}">${v}</td>`;
+  const linhas = r.linhas.map(l => `<tr>${td('<b>' + _escA(l.nome) + '</b><br><span style="color:#888;font-size:11px;">' + _escA(l.funcoes.join(', ')) + '</span>')}${td(l.abertas, 'text-align:center;')}${td(l.atrasadas, 'text-align:center;font-weight:700;color:' + (l.atrasadas ? '#dc2626' : '#475569') + ';')}${td(l.maisAntiga ? l.maisAntiga + 'd' : '-', 'text-align:center;')}${td(l.fechadas, 'text-align:center;')}${td(l.comAtraso, 'text-align:center;color:' + (l.comAtraso ? '#b45309' : '#475569') + ';')}${td(l.pctNoPrazo == null ? '-' : l.pctNoPrazo + '%', 'text-align:center;')}</tr>`).join('');
+  const piores = r.piores.map(t => `<tr>${td(_escA(t.referencia || '-'), 'white-space:nowrap;')}${td(_escA(t.atividade))}${td(_escA(t.responsaveis || t.funcao))}${td(dBR(t.prazo), 'white-space:nowrap;')}${td(t.atraso + 'd', 'color:#dc2626;font-weight:700;white-space:nowrap;')}</tr>`).join('');
+  const totalAtr = r.linhas.reduce((s, l) => s + l.atrasadas, 0);
+  const html = _cabecalhoAlertaHtml('Resumo semanal da Agenda', new Date())
+    + `<p style="font-size:13px;color:#555;">Situação por pessoa em ${dBR(hoje)}. "Fechadas 7d" = tarefas concluídas desde ${dBR(r.desde)}; "c/ atraso" = concluídas depois do prazo.</p>`
+    + _tabelaAlertaHtml(['Pessoa', 'Abertas', 'Atrasadas', 'Mais antiga', 'Fechadas 7d', 'c/ atraso', 'No prazo'], linhas)
+    + (piores ? `<h3 style="margin:18px 0 6px;color:#333;">10 maiores atrasos</h3>` + _tabelaAlertaHtml(['Referência', 'Atividade', 'Responsável', 'Prazo', 'Atraso'], piores) : '<p>Nenhuma tarefa atrasada.</p>')
+    + `<p style="margin-top:14px;font-size:12px;color:#888;">Detalhe em <a href="${(process.env.APP_URL || 'https://portal-impak-production.up.railway.app').replace(/\/+$/, '')}/agenda">Agenda → Toda a equipe</a>. Responsáveis por função em Cadastros → Listas → "Agenda — Funções".</p>`
+    + `<p style="font-size:12px;color:#888;">E-mail automático semanal (segunda-feira) do IMPAK Portal.</p></div>`;
+  const destinos = opts.para ? [String(opts.para)] : _destinatariosResumoAgenda();
+  let enviados = 0;
+  for (const email of destinos) {
+    try { await enviarEmail(email, `IMPAK Portal - Agenda: ${totalAtr} tarefa(s) atrasada(s) na equipe`, html); enviados++; }
+    catch (e) { console.error('Erro ao enviar resumo da agenda p/ ' + email + ':', e.message); }
+  }
+  if (!opts.forcar) await marcarJobEnviadoHoje('agenda_resumo_semanal');
+  return { enviados, destinos, atrasadas: totalAtr, pessoas: r.linhas.length };
+}
+
 function agendarAlertasSeparados(){
   const ALERTAS_SEPARADOS = [
+    { nome:'agenda-historico', jobName:'agenda_historico_diario', fn:() => atualizarHistoricoAgenda().then(r => r.fechadas) },
+    { nome:'agenda-resumo', jobName:'agenda_resumo_semanal', fn:() => enviarResumoSemanalAgenda().then(r => r.enviados), diaSemana:1 }, // só segunda-feira
     { nome:'demurrage', jobName:'alerta_demurrage', fn:verificarAlertaDemurrage },
     { nome:'pedido-li', jobName:'alerta_pedido_li', fn:verificarAlertaPedidoLI },
     { nome:'ajuste-documentos', jobName:'alerta_ajuste_documentos', fn:verificarAlertaAjusteDocumentos },
