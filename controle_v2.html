@@ -253,6 +253,34 @@ select.form-input{cursor:pointer;}
 .cr-wrap .form-input{padding-left:58px;padding-top:7px;padding-bottom:7px;font-variant-numeric:tabular-nums;text-align:right;}
 .cr-add{font-size:12px;padding:6px 10px;max-width:280px;color:var(--ac);background:transparent;border-style:dashed;cursor:pointer;}
 .cr-margem{font-size:11px;margin-top:3px;color:var(--muted);}
+.cr-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
+.cr-toolbar-campo{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap;}
+.cr-toolbar-campo .form-input{width:92px;padding:5px 8px;font-size:12px;}
+.cr-toolbar-legenda{margin-left:auto;display:flex;align-items:center;gap:5px;}
+.cr-toolbar-legenda .cr-dot{cursor:default;}
+.cr-grade-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--bg2);}
+.cr-grade{min-width:1180px;}
+.cr-grade th,.cr-grade td{padding:6px 6px;}
+.cr-grade thead th{background:var(--bg);position:sticky;top:0;z-index:1;}
+.cr-grade-h1 th{font-size:10px;letter-spacing:.5px;text-align:center;padding:7px 6px 3px;border-bottom:1px solid var(--border);}
+.cr-grade th.cr-lado-pg,.cr-grade td.cr-lado-pg{background:rgba(29,158,117,.045);}
+.cr-grade th.cr-lado-rc,.cr-grade td.cr-lado-rc{background:rgba(55,138,221,.05);}
+.cr-grade td.cr-lado-pg:first-of-type,.cr-grade th.cr-lado-pg:first-of-type{border-left:2px solid var(--border);}
+.cr-grade td.cr-lado-rc:first-of-type,.cr-grade th.cr-lado-rc:first-of-type{border-left:2px solid var(--border);}
+.cr-grade tbody tr:last-child td{border-bottom:1px solid var(--border);}
+.cr-grupo-row td{background:var(--bg);padding:9px 8px 5px;border-bottom:1px solid var(--border);}
+.cr-grupo-row .cr-grupo-total{margin-left:10px;}
+.cr-grade-tot td{font-size:12px;font-weight:600;padding:9px 6px;background:var(--bg);}
+.cr-grade-tot td strong{color:var(--text);}
+.cr-meta{padding:6px 8px;font-size:12px;width:100%;}
+.cr-modo{padding-right:22px;}
+.cr-margem-cell{text-align:right;font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap;}
+.cr-det-link{font-weight:400;margin-left:4px;}
+.cr-det-row td{background:var(--bg);padding:4px 6px 8px;}
+.cr-det-campos{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;}
+.cr-det-campos label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px;min-width:150px;}
+.cr-extras{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;}
+.cr-extras .cr-grupo{margin-bottom:0;}
 .cr-aviso{background:var(--err-bg,#fdedee);border:1px solid var(--err);color:var(--err);border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:12px;line-height:1.5;}
 
 /* ── PAGAMENTO ── */
