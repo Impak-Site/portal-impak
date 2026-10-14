@@ -482,6 +482,36 @@ teste('prazo do boleto "como é" → média dos vencimentos', () => {
   aproxIgual(parseFloat(r), 75, 1e-9);
 });
 
+// ── Antidumping por item (#488, Jean 14/10/2026) — valores fictícios ──
+teste('antidumping: peso só dos itens SIM × US$/kg × câmbio DI', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const r = vm.runInContext(`calcularDumpingItens([{qtd:10,peso_kg:50},{qtd:20,peso_kg:40,dumping:false},{qtd:5,peso_kg:60}], 0.5, 5)`, sb);
+  aproxIgual(r.peso_total, 10*50 + 20*40 + 5*60, 1e-9);
+  aproxIgual(r.peso_sim, 10*50 + 5*60, 1e-9);            // o item NÃO fica fora do peso
+  aproxIgual(r.total_brl, (10*50 + 5*60) * 0.5 * 5, 1e-9);
+  aproxIgual(r.porItem[1].dump_brl, 0, 0);
+  verdadeiro(r.temPeso);
+});
+teste('antidumping: sem peso no mix usa o valor manual; com peso usa o calculado', () => {
+  const mix = "_estado.mix = { itens: [{medida:'AAA',qtd:100,preco:100},{medida:'BBB',qtd:100,preco:178.1296}], fob_total: 27812.96 };";
+  const manual = _rodarCalc(mix + "setToggle('dump','SIM'); document.getElementById('dump_valor').value='1000';");
+  aproxIgual(manual.DUMP, 1000, 1e-9);
+  const porPeso = _rodarCalc("_estado.mix = { itens: [{medida:'AAA',qtd:100,preco:100,peso_kg:50},{medida:'BBB',qtd:100,preco:178.1296,peso_kg:60,dumping:false}], fob_total: 27812.96 }; setToggle('dump','SIM'); document.getElementById('dump_taxa_kg').value='0.5'; document.getElementById('dump_valor').value='1000';");
+  const cambioDI = 5.1695; // sem câmbio DI informado, usa o câmbio principal do caso base
+  aproxIgual(porPeso.DUMP, 100*50 * 0.5 * cambioDI, 0.01);
+});
+teste('antidumping: o valor do dumping vai pro preço só dos itens SIM e o total do mix não muda', () => {
+  const base = "_estado.mix = { itens: [{medida:'AAA',qtd:100,preco:100,peso_kg:50},{medida:'BBB',qtd:100,preco:178.1296,peso_kg:60,dumping:false}], fob_total: 27812.96 }; document.getElementById('dump_taxa_kg').value='0.5';";
+  const sem = _rodarCalc(base);                          // toggle NÃO
+  const com = _rodarCalc(base + "setToggle('dump','SIM');");
+  const tot = r => r.mix_result.reduce((s, it) => s + it.total_brl, 0);
+  aproxIgual(tot(com), com.faturamento - (com.china_fora_val||0) - (com.boss_fora_val||0), 0.05);
+  // Proporção entre os dois itens muda: o item SIM fica relativamente mais caro.
+  const razaoSem = sem.mix_result[0].vlr_unit_brl / sem.mix_result[1].vlr_unit_brl;
+  const razaoCom = com.mix_result[0].vlr_unit_brl / com.mix_result[1].vlr_unit_brl;
+  verdadeiro(razaoCom > razaoSem, 'item com dumping deveria pesar mais no preço');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

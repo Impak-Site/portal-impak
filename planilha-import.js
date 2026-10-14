@@ -118,7 +118,18 @@ function parseDados(wb) {
         comissao_china_pct: comissaoChinaPct,
         cliente: cellVal(ws, 'E18') ? String(cellVal(ws, 'E18')).trim() : '',
         custos_diversos: Number(cellVal(ws, 'E36')) || 0,
-        avisos: ['Confira: parcelamento, cartao, prazo/juros e dumping nao sao importados automaticamente - revise essas secoes manualmente.'],
+        // #488 (planilhas Rev97 enviadas pelo Jean 14/10/2026): antidumping,
+        // prazo interno e cartao. Dumping: DADOS!H19 (SIM/NAO) e H20 (US$/kg);
+        // o peso e o SIM/NAO por item vem da aba MIX (colunas L e BG).
+        tem_dumping: ehSim(cellVal(ws, 'H19')),
+        dumping_taxa_kg: Number(cellVal(ws, 'H20')) || null,
+        // Prazo interno: E24 SIM, G24 taxa a.m., H24 prazo ("30/60/90dd").
+        // Cartao: E26 SIM, G26 "3 x " (n parcelas). Na planilha so um dos dois vale.
+        forma_custo_fin: ehSim(cellVal(ws, 'E24')) ? 'prazo' : (ehSim(cellVal(ws, 'E26')) ? 'cartao' : ''),
+        cf_taxa_am: ehSim(cellVal(ws, 'E24')) && cellVal(ws, 'G24') != null ? Number(cellVal(ws, 'G24')) * 100 : null,
+        cf_prazo: ehSim(cellVal(ws, 'E24')) && cellVal(ws, 'H24') ? String(cellVal(ws, 'H24')).trim() : '',
+        cf_parcelas: ehSim(cellVal(ws, 'E26')) ? (parseInt(String(cellVal(ws, 'G26') || ''), 10) || null) : null,
+        avisos: ['Confira: parcelado com entrada (DADOS E28-E34) e taxas linha a linha nao sao importados - revise essas secoes.'],
   };
 }
 
@@ -141,13 +152,20 @@ function parseMix(wb) {
           const pattern = cellVal(ws, XLSX.utils.encode_cell({ r: r, c: 7 }));
           const pedido = cellVal(ws, XLSX.utils.encode_cell({ r: r, c: 9 }));
           const fobUnit = cellVal(ws, XLSX.utils.encode_cell({ r: r, c: 13 }));
+          // #488: peso unitario (col L, "Weight (Kgs.)") e antidumping por item
+          // (col BG: SIM/NAO; vazio = segue o DADOS!H19).
+          const pesoUnit = cellVal(ws, XLSX.utils.encode_cell({ r: r, c: 11 }));
+          const dumpItem = cellVal(ws, XLSX.utils.encode_cell({ r: r, c: 58 }));
           if (pedido && Number(pedido) > 0 && size) {
-                  itens.push({
+                  const item = {
                             medida: String(size).trim(),
                             pat: pattern ? String(pattern).trim() : null,
                             qtd: Number(pedido),
                             preco: Number(fobUnit) || 0,
-                  });
+                  };
+                  if (Number(pesoUnit) > 0) item.peso_kg = Number(pesoUnit);
+                  if (dumpItem != null && String(dumpItem).trim() !== '') item.dumping = ehSim(dumpItem);
+                  itens.push(item);
           }
     }
     return itens;

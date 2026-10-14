@@ -411,8 +411,16 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
           <button class="toggle-btn" id="toggle-dump-sim" onclick="setToggle('dump','SIM')">SIM</button>
         </div>
         <div id="dump-detalhe" class="comissao-detalhe">
-          <div class="form-group" style="margin:0">
-            <label>Valor Dumping (R$)</label>
+          <!-- Antidumping por item (#488, pedido Jean 14/10/2026): igual à planilha
+               (MIX - COMPLETO col. BG por item + MODELO D22), só os itens marcados
+               SIM entram no peso. Valor = peso dos itens SIM × US$/kg × câmbio DI. -->
+          <div class="form-group" style="margin:0 0 8px">
+            <label>Taxa antidumping (US$/kg)</label>
+            <input type="number" id="dump_taxa_kg" step="0.01" value="0.63" oninput="renderDumpItens()">
+          </div>
+          <div id="dump-itens" style="font-size:11px;"></div>
+          <div class="form-group" style="margin:8px 0 0">
+            <label>Valor Dumping manual (R$) <span style="font-weight:400;color:var(--dim);">— só usado quando nenhum item tem peso informado</span></label>
             <input type="number" id="dump_valor" step="0.01" placeholder="0,00">
           </div>
         </div>
@@ -1717,7 +1725,57 @@ function setToggle(key, val) {
   // Mostrar/ocultar detalhes
   const det = document.getElementById(`${key}-detalhe`);
   if(det) det.classList.toggle('show', val==='SIM');
-  if(key==='dump') { const d2 = document.getElementById('dump-detalhe'); if(d2) d2.classList.toggle('show', val==='SIM'); }
+  if(key==='dump') { const d2 = document.getElementById('dump-detalhe'); if(d2) d2.classList.toggle('show', val==='SIM'); if(val==='SIM' && typeof renderDumpItens === 'function') renderDumpItens(); }
+}
+
+// ── Antidumping por item (#488, Jean 14/10/2026) ──────────────────────
+// Planilha: MIX - COMPLETO col. L (peso unit.) × J (qtd) = M (peso total);
+// col. BG = SIM/NÃO por item; BH = M × DADOS!H20 (US$/kg) × câmbio DI.
+// MODELO D22 deve somar só os pesos dos itens SIM (antes somava todos).
+// Função pura (testável): itens [{qtd, peso_kg, dumping}] — dumping ausente
+// conta como SIM (é o padrão da planilha quando "TEM DUMPING" = SIM).
+function calcularDumpingItens(itens, taxaUsdKg, cambioDI){
+  const taxa = Number(taxaUsdKg) || 0, cambio = Number(cambioDI) || 0;
+  let pesoSim = 0, pesoTotal = 0, temPeso = false;
+  const porItem = (itens || []).map(it => {
+    const peso = (Number(it.peso_kg) || 0) * (Number(it.qtd) || 0);
+    if(peso > 0) temPeso = true;
+    pesoTotal += peso;
+    const sim = it.dumping !== false;
+    if(sim) pesoSim += peso;
+    return { peso_total: peso, sim, dump_usd: sim ? peso * taxa : 0, dump_brl: sim ? peso * taxa * cambio : 0 };
+  });
+  return { temPeso, peso_total: pesoTotal, peso_sim: pesoSim, total_usd: pesoSim * taxa, total_brl: pesoSim * taxa * cambio, porItem };
+}
+function renderDumpItens(){
+  const box = document.getElementById('dump-itens');
+  if(!box) return;
+  const itens = (_estado.mix && _estado.mix.itens) || [];
+  if(!itens.length){ box.innerHTML = '<div style="color:var(--dim);">Sem mix de produtos: informe o valor manual abaixo, ou monte o mix no TyreDesk para calcular por peso.</div>'; return; }
+  const taxa = parseFloat((document.getElementById('dump_taxa_kg')||{}).value) || 0;
+  const cambio = parseFloat((document.getElementById('cambio_medio_di')||{}).value) || parseFloat((document.getElementById('cambio_usd')||{}).value) || 0;
+  const r = calcularDumpingItens(itens, taxa, cambio);
+  box.innerHTML = `<div style="display:grid;grid-template-columns:1fr 54px 70px 40px;gap:4px;font-weight:700;color:var(--dim);padding:2px 0;"><span>Medida</span><span style="text-align:right;">Qtd</span><span style="text-align:right;">Peso un. (kg)</span><span style="text-align:center;">Dump.</span></div>`
+    + itens.map((it, i) => `<div style="display:grid;grid-template-columns:1fr 54px 70px 40px;gap:4px;align-items:center;padding:2px 0;border-top:1px solid var(--border);">
+        <span>${esc(it.medida)}${it.pat ? ' <span style="color:var(--dim);">' + esc(it.pat) + '</span>' : ''}</span>
+        <span style="text-align:right;">${esc(it.qtd)}</span>
+        <input type="number" step="0.01" value="${it.peso_kg != null ? esc(it.peso_kg) : ''}" placeholder="kg" style="width:100%;padding:2px 4px;font-size:11px;text-align:right;" onchange="setDumpItem(${i},'peso_kg',this.value)">
+        <input type="checkbox" ${it.dumping !== false ? 'checked' : ''} style="justify-self:center;" onchange="setDumpItem(${i},'dumping',this.checked)" title="Item com antidumping">
+      </div>`).join('')
+    + `<div style="margin-top:6px;padding:6px 8px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;">`
+    + (r.temPeso
+        ? `Peso com dumping: <b>${fmt(r.peso_sim)} kg</b>${r.peso_sim !== r.peso_total ? ` (de ${fmt(r.peso_total)} kg)` : ''} × US$ ${fmt(taxa)}/kg × câmbio DI ${cambio ? cambio.toFixed(4).replace('.',',') : '—'} = <b>R$ ${fmt(r.total_brl)}</b>`
+        : `<span style="color:var(--warn,#b45309);">Informe o peso por pneu (kg) para calcular automático — enquanto isso vale o valor manual.</span>`)
+    + `</div>`;
+}
+function setDumpItem(i, campo, valor){
+  const it = _estado.mix && _estado.mix.itens && _estado.mix.itens[i];
+  if(!it) return;
+  if(campo === 'peso_kg'){ const n = parseFloat(valor); it.peso_kg = isNaN(n) ? null : n; }
+  else it.dumping = !!valor;
+  try{ sessionStorage.setItem('calculador_mix', JSON.stringify(_estado.mix)); }catch(e){}
+  renderDumpItens();
+  if(typeof agendarAutosave === 'function') agendarAutosave();
 }
 
 // TTD e ICMS ST são mutuamente exclusivos: TTD=SIM → sem ST. TTD=NÃO → com ST.
@@ -1924,6 +1982,7 @@ function renderMix() {
   } else {
     marcaWrap.style.display = 'none';
   }
+  if(typeof renderDumpItens === 'function') renderDumpItens();
   // Containers calculados pelo TyreDesk (>105% de cobertura = novo container).
   // Pré-preenche mas continua editável — usuário pode ajustar se souber melhor.
   if(_estado.mix.containers){
@@ -2121,7 +2180,10 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   const PIS_e    = base_imp_brl * t.pis_e;
   const COFINS_e = base_imp_brl * t.cofins_e;
   const RBC      = base_imp_brl * t.rbc;
-  const DUMP     = _estado.toggles.dump==='SIM' ? (parseFloat(document.getElementById('dump_valor').value)||0) : 0;
+  // Antidumping (#488): por peso dos itens marcados SIM × US$/kg × câmbio DI
+  // (MIX BH / MODELO F22). Sem peso informado no mix, vale o valor manual.
+  const dumpCalc = calcularDumpingItens(_estado.mix?.itens || [], parseFloat((document.getElementById('dump_taxa_kg')||{}).value) || 0, cambioMedioDI);
+  const DUMP     = _estado.toggles.dump!=='SIM' ? 0 : (dumpCalc.temPeso ? dumpCalc.total_brl : (parseFloat(document.getElementById('dump_valor').value)||0));
   // Marjoração 0,6% (planilha MODELO Z6:AB9 / Fechamento G26): COFINS-importação
   // majorada. Os 0,6% sobre a base da COFINS-imp não geram crédito → CUSTO;
   // o crédito continua em 9,65% (não muda nada no COFINS_e normal).
@@ -2497,9 +2559,20 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // pelo produto, exceto a Comissão China/BOSS que é nota de serviço à
   // parte, fora do preço).
   const mix_itens = _estado.mix?.itens || [];
+  // Antidumping por item (#488): a parte do valor que vem do dumping vai só
+  // pros itens marcados SIM (proporcional ao peso), igual à planilha (MIX BH
+  // entra no custo do próprio item). Essa parte é o dumping "cheio", com o
+  // mesmo fator do cenário (valor cheio / custo total). O resto continua
+  // rateado pelo FOB. A soma dos itens continua batendo com o valor cheio.
+  const dumpPorItem = (_estado.toggles.dump === 'SIM' && dumpCalc.temPeso && dumpCalc.peso_sim > 0) ? dumpCalc.porItem : null;
   function calcularMixCenario(valorCheioCenario){
-    return mix_itens.map(it => {
-      const vlr_unit = valorCheioCenario / (fob_usd || 1) * it.preco;
+    const dumpCheio = dumpPorItem && custo_total > 0 ? DUMP * (valorCheioCenario / custo_total) : 0;
+    const baseFob = valorCheioCenario - dumpCheio;
+    return mix_itens.map((it, i) => {
+      let vlr_unit = baseFob / (fob_usd || 1) * it.preco;
+      if(dumpCheio && dumpPorItem[i] && dumpPorItem[i].sim && (Number(it.qtd) || 0) > 0){
+        vlr_unit += dumpCheio * (dumpPorItem[i].peso_total / dumpCalc.peso_sim) / Number(it.qtd);
+      }
       return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd };
     });
   }
@@ -3837,7 +3910,7 @@ function lucroCapaCliente(c, r){
 const CAMPOS_COTACAO = [
   'cambio_usd','fob_usd','frete_usd','taxa_ce_usd','qtde_containers',
   'taxa_seguro_compra','cambio_chegada','cambio_medio_di','produto','origem','uf_destino','icms_saida_pct','ufs_extra',
-  'tipo_importacao','dump_valor','cliente','custos_diversos',
+  'tipo_importacao','dump_valor','dump_taxa_kg','cliente','custos_diversos',
   'br_pct','br_nome','china_pct','boss_nome','boss_pct','boss_modo',
   'tx_siscomex','tx_marinha','tx_armazenagem','tx_emissao_li','tx_porto','tx_dias_parado',
   'tx_baixa_patio','tx_capatazia','tx_liberacao_bl','tx_despachante','tx_sda','tx_lavacao',
