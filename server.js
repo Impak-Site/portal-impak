@@ -1193,14 +1193,31 @@ app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login'
 // opcional — se não configurada, usa o domínio sandbox do Resend (só
 // funciona pra testes, pra produção precisa verificar impak.com.br no
 // painel do Resend e configurar RESEND_FROM=algo@impak.com.br).
-async function enviarEmail(destinatario, assunto, html){
+// Regras dos e-mails automáticos (alertas, relatórios, resumos) — pedido
+// Ayslan 14/10/2026: (1) só saem pra endereço @impak.com.br; qualquer outro
+// domínio é ignorado com aviso no log; (2) todos vão com cópia pro
+// suporte@impak.com.br. Quem chama passa { alerta: true }. O e-mail de
+// redefinição de senha NÃO é alerta (vai pro e-mail da pessoa, seja qual for).
+const ALERTA_DOMINIO = '@impak.com.br';
+const ALERTA_COPIA = 'suporte@impak.com.br';
+function destinoAlertaPermitido(email){ return String(email || '').trim().toLowerCase().endsWith(ALERTA_DOMINIO); }
+async function enviarEmail(destinatario, assunto, html, opts){
+  opts = opts || {};
   const apiKey = process.env.RESEND_API_KEY;
   if(!apiKey) throw new Error('RESEND_API_KEY não configurada no Railway');
   const from = process.env.RESEND_FROM || 'IMPAK Portal <onboarding@resend.dev>';
+  const corpo = { from, to: [destinatario], subject: assunto, html };
+  if (opts.alerta) {
+    if (!destinoAlertaPermitido(destinatario)) {
+      console.warn(`[email] alerta "${assunto}" NÃO enviado: destino fora de ${ALERTA_DOMINIO} (${destinatario})`);
+      return { pulado: true };
+    }
+    if (String(destinatario).trim().toLowerCase() !== ALERTA_COPIA) corpo.cc = [ALERTA_COPIA];
+  }
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: [destinatario], subject: assunto, html }),
+    body: JSON.stringify(corpo),
   });
   if(!r.ok){
     const erro = await r.text();
@@ -2164,8 +2181,7 @@ function formatarPortoDestinoEmail(valor) {
 }
 function normRefDespachante(v) { return String(v || '').trim().toUpperCase(); }
 const DESTINATARIOS_RELATORIO_DESPACHANTE = [
-  'ayslan_pereira@hotmail.com',
-  'importacao1@impak.com.br',
+  'importacao1@impak.com.br', // Emanuelly (suporte@ vai em cópia automática — ver enviarEmail)
 ];
 
 async function enviarRelatorioImportDespachante(resumo, usuario) {
@@ -2223,7 +2239,7 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
 
   const assunto = `Import Despachante: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados`;
   for (const destinatario of DESTINATARIOS_RELATORIO_DESPACHANTE) {
-    await enviarEmail(destinatario, assunto, html);
+    await enviarEmail(destinatario, assunto, html, { alerta: true });
   }
 }
 
@@ -2366,8 +2382,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','
 
 function normRefManu(v) { return String(v || '').trim().toUpperCase(); }
 const DESTINATARIOS_RELATORIO_MANU = [
-  'ayslan_pereira@hotmail.com',
-  'importacao1@impak.com.br',
+  'importacao1@impak.com.br', // Emanuelly (suporte@ em cópia automática)
 ];
 
 async function enviarRelatorioImportManu(resumo, usuario) {
@@ -2389,7 +2404,7 @@ async function enviarRelatorioImportManu(resumo, usuario) {
   `;
   const assunto = `Import Planilha Interna: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados`;
   for (const destinatario of DESTINATARIOS_RELATORIO_MANU) {
-    await enviarEmail(destinatario, assunto, html);
+    await enviarEmail(destinatario, assunto, html, { alerta: true });
   }
 }
 
@@ -5088,7 +5103,7 @@ async function enviarFollowUpSemanal(){
   for (const e of emails) {
     const assunto = `Follow-up semanal — ${e.cliente} (${e.qtd} processo${e.qtd===1?'':'s'} com ETA próxima)`;
     for (const destinatario of FOLLOWUP_DESTINATARIOS) {
-      try { await enviarEmail(destinatario, assunto, e.html); enviados++; }
+      try { await enviarEmail(destinatario, assunto, e.html, { alerta: true }); enviados++; }
       catch (err) { console.error(`[followup] erro ao enviar ${e.cliente} pra ${destinatario}:`, err.message); }
       await new Promise(r => setTimeout(r, 700)); // Resend aceita ~2 envios/s; espaça pra não tomar 429
     }
@@ -5272,7 +5287,7 @@ function destinatariosAlertas(tipo){
 async function enviarParaDestinatariosAlerta(assunto, html, tipo = 'operacional'){
   const destinatarios = destinatariosAlertas(tipo);
   for (const email of destinatarios) {
-    try { await enviarEmail(email, assunto, html); }
+    try { await enviarEmail(email, assunto, html, { alerta: true }); }
     catch (e) { console.error(`Erro ao enviar e-mail "${assunto}" pra ${email}:`, e.message); }
   }
   return destinatarios.length;
@@ -5763,7 +5778,7 @@ async function verificarAlertaSemCotacao(){
     + `<p style="margin-top:20px;font-size:12px;color:#888;">E-mail automático semanal (segunda-feira) do IMPAK Portal.</p></div>`;
   const destinos = (process.env.ALERTA_COMERCIAL_PARA || ALERTA_COMERCIAL_PADRAO).split(',').map(s => s.trim()).filter(Boolean);
   for (const email of [...new Set(destinos)]) {
-    try { await enviarEmail(email, `IMPAK Portal - ${pendentes.length} processo(s) sem cotação`, html); }
+    try { await enviarEmail(email, `IMPAK Portal - ${pendentes.length} processo(s) sem cotação`, html, { alerta: true }); }
     catch (e) { console.error('Erro ao enviar alerta sem cotação p/ ' + email + ':', e.message); }
   }
   await marcarJobEnviadoHoje(jobName);
@@ -5809,7 +5824,7 @@ async function enviarResumoSemanalAgenda(opts){
   const destinos = opts.para ? [String(opts.para)] : _destinatariosResumoAgenda();
   let enviados = 0;
   for (const email of destinos) {
-    try { await enviarEmail(email, `IMPAK Portal - Agenda: ${totalAtr} tarefa(s) atrasada(s) na equipe`, html); enviados++; }
+    try { const r = await enviarEmail(email, `IMPAK Portal - Agenda: ${totalAtr} tarefa(s) atrasada(s) na equipe`, html, { alerta: true }); if (!(r && r.pulado)) enviados++; }
     catch (e) { console.error('Erro ao enviar resumo da agenda p/ ' + email + ':', e.message); }
   }
   if (!opts.forcar) await marcarJobEnviadoHoje('agenda_resumo_semanal');
