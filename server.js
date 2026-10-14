@@ -2788,7 +2788,9 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     }
 
     // Alerta: Carregamento pendente (data de presenca preenchida mas sem data de carregamento)
-    if (!pularAlertas && pAlerta.data_presenca && !pAlerta.data_carregamento && !pAlerta.data_devolucao_vazio) {
+    // Desligado 14/10/2026 (pedido Ayslan): é tarefa da Agenda (A27/A28 —
+    // agendar retirada / confirmar carregamento), não evento pro sino.
+    if (false && !pularAlertas && pAlerta.data_presenca && !pAlerta.data_carregamento && !pAlerta.data_devolucao_vazio) {
       try {
         const { data: existenteCarreg } = await sb()
           .from('controle_notificacoes')
