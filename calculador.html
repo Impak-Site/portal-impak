@@ -1450,6 +1450,8 @@ function preencherComPlanilha(c, mix){
   set('origem', c.origem || 'DIVERSOS'); set('tipo_importacao', c.tipo_importacao || 'ENCOMENDA');
   if(c.uf_destino) set('uf_destino', c.uf_destino);
   set('cliente', c.cliente || ''); set('custos_diversos', c.custos_diversos || 0);
+  // Mesmas regras de quando o cliente é escolhido à mão: ICMS padrão, comissionados automáticos e meta de lucro.
+  if(c.cliente){ try { aplicarIcmsPadraoCliente(); if(typeof aplicarComissionadosAutoCliente==='function') aplicarComissionadosAutoCliente(); if(typeof aplicarMetaLucroCliente==='function') aplicarMetaLucroCliente(); } catch(e){} }
   setToggleTTD(c.tem_icms_st ? 'NAO' : 'SIM');
   setToggle('br', c.comissao_br ? 'SIM' : 'NAO'); if(c.comissao_br_pct) set('br_pct', c.comissao_br_pct);
   setToggle('china', c.comissao_china ? 'SIM' : 'NAO');
