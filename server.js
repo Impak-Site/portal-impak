@@ -1792,6 +1792,123 @@ app.post('/api/agenda/conclusao', auth('controle'), async (req, res) => {
     res.json({ ok: true, conclusao: row });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
+// ── FATURAS — contas a pagar / a receber (14/10/2026, faturas-core.js) ──
+// Geradas da aba Custos Reais (linhas com "Pagamos para" / "Receber de")
+// e acompanhadas na tela /faturas. Nunca apaga: cancelar = status.
+// Ao criar/cancelar, grava em cada processo real_json._meta[taxa].fatura_id
+// (ou remove) pra aba mostrar "fatura aberta/paga" na linha.
+const FaturasCore = require('./faturas-core.js');
+app.get('/faturas', auth('financeiro'), (req, res) => enviarControleV2(res));
+
+async function vincularFaturaNosProcessos(fatura, remover) {
+  const porProcesso = {};
+  (fatura.itens || []).forEach(it => { if (it.processo_id && it.taxa) (porProcesso[it.processo_id] = porProcesso[it.processo_id] || []).push(it.taxa); });
+  for (const pid of Object.keys(porProcesso)) {
+    try {
+      const { data: proc } = await sb().from('controle_processos').select('id, real_json').eq('id', pid).maybeSingle();
+      if (!proc) continue;
+      const rj = (proc.real_json && typeof proc.real_json === 'object') ? proc.real_json : {};
+      rj._meta = (rj._meta && typeof rj._meta === 'object') ? rj._meta : {};
+      let mexeu = false;
+      porProcesso[pid].forEach(taxa => {
+        rj._meta[taxa] = rj._meta[taxa] || {};
+        if (remover) { if (rj._meta[taxa].fatura_id === fatura.id) { delete rj._meta[taxa].fatura_id; mexeu = true; } }
+        else if (rj._meta[taxa].fatura_id !== fatura.id) { rj._meta[taxa].fatura_id = fatura.id; mexeu = true; }
+        if (!Object.keys(rj._meta[taxa]).length) delete rj._meta[taxa];
+      });
+      if (!Object.keys(rj._meta).length) delete rj._meta;
+      if (mexeu) await sb().from('controle_processos').update({ real_json: rj, updated_at: new Date().toISOString() }).eq('id', pid);
+    } catch (e) { console.warn('vincularFaturaNosProcessos:', e.message); }
+  }
+}
+
+app.get('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const q = req.query || {};
+    let query = sb().from('faturas').select('*').order('vencimento', { ascending: true, nullsFirst: false }).limit(2000);
+    if (q.status && FaturasCore.STATUS.includes(q.status)) query = query.eq('status', q.status);
+    if (q.tipo && FaturasCore.TIPOS.includes(q.tipo)) query = query.eq('tipo', q.tipo);
+    if (q.empresa_id) query = query.eq('empresa_id', String(q.empresa_id).slice(0, 80));
+    if (q.de && /^\d{4}-\d{2}-\d{2}$/.test(q.de)) query = query.gte('vencimento', q.de);
+    if (q.ate && /^\d{4}-\d{2}-\d{2}$/.test(q.ate)) query = query.lte('vencimento', q.ate);
+    if (q.processo_id) query = query.contains('itens', [{ processo_id: String(q.processo_id).slice(0, 80) }]);
+    const { data, error } = await query;
+    if (error) return res.json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message), faturas: [] });
+    let lista = data || [];
+    if (q.empresa) { const k = String(q.empresa).toLowerCase(); lista = lista.filter(f => (f.empresa_nome || '').toLowerCase().includes(k) || (f.documento || '').toLowerCase().includes(k)); }
+    res.json({ ok: true, faturas: lista });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// Cria (sem id) ou edita (com id) — aceita uma fatura ou um array (gerar
+// várias de uma vez a partir da aba Custos Reais).
+app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const lote = Array.isArray(req.body) ? req.body : (req.body && Array.isArray(req.body.faturas) ? req.body.faturas : [req.body]);
+    if (!lote.length || lote.length > 50) return res.status(400).json({ ok: false, erro: 'Envie de 1 a 50 faturas.' });
+    const agora = new Date().toISOString();
+    const salvas = [];
+    for (const b of lote) {
+      const v = FaturasCore.validarFatura(b);
+      if (!v.ok) return res.status(400).json({ ok: false, erro: v.erro });
+      const row = { ...v.fatura, alterado_por: req.session.usuario || null, updated_at: agora };
+      // empresa sem id: tenta achar no cadastro (qualquer papel)
+      if (!row.empresa_id) { try { const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(row.empresa_nome, await obterIndiceCadastros()); if (r && r.id) row.empresa_id = r.id; } catch (e) { /* segue sem id */ } }
+      let salva;
+      if (b && b.id) {
+        const { data: atual } = await sb().from('faturas').select('id,status,itens').eq('id', String(b.id)).maybeSingle();
+        if (!atual) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+        if (atual.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada não pode ser editada.' });
+        const { data, error } = await sb().from('faturas').update(row).eq('id', atual.id).select().single();
+        if (error) return res.status(500).json({ ok: false, erro: error.message });
+        salva = data;
+        await vincularFaturaNosProcessos({ id: atual.id, itens: atual.itens }, true);
+      } else {
+        row.criado_por = req.session.usuario || null; row.created_at = agora;
+        // nº sequencial por ano (NNNNNN/AA) — pega o maior do ano e soma 1
+        try {
+          const ano = new Date().getFullYear();
+          const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
+          row.numero = FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano);
+        } catch (e) { row.numero = null; }
+        const { data, error } = await sb().from('faturas').insert(row).select().single();
+        if (error) return res.status(500).json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message) });
+        salva = data;
+      }
+      await vincularFaturaNosProcessos(salva, false);
+      salvas.push(salva);
+    }
+    res.json({ ok: true, faturas: salvas });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// Marcar paga / reabrir / cancelar — só Financeiro.
+app.post('/api/faturas/:id/:acao', auth('financeiro'), async (req, res) => {
+  try {
+    const acao = req.params.acao;
+    if (!['pagar', 'reabrir', 'cancelar'].includes(acao)) return res.status(404).json({ ok: false, erro: 'Ação inválida.' });
+    const { data: f } = await sb().from('faturas').select('*').eq('id', String(req.params.id).slice(0, 80)).maybeSingle();
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const b = req.body || {};
+    const patch = { alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() };
+    if (acao === 'pagar') {
+      if (f.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada.' });
+      const pago_em = /^\d{4}-\d{2}-\d{2}$/.test(b.pago_em || '') ? b.pago_em : new Date().toISOString().slice(0, 10);
+      const vp = b.valor_pago != null && b.valor_pago !== '' ? parseFloat(b.valor_pago) : parseFloat(f.valor);
+      if (isNaN(vp) || vp < 0) return res.status(400).json({ ok: false, erro: 'Valor pago inválido.' });
+      Object.assign(patch, { status: 'paga', pago_em, valor_pago: Math.round(vp * 100) / 100 });
+    } else if (acao === 'reabrir') {
+      Object.assign(patch, { status: 'aberta', pago_em: null, valor_pago: null });
+    } else {
+      Object.assign(patch, { status: 'cancelada', obs: [f.obs, b.motivo ? 'Cancelada: ' + String(b.motivo).slice(0, 300) : 'Cancelada'].filter(Boolean).join(' · ') });
+    }
+    const { data, error } = await sb().from('faturas').update(patch).eq('id', f.id).select().single();
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    await vincularFaturaNosProcessos(data, acao === 'cancelar');
+    res.json({ ok: true, fatura: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 // ── Clientes principais x avulsos (pedido Emanuelly 28/09/2026) ─────────
 // Toda NF de venda (aba Vendas) vira "cliente" no Por Cliente/Medida e no
 // follow-up — inclusive pessoa física que comprou 4 pneus. Classificação:

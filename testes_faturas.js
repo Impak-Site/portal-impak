@@ -68,6 +68,17 @@ teste('moeda desconhecida cai pra BRL; status cancelada é preservado; datas inv
   assert.strictEqual(v.fatura.vencimento, null);
 });
 
+teste('proximoNumero: sequencial por ano NNNNNN/AA', () => {
+  assert.strictEqual(F.proximoNumero(null, 2026), '000001/26');
+  assert.strictEqual(F.proximoNumero('000041/26', 2026), '000042/26');
+  assert.strictEqual(F.proximoNumero('000999/25', 2026), '000001/26', 'virada de ano recomeça');
+});
+teste('validarFatura: câmbio informado fica; BRL vale 1; USD sem câmbio fica null', () => {
+  assert.strictEqual(F.validarFatura({ tipo: 'pagar', empresa_nome: 'A', valor: 1, moeda: 'USD', cambio: '5,1' }).fatura.cambio, 5.1, 'aceita vírgula');
+  assert.strictEqual(F.validarFatura({ tipo: 'pagar', empresa_nome: 'A', valor: 1, moeda: 'USD', cambio: 5.1 }).fatura.cambio, 5.1);
+  assert.strictEqual(F.validarFatura({ tipo: 'pagar', empresa_nome: 'A', valor: 1 }).fatura.cambio, 1);
+});
+
 console.log('\n── situacao / resumoFaturas ──');
 const hoje = '2026-10-14';
 const lista = [

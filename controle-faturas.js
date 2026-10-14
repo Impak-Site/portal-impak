@@ -96,7 +96,8 @@ async function crConfirmarGerarFaturas(){
   cands.forEach((f, i) => {
     const ck = document.getElementById('ft_ck_' + i);
     if(!ck || !ck.checked) return;
-    enviar.push({ ...f, documento: (document.getElementById('ft_doc_' + i) || {}).value || null, vencimento: (document.getElementById('ft_venc_' + i) || {}).value || null, pago_em: (document.getElementById('ft_pago_' + i) || {}).value || null });
+    const cx = (typeof _cambio !== 'undefined' && _cambio) ? _cambio : {};
+    enviar.push({ ...f, cambio: f.moeda === 'BRL' ? 1 : (parseFloat(cx[f.moeda]) || null), documento: (document.getElementById('ft_doc_' + i) || {}).value || null, vencimento: (document.getElementById('ft_venc_' + i) || {}).value || null, pago_em: (document.getElementById('ft_pago_' + i) || {}).value || null });
   });
   if(!enviar.length){ showToast('Nenhuma fatura marcada.', 'warn'); return; }
   const btn = document.getElementById('ft_btn_gerar'); if(btn){ btn.disabled = true; btn.textContent = 'Gerando…'; }
@@ -194,9 +195,11 @@ async function renderDashFaturas(){
   const linhas = _ftLista.map(f => {
     const s = FaturasCore.situacao(f, hoje);
     const refs = [...new Set((f.itens || []).map(it => it.referencia).filter(Boolean))];
-    return `<tr>
-      <td><span class="ft-tag ${f.tipo}">${f.tipo === 'pagar' ? 'PAGAR' : 'RECEBER'}</span></td>
-      <td><strong>${esc(f.empresa_nome)}</strong>${f.empresa_id ? ' <span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<div class="cr-muted">${(f.itens || []).map(it => esc(it.label)).join(', ')}</div></td>
+    const fator = f.moeda === 'BRL' ? 1 : (parseFloat(f.cambio) || parseFloat(cambio[f.moeda]) || 0);
+    const itensHtml = (f.itens || []).length ? `<table class="ft-itens"><thead><tr><th>Processo</th><th>Taxa</th><th>Moeda</th><th style="text-align:right;">Valor</th><th style="text-align:right;">Fator</th><th style="text-align:right;">Em R$</th></tr></thead><tbody>${f.itens.map(it => `<tr><td>${esc(it.referencia || '—')}</td><td>${esc(it.label || it.taxa || '')}</td><td>${esc(it.moeda || f.moeda)}</td><td style="text-align:right;">${_ftFmt(it.valor)}</td><td style="text-align:right;">${fator ? fator.toFixed(4).replace('.', ',') : '—'}</td><td style="text-align:right;">${fator ? _ftFmt((parseFloat(it.valor) || 0) * fator) : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="cr-muted">Sem itens (fatura avulsa).</div>';
+    return `<tr class="ft-row" onclick="ftToggleItens('${f.id}', event)">
+      <td><span class="ft-tag ${f.tipo}">${f.tipo === 'pagar' ? 'PAGAR' : 'RECEBER'}</span><div class="cr-muted" style="font-family:'JetBrains Mono',monospace;">${esc(f.numero || '')}</div></td>
+      <td><strong>${esc(f.empresa_nome)}</strong>${f.empresa_id ? ' <span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<div class="cr-muted">${(f.itens || []).length} ${(f.itens || []).length === 1 ? 'taxa' : 'taxas'} · ref. ${_ftData(f.emissao || (f.created_at || '').slice(0, 10))}${f.moeda !== 'BRL' && fator ? ` · câmbio ${fator.toFixed(4).replace('.', ',')}` : ''}</div></td>
       <td>${esc(f.documento || '—')}</td>
       <td>${refs.map(r => `<a href="/controle/${encodeURIComponent(r)}" target="_blank">${esc(r)}</a>`).join(', ') || '—'}</td>
       <td>${_ftData(f.vencimento)}</td>
@@ -205,7 +208,8 @@ async function renderDashFaturas(){
       <td style="white-space:nowrap;">
         ${f.status === 'aberta' ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="ftMarcarPaga('${f.id}')">Marcar paga</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftEditar('${f.id}')">Editar</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftCancelar('${f.id}')" title="Cancela (não apaga)">Cancelar</button>` : ''}
         ${f.status === 'paga' ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftAcao('${f.id}','reabrir')">Reabrir</button>` : ''}
-      </td></tr>`;
+      </td></tr>
+      <tr class="ft-itens-row" id="ft_itens_${f.id}" style="display:none;"><td colspan="8">${itensHtml}</td></tr>`;
   }).join('');
   const total = _ftLista.filter(f => f.status !== 'cancelada').reduce((s, f) => s + (f.moeda === 'BRL' ? parseFloat(f.valor) || 0 : (parseFloat(f.valor) || 0) * (parseFloat(cambio[f.moeda]) || 0)), 0);
   el.innerHTML = cards + filtros + `<div class="ft-tabela-wrap"><table class="ft-tabela">
@@ -215,6 +219,11 @@ async function renderDashFaturas(){
   </table></div>`;
 }
 
+function ftToggleItens(id, ev){
+  if(ev && ev.target && ev.target.closest('button, a')) return;
+  const tr = document.getElementById('ft_itens_' + id);
+  if(tr) tr.style.display = tr.style.display === 'none' ? 'table-row' : 'none';
+}
 function ftMarcarPaga(id){
   const f = _ftLista.find(x => x.id === id); if(!f) return;
   const ov = _ftOverlay();

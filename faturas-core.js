@@ -80,14 +80,25 @@
     const pago_em = iso(b.pago_em);
     let status = STATUS.includes(b.status) ? b.status : 'aberta';
     if (pago_em && status === 'aberta') status = 'paga';
+    const cxRaw = typeof b.cambio === 'string' ? b.cambio.replace(',', '.') : b.cambio;
+    const cambio = cxRaw != null && cxRaw !== '' && !isNaN(parseFloat(cxRaw)) && parseFloat(cxRaw) > 0 ? parseFloat(cxRaw) : (moeda === 'BRL' ? 1 : null);
     const fatura = {
-      tipo, empresa_nome, empresa_id: b.empresa_id ? String(b.empresa_id).slice(0, 80) : null,
+      cambio, tipo, empresa_nome, empresa_id: b.empresa_id ? String(b.empresa_id).slice(0, 80) : null,
       documento: limpa(b.documento).slice(0, 120) || null, moeda, valor,
       valor_pago: status === 'paga' ? (b.valor_pago != null && b.valor_pago !== '' ? num(b.valor_pago) : valor) : null,
       emissao: iso(b.emissao), vencimento, pago_em, status,
       obs: limpa(b.obs).slice(0, 1000) || null, itens,
     };
     return { ok: true, fatura };
+  }
+
+  // Nº sequencial NNNNNN/AA a partir do maior já usado no ano.
+  function proximoNumero(ultimo, ano) {
+    const aa = String(ano).slice(-2);
+    let n = 0;
+    const m = /^(\d+)\/(\d{2})$/.exec(ultimo || '');
+    if (m && m[2] === aa) n = parseInt(m[1], 10);
+    return String(n + 1).padStart(6, '0') + '/' + aa;
   }
 
   // Situação pra tela: vencida / vence hoje / a vencer / paga / cancelada.
@@ -124,7 +135,7 @@
     return r;
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas };
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();
