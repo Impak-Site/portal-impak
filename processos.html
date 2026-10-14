@@ -11,7 +11,7 @@
 
   <meta name="version" content="1779232091">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <!-- Nav global (Controle/Conferência/TyreDesk/Calculador/Financeiro) + assistente IA —
      mesmo script já usado no controle_v2.html; faltava aqui, por isso essa tela
@@ -41,7 +41,7 @@ html{scroll-behavior:smooth;}
 body{
   background:var(--bg);
   color:var(--text);
-  font-family:'DM Sans',sans-serif;
+  font-family:'Inter',sans-serif;
   min-height:calc(var(--vhz,1vh)*100);
   overflow-x:hidden;
 }
@@ -75,7 +75,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   margin-bottom:8px;
 }
 .sidebar-logo .logo-tag{
-  font-family:'DM Mono',monospace;
+  font-family:'JetBrains Mono',monospace;
   font-size:9px;
   color:rgba(255,255,255,0.5);
   letter-spacing:0.2em;
@@ -83,7 +83,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   margin-bottom:6px;
 }
 .sidebar-logo .logo-name{
-  font-family:'Syne',sans-serif;
+  font-family:'Inter',sans-serif;
   font-size:22px;
   font-weight:800;
   color:#ffffff;
@@ -133,7 +133,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   width:100%;background:rgba(0,0,0,.2);
   border:1px solid rgba(255,255,255,.15);
   border-radius:6px;
-  color:#fff;font-size:12px;font-family:'DM Mono',monospace;
+  color:#fff;font-size:12px;font-family:'JetBrains Mono',monospace;
   padding:7px 10px;outline:none;
 }
 .api-input:focus{border-color:#1a7fd4;}
@@ -164,7 +164,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   margin-bottom:36px;flex-wrap:wrap;gap:16px;
 }
 .page-title{
-  font-family:'Syne',sans-serif;
+  font-family:'Inter',sans-serif;
   font-size:26px;
   font-weight:700;
   color:var(--text-bright);
@@ -175,7 +175,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 
 /* Section label */
 .sec{
-  font-family:'DM Mono',monospace;
+  font-family:'JetBrains Mono',monospace;
   font-size:10px;
   font-weight:500;
   letter-spacing:0.2em;
@@ -218,7 +218,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   border-radius:8px 8px 0 0;
 }
 .stat-val{
-  font-family:'Syne',sans-serif;
+  font-family:'Inter',sans-serif;
   font-size:32px;
   font-weight:800;
   color:var(--text-bright);
@@ -243,15 +243,15 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 }
 .process-row:hover{border-color:var(--accent);background:var(--surface2);box-shadow:0 2px 8px rgba(10,45,94,0.08);}
 .proc-ref{
-  font-family:'DM Mono',monospace;
+  font-family:'JetBrains Mono',monospace;
   font-size:12px;
   font-weight:500;
   color:var(--accent);
 }
 .proc-desc{font-size:13px;color:var(--text);}
-.proc-date{font-size:12px;color:var(--text-dim);font-family:'DM Mono',monospace;}
+.proc-date{font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;}
 .proc-status{
-  font-family:'DM Mono',monospace;
+  font-family:'JetBrains Mono',monospace;
   font-size:10px;
   font-weight:500;
   padding:4px 10px;
@@ -269,7 +269,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 .btn{
   padding:10px 20px;
   border-radius:6px;
-  font-family:'DM Mono',monospace;
+  font-family:'JetBrains Mono',monospace;
   font-size:11px;
   font-weight:500;
   letter-spacing:0.1em;
@@ -321,7 +321,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 .chip-icon{font-size:16px;}
 .chip-name{flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .chip-type{
-  font-family:'DM Mono',monospace;font-size:9px;font-weight:500;
+  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;
   letter-spacing:0.1em;text-transform:uppercase;
   background:var(--accent-dim);color:var(--accent);
   border:1px solid rgba(168,212,72,0.2);
@@ -338,7 +338,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 }
 .loading-box.show{display:block;}
 .loading-title{
-  font-family:'DM Mono',monospace;font-size:11px;font-weight:500;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
   letter-spacing:0.15em;text-transform:uppercase;
   color:var(--accent);margin-bottom:24px;
   animation:pulse 1.4s ease infinite;
@@ -360,7 +360,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 }
 .pills{display:flex;gap:8px;flex-wrap:wrap;}
 .pill{
-  font-family:'DM Mono',monospace;font-size:11px;font-weight:500;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
   padding:5px 14px;border-radius:100px;
 }
 .pill-ok{background:rgba(64,200,120,0.12);color:var(--ok);}
@@ -377,7 +377,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   border-bottom:1px solid var(--border);
 }
 .cg-title{
-  font-family:'DM Mono',monospace;font-size:10px;font-weight:500;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;
   letter-spacing:0.15em;text-transform:uppercase;color:var(--text-bright);
 }
 .col-head{
@@ -385,7 +385,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   padding:8px 18px;border-bottom:1px solid var(--border);
 }
 .col-head span{
-  font-family:'DM Mono',monospace;font-size:9px;
+  font-family:'JetBrains Mono',monospace;font-size:9px;
   letter-spacing:0.15em;text-transform:uppercase;color:var(--text-dim);
 }
 .c-row{
@@ -399,7 +399,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
 .c-label{font-size:12px;color:var(--text-mid);font-weight:500;padding-top:2px;}
 .c-val{font-size:13px;color:var(--text);line-height:1.5;}
 .c-tag{
-  font-family:'DM Mono',monospace;font-size:9px;color:var(--text-dim);
+  font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim);
   display:block;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.1em;
 }
 .c-obs{
@@ -416,7 +416,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   border-radius:8px;padding:16px 20px;margin-top:12px;
 }
 .alerts-box h4{
-  font-family:'DM Mono',monospace;font-size:10px;font-weight:500;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;
   letter-spacing:0.15em;text-transform:uppercase;color:var(--warn);margin-bottom:10px;
 }
 .alerts-box ul{list-style:none;}
@@ -441,20 +441,20 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   max-height:calc(var(--vhz,1vh)*90);overflow-y:auto;
 }
 .modal-title{
-  font-family:'Syne',sans-serif;font-size:20px;font-weight:700;
+  font-family:'Inter',sans-serif;font-size:20px;font-weight:700;
   color:var(--text-bright);margin-bottom:6px;
 }
 .modal-sub{font-size:13px;color:var(--text-dim);margin-bottom:24px;}
 .field-group{margin-bottom:16px;}
 .field-label{
-  font-family:'DM Mono',monospace;font-size:10px;font-weight:500;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;
   letter-spacing:0.15em;text-transform:uppercase;color:var(--text-dim);
   margin-bottom:7px;display:block;
 }
 .field-input{
   width:100%;background:var(--bg2);border:1px solid var(--border2);
   border-radius:6px;padding:10px 14px;
-  font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);
+  font-family:'Inter',sans-serif;font-size:13px;color:var(--text);
   outline:none;transition:border-color 0.15s;
 }
 .field-input:focus{border-color:var(--accent);}
@@ -472,7 +472,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
   border-radius:6px;padding:12px 14px;
 }
 .detail-field .df-label{
-  font-family:'DM Mono',monospace;font-size:9px;font-weight:500;
+  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;
   letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;
 }
 .detail-field .df-val{font-size:13px;color:var(--text-bright);line-height:1.4;}
@@ -492,7 +492,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 .log-dot.err{background:var(--danger);}
 .log-content{flex:1;}
 .log-msg{font-size:13px;color:var(--text);line-height:1.5;}
-.log-time{font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:3px;}
+.log-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:3px;}
 
 /* Empty state */
 .empty{
@@ -554,24 +554,24 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <div id="loginScreen" style="position:fixed;inset:0;background:#e8f0f8;display:flex;align-items:center;justify-content:center;z-index:9999;">
   <div style="width:400px;max-width:calc(var(--vwz,1vw)*94);">
     <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:28px;">
-      <div style="background:#1a7fd4;color:#fff;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
-      <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;">Portal</div>
+      <div style="background:#1a7fd4;color:#fff;font-family:'Inter',sans-serif;font-size:22px;font-weight:800;padding:6px 14px;border-radius:6px;letter-spacing:1px;">IMPAK</div>
+      <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:#4a6480;letter-spacing:2px;text-transform:uppercase;">Portal</div>
     </div>
     <div style="background:#fff;border:1px solid #c8d8e8;border-top:3px solid #1a7fd4;border-radius:14px;padding:36px 32px;box-shadow:0 8px 32px rgba(26,127,212,.1);">
-      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0d1e2e;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Acesso ao Sistema</div>
+      <div style="font-family:'Inter',sans-serif;font-size:17px;font-weight:700;color:#0d1e2e;text-align:center;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Acesso ao Sistema</div>
       <div style="font-size:11px;color:#1a7fd4;text-align:center;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:28px;">Gestão de Processos</div>
       <div id="loginErr" style="display:none;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#c0392b;font-weight:600;text-align:center;margin-bottom:16px;"></div>
       <div style="font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Usuário</div>
       <input id="loginUser" type="text" placeholder="seu usuário" autocomplete="username"
-        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:16px;box-sizing:border-box;transition:border .15s;"
+        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'Inter',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:16px;box-sizing:border-box;transition:border .15s;"
         onfocus="this.style.borderColor='#1a7fd4';this.style.background='#c8ddf0'" onblur="this.style.borderColor='#c8d8e8';this.style.background='#dce8f5'">
       <div style="font-size:10px;font-weight:700;color:#4a6480;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Senha</div>
       <input id="loginPass" type="password" placeholder="sua senha" autocomplete="current-password"
-        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:20px;box-sizing:border-box;transition:border .15s;"
+        style="width:100%;background:#dce8f5;border:1px solid #c8d8e8;border-radius:7px;color:#0d1e2e;font-family:'Inter',sans-serif;font-size:14px;padding:11px 14px;outline:none;margin-bottom:20px;box-sizing:border-box;transition:border .15s;"
         onfocus="this.style.borderColor='#1a7fd4';this.style.background='#c8ddf0'" onblur="this.style.borderColor='#c8d8e8';this.style.background='#dce8f5'"
         onkeydown="if(event.key==='Enter')doLogin()">
       <button onclick="doLogin()"
-        style="width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;"
+        style="width:100%;background:#1a7fd4;border:none;border-radius:7px;color:#fff;font-family:'Inter',sans-serif;font-size:15px;font-weight:700;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;"
         onmouseover="this.style.background='#1567b8'" onmouseout="this.style.background='#1a7fd4'">Entrar</button>
       <div style="text-align:center;margin-top:18px;font-size:10px;color:#a8bfd4;">IMPAK Comercial Importadora · Confidencial</div>
     </div>
@@ -619,7 +619,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <div class="api-label">API Anthropic</div>
     <div class="api-status" style="margin-top:6px;">
       <div class="api-dot ok"></div>
-      <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Configurada no servidor</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim)">Configurada no servidor</span>
     </div>
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
       <div class="api-label">Banco de Dados</div>
@@ -795,17 +795,17 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
       <button onclick="openMsgModal('agent','pt')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
         <div style="font-size:18px;margin-bottom:6px;">🚢</div>
-        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Agente de Cargas</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Agente de Cargas</div>
         <div style="font-size:12px;color:var(--text-dim);">Correção do BL · Português</div>
       </button>
       <button onclick="openMsgModal('supplier','en')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
         <div style="font-size:18px;margin-bottom:6px;">🏭</div>
-        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Fornecedor</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Fornecedor</div>
         <div style="font-size:12px;color:var(--text-dim);">Invoice & Packing List · English</div>
       </button>
       <button onclick="openMsgModal('all','pt')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--warn)'" onmouseout="this.style.borderColor='var(--border2)'">
         <div style="font-size:18px;margin-bottom:6px;">📋</div>
-        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--warn);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Relatório Completo</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--warn);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Relatório Completo</div>
         <div style="font-size:12px;color:var(--text-dim);">Todas as divergências · PT/EN/ES</div>
       </button>
     </div>
@@ -860,12 +860,12 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <div style="min-height:100%;">
     <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
       <div>
-        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-family:'Inter',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
         <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
       </div>
       <div style="display:flex;gap:10px;">
-        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
-        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
       </div>
     </div>
     <div style="padding:32px 40px;max-width:1100px;margin:0 auto;" id="modalDetalheBody"></div>
@@ -887,7 +887,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
         <option value="es">🇪🇸 Español</option>
       </select>
     </div>
-    <textarea id="msgContent" style="width:100%;min-height:320px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:14px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);line-height:1.7;resize:vertical;outline:none;"></textarea>
+    <textarea id="msgContent" style="width:100%;min-height:320px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);line-height:1.7;resize:vertical;outline:none;"></textarea>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
       <button class="btn btn-ghost" onclick="document.getElementById('msgModalBg').style.display='none'">Fechar</button>
       <button class="btn btn-ghost" onclick="copyMsg()">📋 Copiar para WhatsApp/E-mail</button>
@@ -1567,9 +1567,9 @@ function abrirEstatisticas(){
   }
   win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'+
     '<title>ImpakOS - Estatísticas por Fornecedor</title>'+
-    '<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">'+
-    '<style>body{font-family:"DM Sans",sans-serif;background:#e8f0f8;margin:0;padding:24px}'+
-    '.hd{background:#0a2d5e;color:#fff;padding:20px 28px;border-radius:10px;margin-bottom:20px;font-family:"Syne",sans-serif}'+
+    '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">'+
+    '<style>body{font-family:"Inter",sans-serif;background:#e8f0f8;margin:0;padding:24px}'+
+    '.hd{background:#0a2d5e;color:#fff;padding:20px 28px;border-radius:10px;margin-bottom:20px;font-family:"Inter",sans-serif}'+
     '.hd h1{margin:0;font-size:20px;font-weight:800}.hd p{margin:4px 0 0;font-size:12px;opacity:.6}'+
     '.card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)}'+
     'table{width:100%;border-collapse:collapse;font-size:13px}'+
@@ -2115,7 +2115,7 @@ function renderResult(r){
       return `<div class="check-group" style="margin-bottom:10px">
         <div class="cg-head" style="cursor:pointer" onclick="var n=this.nextElementSibling;n.style.display=n.style.display==='none'?'block':'none'">
           <span class="cg-title">${escHtml(docLabel)}</span>
-          <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);margin-left:8px;">${campos.length} campo(s) · clique para expandir ▼</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);margin-left:8px;">${campos.length} campo(s) · clique para expandir ▼</span>
         </div>
         <div style="display:none;padding:16px 18px">
           <div class="detail-grid">
@@ -3608,12 +3608,12 @@ function exportPDF(){
     <!-- Header fixo do modal -->
     <div style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #c8d8e8;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(26,127,212,.08);">
       <div>
-        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
+        <div style="font-family:'Inter',sans-serif;font-size:20px;font-weight:700;color:#0d1e2e;" id="modalDetalheTitulo">Processo</div>
         <div style="font-size:12px;color:#4a6480;margin-top:2px;" id="modalDetalheSub"></div>
       </div>
       <div style="display:flex;gap:10px;">
-        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
-        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
+        <button id="modalDetalheExcluir" style="background:transparent;border:1px solid #c0392b;border-radius:7px;color:#c0392b;padding:8px 16px;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;">Excluir</button>
+        <button onclick="fecharModalDetalhe()" style="background:#1a7fd4;border:none;border-radius:7px;color:#fff;padding:8px 20px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:700;">← Voltar</button>
       </div>
     </div>
     <!-- Conteúdo -->

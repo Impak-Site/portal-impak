@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/impak-icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/impak-icon-180.png">
 
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- ExcelJS pra planilha estilizada de exportarFormatoCliente() — carregada
 antecipadamente (não no clique do botão): no Safari, gerar o blob de
 download muito tempo depois do carregamento dinâmico de uma lib via CDN
@@ -58,7 +58,7 @@ html.boot-tela-exclusiva body{visibility:hidden}
 --shadow-lg:0 16px 40px rgba(16,24,40,.14),0 4px 10px rgba(16,24,40,.06);
 --shadow:var(--shadow-sm);
 }
-body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:calc(var(--vhz,1vh)*100);-webkit-font-smoothing:antialiased;}
+body{background:var(--bg);font-family:'Inter',sans-serif;color:var(--text);min-height:calc(var(--vhz,1vh)*100);-webkit-font-smoothing:antialiased;}
 
 /* ── LAYOUT ── */
 .app{display:flex;flex-direction:column;min-height:calc(var(--vhz,1vh)*100);}
@@ -68,7 +68,7 @@ global (chat.js) que neutraliza topbars antigos ainda não redesenhados
 (TyreDesk, Conferência). O resto (logo, título, usuário, Sair) já vive
 no nav global. */
 .util-bar{background:var(--card);color:var(--text);padding:0 24px;height:40px;display:flex;align-items:center;justify-content:flex-end;gap:12px;position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border);}
-.topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:.5px;}
+.topbar-logo{font-family:'Inter',sans-serif;font-size:18px;font-weight:800;letter-spacing:.5px;}
 .topbar-title{font-size:11px;opacity:.55;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;}
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:14px;}
 .user-badge{font-size:12px;opacity:.75;}
@@ -100,14 +100,14 @@ no nav global. */
 .stat-card.active{border-color:var(--ac);background:var(--ac-soft);}
 .stat-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;background:var(--stat-cor-soft,var(--ac-soft));color:var(--stat-cor,var(--ac));}
 .stat-icon svg{width:16px;height:16px;}
-.stat-num{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:30px;font-weight:700;color:var(--ac);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums lining-nums;}
+.stat-num{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:30px;font-weight:700;color:var(--ac);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums lining-nums;}
 .stat-label{font-size:11px;color:var(--muted);font-weight:600;margin-top:5px;}
 
 /* ── TOOLBAR ── */
 .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
-.search-box{flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:9px 14px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s;}
+.search-box{flex:1;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:9px 14px;font-size:13px;font-family:'Inter',sans-serif;color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s;}
 .search-box:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--ac-soft);}
-.btn{padding:9px 18px;border-radius:var(--r-md);font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:'Syne',sans-serif;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.btn{padding:9px 18px;border-radius:var(--r-md);font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
 .btn-primary{background:var(--ac);color:#fff;box-shadow:var(--shadow-sm);}
 .btn-primary:hover{background:var(--ac2);box-shadow:var(--shadow-md);}
 .btn-outline{background:#fff;color:var(--ac);border:1px solid var(--border-strong);}
@@ -150,9 +150,9 @@ no nav global. */
 .table-row:hover{background:var(--ac-soft);}
 .table-row:last-child{border-bottom:none;}
 .td{padding:13px 14px;font-size:13px;display:flex;align-items:center;min-width:0;}
-.td-ref{font-family:'DM Mono',monospace;font-weight:600;color:var(--ac);font-size:12px;}
+.td-ref{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--ac);font-size:12px;}
 .td-forn{font-size:12px;font-weight:500;}
-.td-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
+.td-date{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
 .td-etiquetas{overflow:hidden;}
 
 /* ── FASE BADGE ── */
@@ -197,11 +197,11 @@ navegar (URL muda, botão voltar do navegador funciona — ver JS). */
 #modal-bg.open .modal{animation:painelEntrar .22s ease;}
 @keyframes painelEntrar{from{transform:translateX(24px);opacity:.5}to{transform:translateX(0);opacity:1}}
 @media(max-width:820px){ #modal-bg .modal{max-width:100%;} }
-.modal-title{font-family:'DM Mono',monospace;font-size:17px;font-weight:500;letter-spacing:.2px;}
+.modal-title{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:500;letter-spacing:.2px;}
 .modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:4px 8px;border-radius:var(--r-sm);transition:background .15s;}
 .modal-close:hover{background:var(--bg);}
 .modal-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0;overflow-x:auto;}
-.modal-tab{padding:11px 20px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s;font-family:'Syne',sans-serif;}
+.modal-tab{padding:11px 20px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s;font-family:'Inter',sans-serif;}
 .modal-tab:hover{color:var(--ac);background:var(--ac-soft);}
 .modal-tab.active{color:var(--ac);border-bottom-color:var(--ac);background:#fff;}
 .modal-tab .tab-alert{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--err);margin-left:4px;vertical-align:middle;}
@@ -211,12 +211,12 @@ navegar (URL muda, botão voltar do navegador funciona — ver JS). */
 
 /* ── FORM SECTIONS ── */
 .form-section{margin-bottom:26px;}
-.form-section-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);letter-spacing:.2px;margin-bottom:14px;padding-bottom:9px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.form-section-title{font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);letter-spacing:.2px;margin-bottom:14px;padding-bottom:9px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;}
 .form-group{display:flex;flex-direction:column;gap:5px;}
 .form-group.full{grid-column:1/-1;}
 .form-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
-.form-input{background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;transition:all .15s;}
+.form-input{background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;font-size:13px;font-family:'Inter',sans-serif;color:var(--text);outline:none;transition:all .15s;}
 .form-input:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--ac-soft);}
 .form-input:disabled{opacity:.5;cursor:not-allowed;background:var(--bg);}
 select.form-input{cursor:pointer;}
@@ -248,7 +248,7 @@ select.form-input{cursor:pointer;}
 .cr-dot{display:inline-block;width:10px;height:10px;border-radius:50%;cursor:pointer;border:1.5px solid var(--border-strong);background:transparent;box-sizing:border-box;}
 .cr-dot.ok{background:var(--ok);border-color:var(--ok);}
 .cr-dot.cotado{background:var(--ac);border-color:var(--ac);}
-.cr-wrap .cr-moeda{position:absolute;left:3px;top:50%;transform:translateY(-50%);border:none;background:transparent;font-size:11px;font-weight:700;color:var(--muted);width:52px;padding:0 0 0 5px;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none;appearance:auto;z-index:1;}
+.cr-wrap .cr-moeda{position:absolute;left:3px;top:50%;transform:translateY(-50%);border:none;background:transparent;font-size:11px;font-weight:700;color:var(--muted);width:52px;padding:0 0 0 5px;cursor:pointer;font-family:'Inter',sans-serif;outline:none;appearance:auto;z-index:1;}
 .cr-wrap .cr-moeda:disabled{cursor:not-allowed;opacity:.6;}
 .cr-wrap .form-input{padding-left:58px;padding-top:7px;padding-bottom:7px;font-variant-numeric:tabular-nums;text-align:right;}
 .cr-add{font-size:12px;padding:6px 10px;max-width:280px;color:var(--ac);background:transparent;border-style:dashed;cursor:pointer;}
@@ -274,7 +274,7 @@ select.form-input{cursor:pointer;}
 /* ── NOTIFICAÇÕES ── */
 .notif-panel{position:fixed;top:92px;right:0;width:340px;height:calc(calc(var(--vhz,1vh)*100) - 92px);background:var(--card);border-left:1px solid var(--border);z-index:150;transform:translateX(100%);transition:transform .25s;overflow-y:auto;box-shadow:var(--shadow-lg);}
 .notif-panel.open{transform:translateX(0);}
-.notif-header{padding:16px 20px;border-bottom:1px solid var(--border);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between;}
+.notif-header{padding:16px 20px;border-bottom:1px solid var(--border);font-family:'Inter',sans-serif;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between;}
 .notif-item{padding:13px 18px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
 .notif-item:hover{background:var(--bg);}
 .notif-item.unread{background:var(--ac-soft);border-left:3px solid var(--ac);}
@@ -337,7 +337,7 @@ select.form-input{cursor:pointer;}
 .inline-edit{position:relative;display:inline-flex;align-items:center;gap:4px;cursor:pointer;border-radius:var(--r-sm);padding:1px 4px;transition:background .1s;}
 .inline-edit:hover{background:var(--ac-soft);}
 .inline-edit:hover::after{content:'✏';font-size:9px;opacity:.5;margin-left:2px;}
-.inline-input{background:#fff;border:1px solid var(--ac);border-radius:var(--r-sm);padding:3px 6px;font-size:12px;font-family:'DM Mono',monospace;width:120px;outline:none;box-shadow:0 0 0 3px var(--ac-soft);}
+.inline-input{background:#fff;border:1px solid var(--ac);border-radius:var(--r-sm);padding:3px 6px;font-size:12px;font-family:'JetBrains Mono',monospace;width:120px;outline:none;box-shadow:0 0 0 3px var(--ac-soft);}
 .inline-select{background:#fff;border:1px solid var(--ac);border-radius:var(--r-sm);padding:3px 6px;font-size:11px;outline:none;}
 
 /* ── RESPONSIVE — CARDS NO MOBILE (task #61) ──────────────────────────
@@ -526,7 +526,7 @@ ao lado das datas). -->
 <!-- DASHBOARD FINANCEIRO -->
 <div id="dash-financeiro" style="display:none;margin-bottom:20px;">
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-<div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">💰 Dashboard Financeiro</div>
+<div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">💰 Dashboard Financeiro</div>
 <div id="periodo-seletor-financeiro"></div>
 </div>
 <div id="dash-fin-content"></div>
@@ -535,7 +535,7 @@ ao lado das datas). -->
   <!-- DASHBOARD RESULTADO -->
   <div id="dash-resultado" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📈 Dashboard Resultado</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📈 Dashboard Resultado</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button type="button" onclick="abrirRelatorioComissoes()" title="Uso interno — comissões de vendedores/representantes (não vai para o cliente)" style="border:1px solid var(--border);background:var(--bg);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">💼 Comissões a pagar</button>
         <div id="periodo-seletor-resultado"></div>
@@ -547,7 +547,7 @@ ao lado das datas). -->
   <!-- ANÁLISES -->
   <div id="dash-analises" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📊 Análises</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📊 Análises</div>
     </div>
     <div id="dash-analises-content"></div>
   </div>
@@ -555,7 +555,7 @@ ao lado das datas). -->
   <!-- AVERBAÇÃO DE SEGURO (mensal, pelo registro da DUIMP) -->
   <div id="dash-averbacao" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🛡️ Averbação de Seguro</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🛡️ Averbação de Seguro</div>
     </div>
     <div id="dash-averbacao-content"></div>
   </div>
@@ -563,7 +563,7 @@ ao lado das datas). -->
   <!-- AGENDA DE ATIVIDADES (#675) -->
   <div id="dash-agenda" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📅 Agenda de atividades</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📅 Agenda de atividades</div>
     </div>
     <div id="dash-agenda-content"></div>
   </div>
@@ -571,7 +571,7 @@ ao lado das datas). -->
   <!-- RECICLAGEM (NCM 4011/4012, trimestral por cliente) -->
   <div id="dash-reciclagem" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">♻️ Reciclagem</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">♻️ Reciclagem</div>
     </div>
     <div id="dash-reciclagem-content"></div>
   </div>
@@ -579,7 +579,7 @@ ao lado das datas). -->
   <!-- DASHBOARD CÂMBIO -->
   <div id="dash-cambio" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Dashboard Câmbio</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Dashboard Câmbio</div>
     </div>
     <div id="dash-cambio-content"></div>
   </div>
@@ -587,7 +587,7 @@ ao lado das datas). -->
   <!-- DASHBOARD NARCÉLIO -->
   <div id="dash-narcelio" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">👔 Dashboard Narcélio</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">👔 Dashboard Narcélio</div>
     </div>
     <div id="dash-narcelio-content"></div>
   </div>
@@ -595,7 +595,7 @@ ao lado das datas). -->
   <!-- DASHBOARD DE CARREGAMENTOS -->
   <div id="dash-carregamento" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🚛 Dashboard de Carregamentos</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🚛 Dashboard de Carregamentos</div>
     </div>
     <div id="dash-carregamento-content"></div>
   </div>
@@ -608,7 +608,7 @@ ao lado das datas). -->
   <!-- DASHBOARD TV -->
   <div id="dash-tv" style="display:none;margin-bottom:20px;">
     <div id="dash-tv-label" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📺 Dashboard TV</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📺 Dashboard TV</div>
     </div>
     <div id="dash-tv-content"></div>
   </div>
@@ -616,7 +616,7 @@ ao lado das datas). -->
   <!-- DASHBOARD POR CLIENTE/MEDIDA -->
   <div id="dash-clientemedida" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🛞 Por Cliente/Medida</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">🛞 Por Cliente/Medida</div>
     </div>
     <div id="dash-clientemedida-content"></div>
   </div>
@@ -624,7 +624,7 @@ ao lado das datas). -->
   <!-- DASHBOARD DRE CONSOLIDADO -->
   <div id="dash-dre" style="display:none;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📊 DRE Consolidado</div>
+      <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--text);">📊 DRE Consolidado</div>
       <div id="periodo-seletor-dre"></div>
     </div>
     <div id="dash-dre-content"></div>
@@ -795,7 +795,7 @@ ao lado das datas). -->
      existir antes de vincular pessoas a ela via empresa_id). -->
 <div id="ce-pessoas-wrap" style="display:none;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-<div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);">👥 Pessoas de contato</div>
+<div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);">👥 Pessoas de contato</div>
 <button class="btn btn-sm btn-outline" onclick="_ceNovaPessoa()">+ Adicionar pessoa</button>
 </div>
 <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
@@ -813,7 +813,7 @@ ao lado das datas). -->
      razão social/nome fantasia/sinônimos dele viram sinônimos do que fica.
      Só gerente; só cadastro já salvo. -->
 <div id="ce-mesclar-wrap" style="display:none;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
-<div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">🔀 Este cadastro é duplicado de outro?</div>
+<div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">🔀 Este cadastro é duplicado de outro?</div>
 <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Escolha o cadastro que FICA. Este será inativado; os processos, vendas e pessoas de contato passam pro escolhido, e as grafias deste viram sinônimos dele (nada se perde, tudo fica no histórico).</div>
 <div style="display:flex;gap:8px;align-items:center;position:relative;">
 <input class="form-input" id="ce_mesclar_busca" placeholder="Buscar o cadastro que fica (razão social, nome fantasia, sinônimo)…" autocomplete="off" style="flex:1;" oninput="_ceMesclarBuscar(this)">
