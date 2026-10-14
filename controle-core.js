@@ -1323,6 +1323,76 @@ async function excluirProcesso(id){
 
 // ════════════════════════════════════════════════════════════════
 // FASE AUTOMÁTICA
+// ── Trava de validação antes de FINALIZADO (14/10/2026) ─────────────
+const VALIDACAO_FINALIZACAO_DESDE = '2026-10-15';
+// Condições de término (as mesmas que sempre levaram a FINALIZADO).
+function prontoParaFinalizar(p, chegadaPassada, presencaPassada){
+  if(!p) return false;
+  if(chegadaPassada === undefined){
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    chegadaPassada  = p.data_chegada  && new Date(p.data_chegada+'T00:00:00')  <= hoje;
+    presencaPassada = p.data_presenca && new Date(p.data_presenca+'T00:00:00') <= hoje;
+  }
+  if(ehAcompanhamento(p) && (p.data_devolucao_vazio || p.data_carregamento || (p.data_liberacao && (chegadaPassada || presencaPassada)))) return true;
+  // Carga LCL: não há container próprio pra devolver — finaliza com a
+  // retirada no armazém (Data de Carregamento), sem passar por Devolução do
+  // Vazio nem exigir RIC/lavagem. Pedido Emanuelly 05/10/2026.
+  if(ehLCL(p) && p.data_carregamento) return true;
+  // Finalizado exige, além da devolução do vazio, RIC Isento ou lavagem paga (Emanuelly 04/09/2026).
+  if(p.data_devolucao_vazio && (p.ric_status === 'Isento' || p.data_pagamento_lavagem)) return true;
+  return false;
+}
+// Quem valida: Listas → "Aprovação por etapa" → FINALIZADO (padrão em listas-padrao.js).
+function validadoresFinalizacao(){
+  let item = null;
+  try{
+    // Listas carregadas: vale o que está lá (linha desativada = sem trava).
+    // Sem listas ainda (boot / servidor): padrão de listas-padrao.js.
+    const lc = (typeof _listasCompletas !== 'undefined' && _listasCompletas) || null;
+    if(lc) item = (lc.aprovacao_etapa || []).find(x => x.codigo === 'FINALIZADO') || null;
+    else if(typeof ListasPadrao !== 'undefined') item = (ListasPadrao.listasPadrao().aprovacao_etapa || []).find(x => x.codigo === 'FINALIZADO') || null;
+  }catch(e){}
+  const split = v => String(v || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+  if(!item || item.ativo === false) return { ativo: false, usuarios: [], substitutos: [] };
+  return { ativo: true, usuarios: split(item.dados && item.dados.usuarios), substitutos: split(item.dados && item.dados.substitutos) };
+}
+function dataGatilhoFinalizacao(p){ return p.data_devolucao_vazio || p.data_carregamento || p.data_liberacao || null; }
+function exigeValidacaoFinalizacao(p){
+  if(!p || p.finalizacao_validada_em) return false;
+  const v = validadoresFinalizacao();
+  if(!v.ativo || !v.usuarios.length) return false;
+  const gatilho = dataGatilhoFinalizacao(p);
+  return !!gatilho && String(gatilho).slice(0,10) >= VALIDACAO_FINALIZACAO_DESDE;
+}
+function podeValidarFinalizacao(user){
+  const u = user || (typeof _user !== 'undefined' ? _user : null);
+  if(!u) return false;
+  const login = String(u.usuario || '').toLowerCase();
+  const v = validadoresFinalizacao();
+  return v.usuarios.includes(login) || v.substitutos.includes(login);
+}
+async function validarFinalizacao(id, desfazer){
+  const p = (typeof _processos !== 'undefined' && _processos.find(x => x.id === id)) || (typeof _editando !== 'undefined' ? _editando : null);
+  if(!p) return;
+  if(!desfazer){
+    const pend = (typeof pendenciasFecharProcesso === 'function') ? pendenciasFecharProcesso(p) : [];
+    const txt = pend.length ? '\n\nChecklist — atenção:\n' + pend.map(x => '⚠ ' + x).join('\n') + '\n' : '';
+    if(!confirm('Confirma que este processo foi revisto por completo e pode ir para Finalizado?' + txt)) return;
+  } else if(!confirm('Desfazer a validação? O processo volta para a fase anterior.')) return;
+  const em = desfazer ? null : new Date().toISOString();
+  const fase = calcularFase(Object.assign({}, p, { finalizacao_validada_em: em }));
+  const r = await fetch('/api/controle/v2/processo', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ processo:{ id, finalizacao_validada_em: em, fase } }) });
+  const d = await r.json();
+  if(d.ok){
+    showToast(desfazer ? 'Validação desfeita' : '✅ Processo validado e finalizado', 'ok');
+    await carregarProcessos(true);
+    const np = _processos.find(x => x.id === id);
+    if(np){ _editando = {...np, _camposIA:{}}; _editandoOriginal = {...np}; renderModal(); }
+    if(typeof atualizarResumoAgenda === 'function') atualizarResumoAgenda();
+  } else showToast('Não foi possível validar: ' + (d.erro || ''), 'err', 6000);
+}
+
 // ════════════════════════════════════════════════════════════════
 function calcularFase(p){
   const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -1350,14 +1420,13 @@ function calcularFase(p){
   // lavagem manualmente.
   // Acompanhamento: a IMPAK não controla NF, DUIMP, demurrage nem devolução.
   // Finaliza quando a carga chegou e foi liberada/retirada (ou devolvida).
-  if(ehAcompanhamento(p)){
-    if(p.data_devolucao_vazio || p.data_carregamento || (p.data_liberacao && (chegadaPassada || presencaPassada))) return 'FINALIZADO';
-  }
-  // Carga LCL: não há container próprio pra devolver — finaliza com a
-  // retirada no armazém (Data de Carregamento), sem passar por Devolução do
-  // Vazio nem exigir RIC/lavagem. Pedido Emanuelly 05/10/2026.
-  if(ehLCL(p) && p.data_carregamento) return 'FINALIZADO';
-  if(p.data_devolucao_vazio && (p.ric_status === 'Isento' || p.data_pagamento_lavagem)) return 'FINALIZADO';
+  // Trava de validação (14/10/2026, pedido Emanuelly): mesmo com tudo
+  // preenchido, só vira FINALIZADO depois que quem está em Listas →
+  // "Aprovação por etapa" clicar em "Validar e finalizar". Enquanto isso,
+  // segue na fase anterior (normalmente Dev. Vazio) com o banner no painel.
+  // Processos cuja etapa final aconteceu antes de VALIDACAO_FINALIZACAO_DESDE
+  // não passam pela trava (nada do histórico volta pra trás).
+  if(prontoParaFinalizar(p, chegadaPassada, presencaPassada) && !exigeValidacaoFinalizacao(p)) return 'FINALIZADO';
   // Quando AMBAS as NFs (entrada e saída) estão emitidas, isso já é prova
   // suficiente de que o carregamento aconteceu de fato — avança direto para
   // Devolução do Vazio, mesmo sem a data_carregamento manual preenchida,

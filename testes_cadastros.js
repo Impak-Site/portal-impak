@@ -255,7 +255,7 @@ teste('COLUNAS_ID cobre os 8 campos de empresa do processo', () => {
 console.log('\n── listas-padrao.js ──');
 teste('listas padrão têm as 8 categorias (incl. agenda) e os 4 portos de destino com dias grátis', () => {
   const l = ListasPadrao.listasPadrao();
-  assert.deepStrictEqual(Object.keys(l).sort(), ['agenda_atividade', 'agenda_funcao', 'armazenagem_rf', 'banco_cambio', 'comissionado', 'marca', 'porto_destino', 'porto_origem']);
+  assert.deepStrictEqual(Object.keys(l).sort(), ['agenda_atividade', 'agenda_funcao', 'aprovacao_etapa', 'armazenagem_rf', 'banco_cambio', 'comissionado', 'marca', 'porto_destino', 'porto_origem']);
   assert.deepStrictEqual(l.marca, [], 'marcas começam vazias (vêm da aba Listas / de-para)');
   assert.deepStrictEqual(l.comissionado, [], 'comissionados nunca no repositório (dado interno, repo público)');
   const dias = {}; l.porto_destino.forEach(p => { dias[p.codigo] = p.dados.dias_gratis; });

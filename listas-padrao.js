@@ -132,6 +132,7 @@
     _a('A30','Dev. Vazio','Resolver o RIC (isenção, termo ou lavagem)','LOGISTICA','MEDIA',30),
     _a('A31','Finalizado','Lançar os custos reais do processo','FINANCEIRO','MEDIA',31),
     _a('A32','Finalizado','Conferir o Fechamento / DRE e fechar o processo','GERENCIA','MEDIA',32),
+    _a('A36','Dev. Vazio','Validar o processo e liberar para Finalizado','IMPORTACAO','ALTA',32.5),
     _a('A33','Mensal','Exportar e enviar a Pendências de DI ao banco','FINANCEIRO','MEDIA',33),
     _a('A34','Mensal','Enviar a planilha de averbação de seguro','ADMINISTRATIVO','MEDIA',34),
     _a('A35','Trimestral','Enviar a relação de reciclagem aos clientes','ADMINISTRATIVO','BAIXA',35),
@@ -153,6 +154,11 @@
     // por cada função e quais atividades valem: editável aqui, sem deploy.
     // A lógica (quando nasce / quando se conclui sozinha) fica em agenda-core.js.
     agenda_funcao: { nome: 'Agenda — Funções e responsáveis', campos: [['usuarios', 'Logins responsáveis (vírgula)', 'text'], ['substitutos', 'Substitutos nas férias (logins, vírgula)', 'text'], ['observacao', 'Observação', 'text']] },
+    // Aprovação por etapa (14/10/2026, pedido Emanuelly/Ayslan): o processo só
+    // vai pra FINALIZADO depois que uma pessoa específica valida que o
+    // processo inteiro foi revisto. Logins em `usuarios` (ou `substitutos`)
+    // veem o botão "Validar e finalizar". Desative a linha pra tirar a trava.
+    aprovacao_etapa: { nome: 'Aprovação por etapa (vistos)', campos: [['usuarios', 'Quem valida (logins, vírgula)', 'text'], ['substitutos', 'Substitutos (logins, vírgula)', 'text'], ['observacao', 'Observação', 'text']] },
     agenda_atividade: { nome: 'Agenda — Atividades', campos: [['funcao', 'Responsável (função)', 'select', AGENDA_FUNCOES.map(f => [f.codigo, f.nome])], ['prazo_dias', 'Prazo (dias em relação ao marco; vazio = padrão)', 'number'], ['prioridade', 'Prioridade', 'select', [['ALTA','Alta'],['MEDIA','Média'],['BAIXA','Baixa']]], ['etapa', 'Etapa', 'text'], ['observacao', 'Observação', 'text']] },
   };
 
@@ -163,6 +169,10 @@
       sinonimos: (x.sinonimos || []).slice(),
     }));
   }
+
+  const APROVACAO_ETAPA = [
+    { codigo: 'FINALIZADO', nome: 'Finalização do processo', dados: { usuarios: 'emanuelly', substitutos: 'paula', observacao: 'Último check antes de Finalizado (pedido Emanuelly 14/10/2026)' }, ordem: 1 },
+  ];
 
   // Objeto completo no formato que GET /api/listas devolve.
   function listasPadrao() {
@@ -175,6 +185,7 @@
       comissionado: [], // só no banco (dados sensíveis, repositório público)
       agenda_funcao: clonar(AGENDA_FUNCOES),
       agenda_atividade: clonar(AGENDA_ATIVIDADES),
+      aprovacao_etapa: clonar(APROVACAO_ETAPA),
     };
   }
 

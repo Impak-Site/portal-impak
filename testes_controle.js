@@ -185,6 +185,36 @@ teste('DUIMP antecipada (Nº DUIMP antes da chegada, navio em águas) mantém EM
   // caso real 26DTPI0476-x: DUIMP + canal verde + liberação antes da chegada
   iguais(sandbox.calcularFase({ data_embarque: '2026-08-27', eta: amanha, numero_di: '26BR0000012345', data_registro_di: '2026-10-09', canal: 'VERDE', data_parametrizacao: '2026-10-09', data_liberacao: '2026-10-09' }), 'EMBARCADO');
 });
+// ── Validação antes de FINALIZADO (14/10/2026, pedido Emanuelly) ──
+teste('validação: devolução a partir de 15/10/2026 + RIC Isento fica em DEV. VAZIO até validar', () => {
+  const p = { data_embarque:'2026-09-01', data_chegada:'2026-09-20', data_carregamento:'2026-10-10', data_devolucao_vazio:'2026-10-20', ric_status:'Isento' };
+  iguais(sandbox.calcularFase(p), 'DEVOLUCAO_VAZIO');
+  iguais(sandbox.prontoParaFinalizar(p), true);
+  iguais(sandbox.exigeValidacaoFinalizacao(p), true);
+  iguais(sandbox.calcularFase(Object.assign({}, p, { finalizacao_validada_em: '2026-10-21T10:00:00Z' })), 'FINALIZADO');
+});
+teste('validação: processo com devolução antes de 15/10/2026 finaliza como antes (histórico não volta)', () => {
+  const p = { data_embarque:'2026-06-01', data_chegada:'2026-07-01', data_devolucao_vazio:'2026-08-01', ric_status:'Isento' };
+  iguais(sandbox.calcularFase(p), 'FINALIZADO');
+  iguais(sandbox.exigeValidacaoFinalizacao(p), false);
+});
+teste('validação: LCL carregado depois de 15/10 também espera validação', () => {
+  const p = { tipo_container:'LCL', data_chegada:'2026-10-10', data_carregamento:'2026-10-18' };
+  iguais(sandbox.calcularFase(p), 'DEVOLUCAO_VAZIO');
+  iguais(sandbox.calcularFase(Object.assign({}, p, { finalizacao_validada_em: '2026-10-19T10:00:00Z' })), 'FINALIZADO');
+});
+teste('validação: quem valida vem da lista "Aprovação por etapa" (padrão: emanuelly, subst. paula)', () => {
+  iguais(sandbox.podeValidarFinalizacao({ usuario:'emanuelly', role:'analista' }), true);
+  iguais(sandbox.podeValidarFinalizacao({ usuario:'paula', role:'gerente' }), true);
+  iguais(sandbox.podeValidarFinalizacao({ usuario:'narcelio', role:'gerente' }), false);
+});
+teste('validação: linha desativada na lista = sem trava', () => {
+  vm.runInContext("var __lcAntes = _listasCompletas; _listasCompletas = Object.assign({}, __lcAntes, { aprovacao_etapa: [] });", sandbox);
+  const p = { data_devolucao_vazio:'2026-10-20', ric_status:'Isento' };
+  iguais(sandbox.calcularFase(p), 'FINALIZADO');
+  vm.runInContext("_listasCompletas = __lcAntes;", sandbox);
+});
+
 teste('DUIMP com chegada já ocorrida avança para REGISTRO_DI normalmente', () => {
   iguais(sandbox.calcularFase({ data_embarque: '2026-01-01', data_chegada: '2026-02-01', numero_di: '26BR0000012345' }), 'REGISTRO_DI');
 });

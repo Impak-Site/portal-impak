@@ -186,6 +186,25 @@ function renderModal(){
     : '';
 
   // ── CANCELAMENTO ("Cancelar Processo") ──────────────────────────
+  // Validação antes de Finalizado (14/10/2026, pedido Emanuelly): quando
+  // tudo está preenchido mas falta o "ok" de quem valida.
+  let bannerValidacao = '';
+  if(!bloqueado && typeof prontoParaFinalizar === 'function' && prontoParaFinalizar(p)){
+    const v = validadoresFinalizacao();
+    const nomes = v.usuarios.concat(v.substitutos.length ? ['(subst.: ' + v.substitutos.join(', ') + ')'] : []).map(x => x.replace(/@.*$/, '')).join(', ');
+    if(exigeValidacaoFinalizacao(p)){
+      bannerValidacao = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #d97706;border-radius:10px;padding:10px 14px;margin-bottom:16px;">
+        <div style="font-size:12px;color:#92400e;"><strong>⏳ Pronto para finalizar — aguardando validação</strong><br>Todos os passos foram concluídos. O processo só vai para <b>Finalizado</b> depois que ${esc(nomes)} confirmar que foi revisto por completo.</div>
+        ${podeValidarFinalizacao() ? `<button type="button" class="btn btn-primary" onclick="validarFinalizacao('${p.id}')">✅ Validar e finalizar</button>` : `<span style="font-size:11px;color:#92400e;">Quem valida: ${esc(nomes)} (Cadastros → Listas → Aprovação por etapa)</span>`}
+      </div>`;
+    } else if(p.finalizacao_validada_em){
+      bannerValidacao = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:8px 14px;margin-bottom:16px;font-size:12px;color:#166534;">
+        <div>✅ Finalização validada${p.finalizacao_validada_por ? ' por <b>' + esc(String(p.finalizacao_validada_por).replace(/@.*$/, '')) + '</b>' : ''} em ${new Date(p.finalizacao_validada_em).toLocaleString('pt-BR')}.</div>
+        ${podeValidarFinalizacao() ? `<button type="button" class="btn btn-outline" style="font-size:11px;" onclick="validarFinalizacao('${p.id}', true)">Desfazer validação</button>` : ''}
+      </div>`;
+    }
+  }
+
   // Igual à trava de fechado, mas pra processos que não vão pra frente e
   // precisam sumir das contagens operacionais sem perder o histórico
   // (pedido da Emanuelly, 21/08/2026). Não trava edição (diferente de
@@ -219,6 +238,7 @@ function renderModal(){
 
   document.getElementById('modal-body').innerHTML = `
     ${bannerTrava}
+    ${bannerValidacao}
     ${bannerCancelado}
     ${bannerSolicitacaoCancelamento}
     <div id="modal-body-lockwrap" style="${bloqueado?'opacity:.85;pointer-events:none;user-select:none;':''}">

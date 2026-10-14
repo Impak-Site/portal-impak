@@ -214,6 +214,13 @@
     A31: { auto: true, como: 'Custos Reais lançados', semAcomp: true,
       base: p => p.data_devolucao_vazio || p.data_carregamento, dias: 10,
       instancias: (p, h, ctx) => (ctx.fase(p) === 'FINALIZADO') ? um(temCustosReais(p)) : [] },
+    // A36 (14/10/2026): trava de validação antes de Finalizado. Nasce quando
+    // o processo está pronto pra finalizar (devolveu o vazio / LCL carregou)
+    // mas ainda não foi validado por quem está em Listas → "Aprovação por
+    // etapa". Processos finalizados antes da trava (fase gravada) não geram.
+    A36: { auto: true, como: 'Botão "Validar e finalizar" no processo (Aprovação por etapa)',
+      base: p => p.data_devolucao_vazio || p.data_carregamento, dias: 2,
+      instancias: (p, h, ctx) => (p.data_devolucao_vazio || p.data_carregamento) && p.fase !== 'FINALIZADO' && ctx.fase(p) !== 'FINALIZADO' ? um(tem(p.finalizacao_validada_em)) : [] },
     A32: { auto: true, como: 'Processo marcado como Fechado', semAcomp: true,
       base: p => p.data_devolucao_vazio || p.data_carregamento, dias: 15,
       instancias: (p, h, ctx) => (ctx.fase(p) === 'FINALIZADO' && temCustosReais(p)) ? um(!!p.fechado) : [] },
