@@ -2616,6 +2616,29 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
         delete processo.fechado_em; delete processo.fechado_por; // só o servidor registra quem/quando
       }
 
+      // ── VALIDAÇÃO ANTES DE FINALIZADO (14/10/2026, pedido Emanuelly) ──
+      // finalizacao_validada_em só muda (marcar ou desfazer) por quem está
+      // em Listas → "Aprovação por etapa" → FINALIZADO (usuarios/substitutos).
+      // Quem validou é sempre o usuário da sessão — nunca vem do cliente.
+      if (Object.prototype.hasOwnProperty.call(processo, 'finalizacao_validada_em')) {
+        const lista = (await carregarListas()).listas.aprovacao_etapa || [];
+        const item = lista.find(x => x.codigo === 'FINALIZADO' && x.ativo !== false);
+        const split = v => String(v || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+        const permitidos = item ? split(item.dados && item.dados.usuarios).concat(split(item.dados && item.dados.substitutos)) : [];
+        if (!permitidos.includes(String(req.session.usuario || '').toLowerCase())) {
+          return res.status(403).json({ erro: 'Só quem está em "Aprovação por etapa" (Cadastros → Listas) pode validar a finalização.' });
+        }
+        if (processo.finalizacao_validada_em) {
+          processo.finalizacao_validada_em = new Date().toISOString();
+          processo.finalizacao_validada_por = req.session.usuario;
+        } else {
+          processo.finalizacao_validada_em = null;
+          processo.finalizacao_validada_por = null;
+        }
+      } else {
+        delete processo.finalizacao_validada_por;
+      }
+
       // ── CANCELAMENTO DE PROCESSO ("Cancelar Processo") ──────────────
       // Pedido da Emanuelly (21/08/2026): processos que não vão pra frente
       // precisam sumir das contagens operacionais SEM perder o histórico
