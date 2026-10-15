@@ -2240,7 +2240,7 @@ app.post('/api/faturas/importar', auth('financeiro'), async (req, res) => {
       }
       const jaPago = Math.max(0, Math.round((parseFloat(l.jaPago) || 0) * 100) / 100);
       if (jaPago > 0) {
-        row.pagamentos = [{ id: require('crypto').randomUUID(), data: dataMigracao, valor: Math.min(jaPago, row.valor), forma: 'outro', obs: 'Pago no Conexos antes da migração', por: req.session.usuario || null, em: agora }];
+        row.pagamentos = [{ id: require('crypto').randomUUID(), data: dataMigracao, valor: Math.min(jaPago, row.valor), forma: 'outro', migracao: true, obs: 'Pago no Conexos antes da migração', por: req.session.usuario || null, em: agora }];
         const r = FaturasCore.aplicarPagamentos(row);
         Object.assign(row, { valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em });
       }

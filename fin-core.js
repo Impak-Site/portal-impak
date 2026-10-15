@@ -245,7 +245,7 @@
     (faturas || []).forEach(f => {
       if (!f || f.status === 'cancelada') return;
       (f.pagamentos || []).forEach(p => {
-        if (!p || p.estornado) return;
+        if (!p || p.estornado || FC.ehMigracao(p)) return;
         const o = p.banco_id && out[p.banco_id];
         if (!o) { const v = FC.caixaBrlPagamento(p, f, cambio); semBanco.qtd++; if (f.tipo === 'receber') semBanco.entradas += v; else semBanco.saidas += v; return; }
         if (o.desde && iso(p.data) && iso(p.data) < o.desde) return;
@@ -306,7 +306,7 @@
         return;
       }
       (f.pagamentos || []).forEach(p => {
-        if (!p || p.estornado || !dentro(iso(p.data))) return;
+        if (!p || p.estornado || FC.ehMigracao(p) || !dentro(iso(p.data))) return;
         const principalPrev = (num(p.valor) + FC.RETENCOES.reduce((s, k) => s + num(p.retencoes && p.retencoes[k]), 0)) * (f.moeda === 'BRL' ? 1 : (num(f.cambio) || fx));
         rateio.forEach(r => add(r.codigo, principalPrev * r.peso));
         const jur = num(p.juros) * (f.moeda === 'BRL' ? 1 : (num(p.cambio_efetivo) || fx));
@@ -351,7 +351,7 @@
       const rateio = _rateioFatura(f, mapa);
       const fx = f.moeda === 'BRL' ? 1 : (num(f.cambio) || 0);
       (f.pagamentos || []).forEach(p => {
-        if (!p || p.estornado) return;
+        if (!p || p.estornado || FC.ehMigracao(p)) return;
         const d = iso(p.data); if (!d || d < de || d > ate) return;
         const banco = bancoDe(p.banco_id);
         const hist = `${f.tipo === 'pagar' ? 'Pgto' : 'Receb.'} ${f.documento || ''} ${f.empresa_nome || ''} (fatura ${f.numero || ''})`.replace(/\s+/g, ' ').trim();
@@ -368,6 +368,13 @@
         if (jur) out.push(f.tipo === 'pagar' ? { data: d, debito: contaDe('5.2.02'), credito: banco, valor: jur, historico: 'Juros/multa ' + hist, documento: f.documento || '', participante: f.empresa_nome || '', fatura: f.numero || '' }
           : { data: d, debito: banco, credito: contaDe('3.2.01'), valor: jur, historico: 'Juros recebidos ' + hist, documento: f.documento || '', participante: f.empresa_nome || '', fatura: f.numero || '' });
       });
+    });
+    // transferências entre contas próprias: débito no banco que recebe, crédito no que envia
+    (o.transferencias || []).forEach(t => {
+      if (!t || t.estornado) return;
+      const d = iso(t.data); if (!d || d < de || d > ate) return;
+      const v = r2(num(t.valor)); if (!v) return;
+      out.push({ data: d, debito: bancoDe(t.para_banco_id), credito: bancoDe(t.de_banco_id), valor: v, historico: ('Transferência entre contas ' + (t.obs || '')).trim(), documento: '', participante: '', fatura: '' });
     });
     out.sort((a, b) => a.data.localeCompare(b.data));
     return out;

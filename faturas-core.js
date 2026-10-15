@@ -135,7 +135,7 @@
       const s = situacao(f, hoje);
       const fx = f.moeda === 'BRL' ? 1 : (parseFloat(cambio[f.moeda]) || 0);
       const pags = pagamentosValidos(f);
-      if (pags.length) pags.forEach(p => { if ((iso(p.data) || '').slice(0, 7) === mes) { const c = caixaBrlPagamento(p, f, cambio); if (f.tipo === 'pagar') r.pago_mes += c; else r.recebido_mes += c; } });
+      if (pags.length) pags.forEach(p => { if (ehMigracao(p)) return; if ((iso(p.data) || '').slice(0, 7) === mes) { const c = caixaBrlPagamento(p, f, cambio); if (f.tipo === 'pagar') r.pago_mes += c; else r.recebido_mes += c; } });
       if (f.status === 'paga') {
         if (!pags.length && (iso(f.pago_em) || '').slice(0, 7) === mes) { if (f.tipo === 'pagar') r.pago_mes += brl(f); else r.recebido_mes += brl(f); }
         return;
@@ -227,6 +227,7 @@
       const pags = pagamentosValidos(f);
       // cada baixa entra no mês em que foi paga (parciais também)
       pags.forEach(p => {
+        if (ehMigracao(p)) return;
         const m = (iso(p.data) || '').slice(0, 7);
         if (!out[m]) return;
         const v = caixaBrlPagamento(p, f, cx);
@@ -408,6 +409,8 @@
   const RETENCOES = ['irrf', 'pis', 'cofins', 'csll', 'iss', 'inss', 'outros'];
   const somaRetencoes = p => RETENCOES.reduce((s, k) => s + num(p && p.retencoes && p.retencoes[k]), 0);
   const abatidoPagamento = p => Math.round((num(p.valor) + num(p.desconto) + somaRetencoes(p)) * 100) / 100;
+  // baixa "pago no Conexos antes da migração": abate o saldo, mas não é caixa do período
+  const ehMigracao = p => !!(p && (p.migracao || /antes da migra/i.test(p.obs || '')));
   const pagamentosValidos = f => (Array.isArray(f && f.pagamentos) ? f.pagamentos : []).filter(p => p && !p.estornado && (num(p.valor) > 0 || abatidoPagamento(p) > 0));
   // Saída de caixa em R$ de um pagamento (o que realmente saiu da conta)
   function caixaBrlPagamento(p, f, cambioAtual) {
@@ -632,7 +635,7 @@
     return out;
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso };
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();
