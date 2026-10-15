@@ -1854,6 +1854,8 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
     for (const b of lote) {
       const v = FaturasCore.validarFatura(b);
       if (!v.ok) return res.status(400).json({ ok: false, erro: v.erro });
+      // despesa sem processo (aluguel, folha, imposto…) precisa de classificação
+      if (!(b && b.id) && FinCore.precisaClassificar(v.fatura)) return res.status(400).json({ ok: false, erro: 'Classifique a despesa (aluguel, folha, imposto, sistemas…) no campo Classificação.' });
       const row = { ...v.fatura, alterado_por: req.session.usuario || null, updated_at: agora };
       // empresa sem id: tenta achar no cadastro (qualquer papel)
       if (!row.empresa_id) { try { const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(row.empresa_nome, await obterIndiceCadastros()); if (r && r.id) row.empresa_id = r.id; } catch (e) { /* segue sem id */ } }
@@ -2101,6 +2103,108 @@ app.post('/api/fin/transferencias/:id/estornar', auth('financeiro'), async (req,
     res.json({ ok: true, transferencia: data });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
+// ── Despesas / receitas recorrentes (migration 0054, 15/10/2026) ──────
+// A recorrência gera as faturas sozinha (job diário + ao salvar). Mês já
+// gerado (mesmo cancelado) não é recriado. Nada é apagado.
+function _finHojeBR() { return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10); }
+async function _finNumeroNovaFatura() {
+  const ano = new Date().getFullYear();
+  const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
+  return FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano);
+}
+async function gerarFaturasRecorrentes(soId, usuario) {
+  let q = sb().from('fin_recorrencias').select('*').eq('ativo', true);
+  if (soId) q = q.eq('id', String(soId));
+  const { data: recs, error } = await q;
+  if (error) throw new Error(error.message);
+  if (!recs || !recs.length) return { geradas: [], erros: [] };
+  const { data: fats } = await sb().from('faturas').select('origem').eq('origem->>tipo', 'recorrencia').limit(20000);
+  const porRec = {};
+  (fats || []).forEach(f => { const o = f.origem || {}; (porRec[o.processo_id] = porRec[o.processo_id] || []).push(String(o.idx)); });
+  const hoje = _finHojeBR(), geradas = [], erros = [];
+  for (const r of recs) {
+    for (const x of FinCore.faturasDaRecorrencia(r, porRec[r.id] || [], hoje)) {
+      const v = FaturasCore.validarFatura(x.fatura);
+      if (!v.ok) { erros.push(`${r.descricao}: ${v.erro}`); continue; }
+      const agora = new Date().toISOString();
+      const row = { ...v.fatura, origem: { tipo: 'recorrencia', processo_id: r.id, referencia: r.descricao, idx: x.competencia }, criado_por: usuario || 'recorrencia', alterado_por: usuario || 'recorrencia', created_at: agora, updated_at: agora };
+      try { row.numero = await _finNumeroNovaFatura(); } catch (e) { row.numero = null; }
+      const { data, error: e2 } = await sb().from('faturas').insert(row).select().single();
+      if (e2) { if (!/duplicate|unique/i.test(e2.message)) erros.push(`${r.descricao} ${x.competencia}: ${e2.message}`); continue; }
+      geradas.push(data);
+    }
+  }
+  return { geradas, erros };
+}
+app.get('/api/fin/recorrencias', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const { data, error } = await sb().from('fin_recorrencias').select('*').order('descricao');
+    if (error) return res.json({ ok: false, erro: error.message, semTabela: /fin_recorrencias/.test(error.message), recorrencias: [] });
+    const { data: fats } = await sb().from('faturas').select('id, numero, origem, status, vencimento, valor').eq('origem->>tipo', 'recorrencia').limit(20000);
+    const hoje = _finHojeBR();
+    const lista = (data || []).map(r => {
+      const minhas = (fats || []).filter(f => f.origem && f.origem.processo_id === r.id);
+      return { ...r, proximo: FinCore.proximoVencimento(r, hoje), geradas: minhas.length, abertas: minhas.filter(f => f.status === 'aberta').length, pagas: minhas.filter(f => f.status === 'paga').length };
+    });
+    res.json({ ok: true, recorrencias: lista });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+// Cria/edita. Edição com aplicar_futuras: valor/classificação/empresa vão
+// também para as faturas futuras ainda em aberto e sem pagamento. Data fim:
+// faturas em aberto (sem pagamento) depois do fim são canceladas (não apagadas).
+app.post('/api/fin/recorrencias', auth('financeiro'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const v = FinCore.validarRecorrencia(b);
+    if (!v.ok) return res.status(400).json(v);
+    const agora = new Date().toISOString(), usuario = req.session.usuario || null;
+    const row = { ...v.recorrencia, alterado_por: usuario, updated_at: agora };
+    if (!row.empresa_id) { try { const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(row.empresa_nome, await obterIndiceCadastros()); if (r && r.id) row.empresa_id = r.id; } catch (e) { /* segue sem id */ } }
+    let rec;
+    if (b.id) {
+      const { data, error } = await sb().from('fin_recorrencias').update(row).eq('id', String(b.id)).select().single();
+      if (error) return res.status(400).json({ ok: false, erro: error.message });
+      rec = data;
+    } else {
+      const { data, error } = await sb().from('fin_recorrencias').insert({ ...row, criado_por: usuario, created_at: agora }).select().single();
+      if (error) return res.status(400).json({ ok: false, erro: error.message, semTabela: /fin_recorrencias/.test(error.message) });
+      rec = data;
+    }
+    let atualizadas = 0, canceladas = 0;
+    if (b.id) {
+      const hoje = _finHojeBR();
+      const { data: futuras } = await sb().from('faturas').select('id, vencimento, status, pagamentos, obs').eq('origem->>tipo', 'recorrencia').eq('origem->>processo_id', rec.id).eq('status', 'aberta').gte('vencimento', hoje);
+      for (const f of futuras || []) {
+        if ((f.pagamentos || []).some(p => !p.estornado)) continue;
+        if (rec.fim && f.vencimento > rec.fim || rec.ativo === false && b.cancelar_futuras) {
+          await sb().from('faturas').update({ status: 'cancelada', obs: [f.obs, 'Cancelada: recorrência encerrada'].filter(Boolean).join(' · '), alterado_por: usuario, updated_at: agora }).eq('id', f.id);
+          canceladas++;
+        } else if (b.aplicar_futuras) {
+          await sb().from('faturas').update({ valor: rec.valor, moeda: rec.moeda, conta_id: rec.conta_id, centro_custo_id: rec.centro_custo_id, empresa_nome: rec.empresa_nome, empresa_id: rec.empresa_id, alterado_por: usuario, updated_at: agora }).eq('id', f.id);
+          atualizadas++;
+        }
+      }
+    }
+    const g = rec.ativo ? await gerarFaturasRecorrentes(rec.id, usuario) : { geradas: [], erros: [] };
+    res.json({ ok: true, recorrencia: rec, geradas: g.geradas, erros: g.erros, atualizadas, canceladas });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/fin/recorrencias/gerar', auth('financeiro'), async (req, res) => {
+  try { const g = await gerarFaturasRecorrentes(null, req.session.usuario || null); res.json({ ok: true, geradas: g.geradas.length, erros: g.erros }); }
+  catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+// Job diário: gera as faturas recorrentes que entraram no horizonte.
+(function agendarRecorrenciasFinanceiro() {
+  const checar = async () => {
+    try {
+      if (!(await reivindicarJobHoje('recorrencias_financeiro'))) return;
+      const g = await gerarFaturasRecorrentes(null, null);
+      if (g.geradas.length || g.erros.length) console.log(`recorrências: ${g.geradas.length} fatura(s) gerada(s)` + (g.erros.length ? `; erros: ${g.erros.join(' | ')}` : ''));
+    } catch (e) { console.error('recorrências: falha no job diário:', e.message); }
+  };
+  setTimeout(checar, 90 * 1000);
+  setInterval(checar, 30 * 60 * 1000);
+})();
 // Importação de títulos em aberto (planilha do Conexos já mapeada no navegador).
 // Cada linha: {fatura, jaPago}. Pula o que já foi importado (externo.chave).
 // O que já tinha sido pago no Conexos vira uma baixa "antes da migração".

@@ -40,13 +40,15 @@
     ['3.2.01', 'Juros e descontos obtidos', 'receita_financeira'],
     ['3.2.02', 'Variação cambial ativa', 'receita_financeira'],
     ['4.1.01', 'Impostos sobre vendas (ICMS, PIS, COFINS, IPI)', 'deducoes'],
+    ['4.1.02', 'ICMS / ICMS-ST a recolher (apuração)', 'deducoes'],
+    ['4.1.03', 'PIS / COFINS a recolher (apuração)', 'deducoes'],
     ['4.2.01', 'Custo da mercadoria importada (FOB)', 'custo'],
     ['4.2.02', 'Frete e seguro internacional', 'custo'],
     ['4.2.03', 'Impostos de importação', 'custo'],
     ['4.2.04', 'Despesas portuárias, armazenagem e despachante', 'custo'],
     ['4.2.05', 'Frete nacional', 'custo'],
     ['4.2.06', 'Comissões', 'custo'],
-    ['5.1.01', 'Salários e encargos', 'despesa_operacional'],
+    ['5.1.01', 'Salários (folha de pagamento)', 'despesa_operacional'],
     ['5.1.02', 'Pró-labore', 'despesa_operacional'],
     ['5.1.03', 'Aluguel e condomínio', 'despesa_operacional'],
     ['5.1.04', 'Energia, água, telefone e internet', 'despesa_operacional'],
@@ -55,6 +57,12 @@
     ['5.1.07', 'Marketing e viagens', 'despesa_operacional'],
     ['5.1.08', 'Material e despesas gerais', 'despesa_operacional'],
     ['5.1.09', 'Impostos e taxas (não sobre vendas)', 'despesa_operacional'],
+    ['5.1.10', 'Encargos sociais (INSS, FGTS)', 'despesa_operacional'],
+    ['5.1.11', 'Benefícios (VT, VR, plano de saúde)', 'despesa_operacional'],
+    ['5.1.12', 'Férias, 13º e rescisões', 'despesa_operacional'],
+    ['5.1.13', 'Seguros', 'despesa_operacional'],
+    ['5.1.14', 'Manutenção e conservação', 'despesa_operacional'],
+    ['5.1.15', 'Veículos e combustível', 'despesa_operacional'],
     ['5.2.01', 'Tarifas bancárias', 'despesa_financeira'],
     ['5.2.02', 'Juros e multas pagos', 'despesa_financeira'],
     ['5.2.03', 'Variação cambial passiva', 'despesa_financeira'],
@@ -108,6 +116,117 @@
     const ultimo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
     alvo.setUTCDate(Math.min(dia, ultimo));
     return alvo.toISOString().slice(0, 10);
+  }
+
+
+  // ── Classificação da despesa (15/10/2026) ───────────────────────────
+  // Fatura a pagar sem processo (aluguel, folha, imposto…) precisa de conta.
+  function precisaClassificar(f) {
+    if (!f || f.tipo !== 'pagar' || f.conta_id) return false;
+    if (f.origem) return false;
+    return !(f.itens || []).some(it => it && (it.processo_id || it.referencia));
+  }
+  // Sugere a conta pelo texto (empresa, documento, observação). Devolve o código.
+  const REGRAS_CONTA = [
+    [/pro.?labore/, '5.1.02'],
+    [/ferias|decimo terceiro|13o salario|rescis/, '5.1.12'],
+    [/inss|fgts|\bgps\b|encargo/, '5.1.10'],
+    [/vale.?transporte|vale.?refeicao|vale.?alimentacao|plano de saude|unimed|odonto|beneficio|\bvt\b|\bvr\b/, '5.1.11'],
+    [/salario|folha|holerite/, '5.1.01'],
+    [/aluguel|locacao|condominio/, '5.1.03'],
+    [/energia|eletric|celesc|copel|cemig|\benel\b|\bagua\b|saneamento|casan|sabesp|telefon|internet|\bvivo\b|\bclaro\b|\btim\b/, '5.1.04'],
+    [/software|sistema|licenca|assinatura|conexos|google|microsoft|\baws\b|cloud|hospedagem/, '5.1.05'],
+    [/contab|advoca|advog|juridic|honorario/, '5.1.06'],
+    [/marketing|publicidade|anuncio|viagem|passage|hotel|hospedag/, '5.1.07'],
+    [/seguro/, '5.1.13'],
+    [/combustivel|\bposto\b|veiculo|\bipva\b|estacionamento|pedagio/, '5.1.15'],
+    [/irpj|csll/, '6.1.01'],
+    [/icms/, '4.1.02'],
+    [/\bpis\b|cofins/, '4.1.03'],
+    [/\biof\b/, '5.2.04'],
+    [/tarifa|cesta de servico|manutencao de conta/, '5.2.01'],
+    [/emprestimo|financiamento/, '9.1.02'],
+    [/juros|multa/, '5.2.02'],
+    [/iptu|alvara|taxa municipal|\bdas\b|simples nacional|\biss\b|darf|imposto|tributo/, '5.1.09'],
+    [/manutencao|conserto|reparo|limpeza/, '5.1.14'],
+    [/material|escritorio|papelaria|correio/, '5.1.08'],
+  ];
+  function sugerirConta(texto) {
+    const t = semAcento(texto);
+    if (!t) return null;
+    const r = REGRAS_CONTA.find(([re]) => re.test(t));
+    return r ? r[1] : null;
+  }
+
+  // ── Despesas / receitas recorrentes ─────────────────────────────────
+  // Uma recorrência gera as faturas sozinha (job diário), com antecedência.
+  // Cada fatura gerada tem origem {tipo:'recorrencia', processo_id: id da
+  // recorrência, idx: 'AAAA-MM'}; o índice único impede duplicar o mês e
+  // fatura cancelada não é recriada.
+  const FREQUENCIAS = { mensal: [1, 'Mensal'], bimestral: [2, 'Bimestral'], trimestral: [3, 'Trimestral'], semestral: [6, 'Semestral'], anual: [12, 'Anual'] };
+  function validarRecorrencia(b) {
+    b = b || {};
+    const descricao = String(b.descricao || '').trim().slice(0, 120);
+    if (!descricao) return { ok: false, erro: 'Informe a descrição (ex.: Aluguel do escritório).' };
+    const empresa_nome = String(b.empresa_nome || '').trim().slice(0, 200);
+    if (!empresa_nome) return { ok: false, erro: 'Informe a empresa (quem recebe / quem paga).' };
+    const valor = r2(numBR(b.valor));
+    if (!(valor > 0)) return { ok: false, erro: 'Informe o valor.' };
+    if (!b.conta_id) return { ok: false, erro: 'Escolha a classificação (aluguel, folha, imposto…).' };
+    const inicio = iso(b.inicio);
+    if (!inicio) return { ok: false, erro: 'Informe o 1º vencimento.' };
+    const fim = iso(b.fim);
+    if (fim && fim < inicio) return { ok: false, erro: 'A data final é antes do 1º vencimento.' };
+    const frequencia = FREQUENCIAS[b.frequencia] ? b.frequencia : 'mensal';
+    const ant = parseInt(b.antecedencia_dias, 10);
+    return { ok: true, recorrencia: {
+      descricao, empresa_nome, empresa_id: b.empresa_id ? String(b.empresa_id).slice(0, 80) : null,
+      tipo: b.tipo === 'receber' ? 'receber' : 'pagar',
+      moeda: ['BRL', 'USD', 'EUR'].includes(b.moeda) ? b.moeda : 'BRL', valor,
+      conta_id: String(b.conta_id).slice(0, 80), centro_custo_id: b.centro_custo_id ? String(b.centro_custo_id).slice(0, 80) : null,
+      frequencia, inicio, fim: fim || null, valor_variavel: !!b.valor_variavel,
+      antecedencia_dias: isNaN(ant) ? 30 : Math.max(0, Math.min(90, ant)),
+      obs: String(b.obs || '').trim().slice(0, 500) || null, ativo: b.ativo !== false,
+    } };
+  }
+  function addDias(d, n) { const s = iso(d); if (!s) return null; const x = new Date(s + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
+  // Vencimentos de 'inicio' até 'ate' (e até 'fim', se houver).
+  function vencimentosRecorrencia(r, ate, max) {
+    const passo = (FREQUENCIAS[r.frequencia] || FREQUENCIAS.mensal)[0];
+    const out = [];
+    for (let k = 0; k < (max || 600); k++) {
+      const v = addMeses(r.inicio, k * passo);
+      if (!v || (ate && v > ate) || (r.fim && v > r.fim)) break;
+      out.push({ k, competencia: v.slice(0, 7), vencimento: v });
+    }
+    return out;
+  }
+  function proximoVencimento(r, hoje) {
+    if (!r || r.ativo === false) return null;
+    const passo = (FREQUENCIAS[r.frequencia] || FREQUENCIAS.mensal)[0];
+    for (let k = 0; k < 600; k++) { const v = addMeses(r.inicio, k * passo); if (!v || (r.fim && v > r.fim)) return null; if (v >= hoje) return v; }
+    return null;
+  }
+  // Faturas que faltam gerar: até hoje + antecedência; a 1ª sempre sai
+  // (pra quem cadastra hoje um aluguel que vence daqui a 40 dias).
+  function faturasDaRecorrencia(r, competenciasJaGeradas, hoje, limite) {
+    if (!r || r.ativo === false || !r.inicio) return [];
+    const ja = new Set(competenciasJaGeradas || []);
+    const ate = addDias(hoje, r.antecedencia_dias != null ? +r.antecedencia_dias : 30);
+    let lista = vencimentosRecorrencia(r, ate);
+    if (!lista.length && !ja.size) lista = vencimentosRecorrencia(r, null, 1);
+    const [mm, aaaa] = [s => s.slice(5, 7), s => s.slice(0, 4)];
+    return lista.filter(x => !ja.has(x.competencia)).slice(0, limite || 24).map(x => ({
+      competencia: x.competencia,
+      fatura: {
+        tipo: r.tipo || 'pagar', empresa_nome: r.empresa_nome, empresa_id: r.empresa_id || null,
+        documento: `${r.descricao} ${mm(x.vencimento)}/${aaaa(x.vencimento)}`.slice(0, 120),
+        moeda: r.moeda || 'BRL', cambio: (r.moeda || 'BRL') === 'BRL' ? 1 : null, valor: num(r.valor),
+        emissao: null, vencimento: x.vencimento, conta_id: r.conta_id || null, centro_custo_id: r.centro_custo_id || null,
+        obs: [r.obs, r.valor_variavel ? 'Valor estimado (recorrente) — confira o valor da conta antes de pagar' : 'Gerada pela recorrência'].filter(Boolean).join(' · '),
+        itens: [],
+      },
+    }));
   }
 
   // ── Saldos bancários ────────────────────────────────────────────────
@@ -330,7 +449,7 @@
     return ['conexos', f.tipo, semAcento(f.empresa_nome).replace(/[^a-z0-9]/g, ''), String(f.documento || '').replace(/\W/g, ''), f.vencimento || '', num(f.valor).toFixed(2)].join('|');
   }
 
-  const FinCore = { GRUPOS, PLANO_PADRAO, contaPadraoPorTaxa, validarConta, validarBanco, validarTransferencia, addMeses, saldosBancarios, dreEmpresa, lancamentosContabeis, adivinharColunas, linhaParaFatura, chaveImportacao, dataPlanilha, numBR };
+  const FinCore = { GRUPOS, PLANO_PADRAO, contaPadraoPorTaxa, validarConta, validarBanco, validarTransferencia, addMeses, saldosBancarios, dreEmpresa, lancamentosContabeis, adivinharColunas, linhaParaFatura, chaveImportacao, dataPlanilha, numBR, precisaClassificar, sugerirConta, FREQUENCIAS, validarRecorrencia, vencimentosRecorrencia, proximoVencimento, faturasDaRecorrencia, addDias };
   if (typeof module !== 'undefined' && module.exports) module.exports = FinCore;
   if (typeof window !== 'undefined') window.FinCore = FinCore;
 })();
