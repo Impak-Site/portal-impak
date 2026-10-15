@@ -17,7 +17,10 @@
 //     → { texto, ferramentas: [{nome, input, resumo}], tokens }
 const AgendaServidor = require('./agenda-servidor.js');
 
-const MODELO = 'claude-sonnet-4-6';
+// 15/10/2026 (pedido Ayslan): Sonnet 5.5 — mais novo e ~33% mais barato
+// (US$ 2 / US$ 10 por milhão). Se a API recusar o modelo, cai no anterior.
+const MODELO = 'claude-sonnet-5-5';
+const MODELO_RESERVA = 'claude-sonnet-4-6';
 const MAX_RODADAS = 6;        // no máximo N chamadas de ferramenta por pergunta
 const MAX_LINHAS = 60;        // linhas por resultado (a IA pede mais filtro se precisar)
 
@@ -264,6 +267,10 @@ async function chamarAnthropic(body, apiKey) {
       clearTimeout(to);
       if (RETRY.includes(resp.status) && tentativa < 3) { await new Promise(r => setTimeout(r, 1000 * tentativa)); continue; }
       const data = await resp.json();
+      if (data.error && body.model !== MODELO_RESERVA && /model/i.test(data.error.message || '') && (resp.status === 404 || resp.status === 400)) {
+        console.warn('[assistente] modelo ' + body.model + ' recusado (' + data.error.message + '); usando ' + MODELO_RESERVA);
+        body = Object.assign({}, body, { model: MODELO_RESERVA }); tentativa--; continue;
+      }
       if (data.error) throw new Error(data.error.message || 'erro da API');
       return data;
     } catch (e) {
