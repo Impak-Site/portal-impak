@@ -883,7 +883,14 @@ function renderVendas(){
   const wrap = document.getElementById('vendas-list');
   if(!wrap) return;
   if(!_vendas.length){
-    wrap.innerHTML = '<div class="empty"><div class="empty-icon">🧾</div><div class="empty-text">Nenhuma venda cadastrada — se este processo tem um único cliente/NF Saída, não precisa usar esta aba (use o campo Cliente em Identificação e NF Saída em Documentos, normalmente).</div></div>';
+    // Pedido Emanuelly (15/10/2026): "é lançado as NF na aba Documentos, tem
+    // que lançar de novo na aba Vendas?" — não. Mostra aqui a NF que já está
+    // em Documentos pra ninguém duplicar.
+    const nfDoc = _nfSaidaDocumentos();
+    wrap.innerHTML = nfDoc ? (nfDoc.remessa
+      ? `<div style="background:#f0f6ff;border:1px solid #b9d3f5;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;">📦 <b>Remessa já lançada na aba Documentos:</b> NF ${esc(nfDoc.numero)}${nfDoc.cfop ? ` · CFOP ${esc(nfDoc.cfop)}` : ''}${nfDoc.valor ? ` · ${esc(nfDoc.valor)}` : ''}${nfDoc.data ? ` · ${esc(nfDoc.data)}` : ''}.<br><span style="color:var(--muted);">É movimentação de estoque, não é venda. Quando os pneus forem vendidos, lance a NF de venda aqui (ou leia o XML/PDF).</span></div>`
+      : `<div style="background:#ecfdf3;border:1px solid #abefc6;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;">✅ <b>Venda já lançada na aba Documentos:</b> NF ${esc(nfDoc.numero)}${nfDoc.cliente ? ` · ${esc(nfDoc.cliente)}` : ''}${nfDoc.valor ? ` · ${esc(nfDoc.valor)}` : ''}${nfDoc.data ? ` · ${esc(nfDoc.data)}` : ''}${nfDoc.cfop ? ` · CFOP ${esc(nfDoc.cfop)}` : ''}.<br><span style="color:var(--muted);">Não precisa lançar de novo. Use esta aba só quando o processo for vendido para <b>mais de um cliente</b> ou em <b>várias NFs</b>.</span></div>`)
+      : '<div class="empty"><div class="empty-icon">🧾</div><div class="empty-text">Nenhuma venda cadastrada — se este processo tem um único cliente/NF Saída, não precisa usar esta aba (use o campo Cliente em Identificação e NF Saída em Documentos, normalmente).</div></div>';
     sincronizarVendasLegado();
     renderResumoVendas();
     return;
@@ -972,7 +979,20 @@ function renderVendas(){
   renderResumoVendas();
 }
 
+// NF de saída lançada na aba Documentos (campo único do processo), lida da tela.
+function _nfSaidaDocumentos(){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  const numero = v('f_nf_saida_numero');
+  if(!numero) return null;
+  const cfop = v('f_nf_saida_cfop'), d = v('f_nf_saida_data'), val = v('f_nf_saida_valor');
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  return { numero, cfop, cliente: v('f_cliente'), valor: val ? 'R$ ' + val : '', data: m ? `${m[3]}/${m[2]}/${m[1]}` : d,
+    remessa: typeof ehCfopSemVenda === 'function' ? ehCfopSemVenda(cfop) : false };
+}
+
 function adicionarVenda(){
+  const nfDoc = !_vendas.length ? _nfSaidaDocumentos() : null;
+  if(nfDoc && !nfDoc.remessa && !confirm(`A NF ${nfDoc.numero}${nfDoc.cliente ? ' (' + nfDoc.cliente + ')' : ''} já está lançada na aba Documentos como a venda deste processo.\n\nSó adicione vendas aqui se o processo foi vendido para MAIS DE UM cliente ou em várias NFs.\n\nAdicionar mesmo assim?`)) return;
   _painelDirty = true; // ação via clique/JS não dispara 'input'/'change' nativo -- marca sujo manualmente (ver ESC em controle-core.js)
   _vendas.push(vendaVazia());
   renderVendas();
