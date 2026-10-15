@@ -394,7 +394,7 @@ const navSetores = [
   ]}, // Cadastros saiu daqui e virou link solo (como TV/Permissões) — pedido Ayslan 15/09/2026
   { setor: 'Financeiro', icone: 'financeiro', itens: [
     { label: 'Dashboard Financeiro', icone: 'dashFinanceiro', href: '/financeiro', key: 'financeiro', modulo: 'financeiro' },
-    { label: 'Faturas', icone: 'faturas', href: '/faturas', key: 'faturas', modulo: 'financeiro' }, // contas a pagar / a receber (14/10/2026)
+    { label: 'Controle financeiro', icone: 'faturas', href: '/faturas', key: 'faturas', modulo: 'financeiro' }, // contas a pagar / a receber (14/10/2026)
     { label: 'Câmbio', icone: 'cambio', href: '/cambio', key: 'cambio', modulo: 'cambio' },
     { label: 'DRE Consolidado', icone: 'dre', href: '/controle?dash=dre', key: 'dash-dre', modulo: 'financeiro' }, // veio da barra lateral (pedido Ayslan 15/09/2026)
   ]},
