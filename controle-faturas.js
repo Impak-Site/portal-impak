@@ -204,7 +204,7 @@ async function renderDashFaturas(){
     <button class="btn btn-outline" onclick="ftConciliarExtrato()" title="Importe o extrato do banco (OFX ou CSV) e dê baixa casando cada lançamento com a fatura">🏦 Conciliar extrato</button>
     <button class="btn btn-outline" onclick="ftReceberPendentes()" title="Gera faturas a receber das parcelas de câmbio fechadas e das vendas (NF) dos processos, sem digitar e sem duplicar">↘ Gerar a receber</button>
     <button class="btn btn-outline" onclick="ftExportarExcel()" title="Planilha com as faturas e todos os pagamentos (pra conferência / lançamento em outro sistema)">⬇ Excel</button>
-    <button class="btn btn-outline" onclick="ftNovaManual()">+ Fatura avulsa</button>
+    <button class="btn btn-outline" onclick="ftNovaManual()" title="Conta a pagar ou a receber digitada à mão (aluguel, folha, imposto, sistemas… ou qualquer fatura)">+ Novo lançamento</button>
   </div>`;
   const sit = { vencida: ['Vencida', 'var(--err)'], hoje: ['Vence hoje', 'var(--warn,#b45309)'], semana: ['Esta semana', 'var(--warn,#b45309)'], a_vencer: ['A vencer', 'var(--muted)'], sem_vencimento: ['Sem vencimento', 'var(--muted)'], paga: ['Paga', 'var(--ok)'], cancelada: ['Cancelada', 'var(--dim)'] };
   const linhas = _ftLista.map(f => {

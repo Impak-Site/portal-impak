@@ -145,5 +145,21 @@ teste('faturasDaRecorrencia: horizonte, fim, sem duplicar, 1ª sempre sai', () =
   assert.ok(/estimado/.test(varv.obs));
 });
 
+console.log('\n── migração e transferências (teste ao vivo 15/10) ──');
+teste('baixa "pago no Conexos antes da migração" abate saldo mas não é caixa', () => {
+  const FC = require('./faturas-core.js');
+  const f = { tipo: 'pagar', moeda: 'BRL', status: 'aberta', valor: 2000, pagamentos: [{ data: '2026-10-15', valor: 800, migracao: true, obs: 'Pago no Conexos antes da migração' }] };
+  assert.strictEqual(FC.aplicarPagamentos(f).saldo, 1200);
+  assert.strictEqual(F.dreEmpresa([f], CONTAS, { de: '2026-10-01', ate: '2026-10-31' }).resultadoLiquido, 0);
+  assert.strictEqual(F.lancamentosContabeis([f], CONTAS, [], { de: '2026-10-01', ate: '2026-10-31' }).length, 0);
+  assert.strictEqual(F.saldosBancarios([], [f], [], {}).semBanco.saidas, 0);
+  assert.strictEqual(FC.resumoFaturas([f], '2026-10-15', {}).pago_mes, 0);
+});
+teste('transferência entre contas vai para o arquivo do contador', () => {
+  const bancos = [{ id: 'a', nome: 'A', conta_contabil: '1.1.2.01' }, { id: 'b', nome: 'B', conta_contabil: '1.1.2.02' }];
+  const l = F.lancamentosContabeis([], CONTAS, bancos, { de: '2026-10-01', ate: '2026-10-31', transferencias: [{ data: '2026-10-15', de_banco_id: 'a', para_banco_id: 'b', valor: 1000 }, { data: '2026-10-16', de_banco_id: 'a', para_banco_id: 'b', valor: 5, estornado: { em: 'x' } }] });
+  assert.deepStrictEqual(l.map(x => [x.debito, x.credito, x.valor]), [['1.1.2.02', '1.1.2.01', 1000]]);
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);

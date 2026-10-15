@@ -334,8 +334,8 @@ function _finHtmlContador(){
 }
 async function finContadorPrevia(){
   const el = document.getElementById('fin_ct_prev'); if(!el) return;
-  const fats = await _finFaturasTodas();
-  const l = FinCore.lancamentosContabeis(fats, _fin.contas, _fin.bancos, { de: _finFiltro.de, ate: _finFiltro.ate });
+  const [fats, trd] = await Promise.all([_finFaturasTodas(), fetch('/api/fin/transferencias').then(r => r.json()).catch(() => ({}))]);
+  const l = FinCore.lancamentosContabeis(fats, _fin.contas, _fin.bancos, { de: _finFiltro.de, ate: _finFiltro.ate, transferencias: (trd && trd.transferencias) || [] });
   window._finLanc = l;
   const tot = l.reduce((s, x) => s + x.valor, 0);
   const semConta = l.filter(x => /^[0-9]\.[0-9]\.[0-9]{2}$/.test(x.debito) || /^[0-9]\.[0-9]\.[0-9]{2}$/.test(x.credito) || /não informado/.test(x.debito + x.credito)).length;
