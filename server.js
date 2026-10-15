@@ -1882,6 +1882,64 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
+// Ler fatura/boleto/DARF com IA (14/10/2026): devolve os campos pra tela
+// pré-preencher uma fatura — nada é gravado aqui. O documento vai só pra
+// API da Anthropic (mesma chave do resto do sistema, variável de ambiente).
+const PROMPT_LER_FATURA = `Você lê documentos de cobrança de uma IMPORTADORA brasileira de pneus: fatura/invoice de armador ou agente de carga, nota de débito, nota fiscal de serviço do despachante, boleto, DARF/guia de imposto, fatura de armazém/terminal. Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
+{"tipo_documento":"fatura|nota_debito|nfse|boleto|darf|outro","emitente":"razão social de quem COBRA","cnpj_emitente":"só dígitos ou vazio","destinatario":"quem PAGA","documento":"número da fatura/nota/boleto","emissao":"AAAA-MM-DD ou vazio","vencimento":"AAAA-MM-DD ou vazio","moeda":"BRL|USD|EUR","valor_total":0,"itens":[{"descricao":"texto da linha","moeda":"BRL|USD|EUR","valor":0}],"pistas_processo":["referência do cliente/processo, HBL, MBL, booking, número de container — tudo que identifique o embarque"],"linha_digitavel":"se houver","observacao":"algo importante em 1 frase ou vazio"}
+Regras: valores como número com ponto decimal (1234.56), nunca texto. Se o documento estiver em dólar mas tiver total em reais, use a moeda das linhas e coloque o total em reais na observacao. Não invente: campo que não existe fica vazio ou lista vazia.`;
+app.post('/api/faturas/ler-documento', auth('financeiro', 'controle'), rateLimitAnalisar, async (req, res) => {
+  try {
+    const { arquivo_base64, media_type } = req.body || {};
+    const mt = String(media_type || '').toLowerCase();
+    if (!arquivo_base64 || typeof arquivo_base64 !== 'string') return res.status(400).json({ ok: false, erro: 'Envie o arquivo (PDF ou imagem).' });
+    if (!MIDIAS_ANALISE.has(mt)) return res.status(400).json({ ok: false, erro: 'Tipo de arquivo não suportado — envie PDF ou imagem.' });
+    if (arquivo_base64.length > 20 * 1024 * 1024) return res.status(400).json({ ok: false, erro: 'Arquivo grande demais (máx. ~15 MB).' });
+    const key = (process.env.ANTHROPIC_API_KEY || '').trim();
+    if (!key || key.length < 20) return res.status(500).json({ ok: false, erro: 'ANTHROPIC_API_KEY não configurada no servidor.' });
+    const bloco = mt === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: mt, data: arquivo_base64 } }
+      : { type: 'image', source: { type: 'base64', media_type: mt, data: arquivo_base64 } };
+    let resp, tentativa = 0;
+    while (true) {
+      tentativa++;
+      const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 90000);
+      try {
+        resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST', signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, system: PROMPT_LER_FATURA, messages: [{ role: 'user', content: [bloco, { type: 'text', text: 'Extraia os dados deste documento de cobrança.' }] }] }),
+        });
+      } finally { clearTimeout(to); }
+      if (resp.ok || tentativa >= 2 || ![429, 500, 502, 503, 529].includes(resp.status)) break;
+      await new Promise(r => setTimeout(r, 2500));
+    }
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); return res.status(502).json({ ok: false, erro: 'IA indisponível: ' + ((e.error && e.error.message) || resp.status) }); }
+    const data = await resp.json();
+    const texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const m = texto.match(/\{[\s\S]*\}/);
+    let dados; try { dados = JSON.parse(m ? m[0] : texto); } catch (e) { return res.status(422).json({ ok: false, erro: 'Não consegui entender o documento. Tente outro arquivo ou lance manualmente.' }); }
+    // empresa no cadastro (pelo CNPJ ou nome)
+    let empresa_id = null;
+    try {
+      const idx = await obterIndiceCadastros();
+      const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(dados.emitente, idx);
+      if (r && r.id) { empresa_id = r.id; dados.emitente_cadastro = r.nome; }
+      if (!empresa_id && dados.cnpj_emitente) {
+        const cnpj = String(dados.cnpj_emitente).replace(/\D/g, '');
+        if (cnpj.length === 14) {
+          const { data: c } = await sb().from('contatos_clientes').select('id,razao_social,cnpj,documento').or(`cnpj.eq.${cnpj},documento.eq.${cnpj}`).limit(1);
+          if (c && c[0]) { empresa_id = c[0].id; dados.emitente_cadastro = c[0].razao_social; }
+        }
+      }
+    } catch (e) { /* segue sem vínculo */ }
+    dados.empresa_id = empresa_id;
+    res.json({ ok: true, dados });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: e.name === 'AbortError' ? 'A leitura demorou demais. Tente de novo.' : e.message });
+  }
+});
+
 // Marcar paga / reabrir / cancelar — só Financeiro.
 app.post('/api/faturas/:id/:acao', auth('financeiro'), async (req, res) => {
   try {
@@ -5991,6 +6049,31 @@ async function verificarAlertaSemCotacao(){
   return pendentes.length;
 }
 
+// ── Faturas vencidas / vencendo (14/10/2026) ─────────────────────────
+// Diário, pro Financeiro (destinatariosAlertas('financeiro'), só
+// @impak.com.br). Só manda quando tem algo vencido ou vencendo em 3 dias.
+async function verificarAlertaFaturas(){
+  const jobName = 'alerta_faturas';
+  const { data, error } = await sb().from('faturas').select('id,numero,tipo,empresa_nome,documento,moeda,valor,cambio,vencimento,status,itens').eq('status', 'aberta').not('vencimento', 'is', null);
+  if (error) { console.error('alerta faturas:', error.message); return 0; }
+  const hoje = new Date().toISOString().slice(0, 10);
+  const { vencidas, proximas } = FaturasCore.faturasParaAlerta(data || [], hoje, 3);
+  if (!vencidas.length && !proximas.length) { await marcarJobEnviadoHoje(jobName); return 0; }
+  const fmtV = f => `${f.moeda === 'USD' ? 'US$' : f.moeda === 'EUR' ? '€' : 'R$'} ${(parseFloat(f.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const dBR = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '-';
+  const td = (v, extra) => `<td style="padding:6px 10px;border-bottom:1px solid #eee;${extra || ''}">${v}</td>`;
+  const linha = f => `<tr>${td(f.tipo === 'pagar' ? 'Pagar' : 'Receber')}${td(_escA(f.numero || '-'), 'white-space:nowrap;')}${td(_escA(f.empresa_nome))}${td(_escA(f.documento || '-'))}${td(_escA([...new Set((f.itens || []).map(i => i.referencia).filter(Boolean))].join(', ') || '-'))}${td(dBR(f.vencimento), 'white-space:nowrap;')}${td(fmtV(f), 'text-align:right;white-space:nowrap;')}</tr>`;
+  const cols = ['Tipo', 'Nº', 'Empresa', 'Documento', 'Processo', 'Vencimento', 'Valor'];
+  const url = (process.env.APP_URL || 'https://portal-impak-production.up.railway.app').replace(/\/+$/, '') + '/faturas';
+  const html = _cabecalhoAlertaHtml('Faturas vencidas e vencendo', new Date())
+    + (vencidas.length ? `<h3 style="margin:14px 0 6px;color:#dc2626;">Vencidas (${vencidas.length})</h3>` + _tabelaAlertaHtml(cols, vencidas.map(linha).join('')) : '')
+    + (proximas.length ? `<h3 style="margin:18px 0 6px;color:#b45309;">Vencem em até 3 dias (${proximas.length})</h3>` + _tabelaAlertaHtml(cols, proximas.map(linha).join('')) : '')
+    + `<p style="margin-top:14px;font-size:12px;color:#888;">Marcar como paga em <a href="${url}">Financeiro → Faturas</a>.</p>` + _rodapeAlertaHtml();
+  await enviarParaDestinatariosAlerta(`IMPAK Portal - Faturas: ${vencidas.length} vencida(s), ${proximas.length} vencendo`, html, 'financeiro');
+  await marcarJobEnviadoHoje(jobName);
+  return vencidas.length + proximas.length;
+}
+
 // ════════════════════════════════════════════════════════════════
 // AGENDA — histórico diário + resumo semanal pros gerentes (14/10/2026,
 // pedido Ayslan). O cálculo das tarefas é o mesmo do navegador
@@ -6047,6 +6130,7 @@ function agendarAlertasSeparados(){
     { nome:'cambio-semana', jobName:'alerta_cambio_semana', fn:verificarAlertaCambioSemana },
     { nome:'transportadora', jobName:'alerta_transportadora', fn:verificarAlertaTransportadora },
     { nome:'sem-cotacao', jobName:'alerta_sem_cotacao_semanal', fn:verificarAlertaSemCotacao, diaSemana:1 }, // só segunda-feira
+    { nome:'faturas', jobName:'alerta_faturas', fn:verificarAlertaFaturas },
   ];
   function checar(){
     ALERTAS_SEPARADOS.forEach(({nome, jobName, fn, diaSemana}) => {
