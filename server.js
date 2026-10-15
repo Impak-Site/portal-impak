@@ -1798,6 +1798,7 @@ app.post('/api/agenda/conclusao', auth('controle'), async (req, res) => {
 // Ao criar/cancelar, grava em cada processo real_json._meta[taxa].fatura_id
 // (ou remove) pra aba mostrar "fatura aberta/paga" na linha.
 const FaturasCore = require('./faturas-core.js');
+const FinCore = require('./fin-core.js');
 app.get('/faturas', auth('financeiro'), (req, res) => enviarControleV2(res));
 
 async function vincularFaturaNosProcessos(fatura, remover) {
@@ -2026,13 +2027,138 @@ async function _faturaPorId(id) {
   return data || null;
 }
 
+// ── Financeiro da empresa: plano de contas, centros, bancos, transferências,
+// importação do Conexos (migration 0053). Nada é apagado: desativa/estorna.
+app.get('/api/fin/cadastros', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const [c, cc, b] = await Promise.all([
+      sb().from('fin_contas').select('*').order('codigo'),
+      sb().from('fin_centros_custo').select('*').order('nome'),
+      sb().from('fin_bancos').select('*').order('nome'),
+    ]);
+    if (c.error) return res.json({ ok: false, erro: c.error.message, semTabela: /fin_contas/.test(c.error.message) });
+    res.json({ ok: true, contas: c.data || [], centros: cc.data || [], bancos: b.data || [], grupos: FinCore.GRUPOS });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/fin/contas', auth('financeiro'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const v = FinCore.validarConta(b);
+    if (!v.ok) return res.status(400).json(v);
+    const row = { ...v.conta, updated_at: new Date().toISOString() };
+    const q = b.id ? sb().from('fin_contas').update(row).eq('id', String(b.id)) : sb().from('fin_contas').insert(row);
+    const { data, error } = await q.select().single();
+    if (error) return res.status(400).json({ ok: false, erro: /duplicate|unique/i.test(error.message) ? 'Já existe uma conta com esse código.' : error.message });
+    res.json({ ok: true, conta: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/fin/centros', auth('financeiro'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nome = String(b.nome || '').trim().slice(0, 80);
+    if (!nome) return res.status(400).json({ ok: false, erro: 'Informe o nome do centro de custo.' });
+    const row = { nome, codigo: String(b.codigo || '').trim().slice(0, 20) || null, ativo: b.ativo !== false };
+    const q = b.id ? sb().from('fin_centros_custo').update(row).eq('id', String(b.id)) : sb().from('fin_centros_custo').insert(row);
+    const { data, error } = await q.select().single();
+    if (error) return res.status(400).json({ ok: false, erro: error.message });
+    res.json({ ok: true, centro: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/fin/bancos', auth('financeiro'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const v = FinCore.validarBanco(b);
+    if (!v.ok) return res.status(400).json(v);
+    const row = { ...v.banco, updated_at: new Date().toISOString() };
+    const q = b.id ? sb().from('fin_bancos').update(row).eq('id', String(b.id)) : sb().from('fin_bancos').insert(row);
+    const { data, error } = await q.select().single();
+    if (error) return res.status(400).json({ ok: false, erro: error.message });
+    res.json({ ok: true, banco: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.get('/api/fin/transferencias', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const { data, error } = await sb().from('fin_transferencias').select('*').order('data', { ascending: false }).limit(2000);
+    if (error) return res.json({ ok: false, erro: error.message, transferencias: [] });
+    res.json({ ok: true, transferencias: data || [] });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/fin/transferencias', auth('financeiro'), async (req, res) => {
+  try {
+    const v = FinCore.validarTransferencia(req.body || {});
+    if (!v.ok) return res.status(400).json(v);
+    const vd = FinCore.numBR((req.body || {}).valor_destino);
+    const { data, error } = await sb().from('fin_transferencias').insert({ ...v.transf, valor_destino: vd > 0 ? vd : null, criado_por: req.session.usuario || null }).select().single();
+    if (error) return res.status(400).json({ ok: false, erro: error.message });
+    res.json({ ok: true, transferencia: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/fin/transferencias/:id/estornar', auth('financeiro'), async (req, res) => {
+  try {
+    const estornado = { por: req.session.usuario || null, em: new Date().toISOString(), motivo: String((req.body || {}).motivo || '').slice(0, 300) || null };
+    const { data, error } = await sb().from('fin_transferencias').update({ estornado }).eq('id', String(req.params.id)).is('estornado', null).select().single();
+    if (error) return res.status(400).json({ ok: false, erro: error.message });
+    res.json({ ok: true, transferencia: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+// Importação de títulos em aberto (planilha do Conexos já mapeada no navegador).
+// Cada linha: {fatura, jaPago}. Pula o que já foi importado (externo.chave).
+// O que já tinha sido pago no Conexos vira uma baixa "antes da migração".
+app.post('/api/faturas/importar', auth('financeiro'), async (req, res) => {
+  try {
+    const linhas = Array.isArray(req.body && req.body.linhas) ? req.body.linhas.slice(0, 500) : [];
+    if (!linhas.length) return res.status(400).json({ ok: false, erro: 'Nada para importar.' });
+    const dataMigracao = /^\d{4}-\d{2}-\d{2}$/.test((req.body || {}).data_migracao || '') ? req.body.data_migracao : new Date().toISOString().slice(0, 10);
+    const chaves = linhas.map(l => l && l.fatura && l.fatura.externo && l.fatura.externo.chave).filter(Boolean);
+    const existentes = new Set();
+    for (let i = 0; i < chaves.length; i += 100) {
+      const { data } = await sb().from('faturas').select('externo').in('externo->>chave', chaves.slice(i, i + 100)).neq('status', 'cancelada');
+      (data || []).forEach(x => x.externo && existentes.add(x.externo.chave));
+    }
+    let idx = null; try { idx = await obterIndiceCadastros(); } catch (e) { /* segue sem vínculo */ }
+    const ano = new Date().getFullYear();
+    const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
+    let numero = ult && ult[0] ? ult[0].numero : null;
+    const criadas = [], pulados = [], erros = [];
+    const agora = new Date().toISOString();
+    for (const l of linhas) {
+      const v = FaturasCore.validarFatura(l && l.fatura);
+      if (!v.ok) { erros.push({ linha: l && l.linha, erro: v.erro }); continue; }
+      const chave = v.fatura.externo && v.fatura.externo.chave;
+      if (!chave) { erros.push({ linha: l.linha, erro: 'Sem chave de importação.' }); continue; }
+      if (existentes.has(chave)) { pulados.push({ linha: l.linha, documento: v.fatura.documento }); continue; }
+      existentes.add(chave);
+      const row = { ...v.fatura, criado_por: req.session.usuario || null, alterado_por: req.session.usuario || null, created_at: agora, updated_at: agora };
+      if (idx) { try { const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(row.empresa_nome, idx); if (r && r.id) row.empresa_id = r.id; } catch (e) { /* sem vínculo */ } }
+      if (!row.empresa_id && row.externo && row.externo.cnpj && row.externo.cnpj.length === 14) {
+        const { data: c } = await sb().from('contatos_clientes').select('id').or(`cnpj.eq.${row.externo.cnpj},documento.eq.${row.externo.cnpj}`).limit(1);
+        if (c && c[0]) row.empresa_id = c[0].id;
+      }
+      const jaPago = Math.max(0, Math.round((parseFloat(l.jaPago) || 0) * 100) / 100);
+      if (jaPago > 0) {
+        row.pagamentos = [{ id: require('crypto').randomUUID(), data: dataMigracao, valor: Math.min(jaPago, row.valor), forma: 'outro', obs: 'Pago no Conexos antes da migração', por: req.session.usuario || null, em: agora }];
+        const r = FaturasCore.aplicarPagamentos(row);
+        Object.assign(row, { valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em });
+      }
+      numero = FaturasCore.proximoNumero(numero, ano);
+      row.numero = numero;
+      const { data, error } = await sb().from('faturas').insert(row).select('id, numero, tipo, empresa_nome, documento, valor').single();
+      if (error) { erros.push({ linha: l.linha, erro: error.message }); continue; }
+      criadas.push(data);
+    }
+    res.json({ ok: true, criadas: criadas.length, pulados, erros, exemplo: criadas.slice(0, 5) });
+  } catch (e) { console.error('faturas/importar:', e.message); res.status(500).json({ ok: false, erro: 'Erro na importação.' }); }
+});
+
 // ── Faturas: helpers da fase 3 (DARF de retenções, origem a receber) ──
 async function criarDarfRetencoes(pag, fatura, usuario) {
   const d = FaturasCore.darfRetencoes(pag);
   if (!d) return null;
   const ano = new Date().getFullYear();
   const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
-  const row = { numero: FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano), tipo: 'pagar', empresa_nome: 'RECEITA FEDERAL — DARF retenções', documento: `Retenções ${fatura.numero || ''} ${fatura.documento || ''}`.trim(),
+  let contaRet = null;
+  try { const { data: c } = await sb().from('fin_contas').select('id').eq('codigo', '9.1.01').maybeSingle(); contaRet = c ? c.id : null; } catch (e) { /* tabela pode não existir ainda */ }
+  const row = { conta_id: contaRet, numero: FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano), tipo: 'pagar', empresa_nome: 'RECEITA FEDERAL — DARF retenções', documento: `Retenções ${fatura.numero || ''} ${fatura.documento || ''}`.trim(),
     moeda: 'BRL', cambio: 1, valor: d.valor, vencimento: d.vencimento, status: 'aberta', itens: [],
     obs: `IRRF/PIS/COFINS/CSLL retidos no pagamento de ${pag.data} da fatura ${fatura.numero || ''} (${fatura.empresa_nome}).`, criado_por: usuario || null, alterado_por: usuario || null };
   const { data, error } = await sb().from('faturas').insert(row).select().single();
@@ -2089,7 +2215,7 @@ app.post('/api/faturas/baixa-lote', auth('financeiro'), async (req, res) => {
     for (const it of itens) {
       const f = porId[it.fatura_id];
       if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada no lote.' });
-      const v = FaturasCore.validarPagamento({ ...it, data: b.data, forma: b.forma, identificador, obs: b.obs }, f);
+      const v = FaturasCore.validarPagamento({ ...it, data: b.data, forma: b.forma, identificador, obs: b.obs, banco_id: b.banco_id }, f);
       if (!v.ok) return res.status(400).json({ ok: false, erro: `${f.numero || ''}: ${v.erro}` });
       plano.push({ f, pag: { id: require('crypto').randomUUID(), ...v.pagamento, lote_id, por: req.session.usuario || null, em: new Date().toISOString() } });
     }

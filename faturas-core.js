@@ -89,6 +89,12 @@
       emissao: iso(b.emissao), vencimento, pago_em, status,
       obs: limpa(b.obs).slice(0, 1000) || null, itens,
     };
+    // classificação financeira (plano de contas / centro de custo) e origem externa (importação)
+    if (b.conta_id) fatura.conta_id = String(b.conta_id).slice(0, 80);
+    else if (b.conta_id === null || b.conta_id === '') fatura.conta_id = null;
+    if (b.centro_custo_id) fatura.centro_custo_id = String(b.centro_custo_id).slice(0, 80);
+    else if (b.centro_custo_id === null || b.centro_custo_id === '') fatura.centro_custo_id = null;
+    if (b.externo && typeof b.externo === 'object') fatura.externo = { fonte: String(b.externo.fonte || '').slice(0, 30), id: b.externo.id ? String(b.externo.id).slice(0, 80) : null, chave: b.externo.chave ? String(b.externo.chave).slice(0, 300) : null, cnpj: b.externo.cnpj ? String(b.externo.cnpj).slice(0, 20) : null, conta: b.externo.conta ? String(b.externo.conta).slice(0, 80) : null, centro: b.externo.centro ? String(b.externo.centro).slice(0, 80) : null };
     // origem (a receber gerado de parcela de câmbio / venda do processo)
     if (b.origem && ['parcela_cambio', 'venda'].includes(b.origem.tipo) && b.origem.processo_id && Number.isInteger(+b.origem.idx)) {
       fatura.origem = { tipo: b.origem.tipo, processo_id: String(b.origem.processo_id).slice(0, 80), referencia: b.origem.referencia ? String(b.origem.referencia).slice(0, 80) : null, idx: +b.origem.idx };
@@ -474,6 +480,7 @@
     return { ok: true, aviso: avisos.join(' ') || null, pagamento: {
       data, valor, juros: juros || 0, desconto: desconto || 0, retencoes, cambio_efetivo, pago_brl,
       forma: FORMAS.includes(b.forma) ? b.forma : 'outro',
+      banco_id: b.banco_id ? String(b.banco_id).slice(0, 80) : null,
       identificador: limpa(b.identificador).slice(0, 120) || null,
       obs: limpa(b.obs).slice(0, 500) || null,
     } };
