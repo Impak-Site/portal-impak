@@ -297,6 +297,7 @@ function ftEditar(id, pre){
     <div class="ft-modal-head"><span>${id ? 'Editar fatura' : (pre && pre._ia ? '🧾 Fatura lida pela IA — confira antes de salvar' : 'Fatura avulsa')}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
     <div class="ft-modal-body">
       ${pre && pre._aviso ? `<div class="cr-muted" style="background:#fff7e6;border:1px solid #f5d79e;border-radius:8px;padding:8px 10px;margin-bottom:10px;color:#7a5200;">${pre._aviso}</div>` : ''}
+      <div id="ft_e_conf" style="margin-bottom:10px;max-height:190px;overflow:auto;">${(id || (pre && pre._ia)) ? '' : `<a class="cr-link" onclick="ftConferir(null)">🔍 Conferir com o sistema (Custos Reais, cotado, duplicidade)</a>`}</div>
       <div class="ft-cand-campos">
         <label>Tipo <select class="form-input" id="ft_e_tipo"><option value="pagar" ${f.tipo === 'pagar' ? 'selected' : ''}>A pagar</option><option value="receber" ${f.tipo === 'receber' ? 'selected' : ''}>A receber</option></select></label>
         <label style="flex:2;position:relative;">Empresa ${f.empresa_id ? '<span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<input class="form-input" id="ft_e_empresa" value="${esc(f.empresa_nome)}" autocomplete="off" oninput="autocompletarContato(this,'','ft_dd_empresa')"><div id="ft_dd_empresa" class="cr-dd" style="display:none;"></div></label>
@@ -314,7 +315,6 @@ function ftEditar(id, pre){
       <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(f.obs || '')}"></label>
       ${id ? ((f.itens || []).length ? `<div class="cr-muted" style="margin-top:8px;">Itens: ${f.itens.map(it => `${esc(it.referencia || '')} ${esc(it.label)} ${_ftSimb(it.moeda)} ${_ftFmt(it.valor)}`).join(' · ')}</div>` : '')
         : `<div style="margin-top:12px;"><div class="cr-muted" style="font-weight:600;margin-bottom:4px;">Taxas desta fatura (processo + taxa ligam a fatura à aba Custos Reais)</div><div id="ft_e_itens">${_ftItensHtml()}</div></div>`}
-      <div id="ft_e_conf" style="margin-top:12px;">${(id || (pre && pre._ia)) ? '' : `<a class="cr-link" onclick="ftConferir(null)">🔍 Conferir com o sistema</a>`}</div>
     </div>
     <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftConferir(${id ? `'${id}'` : 'null'})">🔍 Conferir</button><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftSalvarEdicao(${id ? `'${id}'` : 'null'})">Salvar</button></div>
   </div></div>`;
