@@ -1814,6 +1814,8 @@ async function vincularFaturaNosProcessos(fatura, remover) {
         rj._meta[taxa] = rj._meta[taxa] || {};
         if (remover) { if (rj._meta[taxa].fatura_id === fatura.id) { delete rj._meta[taxa].fatura_id; mexeu = true; } }
         else if (rj._meta[taxa].fatura_id !== fatura.id) { rj._meta[taxa].fatura_id = fatura.id; mexeu = true; }
+        // fatura quitada → "Pago em" da taxa nos Custos Reais (só se estiver vazio)
+        if (!remover && fatura.status === 'paga' && fatura.pago_em && !rj._meta[taxa].pago_em) { rj._meta[taxa].pago_em = fatura.pago_em; mexeu = true; }
         if (!Object.keys(rj._meta[taxa]).length) delete rj._meta[taxa];
       });
       if (!Object.keys(rj._meta).length) delete rj._meta;
@@ -1856,9 +1858,14 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
       if (!row.empresa_id) { try { const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(row.empresa_nome, await obterIndiceCadastros()); if (r && r.id) row.empresa_id = r.id; } catch (e) { /* segue sem id */ } }
       let salva;
       if (b && b.id) {
-        const { data: atual } = await sb().from('faturas').select('id,status,itens').eq('id', String(b.id)).maybeSingle();
+        const { data: atual } = await sb().from('faturas').select('id,status,itens,valor_pago,pago_em,pagamentos').eq('id', String(b.id)).maybeSingle();
         if (!atual) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
         if (atual.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada não pode ser editada.' });
+        // edição não mexe nas baixas: status/valor pago saem da lista de pagamentos
+        if (Array.isArray(atual.pagamentos) && atual.pagamentos.length) {
+          const r = FaturasCore.aplicarPagamentos({ ...row, pagamentos: atual.pagamentos, status: atual.status });
+          Object.assign(row, atual.status === 'paga' ? { status: 'paga', valor_pago: r.valor_pago, pago_em: atual.pago_em } : { status: r.status, valor_pago: r.valor_pago, pago_em: r.pago_em });
+        } else { Object.assign(row, { status: atual.status, valor_pago: atual.valor_pago, pago_em: atual.pago_em }); }
         const { data, error } = await sb().from('faturas').update(row).eq('id', atual.id).select().single();
         if (error) return res.status(500).json({ ok: false, erro: error.message });
         salva = data;
@@ -1998,6 +2005,166 @@ app.post('/api/faturas/ler-documento', auth('financeiro', 'controle'), rateLimit
 });
 
 // Marcar paga / reabrir / cancelar — só Financeiro.
+// ── Baixas, comprovantes e anexos das faturas (migration 0051) ─────────
+// Arquivos no bucket privado do GED: faturas/<id>/<data>-<nome>. Download só
+// por link assinado de 1h gerado pra quem tem acesso à tela de faturas.
+async function salvarArquivoFatura(faturaId, arquivo_base64, nome, media_type) {
+  const mt = String(media_type || '').toLowerCase();
+  if (!MIDIAS_ANALISE.has(mt)) throw new Error('Tipo de arquivo não suportado — envie PDF ou imagem.');
+  if (typeof arquivo_base64 !== 'string' || !arquivo_base64) throw new Error('Arquivo vazio.');
+  if (arquivo_base64.length > 20 * 1024 * 1024) throw new Error('Arquivo grande demais (máx. ~15 MB).');
+  const buf = Buffer.from(arquivo_base64, 'base64');
+  const ext = mt === 'application/pdf' ? 'pdf' : mt.split('/')[1].replace('jpeg', 'jpg');
+  const base = String(nome || 'arquivo').replace(/\.[a-z0-9]{2,4}$/i, '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 60) || 'arquivo';
+  const path = `faturas/${String(faturaId).replace(/[^A-Za-z0-9-]/g, '')}/${Date.now()}-${base}.${ext}`;
+  const { error } = await sb().storage.from(GED_BUCKET).upload(path, buf, { contentType: mt, upsert: false });
+  if (error) throw new Error('Falha ao guardar o arquivo: ' + error.message);
+  return { path, nome: String(nome || base + '.' + ext).slice(0, 120), media_type: mt, tamanho: buf.length };
+}
+async function _faturaPorId(id) {
+  const { data } = await sb().from('faturas').select('*').eq('id', String(id).slice(0, 80)).maybeSingle();
+  return data || null;
+}
+
+// Baixa (parcial ou total) com comprovante opcional
+app.post('/api/faturas/:id/baixa', auth('financeiro'), async (req, res) => {
+  try {
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const b = req.body || {};
+    const v = FaturasCore.validarPagamento(b, f);
+    if (!v.ok) return res.status(400).json({ ok: false, erro: v.erro });
+    const pag = { id: require('crypto').randomUUID(), ...v.pagamento, por: req.session.usuario || null, em: new Date().toISOString() };
+    // comprovante repetido em outra baixa (mesma autenticação/ID da transação)
+    if (pag.identificador) {
+      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador: pag.identificador }]).limit(1);
+      if (rep && rep.length && !b.confirmar_repetido) return res.status(409).json({ ok: false, repetido: true, erro: `Esse comprovante (${pag.identificador}) já foi usado na fatura ${rep[0].numero || ''}.` });
+    }
+    if (b.arquivo_base64) {
+      try { pag.comprovante = await salvarArquivoFatura(f.id, b.arquivo_base64, b.nome_arquivo, b.media_type); }
+      catch (e) { return res.status(400).json({ ok: false, erro: e.message }); }
+    }
+    const pags = (Array.isArray(f.pagamentos) ? f.pagamentos : []).concat([pag]);
+    const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags });
+    const anexos = Array.isArray(f.anexos) ? f.anexos.slice() : [];
+    if (pag.comprovante) anexos.push({ id: require('crypto').randomUUID(), tipo: 'comprovante', ...pag.comprovante, pagamento_id: pag.id, por: pag.por, em: pag.em });
+    const patch = { pagamentos: pags, anexos, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() };
+    const { data, error } = await sb().from('faturas').update(patch).eq('id', f.id).select().single();
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    if (data.status === 'paga') await vincularFaturaNosProcessos(data, false);
+    res.json({ ok: true, fatura: data, aviso: v.aviso, saldo: r.saldo });
+  } catch (e) { console.error('faturas/baixa:', e.message); res.status(500).json({ ok: false, erro: 'Erro ao dar baixa.' }); }
+});
+
+// Estorno de uma baixa (marca, não apaga)
+app.post('/api/faturas/:id/estornar', auth('financeiro'), async (req, res) => {
+  try {
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const b = req.body || {};
+    let achou = false;
+    const pags = (Array.isArray(f.pagamentos) ? f.pagamentos : []).map(p => {
+      if (p.id !== b.pagamento_id || p.estornado) return p;
+      achou = true;
+      return { ...p, estornado: { por: req.session.usuario || null, em: new Date().toISOString(), motivo: String(b.motivo || '').slice(0, 300) || null } };
+    });
+    if (!achou) return res.status(404).json({ ok: false, erro: 'Pagamento não encontrado.' });
+    const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags, status: f.status === 'paga' ? 'aberta' : f.status });
+    const { data, error } = await sb().from('faturas').update({ pagamentos: pags, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    res.json({ ok: true, fatura: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao estornar.' }); }
+});
+
+// Anexo avulso (a própria fatura em PDF, boleto, e-mail…)
+app.post('/api/faturas/:id/anexo', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const b = req.body || {};
+    let arq;
+    try { arq = await salvarArquivoFatura(f.id, b.arquivo_base64, b.nome_arquivo, b.media_type); }
+    catch (e) { return res.status(400).json({ ok: false, erro: e.message }); }
+    const tipo = ['fatura', 'comprovante', 'outro'].includes(b.tipo) ? b.tipo : 'outro';
+    const anexos = (Array.isArray(f.anexos) ? f.anexos : []).concat([{ id: require('crypto').randomUUID(), tipo, ...arq, por: req.session.usuario || null, em: new Date().toISOString() }]);
+    const { data, error } = await sb().from('faturas').update({ anexos, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    res.json({ ok: true, fatura: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao anexar.' }); }
+});
+
+// Link assinado (1h) pra abrir um anexo/comprovante
+app.get('/api/faturas/:id/arquivo', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const path = String(req.query.path || '');
+    const conhecidos = new Set([...(f.anexos || []).map(a => a.path), ...(f.pagamentos || []).map(p => p.comprovante && p.comprovante.path)].filter(Boolean));
+    if (!conhecidos.has(path)) return res.status(404).json({ ok: false, erro: 'Arquivo não pertence a esta fatura.' });
+    const { data, error } = await sb().storage.from(GED_BUCKET).createSignedUrl(path, 3600);
+    if (error || !data) return res.status(500).json({ ok: false, erro: 'Não consegui gerar o link.' });
+    res.json({ ok: true, url: data.signedUrl });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao abrir o arquivo.' }); }
+});
+
+// IA lê o comprovante (PIX, TED, boleto pago, contrato de câmbio, DARF pago)
+// e sugere a(s) fatura(s) em aberto que ele quita.
+const PROMPT_LER_COMPROVANTE = `Você lê COMPROVANTES DE PAGAMENTO de uma importadora brasileira (PIX, TED/DOC, boleto pago, DARF pago, contrato/fechamento de câmbio, recibo). Responda SOMENTE com um JSON válido, sem texto antes ou depois:
+{"tipo":"pix|ted|boleto|darf|cambio|outro","data_pagamento":"AAAA-MM-DD","valor":0,"moeda":"BRL|USD|EUR","favorecido":"quem RECEBEU o dinheiro","cnpj_favorecido":"só dígitos ou vazio","pagador":"quem pagou","banco":"banco/instituição","identificador":"ID da transação, autenticação, nº de controle ou E2E — o código único do comprovante","documento_pago":"nº do boleto/linha digitável/descrição/referência que aparece, se houver","observacao":"algo importante em 1 frase ou vazio"}
+Regras: valor é o valor EFETIVAMENTE pago (com juros/multa, se houver). Datas sempre AAAA-MM-DD. Se não achar um campo, deixe vazio ("" ou 0). Não invente.`;
+app.post('/api/faturas/ler-comprovante', auth('financeiro'), rateLimitAnalisar, async (req, res) => {
+  try {
+    const { arquivo_base64, media_type, fatura_id } = req.body || {};
+    const mt = String(media_type || '').toLowerCase();
+    if (!arquivo_base64 || typeof arquivo_base64 !== 'string') return res.status(400).json({ ok: false, erro: 'Envie o comprovante (PDF ou imagem).' });
+    if (!MIDIAS_ANALISE.has(mt)) return res.status(400).json({ ok: false, erro: 'Tipo de arquivo não suportado — envie PDF ou imagem.' });
+    if (arquivo_base64.length > 20 * 1024 * 1024) return res.status(400).json({ ok: false, erro: 'Arquivo grande demais (máx. ~15 MB).' });
+    const key = (process.env.ANTHROPIC_API_KEY || '').trim();
+    if (!key || key.length < 20) return res.status(500).json({ ok: false, erro: 'ANTHROPIC_API_KEY não configurada no servidor.' });
+    const bloco = mt === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: mt, data: arquivo_base64 } }
+      : { type: 'image', source: { type: 'base64', media_type: mt, data: arquivo_base64 } };
+    let resp, tentativa = 0;
+    while (true) {
+      tentativa++;
+      const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 60000);
+      try {
+        resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST', signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, system: PROMPT_LER_COMPROVANTE, messages: [{ role: 'user', content: [bloco, { type: 'text', text: 'Extraia os dados deste comprovante de pagamento.' }] }] }),
+        });
+      } finally { clearTimeout(to); }
+      if (resp.ok || tentativa >= 2 || ![429, 500, 502, 503, 529].includes(resp.status)) break;
+      await new Promise(r => setTimeout(r, 2500));
+    }
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); return res.status(502).json({ ok: false, erro: 'IA indisponível: ' + ((e.error && e.error.message) || resp.status) }); }
+    const data = await resp.json();
+    const texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const m = texto.match(/\{[\s\S]*\}/);
+    let dados; try { dados = JSON.parse(m ? m[0] : texto); } catch (e) { return res.status(422).json({ ok: false, erro: 'Não consegui entender o comprovante. Lance a baixa manualmente.' }); }
+    try {
+      const idx = await obterIndiceCadastros();
+      const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(dados.favorecido, idx);
+      if (r && r.id) { dados.empresa_id = r.id; dados.favorecido_cadastro = r.nome; }
+    } catch (e) { /* segue sem vínculo */ }
+    // já usado em outra baixa?
+    if (dados.identificador) {
+      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador: String(dados.identificador).slice(0, 120) }]).limit(1);
+      if (rep && rep.length) dados.ja_usado_em = rep[0].numero || rep[0].id;
+    }
+    let sugestoes = [];
+    if (!fatura_id) {
+      const { data: abertas } = await sb().from('faturas').select('id, numero, empresa_id, empresa_nome, documento, valor, valor_pago, moeda, vencimento, status').eq('status', 'aberta').limit(1000);
+      sugestoes = FaturasCore.sugerirFaturasParaComprovante(dados, abertas || []);
+    }
+    res.json({ ok: true, dados, sugestoes });
+  } catch (e) {
+    console.error('faturas/ler-comprovante:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro ao ler o comprovante.' });
+  }
+});
+
 app.post('/api/faturas/:id/:acao', auth('financeiro'), async (req, res) => {
   try {
     const acao = req.params.acao;
@@ -2007,13 +2174,19 @@ app.post('/api/faturas/:id/:acao', auth('financeiro'), async (req, res) => {
     const b = req.body || {};
     const patch = { alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() };
     if (acao === 'pagar') {
-      if (f.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada.' });
-      const pago_em = /^\d{4}-\d{2}-\d{2}$/.test(b.pago_em || '') ? b.pago_em : new Date().toISOString().slice(0, 10);
-      const vp = b.valor_pago != null && b.valor_pago !== '' ? parseFloat(b.valor_pago) : parseFloat(f.valor);
-      if (isNaN(vp) || vp < 0) return res.status(400).json({ ok: false, erro: 'Valor pago inválido.' });
-      Object.assign(patch, { status: 'paga', pago_em, valor_pago: Math.round(vp * 100) / 100 });
+      // "Marcar paga" = uma baixa do saldo inteiro (fica na lista de pagamentos)
+      const pago_em = /^\d{4}-\d{2}-\d{2}$/.test(b.pago_em || '') ? b.pago_em : new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+      const vp = b.valor_pago != null && b.valor_pago !== '' ? parseFloat(b.valor_pago) : FaturasCore.saldoFatura(f);
+      const v = FaturasCore.validarPagamento({ data: pago_em, valor: vp, forma: b.forma || 'outro' }, f);
+      if (!v.ok) return res.status(400).json({ ok: false, erro: v.erro });
+      const pags = (Array.isArray(f.pagamentos) ? f.pagamentos : []).concat([{ id: require('crypto').randomUUID(), ...v.pagamento, por: req.session.usuario || null, em: new Date().toISOString() }]);
+      const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags });
+      // marcou paga com valor menor que o saldo: considera quitada (desconto/acordo)
+      Object.assign(patch, { pagamentos: pags, valor_pago: r.valor_pago, status: 'paga', pago_em: r.pago_em || pago_em });
     } else if (acao === 'reabrir') {
-      Object.assign(patch, { status: 'aberta', pago_em: null, valor_pago: null });
+      const agora = new Date().toISOString();
+      const pags = (Array.isArray(f.pagamentos) ? f.pagamentos : []).map(p => p.estornado ? p : { ...p, estornado: { por: req.session.usuario || null, em: agora, motivo: 'Fatura reaberta' } });
+      Object.assign(patch, { status: 'aberta', pago_em: null, valor_pago: null, pagamentos: pags });
     } else {
       Object.assign(patch, { status: 'cancelada', obs: [f.obs, b.motivo ? 'Cancelada: ' + String(b.motivo).slice(0, 300) : 'Cancelada'].filter(Boolean).join(' · ') });
     }
