@@ -171,7 +171,9 @@ async function _ftCarregar(){
 async function renderDashFaturas(){
   const el = document.getElementById('dash-faturas-content');
   if(!el) return;
-  el.innerHTML = '<div class="cr-muted">Carregando…</div>';
+  if(typeof finCadastros === 'function') await finCadastros();
+  if(typeof _finAba !== 'undefined' && _finAba !== 'faturas') return renderFinAba(el);
+  el.innerHTML = (typeof finTabsHtml === 'function' ? finTabsHtml() : '') + '<div class="cr-muted">Carregando…</div>';
   try{ _ftLista = await _ftCarregar(); }catch(e){ el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   const hoje = _ftHoje();
   const cambio = (typeof _cambio !== 'undefined') ? _cambio : {};
@@ -209,7 +211,7 @@ async function renderDashFaturas(){
     return `<tr class="ft-row" onclick="ftToggleItens('${f.id}', event)">
       <td>${f.status === 'aberta' ? `<input type="checkbox" ${_ftSel.has(f.id) ? 'checked' : ''} onclick="event.stopPropagation();ftSelecionar('${f.id}', this.checked)" title="Selecionar pra baixa em lote">` : ''}</td>
       <td><span class="ft-tag ${f.tipo}">${f.tipo === 'pagar' ? 'PAGAR' : 'RECEBER'}</span><div class="cr-muted" style="font-family:'JetBrains Mono',monospace;">${esc(f.numero || '')}</div></td>
-      <td><strong>${esc(f.empresa_nome)}</strong>${f.empresa_id ? ' <span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<div class="cr-muted">${(f.itens || []).length} ${(f.itens || []).length === 1 ? 'taxa' : 'taxas'} · ref. ${_ftData(f.emissao || (f.created_at || '').slice(0, 10))}${f.moeda !== 'BRL' && fator ? ` · câmbio ${fator.toFixed(4).replace('.', ',')}` : ''}</div></td>
+      <td><strong>${esc(f.empresa_nome)}</strong>${f.empresa_id ? ' <span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<div class="cr-muted">${(f.itens || []).length} ${(f.itens || []).length === 1 ? 'taxa' : 'taxas'} · ref. ${_ftData(f.emissao || (f.created_at || '').slice(0, 10))}${f.conta_id && _fin ? (c => c ? ' · ' + esc(c.codigo + ' ' + c.nome) : '')(_fin.contas.find(c => c.id === f.conta_id)) : ''}${f.moeda !== 'BRL' && fator ? ` · câmbio ${fator.toFixed(4).replace('.', ',')}` : ''}</div></td>
       <td>${esc(f.documento || '—')}</td>
       <td>${refs.map(r => `<a href="/controle/${encodeURIComponent(r)}" target="_blank">${esc(r)}</a>`).join(', ') || '—'}</td>
       <td>${_ftData(f.vencimento)}</td>
@@ -222,7 +224,7 @@ async function renderDashFaturas(){
       <tr class="ft-itens-row" id="ft_itens_${f.id}" style="display:none;"><td colspan="9">${itensHtml}</td></tr>`;
   }).join('');
   const total = _ftLista.filter(f => f.status !== 'cancelada').reduce((s, f) => s + (f.moeda === 'BRL' ? parseFloat(f.valor) || 0 : (parseFloat(f.valor) || 0) * (parseFloat(cambio[f.moeda]) || 0)), 0);
-  el.innerHTML = cards + filtros + `<div class="ft-tabela-wrap"><table class="ft-tabela">
+  el.innerHTML = (typeof finTabsHtml === 'function' ? finTabsHtml() : '') + cards + filtros + `<div class="ft-tabela-wrap"><table class="ft-tabela">
     <thead><tr><th style="width:22px;"></th><th>Tipo</th><th>Empresa · itens</th><th>Documento</th><th>Processo</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th>Situação</th><th></th></tr></thead>
     <tbody>${linhas || `<tr><td colspan="9" class="cr-muted" style="padding:16px;">Nenhuma fatura com esses filtros.</td></tr>`}</tbody>
     <tfoot><tr><td colspan="6" style="text-align:right;">${_ftLista.length} fatura${_ftLista.length === 1 ? '' : 's'} · total em R$</td><td style="text-align:right;font-family:'JetBrains Mono',monospace;">R$ ${_ftFmt(total)}</td><td colspan="2"></td></tr></tfoot>
@@ -311,6 +313,7 @@ function ftBaixa(id, pre){
         <div class="ft-cand-campos">
           <label>Pago em <input class="form-input" type="date" id="ft_bx_data" value="${esc(pre.data || _ftHoje())}"></label>
           <label>Valor pago (${f.moeda}) <input class="form-input" id="ft_bx_valor" value="${_ftFmt(pre.valor != null ? pre.valor : saldo)}" inputmode="decimal" oninput="ftBxResumo()"></label>
+          <label>Conta bancária <select class="form-input" id="ft_bx_banco">${typeof finOpcoesBancos === 'function' ? finOpcoesBancos('', f.moeda) : ''}</select></label>
           <label>Forma <select class="form-input" id="ft_bx_forma">${_FT_FORMAS.map(([v, l]) => `<option value="${v}" ${(pre.forma || 'pix') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         </div>
         ${f.moeda !== 'BRL' ? `<div class="ft-cand-campos">
@@ -487,7 +490,7 @@ function ftBxCalcBrl(origem){
 function _ftBxExtras(){
   const retencoes = {};
   document.querySelectorAll('.ft-bx-ret').forEach(el => { const v = parseValorMoeda(el.value) || 0; if(v > 0) retencoes[el.dataset.k] = v; });
-  const o = { juros: _ftNum('ft_bx_juros'), desconto: _ftNum('ft_bx_desc'), retencoes };
+  const o = { juros: _ftNum('ft_bx_juros'), desconto: _ftNum('ft_bx_desc'), retencoes, banco_id: (document.getElementById('ft_bx_banco') || {}).value || null };
   const cx = document.getElementById('ft_bx_cx'); if(cx && cx.value) o.cambio_efetivo = cx.value;
   const brl = document.getElementById('ft_bx_brl'); if(brl && brl.value) o.pago_brl = brl.value;
   const darf = document.getElementById('ft_bx_darf'); o.gerar_darf = !!(darf && darf.checked);
@@ -549,6 +552,7 @@ function ftBaixaLote(ids, pre){
       <div class="ft-cand-campos">
         <label>Pago em <input class="form-input" type="date" id="ft_lt_data" value="${esc(pre.data || _ftHoje())}"></label>
         <label>Valor total pago (${moedas[0]}) <input class="form-input" id="ft_lt_total" value="${_ftFmt(total)}" inputmode="decimal" oninput="ftLoteRedistribuir()"></label>
+        <label>Conta bancária <select class="form-input" id="ft_lt_banco">${typeof finOpcoesBancos === 'function' ? finOpcoesBancos('', moedas[0]) : ''}</select></label>
         <label>Forma <select class="form-input" id="ft_lt_forma">${_FT_FORMAS.map(([v, l]) => `<option value="${v}" ${(pre.forma || 'pix') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       </div>
       <div class="ft-cand-campos"><label style="flex:2;">ID / autenticação do comprovante <input class="form-input" id="ft_lt_ident" value="${esc(pre.identificador || '')}"></label></div>
@@ -587,7 +591,7 @@ async function ftRegistrarLote(confirmarRepetido){
   if(!confirmarRepetido && Math.abs(tot - soma) > 0.01 && !confirm(`A soma distribuída (${_ftFmt(soma)}) é diferente do total pago (${_ftFmt(tot)}). Registrar assim mesmo?`)) return;
   const naoAprov = (window._ftLoteFats || []).filter(f => f.tipo === 'pagar' && !f.aprovacao);
   if(!confirmarRepetido && naoAprov.length && !confirm(`${naoAprov.length} fatura(s) do lote ainda não foram aprovadas por um gerente. Registrar mesmo assim?`)) return;
-  const body = { data: document.getElementById('ft_lt_data').value, forma: document.getElementById('ft_lt_forma').value, identificador: document.getElementById('ft_lt_ident').value.trim(), obs: document.getElementById('ft_lt_obs').value.trim(), itens, confirmar_repetido: !!confirmarRepetido };
+  const body = { banco_id: (document.getElementById('ft_lt_banco') || {}).value || null, data: document.getElementById('ft_lt_data').value, forma: document.getElementById('ft_lt_forma').value, identificador: document.getElementById('ft_lt_ident').value.trim(), obs: document.getElementById('ft_lt_obs').value.trim(), itens, confirmar_repetido: !!confirmarRepetido };
   if(_ftLoteArquivo){ body.arquivo_base64 = await _ftB64(_ftLoteArquivo); body.nome_arquivo = _ftLoteArquivo.name; body.media_type = _ftTipoArq(_ftLoteArquivo); }
   try{
     const d = await (await fetch('/api/faturas/baixa-lote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
@@ -632,6 +636,7 @@ function _ftRenderConciliacao(){
   ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:900px;">
     <div class="ft-modal-head"><span>🏦 Conciliação — ${esc(nome)}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
     <div class="ft-modal-body">
+      <div style="margin-bottom:8px;font-size:12px;">Extrato da conta: <select class="form-input" id="ft_cc_banco" style="display:inline-block;width:auto;padding:3px 6px;">${typeof finOpcoesBancos === 'function' ? finOpcoesBancos('', 'BRL') : ''}</select></div>
       <div class="cr-muted" style="margin-bottom:8px;">${conc.length} lançamento(s) · ${comMatch} com fatura compatível (mesmo valor, em R$). Débitos casam com faturas a pagar; créditos com faturas a receber. Confira e marque o que dar baixa — lançamento já usado não aparece pra marcar de novo.</div>
       <div style="max-height:420px;overflow:auto;"><table class="ft-itens" style="width:100%;"><thead><tr><th></th><th>Data</th><th>Lançamento</th><th style="text-align:right;">Valor</th><th>Fatura</th></tr></thead><tbody>
       ${conc.map((c, i) => {
@@ -655,11 +660,12 @@ async function ftBaixarConciliacao(){
   if(dupl.length && !confirm('A mesma fatura foi escolhida pra mais de um lançamento (pagamento parcial em várias vezes?). Continuar?')) return;
   if(!confirm(`Dar baixa em ${sel.length} fatura(s) com as datas e valores do extrato?`)) return;
   let ok = 0; const erros = [];
+  const bancoExt = (document.getElementById('ft_cc_banco') || {}).value || null;
   for(const { c, fid } of sel){
     const f = abertas.find(x => x.id === fid);
     const forma = /pix/i.test(c.descricao) ? 'pix' : /ted|doc|transf/i.test(c.descricao) ? 'ted' : /boleto|pagto|titulo|título/i.test(c.descricao) ? 'boleto' : 'outro';
     try{
-      const d = await (await fetch('/api/faturas/' + encodeURIComponent(fid) + '/baixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: c.data, valor: c.valor, forma, identificador: c.chave, obs: 'Extrato: ' + (c.descricao || '').slice(0, 200) }) })).json();
+      const d = await (await fetch('/api/faturas/' + encodeURIComponent(fid) + '/baixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: c.data, valor: c.valor, forma, banco_id: bancoExt, identificador: c.chave, obs: 'Extrato: ' + (c.descricao || '').slice(0, 200) }) })).json();
       if(d.ok) ok++; else erros.push(`${f ? f.numero : fid}: ${d.erro}`);
     }catch(e){ erros.push(`${f ? f.numero : fid}: erro de rede`); }
   }
@@ -799,6 +805,11 @@ function ftEditar(id, pre){
         <label>Valor total <input class="form-input" id="ft_e_valor" value="${f.valor !== '' && f.valor != null ? _ftFmt(f.valor) : ''}" inputmode="decimal"></label>
         <label>Câmbio (se USD/EUR) <input class="form-input" id="ft_e_cambio" value="${f.cambio && f.moeda !== 'BRL' ? String(f.cambio).replace('.', ',') : ''}" placeholder="${(typeof _cambio !== 'undefined' && _cambio.USD) ? _cambio.USD.toFixed(4).replace('.', ',') : ''}" inputmode="decimal"></label>
       </div>
+      <div class="ft-cand-campos">
+        <label style="flex:2;">Conta (plano de contas) <select class="form-input" id="ft_e_conta">${typeof finOpcoesContas === 'function' ? finOpcoesContas(f.conta_id || '', f.tipo) : ''}</select></label>
+        <label>Centro de custo <select class="form-input" id="ft_e_centro">${typeof finOpcoesCentros === 'function' ? finOpcoesCentros(f.centro_custo_id || '') : ''}</select></label>
+        ${id ? '' : `<label title="Cria uma fatura por mês com o mesmo valor (aluguel, salários, sistemas…)">Repetir mensalmente <select class="form-input" id="ft_e_rec">${[1, 2, 3, 4, 6, 12, 24].map(n => `<option value="${n}">${n === 1 ? 'não' : n + ' meses'}</option>`).join('')}</select></label>`}
+      </div>
       <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(f.obs || '')}"></label>
       ${id ? ((f.itens || []).length ? `<div class="cr-muted" style="margin-top:8px;">Itens: ${f.itens.map(it => `${esc(it.referencia || '')} ${esc(it.label)} ${_ftSimb(it.moeda)} ${_ftFmt(it.valor)}`).join(' · ')}</div>` : '')
         : `<div style="margin-top:12px;"><div class="cr-muted" style="font-weight:600;margin-bottom:4px;">Taxas desta fatura (processo + taxa ligam a fatura à aba Custos Reais)</div><div id="ft_e_itens">${_ftItensHtml()}</div></div>`}
@@ -813,7 +824,7 @@ function _ftCorpoModal(id){
   const f = id ? _ftLista.find(x => x.id === id) : {};
   const moeda = document.getElementById('ft_e_moeda').value;
   const cx = parseFloat((document.getElementById('ft_e_cambio').value || '').replace(',', '.'));
-  const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), emissao: document.getElementById('ft_e_emissao').value || null, vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim() };
+  const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), emissao: document.getElementById('ft_e_emissao').value || null, vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim(), conta_id: (document.getElementById('ft_e_conta') || {}).value || null, centro_custo_id: (document.getElementById('ft_e_centro') || {}).value || null };
   body.cambio = moeda === 'BRL' ? 1 : (cx > 0 ? cx : ((typeof _cambio !== 'undefined' && _cambio[moeda]) || null));
   if(id && f && f.empresa_nome !== body.empresa_nome) body.empresa_id = null;
   const semProc = [];
@@ -879,7 +890,13 @@ async function ftSalvarEdicao(id){
     if(!confirm(`A conferência encontrou problema(s):\n\n${erros}\n\nSalvar a fatura mesmo assim?`)) return;
   }
   try{
-    const r = await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const nRec = !id ? (parseInt((document.getElementById('ft_e_rec') || {}).value, 10) || 1) : 1;
+    let envio = body;
+    if(nRec > 1){
+      if(!body.vencimento){ showToast('Informe o vencimento da 1ª parcela para repetir mensalmente.', 'warn'); return; }
+      envio = Array.from({ length: nRec }, (_, k) => ({ ...body, vencimento: FinCore.addMeses(body.vencimento, k), emissao: body.emissao ? FinCore.addMeses(body.emissao, k) : null, documento: ((body.documento || '') + ` (${k + 1}/${nRec})`).trim(), itens: k === 0 ? body.itens : [] }));
+    }
+    const r = await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(envio) });
     const d = await r.json();
     if(!d.ok){ showToast(d.erro || 'Erro ao salvar', 'err'); return; }
     // fatura lida pela IA: o PDF original fica anexado à fatura
