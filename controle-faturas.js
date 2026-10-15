@@ -311,7 +311,7 @@ function ftEditar(id, pre){
         <label>Valor total <input class="form-input" id="ft_e_valor" value="${f.valor !== '' && f.valor != null ? _ftFmt(f.valor) : ''}" inputmode="decimal"></label>
         <label>Câmbio (se USD/EUR) <input class="form-input" id="ft_e_cambio" value="${f.cambio && f.moeda !== 'BRL' ? String(f.cambio).replace('.', ',') : ''}" placeholder="${(typeof _cambio !== 'undefined' && _cambio.USD) ? _cambio.USD.toFixed(4).replace('.', ',') : ''}" inputmode="decimal"></label>
       </div>
-      <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" value="${esc(f.obs || '')}"></label>
+      <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(f.obs || '')}"></label>
       ${id ? ((f.itens || []).length ? `<div class="cr-muted" style="margin-top:8px;">Itens: ${f.itens.map(it => `${esc(it.referencia || '')} ${esc(it.label)} ${_ftSimb(it.moeda)} ${_ftFmt(it.valor)}`).join(' · ')}</div>` : '')
         : `<div style="margin-top:12px;"><div class="cr-muted" style="font-weight:600;margin-bottom:4px;">Taxas desta fatura (processo + taxa ligam a fatura à aba Custos Reais)</div><div id="ft_e_itens">${_ftItensHtml()}</div></div>`}
     </div>
