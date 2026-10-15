@@ -965,7 +965,8 @@ teste('renderFluxoCaixaHtml roda sem erro e lista os 6 meses', () => {
   const pagamentos = [{ referencia:'UD26-203', valorUsd:2000, vencimento:vencProximo.toISOString().slice(0,10), pago:false, cambioPrevisto:5.2, cambioFechado:null }];
   const html = sandbox.renderFluxoCaixaHtml(pagamentos);
   verdadeiro(html.includes('Fluxo de caixa'));
-  verdadeiro(html.includes('entradas de clientes ainda não são rastreadas'), 'deveria deixar claro que Entradas não é rastreado ainda');
+  verdadeiro(html.includes('faturas ainda não carregadas'), 'sem faturas carregadas deveria avisar (entradas vêm das faturas a receber)');
+  verdadeiro(!html.includes('A receber (faturas)'), 'sem faturas não mostra a coluna de recebimentos');
 });
 
 // ── 10. TESTE: ativarTelaFinanceiroExclusiva — tela /financeiro não quebra ─

@@ -135,7 +135,105 @@
     return r;
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero };
+
+  // ── IA: descrição da linha da fatura → taxa da aba Custos Reais ──────
+  // Ordem importa (mais específico primeiro). Sem match → null (a pessoa
+  // escolhe na tela).
+  const MAPA_TAXAS = [
+    [/desconsolida/i, 'desconsolidacao'],
+    [/libera[cç][aã]o.*(bl|conhecimento)|\bbl release|\bb\/?l fee|release fee/i, 'liberacao_bl'],
+    [/\bthc\b|capatazia|terminal handling/i, 'capatazia'],
+    [/\bisps\b|security charge|terminal security/i, 'isps'],
+    [/armazenagem|storage/i, 'armazenagem'],
+    [/siscomex/i, 'siscomex'],
+    [/afrmm|marinha mercante/i, 'marinha'],
+    [/\bli\b|licen[cç]a de importa/i, 'emissao_li'],
+    [/honor[aá]rio|despachante|despacho aduaneiro/i, 'despachante'],
+    [/\bsda\b|sindicato/i, 'sda'],
+    [/lava[cç][aã]o|limpeza.*container|cleaning/i, 'lavacao'],
+    [/drop ?off|devolu[cç][aã]o.*vazio/i, 'drop_off'],
+    [/\biof\b/i, 'iof'],
+    [/handling|disbursement/i, 'handling'],
+    [/\btrs\b|\bcrs\b|cost recovery/i, 'trs'],
+    [/\btsc\b/i, 'tsc'],
+    [/logistic fee|import logistics|equipment logistic/i, 'import_logistics'],
+    [/baixa.*p[aá]tio|pátio/i, 'baixa_patio'],
+    [/seguro/i, 'seguro'],
+    [/frete|ocean freight|sea freight|freight/i, 'frete'],
+    [/agenciamento|agency fee|taxa do agente/i, 'agente'],
+    [/reciclag|reciclanip/i, 'reciclagem'],
+  ];
+  function taxaPorDescricao(desc) {
+    const s = limpa(desc);
+    if (!s) return null;
+    for (const [re, id] of MAPA_TAXAS) if (re.test(s)) return id;
+    return null;
+  }
+
+  // Procura o processo citado no documento (referência IMPAK, HBL/MBL,
+  // container). processos = [{id, referencia, hbl, mbl, container, containers_json}]
+  function acharProcesso(pistas, processos) {
+    const ps = (pistas || []).map(p => chave(p).replace(/\s+/g, '')).filter(p => p.length >= 5);
+    if (!ps.length) return null;
+    for (const p of (processos || [])) {
+      const alvos = [p.referencia, p.hbl, p.mbl, p.container];
+      try { (JSON.parse(p.containers_json || '[]') || []).forEach(c => c && alvos.push(c.numero)); } catch (e) { /* ignora */ }
+      const ks = alvos.map(a => chave(a).replace(/\s+/g, '')).filter(a => a.length >= 5);
+      if (ps.some(x => ks.includes(x))) return p;
+    }
+    return null;
+  }
+
+  // Faturas pro e-mail diário: abertas vencidas e as que vencem em até N dias.
+  function faturasParaAlerta(lista, hoje, dias) {
+    const n = dias == null ? 3 : dias;
+    const lim = new Date(hoje + 'T12:00:00'); lim.setDate(lim.getDate() + n);
+    const limIso = lim.toISOString().slice(0, 10);
+    const abertas = (lista || []).filter(f => f && f.status === 'aberta' && iso(f.vencimento));
+    const ord = (a, b) => a.vencimento < b.vencimento ? -1 : a.vencimento > b.vencimento ? 1 : 0;
+    return {
+      vencidas: abertas.filter(f => f.vencimento < hoje).sort(ord),
+      proximas: abertas.filter(f => f.vencimento >= hoje && f.vencimento <= limIso).sort(ord),
+    };
+  }
+
+  // Fluxo de caixa: soma por mês (YYYY-MM) em R$.
+  //   pagar_pago / receber_recebido → pelas faturas pagas no mês (pago_em)
+  //   pagar_previsto / receber_previsto → abertas pelo vencimento; as já
+  //     vencidas caem no mês corrente (precisam sair do caixa agora).
+  function fluxoMensalFaturas(lista, mesesIso, hoje, cambioAtual) {
+    const cx = cambioAtual || {};
+    const mesHoje = (hoje || '').slice(0, 7);
+    const brl = (f, v) => f.moeda === 'BRL' ? v : v * (parseFloat(f.cambio) || parseFloat(cx[f.moeda]) || 0);
+    const out = {};
+    (mesesIso || []).forEach(m => { out[m] = { pagar_pago: 0, pagar_previsto: 0, receber_recebido: 0, receber_previsto: 0, qtd: 0 }; });
+    const semVenc = { pagar: 0, receber: 0, qtd: 0 };
+    (lista || []).forEach(f => {
+      if (!f || f.status === 'cancelada') return;
+      if (f.status === 'paga') {
+        const m = (iso(f.pago_em) || '').slice(0, 7);
+        if (!out[m]) return;
+        const v = brl(f, num(f.valor_pago != null ? f.valor_pago : f.valor));
+        if (f.tipo === 'pagar') out[m].pagar_pago += v; else out[m].receber_recebido += v;
+        out[m].qtd++;
+        return;
+      }
+      const venc = iso(f.vencimento);
+      const v = brl(f, num(f.valor));
+      if (!venc) { semVenc.qtd++; if (f.tipo === 'pagar') semVenc.pagar += v; else semVenc.receber += v; return; }
+      let m = venc.slice(0, 7);
+      if (m < mesHoje) m = mesHoje;
+      if (!out[m]) return;
+      if (f.tipo === 'pagar') out[m].pagar_previsto += v; else out[m].receber_previsto += v;
+      out[m].qtd++;
+    });
+    const r2 = x => Math.round(x * 100) / 100;
+    Object.values(out).forEach(o => { Object.keys(o).forEach(k => { if (k !== 'qtd') o[k] = r2(o[k]); }); });
+    semVenc.pagar = r2(semVenc.pagar); semVenc.receber = r2(semVenc.receber);
+    return { meses: out, semVencimento: semVenc };
+  }
+
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

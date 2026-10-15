@@ -1216,7 +1216,20 @@ function renderDashFinanceiro(){
 // de Saída, que não é a mesma coisa (a NF pode ser emitida antes do cliente
 // efetivamente pagar) — melhor não mostrar um número que pareceria "entrada
 // de caixa" sem ser garantido.
+// Faturas (contas a pagar/receber da tela /faturas) entram no fluxo de
+// caixa: carregadas uma vez por página e a caixa é redesenhada quando chegam.
+let _fluxoFaturas = null, _fluxoFaturasCarregando = false, _fluxoUltPag = [];
+function _fluxoCarregarFaturas(){
+  if(_fluxoFaturas || _fluxoFaturasCarregando || typeof fetch !== 'function' || typeof FaturasCore === 'undefined') return;
+  _fluxoFaturasCarregando = true;
+  fetch('/api/faturas').then(r => r.json()).then(d => {
+    _fluxoFaturas = (d && d.ok && Array.isArray(d.faturas)) ? d.faturas : [];
+    document.querySelectorAll('.fluxo-caixa-box').forEach(el => { el.outerHTML = renderFluxoCaixaHtml(_fluxoUltPag); });
+  }).catch(() => { _fluxoFaturas = []; }).finally(() => { _fluxoFaturasCarregando = false; });
+}
 function renderFluxoCaixaHtml(pagamentos){
+  _fluxoUltPag = pagamentos || [];
+  _fluxoCarregarFaturas();
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const fmtBRL = v => `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
@@ -1259,11 +1272,25 @@ function renderFluxoCaixaHtml(pagamentos){
     previstoEstresseBRL: acc.previstoEstresseBRL+l.previstoEstresseBRL,
   }), {pagoBRL:0, previstoBRL:0, previstoEstresseBRL:0});
 
+  // Faturas por mês (em R$): a pagar soma às saídas; a receber é entrada.
+  const temFt = Array.isArray(_fluxoFaturas) && _fluxoFaturas.length && typeof FaturasCore !== 'undefined';
+  let ft = null;
+  if(temFt){
+    const mesesIso = meses.map(m => `${m.ini.getFullYear()}-${String(m.ini.getMonth()+1).padStart(2,'0')}`);
+    const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+    ft = FaturasCore.fluxoMensalFaturas(_fluxoFaturas, mesesIso, hojeIso, (typeof _cambio !== 'undefined') ? _cambio : {});
+    linhas.forEach((l, i) => { const x = ft.meses[mesesIso[i]] || {}; l.ftPagar = (x.pagar_pago||0) + (x.pagar_previsto||0); l.ftReceber = (x.receber_recebido||0) + (x.receber_previsto||0); });
+    totais.ftPagar = linhas.reduce((s,l)=>s+l.ftPagar,0); totais.ftReceber = linhas.reduce((s,l)=>s+l.ftReceber,0);
+  }
+  const thS = 'text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;';
+  const tdFt = (v, cor, b) => temFt ? `<td style="padding:8px 16px;text-align:right;color:${cor};${b?'font-weight:800;':''}">${fmtBRL(v||0)}</td>` : '';
+  const saidas = l => l.pagoBRL + l.previstoBRL + (temFt ? (l.ftPagar||0) : 0);
+
   return `
-    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
+    <div class="fluxo-caixa-box" style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px;">
       <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
         <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;">${typeof icoUI==='function' ? icoUI('calendario',15) : ''} Fluxo de caixa — saídas por mês</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Só pagamentos a fornecedor por enquanto — entradas de clientes ainda não são rastreadas no sistema. "Se dólar +5%" é o cenário de estresse: quanto a mais separar em caixa se o câmbio subir 5% até o vencimento.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Pagamentos a fornecedor (câmbio)${temFt ? ' + faturas da tela Faturas (a pagar soma nas saídas; a receber é entrada; vencidas em aberto caem no mês atual)' : ' — faturas ainda não carregadas'}. "Se dólar +5%" é o cenário de estresse: quanto a mais separar em caixa se o câmbio subir 5% até o vencimento.</div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:var(--bg);">
@@ -1271,7 +1298,9 @@ function renderFluxoCaixaHtml(pagamentos){
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Saídas Pagas</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Saídas Previstas</th>
           <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Se dólar +5%</th>
-          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Total</th>
+          ${temFt ? `<th style="${thS}">Faturas a pagar</th>` : ''}
+          <th style="text-align:right;padding:8px 16px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Total saídas</th>
+          ${temFt ? `<th style="${thS}">A receber (faturas)</th>` : ''}
         </tr></thead>
         <tbody>
           ${linhas.map(l=>`<tr style="border-top:1px solid var(--border);">
@@ -1279,18 +1308,23 @@ function renderFluxoCaixaHtml(pagamentos){
             <td style="padding:8px 16px;text-align:right;color:var(--ok);">${fmtBRL(l.pagoBRL)}</td>
             <td style="padding:8px 16px;text-align:right;color:var(--warn);">${fmtBRL(l.previstoBRL)}</td>
             <td style="padding:8px 16px;text-align:right;color:var(--err);">${fmtBRL(l.previstoEstresseBRL)}</td>
-            <td style="padding:8px 16px;text-align:right;font-weight:700;">${fmtBRL(l.pagoBRL+l.previstoBRL)}</td>
+            ${tdFt(l.ftPagar, 'var(--warn)')}
+            <td style="padding:8px 16px;text-align:right;font-weight:700;">${fmtBRL(saidas(l))}</td>
+            ${tdFt(l.ftReceber, 'var(--ok)')}
           </tr>`).join('')}
           <tr style="border-top:2px solid var(--border);background:var(--bg);">
             <td style="padding:8px 16px;font-weight:800;">Total (6 meses)</td>
             <td style="padding:8px 16px;text-align:right;font-weight:800;color:var(--ok);">${fmtBRL(totais.pagoBRL)}</td>
             <td style="padding:8px 16px;text-align:right;font-weight:800;color:var(--warn);">${fmtBRL(totais.previstoBRL)}</td>
             <td style="padding:8px 16px;text-align:right;font-weight:800;color:var(--err);">${fmtBRL(totais.previstoEstresseBRL)}</td>
-            <td style="padding:8px 16px;text-align:right;font-weight:800;">${fmtBRL(totais.pagoBRL+totais.previstoBRL)}</td>
+            ${tdFt(totais.ftPagar, 'var(--warn)', 1)}
+            <td style="padding:8px 16px;text-align:right;font-weight:800;">${fmtBRL(saidas(totais))}</td>
+            ${tdFt(totais.ftReceber, 'var(--ok)', 1)}
           </tr>
         </tbody>
       </table>
       ${semVencimento.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">Fora desta tabela: ${semVencimento.length} parcela(s) sem vencimento definido ainda (${fmtBRL(semVencimentoBRL)}) — não dá pra saber em qual mês cairiam.</div>` : ''}
+      ${ft && ft.semVencimento.qtd ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">Faturas sem vencimento: ${ft.semVencimento.qtd} (a pagar ${fmtBRL(ft.semVencimento.pagar)} · a receber ${fmtBRL(ft.semVencimento.receber)}) — <a href="/faturas" style="color:var(--accent);">abrir Faturas</a>.</div>` : ''}
     </div>`;
 }
 

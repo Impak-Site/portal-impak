@@ -190,6 +190,7 @@ async function renderDashFaturas(){
     <input class="form-input" placeholder="empresa ou documento" value="${esc(_ftFiltro.busca)}" onchange="_ftFiltro.busca=this.value.trim();renderDashFaturas()">
     <label class="cr-muted">venc. de <input class="form-input" type="date" value="${esc(_ftFiltro.de)}" onchange="_ftFiltro.de=this.value;renderDashFaturas()"></label>
     <label class="cr-muted">até <input class="form-input" type="date" value="${esc(_ftFiltro.ate)}" onchange="_ftFiltro.ate=this.value;renderDashFaturas()"></label>
+    <button class="btn btn-primary" onclick="ftLerDocumento()" title="Envie a fatura, boleto, nota ou DARF em PDF/imagem — a IA preenche os campos pra você conferir">🧾 Ler fatura (PDF) com IA</button>
     <button class="btn btn-outline" onclick="ftNovaManual()">+ Fatura avulsa</button>
   </div>`;
   const sit = { vencida: ['Vencida', 'var(--err)'], hoje: ['Vence hoje', 'var(--warn,#b45309)'], semana: ['Esta semana', 'var(--warn,#b45309)'], a_vencer: ['A vencer', 'var(--muted)'], sem_vencimento: ['Sem vencimento', 'var(--muted)'], paga: ['Paga', 'var(--ok)'], cancelada: ['Cancelada', 'var(--dim)'] };
@@ -258,37 +259,138 @@ async function ftAcao(id, acao, body){
 // Editar (documento, vencimento, valor, obs) ou criar uma fatura avulsa
 // (sem processo — ex.: mensalidade de sistema, honorário fixo).
 function ftNovaManual(){ ftEditar(null); }
-function ftEditar(id){
-  const f = id ? _ftLista.find(x => x.id === id) : { tipo: 'pagar', empresa_nome: '', documento: '', moeda: 'BRL', valor: '', vencimento: '', obs: '', itens: [] };
+
+// Itens editáveis do modal (taxa + processo + valor) — usados na fatura
+// avulsa e na lida pela IA. Fatura já existente mostra os itens como estão.
+let _ftItensEdit = [];
+function _ftOpcoesTaxa(sel){
+  const lista = (typeof custosReaisItensFlat === 'function') ? custosReaisItensFlat() : [];
+  return `<option value="">— taxa —</option>` + lista.map(it => `<option value="${it.id}" ${it.id === sel ? 'selected' : ''}>${esc(it.label)}</option>`).join('');
+}
+function _ftItensHtml(){
+  if(!_ftItensEdit.length) return `<div class="cr-muted">Sem itens. <a class="cr-link" onclick="ftItemAdd()">+ adicionar taxa</a></div>`;
+  return `<table class="ft-itens" style="width:100%;"><thead><tr><th>Descrição no documento</th><th>Taxa</th><th>Processo</th><th style="text-align:right;">Valor</th><th></th></tr></thead><tbody>${_ftItensEdit.map((it, i) => `<tr>
+      <td>${esc(it.descricao || it.label || '')}</td>
+      <td><select class="form-input" style="padding:3px 6px;font-size:11px;" onchange="_ftItensEdit[${i}].taxa=this.value">${_ftOpcoesTaxa(it.taxa)}</select></td>
+      <td><input class="form-input" style="padding:3px 6px;font-size:11px;width:120px;" value="${esc(it.referencia || '')}" placeholder="UD26-…" onchange="_ftItensEdit[${i}].referencia=this.value.trim()"></td>
+      <td style="text-align:right;"><input class="form-input" style="padding:3px 6px;font-size:11px;width:100px;text-align:right;" value="${_ftFmt(it.valor)}" onchange="_ftItensEdit[${i}].valor=parseValorMoeda(this.value)||0;ftSomarItens()"></td>
+      <td><a class="cr-link" onclick="_ftItensEdit.splice(${i},1);document.getElementById('ft_e_itens').innerHTML=_ftItensHtml();ftSomarItens()">✕</a></td></tr>`).join('')}</tbody></table>
+    <a class="cr-link" onclick="ftItemAdd()">+ adicionar taxa</a>`;
+}
+function ftItemAdd(){
+  const ref = _ftItensEdit.length ? _ftItensEdit[_ftItensEdit.length - 1].referencia : '';
+  _ftItensEdit.push({ descricao: '', taxa: '', referencia: ref || '', valor: 0 });
+  document.getElementById('ft_e_itens').innerHTML = _ftItensHtml();
+}
+function ftSomarItens(){
+  const s = _ftItensEdit.reduce((a, it) => a + (parseFloat(it.valor) || 0), 0);
+  const el = document.getElementById('ft_e_valor'); if(el && s > 0) el.value = _ftFmt(s);
+}
+
+// pre = dados vindos da IA (ou outro pré-preenchimento) pra fatura nova
+function ftEditar(id, pre){
+  const f = id ? _ftLista.find(x => x.id === id) : Object.assign({ tipo: 'pagar', empresa_nome: '', documento: '', moeda: 'BRL', valor: '', vencimento: '', emissao: '', obs: '', itens: [] }, pre || {});
   if(!f) return;
+  _ftItensEdit = id ? [] : (f.itens || []).map(it => ({ ...it }));
   const ov = _ftOverlay();
-  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:560px;">
-    <div class="ft-modal-head"><span>${id ? 'Editar fatura' : 'Fatura avulsa'}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:${id ? 560 : 820}px;">
+    <div class="ft-modal-head"><span>${id ? 'Editar fatura' : (pre && pre._ia ? '🧾 Fatura lida pela IA — confira antes de salvar' : 'Fatura avulsa')}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
     <div class="ft-modal-body">
+      ${pre && pre._aviso ? `<div class="cr-muted" style="background:#fff7e6;border:1px solid #f5d79e;border-radius:8px;padding:8px 10px;margin-bottom:10px;color:#7a5200;">${pre._aviso}</div>` : ''}
       <div class="ft-cand-campos">
         <label>Tipo <select class="form-input" id="ft_e_tipo"><option value="pagar" ${f.tipo === 'pagar' ? 'selected' : ''}>A pagar</option><option value="receber" ${f.tipo === 'receber' ? 'selected' : ''}>A receber</option></select></label>
-        <label style="flex:2;position:relative;">Empresa <input class="form-input" id="ft_e_empresa" value="${esc(f.empresa_nome)}" autocomplete="off" oninput="autocompletarContato(this,'','ft_dd_empresa')"><div id="ft_dd_empresa" class="cr-dd" style="display:none;"></div></label>
+        <label style="flex:2;position:relative;">Empresa ${f.empresa_id ? '<span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<input class="form-input" id="ft_e_empresa" value="${esc(f.empresa_nome)}" autocomplete="off" oninput="autocompletarContato(this,'','ft_dd_empresa')"><div id="ft_dd_empresa" class="cr-dd" style="display:none;"></div></label>
       </div>
       <div class="ft-cand-campos">
         <label>Documento <input class="form-input" id="ft_e_doc" value="${esc(f.documento || '')}"></label>
-        <label>Moeda <select class="form-input" id="ft_e_moeda">${['BRL','USD','EUR'].map(m => `<option ${f.moeda === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-        <label>Valor <input class="form-input" id="ft_e_valor" value="${f.valor !== '' ? _ftFmt(f.valor) : ''}" inputmode="decimal"></label>
+        <label>Emissão <input class="form-input" type="date" id="ft_e_emissao" value="${esc(f.emissao || '')}"></label>
         <label>Vencimento <input class="form-input" type="date" id="ft_e_venc" value="${esc(f.vencimento || '')}"></label>
       </div>
+      <div class="ft-cand-campos">
+        <label>Moeda <select class="form-input" id="ft_e_moeda">${['BRL','USD','EUR'].map(m => `<option ${f.moeda === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        <label>Valor total <input class="form-input" id="ft_e_valor" value="${f.valor !== '' && f.valor != null ? _ftFmt(f.valor) : ''}" inputmode="decimal"></label>
+        <label>Câmbio (se USD/EUR) <input class="form-input" id="ft_e_cambio" value="${f.cambio && f.moeda !== 'BRL' ? String(f.cambio).replace('.', ',') : ''}" placeholder="${(typeof _cambio !== 'undefined' && _cambio.USD) ? _cambio.USD.toFixed(4).replace('.', ',') : ''}" inputmode="decimal"></label>
+      </div>
       <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" value="${esc(f.obs || '')}"></label>
-      ${(f.itens || []).length ? `<div class="cr-muted" style="margin-top:8px;">Itens: ${f.itens.map(it => `${esc(it.referencia || '')} ${esc(it.label)} ${_ftSimb(it.moeda)} ${_ftFmt(it.valor)}`).join(' · ')}</div>` : ''}
+      ${id ? ((f.itens || []).length ? `<div class="cr-muted" style="margin-top:8px;">Itens: ${f.itens.map(it => `${esc(it.referencia || '')} ${esc(it.label)} ${_ftSimb(it.moeda)} ${_ftFmt(it.valor)}`).join(' · ')}</div>` : '')
+        : `<div style="margin-top:12px;"><div class="cr-muted" style="font-weight:600;margin-bottom:4px;">Taxas desta fatura (processo + taxa ligam a fatura à aba Custos Reais)</div><div id="ft_e_itens">${_ftItensHtml()}</div></div>`}
     </div>
     <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftSalvarEdicao(${id ? `'${id}'` : 'null'})">Salvar</button></div>
   </div></div>`;
 }
 async function ftSalvarEdicao(id){
   const f = id ? _ftLista.find(x => x.id === id) : {};
-  const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda: document.getElementById('ft_e_moeda').value, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim() };
+  const moeda = document.getElementById('ft_e_moeda').value;
+  const cx = parseFloat((document.getElementById('ft_e_cambio').value || '').replace(',', '.'));
+  const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), emissao: document.getElementById('ft_e_emissao').value || null, vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim() };
+  body.cambio = moeda === 'BRL' ? 1 : (cx > 0 ? cx : ((typeof _cambio !== 'undefined' && _cambio[moeda]) || null));
   if(id && f && f.empresa_nome !== body.empresa_nome) body.empresa_id = null;
+  if(!id){
+    // itens: referência → processo_id (precisa existir no Controle)
+    const procs = (typeof _processos !== 'undefined' && _processos) || [];
+    const semProc = [];
+    body.itens = _ftItensEdit.filter(it => (parseFloat(it.valor) || 0) > 0).map(it => {
+      const p = it.referencia ? procs.find(x => (x.referencia || '').toLowerCase() === it.referencia.toLowerCase()) : null;
+      if(it.referencia && !p) semProc.push(it.referencia);
+      const cfg = (typeof custosReaisItensFlat === 'function') ? custosReaisItensFlat().find(x => x.id === it.taxa) : null;
+      return { processo_id: p ? p.id : null, referencia: p ? p.referencia : (it.referencia || null), taxa: it.taxa || null, label: cfg ? cfg.label : (it.descricao || it.label || 'Taxa'), valor: parseFloat(it.valor) || 0 };
+    });
+    if(semProc.length && !confirm(`Processo não encontrado: ${[...new Set(semProc)].join(', ')}. Salvar mesmo assim (sem vínculo com o processo)?`)) return;
+  }
   try{
     const r = await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
     if(!d.ok){ showToast(d.erro || 'Erro ao salvar', 'err'); return; }
-    ftFecharModal(); showToast('Fatura salva.', 'ok'); renderDashFaturas();
+    ftFecharModal(); showToast('Fatura salva' + (d.faturas && d.faturas[0] && d.faturas[0].numero ? ' — nº ' + d.faturas[0].numero : '') + '.', 'ok'); renderDashFaturas();
   }catch(e){ showToast('Erro de rede', 'err'); }
+}
+
+// ── Ler fatura/boleto/DARF com IA ──────────────────────────────────────
+function ftLerDocumento(){
+  let inp = document.getElementById('ft_ia_input');
+  if(!inp){
+    inp = document.createElement('input'); inp.type = 'file'; inp.id = 'ft_ia_input'; inp.accept = '.pdf,image/*'; inp.style.display = 'none';
+    inp.onchange = () => { const arq = inp.files && inp.files[0]; inp.value = ''; if(arq) ftEnviarDocumento(arq); };
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
+async function ftEnviarDocumento(arq){
+  if(arq.size > 15 * 1024 * 1024){ showToast('Arquivo grande demais (máx. 15 MB).', 'err'); return; }
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg"><div class="ft-modal" style="max-width:420px;"><div class="ft-modal-body" style="text-align:center;padding:28px;">🧾 Lendo <b>${esc(arq.name)}</b> com a IA…<div class="cr-muted" style="margin-top:6px;">Leva uns 10 a 30 segundos.</div></div></div></div>`;
+  try{
+    const b64 = await new Promise((ok, err) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.onerror = err; fr.readAsDataURL(arq); });
+    const r = await fetch('/api/faturas/ler-documento', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo_base64: b64, media_type: arq.type || (arq.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : '') }) });
+    const d = await r.json();
+    if(!d.ok){ ftFecharModal(); showToast(d.erro || 'Não consegui ler o documento.', 'err'); return; }
+    ftEditar(null, ftMontarDaIA(d.dados, arq.name));
+  }catch(e){ ftFecharModal(); showToast('Erro ao enviar o arquivo.', 'err'); }
+}
+// Converte a resposta da IA no formato do modal: empresa, documento,
+// datas, moeda/valor e itens já com taxa e processo sugeridos.
+function ftMontarDaIA(x, nomeArq){
+  x = x || {};
+  const procs = (typeof _processos !== 'undefined' && _processos) || [];
+  const proc = FaturasCore.acharProcesso(x.pistas_processo || [], procs);
+  const moeda = ['BRL','USD','EUR'].includes(x.moeda) ? x.moeda : 'BRL';
+  const itens = (x.itens || []).filter(it => it && parseFloat(it.valor) > 0).map(it => ({
+    descricao: it.descricao || '', taxa: FaturasCore.taxaPorDescricao(it.descricao) || '', referencia: proc ? proc.referencia : '', valor: parseFloat(it.valor) || 0,
+  }));
+  const avisos = [];
+  if(!proc && (x.pistas_processo || []).length) avisos.push(`Não achei o processo pelas pistas do documento (${esc((x.pistas_processo || []).slice(0, 3).join(', '))}) — informe a referência nas taxas.`);
+  if(proc) avisos.push(`Processo identificado: <b>${esc(proc.referencia)}</b>.`);
+  if(!x.empresa_id) avisos.push('Empresa não encontrada no Cadastro — confira o nome ou cadastre.');
+  const semTaxa = itens.filter(i => !i.taxa).length;
+  if(semTaxa) avisos.push(`${semTaxa} linha${semTaxa === 1 ? '' : 's'} sem taxa reconhecida — escolha na lista.`);
+  if(x.observacao) avisos.push('Obs. da IA: ' + esc(x.observacao));
+  const tipo = /impak/i.test(x.emitente || '') ? 'receber' : 'pagar';
+  return {
+    _ia: true, _aviso: avisos.join('<br>'),
+    tipo, empresa_nome: (tipo === 'receber' ? x.destinatario : (x.emitente_cadastro || x.emitente)) || '', empresa_id: tipo === 'pagar' ? (x.empresa_id || null) : null,
+    documento: x.documento || '', emissao: x.emissao || '', vencimento: x.vencimento || '', moeda,
+    valor: parseFloat(x.valor_total) || itens.reduce((s, i) => s + i.valor, 0) || '',
+    obs: [x.linha_digitavel ? 'Linha digitável: ' + x.linha_digitavel : '', 'Lido de ' + (nomeArq || 'arquivo')].filter(Boolean).join(' · '),
+    itens,
+  };
 }
