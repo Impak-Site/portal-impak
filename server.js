@@ -1885,6 +1885,63 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
 // Ler fatura/boleto/DARF com IA (14/10/2026): devolve os campos pra tela
 // pré-preencher uma fatura — nada é gravado aqui. O documento vai só pra
 // API da Anthropic (mesma chave do resto do sistema, variável de ambiente).
+// Conferência (cross-check) de uma fatura com o que já está no sistema:
+// duplicidade de documento, taxa já faturada, valor x Custos Reais (ou x
+// cotado), "pagar para" do processo, processo fechado/cancelado, soma x total.
+// Só lê — não grava nada. Regras em FaturasCore.conferirFatura (testadas).
+app.post('/api/faturas/conferir', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const f = b.fatura || {};
+    const itens = Array.isArray(f.itens) ? f.itens.slice(0, 80) : [];
+    // processos: por id, e os que vieram só com referência são resolvidos aqui
+    const ids = [...new Set(itens.map(it => it && it.processo_id).filter(Boolean).map(String))];
+    const refs = [...new Set(itens.filter(it => it && !it.processo_id && it.referencia).map(it => String(it.referencia).trim()).filter(Boolean))].slice(0, 30);
+    const cols = 'id, referencia, real_json, estimativa_json, fechado, cancelado';
+    const processos = {};
+    if (ids.length) {
+      const { data, error } = await sb().from('controle_processos').select(cols).in('id', ids);
+      if (error) return res.json({ ok: false, erro: error.message });
+      (data || []).forEach(p => { processos[p.id] = p; });
+    }
+    for (const ref of refs) {
+      const { data } = await sb().from('controle_processos').select(cols).ilike('referencia', ref).limit(1);
+      if (data && data[0]) {
+        processos[data[0].id] = data[0];
+        itens.forEach(it => { if (it && !it.processo_id && it.referencia && String(it.referencia).trim().toLowerCase() === String(data[0].referencia).toLowerCase()) it.processo_id = data[0].id; });
+      }
+    }
+    // faturas existentes: as que citam esses processos + as do mesmo nº de documento
+    const existentes = new Map();
+    for (const pid of Object.keys(processos)) {
+      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').contains('itens', [{ processo_id: pid }]).limit(200);
+      (data || []).forEach(x => existentes.set(x.id, x));
+    }
+    const digitos = String(f.documento || '').replace(/\D/g, '').replace(/^0+/, '');
+    if (digitos.length >= 3) {
+      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').ilike('documento', '%' + digitos.slice(-8) + '%').limit(50);
+      (data || []).forEach(x => existentes.set(x.id, x));
+    }
+    // faturas citadas no _meta.fatura_id dos processos (pra mostrar o nº)
+    const metaIds = new Set();
+    Object.values(processos).forEach(p => { const m = (p.real_json && p.real_json._meta) || {}; Object.values(m).forEach(v => { if (v && v.fatura_id && !existentes.has(v.fatura_id)) metaIds.add(v.fatura_id); }); });
+    if (metaIds.size) {
+      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status').in('id', [...metaIds].slice(0, 100));
+      (data || []).forEach(x => existentes.set(x.id, x));
+    }
+    const labels = {};
+    if (b.labels && typeof b.labels === 'object') Object.keys(b.labels).slice(0, 200).forEach(k => { labels[String(k).slice(0, 60)] = String(b.labels[k]).slice(0, 80); });
+    const cambio = {};
+    ['USD', 'EUR'].forEach(m => { const v = parseFloat(b.cambio && b.cambio[m]); if (v > 0 && v < 100) cambio[m] = v; });
+    const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const r = FaturasCore.conferirFatura({ ...f, itens }, processos, [...existentes.values()], { hoje, cambio, labels });
+    res.json({ ok: true, ...r, itens: itens.map(it => ({ processo_id: it && it.processo_id || null })) });
+  } catch (e) {
+    console.error('faturas/conferir:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro ao conferir a fatura.' });
+  }
+});
+
 const PROMPT_LER_FATURA = `Você lê documentos de cobrança de uma IMPORTADORA brasileira de pneus: fatura/invoice de armador ou agente de carga, nota de débito, nota fiscal de serviço do despachante, boleto, DARF/guia de imposto, fatura de armazém/terminal. Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {"tipo_documento":"fatura|nota_debito|nfse|boleto|darf|outro","emitente":"razão social de quem COBRA","cnpj_emitente":"só dígitos ou vazio","destinatario":"quem PAGA","documento":"número da fatura/nota/boleto","emissao":"AAAA-MM-DD ou vazio","vencimento":"AAAA-MM-DD ou vazio","moeda":"BRL|USD|EUR","valor_total":0,"itens":[{"descricao":"texto da linha","moeda":"BRL|USD|EUR","valor":0}],"pistas_processo":["referência do cliente/processo, HBL, MBL, booking, número de container — tudo que identifique o embarque"],"linha_digitavel":"se houver","observacao":"algo importante em 1 frase ou vazio"}
 Regras: valores como número com ponto decimal (1234.56), nunca texto. Se o documento estiver em dólar mas tiver total em reais, use a moeda das linhas e coloque o total em reais na observacao. Não invente: campo que não existe fica vazio ou lista vazia.`;
