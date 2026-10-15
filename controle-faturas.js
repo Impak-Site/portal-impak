@@ -9,6 +9,7 @@
 
 const _ftFiltro = { tipo: '', status: 'aberta', busca: '', de: '', ate: '' };
 let _ftLista = [];
+let _ftSel = new Set(); // faturas marcadas pra baixa em lote
 let _crFaturas = {};   // fatura_id → fatura (do processo aberto) pra badge na grade
 
 function _ftHoje(){ return new Date().toISOString().slice(0, 10); }
@@ -191,7 +192,11 @@ async function renderDashFaturas(){
     <label class="cr-muted">venc. de <input class="form-input" type="date" value="${esc(_ftFiltro.de)}" onchange="_ftFiltro.de=this.value;renderDashFaturas()"></label>
     <label class="cr-muted">até <input class="form-input" type="date" value="${esc(_ftFiltro.ate)}" onchange="_ftFiltro.ate=this.value;renderDashFaturas()"></label>
     <button class="btn btn-primary" onclick="ftLerDocumento()" title="Envie a fatura, boleto, nota ou DARF em PDF/imagem — a IA preenche os campos pra você conferir">🧾 Ler fatura (PDF) com IA</button>
-    <button class="btn btn-outline" onclick="ftComprovanteSolto()" title="Envie o comprovante (PIX, TED, boleto pago, câmbio) — a IA acha a fatura e prepara a baixa">📎 Baixa por comprovante</button>
+    <button class="btn btn-outline" onclick="ftComprovanteSolto()" title="Envie o comprovante (PIX, TED, boleto pago, câmbio) — a IA acha a(s) fatura(s) e prepara a baixa">📎 Baixa por comprovante</button>
+    <button class="btn btn-outline" id="ft_btn_lote" onclick="ftBaixaLote()" title="Marque as faturas na lista e dê baixa de todas com um único pagamento" ${_ftSel.size ? '' : 'disabled'}>💰 Baixa em lote${_ftSel.size ? ' (' + _ftSel.size + ')' : ''}</button>
+    <button class="btn btn-outline" onclick="ftConciliarExtrato()" title="Importe o extrato do banco (OFX ou CSV) e dê baixa casando cada lançamento com a fatura">🏦 Conciliar extrato</button>
+    <button class="btn btn-outline" onclick="ftReceberPendentes()" title="Gera faturas a receber das parcelas de câmbio fechadas e das vendas (NF) dos processos, sem digitar e sem duplicar">↘ Gerar a receber</button>
+    <button class="btn btn-outline" onclick="ftExportarExcel()" title="Planilha com as faturas e todos os pagamentos (pra conferência / lançamento em outro sistema)">⬇ Excel</button>
     <button class="btn btn-outline" onclick="ftNovaManual()">+ Fatura avulsa</button>
   </div>`;
   const sit = { vencida: ['Vencida', 'var(--err)'], hoje: ['Vence hoje', 'var(--warn,#b45309)'], semana: ['Esta semana', 'var(--warn,#b45309)'], a_vencer: ['A vencer', 'var(--muted)'], sem_vencimento: ['Sem vencimento', 'var(--muted)'], paga: ['Paga', 'var(--ok)'], cancelada: ['Cancelada', 'var(--dim)'] };
@@ -201,24 +206,25 @@ async function renderDashFaturas(){
     const fator = f.moeda === 'BRL' ? 1 : (parseFloat(f.cambio) || parseFloat(cambio[f.moeda]) || 0);
     const itensHtml = (f.itens || []).length ? `<table class="ft-itens"><thead><tr><th>Processo</th><th>Taxa</th><th>Moeda</th><th style="text-align:right;">Valor</th><th style="text-align:right;">Fator</th><th style="text-align:right;">Em R$</th></tr></thead><tbody>${f.itens.map(it => `<tr><td>${esc(it.referencia || '—')}</td><td>${esc(it.label || it.taxa || '')}</td><td>${esc(it.moeda || f.moeda)}</td><td style="text-align:right;">${_ftFmt(it.valor)}</td><td style="text-align:right;">${fator ? fator.toFixed(4).replace('.', ',') : '—'}</td><td style="text-align:right;">${fator ? _ftFmt((parseFloat(it.valor) || 0) * fator) : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="cr-muted">Sem itens (fatura avulsa).</div>';
     return `<tr class="ft-row" onclick="ftToggleItens('${f.id}', event)">
+      <td>${f.status === 'aberta' ? `<input type="checkbox" ${_ftSel.has(f.id) ? 'checked' : ''} onclick="event.stopPropagation();ftSelecionar('${f.id}', this.checked)" title="Selecionar pra baixa em lote">` : ''}</td>
       <td><span class="ft-tag ${f.tipo}">${f.tipo === 'pagar' ? 'PAGAR' : 'RECEBER'}</span><div class="cr-muted" style="font-family:'JetBrains Mono',monospace;">${esc(f.numero || '')}</div></td>
       <td><strong>${esc(f.empresa_nome)}</strong>${f.empresa_id ? ' <span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<div class="cr-muted">${(f.itens || []).length} ${(f.itens || []).length === 1 ? 'taxa' : 'taxas'} · ref. ${_ftData(f.emissao || (f.created_at || '').slice(0, 10))}${f.moeda !== 'BRL' && fator ? ` · câmbio ${fator.toFixed(4).replace('.', ',')}` : ''}</div></td>
       <td>${esc(f.documento || '—')}</td>
       <td>${refs.map(r => `<a href="/controle/${encodeURIComponent(r)}" target="_blank">${esc(r)}</a>`).join(', ') || '—'}</td>
       <td>${_ftData(f.vencimento)}</td>
       <td style="text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_ftSimb(f.moeda)} ${_ftFmt(f.valor)}</td>
-      <td><span style="color:${sit[s][1]};font-weight:600;">${sit[s][0]}</span>${f.status === 'paga' ? `<div class="cr-muted">${_ftData(f.pago_em)}${f.valor_pago != null && Math.abs(f.valor_pago - f.valor) >= 0.01 ? ` · ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)}` : ''}</div>` : (f.status === 'aberta' && parseFloat(f.valor_pago) > 0 ? `<div style="font-size:11px;color:#8a5a00;font-weight:600;">Parcial · pago ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)} · saldo ${_ftFmt(FaturasCore.saldoFatura(f))}</div>` : '')}${_ftQtdArq(f) ? `<div class="cr-muted" title="Anexos e comprovantes">📎 ${_ftQtdArq(f)}</div>` : ''}</td>
+      <td><span style="color:${sit[s][1]};font-weight:600;">${sit[s][0]}</span>${f.status === 'paga' ? `<div class="cr-muted">${_ftData(f.pago_em)}${f.valor_pago != null && Math.abs(f.valor_pago - f.valor) >= 0.01 ? ` · ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)}` : ''}</div>` : (f.status === 'aberta' && parseFloat(f.valor_pago) > 0 ? `<div style="font-size:11px;color:#8a5a00;font-weight:600;">Parcial · pago ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)} · saldo ${_ftFmt(FaturasCore.saldoFatura(f))}</div>` : '')}${_ftQtdArq(f) ? `<div class="cr-muted" title="Anexos e comprovantes">📎 ${_ftQtdArq(f)}</div>` : ''}${f.tipo === 'pagar' && f.status === 'aberta' ? (f.aprovacao ? `<div style="font-size:10.5px;color:var(--ok);" title="Aprovado por ${esc(f.aprovacao.nome || f.aprovacao.por || '')}">✔ aprovado</div>` : '<div style="font-size:10.5px;color:#8a5a00;">⏳ aguardando aprovação</div>') : ''}${f.origem ? `<div class="cr-muted" style="font-size:10.5px;">↘ ${f.origem.tipo === 'venda' ? 'venda' : 'câmbio'} ${esc(f.origem.referencia || '')}</div>` : ''}</td>
       <td style="white-space:nowrap;">
         ${f.status === 'aberta' ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="ftBaixa('${f.id}')" title="Registrar pagamento (total ou parcial) com comprovante">💰 Dar baixa</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftEditar('${f.id}')">Editar</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftCancelar('${f.id}')" title="Cancela (não apaga)">Cancelar</button>` : ''}
         ${f.status === 'paga' ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftBaixa('${f.id}')" title="Ver pagamentos e comprovantes">📎 Pagamentos</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftAcao('${f.id}','reabrir')">Reabrir</button>` : ''}
       </td></tr>
-      <tr class="ft-itens-row" id="ft_itens_${f.id}" style="display:none;"><td colspan="8">${itensHtml}</td></tr>`;
+      <tr class="ft-itens-row" id="ft_itens_${f.id}" style="display:none;"><td colspan="9">${itensHtml}</td></tr>`;
   }).join('');
   const total = _ftLista.filter(f => f.status !== 'cancelada').reduce((s, f) => s + (f.moeda === 'BRL' ? parseFloat(f.valor) || 0 : (parseFloat(f.valor) || 0) * (parseFloat(cambio[f.moeda]) || 0)), 0);
   el.innerHTML = cards + filtros + `<div class="ft-tabela-wrap"><table class="ft-tabela">
-    <thead><tr><th>Tipo</th><th>Empresa · itens</th><th>Documento</th><th>Processo</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th>Situação</th><th></th></tr></thead>
-    <tbody>${linhas || `<tr><td colspan="8" class="cr-muted" style="padding:16px;">Nenhuma fatura com esses filtros.</td></tr>`}</tbody>
-    <tfoot><tr><td colspan="5" style="text-align:right;">${_ftLista.length} fatura${_ftLista.length === 1 ? '' : 's'} · total em R$</td><td style="text-align:right;font-family:'JetBrains Mono',monospace;">R$ ${_ftFmt(total)}</td><td colspan="2"></td></tr></tfoot>
+    <thead><tr><th style="width:22px;"></th><th>Tipo</th><th>Empresa · itens</th><th>Documento</th><th>Processo</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th>Situação</th><th></th></tr></thead>
+    <tbody>${linhas || `<tr><td colspan="9" class="cr-muted" style="padding:16px;">Nenhuma fatura com esses filtros.</td></tr>`}</tbody>
+    <tfoot><tr><td colspan="6" style="text-align:right;">${_ftLista.length} fatura${_ftLista.length === 1 ? '' : 's'} · total em R$</td><td style="text-align:right;font-family:'JetBrains Mono',monospace;">R$ ${_ftFmt(total)}</td><td colspan="2"></td></tr></tfoot>
   </table></div>`;
 }
 
@@ -274,9 +280,10 @@ function ftBaixa(id, pre){
   const saldo = FaturasCore.saldoFatura(f);
   const FORMA = Object.fromEntries(_FT_FORMAS);
   const pags = (f.pagamentos || []);
-  const pagsHtml = pags.length ? `<table class="ft-itens" style="width:100%;"><thead><tr><th>Data</th><th>Forma</th><th style="text-align:right;">Valor</th><th>Comprovante</th><th></th></tr></thead><tbody>${pags.map(p => `<tr style="${p.estornado ? 'opacity:.5;text-decoration:line-through;' : ''}">
-      <td>${_ftData(p.data)}</td><td>${esc(FORMA[p.forma] || p.forma || '')}${p.identificador ? `<div class="cr-muted" style="font-size:10px;">${esc(p.identificador)}</div>` : ''}</td>
+  const pagsHtml = pags.length ? `<table class="ft-itens" style="width:100%;"><thead><tr><th>Data</th><th>Forma</th><th style="text-align:right;">Valor</th><th>Detalhe</th><th>Comprovante</th><th></th></tr></thead><tbody>${pags.map(p => `<tr style="${p.estornado ? 'opacity:.5;text-decoration:line-through;' : ''}">
+      <td>${_ftData(p.data)}</td><td>${esc(FORMA[p.forma] || p.forma || '')}${p.identificador ? `<div class="cr-muted" style="font-size:10px;">${esc(p.identificador)}</div>` : ''}${p.lote_id ? '<div class="cr-muted" style="font-size:10px;">lote</div>' : ''}</td>
       <td style="text-align:right;">${_ftSimb(f.moeda)} ${_ftFmt(p.valor)}</td>
+      <td style="font-size:10.5px;">${_ftDetalhePag(p, f)}</td>
       <td>${p.comprovante ? `<a class="cr-link" onclick="ftAbrirArquivo('${f.id}','${esc(p.comprovante.path)}')">📎 ${esc(p.comprovante.nome || 'abrir')}</a>` : '<span class="cr-muted">—</span>'}</td>
       <td>${p.estornado ? `<span class="cr-muted" title="${esc((p.estornado.motivo || '') + ' · ' + (p.estornado.por || ''))}">estornado</span>` : `<a class="cr-link" onclick="ftEstornar('${f.id}','${p.id}')">estornar</a>`}</td></tr>`).join('')}</tbody></table>`
     : (f.status === 'paga' ? `<div class="cr-muted">Baixada em ${_ftData(f.pago_em)} (antes do registro de pagamentos).</div>` : '<div class="cr-muted">Nenhum pagamento ainda.</div>');
@@ -294,15 +301,32 @@ function ftBaixa(id, pre){
       ${pagsHtml}
       <div style="font-weight:600;font-size:12px;margin:12px 0 4px;">Documentos anexados</div>
       <div>${anexosHtml || '<span class="cr-muted">nenhum</span>'} <a class="cr-link" onclick="ftAnexarDoc('${f.id}')">+ anexar documento</a></div>
+      ${f.tipo === 'pagar' ? `<div style="margin-top:10px;font-size:12px;">${f.aprovacao ? `✔ Pagamento aprovado por <b>${esc(f.aprovacao.nome || f.aprovacao.por || '')}</b> em ${_ftData((f.aprovacao.em || '').slice(0, 10))}` : '⏳ Pagamento ainda não aprovado'}${_ftSouGerente() && f.status === 'aberta' ? ` · <a class="cr-link" onclick="ftAprovar('${f.id}', ${f.aprovacao ? 'true' : 'false'})">${f.aprovacao ? 'desfazer aprovação' : '✔ aprovar pagamento'}</a>` : ''}</div>` : ''}
+      ${(f.itens || []).some(it => it.processo_id && it.taxa) ? `<div style="margin-top:6px;font-size:12px;"><a class="cr-link" onclick="ftAplicarCustosReais('${f.id}')" title="Grava os valores das taxas desta fatura na aba Custos Reais dos processos (não mexe em processo fechado nem em taxa lançada por container)">↻ Atualizar Custos Reais dos processos com os valores desta fatura</a></div>` : ''}
       ${f.status === 'aberta' ? `
       <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;">
         <div style="font-weight:600;font-size:12px;margin-bottom:6px;">Nova baixa</div>
         <div id="ft_bx_ia" style="margin-bottom:8px;">${pre.aviso ? pre.aviso : ''}</div>
         <div class="ft-cand-campos">
           <label>Pago em <input class="form-input" type="date" id="ft_bx_data" value="${esc(pre.data || _ftHoje())}"></label>
-          <label>Valor (${f.moeda}) <input class="form-input" id="ft_bx_valor" value="${_ftFmt(pre.valor != null ? pre.valor : saldo)}" inputmode="decimal"></label>
+          <label>Valor pago (${f.moeda}) <input class="form-input" id="ft_bx_valor" value="${_ftFmt(pre.valor != null ? pre.valor : saldo)}" inputmode="decimal" oninput="ftBxResumo()"></label>
           <label>Forma <select class="form-input" id="ft_bx_forma">${_FT_FORMAS.map(([v, l]) => `<option value="${v}" ${(pre.forma || 'pix') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         </div>
+        ${f.moeda !== 'BRL' ? `<div class="ft-cand-campos">
+          <label>Câmbio efetivo (R$/${f.moeda}) <input class="form-input" id="ft_bx_cx" value="${pre.cambio_efetivo ? String(pre.cambio_efetivo).replace('.', ',') : ''}" placeholder="${f.cambio ? String(f.cambio).replace('.', ',') + ' (previsto)' : ''}" inputmode="decimal" oninput="ftBxCalcBrl('cx')"></label>
+          <label>Valor pago em R$ <input class="form-input" id="ft_bx_brl" value="${pre.pago_brl ? _ftFmt(pre.pago_brl) : ''}" inputmode="decimal" oninput="ftBxCalcBrl('brl')"></label>
+          <label class="cr-muted" style="align-self:flex-end;" id="ft_bx_var"></label>
+        </div>` : ''}
+        <details style="margin-top:6px;" ${pre.juros || pre.desconto || pre.retencoes ? 'open' : ''}><summary class="cr-link" style="cursor:pointer;font-size:12px;">➕ Juros/multa, desconto e retenções de impostos</summary>
+          <div class="ft-cand-campos" style="margin-top:6px;">
+            <label>Juros/multa pagos <input class="form-input" id="ft_bx_juros" inputmode="decimal" placeholder="0,00" oninput="ftBxResumo()"></label>
+            <label>Desconto obtido <input class="form-input" id="ft_bx_desc" inputmode="decimal" placeholder="0,00" oninput="ftBxResumo()"></label>
+          </div>
+          <div class="cr-muted" style="font-size:11px;margin:6px 0 2px;">Impostos retidos na fonte (abatem o saldo; a empresa recebe o líquido):</div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">${FaturasCore.RETENCOES.map(k => `<label style="font-size:11px;">${k === 'outros' ? 'Outros' : k.toUpperCase()}<input class="form-input ft-bx-ret" data-k="${k}" inputmode="decimal" placeholder="0,00" style="padding:4px 6px;" oninput="ftBxResumo()"></label>`).join('')}</div>
+          ${f.tipo === 'pagar' ? `<label style="display:flex;gap:6px;align-items:center;font-size:11.5px;margin-top:6px;"><input type="checkbox" id="ft_bx_darf" checked> Lançar IRRF/PIS/COFINS/CSLL retidos como fatura a pagar (DARF, vence dia 20 do mês seguinte)</label>` : ''}
+        </details>
+        <div id="ft_bx_resumo" class="cr-muted" style="font-size:11.5px;margin-top:6px;"></div>
         <div class="ft-cand-campos">
           <label style="flex:2;">ID / autenticação do comprovante <input class="form-input" id="ft_bx_ident" value="${esc(pre.identificador || '')}" placeholder="opcional — evita usar o mesmo comprovante 2 vezes"></label>
         </div>
@@ -315,6 +339,7 @@ function ftBaixa(id, pre){
     </div>
     <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Fechar</button>${f.status === 'aberta' ? `<button class="btn btn-primary" onclick="ftRegistrarBaixa('${f.id}')">Registrar baixa</button>` : ''}</div>
   </div></div>`;
+  if(f.status === 'aberta'){ window._ftBxFat = f; ftBxCalcBrl(pre.pago_brl ? 'brl' : 'cx'); ftBxResumo(); }
 }
 function ftEscolherComprovante(id){
   _ftEscolherArquivo(async arq => {
@@ -360,7 +385,9 @@ function _ftAvisosComprovante(x, f){
   return `<div style="background:${cor};border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11.5px;">${['<b>Comprovante lido pela IA</b>' + (x.banco ? ' · ' + esc(x.banco) : '')].concat(av, ok).join('<br>')}</div>`;
 }
 async function ftRegistrarBaixa(id, confirmarRepetido){
-  const body = { data: document.getElementById('ft_bx_data').value, valor: parseValorMoeda(document.getElementById('ft_bx_valor').value), forma: document.getElementById('ft_bx_forma').value, identificador: document.getElementById('ft_bx_ident').value.trim(), obs: document.getElementById('ft_bx_obs').value.trim(), confirmar_repetido: !!confirmarRepetido };
+  const fat = _ftLista.find(x => x.id === id) || {};
+  if(!confirmarRepetido && fat.tipo === 'pagar' && !fat.aprovacao && !confirm('Este pagamento ainda não foi aprovado por um gerente. Registrar a baixa mesmo assim?')) return;
+  const body = { data: document.getElementById('ft_bx_data').value, valor: parseValorMoeda(document.getElementById('ft_bx_valor').value), forma: document.getElementById('ft_bx_forma').value, identificador: document.getElementById('ft_bx_ident').value.trim(), obs: document.getElementById('ft_bx_obs').value.trim(), confirmar_repetido: !!confirmarRepetido, ..._ftBxExtras() };
   if(_ftBaixaArquivo){ body.arquivo_base64 = await _ftB64(_ftBaixaArquivo); body.nome_arquivo = _ftBaixaArquivo.name; body.media_type = _ftTipoArq(_ftBaixaArquivo); }
   try{
     const r = await fetch('/api/faturas/' + encodeURIComponent(id) + '/baixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -372,7 +399,7 @@ async function ftRegistrarBaixa(id, confirmarRepetido){
     }
     _ftBaixaArquivo = null;
     ftFecharModal();
-    showToast(d.fatura.status === 'paga' ? 'Baixa registrada — fatura quitada.' : `Baixa parcial registrada — saldo ${_ftSimb(d.fatura.moeda)} ${_ftFmt(d.saldo)}.` + (d.aviso ? ' ' + d.aviso : ''), 'ok');
+    showToast((d.fatura.status === 'paga' ? 'Baixa registrada — fatura quitada.' : `Baixa parcial registrada — saldo ${_ftSimb(d.fatura.moeda)} ${_ftFmt(d.saldo)}.`) + (d.darf ? ` DARF das retenções lançado (${d.darf.numero}, vence ${_ftData(d.darf.vencimento)}).` : '') + (d.aviso ? ' ' + d.aviso : ''), 'ok');
     renderDashFaturas();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
@@ -412,7 +439,8 @@ function ftComprovanteSolto(){
         ${sug.length ? `<table class="ft-itens" style="width:100%;"><thead><tr><th>Fatura</th><th>Empresa</th><th>Venc.</th><th style="text-align:right;">Saldo</th><th>Por quê</th><th></th></tr></thead><tbody>${sug.map(s => `<tr>
           <td>${esc(s.numero || '')}<div class="cr-muted">${esc(s.documento || '')}</div></td><td>${esc(s.empresa_nome)}</td><td>${_ftData(s.vencimento)}</td>
           <td style="text-align:right;">${_ftSimb(s.moeda)} ${_ftFmt(s.saldo)}</td><td class="cr-muted" style="font-size:10.5px;">${esc(s.motivos.join(', '))}</td>
-          <td><button class="btn btn-primary" style="padding:3px 10px;font-size:11px;" onclick="ftUsarComprovanteEm('${s.id}')">Usar</button></td></tr>`).join('')}</tbody></table>`
+          <td style="white-space:nowrap;"><input type="checkbox" class="ft_cs_ck" data-id="${s.id}" title="Marcar pra lote"> <button class="btn btn-primary" style="padding:3px 10px;font-size:11px;" onclick="ftUsarComprovanteEm('${s.id}')">Usar</button></td></tr>`).join('')}</tbody></table>
+          <div class="cr-muted" style="font-size:11px;margin-top:6px;">Um pagamento cobrindo várias faturas? Marque-as e use <a class="cr-link" onclick="ftLoteDoComprovante()">💰 baixa em lote nas marcadas</a>.</div>`
           : '<div class="cr-muted">Não achei uma fatura em aberto compatível (valor/empresa). Procure a fatura na lista e use "💰 Dar baixa" → "Anexar comprovante".</div>'}
       </div>
       <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Fechar</button></div>
@@ -424,6 +452,280 @@ async function ftUsarComprovanteEm(faturaId){
   if(!_ftLista.find(f => f.id === faturaId)){ _ftFiltro.status = ''; _ftLista = await _ftCarregar(); }
   const f = _ftLista.find(y => y.id === faturaId);
   ftBaixa(faturaId, { arquivo: c.arq, data: x.data_pagamento, valor: parseFloat(x.valor) > 0 ? parseFloat(x.valor) : undefined, forma: _FT_FORMAS.some(([v]) => v === x.tipo) ? x.tipo : 'pix', identificador: x.identificador, aviso: _ftAvisosComprovante(x, f) });
+}
+// ── Fase 3: câmbio/juros/retenções na baixa, lote, aprovação, Custos Reais,
+//    extrato bancário, a receber dos processos, exportação ─────────────
+function _ftSouGerente(){ return !!(typeof _user !== 'undefined' && _user && _user.role === 'gerente'); }
+function _ftNum(id){ const el = document.getElementById(id); return el ? (parseValorMoeda(el.value) || 0) : 0; }
+function _ftDetalhePag(p, f){
+  const partes = [];
+  if(parseFloat(p.juros) > 0) partes.push('juros ' + _ftFmt(p.juros));
+  if(parseFloat(p.desconto) > 0) partes.push('desc. ' + _ftFmt(p.desconto));
+  const ret = FaturasCore.RETENCOES.filter(k => p.retencoes && parseFloat(p.retencoes[k]) > 0).map(k => k.toUpperCase() + ' ' + _ftFmt(p.retencoes[k]));
+  if(ret.length) partes.push('ret.: ' + ret.join(', '));
+  if(f.moeda !== 'BRL' && parseFloat(p.pago_brl) > 0){
+    const v = FaturasCore.variacaoCambial(p, f);
+    partes.push(`R$ ${_ftFmt(p.pago_brl)} @ ${String(p.cambio_efetivo || '').replace('.', ',')}` + (v ? ` <span style="color:${v > 0 ? 'var(--err)' : 'var(--ok)'};">(var. ${v > 0 ? '+' : ''}${_ftFmt(v)})</span>` : ''));
+  }
+  return partes.join(' · ') || '<span class="cr-muted">—</span>';
+}
+function ftBxCalcBrl(origem){
+  const f = window._ftBxFat; if(!f || f.moeda === 'BRL') return;
+  const cxEl = document.getElementById('ft_bx_cx'), brlEl = document.getElementById('ft_bx_brl'), vEl = document.getElementById('ft_bx_var');
+  if(!cxEl || !brlEl) return;
+  const valor = _ftNum('ft_bx_valor') + _ftNum('ft_bx_juros');
+  const cx = parseFloat(String(cxEl.value || '').replace(',', '.')) || 0;
+  if(origem === 'cx' && cx > 0 && valor > 0) brlEl.value = _ftFmt(valor * cx);
+  if(origem === 'brl'){ const brl = _ftNum('ft_bx_brl'); if(brl > 0 && valor > 0) cxEl.value = (brl / valor).toFixed(4).replace('.', ','); }
+  const brl = _ftNum('ft_bx_brl'), prev = parseFloat(f.cambio) || 0;
+  if(vEl){
+    if(brl > 0 && prev > 0){ const v = brl - _ftNum('ft_bx_valor') * prev; vEl.innerHTML = `Variação cambial: <b style="color:${v > 0 ? 'var(--err)' : 'var(--ok)'};">${v > 0 ? '+' : ''}R$ ${_ftFmt(v)}</b> (previsto ${String(prev).replace('.', ',')})`; }
+    else vEl.innerHTML = '';
+  }
+}
+function _ftBxExtras(){
+  const retencoes = {};
+  document.querySelectorAll('.ft-bx-ret').forEach(el => { const v = parseValorMoeda(el.value) || 0; if(v > 0) retencoes[el.dataset.k] = v; });
+  const o = { juros: _ftNum('ft_bx_juros'), desconto: _ftNum('ft_bx_desc'), retencoes };
+  const cx = document.getElementById('ft_bx_cx'); if(cx && cx.value) o.cambio_efetivo = cx.value;
+  const brl = document.getElementById('ft_bx_brl'); if(brl && brl.value) o.pago_brl = brl.value;
+  const darf = document.getElementById('ft_bx_darf'); o.gerar_darf = !!(darf && darf.checked);
+  return o;
+}
+function ftBxResumo(){
+  const f = window._ftBxFat; const el = document.getElementById('ft_bx_resumo'); if(!f || !el) return;
+  const x = _ftBxExtras();
+  const ret = Object.values(x.retencoes).reduce((s, v) => s + v, 0);
+  const valor = _ftNum('ft_bx_valor');
+  const abate = valor + x.desconto + ret, saldo = FaturasCore.saldoFatura(f);
+  const fica = Math.round((saldo - abate) * 100) / 100;
+  el.innerHTML = `Abate do saldo: <b>${_ftSimb(f.moeda)} ${_ftFmt(abate)}</b>${x.juros ? ` · juros/multa (custo extra): ${_ftFmt(x.juros)}` : ''} · ${fica > 0.01 ? `fica em aberto <b style="color:#8a5a00;">${_ftFmt(fica)}</b>` : fica < -0.01 ? `<b style="color:var(--err);">passa do saldo em ${_ftFmt(-fica)}</b>` : '<b style="color:var(--ok);">quita a fatura</b>'}`;
+  ftBxCalcBrl('cx');
+}
+function ftSelecionar(id, marcado){
+  if(marcado) _ftSel.add(id); else _ftSel.delete(id);
+  const b = document.getElementById('ft_btn_lote');
+  if(b){ b.disabled = !_ftSel.size; b.textContent = '💰 Baixa em lote' + (_ftSel.size ? ` (${_ftSel.size})` : ''); }
+}
+async function ftAprovar(id, desfazer){
+  try{
+    const d = await (await fetch('/api/faturas/' + encodeURIComponent(id) + '/aprovacao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ desfazer: !!desfazer }) })).json();
+    if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+    const i = _ftLista.findIndex(x => x.id === id); if(i >= 0) _ftLista[i] = d.fatura;
+    showToast(desfazer ? 'Aprovação desfeita.' : 'Pagamento aprovado.', 'ok'); ftBaixa(id); renderDashFaturas();
+  }catch(e){ showToast('Erro de rede', 'err'); }
+}
+async function ftAplicarCustosReais(id){
+  const f = _ftLista.find(x => x.id === id); if(!f) return;
+  const refs = [...new Set((f.itens || []).map(it => it.referencia).filter(Boolean))].join(', ');
+  if(!confirm(`Gravar os valores das ${(f.itens || []).length} taxa(s) desta fatura na aba Custos Reais de ${refs || 'processo'}?\n\nIsso muda o custo real (e o lucro apurado) desses processos. Processos fechados e taxas lançadas por container não são alterados.`)) return;
+  try{
+    const d = await (await fetch('/api/faturas/' + encodeURIComponent(id) + '/aplicar-custos-reais', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+    if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+    const fmtM = o => Object.entries(o || {}).map(([m, v]) => _ftSimb(m) + ' ' + _ftFmt(v)).join(' + ') || 'vazio';
+    const linhas = (d.feitos || []).map(x => `• ${x.ref} · ${x.taxa}: ${fmtM(x.antes)} → ${fmtM(x.depois)}`).concat((d.pulados || []).map(x => `• (não alterado) ${x.ref}${x.taxa ? ' · ' + x.taxa : ''}: ${x.motivo}`));
+    alert((d.feitos || []).length ? `Custos Reais atualizados:\n\n${linhas.join('\n')}` : `Nada a alterar — os valores já batem.${linhas.length ? '\n\n' + linhas.join('\n') : ''}`);
+  }catch(e){ showToast('Erro de rede', 'err'); }
+}
+
+// Baixa em lote (1 pagamento → várias faturas)
+let _ftLoteArquivo = null;
+function ftBaixaLote(ids, pre){
+  ids = ids || [..._ftSel];
+  const fats = ids.map(id => _ftLista.find(x => x.id === id)).filter(f => f && f.status === 'aberta');
+  if(!fats.length){ showToast('Marque as faturas abertas na lista.', 'warn'); return; }
+  const moedas = [...new Set(fats.map(f => f.moeda))];
+  if(moedas.length > 1){ showToast('O lote precisa ser de faturas na mesma moeda.', 'warn'); return; }
+  pre = pre || {};
+  _ftLoteArquivo = pre.arquivo || null;
+  const total = pre.valor || fats.reduce((s, f) => s + FaturasCore.saldoFatura(f), 0);
+  const dist = FaturasCore.distribuirLote(total, fats);
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:680px;">
+    <div class="ft-modal-head"><span>💰 Baixa em lote — ${fats.length} fatura${fats.length > 1 ? 's' : ''}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      ${pre.aviso || ''}
+      <div class="ft-cand-campos">
+        <label>Pago em <input class="form-input" type="date" id="ft_lt_data" value="${esc(pre.data || _ftHoje())}"></label>
+        <label>Valor total pago (${moedas[0]}) <input class="form-input" id="ft_lt_total" value="${_ftFmt(total)}" inputmode="decimal" oninput="ftLoteRedistribuir()"></label>
+        <label>Forma <select class="form-input" id="ft_lt_forma">${_FT_FORMAS.map(([v, l]) => `<option value="${v}" ${(pre.forma || 'pix') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      </div>
+      <div class="ft-cand-campos"><label style="flex:2;">ID / autenticação do comprovante <input class="form-input" id="ft_lt_ident" value="${esc(pre.identificador || '')}"></label></div>
+      <table class="ft-itens" style="width:100%;margin-top:8px;"><thead><tr><th>Fatura</th><th>Empresa</th><th style="text-align:right;">Saldo</th><th style="text-align:right;">Abater</th></tr></thead><tbody>
+        ${fats.map((f, i) => `<tr><td>${esc(f.numero || '')}<div class="cr-muted">${esc(f.documento || '')}</div></td><td>${esc(f.empresa_nome)}</td><td style="text-align:right;">${_ftFmt(FaturasCore.saldoFatura(f))}</td>
+          <td style="text-align:right;"><input class="form-input ft-lt-v" data-id="${f.id}" value="${_ftFmt(dist[i] ? dist[i].valor : 0)}" style="width:110px;text-align:right;padding:3px 6px;" inputmode="decimal" oninput="ftLoteConferir()"></td></tr>`).join('')}
+      </tbody></table>
+      <div id="ft_lt_conf" class="cr-muted" style="font-size:11.5px;margin-top:6px;"></div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+        <button class="btn btn-outline" onclick="_ftEscolherArquivo(a => { _ftLoteArquivo = a; document.getElementById('ft_lt_arq').textContent = a.name; })">📎 Anexar comprovante</button>
+        <span id="ft_lt_arq" class="cr-muted">${_ftLoteArquivo ? esc(_ftLoteArquivo.name) : 'opcional — o mesmo comprovante fica em todas as faturas do lote'}</span>
+      </div>
+      <label class="cr-muted" style="display:block;margin-top:6px;">Observação <input class="form-input" id="ft_lt_obs" style="width:100%;box-sizing:border-box;margin-top:4px;"></label>
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftRegistrarLote()">Registrar baixa do lote</button></div>
+  </div></div>`;
+  window._ftLoteFats = fats;
+  ftLoteConferir();
+}
+function ftLoteRedistribuir(){
+  const fats = window._ftLoteFats || [];
+  const dist = FaturasCore.distribuirLote(_ftNum('ft_lt_total'), fats);
+  document.querySelectorAll('.ft-lt-v').forEach((el, i) => { el.value = _ftFmt(dist[i] ? dist[i].valor : 0); });
+  ftLoteConferir();
+}
+function ftLoteConferir(){
+  const tot = _ftNum('ft_lt_total');
+  const soma = [...document.querySelectorAll('.ft-lt-v')].reduce((s, el) => s + (parseValorMoeda(el.value) || 0), 0);
+  const el = document.getElementById('ft_lt_conf'); if(!el) return;
+  const dif = Math.round((tot - soma) * 100) / 100;
+  el.innerHTML = Math.abs(dif) < 0.01 ? `✅ Distribuição bate com o total (${_ftFmt(tot)}).` : `<span style="color:var(--err);">⚠️ Distribuído ${_ftFmt(soma)} × total ${_ftFmt(tot)} (diferença ${_ftFmt(dif)}).</span>`;
+}
+async function ftRegistrarLote(confirmarRepetido){
+  const itens = [...document.querySelectorAll('.ft-lt-v')].map(el => ({ fatura_id: el.dataset.id, valor: parseValorMoeda(el.value) || 0 })).filter(i => i.valor > 0);
+  const tot = _ftNum('ft_lt_total'), soma = itens.reduce((s, i) => s + i.valor, 0);
+  if(!confirmarRepetido && Math.abs(tot - soma) > 0.01 && !confirm(`A soma distribuída (${_ftFmt(soma)}) é diferente do total pago (${_ftFmt(tot)}). Registrar assim mesmo?`)) return;
+  const naoAprov = (window._ftLoteFats || []).filter(f => f.tipo === 'pagar' && !f.aprovacao);
+  if(!confirmarRepetido && naoAprov.length && !confirm(`${naoAprov.length} fatura(s) do lote ainda não foram aprovadas por um gerente. Registrar mesmo assim?`)) return;
+  const body = { data: document.getElementById('ft_lt_data').value, forma: document.getElementById('ft_lt_forma').value, identificador: document.getElementById('ft_lt_ident').value.trim(), obs: document.getElementById('ft_lt_obs').value.trim(), itens, confirmar_repetido: !!confirmarRepetido };
+  if(_ftLoteArquivo){ body.arquivo_base64 = await _ftB64(_ftLoteArquivo); body.nome_arquivo = _ftLoteArquivo.name; body.media_type = _ftTipoArq(_ftLoteArquivo); }
+  try{
+    const d = await (await fetch('/api/faturas/baixa-lote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    if(!d.ok){ if(d.repetido && confirm(d.erro + '\n\nRegistrar mesmo assim?')) return ftRegistrarLote(true); if(!d.repetido) showToast(d.erro || 'Erro no lote', 'err'); return; }
+    _ftSel.clear(); _ftLoteArquivo = null; ftFecharModal();
+    const quitadas = d.faturas.filter(x => x.status === 'paga').length;
+    showToast(`Lote registrado em ${d.faturas.length} fatura(s) — ${quitadas} quitada(s).`, 'ok'); renderDashFaturas();
+  }catch(e){ showToast('Erro de rede', 'err'); }
+}
+async function ftLoteDoComprovante(){
+  const ids = [...document.querySelectorAll('.ft_cs_ck:checked')].map(el => el.dataset.id);
+  if(ids.length < 2){ showToast('Marque 2 ou mais faturas.', 'warn'); return; }
+  const c = window._ftCompSolto || {}; const x = c.x || {};
+  if(ids.some(id => !_ftLista.find(f => f.id === id))){ _ftFiltro.status = ''; _ftLista = await _ftCarregar(); }
+  ftBaixaLote(ids, { arquivo: c.arq, data: x.data_pagamento, valor: parseFloat(x.valor) > 0 ? parseFloat(x.valor) : undefined, forma: _FT_FORMAS.some(([v]) => v === x.tipo) ? x.tipo : 'pix', identificador: x.identificador });
+}
+
+// Conciliação com extrato bancário (OFX ou CSV)
+function ftConciliarExtrato(){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.ofx,.csv,.txt'; inp.style.display = 'none';
+  inp.onchange = async () => {
+    const arq = inp.files && inp.files[0]; inp.remove(); if(!arq) return;
+    let txt = await arq.text();
+    // OFX de banco brasileiro costuma vir em latin-1
+    if(/�/.test(txt)){ try{ txt = new TextDecoder('iso-8859-1').decode(await arq.arrayBuffer()); }catch(e){} }
+    const trans = /<STMTTRN>/i.test(txt) ? FaturasCore.parseOFX(txt) : FaturasCore.parseExtratoCSV(txt);
+    if(!trans.length){ showToast('Não reconheci lançamentos nesse arquivo (use OFX ou CSV com colunas Data/Histórico/Valor).', 'err'); return; }
+    let abertas = [];
+    try{ const d = await (await fetch('/api/faturas?status=aberta')).json(); abertas = d.faturas || []; }catch(e){}
+    const conc = FaturasCore.conciliarExtrato(trans, abertas);
+    let usados = {};
+    try{ const d = await (await fetch('/api/faturas/identificadores-usados', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: conc.map(c => c.chave) }) })).json(); usados = d.usados || {}; }catch(e){}
+    window._ftConc = { conc, abertas, usados, nome: arq.name };
+    _ftRenderConciliacao();
+  };
+  document.body.appendChild(inp); inp.click();
+}
+function _ftRenderConciliacao(){
+  const { conc, usados, nome } = window._ftConc;
+  const comMatch = conc.filter(c => c.candidatos.length && !usados[c.chave]).length;
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:900px;">
+    <div class="ft-modal-head"><span>🏦 Conciliação — ${esc(nome)}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div class="cr-muted" style="margin-bottom:8px;">${conc.length} lançamento(s) · ${comMatch} com fatura compatível (mesmo valor, em R$). Débitos casam com faturas a pagar; créditos com faturas a receber. Confira e marque o que dar baixa — lançamento já usado não aparece pra marcar de novo.</div>
+      <div style="max-height:420px;overflow:auto;"><table class="ft-itens" style="width:100%;"><thead><tr><th></th><th>Data</th><th>Lançamento</th><th style="text-align:right;">Valor</th><th>Fatura</th></tr></thead><tbody>
+      ${conc.map((c, i) => {
+        const usado = usados[c.chave];
+        const opts = c.candidatos.map(k => `<option value="${k.id}" ${k.id === c.sugerida ? 'selected' : ''}>${esc((k.numero || '') + ' · ' + k.empresa_nome + ' · venc. ' + _ftData(k.vencimento) + ' (' + k.motivos.join(', ') + ')')}</option>`).join('');
+        return `<tr style="${usado ? 'opacity:.5;' : ''}"><td>${usado ? '' : `<input type="checkbox" class="ft-cc-ck" data-i="${i}" ${c.sugerida ? 'checked' : ''} ${c.candidatos.length ? '' : 'disabled'}>`}</td>
+          <td style="white-space:nowrap;">${_ftData(c.data)}</td><td>${esc(c.descricao || '')}${c.doc ? ` <span class="cr-muted">doc ${esc(c.doc)}</span>` : ''}</td>
+          <td style="text-align:right;white-space:nowrap;color:${c.tipo === 'debito' ? 'var(--err)' : 'var(--ok)'};">${c.tipo === 'debito' ? '−' : '+'} ${_ftFmt(c.valor)}</td>
+          <td>${usado ? `<span class="cr-muted">já baixado (${esc(usado)})</span>` : c.candidatos.length ? `<select class="form-input ft-cc-sel" data-i="${i}" style="padding:3px 6px;font-size:11px;max-width:330px;"><option value="">— não dar baixa —</option>${opts}</select>` : '<span class="cr-muted">nenhuma fatura com esse valor</span>'}</td></tr>`;
+      }).join('')}
+      </tbody></table></div>
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Fechar</button><button class="btn btn-primary" onclick="ftBaixarConciliacao()">Dar baixa nas marcadas</button></div>
+  </div></div>`;
+}
+async function ftBaixarConciliacao(){
+  const { conc, abertas } = window._ftConc;
+  const sel = [...document.querySelectorAll('.ft-cc-ck:checked')].map(el => +el.dataset.i).map(i => ({ c: conc[i], fid: (document.querySelector(`.ft-cc-sel[data-i="${i}"]`) || {}).value })).filter(x => x.fid);
+  if(!sel.length){ showToast('Nada marcado.', 'warn'); return; }
+  const dupl = sel.map(x => x.fid).filter((id, i, a) => a.indexOf(id) !== i);
+  if(dupl.length && !confirm('A mesma fatura foi escolhida pra mais de um lançamento (pagamento parcial em várias vezes?). Continuar?')) return;
+  if(!confirm(`Dar baixa em ${sel.length} fatura(s) com as datas e valores do extrato?`)) return;
+  let ok = 0; const erros = [];
+  for(const { c, fid } of sel){
+    const f = abertas.find(x => x.id === fid);
+    const forma = /pix/i.test(c.descricao) ? 'pix' : /ted|doc|transf/i.test(c.descricao) ? 'ted' : /boleto|pagto|titulo|título/i.test(c.descricao) ? 'boleto' : 'outro';
+    try{
+      const d = await (await fetch('/api/faturas/' + encodeURIComponent(fid) + '/baixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: c.data, valor: c.valor, forma, identificador: c.chave, obs: 'Extrato: ' + (c.descricao || '').slice(0, 200) }) })).json();
+      if(d.ok) ok++; else erros.push(`${f ? f.numero : fid}: ${d.erro}`);
+    }catch(e){ erros.push(`${f ? f.numero : fid}: erro de rede`); }
+  }
+  ftFecharModal(); renderDashFaturas();
+  showToast(`${ok} baixa(s) registrada(s) pelo extrato.` + (erros.length ? ` ${erros.length} com problema.` : ''), erros.length ? 'warn' : 'ok');
+  if(erros.length) alert('Não registradas:\n\n' + erros.join('\n'));
+}
+
+// A receber gerado das parcelas de câmbio e vendas dos processos
+async function ftReceberPendentes(){
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg"><div class="ft-modal" style="max-width:420px;"><div class="ft-modal-body" style="text-align:center;padding:28px;">↘ Procurando parcelas e vendas sem fatura a receber…</div></div></div>`;
+  let lista = [];
+  try{ const d = await (await fetch('/api/faturas/receber-pendentes')).json(); if(!d.ok) throw new Error(d.erro); lista = d.pendentes || []; }catch(e){ ftFecharModal(); showToast('Erro: ' + e.message, 'err'); return; }
+  window._ftRecPend = lista;
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:920px;">
+    <div class="ft-modal-head"><span>↘ Gerar faturas a receber dos processos</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div class="cr-muted" style="margin-bottom:8px;">Parcelas de câmbio <b>fechadas</b> (valor = US$ × câmbio fechado) e vendas com NF de saída que ainda não têm fatura a receber. Depois de criada, a baixa da fatura atualiza o "valor recebido" no processo — o controle do recebimento passa a ser só aqui. Ajuste o valor se o cliente paga diferente.</div>
+      ${lista.length ? `<div style="max-height:420px;overflow:auto;"><table class="ft-itens" style="width:100%;"><thead><tr><th></th><th>Processo</th><th>Origem</th><th>Cliente</th><th>Venc.</th><th style="text-align:right;">Valor R$</th><th>Já recebido</th></tr></thead><tbody>
+        ${lista.map((x, i) => `<tr><td><input type="checkbox" class="ft-rp-ck" data-i="${i}"></td><td>${esc(x.origem.referencia || '')}</td>
+          <td>${x.origem.tipo === 'venda' ? 'Venda ' + esc(x.documento) + (x.prazo ? ` <span class="cr-muted">(${esc(x.prazo)})</span>` : '') : esc(x.documento)}</td><td>${esc(x.empresa_nome || '—')}</td>
+          <td><input class="form-input ft-rp-venc" data-i="${i}" type="date" value="${esc(x.vencimento || '')}" style="padding:3px 6px;font-size:11px;"></td>
+          <td style="text-align:right;"><input class="form-input ft-rp-val" data-i="${i}" value="${_ftFmt(x.valor)}" style="width:110px;text-align:right;padding:3px 6px;" inputmode="decimal"></td>
+          <td style="font-size:11px;">${x.ja_recebido > 0 ? `R$ ${_ftFmt(x.ja_recebido)}${x.recebido_em ? ' em ' + _ftData(x.recebido_em) : ''} <span class="cr-muted">(vira baixa)</span>` : '—'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div style="margin-top:6px;"><a class="cr-link" onclick="document.querySelectorAll('.ft-rp-ck').forEach(c => c.checked = true)">marcar todas</a></div>` : '<div class="cr-muted">Nada pendente — todas as parcelas fechadas e vendas com NF já têm fatura a receber.</div>'}
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Fechar</button>${lista.length ? '<button class="btn btn-primary" onclick="ftCriarReceber()">Criar faturas marcadas</button>' : ''}</div>
+  </div></div>`;
+}
+async function ftCriarReceber(){
+  const lista = window._ftRecPend || [];
+  const marcados = [...document.querySelectorAll('.ft-rp-ck:checked')].map(el => +el.dataset.i);
+  if(!marcados.length){ showToast('Nada marcado.', 'warn'); return; }
+  const corpo = marcados.map(i => { const x = lista[i]; return { tipo: 'receber', empresa_nome: x.empresa_nome || 'Cliente', documento: x.documento, moeda: 'BRL', cambio: 1, valor: parseValorMoeda(document.querySelector(`.ft-rp-val[data-i="${i}"]`).value), vencimento: document.querySelector(`.ft-rp-venc[data-i="${i}"]`).value || null, origem: x.origem, itens: [], obs: x.origem.tipo === 'venda' ? 'Gerada da venda (aba Vendas)' : 'Gerada da parcela de câmbio (reembolso do cliente)' }; });
+  try{
+    const d = await (await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) })).json();
+    if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+    // o que já estava marcado como recebido no processo vira a 1ª baixa
+    let baixas = 0;
+    for(let k = 0; k < marcados.length; k++){
+      const x = lista[marcados[k]], fat = d.faturas[k];
+      if(fat && x.ja_recebido > 0){
+        const r = await (await fetch('/api/faturas/' + encodeURIComponent(fat.id) + '/baixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: x.recebido_em || _ftHoje(), valor: Math.min(x.ja_recebido, fat.valor), forma: 'outro', obs: 'Recebimento já registrado no processo antes da fatura' }) })).json();
+        if(r.ok) baixas++;
+      }
+    }
+    ftFecharModal(); showToast(`${d.faturas.length} fatura(s) a receber criada(s)` + (baixas ? `, ${baixas} já com o recebido lançado` : '') + '.', 'ok'); renderDashFaturas();
+  }catch(e){ showToast('Erro de rede', 'err'); }
+}
+
+// Exportação Excel (faturas + pagamentos) — pra conferência ou lançar em outro sistema
+async function ftExportarExcel(){
+  if(typeof ExcelJS === 'undefined'){ showToast('Biblioteca de Excel não carregada.', 'err'); return; }
+  let lista = _ftLista;
+  try{ const d = await (await fetch('/api/faturas')).json(); if(d.ok) lista = d.faturas; }catch(e){}
+  const wb = new ExcelJS.Workbook();
+  const s1 = wb.addWorksheet('Faturas');
+  s1.columns = [['Nº', 12], ['Tipo', 9], ['Empresa', 34], ['Documento', 18], ['Processos', 22], ['Emissão', 11], ['Vencimento', 11], ['Moeda', 7], ['Valor', 14], ['Câmbio', 9], ['Pago/abatido', 14], ['Saldo', 14], ['Situação', 12], ['Aprovado por', 16], ['Origem', 18], ['Obs', 40]].map(([h, w]) => ({ header: h, width: w }));
+  lista.forEach(f => s1.addRow([f.numero, f.tipo === 'pagar' ? 'Pagar' : 'Receber', f.empresa_nome, f.documento, [...new Set((f.itens || []).map(i => i.referencia).filter(Boolean))].join(', '), f.emissao, f.vencimento, f.moeda, +f.valor || 0, f.cambio ? +f.cambio : null, f.valor_pago != null ? +f.valor_pago : null, FaturasCore.saldoFatura(f), f.status, f.aprovacao ? (f.aprovacao.nome || f.aprovacao.por) : '', f.origem ? `${f.origem.tipo} ${f.origem.referencia || ''}` : '', f.obs]));
+  const s2 = wb.addWorksheet('Pagamentos');
+  s2.columns = [['Fatura', 12], ['Empresa', 30], ['Data', 11], ['Forma', 10], ['Moeda', 7], ['Valor', 13], ['Juros', 10], ['Desconto', 10], ['IRRF', 9], ['PIS', 9], ['COFINS', 9], ['CSLL', 9], ['ISS', 9], ['INSS', 9], ['Outros ret.', 10], ['Câmbio efetivo', 11], ['Pago R$', 13], ['Variação cambial', 13], ['Identificador', 30], ['Lote', 10], ['Estornado', 10], ['Obs', 40]].map(([h, w]) => ({ header: h, width: w }));
+  lista.forEach(f => (f.pagamentos || []).forEach(p => { const r = p.retencoes || {}; s2.addRow([f.numero, f.empresa_nome, p.data, p.forma, f.moeda, +p.valor || 0, +p.juros || 0, +p.desconto || 0, +r.irrf || 0, +r.pis || 0, +r.cofins || 0, +r.csll || 0, +r.iss || 0, +r.inss || 0, +r.outros || 0, p.cambio_efetivo ? +p.cambio_efetivo : null, p.pago_brl ? +p.pago_brl : null, FaturasCore.variacaoCambial(p, f) || null, p.identificador, p.lote_id ? p.lote_id.slice(0, 8) : '', p.estornado ? 'sim' : '', p.obs]); }));
+  [s1, s2].forEach(s => { s.getRow(1).font = { bold: true }; s.views = [{ state: 'frozen', ySplit: 1 }]; s.eachRow((row, n) => { if(n > 1) row.eachCell(c => { if(typeof c.value === 'number') c.numFmt = '#,##0.00'; }); }); });
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = `faturas-${_ftHoje()}.xlsx`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function ftCancelar(id){
   const motivo = prompt('Motivo do cancelamento (opcional):');

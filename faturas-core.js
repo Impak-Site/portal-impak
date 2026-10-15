@@ -89,6 +89,10 @@
       emissao: iso(b.emissao), vencimento, pago_em, status,
       obs: limpa(b.obs).slice(0, 1000) || null, itens,
     };
+    // origem (a receber gerado de parcela de câmbio / venda do processo)
+    if (b.origem && ['parcela_cambio', 'venda'].includes(b.origem.tipo) && b.origem.processo_id && Number.isInteger(+b.origem.idx)) {
+      fatura.origem = { tipo: b.origem.tipo, processo_id: String(b.origem.processo_id).slice(0, 80), referencia: b.origem.referencia ? String(b.origem.referencia).slice(0, 80) : null, idx: +b.origem.idx };
+    }
     return { ok: true, fatura };
   }
 
@@ -125,7 +129,7 @@
       const s = situacao(f, hoje);
       const fx = f.moeda === 'BRL' ? 1 : (parseFloat(cambio[f.moeda]) || 0);
       const pags = pagamentosValidos(f);
-      if (pags.length) pags.forEach(p => { if ((iso(p.data) || '').slice(0, 7) === mes) { if (f.tipo === 'pagar') r.pago_mes += num(p.valor) * fx; else r.recebido_mes += num(p.valor) * fx; } });
+      if (pags.length) pags.forEach(p => { if ((iso(p.data) || '').slice(0, 7) === mes) { const c = caixaBrlPagamento(p, f, cambio); if (f.tipo === 'pagar') r.pago_mes += c; else r.recebido_mes += c; } });
       if (f.status === 'paga') {
         if (!pags.length && (iso(f.pago_em) || '').slice(0, 7) === mes) { if (f.tipo === 'pagar') r.pago_mes += brl(f); else r.recebido_mes += brl(f); }
         return;
@@ -219,7 +223,7 @@
       pags.forEach(p => {
         const m = (iso(p.data) || '').slice(0, 7);
         if (!out[m]) return;
-        const v = brl(f, num(p.valor));
+        const v = caixaBrlPagamento(p, f, cx);
         if (f.tipo === 'pagar') out[m].pagar_pago += v; else out[m].receber_recebido += v;
       });
       if (f.status === 'paga') {
@@ -388,9 +392,34 @@
   }
 
   // ── Baixas (pagamentos parciais ou totais) ─────────────────────────────
-  // f.pagamentos = [{id, data, valor, forma, obs, identificador, comprovante:{...}, estornado:{por,em,motivo}?}]
-  // Estorno não apaga: marca o pagamento como estornado e ele sai das somas.
-  const pagamentosValidos = f => (Array.isArray(f && f.pagamentos) ? f.pagamentos : []).filter(p => p && !p.estornado && num(p.valor) > 0);
+  // f.pagamentos = [{id, data, valor, juros, desconto, retencoes:{irrf,pis,cofins,csll,iss,inss,outros},
+  //                  cambio_efetivo, pago_brl, forma, identificador, lote_id, obs, comprovante, estornado?}]
+  //  valor     = principal quitado em dinheiro (moeda da fatura)
+  //  juros     = juros/multa pagos a mais (não abatem saldo; é custo extra)
+  //  desconto  = abatimento sem dinheiro (abate saldo)
+  //  retencoes = impostos retidos na fonte (abatem saldo; viram DARF/guia)
+  //  Saldo abatido = valor + desconto + retenções. Estorno marca, não apaga.
+  const RETENCOES = ['irrf', 'pis', 'cofins', 'csll', 'iss', 'inss', 'outros'];
+  const somaRetencoes = p => RETENCOES.reduce((s, k) => s + num(p && p.retencoes && p.retencoes[k]), 0);
+  const abatidoPagamento = p => Math.round((num(p.valor) + num(p.desconto) + somaRetencoes(p)) * 100) / 100;
+  const pagamentosValidos = f => (Array.isArray(f && f.pagamentos) ? f.pagamentos : []).filter(p => p && !p.estornado && (num(p.valor) > 0 || abatidoPagamento(p) > 0));
+  // Saída de caixa em R$ de um pagamento (o que realmente saiu da conta)
+  function caixaBrlPagamento(p, f, cambioAtual) {
+    if (num(p.pago_brl) > 0) return num(p.pago_brl) + (f && f.moeda === 'BRL' ? num(p.juros) : 0);
+    const moeda = (f && f.moeda) || 'BRL';
+    const dinheiro = num(p.valor) + num(p.juros);
+    if (moeda === 'BRL') return dinheiro;
+    const cx = parseFloat(p.cambio_efetivo) || parseFloat(f && f.cambio) || parseFloat((cambioAtual || {})[moeda]) || 0;
+    return Math.round(dinheiro * cx * 100) / 100;
+  }
+  // Variação cambial da baixa: R$ efetivamente pago − R$ previsto (câmbio da fatura)
+  function variacaoCambial(p, f) {
+    if (!f || f.moeda === 'BRL') return 0;
+    const prev = parseFloat(f.cambio) || 0;
+    const real = num(p.pago_brl) > 0 ? num(p.pago_brl) : (parseFloat(p.cambio_efetivo) > 0 ? num(p.valor) * parseFloat(p.cambio_efetivo) : 0);
+    if (!prev || !real) return 0;
+    return Math.round((real - num(p.valor) * prev) * 100) / 100;
+  }
   function aplicarPagamentos(f) {
     const lista = pagamentosValidos(f);
     const valor = num(f && f.valor);
@@ -398,21 +427,24 @@
       // fatura antiga, baixada antes de existir a lista de pagamentos
       if (f && f.status === 'paga' && !(Array.isArray(f.pagamentos) && f.pagamentos.length)) {
         const vp = f.valor_pago != null ? num(f.valor_pago) : valor;
-        return { valor_pago: vp, saldo: 0, status: 'paga', pago_em: iso(f.pago_em), qtd: 0 };
+        return { valor_pago: vp, saldo: 0, status: 'paga', pago_em: iso(f.pago_em), qtd: 0, juros: 0, desconto: 0, retencoes: 0 };
       }
-      return { valor_pago: null, saldo: valor, status: f && f.status === 'cancelada' ? 'cancelada' : 'aberta', pago_em: null, qtd: 0 };
+      return { valor_pago: null, saldo: valor, status: f && f.status === 'cancelada' ? 'cancelada' : 'aberta', pago_em: null, qtd: 0, juros: 0, desconto: 0, retencoes: 0 };
     }
-    const pago = Math.round(lista.reduce((s, p) => s + num(p.valor), 0) * 100) / 100;
-    const saldo = Math.round((valor - pago) * 100) / 100;
+    const r2 = x => Math.round(x * 100) / 100;
+    const pago = r2(lista.reduce((s, p) => s + abatidoPagamento(p), 0));
+    const saldo = r2(valor - pago);
     const quitada = saldo <= 0.01;
     const ultima = lista.map(p => iso(p.data)).filter(Boolean).sort().pop() || null;
-    return { valor_pago: pago, saldo: quitada ? 0 : saldo, status: f.status === 'cancelada' ? 'cancelada' : (quitada ? 'paga' : 'aberta'), pago_em: quitada ? ultima : null, qtd: lista.length };
+    return { valor_pago: pago, saldo: quitada ? 0 : saldo, status: f.status === 'cancelada' ? 'cancelada' : (quitada ? 'paga' : 'aberta'), pago_em: quitada ? ultima : null, qtd: lista.length,
+      juros: r2(lista.reduce((s, p) => s + num(p.juros), 0)), desconto: r2(lista.reduce((s, p) => s + num(p.desconto), 0)), retencoes: r2(lista.reduce((s, p) => s + somaRetencoes(p), 0)) };
   }
   function saldoFatura(f) {
     if (!f || f.status === 'cancelada' || f.status === 'paga') return 0;
     const vp = f.valor_pago != null ? num(f.valor_pago) : 0;
     return Math.max(0, Math.round((num(f.valor) - vp) * 100) / 100);
   }
+  const numBR = v => { if (v == null || v === '') return 0; if (typeof v === 'number') return num(v); const s = String(v).trim(); return num(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s); };
   function validarPagamento(b, f) {
     b = b || {};
     if (!f) return { ok: false, erro: 'Fatura não encontrada.' };
@@ -421,18 +453,51 @@
     const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(b.data || '').trim());
     const data = br ? `${br[3]}-${br[2]}-${br[1]}` : iso(b.data);
     if (!data) return { ok: false, erro: 'Informe a data do pagamento.' };
-    const raw = typeof b.valor === 'string' ? b.valor.replace(/\./g, '').replace(',', '.') : b.valor;
-    const valor = num(raw);
-    if (!(valor > 0)) return { ok: false, erro: 'Valor do pagamento deve ser maior que zero.' };
+    const valor = numBR(b.valor), juros = numBR(b.juros), desconto = numBR(b.desconto);
+    const retencoes = {};
+    RETENCOES.forEach(k => { const v = numBR(b.retencoes && b.retencoes[k]); if (v > 0) retencoes[k] = v; });
+    if (valor < 0 || juros < 0 || desconto < 0) return { ok: false, erro: 'Valores não podem ser negativos.' };
+    const p = { valor, juros, desconto, retencoes };
+    const abat = abatidoPagamento(p);
+    if (!(abat > 0)) return { ok: false, erro: 'Informe o valor pago (ou desconto/retenções).' };
     const saldo = saldoFatura(f);
-    const aviso = valor - saldo > 0.01 ? `Valor maior que o saldo (${saldo.toFixed(2)}) — a diferença fica registrada como pago a mais.` : null;
+    const avisos = [];
+    if (abat - saldo > 0.01) avisos.push(`Abatimento maior que o saldo (${saldo.toFixed(2)}) — a diferença fica registrada como pago a mais.`);
+    let cambio_efetivo = null, pago_brl = null;
+    if (f.moeda && f.moeda !== 'BRL') {
+      cambio_efetivo = parseFloat(String(b.cambio_efetivo || '').replace(',', '.')) > 0 ? parseFloat(String(b.cambio_efetivo).replace(',', '.')) : null;
+      pago_brl = numBR(b.pago_brl) > 0 ? numBR(b.pago_brl) : (cambio_efetivo ? Math.round((valor + juros) * cambio_efetivo * 100) / 100 : null);
+      if (!cambio_efetivo && pago_brl && (valor + juros) > 0) cambio_efetivo = Math.round(pago_brl / (valor + juros) * 1e6) / 1e6;
+      if (!pago_brl) avisos.push('Fatura em moeda estrangeira sem câmbio/valor em R$ — variação cambial não será apurada.');
+    }
     const FORMAS = ['pix', 'ted', 'boleto', 'cambio', 'cartao', 'dinheiro', 'compensacao', 'outro'];
-    return { ok: true, aviso, pagamento: {
-      data, valor, forma: FORMAS.includes(b.forma) ? b.forma : 'outro',
+    return { ok: true, aviso: avisos.join(' ') || null, pagamento: {
+      data, valor, juros: juros || 0, desconto: desconto || 0, retencoes, cambio_efetivo, pago_brl,
+      forma: FORMAS.includes(b.forma) ? b.forma : 'outro',
       identificador: limpa(b.identificador).slice(0, 120) || null,
       obs: limpa(b.obs).slice(0, 500) || null,
     } };
   }
+  // DARF das retenções federais: vence no dia 20 do mês seguinte ao pagamento
+  // (IRRF e PIS/COFINS/CSLL retidos). ISS/INSS ficam de fora (guia municipal/GPS).
+  function darfRetencoes(p) {
+    const fed = ['irrf', 'pis', 'cofins', 'csll'].reduce((s, k) => s + num(p.retencoes && p.retencoes[k]), 0);
+    if (!(fed > 0) || !iso(p.data)) return null;
+    const [y, m] = iso(p.data).split('-').map(Number);
+    const ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+    return { valor: Math.round(fed * 100) / 100, vencimento: `${ny}-${String(nm).padStart(2, '0')}-20` };
+  }
+  // Distribui um valor de lote entre faturas, na ordem, até o saldo de cada uma.
+  function distribuirLote(valorTotal, faturas) {
+    let resta = num(valorTotal);
+    return (faturas || []).map(f => {
+      const s = saldoFatura(f);
+      const v = Math.min(s, Math.max(0, resta));
+      resta = Math.round((resta - v) * 100) / 100;
+      return { id: f.id, valor: Math.round(v * 100) / 100 };
+    }).concat(resta > 0.01 ? [{ id: null, sobra: resta }] : []);
+  }
+
   // Comprovante lido pela IA → faturas em aberto mais prováveis (valor do
   // saldo e nome/CNPJ do favorecido). Retorna em ordem de pontuação.
   function sugerirFaturasParaComprovante(comp, abertas) {
@@ -454,7 +519,113 @@
     }).filter(x => x.pontos >= 30).sort((a, b) => b.pontos - a.pontos).slice(0, 5);
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante };
+  // ── Extrato bancário (OFX / CSV) e conciliação ─────────────────────────
+  function _dataExtrato(s) {
+    s = String(s || '').trim();
+    let m = /^(\d{4})(\d{2})(\d{2})/.exec(s); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = /^(\d{2})\/(\d{2})\/(\d{2,4})/.exec(s); if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2]}-${m[1]}`;
+    return null;
+  }
+  function parseOFX(txt) {
+    const out = [];
+    const blocos = String(txt || '').split(/<STMTTRN>/i).slice(1);
+    const tag = (b, t) => { const m = new RegExp('<' + t + '>([^<\\r\\n]*)', 'i').exec(b); return m ? m[1].trim() : ''; };
+    blocos.forEach(b => {
+      const valor = parseFloat(tag(b, 'TRNAMT').replace(',', '.'));
+      const data = _dataExtrato(tag(b, 'DTPOSTED'));
+      if (isNaN(valor) || !data) return;
+      const memo = [tag(b, 'NAME'), tag(b, 'MEMO')].filter(Boolean).join(' · ');
+      out.push({ data, valor: Math.round(Math.abs(valor) * 100) / 100, tipo: valor < 0 ? 'debito' : 'credito', id: tag(b, 'FITID') || null, descricao: memo, doc: tag(b, 'CHECKNUM') || tag(b, 'REFNUM') || '' });
+    });
+    return out;
+  }
+  // CSV genérico de banco: acha colunas de data, descrição e valor (ou débito/crédito)
+  function parseExtratoCSV(txt) {
+    const linhas = String(txt || '').replace(/\r/g, '').split('\n').filter(l => l.trim());
+    if (!linhas.length) return [];
+    const sep = (linhas[0].match(/;/g) || []).length >= (linhas[0].match(/,/g) || []).length ? ';' : ',';
+    const cols = l => l.split(sep).map(c => c.replace(/^"|"$/g, '').trim());
+    let hi = linhas.findIndex(l => /data/i.test(l) && /(valor|d[eé]bito|cr[eé]dito)/i.test(l));
+    const cab = hi >= 0 ? cols(linhas[hi]).map(c => c.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')) : [];
+    const idx = re => cab.findIndex(c => re.test(c));
+    const iData = hi >= 0 ? idx(/^data/) : 0, iDesc = hi >= 0 ? idx(/(hist|descr|lanc|memo)/) : 1;
+    const iVal = hi >= 0 ? idx(/^valor/) : 2, iDeb = idx(/debito/), iCred = idx(/credito/), iDoc = idx(/(doc|documento)/);
+    const out = [];
+    linhas.slice(hi + 1).forEach(l => {
+      const c = cols(l);
+      const data = _dataExtrato(c[iData]);
+      if (!data) return;
+      let v = null;
+      if (iVal >= 0 && c[iVal]) v = numBR(String(c[iVal]).replace(/[^\d,.\-]/g, '')) * (/-/.test(c[iVal]) || /\bD\b/.test(c[iVal]) ? -1 : 1);
+      else if (iDeb >= 0 && c[iDeb]) v = -Math.abs(numBR(c[iDeb].replace(/[^\d,.]/g, '')));
+      else if (iCred >= 0 && c[iCred]) v = Math.abs(numBR(c[iCred].replace(/[^\d,.]/g, '')));
+      if (v == null || !v) return;
+      if (iVal >= 0 && String(c[iVal]).trim().startsWith('-')) v = -Math.abs(v);
+      out.push({ data, valor: Math.round(Math.abs(v) * 100) / 100, tipo: v < 0 ? 'debito' : 'credito', id: null, descricao: c[iDesc] || '', doc: iDoc >= 0 ? (c[iDoc] || '') : '' });
+    });
+    return out;
+  }
+  // Identificador estável de um lançamento do extrato (pra não baixar 2 vezes)
+  function idLancamento(t) { return 'EXT:' + (t.id || [t.data, t.tipo, t.valor.toFixed(2), String(t.descricao || '').replace(/\s+/g, ' ').slice(0, 40)].join('|')); }
+  // Para cada lançamento: faturas candidatas (débito→pagar, crédito→receber)
+  function conciliarExtrato(transacoes, abertas) {
+    return (transacoes || []).map(t => {
+      const tipo = t.tipo === 'debito' ? 'pagar' : 'receber';
+      const cand = (abertas || []).filter(f => f && f.status === 'aberta' && f.tipo === tipo && (f.moeda || 'BRL') === 'BRL').map(f => {
+        const saldo = saldoFatura(f);
+        let pts = 0; const motivos = [];
+        if (Math.abs(saldo - t.valor) <= 0.01) { pts += 50; motivos.push('valor = saldo'); }
+        else if (Math.abs(num(f.valor) - t.valor) <= 0.01) { pts += 40; motivos.push('valor = total'); }
+        else return null;
+        const venc = iso(f.vencimento);
+        if (venc) { const d = Math.abs((new Date(t.data + 'T12:00:00') - new Date(venc + 'T12:00:00')) / 86400000); if (d <= 3) { pts += 25; motivos.push('perto do vencimento'); } else if (d <= 15) { pts += 10; motivos.push('vencimento próximo'); } }
+        const desc = normNome(t.descricao);
+        const emp = normNome(f.empresa_nome);
+        if (emp.length >= 4 && desc.includes(emp.slice(0, Math.min(emp.length, 10)))) { pts += 30; motivos.push('nome no extrato'); }
+        const doc = normDoc(f.documento);
+        if (doc && doc.length >= 3 && (normDoc(t.descricao).includes(doc) || normDoc(t.doc).includes(doc))) { pts += 20; motivos.push('nº do documento'); }
+        return { id: f.id, numero: f.numero, empresa_nome: f.empresa_nome, documento: f.documento, saldo, vencimento: f.vencimento, pontos: pts, motivos };
+      }).filter(Boolean).sort((a, b) => b.pontos - a.pontos);
+      return { ...t, chave: idLancamento(t), tipo_fatura: tipo, candidatos: cand.slice(0, 5), sugerida: cand.length && (cand.length === 1 || cand[0].pontos > cand[1].pontos) ? cand[0].id : null };
+    });
+  }
+
+  // ── A receber gerado das parcelas de câmbio e das vendas (sem duplicar) ──
+  // origem: {tipo:'parcela_cambio'|'venda', processo_id, referencia, idx}
+  function chaveOrigem(o) { return o && o.tipo && o.processo_id != null && o.idx != null ? `${o.tipo}:${o.processo_id}:${o.idx}` : null; }
+  // Candidatos a "fatura a receber" de um processo (o que ainda não tem fatura)
+  function receberDoProcesso(p, chavesExistentes) {
+    const ja = new Set(chavesExistentes || []);
+    const out = [];
+    if (!p || p.cancelado) return out;
+    let parcelas = p.pi_parcelas_json;
+    if (typeof parcelas === 'string') { try { parcelas = JSON.parse(parcelas); } catch (e) { parcelas = []; } }
+    (Array.isArray(parcelas) ? parcelas : []).forEach((pc, i) => {
+      const usd = numBR(pc.valor_usd), cx = parseFloat(String(pc.cambio_fechado || '').replace(',', '.')) || 0;
+      if (!(usd > 0) || !cx) return; // só câmbio fechado tem valor em R$ definido
+      const origem = { tipo: 'parcela_cambio', processo_id: p.id, referencia: p.referencia, idx: i };
+      if (ja.has(chaveOrigem(origem))) return;
+      out.push({ origem, empresa_nome: p.cliente || '', documento: `${p.referencia} · câmbio ${pc.label || 'parcela ' + (i + 1)}`, valor: Math.round(usd * cx * 100) / 100, vencimento: iso(pc.data_fechamento_cambio) || iso(pc.data_vencimento) || null,
+        ja_recebido: num(pc.valor_recebido_cliente), recebido_em: iso(pc.data_recebimento) });
+    });
+    let vendas = p.vendas_json;
+    if (typeof vendas === 'string') { try { vendas = JSON.parse(vendas); } catch (e) { vendas = []; } }
+    (Array.isArray(vendas) ? vendas : []).forEach((v, i) => {
+      const valor = numBR(v.nf_saida_valor);
+      if (!(valor > 0)) return;
+      const origem = { tipo: 'venda', processo_id: p.id, referencia: p.referencia, idx: i };
+      if (ja.has(chaveOrigem(origem))) return;
+      const dias = parseInt(String(v.prazo_texto || '').match(/\d+/) || [0], 10);
+      let venc = iso(v.nf_saida_data);
+      if (venc && v.forma_pagamento === 'prazo' && dias > 0) { const d = new Date(venc + 'T12:00:00'); d.setDate(d.getDate() + dias); venc = d.toISOString().slice(0, 10); }
+      out.push({ origem, empresa_nome: v.cliente || p.cliente || '', documento: v.nf_saida_numero ? 'NF ' + v.nf_saida_numero : `${p.referencia} · venda ${i + 1}`, valor, vencimento: venc,
+        prazo: v.forma_pagamento === 'prazo' ? (v.prazo_texto || '') : 'à vista', ja_recebido: num(v.recebido_valor), recebido_em: iso(v.recebido_em) });
+    });
+    return out;
+  }
+
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

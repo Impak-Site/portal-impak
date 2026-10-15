@@ -243,5 +243,78 @@ teste('comprovante sugere a fatura pelo valor + empresa', () => {
   assert.strictEqual(s[0].id, 'x'); assert.ok(s.length >= 2);
 });
 
+console.log('\n── juros, desconto, retenções, câmbio, lote ──');
+teste('retenções e desconto abatem o saldo; juros não', () => {
+  const f = { valor: 1000, status: 'aberta', moeda: 'BRL', pagamentos: [{ data: '2026-10-10', valor: 900, retencoes: { irrf: 15, pis: 6.5, cofins: 30, csll: 10 }, desconto: 38.5, juros: 5 }] };
+  const r = F.aplicarPagamentos(f);
+  assert.strictEqual(r.status, 'paga'); assert.strictEqual(r.valor_pago, 1000); assert.strictEqual(r.juros, 5); assert.strictEqual(r.retencoes, 61.5);
+  assert.strictEqual(F.caixaBrlPagamento(f.pagamentos[0], f), 905, 'saída de caixa = valor + juros');
+  const darf = F.darfRetencoes(f.pagamentos[0]);
+  assert.deepStrictEqual(darf, { valor: 61.5, vencimento: '2026-11-20' });
+  assert.deepStrictEqual(F.darfRetencoes({ data: '2026-12-05', retencoes: { irrf: 1 } }).vencimento, '2027-01-20');
+});
+teste('fatura em US$: câmbio efetivo → R$ pago e variação cambial', () => {
+  const f = { valor: 1000, status: 'aberta', moeda: 'USD', cambio: 5 };
+  const v = F.validarPagamento({ data: '2026-10-10', valor: '1.000,00', cambio_efetivo: '5,20' }, f);
+  assert.strictEqual(v.ok, true); assert.strictEqual(v.pagamento.pago_brl, 5200); assert.strictEqual(v.pagamento.cambio_efetivo, 5.2);
+  assert.strictEqual(F.variacaoCambial(v.pagamento, f), 200);
+  const v2 = F.validarPagamento({ data: '2026-10-10', valor: 1000, pago_brl: '5.100,00' }, f);
+  assert.strictEqual(v2.pagamento.cambio_efetivo, 5.1);
+  assert.strictEqual(F.caixaBrlPagamento(v2.pagamento, f), 5100);
+  assert.ok(F.validarPagamento({ data: '2026-10-10', valor: 10 }, f).aviso, 'sem câmbio avisa');
+});
+teste('baixa só com retenção/desconto (sem dinheiro) é aceita', () => {
+  const v = F.validarPagamento({ data: '2026-10-10', valor: 0, desconto: 50 }, { valor: 50, status: 'aberta', moeda: 'BRL' });
+  assert.strictEqual(v.ok, true);
+});
+teste('distribuirLote preenche os saldos na ordem e mostra sobra', () => {
+  const r = F.distribuirLote(1500, [{ id: 'a', status: 'aberta', valor: 1000 }, { id: 'b', status: 'aberta', valor: 800, valor_pago: 300 }]);
+  assert.deepStrictEqual(r, [{ id: 'a', valor: 1000 }, { id: 'b', valor: 500 }]);
+  const r2 = F.distribuirLote(2000, [{ id: 'a', status: 'aberta', valor: 1000 }]);
+  assert.deepStrictEqual(r2[1], { id: null, sobra: 1000 });
+});
+
+console.log('\n── extrato bancário ──');
+const OFX = `OFXHEADER:100
+<OFX><BANKTRANLIST>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261014100000[-3:BRT]<TRNAMT>-1950.00<FITID>ABC123<NAME>PIX TERMINAL EXEMPLO<MEMO>NF 7781</STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261013<TRNAMT>5000.00<FITID>XYZ9<MEMO>TED CLIENTE TESTE</STMTTRN>
+</BANKTRANLIST></OFX>`;
+teste('parseOFX lê débito e crédito', () => {
+  const t = F.parseOFX(OFX);
+  assert.strictEqual(t.length, 2);
+  assert.deepStrictEqual([t[0].data, t[0].valor, t[0].tipo, t[0].id], ['2026-10-14', 1950, 'debito', 'ABC123']);
+  assert.strictEqual(t[1].tipo, 'credito');
+});
+teste('parseExtratoCSV com débito/crédito ou valor com sinal', () => {
+  const a = F.parseExtratoCSV('Data;Histórico;Valor\n14/10/2026;PIX TERMINAL;-1.950,00\n13/10/2026;TED CLIENTE;5.000,00');
+  assert.deepStrictEqual(a.map(x => [x.data, x.valor, x.tipo]), [['2026-10-14', 1950, 'debito'], ['2026-10-13', 5000, 'credito']]);
+  const b = F.parseExtratoCSV('Data;Descrição;Débito;Crédito\n14/10/2026;PIX;1.950,00;\n13/10/2026;TED;;5.000,00');
+  assert.deepStrictEqual(b.map(x => x.tipo), ['debito', 'credito']);
+});
+teste('conciliarExtrato sugere a fatura certa', () => {
+  const t = F.parseOFX(OFX);
+  const ab = [
+    { id: 'x', tipo: 'pagar', status: 'aberta', moeda: 'BRL', empresa_nome: 'Terminal Exemplo Ltda', documento: '7781', valor: 1950, vencimento: '2026-10-15' },
+    { id: 'y', tipo: 'pagar', status: 'aberta', moeda: 'BRL', empresa_nome: 'Outra', documento: '1', valor: 1950, vencimento: '2026-12-01' },
+    { id: 'z', tipo: 'receber', status: 'aberta', moeda: 'BRL', empresa_nome: 'Cliente Teste', valor: 5000, vencimento: '2026-10-13' },
+  ];
+  const c = F.conciliarExtrato(t, ab);
+  assert.strictEqual(c[0].sugerida, 'x'); assert.strictEqual(c[1].sugerida, 'z');
+  assert.strictEqual(c[0].chave, 'EXT:ABC123');
+});
+
+console.log('\n── a receber das parcelas de câmbio e das vendas ──');
+teste('receberDoProcesso gera parcelas fechadas e vendas, sem repetir as já criadas', () => {
+  const p = { id: 'p1', referencia: 'UD26-TESTE', cliente: 'Cliente Teste',
+    pi_parcelas_json: [{ label: 'Inicial', valor_usd: 1000, cambio_fechado: 5.1, data_fechamento_cambio: '2026-10-01' }, { label: 'Final', valor_usd: 2000, cambio_fechado: '' }],
+    vendas_json: [{ cliente: 'Cliente Teste', nf_saida_numero: '123', nf_saida_valor: 20000, nf_saida_data: '2026-10-10', forma_pagamento: 'prazo', prazo_texto: '30 dias' }] };
+  const r = F.receberDoProcesso(p, []);
+  assert.strictEqual(r.length, 2);
+  assert.strictEqual(r[0].valor, 5100); assert.strictEqual(r[1].vencimento, '2026-11-09');
+  const r2 = F.receberDoProcesso(p, [F.chaveOrigem(r[0].origem)]);
+  assert.strictEqual(r2.length, 1);
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);
