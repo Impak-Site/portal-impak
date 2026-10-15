@@ -154,5 +154,52 @@ teste('fluxoMensalFaturas: pagas pelo pago_em, abertas pelo vencimento, vencidas
   assert.strictEqual(r.semVencimento.receber, 7);
 });
 
+console.log('\n── conferirFatura (cross-check com o sistema) ──');
+const PROC = {
+  p1: { id: 'p1', referencia: 'UD26-TESTE', fechado: false, cancelado: false,
+    real_json: { capatazia: { valor: 1500, moeda: 'BRL' }, frete: { porContainer: { C1: { valor: 1000, moeda: 'USD' }, C2: { valor: 1000, moeda: 'USD' } } },
+      _meta: { capatazia: { para: 'TERMINAL EXEMPLO LTDA' }, liberacao_bl: { fatura_id: 'fx' } } },
+    estimativa_json: { custos_cotados_json: { taxas_fixas: { despachante: 1000 } } } },
+};
+const FAT = o => Object.assign({ tipo: 'pagar', empresa_nome: 'Terminal Exemplo', documento: '7781', moeda: 'BRL', valor: 1500, itens: [] }, o);
+const nivelDe = (r, re) => (r.checks.find(c => re.test(c.msg)) || {}).nivel;
+teste('valor igual ao lançado → ok; soma bate', () => {
+  const r = F.conferirFatura(FAT({ itens: [{ processo_id: 'p1', referencia: 'UD26-TESTE', taxa: 'capatazia', valor: 1500 }] }), PROC, [], { hoje: '2026-10-14' });
+  assert.strictEqual(r.resumo.erro, 0); assert.strictEqual(r.resumo.aviso, 0);
+  assert.strictEqual(nivelDe(r, /bate com o lançado/), 'ok');
+});
+teste('valor diferente do lançado → aviso (até 5%) / erro (acima)', () => {
+  const r1 = F.conferirFatura(FAT({ valor: 1550, itens: [{ processo_id: 'p1', taxa: 'capatazia', valor: 1550 }] }), PROC, [], {});
+  assert.strictEqual(nivelDe(r1, /sistema R\$/), 'aviso');
+  const r2 = F.conferirFatura(FAT({ valor: 1800, itens: [{ processo_id: 'p1', taxa: 'capatazia', valor: 1800 }] }), PROC, [], {});
+  assert.strictEqual(nivelDe(r2, /sistema R\$/), 'erro');
+});
+teste('documento já lançado pela mesma empresa → erro de duplicidade', () => {
+  const r = F.conferirFatura(FAT({}), PROC, [{ id: 'a', numero: '000010/26', documento: 'Nº 7781', empresa_nome: 'TERMINAL EXEMPLO', status: 'aberta' }], {});
+  assert.strictEqual(nivelDe(r, /já está lançado/), 'erro');
+  const r2 = F.conferirFatura(FAT({}), PROC, [{ id: 'a', documento: '7781', empresa_nome: 'OUTRA EMPRESA', status: 'aberta' }], {});
+  assert.strictEqual(nivelDe(r2, /ainda não foi lançado/), 'ok', 'outra empresa com o mesmo nº não é duplicidade');
+  const r3 = F.conferirFatura(FAT({}), PROC, [{ id: 'a', documento: '7781', empresa_nome: 'Terminal Exemplo', status: 'cancelada' }], {});
+  assert.strictEqual(nivelDe(r3, /ainda não foi lançado/), 'ok', 'cancelada não conta');
+});
+teste('taxa já em outra fatura → erro; pagar para diferente → aviso', () => {
+  const r = F.conferirFatura(FAT({ empresa_nome: 'Despachante Exemplo', valor: 2000, itens: [
+    { processo_id: 'p1', taxa: 'liberacao_bl', valor: 500 }, { processo_id: 'p1', taxa: 'capatazia', valor: 1500 }] }), PROC,
+    [{ id: 'fx', numero: '000005/26', status: 'aberta' }], {});
+  assert.strictEqual(nivelDe(r, /já está na fatura 000005\/26/), 'erro');
+  assert.strictEqual(nivelDe(r, /pagar para TERMINAL/), 'aviso');
+});
+teste('moedas diferentes convertem pelo câmbio; sem lançamento compara com cotado', () => {
+  const r = F.conferirFatura(FAT({ moeda: 'USD', cambio: 5, valor: 2000, itens: [{ processo_id: 'p1', taxa: 'frete', valor: 2000 }] }), PROC, [], {});
+  assert.strictEqual(nivelDe(r, /bate com o lançado/), 'ok', 'US$ 2.000 = 2 containers × US$ 1.000');
+  const r2 = F.conferirFatura(FAT({ valor: 1200, itens: [{ processo_id: 'p1', taxa: 'despachante', valor: 1200 }] }), PROC, [], {});
+  assert.strictEqual(nivelDe(r2, /Cotado R\$/), 'aviso', '+20% acima do cotado');
+});
+teste('soma das linhas diferente do total e sem processo → avisos', () => {
+  const r = F.conferirFatura(FAT({ valor: 2000, itens: [{ taxa: 'capatazia', valor: 1500 }] }), PROC, [], {});
+  assert.strictEqual(nivelDe(r, /não bate com o total/), 'aviso');
+  assert.strictEqual(nivelDe(r, /sem processo vinculado/), 'aviso');
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);

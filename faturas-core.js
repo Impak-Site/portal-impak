@@ -233,7 +233,142 @@
     return { meses: out, semVencimento: semVenc };
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas };
+  // ── Conferência (cross-check) da fatura com o que está no sistema ──────
+  // Valor lançado na aba Custos Reais (real_json[taxa]) somado por moeda.
+  // Aceita os 3 formatos que existem no banco: número solto (R$), {valor,
+  // moeda} e {porContainer:{nome:{valor,moeda}}}.
+  function valorRealPorMoeda(raw) {
+    const out = {};
+    const add = (m, v) => { const n = parseFloat(v); if (!isNaN(n) && n !== 0) out[m || 'BRL'] = (out[m || 'BRL'] || 0) + n; };
+    if (raw == null || raw === '') return out;
+    if (typeof raw === 'number' || typeof raw === 'string') { add('BRL', raw); return out; }
+    if (raw.porContainer && typeof raw.porContainer === 'object') {
+      Object.values(raw.porContainer).forEach(c => { if (c) add(c.moeda, c.valor); });
+      return out;
+    }
+    add(raw.moeda, raw.valor);
+    return out;
+  }
+  // Valor cotado (Calculador) da taxa, em R$ — estimativa_json.custos_cotados_json.
+  const COTADO_GRUPOS = ['taxas_fixas', 'taxas_usd', 'impostos', 'compra', 'comissoes'];
+  function valorCotado(cot, taxa) {
+    if (!cot || !taxa) return null;
+    if (taxa === 'seguro') return cot.compra && cot.compra.seguro_usd != null ? num(cot.compra.seguro_usd) : null;
+    if (/^comissao_(br|china|boss)$/.test(taxa)) { const k = taxa.slice(9); return cot.comissoes && cot.comissoes[k] != null ? num(cot.comissoes[k]) : null; }
+    for (const g of COTADO_GRUPOS) if (cot[g] && cot[g][taxa] != null && cot[g][taxa] !== '') return num(cot[g][taxa]);
+    if (cot[taxa] != null && typeof cot[taxa] !== 'object') return num(cot[taxa]);
+    return null;
+  }
+  const normDoc = s => String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/^\s*(N[ºO°.]?|NR\.?|NUM(ERO)?|FAT(URA)?|INV(OICE)?|NF(S?E)?|ND|NOTA( DE DEBITO)?|DOC(UMENTO)?)[\s:.#º°-]*/g, '')
+    .replace(/[^A-Z0-9]/g, '').replace(/^0+/, '');
+  const normNome = s => String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\b(LTDA|S\/?A|EIRELI|ME|EPP|CO|LTD|LIMITED|INC)\b/g, '').replace(/[^A-Z0-9]/g, '');
+  function mesmaEmpresa(aId, aNome, bId, bNome) {
+    if (aId && bId) return String(aId) === String(bId);
+    const x = normNome(aNome), y = normNome(bNome);
+    return !!x && !!y && (x === y || (x.length >= 5 && y.length >= 5 && (x.includes(y) || y.includes(x))));
+  }
+
+  // fatura: {id?, tipo, empresa_id, empresa_nome, documento, moeda, cambio, valor, emissao, vencimento, itens:[{processo_id, referencia, taxa, label, valor}]}
+  // processos: {id: {id, referencia, real_json, estimativa_json, fechado, cancelado}}
+  // existentes: faturas já gravadas (pra achar duplicada e taxa já faturada)
+  // opts: {hoje:'AAAA-MM-DD', cambio:{USD,EUR}, labels:{taxa:label}}
+  // Retorna {resumo:{ok,aviso,erro}, checks:[{nivel:'ok'|'aviso'|'erro'|'info', item:idx|null, msg}]}
+  function conferirFatura(fatura, processos, existentes, opts) {
+    const o = opts || {};
+    const f = fatura || {};
+    const checks = [];
+    const push = (nivel, msg, item) => checks.push({ nivel, msg, item: item == null ? null : item });
+    const fmt = (m, v) => (m === 'USD' ? 'US$ ' : m === 'EUR' ? '€ ' : 'R$ ') + (Math.round(v * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const moeda = MOEDAS.includes(f.moeda) ? f.moeda : 'BRL';
+    const cx = m => m === 'BRL' ? 1 : (m === moeda && parseFloat(f.cambio) > 0 ? parseFloat(f.cambio) : parseFloat((o.cambio || {})[m]) || 0);
+    const emBRL = (m, v) => { const c = cx(m); return c ? v * c : null; };
+    const lbl = t => (o.labels && o.labels[t]) || t;
+    const procs = processos || {};
+    const outras = (existentes || []).filter(x => x && x.status !== 'cancelada' && (!f.id || x.id !== f.id));
+
+    // 1. Duplicidade: mesmo documento da mesma empresa já lançado
+    const doc = normDoc(f.documento);
+    if (doc) {
+      const dup = outras.find(x => normDoc(x.documento) === doc && mesmaEmpresa(f.empresa_id, f.empresa_nome, x.empresa_id, x.empresa_nome));
+      if (dup) push('erro', `Documento ${f.documento} dessa empresa já está lançado na fatura ${dup.numero || ''} (${dup.status === 'paga' ? 'paga' : 'em aberto'}). Pode ser cobrança em duplicidade.`);
+      else push('ok', `Documento ${f.documento} ainda não foi lançado.`);
+    } else push('aviso', 'Sem número de documento — não dá pra checar duplicidade.');
+
+    // 2. Soma das linhas x total
+    const itens = Array.isArray(f.itens) ? f.itens : [];
+    const soma = itens.reduce((s, it) => s + num(it && it.valor), 0);
+    const total = num(f.valor);
+    if (itens.length && total > 0) {
+      if (Math.abs(soma - total) > 0.05) push('aviso', `Soma das taxas (${fmt(moeda, soma)}) não bate com o total do documento (${fmt(moeda, total)}) — diferença ${fmt(moeda, total - soma)}.`);
+      else push('ok', `Soma das taxas bate com o total (${fmt(moeda, total)}).`);
+    }
+
+    // 3. Datas
+    const venc = iso(f.vencimento), emi = iso(f.emissao);
+    if (venc && emi && venc < emi) push('aviso', 'Vencimento antes da emissão — confira as datas.');
+    if (venc && o.hoje && venc < o.hoje) push('aviso', `Vencimento ${venc.split('-').reverse().join('/')} já passou.`);
+
+    // 4. Linha a linha contra o processo
+    const vistos = new Set();
+    itens.forEach((it, i) => {
+      if (!it) return;
+      const v = num(it.valor);
+      const p = it.processo_id ? procs[it.processo_id] : null;
+      const nomeLinha = `${it.referencia || 'sem processo'} · ${lbl(it.taxa) || it.label || it.descricao || 'taxa'}`;
+      if (!p) { push('aviso', `${nomeLinha}: sem processo vinculado — não dá pra conferir com os Custos Reais.`, i); return; }
+      if (p.cancelado) push('erro', `${p.referencia}: processo está CANCELADO.`, i);
+      else if (p.fechado) push('aviso', `${p.referencia}: processo já está FECHADO — lançar custo agora muda o resultado apurado.`, i);
+      if (!it.taxa) { push('aviso', `${nomeLinha}: escolha a taxa pra conferir.`, i); return; }
+      const chave = p.id + '|' + it.taxa;
+      if (vistos.has(chave)) push('aviso', `${nomeLinha}: a mesma taxa aparece mais de uma vez nesta fatura.`, i);
+      vistos.add(chave);
+      const real = p.real_json || {};
+      const meta = (real._meta && real._meta[it.taxa]) || {};
+      // taxa já ligada a outra fatura
+      if (meta.fatura_id && meta.fatura_id !== f.id) {
+        const outra = (existentes || []).find(x => x.id === meta.fatura_id);
+        if (!outra || outra.status !== 'cancelada') push('erro', `${nomeLinha}: essa taxa já está na fatura ${outra && outra.numero ? outra.numero : '(outra)'}${outra && outra.documento ? ' — doc ' + outra.documento : ''}.`, i);
+      }
+      // pagamos para
+      if (f.tipo !== 'receber' && (meta.para || meta.para_id) && !mesmaEmpresa(f.empresa_id, f.empresa_nome, meta.para_id, meta.para))
+        push('aviso', `${nomeLinha}: no processo está "pagar para ${meta.para || '?'}", mas a fatura é de ${f.empresa_nome || '?'}.`, i);
+      if (f.tipo === 'receber' && (meta.de || meta.de_id) && !mesmaEmpresa(f.empresa_id, f.empresa_nome, meta.de_id, meta.de))
+        push('aviso', `${nomeLinha}: no processo está "receber de ${meta.de || '?'}", mas a fatura é para ${f.empresa_nome || '?'}.`, i);
+      // valor: lançado (Custos Reais) ou cotado (Calculador)
+      const chaveValor = f.tipo === 'receber' ? it.taxa + '_cobrado' : it.taxa;
+      const porMoeda = valorRealPorMoeda(real[chaveValor] != null ? real[chaveValor] : (f.tipo === 'receber' ? real[it.taxa] : null));
+      const moedasReais = Object.keys(porMoeda);
+      if (moedasReais.length) {
+        let sist, sistTxt, fat = v;
+        if (moedasReais.length === 1 && moedasReais[0] === moeda) { sist = porMoeda[moeda]; sistTxt = fmt(moeda, sist); }
+        else {
+          const brl = moedasReais.reduce((s, m) => { const b = emBRL(m, porMoeda[m]); return b == null || s == null ? null : s + b; }, 0);
+          fat = emBRL(moeda, v);
+          sist = brl; sistTxt = moedasReais.map(m => fmt(m, porMoeda[m])).join(' + ');
+          if (sist == null || fat == null) { push('aviso', `${nomeLinha}: lançado ${sistTxt} em outra moeda e sem câmbio pra comparar.`, i); return; }
+        }
+        const dif = fat - sist;
+        const tol = Math.max(1, Math.abs(sist) * 0.005);
+        if (Math.abs(dif) <= tol) push('ok', `${nomeLinha}: bate com o lançado no sistema (${sistTxt}).`, i);
+        else push(Math.abs(dif) > Math.abs(sist) * 0.05 ? 'erro' : 'aviso', `${nomeLinha}: fatura ${fmt(moeda, v)} × sistema ${sistTxt} — diferença ${dif > 0 ? '+' : ''}${(Math.round(dif * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}${moedasReais.length === 1 && moedasReais[0] === moeda ? '' : ' (em R$)'}.`, i);
+        return;
+      }
+      const cot = f.tipo === 'receber' ? null : valorCotado(p.estimativa_json && p.estimativa_json.custos_cotados_json, it.taxa);
+      const fatBRL = emBRL(moeda, v);
+      if (cot != null && cot > 0 && fatBRL != null) {
+        const pct = (fatBRL - cot) / cot * 100;
+        const txt = `${nomeLinha}: ainda sem valor lançado nos Custos Reais. Cotado ${fmt('BRL', cot)}, fatura ${fmt('BRL', fatBRL)} (${pct > 0 ? '+' : ''}${pct.toFixed(1).replace('.', ',')}%).`;
+        push(pct > 10 ? 'aviso' : 'info', txt + (pct > 10 ? ' Acima do cotado.' : ''), i);
+      } else push('info', `${nomeLinha}: ainda sem valor lançado nos Custos Reais e sem valor cotado pra comparar.`, i);
+    });
+
+    const resumo = { ok: 0, aviso: 0, erro: 0, info: 0 };
+    checks.forEach(c => { resumo[c.nivel] = (resumo[c.nivel] || 0) + 1; });
+    return { resumo, checks };
+  }
+
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

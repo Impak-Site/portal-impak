@@ -314,28 +314,82 @@ function ftEditar(id, pre){
       <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(f.obs || '')}"></label>
       ${id ? ((f.itens || []).length ? `<div class="cr-muted" style="margin-top:8px;">Itens: ${f.itens.map(it => `${esc(it.referencia || '')} ${esc(it.label)} ${_ftSimb(it.moeda)} ${_ftFmt(it.valor)}`).join(' · ')}</div>` : '')
         : `<div style="margin-top:12px;"><div class="cr-muted" style="font-weight:600;margin-bottom:4px;">Taxas desta fatura (processo + taxa ligam a fatura à aba Custos Reais)</div><div id="ft_e_itens">${_ftItensHtml()}</div></div>`}
+      <div id="ft_e_conf" style="margin-top:12px;">${(id || (pre && pre._ia)) ? '' : `<a class="cr-link" onclick="ftConferir(null)">🔍 Conferir com o sistema</a>`}</div>
     </div>
-    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftSalvarEdicao(${id ? `'${id}'` : 'null'})">Salvar</button></div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftConferir(${id ? `'${id}'` : 'null'})">🔍 Conferir</button><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftSalvarEdicao(${id ? `'${id}'` : 'null'})">Salvar</button></div>
   </div></div>`;
+  // fatura lida pela IA ou já existente: confere sozinho ao abrir
+  if(id || (pre && pre._ia)) ftConferir(id || null);
 }
-async function ftSalvarEdicao(id){
+// Monta o corpo da fatura a partir do modal (usado no Salvar e na Conferência).
+function _ftCorpoModal(id){
   const f = id ? _ftLista.find(x => x.id === id) : {};
   const moeda = document.getElementById('ft_e_moeda').value;
   const cx = parseFloat((document.getElementById('ft_e_cambio').value || '').replace(',', '.'));
   const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), emissao: document.getElementById('ft_e_emissao').value || null, vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim() };
   body.cambio = moeda === 'BRL' ? 1 : (cx > 0 ? cx : ((typeof _cambio !== 'undefined' && _cambio[moeda]) || null));
   if(id && f && f.empresa_nome !== body.empresa_nome) body.empresa_id = null;
+  const semProc = [];
   if(!id){
     // itens: referência → processo_id (precisa existir no Controle)
     const procs = (typeof _processos !== 'undefined' && _processos) || [];
-    const semProc = [];
     body.itens = _ftItensEdit.filter(it => (parseFloat(it.valor) || 0) > 0).map(it => {
       const p = it.referencia ? procs.find(x => (x.referencia || '').toLowerCase() === it.referencia.toLowerCase()) : null;
       if(it.referencia && !p) semProc.push(it.referencia);
       const cfg = (typeof custosReaisItensFlat === 'function') ? custosReaisItensFlat().find(x => x.id === it.taxa) : null;
       return { processo_id: p ? p.id : null, referencia: p ? p.referencia : (it.referencia || null), taxa: it.taxa || null, label: cfg ? cfg.label : (it.descricao || it.label || 'Taxa'), valor: parseFloat(it.valor) || 0 };
     });
-    if(semProc.length && !confirm(`Processo não encontrado: ${[...new Set(semProc)].join(', ')}. Salvar mesmo assim (sem vínculo com o processo)?`)) return;
+  }
+  return { body, semProc };
+}
+
+// ── Conferência (cross-check) com o sistema ────────────────────────────
+// Compara a fatura com os Custos Reais dos processos, o cotado, outras
+// faturas (duplicidade / taxa já faturada) e o "pagar para" do processo.
+let _ftUltConf = null;
+async function ftConferir(id){
+  const box = document.getElementById('ft_e_conf');
+  if(!box) return null;
+  const { body } = _ftCorpoModal(id);
+  box.innerHTML = '<div class="cr-muted">🔍 Conferindo com o sistema…</div>';
+  const labels = {};
+  if(typeof custosReaisItensFlat === 'function') custosReaisItensFlat().forEach(it => { labels[it.id] = it.label; });
+  try{
+    const r = await fetch('/api/faturas/conferir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fatura: body, labels, cambio: (typeof _cambio !== 'undefined') ? _cambio : {} }) });
+    const d = await r.json();
+    if(!d.ok){ box.innerHTML = `<div class="cr-muted">Não consegui conferir: ${esc(d.erro || 'erro')}</div>`; return null; }
+    _ftUltConf = d;
+    box.innerHTML = _ftConfHtml(d, id);
+    return d;
+  }catch(e){ box.innerHTML = '<div class="cr-muted">Não consegui conferir (erro de rede).</div>'; return null; }
+}
+function _ftConfHtml(d, id){
+  const ORD = { erro: 0, aviso: 1, info: 2, ok: 3 };
+  const ICO = { erro: '⛔', aviso: '⚠️', info: 'ℹ️', ok: '✅' };
+  const COR = { erro: '#b42318', aviso: '#8a5a00', info: '#475467', ok: '#067647' };
+  const lista = (d.checks || []).slice().sort((a, b) => ORD[a.nivel] - ORD[b.nivel]);
+  const r = d.resumo || {};
+  const titulo = r.erro ? `⛔ ${r.erro} problema${r.erro > 1 ? 's' : ''}` + (r.aviso ? ` · ⚠️ ${r.aviso} aviso${r.aviso > 1 ? 's' : ''}` : '')
+    : r.aviso ? `⚠️ ${r.aviso} ponto${r.aviso > 1 ? 's' : ''} pra conferir` : '✅ Tudo bate com o sistema';
+  const fundo = r.erro ? '#fef3f2' : r.aviso ? '#fffaeb' : '#ecfdf3';
+  const borda = r.erro ? '#fecdca' : r.aviso ? '#fedf89' : '#abefc6';
+  return `<div style="background:${fundo};border:1px solid ${borda};border-radius:8px;padding:8px 10px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px;">
+      <b style="font-size:12px;">Conferência com o sistema — ${titulo}</b>
+      <a class="cr-link" onclick="ftConferir(${id ? `'${id}'` : 'null'})">conferir de novo</a>
+    </div>
+    ${lista.map(c => `<div style="font-size:11.5px;color:${COR[c.nivel]};padding:2px 0;">${ICO[c.nivel]} ${esc(c.msg)}</div>`).join('')}
+  </div>`;
+}
+
+async function ftSalvarEdicao(id){
+  const { body, semProc } = _ftCorpoModal(id);
+  if(semProc.length && !confirm(`Processo não encontrado: ${[...new Set(semProc)].join(', ')}. Salvar mesmo assim (sem vínculo com o processo)?`)) return;
+  // confere de novo antes de gravar (o usuário pode ter mudado valores)
+  const conf = await ftConferir(id);
+  if(conf && conf.resumo && conf.resumo.erro){
+    const erros = conf.checks.filter(c => c.nivel === 'erro').map(c => '• ' + c.msg).join('\n');
+    if(!confirm(`A conferência encontrou problema(s):\n\n${erros}\n\nSalvar a fatura mesmo assim?`)) return;
   }
   try{
     const r = await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
