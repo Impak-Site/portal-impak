@@ -148,6 +148,7 @@ function ativarTelaFaturasExclusiva(){
   const toolbar = document.querySelector('.toolbar'); if(toolbar) toolbar.style.display = 'none';
   const sidebar = document.querySelector('.sidebar'); if(sidebar) sidebar.style.display = 'none';
   const tw = document.querySelector('.table-wrap'); if(tw) tw.style.display = 'none';
+  const pag = document.getElementById('paginacao'); if(pag) pag.style.display = 'none';
   const d = document.getElementById('dash-faturas'); if(d) d.style.display = 'block';
   const busca = new URLSearchParams(location.search).get('busca'); if(busca) _ftFiltro.busca = busca;
   if(busca) _ftFiltro.status = '';
