@@ -135,7 +135,16 @@ function parseDados(wb) {
         cf_taxa_am: ehSim(cellVal(ws, 'E24')) && cellVal(ws, 'G24') != null ? Number(cellVal(ws, 'G24')) * 100 : null,
         cf_prazo: ehSim(cellVal(ws, 'E24')) && cellVal(ws, 'H24') ? String(cellVal(ws, 'H24')).trim() : '',
         cf_parcelas: ehSim(cellVal(ws, 'E26')) ? (parseInt(String(cellVal(ws, 'G26') || ''), 10) || null) : null,
-        avisos: ['Confira: parcelado com entrada (DADOS E28-E34) e taxas linha a linha nao sao importados - revise essas secoes.'],
+        // Parcelado (Jean 15/10/2026, planilhas "PRAZO COM ENTRADA"): E28 SIM,
+        // E29 com entrada, E30 % entrada, F31 taxa a.m. (E31 e a mesma, por
+        // formula), F32 prazo do boleto. Na planilha o juros do parcelado vai
+        // SEMPRE no boleto (MODELO K44 entra no lucro L50).
+        parcelado: ehSim(cellVal(ws, 'E28')),
+        parcelado_com_entrada: ehSim(cellVal(ws, 'E28')) && ehSim(cellVal(ws, 'E29')),
+        parcelado_pct_entrada: ehSim(cellVal(ws, 'E28')) && ehSim(cellVal(ws, 'E29')) && cellVal(ws, 'E30') != null ? Number(cellVal(ws, 'E30')) * 100 : null,
+        parcelado_taxa_am: ehSim(cellVal(ws, 'E28')) ? Math.round((Number(cellVal(ws, 'F31')) || Number(cellVal(ws, 'E31')) || 0) * 10000) / 100 : null,
+        parcelado_prazo: ehSim(cellVal(ws, 'E28')) && cellVal(ws, 'F32') ? String(cellVal(ws, 'F32')).trim() : '',
+        avisos: ['Confira: taxas linha a linha nao sao importadas - revise essa secao.'],
   };
 }
 
@@ -424,6 +433,19 @@ function importarPlanilhaBase(buffer) {
     const iiRealBrl = parseIIRealBrl(wb, campos.tem_icms_st);
     if (iiRealBrl !== null && iiRealBrl !== undefined) {
         campos.ii_planilha_brl = iiRealBrl;
+    }
+    // Fator NFe (MODELO L11) e juros fixo no boleto (MODELO J48, R$10.000 no
+    // modelo "maior juro no boleto"; vazio no "margem fixa"). Com o fator o
+    // Calculador reproduz a planilha exatamente (cenario "Fator NFe").
+    {
+        const wsM = wb.Sheets[campos.tem_icms_st ? 'MODELO - COM S.T' : 'MODELO - SEM S.T'];
+        if (wsM) {
+            const f = Number(cellVal(wsM, 'L11'));
+            if (f > 0.5 && f < 10) campos.fator_nfe = f;
+            if (campos.parcelado) campos.juros_boleto_fixo = Number(cellVal(wsM, 'J48')) || 0;
+            const tot = Number(cellVal(wsM, 'K47'));
+            if (campos.parcelado && tot > 0) campos.total_cliente_planilha = tot;
+        }
     }
     const seguroCompraRealBrl = parseSeguroCompraRealBrl(wb, campos.tem_icms_st);
     if (seguroCompraRealBrl !== null && seguroCompraRealBrl !== undefined) {

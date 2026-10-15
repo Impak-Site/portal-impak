@@ -451,6 +451,25 @@ teste('juros no boleto: fórmula da planilha (K44) e NF menor para a mesma marge
   verdadeiro(comJb.vlr_total_nfe < semJb.vlr_total_nfe, `NF com juros no boleto (${comJb.vlr_total_nfe}) deveria ser menor que sem (${semJb.vlr_total_nfe})`);
   aproxIgual(comJb.juros_parcelamento, 0, 0, 'no modo boleto o juros não é descontado do lucro');
 });
+teste('cenário Fator NFe: preço da NF = custo total × fator (igual planilha L11)', () => {
+  const r = _rodarCalc(`setCenario(5); document.getElementById('cenario_valor').value='1.25';`);
+  aproxIgual(r.fatorNfe, 1.25, 1e-9);
+  const c = r.cenarios[r.tem_st ? 'com_st' : 'sem_st'];
+  aproxIgual(c.vlr_produto, r.custo_total * 1.25, 0.01);
+});
+teste('cenário Total ao cliente: mesmo total, mais juros no boleto => NF menor e lucro maior (margem fixa x maior juro)', () => {
+  const prep = _prepParc + `setToggle('entrada','SIM'); document.getElementById('pct_entrada').value='30'; setToggle('jb','SIM');`;
+  const base = _rodarCalc(prep + `document.getElementById('juros_boleto_fixo').value='0';`);
+  const cb = base.cenarios[base.tem_st ? 'com_st' : 'sem_st'];
+  const total = cb.total_parcelamento;
+  const fixo = _rodarCalc(prep + `document.getElementById('juros_boleto_fixo').value='0'; setCenario(4); document.getElementById('cenario_valor').value='${total}';`);
+  const maior = _rodarCalc(prep + `document.getElementById('juros_boleto_fixo').value='2000'; setCenario(4); document.getElementById('cenario_valor').value='${total}';`);
+  const cf = fixo.cenarios[fixo.tem_st ? 'com_st' : 'sem_st'], cm = maior.cenarios[maior.tem_st ? 'com_st' : 'sem_st'];
+  aproxIgual(cf.total_parcelamento, total, 0.05); aproxIgual(cm.total_parcelamento, total, 0.05);
+  aproxIgual(cf.vlr_total_nfe, cb.vlr_total_nfe, 0.05, 'sem juros fixo o total reproduz o mesmo fator');
+  verdadeiro(cm.vlr_total_nfe < cf.vlr_total_nfe, 'com mais juros no boleto a NF tem que ser menor');
+  verdadeiro(cm.lucro_bruto > cf.lucro_bruto, 'e o lucro maior (juros só paga 4,65%)');
+});
 teste('comissão sobre faturamento inclui o juros no boleto', () => {
   const r = _rodarCalc(_prepParc + `setToggle('jb','SIM'); setToggle('br','SIM'); document.getElementById('br_pct').value='1';`);
   const c = r.cenarios[r.tem_st ? 'com_st' : 'sem_st'];

@@ -127,7 +127,8 @@ function montarModelo(opt){
   const put = (ref, v) => { const c = XLSX.utils.decode_cell(ref); dados[c.r] = dados[c.r] || []; dados[c.r][c.c] = v; };
   put('E3', 5); put('E5', 5.1); put('E6', 10000); put('E7', 0); put('E8', 1000); put('E9', 1); put('E11', 'CAMINHÃO'); put('E12', 'DIVERSOS');
   put('E13', 'SC'); put('E14', 'ENCOMENDA'); put('B15', 'Tem TTD'); put('E15', opt.ttd || 'NÃO'); put('E16', 'NÃO'); put('E17', 'NÃO'); put('E18', 'CLIENTE X');
-  put('E20', 'NÃO'); put('E24', 'NÃO'); put('E26', 'NÃO'); put('E28', 'NÃO'); put('E36', 0);
+  put('E20', 'NÃO'); put('E24', 'NÃO'); put('E26', 'NÃO'); put('E28', opt.parcelado ? 'SIM' : 'NÃO'); put('E36', 0);
+  if (opt.parcelado) { put('E29', 'SIM'); put('E30', 0.3); put('F31', 0.018); put('F32', '30/60/90dd'); }
   const wsD = XLSX.utils.aoa_to_sheet(dados.map(r => r || []));
   XLSX.utils.book_append_sheet(wb, wsD, 'DADOS');
   const mix = []; for (let i = 0; i < 8; i++) mix.push([]); mix[6][9] = 'Pedido'; mix[7][4] = '295/80R22.5'; mix[7][9] = 10; mix[7][13] = 100;
@@ -136,6 +137,7 @@ function montarModelo(opt){
   const modelo = (ii, extra) => {
     const m = []; const p = (ref, v) => { const c = XLSX.utils.decode_cell(ref); m[c.r] = m[c.r] || []; m[c.r][c.c] = v; };
     p('E4', 5); p('E5', 5.1); p('B10', 'IMP. IMPORTACAO'); p('C10', 0.16); p('D10', ii / 5.1); p('E10', 5.1); p('F10', ii); if (extra) p('G10', extra);
+    p('L11', 1.25); if (opt.parcelado) { p('J48', opt.fixo || 0); p('K47', 123456.78); }
     p('B49', 'TOTAL TAXAS'); p('F49', 20000); p('B50', 'CUSTO TOTAL'); p('F50', 100000);
     return XLSX.utils.aoa_to_sheet(m.map(r => r || []));
   };
@@ -152,6 +154,14 @@ teste('DADOS!E15 "Tem TTD": NÃO = tem ICMS ST (lê a aba COM S.T); SIM = sem ST
 teste('II em R$ é a célula logo após o câmbio, não o maior valor da linha (G10 = base do ST na Rev97)', () => {
   const a = pi.importarPlanilhaBase(montarModelo({ ttd: 'NÃO' }));
   iguais(a.campos.ii_planilha_brl, 8000);
+});
+teste('parcelado com entrada (E28-F32), juros fixo no boleto (J48) e fator NFe (L11) — Jean 15/10/2026', () => {
+  const a = pi.importarPlanilhaBase(montarModelo({ parcelado: true, fixo: 10000 }));
+  iguais(a.campos.parcelado, true); iguais(a.campos.parcelado_com_entrada, true);
+  iguais(a.campos.parcelado_pct_entrada, 30); iguais(a.campos.parcelado_taxa_am, 1.8); iguais(a.campos.parcelado_prazo, '30/60/90dd');
+  iguais(a.campos.juros_boleto_fixo, 10000); iguais(a.campos.fator_nfe, 1.25); iguais(a.campos.total_cliente_planilha, 123456.78);
+  const b = pi.importarPlanilhaBase(montarModelo({}));
+  iguais(b.campos.parcelado, false); iguais(b.campos.juros_boleto_fixo, undefined);
 });
 
 console.log(`Total: ${total} testes, ${passaram} passaram, ${total-passaram} falharam`);
