@@ -2135,6 +2135,7 @@ app.post('/api/faturas/:id/aprovacao', auth('financeiro'), async (req, res) => {
     if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Só gerente aprova pagamentos.' });
     const f = await _faturaPorId(req.params.id);
     if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    if (f.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada.' });
     const aprovar = !(req.body && req.body.desfazer);
     const aprovacao = aprovar ? { por: req.session.usuario || null, nome: req.session.displayName || req.session.nome || null, em: new Date().toISOString() } : null;
     const { data, error } = await sb().from('faturas').update({ aprovacao, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
@@ -2150,6 +2151,7 @@ app.post('/api/faturas/:id/aplicar-custos-reais', auth('financeiro'), async (req
   try {
     const f = await _faturaPorId(req.params.id);
     if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    if (f.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada não altera Custos Reais.' });
     const porProc = {};
     (f.itens || []).forEach(it => { if (it.processo_id && it.taxa && parseFloat(it.valor) > 0) (porProc[it.processo_id] = porProc[it.processo_id] || []).push(it); });
     const feitos = [], pulados = [];
