@@ -149,6 +149,24 @@ teste('resumo por pessoa: atrasadas, mais antiga e fechadas da semana (com atras
   assert.ok(r.piores.length >= 1 && r.piores[0].atraso >= r.piores[r.piores.length - 1].atraso);
 });
 
+console.log('\n── RIC em andamento / validação só após RIC (Emanuelly 15/10/2026) ──');
+const devolvido = { id: '90', referencia: 'PX', created_at: '2026-08-01', data_carregamento: '2026-10-01', data_devolucao_vazio: '2026-10-02', ric_status: 'Termo' };
+teste('RIC pendente passado do prazo fica "andamento", não "atrasada"', () => {
+  const t = gerar([devolvido]).find(x => x.codigo === 'A30');
+  assert.ok(t); assert.strictEqual(A.classificar(t, HOJE), 'andamento');
+});
+teste('Validar e finalizar NÃO nasce enquanto o RIC não foi resolvido', () => {
+  assert.ok(!cods(gerar([devolvido])).includes('A36'));
+});
+teste('Validar nasce após lavagem paga, com prazo de 2 dias do pagamento', () => {
+  const t = gerar([Object.assign({}, devolvido, { data_pagamento_lavagem: '2026-10-12' })]).find(x => x.codigo === 'A36');
+  assert.ok(t); assert.strictEqual(t.prazo, '2026-10-14');
+});
+teste('Validar nasce com RIC Isento (sem prazo, não fica atrasada)', () => {
+  const t = gerar([Object.assign({}, devolvido, { ric_status: 'Isento' })]).find(x => x.codigo === 'A36');
+  assert.ok(t); assert.strictEqual(A.classificar(t, HOJE), 'sem_prazo');
+});
+
 setTimeout(() => {
   console.log(`\n════════════════════════════════════════`);
   console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);

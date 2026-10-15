@@ -210,7 +210,9 @@
       instancias: p => tem(p.data_carregamento) ? um(tem(p.data_devolucao_vazio)) : [] },
     A30: { auto: true, como: 'Status RIC = Isento ou Pagamento da Lavagem preenchido', aplica: p => !ehLCL(p),
       base: p => p.data_devolucao_vazio, dias: 5,
-      instancias: p => tem(p.data_devolucao_vazio) ? um(String(p.ric_status || '') === 'Isento' || tem(p.data_pagamento_lavagem)) : [] },
+      // Emanuelly 15/10/2026: RIC depende do depot (isenção/termo/lavagem) —
+      // não fica vermelho de "atrasada"; passa do prazo = "Em andamento".
+      instancias: p => tem(p.data_devolucao_vazio) ? um(String(p.ric_status || '') === 'Isento' || tem(p.data_pagamento_lavagem), { andamento: true }) : [] },
     A31: { auto: true, como: 'Custos Reais lançados', semAcomp: true,
       base: p => p.data_devolucao_vazio || p.data_carregamento, dias: 10,
       instancias: (p, h, ctx) => (ctx.fase(p) === 'FINALIZADO') ? um(temCustosReais(p)) : [] },
@@ -218,9 +220,19 @@
     // o processo está pronto pra finalizar (devolveu o vazio / LCL carregou)
     // mas ainda não foi validado por quem está em Listas → "Aprovação por
     // etapa". Processos finalizados antes da trava (fase gravada) não geram.
+    // Emanuelly 15/10/2026: só nasce depois que o RIC foi resolvido (Isento ou
+    // lavagem paga); LCL nasce no carregamento. Prazo: 2 dias do pagamento da
+    // lavagem; Isento não tem data → "sem prazo" (não fica atrasada).
     A36: { auto: true, como: 'Botão "Validar e finalizar" no processo (Aprovação por etapa)',
-      base: p => p.data_devolucao_vazio || p.data_carregamento, dias: 2,
-      instancias: (p, h, ctx) => (p.data_devolucao_vazio || p.data_carregamento) && p.fase !== 'FINALIZADO' && ctx.fase(p) !== 'FINALIZADO' ? um(tem(p.finalizacao_validada_em)) : [] },
+      instancias: (p, h, ctx) => {
+        if (p.fase === 'FINALIZADO' || ctx.fase(p) === 'FINALIZADO') return [];
+        const lcl = ehLCL(p);
+        if (lcl ? !tem(p.data_carregamento) : !tem(p.data_devolucao_vazio)) return [];
+        const ricOk = String(p.ric_status || '') === 'Isento' || tem(p.data_pagamento_lavagem);
+        if (!lcl && !ricOk) return [];
+        const b = lcl ? p.data_carregamento : (tem(p.data_pagamento_lavagem) ? p.data_pagamento_lavagem : null);
+        return um(tem(p.finalizacao_validada_em), b ? { prazo: somaDias(b, 2), _baseParaOverride: b } : { prazo: null, semPrazoOk: true });
+      } },
     A32: { auto: true, como: 'Processo marcado como Fechado', semAcomp: true,
       base: p => p.data_devolucao_vazio || p.data_carregamento, dias: 15,
       instancias: (p, h, ctx) => (ctx.fase(p) === 'FINALIZADO' && temCustosReais(p)) ? um(!!p.fechado) : [] },
@@ -290,7 +302,7 @@
       const prazo = iso(inst.prazo);
       if (prazo && prazo < corte && status === 'aberta') return; // histórico
       // Sem prazo calculável: só entra se o processo é recente (senão é histórico).
-      if (!prazo && p && status === 'aberta' && (!iso(p.created_at) || iso(p.created_at) < corte) && !(iso(p.pi_data) >= corte)) return;
+      if (!prazo && p && status === 'aberta' && !inst.semPrazoOk && (!iso(p.created_at) || iso(p.created_at) < corte) && !(iso(p.pi_data) >= corte)) return;
       if (status !== 'aberta' && !opts.incluirFeitas) return;
       const f = cfg.funcoes[a.funcao] || { nome: a.funcao, usuarios: [], substitutos: [] };
       out.push({
@@ -299,7 +311,7 @@
         processoId: p ? p.id : null, referencia: p ? p.referencia : null, cliente: p ? p.cliente : null,
         detalhe: inst.detalhe || '', prazo, atraso: prazo ? diasEntre(prazo, hoje) : null,
         auto: def.auto !== false && !RECORRENTES[codigo], como: def.como || '',
-        status, conclusao: c || null, automatica: !!inst.feito,
+        status, conclusao: c || null, automatica: !!inst.feito, andamento: !!inst.andamento,
       });
     };
     (processos || []).forEach(p => {
@@ -351,7 +363,7 @@
   function classificar(t, hoje) {
     if (t.status !== 'aberta') return 'concluida';
     if (!t.prazo) return 'sem_prazo';
-    if (t.prazo < hoje) return 'atrasada';
+    if (t.prazo < hoje) return t.andamento ? 'andamento' : 'atrasada';
     if (t.prazo === hoje) return 'hoje';
     if (diasEntre(hoje, t.prazo) <= 7) return 'semana';
     return 'futura';

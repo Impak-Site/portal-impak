@@ -71,12 +71,13 @@ function _agAbrirProcesso(id){
   setTimeout(() => trocarAba('agenda'), 60);
 }
 
-const _AG_COR = { atrasada:['#fee2e2','#b91c1c'], hoje:['#fef3c7','#b45309'], semana:['#dbeafe','#1d4ed8'], futura:['#f1f5f9','#475569'], sem_prazo:['#f1f5f9','#64748b'], concluida:['#dcfce7','#15803d'] };
+const _AG_COR = { atrasada:['#fee2e2','#b91c1c'], hoje:['#fef3c7','#b45309'], semana:['#dbeafe','#1d4ed8'], futura:['#f1f5f9','#475569'], sem_prazo:['#f1f5f9','#64748b'], andamento:['#ede9fe','#6d28d9'], concluida:['#dcfce7','#15803d'] };
 function _agBadgePrazo(t, hoje){
   const c = AgendaCore.classificar(t, hoje);
   const [bg, fg] = _AG_COR[c] || _AG_COR.futura;
   let txt = t.prazo ? _agDataBR(t.prazo) : 'sem prazo';
   if(c === 'atrasada') txt += ` · ${t.atraso}d atraso`;
+  if(c === 'andamento') txt += ' · em andamento';
   if(c === 'hoje') txt = 'Hoje';
   if(c === 'concluida') txt = t.status === 'nao_aplica' ? 'Não se aplica' : 'Feita';
   return `<span style="display:inline-block;min-width:92px;text-align:center;background:${bg};color:${fg};font-weight:700;font-size:11px;padding:3px 8px;border-radius:999px;white-space:nowrap;">${_agEsc(txt)}</span>`;
@@ -171,7 +172,7 @@ async function renderDashAgenda(){
   if(_agFiltro.funcao) lista = lista.filter(t => t.funcao === _agFiltro.funcao);
   if(_agFiltro.busca){ const q = _agFiltro.busca.toLowerCase(); lista = lista.filter(t => [t.referencia,t.cliente,t.nome,t.detalhe].join(' ').toLowerCase().includes(q)); }
 
-  const grupos = { atrasada:[], hoje:[], semana:[], sem_prazo:[], futura:[] };
+  const grupos = { atrasada:[], hoje:[], semana:[], andamento:[], sem_prazo:[], futura:[] };
   lista.forEach(t => { const c = AgendaCore.classificar(t, hoje); (grupos[c] || grupos.futura).push(t); });
   grupos.atrasada.sort((a,b) => (b.atraso||0) - (a.atraso||0) || (a.prioridade==='ALTA'?-1:1));
 
@@ -234,6 +235,7 @@ async function renderDashAgenda(){
       ${kpi('atrasada','Atrasadas',grupos.atrasada.length,'#b91c1c')}
       ${kpi('hoje','Vencem hoje',grupos.hoje.length,'#b45309')}
       ${kpi('semana','Próximos 7 dias',grupos.semana.length,'#1d4ed8')}
+      ${kpi('andamento','Em andamento',grupos.andamento.length,'#6d28d9')}
       ${kpi('sem_prazo','Sem prazo',grupos.sem_prazo.length,'#64748b')}
       ${kpi('futura','Mais adiante',grupos.futura.length,'#475569')}
     </div>
@@ -241,6 +243,7 @@ async function renderDashAgenda(){
     ${secao('atrasada','Atrasadas',grupos.atrasada,'#b91c1c')}
     ${secao('hoje','Vencem hoje',grupos.hoje,'#b45309')}
     ${secao('semana','Próximos 7 dias',grupos.semana,'#1d4ed8')}
+    ${secao('andamento','Em andamento (aguardando depot / terceiros)',grupos.andamento,'#6d28d9')}
     ${secao('sem_prazo','Sem prazo definido',grupos.sem_prazo,'#64748b')}
     ${secao('futura','Mais adiante',grupos.futura,'#475569', true)}
     ${!lista.length ? '<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">Nada pendente aqui.</div></div>' : ''}
