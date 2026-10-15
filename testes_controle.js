@@ -1431,6 +1431,15 @@ teste('idsNotificacoesResolvidas: sem notificações existentes -> não quebra, 
   iguais(ids.length, 0);
 });
 
+teste('verificarAlertas: armazenagem "vence em N dia(s)" some com retirada agendada (Emanuelly 15/10/2026)', () => {
+  const d = new Date(); d.setDate(d.getDate()+1);
+  const venc = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const base = { referencia:'TESTE-ARM', armazenagem_vencimento: venc, data_presenca: venc };
+  const tem = a => a.some(x => /1º período vence/.test(x.mensagem||''));
+  iguais(tem(sandbox.verificarAlertas(Object.assign({}, base), false)), true);
+  iguais(tem(sandbox.verificarAlertas(Object.assign({}, base, { data_agendamento: venc }), false)), false);
+  iguais(tem(sandbox.verificarAlertas(Object.assign({}, base, { data_agendamento: venc, agendamento_cancelado: true }), false)), true);
+});
 teste('verificarAlertas: processo embarcado sem HBL/LI aprovado gera alerta de pendência pós-embarque', () => {
   const p = { id:'x1', referencia:'UD26-999', fase:'DESEMBARCADO', data_embarque:'2026-08-01', aprovacao_hbl:null, solicitacao_li:null };
   const alertas = sandbox.verificarAlertas(p, false);

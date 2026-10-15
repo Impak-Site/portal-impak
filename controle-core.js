@@ -2028,6 +2028,9 @@ function renderArmazenInfo(p){
     }
   } else if(dias !== null && dias < 0){
     statusIcon = '🔴'; statusTxt = `VENCIDO há ${Math.abs(dias)} dia(s) — armazenagem adicional acumulando!`;
+  } else if(dias !== null && dias >= 0 && p.data_agendamento && !/^(true|sim|1)$/i.test(String(p.agendamento_cancelado||''))){
+    const ag = parseDataLocal(p.data_agendamento);
+    statusIcon = '📅'; statusTxt = `Retirada agendada para ${ag ? ag.toLocaleDateString('pt-BR') : p.data_agendamento} — vence em ${dias} dia(s)`;
   } else if(dias !== null && dias <= 2){
     statusIcon = '⚠️'; statusTxt = `Atenção: vence em ${dias} dia(s)`;
   } else if(dias !== null){
@@ -4341,7 +4344,11 @@ function verificarAlertas(proc, criarNotif){
   // ser carregada/entregue), não a devolução do container vazio (que é
   // outra etapa, mais pra frente).
   const diasArmaz = armazenagemDias(proc);
-  if(diasArmaz !== null && diasArmaz <= 2 && diasArmaz >= 0 && !proc.data_carregamento){
+  // Emanuelly 15/10/2026: com a retirada já agendada (Carregamento → Agendamento
+  // preenchido e não cancelado), o aviso "vence em N dia(s)" não aparece mais.
+  // O de VENCIDA continua (se passar do prazo sem carregar, ainda importa).
+  const retiradaAgendada = !!proc.data_agendamento && !/^(true|sim|1)$/i.test(String(proc.agendamento_cancelado||''));
+  if(diasArmaz !== null && diasArmaz <= 2 && diasArmaz >= 0 && !proc.data_carregamento && !retiradaAgendada){
     alertas.push({tipo:'urgente', titulo:`Armazenagem: ${proc.referencia}`, mensagem:`1º período vence em ${diasArmaz} dia(s)! Retirar do porto.`});
   }
   if(diasArmaz !== null && diasArmaz < 0 && !proc.data_carregamento){
