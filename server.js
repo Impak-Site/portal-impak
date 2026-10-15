@@ -2026,6 +2026,175 @@ async function _faturaPorId(id) {
   return data || null;
 }
 
+// ── Faturas: helpers da fase 3 (DARF de retenções, origem a receber) ──
+async function criarDarfRetencoes(pag, fatura, usuario) {
+  const d = FaturasCore.darfRetencoes(pag);
+  if (!d) return null;
+  const ano = new Date().getFullYear();
+  const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
+  const row = { numero: FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano), tipo: 'pagar', empresa_nome: 'RECEITA FEDERAL — DARF retenções', documento: `Retenções ${fatura.numero || ''} ${fatura.documento || ''}`.trim(),
+    moeda: 'BRL', cambio: 1, valor: d.valor, vencimento: d.vencimento, status: 'aberta', itens: [],
+    obs: `IRRF/PIS/COFINS/CSLL retidos no pagamento de ${pag.data} da fatura ${fatura.numero || ''} (${fatura.empresa_nome}).`, criado_por: usuario || null, alterado_por: usuario || null };
+  const { data, error } = await sb().from('faturas').insert(row).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+// A receber com origem (parcela de câmbio / venda): o valor recebido é
+// espelhado no processo, pra Dashboard Financeiro e aba Vendas continuarem
+// mostrando o mesmo número. Fonte da verdade = fatura.
+async function sincronizarOrigemReceber(f) {
+  try {
+    const o = f && f.origem;
+    if (!o || f.tipo !== 'receber' || !o.processo_id) return;
+    const col = o.tipo === 'parcela_cambio' ? 'pi_parcelas_json' : o.tipo === 'venda' ? 'vendas_json' : null;
+    if (!col) return;
+    const { data: p } = await sb().from('controle_processos').select('id, ' + col).eq('id', o.processo_id).maybeSingle();
+    if (!p) return;
+    let lista = p[col]; const eraTexto = typeof lista === 'string';
+    if (eraTexto) { try { lista = JSON.parse(lista); } catch (e) { return; } }
+    if (!Array.isArray(lista) || !lista[o.idx]) return;
+    const r = FaturasCore.aplicarPagamentos(f);
+    const valor = f.status === 'cancelada' ? null : (r.valor_pago || null);
+    const ultima = (f.pagamentos || []).filter(x => !x.estornado).map(x => x.data).filter(Boolean).sort().pop() || null;
+    const item = { ...lista[o.idx] };
+    if (o.tipo === 'parcela_cambio') {
+      if ((parseFloat(item.valor_recebido_cliente) || null) === valor && (item.data_recebimento || null) === ultima) return;
+      item.valor_recebido_cliente = valor == null ? '' : valor; item.data_recebimento = ultima || '';
+    } else {
+      if ((parseFloat(item.recebido_valor) || null) === valor && (item.recebido_em || null) === ultima) return;
+      item.recebido_valor = valor; item.recebido_em = ultima; item.fatura_id = f.id;
+    }
+    lista[o.idx] = item;
+    await sb().from('controle_processos').update({ [col]: eraTexto ? JSON.stringify(lista) : lista, updated_at: new Date().toISOString() }).eq('id', p.id);
+  } catch (e) { console.warn('sincronizarOrigemReceber:', e.message); }
+}
+
+// Baixa em lote: 1 pagamento (1 comprovante) quitando várias faturas
+app.post('/api/faturas/baixa-lote', auth('financeiro'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const itens = Array.isArray(b.itens) ? b.itens.filter(i => i && i.fatura_id).slice(0, 50) : [];
+    if (itens.length < 1) return res.status(400).json({ ok: false, erro: 'Escolha as faturas do lote.' });
+    const ids = itens.map(i => String(i.fatura_id));
+    const { data: fats } = await sb().from('faturas').select('*').in('id', ids);
+    const porId = Object.fromEntries((fats || []).map(f => [f.id, f]));
+    const lote_id = require('crypto').randomUUID();
+    const identificador = String(b.identificador || '').trim().slice(0, 120) || null;
+    if (identificador && !b.confirmar_repetido) {
+      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador }]).limit(1);
+      if (rep && rep.length) return res.status(409).json({ ok: false, repetido: true, erro: `Esse comprovante (${identificador}) já foi usado na fatura ${rep[0].numero || ''}.` });
+    }
+    // valida tudo antes de gravar qualquer coisa
+    const plano = [];
+    for (const it of itens) {
+      const f = porId[it.fatura_id];
+      if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada no lote.' });
+      const v = FaturasCore.validarPagamento({ ...it, data: b.data, forma: b.forma, identificador, obs: b.obs }, f);
+      if (!v.ok) return res.status(400).json({ ok: false, erro: `${f.numero || ''}: ${v.erro}` });
+      plano.push({ f, pag: { id: require('crypto').randomUUID(), ...v.pagamento, lote_id, por: req.session.usuario || null, em: new Date().toISOString() } });
+    }
+    let comprovante = null;
+    if (b.arquivo_base64) {
+      try { comprovante = await salvarArquivoFatura(plano[0].f.id, b.arquivo_base64, b.nome_arquivo, b.media_type); }
+      catch (e) { return res.status(400).json({ ok: false, erro: e.message }); }
+    }
+    const salvas = [];
+    for (const { f, pag } of plano) {
+      if (comprovante) pag.comprovante = comprovante;
+      const pags = (Array.isArray(f.pagamentos) ? f.pagamentos : []).concat([pag]);
+      const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags });
+      const anexos = (Array.isArray(f.anexos) ? f.anexos : []).concat(comprovante ? [{ id: require('crypto').randomUUID(), tipo: 'comprovante', ...comprovante, pagamento_id: pag.id, lote_id, por: pag.por, em: pag.em }] : []);
+      const { data, error } = await sb().from('faturas').update({ pagamentos: pags, anexos, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
+      if (error) return res.status(500).json({ ok: false, erro: `${f.numero || ''}: ${error.message}`, salvas });
+      if (data.status === 'paga') await vincularFaturaNosProcessos(data, false);
+      await sincronizarOrigemReceber(data);
+      salvas.push(data);
+    }
+    res.json({ ok: true, faturas: salvas, lote_id });
+  } catch (e) { console.error('faturas/baixa-lote:', e.message); res.status(500).json({ ok: false, erro: 'Erro na baixa em lote.' }); }
+});
+
+// Quais identificadores (de extrato/comprovante) já foram usados em baixas
+app.post('/api/faturas/identificadores-usados', auth('financeiro'), async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(x => String(x).slice(0, 120)).slice(0, 500) : [];
+    const usados = {};
+    for (let i = 0; i < ids.length; i += 50) {
+      const lote = ids.slice(i, i + 50);
+      const or = lote.map(id => `pagamentos.cs.${JSON.stringify([{ identificador: id }])}`).join(',');
+      const { data } = await sb().from('faturas').select('numero, pagamentos').or(or).limit(200);
+      (data || []).forEach(f => (f.pagamentos || []).forEach(p => { if (p.identificador && lote.includes(p.identificador) && !p.estornado) usados[p.identificador] = f.numero || '?'; }));
+    }
+    res.json({ ok: true, usados });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao checar o extrato.' }); }
+});
+
+// Aprovação de pagamento (gerente). Não bloqueia a baixa — marca e avisa.
+app.post('/api/faturas/:id/aprovacao', auth('financeiro'), async (req, res) => {
+  try {
+    if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Só gerente aprova pagamentos.' });
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const aprovar = !(req.body && req.body.desfazer);
+    const aprovacao = aprovar ? { por: req.session.usuario || null, nome: req.session.displayName || req.session.nome || null, em: new Date().toISOString() } : null;
+    const { data, error } = await sb().from('faturas').update({ aprovacao, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    res.json({ ok: true, fatura: data });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro na aprovação.' }); }
+});
+
+// Atualiza os Custos Reais do(s) processo(s) com os valores desta fatura
+// (ação explícita do usuário — botão na tela). Não mexe em processo fechado
+// nem em taxa lançada por container (essas ficam listadas pra ajuste manual).
+app.post('/api/faturas/:id/aplicar-custos-reais', auth('financeiro'), async (req, res) => {
+  try {
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const porProc = {};
+    (f.itens || []).forEach(it => { if (it.processo_id && it.taxa && parseFloat(it.valor) > 0) (porProc[it.processo_id] = porProc[it.processo_id] || []).push(it); });
+    const feitos = [], pulados = [];
+    for (const pid of Object.keys(porProc)) {
+      const { data: p } = await sb().from('controle_processos').select('id, referencia, real_json, fechado, cancelado').eq('id', pid).maybeSingle();
+      if (!p) { pulados.push({ ref: pid, motivo: 'processo não encontrado' }); continue; }
+      if (p.fechado || p.cancelado) { pulados.push({ ref: p.referencia, motivo: p.fechado ? 'processo fechado' : 'processo cancelado' }); continue; }
+      const rj = (p.real_json && typeof p.real_json === 'object') ? { ...p.real_json } : {};
+      rj._meta = (rj._meta && typeof rj._meta === 'object') ? { ...rj._meta } : {};
+      let mexeu = false;
+      porProc[pid].forEach(it => {
+        const chave = f.tipo === 'receber' ? it.taxa + '_cobrado' : it.taxa;
+        const atual = rj[chave];
+        if (atual && typeof atual === 'object' && atual.porContainer) { pulados.push({ ref: p.referencia, taxa: it.label || it.taxa, motivo: 'lançada por container — ajuste na aba Custos Reais' }); return; }
+        const antes = FaturasCore.valorRealPorMoeda(atual);
+        const novo = Math.round(parseFloat(it.valor) * 100) / 100;
+        if (Object.keys(antes).length === 1 && Math.abs((antes[f.moeda] || -1) - novo) < 0.005) return;
+        rj[chave] = { valor: novo, moeda: f.moeda };
+        rj._meta[it.taxa] = { ...(rj._meta[it.taxa] || {}), fatura_id: f.id, origem_valor: `fatura ${f.numero || ''}`.trim() };
+        mexeu = true;
+        feitos.push({ ref: p.referencia, taxa: it.label || it.taxa, antes, depois: { [f.moeda]: novo } });
+      });
+      if (mexeu) {
+        const { error } = await sb().from('controle_processos').update({ real_json: rj, updated_at: new Date().toISOString() }).eq('id', p.id);
+        if (error) return res.status(500).json({ ok: false, erro: error.message, feitos });
+      }
+    }
+    res.json({ ok: true, feitos, pulados });
+  } catch (e) { console.error('aplicar-custos-reais:', e.message); res.status(500).json({ ok: false, erro: 'Erro ao atualizar Custos Reais.' }); }
+});
+
+// A receber pendente: parcelas de câmbio fechadas e vendas com NF que ainda
+// não viraram fatura a receber (pra gerar sem digitar e sem duplicar).
+app.get('/api/faturas/receber-pendentes', auth('financeiro'), async (req, res) => {
+  try {
+    const { data: procs, error } = await sb().from('controle_processos').select('id, referencia, cliente, fase, cancelado, pi_parcelas_json, vendas_json').neq('fase', 'FINALIZADO').limit(2000);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    const { data: fats } = await sb().from('faturas').select('origem, status').not('origem', 'is', null).limit(5000);
+    const chaves = (fats || []).filter(f => f.status !== 'cancelada').map(f => FaturasCore.chaveOrigem(f.origem)).filter(Boolean);
+    const lista = [];
+    (procs || []).forEach(p => FaturasCore.receberDoProcesso(p, chaves).forEach(x => lista.push(x)));
+    res.json({ ok: true, pendentes: lista.slice(0, 500) });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao buscar pendências.' }); }
+});
+
 // Baixa (parcial ou total) com comprovante opcional
 app.post('/api/faturas/:id/baixa', auth('financeiro'), async (req, res) => {
   try {
@@ -2038,7 +2207,7 @@ app.post('/api/faturas/:id/baixa', auth('financeiro'), async (req, res) => {
     // comprovante repetido em outra baixa (mesma autenticação/ID da transação)
     if (pag.identificador) {
       const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador: pag.identificador }]).limit(1);
-      if (rep && rep.length && !b.confirmar_repetido) return res.status(409).json({ ok: false, repetido: true, erro: `Esse comprovante (${pag.identificador}) já foi usado na fatura ${rep[0].numero || ''}.` });
+      if (rep && rep.length && !b.confirmar_repetido && !b.lote_id) return res.status(409).json({ ok: false, repetido: true, erro: `Esse comprovante (${pag.identificador}) já foi usado na fatura ${rep[0].numero || ''}.` });
     }
     if (b.arquivo_base64) {
       try { pag.comprovante = await salvarArquivoFatura(f.id, b.arquivo_base64, b.nome_arquivo, b.media_type); }
@@ -2052,7 +2221,10 @@ app.post('/api/faturas/:id/baixa', auth('financeiro'), async (req, res) => {
     const { data, error } = await sb().from('faturas').update(patch).eq('id', f.id).select().single();
     if (error) return res.status(500).json({ ok: false, erro: error.message });
     if (data.status === 'paga') await vincularFaturaNosProcessos(data, false);
-    res.json({ ok: true, fatura: data, aviso: v.aviso, saldo: r.saldo });
+    await sincronizarOrigemReceber(data);
+    let darf = null;
+    if (b.gerar_darf && f.tipo === 'pagar') { try { darf = await criarDarfRetencoes(pag, data, req.session.usuario); } catch (e) { console.warn('darf retenções:', e.message); } }
+    res.json({ ok: true, fatura: data, aviso: v.aviso, saldo: r.saldo, darf });
   } catch (e) { console.error('faturas/baixa:', e.message); res.status(500).json({ ok: false, erro: 'Erro ao dar baixa.' }); }
 });
 
@@ -2072,6 +2244,7 @@ app.post('/api/faturas/:id/estornar', auth('financeiro'), async (req, res) => {
     const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags, status: f.status === 'paga' ? 'aberta' : f.status });
     const { data, error } = await sb().from('faturas').update({ pagamentos: pags, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
     if (error) return res.status(500).json({ ok: false, erro: error.message });
+    await sincronizarOrigemReceber(data);
     res.json({ ok: true, fatura: data });
   } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao estornar.' }); }
 });
@@ -6284,7 +6457,9 @@ async function verificarAlertaSemCotacao(){
 // @impak.com.br). Só manda quando tem algo vencido ou vencendo em 3 dias.
 async function verificarAlertaFaturas(){
   const jobName = 'alerta_faturas';
-  const { data, error } = await sb().from('faturas').select('id,numero,tipo,empresa_nome,documento,moeda,valor,cambio,vencimento,status,itens').eq('status', 'aberta').not('vencimento', 'is', null);
+  const { data: dataBruta, error } = await sb().from('faturas').select('id,numero,tipo,empresa_nome,documento,moeda,valor,valor_pago,cambio,vencimento,status,itens').eq('status', 'aberta').not('vencimento', 'is', null);
+  // pagamento parcial: o alerta mostra o SALDO, não o total
+  const data = (dataBruta || []).map(f => ({ ...f, valor: FaturasCore.saldoFatura(f) })).filter(f => f.valor > 0);
   if (error) { console.error('alerta faturas:', error.message); return 0; }
   const hoje = new Date().toISOString().slice(0, 10);
   const { vencidas, proximas } = FaturasCore.faturasParaAlerta(data || [], hoje, 3);
