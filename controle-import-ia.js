@@ -568,7 +568,7 @@ async function extrairComIA_umArquivo(input){
     // sem alterar em nada o resultado da extração.
     const promptInstrucoes = `Extraia os dados deste documento de importação e retorne SOMENTE JSON com os campos disponíveis:
 {
-  "referencia": "",
+  "referencia": "",  // referência INTERNA da IMPAK (comprador) para este pedido/processo — costuma vir em "PO#", "PO No.", "Buyer's Ref", "Your Ref", "Customer Ref", "Order No." ou nas Shipping Marks, muitas vezes começando com "IMPAK-" (ex: "PO#: IMPAK-TKH2609B-1" → "IMPAK-TKH2609B-1"). Copie exatamente como aparece. Se não houver uma referência do comprador, deixe "" (o nº do contrato/PI do fornecedor vai em "pi_numero", não aqui).
   "fornecedor": "",  // razão social ou nome comercial da empresa EXPORTADORA/fabricante que vendeu e emitiu a PI/CI (ex: "Sailun Group") — quem efetivamente fatura e embarca a mercadoria, mesmo que o produto seja de uma marca diferente
   "brand": "",  // marca do PRODUTO/pneu impressa na PI/CI/embalagem (ex: "Maxam", "Triangle", "Linglong") — NÃO é o fornecedor. É comum o fornecedor real (quem fatura) ser diferente da marca do pneu (ex: fornecedor "Sailun Group" fabricando/vendendo pneus marca "Maxam") — extraia os dois separadamente, nunca use a marca como se fosse o fornecedor. Deixe "" se o documento não trouxer uma marca de produto distinta do nome do fornecedor.
   "produto": "",  // usar SOMENTE quando o documento tiver um único item/descrição corrida (ex: CI com texto livre) — extrair de: Description of Goods, Cargo Description, Item Description. Se o documento tiver uma TABELA com múltiplos itens (Size/Pattern/Quantity por linha, comum em PI/Sales Contract), deixar "produto" vazio e usar "itens" abaixo.
@@ -827,16 +827,35 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // traz (ou o já preenchido no processo) e aplicamos. Sobrescreve o que a
     // IA tinha chutado em "referencia", nunca o campo já salvo no processo
     // (isso continua passando pelo aviso/divergência abaixo).
+    let _refPelaRegra = false;
     const nomeFornecedorDoc = String(extracted.fornecedor || document.getElementById('f_fornecedor')?.value || '').trim();
     if(nomeFornecedorDoc && typeof acharCadastroFornecedor === 'function'){
       try{
         const cadForn = await acharCadastroFornecedor(nomeFornecedorDoc);
         const refRegra = cadForn ? referenciaPelaRegraDoFornecedor(extracted, regrasDoCadastro(cadForn)) : '';
+        if(refRegra) _refPelaRegra = true;
         if(refRegra && refRegra.toUpperCase() !== String(extracted.referencia||'').toUpperCase()){
           extracted.referencia = refRegra;
           showToast(`Referência "${refRegra}" lida pela regra do cadastro de ${cadForn.razao_social}`, 'ok');
         }
       }catch(e){ console.warn('regra de referência do fornecedor:', e); }
+    }
+    // ── Referência IMPAK (pedido Emanuelly 15/10/2026, PI Sailun PI10515052):
+    // a PI traz "PO#: IMPAK-TKH2609B-1" e o processo novo ficava SEM referência.
+    // 1) Um código "IMPAK-xxxx" no documento (referência, PO) é a referência
+    //    interna da IMPAK e vale mais que o nº do contrato do fornecedor.
+    // 2) Processo NOVO (referência ainda vazia na tela) sem nada lido: usa o
+    //    "IMPAK-xxxx" do nome do arquivo, senão PO, senão nº da PI. Em processo
+    //    já existente não inventa referência (evita aviso falso de "outro processo").
+    if(!_refPelaRegra){
+      const acharImpak = t => { const m = String(t || '').toUpperCase().match(/\bIMPAK[-_]([A-Z0-9][A-Z0-9-]{3,})/); return m ? 'IMPAK-' + m[1].replace(/-+$/, '') : ''; };
+      const refImpakDoc = acharImpak(extracted.referencia) || acharImpak(extracted.po_numero);
+      const telaVazia = !(document.getElementById('f_referencia')?.value || '').trim();
+      if(refImpakDoc) extracted.referencia = refImpakDoc;
+      else if(telaVazia && !String(extracted.referencia || '').trim()){
+        const sug = acharImpak(file && file.name) || String(extracted.po_numero || '').trim() || String(extracted.pi_numero || '').trim();
+        if(sug) extracted.referencia = sug;
+      }
     }
     delete extracted.po_numero; // só serve pra regra acima; não existe campo f_po_numero
 
