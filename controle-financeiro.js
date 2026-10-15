@@ -23,7 +23,7 @@ function _finMoeda(v, m){ return (m === 'USD' ? 'US$ ' : m === 'EUR' ? '€ ' : 
 function _finUltimoDiaMes(iso){ const d = new Date(iso.slice(0, 7) + '-01T12:00:00'); d.setMonth(d.getMonth() + 1); d.setDate(0); return d.toISOString().slice(0, 10); }
 
 function finTabsHtml(){
-  const abas = [['faturas', '🧾 Faturas'], ['bancos', '🏦 Bancos e saldos'], ['dre', '📊 DRE da empresa'], ['plano', '🗂 Plano de contas'], ['importar', '⬆ Importar do Conexos'], ['contador', '📤 Arquivo p/ contador']];
+  const abas = [['faturas', '🧾 Faturas'], ['recorrentes', '🔁 Recorrentes'], ['bancos', '🏦 Bancos e saldos'], ['dre', '📊 DRE da empresa'], ['plano', '🗂 Plano de contas'], ['importar', '⬆ Importar do Conexos'], ['contador', '📤 Arquivo p/ contador']];
   return `<div class="fin-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--border);">${abas.map(([id, l]) => `<button class="btn ${_finAba === id ? 'btn-primary' : 'btn-outline'}" style="border-radius:8px 8px 0 0;padding:6px 12px;font-size:12px;" onclick="finIrAba('${id}')">${l}</button>`).join('')}</div>`;
 }
 function finIrAba(id){ _finAba = id; renderDashFaturas(); }
@@ -34,7 +34,8 @@ async function renderFinAba(el){
   if(fin.semTabela){ el.innerHTML = finTabsHtml() + '<div class="empty">Tabelas do financeiro ainda não criadas (migration 0053).</div>'; return; }
   let html = '';
   try{
-    if(_finAba === 'bancos') html = await _finHtmlBancos();
+    if(_finAba === 'recorrentes') html = await _finHtmlRecorrentes();
+    else if(_finAba === 'bancos') html = await _finHtmlBancos();
     else if(_finAba === 'dre') html = await _finHtmlDre();
     else if(_finAba === 'plano') html = _finHtmlPlano();
     else if(_finAba === 'importar') html = _finHtmlImportar();
@@ -356,4 +357,106 @@ async function finContadorBaixar(fmt){
   l.forEach(x => { const r = s.addRow([x.data.split('-').reverse().join('/'), x.debito, x.credito, x.valor, x.historico, x.documento, x.participante, x.fatura]); r.getCell(4).numFmt = '#,##0.00'; });
   s.getRow(1).font = { bold: true };
   _finBaixar(await wb.xlsx.writeBuffer(), nome + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+
+// ── Aba Recorrentes (15/10/2026) ─────────────────────────────────────
+// Despesas/receitas que se repetem (aluguel, folha, sistemas, impostos
+// fixos). O servidor gera cada fatura sozinho, com antecedência.
+let _finRecs = [];
+async function _finHtmlRecorrentes(){
+  const d = await (await fetch('/api/fin/recorrencias')).json();
+  if(!d.ok) return `<div class="empty">${d.semTabela ? 'Recorrências ainda não ativadas no banco (migration 0054).' : esc(d.erro || 'Erro')}</div>`;
+  _finRecs = d.recorrencias || [];
+  const nomeConta = id => { const c = (_fin.contas || []).find(x => x.id === id); return c ? c.nome : '—'; };
+  const freq = k => (FinCore.FREQUENCIAS[k] || [, k])[1];
+  const ativas = _finRecs.filter(r => r.ativo);
+  const totMes = ativas.filter(r => r.tipo === 'pagar' && r.moeda === 'BRL').reduce((s, r) => s + (parseFloat(r.valor) || 0) / FinCore.FREQUENCIAS[r.frequencia || 'mensal'][0], 0);
+  const linhas = _finRecs.map(r => `<tr style="${r.ativo ? '' : 'opacity:.55;'}">
+    <td><strong>${esc(r.descricao)}</strong><div class="cr-muted">${esc(r.empresa_nome)}</div></td>
+    <td><span style="background:#eef2ff;color:#3538cd;border-radius:6px;padding:1px 6px;font-size:11.5px;">${esc(nomeConta(r.conta_id))}</span></td>
+    <td>${freq(r.frequencia)}${r.valor_variavel ? '<div class="cr-muted" style="font-size:10.5px;">valor varia</div>' : ''}</td>
+    <td style="text-align:right;font-family:'JetBrains Mono',monospace;">${_ftSimb(r.moeda)} ${_ftFmt(r.valor)}</td>
+    <td>${r.ativo ? (r.proximo ? _ftData(r.proximo) : '<span class="cr-muted">encerrada</span>') : '<span class="cr-muted">pausada</span>'}</td>
+    <td>${r.fim ? _ftData(r.fim) : '<span class="cr-muted">sem fim</span>'}</td>
+    <td class="cr-muted">${r.geradas} gerada${r.geradas === 1 ? '' : 's'}${r.abertas ? ` · <a class="cr-link" onclick="_ftFiltro.busca='${esc(r.descricao).replace(/'/g, '')}';_ftFiltro.status='';finIrAba('faturas')">${r.abertas} em aberto</a>` : ''}</td>
+    <td style="white-space:nowrap;"><button class="btn btn-outline" style="padding:3px 8px;font-size:11px;" onclick="finEditarRecorrencia('${r.id}')">Editar</button>
+      <button class="btn btn-outline" style="padding:3px 8px;font-size:11px;" onclick="finPausarRecorrencia('${r.id}', ${r.ativo ? 'false' : 'true'})">${r.ativo ? 'Pausar' : 'Reativar'}</button></td>
+  </tr>`).join('');
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <button class="btn btn-primary" onclick="finEditarRecorrencia(null)">+ Nova despesa recorrente</button>
+      <button class="btn btn-outline" onclick="finGerarRecorrentes()" title="O sistema já gera sozinho todo dia; use se acabou de mudar algo">↻ Gerar faturas agora</button>
+      <span class="cr-muted">${ativas.length} ativa${ativas.length === 1 ? '' : 's'} · compromisso fixo ≈ <b>R$ ${_ftFmt(totMes)}</b>/mês (a pagar, em R$)</span>
+    </div>
+    <div class="cr-muted" style="font-size:11.5px;margin-bottom:8px;">Cada fatura é criada sozinha alguns dias antes do vencimento (padrão 30 dias) e aparece na aba Faturas para baixa. Mês cancelado não é recriado. Pausar para de gerar; nada é apagado.</div>
+    <div class="ft-tabela-wrap"><table class="ft-tabela"><thead><tr><th>Descrição · empresa</th><th>Classificação</th><th>Frequência</th><th style="text-align:right;">Valor</th><th>Próximo venc.</th><th>Até</th><th>Faturas</th><th></th></tr></thead>
+    <tbody>${linhas || '<tr><td colspan="8" class="cr-muted" style="padding:16px;">Nenhuma despesa recorrente ainda. Cadastre aluguel, folha, sistemas, contador, impostos fixos…</td></tr>'}</tbody></table></div>`;
+}
+function finEditarRecorrencia(id){
+  const r = id ? _finRecs.find(x => x.id === id) : { tipo: 'pagar', moeda: 'BRL', frequencia: 'mensal', antecedencia_dias: 30, ativo: true };
+  if(!r) return;
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:640px;">
+    <div class="ft-modal-head"><span>${id ? 'Editar recorrência' : '🔁 Nova despesa recorrente'}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div class="ft-cand-campos">
+        <label>Tipo <select class="form-input" id="fr_tipo"><option value="pagar" ${r.tipo === 'pagar' ? 'selected' : ''}>A pagar</option><option value="receber" ${r.tipo === 'receber' ? 'selected' : ''}>A receber</option></select></label>
+        <label style="flex:2;">Descrição <input class="form-input" id="fr_desc" value="${esc(r.descricao || '')}" placeholder="ex.: Aluguel do escritório" onchange="finRecSugerir()"></label>
+      </div>
+      <div class="ft-cand-campos">
+        <label style="flex:2;position:relative;">Empresa (quem recebe) <input class="form-input" id="fr_emp" value="${esc(r.empresa_nome || '')}" autocomplete="off" oninput="autocompletarContato(this,'','fr_dd_emp')" onchange="finRecSugerir()"><div id="fr_dd_emp" class="cr-dd" style="display:none;"></div></label>
+        <label>Moeda <select class="form-input" id="fr_moeda">${['BRL', 'USD', 'EUR'].map(m => `<option ${r.moeda === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        <label>Valor <input class="form-input" id="fr_valor" value="${r.valor != null ? _ftFmt(r.valor) : ''}" inputmode="decimal"></label>
+      </div>
+      <div class="ft-cand-campos">
+        <label style="flex:2;">Classificação * <select class="form-input" id="fr_conta" onchange="this.dataset.manual='1'">${finOpcoesContas(r.conta_id || '', r.tipo).replace('— automático (pela taxa / tipo) —', '— escolha —')}</select></label>
+        <label>Centro de custo <select class="form-input" id="fr_centro">${finOpcoesCentros(r.centro_custo_id || '')}</select></label>
+      </div>
+      <div class="ft-cand-campos">
+        <label>Frequência <select class="form-input" id="fr_freq">${Object.entries(FinCore.FREQUENCIAS).map(([k, [, l]]) => `<option value="${k}" ${r.frequencia === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>1º vencimento <input class="form-input" type="date" id="fr_inicio" value="${esc(r.inicio || '')}"></label>
+        <label>Até <span class="cr-muted">(vazio = sem fim)</span> <input class="form-input" type="date" id="fr_fim" value="${esc(r.fim || '')}"></label>
+        <label title="Quantos dias antes do vencimento a fatura aparece">Gerar com <input class="form-input" id="fr_ant" value="${r.antecedencia_dias != null ? r.antecedencia_dias : 30}" inputmode="numeric" style="width:60px;"> dias</label>
+      </div>
+      <label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;"><input type="checkbox" id="fr_var" ${r.valor_variavel ? 'checked' : ''}> O valor varia todo mês (energia, telefone…) — gera com este valor como estimativa e marca "confira o valor"</label>
+      <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="fr_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(r.obs || '')}"></label>
+      ${id ? `<label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;"><input type="checkbox" id="fr_aplicar" checked> Aplicar valor/classificação também às faturas futuras já geradas e ainda não pagas</label>
+        <div class="cr-muted" style="font-size:11px;margin-top:4px;">Para encerrar, informe a data em "Até": faturas em aberto depois dela são canceladas (não apagadas).</div>` : ''}
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="finSalvarRecorrencia(${id ? `'${id}'` : 'null'})">Salvar</button></div>
+  </div></div>`;
+  if(!id) finRecSugerir();
+}
+function finRecSugerir(){
+  const sel = document.getElementById('fr_conta');
+  if(!sel || sel.dataset.manual === '1' || (sel.value && sel.dataset.sugerida !== sel.value)) return;
+  const cod = FinCore.sugerirConta(['fr_desc', 'fr_emp', 'fr_obs'].map(i => (document.getElementById(i) || {}).value || '').join(' '));
+  const c = cod && _fin.contas.find(x => x.codigo === cod && x.ativo !== false);
+  if(c){ sel.value = c.id; sel.dataset.sugerida = c.id; }
+}
+async function finSalvarRecorrencia(id){
+  const v = x => (document.getElementById(x) || {}).value;
+  const atual = id ? _finRecs.find(x => x.id === id) : {};
+  const body = { id: id || undefined, tipo: v('fr_tipo'), descricao: v('fr_desc'), empresa_nome: v('fr_emp'), empresa_id: atual && atual.empresa_nome === v('fr_emp') ? atual.empresa_id : null, moeda: v('fr_moeda'), valor: v('fr_valor'), conta_id: v('fr_conta'), centro_custo_id: v('fr_centro') || null, frequencia: v('fr_freq'), inicio: v('fr_inicio'), fim: v('fr_fim') || null, antecedencia_dias: v('fr_ant'), valor_variavel: document.getElementById('fr_var').checked, obs: v('fr_obs'), ativo: id ? atual.ativo : true, aplicar_futuras: id ? document.getElementById('fr_aplicar').checked : false };
+  const d = await (await fetch('/api/fin/recorrencias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+  if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+  const partes = [`${(d.geradas || []).length} fatura(s) gerada(s)`];
+  if(d.atualizadas) partes.push(`${d.atualizadas} futura(s) atualizada(s)`);
+  if(d.canceladas) partes.push(`${d.canceladas} cancelada(s) após o fim`);
+  ftFecharModal(); showToast('Recorrência salva — ' + partes.join(', ') + '.', 'ok'); renderDashFaturas();
+}
+async function finPausarRecorrencia(id, ativo){
+  const r = _finRecs.find(x => x.id === id); if(!r) return;
+  let cancelar = false;
+  if(!ativo){
+    if(!confirm(`Pausar "${r.descricao}"? Não serão geradas novas faturas.`)) return;
+    cancelar = r.abertas ? confirm(`Cancelar também as ${r.abertas} fatura(s) futuras em aberto desta recorrência? (OK = cancelar, Cancelar = manter)`) : false;
+  }
+  const d = await (await fetch('/api/fin/recorrencias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...r, ativo, cancelar_futuras: cancelar }) })).json();
+  if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+  showToast(ativo ? 'Recorrência reativada.' : 'Recorrência pausada' + (d.canceladas ? ` — ${d.canceladas} fatura(s) cancelada(s)` : '') + '.', 'ok'); renderDashFaturas();
+}
+async function finGerarRecorrentes(){
+  const d = await (await fetch('/api/fin/recorrencias/gerar', { method: 'POST' })).json();
+  if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+  showToast(d.geradas ? `${d.geradas} fatura(s) gerada(s).` : 'Nada novo para gerar — está tudo em dia.', d.erros && d.erros.length ? 'warn' : 'ok'); renderDashFaturas();
 }

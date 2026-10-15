@@ -103,5 +103,47 @@ teste('chaveImportacao evita duplicar', () => {
   assert.strictEqual(F.chaveImportacao(a), F.chaveImportacao(b));
 });
 
+console.log('\n── classificação e recorrência ──');
+teste('precisaClassificar: só despesa avulsa sem conta', () => {
+  assert.strictEqual(F.precisaClassificar({ tipo: 'pagar', itens: [] }), true);
+  assert.strictEqual(F.precisaClassificar({ tipo: 'pagar', conta_id: 'x', itens: [] }), false);
+  assert.strictEqual(F.precisaClassificar({ tipo: 'pagar', itens: [{ referencia: 'TESTE-01' }] }), false);
+  assert.strictEqual(F.precisaClassificar({ tipo: 'receber', itens: [] }), false);
+});
+teste('sugerirConta pelo texto', () => {
+  assert.strictEqual(F.sugerirConta('Imobiliária Exemplo - aluguel outubro'), '5.1.03');
+  assert.strictEqual(F.sugerirConta('Guia FGTS'), '5.1.10');
+  assert.strictEqual(F.sugerirConta('Folha de pagamento'), '5.1.01');
+  assert.strictEqual(F.sugerirConta('Pró-labore sócios'), '5.1.02');
+  assert.strictEqual(F.sugerirConta('DARF IRPJ trimestral'), '6.1.01');
+  assert.strictEqual(F.sugerirConta('ICMS apuração'), '4.1.02');
+  assert.strictEqual(F.sugerirConta('Tarifa bancária'), '5.2.01');
+  assert.strictEqual(F.sugerirConta('Fornecedor Teste'), null);
+});
+teste('validarRecorrencia exige classificação e 1º vencimento', () => {
+  const base = { descricao: 'Aluguel', empresa_nome: 'Imobiliária Exemplo', valor: '3.000,00', conta_id: 'c', inicio: '2026-11-05' };
+  assert.strictEqual(F.validarRecorrencia(base).ok, true);
+  assert.strictEqual(F.validarRecorrencia({ ...base, conta_id: '' }).ok, false);
+  assert.strictEqual(F.validarRecorrencia({ ...base, inicio: '' }).ok, false);
+  assert.strictEqual(F.validarRecorrencia({ ...base, fim: '2026-10-01' }).ok, false);
+  assert.strictEqual(F.validarRecorrencia(base).recorrencia.valor, 3000);
+});
+teste('faturasDaRecorrencia: horizonte, fim, sem duplicar, 1ª sempre sai', () => {
+  const r = F.validarRecorrencia({ descricao: 'Aluguel', empresa_nome: 'Imobiliária Exemplo', valor: 3000, conta_id: 'c', inicio: '2026-10-31', antecedencia_dias: 50 }).recorrencia;
+  const g = F.faturasDaRecorrencia(r, [], '2026-10-14');
+  assert.deepStrictEqual(g.map(x => x.fatura.vencimento), ['2026-10-31', '2026-11-30']);
+  assert.strictEqual(g[0].fatura.documento, 'Aluguel 10/2026');
+  assert.deepStrictEqual(F.faturasDaRecorrencia(r, ['2026-10'], '2026-10-14').map(x => x.competencia), ['2026-11']);
+  // dia 31 volta a 31 depois de fevereiro
+  assert.strictEqual(F.vencimentosRecorrencia(r, '2027-03-31').map(x => x.vencimento).pop(), '2027-03-31');
+  const tri = { ...r, frequencia: 'trimestral', inicio: '2027-01-20', antecedencia_dias: 10, fim: '2027-06-30' };
+  assert.deepStrictEqual(F.faturasDaRecorrencia(tri, [], '2026-10-14').map(x => x.fatura.vencimento), ['2027-01-20'], '1ª sai mesmo fora do horizonte');
+  assert.deepStrictEqual(F.vencimentosRecorrencia(tri, '2028-01-01').map(x => x.vencimento), ['2027-01-20', '2027-04-20']);
+  assert.deepStrictEqual(F.faturasDaRecorrencia({ ...r, ativo: false }, [], '2026-10-14'), []);
+  assert.strictEqual(F.proximoVencimento(r, '2026-11-01'), '2026-11-30');
+  const varv = F.faturasDaRecorrencia({ ...r, valor_variavel: true }, [], '2026-10-14')[0].fatura;
+  assert.ok(/estimado/.test(varv.obs));
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);

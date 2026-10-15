@@ -7,7 +7,7 @@
 //     reabrir, cancelar. Mesmo padrão de tela exclusiva da Agenda.
 // Regras puras em faturas-core.js (testes_faturas.js).
 
-const _ftFiltro = { tipo: '', status: 'aberta', busca: '', de: '', ate: '' };
+const _ftFiltro = { tipo: '', status: 'aberta', busca: '', de: '', ate: '', conta: '' };
 let _ftLista = [];
 let _ftSel = new Set(); // faturas marcadas pra baixa em lote
 let _crFaturas = {};   // fatura_id → fatura (do processo aberto) pra badge na grade
@@ -175,6 +175,9 @@ async function renderDashFaturas(){
   if(typeof _finAba !== 'undefined' && _finAba !== 'faturas') return renderFinAba(el);
   el.innerHTML = (typeof finTabsHtml === 'function' ? finTabsHtml() : '') + '<div class="cr-muted">Carregando…</div>';
   try{ _ftLista = await _ftCarregar(); }catch(e){ el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const semClass = _ftLista.filter(f => f.status !== 'cancelada' && FinCore.precisaClassificar(f)).length;
+  if(_ftFiltro.conta === '_sem') _ftLista = _ftLista.filter(f => FinCore.precisaClassificar(f));
+  else if(_ftFiltro.conta) _ftLista = _ftLista.filter(f => f.conta_id === _ftFiltro.conta);
   const hoje = _ftHoje();
   const cambio = (typeof _cambio !== 'undefined') ? _cambio : {};
   // Resumo sempre sobre TODAS as não canceladas (independe do filtro de status)
@@ -194,6 +197,7 @@ async function renderDashFaturas(){
     <input class="form-input" placeholder="empresa ou documento" value="${esc(_ftFiltro.busca)}" onchange="_ftFiltro.busca=this.value.trim();renderDashFaturas()">
     <label class="cr-muted">venc. de <input class="form-input" type="date" value="${esc(_ftFiltro.de)}" onchange="_ftFiltro.de=this.value;renderDashFaturas()"></label>
     <label class="cr-muted">até <input class="form-input" type="date" value="${esc(_ftFiltro.ate)}" onchange="_ftFiltro.ate=this.value;renderDashFaturas()"></label>
+    <select class="form-input" style="max-width:230px;" onchange="_ftFiltro.conta=this.value;renderDashFaturas()" title="Classificação"><option value="">Todas as classificações</option><option value="_sem" ${_ftFiltro.conta === '_sem' ? 'selected' : ''}>⚠ Sem classificação</option>${(_fin && _fin.contas || []).filter(c => c.ativo !== false).map(c => `<option value="${c.id}" ${_ftFiltro.conta === c.id ? 'selected' : ''}>${esc(c.codigo + ' ' + c.nome)}</option>`).join('')}</select>
     <button class="btn btn-primary" onclick="ftLerDocumento()" title="Envie a fatura, boleto, nota ou DARF em PDF/imagem — a IA preenche os campos pra você conferir">🧾 Ler fatura (PDF) com IA</button>
     <button class="btn btn-outline" onclick="ftComprovanteSolto()" title="Envie o comprovante (PIX, TED, boleto pago, câmbio) — a IA acha a(s) fatura(s) e prepara a baixa">📎 Baixa por comprovante</button>
     <button class="btn btn-outline" id="ft_btn_lote" onclick="ftBaixaLote()" title="Marque as faturas na lista e dê baixa de todas com um único pagamento" ${_ftSel.size ? '' : 'disabled'}>💰 Baixa em lote${_ftSel.size ? ' (' + _ftSel.size + ')' : ''}</button>
@@ -211,12 +215,12 @@ async function renderDashFaturas(){
     return `<tr class="ft-row" onclick="ftToggleItens('${f.id}', event)">
       <td>${f.status === 'aberta' ? `<input type="checkbox" ${_ftSel.has(f.id) ? 'checked' : ''} onclick="event.stopPropagation();ftSelecionar('${f.id}', this.checked)" title="Selecionar pra baixa em lote">` : ''}</td>
       <td><span class="ft-tag ${f.tipo}">${f.tipo === 'pagar' ? 'PAGAR' : 'RECEBER'}</span><div class="cr-muted" style="font-family:'JetBrains Mono',monospace;">${esc(f.numero || '')}</div></td>
-      <td><strong>${esc(f.empresa_nome)}</strong>${f.empresa_id ? ' <span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<div class="cr-muted">${(f.itens || []).length} ${(f.itens || []).length === 1 ? 'taxa' : 'taxas'} · ref. ${_ftData(f.emissao || (f.created_at || '').slice(0, 10))}${f.conta_id && _fin ? (c => c ? ' · ' + esc(c.codigo + ' ' + c.nome) : '')(_fin.contas.find(c => c.id === f.conta_id)) : ''}${f.moeda !== 'BRL' && fator ? ` · câmbio ${fator.toFixed(4).replace('.', ',')}` : ''}</div></td>
+      <td><strong>${esc(f.empresa_nome)}</strong>${f.empresa_id ? ' <span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<div class="cr-muted">${(f.itens || []).length} ${(f.itens || []).length === 1 ? 'taxa' : 'taxas'} · ref. ${_ftData(f.emissao || (f.created_at || '').slice(0, 10))}${f.conta_id && _fin ? (c => c ? ` · <span style="background:#eef2ff;color:#3538cd;border-radius:6px;padding:0 6px;">${esc(c.nome)}</span>` : '')(_fin.contas.find(c => c.id === f.conta_id)) : (FinCore.precisaClassificar(f) && f.status !== 'cancelada' ? ' · <span style="color:#b54708;">⚠ sem classificação</span>' : '')}${f.moeda !== 'BRL' && fator ? ` · câmbio ${fator.toFixed(4).replace('.', ',')}` : ''}</div></td>
       <td>${esc(f.documento || '—')}</td>
       <td>${refs.map(r => `<a href="/controle/${encodeURIComponent(r)}" target="_blank">${esc(r)}</a>`).join(', ') || '—'}</td>
       <td>${_ftData(f.vencimento)}</td>
       <td style="text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_ftSimb(f.moeda)} ${_ftFmt(f.valor)}</td>
-      <td><span style="color:${sit[s][1]};font-weight:600;">${sit[s][0]}</span>${f.status === 'paga' ? `<div class="cr-muted">${_ftData(f.pago_em)}${f.valor_pago != null && Math.abs(f.valor_pago - f.valor) >= 0.01 ? ` · ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)}` : ''}</div>` : (f.status === 'aberta' && parseFloat(f.valor_pago) > 0 ? `<div style="font-size:11px;color:#8a5a00;font-weight:600;">Parcial · pago ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)} · saldo ${_ftFmt(FaturasCore.saldoFatura(f))}</div>` : '')}${_ftQtdArq(f) ? `<div class="cr-muted" title="Anexos e comprovantes">📎 ${_ftQtdArq(f)}</div>` : ''}${f.tipo === 'pagar' && f.status === 'aberta' ? (f.aprovacao ? `<div style="font-size:10.5px;color:var(--ok);" title="Aprovado por ${esc(f.aprovacao.nome || f.aprovacao.por || '')}">✔ aprovado</div>` : '<div style="font-size:10.5px;color:#8a5a00;">⏳ aguardando aprovação</div>') : ''}${f.origem ? `<div class="cr-muted" style="font-size:10.5px;">↘ ${f.origem.tipo === 'venda' ? 'venda' : 'câmbio'} ${esc(f.origem.referencia || '')}</div>` : ''}</td>
+      <td><span style="color:${sit[s][1]};font-weight:600;">${sit[s][0]}</span>${f.status === 'paga' ? `<div class="cr-muted">${_ftData(f.pago_em)}${f.valor_pago != null && Math.abs(f.valor_pago - f.valor) >= 0.01 ? ` · ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)}` : ''}</div>` : (f.status === 'aberta' && parseFloat(f.valor_pago) > 0 ? `<div style="font-size:11px;color:#8a5a00;font-weight:600;">Parcial · pago ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)} · saldo ${_ftFmt(FaturasCore.saldoFatura(f))}</div>` : '')}${_ftQtdArq(f) ? `<div class="cr-muted" title="Anexos e comprovantes">📎 ${_ftQtdArq(f)}</div>` : ''}${f.tipo === 'pagar' && f.status === 'aberta' ? (f.aprovacao ? `<div style="font-size:10.5px;color:var(--ok);" title="Aprovado por ${esc(f.aprovacao.nome || f.aprovacao.por || '')}">✔ aprovado</div>` : '<div style="font-size:10.5px;color:#8a5a00;">⏳ aguardando aprovação</div>') : ''}${f.origem ? `<div class="cr-muted" style="font-size:10.5px;">${f.origem.tipo === 'recorrencia' ? '🔁 recorrente' : '↘ ' + (f.origem.tipo === 'venda' ? 'venda' : 'câmbio') + ' ' + esc(f.origem.referencia || '')}</div>` : ''}</td>
       <td style="white-space:nowrap;">
         ${f.status === 'aberta' ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="ftBaixa('${f.id}')" title="Registrar pagamento (total ou parcial) com comprovante">💰 Dar baixa</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftEditar('${f.id}')">Editar</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftCancelar('${f.id}')" title="Cancela (não apaga)">Cancelar</button>` : ''}
         ${f.status === 'paga' ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftBaixa('${f.id}')" title="Ver pagamentos e comprovantes">📎 Pagamentos</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftAcao('${f.id}','reabrir')">Reabrir</button>` : ''}
@@ -224,7 +228,8 @@ async function renderDashFaturas(){
       <tr class="ft-itens-row" id="ft_itens_${f.id}" style="display:none;"><td colspan="9">${itensHtml}</td></tr>`;
   }).join('');
   const total = _ftLista.filter(f => f.status !== 'cancelada').reduce((s, f) => s + (f.moeda === 'BRL' ? parseFloat(f.valor) || 0 : (parseFloat(f.valor) || 0) * (parseFloat(cambio[f.moeda]) || 0)), 0);
-  el.innerHTML = (typeof finTabsHtml === 'function' ? finTabsHtml() : '') + cards + filtros + `<div class="ft-tabela-wrap"><table class="ft-tabela">
+  const avisoClass = semClass && _ftFiltro.conta !== '_sem' ? `<div style="background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;color:#8a5a00;">⚠ ${semClass} despesa${semClass === 1 ? '' : 's'} sem classificação (aparece${semClass === 1 ? '' : 'm'} como "despesas gerais" no DRE). <a class="cr-link" onclick="_ftFiltro.conta='_sem';renderDashFaturas()">Ver e classificar</a></div>` : '';
+  el.innerHTML = (typeof finTabsHtml === 'function' ? finTabsHtml() : '') + cards + avisoClass + filtros + `<div class="ft-tabela-wrap"><table class="ft-tabela">
     <thead><tr><th style="width:22px;"></th><th>Tipo</th><th>Empresa · itens</th><th>Documento</th><th>Processo</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th>Situação</th><th></th></tr></thead>
     <tbody>${linhas || `<tr><td colspan="9" class="cr-muted" style="padding:16px;">Nenhuma fatura com esses filtros.</td></tr>`}</tbody>
     <tfoot><tr><td colspan="6" style="text-align:right;">${_ftLista.length} fatura${_ftLista.length === 1 ? '' : 's'} · total em R$</td><td style="text-align:right;font-family:'JetBrains Mono',monospace;">R$ ${_ftFmt(total)}</td><td colspan="2"></td></tr></tfoot>
@@ -793,10 +798,10 @@ function ftEditar(id, pre){
       <div id="ft_e_conf" style="margin-bottom:10px;max-height:190px;overflow:auto;">${(id || (pre && pre._ia)) ? '' : `<a class="cr-link" onclick="ftConferir(null)">🔍 Conferir com o sistema (Custos Reais, cotado, duplicidade)</a>`}</div>
       <div class="ft-cand-campos">
         <label>Tipo <select class="form-input" id="ft_e_tipo"><option value="pagar" ${f.tipo === 'pagar' ? 'selected' : ''}>A pagar</option><option value="receber" ${f.tipo === 'receber' ? 'selected' : ''}>A receber</option></select></label>
-        <label style="flex:2;position:relative;">Empresa ${f.empresa_id ? '<span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<input class="form-input" id="ft_e_empresa" value="${esc(f.empresa_nome)}" autocomplete="off" oninput="autocompletarContato(this,'','ft_dd_empresa')"><div id="ft_dd_empresa" class="cr-dd" style="display:none;"></div></label>
+        <label style="flex:2;position:relative;">Empresa ${f.empresa_id ? '<span class="cr-vinc" style="position:static;" title="Vinculada ao cadastro">●</span>' : ''}<input class="form-input" id="ft_e_empresa" value="${esc(f.empresa_nome)}" autocomplete="off" oninput="autocompletarContato(this,'','ft_dd_empresa')" onchange="ftSugerirConta()"><div id="ft_dd_empresa" class="cr-dd" style="display:none;"></div></label>
       </div>
       <div class="ft-cand-campos">
-        <label>Documento <input class="form-input" id="ft_e_doc" value="${esc(f.documento || '')}"></label>
+        <label>Documento <input class="form-input" id="ft_e_doc" value="${esc(f.documento || '')}" onchange="ftSugerirConta()"></label>
         <label>Emissão <input class="form-input" type="date" id="ft_e_emissao" value="${esc(f.emissao || '')}"></label>
         <label>Vencimento <input class="form-input" type="date" id="ft_e_venc" value="${esc(f.vencimento || '')}"></label>
       </div>
@@ -806,11 +811,17 @@ function ftEditar(id, pre){
         <label>Câmbio (se USD/EUR) <input class="form-input" id="ft_e_cambio" value="${f.cambio && f.moeda !== 'BRL' ? String(f.cambio).replace('.', ',') : ''}" placeholder="${(typeof _cambio !== 'undefined' && _cambio.USD) ? _cambio.USD.toFixed(4).replace('.', ',') : ''}" inputmode="decimal"></label>
       </div>
       <div class="ft-cand-campos">
-        <label style="flex:2;">Conta (plano de contas) <select class="form-input" id="ft_e_conta">${typeof finOpcoesContas === 'function' ? finOpcoesContas(f.conta_id || '', f.tipo) : ''}</select></label>
+        <label style="flex:2;">Classificação <span class="cr-muted">(aluguel, folha, imposto… — obrigatória em despesa sem processo)</span> <select class="form-input" id="ft_e_conta" onchange="this.dataset.manual='1';document.getElementById('ft_e_conta_dica').textContent=''">${typeof finOpcoesContas === 'function' ? finOpcoesContas(f.conta_id || '', f.tipo) : ''}</select><span id="ft_e_conta_dica" class="cr-muted" style="font-size:11px;"></span></label>
         <label>Centro de custo <select class="form-input" id="ft_e_centro">${typeof finOpcoesCentros === 'function' ? finOpcoesCentros(f.centro_custo_id || '') : ''}</select></label>
-        ${id ? '' : `<label title="Cria uma fatura por mês com o mesmo valor (aluguel, salários, sistemas…)">Repetir mensalmente <select class="form-input" id="ft_e_rec">${[1, 2, 3, 4, 6, 12, 24].map(n => `<option value="${n}">${n === 1 ? 'não' : n + ' meses'}</option>`).join('')}</select></label>`}
       </div>
-      <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(f.obs || '')}"></label>
+      ${id ? (f.origem && f.origem.tipo === 'recorrencia' ? `<div class="cr-muted" style="margin-top:6px;">🔁 Gerada pela recorrência <b>${esc(f.origem.referencia || '')}</b> — para mudar os próximos meses, edite na aba <a class="cr-link" onclick="ftFecharModal();finIrAba('recorrentes')">Recorrentes</a>.</div>` : '') : `<div class="ft-cand-campos" style="align-items:flex-end;">
+        <label title="A fatura se repete sozinha: o sistema gera cada mês com antecedência (aluguel, folha, sistemas, impostos fixos…)">Recorrência <select class="form-input" id="ft_e_rec" onchange="document.getElementById('ft_e_rec_extra').style.display=this.value?'flex':'none'"><option value="">não se repete</option>${Object.entries(FinCore.FREQUENCIAS).map(([k, [, l]]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+        <span id="ft_e_rec_extra" style="display:none;gap:8px;flex:3;align-items:flex-end;">
+          <label>Até <span class="cr-muted">(vazio = sem fim)</span> <input class="form-input" type="date" id="ft_e_rec_fim"></label>
+          <label style="flex-direction:row;align-items:center;gap:6px;" title="Ex.: energia, telefone — gera com este valor como estimativa e avisa para conferir"><input type="checkbox" id="ft_e_rec_var"> valor varia todo mês</label>
+        </span>
+      </div>`}
+      <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="ft_e_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(f.obs || '')}" onchange="ftSugerirConta()"></label>
       ${id ? ((f.itens || []).length ? `<div class="cr-muted" style="margin-top:8px;">Itens: ${f.itens.map(it => `${esc(it.referencia || '')} ${esc(it.label)} ${_ftSimb(it.moeda)} ${_ftFmt(it.valor)}`).join(' · ')}</div>` : '')
         : `<div style="margin-top:12px;"><div class="cr-muted" style="font-weight:600;margin-bottom:4px;">Taxas desta fatura (processo + taxa ligam a fatura à aba Custos Reais)</div><div id="ft_e_itens">${_ftItensHtml()}</div></div>`}
     </div>
@@ -818,6 +829,18 @@ function ftEditar(id, pre){
   </div></div>`;
   // fatura lida pela IA ou já existente: confere sozinho ao abrir
   if(id || (pre && pre._ia)) ftConferir(id || null);
+  if(!id) ftSugerirConta();
+}
+// Sugere a classificação pelo texto (empresa, documento, observação) enquanto
+// o usuário não escolheu uma — ele sempre pode trocar.
+function ftSugerirConta(){
+  const sel = document.getElementById('ft_e_conta');
+  if(!sel || sel.dataset.manual === '1' || (sel.value && sel.dataset.sugerida !== sel.value) || typeof FinCore === 'undefined' || !_fin) return;
+  const txt = ['ft_e_empresa', 'ft_e_doc', 'ft_e_obs'].map(i => (document.getElementById(i) || {}).value || '').join(' ');
+  const cod = FinCore.sugerirConta(txt);
+  const c = cod && _fin.contas.find(x => x.codigo === cod && x.ativo !== false);
+  const dica = document.getElementById('ft_e_conta_dica');
+  if(c){ sel.value = c.id; sel.dataset.sugerida = c.id; if(dica) dica.textContent = '✨ sugerida pelo texto — confira'; }
 }
 // Monta o corpo da fatura a partir do modal (usado no Salvar e na Conferência).
 function _ftCorpoModal(id){
@@ -889,22 +912,32 @@ async function ftSalvarEdicao(id){
     const erros = conf.checks.filter(c => c.nivel === 'erro').map(c => '• ' + c.msg).join('\n');
     if(!confirm(`A conferência encontrou problema(s):\n\n${erros}\n\nSalvar a fatura mesmo assim?`)) return;
   }
+  if(!id && FinCore.precisaClassificar(body)){ showToast('Escolha a classificação da despesa (aluguel, folha, imposto, sistemas…).', 'warn'); const el = document.getElementById('ft_e_conta'); if(el){ el.focus(); el.style.outline = '2px solid var(--err)'; } return; }
   try{
-    const nRec = !id ? (parseInt((document.getElementById('ft_e_rec') || {}).value, 10) || 1) : 1;
-    let envio = body;
-    if(nRec > 1){
-      if(!body.vencimento){ showToast('Informe o vencimento da 1ª parcela para repetir mensalmente.', 'warn'); return; }
-      envio = Array.from({ length: nRec }, (_, k) => ({ ...body, vencimento: FinCore.addMeses(body.vencimento, k), emissao: body.emissao ? FinCore.addMeses(body.emissao, k) : null, documento: ((body.documento || '') + ` (${k + 1}/${nRec})`).trim(), itens: k === 0 ? body.itens : [] }));
+    const freq = !id ? ((document.getElementById('ft_e_rec') || {}).value || '') : '';
+    let d;
+    if(freq){
+      // recorrência: o servidor guarda a regra e já gera a(s) fatura(s) do horizonte
+      if(!body.vencimento){ showToast('Informe o 1º vencimento da despesa recorrente.', 'warn'); return; }
+      if((body.itens || []).length){ showToast('Despesa recorrente não leva taxas de processo — tire as taxas ou deixe sem recorrência.', 'warn'); return; }
+      if(!body.conta_id){ showToast('Escolha a classificação para a recorrência.', 'warn'); return; }
+      const rec = { descricao: body.documento || body.empresa_nome, tipo: body.tipo, empresa_nome: body.empresa_nome, empresa_id: body.empresa_id || null, moeda: body.moeda, valor: body.valor, conta_id: body.conta_id, centro_custo_id: body.centro_custo_id, frequencia: freq, inicio: body.vencimento, fim: document.getElementById('ft_e_rec_fim').value || null, valor_variavel: document.getElementById('ft_e_rec_var').checked, obs: body.obs };
+      const r = await fetch('/api/fin/recorrencias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rec) });
+      d = await r.json();
+      if(!d.ok){ showToast(d.semTabela ? 'Recorrência ainda não ativada no banco (migration 0054).' : (d.erro || 'Erro ao salvar'), 'err'); return; }
+      d.faturas = d.geradas || [];
+      showToast(`Recorrência criada — ${d.faturas.length} fatura${d.faturas.length === 1 ? '' : 's'} gerada${d.faturas.length === 1 ? '' : 's'}; as próximas saem sozinhas.`, 'ok');
+    } else {
+      const r = await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      d = await r.json();
     }
-    const r = await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(envio) });
-    const d = await r.json();
     if(!d.ok){ showToast(d.erro || 'Erro ao salvar', 'err'); return; }
     // fatura lida pela IA: o PDF original fica anexado à fatura
     if(!id && _ftArquivoIA && d.faturas && d.faturas[0]){
       const arq = _ftArquivoIA; _ftArquivoIA = null;
       try{ await _ftEnviarAnexo(d.faturas[0].id, arq, 'fatura'); }catch(e){ showToast('Fatura salva, mas o PDF não foi anexado: ' + e.message, 'warn'); }
     }
-    ftFecharModal(); showToast('Fatura salva' + (d.faturas && d.faturas[0] && d.faturas[0].numero ? ' — nº ' + d.faturas[0].numero : '') + '.', 'ok'); renderDashFaturas();
+    ftFecharModal(); if(!freq) showToast('Fatura salva' + (d.faturas && d.faturas[0] && d.faturas[0].numero ? ' — nº ' + d.faturas[0].numero : '') + '.', 'ok'); renderDashFaturas();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 
