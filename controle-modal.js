@@ -1552,6 +1552,32 @@ function crAplicarImportado(realJson, moedas){
   return n;
 }
 
+// Tributos lidos da DI/DUIMP pela Extração com IA (15/10/2026). Diferente do
+// import da planilha: só preenche campo VAZIO ou que veio de outra DUIMP —
+// valor lançado/conferido por alguém nunca é trocado. Devolve o que fez.
+function crAplicarDuimp(valores){
+  const out = { preenchidos: 0, ids: [], mantidos: [] };
+  const ids = Object.keys(valores || {}).filter(id => custosReaisItensFlat().some(it => it.id === id));
+  ids.forEach(id => _crExtras.add(id));
+  if(typeof crRerender === 'function') crRerender();
+  ids.forEach(id => {
+    const el = document.getElementById('f_cr_' + id);
+    if(!el || el.readOnly) return;
+    const atual = crValorCampo('f_cr_' + id);
+    const origem = _crConf[id] && _crConf[id].origem;
+    if(atual != null && atual !== 0 && origem !== 'DUIMP'){ out.mantidos.push(id); return; }
+    el.value = exibirMoeda(valores[id]);
+    const sel = document.getElementById('f_cr_moeda_' + id);
+    if(sel) sel.value = 'BRL';
+    crMarcar(id, 'DUIMP');
+    el.style.borderColor = 'var(--ok)'; el.style.background = 'rgba(22,163,74,.04)';
+    setTimeout(() => { el.style.borderColor = ''; el.style.background = ''; }, 3000);
+    out.preenchidos++; out.ids.push(id);
+  });
+  atualizarTotalCustosReais();
+  return out;
+}
+
 // Alterna uma taxa entre "valor único pro processo" e "detalhado container a
 // container" — ativa/desativa a sub-linha de containers e trava (readonly) a
 // linha principal, que passa a mostrar só o total somado em R$.

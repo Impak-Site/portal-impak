@@ -598,6 +598,7 @@ async function extrairComIA_umArquivo(input){
   "di_ncms": "",  // SOMENTE para DI/DUIMP: NCM(s) distintos dos itens/adições, no formato "4011.20.90" (com pontos), separados por vírgula se houver mais de um
   "di_ncms_detalhe": [],  // SOMENTE para DI/DUIMP: UM objeto por item/adição da declaração: {"ncm":"4011.80.90","quantidade":24,"peso_liquido":1091.76} — "quantidade" = "Quantidade na unidade estatística" do item e "peso_liquido" = "Peso líquido (kg)" DAQUELE item. Liste TODOS os itens (não some você mesmo). Deixar [] para outros documentos.
   "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI. Se for uma DUIMP, usar a data do evento "Declaração registrada" no histórico/timeline do documento (ex: "27/07/2026, 19:13" → "2026-07-27").
+  "di_tributos": {},  // SOMENTE para DI/DUIMP: tributos federais da declaração em R$ (valor A RECOLHER / RECOLHIDO, não o "calculado" nem o "suspenso"), TOTAL da declaração (somando todos os itens/adições): {"ii":0,"ipi":0,"pis":0,"cofins":0,"siscomex":0,"antidumping":0,"afrmm":0}. "siscomex" = Taxa de Utilização do Siscomex; "afrmm" = AFRMM (Marinha Mercante) quando o documento trouxer o valor. Use 0 para o que não aparecer. Deixar {} para outros documentos.
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
   "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
   "ci_numero": "",  // número da CI (Commercial Invoice/Fatura Comercial) — extrair de rótulos como "Invoice No", "Invoice Number", "INV. NO", "INV NO", "INV. NO:", "CI No", "Commercial Invoice No" (aceitar variações de pontuação/abreviação do rótulo, ex: com ou sem ponto, com ou sem dois-pontos)
@@ -635,6 +636,7 @@ Se o documento for um Comprovante de Importação, Extrato da Declaração de Im
 - extrair "di_peso_liquido" (peso líquido TOTAL da declaração, em kg — nas DUIMPs aparece em "Informações Complementares" como "PESO LIQUIDO: 15.780,76 KGS"; se não houver, use o "Peso Líquido (kg)" dos Dados da Carga; NÃO use o peso de um item/adição isolado) e "di_ncms" (todos os NCMs distintos das adições/itens, ex.: "4011.20.90"). Extraia também "di_ncms_detalhe": um objeto por item/adição com o NCM, a "Quantidade na unidade estatística" e o "Peso líquido (kg)" daquele item — usado para separar quantidade e peso por NCM na reciclagem.
 - Se for uma DI (documento antigo): numero_di vem de "DECLARAÇÃO DE IMPORTAÇÃO Nº" (ex: "26/0672265-4"); data_registro_di vem de "DATA DO REGISTRO".
 - Se for uma DUIMP (documento novo, geralmente chamado "Extrato da Duimp"): numero_di E duimp_numero recebem os DOIS o número da própria DUIMP, impresso no topo do documento (ex: "Extrato da Duimp 26BR0001279136-0" → usar "26BR0001279136-0"); data_registro_di vem da data do evento "Declaração registrada" listado no Histórico do documento (ignorar o horário, só a data).
+- "di_tributos": no Extrato da DUIMP os valores costumam estar nas Informações Complementares, no bloco "DEMONSTRATIVO DE CÁLCULOS" (ex.: "I.I. ....: R$ 40.096,18", "I.P.I. ....: R$ 19.546,89", "PIS ....: R$ 4.298,31", "COFINS ....: R$ 19.807,52", "TAXA SISCOMEX....: R$ 154,23") e o AFRMM numa linha "AFRMM: R$ 2.458,90" — use esses valores. Em outros layouts os tributos aparecem por tributo (II, IPI, PIS, COFINS, Taxa de Utilização/Siscomex, Direito Antidumping) com colunas tipo "Calculado", "A recolher", "Suspenso", "Recolhido". Use o valor efetivamente A RECOLHER / RECOLHIDO, em R$, somando todos os itens/adições. Na DI antiga, use os valores recolhidos do quadro de tributos/pagamentos. NÃO inclua ICMS aqui (nem IBS/CBS).
 - canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
 - data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
 - se o documento trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
@@ -1161,6 +1163,28 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       }
     }
     delete extracted.duimp_numero; // tratado à parte acima, nunca vai pro loop genérico
+
+    // ── Tributos da DI/DUIMP → aba Custos Reais (15/10/2026, Bianca/Ayslan) ──
+    // Os impostos vêm separados na DUIMP; no Conexos só aparecem somados na
+    // prestação de contas do despachante. Preenche o "Pago" de II/IPI/PIS/
+    // COFINS/Siscomex/Antidumping SÓ se o campo estiver vazio (ou se veio de
+    // outra leitura de DUIMP) — nunca sobrescreve o que alguém lançou.
+    if(extracted.di_tributos && typeof extracted.di_tributos === 'object'){
+      const trib = {};
+      // afrmm da DUIMP → item "marinha" (Marinha/AFRMM) dos Custos Reais
+      [['ii','ii'],['ipi','ipi'],['pis','pis'],['cofins','cofins'],['siscomex','siscomex'],['antidumping','antidumping'],['afrmm','marinha']].forEach(([k, id]) => {
+        const v = normNum(extracted.di_tributos[k]);
+        if(v > 0) trib[id] = Math.round(v * 100) / 100;
+      });
+      if(Object.keys(trib).length && typeof crAplicarDuimp === 'function'){
+        const r = crAplicarDuimp(trib);
+        if(r.preenchidos){ preenchidos += r.preenchidos; camposLidosNestaLeitura.push('custos_reais_tributos'); }
+        const nomes = { ii:'II', ipi:'IPI', pis:'PIS', cofins:'COFINS', siscomex:'Siscomex', antidumping:'Antidumping', marinha:'AFRMM' };
+        if(r.preenchidos) showToast(`Tributos da DUIMP lançados em Custos Reais: ${r.ids.map(i=>nomes[i]).join(', ')}` + (r.mantidos.length ? ` (mantidos os já lançados: ${r.mantidos.map(i=>nomes[i]).join(', ')})` : ''), 'ok');
+        else if(r.mantidos.length) showToast(`Tributos da DUIMP lidos, mas ${r.mantidos.map(i=>nomes[i]).join(', ')} já estavam lançados em Custos Reais — mantidos.`, 'warn');
+      }
+    }
+    delete extracted.di_tributos;
 
     // ── Número de container normalizado (25/09/2026, RIC da UD26-047) ──
     // Alguns documentos escrevem o container com espaço/hífen antes do
