@@ -124,7 +124,12 @@ const FERRAMENTAS = [
       const porPorto = {};
       r.forEach(({ p, dt }) => { const k = p.porto_destino || '(sem porto)'; (porPorto[k] = porPorto[k] || []).push({ referencia: p.referencia, cliente: p.cliente, fornecedor: p.fornecedor, data: dt, chegou: !!p.data_chegada, containers: p.qtd_containers_prevista || null, fase: p._fase }); });
       Object.values(porPorto).forEach(l => l.sort((a, b) => a.data.localeCompare(b.data)));
-      return { periodo: { de, ate }, total: r.length, containers_total: r.reduce((s, x) => s + (parseInt(x.p.qtd_containers_prevista, 10) || 0), 0), por_porto: porPorto };
+      // Totais já contados aqui (por porto e por cliente) pra IA não estimar
+      // ("~47") contando linha a linha — 15/10/2026.
+      const porCliente = {}, totalPorPorto = {};
+      r.forEach(({ p }) => { const c = p.cliente || '(sem cliente)'; porCliente[c] = (porCliente[c] || 0) + 1; const k = p.porto_destino || '(sem porto)'; totalPorPorto[k] = (totalPorPorto[k] || 0) + 1; });
+      const totais_por_cliente = Object.entries(porCliente).sort((a, b) => b[1] - a[1]).map(([cliente, processos]) => ({ cliente, processos }));
+      return { periodo: { de, ate }, total: r.length, containers_total: r.reduce((s, x) => s + (parseInt(x.p.qtd_containers_prevista, 10) || 0), 0), totais_por_porto: totalPorPorto, totais_por_cliente, por_porto: porPorto, aviso: 'Use os totais exatos de totais_por_cliente/totais_por_porto; não estime.' };
     },
   },
   {
@@ -283,6 +288,8 @@ REGRAS
 - Se a pergunta pede algo que exige um módulo que o usuário não tem (você não vê a ferramenta), diga que esse dado não está liberado para o perfil dele — não tente deduzir.
 - Formato: respostas curtas. Listas de processos em tabela Markdown (Referência | Cliente | Fase | Data...). Valores em R$ com separador brasileiro (R$ 12.345,67) e US$ em dólar. Datas em dd/mm/aaaa.
 - Quando houver muitos resultados, resuma (totais por porto/cliente) e ofereça detalhar.
+- Contagens e totais sempre exatos, como vieram da ferramenta. Nunca use "~", "cerca de" ou estimativa em número de processos/containers/valores.
+- A conversa tem histórico: use as mensagens anteriores como contexto (ex.: "e desse porto?" se refere ao porto citado antes).
 - Nunca mostre percentuais de comissão de vendedores nem nomes de comissionados.
 - Ferramentas disponíveis para este usuário: ${ferramentas.map(f => f.nome).join(', ')}.`;
 }
@@ -309,7 +316,7 @@ async function responder({ sessao, mensagens, ctx }) {
     },
   };
 
-  const msgs = (mensagens || []).slice(-12).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
+  const msgs = (mensagens || []).slice(-20).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
   const usadas = []; let tokens = 0; let texto = '';
   for (let rodada = 0; rodada <= MAX_RODADAS; rodada++) {
     const data = await chamarAnthropic({ model: MODELO, max_tokens: 2000, system: systemPrompt(sessao, ferramentas), tools, messages: msgs }, apiKey);
