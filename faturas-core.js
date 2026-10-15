@@ -311,14 +311,18 @@
 
     // 4. Linha a linha contra o processo
     const vistos = new Set();
+    const avisadoProc = new Set();
     itens.forEach((it, i) => {
       if (!it) return;
       const v = num(it.valor);
       const p = it.processo_id ? procs[it.processo_id] : null;
       const nomeLinha = `${it.referencia || 'sem processo'} · ${lbl(it.taxa) || it.label || it.descricao || 'taxa'}`;
       if (!p) { push('aviso', `${nomeLinha}: sem processo vinculado — não dá pra conferir com os Custos Reais.`, i); return; }
-      if (p.cancelado) push('erro', `${p.referencia}: processo está CANCELADO.`, i);
-      else if (p.fechado) push('aviso', `${p.referencia}: processo já está FECHADO — lançar custo agora muda o resultado apurado.`, i);
+      if (!avisadoProc.has(p.id)) {
+        avisadoProc.add(p.id);
+        if (p.cancelado) push('erro', `${p.referencia}: processo está CANCELADO.`, i);
+        else if (p.fechado) push('aviso', `${p.referencia}: processo já está FECHADO — lançar custo agora muda o resultado apurado.`, i);
+      }
       if (!it.taxa) { push('aviso', `${nomeLinha}: escolha a taxa pra conferir.`, i); return; }
       const chave = p.id + '|' + it.taxa;
       if (vistos.has(chave)) push('aviso', `${nomeLinha}: a mesma taxa aparece mais de uma vez nesta fatura.`, i);
@@ -359,7 +363,9 @@
       if (cot != null && cot > 0 && fatBRL != null) {
         const pct = (fatBRL - cot) / cot * 100;
         const txt = `${nomeLinha}: ainda sem valor lançado nos Custos Reais. Cotado ${fmt('BRL', cot)}, fatura ${fmt('BRL', fatBRL)} (${pct > 0 ? '+' : ''}${pct.toFixed(1).replace('.', ',')}%).`;
-        push(pct > 10 ? 'aviso' : 'info', txt + (pct > 10 ? ' Acima do cotado.' : ''), i);
+        if (pct > 10) push('aviso', txt + ' Acima do cotado.', i);
+        else if (pct < -30) push('aviso', txt + ' Bem abaixo do cotado — confira se é cobrança parcial ou se falta algo.', i);
+        else push('info', txt, i);
       } else push('info', `${nomeLinha}: ainda sem valor lançado nos Custos Reais e sem valor cotado pra comparar.`, i);
     });
 
