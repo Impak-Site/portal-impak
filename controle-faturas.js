@@ -191,6 +191,7 @@ async function renderDashFaturas(){
     <label class="cr-muted">venc. de <input class="form-input" type="date" value="${esc(_ftFiltro.de)}" onchange="_ftFiltro.de=this.value;renderDashFaturas()"></label>
     <label class="cr-muted">até <input class="form-input" type="date" value="${esc(_ftFiltro.ate)}" onchange="_ftFiltro.ate=this.value;renderDashFaturas()"></label>
     <button class="btn btn-primary" onclick="ftLerDocumento()" title="Envie a fatura, boleto, nota ou DARF em PDF/imagem — a IA preenche os campos pra você conferir">🧾 Ler fatura (PDF) com IA</button>
+    <button class="btn btn-outline" onclick="ftComprovanteSolto()" title="Envie o comprovante (PIX, TED, boleto pago, câmbio) — a IA acha a fatura e prepara a baixa">📎 Baixa por comprovante</button>
     <button class="btn btn-outline" onclick="ftNovaManual()">+ Fatura avulsa</button>
   </div>`;
   const sit = { vencida: ['Vencida', 'var(--err)'], hoje: ['Vence hoje', 'var(--warn,#b45309)'], semana: ['Esta semana', 'var(--warn,#b45309)'], a_vencer: ['A vencer', 'var(--muted)'], sem_vencimento: ['Sem vencimento', 'var(--muted)'], paga: ['Paga', 'var(--ok)'], cancelada: ['Cancelada', 'var(--dim)'] };
@@ -206,10 +207,10 @@ async function renderDashFaturas(){
       <td>${refs.map(r => `<a href="/controle/${encodeURIComponent(r)}" target="_blank">${esc(r)}</a>`).join(', ') || '—'}</td>
       <td>${_ftData(f.vencimento)}</td>
       <td style="text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_ftSimb(f.moeda)} ${_ftFmt(f.valor)}</td>
-      <td><span style="color:${sit[s][1]};font-weight:600;">${sit[s][0]}</span>${f.status === 'paga' ? `<div class="cr-muted">${_ftData(f.pago_em)}${f.valor_pago != null && Math.abs(f.valor_pago - f.valor) >= 0.01 ? ` · ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)}` : ''}</div>` : ''}</td>
+      <td><span style="color:${sit[s][1]};font-weight:600;">${sit[s][0]}</span>${f.status === 'paga' ? `<div class="cr-muted">${_ftData(f.pago_em)}${f.valor_pago != null && Math.abs(f.valor_pago - f.valor) >= 0.01 ? ` · ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)}` : ''}</div>` : (f.status === 'aberta' && parseFloat(f.valor_pago) > 0 ? `<div style="font-size:11px;color:#8a5a00;font-weight:600;">Parcial · pago ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)} · saldo ${_ftFmt(FaturasCore.saldoFatura(f))}</div>` : '')}${_ftQtdArq(f) ? `<div class="cr-muted" title="Anexos e comprovantes">📎 ${_ftQtdArq(f)}</div>` : ''}</td>
       <td style="white-space:nowrap;">
-        ${f.status === 'aberta' ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="ftMarcarPaga('${f.id}')">Marcar paga</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftEditar('${f.id}')">Editar</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftCancelar('${f.id}')" title="Cancela (não apaga)">Cancelar</button>` : ''}
-        ${f.status === 'paga' ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftAcao('${f.id}','reabrir')">Reabrir</button>` : ''}
+        ${f.status === 'aberta' ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="ftBaixa('${f.id}')" title="Registrar pagamento (total ou parcial) com comprovante">💰 Dar baixa</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftEditar('${f.id}')">Editar</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftCancelar('${f.id}')" title="Cancela (não apaga)">Cancelar</button>` : ''}
+        ${f.status === 'paga' ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftBaixa('${f.id}')" title="Ver pagamentos e comprovantes">📎 Pagamentos</button> <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="ftAcao('${f.id}','reabrir')">Reabrir</button>` : ''}
       </td></tr>
       <tr class="ft-itens-row" id="ft_itens_${f.id}" style="display:none;"><td colspan="8">${itensHtml}</td></tr>`;
   }).join('');
@@ -240,6 +241,189 @@ function ftMarcarPaga(id){
     </div>
     <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftAcao('${f.id}','pagar',{pago_em:document.getElementById('ft_pg_data').value, valor_pago: parseValorMoeda(document.getElementById('ft_pg_valor').value)})">Confirmar</button></div>
   </div></div>`;
+}
+// ── Baixas, comprovantes e anexos ──────────────────────────────────────
+let _ftArquivoIA = null;      // PDF da fatura lida pela IA (anexado ao salvar)
+let _ftBaixaArquivo = null;   // comprovante escolhido no modal de baixa
+const _FT_FORMAS = [['pix','PIX'],['ted','TED/DOC'],['boleto','Boleto'],['cambio','Câmbio'],['cartao','Cartão'],['compensacao','Compensação/encontro de contas'],['dinheiro','Dinheiro'],['outro','Outro']];
+function _ftQtdArq(f){ return (f.anexos || []).length + (f.pagamentos || []).filter(p => p.comprovante && !(f.anexos || []).some(a => a.path === p.comprovante.path)).length; }
+function _ftB64(arq){ return new Promise((ok, err) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.onerror = err; fr.readAsDataURL(arq); }); }
+function _ftTipoArq(arq){ return arq.type || (arq.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : ''); }
+function _ftEscolherArquivo(cb){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,image/*'; inp.style.display = 'none';
+  inp.onchange = () => { const a = inp.files && inp.files[0]; inp.remove(); if(a){ if(a.size > 15 * 1024 * 1024){ showToast('Arquivo grande demais (máx. 15 MB).', 'err'); return; } cb(a); } };
+  document.body.appendChild(inp); inp.click();
+}
+async function _ftEnviarAnexo(faturaId, arq, tipo){
+  const r = await fetch('/api/faturas/' + encodeURIComponent(faturaId) + '/anexo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo_base64: await _ftB64(arq), nome_arquivo: arq.name, media_type: _ftTipoArq(arq), tipo }) });
+  const d = await r.json(); if(!d.ok) throw new Error(d.erro || 'erro'); return d.fatura;
+}
+async function ftAbrirArquivo(faturaId, path){
+  try{
+    const d = await (await fetch('/api/faturas/' + encodeURIComponent(faturaId) + '/arquivo?path=' + encodeURIComponent(path))).json();
+    if(!d.ok){ showToast(d.erro || 'Não consegui abrir.', 'err'); return; }
+    window.open(d.url, '_blank', 'noopener');
+  }catch(e){ showToast('Erro de rede', 'err'); }
+}
+
+// Modal da baixa: histórico de pagamentos + anexos + nova baixa
+function ftBaixa(id, pre){
+  const f = _ftLista.find(x => x.id === id); if(!f) return;
+  pre = pre || {};
+  _ftBaixaArquivo = pre.arquivo || null;
+  const saldo = FaturasCore.saldoFatura(f);
+  const FORMA = Object.fromEntries(_FT_FORMAS);
+  const pags = (f.pagamentos || []);
+  const pagsHtml = pags.length ? `<table class="ft-itens" style="width:100%;"><thead><tr><th>Data</th><th>Forma</th><th style="text-align:right;">Valor</th><th>Comprovante</th><th></th></tr></thead><tbody>${pags.map(p => `<tr style="${p.estornado ? 'opacity:.5;text-decoration:line-through;' : ''}">
+      <td>${_ftData(p.data)}</td><td>${esc(FORMA[p.forma] || p.forma || '')}${p.identificador ? `<div class="cr-muted" style="font-size:10px;">${esc(p.identificador)}</div>` : ''}</td>
+      <td style="text-align:right;">${_ftSimb(f.moeda)} ${_ftFmt(p.valor)}</td>
+      <td>${p.comprovante ? `<a class="cr-link" onclick="ftAbrirArquivo('${f.id}','${esc(p.comprovante.path)}')">📎 ${esc(p.comprovante.nome || 'abrir')}</a>` : '<span class="cr-muted">—</span>'}</td>
+      <td>${p.estornado ? `<span class="cr-muted" title="${esc((p.estornado.motivo || '') + ' · ' + (p.estornado.por || ''))}">estornado</span>` : `<a class="cr-link" onclick="ftEstornar('${f.id}','${p.id}')">estornar</a>`}</td></tr>`).join('')}</tbody></table>`
+    : (f.status === 'paga' ? `<div class="cr-muted">Baixada em ${_ftData(f.pago_em)} (antes do registro de pagamentos).</div>` : '<div class="cr-muted">Nenhum pagamento ainda.</div>');
+  const anexos = (f.anexos || []).filter(a => a.tipo !== 'comprovante');
+  const anexosHtml = anexos.map(a => `<a class="cr-link" style="margin-right:10px;" onclick="ftAbrirArquivo('${f.id}','${esc(a.path)}')">📄 ${esc(a.nome || 'arquivo')}${a.tipo === 'fatura' ? ' (fatura)' : ''}</a>`).join('');
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:640px;">
+    <div class="ft-modal-head"><span>${f.status === 'aberta' ? '💰 Dar baixa' : '📎 Pagamentos'} — ${esc(f.numero || '')}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:10px;">
+        <div><strong>${esc(f.empresa_nome)}</strong>${f.documento ? ' · doc ' + esc(f.documento) : ''}<div class="cr-muted">venc. ${_ftData(f.vencimento)}</div></div>
+        <div style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;">Total ${_ftSimb(f.moeda)} ${_ftFmt(f.valor)}<br>Pago ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago || 0)}<br><b style="color:${saldo > 0 ? 'var(--err)' : 'var(--ok)'};">Saldo ${_ftSimb(f.moeda)} ${_ftFmt(saldo)}</b></div>
+      </div>
+      <div style="font-weight:600;font-size:12px;margin:6px 0 4px;">Pagamentos</div>
+      ${pagsHtml}
+      <div style="font-weight:600;font-size:12px;margin:12px 0 4px;">Documentos anexados</div>
+      <div>${anexosHtml || '<span class="cr-muted">nenhum</span>'} <a class="cr-link" onclick="ftAnexarDoc('${f.id}')">+ anexar documento</a></div>
+      ${f.status === 'aberta' ? `
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;">
+        <div style="font-weight:600;font-size:12px;margin-bottom:6px;">Nova baixa</div>
+        <div id="ft_bx_ia" style="margin-bottom:8px;">${pre.aviso ? pre.aviso : ''}</div>
+        <div class="ft-cand-campos">
+          <label>Pago em <input class="form-input" type="date" id="ft_bx_data" value="${esc(pre.data || _ftHoje())}"></label>
+          <label>Valor (${f.moeda}) <input class="form-input" id="ft_bx_valor" value="${_ftFmt(pre.valor != null ? pre.valor : saldo)}" inputmode="decimal"></label>
+          <label>Forma <select class="form-input" id="ft_bx_forma">${_FT_FORMAS.map(([v, l]) => `<option value="${v}" ${(pre.forma || 'pix') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        </div>
+        <div class="ft-cand-campos">
+          <label style="flex:2;">ID / autenticação do comprovante <input class="form-input" id="ft_bx_ident" value="${esc(pre.identificador || '')}" placeholder="opcional — evita usar o mesmo comprovante 2 vezes"></label>
+        </div>
+        <label class="cr-muted" style="display:block;margin-top:6px;">Observação <input class="form-input" id="ft_bx_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(pre.obs || '')}"></label>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+          <button class="btn btn-outline" onclick="ftEscolherComprovante('${f.id}')">📎 ${_ftBaixaArquivo ? 'Trocar comprovante' : 'Anexar comprovante (a IA lê)'}</button>
+          <span id="ft_bx_arq" class="cr-muted">${_ftBaixaArquivo ? esc(_ftBaixaArquivo.name) : 'opcional — dá pra dar baixa manual sem anexo e anexar depois'}</span>
+        </div>
+      </div>` : ''}
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Fechar</button>${f.status === 'aberta' ? `<button class="btn btn-primary" onclick="ftRegistrarBaixa('${f.id}')">Registrar baixa</button>` : ''}</div>
+  </div></div>`;
+}
+function ftEscolherComprovante(id){
+  _ftEscolherArquivo(async arq => {
+    _ftBaixaArquivo = arq;
+    const sp = document.getElementById('ft_bx_arq'); if(sp) sp.textContent = arq.name;
+    const box = document.getElementById('ft_bx_ia'); if(box) box.innerHTML = '<span class="cr-muted">🧾 Lendo o comprovante com a IA…</span>';
+    const r = await _ftLerComprovante(arq, id);
+    if(!r){ if(box) box.innerHTML = '<span class="cr-muted">Não consegui ler — preencha os campos e registre assim mesmo (o arquivo vai junto).</span>'; return; }
+    const f = _ftLista.find(x => x.id === id);
+    const x = r.dados || {};
+    if(x.data_pagamento) document.getElementById('ft_bx_data').value = x.data_pagamento;
+    if(parseFloat(x.valor) > 0) document.getElementById('ft_bx_valor').value = _ftFmt(x.valor);
+    if(x.tipo && _FT_FORMAS.some(([v]) => v === x.tipo)) document.getElementById('ft_bx_forma').value = x.tipo;
+    if(x.identificador) document.getElementById('ft_bx_ident').value = x.identificador;
+    if(box) box.innerHTML = _ftAvisosComprovante(x, f);
+  });
+}
+async function _ftLerComprovante(arq, faturaId){
+  try{
+    const r = await fetch('/api/faturas/ler-comprovante', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo_base64: await _ftB64(arq), media_type: _ftTipoArq(arq), fatura_id: faturaId || undefined }) });
+    const d = await r.json(); if(!d.ok){ showToast(d.erro || 'Não consegui ler o comprovante.', 'warn'); return null; }
+    return d;
+  }catch(e){ return null; }
+}
+// Confere o comprovante lido com a fatura (valor x saldo, favorecido x empresa, uso repetido)
+function _ftAvisosComprovante(x, f){
+  const av = [];
+  const ok = [];
+  if(f){
+    const saldo = FaturasCore.saldoFatura(f);
+    const v = parseFloat(x.valor) || 0;
+    if(x.moeda && x.moeda !== f.moeda) av.push(`⚠️ Comprovante em ${esc(x.moeda)}, fatura em ${esc(f.moeda)} — confira o valor.`);
+    if(v > 0 && Math.abs(v - saldo) <= 0.01) ok.push('✅ Valor igual ao saldo — quita a fatura.');
+    else if(v > 0 && v < saldo) av.push(`⚠️ Valor menor que o saldo (${_ftSimb(f.moeda)} ${_ftFmt(saldo)}) — fica como pagamento parcial.`);
+    else if(v > saldo) av.push(`⚠️ Valor maior que o saldo (${_ftSimb(f.moeda)} ${_ftFmt(saldo)}) — juros/multa? Confira.`);
+    const nomeFav = x.favorecido_cadastro || x.favorecido || '';
+    if(x.empresa_id && f.empresa_id && x.empresa_id === f.empresa_id) ok.push('✅ Favorecido é a empresa da fatura.');
+    else if(nomeFav) av.push(`⚠️ Favorecido no comprovante: <b>${esc(nomeFav)}</b> — confira se é ${esc(f.empresa_nome)}.`);
+  }
+  if(x.ja_usado_em) av.push(`⛔ Esse comprovante já foi usado na fatura ${esc(x.ja_usado_em)}.`);
+  if(x.observacao) av.push('ℹ️ ' + esc(x.observacao));
+  const cor = x.ja_usado_em ? '#fef3f2' : av.length ? '#fffaeb' : '#ecfdf3';
+  return `<div style="background:${cor};border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11.5px;">${['<b>Comprovante lido pela IA</b>' + (x.banco ? ' · ' + esc(x.banco) : '')].concat(av, ok).join('<br>')}</div>`;
+}
+async function ftRegistrarBaixa(id, confirmarRepetido){
+  const body = { data: document.getElementById('ft_bx_data').value, valor: parseValorMoeda(document.getElementById('ft_bx_valor').value), forma: document.getElementById('ft_bx_forma').value, identificador: document.getElementById('ft_bx_ident').value.trim(), obs: document.getElementById('ft_bx_obs').value.trim(), confirmar_repetido: !!confirmarRepetido };
+  if(_ftBaixaArquivo){ body.arquivo_base64 = await _ftB64(_ftBaixaArquivo); body.nome_arquivo = _ftBaixaArquivo.name; body.media_type = _ftTipoArq(_ftBaixaArquivo); }
+  try{
+    const r = await fetch('/api/faturas/' + encodeURIComponent(id) + '/baixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if(!d.ok){
+      if(d.repetido && confirm(d.erro + '\n\nRegistrar mesmo assim?')) return ftRegistrarBaixa(id, true);
+      if(!d.repetido) showToast(d.erro || 'Erro na baixa', 'err');
+      return;
+    }
+    _ftBaixaArquivo = null;
+    ftFecharModal();
+    showToast(d.fatura.status === 'paga' ? 'Baixa registrada — fatura quitada.' : `Baixa parcial registrada — saldo ${_ftSimb(d.fatura.moeda)} ${_ftFmt(d.saldo)}.` + (d.aviso ? ' ' + d.aviso : ''), 'ok');
+    renderDashFaturas();
+  }catch(e){ showToast('Erro de rede', 'err'); }
+}
+async function ftEstornar(faturaId, pagamentoId){
+  const motivo = prompt('Motivo do estorno (o pagamento fica no histórico, riscado):');
+  if(motivo === null) return;
+  try{
+    const d = await (await fetch('/api/faturas/' + encodeURIComponent(faturaId) + '/estornar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pagamento_id: pagamentoId, motivo }) })).json();
+    if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+    const i = _ftLista.findIndex(x => x.id === faturaId); if(i >= 0) _ftLista[i] = d.fatura;
+    showToast('Pagamento estornado.', 'ok'); ftBaixa(faturaId); renderDashFaturas();
+  }catch(e){ showToast('Erro de rede', 'err'); }
+}
+function ftAnexarDoc(faturaId){
+  _ftEscolherArquivo(async arq => {
+    try{
+      const nova = await _ftEnviarAnexo(faturaId, arq, 'outro');
+      const i = _ftLista.findIndex(x => x.id === faturaId); if(i >= 0) _ftLista[i] = nova;
+      showToast('Documento anexado.', 'ok'); ftBaixa(faturaId);
+    }catch(e){ showToast('Não anexou: ' + e.message, 'err'); }
+  });
+}
+// Comprovante "solto": a IA lê e sugere qual fatura ele paga
+function ftComprovanteSolto(){
+  _ftEscolherArquivo(async arq => {
+    const ov = _ftOverlay();
+    ov.innerHTML = `<div class="ft-modal-bg"><div class="ft-modal" style="max-width:420px;"><div class="ft-modal-body" style="text-align:center;padding:28px;">📎 Lendo <b>${esc(arq.name)}</b> e procurando a fatura…</div></div></div>`;
+    const r = await _ftLerComprovante(arq, null);
+    if(!r){ ftFecharModal(); return; }
+    const x = r.dados || {};
+    const sug = r.sugestoes || [];
+    const resumo = `<div style="margin-bottom:10px;"><b>${_ftSimb(x.moeda || 'BRL')} ${_ftFmt(x.valor || 0)}</b> em ${_ftData(x.data_pagamento)} para <b>${esc(x.favorecido_cadastro || x.favorecido || '?')}</b>${x.banco ? ' · ' + esc(x.banco) : ''}${x.ja_usado_em ? `<div style="color:var(--err);font-weight:600;">⛔ Já usado na fatura ${esc(x.ja_usado_em)}</div>` : ''}</div>`;
+    window._ftCompSolto = { arq, x };
+    ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:600px;">
+      <div class="ft-modal-head"><span>📎 Comprovante — qual fatura ele paga?</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+      <div class="ft-modal-body">${resumo}
+        ${sug.length ? `<table class="ft-itens" style="width:100%;"><thead><tr><th>Fatura</th><th>Empresa</th><th>Venc.</th><th style="text-align:right;">Saldo</th><th>Por quê</th><th></th></tr></thead><tbody>${sug.map(s => `<tr>
+          <td>${esc(s.numero || '')}<div class="cr-muted">${esc(s.documento || '')}</div></td><td>${esc(s.empresa_nome)}</td><td>${_ftData(s.vencimento)}</td>
+          <td style="text-align:right;">${_ftSimb(s.moeda)} ${_ftFmt(s.saldo)}</td><td class="cr-muted" style="font-size:10.5px;">${esc(s.motivos.join(', '))}</td>
+          <td><button class="btn btn-primary" style="padding:3px 10px;font-size:11px;" onclick="ftUsarComprovanteEm('${s.id}')">Usar</button></td></tr>`).join('')}</tbody></table>`
+          : '<div class="cr-muted">Não achei uma fatura em aberto compatível (valor/empresa). Procure a fatura na lista e use "💰 Dar baixa" → "Anexar comprovante".</div>'}
+      </div>
+      <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Fechar</button></div>
+    </div></div>`;
+  });
+}
+async function ftUsarComprovanteEm(faturaId){
+  const c = window._ftCompSolto || {}; const x = c.x || {};
+  if(!_ftLista.find(f => f.id === faturaId)){ _ftFiltro.status = ''; _ftLista = await _ftCarregar(); }
+  const f = _ftLista.find(y => y.id === faturaId);
+  ftBaixa(faturaId, { arquivo: c.arq, data: x.data_pagamento, valor: parseFloat(x.valor) > 0 ? parseFloat(x.valor) : undefined, forma: _FT_FORMAS.some(([v]) => v === x.tipo) ? x.tipo : 'pix', identificador: x.identificador, aviso: _ftAvisosComprovante(x, f) });
 }
 function ftCancelar(id){
   const motivo = prompt('Motivo do cancelamento (opcional):');
@@ -395,6 +579,11 @@ async function ftSalvarEdicao(id){
     const r = await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
     if(!d.ok){ showToast(d.erro || 'Erro ao salvar', 'err'); return; }
+    // fatura lida pela IA: o PDF original fica anexado à fatura
+    if(!id && _ftArquivoIA && d.faturas && d.faturas[0]){
+      const arq = _ftArquivoIA; _ftArquivoIA = null;
+      try{ await _ftEnviarAnexo(d.faturas[0].id, arq, 'fatura'); }catch(e){ showToast('Fatura salva, mas o PDF não foi anexado: ' + e.message, 'warn'); }
+    }
     ftFecharModal(); showToast('Fatura salva' + (d.faturas && d.faturas[0] && d.faturas[0].numero ? ' — nº ' + d.faturas[0].numero : '') + '.', 'ok'); renderDashFaturas();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
@@ -418,6 +607,7 @@ async function ftEnviarDocumento(arq){
     const r = await fetch('/api/faturas/ler-documento', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo_base64: b64, media_type: arq.type || (arq.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : '') }) });
     const d = await r.json();
     if(!d.ok){ ftFecharModal(); showToast(d.erro || 'Não consegui ler o documento.', 'err'); return; }
+    _ftArquivoIA = arq;
     ftEditar(null, ftMontarDaIA(d.dados, arq.name));
   }catch(e){ ftFecharModal(); showToast('Erro ao enviar o arquivo.', 'err'); }
 }

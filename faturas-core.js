@@ -123,13 +123,17 @@
     (lista || []).forEach(f => {
       if (!f || f.status === 'cancelada') return;
       const s = situacao(f, hoje);
+      const fx = f.moeda === 'BRL' ? 1 : (parseFloat(cambio[f.moeda]) || 0);
+      const pags = pagamentosValidos(f);
+      if (pags.length) pags.forEach(p => { if ((iso(p.data) || '').slice(0, 7) === mes) { if (f.tipo === 'pagar') r.pago_mes += num(p.valor) * fx; else r.recebido_mes += num(p.valor) * fx; } });
       if (f.status === 'paga') {
-        if ((iso(f.pago_em) || '').slice(0, 7) === mes) { if (f.tipo === 'pagar') r.pago_mes += brl(f); else r.recebido_mes += brl(f); }
+        if (!pags.length && (iso(f.pago_em) || '').slice(0, 7) === mes) { if (f.tipo === 'pagar') r.pago_mes += brl(f); else r.recebido_mes += brl(f); }
         return;
       }
+      const aberto = saldoFatura(f) * fx;
       r.qtd_aberta++;
-      if (f.tipo === 'pagar') r.pagar_aberto += brl(f); else r.receber_aberto += brl(f);
-      if (s === 'vencida') { r.qtd_vencida++; if (f.tipo === 'pagar') r.pagar_vencido += brl(f); else r.receber_vencido += brl(f); }
+      if (f.tipo === 'pagar') r.pagar_aberto += aberto; else r.receber_aberto += aberto;
+      if (s === 'vencida') { r.qtd_vencida++; if (f.tipo === 'pagar') r.pagar_vencido += aberto; else r.receber_vencido += aberto; }
     });
     Object.keys(r).forEach(k => { r[k] = Math.round(r[k] * 100) / 100; });
     return r;
@@ -210,7 +214,16 @@
     const semVenc = { pagar: 0, receber: 0, qtd: 0 };
     (lista || []).forEach(f => {
       if (!f || f.status === 'cancelada') return;
+      const pags = pagamentosValidos(f);
+      // cada baixa entra no mês em que foi paga (parciais também)
+      pags.forEach(p => {
+        const m = (iso(p.data) || '').slice(0, 7);
+        if (!out[m]) return;
+        const v = brl(f, num(p.valor));
+        if (f.tipo === 'pagar') out[m].pagar_pago += v; else out[m].receber_recebido += v;
+      });
       if (f.status === 'paga') {
+        if (pags.length) { const m = (iso(f.pago_em) || '').slice(0, 7); if (out[m]) out[m].qtd++; return; }
         const m = (iso(f.pago_em) || '').slice(0, 7);
         if (!out[m]) return;
         const v = brl(f, num(f.valor_pago != null ? f.valor_pago : f.valor));
@@ -219,7 +232,7 @@
         return;
       }
       const venc = iso(f.vencimento);
-      const v = brl(f, num(f.valor));
+      const v = brl(f, saldoFatura(f));
       if (!venc) { semVenc.qtd++; if (f.tipo === 'pagar') semVenc.pagar += v; else semVenc.receber += v; return; }
       let m = venc.slice(0, 7);
       if (m < mesHoje) m = mesHoje;
@@ -374,7 +387,74 @@
     return { resumo, checks };
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado };
+  // ── Baixas (pagamentos parciais ou totais) ─────────────────────────────
+  // f.pagamentos = [{id, data, valor, forma, obs, identificador, comprovante:{...}, estornado:{por,em,motivo}?}]
+  // Estorno não apaga: marca o pagamento como estornado e ele sai das somas.
+  const pagamentosValidos = f => (Array.isArray(f && f.pagamentos) ? f.pagamentos : []).filter(p => p && !p.estornado && num(p.valor) > 0);
+  function aplicarPagamentos(f) {
+    const lista = pagamentosValidos(f);
+    const valor = num(f && f.valor);
+    if (!lista.length) {
+      // fatura antiga, baixada antes de existir a lista de pagamentos
+      if (f && f.status === 'paga' && !(Array.isArray(f.pagamentos) && f.pagamentos.length)) {
+        const vp = f.valor_pago != null ? num(f.valor_pago) : valor;
+        return { valor_pago: vp, saldo: 0, status: 'paga', pago_em: iso(f.pago_em), qtd: 0 };
+      }
+      return { valor_pago: null, saldo: valor, status: f && f.status === 'cancelada' ? 'cancelada' : 'aberta', pago_em: null, qtd: 0 };
+    }
+    const pago = Math.round(lista.reduce((s, p) => s + num(p.valor), 0) * 100) / 100;
+    const saldo = Math.round((valor - pago) * 100) / 100;
+    const quitada = saldo <= 0.01;
+    const ultima = lista.map(p => iso(p.data)).filter(Boolean).sort().pop() || null;
+    return { valor_pago: pago, saldo: quitada ? 0 : saldo, status: f.status === 'cancelada' ? 'cancelada' : (quitada ? 'paga' : 'aberta'), pago_em: quitada ? ultima : null, qtd: lista.length };
+  }
+  function saldoFatura(f) {
+    if (!f || f.status === 'cancelada' || f.status === 'paga') return 0;
+    const vp = f.valor_pago != null ? num(f.valor_pago) : 0;
+    return Math.max(0, Math.round((num(f.valor) - vp) * 100) / 100);
+  }
+  function validarPagamento(b, f) {
+    b = b || {};
+    if (!f) return { ok: false, erro: 'Fatura não encontrada.' };
+    if (f.status === 'cancelada') return { ok: false, erro: 'Fatura cancelada — não dá pra dar baixa.' };
+    if (f.status === 'paga') return { ok: false, erro: 'Fatura já está quitada.' };
+    const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(b.data || '').trim());
+    const data = br ? `${br[3]}-${br[2]}-${br[1]}` : iso(b.data);
+    if (!data) return { ok: false, erro: 'Informe a data do pagamento.' };
+    const raw = typeof b.valor === 'string' ? b.valor.replace(/\./g, '').replace(',', '.') : b.valor;
+    const valor = num(raw);
+    if (!(valor > 0)) return { ok: false, erro: 'Valor do pagamento deve ser maior que zero.' };
+    const saldo = saldoFatura(f);
+    const aviso = valor - saldo > 0.01 ? `Valor maior que o saldo (${saldo.toFixed(2)}) — a diferença fica registrada como pago a mais.` : null;
+    const FORMAS = ['pix', 'ted', 'boleto', 'cambio', 'cartao', 'dinheiro', 'compensacao', 'outro'];
+    return { ok: true, aviso, pagamento: {
+      data, valor, forma: FORMAS.includes(b.forma) ? b.forma : 'outro',
+      identificador: limpa(b.identificador).slice(0, 120) || null,
+      obs: limpa(b.obs).slice(0, 500) || null,
+    } };
+  }
+  // Comprovante lido pela IA → faturas em aberto mais prováveis (valor do
+  // saldo e nome/CNPJ do favorecido). Retorna em ordem de pontuação.
+  function sugerirFaturasParaComprovante(comp, abertas) {
+    comp = comp || {};
+    const v = num(comp.valor);
+    const cnpj = String(comp.cnpj_favorecido || '').replace(/\D/g, '');
+    return (abertas || []).filter(f => f && f.status === 'aberta').map(f => {
+      let pts = 0; const motivos = [];
+      const saldo = saldoFatura(f);
+      if (v > 0 && Math.abs(saldo - v) <= 0.01) { pts += 50; motivos.push('valor igual ao saldo'); }
+      else if (v > 0 && Math.abs(num(f.valor) - v) <= 0.01) { pts += 40; motivos.push('valor igual ao total'); }
+      else if (v > 0 && v < saldo) { pts += 10; motivos.push('pode ser pagamento parcial'); }
+      if (comp.empresa_id && f.empresa_id && String(comp.empresa_id) === String(f.empresa_id)) { pts += 40; motivos.push('mesma empresa (cadastro)'); }
+      else if (mesmaEmpresa(null, comp.favorecido, null, f.empresa_nome)) { pts += 35; motivos.push('mesma empresa'); }
+      if (cnpj && f.empresa_cnpj && String(f.empresa_cnpj).replace(/\D/g, '') === cnpj) { pts += 40; motivos.push('mesmo CNPJ'); }
+      const doc = normDoc(f.documento);
+      if (doc && doc.length >= 3 && normDoc(comp.documento_pago || '').includes(doc)) { pts += 30; motivos.push('nº do documento no comprovante'); }
+      return { id: f.id, numero: f.numero, empresa_nome: f.empresa_nome, documento: f.documento, saldo, moeda: f.moeda, vencimento: f.vencimento, pontos: pts, motivos };
+    }).filter(x => x.pontos >= 30).sort((a, b) => b.pontos - a.pontos).slice(0, 5);
+  }
+
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

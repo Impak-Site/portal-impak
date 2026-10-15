@@ -201,5 +201,47 @@ teste('soma das linhas diferente do total e sem processo → avisos', () => {
   assert.strictEqual(nivelDe(r, /sem processo vinculado/), 'aviso');
 });
 
+console.log('\n── baixas (pagamentos parciais), estorno e sugestão por comprovante ──');
+teste('duas baixas parciais quitam a fatura; estorno reabre', () => {
+  const f = { valor: 1000, status: 'aberta', pagamentos: [{ id: 'a', data: '2026-10-01', valor: 400 }] };
+  let r = F.aplicarPagamentos(f);
+  assert.deepStrictEqual([r.status, r.valor_pago, r.saldo, r.pago_em], ['aberta', 400, 600, null]);
+  f.pagamentos.push({ id: 'b', data: '2026-10-05', valor: 600 });
+  r = F.aplicarPagamentos(f);
+  assert.deepStrictEqual([r.status, r.valor_pago, r.saldo, r.pago_em], ['paga', 1000, 0, '2026-10-05']);
+  f.pagamentos[1].estornado = { motivo: 'teste' };
+  r = F.aplicarPagamentos(f);
+  assert.deepStrictEqual([r.status, r.valor_pago, r.saldo], ['aberta', 400, 600]);
+});
+teste('fatura antiga paga sem lista de pagamentos continua paga', () => {
+  const r = F.aplicarPagamentos({ valor: 500, status: 'paga', valor_pago: 480, pago_em: '2026-09-10' });
+  assert.deepStrictEqual([r.status, r.valor_pago, r.pago_em], ['paga', 480, '2026-09-10']);
+});
+teste('validarPagamento: data, valor, pago a mais, fatura quitada/cancelada', () => {
+  const f = { valor: 1000, status: 'aberta', valor_pago: 400 };
+  assert.strictEqual(F.validarPagamento({ valor: 100 }, f).ok, false, 'sem data');
+  assert.strictEqual(F.validarPagamento({ data: '2026-10-10', valor: 0 }, f).ok, false);
+  const v = F.validarPagamento({ data: '10/10/2026', valor: '1.200,50', forma: 'pix' }, f);
+  assert.strictEqual(v.ok, true); assert.strictEqual(v.pagamento.valor, 1200.5); assert.ok(v.aviso, 'pago a mais avisa');
+  assert.strictEqual(F.validarPagamento({ data: '2026-10-10', valor: 1 }, { valor: 1, status: 'paga' }).ok, false);
+  assert.strictEqual(F.validarPagamento({ data: '2026-10-10', valor: 1 }, { valor: 1, status: 'cancelada' }).ok, false);
+});
+teste('resumo e fluxo usam o saldo e lançam a parcial no mês pago', () => {
+  const f = { tipo: 'pagar', moeda: 'BRL', valor: 1000, status: 'aberta', valor_pago: 400, vencimento: '2026-11-10', pagamentos: [{ data: '2026-10-03', valor: 400 }] };
+  const r = F.resumoFaturas([f], '2026-10-14', {});
+  assert.strictEqual(r.pagar_aberto, 600); assert.strictEqual(r.pago_mes, 400);
+  const fl = F.fluxoMensalFaturas([f], ['2026-10', '2026-11'], '2026-10-14', {});
+  assert.strictEqual(fl.meses['2026-10'].pagar_pago, 400); assert.strictEqual(fl.meses['2026-11'].pagar_previsto, 600);
+});
+teste('comprovante sugere a fatura pelo valor + empresa', () => {
+  const abertas = [
+    { id: 'x', status: 'aberta', empresa_nome: 'Terminal Exemplo Ltda', documento: '7781', valor: 1950, moeda: 'BRL' },
+    { id: 'y', status: 'aberta', empresa_nome: 'Outra Empresa', documento: '55', valor: 1950, moeda: 'BRL' },
+    { id: 'z', status: 'aberta', empresa_nome: 'Terminal Exemplo', documento: '9', valor: 300, moeda: 'BRL' },
+  ];
+  const s = F.sugerirFaturasParaComprovante({ valor: 1950, favorecido: 'TERMINAL EXEMPLO LTDA' }, abertas);
+  assert.strictEqual(s[0].id, 'x'); assert.ok(s.length >= 2);
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);
