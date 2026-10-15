@@ -37,21 +37,33 @@ function comissionadoAtendeClienteCalc(c, cliente) {
   return lista.some(t => cli.includes(' ' + t + ' ')); // palavra inteira: "OST" não casa com "COSTA"
 }
 // Meta de lucro por cliente (lista "meta_lucro", Rev97 N33). Devolve
-// { pct, codigo, nome } — linha específica do cliente (mesma regra de palavra
-// inteira dos comissionados) ou a linha sem clientes (padrão); null se nada.
-function metaLucroParaCliente(lista, cliente) {
+// { pct, codigo, nome, especifica, porProduto } — ordem de prioridade:
+// cliente+produto > cliente (todos os produtos) > padrão+produto > padrão.
+// produto: string ou { valor, rotulo } (ex.: { valor:'TBR', rotulo:'Caminhão (TBR)' }).
+// Linha com `produtos` preenchido só vale se o produto casar (palavra inteira).
+function produtoAtendeMetaCalc(x, produto) {
+  const lista = String(((x || {}).dados || {}).produtos || '').split(/[,;\/\n]+/).map(s => s.trim()).filter(Boolean);
+  if (!lista.length) return null; // sem filtro de produto
+  const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const p = produto && typeof produto === 'object' ? produto : { valor: produto, rotulo: '' };
+  const alvo = ' ' + norm(p.valor) + ' ' + norm(p.rotulo) + ' ';
+  return lista.some(t => { const n = norm(t); return n && alvo.includes(' ' + n + ' '); });
+}
+function metaLucroParaCliente(lista, cliente, produto) {
   const itens = (lista || []).filter(x => x && x.ativo !== false);
   const pct = x => parseFloat(String(((x || {}).dados || {}).percentual == null ? '' : x.dados.percentual).replace(',', '.'));
-  const especifica = itens.find(x => (x.dados || {}).clientes && comissionadoAtendeClienteCalc(x, cliente));
-  const padrao = itens.find(x => !String((x.dados || {}).clientes || '').trim());
-  const m = especifica || padrao;
+  const temCli = x => !!String((x.dados || {}).clientes || '').trim();
+  const doCliente = itens.filter(x => temCli(x) && comissionadoAtendeClienteCalc(x, cliente));
+  const padrao = itens.filter(x => !temCli(x));
+  const escolher = arr => arr.find(x => produtoAtendeMetaCalc(x, produto) === true) || arr.find(x => produtoAtendeMetaCalc(x, produto) === null);
+  const m = escolher(doCliente) || escolher(padrao);
   if (!m || isNaN(pct(m))) return null;
-  return { pct: pct(m), codigo: m.codigo, nome: m.nome || m.codigo, especifica: !!especifica };
+  return { pct: pct(m), codigo: m.codigo, nome: m.nome || m.codigo, especifica: doCliente.includes(m), porProduto: produtoAtendeMetaCalc(m, produto) === true };
 }
 const ehSimComissaoCalc = v => v === true || /^(S|SIM|Y|YES|TRUE|1)$/i.test(String(v || '').trim());
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { calcularComissionadosCalc, comissionadoAtendeClienteCalc, ehSimComissaoCalc, metaLucroParaCliente };
+  module.exports = { calcularComissionadosCalc, comissionadoAtendeClienteCalc, ehSimComissaoCalc, metaLucroParaCliente, produtoAtendeMetaCalc };
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') (function () {
@@ -61,15 +73,19 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') (function 
   // Meta de lucro do cliente digitado (ou null). Usada pelo card de resultado.
   window.metaLucroAtualCalc = function () {
     const cliente = (document.getElementById('cliente') || {}).value || '';
-    return metaLucroParaCliente(_metas, cliente);
+    const selP = document.getElementById('produto');
+    const op = selP && selP.options && selP.selectedIndex >= 0 ? selP.options[selP.selectedIndex] : null;
+    return metaLucroParaCliente(_metas, cliente, { valor: selP ? selP.value : '', rotulo: op ? op.text : '' });
   };
+  // Trocar o produto também reaplica a meta (o % pode mudar por produto).
+  document.addEventListener('change', ev => { if (ev.target && ev.target.id === 'produto' && typeof window.aplicarMetaLucroCliente === 'function') window.aplicarMetaLucroCliente(); });
   // Ao trocar o cliente: Lucro Alvo % (cenário em %) recebe a meta do cliente,
   // como a planilha (DADOS!N33 → MODELO). Cenário 2 (R$) não mexe.
   window.aplicarMetaLucroCliente = function () {
     const m = window.metaLucroAtualCalc();
     const info = document.getElementById('meta-lucro-info');
     if (!m) { if (info) info.style.display = 'none'; return; }
-    if (info) { info.style.display = ''; info.textContent = `Meta de lucro ${m.especifica ? 'do cliente' : 'padrão'} (${m.nome}): ${String(m.pct).replace('.', ',')}% — aplicada no Lucro Alvo %.`; }
+    if (info) { info.style.display = ''; info.textContent = `Meta de lucro ${m.especifica ? 'do cliente' : 'padrão'}${m.porProduto ? ' para este produto' : ''} (${m.nome}): ${String(m.pct).replace('.', ',')}% — aplicada no Lucro Alvo % (pode alterar).`; }
     if (_estado.cenario === 2) return;
     const el = document.getElementById('cenario_valor');
     if (el && parseFloat(el.value) !== m.pct) { el.value = m.pct; if (typeof agendarAutosave === 'function') agendarAutosave(); recalcularSePronto(); }

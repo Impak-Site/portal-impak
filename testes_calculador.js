@@ -573,6 +573,21 @@ teste('meta de lucro por cliente: linha específica vence o padrão', () => {
   verdadeiro(_comCalc.metaLucroParaCliente(lista, 'ALFABETO SA').pct === 2); // palavra inteira: ALFA não casa com ALFABETO
 });
 
+teste('meta de lucro por cliente e produto: cliente+produto > cliente > padrão+produto > padrão (Jean 15/10/2026)', () => {
+  const lista = [
+    { codigo: 'PADRAO', dados: { percentual: 2, clientes: '' } },
+    { codigo: 'PADRAO_PCR', dados: { percentual: 3, clientes: '', produtos: 'PCR' } },
+    { codigo: 'ALFA', dados: { percentual: 5, clientes: 'ALFA' } },
+    { codigo: 'ALFA_PCR', dados: { percentual: 4, clientes: 'ALFA', produtos: 'Automóvel, PCR' } },
+  ];
+  const f = (cli, prod) => _comCalc.metaLucroParaCliente(lista, cli, prod);
+  aproxIgual(f('ALFA LTDA', { valor: 'TBR', rotulo: 'Caminhão (TBR)' }).pct, 5, 0);
+  const a = f('ALFA LTDA', { valor: 'PCR', rotulo: 'Automóvel (PCR)' }); aproxIgual(a.pct, 4, 0); verdadeiro(a.porProduto && a.especifica);
+  aproxIgual(f('OUTRO', 'PCR').pct, 3, 0);
+  aproxIgual(f('OUTRO', 'TBR').pct, 2, 0);
+  aproxIgual(f('ALFA', undefined).pct, 5, 0); // sem produto: linha geral do cliente
+});
+
 
 teste('2 containers: só as taxas por container dobram (Siscomex/AFRMM/L.I./Agente/IOF são únicas — Rev97)', () => {
   const a = _rodarCalc("['auto_marinha','auto_agente','auto_iof'].forEach(id=>{document.getElementById(id).checked=false;});");

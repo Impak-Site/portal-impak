@@ -162,7 +162,9 @@
     // usa como Lucro Alvo % ao escolher o cliente e avisa quando o resultado
     // fica abaixo. `clientes` vazio = padrão para quem não tem linha própria.
     // Os % por cliente ficam só no banco (repositório público); aqui só o padrão.
-    meta_lucro:    { nome: 'Meta de lucro por cliente (%)', campos: [['percentual', '% de lucro alvo', 'number'], ['clientes', 'Clientes (vírgula; vazio = padrão)', 'text'], ['observacao', 'Observação', 'text']] },
+    // `produtos` (15/10/2026, Jean): mesmo cliente pode ter % diferente por
+    // produto (ex.: TBR 5%, PCR 4%). Vazio = vale pra todos os produtos.
+    meta_lucro:    { nome: 'Meta de lucro por cliente (%)', campos: [['percentual', '% de lucro alvo', 'number'], ['clientes', 'Clientes (vírgula; vazio = padrão)', 'text'], ['produtos', 'Produtos (vírgula, ex.: TBR, PCR; vazio = todos)', 'text'], ['observacao', 'Observação', 'text']] },
     aprovacao_etapa: { nome: 'Aprovação por etapa (vistos)', campos: [['usuarios', 'Quem valida (logins, vírgula)', 'text'], ['substitutos', 'Substitutos (logins, vírgula)', 'text'], ['observacao', 'Observação', 'text']] },
     agenda_atividade: { nome: 'Agenda — Atividades', campos: [['funcao', 'Responsável (função)', 'select', AGENDA_FUNCOES.map(f => [f.codigo, f.nome])], ['prazo_dias', 'Prazo (dias em relação ao marco; vazio = padrão)', 'number'], ['prioridade', 'Prioridade', 'select', [['ALTA','Alta'],['MEDIA','Média'],['BAIXA','Baixa']]], ['etapa', 'Etapa', 'text'], ['observacao', 'Observação', 'text']] },
   };
