@@ -1627,6 +1627,8 @@ function mostrarAvisoMedidasSemCotacao(medidas){
 // conseguir achá-lo mesmo rodando fora do escopo de analisar() (oninput inline
 // roda no escopo global, não vê a const local 'best').
 let _analiseBest = null;
+// Idem para a moeda por fornecedor (getMoeda é local de analisar()).
+let _analiseGetMoeda = null;
 function analisar(){
   const moeda=document.getElementById('moeda-sel').value;
   const tp=document.getElementById('tp-sel').value;
@@ -1797,8 +1799,8 @@ function analisar(){
   area.appendChild(cOrigem);
 
   if(comp[0]){
-    const best=comp[0];_analiseBest=best;const c2=document.createElement('div');c2.className='card';
-    c2.innerHTML=`<div class="ch"><h3>Detalhe — ${best.forn}</h3><span class="cg ml" style="font-size:11px;font-weight:700">MELHOR NO MIX</span></div>
+    const best=comp[0];_analiseBest=best;_analiseGetMoeda=getMoeda;const c2=document.createElement('div');c2.className='card';
+    c2.innerHTML=`<div class="ch"><h3>Detalhe — ${esc(best.forn)}</h3><span class="cg ml" style="font-size:11px;font-weight:700">MELHOR NO MIX</span></div>
     <table class="rtable"><thead><tr><th>Medida</th><th>Qtde</th><th>Preço/un</th><th>Peso</th><th>USD/kg</th><th>Subtotal</th></tr></thead><tbody>
     ${best.det.map((d,di)=>{
       const pkg=d.preco&&d.peso>0?d.preco/d.peso:null;
@@ -1953,6 +1955,7 @@ window.addEventListener('load', async function(){
     const d = await r.json();
     if(d.logado && d.modulos && d.modulos.includes('tyredesk')){
       window._usuarioTD = d.usuario || '';
+      window._nomeTD = d.displayName || d.nome || d.usuario || '';
       init();
       return;
     }
@@ -2175,7 +2178,7 @@ function _detalheQtd(el, idx){
   const trEls = document.querySelectorAll('[id^="detalhe-sub-"]');
   best.det.forEach((d,i)=>{
     const el2 = document.getElementById('detalhe-sub-'+best.forn.replace(/[^a-zA-Z0-9]/g,'_')+'-'+i);
-    if(el2) el2.textContent = d.sub ? (getMoeda(best.forn)+' '+fmtP(d.sub)) : '—';
+    if(el2) el2.textContent = d.sub ? ((_analiseGetMoeda ? _analiseGetMoeda(best.forn) : ((ultimaAnalise&&ultimaAnalise.moeda)||'USD'))+' '+fmtP(d.sub)) : '—';
   });
   const totalEl = document.getElementById('detalhe-total-'+best.forn.replace(/[^a-zA-Z0-9]/g,'_'));
   if(totalEl) totalEl.textContent = (ultimaAnalise&&ultimaAnalise.moeda||'USD')+' '+fmtP(total);
@@ -2347,7 +2350,7 @@ async function gravarHistorico(forn, tipo, lang) {
     email: forn.email,
     tipo, lang,
     data: new Date().toISOString(),
-    usuario: _currentUser ? (_currentUser.displayName||_currentUser.username) : 'Sistema'
+    usuario: window._nomeTD || window._usuarioTD || 'Sistema'
   };
   // Salvar local
   try { await dbPut('historico', entrada); } catch(e) { console.warn('Histórico local:', e); }
