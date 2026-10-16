@@ -167,6 +167,12 @@ teste('Validar nasce com RIC Isento (sem prazo, não fica atrasada)', () => {
   assert.ok(t); assert.strictEqual(A.classificar(t, HOJE), 'sem_prazo');
 });
 
+teste('Confirmar booking (A08) conclui com Nº Booking + ETD, sem exigir navio (TKH2605B-3, 16/10/2026)', () => {
+  const p = { id: '91', referencia: 'PY', created_at: '2026-09-01', data_prontidao: '2026-09-29', booking_numero: 'BK1', etd: '2026-11-10' };
+  const t = gerar([p], { incluirFeitas: true }).find(x => x.codigo === 'A08');
+  assert.ok(t); assert.strictEqual(t.status, 'feita');
+});
+
 setTimeout(() => {
   console.log(`\n════════════════════════════════════════`);
   console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);

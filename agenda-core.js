@@ -121,9 +121,11 @@
     A07: { auto: true, como: 'Data de Prontidão preenchida',
       base: p => p.previsao_prontidao, dias: 0,
       instancias: p => tem(p.previsao_prontidao) ? um(tem(p.data_prontidao) || tem(p.data_embarque)) : [] },
-    A08: { auto: true, como: 'Nº Booking + ETD + Navio preenchidos',
+    // 16/10/2026 (TKH2605B-3): o navio costuma ser definido perto do
+    // embarque — com Nº Booking + ETD o booking já está confirmado.
+    A08: { auto: true, como: 'Nº Booking + ETD preenchidos',
       base: p => p.data_prontidao, dias: 3,
-      instancias: p => tem(p.data_prontidao) ? um((tem(p.booking_numero) && tem(p.etd) && tem(p.navio)) || tem(p.data_embarque)) : [] },
+      instancias: p => tem(p.data_prontidao) ? um((tem(p.booking_numero) && tem(p.etd)) || tem(p.data_embarque)) : [] },
     A09: { auto: true, como: 'CI, PL e Draft anexados + conferência sem divergência pendente',
       base: p => p.etd, dias: -3,
       instancias: (p, h) => {
