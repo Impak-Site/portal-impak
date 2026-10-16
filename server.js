@@ -4529,7 +4529,11 @@ app.get('/api/contatos', auth(...MODULOS_TRABALHO), async (req, res) => {
     // Só letras/underscore: o valor entra na sintaxe de filtro do PostgREST
     // (.or/.in), então nada de vírgula, parêntese ou chave vindo da URL.
     const tipos = tipo ? String(tipo).split(',').map(t => t.trim().toUpperCase()).filter(t => /^[A-Z_]{1,40}$/.test(t)) : [];
-    const qSeguro = (q && q.length >= 2) ? q.replace(/[,%*(){}]/g, '').trim() : '';
+    // 16/10/2026 (Emanuelly, Depot "LECHMAN TERMINAIS (NAVEGANTES)" aparecia
+    // como "não cadastrado"): antes o caractere especial era APAGADO, então a
+    // busca virava "...TERMINAIS NAVEGANTES" e não achava o nome com
+    // parênteses. Agora vira curinga (%) — continua seguro pro .or().
+    const qSeguro = (q && q.length >= 2) ? q.replace(/[,%*(){}]/g, '%').replace(/%{2,}/g, '%').replace(/^%+|%+$/g, '').trim() : '';
     // nivel 2 = com papéis/sinônimos/regras (0040+0042); 1 = só papéis/
     // sinônimos (0042 ainda não rodou); 0 = colunas base (nem 0040).
     const montar = (nivel) => {
@@ -5147,7 +5151,7 @@ async function contatosPrincipaisDaEmpresa(nomeEmpresa, empresaIdVinculado){
     // nome fantasia (o campo Cliente costuma ter o nome curto).
     let empresaId = empresaIdVinculado || null;
     if (!empresaId && nomeEmpresa) {
-      const nomeSeguro = String(nomeEmpresa).replace(/[,%*(){}]/g, '').trim();
+      const nomeSeguro = String(nomeEmpresa).replace(/[,%*(){}]/g, '%').replace(/%{2,}/g, '%').replace(/^%+|%+$/g, '').trim();
       const { data: empresas } = await sb().from('contatos_clientes').select('id')
         .or(`razao_social.ilike.${nomeSeguro},nome_fantasia.ilike.${nomeSeguro}`).eq('ativo', true).limit(2);
       if (empresas && empresas.length === 1) empresaId = empresas[0].id;
