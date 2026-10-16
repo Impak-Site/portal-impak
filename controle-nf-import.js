@@ -84,13 +84,55 @@ async function importarNFVenda(vi, input){
     // Anti-duplicidade: a mesma NF já cadastrada em outra venda ou no processo.
     const dup = nfSaidaJaCadastrada(dados.nf_numero, vi);
     if(dup){ showToast(`A NF ${dados.nf_numero} já está cadastrada (${dup}) — nada foi alterado.`, 'err', 12000); return; }
+    const avisoFiltro = aplicarFiltroProcessoNaNF(dados);
     aplicarDadosNFNaVenda(vi, dados);
+    if(avisoFiltro){ showToast('✓ ' + avisoFiltro + ' Confira e salve.', 'ok', 15000); return; }
     if(ehCfopRemessaEstoque(dados.cfop)) showToast('NF com CFOP 5905 = remessa para o estoque: fica registrada, mas NÃO conta como venda.', 'info', 10000);
     const itensMsg = dados.itens.length ? `${dados.itens.length} ite${dados.itens.length===1?'m':'ns'} preenchido${dados.itens.length===1?'':'s'}` : 'sem itens de produto reconhecidos (confira a lista manualmente)';
     showToast(`✓ NF importada: ${itensMsg}` + (dados.itens.length > 1 ? ' — se algum item for de outro processo, remova-o aqui (este processo fica com a soma dos itens dele).' : ''), dados.itens.length ? 'ok' : 'warn', 12000);
   }catch(e){
     showToast('Erro ao importar NF: '+e.message, 'err', 12000);
   }
+}
+
+
+// ── Itens da NF por processo (16/10/2026, Bianca) ──────────────────────
+// A NF de saída pode juntar mercadoria de mais de um processo; agora cada
+// item traz a referência na descrição (campo "Descrição para Impressão" do
+// Conexos, ex.: "PNEU ... UD26-124"). Ao importar, fica só o que é do
+// processo aberto. Se nenhum item citar a referência, mantém tudo (NF antiga).
+function _refNorm(r){ return String(r||'').toUpperCase().replace(/^IMPAK[-_\s]*/,'').replace(/[^A-Z0-9]/g,''); }
+function _refsNoTexto(txt){
+  return (String(txt||'').toUpperCase().match(/[A-Z0-9][A-Z0-9\-_.\/]*[A-Z0-9]/g) || [])
+    .map(t => _refNorm(t)).filter(t => t.length >= 5 && /[A-Z]/.test(t) && /\d/.test(t));
+}
+function filtrarItensNFDoProcesso(itens, referencia){
+  const lista = Array.isArray(itens) ? itens : [];
+  const ref = _refNorm(referencia);
+  if(!ref || lista.length === 0) return { itens: lista, filtrou: false, fora: [] };
+  const doProc = lista.filter(it => _refsNoTexto(it.descricao).includes(ref));
+  if(!doProc.length) return { itens: lista, filtrou: false, fora: [] };
+  const fora = lista.filter(it => !doProc.includes(it));
+  return { itens: doProc, filtrou: fora.length > 0, fora };
+}
+function _somaItensNF(itens){
+  return Math.round((itens||[]).reduce((s,it)=>s+(parseFloat(it.valor_total)||0),0)*100)/100;
+}
+// Aplica o filtro no objeto lido da NF; devolve texto do aviso ('' se nada mudou).
+function aplicarFiltroProcessoNaNF(dados){
+  const referencia = (document.getElementById('f_referencia')||{}).value || (_editando && _editando.referencia) || '';
+  const r = filtrarItensNFDoProcesso(dados.itens, referencia);
+  if(!r.filtrou) return '';
+  dados.itens = r.itens;
+  const soma = _somaItensNF(r.itens);
+  dados.nf_valor_total_documento = dados.nf_valor;
+  if(soma > 0) dados.nf_valor = soma;
+  // Só cita como "outro processo" o que for referência de processo existente.
+  const conhecidas = new Map((typeof _processos !== 'undefined' ? _processos : []).map(p => [_refNorm(p.referencia), p.referencia]));
+  const outras = [...new Set(r.fora.flatMap(it => _refsNoTexto(it.descricao)).filter(x => conhecidas.has(x) && x !== _refNorm(referencia)).map(x => conhecidas.get(x)))].slice(0, 4);
+  return `NF com itens de mais de um processo: ficaram só os ${r.itens.length} ite${r.itens.length===1?'m':'ns'} de ${referencia}` +
+    (soma > 0 ? ` (R$ ${exibirMoeda(soma)} de R$ ${exibirMoeda(dados.nf_valor_total_documento)} da nota)` : '') +
+    `; ${r.fora.length} ite${r.fora.length===1?'m ficou':'ns ficaram'} de fora` + (outras.length ? ` (${outras.join(', ')})` : '') + '.';
 }
 
 // Nº de NF já cadastrado em alguma venda (exceto a venda "ignorarVi") ou nos
@@ -177,7 +219,7 @@ async function extrairNFComIA(file){
   "nf_data": "YYYY-MM-DD", // data de emissão
   "nf_valor": 0,        // valor total da nota em R$
   "cfop": "",            // codigo CFOP (ex: 5405, 5117, 5905, 1101, 3101) do item principal da nota
-  "itens": [{"descricao":"", "quantidade":0, "valor_total":0}]  // um item por linha de produto da nota; valor_total = V. TOTAL do item + V. IPI do item (em R$)
+  "itens": [{"descricao":"", "quantidade":0, "valor_total":0}]  // um item por linha de produto da nota; "descricao" = descrição COMPLETA do item, copiada inteira (inclusive a referência do processo no fim, ex.: "... UF195 UD26-124"); valor_total = V. TOTAL do item + V. IPI do item (em R$)
 }
 Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem texto adicional.`;
 
@@ -292,6 +334,7 @@ async function importarNFSaidaProcessoArquivo(file){
     const elNumChk = document.getElementById('f_nf_saida_numero');
     const elDataChk = document.getElementById('f_nf_saida_data');
     const elValorChk = document.getElementById('f_nf_saida_valor');
+    const avisoFiltro = aplicarFiltroProcessoNaNF(dados);
 
     // Anti-duplicidade: mesma NF já lançada numa venda.
     const dupVenda = nfSaidaJaCadastrada(dados.nf_numero, 'processo');
@@ -344,6 +387,7 @@ async function importarNFSaidaProcessoArquivo(file){
     }
 
     let msg = 'NF importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
+    if(avisoFiltro) msg += ' | ' + avisoFiltro;
     if(avisos.length) msg += ' | ATENCAO: ' + avisos.join('; ');
     if(status) status.textContent = msg;
   }catch(e){
