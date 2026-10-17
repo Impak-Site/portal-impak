@@ -431,7 +431,7 @@ function coletarESalvar(opts){
   }
 
   // Alerta de campos-chave nao preenchidos de fases anteriores (pedido Emanuelly, 27/08/2026)
-    document.querySelectorAll('.campo-faltando').forEach(el => el.classList.remove('campo-faltando'));
+    document.querySelectorAll('.campo-faltando').forEach(el => { el.classList.remove('campo-faltando'); el.removeAttribute('aria-invalid'); });
     const faseFaltantes = camposFaseFaltantes(proc);
     if (faseFaltantes.length) {
           faseFaltantes.forEach(f => f.ids.forEach(id => {
@@ -442,6 +442,19 @@ function coletarESalvar(opts){
     }
   
     proc.log = log;
+
+  // Datas impossíveis (revisão 17/10/2026, validacao-datas.js — o servidor
+  // confere as mesmas regras). Erro = não grava; aviso = pergunta antes.
+  if(typeof ValidacaoDatas !== 'undefined'){
+    const probs = ValidacaoDatas.validar(proc, { campos: patchFields });
+    const errosDatas = ValidacaoDatas.erros(probs), avisosDatas = ValidacaoDatas.avisos(probs);
+    if(errosDatas.length){
+      errosDatas.forEach(e => e.campos.forEach(c => { const el = document.getElementById('f_'+c); if(el){ el.classList.add('campo-faltando'); el.setAttribute('aria-invalid','true'); } }));
+      showToast('Data impossível — nada foi salvo: ' + errosDatas.map(e => e.msg).join(' '), 'err');
+      return;
+    }
+    if(avisosDatas.length && !confirm('Confira as datas antes de salvar:\n\n' + avisosDatas.map(a => '• ' + a.msg).join('\n') + '\n\nSalvar mesmo assim?')) return;
+  }
   _editando = proc;
 
   window._salvandoProcesso = true;
@@ -457,7 +470,13 @@ function coletarESalvar(opts){
     window._salvandoProcesso = false;
     btnsSalvar.forEach(b=>b.disabled = false);
     if(!ok) _painelDirty = true;
+    const foiJuntado = !!(ok && _editando && _editando._mesclado);
+    if(foiJuntado) delete _editando._mesclado;
     if(ok && fecharAoSalvar) fecharModal();
+    else if(foiJuntado && _editando && _editando.id && typeof abrirProcesso === 'function'){
+      const abaAtiva = (document.querySelector('.modal-tab.active')?.id || '').replace(/^tab-/, '');
+      abrirProcesso(_editando.id).then(() => { if(abaAtiva && typeof trocarAba === 'function') trocarAba(abaAtiva); }).catch(()=>{});
+    }
     else if(ok && eraNovo && _editando && _editando.id && typeof abrirProcesso === 'function'){
       // Processo NOVO salvo com o painel aberto (06/10/2026): as abas que
       // dependem do processo já existir (Conferência, Arquivos/GED,

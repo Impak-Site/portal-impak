@@ -2029,7 +2029,12 @@ async function carregarArquivosGed(processoId){
     const r = await fetch('/api/controle/v2/arquivos/'+processoId);
     const d = await r.json();
   if(!_editando || _editando.id !== processoId) return;
-    if(!d.ok || !d.arquivos.length){
+    if(!d.ok){
+      // Erro ≠ "nenhum arquivo" (revisão 17/10/2026) — senão a pessoa reenvia e duplica.
+      lista.innerHTML = '<div style="font-size:11px;color:var(--err);">Não consegui carregar os arquivos agora' + (d.erro ? ' — ' + esc(d.erro) : '') + '. Os arquivos continuam salvos; tente reabrir o processo em instantes.</div>';
+      return;
+    }
+    if(!d.arquivos.length){
       lista.innerHTML = '<div style="font-size:11px;color:var(--dim);">Nenhum arquivo enviado ainda.</div>';
       return;
     }

@@ -403,6 +403,11 @@ const USUARIOS = [
 // Cache em memória dos usuários carregados do Supabase (recarregado no boot
 // e sempre que alguém redefine a senha). O login lê DAQUI, não do array acima.
 let _usuariosCache = new Map();
+// Quando o cache foi carregado do banco com sucesso (0 = nunca). Enquanto for
+// 0 (servidor subindo com o banco fora), auth() NEGA o acesso — antes ele
+// seguia com os módulos/cargo gravados na sessão no login, e um logout
+// forçado (versão de sessão) deixava de valer. Revisão 17/10/2026.
+let _usuariosCacheCarregadoEm = 0;
 
 async function sincronizarUsuarios(){
   for(const u of USUARIOS){
@@ -439,9 +444,14 @@ async function sincronizarUsuarios(){
 }
 
 async function recarregarCacheUsuarios(){
-  const { data, error } = await sb().from('usuarios').select('*');
-  if(error){ console.error('Erro ao carregar usuários do Supabase:', error.message); return; }
+  let data, error;
+  try { ({ data, error } = await sb().from('usuarios').select('*')); }
+  catch (e) { error = e; }
+  // Falhou: mantém o último cache bom (não esvazia) e avisa quem chamou.
+  if(error){ console.error('Erro ao carregar usuários do Supabase:', error.message || error); return false; }
   _usuariosCache = new Map((data||[]).map(u => [u.usuario, u]));
+  _usuariosCacheCarregadoEm = Date.now();
+  return true;
 }
 
 // ── INVALIDAÇÃO DE SESSÃO POR USUÁRIO ─────────────────────────
@@ -572,6 +582,22 @@ function registrarFalhaLogin(usuario, req) {
   if (req) chaves.push(usuario + '|' + ipCliente(req));
   chaves.forEach(k => { const f = _falhasRecentes(k); f.push(Date.now()); _loginFalhasPorUsuario.set(k, f); });
 }
+// Código do autenticador (2FA) — revisão 17/10/2026: as falhas do código
+// contavam junto com as de senha, e a senha CERTA zerava a contagem por
+// usuário+IP. Quem já tem a senha conseguia ~4 chutes do código a cada novo
+// login. Agora o código tem contagem própria, por usuário (de qualquer IP),
+// que só zera quando o código é acertado.
+const _falhas2FAPorUsuario = new Map(); // usuario -> [timestamps]
+const MAX_FALHAS_2FA = 6;
+const JANELA_2FA_MS = 15 * 60 * 1000;
+function _falhas2FARecentes(usuario) {
+  const l = (_falhas2FAPorUsuario.get(usuario) || []).filter(t => Date.now() - t < JANELA_2FA_MS);
+  _falhas2FAPorUsuario.set(usuario, l);
+  return l;
+}
+function bloqueado2FA(usuario) { return !!usuario && _falhas2FARecentes(usuario).length >= MAX_FALHAS_2FA; }
+function registrarFalha2FA(usuario) { if (!usuario) return; const l = _falhas2FARecentes(usuario); l.push(Date.now()); _falhas2FAPorUsuario.set(usuario, l); }
+function limparFalhas2FA(usuario) { _falhas2FAPorUsuario.delete(usuario); }
 function limparFalhasLogin(usuario, req) {
   if (req) _loginFalhasPorUsuario.delete(usuario + '|' + ipCliente(req));
   else _loginFalhasPorUsuario.delete(usuario);
@@ -635,6 +661,10 @@ app.use(helmet({
 // recarregada a cada 30s por cada aba aberta -- JSON comprime ~5-10x, então
 // isso reduz direto o tempo de carregamento, principalmente fora do escritório.
 app.use(compression());
+// Mensagens de erro com motivo + próximo passo em vez do texto cru do banco
+// (revisão 17/10/2026, lib/erros-amigaveis.js). Antes de tudo, pra valer
+// também pros erros do leitor de JSON (arquivo grande demais etc.).
+app.use(require('./lib/erros-amigaveis').middlewareErrosAmigaveis);
 // Arquivos estáticos (JS/CSS/imagens) ANTES da sessão (revisão de desempenho
 // 23/09/2026, medido ao vivo: ~0,45s até pra um ícone de 2KB). Com a sessão
 // na frente, CADA um dos ~25 arquivos de uma tela do Controle fazia uma
@@ -1119,14 +1149,16 @@ app.post('/login/configurar-2fa', rateLimitLogin, async (req, res) => {
     const pend = req.session.pendingSetup2fa;
     if (!pend) return res.json({ ok: false, erro: 'Sessão de configuração expirada. Faça login novamente.' });
     const codigo = (req.body.codigo || '').trim();
-    if (contaBloqueada(pend.usuario, req)) {
+    if (contaBloqueada(pend.usuario, req) || bloqueado2FA(pend.usuario)) {
       delete req.session.pendingSetup2fa;
       return res.json({ ok: false, erro: 'Muitas tentativas erradas. Aguarde alguns minutos e faça login de novo.' });
     }
     if (!(await verificarCodigo2FA(pend.secret, codigo, pend.usuario, ipCliente(req)))) {
       registrarFalhaLogin(pend.usuario, req);
+      registrarFalha2FA(pend.usuario);
       return res.json({ ok: false, erro: 'Código inválido. Confira o horário do celular e tente de novo.' });
     }
+    limparFalhas2FA(pend.usuario);
     await sb().from('usuarios').update({
       totp_secret: cifrarSegredo2FA(pend.secret), totp_enabled: true, totp_confirmed_at: new Date().toISOString(),
     }).eq('usuario', pend.usuario);
@@ -1157,7 +1189,7 @@ app.post('/login/verificar-2fa', rateLimitLogin, async (req, res) => {
   // senha errada contava): quem já tem a senha não pode ficar chutando os 6
   // dígitos indefinidamente. Bloqueou -> descarta a etapa pendente e obriga a
   // recomeçar pelo login (que também está bloqueado pelos próximos minutos).
-  if (contaBloqueada(pend.usuario, req)) {
+  if (contaBloqueada(pend.usuario, req) || bloqueado2FA(pend.usuario)) {
     delete req.session.pending2fa;
     return res.json({ ok: false, erro: 'Muitas tentativas erradas. Aguarde alguns minutos e faça login de novo.' });
   }
@@ -1167,9 +1199,11 @@ app.post('/login/verificar-2fa', rateLimitLogin, async (req, res) => {
     const ip = ipCliente(req);
     console.warn(`[2FA FALHOU] usuário="${pend.usuario}" ip=${ip} em ${new Date().toISOString()}`);
     registrarFalhaLogin(pend.usuario, req);
+    registrarFalha2FA(pend.usuario);
     return res.json({ ok: false, erro: 'Código inválido.' });
   }
   limparFalhasLogin(pend.usuario, req);
+  limparFalhas2FA(pend.usuario);
   // Segredo antigo em texto puro -> grava cifrado (se TOTP_ENC_KEY existir).
   if (_chave2FA() && !String(u.totp_secret).startsWith('enc:v1:')) {
     const cifrado = cifrarSegredo2FA(u.totp_secret);
@@ -1350,7 +1384,9 @@ app.post('/api/usuarios/:usuario/resetar-2fa', rateLimitLogin, auth(), requireGe
 // esse endpoint também).
 app.post('/api/admin/recarregar-cache', rateLimitLogin, auth(), requireGerente, (req, res) => {
   recarregarCacheUsuarios()
-    .then(() => res.json({ ok: true, mensagem: `Cache recarregado (${_usuariosCache.size} usuários).` }))
+    .then(okCache => okCache === false
+      ? res.status(503).json({ ok: false, erro: 'Não consegui ler os usuários no banco agora — o cache anterior continua valendo. Tente de novo em instantes.' })
+      : res.json({ ok: true, mensagem: `Cache recarregado (${_usuariosCache.size} usuários).` }))
     .catch(e => {
       console.error('Erro ao recarregar cache de usuários:', e.message);
       res.status(500).json({ ok: false, erro: 'Erro ao recarregar cache.' });
@@ -1472,6 +1508,20 @@ function auth(...modulos) {
       ? res.status(401).json({ ok: false, erro: 'Não autenticado' })
       : res.redirect('/login?destino=' + req.path);
     if (!req.session.usuario) return semSessao();
+    // Fail-closed (revisão 17/10/2026): sem o cadastro de usuários carregado
+    // (banco instável / servidor reiniciando) não dá pra saber se a sessão
+    // foi derrubada nem quais módulos a pessoa tem HOJE — nega em vez de
+    // liberar com o que ficou gravado na sessão. Sem destruir a sessão:
+    // quando o banco voltar, a pessoa segue logada.
+    if (!_usuariosCacheCarregadoEm) {
+      const msg = 'O sistema está sem acesso ao cadastro de usuários agora (banco instável ou servidor reiniciando). Tente de novo em alguns segundos — nada foi alterado.';
+      return ehApi ? res.status(503).json({ ok: false, erro: msg, indisponivel: true })
+        : res.status(503).send(`<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="15"><body style="font-family:sans-serif;padding:40px;color:#333"><h2>Sistema temporariamente indisponível</h2><p>${msg}</p><p>Esta página tenta de novo sozinha em 15 segundos.</p></body>`);
+    }
+    if (!_usuariosCache.has(req.session.usuario)) {
+      // Usuário saiu do cadastro: a sessão antiga não vale mais.
+      return req.session.destroy(() => semSessao());
+    }
     // Se a versão da sessão estiver desatualizada (alguém forçou logout
     // deste usuário, ex: ao trocar a senha ou mudar suas permissões),
     // invalida mesmo com cookie válido.
@@ -1588,9 +1638,7 @@ app.post('/api/assistente/mensagem', auth(...MODULOS_TRABALHO), rateLimitAssiste
   }
 });
 
-app.get('/permissoes', (req, res) => {
-
-  if (!req.session.usuario) return res.redirect('/login?destino=/permissoes');
+app.get('/permissoes', auth(), (req, res) => {
   if (!ADMINS_PERMISSOES.includes(req.session.usuario)) return res.status(403).send('<h2>Acesso restrito.</h2>');
   res.sendFile(path.join(__dirname, 'permissoes.html'));
 });
@@ -1825,9 +1873,16 @@ async function vincularFaturaNosProcessos(fatura, remover) {
   }
 }
 
+function temFinanceiro(req) {
+  const mods = Array.isArray(req.session.modulos) ? req.session.modulos : [];
+  return req.session.role === 'gerente' || mods.includes('financeiro');
+}
 app.get('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
   try {
     const q = req.query || {};
+    if (!temFinanceiro(req) && !q.processo_id) {
+      return res.status(403).json({ ok: false, erro: 'A lista completa de faturas é do Financeiro. No Controle, abra o processo para ver as faturas dele.', faturas: [] });
+    }
     let query = sb().from('faturas').select('*').order('vencimento', { ascending: true, nullsFirst: false }).limit(2000);
     if (q.status && FaturasCore.STATUS.includes(q.status)) query = query.eq('status', q.status);
     if (q.tipo && FaturasCore.TIPOS.includes(q.tipo)) query = query.eq('tipo', q.tipo);
@@ -1881,7 +1936,16 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
           const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
           row.numero = FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano);
         } catch (e) { row.numero = null; }
-        const { data, error } = await sb().from('faturas').insert(row).select().single();
+        let data, error;
+        for (let tentativa = 0; tentativa < 4; tentativa++) {
+          ({ data, error } = await sb().from('faturas').insert(row).select().single());
+          if (!(error && error.code === '23505' && /numero/.test(String(error.message || '') + String(error.details || '')))) break;
+          try {
+            const ano = new Date().getFullYear();
+            const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
+            row.numero = FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano);
+          } catch (e) { break; }
+        }
         if (error) return res.status(500).json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message) });
         salva = data;
       }
@@ -2028,6 +2092,19 @@ async function _faturaPorId(id) {
   const { data } = await sb().from('faturas').select('*').eq('id', String(id).slice(0, 80)).maybeSingle();
   return data || null;
 }
+// Grava na fatura SÓ se ninguém mexeu nela desde que foi lida (mesmo
+// updated_at) — revisão 17/10/2026: baixa/estorno/aprovação liam a fatura,
+// mudavam a lista de pagamentos e gravavam por cima; duas ações juntas
+// (clique duplo, duas pessoas) perdiam ou duplicavam pagamento.
+async function gravarFaturaComVersao(f, patch) {
+  let q = sb().from('faturas').update(patch).eq('id', f.id);
+  q = f.updated_at ? q.eq('updated_at', f.updated_at) : q.is('updated_at', null);
+  const { data, error } = await q.select();
+  if (error) return { error };
+  if (!Array.isArray(data) || !data.length) return { conflito: true };
+  return { data: data[0] };
+}
+const MSG_FATURA_CONFLITO = 'Esta fatura acabou de ser alterada por outra ação (outra baixa, estorno ou outra pessoa). Atualize a lista e confira antes de lançar de novo — nada foi gravado agora.';
 
 // ── Financeiro da empresa: plano de contas, centros, bancos, transferências,
 // importação do Conexos (migration 0053). Nada é apagado: desativa/estorna.
@@ -2039,7 +2116,9 @@ app.get('/api/fin/cadastros', auth('financeiro', 'controle'), async (req, res) =
       sb().from('fin_bancos').select('*').order('nome'),
     ]);
     if (c.error) return res.json({ ok: false, erro: c.error.message, semTabela: /fin_contas/.test(c.error.message) });
-    res.json({ ok: true, contas: c.data || [], centros: cc.data || [], bancos: b.data || [], grupos: FinCore.GRUPOS });
+    // Agência/conta só pra quem é do Financeiro (o Controle usa nome e moeda).
+    const bancos = (b.data || []).map(x => temFinanceiro(req) ? x : Object.assign({}, x, { agencia: null, conta: null }));
+    res.json({ ok: true, contas: c.data || [], centros: cc.data || [], bancos, grupos: FinCore.GRUPOS });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 app.post('/api/fin/contas', auth('financeiro'), async (req, res) => {
@@ -2078,7 +2157,7 @@ app.post('/api/fin/bancos', auth('financeiro'), async (req, res) => {
     res.json({ ok: true, banco: data });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
-app.get('/api/fin/transferencias', auth('financeiro', 'controle'), async (req, res) => {
+app.get('/api/fin/transferencias', auth('financeiro'), async (req, res) => {
   try {
     const { data, error } = await sb().from('fin_transferencias').select('*').order('data', { ascending: false }).limit(2000);
     if (error) return res.json({ ok: false, erro: error.message, transferencias: [] });
@@ -2090,6 +2169,13 @@ app.post('/api/fin/transferencias', auth('financeiro'), async (req, res) => {
     const v = FinCore.validarTransferencia(req.body || {});
     if (!v.ok) return res.status(400).json(v);
     const vd = FinCore.numBR((req.body || {}).valor_destino);
+    if (!(req.body || {}).confirmar_repetido) {
+      const desde = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+      const { data: iguais } = await sb().from('fin_transferencias').select('id, created_at, estornado')
+        .eq('de_banco_id', v.transf.de_banco_id).eq('para_banco_id', v.transf.para_banco_id).eq('data', v.transf.data)
+        .eq('valor', v.transf.valor).eq('criado_por', req.session.usuario || '').gte('created_at', desde).limit(5);
+      if ((iguais || []).some(t => !t.estornado)) return res.status(409).json({ ok: false, repetido: true, erro: 'Você registrou uma transferência igual (mesmas contas, data e valor) há menos de 3 minutos. É outra transferência?' });
+    }
     const { data, error } = await sb().from('fin_transferencias').insert({ ...v.transf, valor_destino: vd > 0 ? vd : null, criado_por: req.session.usuario || null }).select().single();
     if (error) return res.status(400).json({ ok: false, erro: error.message });
     res.json({ ok: true, transferencia: data });
@@ -2136,7 +2222,7 @@ async function gerarFaturasRecorrentes(soId, usuario) {
   }
   return { geradas, erros };
 }
-app.get('/api/fin/recorrencias', auth('financeiro', 'controle'), async (req, res) => {
+app.get('/api/fin/recorrencias', auth('financeiro'), async (req, res) => {
   try {
     const { data, error } = await sb().from('fin_recorrencias').select('*').order('descricao');
     if (error) return res.json({ ok: false, erro: error.message, semTabela: /fin_recorrencias/.test(error.message), recorrencias: [] });
@@ -2368,9 +2454,10 @@ app.post('/api/faturas/:id/aprovacao', auth('financeiro'), async (req, res) => {
     if (f.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada.' });
     const aprovar = !(req.body && req.body.desfazer);
     const aprovacao = aprovar ? { por: req.session.usuario || null, nome: req.session.displayName || req.session.nome || null, em: new Date().toISOString() } : null;
-    const { data, error } = await sb().from('faturas').update({ aprovacao, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
-    if (error) return res.status(500).json({ ok: false, erro: error.message });
-    res.json({ ok: true, fatura: data });
+    const gv = await gravarFaturaComVersao(f, { aprovacao, updated_at: new Date().toISOString() });
+    if (gv.error) return res.status(500).json({ ok: false, erro: gv.error.message });
+    if (gv.conflito) return res.status(409).json({ ok: false, conflito: true, erro: MSG_FATURA_CONFLITO });
+    res.json({ ok: true, fatura: gv.data });
   } catch (e) { res.status(500).json({ ok: false, erro: 'Erro na aprovação.' }); }
 });
 
@@ -2436,6 +2523,17 @@ app.post('/api/faturas/:id/baixa', auth('financeiro'), async (req, res) => {
     const v = FaturasCore.validarPagamento(b, f);
     if (!v.ok) return res.status(400).json({ ok: false, erro: v.erro });
     const pag = { id: require('crypto').randomUUID(), ...v.pagamento, por: req.session.usuario || null, em: new Date().toISOString() };
+    // Mesma baixa (valor, data e forma) pela mesma pessoa há menos de 3 min:
+    // quase sempre é clique duplo — pergunta antes de lançar de novo.
+    if (!b.confirmar_repetido && !b.lote_id) {
+      const recente = (Array.isArray(f.pagamentos) ? f.pagamentos : []).find(p => !p.estornado && p.por === pag.por
+        && Math.abs((parseFloat(p.valor) || 0) - (parseFloat(pag.valor) || 0)) < 0.005 && String(p.data || '') === String(pag.data || '')
+        && String(p.forma || '') === String(pag.forma || '') && (Date.now() - new Date(p.em || 0).getTime()) < 3 * 60 * 1000);
+      if (recente) {
+        const seg = Math.max(1, Math.round((Date.now() - new Date(recente.em).getTime()) / 1000));
+        return res.status(409).json({ ok: false, repetido: true, erro: `Você registrou uma baixa igual (mesmo valor, data e forma) há ${seg} segundo(s). É outra baixa?` });
+      }
+    }
     // comprovante repetido em outra baixa (mesma autenticação/ID da transação)
     if (pag.identificador) {
       const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador: pag.identificador }]).limit(1);
@@ -2450,8 +2548,10 @@ app.post('/api/faturas/:id/baixa', auth('financeiro'), async (req, res) => {
     const anexos = Array.isArray(f.anexos) ? f.anexos.slice() : [];
     if (pag.comprovante) anexos.push({ id: require('crypto').randomUUID(), tipo: 'comprovante', ...pag.comprovante, pagamento_id: pag.id, por: pag.por, em: pag.em });
     const patch = { pagamentos: pags, anexos, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() };
-    const { data, error } = await sb().from('faturas').update(patch).eq('id', f.id).select().single();
-    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    const gv = await gravarFaturaComVersao(f, patch);
+    if (gv.error) return res.status(500).json({ ok: false, erro: gv.error.message });
+    if (gv.conflito) return res.status(409).json({ ok: false, conflito: true, erro: MSG_FATURA_CONFLITO });
+    const data = gv.data;
     if (data.status === 'paga') await vincularFaturaNosProcessos(data, false);
     await sincronizarOrigemReceber(data);
     let darf = null;
@@ -2474,8 +2574,10 @@ app.post('/api/faturas/:id/estornar', auth('financeiro'), async (req, res) => {
     });
     if (!achou) return res.status(404).json({ ok: false, erro: 'Pagamento não encontrado.' });
     const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags, status: f.status === 'paga' ? 'aberta' : f.status });
-    const { data, error } = await sb().from('faturas').update({ pagamentos: pags, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
-    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    const gv = await gravarFaturaComVersao(f, { pagamentos: pags, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() });
+    if (gv.error) return res.status(500).json({ ok: false, erro: gv.error.message });
+    if (gv.conflito) return res.status(409).json({ ok: false, conflito: true, erro: MSG_FATURA_CONFLITO });
+    const data = gv.data;
     await sincronizarOrigemReceber(data);
     res.json({ ok: true, fatura: data });
   } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao estornar.' }); }
@@ -2492,9 +2594,10 @@ app.post('/api/faturas/:id/anexo', auth('financeiro', 'controle'), async (req, r
     catch (e) { return res.status(400).json({ ok: false, erro: e.message }); }
     const tipo = ['fatura', 'comprovante', 'outro'].includes(b.tipo) ? b.tipo : 'outro';
     const anexos = (Array.isArray(f.anexos) ? f.anexos : []).concat([{ id: require('crypto').randomUUID(), tipo, ...arq, por: req.session.usuario || null, em: new Date().toISOString() }]);
-    const { data, error } = await sb().from('faturas').update({ anexos, updated_at: new Date().toISOString() }).eq('id', f.id).select().single();
-    if (error) return res.status(500).json({ ok: false, erro: error.message });
-    res.json({ ok: true, fatura: data });
+    const gv = await gravarFaturaComVersao(f, { anexos, updated_at: new Date().toISOString() });
+    if (gv.error) return res.status(500).json({ ok: false, erro: gv.error.message });
+    if (gv.conflito) return res.status(409).json({ ok: false, conflito: true, erro: MSG_FATURA_CONFLITO });
+    res.json({ ok: true, fatura: gv.data });
   } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao anexar.' }); }
 });
 
@@ -2595,8 +2698,10 @@ app.post('/api/faturas/:id/:acao', auth('financeiro'), async (req, res) => {
     } else {
       Object.assign(patch, { status: 'cancelada', obs: [f.obs, b.motivo ? 'Cancelada: ' + String(b.motivo).slice(0, 300) : 'Cancelada'].filter(Boolean).join(' · ') });
     }
-    const { data, error } = await sb().from('faturas').update(patch).eq('id', f.id).select().single();
-    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    const gv = await gravarFaturaComVersao(f, patch);
+    if (gv.error) return res.status(500).json({ ok: false, erro: gv.error.message });
+    if (gv.conflito) return res.status(409).json({ ok: false, conflito: true, erro: MSG_FATURA_CONFLITO });
+    const data = gv.data;
     await vincularFaturaNosProcessos(data, acao === 'cancelar');
     res.json({ ok: true, fatura: data });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
@@ -2835,6 +2940,7 @@ function vencimentoSaldoPI(p) {
 // contra o cálculo de estoque da TV (testes_controle.js). Ver o arquivo.
 const { CAMPOS_FINANCEIROS_PROCESSO, removerCamposFinanceiros } = require('./lib/filtro-tv');
 const ConferenciaChave = require('./conferencia-chave');
+const ValidacaoDatas = require('./validacao-datas.js');
 
 // Resumo da última conferência (mesma contagem da Fila de Conferência em
 // controle-dash-conferencia.js: divergências/ausências/alertas com campo,
@@ -2946,12 +3052,13 @@ app.get('/api/controle/v2/processos', auth('controle','financeiro','resultado','
     res.json({ ok: true, processos });
   } catch (e) {
     console.error('controle v2 GET erro:', e.message);
-    if (req.query.desde) return res.status(500).json({ ok: false, erro: e.message });
-    res.json({ ok: true, processos: [] });
+    // Revisão 17/10/2026: antes devolvia ok com lista VAZIA — numa oscilação
+    // do banco a tela de todo mundo zerava e o cache local guardava o vazio.
+    res.status(500).json({ ok: false, erro: e.message });
   }
 });
 
-app.post('/api/controle/v2/importar', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/controle/v2/importar', auth('controle','financeiro'), async (req, res) => {
   try {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
@@ -3132,7 +3239,7 @@ async function buscarTodosProcessos(colunas){
   return { data: todos, error: null };
 }
 
-app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'), async (req, res) => {
   try {
     const { arquivo_base64 } = req.body;
     if (!arquivo_base64) return res.status(400).json({ erro: 'Arquivo ausente' });
@@ -3284,7 +3391,7 @@ async function enviarRelatorioImportManu(resumo, usuario) {
   }
 }
 
-app.post('/api/controle/v2/importar-manu', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async (req, res) => {
   try {
     const { arquivo_base64 } = req.body;
     if (!arquivo_base64) return res.status(400).json({ erro: 'Arquivo ausente' });
@@ -3421,7 +3528,7 @@ app.post('/api/controle/v2/processo/:id/comissoes', auth('controle','financeiro'
   }
 });
 
-app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo) return res.status(400).json({ erro: 'Processo ausente' });
@@ -3444,13 +3551,23 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     // desabilitado no front-end) porque a trava só vale alguma coisa se
     // não der pra contornar chamando a API direto.
     let processoExistente = false;
+    // Edição simultânea (revisão 17/10/2026): o painel manda a versão
+    // (updated_at) de quando abriu o processo. Se o banco já tem outra,
+    // alguém salvou no meio — devolve 409 com o processo atual e o navegador
+    // junta as alterações (concorrencia-processo.js) em vez de sobrescrever.
+    const baseVersao = (typeof processo._base_updated_at === 'string' && processo._base_updated_at) ? processo._base_updated_at : null;
+    let atualRow = null;
     if (processo.id) {
       const { data: atual } = await sb()
         .from('controle_processos')
-        .select('fechado, cancelado, cancelamento_solicitado')
+        .select('fechado, cancelado, cancelamento_solicitado, updated_at, updated_by, tipo_container, ' + DATAS_VALIDADAS_PROCESSO)
         .eq('id', processo.id)
         .maybeSingle();
       processoExistente = !!atual;
+      atualRow = atual || null;
+      if (atual && baseVersao && atual.updated_at && new Date(atual.updated_at).getTime() !== new Date(baseVersao).getTime()) {
+        return responderConflitoProcesso(res, processo.id, baseVersao);
+      }
       const estavaFechado = !!(atual && atual.fechado);
       const tentandoDestravar = estavaFechado && processo.fechado === false;
       const tentandoTravar    = !estavaFechado && processo.fechado === true;
@@ -3598,6 +3715,21 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     delete processo.cotacao_id; delete processo.estimativa_json;
     processo.updated_by = req.session.usuario;
 
+    // Datas impossíveis (revisão 17/10/2026, validacao-datas.js): chegada
+    // antes do embarque, devolução antes da chegada, ano "0026"... Só as
+    // regras que envolvem campos deste save — processo antigo com data
+    // errada não trava a edição de outro campo.
+    {
+      const camposSave = Object.keys(processo).filter(k => k[0] !== '_' && k !== 'log');
+      const mesclado = Object.assign({}, atualRow || {}, processo);
+      const errosDatas = ValidacaoDatas.erros(ValidacaoDatas.validar(mesclado, { campos: camposSave }));
+      if (errosDatas.length) {
+        return res.status(400).json({ ok: false, datas_invalidas: true,
+          erro: 'Data impossível — nada foi salvo. ' + errosDatas.map(e => e.msg).join(' ') + ' Corrija a data e salve de novo.',
+          campos: [...new Set([].concat(...errosDatas.map(e => e.campos)))] });
+      }
+    }
+
     if (!processo.id) processo.id = gerarUUID();
     processo.updated_at = new Date().toISOString();
 
@@ -3623,10 +3755,12 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
       console.warn('padronização de cadastros ignorada:', normErr.message);
     }
 
-    // Log de auditoria no banco
+    // Log de auditoria no banco — as linhas são montadas aqui e gravadas só
+    // DEPOIS do update dar certo (num conflito de edição nada é gravado).
     const logEntries = (processo.log || []).filter(l => !l._saved);
+    let linhasLog = null;
     if (logEntries.length) {
-      const rows = logEntries.map(l => ({
+      linhasLog = logEntries.map(l => ({
         processo_id: processo.id,
         usuario: req.session.usuario, // sempre quem está logado -- nunca aceitar o nome vindo do navegador (log de auditoria)
         campo: l.campo || '',
@@ -3634,11 +3768,6 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
         valor_depois: String(l.valor_depois || ''),
         created_at: new Date().toISOString(), // sempre a hora do servidor (auditoria)
       }));
-      try {
-        await sb().from('controle_log').insert(rows);
-      } catch(logErr) {
-        console.warn('log erro:', logErr.message);
-      }
       processo.log = (processo.log || []).map(l => ({ ...l, _saved: true }));
     }
 
@@ -3664,19 +3793,32 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     // parciais com "null value in column referencia violates not-null
     // constraint" (bug relatado pela Paula, 21/08/2026). UPDATE só toca nas
     // colunas presentes no payload, então não tem esse problema.
-    let error;
-    const gravar = async (obj) => processoExistente
-      ? sb().from('controle_processos').update(obj).eq('id', processo.id)
-      : sb().from('controle_processos').upsert(obj, { onConflict: 'id' });
-    ({ error } = await gravar(processoLimpo));
+    let error, gravados = null;
+    // Com versão de base: o UPDATE só vale se ninguém salvou entre a
+    // conferência lá em cima e agora (mesmo updated_at) — senão, conflito.
+    const condicional = !!(processoExistente && baseVersao && atualRow && atualRow.updated_at);
+    const gravar = async (obj) => {
+      if (!processoExistente) return sb().from('controle_processos').upsert(obj, { onConflict: 'id' });
+      let q = sb().from('controle_processos').update(obj).eq('id', processo.id);
+      if (condicional) q = q.eq('updated_at', atualRow.updated_at).select('id');
+      return q;
+    };
+    ({ data: gravados, error } = await gravar(processoLimpo));
     if (error && erroColunasVinculo(error)) {
       // Migration 0043 (cliente_id, fornecedor_id...) ainda não rodou:
       // grava sem os vínculos — o texto padronizado continua indo.
       const semIds = Object.assign({}, processoLimpo);
       CadastrosNormalizar.COLUNAS_ID.forEach(c => { delete semIds[c]; });
-      ({ error } = await gravar(semIds));
+      ({ data: gravados, error } = await gravar(semIds));
     }
     if (error) throw new Error(error.message);
+    if (condicional && Array.isArray(gravados) && gravados.length === 0) {
+      return responderConflitoProcesso(res, processo.id, baseVersao);
+    }
+    if (linhasLog) {
+      try { await sb().from('controle_log').insert(linhasLog); }
+      catch (logErr) { console.warn('log erro:', logErr.message); }
+    }
 
     // Os alertas abaixo precisam do processo COMPLETO, não só do payload:
     // desde o salvamento parcial, o navegador manda só os campos alterados
@@ -3793,12 +3935,36 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro','resultado','
     }
 
     console.log(`controle v2 salvo: ${processo.referencia} por ${req.session.usuario}`);
-    res.json({ ok: true });
+    res.json({ ok: true, updated_at: processo.updated_at });
   } catch (e) {
     console.error('controle v2 POST erro:', e.message);
     res.status(500).json({ erro: e.message });
   }
 });
+
+// Colunas lidas do banco pra conferir datas impossíveis num save parcial.
+const DATAS_VALIDADAS_PROCESSO = 'etd, eta, data_embarque, data_chegada, data_presenca, data_carregamento, data_devolucao_vazio';
+function nomeUsuarioExibicao(login) {
+  const u = _usuariosCache.get(login);
+  return (u && (u.display_name || u.nome)) || login || 'outra pessoa';
+}
+// 409 com o processo como está no banco + quem mudou o quê desde a versão
+// que o navegador abriu (controle_log).
+async function responderConflitoProcesso(res, id, baseVersao) {
+  let atual = null, alteracoes = [];
+  try {
+    const r = await sb().from('controle_processos').select('*').eq('id', id).maybeSingle();
+    atual = r.data || null;
+  } catch (e) { /* segue sem o processo — o navegador pede pra recarregar */ }
+  try {
+    const { data: logs } = await sb().from('controle_log').select('usuario, campo, created_at')
+      .eq('processo_id', id).gt('created_at', baseVersao).order('created_at', { ascending: false }).limit(80);
+    alteracoes = (logs || []).map(l => ({ usuario: nomeUsuarioExibicao(l.usuario), campo: l.campo, em: l.created_at }));
+  } catch (e) { /* histórico é só informativo */ }
+  const quem = nomeUsuarioExibicao((atual && atual.updated_by) || (alteracoes[0] && alteracoes[0].usuario));
+  return res.status(409).json({ ok: false, conflito: true, alterado_por: quem, alterado_em: atual ? atual.updated_at : null,
+    erro: `${quem} salvou este processo enquanto você editava. Atualize o processo antes de salvar de novo.`, atual, alteracoes });
+}
 
 // Histórico de alterações de um processo — faltava esta rota: o front-end
 // (controle_v2.html) já chamava GET /api/controle/v2/processo/:id/log desde
@@ -3822,7 +3988,7 @@ app.get('/api/controle/v2/processo/:id/log', auth('controle','financeiro','resul
   }
 });
 
-app.delete('/api/controle/v2/processo/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
+app.delete('/api/controle/v2/processo/:id', auth('controle','financeiro'), requireGerente, async (req, res) => {
   try {
     const id = req.params.id;
     // Antes disto, o DELETE só apagava a linha em controle_processos — em
@@ -3965,7 +4131,7 @@ app.get('/api/controle/processo/:id', auth('controle','financeiro','resultado','
   }
 });
 
-app.post('/api/controle/processo', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/controle/processo', auth('controle','financeiro'), async (req, res) => {
   try {
     const { processo } = req.body;
     if (!processo || !processo.id) return res.status(400).json({ erro: 'Processo inválido' });
@@ -3991,7 +4157,7 @@ app.post('/api/controle/processo', auth('controle','financeiro','resultado','tv'
   }
 });
 
-app.delete('/api/controle/processo/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
+app.delete('/api/controle/processo/:id', auth('controle','financeiro'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb()
       .from('controle_processos')
@@ -4005,7 +4171,7 @@ app.delete('/api/controle/processo/:id', auth('controle','financeiro','resultado
   }
 });
 
-app.post('/api/controle/importar', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/controle/importar', auth('controle','financeiro'), async (req, res) => {
   try {
     const { processos } = req.body;
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
@@ -4327,7 +4493,8 @@ app.get('/api/controle/v2/arquivos/:processoId', auth('controle','financeiro','r
     res.json({ ok: true, arquivos });
   } catch (e) {
     console.error('ged listar erro:', e.message);
-    res.json({ ok: true, arquivos: [] });
+    // Erro ≠ "nenhum arquivo" (senão a pessoa reenvia e duplica o GED).
+    res.status(500).json({ ok: false, erro: e.message });
   }
 });
 
@@ -4352,7 +4519,7 @@ app.get('/api/controle/v2/arquivo/:id/conteudo', auth('controle'), async (req, r
   }
 });
 
-app.post('/api/controle/v2/arquivos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/controle/v2/arquivos', auth('controle','financeiro'), async (req, res) => {
   try {
     const { processo_id, nome, tipo, base64 } = req.body;
     if (!processo_id || !nome || !base64) return res.status(400).json({ erro: 'Dados incompletos' });
@@ -4442,7 +4609,7 @@ app.post('/api/controle/v2/arquivos/:processoId/remover-duplicados', auth('contr
   }
 });
 
-app.delete('/api/controle/v2/arquivos/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
+app.delete('/api/controle/v2/arquivos/:id', auth('controle','financeiro'), requireGerente, async (req, res) => {
   try {
     const { data: arquivo } = await sb()
       .from('controle_arquivos')
@@ -4571,7 +4738,7 @@ app.get('/api/contatos', auth(...MODULOS_TRABALHO), async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/contatos', auth('controle','financeiro','cadastros'), async (req, res) => {
   try {
     const c = req.body;
     if (!c.razao_social) return res.status(400).json({ erro: 'Razão social obrigatória' });
@@ -4697,7 +4864,7 @@ app.post('/api/contatos', auth('controle','financeiro','resultado','tv','narceli
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.delete('/api/contatos/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
+app.delete('/api/contatos/:id', auth('controle','financeiro','cadastros'), requireGerente, async (req, res) => {
   try {
     const { data: antes } = await sb().from('contatos_clientes').select('*').eq('id', req.params.id).maybeSingle();
     // Fase 2a-2: cadastro usado em processos não some — tem que mesclar
@@ -4764,6 +4931,12 @@ app.get('/api/listas', auth(...MODULOS_TRABALHO), async (req, res) => {
     // quem enxerga resultado/financeiro/cadastros (ou gerente) recebe a lista.
     const mods = Array.isArray(req.session.modulos) ? req.session.modulos : [];
     if (!(req.session.role === 'gerente' || mods.some(m => ['resultado','financeiro','cadastros'].includes(m)))) r.listas.comissionado = [];
+    if (!(req.session.role === 'gerente' || mods.some(m => ['financeiro','cambio'].includes(m))) && Array.isArray(r.listas.banco_cambio)) {
+      r.listas.banco_cambio = r.listas.banco_cambio.map(b => {
+        const d = Object.assign({}, b.dados || {}); ['agencia','conta','pix','cnpj'].forEach(k => { delete d[k]; });
+        return Object.assign({}, b, { dados: d });
+      });
+    }
     res.json({ ok: true, listas: r.listas, origem: r.origem });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
@@ -5110,7 +5283,7 @@ app.get('/api/cadastros/pessoas', auth(...MODULOS_TRABALHO), async (req, res) =>
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.post('/api/cadastros/pessoas', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/cadastros/pessoas', auth('controle','financeiro','cadastros'), async (req, res) => {
   try {
     const p = req.body;
     if (!p.nome || !p.nome.trim()) return res.status(400).json({ erro: 'Nome é obrigatório' });
@@ -5129,7 +5302,7 @@ app.post('/api/cadastros/pessoas', auth('controle','financeiro','resultado','tv'
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.delete('/api/cadastros/pessoas/:id', auth('controle','financeiro','resultado','tv','narcelio'), requireGerente, async (req, res) => {
+app.delete('/api/cadastros/pessoas/:id', auth('controle','financeiro','cadastros'), requireGerente, async (req, res) => {
   try {
     const { error } = await sb().from('cadastros_pessoas').update({ ativo: false }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
@@ -6602,7 +6775,7 @@ function agendarBackupDropbox(){
 app.get('/api/integracao/conexos/status', auth('controle','financeiro','resultado','tv','narcelio'), (req, res) => {
   res.json({ ok: true, ...conexos.statusIntegracao() });
 });
-app.post('/api/integracao/conexos/sincronizar/:id', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+app.post('/api/integracao/conexos/sincronizar/:id', auth('controle','financeiro'), async (req, res) => {
   try {
     const { data: processo, error } = await sb().from('controle_processos')
       .select('id, referencia, conexos_id, conexos_ultima_sync, ' + conexos.MAPA_CAMPOS.map(m => m.nosso).join(', '))
@@ -6849,7 +7022,22 @@ app.use((err, req, res, next) => {
 // Express sem abrir porta nem agendar jobs -- só sobe o servidor de
 // verdade quando este arquivo é o ponto de entrada (node server.js).
 module.exports = app;
-if (require.main === module) app.listen(PORT, () => {
+// Só para os testes unitários (require no mesmo processo) — não cria rota
+// nenhuma e não é acessível pela rede.
+module.exports._interno = {
+  auth, versaoSessaoAtual, bloqueado2FA, registrarFalha2FA, limparFalhas2FA,
+  definirCacheUsuarios(lista, carregado) {
+    _usuariosCache = new Map((lista || []).map(u => [u.usuario, u]));
+    _usuariosCacheCarregadoEm = carregado ? Date.now() : 0;
+  },
+};
+// Carrega o cadastro de usuários ANTES de aceitar conexões (no máximo 10 s):
+// como auth() agora nega acesso sem ele (fail-closed), sem isto os primeiros
+// segundos depois de cada deploy responderiam "sistema indisponível".
+if (require.main === module) Promise.race([
+  recarregarCacheUsuarios().catch(() => false),
+  new Promise(r => setTimeout(r, 10000)),
+]).finally(() => app.listen(PORT, () => {
   console.log(`IMPAK Portal v2.0 na porta ${PORT}`);
   console.log(`ANTHROPIC_API_KEY configurada: ${!!process.env.ANTHROPIC_API_KEY} | SUPABASE_URL configurada: ${!!process.env.SUPABASE_URL}`);
   agendarAlertasDiarios();
@@ -6857,4 +7045,13 @@ if (require.main === module) app.listen(PORT, () => {
   agendarBackupSemanal();
   agendarBackupDropbox();
 sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
-});
+  // Cadastro de usuários sempre atual (permissões/forçar logout feitos
+  // direto no banco valem em até 5 min) e, se o boot pegou o banco fora,
+  // tenta de novo a cada 20 s — enquanto não carregar, auth() responde 503.
+  setInterval(() => { recarregarCacheUsuarios().catch(() => {}); }, 5 * 60 * 1000);
+  const tentarCacheUsuarios = () => {
+    if (_usuariosCacheCarregadoEm) return;
+    recarregarCacheUsuarios().catch(() => {}).finally(() => { if (!_usuariosCacheCarregadoEm) setTimeout(tentarCacheUsuarios, 20000); });
+  };
+  setTimeout(tentarCacheUsuarios, 20000);
+}));

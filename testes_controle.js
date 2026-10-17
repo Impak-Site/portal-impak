@@ -47,6 +47,9 @@ const MODULOS_JS = [
   // listas-padrao.js idem: controle-campos.js monta PORTOS_DESTINO/PORTOS_ORIGEM/
   // PORTO_PAIS/BANCOS_CAMBIO a partir de window.ListasPadrao (cadastros fase 1b).
   'listas-padrao.js',
+  // Revisão 17/10/2026: datas impossíveis + edição simultânea (antes do core).
+  'validacao-datas.js',
+  'concorrencia-processo.js',
   'controle-core.js',
   'controle-modal.js',
   'controle-campos.js',
@@ -650,6 +653,68 @@ await testeAsync('salvarProcesso: sem patchFields (chamada antiga/processo novo)
   };
   await sandbox.salvarProcesso(proc);
   iguais(proc.fase, 'DESEMBARCADO', 'sem patchFields deve manter o comportamento antigo — recalcula tudo sempre');
+});
+
+await testeAsync('edição simultânea: 409 do servidor → junta com a versão atual e regrava sem desfazer a fase/campos do outro', async () => {
+  const corpos = [];
+  const original = { id:'cf-1', referencia:'UD26-900', fase:'EMBARCADO', navio:'MSC X', obs:'a', updated_at:'2026-10-17T10:00:00.000+00:00' };
+  const atual = { ...original, fase:'CHEGOU', data_chegada:'2026-10-16', navio:'MSC Y', updated_at:'2026-10-17T10:05:00.000+00:00', updated_by:'fulano' };
+  sandbox.fetch = (url, opts) => {
+    if (String(url).endsWith('/api/controle/v2/processo') && opts && opts.method === 'POST') {
+      const corpo = JSON.parse(opts.body).processo; corpos.push(corpo);
+      if (corpos.length === 1) return Promise.resolve({ status: 409, json: () => Promise.resolve({ ok:false, conflito:true, alterado_por:'Fulano', atual }) });
+      return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, updated_at:'2026-10-17T10:06:00.000Z' }) });
+    }
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, processos:[] }) });
+  };
+  vm.runInContext(`_editandoOriginal = ${JSON.stringify(original)};`, sandbox);
+  const proc = { ...original, obs:'b', log:[] };
+  const ok = await sandbox.salvarProcesso(proc, ['obs']);
+  iguais(ok, true, 'deveria salvar depois de juntar');
+  iguais(corpos.length, 2, 'uma tentativa recusada + uma regravação');
+  iguais(corpos[0]._base_updated_at, original.updated_at, '1º envio leva a versão de quando abriu');
+  iguais(corpos[1]._base_updated_at, atual.updated_at, 'regravação parte da versão atual do banco');
+  iguais(corpos[1].obs, 'b', 'a alteração do usuário vai junto');
+  iguais(corpos[1].fase, 'CHEGOU', 'fase gravada pela outra pessoa NÃO pode voltar pra EMBARCADO');
+  verdadeiro(!('navio' in corpos[1]), 'navio não foi mexido aqui — não vai no payload');
+  vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+});
+
+await testeAsync('edição simultânea: mesmo campo mudado pelos dois → pergunta; "Cancelar" mantém o valor da outra pessoa', async () => {
+  const corpos = [];
+  const original = { id:'cf-2', referencia:'UD26-901', fase:'EMBARCADO', navio:'MSC X', obs:'a', updated_at:'2026-10-17T11:00:00.000+00:00' };
+  const atual = { ...original, navio:'MSC Y', updated_at:'2026-10-17T11:05:00.000+00:00' };
+  let perguntou = false;
+  sandbox.confirm = () => { perguntou = true; return false; };
+  sandbox.fetch = (url, opts) => {
+    if (String(url).endsWith('/api/controle/v2/processo') && opts && opts.method === 'POST') {
+      corpos.push(JSON.parse(opts.body).processo);
+      if (corpos.length === 1) return Promise.resolve({ status: 409, json: () => Promise.resolve({ ok:false, conflito:true, alterado_por:'Ciclana', atual }) });
+      return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, updated_at:'2026-10-17T11:06:00.000Z' }) });
+    }
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, processos:[] }) });
+  };
+  vm.runInContext(`_editandoOriginal = ${JSON.stringify(original)};`, sandbox);
+  const ok = await sandbox.salvarProcesso({ ...original, navio:'MSC Z', obs:'c', log:[] }, ['navio', 'obs']);
+  sandbox.confirm = () => false;
+  iguais(ok, true); verdadeiro(perguntou, 'deveria ter perguntado sobre o campo em conflito');
+  verdadeiro(!('navio' in corpos[1]), 'escolheu manter o navio da outra pessoa — não regrava navio');
+  iguais(corpos[1].obs, 'c', 'o resto das alterações vai');
+  vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+});
+
+await testeAsync('câmbio do dia só vira pi_cambio quando a cotação carregou de verdade (antes gravava 1,00)', async () => {
+  const corpos = [];
+  sandbox.fetch = (url, opts) => { if (opts && opts.method === 'POST') corpos.push(JSON.parse(opts.body).processo); return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true }) }); };
+  vm.runInContext("_cambio = { USD: 1, BRL: 1, EUR: 1 };", sandbox);
+  const p1 = { id:'cb-1', referencia:'UD26-902', pi_valor_usd: 1000 };
+  await sandbox.salvarProcesso(p1, ['pi_valor_usd']);
+  verdadeiro(!p1.pi_cambio, 'sem cotação carregada não pode gravar pi_cambio = 1');
+  vm.runInContext("_cambio = { USD: 5.31, BRL: 1, EUR: 6.1, _ok: true };", sandbox);
+  const p2 = { id:'cb-2', referencia:'UD26-903', pi_valor_usd: 1000 };
+  await sandbox.salvarProcesso(p2, ['pi_valor_usd']);
+  iguais(p2.pi_cambio, 5.31, 'com a cotação carregada usa o câmbio do dia');
+  vm.runInContext("_cambio = {USD:5.5};", sandbox);
 });
 
 teste('edição rápida inline de 1 campo (data) não vaza outros campos do cache local', () => {

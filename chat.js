@@ -45,6 +45,73 @@ window.trocarZoomImpak = function(){
 aplicarZoomImpak();
 window.addEventListener('resize', aplicarZoomImpak);
 
+// ── REDE: clique duplo, sem conexão e sessão expirada (revisão 17/10/2026) ──
+// 1) O MESMO envio (POST/PUT/DELETE, mesmo endereço e mesmo conteúdo) feito
+//    de novo enquanto o primeiro ainda não voltou — ou até 1,5 s depois de
+//    dar certo — recebe a mesma resposta em vez de gravar duas vezes
+//    (clique duplo em Salvar/Registrar baixa/Aprovar/Transferir).
+// 2) Sem conexão: "Failed to fetch" vira uma mensagem que diz o que fazer.
+// 3) Sessão expirada: aviso fixo com link pra entrar de novo numa aba nova
+//    (o que não foi salvo continua na tela).
+// A Conferência antiga (/processos) fica de fora: arquivo travado.
+(function instalarRedeImpak(){
+  if (/^\/(processos|login)/.test(location.pathname) || window.__impakRedeInstalada || typeof window.fetch !== 'function') return;
+  window.__impakRedeInstalada = true;
+  const fetchAnterior = window.fetch.bind(window);
+  const emVoo = new Map();
+  const JANELA_MS = 1500;
+  function chaveEnvio(url, init){
+    const metodo = String((init && init.method) || 'GET').toUpperCase();
+    if (metodo === 'GET' || metodo === 'HEAD') return null;
+    const corpo = init ? init.body : null;
+    if (corpo != null && typeof corpo !== 'string') return null; // FormData/arquivo binário: sem deduplicar
+    const txt = corpo || '';
+    let h = 0; const passo = Math.max(1, Math.floor(txt.length / 4000));
+    for (let i = 0; i < txt.length; i += passo) h = (h * 31 + txt.charCodeAt(i)) | 0;
+    return metodo + ' ' + url + ' ' + txt.length + ' ' + h;
+  }
+  function avisoSessaoExpirada(){
+    if (document.getElementById('impak-sessao-expirada') || !document.body) return;
+    const div = document.createElement('div');
+    div.id = 'impak-sessao-expirada';
+    div.setAttribute('role', 'alert');
+    div.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:64px;z-index:100000;background:#fff7ed;color:#7c2d12;border:1px solid #fdba74;border-radius:10px;padding:10px 16px;font:600 13px Inter,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.15);display:flex;gap:12px;align-items:center;max-width:92vw;';
+    const destino = encodeURIComponent(location.pathname + location.search);
+    div.innerHTML = '<span>Sua sessão expirou. O que você não salvou continua aqui na tela.</span><a href="/login?destino=' + destino + '" target="_blank" rel="noopener" style="color:#1d4ed8;white-space:nowrap;">Entrar de novo (nova aba)</a><button type="button" aria-label="Fechar aviso" style="border:0;background:none;font-size:18px;cursor:pointer;color:#7c2d12;">×</button>';
+    div.querySelector('button').onclick = () => div.remove();
+    document.body.appendChild(div);
+  }
+  window.fetch = function(input, init){
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    const chave = chaveEnvio(url, init);
+    if (chave){
+      const ex = emVoo.get(chave);
+      if (ex && (ex.pendente || Date.now() - ex.fim < JANELA_MS)) return ex.p.then(r => r.clone());
+    }
+    const p = fetchAnterior(input, init).then(res => {
+      if (res.status === 401 && /\/api\//.test(url)) avisoSessaoExpirada();
+      return res;
+    }, err => {
+      const msg = String((err && err.message) || '');
+      if (/Sess[ãa]o expirada/i.test(msg)) { avisoSessaoExpirada(); throw err; }
+      if (err && err.name !== 'AbortError' && (err.name === 'TypeError' || /Failed to fetch|NetworkError|Load failed/i.test(msg))) {
+        throw new Error('Sem conexão com o servidor (internet caiu ou o sistema está reiniciando). Nada foi salvo — confira a conexão e tente de novo em instantes.');
+      }
+      throw err;
+    });
+    if (!chave) return p;
+    const reg = { p, pendente: true, fim: 0 };
+    emVoo.set(chave, reg);
+    p.then(res => {
+      reg.pendente = false; reg.fim = Date.now();
+      // Deu erro? Libera na hora (uma nova tentativa tem que ir de verdade).
+      if (!res.ok){ if (emVoo.get(chave) === reg) emVoo.delete(chave); return; }
+      setTimeout(() => { if (emVoo.get(chave) === reg) emVoo.delete(chave); }, JANELA_MS);
+    }, () => { if (emVoo.get(chave) === reg) emVoo.delete(chave); });
+    return p.then(r => r.clone());
+  };
+})();
+
 // Evitar duplicata
 if (document.getElementById('impak-chat-root')) return;
 

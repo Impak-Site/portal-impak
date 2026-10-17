@@ -100,6 +100,17 @@ let _editandoOriginal = null;
 let _painelDirty = false;
 let _notifAberto = false;
 let _cambio = { USD: 1, BRL: 1, EUR: 1 };
+// Faixa plausível de cotação (R$ por 1 unidade) — fora disso é digitação
+// errada (5,1 virou 51) ou cotação que não carregou (1,0). Revisão 17/10/2026.
+const FAIXA_CAMBIO = { USD: [3, 9], EUR: [3.5, 10], CNY: [0.4, 1.5] };
+function cambioPlausivel(v, moeda){
+  const n = parseFloat(v); const f = FAIXA_CAMBIO[moeda || 'USD'];
+  return !isNaN(n) && !!f && n >= f[0] && n <= f[1];
+}
+// Câmbio do dia só quando a cotação carregou de verdade.
+function cambioDoDia(moeda){
+  return (typeof _cambio !== 'undefined' && _cambio && _cambio._ok && cambioPlausivel(_cambio[moeda], moeda)) ? _cambio[moeda] : null;
+}
 
 // ── URL por processo (task #59) ──────────────────────────────────
 // _baseUrlPath é a tela "de baixo" (/controle ou /financeiro) — pra onde
@@ -911,6 +922,9 @@ async function carregarCambio(){
     _cambio.USD = parseFloat(d.USDBRL?.bid||5.2)||5.2;
     _cambio.EUR = parseFloat(d.EURBRL?.bid||5.7)||5.7;
     _cambio.CNY = parseFloat(d.CNYBRL?.bid||0.72)||0.72;
+    // Cotação do dia de verdade (não o valor inicial 1 nem o "chute" acima)
+    // — só com isso o câmbio do dia pode ser usado como valor de um processo.
+    _cambio._ok = !!(d.USDBRL && d.USDBRL.bid) && cambioPlausivel(_cambio.USD, 'USD');
     const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const bar = document.getElementById('cambio-bar');
     if(bar) bar.innerHTML = [
@@ -1127,9 +1141,13 @@ async function carregarProcessos(silencioso, forcarCompleto){
       _ultimaCargaTotal = Date.now();
       aplicarListaProcessos(d.processos || [], silencioso);
       if(versao){ _versaoProcessos = versao; salvarCacheProcessos(versao, _processos); }
+    } else if(!silencioso || !(_processos && _processos.length)){
+      // Erro do servidor/banco: mantém a lista que já está na tela (antes ela
+      // podia ser trocada por uma lista vazia) e avisa.
+      showToast('Não consegui atualizar a lista de processos agora' + (d.erro ? ' — ' + d.erro : '') + (_processos && _processos.length ? ' Mostrando a última versão carregada.' : ''), 'err');
     }
   }catch(e){
-    showToast('Erro ao carregar processos','err');
+    showToast('Não consegui carregar os processos: ' + (e.message || 'sem conexão') + (_processos && _processos.length ? ' Mostrando a última versão carregada.' : ''),'err');
   }
 }
 
@@ -1176,14 +1194,20 @@ window.addEventListener('popstate', function(){
 
 async function salvarProcesso(proc, patchFields){
   const isNovo = !proc.id;
+  // Versão do processo de quando ele foi carregado (antes de sobrescrever
+  // updated_at abaixo) — vai pro servidor detectar edição simultânea.
+  const versaoBase = (!isNovo && proc.updated_at) ? String(proc.updated_at) : null;
   if(isNovo) proc.id = gerarUUID();
   proc.updated_by = _user.usuario;
   proc.updated_at = new Date().toISOString();
   if(isNovo){ proc.created_by = _user.usuario; proc.created_at = new Date().toISOString(); }
 
-  // Registrar câmbio USD no momento do pedido se não preenchido
-  if(!proc.pi_cambio && proc.pi_valor_usd && _cambio.USD){
-    proc.pi_cambio = _cambio.USD;
+  // Registrar câmbio USD no momento do pedido se não preenchido — só com a
+  // cotação do dia carregada de verdade (antes gravava 1,00 quando a página
+  // ainda não tinha buscado a cotação ou a busca falhava).
+  const _cambioHoje = cambioDoDia('USD');
+  if(!proc.pi_cambio && proc.pi_valor_usd && _cambioHoje){
+    proc.pi_cambio = _cambioHoje;
     if(patchFields) patchFields.push('pi_cambio');
   }
 
@@ -1285,6 +1309,7 @@ async function salvarProcesso(proc, patchFields){
     payload = {};
     chaves.forEach(k=>{ if(proc[k]!==undefined) payload[k] = proc[k]; });
   }
+  if(versaoBase) payload = Object.assign({}, payload, { _base_updated_at: versaoBase });
 
   showToast('Salvando...','info');
   let r, d;
@@ -1296,19 +1321,95 @@ async function salvarProcesso(proc, patchFields){
     });
     d = await r.json();
   } catch(netErr){
-    showToast('Erro de rede ao salvar: '+netErr.message,'err');
+    showToast('Não foi possível salvar: '+netErr.message,'err');
     return false;
   }
+  // Outra pessoa salvou este processo enquanto ele estava aberto aqui.
+  if(r && r.status === 409 && d && d.conflito){
+    if(proc._mesclando || !d.atual){
+      showToast((d.erro || 'Este processo acabou de ser alterado por outra pessoa.') + ' Feche e abra o processo de novo para ver a versão atual.', 'err');
+      return false;
+    }
+    return await _juntarEdicaoSimultanea(proc, patchFields, d);
+  }
   if(d.ok){
+    // Versão nova gravada pelo servidor: o próximo save parte dela.
+    if(d.updated_at){
+      proc.updated_at = d.updated_at;
+      if(typeof _editandoOriginal !== 'undefined' && _editandoOriginal && _editandoOriginal.id === proc.id) _editandoOriginal.updated_at = d.updated_at;
+    }
     showToast('✓ Salvo','ok');
     // Criar notificação se houver alerta
     verificarAlertas(proc, true);
     await carregarProcessos(true);
     return true;
   } else {
-    showToast('Erro ao salvar: '+(d.erro||''),'err');
+    if(d && d.datas_invalidas && Array.isArray(d.campos)) marcarCamposComErro(d.campos);
+    showToast('Não foi salvo: '+(d.erro||'erro desconhecido'),'err');
     return false;
   }
+}
+
+// Destaca no painel os campos de um erro de validação (ex.: data impossível).
+function marcarCamposComErro(campos){
+  (campos||[]).forEach(c => { const el = document.getElementById('f_'+c); if(el){ el.classList.add('campo-faltando'); el.setAttribute('aria-invalid','true'); } });
+}
+
+// ── EDIÇÃO SIMULTÂNEA (revisão 17/10/2026, concorrencia-processo.js) ──
+// O servidor recusou o save porque outra pessoa gravou o processo depois
+// que ele foi aberto aqui. Junta: versão atual do banco + o que ESTE usuário
+// mudou. Só pergunta se os dois mexeram no mesmo campo com valores diferentes.
+// Fase/vencimentos são recalculados a partir da versão juntada (antes o
+// painel gravava os calculados na cópia velha e desfazia o trabalho do outro).
+const _ROTULOS_CONFLITO = { referencia:'Referência', cliente:'Cliente', fornecedor:'Fornecedor', brand:'Marca', navio:'Navio', viagem:'Viagem',
+  armador:'Armador', agente:'Agente', booking_numero:'Booking', despachante:'Despachante', transportadora:'Transportadora', obs:'Observações',
+  pi_valor_usd:'Valor da PI', pi_pagamento:'Forma de pagamento', pi_cambio:'Câmbio da PI', pi_cambio_fechado:'Câmbio fechado',
+  vendas_json:'Vendas', pi_parcelas_json:'Parcelas', containers_json:'Containers', produtos_json:'Produtos', real_json:'Custos Reais',
+  real_cambio:'Câmbio dos Custos Reais', ric_status:'Status RIC', depot:'Depot', canal:'Canal', numero_di:'Nº DI/DUIMP' };
+function _rotuloCampoProcesso(k){
+  if(_ROTULOS_CONFLITO[k]) return _ROTULOS_CONFLITO[k];
+  if(typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.ROTULOS[k]) return ValidacaoDatas.ROTULOS[k];
+  return String(k).replace(/_/g,' ');
+}
+function _resumoValorConflito(v){
+  if(v == null || v === '') return '(vazio)';
+  if(typeof v === 'object' || /^\s*[\[{]/.test(String(v))) return '(lista/valores alterados)';
+  const s = String(v); return s.length > 40 ? s.slice(0,37)+'…' : s;
+}
+async function _juntarEdicaoSimultanea(proc, patchFields, d){
+  const CP = (typeof ConcorrenciaProcesso !== 'undefined') ? ConcorrenciaProcesso : null;
+  if(!CP){ showToast(d.erro + ' Feche e abra o processo de novo.', 'err'); return false; }
+  const atual = d.atual;
+  const doPainel = typeof _editandoOriginal !== 'undefined' && _editandoOriginal && _editandoOriginal.id === proc.id;
+  const original = doPainel ? _editandoOriginal : null;
+  const campos = (patchFields || Object.keys(proc)).filter(k => !CP.DERIVADOS.includes(k) && k[0] !== '_');
+  const quem = d.alterado_por || 'Outra pessoa';
+  let manterDeles = [];
+  if(original){
+    const conflitos = CP.camposEmConflito(original, atual, proc, campos);
+    if(conflitos.length){
+      const linhas = conflitos.slice(0, 8).map(c => `• ${_rotuloCampoProcesso(c.campo)}: ${quem} gravou ${_resumoValorConflito(c.deles)} — você: ${_resumoValorConflito(c.meu)}`).join('\n');
+      const manterMeus = confirm(`${quem} salvou este processo enquanto você editava e mudou os mesmos campos:\n\n${linhas}\n\nOK = gravar os SEUS valores nesses campos\nCancelar = ficar com os valores de ${quem} nesses campos\n\nO resto das suas alterações é salvo nos dois casos.`);
+      if(!manterMeus) manterDeles = conflitos.map(c => c.campo);
+    }
+  }
+  const mesclado = CP.mesclar(atual, proc, campos, manterDeles);
+  mesclado.log = (proc.log || []).filter(l => !manterDeles.includes(l.campo));
+  mesclado._mesclando = true;
+  const camposFinais = campos.filter(k => !manterDeles.includes(k));
+  const ok = await salvarProcesso(mesclado, camposFinais);
+  delete mesclado._mesclando;
+  if(ok){
+    const outros = original ? CP.alteradosPorOutros(original, atual).filter(k => !camposFinais.includes(k)) : [];
+    showToast(`${quem} tinha salvo este processo enquanto você editava — as alterações foram juntadas` + (outros.length ? ` (de ${quem}: ${outros.slice(0,5).map(_rotuloCampoProcesso).join(', ')}${outros.length > 5 ? '…' : ''})` : '') + '.', 'warn');
+    if(doPainel){
+      mesclado._mesclado = true;
+      _editando = mesclado;
+      _editandoOriginal = Object.assign({}, mesclado);
+      delete _editandoOriginal._mesclado;
+    }
+  }
+  return ok;
 }
 
 async function excluirProcesso(id){
@@ -2260,12 +2361,15 @@ const MOEDAS_REAIS = [
 // (_cambio.EUR, já buscado no boot pra barra do topo).
 function taxaCambioMoedaReal(moeda, p){
   if(moeda === 'BRL') return 1;
+  // Revisão 17/10/2026: o "câmbio do dia" só entra quando a cotação carregou
+  // de verdade — antes, sem ela, _cambio valia 1 e um custo de US$/€ 1.000
+  // virava R$ 1.000 nos totais.
   if(moeda === 'USD'){
-    return parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || (typeof _cambio !== 'undefined' ? _cambio.USD : null) || null;
+    return parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || (typeof cambioDoDia === 'function' ? cambioDoDia('USD') : null) || null;
   }
   if(moeda === 'EUR'){
     const salvo = p.real_json && parseFloat(p.real_json._cambio_eur);
-    return (salvo && !isNaN(salvo) ? salvo : null) || (typeof _cambio !== 'undefined' ? _cambio.EUR : null) || null;
+    return (salvo && !isNaN(salvo) ? salvo : null) || (typeof cambioDoDia === 'function' ? cambioDoDia('EUR') : null) || null;
   }
   return null;
 }

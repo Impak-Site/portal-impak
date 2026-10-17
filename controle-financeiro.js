@@ -121,9 +121,11 @@ function finNovaTransferencia(){
     <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="finSalvarTransf()">Registrar</button></div>
   </div></div>`;
 }
-async function finSalvarTransf(){
+async function finSalvarTransf(confirmarRepetido){
   const v = x => document.getElementById(x).value;
-  const d = await (await fetch('/api/fin/transferencias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ de_banco_id: v('ftr_de'), para_banco_id: v('ftr_para'), data: v('ftr_data'), valor: v('ftr_valor'), valor_destino: v('ftr_vd'), obs: v('ftr_obs') }) })).json();
+  const d = await (await fetch('/api/fin/transferencias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ de_banco_id: v('ftr_de'), para_banco_id: v('ftr_para'), data: v('ftr_data'), valor: v('ftr_valor'), valor_destino: v('ftr_vd'), obs: v('ftr_obs'), confirmar_repetido: !!confirmarRepetido }) })).json();
+  // Transferência igual há pouco (clique duplo?) — o servidor pergunta antes.
+  if(!d.ok && d.repetido){ if(confirm(d.erro + '\n\nRegistrar mesmo assim?')) return finSalvarTransf(true); return; }
   if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
   ftFecharModal(); showToast('Transferência registrada.', 'ok'); renderDashFaturas();
 }

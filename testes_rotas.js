@@ -17,6 +17,7 @@ async function teste(nome, fn){
   try { await fn(); passaram++; console.log('  ✓ ' + nome); }
   catch (e) { console.log('  ✗ ' + nome + '\n      ' + (e.message || e)); }
 }
+function verdadeiroRota(c, msg){ if(!c) throw new Error(msg || 'esperava verdadeiro'); }
 function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : '') + `esperado ${JSON.stringify(b)}, veio ${JSON.stringify(a)}`); }
 
 (async () => {
@@ -121,6 +122,81 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
   await teste('GET /chat.js (arquivo público do front) continua 200', async () => {
     const r = await request(app).get('/chat.js');
     iguais(r.status, 200);
+  });
+
+  console.log('\n── Sessão: banco fora nega acesso (revisão 17/10/2026) ──');
+  const I = app._interno;
+  // req/res de mentira pra rodar o auth() direto, sem banco.
+  function fakeReqRes(path, sessao) {
+    const req = { path, method: 'GET', session: Object.assign({ destroy(cb) { this._destruida = true; cb && cb(); } }, sessao) };
+    const res = { statusCode: 200, corpo: null, redir: null,
+      status(c) { this.statusCode = c; return this; }, json(b) { this.corpo = b; return this; },
+      send(b) { this.corpo = b; return this; }, redirect(u) { this.redir = u; return this; } };
+    return { req, res };
+  }
+  await teste('cadastro de usuários não carregado (banco fora no boot) → 503, não libera com a sessão antiga', async () => {
+    I.definirCacheUsuarios([], false);
+    const { req, res } = fakeReqRes('/api/controle/v2/processos', { usuario: 'fulano', versao: 1, modulos: ['controle'], role: 'gerente' });
+    let passou = false; I.auth('controle')(req, res, () => { passou = true; });
+    iguais(passou, false, 'não pode liberar'); iguais(res.statusCode, 503);
+    iguais(req.session._destruida, undefined, 'não derruba a sessão (quando o banco voltar a pessoa segue logada)');
+  });
+  await teste('usuário que saiu do cadastro → sessão encerrada (401)', async () => {
+    I.definirCacheUsuarios([{ usuario: 'outro', modulos: ['controle'], role: 'analista', sessao_versao: 1 }], true);
+    const { req, res } = fakeReqRes('/api/controle/v2/processos', { usuario: 'fulano', versao: 1, modulos: ['controle'] });
+    let passou = false; I.auth('controle')(req, res, () => { passou = true; });
+    iguais(passou, false); iguais(res.statusCode, 401); iguais(req.session._destruida, true);
+  });
+  await teste('permissões vêm do cadastro ATUAL, não do login (perdeu o módulo → 403)', async () => {
+    I.definirCacheUsuarios([{ usuario: 'fulano', modulos: ['tyredesk'], role: 'analista', sessao_versao: 1 }], true);
+    const { req, res } = fakeReqRes('/api/controle/v2/processos', { usuario: 'fulano', versao: 1, modulos: ['controle', 'financeiro'], role: 'gerente' });
+    let passou = false; I.auth('controle')(req, res, () => { passou = true; });
+    iguais(passou, false); iguais(res.statusCode, 403); iguais(req.session.role, 'analista');
+  });
+  await teste('logout forçado (versão nova no cadastro) derruba a sessão antiga', async () => {
+    I.definirCacheUsuarios([{ usuario: 'fulano', modulos: ['controle'], role: 'analista', sessao_versao: 3 }], true);
+    const { req, res } = fakeReqRes('/api/x', { usuario: 'fulano', versao: 2, modulos: ['controle'] });
+    let passou = false; I.auth('controle')(req, res, () => { passou = true; });
+    iguais(passou, false); iguais(res.statusCode, 401); iguais(req.session._destruida, true);
+  });
+  await teste('sessão válida com módulo certo passa', async () => {
+    I.definirCacheUsuarios([{ usuario: 'fulano', modulos: ['controle'], role: 'analista', sessao_versao: 3 }], true);
+    const { req, res } = fakeReqRes('/api/x', { usuario: 'fulano', versao: 3, modulos: [] });
+    let passou = false; I.auth('controle')(req, res, () => { passou = true; });
+    iguais(passou, true);
+  });
+  await teste('código 2FA: 6 erros bloqueiam o usuário de qualquer IP e só acertar o código zera', async () => {
+    I.limparFalhas2FA('alvo2fa');
+    for (let i = 0; i < 5; i++) I.registrarFalha2FA('alvo2fa');
+    iguais(I.bloqueado2FA('alvo2fa'), false, '5 erros ainda não bloqueiam');
+    I.registrarFalha2FA('alvo2fa');
+    iguais(I.bloqueado2FA('alvo2fa'), true, '6 erros bloqueiam');
+    I.limparFalhas2FA('alvo2fa');
+    iguais(I.bloqueado2FA('alvo2fa'), false);
+  });
+  I.definirCacheUsuarios([], false);
+
+  console.log('\n── Mensagens de erro úteis (lib/erros-amigaveis.js) ──');
+  const { traduzirErro } = require('./lib/erros-amigaveis');
+  await teste('erro técnico do banco vira motivo + próximo passo', async () => {
+    verdadeiroRota(/Registro duplicado/.test(traduzirErro('duplicate key value violates unique constraint "idx_faturas_numero"').msg));
+    verdadeiroRota(/Data inválida/.test(traduzirErro('invalid input syntax for type date: "07/08/2026"').msg));
+    verdadeiroRota(/não conseguiu falar com o banco/.test(traduzirErro('TypeError: fetch failed').msg));
+    verdadeiroRota(/Falta preencher um campo obrigatório \(referencia\)/.test(traduzirErro('null value in column "referencia" violates not-null constraint').msg));
+  });
+  await teste('mensagem que já é do sistema passa intacta', async () => {
+    const t = traduzirErro('Processo fechado — reabra para editar (só gerente pode reabrir).');
+    iguais(t.traduzido, false); iguais(t.msg, 'Processo fechado — reabra para editar (só gerente pode reabrir).');
+  });
+  await teste('arquivo grande demais antes do login → mensagem clara (não "Requisição inválida")', async () => {
+    const r = await request(app).post('/login').set('Content-Type', 'application/json').send(JSON.stringify({ x: 'a'.repeat(1100000) }));
+    iguais(r.status, 413);
+    verdadeiroRota(/Arquivo grande demais/.test(r.body.erro), r.body.erro);
+  });
+  await teste('sem sessão: API responde 401 com mensagem de sessão expirada', async () => {
+    const r = await request(app).get('/api/controle/v2/processos');
+    iguais(r.status, 401);
+    verdadeiroRota(/sessão expirou/.test(r.body.erro), r.body.erro);
   });
 
   console.log('\n──────────────────────────────────────────────────');

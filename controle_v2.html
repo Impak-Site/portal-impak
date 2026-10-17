@@ -26,6 +26,9 @@ tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
 <!-- Listas padrão (portos/dias grátis/bancos) — fallback do que vem de /api/listas;
      mesmo arquivo que o servidor usa, ver listas-padrao.js e migration 0040 -->
 <script src="/listas-padrao.js"></script>
+<!-- Revisão 17/10/2026: datas impossíveis + edição simultânea (mesmas regras do servidor) -->
+<script src="/validacao-datas.js"></script>
+<script src="/concorrencia-processo.js"></script>
 <!-- Evita o "flash" da tela normal (menu/sidebar/filtros/tabela) nas telas
      exclusivas (Financeiro/Resultado/Análises/Narcélio/TV/Câmbio) enquanto
      JS ainda está buscando os processos e montando o layout dedicado —

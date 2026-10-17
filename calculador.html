@@ -2226,6 +2226,14 @@ function calcular(opts) {
   const cambio_chegada = cambioVendaInput || cambio;
 
   if(!cambio || !fob_usd) { showToast('Preencha câmbio e FOB','err'); return; }
+  // Revisão 17/10/2026: número negativo não entra na conta; câmbio fora da
+  // faixa normal do dólar (vírgula faltando: 51,7 em vez de 5,17) avisa.
+  if([cambio, fob_usd, frete_usd, taxa_ce, custos_div].some(v => v < 0)) { showToast('Há valor negativo em câmbio, FOB, frete, Taxa C.E. ou custos diversos — confira os campos.','err'); return; }
+  if(!_autoCalc){
+    const foraDaFaixa = [['Câmbio', cambio], ['Câmbio da chegada', cambioVendaInput], ['Câmbio médio da DI', parseFloat((document.getElementById('cambio_medio_di')||{}).value)]]
+      .filter(([, v]) => v && (v < 3 || v > 9)).map(([n, v]) => `${n} R$ ${String(v).replace('.', ',')}`);
+    if(foraDaFaixa.length) showToast(`${foraDaFaixa.join(' · ')} — fora da faixa normal do dólar (R$ 3 a R$ 9). Confira se não faltou ou sobrou vírgula.`, 'warn');
+  }
 
   // Usa o NCM ja resolvido em ncm_display (que respeita a escolha manual
   // do select #ncm_especifico pros poucos produtos com mais de 1 NCM

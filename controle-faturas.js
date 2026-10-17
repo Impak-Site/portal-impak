@@ -404,6 +404,8 @@ async function ftRegistrarBaixa(id, confirmarRepetido){
     if(!d.ok){
       if(d.repetido && confirm(d.erro + '\n\nRegistrar mesmo assim?')) return ftRegistrarBaixa(id, true);
       if(!d.repetido) showToast(d.erro || 'Erro na baixa', 'err');
+      // Fatura mudou no meio (outra baixa/estorno/pessoa): recarrega pra conferir.
+      if(d.conflito){ ftFecharModal(); renderDashFaturas(); }
       return;
     }
     _ftBaixaArquivo = null;
