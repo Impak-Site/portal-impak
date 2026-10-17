@@ -81,11 +81,20 @@
     const out = { url: location.pathname, largura, rolagemLateral: Math.max(0, de.scrollWidth - largura), culpadosRolagem: [], letraPequena: [], baixoContraste: [], abaixoAA: 0, camposSemNome: [], textosMedidos: 0 };
 
     if (out.rolagemLateral > 2) {
+      // Culpado = o elemento MAIS INTERNO que é mais largo que a tela (tabela,
+      // campo com largura fixa...). Os de fora (menu, cartões) só esticam
+      // junto. Sem nenhum mais largo, vale quem começa fora da tela.
+      const largos = [], fora = [];
       document.querySelectorAll('body *').forEach(el => {
-        if (out.culpadosRolagem.length >= 8 || !visivel(el)) return;
+        if (!visivel(el) || dentroDeRolagem(el)) return;
         const r = el.getBoundingClientRect();
-        if (r.right > largura + 2 && !dentroDeRolagem(el)) out.culpadosRolagem.push(descrever(el) + ` (vai até ${Math.round(r.right)}px)`);
+        if (r.width > largura + 2) largos.push({ el, r });
+        else if (r.right > largura + 2) fora.push({ el, r });
       });
+      const base = largos.length ? largos : fora;
+      const folhas = base.filter(c => !base.some(o => o !== c && c.el.contains(o.el)));
+      folhas.sort((x, y) => y.r.width - x.r.width);
+      out.culpadosRolagem = folhas.slice(0, 6).map(c => descrever(c.el) + ` (${Math.round(c.r.width)}px de largura, vai até ${Math.round(c.r.right)}px)`);
     }
 
     const vistos = new Set();
