@@ -90,19 +90,37 @@ const path    = require('path');
 // que cada deploy baixe os .js novos mesmo em navegadores com cache teimoso
 // (TV do escritório). Montado 1x no boot.
 const BUILD_ID = String(process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || Date.now()).slice(0, 12);
-let _htmlControleV2 = null;
-function enviarControleV2(res) {
+// Velocidade (revisão 17/10/2026, item 8): cada .js/.css das telas ganha
+// ?v=<impressão digital do conteúdo>. Com a versão no endereço o navegador
+// guarda o arquivo por 1 ano (ver middleware de cache abaixo) e só baixa de
+// novo o que MUDOU — antes, ou revalidava os ~30 arquivos a cada tela, ou
+// (só no Controle) baixava todos de novo a cada atualização do sistema.
+// O HTML continua no-cache: é ele que aponta pras versões novas.
+const _versaoArquivo = new Map();
+function versaoArquivo(nome) {
+  if (!_versaoArquivo.has(nome)) {
+    let v = BUILD_ID;
+    try { v = require('crypto').createHash('sha1').update(require('fs').readFileSync(path.join(__dirname, nome))).digest('hex').slice(0, 10); } catch (e) { /* arquivo some → versão do deploy */ }
+    _versaoArquivo.set(nome, v);
+  }
+  return _versaoArquivo.get(nome);
+}
+function versionarHtml(html) {
+  return html
+    .replace(/(<script\b[^>]*?\bsrc=")(\/?)((?!vendor\/)[\w.\-]+\.js)(")/g, (m, a, barra, arq, b) => `${a}${barra}${arq}?v=${versaoArquivo(arq)}${b}`)
+    .replace(/(<link\b[^>]*?\bhref=")(\/?)((?!vendor\/)[\w.\-]+\.css)(")/g, (m, a, barra, arq, b) => `${a}${barra}${arq}?v=${versaoArquivo(arq)}${b}`);
+}
+const _htmlVersionado = new Map();
+function enviarHtmlVersionado(res, arquivo) {
   try {
-    if (!_htmlControleV2) {
-      _htmlControleV2 = require('fs').readFileSync(path.join(__dirname, 'controle_v2.html'), 'utf8')
-        .replace(/(<script src="\/)(?!vendor\/)([\w.\-]+\.js)(")/g, `$1$2?v=${BUILD_ID}$3`);
-    }
+    if (!_htmlVersionado.has(arquivo)) _htmlVersionado.set(arquivo, versionarHtml(require('fs').readFileSync(path.join(__dirname, arquivo), 'utf8')));
     res.setHeader('Cache-Control', 'no-cache');
-    res.type('html').send(_htmlControleV2);
+    res.type('html').send(_htmlVersionado.get(arquivo));
   } catch (e) {
-    res.sendFile(path.join(__dirname, 'controle_v2.html'));
+    res.sendFile(path.join(__dirname, arquivo));
   }
 }
+function enviarControleV2(res) { enviarHtmlVersionado(res, 'controle_v2.html'); }
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
 const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase, importarManuBase, importarCatalogoProdutos } = require('./planilha-import.js');
@@ -695,8 +713,13 @@ app.use((req, res, next) => {
 // depois de recarregar. Agora HTML/JS/CSS do sistema sempre revalidam (ETag →
 // 304 barato quando nada mudou); só /vendor e /assets (libs e imagens que não
 // mudam) continuam em cache.
+// Revisão 17/10/2026 (item 8): .js/.css pedido COM ?v= (endereço que as
+// telas montam com a impressão digital do arquivo) fica 1 ano em cache —
+// quando o arquivo muda, o endereço muda e o navegador baixa o novo.
 app.use((req, res, next) => {
-  if (req.method === 'GET' && !/^\/(vendor|assets)\//.test(req.path) && (/\.(js|css|html)$/i.test(req.path) || !path.extname(req.path))) {
+  if (req.method === 'GET' && /\.(js|css)$/i.test(req.path) && req.query && req.query.v) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else if (req.method === 'GET' && !/^\/(vendor|assets)\//.test(req.path) && (/\.(js|css|html)$/i.test(req.path) || !path.extname(req.path))) {
     res.setHeader('Cache-Control', 'no-cache');
   }
   next();
@@ -1579,7 +1602,7 @@ function requireGerente(req, res, next) {
 // credencial do banco passa pela IA. Ver assistente.js.
 const Assistente = require('./assistente.js');
 const rateLimitAssistente = criarRateLimiter('/api/assistente', 60, 10 * 60 * 1000);
-app.get('/assistente', auth(...MODULOS_TRABALHO), (req, res) => res.sendFile(path.join(__dirname, 'assistente.html')));
+app.get('/assistente', auth(...MODULOS_TRABALHO), (req, res) => enviarHtmlVersionado(res, 'assistente.html'));
 app.get('/api/assistente/conversas', auth(...MODULOS_TRABALHO), async (req, res) => {
   try {
     const { data, error } = await sb().from('assistente_conversas').select('id,titulo,updated_at')
@@ -1640,11 +1663,11 @@ app.post('/api/assistente/mensagem', auth(...MODULOS_TRABALHO), rateLimitAssiste
 
 app.get('/permissoes', auth(), (req, res) => {
   if (!ADMINS_PERMISSOES.includes(req.session.usuario)) return res.status(403).send('<h2>Acesso restrito.</h2>');
-  res.sendFile(path.join(__dirname, 'permissoes.html'));
+  enviarHtmlVersionado(res, 'permissoes.html');
 });
-app.get('/',          auth('tyredesk'),  (req, res) => res.sendFile(path.join(__dirname, 'tyredesk.html')));
+app.get('/',          auth('tyredesk'),  (req, res) => enviarHtmlVersionado(res, 'tyredesk.html'));
 app.get('/processos', auth('conferencia'), (req, res) => res.sendFile(path.join(__dirname, 'processos.html')));
-app.get('/catalogo-produtos', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'catalogo-produtos.html')));
+app.get('/catalogo-produtos', auth('tyredesk'), (req, res) => enviarHtmlVersionado(res, 'catalogo-produtos.html'));
 
 // ── API: SESSÃO ───────────────────────────────────────────────
 app.get('/api/me', (req, res) => {
@@ -2851,7 +2874,7 @@ app.get('/controle/:ref', auth('controle'), (req, res) => enviarControleV2(res))
 // nada sensível tipo o Dashboard Narcélio). Ver ativarTelaTVExclusiva()
 // em controle-core.js e renderDashTV() em controle-dash-tv.js.
 app.get('/tv', auth('tv'), (req, res) => enviarControleV2(res));
-app.get('/calculador', auth('tyredesk'), (req, res) => res.sendFile(path.join(__dirname, 'calculador.html'), {headers:{'Content-Type':'text/html; charset=utf-8'}}));
+app.get('/calculador', auth('tyredesk'), (req, res) => enviarHtmlVersionado(res, 'calculador.html'));
 
 // ── PTAX histórico (Banco Central) — pedido do Ayslan (09/09/2026, "usar a
 // API do Banco Central pra PTAX"): fonte oficial de referência do dólar
@@ -5664,8 +5687,9 @@ app.get('/chat.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   // no-cache = o navegador confere a versão (ETag) a cada carga — sem isso
   // uma mudança na barra/menu podia demorar a chegar pra quem já tinha a
-  // página em cache (05/10/2026, menu ☰ do celular).
-  res.setHeader('Cache-Control', 'no-cache');
+  // página em cache (05/10/2026, menu ☰ do celular). Com ?v= (telas
+  // versionadas, revisão 17/10/2026) o endereço já muda a cada versão.
+  res.setHeader('Cache-Control', req.query && req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache');
   res.sendFile(path.join(__dirname, 'chat.js'));
 });
 
@@ -7032,7 +7056,7 @@ module.exports = app;
 // Só para os testes unitários (require no mesmo processo) — não cria rota
 // nenhuma e não é acessível pela rede.
 module.exports._interno = {
-  auth, versaoSessaoAtual, bloqueado2FA, registrarFalha2FA, limparFalhas2FA,
+  auth, versaoSessaoAtual, bloqueado2FA, registrarFalha2FA, limparFalhas2FA, versionarHtml,
   definirCacheUsuarios(lista, carregado) {
     _usuariosCache = new Map((lista || []).map(u => [u.usuario, u]));
     _usuariosCacheCarregadoEm = carregado ? Date.now() : 0;

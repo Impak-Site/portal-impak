@@ -199,6 +199,22 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     verdadeiroRota(/sessão expirou/.test(r.body.erro), r.body.erro);
   });
 
+  console.log('\n── Velocidade: arquivos com versão ficam em cache (revisão 17/10/2026) ──');
+  await teste('telas apontam pra .js com ?v=<impressão digital> (menos vendor/)', async () => {
+    const h = I.versionarHtml('<script src="/controle-core.js"></script><script src="excel-styles.js"></script><script src="/vendor/xlsx.full.min.js"></script>');
+    verdadeiroRota(/src="\/controle-core\.js\?v=[0-9a-f]{10}"/.test(h), h);
+    verdadeiroRota(/src="excel-styles\.js\?v=[0-9a-f]{10}"/.test(h), h);
+    verdadeiroRota(/src="\/vendor\/xlsx\.full\.min\.js"/.test(h), 'vendor fica como está');
+  });
+  await teste('.js com ?v= vai pro cache longo; sem ?v= continua revalidando', async () => {
+    const a = await request(app).get('/controle-core.js?v=abc123');
+    iguais(a.status, 200); verdadeiroRota(/immutable/.test(a.headers['cache-control'] || ''), a.headers['cache-control']);
+    const b = await request(app).get('/controle-core.js');
+    iguais(b.headers['cache-control'], 'no-cache');
+    const c = await request(app).get('/chat.js?v=abc123');
+    verdadeiroRota(/immutable/.test(c.headers['cache-control'] || ''), c.headers['cache-control']);
+  });
+
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
   process.exit(passaram === total ? 0 : 1);
