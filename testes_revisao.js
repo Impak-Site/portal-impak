@@ -119,5 +119,55 @@ teste('real_json: dois mudando o mesmo custo é conflito', () => {
   iguais(CP.camposEmConflito(o, a, meu, ['real_json']).map(x => x.campo), ['real_json']);
 });
 
+console.log('\n── Mistura de moedas nos totais (faturas-core.js / fin-core.js) ──');
+const FAT = require('./faturas-core.js');
+const FIN = require('./fin-core.js');
+const HOJE_F = '2026-10-17';
+// Sem a cotação do dia, a tela passa { USD: null } (cambioParaTotais) — antes passava 1.
+const SEM_COTACAO = { BRL: 1, USD: null, EUR: null };
+teste('Fatura em US$ sem câmbio fica FORA do total (antes contava US$ como R$) e é contada', () => {
+  const lista = [
+    { tipo: 'pagar', status: 'aberta', moeda: 'BRL', valor: 1000, vencimento: '2026-11-01' },
+    { tipo: 'pagar', status: 'aberta', moeda: 'USD', valor: 1000, cambio: null, vencimento: '2026-11-01' },
+  ];
+  const r = FAT.resumoFaturas(lista, HOJE_F, SEM_COTACAO);
+  iguais(r.pagar_aberto, 1000); iguais(r.sem_cambio, 1);
+});
+teste('Fatura em US$ usa o câmbio da própria fatura (igual à linha da lista)', () => {
+  const lista = [{ tipo: 'pagar', status: 'aberta', moeda: 'USD', valor: 1000, cambio: 5.25, vencimento: '2026-11-01' }];
+  iguais(FAT.resumoFaturas(lista, HOJE_F, SEM_COTACAO).pagar_aberto, 5250);
+  iguais(FAT.resumoFaturas(lista, HOJE_F, { USD: 5.6 }).pagar_aberto, 5250, 'câmbio da fatura vem antes do câmbio do dia');
+  iguais(FAT.fatorBRL({ moeda: 'USD', cambio: null }, { USD: 5.6 }), 5.6, 'sem câmbio na fatura, usa o do dia');
+  iguais(FAT.fatorBRL({ moeda: 'BRL' }, {}), 1);
+});
+teste('Fluxo de caixa conta as faturas sem câmbio', () => {
+  const fl = FAT.fluxoMensalFaturas([{ tipo: 'pagar', status: 'aberta', moeda: 'EUR', valor: 300, vencimento: '2026-11-10' }], ['2026-10', '2026-11'], HOJE_F, SEM_COTACAO);
+  iguais(fl.semCambio.qtd, 1); iguais(fl.meses['2026-11'].pagar_previsto, 0);
+});
+teste('Baixa de fatura em US$ sem câmbio nenhum é recusada (entraria como R$ 0 no caixa)', () => {
+  const f = { valor: 1000, status: 'aberta', moeda: 'USD', cambio: null };
+  const v = FAT.validarPagamento({ data: '2026-10-10', valor: 1000 }, f);
+  ok(!v.ok && /sem câmbio/.test(v.erro), JSON.stringify(v));
+  ok(FAT.validarPagamento({ data: '2026-10-10', valor: 1000, cambio_efetivo: '5,30' }, f).ok, 'com câmbio efetivo passa');
+  ok(FAT.validarPagamento({ data: '2026-10-10', valor: 1000 }, { ...f, cambio: 5.2 }).ok, 'com câmbio na fatura passa (só avisa)');
+});
+const CONTAS_F = FIN.PLANO_PADRAO.map(([codigo, nome, grupo]) => ({ id: 'c' + codigo, codigo, nome, grupo }));
+teste('DRE (competência): fatura em US$ sem câmbio fica fora e é contada', () => {
+  const d = FIN.dreEmpresa([{ tipo: 'pagar', status: 'aberta', moeda: 'USD', valor: 500, emissao: '2026-10-05' }], CONTAS_F, { de: '2026-10-01', ate: '2026-10-31', regime: 'competencia', cambio: SEM_COTACAO });
+  iguais(d.sem_cambio, 1); iguais(d.resultadoLiquido, 0);
+});
+teste('DRE (caixa): sem câmbio na fatura, o pagamento sai pelo câmbio efetivo da baixa', () => {
+  const f = { tipo: 'pagar', status: 'paga', moeda: 'USD', valor: 100, cambio: null, pagamentos: [{ data: '2026-10-08', valor: 100, cambio_efetivo: 5.5, pago_brl: 550 }] };
+  const d = FIN.dreEmpresa([f], CONTAS_F, { de: '2026-10-01', ate: '2026-10-31', regime: 'caixa', cambio: SEM_COTACAO });
+  iguais(d.sem_cambio, 0); iguais(d.resultadoLiquido, -550);
+});
+teste('Contador: transferência US$ → R$ usa o valor creditado em R$', () => {
+  const bancos = [{ id: 'b1', nome: 'Conta US$', moeda: 'USD' }, { id: 'b2', nome: 'Conta R$', moeda: 'BRL' }];
+  const l = FIN.lancamentosContabeis([], CONTAS_F, bancos, { de: '2026-10-01', ate: '2026-10-31', transferencias: [{ data: '2026-10-09', de_banco_id: 'b1', para_banco_id: 'b2', valor: 1000, valor_destino: 5400 }] });
+  iguais(l.length, 1); iguais(l[0].valor, 5400);
+  const l2 = FIN.lancamentosContabeis([], CONTAS_F, [{ id: 'b1', nome: 'A', moeda: 'USD' }, { id: 'b3', nome: 'B', moeda: 'EUR' }], { transferencias: [{ data: '2026-10-09', de_banco_id: 'b1', para_banco_id: 'b3', valor: 100 }] });
+  ok(/\[valor em USD\]/.test(l2[0].historico), 'sem lado em R$, marca a moeda no histórico');
+});
+
 console.log(`\nTotal: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
 if (passaram !== total) process.exit(1);

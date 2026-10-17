@@ -69,8 +69,10 @@ function renderDashExecutivo(){
   // Se a cotação do dia não veio da API, cai num câmbio fixo antigo (5.10) só
   // pra não travar a tela — mas isso pode ficar bem desatualizado, então avisa
   // visualmente em vez de mostrar o valor como se fosse a cotação real.
-  const cambioIndisponivel = !(_cambio && _cambio.USD);
-  const cambioUsado = cambioIndisponivel ? 5.1 : _cambio.USD;
+  // (Revisão 17/10/2026: _cambio começa em 1, então "!_cambio.USD" nunca
+  // detectava a falta da cotação — os cards mostravam US$ como R$.)
+  const cambioIndisponivel = !cambioDoDia('USD');
+  const cambioUsado = cambioEstimado('USD');
   const avisoCambio = cambioIndisponivel ? ' ⚠ câmbio estimado' : '';
   const kpis = [
     card('Total Processos', _processos.length, ativos.length+' em andamento', 'var(--ac)', 'num', ''),
@@ -1080,7 +1082,7 @@ function renderDashFinanceiro(){
 
   el.innerHTML = `
     <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:12px;">
-      Câmbio atual: USD R$ ${_cambio.USD.toFixed(2)} · EUR R$ ${(_cambio.EUR||0).toFixed(2)} · CNY R$ ${(_cambio.CNY||0).toFixed(4)}
+      Câmbio atual: USD R$ ${cambioEstimado('USD').toFixed(2)} · EUR R$ ${cambioEstimado('EUR').toFixed(2)} · CNY R$ ${cambioEstimado('CNY').toFixed(4)}${cambioEstimadoAviso() ? `<span style="color:var(--warn);">${cambioEstimadoAviso()} — os valores em R$ abaixo usam câmbio de referência</span>` : ''}
     </div>
 
     ${semVencimento.length>0 ? `<div style="background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:10px;padding:10px 16px;margin-bottom:16px;font-size:12px;color:var(--warn);display:flex;align-items:center;gap:8px;">
@@ -1135,22 +1137,22 @@ function renderDashFinanceiro(){
       <div onclick="abrirComFiltro('__pi_vence_30d')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver pagamentos vencendo nos próximos 30 dias">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Saldo a Pagar (30 dias)</div>
         <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(totalAPagar30dUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalAPagar30dUSD*_cambio.USD)} · ${aPagar30d.length} pagamento${aPagar30d.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalAPagar30dUSD*cambioEstimado('USD'))} · ${aPagar30d.length} pagamento${aPagar30d.length!==1?'s':''}</div>
       </div>
       <div onclick="abrirComFiltro('__pi_vencido')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--err);border-radius:10px;padding:14px 16px;" title="Ver pagamentos já vencidos (vencimento no passado, ainda não pagos)">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total Vencido</div>
         <div style="font-size:20px;font-weight:800;color:var(--err);">${fmt(totalVencidoUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalVencidoUSD*_cambio.USD)} · ${vencidos.length} pagamento${vencidos.length!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalVencidoUSD*cambioEstimado('USD'))} · ${vencidos.length} pagamento${vencidos.length!==1?'s':''}</div>
       </div>
       <div onclick="abrirComFiltro('__pi_aberto')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;" title="Ver todos os processos com pagamento em aberto">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Exposição em USD</div>
         <div style="font-size:20px;font-weight:800;color:var(--warn);">${fmt(totalExposicaoUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalExposicaoUSD*_cambio.USD)} · ${emAberto.length} pagamento${emAberto.length!==1?'s':''} em aberto</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalExposicaoUSD*cambioEstimado('USD'))} · ${emAberto.length} pagamento${emAberto.length!==1?'s':''} em aberto</div>
       </div>
       <div onclick="abrirComFiltro('__capital_parado')" style="cursor:pointer;background:#fff;border:1px solid var(--border);border-left:3px solid var(--info);border-radius:10px;padding:14px 16px;" title="Ver processos já pagos, aguardando finalizar (mercadoria em estoque/trânsito)">
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Capital Parado (estoque/trânsito)</div>
         <div style="font-size:20px;font-weight:800;color:var(--info);">${fmt(totalCapitalParadoUSD)}</div>
-        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalCapitalParadoUSD*_cambio.USD)} · ${capitalParado.length} processo${capitalParado.length!==1?'s':''} pago(s)</div>
+        <div style="font-size:12px;color:var(--muted);">${fmtBRL(totalCapitalParadoUSD*cambioEstimado('USD'))} · ${capitalParado.length} processo${capitalParado.length!==1?'s':''} pago(s)</div>
       </div>
     </div>
 
@@ -1185,7 +1187,7 @@ function renderDashFinanceiro(){
               // na PI, se tiver; senão cai pro câmbio atual só como estimativa
               // (marcado com "~" pra não parecer um valor fechado).
               const cambioReal = x.pago ? x.cambioFechado : null;
-              const cambioUsado = cambioReal || x.cambioPrevisto || _cambio.USD;
+              const cambioUsado = cambioReal || x.cambioPrevisto || cambioEstimado('USD');
               const cambioLabel = cambioReal ? cambioReal.toFixed(4) : `~${cambioUsado.toFixed(4)}`;
               const valorBRL = x.valorUsd * cambioUsado;
               return `<tr style="border-top:1px solid var(--border);cursor:pointer;${vencido?'background:rgba(220,38,38,.03)':''}" onclick="abrirProcesso(${jsArg(x.processoId)});toggleDashFinanceiro()">
@@ -1246,7 +1248,7 @@ function renderFluxoCaixaHtml(pagamentos){
   // alerta "fora do radar" do Dashboard Câmbio. Mostrado à parte, não
   // dá pra saber QUANDO vence, só que existe.
   const semVencimento = pagamentos.filter(x => !x.pago && !x.vencimento);
-  const semVencimentoBRL = semVencimento.reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||_cambio.USD),0);
+  const semVencimentoBRL = semVencimento.reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||cambioEstimado('USD')),0);
 
   // Cenário de estresse (+5% no dólar) — pedido do Ayslan (09/09/2026,
   // "se voce fosse o financeiro, o que gostaria de ver"): a coluna
@@ -1261,9 +1263,9 @@ function renderFluxoCaixaHtml(pagamentos){
       const d = new Date(x.vencimento+'T00:00:00');
       return d>=m.ini && d<=m.fim;
     });
-    const pagoBRL      = doMes.filter(x=>x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioFechado||_cambio.USD),0);
-    const previstoBRL   = doMes.filter(x=>!x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||_cambio.USD),0);
-    const previstoEstresseBRL = doMes.filter(x=>!x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||_cambio.USD)*FATOR_ESTRESSE,0);
+    const pagoBRL      = doMes.filter(x=>x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioFechado||cambioEstimado('USD')),0);
+    const previstoBRL   = doMes.filter(x=>!x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||cambioEstimado('USD')),0);
+    const previstoEstresseBRL = doMes.filter(x=>!x.pago).reduce((s,x)=>s+x.valorUsd*(x.cambioPrevisto||cambioEstimado('USD'))*FATOR_ESTRESSE,0);
     return {label:m.label, pagoBRL, previstoBRL, previstoEstresseBRL, qtd:doMes.length};
   });
   const totais = linhas.reduce((acc,l)=>({
@@ -1278,7 +1280,7 @@ function renderFluxoCaixaHtml(pagamentos){
   if(temFt){
     const mesesIso = meses.map(m => `${m.ini.getFullYear()}-${String(m.ini.getMonth()+1).padStart(2,'0')}`);
     const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
-    ft = FaturasCore.fluxoMensalFaturas(_fluxoFaturas, mesesIso, hojeIso, (typeof _cambio !== 'undefined') ? _cambio : {});
+    ft = FaturasCore.fluxoMensalFaturas(_fluxoFaturas, mesesIso, hojeIso, (typeof cambioParaTotais === 'function') ? cambioParaTotais() : {});
     linhas.forEach((l, i) => { const x = ft.meses[mesesIso[i]] || {}; l.ftPagar = (x.pagar_pago||0) + (x.pagar_previsto||0); l.ftReceber = (x.receber_recebido||0) + (x.receber_previsto||0); });
     totais.ftPagar = linhas.reduce((s,l)=>s+l.ftPagar,0); totais.ftReceber = linhas.reduce((s,l)=>s+l.ftReceber,0);
   }
@@ -1324,6 +1326,8 @@ function renderFluxoCaixaHtml(pagamentos){
         </tbody>
       </table>
       ${semVencimento.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">Fora desta tabela: ${semVencimento.length} parcela(s) sem vencimento definido ainda (${fmtBRL(semVencimentoBRL)}) — não dá pra saber em qual mês cairiam.</div>` : ''}
+      ${ft && ft.semCambio && ft.semCambio.qtd ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--warn);">⚠ ${ft.semCambio.qtd} fatura(s) em moeda estrangeira sem câmbio ficaram fora das colunas de faturas — informe o câmbio na fatura (<a href="/faturas" style="color:var(--accent);">abrir Faturas</a>).</div>` : ''}
+      ${cambioEstimadoAviso() ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--warn);">${cambioEstimadoAviso().trim()} — parcelas sem câmbio previsto/fechado foram estimadas a R$ ${cambioEstimado('USD').toFixed(2)}.</div>` : ''}
       ${ft && ft.semVencimento.qtd ? `<div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">Faturas sem vencimento: ${ft.semVencimento.qtd} (a pagar ${fmtBRL(ft.semVencimento.pagar)} · a receber ${fmtBRL(ft.semVencimento.receber)}) — <a href="/faturas" style="color:var(--accent);">abrir Faturas</a>.</div>` : ''}
     </div>`;
 }

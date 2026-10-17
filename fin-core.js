@@ -295,6 +295,7 @@
     const linhas = {}; // codigo → valor (positivo = valor da conta)
     const add = (codigo, v) => { if (!v) return; linhas[codigo] = (linhas[codigo] || 0) + v; };
     const dentro = d => d && d >= de && d <= ate;
+    let semCambio = 0; // fatura/pagamento em US$/€ sem câmbio nenhum → fora do DRE (avisado)
     (faturas || []).forEach(f => {
       if (!f || f.status === 'cancelada') return;
       const rateio = _rateioFatura(f, mapa);
@@ -302,12 +303,17 @@
       if (regime === 'competencia') {
         const d = iso(f.emissao) || iso(f.vencimento) || iso(f.created_at);
         if (!dentro(d)) return;
+        if (!fx) { semCambio++; return; }
         rateio.forEach(r => add(r.codigo, num(f.valor) * fx * r.peso));
         return;
       }
       (f.pagamentos || []).forEach(p => {
         if (!p || p.estornado || FC.ehMigracao(p) || !dentro(iso(p.data))) return;
-        const principalPrev = (num(p.valor) + FC.RETENCOES.reduce((s, k) => s + num(p.retencoes && p.retencoes[k]), 0)) * (f.moeda === 'BRL' ? 1 : (num(f.cambio) || fx));
+        // sem câmbio previsto na fatura, o principal sai pelo câmbio efetivo da
+        // baixa (o que de fato foi pago); só sem nenhum dos dois, o do dia
+        const fxPag = f.moeda === 'BRL' ? 1 : (num(f.cambio) || num(p.cambio_efetivo) || (num(p.pago_brl) > 0 && (num(p.valor) + num(p.juros)) > 0 ? num(p.pago_brl) / (num(p.valor) + num(p.juros)) : 0) || fx);
+        if (!fxPag) { semCambio++; return; }
+        const principalPrev = (num(p.valor) + FC.RETENCOES.reduce((s, k) => s + num(p.retencoes && p.retencoes[k]), 0)) * fxPag;
         rateio.forEach(r => add(r.codigo, principalPrev * r.peso));
         const jur = num(p.juros) * (f.moeda === 'BRL' ? 1 : (num(p.cambio_efetivo) || fx));
         if (jur) add(f.tipo === 'pagar' ? '5.2.02' : '3.2.01', jur);
@@ -332,7 +338,7 @@
     const resultadoOperacional = r2(lucroBruto - t('despesa_operacional'));
     const resultadoAntesIR = r2(resultadoOperacional + t('receita_financeira') - t('despesa_financeira'));
     const resultadoLiquido = r2(resultadoAntesIR - t('impostos_lucro'));
-    return { regime, de, ate, grupos, receitaLiquida, lucroBruto, resultadoOperacional, resultadoAntesIR, resultadoLiquido };
+    return { regime, de, ate, grupos, receitaLiquida, lucroBruto, resultadoOperacional, resultadoAntesIR, resultadoLiquido, sem_cambio: semCambio };
   }
 
   // ── Lançamentos para o contador (modelo genérico partidas dobradas) ──
@@ -370,11 +376,17 @@
       });
     });
     // transferências entre contas próprias: débito no banco que recebe, crédito no que envia
+    // valor em R$: o lado da conta em reais (de US$ → R$ vale o creditado,
+    // valor_destino); sem lado em reais, sai na moeda e marcado no histórico.
+    const moedaBanco = id => (((bancos || []).find(x => x.id === id) || {}).moeda) || 'BRL';
     (o.transferencias || []).forEach(t => {
       if (!t || t.estornado) return;
       const d = iso(t.data); if (!d || d < de || d > ate) return;
-      const v = r2(num(t.valor)); if (!v) return;
-      out.push({ data: d, debito: bancoDe(t.para_banco_id), credito: bancoDe(t.de_banco_id), valor: v, historico: ('Transferência entre contas ' + (t.obs || '')).trim(), documento: '', participante: '', fatura: '' });
+      const mDe = moedaBanco(t.de_banco_id), mPara = moedaBanco(t.para_banco_id);
+      const emReais = mDe === 'BRL' ? num(t.valor) : (mPara === 'BRL' && num(t.valor_destino) > 0 ? num(t.valor_destino) : null);
+      const v = r2(emReais != null ? emReais : num(t.valor)); if (!v) return;
+      const marca = emReais == null ? `[valor em ${mDe}] ` : '';
+      out.push({ data: d, debito: bancoDe(t.para_banco_id), credito: bancoDe(t.de_banco_id), valor: v, historico: (marca + 'Transferência entre contas ' + (t.obs || '')).trim(), documento: '', participante: '', fatura: '' });
     });
     out.sort((a, b) => a.data.localeCompare(b.data));
     return out;

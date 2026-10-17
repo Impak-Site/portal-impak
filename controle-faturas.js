@@ -97,7 +97,7 @@ async function crConfirmarGerarFaturas(){
   cands.forEach((f, i) => {
     const ck = document.getElementById('ft_ck_' + i);
     if(!ck || !ck.checked) return;
-    const cx = (typeof _cambio !== 'undefined' && _cambio) ? _cambio : {};
+    const cx = (typeof cambioParaTotais === 'function') ? cambioParaTotais() : {};
     enviar.push({ ...f, cambio: f.moeda === 'BRL' ? 1 : (parseFloat(cx[f.moeda]) || null), documento: (document.getElementById('ft_doc_' + i) || {}).value || null, vencimento: (document.getElementById('ft_venc_' + i) || {}).value || null, pago_em: (document.getElementById('ft_pago_' + i) || {}).value || null });
   });
   if(!enviar.length){ showToast('Nenhuma fatura marcada.', 'warn'); return; }
@@ -179,7 +179,7 @@ async function renderDashFaturas(){
   if(_ftFiltro.conta === '_sem') _ftLista = _ftLista.filter(f => FinCore.precisaClassificar(f));
   else if(_ftFiltro.conta) _ftLista = _ftLista.filter(f => f.conta_id === _ftFiltro.conta);
   const hoje = _ftHoje();
-  const cambio = (typeof _cambio !== 'undefined') ? _cambio : {};
+  const cambio = (typeof cambioParaTotais === 'function') ? cambioParaTotais() : {};
   // Resumo sempre sobre TODAS as não canceladas (independe do filtro de status)
   let base = _ftLista;
   if(_ftFiltro.status){ try{ const t = _ftFiltro; _ftFiltro.status = ''; base = await _ftCarregar(); _ftFiltro.status = t.status; }catch(e){ base = _ftLista; } }
@@ -190,7 +190,7 @@ async function renderDashFaturas(){
     ${card('A receber em aberto', r.receber_aberto, 'var(--ok)', r.receber_vencido ? `<span style="color:var(--err);font-weight:600;">R$ ${_ftFmt(r.receber_vencido)} vencido</span>` : 'nada vencido')}
     ${card('Pago no mês', r.pago_mes, 'var(--muted)', hoje.slice(0, 7).split('-').reverse().join('/'))}
     ${card('Recebido no mês', r.recebido_mes, 'var(--muted)', hoje.slice(0, 7).split('-').reverse().join('/'))}
-  </div>`;
+  </div>${r.sem_cambio ? `<div style="background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;color:#8a5a00;">⚠ ${r.sem_cambio} fatura${r.sem_cambio === 1 ? '' : 's'} em moeda estrangeira sem câmbio (nem da fatura, nem a cotação do dia) — ${r.sem_cambio === 1 ? 'ficou' : 'ficaram'} fora dos totais em R$. Abra a fatura e informe o câmbio.</div>` : ''}`;
   const filtros = `<div class="ft-filtros">
     <select class="form-input" onchange="_ftFiltro.tipo=this.value;renderDashFaturas()"><option value="">Pagar + receber</option><option value="pagar" ${_ftFiltro.tipo === 'pagar' ? 'selected' : ''}>A pagar</option><option value="receber" ${_ftFiltro.tipo === 'receber' ? 'selected' : ''}>A receber</option></select>
     <select class="form-input" onchange="_ftFiltro.status=this.value;renderDashFaturas()"><option value="aberta" ${_ftFiltro.status === 'aberta' ? 'selected' : ''}>Abertas</option><option value="paga" ${_ftFiltro.status === 'paga' ? 'selected' : ''}>Pagas</option><option value="cancelada" ${_ftFiltro.status === 'cancelada' ? 'selected' : ''}>Canceladas</option><option value="" ${_ftFiltro.status === '' ? 'selected' : ''}>Todas</option></select>
@@ -227,12 +227,17 @@ async function renderDashFaturas(){
       </td></tr>
       <tr class="ft-itens-row" id="ft_itens_${f.id}" style="display:none;"><td colspan="9">${itensHtml}</td></tr>`;
   }).join('');
-  const total = _ftLista.filter(f => f.status !== 'cancelada').reduce((s, f) => s + (f.moeda === 'BRL' ? parseFloat(f.valor) || 0 : (parseFloat(f.valor) || 0) * (parseFloat(cambio[f.moeda]) || 0)), 0);
+  // Rodapé = soma do "Em R$" de cada linha (câmbio da própria fatura; sem ele,
+  // o do dia). Fatura em US$/€ sem câmbio fica FORA e é contada à parte —
+  // antes entrava multiplicada por 1 quando a cotação não carregava.
+  const _ftVisiveis = _ftLista.filter(f => f.status !== 'cancelada');
+  const semCambioLista = _ftVisiveis.filter(f => !FaturasCore.fatorBRL(f, cambio)).length;
+  const total = _ftVisiveis.reduce((s, f) => s + (parseFloat(f.valor) || 0) * FaturasCore.fatorBRL(f, cambio), 0);
   const avisoClass = semClass && _ftFiltro.conta !== '_sem' ? `<div style="background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;color:#8a5a00;">⚠ ${semClass} despesa${semClass === 1 ? '' : 's'} sem classificação (aparece${semClass === 1 ? '' : 'm'} como "despesas gerais" no DRE). <a class="cr-link" onclick="_ftFiltro.conta='_sem';renderDashFaturas()">Ver e classificar</a></div>` : '';
   el.innerHTML = (typeof finTabsHtml === 'function' ? finTabsHtml() : '') + cards + avisoClass + filtros + `<div class="ft-tabela-wrap"><table class="ft-tabela">
     <thead><tr><th style="width:22px;"></th><th>Tipo</th><th>Empresa · itens</th><th>Documento</th><th>Processo</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th>Situação</th><th></th></tr></thead>
     <tbody>${linhas || `<tr><td colspan="9" class="cr-muted" style="padding:16px;">Nenhuma fatura com esses filtros.</td></tr>`}</tbody>
-    <tfoot><tr><td colspan="6" style="text-align:right;">${_ftLista.length} fatura${_ftLista.length === 1 ? '' : 's'} · total em R$</td><td style="text-align:right;font-family:'JetBrains Mono',monospace;">R$ ${_ftFmt(total)}</td><td colspan="2"></td></tr></tfoot>
+    <tfoot><tr><td colspan="6" style="text-align:right;">${_ftLista.length} fatura${_ftLista.length === 1 ? '' : 's'} · total em R$${semCambioLista ? ` <span style="color:#8a5a00;font-weight:600;">(${semCambioLista} sem câmbio, fora do total)</span>` : ''}</td><td style="text-align:right;font-family:'JetBrains Mono',monospace;">R$ ${_ftFmt(total)}</td><td colspan="2"></td></tr></tfoot>
   </table></div>`;
 }
 
@@ -810,7 +815,7 @@ function ftEditar(id, pre){
       <div class="ft-cand-campos">
         <label>Moeda <select class="form-input" id="ft_e_moeda">${['BRL','USD','EUR'].map(m => `<option ${f.moeda === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Valor total <input class="form-input" id="ft_e_valor" value="${f.valor !== '' && f.valor != null ? _ftFmt(f.valor) : ''}" inputmode="decimal"></label>
-        <label>Câmbio (se USD/EUR) <input class="form-input" id="ft_e_cambio" value="${f.cambio && f.moeda !== 'BRL' ? String(f.cambio).replace('.', ',') : ''}" placeholder="${(typeof _cambio !== 'undefined' && _cambio.USD) ? _cambio.USD.toFixed(4).replace('.', ',') : ''}" inputmode="decimal"></label>
+        <label>Câmbio (se USD/EUR) <input class="form-input" id="ft_e_cambio" value="${f.cambio && f.moeda !== 'BRL' ? String(f.cambio).replace('.', ',') : ''}" placeholder="${(typeof cambioDoDia === 'function' && cambioDoDia(f.moeda && f.moeda !== 'BRL' ? f.moeda : 'USD')) ? cambioDoDia(f.moeda && f.moeda !== 'BRL' ? f.moeda : 'USD').toFixed(4).replace('.', ',') : 'câmbio da fatura'}" inputmode="decimal"></label>
       </div>
       <div class="ft-cand-campos">
         <label style="flex:2;">Classificação <span class="cr-muted">(aluguel, folha, imposto… — obrigatória em despesa sem processo)</span> <select class="form-input" id="ft_e_conta" onchange="this.dataset.manual='1';document.getElementById('ft_e_conta_dica').textContent=''">${typeof finOpcoesContas === 'function' ? finOpcoesContas(f.conta_id || '', f.tipo) : ''}</select><span id="ft_e_conta_dica" class="cr-muted" style="font-size:11px;"></span></label>
@@ -850,7 +855,7 @@ function _ftCorpoModal(id){
   const moeda = document.getElementById('ft_e_moeda').value;
   const cx = parseFloat((document.getElementById('ft_e_cambio').value || '').replace(',', '.'));
   const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), emissao: document.getElementById('ft_e_emissao').value || null, vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim(), conta_id: (document.getElementById('ft_e_conta') || {}).value || null, centro_custo_id: (document.getElementById('ft_e_centro') || {}).value || null };
-  body.cambio = moeda === 'BRL' ? 1 : (cx > 0 ? cx : ((typeof _cambio !== 'undefined' && _cambio[moeda]) || null));
+  body.cambio = moeda === 'BRL' ? 1 : (cx > 0 ? cx : ((typeof cambioDoDia === 'function' && cambioDoDia(moeda)) || null));
   if(id && f && f.empresa_nome !== body.empresa_nome) body.empresa_id = null;
   const semProc = [];
   if(!id){
@@ -878,7 +883,7 @@ async function ftConferir(id){
   const labels = {};
   if(typeof custosReaisItensFlat === 'function') custosReaisItensFlat().forEach(it => { labels[it.id] = it.label; });
   try{
-    const r = await fetch('/api/faturas/conferir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fatura: body, labels, cambio: (typeof _cambio !== 'undefined') ? _cambio : {} }) });
+    const r = await fetch('/api/faturas/conferir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fatura: body, labels, cambio: (typeof cambioParaTotais === 'function') ? cambioParaTotais() : {} }) });
     const d = await r.json();
     if(!d.ok){ box.innerHTML = `<div class="cr-muted">Não consegui conferir: ${esc(d.erro || 'erro')}</div>`; return null; }
     _ftUltConf = d;

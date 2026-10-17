@@ -607,6 +607,60 @@ teste('card de lucro: texto/cor da meta funcionam fora do render (fmtP não é g
   verdadeiro(vm.runInContext(`classeLucroMeta(3.5)`, sb) === 'ok' && vm.runInContext(`classeLucroMeta(3)`, sb) === 'warn' && vm.runInContext(`classeLucroMeta(1)`, sb) === 'err');
 });
 
+// ── Revisão 17/10/2026: regras de RBC e S.T. travadas em teste ──────
+// As fórmulas já foram conferidas com as planilhas — estes testes NÃO mudam
+// nada, só garantem que uma alteração futura não quebre as regras sem aviso:
+//  · SEM S.T.: ICMS normal sobre o Vlr. Produto cheio (nunca reduz);
+//  · COM S.T.: ICMS normal com a base reduzida (RBC) em todos os estados,
+//    menos SC; a base da S.T. sempre usa a base reduzida + IPI × (1 + MVA);
+//  · ICMS S.T. nunca negativo; ICMS próprio sempre sobre o valor cheio.
+console.log('\n📋 Regras de RBC e S.T. (travadas — revisão 17/10/2026)');
+function _calcUF(uf, prep) {
+  const sb = criarSandbox({ uf_destino: uf });
+  carregarNoSandbox(sb);
+  if (prep) vm.runInContext(prep, sb);
+  sb.calcular();
+  return vm.runInContext('_estado.ultimoResultado', sb);
+}
+teste('SP COM S.T.: ICMS normal e base da S.T. usam a base reduzida (RBC)', () => {
+  const r = _calcUF('SP'); const c = r.cenarios.com_st, t = r.t;
+  verdadeiro(t.rbc > 0, 'a tabela de SP tem RBC');
+  aproxIgual(c.baseIcmsNormal, c.vlr_produto * (1 - t.rbc), 0.01);
+  aproxIgual(c.ICMS_nfe, c.baseIcmsNormal * t.aliq_inter, 0.01);
+  aproxIgual(c.base_st, (c.vlr_produto * (1 - t.rbc) + c.IPI_s) * (1 + t.mva), 0.01);
+  aproxIgual(c.icms_st, Math.max(0, c.base_st * t.aliq_interna - c.ICMS_nfe), 0.01);
+  aproxIgual(c.ICMS_proprio, c.vlr_produto * t.icms_prop, 0.01, 'ICMS próprio sobre o valor cheio');
+});
+teste('SP SEM S.T.: ICMS normal sobre o valor cheio e nada de S.T.', () => {
+  const r = _calcUF('SP'); const s = r.cenarios.sem_st, t = r.t;
+  aproxIgual(s.baseIcmsNormal, s.vlr_produto, 0.01, 'sem S.T. nunca reduz a base');
+  aproxIgual(s.ICMS_nfe, s.vlr_produto * t.aliq_inter, 0.01);
+  verdadeiro(s.icms_st === 0 && s.base_st === 0, 'sem S.T. não tem ICMS S.T.');
+});
+teste('SC COM S.T.: ICMS normal fica cheio mesmo se a tabela tiver RBC (exceção de SC)', () => {
+  const r = _calcUF('SC', "TABELA_NCM['40111000SC'].rbc = 0.085;");
+  const c = r.cenarios.com_st;
+  aproxIgual(c.baseIcmsNormal, c.vlr_produto, 0.01, 'SC usa o valor cheio no ICMS normal');
+  aproxIgual(c.base_st, (c.vlr_produto * (1 - 0.085) + c.IPI_s) * (1 + r.t.mva), 0.01, 'mas a base da S.T. reduz');
+});
+teste('ICMS S.T. nunca fica negativo (ICMS normal maior que o da S.T.)', () => {
+  const r = _calcUF('SP', "TABELA_NCM['40111000SP'].aliq_interna = 0.001;");
+  verdadeiro(r.cenarios.com_st.icms_st === 0, `icms_st deveria ser 0, veio ${r.cenarios.com_st.icms_st}`);
+});
+teste('MVA e alíquota interna vêm da UF de destino (SP ≠ RS)', () => {
+  const sp = _calcUF('SP'), rs = _calcUF('RS');
+  verdadeiro(sp.t.mva !== rs.t.mva && sp.cenarios.com_st.icms_st !== rs.cenarios.com_st.icms_st);
+});
+teste('valor negativo (FOB) não calcula — avisa e mantém o resultado anterior', () => {
+  const sb = criarSandbox({ fob_usd: '-100' }); carregarNoSandbox(sb);
+  let aviso = '';
+  vm.runInContext('showToast = (m) => { this.__toast = m; };', sb);
+  sb.calcular();
+  aviso = vm.runInContext('this.__toast || ""', sb);
+  verdadeiro(vm.runInContext('_estado.ultimoResultado', sb) === null, 'não deveria ter calculado');
+  verdadeiro(/negativo/.test(aviso), aviso);
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

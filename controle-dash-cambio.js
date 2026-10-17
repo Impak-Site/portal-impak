@@ -414,7 +414,7 @@ async function exportarRelatorioMensalCambio(){
     const hoje = new Date(); hoje.setHours(0,0,0,0);
     const fmtBRL = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const fmtUSD = v => `USD ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-    const cambioAtual = (_cambio && _cambio.USD) ? _cambio.USD : 5.10;
+    const cambioAtual = cambioEstimado('USD'); // sem a cotação do dia: referência fixa + aviso (antes, _cambio=1 passava como cotação)
 
     const todosPagamentos = listarPagamentosPI(_processos);
     const abertos = todosPagamentos.filter(x => !x.pago && x.vencimento);
@@ -443,7 +443,7 @@ async function exportarRelatorioMensalCambio(){
     wsResumo.getRow(1).height = 28;
     wsResumo.mergeCells(2,1,2,2);
     const sub = wsResumo.getCell(2,1);
-    sub.value = `Gerado em ${hoje.toLocaleDateString('pt-BR')} · câmbio de referência atual: ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4})}`;
+    sub.value = `Gerado em ${hoje.toLocaleDateString('pt-BR')} · câmbio de referência atual: ${cambioAtual.toLocaleString('pt-BR',{minimumFractionDigits:4})}${cambioEstimadoAviso()}`;
     estilizarSubtitulo(sub);
     const linhasResumo = [
       ['Prontos p/ Fechamento (atrasados)', fmtUSD(prontas.reduce((s,x)=>s+x.valorUsd,0)) + ` (${prontas.length})`],
@@ -728,7 +728,7 @@ function renderDashCambio(){
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const fmtBRL = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const fmtUSD = v => `USD ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const cambioAtual = (_cambio && _cambio.USD) ? _cambio.USD : 5.10;
+  const cambioAtual = cambioEstimado('USD'); // sem a cotação do dia: referência fixa + aviso (antes, _cambio=1 passava como cotação)
   const MONO = "font-family:'JetBrains Mono',monospace;";
 
   // Fonte única de dados — mesma usada no Dashboard Financeiro. Cada linha
@@ -936,7 +936,7 @@ function renderDashCambio(){
   _cambioSimulBase = { totalUsd: totalAbertoUsd, semanaUsd: j7.usd, mesUsd: j30.usd, cambioAtual };
   const simulacaoHtml = `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;height:100%;">
     <div style="font-size:14px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:8px;">${icoUI('percentual',16)} Simular câmbio</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">E se o dólar fosse a R$X? Veja o impacto antes de decidir travar câmbio.</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">E se o dólar fosse a R$X? Veja o impacto antes de decidir travar câmbio.${cambioEstimadoAviso() ? `<br><span style="color:var(--warn);font-weight:600;">${cambioEstimadoAviso().trim()} — o ponto de partida abaixo é um valor de referência.</span>` : ''}</div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
       <input id="cambio-simulado-input" type="number" step="0.01" value="${cambioAtual.toFixed(4)}" oninput="atualizarSimulacaoCambio(this.value)"
         style="width:100px;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;${MONO}">

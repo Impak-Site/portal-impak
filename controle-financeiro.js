@@ -67,7 +67,7 @@ async function _finHtmlBancos(){
   const [fats, trd] = await Promise.all([_finFaturasTodas(), fetch('/api/fin/transferencias').then(r => r.json()).catch(() => ({}))]);
   const transf = (trd && trd.transferencias) || [];
   window._finTransf = transf;
-  const s = FinCore.saldosBancarios(_fin.bancos.filter(b => b.ativo !== false), fats, transf, (typeof _cambio !== 'undefined') ? _cambio : {});
+  const s = FinCore.saldosBancarios(_fin.bancos.filter(b => b.ativo !== false), fats, transf, (typeof cambioParaTotais === 'function') ? cambioParaTotais() : {});
   const totalBRL = s.contas.filter(c => c.moeda === 'BRL').reduce((t, c) => t + c.saldo, 0);
   const cards = s.contas.map(c => {
     const b = _fin.bancos.find(x => x.id === c.id) || {};
@@ -141,7 +141,7 @@ async function _finHtmlDre(){
   if(!_finFiltro.de){ const h = _ftHoje(); _finFiltro.de = h.slice(0, 8) + '01'; _finFiltro.ate = _finUltimoDiaMes(h); }
   let fats = await _finFaturasTodas();
   if(_finFiltro.centro) fats = fats.filter(f => f.centro_custo_id === _finFiltro.centro);
-  const d = FinCore.dreEmpresa(fats, _fin.contas, { de: _finFiltro.de, ate: _finFiltro.ate, regime: _finFiltro.regime, cambio: (typeof _cambio !== 'undefined') ? _cambio : {} });
+  const d = FinCore.dreEmpresa(fats, _fin.contas, { de: _finFiltro.de, ate: _finFiltro.ate, regime: _finFiltro.regime, cambio: (typeof cambioParaTotais === 'function') ? cambioParaTotais() : {} });
   window._finDreAtual = d;
   const linhaTot = (l, v, forte) => `<tr style="background:var(--bg);${forte ? 'font-weight:800;' : 'font-weight:700;'}"><td>${l}</td><td style="text-align:right;color:${v < 0 ? 'var(--err)' : 'inherit'};">${_finMoeda(v)}</td></tr>`;
   const bloco = id => { const g = d.grupos.find(x => x.id === id); if(!g) return ''; return `<tr style="font-weight:600;"><td>${esc(g.label)}</td><td style="text-align:right;">${_finMoeda(g.total)}</td></tr>` + g.contas.map(c => `<tr><td style="padding-left:22px;" class="cr-muted">${esc(c.codigo)} ${esc(c.nome)}</td><td style="text-align:right;" class="cr-muted">${_finMoeda(c.valor)}</td></tr>`).join(''); };
@@ -154,6 +154,7 @@ async function _finHtmlDre(){
       <button class="btn btn-outline" onclick="finExportarDre()">⬇ Excel</button>
     </div>
     <div class="cr-muted" style="font-size:11px;margin-bottom:8px;">DRE gerencial montado pelas faturas. Fatura sem conta escolhida é classificada pela taxa do processo (FOB, frete, impostos, despesas portuárias, comissões) ou, se a receber, como venda/reembolso. Não substitui o DRE contábil do contador.</div>
+    ${d.sem_cambio ? `<div style="background:#fffaeb;border:1px solid #fedf89;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;color:#8a5a00;max-width:760px;">⚠ ${d.sem_cambio} lançamento${d.sem_cambio === 1 ? '' : 's'} em moeda estrangeira sem câmbio ficou fora deste DRE. Informe o câmbio na fatura (ou o câmbio efetivo na baixa).</div>` : ''}
     <table class="ft-itens" style="width:100%;max-width:760px;font-size:12.5px;"><tbody>
       ${bloco('receita_bruta')}${bloco('deducoes')}${linhaTot('= Receita líquida', d.receitaLiquida)}
       ${bloco('custo')}${linhaTot('= Lucro bruto', d.lucroBruto)}

@@ -111,6 +111,29 @@ function cambioPlausivel(v, moeda){
 function cambioDoDia(moeda){
   return (typeof _cambio !== 'undefined' && _cambio && _cambio._ok && cambioPlausivel(_cambio[moeda], moeda)) ? _cambio[moeda] : null;
 }
+// Mistura de moedas nos totais (revisão 17/10/2026): sem a cotação do dia,
+// _cambio vale 1 — e US$ 1.000 aparecia como R$ 1.000 nos cards e totais.
+//  · cambioParaTotais(): pra SOMAR em R$ (faturas, DRE, fluxo) — moeda sem
+//    cotação vem null e o total avisa "fora do total", em vez de somar errado.
+//  · cambioEstimado(): pra ESTIMATIVA em tela ("≈ R$") — sem a cotação, usa
+//    um valor de referência fixo e cambioEstimadoAviso() diz isso na tela.
+const CAMBIO_REFERENCIA = { USD: 5.10, EUR: 5.70, CNY: 0.72 };
+function cambioParaTotais(){
+  return { BRL: 1, USD: cambioDoDia('USD'), EUR: cambioDoDia('EUR'), CNY: cambioDoDia('CNY') };
+}
+function cambioEstimado(moeda){
+  moeda = moeda || 'USD';
+  if(moeda === 'BRL') return 1;
+  return cambioDoDia(moeda) || CAMBIO_REFERENCIA[moeda] || null;
+}
+function cambioEstimadoAviso(moeda){
+  return cambioDoDia(moeda || 'USD') ? '' : ' ⚠ câmbio estimado (a cotação do dia não carregou)';
+}
+// Placeholder de campo de câmbio: a cotação do dia, ou vazio (antes "1.0000").
+function placeholderCambio(moeda, casas){
+  const c = cambioDoDia(moeda || 'USD');
+  return c ? c.toFixed(casas == null ? 4 : casas) : '';
+}
 
 // ── URL por processo (task #59) ──────────────────────────────────
 // _baseUrlPath é a tela "de baixo" (/controle ou /financeiro) — pra onde
@@ -927,11 +950,15 @@ async function carregarCambio(){
     _cambio._ok = !!(d.USDBRL && d.USDBRL.bid) && cambioPlausivel(_cambio.USD, 'USD');
     const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const bar = document.getElementById('cambio-bar');
+    // Sem a cotação de verdade, a barra mostra "~" e diz isso no título
+    // (antes exibia o valor de referência como se fosse a cotação do dia).
+    const ref = _cambio._ok ? '' : '~';
+    const titulo = _cambio._ok ? `Atualizado ${hora}` : 'Cotação do dia indisponível — valor de referência, não use para fechar câmbio';
     if(bar) bar.innerHTML = [
-      `USD R$ ${_cambio.USD.toFixed(4)}`,
-      `EUR R$ ${_cambio.EUR.toFixed(4)}`,
-      `CNY R$ ${_cambio.CNY.toFixed(4)}`,
-    ].map(t=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="Atualizado ${hora}">${t}</span>`).join('');
+      `USD R$ ${ref}${_cambio.USD.toFixed(4)}`,
+      `EUR R$ ${ref}${_cambio.EUR.toFixed(4)}`,
+      `CNY R$ ${ref}${_cambio.CNY.toFixed(4)}`,
+    ].map(t=>`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.8;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:4px;" title="${titulo}">${t}</span>`).join('');
   }catch(e){ console.warn('Câmbio erro:',e.message); }
   setTimeout(carregarCambio, 5*60*1000);
 }

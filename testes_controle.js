@@ -717,6 +717,21 @@ await testeAsync('câmbio do dia só vira pi_cambio quando a cotação carregou 
   vm.runInContext("_cambio = {USD:5.5};", sandbox);
 });
 
+teste('sem a cotação do dia, totais e estimativas em R$ não usam câmbio 1 (US$ virava R$)', () => {
+  vm.runInContext("_cambio = { USD: 1, BRL: 1, EUR: 1 };", sandbox);
+  const t = vm.runInContext("cambioParaTotais()", sandbox);
+  iguais(t.USD, null, 'pra somar: moeda sem cotação vem null (o total avisa)'); iguais(t.BRL, 1);
+  iguais(vm.runInContext("cambioEstimado('USD')", sandbox), 5.10, 'pra estimar: valor de referência');
+  verdadeiro(/estimado/.test(vm.runInContext("cambioEstimadoAviso()", sandbox)), 'avisa que é estimativa');
+  iguais(vm.runInContext("placeholderCambio('USD', 4)", sandbox), '', 'placeholder não mostra 1.0000');
+  const html = vm.runInContext("renderPagamentoInfo({pi_pagamento:'VISTA', pi_valor_usd: 1000})", sandbox);
+  verdadeiro(/5\.100,00/.test(html) && !/R\$ 1\.000,00/.test(html) && /câmbio estimado/.test(html), html);
+  vm.runInContext("_cambio = { USD: 5.31, BRL: 1, EUR: 6.1, _ok: true };", sandbox);
+  iguais(vm.runInContext("cambioParaTotais().USD", sandbox), 5.31);
+  iguais(vm.runInContext("cambioEstimadoAviso()", sandbox), '');
+  vm.runInContext("_cambio = {USD:5.5};", sandbox);
+});
+
 teste('edição rápida inline de 1 campo (data) não vaza outros campos do cache local', () => {
   // Simula o padrão real de inlineEditData: só o campo em questão é
   // conhecido como "alterado agora"; o resto do objeto "proc" pode ser

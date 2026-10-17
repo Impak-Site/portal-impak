@@ -125,21 +125,30 @@
   }
 
   // Totais pros cards da tela (em R$ usando o câmbio informado pra USD/EUR).
+  // Câmbio pra levar a fatura a R$ nos totais: o da própria fatura; sem ele,
+  // o do dia (que só vem quando a cotação carregou). Sem nenhum dos dois → 0
+  // e quem soma conta como "sem câmbio" (fora do total, com aviso) — antes
+  // entrava o câmbio "1" de quando a cotação não carregava (US$ virava R$).
+  function fatorBRL(f, cambioAtual) {
+    if (!f || f.moeda === 'BRL' || !f.moeda) return 1;
+    return parseFloat(f.cambio) || parseFloat((cambioAtual || {})[f.moeda]) || 0;
+  }
   function resumoFaturas(lista, hoje, cambio) {
     cambio = cambio || {};
-    const brl = f => f.moeda === 'BRL' ? num(f.valor) : num(f.valor) * (parseFloat(cambio[f.moeda]) || 0);
-    const r = { pagar_aberto: 0, pagar_vencido: 0, receber_aberto: 0, receber_vencido: 0, pago_mes: 0, recebido_mes: 0, qtd_aberta: 0, qtd_vencida: 0 };
+    const brl = f => num(f.valor) * fatorBRL(f, cambio);
+    const r = { pagar_aberto: 0, pagar_vencido: 0, receber_aberto: 0, receber_vencido: 0, pago_mes: 0, recebido_mes: 0, qtd_aberta: 0, qtd_vencida: 0, sem_cambio: 0 };
     const mes = (hoje || '').slice(0, 7);
     (lista || []).forEach(f => {
       if (!f || f.status === 'cancelada') return;
       const s = situacao(f, hoje);
-      const fx = f.moeda === 'BRL' ? 1 : (parseFloat(cambio[f.moeda]) || 0);
+      const fx = fatorBRL(f, cambio);
       const pags = pagamentosValidos(f);
       if (pags.length) pags.forEach(p => { if (ehMigracao(p)) return; if ((iso(p.data) || '').slice(0, 7) === mes) { const c = caixaBrlPagamento(p, f, cambio); if (f.tipo === 'pagar') r.pago_mes += c; else r.recebido_mes += c; } });
       if (f.status === 'paga') {
-        if (!pags.length && (iso(f.pago_em) || '').slice(0, 7) === mes) { if (f.tipo === 'pagar') r.pago_mes += brl(f); else r.recebido_mes += brl(f); }
+        if (!pags.length && (iso(f.pago_em) || '').slice(0, 7) === mes) { if (!fx) r.sem_cambio++; if (f.tipo === 'pagar') r.pago_mes += brl(f); else r.recebido_mes += brl(f); }
         return;
       }
+      if (!fx) r.sem_cambio++;
       const aberto = saldoFatura(f) * fx;
       r.qtd_aberta++;
       if (f.tipo === 'pagar') r.pagar_aberto += aberto; else r.receber_aberto += aberto;
@@ -218,12 +227,14 @@
   function fluxoMensalFaturas(lista, mesesIso, hoje, cambioAtual) {
     const cx = cambioAtual || {};
     const mesHoje = (hoje || '').slice(0, 7);
-    const brl = (f, v) => f.moeda === 'BRL' ? v : v * (parseFloat(f.cambio) || parseFloat(cx[f.moeda]) || 0);
+    const brl = (f, v) => v * fatorBRL(f, cx);
     const out = {};
     (mesesIso || []).forEach(m => { out[m] = { pagar_pago: 0, pagar_previsto: 0, receber_recebido: 0, receber_previsto: 0, qtd: 0 }; });
     const semVenc = { pagar: 0, receber: 0, qtd: 0 };
+    const semCambio = { qtd: 0 };
     (lista || []).forEach(f => {
       if (!f || f.status === 'cancelada') return;
+      if (!fatorBRL(f, cx) && !(f.status === 'paga' && pagamentosValidos(f).length)) semCambio.qtd++;
       const pags = pagamentosValidos(f);
       // cada baixa entra no mês em que foi paga (parciais também)
       pags.forEach(p => {
@@ -254,7 +265,7 @@
     const r2 = x => Math.round(x * 100) / 100;
     Object.values(out).forEach(o => { Object.keys(o).forEach(k => { if (k !== 'qtd') o[k] = r2(o[k]); }); });
     semVenc.pagar = r2(semVenc.pagar); semVenc.receber = r2(semVenc.receber);
-    return { meses: out, semVencimento: semVenc };
+    return { meses: out, semVencimento: semVenc, semCambio };
   }
 
   // ── Conferência (cross-check) da fatura com o que está no sistema ──────
@@ -477,6 +488,9 @@
       cambio_efetivo = parseFloat(String(b.cambio_efetivo || '').replace(',', '.')) > 0 ? parseFloat(String(b.cambio_efetivo).replace(',', '.')) : null;
       pago_brl = numBR(b.pago_brl) > 0 ? numBR(b.pago_brl) : (cambio_efetivo ? Math.round((valor + juros) * cambio_efetivo * 100) / 100 : null);
       if (!cambio_efetivo && pago_brl && (valor + juros) > 0) cambio_efetivo = Math.round(pago_brl / (valor + juros) * 1e6) / 1e6;
+      // Sem câmbio na baixa E sem câmbio na fatura, o pagamento entraria como
+      // R$ 0 no caixa, no DRE e no saldo do banco (revisão 17/10/2026).
+      if (!pago_brl && !(parseFloat(f.cambio) > 0)) return { ok: false, erro: `Fatura em ${f.moeda} sem câmbio: use “💰 Dar baixa” e informe o câmbio efetivo (ou o valor pago em R$) — sem isso o pagamento entraria como R$ 0 no caixa.` };
       if (!pago_brl) avisos.push('Fatura em moeda estrangeira sem câmbio/valor em R$ — variação cambial não será apurada.');
     }
     const FORMAS = ['pix', 'ted', 'boleto', 'cambio', 'cartao', 'dinheiro', 'compensacao', 'outro'];
@@ -635,7 +649,7 @@
     return out;
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso };
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

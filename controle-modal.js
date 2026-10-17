@@ -352,7 +352,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <div class="form-group"><label class="form-label">Valor USD</label>
             <div class="moeda-wrap"><span class="moeda-prefix">USD</span><input class="form-input" type="text" inputmode="decimal" id="f_pi_valor_usd" value="${exibirMoeda(p.pi_valor_usd)}" placeholder="0,00" oninput="formatarMoedaInput(this);renderPagamentoInfoLive()" onchange="aoMudarValorPI()"></div></div>
           <div class="form-group"><label class="form-label">Câmbio na PI (R$)</label>
-            <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${_cambio.USD.toFixed(2)}" step="0.0001">
+            <input class="form-input" type="number" id="f_pi_cambio" value="${p.pi_cambio||''}" placeholder="${placeholderCambio('USD', 4)}" step="0.0001">
           </div>
           <div class="form-group"><label class="form-label">Câmbio Fechado (R$)</label>
             <input class="form-input" type="number" id="f_pi_cambio_fechado" value="${p.pi_cambio_fechado||''}" placeholder="preenchido ao confirmar o câmbio" step="0.0001"
@@ -1098,8 +1098,11 @@ function renderCustosReaisTab(p){
   if(_crProcId !== p.id){ _crExtras = new Set(); _crProcId = p.id; }
   _crConf = (reais._conf && typeof reais._conf === 'object') ? JSON.parse(JSON.stringify(reais._conf)) : {};
   const cotado = (p.estimativa_json && p.estimativa_json.custos_cotados_json) || null;
-  const cambioDefault = p.real_cambio ?? (cotado && cotado.cambio) ?? p.pi_cambio ?? _cambio.USD;
-  const cambioEurDefault = (reais._cambio_eur != null && reais._cambio_eur !== '') ? reais._cambio_eur : _cambio.EUR;
+  // Revisão 17/10/2026: sem câmbio no processo, o padrão é a cotação do dia
+  // SÓ se ela carregou — antes vinha 1 (valor inicial) e o save gravava
+  // real_cambio = 1 (US$ 1.000 de custo viravam R$ 1.000).
+  const cambioDefault = p.real_cambio ?? (cotado && cotado.cambio) ?? p.pi_cambio ?? cambioDoDia('USD');
+  const cambioEurDefault = (reais._cambio_eur != null && reais._cambio_eur !== '') ? reais._cambio_eur : cambioDoDia('EUR');
   const containers = containersDoProcesso(p);
   const estado = custosReaisEstado(p, [..._crExtras]);
   const porId = {}; estado.itens.forEach(i => { porId[i.id] = i; });
@@ -1132,8 +1135,8 @@ function renderCustosReaisTab(p){
       <select class="form-input cr-add" onchange="crAdicionarItem(this)" title="Lança uma taxa que ainda não está na grade">
         <option value="">+ Adicionar taxa…</option>${ocultosOpts}
       </select>
-      <label class="cr-toolbar-campo">Câmbio USD <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="atualizarTotalCustosReais()" title="Usado pra converter valores lançados em US$ pra R$"></label>
-      <label class="cr-toolbar-campo">Câmbio EUR <input class="form-input" type="number" step="0.0001" id="f_cr_cambio_eur" value="${cambioEurDefault||''}" placeholder="${_cambio.EUR.toFixed(4)}" oninput="atualizarTotalCustosReais()"></label>
+      <label class="cr-toolbar-campo">Câmbio USD <input class="form-input" type="number" step="0.0001" id="f_cr_cambio" value="${cambioDefault||''}" placeholder="${placeholderCambio('USD', 4) || 'informe o câmbio'}" oninput="atualizarTotalCustosReais()" title="Usado pra converter valores lançados em US$ pra R$"></label>
+      <label class="cr-toolbar-campo">Câmbio EUR <input class="form-input" type="number" step="0.0001" id="f_cr_cambio_eur" value="${cambioEurDefault||''}" placeholder="${placeholderCambio('EUR', 4) || 'informe o câmbio'}" oninput="atualizarTotalCustosReais()"></label>
       <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:12px;" onclick="crGerarFaturas()" title="Agrupa as taxas por empresa + documento e cria as contas a pagar / a receber">🧾 Gerar faturas</button>
       <span class="cr-muted cr-toolbar-legenda"><span class="cr-dot ok"></span> conferido · <span class="cr-dot cotado"></span> só o cotado · <span class="cr-dot"></span> sem valor${containers.length > 1 ? ` · ${containers.length} containers` : ''}</span>
     </div>
@@ -2308,9 +2311,9 @@ function renderPagamentoCampos(){
       <div class="form-group"><label class="form-label">Data Saldo</label>
       <input class="form-input" type="date" onpaste="colarData(event,this)" id="f_pi_data_saldo" value="${esc(p.pi_data_saldo)}"></div>
       <div class="form-group"><label class="form-label">Câmbio Entrada (R$)</label>
-      <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_entrada" value="${p.pi_cambio_entrada||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>
+      <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_entrada" value="${p.pi_cambio_entrada||''}" placeholder="${placeholderCambio('USD', 4)}" oninput="renderPagamentoInfoLive()"></div>
       <div class="form-group"><label class="form-label">Câmbio Saldo (R$)</label>
-      <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_saldo" value="${p.pi_cambio_saldo||''}" placeholder="${_cambio.USD.toFixed(4)}" oninput="renderPagamentoInfoLive()"></div>`;
+      <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_saldo" value="${p.pi_cambio_saldo||''}" placeholder="${placeholderCambio('USD', 4)}" oninput="renderPagamentoInfoLive()"></div>`;
   } else if(tipo==='PARCELADO'){
     // Recarrega _parcelas a partir do processo sempre que o form entra em
     // modo Parcelado (troca de tipo de pagamento ou abertura do modal) ÃÂ¢ÃÂÃÂ
@@ -2470,18 +2473,18 @@ function renderPagamentoInfoLive(){
 function renderPagamentoInfo(p){
   if(!p.pi_pagamento||!p.pi_valor_usd) return '';
   const val = parseFloat(p.pi_valor_usd)||0;
-  const brl = val * _cambio.USD;
+  const brl = val * cambioEstimado('USD'); // estimativa — com aviso quando a cotação do dia não carregou
   let rows = '';
   if(p.pi_pagamento==='VISTA'){
     rows=`<div class="pagamento-row"><span>Pagamento à vista</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
-    <div class="pagamento-row"><span>Estimativa BRL</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
+    <div class="pagamento-row"><span>Estimativa BRL${cambioEstimadoAviso()}</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PRAZO'){
     rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='ENTRADA_SALDO'){
     const pct = parseFloat(p.pi_entrada_pct||30)/100;
     const ent = val*pct; const sld = val*(1-pct);
-    const cambioEnt = parseFloat(p.pi_cambio_entrada) || _cambio.USD;
-    const cambioSld = parseFloat(p.pi_cambio_saldo)   || _cambio.USD;
+    const cambioEnt = parseFloat(p.pi_cambio_entrada) || cambioEstimado('USD');
+    const cambioSld = parseFloat(p.pi_cambio_saldo)   || cambioEstimado('USD');
     const entBRL = ent*cambioEnt; const sldBRL = sld*cambioSld;
     rows=`<div class="pagamento-row"><span>Entrada (${p.pi_entrada_pct||30}%) · câmbio ${cambioEnt.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${ent.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${entBRL.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
     <div class="pagamento-row"><span>Saldo (${100-(p.pi_entrada_pct||30)}%) · câmbio ${cambioSld.toLocaleString('pt-BR',{minimumFractionDigits:4})}</span><span>USD ${sld.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${sldBRL.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
@@ -2492,7 +2495,7 @@ function renderPagamentoInfo(p){
     let totalUsd = 0, totalBrl = 0;
     parcelas.forEach((pc,i)=>{
       const v = parseFloat(pc.valor_usd)||0;
-      const c = parseFloat(pc.cambio_fechado) || _cambio.USD;
+      const c = parseFloat(pc.cambio_fechado) || cambioEstimado('USD');
       const brlPc = v*c;
       totalUsd += v; totalBrl += brlPc;
       const venc = pc.data_vencimento ? ' · ' + parseDataLocal(pc.data_vencimento).toLocaleDateString('pt-BR') : '';

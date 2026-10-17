@@ -2169,6 +2169,13 @@ app.post('/api/fin/transferencias', auth('financeiro'), async (req, res) => {
     const v = FinCore.validarTransferencia(req.body || {});
     if (!v.ok) return res.status(400).json(v);
     const vd = FinCore.numBR((req.body || {}).valor_destino);
+    // Contas de moedas diferentes (R$ → US$): sem o valor creditado na moeda
+    // do destino, o saldo da conta em US$ receberia o valor em R$.
+    const { data: contasTr } = await sb().from('fin_bancos').select('id, nome, moeda').in('id', [v.transf.de_banco_id, v.transf.para_banco_id]);
+    const cDe = (contasTr || []).find(c => c.id === v.transf.de_banco_id), cPara = (contasTr || []).find(c => c.id === v.transf.para_banco_id);
+    if (cDe && cPara && (cDe.moeda || 'BRL') !== (cPara.moeda || 'BRL') && !(vd > 0)) {
+      return res.status(400).json({ ok: false, erro: `As contas são de moedas diferentes (${cDe.moeda || 'BRL'} → ${cPara.moeda || 'BRL'}). Informe o "Valor creditado" em ${cPara.moeda || 'BRL'} — nada foi registrado.` });
+    }
     if (!(req.body || {}).confirmar_repetido) {
       const desde = new Date(Date.now() - 3 * 60 * 1000).toISOString();
       const { data: iguais } = await sb().from('fin_transferencias').select('id, created_at, estornado')
