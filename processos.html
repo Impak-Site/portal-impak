@@ -2243,7 +2243,7 @@ function atualizarGestaoManual(){
   if(btn){ btn.textContent = '↻ Buscando...'; btn.disabled = true; }
   dbGetAllProcesses(function(fresh){
     _gestaoAll = fresh;
-    renderGestao();
+    _doRenderGestao();
     var ts = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
     var el = document.getElementById('gestaoSyncStatus');
     if(el) el.textContent = 'Atualizado às ' + ts + ' · ' + fresh.length + ' processo(s)';
@@ -2252,7 +2252,7 @@ function atualizarGestaoManual(){
   });
 }
 
-function _renderGestaoWithData(all){ _gestaoAll=all; renderGestao(); }
+function _renderGestaoWithData(all){ _gestaoAll=all; _doRenderGestao(); }
 var _gestaoAll=null;
 function renderGestao(){
   // Auto-sync a cada 30 segundos
@@ -2368,9 +2368,9 @@ function _renderGestaoModal(p, username){
   body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">Aprovação Gerencial</div>';
   if(p._approved){
     body += '<div style="color:var(--ok);font-size:13px;font-weight:600;margin-bottom:8px;">✓ Aprovado por '+escHtml(p._approvedBy)+' em '+escHtml(p._approvedAt)+'</div>';
-    body += '<button data-action="revoke" data-id="'+escHtml(p.id)+'" data-user="'+escHtml(username)+'" style="font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
+    body += '<button data-action="revoke" data-id="'+escHtml(id)+'" data-user="'+escHtml(username)+'" style="font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
   } else {
-    body += '<button data-action="approve" data-id="'+escHtml(p.id)+'" data-user="'+escHtml(username)+'" style="font-size:13px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 20px;cursor:pointer;">✓ Aprovar processo</button>';
+    body += '<button data-action="approve" data-id="'+escHtml(id)+'" data-user="'+escHtml(username)+'" style="font-size:13px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 20px;cursor:pointer;">✓ Aprovar processo</button>';
   }
   body += '</div>';
 
@@ -2381,7 +2381,7 @@ function _renderGestaoModal(p, username){
   if(p._managerCommentBy){
     body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Último comentário por '+escHtml(p._managerCommentBy)+' em '+escHtml(p._managerCommentAt)+'</div>';
   }
-  body += '<button data-action="savecomment" data-id="'+escHtml(p.id)+'" data-user="'+escHtml(username)+'" style="margin-top:8px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;">Salvar comentário</button>';
+  body += '<button data-action="savecomment" data-id="'+escHtml(id)+'" data-user="'+escHtml(username)+'" style="margin-top:8px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;">Salvar comentário</button>';
   body += '</div>';
 
   // ── Analyses with full divergences ────────────────────────────────
