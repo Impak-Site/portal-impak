@@ -44,7 +44,12 @@ body{background:var(--bg);font-family:'Inter',sans-serif;color:var(--text);min-h
    o formulário. Nada na lógica de cálculo mudou — os campos das etapas
    escondidas continuam no DOM com seus valores, só com display:none. */
 .wizard-steps{display:flex;align-items:flex-start;gap:0;margin-bottom:22px;}
-.wizard-node{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
+/* Nó = [bolinha+rótulo] + [linha até o próximo], lado a lado. Antes era
+   coluna e o último nó tinha width:100% — ele ocupava a largura inteira do
+   painel, espremia os outros 4 (rótulos colados, sem as linhas) e no
+   celular empurrava a página 150px pro lado (achado pelo teste de tela,
+   17/10/2026). */
+.wizard-node{display:flex;flex-direction:row;align-items:flex-start;min-width:0;}
 .wizard-step-btn{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0;font-family:'Inter',sans-serif;}
 .wizard-step-btn:disabled{cursor:default;}
 .wizard-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--border);background:#fff;color:var(--muted);transition:all .15s;}
@@ -1135,7 +1140,7 @@ function renderWizardSteps(){
     const disabled = e.n===5 && !_estado.wizardResultadoPronto;
     const cls = ['wizard-step-btn', active?'active':'', done?'done':''].filter(Boolean).join(' ');
     const linha = i < WIZARD_ETAPAS.length-1 ? `<div class="wizard-line ${e.n < _estado.wizardStep ? 'done':''}"></div>` : '';
-    return `<div class="wizard-node" style="flex:${i===WIZARD_ETAPAS.length-1?'0 0 auto':'1'};display:flex;align-items:flex-start;width:100%;">`
+    return `<div class="wizard-node" style="flex:${i===WIZARD_ETAPAS.length-1?'0 0 auto':'1 1 0'};">`
       + `<button type="button" class="${cls}" ${disabled?'disabled':''} onclick="${e.n===5?'irParaResultado()':'irParaEtapa('+e.n+')'}">`
       + `<div class="wizard-dot">${done?'✓':e.n}</div><div class="wizard-label" title="${e.label}">${e.label}</div></button>${linha}`
       + `</div>`;
