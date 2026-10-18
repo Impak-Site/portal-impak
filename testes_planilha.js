@@ -116,6 +116,49 @@ teste('aba Fechamento fora do padrão (sem bloco de notas) avisa em vez de inven
   ok(r.avisos.some(a => /fora do padrao/i.test(a)));
 });
 
+// Datas automáticas do modelo (17/10/2026): DADOS!E4 "DATA D.I" = HOJE(),
+// H6 "DATA EMBARQUE" = E4, H4 "DATA DO PEDIDO" = H6; no Fechamento,
+// Embarque = DADOS!H6, Chegada Porto = DADOS!E4, Data Registro D.I = DADOS!E4.
+// Enquanto ninguém digita, as três mostram o dia em que a planilha foi salva
+// — e entravam no processo como embarque, chegada e registro da DI.
+console.log('\n── Fechamento: datas automáticas da planilha (=HOJE(), =E4) ──');
+function montarComDatas(dadosCel){
+  const UTC = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const wb = XLSX.read(montarFechamento([{ numero: '8531', valor: 240000, cliente: 'CLIENTE A' }]), { type: 'buffer', cellDates: true });
+  const dados = XLSX.utils.aoa_to_sheet([['', 'DADOS']]);
+  Object.entries(dadosCel).forEach(([addr, c]) => { dados[addr] = { t: 'd', v: UTC(c.v), f: c.f }; if (!c.f) delete dados[addr].f; });
+  dados['!ref'] = 'A1:J10';
+  XLSX.utils.book_append_sheet(wb, dados, 'DADOS');
+  // Fechamento passa a apontar pra aba DADOS, como no modelo de verdade
+  const fe = wb.Sheets['Fechamento'];
+  Object.keys(fe).filter(a => /^D\d+$/.test(a)).forEach(a => {
+    const rotulo = String(fe[a].v || '').trim().toUpperCase();
+    const ref = rotulo === 'EMBARQUE' ? 'H6' : /^CHEGADA/.test(rotulo) ? 'E4' : /^DATA DO PEDIDO/.test(rotulo) ? 'H4' : null;
+    if (ref) fe['F' + a.slice(1)] = { t: 'd', v: dados[ref].v, f: 'DADOS!' + ref };
+  });
+  fe['I4'] = { t: 'd', v: dados['E4'].v, f: "'DADOS'!$E$4" };
+  return pi.importarFechamentoBase(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true }));
+}
+teste('planilha com as datas ainda automáticas (=HOJE()): nenhuma data entra no processo, com aviso claro', () => {
+  const r = montarComDatas({ E4: { v: '2026-03-10', f: 'TODAY()' }, H6: { v: '2026-03-10', f: 'E4' }, H4: { v: '2026-03-10', f: 'H6' } });
+  iguais(r.datas, {});
+  const av = r.avisos.find(a => /Nao importei/.test(a)) || '';
+  ok(/Embarque \(DADOS!H6 =E4\)/.test(av) && /Chegada \(DADOS!E4 =HOJE\(\)\)/.test(av) && /Registro da D\.I\./.test(av) && /10\/03\/2026/.test(av), av);
+  ok(!r.avisos.some(a => /Data do Pedido/.test(a)), 'data do pedido automática não vira aviso de "confira"');
+});
+teste('Data da D.I. digitada mas embarque ainda copiando (=E4): importa só o registro da DI', () => {
+  const r = montarComDatas({ E4: { v: '2026-04-20' }, H6: { v: '2026-04-20', f: 'E4' }, H4: { v: '2026-04-20', f: 'H6' } });
+  iguais(r.datas, { data_registro_di: '2026-04-20' });
+  ok(r.avisos.some(a => /Nao importei Embarque \(DADOS!H6 =E4\)/.test(a)), r.avisos.join(' | '));
+});
+teste('datas digitadas na aba DADOS: importa embarque e registro da DI; "Chegada Porto" (= Data da D.I.) não vira chegada', () => {
+  const r = montarComDatas({ E4: { v: '2026-04-20' }, H6: { v: '2026-02-25' }, H4: { v: '2026-01-12' } });
+  iguais(r.datas, { data_embarque: '2026-02-25', data_registro_di: '2026-04-20' });
+  ok(!r.avisos.some(a => /Nao importei/.test(a)));
+  ok(r.avisos.some(a => /Chegada nao importada: .*Data da D\.I\. \(DADOS!E4\)/.test(a)), r.avisos.join(' | '));
+  ok(r.avisos.some(a => /Data do Pedido na planilha: 2026-01-12/.test(a)));
+});
+
 console.log('\n──────────────────────────────────────────────────');
 
 // ── Import do Calculador (DADOS/MODELO) — valores fictícios ──
