@@ -1186,6 +1186,36 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     delete extracted.di_tributos;
 
+    // ── Datas lidas com dia e mês trocados (18/10/2026) ──
+    // A IA às vezes lê a data brasileira como americana (RIC ou NF de 03/04
+    // lido como 04/03). Antes de preencher, as datas deste
+    // documento são conferidas com as do processo (validacao-datas.js): se a
+    // data lida é impossível e a versão com dia e mês trocados fecha, vale a
+    // trocada; se nenhuma fecha, a data não é preenchida. Tudo fica avisado
+    // na tela e anotado no Histórico desta leitura.
+    const avisosDatasLidas = [], notasDatasLidas = [];
+    const dataBR = s => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice(0,4) : String(s || '');
+    const rotuloDataLida = k => LABELS_CAMPOS_IA[k] || (typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.ROTULOS[k]) || k;
+    const conferirDatasDoDocumento = (lidas, estado) => {
+      if(typeof ValidacaoDatas === 'undefined' || !ValidacaoDatas.conferirDatasLidas || !Object.keys(lidas).length) return null;
+      try{
+        const r = ValidacaoDatas.conferirDatasLidas(lidas, estado);
+        r.trocadas.forEach(t => { avisosDatasLidas.push(t.aviso); notasDatasLidas.push(`${rotuloDataLida(t.campo)} lida ${dataBR(t.lida)} → usada ${dataBR(t.usada)} (dia e mês trocados)`); });
+        r.descartadas.forEach(d => { avisosDatasLidas.push(d.aviso); notasDatasLidas.push(`${rotuloDataLida(d.campo)} lida ${dataBR(d.lida)} não usada`); });
+        return r;
+      }catch(e){ console.warn('conferência das datas lidas:', e); return null; }
+    };
+    const tipoContainerTela = () => (typeof cargaEhLCLNaTela === 'function' && cargaEhLCLNaTela()) ? 'LCL' : (document.getElementById('f_tipo_container')?.value || '');
+    const estadoDatasTela = () => {
+      const e = {};
+      ['etd','eta','data_embarque','data_chegada','data_presenca','data_carregamento','data_devolucao_vazio',
+       'data_registro_di','data_liberacao','nf_entrada_data','nf_saida_data','ce_data_embarque','pi_data','ci_data']
+        .forEach(k => { const el = document.getElementById('f_'+k); if(el && el.value) e[k] = el.value; });
+      e.tipo_container = tipoContainerTela();
+      e.containers_json = JSON.stringify(Array.isArray(_containers) ? _containers : []);
+      return e;
+    };
+
     // ── Número de container normalizado (25/09/2026, RIC da UD26-047) ──
     // Alguns documentos escrevem o container com espaço/hífen antes do
     // dígito verificador ("PIDU 452832-3"); no processo ele está como
@@ -1218,15 +1248,23 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         showToast(`⚠️ RIC do container ${faltando.join(', ')} — esse container não está neste processo (${_containers.filter(c=>c.numero).map(c=>c.numero).join(', ')}). Nada foi alterado.`, 'warn');
       }
       if(_containers.length > 1){
+        // Data do RIC conferida com a chegada do processo (dia e mês
+        // trocados, ver acima). Por container não há data de carregamento.
+        let devolUsar = devolRic;
+        if(devolRic && achados.length){
+          const rDev = conferirDatasDoDocumento({ data_devolucao_vazio: devolRic },
+            { data_chegada: document.getElementById('f_data_chegada')?.value || '', tipo_container: tipoContainerTela() });
+          if(rDev) devolUsar = rDev.datas.data_devolucao_vazio || '';
+        }
         achados.forEach(i=>{
-          if(devolRic) _containers[i].devolucao = devolRic;
+          if(devolUsar) _containers[i].devolucao = devolUsar;
           if(statusRic && !_containers[i].ric_status) _containers[i].ric_status = statusRic;
           if(depotRic && !_containers[i].depot) _containers[i].depot = depotRic;
         });
         if(achados.length){
           if(typeof renderDemurrageContainers === 'function') renderDemurrageContainers();
           preenchidos += achados.length;
-          camposLidosNestaLeitura.push('data_devolucao_vazio');
+          if(devolUsar) camposLidosNestaLeitura.push('data_devolucao_vazio');
         }
         delete extracted.data_devolucao_vazio; delete extracted.depot;
       } else if(faltando.length && temContainerCadastrado){
@@ -1244,6 +1282,36 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       ['container','lacre','armador','transportadora','navio','cliente','referencia','consignatario','notify'].forEach(k=>delete extracted[k]);
     }
     delete extracted.eh_ric; delete extracted.ric_avaria;
+
+    // Datas deste documento conferidas juntas, antes de preencher (dia e mês
+    // trocados, ver acima). Fora da DI a chegada lida é só previsão e vai
+    // para o ETA (o loop abaixo fazia isso no próprio campo) — passa para o
+    // ETA já aqui, para ser conferida como ETA.
+    if(!ehDI && extracted.data_chegada){ extracted.eta = extracted.data_chegada; delete extracted.data_chegada; }
+    // DI/DUIMP registrada antes da atracação traz a chegada ainda no futuro:
+    // é a previsão — vai para o ETA (como quando alguém digita uma chegada
+    // futura, ver moverDataFuturaParaPrevisao) e não passa pela troca de dia
+    // e mês, porque nesse caso a data futura é legítima.
+    if(ehDI && extracted.data_chegada && typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.noFuturo && ValidacaoDatas.noFuturo(extracted.data_chegada)){
+      const cheg = String(extracted.data_chegada).slice(0, 10);
+      if(!extracted.eta) extracted.eta = cheg;
+      avisosDatasLidas.push(`Data de Chegada lida como ${dataBR(cheg)} ainda não aconteceu (DI/DUIMP registrada antes da atracação) — ${extracted.eta === cheg ? 'preenchi o ETA (previsão de chegada)' : 'não preenchi'}. Se a carga já chegou, confira a data no documento.`);
+      notasDatasLidas.push(`Data de Chegada lida ${dataBR(cheg)} (futura) ${extracted.eta === cheg ? 'foi para o ETA' : 'não usada'}`);
+      delete extracted.data_chegada;
+    }
+    {
+      const lidas = {};
+      Object.keys(extracted).forEach(k => {
+        const v = extracted[k];
+        if(v && typeof v === 'string' && typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.ehCampoData(k)) lidas[k] = v;
+      });
+      const rDatas = conferirDatasDoDocumento(lidas, estadoDatasTela());
+      if(rDatas){
+        // datas = as que podem ser usadas (já trocadas e só com a data, sem hora)
+        Object.keys(rDatas.datas).forEach(k => { extracted[k] = rDatas.datas[k]; });
+        rDatas.descartadas.forEach(d => { delete extracted[d.campo]; });
+      }
+    }
 
     // % de adiantamento dos termos de pagamento: não é um input direto do
     // formulário — aplicado nas parcelas depois de renderPagamentoCampos().
@@ -1466,13 +1534,22 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       : ehPI ? `✓ ${preenchidos} campos preenchidos (PI — data e valor USD atualizados)`
       : `✓ ${preenchidos} campos preenchidos`) + sufixoConflitos;
     const listaAlteracoes = alteracoesPeloDocumento.map(a => `${a.label}: ${a.antes} → ${a.depois}`);
-    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}` + (listaAlteracoes.length ? ` — alterado: ${listaAlteracoes.join('; ')}` : ''), (conflitos.length || listaAlteracoes.length) ? 'warn' : 'ok');
+    const sufixoDatas = avisosDatasLidas.length ? ` — ⚠ ${avisosDatasLidas.length} data(s) conferida(s), veja abaixo` : '';
+    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}${sufixoDatas}` + (listaAlteracoes.length ? ` — alterado: ${listaAlteracoes.join('; ')}` : ''), (conflitos.length || listaAlteracoes.length || avisosDatasLidas.length) ? 'warn' : 'ok');
     if(status && listaAlteracoes.length && !abriuModalCambio){
       const box = document.createElement('div');
       box.className = 'ia-alteracoes';
       box.style.cssText = 'margin-top:6px;padding:8px 10px;border:1px solid var(--warn,#d97706);border-radius:6px;background:rgba(217,119,6,.06);font-size:12px;line-height:1.5';
       box.innerHTML = '<strong>Alterado pelo documento</strong> (confira antes de salvar):<br>' +
         alteracoesPeloDocumento.map(a => `${esc(a.label)}: <s style="opacity:.7">${esc(a.antes)}</s> → <strong>${esc(a.depois)}</strong>`).join('<br>');
+      status.appendChild(box);
+    }
+    if(status && avisosDatasLidas.length && !abriuModalCambio){
+      const box = document.createElement('div');
+      box.className = 'ia-datas-conferidas';
+      box.setAttribute('role', 'alert');
+      box.style.cssText = 'margin-top:6px;padding:8px 10px;border:1px solid var(--warn,#d97706);border-radius:6px;background:rgba(217,119,6,.06);font-size:12px;line-height:1.5';
+      box.innerHTML = '<strong>Datas conferidas</strong> (a leitura pode ter trocado dia e mês):<br>' + avisosDatasLidas.map(a => esc(a)).join('<br>');
       status.appendChild(box);
     }
 
@@ -1553,14 +1630,18 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // auditoria de alterações normal (mesma tabela controle_log), só com um
     // "campo" especial que o carregarHistorico() sabe renderizar de forma
     // diferente (não é "alterou X: antes → depois", é "leu o documento").
-    if(_editando && camposLidosNestaLeitura.length){
+    if(_editando && (camposLidosNestaLeitura.length || notasDatasLidas.length)){
       const camposUnicos = [...new Set(camposLidosNestaLeitura)];
       const rotulo = campo => LABELS_CAMPOS_IA[campo] || campo;
+      // Datas trocadas/não usadas vão no fim, num item só (sem ", " dentro —
+      // origemDoValorAtual() separa os campos lidos por ", ").
+      const itensLog = camposUnicos.map(rotulo);
+      if(notasDatasLidas.length) itensLog.push('Datas conferidas: ' + notasDatasLidas.join('; ').replace(/, /g, ' '));
       _editando.log = _editando.log || [];
       _editando.log.push({
         campo: LOG_CAMPO_LEITURA_IA,
         valor_antes: file.name,
-        valor_depois: camposUnicos.map(rotulo).join(', '),
+        valor_depois: itensLog.join(', '),
         usuario: _user.usuario,
         created_at: new Date().toISOString(),
       });
