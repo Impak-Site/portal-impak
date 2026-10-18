@@ -31,6 +31,37 @@ const TELAS = {
 // Conferência antiga (processos.html) está travada para edição: só relatório.
 const SO_RELATORIO = { '/processos': 'processos.html' };
 
+// Situações além de "abrir a tela" (revisão 17/10/2026, item 7): o painel do
+// processo (onde a equipe passa o dia) e o modo escuro. `antes` roda antes
+// dos scripts da tela; `acao` depois de carregar; `conferir` devolve uma
+// lista de problemas (vazia = ok).
+const CENARIOS = [
+  {
+    nome: '/controle + painel do processo', rota: '/controle',
+    acao: async page => { await page.evaluate(() => abrirProcesso('teste-3')); await page.waitForTimeout(900); },
+    conferir: () => {
+      const bg = document.getElementById('modal-bg');
+      if (!bg || !bg.classList.contains('open')) return ['o painel do processo não abriu'];
+      const p = [];
+      if (!bg.querySelector('[role=dialog]')) p.push('painel aberto sem papel de janela (role=dialog): o leitor de tela não anuncia');
+      if (!bg.contains(document.activeElement)) p.push('o foco do teclado não foi pra janela que abriu');
+      return p;
+    },
+  },
+  {
+    nome: '/controle (modo escuro)', rota: '/controle', viewports: ['notebook'],
+    antes: () => { try { localStorage.setItem('impak_tema', 'escuro'); } catch (e) {} },
+    conferir: () => {
+      const p = [];
+      if (document.documentElement.getAttribute('data-tema') !== 'escuro') p.push('o modo escuro não ligou');
+      if (!document.getElementById('impak-tema-escuro-css')) p.push('o estilo do modo escuro não entrou na página');
+      const b = document.getElementById('nav-tema-btn');
+      if (!b || b.getAttribute('aria-pressed') !== 'true') p.push('o botão ☾/☀ da barra não mostra que o modo escuro está ligado');
+      return p;
+    },
+  },
+];
+
 const VIEWPORTS = [
   { nome: 'celular', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   { nome: 'notebook', viewport: { width: 1366, height: 768 } },
@@ -50,11 +81,14 @@ function servidorFalso() {
   return new Promise(ok => { const s = app.listen(0, '127.0.0.1', () => ok(s)); });
 }
 
-async function auditar(browser, base, rota, vp) {
+async function auditar(browser, base, rota, vp, cenario) {
   const ctx = await browser.newContext(Object.assign({ locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' }, vp));
   const page = await ctx.newPage();
   const erros = [];
   page.on('pageerror', e => erros.push('erro de JavaScript: ' + (e && e.message ? e.message : String(e)).split('\n')[0]));
+  // alert/confirm/prompt na abertura travaria a tela de quem usa — vira erro
+  page.on('dialog', d => { erros.push(`a tela abriu uma caixa de diálogo sozinha: "${d.message().slice(0, 80)}"`); d.dismiss().catch(() => {}); });
+  if (cenario && cenario.antes) await page.addInitScript(cenario.antes);
   // Nada sai pra internet: cotação fixa, o resto (fontes, CDNs) é cortado.
   await page.route('**/*', rt => {
     const u = rt.request().url();
@@ -67,8 +101,10 @@ async function auditar(browser, base, rota, vp) {
     await page.goto(base + rota, { waitUntil: 'load', timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1200);
+    if (cenario && cenario.acao) await cenario.acao(page);
     await page.addScriptTag({ path: AUDITORIA });
     resultado = await page.evaluate(l => window.auditarTela(l), LIMITES);
+    if (cenario && cenario.conferir) (await page.evaluate(cenario.conferir)).forEach(p => erros.push(p));
   } catch (e) {
     erros.push('a tela não abriu: ' + e.message.split('\n')[0]);
   }
@@ -82,18 +118,24 @@ async function rodar() {
   const base = 'http://127.0.0.1:' + servidor.address().port;
   const browser = await chromium.launch();
   const falhas = [], avisos = [];
-  const todas = Object.keys(TELAS).map(r => [r, true]).concat(Object.keys(SO_RELATORIO).map(r => [r, false]));
-  for (const [rota, bloqueia] of todas) {
+  const todas = Object.keys(TELAS).map(r => ({ rota: r, bloqueia: true, nome: r }))
+    .concat(Object.keys(SO_RELATORIO).map(r => ({ rota: r, bloqueia: false, nome: r })))
+    .concat(CENARIOS.map(c => ({ rota: c.rota, bloqueia: true, nome: c.nome, cenario: c })));
+  for (const item of todas) {
+    const { rota, bloqueia, cenario } = item;
     for (const vp of VIEWPORTS) {
-      const { erros, resultado: r } = await auditar(browser, base, rota, vp);
-      const nome = `${rota} (${vp.nome})`;
+      if (cenario && cenario.viewports && !cenario.viewports.includes(vp.nome)) continue;
+      const { erros, resultado: r } = await auditar(browser, base, rota, vp, cenario);
+      const nome = `${item.nome} (${vp.nome})`;
       const problemas = erros.slice();
       if (r) {
         if (vp.nome === 'celular' && r.rolagemLateral > 2) problemas.push(`rola ${r.rolagemLateral}px pro lado — passa da tela: ${r.culpadosRolagem.slice(0, 4).join(' · ') || '(sem culpado identificado)'}`);
         if (r.letraPequena.length) problemas.push(`${r.letraPequena.length} texto(s) com letra menor que ${LIMITES.minFonte}px: ${r.letraPequena.slice(0, 4).join(' · ')}`);
         if (r.baixoContraste.length) problemas.push(`${r.baixoContraste.length} texto(s) com contraste abaixo de ${LIMITES.minContraste}:1: ${r.baixoContraste.slice(0, 4).join(' · ')}`);
+        // Campo sem nome (nem rótulo, nem placeholder, nem id) depois do
+        // ajuste automático do chat.js: o leitor de tela não sabe o que é.
+        if (r.camposSemNome.length) problemas.push(`${r.camposSemNome.length} campo(s) sem nome pro leitor de tela: ${r.camposSemNome.slice(0, 4).join(' · ')}`);
         const info = [];
-        if (r.camposSemNome.length) info.push(`${r.camposSemNome.length} campo(s) sem rótulo (${r.camposSemNome.slice(0, 3).join(' · ')})`);
         if (r.abaixoAA) info.push(`${r.abaixoAA}/${r.textosMedidos} texto(s) abaixo do contraste AA (4,5:1)`);
         if (info.length) avisos.push(`${nome}: ${info.join('; ')}`);
       }

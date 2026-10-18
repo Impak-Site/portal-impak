@@ -169,5 +169,73 @@ teste('Contador: transferência US$ → R$ usa o valor creditado em R$', () => {
   ok(/\[valor em USD\]/.test(l2[0].historico), 'sem lado em R$, marca a moeda no histórico');
 });
 
-console.log(`\nTotal: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
-if (passaram !== total) process.exit(1);
+// ── Rede (chat.js): erro que não veio do sistema vira mensagem útil ──
+// Durante uma atualização o Railway responde 502 com uma página HTML; a tela
+// fazia r.json() e mostrava "Unexpected token '<'". Roda o trecho de rede do
+// chat.js de verdade, num sandbox, com um fetch falso por baixo.
+const fs = require('fs'), vm = require('vm'), path = require('path');
+async function testeAsync(nome, fn) {
+  total++;
+  try { await fn(); passaram++; console.log('  ✓ ' + nome); }
+  catch (e) { console.log('  ✗ ' + nome + '\n      ' + (e.message || e)); }
+}
+function redeDoChatJs(fetchFalso) {
+  const src = fs.readFileSync(path.join(__dirname, 'chat.js'), 'utf8');
+  const ini = src.indexOf('(function instalarRedeImpak(){');
+  const fim = src.indexOf('\n})();', ini);
+  if (ini < 0 || fim < 0) throw new Error('trecho instalarRedeImpak não encontrado no chat.js');
+  const janela = { fetch: fetchFalso };
+  const ctx = { window: janela, location: { pathname: '/controle', search: '' }, Response, Map, Date, Math, JSON, String, Error, setTimeout, encodeURIComponent,
+    document: { getElementById: () => null, body: null } };
+  vm.runInNewContext(src.slice(ini, fim + '\n})();'.length), ctx);
+  return janela.fetch;
+}
+const resposta = (status, corpo, tipo) => Promise.resolve(new Response(corpo, { status, headers: { 'Content-Type': tipo } }));
+
+(async () => {
+  console.log('\n── Rede: erro que não veio do sistema (chat.js) ──');
+  await testeAsync('502 com página HTML (atualização no ar) vira { ok:false, erro } que diz o que fazer', async () => {
+    const f = redeDoChatJs(() => resposta(502, '<html><body>Bad Gateway</body></html>', 'text/html'));
+    const r = await f('/api/controle/v2/processos', { method: 'POST', body: '{"a":1}' });
+    iguais(r.status, 502);
+    const d = await r.json();
+    iguais(d.ok, false); ok(/reiniciando/.test(d.erro) && /Nada foi salvo/.test(d.erro), d.erro);
+  });
+  await testeAsync('413 do proxy (sem JSON) explica o limite de tamanho', async () => {
+    const f = redeDoChatJs(() => resposta(413, 'Request Entity Too Large', 'text/plain'));
+    const d = await (await f('/api/controle/v2/arquivos', { method: 'POST', body: 'x' })).json();
+    ok(/15 MB/.test(d.erro), d.erro);
+  });
+  await testeAsync('erro JSON do próprio sistema passa intacto', async () => {
+    const f = redeDoChatJs(() => resposta(409, JSON.stringify({ ok: false, erro: 'Outra pessoa salvou antes.' }), 'application/json'));
+    const d = await (await f('/api/controle/v2/processos/1', { method: 'PUT', body: '{}' })).json();
+    iguais(d.erro, 'Outra pessoa salvou antes.');
+  });
+  await testeAsync('arquivo comum (fora de /api) não é mexido', async () => {
+    const f = redeDoChatJs(() => resposta(404, 'not found', 'text/plain'));
+    const r = await f('/assets/inexistente.png');
+    iguais(await r.text(), 'not found');
+  });
+  await testeAsync('sem internet: "Failed to fetch" vira mensagem que diz o que fazer', async () => {
+    const f = redeDoChatJs(() => Promise.reject(new TypeError('Failed to fetch')));
+    let msg = '';
+    try { await f('/api/fin/bancos'); } catch (e) { msg = e.message; }
+    ok(/Sem conexão com o servidor/.test(msg), msg);
+  });
+
+  console.log('\n── Mensagens de erro do servidor (lib/erros-amigaveis.js) ──');
+  const { traduzirErro } = require('./lib/erros-amigaveis');
+  teste('arquivo acima do limite do armazenamento → limite + o que fazer', () => {
+    ok(/15 MB/.test(traduzirErro('The object exceeded the maximum allowed size').msg));
+  });
+  teste('erro de programação (TypeError) não aparece em inglês pra pessoa', () => {
+    const t = traduzirErro("Cannot read properties of undefined (reading 'id')");
+    iguais(t.traduzido, true); ok(/avise o suporte/.test(t.msg), t.msg);
+  });
+  teste('mensagem em português do sistema continua igual', () => {
+    iguais(traduzirErro('"nota.pdf" tem 18,2 MB — o limite do GED é 15 MB por arquivo.').traduzido, false);
+  });
+
+  console.log(`\nTotal: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
+  if (passaram !== total) process.exit(1);
+})();

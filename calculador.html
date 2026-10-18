@@ -271,7 +271,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       <div class="form-group">
         <label>USD — Dólar (utilizável na simulação)</label>
         <div class="cambio-row">
-          <input type="number" id="cambio_usd" step="0.0001" placeholder="0,0000" value="">
+          <input type="number" id="cambio_usd" step="0.0001" placeholder="0,0000" value="" aria-label="Câmbio USD (R$ por dólar)">
           <button class="btn-refresh" onclick="buscarCambio()">↻ PTAX</button>
         </div>
         <div class="cambio-info" id="cambio-info">Clique em PTAX para buscar automaticamente</div>
@@ -4102,8 +4102,37 @@ const CAMPOS_COTACAO = [
 // cotacao no banco, entao nao duplicamos logica de campos.
 const AUTOSAVE_KEY = 'calculador_autosave_v1';
 let autosaveTimer = null;
+// Rascunho só depois que a PESSOA mexeu (digitou, escolheu, clicou no
+// formulário). A própria tela chama agendarAutosave() ao abrir (prazos,
+// câmbio do dia) e isso gravava os valores padrão como "simulação não
+// finalizada": toda vez que alguém abria o Calculador aparecia a pergunta
+// "Deseja continuar de onde parou?" sem ninguém ter preenchido nada — e
+// clicar Cancelar não resolvia, a tela gravava de novo (revisão 17/10/2026).
+let _autosaveUsuarioMexeu = false;
+['input', 'change', 'click'].forEach(tipo => document.addEventListener(tipo, e => {
+  if (e.isTrusted && e.target && e.target.closest && e.target.closest('.sidebar-calc, .content-calc')) _autosaveUsuarioMexeu = true;
+}, true));
 function salvarAutosave(){
-  try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ ...coletarEstadoFormulario(), savedAt: Date.now() })); } catch(e){}
+  if (!_autosaveUsuarioMexeu) return;
+  try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ ...coletarEstadoFormulario(), savedAt: Date.now(), usuario: true })); } catch(e){}
+}
+// O rascunho tem algo que a pessoa preencheu? Compara com o formulário como
+// ele abre (valores padrão). Câmbio do dia fica fora — muda sozinho todo dia.
+const CAMPOS_CAMBIO_DO_DIA = ['cambio_usd', 'cambio_chegada', 'cambio_medio_di'];
+function rascunhoTemAlgoDoUsuario(salvo){
+  const iguaisJSON = (a, b) => JSON.stringify(a == null ? null : a) === JSON.stringify(b == null ? null : b);
+  if (salvo.mix && !iguaisJSON(salvo.mix, _estado.mix)) return true;
+  if (Array.isArray(salvo.comissionados) && salvo.comissionados.length) return true;
+  if (Array.isArray(salvo.parcelas) && !iguaisJSON(salvo.parcelas, _estado.parcelas)) return true;
+  if (salvo.toggles && !iguaisJSON(salvo.toggles, _estado.toggles)) return true;
+  if (salvo.cenario != null && !iguaisJSON(salvo.cenario, _estado.cenario)) return true;
+  return Object.keys(salvo.campos || {}).some(id => {
+    if (CAMPOS_CAMBIO_DO_DIA.includes(id)) return false;
+    const v = salvo.campos[id] == null ? '' : String(salvo.campos[id]);
+    const el = document.getElementById(id);
+    if (!el) return v !== '';
+    return v !== String(el.value == null ? '' : el.value);
+  });
 }
 function agendarAutosave(){
   clearTimeout(autosaveTimer);
@@ -4120,7 +4149,7 @@ function restaurarAutosaveSeExistir(){
   try { salvo = JSON.parse(raw); } catch(e){ return; }
   if(!salvo || !salvo.campos) return;
   const temDados = Object.values(salvo.campos).some(v => v !== '' && v != null);
-  if(!temDados) { limparAutosave(); return; }
+  if(!temDados || !rascunhoTemAlgoDoUsuario(salvo)) { limparAutosave(); return; }
   if(confirm('Encontramos uma simulacao nao finalizada (nao salva) de antes de atualizar a pagina. Deseja continuar de onde parou?')){
     aplicarEstadoFormulario(salvo);
   } else {

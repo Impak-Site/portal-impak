@@ -63,7 +63,7 @@ function renderDashConferenciaFila(){
       ${aba('pendentes','⚠ Com pendência', comPendente)}
       ${aba('nunca','◻ Nunca conferidos', nuncaConferidos)}
       ${aba('todos','Todos já conferidos', todos.length - nuncaConferidos)}
-      <input type="text" id="conf-fila-busca" placeholder="🔍 Buscar por referência, fornecedor ou cliente..." value="${esc(_confFilaBusca)}" oninput="_confFilaMudarBusca(this.value)" style="margin-left:auto;min-width:260px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+      <input type="text" id="conf-fila-busca" aria-label="Buscar na fila de conferência (referência, fornecedor ou cliente)" placeholder="🔍 Buscar por referência, fornecedor ou cliente..." value="${esc(_confFilaBusca)}" oninput="_confFilaMudarBusca(this.value)" style="margin-left:auto;min-width:260px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
     </div>
     <div id="conf-fila-lista"></div>
   `;

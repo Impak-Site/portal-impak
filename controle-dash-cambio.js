@@ -1127,7 +1127,7 @@ function renderDashCambio(){
           <option value="FUTURO" ${_cambioFiltroTipo==='FUTURO'?'selected':''}>Câmbio futuro</option>
           <option value="NORMAL" ${_cambioFiltroTipo==='NORMAL'?'selected':''}>Câmbio normal (BACEN)</option>
         </select>
-        <input id="cambio-busca-processo" type="text" value="${esc(_cambioFiltroTexto)}" placeholder="Buscar processo ou cliente…"
+        <input id="cambio-busca-processo" type="text" aria-label="Buscar processo ou cliente" value="${esc(_cambioFiltroTexto)}" placeholder="Buscar processo ou cliente…"
           oninput="_cambioFiltroTexto=this.value;renderDashCambio();"
           style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;width:140px;">
         ${(_cambioFiltroCliente || _cambioFiltroTexto || _cambioFiltroPagador || _cambioFiltroTipo) ? `<a href="#" onclick="_cambioFiltroCliente='';_cambioFiltroTexto='';_cambioFiltroPagador='';_cambioFiltroTipo='';renderDashCambio();return false;" style="font-size:11px;color:var(--ac);">limpar</a>` : ''}

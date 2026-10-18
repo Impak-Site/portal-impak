@@ -525,11 +525,11 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 
 <!-- TOOLBAR -->
 <div class="toolbar">
-<input class="search-box" id="search" placeholder="🔍 Ref, fornecedor, container, HBL, DI, navio, armador..." oninput="render()" style="flex:2;min-width:260px;">
-<select id="filtro-cliente" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
+<input class="search-box" id="search" aria-label="Buscar processo (referência, fornecedor, container, HBL, DI, navio, armador)" placeholder="🔍 Ref, fornecedor, container, HBL, DI, navio, armador..." oninput="render()" style="flex:2;min-width:260px;">
+<select id="filtro-cliente" aria-label="Filtrar por cliente" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
 <option value="">👤 Todos os clientes</option>
 </select>
-<select id="filtro-finalidade" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
+<select id="filtro-finalidade" aria-label="Filtrar por finalidade" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);outline:none;min-width:160px;">
 <option value="">🏷 Todas as finalidades</option>
 <option value="IMPORTACAO_DIRETA">Importação Própria (Direto)</option>
 <option value="ENCOMENDA">Encomenda</option>
@@ -556,7 +556,7 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <!-- FILTRO POR DATA -->
 <div id="filtro-data-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
 <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;white-space:nowrap;">📅 Filtrar por data:</span>
-<select id="filtro-data-campo" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
+<select id="filtro-data-campo" aria-label="Qual data filtrar" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
 <option value="eta">ETA</option>
 <option value="data_chegada">Chegada</option>
 <option value="data_embarque">Embarque</option>
@@ -566,9 +566,9 @@ lê/escreve neles (ver INIT e ativarTelaFinanceiroExclusiva). -->
 <option value="data_presenca">Presença de Carga</option>
 <option value="data_carregamento">Data Carregamento</option>
 </select>
-<input type="date" onpaste="colarData(event,this)" id="filtro-data-de" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
+<input type="date" onpaste="colarData(event,this)" id="filtro-data-de" aria-label="Data inicial do filtro" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
 <span style="font-size:12px;color:var(--muted);flex-shrink:0;">até</span>
-<input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
+<input type="date" onpaste="colarData(event,this)" id="filtro-data-ate" aria-label="Data final do filtro" onchange="render(); if(document.getElementById('dash-carregamento')?.style.display==='block') renderDashCarregamento();" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);outline:none;flex-shrink:0;">
 <!-- Botões agrupados num bloco próprio que nunca quebra por dentro (pedido
 Ayslan 23/09/2026: eles apareciam empilhados um embaixo do outro em vez de
 ao lado das datas). -->

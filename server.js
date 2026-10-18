@@ -4563,13 +4563,13 @@ app.get('/api/controle/v2/arquivo/:id/conteudo', auth('controle'), async (req, r
 app.post('/api/controle/v2/arquivos', auth('controle','financeiro'), async (req, res) => {
   try {
     const { processo_id, nome, tipo, base64 } = req.body;
-    if (!processo_id || !nome || !base64) return res.status(400).json({ erro: 'Dados incompletos' });
+    if (!processo_id || !nome || !base64) return res.status(400).json({ erro: 'Faltou o processo ou o arquivo no envio — salve o processo, recarregue a tela e tente de novo.' });
 
     const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-    if (!tiposPermitidos.includes(tipo)) return res.status(400).json({ erro: 'Tipo de arquivo não permitido' });
+    if (!tiposPermitidos.includes(tipo)) return res.status(400).json({ erro: `"${String(nome).slice(0, 80)}" não foi enviado: o GED aceita só PDF, JPG ou PNG${tipo ? ' (este é ' + String(tipo).slice(0, 60) + ')' : ''}.` });
 
     const buffer = Buffer.from(base64, 'base64');
-    if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ erro: 'Arquivo maior que 15MB' });
+    if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ erro: `"${String(nome).slice(0, 80)}" tem ${(buffer.length / 1048576).toFixed(1).replace('.', ',')} MB — o limite do GED é 15 MB por arquivo. Comprima o PDF ou divida em partes e envie de novo.` });
 
     // Anti-duplicado (29/09/2026, HK60684 com CI/PL repetidos): o mesmo
     // arquivo (mesmo nome + mesmo tamanho) já anexado a este processo não é

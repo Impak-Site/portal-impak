@@ -248,7 +248,7 @@ async function _cadRenderEmpresas(){
       <div style="display:flex;gap:6px;flex-wrap:wrap;" id="contatos-tipo-filter">
         ${tipos.map(([v,l])=>`<button class="btn btn-sm ${v===_cadEmpresaTipoAtivo?'btn-primary':'btn-outline'}" data-tipo="${v}" onclick="_cadFiltrarEmpresaTipo('${v}')">${l}</button>`).join('')}
       </div>
-      <input class="search-box" id="contatos-search" placeholder="🔍 Buscar por razão social, nome fantasia, sinônimo, CNPJ/CPF..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
+      <input class="search-box" id="contatos-search" aria-label="Buscar empresa (razão social, fantasia, sinônimo, CNPJ/CPF)" placeholder="🔍 Buscar por razão social, nome fantasia, sinônimo, CNPJ/CPF..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
       ${(typeof _user !== 'undefined' && _user && _user.role === 'gerente') ? `<button class="btn btn-sm btn-outline" onclick="revincularProcessosCadastros()" title="Passa por todos os processos e grava o vínculo (id) com o cadastro de cliente, fornecedor, armador etc., padronizando o texto como o Salvar faz. Mostra o resumo antes de aplicar.">🔗 Revincular processos</button>` : ''}
       <button class="btn btn-primary" onclick="abrirNovoContato()">+ Nova Empresa</button>
     </div>
