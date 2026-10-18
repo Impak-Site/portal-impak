@@ -15,6 +15,11 @@
 // de cada container (aba Demurrage) e conferirDatasLidas(), que confere as
 // datas lidas pela IA — ela às vezes lê a data brasileira como americana
 // (RIC e NF com dia e mês trocados).
+// 18/10/2026 (2ª parte): avisos de data real longe da previsão, carregamento
+// antes da liberação, NF de entrada depois do carregamento, prontidão depois
+// do embarque e viagem longa demais; lerDataTexto() (a data como está impressa
+// no documento), separarDatasImpossiveis() (importações) e o modo de
+// auditoria (e-mail semanal).
 (function () {
   'use strict';
 
@@ -82,13 +87,23 @@
     { antes: 'data_chegada', depois: 'data_presenca', nivel: 'aviso' },
     { antes: 'data_registro_di', depois: 'data_liberacao', nivel: 'aviso', leitura: 'erro' },
     { antes: 'data_registro_di', depois: 'nf_entrada_data', nivel: 'aviso', leitura: 'erro' },
+    // A carga sai do porto depois do desembaraço, levando a NF de entrada; e
+    // fica pronta na fábrica antes de embarcar. Aviso: pode haver exceção.
+    { antes: 'data_liberacao', depois: 'data_carregamento', nivel: 'aviso' },
+    { antes: 'nf_entrada_data', depois: 'data_carregamento', nivel: 'aviso' },
+    { antes: 'data_prontidao', depois: 'data_embarque', nivel: 'aviso' },
   ];
   // Datas que registram algo que JÁ aconteceu.
   const REAIS = ['data_embarque', 'data_chegada', 'data_presenca', 'data_carregamento', 'data_devolucao_vazio'];
-  // ...e as que um documento traz como fato (nunca no futuro) — leitura por IA.
+  // ...e as que um documento traz como fato (nunca no futuro) — leitura por IA e auditoria.
   const EVENTOS_DOC = REAIS.concat(['data_registro_di', 'data_liberacao', 'nf_entrada_data', 'nf_saida_data', 'ce_data_embarque']);
   const TRANSITO_MINIMO_DIAS = 10; // Ásia → Brasil leva 25+ dias
-  const TRANSITO_MAXIMO_LEITURA_DIAS = 150; // só para decidir se a data trocada faz sentido
+  const TRANSITO_MAXIMO_DIAS = 90; // mais que isso é raro (só com baldeação muito atrasada)
+  // Data real mais longe que isso da previsão (ETD/ETA): costuma ser dia e mês
+  // trocados que ainda "cabem" na sequência.
+  const DISTANCIA_PREVISAO_DIAS = 30;
+  // Real x previsão: [previsão, real, nome curto da previsão]
+  const PREVISOES = [['etd', 'data_embarque', 'ETD'], ['eta', 'data_chegada', 'ETA']];
 
   function validar(p, opts) {
     p = p || {}; opts = opts || {};
@@ -125,10 +140,26 @@
       if (a && b && b >= a && dias(a, b) < TRANSITO_MINIMO_DIAS) {
         out.push({ nivel: 'aviso', tipo: 'transito', campos: ['data_embarque', 'data_chegada'],
           msg: `Só ${dias(a, b)} dia(s) entre o Embarque (${br(a)}) e a Chegada (${br(b)}) — confira se a Data de Embarque não ficou igual à de chegada.` });
+      } else if (a && b && dias(a, b) > TRANSITO_MAXIMO_DIAS) {
+        out.push({ nivel: 'aviso', tipo: 'transito', campos: ['data_embarque', 'data_chegada'],
+          msg: `${dias(a, b)} dias entre o Embarque (${br(a)}) e a Chegada (${br(b)}) — viagem longa demais, confira as duas datas.` });
       }
     }
 
-    REAIS.forEach(k => {
+    PREVISOES.forEach(([prev, real, nome]) => {
+      if (!toca(prev, real)) return;
+      const a = iso(p[prev]), b = iso(p[real]);
+      if (!a || !b) return;
+      const n = dias(a, b);
+      if (Math.abs(n) > DISTANCIA_PREVISAO_DIAS) {
+        out.push({ nivel: 'aviso', tipo: 'previsao', campos: [prev, real],
+          msg: `${rot(real)} (${br(b)}) está ${Math.abs(n)} dias ${n > 0 ? 'depois' : 'antes'} do ${nome} (${br(a)}) — confira se dia e mês não foram trocados.` });
+      }
+    });
+
+    // Auditoria (opts.eventosNoFuturo): também DI, liberação, NFs e embarque
+    // do CE Mercante — nenhuma delas pode estar no futuro.
+    (opts.eventosNoFuturo ? EVENTOS_DOC : REAIS).forEach(k => {
       if (!toca(k)) return;
       const v = iso(p[k]);
       if (v && dias(hoje, v) > 1) out.push({ nivel: 'aviso', tipo: 'futuro', campos: [k], msg: `${rot(k)} (${br(v)}) está no futuro — se ainda é previsão, use o campo de previsão.` });
@@ -172,6 +203,9 @@
   // envolvidas é usada.
   //   lidas     { campo: 'AAAA-MM-DD' } — as datas deste documento
   //   processo  valores atuais (as outras datas, tipo_container, containers_json)
+  //   opts      { hoje, semTroca: [campos] } — semTroca: datas confirmadas pelo
+  //             texto impresso no documento (lerDataTexto sem ambiguidade); essas
+  //             nunca são trocadas, só usadas ou não
   //   retorna   { datas: {campo: valor a usar}, trocadas: [{campo, lida, usada, motivo, aviso}],
   //               descartadas: [{campo, lida, motivo, tipo, aviso}], avisos: [texto] }
   //   tipo da descartada: 'futuro' | 'ordem' | 'ano' | 'inexistente' | 'ambigua'
@@ -183,15 +217,15 @@
         lista.push({ nivel: 'aviso', tipo: 'futuro', campos: [k], msg: `${rot(k)} (${br(v)}) está no futuro.` });
       }
     });
-    [['data_embarque', 'data_chegada'], ['etd', 'eta']].forEach(par => {
-      if (campos.indexOf(par[0]) < 0 && campos.indexOf(par[1]) < 0) return;
-      const a = iso(estado[par[0]]), b = iso(estado[par[1]]);
-      if (!a || !b || b < a) return;
-      const n = dias(a, b);
-      if (n > TRANSITO_MAXIMO_LEITURA_DIAS || (par[0] === 'etd' && n < TRANSITO_MINIMO_DIAS)) {
-        lista.push({ nivel: 'aviso', tipo: 'transito', campos: par.slice(), msg: `${n} dia(s) entre ${rot(par[0])} (${br(a)}) e ${rot(par[1])} (${br(b)}).` });
+    // Embarque x chegada já tem limite de viagem em validar(); na leitura vale
+    // o mesmo para a previsão (ETD x ETA).
+    if (campos.indexOf('etd') >= 0 || campos.indexOf('eta') >= 0) {
+      const a = iso(estado.etd), b = iso(estado.eta);
+      const n = a && b && b >= a ? dias(a, b) : null;
+      if (n != null && (n > TRANSITO_MAXIMO_DIAS || n < TRANSITO_MINIMO_DIAS)) {
+        lista.push({ nivel: 'aviso', tipo: 'transito', campos: ['etd', 'eta'], msg: `${n} dia(s) entre ${rot('etd')} (${br(a)}) e ${rot('eta')} (${br(b)}).` });
       }
-    });
+    }
     lista.forEach(x => { x.duro = x.nivel === 'erro' || x.leitura === 'erro' || x.tipo === 'futuro'; });
     return lista;
   }
@@ -203,6 +237,7 @@
     opts = opts || {};
     const hoje = iso(opts.hoje) || hojeISO();
     const base = Object.assign({}, processo || {});
+    const semTroca = new Set(Array.isArray(opts.semTroca) ? opts.semTroca : []);
     const res = { datas: {}, trocadas: [], descartadas: [], avisos: [] };
     const campos = [], lida = {}, opcoes = {};
     Object.keys(lidas || {}).forEach(k => {
@@ -210,7 +245,7 @@
       if (bruto == null || bruto === '') return;
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(bruto).trim());
       if (!m) { res.datas[k] = bruto; return; } // não é AAAA-MM-DD: segue como veio
-      const v = m[0], t = trocarDiaMes(v);
+      const v = m[0], t = semTroca.has(k) ? null : trocarDiaMes(v);
       lida[k] = v;
       opcoes[k] = [].concat(dataExiste(v) ? [{ valor: v, troca: false }] : [], t ? [{ valor: t, troca: true }] : [], [NAO_USAR]);
       campos.push(k);
@@ -298,7 +333,8 @@
       }
       const ambigua = ambiguas.indexOf(k) >= 0;
       const m = motivo(k, ambigua);
-      const t = m.tipo === 'ano' ? null : trocarDiaMes(v); // trocar dia e mês não conserta o ano
+      // trocar dia e mês não conserta o ano; data confirmada pelo texto não é trocada
+      const t = (m.tipo === 'ano' || semTroca.has(k)) ? null : trocarDiaMes(v);
       const aviso = `${rot(k)} lida como ${br(v)} não foi preenchida${m.msg ? ': ' + m.msg : '.'}` +
         (ambigua ? ' Não dá para saber qual das datas deste documento está errada.'
           : (t ? ` Com dia e mês trocados (${br(t)}) também não fecha.` : '')) +
@@ -314,7 +350,95 @@
   // Mais de 1 dia à frente de hoje (horário de Brasília) — mesma folga das regras acima.
   const noFuturo = (v, hoje) => { const d = iso(v); return !!d && dias(iso(hoje) || hojeISO(), d) > 1; };
 
-  const ValidacaoDatas = { validar, erros, avisos, ehCampoData, conferirDatasLidas, trocarDiaMes, dataExiste, noFuturo, ROTULOS, TRANSITO_MINIMO_DIAS };
+  // ── A data como está impressa no documento ──
+  // A IA copia o texto da data ("08/09/2026 10:54", "2026/05/30", "SEP. 05,
+  // 2026") e o sistema converte sozinho. Ano na frente e mês por extenso não
+  // têm ambiguidade; dia/mês numérico só tem quando os dois são até 12 — aí
+  // vale opts.diaPrimeiro (documento brasileiro = dia/mês/ano). Sem saber o
+  // padrão do documento, a data ambígua volta com data null.
+  //   retorna { data: 'AAAA-MM-DD' | null, ambigua: true|false } ou null (texto sem data)
+  const MESES = { jan: 1, fev: 2, feb: 2, mar: 3, abr: 4, apr: 4, mai: 5, may: 5, jun: 6, jul: 7,
+    ago: 8, aug: 8, set: 9, sep: 9, out: 10, oct: 10, nov: 11, dez: 12, dec: 12 };
+  function lerDataTexto(texto, opts) {
+    opts = opts || {};
+    const s = String(texto == null ? '' : texto).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    if (!s) return null;
+    const ano4 = a => (a.length === 2 ? 2000 + Number(a) : Number(a));
+    const montar = (a, m, d) => {
+      const t = String(a).padStart(4, '0') + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      return dataExiste(t) ? t : null;
+    };
+    const mes = nome => MESES[String(nome).slice(0, 3)] || null;
+    let m;
+    // ano na frente: 2026-05-30, 2026/05/30, 2026.5.30, 2026年5月30日
+    m = /(?:^|\D)(\d{4})[\-/.](\d{1,2})[\-/.](\d{1,2})(?!\d)/.exec(s) || /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/.exec(s);
+    if (m) return { data: montar(m[1], Number(m[2]), Number(m[3])), ambigua: false };
+    // numérico: 08/09/2026, 8.9.26, 08-09-2026 (antes do mês por extenso, para
+    // "gate out 28/05/2026" não virar outubro)
+    m = /(?:^|\D)(\d{1,2})[\-/.](\d{1,2})[\-/.](\d{4}|\d{2})(?!\d)/.exec(s);
+    if (m) {
+      const a = Number(m[1]), b = Number(m[2]), ano = ano4(m[3]);
+      if (a > 12 && b <= 12) return { data: montar(ano, b, a), ambigua: false }; // só pode ser dia/mês
+      if (b > 12 && a <= 12) return { data: montar(ano, a, b), ambigua: false }; // só pode ser mês/dia
+      if (a === b) return { data: montar(ano, a, b), ambigua: false };
+      if (opts.diaPrimeiro === true) return { data: montar(ano, b, a), ambigua: true };
+      if (opts.diaPrimeiro === false) return { data: montar(ano, a, b), ambigua: true };
+      return { data: null, ambigua: true };
+    }
+    // mês por extenso: "05 sep 2026", "05-SEP-26", "5 de setembro de 2026"
+    for (m of s.matchAll(/(\d{1,2})[\s.\-/]*(?:de\s+)?([a-z]{3,})\.?[\s.\-/,]*(?:de\s+)?(\d{4}|\d{2})(?!\d)/g)) {
+      if (mes(m[2])) return { data: montar(ano4(m[3]), mes(m[2]), Number(m[1])), ambigua: false };
+    }
+    // "sep 05, 2026", "SEP.05,2026", "September 5th 2026"
+    for (m of s.matchAll(/([a-z]{3,})\.?[\s.\-/]*(\d{1,2})(?:st|nd|rd|th)?[\s.,\-/]+(\d{4}|\d{2})(?!\d)/g)) {
+      if (mes(m[1])) return { data: montar(ano4(m[3]), mes(m[1]), Number(m[2])), ambigua: false };
+    }
+    return null;
+  }
+
+  // ── Datas que chegam por importação ──
+  // Planilha do despachante, planilha interna, criação em lote e o Conexos
+  // gravam direto no banco. A data impossível (as mesmas regras de 'erro' do
+  // save do painel) não é gravada: sai do patch e vai para o relatório da
+  // importação. Aviso não trava — só é devolvido para constar no relatório.
+  //   atual   processo como está no banco (datas, tipo_container, containers_json)
+  //   patch   { campo: valor } que a importação quer gravar
+  //   retorna { patch, recusadas: [{campo, valor, motivo}], avisos: [texto] }
+  function separarDatasImpossiveis(atual, patch, opts) {
+    opts = opts || {};
+    const p = Object.assign({}, patch || {});
+    const recusadas = [];
+    for (let volta = 0; volta < 10; volta++) {
+      const errs = erros(validar(Object.assign({}, atual || {}, p), { campos: Object.keys(p), hoje: opts.hoje }));
+      const culpados = [...new Set([].concat(...errs.map(e => e.campos)).filter(c => Object.prototype.hasOwnProperty.call(p, c)))];
+      if (!culpados.length) break;
+      culpados.forEach(c => {
+        recusadas.push({ campo: c, valor: p[c], motivo: errs.filter(e => e.campos.indexOf(c) >= 0).map(e => e.msg).join(' ') });
+        delete p[c];
+      });
+    }
+    const restantes = Object.keys(p);
+    const avs = restantes.length ? avisos(validar(Object.assign({}, atual || {}, p), { campos: restantes, hoje: opts.hoje })).map(a => a.msg) : [];
+    return { patch: p, recusadas, avisos: avs };
+  }
+
+  // ── Auditoria (e-mail semanal) ──
+  // Todas as regras em todas as datas do processo, inclusive DI, liberação e
+  // NFs no futuro. Devolve só os processos com algum problema.
+  //   retorna [{ processo, problemas: [{nivel, tipo, campos, msg}] }]
+  function auditarProcessos(lista, opts) {
+    opts = opts || {};
+    const out = [];
+    (lista || []).forEach(p => {
+      if (!p || p.cancelado) return;
+      const problemas = validar(p, { hoje: opts.hoje, eventosNoFuturo: true });
+      if (problemas.length) out.push({ processo: p, problemas });
+    });
+    return out;
+  }
+
+  const ValidacaoDatas = { validar, erros, avisos, ehCampoData, conferirDatasLidas, trocarDiaMes, dataExiste, noFuturo,
+    lerDataTexto, separarDatasImpossiveis, auditarProcessos, ROTULOS, TRANSITO_MINIMO_DIAS, TRANSITO_MAXIMO_DIAS, DISTANCIA_PREVISAO_DIAS };
   if (typeof module !== 'undefined' && module.exports) module.exports = ValidacaoDatas;
   if (typeof window !== 'undefined') window.ValidacaoDatas = ValidacaoDatas;
 })();

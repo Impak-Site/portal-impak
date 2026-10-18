@@ -213,17 +213,41 @@ async function parseNFeXml(file){
 // nenhuma fecha, não preenche a data. Devolve o aviso para a tela ('' se a
 // data estava certa). Só para PDF/imagem — o XML traz a data exata.
 function conferirDataNFLida(dados, campo){
-  if(!dados || !dados.nf_data || typeof ValidacaoDatas === 'undefined' || !ValidacaoDatas.conferirDatasLidas) return '';
+  // Aviso de quando o texto impresso corrigiu a data (ver dataNFPeloTexto).
+  const avisoTexto = (dados && dados.aviso_data_texto) || '';
+  const juntar = a => [avisoTexto, a].filter(Boolean).join(' ');
+  if(!dados || !dados.nf_data || typeof ValidacaoDatas === 'undefined' || !ValidacaoDatas.conferirDatasLidas) return avisoTexto;
   try{
     const estado = {};
     ['data_registro_di','data_liberacao','data_chegada','data_carregamento','nf_entrada_data','nf_saida_data'].forEach(k => {
       const el = document.getElementById('f_'+k); if(el && el.value) estado[k] = el.value;
     });
-    const r = ValidacaoDatas.conferirDatasLidas({ [campo]: dados.nf_data }, estado);
-    if(r.trocadas.length){ dados.nf_data = r.trocadas[0].usada; return r.trocadas[0].aviso; }
-    if(r.descartadas.length){ dados.nf_data = ''; return r.descartadas[0].aviso; }
+    const r = ValidacaoDatas.conferirDatasLidas({ [campo]: dados.nf_data }, estado, { semTroca: dados.nf_data_confirmada ? [campo] : [] });
+    if(r.trocadas.length){ dados.nf_data = r.trocadas[0].usada; return juntar(r.trocadas[0].aviso); }
+    if(r.descartadas.length){ dados.nf_data = ''; return juntar(r.descartadas[0].aviso); }
   }catch(e){ console.warn('conferência da data da NF:', e); }
-  return '';
+  return avisoTexto;
+}
+
+// A data de emissão como está impressa no DANFE (dia/mês/ano) confere a
+// conversão feita pela IA: se ela inverteu dia e mês, vale a do texto.
+// confirmada = o texto não deixa dúvida (dia acima de 12) — a conferência
+// acima não troca mais essa data.
+function dataNFPeloTexto(lida, texto){
+  const out = { data: lida || '', confirmada: false, aviso: '' };
+  if(typeof ValidacaoDatas === 'undefined' || !ValidacaoDatas.lerDataTexto || typeof texto !== 'string') return out;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(lida || '').trim());
+  if(!m) return out;
+  const impresso = texto.trim().slice(0, 40);
+  const t = ValidacaoDatas.lerDataTexto(impresso, { diaPrimeiro: true });
+  if(!t || !t.data) return out;
+  const br = s => s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice(0,4);
+  if(t.data === m[0]){ out.data = m[0]; out.confirmada = !t.ambigua; return out; }
+  if(t.data === ValidacaoDatas.trocarDiaMes(m[0])){
+    out.data = t.data; out.confirmada = !t.ambigua;
+    out.aviso = `Data da NF: a nota traz "${impresso}" — usei ${br(t.data)}, não ${br(m[0])}. Confira.`;
+  }
+  return out;
 }
 
 // ── PDF/imagem (DANFE) via IA — reaproveita /api/analisar ───────────────
@@ -242,6 +266,7 @@ async function extrairNFComIA(file){
   "cliente": "",       // razão social do DESTINATÁRIO da nota (quem comprou) — so preencher se tipo=SAIDA
   "nf_numero": "",      // número da nota fiscal
   "nf_data": "YYYY-MM-DD", // data de emissão
+  "nf_data_texto": "",  // a mesma data de emissão copiada EXATAMENTE como está impressa na nota (ex.: "05/10/2026"), sem converter
   "nf_valor": 0,        // valor total da nota em R$
   "cfop": "",            // codigo CFOP (ex: 5405, 5117, 5905, 1101, 3101) do item principal da nota
   "itens": [{"descricao":"", "quantidade":0, "valor_total":0}]  // um item por linha de produto da nota; "descricao" = descrição COMPLETA do item, copiada inteira (inclusive a referência do processo no fim, ex.: "... UF195 UD26-124"); valor_total = V. TOTAL do item + V. IPI do item (em R$)
@@ -276,11 +301,14 @@ Todo valor está em reais (R$), nunca em USD. Retorne apenas JSON válido, sem t
       }catch(e){
         throw new Error('A IA não retornou um JSON válido pra esse documento (resposta: "'+raw.slice(0,120)+'..."). Tente novamente.');
       }
+      const dataTexto = dataNFPeloTexto(extracted.nf_data, extracted.nf_data_texto);
       return {
         tipo: (extracted.tipo||'').toUpperCase().includes('ENTRADA') ? 'ENTRADA' : 'SAIDA',
         cliente: extracted.cliente||'',
         nf_numero: extracted.nf_numero||'',
-        nf_data: extracted.nf_data||'',
+        nf_data: dataTexto.data,
+        nf_data_confirmada: dataTexto.confirmada,
+        aviso_data_texto: dataTexto.aviso,
         nf_valor: parseFloat(extracted.nf_valor)||0,
         cfop: extracted.cfop||'',
         itens: Array.isArray(extracted.itens) ? extracted.itens.filter(it=>it&&(it.descricao||it.quantidade)).map(it=>{
