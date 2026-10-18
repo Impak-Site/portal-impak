@@ -2077,11 +2077,11 @@ async function uploadArquivosGed(files){
   for(const file of files){
     const tiposPermitidos = ['application/pdf','image/jpeg','image/jpg','image/png'];
     if(!tiposPermitidos.includes(file.type)){
-      showToast(`Tipo não permitido: ${file.name}`,'err');
+      showToast(`"${file.name}" não foi enviado: o GED aceita só PDF, JPG ou PNG.`,'err');
       continue;
     }
     if(file.size > 15*1024*1024){
-      showToast(`Arquivo muito grande (máx 15MB): ${file.name}`,'err');
+      showToast(`"${file.name}" tem ${(file.size/1048576).toFixed(1).replace('.',',')} MB — o limite é 15 MB por arquivo. Comprima o PDF ou divida em partes e envie de novo.`,'err');
       continue;
     }
     try{
@@ -2102,11 +2102,11 @@ async function uploadArquivosGed(files){
           base64,
         })
       });
-      const d = await r.json();
-      if(!d.ok) showToast('Erro ao enviar '+file.name+': '+(d.erro||''),'err');
+      const d = await r.json().catch(()=>({}));
+      if(!d.ok) showToast('Não foi possível enviar "'+file.name+'": '+(d.erro||('o servidor respondeu com erro (HTTP '+r.status+'). Tente de novo.')),'err');
       else if(d.duplicado) showToast(file.name+' já estava anexado — não duplicado','info');
     }catch(e){
-      showToast('Erro ao enviar '+file.name,'err');
+      showToast('Não foi possível enviar "'+file.name+'": '+((e && e.message) || 'erro desconhecido'),'err');
     }
   }
   carregarArquivosGed(p.id);

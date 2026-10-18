@@ -81,6 +81,24 @@ window.addEventListener('resize', aplicarZoomImpak);
     div.querySelector('button').onclick = () => div.remove();
     document.body.appendChild(div);
   }
+  // 4) Erro que NÃO veio do sistema (página HTML do Railway durante uma
+  //    atualização — 502/503 —, do proxy etc.): a tela fazia r.json() e
+  //    mostrava "Unexpected token '<'...". Vira um JSON { ok:false, erro }
+  //    com o que aconteceu e o que fazer, e cada tela mostra isso no aviso
+  //    de erro que já tem (revisão 17/10/2026, item 5).
+  function erroDeRede(status){
+    if (status === 502 || status === 503 || status === 504) return 'O sistema está reiniciando (atualização em andamento) ou ficou fora do ar por um instante. Nada foi salvo — espere 1 minuto e tente de novo.';
+    if (status === 413) return 'Os dados enviados passam do limite (arquivo grande demais). Envie um arquivo menor — PDF até 15 MB — ou um de cada vez.';
+    if (status === 429) return 'Muitas tentativas seguidas. Espere um minuto e tente de novo.';
+    if (status === 404) return 'O servidor não encontrou este recurso (a tela pode estar desatualizada). Recarregue a página (F5) e tente de novo.';
+    return 'O servidor respondeu com erro (código ' + status + '). Tente de novo em instantes; se repetir, avise o suporte com o horário.';
+  }
+  function comoJsonDeErro(res){
+    try {
+      const corpo = JSON.stringify({ ok: false, erro: erroDeRede(res.status), status: res.status });
+      return new Response(corpo, { status: res.status, statusText: res.statusText, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+    } catch (e) { return res; }
+  }
   window.fetch = function(input, init){
     const url = typeof input === 'string' ? input : (input && input.url) || '';
     const chave = chaveEnvio(url, init);
@@ -90,6 +108,7 @@ window.addEventListener('resize', aplicarZoomImpak);
     }
     const p = fetchAnterior(input, init).then(res => {
       if (res.status === 401 && /\/api\//.test(url)) avisoSessaoExpirada();
+      if (res.status >= 400 && /\/api\//.test(url) && !/json/i.test(res.headers.get('content-type') || '')) return comoJsonDeErro(res);
       return res;
     }, err => {
       const msg = String((err && err.message) || '');
@@ -520,6 +539,7 @@ navEl.innerHTML = `
 <div class="nav-right">
 <button type="button" class="nav-menu-btn" id="nav-menu-btn" aria-label="Menu" title="Menu">☰</button>
 <button type="button" class="nav-zoom" id="nav-zoom-btn" onclick="trocarZoomImpak()" title="Tamanho da tela: clique para trocar (Automático → 100% → 110% → 125% → 140% → 150%). Fica salvo neste computador.">Aa</button>
+<button type="button" class="nav-zoom nav-tema" id="nav-tema-btn" onclick="trocarTemaImpak()" title="Modo escuro: liga/desliga (fica salvo neste navegador)" aria-label="Modo escuro" aria-pressed="false">☾</button>
 <span class="nav-user" id="nav-user-label">—</span>
 <a class="nav-sair" href="/logout">Sair</a>
 </div>
@@ -686,7 +706,7 @@ if(soltos.length){
   soltos.forEach(([href, ic, label, ativo]) => { htmlDrawer += '<a href="' + href + '" class="' + (ativo ? 'active' : '') + '">' + (ICONES_NAV[ic] || '') + label + '</a>'; });
 }
 const nomeUsuario = String(d.displayName || d.usuario || '').replace(/[<>&"]/g, '');
-htmlDrawer += '<div class="dr-rodape"><span>' + nomeUsuario + '</span><a href="/logout">Sair</a></div>';
+htmlDrawer += '<div class="dr-rodape"><span>' + nomeUsuario + '</span><button type="button" class="dr-tema" onclick="trocarTemaImpak()" aria-label="Modo escuro">☾ Modo escuro</button><a href="/logout">Sair</a></div>';
 drawer.innerHTML = htmlDrawer;
 
 document.addEventListener('click', fecharPaineis);
@@ -932,4 +952,248 @@ setTimeout(() => enviar(btn.textContent), 100);
       if (!a || a === document.body || !a.isConnected) focar();
     }, 30);
   }, true);
+})();
+
+// ── ACESSIBILIDADE E MODO ESCURO (revisão 17/10/2026, item 7) ─────────────
+// 1) Modo escuro opcional: botão ☾ na barra do topo (no celular, dentro do
+//    menu ☰). Fica salvo neste navegador; o padrão continua claro. Escurece
+//    a tela inteira de uma vez (detalhes no bloco "MODO ESCURO" abaixo), sem
+//    mexer em nenhuma tela; a exportação (Excel/PDF) e a impressão não mudam.
+// 2) Campo sem nome (só placeholder, ou rótulo solto ao lado) ganha
+//    aria-label com o texto do rótulo: leitor de tela e quem usa só o
+//    teclado passam a saber o que digitar em cada campo.
+// 3) Janelas (modais): ao abrir, o foco vai pra janela (sem abrir o teclado
+//    do celular); TAB circula só dentro dela; ao fechar, o foco volta pra
+//    onde estava. ESC já fecha cada janela (cada tela tem o seu).
+// 4) Item clicável que não é botão (linha da lista de processos, cartões
+//    de resumo…): entra na ordem do TAB e abre com Enter ou Espaço.
+// 5) Contorno bem visível em volta do que está com o foco do teclado.
+// Fora: /processos (arquivo travado) e /login. A TV não usa o modo escuro.
+(function(){
+  if (window.__impakA11yInstalado) return; window.__impakA11yInstalado = true;
+  var rota = location.pathname;
+  if (/^\/(processos|login)/.test(rota)) return;
+  var ehTV = /^\/tv/.test(rota);
+
+  // ---------- 1) MODO ESCURO ----------
+  // A página inteira passa por um filtro que troca claro por escuro e devolve
+  // o tom das cores (inverte + gira o matiz 180°): vale pra todas as telas,
+  // janelas e listas — inclusive cores que vêm escritas direto no código das
+  // telas —, sem mapear cor por cor. Fotos/vídeos, a barra do topo e o menu
+  // voltam ao original (filtro inverso). Gráficos ficam invertidos de
+  // propósito: o texto deles (cinza-escuro) vira claro e continua legível.
+  // Testado no Controle (lista + painel do processo), TyreDesk e Calculador.
+  var E = 'html[data-tema="escuro"]';
+  var VOLTA_AO_NORMAL = 'filter:hue-rotate(180deg) invert(1) contrast(1.19)'; // desfaz invert(.92)+hue-rotate
+  var CSS_ESCURO = [
+    E + '{filter:invert(.92) hue-rotate(180deg)}',
+    E + ' :is(img,video,picture,iframe,embed,object,#impak-nav,#impak-nav-drawer,.impak-nav-sector-panel):not(#impak-nav *):not(#impak-nav-drawer *):not(.impak-nav-sector-panel *){' + VOLTA_AO_NORMAL + '}',
+    // o véu escuro atrás das janelas é escrito claro aqui pra sair escuro depois do filtro
+    E + ' .modal-bg,' + E + ' .mbg,' + E + ' .ft-modal-bg,' + E + ' [style*="position:fixed"][style*="background:rgba("]{background:rgba(214,222,233,.62) !important}',
+    '@media print{' + E + '{filter:none}' + E + ' :is(img,video,picture,iframe,embed,object,#impak-nav,#impak-nav-drawer,.impak-nav-sector-panel){filter:none}}',
+  ].join('\n');
+
+  var CSS_A11Y = [
+    // contorno do foco do teclado (só aparece navegando pelo teclado)
+    ':where(a,button,summary,[tabindex]:not([tabindex="-1"]),[role=button],[role=tab],input[type=checkbox],input[type=radio]):focus-visible{outline:2px solid #2563eb !important;outline-offset:2px}',
+    '[data-clicavel]:focus-visible{outline-offset:-2px !important}',
+    '#impak-nav .nav-tema{margin-right:0;font-size:13px;line-height:1}',
+    '#impak-nav-drawer .dr-tema{background:none;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.88);border-radius:8px;padding:8px 12px;font:600 13px Inter,sans-serif;cursor:pointer}',
+  ].join('\n');
+
+  var estilo = document.createElement('style');
+  estilo.id = 'impak-a11y-css';
+  estilo.textContent = CSS_A11Y;
+  (document.head || document.documentElement).appendChild(estilo);
+  // As regras do modo escuro só entram na página quando ele está ligado —
+  // no modo claro (o padrão) a tela não paga nada por elas.
+  var estiloEscuro = null;
+
+  function temaSalvo(){ try { return localStorage.getItem('impak_tema') === 'escuro' ? 'escuro' : 'claro'; } catch (e) { return 'claro'; } }
+  function aplicarTema(){
+    var escuro = temaSalvo() === 'escuro' && !ehTV;
+    if (escuro && !estiloEscuro){
+      estiloEscuro = document.createElement('style');
+      estiloEscuro.id = 'impak-tema-escuro-css';
+      estiloEscuro.textContent = CSS_ESCURO;
+      (document.head || document.documentElement).appendChild(estiloEscuro);
+    } else if (!escuro && estiloEscuro){ estiloEscuro.remove(); estiloEscuro = null; }
+    if (escuro) document.documentElement.setAttribute('data-tema', 'escuro');
+    else document.documentElement.removeAttribute('data-tema');
+    var b = document.getElementById('nav-tema-btn');
+    if (b){
+      b.textContent = escuro ? '☀' : '☾';
+      b.setAttribute('aria-pressed', escuro ? 'true' : 'false');
+      b.title = escuro ? 'Voltar pro modo claro (fica salvo neste navegador)' : 'Modo escuro: liga/desliga (fica salvo neste navegador)';
+    }
+    document.querySelectorAll('#impak-nav-drawer .dr-tema').forEach(function(d){ d.textContent = escuro ? '☀ Modo claro' : '☾ Modo escuro'; });
+  }
+  window.trocarTemaImpak = function(){
+    try { localStorage.setItem('impak_tema', temaSalvo() === 'escuro' ? 'claro' : 'escuro'); } catch (e) {}
+    aplicarTema();
+  };
+  aplicarTema();
+  if (ehTV){ var bt = document.getElementById('nav-tema-btn'); if (bt) bt.style.display = 'none'; }
+
+  // ---------- 2) CAMPOS SEM NOME ----------
+  var CAMPOS = 'input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=reset]):not([type=image]),select,textarea';
+  function limparTxt(t){
+    return String(t || '').replace(/[←-⯿☀-➿️]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDC00-\uDFFF]/g, '')
+      .replace(/\s+/g, ' ').trim().replace(/\s*[:*]\s*$/, '');
+  }
+  function temNome(el){
+    if (el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title')) return true;
+    if (el.id){ try { if (document.querySelector('label[for="' + CSS.escape(el.id) + '"]')) return true; } catch (e) {} }
+    return !!el.closest('label');
+  }
+  // <label> solto logo antes (no mesmo bloco); se aparecer outro campo no
+  // meio, o rótulo é daquele campo, não deste.
+  function labelAnterior(no){
+    for (var s = no.previousElementSibling; s; s = s.previousElementSibling){
+      if (s.matches(CAMPOS) || s.querySelector(CAMPOS)) return '';
+      if (s.tagName === 'LABEL' && !s.htmlFor) return limparTxt(s.textContent);
+    }
+    return '';
+  }
+  function rotuloDoCampo(el){
+    var r = labelAnterior(el);
+    if (!r && el.parentElement && el.parentElement !== document.body) r = labelAnterior(el.parentElement);
+    if (r) return r;
+    var ant = el.previousElementSibling;
+    if (ant && /^(SPAN|B|STRONG|SMALL|DIV|P)$/.test(ant.tagName) && !ant.querySelector(CAMPOS + ',button')){
+      var t = limparTxt(ant.textContent); if (t && t.length <= 40) return t;
+    }
+    if (el.placeholder){ var p = limparTxt(el.placeholder); if (p) return p; }
+    if (el.tagName === 'SELECT' && el.options && el.options.length){
+      var o = limparTxt(el.options[0].textContent);
+      if (o) return /^(tod[oa]s?|selecione|escolha)\b/i.test(o) ? 'Filtro: ' + o : o;
+    }
+    return limparTxt(String(el.getAttribute('name') || el.id || '').replace(/[_-]+/g, ' '));
+  }
+  function rotularCampos(raiz){
+    if (!raiz || raiz.nodeType !== 1) return;
+    var lista = Array.prototype.slice.call(raiz.querySelectorAll(CAMPOS));
+    if (raiz.matches(CAMPOS)) lista.push(raiz);
+    lista.forEach(function(el){
+      if (el.__impakRotulo) return; el.__impakRotulo = true;
+      if (temNome(el)) return;
+      var r = rotuloDoCampo(el);
+      if (r) el.setAttribute('aria-label', r.slice(0, 80));
+    });
+  }
+
+  // ---------- 4) CLICÁVEL QUE NÃO É BOTÃO ----------
+  var NATIVOS = /^(A|BUTTON|INPUT|SELECT|TEXTAREA|LABEL|SUMMARY|OPTION|DETAILS|IFRAME|VIDEO|AUDIO|HTML|BODY)$/;
+  function prepararClicaveis(raiz){
+    if (!raiz || raiz.nodeType !== 1) return;
+    var lista = Array.prototype.slice.call(raiz.querySelectorAll('[onclick]'));
+    if (raiz.hasAttribute('onclick')) lista.push(raiz);
+    lista.forEach(function(el){
+      if (el.hasAttribute('tabindex') || NATIVOS.test(el.tagName) || el.isContentEditable) return;
+      var oc = el.getAttribute('onclick') || '';
+      // "não deixa o clique vazar" e "clicou no fundo escuro = fecha" não são ações
+      if (/^\s*(event\.)?stopPropagation\(\)\s*;?\s*$/.test(oc) || /event\.target\s*={2,3}\s*this/.test(oc)) return;
+      el.setAttribute('tabindex', '0');
+      el.setAttribute('data-clicavel', '');
+      if (!el.getAttribute('role') && !/^(TR|TD|TH|LI|IMG)$/.test(el.tagName)) el.setAttribute('role', 'button');
+    });
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.defaultPrevented || (e.key !== 'Enter' && e.key !== ' ') || e.ctrlKey || e.altKey || e.metaKey) return;
+    var el = e.target;
+    if (!el || el !== document.activeElement || !el.hasAttribute || !el.hasAttribute('data-clicavel')) return;
+    e.preventDefault();
+    el.click();
+  });
+
+  // ---------- 3) JANELAS (MODAIS) ----------
+  var FOCAVEIS = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  var pilha = []; // [{ el, dialogo, voltar }]
+  function cobreTela(el){
+    if (!el || el.nodeType !== 1 || !el.isConnected || /^impak-/.test(el.id || '')) return false;
+    var cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') return false;
+    var r = el.getBoundingClientRect();
+    return r.width >= innerWidth * 0.6 && r.height >= innerHeight * 0.5;
+  }
+  function janelasAbertas(){
+    var cand = [];
+    Array.prototype.forEach.call(document.body.children, function(c){
+      cand.push(c);
+      if (!/^(SCRIPT|STYLE)$/.test(c.tagName) && c.children.length <= 3) Array.prototype.forEach.call(c.children, function(f){ cand.push(f); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.modal-bg,.mbg,.ft-modal-bg'), function(c){ cand.push(c); });
+    var vistas = [];
+    cand.forEach(function(c){ if (vistas.indexOf(c) < 0 && cobreTela(c) && c.querySelector(FOCAVEIS)) vistas.push(c); });
+    return vistas;
+  }
+  function focaveisDe(el){
+    return Array.prototype.filter.call(el.querySelectorAll(FOCAVEIS), function(f){ return f.getClientRects().length && getComputedStyle(f).visibility !== 'hidden'; });
+  }
+  function verificarJanelas(){
+    var abertas = janelasAbertas();
+    // fechou → devolve o foco pra quem abriu
+    for (var i = pilha.length - 1; i >= 0; i--){
+      if (abertas.indexOf(pilha[i].el) >= 0) continue;
+      var item = pilha.splice(i, 1)[0];
+      var ativo = document.activeElement;
+      var semFoco = !ativo || ativo === document.body || !ativo.isConnected || item.el.contains(ativo);
+      if (semFoco && item.voltar && item.voltar.isConnected && item.voltar.getClientRects().length){
+        try { item.voltar.focus({ preventScroll: true }); } catch (e) {}
+      }
+    }
+    // abriu → papel de diálogo + foco na janela (não no 1º campo: no
+    // celular isso abriria o teclado sem a pessoa pedir)
+    abertas.forEach(function(el){
+      if (pilha.some(function(p){ return p.el === el; })) return;
+      var dialogo = el.querySelector('.modal,.modal-cot,[class*="modal-box"],[class*="modal-card"]') || el.firstElementChild || el;
+      if (!dialogo.getAttribute('role')) dialogo.setAttribute('role', 'dialog');
+      dialogo.setAttribute('aria-modal', 'true');
+      if (!dialogo.getAttribute('aria-label') && !dialogo.getAttribute('aria-labelledby')){
+        var tit = dialogo.querySelector('h1,h2,h3,h4,.modal-title,[class*="titulo"]');
+        var txt = tit ? limparTxt(tit.textContent).slice(0, 80) : '';
+        if (txt) dialogo.setAttribute('aria-label', txt);
+      }
+      var voltar = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      pilha.push({ el: el, dialogo: dialogo, voltar: voltar });
+      if (!el.contains(document.activeElement)){
+        if (!dialogo.hasAttribute('tabindex')) dialogo.setAttribute('tabindex', '-1');
+        try { dialogo.focus({ preventScroll: true }); } catch (e) {}
+      }
+    });
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Tab' || e.defaultPrevented || !pilha.length) return;
+    var topo = pilha[pilha.length - 1];
+    if (!topo.el.isConnected) return;
+    var f = focaveisDe(topo.el);
+    var ativo = document.activeElement;
+    if (!f.length){ e.preventDefault(); try { topo.dialogo.focus({ preventScroll: true }); } catch (_) {} return; }
+    var primeiro = f[0], ultimo = f[f.length - 1];
+    if (!topo.el.contains(ativo) || ativo === topo.dialogo){ e.preventDefault(); (e.shiftKey ? ultimo : primeiro).focus(); return; }
+    if (!e.shiftKey && ativo === ultimo){ e.preventDefault(); primeiro.focus(); }
+    else if (e.shiftKey && ativo === primeiro){ e.preventDefault(); ultimo.focus(); }
+  });
+
+  // ---------- quando a tela muda (listas re-renderizadas, janelas abrindo) ----------
+  var novos = [], agendado = false;
+  function processar(){
+    agendado = false;
+    var nos = novos; novos = [];
+    if (nos.length > 300){ rotularCampos(document.body); prepararClicaveis(document.body); }
+    else nos.forEach(function(n){ if (n.nodeType === 1 && n.isConnected){ rotularCampos(n); prepararClicaveis(n); } });
+    verificarJanelas();
+  }
+  function agendar(){ if (!agendado){ agendado = true; setTimeout(processar, 60); } }
+  function iniciar(){
+    rotularCampos(document.body); prepararClicaveis(document.body); verificarJanelas();
+    new MutationObserver(function(muts){
+      for (var i = 0; i < muts.length; i++){
+        var m = muts[i];
+        if (m.type === 'childList') for (var j = 0; j < m.addedNodes.length; j++) novos.push(m.addedNodes[j]);
+      }
+      agendar();
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
 })();

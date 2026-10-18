@@ -661,6 +661,31 @@ teste('valor negativo (FOB) não calcula — avisa e mantém o resultado anterio
   verdadeiro(/negativo/.test(aviso), aviso);
 });
 
+// ── Rascunho automático (revisão 17/10/2026) ─────────────────────
+// Antes: só de ABRIR o Calculador a tela gravava os valores padrão como
+// "simulação não finalizada" e, na visita seguinte, perguntava "Deseja
+// continuar de onde parou?" — toda vez, sem ninguém ter preenchido nada.
+console.log('\n── Rascunho automático do Calculador ──');
+teste('abrir a tela sem mexer não grava rascunho; depois que a pessoa mexe, grava', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const gravados = [];
+  sb.localStorage.setItem = (k, v) => gravados.push(k);
+  sb.salvarAutosave();
+  verdadeiro(gravados.length === 0, 'gravou sem ninguém mexer');
+  vm.runInContext('_autosaveUsuarioMexeu = true;', sb);
+  sb.salvarAutosave();
+  verdadeiro(gravados.includes('calculador_autosave_v1'), 'não gravou depois de a pessoa mexer');
+});
+teste('rascunho igual ao formulário padrão (ou só com câmbio do dia diferente) não pergunta nada', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const estado = vm.runInContext('coletarEstadoFormulario()', sb);
+  verdadeiro(vm.runInContext(`rascunhoTemAlgoDoUsuario(${JSON.stringify(estado)})`, sb) === false, 'padrão contou como dado da pessoa');
+  const soCambio = JSON.parse(JSON.stringify(estado)); soCambio.campos.cambio_usd = '9.9999';
+  verdadeiro(vm.runInContext(`rascunhoTemAlgoDoUsuario(${JSON.stringify(soCambio)})`, sb) === false, 'câmbio do dia contou como dado da pessoa');
+  const comFob = JSON.parse(JSON.stringify(estado)); comFob.campos.fob_usd = '12345';
+  verdadeiro(vm.runInContext(`rascunhoTemAlgoDoUsuario(${JSON.stringify(comFob)})`, sb) === true, 'FOB digitado não foi reconhecido');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);

@@ -270,7 +270,7 @@ function _ftB64(arq){ return new Promise((ok, err) => { const fr = new FileReade
 function _ftTipoArq(arq){ return arq.type || (arq.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : ''); }
 function _ftEscolherArquivo(cb){
   const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,image/*'; inp.style.display = 'none';
-  inp.onchange = () => { const a = inp.files && inp.files[0]; inp.remove(); if(a){ if(a.size > 15 * 1024 * 1024){ showToast('Arquivo grande demais (máx. 15 MB).', 'err'); return; } cb(a); } };
+  inp.onchange = () => { const a = inp.files && inp.files[0]; inp.remove(); if(a){ if(a.size > 15 * 1024 * 1024){ showToast('"' + a.name + '" tem ' + (a.size/1048576).toFixed(1).replace('.', ',') + ' MB — o limite é 15 MB por arquivo. Comprima o PDF ou divida em partes e envie de novo.', 'err'); return; } cb(a); } };
   document.body.appendChild(inp); inp.click();
 }
 async function _ftEnviarAnexo(faturaId, arq, tipo){
@@ -959,7 +959,7 @@ function ftLerDocumento(){
   inp.click();
 }
 async function ftEnviarDocumento(arq){
-  if(arq.size > 15 * 1024 * 1024){ showToast('Arquivo grande demais (máx. 15 MB).', 'err'); return; }
+  if(arq.size > 15 * 1024 * 1024){ showToast('"' + arq.name + '" tem ' + (arq.size/1048576).toFixed(1).replace('.', ',') + ' MB — o limite é 15 MB por arquivo. Comprima o PDF ou divida em partes e envie de novo.', 'err'); return; }
   const ov = _ftOverlay();
   ov.innerHTML = `<div class="ft-modal-bg"><div class="ft-modal" style="max-width:420px;"><div class="ft-modal-body" style="text-align:center;padding:28px;">🧾 Lendo <b>${esc(arq.name)}</b> com a IA…<div class="cr-muted" style="margin-top:6px;">Leva uns 10 a 30 segundos.</div></div></div></div>`;
   try{

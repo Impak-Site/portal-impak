@@ -98,7 +98,7 @@ body{margin:0;background:var(--bg);font-family:'Inter',sans-serif;color:var(--te
     <div class="msgs" id="msgs"><div class="centro" id="centro"></div></div>
     <div class="entrada">
       <div class="box">
-        <textarea id="entrada" rows="1" placeholder="Pergunte algo ao Assistente…" onkeydown="teclaEntrada(event)" oninput="autoAltura(this)"></textarea>
+        <textarea id="entrada" rows="1" aria-label="Pergunta para o Assistente" placeholder="Pergunte algo ao Assistente…" onkeydown="teclaEntrada(event)" oninput="autoAltura(this)"></textarea>
         <button id="btn-enviar" onclick="enviar()" title="Enviar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
         </button>
