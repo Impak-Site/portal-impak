@@ -4295,6 +4295,17 @@ app.post('/api/base/salvar', auth('tyredesk'), async (req, res) => {
 
 app.get('/api/base/carregar', auth('tyredesk'), async (req, res) => {
   try {
+    // Velocidade (revisão 17/10/2026, item 8): a base é 1 linha com um JSON
+    // de ~500 KB. Primeiro pergunta só a data da última alteração; se o
+    // navegador já tem essa versão (If-None-Match), responde 304 sem buscar
+    // o JSON no banco nem mandar de novo.
+    const { data: meta } = await sb().from('tyredesk_base').select('updated_at').eq('id', 1).maybeSingle();
+    if (meta && meta.updated_at) {
+      const etag = `W/"base-${new Date(meta.updated_at).getTime()}"`;
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'private, no-cache');
+      if (req.headers['if-none-match'] === etag) return res.status(304).end();
+    }
     const { data, error } = await sb()
       .from('tyredesk_base')
       .select('dados, updated_at, updated_by')
