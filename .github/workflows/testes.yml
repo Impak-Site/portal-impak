@@ -3,7 +3,8 @@ name: Testes do Portal IMPAK
 # Roda automaticamente sempre que houver um push (ou um Pull Request) para
 # as branches dev e main — não precisa de nenhuma ação manual depois de
 # configurado. Se um teste falhar, o GitHub mostra um X vermelho no commit
-# e o repositório fica com um aviso visível.
+# e o repositório fica com um aviso visível. Com "Wait for CI" ligado no
+# Railway, a atualização só vai pro ar se os dois trabalhos abaixo passarem.
 on:
   push:
     branches: [dev, main, lab]
@@ -22,18 +23,39 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+          cache: 'npm'
 
-      - name: Rodar testes do Controle de Processos
-        run: node testes_controle.js
+      - name: Instalar as dependências (exatamente as do package-lock.json)
+        run: npm ci
 
-      - name: Rodar testes do TyreDesk
-        run: node testes_tyredesk.js
+      # Todos os arquivos de teste (controle, calculador, faturas, rotas,
+      # sessão, datas, edição simultânea...) — a mesma lista do "npm test".
+      - name: Rodar todos os testes (npm test)
+        run: npm test
 
-      - name: Rodar testes do Calculador
-        run: node testes_calculador.js
+  telas:
+    name: Testes de tela (celular e notebook)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v6
 
-      - name: Rodar testes de Aprovação de Cotação (LAB)
-        run: node testes_aprovacao.js
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
 
-      - name: Rodar testes do TOTP/2FA (lib/totp.js)
-        run: node testes_totp.js
+      - name: Instalar as dependências
+        run: npm ci
+
+      # O navegador de teste não vai pro package.json (não sobe pro Railway).
+      - name: Instalar o navegador de teste (Playwright + Chromium)
+        run: |
+          npm i --no-save playwright@1.64.1
+          npx playwright install --with-deps chromium
+
+      # Abre cada tela com dados fictícios e falha se alguma der erro de
+      # JavaScript, rolar pro lado no celular ou tiver texto ilegível.
+      - name: Abrir cada tela e conferir
+        run: node tests/tela/testes_tela.js

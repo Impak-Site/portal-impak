@@ -13,8 +13,8 @@
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#f5f7fb;--card:#fff;--border:#e4e9f1;--border-strong:#d2dae6;--ac:#1a7fd4;--ac2:#1567b8;--ac-soft:#eaf3fc;
-  --text:#101a2b;--muted:#5c7089;--dim:#98a7ba;
-  --ok:#16a34a;--warn:#d97706;--err:#dc2626;
+  --text:#101a2b;--muted:#5c7089;--dim:#63738a;
+  --ok:#15803d;--warn:#b45309;--err:#dc2626;
   --r-sm:6px;--r-md:8px;--r-lg:12px;--r-xl:16px;
   --shadow-sm:0 1px 2px rgba(16,24,40,.06);
   --shadow-md:0 4px 12px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
@@ -50,7 +50,7 @@ body{background:var(--bg);font-family:'Inter',sans-serif;color:var(--text);min-h
 .wizard-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--border);background:#fff;color:var(--muted);transition:all .15s;}
 .wizard-step-btn.done .wizard-dot{background:var(--ac);border-color:var(--ac);color:#fff;}
 .wizard-step-btn.active .wizard-dot{border-color:var(--ac);color:var(--ac);box-shadow:0 0 0 3px var(--ac-soft);}
-.wizard-label{font-size:8px;font-weight:700;color:var(--muted);text-align:center;letter-spacing:.2px;line-height:1.2;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} /* reticências: "Classificação" sobrepunha "Taxas" (05/10/2026) */
+.wizard-label{font-size:9.5px;font-weight:700;color:var(--muted);text-align:center;letter-spacing:0;line-height:1.2;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} /* reticências: "Classificação" sobrepunha "Taxas" (05/10/2026) */
 .wizard-step-btn.active .wizard-label{color:var(--ac);}
 .wizard-step-btn.done .wizard-label{color:var(--text);}
 .wizard-line{flex:1;height:2px;background:var(--border);margin-top:11px;min-width:6px;}
@@ -1137,7 +1137,7 @@ function renderWizardSteps(){
     const linha = i < WIZARD_ETAPAS.length-1 ? `<div class="wizard-line ${e.n < _estado.wizardStep ? 'done':''}"></div>` : '';
     return `<div class="wizard-node" style="flex:${i===WIZARD_ETAPAS.length-1?'0 0 auto':'1'};display:flex;align-items:flex-start;width:100%;">`
       + `<button type="button" class="${cls}" ${disabled?'disabled':''} onclick="${e.n===5?'irParaResultado()':'irParaEtapa('+e.n+')'}">`
-      + `<div class="wizard-dot">${done?'✓':e.n}</div><div class="wizard-label">${e.label}</div></button>${linha}`
+      + `<div class="wizard-dot">${done?'✓':e.n}</div><div class="wizard-label" title="${e.label}">${e.label}</div></button>${linha}`
       + `</div>`;
   }).join('');
 }
