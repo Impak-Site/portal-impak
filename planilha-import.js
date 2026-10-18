@@ -577,11 +577,17 @@ function parseFechamento(wb) {
     const fEmbarque = lEmbarque ? dataDigitada(wb, 'Fechamento', 'F' + lEmbarque.r) : null;
     const fChegada = lChegada ? dataDigitada(wb, 'Fechamento', 'F' + lChegada.r) : null;
 
+    // "Chegada Porto" no modelo e a MESMA celula da Data da D.I. (DADOS!E4):
+    // a DI costuma ser registrada dias depois da atracacao, e a chegada e o
+    // que conta o prazo de demurrage. Quando as duas vem da mesma celula, a
+    // chegada nao e importada (vem do despachante, do CE ou e digitada).
+    const chegadaEhDi = !!(fChegada && fDi && fChegada.digitada && fChegada.data && fChegada.origem === fDi.origem);
     const datas = {};
     const naoDigitadas = [];
     [['data_embarque', 'Embarque', fEmbarque], ['data_chegada', 'Chegada', fChegada], ['data_registro_di', 'Registro da D.I.', fDi]].forEach(function(d) {
         const info = d[2];
         if (!info || !info.data) return;
+        if (d[0] === 'data_chegada' && chegadaEhDi) return;
         if (info.digitada) datas[d[0]] = info.data;
         else naoDigitadas.push(d[1] + ' (' + info.origem + (info.formula ? ' ' + info.formula : '') + ')');
     });
@@ -589,6 +595,7 @@ function parseFechamento(wb) {
         const dia = (fChegada && fChegada.data) || (fEmbarque && fEmbarque.data) || (fDi && fDi.data);
         avisos.push('Nao importei ' + naoDigitadas.join(', ') + ': na planilha essa data ainda e automatica (mostra ' + dataBR(dia) + ', o dia em que a planilha foi salva ou a copia de outra data), nao a data real. Digite a data na planilha ou direto no processo.');
     }
+    if (chegadaEhDi) avisos.push('Chegada nao importada: na planilha a "Chegada Porto" e a propria Data da D.I. (' + fDi.origem + '), nao o dia em que o navio chegou. A chegada vem do despachante, do CE Mercante ou e digitada no processo.');
     if (fPedido && fPedido.data && fPedido.digitada) avisos.push('Data do Pedido na planilha: ' + fPedido.data + ' (sem campo correspondente no Controle - confira manualmente).');
 
     // Notas de saida: do rotulo "NOTAS SAIDAS" (coluna B) ate a linha "TOTAL"

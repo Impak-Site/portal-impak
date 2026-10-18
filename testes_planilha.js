@@ -146,15 +146,16 @@ teste('planilha com as datas ainda automáticas (=HOJE()): nenhuma data entra no
   ok(/Embarque \(DADOS!H6 =E4\)/.test(av) && /Chegada \(DADOS!E4 =HOJE\(\)\)/.test(av) && /Registro da D\.I\./.test(av) && /10\/03\/2026/.test(av), av);
   ok(!r.avisos.some(a => /Data do Pedido/.test(a)), 'data do pedido automática não vira aviso de "confira"');
 });
-teste('Data da D.I. digitada mas embarque ainda copiando (=E4): importa chegada/DI, embarque não', () => {
+teste('Data da D.I. digitada mas embarque ainda copiando (=E4): importa só o registro da DI', () => {
   const r = montarComDatas({ E4: { v: '2026-04-20' }, H6: { v: '2026-04-20', f: 'E4' }, H4: { v: '2026-04-20', f: 'H6' } });
-  iguais(r.datas, { data_chegada: '2026-04-20', data_registro_di: '2026-04-20' });
+  iguais(r.datas, { data_registro_di: '2026-04-20' });
   ok(r.avisos.some(a => /Nao importei Embarque \(DADOS!H6 =E4\)/.test(a)), r.avisos.join(' | '));
 });
-teste('datas digitadas na aba DADOS (Fechamento só referencia): importa as três normalmente', () => {
+teste('datas digitadas na aba DADOS: importa embarque e registro da DI; "Chegada Porto" (= Data da D.I.) não vira chegada', () => {
   const r = montarComDatas({ E4: { v: '2026-04-20' }, H6: { v: '2026-02-25' }, H4: { v: '2026-01-12' } });
-  iguais(r.datas, { data_embarque: '2026-02-25', data_chegada: '2026-04-20', data_registro_di: '2026-04-20' });
+  iguais(r.datas, { data_embarque: '2026-02-25', data_registro_di: '2026-04-20' });
   ok(!r.avisos.some(a => /Nao importei/.test(a)));
+  ok(r.avisos.some(a => /Chegada nao importada: .*Data da D\.I\. \(DADOS!E4\)/.test(a)), r.avisos.join(' | '));
   ok(r.avisos.some(a => /Data do Pedido na planilha: 2026-01-12/.test(a)));
 });
 
