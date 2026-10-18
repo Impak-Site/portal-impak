@@ -24,6 +24,8 @@
 
 'use strict';
 
+const ValidacaoDatas = require('../validacao-datas.js');
+
 // Campos do nosso processo que a integração pode preencher, com o nome
 // genérico do dado. `sobrescreve:true` = o Conexos é fonte oficial desse
 // dado e pode trocar um valor já digitado (por padrão NÃO -- ver item 4).
@@ -126,7 +128,12 @@ async function sincronizarProcesso(sb, processo, opts = {}){
   }
   try {
     const resposta = await transporte.buscarProcesso(processo.conexos_id);
-    const { campos, ignorados } = mapearDoConexos(resposta.dados, processo);
+    const { campos: camposMapeados, ignorados } = mapearDoConexos(resposta.dados, processo);
+    // Mesma conferência de datas do painel e das planilhas: data impossível
+    // vinda do Conexos (ETA antes do ETD, ano fora do limite, chegada antes do
+    // embarque...) não é gravada e fica registrada no log como ignorada.
+    const { patch: campos, recusadas } = ValidacaoDatas.separarDatasImpossiveis(processo, camposMapeados);
+    recusadas.forEach(r => ignorados.push({ campo: r.campo, motivo: 'data_impossivel', novo: r.valor, detalhe: r.motivo }));
     if (Object.keys(campos).length) {
       const agora = new Date().toISOString();
       const { error } = await sb.from('controle_processos')
@@ -139,7 +146,7 @@ async function sincronizarProcesso(sb, processo, opts = {}){
       if (error) throw new Error('gravar processo: ' + error.message);
     }
     await registrarLog(sb, { ...base, status: 'ok', campos_aplicados: campos, payload: { ignorados } });
-    return { ok: true, status: 'ok', campos, ignorados };
+    return { ok: true, status: 'ok', campos, ignorados, datas_recusadas: recusadas };
   } catch (e) {
     await registrarLog(sb, { ...base, status: 'erro', erro: e.message });
     return { ok: false, status: 'erro', mensagem: e.message };

@@ -279,7 +279,7 @@ async function importarPlanilha(input){
     addLog(`Enviando ${processos.length} processos ao servidor...`, '#7dd3fc');
     showToast(`Importando ${processos.length} processos...`,'info');
 
-    let total = 0, erros = 0;
+    let total = 0, erros = 0, datasRecusadas = 0;
     for(let i=0;i<processos.length;i+=50){
       const lote = processos.slice(i,i+50);
       try{
@@ -288,15 +288,20 @@ async function importarPlanilha(input){
           body: JSON.stringify({processos:lote})
         });
         const d = await resp.json();
-        if(d.ok){ total += d.total||lote.length; addLog(`✓ Lote ${Math.floor(i/50)+1}: ${d.total||lote.length} salvos`, '#86efac'); }
+        if(d.ok){
+          total += d.total||lote.length; addLog(`✓ Lote ${Math.floor(i/50)+1}: ${d.total||lote.length} salvos`, '#86efac');
+          // Data impossível na planilha: o processo foi criado sem ela (ver logDatasImportacao).
+          (d.datas_recusadas||[]).forEach(x => { datasRecusadas++; addLog(`✕ ${x.referencia}: ${rotuloCampoImportacao(x.campo)} ${dataImportBR(x.valor)} não importada — ${x.motivo}`, '#fca5a5'); });
+        }
         else { erros++; addLog(`✕ Lote erro: ${d.erro||'?'}`, '#fca5a5'); }
       }catch(e){ erros++; addLog(`✕ Fetch erro: ${e.message}`, '#fca5a5'); }
     }
 
     if(total > 0){
       addLog(`✅ ${total} processos importados!`, '#86efac');
-      fecharLog(6000);
-      showToast(`✓ ${total} processos importados${erros>0?' ('+erros+' com erro)':''}`, erros>0?'warn':'ok');
+      if(datasRecusadas) addLog(`⚠ ${datasRecusadas} data(s) impossível(is) ficaram em branco — confira nos processos acima.`, '#fcd34d');
+      fecharLog(datasRecusadas ? 30000 : 6000);
+      showToast(`✓ ${total} processos importados${erros>0?' ('+erros+' com erro)':''}${datasRecusadas?` — ${datasRecusadas} data(s) não importada(s), veja o log`:''}`, (erros>0||datasRecusadas)?'warn':'ok');
       await carregarProcessos(true);
     } else {
       addLog('✕ Zero processos importados — verifique os erros acima', '#fca5a5');
@@ -376,9 +381,11 @@ async function importarPlanilhaDespachante(input){
             addLog(`Tudo certo! Todas as referencias da planilha foram encontradas e conferidas.`, '#4ade80');
     }
     (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
+    const datasImp = logDatasImportacao(data.resumo, addLog);
 
-    showToast(data.total_nao_encontrados ? `Importacao concluida com ${data.total_nao_encontrados} pendencia(s) - veja o log` : `Tudo certo: ${data.total_atualizados} processo(s) confirmado(s), sem erros`, data.total_nao_encontrados ? 'warn' : 'ok');
-    fecharLog(15000);
+    const pendencias = (data.total_nao_encontrados||0) + datasImp.recusadas;
+    showToast(pendencias ? `Importacao concluida com ${pendencias} pendencia(s) - veja o log` : `Tudo certo: ${data.total_atualizados} processo(s) confirmado(s), sem erros`, pendencias ? 'warn' : 'ok');
+    fecharLog(datasImp.recusadas || datasImp.comAviso ? 30000 : 15000);
     if(typeof carregarProcessos === 'function') await carregarProcessos();
     if(typeof render === 'function') render();
   }catch(e){
@@ -386,6 +393,30 @@ async function importarPlanilhaDespachante(input){
     showToast('Erro: '+e.message,'err');
     fecharLog(10000);
   }
+}
+
+// ── Datas nas importações de planilha (18/10/2026) ──
+// O servidor confere as datas da planilha com as mesmas regras do painel
+// (validacao-datas.js): a data impossível não é gravada e volta em
+// resumo[].datas_recusadas; a só improvável é gravada e volta em
+// resumo[].avisos_datas. Aqui elas entram no log da importação.
+const NOMES_CAMPO_IMPORTACAO = { data_chegada:'Data de Chegada', eta:'ETA', etd:'ETD', data_prontidao:'Prontidão na Fábrica',
+  data_embarque:'Data de Embarque', data_registro_di:'Registro da DI', data_liberacao:'Liberação', nf_entrada_data:'NF de Entrada', pi_data_saldo:'Vencimento do Saldo' };
+function rotuloCampoImportacao(campo){
+  return NOMES_CAMPO_IMPORTACAO[campo] || (typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.ROTULOS && ValidacaoDatas.ROTULOS[campo]) || campo;
+}
+function dataImportBR(v){
+  const s = String(v == null ? '' : v);
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice(0,4) : s;
+}
+function logDatasImportacao(resumo, addLog){
+  let recusadas = 0, comAviso = 0;
+  (resumo||[]).forEach(r => {
+    (r.datas_recusadas||[]).forEach(d => { recusadas++; addLog(`✕ ${r.referencia}: ${rotuloCampoImportacao(d.campo)} ${dataImportBR(d.valor)} não importada — ${d.motivo}`, '#fca5a5'); });
+    (r.avisos_datas||[]).forEach(a => { comAviso++; addLog(`⚠ ${r.referencia}: ${a}`, '#fcd34d'); });
+  });
+  if(recusadas) addLog(`⚠ ${recusadas} data(s) impossível(is) não foram importadas — o processo ficou com a data anterior. Confira na planilha.`, '#fcd34d');
+  return { recusadas, comAviso };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -446,9 +477,11 @@ async function importarPlanilhaManu(input){
             addLog(`✅ Tudo certo! Todas as referencias da planilha foram encontradas e conferidas.`, '#4ade80');
     }
     (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
+    const datasImp = logDatasImportacao(data.resumo, addLog);
 
-    showToast(data.total_nao_encontrados ? `Importacao concluida com ${data.total_nao_encontrados} pendencia(s) - veja o log` : `Tudo certo: ${data.total_atualizados} processo(s) confirmado(s), sem erros`, data.total_nao_encontrados ? 'warn' : 'ok');
-    fecharLog(15000);
+    const pendencias = (data.total_nao_encontrados||0) + datasImp.recusadas;
+    showToast(pendencias ? `Importacao concluida com ${pendencias} pendencia(s) - veja o log` : `Tudo certo: ${data.total_atualizados} processo(s) confirmado(s), sem erros`, pendencias ? 'warn' : 'ok');
+    fecharLog(datasImp.recusadas || datasImp.comAviso ? 30000 : 15000);
     if(typeof carregarProcessos === 'function') await carregarProcessos();
     if(typeof render === 'function') render();
   }catch(e){
@@ -621,6 +654,8 @@ async function extrairComIA_umArquivo(input){
   "eh_ric": false,
   "ric_avaria": false,  // SOMENTE para RIC: true se o RIC registrar avaria/dano, lavagem ou limpeza (ex: "recebido com AVARIA", "CHEMICAL CLEAN", "LAVAGEM", "LIMPEZA", "DAMAGE", "REPARO", "ESTIMATIVA DE REPARO"); false se o container foi recebido sem nenhuma observação desse tipo  // true SOMENTE se o documento for um RIC/EIR/Intercâmbio/Gate Pass de container (comprovante de entrada/saída de container em terminal/depósito)
   "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio (inclusive mensagem SWIFT de pagamento — câmbio futuro) — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0, "tipo_cambio":"NORMAL|FUTURO", "swift_id":""}. Deixar [] para qualquer outro tipo de documento.
+  "datas_texto": {},  // para CADA campo de data que você preencheu acima (pi_data, etd, eta, data_registro_di, data_liberacao, ci_data, data_chegada, ce_data_embarque, nf_entrada_data, nf_saida_data, data_devolucao_vazio), copie aqui o TEXTO da data exatamente como está impresso no documento, sem converter e sem trocar a ordem de dia e mês — ex.: {"data_devolucao_vazio": "30/05/2026 10:54", "etd": "SEP. 05, 2026", "nf_entrada_data": "05/10/2026"}. Só o trecho da data (pode vir com a hora). Campo de data que você deixou vazio não entra aqui.
+  "documento_brasileiro": false,  // true quando o documento foi emitido no Brasil e traz as datas no formato dia/mês/ano (RIC/EIR de terminal brasileiro, NF-e/DANFE, DI/DUIMP, CE Mercante, comprovante de câmbio de banco brasileiro); false para PI, CI, packing list, BL, booking e demais documentos emitidos no exterior
   "free_time": null
 }
 Se o documento for um EIR (Equipment Interchange Receipt), também chamado de RIC ou "Gate Pass Receipt", emitido por um terminal/depósito de containers (ex: MEDLOG, Santos Brasil, etc.):
@@ -1194,12 +1229,15 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // trocada; se nenhuma fecha, a data não é preenchida. Tudo fica avisado
     // na tela e anotado no Histórico desta leitura.
     const avisosDatasLidas = [], notasDatasLidas = [];
+    // Datas confirmadas pelo texto impresso no documento (ver datas_texto
+    // abaixo): a conferência nunca troca dia e mês delas.
+    const semTrocaTexto = new Set();
     const dataBR = s => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice(0,4) : String(s || '');
     const rotuloDataLida = k => LABELS_CAMPOS_IA[k] || (typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.ROTULOS[k]) || k;
     const conferirDatasDoDocumento = (lidas, estado) => {
       if(typeof ValidacaoDatas === 'undefined' || !ValidacaoDatas.conferirDatasLidas || !Object.keys(lidas).length) return null;
       try{
-        const r = ValidacaoDatas.conferirDatasLidas(lidas, estado);
+        const r = ValidacaoDatas.conferirDatasLidas(lidas, estado, { semTroca: [...semTrocaTexto] });
         r.trocadas.forEach(t => { avisosDatasLidas.push(t.aviso); notasDatasLidas.push(`${rotuloDataLida(t.campo)} lida ${dataBR(t.lida)} → usada ${dataBR(t.usada)} (dia e mês trocados)`); });
         r.descartadas.forEach(d => { avisosDatasLidas.push(d.aviso); notasDatasLidas.push(`${rotuloDataLida(d.campo)} lida ${dataBR(d.lida)} não usada`); });
         return r;
@@ -1215,6 +1253,46 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       e.containers_json = JSON.stringify(Array.isArray(_containers) ? _containers : []);
       return e;
     };
+
+    // ── A data como está impressa no documento (18/10/2026, 2ª parte) ──
+    // A IA devolve também, em datas_texto, cada data copiada sem conversão; o
+    // sistema converte esse texto sozinho (ValidacaoDatas.lerDataTexto) — no
+    // documento brasileiro (RIC, NF, DI/DUIMP, CE Mercante) a data é
+    // dia/mês/ano. Quando o texto mostra que a IA inverteu dia e mês, vale a
+    // data do texto. Quando o texto não deixa dúvida (ano na frente, mês por
+    // extenso, dia acima de 12), a data fica protegida da troca automática da
+    // conferência (semTrocaTexto). O texto sozinho nunca preenche um campo que
+    // a IA deixou vazio.
+    {
+      const textos = (extracted.datas_texto && typeof extracted.datas_texto === 'object' && !Array.isArray(extracted.datas_texto)) ? extracted.datas_texto : {};
+      const docBrasileiro = extracted.documento_brasileiro === true || extracted.documento_brasileiro === 'true' || !!extracted.eh_ric || pareceDiOuDuimp || ehCeMercante
+        || !!(extracted.nf_entrada_numero || extracted.nf_entrada_data || extracted.nf_saida_numero || extracted.nf_saida_data);
+      if(typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.lerDataTexto){
+        Object.keys(textos).forEach(k => {
+          try{
+            if(!ValidacaoDatas.ehCampoData(k) || typeof textos[k] !== 'string') return;
+            const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(extracted[k] || '').trim());
+            if(!m) return;
+            const lida = m[0], impresso = textos[k].trim().slice(0, 40);
+            const t = ValidacaoDatas.lerDataTexto(impresso, { diaPrimeiro: docBrasileiro ? true : undefined });
+            if(!t || !t.data) return; // texto sem data, data inexistente ou dia/mês ambíguo num documento do exterior
+            if(t.data === lida){ if(!t.ambigua) semTrocaTexto.add(k); return; }
+            if(t.data === ValidacaoDatas.trocarDiaMes(lida)){
+              extracted[k] = t.data;
+              if(!t.ambigua) semTrocaTexto.add(k);
+              avisosDatasLidas.push(`${rotuloDataLida(k)}: o documento traz "${impresso}"${t.ambigua ? ' (dia/mês/ano)' : ''} — usei ${dataBR(t.data)}, não ${dataBR(lida)}. Confira.`);
+              notasDatasLidas.push(`${rotuloDataLida(k)} lida ${dataBR(lida)} → ${dataBR(t.data)} pelo texto impresso ("${impresso}")`);
+              return;
+            }
+            // Texto e data lida não batem nem com dia e mês trocados: fica a
+            // data lida (a conferência abaixo ainda vale para ela) com aviso.
+            avisosDatasLidas.push(`${rotuloDataLida(k)} lida como ${dataBR(lida)}, mas o texto copiado do documento é "${impresso}" — confira no documento.`);
+            notasDatasLidas.push(`${rotuloDataLida(k)} lida ${dataBR(lida)} não bate com o texto impresso ("${impresso}")`);
+          }catch(e){ console.warn('texto da data lida:', k, e); }
+        });
+      }
+    }
+    delete extracted.datas_texto; delete extracted.documento_brasileiro;
 
     // ── Número de container normalizado (25/09/2026, RIC da UD26-047) ──
     // Alguns documentos escrevem o container com espaço/hífen antes do
@@ -1287,7 +1365,10 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // trocados, ver acima). Fora da DI a chegada lida é só previsão e vai
     // para o ETA (o loop abaixo fazia isso no próprio campo) — passa para o
     // ETA já aqui, para ser conferida como ETA.
-    if(!ehDI && extracted.data_chegada){ extracted.eta = extracted.data_chegada; delete extracted.data_chegada; }
+    if(!ehDI && extracted.data_chegada){
+      extracted.eta = extracted.data_chegada; delete extracted.data_chegada;
+      if(semTrocaTexto.has('data_chegada')) semTrocaTexto.add('eta'); else semTrocaTexto.delete('eta');
+    }
     // DI/DUIMP registrada antes da atracação traz a chegada ainda no futuro:
     // é a previsão — vai para o ETA (como quando alguém digita uma chegada
     // futura, ver moverDataFuturaParaPrevisao) e não passa pela troca de dia
@@ -1672,9 +1753,29 @@ function inlineEditData(id, campo, el){
   el.innerHTML = '';
   el.appendChild(input);
   input.focus();
+  // O blur dispara de novo quando o confirm() abaixo tira o foco do campo ou
+  // quando render() remove o campo: só a primeira vez vale.
+  let feito = false;
   function salvar(){
+    if(feito) return;
+    feito = true;
     const novoValor = input.value;
     if(novoValor !== valorAtual){
+      // Mesmas regras de data do painel (validacao-datas.js; o servidor confere
+      // de novo): data impossível não grava, data improvável pergunta antes.
+      if(typeof ValidacaoDatas !== 'undefined'){
+        const probs = ValidacaoDatas.validar(Object.assign({}, proc, { [campo]: novoValor || null }), { campos: [campo] });
+        const errosDatas = ValidacaoDatas.erros(probs), avisosDatas = ValidacaoDatas.avisos(probs);
+        if(errosDatas.length){
+          showToast('Data impossível — nada foi salvo: ' + errosDatas.map(e => e.msg).join(' '), 'err');
+          render();
+          return;
+        }
+        if(avisosDatas.length && !confirm('Confira as datas antes de salvar:\n\n' + avisosDatas.map(a => '• ' + a.msg).join('\n') + '\n\nSalvar mesmo assim?')){
+          render();
+          return;
+        }
+      }
       const antes = proc[campo];
       proc[campo] = novoValor||null;
       // Log
@@ -1691,7 +1792,8 @@ function inlineEditData(id, campo, el){
     render();
   }
   input.addEventListener('blur', salvar);
-  input.addEventListener('keydown', e=>{ if(e.key==='Enter') input.blur(); if(e.key==='Escape'){proc[campo]=valorAtual; render();} });
+  // Esc desiste da edição — e um blur que venha depois (render() remove o campo) não grava.
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') input.blur(); if(e.key==='Escape'){ feito = true; proc[campo]=valorAtual; render(); } });
 }
 
 function inlineEditFase(id, el){

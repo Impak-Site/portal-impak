@@ -3135,6 +3135,15 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro'), async (req,
         };
       });
 
+    // Datas da planilha passam pela mesma conferência do painel (18/10/2026):
+    // a impossível (ex.: chegada antes do embarque) fica em branco no processo
+    // novo e volta na resposta para aparecer no log da importação.
+    const datasRecusadas = [];
+    for (const n of novos) {
+      const { recusadas } = conferirDatasImportacao({}, n);
+      recusadas.forEach(r => datasRecusadas.push({ referencia: n.referencia, campo: r.campo, valor: r.valor, motivo: r.motivo }));
+    }
+
     if (!novos.length) {
       return res.json({ ok: true, total: 0, msg: 'Todos os processos já existem' });
     }
@@ -3147,8 +3156,8 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro'), async (req,
       if (error) throw new Error(error.message);
     }
 
-    console.log(`controle v2 importar: ${novos.length} novos de ${processos.length} por ${req.session.usuario}`);
-    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length });
+    console.log(`controle v2 importar: ${novos.length} novos de ${processos.length} (${datasRecusadas.length} data(s) recusada(s)) por ${req.session.usuario}`);
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length, datas_recusadas: datasRecusadas });
   } catch (e) {
     console.error('controle v2 importar erro:', e.message);
     res.status(500).json({ erro: e.message });
@@ -3202,8 +3211,9 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
   const naoEncontrados = resumo.filter(r => r.status === 'nao_encontrado');
   const semMudancas = resumo.filter(r => r.status === 'sem_mudancas');
   const comErro = resumo.filter(r => r.status === 'erro');
+  const blocoDatas = htmlDatasImportacao(resumo);
 
-  if (!atualizados.length && !naoEncontrados.length && !comErro.length) return; // nada relevante pra reportar
+  if (!atualizados.length && !naoEncontrados.length && !comErro.length && !blocoDatas) return; // nada relevante pra reportar
 
   const NOMES_CAMPO = {
     hbl: 'HBL', mbl: 'MBL', data_chegada: 'Data de Chegada', eta: 'ETA (Previsao de Chegada)',
@@ -3247,10 +3257,12 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
       ${comErro.length ? `
       <h3 style="margin:16px 0 8px;color:#b91c1c;">Erros ao atualizar</h3>
       <ul style="margin:0;padding-left:20px;">${linhasComErro}</ul>` : ''}
+      ${blocoDatas}
       <p style="margin-top:20px;color:#9ca3af;font-size:12px;">Enviado automaticamente pelo Portal IMPAK.</p>
     </div>`;
 
-  const assunto = `Import Despachante: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados`;
+  const nRecusadas = resumo.reduce((s, r) => s + ((r.datas_recusadas || []).length), 0);
+  const assunto = `Import Despachante: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados` + (nRecusadas ? `, ${nRecusadas} data(s) nao importada(s)` : '');
   for (const destinatario of DESTINATARIOS_RELATORIO_DESPACHANTE) {
     await enviarEmail(destinatario, assunto, html, { alerta: true });
   }
@@ -3285,7 +3297,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
     const linhas = parsed.linhas || [];
     if (!linhas.length) return res.json({ ok: true, resumo: [], total_linhas: 0 });
 
-    const { data: processos, error: errBusca } = await buscarTodosProcessos('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs, fechado, cancelado');
+    const { data: processos, error: errBusca } = await buscarTodosProcessos(colunasSemRepetir('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs, fechado, cancelado, tipo_container', DATAS_VALIDADAS_PROCESSO));
     if (errBusca) throw new Error(errBusca.message);
 
     const porRef = new Map();
@@ -3349,8 +3361,10 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
         }
       }
 
+      // Data impossível (ex.: chegada antes do embarque) não é gravada (18/10/2026).
+      const confDatas = conferirDatasImportacao(proc, patch, camposAlterados, logsProc);
       if (!camposAlterados.length) {
-        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas' });
+        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas', datas_recusadas: confDatas.recusadas });
         continue;
       }
 
@@ -3362,8 +3376,8 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
         continue;
       }
       logsGlobais.push(...logsProc);
-      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados });
-      conexos.registrarLog(sb(), { origem:'despachante', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
+      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados, datas_recusadas: confDatas.recusadas, avisos_datas: confDatas.avisos });
+      conexos.registrarLog(sb(), { origem:'despachante', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario, payload: confDatas.recusadas.length ? { datas_recusadas: confDatas.recusadas } : null }).catch(()=>{});
     }
 
     if (logsGlobais.length) {
@@ -3375,7 +3389,8 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
     const totalNaoEncontrados = resumo.filter(r => r.status === 'nao_encontrado').length;
     const totalSemMudancas = resumo.filter(r => r.status === 'sem_mudancas').length;
 
-    console.log(`importar-despachante: ${totalAtualizados} atualizados, ${totalNaoEncontrados} nao encontrados, ${totalSemMudancas} sem mudancas, por ${req.session.usuario}`);
+    const totalDatasRecusadas = resumo.reduce((s, r) => s + ((r.datas_recusadas || []).length), 0);
+    console.log(`importar-despachante: ${totalAtualizados} atualizados, ${totalNaoEncontrados} nao encontrados, ${totalSemMudancas} sem mudancas, ${totalDatasRecusadas} data(s) recusada(s), por ${req.session.usuario}`);
 
     enviarRelatorioImportDespachante(resumo, req.session.usuario)
       .catch(mailErr => console.warn('relatorio email despachante erro:', mailErr.message));
@@ -3386,6 +3401,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
       total_nao_encontrados: totalNaoEncontrados,
       total_sem_mudancas: totalSemMudancas,
       total_travados: resumo.filter(r => r.status === 'travado').length,
+      total_datas_recusadas: totalDatasRecusadas,
     });
   } catch (e) {
     console.error('importar-despachante erro:', e.message);
@@ -3403,19 +3419,22 @@ async function enviarRelatorioImportManu(resumo, usuario) {
   const naoEncontrados = resumo.filter(r => r.status === 'nao_encontrado');
   const semMudancas = resumo.filter(r => r.status === 'sem_mudancas');
   const comErro = resumo.filter(r => r.status === 'erro');
-  if (!atualizados.length && !naoEncontrados.length && !comErro.length) return;
+  const blocoDatas = htmlDatasImportacao(resumo);
+  if (!atualizados.length && !naoEncontrados.length && !comErro.length && !blocoDatas) return;
   const NOMES_CAMPO = {
-    data_presenca: 'Data de Prontidao', agente: 'Agente de Carga', etd: 'Previsao de Embarque (ETD)',
+    data_presenca: 'Data de Prontidao', data_prontidao: 'Data de Prontidao', agente: 'Agente de Carga', etd: 'Previsao de Embarque (ETD)',
   };
-  const linhaHtml = (r) => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${r.referencia}</td><td style="padding:4px 8px;border:1px solid #ddd;">${(r.campos||[]).map(c => NOMES_CAMPO[c]||c).join(', ')}</td></tr>`;
+  const linhaHtml = (r) => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${escapeHtml(r.referencia)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${(r.campos||[]).map(c => escapeHtml(NOMES_CAMPO[c]||c)).join(', ')}</td></tr>`;
   const html = `
     <h3>Importacao Planilha Interna (Manu/Emanuelly)</h3>
-    <p>Executado por: ${usuario}</p>
+    <p>Executado por: ${escapeHtml(usuario || '')}</p>
     <p><b>${atualizados.length}</b> processo(s) atualizado(s), <b>${semMudancas.length}</b> sem mudancas, <b>${naoEncontrados.length}</b> nao encontrado(s), <b>${comErro.length}</b> com erro.</p>
     ${atualizados.length ? `<table style="border-collapse:collapse;"><tr><th style="padding:4px 8px;border:1px solid #ddd;">Referencia</th><th style="padding:4px 8px;border:1px solid #ddd;">Campos atualizados</th></tr>${atualizados.map(linhaHtml).join('')}</table>` : ''}
-    ${naoEncontrados.length ? `<p><b>Nao encontrados:</b> ${naoEncontrados.map(r=>r.referencia).join(', ')}</p>` : ''}
+    ${naoEncontrados.length ? `<p><b>Nao encontrados:</b> ${naoEncontrados.map(r=>escapeHtml(r.referencia)).join(', ')}</p>` : ''}
+    ${blocoDatas}
   `;
-  const assunto = `Import Planilha Interna: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados`;
+  const nRecusadas = resumo.reduce((s, r) => s + ((r.datas_recusadas || []).length), 0);
+  const assunto = `Import Planilha Interna: ${atualizados.length} atualizados, ${naoEncontrados.length} nao encontrados` + (nRecusadas ? `, ${nRecusadas} data(s) nao importada(s)` : '');
   for (const destinatario of DESTINATARIOS_RELATORIO_MANU) {
     await enviarEmail(destinatario, assunto, html, { alerta: true });
   }
@@ -3436,7 +3455,7 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async 
     const linhas = parsed.linhas || [];
     if (!linhas.length) return res.json({ ok: true, resumo: [], total_linhas: 0 });
 
-    const { data: processos, error: errBusca } = await buscarTodosProcessos('id, referencia, data_prontidao, agente, etd, fechado, cancelado');
+    const { data: processos, error: errBusca } = await buscarTodosProcessos(colunasSemRepetir('id, referencia, data_prontidao, agente, etd, fechado, cancelado, tipo_container', DATAS_VALIDADAS_PROCESSO));
     if (errBusca) throw new Error(errBusca.message);
 
     const porRef = new Map();
@@ -3476,8 +3495,10 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async 
       setCampo('agente', linha.agente);
       setCampo('etd', linha.etd);
 
+      // Data impossível (ex.: ETD depois do ETA) não é gravada (18/10/2026).
+      const confDatas = conferirDatasImportacao(proc, patch, camposAlterados, logsProc);
       if (!camposAlterados.length) {
-        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas' });
+        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas', datas_recusadas: confDatas.recusadas });
         continue;
       }
       patch.updated_at = agora;
@@ -3488,8 +3509,8 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async 
         continue;
       }
       logsGlobais.push(...logsProc);
-      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados });
-      conexos.registrarLog(sb(), { origem:'planilha_interna', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
+      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados, datas_recusadas: confDatas.recusadas, avisos_datas: confDatas.avisos });
+      conexos.registrarLog(sb(), { origem:'planilha_interna', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario, payload: confDatas.recusadas.length ? { datas_recusadas: confDatas.recusadas } : null }).catch(()=>{});
     }
 
     if (logsGlobais.length) {
@@ -3501,7 +3522,8 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async 
     const totalNaoEncontrados = resumo.filter(r => r.status === 'nao_encontrado').length;
     const totalSemMudancas = resumo.filter(r => r.status === 'sem_mudancas').length;
 
-    console.log(`importar-manu: ${totalAtualizados} atualizados, ${totalNaoEncontrados} nao encontrados, ${totalSemMudancas} sem mudancas, por ${req.session.usuario}`);
+    const totalDatasRecusadas = resumo.reduce((s, r) => s + ((r.datas_recusadas || []).length), 0);
+    console.log(`importar-manu: ${totalAtualizados} atualizados, ${totalNaoEncontrados} nao encontrados, ${totalSemMudancas} sem mudancas, ${totalDatasRecusadas} data(s) recusada(s), por ${req.session.usuario}`);
 
     enviarRelatorioImportManu(resumo, req.session.usuario)
       .catch(mailErr => console.warn('relatorio email manu erro:', mailErr.message));
@@ -3512,6 +3534,7 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async 
       total_nao_encontrados: totalNaoEncontrados,
       total_sem_mudancas: totalSemMudancas,
       total_travados: resumo.filter(r => r.status === 'travado').length,
+      total_datas_recusadas: totalDatasRecusadas,
     });
   } catch (e) {
     console.error('importar-manu erro:', e.message);
@@ -3972,8 +3995,41 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
   }
 });
 
-// Colunas lidas do banco pra conferir datas impossíveis num save parcial.
-const DATAS_VALIDADAS_PROCESSO = 'etd, eta, data_embarque, data_chegada, data_presenca, data_carregamento, data_devolucao_vazio';
+// Colunas lidas do banco pra conferir datas impossíveis num save parcial
+// (18/10/2026: + DI, liberação, NF de entrada, prontidão e os containers — a
+// devolução de cada container é conferida contra a chegada).
+const DATAS_VALIDADAS_PROCESSO = 'etd, eta, data_embarque, data_chegada, data_presenca, data_carregamento, data_devolucao_vazio, data_registro_di, data_liberacao, nf_entrada_data, data_prontidao, containers_json';
+// Colunas pedidas ao banco sem repetir nome (o PostgREST recusa coluna repetida).
+function colunasSemRepetir(...listas) {
+  return [...new Set(listas.join(',').split(',').map(s => s.trim()).filter(Boolean))].join(', ');
+}
+// Importações (planilha do despachante, planilha interna, criação em lote):
+// as datas passam pela mesma conferência do painel (validacao-datas.js). A
+// data impossível não é gravada — sai do patch (e do log) e volta para o
+// relatório da importação; os avisos só constam no relatório.
+function conferirDatasImportacao(atual, patch, camposAlterados, logsProc) {
+  const conf = ValidacaoDatas.separarDatasImpossiveis(atual, patch);
+  for (const r of conf.recusadas) {
+    delete patch[r.campo];
+    if (camposAlterados) { const i = camposAlterados.indexOf(r.campo); if (i >= 0) camposAlterados.splice(i, 1); }
+    if (logsProc) { for (let j = logsProc.length - 1; j >= 0; j--) if (logsProc[j].campo === r.campo) logsProc.splice(j, 1); }
+  }
+  return { recusadas: conf.recusadas, avisos: conf.avisos };
+}
+const NOMES_CAMPO_DATA_IMPORT = { data_chegada: 'Data de Chegada', eta: 'ETA', etd: 'ETD', data_prontidao: 'Prontidão na Fábrica', data_embarque: 'Data de Embarque', data_registro_di: 'Registro da DI', data_liberacao: 'Liberação', nf_entrada_data: 'NF de Entrada', nf_saida_data: 'NF de Saída', ci_data: 'Data da CI', pi_data_saldo: 'Vencimento do Saldo' };
+// Bloco do e-mail de relatório das importações: datas não gravadas e avisos.
+function htmlDatasImportacao(resumo) {
+  const recusadas = resumo.filter(r => r.datas_recusadas && r.datas_recusadas.length);
+  const comAviso = resumo.filter(r => r.avisos_datas && r.avisos_datas.length);
+  if (!recusadas.length && !comAviso.length) return '';
+  const fmt = v => /^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(8, 10) + '/' + String(v).slice(5, 7) + '/' + String(v).slice(0, 4) : String(v || '');
+  return (recusadas.length ? `
+      <h3 style="margin:16px 0 8px;color:#b91c1c;">Datas não importadas (impossíveis)</h3>
+      <ul style="margin:0;padding-left:20px;">${recusadas.map(r => r.datas_recusadas.map(d => `<li><b>${escapeHtml(r.referencia)}</b> — ${escapeHtml(NOMES_CAMPO_DATA_IMPORT[d.campo] || d.campo)} ${escapeHtml(fmt(d.valor))}: ${escapeHtml(d.motivo)}</li>`).join('')).join('')}</ul>` : '')
+    + (comAviso.length ? `
+      <h3 style="margin:16px 0 8px;color:#b45309;">Importado, mas confira</h3>
+      <ul style="margin:0;padding-left:20px;">${comAviso.map(r => r.avisos_datas.map(a => `<li><b>${escapeHtml(r.referencia)}</b> — ${escapeHtml(a)}</li>`).join('')).join('')}</ul>` : '');
+}
 function nomeUsuarioExibicao(login) {
   const u = _usuariosCache.get(login);
   return (u && (u.display_name || u.nome)) || login || 'outra pessoa';
@@ -4249,6 +4305,13 @@ app.post('/api/controle/importar', auth('controle','financeiro'), async (req, re
         };
       });
 
+    // Mesma conferência de datas da criação em lote do Controle (v2).
+    const datasRecusadas = [];
+    for (const n of novos) {
+      const { recusadas } = conferirDatasImportacao({}, n);
+      recusadas.forEach(r => datasRecusadas.push({ referencia: n.referencia, campo: r.campo, valor: r.valor, motivo: r.motivo }));
+    }
+
     if (!novos.length) {
       return res.json({ ok: true, total: 0, msg: 'Todos já existem' });
     }
@@ -4261,7 +4324,7 @@ app.post('/api/controle/importar', auth('controle','financeiro'), async (req, re
     }
 
     console.log(`controle/importar: ${novos.length} novos de ${processos.length} por ${req.session.usuario}`);
-    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length });
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length, datas_recusadas: datasRecusadas });
   } catch (e) {
     console.error('controle/importar erro:', e.message);
     res.status(500).json({ erro: e.message });
@@ -6820,7 +6883,8 @@ app.get('/api/integracao/conexos/status', auth('controle','financeiro','resultad
 app.post('/api/integracao/conexos/sincronizar/:id', auth('controle','financeiro'), async (req, res) => {
   try {
     const { data: processo, error } = await sb().from('controle_processos')
-      .select('id, referencia, conexos_id, conexos_ultima_sync, ' + conexos.MAPA_CAMPOS.map(m => m.nosso).join(', '))
+      // + as datas e containers que a conferência de datas compara com o que vier do Conexos
+      .select(colunasSemRepetir('id, referencia, conexos_id, conexos_ultima_sync', conexos.MAPA_CAMPOS.map(m => m.nosso).join(', '), DATAS_VALIDADAS_PROCESSO, 'tipo_container'))
       .eq('id', req.params.id).single();
     if (error || !processo) return res.status(404).json({ ok: false, erro: 'Processo não encontrado' });
     const resultado = await conexos.sincronizarProcesso(sb(), processo, { usuario: req.session.usuario });
@@ -6976,6 +7040,90 @@ async function enviarResumoSemanalAgenda(opts){
   return { enviados, destinos, atrasadas: totalAtr, pessoas: r.linhas.length };
 }
 
+// ════════════════════════════════════════════════════════════════
+// AUDITORIA SEMANAL DAS DATAS (pedido Ayslan): toda segunda, a partir das
+// 07:00 de Brasília, a mesma conferência do painel (validacao-datas.js) em
+// todos os processos não cancelados — data impossível, fora de sequência,
+// longe da previsão, no futuro, viagem curta ou longa demais. Pega o erro
+// venha de onde vier (digitação, leitura da IA, importação, Conexos).
+// ════════════════════════════════════════════════════════════════
+const COLS_AUDITORIA_DATAS = colunasSemRepetir(
+  'id, referencia, cliente, fornecedor, fase, cancelado, fechado, updated_at, tipo_container',
+  DATAS_VALIDADAS_PROCESSO,
+  'ce_data_embarque, ci_data, data_agendamento, data_parametrizacao, data_envio_termo, data_solicitacao_demurrage, data_isencao_demurrage, ' +
+  'data_pagamento_demurrage, data_pagamento_lavagem, demurrage_vencimento, armazenagem_vencimento, entrada_armazem, nf_saida_data, ' +
+  'pi_data, pi_data_entrada, pi_data_saldo, pi_data_recebimento, pi_venc_di, previsao_prontidao');
+
+// Quem recebe: ALERTA_DATAS_PARA no Railway (lista separada por vírgula) ou,
+// sem ela, os mesmos destinatários dos alertas operacionais.
+function _destinatariosAuditoriaDatas(){
+  const env = process.env.ALERTA_DATAS_PARA;
+  if (env) return [...new Set(env.split(',').map(s => s.trim()).filter(Boolean))];
+  return destinatariosAlertas('operacional');
+}
+
+async function montarAuditoriaDatas(){
+  const { data, error } = await buscarTodosProcessos(COLS_AUDITORIA_DATAS);
+  if (error) throw new Error('auditoria de datas: ' + (error.message || error));
+  const lista = data || [];
+  const achados = ValidacaoDatas.auditarProcessos(lista);
+  const nErros = a => a.problemas.filter(x => x.nivel === 'erro').length;
+  const seteDias = Date.now() - 7 * 86400000;
+  const recente = p => !!p.updated_at && Date.parse(p.updated_at) >= seteDias;
+  const ordenar = itens => itens.sort((a, b) => (nErros(b) - nErros(a)) || String(a.processo.referencia || '').localeCompare(String(b.processo.referencia || '')));
+  // Alterados na semana primeiro: problema novo é o mais fácil de conferir.
+  const grupos = [
+    { chave: 'recentes', titulo: 'Alterados nos últimos 7 dias', itens: ordenar(achados.filter(a => !a.processo.fechado && recente(a.processo))) },
+    { chave: 'antigos', titulo: 'Sem alteração nos últimos 7 dias', itens: ordenar(achados.filter(a => !a.processo.fechado && !recente(a.processo))) },
+    { chave: 'fechados', titulo: 'Processos fechados (para corrigir, reabra o processo)', itens: ordenar(achados.filter(a => a.processo.fechado)) },
+  ];
+  const totalErros = achados.reduce((s, a) => s + nErros(a), 0);
+  const totalAvisos = achados.reduce((s, a) => s + a.problemas.length - nErros(a), 0);
+  const base = (process.env.APP_URL || 'https://portal-impak-production.up.railway.app').replace(/\/+$/, '');
+  const td = (v, extra) => `<td style="padding:6px 10px;border-bottom:1px solid #eee;vertical-align:top;${extra || ''}">${v}</td>`;
+  const linha = a => {
+    const p = a.processo;
+    const probs = a.problemas.slice().sort((x, y) => (x.nivel === 'erro' ? 0 : 1) - (y.nivel === 'erro' ? 0 : 1))
+      .map(x => `<div style="margin:0 0 3px;"><b style="color:${x.nivel === 'erro' ? '#dc2626' : '#b45309'};">${x.nivel === 'erro' ? 'Erro' : 'Aviso'}:</b> ${_escA(x.msg)}</div>`).join('');
+    return `<tr>${td(`<a href="${base}/controle?processo=${encodeURIComponent(p.id)}" style="color:#1a7fd4;font-weight:600;">${_escA(p.referencia) || '-'}</a>`, 'white-space:nowrap;')}${td(_escA(p.cliente || p.fornecedor) || '-')}${td(_escA(p.fase) || '-', 'white-space:nowrap;')}${td(probs)}</tr>`;
+  };
+  const html = _cabecalhoAlertaHtml('Auditoria semanal das datas', new Date())
+    + `<p style="font-size:13px;color:#555;">A mesma conferência que o painel faz ao salvar, rodada em ${lista.filter(p => !p.cancelado).length} processos não cancelados. `
+    + `<b style="color:#dc2626;">Erro</b> = data impossível (o painel não deixa salvar assim). <b style="color:#b45309;">Aviso</b> = muito improvável — confira no documento. Clique na referência para abrir o processo.</p>`
+    + (achados.length ? grupos.filter(g => g.itens.length).map(g => `<h3 style="margin:18px 0 6px;color:#333;">${_escA(g.titulo)} (${g.itens.length})</h3>`
+        + _tabelaAlertaHtml(['Referência', 'Cliente/Fornecedor', 'Fase', 'O que conferir'], g.itens.map(linha).join(''))).join('')
+      : '<p>Nenhuma data para conferir.</p>')
+    + `<p style="margin-top:14px;font-size:12px;color:#888;">E-mail automático semanal (segunda-feira) do IMPAK Portal.</p></div>`;
+  const assunto = `IMPAK Portal - Auditoria de datas: ${achados.length} processo(s) para conferir` + (totalErros ? ` (${totalErros} erro(s))` : '');
+  return { html, assunto, processos: lista.length, comProblema: achados.length, erros: totalErros, avisos: totalAvisos,
+    grupos: Object.fromEntries(grupos.map(g => [g.chave, g.itens.length])) };
+}
+
+async function enviarAuditoriaDatas(){
+  const a = await montarAuditoriaDatas();
+  if (a.comProblema) {
+    for (const email of _destinatariosAuditoriaDatas()) {
+      try { await enviarEmail(email, a.assunto, a.html, { alerta: true }); }
+      catch (e) { console.error('Erro ao enviar auditoria de datas p/ ' + email + ':', e.message); }
+    }
+  }
+  await marcarJobEnviadoHoje('auditoria_datas_semanal');
+  return a.comProblema;
+}
+
+// Prévia (gerente): o e-mail como sairia agora, sem enviar nada.
+// ?formato=json devolve só os números e os destinatários.
+app.get('/api/admin/auditoria-datas/previa', auth(), requireGerente, async (req, res) => {
+  try {
+    const a = await montarAuditoriaDatas();
+    if (req.query.formato === 'json') {
+      return res.json({ ok: true, assunto: a.assunto, processos: a.processos, com_problema: a.comProblema, erros: a.erros, avisos: a.avisos,
+        grupos: a.grupos, destinatarios: _destinatariosAuditoriaDatas() });
+    }
+    res.type('html').send(a.html);
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 function agendarAlertasSeparados(){
   const ALERTAS_SEPARADOS = [
     { nome:'agenda-historico', jobName:'agenda_historico_diario', fn:() => atualizarHistoricoAgenda().then(r => r.fechadas) },
@@ -6987,10 +7135,20 @@ function agendarAlertasSeparados(){
     { nome:'transportadora', jobName:'alerta_transportadora', fn:verificarAlertaTransportadora },
     { nome:'sem-cotacao', jobName:'alerta_sem_cotacao_semanal', fn:verificarAlertaSemCotacao, diaSemana:1 }, // só segunda-feira
     { nome:'faturas', jobName:'alerta_faturas', fn:verificarAlertaFaturas },
+    { nome:'auditoria-datas', jobName:'auditoria_datas_semanal', fn:enviarAuditoriaDatas, diaSemanaBR:1 }, // segunda, 07:00–20:59 de Brasília
   ];
+  // Horário de Brasília (UTC-3, sem horário de verão). A janela termina às
+  // 21:00 porque app_job_runs conta o dia em UTC: depois disso já é outro dia
+  // lá e o job seria reservado de novo na mesma segunda.
+  function naJanelaBR(diaSemanaBR){
+    const br = new Date(Date.now() - 3 * 3600 * 1000);
+    const h = br.getUTCHours();
+    return br.getUTCDay() === diaSemanaBR && h >= 7 && h < 21;
+  }
   function checar(){
-    ALERTAS_SEPARADOS.forEach(({nome, jobName, fn, diaSemana}) => {
+    ALERTAS_SEPARADOS.forEach(({nome, jobName, fn, diaSemana, diaSemanaBR}) => {
       if (diaSemana != null && new Date().getDay() !== diaSemana) return; // semanal: nem reserva o job fora do dia
+      if (diaSemanaBR != null && !naJanelaBR(diaSemanaBR)) return;
       jaEnviouJobHoje(jobName).then(ja => {
         if (ja) { console.log(`[alerta-${nome}] já enviado hoje, pulando.`); return; }
         fn().then(n => console.log(`[alerta-${nome}] verificação concluída, ${n} pendência(s) encontrada(s).`))

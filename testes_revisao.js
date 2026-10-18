@@ -160,7 +160,8 @@ teste('Data que não existe (mês 25): usa a trocada', () => {
   iguais(r.datas.data_devolucao_vazio, '2026-04-25'); ok(/não existe no calendário/.test(r.avisos[0]), r.avisos[0]);
 });
 teste('Ambígua (trocar o ETD ou o ETA fecha igual): não usa nenhuma', () => {
-  const r = LER({ etd: '2026-09-05', eta: '2026-08-10' }, {});
+  // ETA 08/06 antes do ETD 05/07: ETD 07/05 ou ETA 06/08 dão os dois 32 dias de viagem
+  const r = LER({ etd: '2026-07-05', eta: '2026-06-08' }, {});
   iguais(r.datas, {}); iguais(r.descartadas.map(d => d.tipo), ['ambigua', 'ambigua']);
   ok(/Não dá para saber qual das datas deste documento está errada/.test(r.avisos[0]), r.avisos[0]);
 });
@@ -172,9 +173,11 @@ teste('Trocada que daria trânsito curto (ou longo) demais não é usada', () =>
   // chegada lida 08/03 é antes do embarque (28/07); a trocada, 03/08, daria 6 dias de viagem
   const r = LER({ data_chegada: '2026-03-08' }, { data_embarque: '2026-07-28' });
   iguais(r.datas, {}); iguais(r.trocadas.length, 0);
-  // chegada lida 06/01 é antes do embarque (05/02); a trocada, 01/06, daria 116 dias — ainda vale (até 150)
-  iguais(LER({ data_chegada: '2026-01-06' }, { data_embarque: '2026-02-05' }).datas.data_chegada, '2026-06-01');
-  // ...mas com embarque em 05/01 a trocada de uma chegada 2026-12-06 (06/12) daria 151 dias: não usa
+  // chegada lida 05/02 é antes do embarque (10/03); a trocada, 02/05, daria 53 dias — vale (até 90)
+  iguais(LER({ data_chegada: '2026-02-05' }, { data_embarque: '2026-03-10' }).datas.data_chegada, '2026-05-02');
+  // chegada lida 06/01 é antes do embarque (05/02); a trocada, 01/06, daria 116 dias — acima de 90, não usa
+  iguais(LER({ data_chegada: '2026-01-06' }, { data_embarque: '2026-02-05' }).datas, {});
+  // com embarque em 05/01 a trocada de uma chegada 2026-12-06 (06/12) daria 158 dias: não usa
   iguais(LER({ data_chegada: '2026-12-06' }, { data_embarque: '2026-01-05' }).datas, {});
 });
 teste('Datas certas passam sem aviso (PI/CI não são conferidas contra o processo)', () => {
@@ -199,6 +202,108 @@ teste('Formato que não é AAAA-MM-DD passa como veio; data com hora é lida só
 });
 teste('noFuturo: mais de 1 dia à frente', () => {
   ok(VD.noFuturo('2026-10-19', HOJE) && !VD.noFuturo('2026-10-18', HOJE) && !VD.noFuturo('', HOJE));
+});
+
+console.log('\n── Travas de datas, 2ª parte: sequências, previsão e viagem longa ──');
+const AVISOS = (p, campos) => VD.avisos(VD.validar(p, { hoje: HOJE, campos })).map(a => a.msg);
+teste('Chegada mais de 30 dias longe do ETA: aviso (pega dia/mês trocados que cabem na sequência)', () => {
+  const r = VD.validar({ eta: '2026-05-02', data_chegada: '2026-06-10' }, { hoje: HOJE });
+  iguais(VD.erros(r).length, 0);
+  ok(r.some(a => a.tipo === 'previsao' && /Data de Chegada \(10\/06\/2026\) está 39 dias depois do ETA \(02\/05\/2026\)/.test(a.msg)), JSON.stringify(r));
+});
+teste('Embarque mais de 30 dias antes do ETD: aviso; até 30 dias, nada', () => {
+  ok(AVISOS({ etd: '2026-06-20', data_embarque: '2026-05-15' }).some(m => /36 dias antes do ETD/.test(m)));
+  iguais(AVISOS({ etd: '2026-06-20', data_embarque: '2026-07-15' }), []);
+});
+teste('Carregamento antes da liberação: aviso (não trava)', () => {
+  const r = VD.validar({ data_chegada: '2026-04-01', data_liberacao: '2026-04-10', data_carregamento: '2026-04-05' }, { hoje: HOJE });
+  iguais(VD.erros(r).length, 0);
+  ok(VD.avisos(r).some(a => /Data de Carregamento \(05\/04\/2026\) está antes de Data de Liberação \(10\/04\/2026\)/.test(a.msg)), JSON.stringify(r));
+});
+teste('NF de entrada depois do carregamento: aviso', () => {
+  ok(AVISOS({ data_chegada: '2026-04-01', nf_entrada_data: '2026-04-12', data_carregamento: '2026-04-08' })
+    .some(m => /Data de Carregamento \(08\/04\/2026\) está antes de Data da NF de Entrada \(12\/04\/2026\)/.test(m)));
+});
+teste('Prontidão na fábrica depois do embarque: aviso', () => {
+  ok(AVISOS({ data_prontidao: '2026-03-10', data_embarque: '2026-03-01' })
+    .some(m => /Data de Embarque \(01\/03\/2026\) está antes de Prontidão na Fábrica \(10\/03\/2026\)/.test(m)));
+});
+teste('Viagem com mais de 90 dias: aviso', () => {
+  ok(AVISOS({ data_embarque: '2026-01-05', data_chegada: '2026-04-20' }).some(m => /105 dias entre o Embarque/.test(m)));
+  iguais(AVISOS({ data_embarque: '2026-01-05', data_chegada: '2026-03-20' }), []);
+});
+teste('Regras novas também só valem para os campos alterados', () => {
+  iguais(AVISOS({ data_embarque: '2026-01-05', data_chegada: '2026-04-20', obs: 'x' }, ['obs']), []);
+});
+
+console.log('\n── A data como está impressa no documento (lerDataTexto) ──');
+const TXT = (t, o) => VD.lerDataTexto(t, o);
+teste('Ano na frente, com hora ou sem: sem ambiguidade', () => {
+  iguais(TXT('2026/05/30 10:54'), { data: '2026-05-30', ambigua: false });
+  iguais(TXT('2026-09-08T10:54:00'), { data: '2026-09-08', ambigua: false });
+  iguais(TXT('2026年5月30日'), { data: '2026-05-30', ambigua: false });
+});
+teste('Mês por extenso (inglês e português): sem ambiguidade', () => {
+  iguais(TXT('30-MAY-2026').data, '2026-05-30');
+  iguais(TXT('SEP. 05, 2026').data, '2026-09-05');
+  iguais(TXT('Sep 5th 2026').data, '2026-09-05');
+  iguais(TXT('5 de setembro de 2026').data, '2026-09-05');
+  iguais(TXT('05-SET-26').data, '2026-09-05');
+});
+teste('Dia/mês numérico: dia acima de 12 decide; até 12 depende do documento', () => {
+  iguais(TXT('15/09/2026'), { data: '2026-09-15', ambigua: false });
+  iguais(TXT('09/15/2026'), { data: '2026-09-15', ambigua: false });
+  iguais(TXT('08/09/2026'), { data: null, ambigua: true }, 'sem saber o padrão do documento');
+  iguais(TXT('08/09/2026 10:54', { diaPrimeiro: true }), { data: '2026-09-08', ambigua: true }, 'documento brasileiro');
+  iguais(TXT('08/09/2026', { diaPrimeiro: false }).data, '2026-08-09');
+  iguais(TXT('Emissão: 05.10.2026 14:22', { diaPrimeiro: true }).data, '2026-10-05');
+});
+teste('Texto com rótulo antes da data não confunde o mês', () => {
+  iguais(TXT('gate out 28/05/2026').data, '2026-05-28');
+});
+teste('Data que não existe ou texto sem data', () => {
+  iguais(TXT('31/02/2026'), { data: null, ambigua: false });
+  iguais(TXT('sem data'), null); iguais(TXT(''), null); iguais(TXT(null), null);
+});
+teste('Data confirmada pelo texto (semTroca) não é trocada: se não fecha, não é usada', () => {
+  const r = VD.conferirDatasLidas({ data_devolucao_vazio: '2026-02-04' }, { data_chegada: '2026-03-20' }, { hoje: HOJE, semTroca: ['data_devolucao_vazio'] });
+  iguais(r.datas, {}); iguais(r.trocadas.length, 0);
+  ok(!/Com dia e mês trocados/.test(r.avisos[0]), r.avisos[0]);
+  // sem a confirmação do texto, a mesma leitura é trocada
+  iguais(LER({ data_devolucao_vazio: '2026-02-04' }, { data_chegada: '2026-03-20' }).datas.data_devolucao_vazio, '2026-04-02');
+});
+
+console.log('\n── Importações e auditoria (separarDatasImpossiveis / auditarProcessos) ──');
+teste('Importação: data impossível sai do que vai ser gravado, com o motivo; o resto entra', () => {
+  const r = VD.separarDatasImpossiveis({ data_embarque: '2026-03-10', etd: '2026-03-08' }, { data_chegada: '2026-03-01', eta: '2026-04-15', navio: 'NAVIO TESTE' }, { hoje: HOJE });
+  iguais(r.patch, { eta: '2026-04-15', navio: 'NAVIO TESTE' });
+  iguais(r.recusadas.map(x => [x.campo, x.valor]), [['data_chegada', '2026-03-01']]);
+  ok(/Data de Chegada \(01\/03\/2026\) está antes de Data de Embarque \(10\/03\/2026\)/.test(r.recusadas[0].motivo), r.recusadas[0].motivo);
+});
+teste('Importação: as duas datas do erro vindas juntas não entram (não dá para saber qual está errada)', () => {
+  const r = VD.separarDatasImpossiveis({}, { etd: '2026-05-10', eta: '2026-05-01' }, { hoje: HOJE });
+  iguais(r.patch, {}); iguais(r.recusadas.map(x => x.campo).sort(), ['eta', 'etd']);
+});
+teste('Importação: data só improvável entra e volta como aviso', () => {
+  const r = VD.separarDatasImpossiveis({ eta: '2026-04-20', data_embarque: '2026-03-10' }, { data_chegada: '2026-05-30' }, { hoje: HOJE });
+  iguais(r.patch, { data_chegada: '2026-05-30' }); iguais(r.recusadas, []);
+  ok(r.avisos.some(m => /40 dias depois do ETA/.test(m)), JSON.stringify(r.avisos));
+});
+teste('Importação: chegada depois da devolução de um container já gravado (2+ containers) não entra', () => {
+  const r = VD.separarDatasImpossiveis({ containers_json: DOIS_CONT(['2026-04-15', '']) }, { data_chegada: '2026-04-21' }, { hoje: HOJE });
+  iguais(r.patch, {}); iguais(r.recusadas[0].campo, 'data_chegada');
+});
+teste('Auditoria: só processos com problema, sem os cancelados, e DI/NF no futuro também contam', () => {
+  const lista = [
+    { id: 1, referencia: 'TESTE-1', data_embarque: '2026-03-10', data_chegada: '2026-03-01' },
+    { id: 2, referencia: 'TESTE-2', data_embarque: '2026-03-10', data_chegada: '2026-04-05' },
+    { id: 3, referencia: 'TESTE-3', cancelado: true, data_embarque: '2026-03-10', data_chegada: '2026-03-01' },
+    { id: 4, referencia: 'TESTE-4', data_liberacao: '2026-12-20' },
+  ];
+  const a = VD.auditarProcessos(lista, { hoje: HOJE });
+  iguais(a.map(x => x.processo.referencia), ['TESTE-1', 'TESTE-4']);
+  iguais(a[0].problemas[0].nivel, 'erro');
+  ok(/Data de Liberação \(20\/12\/2026\) está no futuro/.test(a[1].problemas[0].msg), a[1].problemas[0].msg);
 });
 
 console.log('\n── Edição simultânea (concorrencia-processo.js) ──');
@@ -402,7 +507,8 @@ function telaComIA(respostaIA) {
     iguais(t.els.f_nf_entrada_data.value, '2026-04-02');
   });
   await testeAsync('CE Mercante: chegada lida fora da DI continua indo para o ETA e é conferida como ETA', async () => {
-    const t = telaComIA({ ce_master: '123456789012345', data_chegada: '2026-03-08', etd: '2026-04-20' });
+    // ETA lido 08/03 antes do ETD (20/05); trocado, 03/08, dá 75 dias de viagem
+    const t = telaComIA({ ce_master: '123456789012345', data_chegada: '2026-03-08', etd: '2026-05-20' });
     await t.ler();
     iguais([t.els.f_eta.value, t.els.f_data_chegada.value], ['2026-08-03', '']);
   });
@@ -426,6 +532,82 @@ function telaComIA(respostaIA) {
     t.rodar(`parseNFeXml = async () => ({ tipo: 'ENTRADA', cliente: '', nf_numero: '556', nf_data: '2026-02-04', nf_valor: 100, cfop: '3102', itens: [] });`);
     await t.rodar(`importarNFSaidaProcessoArquivo({ name: 'nf-teste.xml', type: 'text/xml' })`);
     iguais(t.els.f_nf_entrada_data.value, '2026-02-04');
+  });
+
+  console.log('\n── Leitura por IA: a data como está impressa (datas_texto) ──');
+  await testeAsync('RIC: o texto impresso (dia/mês/ano) corrige a data que a IA inverteu, mesmo quando as duas fecham', async () => {
+    const t = telaComIA({ eh_ric: true, containers: [{ numero: 'TSTU0000001', lacre: '' }], data_devolucao_vazio: '2026-04-05',
+      datas_texto: { data_devolucao_vazio: 'ENTRADA: 04/05/2026 10:54' }, depot: 'DEPOT TESTE' });
+    t.tela('f_data_chegada', '2026-03-20'); t.tela('f_data_carregamento', '2026-03-27'); t.rodar(`_containers = [{ numero: 'TSTU0000001', tipo: '40HC', lacre: '' }];`);
+    await t.ler();
+    iguais(t.els.f_data_devolucao_vazio.value, '2026-05-04');
+    ok((t.els['ia-status'].filhos || []).some(f => /o documento traz .*04\/05\/2026 10:54.* usei 04\/05\/2026, não 05\/04\/2026/.test(f.innerHTML)), 'caixa de aviso na tela');
+    ok(t.rodar('_editando.log').some(l => /lida 05\/04\/2026 → 04\/05\/2026 pelo texto impresso/.test(l.valor_depois)), JSON.stringify(t.rodar('_editando.log')));
+  });
+  await testeAsync('RIC: texto sem ambiguidade (ano na frente) protege a data — impossível, não é trocada nem usada', async () => {
+    const t = telaComIA({ eh_ric: true, containers: [{ numero: 'TSTU0000001', lacre: '' }], data_devolucao_vazio: '2026-02-04',
+      datas_texto: { data_devolucao_vazio: '2026/02/04 10:54' }, depot: 'DEPOT TESTE' });
+    t.tela('f_data_chegada', '2026-03-20'); t.rodar(`_containers = [{ numero: 'TSTU0000001', tipo: '40HC', lacre: '' }];`);
+    await t.ler();
+    iguais(t.els.f_data_devolucao_vazio.value, '');
+    ok(t.toasts.some(x => /data\(s\) conferida/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Documento do exterior com dia/mês ambíguo no texto: fica a leitura da IA', async () => {
+    const t = telaComIA({ hbl: 'HBLTESTE1', etd: '2026-05-08', datas_texto: { etd: '05/08/2026' } });
+    await t.ler();
+    iguais(t.els.f_etd.value, '2026-05-08');
+  });
+  await testeAsync('Texto que não bate com a data lida: fica a data lida, com aviso para conferir', async () => {
+    const t = telaComIA({ hbl: 'HBLTESTE2', etd: '2026-05-08', datas_texto: { etd: 'MAY 20, 2026' } });
+    await t.ler();
+    iguais(t.els.f_etd.value, '2026-05-08');
+    ok((t.els['ia-status'].filhos || []).some(f => /ETD.* lida como 08\/05\/2026, mas o texto copiado do documento é/.test(f.innerHTML)), 'caixa de aviso na tela');
+  });
+  await testeAsync('Extrator de NF: a data impressa na nota (dia/mês/ano) corrige a leitura invertida', async () => {
+    const t = telaComIA({ tipo: 'ENTRADA', nf_numero: '557', nf_data: '2026-04-05', nf_data_texto: '04/05/2026', nf_valor: 100, cfop: '3102', itens: [] });
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] };`); t.tela('f_data_registro_di', '2026-03-30');
+    await t.rodar(`importarNFSaidaProcessoArquivo({ name: 'nf-teste.pdf', type: 'application/pdf' })`);
+    iguais(t.els.f_nf_entrada_data.value, '2026-05-04');
+    ok(t.toasts.some(x => /a nota traz "04\/05\/2026" — usei 04\/05\/2026, não 05\/04\/2026/.test(x[1])), JSON.stringify(t.toasts));
+  });
+
+  console.log('\n── Edição rápida de data na tabela (inlineEditData) ──');
+  // Campo de data falso que guarda os listeners (blur/keydown) para o teste disparar.
+  function tabelaInline(processos) {
+    const t = telaComIA({});
+    t.rodar(`__salvos = []; salvarProcesso = (p, campos) => { __salvos.push([p.id, campos.join(','), p[campos[0]]]); return Promise.resolve(true); };
+      render = () => {}; _processos = ${JSON.stringify(processos)};
+      document.createElement = tag => { const ouv = {}; const el = { tagName: String(tag).toUpperCase(), value: '', style: {}, className: '',
+        addEventListener(ev, fn){ (ouv[ev] = ouv[ev] || []).push(fn); }, focus(){},
+        disparar(ev, arg){ (ouv[ev] || []).forEach(fn => fn(arg || {})); } }; __campo = el; return el; };`);
+    const editar = (id, campo, valor) => {
+      t.rodar(`inlineEditData(${JSON.stringify(id)}, ${JSON.stringify(campo)}, { innerHTML: '', appendChild(){} }); __campo.value = ${JSON.stringify(valor)};`);
+      t.rodar(`__campo.disparar('blur'); __campo.disparar('blur');`); // o 2º blur (render/confirm) não pode gravar de novo
+    };
+    return { t, editar, salvos: () => t.rodar('__salvos') };
+  }
+  await testeAsync('Data impossível (ETA antes do ETD) não é gravada e avisa', async () => {
+    const x = tabelaInline([{ id: 'p1', referencia: 'TESTE-INLINE', etd: '2026-05-10', eta: '2026-06-20' }]);
+    x.editar('p1', 'eta', '2026-05-01');
+    iguais(x.salvos(), []); iguais(x.t.rodar('_processos[0].eta'), '2026-06-20');
+    ok(x.t.toasts.some(y => y[0] === 'err' && /Data impossível — nada foi salvo: .*ETA.*01\/05\/2026.* está antes de ETD/.test(y[1])), JSON.stringify(x.t.toasts));
+  });
+  await testeAsync('Data improvável pede confirmação: "Cancelar" não grava; "OK" grava uma vez só', async () => {
+    const procs = [{ id: 'p2', referencia: 'TESTE-INLINE2', etd: '2026-05-10', eta: '2026-06-20', data_chegada: '2026-06-22' }];
+    const x = tabelaInline(procs);
+    x.t.rodar(`__perguntas = []; confirm = m => { __perguntas.push(m); return false; };`);
+    x.editar('p2', 'eta', '2026-08-01'); // chegada 40 dias antes do ETA
+    iguais(x.salvos(), []); ok(/Confira as datas antes de salvar:[\s\S]*40 dias antes do ETA/.test(x.t.rodar('__perguntas[0]')), x.t.rodar('__perguntas[0]'));
+    x.t.rodar(`confirm = () => true;`);
+    x.editar('p2', 'eta', '2026-08-01');
+    iguais(x.salvos(), [['p2', 'eta', '2026-08-01']]);
+  });
+  await testeAsync('Data sem problema grava só o campo editado; Esc desiste sem gravar', async () => {
+    const x = tabelaInline([{ id: 'p3', referencia: 'TESTE-INLINE3', etd: '2026-05-10', eta: '2026-06-20' }]);
+    x.t.rodar(`inlineEditData('p3', 'eta', { innerHTML: '', appendChild(){} }); __campo.value = '2026-06-25'; __campo.disparar('keydown', { key: 'Escape' }); __campo.disparar('blur');`);
+    iguais(x.salvos(), []); iguais(x.t.rodar('_processos[0].eta'), '2026-06-20');
+    x.editar('p3', 'eta', '2026-06-25');
+    iguais(x.salvos(), [['p3', 'eta', '2026-06-25']]);
   });
 
   console.log('\n── Rede: erro que não veio do sistema (chat.js) ──');

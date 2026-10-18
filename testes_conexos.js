@@ -56,6 +56,24 @@ function sbFake(){
     iguais(st.updates[0].patch.numero_di, '26BR9'); if(!st.updates[0].patch.conexos_ultima_sync) throw new Error('sem conexos_ultima_sync');
     iguais(st.logs[0].status, 'ok'); iguais(st.logs[0].usuario, 'ayslan');
   });
+  await teste('data impossível vinda do Conexos não é gravada e fica no log como ignorada', async () => {
+    const { sb, st } = sbFake();
+    // liberação certa; NF de entrada com ano pela metade (erro) — o processo já tem embarque e chegada
+    const transporte = { configurado:true, buscarProcesso: async () => ({ configurado:true, dados:{ 'di.numero':'26BR7', 'di.data_desembaraco':'2026-04-10', 'nf_entrada.data':'0026-04-12' } }) };
+    const r = await c.sincronizarProcesso(sb, { id:'p1', referencia:'UD1', conexos_id:'C1', data_embarque:'2026-02-20', data_chegada:'2026-04-01' }, { transporte });
+    iguais(r.status, 'ok'); iguais(r.campos, { numero_di:'26BR7', data_liberacao:'2026-04-10' });
+    iguais(r.datas_recusadas.map(x => x.campo), ['nf_entrada_data']);
+    iguais(st.updates[0].patch.nf_entrada_data, undefined);
+    const ign = st.logs[0].payload.ignorados.find(i => i.motivo === 'data_impossivel');
+    iguais([ign.campo, ign.novo], ['nf_entrada_data', '0026-04-12']);
+  });
+  await teste('ETA antes do ETD vindos juntos do Conexos: nenhum dos dois é gravado', async () => {
+    const { sb, st } = sbFake();
+    const transporte = { configurado:true, buscarProcesso: async () => ({ configurado:true, dados:{ 'embarque.etd':'2026-05-10', 'embarque.eta':'2026-05-01' } }) };
+    const r = await c.sincronizarProcesso(sb, { id:'p1', referencia:'UD1', conexos_id:'C1' }, { transporte });
+    iguais(r.campos, {}); iguais(r.datas_recusadas.map(x => x.campo).sort(), ['eta', 'etd']);
+    iguais(Object.keys(st.updates[0].patch), ['conexos_ultima_sync']);
+  });
   await teste('erro no transporte → status erro, loga, não grava', async () => {
     const { sb, st } = sbFake();
     const transporte = { configurado:true, buscarProcesso: async () => { throw new Error('timeout'); } };
