@@ -463,6 +463,35 @@ function isoDate(v) {
     }
     return null;
 }
+// 'AAAA-MM-DD' -> 'DD/MM/AAAA' (so para mensagens).
+function dataBR(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : String(iso || '');
+}
+// Segue a celula de uma data ate onde ela foi DIGITADA. Referencia para outra
+// aba (Fechamento!F62 = DADOS!E4) e seguida; se a origem e formula (=HOJE(),
+// =E4, =H6+3...), a data e automatica -- nao e a data real do processo.
+// Aba de destino inexistente tambem conta como "nao digitada" (na duvida,
+// nao grava). Devolve { data: 'AAAA-MM-DD'|null, digitada, origem, formula }.
+function dataDigitada(wb, aba, addr, nivel) {
+    nivel = nivel || 0;
+    const ws = wb.Sheets[aba];
+    const c = ws && ws[addr];
+    const origem = aba + '!' + addr;
+    if (!c) return { data: null, digitada: false, origem: origem, formula: '' };
+    const data = isoDate(c.v);
+    if (!c.f) return { data: data, digitada: true, origem: origem, formula: '' };
+    const ref = String(c.f).trim().match(/^(?:'([^']+)'|([^'!\s()=+\-*\/]+))!\$?([A-Z]{1,3})\$?(\d+)$/i);
+    if (ref && nivel < 5) {
+        const pedida = String(ref[1] || ref[2]).trim().toUpperCase();
+        const outraAba = wb.SheetNames.find(function(n) { return n.trim().toUpperCase() === pedida; });
+        if (outraAba && outraAba !== aba) {
+            const r = dataDigitada(wb, outraAba, ref[3].toUpperCase() + ref[4], nivel + 1);
+            return { data: data || r.data, digitada: r.digitada, origem: r.origem, formula: r.formula };
+        }
+    }
+    return { data: data, digitada: false, origem: origem, formula: '=' + String(c.f).replace(/\bTODAY\(\)/gi, 'HOJE()') };
+}
 function numVal(v) {
     const n = Number(v);
     return (isNaN(n) || v === '' || v === undefined) ? 0 : n;
@@ -530,20 +559,37 @@ function parseFechamento(wb) {
 
     // Datas: "Data Registro D.I" fica em G4/I4 (cabecalho fixo); as outras
     // tres ficam na coluna D com o valor em F, no rodape.
+    //
+    // So entra no processo a data que alguem DIGITOU na planilha (17/10/2026).
+    // O modelo ja vem com datas automaticas: DADOS!E4 ("DATA D.I") = HOJE(),
+    // DADOS!H6 ("DATA EMBARQUE") = E4 e DADOS!H4 ("DATA DO PEDIDO") = H6; e
+    // aqui no Fechamento "Embarque" = DADOS!H6, "Chegada Porto" = DADOS!E4 e
+    // "Data Registro D.I" = DADOS!E4. Enquanto ninguem digita, as tres mostram
+    // o dia em que a planilha foi salva -- e a importacao gravava isso como
+    // embarque, chegada e registro da DI (processos ficavam com as tres datas
+    // iguais, ou com o embarque copiado da Data da D.I.).
     const lDi = linhas.find(function(l) { return /^DATA REGISTRO/.test(semAcento(l.G)); });
-    const dataRegistroDi = isoDate(lDi ? lDi.I : cellVal(ws, 'I4'));
     const lPedido = porRotuloD(/^DATA DO PEDIDO/);
     const lEmbarque = porRotuloD(/^EMBARQUE$/);
     const lChegada = porRotuloD(/^CHEGADA/);
-    const dataPedido = isoDate(lPedido && lPedido.F);
-    const dataEmbarque = isoDate(lEmbarque && lEmbarque.F);
-    const dataChegada = isoDate(lChegada && lChegada.F);
+    const fDi = dataDigitada(wb, 'Fechamento', lDi ? 'I' + lDi.r : 'I4');
+    const fPedido = lPedido ? dataDigitada(wb, 'Fechamento', 'F' + lPedido.r) : null;
+    const fEmbarque = lEmbarque ? dataDigitada(wb, 'Fechamento', 'F' + lEmbarque.r) : null;
+    const fChegada = lChegada ? dataDigitada(wb, 'Fechamento', 'F' + lChegada.r) : null;
 
     const datas = {};
-    if (dataEmbarque) datas.data_embarque = dataEmbarque;
-    if (dataChegada) datas.data_chegada = dataChegada;
-    if (dataRegistroDi) datas.data_registro_di = dataRegistroDi;
-    if (dataPedido) avisos.push('Data do Pedido na planilha: ' + dataPedido + ' (sem campo correspondente no Controle - confira manualmente).');
+    const naoDigitadas = [];
+    [['data_embarque', 'Embarque', fEmbarque], ['data_chegada', 'Chegada', fChegada], ['data_registro_di', 'Registro da D.I.', fDi]].forEach(function(d) {
+        const info = d[2];
+        if (!info || !info.data) return;
+        if (info.digitada) datas[d[0]] = info.data;
+        else naoDigitadas.push(d[1] + ' (' + info.origem + (info.formula ? ' ' + info.formula : '') + ')');
+    });
+    if (naoDigitadas.length) {
+        const dia = (fChegada && fChegada.data) || (fEmbarque && fEmbarque.data) || (fDi && fDi.data);
+        avisos.push('Nao importei ' + naoDigitadas.join(', ') + ': na planilha essa data ainda e automatica (mostra ' + dataBR(dia) + ', o dia em que a planilha foi salva ou a copia de outra data), nao a data real. Digite a data na planilha ou direto no processo.');
+    }
+    if (fPedido && fPedido.data && fPedido.digitada) avisos.push('Data do Pedido na planilha: ' + fPedido.data + ' (sem campo correspondente no Controle - confira manualmente).');
 
     // Notas de saida: do rotulo "NOTAS SAIDAS" (coluna B) ate a linha "TOTAL"
     // (coluna E). Cada nota tem numero em E, valor em G, cliente em H, data em
