@@ -55,11 +55,24 @@
     }
     return true;
   }
-  function descrever(el) {
+  function descreverCurto(el) {
     const id = el.id ? '#' + el.id : '';
-    const cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
+    const cls = (el.className && typeof el.className === 'string' && el.className.trim()) ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
+    return `${el.tagName.toLowerCase()}${id}${cls}`;
+  }
+  function descrever(el) {
     const txt = (el.innerText || el.value || el.getAttribute('placeholder') || '').trim().replace(/\s+/g, ' ').slice(0, 40);
-    return `${el.tagName.toLowerCase()}${id}${cls}${txt ? ' "' + txt + '"' : ''}`;
+    return `${descreverCurto(el)}${txt ? ' "' + txt + '"' : ''}`;
+  }
+  // Elemento fixo na tela (nav do topo, chat, toasts) não faz a página rolar
+  // — no celular ele só ESTICA junto quando outra coisa passa da tela (o
+  // Chrome alarga a área visível pra caber o conteúdo). Fica fora da busca
+  // de culpado, senão a nav aparece como culpada de tudo.
+  function fixoOuDentro(el) {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (getComputedStyle(n).position === 'fixed') return true;
+    }
+    return false;
   }
   // Algum pai rola na horizontal (tabela larga dentro de uma caixa com
   // overflow-x:auto)? Então passar da largura é esperado — a caixa rola,
@@ -81,20 +94,27 @@
     const out = { url: location.pathname, largura, rolagemLateral: Math.max(0, de.scrollWidth - largura), culpadosRolagem: [], letraPequena: [], baixoContraste: [], abaixoAA: 0, camposSemNome: [], textosMedidos: 0 };
 
     if (out.rolagemLateral > 2) {
-      // Culpado = o elemento MAIS INTERNO que é mais largo que a tela (tabela,
-      // campo com largura fixa...). Os de fora (menu, cartões) só esticam
-      // junto. Sem nenhum mais largo, vale quem começa fora da tela.
-      const largos = [], fora = [];
+      // Culpado = onde o conteúdo começa a VAZAR: o elemento que passa da
+      // borda direita da tela enquanto o pai dele ainda cabe (coluna de grade
+      // que não encolhe, tabela larga, botão que não quebra linha, caixa
+      // posicionada fora...). Os de dentro dele só vão junto. Conta também o
+      // que está invisível (opacity 0 / visibility hidden ainda ocupa lugar).
+      const limite = largura + 2;
+      const achados = [];
       document.querySelectorAll('body *').forEach(el => {
-        if (!visivel(el) || dentroDeRolagem(el)) return;
+        if (!el.getClientRects().length) return;          // display:none
         const r = el.getBoundingClientRect();
-        if (r.width > largura + 2) largos.push({ el, r });
-        else if (r.right > largura + 2) fora.push({ el, r });
+        if (r.width < 1 || r.right <= limite) return;
+        if (dentroDeRolagem(el) || fixoOuDentro(el)) return;
+        const p = el.parentElement;
+        if (p && p !== document.body && p.getBoundingClientRect().right > limite) return;
+        achados.push({ el, r, p });
       });
-      const base = largos.length ? largos : fora;
-      const folhas = base.filter(c => !base.some(o => o !== c && c.el.contains(o.el)));
-      folhas.sort((x, y) => y.r.width - x.r.width);
-      out.culpadosRolagem = folhas.slice(0, 6).map(c => descrever(c.el) + ` (${Math.round(c.r.width)}px de largura, vai até ${Math.round(c.r.right)}px)`);
+      achados.sort((x, y) => y.r.right - x.r.right);
+      out.culpadosRolagem = achados.slice(0, 6).map(c => descrever(c.el)
+        + ` (${Math.round(c.r.width)}px de largura, vai até ${Math.round(c.r.right)}px`
+        + (c.p && c.p !== document.body ? `, dentro de ${descreverCurto(c.p)}` : '')
+        + (visivel(c.el) ? '' : ', invisível') + ')');
     }
 
     const vistos = new Set();
