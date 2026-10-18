@@ -32,6 +32,11 @@ async function importarNFVenda(vi, input){
       showToast('Processo foi trocado antes da análise terminar — dados da NF descartados para evitar mistura entre processos. Reimporte no processo correto.', 'err');
       return;
     }
+    // Data lida pela IA conferida antes de ir para a venda (ver conferirDataNFLida).
+    if(!isXml && dados.tipo !== 'ENTRADA'){
+      const avisoData = conferirDataNFLida(dados, 'nf_saida_data');
+      if(avisoData) showToast(avisoData, 'warn', 15000);
+    }
     // A aba Vendas só faz sentido pra NF de SAÍDA (nota emitida pro cliente
     // final) — se o documento anexado for lido como ENTRADA (nota de compra
     // da mercadoria importada), avisa em vez de aplicar campos vazios sem
@@ -201,6 +206,26 @@ async function parseNFeXml(file){
   return { tipo, cliente, nf_numero: nfNumero, nf_data: nfData, nf_valor: nfValor||0, cfop, itens };
 }
 
+// ── Data da NF lida pela IA, conferida com o processo (18/10/2026) ──────
+// A IA às vezes lê a data brasileira como americana (03/04 → 04/03). Se a
+// data lida é impossível (NF de entrada antes do registro da DI, NF no
+// futuro...) e a versão com dia e mês trocados fecha, usa a trocada; se
+// nenhuma fecha, não preenche a data. Devolve o aviso para a tela ('' se a
+// data estava certa). Só para PDF/imagem — o XML traz a data exata.
+function conferirDataNFLida(dados, campo){
+  if(!dados || !dados.nf_data || typeof ValidacaoDatas === 'undefined' || !ValidacaoDatas.conferirDatasLidas) return '';
+  try{
+    const estado = {};
+    ['data_registro_di','data_liberacao','data_chegada','data_carregamento','nf_entrada_data','nf_saida_data'].forEach(k => {
+      const el = document.getElementById('f_'+k); if(el && el.value) estado[k] = el.value;
+    });
+    const r = ValidacaoDatas.conferirDatasLidas({ [campo]: dados.nf_data }, estado);
+    if(r.trocadas.length){ dados.nf_data = r.trocadas[0].usada; return r.trocadas[0].aviso; }
+    if(r.descartadas.length){ dados.nf_data = ''; return r.descartadas[0].aviso; }
+  }catch(e){ console.warn('conferência da data da NF:', e); }
+  return '';
+}
+
 // ── PDF/imagem (DANFE) via IA — reaproveita /api/analisar ───────────────
 async function extrairNFComIA(file){
   const base64 = await new Promise((res,rej)=>{
@@ -326,10 +351,17 @@ async function importarNFSaidaProcessoArquivo(file){
         const okEnt = window.confirm('Ja existe NF Entrada preenchida nesse processo (No ' + (elNumChk ? elNumChk.value : '') + '). Sobrescrever com os dados extraidos da NF anexada?');
         if(!okEnt){ if(status) status.textContent = 'Importacao cancelada (dados existentes mantidos).'; return; }
       }
+      const avisoDataEnt = isXml ? '' : conferirDataNFLida(dados, 'nf_entrada_data');
       aplicarDadosNFEntradaNoProcesso(dados);
-      if(status) status.textContent = 'NF de Entrada importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
+      if(status) status.textContent = 'NF de Entrada importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '') + (avisoDataEnt ? ' | ATENÇÃO: ' + avisoDataEnt : '');
+      if(avisoDataEnt) showToast(avisoDataEnt, 'warn', 15000);
       return;
     }
+
+    // Data da NF de saída lida pela IA conferida antes de ir para o processo
+    // ou para uma venda (ver conferirDataNFLida).
+    const avisoDataSai = isXml ? '' : conferirDataNFLida(dados, 'nf_saida_data');
+    if(avisoDataSai) showToast(avisoDataSai, 'warn', 15000);
 
     const elNumChk = document.getElementById('f_nf_saida_numero');
     const elDataChk = document.getElementById('f_nf_saida_data');
@@ -386,6 +418,7 @@ async function importarNFSaidaProcessoArquivo(file){
       if(qtdNF>0 && qtdProcesso>0 && qtdNF !== qtdProcesso) avisos.push('quantidade da NF (' + qtdNF + ') diverge do processo (' + qtdProcesso + ')');
     }
 
+    if(avisoDataSai) avisos.push(avisoDataSai);
     let msg = 'NF importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
     if(avisoFiltro) msg += ' | ' + avisoFiltro;
     if(avisos.length) msg += ' | ATENCAO: ' + avisos.join('; ');
