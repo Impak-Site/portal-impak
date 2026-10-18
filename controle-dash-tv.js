@@ -480,7 +480,7 @@ function renderDashTV(){
         <div style="flex:0 0 auto;width:24px;height:24px;border-radius:6px;background:${cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:'Inter',sans-serif;">${esc(iniciaisMarcaTV(nome))}</div>
         <div style="font-size:13px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nome)}</div>
       </div>
-      <div style="font-size:26px;font-weight:800;color:#0f1f3d;font-family:'Inter',sans-serif;white-space:nowrap;line-height:1.1;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:#94a3b8;">containers</span></div>
+      <div style="font-size:26px;font-weight:800;color:#0f1f3d;font-family:'Inter',sans-serif;white-space:nowrap;line-height:1.1;">${fmtN(qtd)} <span style="font-size:12px;font-weight:600;color:#64748b;">containers</span></div>
       <div style="background:#e2e8f0;border-radius:4px;height:5px;margin-top:6px;overflow:hidden;"><div style="background:${cor};height:100%;width:${pct}%;"></div></div>
     </div>`;
   }
@@ -575,7 +575,7 @@ function renderDashTV(){
         <td style="${CEL_TV}font-weight:600;" title="${esc(x.referencia)}">${esc(x.referencia)}</td>
         <td style="${CEL_TV}color:var(--muted);" title="${esc(x.cliente||'')}">${esc(x.cliente||'')}</td>
         <td style="${CEL_TV}text-align:center;">${esc(x.finalidade)}</td>
-        <td style="${CEL_TV}text-align:right;font-weight:700;${x.acomp?'color:#94a3b8;':''}" title="${x.acomp?'Só acompanhamento — não entra nas quantidades':''}">${x.acomp?'('+x.n+')':x.n}</td>
+        <td style="${CEL_TV}text-align:right;font-weight:700;${x.acomp?'color:#64748b;':''}" title="${x.acomp?'Só acompanhamento — não entra nas quantidades':''}">${x.acomp?'('+x.n+')':x.n}</td>
       </tr>`;
   }
   // Larguras fixas por coluna (soma 100%) — com table-layout:fixed elas
@@ -600,7 +600,7 @@ function renderDashTV(){
         <div style="width:32%;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.referencia)}">${esc(x.referencia)}</div>
         <div style="width:34%;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(x.cliente||'')}">${esc(x.cliente||'')}</div>
         <div style="width:10%;text-align:center;overflow:hidden;">${esc(x.finalidade)}</div>
-        <div style="width:10%;text-align:right;font-weight:700;overflow:hidden;${x.acomp?'color:#94a3b8;':''}">${x.acomp?'('+x.n+')':x.n}</div>
+        <div style="width:10%;text-align:right;font-weight:700;overflow:hidden;${x.acomp?'color:#64748b;':''}">${x.acomp?'('+x.n+')':x.n}</div>
       </div>`;
   }
   const cabecalhoColFlex = `<div style="display:flex;color:var(--muted);font-size:.72em;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);padding-bottom:4px;flex:0 0 auto;">

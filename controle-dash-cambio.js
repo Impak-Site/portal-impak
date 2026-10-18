@@ -105,7 +105,7 @@ function exportarPendenciasDI(){
   m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(560px,calc(var(--vwz,1vw)*94));padding:22px 24px;box-shadow:0 20px 50px rgba(0,0,0,.25);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <div style="font-size:17px;font-weight:800;color:var(--text);">${icoUI('arquivo',16)} Pendências de DI</div>
-      <button type="button" onclick="document.getElementById('pdiModal').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#94a3b8;">×</button>
+      <button type="button" onclick="document.getElementById('pdiModal').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#64748b;">×</button>
     </div>
     <div style="font-size:12px;color:var(--text-muted,#64748b);margin-bottom:14px;">Câmbios de Pagamento Antecipado (Parcelado) fechados no período.</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">${chips.join('')}</div>
@@ -113,7 +113,7 @@ function exportarPendenciasDI(){
       <summary style="font-size:12px;font-weight:700;cursor:pointer;color:#2563eb;">Outro mês ou período personalizado</summary>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;">
         <label style="font-size:11px;font-weight:700;color:#64748b;">Mês<br><input type="month" id="pdiMes" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:13px;"></label>
-        <span style="font-size:11px;color:#94a3b8;padding-bottom:9px;">ou</span>
+        <span style="font-size:11px;color:#64748b;padding-bottom:9px;">ou</span>
         <label style="font-size:11px;font-weight:700;color:#64748b;">De<br><input type="date" id="pdiDe" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:13px;"></label>
         <label style="font-size:11px;font-weight:700;color:#64748b;">Até<br><input type="date" id="pdiAte" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:13px;"></label>
       </div>
@@ -1192,7 +1192,7 @@ function renderDashCambio(){
   const qtdPend = semData.length + _probCad.length;
   const ABAS_CAMBIO = [
     { id:'parcelas',     icone:'lista', titulo:'A pagar',     badge: prontas.length ? `<span style="background:var(--err);color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${prontas.length}</span>` : '' },
-    { id:'pendencias',   icone:'alerta', titulo:'Pendências',  badge: qtdPend ? `<span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${qtdPend}</span>` : '' },
+    { id:'pendencias',   icone:'alerta', titulo:'Pendências',  badge: qtdPend ? `<span style="background:#b45309;color:#fff;border-radius:20px;padding:0 7px;font-size:10.5px;margin-left:6px;">${qtdPend}</span>` : '' },
     { id:'analises',     icone:'grafico', titulo:'Análises',    badge:'' },
     { id:'adiantamento', icone:'carteira', titulo:'Adiantamento do cliente', badge:'' },
     { id:'fluxo',        icone:'calendario', titulo:'Fluxo de caixa', badge:'' },
