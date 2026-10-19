@@ -3269,9 +3269,83 @@ function nfsSaidaVenda(p){
 // contam (nfsSaidaVenda já ignora).
 function dataNfSaidaProcesso(p){
   if(!p) return '';
-  if(p.nf_saida_data) return p.nf_saida_data;
+  // NF do campo antigo só vale se for venda: remessa p/ estoque (5905) não
+  // conta (ex.: TVN2508D, remessa em 12/2025 e vendas em 2026).
+  if(p.nf_saida_data && !ehCfopSemVenda(p.nf_saida_cfop)) return p.nf_saida_data;
   const datas = nfsSaidaVenda(p).map(n => n.data).filter(d => d && /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
   return datas.length ? datas[datas.length-1] : '';
+}
+// Partes do processo por cliente para os painéis Resultado e Análises
+// (pedido Ayslan 19/10/2026: filtrar/agrupar por cliente tem que achar os
+// clientes da aba Vendas, não só o cliente principal). Uma parte por
+// cliente com NF de venda: participação = NF do cliente / NF total do
+// processo, data = última NF desse cliente. Sem vendas = uma parte só
+// (cliente principal, processo inteiro).
+function partesClienteProcesso(p){
+  if(!p) return [];
+  const nfs = parseVendas(p).length ? nfsSaidaVenda(p) : [];
+  if(!nfs.length) return [{ cliente: p.cliente || '', participacao: 1, nf: null, data: dataNfSaidaProcesso(p) }];
+  const total = nfs.reduce((s,n)=> s + (n.valor || 0), 0);
+  const porCliente = new Map();
+  nfs.forEach(n => {
+    const c = String(n.cliente || p.cliente || '').trim();
+    const g = porCliente.get(c) || { cliente: c, nf: 0, qtd: 0, datas: [] };
+    g.nf += (n.valor || 0); g.qtd++;
+    if(n.data && /^\d{4}-\d{2}-\d{2}/.test(n.data)) g.datas.push(n.data);
+    porCliente.set(c, g);
+  });
+  return [...porCliente.values()].map(g => ({
+    cliente: g.cliente,
+    participacao: total > 0 ? g.nf / total : g.qtd / nfs.length,
+    nf: g.nf,
+    data: g.datas.sort().pop() || '',
+  }));
+}
+// Fechamento proporcional à parte de um cliente: valores em R$ multiplicados
+// pela participação, faturamento = NF do cliente, margens recalculadas.
+function fechamentoDaParte(fch, parte){
+  if(!fch || !parte || parte.participacao >= 0.999999) return fch;
+  const k = parte.participacao;
+  const m = v => (v == null || isNaN(v)) ? v : v * k;
+  const nfSaida = parte.nf != null ? parte.nf : m(fch.nfSaida);
+  const lucroReal = m(fch.lucroReal), lucroEstimado = m(fch.lucroEstimado);
+  return { ...fch, parcial: true, participacao: k,
+    nfSaida, lucroReal, lucroEstimado,
+    custoEstimado: m(fch.custoEstimado), faturamentoEstimado: m(fch.faturamentoEstimado),
+    custoRealTotal: m(fch.custoRealTotal), nfEntrada: m(fch.nfEntrada),
+    pctLucroReal: (lucroReal != null && nfSaida) ? lucroReal / nfSaida : fch.pctLucroReal,
+    deltaValor: (lucroReal != null && lucroEstimado != null) ? lucroReal - lucroEstimado : fch.deltaValor,
+  };
+}
+// Linhas do Resultado/Análises: por processo (padrão) ou por parte de
+// cliente (dividirPorCliente, ou quando há filtro de cliente). Só entra o
+// que tem NF de venda com data dentro de [ini, fim].
+function linhasResultadoPeriodo(lista, opts){
+  opts = opts || {};
+  const { ini, fim } = opts;
+  const clienteF = String(opts.cliente || '').trim();
+  const dividir = !!opts.dividirPorCliente || !!clienteF;
+  const dentro = d => { if(!d) return false; const x = parseDataLocal(d); return !!x && !isNaN(x.getTime()) && (!ini || x >= ini) && (!fim || x <= fim); };
+  const out = [];
+  (lista || []).forEach(p => {
+    if(!p) return;
+    if(!dividir){
+      const d = dataNfSaidaProcesso(p);
+      if(!dentro(d)) return;
+      out.push({ p, fch: calcularFechamento(p), cliente: p.cliente || '', data: d, parcial: false });
+      return;
+    }
+    let fch = null;
+    partesClienteProcesso(p).forEach(parte => {
+      if(clienteF && parte.cliente !== clienteF) return;
+      const dParte = parte.data || dataNfSaidaProcesso(p); // venda sem data: usa a do processo
+      if(!dentro(dParte)) return;
+      if(!fch) fch = calcularFechamento(p);
+      const f2 = fechamentoDaParte(fch, parte);
+      out.push({ p, fch: f2, cliente: parte.cliente, data: dParte, parcial: !!(f2 && f2.parcial) });
+    });
+  });
+  return out;
 }
 function temNfSaidaVenda(p){ return !!(p && (p.nf_saida_numero || nfsSaidaVenda(p).length)); }
 function nfSaidaLegadoEhVenda(p){ return !!(p && p.nf_saida_numero && String(p.nf_saida_numero).trim() && !ehCfopSemVenda(p.nf_saida_cfop)); }

@@ -408,27 +408,23 @@ function renderDashResultado(){
   const fmtBRL = v => v==null ? '—' : `R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const fmtPct = v => v==null ? '—' : `${(v*100).toFixed(1)}%`;
 
-  const opClientes = [...new Set(_processos.map(p=>p.cliente||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const opClientes = [...new Set(_processos.flatMap(p=>clientesDoProcesso(p)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 
   // "Realizado" no período = processos com NF Saída emitida dentro do
   // período selecionado — é o momento em que o resultado vira fato
   // (faturado), não mais só previsão.
-  const realizados = _processos.filter(p=>{
-    const dNf = dataNfSaidaProcesso(p);
-    if(!dNf) return false;
-    const d = parseDataLocal(dNf);
-    if(d < ini || d > fim) return false;
-    if(f.cliente && p.cliente !== f.cliente) return false;
-    return true;
-  }).map(p => ({ p, fch: calcularFechamento(p) }));
+  // Com filtro de cliente ou agrupando por cliente, processo com vários
+  // clientes (aba Vendas) entra só com a parte de cada cliente (NF do
+  // cliente e lucro proporcional) — ver linhasResultadoPeriodo.
+  const realizados = linhasResultadoPeriodo(_processos, { ini, fim, cliente: f.cliente, dividirPorCliente: f.agrupar === 'cliente' });
 
   // Linha "achatada" pra cada processo realizado — o motor de filtro
   // genérico (aplicarFiltrosGenericos) trabalha em cima disso, não em cima
   // de {p,fch} aninhado, pra ficar igual em qualquer tela que reaproveitar
   // o motor (ver comentário acima de OPERADORES_FILTRO).
-  const linhasBase = realizados.map(({p,fch}) => ({
-    p, fch,
-    cliente: p.cliente || '',
+  const linhasBase = realizados.map(({p,fch,cliente,parcial}) => ({
+    p, fch, parcial,
+    cliente: cliente || '',
     fornecedor: p.fornecedor || '',
     marca: p.brand || p.fornecedor || '',
     pais: paisDoProcesso(p),
@@ -443,6 +439,7 @@ function renderDashResultado(){
   const defsFiltro = camposFiltroResultado(linhasBase);
   const linhasFiltradas = aplicarFiltrosGenericos(linhasBase, f.condicoes, defsFiltro);
 
+  const nProcResultado     = new Set(linhasFiltradas.map(x=>x.p.id)).size;
   const totalLucroReal     = linhasFiltradas.reduce((s,x)=> s + (x.fch.lucroReal||0), 0);
   const totalLucroEstimado = linhasFiltradas.reduce((s,x)=> s + (x.fch.lucroEstimado||0), 0);
   const totalFaturamento   = linhasFiltradas.reduce((s,x)=> s + (x.fch.nfSaida||0), 0);
@@ -455,7 +452,7 @@ function renderDashResultado(){
   // avançados (não teria "margem real" nem "faturamento" pra filtrar).
   const emAndamento = _processos.filter(p=>{
     if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return false;
-    if(f.cliente && p.cliente !== f.cliente) return false;
+    if(f.cliente && !clientesDoProcesso(p).includes(f.cliente)) return false;
     const dNf = dataNfSaidaProcesso(p);
     if(dNf){ const d = parseDataLocal(dNf); if(d>=ini && d<=fim) return false; }
     return !!p.estimativa_json && !p.nf_saida_valor && !nfsSaidaVenda(p).length;
@@ -470,7 +467,7 @@ function renderDashResultado(){
   }
 
   const kpis = [
-    card('Lucro Real', fmtBRL(totalLucroReal), `${linhasFiltradas.length} processo${linhasFiltradas.length!==1?'s':''} faturado(s) no filtro atual`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
+    card('Lucro Real', fmtBRL(totalLucroReal), `${nProcResultado} processo${nProcResultado!==1?'s':''} faturado(s) no filtro atual`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
     card('Lucro Estimado (cotado)', fmtBRL(totalLucroEstimado), 'previsto no Calculador', 'var(--ac)'),
     card('Diferença (Real − Estimado)', (deltaTotal>=0?'+':'')+fmtBRL(deltaTotal), deltaTotal>=0?'rendeu a mais que o cotado':'rendeu a menos que o cotado', deltaTotal>=0?'var(--ok)':'var(--err)'),
     card('Margem Real Média', fmtPct(margemMedia), fmtBRL(totalFaturamento)+' faturado', 'var(--info)'),
@@ -489,7 +486,7 @@ function renderDashResultado(){
     linhasTabela = linhasFiltradas.map(l => ({
       chave: l.p.referencia,
       onClick: `abrirProcesso(${jsArg(l.p.id)});toggleDashResultado()`,
-      colUnica: `${esc(l.p.referencia)}${l.p.fechado?' 🔒':''}`,
+      colUnica: `${esc(l.p.referencia)}${l.p.fechado?' 🔒':''}${l.parcial?` <span title="Processo com mais de um cliente: mostra só a parte deste cliente (NF dele e lucro proporcional)" style="font-size:10px;color:var(--muted);">(parte ${Math.round((l.fch.participacao||0)*100)}%)</span>`:''}`,
       cliente: l.cliente, fornecedor: l.fornecedor,
       nfSaida: l.faturamento, lucroEstimado: l.lucroEstimado, lucroReal: l.lucroReal,
       margemReal: l.margemReal!=null ? l.margemReal/100 : null, deltaValor: l.deltaValor,
@@ -676,31 +673,27 @@ function renderDashAnalises(){
   const ini = new Date(hoje.getFullYear(), hoje.getMonth() - (f.janelaMeses-1), 1);
   const fim = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0); fim.setHours(23,59,59,999);
 
-  const opClientes = [...new Set(_processos.map(p=>p.cliente||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const opClientes = [...new Set(_processos.flatMap(p=>clientesDoProcesso(p)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 
   // Realizado na janela — mesmo critério do Resultado (NF Saída emitida
   // dentro do intervalo), só que abrangendo N meses de uma vez em vez de
   // um período único.
-  const realizados = _processos.filter(p=>{
-    const dNf = dataNfSaidaProcesso(p);
-    if(!dNf) return false;
-    const d = parseDataLocal(dNf);
-    if(d < ini || d > fim) return false;
-    if(f.cliente && p.cliente !== f.cliente) return false;
-    return true;
-  }).map(p => ({ p, fch: calcularFechamento(p) }));
+  // Sempre por parte de cliente: ranking por cliente e série mensal usam a
+  // NF de cada cliente (processo com vários clientes não fica todo no
+  // cliente principal). Totais por fornecedor/marca/país somam igual.
+  const realizados = linhasResultadoPeriodo(_processos, { ini, fim, cliente: f.cliente, dividirPorCliente: true });
 
   // Linha achatada — igual à do Resultado (mesmas propriedades, mesmos
   // defsFiltro/camposFiltroResultado — reaproveitados sem duplicar), só
   // acrescentando "mes" (YYYY-MM) pra série temporal.
-  const linhasBase = realizados.map(({p,fch}) => ({
-    p, fch,
-    cliente: p.cliente || '',
+  const linhasBase = realizados.map(({p,fch,cliente,data,parcial}) => ({
+    p, fch, parcial,
+    cliente: cliente || '',
     fornecedor: p.fornecedor || '',
     marca: p.brand || p.fornecedor || '',
     pais: paisDoProcesso(p),
     formaPagamento: LABEL_PI_PAGAMENTO[p.pi_pagamento] || p.pi_pagamento || '',
-    mes: dataNfSaidaProcesso(p).slice(0,7),
+    mes: String(data||'').slice(0,7),
     margemReal: fch.nfSaida ? ((fch.lucroReal||0)/fch.nfSaida)*100 : null,
     lucroReal: fch.lucroReal,
     lucroEstimado: fch.lucroEstimado,
@@ -723,7 +716,7 @@ function renderDashAnalises(){
     </div>`;
   }
   const kpis = [
-    card('Lucro Real (janela)', fmtBRL(totalLucroReal), `${linhas.length} processo${linhas.length!==1?'s':''} faturado(s)`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
+    card('Lucro Real (janela)', fmtBRL(totalLucroReal), `${new Set(linhas.map(x=>x.p.id)).size} processo${new Set(linhas.map(x=>x.p.id)).size!==1?'s':''} faturado(s)`, totalLucroReal>=0?'var(--ok)':'var(--err)'),
     card('Faturamento (janela)', fmtBRL(totalFaturamento), `${f.janelaMeses} meses considerados`, 'var(--ac)'),
     card('Margem Real Média', fmtPct(margemMedia), 'sobre o faturamento da janela', 'var(--info)'),
   ];

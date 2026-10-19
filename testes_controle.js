@@ -324,8 +324,38 @@ teste('dataNfSaidaProcesso: campo da aba Documentos; se vazio, última NF de ven
     { nf_saida_numero:'11', nf_saida_data:'2026-07-12', nf_saida_cfop:'6403' },
     { nf_saida_numero:'12', nf_saida_data:'2026-09-30', nf_saida_cfop:'5905' } ]) }), '2026-07-12');
   iguais(sandbox.dataNfSaidaProcesso({ vendas_json: V([{ nf_saida_numero:'20', nf_saida_data:'2026-07-10', nf_saida_cfop:'5905' }]) }), '');
+  iguais(sandbox.dataNfSaidaProcesso({ nf_saida_data:'2025-12-26', nf_saida_cfop:'5905', vendas_json: V([{ nf_saida_numero:'30', nf_saida_data:'2026-05-07', nf_saida_cfop:'5102' }]) }), '2026-05-07');
   iguais(sandbox.dataNfSaidaProcesso({}), '');
   iguais(sandbox.dataNfSaidaProcesso(null), '');
+});
+teste('partesClienteProcesso: uma parte por cliente das vendas (NF e participação); sem vendas = cliente principal', () => {
+  const V = a => JSON.stringify(a); const J = (a,b) => iguais(JSON.stringify(a), JSON.stringify(b));
+  const p = { cliente:'CLIENTE A', vendas_json: V([
+    { cliente:'CLIENTE A', nf_saida_numero:'1', nf_saida_data:'2026-07-10', nf_saida_cfop:'6403', nf_saida_valor:100 },
+    { cliente:'CLIENTE B', nf_saida_numero:'2', nf_saida_data:'2026-07-11', nf_saida_cfop:'6102', nf_saida_valor:300 },
+    { cliente:'CLIENTE B', nf_saida_numero:'3', nf_saida_data:'2026-08-02', nf_saida_cfop:'6102', nf_saida_valor:100 },
+    { cliente:'IMPAK', nf_saida_numero:'4', nf_saida_data:'2026-09-01', nf_saida_cfop:'5905' } ]) };
+  const partes = sandbox.partesClienteProcesso(p);
+  J(partes.map(x => [x.cliente, x.nf, Math.round(x.participacao*100), x.data]), [['CLIENTE A',100,20,'2026-07-10'],['CLIENTE B',400,80,'2026-08-02']]);
+  J(sandbox.partesClienteProcesso({ cliente:'X', nf_saida_data:'2026-05-01' }).map(x => [x.cliente, x.participacao, x.data]), [['X',1,'2026-05-01']]);
+});
+teste('fechamentoDaParte: faturamento = NF do cliente, lucro proporcional, margem recalculada', () => {
+  const J = (a,b) => iguais(JSON.stringify(a), JSON.stringify(b));
+  const fch = { nfSaida:500, lucroReal:100, lucroEstimado:50, custoRealTotal:400, deltaValor:50, pctLucroReal:0.2 };
+  const f = sandbox.fechamentoDaParte(fch, { participacao:0.2, nf:100 });
+  J([f.nfSaida, Math.round(f.lucroReal), Math.round(f.lucroEstimado), Math.round(f.deltaValor), Math.round(f.pctLucroReal*100), f.parcial], [100, 20, 10, 10, 20, true]);
+  iguais(sandbox.fechamentoDaParte(fch, { participacao:1, nf:500 }), fch);
+});
+teste('linhasResultadoPeriodo: filtro de cliente acha cliente da venda e respeita o período da NF dele', () => {
+  const V = a => JSON.stringify(a); const J = (a,b) => iguais(JSON.stringify(a), JSON.stringify(b));
+  const p = { id:'p1', referencia:'TESTE-1', cliente:'CLIENTE A', vendas_json: V([
+    { cliente:'CLIENTE A', nf_saida_numero:'1', nf_saida_data:'2026-07-10', nf_saida_cfop:'6403', nf_saida_valor:100 },
+    { cliente:'CLIENTE B', nf_saida_numero:'2', nf_saida_data:'2026-08-11', nf_saida_cfop:'6102', nf_saida_valor:300 } ]) };
+  const jul = { ini: new Date(2026,6,1), fim: new Date(2026,6,31,23,59) };
+  iguais(sandbox.linhasResultadoPeriodo([p], { ...jul, cliente:'CLIENTE B' }).length, 0);
+  J(sandbox.linhasResultadoPeriodo([p], { ini: new Date(2026,7,1), fim: new Date(2026,7,31,23,59), cliente:'CLIENTE B' }).map(l => [l.cliente, l.fch.nfSaida]), [['CLIENTE B',300]]);
+  J(sandbox.linhasResultadoPeriodo([p], { ini: new Date(2026,6,1), fim: new Date(2026,7,31,23,59), dividirPorCliente:true }).map(l => l.cliente), ['CLIENTE A','CLIENTE B']);
+  iguais(sandbox.linhasResultadoPeriodo([p], { ini: new Date(2026,6,1), fim: new Date(2026,7,31,23,59) }).length, 1);
 });
 teste('GED duplicados: mantém a cópia mais antiga, remove só idênticos (nome+tamanho) do mesmo processo', () => {
   const { arquivosDuplicados } = require('./lib/ged-duplicados');
