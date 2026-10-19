@@ -73,6 +73,50 @@ teste('resumoProcesso não expõe campos financeiros', () => {
     const r2 = await f('detalhe_processo').executar({ referencia: 'P1' }, ctx);
     assert.strictEqual(r2.vendas[0].nf_valor, 100000);
   });
+  // Com o motor real do Controle (mesmas contas da tela Resultado) — 19/10/2026.
+  const motor = require('./agenda-servidor.js').carregarMotor();
+  const V = a => JSON.stringify(a);
+  const procsM = [
+    { id: 'm1', referencia: 'M1', cliente: 'CLIENTE ALFA', fornecedor: 'FORN X', fase: 'FINALIZADO',
+      produtos_json: V([{ descricao: 'PNEU A', quantidade: 10 }]), real_json: { fob: { valor: 1500, moeda: 'BRL' } },
+      vendas_json: V([{ cliente: 'CLIENTE ALFA', nf_saida_numero: '1', nf_saida_data: '2026-07-01', nf_saida_cfop: '5102', nf_saida_valor: 1000, itens: [{ descricao: 'PNEU A', quantidade: 4 }] },
+                      { cliente: 'CLIENTE BETA', nf_saida_numero: '2', nf_saida_data: '2026-08-02', nf_saida_cfop: '6102', nf_saida_valor: 1500, itens: [{ descricao: 'PNEU A', quantidade: 6 }] }]) },
+    { id: 'm2', referencia: 'M2', cliente: 'CLIENTE BETA', fornecedor: 'FORN Y', fase: 'FINALIZADO', nf_saida_numero: '9', nf_saida_data: '2026-07-15', nf_saida_cfop: '5102', nf_saida_valor: 2000, nf_entrada_valor: 1900 },
+    { id: 'm3', referencia: 'M3', cliente: 'CLIENTE GAMA', fornecedor: 'FORN X', fase: 'FINALIZADO', nf_saida_numero: '10', nf_saida_data: '2026-07-20', nf_saida_cfop: '5905', nf_saida_valor: 5000 },
+    { id: 'm5', referencia: 'M5', cliente: 'CLIENTE GAMA', fornecedor: 'FORN Z', fase: 'FINALIZADO', nf_saida_numero: '11', nf_saida_data: '2026-09-01', nf_saida_cfop: '5102', nf_saida_valor: 1000 },
+    { id: 'm4', referencia: 'M4', cliente: 'CLIENTE ALFA', fornecedor: 'FORN Y', fase: 'EMBARCADO', pi_valor_usd: 10000, pi_pagamento: 'ENTRADA_SALDO', pi_entrada_pct: 30, pi_data_entrada: '2026-01-10', pi_cambio_entrada: 5.1, pi_data_saldo: '2099-01-01' },
+  ];
+  const ctxM = Object.assign({}, ctx, { motor, processos: async () => procsM.map(p => Object.assign({ _fase: p.fase }, p)) });
+  await testeAsync('faturamento (motor): por cliente com a parte de cada um; remessa 5905 não fatura', async () => {
+    const r = await f('faturamento').executar({ de: '2026-01-01', ate: '2026-12-31', agrupar: 'cliente', ordenar: 'lucro' }, ctxM);
+    assert.strictEqual(r.total_faturamento, 5500); // 1000 + 1500 + 2000 + 1000 (M3 é remessa)
+    const beta = r.grupos.find(g => g.grupo === 'CLIENTE BETA');
+    assert.strictEqual(beta.faturamento, 3500); assert.strictEqual(beta.lucro_real, 600 + 100);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.grupos.map(g => g.grupo))), ['CLIENTE GAMA', 'CLIENTE BETA', 'CLIENTE ALFA'], 'ordenado por lucro');
+    assert.ok(r.processos_para_conferir.some(x => x.referencia === 'M5'), 'M5 sem nenhum custo (margem 100%) é sinalizado');
+    assert.ok(!r.processos_para_conferir.some(x => x.referencia === 'M1'), 'M1 (40%) não');
+  });
+  await testeAsync('faturamento (motor): por fornecedor soma o processo inteiro', async () => {
+    const r = await f('faturamento').executar({ de: '2026-01-01', ate: '2026-12-31', agrupar: 'fornecedor' }, ctxM);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.grupos.map(g => [g.grupo, g.faturamento]).sort())), [['FORN X', 2500], ['FORN Y', 2000], ['FORN Z', 1000]]);
+  });
+  await testeAsync('resultado_processo: por cliente soma o lucro do processo; lista as NFs', async () => {
+    const r = await f('resultado_processo').executar({ referencia: 'm1' }, ctxM);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.por_cliente.map(c => [c.cliente, c.lucro_real]))), [['CLIENTE BETA', 600], ['CLIENTE ALFA', 400]]);
+    assert.strictEqual(r.real.lucro_real, 1000);
+    assert.strictEqual(r.vendas.length, 2);
+    assert.ok(Array.isArray(r.custos_reais) && r.custos_reais.length === 1, 'custos reais lançados aparecem');
+  });
+  await testeAsync('pagamentos_previstos: lista os pagamentos (antes dava erro e voltava vazio)', async () => {
+    const r = await f('pagamentos_previstos').executar({ dias: 30, incluir_pagos: true }, Object.assign({}, ctxM, { sessao: { modulos: ['financeiro'] } }));
+    assert.ok(r.pagamentos.some(x => x.processo === 'M4' && x.etapa === 'entrada' && x.pago === true));
+    const r2 = await f('pagamentos_previstos').executar({ dias: 30 }, ctxM);
+    assert.ok(!r2.pagamentos.some(x => x.processo === 'M4' && x.etapa === 'saldo'), 'saldo de 2099 fora do horizonte');
+  });
+  await testeAsync('detalhe_processo: pagamentos ao fornecedor vêm como lista', async () => {
+    const r = await f('detalhe_processo').executar({ referencia: 'M4' }, ctxM);
+    assert.ok(Array.isArray(r.pagamentos_fornecedor) && r.pagamentos_fornecedor.length === 2, JSON.stringify(r.pagamentos_fornecedor));
+  });
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
   if (passaram !== total) process.exit(1);

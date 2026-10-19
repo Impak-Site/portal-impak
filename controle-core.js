@@ -3275,44 +3275,67 @@ function dataNfSaidaProcesso(p){
   const datas = nfsSaidaVenda(p).map(n => n.data).filter(d => d && /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
   return datas.length ? datas[datas.length-1] : '';
 }
-// Partes do processo por cliente para os painéis Resultado e Análises
-// (pedido Ayslan 19/10/2026: filtrar/agrupar por cliente tem que achar os
-// clientes da aba Vendas, não só o cliente principal). Uma parte por
-// cliente com NF de venda: participação = NF do cliente / NF total do
-// processo, data = última NF desse cliente. Sem vendas = uma parte só
-// (cliente principal, processo inteiro).
+// Partes do processo por cliente para os painéis Resultado e Análises e para
+// o Assistente (pedido Ayslan 19/10/2026: filtrar/agrupar por cliente tem que
+// achar os clientes da aba Vendas, não só o cliente principal). Uma parte por
+// cliente com NF de venda:
+//   participacao = NF do cliente / NF total do processo;
+//   fracaoQtd    = pneus do cliente / pneus vendidos (como a aba Vendas rateia o custo);
+//   lucroVendas  = lucro das vendas do cliente pela aba Vendas (NF − custo rateado) + juros cobrados dele;
+//   data         = última NF desse cliente.
+// Sem vendas = uma parte só (cliente principal, processo inteiro).
 function partesClienteProcesso(p){
   if(!p) return [];
   const nfs = parseVendas(p).length ? nfsSaidaVenda(p) : [];
   if(!nfs.length) return [{ cliente: p.cliente || '', participacao: 1, nf: null, data: dataNfSaidaProcesso(p) }];
+  const nomeCli = c => String(c || p.cliente || '').trim();
+  let linhasVenda = [];
+  try{ const r = calcularVendasResumo(p); linhasVenda = (r && r.linhas) || []; }catch(e){ linhasVenda = []; }
+  linhasVenda = linhasVenda.filter(l => l && l.venda && String(l.venda.nf_saida_numero || '').trim() && !ehCfopSemVenda(l.venda.nf_saida_cfop));
+  // Juros cobrados na venda são daquele cliente (o Fechamento soma por venda).
+  const jurosDe = l => { try{ return calcularJurosVenda(p, l.venda, linhasVenda.length) || 0; }catch(e){ return 0; } };
+  linhasVenda.forEach(l => { l._lucroCliente = l.lucro != null ? l.lucro + jurosDe(l) : null; });
+  const somaLucroVendas = (linhasVenda.length && linhasVenda.every(l => l._lucroCliente != null)) ? linhasVenda.reduce((s, l) => s + l._lucroCliente, 0) : null;
+  const somaFracao = linhasVenda.reduce((s, l) => s + (l.fracao || 0), 0);
   const total = nfs.reduce((s,n)=> s + (n.valor || 0), 0);
   const porCliente = new Map();
+  const grupo = c => { if(!porCliente.has(c)) porCliente.set(c, { cliente: c, nf: 0, qtd: 0, datas: [], lucro: 0, fracao: 0 }); return porCliente.get(c); };
   nfs.forEach(n => {
-    const c = String(n.cliente || p.cliente || '').trim();
-    const g = porCliente.get(c) || { cliente: c, nf: 0, qtd: 0, datas: [] };
+    const g = grupo(nomeCli(n.cliente));
     g.nf += (n.valor || 0); g.qtd++;
     if(n.data && /^\d{4}-\d{2}-\d{2}/.test(n.data)) g.datas.push(n.data);
-    porCliente.set(c, g);
   });
+  linhasVenda.forEach(l => { const g = grupo(nomeCli(l.venda.cliente)); g.lucro += (l._lucroCliente || 0); g.fracao += (l.fracao || 0); });
   return [...porCliente.values()].map(g => ({
     cliente: g.cliente,
     participacao: total > 0 ? g.nf / total : g.qtd / nfs.length,
     nf: g.nf,
     data: g.datas.sort().pop() || '',
+    fracaoQtd: somaFracao > 0 ? g.fracao / somaFracao : null,
+    lucroVendas: somaLucroVendas != null ? g.lucro : null,
+    somaLucroVendas,
   }));
 }
-// Fechamento proporcional à parte de um cliente: valores em R$ multiplicados
-// pela participação, faturamento = NF do cliente, margens recalculadas.
+// Fechamento da parte de um cliente. Faturamento = NF do cliente. Lucro real =
+// lucro das vendas dele pela aba Vendas (com os juros dele) + a parte dele (pela
+// NF) no que o Fechamento soma por fora das vendas (notas Boss) — assim a soma
+// das partes dá exatamente o lucro do processo. Sem lucro por venda, fica
+// proporcional à NF. Estimado e custos: pela fatia de pneus (como a aba Vendas).
 function fechamentoDaParte(fch, parte){
   if(!fch || !parte || parte.participacao >= 0.999999) return fch;
   const k = parte.participacao;
-  const m = v => (v == null || isNaN(v)) ? v : v * k;
-  const nfSaida = parte.nf != null ? parte.nf : m(fch.nfSaida);
-  const lucroReal = m(fch.lucroReal), lucroEstimado = m(fch.lucroEstimado);
-  return { ...fch, parcial: true, participacao: k,
+  const kq = parte.fracaoQtd != null ? parte.fracaoQtd : k;
+  const m = (v, f) => (v == null || isNaN(v)) ? v : v * f;
+  const nfSaida = parte.nf != null ? parte.nf : m(fch.nfSaida, k);
+  let lucroReal = m(fch.lucroReal, k);
+  if(fch.lucroReal != null && !isNaN(fch.lucroReal) && parte.lucroVendas != null && parte.somaLucroVendas != null){
+    lucroReal = parte.lucroVendas + (fch.lucroReal - parte.somaLucroVendas) * k;
+  }
+  const lucroEstimado = m(fch.lucroEstimado, kq);
+  return { ...fch, parcial: true, participacao: k, participacaoPneus: kq,
     nfSaida, lucroReal, lucroEstimado,
-    custoEstimado: m(fch.custoEstimado), faturamentoEstimado: m(fch.faturamentoEstimado),
-    custoRealTotal: m(fch.custoRealTotal), nfEntrada: m(fch.nfEntrada),
+    custoEstimado: m(fch.custoEstimado, kq), faturamentoEstimado: m(fch.faturamentoEstimado, kq),
+    custoRealTotal: m(fch.custoRealTotal, kq), nfEntrada: m(fch.nfEntrada, kq),
     pctLucroReal: (lucroReal != null && nfSaida) ? lucroReal / nfSaida : fch.pctLucroReal,
     deltaValor: (lucroReal != null && lucroEstimado != null) ? lucroReal - lucroEstimado : fch.deltaValor,
   };

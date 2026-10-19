@@ -55,7 +55,10 @@ function carregarMotor() {
     if (typeof sb.calcularFase !== 'function' || typeof sb.listarPagamentosPI !== 'function') throw new Error('calcularFase/listarPagamentosPI não encontrados no sandbox');
     _motor = { calcularFase: sb.calcularFase, listarPagamentosPI: sb.listarPagamentosPI,
       // Usados pelo Assistente (assistente.js): resultado real x estimado do processo.
-      calcularFechamento: sb.calcularFechamento, calcularVendasResumo: sb.calcularVendasResumo, parseVendas: sb.parseVendas };
+      calcularFechamento: sb.calcularFechamento, calcularVendasResumo: sb.calcularVendasResumo, parseVendas: sb.parseVendas,
+      // Mesmas contas da tela Resultado/Análises (19/10/2026): partes por cliente, data da NF de venda.
+      nfsSaidaVenda: sb.nfsSaidaVenda, dataNfSaidaProcesso: sb.dataNfSaidaProcesso, partesClienteProcesso: sb.partesClienteProcesso,
+      fechamentoDaParte: sb.fechamentoDaParte, linhasResultadoPeriodo: sb.linhasResultadoPeriodo, paisDoProcesso: sb.paisDoProcesso };
   } catch (e) {
     _motorErro = e;
     console.error('[agenda-servidor] não consegui carregar o motor do front:', e.message);

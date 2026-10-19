@@ -56,6 +56,15 @@ function filtrar(lista, f) {
   return r;
 }
 
+// Pagamento a fornecedor (formato de listarPagamentosPI, controle-core.js).
+function mapearPagamento(x) {
+  return { processo: x.referencia, fornecedor: x.fornecedor, cliente: x.cliente, etapa: x.parcela || x._tipo || null,
+    valor_usd: num(x.valorUsd), vencimento: x.vencimento || null, pago: !!x.pago,
+    cambio_fechado: num(x.cambioFechado), cambio_previsto: num(x.cambioPrevisto), banco: x.banco || null };
+}
+const r2 = v => v == null || isNaN(v) ? null : Math.round(v * 100) / 100;
+const pct = (a, b) => (a != null && b) ? Math.round(10000 * a / b) / 100 : null;
+
 // ── ferramentas ───────────────────────────────────────────────────────
 // Cada ferramenta: { nome, modulos (quem pode), descricao, schema, executar(input, ctx) }
 // ctx = { sb, sessao, motor, processos() (cache por pergunta), listas() }
@@ -106,8 +115,10 @@ const FERRAMENTAS = [
       });
       if (podeFin && ctx.motor) {
         try {
-          const pg = ctx.motor.listarPagamentosPI(p) || [];
-          out.pagamentos_fornecedor = pg.map(x => ({ etapa: x.label || x.etapa, valor_usd: num(x.valorUsd || x.valor_usd), vencimento: x.vencimento || x.data_vencimento || null, pago: !!(x.pago || x.cambio), cambio: num(x.cambio) }));
+          // listarPagamentosPI recebe uma LISTA de processos (19/10/2026: passava 1 só e dava erro).
+          const pg = ctx.motor.listarPagamentosPI([p]) || [];
+          out.pagamentos_fornecedor = pg.length ? pg.map(mapearPagamento)
+            : (p._fase === 'FINALIZADO' || p.fase === 'FINALIZADO' ? 'processo finalizado — câmbio já encerrado' : 'sem pagamentos em aberto');
         } catch (e) { out.pagamentos_fornecedor = 'indisponível: ' + e.message; }
       }
       return out;
@@ -157,51 +168,110 @@ const FERRAMENTAS = [
   {
     nome: 'faturamento',
     modulos: ['financeiro', 'resultado', 'narcelio'],
-    descricao: 'Faturamento (NFs de saída emitidas) num período, agrupado por cliente ou por mês, e o lucro real dos processos quando já apurado. Use pra "quanto faturamos no mês passado", "melhor cliente", "margem por cliente". Datas pela NF de saída (ou liberação, quando a NF não tem data).',
-    schema: { type: 'object', properties: { de: { type: 'string', description: 'AAAA-MM-DD' }, ate: { type: 'string', description: 'AAAA-MM-DD' }, agrupar: { type: 'string', description: 'cliente | mes | processo (padrão cliente)' } } },
+    descricao: 'Faturamento (NFs de venda) e lucro real num período, com os MESMOS números da tela Resultado. Agrupa por cliente, fornecedor, marca, país, mês ou processo e ordena por faturamento, lucro ou margem. Use pra "quanto faturamos", "cliente que mais deu lucro", "pior margem", "fornecedor/marca com melhor margem", "ranking", "evolução por mês". Processo com vários clientes entra com a parte de cada cliente (NF dele e o lucro dele, como na aba Vendas). Data = NF de saída; remessa p/ estoque (CFOP 5905) não é faturamento. Traz também processos_para_conferir (margem alta demais = custos provavelmente não lançados).',
+    schema: { type: 'object', properties: {
+      de: { type: 'string', description: 'AAAA-MM-DD (padrão: 1º de janeiro deste ano)' }, ate: { type: 'string', description: 'AAAA-MM-DD (padrão: hoje)' },
+      agrupar: { type: 'string', description: 'cliente | fornecedor | marca | pais | mes | processo (padrão cliente)' },
+      ordenar: { type: 'string', description: 'faturamento | lucro | margem (padrão faturamento)' },
+      cliente: { type: 'string', description: 'Só este cliente (parte do nome)' }, fornecedor: { type: 'string', description: 'Só este fornecedor/marca (parte do nome)' },
+      limite: { type: 'integer', description: 'Máximo de grupos (padrão 30, máx 60)' },
+    } },
     async executar(input, ctx) {
       const hoje = hojeISO();
       const de = dataOk(input.de) ? input.de : (hoje.slice(0, 4) + '-01-01');
       const ate = dataOk(input.ate) ? input.ate : hoje;
-      const grupos = {}; let totalNf = 0, totalLucro = 0, nLucro = 0;
-      for (const p of await ctx.processos()) {
-        if (p._fase === 'CANCELADO') continue;
+      const agrupar = ['cliente', 'fornecedor', 'marca', 'pais', 'mes', 'processo'].includes(input.agrupar) ? input.agrupar : 'cliente';
+      const procs = (await ctx.processos()).filter(p => p._fase !== 'CANCELADO');
+      if (ctx.motor && ctx.motor.linhasResultadoPeriodo) {
+        const ini = new Date(de + 'T00:00:00'), fim = new Date(ate + 'T23:59:59');
+        const precisaDividir = agrupar === 'cliente' || !!input.cliente;
+        let linhas = ctx.motor.linhasResultadoPeriodo(procs, { ini, fim, dividirPorCliente: precisaDividir });
+        if (input.cliente) { const c = norm(input.cliente); linhas = linhas.filter(l => norm(l.cliente).includes(c)); }
+        if (input.fornecedor) { const c = norm(input.fornecedor); linhas = linhas.filter(l => norm(l.p.fornecedor).includes(c) || norm(l.p.brand).includes(c)); }
+        const chaveDe = l => agrupar === 'fornecedor' ? (l.p.fornecedor || '(sem fornecedor)')
+          : agrupar === 'marca' ? (l.p.brand || l.p.fornecedor || '(sem marca)')
+          : agrupar === 'pais' ? ((ctx.motor.paisDoProcesso && (() => { try { return ctx.motor.paisDoProcesso(l.p); } catch (e) { return ''; } })()) || '(sem país)')
+          : agrupar === 'mes' ? String(l.data || '').slice(0, 7)
+          : agrupar === 'processo' ? l.p.referencia : (l.cliente || '(sem cliente)');
+        const grupos = {}; let totalNf = 0, totalLucro = 0, nfComLucro = 0, totalEst = 0;
+        const conferir = [];
+        linhas.forEach(l => {
+          const f = l.fch || {}; const nf = num(f.nfSaida) || 0;
+          const k = chaveDe(l);
+          const g = grupos[k] = grupos[k] || { faturamento: 0, processos: new Set(), lucro_real: 0, nf_com_lucro: 0, lucro_estimado: 0, tem_lucro: false };
+          g.faturamento += nf; g.processos.add(l.p.referencia); totalNf += nf;
+          if (f.lucroReal != null && !isNaN(f.lucroReal)) { g.lucro_real += f.lucroReal; g.nf_com_lucro += nf; g.tem_lucro = true; totalLucro += f.lucroReal; nfComLucro += nf; }
+          if (f.lucroEstimado != null && !isNaN(f.lucroEstimado)) { g.lucro_estimado += f.lucroEstimado; totalEst += f.lucroEstimado; }
+          const m = (f.lucroReal != null && nf) ? f.lucroReal / nf : null;
+          if (m != null && m >= 0.6 && !conferir.some(x => x.referencia === l.p.referencia)) conferir.push({ referencia: l.p.referencia, margem_pct: r2(m * 100), motivo: 'margem alta demais — confira se os Custos Reais foram lançados' });
+        });
+        const ord = input.ordenar === 'lucro' ? 'lucro_real' : input.ordenar === 'margem' ? 'margem_pct' : 'faturamento';
+        const lista = Object.entries(grupos).map(([k, g]) => ({ grupo: k, faturamento: r2(g.faturamento), processos: g.processos.size,
+          lucro_real: g.tem_lucro ? r2(g.lucro_real) : null, margem_pct: g.tem_lucro ? pct(g.lucro_real, g.nf_com_lucro) : null,
+          lucro_estimado: r2(g.lucro_estimado) }))
+          .sort((a, b) => ((b[ord] == null ? -Infinity : b[ord]) - (a[ord] == null ? -Infinity : a[ord])));
+        const lim = Math.min(MAX_LINHAS, parseInt(input.limite, 10) || 30);
+        return { periodo: { de, ate }, agrupado_por: agrupar, ordenado_por: ord, total_grupos: lista.length,
+          total_faturamento: r2(totalNf), total_lucro_real: r2(totalLucro), margem_media_pct: pct(totalLucro, nfComLucro), total_lucro_estimado: r2(totalEst),
+          processos: new Set(linhas.map(l => l.p.referencia)).size,
+          grupos: lista.slice(0, lim), processos_para_conferir: conferir.slice(0, 15),
+          como_calcula: 'Igual à tela Resultado: entra o que tem NF de venda no período. Com vários clientes no processo, cada um entra com a NF dele e o lucro dele (lucro da venda pela aba Vendas — custo rateado pela quantidade de pneus — mais a parte dele nas notas Boss). Margem = lucro ÷ faturamento.' };
+      }
+      // Sem o motor do Controle (não deveria acontecer): soma simples das NFs.
+      const grupos = {}; let totalNf = 0;
+      for (const p of procs) {
         const vendas = parseJson(p.vendas_json, []) || [];
         const linhas = vendas.length ? vendas.map(v => ({ cliente: v.cliente || p.cliente, data: v.nf_saida_data || p.nf_saida_data || p.data_liberacao, valor: num(v.nf_saida_valor) }))
           : [{ cliente: p.cliente, data: p.nf_saida_data || p.data_liberacao, valor: num(p.nf_saida_valor) }];
-        let fch = null;
-        try { fch = ctx.motor ? ctx.motor.calcularFechamento(p) : null; } catch (e) { fch = null; }
-        const lucro = fch && fch.temReal && fch.lucroReal != null ? fch.lucroReal : null;
-        const somaNf = linhas.reduce((s, l) => s + (l.valor || 0), 0);
         linhas.forEach(l => {
           if (!l.valor || !l.data || l.data < de || l.data > ate) return;
-          const chave = (input.agrupar === 'mes') ? String(l.data).slice(0, 7) : (input.agrupar === 'processo') ? p.referencia : (l.cliente || '(sem cliente)');
-          const g = grupos[chave] = grupos[chave] || { faturamento: 0, processos: new Set(), lucro_real: 0, processos_com_lucro: 0 };
+          const chave = agrupar === 'mes' ? String(l.data).slice(0, 7) : agrupar === 'processo' ? p.referencia : agrupar === 'fornecedor' ? (p.fornecedor || '(sem fornecedor)') : (l.cliente || '(sem cliente)');
+          const g = grupos[chave] = grupos[chave] || { faturamento: 0, processos: new Set() };
           g.faturamento += l.valor; g.processos.add(p.referencia); totalNf += l.valor;
-          if (lucro != null && somaNf > 0) { const fatia = lucro * (l.valor / somaNf); g.lucro_real += fatia; g.processos_com_lucro++; totalLucro += fatia; nLucro++; }
         });
       }
-      const lista = Object.entries(grupos).map(([k, g]) => ({ grupo: k, faturamento: Math.round(g.faturamento * 100) / 100, processos: g.processos.size, lucro_real: g.processos_com_lucro ? Math.round(g.lucro_real * 100) / 100 : null, margem_pct: g.processos_com_lucro && g.faturamento ? Math.round(10000 * g.lucro_real / g.faturamento) / 100 : null }))
+      const lista = Object.entries(grupos).map(([k, g]) => ({ grupo: k, faturamento: r2(g.faturamento), processos: g.processos.size, lucro_real: null, margem_pct: null }))
         .sort((a, b) => b.faturamento - a.faturamento);
-      return { periodo: { de, ate }, agrupado_por: input.agrupar || 'cliente', total_faturamento: Math.round(totalNf * 100) / 100, total_lucro_real_apurado: nLucro ? Math.round(totalLucro * 100) / 100 : null, grupos: lista.slice(0, MAX_LINHAS), observacao: 'lucro_real só existe nos processos com Custos Reais/Fechamento lançados; null = ainda não apurado.' };
+      return { periodo: { de, ate }, agrupado_por: agrupar, total_faturamento: r2(totalNf), total_lucro_real: null, grupos: lista.slice(0, MAX_LINHAS), observacao: 'motor de cálculo indisponível: só faturamento, sem lucro.' };
     },
   },
   {
     nome: 'resultado_processo',
     modulos: ['resultado', 'narcelio', 'financeiro'],
-    descricao: 'Fechamento de um processo: custo estimado x real, NF de saída, lucro real e margem %, e as linhas de custo real (adiantamento porto, ICMS ST, comissões, etc.).',
+    descricao: 'Fechamento de UM processo: custo estimado x real, NF de saída, lucro real e margem %, as linhas de Custos Reais lançadas e, quando o processo tem vários clientes, o resultado POR CLIENTE e por NF (use pra "qual cliente deu mais lucro no processo X", "qual venda teve a melhor margem").',
     schema: { type: 'object', properties: { referencia: { type: 'string' } }, required: ['referencia'] },
     async executar(input, ctx) {
       const ref = norm(input.referencia);
-      const p = (await ctx.processos()).find(x => norm(x.referencia) === ref);
+      const procs = await ctx.processos();
+      const p = procs.find(x => norm(x.referencia) === ref) || procs.find(x => norm(x.referencia).includes(ref));
       if (!p) return { erro: 'Processo não encontrado: ' + input.referencia };
       if (!ctx.motor) return { erro: 'motor de cálculo indisponível' };
       const f = ctx.motor.calcularFechamento(p);
-      const r2 = v => v == null || isNaN(v) ? null : Math.round(v * 100) / 100;
-      return { referencia: p.referencia, cliente: p.cliente, fase: p._fase,
-        estimado: { custo: r2(f.custoEstimado), faturamento: r2(f.faturamentoEstimado), lucro: r2(f.lucroEstimado), pct: r2((f.pctLucroEstimado || 0) * 100) },
-        real: { nf_entrada: r2(f.nfEntrada), nf_saida: r2(f.nfSaida), custo_real_total: r2(f.custoRealTotal), lucro_real: r2(f.lucroReal), pct: r2((f.pctLucroReal || 0) * 100), apurado: !!f.temReal },
-        custos_reais: f.custosReais && f.custosReais.itens ? f.custosReais.itens.filter(i => i.valor).map(i => ({ item: i.label, valor: r2(i.valor) })) : undefined };
+      const out = { referencia: p.referencia, cliente: p.cliente, fornecedor: p.fornecedor, fase: p._fase, fechado: !!p.fechado,
+        estimado: { custo: r2(f.custoEstimado), faturamento: r2(f.faturamentoEstimado), lucro: r2(f.lucroEstimado), pct: f.pctLucroEstimado != null ? r2(f.pctLucroEstimado * 100) : null },
+        real: { nf_entrada: r2(f.nfEntrada), nf_saida: r2(f.nfSaida), custo_real_total: r2(f.custoRealTotal), lucro_real: r2(f.lucroReal), pct: f.pctLucroReal != null ? r2(f.pctLucroReal * 100) : null, apurado: !!f.temReal },
+        custos_reais: f.custosReais && Array.isArray(f.custosReais.detalhe)
+          ? f.custosReais.detalhe.filter(d => d.valorBrl).map(d => ({ item: d.label, grupo: d.grupo || null, valor: r2(d.valorBrl), fora_do_total: !!d.excluidoDoTotal || undefined }))
+          : 'nenhum custo real lançado (lucro calculado só pela NF de entrada/saída)' };
+      if (f.notasBoss) out.notas_boss = { valor_boss: r2(f.notasBoss.valorBoss), a_receber: r2(f.notasBoss.totalReceber) };
+      if (f.jurosCobrado) out.juros_cobrados = r2(f.jurosCobrado.valor);
+      if (f.lucroReal != null && f.nfSaida && f.lucroReal / f.nfSaida >= 0.6) out.atencao = 'Margem acima de 60%: provavelmente faltam Custos Reais lançados neste processo.';
+      // Por cliente / por NF (19/10/2026): mesma conta da tela Resultado e da aba Vendas.
+      try {
+        const partes = ctx.motor.partesClienteProcesso ? ctx.motor.partesClienteProcesso(p) : [];
+        if (partes.length > 1) {
+          out.por_cliente = partes.map(pt => { const fp = ctx.motor.fechamentoDaParte(f, pt) || {}; return { cliente: pt.cliente, nf_saida: r2(pt.nf), participacao_nf_pct: r2(pt.participacao * 100), pneus_pct: pt.fracaoQtd != null ? r2(pt.fracaoQtd * 100) : null, lucro_real: r2(fp.lucroReal), margem_pct: pct(fp.lucroReal, pt.nf) }; })
+            .sort((a, b) => (b.lucro_real || 0) - (a.lucro_real || 0));
+          out.como_calcula_por_cliente = 'Lucro de cada cliente = NF dele − custo do processo rateado pela quantidade de pneus que ele levou (igual à aba Vendas) + juros cobrados dele + a parte dele (pela NF) nas notas Boss. A soma dos clientes dá o lucro do processo.';
+        }
+        const vr = ctx.motor.calcularVendasResumo ? ctx.motor.calcularVendasResumo(p) : null;
+        if (vr && vr.linhas && vr.linhas.length) {
+          out.vendas = vr.linhas.map(l => ({ cliente: l.venda.cliente || p.cliente, nf: l.venda.nf_saida_numero || null, data: l.venda.nf_saida_data || null, cfop: l.venda.nf_saida_cfop || null,
+            pneus: l.qtdVenda, valor_nf: r2(l.nfSaida), custo_rateado: r2(l.custoTotal), lucro_venda: r2(l.lucro), margem_pct: l.pctLucro != null ? r2(l.pctLucro * 100) : null }));
+          if (vr.saldoNaoAlocado) out.pneus_sem_venda = vr.saldoNaoAlocado;
+        }
+      } catch (e) { out.por_cliente = 'indisponível: ' + e.message; }
+      return out;
     },
   },
   {
@@ -226,24 +296,22 @@ const FERRAMENTAS = [
   {
     nome: 'pagamentos_previstos',
     modulos: ['financeiro', 'cambio', 'narcelio'],
-    descricao: 'Pagamentos a fornecedor (parcelas da PI: entrada/saldo/parcelado) previstos ou vencidos num horizonte de dias, com câmbio fechado ou em aberto. Use pra "o que vence esta semana", "quanto precisamos de dólar".',
-    schema: { type: 'object', properties: { dias: { type: 'integer', description: 'Horizonte em dias a partir de hoje (padrão 30)' }, incluir_pagos: { type: 'boolean' } } },
+    descricao: 'Pagamentos a fornecedor (parcelas da PI: entrada/saldo/parcelado/único) previstos ou vencidos até N dias à frente, com câmbio fechado ou em aberto — os mesmos do Dashboard Financeiro/Câmbio. Use pra "o que vence esta semana", "quanto precisamos de dólar", "câmbios em aberto".',
+    schema: { type: 'object', properties: { dias: { type: 'integer', description: 'Horizonte em dias a partir de hoje (padrão 30)' }, incluir_pagos: { type: 'boolean' }, fornecedor: { type: 'string' } } },
     async executar(input, ctx) {
       if (!ctx.motor) return { erro: 'motor de cálculo indisponível' };
       const hoje = hojeISO(); const d = new Date(hoje + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + (parseInt(input.dias, 10) || 30)); const ate = d.toISOString().slice(0, 10);
-      const out = [];
-      for (const p of await ctx.processos()) {
-        if (['FINALIZADO', 'CANCELADO'].includes(p._fase)) continue;
-        let pg = []; try { pg = ctx.motor.listarPagamentosPI(p) || []; } catch (e) { continue; }
-        pg.forEach(x => {
-          const venc = x.vencimento || x.data_vencimento || null; const pago = !!(x.pago || x.cambio);
-          if (pago && !input.incluir_pagos) return;
-          if (venc && venc > ate) return;
-          out.push({ processo: p.referencia, cliente: p.cliente, fornecedor: p.fornecedor, etapa: x.label || x.etapa, valor_usd: num(x.valorUsd || x.valor_usd), vencimento: venc, vencido: !!(venc && venc < hoje && !pago), cambio_fechado: num(x.cambio) || null });
-        });
-      }
+      const procs = (await ctx.processos()).filter(p => !['FINALIZADO', 'CANCELADO'].includes(p._fase));
+      // listarPagamentosPI recebe a LISTA de processos (19/10/2026: era chamada 1 a 1 e sempre falhava).
+      let pg = []; try { pg = ctx.motor.listarPagamentosPI(procs) || []; } catch (e) { return { erro: 'não consegui listar os pagamentos: ' + e.message }; }
+      let out = pg.map(mapearPagamento).filter(x => (input.incluir_pagos || !x.pago) && (!x.vencimento || x.vencimento <= ate));
+      if (input.fornecedor) { const c = norm(input.fornecedor); out = out.filter(x => norm(x.fornecedor).includes(c)); }
+      out.forEach(x => { x.vencido = !!(x.vencimento && x.vencimento < hoje && !x.pago); });
       out.sort((a, b) => String(a.vencimento || '9').localeCompare(String(b.vencimento || '9')));
-      return { hoje, ate, total: out.length, total_usd: Math.round(out.reduce((s, x) => s + (x.valor_usd || 0), 0) * 100) / 100, pagamentos: out.slice(0, MAX_LINHAS) };
+      const emAberto = out.filter(x => !x.pago);
+      return { hoje, ate, total: out.length, total_usd: r2(out.reduce((s, x) => s + (x.valor_usd || 0), 0)),
+        em_aberto_usd: r2(emAberto.reduce((s, x) => s + (x.valor_usd || 0), 0)), vencidos: out.filter(x => x.vencido).length,
+        sem_data: out.filter(x => !x.vencimento).length, pagamentos: out.slice(0, MAX_LINHAS) };
     },
   },
 ];
@@ -298,6 +366,9 @@ REGRAS
 - Contagens e totais sempre exatos, como vieram da ferramenta. Nunca use "~", "cerca de" ou estimativa em número de processos/containers/valores.
 - A conversa tem histórico: use as mensagens anteriores como contexto (ex.: "e desse porto?" se refere ao porto citado antes).
 - Nunca mostre percentuais de comissão de vendedores nem nomes de comissionados.
+- Lucro e faturamento: use as ferramentas faturamento (rankings e períodos, agrupando por cliente/fornecedor/marca/país/mês/processo e ordenando por faturamento/lucro/margem) e resultado_processo (um processo, com o resultado por cliente e por NF quando tem vários clientes). São os mesmos números da tela Resultado. Ao responder lucro de cliente em processo com vários clientes, diga em uma linha como foi calculado (custo rateado pela quantidade de pneus, como na aba Vendas).
+- Se vier processos_para_conferir ou "atencao" (margem alta demais), avise que provavelmente faltam Custos Reais lançados e que isso infla o lucro.
+- "Mais lucro" = maior lucro em R$; "melhor margem" = maior lucro ÷ faturamento. Se a pessoa não disser o período, use o ano corrente e diga isso.
 - Ferramentas disponíveis para este usuário: ${ferramentas.map(f => f.nome).join(', ')}.`;
 }
 

@@ -4503,6 +4503,20 @@ function validarConteudoAnalise(content) {
   return null;
 }
 
+// Conferência da tela antiga (processos.html — arquivo travado, não é
+// editado): o prompt dela ainda pede "NCM incompleto no BL" e compara o porto
+// de destino entre os documentos. Em 19/10/2026 (pedido Emanuelly) essas duas
+// regras mudaram — aqui o servidor acrescenta as regras novas no fim do texto
+// dessa conferência, valendo por cima das antigas. A aba Conferência do
+// Controle já manda as regras novas no próprio prompt.
+function atualizarRegrasConferenciaAntiga(content) {
+  const bloco = (content || []).find(b => b && b.type === 'text' && typeof b.text === 'string'
+    && /conferencia documental/i.test(b.text) && /NCM\(verificar se tem 8 digitos/.test(b.text));
+  if (!bloco) return false;
+  bloco.text += ' ATUALIZACAO DE REGRAS (PREVALECE sobre a regra de NCM do BL e sobre a REGRA PORTO DE DESTINO acima): ' + ConferenciaChave.REGRAS_NCM_PORTO_PROMPT;
+  return true;
+}
+
 app.post('/api/analisar', auth('conferencia','controle'), rateLimitAnalisar, async (req, res) => {
   const { content } = req.body;
   if (!content || !Array.isArray(content)) {
@@ -4510,6 +4524,7 @@ app.post('/api/analisar', auth('conferencia','controle'), rateLimitAnalisar, asy
   }
   const erroConteudo = validarConteudoAnalise(content);
   if (erroConteudo) return res.status(400).json({ erro: erroConteudo });
+  atualizarRegrasConferenciaAntiga(content);
   const key = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!key || key.length < 20) {
     return res.status(500).json({ erro: 'ANTHROPIC_API_KEY não configurada no servidor. Configure-a nas variáveis de ambiente do Railway.' });
