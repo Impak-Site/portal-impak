@@ -323,5 +323,26 @@ teste('receberDoProcesso gera parcelas fechadas e vendas, sem repetir as já cri
   assert.strictEqual(r2.length, 1);
 });
 
+console.log('\n── filtro jsonb "contém" (itens / pagamentos) ──');
+teste('filtroJsonbContem devolve uma lista JSON com o objeto', () => {
+  assert.strictEqual(F.filtroJsonbContem({ processo_id: 'p1' }), '[{"processo_id":"p1"}]');
+  assert.deepStrictEqual(JSON.parse(F.filtroJsonbContem({ identificador: 'AUT-TESTE-1' })), [{ identificador: 'AUT-TESTE-1' }]);
+});
+teste('no supabase-js o filtro vira cs.[{...}] (jsonb) — o array cru virava cs.{[object Object]}', () => {
+  let PostgrestClient;
+  try { ({ PostgrestClient } = require('@supabase/postgrest-js')); } catch (e) { return; } // sem node_modules: pula
+  const c = new PostgrestClient('http://exemplo.invalid/rest/v1');
+  const bom = c.from('faturas').select('id').contains('itens', F.filtroJsonbContem({ processo_id: 'p1' }));
+  assert.strictEqual(bom.url.searchParams.get('itens'), 'cs.[{"processo_id":"p1"}]');
+  const ruim = c.from('faturas').select('id').contains('itens', [{ processo_id: 'p1' }]);
+  assert.strictEqual(ruim.url.searchParams.get('itens'), 'cs.{[object Object]}', 'o formato antigo (bug) continua inválido');
+});
+teste('server.js não usa mais .contains() com array de objetos em itens/pagamentos', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+  const ruins = src.match(/\.contains\(\s*'(itens|pagamentos)'\s*,\s*\[/g) || [];
+  assert.strictEqual(ruins.length, 0, 'achou: ' + ruins.join(' | '));
+  assert.ok((src.match(/filtroJsonbContem\(/g) || []).length >= 5, 'as 5 buscas usam o filtro novo');
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);
