@@ -1870,6 +1870,9 @@ app.post('/api/agenda/conclusao', auth('controle'), async (req, res) => {
 // (ou remove) pra aba mostrar "fatura aberta/paga" na linha.
 const FaturasCore = require('./faturas-core.js');
 const FinCore = require('./fin-core.js');
+// Referência com ou sem o prefixo "IMPAK-" (19/10/2026): faturas, planilhas
+// do despachante/interna e criação em lote acham o processo do mesmo jeito.
+const RefProcesso = require('./referencia-processo.js');
 app.get('/faturas', auth('financeiro'), (req, res) => enviarControleV2(res));
 
 async function vincularFaturaNosProcessos(fatura, remover) {
@@ -2001,12 +2004,21 @@ app.post('/api/faturas/conferir', auth('financeiro', 'controle'), async (req, re
       if (error) return res.json({ ok: false, erro: error.message });
       (data || []).forEach(p => { processos[p.id] = p; });
     }
-    for (const ref of refs) {
-      const { data } = await sb().from('controle_processos').select(cols).ilike('referencia', ref).limit(1);
-      if (data && data[0]) {
-        processos[data[0].id] = data[0];
-        itens.forEach(it => { if (it && !it.processo_id && it.referencia && String(it.referencia).trim().toLowerCase() === String(data[0].referencia).toLowerCase()) it.processo_id = data[0].id; });
+    // Referência resolvida com a mesma regra das importações (19/10/2026):
+    // igual, ou com/sem o prefixo "IMPAK-" quando só um processo bate.
+    if (refs.length) {
+      const { data: todos, error: errTodos } = await buscarTodosProcessos('id, referencia');
+      if (errTodos) return res.json({ ok: false, erro: errTodos.message });
+      const indiceRefs = RefProcesso.criarIndice(todos);
+      const idPorRef = new Map();
+      refs.forEach(ref => { const achado = RefProcesso.encontrar(indiceRefs, ref); if (achado.processo) idPorRef.set(ref, achado.processo.id); });
+      const faltam = [...new Set(idPorRef.values())].filter(pid => !processos[pid]);
+      if (faltam.length) {
+        const { data, error } = await sb().from('controle_processos').select(cols).in('id', faltam);
+        if (error) return res.json({ ok: false, erro: error.message });
+        (data || []).forEach(p => { processos[p.id] = p; });
       }
+      itens.forEach(it => { if (it && !it.processo_id && it.referencia) { const pid = idPorRef.get(String(it.referencia).trim()); if (pid) it.processo_id = pid; } });
     }
     // faturas existentes: as que citam esses processos + as do mesmo nº de documento
     const existentes = new Map();
@@ -3094,14 +3106,12 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro'), async (req,
     if (!processos || !processos.length) return res.json({ ok: true, total: 0 });
     const agora = new Date().toISOString();
 
-    // Buscar referências já existentes para evitar duplicatas
-    const refs = processos.map(p => p.referencia).filter(Boolean);
-    const { data: existentes } = await sb()
-      .from('controle_processos')
-      .select('id, referencia')
-      .in('referencia', refs);
-
-    const refsExistentes = new Set((existentes||[]).map(e => e.referencia));
+    // Não cria de novo o que já existe — nem quando a planilha traz a
+    // referência sem o prefixo "IMPAK-" (ou com ele) e o Controle tem a
+    // outra forma (19/10/2026, referencia-processo.js).
+    const { data: existentes, error: errExistentes } = await buscarTodosProcessos('id, referencia');
+    if (errExistentes) throw new Error(errExistentes.message);
+    const separados = RefProcesso.separarNovos(existentes, processos);
 
     // Só inserir os que não existem
     // Whitelist de campos aceitos — evita que a planilha importada injete
@@ -3115,8 +3125,7 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro'), async (req,
       'pi_valor_usd', 'pi_forma_pagamento', 'pi_data_saldo', 'pi_pago', 'pi_cambio_fechado',
       'ce_master', 'ce_house', 'transportadora',
     ];
-    const novos = processos
-      .filter(p => p.referencia && !refsExistentes.has(p.referencia))
+    const novos = separados.novos
       .map(p => {
         const filtrado = {};
         for (const campo of CAMPOS_IMPORT_PERMITIDOS) {
@@ -3145,7 +3154,7 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro'), async (req,
     }
 
     if (!novos.length) {
-      return res.json({ ok: true, total: 0, msg: 'Todos os processos já existem' });
+      return res.json({ ok: true, total: 0, ignorados: processos.length, equivalentes: separados.equivalentes, msg: 'Todos os processos já existem' });
     }
 
     // Inserir em lotes de 50
@@ -3156,8 +3165,8 @@ app.post('/api/controle/v2/importar', auth('controle','financeiro'), async (req,
       if (error) throw new Error(error.message);
     }
 
-    console.log(`controle v2 importar: ${novos.length} novos de ${processos.length} (${datasRecusadas.length} data(s) recusada(s)) por ${req.session.usuario}`);
-    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length, datas_recusadas: datasRecusadas });
+    console.log(`controle v2 importar: ${novos.length} novos de ${processos.length} (${separados.equivalentes.length} já existiam com/sem o prefixo, ${datasRecusadas.length} data(s) recusada(s)) por ${req.session.usuario}`);
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length, equivalentes: separados.equivalentes, datas_recusadas: datasRecusadas });
   } catch (e) {
     console.error('controle v2 importar erro:', e.message);
     res.status(500).json({ erro: e.message });
@@ -3201,7 +3210,32 @@ function formatarPortoDestinoEmail(valor) {
   const codigo = normalizarPortoDestinoDespachante(valor);
   return NOMES_PORTO_DESTINO[codigo] || valor;
 }
-function normRefDespachante(v) { return String(v || '').trim().toUpperCase(); }
+// Planilhas de fora (despachante, planilha interna) casam a linha com o
+// processo pela referência — igual, ou com/sem o prefixo "IMPAK-" quando só
+// um processo bate (19/10/2026, referencia-processo.js). A linha não achada
+// volta com as parecidas do Controle (ou com os processos em dúvida) para a
+// pessoa saber o que corrigir na planilha.
+function acharProcessoDaLinha(indice, refPlanilha) {
+  const achado = RefProcesso.encontrar(indice, refPlanilha);
+  if (!achado.processo) {
+    const r = { referencia: refPlanilha, status: 'nao_encontrado' };
+    if (achado.como === 'ambiguo') r.ambiguo = achado.candidatos;
+    else if (achado.sugestoes && achado.sugestoes.length) r.sugestoes = achado.sugestoes;
+    return { proc: null, naoEncontrado: r };
+  }
+  const ident = { referencia: achado.processo.referencia };
+  if (achado.como === 'sem_prefixo') ident.referencia_planilha = String(refPlanilha).trim();
+  return { proc: achado.processo, ident };
+}
+function textoRefNaoEncontrada(r) {
+  let t = String(r.referencia || '');
+  if (r.ambiguo && r.ambiguo.length) t += ` (mais de um processo: ${r.ambiguo.join(', ')})`;
+  else if (r.sugestoes && r.sugestoes.length) t += ` (no Controle tem: ${r.sugestoes.join(', ')})`;
+  return t;
+}
+function textoRefAchada(r) {
+  return r.referencia_planilha ? `${r.referencia} (na planilha: ${r.referencia_planilha})` : String(r.referencia || '');
+}
 const DESTINATARIOS_RELATORIO_DESPACHANTE = [
   'importacao1@impak.com.br', // Emanuelly (suporte@ vai em cópia automática — ver enviarEmail)
 ];
@@ -3223,11 +3257,11 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
 
   const linhasAtualizados = atualizados.map(r => `
     <tr>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600;">${escapeHtml(r.referencia)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600;">${escapeHtml(textoRefAchada(r))}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">${r.campos.map(c => escapeHtml(NOMES_CAMPO[c] || c)).join(', ')}</td>
     </tr>`).join('');
 
-  const linhasNaoEncontrados = naoEncontrados.map(r => `<li>${escapeHtml(r.referencia)}</li>`).join('');
+  const linhasNaoEncontrados = naoEncontrados.map(r => `<li>${escapeHtml(textoRefNaoEncontrada(r))}</li>`).join('');
   const linhasComErro = comErro.map(r => `<li>${escapeHtml(r.referencia)}: ${escapeHtml(r.erro || '')}</li>`).join('');
 
   const html = `
@@ -3300,22 +3334,21 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
     const { data: processos, error: errBusca } = await buscarTodosProcessos(colunasSemRepetir('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs, fechado, cancelado, tipo_container', DATAS_VALIDADAS_PROCESSO));
     if (errBusca) throw new Error(errBusca.message);
 
-    const porRef = new Map();
-    (processos || []).forEach(p => porRef.set(normRefDespachante(p.referencia), p));
+    const indiceRefs = RefProcesso.criarIndice(processos);
 
     const resumo = [];
     const logsGlobais = [];
     const agora = new Date().toISOString();
 
     for (const linha of linhas) {
-      const proc = porRef.get(normRefDespachante(linha.referencia));
+      const { proc, ident, naoEncontrado } = acharProcessoDaLinha(indiceRefs, linha.referencia);
       if (!proc) {
-        resumo.push({ referencia: linha.referencia, status: 'nao_encontrado' });
+        resumo.push(naoEncontrado);
         continue;
       }
       // Segurança (item 6): processo fechado/cancelado não muda por planilha.
       if (proc.fechado || proc.cancelado) {
-        resumo.push({ referencia: proc.referencia, status: 'travado', motivo: proc.fechado ? 'fechado' : 'cancelado' });
+        resumo.push({ ...ident, status: 'travado', motivo: proc.fechado ? 'fechado' : 'cancelado' });
         continue;
       }
 
@@ -3364,19 +3397,19 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
       // Data impossível (ex.: chegada antes do embarque) não é gravada (18/10/2026).
       const confDatas = conferirDatasImportacao(proc, patch, camposAlterados, logsProc);
       if (!camposAlterados.length) {
-        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas', datas_recusadas: confDatas.recusadas });
+        resumo.push({ ...ident, status: 'sem_mudancas', datas_recusadas: confDatas.recusadas });
         continue;
       }
 
       patch.updated_at = agora;
       const { error: errUpdate } = await sb().from('controle_processos').update(patch).eq('id', proc.id);
       if (errUpdate) {
-        resumo.push({ referencia: proc.referencia, status: 'erro', erro: errUpdate.message });
+        resumo.push({ ...ident, status: 'erro', erro: errUpdate.message });
         conexos.registrarLog(sb(), { origem:'despachante', processo_id: proc.id, referencia: proc.referencia, status:'erro', erro: errUpdate.message, campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
         continue;
       }
       logsGlobais.push(...logsProc);
-      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados, datas_recusadas: confDatas.recusadas, avisos_datas: confDatas.avisos });
+      resumo.push({ ...ident, status: 'atualizado', campos: camposAlterados, datas_recusadas: confDatas.recusadas, avisos_datas: confDatas.avisos });
       conexos.registrarLog(sb(), { origem:'despachante', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario, payload: confDatas.recusadas.length ? { datas_recusadas: confDatas.recusadas } : null }).catch(()=>{});
     }
 
@@ -3409,7 +3442,6 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
   }
 });
 
-function normRefManu(v) { return String(v || '').trim().toUpperCase(); }
 const DESTINATARIOS_RELATORIO_MANU = [
   'importacao1@impak.com.br', // Emanuelly (suporte@ em cópia automática)
 ];
@@ -3424,13 +3456,13 @@ async function enviarRelatorioImportManu(resumo, usuario) {
   const NOMES_CAMPO = {
     data_presenca: 'Data de Prontidao', data_prontidao: 'Data de Prontidao', agente: 'Agente de Carga', etd: 'Previsao de Embarque (ETD)',
   };
-  const linhaHtml = (r) => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${escapeHtml(r.referencia)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${(r.campos||[]).map(c => escapeHtml(NOMES_CAMPO[c]||c)).join(', ')}</td></tr>`;
+  const linhaHtml = (r) => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${escapeHtml(textoRefAchada(r))}</td><td style="padding:4px 8px;border:1px solid #ddd;">${(r.campos||[]).map(c => escapeHtml(NOMES_CAMPO[c]||c)).join(', ')}</td></tr>`;
   const html = `
     <h3>Importacao Planilha Interna (Manu/Emanuelly)</h3>
     <p>Executado por: ${escapeHtml(usuario || '')}</p>
     <p><b>${atualizados.length}</b> processo(s) atualizado(s), <b>${semMudancas.length}</b> sem mudancas, <b>${naoEncontrados.length}</b> nao encontrado(s), <b>${comErro.length}</b> com erro.</p>
     ${atualizados.length ? `<table style="border-collapse:collapse;"><tr><th style="padding:4px 8px;border:1px solid #ddd;">Referencia</th><th style="padding:4px 8px;border:1px solid #ddd;">Campos atualizados</th></tr>${atualizados.map(linhaHtml).join('')}</table>` : ''}
-    ${naoEncontrados.length ? `<p><b>Nao encontrados:</b> ${naoEncontrados.map(r=>escapeHtml(r.referencia)).join(', ')}</p>` : ''}
+    ${naoEncontrados.length ? `<p><b>Nao encontrados:</b> ${naoEncontrados.map(r=>escapeHtml(textoRefNaoEncontrada(r))).join(', ')}</p>` : ''}
     ${blocoDatas}
   `;
   const nRecusadas = resumo.reduce((s, r) => s + ((r.datas_recusadas || []).length), 0);
@@ -3458,22 +3490,21 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async 
     const { data: processos, error: errBusca } = await buscarTodosProcessos(colunasSemRepetir('id, referencia, data_prontidao, agente, etd, fechado, cancelado, tipo_container', DATAS_VALIDADAS_PROCESSO));
     if (errBusca) throw new Error(errBusca.message);
 
-    const porRef = new Map();
-    (processos || []).forEach(p => porRef.set(normRefManu(p.referencia), p));
+    const indiceRefs = RefProcesso.criarIndice(processos);
 
     const resumo = [];
     const logsGlobais = [];
     const agora = new Date().toISOString();
 
     for (const linha of linhas) {
-      const proc = porRef.get(normRefManu(linha.referencia));
+      const { proc, ident, naoEncontrado } = acharProcessoDaLinha(indiceRefs, linha.referencia);
       if (!proc) {
-        resumo.push({ referencia: linha.referencia, status: 'nao_encontrado' });
+        resumo.push(naoEncontrado);
         continue;
       }
       // Segurança (item 6): processo fechado/cancelado não muda por planilha.
       if (proc.fechado || proc.cancelado) {
-        resumo.push({ referencia: proc.referencia, status: 'travado', motivo: proc.fechado ? 'fechado' : 'cancelado' });
+        resumo.push({ ...ident, status: 'travado', motivo: proc.fechado ? 'fechado' : 'cancelado' });
         continue;
       }
       const patch = {};
@@ -3498,18 +3529,18 @@ app.post('/api/controle/v2/importar-manu', auth('controle','financeiro'), async 
       // Data impossível (ex.: ETD depois do ETA) não é gravada (18/10/2026).
       const confDatas = conferirDatasImportacao(proc, patch, camposAlterados, logsProc);
       if (!camposAlterados.length) {
-        resumo.push({ referencia: proc.referencia, status: 'sem_mudancas', datas_recusadas: confDatas.recusadas });
+        resumo.push({ ...ident, status: 'sem_mudancas', datas_recusadas: confDatas.recusadas });
         continue;
       }
       patch.updated_at = agora;
       const { error: errUpdate } = await sb().from('controle_processos').update(patch).eq('id', proc.id);
       if (errUpdate) {
-        resumo.push({ referencia: proc.referencia, status: 'erro', erro: errUpdate.message });
+        resumo.push({ ...ident, status: 'erro', erro: errUpdate.message });
         conexos.registrarLog(sb(), { origem:'planilha_interna', processo_id: proc.id, referencia: proc.referencia, status:'erro', erro: errUpdate.message, campos_aplicados: patch, usuario: req.session.usuario }).catch(()=>{});
         continue;
       }
       logsGlobais.push(...logsProc);
-      resumo.push({ referencia: proc.referencia, status: 'atualizado', campos: camposAlterados, datas_recusadas: confDatas.recusadas, avisos_datas: confDatas.avisos });
+      resumo.push({ ...ident, status: 'atualizado', campos: camposAlterados, datas_recusadas: confDatas.recusadas, avisos_datas: confDatas.avisos });
       conexos.registrarLog(sb(), { origem:'planilha_interna', processo_id: proc.id, referencia: proc.referencia, status:'ok', campos_aplicados: patch, usuario: req.session.usuario, payload: confDatas.recusadas.length ? { datas_recusadas: confDatas.recusadas } : null }).catch(()=>{});
     }
 
@@ -4264,16 +4295,12 @@ app.post('/api/controle/importar', auth('controle','financeiro'), async (req, re
 
     const agora = new Date().toISOString();
 
-    // Buscar referências já existentes
-    const refs = processos.map(p => p.referencia).filter(Boolean);
-    const { data: existentes } = await sb()
-      .from('controle_processos')
-      .select('referencia')
-      .in('referencia', refs);
-    const refsExistentes = new Set((existentes||[]).map(e => e.referencia));
+    // Já existentes (igual, ou com/sem o prefixo "IMPAK-") não são criados de novo.
+    const { data: existentes, error: errExistentes } = await buscarTodosProcessos('id, referencia');
+    if (errExistentes) throw new Error(errExistentes.message);
+    const separados = RefProcesso.separarNovos(existentes, processos);
 
-    const novos = processos
-      .filter(p => p.referencia && !refsExistentes.has(p.referencia))
+    const novos = separados.novos
       .map(p => {
         // Suportar tanto formato antigo (com dados{}) quanto novo (campos diretos)
         const d = p.dados || p;
@@ -4313,7 +4340,7 @@ app.post('/api/controle/importar', auth('controle','financeiro'), async (req, re
     }
 
     if (!novos.length) {
-      return res.json({ ok: true, total: 0, msg: 'Todos já existem' });
+      return res.json({ ok: true, total: 0, ignorados: processos.length, equivalentes: separados.equivalentes, msg: 'Todos já existem' });
     }
 
     for (let i = 0; i < novos.length; i += 50) {
@@ -4324,7 +4351,7 @@ app.post('/api/controle/importar', auth('controle','financeiro'), async (req, re
     }
 
     console.log(`controle/importar: ${novos.length} novos de ${processos.length} por ${req.session.usuario}`);
-    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length, datas_recusadas: datasRecusadas });
+    res.json({ ok: true, total: novos.length, ignorados: processos.length - novos.length, equivalentes: separados.equivalentes, datas_recusadas: datasRecusadas });
   } catch (e) {
     console.error('controle/importar erro:', e.message);
     res.status(500).json({ erro: e.message });

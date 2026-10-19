@@ -4870,7 +4870,8 @@ function renderStats(){
   const chegando7d = processosAtivos.filter(p => chegandoEmDias(p,7)).length;
 
   const refsDuplicadas = (() => {
-const norm = s => (s||'').toString().trim().toUpperCase().replace(/\s+/g,'');
+// 19/10/2026: "IMPAK-ABC1" e "ABC1" contam como a mesma referência (as importações já as tratam como o mesmo processo).
+const norm = s => (typeof ReferenciaProcesso !== 'undefined' ? ReferenciaProcesso.semPrefixo(s) : (s||'').toString().trim().toUpperCase()).replace(/\s+/g,'');
 const cont = {};
 processosAtivos.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont[r]||0)+1; });
 return processosAtivos.filter(p => cont[norm(p.referencia)] > 1).length;
@@ -4967,7 +4968,7 @@ const FILTROS_FASE_ESPECIAIS = {
   __armazenagem: lista => lista.filter(p=>{ const d=armazenagemDias(p); return d!==null&&d<=2&&!p.data_chegada&&!p.data_carregamento; }),
   __chegada_7d: lista => lista.filter(p=>chegandoEmDias(p,7)),
 __ref_duplicada: lista => {
-const norm = s => (s||'').toString().trim().toUpperCase().replace(/\s+/g,'');
+const norm = s => (typeof ReferenciaProcesso !== 'undefined' ? ReferenciaProcesso.semPrefixo(s) : (s||'').toString().trim().toUpperCase()).replace(/\s+/g,'');
 const cont = {};
 lista.forEach(p => { const r = norm(p.referencia); if(r) cont[r]=(cont[r]||0)+1; });
 return lista.filter(p => cont[norm(p.referencia)] > 1);

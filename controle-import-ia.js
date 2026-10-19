@@ -279,7 +279,7 @@ async function importarPlanilha(input){
     addLog(`Enviando ${processos.length} processos ao servidor...`, '#7dd3fc');
     showToast(`Importando ${processos.length} processos...`,'info');
 
-    let total = 0, erros = 0, datasRecusadas = 0;
+    let total = 0, erros = 0, datasRecusadas = 0, jaExistiam = 0;
     for(let i=0;i<processos.length;i+=50){
       const lote = processos.slice(i,i+50);
       try{
@@ -289,7 +289,11 @@ async function importarPlanilha(input){
         });
         const d = await resp.json();
         if(d.ok){
-          total += d.total||lote.length; addLog(`✓ Lote ${Math.floor(i/50)+1}: ${d.total||lote.length} salvos`, '#86efac');
+          // 19/10/2026: "total: 0" (todos já existiam) contava como o lote inteiro salvo.
+          const salvos = typeof d.total === 'number' ? d.total : lote.length;
+          total += salvos; addLog(`✓ Lote ${Math.floor(i/50)+1}: ${salvos} salvos`, '#86efac');
+          if(d.ignorados){ jaExistiam += d.ignorados; addLog(`• ${d.ignorados} já estavam no Controle (não foram criados de novo)`, '#93c5fd'); }
+          (d.equivalentes||[]).forEach(x => addLog(`↔ ${x.referencia} já existe como ${x.existente}`, '#93c5fd'));
           // Data impossível na planilha: o processo foi criado sem ela (ver logDatasImportacao).
           (d.datas_recusadas||[]).forEach(x => { datasRecusadas++; addLog(`✕ ${x.referencia}: ${rotuloCampoImportacao(x.campo)} ${dataImportBR(x.valor)} não importada — ${x.motivo}`, '#fca5a5'); });
         }
@@ -303,6 +307,10 @@ async function importarPlanilha(input){
       fecharLog(datasRecusadas ? 30000 : 6000);
       showToast(`✓ ${total} processos importados${erros>0?' ('+erros+' com erro)':''}${datasRecusadas?` — ${datasRecusadas} data(s) não importada(s), veja o log`:''}`, (erros>0||datasRecusadas)?'warn':'ok');
       await carregarProcessos(true);
+    } else if(!erros && jaExistiam){
+      addLog('• Nenhum processo novo — todos já estavam no Controle', '#93c5fd');
+      fecharLog(10000);
+      showToast('Nenhum processo novo — todos já estavam no Controle','warn');
     } else {
       addLog('✕ Zero processos importados — verifique os erros acima', '#fca5a5');
       fecharLog(10000);
@@ -373,13 +381,7 @@ async function importarPlanilhaDespachante(input){
     addLog(`${data.total_linhas} linha(s) na planilha`, '#7dd3fc');
     addLog(`✓ ${data.total_atualizados} processo(s) atualizado(s)`, '#86efac');
     if(data.total_sem_mudancas) addLog(`• ${data.total_sem_mudancas} sem mudanca (ja estavam com esses dados)`, '#93c5fd');
-    if(data.total_travados) addLog(`🔒 ${data.total_travados} processo(s) fechado(s)/cancelado(s) ignorado(s): ${(data.resumo||[]).filter(r=>r.status==='travado').map(r=>r.referencia).join(', ')}`, '#fcd34d');
-    if(data.total_nao_encontrados){
-      addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
-      (data.resumo||[]).filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${r.referencia}`, '#fcd34d'));
-    } else {
-            addLog(`Tudo certo! Todas as referencias da planilha foram encontradas e conferidas.`, '#4ade80');
-    }
+    logReferenciasImportacao(data, addLog);
     (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
     const datasImp = logDatasImportacao(data.resumo, addLog);
 
@@ -392,6 +394,30 @@ async function importarPlanilhaDespachante(input){
     addLog(`✕ ERRO: ${e.message}`, '#fca5a5');
     showToast('Erro: '+e.message,'err');
     fecharLog(10000);
+  }
+}
+
+// ── Referências nas importações de planilha (19/10/2026) ──
+// O servidor acha o processo pela referência igual ou com/sem o prefixo
+// "IMPAK-" (referencia-processo.js). Aqui o log mostra quais foram achadas
+// assim, e, nas não encontradas, as parecidas que existem no Controle (ou os
+// processos em dúvida) — para saber o que corrigir na planilha.
+function textoRefNaoEncontrada(r){
+  let t = String(r.referencia || '');
+  if(r.ambiguo && r.ambiguo.length) t += ` (mais de um processo: ${r.ambiguo.join(', ')})`;
+  else if(r.sugestoes && r.sugestoes.length) t += ` (no Controle tem: ${r.sugestoes.join(', ')})`;
+  return t;
+}
+function logReferenciasImportacao(data, addLog){
+  const resumo = data.resumo || [];
+  if(data.total_travados) addLog(`🔒 ${data.total_travados} processo(s) fechado(s)/cancelado(s) ignorado(s): ${resumo.filter(r=>r.status==='travado').map(r=>r.referencia).join(', ')}`, '#fcd34d');
+  const semPrefixo = resumo.filter(r => r.referencia_planilha);
+  if(semPrefixo.length) addLog(`↔ ${semPrefixo.length} referência(s) achada(s) com/sem o prefixo IMPAK-: ${semPrefixo.map(r => `${r.referencia_planilha} → ${r.referencia}`).join(', ')}`, '#93c5fd');
+  if(data.total_nao_encontrados){
+    addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
+    resumo.filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${textoRefNaoEncontrada(r)}`, '#fcd34d'));
+  } else {
+    addLog(`✅ Tudo certo! Todas as referencias da planilha foram encontradas e conferidas.`, '#4ade80');
   }
 }
 
@@ -469,13 +495,7 @@ async function importarPlanilhaManu(input){
     addLog(`${data.total_linhas} linha(s) na planilha`, '#7dd3fc');
     addLog(`✓ ${data.total_atualizados} processo(s) atualizado(s)`, '#86efac');
     if(data.total_sem_mudancas) addLog(`• ${data.total_sem_mudancas} sem mudanca (ja estavam com esses dados)`, '#93c5fd');
-    if(data.total_travados) addLog(`🔒 ${data.total_travados} processo(s) fechado(s)/cancelado(s) ignorado(s): ${(data.resumo||[]).filter(r=>r.status==='travado').map(r=>r.referencia).join(', ')}`, '#fcd34d');
-    if(data.total_nao_encontrados){
-      addLog(`⚠ ${data.total_nao_encontrados} referencia(s) nao encontrada(s) no Controle:`, '#fcd34d');
-      (data.resumo||[]).filter(r=>r.status==='nao_encontrado').forEach(r => addLog(`   ${r.referencia}`, '#fcd34d'));
-    } else {
-            addLog(`✅ Tudo certo! Todas as referencias da planilha foram encontradas e conferidas.`, '#4ade80');
-    }
+    logReferenciasImportacao(data, addLog);
     (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
     const datasImp = logDatasImportacao(data.resumo, addLog);
 

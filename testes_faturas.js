@@ -127,6 +127,13 @@ teste('acharProcesso casa por referência, HBL ou container (ignora caixa/espaç
   assert.strictEqual(F.acharProcesso(['ud26-teste'], ps).id, 'a');
   assert.strictEqual(F.acharProcesso(['abc'], ps), null, 'pista curta demais não casa');
 });
+teste('acharProcesso: referência com ou sem o prefixo IMPAK- é o mesmo processo (19/10/2026)', () => {
+  const ps = [{ id: 'a', referencia: 'IMPAK-TST2601A-1' }, { id: 'b', referencia: 'QWE2602-9' }];
+  assert.strictEqual(F.acharProcesso(['TST2601A-1'], ps).id, 'a', 'documento sem o prefixo, Controle com');
+  assert.strictEqual(F.acharProcesso(['IMPAK-QWE2602-9'], ps).id, 'b', 'documento com o prefixo, Controle sem');
+  assert.strictEqual(F.acharProcesso(['IMPAKQWE2602-9'], ps), null, 'prefixo colado no resto não é cortado');
+  assert.strictEqual(F.acharProcesso(['IMPAK COMERCIAL IMPORTADORA'], ps), null, 'nome da empresa não vira processo');
+});
 
 console.log('\n── alerta / fluxo de caixa ──');
 teste('faturasParaAlerta: vencidas e as que vencem em até 3 dias, só abertas', () => {
