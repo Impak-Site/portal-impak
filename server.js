@@ -694,7 +694,7 @@ app.use(require('./lib/erros-amigaveis').middlewareErrosAmigaveis);
 // projeto, então server.js, migrations, testes, node_modules etc. ficavam
 // acessíveis a qualquer um, mesmo sem login. Não há senha/chave neles, mas
 // não tem por que expor o código do servidor.
-const CAMINHOS_INTERNOS = /^\/(server\.js|planilha-import\.js|mapeamento_cotacao_processo\.js|testes_[^/]*|package(-lock)?\.json|(migrations|node_modules|scripts|services|docs|tests|lib)(\/.*)?)$|\.(md|sql)$/i;
+const CAMINHOS_INTERNOS = /^\/(server\.js|newsletter-servidor\.js|planilha-import\.js|mapeamento_cotacao_processo\.js|testes_[^/]*|package(-lock)?\.json|(migrations|node_modules|scripts|services|docs|tests|lib)(\/.*)?)$|\.(md|sql)$/i;
 // Relatório de segurança (23/09/2026): o filtro testava o caminho ainda
 // codificado (/%73erver.js passava) e o express.static decodifica depois.
 // Agora decodifica e normaliza (resolve ./, //, ..) antes de testar — o
@@ -1601,6 +1601,7 @@ function requireGerente(req, res, next) {
 // pelos módulos da sessão) e este servidor executa cada consulta — nenhuma
 // credencial do banco passa pela IA. Ver assistente.js.
 const Assistente = require('./assistente.js');
+const Newsletter = require('./newsletter-servidor.js'); // Radar IMPAK (19/10/2026)
 const rateLimitAssistente = criarRateLimiter('/api/assistente', 60, 10 * 60 * 1000);
 app.get('/assistente', auth(...MODULOS_TRABALHO), (req, res) => enviarHtmlVersionado(res, 'assistente.html'));
 app.get('/api/assistente/conversas', auth(...MODULOS_TRABALHO), async (req, res) => {
@@ -3427,6 +3428,11 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
 
     enviarRelatorioImportDespachante(resumo, req.session.usuario)
       .catch(mailErr => console.warn('relatorio email despachante erro:', mailErr.message));
+    // Follow-up semanal sai logo depois da importação de segunda (19/10/2026).
+    if (linhas.length && decidirFollowUp(Newsletter.agoraSP(), 'importacao')) {
+      dispararFollowUp('importacao', { usuario: nomeUsuarioExibicao(req.session.usuario) })
+        .catch(e => console.error('Erro no follow-up semanal (após importação):', e.message));
+    }
     res.json({
       ok: true, resumo,
       total_linhas: linhas.length,
@@ -6304,9 +6310,19 @@ async function marcarFollowUpEnviadoHoje(){
   if (error) console.error('marcarFollowUpEnviadoHoje: falha ao gravar app_job_runs (job pode repetir!):', error.message);
 }
 
-async function enviarFollowUpSemanal(){
+async function enviarFollowUpSemanal(origem){
   const processos = await processosParaFollowUpSemanal();
   const { emails, avulsos } = await montarEmailsFollowUpPorCliente(processos);
+  // De onde saiu este envio (19/10/2026): depois da importação da planilha do
+  // despachante ou no horário-limite sem importação — vai no topo do e-mail.
+  const o = origem || {};
+  const hora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  const faixa = o.motivo === 'importacao'
+    ? `<p style="margin:0 0 8px;padding:6px 10px;background:#ecfdf5;border-left:4px solid #10b981;font-size:13px;color:#065f46;">Gerado logo após a importação da planilha do despachante (hoje, ${escapeHtml(hora)}${o.usuario ? ', por ' + escapeHtml(o.usuario) : ''}) — ETAs atualizadas.</p>`
+    : o.motivo === 'limite'
+      ? `<p style="margin:0 0 8px;padding:6px 10px;background:#fff7e0;border-left:4px solid #d99a00;font-size:13px;color:#8a5a00;">Atenção: a planilha do despachante não foi importada hoje até as ${FOLLOWUP_HORA_LIMITE}h. Este follow-up usa as datas que já estavam no sistema — confira as ETAs antes de repassar.</p>`
+      : '';
+  if (faixa) emails.forEach(e => { e.html = e.html.includes('<strong>RASCUNHO INTERNO') ? e.html.replace('<strong>RASCUNHO INTERNO', faixa + '<strong>RASCUNHO INTERNO') : faixa + e.html; });
   let enviados = 0;
   for (const e of emails) {
     const assunto = `Follow-up semanal — ${e.cliente} (${e.qtd} processo${e.qtd===1?'':'s'} com ETA próxima)`;
@@ -6321,36 +6337,96 @@ async function enviarFollowUpSemanal(){
   return { emails: emails.length, enviados, processos: processos.length };
 }
 
-// Checagem a cada 30 min: dispara automaticamente todo domingo (uma vez só
-// por dia, mesmo que o servidor reinicie no meio do domingo — ver
-// jaEnviouFollowUpHoje/app_job_runs). Sem lib de cron: o processo do
-// Railway fica sempre no ar, então um setInterval simples cobre o caso.
-//
-// FIX: setInterval() só disparava a checagem no PRIMEIRO TICK, ou seja,
-// 30min depois do boot — nunca imediatamente. Como o Railway reinicia o
-// processo a cada deploy, e nesse projeto acontecem vários deploys por
-// dia, o timer quase sempre era resetado antes de completar os 30min,
-// fazendo a checagem nunca rodar de fato. checarFollowUpSemanal() agora
-// roda 1x na hora (logo no boot) e depois a cada 30min, então mesmo com
-// deploys frequentes a checagem sempre acontece pelo menos uma vez.
+// Follow-up semanal: sai na SEGUNDA, logo depois da importação da planilha
+// do despachante (pedido Emanuelly 19/10/2026: "receber somente depois de
+// importar a planilha na segunda", porque a planilha muda no fim de semana e
+// os clientes preferem receber na segunda). Antes saía no domingo.
+//   • importação do despachante na segunda (com ao menos 1 linha) → dispara
+//     na hora (uma vez por dia: reivindicarJobHoje);
+//   • se ninguém importar até FOLLOWUP_HORA_LIMITE (14h de Brasília), sai
+//     assim mesmo, com um aviso no topo de que a planilha não foi importada.
+const FOLLOWUP_HORA_LIMITE = parseInt(process.env.FOLLOWUP_HORA_LIMITE || '14', 10);
+// A regra nova começa na segunda 26/10/2026 (no dia da publicação, 19/10, o
+// follow-up de domingo já tinha saído).
+const FOLLOWUP_SEGUNDA_DESDE = process.env.FOLLOWUP_SEGUNDA_DESDE || '2026-10-26';
+function decidirFollowUp(sp, gatilho) {
+  return Newsletter.decidirFollowUp(sp, gatilho, { horaLimite: FOLLOWUP_HORA_LIMITE, desde: FOLLOWUP_SEGUNDA_DESDE });
+}
+async function dispararFollowUp(motivo, info) {
+  if (await jaEnviouFollowUpHoje()) return null;
+  const r = await enviarFollowUpSemanal({ motivo, ...(info || {}) });
+  console.log(`✓ Follow-up semanal enviado (${motivo}): ${r.emails} e-mails, ${r.processos} processos`);
+  return r;
+}
 function checarFollowUpSemanal(){
-  const agora = new Date();
-  if (agora.getDay() !== 0) return; // 0 = domingo
-  jaEnviouFollowUpHoje().then(ja => {
-    if (ja) return;
-    enviarFollowUpSemanal()
-      .then(r => console.log(`✓ Follow-up semanal enviado (${r.emails} e-mails, ${r.processos} processos)`))
-      .catch(e => console.error('Erro no follow-up semanal:', e.message));
-  }).catch(e => console.error('Erro ao checar follow-up semanal:', e.message));
+  const motivo = decidirFollowUp(Newsletter.agoraSP(), 'relogio');
+  if (!motivo) return;
+  dispararFollowUp(motivo).catch(e => console.error('Erro no follow-up semanal:', e.message));
 }
 checarFollowUpSemanal();
 setInterval(checarFollowUpSemanal, 30 * 60 * 1000);
 
 // Disparo manual pra testar sem esperar domingo — restrito a gerente.
 app.post('/api/admin/followup-semanal', auth(), requireGerente, (req, res) => {
-  enviarFollowUpSemanal()
+  enviarFollowUpSemanal({ motivo: 'manual' })
     .then(r => res.json({ ok: true, ...r }))
     .catch(e => res.status(500).json({ ok: false, erro: e.message }));
+});
+
+// ── RADAR IMPAK — newsletter semanal para revisão (19/10/2026) ──────
+// Segunda 6h (pneus) e quarta 6h (câmbio): o portal pesquisa, redige e
+// manda ao revisor (Narcélio), com cópia no suporte@. Ele confere e só
+// encaminha aos clientes. Ver newsletter-servidor.js. NEWSLETTER_PARA troca
+// o revisor sem mexer no código; NEWSLETTER_DESLIGADA=1 desliga o envio.
+const NEWSLETTER_PARA = (process.env.NEWSLETTER_PARA || 'narcelio@impak.com.br').split(',').map(x => x.trim()).filter(Boolean);
+function urlLogoNewsletter() {
+  return (process.env.APP_URL || 'https://portal-impak-production.up.railway.app').replace(/\/+$/, '') + '/assets/logo-email-impak.png';
+}
+async function enviarNewsletter(tipo, para) {
+  const ed = await Newsletter.prepararEdicao(tipo, { logoUrl: urlLogoNewsletter() });
+  for (const dest of (para || NEWSLETTER_PARA)) {
+    await enviarEmail(dest, ed.assunto, ed.html, { alerta: true });
+    await new Promise(r => setTimeout(r, 700));
+  }
+  return { assunto: ed.assunto, avisos: ed.avisos, buscas: ed.buscas, para: para || NEWSLETTER_PARA };
+}
+async function avisarFalhaNewsletter(tipo, erro) {
+  const nome = tipo === 'pneus' ? 'Pneus (segunda)' : 'Câmbio (quarta)';
+  const html = `<div style="font-family:Arial,sans-serif;color:#1f2937;max-width:640px;"><h2 style="margin:0 0 8px;">Radar IMPAK · ${escapeHtml(nome)} não foi gerado</h2>`
+    + `<p>O portal tentou montar a newsletter e não conseguiu: <b>${escapeHtml(erro && erro.message || String(erro))}</b>.</p>`
+    + `<p>Nada foi enviado ao revisor. Um gerente pode gerar de novo pelo portal (POST /api/admin/newsletter/${escapeHtml(tipo)}) ou pedir ao suporte.</p></div>`;
+  try { await enviarEmail(ALERTA_COPIA, `Radar IMPAK (${nome}) não foi gerado`, html, { alerta: true }); }
+  catch (e) { console.error('[newsletter] falha ao avisar erro:', e.message); }
+}
+// Primeira edição automática: quarta 21/10/2026 (a de segunda 19/10 já foi
+// mandada à mão para o Narcélio).
+const NEWSLETTER_DESDE = process.env.NEWSLETTER_DESDE || '2026-10-21';
+function checarNewsletter() {
+  if (process.env.NEWSLETTER_DESLIGADA === '1') return;
+  if (Newsletter.agoraSP().dataISO < NEWSLETTER_DESDE) return;
+  const tipo = Newsletter.edicaoDoMomento();
+  if (!tipo) return;
+  reivindicarJobHoje('newsletter_' + tipo).then(ok => {
+    if (!ok) return;
+    enviarNewsletter(tipo)
+      .then(r => console.log(`✓ Radar IMPAK (${tipo}) enviado para revisão: ${r.assunto} | ${r.buscas} buscas | avisos: ${r.avisos.length}`))
+      .catch(e => { console.error(`Erro no Radar IMPAK (${tipo}):`, e.message); avisarFalhaNewsletter(tipo, e); });
+  }).catch(e => console.error('Erro ao checar Radar IMPAK:', e.message));
+}
+checarNewsletter();
+setInterval(checarNewsletter, 30 * 60 * 1000);
+
+// Gerar na hora (gerente). destino "revisor" = Narcélio (+ cópia suporte@);
+// "suporte" = só suporte@ (prévia). Demora 1–3 min: responde já e roda por trás.
+app.post('/api/admin/newsletter/:tipo', auth(), requireGerente, (req, res) => {
+  const tipo = req.params.tipo;
+  if (!Newsletter.EDICOES[tipo]) return res.status(400).json({ ok: false, erro: 'Edição inválida (use pneus ou cambio).' });
+  const destino = (req.body && req.body.destino) === 'revisor' ? 'revisor' : 'suporte';
+  const para = destino === 'revisor' ? NEWSLETTER_PARA : [ALERTA_COPIA];
+  enviarNewsletter(tipo, para)
+    .then(r => console.log(`✓ Radar IMPAK (${tipo}) manual → ${r.para.join(', ')} por ${req.session.usuario}`))
+    .catch(e => { console.error(`Erro no Radar IMPAK manual (${tipo}):`, e.message); avisarFalhaNewsletter(tipo, e); });
+  res.json({ ok: true, iniciado: true, para, mensagem: 'Gerando — chega por e-mail em 1 a 3 minutos.' });
 });
 
 // ── ALERTAS DIÁRIOS (demurrage crítico, ETA vencido, ETA na semana, PI vencida) ──
