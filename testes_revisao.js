@@ -306,6 +306,45 @@ teste('Auditoria: só processos com problema, sem os cancelados, e DI/NF no futu
   ok(/Data de Liberação \(20\/12\/2026\) está no futuro/.test(a[1].problemas[0].msg), a[1].problemas[0].msg);
 });
 
+// ── 19/10/2026 (auditoria dos FECHADOS): NF de venda da aba Vendas com dia e
+// mês trocados — 11/08 gravada como 08/11, no futuro. Valores fictícios.
+console.log('\n── NFs da aba Vendas (vendas_json) ──');
+const procVendas = (vendas, extra) => ({ nf_entrada_data: '2026-08-10', vendas_json: JSON.stringify(vendas), ...(extra || {}) });
+teste('NF de venda com data no futuro gera aviso e sugere a data com dia/mês trocados', () => {
+  const r = VD.validar(procVendas([{ nf_saida_numero: '9001', nf_saida_data: '2026-11-08' }]), { hoje: HOJE });
+  iguais(VD.erros(r).length, 0, JSON.stringify(r));
+  const a = VD.avisos(r);
+  iguais(a.length, 1, JSON.stringify(r));
+  iguais(a[0].tipo, 'futuro'); iguais(a[0].campos, ['vendas_json']);
+  ok(/NF 9001.*08\/11\/2026\) está no futuro/.test(a[0].msg), a[0].msg);
+  ok(/trocados ficaria 11\/08\/2026/.test(a[0].msg), a[0].msg);
+});
+teste('NF de venda antes da NF de entrada gera aviso; venda sem número (planejada) com data futura não', () => {
+  const r = VD.validar(procVendas([
+    { nf_saida_numero: '9002', nf_saida_data: '2026-07-08' },
+    { nf_saida_numero: '', nf_saida_data: '2026-12-15' },
+    { nf_saida_numero: '9003', nf_saida_data: '2026-08-12' },
+  ]), { hoje: HOJE });
+  const a = VD.avisos(r);
+  iguais(a.length, 1, JSON.stringify(r));
+  iguais(a[0].tipo, 'ordem');
+  ok(/NF 9002.*antes da Data da NF de Entrada \(10\/08\/2026\)/.test(a[0].msg), a[0].msg);
+});
+teste('NF de venda com ano incompleto é erro; vendas_json inválido não quebra', () => {
+  const r = VD.validar(procVendas([{ nf_saida_numero: '9004', nf_saida_data: '0026-08-12' }]), { hoje: HOJE });
+  iguais(VD.erros(r).length, 1, JSON.stringify(r));
+  iguais(VD.validar({ vendas_json: '{quebrado' }, { hoje: HOJE }).length, 0);
+});
+teste('Salvar sem mexer em Vendas não repete o aviso das NFs (campos alterados)', () => {
+  const r = VD.validar(procVendas([{ nf_saida_numero: '9001', nf_saida_data: '2026-11-08' }]), { hoje: HOJE, campos: ['data_chegada'] });
+  iguais(r.length, 0, JSON.stringify(r));
+});
+teste('Auditoria semanal pega a NF de venda no futuro', () => {
+  const a = VD.auditarProcessos([{ id: 5, referencia: 'TESTE-5', ...procVendas([{ nf_saida_numero: '9001', nf_saida_data: '2026-11-08' }]) }], { hoje: HOJE });
+  iguais(a.length, 1);
+  ok(/está no futuro/.test(a[0].problemas[0].msg), a[0].problemas[0].msg);
+});
+
 // ── 19/10/2026: planilha de fora traz a referência sem o "IMPAK-" (ou com) ──
 // Antes a importação só achava a referência idêntica e dava "não encontrada"
 // para processos cadastrados com o prefixo. Referências fictícias.
