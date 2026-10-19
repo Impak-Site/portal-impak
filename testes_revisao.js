@@ -612,6 +612,21 @@ function telaComIA(respostaIA) {
     iguais([t.els.f_ce_master.value, t.els.f_ce_house.value], ['182600000000002', '182600000000003']);
     ok(!t.toasts.some(x => /CE Master não preenchido/.test(x[1])), JSON.stringify(t.toasts));
   });
+  await testeAsync('BL com o mesmo número em HBL e MBL: fica só o HBL, o MBL não é preenchido e a tela avisa', async () => {
+    const t = telaComIA({ hbl: 'HCMS000001', mbl: 'HCMS000001' });
+    await t.ler();
+    const campo = id => t.ctx.document.getElementById(id).value;
+    iguais([campo('f_hbl'), campo('f_mbl')], ['HCMS000001', '']);
+    ok(t.toasts.some(x => x[0] === 'warn' && /MBL não preenchido/.test(x[1])), JSON.stringify(t.toasts));
+    ok((t.els['ia-status'].filhos || []).some(f => /mesmo número do HBL/.test(f.innerHTML)), 'caixa de aviso na tela');
+    ok(t.rodar('_editando.log').some(l => /MBL não usado \(igual ao HBL\)/.test(l.valor_depois)), JSON.stringify(t.rodar('_editando.log')));
+  });
+  await testeAsync('BL com HBL e MBL diferentes: preenche os dois, sem aviso', async () => {
+    const t = telaComIA({ hbl: 'HCMS000002', mbl: 'SGN000000002' });
+    await t.ler();
+    iguais([t.els.f_hbl.value, t.els.f_mbl.value], ['HCMS000002', 'SGN000000002']);
+    ok(!t.toasts.some(x => /MBL não preenchido/.test(x[1])), JSON.stringify(t.toasts));
+  });
   await testeAsync('Documento com datas certas: nada muda e não há aviso de datas', async () => {
     const t = telaComIA({ numero_di: '26/0000001-0', data_registro_di: '2026-04-05', data_liberacao: '2026-04-06', data_chegada: '2026-04-03' });
     t.tela('f_data_embarque', '2026-02-20');
