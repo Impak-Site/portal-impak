@@ -298,7 +298,8 @@ const REGRAS = `Regras de redação (obrigatórias):
 - Português do Brasil, tom humano e profissional, como um gestor experiente escrevendo para clientes do setor. Não pode parecer texto de IA: nada de clichês ("cenário desafiador", "nesse contexto", "vale ressaltar"), nada de exagero, frases diretas.
 - Leitura de 2 a 4 minutos (550 a 850 palavras no total).
 - Só use números que você encontrou na busca, de fonte confiável e recente, e cite a fonte. Nunca invente número, data ou declaração. Se um dado importante não tiver fonte pública confiável, não afirme: coloque em "notas_revisao" para o revisor confirmar.
-- Fontes: links diretos para a matéria (não para a página inicial do site), com a data da publicação. De 5 a 10 fontes.
+- Fontes: links diretos para a matéria (não para a página inicial do site), com a data da publicação. De 5 a 10 fontes. Prefira veículos e órgãos reconhecidos (Reuters, Valor, InfoMoney, Estadão, Folha, O Globo, Bloomberg Línea, Banco Central, IBGE, ANIP, Secex/ComexStat, Anfavea, Fed); evite blogs, sites regionais e páginas de corretoras quando houver fonte melhor para o mesmo dado.
+- "notas_revisao": no máximo 5 itens, só o que o revisor realmente precisa conferir, em uma frase cada.
 - A IMPAK é uma importadora de pneus (Ásia → Brasil, Joinville/SC). Os leitores são clientes: distribuidores, revendas, transportadoras.`;
 
 function pedido(tipo, hojeISO) {
