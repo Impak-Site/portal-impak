@@ -704,6 +704,7 @@ Se o documento for uma Nota Fiscal (NF-e brasileira):
 - não preencher os dois grupos ao mesmo tempo a partir do mesmo documento — cada NF enviada é de um tipo só.
 Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
 - extrair ce_master (CE do armador/linha de navegação) e/ou ce_house (CE do agente de carga/consolidador) — um CE Mercante pode ter só um dos dois ou os dois, dependendo se a carga é consolidada. Preencher cada campo apenas se aquele número aparecer no documento.
+- na consulta de um CE de carga consolidada ("Tipo de Conhecimento: Filhote (HBL)"), o número ao lado de "CE-MERCANTE FILHOTE" (em "Identificação Única do Conhecimento") é o ce_house, e o número de "CE-Mercante do Master" (no bloco "Dados de seu Master") é o ce_master. Se o conhecimento for o próprio master ou BL único (sem filhote), o número dele é o ce_master e ce_house fica vazio. NUNCA repita o mesmo número em ce_master e ce_house.
 - extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Se o documento for um Comprovante de Câmbio (operação de câmbio bancária — compra de moeda estrangeira para pagamento ao exterior):
@@ -981,6 +982,19 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       delete extracted.ce_master;
       delete extracted.ce_house;
       delete extracted.ce_data_embarque;
+    }
+
+    // CE Mercante de carga consolidada: o número do FILHOTE é o CE House e o
+    // do bloco "Dados de seu Master" é o CE Master. A leitura às vezes
+    // devolvia o número do filhote nos dois campos — foi assim que 14
+    // processos ficaram com CE Master igual ao CE House (auditoria de
+    // 19/10/2026, corrigidos pelos CEs do Dropbox). Mesmo número nos dois =
+    // leitura errada: fica só o House, o Master não é mexido e a tela avisa.
+    let avisoCeIgual = '';
+    if(extracted.ce_master && extracted.ce_house
+       && String(extracted.ce_master).replace(/\D/g,'') === String(extracted.ce_house).replace(/\D/g,'')){
+      avisoCeIgual = `O CE Master veio com o mesmo número do CE House (${extracted.ce_house}) — preenchi só o CE House. O CE Master certo está no bloco "Dados de seu Master" do CE Mercante.`;
+      delete extracted.ce_master;
     }
 
     // Quando o documento é um CE Mercante, o navio/armador/etd que ele traz
@@ -1636,7 +1650,16 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       : `✓ ${preenchidos} campos preenchidos`) + sufixoConflitos;
     const listaAlteracoes = alteracoesPeloDocumento.map(a => `${a.label}: ${a.antes} → ${a.depois}`);
     const sufixoDatas = avisosDatasLidas.length ? ` — ⚠ ${avisosDatasLidas.length} data(s) conferida(s), veja abaixo` : '';
-    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}${sufixoDatas}` + (listaAlteracoes.length ? ` — alterado: ${listaAlteracoes.join('; ')}` : ''), (conflitos.length || listaAlteracoes.length || avisosDatasLidas.length) ? 'warn' : 'ok');
+    const sufixoCe = avisoCeIgual ? ' — ⚠ CE Master não preenchido (igual ao CE House), veja abaixo' : '';
+    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}${sufixoDatas}${sufixoCe}` + (listaAlteracoes.length ? ` — alterado: ${listaAlteracoes.join('; ')}` : ''), (conflitos.length || listaAlteracoes.length || avisosDatasLidas.length || avisoCeIgual) ? 'warn' : 'ok');
+    if(status && avisoCeIgual && !abriuModalCambio){
+      const box = document.createElement('div');
+      box.className = 'ia-ce-igual';
+      box.setAttribute('role', 'alert');
+      box.style.cssText = 'margin-top:6px;padding:8px 10px;border:1px solid var(--warn,#d97706);border-radius:6px;background:rgba(217,119,6,.06);font-size:12px;line-height:1.5';
+      box.innerHTML = '<strong>CE Mercante</strong>: ' + esc(avisoCeIgual);
+      status.appendChild(box);
+    }
     if(status && listaAlteracoes.length && !abriuModalCambio){
       const box = document.createElement('div');
       box.className = 'ia-alteracoes';
@@ -1738,6 +1761,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       // origemDoValorAtual() separa os campos lidos por ", ").
       const itensLog = camposUnicos.map(rotulo);
       if(notasDatasLidas.length) itensLog.push('Datas conferidas: ' + notasDatasLidas.join('; ').replace(/, /g, ' '));
+      if(avisoCeIgual) itensLog.push('CE Master não usado (igual ao CE House)');
       _editando.log = _editando.log || [];
       _editando.log.push({
         campo: LOG_CAMPO_LEITURA_IA,
