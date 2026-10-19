@@ -128,6 +128,13 @@ teste('acharProcesso casa por referência, HBL ou container (ignora caixa/espaç
   assert.strictEqual(F.acharProcesso(['ud26-teste'], ps).id, 'a');
   assert.strictEqual(F.acharProcesso(['abc'], ps), null, 'pista curta demais não casa');
 });
+teste('acharProcesso: pista com o rótulo junto ("Ref. Importador: X", "HBL Y") ainda acha o processo', () => {
+  const ps = [{ id: 'a', referencia: 'TST2601-1', hbl: 'HBLT0000001' }, { id: 'b', referencia: 'QWE2602-9', containers_json: JSON.stringify([{ numero: 'ABCU1234567' }]) }];
+  assert.strictEqual(F.acharProcesso(['Ref. Importador: TST2601-1'], ps).id, 'a');
+  assert.strictEqual(F.acharProcesso(['Conhecimento: HBLT0000001'], ps).id, 'a');
+  assert.strictEqual(F.acharProcesso(['Container ABCU1234567'], ps).id, 'b');
+  assert.strictEqual(F.acharProcesso(['Navio EVER TESTE', 'Origem QINGDAO / Destino ITAJAI'], ps), null, 'palavras sem número não viram pista');
+});
 teste('acharProcesso: referência com ou sem o prefixo IMPAK- é o mesmo processo (19/10/2026)', () => {
   const ps = [{ id: 'a', referencia: 'IMPAK-TST2601A-1' }, { id: 'b', referencia: 'QWE2602-9' }];
   assert.strictEqual(F.acharProcesso(['TST2601A-1'], ps).id, 'a', 'documento sem o prefixo, Controle com');
@@ -443,21 +450,24 @@ teste('linhasCustoDocumento: taxa fora da lista da aba vira "sem taxa" (a pessoa
   assert.strictEqual(r.linhas[0].taxa, null);
   assert.strictEqual(r.linhas[0].usar, false);
 });
-teste('planoCustosDocumento: vazio/cotado preenche, centavos = igual, digitado mantém, DUIMP/planilha troca, linhas da mesma taxa somam', () => {
+teste('planoCustosDocumento: vazio/cotado preenche, centavos = igual, lançado diferente fica (a pessoa escolhe), linhas da mesma taxa somam', () => {
   const linhas = [
     { descricao: 'THC', taxa: 'capatazia', valor_brl: 900, usar: true }, { descricao: 'THC extra', taxa: 'capatazia', valor_brl: 100, usar: true },
     { descricao: 'ISPS', taxa: 'isps', valor_brl: 50, usar: true }, { descricao: 'II', taxa: 'ii', valor_brl: 12000.01, usar: true },
     { descricao: 'IPI', taxa: 'ipi', valor_brl: 3000, usar: true }, { descricao: 'PIS', taxa: 'pis', valor_brl: 2000, usar: true },
     { descricao: 'Drop Off', taxa: 'drop_off', valor_brl: 100, usar: true }, { descricao: 'Ignorada', taxa: 'iof', valor_brl: 19, usar: false },
+    { descricao: 'Frete', taxa: 'frete', valor_brl: 5000, usar: true }, { descricao: 'LPCO', taxa: 'emissao_li', valor_brl: 800, usar: true },
   ];
   const atuais = {
     capatazia: { valor: 850, origem: null, prefill: true },            // só o cotado pré-preenchido
     ii: { valor: 12000, origem: 'DUIMP' },                              // 1 centavo de diferença
     ipi: { valor: 2900, origem: 'digitado' },                           // alguém digitou
     pis: { valor: 2100, origem: 'DUIMP' },                              // outro documento
-    drop_off: { valor: 50, origem: 'planilha' },                        // trocado na planilha
+    drop_off: { valor: 50, origem: 'fatura do agente' },                // o mesmo tipo de documento, lido de novo
+    frete: { valor: 4800, origem: 'cotado' },                           // "usar cotado" (estimativa)
+    emissao_li: { valor: 2300, origem: null },                          // pode somar mais de um documento
   };
-  const { itens } = F.planoCustosDocumento(linhas, atuais, { labels: { capatazia: 'Capatazia/THC' } });
+  const { itens } = F.planoCustosDocumento(linhas, atuais, { labels: { capatazia: 'Capatazia/THC' }, origem: 'fatura do agente' });
   const por = Object.fromEntries(itens.map(i => [i.id, i]));
   assert.strictEqual(por.capatazia.valor, 1000, 'duas linhas de THC somam');
   assert.strictEqual(por.capatazia.acao, 'preencher', 'cotado pré-preenchido conta como vazio');
@@ -465,9 +475,12 @@ teste('planoCustosDocumento: vazio/cotado preenche, centavos = igual, digitado m
   assert.strictEqual(por.isps.acao, 'preencher');
   assert.strictEqual(por.ii.acao, 'igual', 'DUIMP × faturamento com 1 centavo de diferença: mantém');
   assert.strictEqual(por.ipi.acao, 'manter', 'valor digitado à mão: o padrão é manter');
-  assert.strictEqual(por.pis.acao, 'substituir');
-  assert.strictEqual(por.drop_off.acao, 'substituir');
+  assert.strictEqual(por.pis.acao, 'manter', 'veio de outro documento: a pessoa escolhe');
+  assert.strictEqual(por.emissao_li.acao, 'manter', 'lançado maior que o documento pode somar outra cobrança — não troca sozinho');
+  assert.strictEqual(por.emissao_li.soma, 3100, 'oferece somar os dois');
+  assert.strictEqual(por.drop_off.acao, 'substituir', 'mesmo tipo de documento lido de novo: troca');
   assert.strictEqual(por.drop_off.diferenca, 50);
+  assert.strictEqual(por.frete.acao, 'substituir', 'o lançado era só o cotado: troca pelo real');
   assert.ok(!por.iof, 'linha desmarcada não entra');
 });
 teste('planoCustosDocumento: pacote lançado (Agente Frete) é avisado quando as linhas são taxas de dentro dele', () => {

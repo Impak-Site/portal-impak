@@ -301,12 +301,13 @@
   // Plano de aplicação na grade: soma as linhas por taxa e decide, taxa a
   // taxa, o que fazer com o valor que já está lançado.
   //   atuais = { id: { valor (número, na moeda), moeda, origem, prefill } }
-  //   opts   = { labels:{id:rótulo}, pacotes:[{id, nome, itens, valor}] }
+  //   opts   = { labels:{id:rótulo}, pacotes:[{id, nome, itens, valor}],
+  //              origem: tipo do documento lido agora (ex. 'fatura do agente') }
   // Campo vazio (ou só com o cotado pré-preenchido) → preencher; igual
   // (diferença < R$ 0,05 — DUIMP × faturamento do despachante costumam
-  // diferir 1 ou 2 centavos) → nada a fazer; diferente → trocar pelo do
-  // documento, a não ser que alguém tenha digitado/conferido o valor à mão
-  // (aí o padrão é manter — a pessoa decide na tela).
+  // diferir 1 ou 2 centavos) → nada a fazer; diferente → manter o lançado
+  // (a pessoa escolhe na tela: trocar, somar os dois ou manter), salvo
+  // quando o lançado era o cotado ou veio do mesmo tipo de documento.
   function planoCustosDocumento(linhas, atuais, opts) {
     const o = opts || {}, at = atuais || {};
     const grupos = new Map();
@@ -332,10 +333,15 @@
       if (erro) acao = 'ignorar';
       else if (atual == null || atual === 0) acao = 'preencher';
       else if (atualMoeda === moeda && Math.abs(atual - valor) < 0.05) acao = 'igual';
-      else acao = ['digitado', 'conferido'].includes(a.origem) ? 'manter' : 'substituir';
+      // valor lançado diferente: só troca sozinho o que era estimativa (o
+      // cotado) ou o mesmo tipo de documento lido de novo; o resto a pessoa
+      // decide — o lançado pode somar mais de um documento (ex.: L.I. do
+      // despachante + LPCO), e trocar apagaria a outra parte.
+      else acao = (a.origem === 'cotado' || (o.origem && a.origem === o.origem)) ? 'substituir' : 'manter';
       itens.push({ id: g.id, label: (o.labels && o.labels[g.id]) || g.id, valor, moeda, linhas: g.linhas,
         atual, atual_moeda: atualMoeda, atual_origem: a.origem || null, acao, padrao: acao,
-        diferenca: (atual == null || atualMoeda !== moeda) ? null : num(valor - atual), erro });
+        diferenca: (atual == null || atualMoeda !== moeda) ? null : num(valor - atual),
+        soma: (atual != null && atualMoeda === moeda) ? num(atual + valor) : null, erro });
     });
     const usados = new Set(itens.filter(i => i.acao !== 'ignorar').map(i => i.id));
     const pacotes = (o.pacotes || []).filter(pk => pk && num(pk.valor) > 0 && (pk.itens || []).some(id => usados.has(id)))
@@ -349,8 +355,13 @@
   // mesma regra de referencia-processo.js): o documento pode citar
   // "ABC123-1" e o Controle ter "IMPAK-ABC123-1", ou o contrário.
   const semPrefixoImpak = s => limpa(s).replace(/^IMPAK[\s._/-]+/i, '');
+  // A IA às vezes manda a pista com o rótulo junto ("Ref. Importador:
+  // TST2601-1", "HBL QDOS000001"): além da pista inteira, vale cada pedaço
+  // que tem número (os códigos), nunca as palavras soltas.
+  const pedacosComNumero = s => limpa(s).split(/[\s:;,|]+/).filter(t => /\d/.test(t));
   function acharProcesso(pistas, processos) {
-    const ps = [...new Set((pistas || []).flatMap(p => [p, semPrefixoImpak(p)]).map(p => chave(p).replace(/\s+/g, '')).filter(p => p.length >= 5))];
+    const ps = [...new Set((pistas || []).flatMap(p => [p, semPrefixoImpak(p), ...pedacosComNumero(p), ...pedacosComNumero(p).map(semPrefixoImpak)])
+      .map(p => chave(p).replace(/\s+/g, '')).filter(p => p.length >= 5))];
     if (!ps.length) return null;
     for (const p of (processos || [])) {
       const alvos = [p.referencia, semPrefixoImpak(p.referencia), p.hbl, p.mbl, p.container];
