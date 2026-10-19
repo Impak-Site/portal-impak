@@ -98,6 +98,14 @@ teste('extrai JSON entre <json> e também de bloco ```json', () => {
   igual(N.extrairJson('```json\n{"b":2}\n```'), { b: 2 });
   igual(N.extrairJson('sem json'), null);
 });
+teste('JSON picado em blocos (citações) e com quebra de linha crua dentro do texto', async () => {
+  const json = JSON.stringify(conteudoOk());
+  const meio = Math.floor(json.length / 2);
+  const partes = [{ type: 'text', text: 'Pronto. <json>' + json.slice(0, meio) }, { type: 'text', text: json.slice(meio).replace('Leitura [3].', 'Leitura\n[3].') + '</json>', citations: [{}] }];
+  const fakeFetch = async () => ({ status: 200, json: async () => ({ stop_reason: 'end_turn', content: partes }) });
+  const r = await N.gerarConteudo('pneus', '2026-10-26', { apiKey: 'chave-de-teste-ficticia-123456', fetchImpl: fakeFetch });
+  verdade(r.conteudo && r.conteudo.assunto === 'Assunto de teste', 'não leu o JSON');
+});
 teste('pedido de pneus traz a regra do revisor sobre reajuste das fábricas', () => {
   const p = N.pedido('pneus', '2026-10-26');
   verdade(/reajuste/i.test(p) && /nunca diga que o custo está aliviando/i.test(p));
