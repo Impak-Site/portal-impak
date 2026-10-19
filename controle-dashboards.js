@@ -414,8 +414,9 @@ function renderDashResultado(){
   // período selecionado — é o momento em que o resultado vira fato
   // (faturado), não mais só previsão.
   const realizados = _processos.filter(p=>{
-    if(!p.nf_saida_data) return false;
-    const d = parseDataLocal(p.nf_saida_data);
+    const dNf = dataNfSaidaProcesso(p);
+    if(!dNf) return false;
+    const d = parseDataLocal(dNf);
     if(d < ini || d > fim) return false;
     if(f.cliente && p.cliente !== f.cliente) return false;
     return true;
@@ -455,8 +456,9 @@ function renderDashResultado(){
   const emAndamento = _processos.filter(p=>{
     if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return false;
     if(f.cliente && p.cliente !== f.cliente) return false;
-    if(p.nf_saida_data){ const d = parseDataLocal(p.nf_saida_data); if(d>=ini && d<=fim) return false; }
-    return !!p.estimativa_json && !p.nf_saida_valor;
+    const dNf = dataNfSaidaProcesso(p);
+    if(dNf){ const d = parseDataLocal(dNf); if(d>=ini && d<=fim) return false; }
+    return !!p.estimativa_json && !p.nf_saida_valor && !nfsSaidaVenda(p).length;
   });
 
   function card(label, val, sub, cor){
@@ -680,8 +682,9 @@ function renderDashAnalises(){
   // dentro do intervalo), só que abrangendo N meses de uma vez em vez de
   // um período único.
   const realizados = _processos.filter(p=>{
-    if(!p.nf_saida_data) return false;
-    const d = parseDataLocal(p.nf_saida_data);
+    const dNf = dataNfSaidaProcesso(p);
+    if(!dNf) return false;
+    const d = parseDataLocal(dNf);
     if(d < ini || d > fim) return false;
     if(f.cliente && p.cliente !== f.cliente) return false;
     return true;
@@ -697,7 +700,7 @@ function renderDashAnalises(){
     marca: p.brand || p.fornecedor || '',
     pais: paisDoProcesso(p),
     formaPagamento: LABEL_PI_PAGAMENTO[p.pi_pagamento] || p.pi_pagamento || '',
-    mes: p.nf_saida_data ? p.nf_saida_data.slice(0,7) : '',
+    mes: dataNfSaidaProcesso(p).slice(0,7),
     margemReal: fch.nfSaida ? ((fch.lucroReal||0)/fch.nfSaida)*100 : null,
     lucroReal: fch.lucroReal,
     lucroEstimado: fch.lucroEstimado,

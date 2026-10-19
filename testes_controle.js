@@ -316,6 +316,17 @@ teste('TV = PC: estoque/remessa/cor calculados com o processo filtrado da TV sã
     iguais(tv.nf_saida_valor, undefined);
   });
 });
+teste('dataNfSaidaProcesso: campo da aba Documentos; se vazio, última NF de venda (sem remessa)', () => {
+  const V = a => JSON.stringify(a);
+  iguais(sandbox.dataNfSaidaProcesso({ nf_saida_data:'2026-07-01', vendas_json: V([{ nf_saida_numero:'1', nf_saida_data:'2026-08-01', nf_saida_cfop:'5102' }]) }), '2026-07-01');
+  iguais(sandbox.dataNfSaidaProcesso({ vendas_json: V([
+    { nf_saida_numero:'10', nf_saida_data:'2026-07-10', nf_saida_cfop:'6102' },
+    { nf_saida_numero:'11', nf_saida_data:'2026-07-12', nf_saida_cfop:'6403' },
+    { nf_saida_numero:'12', nf_saida_data:'2026-09-30', nf_saida_cfop:'5905' } ]) }), '2026-07-12');
+  iguais(sandbox.dataNfSaidaProcesso({ vendas_json: V([{ nf_saida_numero:'20', nf_saida_data:'2026-07-10', nf_saida_cfop:'5905' }]) }), '');
+  iguais(sandbox.dataNfSaidaProcesso({}), '');
+  iguais(sandbox.dataNfSaidaProcesso(null), '');
+});
 teste('GED duplicados: mantém a cópia mais antiga, remove só idênticos (nome+tamanho) do mesmo processo', () => {
   const { arquivosDuplicados } = require('./lib/ged-duplicados');
   const A = (id,proc,nome,tam,dt) => ({ id, processo_id:proc, nome, tamanho:tam, created_at:dt });
