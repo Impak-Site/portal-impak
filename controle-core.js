@@ -3261,6 +3261,18 @@ function nfsSaidaVenda(p){
   }
   return nfSaidaLegadoEhVenda(p) ? [{ numero:p.nf_saida_numero, data:p.nf_saida_data, valor:parseFloat(p.nf_saida_valor)||0, cfop:p.nf_saida_cfop, cliente:p.cliente }] : [];
 }
+// Data da NF de Saída do processo para os painéis por período (Resultado,
+// Análises). Usa o campo da aba Documentos quando preenchido; se estiver
+// vazio e as notas estiverem só na aba Vendas (processo com vários
+// clientes), usa a data da última NF de venda (pedido Ayslan 19/10/2026 —
+// BR26R034B e mais 9 finalizados sumiam do Resultado). Remessa/retorno não
+// contam (nfsSaidaVenda já ignora).
+function dataNfSaidaProcesso(p){
+  if(!p) return '';
+  if(p.nf_saida_data) return p.nf_saida_data;
+  const datas = nfsSaidaVenda(p).map(n => n.data).filter(d => d && /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
+  return datas.length ? datas[datas.length-1] : '';
+}
 function temNfSaidaVenda(p){ return !!(p && (p.nf_saida_numero || nfsSaidaVenda(p).length)); }
 function nfSaidaLegadoEhVenda(p){ return !!(p && p.nf_saida_numero && String(p.nf_saida_numero).trim() && !ehCfopSemVenda(p.nf_saida_cfop)); }
 
@@ -5006,9 +5018,10 @@ return lista.filter(p => cont[norm(p.referencia)] > 1);
     return d>=ini && d<=fim;
   }),
   __nf_saida_periodo: lista => lista.filter(p=>{
-    if(p.fase==='FINALIZADO'||!p.nf_saida_data) return false;
+    const dNf = dataNfSaidaProcesso(p);
+    if(p.fase==='FINALIZADO'||!dNf) return false;
     const {ini,fim} = calcularPeriodo('financeiro');
-    const d=parseDataLocal(p.nf_saida_data);
+    const d=parseDataLocal(dNf);
     return d>=ini && d<=fim;
   }),
   __demur_aberto: lista => lista.filter(p=>!p.data_devolucao_vazio && p.demurrage_vencimento && !ehLCL(p)),
