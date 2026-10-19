@@ -346,6 +346,17 @@ teste('fechamentoDaParte: faturamento = NF do cliente, lucro proporcional, marge
   J([f.nfSaida, Math.round(f.lucroReal), Math.round(f.lucroEstimado), Math.round(f.deltaValor), Math.round(f.pctLucroReal*100), f.parcial], [100, 20, 10, 10, 20, true]);
   iguais(sandbox.fechamentoDaParte(fch, { participacao:1, nf:500 }), fch);
 });
+teste('fechamentoDaParte: lucro do cliente = lucro da venda dele (aba Vendas) + parte do que fica fora das vendas; soma = lucro do processo', () => {
+  const J = (a,b) => iguais(JSON.stringify(a), JSON.stringify(b));
+  const fch = { nfSaida:400, lucroReal:130, lucroEstimado:60 };          // 130 = 100 das vendas + 30 de notas Boss
+  const a = { participacao:0.25, nf:100, fracaoQtd:0.5, lucroVendas:10, somaLucroVendas:100 };
+  const b = { participacao:0.75, nf:300, fracaoQtd:0.5, lucroVendas:90, somaLucroVendas:100 };
+  const fa = sandbox.fechamentoDaParte(fch, a), fb = sandbox.fechamentoDaParte(fch, b);
+  J([Math.round(fa.lucroReal*100)/100, Math.round(fb.lucroReal*100)/100], [17.5, 112.5]);   // 10 + 30×25% ; 90 + 30×75%
+  iguais(Math.round((fa.lucroReal + fb.lucroReal)*100)/100, 130);
+  J([fa.lucroEstimado, fb.lucroEstimado], [30, 30]);                     // estimado pela fatia de pneus
+  J([fa.nfSaida, fb.nfSaida], [100, 300]);
+});
 teste('linhasResultadoPeriodo: filtro de cliente acha cliente da venda e respeita o período da NF dele', () => {
   const V = a => JSON.stringify(a); const J = (a,b) => iguais(JSON.stringify(a), JSON.stringify(b));
   const p = { id:'p1', referencia:'TESTE-1', cliente:'CLIENTE A', vendas_json: V([
@@ -2901,7 +2912,7 @@ teste('Painel aberto já com 2 containers: dados próprios de cada container nã
 console.log('\n📋 Conferência — chave dos aceites por conteúdo');
 const CC = require('./conferencia-chave');
 const divX = { campo:'Peso Bruto', doc1_label:'CI', doc1_valor:'18.500 kg', doc2_label:'PL', doc2_valor:'18.720 kg', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
-const divY = { campo:'Porto de Destino', doc1_label:'BL', doc1_valor:'ITAPOA', doc2_label:'CI', doc2_valor:'NAVEGANTES', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+const divY = { campo:'Porto de Destino', doc1_label:'BL', doc1_valor:'SANTOS', doc2_label:'CI', doc2_valor:'NAVEGANTES', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
 teste('chaveDivergencia: mesma divergência = mesma chave (ignora acento/maiúscula/espaços); valor diferente = outra chave', () => {
   iguais(CC.chaveDivergencia(divX), CC.chaveDivergencia({ ...divX, campo:'  peso   bruto ' }));
   iguais(CC.chaveDivergencia({ ...divY, doc2_valor:'Navegantes' }), CC.chaveDivergencia(divY));
@@ -2926,6 +2937,28 @@ teste('Conferência nova em que o valor mudou: aceite não passa', () => {
   const divX2 = { ...divX, doc1_valor:'18.600 kg' };
   const nova = { chaveVersao:2, grupos:[{ titulo:'Pesos', campos:[divX2] }], divResolvedMap: CC.migrarAceites(antiga) };
   iguais(CC.contarConferencia(nova).pendentes, 1);
+});
+teste('Regras dispensadas (Emanuelly 19/10/2026): NCM de 4 dígitos no BL e porto de destino em SC não são pendência', () => {
+  const ncmBL = { campo:'NCM no BL — Completude', doc1_label:'BL', doc1_valor:'4011 (4 digitos)', status:'DIVERGENCIA', severidade:'INFORMATIVA' };
+  const ncmMesmaPosicao = { campo:'NCM', doc1_label:'BL', doc1_valor:'4011', doc2_label:'CI', doc2_valor:'4011.20.90', status:'DIVERGENCIA' };
+  const ncmOutraPosicao = { campo:'NCM', doc1_label:'BL', doc1_valor:'4012', doc2_label:'CI', doc2_valor:'40112090', status:'DIVERGENCIA' };
+  const ncmCIxPI = { campo:'NCM', doc1_label:'CI', doc1_valor:'40112090', doc2_label:'PI', doc2_valor:'40112010', status:'DIVERGENCIA' };
+  const portoSC = { campo:'Porto de Destino — PI vs CI/BL/PL', doc1_label:'PI', doc1_valor:'NAVEGANTES, BRAZIL', doc2_label:'CI', doc2_valor:'ITAPOA, BRAZIL', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+  const portoSC2 = { campo:'Porto de Descarga', doc1_label:'BL', doc1_valor:'Itapoá - SC', doc2_label:'PL', doc2_valor:'Portonave', status:'DIVERGENCIA' };
+  const portoForaSC = { campo:'Porto de destino fora de SC', doc1_label:'CI', doc1_valor:'PARANAGUA', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+  const portoFOB = { campo:'Porto FOB', doc1_label:'CI', doc1_valor:'FOB QINGDAO', doc2_label:'CI', doc2_valor:'FOB NAVEGANTES', status:'DIVERGENCIA' };
+  verdadeiro(!CC.ehPendenciaConferencia(ncmBL), 'NCM 4 dígitos no BL');
+  verdadeiro(!CC.ehPendenciaConferencia(ncmMesmaPosicao), 'BL 4011 x CI 4011.20.90');
+  verdadeiro(CC.ehPendenciaConferencia(ncmOutraPosicao), 'BL 4012 x CI 4011... continua');
+  verdadeiro(CC.ehPendenciaConferencia(ncmCIxPI), 'NCM CI x PI continua');
+  verdadeiro(!CC.ehPendenciaConferencia(portoSC), 'Navegantes x Itapoá');
+  verdadeiro(!CC.ehPendenciaConferencia(portoSC2), 'Itapoá x Portonave');
+  verdadeiro(CC.ehPendenciaConferencia(divY), 'Santos (fora de SC) continua');
+  verdadeiro(CC.ehPendenciaConferencia(portoForaSC), 'fora de SC continua');
+  verdadeiro(CC.ehPendenciaConferencia(portoFOB), 'inconsistência interna da CI (porto FOB) continua');
+  const a = { chaveVersao:2, grupos:[{ titulo:'Mercadoria', campos:[ncmBL] }, { titulo:'Logística', campos:[portoSC, divY] }] };
+  iguais(CC.contarConferencia(a).pendentes, 1, 'só o porto fora de SC conta');
+  verdadeiro(/4 digitos/.test(CC.REGRAS_NCM_PORTO_PROMPT) && /SANTA CATARINA/i.test(CC.REGRAS_NCM_PORTO_PROMPT), 'texto das regras para o prompt');
 });
 teste('ALERTA sem campo e OK não contam como pendência', () => {
   const a = { chaveVersao:2, grupos:[{ titulo:'G', campos:[{ status:'OK', campo:'X' }, { status:'ALERTA', campo:'' }, { status:'AUSENTE', campo:'Fabricante' }] }] };
