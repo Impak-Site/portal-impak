@@ -195,11 +195,15 @@
 
   // Procura o processo citado no documento (referência IMPAK, HBL/MBL,
   // container). processos = [{id, referencia, hbl, mbl, container, containers_json}]
+  // Referência com ou sem o prefixo "IMPAK-" é o mesmo processo (19/10/2026 —
+  // mesma regra de referencia-processo.js): o documento pode citar
+  // "ABC123-1" e o Controle ter "IMPAK-ABC123-1", ou o contrário.
+  const semPrefixoImpak = s => limpa(s).replace(/^IMPAK[\s._/-]+/i, '');
   function acharProcesso(pistas, processos) {
-    const ps = (pistas || []).map(p => chave(p).replace(/\s+/g, '')).filter(p => p.length >= 5);
+    const ps = [...new Set((pistas || []).flatMap(p => [p, semPrefixoImpak(p)]).map(p => chave(p).replace(/\s+/g, '')).filter(p => p.length >= 5))];
     if (!ps.length) return null;
     for (const p of (processos || [])) {
-      const alvos = [p.referencia, p.hbl, p.mbl, p.container];
+      const alvos = [p.referencia, semPrefixoImpak(p.referencia), p.hbl, p.mbl, p.container];
       try { (JSON.parse(p.containers_json || '[]') || []).forEach(c => c && alvos.push(c.numero)); } catch (e) { /* ignora */ }
       const ks = alvos.map(a => chave(a).replace(/\s+/g, '')).filter(a => a.length >= 5);
       if (ps.some(x => ks.includes(x))) return p;

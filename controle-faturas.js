@@ -861,8 +861,12 @@ function _ftCorpoModal(id){
   if(!id){
     // itens: referência → processo_id (precisa existir no Controle)
     const procs = (typeof _processos !== 'undefined' && _processos) || [];
+    // Referência igual ou com/sem o prefixo "IMPAK-" (19/10/2026, referencia-processo.js).
+    const indiceRefs = typeof ReferenciaProcesso !== 'undefined' ? ReferenciaProcesso.criarIndice(procs) : null;
+    const acharProc = ref => indiceRefs ? ReferenciaProcesso.encontrar(indiceRefs, ref).processo
+      : procs.find(x => (x.referencia || '').toLowerCase() === String(ref).toLowerCase());
     body.itens = _ftItensEdit.filter(it => (parseFloat(it.valor) || 0) > 0).map(it => {
-      const p = it.referencia ? procs.find(x => (x.referencia || '').toLowerCase() === it.referencia.toLowerCase()) : null;
+      const p = it.referencia ? acharProc(it.referencia) : null;
       if(it.referencia && !p) semProc.push(it.referencia);
       const cfg = (typeof custosReaisItensFlat === 'function') ? custosReaisItensFlat().find(x => x.id === it.taxa) : null;
       return { processo_id: p ? p.id : null, referencia: p ? p.referencia : (it.referencia || null), taxa: it.taxa || null, label: cfg ? cfg.label : (it.descricao || it.label || 'Taxa'), valor: parseFloat(it.valor) || 0 };

@@ -306,6 +306,52 @@ teste('Auditoria: só processos com problema, sem os cancelados, e DI/NF no futu
   ok(/Data de Liberação \(20\/12\/2026\) está no futuro/.test(a[1].problemas[0].msg), a[1].problemas[0].msg);
 });
 
+// ── 19/10/2026: planilha de fora traz a referência sem o "IMPAK-" (ou com) ──
+// Antes a importação só achava a referência idêntica e dava "não encontrada"
+// para processos cadastrados com o prefixo. Referências fictícias.
+console.log('\n── Referência com ou sem o prefixo IMPAK- (referencia-processo.js) ──');
+const RP = require('./referencia-processo.js');
+const PROCS_REF = [
+  { id: 1, referencia: 'IMPAK-TST2601A-1' }, { id: 2, referencia: 'IMPAK-TST2601A-2' },
+  { id: 3, referencia: 'QWE2602-9' },
+  { id: 4, referencia: 'IMPAK-XYZ2603-CLIENTE' }, { id: 5, referencia: 'IMPAK-XYZ2603-CLIENTE-2' },
+  { id: 6, referencia: 'TO-55' },
+];
+teste('Planilha sem o prefixo acha o processo cadastrado com "IMPAK-"', () => {
+  const r = RP.encontrar(RP.criarIndice(PROCS_REF), 'TST2601A-1');
+  iguais([r.processo && r.processo.id, r.como], [1, 'sem_prefixo']);
+});
+teste('Planilha com o prefixo acha o processo cadastrado sem ele', () => {
+  const r = RP.encontrar(RP.criarIndice(PROCS_REF), 'IMPAK-QWE2602-9');
+  iguais([r.processo && r.processo.id, r.como], [3, 'sem_prefixo']);
+});
+teste('Referência igual continua exata (maiúscula e espaço nas pontas não importam)', () => {
+  const r = RP.encontrar(RP.criarIndice(PROCS_REF), '  impak-tst2601a-2 ');
+  iguais([r.processo && r.processo.id, r.como], [2, 'exato']);
+});
+teste('Dois processos que só diferem pelo prefixo: a igual vence; sem igual, não escolhe nenhum', () => {
+  const idx = RP.criarIndice([{ id: 'a', referencia: 'IMPAK-DUP1-1' }, { id: 'b', referencia: 'DUP1-1' }]);
+  iguais(RP.encontrar(idx, 'DUP1-1').processo.id, 'b');
+  iguais(RP.encontrar(idx, 'IMPAK-DUP1-1').processo.id, 'a');
+  const r = RP.encontrar(idx, 'IMPAK DUP1-1');
+  iguais([r.processo, r.como, r.candidatos.sort()], [null, 'ambiguo', ['DUP1-1', 'IMPAK-DUP1-1']]);
+});
+teste('Prefixo colado no resto não é cortado ("IMPAKTO-55" não vira "TO-55")', () => {
+  iguais(RP.semPrefixo('IMPAKTO-55'), 'IMPAKTO-55');
+  iguais(RP.encontrar(RP.criarIndice(PROCS_REF), 'IMPAKTO-55').processo, null);
+});
+teste('Não encontrada volta com as parecidas do Controle (mesmo começo)', () => {
+  const r = RP.encontrar(RP.criarIndice(PROCS_REF), 'XYZ2603');
+  iguais([r.processo, r.sugestoes], [null, ['IMPAK-XYZ2603-CLIENTE', 'IMPAK-XYZ2603-CLIENTE-2']]);
+  iguais(RP.encontrar(RP.criarIndice(PROCS_REF), 'ZZZ9999').sugestoes, []);
+});
+teste('Criação em lote: não cria de novo o que já existe com/sem o prefixo nem repete no mesmo lote', () => {
+  const s = RP.separarNovos(PROCS_REF, [{ referencia: 'TST2601A-1' }, { referencia: 'NOVO2604-1' }, { referencia: 'IMPAK-NOVO2604-1' }, { referencia: '' }]);
+  iguais(s.novos.map(p => p.referencia), ['NOVO2604-1']);
+  iguais(s.equivalentes, [{ referencia: 'TST2601A-1', existente: 'IMPAK-TST2601A-1' }]);
+  iguais(s.repetidos, ['IMPAK-NOVO2604-1']);
+});
+
 console.log('\n── Edição simultânea (concorrencia-processo.js) ──');
 const original = { id: 'p1', referencia: 'UD26-900', fase: 'EMBARCADO', obs: 'a', navio: 'MSC X', data_chegada: null, vendas_json: '[]', updated_at: '2026-10-17T10:00:00.000+00:00' };
 const atual = { ...original, fase: 'CHEGOU', data_chegada: '2026-10-16', navio: 'MSC Y', updated_at: '2026-10-17T10:05:00.000+00:00', updated_by: 'fulano' };
@@ -434,7 +480,7 @@ const resposta = (status, corpo, tipo) => Promise.resolve(new Response(corpo, { 
 // Monta os módulos do Controle num sandbox com tela e fetch falsos: o "fetch"
 // devolve o JSON que a IA teria lido e o teste confere o que foi parar nos
 // campos depois da trava de dia/mês trocados (18/10/2026).
-const MODULOS_LEITURA = ['taxas-catalogo.js', 'listas-padrao.js', 'validacao-datas.js', 'concorrencia-processo.js', 'controle-core.js',
+const MODULOS_LEITURA = ['taxas-catalogo.js', 'listas-padrao.js', 'validacao-datas.js', 'concorrencia-processo.js', 'referencia-processo.js', 'controle-core.js',
   'controle-modal.js', 'controle-campos.js', 'controle-export.js', 'controle-contatos.js', 'controle-import-ia.js', 'controle-nf-import.js', 'controle-dashboards.js'];
 let _jsLeitura = null;
 function telaComIA(respostaIA) {
@@ -569,6 +615,40 @@ function telaComIA(respostaIA) {
     await t.rodar(`importarNFSaidaProcessoArquivo({ name: 'nf-teste.pdf', type: 'application/pdf' })`);
     iguais(t.els.f_nf_entrada_data.value, '2026-05-04');
     ok(t.toasts.some(x => /a nota traz "04\/05\/2026" — usei 04\/05\/2026, não 05\/04\/2026/.test(x[1])), JSON.stringify(t.toasts));
+  });
+
+  console.log('\n── Importação de planilha: referência com/sem o prefixo IMPAK- no log da tela ──');
+  // O "fetch" devolve o resumo que o servidor mandaria; o teste lê as linhas do log.
+  async function importarComResumo(funcao, rota, resposta) {
+    const t = telaComIA({});
+    t.ctx.btoa = s => Buffer.from(s, 'binary').toString('base64');
+    let enviado = null;
+    t.ctx.fetch = async (url, opts) => {
+      if (String(url) === rota) { enviado = JSON.parse(opts.body); return { ok: true, status: 200, json: async () => resposta }; }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    t.rodar(`carregarProcessos = async () => {}; render = () => {};`);
+    await t.rodar(`${funcao}({ files: [{ name: 'planilha-teste.xlsx', arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }], value: 'x' })`);
+    return { enviado, linhas: (t.els['import-log-modal'].filhos || []).map(d => d.textContent), toasts: t.toasts };
+  }
+  await testeAsync('Despachante: mostra as achadas sem o prefixo e, na não encontrada, as parecidas do Controle', async () => {
+    const r = await importarComResumo('importarPlanilhaDespachante', '/api/controle/v2/importar-despachante', { ok: true, total_linhas: 3, total_atualizados: 1, total_sem_mudancas: 1, total_nao_encontrados: 1, total_travados: 0, resumo: [
+      { referencia: 'IMPAK-TST2601A-1', referencia_planilha: 'TST2601A-1', status: 'atualizado', campos: ['navio'] },
+      { referencia: 'IMPAK-TST2601A-2', referencia_planilha: 'TST2601A-2', status: 'sem_mudancas' },
+      { referencia: 'XYZ2603', status: 'nao_encontrado', sugestoes: ['IMPAK-XYZ2603-CLIENTE', 'IMPAK-XYZ2603-CLIENTE-2'] },
+    ] });
+    iguais(r.enviado && r.enviado.arquivo_base64, 'AQID', 'arquivo vai em base64');
+    const log = r.linhas.join(' | ');
+    ok(r.linhas.some(l => l === '↔ 2 referência(s) achada(s) com/sem o prefixo IMPAK-: TST2601A-1 → IMPAK-TST2601A-1, TST2601A-2 → IMPAK-TST2601A-2'), log);
+    ok(r.linhas.some(l => /XYZ2603 \(no Controle tem: IMPAK-XYZ2603-CLIENTE, IMPAK-XYZ2603-CLIENTE-2\)/.test(l)), log);
+    ok(r.linhas.some(l => /✓ IMPAK-TST2601A-1: navio/.test(l)), log);
+  });
+  await testeAsync('Planilha interna: referência em dúvida (dois processos) aparece com os dois nomes', async () => {
+    const r = await importarComResumo('importarPlanilhaManu', '/api/controle/v2/importar-manu', { ok: true, total_linhas: 1, total_atualizados: 0, total_sem_mudancas: 0, total_nao_encontrados: 1, total_travados: 0, resumo: [
+      { referencia: 'IMPAK DUP1-1', status: 'nao_encontrado', ambiguo: ['DUP1-1', 'IMPAK-DUP1-1'] },
+    ] });
+    ok(r.linhas.some(l => /IMPAK DUP1-1 \(mais de um processo: DUP1-1, IMPAK-DUP1-1\)/.test(l)), r.linhas.join(' | '));
+    ok(!r.linhas.some(l => /Tudo certo/.test(l)), 'não diz "tudo certo" com pendência');
   });
 
   console.log('\n── Edição rápida de data na tabela (inlineEditData) ──');
