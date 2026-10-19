@@ -982,8 +982,12 @@ function ftMontarDaIA(x, nomeArq){
   const procs = (typeof _processos !== 'undefined' && _processos) || [];
   const proc = FaturasCore.acharProcesso(x.pistas_processo || [], procs);
   const moeda = ['BRL','USD','EUR'].includes(x.moeda) ? x.moeda : 'BRL';
+  // Fatura em R$ com linhas em US$ (nota de débito do agente de carga: cada
+  // linha traz o valor em dólar e o valor em reais): o item da fatura vai
+  // no valor em reais impresso — antes os US$ 15 de ISPS entravam como R$ 15.
+  const valorItem = it => (moeda === 'BRL' && it.moeda && it.moeda !== 'BRL' && parseFloat(it.valor_brl) > 0) ? parseFloat(it.valor_brl) : (parseFloat(it.valor) || 0);
   const itens = (x.itens || []).filter(it => it && parseFloat(it.valor) > 0).map(it => ({
-    descricao: it.descricao || '', taxa: FaturasCore.taxaPorDescricao(it.descricao) || '', referencia: proc ? proc.referencia : '', valor: parseFloat(it.valor) || 0,
+    descricao: it.descricao || '', taxa: FaturasCore.taxaPorDescricao(it.descricao) || '', referencia: proc ? proc.referencia : '', valor: valorItem(it),
   }));
   const avisos = [];
   if(!proc && (x.pistas_processo || []).length) avisos.push(`Não achei o processo pelas pistas do documento (${esc((x.pistas_processo || []).slice(0, 3).join(', '))}) — informe a referência nas taxas.`);

@@ -114,7 +114,8 @@ teste('taxaPorDescricao reconhece as linhas comuns das faturas de armador/agente
   assert.strictEqual(F.taxaPorDescricao('LIBERAÇÃO DE BL'), 'liberacao_bl');
   assert.strictEqual(F.taxaPorDescricao('DESCONSOLIDAÇAO'), 'desconsolidacao');
   assert.strictEqual(F.taxaPorDescricao('THC DESTINO'), 'capatazia');
-  assert.strictEqual(F.taxaPorDescricao('TERMINAL SECURITY CHARGE'), 'isps');
+  assert.strictEqual(F.taxaPorDescricao('TERMINAL SECURITY CHARGE'), 'tsc', 'TSC é taxa própria (o catálogo tem "TSC - Terminal Sec. Charge")');
+  assert.strictEqual(F.taxaPorDescricao('ISPS - TERMINAL'), 'isps');
   assert.strictEqual(F.taxaPorDescricao('EQUIPMENT LOGISTIC FEE'), 'import_logistics');
   assert.strictEqual(F.taxaPorDescricao('Honorários despachante'), 'despachante');
   assert.strictEqual(F.taxaPorDescricao('LOW WATER SURCHARGE'), null);
@@ -342,6 +343,168 @@ teste('server.js não usa mais .contains() com array de objetos em itens/pagamen
   const ruins = src.match(/\.contains\(\s*'(itens|pagamentos)'\s*,\s*\[/g) || [];
   assert.strictEqual(ruins.length, 0, 'achou: ' + ruins.join(' | '));
   assert.ok((src.match(/filtroJsonbContem\(/g) || []).length >= 5, 'as 5 buscas usam o filtro novo');
+});
+
+console.log('\n── Custos Reais: documento de custo lido pela IA (19/10/2026, valores fictícios) ──');
+teste('taxaPorDescricao: linhas da nota de débito do agente de carga', () => {
+  const casos = {
+    'Ocean Freight (carrier fees included)': 'frete', 'THC at Destination': 'capatazia', 'BL Fee (Destination)': 'liberacao_bl',
+    'ISPS (Destination)': 'isps', 'Drop Off Fee': 'drop_off', 'Deconsolidation Tax': 'desconsolidacao', 'Import Logistics Fee': 'import_logistics',
+    'Additional Costs': 'additional_costs', 'IOF': 'iof', 'Impostos (IR/PCC/ISS)': 'agente', 'TSC - Terminal Security Charge': 'tsc',
+    'Destination Terminal Security Charge - 1 40HC': 'tsc', 'Taxa de Desconsolidação - 1 House Bill(s)': 'desconsolidacao',
+    'Imposto sobre Operações Financeiras (IOF) - 0,38%': 'iof', 'Destination Terminal Handling Charges - 1 40HC': 'capatazia',
+  };
+  Object.entries(casos).forEach(([d, id]) => assert.strictEqual(F.taxaPorDescricao(d), id, d));
+  assert.strictEqual(F.taxaPorDescricao('IR Retido'), null, 'retenção não é taxa');
+});
+teste('taxaPorDescricao: linhas do faturamento do despachante (tributos, licenças, armazenagem)', () => {
+  const casos = {
+    'II': 'ii', 'I.I.': 'ii', 'IMP. IMPORTACAO': 'ii', 'Imposto de Importação': 'ii', 'IPI': 'ipi', 'PIS': 'pis', 'COFINS': 'cofins', 'ICMS': 'icms', 'ICMS/SP': 'icms',
+    'TAXA SISCOMEX': 'siscomex', 'MARINHA MERCANTE': 'marinha', 'AFRMM': 'marinha', 'ARMAZENAGEM (PORTO TESTE)': 'armazenagem', 'ARMAZENAGEM + LEVANTE': 'armazenagem',
+    'LICENÇAS DE IMPORTAÇÃO (3 LPCOs)': 'emissao_li', 'LICENÇAS DE IMPORTAÇÃO - INMETRO': 'emissao_li', 'TAXA LPCO': 'emissao_li', "EMISSÃO DE LI's": 'emissao_li',
+    'DIREITOS ANTIDUMPING': 'antidumping', 'MARJORAÇÃO DE 0,8%': 'marjoracao', 'LAVAÇÃO DE CONTAINER (TSTU0000001)': 'lavacao',
+  };
+  Object.entries(casos).forEach(([d, id]) => assert.strictEqual(F.taxaPorDescricao(d), id, d));
+  assert.strictEqual(F.taxaPorDescricao('HANDLING AVULSA (SAÍDA) + PIS/COFINS:9,25% + ISS 5%'), 'handling', 'PIS/COFINS dentro da descrição de outra taxa não vira PIS');
+  assert.strictEqual(F.taxaPorDescricao('PIS/COFINS'), null, 'PIS e COFINS juntos: a pessoa escolhe');
+  assert.strictEqual(F.taxaPorDescricao('FRETE RODOVIÁRIO'), null, 'frete rodoviário não é o frete internacional');
+  assert.strictEqual(F.taxaPorDescricao('Import Logistics Fee'), 'import_logistics', '"Import" não vira Imposto de Importação');
+});
+
+const NOTA_AGENTE = {
+  tipo_documento: 'nota_debito_agente', emitente: 'AGENTE TESTE LTDA', documento: 'ND 9001', taxa_cambio_usd: 5.0,
+  linhas: [
+    { descricao: 'Ocean Freight (carrier fees included)', moeda: 'USD', valor: 1000, valor_brl: 5000 },
+    { descricao: 'THC at Destination', moeda: 'BRL', valor: 900, valor_brl: 900 },
+    { descricao: 'ISPS (Destination)', moeda: 'USD', valor: 10, valor_brl: 50 },
+    { descricao: 'Drop Off Fee', moeda: 'USD', valor: 20, valor_brl: 100 },
+    { descricao: 'Deconsolidation Tax', moeda: 'USD', valor: 50, valor_brl: 250 },
+    { descricao: 'Additional Costs', moeda: 'USD', valor: 80, valor_brl: 400 },
+    { descricao: 'IOF', moeda: 'USD', valor: 3.8, valor_brl: 19 },
+    { descricao: 'Impostos (IR/PCC/ISS)', moeda: 'BRL', valor: 300, valor_brl: 300 },
+    { descricao: 'IR Retido', moeda: 'BRL', valor: -25, valor_brl: -25 },
+    { descricao: 'Total da Fatura', moeda: 'BRL', valor: 6994, valor_brl: 6994 },
+  ],
+  total_brl: 6994, pistas_processo: ['TST2601-1', 'HBLTESTE001'],
+};
+teste('linhasCustoDocumento: nota de débito do agente — valor em R$ impresso, IR retido e total de fora, soma confere', () => {
+  const r = F.linhasCustoDocumento(NOTA_AGENTE, {});
+  assert.strictEqual(r.tipo, 'nota_debito_agente');
+  assert.strictEqual(r.linhas.length, 8, 'IR retido e Total da Fatura não são linhas de custo');
+  assert.deepStrictEqual(r.linhas.map(l => l.taxa), ['frete', 'capatazia', 'isps', 'drop_off', 'desconsolidacao', 'additional_costs', 'iof', 'agente']);
+  assert.strictEqual(r.linhas.find(l => l.taxa === 'isps').valor_brl, 50, 'ISPS no valor em R$ do documento (US$ 10)');
+  assert.strictEqual(r.linhas.find(l => l.taxa === 'drop_off').valor_brl, 100);
+  assert.strictEqual(r.ir_retido_brl, 25);
+  assert.strictEqual(r.soma_brl, 7019);
+  assert.strictEqual(r.confere, true, 'soma das linhas = total a pagar + IR retido');
+  assert.strictEqual(r.fora.length, 2);
+});
+teste('linhasCustoDocumento: faturamento do despachante — base do CIF, total e adiantamento ficam de fora; saldo informado', () => {
+  const r = F.linhasCustoDocumento({
+    tipo_documento: 'acerto_despachante', emitente: 'DESPACHANTE TESTE',
+    linhas: [
+      { descricao: 'VALOR MLE', moeda: 'USD', valor: 20000, valor_brl: 100000 }, { descricao: 'VALOR FRETE', moeda: 'USD', valor: 1000, valor_brl: 5000 },
+      { descricao: 'TAXA CE PREPAID', moeda: 'USD', valor: 100, valor_brl: 500 }, { descricao: 'SEGURO', moeda: 'USD', valor: 10, valor_brl: 50 },
+      { descricao: 'II', moeda: 'BRL', valor: 12000, valor_brl: 12000 }, { descricao: 'IPI', moeda: 'BRL', valor: 3000, valor_brl: 3000 },
+      { descricao: 'PIS', moeda: 'BRL', valor: 2000, valor_brl: 2000 }, { descricao: 'COFINS', moeda: 'BRL', valor: 9000, valor_brl: 9000 },
+      { descricao: 'TAXA SISCOMEX', moeda: 'BRL', valor: 150, valor_brl: 150 }, { descricao: 'MARINHA MERCANTE', moeda: 'BRL', valor: 400, valor_brl: 400 },
+      { descricao: 'ICMS', moeda: 'BRL', valor: 1500, valor_brl: 1500 }, { descricao: 'ARMAZENAGEM (PORTO TESTE)', moeda: 'BRL', valor: 1800, valor_brl: 1800 },
+      { descricao: 'TOTAL DESPESAS ADUANEIRAS', moeda: 'BRL', valor: 29850, valor_brl: 29850 },
+      { descricao: 'ADIANTAMENTO NUMERÁRIO EM 01/09/2026', moeda: 'BRL', valor: 30000, valor_brl: 30000 },
+    ],
+    total_brl: 29850, adiantamento_brl: 30000, saldo_brl: 150, saldo_a_favor: 'importadora',
+  }, {});
+  assert.deepStrictEqual(r.linhas.map(l => l.taxa), ['ii', 'ipi', 'pis', 'cofins', 'siscomex', 'marinha', 'icms', 'armazenagem']);
+  assert.strictEqual(r.fora.length, 6, 'MLE, frete, taxa CE, seguro (base do CIF), total e adiantamento');
+  assert.strictEqual(r.soma_brl, 29850);
+  assert.strictEqual(r.confere, true);
+  assert.strictEqual(r.saldo_brl, 150);
+  assert.strictEqual(r.saldo_a_favor, 'importadora');
+});
+teste('linhasCustoDocumento: sem valor em R$ usa o câmbio do documento, depois o do processo; sem câmbio não inventa', () => {
+  const doc = c => ({ tipo_documento: 'nota_debito_agente', taxa_cambio_usd: c, linhas: [{ descricao: 'Drop Off Fee', moeda: 'USD', valor: 20 }], total_brl: 0 });
+  assert.strictEqual(F.linhasCustoDocumento(doc(5.5), {}).linhas[0].valor_brl, 110);
+  assert.strictEqual(F.linhasCustoDocumento(doc(0), { cambio: { USD: 5.25 } }).linhas[0].valor_brl, 105);
+  const sem = F.linhasCustoDocumento(doc(0), {});
+  assert.strictEqual(sem.linhas[0].valor_brl, null);
+  assert.strictEqual(sem.sem_brl, 1);
+  assert.strictEqual(sem.confere, null);
+});
+teste('linhasCustoDocumento: fatura do terminal — pesagem, levante e handling entram na Armazenagem', () => {
+  const r = F.linhasCustoDocumento({ tipo_documento: 'fatura_terminal', linhas: [
+    { descricao: 'ARMAZENAGEM IMP', moeda: 'BRL', valor: 1000, valor_brl: 1000 }, { descricao: 'PESAGEM LC CH', moeda: 'BRL', valor: 100, valor_brl: 100 },
+    { descricao: 'LEVANTE IMP', moeda: 'BRL', valor: 300, valor_brl: 300 }, { descricao: 'HANDLING AVULSA CNTR', moeda: 'BRL', valor: 200, valor_brl: 200 },
+  ], total_brl: 1600 }, {});
+  assert.deepStrictEqual(r.linhas.map(l => l.taxa), ['armazenagem', 'armazenagem', 'armazenagem', 'armazenagem']);
+  assert.strictEqual(r.confere, true);
+});
+teste('linhasCustoDocumento: taxa fora da lista da aba vira "sem taxa" (a pessoa escolhe)', () => {
+  const r = F.linhasCustoDocumento({ linhas: [{ descricao: 'Seguro RC', moeda: 'BRL', valor: 40, valor_brl: 40 }] }, { ids: ['frete', 'isps'] });
+  assert.strictEqual(r.linhas[0].taxa, null);
+  assert.strictEqual(r.linhas[0].usar, false);
+});
+teste('planoCustosDocumento: vazio/cotado preenche, centavos = igual, digitado mantém, DUIMP/planilha troca, linhas da mesma taxa somam', () => {
+  const linhas = [
+    { descricao: 'THC', taxa: 'capatazia', valor_brl: 900, usar: true }, { descricao: 'THC extra', taxa: 'capatazia', valor_brl: 100, usar: true },
+    { descricao: 'ISPS', taxa: 'isps', valor_brl: 50, usar: true }, { descricao: 'II', taxa: 'ii', valor_brl: 12000.01, usar: true },
+    { descricao: 'IPI', taxa: 'ipi', valor_brl: 3000, usar: true }, { descricao: 'PIS', taxa: 'pis', valor_brl: 2000, usar: true },
+    { descricao: 'Drop Off', taxa: 'drop_off', valor_brl: 100, usar: true }, { descricao: 'Ignorada', taxa: 'iof', valor_brl: 19, usar: false },
+  ];
+  const atuais = {
+    capatazia: { valor: 850, origem: null, prefill: true },            // só o cotado pré-preenchido
+    ii: { valor: 12000, origem: 'DUIMP' },                              // 1 centavo de diferença
+    ipi: { valor: 2900, origem: 'digitado' },                           // alguém digitou
+    pis: { valor: 2100, origem: 'DUIMP' },                              // outro documento
+    drop_off: { valor: 50, origem: 'planilha' },                        // trocado na planilha
+  };
+  const { itens } = F.planoCustosDocumento(linhas, atuais, { labels: { capatazia: 'Capatazia/THC' } });
+  const por = Object.fromEntries(itens.map(i => [i.id, i]));
+  assert.strictEqual(por.capatazia.valor, 1000, 'duas linhas de THC somam');
+  assert.strictEqual(por.capatazia.acao, 'preencher', 'cotado pré-preenchido conta como vazio');
+  assert.strictEqual(por.capatazia.label, 'Capatazia/THC');
+  assert.strictEqual(por.isps.acao, 'preencher');
+  assert.strictEqual(por.ii.acao, 'igual', 'DUIMP × faturamento com 1 centavo de diferença: mantém');
+  assert.strictEqual(por.ipi.acao, 'manter', 'valor digitado à mão: o padrão é manter');
+  assert.strictEqual(por.pis.acao, 'substituir');
+  assert.strictEqual(por.drop_off.acao, 'substituir');
+  assert.strictEqual(por.drop_off.diferenca, 50);
+  assert.ok(!por.iof, 'linha desmarcada não entra');
+});
+teste('planoCustosDocumento: pacote lançado (Agente Frete) é avisado quando as linhas são taxas de dentro dele', () => {
+  const pacotes = [{ id: 'agente_frete', nome: 'Agente Frete (fatura do agente de carga)', itens: ['frete', 'isps', 'drop_off'], valor: 7000 },
+    { id: 'adiantamento_porto', nome: 'Adiantamento Porto', itens: ['ii'], valor: 0 }];
+  const r = F.planoCustosDocumento([{ descricao: 'Frete', taxa: 'frete', valor_brl: 5000, usar: true }, { descricao: 'ISPS', taxa: 'isps', valor_brl: 50, usar: true }], {}, { pacotes });
+  assert.strictEqual(r.pacotes.length, 1, 'só o pacote com valor e com taxas do documento');
+  assert.strictEqual(r.pacotes[0].id, 'agente_frete');
+  assert.deepStrictEqual(r.pacotes[0].itens, ['frete', 'isps']);
+});
+teste('planoCustosDocumento: linha sem valor em R$ vai na moeda dela; moedas misturadas sem R$ não entram', () => {
+  const r1 = F.planoCustosDocumento([{ descricao: 'ISPS', taxa: 'isps', moeda: 'USD', valor: 10, valor_brl: null, usar: true }], {});
+  assert.strictEqual(r1.itens[0].moeda, 'USD');
+  assert.strictEqual(r1.itens[0].valor, 10);
+  assert.strictEqual(r1.itens[0].acao, 'preencher');
+  const r2 = F.planoCustosDocumento([{ descricao: 'A', taxa: 'handling', moeda: 'USD', valor: 10, valor_brl: null, usar: true }, { descricao: 'B', taxa: 'handling', moeda: 'EUR', valor: 5, valor_brl: null, usar: true }], {});
+  assert.strictEqual(r2.itens[0].acao, 'ignorar');
+  assert.ok(r2.itens[0].erro);
+});
+teste('servidor: leitura em modo custos usa o prompt próprio (linhas com valor em R$, IR retido, saldo)', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+  assert.ok(/const PROMPT_LER_CUSTOS = `/.test(src));
+  assert.ok(/modo === 'custos'/.test(src));
+  ['ir_retido_brl', 'valor_brl', 'saldo_a_favor', 'acerto_despachante', 'nota_debito_agente', 'fatura_terminal'].forEach(k => assert.ok(src.indexOf(k) > 0, k));
+});
+teste('Faturas: fatura em R$ com linhas em US$ usa o valor em reais de cada linha (ftMontarDaIA)', () => {
+  const vm = require('vm'), fs = require('fs'), path = require('path');
+  const ctx = { FaturasCore: F, _processos: [{ id: 'p1', referencia: 'TST2601-1' }], esc: s => String(s == null ? '' : s), console,
+    document: { addEventListener() {}, getElementById: () => null, querySelectorAll: () => [] }, window: {} };
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'controle-faturas.js'), 'utf8'), ctx, { filename: 'controle-faturas.js' });
+  const f = vm.runInContext('ftMontarDaIA', ctx)({ moeda: 'BRL', emitente: 'AGENTE TESTE', valor_total: 1050, pistas_processo: ['TST2601-1'], itens: [
+    { descricao: 'Ocean Freight', moeda: 'USD', valor: 200, valor_brl: 1000 }, { descricao: 'ISPS (Destination)', moeda: 'USD', valor: 10, valor_brl: 50 },
+  ] }, 'nd-teste.pdf');
+  assert.deepStrictEqual(f.itens.map(i => i.valor), [1000, 50]);
+  assert.deepStrictEqual(f.itens.map(i => i.taxa), ['frete', 'isps']);
+  assert.strictEqual(f.itens[0].referencia, 'TST2601-1');
 });
 
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
