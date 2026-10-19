@@ -481,8 +481,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         Reaproveita POST /api/controle/importar-fechamento (server-side,
         planilha-import.js) — o usuário sempre revisa/ajusta antes de salvar. -->
         <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">
-          <input type="file" id="cr-ler-doc-input" accept=".pdf,image/png,image/jpeg,image/webp" multiple style="display:none" onchange="crLerDocumentosCustos(this)">
-          <button type="button" class="btn btn-outline" onclick="document.getElementById('cr-ler-doc-input').click()" title="A IA lê a nota de débito do agente de carga, o faturamento (acerto) do despachante ou a fatura do terminal e preenche as taxas — você confere linha a linha antes">🧾 Ler fatura / faturamento (IA)</button>
+          <button type="button" class="btn btn-outline" onclick="crEscolherDocumentosCustos()" title="A IA lê a nota de débito do agente de carga, o faturamento (acerto) do despachante ou a fatura do terminal e preenche as taxas — você confere linha a linha antes">🧾 Ler fatura / faturamento (IA)</button>
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
           <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
           ${!p.real_json ? `
@@ -1598,6 +1597,20 @@ const _crDocFila = [];       // arquivos escolhidos de uma vez (lidos um por vez
 let _crDocSeq = 0;           // leitura em andamento (cancelar = ignora a resposta)
 const CR_DOC_ORIGEM = { nota_debito_agente:'fatura do agente', acerto_despachante:'faturamento do despachante', fatura_terminal:'fatura do terminal', numerario:'numerário', nfse:'NFS-e' };
 
+// O seletor de arquivo fica fora do painel do processo: escolher um arquivo
+// não é "alteração não salva" (o painel marca como sujo qualquer change
+// dentro dele) — só aplicar valores na grade é.
+function crEscolherDocumentosCustos(){
+  let inp = document.getElementById('cr-ler-doc-input');
+  if(!inp){
+    inp = document.createElement('input');
+    inp.type = 'file'; inp.id = 'cr-ler-doc-input'; inp.multiple = true;
+    inp.accept = '.pdf,image/png,image/jpeg,image/webp'; inp.style.display = 'none';
+    inp.addEventListener('change', () => crLerDocumentosCustos(inp));
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
 function crLerDocumentosCustos(input){
   const arqs = [...((input && input.files) || [])];
   if(input) input.value = '';
@@ -1671,6 +1684,13 @@ function crDocPrevia(arq, dados){
   const ids = custosReaisItensFlat().filter(it => !pacoteIds.includes(it.id) && !it.excluirDosTotais).map(it => it.id);
   const cambio = { USD: coletarCambioCustosReaisDoForm() || parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || null, EUR: parseFloat((document.getElementById('f_cr_cambio_eur') || {}).value) || null };
   const res = FaturasCore.linhasCustoDocumento(dados, { cambio, ids });
+  // "Pagamos para": se o documento é do despachante/agente/armazém deste
+  // processo (mesma primeira palavra), usa o nome que o processo já tem —
+  // é o do cadastro, e evita um segundo nome pra mesma empresa.
+  const campoEmpresa = { acerto_despachante:'despachante', numerario:'despachante', nota_debito_agente:'agente', fatura_terminal:'armazem' }[res.tipo];
+  const primeiraPalavra = s => (String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[A-Z0-9]{3,}/) || [''])[0];
+  const nomeNoProcesso = campoEmpresa ? String(p[campoEmpresa] || '').trim() : '';
+  if(nomeNoProcesso && primeiraPalavra(nomeNoProcesso) && primeiraPalavra(nomeNoProcesso) === primeiraPalavra(dados.emitente)) dados.emitente_cadastro = nomeNoProcesso;
   const pistas = (Array.isArray(dados.pistas_processo) ? dados.pistas_processo : []).filter(Boolean).map(String);
   const ehEste = pistas.length ? !!FaturasCore.acharProcesso(pistas, [p]) : null;
   const outro = ehEste === false ? FaturasCore.acharProcesso(pistas, ((typeof _processos !== 'undefined' && _processos) || []).filter(x => x.id !== p.id)) : null;
@@ -1696,10 +1716,10 @@ function crDocRender(){
   const labels = {}; custosReaisItensFlat().forEach(it => { labels[it.id] = it.label; });
   const atuais = crDocAtuais();
   const pacotes = Object.values(CUSTOS_REAIS_PACOTES).map(pk => ({ id: pk.id, nome: pk.nome, itens: pk.itens, valor: crValorCampo('f_cr_' + pk.id) || 0 }));
-  const plano = FaturasCore.planoCustosDocumento(res.linhas, atuais, { labels, pacotes });
+  const plano = FaturasCore.planoCustosDocumento(res.linhas, atuais, { labels, pacotes, origem: c.origem });
   plano.itens.forEach(i => {
     if(atuais[i.id] && atuais[i.id].porContainer && i.acao !== 'ignorar'){ i.acao = 'ignorar'; i.erro = 'esta taxa está detalhada por container — lance à mão'; }
-    if(!i.erro && (i.padrao === 'substituir' || i.padrao === 'manter') && c.escolhas[i.id]) i.acao = c.escolhas[i.id];
+    if(!i.erro && (i.padrao === 'substituir' || i.padrao === 'manter') && c.escolhas[i.id]) i.acao = (c.escolhas[i.id] === 'somar' && i.soma == null) ? 'manter' : c.escolhas[i.id];
     const pk = plano.pacotes.find(x => x.itens.includes(i.id));
     if(pk && (c.pacoteModo[pk.id] || 'itens') === 'pacote'){ i.acao = 'ignorar'; i.noPacote = pk.nome; }
   });
@@ -1724,8 +1744,9 @@ function crDocRender(){
     if(i.padrao === 'igual') return `<span class="cr-muted">já lançado ${crSimbolo(i.atual_moeda)} ${crFmt(i.atual)}${quando(i.atual_origem)}${i.diferenca ? ` — diferença de centavos, mantido` : ' — igual'}</span>`;
     return `<div style="font-size:11.5px;color:#92400e;margin-bottom:4px;">lançado ${crSimbolo(i.atual_moeda)} ${crFmt(i.atual)}${quando(i.atual_origem)} · documento ${crSimbolo(i.moeda)} ${crFmt(i.valor)}${soma}</div>
       <select class="form-input" style="width:210px;max-width:100%;padding:4px 6px;font-size:12px;" aria-label="O que fazer com ${esc(i.label)}" onchange="crDocAcao('${i.id}', this.value)">
-        <option value="substituir" ${i.acao === 'substituir' ? 'selected' : ''}>Trocar pelo do documento</option>
         <option value="manter" ${i.acao === 'manter' ? 'selected' : ''}>Manter o lançado</option>
+        <option value="substituir" ${i.acao === 'substituir' ? 'selected' : ''}>Trocar pelo do documento</option>
+        ${i.soma != null ? `<option value="somar" ${i.acao === 'somar' ? 'selected' : ''}>Somar os dois (${crSimbolo(i.moeda)} ${crFmt(i.soma)})</option>` : ''}
       </select>`;
   };
 
@@ -1766,7 +1787,7 @@ function crDocRender(){
   const foraHtml = res.fora.length ? `<details style="margin-top:10px;"><summary class="cr-muted" style="cursor:pointer;">${res.fora.length} linha(s) do documento que não são custo e ficaram de fora</summary>
       <div style="margin-top:6px;">${res.fora.map(f => `<div class="cr-muted" style="padding:2px 0;">${esc(f.descricao)}${f.valor_brl != null ? ` · ${r2(Math.abs(f.valor_brl))}` : ''} — ${esc(f.motivo)}</div>`).join('')}</div></details>` : '';
 
-  const nAplicar = plano.itens.filter(i => i.acao === 'preencher' || i.acao === 'substituir').length;
+  const nAplicar = plano.itens.filter(i => i.acao === 'preencher' || i.acao === 'substituir' || i.acao === 'somar').length;
   const nMeta = plano.itens.filter(i => i.acao !== 'ignorar').length;
   const temConflito = plano.itens.some(i => !i.erro && !i.noPacote && (i.padrao === 'substituir' || i.padrao === 'manter'));
   const cab = [res.tipo_label, emitente, dados.documento ? 'nº ' + dados.documento : '', fmtData(dados.emissao) ? 'emissão ' + fmtData(dados.emissao) : '', res.cambio_usd && dados.taxa_cambio_usd ? 'câmbio US$ ' + String(dados.taxa_cambio_usd).replace('.', ',') : '']
@@ -1822,7 +1843,7 @@ function crDocPacote(pkId, modo){ if(_crDoc){ _crDoc.pacoteModo[pkId] = modo; cr
 function crDocAplicar(){
   const c = _crDoc;
   if(!c || !c.plano || !_editando) return;
-  const aplicar = c.plano.itens.filter(i => i.acao === 'preencher' || i.acao === 'substituir');
+  const aplicar = c.plano.itens.filter(i => i.acao === 'preencher' || i.acao === 'substituir' || i.acao === 'somar');
   if(!aplicar.length) return;
   const zerar = c.plano.pacotes.filter(pk => (c.pacoteModo[pk.id] || 'itens') === 'itens');
   // pacote que virou item a item: sai da grade (senão conta em dobro)
@@ -1835,7 +1856,7 @@ function crDocAplicar(){
   aplicar.forEach(i => {
     const el = document.getElementById('f_cr_' + i.id);
     if(!el || el.readOnly) return;
-    el.value = exibirMoeda(i.valor);
+    el.value = exibirMoeda(i.acao === 'somar' ? i.soma : i.valor);
     const sel = document.getElementById('f_cr_moeda_' + i.id);
     if(sel) sel.value = i.moeda || 'BRL';
     const tr = document.getElementById('cr_row_' + i.id);
@@ -1862,7 +1883,9 @@ function crDocAplicar(){
     _editando.log.push({
       campo: LOG_CAMPO_LEITURA_IA,
       valor_antes: c.arq.name,
-      valor_depois: feitos.map(i => `Custos Reais › ${i.label} ${crSimbolo(i.moeda)} ${crFmt(i.valor)}`).join(', ')
+      valor_depois: feitos.map(i => i.acao === 'somar'
+          ? `Custos Reais › ${i.label} ${crSimbolo(i.moeda)} ${crFmt(i.soma)} (lançado ${crFmt(i.atual)} + documento ${crFmt(i.valor)})`
+          : `Custos Reais › ${i.label} ${crSimbolo(i.moeda)} ${crFmt(i.valor)}`).join(', ')
         + (zerar.length ? ', ' + zerar.map(pk => `pacote ${pk.nome.replace(/ \(.*\)$/, '')} zerado (agora item a item)`).join(', ') : ''),
       usuario: _user.usuario,
       created_at: new Date().toISOString(),
