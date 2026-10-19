@@ -161,16 +161,27 @@
 
   // ── IA: descrição da linha da fatura → taxa da aba Custos Reais ──────
   // Ordem importa (mais específico primeiro). Sem match → null (a pessoa
-  // escolhe na tela).
+  // escolhe na tela). Regra com taxa null = "não é taxa / ambíguo": para a
+  // busca ali mesmo, sem cair numa regra genérica mais abaixo.
+  // 19/10/2026 (conferido com as notas de débito dos agentes de carga e os
+  // faturamentos do despachante): "Deconsolidation Tax", "Additional Costs",
+  // "Impostos (IR/PCC/ISS)" (vai na linha Agente Carga, igual à planilha de
+  // Fechamento), "Terminal Security Charge" = TSC (é taxa diferente do
+  // ISPS — as duas vêm na mesma fatura), licenças/LPCO, antidumping,
+  // marjoração e os tributos do faturamento do despachante.
   const MAPA_TAXAS = [
-    [/desconsolida/i, 'desconsolidacao'],
+    // retenção de imposto na fatura: sai do total a pagar, não é custo
+    [/\bir\s*retido|\birrf\b|reten[cç][aã]o/i, null],
+    [/impostos?\s*\(?\s*ir\b|\bir\s*\/\s*pcc|\bpcc\s*\/\s*iss/i, 'agente'],
+    [/de(s)?consolida/i, 'desconsolidacao'],
     [/libera[cç][aã]o.*(bl|conhecimento)|\bbl release|\bb\/?l fee|release fee/i, 'liberacao_bl'],
     [/\bthc\b|capatazia|terminal handling/i, 'capatazia'],
-    [/\bisps\b|security charge|terminal security/i, 'isps'],
+    [/\btsc\b|terminal security|security charge/i, 'tsc'],
+    [/\bisps\b/i, 'isps'],
     [/armazenagem|storage/i, 'armazenagem'],
     [/siscomex/i, 'siscomex'],
     [/afrmm|marinha mercante/i, 'marinha'],
-    [/\bli\b|licen[cç]a de importa/i, 'emissao_li'],
+    [/\bli\b|\bl\.\s?is?\b|\blpco\b|licen[cç]as? de importa|emiss[aã]o de l\.?i/i, 'emissao_li'],
     [/honor[aá]rio|despachante|despacho aduaneiro/i, 'despachante'],
     [/\bsda\b|sindicato/i, 'sda'],
     [/lava[cç][aã]o|limpeza.*container|cleaning/i, 'lavacao'],
@@ -178,19 +189,158 @@
     [/\biof\b/i, 'iof'],
     [/handling|disbursement/i, 'handling'],
     [/\btrs\b|\bcrs\b|cost recovery/i, 'trs'],
-    [/\btsc\b/i, 'tsc'],
     [/logistic fee|import logistics|equipment logistic/i, 'import_logistics'],
+    [/additional cost/i, 'additional_costs'],
     [/baixa.*p[aá]tio|pátio/i, 'baixa_patio'],
+    [/anti-?dumping/i, 'antidumping'],
+    [/marjora[cç]/i, 'marjoracao'],
     [/seguro/i, 'seguro'],
+    // frete rodoviário/terrestre não é o frete internacional: a pessoa escolhe
+    [/frete\s+(rodovi|terrestre|interno\b|interna\b|nacional)|transporte\s+(rodovi|terrestre)|carreto/i, null],
     [/frete|ocean freight|sea freight|freight/i, 'frete'],
     [/agenciamento|agency fee|taxa do agente/i, 'agente'],
     [/reciclag|reciclanip/i, 'reciclagem'],
+    // Tributos do faturamento do despachante. No fim da lista de propósito:
+    // na fatura do terminal o "PIS/COFINS" aparece dentro da descrição de
+    // outra taxa (armazenagem, handling), que casa antes.
+    [/\bpis\b.*\bcofins\b|\bcofins\b.*\bpis\b/i, null],
+    [/^\s*(i\.\s?i\.?|ii)(\s|$|[-–:(])|\bimp(osto|\.)?\s*(de\s+)?importa[cç][aã]o/i, 'ii'],
+    [/\bipi\b/i, 'ipi'],
+    [/\bpis\b/i, 'pis'],
+    [/\bcofins\b/i, 'cofins'],
+    [/\bicms\b/i, 'icms'],
   ];
   function taxaPorDescricao(desc) {
     const s = limpa(desc);
     if (!s) return null;
     for (const [re, id] of MAPA_TAXAS) if (re.test(s)) return id;
     return null;
+  }
+
+  // ── Custos Reais: documento de custo lido pela IA (19/10/2026) ──────
+  // A aba Custos Reais lê a nota de débito do agente de carga, o
+  // faturamento (acerto) do despachante e a fatura do terminal (POST
+  // /api/faturas/ler-documento com modo 'custos'). A IA devolve cada
+  // cobrança com o valor na moeda da linha e o valor em R$ impresso no
+  // documento; aqui cada linha ganha a taxa da aba (MAPA_TAXAS) e um valor
+  // em R$ — o impresso ou, sem ele, moeda × câmbio do documento (ou do
+  // processo). Fica de fora o que não é custo: IR retido (sai do total a
+  // pagar, mas a planilha lança o "Impostos (IR/PCC/ISS)" inteiro), totais,
+  // adiantamento/saldo e a base do CIF que o despachante repete no topo.
+  const TIPOS_DOC_CUSTO = {
+    nota_debito_agente: 'Fatura do agente de carga',
+    acerto_despachante: 'Faturamento do despachante',
+    numerario: 'Numerário do despachante',
+    fatura_terminal: 'Fatura do terminal / porto',
+    nfse: 'Nota fiscal de serviço',
+    darf: 'DARF / guia',
+    boleto: 'Boleto',
+    outro: 'Documento',
+  };
+  const RE_TOTAL_DOC = /^\s*(sub)?total\b|\btotal\s+(da|do|das|dos|por|geral|a\s+pagar|cif|despesas|a\s+favor)\b|adiantamento|\bsaldo\b|a\s+favor\s+d[aoe]\b|valor\s+do\s+servi[cç]o/i;
+  const RE_IR_RETIDO = /\bir\s*retido|\birrf\b|reten[cç][aã]o/i;
+  // topo do faturamento do despachante: só a base do CIF, não é cobrança dele
+  const RE_BASE_CIF = /^\s*(valor\s+)?(mle|fob)\b|^\s*valor\s+(do\s+)?frete\b|\btaxa\s+(do\s+)?ce\b|\bce\s+prepaid|^\s*seguro\s*$|total\s+cif/i;
+
+  // dados = resposta da IA; opts = { cambio:{USD,EUR} do processo, ids:[taxas
+  // válidas da aba] }. Devolve as linhas que são custo (com taxa sugerida e
+  // valor em R$), as que ficaram de fora (com o motivo) e a conferência
+  // soma das linhas × total do documento.
+  function linhasCustoDocumento(dados, opts) {
+    const d = dados || {}, o = opts || {};
+    const tipo = TIPOS_DOC_CUSTO[d.tipo_documento] ? d.tipo_documento : 'outro';
+    const fx = v => { const n = parseFloat(v); return n > 0 && n < 100 ? n : null; };
+    const cambio = { USD: fx(d.taxa_cambio_usd) || fx(o.cambio && o.cambio.USD), EUR: fx(o.cambio && o.cambio.EUR) };
+    const ids = Array.isArray(o.ids) ? o.ids : null;
+    let irRetido = Math.abs(num(d.ir_retido_brl));
+    const linhas = [], fora = [];
+    (Array.isArray(d.linhas) ? d.linhas : []).forEach((l, idx) => {
+      if (!l || typeof l !== 'object') return;
+      const descricao = limpa(l.descricao).replace(/\s+/g, ' ').slice(0, 200);
+      const moeda = MOEDAS.includes(l.moeda) ? l.moeda : 'BRL';
+      const valor = num(l.valor);
+      const impresso = num(l.valor_brl);
+      const brl = impresso || (moeda === 'BRL' ? valor : (cambio[moeda] ? num(valor * cambio[moeda]) : 0));
+      if (!descricao && !valor && !brl) return;
+      const fora_ = motivo => fora.push({ descricao, moeda, valor, valor_brl: brl || null, motivo });
+      if (RE_IR_RETIDO.test(descricao)) {
+        if (!irRetido) irRetido = Math.abs(brl || valor);
+        fora_('IR retido na fonte — sai do total a pagar, não é custo');
+        return;
+      }
+      if (RE_TOTAL_DOC.test(descricao)) { fora_('total, adiantamento ou saldo do documento'); return; }
+      if ((tipo === 'acerto_despachante' || tipo === 'numerario') && RE_BASE_CIF.test(descricao)) { fora_('base de cálculo do CIF — não é cobrança do despachante'); return; }
+      if (valor < 0 || brl < 0) { fora_('valor negativo (crédito ou desconto) — lance à mão, se for o caso'); return; }
+      if (!(brl > 0) && !(valor > 0)) return;
+      let taxa = taxaPorDescricao(descricao);
+      // terminal/porto: pesagem, levante, handling de saída... tudo é a
+      // armazenagem do processo (a planilha lança o total do terminal ali)
+      if (tipo === 'fatura_terminal' && (!taxa || taxa === 'handling')) taxa = 'armazenagem';
+      if (taxa && ids && !ids.includes(taxa)) taxa = null;
+      linhas.push({ idx, descricao, moeda, valor: valor || brl, valor_brl: brl > 0 ? brl : null, convertido: !impresso && moeda !== 'BRL' && brl > 0, taxa, usar: !!taxa });
+    });
+    const somaBrl = num(linhas.reduce((s, l) => s + (l.valor_brl || 0), 0));
+    const semBrl = linhas.filter(l => l.valor_brl == null).length;
+    const total = num(d.total_brl);
+    let confere = null, diferenca = null;
+    if (total > 0 && !semBrl) {
+      // o total a pagar pode vir já sem o IR retido (nota de débito do
+      // agente) ou não: vale o que chegar mais perto da soma das linhas
+      const difBruto = num(somaBrl - total - irRetido), difLiq = num(somaBrl - total);
+      diferenca = Math.abs(difBruto) <= Math.abs(difLiq) ? difBruto : difLiq;
+      confere = Math.abs(diferenca) < 0.05;
+    }
+    return {
+      tipo, tipo_label: TIPOS_DOC_CUSTO[tipo], linhas, fora,
+      soma_brl: somaBrl, total_brl: total || null, ir_retido_brl: irRetido || null, confere, diferenca, sem_brl: semBrl,
+      cambio_usd: cambio.USD, adiantamento_brl: num(d.adiantamento_brl) || null, saldo_brl: Math.abs(num(d.saldo_brl)) || null,
+      saldo_a_favor: ['importadora', 'emitente'].includes(d.saldo_a_favor) ? d.saldo_a_favor : null,
+    };
+  }
+
+  // Plano de aplicação na grade: soma as linhas por taxa e decide, taxa a
+  // taxa, o que fazer com o valor que já está lançado.
+  //   atuais = { id: { valor (número, na moeda), moeda, origem, prefill } }
+  //   opts   = { labels:{id:rótulo}, pacotes:[{id, nome, itens, valor}] }
+  // Campo vazio (ou só com o cotado pré-preenchido) → preencher; igual
+  // (diferença < R$ 0,05 — DUIMP × faturamento do despachante costumam
+  // diferir 1 ou 2 centavos) → nada a fazer; diferente → trocar pelo do
+  // documento, a não ser que alguém tenha digitado/conferido o valor à mão
+  // (aí o padrão é manter — a pessoa decide na tela).
+  function planoCustosDocumento(linhas, atuais, opts) {
+    const o = opts || {}, at = atuais || {};
+    const grupos = new Map();
+    (linhas || []).forEach(l => {
+      if (!l || !l.taxa || l.usar === false) return;
+      const g = grupos.get(l.taxa) || { id: l.taxa, brl: 0, faltaBrl: false, moedas: new Set(), valorMoeda: 0, linhas: [] };
+      if (l.valor_brl != null) g.brl = num(g.brl + l.valor_brl);
+      else { g.faltaBrl = true; g.moedas.add(l.moeda || 'BRL'); g.valorMoeda = num(g.valorMoeda + (num(l.valor) || 0)); }
+      g.linhas.push(l.descricao);
+      grupos.set(l.taxa, g);
+    });
+    const itens = [];
+    grupos.forEach(g => {
+      let valor = g.brl, moeda = 'BRL', erro = null;
+      if (g.faltaBrl) {
+        if (g.brl === 0 && g.moedas.size === 1) { moeda = [...g.moedas][0]; valor = g.valorMoeda; }
+        else erro = 'linhas em moedas diferentes sem o valor em R$ — informe o câmbio ou lance à mão';
+      }
+      const a = at[g.id] || {};
+      const atual = (a.valor != null && a.valor !== '' && !a.prefill && !isNaN(parseFloat(a.valor))) ? num(a.valor) : null;
+      const atualMoeda = a.moeda || 'BRL';
+      let acao;
+      if (erro) acao = 'ignorar';
+      else if (atual == null || atual === 0) acao = 'preencher';
+      else if (atualMoeda === moeda && Math.abs(atual - valor) < 0.05) acao = 'igual';
+      else acao = ['digitado', 'conferido'].includes(a.origem) ? 'manter' : 'substituir';
+      itens.push({ id: g.id, label: (o.labels && o.labels[g.id]) || g.id, valor, moeda, linhas: g.linhas,
+        atual, atual_moeda: atualMoeda, atual_origem: a.origem || null, acao, padrao: acao,
+        diferenca: (atual == null || atualMoeda !== moeda) ? null : num(valor - atual), erro });
+    });
+    const usados = new Set(itens.filter(i => i.acao !== 'ignorar').map(i => i.id));
+    const pacotes = (o.pacotes || []).filter(pk => pk && num(pk.valor) > 0 && (pk.itens || []).some(id => usados.has(id)))
+      .map(pk => ({ id: pk.id, nome: pk.nome, valor: num(pk.valor), itens: pk.itens.filter(id => usados.has(id)) }));
+    return { itens, pacotes };
   }
 
   // Procura o processo citado no documento (referência IMPAK, HBL/MBL,
@@ -663,7 +813,7 @@
     return out;
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso, filtroJsonbContem };
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso, filtroJsonbContem, TIPOS_DOC_CUSTO, linhasCustoDocumento, planoCustosDocumento };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

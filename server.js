@@ -2053,11 +2053,26 @@ app.post('/api/faturas/conferir', auth('financeiro', 'controle'), async (req, re
 });
 
 const PROMPT_LER_FATURA = `Você lê documentos de cobrança de uma IMPORTADORA brasileira de pneus: fatura/invoice de armador ou agente de carga, nota de débito, nota fiscal de serviço do despachante, boleto, DARF/guia de imposto, fatura de armazém/terminal. Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
-{"tipo_documento":"fatura|nota_debito|nfse|boleto|darf|outro","emitente":"razão social de quem COBRA","cnpj_emitente":"só dígitos ou vazio","destinatario":"quem PAGA","documento":"número da fatura/nota/boleto","emissao":"AAAA-MM-DD ou vazio","vencimento":"AAAA-MM-DD ou vazio","moeda":"BRL|USD|EUR","valor_total":0,"itens":[{"descricao":"texto da linha","moeda":"BRL|USD|EUR","valor":0}],"pistas_processo":["referência do cliente/processo, HBL, MBL, booking, número de container — tudo que identifique o embarque"],"linha_digitavel":"se houver","observacao":"algo importante em 1 frase ou vazio"}
-Regras: valores como número com ponto decimal (1234.56), nunca texto. Se o documento estiver em dólar mas tiver total em reais, use a moeda das linhas e coloque o total em reais na observacao. Não invente: campo que não existe fica vazio ou lista vazia.`;
+{"tipo_documento":"fatura|nota_debito|nfse|boleto|darf|outro","emitente":"razão social de quem COBRA","cnpj_emitente":"só dígitos ou vazio","destinatario":"quem PAGA","documento":"número da fatura/nota/boleto","emissao":"AAAA-MM-DD ou vazio","vencimento":"AAAA-MM-DD ou vazio","moeda":"BRL|USD|EUR","valor_total":0,"itens":[{"descricao":"texto da linha","moeda":"BRL|USD|EUR","valor":0,"valor_brl":0}],"pistas_processo":["referência do cliente/processo, HBL, MBL, booking, número de container — tudo que identifique o embarque"],"linha_digitavel":"se houver","observacao":"algo importante em 1 frase ou vazio"}
+Regras: valores como número com ponto decimal (1234.56), nunca texto. Em cada item, valor_brl = o valor em reais impresso para aquela linha (coluna "Valor em R$"), ou 0 se o documento não mostrar. Se o documento estiver em dólar mas tiver total em reais, use a moeda das linhas e coloque o total em reais na observacao. Não invente: campo que não existe fica vazio ou lista vazia.`;
+// Leitura para a aba Custos Reais (19/10/2026): o mesmo documento, mas
+// linha a linha com o valor em R$ que foi pago (nota de débito do agente
+// de carga, faturamento/acerto do despachante, fatura do terminal). As
+// regras de negócio (taxa de cada linha, o que fica de fora, conferência
+// do total) ficam em FaturasCore.linhasCustoDocumento — aqui só a leitura.
+const PROMPT_LER_CUSTOS = `Você lê documentos de CUSTO de um processo de importação da IMPAK COMERCIAL E IMPORTADORA LTDA (importadora brasileira de pneus), para lançar o que ela pagou, taxa por taxa. Tipos comuns: nota de débito / demonstrativo de débito / fatura do agente de carga ou armador (frete, THC, BL fee, ISPS, drop off, desconsolidação, logistic fee, IOF, impostos do agente...); faturamento / acerto / prestação de contas do despachante (II, IPI, PIS, COFINS, ICMS, Siscomex, AFRMM, armazenagem, licenças/LPCO, lavação, honorários...); numerário (pedido de adiantamento do despachante, com valores estimados); fatura ou demonstrativo de armazenagem do terminal/porto; nota fiscal de serviço (NFS-e); DARF/guia; boleto. Responda SOMENTE com um JSON válido, sem texto antes ou depois:
+{"tipo_documento":"nota_debito_agente|acerto_despachante|numerario|fatura_terminal|nfse|darf|boleto|outro","emitente":"razão social de quem emitiu/cobra","cnpj_emitente":"só dígitos ou vazio","documento":"número do documento (ex.: IM 12345) ou vazio","emissao":"AAAA-MM-DD ou vazio","vencimento":"AAAA-MM-DD ou vazio","taxa_cambio_usd":0,"linhas":[{"descricao":"texto da linha como está no documento","moeda":"BRL|USD|EUR","valor":0,"valor_brl":0}],"ir_retido_brl":0,"total_brl":0,"adiantamento_brl":0,"saldo_brl":0,"saldo_a_favor":"importadora|emitente|","pistas_processo":["referência do importador/cliente, HBL, MBL, container, nº da DI/DUIMP — tudo que identifique o embarque"],"observacao":"algo importante em 1 frase ou vazio"}
+Regras:
+- "linhas" = SOMENTE as cobranças, uma por taxa/imposto cobrado, na ordem do documento. NÃO inclua: subtotais e totais ("Total por moeda", "Subtotal da fatura", "Subtotal Nota Fiscal", "Total da Fatura", "TOTAL DESPESAS ADUANEIRAS", "Total Geral", "Valor do Serviço" repetido), adiantamento/numerário já pago, saldo ("TOTAL A FAVOR DE..."), nem as linhas do topo do faturamento do despachante que só mostram a base do CIF (VALOR MLE/FOB, VALOR FRETE, TAXA CE / CE PREPAID, SEGURO, Total CIF).
+- "IR Retido" (retenção na fonte, aparece negativo) NÃO é linha: vai em ir_retido_brl, como número positivo. "Impostos (IR/PCC/ISS)" e outros impostos COBRADOS pelo emitente SÃO linhas.
+- valor = valor na moeda da linha. valor_brl = o valor em reais impresso para aquela linha (coluna "Valor em R$", "REAL", "Valor R$"); linha em reais: valor_brl = valor. Se o documento não mostrar o valor em reais de uma linha em moeda estrangeira, use valor_brl 0.
+- taxa_cambio_usd = taxa do dólar usada no documento ("Taxa USD 5,123456", "TAXA MOEDA", "TAXA DO DIA USD"), ou 0.
+- total_brl = total cobrado em reais antes de descontar adiantamento ("Total da Fatura", "TOTAL DESPESAS ADUANEIRAS", "Total Geral", "TOTAL A PAGAR"). adiantamento_brl = adiantamento/numerário descontado, ou 0. saldo_brl = a diferença final, sempre positiva; saldo_a_favor = "importadora" quando o saldo é a favor da IMPAK (ex.: "TOTAL A FAVOR DA IMPAK"), "emitente" quando a IMPAK ainda deve.
+- Valores como número com ponto decimal (1234.56), nunca texto. Não invente: o que não existe fica vazio, 0 ou lista vazia.`;
 app.post('/api/faturas/ler-documento', auth('financeiro', 'controle'), rateLimitAnalisar, async (req, res) => {
   try {
-    const { arquivo_base64, media_type } = req.body || {};
+    const { arquivo_base64, media_type, modo } = req.body || {};
+    const lerCustos = modo === 'custos';
     const mt = String(media_type || '').toLowerCase();
     if (!arquivo_base64 || typeof arquivo_base64 !== 'string') return res.status(400).json({ ok: false, erro: 'Envie o arquivo (PDF ou imagem).' });
     if (!MIDIAS_ANALISE.has(mt)) return res.status(400).json({ ok: false, erro: 'Tipo de arquivo não suportado — envie PDF ou imagem.' });
@@ -2075,7 +2090,7 @@ app.post('/api/faturas/ler-documento', auth('financeiro', 'controle'), rateLimit
         resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST', signal: ctrl.signal,
           headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, system: PROMPT_LER_FATURA, messages: [{ role: 'user', content: [bloco, { type: 'text', text: 'Extraia os dados deste documento de cobrança.' }] }] }),
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, system: lerCustos ? PROMPT_LER_CUSTOS : PROMPT_LER_FATURA, messages: [{ role: 'user', content: [bloco, { type: 'text', text: lerCustos ? 'Extraia os custos deste documento, linha por linha.' : 'Extraia os dados deste documento de cobrança.' }] }] }),
         });
       } finally { clearTimeout(to); }
       if (resp.ok || tentativa >= 2 || ![429, 500, 502, 503, 529].includes(resp.status)) break;

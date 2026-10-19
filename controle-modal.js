@@ -481,6 +481,8 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         Reaproveita POST /api/controle/importar-fechamento (server-side,
         planilha-import.js) — o usuário sempre revisa/ajusta antes de salvar. -->
         <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">
+          <input type="file" id="cr-ler-doc-input" accept=".pdf,image/png,image/jpeg,image/webp" multiple style="display:none" onchange="crLerDocumentosCustos(this)">
+          <button type="button" class="btn btn-outline" onclick="document.getElementById('cr-ler-doc-input').click()" title="A IA lê a nota de débito do agente de carga, o faturamento (acerto) do despachante ou a fatura do terminal e preenche as taxas — você confere linha a linha antes">🧾 Ler fatura / faturamento (IA)</button>
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
           <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
           ${!p.real_json ? `
@@ -1579,6 +1581,303 @@ function crAplicarDuimp(valores){
   });
   atualizarTotalCustosReais();
   return out;
+}
+
+// ── Ler fatura do agente / faturamento do despachante com IA (19/10/2026) ──
+// Mesma ideia da DUIMP acima, pros outros documentos de custo: a nota de
+// débito do agente de carga (frete, THC, BL fee, ISPS, drop off,
+// desconsolidação, IOF, impostos do agente...), o faturamento (acerto) do
+// despachante (II, IPI, PIS, COFINS, ICMS, Siscomex, AFRMM, armazenagem,
+// licenças) e a fatura do terminal. A IA lê (POST /api/faturas/ler-documento,
+// modo 'custos'), FaturasCore.linhasCustoDocumento/planoCustosDocumento
+// decidem a taxa de cada linha e o que fazer com o que já está lançado, e uma
+// prévia mostra linha a linha o que vai pra grade. Nada é salvo sozinho: a
+// pessoa confere e clica em "Salvar Custos Reais".
+let _crDoc = null;           // documento em revisão na prévia
+const _crDocFila = [];       // arquivos escolhidos de uma vez (lidos um por vez)
+let _crDocSeq = 0;           // leitura em andamento (cancelar = ignora a resposta)
+const CR_DOC_ORIGEM = { nota_debito_agente:'fatura do agente', acerto_despachante:'faturamento do despachante', fatura_terminal:'fatura do terminal', numerario:'numerário', nfse:'NFS-e' };
+
+function crLerDocumentosCustos(input){
+  const arqs = [...((input && input.files) || [])];
+  if(input) input.value = '';
+  if(!arqs.length || !_editando) return;
+  arqs.forEach(a => _crDocFila.push(a));
+  if(!document.getElementById('cr-doc-bg')) crProximoDocumentoCustos();
+}
+
+function crDocModal(inner, titulo){
+  let bg = document.getElementById('cr-doc-bg');
+  if(!bg){
+    bg = document.createElement('div');
+    bg.id = 'cr-doc-bg';
+    bg.className = 'modal-bg open';
+    bg.style.zIndex = '260';
+    document.body.appendChild(bg);
+  }
+  bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(titulo || 'Documento de custo')}" style="max-width:1020px;width:100%;">${inner}</div>`;
+}
+function crDocFechar(){ document.getElementById('cr-doc-bg')?.remove(); _crDoc = null; }
+// tudo=true (Cancelar durante a leitura): desiste também dos próximos da fila
+function crDocCancelar(tudo){ _crDocSeq++; if(tudo) _crDocFila.length = 0; crDocFechar(); crProximoDocumentoCustos(); }
+// ESC fecha só a prévia (não o painel do processo por baixo)
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && document.getElementById('cr-doc-bg')){ crDocCancelar(!_crDoc); e.stopImmediatePropagation(); } }, true);
+
+async function crProximoDocumentoCustos(){
+  const arq = _crDocFila.shift();
+  if(!arq || !_editando) { _crDocFila.length = 0; return; }
+  const tipoArq = arq.type || (String(arq.name || '').toLowerCase().endsWith('.pdf') ? 'application/pdf' : '');
+  if(!/^(application\/pdf|image\/(png|jpe?g|webp))$/.test(tipoArq)){ showToast(`"${arq.name}" não foi lido: envie o PDF ou a foto do documento.`, 'err'); return crProximoDocumentoCustos(); }
+  if(arq.size > 15 * 1024 * 1024){ showToast(`"${arq.name}" tem ${(arq.size/1048576).toFixed(1).replace('.', ',')} MB — o limite é 15 MB por arquivo. Comprima o PDF ou divida em partes.`, 'err'); return crProximoDocumentoCustos(); }
+  const seq = ++_crDocSeq;
+  const procId = _editando.id;
+  crDocModal(`<div class="modal-body" style="text-align:center;padding:30px 12px;">🧾 Lendo <b>${esc(arq.name)}</b> com a IA…<div class="cr-muted" style="margin-top:6px;">Leva uns 10 a 30 segundos.${_crDocFila.length ? ` Depois dele: mais ${_crDocFila.length} documento${_crDocFila.length === 1 ? '' : 's'}.` : ''}</div><div style="margin-top:14px;"><button type="button" class="btn btn-outline" onclick="crDocCancelar(true)">Cancelar</button></div></div>`, 'Lendo documento');
+  try{
+    const b64 = await new Promise((ok, err) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.onerror = err; fr.readAsDataURL(arq); });
+    const r = await fetch('/api/faturas/ler-documento', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ arquivo_base64: b64, media_type: tipoArq, modo: 'custos' }) });
+    const d = await r.json().catch(() => ({}));
+    if(seq !== _crDocSeq) return; // cancelado enquanto lia
+    if(!_editando || _editando.id !== procId){ crDocFechar(); _crDocFila.length = 0; return; } // trocou de processo
+    if(!d.ok){ crDocFechar(); showToast(`"${arq.name}": ${d.erro || 'não consegui ler o documento.'}`, 'err'); return crProximoDocumentoCustos(); }
+    crDocPrevia(arq, d.dados || {});
+  }catch(e){
+    if(seq !== _crDocSeq) return;
+    crDocFechar();
+    showToast(`Não foi possível ler "${arq.name}": ${(e && e.message) || 'erro de rede'}`, 'err');
+    crProximoDocumentoCustos();
+  }
+}
+
+// Valor de cada taxa na grade agora (sem salvar): o que a prévia compara.
+function crDocAtuais(){
+  const out = {};
+  custosReaisItensFlat().forEach(it => {
+    const el = document.getElementById('f_cr_' + it.id);
+    if(!el) return; // linha escondida = sem valor
+    const tr = document.getElementById('cr_row_' + it.id);
+    const prefill = !!(tr && tr.dataset.prefill === '1' && !_crConf[it.id] && el.dataset && el.dataset.cotado !== undefined && el.value === el.dataset.cotado);
+    const contRow = document.getElementById('cr_containers_row_' + it.id);
+    const sel = document.getElementById('f_cr_moeda_' + it.id);
+    out[it.id] = { valor: crValorCampo('f_cr_' + it.id), moeda: (sel && sel.value) || 'BRL', origem: _crConf[it.id] ? _crConf[it.id].origem : null, prefill,
+      porContainer: !!(contRow && contRow.style.display !== 'none') };
+  });
+  return out;
+}
+
+function crDocPrevia(arq, dados){
+  const p = _editando;
+  if(!p){ crDocFechar(); return; }
+  const pacoteIds = Object.values(CUSTOS_REAIS_PACOTES).map(pk => pk.id);
+  const ids = custosReaisItensFlat().filter(it => !pacoteIds.includes(it.id) && !it.excluirDosTotais).map(it => it.id);
+  const cambio = { USD: coletarCambioCustosReaisDoForm() || parseFloat(p.real_cambio) || parseFloat(p.pi_cambio) || null, EUR: parseFloat((document.getElementById('f_cr_cambio_eur') || {}).value) || null };
+  const res = FaturasCore.linhasCustoDocumento(dados, { cambio, ids });
+  const pistas = (Array.isArray(dados.pistas_processo) ? dados.pistas_processo : []).filter(Boolean).map(String);
+  const ehEste = pistas.length ? !!FaturasCore.acharProcesso(pistas, [p]) : null;
+  const outro = ehEste === false ? FaturasCore.acharProcesso(pistas, ((typeof _processos !== 'undefined' && _processos) || []).filter(x => x.id !== p.id)) : null;
+  // documento de outro processo, NFS-e (repete parte da nota de débito) ou
+  // numerário (valores estimados): nada vem marcado — a pessoa decide
+  if(outro || res.tipo === 'nfse' || res.tipo === 'numerario') res.linhas.forEach(l => { l.usar = false; });
+  _crDoc = { arq, dados, res, ids, ehEste, outro, pistas, escolhas: {}, pacoteModo: {}, meta: true, origem: CR_DOC_ORIGEM[res.tipo] || 'documento' };
+  crDocRender();
+}
+
+function crDocOpcoesTaxa(sel, ids){
+  return `<option value="">— não lançar —</option>` + CUSTOS_REAIS_CONFIG.map(g => {
+    const its = g.itens.filter(it => ids.includes(it.id));
+    return its.length ? `<optgroup label="${esc(g.grupo)}">${its.map(it => `<option value="${it.id}" ${it.id === sel ? 'selected' : ''}>${esc(it.label)}</option>`).join('')}</optgroup>` : '';
+  }).join('');
+}
+
+function crDocRender(){
+  const c = _crDoc;
+  if(!c) return;
+  const r2 = v => 'R$ ' + crFmt(v);
+  const res = c.res, dados = c.dados;
+  const labels = {}; custosReaisItensFlat().forEach(it => { labels[it.id] = it.label; });
+  const atuais = crDocAtuais();
+  const pacotes = Object.values(CUSTOS_REAIS_PACOTES).map(pk => ({ id: pk.id, nome: pk.nome, itens: pk.itens, valor: crValorCampo('f_cr_' + pk.id) || 0 }));
+  const plano = FaturasCore.planoCustosDocumento(res.linhas, atuais, { labels, pacotes });
+  plano.itens.forEach(i => {
+    if(atuais[i.id] && atuais[i.id].porContainer && i.acao !== 'ignorar'){ i.acao = 'ignorar'; i.erro = 'esta taxa está detalhada por container — lance à mão'; }
+    if(!i.erro && (i.padrao === 'substituir' || i.padrao === 'manter') && c.escolhas[i.id]) i.acao = c.escolhas[i.id];
+    const pk = plano.pacotes.find(x => x.itens.includes(i.id));
+    if(pk && (c.pacoteModo[pk.id] || 'itens') === 'pacote'){ i.acao = 'ignorar'; i.noPacote = pk.nome; }
+  });
+  c.plano = plano;
+  const porTaxa = {}; plano.itens.forEach(i => { porTaxa[i.id] = i; });
+  const vistos = new Set();
+  const emitente = dados.emitente_cadastro || dados.emitente || '';
+  const fmtData = s => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(8, 10) + '/' + String(s).slice(5, 7) + '/' + String(s).slice(0, 4) : '';
+  const quando = o => o ? ` (${esc(o)})` : '';
+
+  const situacao = (l) => {
+    if(!l.taxa) return '<span class="cr-muted">escolha a taxa ou deixe sem lançar</span>';
+    if(!l.usar) return '<span class="cr-muted">não vai ser lançada</span>';
+    const i = porTaxa[l.taxa];
+    if(!i) return '';
+    if(vistos.has(i.id)) return `<span class="cr-muted">somada na linha de ${esc(i.label)} acima</span>`;
+    vistos.add(i.id);
+    const soma = i.linhas.length > 1 ? ` <span class="cr-muted">(soma de ${i.linhas.length} linhas)</span>` : '';
+    if(i.erro) return `<span style="color:var(--err);">${esc(i.erro)}</span>`;
+    if(i.noPacote) return `<span class="cr-muted">fica no pacote ${esc(i.noPacote.replace(/ \(.*\)$/, ''))}</span>`;
+    if(i.padrao === 'preencher') return `<span style="color:var(--ok);font-weight:600;">preenche ${crSimbolo(i.moeda)} ${crFmt(i.valor)}</span>${soma}`;
+    if(i.padrao === 'igual') return `<span class="cr-muted">já lançado ${crSimbolo(i.atual_moeda)} ${crFmt(i.atual)}${quando(i.atual_origem)}${i.diferenca ? ` — diferença de centavos, mantido` : ' — igual'}</span>`;
+    return `<div style="font-size:11.5px;color:#92400e;margin-bottom:4px;">lançado ${crSimbolo(i.atual_moeda)} ${crFmt(i.atual)}${quando(i.atual_origem)} · documento ${crSimbolo(i.moeda)} ${crFmt(i.valor)}${soma}</div>
+      <select class="form-input" style="width:210px;max-width:100%;padding:4px 6px;font-size:12px;" aria-label="O que fazer com ${esc(i.label)}" onchange="crDocAcao('${i.id}', this.value)">
+        <option value="substituir" ${i.acao === 'substituir' ? 'selected' : ''}>Trocar pelo do documento</option>
+        <option value="manter" ${i.acao === 'manter' ? 'selected' : ''}>Manter o lançado</option>
+      </select>`;
+  };
+
+  const linhasHtml = res.linhas.map(l => {
+    const valorTxt = l.valor_brl != null ? r2(l.valor_brl) : `${crSimbolo(l.moeda)} ${crFmt(l.valor)}`;
+    const orig = l.moeda !== 'BRL' ? `<div class="cr-muted">${crSimbolo(l.moeda)} ${crFmt(l.valor)}${l.convertido ? ' · convertido pelo câmbio' : ''}${l.valor_brl == null ? ' · sem valor em R$' : ''}</div>` : '';
+    return `<tr style="${!l.usar ? 'opacity:.72;' : ''}">
+      <td style="width:28px;"><input type="checkbox" ${l.usar ? 'checked' : ''} aria-label="Lançar ${esc(l.descricao)}" onchange="crDocUsar(${l.idx}, this.checked)"></td>
+      <td style="min-width:190px;overflow-wrap:break-word;">${esc(l.descricao)}</td>
+      <td style="text-align:right;white-space:nowrap;font-family:'JetBrains Mono',monospace;">${valorTxt}${orig}</td>
+      <td><select class="form-input" style="width:210px;max-width:100%;padding:4px 6px;font-size:12px;${!l.taxa ? 'border-color:var(--err);' : ''}" aria-label="Taxa de ${esc(l.descricao)}" onchange="crDocTaxa(${l.idx}, this.value)">${crDocOpcoesTaxa(l.taxa, c.ids)}</select></td>
+      <td>${situacao(l)}</td>
+    </tr>`;
+  }).join('');
+
+  // avisos do topo
+  const avisos = [];
+  const amarelo = t => `<div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;line-height:1.5;">${t}</div>`;
+  if(c.outro) avisos.push(`<div class="cr-aviso">⚠ Este documento cita <b>${esc(c.pistas.slice(0, 3).join(', '))}</b>, que é do processo <b>${esc(c.outro.referencia || '')}</b> — e você está no <b>${esc(_editando.referencia || '')}</b>. As linhas vieram desmarcadas; só marque se tiver certeza de que o documento é deste processo.</div>`);
+  else if(c.ehEste === false) avisos.push(amarelo(`Não achei a referência, o BL ou o container deste processo no documento (cita: ${esc(c.pistas.slice(0, 3).join(', '))}). Confira se é o documento certo.`));
+  else if(c.ehEste == null) avisos.push(amarelo('O documento não traz referência, BL ou container para conferir o processo — confira se é o documento certo.'));
+  if(res.tipo === 'nfse') avisos.push(amarelo('Isto é a <b>nota fiscal de serviço</b>: ela costuma repetir só a parte de serviços da nota de débito do mesmo agente. Para os custos, use a nota de débito (tem todas as taxas). As linhas vieram desmarcadas.'));
+  if(res.tipo === 'numerario') avisos.push(amarelo('Isto é o <b>numerário</b> (adiantamento pedido pelo despachante, com valores estimados). Para os custos reais, use o <b>faturamento final</b> do despachante. As linhas vieram desmarcadas.'));
+  const totalTxt = res.total_brl != null
+    ? (res.confere ? `<span style="color:var(--ok);font-weight:600;">✓ a soma das linhas (${r2(res.soma_brl)}) bate com o total do documento (${r2(res.total_brl)}${res.ir_retido_brl ? ` + IR retido ${r2(res.ir_retido_brl)}` : ''})</span>`
+      : (res.diferenca != null ? `<span style="color:var(--err);font-weight:600;">⚠ soma das linhas ${r2(res.soma_brl)} × total do documento ${r2(res.total_brl)}${res.ir_retido_brl ? ` (+ IR retido ${r2(res.ir_retido_brl)})` : ''}: diferença de ${r2(Math.abs(res.diferenca))} — confira se alguma linha ficou de fora ou veio a mais</span>`
+        : `<span class="cr-muted">total do documento ${r2(res.total_brl)} · ${res.sem_brl} linha(s) sem valor em R$ — não deu pra conferir a soma</span>`))
+    : `<span class="cr-muted">soma das linhas ${r2(res.soma_brl)} (o documento não mostra um total para conferir)</span>`;
+  const saldoTxt = res.saldo_brl ? `<div class="cr-muted" style="margin-top:4px;">${res.saldo_a_favor === 'importadora' ? `Saldo a favor da IMPAK: <b>${r2(res.saldo_brl)}</b>` : res.saldo_a_favor === 'emitente' ? `Saldo a pagar ao emitente: <b>${r2(res.saldo_brl)}</b>` : `Saldo: ${r2(res.saldo_brl)}`}${res.adiantamento_brl ? ` (adiantamento de ${r2(res.adiantamento_brl)})` : ''} — não é custo; fica só como informação.</div>` : '';
+  const pacotesHtml = plano.pacotes.map(pk => {
+    const modo = c.pacoteModo[pk.id] || 'itens';
+    return `<div class="cr-aviso" style="color:var(--text);">Este processo está lançado como <b>pacote: ${esc(pk.nome)}</b> = ${r2(pk.valor)}. As linhas deste documento são as taxas de dentro desse pacote — lançar as duas coisas conta o mesmo dinheiro duas vezes.
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;">
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="radio" name="cr-doc-pk-${pk.id}" ${modo === 'itens' ? 'checked' : ''} onchange="crDocPacote('${pk.id}','itens')"> Lançar item a item e zerar o pacote</label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="radio" name="cr-doc-pk-${pk.id}" ${modo === 'pacote' ? 'checked' : ''} onchange="crDocPacote('${pk.id}','pacote')"> Manter o pacote (não lançar estas linhas)</label>
+      </div></div>`;
+  }).join('');
+  const foraHtml = res.fora.length ? `<details style="margin-top:10px;"><summary class="cr-muted" style="cursor:pointer;">${res.fora.length} linha(s) do documento que não são custo e ficaram de fora</summary>
+      <div style="margin-top:6px;">${res.fora.map(f => `<div class="cr-muted" style="padding:2px 0;">${esc(f.descricao)}${f.valor_brl != null ? ` · ${r2(Math.abs(f.valor_brl))}` : ''} — ${esc(f.motivo)}</div>`).join('')}</div></details>` : '';
+
+  const nAplicar = plano.itens.filter(i => i.acao === 'preencher' || i.acao === 'substituir').length;
+  const nMeta = plano.itens.filter(i => i.acao !== 'ignorar').length;
+  const temConflito = plano.itens.some(i => !i.erro && !i.noPacote && (i.padrao === 'substituir' || i.padrao === 'manter'));
+  const cab = [res.tipo_label, emitente, dados.documento ? 'nº ' + dados.documento : '', fmtData(dados.emissao) ? 'emissão ' + fmtData(dados.emissao) : '', res.cambio_usd && dados.taxa_cambio_usd ? 'câmbio US$ ' + String(dados.taxa_cambio_usd).replace('.', ',') : '']
+    .filter(Boolean).map(esc).join(' · ');
+
+  crDocModal(`
+    <div class="modal-header">
+      <div class="modal-title">🧾 Custos do documento — confira antes de preencher</div>
+      <button class="modal-close" onclick="crDocCancelar()" aria-label="Fechar">×</button>
+    </div>
+    <div class="modal-body"><div style="padding:18px 26px 22px;">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 4px;"><strong>${esc(c.arq.name)}</strong></p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">${cab}</p>
+      ${avisos.join('')}${pacotesHtml}
+      <div style="font-size:12px;margin-bottom:10px;">${totalTxt}${saldoTxt}</div>
+      ${res.linhas.length ? `<div style="overflow-x:auto;"><table class="cr-tabela" style="table-layout:auto;">
+        <thead><tr><th style="width:28px;"></th><th>Linha do documento</th><th style="text-align:right;">Valor</th><th>Vai para a taxa</th><th style="min-width:230px;">Na grade</th></tr></thead>
+        <tbody>${linhasHtml}</tbody></table></div>` : `<div class="cr-aviso">A IA não encontrou nenhuma cobrança neste documento.</div>`}
+      ${temConflito ? `<div style="margin-top:8px;font-size:11.5px;"><a class="cr-link" href="javascript:void(0)" onclick="crDocTodos('substituir')">trocar todos os divergentes pelo valor do documento</a> · <a class="cr-link" href="javascript:void(0)" onclick="crDocTodos('manter')">manter todos os lançados</a></div>` : ''}
+      ${foraHtml}
+      ${(emitente || dados.documento) && nMeta ? `<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:12px;cursor:pointer;"><input type="checkbox" ${c.meta ? 'checked' : ''} onchange="_crDoc && (_crDoc.meta = this.checked)" style="margin-top:2px;"> <span>Preencher "Pagamos para"${emitente ? ` (<b>${esc(emitente)}</b>)` : ''}${dados.documento ? ` e "Documento nº" (<b>${esc(dados.documento)}</b>)` : ''} nas taxas que ainda estão sem</span></label>` : ''}
+      <div class="cr-muted" style="margin-top:10px;">Nada é salvo agora: os valores entram na grade em verde e você confere antes de clicar em 💾 Salvar Custos Reais.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;position:sticky;bottom:-22px;background:var(--card);margin-top:12px;padding:12px 0 10px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="crDocCancelar()">${_crDocFila.length ? 'Pular este documento' : 'Cancelar'}</button>
+        <button class="btn btn-primary" onclick="crDocAplicar()" ${nAplicar ? '' : 'disabled'}>${nAplicar ? `✓ Preencher ${nAplicar} taxa${nAplicar === 1 ? '' : 's'} na grade` : 'Nada para preencher'}</button>
+      </div>
+    </div></div>`, 'Custos do documento');
+}
+
+function crDocLinha(idx){ return _crDoc && _crDoc.res.linhas.find(l => l.idx === idx); }
+function crDocTaxa(idx, taxa){
+  const l = crDocLinha(idx);
+  if(!l) return;
+  l.taxa = taxa || null;
+  l.usar = !!taxa;
+  crDocRender();
+}
+function crDocUsar(idx, marcado){
+  const l = crDocLinha(idx);
+  if(!l) return;
+  if(marcado && !l.taxa){ showToast('Escolha a taxa desta linha primeiro.', 'warn'); }
+  l.usar = !!marcado && !!l.taxa;
+  crDocRender();
+}
+function crDocAcao(id, acao){ if(_crDoc){ _crDoc.escolhas[id] = acao; crDocRender(); } }
+function crDocTodos(acao){
+  if(!_crDoc || !_crDoc.plano) return;
+  _crDoc.plano.itens.forEach(i => { if(i.padrao === 'substituir' || i.padrao === 'manter') _crDoc.escolhas[i.id] = acao; });
+  crDocRender();
+}
+function crDocPacote(pkId, modo){ if(_crDoc){ _crDoc.pacoteModo[pkId] = modo; crDocRender(); } }
+
+function crDocAplicar(){
+  const c = _crDoc;
+  if(!c || !c.plano || !_editando) return;
+  const aplicar = c.plano.itens.filter(i => i.acao === 'preencher' || i.acao === 'substituir');
+  if(!aplicar.length) return;
+  const zerar = c.plano.pacotes.filter(pk => (c.pacoteModo[pk.id] || 'itens') === 'itens');
+  // pacote que virou item a item: sai da grade (senão conta em dobro)
+  zerar.forEach(pk => { const el = document.getElementById('f_cr_' + pk.id); if(el) el.value = ''; delete _crConf[pk.id]; });
+  aplicar.forEach(i => _crExtras.add(i.id));
+  crRerender();
+  const emitente = c.dados.emitente_cadastro || c.dados.emitente || '';
+  const docNum = c.dados.documento ? String(c.dados.documento) : '';
+  const feitos = [];
+  aplicar.forEach(i => {
+    const el = document.getElementById('f_cr_' + i.id);
+    if(!el || el.readOnly) return;
+    el.value = exibirMoeda(i.valor);
+    const sel = document.getElementById('f_cr_moeda_' + i.id);
+    if(sel) sel.value = i.moeda || 'BRL';
+    const tr = document.getElementById('cr_row_' + i.id);
+    if(tr) tr.dataset.prefill = '0';
+    crMarcar(i.id, c.origem);
+    el.style.borderColor = 'var(--ok)'; el.style.background = 'rgba(22,163,74,.06)';
+    setTimeout(() => { el.style.borderColor = ''; el.style.background = ''; }, 4000);
+    feitos.push(i);
+  });
+  if(c.meta){
+    c.plano.itens.filter(i => i.acao !== 'ignorar').forEach(i => {
+      const para = document.getElementById('f_crm_para_' + i.id), doc = document.getElementById('f_crm_doc_' + i.id);
+      if(para && !para.value.trim() && emitente) para.value = emitente;
+      if(doc && !doc.value.trim() && docNum) doc.value = docNum;
+    });
+  }
+  atualizarTotalCustosReais();
+  if(typeof _painelDirty !== 'undefined') _painelDirty = true;
+  let anexou = false;
+  if(feitos.length){
+    // Histórico: qual documento foi lido e o que ele preencheu (vai junto no
+    // próximo Salvar, igual à leitura da aba Documentos)
+    _editando.log = _editando.log || [];
+    _editando.log.push({
+      campo: LOG_CAMPO_LEITURA_IA,
+      valor_antes: c.arq.name,
+      valor_depois: feitos.map(i => `Custos Reais › ${i.label} ${crSimbolo(i.moeda)} ${crFmt(i.valor)}`).join(', ')
+        + (zerar.length ? ', ' + zerar.map(pk => `pacote ${pk.nome.replace(/ \(.*\)$/, '')} zerado (agora item a item)`).join(', ') : ''),
+      usuario: _user.usuario,
+      created_at: new Date().toISOString(),
+    });
+    // documento confirmado como deste processo: fica anexado no GED (que
+    // aceita PDF, JPG e PNG; o servidor não duplica o que já está lá)
+    if(_editando.id && c.ehEste === true && typeof uploadArquivosGed === 'function' && ['application/pdf','image/jpeg','image/jpg','image/png'].includes(c.arq.type)){ uploadArquivosGed([c.arq]); anexou = true; }
+  }
+  const n = feitos.length;
+  crDocFechar();
+  showToast(`✓ ${n} taxa${n === 1 ? '' : 's'} preenchida${n === 1 ? '' : 's'} pelo documento (${c.res.tipo_label.toLowerCase()})`
+    + (zerar.length ? ` · pacote ${zerar.map(pk => pk.nome.replace(/ \(.*\)$/, '')).join(' e ')} zerado` : '')
+    + (anexou ? ' · documento anexado ao GED' : '')
+    + ' — confira e clique em 💾 Salvar Custos Reais.', 'ok');
+  crProximoDocumentoCustos();
 }
 
 // Alterna uma taxa entre "valor único pro processo" e "detalhado container a
