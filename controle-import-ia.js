@@ -640,8 +640,8 @@ async function extrairComIA_umArquivo(input){
   "navio": "",  // se o documento for um CE Mercante, usar o navio de CHEGADA: em caso de transbordo/baldeação no exterior, o navio de chegada é o navio de conexão/último navio que efetivamente atracou no porto de destino brasileiro — NÃO o navio original de embarque na origem
   "porto_origem": "",
   "porto_destino": "",  // extrair de: POD, Port of Discharge, Port of Destination, Discharge Port. PRIORIDADE DE FONTE: o BL e a DI/Extrato da DI são mais confiáveis que o Sales Contract — o Sales Contract é só a intenção comercial registrada antes do embarque e pode estar desatualizado (ex: prevê "Itajai" mas a carga acabou desembarcando em "Itapoa"). Se o documento atual for um BL ou DI/Extrato da DI, o porto_destino dele deve SOBRESCREVER um valor que tenha vindo de um Sales Contract.
-  "hbl": "",
-  "mbl": "",
+  "hbl": "",  // número do House B/L (emitido pelo agente de carga/NVOCC) — no BL é o "Bill of Lading No."
+  "mbl": "",  // número do Master B/L do armador — no rascunho do HBL costuma vir como "MBL#" ou "MBL No."; na nota de débito do agente, como "Master BL(s)". Se o documento só traz o número do House B/L, deixe mbl vazio — NUNCA repita o número do HBL no mbl.
   "containers": [],  // ARRAY com TODOS os containers do documento — um item por container: {"numero":"TCKU7973104","lacre":"2299285"}. IMPORTANTE: BL e CE Mercante frequentemente listam 2 OU MAIS containers na mesma tabela (ex: "3X40HQ CONTAINER FCL/FCL" com 3 linhas de número+lacre). Inclua UM item no array PARA CADA linha de container encontrada — nunca junte vários números numa única string separada por vírgula. Mesmo se houver só 1 container no documento, retorne um array com 1 item.
   "valor_frete": 0,  // valor do frete marítimo — extrair de: BL (campo "Freight", "Ocean Freight", "Freight Charges", geralmente no rodapé/seção de charges do BL — usar o valor "Prepaid" OU "Collect", o que estiver preenchido com valor) ou CE Mercante (campo "Frete"). Se não encontrar um valor de frete explícito no documento, deixar 0.
   "moeda_frete": "",  // moeda em que o valor_frete veio no documento: "USD", "BRL" ou "EUR". Deixar "" se valor_frete for 0.
@@ -990,11 +990,22 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     // processos ficaram com CE Master igual ao CE House (auditoria de
     // 19/10/2026, corrigidos pelos CEs do Dropbox). Mesmo número nos dois =
     // leitura errada: fica só o House, o Master não é mexido e a tela avisa.
-    let avisoCeIgual = '';
+    // O mesmo vale para o BL: o House B/L do agente (Royal/Parisi...) não
+    // traz o Master — a leitura repetia o número do HBL no MBL (6 processos
+    // assim, corrigidos pelo "MBL#" do rascunho do HBL e pela nota de débito
+    // do agente). Mesmo número nos dois: fica só o HBL e a tela avisa.
+    const avisosNumerosIguais = [], notasNumerosIguais = [];
     if(extracted.ce_master && extracted.ce_house
        && String(extracted.ce_master).replace(/\D/g,'') === String(extracted.ce_house).replace(/\D/g,'')){
-      avisoCeIgual = `O CE Master veio com o mesmo número do CE House (${extracted.ce_house}) — preenchi só o CE House. O CE Master certo está no bloco "Dados de seu Master" do CE Mercante.`;
+      avisosNumerosIguais.push(`O CE Master veio com o mesmo número do CE House (${extracted.ce_house}) — preenchi só o CE House. O CE Master certo está no bloco "Dados de seu Master" do CE Mercante.`);
+      notasNumerosIguais.push('CE Master não usado (igual ao CE House)');
       delete extracted.ce_master;
+    }
+    const numBL = v => String(v || '').replace(/[\s.\-\/]/g, '').toUpperCase();
+    if(extracted.mbl && extracted.hbl && numBL(extracted.mbl) === numBL(extracted.hbl)){
+      avisosNumerosIguais.push(`O MBL veio com o mesmo número do HBL (${extracted.hbl}) — preenchi só o HBL. O MBL do armador costuma vir como "MBL#" no rascunho do HBL ou como "Master BL" na nota de débito do agente.`);
+      notasNumerosIguais.push('MBL não usado (igual ao HBL)');
+      delete extracted.mbl;
     }
 
     // Quando o documento é um CE Mercante, o navio/armador/etd que ele traz
@@ -1650,14 +1661,14 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       : `✓ ${preenchidos} campos preenchidos`) + sufixoConflitos;
     const listaAlteracoes = alteracoesPeloDocumento.map(a => `${a.label}: ${a.antes} → ${a.depois}`);
     const sufixoDatas = avisosDatasLidas.length ? ` — ⚠ ${avisosDatasLidas.length} data(s) conferida(s), veja abaixo` : '';
-    const sufixoCe = avisoCeIgual ? ' — ⚠ CE Master não preenchido (igual ao CE House), veja abaixo' : '';
-    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}${sufixoDatas}${sufixoCe}` + (listaAlteracoes.length ? ` — alterado: ${listaAlteracoes.join('; ')}` : ''), (conflitos.length || listaAlteracoes.length || avisosDatasLidas.length || avisoCeIgual) ? 'warn' : 'ok');
-    if(status && avisoCeIgual && !abriuModalCambio){
+    const sufixoCe = avisosNumerosIguais.length ? ' — ⚠ ' + notasNumerosIguais.join(' e ').replace(/ não usado/g, ' não preenchido') + ', veja abaixo' : '';
+    if(!abriuModalCambio) showToast(`IA preencheu ${preenchidos} campos automaticamente${sufixoConflitos}${sufixoDatas}${sufixoCe}` + (listaAlteracoes.length ? ` — alterado: ${listaAlteracoes.join('; ')}` : ''), (conflitos.length || listaAlteracoes.length || avisosDatasLidas.length || avisosNumerosIguais.length) ? 'warn' : 'ok');
+    if(status && avisosNumerosIguais.length && !abriuModalCambio){
       const box = document.createElement('div');
-      box.className = 'ia-ce-igual';
+      box.className = 'ia-numeros-iguais';
       box.setAttribute('role', 'alert');
       box.style.cssText = 'margin-top:6px;padding:8px 10px;border:1px solid var(--warn,#d97706);border-radius:6px;background:rgba(217,119,6,.06);font-size:12px;line-height:1.5';
-      box.innerHTML = '<strong>CE Mercante</strong>: ' + esc(avisoCeIgual);
+      box.innerHTML = '<strong>Números repetidos no documento</strong>:<br>' + avisosNumerosIguais.map(a => esc(a)).join('<br>');
       status.appendChild(box);
     }
     if(status && listaAlteracoes.length && !abriuModalCambio){
@@ -1761,7 +1772,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       // origemDoValorAtual() separa os campos lidos por ", ").
       const itensLog = camposUnicos.map(rotulo);
       if(notasDatasLidas.length) itensLog.push('Datas conferidas: ' + notasDatasLidas.join('; ').replace(/, /g, ' '));
-      if(avisoCeIgual) itensLog.push('CE Master não usado (igual ao CE House)');
+      notasNumerosIguais.forEach(n => itensLog.push(n));
       _editando.log = _editando.log || [];
       _editando.log.push({
         campo: LOG_CAMPO_LEITURA_IA,
