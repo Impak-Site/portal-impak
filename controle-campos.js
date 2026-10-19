@@ -928,6 +928,7 @@ function renderVendas(){
         if(a.total != null) armHtml = `<div style="grid-column:1/-1;font-size:11px;color:${a.dias>0?'#92400e':'var(--muted)'};margin:-2px 0 2px 2px;">🏭 Armazenagem RF (${esc(a.tipo)} · R$ ${a.tarifa_dia.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3})}/pneu/dia, carência ${a.carencia_dias}d): ${a.diasTotais} dias no armazém → <strong>${a.dias} dia(s) cobrado(s)</strong> · ${r2(a.unit)}/pneu · <strong>${r2(a.total)}</strong></div>`;
         else if(a.motivo === 'sem_entrada') armHtml = `<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:-2px 0 2px 2px;">🏭 Armazenagem RF: informe a Data de Chegada ou "Entrada no armazém (RF)" na Logística.</div>`;
         else if(a.motivo === 'sem_data') armHtml = `<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:-2px 0 2px 2px;">🏭 Armazenagem RF: informe a Data NF Saída pra calcular.</div>`;
+        else if(a.motivo === 'data_futura') armHtml = `<div style="grid-column:1/-1;font-size:11px;color:#b42318;margin:-2px 0 2px 2px;">⚠️ Armazenagem RF não calculada: a Data NF Saída está no futuro e NF emitida não pode ter data futura — confira se dia e mês não foram trocados.</div>`;
       }
       return `
       <div style="display:grid;grid-template-columns:1fr 90px 110px 130px 32px;gap:6px;align-items:center;margin-bottom:6px;">

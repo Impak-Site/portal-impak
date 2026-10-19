@@ -113,6 +113,26 @@ teste('resumoProcesso não expõe campos financeiros', () => {
     const r2 = await f('pagamentos_previstos').executar({ dias: 30 }, ctxM);
     assert.ok(!r2.pagamentos.some(x => x.processo === 'M4' && x.etapa === 'saldo'), 'saldo de 2099 fora do horizonte');
   });
+  // Teste ao vivo 19/10/2026: "vencidos ou vencendo em 15 dias" voltava 361
+  // linhas (318 sem data) e a IA respondia vazio. Agora: resumo primeiro e as
+  // parcelas sem data só na contagem. Valores fictícios.
+  await testeAsync('pagamentos_previstos: resumo primeiro; parcelas sem data só entram na contagem', async () => {
+    const em = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const extra = [
+      { id: 'm6', referencia: 'M6', fornecedor: 'FORN W', fase: 'EMBARCADO', pi_valor_usd: 1000, pi_pagamento: 'ENTRADA_SALDO', pi_entrada_pct: 50 },
+      { id: 'm7', referencia: 'M7', fornecedor: 'FORN W', fase: 'EMBARCADO', pi_valor_usd: 2000, pi_pagamento: 'ENTRADA_SALDO', pi_entrada_pct: 50, pi_data_entrada: em(-20), pi_data_saldo: em(5) },
+    ];
+    const ctxP = Object.assign({}, ctxM, { processos: async () => procsM.concat(extra).map(p => Object.assign({ _fase: p.fase }, p)) });
+    const r = await f('pagamentos_previstos').executar({ dias: 15 }, ctxP);
+    assert.strictEqual(r.resumo.sem_data, 2); assert.strictEqual(r.resumo.sem_data_usd, 1000);
+    assert.strictEqual(r.resumo.vencidos, 1); assert.strictEqual(r.resumo.vencidos_usd, 1000);
+    assert.strictEqual(r.resumo.vencem_ate, 1); assert.strictEqual(r.resumo.vencem_ate_usd, 1000);
+    assert.ok(!r.pagamentos.some(x => x.processo === 'M6'), 'sem data fica fora da lista');
+    assert.strictEqual(r.pagamentos[0].processo, 'M7'); assert.strictEqual(r.pagamentos[0].vencido, true);
+    assert.ok(/sem data/.test(r.obs || ''), r.obs);
+    const r2 = await f('pagamentos_previstos').executar({ dias: 15, incluir_sem_data: true }, ctxP);
+    assert.ok(r2.pagamentos.some(x => x.processo === 'M6'));
+  });
   await testeAsync('detalhe_processo: pagamentos ao fornecedor vêm como lista', async () => {
     const r = await f('detalhe_processo').executar({ referencia: 'M4' }, ctxM);
     assert.ok(Array.isArray(r.pagamentos_fornecedor) && r.pagamentos_fornecedor.length === 2, JSON.stringify(r.pagamentos_fornecedor));

@@ -3158,6 +3158,22 @@ teste('rateio por venda: armazenagem RF entra como custo próprio da venda (não
   const fontes = sandbox.fontesCustosReais(p);
   iguais(fontes.armazenagem_rf.valor, 942); iguais(fontes.armazenagem_rf.origem, 'Vendas');
 });
+// Auditoria dos FECHADOS (19/10/2026): NF de venda já emitida com data no
+// futuro (dia/mês trocados) contava armazenagem até lá e derrubava o lucro.
+teste('NF de venda com data no futuro não gera armazenagem RF; venda planejada (sem nº) continua calculando', () => {
+  const p = procRF();
+  const vendas = JSON.parse(p.vendas_json);
+  vendas[2].nf_saida_data = '2099-04-08';
+  const p2 = { ...p, vendas_json: JSON.stringify(vendas) };
+  const a = sandbox.calcularArmazenagemVendaRF(p2, vendas[2]);
+  iguais(a.dataFutura, true); iguais(a.total, null); iguais(a.itens[0].motivo, 'data_futura');
+  iguais(sandbox.calcularVendasResumo(p2).linhas[2].custoArmazenagem, 0);
+  iguais(sandbox.calcularArmazenagemVendaRF(p2, { ...vendas[2], nf_saida_numero: '' }).total > 0, true); // simulação sem NF calcula
+  const v3 = JSON.parse(p.vendas_json)[2]; // NF de 04/08/2026
+  iguais(sandbox.calcularArmazenagemVendaRF(p, v3, null, { hoje: '2026-08-01' }).dataFutura, true);
+  iguais(sandbox.vendaComNfNoFuturo(v3, { hoje: '2026-08-03' }), false); // 1 dia de folga (fuso)
+  iguais(sandbox.calcularArmazenagemVendaRF(p, v3, null, { hoje: '2026-10-19' }).total, 522);
+});
 teste('simularVendaArmazenagemRF: venda futura usa saldo do armazém, custo base + armazenagem, preço pelo fator da cotação', () => {
   const p = { ...procRF(), estimativa_json: { custo_total: 66000, cenarios: { com_st: { faturamento_total: 82500 }, sem_st: { faturamento_total: 79200 } } } };
   // já saíram 60 → saldo 0; simula com só 2 vendas lançadas

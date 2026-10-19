@@ -189,6 +189,36 @@
       });
     }
 
+    // NFs da aba Vendas (vendas_json). Caso real (auditoria dos FECHADOS,
+    // 19/10/2026): UD26-069, NF 8635 emitida em 11/08/2026 gravada como
+    // 08/11/2026 — a data no futuro fez a armazenagem RF tirar R$ 15 mil do
+    // lucro. NF com número já foi emitida: não pode estar no futuro nem antes
+    // da NF de entrada. Venda sem número (planejada) pode ter data futura.
+    if (toca('vendas_json', 'nf_entrada_data')) {
+      let vendas = p.vendas_json;
+      if (typeof vendas === 'string') { try { vendas = JSON.parse(vendas || '[]'); } catch (e) { vendas = []; } }
+      const entrada = iso(p.nf_entrada_data);
+      (Array.isArray(vendas) ? vendas : []).forEach((v, i) => {
+        const d = v && iso(v.nf_saida_data);
+        if (!d) return;
+        const nf = String(v.nf_saida_numero || '').trim();
+        const nome = 'Data da NF ' + (nf || 'da venda ' + (i + 1)) + ' (aba Vendas)';
+        if (anoForaDoLimite(Number(d.slice(0, 4)))) {
+          out.push({ nivel: 'erro', tipo: 'ano', campos: ['vendas_json'], msg: `${nome} com ano ${d.slice(0, 4)} — confira se o ano foi digitado completo.` });
+          return;
+        }
+        if (!nf) return;
+        const t = trocarDiaMes(d);
+        const trocadaFecha = t && dias(hoje, t) <= 1 && (!entrada || t >= entrada);
+        const dica = trocadaFecha ? ` Com dia e mês trocados ficaria ${br(t)} — confira.` : '';
+        if (dias(hoje, d) > 1) {
+          out.push({ nivel: 'aviso', tipo: 'futuro', campos: ['vendas_json'], msg: `${nome} (${br(d)}) está no futuro — NF emitida não pode ter data futura.${dica}` });
+        } else if (entrada && d < entrada) {
+          out.push({ nivel: 'aviso', tipo: 'ordem', campos: ['vendas_json', 'nf_entrada_data'], msg: `${nome} (${br(d)}) está antes da ${rot('nf_entrada_data')} (${br(entrada)}).${dica}` });
+        }
+      });
+    }
+
     return out;
   }
 

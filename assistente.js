@@ -296,22 +296,34 @@ const FERRAMENTAS = [
   {
     nome: 'pagamentos_previstos',
     modulos: ['financeiro', 'cambio', 'narcelio'],
-    descricao: 'Pagamentos a fornecedor (parcelas da PI: entrada/saldo/parcelado/único) previstos ou vencidos até N dias à frente, com câmbio fechado ou em aberto — os mesmos do Dashboard Financeiro/Câmbio. Use pra "o que vence esta semana", "quanto precisamos de dólar", "câmbios em aberto".',
-    schema: { type: 'object', properties: { dias: { type: 'integer', description: 'Horizonte em dias a partir de hoje (padrão 30)' }, incluir_pagos: { type: 'boolean' }, fornecedor: { type: 'string' } } },
+    descricao: 'Pagamentos a fornecedor (parcelas da PI: entrada/saldo/parcelado/único) previstos ou vencidos até N dias à frente, com câmbio fechado ou em aberto — os mesmos do Dashboard Financeiro/Câmbio. Use pra "o que vence esta semana", "quanto precisamos de dólar", "câmbios em aberto". Devolve primeiro o resumo (vencidos, que vencem no período e quantos ainda estão sem data, com os totais em US$) e depois a lista — vencidos primeiro. Comece a resposta pelo resumo.',
+    schema: { type: 'object', properties: { dias: { type: 'integer', description: 'Horizonte em dias a partir de hoje (padrão 30)' }, incluir_pagos: { type: 'boolean' }, fornecedor: { type: 'string' },
+      incluir_sem_data: { type: 'boolean', description: 'Listar também as parcelas sem data de vencimento (por padrão só a contagem)' } } },
     async executar(input, ctx) {
       if (!ctx.motor) return { erro: 'motor de cálculo indisponível' };
       const hoje = hojeISO(); const d = new Date(hoje + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + (parseInt(input.dias, 10) || 30)); const ate = d.toISOString().slice(0, 10);
       const procs = (await ctx.processos()).filter(p => !['FINALIZADO', 'CANCELADO'].includes(p._fase));
       // listarPagamentosPI recebe a LISTA de processos (19/10/2026: era chamada 1 a 1 e sempre falhava).
       let pg = []; try { pg = ctx.motor.listarPagamentosPI(procs) || []; } catch (e) { return { erro: 'não consegui listar os pagamentos: ' + e.message }; }
-      let out = pg.map(mapearPagamento).filter(x => (input.incluir_pagos || !x.pago) && (!x.vencimento || x.vencimento <= ate));
-      if (input.fornecedor) { const c = norm(input.fornecedor); out = out.filter(x => norm(x.fornecedor).includes(c)); }
-      out.forEach(x => { x.vencido = !!(x.vencimento && x.vencimento < hoje && !x.pago); });
-      out.sort((a, b) => String(a.vencimento || '9').localeCompare(String(b.vencimento || '9')));
-      const emAberto = out.filter(x => !x.pago);
-      return { hoje, ate, total: out.length, total_usd: r2(out.reduce((s, x) => s + (x.valor_usd || 0), 0)),
-        em_aberto_usd: r2(emAberto.reduce((s, x) => s + (x.valor_usd || 0), 0)), vencidos: out.filter(x => x.vencido).length,
-        sem_data: out.filter(x => !x.vencimento).length, pagamentos: out.slice(0, MAX_LINHAS) };
+      let todos = pg.map(mapearPagamento).filter(x => input.incluir_pagos || !x.pago);
+      if (input.fornecedor) { const c = norm(input.fornecedor); todos = todos.filter(x => norm(x.fornecedor).includes(c)); }
+      // 19/10/2026 (teste ao vivo): "vencidos ou vencendo em 15 dias" voltava 361
+      // linhas — 318 eram parcelas SEM data (processos ainda sem PI/ETA), que
+      // enchiam a lista e a IA respondia vazio. Agora: as sem data só entram na
+      // contagem (a não ser que peça), e o resumo vem antes da lista.
+      const semData = todos.filter(x => !x.vencimento);
+      const comData = todos.filter(x => x.vencimento && x.vencimento <= ate);
+      comData.forEach(x => { x.vencido = !!(x.vencimento < hoje && !x.pago); });
+      const vencidos = comData.filter(x => x.vencido).sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+      const proximos = comData.filter(x => !x.vencido).sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+      const soma = l => r2(l.reduce((s, x) => s + (x.valor_usd || 0), 0));
+      const lista = vencidos.concat(proximos, input.incluir_sem_data ? semData : []);
+      return { hoje, ate,
+        resumo: { vencidos: vencidos.length, vencidos_usd: soma(vencidos), vencem_ate: proximos.length, vencem_ate_usd: soma(proximos),
+          sem_data: semData.length, sem_data_usd: soma(semData), em_aberto_usd: soma(comData.filter(x => !x.pago)) },
+        total: lista.length, mostrando: Math.min(lista.length, MAX_LINHAS),
+        obs: semData.length && !input.incluir_sem_data ? `${semData.length} parcela(s) ainda sem data de vencimento não estão na lista (só no resumo).` : undefined,
+        pagamentos: lista.slice(0, MAX_LINHAS) };
     },
   },
 ];
@@ -416,6 +428,19 @@ async function responder({ sessao, mensagens, ctx }) {
     }
     msgs.push({ role: 'user', content: resultados });
     if (rodada === MAX_RODADAS) texto = texto || 'Precisei de muitas consultas e parei antes de concluir. Tente uma pergunta mais específica.';
+  }
+  // 19/10/2026 (teste ao vivo): depois de uma consulta grande a IA às vezes
+  // devolve a resposta vazia. Uma segunda chamada, pedindo o resumo dos
+  // resultados que ela já tem, resolve — sem consultar nada de novo.
+  const ultima = msgs[msgs.length - 1];
+  if (!texto && usadas.length && ultima && ultima.role === 'user' && Array.isArray(ultima.content)) {
+    ultima.content.push({ type: 'text', text: 'Responda agora à pergunta original usando só os resultados acima, em português: primeiro o resumo (números principais), depois no máximo 15 linhas de detalhe.' });
+    try {
+      // tools continua na chamada: a API exige quando a conversa tem tool_use/tool_result.
+      const data = await chamarAnthropic({ model: MODELO, max_tokens: 2000, system: systemPrompt(sessao, ferramentas), tools, messages: msgs }, apiKey);
+      tokens += ((data.usage || {}).input_tokens || 0) + ((data.usage || {}).output_tokens || 0);
+      texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    } catch (e) { /* fica a mensagem padrão abaixo */ }
   }
   if (ctx.log) ctx.log(`[assistente] ${sessao.usuario}: ${usadas.map(u => u.nome).join(',') || 'sem ferramenta'} | ${tokens} tokens`);
   return { texto: texto || 'Não consegui montar uma resposta.', ferramentas: usadas, tokens };

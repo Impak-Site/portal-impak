@@ -3705,15 +3705,41 @@ function calcularArmazenagemItemRF(p, descricao, quantidade, dataSaidaISO, produ
   return { ...base, diasTotais, dias, unit, total: round2(unit * qtd), motivo: null };
 }
 
+// Hoje (AAAA-MM-DD, relógio local). opts.hoje permite fixar a data nos testes.
+function _hojeISOLocal(opts){
+  if(opts && /^\d{4}-\d{2}-\d{2}$/.test(String(opts.hoje || ''))) return opts.hoje;
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// NF de venda JÁ EMITIDA (tem número) com data depois de hoje: é digitação
+// errada — NF-e não sai com data futura. Caso real (19/10/2026, auditoria dos
+// FECHADOS): UD26-069, NF 8635 emitida em 11/08/2026 gravada como 08/11/2026
+// (dia e mês trocados) — a armazenagem RF contou 90 dias e tirou R$ 15.225,60
+// do lucro. Venda sem número (simulação/planejamento) pode ter data futura.
+function vendaComNfNoFuturo(venda, opts){
+  if(!venda || !String(venda.nf_saida_numero || '').trim()) return false;
+  const d = String(venda.nf_saida_data || '').slice(0, 10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const n = _diasEntreISO(_hojeISOLocal(opts), d);
+  return n != null && n > 1;
+}
+
 // Armazenagem de uma venda da aba Vendas (data = Data NF Saída), item a item.
-function calcularArmazenagemVendaRF(p, venda, produtos){
+// NF já emitida com data no futuro não gera armazenagem (ver vendaComNfNoFuturo):
+// cada item volta com motivo 'data_futura' e a tela pede pra conferir a data.
+function calcularArmazenagemVendaRF(p, venda, produtos, opts){
   const prods = produtos || produtosDoProcessoRF(p);
   const data = venda && venda.nf_saida_data ? venda.nf_saida_data : null;
+  const dataFutura = vendaComNfNoFuturo(venda, opts);
   const itens = ((venda && venda.itens) || []).filter(it => it && it.descricao && (parseFloat(it.quantidade) || 0) > 0)
-    .map(it => calcularArmazenagemItemRF(p, it.descricao, it.quantidade, data, prods));
+    .map(it => {
+      const r = calcularArmazenagemItemRF(p, it.descricao, it.quantidade, data, prods);
+      return dataFutura ? { ...r, diasTotais: null, dias: null, unit: null, total: null, motivo: 'data_futura' } : r;
+    });
   const completo = itens.length > 0 && itens.every(it => it.total != null);
   const total = completo ? round2(itens.reduce((s, it) => s + it.total, 0)) : (itens.some(it => it.total != null) ? round2(itens.filter(it => it.total != null).reduce((s, it) => s + it.total, 0)) : null);
-  return { data, itens, total, completo };
+  return { data, itens, total, completo, dataFutura };
 }
 
 // Armazenagem do processo inteiro: todas as saídas de estoque com data —
