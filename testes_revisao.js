@@ -597,6 +597,21 @@ function telaComIA(respostaIA) {
     await t.ler();
     iguais([t.els.f_eta.value, t.els.f_data_chegada.value], ['2026-08-03', '']);
   });
+  await testeAsync('CE Mercante com o mesmo número em Master e House: fica só o House, o Master não é preenchido e a tela avisa', async () => {
+    const t = telaComIA({ ce_master: '182600000000001', ce_house: '182600000000001' });
+    await t.ler();
+    const campo = id => t.ctx.document.getElementById(id).value; // o campo do Master nem é tocado
+    iguais([campo('f_ce_master'), campo('f_ce_house')], ['', '182600000000001']);
+    ok(t.toasts.some(x => x[0] === 'warn' && /CE Master não preenchido/.test(x[1])), JSON.stringify(t.toasts));
+    ok((t.els['ia-status'].filhos || []).some(f => /mesmo número do CE House/.test(f.innerHTML)), 'caixa de aviso na tela');
+    ok(t.rodar('_editando.log').some(l => /CE Master não usado \(igual ao CE House\)/.test(l.valor_depois)), JSON.stringify(t.rodar('_editando.log')));
+  });
+  await testeAsync('CE Mercante com Master e House diferentes: preenche os dois, sem aviso', async () => {
+    const t = telaComIA({ ce_master: '182600000000002', ce_house: '182600000000003' });
+    await t.ler();
+    iguais([t.els.f_ce_master.value, t.els.f_ce_house.value], ['182600000000002', '182600000000003']);
+    ok(!t.toasts.some(x => /CE Master não preenchido/.test(x[1])), JSON.stringify(t.toasts));
+  });
   await testeAsync('Documento com datas certas: nada muda e não há aviso de datas', async () => {
     const t = telaComIA({ numero_di: '26/0000001-0', data_registro_di: '2026-04-05', data_liberacao: '2026-04-06', data_chegada: '2026-04-03' });
     t.tela('f_data_embarque', '2026-02-20');
