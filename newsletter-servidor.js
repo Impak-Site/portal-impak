@@ -268,7 +268,11 @@ function extrairJson(texto) {
   }
   if (!bruto) return null;
   bruto = bruto.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  try { return JSON.parse(bruto); } catch (e) { return null; }
+  try { return JSON.parse(bruto); } catch (e) { /* tenta sem quebras de linha soltas */ }
+  // Com a busca na web, a resposta vem picada em vários blocos (um por
+  // citação) e pode trazer quebra de linha crua dentro de um texto — o que
+  // invalida o JSON. Troca caracteres de controle por espaço e tenta de novo.
+  try { return JSON.parse(bruto.replace(/[\u0000-\u001F]+/g, ' ')); } catch (e) { return null; }
 }
 
 // ── pedido à IA ───────────────────────────────────────────────────────
@@ -331,7 +335,7 @@ async function chamarAnthropic(body, apiKey, fetchImpl) {
   const RETRY = [429, 500, 502, 503, 529];
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     const controller = new AbortController();
-    const to = setTimeout(() => controller.abort(), 240000);
+    const to = setTimeout(() => controller.abort(), 420000);
     try {
       const resp = await f('https://api.anthropic.com/v1/messages', {
         method: 'POST', signal: controller.signal,
@@ -366,7 +370,7 @@ async function gerarConteudo(tipo, hojeISO, opts) {
   // partes (stop_reason "pause_turn") — continua até 4 vezes.
   for (let rodada = 0; rodada < 5; rodada++) {
     const data = await chamarAnthropic({
-      model: MODELO, max_tokens: 8000, messages: mensagens,
+      model: MODELO, max_tokens: 16000, messages: mensagens,
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 15, user_location: { type: 'approximate', country: 'BR', timezone: 'America/Sao_Paulo' } }],
     }, apiKey, o.fetchImpl);
     ultima = data;
@@ -374,9 +378,11 @@ async function gerarConteudo(tipo, hojeISO, opts) {
     if (data.stop_reason !== 'pause_turn') break;
     mensagens.push({ role: 'assistant', content: data.content });
   }
-  const texto = (ultima && ultima.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  // Os blocos de texto são pedaços contínuos da mesma resposta (a busca
+  // corta o texto a cada citação) — juntar SEM separador.
+  const texto = (ultima && ultima.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
   const conteudo = extrairJson(texto);
-  return { conteudo, buscas, textoBruto: texto };
+  return { conteudo, buscas, textoBruto: texto, stopReason: ultima && ultima.stop_reason };
 }
 
 // Abre cada link das fontes (GET, 10 s). Link que não abre vira nota.
@@ -410,7 +416,8 @@ async function prepararEdicao(tipo, opts) {
     problemas = validarConteudo(r.conteudo);
   }
   if (problemas.length) {
-    const e = new Error('conteúdo inválido: ' + problemas.join('; '));
+    const detalhe = r.stopReason ? ` [fim: ${r.stopReason}; início da resposta: ${String(r.textoBruto || '').replace(/\s+/g, ' ').slice(0, 160)}]` : '';
+    const e = new Error('conteúdo inválido: ' + problemas.join('; ') + detalhe);
     e.problemas = problemas; e.textoBruto = r.textoBruto;
     throw e;
   }
