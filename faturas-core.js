@@ -622,6 +622,16 @@
   // ── A receber gerado das parcelas de câmbio e das vendas (sem duplicar) ──
   // origem: {tipo:'parcela_cambio'|'venda', processo_id, referencia, idx}
   function chaveOrigem(o) { return o && o.tipo && o.processo_id != null && o.idx != null ? `${o.tipo}:${o.processo_id}:${o.idx}` : null; }
+
+  // Filtro "contém" do banco para as colunas jsonb que guardam uma LISTA de
+  // objetos (faturas.itens, faturas.pagamentos). O supabase-js transforma um
+  // array em lista do Postgres ("cs.{[object Object]}"), e o banco responde
+  // "invalid input syntax for type json" — como o erro era ignorado, a busca
+  // voltava sempre vazia (achado em 19/10/2026: o selo da fatura na grade de
+  // Custos Reais, o aviso "taxa já faturada" e o aviso "comprovante já usado"
+  // nunca apareciam). Mandando o JSON como texto o filtro vira
+  // cs.[{...}] e o Postgres usa o operador jsonb @>.
+  function filtroJsonbContem(obj) { return JSON.stringify([obj || {}]); }
   // Candidatos a "fatura a receber" de um processo (o que ainda não tem fatura)
   function receberDoProcesso(p, chavesExistentes) {
     const ja = new Set(chavesExistentes || []);
@@ -653,7 +663,7 @@
     return out;
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso };
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso, filtroJsonbContem };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

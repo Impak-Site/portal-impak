@@ -1916,7 +1916,7 @@ app.get('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
     if (q.empresa_id) query = query.eq('empresa_id', String(q.empresa_id).slice(0, 80));
     if (q.de && /^\d{4}-\d{2}-\d{2}$/.test(q.de)) query = query.gte('vencimento', q.de);
     if (q.ate && /^\d{4}-\d{2}-\d{2}$/.test(q.ate)) query = query.lte('vencimento', q.ate);
-    if (q.processo_id) query = query.contains('itens', [{ processo_id: String(q.processo_id).slice(0, 80) }]);
+    if (q.processo_id) query = query.contains('itens', FaturasCore.filtroJsonbContem({ processo_id: String(q.processo_id).slice(0, 80) }));
     const { data, error } = await query;
     if (error) return res.json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message), faturas: [] });
     let lista = data || [];
@@ -2024,7 +2024,7 @@ app.post('/api/faturas/conferir', auth('financeiro', 'controle'), async (req, re
     // faturas existentes: as que citam esses processos + as do mesmo nº de documento
     const existentes = new Map();
     for (const pid of Object.keys(processos)) {
-      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').contains('itens', [{ processo_id: pid }]).limit(200);
+      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').contains('itens', FaturasCore.filtroJsonbContem({ processo_id: pid })).limit(200);
       (data || []).forEach(x => existentes.set(x.id, x));
     }
     const digitos = String(f.documento || '').replace(/\D/g, '').replace(/^0+/, '');
@@ -2440,7 +2440,7 @@ app.post('/api/faturas/baixa-lote', auth('financeiro'), async (req, res) => {
     const lote_id = require('crypto').randomUUID();
     const identificador = String(b.identificador || '').trim().slice(0, 120) || null;
     if (identificador && !b.confirmar_repetido) {
-      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador }]).limit(1);
+      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', FaturasCore.filtroJsonbContem({ identificador })).limit(1);
       if (rep && rep.length) return res.status(409).json({ ok: false, repetido: true, erro: `Esse comprovante (${identificador}) já foi usado na fatura ${rep[0].numero || ''}.` });
     }
     // valida tudo antes de gravar qualquer coisa
@@ -2579,7 +2579,7 @@ app.post('/api/faturas/:id/baixa', auth('financeiro'), async (req, res) => {
     }
     // comprovante repetido em outra baixa (mesma autenticação/ID da transação)
     if (pag.identificador) {
-      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador: pag.identificador }]).limit(1);
+      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', FaturasCore.filtroJsonbContem({ identificador: pag.identificador })).limit(1);
       if (rep && rep.length && !b.confirmar_repetido && !b.lote_id) return res.status(409).json({ ok: false, repetido: true, erro: `Esse comprovante (${pag.identificador}) já foi usado na fatura ${rep[0].numero || ''}.` });
     }
     if (b.arquivo_base64) {
@@ -2701,7 +2701,7 @@ app.post('/api/faturas/ler-comprovante', auth('financeiro'), rateLimitAnalisar, 
     } catch (e) { /* segue sem vínculo */ }
     // já usado em outra baixa?
     if (dados.identificador) {
-      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', [{ identificador: String(dados.identificador).slice(0, 120) }]).limit(1);
+      const { data: rep } = await sb().from('faturas').select('id, numero').contains('pagamentos', FaturasCore.filtroJsonbContem({ identificador: String(dados.identificador).slice(0, 120) })).limit(1);
       if (rep && rep.length) dados.ja_usado_em = rep[0].numero || rep[0].id;
     }
     let sugestoes = [];
