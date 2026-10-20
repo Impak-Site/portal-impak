@@ -91,9 +91,11 @@ a.ref:hover{text-decoration:underline;}
 .vazio{padding:40px;text-align:center;color:var(--muted);}
 .contador{font-size:12px;color:var(--muted);margin:10px 2px 0;}
 /* Painel lateral do detalhe */
-#painel-bg{position:fixed;inset:0;background:rgba(16,24,40,.35);z-index:1500;display:none;}
+/* top:52px = abaixo da barra global (chat.js, fixa com z-index 10000): sem
+   isso o topo do painel/janela (nome do cliente, status) ficava escondido. */
+#painel-bg{position:fixed;top:52px;left:0;right:0;bottom:0;background:rgba(16,24,40,.35);z-index:1500;display:none;}
 #painel-bg.open{display:block;}
-#painel{position:fixed;top:0;right:0;bottom:0;width:min(580px,100vw);background:var(--card);box-shadow:var(--shadow-lg);z-index:1501;display:none;flex-direction:column;}
+#painel{position:fixed;top:52px;right:0;bottom:0;width:min(580px,100vw);background:var(--card);box-shadow:var(--shadow-lg);z-index:1501;display:none;flex-direction:column;}
 #painel.open{display:flex;}
 .p-h{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;}
 .p-h h2{font-size:17px;margin:0 0 4px;font-weight:800;}
@@ -114,9 +116,9 @@ table.mini-t td.num,table.mini-t th.num{text-align:right;font-variant-numeric:ta
 .hist li{font-size:12px;color:var(--text);margin-bottom:4px;line-height:1.45;}
 details summary{cursor:pointer;font-weight:600;font-size:12px;color:var(--ac2);margin:4px 0;}
 /* Janela (confirmar / texto / escolher processo / conferência) */
-#modal-bg{position:fixed;inset:0;background:rgba(16,24,40,.5);z-index:2000;display:none;align-items:center;justify-content:center;padding:16px;}
+#modal-bg{position:fixed;top:52px;left:0;right:0;bottom:0;background:rgba(16,24,40,.5);z-index:2000;display:none;align-items:center;justify-content:center;padding:16px;}
 #modal-bg.open{display:flex;}
-#modal{background:var(--card);border-radius:var(--r-lg);width:min(640px,100%);max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);}
+#modal{background:var(--card);border-radius:var(--r-lg);width:min(640px,100%);max-height:calc(100vh - 84px);display:flex;flex-direction:column;box-shadow:var(--shadow-lg);}
 #modal.largo{width:min(920px,100%);}
 .m-h{padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:15px;}
 .m-b{padding:14px 18px;overflow-y:auto;font-size:13px;line-height:1.5;color:var(--text);}
@@ -408,6 +410,14 @@ function renderConferencia(){
   const c = S.conferencia && S.conferencia.contagem;
   if (!c) { el.innerHTML = ''; return; }
   if (!c.problemas) { el.innerHTML = `<div class="banner ok"><span class="txt">✓ Vínculo cotação ↔ processo conferido: todas as cotações e processos estão de acordo dos dois lados.</span></div>`; return; }
+  // Só sobrou "estimativa diferente": o vínculo está certo dos dois lados; a
+  // cotação é que foi recalculada depois de gravada no processo (aviso, não erro).
+  const probs = (S.conferencia && S.conferencia.problemas) || [];
+  if (!c.automaticos && probs.length && probs.every(p => p.tipo === 'estimativa_diferente')) {
+    el.innerHTML = `<div class="banner ok"><span class="txt">✓ Vínculo cotação ↔ processo de acordo dos dois lados. <strong>${probs.length}</strong> processo(s) com a estimativa gravada diferente da cotação vinculada (a cotação foi recalculada depois) — para passar os números dela ao processo, abra a cotação e salve de novo no Calculador.</span>
+      <button type="button" class="btn sm" data-acao="ver-conferencia">Ver quais</button></div>`;
+    return;
+  }
   const gerente = S.usuario.role === 'gerente' && S.usuario.controle;
   el.innerHTML = `<div class="banner warn"><span class="txt">⚠ <strong>${c.problemas}</strong> ponto(s) no vínculo cotação ↔ processo fora da regra${c.automaticos ? ` — ${c.automaticos} corrigível(is) automaticamente` : ''}${c.manuais ? `, ${c.manuais} para olhar à mão` : ''}.</span>
     <button type="button" class="btn sm" data-acao="ver-conferencia">Ver lista</button>
@@ -675,7 +685,13 @@ async function restaurar(id){
 function verConferencia(){
   const probs = (S.conferencia && S.conferencia.problemas) || [];
   const corpo = probs.length
-    ? `<p style="margin:0 0 8px;">A regra: uma cotação tem no máximo um processo e um processo uma cotação, e os dois lados apontam um para o outro. "Automático" a correção resolve sozinha; "à mão" precisa de alguém escolher.</p><ul class="hist">${probs.map(p => `<li><span class="badge ${p.automatico ? 'b-warn' : 'b-err'}">${p.automatico ? 'automático' : 'à mão'}</span> ${h(p.texto)}</li>`).join('')}</ul>`
+    ? `<p style="margin:0 0 8px;">A regra: uma cotação tem no máximo um processo e um processo uma cotação, e os dois lados apontam um para o outro. "Automático" a correção resolve sozinha; "à mão" precisa de alguém escolher.</p><ul class="hist">${probs.map(p => {
+        const tag = p.tipo === 'estimativa_diferente' ? '<span class="badge b-warn">conferir</span>'
+          : `<span class="badge ${p.automatico ? 'b-warn' : 'b-err'}">${p.automatico ? 'automático' : 'à mão'}</span>`;
+        const ver = p.cotacao_id && S.cotacoes.some(x => x.id === p.cotacao_id)
+          ? ` <button type="button" class="btn sm" data-acao="ver-cot-conf" data-id="${h(p.cotacao_id)}">Ver cotação</button>` : '';
+        return `<li>${tag} ${h(p.texto)}${ver}</li>`;
+      }).join('')}</ul>`
     : '<p>Nada para conferir.</p>';
   janela({ titulo: 'Conferência do vínculo cotação ↔ processo', corpo, largo: true });
 }
@@ -762,6 +778,7 @@ document.addEventListener('click', ev => {
     case 'excluir': excluir(id); break;
     case 'restaurar': restaurar(id); break;
     case 'ver-conferencia': verConferencia(); break;
+    case 'ver-cot-conf': fecharJanela(null); abrirPainel(id); break;
     case 'corrigir-vinculos': corrigirVinculos(); break;
   }
 });

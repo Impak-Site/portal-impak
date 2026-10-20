@@ -2980,8 +2980,8 @@ async function abrirEscolherCotacaoProcesso(){
     bg.setAttribute('role', 'dialog');
     bg.setAttribute('aria-modal', 'true');
     bg.setAttribute('aria-label', 'Escolher cotação para o processo');
-    bg.style.cssText = 'position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
-    bg.innerHTML = `<div style="background:var(--card,#fff);border-radius:12px;max-width:760px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,.2);">
+    bg.style.cssText = 'position:fixed;top:52px;left:0;right:0;bottom:0;background:rgba(16,24,40,.45);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;'; // top:52px = abaixo da barra global
+    bg.innerHTML = `<div style="background:var(--card,#fff);border-radius:12px;max-width:760px;width:100%;max-height:calc(100vh - 84px);display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,.2);">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
         <div style="font-weight:700;font-size:15px;flex:1;">Escolher cotação já feita</div>
         <button type="button" class="btn btn-outline" style="padding:4px 10px;" onclick="fecharEscolherCotacaoProcesso()" aria-label="Fechar">✕</button>
