@@ -745,6 +745,34 @@ teste('aplicarEstadoFormulario com câmbio salvo trava o câmbio; o botão ↻ P
   const html = fs.readFileSync(ARQUIVO_HTML, 'utf-8');
   verdadeiro(/onclick="buscarCambio\(true\)"/.test(html) && /forcar === true \|\| !_estado\.cambioFixado/.test(html), '↻ PTAX força');
 });
+// Bug real (20/10/2026): o prazo restaurado disparava calcular() no meio da
+// restauração, com os checkboxes "auto" ainda marcados (padrão da tela) — o
+// AFRMM da DUIMP (ou digitado numa cotação salva) virava o valor da fórmula.
+teste('aplicarEstadoFormulario: AFRMM/Agente digitado (auto desmarcado) não vira o valor da fórmula ao abrir', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb); vm.runInContext('showToast = () => {};', sb);
+  ['auto_marinha', 'auto_agente', 'auto_iof'].forEach(id => { sb.document.getElementById(id).checked = true; }); // tela recém-aberta
+  vm.runInContext('var __calculos = 0; (function(){ const orig = calcular; calcular = function(o){ __calculos++; return orig(o); }; })();', sb);
+  vm.runInContext(`aplicarEstadoFormulario({ campos: { cambio_usd: '5.2', fob_usd: '10000', frete_usd: '1500', qtde_containers: '1', tx_marinha: '876.26', tx_agente: '321.00' },
+    checkboxes: { auto_marinha: false, auto_agente: false } })`, sb);
+  const v = id => String(sb.document.getElementById(id).value);
+  verdadeiro(v('tx_marinha') === '876.26', `AFRMM digitado mantido (veio ${v('tx_marinha')})`);
+  verdadeiro(v('tx_agente') === '321.00', `Agente digitado mantido (veio ${v('tx_agente')})`);
+  verdadeiro(sb.document.getElementById('auto_marinha').checked === false && sb.document.getElementById('auto_iof').checked === true, 'checkboxes restaurados');
+  verdadeiro(vm.runInContext('__calculos', sb) === 1, `calcula uma vez só, no fim (foram ${vm.runInContext('__calculos', sb)})`);
+});
+teste('aplicarPrefillControleReal: sem UF do cliente avisa que a UF ficou no padrão do Calculador', () => {
+  const agora = Date.now();
+  const pedido = { ts: agora, referencia: 'TESTE-SIM-2', avisos: [], fontes: [], estado: { campos: { fob_usd: '10000', cambio_usd: '5.2' }, toggles: {}, togglesInner: {}, checkboxes: {}, parcelas: [], comissionados: [] } };
+  const sb = sandboxComLocalStorage({ calculador_prefill_controle: JSON.stringify(pedido) });
+  sb.document.getElementById('uf_destino').value = 'MG';
+  vm.runInContext(`var __extras = null; mostrarFaixaSimulacaoReal = (d, extras) => { __extras = extras; }; aplicarPrefillControleReal('${agora}')`, sb);
+  const extras = vm.runInContext('__extras', sb) || [];
+  verdadeiro(extras.some(t => /UF de destino: ficou MG/.test(t)), JSON.stringify(extras));
+  const pedido2 = { ...pedido, ts: agora + 1, estado: { ...pedido.estado, campos: { ...pedido.estado.campos, uf_destino: 'PR' } } };
+  const sb2 = sandboxComLocalStorage({ calculador_prefill_controle: JSON.stringify(pedido2) });
+  vm.runInContext(`var __extras = null; mostrarFaixaSimulacaoReal = (d, extras) => { __extras = extras; }; aplicarPrefillControleReal('${agora + 1}')`, sb2);
+  verdadeiro(!(vm.runInContext('__extras', sb2) || []).some(t => /UF de destino/.test(t)), 'com a UF do cliente não avisa');
+});
 
 // ── RESUMO ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
