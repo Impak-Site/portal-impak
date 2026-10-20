@@ -776,6 +776,18 @@ function telaComIA(respostaIA) {
     await t.rodar(`importarNFVenda(0, { files: [{ name: 'nf-teste.pdf', type: 'application/pdf' }], value: 'x' })`);
     ok(t.toasts.some(x => /já está nesta venda e completa — nada a alterar/.test(x[1])), JSON.stringify(t.toasts));
   });
+  // UD26-047: depois de importar a planilha e salvar, a aba Fechamento seguia
+  // com o quadro montado na abertura do processo ("sem resultado").
+  await testeAsync('Aba Fechamento: ao entrar, o quadro é remontado com o que está na tela (Vendas/Custos Reais), sem reabrir o processo', async () => {
+    const t = telaComIA({});
+    t.rodar(`_editando = { id: 'p-teste', referencia: 'TESTE-1', _camposIA: {}, log: [], nf_entrada_valor: 1000, vendas_json: '[]', real_json: {} };
+      _vendas = [];`);
+    t.rodar(`trocarAba('fechamento')`);
+    ok(!/1\.500,00/.test(t.els['fechamento-info-wrap'].innerHTML), 'antes da venda não há R$ 1.500,00');
+    t.rodar(`_vendas = [Object.assign(vendaVazia(), { cliente: 'CLIENTE TESTE', nf_saida_numero: '90040', nf_saida_valor: 1500 })];`);
+    t.rodar(`trocarAba('fechamento')`);
+    ok(/NF Sa[ií]da[^]*1\.500,00/.test(t.els['fechamento-info-wrap'].innerHTML), t.els['fechamento-info-wrap'].innerHTML.replace(/<[^>]+>/g, ' ').slice(0, 300));
+  });
   await testeAsync('Notas da planilha de Fechamento: nota sem número completa a única venda (valor/data), sem trocar o que existe', async () => {
     const t = telaComIA({});
     t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [Object.assign(vendaVazia(), { nf_saida_numero: '90010', nf_saida_cfop: '6102' })];`);
