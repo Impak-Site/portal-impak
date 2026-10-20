@@ -60,6 +60,52 @@ const CENARIOS = [
       return p;
     },
   },
+  // Arrastar e soltar nos botões de importar (chat.js, 20/10/2026): o
+  // arquivo solto em cima do botão chega no mesmo lugar que a janela de
+  // escolher arquivo — no input fixo (Calculador) e no input que nasce no
+  // clique ("Ler fatura (IA)" dos Custos Reais). Arquivo de tipo errado não entra.
+  {
+    nome: '/calculador: arrastar a planilha no botão Importar', rota: '/calculador', viewports: ['notebook'],
+    acao: async page => {
+      await page.evaluate(() => {
+        window.__arraste = [];
+        window.importarPlanilhaSelecionada = inp => { window.__arraste.push([...inp.files].map(f => f.name).join(',')); };
+        const bt = [...document.querySelectorAll('button')].find(b => /importar-planilha-input/.test(b.getAttribute('onclick') || ''));
+        if (!bt) { window.__arraste = ['sem botão']; return; }
+        const soltar = nome => {
+          const dt = new DataTransfer(); dt.items.add(new File(['x'], nome));
+          ['dragenter', 'dragover', 'drop'].forEach(t => bt.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt })));
+        };
+        soltar('modelo-teste.xlsm');
+        soltar('documento.pdf'); // tipo que o botão não importa
+      });
+      await page.waitForTimeout(250);
+    },
+    conferir: () => {
+      const p = [];
+      if (JSON.stringify(window.__arraste) !== JSON.stringify(['modelo-teste.xlsm'])) p.push('arrastar no "Importar planilha" não entregou só a planilha: ' + JSON.stringify(window.__arraste));
+      if (document.documentElement.classList.contains('impak-arrastando')) p.push('o destaque de arrastar ficou na tela depois de soltar');
+      return p;
+    },
+  },
+  {
+    nome: '/controle: arrastar o documento no "Ler fatura (IA)" dos Custos Reais', rota: '/controle', viewports: ['notebook'],
+    acao: async page => {
+      await page.evaluate(() => abrirProcesso('teste-3'));
+      await page.waitForTimeout(900);
+      await page.evaluate(() => {
+        window.__arraste = [];
+        window.crLerDocumentosCustos = inp => { window.__arraste.push([...inp.files].map(f => f.name).join(',')); };
+        const bt = document.querySelector('[data-arraste][onclick*="crEscolherDocumentosCustos"]');
+        if (!bt) { window.__arraste = ['sem botão']; return; }
+        const dt = new DataTransfer(); dt.items.add(new File(['x'], 'fatura-agente.pdf', { type: 'application/pdf' }));
+        ['dragenter', 'dragover', 'drop'].forEach(t => bt.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt })));
+      });
+      await page.waitForTimeout(250);
+    },
+    conferir: () => JSON.stringify(window.__arraste) === JSON.stringify(['fatura-agente.pdf']) ? []
+      : ['arrastar no "Ler fatura (IA)" não entregou o arquivo: ' + JSON.stringify(window.__arraste)],
+  },
   {
     nome: '/controle (modo escuro)', rota: '/controle', viewports: ['notebook'],
     antes: () => { try { localStorage.setItem('impak_tema', 'escuro'); } catch (e) {} },
