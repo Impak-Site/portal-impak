@@ -448,7 +448,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
           Compara o que foi cotado no Calculador (na hora de aprovar a cotação) com o resultado real do processo, calculado a partir da NF Entrada e NF Saída lançadas na aba Documentos.
         </div>
-        ${renderFechamentoInfo(p)}
+        <div id="fechamento-info-wrap">${renderFechamentoInfo(p)}</div>
         ${typeof renderComissoesCard==='function' ? renderComissoesCard(p) : ''}
         <!-- pointer-events:auto explicito nos 3 elementos abaixo -- quando o
         processo esta fechado, #modal-body-lockwrap trava TODO o conteudo
@@ -2672,6 +2672,27 @@ function trocarAba(id){
   if(tab)  tab.classList.add('active');
   if(pane) pane.classList.add('active');
   if(id==='agenda' && typeof renderAgendaProcesso==='function' && _editando && _editando.id) renderAgendaProcesso(_editando);
+  if(id==='fechamento') atualizarFechamentoAoVivo();
+}
+
+// A aba Fechamento era montada só ao abrir o processo: depois de importar a
+// planilha (ou ler a NF) e salvar, ela continuava dizendo "sem resultado"
+// até fechar e reabrir o processo (UD26-047, 20/10/2026). Ao entrar na aba,
+// remonta o quadro com o que está na tela agora — Custos Reais e Vendas,
+// mesmo antes de salvar. Só o quadro de resultado (não tem campos editáveis);
+// o card de comissões fica como está.
+function atualizarFechamentoAoVivo(){
+  const wrap = document.getElementById('fechamento-info-wrap');
+  if(!wrap || !_editando || typeof renderFechamentoInfo !== 'function') return;
+  let snap = _editando;
+  try {
+    const realJson = typeof coletarCustosReaisDoForm === 'function' ? coletarCustosReaisDoForm() : _editando.real_json;
+    const cambio = typeof coletarCambioCustosReaisDoForm === 'function' ? coletarCambioCustosReaisDoForm() : _editando.real_cambio;
+    snap = { ..._editando, real_json: realJson, real_cambio: cambio };
+    if(typeof _vendas !== 'undefined' && Array.isArray(_vendas)) snap.vendas_json = JSON.stringify(_vendas);
+  } catch(e) { snap = _editando; }
+  try { wrap.innerHTML = renderFechamentoInfo(snap); }
+  catch(e) { console.warn('Fechamento: não deu para atualizar o quadro', e); }
 }
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
