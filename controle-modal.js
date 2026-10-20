@@ -2810,7 +2810,12 @@ function renderPagamentoInfo(p){
     rows=`<div class="pagamento-row"><span>Pagamento à vista</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
     <div class="pagamento-row"><span>Estimativa BRL${cambioEstimadoAviso()}</span><span>R$ ${brl.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
   } else if(p.pi_pagamento==='PRAZO'){
-    rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
+    // 100% a Prazo fecha o câmbio pelo valor da CI quando ela existe
+    // (valorPagamentoUnicoUsd, controle-core.js — revisão 20/10/2026).
+    const valPrazo = typeof valorPagamentoUnicoUsd === 'function' ? valorPagamentoUnicoUsd(p) : val;
+    const pelaCi = Math.abs(valPrazo - val) > 0.004;
+    rows=`<div class="pagamento-row"><span>Pagamento a prazo (${p.pi_prazo_dias||0}d)${pelaCi ? ' · valor da CI' : ''}</span><span>USD ${valPrazo.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`
+      + (pelaCi ? `<div class="pagamento-row" style="color:var(--muted);"><span>PI</span><span>USD ${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>` : '');
   } else if(p.pi_pagamento==='ENTRADA_SALDO'){
     const pct = parseFloat(p.pi_entrada_pct||30)/100;
     const ent = val*pct; const sld = val*(1-pct);

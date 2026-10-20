@@ -1734,6 +1734,21 @@ function verificarCadastroCambio(processos){
   return out;
 }
 
+// Valor em US$ do pagamento único (À Vista / 100% a Prazo). O 100% a Prazo é
+// pago depois do embarque, contra a CI: o câmbio fecha no valor da CI, que
+// pode ser menor que a PI (nota de crédito/garantia descontada, quantidade
+// embarcada menor). À Vista é antecipado, pago pela PI. Sem CI lançada, fica
+// a PI. Revisão 20/10/2026 — UD26-115: PI US$ 39.893,28, CI e contrato de
+// câmbio US$ 39.824,34; o Financeiro mostrava a PI.
+function valorPagamentoUnicoUsd(p){
+  const pi = parseFloat(p && p.pi_valor_usd) || 0;
+  if(p && p.pi_pagamento === 'PRAZO'){
+    const ci = parseFloat(p.ci_valor_usd) || 0;
+    if(ci > 0) return ci;
+  }
+  return pi;
+}
+
 function listarPagamentosPI(processos){
   const pagamentos = [];
   (processos||[]).forEach(p=>{
@@ -1803,7 +1818,7 @@ function listarPagamentosPI(processos){
         && (!prazoDias || !vencPrazo || vencChegada < vencPrazo);
       const vencimento = segueChegada ? vencChegada : (p.pi_pagamento==='PRAZO' ? (prazoDias ? vencPrazo : p.pi_data_saldo) : p.pi_data_entrada);
       pagamentos.push({...base, parcela:'unico', _tipo:'unico',
-        valorUsd: valorTotal, vencimento: vencimento||null, vencimentoPelaChegada: !!segueChegada,
+        valorUsd: valorPagamentoUnicoUsd(p), vencimento: vencimento||null, vencimentoPelaChegada: !!segueChegada,
         cambioPrevisto: parseFloat(p.pi_cambio)||null, cambioFechado: parseFloat(p.pi_cambio_fechado)||null,
         banco: bancoProc, custoOperacao: custoProc,
         pago: !!p.pi_pago });
@@ -1968,7 +1983,7 @@ function listarPendenciasDI(processos, dataDe, dataAte){
         banco: p.pi_cambio_banco || '', taxa: parseFloat(p.pi_cambio_fechado) || 0, moeda: 'USD',
         cliente: p.cliente || '', dataCambio,
         vencimentoDi: p.pi_venc_di || _mais180dias(dataCambio), vencimentoCalculado: !p.pi_venc_di,
-        valorUsd: parseFloat(p.pi_valor_usd) || 0,
+        valorUsd: valorPagamentoUnicoUsd(p),
         duimp: p.pi_duimp_numero || '', protocolo: p.pi_duimp_protocolo || '',
       });
       return;
@@ -2040,7 +2055,7 @@ function listarAdiantamentosCliente(processos){
           brlPago: usd*taxa, recebido: rec, dataRecebimento: pc.data_recebimento || '' });
       });
     } else if(p.pi_pagamento==='VISTA' || p.pi_pagamento==='PRAZO'){
-      const usd = num(p.pi_valor_usd), taxa = num(p.pi_cambio_fechado), rec = num(p.pi_valor_recebido_cliente);
+      const usd = valorPagamentoUnicoUsd(p), taxa = num(p.pi_cambio_fechado), rec = num(p.pi_valor_recebido_cliente);
       if(taxa || rec){
         cambios.push({ parcela: p.pi_pagamento==='VISTA' ? 'À Vista' : 'A Prazo', parcelaIndex:null, valorUsd: usd, cambioFechado: taxa||null,
           dataFechamento: (p.pi_pagamento==='PRAZO' ? p.pi_data_saldo : p.pi_data_entrada) || '', banco: p.pi_cambio_banco || '',

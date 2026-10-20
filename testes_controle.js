@@ -501,6 +501,36 @@ teste('PRAZO vira 1 parcela "unico" com vencimento em Data Saldo (não Data Entr
   iguais(pags[0].vencimento, '2026-09-15');
   iguais(pags[0].pago, true);
 });
+// Revisão 20/10/2026: o 100% a Prazo fecha o câmbio pelo valor da CI (nota de
+// crédito descontada, embarque menor). À Vista é antecipado e segue a PI.
+teste('PRAZO com CI: pagamento único usa o valor da CI, não o da PI', () => {
+  const p = { referencia:'TESTE-CI-1', pi_valor_usd:10000, ci_valor_usd:9950, pi_pagamento:'PRAZO', pi_data_saldo:'2026-09-15', pi_cambio_fechado:5.0, pi_pago:true, fase:'DESEMBARACADO' };
+  iguais(sandbox.valorPagamentoUnicoUsd(p), 9950);
+  const pags = sandbox.listarPagamentosPI([p]);
+  iguais(pags.length, 1);
+  iguais(pags[0].valorUsd, 9950, 'câmbio do 100% a prazo fecha pela CI');
+  iguais(sandbox.custoMercadoriaDasParcelas(p).valorBrl, 49750, 'custo da mercadoria = CI × câmbio fechado');
+});
+teste('VISTA com CI diferente continua pela PI (pagamento antecipado)', () => {
+  const p = { referencia:'TESTE-CI-2', pi_valor_usd:10000, ci_valor_usd:9950, pi_pagamento:'VISTA', pi_data_entrada:'2026-08-01', pi_pago:false, fase:'PI' };
+  iguais(sandbox.valorPagamentoUnicoUsd(p), 10000);
+  iguais(sandbox.listarPagamentosPI([p])[0].valorUsd, 10000);
+});
+teste('PRAZO sem CI lançada fica na PI', () => {
+  const p = { referencia:'TESTE-CI-3', pi_valor_usd:10000, ci_valor_usd:null, pi_pagamento:'PRAZO', pi_data_saldo:'2026-09-15', pi_pago:false, fase:'PI' };
+  iguais(sandbox.valorPagamentoUnicoUsd(p), 10000);
+  iguais(sandbox.listarPagamentosPI([p])[0].valorUsd, 10000);
+});
+teste('PRAZO com CI: Pendências de DI e Adiantamento do Cliente usam o valor da CI', () => {
+  const p = { referencia:'TESTE-CI-4', pi_valor_usd:10000, ci_valor_usd:9950, pi_pagamento:'PRAZO', pi_data_saldo:'2026-09-15', pi_cambio_fechado:5.0, pi_pago:true, fase:'DESEMBARACADO' };
+  const di = vm.runInContext(`listarPendenciasDI([${JSON.stringify(p)}], '2026-09-01', '2026-09-30')`, sandbox);
+  iguais(di.length, 1);
+  iguais(di[0].valorUsd, 9950);
+  const ad = sandbox.listarAdiantamentosCliente([p]);
+  iguais(ad.length, 1);
+  iguais(ad[0].cambios[0].valorUsd, 9950);
+  iguais(Math.round(ad[0].cambios[0].brlPago * 100) / 100, 49750);
+});
 teste('ENTRADA_SALDO vira 2 parcelas (entrada + saldo), valor rateado pelo %', () => {
   const procs = [{ referencia:'UD26-102', pi_valor_usd:20000, pi_pagamento:'ENTRADA_SALDO', pi_entrada_pct:30,
     pi_data_entrada:'2026-08-01', pi_data_saldo:'2026-09-01', pi_cambio:5.0,
