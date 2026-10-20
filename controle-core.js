@@ -4286,7 +4286,14 @@ function calcularVendasResumo(p){
   // Base do rateio proporcional = Custo Real Total SEM os itens marcados
   // excluirDoRateio (armazenagem RF, que cada venda já carrega por fora).
   const excluidoRateio = custosReais ? (custosReais.detalhe || []).filter(d => { const it = custosReaisItensFlat().find(x => x.id === d.id); return it && it.excluirDoRateio; }).reduce((s, d) => s + (d.valorBrl || 0), 0) : 0;
-  const custoRealTotal = custosReais ? (custosReais.total - excluidoRateio) : 0;
+  // Sem nenhum item em Custos Reais, o custo do processo é a NF de Entrada —
+  // a mesma regra do processo sem vendas (calcularFechamento: NF Saída − NF
+  // Entrada). Antes (até 20/10/2026) ficava 0 e cada venda aparecia com 100%
+  // de lucro. custoBase diz de onde veio o custo, para a tela avisar.
+  const nfEntradaBase = parseFloat(p && p.nf_entrada_valor);
+  const usaNfEntrada = !custosReais && nfEntradaBase > 0;
+  const custoRealTotal = custosReais ? (custosReais.total - excluidoRateio) : (usaNfEntrada ? nfEntradaBase : 0);
+  const custoBase = custosReais ? 'custos_reais' : (usaNfEntrada ? 'nf_entrada' : null);
   let linhas = vendas.map(venda => ({ venda, ...calcularLucroVenda(p, venda, custoRealTotal) }));
   const totalQtd = totalQuantidadeProdutos(p);
   const qtdAlocada = linhas.reduce((s,l)=> s + l.qtdVenda, 0);
@@ -4312,7 +4319,7 @@ function calcularVendasResumo(p){
   const todasComNf = linhas.length>0 && linhas.every(l=>l.temNf);
   const lucroTotal = todasComNf ? linhas.reduce((s,l)=> s + l.lucro, 0) : null;
   return {
-    linhas, custosReais, custoRealTotal, totalQtd, qtdAlocada,
+    linhas, custosReais, custoRealTotal, custoBase, totalQtd, qtdAlocada,
     saldoNaoAlocado: totalQtd - qtdAlocada,
     nfSaidaTotal, todasComNf, lucroTotal,
     itensFaltantes: itensFaltantesVenda(p),
@@ -4867,6 +4874,7 @@ function renderFechamentoInfo(p){
   const linhaVendas = f.vendasResumo
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
         <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🧾 Vendido a ${f.vendasResumo.linhas.length} cliente${f.vendasResumo.linhas.length===1?'':'s'} (ver aba Vendas)</div>
+        ${f.vendasResumo.custoBase === 'nf_entrada' ? `<div style="font-size:11px;color:var(--warn,#b45309);margin-bottom:4px;">Custo pela NF de Entrada (${r2(f.vendasResumo.custoRealTotal)}): ainda não há Custos Reais lançados — o lucro fica mais preciso quando forem lançados.</div>` : ''}
         ${f.vendasResumo.linhas.map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;"><span style="color:var(--muted);">${esc(l.venda.cliente||'(sem cliente)')} <span style="color:var(--dim);">(${(l.fracao*100).toFixed(1)}% do processo)</span></span><strong style="color:${l.lucro==null?'var(--muted)':l.lucro>=0?'var(--ok)':'var(--err)'}">${l.temNf?`${r2(l.lucro)} <span style="color:var(--muted);font-weight:400;">(${pct2(l.pctLucro)})</span>`:'aguardando NF'}</strong></div>`).join('')}
         ${linhaPrazoJurosRows}
       </div>`
