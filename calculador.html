@@ -1108,6 +1108,7 @@ let _estado = {
   taxasTotaisOverrideBrl: null, // TOTAL TAXAS (BRL) lido direto da planilha no import - substitui o total_taxas calculado por fórmula quando presente (rotulos de taxas individuais variam por fornecedor/agente, mas o total apurado não)
   iiOverrideBrl: null, // I.I. (BRL) lido direto da aba MODELO no import - substitui o II calculado (aliquota da TABELA_NCM x base) quando presente; a TABELA_NCM só cobre 4 categorias de pneu (derivadas do texto livre do campo Produto) e a base de cálculo real pode divergir do CIF (ex: UD26-016 usa um valor de DUIMP digitado à mão, não o CIF calculado)
   seguroCompraOverrideBrl: null, // Seguro Compra (BRL) lido direto da aba MODELO no import quando é um valor digitado à mão (não uma fórmula) - substitui a estimativa padrão (0,04% sobre FOB+Frete) quando o segurado pagou um prêmio real diferente
+  restaurandoFormulario: false, // true enquanto aplicarEstadoFormulario() restaura uma cotação/rascunho/processo: o recálculo automático espera terminar
 };
 
 // ── WIZARD (task #60) ─────────────────────────────────────
@@ -1352,6 +1353,13 @@ function aplicarPrefillControleReal(t){
   _estado.processoOrigemId = null; // simulação: salvar NÃO vincula ao processo
   if(estado.campos && estado.campos.cambio_usd) _estado.cambioFixado = true; // a PTAX do dia não troca o câmbio real
   const avisosExtras = [];
+  // Sem UF do cliente (importação própria, ou cliente sem UF no cadastro): a
+  // tela fica no padrão do formulário — avisa para ninguém precificar o
+  // estado errado sem perceber.
+  if(!(estado.campos && estado.campos.uf_destino)){
+    const ufSel = document.getElementById('uf_destino');
+    if(ufSel && ufSel.value) avisosExtras.push(`UF de destino: ficou ${ufSel.value}, o padrão do Calculador — troque pela UF do cliente da venda.`);
+  }
   if(d.ncm){
     const r = produtoCalculadorPorNcm(d.ncm);
     const sel = document.getElementById('produto');
@@ -1943,6 +1951,7 @@ function onToggleAutoTaxa(campo){
 // lógica) — só dispara se já houver um cálculo anterior ou câmbio preenchido,
 // pra não interromper quem ainda está preenchendo o formulário pela 1ª vez.
 function onAutoTaxaDepChange(){
+  if(_estado.restaurandoFormulario) return; // aplicarEstadoFormulario() calcula uma vez no fim
   if(_estado.ultimoResultado || document.getElementById('cambio_usd').value) calcular({auto:true});
 }
 
@@ -4302,8 +4311,22 @@ function coletarEstadoFormulario(){
   return { campos, cenario: _estado.cenario, toggles: {..._estado.toggles}, togglesInner: {..._estado.togglesInner}, mix: _estado.mix, splitST: {..._estado.splitST}, vendasPrevistasRF: _estado.vendasPrevistasRF, checkboxes, parcelas: [..._estado.parcelas], processo_origem_id: _estado.processoOrigemId, taxas_totais_override_brl: _estado.taxasTotaisOverrideBrl, ii_override_brl: _estado.iiOverrideBrl, seguro_compra_override_brl: _estado.seguroCompraOverrideBrl, comissionados: Array.isArray(_estado.comissionados) ? [..._estado.comissionados] : [] };
 }
 
+// Restaurar o formulário não recalcula no meio do caminho (20/10/2026): o
+// prazo restaurado (restaurarPrazoSelect → onPrazoSelectChange) chamava
+// calcular() antes de os checkboxes "auto", o mix, as parcelas e o II/seguro
+// da planilha serem aplicados — o AFRMM/Agente/IOF digitado à mão (auto
+// desmarcado, ex.: o AFRMM da DUIMP) virava o valor da fórmula e o resultado
+// saía com o estado da tela anterior. Agora aplica tudo e calcula uma vez no fim.
 function aplicarEstadoFormulario(estado){
   if(!estado) return;
+  _estado.restaurandoFormulario = true;
+  try{ aplicarCamposDoEstado(estado); }
+  finally{ _estado.restaurandoFormulario = false; }
+  // O formulário já está todo aplicado: um erro no cálculo não desfaz a abertura
+  // (o CALCULAR mostra o problema quando a pessoa clicar).
+  try{ onAutoTaxaDepChange(); }catch(e){ console.warn('cálculo ao abrir o formulário:', e); }
+}
+function aplicarCamposDoEstado(estado){
   // Cotações salvas antes do campo ICMS de Saída existir usavam 1,4% fixo.
   { const el = document.getElementById('icms_saida_pct'); if (el){ el.value = '1.4'; el.dataset.manual = ''; el.dataset.auto = ''; } }
   { const el = document.getElementById('ufs_extra'); if (el) el.value = ''; }
@@ -4317,6 +4340,19 @@ function aplicarEstadoFormulario(estado){
   Object.entries(estado.campos||{}).forEach(([id,val]) => {
     const el = document.getElementById(id);
     if(el) el.value = val;
+  });
+  // Restaura o estado dos checkboxes "auto" (Marinha/Agente/IOF) logo depois
+  // dos valores: nenhum cálculo pode rodar com o "auto" ainda no padrão e
+  // trocar o valor digitado pela fórmula. Cotações salvas antes dessa
+  // feature não têm esse campo — mantém o padrão (auto ligado).
+  ['auto_marinha','auto_agente','auto_iof'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const checked = estado.checkboxes ? (estado.checkboxes[id] !== false) : true;
+    el.checked = checked;
+    const campo = id.replace('auto_','');
+    const input = document.getElementById(`tx_${campo}`);
+    if(input){ input.readOnly = checked; input.style.background = checked ? '#f5f5f5' : '#fff'; }
   });
   // Câmbio que veio de uma cotação/rascunho/processo: a PTAX do dia (busca
   // assíncrona ao abrir a tela, buscarCambio) não pode chegar depois e trocar.
@@ -4343,17 +4379,6 @@ function aplicarEstadoFormulario(estado){
   atualizarFreteTerrestreUI();
   if(typeof aplicarMetaLucroCliente === 'function') { const m = metaLucroAtualCalc(); const info = document.getElementById('meta-lucro-info'); if(info && m){ info.style.display=''; info.textContent = `Meta de lucro ${m.especifica ? 'do cliente' : 'padrão'} (${m.nome}): ${String(m.pct).replace('.', ',')}%.`; } }
   { const info = document.getElementById('regra-gf-info'); if(info) info.style.display = ehClienteGFPneus() ? '' : 'none'; }
-  // Restaura o estado dos checkboxes "auto" (Marinha/Agente). Cotações salvas
-  // antes dessa feature não têm esse campo — mantém o padrão (auto ligado).
-  ['auto_marinha','auto_agente','auto_iof'].forEach(id => {
-    const el = document.getElementById(id);
-    if(!el) return;
-    const checked = estado.checkboxes ? (estado.checkboxes[id] !== false) : true;
-    el.checked = checked;
-    const campo = id.replace('auto_','');
-    const input = document.getElementById(`tx_${campo}`);
-    if(input){ input.readOnly = checked; input.style.background = checked ? '#f5f5f5' : '#fff'; }
-  });
   const fobUsdRefEstado = parseFloat(estado.campos && estado.campos.fob_usd) || null;
   _estado.parcelas = Array.isArray(estado.parcelas) ? estado.parcelas.map(p => normalizarParcelaCalc(p, fobUsdRefEstado)) : [];
   if(typeof renderParcelasCalc === 'function') renderParcelasCalc();
