@@ -3505,6 +3505,98 @@ teste('comissões: sem NF de saída fica pendente (sem valor)', () => {
   iguais(r.linhas[0].pendente, true); iguais(r.total, 0);
 });
 
+// ── Simular venda no Calculador com os dados reais (Ayslan, 20/10/2026) ──
+// Valores fictícios. montarPrefillCalculadorReal monta o formulário do
+// Calculador (formato de aplicarEstadoFormulario) a partir do processo.
+console.log('\n🧮 montarPrefillCalculadorReal() — Simular venda no Calculador (dados reais)');
+const _procSimulacao = () => ({
+  id: 'sim-1', referencia: 'TESTE-SIM-1', finalidade: 'IMPORTACAO_DIRETA', cliente: 'IMPAK COMERCIAL TESTE',
+  pi_valor_usd: 10100, ci_valor_usd: 10000, pi_cambio: 5.1, real_cambio: 5.2,
+  pi_pagamento: 'PARCELADO', pi_parcelas_json: JSON.stringify([
+    { label: 'Inicial', valor_usd: 3000, cambio_fechado: '5.0500' },
+    { label: 'Final', valor_usd: 7000, cambio_fechado: '5.150099999' } ]),
+  valor_frete: 1500, moeda_frete: 'USD',
+  containers_json: JSON.stringify([{ numero: 'TSTU0000001' }, { numero: 'TSTU0000002' }]),
+  porto_origem: 'QINGDAO', porto_destino: 'IOA', brand: 'MARCA TESTE',
+  di_ncms: '4011.10.00: 400 un, 3200.00 kg',
+  produtos_json: JSON.stringify([
+    { descricao: '185/65R15 TESTE 88H', quantidade: 200, fob_usd: 22.5 },
+    { descricao: '205/55R16 TESTE 91V', quantidade: 200, fob_usd: 27.5 } ]),
+  real_json: { siscomex: { valor: 154.23, moeda: 'BRL' }, capatazia: { valor: 2400, moeda: 'BRL' }, isps: { valor: 60, moeda: 'USD' },
+    marinha: { valor: 700, moeda: 'BRL' }, ii: { valor: 8000, moeda: 'BRL' }, seguro: { valor: 50, moeda: 'BRL' } },
+});
+teste('importação própria parcelada: FOB da CI, câmbio fechado por parcela, frete, containers, NCM e origem', () => {
+  const r = sandbox.montarPrefillCalculadorReal(_procSimulacao());
+  const c = r.estado.campos;
+  iguais(c.tipo_importacao, 'PROPRIA');
+  iguais(c.cliente, undefined, 'importação própria não leva a IMPAK como cliente');
+  verdadeiro(r.avisos.some(a => /escolha o cliente da venda/.test(a)), JSON.stringify(r.avisos));
+  iguais(c.fob_usd, '10000'); iguais(c.cambio_usd, '5.2'); iguais(c.frete_usd, '1500'); iguais(c.qtde_containers, '2');
+  iguais(JSON.stringify(r.estado.parcelas.map(x => [x.label, x.valor_usd, x.cambio_fechado])), JSON.stringify([['Inicial', '3000', '5.05'], ['Final', '7000', '5.1501']]));
+  iguais(r.ncm, '40111000'); iguais(c.origem, 'CHINA'); iguais(c.tx_porto, 'IOA');
+  iguais(r.referencia, 'TESTE-SIM-1'); iguais(r.processo_id, 'sim-1');
+  verdadeiro(r.fontes.some(f => /Câmbio fechado do FOB/.test(f)), JSON.stringify(r.fontes));
+});
+teste('taxas pagas viram o valor do Calculador: por container quando ele cobra por container, US$ digitado fica em US$', () => {
+  const r = sandbox.montarPrefillCalculadorReal(_procSimulacao());
+  const c = r.estado.campos;
+  iguais(c.tx_siscomex, '154.23', 'Siscomex é por processo');
+  iguais(c.tx_capatazia, '1200', 'Capatazia: R$ 2.400 ÷ 2 containers');
+  iguais(c.tx_isps, '30', 'ISPS: US$ 60 ÷ 2 containers, sem converter');
+  iguais(c.tx_marinha, '700'); iguais(r.estado.checkboxes.auto_marinha, false, 'AFRMM lançado desliga o auto');
+  iguais(r.estado.checkboxes.auto_agente, undefined, 'agente sem valor real continua no auto');
+  iguais(c.ii_planilha_brl, 8000); iguais(c.seguro_compra_planilha_brl, 50);
+  verdadeiro(r.avisos.some(a => /Sem valor em Custos Reais/.test(a) && /Despachante/.test(a)), JSON.stringify(r.avisos));
+});
+teste('produtos com US$/un viram o Mix (preço por medida) e o FOB total é o da CI', () => {
+  const r = sandbox.montarPrefillCalculadorReal(_procSimulacao());
+  const mix = r.estado.mix;
+  iguais(JSON.stringify(mix.itens.map(i => [i.medida, i.qtd, i.preco])), JSON.stringify([['185/65R15 TESTE 88H', 200, 22.5], ['205/55R16 TESTE 91V', 200, 27.5]]));
+  iguais(mix.fob_total, 10000); iguais(mix.forn, 'MARCA TESTE');
+  verdadeiro(!r.avisos.some(a => /preço por medida/.test(a)), JSON.stringify(r.avisos));
+});
+teste('encomenda: cliente e UF do cadastro; sem câmbio fechado nem US$/un, avisa e usa a média por pneu', () => {
+  const p = { id: 'sim-2', referencia: 'TESTE-SIM-2', finalidade: 'ENCOMENDA', cliente: 'CLIENTE TESTE LTDA', pi_valor_usd: 8000, pi_cambio: 5.3,
+    pi_pagamento: 'PRAZO', valor_frete: 1200, qtd_containers_prevista: 1, porto_origem: 'VUNG TAU',
+    produtos_json: JSON.stringify([{ descricao: '295/80R22.5 TESTE', quantidade: 100 }, { descricao: '11R22.5 TESTE', quantidade: 100 }]) };
+  const r = sandbox.montarPrefillCalculadorReal(p, { ufCliente: 'pr' });
+  const c = r.estado.campos;
+  iguais(c.cliente, 'CLIENTE TESTE LTDA'); iguais(c.uf_destino, 'PR'); iguais(c.tipo_importacao, 'ENCOMENDA');
+  iguais(c.fob_usd, '8000'); iguais(c.cambio_usd, '5.3'); iguais(r.estado.parcelas.length, 0);
+  iguais(c.origem, 'VIETNAM'); iguais(c.produto, 'TBR', 'sem DI: o tipo vem da descrição'); iguais(r.ncm, '');
+  iguais(JSON.stringify(r.estado.mix.itens.map(i => i.preco)), JSON.stringify([40, 40]));
+  verdadeiro(r.avisos.some(a => /não foi fechado/.test(a)), 'aviso do câmbio');
+  verdadeiro(r.avisos.some(a => /preço por medida \(US\$\/un\)/.test(a)), 'aviso do US$/un');
+  verdadeiro(r.avisos.some(a => /Nenhuma taxa lançada/.test(a)), 'aviso das taxas');
+  verdadeiro(r.avisos.some(a => /NCMs da DI/.test(a)), 'aviso do NCM');
+});
+teste('sem câmbio por pagamento mas com o Custo da mercadoria lançado: câmbio efetivo reproduz o custo', () => {
+  const p = { ..._procSimulacao(), pi_pagamento: '', pi_parcelas_json: '', real_json: { fob: { valor: 52000, moeda: 'BRL' } } };
+  const r = sandbox.montarPrefillCalculadorReal(p);
+  iguais(JSON.stringify(r.estado.parcelas.map(x => [x.valor_usd, x.cambio_fechado])), JSON.stringify([['', '5.2']]));
+  verdadeiro(r.fontes.some(f => /câmbio efetivo/.test(f)), JSON.stringify(r.fontes));
+});
+teste('Import Logistics e CRS vão para o R$ fixo por container do Calculador', () => {
+  const p = { ..._procSimulacao(), real_cambio: 5, real_json: { import_logistics: { valor: 64, moeda: 'USD' }, trs: { valor: 360, moeda: 'BRL' } } };
+  const c = sandbox.montarPrefillCalculadorReal(p).estado.campos;
+  iguais(c.tx_import_logistics_brl, '163.2', 'US$ 64 × (5 × 1,02) ÷ 2 containers');
+  iguais(c.tx_crs_brl, '180', 'R$ 360 ÷ 2 containers');
+  iguais(c.tx_import_logistics, undefined); iguais(c.tx_trs, undefined);
+});
+teste('DI com 2 NCMs: usa o de maior quantidade e avisa; pacote de Custos Reais avisa', () => {
+  const p = { ..._procSimulacao(), di_ncms: '4011.10.00: 100 un, 800.00 kg; 4011.20.90: 300 un, 15000.00 kg',
+    real_json: { adiantamento_porto: { valor: 30000, moeda: 'BRL' } } };
+  const r = sandbox.montarPrefillCalculadorReal(p);
+  iguais(r.ncm, '40112090');
+  verdadeiro(r.avisos.some(a => /2 NCMs/.test(a)), JSON.stringify(r.avisos));
+  verdadeiro(r.avisos.some(a => /por pacote \(Adiantamento Porto\)/.test(a)), JSON.stringify(r.avisos));
+});
+teste('aba Custos Reais e aba Vendas têm o botão "Simular venda no Calculador"', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'controle-modal.js'), 'utf8');
+  iguais((src.match(/onclick="enviarProcessoAoCalculadorReal\(\)"/g) || []).length, 2);
+  verdadeiro(/aba\.location\.href = '\/calculador\?prefill=controle&t=' \+ ts/.test(src), 'abre o Calculador no modo prefill=controle');
+});
+
 // Limpa os campos usados acima pra não vazar para outros testes.
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';

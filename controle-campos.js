@@ -827,15 +827,20 @@ function renderMultiProdutos(){
   const lista = document.getElementById('multi-produtos-list');
   if(!lista) return;
   if(!_produtos.length) _produtos = [{descricao:'', quantidade:''}];
+  // US$/un (fob_usd, 20/10/2026): o preço unitário da CI por medida. Vai para
+  // o Mix do Calculador no "Simular venda (dados reais)" e rateia o custo
+  // entre as medidas na simulação da armazenagem RF. Opcional.
   lista.innerHTML = _produtos.map((it,i)=>{
     const tipoAuto = (typeof detectarTipoArmazenagem === 'function') ? detectarTipoArmazenagem(it.descricao) : 'PCR';
     const tipos = (typeof ARMAZENAGEM_RF_TIPOS !== 'undefined') ? ARMAZENAGEM_RF_TIPOS : ['PCR','SUV','TBR','RODAS','METAIS'];
     return `
-    <div style="display:grid;grid-template-columns:1fr 110px 118px 32px;gap:6px;align-items:center;">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 84px 96px 112px 32px;gap:6px;align-items:center;">
       <input class="form-input" placeholder="Descrição (ex: PNEU TBR 295/80R22.5)" value="${esc(it.descricao||'')}"
         oninput="_produtos[${i}].descricao=this.value;sincronizarProdutoLegado()" onchange="renderMultiProdutos()">
       <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
-        oninput="_produtos[${i}].quantidade=this.value;sincronizarProdutoLegado()">
+        oninput="_produtos[${i}].quantidade=this.value;sincronizarProdutoLegado();atualizarSomaFobProdutos()">
+      <input class="form-input" type="number" step="0.01" min="0" placeholder="US$/un" title="Preço unitário (US$) desta medida na CI — opcional; usado no Calculador para o preço por medida" aria-label="Preço unitário em US$" value="${it.fob_usd!=null && it.fob_usd!=='' ? esc(String(it.fob_usd)) : ''}"
+        oninput="_produtos[${i}].fob_usd=this.value;sincronizarProdutoLegado();atualizarSomaFobProdutos()">
       <select class="form-input" title="Tipo p/ tarifa de armazenagem no armazém (RF). 'auto' = deduzido da descrição." onwheel="this.blur()"
         onchange="_produtos[${i}].tipo=this.value;sincronizarProdutoLegado()">
         <option value="" ${!it.tipo?'selected':''}>auto: ${esc(tipoAuto)}</option>
@@ -845,8 +850,26 @@ function renderMultiProdutos(){
         ? `<button type="button" onclick="removerProdutoItem(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0;">✕</button>`
         : '<div></div>'}
     </div>
-  `;}).join('');
+  `;}).join('') + '<div id="produtos-soma-fob" style="font-size:11px;color:var(--muted);"></div>';
   sincronizarProdutoLegado();
+  atualizarSomaFobProdutos();
+}
+
+// Soma dos itens pelo US$/un × Qtde, comparada com o valor da CI — ajuda a
+// achar um preço digitado errado. Só aparece quando algum item tem US$/un.
+function atualizarSomaFobProdutos(){
+  const el = document.getElementById('produtos-soma-fob');
+  if(!el) return;
+  const itens = (Array.isArray(_produtos) ? _produtos : []).filter(it => it && String(it.descricao || '').trim());
+  const comPreco = itens.filter(it => parseFloat(it.fob_usd) > 0);
+  if(!comPreco.length){ el.textContent = ''; return; }
+  const soma = comPreco.reduce((s, it) => s + parseFloat(it.fob_usd) * (parseFloat(it.quantidade) || 0), 0);
+  const ci = typeof valorMoeda === 'function' ? valorMoeda('f_ci_valor_usd') : null;
+  const fmt = v => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  let txt = `Soma pelos US$/un: US$ ${fmt(soma)}`;
+  if(comPreco.length < itens.length) txt += ` (${itens.length - comPreco.length} medida(s) sem US$/un)`;
+  else if(ci > 0) txt += Math.abs(soma - ci) <= Math.max(1, ci * 0.005) ? ` · bate com a CI (US$ ${fmt(ci)})` : ` · CI: US$ ${fmt(ci)} — diferença de US$ ${fmt(soma - ci)}, confira`;
+  el.textContent = txt;
 }
 
 function adicionarProdutoItem(){

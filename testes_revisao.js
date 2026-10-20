@@ -720,6 +720,88 @@ function telaComIA(respostaIA) {
     ok(t.toasts.some(x => /a nota traz "04\/05\/2026" — usei 04\/05\/2026, não 05\/04\/2026/.test(x[1])), JSON.stringify(t.toasts));
   });
 
+  console.log('\n── NF de saída na Extração com IA: remessa × venda e o CFOP junto da nota (20/10/2026) ──');
+  // Números de NF fictícios. A mesma resposta serve para a leitura geral e
+  // para a releitura pelo extrator de NF (o "fetch" falso devolve sempre ela).
+  const nfVendaLida = { nf_saida_numero: '90001', nf_saida_data: '2026-10-05', nf_saida_valor: 1000, nf_cfop: '5102', cliente: 'CLIENTE TESTE',
+    tipo: 'SAIDA', nf_numero: '90001', nf_data: '2026-10-05', nf_valor: 1000, cfop: '5102',
+    itens: [{ descricao: 'PNEU 205/55R16 TESTE', quantidade: 4, valor_total: 1000 }] };
+  await testeAsync('Leitura geral: NF de venda com a remessa na aba Documentos vai para a aba Vendas (com o CFOP) e a remessa fica', async () => {
+    const t = telaComIA(nfVendaLida);
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [];`);
+    t.tela('f_nf_saida_numero', '90000'); t.tela('f_nf_saida_cfop', '5905');
+    await t.ler();
+    iguais([t.els.f_nf_saida_numero.value, t.els.f_nf_saida_cfop.value], ['90000', '5905'], 'a remessa continua na aba Documentos');
+    iguais(t.rodar('JSON.stringify(_vendas.map(v => [v.nf_saida_numero, v.nf_saida_cfop, v.cliente, v.itens.length]))'), JSON.stringify([['90001', '5102', 'CLIENTE TESTE', 1]]));
+    ok(t.rodar('_editando.log').some(l => /Vendas: NF 90001 \(venda, CFOP 5102\)/.test(l.valor_depois)), JSON.stringify(t.rodar('_editando.log')));
+    ok(t.toasts.some(x => /registrada na aba Vendas/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Leitura geral: NF de venda sem NF no processo preenche a aba Documentos com o CFOP', async () => {
+    const t = telaComIA(nfVendaLida);
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [];`);
+    await t.ler();
+    iguais([t.els.f_nf_saida_numero.value, t.els.f_nf_saida_cfop.value, t.els.f_nf_saida_data.value], ['90001', '5102', '2026-10-05']);
+    iguais(t.rodar('_vendas.length'), 0);
+    iguais(t.els.f_cliente.value, '', 'a NF de saída não mexe em outros campos do processo');
+  });
+  await testeAsync('Leitura geral: a mesma NF que já está na aba Vendas não entra de novo', async () => {
+    const t = telaComIA(nfVendaLida);
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [Object.assign(vendaVazia(), { nf_saida_numero: '90001', nf_saida_cfop: '5102' })];`);
+    t.tela('f_nf_saida_numero', '90000'); t.tela('f_nf_saida_cfop', '5905');
+    await t.ler();
+    iguais(t.rodar('_vendas.length'), 1);
+    ok(t.toasts.some(x => /já está cadastrada/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Extrator de NF: retorno da remessa (CFOP 1907) vai para a aba Vendas e não vira NF de Entrada', async () => {
+    const t = telaComIA({ tipo: 'ENTRADA', nf_numero: '90003', nf_data: '2026-10-06', nf_valor: 500, cfop: '1907', itens: [] });
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [];`);
+    const r = await t.rodar(`importarNFSaidaProcessoArquivo({ name: 'nf-teste.pdf', type: 'application/pdf' })`);
+    iguais(t.ctx.document.getElementById('f_nf_entrada_numero').value, '', 'NF de Entrada não foi tocada');
+    iguais(t.rodar('JSON.stringify(_vendas.map(v => [v.nf_saida_numero, v.nf_saida_cfop]))'), JSON.stringify([['90003', '1907']]));
+    iguais([r.ok, r.destino], [true, 'vendas']);
+  });
+  await testeAsync('Trocar a NF de saída sem CFOP lido limpa o CFOP antigo (o 5905 não fica na venda)', async () => {
+    const t = telaComIA({});
+    t.tela('f_nf_saida_numero', '90000'); t.tela('f_nf_saida_cfop', '5905');
+    t.rodar(`aplicarDadosNFSaidaNoProcesso({ nf_numero: '90002', nf_data: '', nf_valor: 0, cfop: '' })`);
+    iguais([t.els.f_nf_saida_numero.value, t.els.f_nf_saida_cfop.value], ['90002', '']);
+    t.rodar(`aplicarDadosNFSaidaNoProcesso({ nf_numero: '90002', nf_data: '2026-10-07', nf_valor: 0, cfop: '' })`);
+    t.tela('f_nf_saida_cfop', '5102');
+    t.rodar(`aplicarDadosNFSaidaNoProcesso({ nf_numero: '90002', nf_data: '2026-10-07', nf_valor: 0, cfop: '' })`);
+    iguais(t.els.f_nf_saida_cfop.value, '5102', 'mesma NF: o CFOP digitado fica');
+  });
+  await testeAsync('nfSaidaNaLeituraGeral: venda, remessa e retorno sim; NF de entrada (3102) e documento sem NF não', async () => {
+    const t = telaComIA({});
+    const f = ex => t.rodar(`nfSaidaNaLeituraGeral(${JSON.stringify(ex)})`);
+    iguais([f({ nf_cfop: '5102' }), f({ nf_cfop: '5905' }), f({ nf_cfop: '1907', nf_entrada_numero: '1' }), f({ nf_saida_numero: '123' })], [true, true, true, true]);
+    iguais([f({ nf_cfop: '3102', nf_entrada_numero: '9' }), f({ hbl: 'X' }), f({ nf_saida_data: 'YYYY-MM-DD' }), f({ nf_cfop: '5102', nf_entrada_numero: '9' })], [false, false, false, false]);
+  });
+
+  console.log('\n── Produtos: US$/un da CI/PI (fob_usd) para o Mix do Calculador ──');
+  await testeAsync('Leitura da CI traz o US$/un de cada medida para os Produtos', async () => {
+    const t = telaComIA({ ci_numero: 'CI-TESTE-1', itens: [{ size: '205/55R16', pattern: 'TESTE', quantidade: 20, preco_unit_usd: 50 },
+      { size: '185/65R15', pattern: 'TESTE', quantidade: 10, preco_unit_usd: 'US$ 42,50' }] });
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _produtos = [{ descricao: '', quantidade: '' }];`);
+    await t.ler();
+    iguais(t.rodar('JSON.stringify(_produtos.map(p => [p.descricao, p.quantidade, p.fob_usd]))'), JSON.stringify([['205/55R16 TESTE', 20, 50], ['185/65R15 TESTE', 10, 42.5]]));
+  });
+  await testeAsync('Mesmo pedido lido de novo: só completa o US$/un que faltava (não troca o que já tem)', async () => {
+    const t = telaComIA({ itens: [{ size: '205/55R16', pattern: 'MARCA TESTE', quantidade: 20, preco_unit_usd: 51 },
+      { size: '185/65R15', pattern: 'MARCA TESTE', quantidade: 10, preco_unit_usd: 43 }] });
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] };
+      _produtos = [{ descricao: '205/55R16 TESTE', quantidade: 20, tipo: 'PCR' }, { descricao: '185/65R15 TESTE', quantidade: 10, fob_usd: 42.5 }];`);
+    await t.ler();
+    iguais(t.rodar('JSON.stringify(_produtos.map(p => [p.descricao, p.fob_usd, p.tipo || ""]))'), JSON.stringify([['205/55R16 TESTE', 51, 'PCR'], ['185/65R15 TESTE', 42.5, '']]));
+  });
+  await testeAsync('CI sem preço substituindo os itens: o US$/un e o tipo já preenchidos na mesma medida não se perdem', async () => {
+    const t = telaComIA({ ci_numero: 'CI-TESTE-2', itens: [{ size: '205/55R16', pattern: 'NOVO', quantidade: 20 }, { size: '215/60R17', pattern: 'NOVO', quantidade: 8 }] });
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] };
+      _produtos = [{ descricao: '205/55R16 VELHO', quantidade: 20, fob_usd: 50, tipo: 'PCR' }, { descricao: '215/60R17 VELHO', quantidade: 10, fob_usd: 60 }];`);
+    await t.ler();
+    iguais(t.rodar('JSON.stringify(_produtos.map(p => [p.descricao, p.quantidade, p.fob_usd || null, p.tipo || ""]))'),
+      JSON.stringify([['205/55R16 NOVO', 20, 50, 'PCR'], ['215/60R17 NOVO', 8, null, '']]), 'só herda na mesma medida E quantidade');
+  });
+
   console.log('\n── Importação de planilha: referência com/sem o prefixo IMPAK- no log da tela ──');
   // O "fetch" devolve o resumo que o servidor mandaria; o teste lê as linhas do log.
   async function importarComResumo(funcao, rota, resposta) {

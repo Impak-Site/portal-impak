@@ -484,6 +484,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <button type="button" class="btn btn-outline" onclick="crEscolherDocumentosCustos()" title="A IA lê a nota de débito do agente de carga, o faturamento (acerto) do despachante ou a fatura do terminal e preenche as taxas — você confere linha a linha antes">🧾 Ler fatura / faturamento (IA)</button>
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
           <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
+          <button type="button" class="btn btn-outline" onclick="enviarProcessoAoCalculadorReal()" title="Abre o Calculador já preenchido com os dados reais deste processo (FOB da CI, câmbio fechado, frete, taxas e impostos lançados, produtos) para simular a venda para clientes de vários estados. É uma simulação: não muda nada no processo.">🧮 Simular venda no Calculador (dados reais)</button>
           ${!p.real_json ? `
           <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotação no Calculador já pré-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">🧮 Vincular ao Calculador</button>
           ` : ''}
@@ -506,6 +507,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         <div id="vendas-list"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px;">
           <button type="button" onclick="adicionarVenda()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Venda</button>
+          <button type="button" onclick="enviarProcessoAoCalculadorReal()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--text);cursor:pointer;font-weight:600;" title="Abre o Calculador já preenchido com os dados reais deste processo para calcular o preço de venda por estado. É uma simulação: não muda nada no processo.">🧮 Simular venda no Calculador</button>
           <button type="button" onclick="abrirSimularVendaRF()" style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 14px;font-size:12px;color:#92400e;cursor:pointer;font-weight:600;" title="Projeta a armazenagem do armazém (RF) até uma data futura e o custo/preço atualizado por medida — não grava nada.">🧮 Simular venda (armazenagem RF)</button>
         </div>
         <div id="simular-venda-rf-wrap"></div>
@@ -2871,6 +2873,53 @@ function marcarPendenciaRevisada(){
 // cotaÃÂÃÂ§ÃÂÃÂ£o (estimativa) de um processo que comeÃÂÃÂ§ou direto no Controle.
 function vincularProcessoAoCalculador(processoId){
   window.open(`/calculador?processo_id=${processoId}`, '_blank');
+}
+
+// Botão "Simular venda no Calculador (dados reais)" — abas Custos Reais e
+// Vendas (Ayslan, 20/10/2026). Monta o formulário com os dados reais do
+// processo (montarPrefillCalculadorReal, controle-core.js) e entrega ao
+// Calculador por localStorage (mesma origem; a chave vale por 15 minutos e
+// é apagada quando o Calculador lê). A aba nova abre ANTES da busca da UF
+// do cliente, ainda dentro do clique — senão o navegador bloqueia o pop-up.
+// O Calculador abre como simulação: salvar lá cria uma cotação separada e
+// não vincula nem muda este processo.
+const CHAVE_PREFILL_CALCULADOR = 'calculador_prefill_controle';
+async function enviarProcessoAoCalculadorReal(){
+  if(!_editando){ showToast('Abra um processo primeiro.', 'warn'); return; }
+  const aba = window.open('', '_blank');
+  if(!aba){ showToast('O navegador bloqueou a nova aba. Libere pop-ups para o ImpakOS e clique de novo.', 'err', 12000); return; }
+  try{ aba.document.write('<p style="font-family:Inter,Arial,sans-serif;padding:24px;color:#475569;">Abrindo o Calculador com os dados do processo…</p>'); }catch(e){ /* sem acesso à aba: segue */ }
+  const proc = { ..._editando };
+  // Lista de Produtos como está na tela (o US$/un pode ter acabado de ser digitado).
+  if(typeof _produtos !== 'undefined' && Array.isArray(_produtos) && _produtos.some(it => it && String(it.descricao || '').trim())){
+    proc.produtos_json = JSON.stringify(_produtos);
+  }
+  if(typeof _containers !== 'undefined' && Array.isArray(_containers) && _containers.some(c => c && String(c.numero || '').trim())){
+    proc.containers_json = JSON.stringify(_containers);
+  }
+  let ufCliente = '';
+  const clienteNome = String(proc.cliente || '').trim();
+  if(proc.finalidade !== 'IMPORTACAO_DIRETA' && clienteNome){
+    try{
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const t = ctrl ? setTimeout(() => ctrl.abort(), 4000) : null;
+      const r = await fetch('/api/contatos?q=' + encodeURIComponent(clienteNome.slice(0, 60)) + '&limit=10', ctrl ? { signal: ctrl.signal } : undefined);
+      if(t) clearTimeout(t);
+      const d = await r.json();
+      const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+      const lista = (d && d.contatos) || [];
+      const c = lista.find(x => proc.cliente_id && x.id === proc.cliente_id) || lista.find(x => norm(x.razao_social) === norm(clienteNome));
+      if(c && c.uf) ufCliente = c.uf;
+    }catch(e){ /* sem UF do cadastro: o Calculador fica com a UF padrão */ }
+  }
+  let payload;
+  try{ payload = montarPrefillCalculadorReal(proc, { ufCliente }); }
+  catch(e){ try{ aba.close(); }catch(_){} showToast('Não foi possível montar os dados para o Calculador: ' + e.message, 'err', 12000); return; }
+  const ts = Date.now();
+  try{ localStorage.setItem(CHAVE_PREFILL_CALCULADOR, JSON.stringify({ ...payload, ts })); }
+  catch(e){ try{ aba.close(); }catch(_){} showToast('O navegador não deixou guardar os dados para o Calculador (armazenamento local bloqueado).', 'err', 12000); return; }
+  aba.location.href = '/calculador?prefill=controle&t=' + ts;
+  if(_painelDirty) showToast('Há alterações não salvas neste processo: o Calculador levou os dados já salvos (e a lista de Produtos como está na tela).', 'warn', 12000);
 }
 
 
