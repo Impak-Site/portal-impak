@@ -1224,6 +1224,7 @@ function renderResumoVendas(){
     : '';
   wrap.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:6px;">
     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">Resumo por venda (lucro bruto — o Lucro Real completo, com Juros e Notas Boss, está na aba Fechamento)</div>
+    ${resumo.custoBase === 'nf_entrada' ? `<div style="font-size:11px;color:var(--warn,#b45309);margin-bottom:4px;">Custo pela NF de Entrada (${r2(resumo.custoRealTotal)}): ainda não há Custos Reais lançados.</div>` : ''}
     ${linhasHtml}
     ${linhaLucroTotal}
     ${alertaSaldo}

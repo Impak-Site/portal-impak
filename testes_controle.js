@@ -1533,6 +1533,37 @@ teste('calcularVendasResumo: com custos diretos, cada venda soma o rateio + seu 
   aproxIgual(b.lucro, 30000-20900, 0.01);
 });
 
+// Bug real (20/10/2026): processo com venda na aba Vendas e SEM Custos Reais
+// saía com custo 0 (lucro = 100% da NF). Sem vendas, o mesmo processo usava
+// NF Saída − NF Entrada. Agora as duas formas dão o mesmo lucro.
+teste('calcularVendasResumo: sem Custos Reais, o custo da venda é a NF de Entrada (não 0) e fica marcado em custoBase', () => {
+  const base = { produtos_json: JSON.stringify([{descricao:'Pneu TESTE', quantidade: 100}]), nf_entrada_valor: 80000 };
+  const r = sandbox.calcularVendasResumo({ ...base,
+    vendas_json: JSON.stringify([{ cliente:'Cliente Teste', itens:[{descricao:'Pneu TESTE', quantidade:100}], nf_saida_valor: 95000, nf_saida_cfop: '5102', custos_diretos: [] }]) });
+  iguais(r.custoBase, 'nf_entrada');
+  aproxIgual(r.custoRealTotal, 80000, 0.01);
+  aproxIgual(r.linhas[0].lucro, 15000, 0.01, 'lucro = NF da venda − NF de Entrada');
+  const f = sandbox.calcularFechamento({ ...base, vendas_json: JSON.stringify([{ cliente:'Cliente Teste', itens:[{descricao:'Pneu TESTE', quantidade:100}], nf_saida_valor: 95000, nf_saida_cfop: '5102', custos_diretos: [] }]) });
+  const legado = sandbox.calcularFechamento({ ...base, nf_saida_valor: 95000, nf_saida_cfop: '5102' });
+  aproxIgual(f.lucroReal, legado.lucroReal, 0.01, 'venda na aba Vendas = mesmo lucro da NF única em Documentos');
+  // Duas vendas: o custo da NF de Entrada é rateado pela quantidade.
+  const r2 = sandbox.calcularVendasResumo({ ...base, vendas_json: JSON.stringify([
+    { cliente:'A', itens:[{descricao:'Pneu TESTE', quantidade:60}], nf_saida_valor: 57000, custos_diretos: [] },
+    { cliente:'B', itens:[{descricao:'Pneu TESTE', quantidade:40}], nf_saida_valor: 38000, custos_diretos: [] }]) });
+  aproxIgual(r2.linhas[0].custoRateado + r2.linhas[1].custoRateado, 80000, 0.01);
+  aproxIgual(r2.lucroTotal, 15000, 0.01);
+});
+teste('calcularVendasResumo: com Custos Reais vale o Custo Real; sem Custos Reais e sem NF de Entrada o custo continua 0', () => {
+  const comReal = sandbox.calcularVendasResumo({ produtos_json: JSON.stringify([{descricao:'Pneu TESTE', quantidade: 10}]), nf_entrada_valor: 99999,
+    real_json: { fob: 1000 }, real_cambio: 5,
+    vendas_json: JSON.stringify([{ cliente:'C', itens:[{descricao:'Pneu TESTE', quantidade:10}], nf_saida_valor: 8000, custos_diretos: [] }]) });
+  iguais(comReal.custoBase, 'custos_reais');
+  aproxIgual(comReal.custoRealTotal, 5000, 0.01, 'Custos Reais têm prioridade sobre a NF de Entrada');
+  const semNada = sandbox.calcularVendasResumo({ produtos_json: JSON.stringify([{descricao:'Pneu TESTE', quantidade: 10}]),
+    vendas_json: JSON.stringify([{ cliente:'C', itens:[{descricao:'Pneu TESTE', quantidade:10}], nf_saida_valor: 8000, custos_diretos: [] }]) });
+  verdadeiro(semNada.custoBase === null && semNada.custoRealTotal === 0, JSON.stringify({ b: semNada.custoBase, c: semNada.custoRealTotal }));
+});
+
 teste('calcularFechamento: com vendas cadastradas, NF Saída do processo vira a soma das NFs e o Lucro Real vira a soma dos lucros de cada venda', () => {
   const p = {
     produtos_json: JSON.stringify([{descricao:'Pneu A', quantidade: 1000}]),
