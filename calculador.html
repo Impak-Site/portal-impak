@@ -2497,10 +2497,16 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // Import Logistics Fee / CRS: R$ fixo → US$ derivado (=R$/câmbio+2%), igual
   // à planilha Rev96 (D30 = 164/E5, D31 = 180/E5). Sem precisão cortada, pra
   // US$ × câmbio voltar exatamente ao R$ fixo.
+  // Zerou (ou apagou) o R$ fixo: o US$ derivado zera junto. Antes ele ficava
+  // com o valor da última conta (R$ 180 / câmbio) e o CRS continuava somando
+  // nas "Taxas em USD (diversas, destino)" mesmo zerado — e ia salvo assim
+  // na cotação (Jean, HK60688, 20/10/2026).
   [['tx_import_logistics_brl','tx_import_logistics'],['tx_crs_brl','tx_trs']].forEach(([idBrl,idUsd]) => {
     const brl = parseFloat(document.getElementById(idBrl)?.value) || 0;
     const elUsd = document.getElementById(idUsd);
-    if(brl > 0 && elUsd && cambio_chegada_markup > 0) elUsd.value = String(brl / cambio_chegada_markup);
+    if(!elUsd) return;
+    if(!(brl > 0)) elUsd.value = '0';
+    else if(cambio_chegada_markup > 0) elUsd.value = String(brl / cambio_chegada_markup);
   });
 
   // Leitura prévia das taxas operacionais (antes de sobrescrever Marinha/Agente,
