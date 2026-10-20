@@ -1850,7 +1850,9 @@ function abrirModalConfirmarCambio(match, refAtual){
       +   `<span style="font-size:12px;color:var(--muted);">${esc(match.referencia||refAtual||'(referência não identificada)')}</span>`
       + `</div>`
       + (taxa
-        ? linha('Taxa', 'R$ ' + taxa.toLocaleString('pt-BR',{minimumFractionDigits:4}) + (futuro ? ' <span style="color:var(--muted);font-weight:400;">(anotada — confira)</span>' : ''))
+        ? linha('Taxa', 'R$ ' + taxa.toLocaleString('pt-BR',{minimumFractionDigits:4}) + (futuro ? ' <span style="color:var(--muted);font-weight:400;">(anotada — confira)</span>' : '')
+            + (match._taxa_origem === 'reais_por_dolar' && match._taxa_impressa
+              ? ` <span style="color:var(--muted);font-weight:400;">(R$ ÷ US$ do comprovante — impressa ${esc(String(match._taxa_impressa).replace('.', ','))})</span>` : ''))
         : `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;margin:4px 0 8px;"><b>Taxa de câmbio não encontrada no documento.</b> Digite a taxa fechada: <input id="cambio-modal-taxa-manual" class="form-input" inputmode="decimal" placeholder="ex: 5,0840" style="width:120px;display:inline-block;margin-left:6px;"></div>`)
       + (!valorUsdRef && valorPago ? linha('Valor pago', fmtBrl(valorPago)) : '')
       + (match.data_pagamento ? linha('Data', fmtData(match.data_pagamento)) : '')

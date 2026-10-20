@@ -673,7 +673,7 @@ async function extrairComIA_umArquivo(input){
   "depot": "",  // SOMENTE para RIC/EIR de devolução: nome do terminal/depósito onde o vazio foi devolvido (cabeçalho do documento, ex: "LECHMAN TERMINAIS NAVEGANTES")
   "eh_ric": false,
   "ric_avaria": false,  // SOMENTE para RIC: true se o RIC registrar avaria/dano, lavagem ou limpeza (ex: "recebido com AVARIA", "CHEMICAL CLEAN", "LAVAGEM", "LIMPEZA", "DAMAGE", "REPARO", "ESTIMATIVA DE REPARO"); false se o container foi recebido sem nenhuma observação desse tipo  // true SOMENTE se o documento for um RIC/EIR/Intercâmbio/Gate Pass de container (comprovante de entrada/saída de container em terminal/depósito)
-  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio (inclusive mensagem SWIFT de pagamento — câmbio futuro) — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0, "tipo_cambio":"NORMAL|FUTURO", "swift_id":""}. Deixar [] para qualquer outro tipo de documento.
+  "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio (inclusive mensagem SWIFT de pagamento — câmbio futuro) — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "taxa_cambio_texto":"", "valor_total_usd":0, "valor_total_brl":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0, "tipo_cambio":"NORMAL|FUTURO", "swift_id":""}. Deixar [] para qualquer outro tipo de documento.
   "datas_texto": {},  // para CADA campo de data que você preencheu acima (pi_data, etd, eta, data_registro_di, data_liberacao, ci_data, data_chegada, ce_data_embarque, nf_entrada_data, nf_saida_data, data_devolucao_vazio), copie aqui o TEXTO da data exatamente como está impresso no documento, sem converter e sem trocar a ordem de dia e mês — ex.: {"data_devolucao_vazio": "30/05/2026 10:54", "etd": "SEP. 05, 2026", "nf_entrada_data": "05/10/2026"}. Só o trecho da data (pode vir com a hora). Campo de data que você deixou vazio não entra aqui.
   "documento_brasileiro": false,  // true quando o documento foi emitido no Brasil e traz as datas no formato dia/mês/ano (RIC/EIR de terminal brasileiro, NF-e/DANFE, DI/DUIMP, CE Mercante, comprovante de câmbio de banco brasileiro); false para PI, CI, packing list, BL, booking e demais documentos emitidos no exterior
   "free_time": null
@@ -710,6 +710,9 @@ Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pe
 Se o documento for um Comprovante de Câmbio (operação de câmbio bancária — compra de moeda estrangeira para pagamento ao exterior):
 - NUNCA preencha o campo "referencia" (o de nível superior, fora de "cambio_referencias") a partir deste tipo de documento — deixe-o sempre "". A referência de cada processo/invoice coberto pela operação vai DENTRO de cada item de "cambio_referencias" (campo "referencia" de cada item), nunca no campo solto. Em especial, NUNCA use a "Referência Interna" do banco, o número do Contrato de Câmbio/código BACEN, ou qualquer identificador interno da instituição financeira para preencher o campo "referencia" solto — esses números não identificam nenhum processo da IMPAK, mesmo parecendo uma referência.
 - extrair "taxa_cambio" (a taxa/PTAX da operação, em R$ por US$) — normalmente é UMA só para o comprovante inteiro, mesmo que ele cubra várias referências/faturas.
+  - copie a taxa EXATAMENTE como está impressa, com TODAS as casas decimais que aparecem (normalmente 4 — ex.: Santander "Taxa Cambial 5,1435" → 5.1435; contrato de câmbio formal "4,963500000" → 4.9635). NUNCA arredonde para 2 casas e nunca calcule a taxa você mesmo. Se o documento mostrar menos casas (ex.: o resumo "detalhes da operação" do Itaú imprime "taxa de câmbio: 5.24"), copie como está — o sistema confere com os totais.
+  - "taxa_cambio_texto": o TEXTO da taxa exatamente como aparece no documento, sem converter (ex.: "5,1435", "5.24", "4,963500000", "taxa 5,084"). Repetir em cada item.
+  - "valor_total_usd" e "valor_total_brl": os valores TOTAIS da operação impressos no documento — em moeda estrangeira (Itaú "valor em moeda estrangeira contratada"; Santander "Valor em Moeda Estrangeira (USD)"; contrato "Valor em moeda estrangeira") e em reais (Itaú "valor em reais contratado"; Santander "Valor em reais (R$) (BRL)"; contrato "Valor em moeda nacional"). São os totais do comprovante, mesmo que ele cubra várias referências — repetir em cada item. Deixe 0 o que não aparecer (mensagem SWIFT não tem valor em reais).
 - o comprovante pode listar UMA OU VÁRIAS referências de processo/invoice na mesma operação (ex: numa tabela ou lista de "faturas pagas" dentro do comprovante, às vezes só uma anotação com os números das referências e o valor de cada uma). Para CADA referência encontrada, criar um item em "cambio_referencias" com "referencia" (o número/código da referência ou invoice, exatamente como aparece no documento) e o valor específico dela — preste MUITA atenção em que MOEDA esse valor está escrito, porque comprovantes de bancos diferentes mostram isso de jeitos diferentes:
   - se o valor daquela referência estiver em DÓLAR (símbolo "$" ou "US$" ou "USD" antes do número, ex: "$5.088,00"), preencher "valor_usd_referencia" com esse valor e deixar "valor_pago" como 0.
   - se o valor daquela referência estiver em REAIS (símbolo "R$" antes do número), preencher "valor_pago" com esse valor e deixar "valor_usd_referencia" como 0.
@@ -726,7 +729,7 @@ Se o documento for um Comprovante de Câmbio (operação de câmbio bancária �
   - "codigo_bacen" fica SEMPRE "" (não existe). NUNCA use o UETR, o MUR, o nº da mensagem ou a conta como codigo_bacen.
   - "swift_id": o identificador da mensagem — "Business Message Identifier" / "Message Identification" / "MUR" / "Instruction Identification" (normalmente começa com letras, ex.: "IF058503659905"). Repetir em cada item.
   - valor: o total está em "Amount" / "Interbank Settlement Amount" (em USD). As referências dos processos e o valor de cada uma vêm ANOTADOS À MÃO/carimbados no documento (ex.: "HK60684 $7.806,51") — um item por referência anotada, valor em "valor_usd_referencia". Uma referência anotada SEM valor ao lado recebe o valor total (Amount).
-  - "taxa_cambio": a taxa NÃO vem impressa na mensagem SWIFT — procure um número anotado à mão no formato de taxa de câmbio (entre 3 e 8, com 2 a 4 casas, ex.: "5,03", "taxa 5,084"). Não confunda com valores em dólar nem com a "Priority". Se não houver anotação legível, deixe 0 (o sistema pede a taxa ao usuário).
+  - "taxa_cambio": a taxa NÃO vem impressa na mensagem SWIFT — procure um número anotado à mão no formato de taxa de câmbio (entre 3 e 8, com 2 a 4 casas, ex.: "5,03", "taxa 5,084", "5,1540"). Copie com exatamente as casas anotadas — não arredonde e não complete com zeros — e coloque o texto anotado em "taxa_cambio_texto". Não confunda com valores em dólar nem com a "Priority". Se não houver anotação legível, deixe 0 (o sistema pede a taxa ao usuário).
   - "data_pagamento": "Value Date" / "Interbank Settlement Date" / "Creation Date".
   - "banco": o banco remetente (Sender/Debtor Agent — ex.: BSCHBRSP = Santander).
 - extrair "custo_operacao": o custo total da operação em REAIS, somando IOF + tarifas/spread bancário, SE o comprovante discriminar esses valores separadamente (campos como "IOF", "Tarifa", "Despesas", "Encargos"). Some todos os valores dessa natureza que aparecerem. Se o documento não discriminar nenhum custo separado do valor da operação, deixar 0 — nunca estimar ou inventar um valor. Repetir o mesmo total em cada item de "cambio_referencias".
@@ -1175,10 +1178,17 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       const refAtual = (document.getElementById('f_referencia')?.value||'').trim().toUpperCase();
       // Câmbio futuro (SWIFT) às vezes vem SEM taxa legível — não descarta
       // mais o item (antes sumia sem aviso); o modal pede a taxa ao usuário.
-      const itensCambio = extracted.cambio_referencias.filter(c=>c && (c.taxa_cambio || c.valor_usd_referencia || c.valor_pago || c.swift_id));
+      const itensCambio = extracted.cambio_referencias.filter(c=>c && (c.taxa_cambio || c.taxa_cambio_texto || c.valor_usd_referencia || c.valor_pago || c.swift_id));
       itensCambio.forEach(c=>{
         c.tipo_cambio = (typeof tipoCambioDe === 'function' ? tipoCambioDe(c) : '') || 'NORMAL';
         if(c.tipo_cambio === 'FUTURO') c.codigo_bacen = ''; // SWIFT não tem contrato BACEN
+        // Taxa como está no documento, até 4 casas (regra do Ayslan, 20/10/2026 —
+        // ver taxaCambioDoDocumento em controle-core.js). Resumo do Itaú com taxa
+        // de 2 casas e totais em R$ e US$ vira R$ ÷ US$ com 4 casas.
+        if(typeof taxaCambioDoDocumento === 'function'){
+          const t = taxaCambioDoDocumento(c);
+          if(t.taxa > 0){ c.taxa_cambio = t.taxa; c._taxa_origem = t.origem; c._taxa_impressa = t.impressa; }
+        }
       });
       let match = itensCambio.find(c=>(c.referencia||'').trim().toUpperCase()===refAtual);
       // Se não bateu exato, tenta por substring nos dois sentidos — cobre casos como
