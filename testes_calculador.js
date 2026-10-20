@@ -550,6 +550,58 @@ teste('antidumping: o valor do dumping vai pro preço só dos itens SIM e o tota
   verdadeiro(razaoCom > razaoSem, 'item com dumping deveria pesar mais no preço');
 });
 
+// ── Rateio por medida igual à planilha (20/10/2026) — valores fictícios ──
+// Planilha (MIX - COMPLETO): FOB/frete/seguro/despesas de cada medida pela fatia do
+// FOB; o I.I. item a item sobre o CIF da medida, com frete e Taxa C.E. pelo PESO.
+teste('Mix: custo por medida = fatia do FOB + I.I. da própria medida (frete e Taxa C.E. pelo peso)', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const itens = [{ medida: 'AAA', qtd: 100, preco: 20, peso_kg: 10 }, { medida: 'BBB', qtd: 50, preco: 40, peso_kg: 12 }];
+  const fob = 4000, frete = 1000, tce = 50, seg = 2.42, custo = 40000, aliq = 0.16, cambio = 5;
+  // Conta da planilha, feita aqui à mão: AH/AI pelo peso, AJ sobre FOB+frete, BW = CIF × II × câmbio.
+  const pesoTot = 100 * 10 + 50 * 12;
+  const linhas = itens.map(it => { const w = it.peso_kg * it.qtd / pesoTot, f = it.preco * it.qtd; return { f, w, ff: f + frete * w }; });
+  const somaFF = linhas.reduce((s, l) => s + l.ff, 0);
+  const iiItem = linhas.map(l => (l.ff + tce * l.w + seg * l.ff / somaFF) * aliq * cambio);
+  const II = iiItem.reduce((s, v) => s + v, 0);
+  const cb = linhas.map((l, i) => (l.f / fob) * (custo - II) + iiItem[i]);
+  const r = vm.runInContext(`rateioCustoMix(${JSON.stringify(itens)}, { fob_usd: ${fob}, frete_usd: ${frete}, taxa_ce: ${tce}, seguro_compra_usd: ${seg}, custo_total: ${custo}, imp_item: ${II} })`, sb);
+  verdadeiro(r.porPeso, 'todas as medidas têm peso');
+  itens.forEach((it, i) => aproxIgual(r.custoUn[i] * it.qtd * custo, cb[i], 1e-6));
+  aproxIgual(r.custoUn.reduce((s, c, i) => s + c * itens[i].qtd, 0), 1, 1e-12);
+  // AAA tem mais kg por dólar (0,5 x 0,3) → leva mais frete na base do II → custo/FOB maior.
+  verdadeiro(r.custoUn[0] / r.fobUn[0] > r.custoUn[1] / r.fobUn[1], 'a medida mais pesada por US$ deveria sair mais cara');
+});
+teste('Mix: sem o peso de todas as medidas o rateio fica só pelo FOB (como antes)', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  const r = vm.runInContext(`rateioCustoMix([{ qtd: 100, preco: 20, peso_kg: 10 }, { qtd: 50, preco: 40 }], { fob_usd: 4000, frete_usd: 1000, taxa_ce: 50, seguro_compra_usd: 2.42, custo_total: 40000, imp_item: 3000 })`, sb);
+  verdadeiro(!r.porPeso && r.faltamPeso === 1);
+  aproxIgual(r.custoUn[0], 20 / 4000, 1e-15);
+  aproxIgual(r.custoUn[1], 40 / 4000, 1e-15);
+});
+teste('Mix no cálculo: soma bate com o cenário e a medida mais pesada por US$ fica mais cara', () => {
+  const comPeso = _rodarCalc("_estado.mix = { itens: [{medida:'AAA',qtd:100,preco:100,peso_kg:12},{medida:'BBB',qtd:100,preco:178.1296,peso_kg:9}], fob_total: 27812.96 };");
+  const semPeso = _rodarCalc("_estado.mix = { itens: [{medida:'AAA',qtd:100,preco:100},{medida:'BBB',qtd:100,preco:178.1296}], fob_total: 27812.96 };");
+  const tot = lista => lista.reduce((s, it) => s + it.total_brl, 0);
+  verdadeiro(comPeso.mix_rateio.por_peso && !semPeso.mix_rateio.por_peso);
+  aproxIgual(tot(comPeso.mix_result), comPeso.faturamento - (comPeso.china_fora_val || 0) - (comPeso.boss_fora_val || 0), 0.01);
+  ['com_st', 'sem_st'].forEach(k => aproxIgual(tot(comPeso.cenarios[k].mix), comPeso.cenarios[k].faturamento_total, 0.01));
+  aproxIgual(tot(comPeso.mix_result), tot(semPeso.mix_result), 0.01); // o total não muda, só a divisão
+  const porUsd = (r, i) => r.mix_result[i].vlr_unit_brl / [100, 178.1296][i];
+  verdadeiro(porUsd(comPeso, 0) > porUsd(comPeso, 1), 'AAA (0,12 kg/US$) deveria custar mais por US$ que BBB (0,05 kg/US$)');
+  aproxIgual(porUsd(semPeso, 0), porUsd(semPeso, 1), 1e-9); // sem peso: proporcional ao FOB
+  aproxIgual(comPeso.mix_result[0].custo_unit_brl * 100 + comPeso.mix_result[1].custo_unit_brl * 100, comPeso.custo_total, 0.01);
+});
+teste('Mix: Comissão China "fora" é % do FOB e continua dividida pelo FOB', () => {
+  const prep = "_estado.mix = { itens: [{medida:'AAA',qtd:100,preco:100,peso_kg:12},{medida:'BBB',qtd:100,preco:178.1296,peso_kg:9}], fob_total: 27812.96 }; setToggle('china','SIM'); setToggleInner('china-modal','FORA');";
+  const r = _rodarCalc(prep);
+  const c = r.cenarios.com_st;
+  verdadeiro(c.china_fora_val > 0, 'o caso precisa ter Comissão China fora');
+  aproxIgual(c.mix.reduce((s, it) => s + it.total_brl, 0), c.faturamento_total, 0.01);
+  // Tirando a China (pelo FOB), o resto de cada medida é proporcional ao custo dela.
+  const resto = c.mix.map((it, i) => it.total_brl - c.china_fora_val * (it.preco * it.qtd) / r.fob_usd);
+  aproxIgual(resto[0] / resto[1], r.mix_result[0].custo_unit_brl / r.mix_result[1].custo_unit_brl, 1e-9);
+});
+
 
 // ── Rev97 (14/10/2026): variação cambial da entrada, frete terrestre, meta de lucro ──
 teste('variação cambial entrada: só parcelas com câmbio abaixo do câmbio DI, × 4,65%', () => {
