@@ -531,6 +531,50 @@ teste('PRAZO com CI: Pendências de DI e Adiantamento do Cliente usam o valor da
   iguais(ad[0].cambios[0].valorUsd, 9950);
   iguais(Math.round(ad[0].cambios[0].brlPago * 100) / 100, 49750);
 });
+// Regra do Ayslan (20/10/2026): taxa de câmbio lida de documento vale como
+// está no documento, até 4 casas. Resumo com 2 casas que traz os totais em R$
+// e US$ (Itaú "detalhes da operação") vira R$ ÷ US$ com 4 casas. Valores fictícios.
+teste('Câmbio do documento: 4 casas impressas ficam como estão', () => {
+  const t = sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.1435, taxa_cambio_texto: '5,1435' });
+  iguais(t.taxa, 5.1435);
+  iguais(t.origem, 'documento');
+});
+teste('Câmbio do documento: se a IA arredondar para 2 casas, o texto copiado do documento corrige', () => {
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.14, taxa_cambio_texto: '5,1435' }).taxa, 5.1435);
+});
+teste('Câmbio do documento: mais de 4 casas (contrato formal) arredonda para 4', () => {
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 4.9635, taxa_cambio_texto: '4,963500000' }).taxa, 4.9635);
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio_texto: '4.99500000000000' }).taxa, 4.995);
+});
+teste('Câmbio do documento: taxa impressa com 2 casas + totais em R$ e US$ usa R$ ÷ US$ com 4 casas', () => {
+  const t = sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.24, taxa_cambio_texto: '5.24', valor_total_usd: 10000, valor_total_brl: 52390 });
+  iguais(t.taxa, 5.239);
+  iguais(t.origem, 'reais_por_dolar');
+  iguais(t.impressa, 5.24);
+});
+teste('Câmbio do documento: totais que não fecham com a taxa impressa são ignorados', () => {
+  const t = sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.24, taxa_cambio_texto: '5.24', valor_total_usd: 10000, valor_total_brl: 53000 });
+  iguais(t.taxa, 5.24);
+  iguais(t.origem, 'documento');
+});
+teste('Câmbio do documento: anotação no SWIFT com menos casas fica exatamente como está', () => {
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.03, taxa_cambio_texto: '5,03' }).taxa, 5.03);
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.084, taxa_cambio_texto: 'taxa 5,084' }).taxa, 5.084);
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.03, taxa_cambio_texto: '5,03', valor_total_usd: 10000 }).taxa, 5.03, 'sem total em reais não recalcula');
+});
+teste('Câmbio do documento: sem texto usa o número da IA; texto com outro número é ignorado; sem taxa devolve 0', () => {
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.2017 }).taxa, 5.2017);
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 5.1, taxa_cambio_texto: '7,25' }).taxa, 5.1);
+  iguais(sandbox.taxaCambioDoDocumento({ taxa_cambio: 0, taxa_cambio_texto: '' }).taxa, 0);
+  iguais(sandbox.taxaCambioDoDocumento(null).taxa, 0);
+});
+teste('Leitura por IA do comprovante de câmbio: prompt pede o texto da taxa, os totais e proíbe arredondar', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'controle-import-ia.js'), 'utf8');
+  iguais(src.includes('"taxa_cambio_texto"'), true);
+  iguais(src.includes('"valor_total_brl"'), true);
+  iguais(src.includes('NUNCA arredonde para 2 casas'), true);
+  iguais(src.includes('taxaCambioDoDocumento(c)'), true, 'leitura aplica a regra antes do modal');
+});
 teste('ENTRADA_SALDO vira 2 parcelas (entrada + saldo), valor rateado pelo %', () => {
   const procs = [{ referencia:'UD26-102', pi_valor_usd:20000, pi_pagamento:'ENTRADA_SALDO', pi_entrada_pct:30,
     pi_data_entrada:'2026-08-01', pi_data_saldo:'2026-09-01', pi_cambio:5.0,

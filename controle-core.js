@@ -1944,6 +1944,56 @@ function tipoCambioDe(obj){
   return '';
 }
 
+// ── Taxa de câmbio lida de documento (regra do Ayslan, 20/10/2026) ─────
+// "Quando formos ler um SWIFT de câmbio, ou algo relacionado a câmbio
+// internacional, temos que puxar 4 casas decimais, conforme está no
+// documento; se tiver menos casas decimais, considera o que está no
+// documento." Na prática:
+// - vale a taxa impressa/anotada, com as casas do documento, até 4. Mais de
+//   4 (contrato formal "4,963500000") arredonda para 4 (o sistema guarda 4);
+// - menos de 4 fica como está no documento (anotação "5,03" no SWIFT), com
+//   UMA exceção decidida pelo Ayslan no mesmo dia: quando o próprio documento
+//   traz o total em reais e em dólar (resumo "detalhes da operação" do Itaú,
+//   que imprime a taxa com 2 casas), a taxa é R$ ÷ US$ com 4 casas. É a taxa
+//   do contrato formal (ex.: resumo 4,96 × contrato 4,963500000) e faz o
+//   valor em reais bater com o débito no banco. Só usa a conta se ela
+//   arredondar para a taxa impressa (senão os totais lidos estão errados e
+//   fica a impressa).
+// Lê o primeiro número decimal de um texto ("taxa 5,084", "4,963500000",
+// "5.24") e devolve o valor e quantas casas decimais estavam escritas.
+function lerNumeroDocumento(txt){
+  const s = String(txt == null ? '' : txt);
+  const m = s.match(/(\d{1,3})[.,](\d{1,20})(?!\d)/);
+  if(m) return { valor: Number(m[1] + '.' + m[2]), casas: m[2].length };
+  const i = s.match(/^\D*?(\d{1,3})\s*$/);
+  return i ? { valor: Number(i[1]), casas: 0 } : null;
+}
+function taxaCambioDoDocumento(c){
+  const vazio = { taxa: 0, casas: 0, origem: '', impressa: 0 };
+  if(!c) return vazio;
+  const r4 = v => Math.round(v * 10000) / 10000;
+  const num = parseFloat(c.taxa_cambio);
+  let lido = lerNumeroDocumento(c.taxa_cambio_texto);
+  // O texto copiado do documento só vale se for a mesma taxa que a IA devolveu
+  // (corrige um arredondamento, ex.: 5,14 × "5,1435"); se for outro número, ignora.
+  if(lido && num > 0 && Math.abs(lido.valor - num) > 0.01) lido = null;
+  if(!lido || !(lido.valor > 0)){
+    if(!(num > 0)) return vazio;
+    const m = String(c.taxa_cambio).match(/[.,](\d+)\s*$/);
+    lido = { valor: num, casas: m ? m[1].length : 0 };
+  }
+  const impressa = lido.valor;
+  let taxa = lido.casas > 4 ? r4(impressa) : impressa;
+  let origem = 'documento';
+  const usd = parseFloat(c.valor_total_usd) || 0;
+  const brl = parseFloat(c.valor_total_brl) || 0;
+  if(lido.casas < 4 && usd > 0 && brl > 0){
+    const ef = r4(brl / usd);
+    if(Math.abs(ef - impressa) <= 0.5 * Math.pow(10, -lido.casas) + 1e-9){ taxa = ef; origem = 'reais_por_dolar'; }
+  }
+  return { taxa, casas: lido.casas, origem, impressa };
+}
+
 function _mais180dias(iso){
   if(!iso) return '';
   const d = new Date(String(iso).slice(0,10)+'T12:00:00');
