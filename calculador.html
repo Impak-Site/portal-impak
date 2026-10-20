@@ -84,6 +84,7 @@ input.locked{background:var(--bg);color:var(--muted);cursor:not-allowed;}
 .cambio-row input{flex:1;}
 .btn-refresh{padding:8px 11px;background:var(--ac);color:#fff;border:none;border-radius:var(--r-sm);font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600;transition:background .15s;}
 .btn-refresh:hover{background:var(--ac2);}
+.btn-refresh:disabled,.btn-refresh:disabled:hover{opacity:.45;cursor:not-allowed;background:var(--ac);} /* ex.: Salvar travado em cotação de processo fechado */
 .cambio-info{font-size:10px;color:var(--dim);margin-top:3px;}
 
 /* PARCELAS DO FOB (item e) — mesmos 6 campos do Controle (Etapa, Valor USD,
