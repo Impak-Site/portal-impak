@@ -547,6 +547,186 @@ const FECHAMENTO_LINHAS_B = [
     { re: /^SEGURO$/, chave: 'seguro', moeda: 'BRL' },
 ];
 
+// ── PACOTES ITEM A ITEM PELA ABA MODELO (20/10/2026, UD26-047) ──────────
+// "Adiantamento Porto" e "Agente Frete" da aba Fechamento sao SOMAS da aba
+// MODELO: Fechamento!O10 = MODELO!G23 (II + IPI + PIS + COFINS + ICMS +
+// Siscomex + AFRMM + armazenagem + antidumping + L.I.) e O12 = MODELO!G37 -
+// seguro (frete + diferenca de frete + capatazia, liberacao do BL, taxas do
+// agente, IOF...). Antes os dois ficavam so no resumo (para nao somar duas
+// vezes com os itens ja lancados) e o processo importado so pela planilha
+// ficava sem esses ~R$ 96 mil de custo — o Fechamento nao batia.
+// Agora cada pacote entra ITEM A ITEM, lido da MODELO pelo rotulo da coluna
+// B (valor em R$ na coluna F), quando a soma dos itens bate com o valor do
+// pacote no Fechamento (tolerancia R$ 1). Nao bateu (pacote digitado a mao,
+// linha nova na MODELO...)? Entra o pacote inteiro, com aviso. Quem aplica
+// no processo (crResolverPacotesImportados, controle-modal.js) nunca deixa
+// pacote e itens do mesmo grupo juntos na grade.
+const MODELO_ITENS_PACOTE = {
+    adiantamento: [
+        { id: 'ii', re: /^IMP(OSTO|\.)? ?(DE )?IMPORTACAO$|^I\.I\.?$/ },
+        { id: 'ipi', re: /^IPI$/ },
+        { id: 'pis', re: /^PIS$/ },
+        { id: 'cofins', re: /^COFINS$/ },
+        { id: 'icms', re: /^ICMS$/ },
+        { id: 'siscomex', re: /^(TAXA )?SISCOMEX/ },
+        { id: 'marinha', re: /^MARINHA MERCANTE|^AFRMM/ },
+        { id: 'armazenagem', re: /^ARMAZENAGEM$/ },
+        { id: 'antidumping', re: /^ANTIDUMPING$/ },
+        { id: 'emissao_li', re: /^EMISSAO (DE )?L\.? ?I/, li: true },
+    ],
+    agente: [
+        { id: 'frete', re: /^FRETE$/, rotulo: 'Frete' },
+        // Frete que o agente cobrou acima do declarado no BL (4.800 x 1.850,
+        // por ex.): e frete pago, entra junto no Frete Internacional.
+        { id: 'frete', re: /^DIFERENCA DE FRETE/, rotulo: 'Diferenca de frete' },
+        { id: 'capatazia', re: /^CAPATAZIA/ },
+        { id: 'liberacao_bl', re: /^LIBERACAO (DE |DO )?B\.?L/ },
+        { id: 'additional_costs', re: /^ADDITIONAL COST/ },
+        { id: 'import_logistics', re: /^IMPORT LOGISTIC/ },
+        { id: 'trs', re: /^TRS\b/ },
+        { id: 'trs', re: /^CRS\b/ }, // "CRS - Container Repair Surcharge" (o Controle chama a linha trs de CRS)
+        { id: 'tsc', re: /^TSC\b/ },
+        { id: 'drop_off', re: /^DROP OFF/ },
+        { id: 'isps', re: /^ISPS/ },
+        { id: 'iof', re: /^IOF$/ },
+        { id: 'desconsolidacao', re: /^DESCONSOLIDACAO/ },
+        { id: 'agente', re: /^TAXA ?-? ?AGENTE/ },
+        { id: 'handling', re: /^HANDLING|^DISBURSEMENT/ },
+    ],
+};
+// Informativos (credito de IBS/CBS da importacao): vao para a grade, mas nao
+// fazem parte do pacote nem do custo (temCredito em controle-core.js).
+const MODELO_ITENS_CREDITO = [{ id: 'ibs', re: /^IBS$/ }, { id: 'cbs', re: /^CBS$/ }];
+
+// Linhas da aba MODELO ate "CUSTO TOTAL" (abaixo dela vem o bloco da venda,
+// que repete IPI/PIS/COFINS/ICMS — esses nao sao custo de importacao).
+function linhasModelo(ws) {
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+    const linhas = [];
+    for (let r = range.s.r; r <= range.e.r; r++) {
+        const l = { r: r + 1 };
+        ['B', 'C', 'D', 'E', 'F'].forEach(function(col) { l[col] = cellVal(ws, col + (r + 1)); });
+        if (/^CUSTO TOTAL/.test(semAcento(l.B))) break;
+        linhas.push(l);
+    }
+    return linhas;
+}
+
+// Abas MODELO candidatas, na ordem: a que as formulas do Fechamento citam
+// (='MODELO - COM S.T'!G23), depois COM S.T e SEM S.T.
+function abasModeloCandidatas(wb, wsFech) {
+    const cont = {};
+    Object.keys(wsFech).forEach(function(a) {
+        const f = a[0] !== '!' && wsFech[a] && wsFech[a].f;
+        if (!f) return;
+        const re = /'?(MODELO[^'!]*)'?!/gi;
+        let m;
+        while ((m = re.exec(String(f)))) { const n = m[1].trim().toUpperCase(); cont[n] = (cont[n] || 0) + 1; }
+    });
+    const pedidas = Object.keys(cont).sort(function(a, b) { return cont[b] - cont[a]; });
+    const nomes = [];
+    pedidas.concat(['MODELO - COM S.T', 'MODELO - SEM S.T']).forEach(function(n) {
+        const aba = wb.SheetNames.find(function(s) { return s.trim().toUpperCase() === n; });
+        if (aba && nomes.indexOf(aba) < 0) nomes.push(aba);
+    });
+    return nomes;
+}
+
+const r2pi = function(v) { return Math.round(v * 100) / 100; };
+
+// Itens de um pacote lidos da MODELO. A Emissao de L.I. tem duas partes
+// (R$ 100 por L.I. + taxa): o pacote do modelo atual soma so a taxa
+// (=SOMA(...)-D23*100), entao, se a soma nao bater com a L.I. inteira,
+// testa a L.I. sem os R$ 100, so a taxa (coluna E) e sem a L.I.
+// bloco: no pacote do agente o modelo soma TODAS as linhas de CAPATAZIA ate
+// TAXA - AGENTE CARGA (=SOMA(F26:F37)); linha desse bloco sem taxa
+// correspondente no Controle ("Lift ON / Lift OFF", por ex.) vai para Custos
+// Diversos com o rotulo dela, para a soma continuar igual a do pacote.
+function itensPacoteModelo(linhas, defs, valorPacote, bloco) {
+    const itens = {}, partes = {}, usadas = new Set();
+    let li = null;
+    const somar = function(id, rotulo, v) {
+        itens[id] = r2pi((itens[id] || 0) + v);
+        (partes[id] = partes[id] || []).push({ rotulo: rotulo, valor: v });
+    };
+    defs.forEach(function(def) {
+        const l = linhas.find(function(x) { return !usadas.has(x.r) && def.re.test(semAcento(x.B)); });
+        if (!l) return;
+        usadas.add(l.r);
+        const v = r2pi(numVal(l.F));
+        if (def.li) li = { f: v, d: numVal(l.D), e: r2pi(numVal(l.E)) };
+        if (v) somar(def.id, def.rotulo || String(l.B).trim(), v);
+    });
+    if (bloco) {
+        const iDe = linhas.findIndex(function(x) { return bloco.de.test(semAcento(x.B)); });
+        const iAte = linhas.findIndex(function(x) { return bloco.ate.test(semAcento(x.B)); });
+        if (iDe >= 0 && iAte > iDe) {
+            linhas.slice(iDe, iAte + 1).forEach(function(l) {
+                const v = r2pi(numVal(l.F));
+                if (usadas.has(l.r) || !v || !semAcento(l.B)) return;
+                usadas.add(l.r);
+                somar('custos_diversos', String(l.B).trim(), v);
+            });
+        }
+    }
+    const soma = function() { return r2pi(Object.keys(itens).reduce(function(s, k) { return s + itens[k]; }, 0)); };
+    const bate = function() { return Math.abs(soma() - valorPacote) <= 1; };
+    if (!bate() && li && li.f) {
+        const alternativas = [li.d > 0 ? r2pi(li.f - 100 * li.d) : null, li.e || null, 0];
+        for (let i = 0; i < alternativas.length && !bate(); i++) {
+            const alt = alternativas[i];
+            if (alt === null || alt < 0) continue;
+            if (alt) itens.emissao_li = alt; else delete itens.emissao_li;
+            if (bate()) {
+                if (alt) partes.emissao_li = [{ rotulo: 'Emissao de L.I. (sem os R$ 100 por L.I.)', valor: alt }];
+                else delete partes.emissao_li;
+            }
+        }
+        if (!bate()) { itens.emissao_li = li.f; partes.emissao_li = [{ rotulo: 'Emissao de L.I.', valor: li.f }]; }
+    }
+    return { itens: itens, partes: partes, soma: soma(), bate: bate() };
+}
+
+function pacotesPelaModelo(wb, wsFech, resumo, real_json, moedas, avisos) {
+    const abas = abasModeloCandidatas(wb, wsFech);
+    const pacotes = {};
+    const NOMES = { adiantamento: 'Adiantamento Porto', agente: 'Agente Frete' };
+    const CHAVES = { adiantamento: 'adiantamento_porto', agente: 'agente_frete' };
+    const brl = function(v) { return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    let abaUsada = null;
+    Object.keys(MODELO_ITENS_PACOTE).forEach(function(chave) {
+        const valor = r2pi(numVal(resumo[CHAVES[chave]]));
+        if (!(valor > 0)) return;
+        let achado = null, melhor = null;
+        const bloco = chave === 'agente' ? { de: /^CAPATAZIA/, ate: /^TAXA ?-? ?AGENTE/ } : null;
+        for (let i = 0; i < abas.length && !achado; i++) {
+            const r = itensPacoteModelo(linhasModelo(wb.Sheets[abas[i]]), MODELO_ITENS_PACOTE[chave], valor, bloco);
+            if (r.bate && Object.keys(r.itens).length) { achado = r; abaUsada = abaUsada || abas[i]; }
+            else if (!melhor && Object.keys(r.itens).length) melhor = r;
+        }
+        if (achado) {
+            Object.keys(achado.itens).forEach(function(id) { real_json[id] = achado.itens[id]; moedas[id] = 'BRL'; });
+            pacotes[chave] = { id: CHAVES[chave], nome: NOMES[chave], valor: valor, modo: 'itens', soma: achado.soma, itens: achado.itens, partes: achado.partes };
+            return;
+        }
+        // Nao deu para abrir: o pacote entra inteiro (modo planilha).
+        real_json[CHAVES[chave]] = valor;
+        moedas[CHAVES[chave]] = 'BRL';
+        pacotes[chave] = { id: CHAVES[chave], nome: NOMES[chave], valor: valor, modo: 'pacote', soma: melhor ? melhor.soma : null };
+        avisos.push(NOMES[chave] + ' entrou como um valor so (' + brl(valor) + '): ' + (melhor ? 'os itens da aba MODELO somam ' + brl(melhor.soma) + ' e nao batem com o Fechamento' : 'nao achei os itens dele na aba MODELO') + '. Para lancar item a item, leia o documento (acerto do despachante / fatura do agente) em "Ler fatura (IA)".');
+    });
+    if (abaUsada) {
+        // IBS/CBS da importacao (credito): so informativo, mesma aba MODELO.
+        const linhas = linhasModelo(wb.Sheets[abaUsada]);
+        MODELO_ITENS_CREDITO.forEach(function(def) {
+            const l = linhas.find(function(x) { return def.re.test(semAcento(x.B)); });
+            const v = l ? r2pi(numVal(l.F)) : 0;
+            if (v > 0) { real_json[def.id] = v; moedas[def.id] = 'BRL'; }
+        });
+    }
+    return pacotes;
+}
+
 function parseFechamento(wb) {
     const ws = wb.Sheets['Fechamento'];
     if (!ws) throw new Error('Aba "Fechamento" nao encontrada na planilha.');
@@ -601,6 +781,11 @@ function parseFechamento(wb) {
     // Notas de saida: do rotulo "NOTAS SAIDAS" (coluna B) ate a linha "TOTAL"
     // (coluna E). Cada nota tem numero em E, valor em G, cliente em H, data em
     // K; a linha seguinte pode ser "JUROS" (valor em G, % em H, prazo em I).
+    // Nota com valor e SEM numero (a planilha calcula o valor da NF e ninguem
+    // digitou o numero — UD26-047, 20/10/2026) tambem entra, com numero null:
+    // antes ela sumia e o processo ficava sem receita. O bloco para no TOTAL
+    // ou, se ele faltar, no cabecalho dos pagamentos (Dolar/Real/Adance
+    // Payment), para nunca ler pagamento como nota.
     const notas = [];
     const lNotas = porRotuloB(/^NOTAS SAIDAS/);
     let totalNotasPlanilha = null;
@@ -609,12 +794,17 @@ function parseFechamento(wb) {
             const l = linhas[i];
             const e = semAcento(l.E);
             if (e === 'TOTAL') { totalNotasPlanilha = numVal(l.G); break; }
+            if (semAcento(l.F) === 'DOLAR' || /^ADV?ANCE PAYMENT|^ADIANTAMENTO PORTO|^CREDIT NOTE/.test(semAcento(l.B))) break;
             if (e === 'JUROS') {
                 if (notas.length) { const n = notas[notas.length - 1]; n.juros = Math.round(numVal(l.G) * 100) / 100; n.juros_pct = numVal(l.H) || null; n.prazo = l.I != null ? String(l.I).trim() : null; }
                 continue;
             }
-            if (/^\d{3,}$/.test(e) && numVal(l.G) > 0) {
-                notas.push({ numero: e, valor: Math.round(numVal(l.G) * 100) / 100, cliente: l.H != null ? String(l.H).trim() : '', data: isoDate(l.K) || (l.K != null ? String(l.K).trim() : null), juros: 0, juros_pct: null, prazo: null });
+            // Sem numero, so vale a linha do proprio "NOTAS SAIDAS" ou com
+            // cliente na coluna H (a linha de soma sem o rotulo TOTAL nao tem).
+            const numero = (e.match(/\d{3,}/) || [])[0] || null;
+            const temCliente = l.H != null && String(l.H).trim() !== '';
+            if (numVal(l.G) > 0 && (numero || (!e && (l === lNotas || temCliente)))) {
+                notas.push({ numero: numero, valor: Math.round(numVal(l.G) * 100) / 100, cliente: l.H != null ? String(l.H).trim() : '', data: isoDate(l.K) || (l.K != null ? String(l.K).trim() : null), juros: 0, juros_pct: null, prazo: null });
             }
         }
     }
@@ -637,19 +827,44 @@ function parseFechamento(wb) {
     const resumo = { notas: notas, juros_total: jurosTotal, total_notas: totalNotasPlanilha, fob_pago: fobPago };
     if (fobPago > 0) { real_json.fob = fobPago; moedas.fob = 'BRL'; }
 
-    // Adiantamento Porto e Agente Frete NAO entram no real_json: sao os pacotes
-    // (numerario do despachante / fatura do agente) que ja estao contabilizados
-    // item a item em II, IPI, PIS, COFINS, ICMS, Siscomex, Marinha, Armazenagem,
-    // Frete, Capatazia etc. Importar os dois soma o mesmo dinheiro duas vezes.
-    // Ficam so no resumo, para conferencia.
+    // Adiantamento Porto e Agente Frete nao entram direto da coluna G: sao os
+    // pacotes (numerario do despachante / fatura do agente) e vao para o
+    // real_json ITEM A ITEM pela aba MODELO, ou inteiros quando os itens nao
+    // batem (ver pacotesPelaModelo acima). Nunca os dois juntos.
     FECHAMENTO_LINHAS_B.forEach(function(def) {
         const l = porRotuloB(def.re);
         if (!l) return;
         const v = numVal(l.G);
         resumo[def.chave] = v;
         if (def.importar === false) return;
-        if (v > 0) { real_json[def.chave] = v; if (def.moeda) moedas[def.chave] = def.moeda; }
+        // Diferenca de imposto NEGATIVA e credito (o PIS/COFINS da entrada
+        // passou o da venda): reduz o custo na planilha e tem de reduzir aqui
+        // tambem — antes so entrava valor positivo e o custo ficava maior.
+        const aceita = /^diferenca_/.test(def.chave) ? v !== 0 : v > 0;
+        if (aceita) { real_json[def.chave] = v; if (def.moeda) moedas[def.chave] = def.moeda; }
     });
+    resumo.pacotes = pacotesPelaModelo(wb, ws, resumo, real_json, moedas, avisos);
+
+    // Linha de custo que o modelo nao tem, digitada no meio do bloco (ex.:
+    // "Armazenagem" no lugar de "Comissao Chines", HK60480): soma no TOTAL da
+    // planilha e sumia do processo. Entra em Custos Diversos, com aviso.
+    const iTotal = linhas.findIndex(function(l) { return /^TOTAL$/.test(semAcento(l.B)); });
+    if (iAdi >= 0 && iTotal > iAdi) {
+        const extras = [];
+        linhas.slice(iAdi, iTotal).forEach(function(l) {
+            const b = semAcento(l.B);
+            if (!b || FECHAMENTO_LINHAS_B.some(function(d) { return d.re.test(b); }) || /^DIF\.? DE SEGURO|^SEGURO|^ADIANTAMENTO|^AGENTE/.test(b)) return;
+            const v = r2pi(numVal(l.G));
+            if (v > 0) extras.push({ rotulo: String(l.B).trim(), valor: v });
+        });
+        if (extras.length) {
+            const soma = r2pi(extras.reduce(function(s, x) { return s + x.valor; }, 0));
+            real_json.custos_diversos = r2pi((real_json.custos_diversos || 0) + soma);
+            moedas.custos_diversos = 'BRL';
+            resumo.custos_diversos_planilha = extras;
+            avisos.push('Linha(s) do Fechamento sem campo próprio no Controle foram para Custos Diversos: ' + extras.map(function(x) { return x.rotulo + ' R$ ' + x.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }).join(', ') + '.');
+        }
+    }
 
     // "Dif. de Seguro" (seguro de venda) fica na coluna F; TOTAL e lucros em G.
     const lDifSeguro = porRotuloB(/^DIF\.? DE SEGURO/);

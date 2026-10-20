@@ -68,8 +68,18 @@ async function importarNFVenda(vi, input){
       return;
     }
     // Anti-duplicidade: a mesma NF já cadastrada em outra venda ou no processo.
+    // Em outra venda: não duplica, mas completa o que faltar nela (20/10/2026).
     const dup = nfSaidaJaCadastrada(dados.nf_numero, vi);
-    if(dup){ showToast(`A NF ${dados.nf_numero} já está cadastrada (${dup}) — nada foi alterado.`, 'err', 12000); return; }
+    if(dup){
+      const viDup = vendaComNF(dados.nf_numero, vi);
+      const c = viDup >= 0 ? completarVendaComNF(viDup, dados) : { preenchidos: [], divergencias: [] };
+      const atencao = c.divergencias.length ? ' ATENÇÃO: ' + c.divergencias.join('; ') + '.' : '';
+      if(c.preenchidos.length){
+        renderVendas();
+        showToast(`A NF ${dados.nf_numero} já estava na Venda ${viDup + 1} — completei lá o que faltava: ${c.preenchidos.join(', ')}.${atencao} Confira e salve.`, 'ok', 15000);
+      } else showToast(`A NF ${dados.nf_numero} já está cadastrada (${dup}) — nada foi alterado.${atencao}`, 'err', 12000);
+      return;
+    }
     const avisoFiltro = aplicarFiltroProcessoNaNF(dados);
     aplicarDadosNFNaVenda(vi, dados);
     if(avisoFiltro){ showToast('✓ ' + avisoFiltro + ' Confira e salve.', 'ok', 15000); return; }
@@ -134,6 +144,139 @@ function nfSaidaJaCadastrada(numero, ignorarVi){
   }
   if(ignorarVi !== 'processo' && _normNumNF(document.getElementById('f_nf_saida_numero')?.value) === alvo) return 'na NF de Saída do processo (aba Documentos)';
   return '';
+}
+
+// Índice da venda com esse nº de NF (-1 se nenhuma).
+function vendaComNF(numero, ignorarVi){
+  const alvo = _normNumNF(numero);
+  const vs = (typeof _vendas !== 'undefined' && Array.isArray(_vendas)) ? _vendas : [];
+  if(!alvo) return -1;
+  return vs.findIndex((v, i) => i !== ignorarVi && _normNumNF(v.nf_saida_numero) === alvo);
+}
+
+// NF já cadastrada numa venda, mas incompleta (UD26-047, 20/10/2026: a venda
+// tinha nº/data/CFOP e não tinha VALOR — ler a NF de novo dizia "já
+// cadastrada, nada foi alterado" e o Fechamento seguia sem receita). Completa
+// só o que está vazio na venda (valor, data, CFOP, cliente, itens/valor dos
+// itens); o que já está lançado e diverge da NF vira aviso, nunca é trocado.
+function completarVendaComNF(vi, dados){
+  const v = (typeof _vendas !== 'undefined' && _vendas) ? _vendas[vi] : null;
+  const out = { preenchidos: [], divergencias: [] };
+  if(!v || !dados) return out;
+  const vazio = x => x == null || String(x).trim() === '';
+  const fmt = n => 'R$ ' + exibirMoeda(n);
+  const valorNF = parseFloat(dados.nf_valor) || 0;
+  const valorVenda = parseFloat(v.nf_saida_valor) || 0;
+  if(valorNF > 0 && !(valorVenda > 0)){ v.nf_saida_valor = Math.round(valorNF * 100) / 100; out.preenchidos.push('valor ' + fmt(valorNF)); }
+  else if(valorNF > 0 && Math.abs(valorVenda - valorNF) > 0.05) out.divergencias.push(`valor na venda ${fmt(valorVenda)} e na NF ${fmt(valorNF)} (mantive o da venda)`);
+  if(dados.nf_data && vazio(v.nf_saida_data)){ v.nf_saida_data = dados.nf_data; out.preenchidos.push('data'); }
+  if(dados.cfop && vazio(v.nf_saida_cfop)){ v.nf_saida_cfop = dados.cfop; out.preenchidos.push('CFOP ' + dados.cfop); }
+  if(dados.cliente && vazio(v.cliente)){ v.cliente = dados.cliente; out.preenchidos.push('cliente'); }
+  const itensNF = Array.isArray(dados.itens) ? dados.itens.filter(it => it && (it.descricao || it.quantidade)) : [];
+  const itensVenda = Array.isArray(v.itens) ? v.itens : [];
+  const semItens = !itensVenda.some(it => it && (!vazio(it.descricao) || parseFloat(it.quantidade) > 0));
+  if(itensNF.length && semItens){
+    v.itens = itensNF.map(it => ({ descricao: it.descricao || '', quantidade: it.quantidade != null ? String(it.quantidade) : '', valor_total: it.valor_total || '', valor_unit: it.valor_unit || '' }));
+    out.preenchidos.push(`${itensNF.length} ite${itensNF.length === 1 ? 'm' : 'ns'}`);
+  } else if(itensNF.length){
+    // Itens já lançados sem valor: pega o valor do item da NF de mesma
+    // quantidade (e, havendo mais de um, o de descrição parecida).
+    const usados = new Set();
+    const palavras = s => new Set(String(s || '').toUpperCase().split(/[^A-Z0-9/.]+/).filter(p => p.length >= 3));
+    let n = 0;
+    itensVenda.forEach(it => {
+      if(!it || !vazio(it.valor_total)) return;
+      const q = parseFloat(it.quantidade) || 0;
+      const cands = itensNF.map((x, i) => ({ x, i })).filter(c => !usados.has(c.i) && (parseFloat(c.x.quantidade) || 0) === q && !vazio(c.x.valor_total));
+      if(!cands.length) return;
+      const pv = palavras(it.descricao);
+      const nota = c => [...palavras(c.x.descricao)].filter(p => pv.has(p)).length;
+      const melhor = cands.length === 1 ? cands[0] : cands.sort((a, b) => nota(b) - nota(a))[0];
+      if(cands.length > 1 && !nota(melhor)) return;
+      usados.add(melhor.i);
+      it.valor_total = melhor.x.valor_total;
+      if(vazio(it.valor_unit) && melhor.x.valor_unit) it.valor_unit = melhor.x.valor_unit;
+      n++;
+    });
+    if(n) out.preenchidos.push(`valor de ${n} ite${n === 1 ? 'm' : 'ns'}`);
+  }
+  if(dados.cliente && !vazio(v.cliente)){
+    const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const a = norm(dados.cliente), b = norm(v.cliente);
+    if(a && b && !a.includes(b) && !b.includes(a)) out.divergencias.push(`cliente na venda "${v.cliente}" e na NF "${dados.cliente}"`);
+  }
+  return out;
+}
+
+// Notas de saída da aba Fechamento da planilha (planilha-import.js →
+// resumo.notas) → venda da aba Vendas, ou NF de Saída do processo (aba
+// Documentos) quando o processo não usa a aba Vendas. Mesma regra de
+// completarVendaComNF: só preenche o que está vazio. Nota sem número (a
+// planilha calcula o valor e ninguém digitou o nº) casa com a única venda
+// de verdade do processo. Devolve { preenchidos, avisos } para a tela.
+function aplicarNotasDaPlanilha(notas){
+  const out = { preenchidos: [], avisos: [] };
+  const lista = (Array.isArray(notas) ? notas : []).filter(n => n && parseFloat(n.valor) > 0);
+  if(!lista.length) return out;
+  const fmt = n => 'R$ ' + exibirMoeda(n);
+  const iso = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? s : '';
+  const r2 = x => Math.round((parseFloat(x) || 0) * 100) / 100;
+  const vendas = (typeof _vendas !== 'undefined' && Array.isArray(_vendas)) ? _vendas : [];
+  const ehVenda = v => !(typeof vendaEhRemessa === 'function' && vendaEhRemessa(v)) && !(typeof vendaEhRetorno === 'function' && vendaEhRetorno(v)) && !(typeof ehCfopBaixa === 'function' && ehCfopBaixa(v.nf_saida_cfop));
+  if(vendas.length){
+    const reais = vendas.map((v, i) => i).filter(i => ehVenda(vendas[i]));
+    const usadas = new Set();
+    let mudou = false;
+    lista.forEach(n => {
+      const num = _normNumNF(n.numero);
+      let vi = num ? vendas.findIndex((v, i) => !usadas.has(i) && _normNumNF(v.nf_saida_numero) === num) : -1;
+      if(vi < 0 && lista.length === 1 && reais.length === 1 && !usadas.has(reais[0]) && (!num || !_normNumNF(vendas[reais[0]].nf_saida_numero))) vi = reais[0];
+      const rotNota = `Nota de ${fmt(n.valor)}${n.numero ? ' (NF ' + n.numero + ')' : ''} da planilha`;
+      if(vi < 0){ out.avisos.push(`${rotNota} não foi lançada: não achei a venda dela na aba Vendas — lance a NF lá (ou leia o XML/PDF da nota).`); return; }
+      usadas.add(vi);
+      const v = vendas[vi];
+      const rot = `Venda ${vi + 1}${v.nf_saida_numero ? ' (NF ' + v.nf_saida_numero + ')' : ''}`;
+      const atual = parseFloat(v.nf_saida_valor) || 0;
+      if(!(atual > 0)){ v.nf_saida_valor = r2(n.valor); out.preenchidos.push(`${rot}: valor ${fmt(n.valor)}`); mudou = true; }
+      else if(Math.abs(atual - n.valor) > 1) out.avisos.push(`${rot}: a venda tem ${fmt(atual)} e a planilha ${fmt(n.valor)} — mantive o valor da venda; confira.`);
+      if(!_normNumNF(v.nf_saida_numero) && num){ v.nf_saida_numero = String(n.numero); out.preenchidos.push(`${rot}: nº ${n.numero}`); mudou = true; }
+      if(!v.nf_saida_data && iso(n.data)){ v.nf_saida_data = n.data; out.preenchidos.push(`${rot}: data`); mudou = true; }
+    });
+    if(mudou){
+      if(typeof _painelDirty !== 'undefined') _painelDirty = true;
+      if(typeof renderVendas === 'function') renderVendas();
+      if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
+    }
+    return out;
+  }
+  // Sem aba Vendas: NF de Saída do processo (aba Documentos).
+  if(lista.length > 1){
+    out.avisos.push(`A planilha tem ${lista.length} notas de saída (${lista.map(n => (n.numero ? 'NF ' + n.numero + ' ' : '') + fmt(n.valor)).join(', ')}) — com mais de uma nota, lance cada uma na aba Vendas (ou leia o XML/PDF de cada uma).`);
+    return out;
+  }
+  const n = lista[0];
+  const elNum = document.getElementById('f_nf_saida_numero'), elValor = document.getElementById('f_nf_saida_valor'), elData = document.getElementById('f_nf_saida_data');
+  if(!elValor) return out;
+  const cfop = (document.getElementById('f_nf_saida_cfop') || {}).value || '';
+  if(typeof ehCfopRemessaEstoque === 'function' && ehCfopRemessaEstoque(cfop)){
+    out.avisos.push(`A NF de Saída do processo é de remessa (CFOP ${cfop}); a nota de ${fmt(n.valor)} da planilha é a venda — lance-a na aba Vendas (ou leia o XML/PDF da nota).`);
+    return out;
+  }
+  const numAtual = _normNumNF(elNum && elNum.value);
+  if(numAtual && n.numero && numAtual !== _normNumNF(n.numero)){
+    out.avisos.push(`A NF de Saída do processo é a ${elNum.value} e a planilha traz a NF ${n.numero} — não mexi; confira.`);
+    return out;
+  }
+  const valorAtual = parseFloat(typeof parseValorMoeda === 'function' ? parseValorMoeda(elValor.value) : elValor.value) || 0;
+  if(!(valorAtual > 0)){ elValor.value = exibirMoeda(r2(n.valor)); out.preenchidos.push(`NF de Saída: valor ${fmt(n.valor)}`); }
+  else if(Math.abs(valorAtual - n.valor) > 1) out.avisos.push(`NF de Saída: o processo tem ${fmt(valorAtual)} e a planilha ${fmt(n.valor)} — mantive o do processo; confira.`);
+  if(elNum && !elNum.value && n.numero){ elNum.value = n.numero; out.preenchidos.push(`NF de Saída: nº ${n.numero}`); }
+  if(elData && !elData.value && iso(n.data)){ elData.value = n.data; out.preenchidos.push('NF de Saída: data'); }
+  if(out.preenchidos.length){
+    if(typeof _painelDirty !== 'undefined') _painelDirty = true;
+    if(typeof atualizarFaseEmTempoReal === 'function') atualizarFaseEmTempoReal();
+  }
+  return out;
 }
 
 // ── XML da NFe (parse 100% local, sem chamar servidor) ──────────────────
@@ -407,9 +550,22 @@ async function importarNFSaidaProcessoArquivo(file, opts){
     const elValorChk = document.getElementById('f_nf_saida_valor');
     const avisoFiltro = aplicarFiltroProcessoNaNF(dados);
 
-    // Anti-duplicidade: mesma NF já lançada numa venda.
+    // Anti-duplicidade: mesma NF já lançada numa venda — não duplica, mas
+    // completa o que estiver faltando nela (valor, data, CFOP, itens).
     const dupVenda = nfSaidaJaCadastrada(dados.nf_numero, 'processo');
-    if(dupVenda) return fim(`A NF ${dados.nf_numero} já está cadastrada (${dupVenda}) — nada foi alterado.`);
+    if(dupVenda){
+      const viDup = vendaComNF(dados.nf_numero);
+      const c = viDup >= 0 ? completarVendaComNF(viDup, dados) : { preenchidos: [], divergencias: [] };
+      const atencao = c.divergencias.length ? ' | ATENÇÃO: ' + c.divergencias.join('; ') : '';
+      if(c.preenchidos.length){
+        if(typeof _painelDirty !== 'undefined') _painelDirty = true;
+        if(typeof renderVendas === 'function') renderVendas();
+        if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
+        return fim(`A NF ${dados.nf_numero} já estava na Venda ${viDup + 1} — completei o que faltava: ${c.preenchidos.join(', ')}.${atencao} Confira e salve.`,
+          { ok: true, destino: 'vendas', camposLog: [`Vendas: NF ${dados.nf_numero} completada (${c.preenchidos.join(', ')})`] });
+      }
+      return fim(`A NF ${dados.nf_numero} já está cadastrada (${dupVenda}) e completa — nada a alterar.${atencao}`);
+    }
 
     // Regra CFOP (25/09/2026): se o processo já tem uma NF de Saída e a nova
     // é de OUTRO tipo (remessa 5905 x venda), as duas precisam ficar — a

@@ -744,13 +744,71 @@ function telaComIA(respostaIA) {
     iguais(t.rodar('_vendas.length'), 0);
     iguais(t.els.f_cliente.value, '', 'a NF de saída não mexe em outros campos do processo');
   });
-  await testeAsync('Leitura geral: a mesma NF que já está na aba Vendas não entra de novo', async () => {
+  // UD26-047 (20/10/2026): a NF já estava na venda, mas SEM valor — ler a NF
+  // de novo dizia "nada foi alterado" e o Fechamento ficava sem receita. Agora
+  // não duplica e completa o que falta; o que já está lançado não é trocado.
+  await testeAsync('Leitura geral: a mesma NF que já está na aba Vendas não entra de novo, mas completa o que falta nela', async () => {
     const t = telaComIA(nfVendaLida);
     t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [Object.assign(vendaVazia(), { nf_saida_numero: '90001', nf_saida_cfop: '5102' })];`);
     t.tela('f_nf_saida_numero', '90000'); t.tela('f_nf_saida_cfop', '5905');
     await t.ler();
     iguais(t.rodar('_vendas.length'), 1);
-    ok(t.toasts.some(x => /já está cadastrada/.test(x[1])), JSON.stringify(t.toasts));
+    iguais(t.rodar('JSON.stringify([_vendas[0].nf_saida_valor, _vendas[0].nf_saida_data, _vendas[0].cliente, _vendas[0].itens.length])'), JSON.stringify([1000, '2026-10-05', 'CLIENTE TESTE', 1]));
+    ok(t.toasts.some(x => /já estava na Venda 1 — completei o que faltava: valor R\$ 1\.000,00/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Leitura geral: NF já cadastrada e completa — nada muda; valor diferente vira aviso (não troca)', async () => {
+    const t = telaComIA(nfVendaLida);
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [Object.assign(vendaVazia(), { cliente: 'CLIENTE TESTE', nf_saida_numero: '90001', nf_saida_cfop: '5102', nf_saida_data: '2026-10-05', nf_saida_valor: 900, itens: [{ descricao: 'PNEU 205/55R16 TESTE', quantidade: '4', valor_total: '900' }] })];`);
+    await t.ler();
+    iguais(t.rodar('[_vendas.length, _vendas[0].nf_saida_valor].join("|")'), '1|900');
+    ok(t.toasts.some(x => /já está cadastrada .* nada a alterar.*valor na venda R\$ 900,00 e na NF R\$ 1\.000,00/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Notas da planilha de Fechamento: nota sem número completa a única venda (valor/data), sem trocar o que existe', async () => {
+    const t = telaComIA({});
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [Object.assign(vendaVazia(), { nf_saida_numero: '90010', nf_saida_cfop: '6102' })];`);
+    const r = t.rodar(`aplicarNotasDaPlanilha([{ numero: null, valor: 1234.5, cliente: 'X', data: '2026-10-01' }])`);
+    iguais(t.rodar('JSON.stringify([_vendas[0].nf_saida_valor, _vendas[0].nf_saida_data, _vendas[0].nf_saida_numero])'), JSON.stringify([1234.5, '2026-10-01', '90010']));
+    ok(r.preenchidos.length === 2 && !r.avisos.length, JSON.stringify(r));
+    const r2 = t.rodar(`aplicarNotasDaPlanilha([{ numero: '90010', valor: 2000 }])`);
+    iguais(t.rodar('_vendas[0].nf_saida_valor'), 1234.5);
+    ok(r2.avisos.some(a => /a venda tem R\$ 1\.234,50 e a planilha R\$ 2\.000,00/.test(a)), JSON.stringify(r2));
+  });
+  await testeAsync('Planilha de Fechamento: pacote e itens do mesmo grupo nunca ficam juntos na grade (crResolverPacotesImportados)', async () => {
+    const t = telaComIA({});
+    // 1) itens chegando, pacote de importação anterior da planilha na grade → o pacote sai
+    t.tela('f_cr_adiantamento_porto', '23.400,00');
+    t.rodar(`_crConf = { adiantamento_porto: { origem: 'planilha' } };`);
+    let rj = { ii: 10000, ipi: 1000 };
+    let r = t.rodar(`crResolverPacotesImportados(${JSON.stringify(rj)}, { adiantamento: { nome: 'Adiantamento Porto', valor: 11000, modo: 'itens', partes: {} } })`);
+    iguais(t.els.f_cr_adiantamento_porto.value, '');
+    ok(!r.avisos.length && r.infos.some(i => /entrou item a item/.test(i)), JSON.stringify(r));
+    // 2) valor único chegando e II já lançado pela DUIMP → o valor único não entra
+    t.tela('f_cr_ii', '10.000,00'); t.tela('f_cr_adiantamento_porto', '');
+    t.rodar(`_crConf = { ii: { origem: 'DUIMP' } }; window.__rj = { adiantamento_porto: 23400 };`);
+    r = t.rodar(`crResolverPacotesImportados(window.__rj, { adiantamento: { nome: 'Adiantamento Porto', valor: 23400, modo: 'pacote' } })`);
+    ok(!('adiantamento_porto' in t.rodar('window.__rj')), 'o valor único foi tirado do que vai para a grade');
+    ok(r.avisos.some(a => /Adiantamento Porto: o processo já tem II lançado/.test(a)), JSON.stringify(r));
+    // 3) itens chegando e o valor único digitado à mão → mantém o valor único, itens não entram
+    t.tela('f_cr_ii', ''); t.tela('f_cr_agente_frete', '9.000,00');
+    t.rodar(`_crConf = { agente_frete: { origem: 'digitado' } }; window.__rj = { frete: 5000, capatazia: 1100 };`);
+    r = t.rodar(`crResolverPacotesImportados(window.__rj, { agente: { nome: 'Agente Frete', valor: 6100, modo: 'itens', partes: {} } })`);
+    iguais(t.rodar('JSON.stringify(window.__rj)'), '{}');
+    iguais(t.els.f_cr_agente_frete.value, '9.000,00');
+    ok(r.avisos.some(a => /Agente Frete: o valor único já está lançado \(R\$ 9\.000,00\)/.test(a)), JSON.stringify(r));
+  });
+  await testeAsync('Notas da planilha de Fechamento: sem aba Vendas preenche a NF de Saída do processo; remessa (5905) não recebe a venda', async () => {
+    const t = telaComIA({});
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [];`);
+    t.tela('f_nf_saida_numero', ''); t.tela('f_nf_saida_valor', ''); t.tela('f_nf_saida_cfop', '');
+    const r = t.rodar(`aplicarNotasDaPlanilha([{ numero: '90020', valor: 5000.25, data: '2026-10-02' }])`);
+    iguais([t.els.f_nf_saida_numero.value, t.els.f_nf_saida_valor.value, t.els.f_nf_saida_data.value], ['90020', '5.000,25', '2026-10-02']);
+    ok(r.preenchidos.length === 3, JSON.stringify(r));
+    const t2 = telaComIA({});
+    t2.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [];`);
+    t2.tela('f_nf_saida_numero', '90021'); t2.tela('f_nf_saida_cfop', '5905'); t2.tela('f_nf_saida_valor', '');
+    const r2 = t2.rodar(`aplicarNotasDaPlanilha([{ numero: null, valor: 5000 }])`);
+    iguais(t2.els.f_nf_saida_valor.value, '');
+    ok(r2.avisos.some(a => /remessa \(CFOP 5905\)/.test(a)), JSON.stringify(r2));
   });
   await testeAsync('Extrator de NF: retorno da remessa (CFOP 1907) vai para a aba Vendas e não vira NF de Entrada', async () => {
     const t = telaComIA({ tipo: 'ENTRADA', nf_numero: '90003', nf_data: '2026-10-06', nf_valor: 500, cfop: '1907', itens: [] });

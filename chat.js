@@ -969,3 +969,187 @@ try{
   }
   if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
 })();
+
+// ════════════════════════════════════════════════════════════════
+// ARRASTAR E SOLTAR EM TODOS OS BOTÕES DE IMPORTAR (20/10/2026)
+// ════════════════════════════════════════════════════════════════
+// Pedido do Ayslan: "todos os botões que precisa importar algo, eu queria
+// ter a opção de arrastar, sempre, em todo o sistema". Em vez de mexer tela
+// por tela, o chat.js (carregado em todas) reconhece sozinho o botão de
+// importar e aceita o arquivo solto em cima dele:
+//  - botão/área com onclick="document.getElementById('X').click()" em que X
+//    é um <input type=file> (o padrão do sistema) — o arquivo vai direto
+//    para esse input, como se tivesse sido escolhido na janela;
+//  - <label> de um input de arquivo, e o próprio input quando está visível;
+//  - elemento com data-arraste (data-arraste-aceita=".pdf,image/*"): o
+//    input nasce no clique (Ler fatura com IA, comprovantes, extrato...).
+//    O clique é feito por aqui e a janela de arquivos é trocada pelos
+//    arquivos soltos (o .click() do input de arquivo é interceptado só
+//    nesse instante).
+// Enquanto se arrasta um arquivo os botões que aceitam ficam com contorno
+// azul tracejado. Fora deles o arquivo não é aberto pelo navegador (antes
+// isso trocava a página e perdia o que não estava salvo). As áreas que já
+// tinham arrastar próprio (Extração com IA, Conferência, TyreDesk...)
+// continuam como estavam: elas tratam o evento antes e o daqui não age.
+(function arrastarParaImportar(){
+  if (window.ImpakArraste || typeof HTMLInputElement === 'undefined') return;
+  var RE_CLICK = /getElementById\(\s*['"]([^'"]+)['"]\s*\)\s*\.click\(\)/;
+  function ehArquivos(e){
+    var t = e.dataTransfer && e.dataTransfer.types;
+    if (!t) return false;
+    for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true;
+    return false;
+  }
+  // O <input type=file> que um elemento abre (ou null).
+  function inputDoAlvo(el){
+    if (!el || el.nodeType !== 1) return null;
+    if (el.tagName === 'INPUT') return el.type === 'file' ? el : null;
+    var da = el.getAttribute('data-arraste');
+    if (da && da.charAt(0) === '#'){ var x = document.getElementById(da.slice(1)); return x && x.type === 'file' ? x : null; }
+    if (el.tagName === 'LABEL'){
+      var c = el.control || (el.htmlFor ? document.getElementById(el.htmlFor) : el.querySelector('input[type=file]'));
+      return c && c.type === 'file' ? c : null;
+    }
+    var oc = el.getAttribute('onclick');
+    var m = oc && RE_CLICK.exec(oc);
+    if (m){ var inp = document.getElementById(m[1]); if (inp && inp.tagName === 'INPUT' && inp.type === 'file') return inp; }
+    return null;
+  }
+  // Sobe do elemento sob o ponteiro até achar um botão de importar.
+  function alvoDe(no){
+    var el = no && no.nodeType === 1 ? no : (no && no.parentElement);
+    for (var n = 0; el && n < 8 && el !== document.body && el !== document.documentElement; n++, el = el.parentElement){
+      if (el.hasAttribute('data-arraste')) return { el: el, input: inputDoAlvo(el) };
+      var inp = inputDoAlvo(el);
+      if (inp) return { el: el, input: inp };
+    }
+    return null;
+  }
+  function travado(a){ return !!(a.el.disabled || a.el.getAttribute('aria-disabled') === 'true' || (a.input && a.input.disabled)); }
+  function aceitaLista(ac, arq){
+    if (!ac) return true;
+    var nome = String(arq.name || '').toLowerCase(), tipo = String(arq.type || '').toLowerCase();
+    return ac.split(',').some(function(a){
+      a = a.trim().toLowerCase();
+      if (!a) return false;
+      if (a.charAt(0) === '.') return nome.slice(-a.length) === a;
+      if (a.slice(-2) === '/*') return tipo.indexOf(a.slice(0, -1)) === 0;
+      return tipo === a;
+    });
+  }
+  function aceitaDe(a){ return (a.input && a.input.getAttribute('accept')) || a.el.getAttribute('data-arraste-aceita') || ''; }
+  function tiposLegiveis(ac){ return String(ac || '').split(',').map(function(s){ return s.trim().replace(/^application\/pdf$/i, 'PDF').replace(/^image\/\*$/i, 'imagem').replace(/^image\//i, ''); }).filter(Boolean).join(', '); }
+  function aviso(msg, tipo){
+    if (typeof window.showToast === 'function'){ try { window.showToast(msg, tipo || 'warn', 9000); return; } catch (e) {} }
+    var t = document.getElementById('impak-arraste-aviso');
+    if (!t){
+      t = document.createElement('div'); t.id = 'impak-arraste-aviso'; t.setAttribute('role', 'status');
+      t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100000;background:#1f2937;color:#fff;padding:10px 16px;border-radius:8px;font:500 13px/1.4 Inter,system-ui,sans-serif;max-width:min(560px,92vw);box-shadow:0 6px 20px rgba(0,0,0,.25);';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg; t.style.display = 'block';
+    clearTimeout(t._tm); t._tm = setTimeout(function(){ t.style.display = 'none'; }, 7000);
+  }
+  // Põe os arquivos no input e avisa a tela (o mesmo "change" da janela).
+  function entregar(inp, arqs){
+    try {
+      var dt = new DataTransfer();
+      arqs.forEach(function(a){ dt.items.add(a); });
+      inp.files = dt.files;
+    } catch (e) { aviso('Este navegador não deixou soltar o arquivo aqui — clique no botão e escolha o arquivo.'); return false; }
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+  function filtrar(inpOuAc, arqs, multiplo){
+    var ac = typeof inpOuAc === 'string' ? inpOuAc : (inpOuAc.getAttribute('accept') || '');
+    var ok = arqs.filter(function(x){ return aceitaLista(ac, x); });
+    if (!ok.length){ aviso('Esse arquivo não é aceito aqui — este botão importa ' + (tiposLegiveis(ac) || 'outro tipo de arquivo') + '.'); return null; }
+    if (!multiplo && ok.length > 1) aviso('Este botão importa um arquivo por vez — usei só "' + ok[0].name + '".', 'info');
+    return multiplo ? ok : ok.slice(0, 1);
+  }
+  // Input criado na hora do clique (data-arraste): o próximo .click() /
+  // .showPicker() de um input de arquivo recebe os arquivos soltos.
+  var pendente = null;
+  function usarPendente(inp){
+    if (!pendente) return false;
+    var p = pendente; pendente = null;
+    if (Date.now() > p.ate) return false;
+    var arqs = filtrar(inp, p.arqs, inp.multiple);
+    if (arqs) entregar(inp, arqs);
+    return true;
+  }
+  var clickOriginal = HTMLInputElement.prototype.click;
+  HTMLInputElement.prototype.click = function(){
+    if (this.type === 'file' && pendente && usarPendente(this)) return;
+    return clickOriginal.apply(this, arguments);
+  };
+  if (HTMLInputElement.prototype.showPicker){
+    var pickerOriginal = HTMLInputElement.prototype.showPicker;
+    HTMLInputElement.prototype.showPicker = function(){
+      if (this.type === 'file' && pendente && usarPendente(this)) return;
+      return pickerOriginal.apply(this, arguments);
+    };
+  }
+  // Destaque dos botões que aceitam enquanto se arrasta.
+  var css = document.createElement('style');
+  css.id = 'impak-arraste-css';
+  css.textContent = '.impak-arrastando [data-impak-alvo]{outline:2px dashed #2563eb !important;outline-offset:3px;}' +
+    '.impak-arrastando [data-impak-alvo].impak-sobre{outline:3px solid #2563eb !important;background-color:rgba(37,99,235,.10) !important;}';
+  (document.head || document.documentElement).appendChild(css);
+  var ativo = false, sobre = null, saida = null;
+  function marcarAlvos(){
+    var cands = document.querySelectorAll('[data-arraste],[onclick*=".click()"],label,input[type=file]');
+    for (var i = 0; i < cands.length; i++){
+      var el = cands[i];
+      if (!el.hasAttribute('data-arraste') && !inputDoAlvo(el)) continue;
+      if (!el.getClientRects().length) continue; // escondido (o botão dele é que aparece)
+      el.setAttribute('data-impak-alvo', '1');
+    }
+  }
+  function limpar(){
+    ativo = false; clearTimeout(saida);
+    document.documentElement.classList.remove('impak-arrastando');
+    var m = document.querySelectorAll('[data-impak-alvo]');
+    for (var i = 0; i < m.length; i++){ m[i].removeAttribute('data-impak-alvo'); m[i].classList.remove('impak-sobre'); }
+    sobre = null;
+  }
+  document.addEventListener('dragenter', function(e){
+    if (!ehArquivos(e)) return;
+    clearTimeout(saida);
+    if (!ativo){ ativo = true; marcarAlvos(); document.documentElement.classList.add('impak-arrastando'); }
+  }, true);
+  document.addEventListener('dragleave', function(e){
+    if (ativo && !e.relatedTarget){ clearTimeout(saida); saida = setTimeout(limpar, 150); }
+  }, true);
+  document.addEventListener('dragover', function(e){
+    if (!ehArquivos(e)) return;
+    if (ativo) clearTimeout(saida);
+    if (e.defaultPrevented) return; // área com arrastar próprio
+    e.preventDefault();
+    var a = alvoDe(e.target);
+    var el = a && !travado(a) ? a.el : null;
+    if (el !== sobre){ if (sobre) sobre.classList.remove('impak-sobre'); sobre = el; if (el) el.classList.add('impak-sobre'); }
+    if (e.dataTransfer) e.dataTransfer.dropEffect = el ? 'copy' : 'none';
+  });
+  document.addEventListener('drop', function(){ setTimeout(limpar, 0); }, true);
+  document.addEventListener('drop', function(e){
+    if (!ehArquivos(e) || e.defaultPrevented) return;
+    e.preventDefault();
+    var arqs = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+    var a = alvoDe(e.target);
+    if (!arqs.length || !a) return;
+    if (travado(a)){ aviso('Esse botão está travado agora (por exemplo, processo fechado).'); return; }
+    if (a.input){
+      var ok = filtrar(a.input, arqs, a.input.multiple);
+      if (ok) entregar(a.input, ok);
+      return;
+    }
+    var okEl = filtrar(aceitaDe(a), arqs, true);
+    if (!okEl) return;
+    pendente = { arqs: okEl, ate: Date.now() + 4000 };
+    a.el.click();
+    setTimeout(function(){ if (pendente && Date.now() > pendente.ate) pendente = null; }, 4100);
+  });
+  window.ImpakArraste = { alvoDe: alvoDe, inputDoAlvo: inputDoAlvo, aceitaLista: aceitaLista };
+})();

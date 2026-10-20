@@ -2322,14 +2322,18 @@ function aplicarBancoCustoLegado(){
 // para permitir exibir separador de milhar (o <input type="number"> nativo
 // nunca aceita formatação). O valor numérico real é obtido com valorMoeda().
 function formatarMoedaInput(el){
+  // Sinal de menos no começo fica (crédito: diferença de PIS/COFINS negativa
+  // vinda da planilha de Fechamento — 20/10/2026). Antes a máscara apagava o
+  // "-" na primeira tecla e o crédito virava custo.
+  const negativo = /^\s*-/.test(el.value||'');
   let digits = (el.value||'').replace(/\D/g,'');
-  if(!digits){ el.value=''; return; }
+  if(!digits){ el.value = negativo ? '-' : ''; return; }
   digits = digits.replace(/^0+(?=\d)/,'');
   while(digits.length<3) digits = '0'+digits;
   const intPart = digits.slice(0,-2).replace(/^0+(?=\d)/,'') || '0';
   const centavos = digits.slice(-2);
   const milhares = intPart.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-  el.value = milhares+','+centavos;
+  el.value = (negativo ? '-' : '') + milhares+','+centavos;
 }
 function valorMoeda(id){
   const el = document.getElementById(id);
