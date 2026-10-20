@@ -53,25 +53,6 @@ async function importarNFVenda(vi, input){
       showToast(`↩️ NF ${dados.nf_numero||''} é RETORNO da remessa (CFOP ${dados.cfop}) — registrada só para controle, não mexe em estoque nem em venda.`, 'info', 12000);
       return;
     }
-    // Retorno (simbólico) da remessa (CFOP 5907/1907/5906/1906): NÃO é NF de
-    // Entrada da importação nem venda — registra na aba Vendas como retorno
-    // (só controle) sem tocar em NF Entrada/Saída do processo.
-    if(ehCfopRetornoRemessa(dados.cfop)){
-      const dupR = nfSaidaJaCadastrada(dados.nf_numero, 'processo');
-      if(dupR || _normNumNF(document.getElementById('f_nf_saida_numero')?.value) === _normNumNF(dados.nf_numero)){ if(status) status.textContent = `A NF ${dados.nf_numero} já está cadastrada — nada foi alterado.`; return; }
-      if(typeof _vendas !== 'undefined'){
-        const r = vendaVazia();
-        r.cliente = dados.cliente || '';
-        r.nf_saida_numero = dados.nf_numero || ''; r.nf_saida_data = dados.nf_data || '';
-        r.nf_saida_valor = dados.nf_valor || ''; r.nf_saida_cfop = dados.cfop || '';
-        if(dados.itens && dados.itens.length) r.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):'', valor_total: it.valor_total||'', valor_unit: it.valor_unit||''}));
-        _vendas.push(r); _painelDirty = true;
-        if(typeof renderVendas === 'function') renderVendas();
-        if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
-      }
-      if(status) status.textContent = `↩️ NF ${dados.nf_numero||''} é RETORNO da remessa (CFOP ${dados.cfop}) — registrada na aba Vendas só para controle. Não mexe em estoque, venda nem na NF de Entrada. Confira e salve.`;
-      return;
-    }
     if(dados.tipo === 'ENTRADA'){
       showToast('Esse documento parece ser uma NF de ENTRADA (compra), não de Saída — nada foi preenchido. Confira o arquivo anexado.', 'err', 12000);
       return;
@@ -359,31 +340,61 @@ async function importarNFSaidaProcesso(input){
 // arrastar-e-soltar (handleDropIA_NF, controle-import-ia.js) -- ambos
 // convergem aqui, mesmo padrão já usado em processarFilaIA/extrairComIA na
 // Extração com IA da aba Documentos (task #405).
-async function importarNFSaidaProcessoArquivo(file){
-  if(!file) return;
-
-  const status = document.getElementById('ia-nf-saida-status');
+async function importarNFSaidaProcessoArquivo(file, opts){
+  if(!file) return null;
+  opts = opts || {};
+  // statusEl: a Extração com IA (aba Documentos) manda a NF de saída pra cá e
+  // mostra o resultado no status dela (20/10/2026).
+  const status = opts.statusEl || document.getElementById('ia-nf-saida-status');
   const isXml = /\.xml$/i.test(file.name) || file.type.includes('xml');
   if(status) status.textContent = isXml ? 'Lendo XML da NFe...' : 'Analisando documento com IA...';
+  // Resultado para quem chamou: ok = algo foi lançado; destino = documentos |
+  // vendas | entrada; camposLog = o que entra no Histórico da leitura.
+  const res = { ok: false, destino: '', mensagem: '', camposLog: [] };
+  const fim = (msg, extra) => { if(status) status.textContent = msg; res.mensagem = msg; Object.assign(res, extra || {}); return res; };
+  const rotulo = c => (typeof LABELS_CAMPOS_IA !== 'undefined' && LABELS_CAMPOS_IA[c]) || c;
 
   try{
     const dados = isXml ? await parseNFeXml(file) : await extrairNFComIA(file);
-    if(!dados){ if(status) status.textContent = 'Nao foi possivel extrair dados desse arquivo.'; return; }
+    if(!dados) return fim('Nao foi possivel extrair dados desse arquivo.');
+
+    // Retorno (simbólico) da remessa do armazém (CFOP 5907/6907/1907/2907/
+    // 5906/6906/1906/2906 — Jean, 25/09/2026): não é NF de Entrada da
+    // importação nem venda. Fica registrado na aba Vendas como retorno, só
+    // para controle (não mexe em estoque, venda nem faturamento). Vem antes
+    // do teste de ENTRADA porque o retorno chega com a IMPAK de destinatária.
+    if(ehCfopRetornoRemessa(dados.cfop)){
+      const numRet = _normNumNF(dados.nf_numero);
+      const dupR = nfSaidaJaCadastrada(dados.nf_numero, 'processo');
+      if(dupR || (numRet && _normNumNF(document.getElementById('f_nf_saida_numero')?.value) === numRet)) return fim(`A NF ${dados.nf_numero} já está cadastrada — nada foi alterado.`);
+      if(typeof _vendas === 'undefined') return fim('Abra o processo para lançar a NF de retorno.');
+      const r = vendaVazia();
+      r.cliente = dados.cliente || '';
+      r.nf_saida_numero = dados.nf_numero || ''; r.nf_saida_data = dados.nf_data || '';
+      r.nf_saida_valor = dados.nf_valor || ''; r.nf_saida_cfop = dados.cfop || '';
+      if(dados.itens && dados.itens.length) r.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):'', valor_total: it.valor_total||'', valor_unit: it.valor_unit||''}));
+      _vendas.push(r); _painelDirty = true;
+      if(typeof renderVendas === 'function') renderVendas();
+      if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
+      return fim(`↩️ NF ${dados.nf_numero||''} é RETORNO da remessa (CFOP ${dados.cfop}) — registrada na aba Vendas só para controle. Não mexe em estoque, venda nem na NF de Entrada. Confira e salve.`,
+        { ok: true, destino: 'vendas', camposLog: [`Vendas: NF ${dados.nf_numero||''} (retorno, CFOP ${dados.cfop})`] });
+    }
 
     if(dados.tipo === 'ENTRADA'){
       const elNumChk = document.getElementById('f_nf_entrada_numero');
       const elDataChk = document.getElementById('f_nf_entrada_data');
       const elValorChk = document.getElementById('f_nf_entrada_valor');
       const jaPreenchidoEnt = (elNumChk && elNumChk.value) || (elDataChk && elDataChk.value) || (elValorChk && elValorChk.value && elValorChk.value !== '0,00');
-      if(jaPreenchidoEnt){
+      const mesmaEnt = !!_normNumNF(dados.nf_numero) && _normNumNF(elNumChk && elNumChk.value) === _normNumNF(dados.nf_numero);
+      if(jaPreenchidoEnt && !mesmaEnt){
         const okEnt = window.confirm('Ja existe NF Entrada preenchida nesse processo (No ' + (elNumChk ? elNumChk.value : '') + '). Sobrescrever com os dados extraidos da NF anexada?');
-        if(!okEnt){ if(status) status.textContent = 'Importacao cancelada (dados existentes mantidos).'; return; }
+        if(!okEnt) return fim('Importacao cancelada (dados existentes mantidos).');
       }
       const avisoDataEnt = isXml ? '' : conferirDataNFLida(dados, 'nf_entrada_data');
       aplicarDadosNFEntradaNoProcesso(dados);
-      if(status) status.textContent = 'NF de Entrada importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '') + (avisoDataEnt ? ' | ATENÇÃO: ' + avisoDataEnt : '');
       if(avisoDataEnt) showToast(avisoDataEnt, 'warn', 15000);
-      return;
+      return fim('NF de Entrada importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '') + (avisoDataEnt ? ' | ATENÇÃO: ' + avisoDataEnt : ''),
+        { ok: true, destino: 'entrada', camposLog: ['nf_entrada_numero','nf_entrada_data','nf_entrada_valor'].filter((c, i) => [dados.nf_numero, dados.nf_data, dados.nf_valor][i]).map(rotulo) });
     }
 
     // Data da NF de saída lida pela IA conferida antes de ir para o processo
@@ -398,7 +409,7 @@ async function importarNFSaidaProcessoArquivo(file){
 
     // Anti-duplicidade: mesma NF já lançada numa venda.
     const dupVenda = nfSaidaJaCadastrada(dados.nf_numero, 'processo');
-    if(dupVenda){ if(status) status.textContent = `A NF ${dados.nf_numero} já está cadastrada (${dupVenda}) — nada foi alterado.`; return; }
+    if(dupVenda) return fim(`A NF ${dados.nf_numero} já está cadastrada (${dupVenda}) — nada foi alterado.`);
 
     // Regra CFOP (25/09/2026): se o processo já tem uma NF de Saída e a nova
     // é de OUTRO tipo (remessa 5905 x venda), as duas precisam ficar — a
@@ -406,7 +417,7 @@ async function importarNFSaidaProcessoArquivo(file){
     // remessa p/ estoque e a venda posterior ficam registradas sem que a
     // mercadoria conte duas vezes (remessa nunca soma como venda).
     const cfopAtual = document.getElementById('f_nf_saida_cfop')?.value || '';
-    const mesmaNF = _normNumNF(elNumChk && elNumChk.value) === _normNumNF(dados.nf_numero);
+    const mesmaNF = !!_normNumNF(dados.nf_numero) && _normNumNF(elNumChk && elNumChk.value) === _normNumNF(dados.nf_numero);
     if(elNumChk && elNumChk.value && !mesmaNF && ehCfopRemessaEstoque(cfopAtual) !== ehCfopRemessaEstoque(dados.cfop) && typeof _vendas !== 'undefined'){
       const nova = vendaVazia();
       nova.cliente = dados.cliente || '';
@@ -414,21 +425,22 @@ async function importarNFSaidaProcessoArquivo(file){
       nova.nf_saida_data = dados.nf_data || '';
       nova.nf_saida_valor = dados.nf_valor || '';
       nova.nf_saida_cfop = dados.cfop || '';
-      if(dados.itens && dados.itens.length) nova.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):''}));
+      if(dados.itens && dados.itens.length) nova.itens = dados.itens.map(it=>({descricao: it.descricao||'', quantidade: it.quantidade!=null?String(it.quantidade):'', valor_total: it.valor_total||'', valor_unit: it.valor_unit||''}));
       _vendas.push(nova);
       _painelDirty = true;
       if(typeof renderVendas === 'function') renderVendas();
       if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
-      if(status) status.textContent = ehCfopRemessaEstoque(dados.cfop)
-        ? `NF ${dados.nf_numero} (CFOP 5905, remessa p/ estoque) registrada na aba Vendas — não conta como venda. A NF ${elNumChk.value} continua no processo.`
-        : `NF ${dados.nf_numero} (venda) registrada na aba Vendas. A NF ${elNumChk.value} (remessa p/ estoque, CFOP 5905) continua registrada e não conta como venda. Confira e salve.`;
-      return;
+      const ehRemessaNova = ehCfopRemessaEstoque(dados.cfop);
+      return fim(ehRemessaNova
+        ? `NF ${dados.nf_numero} (CFOP ${dados.cfop}, remessa p/ estoque) registrada na aba Vendas — não conta como venda. A NF ${elNumChk.value} continua no processo.`
+        : `NF ${dados.nf_numero} (venda${dados.cfop ? ', CFOP ' + dados.cfop : ''}) registrada na aba Vendas. A NF ${elNumChk.value} (remessa p/ estoque, CFOP ${cfopAtual}) continua registrada e não conta como venda. Confira e salve.`,
+        { ok: true, destino: 'vendas', camposLog: [`Vendas: NF ${dados.nf_numero||''} (${ehRemessaNova ? 'remessa' : 'venda'}${dados.cfop ? ', CFOP ' + dados.cfop : ''})`] });
     }
 
     const jaPreenchido = !mesmaNF && ((elNumChk && elNumChk.value) || (elDataChk && elDataChk.value) || (elValorChk && elValorChk.value && elValorChk.value !== '0,00'));
     if(jaPreenchido){
       const ok = window.confirm('Ja existe NF Saida preenchida nesse processo (No ' + (elNumChk ? elNumChk.value : '') + '). Sobrescrever com os dados extraidos da NF anexada?');
-      if(!ok){ if(status) status.textContent = 'Importacao cancelada (dados existentes mantidos).'; return; }
+      if(!ok) return fim('Importacao cancelada (dados existentes mantidos).');
     }
 
     aplicarDadosNFSaidaNoProcesso(dados);
@@ -447,12 +459,13 @@ async function importarNFSaidaProcessoArquivo(file){
     }
 
     if(avisoDataSai) avisos.push(avisoDataSai);
-    let msg = 'NF importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '');
+    let msg = 'NF importada' + (dados.nf_numero ? (' - No ' + dados.nf_numero) : '') + (dados.cfop ? ' (CFOP ' + dados.cfop + ')' : '');
     if(avisoFiltro) msg += ' | ' + avisoFiltro;
     if(avisos.length) msg += ' | ATENCAO: ' + avisos.join('; ');
-    if(status) status.textContent = msg;
+    return fim(msg, { ok: true, destino: 'documentos',
+      camposLog: ['nf_saida_numero','nf_saida_data','nf_saida_valor','nf_saida_cfop'].filter((c, i) => [dados.nf_numero, dados.nf_data, dados.nf_valor, dados.cfop][i]).map(rotulo) });
   }catch(e){
-    if(status) status.textContent = 'Erro ao importar NF: ' + e.message;
+    return fim('Erro ao importar NF: ' + e.message);
   }
 }
 
@@ -471,9 +484,13 @@ function aplicarDadosNFSaidaNoProcesso(dados){
   const elData = document.getElementById('f_nf_saida_data');
   const elValor = document.getElementById('f_nf_saida_valor');
   const elCfop = document.getElementById('f_nf_saida_cfop');
+  const trocouNF = !!(elNum && dados.nf_numero && _normNumNF(elNum.value) && _normNumNF(elNum.value) !== _normNumNF(dados.nf_numero));
   if(elNum && dados.nf_numero) elNum.value = dados.nf_numero;
   if(elData && dados.nf_data) elData.value = dados.nf_data;
   if(elValor && dados.nf_valor) elValor.value = exibirMoeda(dados.nf_valor);
-  if(elCfop && dados.cfop) elCfop.value = dados.cfop;
+  // O CFOP é da nota: trocou a NF e a nova não trouxe CFOP → limpa (senão o
+  // 5905 da remessa antiga ficava na venda nova e ela sumia do faturamento —
+  // 20/10/2026).
+  if(elCfop){ if(dados.cfop) elCfop.value = dados.cfop; else if(trocouNF) elCfop.value = ''; }
   if(typeof atualizarFaseEmTempoReal === 'function') atualizarFaseEmTempoReal();
 }

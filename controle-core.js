@@ -2692,6 +2692,246 @@ function fontesCustosReais(p){
   return fontes;
 }
 
+// ── SIMULAR VENDA NO CALCULADOR COM OS DADOS REAIS (Ayslan, 20/10/2026) ──
+// "Precisamos do botão de enviar para o calculador novamente, com os dados
+// reais já preenchidos no processo, pra gente fazer a venda para clientes de
+// diversos estados." O "Vincular ao Calculador" some quando o processo já
+// tem Custos Reais e só levava FOB/câmbio da PI. Este monta o formulário do
+// Calculador (formato de aplicarEstadoFormulario, calculador.html) com o que
+// o processo tem de REAL:
+//   - FOB da CI (senão da PI) e o câmbio FECHADO de cada pagamento
+//     (parcelas, entrada/saldo ou pagamento único — a mesma lista do
+//     Financeiro, listarPagamentosPI);
+//   - frete (Logística, senão Custos Reais), containers, NCM da DI, origem
+//     e porto;
+//   - o que está lançado em Custos Reais: II e seguro como valor fixo, as
+//     taxas pelo valor PAGO (dividido pelos containers quando o Calculador
+//     cobra por container); AFRMM, agente e IOF lançados desligam o "auto";
+//   - os produtos com quantidade e US$/un (fob_usd, o preço da CI) no Mix —
+//     sem US$/un, a média do FOB por pneu.
+// O que o processo não tem fica com o padrão do Calculador e vai na lista
+// de avisos. O Calculador abre isso como SIMULAÇÃO: salvar cria uma cotação
+// nova e não mexe no processo. Função pura (sem DOM).
+//
+// Valor lançado em Custos Reais que foi DIGITADO em US$ (sem conversão) —
+// null quando foi em R$/€ ou não há nada. Leva o dólar "redondo" ao
+// Calculador em vez de converter de volta pelo câmbio.
+function valorRealUsdDigitado(raw, item){
+  if(raw == null || raw === '' || !item) return null;
+  const valido = e => e && e.valor != null && e.valor !== '' && !isNaN(parseFloat(e.valor));
+  if(typeof raw === 'object'){
+    if(raw.porContainer && typeof raw.porContainer === 'object'){
+      const entradas = Object.values(raw.porContainer).filter(valido);
+      if(!entradas.length || !entradas.every(e => (e.moeda || item.unidade) === 'USD')) return null;
+      return entradas.reduce((s, e) => s + parseFloat(e.valor), 0);
+    }
+    return valido(raw) && (raw.moeda || item.unidade) === 'USD' ? parseFloat(raw.valor) : null;
+  }
+  const unidade = item.unidadeLegado || item.unidade;
+  return unidade === 'USD' && !isNaN(parseFloat(raw)) ? parseFloat(raw) : null;
+}
+
+function montarPrefillCalculadorReal(p, opts){
+  p = p || {}; opts = opts || {};
+  const fontes = [], avisos = [];
+  const campos = {}, toggles = {}, checkboxes = {};
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : null; };
+  const r2 = v => Math.round(v * 100) / 100;
+  const r4 = v => Math.round(v * 10000) / 10000;
+  const br = (v, casas) => { const c = casas == null ? 2 : casas; return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c }); };
+  const usd = v => 'US$ ' + br(v);
+  const brl = v => 'R$ ' + br(v);
+  const reais = (p.real_json && typeof p.real_json === 'object') ? p.real_json : {};
+  const porId = {}; custosReaisItensFlat().forEach(it => { porId[it.id] = it; });
+  const pagoBrl = id => {
+    const it = porId[id];
+    const n = it ? normalizarValorRealItem(reais[id], it, p) : null;
+    return n && n.totalBrl > 0 ? n.totalBrl : null;
+  };
+
+  // ── Tipo de importação e cliente ──
+  const TIPO_POR_FINALIDADE = { IMPORTACAO_DIRETA: 'PROPRIA', ENCOMENDA: 'ENCOMENDA' };
+  if(TIPO_POR_FINALIDADE[p.finalidade]) campos.tipo_importacao = TIPO_POR_FINALIDADE[p.finalidade];
+  else if(p.finalidade) avisos.push(`A finalidade ${String(p.finalidade).replace(/_/g, ' ').toLowerCase()} não existe no Calculador: confira o Tipo de Importação.`);
+  const clienteProc = String(p.cliente || '').trim();
+  const propria = p.finalidade === 'IMPORTACAO_DIRETA' || /\bIMPAK\b/i.test(clienteProc);
+  if(!propria && clienteProc){
+    campos.cliente = clienteProc;
+    const uf = String(opts.ufCliente || '').trim().toUpperCase();
+    if(/^[A-Z]{2}$/.test(uf)) campos.uf_destino = uf;
+    fontes.push(`Cliente ${clienteProc}${campos.uf_destino ? ' (' + campos.uf_destino + ')' : ''}`);
+  } else {
+    avisos.push('Importação própria: escolha o cliente da venda (a UF vem do cadastro dele) e marque os outros estados em "Calcular também para outros estados".');
+  }
+
+  // ── FOB ──
+  const fobCi = num(p.ci_valor_usd), fobPi = num(p.pi_valor_usd);
+  const fob = fobCi > 0 ? fobCi : (fobPi > 0 ? fobPi : null);
+  if(fob){ campos.fob_usd = String(r2(fob)); fontes.push(`FOB ${usd(fob)} (${fobCi > 0 ? 'CI' : 'PI'})`); }
+  else avisos.push('O processo não tem o valor da CI nem da PI: preencha o FOB.');
+
+  // ── Câmbio: fechado por pagamento (FOB) + câmbio do processo (resto) ──
+  let pagamentos = [];
+  try{ pagamentos = listarPagamentosPI([{ ...p, fase: p.fase === 'FINALIZADO' ? 'DESEMBARACADO' : p.fase }]); }catch(e){ pagamentos = []; }
+  const ETAPAS = ['Inicial', 'Pré-embarque', 'Final', 'Ajuste de câmbio'];
+  const ETAPA_LEGADO = { entrada: 'Inicial', saldo: 'Final' };
+  const fechados = pagamentos.filter(x => num(x.cambioFechado) > 0 && num(x.valorUsd) > 0);
+  // Pagamento único: parcela sem valor = o câmbio dela vale pro FOB inteiro
+  // (regra do Calculador, fobBrlPelasParcelas) — o FOB da CI pode diferir do da PI.
+  const parcelas = fechados.map(x => ({
+    label: ETAPAS.includes(x.parcela) ? x.parcela : (ETAPA_LEGADO[x._tipo] || ''),
+    valor_usd: x._tipo === 'unico' ? '' : String(r2(num(x.valorUsd))),
+    cambio_fechado: String(r4(num(x.cambioFechado))),
+    data_vencimento: x.vencimento || '',
+  }));
+  const usdFechado = fechados.reduce((s, x) => s + num(x.valorUsd), 0);
+  const brlFechado = fechados.reduce((s, x) => s + num(x.valorUsd) * num(x.cambioFechado), 0);
+  const cambioPrincipal = num(p.real_cambio) || num(p.pi_cambio) || (usdFechado > 0 ? brlFechado / usdFechado : null);
+  if(cambioPrincipal) campos.cambio_usd = String(r4(cambioPrincipal));
+  const fobBrlReal = pagoBrl('fob');
+  if(fechados.length){
+    fontes.push(`Câmbio fechado do FOB: ${fechados.map(x => `${usd(num(x.valorUsd))} × ${br(num(x.cambioFechado), 4)}`).join('; ')}`);
+    if(fob && !fechados.some(x => x._tipo === 'unico') && usdFechado < fob - 1) avisos.push(`${usd(fob - usdFechado)} do FOB ainda sem câmbio fechado: essa parte usa o câmbio principal (${br(cambioPrincipal, 4)}).`);
+  } else if(fobBrlReal && fob){
+    // Sem câmbio por pagamento, mas com o Custo da mercadoria lançado em
+    // Custos Reais (ex.: veio da planilha de Fechamento): o câmbio efetivo
+    // (R$ ÷ US$) reproduz exatamente esse custo no Calculador.
+    const efetivo = fobBrlReal / fob;
+    parcelas.push({ label: '', valor_usd: '', cambio_fechado: String(r4(efetivo)), data_vencimento: '' });
+    fontes.push(`Custo da mercadoria ${brl(fobBrlReal)} (Custos Reais) = câmbio efetivo ${br(efetivo, 4)}`);
+  } else if(cambioPrincipal){
+    avisos.push(`O câmbio do FOB ainda não foi fechado: usei o câmbio do processo (${br(cambioPrincipal, 4)}).`);
+  } else {
+    avisos.push('O processo não tem câmbio: vale a PTAX do dia.');
+  }
+  if(cambioPrincipal) avisos.push(`O câmbio da DI não fica no processo: a base dos impostos usa ${br(cambioPrincipal, 4)} (ajuste em "Câmbio Médio Últimos 2 Dias", se precisar).`);
+  // Frete, seguro e taxas em US$ convertem no Calculador pelo câmbio + 2%.
+  const cambioTaxas = cambioPrincipal ? cambioPrincipal * 1.02 : null;
+
+  // ── Containers ──
+  const nCont = containersDoProcesso(p).length || parseInt(p.qtd_containers_prevista, 10) || parseInt(p.qtd_containers, 10) || 0;
+  if(nCont > 0){ campos.qtde_containers = String(nCont); fontes.push(`${nCont} container${nCont === 1 ? '' : 's'}`); }
+  const mult = nCont > 0 ? nCont : 1;
+
+  // ── Frete (US$) ──
+  const freteLog = num(p.valor_frete);
+  const freteUsdReal = valorRealUsdDigitado(reais.frete, porId.frete);
+  const freteBrlReal = pagoBrl('frete');
+  if(freteLog > 0 && (p.moeda_frete || 'USD') === 'USD'){ campos.frete_usd = String(r2(freteLog)); fontes.push(`Frete ${usd(freteLog)} (Logística)`); }
+  else if(freteUsdReal > 0){ campos.frete_usd = String(r2(freteUsdReal)); fontes.push(`Frete ${usd(freteUsdReal)} (Custos Reais)`); }
+  else if(freteBrlReal && cambioTaxas){ const v = freteBrlReal / cambioTaxas; campos.frete_usd = String(r2(v)); fontes.push(`Frete ${usd(v)} (Custos Reais ${brl(freteBrlReal)} ÷ câmbio + 2%)`); }
+  else avisos.push('O processo não tem o frete em US$: preencha o frete.');
+
+  // ── Taxa C.E., seguro, II, antidumping, marjoração ──
+  const ceUsd = valorRealUsdDigitado(reais.taxa_ce, porId.taxa_ce);
+  const ceBrl = pagoBrl('taxa_ce');
+  if(ceUsd > 0){ campos.taxa_ce_usd = String(r2(ceUsd)); fontes.push(`Taxa C.E. ${usd(ceUsd)}`); }
+  else if(ceBrl && cambioPrincipal){ const v = ceBrl / cambioPrincipal; campos.taxa_ce_usd = String(r2(v)); fontes.push(`Taxa C.E. ${usd(v)} (${brl(ceBrl)})`); }
+  const seguroBrl = pagoBrl('seguro');
+  if(seguroBrl){ campos.seguro_compra_planilha_brl = r2(seguroBrl); fontes.push(`Seguro ${brl(seguroBrl)} (Custos Reais)`); }
+  const iiBrl = pagoBrl('ii');
+  if(iiBrl){ campos.ii_planilha_brl = r2(iiBrl); fontes.push(`II ${brl(iiBrl)} (Custos Reais)`); }
+  const dumpBrl = pagoBrl('antidumping');
+  if(dumpBrl){ toggles.dump = 'SIM'; campos.dump_valor = String(r2(dumpBrl)); fontes.push(`Antidumping ${brl(dumpBrl)}`); }
+  if(pagoBrl('marjoracao')){ toggles.marj = 'SIM'; fontes.push('Marjoração COFINS 0,6%'); }
+
+  // ── Taxas operacionais: valor pago, por unidade do Calculador ──
+  const lancadas = [], padrao = [];
+  const catalogo = (typeof window !== 'undefined' && window.TaxasCatalogo && window.TaxasCatalogo.paraCalculador) ? window.TaxasCatalogo.paraCalculador() : [];
+  catalogo.forEach(t => {
+    const item = porId[t.id];
+    const totalBrl = pagoBrl(t.id);
+    if(!item || !totalBrl){ padrao.push(t.label); return; }
+    const m = t.base_rateio === 'container' ? mult : 1;
+    if(t.tipo === 'usd'){
+      const usdDig = valorRealUsdDigitado(reais[t.id], item);
+      if(!(usdDig > 0) && !cambioTaxas){ padrao.push(t.label); return; }
+      if(t.id === 'import_logistics' || t.id === 'trs'){
+        // R$ fixo por container: o Calculador deriva o US$ (R$ ÷ câmbio + 2%).
+        const brlUn = (usdDig > 0 && cambioTaxas) ? usdDig * cambioTaxas / m : totalBrl / m;
+        campos[t.id === 'trs' ? 'tx_crs_brl' : 'tx_import_logistics_brl'] = String(r2(brlUn));
+      } else {
+        campos['tx_' + t.id] = String(r2((usdDig > 0 ? usdDig : totalBrl / cambioTaxas) / m));
+      }
+    } else {
+      campos['tx_' + t.id] = String(r2(totalBrl / m));
+    }
+    if(['marinha', 'agente', 'iof'].includes(t.id)) checkboxes['auto_' + t.id] = false;
+    lancadas.push(t.label);
+  });
+  const divBrl = pagoBrl('custos_diversos');
+  if(divBrl){ campos.custos_diversos = String(r2(divBrl)); lancadas.push('Custos Diversos'); }
+  const porto = String(p.porto_destino || '').trim().toUpperCase();
+  if(['ITJ', 'IOA', 'NVT', 'IBB'].includes(porto)) campos.tx_porto = porto;
+  if(lancadas.length) fontes.push(`Taxas pelo valor pago em Custos Reais: ${lancadas.join(', ')}`);
+  if(!lancadas.length) avisos.push('Nenhuma taxa lançada em Custos Reais: as taxas ficaram com o padrão do Calculador (confira na etapa Taxas).');
+  else if(padrao.length) avisos.push(`Sem valor em Custos Reais (ficou o padrão do Calculador): ${padrao.join(', ')}.`);
+  const pacotes = Object.values(CUSTOS_REAIS_PACOTES).filter(pc => pagoBrl(pc.id)).map(pc => pc.nome.split(' (')[0]);
+  if(pacotes.length) avisos.push(`Custos Reais lançados por pacote (${pacotes.join(' e ')}): o Calculador não separa o pacote em taxas — confira as taxas desses pacotes.`);
+  const rfBrl = pagoBrl('armazenagem_rf');
+  if(rfBrl) avisos.push(`A armazenagem pós-nacionalização (RF) de ${brl(rfBrl)} não entra: ela é por venda (aba Vendas).`);
+
+  // ── Origem e NCM ──
+  const pais = (typeof paisDoProcesso === 'function' ? String(paisDoProcesso(p) || '') : '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  campos.origem = ({ CHINA: 'CHINA', VIETNA: 'VIETNAM', VIETNAM: 'VIETNAM', INDIA: 'INDIA' })[pais] || 'DIVERSOS';
+  let ncm = '';
+  try{
+    const info = parseNcmsDetalhe(p.di_ncms);
+    if(info.ncms.length){
+      const ordem = info.detalhe ? info.ncms.slice().sort((a, b) => (info.detalhe[b].qtd || 0) - (info.detalhe[a].qtd || 0)) : info.ncms;
+      ncm = ordem[0];
+      fontes.push(`NCM ${ncm} (DI)`);
+      if(info.ncms.length > 1) avisos.push(`A DI tem ${info.ncms.length} NCMs (${info.ncms.join(', ')}): usei ${ncm}${info.detalhe ? ', o de maior quantidade' : ''}. O Calculador calcula um NCM por vez.`);
+    }
+  }catch(e){ ncm = ''; }
+
+  // ── Produtos → Mix (medida, qtd, US$/un) ──
+  let produtos = [];
+  try{ produtos = Array.isArray(p.produtos_json) ? p.produtos_json : JSON.parse(p.produtos_json || '[]'); }catch(e){ produtos = []; }
+  const itensProd = (Array.isArray(produtos) ? produtos : []).filter(it => it && String(it.descricao || '').trim() && num(it.quantidade) > 0);
+  if(!ncm){
+    const tipoProd = itensProd.length ? detectarTipoArmazenagem(itensProd[0].descricao) : '';
+    if(tipoProd === 'TBR') campos.produto = 'TBR';
+    else if(tipoProd === 'PCR' || tipoProd === 'SUV') campos.produto = 'PCR';
+    avisos.push('O processo ainda não tem os NCMs da DI: confira o Produto na etapa Classificação.');
+  }
+  let mix = null;
+  if(itensProd.length && fob){
+    const qtdTotal = itensProd.reduce((s, it) => s + num(it.quantidade), 0);
+    const comPreco = itensProd.filter(it => num(it.fob_usd) > 0);
+    const fobComPreco = comPreco.reduce((s, it) => s + num(it.quantidade) * num(it.fob_usd), 0);
+    const qtdSemPreco = qtdTotal - comPreco.reduce((s, it) => s + num(it.quantidade), 0);
+    const resto = fob - fobComPreco;
+    const precoSem = qtdSemPreco > 0 ? (resto > 0.01 ? resto / qtdSemPreco : fob / qtdTotal) : null;
+    mix = {
+      itens: itensProd.map(it => ({ medida: String(it.descricao).trim(), pat: '', qtd: num(it.quantidade), preco: r4(num(it.fob_usd) > 0 ? num(it.fob_usd) : precoSem) })),
+      fob_total: r2(fob),
+      forn: String(p.brand || p.marca || '').trim(),
+      origem: 'processo', referencia: p.referencia || '',
+    };
+    if(!comPreco.length){
+      avisos.push(`O preço por medida (US$/un) não está nos Produtos do processo: usei a média de ${usd(fob / qtdTotal)} por pneu, então o preço sai igual em todas as medidas. Para preço por medida, preencha o US$/un em Produtos (ou leia a CI de novo com a IA).`);
+    } else if(comPreco.length < itensProd.length){
+      avisos.push(`${itensProd.length - comPreco.length} medida(s) sem US$/un: dividi o restante do FOB entre elas.`);
+      fontes.push(`Mix: ${itensProd.length} medidas (${comPreco.length} com US$/un)`);
+    } else {
+      fontes.push(`Mix: ${itensProd.length} medida${itensProd.length === 1 ? '' : 's'} com o US$/un dos Produtos`);
+      if(Math.abs(fobComPreco - fob) > Math.max(1, fob * 0.005)) avisos.push(`A soma dos itens (${usd(fobComPreco)}) não bate com o FOB (${usd(fob)}): confira os US$/un em Produtos.`);
+    }
+  } else if(!itensProd.length){
+    avisos.push('O processo não tem a lista de Produtos com quantidade: o Calculador fica sem o Mix (preço por pneu).');
+  }
+
+  return {
+    versao: 1,
+    processo_id: p.id || null,
+    referencia: p.referencia || '',
+    ncm: ncm ? ncm.replace(/\D/g, '') : '',
+    estado: { campos, toggles, togglesInner: {}, mix, splitST: {}, checkboxes, parcelas, comissionados: [] },
+    fontes, avisos,
+  };
+}
+
 // Estado de cada linha pra tela: visível?, tem valor?, conferida?, cotado,
 // fonte disponível. `extras` = ids adicionados nesta sessão pelo usuário.
 function custosReaisEstado(p, extras){

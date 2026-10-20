@@ -106,7 +106,7 @@ function criarSandbox(valoresCustom = {}) {
         classList: { add(){}, remove(){}, contains(){ return false; }, toggle(){} },
         addEventListener(){}, appendChild(){}, querySelector(){ return null; },
         querySelectorAll(){ return []; }, setAttribute(){}, getAttribute(){ return null; },
-        disabled: false, checked: false,
+        disabled: false, checked: false, dataset: {},
       };
     }
     return elementosFalsos[id];
@@ -684,6 +684,66 @@ teste('rascunho igual ao formulário padrão (ou só com câmbio do dia diferent
   verdadeiro(vm.runInContext(`rascunhoTemAlgoDoUsuario(${JSON.stringify(soCambio)})`, sb) === false, 'câmbio do dia contou como dado da pessoa');
   const comFob = JSON.parse(JSON.stringify(estado)); comFob.campos.fob_usd = '12345';
   verdadeiro(vm.runInContext(`rascunhoTemAlgoDoUsuario(${JSON.stringify(comFob)})`, sb) === true, 'FOB digitado não foi reconhecido');
+});
+
+// ── Simular venda com os dados reais do processo (Controle → Calculador) ──
+// Ayslan, 20/10/2026. O Controle deixa o formulário em localStorage e abre
+// /calculador?prefill=controle&t=<ts>; aqui só se aplica (sem vincular).
+console.log('\n🧮 Simulação com os dados reais de um processo (prefill=controle)');
+function sandboxComLocalStorage(itens) {
+  const sb = criarSandbox();
+  const mem = new Map(Object.entries(itens || {}));
+  sb.localStorage = { getItem: k => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: k => mem.delete(k) };
+  sb.__mem = mem;
+  carregarNoSandbox(sb);
+  vm.runInContext('showToast = () => {};', sb); // o toast real agenda um setTimeout que os stubs não sabem remover
+  return sb;
+}
+teste('lerPrefillControle: só o pedido desta aba (ts), apaga depois de ler e descarta o vencido', () => {
+  const agora = Date.now();
+  const pedido = JSON.stringify({ ts: agora, referencia: 'TESTE-SIM-1', estado: { campos: { fob_usd: '10000' } } });
+  const sb = sandboxComLocalStorage({ calculador_prefill_controle: pedido });
+  verdadeiro(vm.runInContext(`lerPrefillControle('${agora - 1}')`, sb) === null, 'pedido de outra aba não pode ser lido');
+  verdadeiro(sb.__mem.has('calculador_prefill_controle'), 'o pedido de outra aba fica para ela');
+  const d = vm.runInContext(`lerPrefillControle('${agora}')`, sb);
+  verdadeiro(d && d.referencia === 'TESTE-SIM-1', 'leu o pedido certo');
+  verdadeiro(!sb.__mem.has('calculador_prefill_controle'), 'apagou depois de ler');
+  const sb2 = sandboxComLocalStorage({ calculador_prefill_controle: JSON.stringify({ ts: agora - 16 * 60 * 1000, estado: { campos: {} } }) });
+  verdadeiro(vm.runInContext(`lerPrefillControle('${agora - 16 * 60 * 1000}')`, sb2) === null, 'mais de 15 minutos: vencido');
+  verdadeiro(!sb2.__mem.has('calculador_prefill_controle'), 'vencido é apagado');
+});
+teste('produtoCalculadorPorNcm: NCM da tabela vira o Produto; NCM de pneu fora da tabela cai no tipo pelo prefixo', () => {
+  const r = cod => vm.runInContext(`JSON.stringify(produtoCalculadorPorNcm('${cod}'))`, sandboxBase);
+  verdadeiro(r('4011.10.00') === JSON.stringify({ produto: 'PCR', ncm: '40111000', exato: true }), r('4011.10.00'));
+  verdadeiro(r('40112090') === JSON.stringify({ produto: 'TBR', ncm: '40112090', exato: true }), r('40112090'));
+  verdadeiro(r('40112010') === JSON.stringify({ produto: 'TBR', ncm: '40112010', exato: false }), r('40112010'));
+  verdadeiro(r('4011.80.90') === JSON.stringify({ produto: 'OTR', ncm: '40118090', exato: true }), r('4011.80.90'));
+  verdadeiro(r('') === 'null', 'sem NCM');
+});
+teste('aplicarPrefillControleReal: aplica os dados reais, trava o câmbio e NÃO vincula ao processo', () => {
+  const agora = Date.now();
+  const pedido = { ts: agora, processo_id: 'sim-1', referencia: 'TESTE-SIM-1', ncm: '40111000', fontes: ['FOB US$ 10.000,00 (CI)'], avisos: ['Confira o cliente'],
+    estado: { campos: { fob_usd: '10000', cambio_usd: '5.2', frete_usd: '1500', qtde_containers: '2', ii_planilha_brl: 8000, tx_capatazia: '1200' },
+      toggles: {}, togglesInner: {}, checkboxes: { auto_marinha: false }, splitST: {}, comissionados: [],
+      parcelas: [{ label: 'Inicial', valor_usd: '3000', cambio_fechado: '5.05' }, { label: 'Final', valor_usd: '7000', cambio_fechado: '5.1501' }],
+      mix: { itens: [{ medida: '185/65R15 TESTE', pat: '', qtd: 200, preco: 22.5 }, { medida: '205/55R16 TESTE', pat: '', qtd: 200, preco: 27.5 }], fob_total: 10000 } } };
+  const sb = sandboxComLocalStorage({ calculador_prefill_controle: JSON.stringify(pedido) });
+  vm.runInContext(`_estado.processoOrigemId = 'outro'; aplicarPrefillControleReal('${agora}')`, sb);
+  verdadeiro(vm.runInContext('_estado.processoOrigemId', sb) === null, 'simulação não pode vincular a cotação ao processo');
+  verdadeiro(vm.runInContext('_estado.cambioFixado', sb) === true, 'a PTAX do dia não pode trocar o câmbio real');
+  verdadeiro(sb.document.getElementById('fob_usd').value === 10000 || sb.document.getElementById('fob_usd').value === '10000', 'FOB');
+  verdadeiro(sb.document.getElementById('tx_capatazia').value === '1200', 'taxa');
+  verdadeiro(vm.runInContext('_estado.iiOverrideBrl', sb) === 8000, 'II real');
+  verdadeiro(vm.runInContext('_estado.parcelas.length', sb) === 2, 'parcelas com câmbio fechado');
+  verdadeiro(vm.runInContext('_estado.mix.itens.length', sb) === 2, 'mix');
+  verdadeiro(sb.document.getElementById('auto_marinha').checked === false, 'AFRMM real desliga o auto');
+});
+teste('aplicarEstadoFormulario com câmbio salvo trava o câmbio; o botão ↻ PTAX força a troca', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb); vm.runInContext('showToast = () => {};', sb);
+  vm.runInContext(`_estado.cambioFixado = false; aplicarEstadoFormulario({ campos: { cambio_usd: '5.4321' } })`, sb);
+  verdadeiro(vm.runInContext('_estado.cambioFixado', sb) === true, 'cotação/rascunho com câmbio trava a PTAX automática');
+  const html = fs.readFileSync(ARQUIVO_HTML, 'utf-8');
+  verdadeiro(/onclick="buscarCambio\(true\)"/.test(html) && /forcar === true \|\| !_estado\.cambioFixado/.test(html), '↻ PTAX força');
 });
 
 // ── RESUMO ───────────────────────────────────────────────────────

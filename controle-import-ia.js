@@ -625,7 +625,7 @@ async function extrairComIA_umArquivo(input){
   "fornecedor": "",  // razão social ou nome comercial da empresa EXPORTADORA/fabricante que vendeu e emitiu a PI/CI (ex: "Sailun Group") — quem efetivamente fatura e embarca a mercadoria, mesmo que o produto seja de uma marca diferente
   "brand": "",  // marca do PRODUTO/pneu impressa na PI/CI/embalagem (ex: "Maxam", "Triangle", "Linglong") — NÃO é o fornecedor. É comum o fornecedor real (quem fatura) ser diferente da marca do pneu (ex: fornecedor "Sailun Group" fabricando/vendendo pneus marca "Maxam") — extraia os dois separadamente, nunca use a marca como se fosse o fornecedor. Deixe "" se o documento não trouxer uma marca de produto distinta do nome do fornecedor.
   "produto": "",  // usar SOMENTE quando o documento tiver um único item/descrição corrida (ex: CI com texto livre) — extrair de: Description of Goods, Cargo Description, Item Description. Se o documento tiver uma TABELA com múltiplos itens (Size/Pattern/Quantity por linha, comum em PI/Sales Contract), deixar "produto" vazio e usar "itens" abaixo.
-  "itens": [],  // ARRAY com um objeto por LINHA DE PRODUTO da tabela do documento (comum em PI/Sales Contract com colunas Size, Pattern, L.I./S.R., P.R., Quantity — mas também vale para uma tabela de item único com colunas tipo Description/Brand/NCM/Qty, comum em Proforma Invoice). Cada objeto: {"size":"","pattern":"","li_sr":"","pr":"","quantidade":0}. "pr" é a coluna PR / P.R. / Ply Rating (ex: "18PR") QUANDO ela existir como coluna separada na tabela — preencha SEMPRE que a tabela tiver essa coluna, mesmo que pareça redundante com L.I./S.R., senão a informação de lonas se perde. Ex. de uma tabela com 3 linhas (600/65R28, 600/70R30, 710/70R42): retornar 3 objetos, um por linha, cada um com sua própria quantidade — NUNCA somar as quantidades num único item. Se a tabela trouxer a descrição do produto já combinada numa única coluna (ex: "215/75R17.5 16PR 135/133L TL TR685"), sem separação clara entre Size/Pattern/L.I. S.R./PR, preencha "size" com o texto COMPLETO dessa descrição e deixe "pattern"/"li_sr"/"pr" vazios (já está tudo dentro de "size") — NUNCA deixe "size" e "pattern" vazios ao mesmo tempo numa linha que tiver quantidade preenchida, senão o item é descartado. Se o documento não tiver tabela de itens (só descrição corrida, sem coluna de quantidade), deixar "itens" como array vazio [] e usar "produto" acima.
+  "itens": [],  // ARRAY com um objeto por LINHA DE PRODUTO da tabela do documento (comum em PI/Sales Contract com colunas Size, Pattern, L.I./S.R., P.R., Quantity — mas também vale para uma tabela de item único com colunas tipo Description/Brand/NCM/Qty, comum em Proforma Invoice). Cada objeto: {"size":"","pattern":"","li_sr":"","pr":"","quantidade":0,"preco_unit_usd":0}. "preco_unit_usd" é o preço UNITÁRIO em US$ daquela linha (coluna Unit Price / U. Price / Price / USD/PC) quando a tabela tiver essa coluna — nunca o total da linha (Amount/Total); sem essa coluna, 0. "pr" é a coluna PR / P.R. / Ply Rating (ex: "18PR") QUANDO ela existir como coluna separada na tabela — preencha SEMPRE que a tabela tiver essa coluna, mesmo que pareça redundante com L.I./S.R., senão a informação de lonas se perde. Ex. de uma tabela com 3 linhas (600/65R28, 600/70R30, 710/70R42): retornar 3 objetos, um por linha, cada um com sua própria quantidade — NUNCA somar as quantidades num único item. Se a tabela trouxer a descrição do produto já combinada numa única coluna (ex: "215/75R17.5 16PR 135/133L TL TR685"), sem separação clara entre Size/Pattern/L.I. S.R./PR, preencha "size" com o texto COMPLETO dessa descrição e deixe "pattern"/"li_sr"/"pr" vazios (já está tudo dentro de "size") — NUNCA deixe "size" e "pattern" vazios ao mesmo tempo numa linha que tiver quantidade preenchida, senão o item é descartado. Se o documento não tiver tabela de itens (só descrição corrida, sem coluna de quantidade), deixar "itens" como array vazio [] e usar "produto" acima.
   "pi_numero": "",  // extrair APENAS o número principal; ignorar números secundários entre parênteses (ex: "PI-001 (JY-999)" → usar "PI-001")
   "po_numero": "",  // número do PEDIDO DE COMPRA quando o documento tiver um campo próprio pra isso: "Number PO", "PO No.", "P.O. Number", "Purchase Order No." (ex: "Number PO: BR26R124" → "BR26R124"). Só o valor, sem o rótulo. Deixe "" se o documento não tiver esse campo — NUNCA copie o nº da PI/CI pra cá.
   "pi_data": "YYYY-MM-DD",
@@ -668,6 +668,7 @@ async function extrairComIA_umArquivo(input){
   "nf_saida_numero": "",  // número da Nota Fiscal de SAÍDA (venda ao cliente final)
   "nf_saida_data": "YYYY-MM-DD",  // data de emissão da NF de saída
   "nf_saida_valor": 0,  // valor da NF de saída em REAIS (R$)
+  "nf_cfop": "",  // SOMENTE para NF-e (DANFE): o CFOP do item principal da nota (ex.: 5102, 6108, 5905, 5907, 1907, 3102)
   "cliente": "",  // razão social do cliente/destinatário final — extrair do campo "NOME/RAZÃO SOCIAL" do DESTINATÁRIO na NF de SAÍDA (não confundir com o fornecedor/exportador, que é estrangeiro)
   "encomendante_cnpj": "",  // CNPJ do encomendante/adquirente — ver instruções específicas na seção do Comprovante de Importação/Extrato da DI abaixo. Deixar "" se o documento não for esse tipo ou não trouxer esse campo.
   "data_devolucao_vazio": "YYYY-MM-DD",  // data em que o container VAZIO foi devolvido/entregue no depósito/terminal
@@ -698,7 +699,8 @@ Se o documento for um Comprovante de Importação, Extrato da Declaração de Im
 - se o documento trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro — ex.: "EMBARQUE: VUNG TAU, VIETNÃ EM 19/01/2026" nas informações complementares), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "data_embarque" (data de embarque na origem — na DI/DUIMP ela já é a data REAL, não previsão; NÃO preencha "etd" a partir da DI) e "data_chegada" (data de chegada efetiva no porto brasileiro).
 - extrair "encomendante_cnpj": o CNPJ do ENCOMENDANTE/ADQUIRENTE da operação (campos comuns: "Encomendante", "Adquirente", "Importador por conta e ordem de" — em operações de importação por conta e ordem ou por encomenda) — extrair só os 14 dígitos do CNPJ, sem pontuação. Se o documento não mostrar essa figura (importação direta, sem encomendante/adquirente distinto do importador), deixar "".
 Se o documento for uma Nota Fiscal (NF-e brasileira):
-- se o CFOP da NF for de REMESSA ou RETORNO de armazém/depósito (5905, 6905, 5906, 6906, 5907, 6907, 1906, 2906, 1907, 2907 — ex.: "remessa para depósito", "retorno simbólico"), NÃO preencha nenhum campo nf_entrada_* nem nf_saida_* nem cliente: essa nota é só movimentação de estoque e deve ser lançada pelo botão de NF na aba Documentos/Vendas.
+- em toda NF-e, preencha "nf_cfop" com o CFOP do item principal da nota.
+- se o CFOP da NF for de REMESSA ou RETORNO de armazém/depósito (5905, 6905, 5906, 6906, 5907, 6907, 1906, 2906, 1907, 2907 — ex.: "remessa para depósito", "retorno simbólico"), preencha "nf_cfop" e os campos nf_saida_* (número, data e valor da nota), mas NÃO preencha nf_entrada_* nem cliente: essa nota é só movimentação de estoque e o sistema a registra no lugar certo (aba Documentos ou Vendas).
 - todo valor de NF está em REAIS (R$), nunca em USD — não confundir com pi_valor_usd/ci_valor_usd.
 - se a NF for de ENTRADA (compra/nacionalização, destinatário é a própria importadora), preencher apenas os campos nf_entrada_*. O destinatário desta NF é a própria IMPAK — não usar como "cliente".
 - se a NF for de SAÍDA (venda, destinatário é o cliente final), preencher os campos nf_saida_* e também extrair "cliente" do nome/razão social do destinatário.
@@ -872,6 +874,27 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
     if(extracted.pi_numero)    extracted.pi_numero    = extracted.pi_numero.replace(/\s*\(.*?\)\s*/g,'').trim();
     if(!extracted.free_time)   delete extracted.free_time;
+
+    // ── NF de SAÍDA (venda, remessa ou retorno) — 20/10/2026 ──
+    // Uma NF de venda lida aqui ocupou o lugar da NF de remessa na aba
+    // Documentos, e o CFOP 5905 da remessa ficou na venda (a venda sumiu do
+    // faturamento). Agora a NF de saída segue o mesmo caminho do botão de NF
+    // (importarNFSaidaProcessoArquivo, controle-nf-import.js): remessa e venda
+    // ficam as duas (a segunda vai para a aba Vendas, com o CFOP dela), o CFOP
+    // anda junto com a nota e a mesma NF não entra duas vezes. Nenhum outro
+    // campo do processo é lido de uma NF de saída. NF de entrada segue abaixo.
+    if(nfSaidaNaLeituraGeral(extracted) && typeof importarNFSaidaProcessoArquivo === 'function'){
+      if(status) status.textContent = '⏳ Nota fiscal de saída: lançando pela regra de NF (remessa × venda)...';
+      const rNF = await importarNFSaidaProcessoArquivo(file, { statusEl: status });
+      if(rNF && rNF.mensagem) showToast(rNF.mensagem, rNF.ok ? 'ok' : 'warn', 12000);
+      if(_editando && rNF && rNF.ok && rNF.camposLog.length){
+        _editando.log = _editando.log || [];
+        _editando.log.push({ campo: LOG_CAMPO_LEITURA_IA, valor_antes: file.name, valor_depois: rNF.camposLog.join(', '), usuario: _user.usuario, created_at: new Date().toISOString() });
+      }
+      if(_editando && _editando.id) uploadArquivosGed([file]);
+      return;
+    }
+    delete extracted.nf_cfop; // NF de entrada: o processo não tem campo de CFOP de entrada
 
     // Fallback: alguns documentos (principalmente a CI/Commercial Invoice)
     // não trazem uma "referência" interna do processo — só o número da CI.
@@ -1124,7 +1147,11 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       if(itensValidos.length){
         const novosProdutos = itensValidos.map(it=>{
           const partes = [it.size, it.pattern, it.li_sr, it.pr].filter(Boolean);
-          return { descricao: partes.join(' '), quantidade: it.quantidade!=null?it.quantidade:'' };
+          const novo = { descricao: partes.join(' '), quantidade: it.quantidade!=null?it.quantidade:'' };
+          // US$/un da CI/PI (20/10/2026) → Mix do Calculador (preço por medida).
+          const precoUn = precoUnitarioItemIA(it.preco_unit_usd);
+          if(precoUn) novo.fob_usd = precoUn;
+          return novo;
         });
         // Itens/Produtos sempre substituíam a lista inteira sem nenhuma
         // verificação — problema real reportado pela Emanuelly (10/09/2026):
@@ -1147,20 +1174,28 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         // repete a marca na descrição): não é divergência — mantém o atual.
         const mesmoPedido = temItensReais && itensEquivalentes(_produtos, novosProdutos);
         if(mesmoPedido){
-          /* nada a fazer */
+          // Mesmo pedido lido de novo (ex.: a CI depois da PL): só completa o
+          // US$/un que faltava em cada medida — não troca nada já preenchido.
+          const comp = completarFobUnitarioItens(_produtos, novosProdutos);
+          if(comp.completados){
+            _produtos = comp.lista;
+            renderMultiProdutos();
+            preenchidos += comp.completados;
+            camposLidosNestaLeitura.push('itens');
+          }
         } else if(temItensReais && valoresDivergem(resumoAtual, resumoNovo) && !ciSubstituiDireto){
           conflitos.push({
             campo: 'itens',
             label: LABELS_CAMPOS_IA.itens || 'Itens/Produtos',
             valorAtual: resumoAtual,
             valorNovo: resumoNovo,
-            aplicar: () => { _produtos = novosProdutos; renderMultiProdutos(); },
+            aplicar: () => { _produtos = herdarDadosDosItensAtuais(novosProdutos, _produtos); renderMultiProdutos(); },
             padrao: 'atual',
             motivo: ehCI ? 'Os itens desta CI não têm nenhuma medida em comum com os atuais. Confira se é a CI deste processo antes de substituir.' : '',
           });
         } else {
           if(ehCI && temItensReais && valoresDivergem(resumoAtual, resumoNovo)) itensSubstituidosPelaCI = true;
-          _produtos = novosProdutos;
+          _produtos = herdarDadosDosItensAtuais(novosProdutos, _produtos);
           renderMultiProdutos();
           preenchidos += _produtos.length;
           camposLidosNestaLeitura.push('itens');
@@ -2121,9 +2156,70 @@ function assinaturaItens(lista){
   }
   return out.length ? out.sort().join(';') : null;
 }
+// A leitura geral (Extração com IA) trouxe uma NF de SAÍDA? Venda (CFOP
+// 5xxx/6xxx/7xxx), remessa (5905/6905) ou retorno de remessa (1906/1907/
+// 2906/2907/5906/5907/6906/6907 — chega com a IMPAK de destinatária). NF de
+// entrada (compra/nacionalização) não: segue no fluxo normal da leitura.
+function nfSaidaNaLeituraGeral(ex){
+  if(!ex) return false;
+  const cfop = String(ex.nf_cfop || '').replace(/\D/g, '');
+  if(cfop && typeof ehCfopRetornoRemessa === 'function' && ehCfopRetornoRemessa(cfop)) return true;
+  if(/\d/.test(String(ex.nf_saida_numero || '')) || /^\d{4}-\d{2}-\d{2}/.test(String(ex.nf_saida_data || '')) || parseFloat(ex.nf_saida_valor) > 0) return true;
+  return /^[567]\d{3}$/.test(cfop) && !ex.nf_entrada_numero;
+}
 function itensEquivalentes(listaA, listaB){
   const a = assinaturaItens(listaA), b = assinaturaItens(listaB);
   return !!a && a === b;
+}
+// Preço unitário lido pela IA ("12.50", "US$ 12,50", 0/vazio = sem preço).
+function precoUnitarioItemIA(v){
+  if(v == null || v === '') return null;
+  let t = String(v).replace(/[^\d.,-]/g, '');
+  if(t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+  else if(t.includes(',')) t = t.replace(',', '.');
+  const n = parseFloat(t);
+  return isFinite(n) && n > 0 ? Math.round(n * 10000) / 10000 : null;
+}
+// Lista nova substituindo a atual (CI depois da PI, por exemplo): o que a
+// pessoa já tinha preenchido na mesma medida e quantidade — US$/un e o tipo
+// da armazenagem RF — não se perde quando o documento novo não traz.
+function herdarDadosDosItensAtuais(novos, atuais){
+  const qtd = it => parseFloat(String(it && it.quantidade != null ? it.quantidade : '').replace(',', '.')) || 0;
+  const usados = new Set();
+  return (novos || []).map(nv => {
+    const out = { ...nv };
+    const med = medidasDoTexto(out.descricao)[0];
+    if(!med) return out;
+    const j = (atuais || []).findIndex((at, k) => !usados.has(k) && at && medidasDoTexto(at.descricao)[0] === med && qtd(at) === qtd(out));
+    if(j < 0) return out;
+    usados.add(j);
+    const at = atuais[j];
+    if(!(parseFloat(out.fob_usd) > 0) && parseFloat(at.fob_usd) > 0) out.fob_usd = at.fob_usd;
+    if(!out.tipo && at.tipo) out.tipo = at.tipo;
+    return out;
+  });
+}
+// Completa o US$/un (fob_usd) dos itens atuais com o da leitura nova, casando
+// medida + quantidade (cada item novo só é usado uma vez). Não troca preço já
+// preenchido. Devolve { lista, completados }.
+function completarFobUnitarioItens(atuais, novos){
+  const qtd = it => parseFloat(String(it && it.quantidade != null ? it.quantidade : '').replace(',', '.')) || 0;
+  const usados = new Set();
+  let completados = 0;
+  const lista = (atuais || []).map(it => {
+    const out = { ...it };
+    if(!out.descricao || !String(out.descricao).trim() || parseFloat(out.fob_usd) > 0) return out;
+    const med = medidasDoTexto(out.descricao)[0];
+    if(!med) return out;
+    const j = (novos || []).findIndex((nv, k) => !usados.has(k) && nv && parseFloat(nv.fob_usd) > 0
+      && medidasDoTexto(nv.descricao)[0] === med && qtd(nv) === qtd(out));
+    if(j < 0) return out;
+    usados.add(j);
+    out.fob_usd = novos[j].fob_usd;
+    completados++;
+    return out;
+  });
+  return { lista, completados };
 }
 // "QINGDAO, CHINA" → "QINGDAO"; "Qingdao Port" fica como está.
 // Classifica o texto literal dos termos de pagamento da PI/CI.

@@ -272,7 +272,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         <label>USD — Dólar (utilizável na simulação)</label>
         <div class="cambio-row">
           <input type="number" id="cambio_usd" step="0.0001" placeholder="0,0000" value="" aria-label="Câmbio USD (R$ por dólar)">
-          <button class="btn-refresh" onclick="buscarCambio()">↻ PTAX</button>
+          <button class="btn-refresh" onclick="buscarCambio(true)" title="Busca a PTAX do dia e coloca no câmbio">↻ PTAX</button>
         </div>
         <div class="cambio-info" id="cambio-info">Clique em PTAX para buscar automaticamente</div>
       </div>
@@ -1228,6 +1228,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const processoIdPrefill = paramsUrl.get('processo_id');
   if(processoIdPrefill){
     prefillDeProcesso(processoIdPrefill);
+  } else if(paramsUrl.get('prefill') === 'controle'){
+    // "Simular venda no Calculador (dados reais)" no processo do Controle.
+    aplicarPrefillControleReal(paramsUrl.get('t'));
   } else {
     restaurarAutosaveSeExistir();
   }
@@ -1253,6 +1256,125 @@ async function prefillDeProcesso(processoId){
           if(d.aviso){ showToast(d.aviso, 'err'); }
           showToast(`Cotação pré-preenchida com os dados do processo ${d.referencia||''} — confira e clique em "Salvar Cotação" quando estiver certo`, 'info');
     } catch(e){ showToast('Erro ao carregar dados do processo: '+e.message, 'err'); }
+}
+
+// ── Simulação com os dados REAIS de um processo (Ayslan, 20/10/2026) ──────
+// Botão "Simular venda no Calculador (dados reais)" nas abas Custos Reais e
+// Vendas do processo, para calcular o preço de venda a clientes de vários
+// estados. O Controle monta o formulário (montarPrefillCalculadorReal, em
+// controle-core.js) e deixa em localStorage; aqui só aplica. NÃO vincula ao
+// processo (processoOrigemId fica vazio): salvar cria uma cotação separada e
+// o processo não muda. A faixa no topo diz de onde veio cada dado e o que
+// ficou com o padrão do Calculador.
+const CHAVE_PREFILL_CONTROLE = 'calculador_prefill_controle';
+const PREFILL_CONTROLE_VALIDADE_MS = 15 * 60 * 1000;
+function lerPrefillControle(t, agora){
+  agora = agora || Date.now();
+  let raw = null;
+  try{ raw = localStorage.getItem(CHAVE_PREFILL_CONTROLE); }catch(e){ return null; }
+  if(!raw) return null;
+  let d = null;
+  try{ d = JSON.parse(raw); }catch(e){ d = null; }
+  const remover = () => { try{ localStorage.removeItem(CHAVE_PREFILL_CONTROLE); }catch(e){} };
+  if(!d || !d.estado || !d.ts){ remover(); return null; }
+  if(agora - Number(d.ts) > PREFILL_CONTROLE_VALIDADE_MS){ remover(); return null; }
+  // Dois cliques seguidos = duas abas: cada uma só pega o SEU pedido.
+  if(t && String(d.ts) !== String(t)) return null;
+  remover();
+  return d;
+}
+// NCM da DI → Produto do formulário (os 4 tipos de pneu têm value próprio;
+// os demais produtos usam o nome cadastrado na TABELA_NCM).
+function produtoCalculadorPorNcm(ncm){
+  const n = String(ncm || '').replace(/\D/g, '');
+  if(n.length < 8) return null;
+  const PNEUS = { 'Pneu Automóvel': 'PCR', 'Pneu Caminhão': 'TBR', 'Pneu Agricola': 'AGR', 'Pneu Maquina': 'OTR' };
+  const linha = Object.values(TABELA_NCM).find(v => String(v.ncm) === n);
+  if(linha) return { produto: PNEUS[linha.produto] || linha.produto, ncm: n, exato: true };
+  if(/^401110/.test(n)) return { produto: 'PCR', ncm: n, exato: false };
+  if(/^401120/.test(n)) return { produto: 'TBR', ncm: n, exato: false };
+  if(/^401170/.test(n)) return { produto: 'AGR', ncm: n, exato: false };
+  if(/^4011/.test(n)) return { produto: 'OTR', ncm: n, exato: false };
+  return null;
+}
+function mostrarFaixaSimulacaoReal(d, avisosExtras){
+  let el = document.getElementById('simulacao-real-faixa');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'simulacao-real-faixa';
+    el.setAttribute('role', 'status');
+    el.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.45;color:#1e3a8a;position:relative;';
+    const sb = document.querySelector('.sidebar-calc');
+    const ref = document.getElementById('wizard-steps');
+    if(sb && ref) sb.insertBefore(el, ref); else if(sb) sb.prepend(el); else if(document.body && document.body.prepend) document.body.prepend(el);
+  }
+  el.textContent = '';
+  const fechar = document.createElement('button');
+  fechar.type = 'button'; fechar.textContent = '✕'; fechar.title = 'Esconder';
+  fechar.setAttribute('aria-label', 'Esconder');
+  fechar.style.cssText = 'position:absolute;top:6px;right:8px;background:none;border:none;color:#1e3a8a;cursor:pointer;font-size:13px;';
+  fechar.onclick = () => { el.style.display = 'none'; };
+  el.appendChild(fechar);
+  const titulo = document.createElement('div');
+  titulo.style.cssText = 'font-weight:700;margin-bottom:4px;padding-right:18px;';
+  titulo.textContent = `Simulação com os dados reais do processo ${d.referencia || ''}`.trim();
+  el.appendChild(titulo);
+  const sub = document.createElement('div');
+  sub.textContent = 'Escolha o cliente, a UF e os outros estados, e o cenário de margem. Salvar cria uma cotação separada: o processo não muda.';
+  el.appendChild(sub);
+  const lista = (itens, rotulo, aberto) => {
+    if(!itens || !itens.length) return;
+    const det = document.createElement('details');
+    det.style.marginTop = '6px';
+    if(aberto) det.open = true;
+    const sm = document.createElement('summary');
+    sm.style.cssText = 'cursor:pointer;font-weight:600;';
+    sm.textContent = `${rotulo} (${itens.length})`;
+    det.appendChild(sm);
+    const ul = document.createElement('ul');
+    ul.style.cssText = 'margin:4px 0 0 16px;padding:0;';
+    itens.forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    det.appendChild(ul);
+    el.appendChild(det);
+  };
+  lista([...(d.avisos || []), ...(avisosExtras || [])], 'Confira', true);
+  lista(d.fontes || [], 'De onde veio cada dado', false);
+  el.style.display = '';
+}
+function aplicarPrefillControleReal(t){
+  const d = lerPrefillControle(t);
+  if(!d){
+    showToast('Os dados do processo não chegaram (valem 15 minutos). Volte ao processo e clique em "Simular venda no Calculador" de novo.', 'warn');
+    return;
+  }
+  const estado = { ...d.estado, processo_origem_id: null };
+  aplicarEstadoFormulario(estado);
+  _estado.processoOrigemId = null; // simulação: salvar NÃO vincula ao processo
+  if(estado.campos && estado.campos.cambio_usd) _estado.cambioFixado = true; // a PTAX do dia não troca o câmbio real
+  const avisosExtras = [];
+  if(d.ncm){
+    const r = produtoCalculadorPorNcm(d.ncm);
+    const sel = document.getElementById('produto');
+    if(r && sel && Array.from(sel.options || []).some(o => o.value === r.produto)){
+      sel.value = r.produto;
+      onProdutoChange();
+      const wrap = document.getElementById('ncm-especifico-wrap');
+      const esp = document.getElementById('ncm_especifico');
+      if(esp && wrap && wrap.style.display !== 'none' && Array.from(esp.options || []).some(o => o.value === r.ncm)){
+        esp.value = r.ncm; onNcmEspecificoChange();
+      }
+      if(!r.exato) avisosExtras.push(`O NCM ${d.ncm} não está na tabela do Calculador: usei ${(sel.options[sel.selectedIndex] || {}).text || r.produto}.`);
+    } else {
+      avisosExtras.push(`O NCM ${d.ncm} não está na tabela do Calculador: escolha o Produto na etapa Classificação.`);
+    }
+  }
+  mostrarFaixaSimulacaoReal(d, avisosExtras);
+  const fob = parseFloat(document.getElementById('fob_usd').value);
+  const cambio = parseFloat(document.getElementById('cambio_usd').value);
+  if(fob > 0 && cambio > 0){
+    try{ calcular({ auto: true }); }catch(e){ console.warn('cálculo da simulação com dados reais:', e); }
+  }
+  showToast(`Calculador preenchido com os dados reais do processo ${d.referencia || ''} — escolha o cliente e os estados`, 'info');
 }
 
 // ── CÂMBIO ───────────────────────────────────────────────
@@ -1357,7 +1479,9 @@ document.addEventListener('scroll', e=>{
   if(dd && dd.style.display==='block') dd.style.display='none';
 }, true);
 
-async function buscarCambio() {
+// forcar = clique no botão "↻ PTAX": troca o câmbio mesmo que ele tenha
+// vindo de uma cotação/processo ou sido digitado (ao abrir a tela, não troca).
+async function buscarCambio(forcar) {
   const el = document.getElementById('cambio_usd');
   const info = document.getElementById('cambio-info');
   info.textContent = 'Buscando PTAX...';
@@ -1372,7 +1496,7 @@ async function buscarCambio() {
       val = d2?.value?.[0]?.cotacaoVenda;
     }
     if(val) {
-      if(!_estado.cambioFixado) el.value = val.toFixed(4);
+      if(forcar === true || !_estado.cambioFixado) el.value = val.toFixed(4);
       info.textContent = `PTAX ${val.toFixed(4)} — campo editável, não atualiza automaticamente`;
     } else {
       info.textContent = 'PTAX indisponível — insira manualmente';
@@ -2112,6 +2236,9 @@ function renderMix() {
   if(!_estado.mix || !_estado.mix.itens || !_estado.mix.itens.length) return;
   _estado.splitST = {}; // mix novo — zera o split manual (cada recálculo com o MESMO mix preserva)
   document.getElementById('mix-badge').style.display = 'block';
+  // Mix que veio dos Produtos de um processo ("Simular venda", 20/10/2026) x do TyreDesk.
+  { const tit = document.querySelector('#mix-badge .mix-badge-title');
+    if(tit) tit.textContent = _estado.mix.origem === 'processo' ? `📦 Produtos do processo${_estado.mix.referencia ? ' ' + _estado.mix.referencia : ''}` : '📦 Mix importado do TyreDesk'; }
   const lista = document.getElementById('mix-items-list');
   lista.innerHTML = _estado.mix.itens.map(it =>
     `<div class="mix-item"><span>${esc(it.medida)}</span><span>${esc(it.qtd)} un · $${esc(it.preco)}</span></div>`
@@ -4191,6 +4318,9 @@ function aplicarEstadoFormulario(estado){
     const el = document.getElementById(id);
     if(el) el.value = val;
   });
+  // Câmbio que veio de uma cotação/rascunho/processo: a PTAX do dia (busca
+  // assíncrona ao abrir a tela, buscarCambio) não pode chegar depois e trocar.
+  if(estado.campos && estado.campos.cambio_usd) _estado.cambioFixado = true;
   renderUfsExtraChips();
   setToggle('marj','NAO'); // cotações antigas não têm esse toggle
   setToggle('jb','NAO');
