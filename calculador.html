@@ -112,7 +112,7 @@ input.locked{background:var(--bg);color:var(--muted);cursor:not-allowed;}
 /* MIX */
 .mix-badge{background:#eafaf1;border:1px solid #c3ecd4;border-radius:var(--r-md);padding:11px 13px;margin-bottom:16px;}
 .mix-badge-title{font-weight:700;color:var(--ok);font-size:12px;margin-bottom:5px;}
-.mix-items{max-height:100px;overflow-y:auto;}
+.mix-items{max-height:170px;overflow-y:auto;}
 .mix-item{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(22,163,74,.12);}
 
 /* CENÁRIOS */
@@ -253,6 +253,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
       </div>
       <div class="mix-items" id="mix-items-list"></div>
       <div style="margin-top:6px;font-size:11px;color:var(--muted);">FOB Total: <strong id="mix-fob-total">—</strong></div>
+      <div id="mix-peso-info" style="margin-top:4px;font-size:11px;color:var(--muted);"></div>
     </div>
 
     <!-- Importar planilha Modelo (.xlsm) — de volta em 14/10/2026 (#488): o
@@ -1976,6 +1977,59 @@ function setToggle(key, val) {
   if(key==='dump') { const d2 = document.getElementById('dump-detalhe'); if(d2) d2.classList.toggle('show', val==='SIM'); if(val==='SIM' && typeof renderDumpItens === 'function') renderDumpItens(); }
 }
 
+// ── Peso e rateio por medida do Mix ──────────────────────────────────
+// Peso por pneu (kg) de um item do Mix: o digitado aqui (peso_kg) ou, sem ele,
+// o que veio da cotação do TyreDesk / do Catálogo (it.peso).
+function pesoUnMix(it){
+  if(!it) return 0;
+  const pesoUn = it.peso_kg != null && it.peso_kg !== '' ? Number(it.peso_kg) : Number(it.peso);
+  return pesoUn > 0 ? pesoUn : 0;
+}
+// Rateio do custo entre as medidas do Mix, igual à planilha (aba MIX - COMPLETO),
+// conferido em 20/10/2026 com a planilha de um processo real. A planilha leva FOB, frete, seguro
+// e despesas para cada medida pela fatia do FOB (colunas BQ/BR/BT/BX), mas o I.I.
+// é calculado item a item (BW e o bloco "Imposto de IMPORTAÇÃO por ITEM") sobre o
+// CIF da própria medida, com o frete internacional e a Taxa C.E. rateados pelo
+// PESO (AH/AI = peso total do item ÷ peso do pedido) e o seguro sobre FOB + esse
+// frete (AJ). A Marjoração 0,6% (BZ) usa a mesma base e o antidumping vai pelo
+// peso dos itens SIM (BY). Depois tudo passa pelo mesmo Fator NFe/IPI/ST, então o
+// preço de cada medida é proporcional ao custo dela: o pneu mais pesado por dólar
+// leva mais frete na base do II e sai alguns centavos mais caro; o total não muda.
+// Sem o peso de todas as medidas, o frete vai pelo FOB (rateio só pelo FOB).
+// Devolve, por UNIDADE de cada item, a fração do custo total (custoUn) e a fração
+// do FOB (fobUn): soma de fração × qtd = 1.
+function rateioCustoMix(itens, p){
+  p = p || {};
+  const lista = itens || [];
+  const fob = Number(p.fob_usd) || 0;
+  const frete = Number(p.frete_usd) || 0, tce = Number(p.taxa_ce) || 0, seg = Number(p.seguro_compra_usd) || 0;
+  const custo = Number(p.custo_total) || 0, imp = Number(p.imp_item) || 0;
+  const dumpPorItem = p.dumpPorItem || null;
+  const dump = dumpPorItem && Number(p.peso_sim) > 0 ? (Number(p.dump) || 0) : 0;
+  const qtds = lista.map(it => Number(it.qtd) || 0);
+  const precos = lista.map(it => Number(it.preco) || 0);
+  const pesosUn = lista.map(pesoUnMix);
+  const comQtd = lista.map((_, i) => i).filter(i => qtds[i] > 0);
+  const pesoTotal = comQtd.reduce((s, i) => s + pesosUn[i] * qtds[i], 0);
+  const faltamPeso = comQtd.filter(i => !(pesosUn[i] > 0)).length;
+  const porPeso = comQtd.length > 0 && faltamPeso === 0 && pesoTotal > 0;
+  const fobUn = precos.map(pr => pr / (fob || 1));
+  const fatiaFrete = pesosUn.map((pu, i) => porPeso ? pu / pesoTotal : fobUn[i]);
+  // CIF por unidade de cada item (US$): FOB + frete/Taxa C.E. pelo peso + seguro sobre FOB+frete.
+  const fobFreteUn = precos.map((pr, i) => pr + frete * fatiaFrete[i]);
+  const somaFobFrete = comQtd.reduce((s, i) => s + fobFreteUn[i] * qtds[i], 0);
+  const baseUn = fobFreteUn.map((v, i) => v + tce * fatiaFrete[i] + (somaFobFrete > 0 ? seg * v / somaFobFrete : 0));
+  const somaBase = comQtd.reduce((s, i) => s + baseUn[i] * qtds[i], 0);
+  const dumpUn = lista.map((_, i) => (dump && dumpPorItem[i] && dumpPorItem[i].sim && qtds[i] > 0)
+    ? (dumpPorItem[i].peso_total / qtds[i]) / Number(p.peso_sim) : 0);
+  const custoUn = lista.map((_, i) => {
+    if(!(custo > 0)) return fobUn[i];
+    const baseFatia = somaBase > 0 ? baseUn[i] / somaBase : fobUn[i];
+    return (fobUn[i] * (custo - dump - imp) + dump * dumpUn[i] + imp * baseFatia) / custo;
+  });
+  return { porPeso, faltamPeso, peso_total: pesoTotal, custoUn, fobUn };
+}
+
 // ── Antidumping por item (#488, Jean 14/10/2026) ──────────────────────
 // Planilha: MIX - COMPLETO col. L (peso unit.) × J (qtd) = M (peso total);
 // col. BG = SIM/NÃO por item; BH = M × DADOS!H20 (US$/kg) × câmbio DI.
@@ -1987,7 +2041,7 @@ function calcularDumpingItens(itens, taxaUsdKg, cambioDI){
   let pesoSim = 0, pesoTotal = 0, temPeso = false;
   const porItem = (itens || []).map(it => {
     // peso_kg = informado aqui; senão usa o peso da cotação do TyreDesk (it.peso, kg/pneu).
-    const pesoUn = it.peso_kg != null && it.peso_kg !== '' ? Number(it.peso_kg) : Number(it.peso);
+    const pesoUn = pesoUnMix(it);
     const peso = (pesoUn || 0) * (Number(it.qtd) || 0);
     if(peso > 0) temPeso = true;
     pesoTotal += peso;
@@ -2025,6 +2079,12 @@ function setDumpItem(i, campo, valor){
   else it.dumping = !!valor;
   try{ sessionStorage.setItem('calculador_mix', JSON.stringify(_estado.mix)); }catch(e){}
   renderDumpItens();
+  if(campo === 'peso_kg'){
+    // Atualiza a lista do Mix sem redesenhar (não tira o foco de quem está digitando os pesos).
+    const el = document.getElementById('mix-peso-' + i);
+    if(el && document.activeElement !== el) el.value = pesoUnMix(it) ? pesoUnMix(it) : '';
+    atualizarMixPesoInfo();
+  }
   if(typeof agendarAutosave === 'function') agendarAutosave();
 }
 
@@ -2250,6 +2310,30 @@ function splitSet(it, v){
 }
 
 // ── MIX ──────────────────────────────────────────────────
+// Lista do Mix na lateral, com o peso por pneu (editável) e o critério do rateio
+// por medida. O peso digitado aqui é o mesmo do quadro do Antidumping (peso_kg).
+function renderMixLista(){
+  const lista = document.getElementById('mix-items-list');
+  const itens = (_estado.mix && _estado.mix.itens) || [];
+  if(lista) lista.innerHTML = itens.map((it, i) => {
+    const kg = pesoUnMix(it);
+    return `<div class="mix-item"><span>${esc(it.medida)}</span><span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">${esc(it.qtd)} un · $${esc(it.preco)} ·`
+      + ` <input type="number" id="mix-peso-${i}" step="0.01" min="0" value="${kg ? esc(kg) : ''}" placeholder="kg" title="Peso por pneu (kg)" aria-label="Peso por pneu (kg) — ${esc(it.medida)}"`
+      + ` onchange="setDumpItem(${i},'peso_kg',this.value)" style="width:54px;padding:1px 4px;font-size:11px;text-align:right;border:1px solid var(--border);border-radius:4px;background:#fff;"> kg</span></div>`;
+  }).join('');
+  atualizarMixPesoInfo();
+}
+function atualizarMixPesoInfo(){
+  const info = document.getElementById('mix-peso-info');
+  const itens = (_estado.mix && _estado.mix.itens) || [];
+  if(!info) return;
+  const comQtd = itens.filter(it => (Number(it.qtd) || 0) > 0);
+  const semPeso = comQtd.filter(it => !pesoUnMix(it)).length;
+  const pesoTotal = comQtd.reduce((s, it) => s + pesoUnMix(it) * (Number(it.qtd) || 0), 0);
+  info.innerHTML = !comQtd.length ? '' : (semPeso === 0
+    ? `Peso total: <strong>${esc(fmt(pesoTotal))} kg</strong> — preço por medida igual à planilha (frete e Taxa C.E. pelo peso no I.I.).`
+    : `<span style="color:var(--warn,#b45309);">Falta o peso por pneu de ${semPeso} medida(s): sem ele o preço por medida vai só pelo FOB. Preencha os kg acima para ficar igual à planilha.</span>`);
+}
 function renderMix() {
   if(!_estado.mix || !_estado.mix.itens || !_estado.mix.itens.length) return;
   _estado.splitST = {}; // mix novo — zera o split manual (cada recálculo com o MESMO mix preserva)
@@ -2257,10 +2341,7 @@ function renderMix() {
   // Mix que veio dos Produtos de um processo ("Simular venda", 20/10/2026) x do TyreDesk.
   { const tit = document.querySelector('#mix-badge .mix-badge-title');
     if(tit) tit.textContent = _estado.mix.origem === 'processo' ? `📦 Produtos do processo${_estado.mix.referencia ? ' ' + _estado.mix.referencia : ''}` : '📦 Mix importado do TyreDesk'; }
-  const lista = document.getElementById('mix-items-list');
-  lista.innerHTML = _estado.mix.itens.map(it =>
-    `<div class="mix-item"><span>${esc(it.medida)}</span><span>${esc(it.qtd)} un · $${esc(it.preco)}</span></div>`
-  ).join('');
+  renderMixLista();
   document.getElementById('mix-fob-total').textContent = 'US$ '+fmt(_estado.mix.fob_total);
   document.getElementById('fob_usd').value = _estado.mix.fob_total || '';
   // Logo da marca — só exibe se a planilha original tinha imagem cadastrada pra ela
@@ -2883,19 +2964,23 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   const mix_itens = _estado.mix?.itens || [];
   // Antidumping por item (#488): a parte do valor que vem do dumping vai só
   // pros itens marcados SIM (proporcional ao peso), igual à planilha (MIX BH
-  // entra no custo do próprio item). Essa parte é o dumping "cheio", com o
-  // mesmo fator do cenário (valor cheio / custo total). O resto continua
-  // rateado pelo FOB. A soma dos itens continua batendo com o valor cheio.
+  // entra no custo do próprio item).
   const dumpPorItem = (_estado.toggles.dump === 'SIM' && dumpCalc.temPeso && dumpCalc.peso_sim > 0) ? dumpCalc.porItem : null;
-  function calcularMixCenario(valorCheioCenario){
-    const dumpCheio = dumpPorItem && custo_total > 0 ? DUMP * (valorCheioCenario / custo_total) : 0;
-    const baseFob = valorCheioCenario - dumpCheio;
+  // Rateio por medida igual à planilha (ver rateioCustoMix): cada medida leva a
+  // fração do CUSTO dela — FOB/frete/seguro/despesas pelo FOB, I.I. e Marjoração
+  // pela base da própria medida (frete e Taxa C.E. pelo peso), dumping pelo peso
+  // dos itens SIM. Antes ia tudo pelo FOB e o preço por medida diferia da planilha
+  // em alguns centavos (conferido em 20/10/2026). A Comissão China "fora" é % do FOB
+  // (planilha W8 = FOB × 3% × dólar) e continua pelo FOB. A soma dos itens continua
+  // batendo com o valor cheio do cenário.
+  const rateioMix = rateioCustoMix(mix_itens, { fob_usd, frete_usd, taxa_ce, seguro_compra_usd, custo_total,
+    imp_item: II + MARJ, dump: DUMP, dumpPorItem, peso_sim: dumpCalc.peso_sim });
+  function calcularMixCenario(valorCheioCenario, chinaForaCenario){
+    const china = Math.max(0, Math.min(Number(chinaForaCenario) || 0, valorCheioCenario));
+    const resto = valorCheioCenario - china;
     return mix_itens.map((it, i) => {
-      let vlr_unit = baseFob / (fob_usd || 1) * it.preco;
-      if(dumpCheio && dumpPorItem[i] && dumpPorItem[i].sim && (Number(it.qtd) || 0) > 0){
-        vlr_unit += dumpCheio * (dumpPorItem[i].peso_total / dumpCalc.peso_sim) / Number(it.qtd);
-      }
-      return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd };
+      const vlr_unit = resto * rateioMix.custoUn[i] + china * rateioMix.fobUn[i];
+      return { ...it, vlr_unit_brl: vlr_unit, total_brl: vlr_unit * it.qtd, custo_unit_brl: custo_total * rateioMix.custoUn[i] };
     });
   }
   const valorImpakPrincipal = faturamento - china_fora_val - boss_fora_val;
@@ -2907,8 +2992,8 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
   // Impak (que excluía a comissão). Confirmado com o usuário: o preço
   // exibido no Mix deve bater com Total Operação ÷ Qtd do Resumo por
   // Cenário (ex.: R$404.778,88 ÷ 248 = R$1.632,17 por pneu).
-  const mix_com_st = calcularMixCenario(cenario_com_st.faturamento_total);
-  const mix_sem_st = calcularMixCenario(cenario_sem_st.faturamento_total);
+  const mix_com_st = calcularMixCenario(cenario_com_st.faturamento_total, cenario_com_st.china_fora_val);
+  const mix_sem_st = calcularMixCenario(cenario_sem_st.faturamento_total, cenario_sem_st.china_fora_val);
 
   // ── Preço COM S.T por estado (cotação p/ representantes) ──
   // Mesmo custo e mesma margem; só mudam MVA, alíquota interna e RBC da UF.
@@ -2921,7 +3006,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     const c = u === uf ? cenario_com_st : resolverCenario(true, tx, u);
     return { uf: u, mva: tx.mva, aliq_interna: tx.aliq_interna, rbc: tx.rbc,
       faturamento_total: c.faturamento_total, lucro_bruto: c.lucro_bruto, pct_lucro: c.pct_lucro,
-      icms_st: c.icms_st, vlr_total_nfe: c.vlr_total_nfe, mix: calcularMixCenario(c.faturamento_total) };
+      icms_st: c.icms_st, vlr_total_nfe: c.vlr_total_nfe, mix: calcularMixCenario(c.faturamento_total, c.china_fora_val) };
   }) : null;
 
   // ── Apuração de Lucro Real (compra x venda das Taxas Operacionais) ──
@@ -2955,6 +3040,7 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     lucro_bruto, pct_lucro, fator,
     lucro_real, pct_lucro_real, diferenca_taxas_real, detalhe_diferenca_real,
     tem_st: tem_st_toggle, mix_result,
+    mix_rateio: mix_itens.length ? { por_peso: rateioMix.porPeso, faltam_peso: rateioMix.faltamPeso, peso_total: rateioMix.peso_total } : null,
     por_uf,
     cenarios: {
       com_st: { ...cenario_com_st, mix: mix_com_st },
@@ -3058,6 +3144,15 @@ const totalTributos = iiCapa + ipiCapa + pisCapa + cofinsCapa + ibsCapa + cbsCap
   return { cst, sst, tipoImportacaoLabel, marca, qtdTotal, totalCreditos, totalTributos, despesas, iiCapa, ipiCapa, pisCapa, cofinsCapa, icmsCapa, ibsCapa, cbsCapa, cambioCapaFob, fobBrlCapa, cifBrlCapa };
 }
 
+// Nota da Capa: como o valor foi dividido entre as medidas.
+function notaRateioMixHtml(r){
+  const m = r && r.mix_rateio;
+  if(!m) return '';
+  return m.por_peso
+    ? `<div style="font-size:11px;color:var(--dim);margin-top:6px;">Rateio igual à planilha: o I.I. de cada medida usa o frete e a Taxa C.E. pelo peso (${fmt(m.peso_total)} kg no pedido); o restante vai pelo FOB.</div>`
+    : `<div style="font-size:11px;color:var(--warn,#b45309);margin-top:6px;">Rateio só pelo FOB: falta o peso por pneu de ${m.faltam_peso} medida(s). Preencha os kg no Mix (lateral) para ficar igual à planilha.</div>`;
+}
+
 // ── RENDER HTML — secao "Capa" na tela de Resultado ────────────────
 function porUfHtmlCapa(r, fmtR){
   if(!r.por_uf) return '';
@@ -3126,6 +3221,7 @@ function renderCapaHtml(r) {
           ${r.mix_result.map((it, idx) => `<tr><td>${it.medida}</td><td class="num">${it.qtd}</td><td class="num">${fmtR(d.cst.mix[idx].vlr_unit_brl)}</td><td class="num">${fmtR(d.sst.mix[idx].vlr_unit_brl)}</td></tr>`).join('')}
         </tbody>
       </table></div>
+      ${notaRateioMixHtml(r)}
     </div>
   ` : `
     <div class="detail-section">
@@ -3335,6 +3431,7 @@ function renderResultado(r) {
           </tr>
         </tfoot>
       </table></div>
+      ${notaRateioMixHtml(r)}
     </div>
   ` : '';
 
@@ -3560,7 +3657,10 @@ function calcularVendasPrevistasRF(r, mix, cfg, tarifas){
     const t = tarifas[tipo] || ARMAZENAGEM_RF_PADRAO_CALC[tipo] || ARMAZENAGEM_RF_PADRAO_CALC.PCR;
     return {
       idx: i, medida: it.medida, qtd: parseFloat(it.qtd) || 0, tipo, tarifa_dia: t.tarifa_dia, carencia_dias: t.carencia_dias,
-      custoUnit: fob > 0 ? r2(custoTotal * (parseFloat(it.preco) || 0) / fob) : null,
+      // Custo por unidade pelo mesmo rateio do Mix (igual à planilha); cotação antiga sem ele → fatia do FOB.
+      custoUnit: (r && r.mix_result && r.mix_result[i] && r.mix_result[i].custo_unit_brl != null && r.mix_result[i].medida === it.medida)
+        ? r2(r.mix_result[i].custo_unit_brl)
+        : (fob > 0 ? r2(custoTotal * (parseFloat(it.preco) || 0) / fob) : null),
       precoComSt: cst && cst.mix && cst.mix[i] ? r2(cst.mix[i].vlr_unit_brl) : null,
       precoSemSt: sst && sst.mix && sst.mix[i] ? r2(sst.mix[i].vlr_unit_brl) : null,
       qtdPrevista: 0,
