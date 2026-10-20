@@ -201,6 +201,9 @@ function renderDashTV(){
     if(p.cancelado) return; // processo cancelado não conta como estoque parado
     if(typeof ehAcompanhamento==='function' && ehAcompanhamento(p)) return; // Acompanhamento (CCN): fora dos totais (Emanuelly 30/09)
     if(!cargaChegouTV(p)) return;
+    // Encomenda/conta e ordem com NF de remessa: a mercadoria já é do cliente,
+    // não é estoque da IMPAK (Ayslan 20/10/2026 — ver remessaNaoViraEstoque).
+    if(typeof remessaNaoViraEstoque==='function' && remessaNaoViraEstoque(p)) return;
     // Baixa de estoque pelas NFs de Saída de TODAS as vendas (vendas_json),
     // não só a NF única antiga — ver estoqueDoProcesso() (controle-core.js).
     const est = estoqueDoProcesso(p);
@@ -272,7 +275,7 @@ function renderDashTV(){
     // Cinza só quando TUDO saiu; venda parcial continua verde (ainda tem estoque).
     const _est = estoqueDoProcesso(p);
     let nfStatus = null;
-    if(_est.saiuTudo) nfStatus = 'saiu';
+    if(_est.saiuTudo || (typeof remessaNaoViraEstoque==='function' && remessaNaoViraEstoque(p))) nfStatus = 'saiu'; // encomenda com remessa: já é do cliente
     else if(temRemessaEstoque(p)) nfStatus = 'remessa';   // azul — no armazém (CFOP 5905)
     else if(_est.temEntrada || cargaChegouTV(p)) nfStatus = 'estoque'; // verde — chegou (NF Entrada ou Data Chegada/Presença), sem NF de saída
     const restanteTxt = (nfStatus === 'remessa' && _est.vendeuAlgo && _est.total > 0) ? `${Math.round(_est.restante)}/${Math.round(_est.total)}` : '';

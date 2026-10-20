@@ -636,6 +636,7 @@ async function extrairComIA_umArquivo(input){
   "pi_adiantamento_pct": 0,  // % do valor pago ANTES do embarque (deposit / advance / down payment / prepayment) nos termos de pagamento — ex.: "20% T/T in advance" → 20; "30% deposit, balance before shipment" → 30. Só o número. 0 quando não houver adiantamento ou o documento não disser.
   "etd": "YYYY-MM-DD",
   "eta": "YYYY-MM-DD",
+  "data_embarque": "YYYY-MM-DD",  // Data EFETIVA de embarque (a carga já está a bordo) — SOMENTE de documento que comprova o embarque: BL/HBL/MBL final ou original ("On Board Date", "Shipped on Board", "Laden on Board"; se esse campo estiver em branco, a "Place and date of issue" do BL original/final), CE Mercante (data de embarque / data de emissão do BL registrada no CE) ou DI/DUIMP (data de embarque informada na declaração). NUNCA de PI, CI, packing list, booking ou rascunho (draft) de BL — nesses a data é só previsão e vai em "etd".
   "armador": "",  // NÃO inferir armador pelo nome do navio (ex: navio MSC XXXX não significa armador MSC — extrair apenas de campos explícitos como Carrier, Shipping Line, Armador) NÃO usar o emissor de um House B/L (agente de carga/NVOCC, ex: nomes com "Logistics", "Forwarding", "Cargo") como armador — o armador real (ocean carrier) deve vir do Master B/L ou Booking Confirmation. Exemplos de armadores reais: MSC, CMA CGM, COSCO, MAERSK, HAPAG-LLOYD, ONE, EVERGREEN, YANG MING, PIL, ZIM, HMM, WAN HAI.
   "navio": "",  // se o documento for um CE Mercante, usar o navio de CHEGADA: em caso de transbordo/baldeação no exterior, o navio de chegada é o navio de conexão/último navio que efetivamente atracou no porto de destino brasileiro — NÃO o navio original de embarque na origem
   "porto_origem": "",
@@ -653,7 +654,7 @@ async function extrairComIA_umArquivo(input){
   "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI. Se for uma DUIMP, usar a data do evento "Declaração registrada" no histórico/timeline do documento (ex: "27/07/2026, 19:13" → "2026-07-27").
   "di_tributos": {},  // SOMENTE para DI/DUIMP: tributos federais da declaração em R$ (valor A RECOLHER / RECOLHIDO, não o "calculado" nem o "suspenso"), TOTAL da declaração (somando todos os itens/adições): {"ii":0,"ipi":0,"pis":0,"cofins":0,"siscomex":0,"antidumping":0,"afrmm":0}. "siscomex" = Taxa de Utilização do Siscomex; "afrmm" = AFRMM (Marinha Mercante) quando o documento trouxer o valor. Use 0 para o que não aparecer. Deixar {} para outros documentos.
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
-  "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento
+  "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento. Na consulta do Portal Siscomex ("Relatório de Pesquisa Direta de Declarações de Importação") é a "Data/Hora" da linha cuja "Situação Atual" é DESEMBARAÇADA. Na DUIMP, a data do evento de desembaraço no histórico ("Desembaraço", "Desembaraçada", "Carga liberada"). O Extrato da DI comum NÃO traz essa data — se o documento não mostrar o desembaraço, deixe vazio.
   "ci_numero": "",  // número da CI (Commercial Invoice/Fatura Comercial) — extrair de rótulos como "Invoice No", "Invoice Number", "INV. NO", "INV NO", "INV. NO:", "CI No", "Commercial Invoice No" (aceitar variações de pontuação/abreviação do rótulo, ex: com ou sem ponto, com ou sem dois-pontos)
   "ci_valor_usd": 0,  // valor total da Commercial Invoice — "Total Amount", "Total Value", "Grand Total", "Total USD"
   "ci_data": "YYYY-MM-DD",  // data de emissão da Commercial Invoice — "Invoice Date", "INV. DATE", "Date"
@@ -674,7 +675,7 @@ async function extrairComIA_umArquivo(input){
   "eh_ric": false,
   "ric_avaria": false,  // SOMENTE para RIC: true se o RIC registrar avaria/dano, lavagem ou limpeza (ex: "recebido com AVARIA", "CHEMICAL CLEAN", "LAVAGEM", "LIMPEZA", "DAMAGE", "REPARO", "ESTIMATIVA DE REPARO"); false se o container foi recebido sem nenhuma observação desse tipo  // true SOMENTE se o documento for um RIC/EIR/Intercâmbio/Gate Pass de container (comprovante de entrada/saída de container em terminal/depósito)
   "cambio_referencias": [],  // usar SOMENTE para Comprovante de Câmbio (inclusive mensagem SWIFT de pagamento — câmbio futuro) — ver instruções específicas abaixo. Array de objetos {"referencia":"", "valor_pago":0, "valor_usd_referencia":0, "taxa_cambio":0, "taxa_cambio_texto":"", "valor_total_usd":0, "valor_total_brl":0, "data_pagamento":"YYYY-MM-DD", "banco":"", "codigo_bacen":"", "custo_operacao":0, "tipo_cambio":"NORMAL|FUTURO", "swift_id":""}. Deixar [] para qualquer outro tipo de documento.
-  "datas_texto": {},  // para CADA campo de data que você preencheu acima (pi_data, etd, eta, data_registro_di, data_liberacao, ci_data, data_chegada, ce_data_embarque, nf_entrada_data, nf_saida_data, data_devolucao_vazio), copie aqui o TEXTO da data exatamente como está impresso no documento, sem converter e sem trocar a ordem de dia e mês — ex.: {"data_devolucao_vazio": "30/05/2026 10:54", "etd": "SEP. 05, 2026", "nf_entrada_data": "05/10/2026"}. Só o trecho da data (pode vir com a hora). Campo de data que você deixou vazio não entra aqui.
+  "datas_texto": {},  // para CADA campo de data que você preencheu acima (pi_data, etd, eta, data_embarque, data_registro_di, data_liberacao, ci_data, data_chegada, ce_data_embarque, nf_entrada_data, nf_saida_data, data_devolucao_vazio), copie aqui o TEXTO da data exatamente como está impresso no documento, sem converter e sem trocar a ordem de dia e mês — ex.: {"data_devolucao_vazio": "30/05/2026 10:54", "etd": "SEP. 05, 2026", "nf_entrada_data": "05/10/2026"}. Só o trecho da data (pode vir com a hora). Campo de data que você deixou vazio não entra aqui.
   "documento_brasileiro": false,  // true quando o documento foi emitido no Brasil e traz as datas no formato dia/mês/ano (RIC/EIR de terminal brasileiro, NF-e/DANFE, DI/DUIMP, CE Mercante, comprovante de câmbio de banco brasileiro); false para PI, CI, packing list, BL, booking e demais documentos emitidos no exterior
   "free_time": null
 }
@@ -693,8 +694,8 @@ Se o documento for um Comprovante de Importação, Extrato da Declaração de Im
 - Se for uma DUIMP (documento novo, geralmente chamado "Extrato da Duimp"): numero_di E duimp_numero recebem os DOIS o número da própria DUIMP, impresso no topo do documento (ex: "Extrato da Duimp 26BR0001279136-0" → usar "26BR0001279136-0"); data_registro_di vem da data do evento "Declaração registrada" listado no Histórico do documento (ignorar o horário, só a data).
 - "di_tributos": no Extrato da DUIMP os valores costumam estar nas Informações Complementares, no bloco "DEMONSTRATIVO DE CÁLCULOS" (ex.: "I.I. ....: R$ 40.096,18", "I.P.I. ....: R$ 19.546,89", "PIS ....: R$ 4.298,31", "COFINS ....: R$ 19.807,52", "TAXA SISCOMEX....: R$ 154,23") e o AFRMM numa linha "AFRMM: R$ 2.458,90" — use esses valores. Em outros layouts os tributos aparecem por tributo (II, IPI, PIS, COFINS, Taxa de Utilização/Siscomex, Direito Antidumping) com colunas tipo "Calculado", "A recolher", "Suspenso", "Recolhido". Use o valor efetivamente A RECOLHER / RECOLHIDO, em R$, somando todos os itens/adições. Na DI antiga, use os valores recolhidos do quadro de tributos/pagamentos. NÃO inclua ICMS aqui (nem IBS/CBS).
 - canal vem de "CANAL DE CONFERENCIA ADUANEIRA".
-- data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento.
-- se o documento trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "etd" (data de embarque na origem) e "data_chegada" (data de chegada efetiva no porto brasileiro).
+- data_liberacao vem de "DATA DO DESEMBARAÇO" — esta é a data de liberação da carga, diferente da data de emissão do documento. Na consulta/relatório do Portal Siscomex (Pesquisa de Declarações de Importação), use a "Data/Hora" da "Situação Atual" DESEMBARAÇADA. O Extrato da DI comum só traz o registro — sem desembaraço no documento, deixe data_liberacao vazio (não use a data de registro no lugar).
+- se o documento trouxer dados de embarque (navio, data de embarque na origem, baldeação/transbordo, data de chegada no porto brasileiro — ex.: "EMBARQUE: VUNG TAU, VIETNÃ EM 19/01/2026" nas informações complementares), extraia também "navio" (use a mesma regra de navio de chegada: em caso de baldeação no exterior, o navio de chegada é o navio de conexão), "data_embarque" (data de embarque na origem — na DI/DUIMP ela já é a data REAL, não previsão; NÃO preencha "etd" a partir da DI) e "data_chegada" (data de chegada efetiva no porto brasileiro).
 - extrair "encomendante_cnpj": o CNPJ do ENCOMENDANTE/ADQUIRENTE da operação (campos comuns: "Encomendante", "Adquirente", "Importador por conta e ordem de" — em operações de importação por conta e ordem ou por encomenda) — extrair só os 14 dígitos do CNPJ, sem pontuação. Se o documento não mostrar essa figura (importação direta, sem encomendante/adquirente distinto do importador), deixar "".
 Se o documento for uma Nota Fiscal (NF-e brasileira):
 - se o CFOP da NF for de REMESSA ou RETORNO de armazém/depósito (5905, 6905, 5906, 6906, 5907, 6907, 1906, 2906, 1907, 2907 — ex.: "remessa para depósito", "retorno simbólico"), NÃO preencha nenhum campo nf_entrada_* nem nf_saida_* nem cliente: essa nota é só movimentação de estoque e deve ser lançada pelo botão de NF na aba Documentos/Vendas.
@@ -705,7 +706,7 @@ Se o documento for uma Nota Fiscal (NF-e brasileira):
 Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
 - extrair ce_master (CE do armador/linha de navegação) e/ou ce_house (CE do agente de carga/consolidador) — um CE Mercante pode ter só um dos dois ou os dois, dependendo se a carga é consolidada. Preencher cada campo apenas se aquele número aparecer no documento.
 - na consulta de um CE de carga consolidada ("Tipo de Conhecimento: Filhote (HBL)"), o número ao lado de "CE-MERCANTE FILHOTE" (em "Identificação Única do Conhecimento") é o ce_house, e o número de "CE-Mercante do Master" (no bloco "Dados de seu Master") é o ce_master. Se o conhecimento for o próprio master ou BL único (sem filhote), o número dele é o ce_master e ce_house fica vazio. NUNCA repita o mesmo número em ce_master e ce_house.
-- extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
+- extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem — repita a mesma data em "data_embarque": o CE registra o embarque efetivo) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Se o documento for um Comprovante de Câmbio (operação de câmbio bancária — compra de moeda estrangeira para pagamento ao exterior):
 - NUNCA preencha o campo "referencia" (o de nível superior, fora de "cambio_referencias") a partir deste tipo de documento — deixe-o sempre "". A referência de cada processo/invoice coberto pela operação vai DENTRO de cada item de "cambio_referencias" (campo "referencia" de cada item), nunca no campo solto. Em especial, NUNCA use a "Referência Interna" do banco, o número do Contrato de Câmbio/código BACEN, ou qualquer identificador interno da instituição financeira para preencher o campo "referencia" solto — esses números não identificam nenhum processo da IMPAK, mesmo parecendo uma referência.
@@ -1435,6 +1436,22 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       notasDatasLidas.push(`Data de Chegada lida ${dataBR(cheg)} (futura) ${extracted.eta === cheg ? 'foi para o ETA' : 'não usada'}`);
       delete extracted.data_chegada;
     }
+    // Data EFETIVA de embarque (TVN2511A, 20/10/2026: a leitura nunca
+    // preenchia — o embarque da DI ia para o ETD e o do CE só para
+    // "Data embarque (CE)"). Só vale de documento que comprova o embarque:
+    // BL, CE Mercante ou DI/DUIMP. Em PI, CI, packing list ou booking a data
+    // é previsão e vai para o ETD; embarque no futuro também é previsão.
+    if(extracted.data_embarque){
+      const emb = String(extracted.data_embarque).slice(0, 10);
+      const comprovaEmbarque = ehBlOuDi || ehCeMercante || ehDI;
+      const embFuturo = typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.noFuturo && ValidacaoDatas.noFuturo(emb);
+      if(!comprovaEmbarque || embFuturo){
+        if(!extracted.etd) extracted.etd = emb;
+        if(semTrocaTexto.has('data_embarque')) semTrocaTexto.add('etd');
+        notasDatasLidas.push(`Data de Embarque lida ${dataBR(emb)} ${embFuturo ? '(ainda não aconteceu)' : '(este documento não comprova o embarque)'} ${extracted.etd === emb ? 'foi para o ETD (previsão)' : 'não usada'}`);
+        delete extracted.data_embarque;
+      }
+    }
     {
       const lidas = {};
       Object.keys(extracted).forEach(k => {
@@ -1720,6 +1737,13 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
         av.textContent = `Alterado pela leitura de ${file.name}: era "${alt.antes}". Confira antes de salvar.`;
         sel.style.borderColor = 'var(--warn,#d97706)';
       }
+    }
+    // Embarque efetivo lido agora num 100% a Prazo com prazo em dias: o
+    // vencimento conta do embarque (regra #413), igual a quando se digita a
+    // data — só calcula se a Data Pagamento ainda estiver vazia.
+    if(document.getElementById('f_pi_pagamento')?.value === 'PRAZO' && camposLidosNestaLeitura.includes('data_embarque')
+       && !document.getElementById('f_pi_data_saldo')?.value && typeof atualizarDataPagamentoPrazo === 'function'){
+      atualizarDataPagamentoPrazo();
     }
     // 100% a Prazo: "N days after B/L" vai pro Prazo (dias), que conta do
     // embarque; sem prazo em dias o vencimento fica Chegada/ETA - 10 dias.

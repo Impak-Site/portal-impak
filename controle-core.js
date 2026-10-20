@@ -3380,6 +3380,15 @@ function clienteEhPrincipal(nome, stats, classif){
 }
 // Processo tem NF de remessa p/ estoque (CFOP 5905) — no processo ou numa venda.
 function temRemessaEstoque(p){ return !!p && (ehCfopRemessaEstoque(p.nf_saida_cfop) || parseVendas(p).some(vendaEhRemessa)); }
+// ── Remessa só vira estoque na importação própria (Ayslan, 20/10/2026) ──
+// "Importação própria: foi para um armazém e virou estoque. Se for
+// encomenda e tiver uma NF de remessa, aí não vira estoque, porque a
+// importação já é do cliente." Vale também para conta e ordem (a mercadoria
+// é do adquirente). Nesses casos a remessa para o armazém é só movimentação
+// física: o processo sai das listas de estoque da IMPAK (relatório do
+// armazém, TV "No Chão", estoque parado do Narcélio).
+function importacaoEhDoCliente(p){ return !!p && (p.finalidade === 'ENCOMENDA' || p.finalidade === 'CONTA_E_ORDEM'); }
+function remessaNaoViraEstoque(p){ return importacaoEhDoCliente(p) && temRemessaEstoque(p); }
 // NFs de saída que são venda de verdade: as da aba Vendas (quando existem)
 // ou, sem vendas cadastradas, a NF do campo antigo da aba Documentos.
 function nfsSaidaVenda(p){
@@ -3671,6 +3680,7 @@ function listarEstoqueArmazem(processos){
   (processos || []).forEach(p => {
     if(!p || p.cancelado || ehAcompanhamento(p)) return;
     if(!p.nf_entrada_numero) return;
+    if(remessaNaoViraEstoque(p)) return; // encomenda/conta e ordem: a mercadoria já é do cliente
     const est = estoqueDoProcesso(p);
     if(est.saiuTudo) return;
     let produtos = est.vendeuAlgo ? est.itens : [];
