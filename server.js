@@ -6499,7 +6499,7 @@ const COLS_ALERTAS = [
   'eta','etd','data_chegada','transportadora',
   'demurrage_vencimento','data_devolucao_vazio','tipo_container',
   'aprovacao_hbl','solicitacao_li','docs_enviados_despachante',
-  'pi_valor_usd','pi_pagamento','pi_pago','pi_cambio','pi_entrada_pct',
+  'pi_valor_usd','ci_valor_usd','pi_pagamento','pi_pago','pi_cambio','pi_entrada_pct',
   'pi_data_entrada','pi_data_saldo','pi_cambio_entrada','pi_parcelas_json','pi_prazo_dias','finalidade','data_embarque',
   'vendas_json','conferencia_json','updated_at',
 ].join(',');
@@ -6771,8 +6771,12 @@ function _parcelasAbertasSemana(p, inicioStr, fimStr){
     }
   } else if (p.pi_pagamento === 'VISTA' || p.pi_pagamento === 'PRAZO') {
     const vencimento = p.pi_pagamento === 'PRAZO' ? vencimentoSaldoPI(p) : p.pi_data_entrada;
+    // 100% a Prazo fecha pelo valor da CI quando ela existe (mesma regra de
+    // valorPagamentoUnicoUsd no controle-core.js — revisão 20/10/2026).
+    const ci = parseFloat(p.ci_valor_usd) || 0;
+    const valorUnico = (p.pi_pagamento === 'PRAZO' && ci > 0) ? ci : valorTotal;
     if (!p.pi_pago && vencimento && vencimento >= inicioStr && vencimento <= fimStr) {
-      linhas.push({ parcela: 'Único', valorUsd: valorTotal, vencimento, cambioPrevisto: parseFloat(p.pi_cambio)||null });
+      linhas.push({ parcela: 'Único', valorUsd: valorUnico, vencimento, cambioPrevisto: parseFloat(p.pi_cambio)||null });
     }
   }
   return linhas;
