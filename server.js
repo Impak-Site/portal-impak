@@ -5066,9 +5066,11 @@ app.post('/api/contatos', auth('controle','financeiro','cadastros'), async (req,
 // formato do Conexos, e quase nenhum tem nome fantasia/endereço/CEP. Duas
 // rotas só pra gerente (botão "Arrumar CNPJ/CPF e Receita" em Cadastros):
 //  1) /documentos: corrige o documento (simular = só mostra o que mudaria);
-//  2) /completar-receita: consulta a Receita (BrasilAPI) de até 20 cadastros
-//     por vez e completa SÓ os campos vazios (razão social cortada vira a
-//     completa e a antiga fica como sinônimo). Tudo vai pro Histórico.
+//  2) /completar-receita: recebe o que o NAVEGADOR consultou na Receita
+//     (BrasilAPI) — a BrasilAPI recusa (403) consultas vindas do servidor —,
+//     limpa os dados, confere que são do mesmo CNPJ do cadastro e completa
+//     SÓ os campos vazios (razão social cortada vira a completa e a antiga
+//     fica como sinônimo). Tudo vai pro Histórico.
 function soGerenteCadastros(req, res, next) {
   if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Só gerente pode arrumar os cadastros em lote.' });
   next();
@@ -5116,34 +5118,30 @@ app.post('/api/admin/cadastros/documentos', auth('cadastros'), soGerenteCadastro
     mudancas.forEach(m => { porCorrecao[m.correcao] = (porCorrecao[m.correcao] || 0) + 1; });
     // Candidatos à Receita já com o documento corrigido.
     const corrigido = new Map(mudancas.map(m => [m.id, m.depois]));
-    const candidatos = lista.map(c => Object.assign({}, c, corrigido.get(c.id) || {})).filter(candidatoReceita).map(c => c.id);
+    const candidatos = lista.map(c => Object.assign({}, c, corrigido.get(c.id) || {})).filter(candidatoReceita)
+      .map(c => ({ id: c.id, razao_social: c.razao_social, documento: String(c.documento || c.cnpj || '').replace(/\D/g, '') }));
     res.json({ ok: true, simular, total: lista.length, mudancas: mudancas.length, por_correcao: porCorrecao, lista: mudancas, invalidos, sem_documento: semDocumento, erros, candidatos_receita: candidatos });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 app.post('/api/admin/cadastros/completar-receita', auth('cadastros'), soGerenteCadastros, async (req, res) => {
   try {
-    const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(String).slice(0, 20) : [];
-    if (!ids.length) return res.status(400).json({ ok: false, erro: 'Mande os ids (até 20 por vez).' });
-    const { data, error } = await sb().from('contatos_clientes').select('*').in('id', ids);
+    // itens: [{ id, dados }] — dados = ReceitaCNPJ.buscarCnpjReceita(...).dados,
+    // consultado no navegador de quem clicou.
+    const itens = Array.isArray(req.body && req.body.itens) ? req.body.itens.filter(x => x && typeof x === 'object').slice(0, 50) : [];
+    const ids = itens.map(x => String(x.id == null ? '' : x.id));
+    if (!ids.some(Boolean)) return res.status(400).json({ ok: false, erro: 'Mande os dados da Receita (até 50 cadastros por vez).' });
+    const { data, error } = await sb().from('contatos_clientes').select('*').in('id', ids.filter(Boolean));
     if (error) throw new Error(error.message);
     const porId = new Map((data || []).map(c => [String(c.id), c]));
     const resultados = [];
-    const esperar = ms => new Promise(r => setTimeout(r, ms));
-    let pausar = false;
-    for (let i = 0; i < ids.length; i++) {
+    for (let i = 0; i < itens.length; i++) {
       const c = porId.get(ids[i]);
       if (!c) { resultados.push({ id: ids[i], ok: false, erro: 'Cadastro não encontrado.' }); continue; }
       const doc = String(c.documento || c.cnpj || '').replace(/\D/g, '');
       if (c.tipo_pessoa === 'FISICA' || !DocumentoBR.digitoVerificadorValido_CNPJ(doc)) { resultados.push({ id: c.id, razao_social: c.razao_social, ok: false, erro: 'Sem CNPJ válido.' }); continue; }
-      if (i > 0) await esperar(350);
-      let r = await ReceitaCNPJ.buscarCnpjReceita(doc);
-      if (!r.ok && r.status === 429) { await esperar(3000); r = await ReceitaCNPJ.buscarCnpjReceita(doc); }
-      if (!r.ok) {
-        resultados.push({ id: c.id, razao_social: c.razao_social, ok: false, status: r.status, erro: r.erro });
-        if (r.status === 429) { pausar = true; break; }
-        continue;
-      }
-      const comp = ReceitaCNPJ.completarComReceita(c, r.dados);
+      const dados = ReceitaCNPJ.limparDadosReceita(itens[i].dados);
+      if (dados.cnpj !== doc) { resultados.push({ id: c.id, razao_social: c.razao_social, ok: false, erro: 'Os dados da Receita são de outro CNPJ — nada foi gravado.' }); continue; }
+      const comp = ReceitaCNPJ.completarComReceita(c, dados);
       const campos = Object.keys(comp.alteracoes);
       if (campos.length) {
         const { error: eUp } = await sb().from('contatos_clientes').update(Object.assign({}, comp.alteracoes, { updated_at: new Date().toISOString() })).eq('id', c.id);
@@ -5151,11 +5149,10 @@ app.post('/api/admin/cadastros/completar-receita', auth('cadastros'), soGerenteC
         const antes = {}; campos.forEach(k => { antes[k] = c[k] == null ? null : c[k]; });
         registrarLogCadastro('contatos_clientes', c.id, 'completado pela Receita', antes, comp.alteracoes, req.session.usuario);
       }
-      resultados.push({ id: c.id, razao_social: c.razao_social, ok: true, preenchidos: comp.preenchidos, divergencias: comp.divergencias, situacao: r.dados.situacao });
+      resultados.push({ id: c.id, razao_social: c.razao_social, ok: true, preenchidos: comp.preenchidos, divergencias: comp.divergencias, situacao: dados.situacao });
     }
     if (resultados.some(x => x.ok && x.preenchidos && x.preenchidos.length)) invalidarIndiceCadastros();
-    const feitos = new Set(resultados.map(x => String(x.id)));
-    res.json({ ok: true, resultados, pendentes: ids.filter(id => !feitos.has(id)), pausar });
+    res.json({ ok: true, resultados });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
