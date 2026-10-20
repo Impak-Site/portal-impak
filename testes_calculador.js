@@ -275,6 +275,25 @@ console.log('\n📋 Regra: Import Logistics Fee = R$164 e CRS = R$180 fixos, qua
   });
 });
 
+// Bug real (Jean, 20/10/2026): CRS zerado (R$ 0,00) continuava somando os
+// R$ 180 nas "Taxas em USD" — o US$ derivado ficava com o valor da conta
+// anterior e ia salvo assim na cotação.
+teste('CRS zerado e Import Logistics apagado zeram o US$ derivado (não fica o R$ 180 anterior)', () => {
+  const sandbox = criarSandbox({ cambio_chegada: '5.0', tx_import_logistics_brl: '164', tx_crs_brl: '180' });
+  carregarNoSandbox(sandbox);
+  sandbox.calcular();
+  const antes = vm.runInContext('_estado.ultimoResultado.custo_total', sandbox);
+  verdadeiro(parseFloat(sandbox._elementos['tx_trs'].value) > 0, 'com R$ 180 o US$ do CRS deveria existir');
+  sandbox._elementos['tx_crs_brl'].value = '0.00';
+  sandbox.calcular();
+  aproxIgual(parseFloat(sandbox._elementos['tx_trs'].value), 0, 0, 'CRS zerado: US$ derivado deveria ser 0');
+  const depois = vm.runInContext('_estado.ultimoResultado.custo_total', sandbox);
+  verdadeiro(antes - depois >= 179.99, `zerar o CRS deveria tirar os R$ 180 do custo (tirou ${(antes - depois).toFixed(2)})`);
+  sandbox._elementos['tx_import_logistics_brl'].value = '';
+  sandbox.calcular();
+  aproxIgual(parseFloat(sandbox._elementos['tx_import_logistics'].value), 0, 0, 'Import Logistics apagado: US$ derivado deveria ser 0');
+});
+
 // ── TESTE: IOF automático = Frete USD × 3,5% (bug real corrigido — UD25-305) ──
 // Fórmula antiga somava outras taxas em USD (destino) + frete antes de aplicar
 // 3,5% — confirmado com o usuário que o valor real é só Frete×3,5%.
