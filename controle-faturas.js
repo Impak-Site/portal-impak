@@ -198,10 +198,10 @@ async function renderDashFaturas(){
     <label class="cr-muted">venc. de <input class="form-input" type="date" value="${esc(_ftFiltro.de)}" onchange="_ftFiltro.de=this.value;renderDashFaturas()"></label>
     <label class="cr-muted">até <input class="form-input" type="date" value="${esc(_ftFiltro.ate)}" onchange="_ftFiltro.ate=this.value;renderDashFaturas()"></label>
     <select class="form-input" style="max-width:230px;" onchange="_ftFiltro.conta=this.value;renderDashFaturas()" title="Classificação"><option value="">Todas as classificações</option><option value="_sem" ${_ftFiltro.conta === '_sem' ? 'selected' : ''}>⚠ Sem classificação</option>${(_fin && _fin.contas || []).filter(c => c.ativo !== false).map(c => `<option value="${c.id}" ${_ftFiltro.conta === c.id ? 'selected' : ''}>${esc(c.codigo + ' ' + c.nome)}</option>`).join('')}</select>
-    <button class="btn btn-primary" onclick="ftLerDocumento()" title="Envie a fatura, boleto, nota ou DARF em PDF/imagem — a IA preenche os campos pra você conferir">🧾 Ler fatura (PDF) com IA</button>
-    <button class="btn btn-outline" onclick="ftComprovanteSolto()" title="Envie o comprovante (PIX, TED, boleto pago, câmbio) — a IA acha a(s) fatura(s) e prepara a baixa">📎 Baixa por comprovante</button>
+    <button type="button" class="btn btn-primary" data-arraste data-arraste-aceita=".pdf,image/*" onclick="ftLerDocumento()" title="Envie a fatura, boleto, nota ou DARF em PDF/imagem — a IA preenche os campos pra você conferir">🧾 Ler fatura (PDF) com IA</button>
+    <button type="button" class="btn btn-outline" data-arraste data-arraste-aceita=".pdf,image/*" onclick="ftComprovanteSolto()" title="Envie o comprovante (PIX, TED, boleto pago, câmbio) — a IA acha a(s) fatura(s) e prepara a baixa">📎 Baixa por comprovante</button>
     <button class="btn btn-outline" id="ft_btn_lote" onclick="ftBaixaLote()" title="Marque as faturas na lista e dê baixa de todas com um único pagamento" ${_ftSel.size ? '' : 'disabled'}>💰 Baixa em lote${_ftSel.size ? ' (' + _ftSel.size + ')' : ''}</button>
-    <button class="btn btn-outline" onclick="ftConciliarExtrato()" title="Importe o extrato do banco (OFX ou CSV) e dê baixa casando cada lançamento com a fatura">🏦 Conciliar extrato</button>
+    <button type="button" class="btn btn-outline" data-arraste data-arraste-aceita=".ofx,.csv,.txt" onclick="ftConciliarExtrato()" title="Importe o extrato do banco (OFX ou CSV) e dê baixa casando cada lançamento com a fatura">🏦 Conciliar extrato</button>
     <button class="btn btn-outline" onclick="ftReceberPendentes()" title="Gera faturas a receber das parcelas de câmbio fechadas e das vendas (NF) dos processos, sem digitar e sem duplicar">↘ Gerar a receber</button>
     <button class="btn btn-outline" onclick="ftExportarExcel()" title="Planilha com as faturas e todos os pagamentos (pra conferência / lançamento em outro sistema)">⬇ Excel</button>
     <button class="btn btn-outline" onclick="ftNovaManual()" title="Conta a pagar ou a receber digitada à mão (aluguel, folha, imposto, sistemas… ou qualquer fatura)">+ Novo lançamento</button>
@@ -313,7 +313,7 @@ function ftBaixa(id, pre){
       <div style="font-weight:600;font-size:12px;margin:6px 0 4px;">Pagamentos</div>
       ${pagsHtml}
       <div style="font-weight:600;font-size:12px;margin:12px 0 4px;">Documentos anexados</div>
-      <div>${anexosHtml || '<span class="cr-muted">nenhum</span>'} <a class="cr-link" onclick="ftAnexarDoc('${f.id}')">+ anexar documento</a></div>
+      <div>${anexosHtml || '<span class="cr-muted">nenhum</span>'} <a class="cr-link" data-arraste data-arraste-aceita=".pdf,image/*" onclick="ftAnexarDoc('${f.id}')">+ anexar documento</a></div>
       ${f.tipo === 'pagar' ? `<div style="margin-top:10px;font-size:12px;">${f.aprovacao ? `✔ Pagamento aprovado por <b>${esc(f.aprovacao.nome || f.aprovacao.por || '')}</b> em ${_ftData((f.aprovacao.em || '').slice(0, 10))}` : '⏳ Pagamento ainda não aprovado'}${_ftSouGerente() && f.status === 'aberta' ? ` · <a class="cr-link" onclick="ftAprovar('${f.id}', ${f.aprovacao ? 'true' : 'false'})">${f.aprovacao ? 'desfazer aprovação' : '✔ aprovar pagamento'}</a>` : ''}</div>` : ''}
       ${(f.itens || []).some(it => it.processo_id && it.taxa) ? `<div style="margin-top:6px;font-size:12px;"><a class="cr-link" onclick="ftAplicarCustosReais('${f.id}')" title="Grava os valores das taxas desta fatura na aba Custos Reais dos processos (não mexe em processo fechado nem em taxa lançada por container)">↻ Atualizar Custos Reais dos processos com os valores desta fatura</a></div>` : ''}
       ${f.status === 'aberta' ? `
@@ -346,7 +346,7 @@ function ftBaixa(id, pre){
         </div>
         <label class="cr-muted" style="display:block;margin-top:6px;">Observação <input class="form-input" id="ft_bx_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(pre.obs || '')}"></label>
         <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
-          <button class="btn btn-outline" onclick="ftEscolherComprovante('${f.id}')">📎 ${_ftBaixaArquivo ? 'Trocar comprovante' : 'Anexar comprovante (a IA lê)'}</button>
+          <button type="button" class="btn btn-outline" data-arraste data-arraste-aceita=".pdf,image/*" onclick="ftEscolherComprovante('${f.id}')">📎 ${_ftBaixaArquivo ? 'Trocar comprovante' : 'Anexar comprovante (a IA lê)'}</button>
           <span id="ft_bx_arq" class="cr-muted">${_ftBaixaArquivo ? esc(_ftBaixaArquivo.name) : 'opcional — dá pra dar baixa manual sem anexo e anexar depois'}</span>
         </div>
       </div>` : ''}

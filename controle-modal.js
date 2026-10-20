@@ -483,7 +483,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         Reaproveita POST /api/controle/importar-fechamento (server-side,
         planilha-import.js) — o usuário sempre revisa/ajusta antes de salvar. -->
         <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn btn-outline" onclick="crEscolherDocumentosCustos()" title="A IA lê a nota de débito do agente de carga, o faturamento (acerto) do despachante ou a fatura do terminal e preenche as taxas — você confere linha a linha antes">🧾 Ler fatura / faturamento (IA)</button>
+          <button type="button" class="btn btn-outline" data-arraste data-arraste-aceita=".pdf,image/png,image/jpeg,image/webp" onclick="crEscolherDocumentosCustos()" title="A IA lê a nota de débito do agente de carga, o faturamento (acerto) do despachante ou a fatura do terminal e preenche as taxas — você confere linha a linha antes">🧾 Ler fatura / faturamento (IA)</button>
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
           <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
           <button type="button" class="btn btn-outline" onclick="enviarProcessoAoCalculadorReal()" title="Abre o Calculador já preenchido com os dados reais deste processo (FOB da CI, câmbio fechado, frete, taxas e impostos lançados, produtos) para simular a venda para clientes de vários estados. É uma simulação: não muda nada no processo.">🧮 Simular venda no Calculador (dados reais)</button>
@@ -1568,6 +1568,79 @@ function crAplicarImportado(realJson, moedas){
   });
   atualizarTotalCustosReais();
   return n;
+}
+
+// Pacote × itens vindos da planilha de Fechamento (20/10/2026, UD26-047).
+// planilha-import.js manda cada pacote (Adiantamento Porto / Agente Frete)
+// item a item quando os itens da aba MODELO batem com o Fechamento, ou
+// inteiro quando não batem. Na grade nunca podem ficar os dois juntos — o
+// mesmo dinheiro contaria duas vezes no custo. Ajusta realJson ANTES de
+// crAplicarImportado:
+//  - itens chegando e o pacote já na grade: pacote de uma importação
+//    anterior da planilha sai; pacote lançado à mão fica e os itens não entram;
+//  - pacote chegando e itens já na grade: itens de importação anterior da
+//    planilha saem; itens lançados à mão, pela DUIMP ou por fatura ficam e o
+//    pacote não entra.
+// Devolve { avisos, infos } para a tela.
+function crValorLancado(id){
+  const el = document.getElementById('f_cr_' + id);
+  if(!el) return null;
+  const v = crValorCampo('f_cr_' + id);
+  if(v == null || v === 0) return null;
+  // Linha só com o cotado pré-preenchido (ninguém conferiu) não é custo real.
+  const tr = el.closest ? el.closest('tr') : null;
+  if(tr && tr.dataset && tr.dataset.prefill === '1' && !_crConf[id] && el.dataset && el.dataset.cotado !== undefined && el.value === el.dataset.cotado) return null;
+  return v;
+}
+function crLimparLancado(id){
+  const el = document.getElementById('f_cr_' + id);
+  if(!el || el.readOnly) return false;
+  el.value = '';
+  delete _crConf[id];
+  return true;
+}
+function crResolverPacotesImportados(realJson, pacotes){
+  const out = { avisos: [], infos: [] };
+  if(!realJson || typeof CUSTOS_REAIS_PACOTES === 'undefined') return out;
+  const brl = v => 'R$ ' + exibirMoeda(v);
+  const rotulo = id => (custosReaisItensFlat().find(it => it.id === id) || {}).label || id;
+  const daPlanilha = id => !!(_crConf[id] && _crConf[id].origem === 'planilha');
+  Object.keys(CUSTOS_REAIS_PACOTES).forEach(chave => {
+    const pac = CUSTOS_REAIS_PACOTES[chave];
+    const info = (pacotes && pacotes[chave]) || null;
+    const nome = (info && info.nome) || pac.nome;
+    if(realJson[pac.id] != null){
+      const naGrade = pac.itens.filter(id => crValorLancado(id) != null);
+      const deOutraFonte = naGrade.filter(id => !daPlanilha(id));
+      if(deOutraFonte.length){
+        delete realJson[pac.id];
+        out.avisos.push(`${nome}: o processo já tem ${deOutraFonte.map(rotulo).join(', ')} lançado(s) — não lancei o valor único da planilha (${brl(info ? info.valor : 0)}) para não contar o mesmo custo duas vezes. Confira se falta algum item.`);
+        return;
+      }
+      // Custos Diversos de uma importação anterior item a item (linhas do
+      // bloco do agente sem taxa própria) já estão dentro do valor único.
+      const diversosAntigos = chave === 'agente' && realJson.custos_diversos == null && daPlanilha('custos_diversos') && crValorLancado('custos_diversos') != null ? ['custos_diversos'] : [];
+      naGrade.concat(diversosAntigos).forEach(id => crLimparLancado(id));
+      return;
+    }
+    const chegando = pac.itens.filter(id => realJson[id] != null);
+    if(!chegando.length) return;
+    const vPacote = crValorLancado(pac.id);
+    if(vPacote != null){
+      if(daPlanilha(pac.id)) crLimparLancado(pac.id);
+      else {
+        chegando.forEach(id => { delete realJson[id]; });
+        out.avisos.push(`${nome}: o valor único já está lançado (${brl(vPacote)}) — mantive e não lancei os ${chegando.length} itens da planilha, para não contar duas vezes. Para ficar item a item, apague esse valor e importe de novo.`);
+        return;
+      }
+    }
+    if(info && info.modo === 'itens'){
+      const frete = info.partes && info.partes.frete;
+      out.infos.push(`${nome} (${brl(info.valor)}) entrou item a item (${chegando.map(rotulo).join(', ')})` +
+        (frete && frete.length > 1 ? `; Frete = ${frete.map(p => p.rotulo.replace('Diferenca', 'Diferença') + ' ' + brl(p.valor)).join(' + ')}` : '') + '.');
+    }
+  });
+  return out;
 }
 
 // Tributos lidos da DI/DUIMP pela Extração com IA (15/10/2026). Diferente do

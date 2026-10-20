@@ -61,12 +61,13 @@ function montarFechamento(notas, opt){
 console.log('\n── Fechamento: layout padrão (1 nota, sem juros) ──');
 const padrao = pi.importarFechamentoBase(montarFechamento([{ numero: '8531', valor: 240000, cliente: 'CLIENTE A' }]));
 teste('lê cada linha pelo rótulo (valores batem com a planilha)', () => {
-  iguais(padrao.real_json, { fob: 50000, diferenca_pis: 100, diferenca_cofins: 500, diferenca_ipi: 200, diferenca_icms_proprio: 300, icms_st: 7000, diferenca_ibs: 10, diferenca_cbs: 90, reciclagem_fechamento: 1500, lavacao: 505, seguro: 50 });
-  iguais(padrao.moedas, { fob: 'BRL', seguro: 'BRL' });
+  iguais(padrao.real_json, { fob: 50000, diferenca_pis: 100, diferenca_cofins: 500, diferenca_ipi: 200, diferenca_icms_proprio: 300, icms_st: 7000, diferenca_ibs: 10, diferenca_cbs: 90, reciclagem_fechamento: 1500, lavacao: 505, seguro: 50, adiantamento_porto: 30000, agente_frete: 9000 });
+  iguais(padrao.moedas, { fob: 'BRL', seguro: 'BRL', adiantamento_porto: 'BRL', agente_frete: 'BRL' });
 });
-teste('pacotes (Adiantamento Porto / Agente Frete) ficam só no resumo, fora do real_json', () => {
+teste('sem aba MODELO: Adiantamento Porto / Agente Frete entram como valor único, com aviso', () => {
   iguais([padrao.resumo.adiantamento_porto, padrao.resumo.agente_frete], [30000, 9000]);
-  ok(!('adiantamento_porto' in padrao.real_json) && !('agente_frete' in padrao.real_json));
+  iguais([padrao.resumo.pacotes.adiantamento.modo, padrao.resumo.pacotes.agente.modo], ['pacote', 'pacote']);
+  ok(padrao.avisos.some(a => /Adiantamento Porto entrou como um valor so .*nao achei os itens dele na aba MODELO/.test(a)), padrao.avisos.join(' | '));
 });
 teste('datas: registro DI, embarque e chegada', () => {
   iguais(padrao.datas, { data_embarque: '2026-05-20', data_chegada: '2026-08-10', data_registro_di: '2026-08-10' });
@@ -114,6 +115,93 @@ teste('aba Fechamento fora do padrão (sem bloco de notas) avisa em vez de inven
   const r = pi.importarFechamentoBase(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
   iguais(r.real_json, { lavacao: 450 });
   ok(r.avisos.some(a => /fora do padrao/i.test(a)));
+});
+
+// Pacotes item a item pela aba MODELO (20/10/2026, UD26-047): a planilha
+// fechada só com Adiantamento Porto / Agente Frete deixava o processo sem
+// II, IPI, frete, taxas do agente... e o Fechamento sem ~R$ 96 mil de custo.
+// Valores fictícios.
+console.log('\n── Fechamento: pacotes abertos item a item pela aba MODELO ──');
+const MODELO_FICTICIO = [
+  ['', 'CONTAINERS', 1], ['', 'DÓLAR FOB', '', 10000, 5, 50000], ['', 'FRETE', '', 1000, 5, 5000], ['', 'SEGURO', '', 2, 5, 10],
+  ['', 'IMP. IMPORTACAO', 0.16, 2000, 5, 10000], ['', 'IPI', 0.01, 200, 5, 1000], ['', 'PIS', 0.03, 300, 5, 1500], ['', 'COFINS', 0.12, 1400, 5, 7000],
+  ['', 'ICMS', 0.01, 180, 5, 900], ['', 'IBS', 0.001, 10, 5, 50], ['', 'CBS', 0.009, 90, 5, 450],
+  ['', 'TAXA SISCOMEX', '', '', '', 150], ['', 'MARINHA MERCANTE (AFRMM)', '', '', '', 800], ['', 'ARMAZENAGEM', '', '', '', 2000],
+  ['', 'SEM ANTIDUMPING', '', '', '', 0], ['', 'EMISSÃO L.Is (Licenças de Importação)', '', 1, 50, 150],
+  ['', 'CAPATAZIA (THC - Container)', '', '', '', 1100], ['', 'LIBERAÇÃO DE BL', '', '', '', 600], ['', 'Diferença de FRETE', '', 400, 5, 2000],
+  ['', 'Additional Costs', '', 100, 5, 500], ['', 'Import Logistics Fee', '', 32.8, 5, 164], ['', 'TRS - Taxa registro do Siscarga', '', 0, 5, 0],
+  ['', 'Drop Off Fee', '', 20, 5, 100], ['', 'ISPS (Destination)', '', 16, 5, 80], ['', 'IOF', '', 35, 5, 175], ['', 'DESCONSOLIDAÇÃO', '', 60, 5, 300],
+  ['', 'TAXA - AGENTE CARGA (IMPOSTOS IR/PCC/ISS)', '', '', '', 400], ['', 'DESPACHANTE', '', '', '', 1650],
+  ['', 'CUSTO TOTAL', '', '', '', 99999], ['', 'IPI', '', '', '', 88888], // bloco da venda: não é custo de importação
+];
+function comModelo(bufFech, linhas, nomeAba){
+  const wb = XLSX.read(bufFech, { type: 'buffer', cellDates: true });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), nomeAba || 'MODELO - COM S.T');
+  return pi.importarFechamentoBase(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true }));
+}
+// Adiantamento = 10000+1000+1500+7000+900+150+800+2000+50 (L.I. sem os R$ 100) = 23400
+// Agente = frete 5000 + dif. frete 2000 + 1100+600+500+164+100+80+175+300+400 = 10419
+const notaSemNumero = [{ numero: '', valor: 120000, cliente: 'CLIENTE TESTE' }];
+const itemizado = comModelo(montarFechamento(notaSemNumero, { valores: { adiantamento: 23400, agente: 10419 } }), MODELO_FICTICIO);
+teste('itens da MODELO batem com o pacote: entram item a item (sem o pacote) e o custo é o mesmo da planilha', () => {
+  const r = itemizado.real_json;
+  iguais([r.ii, r.ipi, r.pis, r.cofins, r.icms, r.siscomex, r.marinha, r.armazenagem, r.emissao_li], [10000, 1000, 1500, 7000, 900, 150, 800, 2000, 50]);
+  iguais([r.capatazia, r.liberacao_bl, r.additional_costs, r.import_logistics, r.drop_off, r.isps, r.iof, r.desconsolidacao, r.agente], [1100, 600, 500, 164, 100, 80, 175, 300, 400]);
+  ok(!('adiantamento_porto' in r) && !('agente_frete' in r), 'pacote e itens nunca juntos');
+  ok(!('trs' in r) && !('antidumping' in r) && !('despachante' in r), 'linha zerada ou fora do pacote não entra');
+  iguais([itemizado.resumo.pacotes.adiantamento.modo, itemizado.resumo.pacotes.agente.modo], ['itens', 'itens']);
+  ok(!itemizado.avisos.some(a => /valor so/.test(a)), itemizado.avisos.join(' | '));
+});
+teste('diferença de frete entra junto no Frete Internacional; IBS/CBS da importação vão como crédito', () => {
+  iguais(itemizado.real_json.frete, 7000);
+  iguais(itemizado.resumo.pacotes.agente.partes.frete.map(p => p.valor), [5000, 2000]);
+  iguais([itemizado.real_json.ibs, itemizado.real_json.cbs], [50, 450]);
+  iguais(itemizado.moedas.ii, 'BRL'); iguais(itemizado.moedas.frete, 'BRL');
+});
+teste('emissão de L.I.: usa só a taxa quando o pacote do modelo desconta os R$ 100 por L.I.', () => {
+  iguais(itemizado.real_json.emissao_li, 50);
+  const cheio = comModelo(montarFechamento(notaSemNumero, { valores: { adiantamento: 23500, agente: 10419 } }), MODELO_FICTICIO);
+  iguais(cheio.real_json.emissao_li, 150, 'pacote com a L.I. inteira: usa a L.I. inteira');
+});
+teste('itens que não batem com o pacote (pacote digitado à mão): entra o valor único, com aviso', () => {
+  const r = comModelo(montarFechamento(notaSemNumero, { valores: { adiantamento: 25000, agente: 10419 } }), MODELO_FICTICIO);
+  iguais(r.real_json.adiantamento_porto, 25000);
+  ok(!('ii' in r.real_json), 'sem itens do pacote que não bateu');
+  iguais(r.real_json.frete, 7000, 'o outro pacote bateu e entra item a item');
+  ok(r.avisos.some(a => /Adiantamento Porto entrou como um valor so .*nao batem com o Fechamento/.test(a)), r.avisos.join(' | '));
+});
+teste('aba MODELO - SEM S.T também serve quando é ela que bate', () => {
+  const r = comModelo(montarFechamento(notaSemNumero, { valores: { adiantamento: 23400, agente: 10419 } }), MODELO_FICTICIO, 'MODELO - SEM S.T');
+  iguais([r.real_json.ii, r.real_json.frete], [10000, 7000]);
+});
+teste('linha do bloco do agente sem taxa no Controle ("Lift ON / Lift OFF") vai para Custos Diversos; "CRS" é a taxa CRS', () => {
+  const modelo = MODELO_FICTICIO.map(l => l.slice());
+  const iTrs = modelo.findIndex(l => /^TRS/.test(l[1]));
+  modelo.splice(iTrs, 0, ['', 'Lift ON / Lift OFF', '', 50, 5, 250], ['', 'CRS - Container Repair Surcharge', '', 36, 5, 180]);
+  const r = comModelo(montarFechamento(notaSemNumero, { valores: { adiantamento: 23400, agente: 10419 + 250 + 180 } }), modelo);
+  iguais([r.real_json.custos_diversos, r.real_json.trs], [250, 180]);
+  iguais(r.resumo.pacotes.agente.modo, 'itens');
+  iguais(r.resumo.pacotes.agente.partes.custos_diversos.map(p => p.rotulo), ['Lift ON / Lift OFF']);
+});
+teste('diferença de imposto negativa (crédito) entra com sinal; linha de custo estranha ao modelo vai para Custos Diversos com aviso', () => {
+  const wb = XLSX.read(montarFechamento(notaSemNumero, { valores: { difCofins: -800 } }), { type: 'buffer', cellDates: true });
+  const ws = wb.Sheets['Fechamento'];
+  const aCom = Object.keys(ws).find(a => /^B\d+$/.test(a) && /^Comissão Chinês/.test(String(ws[a].v)));
+  ws[aCom].v = 'Armazenagem'; ws['G' + aCom.slice(1)] = { t: 'n', v: 321.5 };
+  const r = pi.importarFechamentoBase(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true }));
+  iguais(r.real_json.diferenca_cofins, -800);
+  iguais(r.real_json.custos_diversos, 321.5);
+  ok(r.avisos.some(a => /Custos Diversos: Armazenagem R\$ 321,5/.test(a)), r.avisos.join(' | '));
+});
+teste('nota de saída com valor e SEM número entra no resumo (numero null)', () => {
+  iguais(itemizado.resumo.notas.map(n => [n.numero, n.valor]), [[null, 120000]]);
+});
+teste('bloco de notas sem a linha TOTAL não lê pagamento como nota', () => {
+  const wb = XLSX.read(montarFechamento([{ numero: '8601', valor: 50000, cliente: 'X' }]), { type: 'buffer', cellDates: true });
+  const ws = wb.Sheets['Fechamento'];
+  Object.keys(ws).filter(a => /^E\d+$/.test(a) && String(ws[a].v).trim().toUpperCase() === 'TOTAL').forEach(a => { ws[a].v = ''; });
+  const r = pi.importarFechamentoBase(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true }));
+  iguais(r.resumo.notas.map(n => n.valor), [50000]);
 });
 
 // Datas automáticas do modelo (17/10/2026): DADOS!E4 "DATA D.I" = HOJE(),

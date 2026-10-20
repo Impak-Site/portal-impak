@@ -241,7 +241,7 @@ function _finHtmlImportar(){
       <li>Nada é gravado até você clicar em "Importar". Títulos já importados antes são pulados (não duplica).</li>
       <li>Se o título já estava parcialmente pago no Conexos, a parte paga vira uma baixa "Pago no Conexos antes da migração".</li>
     </ol>
-    <button class="btn btn-primary" onclick="finEscolherPlanilha()">⬆ Escolher planilha do Conexos</button>
+    <button type="button" class="btn btn-primary" data-arraste data-arraste-aceita=".xlsx,.csv,.txt" onclick="finEscolherPlanilha()">⬆ Escolher planilha do Conexos</button>
   </div>`;
   const { cab, linhas, mapa } = _finImp;
   const sel = campo => `<select class="form-input fin-map" data-c="${campo}" style="padding:3px 6px;font-size:11px;" onchange="finImpMapa()"><option value="">—</option>${cab.map((h, i) => `<option value="${i}" ${mapa[campo] === i ? 'selected' : ''}>${esc(h || 'coluna ' + (i + 1))}</option>`).join('')}</select>`;

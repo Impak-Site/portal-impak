@@ -564,10 +564,16 @@ async function importarFechamentoProcesso(input){
     // exista na tela (itens sem valor ficam escondidos), aplica a máscara
     // 1.234,56, não sobrescreve o que alguém já conferiu à mão e marca a
     // linha como conferida "pela planilha".
+    // Adiantamento Porto / Agente Frete chegam item a item (pela aba MODELO)
+    // ou como valor único; crResolverPacotesImportados garante que pacote e
+    // itens do mesmo grupo nunca fiquem juntos na grade (20/10/2026).
+    const realJson = Object.assign({}, d.real_json || {});
+    const resumo = d.resumo || {};
+    const extra = (typeof crResolverPacotesImportados === 'function') ? crResolverPacotesImportados(realJson, resumo.pacotes) : { avisos: [], infos: [] };
     if(typeof crAplicarImportado === 'function'){
-      preenchidos += crAplicarImportado(d.real_json||{}, d.moedas||{});
+      preenchidos += crAplicarImportado(realJson, d.moedas||{});
     } else {
-      Object.entries(d.real_json||{}).forEach(([itemId, valor])=>{
+      Object.entries(realJson).forEach(([itemId, valor])=>{
         const el = document.getElementById('f_cr_'+itemId);
         if(el && !el.value){
           el.value = valor;
@@ -579,10 +585,16 @@ async function importarFechamentoProcesso(input){
       if(typeof atualizarTotalCustosReais === 'function') atualizarTotalCustosReais();
     }
 
+    // Notas de saída da planilha → venda (aba Vendas) ou NF de Saída do
+    // processo: completa o valor/número/data que estiverem vazios (UD26-047:
+    // a venda existia sem valor e o Fechamento ficava sem receita).
+    const notas = (typeof aplicarNotasDaPlanilha === 'function') ? aplicarNotasDaPlanilha(resumo.notas || []) : { preenchidos: [], avisos: [] };
+    preenchidos += notas.preenchidos.length;
+
     showToast(`✓ Planilha lida: ${preenchidos} campo${preenchidos===1?'':'s'} preenchido${preenchidos===1?'':'s'}. Revise e clique em Salvar.`, 'ok');
-    if(Array.isArray(d.avisos) && d.avisos.length){
-      d.avisos.forEach(av => showToast('⚠ '+av, 'warn'));
-    }
+    extra.infos.forEach(t => showToast('ℹ️ ' + t, 'info', 12000));
+    if(notas.preenchidos.length) showToast('🧾 ' + notas.preenchidos.join(' · '), 'ok', 12000);
+    [].concat(Array.isArray(d.avisos) ? d.avisos : [], extra.avisos, notas.avisos).forEach(av => showToast('⚠ '+av, 'warn'));
   }catch(e){
     showToast('Erro ao importar planilha: '+e.message, 'err');
   }
