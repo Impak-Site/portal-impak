@@ -250,8 +250,10 @@ async function _cadRenderEmpresas(){
       </div>
       <input class="search-box" id="contatos-search" aria-label="Buscar empresa (razão social, fantasia, sinônimo, CNPJ/CPF)" placeholder="🔍 Buscar por razão social, nome fantasia, sinônimo, CNPJ/CPF..." oninput="renderListaContatos()" style="flex:1;min-width:200px;">
       ${(typeof _user !== 'undefined' && _user && _user.role === 'gerente') ? `<button class="btn btn-sm btn-outline" onclick="revincularProcessosCadastros()" title="Passa por todos os processos e grava o vínculo (id) com o cadastro de cliente, fornecedor, armador etc., padronizando o texto como o Salvar faz. Mostra o resumo antes de aplicar.">🔗 Revincular processos</button>` : ''}
+      ${(typeof _user !== 'undefined' && _user && _user.role === 'gerente') ? `<button class="btn btn-sm btn-outline" onclick="arrumarCadastrosDocumentos()" title="Corrige CNPJ sem zero à esquerda e CPF no formato do Conexos, e completa pela Receita (nome fantasia, endereço, CEP) só o que estiver vazio. Mostra o resumo antes de aplicar.">🧹 Arrumar CNPJ/CPF e Receita</button>` : ''}
       <button class="btn btn-primary" onclick="abrirNovoContato()">+ Nova Empresa</button>
     </div>
+    <div id="cad-arrumar-resumo" style="display:none;margin-bottom:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--card);font-size:12px;line-height:1.5;"></div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead style="background:var(--bg);">
@@ -551,6 +553,76 @@ async function excluirPessoa(id){
 // mostra o resumo (vínculos novos, trocas de texto, grafias sem cadastro,
 // fechados que precisariam de ajuste manual) e só aplica se o gerente
 // confirmar. O relatório completo (de-para) fica no console do navegador.
+// ── Arrumar CNPJ/CPF e completar pela Receita (20/10/2026, pedido Ayslan) ──
+// Os cadastros importados do Conexos vieram com CNPJ sem zero à esquerda e CPF
+// no formato 9+0000+2, e quase todos sem nome fantasia/endereço/CEP. 1) mostra
+// o que mudaria e pede confirmação; 2) corrige os documentos; 3) consulta a
+// Receita de 20 em 20 e completa só campos vazios. Tudo vai pro Histórico.
+async function arrumarCadastrosDocumentos(){
+  const box = document.getElementById('cad-arrumar-resumo');
+  const mostrar = html => { if(box){ box.style.display = ''; box.innerHTML = html; } };
+  const post = async (url, corpo) => {
+    const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.ok) throw new Error(d.erro || ('Falha (' + r.status + ')'));
+    return d;
+  };
+  try{
+    showToast('Conferindo os documentos dos cadastros…', 'ok');
+    const sim = await post('/api/admin/cadastros/documentos', { simular: true });
+    console.log('[arrumar cadastros] simulação', sim);
+    const pc = sim.por_correcao || {};
+    const msg = 'Arrumar cadastros\n\n' +
+      `Documentos a corrigir: ${sim.mudancas}\n` +
+      `  • CNPJ sem zero à esquerda: ${pc.zeros_cnpj || 0}\n` +
+      `  • CPF no formato do Conexos (vira pessoa física): ${pc.cpf_conexos || 0}\n` +
+      (pc.espelho ? `  • Só o campo de busca interno: ${pc.espelho}\n` : '') +
+      `Documento inválido (fica como está, para revisar): ${(sim.invalidos || []).length}\n` +
+      `Sem documento: ${sim.sem_documento}\n\n` +
+      `Depois, consultar na Receita ${sim.candidatos_receita.length} empresa(s) com CNPJ e completar o que estiver vazio (nome fantasia, endereço, CEP; razão social cortada vira a completa). Nada já preenchido é apagado e tudo fica no Histórico de cada cadastro.\n\nContinuar?`;
+    if(!confirm(msg)){ showToast('Nada foi alterado.', 'ok'); return; }
+    let corrigidos = 0, errosDoc = [];
+    if(sim.mudancas){
+      const real = await post('/api/admin/cadastros/documentos', { simular: false });
+      errosDoc = real.erros || [];
+      corrigidos = real.mudancas - errosDoc.length;
+    }
+    const ids = sim.candidatos_receita.slice(), total = ids.length;
+    let consultados = 0, completados = 0, pausas = 0;
+    const naoAchados = [], divergencias = [], falhas = [];
+    while(ids.length){
+      const lote = ids.splice(0, 20);
+      mostrar(`Consultando a Receita: ${consultados}/${total}…`);
+      const d = await post('/api/admin/cadastros/completar-receita', { ids: lote });
+      (d.resultados || []).forEach(x => {
+        consultados++;
+        if(x.ok){
+          if(x.preenchidos && x.preenchidos.length) completados++;
+          (x.divergencias || []).forEach(v => divergencias.push({ nome: x.razao_social, campo: v.campo, atual: v.atual, receita: v.receita }));
+        } else if(x.status === 404 || x.status === 400) naoAchados.push(x.razao_social);
+        else if(x.status !== 429) falhas.push(`${x.razao_social}: ${x.erro}`);
+      });
+      if(d.pendentes && d.pendentes.length) ids.unshift(...d.pendentes);
+      if(d.pausar){
+        if(++pausas > 5){ falhas.push(`A Receita limitou as consultas; faltaram ${ids.length} — rode de novo mais tarde.`); break; }
+        mostrar(`A Receita pediu uma pausa… (${consultados}/${total})`);
+        await new Promise(res => setTimeout(res, 20000));
+      }
+    }
+    const lista = (titulo, itens) => itens.length ? `<details style="margin-top:4px;"><summary>${esc(titulo)} (${itens.length})</summary><div style="max-height:220px;overflow:auto;padding:4px 0 0 12px;">${itens.map(t => `<div>${esc(t)}</div>`).join('')}</div></details>` : '';
+    const rot = { razao_social:'razão social', cidade:'cidade', uf:'UF', cep:'CEP' };
+    mostrar(`<b>Cadastros arrumados.</b> Documentos corrigidos: ${corrigidos}. Consultados na Receita: ${consultados}, completados: ${completados}, não encontrados: ${naoAchados.length}.` +
+      lista('Diferenças para revisar (não foram trocadas)', divergencias.map(v => `${v.nome} — ${rot[v.campo] || v.campo}: cadastro "${v.atual}" × Receita "${v.receita}"`)) +
+      lista('CNPJ não encontrado na Receita', naoAchados) +
+      lista('Documentos inválidos (corrija no cadastro)', (sim.invalidos || []).map(x => `${x.razao_social}: ${x.documento}`)) +
+      lista('Erros', falhas.concat(errosDoc.map(x => `${x.razao_social}: ${x.erro}`))));
+    showToast(`✓ ${corrigidos} documento(s) corrigido(s) e ${completados} cadastro(s) completado(s) pela Receita`, falhas.length ? 'warn' : 'ok', 12000);
+    if(typeof carregarContatos === 'function') await carregarContatos();
+  }catch(e){
+    showToast('Erro: ' + e.message, 'err');
+  }
+}
+
 async function revincularProcessosCadastros(){
   const rotulos = { cliente_id:'Cliente', fornecedor_id:'Fornecedor', armador_id:'Armador', agente_id:'Agente', transportadora_id:'Transportadora', despachante_id:'Despachante', armazem_id:'Armazém', depot_id:'Depot' };
   const chamar = async (simular) => {

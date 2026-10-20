@@ -2378,8 +2378,11 @@ app.post('/api/faturas/importar', auth('financeiro'), async (req, res) => {
       existentes.add(chave);
       const row = { ...v.fatura, criado_por: req.session.usuario || null, alterado_por: req.session.usuario || null, created_at: agora, updated_at: agora };
       if (idx) { try { const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(row.empresa_nome, idx); if (r && r.id) row.empresa_id = r.id; } catch (e) { /* sem vínculo */ } }
-      if (!row.empresa_id && row.externo && row.externo.cnpj && row.externo.cnpj.length === 14) {
-        const { data: c } = await sb().from('contatos_clientes').select('id').or(`cnpj.eq.${row.externo.cnpj},documento.eq.${row.externo.cnpj}`).limit(1);
+      // O CNPJ da planilha do Conexos chega sem os zeros à esquerda (e CPF no
+      // formato 9+0000+2): normaliza antes de procurar o cadastro.
+      const docExt = row.externo && row.externo.cnpj ? DocumentoBR.normalizarDocumento('JURIDICA', 'Brasil', row.externo.cnpj).documento : '';
+      if (!row.empresa_id && (docExt.length === 14 || docExt.length === 11)) {
+        const { data: c } = await sb().from('contatos_clientes').select('id').or(`cnpj.eq.${docExt},documento.eq.${docExt}`).limit(1);
         if (c && c[0]) row.empresa_id = c[0].id;
       }
       const jaPago = Math.max(0, Math.round((parseFloat(l.jaPago) || 0) * 100) / 100);
@@ -4806,6 +4809,10 @@ app.delete('/api/controle/v2/arquivos/:id', auth('controle','financeiro'), requi
 // Lógica pura extraída pra lib/validacao-documento.js (testada em
 // testes_cadastros.js, ver justificativa lá).
 const { validarDocumento } = require('./lib/validacao-documento.js');
+// CNPJ/CPF importado errado (sem zeros à esquerda / CPF no formato do Conexos)
+// e consulta da Receita (BrasilAPI) — mesmos arquivos que a tela carrega.
+const DocumentoBR = require('./documento-br.js');
+const ReceitaCNPJ = require('./receita-cnpj.js');
 const conexos = require('./services/conexos.js');
 
 // ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
@@ -4875,6 +4882,10 @@ app.get('/api/contatos', auth(...MODULOS_TRABALHO), async (req, res) => {
     // busca virava "...TERMINAIS NAVEGANTES" e não achava o nome com
     // parênteses. Agora vira curinga (%) — continua seguro pro .or().
     const qSeguro = (q && q.length >= 2) ? q.replace(/[,%*(){}]/g, '%').replace(/%{2,}/g, '%').replace(/^%+|%+$/g, '').trim() : '';
+    // CNPJ/CPF digitado com pontuação (00.000.000/0000-00): o banco guarda só
+    // os dígitos, então a busca no documento usa só os dígitos.
+    const qDigitos = q ? String(q).replace(/\D/g, '') : '';
+    const qEhDocumento = qDigitos.length >= 3 && /^[\d.\-\/\s]+$/.test(String(q || '').trim());
     // nivel 2 = com papéis/sinônimos/regras (0040+0042); 1 = só papéis/
     // sinônimos (0042 ainda não rodou); 0 = colunas base (nem 0040).
     const montar = (nivel) => {
@@ -4898,7 +4909,7 @@ app.get('/api/contatos', auth(...MODULOS_TRABALHO), async (req, res) => {
       // ilike, parênteses/asterisco também têm sentido sintático) — sem
       // isso, buscar por algo como "Silva, Lima" quebrava a query com erro.
       if (qSeguro.length >= 2) {
-        query = query.or(`razao_social.ilike.%${qSeguro}%,cnpj.ilike.%${qSeguro}%,nome_fantasia.ilike.%${qSeguro}%`);
+        query = query.or(`razao_social.ilike.%${qSeguro}%,cnpj.ilike.%${qEhDocumento ? qDigitos : qSeguro}%,nome_fantasia.ilike.%${qSeguro}%`);
       }
       return query.order('razao_social').limit(lim);
     };
@@ -4922,6 +4933,15 @@ app.post('/api/contatos', auth('controle','financeiro','cadastros'), async (req,
     // compatibilidade com o autocomplete e telas antigas que ainda leem
     // direto dele (só faz sentido pra pessoa jurídica brasileira).
     if (!c.documento && c.cnpj) c.documento = c.cnpj;
+    // 20/10/2026: documento importado do Conexos/planilha — CNPJ sem os zeros
+    // à esquerda e CPF no formato do Conexos (9 dígitos + 0000 + 2) — é
+    // corrigido aqui, antes da validação, valendo pra tela, importação e
+    // scripts. Só corrige quando o dígito verificador confirma.
+    const normDoc = DocumentoBR.normalizarDocumento(c.tipo_pessoa, c.pais, c.documento);
+    c.documento = normDoc.documento;
+    c.tipo_pessoa = normDoc.tipo_pessoa;
+    const avisoNormDoc = normDoc.correcao === 'cpf_conexos' ? 'O documento era um CPF no formato do Conexos: gravado como CPF, pessoa física.'
+      : normDoc.correcao === 'zeros_cnpj' ? 'CNPJ completado com o(s) zero(s) à esquerda que faltavam.' : null;
     const erroDoc = validarDocumento(c.tipo_pessoa, c.pais, c.documento);
     // Cadastro novo: CNPJ/CPF obrigatório e válido (regra do Ayslan, 12/09).
     // EDIÇÃO de cadastro antigo que nunca teve documento (muitos vieram do
@@ -4936,7 +4956,9 @@ app.post('/api/contatos', auth('controle','financeiro','cadastros'), async (req,
       if (!soFaltaDocumento) return res.status(400).json({ erro: erroDoc });
       avisoDoc = erroDoc + ' Cadastro salvo mesmo assim — complete o documento quando tiver.';
     }
-    if (c.tipo_pessoa === 'JURIDICA' && (c.pais||'').toLowerCase() === 'brasil') {
+    // cnpj espelha o documento (só dígitos) de quem é do Brasil — empresa ou
+    // pessoa física (a busca e o vínculo de faturas procuram por ele).
+    if (DocumentoBR.ehBrasil(c.pais)) {
       c.cnpj = String(c.documento || '').replace(/\D/g, '');
     }
     const isNovo = !c.id;
@@ -5034,8 +5056,107 @@ app.post('/api/contatos', auth('controle','financeiro','cadastros'), async (req,
     if (error) throw new Error(error.message);
     invalidarIndiceCadastros();
     registrarLogCadastro('contatos_clientes', c.id, isNovo ? 'criar' : 'editar', antes, c, req.session.usuario);
-    res.json({ ok: true, id: c.id, aviso: avisoDoc || undefined });
+    res.json({ ok: true, id: c.id, aviso: [avisoNormDoc, avisoDoc].filter(Boolean).join(' ') || undefined });
   } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// ── ARRUMAR CADASTROS EM LOTE (20/10/2026, pedido Ayslan) ──
+// "O CNPJ está corrido, sem . e -, e não faz a importação pela API": os
+// cadastros importados do Conexos têm CNPJ sem zeros à esquerda e CPF no
+// formato do Conexos, e quase nenhum tem nome fantasia/endereço/CEP. Duas
+// rotas só pra gerente (botão "Arrumar CNPJ/CPF e Receita" em Cadastros):
+//  1) /documentos: corrige o documento (simular = só mostra o que mudaria);
+//  2) /completar-receita: consulta a Receita (BrasilAPI) de até 20 cadastros
+//     por vez e completa SÓ os campos vazios (razão social cortada vira a
+//     completa e a antiga fica como sinônimo). Tudo vai pro Histórico.
+function soGerenteCadastros(req, res, next) {
+  if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Só gerente pode arrumar os cadastros em lote.' });
+  next();
+}
+const CAMPOS_CANDIDATO_RECEITA = ['nome_fantasia', 'logradouro', 'numero', 'bairro', 'cep'];
+function candidatoReceita(c) {
+  if (!c || c.tipo_pessoa === 'FISICA' || !DocumentoBR.ehBrasil(c.pais)) return false;
+  const doc = String(c.documento || c.cnpj || '').replace(/\D/g, '');
+  if (!DocumentoBR.digitoVerificadorValido_CNPJ(doc) || /^\d{8}9999/.test(doc)) return false;
+  const nomeTalvezCortado = String(c.razao_social || '').trim().length >= 34;
+  return nomeTalvezCortado || CAMPOS_CANDIDATO_RECEITA.some(k => !String(c[k] == null ? '' : c[k]).trim());
+}
+app.post('/api/admin/cadastros/documentos', auth('cadastros'), soGerenteCadastros, async (req, res) => {
+  try {
+    const simular = !(req.body && req.body.simular === false);
+    const { data, error } = await sb().from('contatos_clientes').select('*').eq('ativo', true).limit(5000);
+    if (error) throw new Error(error.message);
+    const lista = data || [];
+    const mudancas = [], invalidos = [], erros = [];
+    let semDocumento = 0;
+    for (const c of lista) {
+      const docAtual = String(c.documento || c.cnpj || '');
+      if (!docAtual.replace(/\D/g, '') && DocumentoBR.ehBrasil(c.pais)) { semDocumento++; continue; }
+      const n = DocumentoBR.normalizarDocumento(c.tipo_pessoa, c.pais, docAtual);
+      if (DocumentoBR.ehBrasil(c.pais) && validarDocumento(n.tipo_pessoa, c.pais, n.documento)) {
+        invalidos.push({ id: c.id, razao_social: c.razao_social, documento: docAtual });
+        continue;
+      }
+      const cnpjNovo = DocumentoBR.ehBrasil(c.pais) ? n.documento : c.cnpj;
+      const muda = n.documento !== String(c.documento || '') || n.tipo_pessoa !== (c.tipo_pessoa || 'JURIDICA') || String(cnpjNovo || '') !== String(c.cnpj || '');
+      if (!muda) continue;
+      mudancas.push({ id: c.id, razao_social: c.razao_social, correcao: n.correcao || 'espelho',
+        antes: { documento: c.documento || null, cnpj: c.cnpj || null, tipo_pessoa: c.tipo_pessoa || null },
+        depois: { documento: n.documento, cnpj: cnpjNovo || null, tipo_pessoa: n.tipo_pessoa } });
+    }
+    if (!simular) {
+      for (const m of mudancas) {
+        const { error: eUp } = await sb().from('contatos_clientes').update(Object.assign({}, m.depois, { updated_at: new Date().toISOString() })).eq('id', m.id);
+        if (eUp) { erros.push({ id: m.id, razao_social: m.razao_social, erro: eUp.message }); continue; }
+        registrarLogCadastro('contatos_clientes', m.id, 'documento corrigido', m.antes, m.depois, req.session.usuario);
+      }
+      invalidarIndiceCadastros();
+    }
+    const porCorrecao = {};
+    mudancas.forEach(m => { porCorrecao[m.correcao] = (porCorrecao[m.correcao] || 0) + 1; });
+    // Candidatos à Receita já com o documento corrigido.
+    const corrigido = new Map(mudancas.map(m => [m.id, m.depois]));
+    const candidatos = lista.map(c => Object.assign({}, c, corrigido.get(c.id) || {})).filter(candidatoReceita).map(c => c.id);
+    res.json({ ok: true, simular, total: lista.length, mudancas: mudancas.length, por_correcao: porCorrecao, lista: mudancas, invalidos, sem_documento: semDocumento, erros, candidatos_receita: candidatos });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/admin/cadastros/completar-receita', auth('cadastros'), soGerenteCadastros, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(String).slice(0, 20) : [];
+    if (!ids.length) return res.status(400).json({ ok: false, erro: 'Mande os ids (até 20 por vez).' });
+    const { data, error } = await sb().from('contatos_clientes').select('*').in('id', ids);
+    if (error) throw new Error(error.message);
+    const porId = new Map((data || []).map(c => [String(c.id), c]));
+    const resultados = [];
+    const esperar = ms => new Promise(r => setTimeout(r, ms));
+    let pausar = false;
+    for (let i = 0; i < ids.length; i++) {
+      const c = porId.get(ids[i]);
+      if (!c) { resultados.push({ id: ids[i], ok: false, erro: 'Cadastro não encontrado.' }); continue; }
+      const doc = String(c.documento || c.cnpj || '').replace(/\D/g, '');
+      if (c.tipo_pessoa === 'FISICA' || !DocumentoBR.digitoVerificadorValido_CNPJ(doc)) { resultados.push({ id: c.id, razao_social: c.razao_social, ok: false, erro: 'Sem CNPJ válido.' }); continue; }
+      if (i > 0) await esperar(350);
+      let r = await ReceitaCNPJ.buscarCnpjReceita(doc);
+      if (!r.ok && r.status === 429) { await esperar(3000); r = await ReceitaCNPJ.buscarCnpjReceita(doc); }
+      if (!r.ok) {
+        resultados.push({ id: c.id, razao_social: c.razao_social, ok: false, status: r.status, erro: r.erro });
+        if (r.status === 429) { pausar = true; break; }
+        continue;
+      }
+      const comp = ReceitaCNPJ.completarComReceita(c, r.dados);
+      const campos = Object.keys(comp.alteracoes);
+      if (campos.length) {
+        const { error: eUp } = await sb().from('contatos_clientes').update(Object.assign({}, comp.alteracoes, { updated_at: new Date().toISOString() })).eq('id', c.id);
+        if (eUp) { resultados.push({ id: c.id, razao_social: c.razao_social, ok: false, erro: eUp.message }); continue; }
+        const antes = {}; campos.forEach(k => { antes[k] = c[k] == null ? null : c[k]; });
+        registrarLogCadastro('contatos_clientes', c.id, 'completado pela Receita', antes, comp.alteracoes, req.session.usuario);
+      }
+      resultados.push({ id: c.id, razao_social: c.razao_social, ok: true, preenchidos: comp.preenchidos, divergencias: comp.divergencias, situacao: r.dados.situacao });
+    }
+    if (resultados.some(x => x.ok && x.preenchidos && x.preenchidos.length)) invalidarIndiceCadastros();
+    const feitos = new Set(resultados.map(x => String(x.id)));
+    res.json({ ok: true, resultados, pendentes: ids.filter(id => !feitos.has(id)), pausar });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
 app.delete('/api/contatos/:id', auth('controle','financeiro','cadastros'), requireGerente, async (req, res) => {

@@ -50,6 +50,9 @@ const MODULOS_JS = [
   // Revisão 17/10/2026: datas impossíveis + edição simultânea (antes do core).
   'validacao-datas.js',
   'concorrencia-processo.js',
+  // 20/10/2026: CNPJ/CPF e consulta da Receita (mesma ordem do controle_v2.html).
+  'documento-br.js',
+  'receita-cnpj.js',
   'controle-core.js',
   'controle-modal.js',
   'controle-campos.js',
@@ -3664,6 +3667,47 @@ teste('avisos: estimativa diferente, vínculo só de um lado e outras cotações
   verdadeiro(/só de um lado/.test(incompleto));
   verdadeiro(/Tentar de novo/.test(sandbox.htmlVinculoCotacao({ id: 'p' }, null)), 'falha ao carregar não quebra o painel');
 });
+
+// ── Cadastros: CNPJ/CPF com máscara e corrigido ao abrir (20/10/2026) — valores fictícios ──
+console.log('\n🏢 Cadastros — documento com máscara e corrigido');
+{
+  const el = id => sandbox.document.getElementById(id);
+  const CNPJ_OK = '11222333000181'; // exemplo clássico de CNPJ válido (fictício)
+  const CPF_OK = '11144477735';     // exemplo clássico de CPF válido (fictício)
+  teste('lista mostra o CNPJ com máscara e acha digitando com pontuação', () => {
+    vm.runInContext(`_contatosLista = [{ id: 'emp-1', razao_social: 'EMPRESA EXEMPLO LTDA', documento: '${CNPJ_OK}', cnpj: '${CNPJ_OK}', tipo_pessoa: 'JURIDICA', pais: 'Brasil', tipo: 'CLIENTE' }]; _contatosTipoAtivo = 'CLIENTE';`, sandbox);
+    el('contatos-search').value = '11.222.333/0001';
+    sandbox.renderListaContatos();
+    verdadeiro(/EMPRESA EXEMPLO LTDA/.test(el('contatos-tbody').innerHTML), 'busca com pontuação acha pelo número');
+    verdadeiro(/11\.222\.333\/0001-81/.test(el('contatos-tbody').innerHTML), 'mostra com máscara');
+    el('contatos-search').value = '';
+  });
+  teste('abrir cadastro com CPF no formato do Conexos: vira CPF com máscara, pessoa física e avisa', () => {
+    const conexos = CPF_OK.slice(0, 9) + '0000' + CPF_OK.slice(9);
+    vm.runInContext(`_contatosLista = [{ id: 'emp-2', razao_social: 'PESSOA EXEMPLO', documento: '${conexos}', cnpj: '${conexos}', tipo_pessoa: 'JURIDICA', pais: 'Brasil', tipo: 'CLIENTE' }];`, sandbox);
+    sandbox.editarContato('emp-2');
+    iguais(el('ce_documento').value, '111.444.777-35');
+    iguais(el('ce_tipo_pessoa').value, 'FISICA');
+    verdadeiro(/CPF no formato do Conexos/.test(el('ce_cnpj_status').textContent), el('ce_cnpj_status').textContent);
+  });
+  teste('abrir cadastro com CNPJ sem o zero à esquerda: volta o zero e mostra com máscara', () => {
+    const D = sandbox.DocumentoBR;
+    // CNPJ fictício começando com 0 (dígito verificador calculado na hora)
+    let base = '012345670001', cnpj = null;
+    for (let i = 0; i < 100 && !cnpj; i++) { const t = base + String(i).padStart(2, '0'); if (D.digitoVerificadorValido_CNPJ(t)) cnpj = t; }
+    vm.runInContext(`_contatosLista = [{ id: 'emp-3', razao_social: 'OUTRA EMPRESA EXEMPLO LTDA', documento: '${cnpj.slice(1)}', tipo_pessoa: 'JURIDICA', pais: 'Brasil', tipo: 'CLIENTE' }];`, sandbox);
+    sandbox.editarContato('emp-3');
+    iguais(el('ce_documento').value, D.formatarDocumento(cnpj));
+    iguais(el('ce_tipo_pessoa').value, 'JURIDICA');
+    verdadeiro(/faltava zero à esquerda/.test(el('ce_cnpj_status').textContent));
+  });
+  teste('cadastro com CNPJ certo e sem endereço: sugere completar pela Receita', () => {
+    vm.runInContext(`_contatosLista = [{ id: 'emp-4', razao_social: 'EMPRESA EXEMPLO LTDA', documento: '${CNPJ_OK}', tipo_pessoa: 'JURIDICA', pais: 'Brasil', tipo: 'CLIENTE' }];`, sandbox);
+    sandbox.editarContato('emp-4');
+    iguais(el('ce_documento').value, '11.222.333/0001-81');
+    verdadeiro(/Receita para completar/.test(el('ce_cnpj_status').textContent), el('ce_cnpj_status').textContent);
+  });
+}
 
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
