@@ -1732,6 +1732,22 @@ teste('listarEstoqueArmazem: NF de entrada sem venda entra; remessa 5905 separad
   iguais(r.porProduto['205/55R16 TESTE'].remessa, 100);
   iguais(r.linhas[0].referencia, 'ARM-2', 'remessa (estoque) vem primeiro');
 });
+// Ayslan 20/10/2026: a NF de remessa (5905) só vira estoque na importação
+// própria; na encomenda/conta e ordem a mercadoria já é do cliente.
+teste('Remessa p/ armazém: importação própria vira estoque; encomenda e conta e ordem com remessa ficam fora', () => {
+  const prods = JSON.stringify([{ descricao:'295/80R22.5 TESTE', quantidade:40 }]);
+  const remessa = JSON.stringify([{ nf_saida_numero:'91', nf_saida_cfop:'5905', itens:[] }]);
+  const r = sandbox.listarEstoqueArmazem([
+    { id:'r1', referencia:'REM-PROPRIA', finalidade:'IMPORTACAO_DIRETA', nf_entrada_numero:'1', produtos_json: prods, vendas_json: remessa },
+    { id:'r2', referencia:'REM-ENCOMENDA', finalidade:'ENCOMENDA', nf_entrada_numero:'2', produtos_json: prods, vendas_json: remessa },
+    { id:'r3', referencia:'REM-CONTA-ORDEM', finalidade:'CONTA_E_ORDEM', nf_entrada_numero:'3', produtos_json: prods, nf_saida_numero:'92', nf_saida_cfop:'5905' },
+    { id:'r4', referencia:'ENC-SEM-NF', finalidade:'ENCOMENDA', nf_entrada_numero:'4', produtos_json: prods },
+  ]);
+  iguais(r.linhas.map(l => l.referencia + ':' + l.grupo).join(' | '), 'REM-PROPRIA:remessa | ENC-SEM-NF:semnf');
+  iguais(sandbox.remessaNaoViraEstoque({ finalidade:'ENCOMENDA', vendas_json: remessa }), true);
+  iguais(sandbox.remessaNaoViraEstoque({ finalidade:'IMPORTACAO_DIRETA', vendas_json: remessa }), false);
+  iguais(sandbox.remessaNaoViraEstoque({ finalidade:'ENCOMENDA' }), false, 'encomenda sem remessa: segue como antes');
+});
 teste('buscaBate: palavras em qualquer ordem, sem acento/maiúscula e sem pontuação', () => {
   const t = sandbox.buscaTokens;
   verdadeiro(sandbox.buscaBate(t('295 UF195'), '295/80R22.5 18PR 152/149M UF195 TL'));

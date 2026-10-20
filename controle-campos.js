@@ -894,6 +894,13 @@ function sincronizarProdutoLegado(){
 // rateio nenhum — esta aba é 100% opcional.
 let _vendas = []; // [{cliente, itens:[{descricao,quantidade}], nf_saida_numero, nf_saida_data, nf_saida_valor, custos_diretos:[{label,valor}], obs}]
 
+// Finalidade escolhida no painel (Encomenda / Conta e Ordem = a importação é
+// do cliente): muda o texto da remessa (ver remessaNaoViraEstoque, controle-core.js).
+function _importacaoDoClienteNaTela(){
+  const f = document.getElementById('f_finalidade')?.value || (typeof _editando !== 'undefined' && _editando ? _editando.finalidade : '');
+  return f === 'ENCOMENDA' || f === 'CONTA_E_ORDEM';
+}
+
 function vendaVazia(){
   return { cliente:'', itens:[{descricao:'', quantidade:''}], nf_saida_numero:'', nf_saida_data:'', nf_saida_valor:'', nf_saida_cfop:'', custos_diretos:[], obs:'', forma_pagamento:'avista', prazo_texto:'', juros_valor:'' };
 }
@@ -907,7 +914,7 @@ function renderVendas(){
     // em Documentos pra ninguém duplicar.
     const nfDoc = _nfSaidaDocumentos();
     wrap.innerHTML = nfDoc ? (nfDoc.remessa
-      ? `<div style="background:#f0f6ff;border:1px solid #b9d3f5;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;">📦 <b>Remessa já lançada na aba Documentos:</b> NF ${esc(nfDoc.numero)}${nfDoc.cfop ? ` · CFOP ${esc(nfDoc.cfop)}` : ''}${nfDoc.valor ? ` · ${esc(nfDoc.valor)}` : ''}${nfDoc.data ? ` · ${esc(nfDoc.data)}` : ''}.<br><span style="color:var(--muted);">É movimentação de estoque, não é venda. Quando os pneus forem vendidos, lance a NF de venda aqui (ou leia o XML/PDF).</span></div>`
+      ? `<div style="background:#f0f6ff;border:1px solid #b9d3f5;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;">📦 <b>Remessa já lançada na aba Documentos:</b> NF ${esc(nfDoc.numero)}${nfDoc.cfop ? ` · CFOP ${esc(nfDoc.cfop)}` : ''}${nfDoc.valor ? ` · ${esc(nfDoc.valor)}` : ''}${nfDoc.data ? ` · ${esc(nfDoc.data)}` : ''}.<br><span style="color:var(--muted);">${_importacaoDoClienteNaTela() ? 'Encomenda/conta e ordem: a importação já é do cliente — a remessa para o armazém é só movimentação física e não vira estoque da IMPAK. Lance aqui a NF de venda ao cliente (ou leia o XML/PDF).' : 'É movimentação de estoque, não é venda. Quando os pneus forem vendidos, lance a NF de venda aqui (ou leia o XML/PDF).'}</span></div>`
       : `<div style="background:#ecfdf3;border:1px solid #abefc6;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55;">✅ <b>Venda já lançada na aba Documentos:</b> NF ${esc(nfDoc.numero)}${nfDoc.cliente ? ` · ${esc(nfDoc.cliente)}` : ''}${nfDoc.valor ? ` · ${esc(nfDoc.valor)}` : ''}${nfDoc.data ? ` · ${esc(nfDoc.data)}` : ''}${nfDoc.cfop ? ` · CFOP ${esc(nfDoc.cfop)}` : ''}.<br><span style="color:var(--muted);">Não precisa lançar de novo. Use esta aba só quando o processo for vendido para <b>mais de um cliente</b> ou em <b>várias NFs</b>.</span></div>`)
       : '<div class="empty"><div class="empty-icon">🧾</div><div class="empty-text">Nenhuma venda cadastrada — se este processo tem um único cliente/NF Saída, não precisa usar esta aba (use o campo Cliente em Identificação e NF Saída em Documentos, normalmente).</div></div>';
     sincronizarVendasLegado();
@@ -953,7 +960,7 @@ function renderVendas(){
       </div>`).join('') || '<div style="font-size:11px;color:var(--dim);margin-bottom:6px;">Nenhum custo direto nesta venda.</div>';
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--bg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">${ehCfopBaixa(v.nf_saida_cfop) ? '📌 Baixa sem NF' : vendaEhRemessa(v) ? '📦 Remessa p/ estoque' : vendaEhRetorno(v) ? '↩️ Retorno da remessa' : 'Venda '+(vi+1)}${ehCfopBaixa(v.nf_saida_cfop) ? ' <span style="text-transform:none;font-weight:600;color:#475569;background:#e2e8f0;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP BAIXA — sai do estoque, mas não é venda (display, uso interno, avaria)</span>' : ''}${vendaEhRemessa(v) ? ' <span style="text-transform:none;font-weight:600;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP 5905 — não conta como venda, a mercadoria continua no estoque</span>' : vendaEhRetorno(v) ? ' <span style="text-transform:none;font-weight:600;color:#475569;background:#e2e8f0;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP '+esc(v.nf_saida_cfop)+' — retorno simbólico: só registro, não mexe em estoque nem em venda</span>' : ''}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">${ehCfopBaixa(v.nf_saida_cfop) ? '📌 Baixa sem NF' : vendaEhRemessa(v) ? '📦 Remessa p/ estoque' : vendaEhRetorno(v) ? '↩️ Retorno da remessa' : 'Venda '+(vi+1)}${ehCfopBaixa(v.nf_saida_cfop) ? ' <span style="text-transform:none;font-weight:600;color:#475569;background:#e2e8f0;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP BAIXA — sai do estoque, mas não é venda (display, uso interno, avaria)</span>' : ''}${vendaEhRemessa(v) ? ' <span style="text-transform:none;font-weight:600;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 6px;margin-left:6px;">' + (_importacaoDoClienteNaTela() ? 'CFOP 5905 — não conta como venda; na encomenda/conta e ordem a mercadoria já é do cliente e não vira estoque da IMPAK' : 'CFOP 5905 — não conta como venda, a mercadoria continua no estoque') + '</span>' : vendaEhRetorno(v) ? ' <span style="text-transform:none;font-weight:600;color:#475569;background:#e2e8f0;border-radius:4px;padding:1px 6px;margin-left:6px;">CFOP '+esc(v.nf_saida_cfop)+' — retorno simbólico: só registro, não mexe em estoque nem em venda</span>' : ''}</div>
         <div style="display:flex;gap:14px;align-items:center;">
           <button type="button" onclick="document.getElementById('nf-import-${vi}').click()" style="background:none;border:none;color:var(--ac);cursor:pointer;font-size:12px;font-weight:600;">📎 Importar NF (XML ou PDF)</button>
           <input type="file" id="nf-import-${vi}" accept=".xml,application/pdf,image/*" style="display:none" onchange="importarNFVenda(${vi},this)">

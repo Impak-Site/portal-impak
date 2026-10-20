@@ -627,6 +627,40 @@ function telaComIA(respostaIA) {
     iguais([t.els.f_hbl.value, t.els.f_mbl.value], ['HCMS000002', 'SGN000000002']);
     ok(!t.toasts.some(x => /MBL não preenchido/.test(x[1])), JSON.stringify(t.toasts));
   });
+  // TVN2511A (20/10/2026): a Data EFETIVA de embarque só vem de BL, CE Mercante
+  // ou DI/DUIMP; em PI/CI (ou no futuro) é previsão e vai para o ETD. Valores fictícios.
+  await testeAsync('BL com data de embarque: preenche a Data de Embarque efetiva (não o ETD)', async () => {
+    const t = telaComIA({ hbl: 'HCMS000004', data_embarque: '2026-01-19' });
+    await t.ler();
+    iguais([t.els.f_data_embarque.value, t.els.f_etd.value], ['2026-01-19', '']);
+  });
+  await testeAsync('DI com o embarque nas informações complementares: preenche a Data de Embarque efetiva', async () => {
+    const t = telaComIA({ numero_di: '26/0000003-0', data_registro_di: '2026-04-10', data_chegada: '2026-04-08', data_embarque: '2026-01-19' });
+    await t.ler();
+    iguais([t.els.f_data_embarque.value, t.els.f_data_chegada.value, t.els.f_etd.value], ['2026-01-19', '2026-04-08', '']);
+  });
+  await testeAsync('CE Mercante: o embarque vai para a Data de Embarque efetiva e para a do CE', async () => {
+    const t = telaComIA({ ce_master: '182600000000004', ce_house: '182600000000005', ce_data_embarque: '2026-01-19', data_embarque: '2026-01-19' });
+    await t.ler();
+    iguais([t.els.f_data_embarque.value, t.els.f_ce_data_embarque.value], ['2026-01-19', '2026-01-19']);
+  });
+  await testeAsync('PI com data de embarque: é previsão — vai para o ETD e a efetiva fica vazia', async () => {
+    const t = telaComIA({ pi_numero: 'PI-TESTE-1', pi_data: '2026-01-02', data_embarque: '2026-02-10' });
+    await t.ler();
+    iguais([t.els.f_data_embarque.value, t.els.f_etd.value], ['', '2026-02-10']);
+  });
+  await testeAsync('BL com embarque ainda no futuro: vai para o ETD', async () => {
+    const daqui20 = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10); // sempre no futuro
+    const t = telaComIA({ hbl: 'HCMS000005', data_embarque: daqui20 });
+    await t.ler();
+    iguais([t.els.f_data_embarque.value, t.els.f_etd.value], ['', daqui20]);
+  });
+  await testeAsync('Prompt da leitura: pede a data de embarque efetiva e o desembaraço da consulta Siscomex', async () => {
+    const src = fs.readFileSync(path.join(__dirname, 'controle-import-ia.js'), 'utf8');
+    ok(src.includes('"data_embarque": "YYYY-MM-DD"'), 'campo data_embarque no JSON da IA');
+    ok(src.includes('NÃO preencha "etd" a partir da DI'), 'DI manda o embarque para a data efetiva');
+    ok(/Situação Atual[^\n]*DESEMBARAÇADA/.test(src), 'desembaraço na consulta do Portal Siscomex');
+  });
   await testeAsync('Documento com datas certas: nada muda e não há aviso de datas', async () => {
     const t = telaComIA({ numero_di: '26/0000001-0', data_registro_di: '2026-04-05', data_liberacao: '2026-04-06', data_chegada: '2026-04-03' });
     t.tela('f_data_embarque', '2026-02-20');

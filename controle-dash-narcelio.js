@@ -122,6 +122,8 @@ function renderDashNarcelio(){
   const estoqueProcessosLista = [];
   _processos.forEach(p => {
     if(!p.nf_entrada_numero) return;
+    // Encomenda/conta e ordem com NF de remessa: já é do cliente (Ayslan 20/10/2026).
+    if(typeof remessaNaoViraEstoque === 'function' && remessaNaoViraEstoque(p)) return;
     // 25/09/2026: baixa pelas NFs de Saída de todas as vendas (vendas_json).
     const est = estoqueDoProcesso(p);
     if(est.saiuTudo) return;
