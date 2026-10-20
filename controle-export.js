@@ -273,6 +273,10 @@ async function exportarDREExcel(dre, p){
       cell.alignment = {horizontal:'right'};
     };
 
+    if(dre.avisoCustos){
+      const avisoRow = linha('⚠ ' + dre.avisoCustos, null, null, null);
+      avisoRow.font = {italic:true, color:{argb:'FF92400E'}};
+    }
     const nfRow = linha(`Nota fiscal de Saída${dre.nfSaidaNumero?' - Nfe '+dre.nfSaidaNumero:''}:`, null, null, dre.nfSaidaValor);
     fmtMoeda(nfRow.getCell(4));
     nfRow.font = {bold:true};
@@ -326,6 +330,13 @@ async function exportarDREExcel(dre, p){
     });
     const dbpRow = linha('    Despesas - Baixa Pátio para Venda/Devolução', null, null, dre.despesasBaixaPatio); fmtMoeda(dbpRow.getCell(4));
     const segRow = linha('    Seguro Efetivo PAGO', null, null, dre.seguro); fmtMoeda(segRow.getCell(4));
+    if((dre.outrosItens||[]).length){
+      const outRow = linha('    Outros custos', null, null, dre.totalOutros); fmtMoeda(outRow.getCell(4));
+      dre.outrosItens.forEach(it=>{
+        const row = linha('          '+it.label, null, null, it.valor);
+        fmtMoeda(row.getCell(4));
+      });
+    }
 
     r++;
     const totalRow = linha('TOTAL CUSTOS', null, null, dre.totalCustos);
@@ -335,7 +346,8 @@ async function exportarDREExcel(dre, p){
 
     r++;
     const rotuloLucro1 = dre.notasBoss ? 'LUCRO BRUTO do PROCESSO - IMPAK' : 'LUCRO BRUTO do PROCESSO';
-    const lucro1Row = linha(rotuloLucro1, null, null, dre.lucroBrutoImpak);
+    // Sem custo da mercadoria o lucro fica em branco ("—"), igual à tela.
+    const lucro1Row = linha(rotuloLucro1, null, null, dre.lucroBrutoImpak == null ? '—' : dre.lucroBrutoImpak);
     lucro1Row.font = {bold:true};
     fmtMoeda(lucro1Row.getCell(4));
     if(dre.pctLucroBrutoImpak != null){
@@ -358,7 +370,7 @@ async function exportarDREExcel(dre, p){
       fmtMoeda(receberRow.getCell(4));
 
       r++;
-      const lucroFinalRow = linha('LUCRO BRUTO do PROCESSO', null, null, dre.lucroBruto);
+      const lucroFinalRow = linha('LUCRO BRUTO do PROCESSO', null, null, dre.lucroBruto == null ? '—' : dre.lucroBruto);
       lucroFinalRow.font = {bold:true};
       fmtMoeda(lucroFinalRow.getCell(4));
       lucroFinalRow.eachCell({includeEmpty:true}, c=>{ c.border = {top:{style:'thin',color:{argb:CORES.BORDA}}}; });
@@ -464,7 +476,8 @@ async function exportarDREPDF(dre, p){
   try{
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation:'portrait', unit:'pt', format:'a4' });
-    const r2 = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    // null = lucro não calculado (Custos Reais sem custo da mercadoria): "—", não "R$ 0,00".
+    const r2 = v => v === null ? '—' : `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
     // Titulo com faixa azul-escura full-width (igual ao Excel: CORES.AZUL_ESCURO
     // 'FF102A45' = RGB 16,42,69, texto branco em negrito, centralizado) --
@@ -494,6 +507,7 @@ async function exportarDREPDF(dre, p){
     ]);
     const linhaTexto = (label, valorTexto) => body.push([label, '', '', { content: valorTexto||'', styles:{halign:'right'} }]);
 
+    if(dre.avisoCustos) body.push([{ content:'⚠ ' + dre.avisoCustos, colSpan:4, styles:{fontStyle:'italic', textColor:[146,64,14], fillColor:[255,251,235]} }]);
     linhaSimples(`Nota fiscal de Saída${dre.nfSaidaNumero?' — Nfe '+dre.nfSaidaNumero:''}`, dre.nfSaidaValor, {bold:true});
     if(dre.jurosCobrado){
       linhaSimples('Juros', dre.jurosCobrado.valor);
@@ -525,6 +539,10 @@ async function exportarDREPDF(dre, p){
     (dre.comissaoItens||[]).filter(i=>i.valor>0).forEach(it => linhaSimples('    '+it.label, it.valor));
     linhaSimples('    Despesas - Baixa Pátio para Venda/Devolução', dre.despesasBaixaPatio);
     linhaSimples('    Seguro Efetivo Pago', dre.seguro);
+    if((dre.outrosItens||[]).length){
+      linhaSimples('    Outros custos', dre.totalOutros);
+      dre.outrosItens.forEach(it => linhaSimples('          '+it.label, it.valor));
+    }
     linhaSimples('TOTAL CUSTOS', dre.totalCustos, {bold:true});
 
     const rotuloLucro1 = dre.notasBoss ? 'LUCRO BRUTO do PROCESSO - IMPAK' : 'LUCRO BRUTO do PROCESSO';

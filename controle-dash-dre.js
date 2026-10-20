@@ -112,6 +112,10 @@ function renderDashDRE(){
     el.innerHTML = filtrosHtml + `<div style="text-align:center;padding:40px 20px;color:var(--muted);font-size:13px;">Nenhum processo com NF de Saída lançada no período/filtros selecionados.</div>`;
     return;
   }
+  if(dre.soSemCustos){
+    el.innerHTML = filtrosHtml + _dreAvisoSemCustosHtml(dre);
+    return;
+  }
 
   el.innerHTML = filtrosHtml + `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
@@ -131,11 +135,26 @@ function renderDashDRE(){
   `;
 }
 
+// Faturados no período sem o custo da mercadoria nos Custos Reais: ficam
+// fora da soma (ver montarDREConsolidado, revisão 20/10/2026) e aparecem
+// aqui para alguém lançar — antes entravam com 99–100% de lucro.
+function _dreAvisoSemCustosHtml(dre){
+  const lista = (dre && dre._meta && dre._meta.semCustos) || [];
+  if(!lista.length) return '';
+  const r2 = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const um = lista.length === 1;
+  return `<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.5;">
+    ⚠ ${lista.length} processo${um?'':'s'} faturado${um?'':'s'} no período ${um?'ficou':'ficaram'} fora desta soma por não ${um?'ter':'terem'} o custo da mercadoria nos Custos Reais (${r2(dre._meta.totalNfSemCustos)} em NF de venda). Quando os custos forem lançados, ${um?'ele entra':'eles entram'} sozinho${um?'':'s'}.
+    <div style="margin-top:4px;color:#78350f;">${lista.map(x => esc(x.referencia)).join(', ')}</div>
+  </div>`;
+}
+
 // Mesma tabela visual de renderDREModalHtml (controle-modal.js), sem o
 // wrapper de modal/overlay — o dre aqui é o retorno de
 // montarDREConsolidado(), com o MESMO formato de campos que montarDRE()
 // por processo, então a marcação é idêntica (só o título muda).
 function _dreConsolidadoTabelaHtml(dre){
+  if(dre && dre.soSemCustos) return _dreAvisoSemCustosHtml(dre);
   const r2 = v => `R$ ${(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const linhaSimples = (label,valor) => `
     <tr><td style="padding:5px 8px;">${esc(label)}</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(valor)}</td></tr>`;
@@ -163,6 +182,7 @@ function _dreConsolidadoTabelaHtml(dre){
     : '';
 
   return `
+  ${_dreAvisoSemCustosHtml(dre)}
   <table style="width:100%;border-collapse:collapse;font-size:13px;">
     <tr><td style="padding:5px 8px;font-weight:600;">NF de Saída (soma do período/filtros)</td>
         <td colspan="3" style="padding:5px 8px;text-align:right;font-weight:600;">${r2(dre.nfSaidaValor)}</td></tr>
@@ -181,6 +201,7 @@ function _dreConsolidadoTabelaHtml(dre){
     ${(dre.comissaoItens||[]).filter(i=>i.valor>0).map(i=>linhaSimples(i.label, i.valor)).join('')}
     ${linhaSimples('Despesas - Baixa Pátio para Venda/Devolução', dre.despesasBaixaPatio)}
     ${linhaSimples('Seguro Efetivo Pago', dre.seguro)}
+    ${(dre.outrosItens||[]).length ? `<tr><td style="padding:5px 8px;">Outros custos</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalOutros)}</td></tr>${linhaGrupo(dre.outrosItens)}` : ''}
     <tr><td style="padding:8px;font-weight:700;border-top:2px solid var(--border);">TOTAL CUSTOS</td><td colspan="3" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid var(--border);">${r2(dre.totalCustos)}</td></tr>
     <tr><td style="padding:8px;font-weight:700;color:${dre.notasBoss?'var(--text)':'var(--ok)'};">${rotuloLucro1}</td>
         <td colspan="3" style="padding:8px;text-align:right;font-weight:700;color:${dre.notasBoss?'var(--text)':'var(--ok)'};">${r2(dre.lucroBrutoImpak)} ${dre.pctLucroBrutoImpak!=null?'('+(dre.pctLucroBrutoImpak*100).toFixed(1)+'%)':''}</td></tr>

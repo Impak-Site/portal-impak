@@ -2732,6 +2732,28 @@ function valorRealItemBRL(p, id){
   return norm ? norm.totalBrl : 0;
 }
 
+// Itens de Custos Reais que o DRE já mostra numa linha própria (montarDRE).
+// O resto que entra no TOTAL CUSTOS vai para "Outros custos" — revisão
+// 20/10/2026: Baixa Pátio, Despachante, SDA, Administrativo, Marjoração,
+// Seguro de Venda etc. entravam no total sem aparecer em linha nenhuma, e as
+// linhas do DRE não somavam o TOTAL CUSTOS (14 processos finalizados).
+const DRE_IDS_EXIBIDOS = new Set([
+  'fob',
+  'ii','ipi','pis','cofins','siscomex','marinha','icms','armazenagem','emissao_li','adiantamento_porto',
+  'frete','capatazia','liberacao_bl','additional_costs','import_logistics','drop_off','isps','iof','desconsolidacao','agente','agente_frete',
+  'diferenca_pis','diferenca_cofins','diferenca_ipi','diferenca_icms_proprio','icms_st','diferenca_ibs','diferenca_cbs',
+  'reciclagem','reciclagem_fechamento','comissao_br','comissao_china','comissao_vendedor','comissao_boss',
+  'custos_diversos','despesas_baixa_patio_venda','lavacao','seguro',
+]);
+
+// Sem o custo da mercadoria lançado, o "lucro" do DRE é a NF de venda menos
+// só uma parte dos custos (frete, uma taxa) ou menos nada — revisão
+// 20/10/2026: 39 processos faturados sem custo nenhum e 2 só com frete ou
+// baixa pátio apareciam com 99% a 100% de lucro no DRE Consolidado.
+function custosReaisIncompletos(p){
+  return !(valorRealItemBRL(p, 'fob') > 0.004);
+}
+
 // DRE (Demonstrativo de Resultado) do processo — reagrupa os MESMOS
 // lancamentos ja feitos na aba Custos Reais (real_json) no layout usado
 // internamente antes do Controle existir (planilha "IA - <referencia>"):
@@ -2805,7 +2827,9 @@ function montarDRE(p){
   // TOTAL CUSTOS mostrado embaixo. "Comissão" no exemplo é uma linha só
   // (Comissão BR + Comissão China somadas; Comissão Boss fica na seção
   // separada de Notas Boss, mais abaixo).
-  const reciclagem = v('reciclagem');
+  // + Reciclagem (Fechamento): a linha da aba Fechamento da planilha entra
+  // com outro id (reciclagem_fechamento) e antes ficava fora do DRE.
+  const reciclagem = v('reciclagem') + v('reciclagem_fechamento');
   // Comissao: cada tipo separado por linha (nao soma tudo numa unica linha
   // "Comissao") - pedido do Ayslan (08/09/2026): se tiver Comissao
   // Vendedor, Comissao China, Comissao Boss ou qualquer outra, cada uma
@@ -2819,16 +2843,27 @@ function montarDRE(p){
     { label:'Comissão Boss/Lopes',         valor:v('comissao_boss') },
   ];
   const comissao = comissaoItens.reduce((s,i)=>s+i.valor,0);
-  const despesasBaixaPatio = v('custos_diversos');
+  // + Despesas Baixa Pátio (Venda/Devolução): id da linha "DESPESAS" da aba
+  // Fechamento da planilha (despesas_baixa_patio_venda), que também ficava
+  // fora — o KS260507SMBZIMP usa custos_diversos para a mesma despesa.
+  const despesasBaixaPatio = v('custos_diversos') + v('despesas_baixa_patio_venda');
   const lavacao = v('lavacao');
   const seguro = v('seguro');
+  // Outros custos (ver DRE_IDS_EXIBIDOS): tudo o que entra no TOTAL CUSTOS
+  // sem linha própria acima, cada um com o nome da aba Custos Reais.
+  const outrosItens = custosReaisItensFlat()
+    .filter(it => !DRE_IDS_EXIBIDOS.has(it.id) && !it.excluirDosTotais && !it.temCredito)
+    .map(it => ({ id: it.id, label: it.label, valor: v(it.id) }))
+    .filter(it => Math.abs(it.valor) >= 0.005);
+  const totalOutros = outrosItens.reduce((s, i) => s + i.valor, 0);
+  const custosIncompletos = custosReaisIncompletos(p);
 
   // Total de Custos vem da MESMA fonte que a aba Fechamento (Custo Real
   // Total) — garante que o DRE nunca diverge do que ja aparece la, mesmo
   // que a soma manual acima (fallback) arredonde diferente.
   const custoReal = calcularCustoRealTotal(p);
   const totalCustos = custoReal ? custoReal.total :
-    (fob + totalAdiantamento + totalAgenteFrete + reciclagem + comissao + despesasBaixaPatio + lavacao + seguro +
+    (fob + totalAdiantamento + totalAgenteFrete + reciclagem + comissao + despesasBaixaPatio + lavacao + seguro + totalOutros +
      diferencasItens.filter(d=>d.label!=='IBS' && d.label!=='CBS').reduce((s,d)=>s+d.diferenca,0));
 
   // Receita e Notas Boss vem do MESMO cálculo da aba Fechamento
@@ -2844,7 +2879,9 @@ function montarDRE(p){
   const jurosCobrado = fechamento.jurosCobrado;
   const totalReceita = (nfSaidaValor||0) + (jurosCobrado ? jurosCobrado.valor : 0);
 
-  const lucroBrutoImpak = nfSaidaValor != null ? (totalReceita - totalCustos) : null;
+  // Sem o custo da mercadoria o DRE não calcula lucro (seria a NF inteira
+  // ou quase): mostra o aviso e deixa o lucro em branco até completar.
+  const lucroBrutoImpak = (nfSaidaValor != null && !custosIncompletos) ? (totalReceita - totalCustos) : null;
   const pctLucroBrutoImpak = (lucroBrutoImpak != null && totalReceita) ? (lucroBrutoImpak/totalReceita) : null;
 
   const notasBoss = fechamento.notasBoss;
@@ -2870,10 +2907,15 @@ function montarDRE(p){
     fob, adiantamentoItens, totalAdiantamento,
     agenteFreteItens, totalAgenteFrete,
     diferencasItens, reciclagem, comissaoItens, comissao, despesasBaixaPatio, lavacao, seguro,
+    outrosItens, totalOutros,
     totalCustos,
     lucroBrutoImpak, pctLucroBrutoImpak,
     notasBoss,
     lucroBruto, pctLucro,
+    custosIncompletos,
+    avisoCustos: custosIncompletos
+      ? 'Custos Reais sem o custo da mercadoria: o DRE não calcula o lucro até os custos estarem lançados.'
+      : '',
   };
 }
 
@@ -2916,6 +2958,11 @@ function montarDREConsolidado(filtros){
   let acc = null; // inicializado com o "molde" (labels) do 1º processo incluído
   let totalNfSaida = 0, totalJuros = 0;
   const referenciasIncluidas = [];
+  // Faturados no período SEM o custo da mercadoria lançado (revisão
+  // 20/10/2026): ficam fora da soma — entravam com 99–100% de lucro e
+  // inflavam o consolidado. Voltam sozinhos quando os Custos Reais forem
+  // lançados; a tela lista quais são.
+  const semCustos = [];
 
   (typeof _processos !== 'undefined' ? _processos : []).forEach(p => {
     if(!p || p.cancelado) return;
@@ -2961,6 +3008,13 @@ function montarDREConsolidado(filtros){
       if(!dreProcesso) dreProcesso = montarDRE(p);
       const w = linha.fracao;
 
+      if(dreProcesso.custosIncompletos){
+        const ja = semCustos.find(s => s.id === p.id);
+        if(ja) ja.nfValor += linha.nfValor;
+        else semCustos.push({ id: p.id, referencia: p.referencia || p.id, fase: p.fechado ? 'FECHADO' : (p.fase || ''), nfValor: linha.nfValor });
+        return;
+      }
+
       if(!acc){
         acc = {
           fob:0,
@@ -2972,6 +3026,7 @@ function montarDREConsolidado(filtros){
           reciclagem:0,
           comissaoItens: dreProcesso.comissaoItens.map(i=>({label:i.label, valor:0})),
           comissao:0, despesasBaixaPatio:0, lavacao:0, seguro:0,
+          outros: {}, totalOutros:0,
           totalCustos:0,
           notasBoss: null,
         };
@@ -2993,6 +3048,12 @@ function montarDREConsolidado(filtros){
       acc.despesasBaixaPatio += dreProcesso.despesasBaixaPatio * w;
       acc.lavacao += dreProcesso.lavacao * w;
       acc.seguro += dreProcesso.seguro * w;
+      // Outros custos variam de processo pra processo: soma por id, não por posição.
+      (dreProcesso.outrosItens || []).forEach(it => {
+        const o = acc.outros[it.id] || (acc.outros[it.id] = { id: it.id, label: it.label, valor: 0 });
+        o.valor += it.valor * w;
+      });
+      acc.totalOutros += (dreProcesso.totalOutros || 0) * w;
       acc.totalCustos += dreProcesso.totalCustos * w;
 
       if(dreProcesso.notasBoss){
@@ -3018,7 +3079,10 @@ function montarDREConsolidado(filtros){
     if(processoIncluido) referenciasIncluidas.push(p.referencia || p.id);
   });
 
-  if(!acc) return null; // nenhum processo bateu com período/filtros
+  const metaSemCustos = { semCustos, totalNfSemCustos: semCustos.reduce((s, x) => s + (x.nfValor || 0), 0) };
+  // Nenhum processo completo: só os sem custo bateram com o filtro — a tela
+  // mostra a lista deles (em vez de "nenhum processo") e não monta o DRE.
+  if(!acc) return semCustos.length ? { soSemCustos: true, _meta: { qtdProcessos: 0, referencias: [], ...metaSemCustos } } : null;
 
   const totalReceita = totalNfSaida + totalJuros;
   const lucroBrutoImpak = totalReceita - acc.totalCustos;
@@ -3039,11 +3103,12 @@ function montarDREConsolidado(filtros){
     diferencasItens: acc.diferencasItens,
     reciclagem: acc.reciclagem, comissaoItens: acc.comissaoItens, comissao: acc.comissao,
     despesasBaixaPatio: acc.despesasBaixaPatio, lavacao: acc.lavacao, seguro: acc.seguro,
+    outrosItens: Object.values(acc.outros).filter(o => Math.abs(o.valor) >= 0.005), totalOutros: acc.totalOutros,
     totalCustos: acc.totalCustos,
     lucroBrutoImpak, pctLucroBrutoImpak,
     notasBoss: acc.notasBoss,
     lucroBruto, pctLucro,
-    _meta: { qtdProcessos: referenciasIncluidas.length, referencias: referenciasIncluidas },
+    _meta: { qtdProcessos: referenciasIncluidas.length, referencias: referenciasIncluidas, ...metaSemCustos },
   };
 }
 
