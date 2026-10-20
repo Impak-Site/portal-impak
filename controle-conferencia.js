@@ -26,8 +26,10 @@
 // processo. A tela de fila (/conferencia, listando pendências sem precisar
 // abrir processo por processo) fica pra uma fase seguinte.
 
-const CONF_DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',bl_draft:'DRAFT BL',bl_original:'BL ORIGINAL',proforma:'PROFORMA INVOICE (PI)',ce:'CE MERCANTE',outros:'OUTRO DOCUMENTO'};
-const CONF_DOC_PT  = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',bl_draft:'Draft BL',bl_original:'BL Original',proforma:'Proforma Invoice (PI)',ce:'CE Mercante',outros:'Outro Documento'};
+// DI/DUIMP (20/10/2026, Emanuelly): documento final — o porto de destino
+// dela tem que bater com o do BL original e o do CE Mercante.
+const CONF_DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',bl_draft:'DRAFT BL',bl_original:'BL ORIGINAL',proforma:'PROFORMA INVOICE (PI)',ce:'CE MERCANTE',duimp:'DI/DUIMP',outros:'OUTRO DOCUMENTO'};
+const CONF_DOC_PT  = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',bl_draft:'Draft BL',bl_original:'BL Original',proforma:'Proforma Invoice (PI)',ce:'CE Mercante',duimp:'DI/DUIMP',outros:'Outro Documento'};
 
 let _confArquivos = {}; // { nomeArquivo: {file, type} }
 // Cache dos arquivos da ULTIMA conferencia rodada neste processo (so em
@@ -70,6 +72,7 @@ function _confGruposDoLabel(label){
   const g = new Set();
   if(/\bHBL\b|\bMBL\b|\bBL\b|DRAFT|BILL OF LADING/.test(s)) g.add('bl');
   if(/\bCE\b|MERCANTE/.test(s)) g.add('ce');
+  if(/\bDI\b|DUIMP|DECLARA[CÇ][AÃ]O DE IMPORTA/.test(s)) g.add('duimp');
   if(/\bPL\b|PACKING/.test(s)) g.add('packing');
   if(/\bPI\b|PROFORMA/.test(s)) g.add('proforma');
   if(/\bCI\b|COMMERCIAL INVOICE|\bINVOICE\b/.test(s)) g.add('invoice');
@@ -99,6 +102,7 @@ function _confDivergenciasQueContinuam(analiseAnterior, gruposFora){
 
 function _confGuessType(name){
   const n = name.toLowerCase();
+  if(n.includes('duimp') || /(^|[^a-z])di([^a-z]|$)/.test(n) || n.includes('extrato')) return 'duimp';
   if(n.includes('draft')) return 'bl_draft';
   if(n.includes('bl') || n.includes('bill')) return 'bl';
   if(n.includes('pack') || n.includes('pl')) return 'packing';
@@ -128,7 +132,7 @@ function renderConferencia(p){
   wrap.innerHTML = `
     <div class="form-section">
       <div class="form-section-title">📤 Documentos para conferência</div>
-      <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Suba CI, PL, BL (ou Draft), CE Mercante etc. — a IA compara todos entre si e aponta divergências, campos ausentes e alertas. Recebeu um documento novo depois? Envie só ele: os documentos da última conferência entram junto automaticamente (o novo substitui o anterior do mesmo tipo).</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:10px;">Suba CI, PL, BL (ou Draft), CE Mercante, DI/DUIMP etc. — a IA compara todos entre si e aponta divergências, campos ausentes e alertas. Recebeu um documento novo depois? Envie só ele: os documentos da última conferência entram junto automaticamente (o novo substitui o anterior do mesmo tipo).</div>
       <div id="conf-dropzone" style="border:2px dashed var(--border);border-radius:8px;padding:18px;text-align:center;cursor:pointer;margin-bottom:10px;" onclick="document.getElementById('conf-file-input').click()">
         <input type="file" id="conf-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="_confAddFiles(this.files)">
         <div style="color:var(--muted);font-size:13px;">📎 Clique ou arraste os documentos aqui</div>
@@ -288,12 +292,13 @@ async function rodarConferencia(){
       + 'PL: importador, encomendante(se buyer preenchido na PI/CI), porto origem+destino, descricao itens, qtd+especie, pesos unit+totais, peso bruto+liquido, produto(deve conter TIRE/TYRE/PNEU/RADIAL senao DIVERGENCIA), pais origem+aquisicao, marca+numeracao volumes. Container/BL/lacre=OPCIONAL. '
       + 'REGRA FABRICANTE NA PL: O Packing List DEVE conter o nome completo E o endereco completo do fabricante/manufacturer dos pneus. IMPORTANTE: o fabricante pode ser diferente do exportador/shipper. Se a marca dos pneus (ex: TIANFU, ROVELO, EUDEMON) for diferente do nome do exportador/shipper no cabecalho da PL, verificar se ha um campo separado identificando o fabricante real com nome e endereco. Se o fabricante real dos pneus nao estiver identificado com nome e endereco na PL = DIVERGENCIA BLOQUEANTE (apenas o exportador no cabecalho nao e suficiente). Se o endereco do fabricante estiver ausente ou incompleto (apenas cidade ou pais sem rua/numero) = DIVERGENCIA INFORMATIVA. Endereco completo exige pelo menos: rua/avenida + cidade + pais. '
       + 'BL: shipper, notify, consignee, porto origem+destino, peso, qtd, NCM(ver REGRA NCM NO BL), descricao, free time, valor frete, prepaid/collect, container+lacre(se constar PI/CI/PL - ao comparar lacre IGNORAR espacos, quebras de linha e hifens - tratar EMCCWW0805 e EMCCWW-0805 como identicos), wooden(WOODEN/WOOD/PALLET/NOT APPLICABLE obrigatorio senao DIVERGENCIA). '
-      // Regras de NCM no BL e porto de destino atualizadas em 19/10/2026 (pedido
-      // Emanuelly) — texto em conferencia-chave.js (o mesmo vai pro processos.html pelo servidor).
+      // Regras de NCM no BL e porto de destino atualizadas em 19/10/2026 e
+      // 20/10/2026 (pedidos Emanuelly: BL original, CE e DI/DUIMP com o mesmo
+      // porto) — texto em conferencia-chave.js (o mesmo vai pro processos.html pelo servidor).
       + ConferenciaChave.REGRAS_NCM_PORTO_PROMPT
       + 'CE: cruzar navio/embarque pelo campo Transbordo/Baldeacao(se vazio usar manifesto). Numero CE nao cruzar. IMPORTANTE: campo "Condicao de pagamento" ou "Situacao pagamento" do CE Mercante com valor "Suspenso" ou "Suspensao" ou "Sem cobertura cambial" eh NORMAL para importacoes brasileiras - NAO gerar alerta ou divergencia para esse campo. '
       + 'REGRA FRETE E TAXAS NO CE MERCANTE: Comparar o valor do frete internacional (Ocean Freight/Freight) e as taxas/despesas (Local Charges, THC, etc) informados no BL ou HBL Draft com os valores registrados no CE Mercante (campos de Frete e Taxas/Despesas). Se os valores do frete ou das taxas forem diferentes entre o BL/HBL e o CE Mercante = DIVERGENCIA BLOQUEANTE com campo="Frete/Taxas — BL x CE Mercante" doc1_label=BL doc2_label=CE Mercante, indicando os dois valores encontrados. Se o CE Mercante nao informar frete ou taxas = ALERTA com campo="Frete/Taxas ausentes no CE Mercante". '
-      + 'PASSO 2 - CRUZAMENTO: Comparar todos campos entre todos docs (exceto o porto de destino — ver REGRA PORTO DE DESTINO). Campo presente num doc e ausente em outro=DIVERGENCIA. Dados bancarios identicos em todos. Para cruzamentos envolvendo CI e PI simultaneamente, usar CI como referencia. '
+      + 'PASSO 2 - CRUZAMENTO: Comparar todos campos entre todos docs (o porto de destino so entre os documentos finais BL original, CE Mercante e DI/DUIMP — ver REGRA PORTO DE DESTINO). Campo presente num doc e ausente em outro=DIVERGENCIA. Dados bancarios identicos em todos. Para cruzamentos envolvendo CI e PI simultaneamente, usar CI como referencia. '
       + 'REGRA COMPRADOR FINAL (BUYER)/ENCOMENDANTE: Buyer diferente do importador e normal (triangulacao comercial). IMPORTANTE: antes de concluir que a CI nao identifica o comprador final, releia TODO o texto da CI (inclusive rodape, observacoes, area proxima a assinatura/carimbo e blocos separados do cabecalho principal), procurando rotulos alternativos como BUYER, BUYER NAME AND ADDRESS, FINAL BUYER, ENCOMENDANTE, SOLD TO — o campo pode estar formatado como bloco proprio, nao necessariamente ao lado de exportador/importador. So gerar DIVERGENCIA BLOQUEANTE com campo="Buyer/Encomendante ausente na CI" doc1_label=CI valor="Nao identifica o comprador final" doc2_label=PL(ou PI) valor=<nome do buyer encontrado> se, apos essa releitura completa do texto, o nome+endereco do buyer realmente nao aparecer em nenhum lugar da CI. '
       + 'Grupos: Identificacao|Importador|Comprador Final(buyer!=importador=normal)|Exportador|Mercadoria|Valores|Pesos|Logistica|CE Mercante|Pais Origem. '
       + 'PASSO 3 - EUDEMON: Se marca EUDEMON verificar codigo em CI/PI/PL: 3301000094ab=275/80R22.5 UD188 149/146L 18PR|3302001532eu=275/80R22.5 UF195 149/146L 18PR|3302002217=295/80R22.5 UD188 154/149L 18PR|3302002218=295/80R22.5 UF195 154/149M 18PR|3302002429=295/80R22.5 UD223 154/149K 18PR|3302001815ab=235/75R17.5 UD188 143/141L 18PR|3302001861ab=215/75R17.5 UD188 135/133L 16PR|3302001609ab=215/75R17.5 UF195 135/133L 16PR|3302001608ab=235/75R17.5 UF195 143/141L 18PR. '
