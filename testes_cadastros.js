@@ -341,7 +341,7 @@ teste('máscara: 00.000.000/0000-00 e 000.000.000-00', () => {
 });
 
 console.log('\n── receita-cnpj.js: completar o cadastro pela Receita ──');
-const RESP_RECEITA = { razao_social: 'EMPRESA EXEMPLO DE PNEUS E SERVICOS AUTOMOTIVOS LTDA', nome_fantasia: 'EXEMPLO PNEUS', descricao_tipo_de_logradouro: 'RUA',
+const RESP_RECEITA = { cnpj: '11222333000181', razao_social: 'EMPRESA EXEMPLO DE PNEUS E SERVICOS AUTOMOTIVOS LTDA', nome_fantasia: 'EXEMPLO PNEUS', descricao_tipo_de_logradouro: 'RUA',
   logradouro: 'DAS FLORES', numero: '100', complemento: 'SALA 2', bairro: 'CENTRO', municipio: 'CIDADE EXEMPLO', uf: 'sc', cep: '88000000',
   ddd_telefone_1: '4733334444', email: 'CONTATO@EXEMPLO.COM.BR', descricao_situacao_cadastral: 'ATIVA' };
 teste('mapeia a resposta: tipo do logradouro, CEP e telefone formatados', () => {
@@ -350,6 +350,22 @@ teste('mapeia a resposta: tipo do logradouro, CEP e telefone formatados', () => 
   assert.strictEqual(m.email, 'contato@exemplo.com.br'); assert.strictEqual(m.uf, 'SC'); assert.strictEqual(m.cidade, 'CIDADE EXEMPLO');
   assert.strictEqual(Receita.mapearDadosReceita(Object.assign({}, RESP_RECEITA, { logradouro: 'RUA DAS FLORES' })).logradouro, 'RUA DAS FLORES');
   assert.strictEqual(Receita.mapearDadosReceita({ nome_fantasia: '********' }).nome_fantasia, '');
+});
+teste('limparDadosReceita (o que o navegador manda pro servidor): só campos conhecidos, texto curto, formatos conferidos', () => {
+  const limpo = Receita.limparDadosReceita(Object.assign(Receita.mapearDadosReceita(RESP_RECEITA), { id_extra: 'x', obs: 'não entra' }));
+  assert.strictEqual(limpo.cnpj, '11222333000181'); assert.strictEqual(limpo.cep, '88000-000'); assert.strictEqual(limpo.uf, 'SC');
+  assert.strictEqual(limpo.telefone, '(47) 3333-4444'); assert.strictEqual(limpo.email, 'contato@exemplo.com.br');
+  assert.ok(!('id_extra' in limpo) && !('obs' in limpo));
+  const ruim = Receita.limparDadosReceita({ cnpj: '11.222.333/0001-81', uf: 'Santa Catarina', cep: '880', email: 'sem arroba', telefone: '123',
+    nome_fantasia: { html: '<b>x</b>' }, razao_social: 'A'.repeat(400), bairro: '  CENTRO \n  NORTE ', logradouro: '****' });
+  assert.strictEqual(ruim.cnpj, '11222333000181');
+  assert.strictEqual(ruim.uf, ''); assert.strictEqual(ruim.cep, ''); assert.strictEqual(ruim.email, ''); assert.strictEqual(ruim.telefone, '');
+  assert.strictEqual(ruim.nome_fantasia, '', 'objeto não vira texto'); assert.strictEqual(ruim.razao_social.length, 150);
+  assert.strictEqual(ruim.bairro, 'CENTRO NORTE'); assert.strictEqual(ruim.logradouro, '');
+  assert.strictEqual(Receita.limparDadosReceita(null).cnpj, '');
+  // Mesmo resultado de completar antes e depois de passar pelo servidor.
+  const c = { tipo: 'CLIENTE', razao_social: 'X LTDA' };
+  assert.deepStrictEqual(Receita.completarComReceita(c, limpo).alteracoes, Receita.completarComReceita(c, Receita.mapearDadosReceita(RESP_RECEITA)).alteracoes);
 });
 teste('preenche só o que está vazio; o que já tem fica', () => {
   const m = Receita.mapearDadosReceita(RESP_RECEITA);
@@ -398,6 +414,52 @@ testeAsync('buscarCnpjReceita: CNPJ incompleto nem consulta; erro de rede não d
   assert.ok(!r.ok && !chamou);
   const e = await Receita.buscarCnpjReceita('11222333000181', { fetch: async () => { throw new Error('rede'); } });
   assert.ok(!e.ok && e.status === 0);
+});
+
+// "Arrumar CNPJ/CPF e Receita" (tela, controle-dash-cadastros.js): a BrasilAPI
+// recusa (403) as consultas que saem do servidor do portal — o lote consulta no
+// navegador e manda pro servidor { itens: [{ id, dados }] } de 20 em 20.
+testeAsync('Arrumar cadastros: consulta a Receita no navegador e grava de 20 em 20 (404 = não encontrado)', async () => {
+  const vm = require('vm'), fs = require('fs'), path = require('path');
+  const cands = [];
+  for (let i = 1; i <= 23; i++) cands.push({ id: 'c' + i, razao_social: 'EMPRESA FICTICIA ' + i, documento: dvCnpj('112223330' + String(i).padStart(3, '0')) });
+  const NAO_EXISTE = cands[4].documento;
+  const lotes = [], consultas = [];
+  const resp = (status, corpo) => ({ ok: status >= 200 && status < 300, status, json: async () => corpo });
+  const elementos = {};
+  const ctx = {
+    console: { log() {}, warn() {}, error() {} },
+    setTimeout: (fn) => setTimeout(fn, 0), clearTimeout, AbortController,
+    showToast: () => {}, confirm: () => true, esc: (t) => String(t),
+    document: { addEventListener() {}, getElementById: (id) => elementos[id] || (elementos[id] = { style: {}, innerHTML: '' }) },
+    fetch: async (url, opts) => {
+      url = String(url);
+      const corpo = opts && opts.body ? JSON.parse(opts.body) : null;
+      if (url === '/api/admin/cadastros/documentos') return resp(200, { ok: true, mudancas: 0, por_correcao: {}, invalidos: [], sem_documento: 0, erros: [], candidatos_receita: cands });
+      if (url.startsWith('https://brasilapi.com.br/api/cnpj/v1/')) {
+        const d = url.split('/').pop(); consultas.push(d);
+        return d === NAO_EXISTE ? resp(404, {}) : resp(200, Object.assign({}, RESP_RECEITA, { cnpj: d }));
+      }
+      if (url === '/api/admin/cadastros/completar-receita') {
+        lotes.push(corpo.itens);
+        return resp(200, { ok: true, resultados: corpo.itens.map(x => ({ id: x.id, razao_social: 'X', ok: true, preenchidos: ['cep'], divergencias: [], situacao: 'ATIVA' })) });
+      }
+      throw new Error('URL inesperada no teste: ' + url);
+    },
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'receita-cnpj.js'), 'utf-8'), ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'controle-dash-cadastros.js'), 'utf-8'), ctx);
+  await vm.runInContext('arrumarCadastrosDocumentos()', ctx);
+  assert.strictEqual(consultas.length, 23, 'cada CNPJ consultado uma vez, no navegador');
+  assert.deepStrictEqual(lotes.map(l => l.length), [20, 2], 'grava de 20 em 20; o não encontrado não vai');
+  const item = lotes[0][0];
+  assert.strictEqual(item.id, 'c1'); assert.strictEqual(item.dados.cnpj, cands[0].documento); assert.strictEqual(item.dados.cep, '88000-000');
+  assert.ok(!lotes.flat().some(x => x.id === 'c5'));
+  const resumo = elementos['cad-arrumar-resumo'].innerHTML;
+  assert.ok(/completados: 22/.test(resumo) && /não encontrados: 1/.test(resumo), resumo.slice(0, 200));
+  assert.ok(resumo.includes('EMPRESA FICTICIA 5'), 'lista o não encontrado');
 });
 
 (async () => {

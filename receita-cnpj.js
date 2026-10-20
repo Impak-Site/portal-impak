@@ -6,9 +6,13 @@
 // social, cidade e UF (sem nome fantasia, endereço, CEP...).
 //
 // Mesmo padrão UMD do listas-padrao.js: o navegador carrega
-// <script src="/receita-cnpj.js"> (botão "Receita" do cadastro) e o servidor
-// faz require('./receita-cnpj.js') (arrumar cadastros em lote). A parte de
-// mapear/completar é pura (testada em testes_cadastros.js, sem rede).
+// <script src="/receita-cnpj.js"> e o servidor faz require('./receita-cnpj.js').
+// A CONSULTA roda sempre no navegador (botão "Receita" do cadastro e o
+// "Arrumar" em lote): a BrasilAPI recusa (403) as consultas que saem do
+// servidor do portal. O servidor só recebe o resultado, limpa
+// (limparDadosReceita), confere se é do mesmo CNPJ e grava com
+// completarComReceita. A parte de mapear/limpar/completar é pura (testada em
+// testes_cadastros.js, sem rede).
 (function () {
   function soDigitos(v) { return String(v == null ? '' : v).replace(/\D/g, ''); }
   function chave(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
@@ -29,6 +33,7 @@
     let logradouro = texto(j.logradouro);
     if (tipoLog && logradouro && !chave(logradouro).startsWith(chave(tipoLog))) logradouro = tipoLog + ' ' + logradouro;
     return {
+      cnpj: soDigitos(j.cnpj),
       razao_social: texto(j.razao_social),
       nome_fantasia: texto(j.nome_fantasia),
       logradouro,
@@ -50,6 +55,25 @@
   const CAMPOS_LOTE = ['nome_fantasia', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf', 'cep'];
   const CAMPOS_TELA = CAMPOS_LOTE.concat(['telefone', 'email']);
   const CAMPOS_COMPARAR = ['cidade', 'uf', 'cep'];
+
+  // O lote consulta no navegador e manda o resultado pro servidor gravar. O
+  // servidor não confia no formato: só os campos conhecidos, em texto, com
+  // tamanho limitado; UF, CEP, telefone e e-mail só se tiverem o formato certo.
+  const CAMPOS_DADOS = ['razao_social', 'nome_fantasia', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf', 'cep', 'telefone', 'email', 'situacao'];
+  function limparDadosReceita(d) {
+    d = d && typeof d === 'object' ? d : {};
+    const out = { cnpj: soDigitos(typeof d.cnpj === 'string' || typeof d.cnpj === 'number' ? d.cnpj : '').slice(0, 14) };
+    CAMPOS_DADOS.forEach(k => {
+      const v = d[k];
+      out[k] = typeof v === 'string' || typeof v === 'number' ? texto(v).replace(/\s+/g, ' ').slice(0, 150) : '';
+    });
+    out.uf = /^[A-Za-z]{2}$/.test(out.uf) ? out.uf.toUpperCase() : '';
+    out.cep = soDigitos(out.cep).length === 8 ? formatarCep(out.cep) : '';
+    const tel = soDigitos(out.telefone);
+    out.telefone = tel.length === 10 || tel.length === 11 ? formatarTelefone(tel) : '';
+    out.email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out.email) ? out.email.toLowerCase() : '';
+    return out;
+  }
 
   // Completa o cadastro com os dados da Receita SEM apagar nem trocar o que
   // já foi digitado. Razão social: só troca quando a nossa é o começo da da
@@ -113,7 +137,7 @@
     } finally { if (t) clearTimeout(t); }
   }
 
-  const ReceitaCNPJ = { mapearDadosReceita, completarComReceita, buscarCnpjReceita, formatarCep, formatarTelefone, CAMPOS_LOTE, CAMPOS_TELA };
+  const ReceitaCNPJ = { mapearDadosReceita, limparDadosReceita, completarComReceita, buscarCnpjReceita, formatarCep, formatarTelefone, CAMPOS_LOTE, CAMPOS_TELA };
   if (typeof module !== 'undefined' && module.exports) module.exports = ReceitaCNPJ;
   if (typeof window !== 'undefined') window.ReceitaCNPJ = ReceitaCNPJ;
 })();

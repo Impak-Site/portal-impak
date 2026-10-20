@@ -587,33 +587,56 @@ async function arrumarCadastrosDocumentos(){
       errosDoc = real.erros || [];
       corrigidos = real.mudancas - errosDoc.length;
     }
-    const ids = sim.candidatos_receita.slice(), total = ids.length;
-    let consultados = 0, completados = 0, pausas = 0;
-    const naoAchados = [], divergencias = [], falhas = [];
-    while(ids.length){
-      const lote = ids.splice(0, 20);
-      mostrar(`Consultando a Receita: ${consultados}/${total}…`);
-      const d = await post('/api/admin/cadastros/completar-receita', { ids: lote });
+    // Consulta a Receita AQUI no navegador (a BrasilAPI recusa as consultas
+    // que saem do servidor do portal) e manda o resultado pro servidor
+    // gravar de 20 em 20 — ele confere o CNPJ e só completa o que está vazio.
+    const R = window.ReceitaCNPJ;
+    if(!R) throw new Error('A consulta da Receita não carregou — recarregue a página (Ctrl+F5) e tente de novo.');
+    const fila = sim.candidatos_receita.slice(), total = fila.length;
+    let consultados = 0, completados = 0;
+    const naoAchados = [], divergencias = [], falhas = [], situacoes = [];
+    const esperar = ms => new Promise(res => setTimeout(res, ms));
+    let buffer = [];
+    const gravar = async () => {
+      if(!buffer.length) return;
+      const itens = buffer; buffer = [];
+      let d;
+      try{ d = await post('/api/admin/cadastros/completar-receita', { itens }); }
+      catch(e){ falhas.push(`Não gravou ${itens.length} cadastro(s): ${e.message} — rode de novo.`); return; }
       (d.resultados || []).forEach(x => {
-        consultados++;
         if(x.ok){
           if(x.preenchidos && x.preenchidos.length) completados++;
           (x.divergencias || []).forEach(v => divergencias.push({ nome: x.razao_social, campo: v.campo, atual: v.atual, receita: v.receita }));
-        } else if(x.status === 404 || x.status === 400) naoAchados.push(x.razao_social);
-        else if(x.status !== 429) falhas.push(`${x.razao_social}: ${x.erro}`);
+          if(x.situacao && x.situacao !== 'ATIVA') situacoes.push(`${x.razao_social}: ${x.situacao}`);
+        } else falhas.push(`${x.razao_social || 'cadastro'}: ${x.erro}`);
       });
-      if(d.pendentes && d.pendentes.length) ids.unshift(...d.pendentes);
-      if(d.pausar){
-        if(++pausas > 5){ falhas.push(`A Receita limitou as consultas; faltaram ${ids.length} — rode de novo mais tarde.`); break; }
-        mostrar(`A Receita pediu uma pausa… (${consultados}/${total})`);
-        await new Promise(res => setTimeout(res, 20000));
+    };
+    for(let i = 0; i < fila.length; i++){
+      const c = fila[i];
+      mostrar(`Consultando a Receita: ${i}/${total}… (não feche esta tela)`);
+      let r = await R.buscarCnpjReceita(c.documento);
+      for(let t = 1; !r.ok && r.status === 429 && t <= 4; t++){
+        mostrar(`A Receita pediu uma pausa… (${i}/${total}) — continua sozinho em ${15 * t}s`);
+        await esperar(15000 * t);
+        r = await R.buscarCnpjReceita(c.documento);
       }
+      consultados++;
+      if(r.ok) buffer.push({ id: c.id, dados: r.dados });
+      else if(r.status === 404 || r.status === 400) naoAchados.push(c.razao_social);
+      else {
+        falhas.push(`${c.razao_social}: ${r.erro}`);
+        if(r.status === 429 || r.status === 403){ falhas.push(`A Receita parou de responder; faltaram ${total - i - 1} — rode de novo mais tarde (o que já foi feito fica).`); break; }
+      }
+      if(buffer.length >= 20) await gravar();
+      await esperar(300);
     }
+    await gravar();
     const lista = (titulo, itens) => itens.length ? `<details style="margin-top:4px;"><summary>${esc(titulo)} (${itens.length})</summary><div style="max-height:220px;overflow:auto;padding:4px 0 0 12px;">${itens.map(t => `<div>${esc(t)}</div>`).join('')}</div></details>` : '';
     const rot = { razao_social:'razão social', cidade:'cidade', uf:'UF', cep:'CEP' };
     mostrar(`<b>Cadastros arrumados.</b> Documentos corrigidos: ${corrigidos}. Consultados na Receita: ${consultados}, completados: ${completados}, não encontrados: ${naoAchados.length}.` +
       lista('Diferenças para revisar (não foram trocadas)', divergencias.map(v => `${v.nome} — ${rot[v.campo] || v.campo}: cadastro "${v.atual}" × Receita "${v.receita}"`)) +
       lista('CNPJ não encontrado na Receita', naoAchados) +
+      lista('Situação na Receita diferente de ATIVA (baixada, inapta…)', situacoes) +
       lista('Documentos inválidos (corrija no cadastro)', (sim.invalidos || []).map(x => `${x.razao_social}: ${x.documento}`)) +
       lista('Erros', falhas.concat(errosDoc.map(x => `${x.razao_social}: ${x.erro}`))));
     showToast(`✓ ${corrigidos} documento(s) corrigido(s) e ${completados} cadastro(s) completado(s) pela Receita`, falhas.length ? 'warn' : 'ok', 12000);
