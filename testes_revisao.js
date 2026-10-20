@@ -763,6 +763,19 @@ function telaComIA(respostaIA) {
     iguais(t.rodar('[_vendas.length, _vendas[0].nf_saida_valor].join("|")'), '1|900');
     ok(t.toasts.some(x => /já está cadastrada .* nada a alterar.*valor na venda R\$ 900,00 e na NF R\$ 1\.000,00/.test(x[1])), JSON.stringify(t.toasts));
   });
+  // UD26-047: a NF lida de novo no botão "Importar NF" da PRÓPRIA venda dela
+  // (o nº também está na NF de Saída da aba Documentos) contava como "já
+  // cadastrada" e nada era alterado. Agora completa essa venda.
+  await testeAsync('Importar NF na própria venda (nº já nela e na aba Documentos): completa o valor e os itens, sem duplicar', async () => {
+    const t = telaComIA(nfVendaLida);
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [Object.assign(vendaVazia(), { cliente: 'CLIENTE TESTE', nf_saida_numero: '90001', nf_saida_cfop: '5102', nf_saida_data: '2026-10-05', itens: [{ descricao: 'PNEU 205/55R16 TESTE', quantidade: '4', valor_total: '' }] })];`);
+    t.tela('f_nf_saida_numero', '90001'); t.tela('f_nf_saida_cfop', '5102');
+    await t.rodar(`importarNFVenda(0, { files: [{ name: 'nf-teste.pdf', type: 'application/pdf' }], value: 'x' })`);
+    iguais(t.rodar('JSON.stringify([_vendas.length, Number(_vendas[0].nf_saida_valor), _vendas[0].itens.length, Number(_vendas[0].itens[0].valor_total)])'), JSON.stringify([1, 1000, 1, 1000]));
+    ok(t.toasts.some(x => /A NF 90001 já estava nesta venda — completei o que faltava: valor R\$ 1\.000,00, valor de 1 item/.test(x[1])), JSON.stringify(t.toasts));
+    await t.rodar(`importarNFVenda(0, { files: [{ name: 'nf-teste.pdf', type: 'application/pdf' }], value: 'x' })`);
+    ok(t.toasts.some(x => /já está nesta venda e completa — nada a alterar/.test(x[1])), JSON.stringify(t.toasts));
+  });
   await testeAsync('Notas da planilha de Fechamento: nota sem número completa a única venda (valor/data), sem trocar o que existe', async () => {
     const t = telaComIA({});
     t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] }; _vendas = [Object.assign(vendaVazia(), { nf_saida_numero: '90010', nf_saida_cfop: '6102' })];`);

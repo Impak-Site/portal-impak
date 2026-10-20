@@ -69,15 +69,26 @@ async function importarNFVenda(vi, input){
     }
     // Anti-duplicidade: a mesma NF já cadastrada em outra venda ou no processo.
     // Em outra venda: não duplica, mas completa o que faltar nela (20/10/2026).
+    // A mesma NF lida de novo na PRÓPRIA venda dela (UD26-047: a venda tinha
+    // nº/data/CFOP e não tinha valor; o nº também está na NF de Saída da aba
+    // Documentos, que espelha a venda, e isso contava como "já cadastrada")
+    // completa essa venda.
     const dup = nfSaidaJaCadastrada(dados.nf_numero, vi);
-    if(dup){
-      const viDup = vendaComNF(dados.nf_numero, vi);
+    const numLido = _normNumNF(dados.nf_numero);
+    const mesmaVenda = !!numLido && !!(_vendas[vi]) && _normNumNF(_vendas[vi].nf_saida_numero) === numLido;
+    if(dup || mesmaVenda){
+      let viDup = vendaComNF(dados.nf_numero, vi);
+      if(viDup < 0 && mesmaVenda) viDup = vi;
       const c = viDup >= 0 ? completarVendaComNF(viDup, dados) : { preenchidos: [], divergencias: [] };
       const atencao = c.divergencias.length ? ' ATENÇÃO: ' + c.divergencias.join('; ') + '.' : '';
+      const onde = viDup === vi ? 'nesta venda' : `na Venda ${viDup + 1}`;
       if(c.preenchidos.length){
+        if(typeof _painelDirty !== 'undefined') _painelDirty = true;
         renderVendas();
-        showToast(`A NF ${dados.nf_numero} já estava na Venda ${viDup + 1} — completei lá o que faltava: ${c.preenchidos.join(', ')}.${atencao} Confira e salve.`, 'ok', 15000);
-      } else showToast(`A NF ${dados.nf_numero} já está cadastrada (${dup}) — nada foi alterado.${atencao}`, 'err', 12000);
+        if(typeof sincronizarVendasLegado === 'function') sincronizarVendasLegado();
+        showToast(`A NF ${dados.nf_numero} já estava ${onde} — completei o que faltava: ${c.preenchidos.join(', ')}.${atencao} Confira e salve.`, 'ok', 15000);
+      } else if(viDup === vi) showToast(`A NF ${dados.nf_numero} já está nesta venda e completa — nada a alterar.${atencao}`, c.divergencias.length ? 'warn' : 'info', 12000);
+      else showToast(`A NF ${dados.nf_numero} já está cadastrada (${dup}) — nada foi alterado.${atencao}`, 'err', 12000);
       return;
     }
     const avisoFiltro = aplicarFiltroProcessoNaNF(dados);
