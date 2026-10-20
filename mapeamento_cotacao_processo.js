@@ -404,13 +404,22 @@ function mapearProcessoParaCotacao(processo) {
  *
  * Retorna null se não sobrar nenhum número (cotação nunca foi calculada).
  */
+// Campos de CICLO DE VIDA da cotação guardados no resumo (aprovação,
+// rejeição, vínculo com processo, quem criou/excluiu). Só as rotas próprias
+// do servidor mexem neles (o "Salvar" do Calculador não) e nenhum deles vai
+// pra estimativa do processo. Regra do vínculo: lib/vinculo-cotacao.js.
+const CAMPOS_RESUMO_CICLO = [
+  'status', 'processo_id', 'processo_referencia', 'data_aprovacao', 'aprovado_por',
+  'motivo_perda', 'data_rejeicao', 'rejeitado_por',
+  'desvinculado_em', 'desvinculado_por', 'desvinculado_de', 'desvinculado_motivo',
+  'criado_em', 'criado_por', 'excluida_em', 'excluida_por', 'excluida_motivo',
+  'restaurada_em', 'restaurada_por',
+];
 function extrairEstimativa(resumo) {
   if (!resumo) return null;
-  const {
-    status, processo_id, processo_referencia, data_aprovacao, aprovado_por,
-    motivo_perda, data_rejeicao, rejeitado_por,
-    ...estimativa
-  } = resumo;
+  const estimativa = { ...resumo };
+  CAMPOS_RESUMO_CICLO.forEach(k => { delete estimativa[k]; });
+  Object.keys(estimativa).forEach(k => { if (estimativa[k] === undefined) delete estimativa[k]; });
   return Object.keys(estimativa).length ? estimativa : null;
 }
 
@@ -421,4 +430,5 @@ module.exports = {
   extrairEstimativa,
   gerarRealJsonInicial,
   NCM_POR_TIPO,
+  CAMPOS_RESUMO_CICLO,
 };

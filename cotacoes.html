@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ImpakOS - Cotações</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/impak-icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/impak-icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!--
+  Tela Cotações (Ayslan, 20/10/2026): "uma tela com as cotações já feitas,
+  e não clicar em Minhas Cotações e abrir um popup — tela grande, completa".
+  Lista todas as cotações do Calculador com filtros, totais, o processo
+  vinculado e todas as ações (abrir/duplicar no Calculador, aprovar, vincular,
+  desvincular, marcar como perdida, excluir/restaurar). O vínculo cotação ↔
+  processo segue uma regra só, no servidor (lib/vinculo-cotacao.js); esta
+  tela também mostra e corrige o que estiver fora da regra ("Conferir
+  vínculos").
+-->
+<style>
+:root{
+--bg:#f5f7fb;--card:#fff;--border:#e4e9f1;--border-strong:#d2dae6;--ac:#1a7fd4;--ac2:#1567b8;--ac-soft:#eaf3fc;
+--text:#101a2b;--muted:#5c7089;--dim:#63738a;
+--ok:#15803d;--warn:#b45309;--err:#dc2626;--info:#0e7490;
+--ok-bg:#eafaf1;--warn-bg:#fdf6e9;--err-bg:#fdedee;--info-bg:#e9f8fb;
+--r-sm:6px;--r-md:8px;--r-lg:12px;
+--shadow-sm:0 1px 2px rgba(16,24,40,.06);
+--shadow-md:0 4px 12px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+--shadow-lg:0 12px 32px rgba(16,24,40,.18);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);font-family:'Inter',sans-serif;color:var(--text);min-height:calc(var(--vhz,1vh)*100);-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1600px;margin:0 auto;padding:22px 24px 60px;}
+.topo{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
+.topo-txt{flex:1;min-width:260px;}
+h1{font-size:22px;font-weight:800;margin:0 0 4px;}
+.sub{color:var(--muted);font-size:13px;margin:0;line-height:1.5;max-width:880px;}
+.topo-acoes{display:flex;gap:8px;flex-wrap:wrap;}
+.btn{padding:8px 14px;border-radius:var(--r-md);border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.btn:hover{background:var(--bg);}
+.btn.primary{background:var(--ac);border-color:var(--ac);color:#fff;}
+.btn.primary:hover{background:var(--ac2);}
+.btn.perigo{color:var(--err);border-color:#f3c4c4;}
+.btn.sm{padding:4px 10px;font-size:12px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:12px 14px;box-shadow:var(--shadow-sm);}
+.kpi-l{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.kpi-v{font-size:20px;font-weight:800;margin-top:4px;}
+.kpi-s{font-size:12px;color:var(--muted);margin-top:2px;}
+.banner{border-radius:var(--r-lg);padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;line-height:1.45;}
+.banner.warn{background:var(--warn-bg);border:1px solid #f3d9a8;color:#7c4a03;}
+.banner.ok{background:var(--ok-bg);border:1px solid #b7e4c7;color:#14532d;}
+.banner .txt{flex:1;min-width:240px;}
+.filtros{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;box-shadow:var(--shadow-sm);}
+.f{display:flex;flex-direction:column;gap:3px;min-width:120px;}
+.f.busca{flex:1;min-width:220px;}
+.f label{font-size:11px;font-weight:600;color:var(--muted);}
+.f input,.f select{padding:7px 9px;border:1px solid var(--border-strong);border-radius:var(--r-md);font-size:13px;font-family:inherit;background:var(--card);color:var(--text);}
+.f-check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding-bottom:8px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden;}
+.tabela-wrap{overflow-x:auto;}
+table.cot{width:100%;border-collapse:collapse;font-size:13px;min-width:1180px;}
+table.cot thead th{background:var(--ac-soft);color:var(--ac2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding:9px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;cursor:pointer;user-select:none;white-space:nowrap;}
+table.cot thead th.num{text-align:right;}
+table.cot thead th.semordem{cursor:default;}
+table.cot thead th .seta{font-size:10px;margin-left:3px;}
+table.cot tbody td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+table.cot tbody td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+table.cot tbody tr{cursor:pointer;}
+table.cot tbody tr:hover{background:var(--bg);}
+table.cot tbody tr.sel{background:var(--ac-soft);}
+table.cot tbody tr.excluida{opacity:.6;}
+table.cot tfoot td{padding:9px 8px;font-weight:700;background:var(--bg);border-top:1px solid var(--border-strong);font-size:12px;}
+table.cot tfoot td.num{text-align:right;white-space:nowrap;}
+.cli{font-weight:600;}
+.mini{font-size:11px;color:var(--muted);}
+.badge{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:2px 8px;white-space:nowrap;border:1px solid transparent;}
+.b-rasc{background:#f1f5f9;color:#334155;border-color:#e2e8f0;}
+.b-aprov{background:#dcfce7;color:#14532d;border-color:#bbf7d0;}
+.b-rej{background:#fee2e2;color:#7f1d1d;border-color:#fecaca;}
+.b-excl{background:#e5e7eb;color:#374151;border-color:#d1d5db;}
+.b-warn{background:#fef3c7;color:#78350f;border-color:#fde68a;}
+.b-err{background:#fee2e2;color:#7f1d1d;border-color:#fecaca;}
+.lucro-pos{color:var(--ok);font-weight:600;}
+.lucro-neg{color:var(--err);font-weight:600;}
+a.ref{color:var(--ac2);font-weight:600;text-decoration:none;}
+a.ref:hover{text-decoration:underline;}
+.vazio{padding:40px;text-align:center;color:var(--muted);}
+.contador{font-size:12px;color:var(--muted);margin:10px 2px 0;}
+/* Painel lateral do detalhe */
+#painel-bg{position:fixed;inset:0;background:rgba(16,24,40,.35);z-index:1500;display:none;}
+#painel-bg.open{display:block;}
+#painel{position:fixed;top:0;right:0;bottom:0;width:min(580px,100vw);background:var(--card);box-shadow:var(--shadow-lg);z-index:1501;display:none;flex-direction:column;}
+#painel.open{display:flex;}
+.p-h{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;}
+.p-h h2{font-size:17px;margin:0 0 4px;font-weight:800;}
+.p-b{padding:14px 18px 30px;overflow-y:auto;flex:1;}
+.p-sec{margin-bottom:16px;}
+.p-sec h3{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 0 8px;font-weight:700;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;font-size:13px;}
+.grid2 .l{font-size:11px;color:var(--muted);}
+.grid2 .v{font-weight:600;}
+.p-acoes{display:flex;gap:6px;flex-wrap:wrap;}
+table.mini-t{width:100%;border-collapse:collapse;font-size:12px;}
+table.mini-t th,table.mini-t td{padding:5px 6px;border-bottom:1px solid var(--border);text-align:left;}
+table.mini-t td.num,table.mini-t th.num{text-align:right;font-variant-numeric:tabular-nums;}
+.aviso{border-radius:var(--r-md);padding:8px 10px;font-size:12px;line-height:1.45;margin-top:6px;}
+.aviso.warn{background:var(--warn-bg);color:#7c4a03;border:1px solid #f3d9a8;}
+.aviso.err{background:var(--err-bg);color:#7f1d1d;border:1px solid #f5c2c2;}
+.aviso.info{background:var(--info-bg);color:#155e75;border:1px solid #b6e3ec;}
+.hist li{font-size:12px;color:var(--text);margin-bottom:4px;line-height:1.45;}
+details summary{cursor:pointer;font-weight:600;font-size:12px;color:var(--ac2);margin:4px 0;}
+/* Janela (confirmar / texto / escolher processo / conferência) */
+#modal-bg{position:fixed;inset:0;background:rgba(16,24,40,.5);z-index:2000;display:none;align-items:center;justify-content:center;padding:16px;}
+#modal-bg.open{display:flex;}
+#modal{background:var(--card);border-radius:var(--r-lg);width:min(640px,100%);max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);}
+#modal.largo{width:min(920px,100%);}
+.m-h{padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:15px;}
+.m-b{padding:14px 18px;overflow-y:auto;font-size:13px;line-height:1.5;color:var(--text);}
+.m-f{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
+.m-b textarea,.m-b input[type=text]{width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--r-md);font-size:13px;font-family:inherit;background:var(--card);color:var(--text);}
+.m-b textarea{min-height:80px;resize:vertical;}
+.proc-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.proc-item .t{flex:1;min-width:0;}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--text);color:#fff;padding:10px 18px;border-radius:var(--r-md);font-size:13px;box-shadow:var(--shadow-md);opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;z-index:3000;max-width:min(520px,90vw);line-height:1.45;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.err{background:var(--err);}
+.toast.ok{background:var(--ok);}
+@media (max-width: 760px){
+  .wrap{padding:14px 12px 50px;}
+  h1{font-size:19px;}
+  .grid2{grid-template-columns:1fr;}
+  .f{min-width:0;flex:1 1 140px;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topo">
+    <div class="topo-txt">
+      <h1>📋 Cotações</h1>
+      <p class="sub">Todas as cotações do Calculador, com o processo vinculado. Um processo tem uma cotação só: a estimativa dela é o "cotado" do processo no Fechamento, e salvar a cotação de novo no Calculador atualiza o processo junto. Clique numa linha para ver tudo e as ações.</p>
+    </div>
+    <div class="topo-acoes">
+      <button type="button" class="btn primary" data-acao="nova">+ Nova cotação</button>
+      <button type="button" class="btn" data-acao="exportar">📊 Exportar Excel</button>
+      <button type="button" class="btn" data-acao="recarregar">↻ Atualizar</button>
+    </div>
+  </div>
+
+  <div id="kpis" class="kpis" aria-live="polite"></div>
+  <div id="conferencia"></div>
+
+  <div class="filtros" role="search">
+    <div class="f busca"><label for="f-busca">Buscar</label><input type="text" id="f-busca" placeholder="Cliente, processo, autor, produto, UF…"></div>
+    <div class="f"><label for="f-status">Status</label>
+      <select id="f-status"><option value="">Todos</option><option value="rascunho">Rascunho</option><option value="aprovada">Aprovada</option><option value="rejeitada">Rejeitada (perdida)</option></select></div>
+    <div class="f"><label for="f-vinculo">Processo</label>
+      <select id="f-vinculo"><option value="">Todas</option><option value="com">Com processo</option><option value="sem">Sem processo</option><option value="conferir">Vínculo para conferir</option></select></div>
+    <div class="f"><label for="f-tipo">Produto</label><select id="f-tipo"><option value="">Todos</option></select></div>
+    <div class="f"><label for="f-uf">UF</label><select id="f-uf"><option value="">Todas</option></select></div>
+    <div class="f"><label for="f-imp">Tipo de importação</label><select id="f-imp"><option value="">Todos</option></select></div>
+    <div class="f"><label for="f-autor">Autor</label><select id="f-autor"><option value="">Todos</option></select></div>
+    <div class="f"><label for="f-de">De</label><input type="date" id="f-de"></div>
+    <div class="f"><label for="f-ate">Até</label><input type="date" id="f-ate"></div>
+    <label class="f-check" id="f-excluidas-wrap" style="display:none;"><input type="checkbox" id="f-excluidas"> Mostrar excluídas</label>
+    <button type="button" class="btn sm" data-acao="limpar-filtros">Limpar filtros</button>
+  </div>
+
+  <div class="card"><div class="tabela-wrap" id="tabela"><div class="vazio">Carregando…</div></div></div>
+  <div class="contador" id="contador"></div>
+</div>
+
+<div id="painel-bg" data-acao="fechar-painel"></div>
+<aside id="painel" role="dialog" aria-modal="true" aria-label="Detalhe da cotação" aria-hidden="true">
+  <div class="p-h">
+    <div style="flex:1;min-width:0;" id="p-titulo"></div>
+    <button type="button" class="btn sm" data-acao="fechar-painel" aria-label="Fechar">✕</button>
+  </div>
+  <div class="p-b" id="p-corpo"></div>
+</aside>
+
+<div id="modal-bg" aria-hidden="true">
+  <div id="modal" role="dialog" aria-modal="true" aria-labelledby="m-titulo">
+    <div class="m-h" id="m-titulo"></div>
+    <div class="m-b" id="m-corpo"></div>
+    <div class="m-f" id="m-botoes"></div>
+  </div>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="/vendor/exceljs-4.4.0.min.js"></script>
+<script src="/excel-styles.js"></script>
+<script src="/taxas-catalogo.js"></script>
+<script>
+'use strict';
+// ── utilidades ───────────────────────────────────────────────────────
+const h = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return isFinite(n) ? n : null; };
+const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const brl = v => num(v) === null ? '—' : 'R$ ' + num(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const brl0 = v => num(v) === null ? '—' : 'R$ ' + num(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+const usd = v => num(v) === null ? '—' : 'US$ ' + num(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = v => num(v) === null ? '—' : num(v).toFixed(1).replace('.', ',') + '%';
+const dataBr = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
+const dataHoraBr = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+let _toastT = null;
+function toast(msg, tipo, ms){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (tipo ? ' ' + tipo : '');
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => { t.className = 'toast'; }, ms || (tipo === 'err' ? 8000 : 3500));
+}
+async function api(url, opts){
+  const r = await fetch(url, opts);
+  let d = null;
+  try { d = await r.json(); } catch (e) { d = { ok: false, erro: 'Resposta inválida do servidor (' + r.status + ')' }; }
+  if (!r.ok && d && d.ok !== false && !d.erro) d.erro = 'Erro ' + r.status;
+  if (!r.ok) d.ok = false;
+  return d || { ok: false, erro: 'Sem resposta' };
+}
+const postJson = (url, body) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+
+// ── estado ───────────────────────────────────────────────────────────
+const S = {
+  cotacoes: [], conferencia: null, usuario: { role: '', controle: false },
+  ordem: { campo: 'data', dir: -1 }, selecionada: null, processosAbertos: null,
+};
+const STATUS = {
+  rascunho: { label: '📝 Rascunho', cls: 'b-rasc' },
+  aprovada: { label: '✅ Aprovada', cls: 'b-aprov' },
+  rejeitada: { label: '❌ Rejeitada', cls: 'b-rej' },
+  excluida: { label: '🗑 Excluída', cls: 'b-excl' },
+};
+const VINCULO = {
+  duplicada: { label: 'outra cotação é a do processo', cls: 'b-warn' },
+  processo_inexistente: { label: 'processo excluído', cls: 'b-err' },
+  estimativa_diferente: { label: 'estimativa ≠ processo', cls: 'b-warn' },
+  conferir: { label: 'conferir vínculo', cls: 'b-err' },
+  so_no_processo: { label: 'vínculo incompleto', cls: 'b-warn' },
+  aprovada_sem_processo: { label: 'aprovada sem processo', cls: 'b-warn' },
+  copia_excluida: { label: 'cópia', cls: 'b-excl' },
+};
+const ESTADOS_OK = ['ok', 'sem_vinculo', 'excluida'];
+const TIPO_IMP = { PROPRIA: 'Importação própria', ENCOMENDA: 'Encomenda', IMPLEMENTOS: 'Implementos', TRANSPORTADORA: 'Transportadora' };
+
+function normalizar(c){
+  const r = c.resumo || {};
+  const status = c.ativo === false ? 'excluida' : (r.status || 'rascunho');
+  const vinc = c.vinculo || { estado: r.processo_id ? 'ok' : 'sem_vinculo', texto: '' };
+  return Object.assign({}, c, {
+    _r: r, _status: status, _vinc: vinc,
+    _data: c.updated_at || r.criado_em || '',
+    _cliente: c.cliente || '',
+    _tipo: r.tipo || '', _uf: r.uf || '',
+    _cont: num(r.containers != null ? r.containers : c.qtde_containers),
+    _fob: num(c.fob_usd), _cambio: num(r.custos_cotados_json && r.custos_cotados_json.cambio != null ? r.custos_cotados_json.cambio : c.cambio_usd),
+    _custo: num(r.custo_total), _fat: num(r.faturamento), _lucro: num(r.lucro_bruto), _pct: num(r.pct_lucro),
+    _ref: (c.processo && c.processo.referencia) || r.processo_referencia || '',
+    _pid: (c.processo && c.processo.id) || r.processo_id || '',
+    _autor: c.updated_by || '', _imp: c.tipo_importacao || '', _marca: c.marca || '',
+  });
+}
+
+// ── carregar ─────────────────────────────────────────────────────────
+async function carregar(manterPainel){
+  const comExcl = document.getElementById('f-excluidas').checked;
+  const d = await api('/api/calculador/cotacoes?completa=1' + (comExcl ? '&excluidas=1' : ''));
+  if (!d.ok) {
+    document.getElementById('tabela').innerHTML = `<div class="vazio">${h(d.erro || 'Erro ao carregar as cotações.')}</div>`;
+    return;
+  }
+  S.cotacoes = (d.cotacoes || []).map(normalizar);
+  S.conferencia = d.conferencia || null;
+  if (d.usuario) S.usuario = d.usuario;
+  document.getElementById('f-excluidas-wrap').style.display = S.usuario.role === 'gerente' ? '' : 'none';
+  popularFiltros();
+  render();
+  const alvo = manterPainel && S.selecionada ? S.selecionada : new URLSearchParams(location.search).get('id');
+  if (alvo && S.cotacoes.some(c => c.id === alvo)) abrirPainel(alvo);
+  else if (manterPainel && S.selecionada) fecharPainel();
+}
+
+function popularFiltros(){
+  const preencher = (id, valores, rotulo) => {
+    const sel = document.getElementById(id);
+    const atual = sel.value;
+    const opts = [...new Set(valores.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+    sel.innerHTML = sel.options[0].outerHTML + opts.map(v => `<option value="${h(v)}">${h(rotulo ? rotulo(v) : v)}</option>`).join('');
+    if (opts.includes(atual)) sel.value = atual;
+  };
+  preencher('f-tipo', S.cotacoes.map(c => c._tipo));
+  preencher('f-uf', S.cotacoes.map(c => c._uf));
+  preencher('f-imp', S.cotacoes.map(c => c._imp), v => TIPO_IMP[v] || v);
+  preencher('f-autor', S.cotacoes.map(c => c._autor));
+}
+
+function filtradas(){
+  const v = id => document.getElementById(id).value;
+  const termo = semAcento(v('f-busca')).trim();
+  const st = v('f-status'), vinc = v('f-vinculo'), tipo = v('f-tipo'), uf = v('f-uf'), imp = v('f-imp'), autor = v('f-autor');
+  const de = v('f-de'), ate = v('f-ate');
+  const lista = S.cotacoes.filter(c => {
+    if (st && c._status !== st) return false;
+    if (vinc === 'com' && !c._pid) return false;
+    if (vinc === 'sem' && c._pid) return false;
+    if (vinc === 'conferir' && ESTADOS_OK.includes(c._vinc.estado)) return false;
+    if (tipo && c._tipo !== tipo) return false;
+    if (uf && c._uf !== uf) return false;
+    if (imp && c._imp !== imp) return false;
+    if (autor && c._autor !== autor) return false;
+    const dia = String(c._data || '').slice(0, 10);
+    if (de && dia < de) return false;
+    if (ate && dia > ate) return false;
+    if (termo) {
+      const alvo = semAcento([c._cliente, c._ref, c.id, c._autor, c._tipo, c._uf, c._marca, c._imp, (c._r.motivo_perda || ''), (c.processo && c.processo.cliente) || ''].join(' '));
+      if (!termo.split(/\s+/).every(t => alvo.includes(t))) return false;
+    }
+    return true;
+  });
+  const { campo, dir } = S.ordem;
+  const chave = {
+    data: c => c._data, cliente: c => semAcento(c._cliente), tipo: c => c._tipo, uf: c => c._uf, cont: c => c._cont,
+    fob: c => c._fob, custo: c => c._custo, fat: c => c._fat, lucro: c => c._lucro, pct: c => c._pct,
+    status: c => c._status, processo: c => c._ref, autor: c => c._autor,
+  }[campo] || (c => c._data);
+  return lista.sort((a, b) => {
+    const x = chave(a), y = chave(b);
+    if (x === y) return 0;
+    if (x === null || x === undefined || x === '') return 1;
+    if (y === null || y === undefined || y === '') return -1;
+    return (x > y ? 1 : -1) * dir;
+  });
+}
+
+// ── tela ─────────────────────────────────────────────────────────────
+function render(){
+  const lista = filtradas();
+  renderKpis(lista);
+  renderConferencia();
+  const cols = [
+    ['data', 'Data'], ['cliente', 'Cliente'], ['tipo', 'Produto'], ['uf', 'UF'], ['cont', 'Cont.', 'num'], ['fob', 'FOB US$', 'num'],
+    ['custo', 'Custo total', 'num'], ['fat', 'Faturamento', 'num'], ['lucro', 'Lucro', 'num'], ['pct', '% lucro', 'num'],
+    ['status', 'Status'], ['processo', 'Processo'], ['autor', 'Autor'], ['', 'Ações', 'semordem'],
+  ];
+  const th = cols.map(([campo, rot, cls]) => {
+    const seta = campo && S.ordem.campo === campo ? `<span class="seta">${S.ordem.dir > 0 ? '▲' : '▼'}</span>` : '';
+    return `<th class="${cls || ''}" ${campo ? `data-ordem="${campo}" aria-sort="${S.ordem.campo === campo ? (S.ordem.dir > 0 ? 'ascending' : 'descending') : 'none'}"` : ''} scope="col">${h(rot)}${seta}</th>`;
+  }).join('');
+  if (!lista.length) {
+    document.getElementById('tabela').innerHTML = `<table class="cot"><thead><tr>${th}</tr></thead></table><div class="vazio">${S.cotacoes.length ? 'Nenhuma cotação com esses filtros.' : 'Nenhuma cotação salva ainda. Use "+ Nova cotação".'}</div>`;
+    document.getElementById('contador').textContent = '';
+    return;
+  }
+  const linhas = lista.map(c => {
+    const st = STATUS[c._status] || STATUS.rascunho;
+    const vb = VINCULO[c._vinc.estado];
+    const proc = c._pid
+      ? `<a class="ref" href="/controle?processo=${encodeURIComponent(c._pid)}" target="_blank" rel="noopener" data-parar="1">${h(c._ref || 'processo')} ↗</a>${c.processo && c.processo.fase ? `<div class="mini">${h(c.processo.fase.replace(/_/g, ' ').toLowerCase())}${c.processo.fechado ? ' · fechado' : ''}${c.processo.cancelado ? ' · cancelado' : ''}</div>` : ''}`
+      : '<span class="mini">—</span>';
+    const lucroCls = c._lucro === null ? '' : (c._lucro >= 0 ? 'lucro-pos' : 'lucro-neg');
+    return `<tr data-id="${h(c.id)}" class="${S.selecionada === c.id ? 'sel' : ''} ${c._status === 'excluida' ? 'excluida' : ''}">
+      <td>${h(dataBr(c._data))}</td>
+      <td><div class="cli">${h(c._cliente || 'sem cliente')}</div><div class="mini">${h([TIPO_IMP[c._imp] || c._imp, c._marca].filter(Boolean).join(' · '))}</div></td>
+      <td>${h(c._tipo || '—')}</td>
+      <td>${h(c._uf || '—')}</td>
+      <td class="num">${c._cont === null ? '—' : h(c._cont)}</td>
+      <td class="num">${h(usd(c._fob))}</td>
+      <td class="num">${h(brl(c._custo))}</td>
+      <td class="num">${h(brl(c._fat))}</td>
+      <td class="num ${lucroCls}">${h(brl(c._lucro))}</td>
+      <td class="num ${lucroCls}">${h(pct(c._pct))}</td>
+      <td><span class="badge ${st.cls}" ${c._status === 'rejeitada' && c._r.motivo_perda ? `title="${h('Motivo: ' + c._r.motivo_perda)}"` : ''}>${st.label}</span></td>
+      <td>${proc}${vb ? `<div><span class="badge ${vb.cls}" title="${h(c._vinc.texto || '')}">${h(vb.label)}</span></div>` : ''}</td>
+      <td class="mini">${h(c._autor || '—')}</td>
+      <td style="white-space:nowrap;"><button type="button" class="btn sm" data-acao="abrir-calc" data-id="${h(c.id)}" title="Abrir no Calculador">Abrir</button> <button type="button" class="btn sm" data-acao="detalhe" data-id="${h(c.id)}" aria-label="Detalhe e ações">⋯</button></td>
+    </tr>`;
+  }).join('');
+  const soma = f => lista.reduce((s, c) => s + (num(f(c)) || 0), 0);
+  const fat = soma(c => c._fat), luc = soma(c => c._lucro);
+  const tfoot = `<tfoot><tr><td colspan="5">${lista.length} cotação(ões)</td><td class="num">${h(usd(soma(c => c._fob)))}</td><td class="num">${h(brl(soma(c => c._custo)))}</td><td class="num">${h(brl(fat))}</td><td class="num">${h(brl(luc))}</td><td class="num">${fat ? h(pct(luc / fat * 100)) : '—'}</td><td colspan="4"></td></tr></tfoot>`;
+  document.getElementById('tabela').innerHTML = `<table class="cot"><thead><tr>${th}</tr></thead><tbody>${linhas}</tbody>${tfoot}</table>`;
+  document.getElementById('contador').textContent = `Mostrando ${lista.length} de ${S.cotacoes.length} cotação(ões).`;
+}
+
+function renderKpis(lista){
+  const n = s => lista.filter(c => c._status === s).length;
+  const aprov = n('aprovada'), rej = n('rejeitada');
+  const fat = lista.reduce((s, c) => s + (c._fat || 0), 0);
+  const luc = lista.reduce((s, c) => s + (c._lucro || 0), 0);
+  const conv = (aprov + rej) ? Math.round(aprov / (aprov + rej) * 100) + '% das decididas' : 'sem decididas';
+  const card = (l, v, s) => `<div class="kpi"><div class="kpi-l">${h(l)}</div><div class="kpi-v">${h(v)}</div><div class="kpi-s">${h(s)}</div></div>`;
+  document.getElementById('kpis').innerHTML =
+    card('Cotações', String(lista.length), 'com os filtros atuais')
+    + card('Rascunho', String(n('rascunho')), 'em negociação')
+    + card('Aprovadas', String(aprov), conv)
+    + card('Rejeitadas', String(rej), 'perdidas (com motivo)')
+    + card('Faturamento cotado', brl0(fat), 'soma das cotações')
+    + card('Lucro médio', fat ? pct(luc / fat * 100) : '—', 'lucro ÷ faturamento');
+}
+
+function renderConferencia(){
+  const el = document.getElementById('conferencia');
+  const c = S.conferencia && S.conferencia.contagem;
+  if (!c) { el.innerHTML = ''; return; }
+  if (!c.problemas) { el.innerHTML = `<div class="banner ok"><span class="txt">✓ Vínculo cotação ↔ processo conferido: todas as cotações e processos estão de acordo dos dois lados.</span></div>`; return; }
+  const gerente = S.usuario.role === 'gerente' && S.usuario.controle;
+  el.innerHTML = `<div class="banner warn"><span class="txt">⚠ <strong>${c.problemas}</strong> ponto(s) no vínculo cotação ↔ processo fora da regra${c.automaticos ? ` — ${c.automaticos} corrigível(is) automaticamente` : ''}${c.manuais ? `, ${c.manuais} para olhar à mão` : ''}.</span>
+    <button type="button" class="btn sm" data-acao="ver-conferencia">Ver lista</button>
+    ${gerente && c.automaticos ? '<button type="button" class="btn sm primary" data-acao="corrigir-vinculos">Corrigir automaticamente</button>' : ''}</div>`;
+}
+
+// ── painel do detalhe ────────────────────────────────────────────────
+const LABELS_CUSTOS = {
+  compra: { fob: 'Mercadoria (FOB)', frete: 'Frete internacional', seguro_usd: 'Seguro', taxa_ce: 'Taxa C.E.' },
+  impostos: { ii: 'II', ipi: 'IPI', pis: 'PIS', cofins: 'COFINS', icms: 'ICMS', ibs: 'IBS', cbs: 'CBS', antidumping: 'Antidumping', marjoracao: 'Marjoração' },
+  comissoes: { br: 'Comissão Brasil', china: 'Comissão China', boss: 'Comissão Boss' },
+};
+function linhasCustosCotados(cc){
+  if (!cc || typeof cc !== 'object') return [];
+  const nCont = num(cc.containers) || 1;
+  const out = [];
+  const add = (grupo, label, v) => { const n = num(v); if (n !== null && Math.abs(n) >= 0.005) out.push([grupo, label, n]); };
+  Object.entries(LABELS_CUSTOS.compra).forEach(([k, l]) => add('Compra e frete', l, cc.compra && cc.compra[k]));
+  Object.entries(LABELS_CUSTOS.impostos).forEach(([k, l]) => add('Impostos', l, cc.impostos && cc.impostos[k]));
+  Object.entries(LABELS_CUSTOS.comissoes).forEach(([k, l]) => add('Comissões', l, cc.comissoes && cc.comissoes[k]));
+  const cat = id => (window.TaxasCatalogo && window.TaxasCatalogo.porId) ? window.TaxasCatalogo.porId(id) : null;
+  ['taxas_fixas', 'taxas_usd'].forEach(g => Object.entries(cc[g] || {}).forEach(([k, v]) => {
+    const t = cat(k);
+    const total = num(v) === null ? null : num(v) * (t && t.base_rateio === 'container' ? nCont : 1);
+    add('Taxas operacionais', (t && t.label) || k, total);
+  }));
+  add('Outros', 'Custos diversos', cc.custos_diversos);
+  add('Outros', 'Seguro de venda', cc.seguro_venda);
+  return out;
+}
+
+function abrirPainel(id){
+  const c = S.cotacoes.find(x => x.id === id);
+  if (!c) return;
+  S.selecionada = id;
+  const url = new URL(location.href); url.searchParams.set('id', id); history.replaceState(null, '', url);
+  document.querySelectorAll('table.cot tbody tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.id === id));
+  const r = c._r, st = STATUS[c._status] || STATUS.rascunho;
+  const ctrl = !!S.usuario.controle, gerente = S.usuario.role === 'gerente';
+  const p = c.processo;
+  const travado = !!(p && (p.fechado || p.cancelado));
+  document.getElementById('p-titulo').innerHTML = `<h2>${h(c._cliente || 'sem cliente')}</h2>
+    <div><span class="badge ${st.cls}">${st.label}</span> <span class="mini">cotação ${h(String(c.id).slice(0, 8))} · ${h([c._tipo, c._uf].filter(Boolean).join('/') || '—')}</span></div>`;
+
+  const acoes = [];
+  const b = (txt, acao, cls, titulo) => acoes.push(`<button type="button" class="btn sm ${cls || ''}" data-acao="${acao}" data-id="${h(c.id)}" title="${h(titulo || '')}">${txt}</button>`);
+  if (c._status !== 'excluida') {
+    b('🧮 Abrir no Calculador', 'abrir-calc', 'primary', travado ? 'Processo fechado/cancelado: a cotação abre só para leitura' : 'Abrir para editar (salvar atualiza o processo vinculado)');
+    b('📋 Duplicar', 'duplicar', '', 'Cópia nova, sem vínculo, para outra conta');
+    if (!c._pid && ctrl) {
+      b('✅ Aprovar (cria processo)', 'aprovar', '', 'Cria o processo no Controle a partir desta cotação');
+      b('🔗 Vincular a processo existente', 'vincular', '', 'Liga esta cotação a um processo que já existe');
+    }
+    if (c._pid && ctrl && !travado) b('Desvincular do processo', 'desvincular', '', 'Tira o vínculo dos dois lados');
+    if (!c._pid && c._status !== 'rejeitada') b('❌ Marcar como perdida', 'rejeitar', '', 'Registra o motivo da perda');
+    if (gerente && !c._pid) b('🗑 Excluir', 'excluir', 'perigo', 'Some da lista (dá para restaurar)');
+  } else if (gerente) {
+    b('↩ Restaurar', 'restaurar', 'primary', 'Volta para a lista');
+  }
+
+  let procHtml;
+  if (p && p.id) {
+    procHtml = `<div class="grid2">
+      <div><div class="l">Processo</div><div class="v"><a class="ref" href="/controle?processo=${encodeURIComponent(p.id)}" target="_blank" rel="noopener">${h(p.referencia || '')} ↗</a></div></div>
+      <div><div class="l">Fase</div><div class="v">${h((p.fase || '—').replace(/_/g, ' '))}${p.fechado ? ' · fechado' : ''}${p.cancelado ? ' · cancelado' : ''}</div></div>
+      <div><div class="l">Cliente do processo</div><div class="v">${h(p.cliente || '—')}</div></div>
+      <div><div class="l">Vinculada em</div><div class="v">${h(dataHoraBr(r.data_aprovacao))}${r.aprovado_por ? ' · ' + h(r.aprovado_por) : ''}</div></div>
+    </div>`;
+    if (travado) procHtml += `<div class="aviso info">Processo ${p.fechado ? 'fechado' : 'cancelado'}: a cotação dele fica só para leitura (para outra conta, Duplicar).</div>`;
+  } else if (r.processo_id) {
+    procHtml = `<div class="aviso err">Aponta para o processo ${h(r.processo_referencia || r.processo_id)}, que não existe mais.</div>`;
+  } else {
+    procHtml = `<div class="mini">Sem processo. Aprove para criar o processo no Controle, ou vincule a um processo que já existe.</div>`;
+  }
+  if (c._vinc && !ESTADOS_OK.includes(c._vinc.estado) && c._vinc.texto) procHtml += `<div class="aviso warn">${h(c._vinc.texto)}</div>`;
+
+  const cen = r.cenarios;
+  const cenHtml = cen && cen.com_st && cen.sem_st ? `<div class="p-sec"><h3>Cenários</h3><table class="mini-t"><thead><tr><th></th><th class="num">COM ST</th><th class="num">SEM ST</th></tr></thead><tbody>
+      <tr><td>Faturamento total</td><td class="num">${h(brl(cen.com_st.faturamento_total))}</td><td class="num">${h(brl(cen.sem_st.faturamento_total))}</td></tr>
+      <tr><td>Comissão China (fora)</td><td class="num">${h(brl(cen.com_st.comissao_china))}</td><td class="num">${h(brl(cen.sem_st.comissao_china))}</td></tr>
+      <tr><td>Valor Impak</td><td class="num">${h(brl(cen.com_st.valor_impak))}</td><td class="num">${h(brl(cen.sem_st.valor_impak))}</td></tr>
+      <tr><td>Lucro bruto</td><td class="num">${h(brl(cen.com_st.lucro_bruto))}</td><td class="num">${h(brl(cen.sem_st.lucro_bruto))}</td></tr>
+      <tr><td>% lucro</td><td class="num">${h(pct(cen.com_st.pct_lucro))}</td><td class="num">${h(pct(cen.sem_st.pct_lucro))}</td></tr>
+    </tbody></table></div>` : '';
+
+  const custos = linhasCustosCotados(r.custos_cotados_json);
+  const custosHtml = custos.length ? `<div class="p-sec"><details><summary>Custos cotados item a item (${custos.length})</summary><table class="mini-t"><tbody>${custos.map(([g, l, v]) => `<tr><td class="mini">${h(g)}</td><td>${h(l)}</td><td class="num">${h(brl(v))}</td></tr>`).join('')}</tbody></table><div class="mini" style="margin-top:4px;">Taxas por container já multiplicadas pela quantidade de containers (${h(num(r.custos_cotados_json.containers) || 1)}).</div></details></div>` : '';
+
+  const hist = [];
+  if (r.criado_em) hist.push(`Criada em ${dataHoraBr(r.criado_em)}${r.criado_por ? ' por ' + r.criado_por : ''}`);
+  hist.push(`Última alteração em ${dataHoraBr(c.updated_at)}${c.updated_by ? ' por ' + c.updated_by : ''}`);
+  if (r.status === 'aprovada' && r.data_aprovacao) hist.push(`Aprovada/vinculada em ${dataHoraBr(r.data_aprovacao)}${r.aprovado_por ? ' por ' + r.aprovado_por : ''}${r.processo_referencia ? ' — processo ' + r.processo_referencia : ''}`);
+  if (r.status === 'rejeitada') hist.push(`Rejeitada em ${dataHoraBr(r.data_rejeicao)}${r.rejeitado_por ? ' por ' + r.rejeitado_por : ''} — motivo: ${r.motivo_perda || '—'}`);
+  if (r.desvinculado_em) hist.push(`Desvinculada${r.desvinculado_de ? ' do processo ' + r.desvinculado_de : ''} em ${dataHoraBr(r.desvinculado_em)}${r.desvinculado_por ? ' por ' + r.desvinculado_por : ''}${r.desvinculado_motivo ? ' — ' + r.desvinculado_motivo : ''}`);
+  if (r.excluida_em) hist.push(`Excluída em ${dataHoraBr(r.excluida_em)}${r.excluida_por ? ' por ' + r.excluida_por : ''}${r.excluida_motivo ? ' — ' + r.excluida_motivo : ''}`);
+  if (r.restaurada_em) hist.push(`Restaurada em ${dataHoraBr(r.restaurada_em)}${r.restaurada_por ? ' por ' + r.restaurada_por : ''}`);
+
+  document.getElementById('p-corpo').innerHTML = `
+    <div class="p-sec"><div class="p-acoes">${acoes.join('')}</div></div>
+    <div class="p-sec"><h3>Números</h3><div class="grid2">
+      <div><div class="l">Custo total</div><div class="v">${h(brl(c._custo))}</div></div>
+      <div><div class="l">Faturamento</div><div class="v">${h(brl(c._fat))}</div></div>
+      <div><div class="l">Lucro bruto</div><div class="v ${c._lucro !== null && c._lucro < 0 ? 'lucro-neg' : 'lucro-pos'}">${h(brl(c._lucro))} (${h(pct(c._pct))})</div></div>
+      <div><div class="l">FOB</div><div class="v">${h(usd(c._fob))}</div></div>
+      <div><div class="l">Câmbio</div><div class="v">${c._cambio === null ? '—' : h(c._cambio.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }))}</div></div>
+      <div><div class="l">Containers</div><div class="v">${c._cont === null ? '—' : h(c._cont)}</div></div>
+      <div><div class="l">Produto / UF</div><div class="v">${h([c._tipo, c._uf].filter(Boolean).join(' / ') || '—')}</div></div>
+      <div><div class="l">Tipo de importação</div><div class="v">${h(TIPO_IMP[c._imp] || c._imp || '—')}</div></div>
+      ${c._marca ? `<div><div class="l">Marca/fornecedor (mix)</div><div class="v">${h(c._marca)}</div></div>` : ''}
+      ${r.prazo_texto ? `<div><div class="l">Prazo</div><div class="v">${h(r.prazo_texto)}</div></div>` : ''}
+      ${num(r.juros_boleto) ? `<div><div class="l">Juros no boleto</div><div class="v">${h(brl(r.juros_boleto))}</div></div>` : ''}
+    </div></div>
+    <div class="p-sec"><h3>Processo</h3>${procHtml}</div>
+    ${cenHtml}
+    ${custosHtml}
+    <div class="p-sec"><h3>Histórico</h3><ul class="hist">${hist.map(x => `<li>${h(x)}</li>`).join('')}</ul></div>`;
+  document.getElementById('painel').classList.add('open');
+  document.getElementById('painel').setAttribute('aria-hidden', 'false');
+  document.getElementById('painel-bg').classList.add('open');
+}
+function fecharPainel(){
+  S.selecionada = null;
+  document.getElementById('painel').classList.remove('open');
+  document.getElementById('painel').setAttribute('aria-hidden', 'true');
+  document.getElementById('painel-bg').classList.remove('open');
+  document.querySelectorAll('table.cot tbody tr.sel').forEach(tr => tr.classList.remove('sel'));
+  const url = new URL(location.href); url.searchParams.delete('id'); history.replaceState(null, '', url);
+}
+
+// ── janela (sem alert/confirm/prompt do navegador) ───────────────────
+let _modalResolver = null;
+function janela({ titulo, corpo, botoes, largo, aoAbrir }){
+  return new Promise(resolve => {
+    if (_modalResolver) _modalResolver(null);
+    _modalResolver = resolve;
+    document.getElementById('m-titulo').textContent = titulo || '';
+    // Corpo novo a cada janela: os ouvintes da janela anterior não ficam pendurados.
+    const c0 = document.getElementById('m-corpo');
+    const c = c0.cloneNode(false);
+    c0.replaceWith(c);
+    if (typeof corpo === 'string') c.innerHTML = corpo; else if (corpo) c.appendChild(corpo);
+    const f = document.getElementById('m-botoes');
+    f.innerHTML = '';
+    (botoes || [{ txt: 'Fechar', valor: null }]).forEach(bt => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'btn ' + (bt.cls || '');
+      el.textContent = bt.txt;
+      el.addEventListener('click', () => { const v = typeof bt.valor === 'function' ? bt.valor() : bt.valor; if (v === undefined) return; fecharJanela(v); });
+      f.appendChild(el);
+    });
+    document.getElementById('modal').classList.toggle('largo', !!largo);
+    const bg = document.getElementById('modal-bg');
+    bg.classList.add('open'); bg.setAttribute('aria-hidden', 'false');
+    if (aoAbrir) aoAbrir(c);
+    const foco = c.querySelector('input,textarea') || f.querySelector('.primary') || f.querySelector('button');
+    if (foco) setTimeout(() => foco.focus(), 30);
+  });
+}
+function fecharJanela(valor){
+  const bg = document.getElementById('modal-bg');
+  bg.classList.remove('open'); bg.setAttribute('aria-hidden', 'true');
+  const r = _modalResolver; _modalResolver = null;
+  if (r) r(valor === undefined ? null : valor);
+}
+function confirmar(titulo, texto, rotuloOk, perigo){
+  return janela({ titulo, corpo: `<p style="margin:0;">${h(texto)}</p>`, botoes: [
+    { txt: 'Cancelar', valor: false }, { txt: rotuloOk || 'Confirmar', valor: true, cls: perigo ? 'perigo' : 'primary' },
+  ] }).then(v => v === true);
+}
+function pedirTexto(titulo, texto, opts){
+  const o = opts || {};
+  return janela({ titulo,
+    corpo: `<p style="margin:0 0 8px;">${h(texto)}</p><textarea id="m-texto" aria-label="${h(o.rotulo || 'Texto')}" placeholder="${h(o.placeholder || '')}"></textarea><div id="m-erro" class="mini" style="color:var(--err);margin-top:4px;"></div>`,
+    botoes: [{ txt: 'Cancelar', valor: null }, { txt: o.rotuloOk || 'Confirmar', cls: o.perigo ? 'perigo' : 'primary', valor: () => {
+      const v = document.getElementById('m-texto').value.trim();
+      if (o.obrigatorio && !v) { document.getElementById('m-erro').textContent = 'Preencha o campo para continuar.'; return undefined; }
+      return v;
+    } }] });
+}
+
+// ── ações ────────────────────────────────────────────────────────────
+function cot(id){ return S.cotacoes.find(c => c.id === id); }
+async function aprovar(id){
+  const c = cot(id);
+  if (!await confirmar('Aprovar cotação', `Aprovar a cotação de ${c._cliente || '—'}? Isso cria o processo no Controle de Processos com os dados dela (a estimativa vira o "cotado" do processo).`, 'Aprovar e criar processo')) return;
+  const d = await postJson('/api/calculador/cotacoes/' + encodeURIComponent(id) + '/aprovar');
+  if (!d.ok) return toast('Não foi possível aprovar: ' + (d.erro || '?'), 'err');
+  toast(d.ja_aprovada ? `Já estava aprovada — processo ${d.processo_referencia || ''}` : `✓ Processo ${d.processo_referencia || ''} criado no Controle`, 'ok', 6000);
+  await carregar(true);
+}
+async function processosAbertos(){
+  if (S.processosAbertos) return S.processosAbertos;
+  const d = await api('/api/controle/processos-abertos');
+  if (!d.ok) throw new Error(d.erro || 'Erro ao carregar os processos');
+  S.processosAbertos = d.processos || [];
+  return S.processosAbertos;
+}
+async function vincular(id){
+  const c = cot(id);
+  let procs;
+  try { procs = await processosAbertos(); } catch (e) { return toast(e.message, 'err'); }
+  const cliN = semAcento(c._cliente).split(/\s+/)[0] || '';
+  const corpo = document.createElement('div');
+  corpo.innerHTML = `<p style="margin:0 0 8px;">Escolha o processo da cotação de <strong>${h(c._cliente || '—')}</strong>. A estimativa dela vira o "cotado" do processo e, se ele ainda não tiver Custos Reais, os valores cotados entram como ponto de partida. Processo que já tem cotação: você confirma a troca.</p>
+    <input type="text" id="m-busca-proc" placeholder="Buscar pela referência ou cliente…" aria-label="Buscar processo"><div id="m-lista-proc" style="margin-top:8px;"></div>`;
+  const desenhar = () => {
+    const t = semAcento(document.getElementById('m-busca-proc').value).trim();
+    const lista = procs.filter(p => !t || semAcento((p.referencia || '') + ' ' + (p.cliente || '')).includes(t))
+      .sort((a, b) => ((semAcento(b.cliente).split(/\s+/)[0] === cliN) - (semAcento(a.cliente).split(/\s+/)[0] === cliN)) || String(a.referencia).localeCompare(String(b.referencia)))
+      .slice(0, 60);
+    document.getElementById('m-lista-proc').innerHTML = lista.length ? lista.map(p => `<div class="proc-item"><div class="t"><strong>${h(p.referencia || '')}</strong> — ${h(p.cliente || 'sem cliente')}<div class="mini">${h((p.fase || '').replace(/_/g, ' ').toLowerCase())}${p.cotacao_id ? ' · <span style="color:#78350f;">já tem cotação</span>' : ''}</div></div><button type="button" class="btn sm primary" data-proc="${h(p.id)}">Vincular</button></div>`).join('') : '<div class="mini">Nenhum processo em andamento encontrado.</div>';
+  };
+  let escolhido = null;
+  const r = await janela({ titulo: 'Vincular a processo existente', corpo, largo: true, botoes: [{ txt: 'Cancelar', valor: null }], aoAbrir: el => {
+    desenhar();
+    el.querySelector('#m-busca-proc').addEventListener('input', desenhar);
+    el.addEventListener('click', ev => { const bt = ev.target.closest('[data-proc]'); if (bt) { escolhido = bt.dataset.proc; fecharJanela('ok'); } });
+  } });
+  if (r !== 'ok' || !escolhido) return;
+  let d = await postJson('/api/calculador/cotacoes/' + encodeURIComponent(id) + '/vincular-processo', { processo_id: escolhido });
+  if (!d.ok && d.conflito) {
+    if (!await confirmar('Processo já tem cotação', d.erro, 'Trocar pela cotação escolhida')) return;
+    d = await postJson('/api/calculador/cotacoes/' + encodeURIComponent(id) + '/vincular-processo', { processo_id: escolhido, substituir: true });
+  }
+  if (!d.ok) return toast('Não foi possível vincular: ' + (d.erro || '?'), 'err');
+  S.processosAbertos = null;
+  toast(`✓ Cotação vinculada ao processo ${d.processo_referencia || ''}${d.trocadas && d.trocadas.length ? ' (a anterior voltou a Rascunho)' : ''}`, 'ok', 6000);
+  await carregar(true);
+}
+async function desvincular(id){
+  const c = cot(id);
+  const motivo = await pedirTexto('Desvincular do processo', `Desvincular a cotação de ${c._cliente || '—'} do processo ${c._ref || ''}? A cotação volta a Rascunho e o processo fica sem estimativa (Custos Reais não mudam). Motivo (opcional):`, { rotuloOk: 'Desvincular', rotulo: 'Motivo' });
+  if (motivo === null) return;
+  const d = await postJson('/api/calculador/cotacoes/' + encodeURIComponent(id) + '/desvincular-processo', { motivo });
+  if (!d.ok) return toast('Não foi possível desvincular: ' + (d.erro || '?'), 'err');
+  S.processosAbertos = null;
+  toast('✓ Cotação desvinculada' + (d.processo_referencia ? ' do processo ' + d.processo_referencia : ''), 'ok');
+  await carregar(true);
+}
+async function rejeitar(id){
+  const c = cot(id);
+  const motivo = await pedirTexto('Marcar como perdida', `Motivo da perda da cotação de ${c._cliente || '—'} (preço, prazo, concorrente, cliente desistiu…):`, { obrigatorio: true, rotuloOk: 'Marcar como perdida', rotulo: 'Motivo da perda', perigo: true });
+  if (!motivo) return;
+  const d = await postJson('/api/calculador/cotacoes/' + encodeURIComponent(id) + '/rejeitar', { motivo });
+  if (!d.ok) return toast('Não foi possível marcar como perdida: ' + (d.erro || '?'), 'err');
+  toast('✓ Cotação marcada como perdida', 'ok');
+  await carregar(true);
+}
+async function excluir(id){
+  const c = cot(id);
+  if (!await confirmar('Excluir cotação', `Excluir a cotação de ${c._cliente || '—'}? Ela sai da lista, mas um gerente pode restaurar depois (Mostrar excluídas).`, 'Excluir', true)) return;
+  const d = await api('/api/calculador/cotacoes/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (!d.ok) return toast('Não foi possível excluir: ' + (d.erro || '?'), 'err');
+  toast('✓ Cotação excluída (dá para restaurar)', 'ok');
+  fecharPainel();
+  await carregar(false);
+}
+async function restaurar(id){
+  const d = await postJson('/api/calculador/cotacoes/' + encodeURIComponent(id) + '/restaurar');
+  if (!d.ok) return toast('Não foi possível restaurar: ' + (d.erro || '?'), 'err');
+  toast('✓ Cotação restaurada', 'ok');
+  await carregar(true);
+}
+function verConferencia(){
+  const probs = (S.conferencia && S.conferencia.problemas) || [];
+  const corpo = probs.length
+    ? `<p style="margin:0 0 8px;">A regra: uma cotação tem no máximo um processo e um processo uma cotação, e os dois lados apontam um para o outro. "Automático" a correção resolve sozinha; "à mão" precisa de alguém escolher.</p><ul class="hist">${probs.map(p => `<li><span class="badge ${p.automatico ? 'b-warn' : 'b-err'}">${p.automatico ? 'automático' : 'à mão'}</span> ${h(p.texto)}</li>`).join('')}</ul>`
+    : '<p>Nada para conferir.</p>';
+  janela({ titulo: 'Conferência do vínculo cotação ↔ processo', corpo, largo: true });
+}
+async function corrigirVinculos(){
+  const prev = await postJson('/api/calculador/vinculos/corrigir', { simular: true, excluir_copias: true });
+  if (!prev.ok) return toast('Não foi possível conferir: ' + (prev.erro || '?'), 'err');
+  const auto = (prev.problemas || []).filter(p => p.automatico);
+  const manual = (prev.problemas || []).filter(p => !p.automatico);
+  const corpo = `<p style="margin:0 0 8px;">A correção automática faz ${prev.acoes} alteração(ões), com registro no Histórico de cada processo:</p>
+    <ul class="hist">${auto.map(p => `<li>${h(p.texto)}</li>`).join('') || '<li>Nada automático a fazer.</li>'}</ul>
+    <label style="display:flex;gap:6px;align-items:center;margin:10px 0;"><input type="checkbox" id="m-excluir-copias" checked> Excluir as cópias idênticas soltas (ficam em "Mostrar excluídas" e dá para restaurar)</label>
+    ${manual.length ? `<p style="margin:10px 0 4px;font-weight:600;">Fica para olhar à mão (${manual.length}):</p><ul class="hist">${manual.map(p => `<li>${h(p.texto)}</li>`).join('')}</ul>` : ''}`;
+  let excluirCopias = true;
+  const ok = await janela({ titulo: 'Corrigir vínculos automaticamente', corpo, largo: true, botoes: [
+    { txt: 'Cancelar', valor: false },
+    { txt: 'Aplicar correção', cls: 'primary', valor: () => { excluirCopias = document.getElementById('m-excluir-copias').checked; return true; } },
+  ] });
+  if (ok !== true) return;
+  const d = await postJson('/api/calculador/vinculos/corrigir', { simular: false, excluir_copias: excluirCopias });
+  if (!d.ok && !d.aplicadas) return toast('Não foi possível corrigir: ' + (d.erro || (d.erros || []).join('; ') || '?'), 'err');
+  toast(`✓ ${d.aplicadas} alteração(ões) aplicada(s)${d.erros && d.erros.length ? ` — ${d.erros.length} com erro` : ''}`, d.erros && d.erros.length ? 'err' : 'ok', 8000);
+  S.processosAbertos = null;
+  await carregar(true);
+}
+async function exportarExcel(){
+  if (typeof ExcelJS === 'undefined' || !window.ExcelStyles) return toast('A biblioteca do Excel não carregou — recarregue a página.', 'err');
+  const lista = filtradas();
+  if (!lista.length) return toast('Nada para exportar com esses filtros.', 'err');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Cotações');
+  const headers = ['Data', 'Cliente', 'Produto', 'Tipo de importação', 'UF', 'Containers', 'FOB (US$)', 'Câmbio', 'Custo total (R$)', 'Faturamento (R$)', 'Lucro (R$)', '% lucro', 'Status', 'Processo', 'Fase', 'Autor', 'Aprovada/vinculada em', 'Motivo da perda', 'Cotação (id)'];
+  const linhas = lista.map(c => [
+    c._data ? new Date(c._data) : '', c._cliente, c._tipo, TIPO_IMP[c._imp] || c._imp, c._uf, c._cont, c._fob, c._cambio, c._custo, c._fat, c._lucro,
+    c._pct === null ? null : c._pct / 100, (STATUS[c._status] || STATUS.rascunho).label.replace(/^\S+\s/, ''), c._ref, c.processo ? c.processo.fase : '',
+    c._autor, c._r.data_aprovacao ? new Date(c._r.data_aprovacao) : '', c._r.motivo_perda || '', c.id,
+  ]);
+  const soma = i => linhas.reduce((s, l) => s + (num(l[i]) || 0), 0);
+  const total = ['Total', `${linhas.length} cotação(ões)`, '', '', '', '', soma(6), '', soma(8), soma(9), soma(10), soma(9) ? soma(10) / soma(9) : null, '', '', '', '', '', '', ''];
+  ExcelStyles.estilizarAba(ws, headers, linhas, total, [12, 34, 10, 18, 6, 10, 14, 10, 16, 16, 16, 9, 12, 18, 16, 22, 18, 30, 38]);
+  ['A', 'Q'].forEach(col => { ws.getColumn(col).numFmt = 'dd/mm/yyyy'; });
+  ['G', 'I', 'J', 'K'].forEach(col => { ws.getColumn(col).numFmt = '#,##0.00'; });
+  ws.getColumn('H').numFmt = '0.0000';
+  ws.getColumn('L').numFmt = '0.0%';
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'cotacoes-' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// ── eventos ──────────────────────────────────────────────────────────
+document.addEventListener('click', ev => {
+  const alvo = ev.target.closest('[data-acao],[data-ordem],tr[data-id],[data-parar]');
+  if (!alvo) return;
+  if (alvo.dataset.parar) return; // link do processo: só abre o link
+  if (alvo.dataset.ordem) {
+    const campo = alvo.dataset.ordem;
+    S.ordem = S.ordem.campo === campo ? { campo, dir: -S.ordem.dir } : { campo, dir: ['cliente', 'tipo', 'uf', 'processo', 'autor', 'status'].includes(campo) ? 1 : -1 };
+    render();
+    return;
+  }
+  const acao = alvo.dataset.acao;
+  const id = alvo.dataset.id || (alvo.tagName === 'TR' ? alvo.dataset.id : null);
+  if (!acao && alvo.tagName === 'TR') { abrirPainel(alvo.dataset.id); return; }
+  ev.stopPropagation();
+  switch (acao) {
+    case 'nova': location.href = '/calculador'; break;
+    case 'exportar': exportarExcel(); break;
+    case 'recarregar': S.processosAbertos = null; carregar(true); break;
+    case 'limpar-filtros':
+      ['f-busca', 'f-de', 'f-ate'].forEach(i => { document.getElementById(i).value = ''; });
+      ['f-status', 'f-vinculo', 'f-tipo', 'f-uf', 'f-imp', 'f-autor'].forEach(i => { document.getElementById(i).value = ''; });
+      render(); break;
+    case 'detalhe': abrirPainel(id); break;
+    case 'fechar-painel': fecharPainel(); break;
+    case 'abrir-calc': location.href = '/calculador?cotacao=' + encodeURIComponent(id); break;
+    case 'duplicar': location.href = '/calculador?cotacao=' + encodeURIComponent(id) + '&duplicar=1'; break;
+    case 'aprovar': aprovar(id); break;
+    case 'vincular': vincular(id); break;
+    case 'desvincular': desvincular(id); break;
+    case 'rejeitar': rejeitar(id); break;
+    case 'excluir': excluir(id); break;
+    case 'restaurar': restaurar(id); break;
+    case 'ver-conferencia': verConferencia(); break;
+    case 'corrigir-vinculos': corrigirVinculos(); break;
+  }
+});
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (document.getElementById('modal-bg').classList.contains('open')) { fecharJanela(null); return; }
+  if (document.getElementById('painel').classList.contains('open')) fecharPainel();
+});
+document.getElementById('modal-bg').addEventListener('click', ev => { if (ev.target.id === 'modal-bg') fecharJanela(null); });
+let _buscaT = null;
+document.getElementById('f-busca').addEventListener('input', () => { clearTimeout(_buscaT); _buscaT = setTimeout(render, 150); });
+['f-status', 'f-vinculo', 'f-tipo', 'f-uf', 'f-imp', 'f-autor', 'f-de', 'f-ate'].forEach(i => document.getElementById(i).addEventListener('change', render));
+document.getElementById('f-excluidas').addEventListener('change', () => carregar(false));
+// Filtro vindo do endereço (ex.: /cotacoes?vinculo=conferir).
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get('vinculo')) document.getElementById('f-vinculo').value = q.get('vinculo');
+  if (q.get('status')) document.getElementById('f-status').value = q.get('status');
+  if (q.get('q')) document.getElementById('f-busca').value = q.get('q');
+})();
+carregar(false);
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>

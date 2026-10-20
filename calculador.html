@@ -815,8 +815,8 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
     <!-- SALVAR/ABRIR COTAÇÃO: sempre visível (nao so na ultima etapa), pra dar
          pra salvar um rascunho a qualquer momento do preenchimento. -->
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border);">
-      <button class="btn-refresh" style="flex:1;min-width:140px;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
-      <button class="btn-refresh" style="flex:1;min-width:140px;" onclick="abrirListaCotacoes()">📂 Minhas Cotações</button>
+      <button class="btn-refresh" id="btn-salvar-cotacao" style="flex:1;min-width:140px;" onclick="salvarCotacao()">💾 Salvar Cotação</button>
+      <button class="btn-refresh" style="flex:1;min-width:140px;" onclick="abrirListaCotacoes()" title="Tela Cotações: todas as cotações, com filtros, processo vinculado e ações">📂 Cotações</button>
     </div>
     <div style="font-size:10px;color:var(--dim);margin-top:4px;" id="cotacao-status"></div>
 
@@ -854,21 +854,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
 
 <div class="toast-wrap" id="toasts"></div>
 
-<!-- MODAL: MINHAS COTAÇÕES -->
-<div class="mbg" id="mbg-cotacoes">
-  <div class="modal-cot">
-    <div class="modal-cot-h">
-      <h3>📂 Minhas Cotações</h3>
-      <button class="modal-cot-close" onclick="fecharListaCotacoes()">✕</button>
-    </div>
-    <div class="modal-cot-b">
-      <table class="cot-table">
-        <thead><tr><th>Cliente</th><th>Tipo/UF</th><th>Custo Total</th><th>Lucro</th><th>Status</th><th>Atualizado</th><th></th></tr></thead>
-        <tbody id="cot-lista-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-</div>
+<!-- "Minhas Cotações" (popup) virou a tela Cotações (/cotacoes, 20/10/2026). -->
 
 <script>
 function esc(v){
@@ -1104,7 +1090,9 @@ let _estado = {
   wizardResultadoPronto: false, // vira true após o 1º cálculo bem-sucedido
   acClienteCalcTimer:    null,
   parcelas:              [],   // cronograma de pagamento do FOB (item e) — [{label,valor_usd,data}]
-  processoOrigemId:      null, // preenchido quando a cotação foi aberta a partir de "Vincular ao Calculador" no Controle
+  processoOrigemId:      null, // processo de origem ("Criar cotação a partir do processo" no Controle): o 1º salvar já vincula
+  cotacaoVinculo:        null, // processo ligado à cotação aberta { id, referencia, fechado, cancelado } — linha de status e trava de edição
+  rascunhoAnteriorGuardado: false, // abriu uma cotação pelo endereço com um rascunho não salvo aberto: dá pra recuperar
   taxasTotaisOverrideBrl: null, // TOTAL TAXAS (BRL) lido direto da planilha no import - substitui o total_taxas calculado por fórmula quando presente (rotulos de taxas individuais variam por fornecedor/agente, mas o total apurado não)
   iiOverrideBrl: null, // I.I. (BRL) lido direto da aba MODELO no import - substitui o II calculado (aliquota da TABELA_NCM x base) quando presente; a TABELA_NCM só cobre 4 categorias de pneu (derivadas do texto livre do campo Produto) e a base de cálculo real pode divergir do CIF (ex: UD26-016 usa um valor de DUIMP digitado à mão, não o CIF calculado)
   seguroCompraOverrideBrl: null, // Seguro Compra (BRL) lido direto da aba MODELO no import quando é um valor digitado à mão (não uma fórmula) - substitui a estimativa padrão (0,04% sobre FOB+Frete) quando o segurado pagou um prêmio real diferente
@@ -1227,10 +1215,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // estava em andamento depois, manualmente).
   const paramsUrl = new URLSearchParams(location.search);
   const processoIdPrefill = paramsUrl.get('processo_id');
-  if(processoIdPrefill){
+  const cotacaoUrl = paramsUrl.get('cotacao');
+  if(cotacaoUrl){
+    // Aberta pela tela Cotações (/cotacoes) ou pelo processo: "Abrir no
+    // Calculador" (?cotacao=<id>) ou "Duplicar" (&duplicar=1). Um rascunho
+    // não salvo que estava aberto fica guardado (dá pra recuperar).
+    guardarRascunhoAnterior();
+    carregarCotacao(cotacaoUrl, paramsUrl.get('duplicar') === '1');
+  } else if(processoIdPrefill){
     prefillDeProcesso(processoIdPrefill);
   } else if(paramsUrl.get('prefill') === 'controle'){
-    // "Simular venda no Calculador (dados reais)" no processo do Controle.
+    // "Simular venda no Calculador (dados reais)" ou "Criar cotação a partir
+    // do processo" (vincular) no processo do Controle.
     aplicarPrefillControleReal(paramsUrl.get('t'));
   } else {
     restaurarAutosaveSeExistir();
@@ -1250,6 +1246,8 @@ async function prefillDeProcesso(processoId){
           if(!d.ok){ showToast('Erro ao carregar dados do processo: '+(d.erro||'?'), 'err'); return; }
           aplicarEstadoFormulario(d.dados);
           _estado.processoOrigemId = processoId;
+          _estado.cotacaoAtualId = null; _estado.cotacaoVinculo = null;
+          renderStatusCotacao(`Cotação nova a partir do processo ${esc(d.referencia || '')}`);
           // Se o processo já tem Custos Reais lançados, o servidor manda um aviso
           // (não bloqueia mais — ver /api/controle/processos/:id/prefill-cotacao):
           // salvar esta cotação é só uma simulação/referência, não mexe nos
@@ -1318,10 +1316,12 @@ function mostrarFaixaSimulacaoReal(d, avisosExtras){
   el.appendChild(fechar);
   const titulo = document.createElement('div');
   titulo.style.cssText = 'font-weight:700;margin-bottom:4px;padding-right:18px;';
-  titulo.textContent = `Simulação com os dados reais do processo ${d.referencia || ''}`.trim();
+  titulo.textContent = (d.vincular ? `Cotação a partir do processo ${d.referencia || ''}` : `Simulação com os dados reais do processo ${d.referencia || ''}`).trim();
   el.appendChild(titulo);
   const sub = document.createElement('div');
-  sub.textContent = 'Escolha o cliente, a UF e os outros estados, e o cenário de margem. Salvar cria uma cotação separada: o processo não muda.';
+  sub.textContent = d.vincular
+    ? 'Confira os dados, calcule e clique em "Salvar Cotação": ela fica vinculada a este processo e vira a estimativa (o cotado) dele no Fechamento.'
+    : 'Escolha o cliente, a UF e os outros estados, e o cenário de margem. Salvar cria uma cotação separada: o processo não muda.';
   el.appendChild(sub);
   const lista = (itens, rotulo, aberto) => {
     if(!itens || !itens.length) return;
@@ -1350,7 +1350,14 @@ function aplicarPrefillControleReal(t){
   }
   const estado = { ...d.estado, processo_origem_id: null };
   aplicarEstadoFormulario(estado);
-  _estado.processoOrigemId = null; // simulação: salvar NÃO vincula ao processo
+  // "Simular venda": salvar NÃO vincula ao processo. "Criar cotação a partir
+  // do processo" (d.vincular): o MESMO preenchimento, mas salvar vincula a
+  // cotação ao processo (vira a estimativa dele) — regra única em
+  // lib/vinculo-cotacao.js, feita pelo servidor no próprio salvar.
+  _estado.processoOrigemId = (d.vincular && d.processo_id) ? String(d.processo_id) : null;
+  _estado.cotacaoAtualId = null;
+  _estado.cotacaoVinculo = null;
+  renderStatusCotacao(d.vincular ? `Cotação nova a partir do processo ${esc(d.referencia || '')}` : `Simulação com os dados reais de ${esc(d.referencia || 'um processo')} (não vincula)`);
   if(estado.campos && estado.campos.cambio_usd) _estado.cambioFixado = true; // a PTAX do dia não troca o câmbio real
   const avisosExtras = [];
   // Sem UF do cliente (importação própria, ou cliente sem UF no cadastro): a
@@ -4250,7 +4257,9 @@ let _autosaveUsuarioMexeu = false;
 }, true));
 function salvarAutosave(){
   if (!_autosaveUsuarioMexeu) return;
-  try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ ...coletarEstadoFormulario(), savedAt: Date.now(), usuario: true })); } catch(e){}
+  // cotacao_atual_id: depois de atualizar a página, continuar editando a
+  // MESMA cotação (antes o rascunho voltava sem ela e salvar criava outra).
+  try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ ...coletarEstadoFormulario(), savedAt: Date.now(), usuario: true, cotacao_atual_id: _estado.cotacaoAtualId || null })); } catch(e){}
 }
 // O rascunho tem algo que a pessoa preencheu? Compara com o formulário como
 // ele abre (valores padrão). Câmbio do dia fica fora — muda sozinho todo dia.
@@ -4288,6 +4297,9 @@ function restaurarAutosaveSeExistir(){
   if(!temDados || !rascunhoTemAlgoDoUsuario(salvo)) { limparAutosave(); return; }
   if(confirm('Encontramos uma simulacao nao finalizada (nao salva) de antes de atualizar a pagina. Deseja continuar de onde parou?')){
     aplicarEstadoFormulario(salvo);
+    _estado.cotacaoAtualId = salvo.cotacao_atual_id || null;
+    if(_estado.cotacaoAtualId) atualizarInfoVinculo(_estado.cotacaoAtualId);
+    else renderStatusCotacao(_estado.processoOrigemId ? 'Rascunho recuperado (ainda não salvo)' : '');
   } else {
     limparAutosave();
   }
@@ -4484,104 +4496,117 @@ function statusCotacaoInfo(res){
   return { label:'📝 Rascunho', cor:'var(--dim)' };
 }
 
+// Linha de status embaixo de "Salvar Cotação": qual cotação está aberta e o
+// vínculo dela com o processo. A regra do vínculo é uma só, no servidor
+// (lib/vinculo-cotacao.js): cotação vinculada salva de novo atualiza a
+// estimativa do processo; processo fechado/cancelado deixa a cotação só
+// leitura (para outra conta, Duplicar).
+function renderStatusCotacao(prefixo){
+  const el = document.getElementById('cotacao-status');
+  if(!el) return;
+  const partes = [];
+  if(prefixo) partes.push(prefixo);
+  const v = _estado.cotacaoVinculo;
+  if(v && v.id){
+    const trava = !!(v.fechado || v.cancelado);
+    if(v.inexistente) partes.push(`<span style="color:var(--warn);">o processo ${esc(v.referencia || '')} não existe mais — ao salvar, a cotação volta a Rascunho</span>`);
+    else partes.push(`<span style="color:${trava ? 'var(--err)' : '#16a34a'};">🔗 Processo <a href="#" onclick="event.preventDefault();abrirProcessoNoControle('${escJs(v.id)}')">${esc(v.referencia || '')} ↗</a>${trava ? ` (${v.fechado ? 'fechado' : 'cancelado'} — cotação só para leitura)</span> · <a href="#" onclick="event.preventDefault();duplicarCotacaoAberta()">fazer uma cópia para outra conta</a><span>` : ' · salvar atualiza a estimativa do processo'}</span>`);
+  } else if(_estado.processoOrigemId){
+    partes.push('<span style="color:var(--ac);">🔗 Ao salvar, esta cotação fica vinculada ao processo de origem</span>');
+  }
+  if(_estado.rascunhoAnteriorGuardado) partes.push('<a href="#" onclick="event.preventDefault();recuperarRascunhoAnterior()">recuperar a simulação que estava aberta antes</a>');
+  el.innerHTML = partes.join(' · ');
+  const btn = document.getElementById('btn-salvar-cotacao');
+  if(btn){
+    const trava = !!(v && !v.inexistente && (v.fechado || v.cancelado));
+    btn.disabled = trava;
+    btn.title = trava ? 'O processo desta cotação está fechado/cancelado: a cotação fica só para leitura. Use Duplicar (tela Cotações) para fazer outra conta.' : '';
+  }
+}
+
+// Cotação de processo fechado/cancelado é só leitura: a cópia vira uma
+// cotação nova, sem vínculo (o mesmo que "Duplicar" na tela Cotações).
+function duplicarCotacaoAberta(){
+  _estado.cotacaoAtualId = null;
+  _estado.cotacaoVinculo = null;
+  _estado.processoOrigemId = null;
+  renderStatusCotacao('Cópia nova — ainda não salva (salvar cria outra cotação, sem vínculo)');
+  showToast('Cópia pronta: ajuste e salve (vira uma cotação nova)', 'ok');
+}
+
+// Busca o processo ligado à cotação aberta (pra linha de status e a trava).
+async function atualizarInfoVinculo(id){
+  if(!id){ _estado.cotacaoVinculo = null; renderStatusCotacao(); return; }
+  try{
+    const r = await fetch('/api/calculador/cotacoes/' + encodeURIComponent(id));
+    const d = await r.json();
+    if(!d.ok) return;
+    _estado.cotacaoVinculo = d.processo || null;
+    const st = statusCotacaoInfo(d.cotacao && d.cotacao.resumo);
+    renderStatusCotacao(`Editando cotação de ${esc(d.cotacao.cliente || '')} — <span style="color:${st.cor};">${st.label}</span>`);
+  }catch(e){ /* sem rede: fica a linha que já estava */ }
+}
+
 async function salvarCotacao(){
   const cliente = (document.getElementById('cliente').value || '').trim();
   if(!cliente){ showToast('Preencha o cliente antes de salvar', 'err'); return; }
+  const dados = coletarEstadoFormulario();
+  delete dados.processo_origem_id; // o vínculo pendente vai à parte (o servidor vincula)
+  const eraNova = !_estado.cotacaoAtualId;
   const body = {
     id: _estado.cotacaoAtualId || undefined,
     cliente,
-    dados: coletarEstadoFormulario(),
+    dados,
     resumo: resumoParaLista(_estado.ultimoResultado),
   };
+  // Cotação criada a partir do processo ("Criar cotação a partir do
+  // processo" no Controle): o servidor já salva vinculada.
+  if(eraNova && _estado.processoOrigemId) body.vincular_processo_id = _estado.processoOrigemId;
   try{
     const r = await fetch('/api/calculador/cotacoes', {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
     });
     const d = await r.json();
-    if(d.ok){
-      const eraNova = !_estado.cotacaoAtualId;
-      _estado.cotacaoAtualId = d.id;
-      document.getElementById('cotacao-status').textContent = `Cotação salva${eraNova?'':' (atualizada)'} — ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
-      showToast(eraNova ? '✓ Cotação criada' : '✓ Cotação atualizada', 'ok');
-      limparAutosave();
-      // Cotação nasceu a partir de "Vincular ao Calculador" no Controle (item e):
-      // já vincula automaticamente ao processo de origem no primeiro save, sem
-      // precisar do fluxo manual "Vincular a Processo". Só dispara uma vez —
-      // depois de vinculado, salvamentos seguintes já vão como update normal.
-      if(_estado.processoOrigemId){
-        const processoIdParaVincular = _estado.processoOrigemId;
-        _estado.processoOrigemId = null;
+    if(!d.ok){
+      showToast('Não foi possível salvar: '+(d.erro||'?'), 'err');
+      return;
+    }
+    _estado.cotacaoAtualId = d.id;
+    limparAutosave();
+    const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    showToast(eraNova ? '✓ Cotação criada' : '✓ Cotação atualizada', 'ok');
+    if(d.processo_atualizado && d.processo_atualizado.estimativa) showToast(`✓ Estimativa do processo ${d.processo_atualizado.referencia} atualizada com estes números`, 'ok');
+    if(d.aviso_vinculo) showToast(d.aviso_vinculo, 'warn');
+    if(d.vinculo){
+      const pidOrigem = body.vincular_processo_id;
+      _estado.processoOrigemId = null; // tenta uma vez só; depois é pelo "Vincular a Processo"
+      if(d.vinculo.ok){
+        showToast(`✓ Cotação vinculada ao processo ${d.vinculo.processo_referencia||''}`, 'ok');
+      } else if(d.vinculo.conflito && pidOrigem && confirm(`${d.vinculo.erro}\n\nTrocar pela cotação que você acabou de salvar?`)){
         try{
-          const rv = await fetch(`/api/calculador/cotacoes/${d.id}/vincular-processo`, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({processo_id: processoIdParaVincular})
+          const rv = await fetch(`/api/calculador/cotacoes/${encodeURIComponent(d.id)}/vincular-processo`, {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ processo_id: pidOrigem, substituir: true })
           });
           const dv = await rv.json();
-          if(dv.ok) showToast(`✓ Cotação vinculada automaticamente ao processo ${dv.processo_referencia||''}`, 'ok');
-          else showToast('Cotação salva, mas não deu pra vincular ao processo automaticamente: '+(dv.erro||'?'), 'err');
-        }catch(e){ showToast('Cotação salva, mas não deu pra vincular ao processo automaticamente: '+e.message, 'err'); }
+          if(dv.ok) showToast(`✓ Cotação vinculada ao processo ${dv.processo_referencia||''} (a anterior voltou a Rascunho)`, 'ok');
+          else showToast('Cotação salva, mas não deu para vincular: '+(dv.erro||'?'), 'err');
+        }catch(e){ showToast('Cotação salva, mas não deu para vincular: '+e.message, 'err'); }
+      } else if(!d.vinculo.ok){
+        showToast('Cotação salva, mas não foi vinculada ao processo: '+(d.vinculo.erro||'?')+' — use "Vincular a Processo".', 'err');
       }
-    } else {
-      showToast('Erro ao salvar: '+(d.erro||'?'), 'err');
     }
+    await atualizarInfoVinculo(d.id);
+    const el = document.getElementById('cotacao-status');
+    if(el) el.innerHTML = `Cotação salva${eraNova?'':' (atualizada)'} — ${hora}` + (el.innerHTML ? ' · ' + el.innerHTML.replace(/^Editando cotação de [^—]*— /, '') : '');
   } catch(e){ showToast('Erro ao salvar: '+e.message, 'err'); }
 }
 
-async function abrirListaCotacoes(){
-  document.getElementById('mbg-cotacoes').classList.add('open');
-  const tbody = document.getElementById('cot-lista-body');
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">Carregando...</td></tr>';
-  try{
-    const r = await fetch('/api/calculador/cotacoes');
-    const d = await r.json();
-    if(!d.ok || !d.cotacoes.length){
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">Nenhuma cotação salva ainda.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = d.cotacoes.map(c => {
-      const res = c.resumo || {};
-      const st = statusCotacaoInfo(res);
-      const dt = c.updated_at ? new Date(c.updated_at) : null;
-      const dtTxt = dt ? `${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}` : '—';
-      const status = res.status || 'rascunho';
-
-      let statusCel = `<span style="color:${st.cor};font-weight:600;">${st.label}</span>`;
-      if(status === 'aprovada' && res.processo_referencia){
-        statusCel += `<br><a href="#" onclick="event.preventDefault();abrirProcessoNoControle('${res.processo_id}')" style="font-size:11px;">${res.processo_referencia} ↗</a>`;
-      } else if(status === 'rejeitada' && res.motivo_perda){
-        statusCel += `<div style="font-size:10px;color:var(--muted);max-width:160px;" title="${esc(res.motivo_perda)}">${esc(res.motivo_perda.length>40?res.motivo_perda.slice(0,40)+'…':res.motivo_perda)}</div>`;
-      }
-
-      let acoesExtra = '';
-      if(status !== 'aprovada'){
-        acoesExtra += `<button onclick="aprovarCotacao('${c.id}', '${escJs(c.cliente||'')}')">✅ Aprovar</button>`;
-      }
-      if(status === 'rascunho'){
-        acoesExtra += `<button onclick="rejeitarCotacao('${c.id}')">❌ Rejeitar</button>`;
-      }
-
-      return `<tr>
-        <td><strong>${esc(c.cliente)||'—'}</strong></td>
-        <td>${res.tipo||'—'} / ${res.uf||'—'}</td>
-        <td>${res.custo_total!=null ? fmt(res.custo_total) : '—'}</td>
-        <td>${res.lucro_bruto!=null ? fmt(res.lucro_bruto)+' ('+(res.pct_lucro||0).toFixed(1)+'%)' : '—'}</td>
-        <td>${statusCel}</td>
-        <td style="font-size:11px;color:var(--muted);">${dtTxt}${c.updated_by?' · '+c.updated_by:''}</td>
-        <td><div class="cot-actions">
-          ${acoesExtra}
-          <button onclick="carregarCotacao('${c.id}', false)">✏️ Editar</button>
-          <button onclick="carregarCotacao('${c.id}', true)">📋 Duplicar</button>
-          <button class="danger" onclick="excluirCotacao('${c.id}')">🗑</button>
-        </div></td>
-      </tr>`;
-    }).join('');
-  } catch(e){
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--err);padding:20px;">Erro ao carregar: ${e.message}</td></tr>`;
-  }
-}
-
-function fecharListaCotacoes(){
-  document.getElementById('mbg-cotacoes').classList.remove('open');
+// "Cotações" agora é uma tela inteira (/cotacoes): lista completa, filtros,
+// vínculo com o processo e as ações (aprovar, vincular, duplicar...). O
+// rascunho não salvo fica no autosave e volta quando o Calculador abrir.
+function abrirListaCotacoes(){
+  salvarAutosave();
+  location.href = '/cotacoes';
 }
 
 // Abre o processo criado direto no Controle de Processos, em outra aba, já
@@ -4590,68 +4615,57 @@ function abrirProcessoNoControle(processoId){
   window.open('/controle?processo='+encodeURIComponent(processoId), '_blank');
 }
 
-// Aprova a cotação: cria (ou reabre, se já aprovada antes) o processo
-// correspondente em Controle de Processos. Pede confirmação antes porque é
-// uma ação que cria dado em outro sistema — não dá pra "desfazer" com um
-// simples cancelar depois.
-async function aprovarCotacao(id, cliente){
-  if(!confirm(`Aprovar a cotação de "${cliente||'—'}"? Isso cria automaticamente um processo em Controle de Processos.`)) return;
-  try{
-    const r = await fetch(`/api/calculador/cotacoes/${id}/aprovar`, { method:'POST' });
-    const d = await r.json();
-    if(d.ok){
-      showToast(d.ja_aprovada ? `✓ Já estava aprovada — processo ${d.processo_referencia}` : `✓ Processo ${d.processo_referencia} criado no Controle`, 'ok');
-      abrirListaCotacoes();
-    } else {
-      showToast('Erro ao aprovar: '+(d.erro||'?'), 'err');
-    }
-  } catch(e){ showToast('Erro ao aprovar: '+e.message, 'err'); }
-}
-
-// Rejeita a cotação registrando o motivo da perda (pra análise depois: por
-// que perdemos esse negócio — preço, prazo, concorrente, cliente desistiu...).
-async function rejeitarCotacao(id){
-  const motivo = prompt('Motivo da perda dessa cotação (ex: preço, prazo, concorrente, cliente desistiu):');
-  if(motivo === null) return; // usuário cancelou
-  if(!motivo.trim()){ showToast('Informe um motivo para rejeitar', 'err'); return; }
-  try{
-    const r = await fetch(`/api/calculador/cotacoes/${id}/rejeitar`, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ motivo: motivo.trim() })
-    });
-    const d = await r.json();
-    if(d.ok){ showToast('✓ Cotação marcada como rejeitada', 'ok'); abrirListaCotacoes(); }
-    else showToast('Erro ao rejeitar: '+(d.erro||'?'), 'err');
-  } catch(e){ showToast('Erro ao rejeitar: '+e.message, 'err'); }
-}
-
+// Abre uma cotação salva no formulário (editar) ou como cópia nova (duplicar).
 async function carregarCotacao(id, duplicar){
   try{
-    const r = await fetch('/api/calculador/cotacoes/'+id);
+    const r = await fetch('/api/calculador/cotacoes/'+encodeURIComponent(id));
     const d = await r.json();
     if(!d.ok){ showToast('Erro ao carregar cotação', 'err'); return; }
     aplicarEstadoFormulario(d.cotacao.dados);
+    // O vínculo com o processo vive no resumo da cotação (servidor), nunca no
+    // formulário: abrir/duplicar não herda vínculo pendente.
+    _estado.processoOrigemId = null;
     _estado.cotacaoAtualId = duplicar ? null : id; // duplicar = próximo salvar cria registro novo
     if(duplicar){
       // Duplicar sempre volta pra rascunho — é uma cotação nova, mesmo que a
       // original tenha sido aprovada ou rejeitada (não herda status/processo).
-      document.getElementById('cotacao-status').textContent = 'Duplicada — ainda não salva (salve pra criar uma cópia nova)';
+      _estado.cotacaoVinculo = null;
+      renderStatusCotacao('Duplicada — ainda não salva (salve pra criar uma cópia nova, sem vínculo)');
     } else {
+      _estado.cotacaoVinculo = d.processo || null;
       const st = statusCotacaoInfo(d.cotacao.resumo);
-      document.getElementById('cotacao-status').innerHTML = `Editando cotação de ${esc(d.cotacao.cliente)} — <span style="color:${st.cor};">${st.label}</span>`;
+      renderStatusCotacao(`Editando cotação de ${esc(d.cotacao.cliente)} — <span style="color:${st.cor};">${st.label}</span>`);
     }
-    fecharListaCotacoes();
     showToast(duplicar ? '✓ Cotação duplicada no formulário' : '✓ Cotação carregada', 'ok');
   } catch(e){ showToast('Erro ao carregar: '+e.message, 'err'); }
 }
 
-async function excluirCotacao(id){
-  if(!confirm('Excluir essa cotação? Não dá pra desfazer.')) return;
-  try{
-    const r = await fetch('/api/calculador/cotacoes/'+id, {method:'DELETE'});
-    const d = await r.json();
-    if(d.ok){ showToast('✓ Cotação excluída', 'ok'); abrirListaCotacoes(); }
-    else showToast('Erro ao excluir', 'err');
-  } catch(e){ showToast('Erro ao excluir: '+e.message, 'err'); }
+// Antes de abrir uma cotação pelo endereço (?cotacao=), guarda o rascunho
+// não salvo que estava no Calculador — abrir outra cotação não pode apagar o
+// trabalho de ninguém. A linha de status mostra "recuperar".
+const AUTOSAVE_ANTERIOR_KEY = 'calculador_autosave_anterior_v1';
+function guardarRascunhoAnterior(){
+  let raw = null;
+  try { raw = localStorage.getItem(AUTOSAVE_KEY); } catch(e){ return; }
+  if(!raw) return;
+  let salvo = null;
+  try { salvo = JSON.parse(raw); } catch(e){ return; }
+  if(!salvo || !salvo.campos || !rascunhoTemAlgoDoUsuario(salvo)) return;
+  try { localStorage.setItem(AUTOSAVE_ANTERIOR_KEY, raw); localStorage.removeItem(AUTOSAVE_KEY); } catch(e){ return; }
+  _estado.rascunhoAnteriorGuardado = true;
+}
+function recuperarRascunhoAnterior(){
+  let salvo = null;
+  try { salvo = JSON.parse(localStorage.getItem(AUTOSAVE_ANTERIOR_KEY) || 'null'); } catch(e){ salvo = null; }
+  _estado.rascunhoAnteriorGuardado = false;
+  if(!salvo || !salvo.campos){ renderStatusCotacao(); showToast('Não há simulação anterior guardada.', 'warn'); return; }
+  aplicarEstadoFormulario(salvo);
+  _estado.cotacaoAtualId = salvo.cotacao_atual_id || null;
+  _estado.processoOrigemId = salvo.processo_origem_id || null;
+  try { localStorage.removeItem(AUTOSAVE_ANTERIOR_KEY); } catch(e){}
+  if(_estado.cotacaoAtualId) atualizarInfoVinculo(_estado.cotacaoAtualId);
+  else { _estado.cotacaoVinculo = null; renderStatusCotacao('Simulação anterior recuperada (ainda não salva)'); }
+  showToast('✓ Simulação anterior recuperada', 'ok');
 }
 
 // ── UTILS ─────────────────────────────────────────────────

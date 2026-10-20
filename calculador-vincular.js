@@ -15,7 +15,7 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
           <button class="modal-cot-close" onclick="fecharVincularProcesso()">✕</button>
         </div>
         <div class="modal-cot-b">
-          <div style="font-size:12px;color:var(--dim);margin-bottom:14px;">Em vez de criar um processo novo ao aprovar, vincule esta cotação a um processo que já existe no Controle (ex: o processo começou direto no Controle, sem passar pelo Calculador). Os valores estimados (e os custos cotados, se ainda não houver Custos Reais lançados) são gravados no processo escolhido.</div>
+          <div style="font-size:12px;color:var(--dim);margin-bottom:14px;">Em vez de criar um processo novo ao aprovar, vincule a cotação a um processo que já existe no Controle. O vínculo vale nos dois lados: o processo passa a ter esta cotação (a estimativa dela vira o "cotado" do processo e, se ele ainda não tiver Custos Reais, os valores cotados entram como ponto de partida) e a cotação fica Aprovada, ligada ao processo. Um processo tem uma cotação só: se ele já tiver outra, você confirma a troca.</div>
           <div class="form-group"><label class="form-label">Cotação</label>
             <select class="form-input" id="vincular-cotacao-select"></select>
           </div>
@@ -43,10 +43,18 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
     try {
       const r = await fetch('/api/calculador/cotacoes');
       const d = await r.json();
-      const cots = (d.cotacoes || []).filter(c => !c.resumo || c.resumo.status !== 'aprovada');
-      if (!cots.length) { sel.innerHTML = '<option value="">Nenhuma cotação disponível</option>'; }
+      // Só as que ainda não têm processo (regra: uma cotação, um processo).
+      const cots = (d.cotacoes || []).filter(c => !(c.resumo && c.resumo.processo_id));
+      const atual = (typeof _estado !== 'undefined' && _estado && _estado.cotacaoAtualId) || '';
+      const dataCurta = iso => { const dt = iso ? new Date(iso) : null; return dt && !isNaN(dt) ? dt.toLocaleDateString('pt-BR') : ''; };
+      if (!cots.length) { sel.innerHTML = '<option value="">Nenhuma cotação sem processo</option>'; }
       else {
-        sel.innerHTML = cots.map(c => `<option value="${_escVinc(c.id)}">${_escVinc(c.cliente || '(sem cliente)')} — ${_escVinc(c.numero || c.id.slice(0, 8))}</option>`).join('');
+        sel.innerHTML = cots.map(c => {
+          const r = c.resumo || {};
+          const tipoUf = [r.tipo, r.uf].filter(Boolean).join('/');
+          const rot = `${c.cliente || '(sem cliente)'}${tipoUf ? ' · ' + tipoUf : ''} · ${dataCurta(c.updated_at)}${c.id === atual ? ' (aberta agora)' : ''}`;
+          return `<option value="${_escVinc(c.id)}"${c.id === atual ? ' selected' : ''}>${_escVinc(rot)}</option>`;
+        }).join('');
       }
     } catch (e) { sel.innerHTML = '<option value="">Erro ao carregar cotações</option>'; }
     try {
@@ -78,7 +86,8 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
     }
     dd.innerHTML = matches.map(p => {
       const refEsc = (p.referencia || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      return `<div style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);" onmousedown="selecionarProcessoVincular('${_escVinc(p.id)}','${_escVinc(refEsc)}')"><strong>${_escVinc(p.referencia || '')}</strong> — ${_escVinc(p.cliente || '(sem cliente)')} · ${_escVinc(p.fase || '')}</div>`;
+      const jaTem = p.cotacao_id ? ' · <span style="color:#b45309;">já tem cotação</span>' : '';
+      return `<div style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);" onmousedown="selecionarProcessoVincular('${_escVinc(p.id)}','${_escVinc(refEsc)}')"><strong>${_escVinc(p.referencia || '')}</strong> — ${_escVinc(p.cliente || '(sem cliente)')} · ${_escVinc(p.fase || '')}${jaTem}</div>`;
     }).join('');
     dd.style.display = 'block';
   };
@@ -96,16 +105,21 @@ function _escVinc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(
     const processoId = document.getElementById('vincular-processo-id').value;
     if (!cotacaoId) { showToast('Selecione a cotação', 'err'); return; }
     if (!processoId) { showToast('Busque e selecione o processo pela referência', 'err'); return; }
-    if (!confirm('Vincular esta cotação ao processo selecionado? Os valores estimados serão gravados no processo (sem sobrescrever Custos Reais já lançados).')) return;
+    if (!confirm('Vincular esta cotação ao processo selecionado? A estimativa dela vira o "cotado" do processo (Custos Reais já lançados não mudam).')) return;
+    const enviar = substituir => fetch(`/api/calculador/cotacoes/${encodeURIComponent(cotacaoId)}/vincular-processo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ processo_id: processoId, substituir: !!substituir })
+    }).then(r => r.json());
     try {
-      const r = await fetch(`/api/calculador/cotacoes/${cotacaoId}/vincular-processo`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ processo_id: processoId })
-      });
-      const d = await r.json();
+      let d = await enviar(false);
+      if (!d.ok && d.conflito) {
+        if (!confirm(d.erro + '\n\nTrocar pela cotação escolhida?')) return;
+        d = await enviar(true);
+      }
       if (!d.ok) throw new Error(d.erro || 'Erro ao vincular');
-      showToast(`✓ Cotação vinculada ao processo ${d.processo_referencia || ''}`, 'ok');
+      showToast(`✓ Cotação vinculada ao processo ${d.processo_referencia || ''}${d.trocadas && d.trocadas.length ? ' (a anterior voltou a Rascunho)' : ''}`, 'ok');
       window.fecharVincularProcesso();
+      if (typeof _estado !== 'undefined' && _estado && _estado.cotacaoAtualId === cotacaoId && typeof atualizarInfoVinculo === 'function') atualizarInfoVinculo(cotacaoId);
     } catch (e) { showToast('Erro: ' + e.message, 'err'); }
   };
 

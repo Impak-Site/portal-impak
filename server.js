@@ -123,7 +123,7 @@ function enviarHtmlVersionado(res, arquivo) {
 function enviarControleV2(res) { enviarHtmlVersionado(res, 'controle_v2.html'); }
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHash } = require('crypto');
-const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase, importarManuBase, importarCatalogoProdutos } = require('./planilha-import.js');
+const { mapearCotacaoParaProcesso, mapearProcessoParaCotacao, extrairEstimativa, gerarRealJsonInicial } = require('./mapeamento_cotacao_processo.js'); const VinculoCotacao = require('./lib/vinculo-cotacao.js'); const { importarPlanilhaBase, importarFechamentoBase, importarDespachanteBase, importarManuBase, importarCatalogoProdutos } = require('./planilha-import.js');
 
 function gerarUUID(){ return randomUUID(); }
 
@@ -2903,6 +2903,8 @@ app.get('/controle/:ref', auth('controle'), (req, res) => enviarControleV2(res))
 // em controle-core.js e renderDashTV() em controle-dash-tv.js.
 app.get('/tv', auth('tv'), (req, res) => enviarControleV2(res));
 app.get('/calculador', auth('tyredesk'), (req, res) => enviarHtmlVersionado(res, 'calculador.html'));
+// Tela Cotações (20/10/2026): todas as cotações numa tela inteira, com o vínculo processo ↔ cotação.
+app.get('/cotacoes', auth('tyredesk'), (req, res) => enviarHtmlVersionado(res, 'cotacoes.html'));
 
 // ── PTAX histórico (Banco Central) — pedido do Ayslan (09/09/2026, "usar a
 // API do Banco Central pra PTAX"): fonte oficial de referência do dólar
@@ -4129,6 +4131,8 @@ app.get('/api/controle/v2/processo/:id/log', auth('controle','financeiro','resul
 app.delete('/api/controle/v2/processo/:id', auth('controle','financeiro'), requireGerente, async (req, res) => {
   try {
     const id = req.params.id;
+    // Cotação vinculada perde o vínculo depois da exclusão (regra 6, lib/vinculo-cotacao.js).
+    const { data: procExcl } = await sb().from('controle_processos').select('id, referencia, cotacao_id').eq('id', id).maybeSingle();
     // Antes disto, o DELETE só apagava a linha em controle_processos — em
     // qualquer processo com histórico (controle_log, populado a cada save),
     // notificação (controle_notificacoes) ou arquivo GED (controle_arquivos)
@@ -4150,6 +4154,7 @@ app.delete('/api/controle/v2/processo/:id', auth('controle','financeiro'), requi
 
     const { error } = await sb().from('controle_processos').delete().eq('id', id);
     if (error) throw new Error(error.message);
+    if (procExcl) await desvincularCotacoesDoProcessoExcluido(procExcl, req.session.usuario);
     res.json({ ok: true });
   } catch (e) {
     console.error('controle/v2/processo DELETE erro:', e.message);
@@ -4297,11 +4302,13 @@ app.post('/api/controle/processo', auth('controle','financeiro'), async (req, re
 
 app.delete('/api/controle/processo/:id', auth('controle','financeiro'), requireGerente, async (req, res) => {
   try {
+    const { data: procExcl } = await sb().from('controle_processos').select('id, referencia, cotacao_id').eq('id', req.params.id).maybeSingle();
     const { error } = await sb()
       .from('controle_processos')
       .delete()
       .eq('id', req.params.id);
     if (error) throw new Error(error.message);
+    if (procExcl) await desvincularCotacoesDoProcessoExcluido(procExcl, req.session.usuario);
     res.json({ ok: true });
   } catch (e) {
     console.error('controle/processo DELETE erro:', e.message);
@@ -5588,21 +5595,146 @@ app.post('/api/catalogo-produtos/importar', auth('tyredesk'), async (req, res) =
 app.post('/api/calculador/importar-planilha', auth('tyredesk'), async (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = await lerPlanilhaIsolada('importarPlanilhaBase', buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
 app.post('/api/controle/importar-fechamento', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = await lerPlanilhaIsolada('importarFechamentoBase', buffer); res.json({ ok: true, datas: resultado.datas, real_json: resultado.real_json, moedas: resultado.moedas, avisos: resultado.avisos, resumo: resultado.resumo || null }); } catch (e) { console.error('Erro ao importar fechamento:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
 // ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────
-// Lista leve (só o resumo, não o formulário inteiro) pra tela de listagem.
+// Vínculo cotação ↔ processo: regra única em lib/vinculo-cotacao.js (Ayslan,
+// 20/10/2026 — "tudo de acordo processo x calculador e calculador x
+// processo"). As rotas abaixo só buscam as linhas, pedem o plano à regra e
+// gravam os DOIS lados (processo e cotação) + o Histórico do processo.
+const COLS_PROC_VINCULO = 'id, referencia, cliente, fase, fechado, cancelado, cotacao_id, estimativa_json';
+const COLS_PROC_PLANO = COLS_PROC_VINCULO + ', real_json, comissoes_json';
+const COLS_LISTA_COTACOES = 'id,cliente,numero,resumo,ativo,updated_at,updated_by';
+// Campos do formulário pra tela Cotações (sem baixar o formulário inteiro).
+const COLS_LISTA_COTACOES_EXTRA = ',fob_usd:dados->campos->>fob_usd,cambio_usd:dados->campos->>cambio_usd,tipo_importacao:dados->campos->>tipo_importacao,qtde_containers:dados->campos->>qtde_containers,origem:dados->campos->>origem,marca:dados->mix->>forn';
+const ID_SEGURO = /^[A-Za-z0-9_-]{1,64}$/;
+
+async function registrarLogProcesso(processoId, usuario, linhas) {
+  if (!processoId || !Array.isArray(linhas) || !linhas.length) return;
+  const agora = new Date().toISOString();
+  try {
+    await sb().from('controle_log').insert(linhas.map(l => ({
+      processo_id: processoId, usuario: usuario || null, campo: String(l.campo || '').slice(0, 200),
+      valor_antes: String(l.valor_antes == null ? '' : l.valor_antes), valor_depois: String(l.valor_depois == null ? '' : l.valor_depois), created_at: agora,
+    })));
+  } catch (e) { console.warn('histórico do vínculo cotação ignorado:', e.message); }
+}
+
+// Cotações ATIVAS ligadas ao processo: as que apontam pra ele
+// (resumo.processo_id) e a que ele aponta (cotacao_id), menos `excetoId`.
+async function cotacoesLigadasAoProcesso(proc, excetoId) {
+  const cols = 'id, cliente, resumo, ativo, updated_at, updated_by';
+  let r = await sb().from('calculador_cotacoes').select(cols).eq('ativo', true).eq('resumo->>processo_id', proc.id);
+  if (r.error) {
+    // Banco sem filtro por caminho JSON: filtra aqui (poucas centenas de linhas).
+    r = await sb().from('calculador_cotacoes').select(cols).eq('ativo', true).limit(5000);
+    if (r.error) throw new Error(r.error.message);
+    r = { data: (r.data || []).filter(c => c.resumo && c.resumo.processo_id === proc.id) };
+  }
+  const lista = (r.data || []).slice();
+  if (proc.cotacao_id && !lista.some(c => c.id === proc.cotacao_id)) {
+    const { data: c2 } = await sb().from('calculador_cotacoes').select(cols).eq('id', proc.cotacao_id).maybeSingle();
+    const pid2 = c2 && c2.resumo && c2.resumo.processo_id;
+    if (c2 && c2.ativo !== false && (!pid2 || pid2 === proc.id)) lista.push(c2);
+  }
+  return lista.filter(c => c.id !== excetoId);
+}
+
+function resumoProcessoParaCotacao(p) {
+  return p ? { id: p.id, referencia: p.referencia, cliente: p.cliente || '', fase: p.fase || '', fechado: !!p.fechado, cancelado: !!p.cancelado, cotacao_id: p.cotacao_id || null } : null;
+}
+
+// Vincula cotação → processo existente pela regra única (usada pela rota
+// "vincular-processo" e pelo salvar da cotação criada a partir do processo).
+async function executarVinculoCotacao({ cotacaoId, processoId, substituir, usuario }) {
+  const agora = new Date().toISOString();
+  const { data: cot, error: e1 } = await sb().from('calculador_cotacoes').select('*').eq('id', cotacaoId).maybeSingle();
+  if (e1) throw new Error(e1.message);
+  const { data: proc, error: e2 } = await sb().from('controle_processos').select(COLS_PROC_PLANO).eq('id', processoId).maybeSingle();
+  if (e2) throw new Error(e2.message);
+  const outras = proc ? await cotacoesLigadasAoProcesso(proc, cotacaoId) : [];
+  const plano = VinculoCotacao.planoVincular({ cot, proc, outras, substituir: !!substituir, usuario, agora });
+  if (plano.erro) return { ok: false, status: plano.status || 409, erro: plano.erro, conflito: plano.conflito || null };
+  const { error: eP } = await sb().from('controle_processos').update(plano.patchProcesso).eq('id', proc.id);
+  if (eP) throw new Error(eP.message);
+  const { error: eC } = await sb().from('calculador_cotacoes').update({ resumo: plano.resumoCotacao }).eq('id', cot.id);
+  if (eC) {
+    console.error(`INCONSISTÊNCIA: processo ${proc.referencia} já aponta para a cotação ${cot.id}, mas a cotação não foi atualizada: ${eC.message}`);
+    throw new Error(eC.message);
+  }
+  for (const d of plano.desvincular) {
+    const { error: eD } = await sb().from('calculador_cotacoes').update({ resumo: d.resumo }).eq('id', d.id);
+    if (eD) console.error(`vínculo: cotação ${d.id} não foi desvinculada do processo ${proc.referencia}: ${eD.message}`);
+  }
+  await registrarLogProcesso(proc.id, usuario, plano.log);
+  console.log(`cotação ${cot.id} vinculada ao processo ${proc.referencia} por ${usuario}${plano.desvincular.length ? ' (trocou ' + plano.desvincular.length + ')' : ''}`);
+  return { ok: true, processo_id: proc.id, processo_referencia: proc.referencia, trocadas: plano.desvincular.map(d => d.id) };
+}
+
+// Desvincula as cotações de um processo que foi excluído (regra 6).
+async function desvincularCotacoesDoProcessoExcluido(proc, usuario) {
+  if (!proc || !proc.id) return;
+  try {
+    const lista = await cotacoesLigadasAoProcesso(proc, null);
+    const agora = new Date().toISOString();
+    for (const c of lista) {
+      if (!(c.resumo && c.resumo.processo_id === proc.id)) continue;
+      const resumo = VinculoCotacao.resumoDesvinculado(c.resumo, { usuario, agora, referencia: proc.referencia, motivo: 'o processo foi excluído' });
+      await sb().from('calculador_cotacoes').update({ resumo }).eq('id', c.id);
+    }
+  } catch (e) { console.warn('desvincular cotações do processo excluído:', e.message); }
+}
+
+// Processos ligados às cotações (dos dois lados), pra conferência do vínculo.
+async function processosLigadosAsCotacoes(cotacoes) {
+  const procs = new Map();
+  const ids = [...new Set((cotacoes || []).map(c => c.resumo && c.resumo.processo_id).filter(id => typeof id === 'string' && ID_SEGURO.test(id)))];
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await sb().from('controle_processos').select(COLS_PROC_VINCULO).in('id', ids.slice(i, i + 150));
+    if (error) throw new Error(error.message);
+    (data || []).forEach(p => procs.set(p.id, p));
+  }
+  const { data: comCot, error: e2 } = await sb().from('controle_processos').select(COLS_PROC_VINCULO).not('cotacao_id', 'is', null).limit(5000);
+  if (e2) throw new Error(e2.message);
+  (comCot || []).forEach(p => procs.set(p.id, p));
+  return [...procs.values()];
+}
+
+// Lista. Sem parâmetros: leve (só o resumo, 200 mais recentes) — usada pelo
+// "Vincular a Processo" do Calculador. ?completa=1 (tela Cotações): todas,
+// com os campos principais do formulário, o processo ligado e a conferência
+// do vínculo. ?excluidas=1 (gerente): inclui as excluídas.
 app.get('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
   try {
-    const { data, error } = await sb()
-      .from('calculador_cotacoes')
-      .select('id,cliente,numero,resumo,updated_at,updated_by')
-      .eq('ativo', true)
-      .order('updated_at', { ascending: false })
-      .limit(200);
+    const completa = req.query.completa === '1';
+    const comExcluidas = req.query.excluidas === '1' && req.session.role === 'gerente';
+    const montar = extra => {
+      let q = sb().from('calculador_cotacoes').select(COLS_LISTA_COTACOES + (extra || ''))
+        .order('updated_at', { ascending: false }).limit(completa ? 3000 : 200);
+      return comExcluidas ? q : q.eq('ativo', true);
+    };
+    let { data, error } = await montar(completa ? COLS_LISTA_COTACOES_EXTRA : '');
+    if (error && completa) ({ data, error } = await montar('')); // sem os campos extras, mas a tela abre
     if (error) throw new Error(error.message);
-    res.json({ ok: true, cotacoes: data || [] });
+    const cotacoes = data || [];
+    if (!completa) return res.json({ ok: true, cotacoes });
+
+    const processos = await processosLigadosAsCotacoes(cotacoes);
+    const porId = new Map(processos.map(p => [p.id, p]));
+    const porCotacaoId = new Map(processos.filter(p => p.cotacao_id).map(p => [p.cotacao_id, p]));
+    const diag = VinculoCotacao.diagnosticarVinculos(cotacoes, processos, {});
+    cotacoes.forEach(c => {
+      const pid = c.resumo && c.resumo.processo_id;
+      const p = (pid && porId.get(pid)) || porCotacaoId.get(c.id) || null;
+      c.processo = resumoProcessoParaCotacao(p);
+      c.vinculo = diag.porCotacao[c.id] || { estado: c.ativo === false ? 'excluida' : (pid ? 'ok' : 'sem_vinculo'), texto: '' };
+      if (c.ativo === false) c.vinculo = { estado: 'excluida', texto: (c.resumo && c.resumo.excluida_motivo) || '' };
+    });
+    res.json({ ok: true, cotacoes, conferencia: { contagem: diag.contagem, problemas: diag.problemas.slice(0, 500) },
+      usuario: { role: req.session.role || '', controle: (req.session.modulos || []).includes('controle') } });
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-// Registro completo (formulário + mix) pra reabrir no Calculador.
+// Registro completo (formulário + mix) pra reabrir no Calculador, com o
+// processo ligado (o Calculador mostra "vinculada ao processo X" e trava a
+// edição quando ele está fechado/cancelado).
 app.get('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
   try {
     const { data, error } = await sb()
@@ -5611,87 +5743,117 @@ app.get('/api/calculador/cotacoes/:id', auth('tyredesk'), async (req, res) => {
       .eq('id', req.params.id)
       .single();
     if (error) throw new Error(error.message);
-    res.json({ ok: true, cotacao: data });
+    let processo = null;
+    const pid = data && data.resumo && data.resumo.processo_id;
+    if (pid) {
+      const { data: p } = await sb().from('controle_processos').select(COLS_PROC_VINCULO).eq('id', pid).maybeSingle();
+      processo = resumoProcessoParaCotacao(p);
+      if (!p) processo = { id: pid, referencia: data.resumo.processo_referencia || '', inexistente: true };
+    }
+    res.json({ ok: true, cotacao: data, processo });
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
 // Criar/atualizar. Sem id no corpo = cria novo (usado tanto pra "Salvar"
 // quanto pra "Duplicar", já que duplicar só manda os dados sem o id original).
 //
-// IMPORTANTE: o front (resumoParaLista, calculador.html) só manda os campos
-// de CÁLCULO dentro de `resumo` (tipo, uf, custo_total, etc) — ele não sabe
-// nada sobre status de aprovação/rejeição, porque isso é decidido pelos
-// endpoints /aprovar e /rejeitar abaixo. Se a gente simplesmente sobrescrever
-// `resumo` inteiro aqui, salvar uma edição numa cotação já aprovada ou
-// rejeitada IA PERDER esse status (voltava pra "rascunho" sem querer). Por
-// isso, quando já existe uma cotação com esse id, busca o resumo salvo antes
-// e faz merge: os campos de cálculo vêm do front (mais recentes), mas
-// status/processo_id/motivo_perda/etc só são tocados pelos endpoints
-// dedicados de aprovar/rejeitar, nunca por um "Salvar" comum.
+// O front (resumoParaLista, calculador.html) só manda os campos de CÁLCULO
+// dentro de `resumo`; os de ciclo de vida (status, vínculo com processo,
+// quem criou/excluiu — CAMPOS_RESUMO_CICLO) ficam com o que está no banco e
+// só mudam pelas rotas próprias. Cotação vinculada: o processo acompanha
+// (estimativa + comissionados, com Histórico); processo fechado/cancelado →
+// a cotação fica só leitura (409). Cotação nova com `vincular_processo_id`
+// ("Criar cotação a partir do processo"): já sai vinculada.
 app.post('/api/calculador/cotacoes', auth('tyredesk'), async (req, res) => {
   try {
-    const c = req.body;
-    if (!c.cliente) return res.status(400).json({ erro: 'Cliente obrigatório' });
-    // Segurança (item 5): status de aprovação/rejeição e vínculo com
-    // processo só mudam pelas rotas próprias (aprovar/rejeitar/vincular);
-    // 'ativo' só pela exclusão (gerente) — salvar não reativa excluída.
-    const CAMPOS_RESUMO_PROTEGIDOS = ['status','processo_id','processo_referencia','data_aprovacao','aprovado_por',
-      'motivo_perda','data_rejeicao','rejeitado_por'];
-    const resumoCliente = { ...(c.resumo || {}) };
-    CAMPOS_RESUMO_PROTEGIDOS.forEach(k => { delete resumoCliente[k]; });
-    delete c.ativo;
+    const c = req.body || {};
+    if (!c.cliente || !String(c.cliente).trim()) return res.status(400).json({ erro: 'Cliente obrigatório' });
+    const usuario = req.session.usuario || null;
+    const agora = new Date().toISOString();
+    const vincularProcessoId = (typeof c.vincular_processo_id === 'string' && ID_SEGURO.test(c.vincular_processo_id)) ? c.vincular_processo_id : null;
+    const resumoCliente = { ...((c.resumo && typeof c.resumo === 'object') ? c.resumo : {}) };
+    VinculoCotacao.CAMPOS_RESUMO_CICLO.forEach(k => { delete resumoCliente[k]; });
+    const dados = (c.dados && typeof c.dados === 'object') ? { ...c.dados } : null;
+    if (dados) delete dados.processo_origem_id; // vínculo pendente não fica gravado na cotação
+    let id = (typeof c.id === 'string' && c.id) ? c.id : null;
     let existente = null;
-    if (c.id) {
+    if (id) {
       ({ data: existente } = await sb()
         .from('calculador_cotacoes')
-        .select('resumo, ativo')
-        .eq('id', c.id)
+        .select('id, resumo, ativo')
+        .eq('id', id)
         .maybeSingle());
       if (existente && existente.ativo === false) {
         return res.status(409).json({ erro: 'Esta cotação foi excluída — salve como nova cotação.' });
       }
     } else {
-      c.id = require('crypto').randomUUID();
+      id = require('crypto').randomUUID();
     }
-    if (existente) {
-      c.resumo = { ...(existente.resumo || {}), ...resumoCliente };
-    } else {
-      c.resumo = resumoCliente;
-      c.ativo = true;
+    let resumo = existente
+      ? { ...(existente.resumo || {}), ...resumoCliente }
+      : { ...resumoCliente, criado_em: agora, criado_por: usuario };
+
+    // Cotação já vinculada: o processo acompanha (regra 4).
+    let plano = null, procVinc = null;
+    const pidVinc = existente && existente.resumo && existente.resumo.processo_id;
+    if (pidVinc) {
+      ({ data: procVinc } = await sb().from('controle_processos').select(COLS_PROC_PLANO).eq('id', pidVinc).maybeSingle());
+      plano = VinculoCotacao.planoResalvar({ cotNova: { id, cliente: c.cliente, dados, resumo }, proc: procVinc || null, usuario, agora });
+      if (plano.erro) return res.status(plano.status || 409).json({ erro: plano.erro, so_leitura: true });
+      resumo = plano.resumoCotacao;
     }
-    c.updated_at = new Date().toISOString();
-    c.updated_by = req.session.usuario || null;
-    const { error } = await sb().from('calculador_cotacoes').upsert(c, { onConflict: 'id' });
+
+    const linha = { id, cliente: String(c.cliente).trim().slice(0, 200), resumo, updated_at: agora, updated_by: usuario };
+    if (dados) linha.dados = dados; // sem formulário no corpo: não apaga o que está salvo
+    if (c.numero !== undefined) linha.numero = c.numero == null ? null : String(c.numero).slice(0, 60);
+    if (!existente) linha.ativo = true;
+    const { error } = await sb().from('calculador_cotacoes').upsert(linha, { onConflict: 'id' });
     if (error) throw new Error(error.message);
-    res.json({ ok: true, id: c.id });
+
+    const resposta = { ok: true, id };
+    if (plano && plano.patchProcesso && procVinc) {
+      const { error: eP } = await sb().from('controle_processos').update(plano.patchProcesso).eq('id', procVinc.id);
+      if (eP) resposta.aviso_vinculo = `A cotação foi salva, mas a estimativa do processo ${procVinc.referencia} não foi atualizada: ${eP.message}`;
+      else {
+        await registrarLogProcesso(procVinc.id, usuario, plano.log);
+        resposta.processo_atualizado = { id: procVinc.id, referencia: procVinc.referencia, estimativa: !!plano.patchProcesso.estimativa_json };
+      }
+    }
+    if (plano && plano.desvinculada) resposta.aviso_vinculo = 'Esta cotação apontava para um processo que não existe mais (ou que é de outra cotação) — ela voltou a Rascunho.';
+    if (vincularProcessoId && !pidVinc) {
+      if (!(req.session.modulos || []).includes('controle')) {
+        resposta.vinculo = { ok: false, erro: 'Sem acesso ao Controle — a cotação foi salva, mas não foi vinculada ao processo.' };
+      } else {
+        resposta.vinculo = await executarVinculoCotacao({ cotacaoId: id, processoId: vincularProcessoId, substituir: c.substituir_vinculo === true, usuario });
+      }
+    }
+    res.json(resposta);
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
 // ── Aprovar cotação → cria processo em Controle de Processos ────
 // Idempotente: se a cotação já foi aprovada antes (já tem processo_id no
-// resumo), não cria um processo novo de novo — só devolve o que já existe.
-// Isso evita duplicar processo se o usuário clicar "Aprovar" duas vezes
-// (ex: clique duplo, ou dar refresh e clicar de novo sem perceber que já
-// tinha aprovado).
+// resumo e o processo existe), não cria um processo novo de novo — só
+// devolve o que já existe. Isso evita duplicar processo se o usuário clicar
+// "Aprovar" duas vezes (ex: clique duplo, ou dar refresh e clicar de novo
+// sem perceber que já tinha aprovado). Cotação que apontava pra processo
+// excluído é tratada como não vinculada.
 //
 // Aprovar cria dado em outro sistema (Controle de Processos), então exige
 // os DOIS módulos — não basta ter acesso ao Calculador (`auth('tyredesk')`
 // só cobre isso), também precisa ter acesso a Processos. Hoje todo usuário
 // já tem os dois (ver USUARIOS no topo do arquivo), mas isso evita abrir uma
 // brecha se um dia existir um usuário só com acesso ao Calculador.
-// Comissionados escolhidos no Calculador (dados.comissionados) → códigos
-// limpos pra gravar em controle_processos.comissoes_json.selecionados.
-function comissionadosDaCotacao(dados) {
-  const l = dados && Array.isArray(dados.comissionados) ? dados.comissionados : [];
-  return [...new Set(l.filter(x => typeof x === 'string').map(x => x.trim().toUpperCase().slice(0, 60)).filter(Boolean))].slice(0, 30);
+function exigirModuloControle(acao) {
+  return (req, res, next) => {
+    if (!(req.session.modulos || []).includes('controle')) {
+      return res.status(403).json({ erro: `Sem acesso ao Controle — não é possível ${acao}.` });
+    }
+    next();
+  };
 }
 
-app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, next) => {
-  if (!req.session.modulos.includes('controle')) {
-    return res.status(403).json({ erro: 'Sem acesso ao Controle — não é possível aprovar cotações' });
-  }
-  next();
-}, async (req, res) => {
+app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), exigirModuloControle('aprovar cotações'), async (req, res) => {
   try {
     const { data: cot, error: errBusca } = await sb()
       .from('calculador_cotacoes')
@@ -5700,10 +5862,12 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
       .single();
     if (errBusca) throw new Error(errBusca.message);
     if (!cot) return res.status(404).json({ erro: 'Cotação não encontrada' });
+    if (cot.ativo === false) return res.status(409).json({ erro: 'Esta cotação foi excluída — restaure-a antes de aprovar.' });
 
     const resumoAtual = cot.resumo || {};
-    if (resumoAtual.status === 'aprovada' && resumoAtual.processo_id) {
-      return res.json({ ok: true, ja_aprovada: true, processo_id: resumoAtual.processo_id, processo_referencia: resumoAtual.processo_referencia });
+    if (resumoAtual.processo_id) {
+      const { data: existe } = await sb().from('controle_processos').select('id, referencia').eq('id', resumoAtual.processo_id).maybeSingle();
+      if (existe) return res.json({ ok: true, ja_aprovada: true, processo_id: existe.id, processo_referencia: existe.referencia });
     }
 
     const processoBase = mapearCotacaoParaProcesso(cot.dados, cot.cliente, { resumo: cot.resumo });
@@ -5717,30 +5881,21 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
     // o processo já nasce com esses valores preenchidos em "Pago" (ver
     // gerarRealJsonInicial em mapeamento_cotacao_processo.js).
     const custosCotados = estimativa && estimativa.custos_cotados_json;
+    const agora = new Date().toISOString();
     const processo = {
       ...processoBase,
       id: gerarUUID(),
-      updated_at: new Date().toISOString(),
+      updated_at: agora,
       estimativa_json: estimativa,
       real_json: gerarRealJsonInicial(custosCotados),
       real_cambio: (custosCotados && Number.isFinite(parseFloat(custosCotados.cambio)) ? parseFloat(custosCotados.cambio) : null),
       cotacao_id: cot.id,
     };
-    const comSelAprov = comissionadosDaCotacao(cot.dados);
+    const comSelAprov = VinculoCotacao.comissionadosDaCotacao(cot.dados);
     if (comSelAprov.length) processo.comissoes_json = { selecionados: comSelAprov, pagamentos: [] };
 
-    const novoResumo = {
-      ...resumoAtual,
-      status: 'aprovada',
-      processo_id: processo.id,
-      processo_referencia: processo.referencia,
-      data_aprovacao: new Date().toISOString(),
-      aprovado_por: req.session.usuario || null,
-      // se tinha sido rejeitada antes e o usuário mudou de ideia, limpa o motivo antigo
-      motivo_perda: undefined,
-      data_rejeicao: undefined,
-      rejeitado_por: undefined,
-    };
+    // Se tinha sido rejeitada antes e o usuário mudou de ideia, a regra limpa o motivo antigo.
+    const novoResumo = VinculoCotacao.resumoVinculado(resumoAtual, processo, { usuario: req.session.usuario, agora });
 
     // Trava contra duplo clique/corrida: só atualiza o resumo (marcando
     // aprovada) se o resumo no banco ainda for exatamente o que acabamos de
@@ -5752,7 +5907,7 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
     // Ayslan em 13/10/2026.)
     let casQ = sb()
       .from('calculador_cotacoes')
-      .update({ resumo: novoResumo, updated_at: new Date().toISOString() })
+      .update({ resumo: novoResumo, updated_at: agora })
       .eq('id', req.params.id);
     casQ = cot.updated_at ? casQ.eq('updated_at', cot.updated_at) : casQ.is('updated_at', null);
     const { data: casRows, error: errCas } = await casQ.select('id');
@@ -5766,10 +5921,14 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
     const { error: errProc } = await sb().from('controle_processos').insert(processo);
     if (errProc) {
       // Resumo já ficou marcado como aprovado mas o processo não foi criado —
-      // caso raro (falha do insert depois do CAS); loga alto pra correção manual.
+      // devolve a cotação ao estado anterior pra não ficar apontando pro nada.
       console.error(`INCONSISTÊNCIA: cotação ${cot.id} marcada aprovada mas processo ${processo.id} falhou ao inserir: ${errProc.message}`);
+      try { await sb().from('calculador_cotacoes').update({ resumo: resumoAtual }).eq('id', cot.id); } catch (e) { /* fica no log acima */ }
       throw new Error(errProc.message);
     }
+    await registrarLogProcesso(processo.id, req.session.usuario, [
+      { campo: 'Cotação vinculada', valor_antes: '—', valor_depois: VinculoCotacao.rotuloCotacao(cot) + ' (processo criado ao aprovar)' },
+    ]);
 
     console.log(`cotação aprovada: ${cot.cliente} → processo ${processo.referencia} por ${req.session.usuario}`);
     res.json({ ok: true, processo_id: processo.id, processo_referencia: processo.referencia });
@@ -5780,21 +5939,28 @@ app.post('/api/calculador/cotacoes/:id/aprovar', auth('tyredesk'), (req, res, ne
 });
 
 // ── Rejeitar cotação (registra motivo de perda) ──────────────────
+// Cotação vinculada a um processo não pode ser rejeitada (desvincule antes).
 app.post('/api/calculador/cotacoes/:id/rejeitar', auth('tyredesk'), async (req, res) => {
   try {
-    const motivo = (req.body && req.body.motivo || '').trim();
+    const motivo = String((req.body && req.body.motivo) || '').trim().slice(0, 500);
     if (!motivo) return res.status(400).json({ erro: 'Informe o motivo da perda' });
 
     const { data: cot, error: errBusca } = await sb()
       .from('calculador_cotacoes')
-      .select('resumo')
+      .select('id, cliente, resumo, ativo')
       .eq('id', req.params.id)
       .maybeSingle();
     if (errBusca) throw new Error(errBusca.message);
     if (!cot) return res.status(404).json({ erro: 'Cotação não encontrada' });
+    let base = cot.resumo || {};
+    if (base.processo_id) {
+      const { data: p } = await sb().from('controle_processos').select('id, referencia').eq('id', base.processo_id).maybeSingle();
+      if (p) return res.status(409).json({ erro: `Esta cotação está vinculada ao processo ${p.referencia} — desvincule antes de marcar como perdida.` });
+      base = VinculoCotacao.resumoDesvinculado(base, { usuario: req.session.usuario, motivo: 'o processo não existe mais' });
+    }
 
     const novoResumo = {
-      ...(cot.resumo || {}),
+      ...base,
       status: 'rejeitada',
       motivo_perda: motivo,
       data_rejeicao: new Date().toISOString(),
@@ -5809,12 +5975,124 @@ app.post('/api/calculador/cotacoes/:id/rejeitar', auth('tyredesk'), async (req, 
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
+// Desvincular a cotação do processo (os dois lados — regra 5).
+app.post('/api/calculador/cotacoes/:id/desvincular-processo', auth('tyredesk'), exigirModuloControle('desvincular cotações'), async (req, res) => {
+  try {
+    const usuario = req.session.usuario || null;
+    const agora = new Date().toISOString();
+    const { data: cot, error: e1 } = await sb().from('calculador_cotacoes').select('*').eq('id', req.params.id).maybeSingle();
+    if (e1) throw new Error(e1.message);
+    if (!cot) return res.status(404).json({ erro: 'Cotação não encontrada' });
+    const pid = cot.resumo && cot.resumo.processo_id;
+    let proc = null;
+    if (pid) ({ data: proc } = await sb().from('controle_processos').select(COLS_PROC_PLANO).eq('id', pid).maybeSingle());
+    if (!proc) {
+      const { data: ps } = await sb().from('controle_processos').select(COLS_PROC_PLANO).eq('cotacao_id', cot.id).limit(1);
+      proc = (ps && ps[0]) || null;
+    }
+    const motivo = String((req.body && req.body.motivo) || '').trim().slice(0, 300);
+    const plano = VinculoCotacao.planoDesvincular({ cot, proc, usuario, agora, motivo });
+    if (plano.erro) return res.status(plano.status || 409).json({ erro: plano.erro });
+    if (plano.patchProcesso) {
+      const { error: eP } = await sb().from('controle_processos').update(plano.patchProcesso).eq('id', proc.id);
+      if (eP) throw new Error(eP.message);
+      await registrarLogProcesso(proc.id, usuario, plano.log);
+    }
+    const { error: eC } = await sb().from('calculador_cotacoes').update({ resumo: plano.resumoCotacao }).eq('id', cot.id);
+    if (eC) throw new Error(eC.message);
+    console.log(`cotação ${cot.id} desvinculada${proc ? ' do processo ' + proc.referencia : ''} por ${usuario}`);
+    res.json({ ok: true, processo_id: proc ? proc.id : null, processo_referencia: proc ? proc.referencia : null });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Excluir (só gerente; marca ativo=false — dá pra restaurar). Cotação
+// vinculada a um processo não pode ser excluída (desvincule antes).
 app.delete('/api/calculador/cotacoes/:id', auth('tyredesk'), requireGerente, async (req, res) => {
   try {
-    const { error } = await sb().from('calculador_cotacoes').update({ ativo: false }).eq('id', req.params.id);
+    const { data: cot, error: e1 } = await sb().from('calculador_cotacoes').select('id, resumo, ativo').eq('id', req.params.id).maybeSingle();
+    if (e1) throw new Error(e1.message);
+    if (!cot) return res.status(404).json({ erro: 'Cotação não encontrada' });
+    let resumo = cot.resumo || {};
+    if (resumo.processo_id) {
+      const { data: p } = await sb().from('controle_processos').select('id, referencia').eq('id', resumo.processo_id).maybeSingle();
+      if (p) return res.status(409).json({ erro: `Esta cotação está vinculada ao processo ${p.referencia} — desvincule antes de excluir.` });
+      resumo = VinculoCotacao.resumoDesvinculado(resumo, { usuario: req.session.usuario, motivo: 'o processo não existe mais' });
+    }
+    resumo = { ...resumo, excluida_em: new Date().toISOString(), excluida_por: req.session.usuario || null };
+    const { error } = await sb().from('calculador_cotacoes').update({ ativo: false, resumo }).eq('id', req.params.id);
     if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Restaurar cotação excluída (só gerente).
+app.post('/api/calculador/cotacoes/:id/restaurar', auth('tyredesk'), async (req, res) => {
+  try {
+    if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem restaurar cotações excluídas.' });
+    const { data: cot, error: e1 } = await sb().from('calculador_cotacoes').select('id, resumo, ativo').eq('id', req.params.id).maybeSingle();
+    if (e1) throw new Error(e1.message);
+    if (!cot) return res.status(404).json({ erro: 'Cotação não encontrada' });
+    const resumo = { ...(cot.resumo || {}) };
+    ['excluida_em', 'excluida_por', 'excluida_motivo'].forEach(k => { delete resumo[k]; });
+    resumo.restaurada_em = new Date().toISOString();
+    resumo.restaurada_por = req.session.usuario || null;
+    const { error } = await sb().from('calculador_cotacoes').update({ ativo: true, resumo }).eq('id', cot.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Conferência do vínculo cotação ↔ processo de todas as cotações e a
+// correção automática (gerente). simular:true só mostra o que faria.
+async function carregarConferenciaVinculos(opts) {
+  const { data: cotacoes, error } = await sb().from('calculador_cotacoes')
+    .select('id, cliente, resumo, ativo, updated_at, updated_by').order('updated_at', { ascending: false }).limit(5000);
+  if (error) throw new Error(error.message);
+  const processos = await processosLigadosAsCotacoes(cotacoes || []);
+  return VinculoCotacao.diagnosticarVinculos(cotacoes || [], processos, opts || {});
+}
+
+app.get('/api/calculador/vinculos', auth('tyredesk'), async (req, res) => {
+  try {
+    const diag = await carregarConferenciaVinculos({});
+    res.json({ ok: true, contagem: diag.contagem, problemas: diag.problemas });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
+
+app.post('/api/calculador/vinculos/corrigir', auth('tyredesk'), exigirModuloControle('corrigir vínculos'), async (req, res) => {
+  try {
+    if (req.session.role !== 'gerente') return res.status(403).json({ ok: false, erro: 'Apenas gerentes podem corrigir os vínculos de uma vez.' });
+    const usuario = req.session.usuario || null;
+    const simular = !(req.body && req.body.simular === false);
+    const diag = await carregarConferenciaVinculos({ usuario, agora: new Date().toISOString(), excluirCopias: !!(req.body && req.body.excluir_copias) });
+    if (simular) return res.json({ ok: true, simulacao: true, contagem: diag.contagem, problemas: diag.problemas, acoes: diag.acoes.length });
+    const erros = [];
+    let aplicadas = 0;
+    for (const a of diag.acoes) {
+      try {
+        if (a.alvo === 'processo') {
+          const { error } = await sb().from('controle_processos').update(a.patch).eq('id', a.id);
+          if (error) throw new Error(error.message);
+          await registrarLogProcesso(a.id, usuario, a.log);
+        } else {
+          const patch = {};
+          if (a.resumo) patch.resumo = a.resumo;
+          if (a.ativo === false) patch.ativo = false;
+          if (a.cliente) {
+            patch.cliente = a.cliente;
+            const { data: row } = await sb().from('calculador_cotacoes').select('dados').eq('id', a.id).maybeSingle();
+            if (row && row.dados && typeof row.dados === 'object') patch.dados = { ...row.dados, campos: { ...(row.dados.campos || {}), cliente: a.cliente } };
+          }
+          if (!Object.keys(patch).length) continue;
+          const { error } = await sb().from('calculador_cotacoes').update(patch).eq('id', a.id);
+          if (error) throw new Error(error.message);
+        }
+        aplicadas++;
+      } catch (e) { erros.push(`${a.alvo} ${a.referencia || a.id}: ${e.message}`); }
+    }
+    console.log(`vínculos cotação↔processo corrigidos por ${usuario}: ${aplicadas} ação(ões), ${erros.length} erro(s)`);
+    res.json({ ok: !erros.length, aplicadas, erros, contagem: diag.contagem, problemas: diag.problemas });
+  } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
 // ── HEALTH ────────────────────────────────────────────────────
@@ -6053,11 +6331,14 @@ app.get('/health', async (req, res) => {
 });
 
 // ── Vincular cotação a processo existente (item d) ──────────────────────
+// Lista pro "Vincular a Processo" (Calculador e tela Cotações): processos em
+// andamento, com a cotação que cada um já tem (cotacao_id) — a tela avisa e
+// pede confirmação antes de trocar.
 app.get('/api/controle/processos-abertos', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
   try {
     const { data, error } = await sb()
       .from('controle_processos')
-      .select('id, referencia, cliente, fase, fechado, cancelado')
+      .select('id, referencia, cliente, fase, fechado, cancelado, cotacao_id')
       .neq('fase', 'FINALIZADO')
       .order('referencia', { ascending: true })
       .limit(3000);
@@ -6066,70 +6347,47 @@ app.get('/api/controle/processos-abertos', auth('controle','financeiro','resulta
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), (req, res, next) => {
-  if (!req.session.modulos.includes('controle')) {
-    return res.status(403).json({ erro: 'Sem acesso ao Controle — não é possível vincular cotações' });
-  }
-  next();
-}, async (req, res) => {
+// Vincular pela regra única (lib/vinculo-cotacao.js): grava os dois lados,
+// desvincula a cotação antiga do processo quando `substituir` (senão 409 com
+// `conflito`) e registra no Histórico do processo.
+app.post('/api/calculador/cotacoes/:id/vincular-processo', auth('tyredesk'), exigirModuloControle('vincular cotações'), async (req, res) => {
   try {
-    const { processo_id } = req.body;
-    if (!processo_id) return res.status(400).json({ erro: 'processo_id obrigatório' });
+    const processoId = req.body && req.body.processo_id;
+    if (!processoId || typeof processoId !== 'string' || !ID_SEGURO.test(processoId)) return res.status(400).json({ erro: 'processo_id obrigatório' });
+    const r = await executarVinculoCotacao({ cotacaoId: req.params.id, processoId, substituir: req.body.substituir === true, usuario: req.session.usuario || null });
+    if (!r.ok) return res.status(r.status || 409).json({ erro: r.erro, conflito: r.conflito || null });
+    res.json(r);
+  } catch (e) { res.status(500).json({ erro: e.message }); }
+});
 
-    const { data: cot, error: eCot } = await sb()
-      .from('calculador_cotacoes').select('*').eq('id', req.params.id).single();
-    if (eCot) throw new Error(eCot.message);
-
-    const { data: proc, error: eProc } = await sb()
-      .from('controle_processos').select('id, referencia, estimativa_json, real_json, fechado, cancelado, comissoes_json')
-      .eq('id', processo_id).single();
-    if (eProc) throw new Error(eProc.message);
-
-    // Segurança (item 6): não mexe em processo fechado/cancelado, nem usa
-    // cotação excluída ou já aprovada/vinculada a OUTRO processo.
-    if (proc.fechado || proc.cancelado) {
-      return res.status(403).json({ erro: `Processo ${proc.referencia} está ${proc.fechado ? 'fechado' : 'cancelado'} — reabra antes de vincular.` });
-    }
-    if (cot.ativo === false) return res.status(409).json({ erro: 'Esta cotação foi excluída.' });
-    const vinculadaA = cot.resumo && cot.resumo.processo_id;
-    if (vinculadaA && vinculadaA !== proc.id) {
-      return res.status(409).json({ erro: `Esta cotação já está vinculada ao processo ${cot.resumo.processo_referencia || vinculadaA}.` });
-    }
-
-    const estimativa = extrairEstimativa(cot.resumo);
-    const custosCotados = (cot.resumo && cot.resumo.custos_cotados_json) || null;
-    const realInicial = proc.real_json ? null : gerarRealJsonInicial(custosCotados);
-
-    const patch = { cotacao_id: cot.id }; // processo passa a contar como "Origem: Cotação"
-    if (estimativa) patch.estimativa_json = estimativa;
-    if (realInicial) patch.real_json = realInicial;
-    // Comissionados da cotação somam aos já marcados no processo (não apaga
-    // nada nem mexe nos pagamentos já registrados).
-    const comSelVinc = comissionadosDaCotacao(cot.dados);
-    if (comSelVinc.length) {
-      const atualCom = (proc.comissoes_json && typeof proc.comissoes_json === 'object' && !Array.isArray(proc.comissoes_json)) ? proc.comissoes_json : {};
-      const selAtual = Array.isArray(atualCom.selecionados) ? atualCom.selecionados.map(x => String(x).toUpperCase()) : [];
-      patch.comissoes_json = { ...atualCom, selecionados: [...new Set([...selAtual, ...comSelVinc])], pagamentos: Array.isArray(atualCom.pagamentos) ? atualCom.pagamentos : [] };
-    }
-    if (Object.keys(patch).length) {
-      patch.updated_at = new Date().toISOString(); // sinaliza mudança pro auto-refresh (/processos/versao)
-      const { error: eUpd } = await sb().from('controle_processos').update(patch).eq('id', processo_id);
-      if (eUpd) throw new Error(eUpd.message);
-    }
-
-    const novoResumo = {
-      ...(cot.resumo || {}),
-      status: 'aprovada',
-      processo_id: proc.id,
-      processo_referencia: proc.referencia,
-      data_aprovacao: new Date().toISOString(),
-      aprovado_por: req.session.usuario || null,
+// Cotação vinculada ao processo, pro painel do processo (aba Custos Reais):
+// quem é, os números, se a estimativa do processo bate com ela e se outras
+// cotações também apontam pra ele (vínculo antigo).
+app.get('/api/controle/processos/:id/cotacao', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!ID_SEGURO.test(id)) return res.status(400).json({ erro: 'id inválido' });
+    const { data: proc, error } = await sb().from('controle_processos').select(COLS_PROC_VINCULO).eq('id', id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!proc) return res.status(404).json({ erro: 'Processo não encontrado' });
+    const ligadas = await cotacoesLigadasAoProcesso(proc, null);
+    const resumir = c => {
+      const r = c.resumo || {};
+      return { id: c.id, cliente: c.cliente || '', tipo: r.tipo || '', uf: r.uf || '', containers: r.containers || null,
+        custo_total: r.custo_total, faturamento: r.faturamento, lucro_bruto: r.lucro_bruto, pct_lucro: r.pct_lucro,
+        status: r.status || 'rascunho', aponta_de_volta: r.processo_id === proc.id, updated_at: c.updated_at, updated_by: c.updated_by || '',
+        estimativa_igual: VinculoCotacao.estimativasIguais(proc.estimativa_json, r) };
     };
-    const { error: eCotUpd } = await sb().from('calculador_cotacoes')
-      .update({ resumo: novoResumo }).eq('id', req.params.id);
-    if (eCotUpd) throw new Error(eCotUpd.message);
-
-    res.json({ ok: true, processo_id: proc.id, processo_referencia: proc.referencia });
+    let principal = proc.cotacao_id ? ligadas.find(c => c.id === proc.cotacao_id) : null;
+    if (!principal && !proc.cotacao_id) {
+      const batem = ligadas.filter(c => VinculoCotacao.estimativasIguais(proc.estimativa_json, c.resumo));
+      principal = batem[0] || (ligadas.length === 1 ? ligadas[0] : null);
+    }
+    res.json({ ok: true, processo: resumoProcessoParaCotacao(proc),
+      tem_estimativa: !!(proc.estimativa_json && Object.keys(proc.estimativa_json).length),
+      cotacao: principal ? resumir(principal) : null,
+      vinculo_completo: !!(principal && proc.cotacao_id === principal.id && principal.resumo && principal.resumo.processo_id === proc.id),
+      outras: ligadas.filter(c => !principal || c.id !== principal.id).map(resumir) });
   } catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
