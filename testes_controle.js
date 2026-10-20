@@ -3104,6 +3104,48 @@ teste('Regras dispensadas (Emanuelly 19/10/2026): NCM de 4 dígitos no BL e port
   iguais(CC.contarConferencia(a).pendentes, 1, 'só o porto fora de SC conta');
   verdadeiro(/4 digitos/.test(CC.REGRAS_NCM_PORTO_PROMPT) && /SANTA CATARINA/i.test(CC.REGRAS_NCM_PORTO_PROMPT), 'texto das regras para o prompt');
 });
+teste('Porto de destino nos documentos finais (Emanuelly 20/10/2026): BL original, CE Mercante e DI/DUIMP têm que bater', () => {
+  const blCe = { campo:'Porto de Destino', doc1_label:'BL Original', doc1_valor:'ITAPOA', doc2_label:'CE Mercante', doc2_valor:'BRNVT - NAVEGANTES', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+  const blCeMesmo = { ...blCe, doc1_valor:'NAVEGANTES, BRAZIL', doc2_valor:'BRNVT001 - TERMINAL PORTONAVE - NAVEGANTES' };
+  const ceDuimp = { campo:'Porto de destino (documentos finais)', doc1_label:'CE Mercante', doc1_valor:'BRIOA - ITAPOA', doc2_label:'DUIMP', doc2_valor:'PORTONAVE', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+  const diAlfandega = { campo:'Porto de Descarga', doc1_label:'BL', doc1_valor:'NAVEGANTES', doc2_label:'DI', doc2_valor:'ALF - PORTO DE ITAJAI', status:'DIVERGENCIA' };
+  const draftCe = { campo:'Porto de Destino', doc1_label:'Draft BL', doc1_valor:'ITAPOA', doc2_label:'CE Mercante', doc2_valor:'NAVEGANTES', status:'DIVERGENCIA' };
+  const ciBl = { campo:'Porto de Destino', doc1_label:'CI', doc1_valor:'NAVEGANTES', doc2_label:'BL Original', doc2_valor:'ITAPOA', status:'DIVERGENCIA' };
+  const ciBlxCe = { campo:'Porto de Destino', doc1_label:'CI/BL', doc1_valor:'ITAPOA', doc2_label:'CE', doc2_valor:'NAVEGANTES', status:'DIVERGENCIA' };
+  const hblMbl = { campo:'Porto de Descarga', doc1_label:'HBL', doc1_valor:'ITAJAI', doc2_label:'MBL', doc2_valor:'NAVEGANTES', status:'DIVERGENCIA' };
+  const itajaiPortonave = { campo:'Porto de Destino', doc1_label:'BL', doc1_valor:'ITAJAI (PORTONAVE)', doc2_label:'CE Mercante', doc2_valor:'BRNVT - NAVEGANTES', status:'DIVERGENCIA' };
+  const finaisForaSC = { campo:'Porto de Destino', doc1_label:'BL Original', doc1_valor:'PARANAGUA', doc2_label:'CE Mercante', doc2_valor:'BRPNG - PARANAGUA', status:'DIVERGENCIA' };
+  verdadeiro(CC.ehPendenciaConferencia(blCe), 'BL original Itapoá x CE Navegantes = pendência');
+  verdadeiro(!CC.ehPendenciaConferencia(blCeMesmo), 'Navegantes x BRNVT/Portonave = mesmo porto');
+  verdadeiro(CC.ehPendenciaConferencia(ceDuimp), 'CE Itapoá x DUIMP Portonave = pendência');
+  verdadeiro(!CC.ehPendenciaConferencia(diAlfandega), 'DI com a Alfândega de Itajaí (atende Navegantes) não é pendência');
+  verdadeiro(!CC.ehPendenciaConferencia(draftCe), 'Draft BL não é documento final');
+  verdadeiro(!CC.ehPendenciaConferencia(ciBl), 'CI x BL continua dispensado');
+  verdadeiro(CC.ehPendenciaConferencia(ciBlxCe), 'valor do BL (junto com a CI) x CE = pendência');
+  verdadeiro(CC.ehPendenciaConferencia(hblMbl), 'HBL Itajaí x MBL Navegantes = pendência');
+  verdadeiro(!CC.ehPendenciaConferencia(itajaiPortonave), 'texto com Itajaí e Portonave x Navegantes = mesmo porto');
+  verdadeiro(CC.ehPendenciaConferencia(finaisForaSC), 'porto fora de SC continua pendência, mesmo igual nos dois');
+  verdadeiro(CC.ehDocFinal('BL ORIGINAL') && CC.ehDocFinal('CE Mercante') && CC.ehDocFinal('DI/DUIMP') && CC.ehDocFinal('Bill of Lading (BL)'), 'documentos finais');
+  verdadeiro(!CC.ehDocFinal('DRAFT BL') && !CC.ehDocFinal('CI/PL') && !CC.ehDocFinal('PI'), 'documentos que não são finais');
+  verdadeiro(CC.mesmoPorto('Itapoá - SC', 'BRIOA') && !CC.mesmoPorto('ITAJAI', 'BRNVT'), 'mesmoPorto');
+  verdadeiro(/documentos finais/i.test(CC.REGRAS_NCM_PORTO_PROMPT) && /DUIMP/.test(CC.REGRAS_NCM_PORTO_PROMPT) && /Porto de destino fora de SC/.test(CC.REGRAS_NCM_PORTO_PROMPT), 'texto das regras para o prompt');
+  const a = { chaveVersao:2, grupos:[{ titulo:'Logística', campos:[blCe, blCeMesmo, draftCe, ciBl] }] };
+  const cont = CC.contarConferencia(a);
+  iguais(cont.pendentes, 1, 'só BL original x CE conta');
+  iguais(cont.bloqueantes, 1);
+});
+teste('Aba Conferência: DI/DUIMP é um tipo de documento (nome do arquivo e labels)', () => {
+  const sb = criarSandbox();
+  vm.createContext(sb);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'conferencia-chave.js'), 'utf8'), sb, { filename: 'conferencia-chave.js' });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'controle-conferencia.js'), 'utf8'), sb, { filename: 'controle-conferencia.js' });
+  iguais(vm.runInContext("_confGuessType('DUIMP 26BR0000000-0.pdf')", sb), 'duimp');
+  iguais(vm.runInContext("_confGuessType('Extrato DI 26-0000000.pdf')", sb), 'duimp');
+  iguais(vm.runInContext("_confGuessType('BL Draft PVN0000.pdf')", sb), 'bl_draft');
+  iguais(vm.runInContext("_confGuessType('CE Mercante 000000000000000.pdf')", sb), 'ce');
+  iguais(vm.runInContext("CONF_DOC_PT.duimp", sb), 'DI/DUIMP');
+  verdadeiro(vm.runInContext("_confGruposDoLabel('DUIMP').has('duimp') && _confGruposDoLabel('DI').has('duimp') && !_confGruposDoLabel('CI/PL').has('duimp')", sb), 'grupo da DI/DUIMP');
+});
 teste('ALERTA sem campo e OK não contam como pendência', () => {
   const a = { chaveVersao:2, grupos:[{ titulo:'G', campos:[{ status:'OK', campo:'X' }, { status:'ALERTA', campo:'' }, { status:'AUSENTE', campo:'Fabricante' }] }] };
   iguais(CC.contarConferencia(a).pendentes, 1);
