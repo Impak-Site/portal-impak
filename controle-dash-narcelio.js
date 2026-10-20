@@ -292,7 +292,7 @@ function renderDashNarcelio(){
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
         <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--text);">📊 DRE Consolidado — ${periodo.label}</div>
-        ${dreNarcelio ? `<div style="display:flex;gap:8px;">
+        ${dreNarcelio && !dreNarcelio.soSemCustos ? `<div style="display:flex;gap:8px;">
           <button class="btn btn-outline" onclick="exportarDREPDF(window._narcelioDreUltimoResultado, null)" style="font-size:12px;">📄 PDF</button>
           <button class="btn btn-outline" onclick="exportarDREExcel(window._narcelioDreUltimoResultado, null)" style="font-size:12px;">⬇️ Excel</button>
         </div>` : ''}

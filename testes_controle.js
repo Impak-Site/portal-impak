@@ -2713,6 +2713,60 @@ teste('calcularCustoRealTotal continua ignorando _conf e demais chaves auxiliare
   iguais(r.count, 1); iguais(r.total, 300);
 });
 
+// Revisão 20/10/2026: 14 processos finalizados tinham custos que entravam no
+// TOTAL CUSTOS mas não apareciam em linha nenhuma do DRE (Baixa Pátio,
+// Despachante, Marjoração, Reciclagem e Despesas da aba Fechamento...).
+const somaLinhasDRE = d => d.fob + d.totalAdiantamento + d.totalAgenteFrete
+  + d.diferencasItens.filter(x => !/^(IBS|CBS)$/.test(x.label)).reduce((s, x) => s + x.diferenca, 0)
+  + d.reciclagem + d.comissao + d.despesasBaixaPatio + d.lavacao + d.seguro + d.totalOutros;
+teste('montarDRE: Reciclagem e Despesas da aba Fechamento entram nas linhas próprias e o resto em "Outros custos" — as linhas somam o TOTAL CUSTOS', () => {
+  const b = v => ({ valor: v, moeda: 'BRL' });
+  const p = { real_json: { fob: b(100000), ii: b(20000), frete: b(9000),
+    reciclagem_fechamento: b(1800), despesas_baixa_patio_venda: b(4200),
+    baixa_patio: b(6100), despachante: b(1650), sda: b(650), marjoracao: b(900), seguro_venda: b(370),
+    diferenca_ibs: b(60), diferenca_cbs: b(540) } };
+  const d = sandbox.montarDRE(p);
+  aproxIgual(d.reciclagem, 1800, 0.01, 'Reciclagem (Fechamento) na linha Reciclagem');
+  aproxIgual(d.despesasBaixaPatio, 4200, 0.01, 'Despesas Baixa Pátio (Venda/Devolução) na linha de Despesas');
+  const ids = d.outrosItens.map(i => i.id).sort().join(',');
+  iguais(ids, 'baixa_patio,despachante,marjoracao,sda,seguro_venda', 'outros custos: ' + ids);
+  aproxIgual(d.totalOutros, 6100 + 1650 + 650 + 900 + 370, 0.01);
+  aproxIgual(somaLinhasDRE(d), d.totalCustos, 0.01, 'soma das linhas ' + somaLinhasDRE(d) + ' x TOTAL CUSTOS ' + d.totalCustos);
+  iguais(d.custosIncompletos, false);
+});
+teste('montarDRE: sem o custo da mercadoria o DRE avisa e não calcula lucro (antes saía 99–100%)', () => {
+  const d = sandbox.montarDRE({ nf_saida_valor: 333000, nf_saida_data: '2026-09-10', real_json: { frete: { valor: 1850, moeda: 'BRL' } } });
+  iguais(d.custosIncompletos, true);
+  iguais(d.lucroBrutoImpak, null, 'lucro não calculado');
+  iguais(d.lucroBruto, null);
+  verdadeiro(/custo da mercadoria/.test(d.avisoCustos), 'aviso: ' + d.avisoCustos);
+  const ok = sandbox.montarDRE({ nf_saida_valor: 300000, nf_saida_data: '2026-09-10', real_json: { fob: { valor: 250000, moeda: 'BRL' } } });
+  aproxIgual(ok.lucroBrutoImpak, 50000, 0.01, 'com o custo da mercadoria o lucro volta a aparecer');
+  iguais(ok.avisoCustos, '');
+});
+teste('montarDREConsolidado: processo faturado sem custo da mercadoria fica fora da soma e vai para a lista de pendentes', () => {
+  setEstadoProcessos([
+    { id:'c1', referencia:'COM-CUSTO', cliente:'C1', real_json:{ fob: { valor: 80000, moeda:'BRL' }, baixa_patio: { valor: 500, moeda:'BRL' } }, nf_saida_data:'2026-09-05', nf_saida_valor: 100000 },
+    { id:'c2', referencia:'SEM-CUSTO', cliente:'C1', real_json:{ _cambio_eur: 5.65 }, nf_saida_data:'2026-09-06', nf_saida_valor: 400000 },
+    { id:'c3', referencia:'SO-FRETE', cliente:'C1', real_json:{ frete: { valor: 1850, moeda:'BRL' } }, nf_saida_data:'2026-09-07', nf_saida_valor: 330000 },
+  ], []);
+  const dre = sandbox.montarDREConsolidado({ periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59') });
+  iguais(dre._meta.qtdProcessos, 1, 'só o processo com custo entra');
+  iguais(dre.nfSaidaValor, 100000);
+  aproxIgual(dre.totalCustos, 80500, 0.01);
+  aproxIgual(dre.lucroBrutoImpak, 19500, 0.01);
+  iguais(dre._meta.semCustos.map(x => x.referencia).join(','), 'SEM-CUSTO,SO-FRETE');
+  aproxIgual(dre._meta.totalNfSemCustos, 730000, 0.01);
+  iguais(dre.outrosItens.length, 1, 'Baixa Pátio em Outros custos no consolidado');
+  aproxIgual(dre.totalOutros, 500, 0.01);
+  setEstadoProcessos([
+    { id:'c2', referencia:'SEM-CUSTO', cliente:'C1', real_json:{}, nf_saida_data:'2026-09-06', nf_saida_valor: 400000 },
+  ], []);
+  const so = sandbox.montarDREConsolidado({ periodoIni: new Date('2026-09-01T00:00:00'), periodoFim: new Date('2026-09-30T23:59:59') });
+  iguais(so.soSemCustos, true, 'só processos sem custo: a tela mostra a lista em vez de um DRE com 100% de lucro');
+  iguais(so._meta.semCustos.length, 1);
+});
+
 // ── Regras por cadastro: referência do processo vem do "Number PO" (Tyre Export, Emanuelly 01/10/2026) ──
 teste('regrasDoCadastro: aceita objeto, string JSON e lixo sem quebrar', () => {
   iguais(sandbox.regrasDoCadastro({ regras_json: { referencia_origem: 'PO' } }).referencia_origem, 'PO');

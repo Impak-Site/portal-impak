@@ -1025,7 +1025,14 @@ function renderDREModalHtml(dre){
         <tr><td style="padding:2px 8px 5px 24px;color:var(--muted);font-size:11px;">Impostos (IR+ISS+PIS+COFINS+IRPJ+CSLL)</td></tr>
         <tr><td style="padding:5px 8px;font-weight:600;">Total a Receber (somado ao Lucro Real)</td><td colspan="3" style="padding:5px 8px;text-align:right;font-weight:600;">${r2(dre.notasBoss.totalReceber)}</td></tr>
         <tr><td style="padding:8px;font-weight:700;color:var(--ok);border-top:2px solid var(--border);">LUCRO BRUTO do PROCESSO</td>
-            <td colspan="3" style="padding:8px;text-align:right;font-weight:700;color:var(--ok);border-top:2px solid var(--border);">${r2(dre.lucroBruto)} ${dre.pctLucro!=null?'('+(dre.pctLucro*100).toFixed(1)+'%)':''}</td></tr>`
+            <td colspan="3" style="padding:8px;text-align:right;font-weight:700;color:var(--ok);border-top:2px solid var(--border);">${dre.lucroBruto==null?'—':r2(dre.lucroBruto)} ${dre.pctLucro!=null?'('+(dre.pctLucro*100).toFixed(1)+'%)':''}</td></tr>`
+    : '';
+  // Outros custos (revisão 20/10/2026): o que entra no TOTAL CUSTOS sem linha própria.
+  const linhaOutros = (dre.outrosItens||[]).length
+    ? `<tr><td style="padding:5px 8px;">Outros custos</td><td colspan="3" style="padding:5px 8px;text-align:right;">${r2(dre.totalOutros)}</td></tr>${linhaGrupo(dre.outrosItens)}`
+    : '';
+  const avisoCustos = dre.avisoCustos
+    ? `<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;">⚠ ${esc(dre.avisoCustos)}</div>`
     : '';
 
   return `
@@ -1035,6 +1042,7 @@ function renderDREModalHtml(dre){
         <h3 style="margin:0;">📊 DRE — Processo ${esc(dre.referencia)}</h3>
         <button class="btn btn-outline" onclick="fecharDRE()">✕</button>
       </div>
+      ${avisoCustos}
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <tr><td style="padding:5px 8px;font-weight:600;">Nota fiscal de Saída${dre.nfSaidaNumero?' — Nfe '+esc(dre.nfSaidaNumero):''}</td>
             <td colspan="3" style="padding:5px 8px;text-align:right;font-weight:600;">${r2(dre.nfSaidaValor)}</td></tr>
@@ -1053,9 +1061,10 @@ function renderDREModalHtml(dre){
         ${(dre.comissaoItens||[]).filter(i=>i.valor>0).map(i=>linhaSimples(i.label, i.valor)).join('')}
         ${linhaSimples('Despesas - Baixa Pátio para Venda/Devolução', dre.despesasBaixaPatio)}
         ${linhaSimples('Seguro Efetivo Pago', dre.seguro)}
+        ${linhaOutros}
         <tr><td style="padding:8px;font-weight:700;border-top:2px solid var(--border);">TOTAL CUSTOS</td><td colspan="3" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid var(--border);">${r2(dre.totalCustos)}</td></tr>
         <tr><td style="padding:8px;font-weight:700;color:${dre.notasBoss?'var(--text)':'var(--ok)'};">${rotuloLucro1}</td>
-            <td colspan="3" style="padding:8px;text-align:right;font-weight:700;color:${dre.notasBoss?'var(--text)':'var(--ok)'};">${r2(dre.lucroBrutoImpak)} ${dre.pctLucroBrutoImpak!=null?'('+(dre.pctLucroBrutoImpak*100).toFixed(1)+'%)':''}</td></tr>
+            <td colspan="3" style="padding:8px;text-align:right;font-weight:700;color:${dre.notasBoss?'var(--text)':'var(--ok)'};">${dre.lucroBrutoImpak==null?'—':r2(dre.lucroBrutoImpak)} ${dre.pctLucroBrutoImpak!=null?'('+(dre.pctLucroBrutoImpak*100).toFixed(1)+'%)':''}</td></tr>
         ${linhaBoss}
       </table>
       ${(typeof renderFechamentoTimeline==='function' && _editando) ? `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;margin-top:16px;">${renderFechamentoTimeline(_editando)}</div>` : ''}
