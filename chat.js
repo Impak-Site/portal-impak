@@ -372,6 +372,8 @@ const ICONES_NAV = {
   reciclagem: `<svg ${ICONE_SVG_BASE}><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>`,
   seguro: `<svg ${ICONE_SVG_BASE}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
   catalogo: `<svg ${ICONE_SVG_BASE}><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>`,
+  // Cotações: prancheta com lista.
+  cotacoes: `<svg ${ICONE_SVG_BASE}><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="14" y2="15"/></svg>`,
 };
 
 const navSetores = [
@@ -399,6 +401,7 @@ const navSetores = [
   { setor: 'Comercial', icone: 'comercial', itens: [
     { label: 'TyreDesk', icone: 'tyredesk', href: '/', key: 'tyredesk', modulo: 'tyredesk' },
     { label: 'Calculador', icone: 'calculador', href: '/calculador', key: 'calculador', modulo: 'tyredesk' },
+    { label: 'Cotações', icone: 'cotacoes', href: '/cotacoes', key: 'cotacoes', modulo: 'tyredesk' }, // todas as cotações numa tela inteira + vínculo com o processo (Ayslan 20/10/2026)
     { label: 'Catálogo', icone: 'catalogo', href: '/catalogo-produtos', key: 'catalogo', modulo: 'tyredesk' },
   ]},
 ];
@@ -423,6 +426,7 @@ const modAtual = path === '/' ? 'tyredesk'
 : path.includes('conferencia-fila') ? 'conferencia-fila'
 : path.includes('controle') ? 'controle'
 : path.includes('processos') ? 'processos'
+: path.includes('cotacoes') ? 'cotacoes'
 : path.includes('calculador')? 'calculador'
 : path.includes('catalogo-produtos') ? 'catalogo'
 : '';

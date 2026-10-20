@@ -3632,6 +3632,39 @@ teste('aba Custos Reais e aba Vendas têm o botão "Simular venda no Calculador"
 prepararParcelado({ pi: '', ci: '', pct: '', parcelas: [] });
 sandbox.document.getElementById('f_pi_pagamento').value = '';
 
+// ── Cotação vinculada no painel do processo (20/10/2026) ──────────────
+// Regra única do vínculo: lib/vinculo-cotacao.js. O painel só mostra e chama
+// as rotas. Valores fictícios.
+console.log('\n🧮 htmlVinculoCotacao() — cotação vinculada na aba Custos Reais');
+teste('processo com cotação: mostra a cotação, abrir/ver/trocar/desvincular', () => {
+  const html = sandbox.htmlVinculoCotacao({ id: 'p-teste', fechado: false, cancelado: false }, { ok: true, tem_estimativa: true, vinculo_completo: true,
+    cotacao: { id: 'cot-teste-1', cliente: 'Cliente Exemplo', tipo: 'TBR', uf: 'SC', custo_total: 1000, faturamento: 1500, lucro_bruto: 500, pct_lucro: 33.3, estimativa_igual: true, updated_at: '2026-10-01T12:00:00Z', updated_by: 'teste' },
+    outras: [] });
+  verdadeiro(/Cotação vinculada: Cliente Exemplo/.test(html), 'mostra quem é');
+  verdadeiro(/\/calculador\?cotacao=cot-teste-1/.test(html), 'abre no Calculador');
+  verdadeiro(/desvincularCotacaoDoProcesso\(\)/.test(html) && /abrirEscolherCotacaoProcesso\(\)/.test(html), 'desvincular e trocar');
+  verdadeiro(!/⚠/.test(html), 'sem avisos quando está tudo de acordo');
+});
+teste('processo sem cotação: criar a partir do processo (vincular) ou escolher uma já feita', () => {
+  const html = sandbox.htmlVinculoCotacao({ id: 'p-teste' }, { ok: true, cotacao: null, outras: [] });
+  verdadeiro(/enviarProcessoAoCalculadorReal\(\{vincular:true\}\)/.test(html), 'criar a partir do processo usa o mesmo preenchimento do Simular, com vínculo');
+  verdadeiro(/Escolher cotação já feita/.test(html));
+});
+teste('processo fechado: vínculo travado (sem trocar/desvincular/criar)', () => {
+  const comCot = sandbox.htmlVinculoCotacao({ id: 'p-teste', fechado: true }, { ok: true, vinculo_completo: true, cotacao: { id: 'c1', cliente: 'Cliente Exemplo', estimativa_igual: true }, outras: [] });
+  verdadeiro(!/desvincularCotacaoDoProcesso/.test(comCot) && !/abrirEscolherCotacaoProcesso/.test(comCot) && /travados/.test(comCot));
+  const semCot = sandbox.htmlVinculoCotacao({ id: 'p-teste', cancelado: true }, { ok: true, cotacao: null, outras: [] });
+  verdadeiro(!/enviarProcessoAoCalculadorReal/.test(semCot) && /reabra/.test(semCot));
+});
+teste('avisos: estimativa diferente, vínculo só de um lado e outras cotações apontando pro processo', () => {
+  const html = sandbox.htmlVinculoCotacao({ id: 'p-teste' }, { ok: true, tem_estimativa: true, vinculo_completo: true,
+    cotacao: { id: 'c1', cliente: 'Cliente Exemplo', estimativa_igual: false }, outras: [{ id: 'c2' }] });
+  verdadeiro(/estimativa gravada no processo é diferente/.test(html) && /1 outra\(s\) cotação/.test(html));
+  const incompleto = sandbox.htmlVinculoCotacao({ id: 'p-teste' }, { ok: true, vinculo_completo: false, cotacao: { id: 'c1', cliente: 'X' }, outras: [] });
+  verdadeiro(/só de um lado/.test(incompleto));
+  verdadeiro(/Tentar de novo/.test(sandbox.htmlVinculoCotacao({ id: 'p' }, null)), 'falha ao carregar não quebra o painel');
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');

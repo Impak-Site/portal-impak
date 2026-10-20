@@ -26,6 +26,9 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     '/api/admin/backup', '/api/admin/alertas-diarios', '/api/admin/alertas-separados',
     '/api/admin/followup-semanal', '/api/admin/permissoes/fulano',
     '/api/controle/v2/processo',
+    // Vínculo cotação ↔ processo (20/10/2026)
+    '/api/calculador/cotacoes/abc/vincular-processo', '/api/calculador/cotacoes/abc/desvincular-processo',
+    '/api/calculador/cotacoes/abc/restaurar', '/api/calculador/vinculos/corrigir', '/api/calculador/cotacoes',
   ];
   for (const rota of protegidasPost) {
     await teste(`POST ${rota} sem sessão → 401`, async () => {
@@ -52,6 +55,17 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
   await teste('GET /api/controle/v2/processos?desde= sem sessão → 401', async () => {
     const r = await request(app).get('/api/controle/v2/processos?desde=2026-09-24T10:00:00.000000%2B00:00');
     iguais(r.status, 401);
+  });
+  for (const rota of ['/api/calculador/cotacoes?completa=1', '/api/calculador/vinculos', '/api/controle/processos/abc/cotacao', '/api/calculador/cotacoes/abc']) {
+    await teste(`GET ${rota} sem sessão → 401`, async () => {
+      const r = await request(app).get(rota);
+      iguais(r.status, 401, rota);
+    });
+  }
+  await teste('GET /cotacoes (tela) sem sessão → vai pro login', async () => {
+    const r = await request(app).get('/cotacoes');
+    iguais(r.status, 302);
+    verdadeiroRota(/\/login/.test(r.headers.location || ''), 'redireciona pro login: ' + r.headers.location);
   });
   await teste('GET /api/controle/v2/processo/:id sem sessão → 401', async () => {
     const r = await request(app).get('/api/controle/v2/processo/abc');

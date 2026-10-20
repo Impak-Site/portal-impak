@@ -774,12 +774,75 @@ teste('aplicarPrefillControleReal: sem UF do cliente avisa que a UF ficou no pad
   verdadeiro(!(vm.runInContext('__extras', sb2) || []).some(t => /UF de destino/.test(t)), 'com a UF do cliente não avisa');
 });
 
-// ── RESUMO ───────────────────────────────────────────────────────
-console.log(`\n${'─'.repeat(50)}`);
-console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
-if (totalFalhas > 0) {
-  console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');
-  process.exit(1);
-} else {
-  console.log('✓ Tudo certo para deploy (do ponto de vista destas regras testadas).');
+// ── Vínculo cotação ↔ processo (regra única, 20/10/2026) ──────────
+// O vínculo vive no servidor (lib/vinculo-cotacao.js). O Calculador só manda
+// o vínculo PENDENTE ("Criar cotação a partir do processo") no primeiro
+// salvar — nunca grava processo_origem_id dentro dos dados da cotação (era
+// assim que duplicar/abrir uma cotação vinculava de novo ao mesmo processo).
+const _pendentesAsync = [];
+function testeAsync(nome, fn) {
+  totalTestes++;
+  _pendentesAsync.push(Promise.resolve().then(fn).then(
+    () => console.log(`  ✓ ${nome}`),
+    e => { totalFalhas++; console.log(`  ✗ ${nome}\n      ${e.message}`); }));
 }
+console.log('\n📋 Vínculo cotação ↔ processo');
+teste('aplicarPrefillControleReal com vincular: o salvar vai vincular ao processo de origem', () => {
+  const agora = Date.now();
+  const pedido = { ts: agora, vincular: true, processo_id: 'proc-teste-1', referencia: 'TESTE-VINC-1', avisos: [], fontes: [],
+    estado: { campos: { fob_usd: '10000', cambio_usd: '5.2' }, toggles: {}, togglesInner: {}, checkboxes: {}, parcelas: [], comissionados: [] } };
+  const sb = sandboxComLocalStorage({ calculador_prefill_controle: JSON.stringify(pedido) });
+  vm.runInContext(`mostrarFaixaSimulacaoReal = () => {}; _estado.cotacaoAtualId = 'outra'; aplicarPrefillControleReal('${agora}')`, sb);
+  verdadeiro(vm.runInContext('_estado.processoOrigemId', sb) === 'proc-teste-1', 'vínculo pendente com o processo');
+  verdadeiro(vm.runInContext('_estado.cotacaoAtualId', sb) === null, 'é uma cotação nova');
+});
+function sandboxSalvar(estadoJs) {
+  const sb = criarSandbox({ cliente: 'Cliente Teste' }); carregarNoSandbox(sb); vm.runInContext('showToast = () => {};', sb);
+  const capt = { corpo: null };
+  sb.fetch = (url, opts) => { if (opts && opts.method === 'POST') capt.corpo = JSON.parse(opts.body); return new Promise(() => {}); };
+  vm.runInContext(estadoJs + '; salvarCotacao();', sb);
+  return capt.corpo;
+}
+teste('salvarCotacao: o vínculo pendente vai em vincular_processo_id e não fica gravado nos dados', () => {
+  const corpo = sandboxSalvar(`_estado.processoOrigemId = 'proc-teste-1'; _estado.cotacaoAtualId = null`);
+  verdadeiro(corpo && corpo.vincular_processo_id === 'proc-teste-1', 'vincular_processo_id: ' + JSON.stringify(corpo && corpo.vincular_processo_id));
+  verdadeiro(corpo.dados && !('processo_origem_id' in corpo.dados), 'processo_origem_id não pode ir nos dados da cotação');
+});
+teste('salvarCotacao de uma cotação já salva não pede vínculo de novo (o servidor cuida do processo dela)', () => {
+  const corpo = sandboxSalvar(`_estado.processoOrigemId = 'proc-teste-1'; _estado.cotacaoAtualId = 'cot-teste-1'`);
+  verdadeiro(corpo && corpo.id === 'cot-teste-1' && corpo.vincular_processo_id === undefined, JSON.stringify({ id: corpo && corpo.id, v: corpo && corpo.vincular_processo_id }));
+});
+testeAsync('carregarCotacao (abrir/duplicar) não herda vínculo pendente; processo fechado trava o Salvar', async () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb); vm.runInContext('showToast = () => {};', sb);
+  const resposta = { ok: true,
+    cotacao: { id: 'cot-teste-1', cliente: 'Cliente Teste', resumo: { status: 'aprovada', processo_id: 'proc-teste-1' },
+      dados: { campos: { cliente: 'Cliente Teste', cambio_usd: '5.2' }, processo_origem_id: 'proc-antigo' } },
+    processo: { id: 'proc-teste-1', referencia: 'TESTE-001', fechado: true, cancelado: false } };
+  sb.fetch = () => Promise.resolve({ json: () => Promise.resolve(JSON.parse(JSON.stringify(resposta))) });
+  await vm.runInContext(`carregarCotacao('cot-teste-1', true)`, sb);
+  verdadeiro(vm.runInContext('_estado.processoOrigemId', sb) === null, 'duplicar não herda vínculo');
+  verdadeiro(vm.runInContext('_estado.cotacaoAtualId', sb) === null && vm.runInContext('_estado.cotacaoVinculo', sb) === null, 'duplicada = nova, sem processo');
+  await vm.runInContext(`carregarCotacao('cot-teste-1', false)`, sb);
+  verdadeiro(vm.runInContext('_estado.processoOrigemId', sb) === null, 'abrir não herda vínculo pendente gravado nos dados antigos');
+  verdadeiro(vm.runInContext('_estado.cotacaoAtualId', sb) === 'cot-teste-1');
+  verdadeiro(vm.runInContext('_estado.cotacaoVinculo && _estado.cotacaoVinculo.referencia', sb) === 'TESTE-001', 'mostra o processo vinculado');
+  verdadeiro(sb.document.getElementById('btn-salvar-cotacao').disabled === true, 'processo fechado: a cotação fica só leitura');
+});
+teste('autosave guarda a cotação aberta (atualizar a página continua a MESMA cotação)', () => {
+  const sb = sandboxComLocalStorage({});
+  vm.runInContext(`_autosaveUsuarioMexeu = true; _estado.cotacaoAtualId = 'cot-teste-7'; salvarAutosave();`, sb);
+  const salvo = JSON.parse(sb.__mem.get('calculador_autosave_v1') || '{}');
+  verdadeiro(salvo.cotacao_atual_id === 'cot-teste-7', JSON.stringify(salvo.cotacao_atual_id));
+});
+
+// ── RESUMO ───────────────────────────────────────────────────────
+Promise.all(_pendentesAsync).then(() => {
+  console.log(`\n${'─'.repeat(50)}`);
+  console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
+  if (totalFalhas > 0) {
+    console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');
+    process.exit(1);
+  } else {
+    console.log('✓ Tudo certo para deploy (do ponto de vista destas regras testadas).');
+  }
+});

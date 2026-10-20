@@ -386,6 +386,146 @@ teste('sem prazo nem juros, o processo continua sem venda (fluxo antigo)', () =>
   verdadeiro(p.vendas_json === undefined);
 });
 
+// ── REGRA ÚNICA DO VÍNCULO COTAÇÃO ↔ PROCESSO (lib/vinculo-cotacao.js) ──
+// Valores fictícios (repositório público).
+const Vinculo = require('./lib/vinculo-cotacao.js');
+console.log('\n📋 Vínculo cotação ↔ processo — regra única nos dois sentidos');
+const AGORA_V = '2026-10-20T12:00:00.000Z';
+const estV = (custo, fat) => ({ tipo: 'TBR', uf: 'SC', custo_total: custo, faturamento: fat, lucro_bruto: fat - custo, pct_lucro: (fat - custo) / fat * 100,
+  custos_cotados_json: { cambio: 5, containers: 2, compra: { fob: 1000 }, taxas_fixas: { capatazia: 100 } } });
+const cotV = (id, extra) => Object.assign({ id, cliente: 'Cliente Exemplo', ativo: true, updated_at: '2026-10-01T00:00:00Z', dados: { comissionados: ['vend-a'] }, resumo: estV(1000, 1500) }, extra || {});
+const procV = extra => Object.assign({ id: 'proc-1', referencia: 'REF-TESTE-1', cliente: 'Cliente Exemplo', cotacao_id: null, estimativa_json: null, real_json: null,
+  comissoes_json: { selecionados: ['VEND-B'], pagamentos: [{ chave: 'x', data: '2026-10-01', valor: 1 }] }, fechado: false, cancelado: false }, extra || {});
+
+teste('vincular grava os DOIS lados: processo.cotacao_id + estimativa; cotação aprovada com processo e referência', () => {
+  const r = Vinculo.planoVincular({ cot: cotV('cot-1', { resumo: { ...estV(1000, 1500), status: 'rejeitada', motivo_perda: 'preço' } }), proc: procV(), outras: [], usuario: 'teste', agora: AGORA_V });
+  verdadeiro(!r.erro, r.erro);
+  iguais(r.patchProcesso.cotacao_id, 'cot-1');
+  iguais(r.patchProcesso.estimativa_json.custo_total, 1000);
+  verdadeiro(r.patchProcesso.estimativa_json.status === undefined && r.patchProcesso.estimativa_json.motivo_perda === undefined, 'ciclo de vida não vai pra estimativa');
+  iguais(r.resumoCotacao.status, 'aprovada');
+  iguais(r.resumoCotacao.processo_id, 'proc-1');
+  iguais(r.resumoCotacao.processo_referencia, 'REF-TESTE-1');
+  verdadeiro(r.resumoCotacao.motivo_perda === undefined, 'vincular limpa o motivo de perda');
+  iguais(r.patchProcesso.real_json.capatazia_cobrado.valor, 200); // por container × 2
+  iguais(r.patchProcesso.comissoes_json.selecionados, ['VEND-B', 'VEND-A']);
+  iguais(r.patchProcesso.comissoes_json.pagamentos.length, 1);
+  verdadeiro(r.log.some(l => l.campo === 'Cotação vinculada'), 'registra no Histórico do processo');
+});
+teste('vincular não mexe em Custos Reais já lançados', () => {
+  const r = Vinculo.planoVincular({ cot: cotV('cot-1'), proc: procV({ real_json: { fob: { valor: 5000, moeda: 'BRL' } } }), outras: [], agora: AGORA_V });
+  verdadeiro(r.patchProcesso.real_json === undefined);
+});
+teste('processo com outra cotação: recusa (409 com conflito) e só troca com substituir — a antiga volta a Rascunho', () => {
+  const antiga = cotV('cot-velha', { resumo: { ...estV(900, 1400), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-TESTE-1' } });
+  const sem = Vinculo.planoVincular({ cot: cotV('cot-1'), proc: procV({ cotacao_id: 'cot-velha' }), outras: [antiga], agora: AGORA_V });
+  iguais(sem.status, 409);
+  iguais(sem.conflito.cotacao_id, 'cot-velha');
+  const com = Vinculo.planoVincular({ cot: cotV('cot-1'), proc: procV({ cotacao_id: 'cot-velha' }), outras: [antiga], substituir: true, agora: AGORA_V });
+  verdadeiro(!com.erro, com.erro);
+  iguais(com.desvincular.length, 1);
+  iguais(com.desvincular[0].id, 'cot-velha');
+  verdadeiro(!com.desvincular[0].resumo.status && !com.desvincular[0].resumo.processo_id, 'antiga sem status/processo = Rascunho');
+  iguais(com.desvincular[0].resumo.desvinculado_de, 'REF-TESTE-1');
+});
+teste('vincular recusa processo fechado/cancelado, cotação excluída, cotação de outro processo e cotação sem números', () => {
+  iguais(Vinculo.planoVincular({ cot: cotV('c'), proc: procV({ fechado: true }) }).status, 409);
+  iguais(Vinculo.planoVincular({ cot: cotV('c'), proc: procV({ cancelado: true }) }).status, 409);
+  iguais(Vinculo.planoVincular({ cot: cotV('c', { ativo: false }), proc: procV() }).status, 409);
+  iguais(Vinculo.planoVincular({ cot: cotV('c', { resumo: { ...estV(1, 2), processo_id: 'proc-outro', processo_referencia: 'REF-OUTRO' } }), proc: procV() }).status, 409);
+  iguais(Vinculo.planoVincular({ cot: cotV('c', { resumo: { status: 'rascunho' } }), proc: procV() }).status, 400);
+});
+teste('desvincular tira dos dois lados: processo sem cotacao_id/estimativa, cotação Rascunho com a nota de onde saiu', () => {
+  const cot = cotV('cot-1', { resumo: { ...estV(1000, 1500), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-TESTE-1' } });
+  const r = Vinculo.planoDesvincular({ cot, proc: procV({ cotacao_id: 'cot-1', estimativa_json: estV(1000, 1500) }), usuario: 'teste', agora: AGORA_V, motivo: 'teste' });
+  iguais(r.patchProcesso.cotacao_id, null);
+  iguais(r.patchProcesso.estimativa_json, null);
+  verdadeiro(!r.resumoCotacao.status && !r.resumoCotacao.processo_id);
+  iguais(r.resumoCotacao.desvinculado_de, 'REF-TESTE-1');
+  verdadeiro(r.log.length >= 1);
+  const fechado = Vinculo.planoDesvincular({ cot, proc: procV({ cotacao_id: 'cot-1', fechado: true }) });
+  iguais(fechado.status, 409);
+});
+teste('desvincular uma cotação "a mais" (o processo é de outra) não apaga a estimativa do processo', () => {
+  const cot = cotV('cot-2', { resumo: { ...estV(700, 800), status: 'aprovada', processo_id: 'proc-1' } });
+  const r = Vinculo.planoDesvincular({ cot, proc: procV({ cotacao_id: 'cot-1', estimativa_json: estV(1000, 1500) }) });
+  iguais(r.patchProcesso, null);
+  verdadeiro(!r.resumoCotacao.processo_id);
+});
+teste('salvar de novo a cotação vinculada atualiza a estimativa do processo (com Histórico); fechado → só leitura', () => {
+  const cotNova = cotV('cot-1', { resumo: { ...estV(1100, 1600), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-ANTIGA' } });
+  const r = Vinculo.planoResalvar({ cotNova, proc: procV({ cotacao_id: 'cot-1', estimativa_json: estV(1000, 1500), comissoes_json: { selecionados: ['VEND-A'] } }), agora: AGORA_V });
+  iguais(r.patchProcesso.estimativa_json.custo_total, 1100);
+  verdadeiro(r.patchProcesso.cotacao_id === undefined && r.patchProcesso.real_json === undefined, 'resalvar não mexe em Custos Reais');
+  iguais(r.resumoCotacao.processo_referencia, 'REF-TESTE-1', 'referência atualizada');
+  verdadeiro(r.log.length === 1 && /Estimativa/.test(r.log[0].campo));
+  const igual = Vinculo.planoResalvar({ cotNova: cotV('cot-1', { resumo: { ...estV(1000, 1500), status: 'aprovada', processo_id: 'proc-1' } }), proc: procV({ cotacao_id: 'cot-1', estimativa_json: { ...estV(1000, 1500) }, comissoes_json: { selecionados: ['VEND-A'] } }), agora: AGORA_V });
+  iguais(igual.patchProcesso, null, 'nada mudou → não toca no processo (não gera edição simultânea à toa)');
+  iguais(Vinculo.planoResalvar({ cotNova, proc: procV({ cotacao_id: 'cot-1', fechado: true }) }).status, 409);
+  const sumiu = Vinculo.planoResalvar({ cotNova, proc: null, agora: AGORA_V });
+  verdadeiro(sumiu.desvinculada && !sumiu.resumoCotacao.processo_id, 'processo excluído → cotação volta a Rascunho');
+});
+teste('aprovar de novo uma cotação já aprovada no mesmo processo mantém a data de aprovação original', () => {
+  const r = Vinculo.resumoVinculado({ status: 'aprovada', processo_id: 'proc-1', data_aprovacao: '2026-01-01T00:00:00Z', aprovado_por: 'quem-aprovou' }, procV(), { usuario: 'outro', agora: AGORA_V });
+  iguais(r.data_aprovacao, '2026-01-01T00:00:00Z');
+  iguais(r.aprovado_por, 'quem-aprovou');
+});
+teste('conferência: completa o lado do processo, desvincula a cotação "a mais", aponta processo excluído e acerta a referência', () => {
+  const cots = [
+    cotV('c-a', { cliente: 'NÃO', updated_at: '2026-08-02', resumo: { ...estV(1000, 1500), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-TESTE-1' } }),
+    cotV('c-b', { cliente: 'NÃO', updated_at: '2026-08-01', resumo: { ...estV(1000, 1500), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-TESTE-1' } }),
+    cotV('c-c', { updated_at: '2026-08-03', resumo: { ...estV(900, 1200), status: 'aprovada', processo_id: 'proc-1' } }),
+    cotV('c-d', { resumo: { ...estV(450, 650), status: 'aprovada', processo_id: 'proc-sumiu', processo_referencia: 'REF-SUMIU' } }),
+    cotV('c-e', { resumo: { ...estV(500, 600), status: 'aprovada', processo_id: 'proc-2', processo_referencia: 'REF-VELHA' } }),
+  ];
+  const procs = [procV({ estimativa_json: estV(1000, 1500), cliente: 'Cliente Exemplo A' }), procV({ id: 'proc-2', referencia: 'REF-TESTE-2', cotacao_id: 'c-e', estimativa_json: estV(500, 600) })];
+  const d = Vinculo.diagnosticarVinculos(cots, procs, { usuario: 'teste', agora: AGORA_V, excluirCopias: true });
+  const acProc = d.acoes.find(a => a.alvo === 'processo' && a.id === 'proc-1');
+  iguais(acProc.patch.cotacao_id, 'c-a', 'a principal é a que bate com a estimativa (a mais recente)');
+  const ac = id => d.acoes.find(a => a.alvo === 'cotacao' && a.id === id);
+  iguais(ac('c-a').cliente, 'Cliente Exemplo A', 'cliente "NÃO" vira o cliente do processo');
+  verdadeiro(!ac('c-c').resumo.processo_id, 'a cotação a mais volta a Rascunho');
+  verdadeiro(ac('c-b').ativo === false, 'cópia idêntica solta é excluída (reversível)');
+  verdadeiro(ac('c-c').ativo !== false, 'cotação diferente não é excluída, só desvinculada');
+  verdadeiro(!ac('c-d').resumo.processo_id && /não existe/.test(ac('c-d').resumo.desvinculado_motivo), 'processo excluído → desvincula');
+  iguais(ac('c-e').resumo.processo_referencia, 'REF-TESTE-2', 'referência atualizada');
+  iguais(d.porCotacao['c-a'].estado, 'ok');
+  iguais(d.porCotacao['c-c'].estado, 'duplicada');
+  iguais(d.porCotacao['c-d'].estado, 'processo_inexistente');
+});
+teste('conferência: várias cotações e nenhuma com a estimativa do processo → fica para olhar à mão (nada automático)', () => {
+  const cots = [cotV('c-1', { resumo: { ...estV(1, 2), status: 'aprovada', processo_id: 'proc-1' } }), cotV('c-2', { resumo: { ...estV(3, 4), status: 'aprovada', processo_id: 'proc-1' } })];
+  const d = Vinculo.diagnosticarVinculos(cots, [procV({ estimativa_json: estV(1000, 1500) })], {});
+  iguais(d.acoes.length, 0);
+  verdadeiro(d.problemas.some(p => !p.automatico && p.tipo === 'varias_sem_estimativa_igual'));
+});
+teste('conferência: uma cotação só com estimativa diferente → vincula e avisa (mantém a estimativa do processo)', () => {
+  const d = Vinculo.diagnosticarVinculos([cotV('c-1', { resumo: { ...estV(900, 1400), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-TESTE-1' } })],
+    [procV({ estimativa_json: estV(1000, 1500) })], {});
+  const acProc = d.acoes.find(a => a.alvo === 'processo');
+  iguais(acProc.patch.cotacao_id, 'c-1');
+  verdadeiro(acProc.patch.estimativa_json === undefined, 'não sobrescreve a estimativa do processo');
+  iguais(d.porCotacao['c-1'].estado, 'estimativa_diferente');
+});
+teste('conferência: processo fechado só ganha o cotacao_id (estimativa não muda)', () => {
+  const d = Vinculo.diagnosticarVinculos([cotV('c-1', { resumo: { ...estV(1000, 1500), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-TESTE-1' } })],
+    [procV({ fechado: true, estimativa_json: null })], {});
+  const acProc = d.acoes.find(a => a.alvo === 'processo');
+  iguais(acProc.patch.cotacao_id, 'c-1');
+  verdadeiro(acProc.patch.estimativa_json === undefined);
+});
+teste('conferência: tudo certo → zero problemas', () => {
+  const d = Vinculo.diagnosticarVinculos([cotV('c-1', { resumo: { ...estV(1000, 1500), status: 'aprovada', processo_id: 'proc-1', processo_referencia: 'REF-TESTE-1' } }), cotV('c-2')],
+    [procV({ cotacao_id: 'c-1', estimativa_json: estV(1000, 1500) })], {});
+  iguais(d.problemas.length, 0);
+  iguais(d.acoes.length, 0);
+  iguais(d.porCotacao['c-2'].estado, 'sem_vinculo');
+});
+teste('extrairEstimativa ignora todos os campos de ciclo de vida (criado/excluída/desvinculada)', () => {
+  const e = extrairEstimativa({ custo_total: 1, status: 'aprovada', criado_por: 'x', excluida_motivo: 'y', desvinculado_de: 'z', restaurada_em: 'w' });
+  iguais(Object.keys(e), ['custo_total']);
+});
+
 console.log(`Total: ${totalTestes} testes, ${totalTestes - totalFalhas} passaram, ${totalFalhas} falharam`);
 if (totalFalhas > 0) {
   console.log('\n⚠️  NÃO FAÇA DEPLOY com testes falhando sem entender o motivo.');

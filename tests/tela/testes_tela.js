@@ -22,6 +22,7 @@ const AUDITORIA = path.join(__dirname, 'auditoria.js');
 const TELAS = {
   '/': 'tyredesk.html',
   '/calculador': 'calculador.html',
+  '/cotacoes': 'cotacoes.html',
   '/catalogo-produtos': 'catalogo-produtos.html',
   '/assistente': 'assistente.html',
   '/permissoes': 'permissoes.html',
@@ -36,6 +37,17 @@ const SO_RELATORIO = { '/processos': 'processos.html' };
 // dos scripts da tela; `acao` depois de carregar; `conferir` devolve uma
 // lista de problemas (vazia = ok).
 const CENARIOS = [
+  {
+    nome: '/cotacoes + painel da cotação', rota: '/cotacoes',
+    acao: async page => { await page.evaluate(() => abrirPainel('cot-teste-1')); await page.waitForTimeout(400); },
+    conferir: () => {
+      const p = [];
+      const painel = document.getElementById('painel');
+      if (!painel || !painel.classList.contains('open')) p.push('o painel da cotação não abriu');
+      if (!document.querySelector('table.cot tbody tr')) p.push('a tabela de cotações não mostrou as linhas');
+      return p;
+    },
+  },
   {
     nome: '/controle + painel do processo', rota: '/controle',
     acao: async page => { await page.evaluate(() => abrirProcesso('teste-3')); await page.waitForTimeout(900); },

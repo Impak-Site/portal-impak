@@ -97,9 +97,11 @@ function renderModal(){
   const btnCopiarRef = document.getElementById('btn-copiar-ref');
   if(btnCopiarRef) btnCopiarRef.style.display = isNovo ? 'none' : '';
   const _origem = (!isNovo && typeof origemProcesso === 'function') ? origemProcesso(p) : null;
+  // Clicar no selo leva pra cotação vinculada (aba Custos Reais), onde dá pra
+  // abrir no Calculador, trocar, desvincular ou criar uma a partir do processo.
   const _origemHtml = !_origem ? '' : (_origem === 'COTACAO'
-    ? `<span title="Processo com cotação do TyreDesk/Calculador vinculada" style="font-size:11px;font-weight:600;color:#065f46;background:#d1fae5;border:1px solid #a7f3d0;border-radius:999px;padding:2px 8px;margin-right:6px;">🧮 Origem: Cotação</span>`
-    : (processoExigeCotacao(p) ? `<span title="Sem cotação vinculada — a aba Custos Reais não tem o valor cotado para comparar. Vincule pelo Calculador." style="font-size:11px;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:2px 8px;margin-right:6px;">✍ Origem: Direto no Controle</span>` : ''));
+    ? `<span role="button" tabindex="0" onclick="trocarAba('custosreais');setTimeout(()=>{const e=document.getElementById('cr-vinculo-cotacao');if(e)e.scrollIntoView({block:'center'});},50)" title="Processo com cotação do TyreDesk/Calculador vinculada — clique para ver a cotação" style="cursor:pointer;font-size:11px;font-weight:600;color:#065f46;background:#d1fae5;border:1px solid #a7f3d0;border-radius:999px;padding:2px 8px;margin-right:6px;">🧮 Origem: Cotação</span>`
+    : (processoExigeCotacao(p) ? `<span role="button" tabindex="0" onclick="trocarAba('custosreais');setTimeout(()=>{const e=document.getElementById('cr-vinculo-cotacao');if(e)e.scrollIntoView({block:'center'});},50)" title="Sem cotação vinculada — a aba Custos Reais não tem o valor cotado para comparar. Clique para vincular uma cotação ou criar uma a partir deste processo." style="cursor:pointer;font-size:11px;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:2px 8px;margin-right:6px;">✍ Origem: Direto no Controle</span>` : ''));
   document.getElementById('modal-fase-badge').innerHTML = `${_origemHtml}<span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>`;
   document.getElementById('modal-bg').classList.add('open');
 
@@ -485,10 +487,10 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
           <input type="file" id="import-fechamento-input" accept=".xlsm,.xlsx" style="display:none" onchange="importarFechamentoProcesso(this)">
           <button type="button" class="btn btn-outline" onclick="document.getElementById('import-fechamento-input').click()">📥 Importar planilha de Fechamento</button>
           <button type="button" class="btn btn-outline" onclick="enviarProcessoAoCalculadorReal()" title="Abre o Calculador já preenchido com os dados reais deste processo (FOB da CI, câmbio fechado, frete, taxas e impostos lançados, produtos) para simular a venda para clientes de vários estados. É uma simulação: não muda nada no processo.">🧮 Simular venda no Calculador (dados reais)</button>
-          ${!p.real_json ? `
-          <button type="button" class="btn btn-outline" onclick="vincularProcessoAoCalculador('${p.id}')" title="Cria uma cotação no Calculador já pré-preenchida com os dados deste processo, pra registrar a estimativa/fechamento">🧮 Vincular ao Calculador</button>
-          ` : ''}
         </div>
+        <!-- Cotação vinculada (regra única do vínculo: lib/vinculo-cotacao.js) —
+             carregarVinculoCotacao() preenche depois que o painel abre. -->
+        <div id="cr-vinculo-cotacao" style="margin-bottom:14px;">${isNovo ? '' : '<span style="font-size:12px;color:var(--muted);">Carregando a cotação vinculada…</span>'}</div>
         ${renderCustosReaisTab(p)}
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
@@ -900,6 +902,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
   else document.getElementById('ged-lista-arquivos').innerHTML = '<div style="font-size:11px;color:var(--dim);">Salve o processo antes de enviar arquivos.</div>';
   if(typeof renderConferencia === 'function') renderConferencia(p);
   if(typeof atualizarBadgeConferencia === 'function') atualizarBadgeConferencia(p);
+  if(!isNovo) carregarVinculoCotacao(p);
 }
 
 // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
@@ -2871,8 +2874,196 @@ function marcarPendenciaRevisada(){
 // BotÃÂÃÂ£o "Vincular ao Calculador" (item e) ÃÂ¢ÃÂÃÂ abre o Calculador em uma nova
 // aba, jÃÂÃÂ¡ preenchendo o wizard com os dados deste processo, pra gerar uma
 // cotaÃÂÃÂ§ÃÂÃÂ£o (estimativa) de um processo que comeÃÂÃÂ§ou direto no Controle.
+// ── Cotação vinculada ao processo (aba Custos Reais) ──────────────────────
+// Regra única do vínculo cotação ↔ processo: lib/vinculo-cotacao.js (no
+// servidor). Um processo tem uma cotação: a estimativa dela é o "cotado" do
+// processo. Daqui dá pra abrir no Calculador, trocar, desvincular, escolher
+// uma cotação já feita ou criar uma a partir do processo (o mesmo
+// preenchimento do "Simular venda", mas salvar vincula).
+function _fmtBrlVinc(v){
+  const n = parseFloat(v);
+  return isFinite(n) ? 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+}
+function htmlVinculoCotacao(p, d){
+  const e = typeof esc === 'function' ? esc : (s => String(s == null ? '' : s));
+  const trava = !!(p && (p.fechado || p.cancelado));
+  const box = (cor, borda, fundo, html) => `<div style="border:1px solid ${borda};background:${fundo};border-radius:8px;padding:10px 12px;font-size:12px;color:${cor};line-height:1.5;">${html}</div>`;
+  const btn = (txt, onclick, titulo) => `<button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:12px;" onclick="${onclick}" title="${e(titulo || '')}">${txt}</button>`;
+  if(!d || !d.ok){
+    return box('var(--muted)', 'var(--border)', 'var(--bg)', 'Não foi possível carregar a cotação vinculada agora. ' + btn('Tentar de novo', 'carregarVinculoCotacao(_editando)'));
+  }
+  const c = d.cotacao;
+  const outras = Array.isArray(d.outras) ? d.outras : [];
+  if(c){
+    const dt = c.updated_at ? new Date(c.updated_at) : null;
+    const quando = dt && !isNaN(dt) ? dt.toLocaleDateString('pt-BR') : '';
+    const pct = isFinite(parseFloat(c.pct_lucro)) ? ` (${parseFloat(c.pct_lucro).toFixed(1).replace('.', ',')}%)` : '';
+    let html = `<div style="font-weight:700;color:var(--text);margin-bottom:2px;">🧮 Cotação vinculada: ${e(c.cliente || 'sem cliente')}${c.tipo || c.uf ? ' · ' + e([c.tipo, c.uf].filter(Boolean).join('/')) : ''}</div>`
+      + `<div>Custo ${_fmtBrlVinc(c.custo_total)} · faturamento ${_fmtBrlVinc(c.faturamento)} · lucro ${_fmtBrlVinc(c.lucro_bruto)}${pct}${quando ? ' · salva em ' + quando : ''}${c.updated_by ? ' por ' + e(c.updated_by) : ''}</div>`;
+    if(!d.vinculo_completo) html += `<div style="color:var(--warn);margin-top:4px;">⚠ O vínculo estava só de um lado — a tela Cotações (Conferir vínculos) completa.</div>`;
+    else if(!c.estimativa_igual && d.tem_estimativa) html += `<div style="color:var(--warn);margin-top:4px;">⚠ A estimativa gravada no processo é diferente desta cotação. Abrir a cotação no Calculador e salvar passa os números dela para o processo.</div>`;
+    if(outras.length) html += `<div style="color:var(--warn);margin-top:4px;">⚠ ${outras.length} outra(s) cotação(ões) também apontam para este processo — confira na tela Cotações.</div>`;
+    html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">`
+      + btn('Abrir no Calculador', `window.open('/calculador?cotacao=${encodeURIComponent(c.id)}','_blank')`, 'Abre esta cotação no Calculador (salvar lá atualiza a estimativa do processo)')
+      + btn('Ver em Cotações', `window.open('/cotacoes?id=${encodeURIComponent(c.id)}','_blank')`, 'Tela Cotações, com esta cotação aberta')
+      + (trava ? '' : btn('Trocar cotação', 'abrirEscolherCotacaoProcesso()', 'Escolher outra cotação já feita para este processo (a atual volta a Rascunho)'))
+      + (trava ? '' : btn('Desvincular', 'desvincularCotacaoDoProcesso()', 'Tira o vínculo dos dois lados: a cotação volta a Rascunho e o processo fica sem estimativa (Custos Reais não mudam)'))
+      + `</div>`;
+    if(trava) html += `<div style="color:var(--muted);margin-top:6px;">Processo ${p.fechado ? 'fechado' : 'cancelado'}: o vínculo e a estimativa ficam travados.</div>`;
+    return box('var(--muted)', '#a7f3d0', '#f0fdf4', html);
+  }
+  let html = `<div style="font-weight:700;color:var(--text);margin-bottom:2px;">Sem cotação vinculada</div>`
+    + `<div>Sem cotação, o Fechamento não tem o "cotado" para comparar com o real. Crie a cotação a partir deste processo (o Calculador abre com os dados dele; ao salvar, ela fica vinculada) ou escolha uma cotação já feita.</div>`;
+  if(outras.length) html += `<div style="color:var(--warn);margin-top:4px;">⚠ ${outras.length} cotação(ões) apontam para este processo sem o vínculo completo — veja na tela Cotações (Conferir vínculos).</div>`;
+  if(trava) html += `<div style="color:var(--muted);margin-top:6px;">Processo ${p.fechado ? 'fechado' : 'cancelado'}: reabra para vincular.</div>`;
+  else html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">`
+    + btn('🧮 Criar cotação a partir deste processo', 'enviarProcessoAoCalculadorReal({vincular:true})', 'Abre o Calculador com os dados do processo; ao salvar, a cotação fica vinculada a ele')
+    + btn('🔗 Escolher cotação já feita', 'abrirEscolherCotacaoProcesso()', 'Lista as cotações sem processo (do mesmo cliente primeiro)')
+    + `</div>`;
+  return box('var(--muted)', '#fde68a', '#fffbeb', html);
+}
+async function carregarVinculoCotacao(p){
+  const el = document.getElementById('cr-vinculo-cotacao');
+  if(!el || !p || !p.id) return;
+  let d = null;
+  try{ const r = await fetch('/api/controle/processos/' + encodeURIComponent(p.id) + '/cotacao'); d = await r.json(); }catch(e){ d = null; }
+  if(typeof _editando === 'undefined' || !_editando || _editando.id !== p.id) return; // trocou de processo no meio
+  const alvo = document.getElementById('cr-vinculo-cotacao');
+  if(alvo) alvo.innerHTML = htmlVinculoCotacao(_editando, d);
+}
+// Depois de vincular/desvincular, o servidor mudou o processo: recarrega o
+// painel (senão o próximo Salvar daria "edição simultânea").
+async function recarregarProcessoAposVinculo(id){
+  try{
+    await carregarProcessos(true);
+    const p = _processos.find(x => x.id === id);
+    if(p){
+      if(typeof garantirProcessoCompleto === 'function') await garantirProcessoCompleto(p);
+      _editando = { ...p, _camposIA: {} }; _editandoOriginal = { ...p };
+      renderModal();
+      if(typeof trocarAba === 'function') trocarAba('custosreais');
+    }
+  }catch(e){ showToast('Vínculo gravado — recarregue o processo para ver.', 'warn'); }
+}
+function _bloqueioVinculoPainel(){
+  if(!_editando || !_editando.id){ showToast('Salve o processo primeiro.', 'warn'); return true; }
+  if(_painelDirty){ showToast('Há alterações não salvas neste processo — salve antes de mudar a cotação vinculada.', 'warn', 9000); return true; }
+  return false;
+}
+async function desvincularCotacaoDoProcesso(){
+  if(_bloqueioVinculoPainel()) return;
+  const id = _editando.id;
+  let d = null;
+  try{ const r = await fetch('/api/controle/processos/' + encodeURIComponent(id) + '/cotacao'); d = await r.json(); }catch(e){ d = null; }
+  const c = d && d.cotacao;
+  if(!c){ showToast('Este processo não tem cotação vinculada.', 'warn'); return; }
+  const motivo = prompt(`Desvincular a cotação de ${c.cliente || '—'} deste processo?\n\nA cotação volta a Rascunho e o processo fica sem estimativa (Custos Reais não mudam).\n\nMotivo (opcional):`, '');
+  if(motivo === null) return;
+  try{
+    const r = await fetch('/api/calculador/cotacoes/' + encodeURIComponent(c.id) + '/desvincular-processo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motivo: motivo.trim() })
+    });
+    const dd = await r.json();
+    if(!dd.ok) throw new Error(dd.erro || 'erro');
+    showToast('✓ Cotação desvinculada do processo', 'ok');
+    await recarregarProcessoAposVinculo(id);
+  }catch(e){ showToast('Não foi possível desvincular: ' + e.message, 'err', 9000); }
+}
+// Escolher uma cotação já feita (sem processo) para este processo.
+let _cotacoesParaVincular = [];
+async function abrirEscolherCotacaoProcesso(){
+  if(_bloqueioVinculoPainel()) return;
+  let bg = document.getElementById('mbg-escolher-cotacao');
+  if(!bg){
+    bg = document.createElement('div');
+    bg.id = 'mbg-escolher-cotacao';
+    bg.setAttribute('role', 'dialog');
+    bg.setAttribute('aria-modal', 'true');
+    bg.setAttribute('aria-label', 'Escolher cotação para o processo');
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    bg.innerHTML = `<div style="background:var(--card,#fff);border-radius:12px;max-width:760px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,.2);">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+        <div style="font-weight:700;font-size:15px;flex:1;">Escolher cotação já feita</div>
+        <button type="button" class="btn btn-outline" style="padding:4px 10px;" onclick="fecharEscolherCotacaoProcesso()" aria-label="Fechar">✕</button>
+      </div>
+      <div style="padding:12px 18px;border-bottom:1px solid var(--border);">
+        <input type="text" id="escolher-cot-busca" class="form-input" placeholder="Buscar por cliente, tipo, UF…" aria-label="Buscar cotação" style="width:100%;" oninput="renderEscolherCotacaoProcesso()">
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;">Só aparecem cotações sem processo. As do mesmo cliente vêm primeiro. Vincular grava a estimativa da cotação neste processo e deixa a cotação Aprovada.</div>
+      </div>
+      <div id="escolher-cot-lista" style="overflow:auto;padding:8px 18px 16px;font-size:12px;">Carregando…</div>
+    </div>`;
+    bg.addEventListener('click', ev => { if(ev.target === bg) fecharEscolherCotacaoProcesso(); });
+    document.body.appendChild(bg);
+  }
+  bg.style.display = 'flex';
+  const lista = document.getElementById('escolher-cot-lista');
+  lista.textContent = 'Carregando…';
+  try{
+    const r = await fetch('/api/calculador/cotacoes?completa=1');
+    if(r.status === 403){ lista.textContent = 'Seu usuário não tem acesso ao Calculador — peça a um gerente para vincular pela tela Cotações.'; return; }
+    const d = await r.json();
+    _cotacoesParaVincular = ((d && d.cotacoes) || []).filter(c => c.ativo !== false && !(c.resumo && c.resumo.processo_id) && !(c.processo && c.processo.id));
+  }catch(e){ lista.textContent = 'Erro ao carregar as cotações: ' + e.message; return; }
+  renderEscolherCotacaoProcesso();
+  const busca = document.getElementById('escolher-cot-busca');
+  if(busca) busca.focus();
+}
+function fecharEscolherCotacaoProcesso(){
+  const bg = document.getElementById('mbg-escolher-cotacao');
+  if(bg) bg.style.display = 'none';
+}
+function _normVinc(s){ return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim(); }
+function renderEscolherCotacaoProcesso(){
+  const lista = document.getElementById('escolher-cot-lista');
+  if(!lista) return;
+  const e = typeof esc === 'function' ? esc : (s => String(s == null ? '' : s));
+  const termo = _normVinc((document.getElementById('escolher-cot-busca') || {}).value);
+  const cli = _normVinc(_editando && _editando.cliente);
+  const primeiraPalavra = cli.split(/\s+/)[0] || '';
+  const mesmoCliente = c => { const n = _normVinc(c.cliente); return !!cli && (n === cli || (primeiraPalavra.length >= 3 && n.split(/\s+/)[0] === primeiraPalavra)); };
+  const itens = _cotacoesParaVincular
+    .filter(c => !termo || _normVinc([c.cliente, c.resumo && c.resumo.tipo, c.resumo && c.resumo.uf, c.updated_by].join(' ')).includes(termo))
+    .sort((a, b) => (mesmoCliente(b) - mesmoCliente(a)) || String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+    .slice(0, 150);
+  if(!itens.length){ lista.innerHTML = '<div style="color:var(--muted);padding:12px 0;">Nenhuma cotação sem processo encontrada.</div>'; return; }
+  lista.innerHTML = itens.map(c => {
+    const r = c.resumo || {};
+    const dt = c.updated_at ? new Date(c.updated_at) : null;
+    const quando = dt && !isNaN(dt) ? dt.toLocaleDateString('pt-BR') : '';
+    const st = r.status === 'rejeitada' ? ' · <span style="color:var(--err);">perdida</span>' : '';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--text);">${e(c.cliente || 'sem cliente')}${mesmoCliente(c) ? ' <span style="font-size:10px;color:#065f46;background:#d1fae5;border-radius:999px;padding:1px 6px;">mesmo cliente</span>' : ''}</div>
+        <div style="color:var(--muted);">${e([r.tipo, r.uf].filter(Boolean).join('/') || '—')} · custo ${_fmtBrlVinc(r.custo_total)} · lucro ${_fmtBrlVinc(r.lucro_bruto)}${isFinite(parseFloat(r.pct_lucro)) ? ' (' + parseFloat(r.pct_lucro).toFixed(1).replace('.', ',') + '%)' : ''} · ${quando}${c.updated_by ? ' · ' + e(c.updated_by) : ''}${st}</div>
+      </div>
+      <button type="button" class="btn btn-primary" style="padding:4px 12px;font-size:12px;" onclick="vincularCotacaoEscolhida('${e(String(c.id))}')">Vincular</button>
+    </div>`;
+  }).join('');
+}
+async function vincularCotacaoEscolhida(cotacaoId){
+  if(_bloqueioVinculoPainel()) return;
+  const id = _editando.id;
+  const enviar = substituir => fetch('/api/calculador/cotacoes/' + encodeURIComponent(cotacaoId) + '/vincular-processo', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ processo_id: id, substituir: !!substituir })
+  }).then(r => r.json());
+  try{
+    let d = await enviar(false);
+    if(!d.ok && d.conflito){
+      if(!confirm(d.erro + '\n\nTrocar pela cotação escolhida?')) return;
+      d = await enviar(true);
+    }
+    if(!d.ok) throw new Error(d.erro || 'erro');
+    fecharEscolherCotacaoProcesso();
+    showToast('✓ Cotação vinculada ao processo' + (d.trocadas && d.trocadas.length ? ' (a anterior voltou a Rascunho)' : ''), 'ok');
+    await recarregarProcessoAposVinculo(id);
+  }catch(e){ showToast('Não foi possível vincular: ' + e.message, 'err', 9000); }
+}
+
+// Botão antigo "Vincular ao Calculador" (links e atalhos antigos): agora é o
+// "Criar cotação a partir do processo" — mesmo preenchimento do Simular venda.
 function vincularProcessoAoCalculador(processoId){
-  window.open(`/calculador?processo_id=${processoId}`, '_blank');
+  if(_editando && (!processoId || _editando.id === processoId)) return enviarProcessoAoCalculadorReal({ vincular: true });
+  window.open(`/calculador?processo_id=${encodeURIComponent(processoId)}`, '_blank');
 }
 
 // Botão "Simular venda no Calculador (dados reais)" — abas Custos Reais e
@@ -2884,8 +3075,10 @@ function vincularProcessoAoCalculador(processoId){
 // O Calculador abre como simulação: salvar lá cria uma cotação separada e
 // não vincula nem muda este processo.
 const CHAVE_PREFILL_CALCULADOR = 'calculador_prefill_controle';
-async function enviarProcessoAoCalculadorReal(){
+async function enviarProcessoAoCalculadorReal(opts){
+  const vincular = !!(opts && opts.vincular);
   if(!_editando){ showToast('Abra um processo primeiro.', 'warn'); return; }
+  if(vincular && !_editando.id){ showToast('Salve o processo primeiro.', 'warn'); return; }
   const aba = window.open('', '_blank');
   if(!aba){ showToast('O navegador bloqueou a nova aba. Libere pop-ups para o ImpakOS e clique de novo.', 'err', 12000); return; }
   try{ aba.document.write('<p style="font-family:Inter,Arial,sans-serif;padding:24px;color:#475569;">Abrindo o Calculador com os dados do processo…</p>'); }catch(e){ /* sem acesso à aba: segue */ }
@@ -2916,7 +3109,8 @@ async function enviarProcessoAoCalculadorReal(){
   try{ payload = montarPrefillCalculadorReal(proc, { ufCliente }); }
   catch(e){ try{ aba.close(); }catch(_){} showToast('Não foi possível montar os dados para o Calculador: ' + e.message, 'err', 12000); return; }
   const ts = Date.now();
-  try{ localStorage.setItem(CHAVE_PREFILL_CALCULADOR, JSON.stringify({ ...payload, ts })); }
+  // vincular: "Criar cotação a partir do processo" — o Calculador salva já vinculada.
+  try{ localStorage.setItem(CHAVE_PREFILL_CALCULADOR, JSON.stringify({ ...payload, ts, vincular })); }
   catch(e){ try{ aba.close(); }catch(_){} showToast('O navegador não deixou guardar os dados para o Calculador (armazenamento local bloqueado).', 'err', 12000); return; }
   aba.location.href = '/calculador?prefill=controle&t=' + ts;
   if(_painelDirty) showToast('Há alterações não salvas neste processo: o Calculador levou os dados já salvos (e a lista de Produtos como está na tela).', 'warn', 12000);
