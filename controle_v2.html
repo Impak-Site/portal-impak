@@ -31,6 +31,10 @@ tyredesk.html (window.ExcelStyles) — ver excel-styles.js. -->
 <script src="/concorrencia-processo.js"></script>
 <!-- 19/10/2026: referência com ou sem o prefixo "IMPAK-" (mesma regra do servidor) -->
 <script src="/referencia-processo.js"></script>
+<!-- 20/10/2026: CNPJ/CPF (máscara, zeros à esquerda, CPF do Conexos) e consulta da
+     Receita — os mesmos arquivos que o servidor usa nos Cadastros -->
+<script src="/documento-br.js"></script>
+<script src="/receita-cnpj.js"></script>
 <!-- Evita o "flash" da tela normal (menu/sidebar/filtros/tabela) nas telas
      exclusivas (Financeiro/Resultado/Análises/Narcélio/TV/Câmbio) enquanto
      JS ainda está buscando os processos e montando o layout dedicado —
@@ -822,8 +826,11 @@ ao lado das datas). -->
 </div>
 <div class="form-row">
 <div class="form-group"><label class="form-label" id="ce_documento_label">CNPJ</label>
-<input class="form-input" id="ce_documento" placeholder="00.000.000/0000-00" oninput="_ceFormatarDocumento(this)" onblur="_ceBuscarCnpjSeAplicavel(this.value)">
-<div id="ce_cnpj_status" style="font-size:10px;color:var(--dim);margin-top:2px;"></div></div>
+<div style="display:flex;gap:6px;align-items:center;">
+<input class="form-input" id="ce_documento" placeholder="00.000.000/0000-00" oninput="_ceFormatarDocumento(this)" onblur="_ceBuscarCnpjSeAplicavel(this.value)" style="flex:1;min-width:0;">
+<button type="button" class="btn btn-sm btn-outline" id="ce_btn_receita" onclick="buscarDadosCnpj(document.getElementById('ce_documento').value, { manual: true })" title="Busca na Receita Federal: razão social, nome fantasia, endereço, CEP, telefone e e-mail. Preenche só o que estiver vazio.">🔎 Receita</button>
+</div>
+<div id="ce_cnpj_status" style="font-size:11px;color:var(--dim);margin-top:3px;line-height:1.4;"></div></div>
 <div class="form-group"><label class="form-label">UF</label>
 <input class="form-input" id="ce_uf" maxlength="2" style="text-transform:uppercase;"></div>
 </div>

@@ -287,7 +287,126 @@ teste('bancos de câmbio padrão não carregam agência/conta (ficam só no banc
   });
 });
 
-console.log(`\n════════════════════════════════════════`);
-console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);
-console.log(`════════════════════════════════════════\n`);
-if (falhou > 0) process.exit(1);
+// ── CNPJ/CPF importados do Conexos + consulta da Receita (20/10/2026) — valores fictícios ──
+const DocBR = require('./documento-br.js');
+const Receita = require('./receita-cnpj.js');
+const { normalizarDocumento, formatarDocumento } = require('./lib/validacao-documento.js');
+// Monta documentos fictícios com dígito verificador válido.
+function dvCnpj(base12) {
+  const calc = b => { let p = b.length - 7, s = 0; for (let i = 0; i < b.length; i++) { s += +b[i] * p--; if (p < 2) p = 9; } const r = s % 11; return r < 2 ? 0 : 11 - r; };
+  const d1 = calc(base12); return base12 + d1 + calc(base12 + d1);
+}
+function dvCpf(base9) {
+  let s = 0; for (let i = 0; i < 9; i++) s += +base9[i] * (10 - i);
+  let d1 = (s * 10) % 11; if (d1 === 10) d1 = 0;
+  s = 0; const b10 = base9 + d1; for (let i = 0; i < 10; i++) s += +b10[i] * (11 - i);
+  let d2 = (s * 10) % 11; if (d2 === 10) d2 = 0;
+  return base9 + d1 + d2;
+}
+const CNPJ_ZERO = dvCnpj('012345670001');        // começa com 0
+const CNPJ_DOIS_ZEROS = dvCnpj('001234560001');  // começa com 00
+const CPF_ZERO = dvCpf('012345678');
+const CPF_CONEXOS = (cpf) => cpf.slice(0, 9) + '0000' + cpf.slice(9);
+
+console.log('\n── documento-br.js: CNPJ/CPF vindos do Conexos ──');
+teste('CNPJ sem o zero à esquerda (13 dígitos) volta com o zero', () => {
+  const r = normalizarDocumento('JURIDICA', 'Brasil', CNPJ_ZERO.slice(1));
+  assert.deepStrictEqual(r, { documento: CNPJ_ZERO, tipo_pessoa: 'JURIDICA', correcao: 'zeros_cnpj' });
+  assert.strictEqual(normalizarDocumento('JURIDICA', 'Brasil', CNPJ_DOIS_ZEROS.slice(2)).documento, CNPJ_DOIS_ZEROS);
+});
+teste('CNPJ certo (com ou sem máscara) fica como está, só os dígitos', () => {
+  assert.deepStrictEqual(normalizarDocumento('JURIDICA', 'Brasil', '11.222.333/0001-81'), { documento: '11222333000181', tipo_pessoa: 'JURIDICA', correcao: null });
+});
+teste('CPF no formato do Conexos (9 + 0000 + 2) vira CPF e pessoa física', () => {
+  assert.deepStrictEqual(normalizarDocumento('JURIDICA', 'Brasil', CPF_CONEXOS('11144477735')), { documento: '11144477735', tipo_pessoa: 'FISICA', correcao: 'cpf_conexos' });
+});
+teste('CPF do Conexos que também perdeu o zero à esquerda (14 dígitos) também é reconhecido', () => {
+  const corrido = CPF_CONEXOS(CPF_ZERO).replace(/^0+/, '');
+  assert.ok(!DocBR.digitoVerificadorValido_CNPJ(corrido.padStart(14, '0')), 'pré-condição: não pode ser CNPJ válido por acaso');
+  const r = normalizarDocumento('JURIDICA', 'Brasil', corrido);
+  assert.strictEqual(r.documento, CPF_ZERO); assert.strictEqual(r.tipo_pessoa, 'FISICA'); assert.strictEqual(r.correcao, 'cpf_conexos');
+});
+teste('número que não confere com dígito nenhum não é "corrigido" (a validação decide)', () => {
+  const r = normalizarDocumento('JURIDICA', 'Brasil', '1234567890123');
+  assert.deepStrictEqual(r, { documento: '1234567890123', tipo_pessoa: 'JURIDICA', correcao: null });
+  assert.ok(require('./lib/validacao-documento.js').validarDocumento(r.tipo_pessoa, 'Brasil', r.documento).includes('inválido'));
+});
+teste('exterior: documento livre, sem tocar', () => {
+  assert.deepStrictEqual(normalizarDocumento('JURIDICA', 'China', ' 91330000-ABC '), { documento: '91330000-ABC', tipo_pessoa: 'JURIDICA', correcao: null });
+});
+teste('máscara: 00.000.000/0000-00 e 000.000.000-00', () => {
+  assert.strictEqual(formatarDocumento('11222333000181'), '11.222.333/0001-81');
+  assert.strictEqual(formatarDocumento('11144477735'), '111.444.777-35');
+  assert.strictEqual(formatarDocumento('91330000-ABC'), '91330000-ABC');
+});
+
+console.log('\n── receita-cnpj.js: completar o cadastro pela Receita ──');
+const RESP_RECEITA = { razao_social: 'EMPRESA EXEMPLO DE PNEUS E SERVICOS AUTOMOTIVOS LTDA', nome_fantasia: 'EXEMPLO PNEUS', descricao_tipo_de_logradouro: 'RUA',
+  logradouro: 'DAS FLORES', numero: '100', complemento: 'SALA 2', bairro: 'CENTRO', municipio: 'CIDADE EXEMPLO', uf: 'sc', cep: '88000000',
+  ddd_telefone_1: '4733334444', email: 'CONTATO@EXEMPLO.COM.BR', descricao_situacao_cadastral: 'ATIVA' };
+teste('mapeia a resposta: tipo do logradouro, CEP e telefone formatados', () => {
+  const m = Receita.mapearDadosReceita(RESP_RECEITA);
+  assert.strictEqual(m.logradouro, 'RUA DAS FLORES'); assert.strictEqual(m.cep, '88000-000'); assert.strictEqual(m.telefone, '(47) 3333-4444');
+  assert.strictEqual(m.email, 'contato@exemplo.com.br'); assert.strictEqual(m.uf, 'SC'); assert.strictEqual(m.cidade, 'CIDADE EXEMPLO');
+  assert.strictEqual(Receita.mapearDadosReceita(Object.assign({}, RESP_RECEITA, { logradouro: 'RUA DAS FLORES' })).logradouro, 'RUA DAS FLORES');
+  assert.strictEqual(Receita.mapearDadosReceita({ nome_fantasia: '********' }).nome_fantasia, '');
+});
+teste('preenche só o que está vazio; o que já tem fica', () => {
+  const m = Receita.mapearDadosReceita(RESP_RECEITA);
+  const c = { tipo: 'CLIENTE', razao_social: 'EMPRESA EXEMPLO DE PNEUS E SERVICOS AUTOMOTIVOS LTDA', nome_fantasia: '', logradouro: 'AV. JA DIGITADA', numero: '', cidade: 'CIDADE EXEMPLO', uf: 'SC', cep: '' };
+  const r = Receita.completarComReceita(c, m);
+  assert.deepStrictEqual(r.alteracoes, { nome_fantasia: 'EXEMPLO PNEUS', numero: '100', complemento: 'SALA 2', bairro: 'CENTRO', cep: '88000-000' });
+  assert.ok(!('logradouro' in r.alteracoes)); assert.ok(!('telefone' in r.alteracoes) && !('email' in r.alteracoes), 'lote não põe telefone/e-mail (costumam ser do contador)');
+  assert.deepStrictEqual(r.divergencias, []);
+});
+teste('na tela (CAMPOS_TELA) também preenche telefone e e-mail vazios', () => {
+  const r = Receita.completarComReceita({ razao_social: 'X LTDA' }, Receita.mapearDadosReceita(RESP_RECEITA), { campos: Receita.CAMPOS_TELA });
+  assert.strictEqual(r.alteracoes.telefone, '(47) 3333-4444'); assert.strictEqual(r.alteracoes.email, 'contato@exemplo.com.br');
+});
+teste('razão social cortada em 35 letras (Conexos) vira a completa e a antiga fica como sinônimo', () => {
+  const cortada = 'EMPRESA EXEMPLO DE PNEUS E SERVICOS'.slice(0, 35);
+  const r = Receita.completarComReceita({ razao_social: cortada, sinonimos: ['EXEMPLO'] }, Receita.mapearDadosReceita(RESP_RECEITA));
+  assert.strictEqual(r.alteracoes.razao_social, RESP_RECEITA.razao_social);
+  assert.deepStrictEqual(r.alteracoes.sinonimos, ['EXEMPLO', cortada]);
+});
+teste('razão social diferente (ex.: mudou o nome) não é trocada: vira divergência', () => {
+  const r = Receita.completarComReceita({ razao_social: 'OUTRO NOME EXEMPLO EIRELI', cidade: 'OUTRA CIDADE' }, Receita.mapearDadosReceita(RESP_RECEITA));
+  assert.ok(!('razao_social' in r.alteracoes));
+  assert.deepStrictEqual(r.divergencias.map(d => d.campo).sort(), ['cidade', 'razao_social']);
+});
+teste('armador: nome fantasia não é preenchido (é o nome curto que vai pro processo)', () => {
+  const r = Receita.completarComReceita({ tipo: 'AGENTE', papeis: ['AGENTE', 'ARMADOR'], razao_social: 'X LTDA' }, Receita.mapearDadosReceita(RESP_RECEITA));
+  assert.ok(!('nome_fantasia' in r.alteracoes)); assert.strictEqual(r.alteracoes.cep, '88000-000');
+});
+
+// Testes assíncronos (busca com fetch falso — sem rede).
+const testesAsync = [];
+function testeAsync(nome, fn) { testesAsync.push([nome, fn]); }
+const respFalsa = (status, corpo) => ({ ok: status >= 200 && status < 300, status, json: async () => corpo });
+testeAsync('buscarCnpjReceita: 200 devolve os dados mapeados; 404 = não encontrado; 429 = indisponível', async () => {
+  let url = '';
+  const ok = await Receita.buscarCnpjReceita('11.222.333/0001-81', { fetch: async (u) => { url = u; return respFalsa(200, RESP_RECEITA); } });
+  assert.ok(ok.ok && url.endsWith('/11222333000181')); assert.strictEqual(ok.dados.cep, '88000-000');
+  const nf = await Receita.buscarCnpjReceita('11222333000181', { fetch: async () => respFalsa(404, {}) });
+  assert.ok(!nf.ok && nf.status === 404 && /não encontrado/.test(nf.erro));
+  const lim = await Receita.buscarCnpjReceita('11222333000181', { fetch: async () => respFalsa(429, {}) });
+  assert.ok(!lim.ok && lim.status === 429);
+});
+testeAsync('buscarCnpjReceita: CNPJ incompleto nem consulta; erro de rede não derruba', async () => {
+  let chamou = false;
+  const r = await Receita.buscarCnpjReceita('123', { fetch: async () => { chamou = true; return respFalsa(200, {}); } });
+  assert.ok(!r.ok && !chamou);
+  const e = await Receita.buscarCnpjReceita('11222333000181', { fetch: async () => { throw new Error('rede'); } });
+  assert.ok(!e.ok && e.status === 0);
+});
+
+(async () => {
+  for (const [nome, fn] of testesAsync) {
+    try { await fn(); passou++; console.log(`  ✓ ${nome}`); }
+    catch (e) { falhou++; console.log(`  ✗ ${nome}`); console.log(`    ${e.message}`); }
+  }
+  console.log(`\n════════════════════════════════════════`);
+  console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);
+  console.log(`════════════════════════════════════════\n`);
+  if (falhou > 0) process.exit(1);
+})();

@@ -255,10 +255,12 @@ function renderListaContatos(){
   const tbody = document.getElementById('contatos-tbody');
   if(!tbody) return;
   const q = (document.getElementById('contatos-search')?.value||'').toLowerCase().trim();
+  const qDig = q.replace(/\D/g,'');
   let lista = _contatosLista;
   if(q) lista = lista.filter(c=>
     (c.razao_social||'').toLowerCase().includes(q) ||
     (c.documento||c.cnpj||'').includes(q) ||
+    (qDig.length >= 3 && String(c.documento||c.cnpj||'').replace(/\D/g,'').includes(qDig)) ||
     (c.nome_fantasia||'').toLowerCase().includes(q) ||
     (Array.isArray(c.sinonimos) && c.sinonimos.some(s=>String(s||'').toLowerCase().includes(q)))
   );
@@ -268,9 +270,7 @@ function renderListaContatos(){
   }
   tbody.innerHTML = lista.map(c=>{
     const doc = c.documento || c.cnpj || '';
-    const cnpjFmt = doc
-      ? (c.tipo_pessoa==='FISICA' ? doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'))
-      : '—';
+    const cnpjFmt = doc ? esc(documentoParaTela(c.tipo_pessoa, c.pais, doc).texto) : '—';
     // Papéis extras além do tipo que está sendo filtrado (cadastros fase 1b)
     const extras = (Array.isArray(c.papeis) ? c.papeis : []).filter(pp => pp && pp !== _contatosTipoAtivo);
     const badges = extras.map(pp => `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;background:var(--bg);border:1px solid var(--border);font-size:10px;color:var(--muted);font-weight:500;" title="Também cadastrada como ${esc(PAPEIS_EMPRESA[pp]||pp)}">${esc(PAPEIS_EMPRESA[pp]||pp)}</span>`).join('');
@@ -286,6 +286,27 @@ function renderListaContatos(){
       </td>
     </tr>`;
   }).join('');
+}
+
+// CNPJ/CPF (documento-br.js, 20/10/2026): o banco guarda só os dígitos e a
+// tela sempre mostra com máscara. Cadastro importado do Conexos com CNPJ sem
+// os zeros à esquerda, ou com CPF no formato 9 dígitos + 0000 + 2, abre já
+// corrigido (e é gravado assim ao salvar — o servidor aplica a mesma regra).
+function _docBR(){ return (typeof window !== 'undefined' && window.DocumentoBR) || null; }
+function documentoParaTela(tipoPessoa, pais, doc){
+  const D = _docBR();
+  const tipo = tipoPessoa === 'FISICA' ? 'FISICA' : 'JURIDICA';
+  if(!D) return { texto: String(doc == null ? '' : doc), tipo_pessoa: tipo, correcao: null };
+  const n = D.normalizarDocumento(tipo, pais, doc);
+  return { texto: D.ehBrasil(pais) ? D.formatarDocumento(n.documento) : n.documento, tipo_pessoa: n.tipo_pessoa, correcao: n.correcao };
+}
+const _ceTextoCorrecaoDoc = {
+  zeros_cnpj: 'CNPJ corrigido: faltava zero à esquerda (vinha assim da importação). Salve para gravar.',
+  cpf_conexos: 'Era um CPF no formato do Conexos: virou CPF e pessoa física. Salve para gravar.',
+};
+function _ceAvisoDocumento(correcao){
+  const st = document.getElementById('ce_cnpj_status');
+  if(st && _ceTextoCorrecaoDoc[correcao]){ st.textContent = _ceTextoCorrecaoDoc[correcao]; st.style.color = 'var(--warn)'; }
 }
 
 function formatarCnpjInput(input){
@@ -316,29 +337,108 @@ function _ceAtualizarCamposDocumento(){
   const pais = (document.getElementById('ce_pais').value||'').trim().toLowerCase();
   const label = document.getElementById('ce_documento_label');
   const isBrasil = pais === 'brasil' || pais === '';
+  const btn = document.getElementById('ce_btn_receita');
+  if(btn) btn.style.display = (isBrasil && tipoPessoa !== 'FISICA') ? '' : 'none';
   if(!isBrasil){ label.textContent = 'Documento'; return; }
   label.textContent = tipoPessoa === 'FISICA' ? 'CPF' : 'CNPJ';
 }
 function _ceFormatarDocumento(input){
-  const tipoPessoa = document.getElementById('ce_tipo_pessoa').value;
-  const pais = (document.getElementById('ce_pais').value||'').trim().toLowerCase();
+  const tipoEl = document.getElementById('ce_tipo_pessoa');
+  const paisTxt = document.getElementById('ce_pais').value;
+  const pais = (paisTxt||'').trim().toLowerCase();
   const isBrasil = pais === 'brasil' || pais === '';
   if(!isBrasil) return; // exterior: sem máscara, digita livre
-  if(tipoPessoa === 'FISICA') formatarCpfInput(input);
+  // CPF colado no formato do Conexos (15 números): vira CPF antes de a máscara cortar.
+  const D = _docBR();
+  if(D && input.value.replace(/\D/g,'').length === 15){
+    const n = D.normalizarDocumento(tipoEl.value, paisTxt, input.value);
+    if(n.correcao === 'cpf_conexos'){ tipoEl.value = 'FISICA'; _ceAtualizarCamposDocumento(); input.value = D.formatarDocumento(n.documento); _ceAvisoDocumento(n.correcao); return; }
+  }
+  if(tipoEl.value === 'FISICA') formatarCpfInput(input);
   else formatarCnpjInput(input);
 }
 function _ceBuscarCnpjSeAplicavel(valor){
-  const tipoPessoa = document.getElementById('ce_tipo_pessoa').value;
-  const pais = (document.getElementById('ce_pais').value||'').trim().toLowerCase();
+  const tipoEl = document.getElementById('ce_tipo_pessoa');
+  const paisTxt = document.getElementById('ce_pais').value;
+  const pais = (paisTxt||'').trim().toLowerCase();
   const isBrasil = pais === 'brasil' || pais === '';
-  if(isBrasil && tipoPessoa === 'JURIDICA') buscarDadosCnpj(valor);
+  if(!isBrasil) return;
+  // CNPJ sem o zero à esquerda (colado de planilha) também é corrigido aqui.
+  const D = _docBR();
+  if(D){
+    const n = D.normalizarDocumento(tipoEl.value, paisTxt, valor);
+    if(n.correcao){
+      tipoEl.value = n.tipo_pessoa; _ceAtualizarCamposDocumento();
+      document.getElementById('ce_documento').value = D.formatarDocumento(n.documento);
+      _ceAvisoDocumento(n.correcao); _ceContatoDirty = true;
+      valor = n.documento;
+    }
+  }
+  if(tipoEl.value === 'JURIDICA') buscarDadosCnpj(valor);
 }
 
-async function buscarDadosCnpj(valor){
-  const cnpj = (valor||'').replace(/\D/g,'');
+// Botão "🔎 Receita" e saída do campo CNPJ (20/10/2026): busca na Receita
+// (BrasilAPI) e preenche SÓ o que está vazio — razão social, nome fantasia,
+// endereço com o tipo de logradouro (RUA, AVENIDA...), número, complemento,
+// bairro, cidade/UF, CEP, telefone e e-mail. Razão social cortada (o Conexos
+// corta em 35 letras) vira a completa e a antiga fica como sinônimo; se a
+// razão for diferente, mostra a da Receita com "usar esta". Nada é gravado
+// até a pessoa clicar em Salvar.
+const _ceCampoReceita = { razao_social:'ce_razao_social', nome_fantasia:'ce_nome_fantasia', logradouro:'ce_logradouro', numero:'ce_numero', complemento:'ce_complemento', bairro:'ce_bairro', cidade:'ce_cidade', uf:'ce_uf', cep:'ce_cep', telefone:'ce_telefone', email:'ce_email' };
+const _ceRotuloReceita = { razao_social:'razão social', nome_fantasia:'nome fantasia', logradouro:'endereço', numero:'número', complemento:'complemento', bairro:'bairro', cidade:'cidade', uf:'UF', cep:'CEP', telefone:'telefone', email:'e-mail' };
+let _ceUltimaReceita = null;
+function _ceUsarRazaoReceita(){
+  const el = document.getElementById('ce_razao_social');
+  if(!el || !_ceUltimaReceita || !_ceUltimaReceita.razao_social) return;
+  const antiga = el.value.trim();
+  el.value = _ceUltimaReceita.razao_social;
+  const sinEl = document.getElementById('ce_sinonimos');
+  if(sinEl && antiga){
+    const atuais = _ceSinonimosLidos();
+    if(!atuais.some(s => s.toUpperCase() === antiga.toUpperCase())) sinEl.value = atuais.concat([antiga]).join('\n');
+  }
+  _ceContatoDirty = true;
+  const st = document.getElementById('ce_cnpj_status');
+  if(st){ st.textContent = '✓ Razão social trocada pela da Receita (a antiga ficou em "Outras grafias"). Salve para gravar.'; st.style.color = 'var(--ok)'; }
+}
+async function buscarDadosCnpj(valor, opts){
+  opts = opts || {};
+  const D = _docBR(), R = (typeof window !== 'undefined' && window.ReceitaCNPJ) || null;
+  let cnpj = (valor||'').replace(/\D/g,'');
+  if(D && cnpj.length && cnpj.length < 14){ const n = D.normalizarDocumento('JURIDICA', 'Brasil', cnpj); if(n.correcao === 'zeros_cnpj') cnpj = n.documento; }
   const statusEl = document.getElementById('ce_cnpj_status');
-  if(cnpj.length !== 14){
-    if(statusEl) statusEl.textContent = '';
+  if(cnpj.length !== 14 || (D && !D.digitoVerificadorValido_CNPJ(cnpj))){
+    if(statusEl){
+      statusEl.textContent = opts.manual ? (cnpj.length !== 14 ? 'Digite o CNPJ completo (14 números) para buscar na Receita.' : 'CNPJ inválido — confira os números.') : '';
+      statusEl.style.color = 'var(--warn)';
+    }
+    return;
+  }
+  if(R){
+    if(statusEl){ statusEl.textContent = 'Buscando dados na Receita Federal...'; statusEl.style.color = 'var(--dim)'; }
+    const r = await R.buscarCnpjReceita(cnpj);
+    if(!r.ok){ if(statusEl){ statusEl.textContent = r.erro + ' Preencha manualmente se precisar.'; statusEl.style.color = 'var(--warn)'; } return; }
+    _ceUltimaReceita = r.dados;
+    const atual = {};
+    Object.keys(_ceCampoReceita).forEach(k => { const el = document.getElementById(_ceCampoReceita[k]); atual[k] = el ? el.value : ''; });
+    atual.tipo = (document.getElementById('ce_tipo')||{}).value || '';
+    atual.papeis = _cePapeisMarcados();
+    atual.sinonimos = _ceSinonimosLidos();
+    const comp = R.completarComReceita(atual, r.dados, { campos: R.CAMPOS_TELA });
+    Object.keys(comp.alteracoes).forEach(k => {
+      if(k === 'sinonimos'){ const s = document.getElementById('ce_sinonimos'); if(s) s.value = comp.alteracoes.sinonimos.join('\n'); return; }
+      const el = document.getElementById(_ceCampoReceita[k]); if(el) el.value = comp.alteracoes[k];
+    });
+    if(comp.preenchidos.length) _ceContatoDirty = true;
+    if(statusEl){
+      const partes = [comp.preenchidos.length ? '✓ Preenchido pela Receita: ' + comp.preenchidos.map(k => _ceRotuloReceita[k] || k).join(', ') : '✓ Receita consultada: nada vazio para preencher'];
+      if(r.dados.situacao) partes.push('Situação: ' + r.dados.situacao);
+      const outras = comp.divergencias.filter(d => d.campo !== 'razao_social').map(d => `${_ceRotuloReceita[d.campo] || d.campo} na Receita: ${d.receita}`);
+      if(outras.length) partes.push(outras.join(' · '));
+      const divRs = comp.divergencias.find(d => d.campo === 'razao_social');
+      statusEl.innerHTML = esc(partes.join(' · ')) + (divRs ? `<br>Razão social na Receita: <b>${esc(divRs.receita)}</b> — <a href="#" onclick="event.preventDefault();_ceUsarRazaoReceita()">usar esta</a>` : '');
+      statusEl.style.color = r.dados.situacao && r.dados.situacao !== 'ATIVA' ? 'var(--warn)' : 'var(--ok)';
+    }
     return;
   }
   if(statusEl){ statusEl.textContent = 'Buscando dados na Receita Federal...'; statusEl.style.color = 'var(--dim)'; }
@@ -458,11 +558,12 @@ function editarContato(id){
   if(elSin) elSin.value = (Array.isArray(c.sinonimos) ? c.sinonimos : []).join('\n');
   const elRef = document.getElementById('ce_ref_origem');
   if(elRef) elRef.value = regrasDoCadastro(c).referencia_origem || '';
-  document.getElementById('ce_tipo_pessoa').value = c.tipo_pessoa||'JURIDICA';
+  const docTela = documentoParaTela(c.tipo_pessoa||'JURIDICA', c.pais||'Brasil', c.documento||c.cnpj||'');
+  document.getElementById('ce_tipo_pessoa').value = docTela.tipo_pessoa;
   document.getElementById('ce_pais').value = c.pais||'Brasil';
   document.getElementById('ce_razao_social').value = c.razao_social||'';
   document.getElementById('ce_nome_fantasia').value = c.nome_fantasia||'';
-  document.getElementById('ce_documento').value = c.documento||c.cnpj||'';
+  document.getElementById('ce_documento').value = docTela.texto;
   document.getElementById('ce_uf').value = c.uf||'';
   document.getElementById('ce_cidade').value = c.cidade||'';
   document.getElementById('ce_email').value = c.email||'';
@@ -480,6 +581,13 @@ function editarContato(id){
   if(hint) hint.style.display = 'none';
   document.getElementById('modal-contato-edit-bg').classList.add('open');
   _ceContatoDirty = false;
+  _ceUltimaReceita = null;
+  if(docTela.correcao){ _ceAvisoDocumento(docTela.correcao); _ceContatoDirty = true; }
+  else if(docTela.tipo_pessoa === 'JURIDICA' && statusEl && _docBR() && _docBR().ehBrasil(c.pais||'Brasil') && _docBR().digitoVerificadorValido_CNPJ(docTela.texto)
+      && ['nome_fantasia','logradouro','cep'].some(k => !String(c[k]||'').trim())){
+    statusEl.textContent = 'Faltam dados (nome fantasia, endereço ou CEP): clique em 🔎 Receita para completar.';
+    statusEl.style.color = 'var(--dim)';
+  }
   _ceCarregarPessoas(c.id);
   _ceResetExtras();
   _ceCarregarUso(c.id);
