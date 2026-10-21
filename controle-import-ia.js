@@ -382,8 +382,11 @@ async function importarPlanilhaDespachante(input){
     addLog(`✓ ${data.total_atualizados} processo(s) atualizado(s)`, '#86efac');
     if(data.total_sem_mudancas) addLog(`• ${data.total_sem_mudancas} sem mudanca (ja estavam com esses dados)`, '#93c5fd');
     logReferenciasImportacao(data, addLog);
-    (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
+    (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${(r.campos||[]).map(rotuloCampoImportacao).join(', ')}`, '#86efac'));
     const datasImp = logDatasImportacao(data.resumo, addLog);
+    // DATA CI → Data de Liberação (21/10/2026): quantos desembaraços entraram.
+    const nLiberacao = (data.resumo||[]).filter(r => r.status==='atualizado' && (r.campos||[]).includes('data_liberacao')).length;
+    if(nLiberacao) addLog(`🛃 ${nLiberacao} processo(s) com a Data de Liberação preenchida pela DATA CI`, '#86efac');
 
     const pendencias = (data.total_nao_encontrados||0) + datasImp.recusadas;
     showToast(pendencias ? `Importacao concluida com ${pendencias} pendencia(s) - veja o log` : `Tudo certo: ${data.total_atualizados} processo(s) confirmado(s), sem erros`, pendencias ? 'warn' : 'ok');
@@ -427,7 +430,9 @@ function logReferenciasImportacao(data, addLog){
 // resumo[].datas_recusadas; a só improvável é gravada e volta em
 // resumo[].avisos_datas. Aqui elas entram no log da importação.
 const NOMES_CAMPO_IMPORTACAO = { data_chegada:'Data de Chegada', eta:'ETA', etd:'ETD', data_prontidao:'Prontidão na Fábrica',
-  data_embarque:'Data de Embarque', data_registro_di:'Registro da DI', data_liberacao:'Liberação', nf_entrada_data:'NF de Entrada', pi_data_saldo:'Vencimento do Saldo' };
+  data_embarque:'Data de Embarque', data_registro_di:'Registro da DI', data_liberacao:'Data de Liberação (DATA CI)', nf_entrada_data:'NF de Entrada', pi_data_saldo:'Vencimento do Saldo',
+  hbl:'HBL', mbl:'MBL', navio:'Navio', porto_destino:'Porto de Destino', qtd_containers_prevista:'Qtd. Containers', obs:'Observações',
+  agente:'Agente de Carga', booking_numero:'Booking', previsao_prontidao:'Previsão de Prontidão', semana_booking:'Semana do Booking' };
 function rotuloCampoImportacao(campo){
   return NOMES_CAMPO_IMPORTACAO[campo] || (typeof ValidacaoDatas !== 'undefined' && ValidacaoDatas.ROTULOS && ValidacaoDatas.ROTULOS[campo]) || campo;
 }
@@ -496,7 +501,7 @@ async function importarPlanilhaManu(input){
     addLog(`✓ ${data.total_atualizados} processo(s) atualizado(s)`, '#86efac');
     if(data.total_sem_mudancas) addLog(`• ${data.total_sem_mudancas} sem mudanca (ja estavam com esses dados)`, '#93c5fd');
     logReferenciasImportacao(data, addLog);
-    (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${r.campos.join(', ')}`, '#86efac'));
+    (data.resumo||[]).filter(r=>r.status==='atualizado').forEach(r => addLog(`✓ ${r.referencia}: ${(r.campos||[]).map(rotuloCampoImportacao).join(', ')}`, '#86efac'));
     const datasImp = logDatasImportacao(data.resumo, addLog);
 
     const pendencias = (data.total_nao_encontrados||0) + datasImp.recusadas;

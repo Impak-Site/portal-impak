@@ -3008,6 +3008,35 @@ function vencimentoSaldoPI(p) {
 const { CAMPOS_FINANCEIROS_PROCESSO, removerCamposFinanceiros } = require('./lib/filtro-tv');
 const ConferenciaChave = require('./conferencia-chave');
 const ValidacaoDatas = require('./validacao-datas.js');
+const ConexosId = require('./conexos-id.js');
+
+// "ID no Conexos" nunca repetido entre processos (21/10/2026, Emanuelly) —
+// regra em conexos-id.js; o banco tem a mesma trava (migration 0057).
+async function listarProcessosComConexosId() {
+  const lista = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sb().from('controle_processos').select('id, referencia, conexos_id, cancelado')
+      .not('conexos_id', 'is', null).order('id').range(offset, offset + 999);
+    if (error) throw new Error(error.message);
+    lista.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return lista;
+}
+// Confere o conexos_id que chegou no save (só quando muda). Deixa o valor sem
+// espaços nas pontas (vazio = null). Devolve a mensagem de erro, ou null.
+async function conferirConexosIdRepetido(processo, atualRow, listarOutros) {
+  if (!processo || !Object.prototype.hasOwnProperty.call(processo, 'conexos_id')) return null;
+  const valor = processo.conexos_id == null ? '' : String(processo.conexos_id).trim();
+  processo.conexos_id = valor || null;
+  const k = ConexosId.chave(valor);
+  if (!k) return null;
+  if (atualRow && ConexosId.chave(atualRow.conexos_id) === k) return null;
+  const outro = ConexosId.processoComMesmoId(await (listarOutros || listarProcessosComConexosId)(), valor, processo.id);
+  return outro ? ConexosId.mensagemRepetido(valor, outro) : null;
+}
+const MSG_CONEXOS_REPETIDO_BANCO = 'Este ID no Conexos já está em outro processo — cada processo tem um número próprio no Conexos. Confira o número.';
+const ehErroConexosRepetido = err => /ux_controle_processos_conexos_id/.test(String((err && (err.message || err.details)) || ''));
 
 // Resumo da última conferência (mesma contagem da Fila de Conferência em
 // controle-dash-conferencia.js: divergências/ausências/alertas com campo,
@@ -3277,7 +3306,7 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
   const NOMES_CAMPO = {
     hbl: 'HBL', mbl: 'MBL', data_chegada: 'Data de Chegada', eta: 'ETA (Previsao de Chegada)',
     porto_destino: 'Porto de Destino', navio: 'Navio', qtd_containers_prevista: 'Qtd. Containers',
-    obs: 'Observacoes',
+    obs: 'Observacoes', data_liberacao: 'Data de Liberacao (DATA CI)',
   };
 
   const linhasAtualizados = atualizados.map(r => `
@@ -3356,7 +3385,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
     const linhas = parsed.linhas || [];
     if (!linhas.length) return res.json({ ok: true, resumo: [], total_linhas: 0 });
 
-    const { data: processos, error: errBusca } = await buscarTodosProcessos(colunasSemRepetir('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs, fechado, cancelado, tipo_container', DATAS_VALIDADAS_PROCESSO));
+    const { data: processos, error: errBusca } = await buscarTodosProcessos(colunasSemRepetir('id, referencia, hbl, mbl, data_chegada, eta, porto_destino, navio, qtd_containers_prevista, obs, fechado, cancelado, tipo_container, data_liberacao', DATAS_VALIDADAS_PROCESSO));
     if (errBusca) throw new Error(errBusca.message);
 
     const indiceRefs = RefProcesso.criarIndice(processos);
@@ -3410,6 +3439,17 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
       }
       setCampo('porto_destino', normalizarPortoDestinoDespachante(linha.porto_destino));
       setCampo('navio', linha.navio);
+      // DATA CI (Comprovante de Importação, emitido no desembaraço) → Data de
+      // Liberação (21/10/2026, Emanuelly). A CI não existe antes de
+      // acontecer: data no futuro não é gravada e vai para o relatório, como
+      // a DATA CI que não deu para ler.
+      const recusadasPlanilha = [];
+      if (linha.data_liberacao) {
+        if (linha.data_liberacao > new Date().toISOString().slice(0, 10)) recusadasPlanilha.push({ campo: 'data_liberacao', valor: linha.data_liberacao, motivo: 'DATA CI no futuro — a CI só sai no desembaraço' });
+        else setCampo('data_liberacao', linha.data_liberacao);
+      } else if (linha.data_ci_ilegivel) {
+        recusadasPlanilha.push({ campo: 'data_liberacao', valor: linha.data_ci_ilegivel, motivo: 'DATA CI não é uma data válida' });
+      }
       if (linha.qtd_containers && linha.qtd_containers > 0) setCampo('qtd_containers_prevista', linha.qtd_containers);
       if (linha.demanda_impak) {
         const obsAtual = proc.obs || '';
@@ -3421,6 +3461,7 @@ app.post('/api/controle/v2/importar-despachante', auth('controle','financeiro'),
 
       // Data impossível (ex.: chegada antes do embarque) não é gravada (18/10/2026).
       const confDatas = conferirDatasImportacao(proc, patch, camposAlterados, logsProc);
+      confDatas.recusadas = recusadasPlanilha.concat(confDatas.recusadas);
       if (!camposAlterados.length) {
         resumo.push({ ...ident, status: 'sem_mudancas', datas_recusadas: confDatas.recusadas });
         continue;
@@ -3677,7 +3718,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
     if (processo.id) {
       const { data: atual } = await sb()
         .from('controle_processos')
-        .select('fechado, cancelado, cancelamento_solicitado, updated_at, updated_by, tipo_container, ' + DATAS_VALIDADAS_PROCESSO)
+        .select('fechado, cancelado, cancelamento_solicitado, updated_at, updated_by, tipo_container, conexos_id, ' + DATAS_VALIDADAS_PROCESSO)
         .eq('id', processo.id)
         .maybeSingle();
       processoExistente = !!atual;
@@ -3832,6 +3873,13 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
     delete processo.cotacao_id; delete processo.estimativa_json;
     processo.updated_by = req.session.usuario;
 
+    // ID no Conexos já usado em outro processo (21/10/2026, Emanuelly): nada
+    // é gravado e a mensagem diz em qual processo o número está.
+    {
+      const msgConexos = await conferirConexosIdRepetido(processo, atualRow);
+      if (msgConexos) return res.status(400).json({ ok: false, conexos_repetido: true, campos: ['conexos_id'], erro: msgConexos });
+    }
+
     // Datas impossíveis (revisão 17/10/2026, validacao-datas.js): chegada
     // antes do embarque, devolução antes da chegada, ano "0026"... Só as
     // regras que envolvem campos deste save — processo antigo com data
@@ -3928,6 +3976,9 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
       CadastrosNormalizar.COLUNAS_ID.forEach(c => { delete semIds[c]; });
       ({ data: gravados, error } = await gravar(semIds));
     }
+    // Trava do banco (migration 0057): duas gravações ao mesmo tempo com o
+    // mesmo ID no Conexos — a segunda volta com a mensagem, não com erro 500.
+    if (error && ehErroConexosRepetido(error)) return res.status(400).json({ ok: false, conexos_repetido: true, campos: ['conexos_id'], erro: MSG_CONEXOS_REPETIDO_BANCO });
     if (error) throw new Error(error.message);
     if (condicional && Array.isArray(gravados) && gravados.length === 0) {
       return responderConflitoProcesso(res, processo.id, baseVersao, req.session.usuario);
@@ -7906,6 +7957,7 @@ module.exports = app;
 module.exports._interno = {
   auth, versaoSessaoAtual, bloqueado2FA, registrarFalha2FA, limparFalhas2FA, versionarHtml,
   quemSalvouNoMeio, atualizarRegrasConferenciaAntiga,
+  conferirConexosIdRepetido, ehErroConexosRepetido,
   definirCacheUsuarios(lista, carregado) {
     _usuariosCache = new Map((lista || []).map(u => [u.usuario, u]));
     _usuariosCacheCarregadoEm = carregado ? Date.now() : 0;

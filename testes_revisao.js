@@ -909,7 +909,19 @@ function telaComIA(respostaIA) {
     const log = r.linhas.join(' | ');
     ok(r.linhas.some(l => l === '↔ 2 referência(s) achada(s) com/sem o prefixo IMPAK-: TST2601A-1 → IMPAK-TST2601A-1, TST2601A-2 → IMPAK-TST2601A-2'), log);
     ok(r.linhas.some(l => /XYZ2603 \(no Controle tem: IMPAK-XYZ2603-CLIENTE, IMPAK-XYZ2603-CLIENTE-2\)/.test(l)), log);
-    ok(r.linhas.some(l => /✓ IMPAK-TST2601A-1: navio/.test(l)), log);
+    ok(r.linhas.some(l => /✓ IMPAK-TST2601A-1: Navio/.test(l)), log);
+  });
+  await testeAsync('Despachante: DATA CI que entrou como Data de Liberação aparece no log; a ilegível/no futuro aparece como não importada', async () => {
+    const r = await importarComResumo('importarPlanilhaDespachante', '/api/controle/v2/importar-despachante', { ok: true, total_linhas: 3, total_atualizados: 1, total_sem_mudancas: 2, total_nao_encontrados: 0, total_travados: 0, resumo: [
+      { referencia: 'TST2602-1', status: 'atualizado', campos: ['data_liberacao', 'navio'] },
+      { referencia: 'TST2602-2', status: 'sem_mudancas', datas_recusadas: [{ campo: 'data_liberacao', valor: '2099-01-05', motivo: 'DATA CI no futuro — a CI só sai no desembaraço' }] },
+      { referencia: 'TST2602-3', status: 'sem_mudancas', datas_recusadas: [{ campo: 'data_liberacao', valor: 'AGUARDANDO', motivo: 'DATA CI não é uma data válida' }] },
+    ] });
+    const log = r.linhas.join(' | ');
+    ok(r.linhas.some(l => l === '✓ TST2602-1: Data de Liberação (DATA CI), Navio'), log);
+    ok(r.linhas.some(l => /1 processo\(s\) com a Data de Liberação preenchida pela DATA CI/.test(l)), log);
+    ok(r.linhas.some(l => /TST2602-2: Data de Liberação \(DATA CI\) 05\/01\/2099 não importada — DATA CI no futuro/.test(l)), log);
+    ok(r.linhas.some(l => /TST2602-3: Data de Liberação \(DATA CI\) AGUARDANDO não importada — DATA CI não é uma data válida/.test(l)), log);
   });
   await testeAsync('Planilha interna: referência em dúvida (dois processos) aparece com os dois nomes', async () => {
     const r = await importarComResumo('importarPlanilhaManu', '/api/controle/v2/importar-manu', { ok: true, total_linhas: 1, total_atualizados: 0, total_sem_mudancas: 0, total_nao_encontrados: 1, total_travados: 0, resumo: [
@@ -999,6 +1011,35 @@ function telaComIA(respostaIA) {
   });
   teste('mensagem em português do sistema continua igual', () => {
     iguais(traduzirErro('"nota.pdf" tem 18,2 MB — o limite do GED é 15 MB por arquivo.').traduzido, false);
+  });
+
+  console.log('\n── ID no Conexos nunca repetido (conexos-id.js) ──');
+  const CXI = require('./conexos-id.js');
+  teste('compara sem espaços, sem zeros à esquerda e sem diferença de maiúscula', () => {
+    iguais(CXI.chave(' 04321 '), '4321'); iguais(CXI.chave('4321'), '4321'); iguais(CXI.chave('43 21'), '4321');
+    iguais(CXI.chave('ab-12'), 'AB-12'); iguais(CXI.chave('000'), '0');
+    iguais(CXI.chave(''), ''); iguais(CXI.chave(null), ''); iguais(CXI.chave('   '), '');
+  });
+  const lista = [
+    { id: 'p1', referencia: 'TESTE-CX-1', conexos_id: '04321' },
+    { id: 'p2', referencia: 'TESTE-CX-2', conexos_id: '4322', cancelado: true },
+    { id: 'p3', referencia: 'TESTE-CX-3', conexos_id: null },
+  ];
+  teste('acha o outro processo com o mesmo número (nunca o próprio)', () => {
+    iguais(CXI.processoComMesmoId(lista, '4321', 'p9').referencia, 'TESTE-CX-1');
+    iguais(CXI.processoComMesmoId(lista, '4321', 'p1'), null, 'o próprio processo não conta');
+    iguais(CXI.processoComMesmoId(lista, '4323', 'p9'), null);
+    iguais(CXI.processoComMesmoId(lista, '', 'p9'), null, 'vazio não confere');
+    iguais(CXI.processoComMesmoId(lista, '4322', undefined).referencia, 'TESTE-CX-2', 'processo novo (sem id) também confere; cancelado conta');
+  });
+  teste('mensagem diz o processo (e se está cancelado) e como resolver', () => {
+    const m = CXI.mensagemRepetido(' 4322 ', lista[1]);
+    ok(/^O ID no Conexos 4322 já está no processo TESTE-CX-2 \(cancelado\)\./.test(m), m);
+    ok(/apague o ID no TESTE-CX-2 primeiro/.test(m), m);
+  });
+  teste('repetidos() agrupa os processos com o mesmo número', () => {
+    const r = CXI.repetidos(lista.concat([{ id: 'p4', referencia: 'TESTE-CX-4', conexos_id: '4321' }]));
+    iguais(r.length, 1); iguais(r[0].chave, '4321'); iguais(r[0].processos.map(p => p.id).join(','), 'p1,p4');
   });
 
   console.log(`\nTotal: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);

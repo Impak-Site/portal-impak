@@ -290,7 +290,10 @@ function coletarESalvar(opts){
   ];
 
   const proc = {..._editando};
-  const log = proc.log || [];
+  // Cópia (21/10/2026): se este Salvar for recusado aqui mesmo (data
+  // impossível, ID no Conexos repetido...), as linhas de histórico dele não
+  // ficam no processo aberto para irem junto num Salvar seguinte.
+  const log = (proc.log || []).slice();
   // Campos que de fato mudaram nesta sessão de edição (comparados contra o
   // snapshot capturado quando o modal abriu, não contra "antigo" acima — o
   // "antigo" é recapturado a cada clique em Salvar e já reflete qualquer
@@ -442,6 +445,15 @@ function coletarESalvar(opts){
     }
   
     proc.log = log;
+
+  // ID no Conexos já usado em outro processo (21/10/2026, Emanuelly) — o
+  // servidor e o banco conferem de novo; aqui só evita a ida até lá.
+  const outroConexos = conexosIdEmOutroProcesso(patchFields.includes('conexos_id') ? proc.conexos_id : '', proc.id);
+  if(outroConexos){
+    marcarCampoConexosRepetido(outroConexos.msg);
+    showToast('Não foi salvo: ' + outroConexos.msg, 'err', 9000);
+    return;
+  }
 
   // Datas impossíveis (revisão 17/10/2026, validacao-datas.js — o servidor
   // confere as mesmas regras). Erro = não grava; aviso = pergunta antes.
@@ -2369,4 +2381,29 @@ function exibirMoeda(v){
 
 function escContainerLocal(s){
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── ID no Conexos nunca repetido (21/10/2026, Emanuelly) ──────────────
+// Regra em conexos-id.js (a mesma do servidor e do banco). Sem o arquivo
+// carregado (ex.: motor da agenda no servidor) não confere nada aqui.
+function conexosIdEmOutroProcesso(valor, idAtual){
+  if(typeof ConexosId === 'undefined' || !valor) return null;
+  const lista = (typeof _processos !== 'undefined' && Array.isArray(_processos)) ? _processos : [];
+  const outro = ConexosId.processoComMesmoId(lista, valor, idAtual);
+  return outro ? { processo: outro, msg: ConexosId.mensagemRepetido(valor, outro) } : null;
+}
+function marcarCampoConexosRepetido(msg){
+  const el = document.getElementById('f_conexos_id');
+  if(el){
+    if(msg){ el.classList.add('campo-faltando'); el.setAttribute('aria-invalid','true'); }
+    else { el.classList.remove('campo-faltando'); el.removeAttribute('aria-invalid'); }
+  }
+  const aviso = document.getElementById('aviso-conexos-id');
+  if(aviso){ aviso.textContent = msg || ''; aviso.style.display = msg ? '' : 'none'; }
+}
+// Enquanto digita (campo "ID no Conexos" da aba Identificação).
+function avisarConexosIdRepetido(input){
+  const id = (typeof _editando !== 'undefined' && _editando) ? _editando.id : null;
+  const r = conexosIdEmOutroProcesso(input && input.value ? input.value.trim() : '', id);
+  marcarCampoConexosRepetido(r ? r.msg : '');
 }

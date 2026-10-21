@@ -295,5 +295,50 @@ teste('parcelado com entrada (E28-F32), juros fixo no boleto (J48) e fator NFe (
   iguais(b.campos.parcelado, false); iguais(b.campos.juros_boleto_fixo, undefined);
 });
 
+// ── Planilha do despachante: coluna "DATA CI" → Data de Liberação (21/10/2026) ──
+// Montada aqui (referências e números fictícios). Na planilha real a DATA CI
+// vem como texto com o número de série do Excel ("46258") ou "-" quando ainda
+// não houve desembaraço.
+function montarDespachante(linhas, cab) {
+  const cabecalho = cab || ['PROCESSOS', 'HBL', 'MBL', 'Nº CI', 'CIF USD', 'COMERCIAL', 'DATA CI', 'DEMANDA IMPAK'];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([cabecalho].concat(linhas), { cellDates: true }), 'EM ANDAMENTO');
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+teste('DATA CI: número de série (texto ou número), data de verdade, D/M/AAAA e "-"', () => {
+  const p = pi._parseDataCI;
+  iguais(p('46258'), '2026-08-24'); iguais(p(46258), '2026-08-24'); iguais(p('46258,75'), '2026-08-24');
+  iguais(p(new Date(Date.UTC(2026, 9, 5))), '2026-10-05'); iguais(p(new Date(2026, 9, 5)), '2026-10-05');
+  iguais(p('05/10/2026'), '2026-10-05'); iguais(p('5/10/26'), '2026-10-05'); iguais(p('2026-10-05'), '2026-10-05');
+  iguais(p('-'), null); iguais(p(''), null); iguais(p(null), null); iguais(p(' — '), null);
+  iguais(p('8/24/26'), null, 'mês 24 não existe: não inventa data'); iguais(p('31/02/2026'), null); iguais(p('AGUARDANDO'), null);
+  iguais(p(123), null, 'número pequeno não é data');
+});
+teste('DATA CI: acha a coluna pelo nome (não confunde com Nº CI, CIF ou COMERCIAL)', () => {
+  const a = pi._acharColunaDataCI;
+  iguais(a(['PROCESSOS', 'Nº CI', 'CIF USD', 'COMERCIAL', 'DATA CI']), 4);
+  iguais(a(['PROCESSOS', 'Data da C.I.']), 1); iguais(a(['PROCESSOS', 'DT CI']), 1);
+  iguais(a(['PROCESSOS', 'COMPROVANTE DE IMPORTAÇÃO']), 1);
+  iguais(a(['PROCESSOS', 'PREVISÃO DATA DESEMBARAÇO', 'DATA DESEMBARAÇO']), 2, 'previsão não conta');
+  iguais(a(['PROCESSOS', 'Nº CI', 'CIF', 'COMERCIAL']), -1);
+});
+teste('planilha do despachante: DATA CI vira data_liberacao; "-" fica sem data; ilegível volta para o relatório', () => {
+  const r = pi.importarDespachanteBase(montarDespachante([
+    ['TESTE-DESP-1', 'HBLTESTE1', '', 'CI-0001', '1000', '', '46258', ''],
+    ['TESTE-DESP-2', 'HBLTESTE2', '', '', '', '', '-', ''],
+    ['TESTE-DESP-3', '', '', '', '', '', new Date(Date.UTC(2026, 8, 30)), ''],
+    ['TESTE-DESP-4', '', '', '', '', '', 'AGUARDANDO', ''],
+  ]));
+  iguais(r.tem_data_ci, true);
+  iguais(r.linhas.map(l => l.data_liberacao), ['2026-08-24', null, '2026-09-30', null]);
+  iguais(r.linhas.map(l => l.data_ci_ilegivel), ['', '', '', 'AGUARDANDO']);
+  iguais(r.linhas[0].hbl, 'HBLTESTE1', 'as outras colunas continuam iguais');
+});
+teste('planilha do despachante sem a coluna DATA CI: nada muda', () => {
+  const r = pi.importarDespachanteBase(montarDespachante([['TESTE-DESP-5', 'HBLTESTE5']], ['PROCESSOS', 'HBL']));
+  iguais(r.tem_data_ci, false);
+  iguais(r.linhas[0].data_liberacao, null); iguais(r.linhas[0].hbl, 'HBLTESTE5');
+});
+
 console.log(`Total: ${total} testes, ${passaram} passaram, ${total-passaram} falharam`);
 process.exit(passaram===total?0:1);
