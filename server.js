@@ -1263,13 +1263,17 @@ async function enviarEmail(destinatario, assunto, html, opts){
   const apiKey = process.env.RESEND_API_KEY;
   if(!apiKey) throw new Error('RESEND_API_KEY não configurada no Railway');
   const from = process.env.RESEND_FROM || 'IMPAK Portal <onboarding@resend.dev>';
-  const corpo = { from, to: [destinatario], subject: assunto, html };
+  // destinatario: um e-mail ou uma lista (20/10/2026: o e-mail de carregamento
+  // vai para mais de uma pessoa numa mensagem só).
+  let lista = (Array.isArray(destinatario) ? destinatario : [destinatario]).map(d => String(d || '').trim()).filter(Boolean);
+  const corpo = { from, to: lista, subject: assunto, html };
   if (opts.alerta) {
-    if (!destinoAlertaPermitido(destinatario)) {
-      console.warn(`[email] alerta "${assunto}" NÃO enviado: destino fora de ${ALERTA_DOMINIO} (${destinatario})`);
-      return { pulado: true };
-    }
-    if (String(destinatario).trim().toLowerCase() !== ALERTA_COPIA) corpo.cc = [ALERTA_COPIA];
+    const fora = lista.filter(d => !destinoAlertaPermitido(d));
+    if (fora.length) console.warn(`[email] alerta "${assunto}" NÃO enviado para: ${fora.join(', ')} (fora de ${ALERTA_DOMINIO})`);
+    lista = lista.filter(destinoAlertaPermitido);
+    if (!lista.length) return { pulado: true };
+    corpo.to = lista;
+    if (!lista.some(d => d.toLowerCase() === ALERTA_COPIA)) corpo.cc = [ALERTA_COPIA];
   }
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -7442,6 +7446,74 @@ async function verificarAlertaTransportadora(){
   await marcarJobEnviadoHoje(jobName);
   return pendentes.length;
 }
+
+// ── Carregamento: pedir a transportadora ao cliente (20/10/2026, Ayslan) ──
+// Um e-mail por cliente com os processos chegando (ETA em até N dias ou já
+// chegados) sem transportadora: referência, peças por container, peso bruto,
+// porto de chegada, qtd. de containers e chegada (regras em
+// lib/carregamento-core.js). FASE DE TESTE: vai para a equipe
+// (CARREGAMENTO_TESTE_PARA, padrão José e Emanuelly, cópia suporte@) — nunca
+// para o cliente. Quando o cadastro tiver "quem recebe o quê" por pessoa, o
+// mesmo e-mail passa a ir direto para o responsável do cliente.
+const CarregamentoCore = require('./lib/carregamento-core.js');
+const CARREGAMENTO_TESTE_PARA = (process.env.CARREGAMENTO_TESTE_PARA || 'operacional01@impak.com.br,importacao1@impak.com.br').split(',').map(s => s.trim()).filter(Boolean);
+const CARREGAMENTO_DIAS_ETA = 15;
+// Data de hoje no fuso de Brasília (o Railway roda em UTC).
+const hojeBrasilia = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+async function montarPedidosTransportadora(opts) {
+  opts = opts || {};
+  const dias = Math.min(Math.max(parseInt(opts.dias, 10) || CARREGAMENTO_DIAS_ETA, 1), 60);
+  const hoje = hojeBrasilia();
+  const { data, error } = await sb().from('controle_processos')
+    .select('id, referencia, cliente, cliente_id, vendas_json, finalidade, fase, cancelado, fechado, transportadora, data_carregamento, data_devolucao_vazio, data_chegada, data_presenca, eta, porto_destino, qtd_containers, qtd_containers_prevista, container, containers_json, peso_bruto, produtos_json')
+    .neq('fase', 'FINALIZADO');
+  if (error) throw new Error(error.message);
+  const candidatos = (data || []).filter(p => CarregamentoCore.precisaTransportadora(p, hoje, dias));
+  // Peso/peças lidos dos documentos ficam no conferencia_json (pesado): só dos candidatos.
+  if (candidatos.length) {
+    const { data: confs, error: errConf } = await sb().from('controle_processos').select('id, conferencia_json').in('id', candidatos.map(p => p.id));
+    if (errConf) throw new Error(errConf.message);
+    const porId = new Map((confs || []).map(c => [c.id, c.conferencia_json]));
+    candidatos.forEach(p => { p.conferencia_json = porId.get(p.id) || null; });
+  }
+  const grupos = CarregamentoCore.agruparPorCliente(candidatos);
+  const escH = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const emails = [];
+  for (const g of grupos) {
+    let paraQuem;
+    if (g.proprio) paraQuem = 'No futuro: lista interna da Logística (decisão da IMPAK).';
+    else {
+      const contatos = await contatosPrincipaisDaEmpresa(g.cliente, g.clienteId);
+      paraQuem = contatos.length
+        ? `No futuro iria para: <strong>${contatos.map(c => escH(c.nome) + ' &lt;' + escH(c.email) + '&gt;').join(', ')}</strong> (contato principal do cliente em Cadastros).`
+        : '<strong>Nenhum contato do cliente cadastrado</strong> para receber — cadastre em Cadastros › Empresas › Pessoas.';
+    }
+    const o = { teste: true, nomePorto: c => (c && String(c).trim()) ? formatarPortoDestinoEmail(c) : '', paraQuemHtml: paraQuem };
+    emails.push({ cliente: g.cliente, proprio: g.proprio, qtd: g.processos.length, referencias: g.processos.map(p => p.referencia), assunto: CarregamentoCore.assuntoEmail(g, o), html: CarregamentoCore.htmlEmailCliente(g, o) });
+  }
+  return { hoje, dias, total: candidatos.length, emails };
+}
+app.get('/api/carregamento/pedir-transportadora/previa', auth('controle'), async (req, res) => {
+  try {
+    const r = await montarPedidosTransportadora({ dias: req.query.dias });
+    res.json(Object.assign({ ok: true, para: CARREGAMENTO_TESTE_PARA, copia: ALERTA_COPIA }, r));
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+let _carregamentoUltimoTeste = 0;
+app.post('/api/carregamento/pedir-transportadora/enviar-teste', auth('controle'), async (req, res) => {
+  try {
+    if (Date.now() - _carregamentoUltimoTeste < 2 * 60 * 1000) return res.status(429).json({ ok: false, erro: 'O teste acabou de ser enviado — espere 2 minutos para mandar de novo.' });
+    _carregamentoUltimoTeste = Date.now();
+    const r = await montarPedidosTransportadora({ dias: req.body && req.body.dias });
+    let enviados = 0; const falhas = [];
+    for (const m of r.emails) {
+      try { const x = await enviarEmail(CARREGAMENTO_TESTE_PARA, m.assunto, m.html, { alerta: true }); if (!x || !x.pulado) enviados++; }
+      catch (e) { falhas.push(`${m.cliente}: ${e.message}`); }
+    }
+    console.log(`[carregamento] teste "pedir transportadora": ${enviados}/${r.emails.length} e-mail(s) para ${CARREGAMENTO_TESTE_PARA.join(', ')} por ${req.session.usuario}`);
+    res.json({ ok: !falhas.length, enviados, total: r.emails.length, processos: r.total, para: CARREGAMENTO_TESTE_PARA, falhas });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
 
 // ── Processos sem cotação (semanal, segunda-feira → Jean) ─────────────
 // Ayslan 13/10/2026: regra "todo processo nasce no TyreDesk/Calculador";
