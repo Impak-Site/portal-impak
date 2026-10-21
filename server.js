@@ -1844,6 +1844,19 @@ app.get('/api/agenda/historico', auth('controle'), async (req, res) => {
     res.json({ ok: true, dias, historico: data || [] });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
+// Faturas pra Agenda (Faturas fase 2, 21/10/2026): o resumo enxuto de cada
+// fatura ligada a processo (etapa, contagens da conferência, datas, saldo)
+// pra agenda-core.js gerar no navegador as tarefas de conferir / decidir /
+// aprovar / pagar / acertar numerário / receber — a mesma regra do job do
+// servidor. Só fatura de processo (quem é do Controle já vê as faturas de
+// cada processo na aba Faturas); despesa geral fica de fora.
+app.get('/api/agenda/faturas', auth('controle'), async (req, res) => {
+  try {
+    const r = await AgendaServidor.carregarFaturasAgenda(sb);
+    if (r.erro) return res.json({ ok: false, erro: r.semTabela ? 'a tabela de faturas ainda não existe no banco' : 'Não consegui ler as faturas.', semTabela: !!r.semTabela, faturas: [] });
+    res.json({ ok: true, faturas: r.faturas });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao carregar as faturas da agenda.', faturas: [] }); }
+});
 // Gerente: roda agora o job diário do histórico e/ou o resumo semanal
 // (sem esperar o horário), pra testar e pra conferir.
 app.post('/api/admin/agenda/rodar', auth('controle'), requireGerente, async (req, res) => {
@@ -2110,9 +2123,13 @@ app.post('/api/faturas/:id/conferencia', auth('financeiro', 'controle'), async (
     if (r.erro) return res.json({ ok: false, erro: r.erro });
     const conferencia = {
       em: new Date().toISOString(), por: req.session.usuario || null, nome: req.session.displayName || req.session.nome || null,
-      resumo: r.resumo, checks: (r.checks || []).slice(0, 40), divergencias: FaturasCore.divergenciasConferencia({ checks: r.checks || [] }),
+      resumo: r.resumo, checks: (r.checks || []).slice(0, 40),
       valor: f.valor, moeda: f.moeda, documento: f.documento || null,
     };
+    // aceites/contestações da conferência anterior que continuam valendo
+    // (mesma diferença) passam pra nova (fase 2, 21/10/2026)
+    conferencia.decisoes = FaturasCore.mesclarDecisoes(conferencia, f.conferencia);
+    conferencia.divergencias = FaturasCore.divergenciasConferencia(conferencia);
     const { error } = await sb().from('faturas').update({ conferencia }).eq('id', f.id);
     if (error) return res.json({ ok: false, erro: /conferencia/.test(error.message) ? 'Falta a coluna "conferencia" no banco (migration 0058).' : error.message, semColuna: /conferencia/.test(error.message), ...r });
     _resumoFaturasCache = null;
@@ -2120,6 +2137,33 @@ app.post('/api/faturas/:id/conferencia', auth('financeiro', 'controle'), async (
   } catch (e) {
     console.error('faturas/conferencia:', e.message);
     res.status(500).json({ ok: false, erro: 'Erro ao conferir a fatura.' });
+  }
+});
+// Aceitar / contestar uma diferença da conferência guardada (fase 2,
+// 21/10/2026). Body: { chave, acao: 'aceita' | 'contestada' | '' (desfaz),
+// motivo }. Aceita exige motivo. Só mexe em conferencia.decisoes — as
+// checagens ficam como foram. Lê a fatura de novo logo antes de gravar, pra
+// não perder a decisão de outra pessoa na mesma fatura.
+app.post('/api/faturas/:id/conferencia/decisao', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const chave = String(b.chave || '').slice(0, 120);
+    const acao = b.acao ? String(b.acao) : '';
+    if (!chave) return res.status(400).json({ ok: false, erro: 'Diferença não informada.' });
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    if (f.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada.' });
+    const r = FaturasCore.decidirDiferenca(f.conferencia, chave, acao, b.motivo, {
+      por: req.session.usuario || null, nome: req.session.displayName || req.session.nome || null, em: new Date().toISOString(),
+    });
+    if (r.erro) return res.status(400).json({ ok: false, erro: r.erro });
+    const { error } = await sb().from('faturas').update({ conferencia: r.conferencia }).eq('id', f.id);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    _resumoFaturasCache = null;
+    res.json({ ok: true, conferencia: r.conferencia });
+  } catch (e) {
+    console.error('faturas/conferencia/decisao:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro ao gravar a decisão.' });
   }
 });
 // Selo da lista de processos (aba Faturas, 21/10/2026): por processo, quantas
@@ -2149,8 +2193,8 @@ app.get('/api/faturas/resumo-processos', auth('controle', 'financeiro'), async (
 });
 
 const PROMPT_LER_FATURA = `Você lê documentos de cobrança de uma IMPORTADORA brasileira de pneus: fatura/invoice de armador ou agente de carga, nota de débito, nota fiscal de serviço do despachante, boleto, DARF/guia de imposto, fatura de armazém/terminal. Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
-{"tipo_documento":"fatura|nota_debito|nfse|boleto|darf|outro","emitente":"razão social de quem COBRA","cnpj_emitente":"só dígitos ou vazio","destinatario":"quem PAGA","documento":"número da fatura/nota/boleto","emissao":"AAAA-MM-DD ou vazio","vencimento":"AAAA-MM-DD ou vazio","moeda":"BRL|USD|EUR","valor_total":0,"itens":[{"descricao":"texto da linha","moeda":"BRL|USD|EUR","valor":0,"valor_brl":0}],"pistas_processo":["só os códigos, sem o rótulo: referência do cliente/processo, HBL, MBL, booking, número de container — tudo que identifique o embarque"],"linha_digitavel":"se houver","observacao":"algo importante em 1 frase ou vazio"}
-Regras: valores como número com ponto decimal (1234.56), nunca texto. Em cada item, valor_brl = o valor em reais impresso para aquela linha (coluna "Valor em R$"), ou 0 se o documento não mostrar. Se o documento estiver em dólar mas tiver total em reais, use a moeda das linhas e coloque o total em reais na observacao. Não invente: campo que não existe fica vazio ou lista vazia.`;
+{"tipo_documento":"fatura|nota_debito|nfse|boleto|darf|acerto_despachante|numerario|outro","emitente":"razão social de quem COBRA","cnpj_emitente":"só dígitos ou vazio","destinatario":"quem PAGA","documento":"número da fatura/nota/boleto","emissao":"AAAA-MM-DD ou vazio","vencimento":"AAAA-MM-DD ou vazio","moeda":"BRL|USD|EUR","valor_total":0,"adiantamento_brl":0,"itens":[{"descricao":"texto da linha","moeda":"BRL|USD|EUR","valor":0,"valor_brl":0}],"pistas_processo":["só os códigos, sem o rótulo: referência do cliente/processo, HBL, MBL, booking, número de container — tudo que identifique o embarque"],"linha_digitavel":"se houver","observacao":"algo importante em 1 frase ou vazio"}
+Regras: valores como número com ponto decimal (1234.56), nunca texto. Em cada item, valor_brl = o valor em reais impresso para aquela linha (coluna "Valor em R$"), ou 0 se o documento não mostrar. Se o documento estiver em dólar mas tiver total em reais, use a moeda das linhas e coloque o total em reais na observacao. "itens" = só as cobranças (uma por taxa/imposto); não inclua totais, subtotais, adiantamento/numerário já pago nem o saldo ("total a favor de..."). Acerto / prestação de contas / faturamento do despachante: tipo_documento "acerto_despachante", valor_total = total das despesas ANTES de descontar o adiantamento, adiantamento_brl = numerário/adiantamento que o documento desconta (ou 0). Pedido de numerário (adiantamento com valores estimados): tipo_documento "numerario". Não invente: campo que não existe fica vazio ou lista vazia.`;
 // Leitura para a aba Custos Reais (19/10/2026): o mesmo documento, mas
 // linha a linha com o valor em R$ que foi pago (nota de débito do agente
 // de carga, faturamento/acerto do despachante, fatura do terminal). As
@@ -2756,6 +2800,12 @@ app.post('/api/faturas/:id/estornar', auth('financeiro'), async (req, res) => {
       return { ...p, estornado: { por: req.session.usuario || null, em: new Date().toISOString(), motivo: String(b.motivo || '').slice(0, 300) || null } };
     });
     if (!achou) return res.status(404).json({ ok: false, erro: 'Pagamento não encontrado.' });
+    // numerário já abatido/devolvido: estornar o pagamento dele deixaria o
+    // acerto quitado com dinheiro que não saiu — desfaça o abatimento antes
+    if (FaturasCore.ehNumerario(f)) {
+      const uso = FaturasCore.usoNumerario({ ...f, pagamentos: pags, status: 'aberta' }, await _faturasLigadasAoNumerario(f.id));
+      if (uso.disponivel < -0.009) return res.status(400).json({ ok: false, erro: `Este numerário já foi usado (R$ ${(uso.usado + uso.devolvido).toFixed(2).replace('.', ',')} abatidos/devolvidos). Estorne antes o abatimento no acerto do despachante (ou cancele a devolução).` });
+    }
     const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags, status: f.status === 'paga' ? 'aberta' : f.status });
     const gv = await gravarFaturaComVersao(f, { pagamentos: pags, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() });
     if (gv.error) return res.status(500).json({ ok: false, erro: gv.error.message });
@@ -2764,6 +2814,131 @@ app.post('/api/faturas/:id/estornar', auth('financeiro'), async (req, res) => {
     await sincronizarOrigemReceber(data);
     res.json({ ok: true, fatura: data });
   } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao estornar.' }); }
+});
+
+// ── Numerário do despachante (Faturas fase 2, 21/10/2026) ───────────────
+// Regras em FaturasCore (usoNumerario / validarAbatimentoNumerario): o
+// acerto do despachante é quitado abatendo o numerário já pago (baixa
+// "compensação", sem caixa); a sobra vira devolução a receber.
+async function _faturasLigadasAoNumerario(numId) {
+  const id = String(numId).slice(0, 80);
+  const [c, d] = await Promise.all([
+    sb().from('faturas').select('id, numero, documento, tipo, status, valor, valor_pago, pagamentos, origem, empresa_nome').contains('pagamentos', FaturasCore.filtroJsonbContem({ compensa: { fatura_id: id } })).limit(300),
+    sb().from('faturas').select('id, numero, documento, tipo, status, valor, valor_pago, pagamentos, origem, empresa_nome').eq('origem->>numerario_id', id).limit(100),
+  ]);
+  if (c.error) throw new Error(c.error.message);
+  if (d.error) throw new Error(d.error.message);
+  const m = new Map();
+  [...(c.data || []), ...(d.data || [])].forEach(x => m.set(x.id, x));
+  return [...m.values()];
+}
+const _resumoNumerario = (n, uso) => ({ id: n.id, numero: n.numero, documento: n.documento, empresa_id: n.empresa_id, empresa_nome: n.empresa_nome, status: n.status, valor: n.valor, valor_pago: n.valor_pago, vencimento: n.vencimento, origem: n.origem, uso });
+// Numerários do processo + os com saldo dos despachantes informados (crédito
+// que sobrou de outro processo). Body: { processo_id, empresas:[{id,nome}] }
+app.post('/api/faturas/numerarios', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const pid = String(b.processo_id || '').slice(0, 80);
+    const empresas = (Array.isArray(b.empresas) ? b.empresas : []).slice(0, 10);
+    const achados = new Map();
+    if (pid) {
+      const { data, error } = await sb().from('faturas').select('*').eq('origem->>tipo', 'numerario').eq('origem->>processo_id', pid).limit(100);
+      if (error) return res.json({ ok: false, erro: error.message, numerarios: [] });
+      (data || []).forEach(f => achados.set(f.id, f));
+    }
+    for (const e of empresas) {
+      const nome = String((e && e.nome) || '').trim().slice(0, 120);
+      const eid = e && e.id ? String(e.id).slice(0, 80) : '';
+      if (!eid && !nome) continue;
+      let q = sb().from('faturas').select('*').eq('origem->>tipo', 'numerario').neq('status', 'cancelada');
+      q = eid ? q.eq('empresa_id', eid) : q.ilike('empresa_nome', nome.replace(/[%_\\]/g, m => '\\' + m));
+      const { data } = await q.limit(50);
+      (data || []).forEach(f => achados.set(f.id, f));
+    }
+    const out = [];
+    for (const n of [...achados.values()].slice(0, 60)) {
+      const ligadas = await _faturasLigadasAoNumerario(n.id);
+      out.push(_resumoNumerario(n, FaturasCore.usoNumerario(n, ligadas)));
+    }
+    res.json({ ok: true, numerarios: out });
+  } catch (e) { console.error('faturas/numerarios:', e.message); res.status(500).json({ ok: false, erro: 'Erro ao buscar os numerários.', numerarios: [] }); }
+});
+// Abater o numerário numa fatura a pagar do mesmo despachante (o acerto).
+// Body: { numerario_id, valor (opcional: o máximo possível), data }
+app.post('/api/faturas/:id/abater-numerario', auth('financeiro'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    const n = await _faturaPorId(b.numerario_id);
+    if (!n) return res.status(404).json({ ok: false, erro: 'Numerário não encontrado.' });
+    const ligadas = await _faturasLigadasAoNumerario(n.id);
+    const v = FaturasCore.validarAbatimentoNumerario(f, n, b.valor, ligadas);
+    if (!v.ok) return res.status(400).json({ ok: false, erro: v.erro });
+    const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const data = /^\d{4}-\d{2}-\d{2}$/.test(String(b.data || '')) ? String(b.data) : hoje;
+    const pag = {
+      id: require('crypto').randomUUID(), data, valor: v.valor, juros: 0, desconto: 0, retencoes: {}, cambio_efetivo: null, pago_brl: null,
+      forma: 'compensacao', banco_id: null, identificador: null,
+      compensa: { tipo: 'numerario', fatura_id: n.id, numero: n.numero || null, documento: n.documento || null },
+      obs: `Abatido do numerário ${n.numero || ''}${n.documento ? ' (' + n.documento + ')' : ''}`.trim(),
+      por: req.session.usuario || null, em: new Date().toISOString(),
+    };
+    const pags = (Array.isArray(f.pagamentos) ? f.pagamentos : []).concat([pag]);
+    const r = FaturasCore.aplicarPagamentos({ ...f, pagamentos: pags });
+    const gv = await gravarFaturaComVersao(f, { pagamentos: pags, valor_pago: r.valor_pago, status: r.status, pago_em: r.pago_em, alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() });
+    if (gv.error) return res.status(500).json({ ok: false, erro: gv.error.message });
+    if (gv.conflito) return res.status(409).json({ ok: false, conflito: true, erro: MSG_FATURA_CONFLITO });
+    if (gv.data.status === 'paga') await vincularFaturaNosProcessos(gv.data, false);
+    _resumoFaturasCache = null;
+    const uso = FaturasCore.usoNumerario(n, ligadas.filter(x => x.id !== gv.data.id).concat([gv.data]));
+    res.json({ ok: true, fatura: gv.data, saldo: r.saldo, numerario: _resumoNumerario(n, uso) });
+  } catch (e) { console.error('faturas/abater-numerario:', e.message); res.status(500).json({ ok: false, erro: 'Erro ao abater o numerário.' }); }
+});
+// Sobra do numerário → fatura a receber do despachante (devolução).
+// Body: { valor (opcional: tudo o que sobrou), vencimento }
+app.post('/api/faturas/:id/devolucao-numerario', auth('financeiro'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const n = await _faturaPorId(req.params.id);
+    if (!n || !FaturasCore.ehNumerario(n)) return res.status(404).json({ ok: false, erro: 'Numerário não encontrado.' });
+    if (n.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Numerário cancelado.' });
+    const uso = FaturasCore.usoNumerario(n, await _faturasLigadasAoNumerario(n.id));
+    const valor = b.valor != null && b.valor !== '' ? FinCore.numBR(b.valor) : uso.disponivel;
+    if (!(uso.disponivel > 0.009)) return res.status(400).json({ ok: false, erro: 'Não sobrou nada deste numerário pra devolver.' });
+    if (!(valor > 0) || valor - uso.disponivel > 0.01) return res.status(400).json({ ok: false, erro: `Só sobrou R$ ${uso.disponivel.toFixed(2).replace('.', ',')} deste numerário.` });
+    const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const o = n.origem || {};
+    const vf = FaturasCore.validarFatura({
+      tipo: 'receber', empresa_nome: n.empresa_nome, empresa_id: n.empresa_id, moeda: 'BRL', valor: Math.round(valor * 100) / 100,
+      documento: `Devolução do numerário ${n.numero || ''}${n.documento ? ' (' + n.documento + ')' : ''}`.trim(),
+      emissao: hoje, vencimento: /^\d{4}-\d{2}-\d{2}$/.test(String(b.vencimento || '')) ? String(b.vencimento) : hoje,
+      obs: 'Sobra do numerário depois do acerto do despachante.',
+      itens: [{ processo_id: o.processo_id, referencia: o.referencia, taxa: null, label: 'Devolução de numerário', valor: Math.round(valor * 100) / 100 }],
+      origem: { tipo: 'devolucao_numerario', processo_id: o.processo_id, referencia: o.referencia, numerario_id: n.id },
+    });
+    if (!vf.ok) return res.status(400).json({ ok: false, erro: vf.erro });
+    const agora = new Date().toISOString();
+    const row = { ...vf.fatura, criado_por: req.session.usuario || null, alterado_por: req.session.usuario || null, created_at: agora, updated_at: agora };
+    try {
+      const ano = new Date().getFullYear();
+      const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
+      row.numero = FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano);
+    } catch (e) { row.numero = null; }
+    let data, error;
+    for (let tentativa = 0; tentativa < 4; tentativa++) {
+      ({ data, error } = await sb().from('faturas').insert(row).select().single());
+      if (!(error && error.code === '23505' && /numero/.test(String(error.message || '') + String(error.details || '')))) break;
+      try {
+        const ano = new Date().getFullYear();
+        const { data: ult } = await sb().from('faturas').select('numero').like('numero', '%/' + String(ano).slice(-2)).order('numero', { ascending: false }).limit(1);
+        row.numero = FaturasCore.proximoNumero(ult && ult[0] ? ult[0].numero : null, ano);
+      } catch (e) { break; }
+    }
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    _resumoFaturasCache = null;
+    res.json({ ok: true, fatura: data });
+  } catch (e) { console.error('faturas/devolucao-numerario:', e.message); res.status(500).json({ ok: false, erro: 'Erro ao gerar a devolução.' }); }
 });
 
 // Anexo avulso (a própria fatura em PDF, boleto, e-mail…)
@@ -2863,6 +3038,12 @@ app.post('/api/faturas/:id/:acao', auth('financeiro'), async (req, res) => {
     const { data: f } = await sb().from('faturas').select('*').eq('id', String(req.params.id).slice(0, 80)).maybeSingle();
     if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
     const b = req.body || {};
+    // numerário já abatido num acerto (ou com devolução gerada) não pode ser
+    // reaberto/cancelado: desfaça antes o uso (fase 2, 21/10/2026)
+    if ((acao === 'reabrir' || acao === 'cancelar') && FaturasCore.ehNumerario(f)) {
+      const uso = FaturasCore.usoNumerario(f, await _faturasLigadasAoNumerario(f.id));
+      if (uso.usado + uso.devolvido > 0.009) return res.status(400).json({ ok: false, erro: `Este numerário já foi usado (R$ ${(uso.usado + uso.devolvido).toFixed(2).replace('.', ',')} abatidos/devolvidos). Estorne antes o abatimento no acerto do despachante (ou cancele a devolução).` });
+    }
     const patch = { alterado_por: req.session.usuario || null, updated_at: new Date().toISOString() };
     if (acao === 'pagar') {
       // "Marcar paga" = uma baixa do saldo inteiro (fica na lista de pagamentos)

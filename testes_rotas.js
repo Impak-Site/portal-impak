@@ -31,6 +31,9 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     '/api/calculador/cotacoes/abc/restaurar', '/api/calculador/vinculos/corrigir', '/api/calculador/cotacoes',
     // Aba Faturas do processo (21/10/2026): conferência guardada na fatura
     '/api/faturas/abc/conferencia',
+    '/api/faturas/abc/conferencia/decisao',
+    // Numerário do despachante (fase 2)
+    '/api/faturas/numerarios', '/api/faturas/abc/abater-numerario', '/api/faturas/abc/devolucao-numerario',
   ];
   for (const rota of protegidasPost) {
     await teste(`POST ${rota} sem sessão → 401`, async () => {
@@ -58,7 +61,8 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     const r = await request(app).get('/api/controle/v2/processos?desde=2026-09-24T10:00:00.000000%2B00:00');
     iguais(r.status, 401);
   });
-  for (const rota of ['/api/calculador/cotacoes?completa=1', '/api/calculador/vinculos', '/api/controle/processos/abc/cotacao', '/api/calculador/cotacoes/abc', '/api/faturas/resumo-processos', '/api/faturas?processo_id=abc']) {
+  for (const rota of ['/api/calculador/cotacoes?completa=1', '/api/calculador/vinculos', '/api/controle/processos/abc/cotacao', '/api/calculador/cotacoes/abc', '/api/faturas/resumo-processos', '/api/faturas?processo_id=abc',
+    '/api/agenda/faturas']) { // faturas na Agenda (fase 2)
     await teste(`GET ${rota} sem sessão → 401`, async () => {
       const r = await request(app).get(rota);
       iguais(r.status, 401, rota);

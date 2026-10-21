@@ -72,6 +72,7 @@
     ['9.1.02', 'Empréstimos e financiamentos (principal)', 'neutra'],
     ['9.1.03', 'Distribuição de lucros', 'neutra'],
     ['9.1.04', 'Aplicações e resgates', 'neutra'],
+    ['9.1.05', 'Adiantamentos a despachante (numerário)', 'neutra'],
   ];
   // Taxa do processo (Custos Reais) → conta de custo padrão
   function contaPadraoPorTaxa(taxa) {
@@ -82,6 +83,7 @@
     if (/^comissao|^timp|^trademaster/.test(t)) return '4.2.06';
     if (/frete_terrestre|frete_nacional|transporte/.test(t)) return '4.2.05';
     if (/^iof$/.test(t)) return '5.2.04';
+    if (/^taxa_cartao$/.test(t)) return '5.2.01';
     return '4.2.04';
   }
   function validarConta(b) {
@@ -245,7 +247,8 @@
     (faturas || []).forEach(f => {
       if (!f || f.status === 'cancelada') return;
       (f.pagamentos || []).forEach(p => {
-        if (!p || p.estornado || FC.ehMigracao(p)) return;
+        // compensação (encontro de contas / numerário abatido) não passa pelo banco
+        if (!p || p.estornado || FC.ehMigracao(p) || p.forma === 'compensacao') return;
         const o = p.banco_id && out[p.banco_id];
         if (!o) { const v = FC.caixaBrlPagamento(p, f, cambio); semBanco.qtd++; if (f.tipo === 'receber') semBanco.entradas += v; else semBanco.saidas += v; return; }
         if (o.desde && iso(p.data) && iso(p.data) < o.desde) return;
@@ -273,6 +276,9 @@
   function _contasPorCodigo(contas) { const m = {}; (contas || []).forEach(c => { m[c.codigo] = c; m[c.id] = c; }); return m; }
   function _rateioFatura(f, mapa) {
     // retorna [{codigo, peso}] com pesos somando 1
+    // numerário do despachante (e a devolução da sobra) é adiantamento, não
+    // custo nem receita: fica fora do DRE — o custo é o acerto (fase 2)
+    if (f.origem && (f.origem.tipo === 'numerario' || f.origem.tipo === 'devolucao_numerario')) return [{ codigo: '9.1.05', peso: 1 }];
     if (f.conta_id && mapa[f.conta_id]) return [{ codigo: mapa[f.conta_id].codigo, peso: 1 }];
     const itens = (f.itens || []).filter(it => num(it.valor) > 0);
     if (itens.length && f.tipo === 'pagar') {
@@ -318,7 +324,8 @@
         const jur = num(p.juros) * (f.moeda === 'BRL' ? 1 : (num(p.cambio_efetivo) || fx));
         if (jur) add(f.tipo === 'pagar' ? '5.2.02' : '3.2.01', jur);
         const desc = num(p.desconto) * (f.moeda === 'BRL' ? 1 : fx);
-        if (desc) add(f.tipo === 'pagar' ? '3.2.01' : '5.2.02', desc);
+        // taxa da operadora (venda no cartão / Trademaster) é tarifa, não juros
+        if (desc) add(f.tipo === 'pagar' ? '3.2.01' : (f.origem && f.origem.operadora ? '5.2.01' : '5.2.02'), desc);
         const vc = FC.variacaoCambial(p, f);
         if (vc) add(f.tipo === 'pagar' ? (vc > 0 ? '5.2.03' : '3.2.02') : (vc > 0 ? '3.2.02' : '5.2.03'), Math.abs(vc));
       });
@@ -326,7 +333,8 @@
     // monta por grupo
     const grupos = GRUPOS.map(([id, label, sinal]) => ({ id, label, sinal, contas: [], total: 0 }));
     Object.entries(linhas).forEach(([codigo, v]) => {
-      const c = mapa[codigo] || { codigo, nome: codigo, grupo: codigo.startsWith('3.2') ? 'receita_financeira' : codigo.startsWith('3') ? 'receita_bruta' : codigo.startsWith('5.2') ? 'despesa_financeira' : 'despesa_operacional' };
+      const padrao = PLANO_PADRAO.find(x => x[0] === codigo);
+      const c = mapa[codigo] || (padrao ? { codigo, nome: padrao[1], grupo: padrao[2] } : { codigo, nome: codigo, grupo: codigo.startsWith('9') ? 'neutra' : codigo.startsWith('3.2') ? 'receita_financeira' : codigo.startsWith('3') ? 'receita_bruta' : codigo.startsWith('5.2') ? 'despesa_financeira' : 'despesa_operacional' });
       const g = grupos.find(x => x.id === c.grupo) || grupos.find(x => x.id === 'despesa_operacional');
       g.contas.push({ codigo, nome: c.nome, valor: r2(v) });
       g.total += v;
@@ -359,8 +367,12 @@
       (f.pagamentos || []).forEach(p => {
         if (!p || p.estornado || FC.ehMigracao(p)) return;
         const d = iso(p.data); if (!d || d < de || d > ate) return;
-        const banco = bancoDe(p.banco_id);
-        const hist = `${f.tipo === 'pagar' ? 'Pgto' : 'Receb.'} ${f.documento || ''} ${f.empresa_nome || ''} (fatura ${f.numero || ''})`.replace(/\s+/g, ' ').trim();
+        // compensação não passa pelo banco: numerário abatido no acerto sai
+        // da conta de adiantamento (9.1.05); outro encontro de contas fica
+        // marcado pro contador escolher a contrapartida (fase 2, 21/10/2026)
+        const comp = p.forma === 'compensacao';
+        const banco = comp ? (p.compensa && p.compensa.tipo === 'numerario' ? contaDe('9.1.05') : 'COMPENSAÇÃO (encontro de contas)') : bancoDe(p.banco_id);
+        const hist = (`${f.tipo === 'pagar' ? 'Pgto' : 'Receb.'} ${f.documento || ''} ${f.empresa_nome || ''} (fatura ${f.numero || ''})` + (comp && p.compensa && p.compensa.numero ? ` — abatido do numerário ${p.compensa.numero}` : '')).replace(/\s+/g, ' ').trim();
         const caixa = FC.caixaBrlPagamento(p, f) - (f.moeda === 'BRL' ? num(p.juros) : num(p.juros) * (num(p.cambio_efetivo) || fx));
         const ret = FC.RETENCOES.reduce((s, k) => s + num(p.retencoes && p.retencoes[k]), 0) * (fx || 1);
         rateio.forEach(r => {

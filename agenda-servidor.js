@@ -21,6 +21,7 @@ const fs   = require('fs');
 const path = require('path');
 const vm   = require('vm');
 const AgendaCore = require('./agenda-core.js');
+const FaturasCore = require('./faturas-core.js');
 
 // ── 1. motor do front num sandbox ─────────────────────────────────────
 // Mesma lista/ordem de testes_controle.js (controle-core.js precisa de
@@ -75,27 +76,56 @@ function hojeISO(d) {
 function diasEntre(a, b) { return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000); }
 
 // ── 2. tarefas ─────────────────────────────────────────────────────────
+// Faturas pra agenda (Faturas fase 2, 21/10/2026): todas as não canceladas,
+// no formato enxuto de FaturasCore.faturasParaAgenda (a mesma regra que o
+// navegador usa — /api/agenda/faturas). Banco sem a tabela ou sem a coluna
+// da conferência (migration 0058): segue sem faturas / sem conferência —
+// a agenda nunca para por causa delas.
+const COLS_FATURAS_AGENDA = 'id, numero, tipo, status, empresa_id, empresa_nome, documento, vencimento, moeda, valor, valor_pago, pago_em, itens, origem, aprovacao, anexos, pagamentos, created_at, conferencia';
+async function carregarFaturasAgenda(sb) {
+  try {
+    const lista = [];
+    let cols = COLS_FATURAS_AGENDA;
+    for (let de = 0; de < 20000; de += 1000) {
+      const ler = () => sb().from('faturas').select(cols).neq('status', 'cancelada').order('id').range(de, de + 999);
+      let { data, error } = await ler();
+      if (error && /conferencia/.test(error.message) && cols.includes('conferencia')) {
+        cols = cols.replace(', conferencia', '');
+        ({ data, error } = await ler());
+      }
+      if (error) return { faturas: [], erro: error.message, semTabela: /faturas/.test(error.message) };
+      lista.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    return { faturas: FaturasCore.faturasParaAgenda(lista) };
+  } catch (e) {
+    return { faturas: [], erro: e.message };
+  }
+}
+
 async function carregarInsumos(ctx) {
   const { sb, carregarListas } = ctx;
-  const [{ data: processos, error: e1 }, listas, { data: conclusoes, error: e3 }] = await Promise.all([
+  const [{ data: processos, error: e1 }, listas, { data: conclusoes, error: e3 }, fat] = await Promise.all([
     sb().from('controle_processos').select('*').order('updated_at', { ascending: false }),
     carregarListas().then(r => r.listas),
     sb().from('agenda_conclusoes').select('chave,codigo,processo_id,tipo,obs,usuario,em'),
+    carregarFaturasAgenda(sb),
   ]);
   if (e1) throw new Error('processos: ' + e1.message);
   if (e3 && !/agenda_conclusoes/.test(e3.message)) throw new Error('conclusoes: ' + e3.message);
-  return { processos: processos || [], listas, conclusoes: (conclusoes || []).filter(c => c.tipo !== 'reaberta') };
+  if (fat.erro && !fat.semTabela && ctx.log) ctx.log('[agenda] faturas indisponíveis: ' + fat.erro);
+  return { processos: processos || [], listas, conclusoes: (conclusoes || []).filter(c => c.tipo !== 'reaberta'), faturas: fat.faturas || [] };
 }
 
 async function gerarTarefas(ctx, opts) {
   opts = opts || {};
   const motor = carregarMotor();
   if (!motor) throw new Error('motor da agenda indisponível: ' + (_motorErro && _motorErro.message));
-  const { processos, listas, conclusoes } = await carregarInsumos(ctx);
+  const { processos, listas, conclusoes, faturas } = await carregarInsumos(ctx);
   const cfg = AgendaCore.montarConfig(listas);
   const hoje = opts.hoje || hojeISO();
   const tarefas = AgendaCore.gerarTarefas(processos, {
-    hoje, cfg, conclusoes, incluirFeitas: !!opts.incluirFeitas,
+    hoje, cfg, conclusoes, incluirFeitas: !!opts.incluirFeitas, faturas,
     fase: motor.calcularFase, listarPagamentosPI: motor.listarPagamentosPI,
   });
   return { hoje, cfg, tarefas, conclusoes };
@@ -177,4 +207,4 @@ function resumoPorPessoa(cfg, tarefasAbertas, hist, hoje, dias) {
 }
 function nomePessoa(login) { const l = String(login || '').replace(/@.*$/, ''); return l.charAt(0).toUpperCase() + l.slice(1); }
 
-module.exports = { carregarMotor, gerarTarefas, atualizarHistorico, resumoPorPessoa, hojeISO, diasEntre, nomePessoa };
+module.exports = { carregarMotor, gerarTarefas, atualizarHistorico, resumoPorPessoa, hojeISO, diasEntre, nomePessoa, carregarFaturasAgenda };

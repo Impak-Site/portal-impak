@@ -29,6 +29,7 @@ let _pfProcessoId = null;     // de qual processo são
 let _pfCarregadoEm = 0;
 let _pfAberta = null;         // id da fatura expandida
 let _pfVerPrevisto = true;    // extrato com os previstos
+let _pfNumerarios = [];       // numerários do processo + os com saldo dos despachantes dele (com o uso)
 let _faturasResumo = {};      // processo_id → resumo (selo da lista)
 
 function _pfPodeFinanceiro(){ return !!(typeof _user !== 'undefined' && _user && (_user.role === 'gerente' || (Array.isArray(_user.modulos) && _user.modulos.includes('financeiro')))); }
@@ -88,6 +89,19 @@ function _pfEstilos(){
 .pf-neg{color:var(--err);}
 .pf-pos{color:var(--ok);}
 .pf-dica{font-size:11.5px;color:var(--muted);margin:4px 0 8px;}
+.pf-difs{display:flex;flex-direction:column;gap:4px;margin-top:4px;}
+.pf-dif{display:flex;gap:6px 10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border);border-radius:8px;padding:5px 8px;background:var(--card);}
+.pf-dif.aberta{border-color:rgba(220,38,38,.3);}
+.pf-dif.contestada{border-color:rgba(180,83,9,.35);background:var(--warn-bg);}
+.pf-dif.aceita .pf-dif-msg{color:var(--muted);}
+.pf-dif-msg{flex:1 1 240px;min-width:0;overflow-wrap:break-word;}
+.pf-dif-acoes{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;}
+.pf-dec{color:var(--muted);font-size:10.5px;}
+.pf-mini{font:inherit;font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer;white-space:nowrap;}
+.pf-mini:hover{border-color:var(--ac);color:var(--ac);}
+.pf-mini:focus-visible{outline:2px solid var(--ac);outline-offset:1px;}
+.pf-numerario{border:1px dashed var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:11.5px;background:var(--card);}
+.pf-num-linha{display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin-top:4px;}
 @media (max-width:720px){.pf-passos{grid-template-columns:repeat(2,minmax(0,1fr));}.pf-tab .esconder-cel{display:none;}}
 #pane-faturas-conteudo{container-type:inline-size;}
 @container (max-width:640px){.pf-tab .esconder-cel{display:none;}}
@@ -223,10 +237,65 @@ async function renderFaturasProcesso(p, opts){
       _pfProcessoId = p.id; _pfCarregadoEm = Date.now();
       if(typeof _crFaturas !== 'undefined') _pfFaturas.forEach(f => { _crFaturas[f.id] = f; });
     }catch(e){ box.innerHTML = `<div class="empty">Não consegui carregar as faturas: ${_pfE(e.message)}</div>`; return; }
+    await _pfCarregarNumerarios(p);
   }
   if(!_editando || _editando.id !== p.id) return; // trocou de processo enquanto carregava
   pfRedesenhar();
 }
+// Numerários (Faturas fase 2): os deste processo e os que ainda têm saldo
+// dos despachantes que cobram neste processo (crédito que sobrou de outro
+// processo), cada um com quanto já foi abatido/devolvido. Falhou: segue sem.
+async function _pfCarregarNumerarios(p){
+  _pfNumerarios = [];
+  const empresas = [];
+  const vistos = new Set();
+  _pfFaturas.forEach(f => {
+    if(f.status !== 'aberta' || f.tipo !== 'pagar' || FaturasCore.ehNumerario(f) || (f.moeda || 'BRL') !== 'BRL') return;
+    const k = f.empresa_id || String(f.empresa_nome || '').toLowerCase();
+    if(!k || vistos.has(k)) return;
+    vistos.add(k); empresas.push({ id: f.empresa_id || null, nome: f.empresa_nome || '' });
+  });
+  const temNumerario = _pfFaturas.some(f => FaturasCore.ehNumerario(f));
+  if(!empresas.length && !temNumerario) return;
+  try{
+    const r = await fetch('/api/faturas/numerarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ processo_id: p.id, empresas: empresas.slice(0, 10) }) });
+    const d = await r.json();
+    if(d && d.ok) _pfNumerarios = d.numerarios || [];
+  }catch(e){ /* sem numerários: a aba funciona igual */ }
+}
+function _pfUsoNumerario(id){
+  const n = _pfNumerarios.find(x => x.id === id);
+  return n ? n.uso : null;
+}
+// Numerários do mesmo despachante com saldo pra abater nesta fatura
+function _pfNumerariosParaFatura(f){
+  if(!f || f.tipo !== 'pagar' || f.status !== 'aberta' || FaturasCore.ehNumerario(f) || (f.moeda || 'BRL') !== 'BRL') return [];
+  return _pfNumerarios.filter(n => n.id !== f.id && n.status !== 'cancelada' && n.uso && n.uso.disponivel > 0.009
+    && (n.empresa_id && f.empresa_id ? n.empresa_id === f.empresa_id : String(n.empresa_nome || '').trim().toLowerCase() === String(f.empresa_nome || '').trim().toLowerCase()));
+}
+// Previsto do extrato: quanto das faturas em aberto de cada despachante vai
+// ser abatido de numerário (o disponível + o que ainda falta pagar do
+// numerário) — pra não contar a saída duas vezes.
+function _pfAbaterPrevisto(){
+  const out = {};
+  const credito = {};
+  const chave = x => x.empresa_id || String(x.empresa_nome || '').trim().toLowerCase();
+  _pfNumerarios.forEach(n => {
+    if(n.status === 'cancelada' || !n.uso) return;
+    const k = chave(n);
+    credito[k] = (credito[k] || 0) + Math.max(0, n.uso.disponivel) + Math.max(0, n.uso.a_pagar || 0);
+  });
+  _pfFaturas.filter(f => f.tipo === 'pagar' && f.status === 'aberta' && !FaturasCore.ehNumerario(f) && (f.moeda || 'BRL') === 'BRL')
+    .sort((a, b) => String(a.vencimento || '9999') < String(b.vencimento || '9999') ? -1 : 1)
+    .forEach(f => {
+      const k = chave(f);
+      if(!(credito[k] > 0.009)) return;
+      const v = Math.min(credito[k], FaturasCore.saldoFatura(f));
+      if(v > 0.009){ out[f.id] = Math.round(v * 100) / 100; credito[k] -= v; }
+    });
+  return out;
+}
+
 // Depois de uma ação (baixa, edição, conferência...): recarrega a aba (se o
 // processo estiver aberto) e o selo da lista.
 function pfRecarregar(){
@@ -250,12 +319,28 @@ function _pfSitPill(f, hoje){
   if(s === 'sem_vencimento') return `<span class="pf-pill pf-ne">Sem vencimento</span>${parcial}`;
   return `<span class="pf-pill pf-in">Em aberto</span>${parcial}`;
 }
+// Numerário pago: quanto ainda dá pra abater. Acerto com numerário do mesmo
+// despachante disponível: aviso pra abater.
+function _pfSeloNumerario(f){
+  if(FaturasCore.ehNumerario(f)){
+    const u = _pfUsoNumerario(f.id);
+    if(!u || !(u.pago > 0)) return '';
+    if(u.disponivel > 0.009) return `<span class="pf-pill pf-av" title="Pago ao despachante e ainda não abatido em acerto">disponível ${_pfR(u.disponivel)}</span>`;
+    return '<span class="cr-muted" style="font-size:10.5px;">todo abatido</span>';
+  }
+  const ns = _pfNumerariosParaFatura(f);
+  if(!ns.length) return '';
+  const tot = ns.reduce((s2, n) => s2 + n.uso.disponivel, 0);
+  return `<span class="pf-pill pf-av" title="Abra a fatura e use Abater do numerário">numerário ${_pfR(tot)} a abater</span>`;
+}
 function _pfEtapaPill(f){
   const et = FaturasCore.etapaFatura(f);
-  const div = f.conferencia ? FaturasCore.divergenciasConferencia(f.conferencia) : 0;
+  const n = FaturasCore.contagemConferencia(f.conferencia), div = n.total - n.aceitas;
+  // tudo o que sobrou foi contestado: amarelo, "aguardando o fornecedor"
+  const divergente = div && n.contestadas === div ? ['pf-av', `${div} contestada${div === 1 ? '' : 's'}`] : ['pf-er', `${div} diferença${div === 1 ? '' : 's'}`];
   const mapa = {
     prevista: ['pf-ne', 'Sem documento'], recebida: ['pf-in', 'Recebida · conferir'], conferida: ['pf-ok', 'Conferida'],
-    divergente: ['pf-er', `${div} diferença${div === 1 ? '' : 's'}`], aprovada: ['pf-ok', 'Aprovada'], paga: ['pf-ok', 'Paga'],
+    divergente, aprovada: ['pf-ok', 'Aprovada'], paga: ['pf-ok', 'Paga'], numerario: ['pf-in', 'Numerário · pagar'],
     a_receber: ['pf-in', 'A receber'], parcial: ['pf-av', 'Recebida em parte'], cancelada: ['pf-ne', 'Cancelada'],
   };
   const [c, t] = mapa[et] || ['pf-ne', et];
@@ -312,6 +397,7 @@ function _pfHtml(p){
     <button type="button" class="btn btn-primary" data-arraste data-arraste-aceita=".pdf,image/*" onclick="pfLerFaturaRecebida()" title="Envie a fatura do agente, a nota do despachante, a fatura do terminal ou um boleto (PDF ou imagem): a IA lê, confere com o sistema e você confirma antes de salvar">📥 Registrar fatura recebida (PDF)</button>
     ${semFat.pagar.some(l => l.para) || semFat.receber.some(l => l.de) ? `<button type="button" class="btn btn-outline" onclick="crGerarFaturas()" title="Agrupa as taxas dos Custos Reais por empresa + documento e cria as faturas">🧾 Gerar faturas dos custos</button>` : ''}
     ${pendentes.length ? `<button type="button" class="btn btn-outline" onclick="pfGerarReceber()" title="Cria as faturas a receber do cliente (adiantamentos de câmbio e parcelas da NF de venda) que ainda não existem">↘ Gerar a receber (${pendentes.length})</button>` : ''}
+    <button type="button" class="btn btn-outline" onclick="pfNovoNumerario()" title="Adiantamento que o despachante pede antes do desembaraço — depois é abatido no acerto (faturamento) dele">💵 Numerário do despachante</button>
     <button type="button" class="btn btn-outline" onclick="pfRecarregar()" title="Busca de novo as faturas deste processo">↻ Atualizar</button>
     ${fin ? `<a class="btn btn-outline" href="/faturas?busca=${encodeURIComponent(p.referencia || '')}" target="_blank" rel="noopener" title="Tela Faturas (todas as faturas da empresa)">↗ Tela Faturas</a>` : ''}
   </div>`;
@@ -340,10 +426,10 @@ function _pfSecFaturas(p, vivas, canceladas, snap, cambio, hoje){
     const saldo = FaturasCore.saldoFatura(f) * parte.fracao;
     const pago = f.status === 'aberta' && _pfN(f.valor_pago) > 0;
     return `<tr class="pf-linha${aberta ? ' aberta' : ''}" onclick="pfAbrirFatura('${f.id}')" title="${aberta ? 'Fechar o detalhe' : 'Ver as taxas, os pagamentos e a conferência'}">
-      <td>${f.tipo === 'pagar' ? '<span style="color:var(--err);font-weight:700;">↗</span> Pagar' : '<span style="color:var(--ok);font-weight:700;">↙</span> Receber'}<div class="cr-muted" style="font-size:10.5px;font-family:'JetBrains Mono',monospace;">${_pfE(f.numero || '')}</div></td>
+      <td>${FaturasCore.ehNumerario(f) ? '<span style="color:var(--err);font-weight:700;">↗</span> Numerário' : FaturasCore.ehDevolucaoNumerario(f) ? '<span style="color:var(--ok);font-weight:700;">↙</span> Devolução' : f.tipo === 'pagar' ? '<span style="color:var(--err);font-weight:700;">↗</span> Pagar' : '<span style="color:var(--ok);font-weight:700;">↙</span> Receber'}<div class="cr-muted" style="font-size:10.5px;font-family:'JetBrains Mono',monospace;">${_pfE(f.numero || '')}</div></td>
       <td style="overflow-wrap:anywhere;"><strong>${_pfE(f.empresa_nome)}</strong>${f.documento ? `<div class="cr-muted" style="font-size:11px;">doc ${_pfE(f.documento)}</div>` : ''}${multi}</td>
       <td class="n">${_ftSimb(f.moeda)} ${_ftFmt(parte.valor)}${parte.fracao < 1 ? `<div class="cr-muted" style="font-size:10.5px;">de ${_ftFmt(f.valor)}</div>` : ''}${pago ? `<div style="font-size:10.5px;color:var(--warn);">saldo ${_ftFmt(saldo)}</div>` : ''}</td>
-      <td><div style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;">${_pfSitPill(f, hoje)}${_pfEtapaPill(f)}${f.status === 'aberta' && f.vencimento ? `<span class="cr-muted" style="font-size:10.5px;">vence ${_ftData(f.vencimento)}</span>` : ''}</div></td>
+      <td><div style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;">${_pfSitPill(f, hoje)}${_pfEtapaPill(f)}${_pfSeloNumerario(f)}${f.status === 'aberta' && f.vencimento ? `<span class="cr-muted" style="font-size:10.5px;">vence ${_ftData(f.vencimento)}</span>` : ''}</div></td>
     </tr>${aberta ? `<tr class="pf-det"><td colspan="4">${_pfDetalhe(p, f, snap, cambio, parte)}</td></tr>` : ''}`;
   }).join('');
   const vazio = `<div class="pf-dica">Nenhuma fatura neste processo ainda. Quando chegar a cobrança do agente, do despachante ou do terminal, use <b>📥 Registrar fatura recebida</b>: a IA lê o PDF e confere com os Custos Reais.</div>`;
@@ -398,19 +484,18 @@ function _pfDetalhe(p, f, snap, cambio, parte){
   // etapas (a pagar)
   const passos = f.tipo === 'pagar' && f.status !== 'cancelada' ? `<div class="pf-passos">${FaturasCore.passosFatura(f).map(ps => {
     const det = ps.id === 'recebida' ? (ps.estado === 'feito' ? 'documento anexado' : ps.estado === 'pulado' ? 'sem documento anexado' : 'anexe a fatura')
-      : ps.id === 'conferida' ? (f.conferencia ? (ps.divergencias ? `${ps.divergencias} diferença${ps.divergencias === 1 ? '' : 's'} · ${_ftData((f.conferencia.em || '').slice(0, 10))}` : `ok · ${_ftData((f.conferencia.em || '').slice(0, 10))}`) : (ps.estado === 'pulado' ? 'não conferida' : 'confira com o sistema'))
+      : ps.id === 'conferida' ? (f.conferencia ? (ps.divergencias
+          ? (ps.contestadas === ps.divergencias ? `${ps.contestadas} contestada${ps.contestadas === 1 ? '' : 's'} · aguardando o fornecedor` : `${ps.divergencias} diferença${ps.divergencias === 1 ? '' : 's'}${ps.contestadas ? ` (${ps.contestadas} contestada${ps.contestadas === 1 ? '' : 's'})` : ''} · ${_ftData((f.conferencia.em || '').slice(0, 10))}`)
+          : `ok${ps.aceitas ? ` (${ps.aceitas} aceita${ps.aceitas === 1 ? '' : 's'})` : ''} · ${_ftData((f.conferencia.em || '').slice(0, 10))}`) : (ps.estado === 'pulado' ? 'não conferida' : 'confira com o sistema'))
       : ps.id === 'aprovada' ? (f.aprovacao ? `${_pfE(f.aprovacao.nome || f.aprovacao.por || '')} · ${_ftData((f.aprovacao.em || '').slice(0, 10))}` : (ps.estado === 'pulado' ? 'não aprovada' : 'aguarda gerente'))
       : (f.status === 'paga' ? `em ${_ftData(f.pago_em)}` : (_pfN(f.valor_pago) > 0 ? `parcial: ${_ftSimb(f.moeda)} ${_ftFmt(f.valor_pago)}` : `vence ${_ftData(f.vencimento)}`));
     const ico = ps.estado === 'feito' ? '✓' : ps.estado === 'alerta' ? '⚠' : ps.estado === 'pulado' ? '–' : '○';
     return `<div class="pf-passo ${ps.estado}" title="${_pfE(ps.dica)}"><b>${ico} ${ps.label}</b><span>${ps.quem} · ${det}</span></div>`;
   }).join('')}</div>` : '';
 
-  // conferência guardada
-  const conf = f.conferencia;
-  const ORD = { erro: 0, aviso: 1, info: 2, ok: 3 }, ICO = { erro: '⛔', aviso: '⚠️', info: 'ℹ️', ok: '✅' };
-  const confHtml = conf ? `<div style="margin-top:8px;font-size:11.5px;"><b>Conferência</b> de ${_ftData((conf.em || '').slice(0, 10))}${conf.nome || conf.por ? ' por ' + _pfE(conf.nome || conf.por) : ''}: ${FaturasCore.divergenciasConferencia(conf) ? `<span class="pf-neg">${FaturasCore.divergenciasConferencia(conf)} diferença(s)</span>` : '<span class="pf-pos">sem diferença</span>'}
-      <div style="margin-top:4px;">${(conf.checks || []).slice().sort((a, b) => (ORD[a.nivel] || 9) - (ORD[b.nivel] || 9)).filter(c => c.nivel !== 'ok').slice(0, 8).map(c => `<div>${ICO[c.nivel] || ''} ${_pfE(c.msg)}</div>`).join('') || '<div class="cr-muted">Todas as checagens bateram.</div>'}</div></div>`
-    : (f.tipo === 'pagar' ? '<div class="pf-dica" style="margin-top:8px;">Ainda não conferida com o sistema.</div>' : '');
+  // conferência guardada — cada diferença com Aceitar / Contestar (fase 2);
+  // numerário não se confere (é adiantamento): mostra o uso dele
+  const confHtml = FaturasCore.ehNumerario(f) ? _pfNumerarioHtml(f, fin) : _pfConferenciaHtml(f, fin) + _pfAbaterHtml(f, fin);
 
   // baixas e documentos
   const FORMA = Object.fromEntries(typeof _FT_FORMAS !== 'undefined' ? _FT_FORMAS : []);
@@ -422,7 +507,7 @@ function _pfDetalhe(p, f, snap, cambio, parte){
 
   const aberta = f.status === 'aberta';
   const acoes = `<div class="pf-acoes">
-    ${aberta && f.tipo === 'pagar' ? `<button type="button" class="btn btn-outline" onclick="event.stopPropagation();pfConferir('${f.id}')" title="Compara esta fatura com os Custos Reais, o cotado e as outras faturas, e guarda o resultado">🔍 ${conf ? 'Conferir de novo' : 'Conferir com o sistema'}</button>` : ''}
+    ${aberta && f.tipo === 'pagar' && !FaturasCore.ehNumerario(f) ? `<button type="button" class="btn btn-outline" onclick="event.stopPropagation();pfConferir('${f.id}')" title="Compara esta fatura com os Custos Reais, o cotado e as outras faturas, e guarda o resultado">🔍 ${f.conferencia ? 'Conferir de novo' : 'Conferir com o sistema'}</button>` : ''}
     ${aberta ? `<button type="button" class="btn btn-outline" data-arraste data-arraste-aceita=".pdf,image/*" onclick="event.stopPropagation();pfAnexar('${f.id}')" title="Anexa o PDF da fatura, boleto ou nota">📎 Anexar documento</button>` : ''}
     ${aberta && fin ? `<button type="button" class="btn btn-primary" onclick="event.stopPropagation();pfBaixa('${f.id}')" title="Registrar pagamento (total ou parcial) com comprovante">💰 ${f.tipo === 'receber' ? 'Registrar recebimento' : 'Dar baixa'}</button>` : ''}
     ${!aberta && fin && pags.length ? `<button type="button" class="btn btn-outline" onclick="event.stopPropagation();pfBaixa('${f.id}')">📎 Pagamentos</button>` : ''}
@@ -444,13 +529,290 @@ function _pfDetalhe(p, f, snap, cambio, parte){
   </div>`;
 }
 
+// ── Conferência guardada: diferenças com Aceitar / Contestar (fase 2) ─────
+// Diferença = erro, ou aviso de valor/duplicidade/soma/empresa/taxa já
+// faturada (FaturasCore.ehDiferenca). Aceita deixa de contar; contestada
+// continua contando até o fornecedor corrigir. Avisos que não mudam o que
+// pagar (câmbio, datas, cotado) aparecem embaixo, só informativos.
+const _PF_ICO = { erro: '⛔', aviso: '⚠️', info: 'ℹ️', ok: '✅' }, _PF_ORD = { erro: 1, aviso: 2, info: 3, ok: 4 }; // erro primeiro (0 seria falso no || 9)
+function _pfDifsConferencia(conf){
+  const naoOk = ((conf && conf.checks) || []).filter(c => c && c.nivel !== 'ok');
+  const ord = (a, b) => (_PF_ORD[a.nivel] || 9) - (_PF_ORD[b.nivel] || 9);
+  return { difs: naoOk.filter(c => FaturasCore.ehDiferenca(c)).sort(ord), outros: naoOk.filter(c => !FaturasCore.ehDiferenca(c)).sort(ord) };
+}
+function _pfConferenciaHtml(f, fin){
+  const conf = f.conferencia;
+  if(!conf) return f.tipo === 'pagar' ? '<div class="pf-dica" style="margin-top:8px;">Ainda não conferida com o sistema.</div>' : '';
+  const n = FaturasCore.contagemConferencia(conf);
+  const { difs, outros } = _pfDifsConferencia(conf);
+  const pode = f.status !== 'cancelada';
+  const fid = _pfE(f.id);
+  const quem = d => `${_pfE(d.nome || d.por || '')}${d.em ? ' · ' + _ftData(String(d.em).slice(0, 10)) : ''}${d.motivo ? ' — ' + _pfE(d.motivo) : ''}`;
+  const linha = c => {
+    const k = _pfE(FaturasCore.chaveCheck(c));
+    const d = FaturasCore.decisaoCheck(conf, c);
+    let acoes = '';
+    if(!d) acoes = pode ? `<button type="button" class="pf-mini" onclick="pfDecidir('${fid}','${k}','aceita')" title="A fatura está certa ou a diferença foi combinada — deixa de contar como diferença">✓ Aceitar</button><button type="button" class="pf-mini" onclick="pfDecidir('${fid}','${k}','contestada')" title="Cobrar o fornecedor: monta o texto pra mandar e marca como contestada">✉ Contestar</button>` : '';
+    else if(d.acao === 'aceita') acoes = `<span class="pf-pill pf-ok">aceita</span><span class="pf-dec">${quem(d)}</span>${pode ? `<a class="cr-link" onclick="pfDecidir('${fid}','${k}','')">desfazer</a>` : ''}`;
+    else acoes = `<span class="pf-pill pf-av">contestada</span><span class="pf-dec">${quem(d)} · aguardando o fornecedor</span>${pode ? `<a class="cr-link" onclick="pfDecidir('${fid}','${k}','aceita')">aceitar</a><a class="cr-link" onclick="pfDecidir('${fid}','${k}','')">desfazer</a>` : ''}`;
+    return `<div class="pf-dif ${d ? d.acao : 'aberta'}"><div class="pf-dif-msg">${_PF_ICO[c.nivel] || ''} ${_pfE(c.msg)}</div><div class="pf-dif-acoes">${acoes}</div></div>`;
+  };
+  const resumo = !n.total ? '<span class="pf-pos">sem diferença</span>'
+    : [n.abertas ? `<span class="pf-neg">${n.abertas} sem decisão</span>` : '', n.contestadas ? `<span style="color:var(--warn);">${n.contestadas} contestada${n.contestadas === 1 ? '' : 's'}</span>` : '', n.aceitas ? `<span class="pf-pos">${n.aceitas} aceita${n.aceitas === 1 ? '' : 's'}</span>` : ''].filter(Boolean).join(' · ');
+  const todas = pode && n.abertas > 1 ? `<button type="button" class="pf-mini" style="margin-left:6px;" onclick="pfContestarTodas('${fid}')" title="Um texto só com todas as diferenças sem decisão">✉ Contestar as ${n.abertas}</button>` : '';
+  const aceitouValor = fin && difs.some(c => c.tipo === 'valor' && (FaturasCore.decisaoCheck(conf, c) || {}).acao === 'aceita');
+  return `<div style="margin-top:8px;font-size:11.5px;"><b>Conferência</b> de ${_ftData((conf.em || '').slice(0, 10))}${conf.nome || conf.por ? ' por ' + _pfE(conf.nome || conf.por) : ''}: ${resumo}${todas}
+    ${difs.length ? `<div class="pf-difs">${difs.slice(0, 15).map(linha).join('')}</div>` : ''}
+    ${outros.length ? `<div style="margin-top:4px;">${outros.slice(0, 6).map(c => `<div class="cr-muted">${_PF_ICO[c.nivel] || ''} ${_pfE(c.msg)}</div>`).join('')}</div>` : ''}
+    ${!difs.length && !outros.length ? '<div class="cr-muted">Todas as checagens bateram.</div>' : ''}
+    ${aceitouValor ? '<div class="pf-dica" style="margin-top:6px;">Aceitou diferença de valor porque a fatura está certa? Use <b>↻ Usar os valores da fatura nos Custos Reais</b> — assim o custo real fica igual ao cobrado.</div>' : ''}
+  </div>`;
+}
+function _pfAcharCheck(f, chave){
+  return ((f && f.conferencia && f.conferencia.checks) || []).find(c => FaturasCore.ehDiferenca(c) && FaturasCore.chaveCheck(c) === chave) || null;
+}
+async function _pfGravarDecisao(fid, chave, acao, motivo){
+  const r = await fetch('/api/faturas/' + encodeURIComponent(fid) + '/conferencia/decisao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave, acao, motivo: motivo || '' }) });
+  const d = await r.json().catch(() => ({}));
+  if(!d.ok) throw new Error(d.erro || ('erro ' + r.status));
+  // atualiza a fatura nas duas listas (aba do processo e tela Faturas)
+  [...((typeof _ftLista !== 'undefined' && _ftLista) || []), ...(_pfFaturas || [])].forEach(x => { if(x && x.id === fid) x.conferencia = d.conferencia; });
+  return d.conferencia;
+}
+function _pfAcharFatura(fid){
+  return (_pfFaturas || []).find(x => x && x.id === fid) || _ftAcharFatura(fid);
+}
+function _pfAposDecisao(){
+  pfRedesenhar();
+  if(typeof carregarResumoFaturas === 'function') carregarResumoFaturas(true);
+}
+// Aceitar (pede o motivo), contestar (monta o texto pro fornecedor) ou
+// desfazer (acao vazia) uma diferença.
+function pfDecidir(fid, chave, acao){
+  const f = _pfAcharFatura(fid);
+  const c = _pfAcharCheck(f, chave);
+  if(!f || !c){ showToast('Essa diferença não está mais na conferência — confira de novo.', 'warn'); return; }
+  if(!acao){
+    _pfGravarDecisao(fid, chave, '', '').then(() => { showToast('Decisão desfeita.', 'ok'); _pfAposDecisao(); }).catch(e => showToast('Não gravou: ' + e.message, 'err'));
+    return;
+  }
+  if(acao === 'aceita') return _pfModalAceite(f, [c]);
+  return _pfModalContestar(f, [c]);
+}
+function pfContestarTodas(fid){
+  const f = _pfAcharFatura(fid);
+  if(!f || !f.conferencia) return;
+  const abertas = _pfDifsConferencia(f.conferencia).difs.filter(c => !FaturasCore.decisaoCheck(f.conferencia, c));
+  if(!abertas.length){ showToast('Nenhuma diferença sem decisão.', 'ok'); return; }
+  _pfModalContestar(f, abertas);
+}
+const _PF_MOTIVOS_ACEITE = ['A fatura está certa — vou corrigir os Custos Reais', 'Diferença combinada com o fornecedor', 'Diferença de câmbio / arredondamento', 'Taxa extra autorizada', 'Cobrança parcial — o restante vem em outra fatura'];
+function _pfModalAceite(f, checks){
+  window._pfDecisaoAtual = { fid: f.id, chaves: checks.map(c => FaturasCore.chaveCheck(c)), acao: 'aceita' };
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:520px;">
+    <div class="ft-modal-head"><span>✓ Aceitar diferença</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div style="font-size:12px;margin-bottom:10px;">${checks.map(c => `<div>${_PF_ICO[c.nivel] || ''} ${_pfE(c.msg)}</div>`).join('')}</div>
+      <label class="form-label" for="pf_dec_motivo" style="display:block;margin-bottom:4px;">Motivo do aceite (fica registrado com seu nome)</label>
+      <textarea id="pf_dec_motivo" class="form-input" rows="2" maxlength="300" style="width:100%;resize:vertical;" placeholder="Ex.: diferença combinada com o agente"></textarea>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">${_PF_MOTIVOS_ACEITE.map(m => `<button type="button" class="pf-mini" onclick="document.getElementById('pf_dec_motivo').value=this.textContent;document.getElementById('pf_dec_motivo').focus()">${_pfE(m)}</button>`).join('')}</div>
+      ${checks.some(c => c.tipo === 'valor') ? '<div class="pf-dica" style="margin-top:10px;">Se a fatura está certa, depois use <b>↻ Usar os valores da fatura nos Custos Reais</b> pra o sistema ficar igual ao cobrado.</div>' : ''}
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" id="pf_dec_ok" onclick="pfConfirmarDecisao()">✓ Aceitar</button></div>
+  </div></div>`;
+  setTimeout(() => { const t = document.getElementById('pf_dec_motivo'); if(t) t.focus(); }, 30);
+}
+function _pfModalContestar(f, checks){
+  window._pfDecisaoAtual = { fid: f.id, chaves: checks.map(c => FaturasCore.chaveCheck(c)), acao: 'contestada' };
+  const ref = (_editando && _editando.referencia) || [...new Set((f.itens || []).map(it => it && it.referencia).filter(Boolean))].join(', ');
+  const texto = FaturasCore.textoContestacao(f, checks, ref);
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:620px;">
+    <div class="ft-modal-head"><span>✉ Contestar com ${_pfE(f.empresa_nome || 'o fornecedor')}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div class="cr-muted" style="font-size:11.5px;margin-bottom:6px;">Texto pronto pra mandar por e-mail ou WhatsApp — ajuste se quiser e copie. O ImpakOS não envia nada sozinho.</div>
+      <textarea id="pf_dec_texto" class="form-input" rows="${Math.min(14, 7 + checks.length)}" style="width:100%;resize:vertical;font-size:12px;">${_pfE(texto)}</textarea>
+      <label class="form-label" for="pf_dec_motivo" style="display:block;margin:10px 0 4px;">Anotação pra equipe (opcional)</label>
+      <input id="pf_dec_motivo" class="form-input" maxlength="300" style="width:100%;" placeholder="Ex.: mandei e-mail pro comercial do agente">
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-outline" onclick="pfCopiarContestacao(this)">📋 Copiar texto</button><button class="btn btn-primary" id="pf_dec_ok" onclick="pfConfirmarDecisao()">Marcar como contestada${checks.length > 1 ? ` (${checks.length})` : ''}</button></div>
+  </div></div>`;
+}
+function pfCopiarContestacao(btn){
+  const t = (document.getElementById('pf_dec_texto') || {}).value || '';
+  const ok = () => { const o = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(() => { btn.textContent = o; }, 1800); };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok).catch(() => { const ta = document.getElementById('pf_dec_texto'); ta.select(); try{ document.execCommand('copy'); ok(); }catch(e){ showToast('Não consegui copiar — selecione e copie.', 'warn'); } });
+  else { const ta = document.getElementById('pf_dec_texto'); ta.select(); try{ document.execCommand('copy'); ok(); }catch(e){ showToast('Não consegui copiar — selecione e copie.', 'warn'); } }
+}
+async function pfConfirmarDecisao(){
+  const dec = window._pfDecisaoAtual;
+  if(!dec) return;
+  const motivo = ((document.getElementById('pf_dec_motivo') || {}).value || '').trim();
+  if(dec.acao === 'aceita' && !motivo){ showToast('Diga o motivo do aceite.', 'warn'); const t = document.getElementById('pf_dec_motivo'); if(t) t.focus(); return; }
+  const btn = document.getElementById('pf_dec_ok');
+  if(btn){ if(btn.disabled) return; btn.disabled = true; btn.textContent = 'Gravando…'; }
+  let feitas = 0;
+  try{
+    for(const k of dec.chaves){ await _pfGravarDecisao(dec.fid, k, dec.acao, motivo); feitas++; }
+  }catch(e){
+    showToast('Não gravou' + (feitas ? ` (${feitas} de ${dec.chaves.length} gravadas)` : '') + ': ' + e.message, 'err');
+    if(btn){ btn.disabled = false; btn.textContent = 'Tentar de novo'; }
+    if(feitas) _pfAposDecisao();
+    return;
+  }
+  window._pfDecisaoAtual = null;
+  ftFecharModal();
+  showToast(dec.acao === 'aceita' ? 'Diferença aceita.' : (feitas > 1 ? `${feitas} diferenças contestadas.` : 'Diferença contestada — aguardando o fornecedor.'), 'ok');
+  _pfAposDecisao();
+}
+
+// ── Numerário do despachante (fase 2) ──────────────────────────────────────
+function _pfNumerarioHtml(f, fin){
+  const u = _pfUsoNumerario(f.id) || FaturasCore.usoNumerario(f, _pfFaturas);
+  const usos = (u.usos || []).map(x => `<div>• abatido ${_pfR(x.valor)} na fatura ${_pfE(x.numero || '')}${x.documento ? ' (' + _pfE(x.documento) + ')' : ''}${x.data ? ' em ' + _ftData(x.data) : ''}</div>`).join('');
+  const devs = (u.devolucoes || []).map(x => `<div>• devolução de ${_pfR(x.valor)} — a receber ${_pfE(x.numero || '')} (${x.status === 'paga' ? 'recebida' : 'em aberto'})</div>`).join('');
+  const pode = fin && f.status !== 'cancelada' && u.disponivel > 0.009;
+  return `<div class="pf-numerario">
+    <div><b>💵 Numerário (adiantamento ao despachante)</b> — não é custo do processo: o custo é o acerto (faturamento) do despachante, que abate este valor.</div>
+    <div class="pf-num-linha"><span>Pago <b>${_pfR(u.pago)}</b></span><span>Abatido em acertos <b>${_pfR(u.usado)}</b></span>${u.devolvido ? `<span>Devolução <b>${_pfR(u.devolvido)}</b></span>` : ''}<span>Disponível <b>${_pfR(u.disponivel)}</b></span>${u.a_pagar > 0 ? `<span class="pf-neg">Falta pagar ${_pfR(u.a_pagar)}</span>` : ''}</div>
+    ${usos || devs ? `<div class="cr-muted" style="margin-top:4px;">${usos}${devs}</div>` : ''}
+    ${u.pago > 0 && !(u.usos || []).length ? '<div class="pf-dica" style="margin:4px 0 0;">Quando chegar o acerto do despachante, registre a fatura dele (📥 Registrar fatura recebida) e use <b>💵 Abater</b> nela — o que já foi pago aqui não sai de novo.</div>' : ''}
+    ${pode ? `<div class="pf-acoes"><button type="button" class="btn btn-outline" onclick="event.stopPropagation();pfDevolucaoNumerario('${_pfE(f.id)}')" title="O acerto saiu menor que o numerário: gera a fatura a receber do despachante com a sobra">↩ Gerar devolução a receber (${_pfR(u.disponivel)})</button></div>` : ''}
+  </div>`;
+}
+function _pfAbaterHtml(f, fin){
+  const ns = _pfNumerariosParaFatura(f);
+  if(!ns.length) return '';
+  const saldo = FaturasCore.saldoFatura(f);
+  const ref = _editando && _editando.referencia;
+  return `<div class="pf-numerario">
+    <div><b>💵 Numerário deste despachante disponível</b> — o adiantamento já pago abate esta fatura (sem sair dinheiro de novo).</div>
+    ${ns.map(n => { const v = Math.min(saldo, n.uso.disponivel); return `<div class="pf-num-linha"><span>Numerário ${_pfE(n.numero || '')}${n.documento ? ' · ' + _pfE(n.documento) : ''}${n.origem && n.origem.referencia && n.origem.referencia !== ref ? ' · do processo ' + _pfE(n.origem.referencia) : ''}: disponível <b>${_pfR(n.uso.disponivel)}</b></span>${fin ? `<button type="button" class="pf-mini" onclick="event.stopPropagation();pfAbaterNumerario('${_pfE(f.id)}','${_pfE(n.id)}')">💵 Abater ${_pfR(v)}</button>` : ''}</div>`; }).join('')}
+    ${fin ? '' : '<div class="pf-dica" style="margin:4px 0 0;">O abatimento é feito pelo Financeiro.</div>'}
+  </div>`;
+}
+function _pfHojeIso(){ return typeof _ftHoje === 'function' ? _ftHoje() : new Date().toISOString().slice(0, 10); }
+// Novo numerário: fatura a pagar ao despachante, ligada ao processo
+function pfNovoNumerario(){
+  if(!_editando || !_editando.id){ showToast('Salve o processo antes.', 'warn'); return; }
+  const desp = ((document.getElementById('f_despachante') || {}).value || _editando.despachante || '').trim();
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:560px;">
+    <div class="ft-modal-head"><span>💵 Numerário do despachante · ${_pfE(_editando.referencia || '')}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div class="cr-muted" style="font-size:11.5px;margin-bottom:10px;">O adiantamento que o despachante pede antes do desembaraço. Não é custo: quando chegar o acerto (faturamento) dele, registre a fatura e use <b>💵 Abater</b> — o que já foi pago aqui é descontado e não sai de novo. Se sobrar, vira devolução a receber.</div>
+      <div class="ft-cand-campos">
+        <label style="flex:2;position:relative;">Despachante <input class="form-input" id="pf_nm_empresa" value="${_pfE(desp)}" autocomplete="off" oninput="autocompletarContato(this,'DESPACHANTE','pf_nm_dd')"><div id="pf_nm_dd" class="cr-dd" style="display:none;"></div></label>
+        <label>Nº da solicitação <input class="form-input" id="pf_nm_doc" placeholder="opcional"></label>
+      </div>
+      <div class="ft-cand-campos">
+        <label>Valor (R$) <input class="form-input" id="pf_nm_valor" inputmode="decimal" placeholder="0,00"></label>
+        <label>Vencimento <input class="form-input" type="date" id="pf_nm_venc" value="${_pfHojeIso()}"></label>
+      </div>
+      <label class="cr-muted" style="display:block;margin-top:8px;">Observação <input class="form-input" id="pf_nm_obs" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="ex.: impostos + armazenagem estimados"></label>
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" id="pf_nm_ok" onclick="pfCriarNumerario()">Criar numerário</button></div>
+  </div></div>`;
+  setTimeout(() => { const el = document.getElementById(desp ? 'pf_nm_valor' : 'pf_nm_empresa'); if(el) el.focus(); }, 30);
+}
+async function pfCriarNumerario(){
+  const p = _editando; if(!p || !p.id) return;
+  const empresa = (document.getElementById('pf_nm_empresa').value || '').trim();
+  const valor = typeof parseValorMoeda === 'function' ? parseValorMoeda(document.getElementById('pf_nm_valor').value) : parseFloat(String(document.getElementById('pf_nm_valor').value).replace(/\./g, '').replace(',', '.'));
+  if(!empresa){ showToast('Informe o despachante.', 'warn'); return; }
+  if(!(valor > 0)){ showToast('Informe o valor do numerário.', 'warn'); return; }
+  const btn = document.getElementById('pf_nm_ok'); if(btn){ if(btn.disabled) return; btn.disabled = true; btn.textContent = 'Criando…'; }
+  const despCampo = ((document.getElementById('f_despachante') || {}).value || p.despachante || '').trim();
+  const body = {
+    tipo: 'pagar', empresa_nome: empresa, empresa_id: p.despachante_id && despCampo && despCampo.toLowerCase() === empresa.toLowerCase() ? p.despachante_id : null,
+    moeda: 'BRL', cambio: 1, valor, vencimento: document.getElementById('pf_nm_venc').value || null,
+    documento: (document.getElementById('pf_nm_doc').value || '').trim() || null, obs: (document.getElementById('pf_nm_obs').value || '').trim() || null,
+    origem: { tipo: 'numerario', processo_id: p.id, referencia: p.referencia || null },
+    itens: [{ processo_id: p.id, referencia: p.referencia || null, taxa: null, label: 'Numerário (adiantamento ao despachante)', valor }],
+  };
+  try{
+    const d = await (await fetch('/api/faturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    if(!d.ok) throw new Error(d.erro || 'erro');
+    ftFecharModal();
+    showToast('Numerário criado. Dê a baixa quando pagar.', 'ok');
+    const nova = d.faturas && d.faturas[0];
+    if(nova) _pfAberta = nova.id;
+    pfRecarregar();
+  }catch(e){ showToast('Não criou: ' + e.message, 'err'); if(btn){ btn.disabled = false; btn.textContent = 'Criar numerário'; } }
+}
+function pfAbaterNumerario(fid, nid){
+  const f = _pfAcharFatura(fid), n = _pfNumerarios.find(x => x.id === nid);
+  if(!f || !n || !n.uso){ showToast('Numerário não encontrado — atualize a aba.', 'warn'); return; }
+  const v = Math.min(FaturasCore.saldoFatura(f), n.uso.disponivel);
+  window._pfAbaterAtual = { fid, nid };
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:500px;">
+    <div class="ft-modal-head"><span>💵 Abater do numerário</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div style="font-size:12px;margin-bottom:10px;">Fatura <b>${_pfE(f.numero || '')}</b>${f.documento ? ' · doc ' + _pfE(f.documento) : ''} de <b>${_pfE(f.empresa_nome || '')}</b> — saldo ${_pfR(FaturasCore.saldoFatura(f))}.<br>Numerário <b>${_pfE(n.numero || '')}</b>${n.documento ? ' · ' + _pfE(n.documento) : ''} — disponível ${_pfR(n.uso.disponivel)}.</div>
+      <div class="ft-cand-campos">
+        <label>Valor a abater (R$) <input class="form-input" id="pf_ab_valor" inputmode="decimal" value="${_ftFmt(v)}"></label>
+        <label>Data <input class="form-input" type="date" id="pf_ab_data" value="${_pfHojeIso()}"></label>
+      </div>
+      <div class="cr-muted" style="font-size:11.5px;margin-top:8px;">Entra como baixa "compensação" na fatura (não é saída de caixa — o dinheiro saiu quando o numerário foi pago). ${FaturasCore.saldoFatura(f) - v > 0.009 ? `Depois sobra ${_pfR(FaturasCore.saldoFatura(f) - v)} pra pagar.` : ''}</div>
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" id="pf_ab_ok" onclick="pfConfirmarAbatimento()">Abater</button></div>
+  </div></div>`;
+}
+async function pfConfirmarAbatimento(){
+  const a = window._pfAbaterAtual; if(!a) return;
+  const btn = document.getElementById('pf_ab_ok'); if(btn){ if(btn.disabled) return; btn.disabled = true; btn.textContent = 'Abatendo…'; }
+  const valor = typeof parseValorMoeda === 'function' ? parseValorMoeda(document.getElementById('pf_ab_valor').value) : document.getElementById('pf_ab_valor').value;
+  try{
+    const r = await fetch('/api/faturas/' + encodeURIComponent(a.fid) + '/abater-numerario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numerario_id: a.nid, valor, data: document.getElementById('pf_ab_data').value || null }) });
+    const d = await r.json().catch(() => ({}));
+    if(!d.ok) throw new Error(d.erro || ('erro ' + r.status));
+    window._pfAbaterAtual = null;
+    ftFecharModal();
+    showToast(d.saldo > 0.009 ? `Abatido. Falta pagar ${_pfR(d.saldo)}.` : 'Abatido — fatura quitada com o numerário.', 'ok');
+    pfRecarregar();
+  }catch(e){ showToast('Não abateu: ' + e.message, 'err'); if(btn){ btn.disabled = false; btn.textContent = 'Abater'; } }
+}
+function pfDevolucaoNumerario(nid){
+  const n = _pfAcharFatura(nid);
+  const u = _pfUsoNumerario(nid);
+  if(!n || !u){ showToast('Numerário não encontrado — atualize a aba.', 'warn'); return; }
+  const ov = _ftOverlay();
+  ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:480px;">
+    <div class="ft-modal-head"><span>↩ Devolução do numerário</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
+    <div class="ft-modal-body">
+      <div style="font-size:12px;margin-bottom:10px;">Sobrou <b>${_pfR(u.disponivel)}</b> do numerário ${_pfE(n.numero || '')} de <b>${_pfE(n.empresa_nome || '')}</b>. Gera uma fatura a receber do despachante — dê a baixa nela quando o dinheiro voltar.</div>
+      <div class="ft-cand-campos">
+        <label>Valor (R$) <input class="form-input" id="pf_dv_valor" inputmode="decimal" value="${_ftFmt(u.disponivel)}"></label>
+        <label>Vencimento <input class="form-input" type="date" id="pf_dv_venc" value="${_pfHojeIso()}"></label>
+      </div>
+      <div class="cr-muted" style="font-size:11.5px;margin-top:8px;">Se o despachante vai deixar de crédito pro próximo processo, não gere a devolução: o saldo continua disponível e aparece pra abater no próximo acerto dele.</div>
+    </div>
+    <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" id="pf_dv_ok" onclick="pfConfirmarDevolucao('${_pfE(nid)}')">Gerar a receber</button></div>
+  </div></div>`;
+}
+async function pfConfirmarDevolucao(nid){
+  const btn = document.getElementById('pf_dv_ok'); if(btn){ if(btn.disabled) return; btn.disabled = true; btn.textContent = 'Gerando…'; }
+  const valor = typeof parseValorMoeda === 'function' ? parseValorMoeda(document.getElementById('pf_dv_valor').value) : document.getElementById('pf_dv_valor').value;
+  try{
+    const r = await fetch('/api/faturas/' + encodeURIComponent(nid) + '/devolucao-numerario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valor, vencimento: document.getElementById('pf_dv_venc').value || null }) });
+    const d = await r.json().catch(() => ({}));
+    if(!d.ok) throw new Error(d.erro || ('erro ' + r.status));
+    ftFecharModal();
+    showToast('Devolução a receber criada.', 'ok');
+    pfRecarregar();
+  }catch(e){ showToast('Não gerou: ' + e.message, 'err'); if(btn){ btn.disabled = false; btn.textContent = 'Gerar a receber'; } }
+}
+
 // ── Seção: a receber do cliente ────────────────────────────────────────────
 function _pfSecReceber(p, receber, pendentes, cambio, hoje){
   const linhasFat = receber.map(f => {
     const parte = FaturasCore.parteDoProcesso(f, p.id);
     const orig = f.origem ? (f.origem.tipo === 'venda' ? 'Venda' + (f.origem.de > 1 ? ` · parcela ${f.origem.parcela}/${f.origem.de}` : '') : 'Adiantamento de câmbio') : 'Cobrança';
     const rec = _pfN(f.valor_pago) * parte.fracao;
-    return `<tr class="pf-linha" onclick="pfAbrirFatura('${f.id}');document.getElementById('pane-faturas-conteudo').scrollIntoView({block:'start'})" title="Abrir a fatura lá em cima"><td style="overflow-wrap:anywhere;">${orig}<div class="cr-muted" style="font-size:10.5px;">${_pfE(f.empresa_nome)}${f.documento ? ' · ' + _pfE(f.documento) : ''}</div></td><td>${_ftData(f.vencimento)}</td><td class="n">${_ftSimb(f.moeda)} ${_ftFmt(parte.valor)}${rec > 0 ? `<div class="pf-pos" style="font-size:10.5px;">recebido ${_ftFmt(rec)}</div>` : ''}</td><td>${_pfSitPill(f, hoje)}</td></tr>`;
+    const txOp = f.origem && _pfN(f.origem.taxa_operadora) > 0 ? _pfN(f.origem.taxa_operadora) * parte.fracao : 0;
+    return `<tr class="pf-linha" onclick="pfAbrirFatura('${f.id}');document.getElementById('pane-faturas-conteudo').scrollIntoView({block:'start'})" title="Abrir a fatura lá em cima"><td style="overflow-wrap:anywhere;">${orig}<div class="cr-muted" style="font-size:10.5px;">${_pfE(f.empresa_nome)}${f.documento ? ' · ' + _pfE(f.documento) : ''}</div></td><td>${_ftData(f.vencimento)}</td><td class="n">${_ftSimb(f.moeda)} ${_ftFmt(parte.valor)}${txOp > 0 && f.status === 'aberta' ? `<div class="cr-muted" style="font-size:10.5px;" title="A operadora paga já descontada a taxa">líquido ${_ftFmt(parte.valor - txOp)}</div>` : ''}${rec > 0 ? `<div class="pf-pos" style="font-size:10.5px;">recebido ${_ftFmt(rec)}</div>` : ''}</td><td>${_pfSitPill(f, hoje)}</td></tr>`;
   }).join('');
   const linhasPend = pendentes.map(x => {
     const orig = x.tipo_receber === 'venda' ? 'Venda' + (x.origem.de > 1 ? ` · parcela ${x.origem.parcela}/${x.origem.de}` : '') : 'Adiantamento de câmbio';
@@ -458,17 +820,24 @@ function _pfSecReceber(p, receber, pendentes, cambio, hoje){
     const abat = x.tipo_receber === 'venda' && (x.adiantamento_abatido > 0 || x.juros > 0) && !(x.origem.parcela > 1)
       ? `<div class="cr-muted" style="font-size:10.5px;">NF ${_ftFmt(x.valor_nf)}${x.juros > 0 ? ' + juros ' + _ftFmt(x.juros) : ''}${x.adiantamento_abatido > 0 ? ' − adiantamentos ' + _ftFmt(x.adiantamento_abatido) : ''} = ${_ftFmt(x.total_venda)}</div>` : '';
     const incerto = x.prazo_incerto ? `<div style="font-size:10.5px;color:var(--warn);">⚠ não entendi o prazo "${_pfE(x.prazo)}" — ficou na data da NF; ajuste ao gerar</div>` : '';
-    return `<tr><td style="overflow-wrap:anywhere;">${orig}<div class="cr-muted" style="font-size:10.5px;">${_pfE(x.empresa_nome || '—')} · ${_pfE(String(x.documento || '').replace(/ · parcela \d+\/\d+$/, ''))}${x.prazo && x.tipo_receber === 'venda' ? ' · ' + _pfE(x.prazo) : ''}</div>${abat}${incerto}</td><td>${venc}</td><td class="n">R$ ${_ftFmt(x.valor)}${x.ja_recebido > 0 ? `<div class="pf-pos" style="font-size:10.5px;">recebido ${_ftFmt(x.ja_recebido)}</div>` : ''}</td><td><span class="pf-pill pf-ne" title="Ainda não virou fatura a receber">sem fatura</span></td></tr>`;
+    const opHtml = x.operadora ? `<div class="cr-muted" style="font-size:10.5px;">cliente ${_pfE(x.cliente || '')} · taxa ${(x.operadora.taxa_pct * 100).toFixed(2).replace('.', ',')}% (R$ ${_ftFmt(x.operadora.taxa_valor)}) · líquido R$ ${_ftFmt(x.operadora.liquido)}</div>` : '';
+    return `<tr><td style="overflow-wrap:anywhere;">${orig}<div class="cr-muted" style="font-size:10.5px;">${_pfE(x.empresa_nome || '—')} · ${_pfE(String(x.documento || '').replace(/ · parcela \d+\/\d+$/, '').replace(/ · (cartão REDE|Trademaster) \dx$/, ''))}${x.prazo && x.tipo_receber === 'venda' ? ' · ' + _pfE(x.prazo) : ''}</div>${opHtml}${abat}${incerto}</td><td>${venc}</td><td class="n">R$ ${_ftFmt(x.valor)}${x.ja_recebido > 0 ? `<div class="pf-pos" style="font-size:10.5px;">recebido ${_ftFmt(x.ja_recebido)}</div>` : ''}</td><td><span class="pf-pill pf-ne" title="Ainda não virou fatura a receber">sem fatura</span></td></tr>`;
   }).join('');
   const temVenda = receber.some(f => f.origem && f.origem.tipo === 'venda') || pendentes.some(x => x.tipo_receber === 'venda');
   const prevCot = !temVenda ? _pfPrevistoCotacao(_pfSnapshot(p)) : null;
   const prevCotHtml = prevCot ? `<div class="pf-dica" style="background:var(--info-bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);">📐 <b>Previsto na cotação (Calculador):</b> faturamento ${_pfR(prevCot.faturamento)}${prevCot.prazo ? ' · prazo ' + _pfE(prevCot.prazo) : ''}${prevCot.juros ? ' · juros no boleto ' + _pfR(prevCot.juros) : ''}. Só informação — vira a receber quando a NF de venda for lançada na aba Vendas${FaturasCore.clienteAdiantaCambio(p) ? ' (já descontado o que o cliente adiantar de câmbio)' : ''}.</div>` : '';
+  // venda no cartão/Trademaster: a taxa da operadora tem de estar nos Custos Reais
+  const snapR = _pfSnapshot(p);
+  const faltaTaxa = {};
+  pendentes.filter(x => x.operadora).forEach(x => { faltaTaxa[x.operadora.taxa_real] = (faltaTaxa[x.operadora.taxa_real] || 0) + x.operadora.taxa_valor; });
+  receber.filter(f => f.origem && f.origem.operadora && _pfN(f.origem.taxa_operadora) > 0).forEach(f => { const k = f.origem.operadora === 'cartao' ? 'taxa_cartao' : 'trademaster'; faltaTaxa[k] = (faltaTaxa[k] || 0) + _pfN(f.origem.taxa_operadora); });
+  const dicaTaxa = Object.entries(faltaTaxa).filter(([k]) => !(_pfValorSistema(snapR, k) > 0)).map(([k, v]) => `Lance a taxa da operadora (≈ R$ ${_ftFmt(v)}) em <b>Custos Reais › ${k === 'taxa_cartao' ? 'Taxa do cartão (REDE)' : 'Trademaster'}</b> — ela entra no custo do processo.`).join(' ');
   const regra = FaturasCore.clienteAdiantaCambio(p)
     ? 'Encomenda / conta e ordem: o cliente adianta cada câmbio, e a NF de venda sai com o valor total — o adiantamento é descontado dela.'
     : 'Importação própria: a IMPAK paga o câmbio; o cliente paga a NF de venda (à vista ou nas parcelas do prazo).';
   const total = receber.length + pendentes.length;
   return `<details class="pf-sec" ${total || prevCot ? 'open' : ''}><summary><span>A receber do cliente (${total})</span><span class="cr-muted" style="font-weight:400;font-size:11.5px;">${pendentes.length ? pendentes.length + ' ainda sem fatura' : ''}</span></summary>
-    <div class="pf-sec-corpo"><div class="pf-dica">${regra}</div>${prevCotHtml}
+    <div class="pf-sec-corpo"><div class="pf-dica">${regra}</div>${prevCotHtml}${dicaTaxa ? `<div class="pf-dica" style="color:var(--warn);">💳 ${dicaTaxa}</div>` : ''}
     ${total ? `<div class="pf-rolar"><table class="pf-tab" style="table-layout:fixed;"><colgroup><col><col style="width:78px;"><col style="width:116px;"><col style="width:134px;"></colgroup><thead><tr><th>Origem · cliente</th><th>Vence</th><th class="n">Valor</th><th>Situação</th></tr></thead><tbody>${linhasFat}${linhasPend}</tbody></table></div>
       ${pendentes.length ? `<div class="pf-acoes"><button type="button" class="btn btn-outline" onclick="pfGerarReceber()">↘ Gerar as ${pendentes.length} fatura(s) a receber</button></div>` : ''}`
       : '<div class="pf-dica">Nada a receber por enquanto (sem câmbio fechado com adiantamento do cliente e sem NF de venda lançada na aba Vendas).</div>'}
@@ -495,7 +864,7 @@ function _pfOutrosExtrato(snap, pendentes, semFat){
   pendentes.forEach(x => {
     const desc = (x.tipo_receber === 'venda' ? 'A receber · ' : 'Adiantamento do cliente · ') + (x.documento || '');
     if(x.ja_recebido > 0) outros.push({ data: x.recebido_em, descricao: desc + ' (recebido, sem fatura)', valor: x.ja_recebido, sentido: 'entrada', realizado: true, grupo: 'receber' });
-    const falta = Math.round((x.valor - (x.ja_recebido || 0)) * 100) / 100;
+    const falta = Math.round(((x.operadora ? x.operadora.liquido : x.valor) - (x.ja_recebido || 0)) * 100) / 100;
     if(falta > 0) outros.push({ data: x.vencimento, descricao: desc, valor: falta, sentido: 'entrada', realizado: false, grupo: 'receber', vencida: !!(x.vencimento && x.vencimento < _ftHoje()) });
   });
   semFat.pagar.forEach(l => outros.push({ data: l.pago_em || null, descricao: (l.estimado ? 'Custo estimado na cotação · ' : 'Custo sem fatura · ') + l.label + (l.para ? ' · ' + l.para : ''), valor: l.valor, sentido: 'saida', realizado: !!l.pago_em, grupo: 'custo' }));
@@ -503,7 +872,7 @@ function _pfOutrosExtrato(snap, pendentes, semFat){
   return outros;
 }
 function _pfSecExtrato(p, snap, pendentes, semFat, cambio, hoje){
-  const ex = FaturasCore.extratoProcesso({ processo_id: p.id, faturas: _pfFaturas, outros: _pfOutrosExtrato(snap, pendentes, semFat) }, hoje, cambio);
+  const ex = FaturasCore.extratoProcesso({ processo_id: p.id, faturas: _pfFaturas, outros: _pfOutrosExtrato(snap, pendentes, semFat), abater: _pfAbaterPrevisto() }, hoje, cambio);
   const linhas = ex.linhas.filter(l => _pfVerPrevisto || l.realizado);
   // com os previstos escondidos, o saldo acumulado é só do realizado
   let acum = 0;
@@ -587,6 +956,8 @@ function pfGerarReceber(){
 // ── Selo na lista de processos ─────────────────────────────────────────────
 let _faturasResumoPromise = null;
 async function carregarResumoFaturas(fresh){
+  // mudou alguma fatura: a Agenda (tarefas de fatura) relê na próxima vez
+  if(fresh && typeof _agInvalidarFaturas === 'function') _agInvalidarFaturas();
   if(typeof FaturasCore === 'undefined') return;
   if(_faturasResumoPromise && !fresh) return _faturasResumoPromise;
   _faturasResumoPromise = (async () => {

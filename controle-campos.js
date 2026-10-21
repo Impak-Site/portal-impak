@@ -1017,12 +1017,15 @@ function renderVendas(){
         <div class="form-group"><label class="form-label">Valor total da NF (R$)</label>
           <input class="form-input" type="number" step="0.01" value="${v.nf_saida_valor!=null?v.nf_saida_valor:''}" oninput="_vendas[${vi}].nf_saida_valor=this.value;sincronizarVendasLegado();renderResumoVendas()"></div>
         <div class="form-group"><label class="form-label">Forma de Pagamento</label>
-          <select class="form-input" onchange="_vendas[${vi}].forma_pagamento=this.value;if(this.value!=='prazo')_vendas[${vi}].prazo_texto='';sincronizarVendasLegado();renderVendas();" onwheel="this.blur()">
+          <select class="form-input" onchange="_vendas[${vi}].forma_pagamento=this.value;if(this.value!=='prazo')_vendas[${vi}].prazo_texto='';_painelDirty=true;sincronizarVendasLegado();renderVendas();" onwheel="this.blur()">
             <option value="avista" ${(v.forma_pagamento||'avista')==='avista'?'selected':''}>À Vista</option>
             <option value="prazo" ${v.forma_pagamento==='prazo'?'selected':''}>Prazo / Parcelado</option>
+            <option value="cartao" ${v.forma_pagamento==='cartao'?'selected':''}>Cartão (REDE)</option>
+            <option value="trademaster" ${v.forma_pagamento==='trademaster'?'selected':''}>Trademaster</option>
           </select></div>
         ${v.forma_pagamento==='prazo' ? `<div class="form-group full"><label class="form-label">Prazo (campo livre — ex: "30 dias" ou "30/60/90 dias")</label>
           <input class="form-input" value="${esc(v.prazo_texto||'')}" oninput="_vendas[${vi}].prazo_texto=this.value;sincronizarVendasLegado()" placeholder="ex: 30/60/90 dias"></div>` : ''}
+        ${v.forma_pagamento==='cartao' || v.forma_pagamento==='trademaster' ? _vendaOperadoraHtml(v, vi) : ''}
         <div class="form-group"><label class="form-label">Juros Cobrado do Cliente (R$ — se houver)</label>
           <input class="form-input" type="number" step="0.01" value="${v.juros_valor!=null?v.juros_valor:''}" oninput="_vendas[${vi}].juros_valor=this.value;sincronizarVendasLegado()" placeholder="0,00">
           <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" ${v.juros_fora_nf?'checked':''} onchange="_vendas[${vi}].juros_fora_nf=this.checked;_painelDirty=true;sincronizarVendasLegado()"> Juros no boleto, fora da NF</label></div>
@@ -1052,6 +1055,25 @@ function _nfSaidaDocumentos(){
     remessa: typeof ehCfopSemVenda === 'function' ? ehCfopSemVenda(cfop) : false };
 }
 
+// Venda no cartão (REDE) / Trademaster (Faturas fase 2, 21/10/2026): parcelas,
+// taxa da operadora (vazia = a da tabela do Calculador) e em quantos dias a
+// operadora paga. O a receber sai contra a operadora, no valor cheio; a taxa
+// entra como desconto na baixa e vai pros Custos Reais.
+function _vendaOperadoraHtml(v, vi){
+  const FC = typeof FaturasCore !== 'undefined' ? FaturasCore : null;
+  const n = Math.min(6, Math.max(1, parseInt(v.cartao_parcelas, 10) || 1));
+  const padrao = FC ? FC.taxaOperadoraPadrao(v.forma_pagamento, n) * 100 : 0;
+  const total = (parseFloat(String(v.nf_saida_valor || '').replace(',', '.')) || 0) + (v.juros_fora_nf ? (parseFloat(v.juros_valor) || 0) : 0);
+  const op = FC && total > 0 ? FC.operadoraDaVenda(v, total) : null;
+  const fmt = x => (Math.round(x * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `<div class="form-group"><label class="form-label">Parcelas no ${v.forma_pagamento === 'cartao' ? 'cartão' : 'Trademaster'}</label>
+      <select class="form-input" onchange="_vendas[${vi}].cartao_parcelas=+this.value;_painelDirty=true;sincronizarVendasLegado();renderVendas();" onwheel="this.blur()">${[1, 2, 3, 4, 5, 6].map(k => `<option value="${k}" ${k === n ? 'selected' : ''}>${k}x</option>`).join('')}</select></div>
+    <div class="form-group"><label class="form-label">Taxa da operadora (%)</label>
+      <input class="form-input" inputmode="decimal" value="${esc(v.taxa_operadora_pct != null ? String(v.taxa_operadora_pct) : '')}" placeholder="${padrao.toFixed(2).replace('.', ',')} (tabela)" onchange="_vendas[${vi}].taxa_operadora_pct=this.value.trim();_painelDirty=true;sincronizarVendasLegado();renderVendas();"></div>
+    <div class="form-group"><label class="form-label">A operadora paga em (dias após a NF)</label>
+      <input class="form-input" type="number" min="0" step="1" value="${v.dias_recebimento != null && v.dias_recebimento !== '' ? esc(String(v.dias_recebimento)) : ''}" placeholder="1 (antecipado)" onchange="_vendas[${vi}].dias_recebimento=this.value;_painelDirty=true;sincronizarVendasLegado();renderVendas();"></div>
+    <div class="form-group full cr-muted" style="font-size:11.5px;">${op ? `A receber de <b>${esc(op.nome)}</b>: R$ ${fmt(total)} − taxa ${(op.taxa_pct * 100).toFixed(2).replace('.', ',')}% (R$ ${fmt(op.taxa_valor)}) = <b>R$ ${fmt(op.liquido)}</b> líquido. Lance a taxa em Custos Reais › ${v.forma_pagamento === 'cartao' ? 'Taxa do cartão (REDE)' : 'Trademaster'}; na baixa, ela entra como desconto.` : 'Informe o valor da NF pra ver o líquido que a operadora paga.'}</div>`;
+}
 function adicionarVenda(){
   const nfDoc = !_vendas.length ? _nfSaidaDocumentos() : null;
   if(nfDoc && !nfDoc.remessa && !confirm(`A NF ${nfDoc.numero}${nfDoc.cliente ? ' (' + nfDoc.cliente + ')' : ''} já está lançada na aba Documentos como a venda deste processo.\n\nSó adicione vendas aqui se o processo foi vendido para MAIS DE UM cliente ou em várias NFs.\n\nAdicionar mesmo assim?`)) return;

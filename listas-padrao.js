@@ -99,6 +99,11 @@
   // Atividades: código → nome/etapa/função/prioridade padrão. O "como"
   // (gatilho, prazo, conclusão automática) está em agenda-core.js pelo código.
   const _a = (codigo, etapa, nome, funcao, prioridade, ordem) => ({ codigo, nome, dados: { etapa, funcao, prioridade }, ordem });
+  const _af = (codigo, etapa, nome, funcao, prioridade, ordem, obs) => {
+    const x = _a(codigo, etapa, nome, funcao, prioridade, ordem);
+    x.dados.observacao = obs || 'Prazo em dias em relação ao vencimento da fatura (negativo = antes do vencimento).';
+    return x;
+  };
   const AGENDA_ATIVIDADES = [
     _a('A01','PI Recebida','Cadastrar o processo no Controle (finalidade, cliente, produtos, forma de pagamento)','IMPORTACAO','ALTA',1),
     _a('A02','PI Recebida','Conferir PI x cotação aprovada (preço, quantidade, incoterm, prazo)','COMERCIAL','MEDIA',2),
@@ -126,6 +131,15 @@
     _a('A24','Faturamento','Emitir a NF de entrada','FISCAL','ALTA',24),
     _a('A25','Faturamento','Emitir a(s) NF(s) de saída conforme as vendas','FISCAL','ALTA',25),
     _a('A26','Faturamento','Receber do cliente (venda a prazo / parcelada)','FINANCEIRO','MEDIA',26),
+    // Faturas fase 2 (21/10/2026): uma tarefa por fatura do processo, pela
+    // etapa dela (aba Faturas). Prazo em dias em relação ao VENCIMENTO.
+    _af('A37','Faturas','Conferir a fatura do fornecedor com os Custos Reais','IMPORTACAO','ALTA',26.1),
+    _af('A38','Faturas','Resolver as diferenças da conferência (aceitar ou contestar com o fornecedor)','IMPORTACAO','ALTA',26.2),
+    _af('A39','Faturas','Aprovar o pagamento da fatura','GERENCIA','ALTA',26.3),
+    _af('A40','Faturas','Pagar a fatura (dar a baixa)','FINANCEIRO','ALTA',26.4),
+    _af('A41','Faturas','Acertar o numerário do despachante (abater no acerto ou pedir a devolução)','FINANCEIRO','MEDIA',26.5,
+      'Prazo em dias em relação ao vencimento do acerto (ou ao pagamento dele, quando sobra numerário).'),
+    _af('A42','Faturas','Receber a fatura (adiantamento de câmbio, operadora do cartão, devolução)','FINANCEIRO','MEDIA',26.6),
     _a('A27','Carregamento','Agendar a retirada (transportadora, placa, horário)','LOGISTICA','ALTA',27),
     _a('A28','Carregamento','Confirmar o carregamento','LOGISTICA','ALTA',28),
     _a('A29','Dev. Vazio','Devolver o container vazio dentro do free time','LOGISTICA','ALTA',29),

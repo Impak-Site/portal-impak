@@ -1192,7 +1192,7 @@ const CR_PAGAR_PARA_PADRAO = {
   comissao_br:'Representante', comissao_china:'Agente China', comissao_boss:'Boss/Lopes',
   siscomex:'Receita Federal', marinha:'Marinha (AFRMM)', armazenagem:'Terminal / porto', emissao_li:'Despachante', baixa_patio:'Terminal', capatazia:'Terminal / armador', liberacao_bl:'Armador / agente', despachante:'Despachante', sda:'Despachante', lavacao:'Depot', administrativo:'Despachante', agente:'Agente de carga', custos_diversos:'—', armazenagem_rf:'Armazém geral', seguro_venda:'Seguradora',
   handling:'Agente de carga', additional_costs:'Agente de carga', import_logistics:'Agente de carga', trs:'Agente de carga', tsc:'Agente de carga', drop_off:'Armador', isps:'Armador / terminal', iof:'Banco / corretora', desconsolidacao:'Agente de carga', reciclagem:'Reciclagem (Reciclanip)', icms_saida:'Sefaz',
-  adiantamento_porto:'Despachante', agente_frete:'Agente de carga', marjoracao:'Sefaz', comissao_vendedor:'Vendedor', timp:'Timp', trademaster:'Trademaster', dif_seguro:'Seguradora',
+  adiantamento_porto:'Despachante', agente_frete:'Agente de carga', marjoracao:'Sefaz', comissao_vendedor:'Vendedor', timp:'Timp', trademaster:'Trademaster', taxa_cartao:'Operadora do cartão (REDE)', dif_seguro:'Seguradora',
 };
 function crDatalistPagarPara(p){
   const nomes = [p.fornecedor, p.armador, p.agente, p.despachante, p.transportadora, p.armazem, 'Receita Federal (DI)', 'Sefaz', 'Marinha (AFRMM)', 'Banco / corretora de câmbio', 'Representante', 'Reciclanip']

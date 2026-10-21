@@ -321,6 +321,14 @@ async function ftAbrirArquivo(faturaId, path){
 function ftBaixa(id, pre){
   const f = _ftAcharFatura(id); if(!f) return;
   pre = pre || {};
+  // venda no cartão / Trademaster (fase 2): a operadora paga o líquido; a
+  // taxa já vem no campo Desconto (despesa financeira no DRE)
+  const txOp = f.tipo === 'receber' && f.status === 'aberta' && f.origem && parseFloat(f.origem.taxa_operadora) > 0 && !FaturasCore.pagamentosValidos(f).length ? Math.round(parseFloat(f.origem.taxa_operadora) * 100) / 100 : 0;
+  if(txOp > 0 && pre.valor == null && pre.desconto == null){
+    const sd = FaturasCore.saldoFatura(f);
+    pre = { ...pre, valor: Math.max(0, Math.round((sd - txOp) * 100) / 100), desconto: txOp, forma: pre.forma || 'outro',
+      aviso: (pre.aviso || '') + `<div class="cr-muted" style="background:var(--info-bg);border-radius:6px;padding:6px 8px;">💳 Recebimento da operadora (${esc(f.origem.operadora === 'cartao' ? 'REDE' : 'Trademaster')}): valor líquido + taxa de R$ ${_ftFmt(txOp)} no campo Desconto. Ajuste se o extrato da operadora vier diferente.</div>` };
+  }
   _ftBaixaArquivo = pre.arquivo || null;
   const saldo = FaturasCore.saldoFatura(f);
   const FORMA = Object.fromEntries(_FT_FORMAS);
@@ -366,7 +374,7 @@ function ftBaixa(id, pre){
         <details style="margin-top:6px;" ${pre.juros || pre.desconto || pre.retencoes ? 'open' : ''}><summary class="cr-link" style="cursor:pointer;font-size:12px;">➕ Juros/multa, desconto e retenções de impostos</summary>
           <div class="ft-cand-campos" style="margin-top:6px;">
             <label>Juros/multa pagos <input class="form-input" id="ft_bx_juros" inputmode="decimal" placeholder="0,00" oninput="ftBxResumo()"></label>
-            <label>Desconto obtido <input class="form-input" id="ft_bx_desc" inputmode="decimal" placeholder="0,00" oninput="ftBxResumo()"></label>
+            <label>${f.tipo === 'receber' ? 'Desconto concedido / taxa' : 'Desconto obtido'} <input class="form-input" id="ft_bx_desc" inputmode="decimal" placeholder="0,00" value="${pre.desconto ? _ftFmt(pre.desconto) : ''}" oninput="ftBxResumo()"></label>
           </div>
           <div class="cr-muted" style="font-size:11px;margin:6px 0 2px;">Impostos retidos na fonte (abatem o saldo; a empresa recebe o líquido):</div>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">${FaturasCore.RETENCOES.map(k => `<label style="font-size:11px;">${k === 'outros' ? 'Outros' : k.toUpperCase()}<input class="form-input ft-bx-ret" data-k="${k}" inputmode="decimal" placeholder="0,00" style="padding:4px 6px;" oninput="ftBxResumo()"></label>`).join('')}</div>
@@ -557,6 +565,15 @@ function ftSelecionar(id, marcado){
   if(b){ b.disabled = !_ftSel.size; b.textContent = '💰 Baixa em lote' + (_ftSel.size ? ` (${_ftSel.size})` : ''); }
 }
 async function ftAprovar(id, desfazer){
+  // aprovar com diferença sem decisão ou contestada: pergunta antes (fase 2)
+  const fa = !desfazer ? _ftAcharFatura(id) : null;
+  if(fa && fa.conferencia && typeof FaturasCore !== 'undefined' && FaturasCore.contagemConferencia){
+    const n = FaturasCore.contagemConferencia(fa.conferencia);
+    if(n.abertas || n.contestadas){
+      const partes = [n.abertas ? `${n.abertas} sem decisão` : '', n.contestadas ? `${n.contestadas} contestada${n.contestadas === 1 ? '' : 's'} com o fornecedor` : ''].filter(Boolean).join(' e ');
+      if(!confirm(`A conferência desta fatura tem diferença(s): ${partes}.\n\nAprovar o pagamento mesmo assim?`)) return;
+    }
+  }
   try{
     const d = await (await fetch('/api/faturas/' + encodeURIComponent(id) + '/aprovacao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ desfazer: !!desfazer }) })).json();
     if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
@@ -839,6 +856,7 @@ function ftEditar(id, pre){
   const f = id ? _ftAcharFatura(id) : Object.assign({ tipo: 'pagar', empresa_nome: '', documento: '', moeda: 'BRL', valor: '', vencimento: '', emissao: '', obs: '', itens: [] }, pre || {});
   if(!f) return;
   _ftItensEdit = id ? [] : (f.itens || []).map(it => ({ ...it }));
+  window._ftOrigemNova = !id && pre && pre.origem ? pre.origem : null;
   const ov = _ftOverlay();
   ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:${id ? 560 : 820}px;">
     <div class="ft-modal-head"><span>${id ? 'Editar fatura' : (pre && pre._ia ? '🧾 Fatura lida pela IA — confira antes de salvar' : 'Fatura avulsa')}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
@@ -877,7 +895,7 @@ function ftEditar(id, pre){
     <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftConferir(${id ? `'${id}'` : 'null'})">🔍 Conferir</button><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftSalvarEdicao(${id ? `'${id}'` : 'null'})">Salvar</button></div>
   </div></div>`;
   // fatura lida pela IA ou já existente: confere sozinho ao abrir
-  if(id || (pre && pre._ia)) ftConferir(id || null);
+  if((id || (pre && pre._ia)) && !FaturasCore.ehNumerario(id ? f : pre)) ftConferir(id || null);
   if(!id) ftSugerirConta();
 }
 // Sugere a classificação pelo texto (empresa, documento, observação) enquanto
@@ -898,6 +916,7 @@ function _ftCorpoModal(id){
   const cx = parseFloat((document.getElementById('ft_e_cambio').value || '').replace(',', '.'));
   const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), emissao: document.getElementById('ft_e_emissao').value || null, vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim(), conta_id: (document.getElementById('ft_e_conta') || {}).value || null, centro_custo_id: (document.getElementById('ft_e_centro') || {}).value || null };
   body.cambio = moeda === 'BRL' ? 1 : (cx > 0 ? cx : ((typeof cambioDoDia === 'function' && cambioDoDia(moeda)) || null));
+  if(!id && window._ftOrigemNova) body.origem = window._ftOrigemNova;
   if(id && f && f.empresa_nome !== body.empresa_nome) body.empresa_id = null;
   const semProc = [];
   if(!id){
@@ -913,6 +932,12 @@ function _ftCorpoModal(id){
       const cfg = (typeof custosReaisItensFlat === 'function') ? custosReaisItensFlat().find(x => x.id === it.taxa) : null;
       return { processo_id: p ? p.id : null, referencia: p ? p.referencia : (it.referencia || null), taxa: it.taxa || null, label: cfg ? cfg.label : (it.descricao || it.label || 'Taxa'), valor: parseFloat(it.valor) || 0 };
     });
+    // numerário lido pela IA: o processo é o da linha (pode ter sido trocado)
+    if(body.origem && body.origem.tipo === 'numerario'){
+      const comProc = body.itens.find(it => it.processo_id);
+      if(comProc) body.origem = { ...body.origem, processo_id: comProc.processo_id, referencia: comProc.referencia };
+      else delete body.origem;
+    }
   }
   return { body, semProc };
 }
@@ -992,7 +1017,8 @@ async function ftSalvarEdicao(id){
     }
     ftFecharModal(); if(!freq) showToast('Fatura salva' + (d.faturas && d.faturas[0] && d.faturas[0].numero ? ' — nº ' + d.faturas[0].numero : '') + '.', 'ok');
     // conferência guardada na fatura (etapa "Conferida" / "com diferença")
-    if(!freq) for(const fs of (d.faturas || []).filter(x => x && x.tipo === 'pagar').slice(0, 5)) await _ftRegistrarConferencia(fs.id);
+    window._ftOrigemNova = null;
+    if(!freq) for(const fs of (d.faturas || []).filter(x => x && x.tipo === 'pagar' && !FaturasCore.ehNumerario(x)).slice(0, 5)) await _ftRegistrarConferencia(fs.id);
     _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
@@ -1040,15 +1066,28 @@ function ftMontarDaIA(x, nomeArq){
   // linha traz o valor em dólar e o valor em reais): o item da fatura vai
   // no valor em reais impresso — antes os US$ 15 de ISPS entravam como R$ 15.
   const valorItem = it => (moeda === 'BRL' && it.moeda && it.moeda !== 'BRL' && parseFloat(it.valor_brl) > 0) ? parseFloat(it.valor_brl) : (parseFloat(it.valor) || 0);
-  const itens = (x.itens || []).filter(it => it && parseFloat(it.valor) > 0).map(it => ({
+  // adiantamento/numerário já pago e o saldo do acerto não são cobrança (fase 2)
+  const RE_NAO_COBRANCA = /adiantamento|numer[aá]rio|\bsaldo\b|a\s+favor\s+d[aoe]\b/i;
+  const numerario = x.tipo_documento === 'numerario';
+  let itens = (x.itens || []).filter(it => it && parseFloat(it.valor) > 0 && (numerario || !RE_NAO_COBRANCA.test(it.descricao || ''))).map(it => ({
     descricao: it.descricao || '', taxa: FaturasCore.taxaPorDescricao(it.descricao) || '', referencia: proc ? proc.referencia : '', valor: valorItem(it),
   }));
   const avisos = [];
   if(avisoCtx) avisos.push(avisoCtx);
+  // pedido de numerário: entra como adiantamento ao despachante (não é custo
+  // taxa a taxa — quem lança o custo é o acerto, que abate este numerário)
+  let origem = null;
+  if(numerario){
+    const total = parseFloat(x.valor_total) || itens.reduce((s, i) => s + i.valor, 0);
+    itens = [{ descricao: 'Numerário (adiantamento ao despachante)', taxa: '', referencia: proc ? proc.referencia : '', valor: total }];
+    origem = { tipo: 'numerario', processo_id: proc ? proc.id : null, referencia: proc ? (proc.referencia || null) : null };
+    avisos.push('💵 <b>Pedido de numerário</b>: entra como adiantamento ao despachante (não é custo). Quando chegar o acerto dele, use <b>💵 Abater</b> na fatura do acerto.' + (proc ? '' : ' Informe o processo antes de salvar.'));
+  }
+  if(!numerario && parseFloat(x.adiantamento_brl) > 0) avisos.push(`💵 O documento desconta <b>R$ ${_ftFmt(x.adiantamento_brl)}</b> de numerário/adiantamento. Salve a fatura com o total das despesas e, na aba Faturas do processo, use <b>💵 Abater</b> (o numerário precisa estar lançado e pago).`);
   if(!proc && (x.pistas_processo || []).length) avisos.push(`Não achei o processo pelas pistas do documento (${esc((x.pistas_processo || []).slice(0, 3).join(', '))}) — informe a referência nas taxas.`);
   if(proc && !avisoCtx) avisos.push(`Processo identificado: <b>${esc(proc.referencia)}</b>.`);
   if(!x.empresa_id) avisos.push('Empresa não encontrada no Cadastro — confira o nome ou cadastre.');
-  const semTaxa = itens.filter(i => !i.taxa).length;
+  const semTaxa = numerario ? 0 : itens.filter(i => !i.taxa).length;
   if(semTaxa) avisos.push(`${semTaxa} linha${semTaxa === 1 ? '' : 's'} sem taxa reconhecida — escolha na lista.`);
   if(x.observacao) avisos.push('Obs. da IA: ' + esc(x.observacao));
   const tipo = /impak/i.test(x.emitente || '') ? 'receber' : 'pagar';
@@ -1058,6 +1097,6 @@ function ftMontarDaIA(x, nomeArq){
     documento: x.documento || '', emissao: x.emissao || '', vencimento: x.vencimento || '', moeda,
     valor: parseFloat(x.valor_total) || itens.reduce((s, i) => s + i.valor, 0) || '',
     obs: [x.linha_digitavel ? 'Linha digitável: ' + x.linha_digitavel : '', 'Lido de ' + (nomeArq || 'arquivo')].filter(Boolean).join(' · '),
-    itens,
+    itens, origem,
   };
 }
