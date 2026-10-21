@@ -58,6 +58,81 @@ teste('resumoProcesso não expõe campos financeiros', () => {
     assert.strictEqual(r.total, 2); assert.strictEqual(r.containers_total, 3);
     assert.deepStrictEqual(Object.keys(r.por_porto).sort(), ['ITJ', 'NVT']);
   });
+  // 21/10/2026 (Ayslan): "quantos chegaram em setembro" voltava 5 e o filtro
+  // do Controle mostrava 26 — a ferramenta deixava de fora os FINALIZADOS.
+  // Valores fictícios.
+  const procsC = [
+    { referencia: 'C1', cliente: 'CLIENTE ALFA', porto_destino: 'IOA', fase: 'FINALIZADO', eta: '2026-08-28', data_chegada: '2026-09-02', qtd_containers_prevista: 1 },
+    { referencia: 'C2', cliente: 'CLIENTE BETA', porto_destino: 'ITJ', fase: 'FINALIZADO', fechado: true, data_chegada: '2026-09-11', qtd_containers_prevista: 2 },
+    { referencia: 'C3', cliente: 'CLIENTE ALFA', porto_destino: 'IOA', fase: 'DEVOLUCAO_VAZIO', data_chegada: '2026-09-28T00:00:00', qtd_containers_prevista: 1 },
+    { referencia: 'C4', cliente: 'CLIENTE ALFA', porto_destino: 'IOA', fase: 'CANCELADO', cancelado: true, eta: '2026-09-15' },
+    { referencia: 'C5', cliente: 'CLIENTE GAMA', porto_destino: 'NVT', fase: 'EMBARCADO', eta: '2026-09-30' },
+    { referencia: 'C6', cliente: 'CLIENTE ALFA', porto_destino: 'IOA', fase: 'FINALIZADO', eta: '2026-09-25', data_chegada: '2026-10-03' },
+  ];
+  const ctxC = Object.assign({}, ctx, { processos: async () => procsC.map(p => Object.assign({ _fase: p.fase }, p)) });
+  const setembro = { de: '2026-09-01', ate: '2026-09-30' };
+  await testeAsync('chegadas_por_periodo: período passado conta FINALIZADO e fechado; cancelado fica fora', async () => {
+    const r = await f('chegadas_por_periodo').executar(setembro, ctxC);
+    assert.strictEqual(r.total, 4, JSON.stringify(r.por_porto));
+    assert.strictEqual(r.ja_chegaram, 3); assert.strictEqual(r.so_previsao, 1); assert.strictEqual(r.containers_total, 4);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.totais_por_fase)), { FINALIZADO: 1, FECHADO: 1, DEVOLUCAO_VAZIO: 1, EMBARCADO: 1 });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.totais_por_porto)), { IOA: 2, ITJ: 1, NVT: 1 });
+    assert.strictEqual(r.mostrando, 4);
+    const refs = Object.values(r.por_porto).flat().map(x => x.referencia).sort();
+    assert.deepStrictEqual(refs, ['C1', 'C2', 'C3', 'C5'], 'C4 cancelado e C6 (chegou em outubro) ficam fora');
+  });
+  await testeAsync('chegadas_por_periodo: vale a data de chegada lançada; sem ela, o ETA (igual à coluna do Controle)', async () => {
+    const r = await f('chegadas_por_periodo').executar(setembro, ctxC);
+    const c1 = r.por_porto.IOA.find(x => x.referencia === 'C1');
+    assert.strictEqual(c1.data, '2026-09-02'); assert.strictEqual(c1.chegou, true);
+    const c5 = r.por_porto.NVT[0];
+    assert.strictEqual(c5.data, '2026-09-30'); assert.strictEqual(c5.chegou, false);
+    const out = await f('chegadas_por_periodo').executar({ de: '2026-10-01', ate: '2026-10-31' }, ctxC);
+    assert.deepStrictEqual(Object.values(out.por_porto).flat().map(x => x.referencia), ['C6']);
+  });
+  await testeAsync('chegadas_por_periodo: situacao (chegaram/previstos) e filtros de cliente e porto', async () => {
+    const so = async extra => Object.values((await f('chegadas_por_periodo').executar(Object.assign({}, setembro, extra), ctxC)).por_porto).flat().map(x => x.referencia).sort();
+    assert.deepStrictEqual(await so({ situacao: 'chegaram' }), ['C1', 'C2', 'C3']);
+    assert.deepStrictEqual(await so({ situacao: 'previstos' }), ['C5']);
+    assert.deepStrictEqual(await so({ cliente: 'alfa' }), ['C1', 'C3']);
+    assert.deepStrictEqual(await so({ porto: 'itj' }), ['C2']);
+  });
+  await testeAsync('chegadas_por_periodo: chegada lançada com data futura conta como previsão', async () => {
+    const em = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const ctxF = Object.assign({}, ctx, { processos: async () => [{ referencia: 'C7', _fase: 'EMBARCADO', fase: 'EMBARCADO', porto_destino: 'ITJ', data_chegada: em(5) }] });
+    const r = await f('chegadas_por_periodo').executar({ de: em(-2), ate: em(15) }, ctxF);
+    assert.strictEqual(r.total, 1); assert.strictEqual(r.ja_chegaram, 0); assert.strictEqual(r.so_previsao, 1);
+  });
+  await testeAsync('chegadas_por_periodo: lista limitada, totais sempre de todos', async () => {
+    const muitos = Array.from({ length: 130 }, (_, i) => ({ referencia: 'L' + i, _fase: 'FINALIZADO', fase: 'FINALIZADO', porto_destino: 'ITJ', data_chegada: '2026-09-15' }));
+    const r = await f('chegadas_por_periodo').executar(setembro, Object.assign({}, ctx, { processos: async () => muitos }));
+    assert.strictEqual(r.total, 130); assert.strictEqual(r.mostrando, 120); assert.strictEqual(r.por_porto.ITJ.length, 120);
+    assert.ok(/120 primeiros/.test(r.aviso), r.aviso);
+  });
+  await testeAsync('buscar_processos: fase pelo nome da tela; ATIVOS sem cancelado/fechado; CANCELADO e FECHADO pelas marcas', async () => {
+    const refs = async fase => (await f('buscar_processos').executar({ fase }, ctxC)).processos.map(p => p.referencia).sort();
+    assert.deepStrictEqual(await refs('Dev. Vazio'), ['C3']);
+    assert.deepStrictEqual(await refs('DEVOLUCAO_VAZIO'), ['C3']);
+    assert.deepStrictEqual(await refs('ATIVOS'), ['C3', 'C5'], 'C4 cancelado e C2 fechado não são ativos');
+    assert.deepStrictEqual(await refs('cancelado'), ['C4']);
+    assert.deepStrictEqual(await refs('FECHADO'), ['C2']);
+    assert.deepStrictEqual(await refs('Finalizado'), ['C1', 'C6'], 'fechado (C2) fica na aba Fechado, como na tela');
+    const pi = await f('buscar_processos').executar({ fase: 'PI Recebida' }, Object.assign({}, ctx, { processos: async () => [{ referencia: 'X1', _fase: 'PI' }, { referencia: 'X2', _fase: 'EMBARCADO' }] }));
+    assert.deepStrictEqual(pi.processos.map(p => p.referencia), ['X1']);
+  });
+  await testeAsync('buscar_processos: filtro de data usa a chegada lançada (igual à coluna ETA / Chegada)', async () => {
+    const r = await f('buscar_processos').executar({ eta_de: '2026-09-01', eta_ate: '2026-09-30' }, ctxC);
+    assert.deepStrictEqual(r.processos.map(p => p.referencia).sort(), ['C1', 'C2', 'C3', 'C4', 'C5']);
+  });
+  await testeAsync('carregarProcessos: lê todas as páginas (o Supabase corta em 1000 por consulta)', async () => {
+    const linhas = Array.from({ length: 2345 }, (_, i) => ({ id: 'x' + i, referencia: 'R' + i, fase: 'EMBARCADO' }));
+    let chamadas = 0;
+    const sbPag = () => ({ from: () => { const q = { select: () => q, order: () => q, range: async (a, b) => { chamadas++; return { data: linhas.slice(a, b + 1), error: null }; } }; return q; } });
+    const r = await A.carregarProcessos(sbPag, null);
+    assert.strictEqual(r.length, 2345); assert.strictEqual(chamadas, 3); assert.strictEqual(r[2344]._fase, 'EMBARCADO');
+    const sbErro = () => ({ from: () => { const q = { select: () => q, order: () => q, range: async () => ({ data: null, error: { message: 'falhou' } }) }; return q; } });
+    await assert.rejects(() => A.carregarProcessos(sbErro, null), /falhou/);
+  });
   await testeAsync('faturamento: soma NFs (vendas_json e legado) por cliente, sem lucro quando não apurado', async () => {
     const r = await f('faturamento').executar({ de: '2026-09-01', ate: '2026-09-30' }, ctx);
     assert.strictEqual(r.total_faturamento, 150000);
