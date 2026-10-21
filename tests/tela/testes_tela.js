@@ -106,6 +106,50 @@ const CENARIOS = [
     conferir: () => JSON.stringify(window.__arraste) === JSON.stringify(['fatura-agente.pdf']) ? []
       : ['arrastar no "Ler fatura (IA)" não entregou o arquivo: ' + JSON.stringify(window.__arraste)],
   },
+  // E-mails que cada pessoa recebe (21/10/2026): o modal de Pessoa mostra os
+  // 6 assuntos (Para/Cópia) e o "Colar e-mails" da empresa monta a lista dos
+  // contatos colados (o da IMPAK fica de fora).
+  {
+    nome: '/cadastros + modal da pessoa (e-mails que recebe)', rota: '/cadastros',
+    acao: async page => { await page.evaluate(() => abrirNovaPessoa('CONTATO')); await page.waitForTimeout(300); },
+    conferir: () => {
+      const p = [];
+      const bg = document.getElementById('modal-pessoa-edit-bg');
+      if (!bg || !bg.classList.contains('open')) p.push('o modal da pessoa não abriu');
+      const n = document.querySelectorAll('#cp_assuntos select.cp-assunto').length;
+      if (n !== 6) p.push(`a seção "E-mails que recebe" mostrou ${n} assunto(s) (esperado 6)`);
+      const opcoes = [...document.querySelectorAll('#cp_assuntos select.cp-assunto')[0]?.options || []].map(o => o.value).join(',');
+      if (opcoes !== ',para,cc') p.push('as opções do assunto deviam ser —/Para/Cópia: ' + opcoes);
+      return p;
+    },
+  },
+  {
+    nome: '/cadastros: colar e-mails na empresa', rota: '/cadastros',
+    acao: async page => {
+      await page.evaluate(() => {
+        _contatosLista = [{ id: 'emp-teste-1', razao_social: 'EMPRESA FICTICIA LTDA', tipo: 'CLIENTE', pais: 'Brasil' }];
+        editarContato('emp-teste-1');
+      });
+      await page.waitForTimeout(500);
+      await page.evaluate(() => {
+        _ceAbrirColarEmails();
+        document.getElementById('ce-colar-texto').value = 'Maria Teste <maria@exemplo.com.br>; compras@exemplo.com.br, Fulano <fulano@impak.com.br>';
+        document.querySelector('.ce-colar-assunto[data-assunto="FOLLOWUP"]').value = 'para';
+        _ceAtualizarColar();
+      });
+      await page.waitForTimeout(200);
+    },
+    conferir: () => {
+      const p = [];
+      const itens = [...document.querySelectorAll('.ce-colar-item')];
+      if (itens.length !== 3) p.push(`a lista do "Colar e-mails" mostrou ${itens.length} contato(s) (esperado 3)`);
+      const marcados = itens.filter(cb => cb.checked).map(cb => cb.dataset.email).join(',');
+      if (marcados !== 'maria@exemplo.com.br,compras@exemplo.com.br') p.push('marcados para salvar: ' + marcados + ' (o @impak.com.br não pode entrar)');
+      const bt = document.getElementById('ce-colar-salvar');
+      if (!bt || bt.disabled || !/Salvar 2 contatos/.test(bt.textContent)) p.push('o botão devia oferecer "Salvar 2 contatos": ' + (bt && bt.textContent));
+      return p;
+    },
+  },
   {
     nome: '/controle (modo escuro)', rota: '/controle', viewports: ['notebook'],
     antes: () => { try { localStorage.setItem('impak_tema', 'escuro'); } catch (e) {} },
