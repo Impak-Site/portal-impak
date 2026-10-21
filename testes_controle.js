@@ -3416,6 +3416,8 @@ teste('CE Mercante (Emanuelly 21/10/2026): situação de pagamento e container/l
   const lacreVazioNoCE = { campo:'Lacre', doc1_label:'BL', doc1_valor:'SL000001', doc2_label:'CE Mercante', doc2_valor:'', status:'AUSENTE' };
   const soLacreDifere = { campo:'Container/Lacre', doc1_label:'BL', doc1_valor:'ABCU1234567 lacre SL000001', doc2_label:'CE', doc2_valor:'ABCU 1234567', status:'DIVERGENCIA' };
   const ceNaoExibe = { campo:'Container', doc1_label:'CE Mercante', doc1_valor:'O extrato do CE nao exibe container', doc2_label:'PL', doc2_valor:'ABCU1234567', status:'DIVERGENCIA' };
+  const ceNaoExplicitado = { campo:'Container', doc1_label:'BL', doc1_valor:'ABCU1234567 / 40 High Cube / SL000001', doc2_label:'CE', doc2_valor:'Não explicitado no CE Mercante consultado', status:'DIVERGENCIA' };
+  const ceSoVolumes = { campo:'Container + Lacre', doc1_label:'BL', doc1_valor:'ABCU1234567 / SL000001', doc2_label:'CE', doc2_valor:'Não consta explicitamente (apenas volumes totais)', status:'DIVERGENCIA' };
   // continuam pendência
   const containerDiferente = { campo:'Container e Lacre', doc1_label:'BL', doc1_valor:'ABCU1234567 / SL000001', doc2_label:'CE Mercante', doc2_valor:'XYZU7654321', status:'DIVERGENCIA' };
   const qtdContainersCE = { campo:'Quantidade de containers', doc1_label:'BL', doc1_valor:'2', doc2_label:'CE Mercante', doc2_valor:'1', status:'DIVERGENCIA' };
@@ -3424,7 +3426,7 @@ teste('CE Mercante (Emanuelly 21/10/2026): situação de pagamento e container/l
   const freteCE = { campo:'Frete/Taxas — BL x CE Mercante', doc1_label:'BL', doc1_valor:'USD 1.000,00', doc2_label:'CE Mercante', doc2_valor:'USD 1.200,00', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
   const pagamentoCIxPI = { campo:'Forma de Pagamento', doc1_label:'CI', doc1_valor:'T/T 30%', doc2_label:'PI', doc2_valor:'T/T 20%', status:'DIVERGENCIA', observacao:'conferir também com o CE' };
   [situacao, situacao2, cobertura].forEach(c => verdadeiro(!CC.ehPendenciaConferencia(c) && /Situação de pagamento/.test(CC.regraDispensada(c)), 'situação de pagamento do CE: ' + c.doc1_valor));
-  [lacreNaoInformado, lacreVazioNoCE, soLacreDifere, ceNaoExibe].forEach(c => verdadeiro(!CC.ehPendenciaConferencia(c) && /não traz lacre/.test(CC.regraDispensada(c)), 'container/lacre no CE: ' + c.campo + ' / ' + (c.doc2_valor || c.doc1_valor)));
+  [lacreNaoInformado, lacreVazioNoCE, soLacreDifere, ceNaoExibe, ceNaoExplicitado, ceSoVolumes].forEach(c => verdadeiro(!CC.ehPendenciaConferencia(c) && /não traz lacre/.test(CC.regraDispensada(c)), 'container/lacre no CE: ' + c.campo + ' / ' + (c.doc2_valor || c.doc1_valor)));
   [containerDiferente, qtdContainersCE, containerBLxPL, lacreBLxPL, freteCE, pagamentoCIxPI].forEach(c => verdadeiro(CC.ehPendenciaConferencia(c), 'continua pendência: ' + c.campo));
   const a = { chaveVersao:2, grupos:[{ titulo:'CE Mercante', campos:[situacao, freteCE] }, { titulo:'Logística', campos:[lacreNaoInformado, containerDiferente] }] };
   const cont = CC.contarConferencia(a);

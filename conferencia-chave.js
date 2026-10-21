@@ -117,12 +117,14 @@
     if (/COBERTURA CAMBIAL/.test(campo + ' ' + vals + ' ' + maiusculo(c.observacao))) return true;
     return /\b(SITUACAO|STATUS|CONDICAO)\b/.test(campo) && /PAGAMENTO|\bPAGO\b|QUITAD|PENDENTE|AFRMM/.test(campo + ' ' + vals);
   }
-  // "Não informado", "não consta no extrato", "N/A", vazio...
+  // O CE não mostra o container: vazio, "N/A" ou um texto sem nenhum número
+  // de container dizendo que não tem ("não informado", "não consta", "não
+  // explicitado", "apenas volumes totais", "sem container"...).
   function valorAusente(v) {
     const t = maiusculo(v).replace(/[.;:]+$/, '').trim();
     if (!t || /^(N ?\/ ?A|NA|NONE|NULL|-+|—+|SEM VALOR)$/.test(t)) return true;
     if (conteineres(t).length) return false;
-    return /\bNAO (INFORMAD|CONSTA|EXIBE|APRESENTA|DISPONIVEL|ENCONTRAD|IDENTIFICAD|MOSTRA|TRAZ|POSSUI)|\bSEM (INFORMAC|DADO|REGISTRO|CONTAINER|LACRE)|^(AUSENTE|INEXISTENTE)\b/.test(t);
+    return /\b(NAO|SEM|APENAS|SOMENTE|NENHUM|NENHUMA)\b|AUSENT|INEXISTENT|INDISPONIVEL|OMITID/.test(t);
   }
   // Números de container (4 letras + 7 dígitos, ex.: ABCU1234567).
   function conteineres(v) {
