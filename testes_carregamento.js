@@ -99,7 +99,7 @@ teste('servidor: a busca não pede coluna que não existe (qtd_containers → er
   const sel = (src.slice(ini, ini + 1500).match(/\.select\('([^']+)'\)/) || [])[1] || '';
   const cols = sel.split(',').map(s => s.trim());
   assert.ok(cols.includes('qtd_containers_prevista') && !cols.includes('qtd_containers'), 'colunas: ' + sel);
-  ['transportadora_id', 'data_agendamento', 'agendamento_cancelado'].forEach(c => assert.ok(cols.includes(c), 'faltou ' + c));
+  ['transportadora_id', 'despachante_id', 'data_agendamento', 'agendamento_cancelado'].forEach(c => assert.ok(cols.includes(c), 'faltou ' + c));
 });
 teste('cliente do pedido: importação própria com 1 venda vai para o cliente da venda; com várias, fica com a equipe', () => {
   assert.deepStrictEqual(C.clienteDoPedido({ cliente: 'CLIENTE EXEMPLO LTDA', cliente_id: 'c1' }), { cliente: 'CLIENTE EXEMPLO LTDA', clienteId: 'c1', proprio: false });

@@ -53,6 +53,8 @@ const MODULOS_JS = [
   // 20/10/2026: CNPJ/CPF e consulta da Receita (mesma ordem do controle_v2.html).
   'documento-br.js',
   'receita-cnpj.js',
+  // 21/10/2026: quem recebe cada e-mail (flags por pessoa).
+  'destinatarios-core.js',
   'controle-core.js',
   'controle-modal.js',
   'controle-campos.js',

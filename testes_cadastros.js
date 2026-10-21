@@ -395,6 +395,139 @@ teste('armador: nome fantasia não é preenchido (é o nome curto que vai pro pr
   assert.ok(!('nome_fantasia' in r.alteracoes)); assert.strictEqual(r.alteracoes.cep, '88000-000');
 });
 
+// ── destinatarios-core.js: quem recebe cada e-mail (21/10/2026) ──
+// Pedido Ayslan: "no cadastro, precisamos ter um flag para receber" câmbio,
+// transporte, follow-up, financeiro, abertura com o despachante e instrução
+// de embarque — por pessoa, como Para ou Cópia. Valores fictícios.
+console.log('\n── destinatarios-core.js: flags de e-mail por pessoa ──');
+const Dest = require('./destinatarios-core.js');
+
+teste('os 6 assuntos pedidos existem, na ordem da tela', () => {
+  assert.deepStrictEqual(Dest.CODIGOS, ['CAMBIO', 'TRANSPORTE', 'FOLLOWUP', 'FINANCEIRO', 'DESPACHANTE', 'INSTRUCAO']);
+  Dest.ASSUNTOS_EMAIL.forEach(a => assert.ok(a.nome && a.curto && a.dica, a.codigo));
+});
+teste('limparAssuntos: só assunto e modo conhecidos; aceita texto JSON e caixa alta', () => {
+  assert.deepStrictEqual(Dest.limparAssuntos({ CAMBIO: 'PARA', FOLLOWUP: ' cc ', FINANCEIRO: 'bcc', XYZ: 'para', TRANSPORTE: '' }), { CAMBIO: 'para', FOLLOWUP: 'cc' });
+  assert.deepStrictEqual(Dest.limparAssuntos('{"INSTRUCAO":"cc"}'), { INSTRUCAO: 'cc' });
+  [null, undefined, '', 'lixo', [], ['CAMBIO'], 42].forEach(v => assert.deepStrictEqual(Dest.limparAssuntos(v), {}, JSON.stringify(v)));
+});
+teste('resumoAssuntos: na ordem da lista, com o modo (para a etiqueta da tela)', () => {
+  const r = Dest.resumoAssuntos({ INSTRUCAO: 'cc', CAMBIO: 'para' });
+  assert.deepStrictEqual(r.map(x => x.codigo + ':' + x.modo), ['CAMBIO:para', 'INSTRUCAO:cc']);
+  assert.strictEqual(r[0].curto, 'Câmbio');
+});
+
+const PESSOAS_DEST = [
+  { id: 'p1', nome: 'Compras Cliente', email: 'compras@cliente-a.exemplo', empresa_id: 'emp-a', tipo: 'CONTATO', assuntos_email: { FOLLOWUP: 'para', CAMBIO: 'para', TRANSPORTE: 'para' } },
+  { id: 'p2', nome: 'Financeiro Cliente', email: 'fin@cliente-a.exemplo', empresa_id: 'emp-a', tipo: 'CONTATO', assuntos_email: { CAMBIO: 'cc', FINANCEIRO: 'para' } },
+  { id: 'p3', nome: 'Diretor Cliente', email: 'diretor@cliente-a.exemplo', empresa_id: 'emp-a', tipo: 'CONTATO', principal: true, assuntos_email: {} },
+  { id: 'p4', nome: 'Antigo', email: 'antigo@cliente-a.exemplo', empresa_id: 'emp-a', tipo: 'CONTATO', ativo: false, assuntos_email: { FOLLOWUP: 'para' } },
+  { id: 'p5', nome: 'Outro Cliente', email: 'contato@cliente-b.exemplo', empresa_id: 'emp-b', tipo: 'CONTATO', principal: true, assuntos_email: {} },
+  { id: 'p6', nome: 'Operação Despachante', email: 'op@despachante.exemplo', empresa_id: 'emp-d', tipo: 'CONTATO', assuntos_email: { TRANSPORTE: 'cc', DESPACHANTE: 'para' } },
+  { id: 'f1', nome: 'Analista Equipe', email: 'analista@equipe.exemplo', tipo: 'FUNCIONARIO', assuntos_email: { TRANSPORTE: 'para', CAMBIO: 'cc' } },
+  { id: 'f2', nome: 'Sem e-mail', email: 'nao-e-email', tipo: 'FUNCIONARIO', assuntos_email: { TRANSPORTE: 'cc' } },
+];
+const emails = l => l.map(x => x.email);
+
+teste('destinatarios: Para/Cópia pelo flag; só as empresas do e-mail; inativo e e-mail inválido fora', () => {
+  const r = Dest.destinatarios('CAMBIO', PESSOAS_DEST, ['emp-a']);
+  assert.deepStrictEqual(emails(r.para), ['compras@cliente-a.exemplo']);
+  assert.deepStrictEqual(emails(r.cc), ['fin@cliente-a.exemplo', 'analista@equipe.exemplo']);
+  assert.deepStrictEqual(r.semDestinatario, []);
+});
+teste('destinatarios: equipe IMPAK entra sempre em Cópia (mesmo marcada como Para)', () => {
+  const r = Dest.destinatarios('TRANSPORTE', PESSOAS_DEST, [{ id: 'emp-a' }, { id: 'emp-d' }]);
+  assert.deepStrictEqual(emails(r.para), ['compras@cliente-a.exemplo']);
+  assert.deepStrictEqual(emails(r.cc), ['op@despachante.exemplo', 'analista@equipe.exemplo']);
+  assert.ok(r.cc.every(x => x.email !== 'nao-e-email'));
+  assert.strictEqual(r.cc[1].origem, 'equipe');
+  const semEquipe = Dest.destinatarios('TRANSPORTE', PESSOAS_DEST, ['emp-a'], { equipe: false });
+  assert.deepStrictEqual(emails(semEquipe.cc), []);
+});
+teste('destinatarios: empresa sem ninguém marcado → semDestinatario; com fallbackPrincipal usa o principal', () => {
+  const r = Dest.destinatarios('FOLLOWUP', PESSOAS_DEST, ['emp-a', 'emp-b']);
+  assert.deepStrictEqual(emails(r.para), ['compras@cliente-a.exemplo']);
+  assert.deepStrictEqual(r.semDestinatario, ['emp-b']);
+  const f = Dest.destinatarios('FOLLOWUP', PESSOAS_DEST, ['emp-a', 'emp-b'], { fallbackPrincipal: true });
+  assert.deepStrictEqual(emails(f.para), ['compras@cliente-a.exemplo', 'contato@cliente-b.exemplo']);
+  assert.strictEqual(f.para[1].origem, 'principal');
+  assert.deepStrictEqual(f.semDestinatario, []);
+  // emp-a já tem Para marcado: o principal (diretor) não entra de carona.
+  assert.ok(!emails(f.para).includes('diretor@cliente-a.exemplo'));
+});
+teste('destinatarios: e-mail repetido sai uma vez; quem é Para numa empresa não fica em Cópia', () => {
+  const pessoas = [
+    { nome: 'A', email: 'Mesmo@Exemplo.com', empresa_id: 'x', assuntos_email: { FOLLOWUP: 'cc' } },
+    { nome: 'A de novo', email: 'mesmo@exemplo.com', empresa_id: 'y', assuntos_email: { FOLLOWUP: 'para' } },
+    { nome: 'B', email: 'b@exemplo.com', empresa_id: 'x', assuntos_email: { FOLLOWUP: 'cc' } },
+    { nome: 'B equipe', email: 'B@exemplo.com', tipo: 'FUNCIONARIO', assuntos_email: { FOLLOWUP: 'cc' } },
+  ];
+  const r = Dest.destinatarios('FOLLOWUP', pessoas, ['x', 'y']);
+  assert.deepStrictEqual(r.para.map(x => x.email.toLowerCase()), ['mesmo@exemplo.com']);
+  assert.deepStrictEqual(r.cc.map(x => x.email.toLowerCase()), ['b@exemplo.com']);
+});
+teste('destinatarios: terceiros do processo (despachante) entram só em Cópia, mesmo marcados como Para', () => {
+  const r = Dest.destinatarios('DESPACHANTE', PESSOAS_DEST, ['emp-a'], { empresasCopia: ['emp-d'] });
+  assert.deepStrictEqual(emails(r.para), []);
+  assert.deepStrictEqual(emails(r.cc), ['op@despachante.exemplo']);
+  assert.strictEqual(r.cc[0].origem, 'copia');
+  assert.deepStrictEqual(r.semDestinatario, ['emp-a'], 'só a empresa destinatária conta como "sem destinatário"');
+  // o despachante é o destinatário (abertura de processo): aí ele vai em Para
+  const d = Dest.destinatarios('DESPACHANTE', PESSOAS_DEST, ['emp-d']);
+  assert.deepStrictEqual(emails(d.para), ['op@despachante.exemplo']);
+  // o principal do terceiro não entra pelo fallback
+  const f = Dest.destinatarios('TRANSPORTE', PESSOAS_DEST, ['emp-b'], { empresasCopia: ['emp-a'], fallbackPrincipal: true });
+  assert.deepStrictEqual(emails(f.para), ['contato@cliente-b.exemplo']);
+  assert.ok(!emails(f.para).concat(emails(f.cc)).includes('diretor@cliente-a.exemplo'));
+  assert.ok(emails(f.cc).includes('compras@cliente-a.exemplo'), 'marcado no terceiro vai em cópia');
+});
+teste('textoLista: "Nome <email>; email" para mostrar Para/Cópia', () => {
+  assert.strictEqual(Dest.textoLista([{ nome: 'Ana', email: 'ana@exemplo.com' }, { nome: '', email: 'b@exemplo.com' }, {}]), 'Ana <ana@exemplo.com>; b@exemplo.com');
+  assert.strictEqual(Dest.textoLista(null), '');
+});
+teste('servidor: follow-up e pedido de transportadora usam os flags (FOLLOWUP/TRANSPORTE) e o despachante do processo vai em cópia', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf-8');
+  assert.ok(/destinatariosDoAssunto\('FOLLOWUP', empId \? \[empId\] : \[\], \{ fallbackPrincipal: true \}\)/.test(src), 'follow-up');
+  assert.ok(/destinatariosDoAssunto\('TRANSPORTE', empId \? \[empId\] : \[\], \{ fallbackPrincipal: true, empresasCopia: despachantes \}\)/.test(src), 'transportadora');
+  const i = src.indexOf('async function destinatariosDoAssunto');
+  const corpo = src.slice(i, i + 1200);
+  assert.ok(/\.eq\('ativo', true\)/.test(corpo) && /tipo\.eq\.FUNCIONARIO/.test(corpo), 'busca só pessoas ativas das empresas + equipe');
+  assert.ok(/\[0-9A-Za-z_-\]\{1,64\}/.test(corpo), 'id de empresa validado antes de ir para o filtro');
+});
+teste('extrairContatos: linha Para/Cc do Outlook/Gmail vira nome + e-mail, sem repetidos', () => {
+  const r = Dest.extrairContatos('Maria Teste <Maria@Exemplo.com.br>; compras@exemplo.com.br, "Op 07" <op07@exemplo.com.br>\nsem email aqui; maria@exemplo.com.br.');
+  assert.deepStrictEqual(r, [
+    { nome: 'Maria Teste', email: 'maria@exemplo.com.br' },
+    { nome: 'Compras', email: 'compras@exemplo.com.br' },
+    { nome: 'Op 07', email: 'op07@exemplo.com.br' },
+  ]);
+  assert.deepStrictEqual(Dest.extrairContatos(''), []);
+  assert.deepStrictEqual(Dest.extrairContatos(null), []);
+});
+teste('planoColarContatos: novo, atualizar (soma os assuntos), igual e e-mail da equipe', () => {
+  const daEmpresa = [
+    { id: 'p1', nome: 'Compras', email: 'compras@exemplo.com.br', assuntos_email: { FOLLOWUP: 'para' } },
+    { id: 'p2', nome: 'Fin', email: 'fin@exemplo.com.br', assuntos_email: { CAMBIO: 'cc' } },
+    { id: 'p9', nome: 'Inativo', email: 'velho@exemplo.com.br', ativo: false, assuntos_email: {} },
+  ];
+  const plano = Dest.planoColarContatos(
+    'Nova Pessoa <nova@exemplo.com.br>; COMPRAS@exemplo.com.br; fin@exemplo.com.br; velho@exemplo.com.br; Fulano <fulano@equipe.exemplo>',
+    daEmpresa, { CAMBIO: 'cc', XYZ: 'para' }, { dominioEquipe: '@equipe.exemplo' });
+  assert.deepStrictEqual(plano.map(c => c.email + ':' + c.acao), [
+    'nova@exemplo.com.br:novo', 'compras@exemplo.com.br:atualizar', 'fin@exemplo.com.br:igual', 'velho@exemplo.com.br:novo', 'fulano@equipe.exemplo:equipe']);
+  assert.deepStrictEqual(plano[0].assuntos_email, { CAMBIO: 'cc' });
+  assert.deepStrictEqual(plano[1], { acao: 'atualizar', id: 'p1', nome: 'Compras', email: 'compras@exemplo.com.br', assuntos_email: { CAMBIO: 'cc', FOLLOWUP: 'para' } });
+  assert.deepStrictEqual(plano[4].assuntos_email, {});
+});
+teste('servidor: grava assuntos_email limpo e só quando o campo vem no corpo (não apaga o que já existe)', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf-8');
+  const i = src.indexOf("app.post('/api/cadastros/pessoas'");
+  assert.ok(i > 0);
+  const rota = src.slice(i, src.indexOf("app.delete('/api/cadastros/pessoas", i));
+  assert.ok(/hasOwnProperty\.call\(p, 'assuntos_email'\)\) p\.assuntos_email = DestinatariosCore\.limparAssuntos\(p\.assuntos_email\)/.test(rota), 'POST de pessoas limpa assuntos_email');
+  assert.ok(/require\('\.\/destinatarios-core\.js'\)/.test(src));
+});
+
 // Testes assíncronos (busca com fetch falso — sem rede).
 const testesAsync = [];
 function testeAsync(nome, fn) { testesAsync.push([nome, fn]); }
