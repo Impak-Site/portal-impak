@@ -7499,7 +7499,8 @@ async function montarPedidosTransportadora(opts) {
         ? `No futuro iria para: <strong>${contatos.map(c => escH(c.nome) + ' &lt;' + escH(c.email) + '&gt;').join(', ')}</strong> (contato principal do cliente em Cadastros).`
         : '<strong>Nenhum contato do cliente cadastrado</strong> para receber — cadastre em Cadastros › Empresas › Pessoas.';
     }
-    const o = { teste: true, nomePorto: c => (c && String(c).trim()) ? formatarPortoDestinoEmail(c) : '', paraQuemHtml: paraQuem };
+    if (opts.reenvio) paraQuem = '<strong>Reenvio:</strong> o envio anterior pode ter chegado incompleto (limite do provedor de e-mail) — considere este.<br>' + paraQuem;
+    const o = { teste: true, reenvio: !!opts.reenvio, nomePorto: c => (c && String(c).trim()) ? formatarPortoDestinoEmail(c) : '', paraQuemHtml: paraQuem };
     emails.push({ cliente: g.cliente, proprio: g.proprio, qtd: g.processos.length, referencias: g.processos.map(p => p.referencia), assunto: CarregamentoCore.assuntoEmail(g, o), html: CarregamentoCore.htmlEmailCliente(g, o) });
   }
   return { hoje, dias, total: candidatos.length, emails };
@@ -7511,19 +7512,35 @@ app.get('/api/carregamento/pedir-transportadora/previa', auth('controle'), async
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 let _carregamentoUltimoTeste = 0;
+// Resultado do último envio (memória do servidor) — pra conferir depois o que
+// foi e o que falhou (GET .../ultimo-envio). 20/10/2026: o 1º envio saiu sem
+// intervalo e o Resend (~2 envios/s) pode ter recusado parte com 429.
+let _carregamentoUltimoEnvio = null;
 app.post('/api/carregamento/pedir-transportadora/enviar-teste', auth('controle'), async (req, res) => {
   try {
-    if (Date.now() - _carregamentoUltimoTeste < 2 * 60 * 1000) return res.status(429).json({ ok: false, erro: 'O teste acabou de ser enviado — espere 2 minutos para mandar de novo.' });
+    const body = req.body || {};
+    // Só alguns clientes (ex.: reenviar os que falharam) — lista de nomes como
+    // aparecem na prévia.
+    const filtro = Array.isArray(body.clientes) && body.clientes.length ? new Set(body.clientes.map(c => String(c))) : null;
+    const espera = filtro ? 20 * 1000 : 2 * 60 * 1000;
+    if (Date.now() - _carregamentoUltimoTeste < espera) return res.status(429).json({ ok: false, erro: `O teste acabou de ser enviado — espere ${filtro ? '20 segundos' : '2 minutos'} para mandar de novo.` });
     _carregamentoUltimoTeste = Date.now();
-    const r = await montarPedidosTransportadora({ dias: req.body && req.body.dias });
-    let enviados = 0; const falhas = [];
-    for (const m of r.emails) {
-      try { const x = await enviarEmail(CARREGAMENTO_TESTE_PARA, m.assunto, m.html, { alerta: true }); if (!x || !x.pulado) enviados++; }
-      catch (e) { falhas.push(`${m.cliente}: ${e.message}`); }
-    }
-    console.log(`[carregamento] teste "pedir transportadora": ${enviados}/${r.emails.length} e-mail(s) para ${CARREGAMENTO_TESTE_PARA.join(', ')} por ${req.session.usuario}`);
-    res.json({ ok: !falhas.length, enviados, total: r.emails.length, processos: r.total, para: CARREGAMENTO_TESTE_PARA, falhas });
+    const r = await montarPedidosTransportadora({ dias: body.dias, reenvio: !!body.reenvio });
+    const emails = filtro ? r.emails.filter(m => filtro.has(m.cliente)) : r.emails;
+    const resultados = await CarregamentoCore.enviarEmSequencia(emails, m => enviarEmail(CARREGAMENTO_TESTE_PARA, m.assunto, m.html, { alerta: true }));
+    const enviados = resultados.filter(x => x.ok).length;
+    const falhas = resultados.filter(x => !x.ok).map(x => ({ cliente: x.item.cliente, erro: x.erro }));
+    falhas.forEach(f => console.warn(`[carregamento] e-mail de teste NÃO enviado (${f.cliente}): ${f.erro}`));
+    console.log(`[carregamento] teste "pedir transportadora": ${enviados}/${emails.length} e-mail(s) para ${CARREGAMENTO_TESTE_PARA.join(', ')} por ${req.session.usuario}`);
+    _carregamentoUltimoEnvio = {
+      em: new Date().toISOString(), por: req.session.usuario, para: CARREGAMENTO_TESTE_PARA, reenvio: !!body.reenvio,
+      resultados: resultados.map(x => ({ cliente: x.item.cliente, assunto: x.item.assunto, ok: x.ok, erro: x.erro || null })),
+    };
+    res.json({ ok: !falhas.length, enviados, total: emails.length, processos: r.total, para: CARREGAMENTO_TESTE_PARA, falhas, resultados: _carregamentoUltimoEnvio.resultados });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.get('/api/carregamento/pedir-transportadora/ultimo-envio', auth('controle'), (req, res) => {
+  res.json({ ok: true, envio: _carregamentoUltimoEnvio });
 });
 
 // ── Processos sem cotação (semanal, segunda-feira → Jean) ─────────────

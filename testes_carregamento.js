@@ -142,7 +142,39 @@ teste('modo teste: quadro avisando que não foi ao cliente + dados faltando', ()
   assert.strictEqual(C.assuntoEmail({ cliente: 'Y', processos: [{}, {}] }), 'IMPAK — Transportadora para 2 processos · Y');
 });
 
-console.log(`\n════════════════════════════════════════`);
-console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);
-console.log(`════════════════════════════════════════\n`);
-if (falhou > 0) process.exit(1);
+teste('reenvio: assunto marcado', () => {
+  assert.strictEqual(C.assuntoEmail({ cliente: 'Y', processos: [{}] }, { teste: true, reenvio: true }), '[TESTE · reenvio] IMPAK — Transportadora para 1 processo · Y');
+});
+
+console.log('\n── envio em sequência (limite do provedor) ──');
+async function testeAsync(nome, fn) {
+  try { await fn(); passou++; console.log(`  ✓ ${nome}`); }
+  catch (e) { falhou++; console.log(`  ✗ ${nome}`); console.log(`    ${e.message}`); }
+}
+(async () => {
+  await testeAsync('espera entre um e-mail e outro, tenta de novo no 429 e registra o que falhou', async () => {
+    const esperas = [], tentativas = {};
+    const enviar = async m => {
+      tentativas[m] = (tentativas[m] || 0) + 1;
+      if (m === 'B' && tentativas[m] === 1) throw new Error('Resend respondeu 429: rate_limit_exceeded');
+      if (m === 'C') throw new Error('Resend respondeu 422: invalid');
+      if (m === 'D') return { pulado: true };
+      return { id: 'x' };
+    };
+    const r = await C.enviarEmSequencia(['A', 'B', 'C', 'D'], enviar, { esperar: async ms => { esperas.push(ms); }, intervaloMs: 700, esperaRetryMs: 1500 });
+    assert.deepStrictEqual(r.map(x => [x.item, x.ok]), [['A', true], ['B', true], ['C', false], ['D', false]]);
+    assert.strictEqual(tentativas.B, 2, '429 → tenta de novo uma vez');
+    assert.strictEqual(tentativas.C, 1, 'outro erro → não repete');
+    assert.ok(/422/.test(r[2].erro) && /domínio/.test(r[3].erro));
+    assert.deepStrictEqual(esperas, [700, 1500, 700, 700], 'intervalo entre envios + espera do 429');
+  });
+  await testeAsync('429 duas vezes seguidas: falha registrada (sem laço infinito)', async () => {
+    let n = 0;
+    const r = await C.enviarEmSequencia(['A'], async () => { n++; throw new Error('Resend respondeu 429'); }, { esperar: async () => {} });
+    assert.strictEqual(n, 2); assert.strictEqual(r[0].ok, false);
+  });
+  console.log(`\n════════════════════════════════════════`);
+  console.log(`RESULTADO: ${passou} passaram, ${falhou} falharam`);
+  console.log(`════════════════════════════════════════\n`);
+  if (falhou > 0) process.exit(1);
+})();
