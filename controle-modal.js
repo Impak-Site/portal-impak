@@ -96,6 +96,8 @@ function renderModal(){
   document.getElementById('modal-title').textContent = isNovo ? 'Novo Processo' : p.referencia;
   const btnCopiarRef = document.getElementById('btn-copiar-ref');
   if(btnCopiarRef) btnCopiarRef.style.display = isNovo ? 'none' : '';
+  const btnEmailsProc = document.getElementById('btn-emails-proc');
+  if(btnEmailsProc) btnEmailsProc.style.display = isNovo ? 'none' : '';
   const _origem = (!isNovo && typeof origemProcesso === 'function') ? origemProcesso(p) : null;
   // Clicar no selo leva pra cotação vinculada (aba Custos Reais), onde dá pra
   // abrir no Calculador, trocar, desvincular ou criar uma a partir do processo.
@@ -3215,4 +3217,143 @@ function toggleMotivoCancelamento(){
   const sel = document.getElementById('f_agendamento_cancelado');
   const wrap = document.getElementById('wrap_motivo_cancelamento');
   if(sel && wrap) wrap.style.display = sel.value === 'true' ? 'block' : 'none';
+}
+
+// ── E-MAILS DO PROCESSO (pedido Ayslan 21/10/2026) ──────────────────
+// Botão "📧 E-mails" no topo do painel: instrução de embarque (para o agente
+// de cargas, com o exportador em cópia) e abertura do processo com o
+// despachante (com os documentos do GED para anexar). O sistema não envia:
+// monta o texto, o assunto e os destinatários (flags "E-mails que recebe" do
+// cadastro de pessoas) para colar no e-mail. Textos em controle-core.js.
+let _emailsProc = null;
+const _ROTULO_DOC_GED = { PI:'Proforma (PI)', CI:'Commercial Invoice (CI)', PL:'Packing List (PL)', BL:'BL', BL_DRAFT:'Draft do BL', HBL:'HBL', MBL:'MBL', CE:'CE Mercante', DUIMP:'DUIMP', DI:'DI', NF:'Nota fiscal', CO:'Certificado de origem' };
+
+function _emailsProcFechar(){
+  document.getElementById('emails-proc-overlay')?.remove();
+  if(_emailsProc && _emailsProc.onEsc) window.removeEventListener('keydown', _emailsProc.onEsc, true);
+}
+
+async function abrirEmailsProcesso(qual){
+  const p = _editando;
+  if(!p || !p.id){ showToast('Salve o processo primeiro', 'warn'); return; }
+  _emailsProcFechar();
+  const onEsc = e => { if(e.key === 'Escape' && document.getElementById('emails-proc-overlay')){ e.stopImmediatePropagation(); e.preventDefault(); _emailsProcFechar(); } };
+  window.addEventListener('keydown', onEsc, true);
+  _emailsProc = { p, qual: qual || 'instrucao', pessoas: null, arquivos: null, docsMarcados: null, onEsc };
+  const ov = document.createElement('div');
+  ov.id = 'emails-proc-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto;';
+  ov.innerHTML = `<div role="dialog" aria-label="E-mails do processo" style="background:var(--card);border-radius:12px;max-width:820px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <h3 style="margin:0;font-size:16px;">📧 E-mails do processo ${esc(p.referencia || '')}</h3>
+      <button class="btn btn-sm btn-outline" onclick="_emailsProcFechar()">Fechar</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0;" role="tablist">
+      <button type="button" class="btn btn-sm" id="emails-proc-aba-instrucao" onclick="_emailsProcAba('instrucao')">🚢 Instrução de embarque</button>
+      <button type="button" class="btn btn-sm" id="emails-proc-aba-despachante" onclick="_emailsProcAba('despachante')">📂 Abertura com o despachante</button>
+    </div>
+    <div id="emails-proc-corpo" style="font-size:13px;color:var(--muted);">Carregando contatos e documentos…</div>
+  </div>`;
+  ov.addEventListener('click', e => { if(e.target === ov) _emailsProcFechar(); });
+  document.body.appendChild(ov);
+  _emailsProcRender();
+  const [pessoas, arquivos] = await Promise.all([
+    fetch('/api/cadastros/pessoas?limit=1000').then(r => r.json()).then(d => d.ok ? (d.pessoas || []) : []).catch(() => []),
+    fetch('/api/controle/v2/arquivos/' + encodeURIComponent(p.id)).then(r => r.json()).then(d => d.ok ? (d.arquivos || []) : []).catch(() => []),
+  ]);
+  if(!_emailsProc || _emailsProc.p !== p) return;
+  _emailsProc.pessoas = pessoas;
+  _emailsProc.arquivos = arquivos;
+  // Documentos que normalmente vão para o despachante abrir o processo.
+  _emailsProc.docsMarcados = new Set(arquivos.filter(a => /^(CI|PL|BL|HBL|MBL|BL_DRAFT|CE|CO)$/i.test(String(a.tipo || ''))).map(a => a.id));
+  _emailsProcRender();
+}
+
+function _emailsProcAba(qual){ if(_emailsProc){ _emailsProc.qual = qual; _emailsProcRender(); } }
+
+function _emailsProcDoc(id, marcado){
+  if(!_emailsProc || !_emailsProc.docsMarcados) return;
+  if(marcado) _emailsProc.docsMarcados.add(id); else _emailsProc.docsMarcados.delete(id);
+  _emailsProcRender();
+}
+
+// Contato do exportador para a instrução: quem marcou "Instrução de
+// embarque" na empresa do fornecedor; senão o contato principal; senão o
+// primeiro com e-mail.
+function _emailsProcContatoExportador(p, pessoas){
+  if(!p.fornecedor_id) return '';
+  const daEmpresa = (pessoas || []).filter(x => x.ativo !== false && String(x.empresa_id) === String(p.fornecedor_id) && x.email);
+  const marcados = daEmpresa.filter(x => window.DestinatariosCore && DestinatariosCore.limparAssuntos(x.assuntos_email).INSTRUCAO);
+  const lista = marcados.length ? marcados : (daEmpresa.filter(x => x.principal).length ? daEmpresa.filter(x => x.principal) : daEmpresa.slice(0, 1));
+  return lista.map(x => [x.nome ? `${x.nome} <${x.email}>` : x.email, x.telefone || x.whatsapp || ''].filter(Boolean).join(' · ')).join('; ');
+}
+
+function _emailsProcRender(){
+  const st = _emailsProc;
+  const corpo = document.getElementById('emails-proc-corpo');
+  if(!st || !corpo) return;
+  ['instrucao','despachante'].forEach(q => {
+    const b = document.getElementById('emails-proc-aba-' + q);
+    if(b){ b.className = 'btn btn-sm ' + (st.qual === q ? 'btn-primary' : 'btn-outline'); b.setAttribute('aria-selected', st.qual === q ? 'true' : 'false'); }
+  });
+  if(!st.pessoas){ corpo.textContent = 'Carregando contatos e documentos…'; return; }
+  const p = st.p;
+  const D = window.DestinatariosCore;
+  let dest = { para: [], cc: [] }, aviso = '', t, docsHtml = '';
+  if(st.qual === 'instrucao'){
+    if(D) dest = D.destinatarios('INSTRUCAO', st.pessoas, p.agente_id ? [p.agente_id] : [], { fallbackPrincipal: true, empresasCopia: p.fornecedor_id ? [p.fornecedor_id] : [] });
+    if(!p.agente_id) aviso = 'O processo não tem o Agente de cargas vinculado ao cadastro (aba Logística).';
+    else if(!dest.para.length) aviso = `Ninguém do agente (${esc(p.agente || '')}) marcado para "Instrução de embarque" — marque em Cadastros › Empresas › Pessoas.`;
+    t = textoInstrucaoEmbarque(p, { contatoExportador: _emailsProcContatoExportador(p, st.pessoas) });
+  } else {
+    if(D) dest = D.destinatarios('DESPACHANTE', st.pessoas, p.despachante_id ? [p.despachante_id] : [], { fallbackPrincipal: true });
+    if(!p.despachante_id) aviso = 'O processo não tem o Despachante vinculado ao cadastro (aba Logística).';
+    else if(!dest.para.length) aviso = `Ninguém do despachante (${esc(p.despachante || '')}) marcado para "Abertura de processo" — marque em Cadastros › Empresas › Pessoas.`;
+    const arquivos = st.arquivos || [];
+    const marcados = arquivos.filter(a => st.docsMarcados && st.docsMarcados.has(a.id));
+    t = textoAberturaDespachante(p, { documentos: marcados.map(a => _ROTULO_DOC_GED[String(a.tipo || '').toUpperCase()] || a.nome) });
+    docsHtml = `<div style="margin-top:10px;font-size:12px;"><b>Documentos do processo (GED)</b> — marque os que vão em anexo; clique no nome para baixar e anexar no e-mail.
+      ${arquivos.length ? `<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">${arquivos.map(a => `<label style="display:flex;gap:6px;align-items:center;">
+        <input type="checkbox" ${st.docsMarcados && st.docsMarcados.has(a.id) ? 'checked' : ''} onchange="_emailsProcDoc('${esc(a.id)}', this.checked)" aria-label="Anexar ${esc(a.nome)}">
+        <span style="font-size:11px;color:var(--muted);min-width:70px;">${esc(_ROTULO_DOC_GED[String(a.tipo || '').toUpperCase()] || a.tipo || 'documento')}</span>
+        ${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--ac);overflow-wrap:anywhere;">${esc(a.nome)}</a>` : `<span style="overflow-wrap:anywhere;">${esc(a.nome)}</span>`}
+      </label>`).join('')}</div>` : '<div style="color:var(--warn);margin-top:4px;">Nenhum documento no GED deste processo (aba Documentos).</div>'}
+    </div>`;
+  }
+  st._dest = dest; st._texto = t;
+  const lista = l => l.map(x => esc((x.nome ? x.nome + ' ' : '') + '<' + x.email + '>') + (x.origem === 'principal' ? ' <i>(contato principal)</i>' : '')).join(', ');
+  corpo.innerHTML = `
+    <div style="font-size:12px;color:var(--text);overflow-wrap:anywhere;">
+      ${dest.para.length ? `<b>Para:</b> ${lista(dest.para)}` : ''}${dest.cc.length ? `${dest.para.length ? '<br>' : ''}<b>Cópia:</b> ${lista(dest.cc)}` : ''}
+      ${aviso ? `<div style="color:var(--warn);font-weight:600;margin-top:4px;">⚠ ${aviso}</div>` : ''}
+    </div>
+    <div style="font-size:12px;margin-top:8px;"><b>Assunto:</b> ${esc(t.assunto)}</div>
+    <pre style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12px;font-family:inherit;color:var(--text);">${esc(t.texto)}</pre>
+    ${docsHtml}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px;">
+      <button class="btn btn-sm btn-outline" onclick="_emailsProcCopiar('destinatarios')">📋 Copiar destinatários</button>
+      <button class="btn btn-sm btn-outline" onclick="_emailsProcCopiar('assunto')">📋 Copiar assunto</button>
+      <button class="btn btn-sm btn-primary" onclick="_emailsProcCopiar('texto')">📋 Copiar e-mail</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">Linha sem informação no processo não aparece no texto. O sistema não envia nada: copie e cole no seu e-mail.</div>`;
+}
+
+async function _emailsProcCopiar(oque){
+  const st = _emailsProc;
+  if(!st || !st._texto) return;
+  let conteudo = '';
+  if(oque === 'texto') conteudo = st._texto.texto;
+  else if(oque === 'assunto') conteudo = st._texto.assunto;
+  else {
+    const linha = l => l.map(x => x.email).join('; ');
+    conteudo = (st._dest.para.length ? 'Para: ' + linha(st._dest.para) : '') + (st._dest.cc.length ? (st._dest.para.length ? '\n' : '') + 'Cc: ' + linha(st._dest.cc) : '');
+  }
+  if(!conteudo){ showToast('Nada para copiar', 'warn'); return; }
+  try{ await navigator.clipboard.writeText(conteudo); showToast('✓ Copiado', 'ok'); }
+  catch(e){
+    const ta = document.createElement('textarea'); ta.value = conteudo; ta.setAttribute('aria-label', 'Texto copiado');
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;'; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); showToast('✓ Copiado', 'ok'); }catch(e2){ showToast('Não consegui copiar — selecione o texto e use Ctrl+C', 'warn'); }
+    ta.remove();
+  }
 }

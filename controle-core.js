@@ -2136,6 +2136,211 @@ function listarAdiantamentosCliente(processos){
   return out;
 }
 
+// ── PEDIDO DE ADIANTAMENTO DE CÂMBIO AO CLIENTE (pedido Ayslan 21/10/2026) ──
+// Na Encomenda quem paga o câmbio é o cliente: antes de fechar, a IMPAK pede
+// por e-mail (um por cliente) a aprovação e o depósito, no modelo enviado
+// pelo Ayslan — processos que vão chegar, valor FOB a enviar à fábrica por
+// processo, total em USD, taxa estimada e total estimado em R$. Entram as
+// parcelas sem câmbio fechado e sem "Valor Recebido do Cliente", de processos
+// em que o cliente paga o câmbio (não Importação Direta), com vencimento até
+// `opts.ate` (as vencidas também).
+function recebidoDoClienteNaParcela(p, pg){
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+  if(!p || !pg) return false;
+  if(pg._tipo === 'parcelado'){
+    let parcelas = [];
+    try{ parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ parcelas = []; }
+    return num((parcelas[pg._parcelaIndex] || {}).valor_recebido_cliente) > 0;
+  }
+  if(pg._tipo === 'unico') return num(p.pi_valor_recebido_cliente) > 0;
+  return false;
+}
+
+function listarPedidosAdiantamento(processos, opts){
+  opts = opts || {};
+  const ate = opts.ate ? String(opts.ate).slice(0,10) : null;
+  const porId = new Map((processos||[]).map(p=>[p.id, p]));
+  const grupos = new Map();
+  listarPagamentosPI(processos).forEach(pg=>{
+    if(pg.pago || pg.impakPaga || pg._tipo === 'indefinido' || !pg.vencimento) return;
+    if(ate && pg.vencimento > ate) return;
+    const p = porId.get(pg.processoId);
+    if(!p || recebidoDoClienteNaParcela(p, pg)) return;
+    const cliente = String(p.cliente || '').trim() || '(cliente não definido)';
+    const chave = p.cliente_id ? 'id:' + p.cliente_id : 'nome:' + cliente.toUpperCase();
+    if(!grupos.has(chave)) grupos.set(chave, { cliente, clienteId: p.cliente_id || null, itens: new Map() });
+    const g = grupos.get(chave);
+    if(!g.itens.has(p.id)) g.itens.set(p.id, { processoId: p.id, referencia: p.referencia || '', fornecedor: p.fornecedor || '', finalidade: p.finalidade || '',
+      chegada: String(p.data_chegada || p.eta || '').slice(0,10), chegou: !!p.data_chegada, valorUsd: 0, parcelas: [], vencimento: pg.vencimento });
+    const item = g.itens.get(p.id);
+    item.valorUsd += pg.valorUsd || 0;
+    item.parcelas.push({ parcela: pg.parcela, valorUsd: pg.valorUsd || 0, vencimento: pg.vencimento });
+    if(pg.vencimento < item.vencimento) item.vencimento = pg.vencimento;
+  });
+  const r2 = v => Math.round(v*100)/100;
+  return [...grupos.values()].map(g=>{
+    const processosG = [...g.itens.values()].map(x=>Object.assign(x, { valorUsd: r2(x.valorUsd) }))
+      .sort((a,b)=> (a.chegada||'9999').localeCompare(b.chegada||'9999') || a.referencia.localeCompare(b.referencia));
+    return { cliente: g.cliente, clienteId: g.clienteId, processos: processosG, totalUsd: r2(processosG.reduce((s,x)=>s+x.valorUsd,0)) };
+  }).sort((a,b)=>a.cliente.localeCompare(b.cliente,'pt-BR'));
+}
+
+function _saudacaoPelaHora(hora){
+  const h = hora != null ? hora : new Date().getHours();
+  return h < 12 ? 'Bom dia' : (h < 18 ? 'Boa tarde' : 'Boa noite');
+}
+
+// "dia 25/10", "dia 25 ou 26/10", "dia 30/10 ou 02/11", "entre 25/10 e 02/11"
+function _fraseDatasChegada(datas){
+  const dm = d => d.slice(8,10) + '/' + d.slice(5,7);
+  if(!datas.length) return '';
+  if(datas.length === 1) return 'dia ' + dm(datas[0]);
+  if(datas.length === 2) return datas[0].slice(5,7) === datas[1].slice(5,7)
+    ? `dia ${datas[0].slice(8,10)} ou ${dm(datas[1])}` : `dia ${dm(datas[0])} ou ${dm(datas[1])}`;
+  return `entre ${dm(datas[0])} e ${dm(datas[datas.length-1])}`;
+}
+
+// Texto do e-mail (para colar no Outlook), no formato do modelo do Ayslan:
+// valores em USD/R$ no padrão 1,234.56 (como no exemplo) e taxa com 4 casas
+// — no exemplo a taxa aparece "5.07", mas o total só fecha com 5,0672.
+// opts: { taxa, hoje: 'AAAA-MM-DD', hora (0-23), excluir: Set de processoId }
+function textoPedidoAdiantamento(grupo, opts){
+  opts = opts || {};
+  const excluir = opts.excluir || new Set();
+  const procs = (grupo && grupo.processos || []).filter(x => !excluir.has(x.processoId));
+  if(!procs.length) return { assunto: '', texto: '', totalUsd: 0, totalBrl: 0, taxa: 0, processos: [] };
+  const taxa = parseFloat(opts.taxa) || 0;
+  const hoje = _hojeISOLocal(opts);
+  const hora = opts.hora != null ? opts.hora : new Date().getHours();
+  const fmt = (v, casas) => (v||0).toLocaleString('en-US', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+  const totalUsd = Math.round(procs.reduce((s,x)=>s+x.valorUsd,0)*100)/100;
+  const totalBrl = Math.round(totalUsd*taxa*100)/100;
+  const plural = procs.length > 1;
+  const refs = procs.map(x=>x.referencia).join(' / ');
+  const datas = [...new Set(procs.map(x=>x.chegada).filter(Boolean))].sort();
+  let frase = `Temos ${plural ? 'os processos' : 'o processo'} ${refs}`;
+  if(datas.length){
+    const todasPassadas = datas.every(d => d < hoje), todasFuturas = datas.every(d => d >= hoje);
+    const quando = _fraseDatasChegada(datas);
+    if(todasFuturas) frase += ` ${plural ? 'previstos' : 'previsto'} para chegar ${quando}`;
+    else if(todasPassadas) frase += ` que ${plural ? 'chegaram' : 'chegou'} ${quando}`;
+    else frase += ` com chegada ${quando}`;
+  }
+  const saudacao = _saudacaoPelaHora(hora);
+  const linhas = [
+    `${saudacao} a todos,`,
+    'Tudo bem?',
+    '',
+    frase + '.',
+    'Precisamos enviar o valor FOB à fábrica.',
+    '',
+    ...procs.map(x => `${x.referencia} – USD ${fmt(x.valorUsd, 2)}`),
+    '',
+    `Valor total: USD ${fmt(totalUsd, 2)}`,
+  ];
+  if(taxa){
+    linhas.push(`Taxa estimada do dólar: R$ ${fmt(taxa, 4)}`);
+    linhas.push(`Valor total estimado em reais: R$ ${fmt(totalBrl, 2)}`);
+  }
+  linhas.push('', `Ficamos no aguardo da sua aprovação e depósito em conta para seguirmos com ${plural ? 'esses câmbios' : 'esse câmbio'}.`, '', 'Att');
+  return { assunto: `Adiantamento de câmbio – ${refs}`, texto: linhas.join('\n'), totalUsd, totalBrl, taxa, processos: procs };
+}
+
+// ── E-MAILS DO PROCESSO: instrução de embarque e abertura com o despachante ──
+// Pedido Ayslan (21/10/2026): "enviar uma instrução de embarque com as
+// principais informações (exportador, importador, notify, quantidade de
+// container, Incoterm, dados de contato do exportador, referência)" e
+// "enviar as informações principais e os documentos do processo para abrir o
+// processo com o despachante". Texto pronto para colar no e-mail (linha sem
+// dado no processo não aparece); os destinatários vêm dos flags "Instrução de
+// embarque" e "Abertura de processo (despachante)" do cadastro de pessoas.
+function _dataBRCurta(d){
+  const s = String(d || '').slice(0,10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice(0,4) : '';
+}
+function _linhasComValor(pares){
+  return pares.filter(([,v]) => v != null && String(v).trim() !== '').map(([k,v]) => `${k}: ${String(v).trim()}`);
+}
+function _qtdContainersTexto(p){
+  const n = containersDoProcesso(p).length || parseInt(p.qtd_containers_prevista, 10) || 0;
+  const tipo = String(p.tipo_container || '').trim();
+  if(tipo.toUpperCase() === 'LCL') return 'carga solta (LCL)';
+  if(!n) return '';
+  return tipo ? `${n} × ${tipo}` : String(n);
+}
+function _produtosTexto(p){
+  let itens = [];
+  try{ itens = p.produtos_json ? JSON.parse(p.produtos_json) : []; }catch(e){ itens = []; }
+  itens = Array.isArray(itens) ? itens.filter(it => it && it.descricao) : [];
+  if(!itens.length) return p.produto || '';
+  return itens.map(it => it.descricao + (it.quantidade ? ` (${it.quantidade})` : '')).join('; ');
+}
+const _FINALIDADE_TEXTO = { IMPORTACAO_DIRETA: 'Importação própria', ENCOMENDA: 'Encomenda', CONTA_E_ORDEM: 'Conta e ordem', ACOMPANHAMENTO: 'Acompanhamento' };
+
+// extra: { contatoExportador: 'Nome <email> · telefone', hora }
+function textoInstrucaoEmbarque(p, extra){
+  extra = extra || {};
+  p = p || {};
+  const ref = p.referencia || '';
+  const prontidao = p.data_prontidao ? _dataBRCurta(p.data_prontidao)
+    : (p.previsao_prontidao ? _dataBRCurta(p.previsao_prontidao) + ' (previsão)' : '');
+  const linhas = _linhasComValor([
+    ['Referência do embarque', ref],
+    ['Exportador', p.fornecedor],
+    ['Contato do exportador', extra.contatoExportador],
+    ['Importador (consignatário)', p.consignatario],
+    ['Notify', p.notify],
+    ['Quantidade de containers', _qtdContainersTexto(p)],
+    ['Incoterm', p.pi_incoterm],
+    ['Proforma (PI)', p.pi_numero],
+    ['Porto de origem', p.porto_origem],
+    ['Porto de destino', p.porto_destino],
+    ['Prontidão da carga', prontidao],
+    ['Produtos', _produtosTexto(p)],
+  ]);
+  const texto = [`${_saudacaoPelaHora(extra.hora)},`, '', `Segue a instrução de embarque do processo ${ref}:`, '', ...linhas, '',
+    'Por favor, entrem em contato com o exportador para o booking e nos enviem a confirmação.', '', 'Att'].join('\n');
+  return { assunto: `Instrução de embarque – ${ref}${p.fornecedor ? ' – ' + p.fornecedor : ''}`, texto };
+}
+
+// extra: { documentos: ['Commercial Invoice (CI)', ...], hora }
+function textoAberturaDespachante(p, extra){
+  extra = extra || {};
+  p = p || {};
+  const ref = p.referencia || '';
+  const usd = v => (parseFloat(v) > 0) ? 'USD ' + parseFloat(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+  const conts = containersDoProcesso(p);
+  const peso = parseFloat(p.peso_bruto) > 0 ? parseFloat(p.peso_bruto).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' kg' : '';
+  const ce = [p.ce_master && ('Master ' + p.ce_master), p.ce_house && ('House ' + p.ce_house)].filter(Boolean).join(' · ');
+  const chegada = p.data_chegada ? _dataBRCurta(p.data_chegada) + ' (chegou)' : (p.eta ? _dataBRCurta(p.eta) + ' (ETA)' : '');
+  const linhas = _linhasComValor([
+    ['Referência', ref],
+    ['Modalidade', _FINALIDADE_TEXTO[p.finalidade] || ''],
+    ['Cliente (encomendante)', p.finalidade && p.finalidade !== 'IMPORTACAO_DIRETA' ? p.cliente : ''],
+    ['Exportador', p.fornecedor],
+    ['Incoterm', p.pi_incoterm],
+    ['Invoice (CI)', [p.ci_numero, usd(p.ci_valor_usd)].filter(Boolean).join(' – ')],
+    ['Produtos', _produtosTexto(p)],
+    ['NCM', p.di_ncms],
+    ['Peso bruto', peso],
+    ['Volumes', p.volumes],
+    ['Containers', conts.length ? conts.join(', ') + (p.tipo_container ? ` (${p.tipo_container})` : '') : _qtdContainersTexto(p)],
+    ['HBL', p.hbl],
+    ['MBL', p.mbl],
+    ['CE Mercante', ce],
+    ['Armador', p.armador],
+    ['Agente de cargas', p.agente],
+    ['Navio / viagem', [p.navio, p.viagem].filter(Boolean).join(' / ')],
+    ['Porto de destino', p.porto_destino],
+    ['Chegada', chegada],
+  ]);
+  const docs = (extra.documentos || []).filter(Boolean);
+  const texto = [`${_saudacaoPelaHora(extra.hora)},`, '', `Segue para abertura do processo ${ref}:`, '', ...linhas, '',
+    docs.length ? 'Documentos em anexo:\n' + docs.map(d => '- ' + d).join('\n') : 'Documentos em anexo: CI, PL e BL.',
+    '', 'Qualquer dúvida, estamos à disposição.', '', 'Att'].join('\n');
+  return { assunto: `Abertura de processo – ${ref}${p.cliente && p.finalidade !== 'IMPORTACAO_DIRETA' ? ' – ' + p.cliente : ''}`, texto };
+}
+
 function demurrageDisplay(proc){
   if(ehLCL(proc)) return '<span style="color:var(--dim)" title="Carga LCL: sem devolução de container">LCL</span>';
   if(proc.fase === 'FINALIZADO' || proc.data_devolucao_vazio) return '<span style="color:var(--ok)">✓ Devolvido</span>';
