@@ -198,6 +198,30 @@ const CENARIOS = [
       return p;
     },
   },
+  // Faturas fase 2: aceitar uma diferença da conferência (motivo obrigatório)
+  {
+    nome: '/controle + aba Faturas: aceitar diferença da conferência', rota: '/controle',
+    acao: async page => {
+      await page.evaluate(() => abrirProcesso('teste-3'));
+      await page.waitForTimeout(900);
+      await page.evaluate(() => trocarAba('faturas'));
+      await page.waitForTimeout(700);
+      await page.evaluate(() => pfAbrirFatura('fat-teste-1'));
+      await page.waitForTimeout(300);
+      await page.evaluate(() => { const b = document.querySelector('#pane-faturas-conteudo .pf-dif .pf-mini'); if (b) b.click(); });
+      await page.waitForTimeout(200);
+      await page.evaluate(() => { const t = document.getElementById('pf_dec_motivo'); if (t) t.value = 'Diferença combinada com o fornecedor'; const ok = document.getElementById('pf_dec_ok'); if (ok) ok.click(); });
+      await page.waitForTimeout(600);
+    },
+    conferir: () => {
+      const p = [];
+      const dif = document.querySelector('#pane-faturas-conteudo .pf-dif');
+      if (!dif) p.push('a diferença da conferência não apareceu com os botões Aceitar/Contestar');
+      else if (!dif.classList.contains('aceita')) p.push('aceitar a diferença não marcou como aceita');
+      if (document.getElementById('pf_dec_motivo')) p.push('a janela do motivo não fechou depois de aceitar');
+      return p;
+    },
+  },
   {
     nome: '/cambio: pedir adiantamento aos clientes', rota: '/cambio',
     acao: async page => { await page.evaluate(() => abrirPedidoAdiantamento()); await page.waitForTimeout(400); },
@@ -233,6 +257,17 @@ function servidorFalso() {
   app.use(express.json({ limit: '5mb' }));
   const todas = Object.assign({}, TELAS, SO_RELATORIO);
   Object.entries(todas).forEach(([rota, arq]) => app.get(rota, (req, res) => res.sendFile(path.join(RAIZ, arq))));
+  // Aceitar/contestar diferença da conferência (Faturas fase 2): responde
+  // como o servidor de verdade, sem gravar nada — a mesma fatura fictícia
+  // vale pros dois tamanhos de tela.
+  app.post(/^\/api\/faturas\/([^/]+)\/conferencia\/decisao$/, (req, res) => {
+    const FaturasCore = require('../../faturas-core.js');
+    const lista = ((respostas['/api/faturas']({ query: { processo_id: 'teste-3' } }) || {}).faturas) || [];
+    const f = lista.find(x => x.id === req.params[0]);
+    const b = req.body || {};
+    const r = f ? FaturasCore.decidirDiferenca(f.conferencia, b.chave, b.acao, b.motivo, { por: 'teste', nome: 'Pessoa Teste' }) : { erro: 'Fatura não encontrada.' };
+    res.json(r.erro ? { ok: false, erro: r.erro } : { ok: true, conferencia: r.conferencia });
+  });
   app.all(/^\/api\//, (req, res) => {
     if (req.method !== 'GET') return res.json({ ok: true });
     // resposta pode depender da consulta (ex.: /api/faturas?processo_id=)
