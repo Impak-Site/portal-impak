@@ -947,6 +947,59 @@ function parseDataDespachante(v) {
     return yy + '-' + mm + '-' + dd;
 }
 
+// ── Coluna "DATA CI" = Data de Liberação (21/10/2026, Emanuelly: "para
+// automatizar a data do desembaraço no sistema, incluir na leitura da
+// planilha despachante a coluna data CI para preencher a Data Liberação").
+// Na planilha do despachante "CI" é o Comprovante de Importação, emitido no
+// desembaraço — NÃO a Commercial Invoice (ci_numero/ci_data do Controle).
+// O cabeçalho é lido por palavra inteira: "DATA CI", "DT CI", "DATA DA C.I.",
+// "COMPROVANTE DE IMPORTAÇÃO" ou "DATA DESEMBARAÇO" (sem PREVISÃO) — "CIF",
+// "Nº CI" ou "COMERCIAL" não contam.
+function tokensCabecalho(h) {
+    return norm(h).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, '').split(/[^A-Z0-9]+/).filter(Boolean);
+}
+function acharColunaDataCI(headers) {
+    var t = (headers || []).map(tokensCabecalho);
+    var tem = function(tk, p) { return tk.indexOf(p) >= 0; };
+    var i = t.findIndex(function(tk) { return tem(tk, 'CI') && (tem(tk, 'DATA') || tem(tk, 'DT')); });
+    if (i < 0) i = t.findIndex(function(tk) { return tem(tk, 'COMPROVANTE') && (tem(tk, 'IMPORTACAO') || tem(tk, 'IMP')); });
+    if (i < 0) i = t.findIndex(function(tk) { return tem(tk, 'DESEMBARACO') && (tem(tk, 'DATA') || tem(tk, 'DT')) && !tk.some(function(x) { return /^PREV/.test(x); }); });
+    return i;
+}
+// Data do dia (AAAA-MM-DD) ou null. A célula pode vir como data de verdade,
+// número de série do Excel (46258, às vezes digitado como texto), texto
+// D/M/AAAA ou AAAA-MM-DD; "-" ou vazio = sem data. Data que não existe
+// (ex.: mês 13) volta null — nunca grava uma data inventada.
+function isoValido(a, m, d) {
+    a = Number(a); m = Number(m); d = Number(d);
+    if (!(a >= 2000 && a <= 2100) || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return null;
+    var dt = new Date(Date.UTC(a, m - 1, d));
+    if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+    return a + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+function isoDeDate(v) {
+    // +12h: a data da célula vem à meia-noite (local ou UTC) — assim o dia
+    // não muda com fuso nem com arredondamento de segundos do Excel.
+    var x = new Date(v.getTime() + 12 * 3600 * 1000);
+    return isoValido(x.getUTCFullYear(), x.getUTCMonth() + 1, x.getUTCDate());
+}
+function parseDataCI(v) {
+    if (v === null || v === undefined) return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : isoDeDate(v);
+    if (typeof v === 'number') {
+        if (!(v > 20000 && v < 80000)) return null;
+        return isoDeDate(new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000));
+    }
+    var s = String(v).trim();
+    if (!s || /^[-–—_./\s]+$/.test(s)) return null;
+    if (/^\d{5}([.,]\d+)?$/.test(s)) return parseDataCI(parseFloat(s.replace(',', '.')));
+    var iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) return isoValido(iso[1], iso[2], iso[3]);
+    var m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
+    if (m) return isoValido(m[3].length === 2 ? '20' + m[3] : m[3], m[2], m[1]);
+    return null;
+}
+
 function importarDespachanteBase(buffer) {
     validarBufferPlanilha(buffer);
     var wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -954,6 +1007,9 @@ function importarDespachanteBase(buffer) {
     var ws = wb.Sheets[sheetName];
     var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
     if (!rows.length) return { linhas: [], erro: 'Planilha vazia' };
+    // Valores crus (data como data, número como número) — usados só na DATA
+    // CI, para não depender do formato de exibição da célula (dd/mm x mm/dd).
+    var rowsCru = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
 
     var headers = rows[0];
     var idx = {
@@ -978,6 +1034,8 @@ function importarDespachanteBase(buffer) {
         // geraria uma "quantidade" absurda (parseInt de FFAU3414856).
         container: acharColunaComAlternativas(headers, [['QTD', 'CONTAINER'], ['QUANT', 'CONTAINER'], ['CONTAINER']]),
         demanda: acharColunaDespachante(headers, ['DEMANDA']),
+        // DATA CI (Comprovante de Importacao) -> Data de Liberacao (21/10/2026).
+        data_ci: acharColunaDataCI(headers),
     };
     if (idx.referencia === -1) return { linhas: [], erro: 'Coluna REFERENCIA/PROCESSOS nao encontrada na planilha' };
 
@@ -993,6 +1051,11 @@ function importarDespachanteBase(buffer) {
         // mantem a data real na coluna CHEGADA.
         var dataChegadaEta = idx.eta >= 0 ? parseDataDespachante(r[idx.eta]) : null;
         var dataChegadaCol = idx.chegada >= 0 ? parseDataDespachante(r[idx.chegada]) : null;
+        var celulaCI = idx.data_ci >= 0 ? (rowsCru[i] || [])[idx.data_ci] : '';
+        var dataCI = idx.data_ci >= 0 ? parseDataCI(celulaCI) : null;
+        // Preenchida, mas não deu pra ler como data: volta o texto para o
+        // relatório da importação mostrar (nada é gravado).
+        var textoCI = (!dataCI && idx.data_ci >= 0 && String(r[idx.data_ci] || '').trim() && !/^[-–—_./\s]+$/.test(String(r[idx.data_ci]).trim())) ? String(r[idx.data_ci]).trim().slice(0, 40) : '';
         linhas.push({
             referencia: String(ref).trim(),
             hbl: idx.hbl >= 0 ? String(r[idx.hbl] || '').trim() : '',
@@ -1002,9 +1065,11 @@ function importarDespachanteBase(buffer) {
             navio: idx.navio >= 0 ? String(r[idx.navio] || '').trim() : '',
             qtd_containers: idx.container >= 0 ? parseInt(String(r[idx.container] || '').replace(/\D/g, ''), 10) : null,
             demanda_impak: idx.demanda >= 0 ? String(r[idx.demanda] || '').trim() : '',
+            data_liberacao: dataCI,
+            data_ci_ilegivel: textoCI,
         });
     }
-    return { linhas: linhas };
+    return { linhas: linhas, tem_data_ci: idx.data_ci >= 0 };
 }
 
 // ── IMPORTACAO DE PLANILHA INTERNA (Manu/Emanuelly, "processos manu.xlsx") ──
@@ -1117,4 +1182,6 @@ function importarCatalogoProdutos(buffer) {
     return { itens: itens };
 }
 
-module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase, importarManuBase: importarManuBase, importarCatalogoProdutos: importarCatalogoProdutos };
+module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase, importarManuBase: importarManuBase, importarCatalogoProdutos: importarCatalogoProdutos,
+    // Só para os testes (testes_planilha.js).
+    _parseDataCI: parseDataCI, _acharColunaDataCI: acharColunaDataCI };

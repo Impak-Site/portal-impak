@@ -1421,6 +1421,11 @@ async function _salvarProcessoAgora(proc, patchFields){
     chaves.forEach(k=>{ if(proc[k]!==undefined) payload[k] = proc[k]; });
   }
   if(versaoBase) payload = Object.assign({}, payload, { _base_updated_at: versaoBase });
+  // Histórico (21/10/2026): as linhas que vão neste save. Gravado com
+  // sucesso, elas saem do processo aberto — antes ficavam e eram enviadas de
+  // novo a cada Salvar seguinte, e o Histórico mostrava a mesma alteração
+  // várias vezes (a mesma troca de número aparecia de novo a cada Salvar).
+  const logEnviado = Array.isArray(proc.log) ? proc.log.slice() : [];
 
   showToast('Salvando...','info');
   let r, d;
@@ -1451,14 +1456,16 @@ async function _salvarProcessoAgora(proc, patchFields){
       if(typeof _editando !== 'undefined' && _editando === proc) _avancarVersaoPainel(proc.id, versaoBase, d.updated_at, payload);
       proc.updated_at = d.updated_at;
     }
+    if(logEnviado.length && Array.isArray(proc.log)) proc.log = proc.log.filter(l => !logEnviado.includes(l));
     showToast('✓ Salvo','ok');
     // Criar notificação se houver alerta
     verificarAlertas(proc, true);
     await carregarProcessos(true);
     return true;
   } else {
-    if(d && d.datas_invalidas && Array.isArray(d.campos)) marcarCamposComErro(d.campos);
-    showToast('Não foi salvo: '+(d.erro||'erro desconhecido'),'err');
+    if(d && Array.isArray(d.campos)) marcarCamposComErro(d.campos);
+    if(d && d.conexos_repetido && typeof marcarCampoConexosRepetido === 'function') marcarCampoConexosRepetido(d.erro || '');
+    showToast('Não foi salvo: '+(d.erro||'erro desconhecido'),'err', d && d.conexos_repetido ? 9000 : undefined);
     return false;
   }
 }
@@ -1513,12 +1520,16 @@ async function _juntarEdicaoSimultanea(proc, patchFields, d){
     }
   }
   const mesclado = CP.mesclar(atual, proc, campos, manterDeles);
-  mesclado.log = (proc.log || []).filter(l => !manterDeles.includes(l.campo));
+  const logDaJuncao = (proc.log || []).slice();
+  mesclado.log = logDaJuncao.filter(l => !manterDeles.includes(l.campo));
   mesclado._mesclando = true;
   const camposFinais = campos.filter(k => !manterDeles.includes(k));
   const ok = await salvarProcesso(mesclado, camposFinais);
   delete mesclado._mesclando;
   if(ok){
+    // As linhas de histórico desta gravação já foram (ou ficaram com o valor
+    // da outra pessoa): não voltam num próximo Salvar (21/10/2026).
+    if(Array.isArray(proc.log)) proc.log = proc.log.filter(l => !logDaJuncao.includes(l));
     const outros = original ? CP.alteradosPorOutros(original, atual).filter(k => !camposFinais.includes(k)) : [];
     // Só avisa se entrou de fato alguma alteração de fora (ou houve escolha).
     // Nada que importe mudou (só a Conferência, a versão, o vínculo da

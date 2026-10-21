@@ -55,6 +55,8 @@ const MODULOS_JS = [
   'receita-cnpj.js',
   // 21/10/2026: quem recebe cada e-mail (flags por pessoa).
   'destinatarios-core.js',
+  // 21/10/2026: "ID no Conexos" nunca repetido.
+  'conexos-id.js',
   'controle-core.js',
   'controle-modal.js',
   'controle-campos.js',
@@ -82,6 +84,7 @@ function criarSandbox() {
     getElementById: (id) => elementosFalsos[id] || (elementosFalsos[id] = {
       value: '', innerHTML: '', style: {}, textContent: '', dataset: {}, checked: false, classList: { add(){}, remove(){}, contains(){ return false; } },
       addEventListener(){}, appendChild(){}, querySelector(){ return null; }, querySelectorAll(){ return []; }, dispatchEvent(){ return true; },
+      setAttribute(){}, removeAttribute(){},
     }),
     querySelector: () => null,
     querySelectorAll: () => [],
@@ -988,6 +991,111 @@ await testeAsync('gravações do mesmo navegador saem uma de cada vez (Salvar + 
   } finally {
     sandbox.confirm = () => false;
     vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+  }
+});
+
+// ── ID no Conexos nunca repetido + Histórico sem repetição (21/10/2026) ──
+// Caso real (20/10/2026): trocou o ID, salvou, voltou para o anterior e salvou
+// — a volta não era gravada (o retrato de abertura não acompanhava o que ela
+// já tinha salvo) e o Histórico repetia as linhas antigas a cada Salvar.
+// Valores fictícios.
+function prepararPainel(proc, lista) {
+  vm.runInContext(`_processos = ${JSON.stringify(lista || [])}; _editando = ${JSON.stringify(proc)}; _editandoOriginal = { ..._editando }; window._salvandoProcesso = false; _painelDirty = false;`, sandbox);
+  sandbox.document.getElementById('f_referencia').value = proc.referencia;
+  sandbox.document.getElementById('f_conexos_id').value = proc.conexos_id || '';
+}
+function limparPainel() {
+  vm.runInContext(`_processos = []; _editandoOriginal = null; _editando = null; window._salvandoProcesso = false; _painelDirty = false;`, sandbox);
+  sandbox.document.getElementById('f_referencia').value = '';
+  sandbox.document.getElementById('f_conexos_id').value = '';
+}
+const esperarSalvar = () => new Promise(r => setTimeout(r, 60));
+
+await testeAsync('ID no Conexos já usado em outro processo: não salva, diz em qual processo está e não deixa linha de Histórico pendurada', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  const toasts = []; const toastOriginal = sandbox.showToast; sandbox.showToast = (m, t) => toasts.push([String(m), t]);
+  let salvou = 0;
+  try {
+    sandbox.salvarProcesso = async () => { salvou++; return true; };
+    prepararPainel({ id:'cx-b', referencia:'TESTE-CX-B', conexos_id:'', log:[] },
+      [{ id:'cx-a', referencia:'TESTE-CX-A', conexos_id:'0500' }, { id:'cx-b', referencia:'TESTE-CX-B', conexos_id:'' }]);
+    sandbox.document.getElementById('f_conexos_id').value = ' 500 ';
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    iguais(salvou, 0, 'não pode salvar com o número de outro processo');
+    verdadeiro(toasts.some(([m, t]) => t === 'err' && /ID no Conexos 500 já está no processo TESTE-CX-A/.test(m)), JSON.stringify(toasts));
+    iguais(sandbox.document.getElementById('aviso-conexos-id').textContent.indexOf('TESTE-CX-A') >= 0, true, 'aviso embaixo do campo');
+    iguais(vm.runInContext('_editando.log.length', sandbox), 0, 'o Salvar recusado não deixa linha de Histórico no processo aberto');
+    sandbox.document.getElementById('f_conexos_id').value = '501';
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    iguais(salvou, 1, 'número livre salva');
+  } finally {
+    sandbox.salvarProcesso = salvarOriginal; sandbox.showToast = toastOriginal;
+    sandbox.document.getElementById('aviso-conexos-id').textContent = '';
+    limparPainel();
+  }
+});
+
+await testeAsync('ID no Conexos: o próprio número do processo (sem mudar) não bloqueia o Salvar de outro campo', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  let campos = null;
+  try {
+    sandbox.salvarProcesso = async (p, pf) => { campos = pf; return true; };
+    prepararPainel({ id:'cx-d', referencia:'TESTE-CX-D', conexos_id:'700', obs:'', log:[] },
+      [{ id:'cx-d', referencia:'TESTE-CX-D', conexos_id:'700' }]);
+    sandbox.document.getElementById('f_obs').value = 'observação nova';
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    verdadeiro(Array.isArray(campos) && campos.includes('obs') && !campos.includes('conexos_id'), JSON.stringify(campos));
+  } finally {
+    sandbox.salvarProcesso = salvarOriginal;
+    sandbox.document.getElementById('f_obs').value = '';
+    limparPainel();
+  }
+});
+
+await testeAsync('trocar o ID no Conexos, salvar, voltar para o anterior e salvar grava as duas vezes — e o Histórico não repete', async () => {
+  const s = servidorDeVersao('2026-10-21T19:00:00.000Z');
+  sandbox.fetch = s.fetch;
+  try {
+    prepararPainel({ id:'cx-c', referencia:'TESTE-CX-C', conexos_id:'200', updated_at:'2026-10-21T19:00:00.000Z' });
+    sandbox.document.getElementById('f_conexos_id').value = '201';
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    sandbox.document.getElementById('f_conexos_id').value = '200';
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    const envios = s.corpos.filter(c => c.id === 'cx-c');
+    iguais(envios.length, 2, 'dois Salvar, duas gravações, sem 409');
+    iguais(envios[0].conexos_id, '201');
+    iguais(envios[1].conexos_id, '200', 'a volta para o número anterior também vai para o banco');
+    const linhas = c => JSON.stringify((c.log || []).filter(l => l.campo === 'conexos_id').map(l => l.valor_antes + '>' + l.valor_depois));
+    iguais(linhas(envios[0]), JSON.stringify(['200>201']));
+    iguais(linhas(envios[1]), JSON.stringify(['201>200']), 'só a alteração nova (antes repetia a do Salvar anterior)');
+    iguais(s.atual.conexos_id, '200');
+  } finally {
+    limparPainel();
+  }
+});
+
+await testeAsync('servidor recusa o ID no Conexos repetido (400): marca o campo, mostra o processo e não grava nada', async () => {
+  const toasts = []; const toastOriginal = sandbox.showToast; sandbox.showToast = (m, t) => toasts.push([String(m), t]);
+  sandbox.fetch = (url, o) => {
+    if (String(url).endsWith('/api/controle/v2/processo') && o && o.method === 'POST') {
+      return Promise.resolve({ status: 400, json: () => Promise.resolve({ ok:false, conexos_repetido:true, campos:['conexos_id'], erro:'O ID no Conexos 77 já está no processo TESTE-CX-Z.' }) });
+    }
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, processos:[] }) });
+  };
+  try {
+    const p = { id:'cx-e', referencia:'TESTE-CX-E', conexos_id:'77', log:[{ campo:'conexos_id', valor_antes:'', valor_depois:'77' }] };
+    iguais(await sandbox.salvarProcesso(p, ['conexos_id']), false);
+    verdadeiro(toasts.some(([m, t]) => t === 'err' && /TESTE-CX-Z/.test(m)), JSON.stringify(toasts));
+    verdadeiro(/TESTE-CX-Z/.test(sandbox.document.getElementById('aviso-conexos-id').textContent), 'aviso embaixo do campo');
+    iguais(p.log.length, 1, 'recusado: a linha de Histórico fica para o próximo Salvar');
+  } finally {
+    sandbox.showToast = toastOriginal;
+    sandbox.document.getElementById('aviso-conexos-id').textContent = '';
   }
 });
 

@@ -291,7 +291,8 @@ function renderModal(){
             <input class="form-input" id="f_brand" value="${esc(p.brand)}" placeholder="Ex: Maxam — deixe em branco se marca = fornecedor">
           </div>
           <div class="form-group"><label class="form-label">ID no Conexos</label>
-            <input class="form-input" id="f_conexos_id" value="${esc(p.conexos_id)}" placeholder="Nº/código deste processo no Conexos" title="Identificador do mesmo processo no Conexos Cloud — usado pela integração (em preparação) pra casar os dois sistemas">
+            <input class="form-input" id="f_conexos_id" value="${esc(p.conexos_id)}" placeholder="Nº/código deste processo no Conexos" title="Identificador do mesmo processo no Conexos Cloud — cada processo tem o seu, o sistema não deixa repetir" oninput="avisarConexosIdRepetido(this)" onblur="avisarConexosIdRepetido(this)">
+            <div id="aviso-conexos-id" role="alert" style="display:none;font-size:11px;color:var(--err,#b91c1c);margin-top:4px;line-height:1.35;"></div>
             ${p.conexos_ultima_sync ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Última sincronização: ${esc(new Date(p.conexos_ultima_sync).toLocaleString('pt-BR'))}</div>` : ''}
           </div>
           <div class="form-group"><label class="form-label" id="label-qtd-containers">Qtd. Containers (previsto)</label>

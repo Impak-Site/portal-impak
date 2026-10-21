@@ -211,6 +211,36 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     iguais(I.atualizarRegrasConferenciaAntiga(outro), false, 'o prompt do Controle já leva as regras — não duplica');
   });
 
+  console.log('\n── ID no Conexos nunca repetido no servidor (21/10/2026) ──');
+  // Lista fictícia no lugar da consulta ao banco.
+  const outrosCx = [{ id: 'cx-1', referencia: 'TESTE-CX-1', conexos_id: '04321', cancelado: false }, { id: 'cx-2', referencia: 'TESTE-CX-2', conexos_id: '4322', cancelado: true }];
+  const listarCx = async () => outrosCx;
+  await teste('número de outro processo → mensagem com o processo (e "cancelado")', async () => {
+    const p = { id: 'cx-9', conexos_id: ' 4322 ' };
+    const msg = await I.conferirConexosIdRepetido(p, { conexos_id: null }, listarCx);
+    verdadeiroRota(/O ID no Conexos 4322 já está no processo TESTE-CX-2 \(cancelado\)/.test(msg || ''), msg);
+    iguais(p.conexos_id, '4322', 'grava sem espaços nas pontas');
+  });
+  await teste('zeros à esquerda contam como o mesmo número; processo novo (sem id) também confere', async () => {
+    const msg = await I.conferirConexosIdRepetido({ conexos_id: '4321' }, null, listarCx);
+    verdadeiroRota(/TESTE-CX-1/.test(msg || ''), msg);
+  });
+  await teste('sem mudança no número, vazio ou sem o campo: não consulta e não bloqueia', async () => {
+    let consultou = 0; const contar = async () => { consultou++; return outrosCx; };
+    iguais(await I.conferirConexosIdRepetido({ id: 'cx-1', conexos_id: '4321' }, { conexos_id: '04321' }, contar), null, 'é o próprio número (só mudou a escrita)');
+    const vazio = { id: 'cx-9', conexos_id: '  ' };
+    iguais(await I.conferirConexosIdRepetido(vazio, { conexos_id: '5' }, contar), null); iguais(vazio.conexos_id, null, 'vazio vira null (apagar o ID)');
+    iguais(await I.conferirConexosIdRepetido({ id: 'cx-9', obs: 'x' }, null, contar), null);
+    iguais(consultou, 0);
+    iguais(await I.conferirConexosIdRepetido({ id: 'cx-9', conexos_id: '4323' }, null, contar), null, 'número livre passa');
+    iguais(consultou, 1);
+  });
+  await teste('erro de índice único do banco (gravação ao mesmo tempo) é reconhecido', async () => {
+    iguais(I.ehErroConexosRepetido({ message: 'duplicate key value violates unique constraint "ux_controle_processos_conexos_id"' }), true);
+    iguais(I.ehErroConexosRepetido({ message: 'duplicate key value violates unique constraint "controle_processos_pkey"' }), false);
+    iguais(I.ehErroConexosRepetido(null), false);
+  });
+
   console.log('\n── Mensagens de erro úteis (lib/erros-amigaveis.js) ──');
   const { traduzirErro } = require('./lib/erros-amigaveis');
   await teste('erro técnico do banco vira motivo + próximo passo', async () => {
