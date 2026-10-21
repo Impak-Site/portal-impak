@@ -2652,6 +2652,86 @@ teste('listarAdiantamentosCliente: soma câmbio pago (USD x taxa) e recebido do 
 });
 
 
+// Pedido de adiantamento de câmbio ao cliente (21/10/2026) — valores fictícios.
+teste('listarPedidosAdiantamento: só câmbio do cliente em aberto, sem recebimento, vencendo até a data; agrupa por cliente', () => {
+  const processos = [
+    { id:'p1', referencia:'TESTE-001', cliente:'CLIENTE EXEMPLO LTDA', cliente_id:'c1', finalidade:'ENCOMENDA', fornecedor:'FORNECEDOR X', eta:'2030-10-25',
+      pi_pagamento:'PARCELADO', pi_valor_usd:20000, pi_parcelas_json: JSON.stringify([
+        { label:'Inicial', valor_usd:6000, cambio_fechado:5.1, data_vencimento:'2030-08-01' },
+        { label:'Final', valor_usd:14000 } ]) },                                           // Final segue a chegada - 10 = 15/10
+    { id:'p2', referencia:'TESTE-002', cliente:'CLIENTE EXEMPLO LTDA', cliente_id:'c1', finalidade:'ENCOMENDA', eta:'2030-10-26',
+      pi_pagamento:'PRAZO', pi_valor_usd:12345.67 },                                       // 16/10
+    { id:'p3', referencia:'TESTE-003', cliente:'CLIENTE EXEMPLO LTDA', cliente_id:'c1', finalidade:'IMPORTACAO_DIRETA', eta:'2030-10-26',
+      pi_pagamento:'PRAZO', pi_valor_usd:5000 },                                           // IMPAK paga: fora
+    { id:'p4', referencia:'TESTE-004', cliente:'CLIENTE EXEMPLO LTDA', cliente_id:'c1', finalidade:'ENCOMENDA', eta:'2030-10-26',
+      pi_pagamento:'PRAZO', pi_valor_usd:5000, pi_valor_recebido_cliente:26000 },          // cliente já depositou: fora
+    { id:'p5', referencia:'TESTE-005', cliente:'OUTRO CLIENTE SA', finalidade:'ENCOMENDA', eta:'2030-12-20',
+      pi_pagamento:'PRAZO', pi_valor_usd:9000 },                                           // vence 10/12: depois do limite
+    { id:'p6', referencia:'TESTE-006', cliente:'OUTRO CLIENTE SA', finalidade:'ENCOMENDA', eta:'2030-10-20',
+      pi_pagamento:'PARCELADO', pi_valor_usd:8000, pi_parcelas_json: JSON.stringify([
+        { label:'Final', valor_usd:8000, valor_recebido_cliente:41000 } ]) },              // parcela já recebida: fora
+  ];
+  const g = vm.runInContext(`listarPedidosAdiantamento(${JSON.stringify(processos)}, { ate:'2030-10-31' })`, sandbox);
+  iguais(g.length, 1, 'só o CLIENTE EXEMPLO tem o que pedir');
+  iguais(g[0].clienteId, 'c1');
+  iguais(g[0].processos.map(x=>x.referencia).join(','), 'TESTE-001,TESTE-002', 'ordem pela chegada');
+  aproxIgual(g[0].processos[0].valorUsd, 14000, 0.001, 'só a parcela Final (a Inicial já tem câmbio fechado)');
+  iguais(g[0].processos[0].parcelas[0].parcela, 'Final');
+  aproxIgual(g[0].totalUsd, 26345.67, 0.001);
+});
+teste('textoPedidoAdiantamento: texto no modelo da IMPAK (USD 1,234.56, taxa com 4 casas, total em R$) e plural/singular', () => {
+  const grupo = { cliente:'CLIENTE EXEMPLO LTDA', processos:[
+    { processoId:'a', referencia:'TESTE-002', valorUsd:12345.67, chegada:'2030-10-26' },
+    { processoId:'b', referencia:'TESTE-001', valorUsd:14000, chegada:'2030-10-25' } ] };
+  const t = vm.runInContext(`textoPedidoAdiantamento(${JSON.stringify(grupo)}, { taxa:5.1234, hoje:'2030-10-21', hora:9 })`, sandbox);
+  const linhas = t.texto.split('\n');
+  iguais(linhas[0], 'Bom dia a todos,');
+  verdadeiro(t.texto.includes('Temos os processos TESTE-002 / TESTE-001 previstos para chegar dia 25 ou 26/10.'), t.texto);
+  verdadeiro(t.texto.includes('TESTE-002 – USD 12,345.67') && t.texto.includes('TESTE-001 – USD 14,000.00'), 'linha por processo');
+  verdadeiro(t.texto.includes('Valor total: USD 26,345.67'), 'total USD');
+  verdadeiro(t.texto.includes('Taxa estimada do dólar: R$ 5.1234'), 'taxa com 4 casas');
+  verdadeiro(t.texto.includes('Valor total estimado em reais: R$ 134,979.41'), '26.345,67 × 5,1234 = 134.979,41: ' + t.texto);
+  verdadeiro(t.texto.includes('seguirmos com esses câmbios.') && /\nAtt$/.test(t.texto), 'fecho');
+  iguais(t.assunto, 'Adiantamento de câmbio – TESTE-002 / TESTE-001');
+  const um = vm.runInContext(`textoPedidoAdiantamento(${JSON.stringify(grupo)}, { taxa:5.1234, hoje:'2030-10-27', hora:15, excluir: new Set(['a']) })`, sandbox);
+  verdadeiro(um.texto.startsWith('Boa tarde a todos,'), 'saudação pela hora');
+  verdadeiro(um.texto.includes('Temos o processo TESTE-001 que chegou dia 25/10.'), um.texto);
+  verdadeiro(um.texto.includes('seguirmos com esse câmbio.'), 'singular');
+  aproxIgual(um.totalUsd, 14000, 0.001, 'o processo desmarcado sai do total');
+  const semTaxa = vm.runInContext(`textoPedidoAdiantamento(${JSON.stringify(grupo)}, { hoje:'2030-10-21', hora:9 })`, sandbox);
+  verdadeiro(!semTaxa.texto.includes('Taxa estimada') && !semTaxa.texto.includes('em reais'), 'sem taxa, sem linha em R$');
+});
+teste('textoPedidoAdiantamento: datas de chegada em meses diferentes e 3+ datas', () => {
+  const g2 = { processos:[ { processoId:'a', referencia:'T-A', valorUsd:1, chegada:'2030-10-30' }, { processoId:'b', referencia:'T-B', valorUsd:1, chegada:'2030-11-02' } ] };
+  verdadeiro(vm.runInContext(`textoPedidoAdiantamento(${JSON.stringify(g2)}, { hoje:'2030-10-21', hora:9 })`, sandbox).texto.includes('previstos para chegar dia 30/10 ou 02/11.'));
+  const g3 = { processos:[ { processoId:'a', referencia:'T-A', valorUsd:1, chegada:'2030-10-30' }, { processoId:'b', referencia:'T-B', valorUsd:1, chegada:'2030-11-02' }, { processoId:'c', referencia:'T-C', valorUsd:1, chegada:'2030-11-05' } ] };
+  verdadeiro(vm.runInContext(`textoPedidoAdiantamento(${JSON.stringify(g3)}, { hoje:'2030-10-31', hora:9 })`, sandbox).texto.includes('com chegada entre 30/10 e 05/11.'), 'uma já chegou, outras não');
+});
+teste('textoInstrucaoEmbarque: exportador, contato, importador, notify, containers, Incoterm e referência; linha vazia some', () => {
+  const p = { referencia:'TESTE-777', fornecedor:'EXPORTADOR EXEMPLO', consignatario:'IMPORTADORA EXEMPLO', notify:'CLIENTE EXEMPLO', qtd_containers_prevista:2, tipo_container:'40HC',
+    pi_incoterm:'FOB', porto_origem:'Porto A', porto_destino:'Porto B', previsao_prontidao:'2030-11-10' };
+  const t = vm.runInContext(`textoInstrucaoEmbarque(${JSON.stringify(p)}, { contatoExportador:'Fulano <fulano@exportador.exemplo>', hora:15 })`, sandbox);
+  iguais(t.assunto, 'Instrução de embarque – TESTE-777 – EXPORTADOR EXEMPLO');
+  verdadeiro(t.texto.startsWith('Boa tarde,'), t.texto);
+  ['Referência do embarque: TESTE-777', 'Exportador: EXPORTADOR EXEMPLO', 'Contato do exportador: Fulano <fulano@exportador.exemplo>',
+   'Importador (consignatário): IMPORTADORA EXEMPLO', 'Notify: CLIENTE EXEMPLO', 'Quantidade de containers: 2 × 40HC', 'Incoterm: FOB',
+   'Prontidão da carga: 10/11/2030 (previsão)'].forEach(l => verdadeiro(t.texto.includes(l), 'faltou: ' + l));
+  verdadeiro(!t.texto.includes('Proforma (PI):') && !t.texto.includes('Produtos:'), 'sem PI nem produtos no processo, as linhas não aparecem');
+  const lcl = vm.runInContext(`textoInstrucaoEmbarque({ referencia:'T', tipo_container:'LCL' })`, sandbox);
+  verdadeiro(lcl.texto.includes('Quantidade de containers: carga solta (LCL)'), lcl.texto);
+});
+teste('textoAberturaDespachante: dados do processo + documentos marcados; importação própria não mostra cliente', () => {
+  const p = { referencia:'TESTE-888', finalidade:'ENCOMENDA', cliente:'CLIENTE EXEMPLO', fornecedor:'EXPORTADOR EXEMPLO', pi_incoterm:'CFR', ci_numero:'CI-9', ci_valor_usd:12345.6,
+    containers_json: JSON.stringify([{ numero:'ABCU1234567' }, { numero:'ABCU7654321' }]), tipo_container:'40HC', hbl:'HBL-1', ce_master:'111', ce_house:'222', data_chegada:'2030-12-01' };
+  const t = vm.runInContext(`textoAberturaDespachante(${JSON.stringify(p)}, { documentos:['Commercial Invoice (CI)', 'Packing List (PL)'], hora:9 })`, sandbox);
+  iguais(t.assunto, 'Abertura de processo – TESTE-888 – CLIENTE EXEMPLO');
+  ['Modalidade: Encomenda', 'Cliente (encomendante): CLIENTE EXEMPLO', 'Invoice (CI): CI-9 – USD 12,345.60', 'Containers: ABCU1234567, ABCU7654321 (40HC)',
+   'CE Mercante: Master 111 · House 222', 'Chegada: 01/12/2030 (chegou)', 'Documentos em anexo:\n- Commercial Invoice (CI)\n- Packing List (PL)'].forEach(l => verdadeiro(t.texto.includes(l), 'faltou: ' + l));
+  const propria = vm.runInContext(`textoAberturaDespachante({ referencia:'T2', finalidade:'IMPORTACAO_DIRETA', cliente:'IMPAK' })`, sandbox);
+  verdadeiro(!propria.texto.includes('Cliente (encomendante)') && propria.assunto === 'Abertura de processo – T2', propria.assunto);
+  verdadeiro(propria.texto.includes('Documentos em anexo: CI, PL e BL.'), 'sem documentos marcados, lembra quais anexar');
+});
+
 teste('listarPagamentosPI: PRAZO em aberto usa chegada/ETA - 10 (não o vencimento gravado com ETA antigo)', () => {
   const r = sandbox.listarPagamentosPI([{ id:'x', referencia:'UD26-103', pi_valor_usd:35332.56, pi_pagamento:'PRAZO', pi_data_saldo:'2026-09-18', eta:'2026-10-05', finalidade:'ENCOMENDA', cliente:'IRMAOS SILVA S/A' }]);
   iguais(r[0].vencimento, '2026-09-25', 'ETA 05/10 - 10 = 25/09 (igual à planilha da Paula)');

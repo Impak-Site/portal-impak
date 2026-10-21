@@ -1339,6 +1339,7 @@ function renderAdiantamentoClienteHtml(){
       </select>
       <label style="font-size:12px;display:flex;align-items:center;gap:4px;white-space:nowrap;"><input type="checkbox" ${f.pendentes?'checked':''} onchange="setAdiantFiltro('pendentes', this.checked)"> Só sem recebimento lançado</label>
       <button type="button" onclick="exportarAdiantamentoClienteExcel()" style="font-size:11px;font-weight:700;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;white-space:nowrap;">⬇ Excel</button>
+      <button type="button" class="btn btn-sm btn-primary" onclick="abrirPedidoAdiantamento()" title="Monta o e-mail de cada cliente pedindo aprovação e depósito dos câmbios que vão vencer (Encomenda)">📧 Pedir adiantamento aos clientes</button>
     </div>
     <div style="display:flex;gap:24px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap;">
       <div>Processos: <b>${linhas.length}</b></div>
@@ -1395,4 +1396,144 @@ async function exportarAdiantamentoClienteExcel(){
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     showToast(`✓ ${linhas.length} processo(s) exportado(s)`,'ok');
   }catch(e){ console.error(e); showToast('Erro ao exportar Excel: '+e.message,'err'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PEDIR ADIANTAMENTO DE CÂMBIO AOS CLIENTES (pedido Ayslan 21/10/2026, com
+// o modelo do e-mail que a IMPAK manda hoje). Um e-mail por cliente com os
+// processos cujo câmbio vai vencer (Encomenda: o cliente deposita antes de a
+// IMPAK fechar). Regras e texto em controle-core.js
+// (listarPedidosAdiantamento / textoPedidoAdiantamento). O sistema NÃO envia:
+// copia o texto, o assunto e os destinatários (flags "Adiantamento de câmbio"
+// do cadastro de pessoas) para colar no e-mail.
+// ════════════════════════════════════════════════════════════════
+let _pedAdiant = { ate: '', taxa: null, excluidos: new Set(), pessoas: null, grupos: [] };
+
+function _pedAdiantIsoMaisDias(dias){
+  const d = new Date(); d.setDate(d.getDate() + dias);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+async function abrirPedidoAdiantamento(){
+  if(!_pedAdiant.ate) _pedAdiant.ate = _pedAdiantIsoMaisDias(15);
+  if(_pedAdiant.taxa == null){ const c = (typeof cambioDoDia === 'function') ? cambioDoDia('USD') : null; _pedAdiant.taxa = c ? Math.round(c*10000)/10000 : null; }
+  document.getElementById('ped-adiant-overlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'ped-adiant-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:40px 12px;overflow:auto;';
+  ov.innerHTML = `<div role="dialog" aria-label="Pedir adiantamento de câmbio aos clientes" style="background:var(--card);border-radius:12px;max-width:920px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <h3 style="margin:0;font-size:16px;">📧 Pedir adiantamento de câmbio aos clientes</h3>
+      <button class="btn btn-sm btn-outline" onclick="document.getElementById('ped-adiant-overlay').remove()">Fechar</button>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
+      <label style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px;">Câmbios vencendo até
+        <input type="date" class="form-input" id="ped-adiant-ate" value="${esc(_pedAdiant.ate)}" onchange="_pedAdiant.ate=this.value;renderPedidoAdiantamento()" style="padding:6px 8px;font-size:12px;"></label>
+      <label style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px;">Taxa estimada do dólar (R$)
+        <input type="text" inputmode="decimal" class="form-input" id="ped-adiant-taxa" value="${_pedAdiant.taxa ? String(_pedAdiant.taxa).replace('.', ',') : ''}" placeholder="ex.: 5,0672" oninput="_pedAdiantTaxa(this.value)" style="padding:6px 8px;font-size:12px;width:130px;"></label>
+      <div style="font-size:11px;color:var(--muted);flex:1;min-width:220px;">Entram os câmbios <b>sem câmbio fechado</b> e <b>sem valor recebido do cliente</b>, de processos em que o <b>cliente paga o câmbio</b> (não Importação Direta), vencendo até a data escolhida (os vencidos também). <b>Nada é enviado pelo sistema:</b> copie e cole no seu e-mail.</div>
+    </div>
+    <div id="ped-adiant-corpo" style="margin-top:14px;"></div>
+  </div>`;
+  ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  renderPedidoAdiantamento();
+  if(!_pedAdiant.pessoas){
+    try{ const r = await fetch('/api/cadastros/pessoas?limit=1000'); const d = await r.json(); _pedAdiant.pessoas = (r.ok && d.ok) ? (d.pessoas || []) : []; }
+    catch(e){ _pedAdiant.pessoas = []; }
+    renderPedidoAdiantamento();
+  }
+}
+
+// Taxa digitada em pt-BR ("5,0672") ou com ponto ("5.0672").
+function _pedAdiantTaxa(valor){
+  let t = String(valor || '').trim();
+  if(t.includes(',')) t = t.split('.').join('').replace(',', '.');
+  const n = parseFloat(t);
+  _pedAdiant.taxa = (isFinite(n) && n > 0) ? n : null;
+  renderPedidoAdiantamento();
+}
+
+// Os campos (data e taxa) ficam fora de #ped-adiant-corpo: redesenhar a
+// lista não tira o foco de quem está digitando a taxa.
+function renderPedidoAdiantamento(){
+  const corpo = document.getElementById('ped-adiant-corpo');
+  if(!corpo) return;
+  const fmtUsd = v => 'USD ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fData = d => d ? d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4) : '—';
+  _pedAdiant.grupos = listarPedidosAdiantamento(_processos, { ate: _pedAdiant.ate });
+  const grupos = _pedAdiant.grupos;
+  if(!grupos.length){
+    corpo.innerHTML = `<div style="padding:14px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--muted);">Nenhum câmbio de cliente a pedir até ${fData(_pedAdiant.ate)}. 👍</div>`;
+    return;
+  }
+  const temFlags = window.DestinatariosCore && Array.isArray(_pedAdiant.pessoas);
+  corpo.innerHTML = grupos.map((g, gi) => {
+    const t = textoPedidoAdiantamento(g, { taxa: _pedAdiant.taxa, excluir: _pedAdiant.excluidos });
+    let dest = '<span style="color:var(--muted);">carregando contatos…</span>';
+    if(temFlags){
+      const d = DestinatariosCore.destinatarios('CAMBIO', _pedAdiant.pessoas, g.clienteId ? [g.clienteId] : [], { fallbackPrincipal: true });
+      const lista = l => l.map(x => esc((x.nome ? x.nome + ' ' : '') + '<' + x.email + '>') + (x.origem === 'principal' ? ' <i>(contato principal)</i>' : '')).join(', ');
+      dest = d.para.length
+        ? `<b>Para:</b> ${lista(d.para)}${d.cc.length ? `<br><b>Cópia:</b> ${lista(d.cc)}` : ''}`
+        : `<span style="color:var(--warn);font-weight:600;">⚠ Ninguém do cliente marcado para "Adiantamento de câmbio"</span> — marque em Cadastros › Empresas › ${esc(g.cliente)} › Pessoas.${d.cc.length ? `<br><b>Cópia:</b> ${lista(d.cc)}` : ''}`;
+      g._dest = d;
+    }
+    const linhas = g.processos.map(x => {
+      const fora = _pedAdiant.excluidos.has(x.processoId);
+      return `<tr style="border-top:1px solid var(--border);${fora?'opacity:.5;':''}">
+        <td style="padding:5px 6px;"><input type="checkbox" ${fora?'':'checked'} aria-label="Incluir ${esc(x.referencia)}" onchange="_pedAdiantIncluir('${esc(x.processoId)}', this.checked)"></td>
+        <td style="padding:5px 6px;font-weight:600;white-space:nowrap;"><a href="#" onclick="document.getElementById('ped-adiant-overlay')?.remove();abrirProcesso('${esc(x.processoId)}');return false;" style="color:var(--ac);">${esc(x.referencia)}</a></td>
+        <td style="padding:5px 6px;color:var(--muted);">${esc(x.fornecedor || '—')}</td>
+        <td style="padding:5px 6px;color:var(--muted);">${esc(x.parcelas.map(pc => pc.parcela === 'unico' ? 'pagamento único' : pc.parcela).join(', '))}</td>
+        <td style="padding:5px 6px;white-space:nowrap;">${fData(x.vencimento)}</td>
+        <td style="padding:5px 6px;white-space:nowrap;">${fData(x.chegada)}${x.chegada && !x.chegou ? ' <span style="color:var(--muted);">(prev.)</span>' : ''}</td>
+        <td style="padding:5px 6px;text-align:right;white-space:nowrap;font-family:'JetBrains Mono',monospace;">${fmtUsd(x.valorUsd)}</td>
+      </tr>`;
+    }).join('');
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;">
+        <div style="font-weight:700;font-size:14px;">${esc(g.cliente)}</div>
+        <div style="font-size:12px;color:var(--muted);">${g.processos.length} processo(s) · <b style="color:var(--text);font-family:'JetBrains Mono',monospace;">${fmtUsd(g.totalUsd)}</b></div>
+      </div>
+      <div style="font-size:12px;margin:6px 0 8px;overflow-wrap:anywhere;">${dest}</div>
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;text-align:left;"><th></th><th style="padding:4px 6px;">Processo</th><th style="padding:4px 6px;">Fornecedor</th><th style="padding:4px 6px;">Parcela</th><th style="padding:4px 6px;">Vencimento</th><th style="padding:4px 6px;">Chegada</th><th style="padding:4px 6px;text-align:right;">Valor</th></tr></thead>
+        <tbody>${linhas}</tbody></table></div>
+      <pre id="ped-adiant-texto-${gi}" style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:10px 0 8px;font-size:12px;font-family:inherit;color:var(--text);">${esc(t.texto)}</pre>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <button class="btn btn-sm btn-outline" onclick="_pedAdiantCopiar(${gi}, 'destinatarios')">📋 Copiar destinatários</button>
+        <button class="btn btn-sm btn-outline" onclick="_pedAdiantCopiar(${gi}, 'assunto')">📋 Copiar assunto</button>
+        <button class="btn btn-sm btn-primary" onclick="_pedAdiantCopiar(${gi}, 'texto')">📋 Copiar e-mail</button>
+      </div>
+    </div>`;
+  }).join('') + (_pedAdiant.taxa ? '' : '<div style="font-size:12px;color:var(--warn);">Sem a taxa estimada o e-mail sai sem o total em reais — preencha a taxa acima.</div>');
+}
+
+function _pedAdiantIncluir(processoId, incluir){
+  if(incluir) _pedAdiant.excluidos.delete(processoId); else _pedAdiant.excluidos.add(processoId);
+  renderPedidoAdiantamento();
+}
+
+async function _pedAdiantCopiar(gi, oque){
+  const g = _pedAdiant.grupos[gi];
+  if(!g) return;
+  const t = textoPedidoAdiantamento(g, { taxa: _pedAdiant.taxa, excluir: _pedAdiant.excluidos });
+  let conteudo = '';
+  if(oque === 'texto') conteudo = t.texto;
+  else if(oque === 'assunto') conteudo = t.assunto;
+  else {
+    if(!g._dest){ showToast('Os contatos ainda estão carregando — tente de novo em instantes', 'warn'); return; }
+    const d = g._dest;
+    const linha = l => l.map(x => x.email).join('; ');
+    conteudo = 'Para: ' + linha(d.para) + (d.cc.length ? '\nCc: ' + linha(d.cc) : '');
+  }
+  if(!conteudo){ showToast('Nada para copiar', 'warn'); return; }
+  try{ await navigator.clipboard.writeText(conteudo); showToast('✓ Copiado', 'ok'); }
+  catch(e){
+    const ta = document.createElement('textarea'); ta.value = conteudo; ta.setAttribute('aria-label', 'Texto copiado');
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;'; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); showToast('✓ Copiado', 'ok'); }catch(e2){ showToast('Não consegui copiar — selecione o texto e use Ctrl+C', 'warn'); }
+    ta.remove();
+  }
 }
