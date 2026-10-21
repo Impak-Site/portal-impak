@@ -834,6 +834,163 @@ await testeAsync('edição simultânea: mesmo campo mudado pelos dois → pergun
   vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
 });
 
+// ── Edição simultânea acusando a própria pessoa (Emanuelly 21/10/2026) ──
+// Servidor de mentira com a mesma checagem de versão do servidor de verdade:
+// _base_updated_at diferente da versão atual → 409; senão grava e devolve a
+// versão nova. Valores fictícios.
+function servidorDeVersao(versaoInicial, opts = {}) {
+  const s = { versao: versaoInicial, n: 0, corpos: [], atual: Object.assign({}, opts.atual || {}) };
+  s.fetch = (url, o) => {
+    if (String(url).endsWith('/api/controle/v2/processo') && o && o.method === 'POST') {
+      const corpo = JSON.parse(o.body).processo; s.corpos.push(corpo);
+      if (corpo._base_updated_at && new Date(corpo._base_updated_at).getTime() !== new Date(s.versao).getTime()) {
+        return Promise.resolve({ status: 409, json: () => Promise.resolve({ ok:false, conflito:true, mesmo_usuario: !!opts.mesmoUsuario,
+          alterado_por: opts.alteradoPor || 'Teste', atual: Object.assign({}, s.atual, { id: corpo.id, updated_at: s.versao, updated_by: opts.updatedBy || 'teste' }) }) });
+      }
+      s.n++; s.versao = '2026-10-21T12:00:' + String(10 + s.n) + '.000Z';
+      Object.keys(corpo).forEach(k => { if (k[0] !== '_' && k !== 'log' && k !== 'updated_at') s.atual[k] = corpo[k]; });
+      return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, updated_at: s.versao }) });
+    }
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, processos:[] }) });
+  };
+  return s;
+}
+
+await testeAsync('aceite na Conferência grava o processo aberto: o Salvar seguinte parte da versão nova — sem "Fulana salvou enquanto você editava"', async () => {
+  const s = servidorDeVersao('2026-10-21T11:00:00.000Z');
+  sandbox.fetch = s.fetch;
+  let perguntou = false; sandbox.confirm = () => { perguntou = true; return true; };
+  try {
+    vm.runInContext(`_editando = { id:'cf-10', referencia:'TESTE-CF-10', obs:'a', pi_parcelas_json:'[{"label":"Inicial","valor_usd":100}]', updated_at:'2026-10-21T11:00:00.000Z', log:[] }; _editandoOriginal = { ..._editando };`, sandbox);
+    const d = await sandbox.gravarCamposDoProcesso({ id:'cf-10', conferencia_json:'{"divResolvedMap":{"k1":{"motivo":"ok"}}}' });
+    iguais(d.ok, true);
+    iguais(s.corpos[0]._base_updated_at, '2026-10-21T11:00:00.000Z', 'a gravação da Conferência vai com a versão do painel');
+    iguais(vm.runInContext('_editando.updated_at', sandbox), s.versao, 'o painel acompanha a versão nova');
+    iguais(vm.runInContext('_editandoOriginal.updated_at', sandbox), s.versao);
+    // Salvar do painel do jeito do coletarESalvar: cópia de _editando vira o _editando.
+    vm.runInContext(`_editando = { ..._editando, obs:'b', pi_parcelas_json:'[{"label":"Inicial","valor_usd":120}]', log:[] };`, sandbox);
+    iguais(await sandbox.salvarProcesso(vm.runInContext('_editando', sandbox), ['obs', 'pi_parcelas_json']), true);
+    iguais(s.corpos.length, 2, 'sem 409 e sem regravação');
+    iguais(vm.runInContext('_editandoOriginal.pi_parcelas_json', sandbox), '[{"label":"Inicial","valor_usd":120}]', 'o retrato de abertura recebe as Parcelas que ela gravou');
+    // Mais um aceite e mais um Salvar (Parcelas de novo): tudo direto.
+    await sandbox.gravarCamposDoProcesso({ id:'cf-10', conferencia_json:'{}' });
+    vm.runInContext(`_editando = { ..._editando, pi_parcelas_json:'[{"label":"Inicial","valor_usd":130}]', log:[] };`, sandbox);
+    iguais(await sandbox.salvarProcesso(vm.runInContext('_editando', sandbox), ['pi_parcelas_json']), true);
+    iguais(s.corpos.length, 4, 'nenhuma recusa no caminho');
+    iguais(s.corpos[3]._base_updated_at, '2026-10-21T12:00:13.000Z', 'Salvar parte da versão gravada pelo aceite');
+    verdadeiro(!perguntou, 'ninguém mais mexeu — não pode perguntar nada');
+  } finally {
+    sandbox.confirm = () => false;
+    vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+  }
+});
+
+await testeAsync('Salvar recusado pelo servidor (ex.: data impossível) não deixa "versão" inventada no painel', async () => {
+  const corpos = []; let recusar = true;
+  sandbox.fetch = (url, o) => {
+    if (String(url).endsWith('/api/controle/v2/processo') && o && o.method === 'POST') {
+      corpos.push(JSON.parse(o.body).processo);
+      if (recusar) return Promise.resolve({ status: 400, json: () => Promise.resolve({ ok:false, erro:'Data impossível — nada foi salvo.' }) });
+      return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, updated_at:'2026-10-21T13:00:01.000Z' }) });
+    }
+    return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true, processos:[] }) });
+  };
+  try {
+    vm.runInContext(`_editando = { id:'cf-11', referencia:'TESTE-CF-11', obs:'a', updated_at:'2026-10-21T13:00:00.000Z', log:[] }; _editandoOriginal = { ..._editando };`, sandbox);
+    const p = vm.runInContext('_editando', sandbox);
+    iguais(await sandbox.salvarProcesso(p, ['obs']), false);
+    iguais(p.updated_at, '2026-10-21T13:00:00.000Z', 'continua a versão do banco');
+    recusar = false;
+    iguais(await sandbox.salvarProcesso(p, ['obs']), true);
+    iguais(corpos[1]._base_updated_at, '2026-10-21T13:00:00.000Z', 'o 2º Salvar parte da versão real (antes ia a hora do navegador → 409)');
+    iguais(p.updated_at, '2026-10-21T13:00:01.000Z');
+  } finally {
+    vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+  }
+});
+
+await testeAsync('outra pessoa gravou antes do aceite: a Conferência grava assim mesmo, o painel fica na versão antiga e o Salvar junta e diz quem foi', async () => {
+  const s = servidorDeVersao('2026-10-21T14:00:05.000Z', { alteradoPor:'Beltrano', updatedBy:'beltrano', atual:{ referencia:'TESTE-CF-12', navio:'NAVIO B', obs:'a' } });
+  sandbox.fetch = s.fetch;
+  const toasts = []; const toastOriginal = sandbox.showToast; sandbox.showToast = (m, t) => toasts.push([String(m), t]);
+  try {
+    vm.runInContext(`_editando = { id:'cf-12', referencia:'TESTE-CF-12', navio:'NAVIO A', obs:'a', updated_at:'2026-10-21T14:00:00.000Z', log:[] }; _editandoOriginal = { ..._editando };`, sandbox);
+    const d = await sandbox.gravarCamposDoProcesso({ id:'cf-12', conferencia_json:'{}' });
+    iguais(d.ok, true, 'o aceite não se perde');
+    iguais(s.corpos.length, 2, 'tentou com a versão, foi recusada e regravou só a conferência');
+    verdadeiro(!s.corpos[1]._base_updated_at && s.corpos[1].conferencia_json === '{}');
+    iguais(vm.runInContext('_editando.updated_at', sandbox), '2026-10-21T14:00:00.000Z', 'o painel continua na versão antiga');
+    vm.runInContext(`_editando = { ..._editando, obs:'b', log:[] };`, sandbox);
+    iguais(await sandbox.salvarProcesso(vm.runInContext('_editando', sandbox), ['obs']), true);
+    const ultimo = s.corpos[s.corpos.length - 1];
+    iguais(ultimo.obs, 'b'); verdadeiro(!('navio' in ultimo), 'o navio do Beltrano não é desfeito');
+    verdadeiro(toasts.some(([m, t]) => t === 'warn' && /Beltrano tinha salvo/.test(m) && /Navio/.test(m)), JSON.stringify(toasts));
+  } finally {
+    sandbox.showToast = toastOriginal;
+    vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+  }
+});
+
+await testeAsync('409 sem outra pessoa (mesmo_usuario) e só a Conferência mudou no banco: salva sem pergunta e sem aviso de edição simultânea', async () => {
+  const s = servidorDeVersao('2026-10-21T15:00:09.000Z', { mesmoUsuario:true, alteradoPor:'Fulana', updatedBy:'teste', atual:{ referencia:'TESTE-CF-13', obs:'a', conferencia_json:'{"x":2}' } });
+  sandbox.fetch = s.fetch;
+  let perguntou = false; sandbox.confirm = () => { perguntou = true; return true; };
+  const toasts = []; const toastOriginal = sandbox.showToast; sandbox.showToast = (m, t) => toasts.push([String(m), t]);
+  try {
+    vm.runInContext(`_editando = { id:'cf-13', referencia:'TESTE-CF-13', obs:'a', updated_at:'2026-10-21T15:00:00.000Z', log:[] }; _editandoOriginal = { ..._editando }; _editando = { ..._editando, obs:'b' };`, sandbox);
+    iguais(await sandbox.salvarProcesso(vm.runInContext('_editando', sandbox), ['obs']), true);
+    verdadeiro(!perguntou, 'não pergunta');
+    verdadeiro(!toasts.some(([m]) => /enquanto você editava|Fulana/.test(m)), JSON.stringify(toasts));
+    iguais(s.corpos[s.corpos.length - 1].obs, 'b');
+  } finally {
+    sandbox.confirm = () => false; sandbox.showToast = toastOriginal;
+    vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+  }
+});
+
+await testeAsync('409 da própria pessoa (outra aba) com o mesmo campo diferente: pergunta sem dizer que foi outra pessoa', async () => {
+  const s = servidorDeVersao('2026-10-21T16:00:09.000Z', { mesmoUsuario:true, alteradoPor:'Fulana', atual:{ referencia:'TESTE-CF-14', obs:'escrito na outra aba' } });
+  sandbox.fetch = s.fetch;
+  let texto = ''; sandbox.confirm = (m) => { texto = String(m); return true; };
+  try {
+    vm.runInContext(`_editando = { id:'cf-14', referencia:'TESTE-CF-14', obs:'a', updated_at:'2026-10-21T16:00:00.000Z', log:[] }; _editandoOriginal = { ..._editando }; _editando = { ..._editando, obs:'escrito aqui' };`, sandbox);
+    iguais(await sandbox.salvarProcesso(vm.runInContext('_editando', sandbox), ['obs']), true);
+    verdadeiro(/outra aba ou tela/.test(texto) && !/Fulana salvou/.test(texto), texto);
+    iguais(s.corpos[s.corpos.length - 1].obs, 'escrito aqui', 'OK = grava o desta tela');
+  } finally {
+    sandbox.confirm = () => false;
+    vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+  }
+});
+
+await testeAsync('gravações do mesmo navegador saem uma de cada vez (Salvar + aceite juntos não se atropelam)', async () => {
+  const s = servidorDeVersao('2026-10-21T17:00:00.000Z');
+  let emVoo = 0, maxEmVoo = 0;
+  sandbox.fetch = (url, o) => {
+    if (String(url).endsWith('/api/controle/v2/processo') && o && o.method === 'POST') {
+      emVoo++; maxEmVoo = Math.max(maxEmVoo, emVoo);
+      return new Promise(r => setTimeout(r, 15)).then(() => { emVoo--; return s.fetch(url, o); });
+    }
+    return s.fetch(url, o);
+  };
+  let perguntou = false; sandbox.confirm = () => { perguntou = true; return true; };
+  try {
+    vm.runInContext(`_editando = { id:'cf-15', referencia:'TESTE-CF-15', obs:'a', updated_at:'2026-10-21T17:00:00.000Z', log:[] }; _editandoOriginal = { ..._editando }; _editando = { ..._editando, obs:'b' };`, sandbox);
+    // Como no preenchimento automático depois do último aceite: Salvar sem esperar + gravação da Conferência.
+    const salvar = sandbox.salvarProcesso(vm.runInContext('_editando', sandbox), ['obs']);
+    const aceite = sandbox.gravarCamposDoProcesso({ id:'cf-15', conferencia_json:'{"_autoPreenchido":true}' });
+    const [ok, d] = await Promise.all([salvar, aceite]);
+    iguais(ok, true); iguais(d.ok, true);
+    iguais(maxEmVoo, 1, 'uma gravação de cada vez');
+    iguais(s.corpos.length, 2, 'nenhuma recusa (cada uma partiu da versão da anterior)');
+    verdadeiro(!perguntou);
+    iguais(vm.runInContext('_editando.updated_at', sandbox), s.versao);
+  } finally {
+    sandbox.confirm = () => false;
+    vm.runInContext(`_editandoOriginal = null; _editando = null;`, sandbox);
+  }
+});
+
 await testeAsync('câmbio do dia só vira pi_cambio quando a cotação carregou de verdade (antes gravava 1,00)', async () => {
   const corpos = [];
   sandbox.fetch = (url, opts) => { if (opts && opts.method === 'POST') corpos.push(JSON.parse(opts.body).processo); return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true }) }); };
@@ -3249,6 +3406,47 @@ teste('Porto de destino nos documentos finais (Emanuelly 20/10/2026): BL origina
   const cont = CC.contarConferencia(a);
   iguais(cont.pendentes, 1, 'só BL original x CE conta');
   iguais(cont.bloqueantes, 1);
+});
+teste('CE Mercante (Emanuelly 21/10/2026): situação de pagamento e container/lacre "não informado" no CE não são pendência', () => {
+  // valores fictícios
+  const situacao = { campo:'Situacao Master CE Mercante', doc1_label:'CE Mercante', doc1_valor:'SUSPENSO DE PAGAMENTO', status:'ALERTA', severidade:'BLOQUEANTE', observacao:'O Master CE consta como SUSPENSO DE PAGAMENTO. Verificar com o agente de cargas.' };
+  const situacao2 = { campo:'Situação do CE', doc1_label:'CE', doc1_valor:'Pendente de pagamento (AFRMM)', status:'DIVERGENCIA' };
+  const cobertura = { campo:'Condição de pagamento', doc1_label:'CE Mercante', doc1_valor:'Sem cobertura cambial', status:'ALERTA' };
+  const lacreNaoInformado = { campo:'Container e Lacre', doc1_label:'CE Mercante', doc1_valor:'Nao informado no extrato do CE Mercante', doc2_label:'BL', doc2_valor:'ABCU1234567 / 40 High Cube / SL000001', status:'DIVERGENCIA', severidade:'INFORMATIVA' };
+  const lacreVazioNoCE = { campo:'Lacre', doc1_label:'BL', doc1_valor:'SL000001', doc2_label:'CE Mercante', doc2_valor:'', status:'AUSENTE' };
+  const soLacreDifere = { campo:'Container/Lacre', doc1_label:'BL', doc1_valor:'ABCU1234567 lacre SL000001', doc2_label:'CE', doc2_valor:'ABCU 1234567', status:'DIVERGENCIA' };
+  const ceNaoExibe = { campo:'Container', doc1_label:'CE Mercante', doc1_valor:'O extrato do CE nao exibe container', doc2_label:'PL', doc2_valor:'ABCU1234567', status:'DIVERGENCIA' };
+  const ceNaoExplicitado = { campo:'Container', doc1_label:'BL', doc1_valor:'ABCU1234567 / 40 High Cube / SL000001', doc2_label:'CE', doc2_valor:'Não explicitado no CE Mercante consultado', status:'DIVERGENCIA' };
+  const ceSoVolumes = { campo:'Container + Lacre', doc1_label:'BL', doc1_valor:'ABCU1234567 / SL000001', doc2_label:'CE', doc2_valor:'Não consta explicitamente (apenas volumes totais)', status:'DIVERGENCIA' };
+  // continuam pendência
+  const containerDiferente = { campo:'Container e Lacre', doc1_label:'BL', doc1_valor:'ABCU1234567 / SL000001', doc2_label:'CE Mercante', doc2_valor:'XYZU7654321', status:'DIVERGENCIA' };
+  const qtdContainersCE = { campo:'Quantidade de containers', doc1_label:'BL', doc1_valor:'2', doc2_label:'CE Mercante', doc2_valor:'1', status:'DIVERGENCIA' };
+  const containerBLxPL = { campo:'Container', doc1_label:'BL', doc1_valor:'ABCU1234567', doc2_label:'PL', doc2_valor:'ABCU7654321', status:'DIVERGENCIA' };
+  const lacreBLxPL = { campo:'Lacre', doc1_label:'BL', doc1_valor:'SL000001', doc2_label:'PL', doc2_valor:'SL000002', status:'DIVERGENCIA' };
+  const freteCE = { campo:'Frete/Taxas — BL x CE Mercante', doc1_label:'BL', doc1_valor:'USD 1.000,00', doc2_label:'CE Mercante', doc2_valor:'USD 1.200,00', status:'DIVERGENCIA', severidade:'BLOQUEANTE' };
+  const pagamentoCIxPI = { campo:'Forma de Pagamento', doc1_label:'CI', doc1_valor:'T/T 30%', doc2_label:'PI', doc2_valor:'T/T 20%', status:'DIVERGENCIA', observacao:'conferir também com o CE' };
+  [situacao, situacao2, cobertura].forEach(c => verdadeiro(!CC.ehPendenciaConferencia(c) && /Situação de pagamento/.test(CC.regraDispensada(c)), 'situação de pagamento do CE: ' + c.doc1_valor));
+  [lacreNaoInformado, lacreVazioNoCE, soLacreDifere, ceNaoExibe, ceNaoExplicitado, ceSoVolumes].forEach(c => verdadeiro(!CC.ehPendenciaConferencia(c) && /não traz lacre/.test(CC.regraDispensada(c)), 'container/lacre no CE: ' + c.campo + ' / ' + (c.doc2_valor || c.doc1_valor)));
+  [containerDiferente, qtdContainersCE, containerBLxPL, lacreBLxPL, freteCE, pagamentoCIxPI].forEach(c => verdadeiro(CC.ehPendenciaConferencia(c), 'continua pendência: ' + c.campo));
+  const a = { chaveVersao:2, grupos:[{ titulo:'CE Mercante', campos:[situacao, freteCE] }, { titulo:'Logística', campos:[lacreNaoInformado, containerDiferente] }] };
+  const cont = CC.contarConferencia(a);
+  iguais(cont.pendentes, 2, 'só o frete BL x CE e o container diferente contam');
+  iguais(cont.bloqueantes, 1);
+  verdadeiro(/SITUACAO DE PAGAMENTO do CE/.test(CC.REGRAS_CE_PROMPT) && /NAO traz lacre/.test(CC.REGRAS_CE_PROMPT), 'texto das regras para o prompt');
+});
+await testeAsync('Aba Conferência: aceite grava pelo gravarCamposDoProcesso (fila + versão do painel)', async () => {
+  const sb = criarSandbox();
+  vm.createContext(sb);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'conferencia-chave.js'), 'utf8'), sb, { filename: 'conferencia-chave.js' });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'controle-conferencia.js'), 'utf8'), sb, { filename: 'controle-conferencia.js' });
+  const chamadas = [];
+  sb.gravarCamposDoProcesso = (campos) => { chamadas.push(campos); return Promise.resolve({ ok:true, updated_at:'2026-10-21T18:00:00.000Z' }); };
+  sb.fetch = () => { throw new Error('não pode gravar direto (sem a versão do painel)'); };
+  const ok = await vm.runInContext("_confSalvarResolvedMap({ id:'cf-20' }, { divResolvedMap:{ k1:{ motivo:'ok' } } })", sb);
+  iguais(ok, true);
+  iguais(chamadas.length, 1); iguais(chamadas[0].id, 'cf-20');
+  verdadeiro(/divResolvedMap/.test(chamadas[0].conferencia_json));
+  verdadeiro(/SITUACAO DE PAGAMENTO/.test(vm.runInContext("ConferenciaChave.REGRAS_CE_PROMPT", sb)), 'regras do CE disponíveis para o prompt da aba');
 });
 teste('Aba Conferência: DI/DUIMP é um tipo de documento (nome do arquivo e labels)', () => {
   const sb = criarSandbox();

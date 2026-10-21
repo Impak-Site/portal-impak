@@ -1219,14 +1219,98 @@ window.addEventListener('popstate', function(){
   }
 });
 
-async function salvarProcesso(proc, patchFields){
+// ── Versão do painel e fila de gravação (21/10/2026, Emanuelly: "o sistema
+// direto fica com notificações que 'emanuelly' está alterando e salvando
+// informações no processo enquanto eu estou editando") ──────────────────
+// O painel guarda a versão (updated_at) do processo para o servidor detectar
+// edição simultânea. Ela ficava para trás em três casos, e o Salvar seguinte
+// acusava a PRÓPRIA pessoa:
+//  1) a aba Conferência grava o processo a cada análise/aceite (e Comissões
+//     também) sem avançar a versão do painel;
+//  2) um Salvar recusado (ex.: data impossível) deixava no painel uma
+//     "versão" inventada pelo navegador;
+//  3) duas gravações do mesmo navegador ao mesmo tempo (ex.: preenchimento
+//     automático depois do último aceite) partiam da mesma versão.
+// E o retrato de abertura (_editandoOriginal) não recebia o que ela mesma já
+// tinha gravado — numa edição simultânea de verdade, as alterações dela de
+// antes apareciam como "mudadas pela outra pessoa" (ex.: Parcelas).
+function _mesmaVersao(a, b){
+  if(!a || !b) return !a && !b;
+  const ta = new Date(a).getTime(), tb = new Date(b).getTime();
+  return (isNaN(ta) || isNaN(tb)) ? String(a) === String(b) : ta === tb;
+}
+// Gravação feita em cima da versão que o painel conhecia → o painel passa
+// para a versão nova e o retrato de abertura recebe os campos gravados.
+// Gravada em cima de outra versão (alguém salvou no meio): não mexe — o
+// próximo Salvar do painel detecta e junta.
+function _avancarVersaoPainel(id, base, nova, gravados){
+  if(!id || !nova || typeof _editando === 'undefined' || !_editando || _editando.id !== id) return false;
+  if(!_mesmaVersao(base, _editando.updated_at)) return false;
+  _editando.updated_at = nova;
+  if(typeof _editandoOriginal !== 'undefined' && _editandoOriginal && _editandoOriginal.id === id){
+    Object.keys(gravados || {}).forEach(k => {
+      if(k[0] === '_' || k === 'log') return;
+      const v = gravados[k];
+      _editandoOriginal[k] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+    });
+    _editandoOriginal.updated_at = nova;
+  }
+  return true;
+}
+// Uma gravação de cada vez neste navegador (Salvar, aceite da Conferência,
+// comissões...). A fila anda quando a gravação termina — ou em no máximo
+// 20 s, para uma rede travada não segurar as outras.
+let _filaGravacao = Promise.resolve();
+function _naFilaDeGravacao(fn){
+  const anterior = _filaGravacao;
+  let liberar;
+  _filaGravacao = new Promise(r => { liberar = r; });
+  return anterior.then(async () => {
+    const t = setTimeout(liberar, 20000);
+    if(t && t.unref) t.unref();
+    try { return await fn(); }
+    finally { clearTimeout(t); liberar(); }
+  });
+}
+// Grava só alguns campos do processo (ex.: a Conferência grava o
+// conferencia_json). Vai com a versão do painel quando é o processo aberto;
+// se outra pessoa gravou no meio, grava assim mesmo (só estes campos) e o
+// painel fica na versão antiga — o Salvar do painel junta com o que a outra
+// pessoa gravou. Devolve a resposta do servidor ({ ok, updated_at, erro }).
+function gravarCamposDoProcesso(campos){
+  return _naFilaDeGravacao(async () => {
+    const id = campos && campos.id;
+    const noPainel = !!(id && typeof _editando !== 'undefined' && _editando && _editando.id === id);
+    const base = (noPainel && _editando.updated_at) ? String(_editando.updated_at) : null;
+    const enviar = async comBase => {
+      const r = await fetch('/api/controle/v2/processo', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ processo: comBase ? Object.assign({}, campos, { _base_updated_at: base }) : campos }) });
+      let d = {};
+      try{ d = (await r.json()) || {}; }catch(e){ d = { ok:false, erro:'resposta inválida do servidor' }; }
+      return { r, d };
+    };
+    let { r, d } = await enviar(!!base);
+    if(r && r.status === 409 && d && d.conflito) ({ r, d } = await enviar(false));
+    else if(d && d.ok && base) _avancarVersaoPainel(id, base, d.updated_at, campos);
+    return d;
+  });
+}
+
+function salvarProcesso(proc, patchFields){
+  // A regravação da edição simultânea roda dentro da gravação que a chamou.
+  if(proc && proc._mesclando) return _salvarProcessoAgora(proc, patchFields);
+  return _naFilaDeGravacao(() => _salvarProcessoAgora(proc, patchFields));
+}
+async function _salvarProcessoAgora(proc, patchFields){
   const isNovo = !proc.id;
-  // Versão do processo de quando ele foi carregado (antes de sobrescrever
-  // updated_at abaixo) — vai pro servidor detectar edição simultânea.
+  // Versão do processo de quando ele foi carregado — vai pro servidor
+  // detectar edição simultânea. updated_at NÃO é trocado aqui pela hora do
+  // navegador (21/10/2026): se o servidor recusasse o save, o painel ficava
+  // com essa hora como "versão" e o Salvar seguinte acusava edição
+  // simultânea da própria pessoa. A versão nova vem do servidor.
   const versaoBase = (!isNovo && proc.updated_at) ? String(proc.updated_at) : null;
   if(isNovo) proc.id = gerarUUID();
   proc.updated_by = _user.usuario;
-  proc.updated_at = new Date().toISOString();
   if(isNovo){ proc.created_by = _user.usuario; proc.created_at = new Date().toISOString(); }
 
   // Registrar câmbio USD no momento do pedido se não preenchido — só com a
@@ -1360,10 +1444,12 @@ async function salvarProcesso(proc, patchFields){
     return await _juntarEdicaoSimultanea(proc, patchFields, d);
   }
   if(d.ok){
-    // Versão nova gravada pelo servidor: o próximo save parte dela.
+    // Versão nova gravada pelo servidor: o próximo save parte dela. Se foi o
+    // painel que salvou (proc é o próprio _editando), o retrato de abertura
+    // passa a ter o que acabou de ser gravado (ver _avancarVersaoPainel).
     if(d.updated_at){
+      if(typeof _editando !== 'undefined' && _editando === proc) _avancarVersaoPainel(proc.id, versaoBase, d.updated_at, payload);
       proc.updated_at = d.updated_at;
-      if(typeof _editandoOriginal !== 'undefined' && _editandoOriginal && _editandoOriginal.id === proc.id) _editandoOriginal.updated_at = d.updated_at;
     }
     showToast('✓ Salvo','ok');
     // Criar notificação se houver alerta
@@ -1410,13 +1496,19 @@ async function _juntarEdicaoSimultanea(proc, patchFields, d){
   const doPainel = typeof _editandoOriginal !== 'undefined' && _editandoOriginal && _editandoOriginal.id === proc.id;
   const original = doPainel ? _editandoOriginal : null;
   const campos = (patchFields || Object.keys(proc)).filter(k => !CP.DERIVADOS.includes(k) && k[0] !== '_');
-  const quem = d.alterado_por || 'Outra pessoa';
-  let manterDeles = [];
+  // mesmo_usuario (21/10/2026): o servidor não achou outra pessoa no meio —
+  // foi a própria pessoa em outra aba/tela (ou uma rotina do sistema). Não
+  // aparece mais "Emanuelly salvou..." para a própria Emanuelly.
+  const mesmo = !!d.mesmo_usuario;
+  const quem = mesmo ? 'Você (em outra aba ou tela)' : (d.alterado_por || 'Outra pessoa');
+  let manterDeles = [], conflitos = [];
   if(original){
-    const conflitos = CP.camposEmConflito(original, atual, proc, campos);
+    conflitos = CP.camposEmConflito(original, atual, proc, campos);
     if(conflitos.length){
-      const linhas = conflitos.slice(0, 8).map(c => `• ${_rotuloCampoProcesso(c.campo)}: ${quem} gravou ${_resumoValorConflito(c.deles)} — você: ${_resumoValorConflito(c.meu)}`).join('\n');
-      const manterMeus = confirm(`${quem} salvou este processo enquanto você editava e mudou os mesmos campos:\n\n${linhas}\n\nOK = gravar os SEUS valores nesses campos\nCancelar = ficar com os valores de ${quem} nesses campos\n\nO resto das suas alterações é salvo nos dois casos.`);
+      const linhas = conflitos.slice(0, 8).map(c => `• ${_rotuloCampoProcesso(c.campo)}: ${mesmo ? 'já gravado' : quem + ' gravou'} ${_resumoValorConflito(c.deles)} — ${mesmo ? 'nesta tela' : 'você'}: ${_resumoValorConflito(c.meu)}`).join('\n');
+      const manterMeus = confirm(mesmo
+        ? `Este processo também foi salvo em outra aba ou tela enquanto você editava aqui, com valores diferentes nos mesmos campos:\n\n${linhas}\n\nOK = gravar os valores DESTA tela nesses campos\nCancelar = ficar com os valores já gravados nesses campos\n\nO resto das suas alterações é salvo nos dois casos.`
+        : `${quem} salvou este processo enquanto você editava e mudou os mesmos campos:\n\n${linhas}\n\nOK = gravar os SEUS valores nesses campos\nCancelar = ficar com os valores de ${quem} nesses campos\n\nO resto das suas alterações é salvo nos dois casos.`);
       if(!manterMeus) manterDeles = conflitos.map(c => c.campo);
     }
   }
@@ -1428,7 +1520,14 @@ async function _juntarEdicaoSimultanea(proc, patchFields, d){
   delete mesclado._mesclando;
   if(ok){
     const outros = original ? CP.alteradosPorOutros(original, atual).filter(k => !camposFinais.includes(k)) : [];
-    showToast(`${quem} tinha salvo este processo enquanto você editava — as alterações foram juntadas` + (outros.length ? ` (de ${quem}: ${outros.slice(0,5).map(_rotuloCampoProcesso).join(', ')}${outros.length > 5 ? '…' : ''})` : '') + '.', 'warn');
+    // Só avisa se entrou de fato alguma alteração de fora (ou houve escolha).
+    // Nada que importe mudou (só a Conferência, a versão, o vínculo da
+    // fatura...): o "✓ Salvo" basta.
+    const avisar = original ? (outros.length > 0 || conflitos.length > 0) : !mesmo;
+    if(avisar){
+      const lista = outros.length ? ` (${mesmo ? '' : 'de ' + quem + ': '}${outros.slice(0,5).map(_rotuloCampoProcesso).join(', ')}${outros.length > 5 ? '…' : ''})` : '';
+      showToast((mesmo ? 'Este processo tinha sido salvo em outra aba ou tela enquanto você editava — as alterações foram juntadas' : `${quem} tinha salvo este processo enquanto você editava — as alterações foram juntadas`) + lista + '.', 'warn');
+    }
     if(doPainel){
       mesclado._mesclado = true;
       _editando = mesclado;
@@ -4902,12 +5001,18 @@ function _rerenderComissoesCard(){
 }
 async function _salvarComissoes(cfg){
   if(typeof _editando === 'undefined' || !_editando || !_editando.id) return false;
+  return _naFilaDeGravacao(() => _salvarComissoesAgora(cfg));
+}
+async function _salvarComissoesAgora(cfg){
+  if(typeof _editando === 'undefined' || !_editando || !_editando.id) return false;
   try{
     const r = await fetch('/api/controle/v2/processo/' + encodeURIComponent(_editando.id) + '/comissoes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ comissoes_json: cfg }) });
     const d = await r.json().catch(()=>({}));
     if(!r.ok || !d.ok){ showToast((d && d.erro) || 'Erro ao salvar comissões', 'err'); return false; }
     _editando.comissoes_json = d.comissoes_json || cfg;
     if(typeof _editandoOriginal !== 'undefined' && _editandoOriginal) _editandoOriginal.comissoes_json = _editando.comissoes_json;
+    // A rota grava updated_at: o painel acompanha (21/10/2026 — ver _avancarVersaoPainel).
+    if(d.updated_at) _avancarVersaoPainel(_editando.id, d.versao_anterior, d.updated_at, { comissoes_json: _editando.comissoes_json });
     const px = (typeof _processos !== 'undefined') ? _processos.find(x => x.id === _editando.id) : null;
     if(px) px.comissoes_json = _editando.comissoes_json;
     _rerenderComissoesCard();

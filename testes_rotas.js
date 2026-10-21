@@ -190,6 +190,27 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
   });
   I.definirCacheUsuarios([], false);
 
+  console.log('\n── Edição simultânea: quem salvou no meio (21/10/2026) ──');
+  await teste('só a própria pessoa no histórico e no último save → mesmo_usuario (não acusa a si mesma)', async () => {
+    const r = I.quemSalvouNoMeio([{ usuario: 'Fulana' }, { usuario: 'fulana' }], 'fulana', 'fulana');
+    iguais(r.mesmoUsuario, true); iguais(r.login, null);
+  });
+  await teste('outra pessoa no histórico → é ela, mesmo que o último save tenha sido da própria pessoa', async () => {
+    const r = I.quemSalvouNoMeio([{ usuario: 'fulana' }, { usuario: 'beltrano' }], 'fulana', 'fulana');
+    iguais(r.mesmoUsuario, false); iguais(r.login, 'beltrano');
+  });
+  await teste('sem histórico: último save de outra pessoa → é ela', async () => {
+    const r = I.quemSalvouNoMeio([], 'ciclano', 'fulana');
+    iguais(r.mesmoUsuario, false); iguais(r.login, 'ciclano');
+  });
+  await teste('conferência da tela antiga recebe as regras novas do CE (situação de pagamento e lacre)', async () => {
+    const content = [{ type: 'text', text: 'Especialista em conferencia documental ... NCM(verificar se tem 8 digitos) ...' }];
+    iguais(I.atualizarRegrasConferenciaAntiga(content), true);
+    verdadeiroRota(/SITUACAO DE PAGAMENTO do CE/.test(content[0].text) && /NAO traz lacre/.test(content[0].text) && /4 digitos/.test(content[0].text), content[0].text.slice(-300));
+    const outro = [{ type: 'text', text: 'prompt da aba Conferência do Controle' }];
+    iguais(I.atualizarRegrasConferenciaAntiga(outro), false, 'o prompt do Controle já leva as regras — não duplica');
+  });
+
   console.log('\n── Mensagens de erro úteis (lib/erros-amigaveis.js) ──');
   const { traduzirErro } = require('./lib/erros-amigaveis');
   await teste('erro técnico do banco vira motivo + próximo passo', async () => {

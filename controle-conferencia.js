@@ -297,6 +297,9 @@ async function rodarConferencia(){
       // porto) — texto em conferencia-chave.js (o mesmo vai pro processos.html pelo servidor).
       + ConferenciaChave.REGRAS_NCM_PORTO_PROMPT
       + 'CE: cruzar navio/embarque pelo campo Transbordo/Baldeacao(se vazio usar manifesto). Numero CE nao cruzar. IMPORTANTE: campo "Condicao de pagamento" ou "Situacao pagamento" do CE Mercante com valor "Suspenso" ou "Suspensao" ou "Sem cobertura cambial" eh NORMAL para importacoes brasileiras - NAO gerar alerta ou divergencia para esse campo. '
+      // Situação de pagamento do CE e lacre no CE (21/10/2026, Emanuelly) —
+      // texto em conferencia-chave.js (o mesmo vai pro processos.html pelo servidor).
+      + ConferenciaChave.REGRAS_CE_PROMPT
       + 'REGRA FRETE E TAXAS NO CE MERCANTE: Comparar o valor do frete internacional (Ocean Freight/Freight) e as taxas/despesas (Local Charges, THC, etc) informados no BL ou HBL Draft com os valores registrados no CE Mercante (campos de Frete e Taxas/Despesas). Se os valores do frete ou das taxas forem diferentes entre o BL/HBL e o CE Mercante = DIVERGENCIA BLOQUEANTE com campo="Frete/Taxas — BL x CE Mercante" doc1_label=BL doc2_label=CE Mercante, indicando os dois valores encontrados. Se o CE Mercante nao informar frete ou taxas = ALERTA com campo="Frete/Taxas ausentes no CE Mercante". '
       + 'PASSO 2 - CRUZAMENTO: Comparar todos campos entre todos docs (o porto de destino so entre os documentos finais BL original, CE Mercante e DI/DUIMP — ver REGRA PORTO DE DESTINO). Campo presente num doc e ausente em outro=DIVERGENCIA. Dados bancarios identicos em todos. Para cruzamentos envolvendo CI e PI simultaneamente, usar CI como referencia. '
       + 'REGRA COMPRADOR FINAL (BUYER)/ENCOMENDANTE: Buyer diferente do importador e normal (triangulacao comercial). IMPORTANTE: antes de concluir que a CI nao identifica o comprador final, releia TODO o texto da CI (inclusive rodape, observacoes, area proxima a assinatura/carimbo e blocos separados do cabecalho principal), procurando rotulos alternativos como BUYER, BUYER NAME AND ADDRESS, FINAL BUYER, ENCOMENDANTE, SOLD TO — o campo pode estar formatado como bloco proprio, nao necessariamente ao lado de exportador/importador. So gerar DIVERGENCIA BLOQUEANTE com campo="Buyer/Encomendante ausente na CI" doc1_label=CI valor="Nao identifica o comprador final" doc2_label=PL(ou PI) valor=<nome do buyer encontrado> se, apos essa releitura completa do texto, o nome+endereco do buyer realmente nao aparecer em nenhum lugar da CI. '
@@ -440,12 +443,8 @@ async function rodarConferencia(){
     };
 
     p.conferencia_json = JSON.stringify(novaAnalise);
-    const r = await fetch('/api/controle/v2/processo', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ processo: { id:p.id, conferencia_json: p.conferencia_json } })
-    });
-    const d = await r.json();
-    if(!d.ok) throw new Error(d.erro || 'Erro ao salvar a conferência');
+    const d = await _confGravar(p);
+    if(!d || !d.ok) throw new Error((d && d.erro) || 'Erro ao salvar a conferência');
 
     showToast('✓ Conferência concluída', 'ok');
     document.getElementById('conf-resultado').innerHTML = _confRenderResultado(p, novaAnalise);
@@ -615,15 +614,25 @@ function _confRenderHistoricoAnteriores(analise){
     </details>`;
 }
 
-async function _confSalvarResolvedMap(p, analise){
-  p.conferencia_json = JSON.stringify(analise);
+// Grava o conferencia_json do processo. Pela fila de gravação do painel
+// (gravarCamposDoProcesso, controle-core.js — 21/10/2026): a versão do painel
+// avança junto, e o Salvar seguinte não acusa mais "Fulano salvou este
+// processo enquanto você editava" para a própria pessoa que aceitou a
+// divergência.
+async function _confGravar(p){
+  const campos = { id:p.id, conferencia_json: p.conferencia_json };
+  if(typeof gravarCamposDoProcesso === 'function') return gravarCamposDoProcesso(campos);
   const r = await fetch('/api/controle/v2/processo', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ processo: { id:p.id, conferencia_json: p.conferencia_json } })
+    body: JSON.stringify({ processo: campos })
   });
-  const d = await r.json();
-  if(!d.ok) showToast('Erro ao salvar: '+(d.erro||'?'), 'err');
-  return d.ok;
+  return r.json();
+}
+async function _confSalvarResolvedMap(p, analise){
+  p.conferencia_json = JSON.stringify(analise);
+  const d = await _confGravar(p);
+  if(!d || !d.ok) showToast('Erro ao salvar: '+((d && d.erro)||'?'), 'err');
+  return !!(d && d.ok);
 }
 
 // Reconstrói a lista de divergências (mesma lógica de filtro de _confRenderResultado)
