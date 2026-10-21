@@ -89,19 +89,37 @@ async function abrirPedidoTransportadora(){
     corpo.innerHTML = `<span style="color:var(--err);">Erro: ${esc(e.message)}</span>`;
   }
 }
-async function enviarPedidoTransportadoraTeste(){
+// clientes: só esses (ex.: reenviar os que falharam). O resultado fica num
+// quadro na própria prévia (o toast some), com ✓/✗ por cliente.
+async function enviarPedidoTransportadoraTeste(clientes){
   const btn = document.getElementById('btn-pedido-transp-enviar');
-  if(btn){ btn.disabled = true; btn.textContent = 'Enviando…'; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Enviando… (um a cada segundo)'; }
   try{
-    const r = await fetch('/api/carregamento/pedir-transportadora/enviar-teste', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const r = await fetch('/api/carregamento/pedir-transportadora/enviar-teste', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(clientes && clientes.length ? { clientes } : {}) });
     const d = await r.json().catch(() => ({}));
     if(!r.ok && !d.enviados) throw new Error(d.erro || ('Falha (' + r.status + ')'));
-    showToast(`✓ ${d.enviados} e-mail(s) de teste enviados para ${d.para.join(' e ')}` + (d.falhas && d.falhas.length ? ` · ${d.falhas.length} falha(s)` : ''), d.falhas && d.falhas.length ? 'warn' : 'ok', 8000);
-    if(btn) btn.textContent = 'Teste enviado';
+    const falhas = d.falhas || [];
+    showToast(`✓ ${d.enviados} de ${d.total} e-mail(s) de teste enviados para ${d.para.join(' e ')}` + (falhas.length ? ` · ${falhas.length} falha(s)` : ''), falhas.length ? 'warn' : 'ok', 8000);
+    mostrarResultadoPedidoTransportadora(d);
+    if(btn) btn.textContent = falhas.length ? 'Enviado com falhas' : 'Teste enviado';
   }catch(e){
     showToast('Erro: ' + e.message, 'err');
     if(btn){ btn.disabled = false; btn.textContent = 'Enviar o teste para a equipe'; }
   }
+}
+function mostrarResultadoPedidoTransportadora(d){
+  const corpo = document.getElementById('pedido-transp-corpo');
+  if(!corpo) return;
+  let box = document.getElementById('pedido-transp-resultado');
+  if(!box){ box = document.createElement('div'); box.id = 'pedido-transp-resultado'; corpo.insertBefore(box, corpo.firstChild); }
+  const falhas = (d.falhas || []).map(f => f.cliente);
+  const ok = !falhas.length;
+  box.style.cssText = `border-radius:8px;padding:10px 12px;margin-bottom:12px;border:1px solid ${ok ? '#bbf7d0' : '#fde68a'};background:${ok ? '#f0fdf4' : '#fffbeb'};color:${ok ? '#166534' : '#92400e'};`;
+  box.innerHTML = `<strong>${d.enviados} de ${d.total} e-mail(s) enviados</strong> para ${(d.para || []).map(esc).join(' e ')}.`
+    + `<ul style="margin:6px 0 0 18px;padding:0;">${(d.resultados || []).map(x => `<li>${x.ok ? '✓' : '✗'} ${esc(x.cliente)}${x.ok ? '' : ` — <span style="color:#b91c1c;">${esc(x.erro || 'falhou')}</span>`}</li>`).join('')}</ul>`
+    + (falhas.length ? `<div style="margin-top:8px;"><button class="btn btn-sm btn-outline" id="btn-pedido-transp-reenviar">Reenviar só os ${falhas.length} que falharam</button></div>` : '');
+  const re = document.getElementById('btn-pedido-transp-reenviar');
+  if(re) re.onclick = () => { re.disabled = true; enviarPedidoTransportadoraTeste(falhas); };
 }
 
 function renderDashCarregamento(){
