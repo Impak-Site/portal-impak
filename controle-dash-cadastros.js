@@ -290,6 +290,10 @@ async function _cadRenderPessoas(tipo){
   cont.innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
       <input class="search-box" id="cad-pessoas-search" placeholder="🔍 Buscar por nome, cargo, e-mail..." oninput="_cadRenderTabelaPessoas()" style="flex:1;min-width:200px;">
+      <select class="form-input" id="cad-pessoas-assunto" onchange="_cadRenderTabelaPessoas()" aria-label="Filtrar por e-mail que recebe" style="width:auto;min-width:170px;max-width:100%;padding:7px 10px;font-size:12px;">
+        <option value="">📧 Todos os e-mails</option>
+        ${_cadAssuntosEmail().map(a=>`<option value="${a.codigo}">Recebe: ${esc(a.nome)}</option>`).join('')}
+      </select>
       <button class="btn btn-primary" onclick="abrirNovaPessoa('${tipo}')">+ ${ehFuncionario ? 'Novo Funcionário' : 'Nova Pessoa'}</button>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
@@ -331,6 +335,54 @@ function _cadRenderBadgesPapeis(papeis){
   return papeis.map(p=>`<span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--ac-soft);color:var(--ac);margin-right:4px;">${esc(PAPEIS_PESSOA[p]||p)}</span>`).join('');
 }
 
+// E-mails que a pessoa recebe (pedido Ayslan 21/10/2026: "no cadastro,
+// precisamos ter um flag para receber" câmbio, transporte, follow-up,
+// financeiro, abertura com o despachante e instrução de embarque) — por
+// assunto, como destinatário (Para) ou em cópia. Lista e regra de montagem
+// em destinatarios-core.js; fica em cadastros_pessoas.assuntos_email.
+function _cadAssuntosEmail(){
+  return (window.DestinatariosCore && window.DestinatariosCore.ASSUNTOS_EMAIL) || [];
+}
+function _cadRenderBadgesAssuntos(assuntos){
+  if(!window.DestinatariosCore) return '';
+  return DestinatariosCore.resumoAssuntos(assuntos).map(a=>{
+    const cc = a.modo === 'cc';
+    const estilo = cc
+      ? 'background:var(--bg);color:var(--muted);border:1px solid var(--border);'
+      : 'background:var(--info-bg);color:var(--info);border:1px solid transparent;';
+    return `<span title="${esc(a.nome)} — ${cc?'recebe em cópia':'destinatário (Para)'}" style="display:inline-block;font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;margin:3px 4px 0 0;${estilo}">📧 ${esc(a.curto)}${cc?' (cópia)':''}</span>`;
+  }).join('');
+}
+
+// Seção "📧 E-mails que recebe" do modal de Pessoa: uma linha por assunto.
+// Funcionário da IMPAK só escolhe se recebe (sempre em cópia).
+function _cpRenderAssuntos(valores){
+  const wrap = document.getElementById('cp_assuntos');
+  if(!wrap) return;
+  const ehFuncionario = document.getElementById('cp_tipo').value === 'FUNCIONARIO';
+  const atuais = valores || _cpColetarAssuntos();
+  const opcoes = ehFuncionario
+    ? [['','— não recebe'],['cc','Recebe (em cópia)']]
+    : [['','— não recebe'],['para','Para (destinatário)'],['cc','Cópia (CC)']];
+  wrap.innerHTML = _cadAssuntosEmail().map(a=>{
+    let v = atuais[a.codigo] || '';
+    if(ehFuncionario && v) v = 'cc';
+    return `<label title="${esc(a.dica)}" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,170px);gap:8px;align-items:center;font-size:12px;color:var(--text);cursor:pointer;">
+      <span>${esc(a.nome)}</span>
+      <select class="form-input cp-assunto" data-assunto="${a.codigo}" aria-label="${esc(a.nome)}" style="padding:5px 8px;font-size:12px;">${opcoes.map(([val,txt])=>`<option value="${val}"${val===v?' selected':''}>${txt}</option>`).join('')}</select>
+    </label>`;
+  }).join('') || '<div style="font-size:12px;color:var(--dim);">Lista de e-mails indisponível — recarregue a página.</div>';
+  const nota = document.getElementById('cp_assuntos_nota');
+  if(nota) nota.textContent = ehFuncionario
+    ? 'Funcionário da IMPAK entra sempre em cópia nos e-mails do assunto marcado.'
+    : 'Para = destinatário do e-mail; Cópia = recebe em CC. Vale para os e-mails que o sistema monta para a empresa desta pessoa (cliente, fornecedor, despachante, transportadora, agente de cargas).';
+}
+function _cpColetarAssuntos(){
+  const out = {};
+  document.querySelectorAll('.cp-assunto').forEach(sel=>{ if(sel.value) out[sel.dataset.assunto] = sel.value; });
+  return out;
+}
+
 function _cadRenderTabelaPessoas(){
   const tbody = document.getElementById('cad-pessoas-tbody');
   if(!tbody) return;
@@ -340,8 +392,10 @@ function _cadRenderTabelaPessoas(){
   if(q) lista = lista.filter(p=>
     (p.nome||'').toLowerCase().includes(q) || (p.cargo||'').toLowerCase().includes(q) || (p.email||'').toLowerCase().includes(q)
   );
+  const assunto = document.getElementById('cad-pessoas-assunto')?.value || '';
+  if(assunto && window.DestinatariosCore) lista = lista.filter(p=>DestinatariosCore.limparAssuntos(p.assuntos_email)[assunto]);
   if(!lista.length){
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--dim);font-size:13px;">Nenhum cadastro ainda.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--dim);font-size:13px;">${(q||assunto)?'Ninguém encontrado com esse filtro.':'Nenhum cadastro ainda.'}</td></tr>`;
     return;
   }
   tbody.innerHTML = lista.map(p=>{
@@ -350,8 +404,9 @@ function _cadRenderTabelaPessoas(){
       : (p._empresaNome ? esc(p._empresaNome) : '—');
     const principalBadge = p.principal ? ' <span style="color:var(--ok);font-size:10px;font-weight:700;">★ principal</span>' : '';
     const papeisBadges = _cadRenderBadgesPapeis(p.papeis);
+    const assuntosBadges = _cadRenderBadgesAssuntos(p.assuntos_email);
     return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:9px 16px;font-weight:600;">${esc(p.nome)}${principalBadge}${papeisBadges?'<div style="margin-top:4px;">'+papeisBadges+'</div>':''}</td>
+      <td style="padding:9px 16px;font-weight:600;">${esc(p.nome)}${principalBadge}${papeisBadges?'<div style="margin-top:4px;">'+papeisBadges+'</div>':''}${assuntosBadges?'<div style="margin-top:2px;">'+assuntosBadges+'</div>':''}</td>
       <td style="padding:9px 16px;">${esc(p.cargo||'—')}</td>
       <td style="padding:9px 16px;">${terceiraColuna}</td>
       <td style="padding:9px 16px;font-size:11px;color:var(--muted);">${esc(p.telefone||p.email||'—')}</td>
@@ -392,6 +447,7 @@ function _cpAtualizarCamposTipo(){
   document.getElementById('cp_empresa_wrap').style.display = tipo === 'FUNCIONARIO' ? 'none' : '';
   document.getElementById('cp_usuario_wrap').style.display = tipo === 'FUNCIONARIO' ? '' : 'none';
   if(tipo === 'FUNCIONARIO') _cpCarregarUsuariosLogin();
+  _cpRenderAssuntos(); // mantém o que já estava marcado; muda só as opções
 }
 
 async function _cpCarregarUsuariosLogin(){
@@ -452,6 +508,7 @@ function abrirNovaPessoa(tipoDefault){
   document.getElementById('cp_principal').checked = false;
   document.querySelectorAll('.cp-papel').forEach(cb=>{ cb.checked = false; });
   document.getElementById('cp_tipo').value = tipoDefault || 'CONTATO';
+  _cpRenderAssuntos({});
   _cpAtualizarCamposTipo();
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
   _cpPessoaDirty = false;
@@ -481,6 +538,7 @@ async function editarPessoa(id){
   document.getElementById('cp_principal').checked = !!p.principal;
   const papeisAtuais = p.papeis || [];
   document.querySelectorAll('.cp-papel').forEach(cb=>{ cb.checked = papeisAtuais.includes(cb.value); });
+  _cpRenderAssuntos(p.assuntos_email || {});
   _cpAtualizarCamposTipo();
   if(p.usuario_vinculado){
     await _cpCarregarUsuariosLogin();
@@ -514,6 +572,9 @@ async function salvarPessoa(){
     papeis: [...document.querySelectorAll('.cp-papel:checked')].map(cb=>cb.value),
     obs: document.getElementById('cp_obs').value.trim(),
   };
+  // Só manda os e-mails quando a seção carregou (sem destinatarios-core.js a
+  // lista viria vazia e apagaria o que a pessoa já recebe).
+  if(window.DestinatariosCore && document.querySelector('.cp-assunto')) payload.assuntos_email = _cpColetarAssuntos();
   try{
     const r = await fetch('/api/cadastros/pessoas', {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)

@@ -4817,6 +4817,8 @@ const { validarDocumento } = require('./lib/validacao-documento.js');
 // e consulta da Receita (BrasilAPI) — mesmos arquivos que a tela carrega.
 const DocumentoBR = require('./documento-br.js');
 const ReceitaCNPJ = require('./receita-cnpj.js');
+// Quem recebe cada e-mail do sistema (flags por pessoa — migration 0056).
+const DestinatariosCore = require('./destinatarios-core.js');
 const conexos = require('./services/conexos.js');
 
 // ── CONTATOS (Clientes, Fornecedores, Despachantes, Agentes) ──
@@ -5591,6 +5593,9 @@ app.post('/api/cadastros/pessoas', auth('controle','financeiro','cadastros'), as
     // Um funcionário vinculado a um usuário de login não deve também estar
     // preso a uma empresa (são papéis diferentes) — evita cadastro ambíguo.
     if (p.usuario_vinculado) p.empresa_id = null;
+    // E-mails que a pessoa recebe: só assuntos e modos conhecidos (Para/Cópia).
+    // Sem o campo no corpo, o upsert não mexe no que já estava gravado.
+    if (Object.prototype.hasOwnProperty.call(p, 'assuntos_email')) p.assuntos_email = DestinatariosCore.limparAssuntos(p.assuntos_email);
     p.updated_at = new Date().toISOString();
     const { error } = await sb().from('cadastros_pessoas').upsert(p, { onConflict: 'id' });
     if (error) throw new Error(error.message);
@@ -5611,24 +5616,58 @@ app.delete('/api/cadastros/pessoas/:id', auth('controle','financeiro','cadastros
 // enriquecer o e-mail interno de follow-up (mostrar quem seria o
 // destinatário real quando o envio direto ao cliente for habilitado —
 // depende do domínio verificado no Resend, ver tarefa pendente #147).
+// Fase 2a (01/10/2026): o processo guarda o id do cadastro (cliente_id /
+// vendas[].cliente_id) — vale ele. Sem id (processo antigo ainda não
+// revinculado), cai na busca por nome, também pelo nome fantasia (o campo
+// Cliente costuma ter o nome curto). Ambíguo ou não achado → null.
+async function resolverEmpresaId(nomeEmpresa, empresaIdVinculado){
+  if (empresaIdVinculado) return String(empresaIdVinculado);
+  if (!nomeEmpresa) return null;
+  const nomeSeguro = String(nomeEmpresa).replace(/[,%*(){}]/g, '%').replace(/%{2,}/g, '%').replace(/^%+|%+$/g, '').trim();
+  if (!nomeSeguro) return null;
+  const { data: empresas } = await sb().from('contatos_clientes').select('id')
+    .or(`razao_social.ilike.${nomeSeguro},nome_fantasia.ilike.${nomeSeguro}`).eq('ativo', true).limit(2);
+  return (empresas && empresas.length === 1) ? empresas[0].id : null;
+}
+
 async function contatosPrincipaisDaEmpresa(nomeEmpresa, empresaIdVinculado){
   if (!nomeEmpresa && !empresaIdVinculado) return [];
   try {
-    // Fase 2a (01/10/2026): o processo guarda o id do cadastro (cliente_id /
-    // vendas[].cliente_id) — vale ele. Sem id (processo antigo ainda não
-    // revinculado), cai na busca por nome como antes, agora também pelo
-    // nome fantasia (o campo Cliente costuma ter o nome curto).
-    let empresaId = empresaIdVinculado || null;
-    if (!empresaId && nomeEmpresa) {
-      const nomeSeguro = String(nomeEmpresa).replace(/[,%*(){}]/g, '%').replace(/%{2,}/g, '%').replace(/^%+|%+$/g, '').trim();
-      const { data: empresas } = await sb().from('contatos_clientes').select('id')
-        .or(`razao_social.ilike.${nomeSeguro},nome_fantasia.ilike.${nomeSeguro}`).eq('ativo', true).limit(2);
-      if (empresas && empresas.length === 1) empresaId = empresas[0].id;
-    }
+    const empresaId = await resolverEmpresaId(nomeEmpresa, empresaIdVinculado);
     if (!empresaId) return [];
     const { data: pessoas } = await sb().from('cadastros_pessoas').select('nome,email').eq('empresa_id', empresaId).eq('principal', true).eq('ativo', true);
     return (pessoas || []).filter(p => p.email);
   } catch(e) { return []; }
+}
+
+// Quem recebe um e-mail de um assunto (flags "E-mails que recebe" de cada
+// pessoa — destinatarios-core.js, pedido Ayslan 21/10/2026). empresas = ids
+// das destinatárias (ex.: o cliente); opts.empresasCopia = terceiros do
+// processo (despachante, transportadora...) cujos marcados vão em cópia; a
+// equipe IMPAK marcada entra em cópia; opts.fallbackPrincipal usa o contato
+// principal da empresa sem ninguém marcado em Para.
+async function destinatariosDoAssunto(assunto, empresas, opts = {}){
+  const limpar = l => [...new Set((l || []).filter(Boolean).map(String))].filter(id => /^[0-9A-Za-z_-]{1,64}$/.test(id));
+  const ids = limpar(empresas), idsCopia = limpar(opts.empresasCopia);
+  const todos = [...new Set(ids.concat(idsCopia))];
+  let q = sb().from('cadastros_pessoas').select('id,nome,email,empresa_id,tipo,principal,ativo,assuntos_email').eq('ativo', true);
+  q = todos.length ? q.or(`empresa_id.in.(${todos.join(',')}),tipo.eq.FUNCIONARIO`) : q.eq('tipo', 'FUNCIONARIO');
+  const { data, error } = await q.limit(2000);
+  if (error) throw new Error(error.message);
+  return DestinatariosCore.destinatarios(assunto, data || [], ids, Object.assign({}, opts, { empresasCopia: idsCopia }));
+}
+
+// Quadro "para quem vai" dos rascunhos/testes (HTML): Para e Cópia pelos
+// flags; sem ninguém em Para, explica onde marcar.
+function htmlParaQuem(dest, nomeAssunto, prefixo){
+  const escH = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lista = l => l.map(x => escH(x.nome || x.email) + ' &lt;' + escH(x.email) + '&gt;' + (x.origem === 'principal' ? ' (contato principal)' : '')).join(', ');
+  const para = (dest && dest.para) || [], cc = (dest && dest.cc) || [];
+  let h = para.length
+    ? `${prefixo || 'Para'}: <strong>${lista(para)}</strong>`
+    : `<strong>Ninguém do cliente marcado para receber "${escH(nomeAssunto)}"</strong> — marque em Cadastros › Empresas › (cliente) › Pessoas › "E-mails que recebe".`;
+  if (cc.length) h += `<br>Cópia: ${lista(cc)}`;
+  return h;
 }
 
 // ── API: CATALOGO DE PRODUTOS (vinculo com Conexos) ────────────
@@ -6631,12 +6670,14 @@ async function montarEmailsFollowUpPorCliente(processos){
 
   const clientes = Object.keys(porCliente).sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const emails = await Promise.all(clientes.map(async cliente => {
-    // Contato(s) "principal" da empresa no Cadastro de Pessoas: aparece no
-    // quadro de rascunho pra Emanuelly saber pra quem encaminhar.
-    const principais = await contatosPrincipaisDaEmpresa(cliente, idPorCliente[cliente]);
-    const paraQuem = principais.length
-      ? `Encaminhar para (contato principal): <strong>${principais.map(p=>escHtml(p.nome)+' &lt;'+escHtml(p.email)+'&gt;').join(', ')}</strong>`
-      : `<strong>Nenhum contato principal cadastrado</strong> para este cliente em Cadastros.`;
+    // Para quem encaminhar (quadro do rascunho): quem marcou "Follow-up" em
+    // "E-mails que recebe" no cadastro do cliente (21/10/2026); sem ninguém
+    // marcado, o contato principal da empresa (regra antiga).
+    let paraQuem;
+    try {
+      const empId = await resolverEmpresaId(cliente, idPorCliente[cliente]);
+      paraQuem = htmlParaQuem(await destinatariosDoAssunto('FOLLOWUP', empId ? [empId] : [], { fallbackPrincipal: true }), 'Follow-up', 'Encaminhar para');
+    } catch(e) { paraQuem = '<strong>Não consegui ler os contatos do cliente</strong> (' + escHtml(e.message) + ').'; }
     const linhas = porCliente[cliente].map(p => `
       <tr>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-weight:600;">${escHtml(p.referencia)}</td>
@@ -7470,7 +7511,7 @@ async function montarPedidosTransportadora(opts) {
     const { data: bloco, error } = await sb().from('controle_processos')
       // Só colunas que existem em controle_processos (não há "qtd_containers":
       // a quantidade vem de containers_json ou de qtd_containers_prevista).
-      .select('id, referencia, cliente, cliente_id, vendas_json, finalidade, fase, cancelado, fechado, transportadora, transportadora_id, data_agendamento, agendamento_cancelado, data_carregamento, data_devolucao_vazio, data_chegada, data_presenca, eta, porto_destino, qtd_containers_prevista, container, containers_json, peso_bruto, produtos_json')
+      .select('id, referencia, cliente, cliente_id, vendas_json, finalidade, fase, cancelado, fechado, transportadora, transportadora_id, despachante_id, data_agendamento, agendamento_cancelado, data_carregamento, data_devolucao_vazio, data_chegada, data_presenca, eta, porto_destino, qtd_containers_prevista, container, containers_json, peso_bruto, produtos_json')
       .neq('fase', 'FINALIZADO')
       .order('id', { ascending: true })
       .range(offset, offset + 999);
@@ -7494,10 +7535,14 @@ async function montarPedidosTransportadora(opts) {
     let paraQuem;
     if (g.proprio) paraQuem = 'No futuro: lista interna da Logística (decisão da IMPAK).';
     else {
-      const contatos = await contatosPrincipaisDaEmpresa(g.cliente, g.clienteId);
-      paraQuem = contatos.length
-        ? `No futuro iria para: <strong>${contatos.map(c => escH(c.nome) + ' &lt;' + escH(c.email) + '&gt;').join(', ')}</strong> (contato principal do cliente em Cadastros).`
-        : '<strong>Nenhum contato do cliente cadastrado</strong> para receber — cadastre em Cadastros › Empresas › Pessoas.';
+      // Quem marcou "Transporte rodoviário" no cadastro do cliente (Para/Cópia),
+      // o despachante dos processos (marcados, em cópia) e a equipe marcada.
+      try {
+        const empId = await resolverEmpresaId(g.cliente, g.clienteId);
+        const despachantes = [...new Set(g.processos.map(p => p.despachante_id).filter(Boolean))];
+        const dest = await destinatariosDoAssunto('TRANSPORTE', empId ? [empId] : [], { fallbackPrincipal: true, empresasCopia: despachantes });
+        paraQuem = htmlParaQuem(dest, 'Transporte rodoviário', 'No futuro iria para');
+      } catch (e) { paraQuem = '<strong>Não consegui ler os contatos do cliente</strong> (' + escH(e.message) + ').'; }
     }
     if (opts.reenvio) paraQuem = '<strong>Reenvio:</strong> o envio anterior pode ter chegado incompleto (limite do provedor de e-mail) — considere este.<br>' + paraQuem;
     const o = { teste: true, reenvio: !!opts.reenvio, nomePorto: c => (c && String(c).trim()) ? formatarPortoDestinoEmail(c) : '', paraQuemHtml: paraQuem };

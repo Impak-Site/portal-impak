@@ -605,8 +605,9 @@ function _ceResetExtras(){
   const id = document.getElementById('ce_mesclar_id'); if(id) id.value = '';
   const btn = document.getElementById('ce_mesclar_btn'); if(btn) btn.disabled = true;
   const dd = document.getElementById('ce_mesclar_dropdown'); if(dd) dd.style.display = 'none';
+  const colar = document.getElementById('ce-colar-box'); if(colar){ colar.style.display = 'none'; colar.innerHTML = ''; }
 }
-const _ceRotuloCampo = { cliente:'cliente', fornecedor:'fornecedor', armador:'armador', agente:'agente', transportadora:'transportadora', despachante:'despachante', armazem:'armazém', depot:'depot', vendas:'vendas' };
+const _ceRotuloCampo ={ cliente:'cliente', fornecedor:'fornecedor', armador:'armador', agente:'agente', transportadora:'transportadora', despachante:'despachante', armazem:'armazém', depot:'depot', vendas:'vendas' };
 async function _ceCarregarUso(id){
   const el = document.getElementById('ce_uso'); if(!el) return;
   el.textContent = 'verificando uso…';
@@ -735,9 +736,10 @@ function _ceRenderPessoasLista(){
   tbody.innerHTML = _cePessoasLista.map(p=>{
     const principalBadge = p.principal ? ' <span style="color:var(--ok);font-size:10px;font-weight:700;">★ principal</span>' : '';
     const papeisBadges = (typeof _cadRenderBadgesPapeis === 'function') ? _cadRenderBadgesPapeis(p.papeis) : '';
+    const assuntosBadges = (typeof _cadRenderBadgesAssuntos === 'function') ? _cadRenderBadgesAssuntos(p.assuntos_email) : '';
     const contatoInfo = [p.telefone, p.email].filter(Boolean).map(esc).join(' · ') || '—';
     return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:7px 10px;font-weight:600;font-size:12px;">${esc(p.nome)}${principalBadge}${papeisBadges?'<div style="margin-top:4px;">'+papeisBadges+'</div>':''}</td>
+      <td style="padding:7px 10px;font-weight:600;font-size:12px;">${esc(p.nome)}${principalBadge}${papeisBadges?'<div style="margin-top:4px;">'+papeisBadges+'</div>':''}${assuntosBadges?'<div style="margin-top:2px;">'+assuntosBadges+'</div>':''}</td>
       <td style="padding:7px 10px;font-size:12px;">${esc(p.cargo||'—')}</td>
       <td style="padding:7px 10px;font-size:11px;color:var(--muted);">${contatoInfo}</td>
       <td style="padding:7px 10px;text-align:right;white-space:nowrap;">
@@ -777,6 +779,7 @@ function _ceEditarPessoa(id){
   document.getElementById('cp_principal').checked = !!p.principal;
   const papeisAtuais = p.papeis || [];
   document.querySelectorAll('.cp-papel').forEach(cb=>{ cb.checked = papeisAtuais.includes(cb.value); });
+  if(typeof _cpRenderAssuntos === 'function') _cpRenderAssuntos(p.assuntos_email || {});
   _cpAtualizarCamposTipo();
   document.getElementById('modal-pessoa-edit-bg').classList.add('open');
   _cpPessoaDirty = false;
@@ -791,6 +794,123 @@ async function _ceExcluirPessoa(id){
     if(d.ok){ showToast('Removido', 'ok'); await _ceCarregarPessoas(document.getElementById('ce_id').value); }
     else showToast('Erro ao excluir', 'err');
   }catch(e){ showToast('Erro ao excluir', 'err'); }
+}
+
+// ── COLAR E-MAILS (cadastro rápido das pessoas da empresa) ──────
+// Pedido Ayslan (21/10/2026): cada e-mail com o flag do que recebe. Para
+// não cadastrar um por um: cola a linha Para/Cc de um e-mail da empresa,
+// marca o que esses contatos recebem e salva. Quem já existe (mesmo e-mail)
+// só ganha os assuntos marcados; e-mail @impak.com.br não entra (funcionário
+// é cadastrado em Funcionários). Regra em DestinatariosCore.planoColarContatos.
+const _CE_DOMINIO_EQUIPE = 'impak.com.br';
+let _ceColarPlano = [];
+
+function _ceAbrirColarEmails(){
+  const box = document.getElementById('ce-colar-box');
+  if(!box) return;
+  if(box.style.display !== 'none'){ box.style.display = 'none'; return; }
+  if(!document.getElementById('ce_id').value){ showToast('Salve a empresa antes de adicionar pessoas', 'warn'); return; }
+  if(!window.DestinatariosCore){ showToast('Recarregue a página para usar o "Colar e-mails"', 'warn'); return; }
+  box.style.display = '';
+  box.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Cole a linha <b>Para</b>/<b>Cc</b> de um e-mail desta empresa (ex.: <i>Maria &lt;maria@empresa.com.br&gt;; compras@empresa.com.br</i>).</div>
+    <textarea class="form-input" id="ce-colar-texto" rows="3" oninput="_ceAtualizarColar()" placeholder="Nome &lt;email&gt;; outro@empresa.com.br" aria-label="E-mails colados"></textarea>
+    <div style="font-size:12px;font-weight:600;color:var(--text);margin:10px 0 6px;">Esses contatos recebem:</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 14px;">
+      ${DestinatariosCore.ASSUNTOS_EMAIL.map(a=>`<label title="${esc(a.dica)}" style="display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:6px;align-items:center;font-size:12px;color:var(--text);">
+        <span>${esc(a.nome)}</span>
+        <select class="form-input ce-colar-assunto" data-assunto="${a.codigo}" onchange="_ceAtualizarColar()" aria-label="${esc(a.nome)}" style="padding:4px 6px;font-size:12px;"><option value="">—</option><option value="para">Para</option><option value="cc">Cópia</option></select>
+      </label>`).join('')}
+    </div>
+    <div id="ce-colar-lista" style="margin-top:10px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn btn-sm btn-outline" onclick="_ceAbrirColarEmails()">Fechar</button>
+      <button class="btn btn-sm btn-primary" id="ce-colar-salvar" onclick="_ceSalvarColar()" disabled>Salvar</button>
+    </div>`;
+  _ceAtualizarColar();
+  document.getElementById('ce-colar-texto').focus();
+}
+
+function _ceColarAssuntosMarcados(){
+  const out = {};
+  document.querySelectorAll('.ce-colar-assunto').forEach(sel=>{ if(sel.value) out[sel.dataset.assunto] = sel.value; });
+  return out;
+}
+
+function _ceAtualizarColar(){
+  const lista = document.getElementById('ce-colar-lista');
+  const botao = document.getElementById('ce-colar-salvar');
+  if(!lista || !botao || !window.DestinatariosCore) return;
+  // Guarda o que o usuário já desmarcou/renomeou antes de recalcular.
+  const desmarcados = new Set(), nomes = {};
+  document.querySelectorAll('.ce-colar-item').forEach(cb=>{ if(!cb.checked) desmarcados.add(cb.dataset.email); });
+  document.querySelectorAll('.ce-colar-nome').forEach(inp=>{ nomes[inp.dataset.email] = inp.value; });
+  _ceColarPlano = DestinatariosCore.planoColarContatos(
+    document.getElementById('ce-colar-texto')?.value || '', _cePessoasLista, _ceColarAssuntosMarcados(), { dominioEquipe: _CE_DOMINIO_EQUIPE });
+  if(!_ceColarPlano.length){
+    lista.innerHTML = '<div style="font-size:12px;color:var(--dim);">Nenhum e-mail reconhecido ainda.</div>';
+    botao.disabled = true; botao.textContent = 'Salvar';
+    return;
+  }
+  const rotulo = { novo:'novo', atualizar:'já cadastrado — soma os e-mails marcados', igual:'já cadastrado — já recebe isso', equipe:'e-mail da IMPAK — cadastre em Funcionários' };
+  lista.innerHTML = _ceColarPlano.map(c=>{
+    const ativo = c.acao === 'novo' || c.acao === 'atualizar';
+    const marcado = ativo && !desmarcados.has(c.email);
+    const nome = c.acao === 'novo' && nomes[c.email] != null ? nomes[c.email] : c.nome;
+    const campoNome = c.acao === 'novo'
+      ? `<input class="form-input ce-colar-nome" data-email="${esc(c.email)}" value="${esc(nome)}" aria-label="Nome de ${esc(c.email)}" style="padding:4px 8px;font-size:12px;min-width:0;">`
+      : `<span style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;">${esc(nome)}</span>`;
+    return `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1.2fr);gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">
+      <input type="checkbox" class="ce-colar-item" data-email="${esc(c.email)}" ${marcado?'checked':''} ${ativo?'':'disabled'} onchange="_ceAtualizarBotaoColar()" aria-label="Incluir ${esc(c.email)}">
+      ${campoNome}
+      <span style="font-size:11px;color:var(--muted);overflow-wrap:anywhere;">${esc(c.email)} · <i>${rotulo[c.acao]||c.acao}</i></span>
+    </div>`;
+  }).join('');
+  _ceAtualizarBotaoColar();
+}
+
+function _ceAtualizarBotaoColar(){
+  const botao = document.getElementById('ce-colar-salvar');
+  if(!botao) return;
+  const n = document.querySelectorAll('.ce-colar-item:checked').length;
+  const algumAssunto = Object.keys(_ceColarAssuntosMarcados()).length > 0;
+  botao.disabled = n === 0;
+  botao.textContent = n ? `Salvar ${n} contato${n>1?'s':''}` : 'Salvar';
+  botao.title = algumAssunto ? '' : 'Nenhum e-mail marcado: os contatos serão cadastrados sem receber nada (dá para marcar depois).';
+}
+
+async function _ceSalvarColar(){
+  const empresaId = document.getElementById('ce_id').value;
+  const botao = document.getElementById('ce-colar-salvar');
+  if(!empresaId || !botao || botao.disabled) return;
+  const escolhidos = new Set([...document.querySelectorAll('.ce-colar-item:checked')].map(cb=>cb.dataset.email));
+  const nomes = {};
+  document.querySelectorAll('.ce-colar-nome').forEach(inp=>{ nomes[inp.dataset.email] = inp.value.trim(); });
+  const itens = _ceColarPlano.filter(c=>escolhidos.has(c.email) && (c.acao === 'novo' || c.acao === 'atualizar'));
+  botao.disabled = true; botao.textContent = 'Salvando...';
+  let ok = 0; const falhas = [];
+  for(const c of itens){
+    // "atualizar" manda só id + nome/tipo (obrigatórios) + e-mails: o resto
+    // do cadastro da pessoa não é tocado.
+    const existente = c.acao === 'atualizar' ? _cePessoasLista.find(p=>p.id === c.id) : null;
+    const payload = existente
+      ? { id: existente.id, tipo: existente.tipo || 'CONTATO', nome: existente.nome, empresa_id: existente.empresa_id || empresaId, assuntos_email: c.assuntos_email }
+      : { tipo: 'CONTATO', nome: nomes[c.email] || c.nome, email: c.email, empresa_id: empresaId, assuntos_email: c.assuntos_email };
+    try{
+      const r = await fetch('/api/cadastros/pessoas', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const d = await r.json().catch(()=>({}));
+      if(r.ok && d.ok) ok++; else falhas.push(c.email + (d.erro ? ' ('+d.erro+')' : ''));
+    }catch(e){ falhas.push(c.email); }
+  }
+  await _ceCarregarPessoas(empresaId);
+  if(falhas.length){
+    showToast(`${ok} salvo(s); não salvou: ${falhas.join(', ')}`, 'warn');
+    _ceAtualizarColar();
+  } else {
+    showToast(`✓ ${ok} contato${ok!==1?'s':''} salvo${ok!==1?'s':''}`, 'ok');
+    const box = document.getElementById('ce-colar-box');
+    if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+  }
 }
 
 function fecharModalContatoEdit(){
@@ -897,7 +1017,8 @@ let _cpPessoaDirty = false;
 ['input','change'].forEach(function(evt){
   document.addEventListener(evt, function(e){
     if(e.target.closest('#modal-pessoa-edit-bg')) _cpPessoaDirty = true;
-    else if(e.target.closest('#modal-contato-edit-bg')) _ceContatoDirty = true;
+    // O "Colar e-mails" salva as pessoas sozinho — não deixa a empresa "com alteração".
+    else if(e.target.closest('#modal-contato-edit-bg') && !e.target.closest('#ce-colar-box')) _ceContatoDirty = true;
   }, true);
 });
 
