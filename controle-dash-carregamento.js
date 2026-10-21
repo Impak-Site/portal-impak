@@ -39,6 +39,71 @@ document.querySelector('.table-wrap') && (document.querySelector('.table-wrap').
   }
 }
 
+// ── Pedir a transportadora aos clientes (20/10/2026, pedido Ayslan) ──
+// Prévia dos e-mails (um por cliente, montados no servidor — ver
+// lib/carregamento-core.js) e envio do TESTE para a equipe (José e
+// Emanuelly). Nada vai para o cliente nesta fase.
+async function abrirPedidoTransportadora(){
+  document.getElementById('pedido-transp-overlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'pedido-transp-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;';
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:900px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+      <h3 style="margin:0;font-size:16px;">📧 Pedir transportadora aos clientes — prévia</h3>
+      <button class="btn btn-sm btn-outline" onclick="document.getElementById('pedido-transp-overlay').remove()">Fechar</button>
+    </div>
+    <div id="pedido-transp-corpo" style="margin-top:12px;font-size:13px;color:var(--muted);">Montando os e-mails…</div>
+  </div>`;
+  ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  const corpo = document.getElementById('pedido-transp-corpo');
+  try{
+    const r = await fetch('/api/carregamento/pedir-transportadora/previa');
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.ok) throw new Error(d.erro || ('Falha (' + r.status + ')'));
+    if(!d.emails.length){ corpo.innerHTML = `Nenhum processo chegando nos próximos ${d.dias} dias sem transportadora. 👍`; return; }
+    corpo.innerHTML = `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;color:#1e3a8a;margin-bottom:12px;">
+        <strong>${d.emails.length} e-mail(s)</strong> (um por cliente) com <strong>${d.total} processo(s)</strong> chegando em até ${d.dias} dias ou já chegados, sem transportadora.
+        No teste, cada e-mail vai só para <strong>${d.para.map(esc).join(' e ')}</strong> (cópia ${esc(d.copia)}) — <strong>nada vai para o cliente</strong>.
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-sm btn-primary" id="btn-pedido-transp-enviar" onclick="enviarPedidoTransportadoraTeste()">Enviar o teste para a equipe</button>
+      </div>
+      <div id="pedido-transp-lista"></div>`;
+    const lista = document.getElementById('pedido-transp-lista');
+    d.emails.forEach(m => {
+      const bloco = document.createElement('details');
+      bloco.style.cssText = 'border:1px solid var(--border);border-radius:8px;margin-bottom:8px;padding:8px 10px;';
+      bloco.innerHTML = `<summary style="cursor:pointer;font-weight:600;color:var(--text);">${esc(m.cliente)} — ${m.qtd} processo(s) <span style="font-weight:400;color:var(--muted);">· ${esc(m.assunto)}</span></summary>`;
+      const fr = document.createElement('iframe');
+      fr.setAttribute('sandbox', '');
+      fr.style.cssText = 'width:100%;height:420px;border:0;margin-top:8px;background:#fff;';
+      fr.srcdoc = m.html;
+      bloco.appendChild(fr);
+      lista.appendChild(bloco);
+    });
+    if(lista.firstChild) lista.firstChild.open = true;
+  }catch(e){
+    corpo.innerHTML = `<span style="color:var(--err);">Erro: ${esc(e.message)}</span>`;
+  }
+}
+async function enviarPedidoTransportadoraTeste(){
+  const btn = document.getElementById('btn-pedido-transp-enviar');
+  if(btn){ btn.disabled = true; btn.textContent = 'Enviando…'; }
+  try{
+    const r = await fetch('/api/carregamento/pedir-transportadora/enviar-teste', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok && !d.enviados) throw new Error(d.erro || ('Falha (' + r.status + ')'));
+    showToast(`✓ ${d.enviados} e-mail(s) de teste enviados para ${d.para.join(' e ')}` + (d.falhas && d.falhas.length ? ` · ${d.falhas.length} falha(s)` : ''), d.falhas && d.falhas.length ? 'warn' : 'ok', 8000);
+    if(btn) btn.textContent = 'Teste enviado';
+  }catch(e){
+    showToast('Erro: ' + e.message, 'err');
+    if(btn){ btn.disabled = false; btn.textContent = 'Enviar o teste para a equipe'; }
+  }
+}
+
 function renderDashCarregamento(){
   const el = document.getElementById('dash-carregamento-content');
   if(!el) return;
@@ -154,6 +219,9 @@ function renderDashCarregamento(){
     </table>` : `<div style="font-size:12px;color:var(--muted);">Nenhum processo aguardando carregamento no momento.</div>`;
 
   el.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <button class="btn btn-sm btn-outline" onclick="abrirPedidoTransportadora()" title="Monta um e-mail por cliente com os processos chegando sem transportadora (referência, peças por container, peso bruto, porto e containers). Em teste: vai só para José e Emanuelly.">📧 Pedir transportadora aos clientes (teste)</button>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px;">${kpis.join('')}</div>
     <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow-x:auto;">${tabela}</div>
   `;
