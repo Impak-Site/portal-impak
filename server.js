@@ -3623,19 +3623,22 @@ app.post('/api/controle/v2/processo/:id/comissoes', auth('controle','financeiro'
         usuario: req.session.usuario,
       })).filter(p => p.chave && p.data),
     };
-    const { data: atual, error: e1 } = await sb().from('controle_processos').select('id, comissoes_json').eq('id', id).maybeSingle();
+    const { data: atual, error: e1 } = await sb().from('controle_processos').select('id, comissoes_json, updated_at').eq('id', id).maybeSingle();
     if (e1) throw new Error(e1.message);
     if (!atual) return res.status(404).json({ erro: 'Processo não encontrado' });
     // Mantém quem registrou cada pagamento antigo (não troca pelo usuário atual).
     const antigos = (atual.comissoes_json && Array.isArray(atual.comissoes_json.pagamentos)) ? atual.comissoes_json.pagamentos : [];
     limpo.pagamentos = limpo.pagamentos.map(p => { const a = antigos.find(x => x && x.chave === p.chave && x.data === p.data); return a && a.usuario ? { ...p, usuario: a.usuario } : p; });
-    const { error } = await sb().from('controle_processos').update({ comissoes_json: limpo, updated_at: new Date().toISOString() }).eq('id', id);
+    const novaVersao = new Date().toISOString();
+    const { error } = await sb().from('controle_processos').update({ comissoes_json: limpo, updated_at: novaVersao }).eq('id', id);
     if (error) throw new Error(error.message);
     try {
       await sb().from('controle_log').insert([{ processo_id: id, usuario: req.session.usuario, campo: 'comissoes_json',
         valor_antes: JSON.stringify(atual.comissoes_json || {}), valor_depois: JSON.stringify(limpo), created_at: new Date().toISOString() }]);
     } catch (logErr) { console.warn('log comissões:', logErr.message); }
-    res.json({ ok: true, comissoes_json: limpo });
+    // versão nova + a anterior: o painel aberto avança a versão dele se
+    // estava na anterior (senão o Salvar seguinte acusava edição simultânea).
+    res.json({ ok: true, comissoes_json: limpo, updated_at: novaVersao, versao_anterior: atual.updated_at || null });
   } catch (e) {
     const msg = /comissoes_json/.test(e.message) ? 'Coluna comissoes_json ainda não existe — rodar a migration 0045 no Supabase.' : e.message;
     res.status(500).json({ erro: msg });
@@ -3680,7 +3683,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
       processoExistente = !!atual;
       atualRow = atual || null;
       if (atual && baseVersao && atual.updated_at && new Date(atual.updated_at).getTime() !== new Date(baseVersao).getTime()) {
-        return responderConflitoProcesso(res, processo.id, baseVersao);
+        return responderConflitoProcesso(res, processo.id, baseVersao, req.session.usuario);
       }
       const estavaFechado = !!(atual && atual.fechado);
       const tentandoDestravar = estavaFechado && processo.fechado === false;
@@ -3927,7 +3930,7 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
     }
     if (error) throw new Error(error.message);
     if (condicional && Array.isArray(gravados) && gravados.length === 0) {
-      return responderConflitoProcesso(res, processo.id, baseVersao);
+      return responderConflitoProcesso(res, processo.id, baseVersao, req.session.usuario);
     }
     if (linhasLog) {
       try { await sb().from('controle_log').insert(linhasLog); }
@@ -4097,20 +4100,36 @@ function nomeUsuarioExibicao(login) {
 }
 // 409 com o processo como está no banco + quem mudou o quê desde a versão
 // que o navegador abriu (controle_log).
-async function responderConflitoProcesso(res, id, baseVersao) {
-  let atual = null, alteracoes = [];
+// Quem salvou no meio (21/10/2026): a alteração mais recente de OUTRA pessoa
+// no histórico; sem nenhuma, quem gravou por último (updated_by) se não for
+// quem está salvando agora. Se só sobrar a própria pessoa (outra aba/tela ou
+// rotina do sistema), mesmo_usuario = true — antes o aviso dizia "Emanuelly
+// salvou este processo enquanto você editava" para a própria Emanuelly.
+function quemSalvouNoMeio(logs, updatedBy, usuarioAtual) {
+  const eu = String(usuarioAtual || '').trim().toLowerCase();
+  const deOutro = u => !!u && String(u).trim().toLowerCase() !== eu;
+  const doLog = (logs || []).find(l => l && deOutro(l.usuario));
+  const login = doLog ? doLog.usuario : (deOutro(updatedBy) ? updatedBy : null);
+  return { login, mesmoUsuario: !login };
+}
+async function responderConflitoProcesso(res, id, baseVersao, usuarioAtual) {
+  let atual = null, logs = [];
   try {
     const r = await sb().from('controle_processos').select('*').eq('id', id).maybeSingle();
     atual = r.data || null;
   } catch (e) { /* segue sem o processo — o navegador pede pra recarregar */ }
   try {
-    const { data: logs } = await sb().from('controle_log').select('usuario, campo, created_at')
+    const { data } = await sb().from('controle_log').select('usuario, campo, created_at')
       .eq('processo_id', id).gt('created_at', baseVersao).order('created_at', { ascending: false }).limit(80);
-    alteracoes = (logs || []).map(l => ({ usuario: nomeUsuarioExibicao(l.usuario), campo: l.campo, em: l.created_at }));
+    logs = data || [];
   } catch (e) { /* histórico é só informativo */ }
-  const quem = nomeUsuarioExibicao((atual && atual.updated_by) || (alteracoes[0] && alteracoes[0].usuario));
-  return res.status(409).json({ ok: false, conflito: true, alterado_por: quem, alterado_em: atual ? atual.updated_at : null,
-    erro: `${quem} salvou este processo enquanto você editava. Atualize o processo antes de salvar de novo.`, atual, alteracoes });
+  const alteracoes = logs.map(l => ({ usuario: nomeUsuarioExibicao(l.usuario), campo: l.campo, em: l.created_at }));
+  const { login, mesmoUsuario } = quemSalvouNoMeio(logs, atual && atual.updated_by, usuarioAtual);
+  const quem = nomeUsuarioExibicao(login || usuarioAtual);
+  return res.status(409).json({ ok: false, conflito: true, mesmo_usuario: mesmoUsuario, alterado_por: quem, alterado_em: atual ? atual.updated_at : null,
+    erro: mesmoUsuario
+      ? 'Este processo foi salvo em outra aba ou tela enquanto você editava aqui. Atualize o processo antes de salvar de novo.'
+      : `${quem} salvou este processo enquanto você editava. Atualize o processo antes de salvar de novo.`, atual, alteracoes });
 }
 
 // Histórico de alterações de um processo — faltava esta rota: o front-end
@@ -4542,7 +4561,9 @@ function atualizarRegrasConferenciaAntiga(content) {
   const bloco = (content || []).find(b => b && b.type === 'text' && typeof b.text === 'string'
     && /conferencia documental/i.test(b.text) && /NCM\(verificar se tem 8 digitos/.test(b.text));
   if (!bloco) return false;
-  bloco.text += ' ATUALIZACAO DE REGRAS (PREVALECE sobre a regra de NCM do BL e sobre a REGRA PORTO DE DESTINO acima): ' + ConferenciaChave.REGRAS_NCM_PORTO_PROMPT;
+  // 21/10/2026 (Emanuelly): + situação de pagamento do CE e lacre no CE.
+  bloco.text += ' ATUALIZACAO DE REGRAS (PREVALECE sobre a regra de NCM do BL, sobre a REGRA PORTO DE DESTINO e sobre as regras de CE e de container/lacre acima): '
+    + ConferenciaChave.REGRAS_NCM_PORTO_PROMPT + ConferenciaChave.REGRAS_CE_PROMPT;
   return true;
 }
 
@@ -7884,6 +7905,7 @@ module.exports = app;
 // nenhuma e não é acessível pela rede.
 module.exports._interno = {
   auth, versaoSessaoAtual, bloqueado2FA, registrarFalha2FA, limparFalhas2FA, versionarHtml,
+  quemSalvouNoMeio, atualizarRegrasConferenciaAntiga,
   definirCacheUsuarios(lista, carregado) {
     _usuariosCache = new Map((lista || []).map(u => [u.usuario, u]));
     _usuariosCacheCarregadoEm = carregado ? Date.now() : 0;

@@ -97,8 +97,59 @@
     if (/ORIGEM|ORIGIN|EMBARQUE|LOADING|FOB|SAIDA/.test(campo)) return false;
     return /DESTIN|DESCARGA|DISCHARGE|DELIVERY|DESEMBARQUE|CHEGADA/.test(campo) || campo.trim() === 'PORTO';
   }
+  // ── CE Mercante (21/10/2026, pedido Emanuelly) ─────────────────────
+  // 4) A situação de pagamento do CE ("SUSPENSO DE PAGAMENTO", suspensão,
+  //    pendente de pagamento, sem cobertura cambial — é o AFRMM/frete no
+  //    Mercante) não é conferência de documentos: "é referente a outra coisa".
+  // 5) "No CE não vai lacre": o CE Mercante não traz lacre (e o extrato nem
+  //    sempre mostra os containers). Container/lacre "não informado" no CE, ou
+  //    lacre comparado com o CE, não é pendência — container e lacre se
+  //    conferem entre BL, PL e CI. Continua pendência se o CE mostrar um
+  //    container que não está no outro documento.
+  const ehLabelCE = l => /\b(CE|MERCANTE)\b/.test(maiusculo(l).replace(/[^A-Z0-9 ]/g, ' '));
+  function ehSituacaoPagamentoCE(c) {
+    // O CE tem que estar no campo ou num dos documentos comparados (não só
+    // citado na observação) — "Forma de pagamento" CI x PI continua valendo.
+    if (!(ehLabelCE(c.campo) || ehLabelCE(c.doc1_label) || ehLabelCE(c.doc2_label))) return false;
+    const campo = maiusculo(c.campo);
+    const vals = maiusculo([c.doc1_valor, c.doc2_valor].join(' '));
+    if (/SUSPENS/.test(campo + ' ' + vals)) return true;
+    if (/COBERTURA CAMBIAL/.test(campo + ' ' + vals + ' ' + maiusculo(c.observacao))) return true;
+    return /\b(SITUACAO|STATUS|CONDICAO)\b/.test(campo) && /PAGAMENTO|\bPAGO\b|QUITAD|PENDENTE|AFRMM/.test(campo + ' ' + vals);
+  }
+  // "Não informado", "não consta no extrato", "N/A", vazio...
+  function valorAusente(v) {
+    const t = maiusculo(v).replace(/[.;:]+$/, '').trim();
+    if (!t || /^(N ?\/ ?A|NA|NONE|NULL|-+|—+|SEM VALOR)$/.test(t)) return true;
+    if (conteineres(t).length) return false;
+    return /\bNAO (INFORMAD|CONSTA|EXIBE|APRESENTA|DISPONIVEL|ENCONTRAD|IDENTIFICAD|MOSTRA|TRAZ|POSSUI)|\bSEM (INFORMAC|DADO|REGISTRO|CONTAINER|LACRE)|^(AUSENTE|INEXISTENTE)\b/.test(t);
+  }
+  // Números de container (4 letras + 7 dígitos, ex.: ABCU1234567).
+  function conteineres(v) {
+    return (maiusculo(v).replace(/[^A-Z0-9]+/g, ' ').match(/\b[A-Z]{4} ?\d{6,7}\b/g) || []).map(x => x.replace(/ /g, ''));
+  }
+  function ehContainerLacreCE(c) {
+    const campo = maiusculo(c.campo).replace(/[^A-Z0-9 ]/g, ' ');
+    const lacre = /\b(LACRE|LACRES|SEAL|SEALS)\b/.test(campo);
+    const container = /\b(CONTAINER|CONTAINERS|CONTEINER|CONTEINERES|CNTR|CTNR)\b/.test(campo);
+    if (!lacre && !container) return false;
+    if (/\b(QTD|QUANTIDADE|QTDE|NUMERO DE|TIPO)\b/.test(campo) && !lacre) return false;
+    const lados = [[c.doc1_label, c.doc1_valor], [c.doc2_label, c.doc2_valor]];
+    const ce = lados.find(([l]) => ehLabelCE(l));
+    if (!ce) return false;
+    const outro = lados.find(x => x !== ce) || [];
+    if (valorAusente(ce[1])) return true;          // o CE não mostra container/lacre
+    if (lacre && !container) return true;          // lacre não vai no CE
+    if (lacre) {                                   // "Container e Lacre": só o lacre difere
+      const doCE = conteineres(ce[1]), doOutro = conteineres(outro[1]);
+      if (doCE.length && doCE.every(x => doOutro.includes(x))) return true;
+    }
+    return false;
+  }
   function regraDispensada(c) {
     if (!c) return null;
+    if (ehSituacaoPagamentoCE(c)) return 'Situação de pagamento do CE Mercante não é conferência de documentos';
+    if (ehContainerLacreCE(c)) return 'CE Mercante não traz lacre (container e lacre se conferem no BL/PL)';
     // NCM com 4 dígitos no BL
     if (/\bNCM\b/.test(maiusculo(c.campo))) {
       const temBL = /\b(BL|HBL|MBL|BILL|DRAFT)\b/.test(textoDa(c));
@@ -164,7 +215,10 @@
     + 'REGRA PORTO DE DESTINO (atualizada): (1) Nos documentos comerciais e preliminares (PI, CI, PL, Draft BL, booking, sales contract) o porto de destino/descarga MUDA com frequencia (ex: PI NAVEGANTES e CI ITAPOA) — isso e NORMAL: NAO comparar o porto de destino desses documentos entre si nem com os documentos finais, e NAO gerar divergencia por isso. '
     + '(2) Nos documentos FINAIS — BL original/emitido (HBL ou MBL, NAO o draft), CE Mercante e DI/DUIMP — o porto de destino/descarga TEM QUE SER O MESMO: comparar BL x CE Mercante x DI/DUIMP (os que estiverem presentes, inclusive os ja conferidos) e, se forem portos diferentes, gerar DIVERGENCIA BLOQUEANTE com campo="Porto de destino (documentos finais)", doc1_label=<documento final, ex: BL Original>, doc1_valor=<porto>, doc2_label=<outro documento final, ex: CE Mercante>, doc2_valor=<porto>. O mesmo porto escrito de outro jeito NAO e divergencia (NAVEGANTES = PORTONAVE = BRNVT; ITAJAI = BRITJ; ITAPOA = BRIOA; IMBITUBA = BRIBB; SAO FRANCISCO DO SUL = BRSFS). Na DI/DUIMP use o porto/local de descarga ou o recinto alfandegado (ex: PORTONAVE = NAVEGANTES), NAO o nome da Alfandega/URF de despacho (a Alfandega de Itajai atende Itajai e Navegantes; a de Sao Francisco do Sul atende Sao Francisco e Itapoa) — o mesmo vale para o porto_destino da DI/DUIMP em dados_por_documento. Nos labels use "BL Original" (ou "BL") para o BL emitido, "Draft BL" para o rascunho, "CE Mercante" e "DUIMP" ou "DI". '
     + '(3) Em qualquer documento, o porto de destino/descarga deve ser um porto de Santa Catarina (ITAJAI, NAVEGANTES/PORTONAVE, ITAPOA, IMBITUBA ou SAO FRANCISCO DO SUL). Se algum documento trouxer porto de destino FORA de Santa Catarina = DIVERGENCIA BLOQUEANTE com campo="Porto de destino fora de SC", doc1_label=<documento> e doc1_valor=<porto encontrado>. ';
-  const api = { chaveDivergencia, ehPendenciaConferencia, regraDispensada, ehPortoSC, ehDocFinal, mesmoPorto, aceiteDe, migrarAceites, contarConferencia, REGRAS_NCM_PORTO_PROMPT };
+  // Regras do CE Mercante (21/10/2026) — também vão para as duas telas.
+  const REGRAS_CE_PROMPT = 'REGRAS CE MERCANTE (atualizadas): (1) A SITUACAO DE PAGAMENTO do CE (campos "Situacao", "Situacao do Master/House", "Condicao de pagamento", "Situacao pagamento"; valores como "SUSPENSO DE PAGAMENTO", "Suspensao", "Pendente de pagamento", "Pago", "Sem cobertura cambial", AFRMM) NAO e conferencia de documentos: NAO gerar divergencia, ausencia nem alerta sobre a situacao de pagamento do CE, em nenhum grupo. '
+    + '(2) O CE Mercante NAO traz lacre (e o extrato nem sempre traz os containers): NAO comparar lacre com o CE e NAO gerar ausencia, divergencia ou alerta de container/lacre porque o CE nao mostra — container e lacre se conferem so entre BL, PL e CI. So gerar divergencia de container com o CE se o CE mostrar um numero de container diferente dos do BL. ';
+  const api = { chaveDivergencia, ehPendenciaConferencia, regraDispensada, ehPortoSC, ehDocFinal, mesmoPorto, aceiteDe, migrarAceites, contarConferencia, REGRAS_NCM_PORTO_PROMPT, REGRAS_CE_PROMPT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ConferenciaChave = api;
 })(typeof window !== 'undefined' ? window : this);
