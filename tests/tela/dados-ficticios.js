@@ -64,6 +64,23 @@ const cotacoesTela = [
 const conferenciaTela = { contagem: { cotacoes: 4, ok: 1, problemas: 1, automaticos: 1, manuais: 0, acoes: 1 },
   problemas: [{ tipo: 'duplicada', automatico: true, texto: 'Processo TESTE-002: outra cotação também apontava para ele (teste).' }] };
 
+// Faturas fictícias do processo TESTE-003 (aba Faturas do painel): uma a
+// pagar em US$ conferida com diferença e vencida, uma paga e uma cobrança.
+const itemFat = (taxa, label, valor) => ({ processo_id: 'teste-3', referencia: 'TESTE-003', taxa, label, valor });
+const faturasTeste = [
+  { id: 'fat-teste-1', numero: '000901/26', tipo: 'pagar', status: 'aberta', empresa_nome: 'Agente Exemplo', documento: 'ND 0001',
+    moeda: 'USD', cambio: 5.3, valor: 1200, valor_pago: 0, emissao: dia(-10), vencimento: dia(-2),
+    itens: [itemFat('frete', 'Frete Internacional', 1000), itemFat('desconsolidacao', 'Desconsolidação', 200)],
+    anexos: [{ tipo: 'fatura', nome: 'nd-0001.pdf', path: 'faturas/fat-teste-1/nd.pdf' }],
+    conferencia: { em: dia(-3) + 'T10:00:00Z', por: 'teste@exemplo.com', nome: 'Pessoa Teste',
+      checks: [{ nivel: 'erro', tipo: 'valor', msg: 'TESTE-003 · Desconsolidação: diferença de teste.' }] } },
+  { id: 'fat-teste-2', numero: '000902/26', tipo: 'pagar', status: 'paga', empresa_nome: 'Despachante Exemplo', documento: 'Acerto 1',
+    moeda: 'BRL', cambio: 1, valor: 2500, valor_pago: 2500, vencimento: dia(-1), pago_em: dia(-1),
+    itens: [itemFat('despachante', 'Despachante', 2500)], pagamentos: [{ data: dia(-1), valor: 2500, forma: 'pix' }] },
+  { id: 'fat-teste-3', numero: '000903/26', tipo: 'receber', status: 'aberta', empresa_nome: 'Cliente Exemplo C', documento: 'Cobrança 1',
+    moeda: 'BRL', cambio: 1, valor: 1200, valor_pago: 0, vencimento: dia(20), itens: [itemFat('armazenagem', 'Armazenagem', 1200)] },
+];
+
 // Rotas com resposta própria; o resto das /api devolve um objeto vazio
 // "permissivo" (ok + listas vazias) — a tela tem que aguentar lista vazia.
 const respostas = {
@@ -77,6 +94,9 @@ const respostas = {
   ] },
   '/api/base/carregar-fornecedores': { ok: true, fornecedores: [] },
   '/api/calculador/cotacoes': { ok: true, cotacoes: cotacoesTela, conferencia: conferenciaTela, usuario: { role: 'gerente', controle: true } },
+  // só a aba do processo pede com processo_id; a tela /faturas segue com a lista vazia
+  '/api/faturas': req => (req.query && req.query.processo_id === 'teste-3' ? { ok: true, faturas: faturasTeste } : null),
+  '/api/faturas/resumo-processos': { ok: true, resumo: { 'teste-3': { qtd: 3, abertas: 2, vencidas: 1, divergentes: 1, pagas: 1, pagar_abertas: 1, receber_abertas: 1 } } },
 };
 const vazio = {
   ok: true, total: 0, itens: [], lista: [], dados: [], contatos: [], pessoas: [], faturas: [], cotacoes: [],

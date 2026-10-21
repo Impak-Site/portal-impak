@@ -172,6 +172,32 @@ const CENARIOS = [
       return p;
     },
   },
+  // Aba Faturas do processo (21/10/2026): faturas do processo com a
+  // conferência, a receber do cliente, custos sem fatura e o extrato; o
+  // detalhe de uma fatura aberto (taxas x sistema x cotado, etapas).
+  {
+    nome: '/controle + aba Faturas do processo', rota: '/controle',
+    acao: async page => {
+      await page.evaluate(() => abrirProcesso('teste-3'));
+      await page.waitForTimeout(900);
+      await page.evaluate(() => trocarAba('faturas'));
+      await page.waitForTimeout(700);
+      await page.evaluate(() => pfAbrirFatura('fat-teste-1'));
+      await page.waitForTimeout(300);
+    },
+    conferir: () => {
+      const p = [];
+      const box = document.getElementById('pane-faturas-conteudo');
+      const txt = box ? box.textContent : '';
+      if (!box || !box.querySelector('.pf-sec')) p.push('a aba Faturas não montou as seções');
+      if (!/Faturas \(3\)/.test(txt)) p.push('a lista não mostrou as 3 faturas do processo');
+      if (!/A receber do cliente/.test(txt) || !/Extrato do processo/.test(txt)) p.push('faltou a seção A receber ou o Extrato');
+      const det = box && box.querySelector('.pf-det');
+      if (!det || !/Frete Internacional/.test(det.textContent)) p.push('o detalhe da fatura (taxas) não abriu');
+      if (det && !det.querySelector('.pf-passos')) p.push('o detalhe não mostrou as etapas (quem faz cada uma)');
+      return p;
+    },
+  },
   {
     nome: '/cambio: pedir adiantamento aos clientes', rota: '/cambio',
     acao: async page => { await page.evaluate(() => abrirPedidoAdiantamento()); await page.waitForTimeout(400); },
@@ -209,7 +235,9 @@ function servidorFalso() {
   Object.entries(todas).forEach(([rota, arq]) => app.get(rota, (req, res) => res.sendFile(path.join(RAIZ, arq))));
   app.all(/^\/api\//, (req, res) => {
     if (req.method !== 'GET') return res.json({ ok: true });
-    res.json(respostas[req.path] || vazio);
+    // resposta pode depender da consulta (ex.: /api/faturas?processo_id=)
+    const r = respostas[req.path];
+    res.json((typeof r === 'function' ? r(req) : r) || vazio);
   });
   app.use(express.static(RAIZ));
   return new Promise(ok => { const s = app.listen(0, '127.0.0.1', () => ok(s)); });
