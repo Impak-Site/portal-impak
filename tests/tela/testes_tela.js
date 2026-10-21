@@ -150,6 +150,38 @@ const CENARIOS = [
       return p;
     },
   },
+  // E-mails do processo e pedido de adiantamento (21/10/2026): o sistema só
+  // monta o texto para copiar — as janelas abrem sem erro e com o texto.
+  {
+    nome: '/controle: e-mails do processo (instrução e despachante)', rota: '/controle',
+    acao: async page => {
+      await page.evaluate(() => abrirProcesso('teste-3'));
+      await page.waitForTimeout(900);
+      await page.evaluate(() => abrirEmailsProcesso());
+      await page.waitForTimeout(400);
+    },
+    conferir: () => {
+      const p = [];
+      const btn = document.getElementById('btn-emails-proc');
+      if (!btn || btn.style.display === 'none') p.push('o botão "📧 E-mails" não aparece no painel do processo');
+      const pre = document.querySelector('#emails-proc-corpo pre');
+      if (!pre || !/instrução de embarque/i.test(pre.textContent)) p.push('a instrução de embarque não foi montada');
+      _emailsProcAba('despachante');
+      const pre2 = document.querySelector('#emails-proc-corpo pre');
+      if (!pre2 || !/abertura do processo/i.test(pre2.textContent)) p.push('o e-mail de abertura com o despachante não foi montado');
+      return p;
+    },
+  },
+  {
+    nome: '/cambio: pedir adiantamento aos clientes', rota: '/cambio',
+    acao: async page => { await page.evaluate(() => abrirPedidoAdiantamento()); await page.waitForTimeout(400); },
+    conferir: () => {
+      const p = [];
+      if (!document.getElementById('ped-adiant-overlay')) p.push('a janela do pedido de adiantamento não abriu');
+      if (!document.getElementById('ped-adiant-corpo') || !document.getElementById('ped-adiant-corpo').textContent.trim()) p.push('a janela do pedido de adiantamento ficou vazia');
+      return p;
+    },
+  },
   {
     nome: '/controle (modo escuro)', rota: '/controle', viewports: ['notebook'],
     antes: () => { try { localStorage.setItem('impak_tema', 'escuro'); } catch (e) {} },
