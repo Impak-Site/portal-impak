@@ -42,6 +42,27 @@ teste('peças: o embarcado (PL/CI/BL) vale mais que a PI e que os produtos do pr
   assert.deepStrictEqual(C.pecasTotal({ conferencia_json: docs, produtos_json: JSON.stringify([{ quantidade: 1000 }]) }), { qtd: 1012, fonte: 'CI' });
   assert.deepStrictEqual(C.pecasTotal({ produtos_json: JSON.stringify([{ quantidade: 400 }, { quantidade: 600 }]) }), { qtd: 1000, fonte: 'produtos' });
 });
+teste('conferência antiga (grupos de comparação): peso do BL, total ganha do item, líquido e PI ficam de fora', () => {
+  const campo = (nome, l1, v1, l2, v2) => ({ campo: nome, doc1_label: l1, doc1_valor: v1, doc2_label: l2, doc2_valor: v2 });
+  const antiga = JSON.stringify({ data: '01/01/2030, 10:00:00', grupos: [
+    { titulo: 'Identificacao', campos: [campo('Numero B/L', 'BL', 'ABC123', 'CI', 'ABC123')] },
+    { titulo: 'Quantidades', campos: [
+      campo('Quantidade Item 1 (MODELO A)', 'CI', '700 PCS', 'PL', '700 PCS'),
+      campo('Quantidade 205/55R16 91V', 'CI', '300 PCS', 'PL', '300 PCS'),
+      campo('Quantidade Total', 'CI', '1.000 PCS', 'BL', '1000 PIECE ONLY'),
+      campo('Quantidade — CI x PI', 'CI', '1000 PCS', 'PI', '990 PCS'),
+      campo('Peso Liquido — PL', 'PL', 'G.W/N.W = 9.999 KG', 'Regra', 'x'),
+      campo('Peso Bruto — CI x BL', 'CI/BL', '9.100,00 KG', 'BL', '9.200,000 KG'),
+      campo('Peso Bruto CI x PL', 'CI', '9.100,00 KG', 'PL', '9.150 KGS'),
+    ] },
+  ] });
+  const p = { conferencia_json: antiga, produtos_json: JSON.stringify([{ quantidade: 990 }]) };
+  assert.deepStrictEqual(C.pesoBruto(p), { kg: 9200, fonte: 'BL' });
+  assert.deepStrictEqual(C.pecasTotal(p), { qtd: 1000, fonte: 'CI' }, 'PL só tem itens (fora); CI pelo total, não pelo item 1');
+  const soLiquido = JSON.stringify({ grupos: [{ campos: [campo('Peso Líquido / Bruto (sem embalagem)', 'PL', '9.999 KG', '', '')] }] });
+  assert.deepStrictEqual(C.pesoBruto({ conferencia_json: soLiquido }), { kg: null, fonte: null });
+  assert.strictEqual(C.pecasTotal({ conferencia_json: JSON.stringify({ grupos: [{ campos: [campo('Quantidade', 'PI', '50 PCS', 'X', '1')] }] }) }).qtd, null, 'PI não conta');
+});
 teste('peças por container: 1 container = total; vários com a divisão = cada um; sem divisão = em aberto', () => {
   const um = { containers_json: JSON.stringify([{ numero: 'ABCU1234567' }]), produtos_json: JSON.stringify([{ quantidade: 800 }]) };
   assert.deepStrictEqual(C.pecasPorContainer(um), [{ numero: 'ABCU1234567', pecas: 800 }]);
