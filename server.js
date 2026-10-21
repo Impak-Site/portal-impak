@@ -7464,11 +7464,22 @@ async function montarPedidosTransportadora(opts) {
   opts = opts || {};
   const dias = Math.min(Math.max(parseInt(opts.dias, 10) || CARREGAMENTO_DIAS_ETA, 1), 60);
   const hoje = hojeBrasilia();
-  const { data, error } = await sb().from('controle_processos')
-    .select('id, referencia, cliente, cliente_id, vendas_json, finalidade, fase, cancelado, fechado, transportadora, data_carregamento, data_devolucao_vazio, data_chegada, data_presenca, eta, porto_destino, qtd_containers, qtd_containers_prevista, container, containers_json, peso_bruto, produtos_json')
-    .neq('fase', 'FINALIZADO');
-  if (error) throw new Error(error.message);
-  const candidatos = (data || []).filter(p => CarregamentoCore.precisaTransportadora(p, hoje, dias));
+  // Em blocos de 1000 (limite do Supabase por consulta), ordenado por id.
+  const data = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data: bloco, error } = await sb().from('controle_processos')
+      // Só colunas que existem em controle_processos (não há "qtd_containers":
+      // a quantidade vem de containers_json ou de qtd_containers_prevista).
+      .select('id, referencia, cliente, cliente_id, vendas_json, finalidade, fase, cancelado, fechado, transportadora, transportadora_id, data_agendamento, agendamento_cancelado, data_carregamento, data_devolucao_vazio, data_chegada, data_presenca, eta, porto_destino, qtd_containers_prevista, container, containers_json, peso_bruto, produtos_json')
+      .neq('fase', 'FINALIZADO')
+      .order('id', { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw new Error(error.message);
+    if (!bloco || !bloco.length) break;
+    data.push(...bloco);
+    if (bloco.length < 1000) break;
+  }
+  const candidatos = data.filter(p => CarregamentoCore.precisaTransportadora(p, hoje, dias));
   // Peso/peças lidos dos documentos ficam no conferencia_json (pesado): só dos candidatos.
   if (candidatos.length) {
     const { data: confs, error: errConf } = await sb().from('controle_processos').select('id, conferencia_json').in('id', candidatos.map(p => p.id));
