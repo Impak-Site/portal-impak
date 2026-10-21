@@ -65,6 +65,20 @@ teste('sem transportadora e chegando (chegou ou ETA em até 15 dias)', () => {
   assert.strictEqual(C.precisaTransportadora({ eta: '2030-05-20', cancelado: true }, hoje), false);
   assert.strictEqual(C.precisaTransportadora({ eta: '2030-05-20', fase: 'FINALIZADO' }, hoje), false);
   assert.strictEqual(C.precisaTransportadora({}, hoje), false, 'sem ETA e sem chegada');
+  assert.strictEqual(C.precisaTransportadora({ eta: '2030-05-20', transportadora_id: 't1' }, hoje), false, 'transportadora escolhida pelo cadastro');
+  assert.strictEqual(C.precisaTransportadora({ data_chegada: '2030-05-09', data_agendamento: '2030-05-12' }, hoje), false, 'carregamento já agendado');
+  assert.strictEqual(C.precisaTransportadora({ data_chegada: '2030-05-09', data_agendamento: '2030-05-12', agendamento_cancelado: true }, hoje), true, 'agendamento cancelado volta para a lista');
+  assert.strictEqual(C.precisaTransportadora({ data_chegada: '2030-05-09', data_agendamento: '2030-05-12', agendamento_cancelado: 'sim' }, hoje), true);
+  assert.strictEqual(C.precisaTransportadora({ data_chegada: '2030-05-09', data_agendamento: '2030-05-12', agendamento_cancelado: false }, hoje), false);
+});
+teste('servidor: a busca não pede coluna que não existe (qtd_containers → erro 500 em 20/10/2026)', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+  const ini = src.indexOf('async function montarPedidosTransportadora');
+  assert.ok(ini > 0, 'função não encontrada');
+  const sel = (src.slice(ini, ini + 1500).match(/\.select\('([^']+)'\)/) || [])[1] || '';
+  const cols = sel.split(',').map(s => s.trim());
+  assert.ok(cols.includes('qtd_containers_prevista') && !cols.includes('qtd_containers'), 'colunas: ' + sel);
+  ['transportadora_id', 'data_agendamento', 'agendamento_cancelado'].forEach(c => assert.ok(cols.includes(c), 'faltou ' + c));
 });
 teste('cliente do pedido: importação própria com 1 venda vai para o cliente da venda; com várias, fica com a equipe', () => {
   assert.deepStrictEqual(C.clienteDoPedido({ cliente: 'CLIENTE EXEMPLO LTDA', cliente_id: 'c1' }), { cliente: 'CLIENTE EXEMPLO LTDA', clienteId: 'c1', proprio: false });
