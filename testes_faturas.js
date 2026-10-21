@@ -520,5 +520,152 @@ teste('Faturas: fatura em R$ com linhas em US$ usa o valor em reais de cada linh
   assert.strictEqual(f.itens[0].referencia, 'TST2601-1');
 });
 
+console.log('\n── a receber: quem adianta o câmbio e a NF com o valor total (21/10/2026) ──');
+const PROC_AR = (o) => Object.assign({ id: 'p9', referencia: 'TST-AR-1', cliente: 'Cliente Ficticio', pi_pagamento: 'PARCELADO',
+  pi_parcelas_json: JSON.stringify([{ label: 'Inicial', valor_usd: 1000, cambio_fechado: 5 }, { label: 'Final', valor_usd: 2000, cambio_fechado: '5,5' }]),
+  vendas_json: JSON.stringify([{ cliente: 'Cliente Ficticio', nf_saida_numero: '900', nf_saida_valor: 30000, nf_saida_data: '2026-10-10', forma_pagamento: 'prazo', prazo_texto: '30/60/90' }]) }, o);
+teste('encomenda: adiantamento de cada câmbio + NF menos os adiantamentos, em 3 parcelas', () => {
+  const r = F.receberDoProcesso(PROC_AR({ finalidade: 'ENCOMENDA' }), []);
+  const ad = r.filter(x => x.tipo_receber === 'adiantamento'), vd = r.filter(x => x.tipo_receber === 'venda');
+  assert.deepStrictEqual(ad.map(x => x.valor), [5000, 11000]);
+  assert.strictEqual(vd.length, 3);
+  assert.deepStrictEqual(vd.map(x => x.valor), [4666.66, 4666.66, 4666.68]);
+  assert.deepStrictEqual(vd.map(x => x.vencimento), ['2026-11-09', '2026-12-09', '2027-01-08']);
+  assert.deepStrictEqual(vd.map(x => x.origem.parcela + '/' + x.origem.de), ['1/3', '2/3', '3/3']);
+  assert.strictEqual(vd[0].adiantamento_abatido, 16000);
+  const soma = r.reduce((s, x) => s + x.valor, 0);
+  assert.ok(Math.abs(soma - 30000) < 0.005, 'a soma do a receber é o valor da NF: ' + soma);
+});
+teste('conta e ordem também abate; importação própria não gera a receber do câmbio; acompanhamento não gera nada', () => {
+  assert.strictEqual(F.receberDoProcesso(PROC_AR({ finalidade: 'CONTA_E_ORDEM' }), []).filter(x => x.tipo_receber === 'adiantamento').length, 2);
+  const prop = F.receberDoProcesso(PROC_AR({ finalidade: 'IMPORTACAO_DIRETA' }), []);
+  assert.ok(prop.every(x => x.tipo_receber === 'venda'));
+  assert.deepStrictEqual(prop.map(x => x.valor), [10000, 10000, 10000]);
+  assert.deepStrictEqual(F.receberDoProcesso(PROC_AR({ finalidade: 'ACOMPANHAMENTO' }), []), []);
+});
+teste('adiantamento só abate a venda do encomendante; juros do boleto (fora da NF) entram no a receber', () => {
+  const p = PROC_AR({ finalidade: 'ENCOMENDA', vendas_json: [
+    { cliente: 'Revenda Exemplo', nf_saida_numero: '901', nf_saida_valor: 2000, nf_saida_data: '2026-10-10' },
+    { cliente: 'Cliente Ficticio', nf_saida_numero: '902', nf_saida_valor: 20000, juros_valor: 300, juros_fora_nf: true, nf_saida_data: '2026-10-10' },
+    { cliente: 'Cliente Ficticio', nf_saida_numero: '905', nf_saida_valor: 1000, juros_valor: 50, nf_saida_data: '2026-10-10' },
+  ] });
+  const vd = F.receberDoProcesso(p, []).filter(x => x.tipo_receber === 'venda');
+  assert.deepStrictEqual(vd.map(x => x.documento + ':' + x.valor), ['NF 901:2000', 'NF 902:4300', 'NF 905:1000'], 'juros só somam quando estão fora da NF');
+});
+teste('venda toda coberta pelo adiantamento não gera a receber; remessa (CFOP 5905) não é venda', () => {
+  const p = PROC_AR({ finalidade: 'ENCOMENDA', vendas_json: [{ cliente: 'Cliente Ficticio', nf_saida_numero: '903', nf_saida_valor: 16000, nf_saida_data: '2026-10-10' }, { nf_saida_numero: '904', nf_saida_cfop: '5905', nf_saida_valor: 50000, nf_saida_data: '2026-10-10' }] });
+  assert.strictEqual(F.receberDoProcesso(p, []).filter(x => x.tipo_receber === 'venda').length, 0);
+});
+teste('parcela já faturada fica com o valor dela; o resto da venda se divide entre as que faltam', () => {
+  const p = PROC_AR({ finalidade: 'IMPORTACAO_DIRETA' });
+  const r = F.receberDoProcesso(p, ['venda:p9:0:1'], { valoresOrigem: { 'venda:p9:0:1': 12000 } });
+  assert.deepStrictEqual(r.map(x => x.documento + ':' + x.valor), ['NF 900 · parcela 2/3:9000', 'NF 900 · parcela 3/3:9000']);
+  assert.deepStrictEqual(F.receberDoProcesso(p, ['venda:p9:0']), [], 'venda com fatura única: não parcela de novo');
+});
+teste('à vista / a prazo e entrada + saldo também viram adiantamento do cliente (encomenda)', () => {
+  const vista = F.receberDoProcesso({ id: 'p8', referencia: 'TST-AR-2', cliente: 'Cliente Ficticio', finalidade: 'ENCOMENDA', pi_pagamento: 'PRAZO', pi_valor_usd: 1000, ci_valor_usd: 1100, pi_cambio_fechado: 5, pi_data_saldo: '2026-11-01', pi_valor_recebido_cliente: 100 }, []);
+  assert.deepStrictEqual(vista.map(x => [x.origem.idx, x.valor, x.vencimento, x.ja_recebido]), [[-1, 5500, '2026-11-01', 100]]);
+  const es = F.receberDoProcesso({ id: 'p7', referencia: 'TST-AR-3', finalidade: 'ENCOMENDA', pi_pagamento: 'ENTRADA_SALDO', pi_valor_usd: 1000, pi_entrada_pct: 30, pi_cambio_entrada: 5, pi_cambio_saldo: '' }, []);
+  assert.deepStrictEqual(es.map(x => [x.origem.idx, x.valor]), [[-2, 1500]], 'saldo sem câmbio fechado ainda não tem valor');
+});
+teste('parcelas do prazo: dias, datas escritas e prazo que não dá pra entender', () => {
+  const venc = (txt, data, forma) => F.parcelasDaVenda({ forma_pagamento: forma || 'prazo', prazo_texto: txt, nf_saida_data: data || '2026-10-10' }, 900).map(x => x.vencimento);
+  assert.deepStrictEqual(venc('30 / 60 / 90 DD'), ['2026-11-09', '2026-12-09', '2027-01-08']);
+  assert.deepStrictEqual(venc('3 boletos: 17/10, 17/11 e 17/12/2026'), ['2026-10-17', '2026-11-17', '2026-12-17']);
+  assert.deepStrictEqual(venc('15/12, 15/01', '2026-12-01'), ['2026-12-15', '2027-01-15'], 'o ano vira quando o mês volta');
+  assert.deepStrictEqual(venc('28 DDL'), ['2026-11-07']);
+  assert.deepStrictEqual(venc('', '2026-10-10', 'avista'), ['2026-10-10']);
+  const inc = F.parcelasDaVenda({ forma_pagamento: 'prazo', prazo_texto: 'a combinar', nf_saida_data: '2026-10-10' }, 900);
+  assert.strictEqual(inc.length, 1); assert.strictEqual(inc[0].incerto, true);
+  assert.deepStrictEqual(F.parcelasDaVenda({ forma_pagamento: 'parcelado', parcelas: [{ dias: 30, percentual: 40 }, { dias: 60, percentual: 60 }], nf_saida_data: '2026-10-10' }, 1000).map(x => x.valor), [400, 600]);
+});
+teste('chave e validação da origem com parcela (só venda em 2+ parcelas)', () => {
+  assert.strictEqual(F.chaveOrigem({ tipo: 'venda', processo_id: 'p', idx: 0 }), 'venda:p:0');
+  assert.strictEqual(F.chaveOrigem({ tipo: 'venda', processo_id: 'p', idx: 0, parcela: 2, de: 3 }), 'venda:p:0:2');
+  const v = F.validarFatura({ tipo: 'receber', empresa_nome: 'Cliente Ficticio', valor: 10, origem: { tipo: 'venda', processo_id: 'p', idx: 0, parcela: 2, de: 3 } });
+  assert.deepStrictEqual([v.fatura.origem.parcela, v.fatura.origem.de], [2, 3]);
+  const w = F.validarFatura({ tipo: 'receber', empresa_nome: 'Cliente Ficticio', valor: 10, origem: { tipo: 'parcela_cambio', processo_id: 'p', idx: -1, parcela: 2, de: 3 } });
+  assert.strictEqual(w.fatura.origem.idx, -1); assert.strictEqual(w.fatura.origem.parcela, undefined);
+});
+
+console.log('\n── conferência: tipo de cada checagem e diferença de câmbio ──');
+teste('diferença pequena em outra moeda é aviso de câmbio (não conta como diferença); grande é de valor', () => {
+  const procs = { p1: { id: 'p1', referencia: 'TST-C-1', real_json: { frete: { valor: 5300, moeda: 'BRL' }, handling: { valor: 1040, moeda: 'BRL' } } } };
+  const fat = { tipo: 'pagar', empresa_nome: 'Agente Ficticio', documento: 'ND 1', moeda: 'USD', cambio: 5.4, valor: 1200,
+    itens: [{ processo_id: 'p1', referencia: 'TST-C-1', taxa: 'frete', valor: 1000 }, { processo_id: 'p1', referencia: 'TST-C-1', taxa: 'handling', valor: 200 }] };
+  const r = F.conferirFatura(fat, procs, [], { hoje: '2026-10-21' });
+  const frete = r.checks.find(c => c.item === 0 && (c.tipo === 'cambio' || c.tipo === 'valor'));
+  assert.strictEqual(frete.tipo, 'cambio', '5.400 × 5.300 (1,9%) é câmbio');
+  const hand = r.checks.find(c => c.item === 1 && (c.tipo === 'cambio' || c.tipo === 'valor'));
+  assert.strictEqual(hand.tipo, 'valor'); assert.strictEqual(hand.nivel, 'aviso', '1.080 × 1.040 (3,8%): diferença de valor');
+  assert.strictEqual(F.divergenciasConferencia({ checks: r.checks }), 1);
+  assert.ok(r.checks.every(c => c.tipo), 'toda checagem tem tipo');
+});
+teste('divergências: erro conta; aviso de cotado/datas não; conferência antiga sem checks usa o resumo', () => {
+  assert.strictEqual(F.divergenciasConferencia({ checks: [{ nivel: 'erro', tipo: 'processo' }, { nivel: 'aviso', tipo: 'cotado' }, { nivel: 'aviso', tipo: 'datas' }, { nivel: 'aviso', tipo: 'duplicidade' }] }), 2);
+  assert.strictEqual(F.divergenciasConferencia({ resumo: { erro: 3 } }), 3);
+  assert.strictEqual(F.divergenciasConferencia(null), 0);
+});
+
+console.log('\n── etapas da fatura, parte do processo, selo e extrato ──');
+teste('etapa: prevista → recebida → conferida/divergente → aprovada → paga', () => {
+  const base = { tipo: 'pagar', status: 'aberta', valor: 100 };
+  assert.strictEqual(F.etapaFatura(base), 'prevista');
+  assert.strictEqual(F.etapaFatura({ ...base, anexos: [{ tipo: 'fatura' }] }), 'recebida');
+  assert.strictEqual(F.etapaFatura({ ...base, anexos: [{ tipo: 'comprovante' }] }), 'prevista', 'comprovante não é o documento da cobrança');
+  assert.strictEqual(F.etapaFatura({ ...base, conferencia: { checks: [{ nivel: 'ok', tipo: 'valor' }] } }), 'conferida');
+  assert.strictEqual(F.etapaFatura({ ...base, conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] } }), 'divergente');
+  assert.strictEqual(F.etapaFatura({ ...base, conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] }, aprovacao: { por: 'gerente@exemplo.com' } }), 'aprovada');
+  assert.strictEqual(F.etapaFatura({ ...base, status: 'paga' }), 'paga');
+  assert.strictEqual(F.etapaFatura({ tipo: 'receber', status: 'aberta', valor: 100, valor_pago: 40 }), 'parcial');
+  const passos = F.passosFatura({ ...base, anexos: [{ tipo: 'fatura' }], conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] } });
+  assert.deepStrictEqual(passos.map(x => x.estado), ['feito', 'alerta', 'pendente', 'pendente']);
+  assert.deepStrictEqual(F.passosFatura({ ...base, status: 'paga' }).map(x => x.estado), ['pulado', 'pulado', 'pulado', 'feito']);
+});
+teste('fatura de dois processos entra em cada um só com a parte dele', () => {
+  const f = { valor: 1000, itens: [{ processo_id: 'a', referencia: 'TST-A', valor: 750 }, { processo_id: 'b', referencia: 'TST-B', valor: 250 }] };
+  assert.deepStrictEqual(F.processosDaFatura(f), ['a', 'b']);
+  const pa = F.parteDoProcesso(f, 'a');
+  assert.strictEqual(pa.valor, 750); assert.deepStrictEqual(pa.outros, ['TST-B']);
+  assert.strictEqual(F.parteDoProcesso(f, 'c').fracao, 0);
+  assert.strictEqual(F.parteDoProcesso({ valor: 500, itens: [], origem: { tipo: 'venda', processo_id: 'c', idx: 0 } }, 'c').valor, 500);
+});
+teste('selo: vermelho (vencida/diferença), amarelo (em aberto), verde (tudo pago), nada sem fatura', () => {
+  const res = F.resumoPorProcesso([
+    { id: '1', tipo: 'pagar', status: 'aberta', valor: 10, vencimento: '2026-10-01', itens: [{ processo_id: 'x', valor: 10 }] },
+    { id: '2', tipo: 'receber', status: 'aberta', valor: 10, vencimento: '2026-12-01', origem: { tipo: 'venda', processo_id: 'y', idx: 0 } },
+    { id: '3', tipo: 'pagar', status: 'paga', valor: 10, itens: [{ processo_id: 'z', valor: 10 }] },
+    { id: '4', tipo: 'pagar', status: 'cancelada', valor: 10, itens: [{ processo_id: 'w', valor: 10 }] },
+    { id: '5', tipo: 'pagar', status: 'aberta', valor: 10, vencimento: '2026-12-01', conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] }, itens: [{ processo_id: 'v', valor: 10 }] },
+  ], '2026-10-21');
+  assert.strictEqual(F.seloProcesso(res.x).nivel, 'erro'); assert.strictEqual(F.seloProcesso(res.x).texto, '1 vencida');
+  assert.strictEqual(F.seloProcesso(res.y).nivel, 'aviso');
+  assert.strictEqual(F.seloProcesso(res.z).texto, 'Tudo pago');
+  assert.strictEqual(res.w, undefined); assert.strictEqual(F.seloProcesso(res.w), null);
+  assert.strictEqual(F.seloProcesso(res.v).texto, '1 diferença');
+});
+teste('extrato: baixas realizadas, saldo previsto no vencimento, parte do processo, compensação fora do caixa', () => {
+  const faturas = [
+    { id: 'f1', tipo: 'pagar', status: 'aberta', moeda: 'BRL', valor: 1000, valor_pago: 400, vencimento: '2026-11-05', empresa_nome: 'Despachante Ficticio',
+      itens: [{ processo_id: 'p', valor: 1000 }], pagamentos: [{ data: '2026-10-10', valor: 400, forma: 'pix' }] },
+    { id: 'f2', tipo: 'pagar', status: 'paga', moeda: 'USD', cambio: 5, valor: 100, empresa_nome: 'Agente Ficticio',
+      itens: [{ processo_id: 'p', valor: 50 }, { processo_id: 'q', valor: 50 }], pagamentos: [{ data: '2026-10-12', valor: 100, pago_brl: 520, forma: 'cambio' }] },
+    { id: 'f3', tipo: 'pagar', status: 'paga', moeda: 'BRL', valor: 300, empresa_nome: 'Despachante Ficticio', itens: [{ processo_id: 'p', valor: 300 }], pagamentos: [{ data: '2026-10-15', valor: 300, forma: 'compensacao' }] },
+    { id: 'f4', tipo: 'receber', status: 'cancelada', valor: 999, origem: { processo_id: 'p' } },
+  ];
+  const outros = [{ data: '2026-10-01', descricao: 'Câmbio ao fornecedor', valor: 5000, sentido: 'saida', realizado: true },
+    { data: '2026-10-20', descricao: 'Adiantamento do cliente', valor: 6000, sentido: 'entrada', realizado: true },
+    { data: null, descricao: 'Custo sem fatura', valor: 200, sentido: 'saida', realizado: false }];
+  const ex = F.extratoProcesso({ processo_id: 'p', faturas, outros }, '2026-10-21', {});
+  assert.deepStrictEqual(ex.linhas.map(l => l.data), ['2026-10-01', '2026-10-10', '2026-10-12', '2026-10-15', '2026-10-20', '2026-11-05']);
+  assert.strictEqual(ex.linhas[2].valor, 260, 'metade da fatura do agente, pelo que saiu em R$');
+  assert.strictEqual(ex.linhas[3].valor, 0); assert.strictEqual(ex.linhas[3].compensacao, true);
+  assert.strictEqual(ex.totais.realizado.saidas, 5660); assert.strictEqual(ex.totais.realizado.entradas, 6000);
+  assert.strictEqual(ex.totais.realizado.saldo, 340);
+  assert.strictEqual(ex.linhas[5].realizado, false); assert.strictEqual(ex.linhas[5].valor, 600);
+  assert.strictEqual(ex.totais.saldo_com_previsto, -260);
+  assert.strictEqual(ex.sem_data.length, 1); assert.strictEqual(ex.totais.saldo_final, -460);
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);

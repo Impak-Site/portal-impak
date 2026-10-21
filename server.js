@@ -1879,6 +1879,10 @@ const FinCore = require('./fin-core.js');
 // do despachante/interna e criação em lote acham o processo do mesmo jeito.
 const RefProcesso = require('./referencia-processo.js');
 app.get('/faturas', auth('financeiro'), (req, res) => enviarControleV2(res));
+// Resumo por processo (selo da lista) em cache curto — qualquer escrita em
+// /api/faturas* invalida (baixa, estorno, edição, anexo, conferência...).
+let _resumoFaturasCache = null, _resumoFaturasEm = 0;
+app.use('/api/faturas', (req, res, next) => { if (req.method !== 'GET') _resumoFaturasCache = null; next(); });
 
 async function vincularFaturaNosProcessos(fatura, remover) {
   const porProcesso = {};
@@ -1904,6 +1908,13 @@ async function vincularFaturaNosProcessos(fatura, remover) {
   }
 }
 
+// Mesmas taxas (processo, taxa e valor) — o jsonb não guarda a ordem das
+// chaves, então comparar o JSON inteiro dava "mudou" sem ter mudado.
+function mesmosItensFatura(a, b) {
+  const norm = l => (Array.isArray(l) ? l : []).map(it => [String((it && it.processo_id) || ''), String((it && it.taxa) || ''), Math.round((parseFloat(it && it.valor) || 0) * 100)].join('|')).sort();
+  const x = norm(a), y = norm(b);
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+}
 function temFinanceiro(req) {
   const mods = Array.isArray(req.session.modulos) ? req.session.modulos : [];
   return req.session.role === 'gerente' || mods.includes('financeiro');
@@ -1914,16 +1925,35 @@ app.get('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
     if (!temFinanceiro(req) && !q.processo_id) {
       return res.status(403).json({ ok: false, erro: 'A lista completa de faturas é do Financeiro. No Controle, abra o processo para ver as faturas dele.', faturas: [] });
     }
-    let query = sb().from('faturas').select('*').order('vencimento', { ascending: true, nullsFirst: false }).limit(2000);
-    if (q.status && FaturasCore.STATUS.includes(q.status)) query = query.eq('status', q.status);
-    if (q.tipo && FaturasCore.TIPOS.includes(q.tipo)) query = query.eq('tipo', q.tipo);
-    if (q.empresa_id) query = query.eq('empresa_id', String(q.empresa_id).slice(0, 80));
-    if (q.de && /^\d{4}-\d{2}-\d{2}$/.test(q.de)) query = query.gte('vencimento', q.de);
-    if (q.ate && /^\d{4}-\d{2}-\d{2}$/.test(q.ate)) query = query.lte('vencimento', q.ate);
-    if (q.processo_id) query = query.contains('itens', FaturasCore.filtroJsonbContem({ processo_id: String(q.processo_id).slice(0, 80) }));
-    const { data, error } = await query;
-    if (error) return res.json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message), faturas: [] });
-    let lista = data || [];
+    const montar = () => {
+      let query = sb().from('faturas').select('*').order('vencimento', { ascending: true, nullsFirst: false }).limit(2000);
+      if (q.status && FaturasCore.STATUS.includes(q.status)) query = query.eq('status', q.status);
+      if (q.tipo && FaturasCore.TIPOS.includes(q.tipo)) query = query.eq('tipo', q.tipo);
+      if (q.empresa_id) query = query.eq('empresa_id', String(q.empresa_id).slice(0, 80));
+      if (q.de && /^\d{4}-\d{2}-\d{2}$/.test(q.de)) query = query.gte('vencimento', q.de);
+      if (q.ate && /^\d{4}-\d{2}-\d{2}$/.test(q.ate)) query = query.lte('vencimento', q.ate);
+      return query;
+    };
+    let lista;
+    if (q.processo_id) {
+      // Faturas do processo: as que têm taxa dele (itens) + as a receber
+      // geradas da parcela de câmbio / venda dele (origem, sem itens) —
+      // antes só as primeiras apareciam (aba Faturas do processo, 21/10/2026).
+      const pid = String(q.processo_id).slice(0, 80);
+      const [porItens, porOrigem] = await Promise.all([
+        montar().contains('itens', FaturasCore.filtroJsonbContem({ processo_id: pid })),
+        montar().eq('origem->>processo_id', pid),
+      ]);
+      const error = porItens.error || porOrigem.error;
+      if (error) return res.json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message), faturas: [] });
+      const vistos = new Set();
+      lista = [...(porItens.data || []), ...(porOrigem.data || [])].filter(f => !vistos.has(f.id) && vistos.add(f.id));
+      lista.sort((a, b) => (a.vencimento || '9999') < (b.vencimento || '9999') ? -1 : (a.vencimento || '9999') > (b.vencimento || '9999') ? 1 : 0);
+    } else {
+      const { data, error } = await montar();
+      if (error) return res.json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message), faturas: [] });
+      lista = data || [];
+    }
     if (q.empresa) { const k = String(q.empresa).toLowerCase(); lista = lista.filter(f => (f.empresa_nome || '').toLowerCase().includes(k) || (f.documento || '').toLowerCase().includes(k)); }
     res.json({ ok: true, faturas: lista });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
@@ -1947,7 +1977,7 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
       if (!row.empresa_id) { try { const r = CadastrosNormalizar.resolverEmpresaQualquerPapel(row.empresa_nome, await obterIndiceCadastros()); if (r && r.id) row.empresa_id = r.id; } catch (e) { /* segue sem id */ } }
       let salva;
       if (b && b.id) {
-        const { data: atual } = await sb().from('faturas').select('id,status,itens,valor_pago,pago_em,pagamentos').eq('id', String(b.id)).maybeSingle();
+        const { data: atual } = await sb().from('faturas').select('id,status,itens,valor,valor_pago,pago_em,pagamentos,documento,empresa_nome,moeda,cambio').eq('id', String(b.id)).maybeSingle();
         if (!atual) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
         if (atual.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada não pode ser editada.' });
         // edição não mexe nas baixas: status/valor pago saem da lista de pagamentos
@@ -1958,6 +1988,11 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
         const { data, error } = await sb().from('faturas').update(row).eq('id', atual.id).select().single();
         if (error) return res.status(500).json({ ok: false, erro: error.message });
         salva = data;
+        // conferência salva vale para o que foi conferido: mudou valor, taxas,
+        // documento, empresa ou câmbio → volta a "precisa conferir"
+        const mudouConferido = ['valor', 'documento', 'empresa_nome', 'moeda', 'cambio'].some(k => String(atual[k] == null ? '' : atual[k]) !== String(row[k] == null ? '' : row[k]))
+          || !mesmosItensFatura(atual.itens, row.itens);
+        if (mudouConferido) { try { const r = await sb().from('faturas').update({ conferencia: null }).eq('id', atual.id); if (!r.error) salva.conferencia = null; } catch (e) { /* banco sem a coluna (0058) */ } }
         await vincularFaturaNosProcessos({ id: atual.id, itens: atual.itens }, true);
       } else {
         row.criado_por = req.session.usuario || null; row.created_at = agora;
@@ -1993,67 +2028,124 @@ app.post('/api/faturas', auth('financeiro', 'controle'), async (req, res) => {
 // Conferência (cross-check) de uma fatura com o que já está no sistema:
 // duplicidade de documento, taxa já faturada, valor x Custos Reais (ou x
 // cotado), "pagar para" do processo, processo fechado/cancelado, soma x total.
-// Só lê — não grava nada. Regras em FaturasCore.conferirFatura (testadas).
+// Regras em FaturasCore.conferirFatura (testadas). A rota /conferir só lê;
+// a /:id/conferencia (aba Faturas do processo, 21/10/2026) grava o resultado
+// na fatura, pra etapa "Conferida" / "com diferença" e o selo da lista.
+async function conferirFaturaNoServidor(f, labelsBody, cambioBody) {
+  const itens = Array.isArray(f.itens) ? f.itens.slice(0, 80).map(it => (it && typeof it === 'object') ? { ...it } : it) : [];
+  // processos: por id, e os que vieram só com referência são resolvidos aqui
+  const ids = [...new Set(itens.map(it => it && it.processo_id).filter(Boolean).map(String))];
+  const refs = [...new Set(itens.filter(it => it && !it.processo_id && it.referencia).map(it => String(it.referencia).trim()).filter(Boolean))].slice(0, 30);
+  const cols = 'id, referencia, real_json, estimativa_json, fechado, cancelado';
+  const processos = {};
+  if (ids.length) {
+    const { data, error } = await sb().from('controle_processos').select(cols).in('id', ids);
+    if (error) return { erro: error.message };
+    (data || []).forEach(p => { processos[p.id] = p; });
+  }
+  // Referência resolvida com a mesma regra das importações (19/10/2026):
+  // igual, ou com/sem o prefixo "IMPAK-" quando só um processo bate.
+  if (refs.length) {
+    const { data: todos, error: errTodos } = await buscarTodosProcessos('id, referencia');
+    if (errTodos) return { erro: errTodos.message };
+    const indiceRefs = RefProcesso.criarIndice(todos);
+    const idPorRef = new Map();
+    refs.forEach(ref => { const achado = RefProcesso.encontrar(indiceRefs, ref); if (achado.processo) idPorRef.set(ref, achado.processo.id); });
+    const faltam = [...new Set(idPorRef.values())].filter(pid => !processos[pid]);
+    if (faltam.length) {
+      const { data, error } = await sb().from('controle_processos').select(cols).in('id', faltam);
+      if (error) return { erro: error.message };
+      (data || []).forEach(p => { processos[p.id] = p; });
+    }
+    itens.forEach(it => { if (it && !it.processo_id && it.referencia) { const pid = idPorRef.get(String(it.referencia).trim()); if (pid) it.processo_id = pid; } });
+  }
+  // faturas existentes: as que citam esses processos + as do mesmo nº de documento
+  const existentes = new Map();
+  for (const pid of Object.keys(processos)) {
+    const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').contains('itens', FaturasCore.filtroJsonbContem({ processo_id: pid })).limit(200);
+    (data || []).forEach(x => existentes.set(x.id, x));
+  }
+  const digitos = String(f.documento || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (digitos.length >= 3) {
+    const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').ilike('documento', '%' + digitos.slice(-8) + '%').limit(50);
+    (data || []).forEach(x => existentes.set(x.id, x));
+  }
+  // faturas citadas no _meta.fatura_id dos processos (pra mostrar o nº)
+  const metaIds = new Set();
+  Object.values(processos).forEach(p => { const m = (p.real_json && p.real_json._meta) || {}; Object.values(m).forEach(v => { if (v && v.fatura_id && !existentes.has(v.fatura_id)) metaIds.add(v.fatura_id); }); });
+  if (metaIds.size) {
+    const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status').in('id', [...metaIds].slice(0, 100));
+    (data || []).forEach(x => existentes.set(x.id, x));
+  }
+  const labels = {};
+  if (labelsBody && typeof labelsBody === 'object') Object.keys(labelsBody).slice(0, 200).forEach(k => { labels[String(k).slice(0, 60)] = String(labelsBody[k]).slice(0, 80); });
+  const cambio = {};
+  ['USD', 'EUR'].forEach(m => { const v = parseFloat(cambioBody && cambioBody[m]); if (v > 0 && v < 100) cambio[m] = v; });
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const r = FaturasCore.conferirFatura({ ...f, itens }, processos, [...existentes.values()], { hoje, cambio, labels });
+  return { ...r, itens: itens.map(it => ({ processo_id: it && it.processo_id || null })) };
+}
 app.post('/api/faturas/conferir', auth('financeiro', 'controle'), async (req, res) => {
   try {
     const b = req.body || {};
-    const f = b.fatura || {};
-    const itens = Array.isArray(f.itens) ? f.itens.slice(0, 80) : [];
-    // processos: por id, e os que vieram só com referência são resolvidos aqui
-    const ids = [...new Set(itens.map(it => it && it.processo_id).filter(Boolean).map(String))];
-    const refs = [...new Set(itens.filter(it => it && !it.processo_id && it.referencia).map(it => String(it.referencia).trim()).filter(Boolean))].slice(0, 30);
-    const cols = 'id, referencia, real_json, estimativa_json, fechado, cancelado';
-    const processos = {};
-    if (ids.length) {
-      const { data, error } = await sb().from('controle_processos').select(cols).in('id', ids);
-      if (error) return res.json({ ok: false, erro: error.message });
-      (data || []).forEach(p => { processos[p.id] = p; });
-    }
-    // Referência resolvida com a mesma regra das importações (19/10/2026):
-    // igual, ou com/sem o prefixo "IMPAK-" quando só um processo bate.
-    if (refs.length) {
-      const { data: todos, error: errTodos } = await buscarTodosProcessos('id, referencia');
-      if (errTodos) return res.json({ ok: false, erro: errTodos.message });
-      const indiceRefs = RefProcesso.criarIndice(todos);
-      const idPorRef = new Map();
-      refs.forEach(ref => { const achado = RefProcesso.encontrar(indiceRefs, ref); if (achado.processo) idPorRef.set(ref, achado.processo.id); });
-      const faltam = [...new Set(idPorRef.values())].filter(pid => !processos[pid]);
-      if (faltam.length) {
-        const { data, error } = await sb().from('controle_processos').select(cols).in('id', faltam);
-        if (error) return res.json({ ok: false, erro: error.message });
-        (data || []).forEach(p => { processos[p.id] = p; });
-      }
-      itens.forEach(it => { if (it && !it.processo_id && it.referencia) { const pid = idPorRef.get(String(it.referencia).trim()); if (pid) it.processo_id = pid; } });
-    }
-    // faturas existentes: as que citam esses processos + as do mesmo nº de documento
-    const existentes = new Map();
-    for (const pid of Object.keys(processos)) {
-      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').contains('itens', FaturasCore.filtroJsonbContem({ processo_id: pid })).limit(200);
-      (data || []).forEach(x => existentes.set(x.id, x));
-    }
-    const digitos = String(f.documento || '').replace(/\D/g, '').replace(/^0+/, '');
-    if (digitos.length >= 3) {
-      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status, itens').ilike('documento', '%' + digitos.slice(-8) + '%').limit(50);
-      (data || []).forEach(x => existentes.set(x.id, x));
-    }
-    // faturas citadas no _meta.fatura_id dos processos (pra mostrar o nº)
-    const metaIds = new Set();
-    Object.values(processos).forEach(p => { const m = (p.real_json && p.real_json._meta) || {}; Object.values(m).forEach(v => { if (v && v.fatura_id && !existentes.has(v.fatura_id)) metaIds.add(v.fatura_id); }); });
-    if (metaIds.size) {
-      const { data } = await sb().from('faturas').select('id, numero, documento, empresa_id, empresa_nome, status').in('id', [...metaIds].slice(0, 100));
-      (data || []).forEach(x => existentes.set(x.id, x));
-    }
-    const labels = {};
-    if (b.labels && typeof b.labels === 'object') Object.keys(b.labels).slice(0, 200).forEach(k => { labels[String(k).slice(0, 60)] = String(b.labels[k]).slice(0, 80); });
-    const cambio = {};
-    ['USD', 'EUR'].forEach(m => { const v = parseFloat(b.cambio && b.cambio[m]); if (v > 0 && v < 100) cambio[m] = v; });
-    const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
-    const r = FaturasCore.conferirFatura({ ...f, itens }, processos, [...existentes.values()], { hoje, cambio, labels });
-    res.json({ ok: true, ...r, itens: itens.map(it => ({ processo_id: it && it.processo_id || null })) });
+    const r = await conferirFaturaNoServidor(b.fatura || {}, b.labels, b.cambio);
+    if (r.erro) return res.json({ ok: false, erro: r.erro });
+    res.json({ ok: true, ...r });
   } catch (e) {
     console.error('faturas/conferir:', e.message);
     res.status(500).json({ ok: false, erro: 'Erro ao conferir a fatura.' });
   }
+});
+// Confere uma fatura já gravada e guarda o resultado nela (faturas.conferencia,
+// migration 0058): quem, quando, o resumo e as checagens. Não mexe em
+// updated_at (é anotação, não muda a fatura) — assim não atrapalha uma baixa
+// que alguém esteja dando ao mesmo tempo.
+app.post('/api/faturas/:id/conferencia', auth('financeiro', 'controle'), async (req, res) => {
+  try {
+    const f = await _faturaPorId(req.params.id);
+    if (!f) return res.status(404).json({ ok: false, erro: 'Fatura não encontrada.' });
+    if (f.status === 'cancelada') return res.status(400).json({ ok: false, erro: 'Fatura cancelada.' });
+    const b = req.body || {};
+    const r = await conferirFaturaNoServidor(f, b.labels, b.cambio);
+    if (r.erro) return res.json({ ok: false, erro: r.erro });
+    const conferencia = {
+      em: new Date().toISOString(), por: req.session.usuario || null, nome: req.session.displayName || req.session.nome || null,
+      resumo: r.resumo, checks: (r.checks || []).slice(0, 40), divergencias: FaturasCore.divergenciasConferencia({ checks: r.checks || [] }),
+      valor: f.valor, moeda: f.moeda, documento: f.documento || null,
+    };
+    const { error } = await sb().from('faturas').update({ conferencia }).eq('id', f.id);
+    if (error) return res.json({ ok: false, erro: /conferencia/.test(error.message) ? 'Falta a coluna "conferencia" no banco (migration 0058).' : error.message, semColuna: /conferencia/.test(error.message), ...r });
+    _resumoFaturasCache = null;
+    res.json({ ok: true, conferencia, ...r });
+  } catch (e) {
+    console.error('faturas/conferencia:', e.message);
+    res.status(500).json({ ok: false, erro: 'Erro ao conferir a fatura.' });
+  }
+});
+// Selo da lista de processos (aba Faturas, 21/10/2026): por processo, quantas
+// faturas abertas, vencidas, com diferença na conferência e pagas. Cache de
+// 20 s (a lista de processos chama a cada carga); ?fresh=1 ignora o cache.
+app.get('/api/faturas/resumo-processos', auth('controle', 'financeiro'), async (req, res) => {
+  try {
+    if (!(req.query && req.query.fresh) && _resumoFaturasCache && Date.now() - _resumoFaturasEm < 20000) return res.json({ ok: true, resumo: _resumoFaturasCache, cache: true });
+    const lista = [];
+    let cols = 'id, tipo, status, vencimento, valor, valor_pago, itens, origem, aprovacao, conferencia';
+    for (let de = 0; de < 20000; de += 1000) {
+      let { data, error } = await sb().from('faturas').select(cols).neq('status', 'cancelada').order('id').range(de, de + 999);
+      // banco ainda sem a coluna da conferência (migration 0058): segue sem ela
+      if (error && /conferencia/.test(error.message) && cols.includes('conferencia')) {
+        cols = 'id, tipo, status, vencimento, valor, valor_pago, itens, origem, aprovacao';
+        ({ data, error } = await sb().from('faturas').select(cols).neq('status', 'cancelada').order('id').range(de, de + 999));
+      }
+      if (error) return res.json({ ok: false, erro: error.message, semTabela: /faturas/.test(error.message), resumo: {} });
+      lista.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    _resumoFaturasCache = FaturasCore.resumoPorProcesso(lista, hoje);
+    _resumoFaturasEm = Date.now();
+    res.json({ ok: true, resumo: _resumoFaturasCache });
+  } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao resumir as faturas.' }); }
 });
 
 const PROMPT_LER_FATURA = `Você lê documentos de cobrança de uma IMPORTADORA brasileira de pneus: fatura/invoice de armador ou agente de carga, nota de débito, nota fiscal de serviço do despachante, boleto, DARF/guia de imposto, fatura de armazém/terminal. Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
@@ -2427,6 +2519,16 @@ async function sincronizarOrigemReceber(f) {
   try {
     const o = f && f.origem;
     if (!o || f.tipo !== 'receber' || !o.processo_id) return;
+    // câmbio único (À Vista / A Prazo, idx −1): o recebido fica nos campos do
+    // próprio processo; entrada/saldo (−2/−3) não têm campo de recebido
+    if (o.tipo === 'parcela_cambio' && +o.idx < 0) {
+      if (+o.idx !== -1) return;
+      const r1 = FaturasCore.aplicarPagamentos(f);
+      const v1 = f.status === 'cancelada' ? null : (r1.valor_pago || null);
+      const d1 = (f.pagamentos || []).filter(x => !x.estornado).map(x => x.data).filter(Boolean).sort().pop() || null;
+      await sb().from('controle_processos').update({ pi_valor_recebido_cliente: v1, pi_data_recebimento: d1, updated_at: new Date().toISOString() }).eq('id', o.processo_id);
+      return;
+    }
     const col = o.tipo === 'parcela_cambio' ? 'pi_parcelas_json' : o.tipo === 'venda' ? 'vendas_json' : null;
     if (!col) return;
     const { data: p } = await sb().from('controle_processos').select('id, ' + col).eq('id', o.processo_id).maybeSingle();
@@ -2435,8 +2537,19 @@ async function sincronizarOrigemReceber(f) {
     if (eraTexto) { try { lista = JSON.parse(lista); } catch (e) { return; } }
     if (!Array.isArray(lista) || !lista[o.idx]) return;
     const r = FaturasCore.aplicarPagamentos(f);
-    const valor = f.status === 'cancelada' ? null : (r.valor_pago || null);
-    const ultima = (f.pagamentos || []).filter(x => !x.estornado).map(x => x.data).filter(Boolean).sort().pop() || null;
+    let valor = f.status === 'cancelada' ? null : (r.valor_pago || null);
+    let ultima = (f.pagamentos || []).filter(x => !x.estornado).map(x => x.data).filter(Boolean).sort().pop() || null;
+    // venda em várias parcelas (boletos, 21/10/2026): o recebido da venda é a
+    // soma das faturas de todas as parcelas dela
+    if (o.tipo === 'venda') {
+      const { data: irmas } = await sb().from('faturas').select('id, status, valor, valor_pago, pago_em, pagamentos').eq('origem->>tipo', 'venda').eq('origem->>processo_id', String(o.processo_id)).eq('origem->>idx', String(o.idx));
+      const vivas = (irmas || []).filter(x => x.status !== 'cancelada');
+      if (vivas.length) {
+        const soma = vivas.reduce((s2, x) => s2 + (FaturasCore.aplicarPagamentos(x).valor_pago || 0), 0);
+        valor = soma > 0 ? Math.round(soma * 100) / 100 : null;
+        ultima = vivas.flatMap(x => (x.pagamentos || []).filter(y => !y.estornado).map(y => y.data)).filter(Boolean).sort().pop() || null;
+      }
+    }
     const item = { ...lista[o.idx] };
     if (o.tipo === 'parcela_cambio') {
       if ((parseFloat(item.valor_recebido_cliente) || null) === valor && (item.data_recebimento || null) === ultima) return;
@@ -2569,12 +2682,17 @@ app.post('/api/faturas/:id/aplicar-custos-reais', auth('financeiro'), async (req
 // não viraram fatura a receber (pra gerar sem digitar e sem duplicar).
 app.get('/api/faturas/receber-pendentes', auth('financeiro'), async (req, res) => {
   try {
-    const { data: procs, error } = await sb().from('controle_processos').select('id, referencia, cliente, fase, cancelado, pi_parcelas_json, vendas_json').neq('fase', 'FINALIZADO').limit(2000);
+    // finalidade: quem adianta o câmbio (importação própria não gera a
+    // receber da parcela); pi_*: câmbio único / entrada + saldo
+    const { data: procs, error } = await sb().from('controle_processos').select('id, referencia, cliente, fase, cancelado, finalidade, pi_pagamento, pi_valor_usd, ci_valor_usd, pi_entrada_pct, pi_cambio_fechado, pi_cambio_entrada, pi_cambio_saldo, pi_data_entrada, pi_data_saldo, pi_valor_recebido_cliente, pi_data_recebimento, pi_parcelas_json, vendas_json').neq('fase', 'FINALIZADO').limit(2000);
     if (error) return res.status(500).json({ ok: false, erro: error.message });
-    const { data: fats } = await sb().from('faturas').select('origem, status').not('origem', 'is', null).limit(5000);
-    const chaves = (fats || []).filter(f => f.status !== 'cancelada').map(f => FaturasCore.chaveOrigem(f.origem)).filter(Boolean);
+    const { data: fats } = await sb().from('faturas').select('origem, status, valor').not('origem', 'is', null).limit(5000);
+    const vivas = (fats || []).filter(f => f.status !== 'cancelada');
+    const chaves = vivas.map(f => FaturasCore.chaveOrigem(f.origem)).filter(Boolean);
+    const valoresOrigem = {};
+    vivas.forEach(f => { const k = FaturasCore.chaveOrigem(f.origem); if (k) valoresOrigem[k] = parseFloat(f.valor) || 0; });
     const lista = [];
-    (procs || []).forEach(p => FaturasCore.receberDoProcesso(p, chaves).forEach(x => lista.push(x)));
+    (procs || []).forEach(p => FaturasCore.receberDoProcesso(p, chaves, { valoresOrigem }).forEach(x => lista.push(x)));
     res.json({ ok: true, pendentes: lista.slice(0, 500) });
   } catch (e) { res.status(500).json({ ok: false, erro: 'Erro ao buscar pendências.' }); }
 });

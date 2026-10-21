@@ -98,6 +98,9 @@
     // origem (a receber gerado de parcela de câmbio / venda do processo)
     if (b.origem && ['parcela_cambio', 'venda'].includes(b.origem.tipo) && b.origem.processo_id && Number.isInteger(+b.origem.idx)) {
       fatura.origem = { tipo: b.origem.tipo, processo_id: String(b.origem.processo_id).slice(0, 80), referencia: b.origem.referencia ? String(b.origem.referencia).slice(0, 80) : null, idx: +b.origem.idx };
+      // venda em várias parcelas (boletos): qual parcela é esta (21/10/2026)
+      const pn = +b.origem.parcela, pd = +b.origem.de;
+      if (b.origem.tipo === 'venda' && Number.isInteger(pn) && Number.isInteger(pd) && pd > 1 && pn >= 1 && pn <= pd) { fatura.origem.parcela = pn; fatura.origem.de = pd; }
     }
     return { ok: true, fatura };
   }
@@ -473,12 +476,18 @@
   // processos: {id: {id, referencia, real_json, estimativa_json, fechado, cancelado}}
   // existentes: faturas já gravadas (pra achar duplicada e taxa já faturada)
   // opts: {hoje:'AAAA-MM-DD', cambio:{USD,EUR}, labels:{taxa:label}}
-  // Retorna {resumo:{ok,aviso,erro}, checks:[{nivel:'ok'|'aviso'|'erro'|'info', item:idx|null, msg}]}
+  // Retorna {resumo:{ok,aviso,erro}, checks:[{nivel:'ok'|'aviso'|'erro'|'info', tipo, item:idx|null, msg}]}
+  // tipo (21/10/2026, aba Faturas do processo): o que a checagem olhou —
+  // 'duplicidade', 'documento', 'soma', 'datas', 'processo', 'taxa',
+  // 'taxa_faturada', 'empresa', 'valor', 'cambio', 'cotado'. É o que separa
+  // diferença de verdade (valor, duplicidade...) de aviso que não muda o
+  // que se paga (ex.: diferença pequena que é só câmbio) — ver
+  // divergenciasConferencia.
   function conferirFatura(fatura, processos, existentes, opts) {
     const o = opts || {};
     const f = fatura || {};
     const checks = [];
-    const push = (nivel, msg, item) => checks.push({ nivel, msg, item: item == null ? null : item });
+    const push = (nivel, msg, item, tipo) => checks.push({ nivel, tipo: tipo || null, msg, item: item == null ? null : item });
     const fmt = (m, v) => (m === 'USD' ? 'US$ ' : m === 'EUR' ? '€ ' : 'R$ ') + (Math.round(v * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const moeda = MOEDAS.includes(f.moeda) ? f.moeda : 'BRL';
     const cx = m => m === 'BRL' ? 1 : (m === moeda && parseFloat(f.cambio) > 0 ? parseFloat(f.cambio) : parseFloat((o.cambio || {})[m]) || 0);
@@ -491,23 +500,23 @@
     const doc = normDoc(f.documento);
     if (doc) {
       const dup = outras.find(x => normDoc(x.documento) === doc && mesmaEmpresa(f.empresa_id, f.empresa_nome, x.empresa_id, x.empresa_nome));
-      if (dup) push('erro', `Documento ${f.documento} dessa empresa já está lançado na fatura ${dup.numero || ''} (${dup.status === 'paga' ? 'paga' : 'em aberto'}). Pode ser cobrança em duplicidade.`);
-      else push('ok', `Documento ${f.documento} ainda não foi lançado.`);
-    } else push('aviso', 'Sem número de documento — não dá pra checar duplicidade.');
+      if (dup) push('erro', `Documento ${f.documento} dessa empresa já está lançado na fatura ${dup.numero || ''} (${dup.status === 'paga' ? 'paga' : 'em aberto'}). Pode ser cobrança em duplicidade.`, null, 'duplicidade');
+      else push('ok', `Documento ${f.documento} ainda não foi lançado.`, null, 'duplicidade');
+    } else push('aviso', 'Sem número de documento — não dá pra checar duplicidade.', null, 'documento');
 
     // 2. Soma das linhas x total
     const itens = Array.isArray(f.itens) ? f.itens : [];
     const soma = itens.reduce((s, it) => s + num(it && it.valor), 0);
     const total = num(f.valor);
     if (itens.length && total > 0) {
-      if (Math.abs(soma - total) > 0.05) push('aviso', `Soma das taxas (${fmt(moeda, soma)}) não bate com o total do documento (${fmt(moeda, total)}) — diferença ${fmt(moeda, total - soma)}.`);
-      else push('ok', `Soma das taxas bate com o total (${fmt(moeda, total)}).`);
+      if (Math.abs(soma - total) > 0.05) push('aviso', `Soma das taxas (${fmt(moeda, soma)}) não bate com o total do documento (${fmt(moeda, total)}) — diferença ${fmt(moeda, total - soma)}.`, null, 'soma');
+      else push('ok', `Soma das taxas bate com o total (${fmt(moeda, total)}).`, null, 'soma');
     }
 
     // 3. Datas
     const venc = iso(f.vencimento), emi = iso(f.emissao);
-    if (venc && emi && venc < emi) push('aviso', 'Vencimento antes da emissão — confira as datas.');
-    if (venc && o.hoje && venc < o.hoje) push('aviso', `Vencimento ${venc.split('-').reverse().join('/')} já passou.`);
+    if (venc && emi && venc < emi) push('aviso', 'Vencimento antes da emissão — confira as datas.', null, 'datas');
+    if (venc && o.hoje && venc < o.hoje) push('aviso', `Vencimento ${venc.split('-').reverse().join('/')} já passou.`, null, 'datas');
 
     // 4. Linha a linha contra o processo
     const vistos = new Set();
@@ -517,28 +526,28 @@
       const v = num(it.valor);
       const p = it.processo_id ? procs[it.processo_id] : null;
       const nomeLinha = `${it.referencia || 'sem processo'} · ${lbl(it.taxa) || it.label || it.descricao || 'taxa'}`;
-      if (!p) { push('aviso', `${nomeLinha}: sem processo vinculado — não dá pra conferir com os Custos Reais.`, i); return; }
+      if (!p) { push('aviso', `${nomeLinha}: sem processo vinculado — não dá pra conferir com os Custos Reais.`, i, 'processo'); return; }
       if (!avisadoProc.has(p.id)) {
         avisadoProc.add(p.id);
-        if (p.cancelado) push('erro', `${p.referencia}: processo está CANCELADO.`, i);
-        else if (p.fechado) push('aviso', `${p.referencia}: processo já está FECHADO — lançar custo agora muda o resultado apurado.`, i);
+        if (p.cancelado) push('erro', `${p.referencia}: processo está CANCELADO.`, i, 'processo');
+        else if (p.fechado) push('aviso', `${p.referencia}: processo já está FECHADO — lançar custo agora muda o resultado apurado.`, i, 'processo');
       }
-      if (!it.taxa) { push('aviso', `${nomeLinha}: escolha a taxa pra conferir.`, i); return; }
+      if (!it.taxa) { push('aviso', `${nomeLinha}: escolha a taxa pra conferir.`, i, 'taxa'); return; }
       const chave = p.id + '|' + it.taxa;
-      if (vistos.has(chave)) push('aviso', `${nomeLinha}: a mesma taxa aparece mais de uma vez nesta fatura.`, i);
+      if (vistos.has(chave)) push('aviso', `${nomeLinha}: a mesma taxa aparece mais de uma vez nesta fatura.`, i, 'taxa');
       vistos.add(chave);
       const real = p.real_json || {};
       const meta = (real._meta && real._meta[it.taxa]) || {};
       // taxa já ligada a outra fatura
       if (meta.fatura_id && meta.fatura_id !== f.id) {
         const outra = (existentes || []).find(x => x.id === meta.fatura_id);
-        if (!outra || outra.status !== 'cancelada') push('erro', `${nomeLinha}: essa taxa já está na fatura ${outra && outra.numero ? outra.numero : '(outra)'}${outra && outra.documento ? ' — doc ' + outra.documento : ''}.`, i);
+        if (!outra || outra.status !== 'cancelada') push('erro', `${nomeLinha}: essa taxa já está na fatura ${outra && outra.numero ? outra.numero : '(outra)'}${outra && outra.documento ? ' — doc ' + outra.documento : ''}.`, i, 'taxa_faturada');
       }
       // pagamos para
       if (f.tipo !== 'receber' && (meta.para || meta.para_id) && !mesmaEmpresa(f.empresa_id, f.empresa_nome, meta.para_id, meta.para))
-        push('aviso', `${nomeLinha}: no processo está "pagar para ${meta.para || '?'}", mas a fatura é de ${f.empresa_nome || '?'}.`, i);
+        push('aviso', `${nomeLinha}: no processo está "pagar para ${meta.para || '?'}", mas a fatura é de ${f.empresa_nome || '?'}.`, i, 'empresa');
       if (f.tipo === 'receber' && (meta.de || meta.de_id) && !mesmaEmpresa(f.empresa_id, f.empresa_nome, meta.de_id, meta.de))
-        push('aviso', `${nomeLinha}: no processo está "receber de ${meta.de || '?'}", mas a fatura é para ${f.empresa_nome || '?'}.`, i);
+        push('aviso', `${nomeLinha}: no processo está "receber de ${meta.de || '?'}", mas a fatura é para ${f.empresa_nome || '?'}.`, i, 'empresa');
       // valor: lançado (Custos Reais) ou cotado (Calculador)
       const chaveValor = f.tipo === 'receber' ? it.taxa + '_cobrado' : it.taxa;
       const porMoeda = valorRealPorMoeda(real[chaveValor] != null ? real[chaveValor] : (f.tipo === 'receber' ? real[it.taxa] : null));
@@ -550,12 +559,20 @@
           const brl = moedasReais.reduce((s, m) => { const b = emBRL(m, porMoeda[m]); return b == null || s == null ? null : s + b; }, 0);
           fat = emBRL(moeda, v);
           sist = brl; sistTxt = moedasReais.map(m => fmt(m, porMoeda[m])).join(' + ');
-          if (sist == null || fat == null) { push('aviso', `${nomeLinha}: lançado ${sistTxt} em outra moeda e sem câmbio pra comparar.`, i); return; }
+          if (sist == null || fat == null) { push('aviso', `${nomeLinha}: lançado ${sistTxt} em outra moeda e sem câmbio pra comparar.`, i, 'cambio'); return; }
         }
         const dif = fat - sist;
         const tol = Math.max(1, Math.abs(sist) * 0.005);
-        if (Math.abs(dif) <= tol) push('ok', `${nomeLinha}: bate com o lançado no sistema (${sistTxt}).`, i);
-        else push(Math.abs(dif) > Math.abs(sist) * 0.05 ? 'erro' : 'aviso', `${nomeLinha}: fatura ${fmt(moeda, v)} × sistema ${sistTxt} — diferença ${dif > 0 ? '+' : ''}${(Math.round(dif * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}${moedasReais.length === 1 && moedasReais[0] === moeda ? '' : ' (em R$)'}.`, i);
+        if (Math.abs(dif) <= tol) push('ok', `${nomeLinha}: bate com o lançado no sistema (${sistTxt}).`, i, 'valor');
+        else {
+          const mesmaMoeda = moedasReais.length === 1 && moedasReais[0] === moeda;
+          const difTxt = `${dif > 0 ? '+' : ''}${(Math.round(dif * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}${mesmaMoeda ? '' : ' (em R$)'}`;
+          // Fatura numa moeda e lançado em outra: diferença pequena (até 3%)
+          // costuma ser só o câmbio usado de cada lado — avisa, mas não conta
+          // como diferença de valor (21/10/2026, "menos alarme falso").
+          if (!mesmaMoeda && Math.abs(dif) <= Math.abs(sist) * 0.03) push('aviso', `${nomeLinha}: fatura ${fmt(moeda, v)} × sistema ${sistTxt} — diferença ${difTxt}, pequena: deve ser só o câmbio${parseFloat(f.cambio) > 0 && moeda !== 'BRL' ? ' (fatura a ' + String(f.cambio).replace('.', ',') + ')' : ''}.`, i, 'cambio');
+          else push(Math.abs(dif) > Math.abs(sist) * 0.05 ? 'erro' : 'aviso', `${nomeLinha}: fatura ${fmt(moeda, v)} × sistema ${sistTxt} — diferença ${difTxt}.`, i, 'valor');
+        }
         return;
       }
       const cot = f.tipo === 'receber' ? null : valorCotado(p.estimativa_json && p.estimativa_json.custos_cotados_json, it.taxa);
@@ -563,10 +580,10 @@
       if (cot != null && cot > 0 && fatBRL != null) {
         const pct = (fatBRL - cot) / cot * 100;
         const txt = `${nomeLinha}: ainda sem valor lançado nos Custos Reais. Cotado ${fmt('BRL', cot)}, fatura ${fmt('BRL', fatBRL)} (${pct > 0 ? '+' : ''}${pct.toFixed(1).replace('.', ',')}%).`;
-        if (pct > 10) push('aviso', txt + ' Acima do cotado.', i);
-        else if (pct < -30) push('aviso', txt + ' Bem abaixo do cotado — confira se é cobrança parcial ou se falta algo.', i);
-        else push('info', txt, i);
-      } else push('info', `${nomeLinha}: ainda sem valor lançado nos Custos Reais e sem valor cotado pra comparar.`, i);
+        if (pct > 10) push('aviso', txt + ' Acima do cotado.', i, 'cotado');
+        else if (pct < -30) push('aviso', txt + ' Bem abaixo do cotado — confira se é cobrança parcial ou se falta algo.', i, 'cotado');
+        else push('info', txt, i, 'cotado');
+      } else push('info', `${nomeLinha}: ainda sem valor lançado nos Custos Reais e sem valor cotado pra comparar.`, i, 'cotado');
     });
 
     const resumo = { ok: 0, aviso: 0, erro: 0, info: 0 };
@@ -781,8 +798,14 @@
   }
 
   // ── A receber gerado das parcelas de câmbio e das vendas (sem duplicar) ──
-  // origem: {tipo:'parcela_cambio'|'venda', processo_id, referencia, idx}
-  function chaveOrigem(o) { return o && o.tipo && o.processo_id != null && o.idx != null ? `${o.tipo}:${o.processo_id}:${o.idx}` : null; }
+  // origem: {tipo:'parcela_cambio'|'venda', processo_id, referencia, idx,
+  //          parcela?, de?} — parcela/de (21/10/2026) = n-ésimo boleto de uma
+  // venda a prazo em várias parcelas (30/60/90 → 1/3, 2/3, 3/3). Venda de
+  // uma parcela só continua sem "parcela" (a mesma chave de antes).
+  function chaveOrigem(o) {
+    if (!(o && o.tipo && o.processo_id != null && o.idx != null)) return null;
+    return `${o.tipo}:${o.processo_id}:${o.idx}` + (o.parcela != null && o.parcela !== '' ? `:${o.parcela}` : '');
+  }
 
   // Filtro "contém" do banco para as colunas jsonb que guardam uma LISTA de
   // objetos (faturas.itens, faturas.pagamentos). O supabase-js transforma um
@@ -793,38 +816,349 @@
   // nunca apareciam). Mandando o JSON como texto o filtro vira
   // cs.[{...}] e o Postgres usa o operador jsonb @>.
   function filtroJsonbContem(obj) { return JSON.stringify([obj || {}]); }
-  // Candidatos a "fatura a receber" de um processo (o que ainda não tem fatura)
-  function receberDoProcesso(p, chavesExistentes) {
+
+  // ── Quem adianta o câmbio (Ayslan, 21/10/2026) ──────────────────────────
+  // Importação própria (IMPORTACAO_DIRETA): a IMPAK fecha o câmbio com o
+  // dinheiro dela — a parcela de câmbio NÃO é conta a receber do cliente.
+  // Encomenda / conta e ordem (e processo sem finalidade, igual a
+  // impakPagaCambio() do Controle): o cliente adianta o valor de cada câmbio.
+  // Acompanhamento: a IMPAK não fatura nada.
+  // A NF de venda sai com o valor TOTAL da operação e o que o cliente já
+  // adiantou é descontado dela:
+  //   a receber da venda = NF + juros cobrados − adiantamentos do cliente.
+  function clienteAdiantaCambio(p) { return !!p && p.finalidade !== 'IMPORTACAO_DIRETA' && p.finalidade !== 'ACOMPANHAMENTO'; }
+  // remessa / retorno de armazém: movimenta a mercadoria, não é venda
+  const CFOP_SEM_VENDA = /^(5905|6905|5907|6907|5927|6927)$/;
+  const jsonLista = v => { if (Array.isArray(v)) return v; if (typeof v === 'string' && v.trim()) { try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch (e) { return []; } } return []; };
+  const somaDiasIso = (d, n) => { if (!d) return null; const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+
+  // Parcelas (boletos) de uma venda, a partir do prazo escrito na aba Vendas.
+  // Jeitos que aparecem nos processos:
+  //   "30/60/90", "30 / 60 / 90 DD", "27 / 52 / 77 / 102dd", "30, 60 e 90 dias"
+  //   "3 boletos: 17/10, 17/11 e 17/12/2026" (datas; o ano vem da última)
+  //   "28 DDL" (uma parcela); vazio ou à vista: uma parcela na data da NF.
+  // Devolve [{n, de, vencimento, valor, incerto}] com os centavos fechando no
+  // total (a última parcela leva a sobra). incerto = tinha texto de prazo,
+  // mas não deu pra tirar dias nem datas dele (fica na data da NF).
+  function parcelasDaVenda(v, total) {
+    v = v || {};
+    const base = iso(v.nf_saida_data);
+    const tot = num(total);
+    let vencs = [], pesos = null, incerto = false;
+    if (v.forma_pagamento === 'parcelado' && Array.isArray(v.parcelas) && v.parcelas.length) {
+      vencs = v.parcelas.map(pc => somaDiasIso(base, parseInt(pc && pc.dias, 10) || 0));
+      pesos = v.parcelas.map(pc => parseFloat(pc && pc.percentual) || 0);
+      if (!pesos.some(x => x > 0)) pesos = null;
+    } else if (v.forma_pagamento === 'prazo') {
+      const txt = String(v.prazo_texto || '');
+      const achadas = [...txt.matchAll(/(^|[^\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/])/g)];
+      // "17/10, 17/11" é data (dia/mês); "30/60/90" não (60 não é mês)
+      const ehData = achadas.length > 0 && achadas.every(m => +m[2] >= 1 && +m[2] <= 31 && +m[3] >= 1 && +m[3] <= 12);
+      if (ehData) {
+        const lista = achadas.map(m => ({ d: +m[2], m: +m[3], a: m[4] ? +(m[4].length === 2 ? '20' + m[4] : m[4]) : null }));
+        // ano que falta: vem da data seguinte (de trás pra frente)...
+        for (let k = lista.length - 2; k >= 0; k--) {
+          const it = lista[k], prox = lista[k + 1];
+          if (it.a == null && prox.a != null) it.a = it.m > prox.m ? prox.a - 1 : prox.a;
+        }
+        // ...ou, sem nenhum ano escrito, do ano da NF (virando quando o mês volta)
+        let ano = base ? +base.slice(0, 4) : new Date().getFullYear(), mesAnt = base ? +base.slice(5, 7) : null;
+        lista.forEach(it => { if (it.a == null) { if (mesAnt != null && it.m < mesAnt) ano++; it.a = ano; } mesAnt = it.m; ano = it.a; });
+        vencs = lista.map(it => {
+          const s = `${it.a}-${String(it.m).padStart(2, '0')}-${String(it.d).padStart(2, '0')}`;
+          const dt = new Date(s + 'T12:00:00');
+          return !isNaN(dt) && dt.toISOString().slice(0, 10) === s ? s : null;
+        }).filter(Boolean);
+      } else {
+        const resto = txt.replace(/^\s*\d+\s*(x|vezes|boletos?|duplicatas?|parcelas?)\b/i, ' ');
+        const dias = (resto.match(/\d+/g) || []).map(Number).filter(n => n > 0 && n <= 720);
+        vencs = dias.map(n => somaDiasIso(base, n));
+      }
+      if (!vencs.length && txt.trim()) incerto = true;
+    }
+    if (!vencs.length) vencs = [base];
+    const n = vencs.length;
+    const valores = [];
+    let acum = 0;
+    for (let k = 0; k < n; k++) {
+      let vv;
+      if (k === n - 1) vv = num(tot - acum);
+      else if (pesos) { const somaP = pesos.reduce((s, x) => s + x, 0); vv = Math.floor(tot * (pesos[k] / somaP) * 100) / 100; }
+      else vv = Math.floor(tot / n * 100) / 100;
+      valores.push(vv); acum = num(acum + vv);
+    }
+    return vencs.map((d, k) => ({ n: k + 1, de: n, vencimento: d || null, valor: valores[k], incerto }));
+  }
+
+  // Câmbios do processo (o que a IMPAK remete ao fornecedor), em qualquer forma
+  // de pagamento — mesma leitura de listarAdiantamentosCliente() do Controle:
+  //   Parcelado (ou sem forma definida): uma por parcela de pi_parcelas_json (idx = posição)
+  //   À Vista / A Prazo: um câmbio só (idx −1; A Prazo usa o valor da CI quando há)
+  //   Entrada + Saldo: entrada (idx −2) e saldo (idx −3)
+  // [{idx, label, usd, cambio (fechado; 0 = ainda aberto), vencimento, recebido, recebido_em}]
+  function cambiosDoProcesso(p) {
+    if (!p) return [];
+    const nr = v => parseFloat(String(v == null ? '' : v).replace(',', '.')) || 0;
+    const fp = p.pi_pagamento;
+    if (fp === 'VISTA' || fp === 'PRAZO') {
+      const ci = nr(p.ci_valor_usd);
+      const usd = fp === 'PRAZO' && ci > 0 ? ci : nr(p.pi_valor_usd);
+      return [{ idx: -1, label: fp === 'VISTA' ? 'À Vista' : 'A Prazo', usd: num(usd), cambio: nr(p.pi_cambio_fechado),
+        vencimento: iso(fp === 'PRAZO' ? p.pi_data_saldo : p.pi_data_entrada), recebido: num(p.pi_valor_recebido_cliente), recebido_em: iso(p.pi_data_recebimento) }];
+    }
+    if (fp === 'ENTRADA_SALDO') {
+      const total = nr(p.pi_valor_usd), pct = (nr(p.pi_entrada_pct) || 30) / 100;
+      return [
+        { idx: -2, label: 'Entrada', usd: num(total * pct), cambio: nr(p.pi_cambio_entrada), vencimento: iso(p.pi_data_entrada), recebido: 0, recebido_em: null },
+        { idx: -3, label: 'Saldo', usd: num(total * (1 - pct)), cambio: nr(p.pi_cambio_saldo), vencimento: iso(p.pi_data_saldo), recebido: 0, recebido_em: null },
+      ];
+    }
+    return jsonLista(p.pi_parcelas_json).map((pc, i) => pc ? { idx: i, label: pc.label || 'parcela ' + (i + 1), usd: numBR(pc.valor_usd), cambio: nr(pc.cambio_fechado),
+      vencimento: iso(pc.data_fechamento_cambio) || iso(pc.data_vencimento) || null, recebido: num(pc.valor_recebido_cliente), recebido_em: iso(pc.data_recebimento) } : null).filter(Boolean);
+  }
+
+  // Candidatos a "fatura a receber" de um processo (o que ainda não tem fatura).
+  // opts.valoresOrigem = { chaveOrigem: valor } das faturas a receber que já
+  // existem — o adiantamento já faturado é descontado da NF pelo valor da
+  // própria fatura (a pessoa pode ter ajustado o valor ao gerar).
+  function receberDoProcesso(p, chavesExistentes, opts) {
+    const o = opts || {};
     const ja = new Set(chavesExistentes || []);
+    const valoresOrigem = o.valoresOrigem || {};
     const out = [];
-    if (!p || p.cancelado) return out;
-    let parcelas = p.pi_parcelas_json;
-    if (typeof parcelas === 'string') { try { parcelas = JSON.parse(parcelas); } catch (e) { parcelas = []; } }
-    (Array.isArray(parcelas) ? parcelas : []).forEach((pc, i) => {
-      const usd = numBR(pc.valor_usd), cx = parseFloat(String(pc.cambio_fechado || '').replace(',', '.')) || 0;
-      if (!(usd > 0) || !cx) return; // só câmbio fechado tem valor em R$ definido
-      const origem = { tipo: 'parcela_cambio', processo_id: p.id, referencia: p.referencia, idx: i };
-      if (ja.has(chaveOrigem(origem))) return;
-      out.push({ origem, empresa_nome: p.cliente || '', documento: `${p.referencia} · câmbio ${pc.label || 'parcela ' + (i + 1)}`, valor: Math.round(usd * cx * 100) / 100, vencimento: iso(pc.data_fechamento_cambio) || iso(pc.data_vencimento) || null,
-        ja_recebido: num(pc.valor_recebido_cliente), recebido_em: iso(pc.data_recebimento) });
+    if (!p || p.cancelado || p.finalidade === 'ACOMPANHAMENTO') return out;
+    let adiantado = 0;
+    if (clienteAdiantaCambio(p)) cambiosDoProcesso(p).forEach(c => {
+      if (!(c.usd > 0) || !c.cambio) return; // só câmbio fechado tem valor em R$ definido
+      const origem = { tipo: 'parcela_cambio', processo_id: p.id, referencia: p.referencia, idx: c.idx };
+      const k = chaveOrigem(origem);
+      const valor = Math.round(c.usd * c.cambio * 100) / 100;
+      adiantado = num(adiantado + (valoresOrigem[k] != null ? num(valoresOrigem[k]) : valor));
+      if (ja.has(k)) return;
+      out.push({ origem, tipo_receber: 'adiantamento', empresa_nome: p.cliente || '', documento: `${p.referencia} · câmbio ${c.label}`, valor, vencimento: c.vencimento,
+        ja_recebido: c.recebido, recebido_em: c.recebido_em });
     });
-    let vendas = p.vendas_json;
-    if (typeof vendas === 'string') { try { vendas = JSON.parse(vendas); } catch (e) { vendas = []; } }
-    (Array.isArray(vendas) ? vendas : []).forEach((v, i) => {
-      const valor = numBR(v.nf_saida_valor);
-      if (!(valor > 0)) return;
-      const origem = { tipo: 'venda', processo_id: p.id, referencia: p.referencia, idx: i };
-      if (ja.has(chaveOrigem(origem))) return;
-      const dias = parseInt(String(v.prazo_texto || '').match(/\d+/) || [0], 10);
-      let venc = iso(v.nf_saida_data);
-      if (venc && v.forma_pagamento === 'prazo' && dias > 0) { const d = new Date(venc + 'T12:00:00'); d.setDate(d.getDate() + dias); venc = d.toISOString().slice(0, 10); }
-      out.push({ origem, empresa_nome: v.cliente || p.cliente || '', documento: v.nf_saida_numero ? 'NF ' + v.nf_saida_numero : `${p.referencia} · venda ${i + 1}`, valor, vencimento: venc,
-        prazo: v.forma_pagamento === 'prazo' ? (v.prazo_texto || '') : 'à vista', ja_recebido: num(v.recebido_valor), recebido_em: iso(v.recebido_em) });
+    const vendas = jsonLista(p.vendas_json).map((v, i) => ({ v, i })).filter(x => x.v && !CFOP_SEM_VENDA.test(String(x.v.nf_saida_cfop || '').replace(/\D/g, '')) && numBR(x.v.nf_saida_valor) > 0);
+    let restoAdiant = adiantado;
+    vendas.forEach(({ v, i }) => {
+      const valorNF = numBR(v.nf_saida_valor);
+      // juros só somam quando a venda diz "Juros no boleto, fora da NF" (o que
+      // a aprovação da cotação grava); sem isso eles já estão no valor da NF
+      const juros = v.juros_fora_nf ? numBR(v.juros_valor) : 0;
+      // o adiantamento é do encomendante: só abate a venda dele
+      const doCliente = !v.cliente || !p.cliente || mesmaEmpresa(null, v.cliente, null, p.cliente);
+      const abate = doCliente ? Math.min(restoAdiant, num(valorNF + juros)) : 0;
+      restoAdiant = num(restoAdiant - abate);
+      const total = num(valorNF + juros - abate);
+      const origemBase = { tipo: 'venda', processo_id: p.id, referencia: p.referencia, idx: i };
+      const kBase = chaveOrigem(origemBase);
+      if (ja.has(kBase)) return; // a venda já tem uma fatura única
+      if (!(total > 0.004)) return; // tudo coberto pelos adiantamentos
+      const parcs = parcelasDaVenda(v, total);
+      // já existe fatura de alguma parcela (outro jeito de parcelar): não gera a venda inteira
+      if (parcs.length === 1 && [...ja].some(k => k && k.indexOf(kBase + ':') === 0)) return;
+      let jaRec = num(v.recebido_valor);
+      const docBase = v.nf_saida_numero ? 'NF ' + v.nf_saida_numero : `${p.referencia} · venda ${i + 1}`;
+      const prazo = v.forma_pagamento === 'prazo' ? (v.prazo_texto || 'a prazo') : (v.forma_pagamento === 'parcelado' ? 'parcelado' : 'à vista');
+      const origemDe = pc => pc.de > 1 ? { ...origemBase, parcela: pc.n, de: pc.de } : origemBase;
+      // parcelas que já viraram fatura ficam com o valor delas; o que falta
+      // da venda se divide entre as que ainda não têm fatura
+      const feitas = parcs.filter(pc => ja.has(chaveOrigem(origemDe(pc))));
+      if (feitas.length && feitas.length < parcs.length) {
+        const somaFeitas = feitas.reduce((s, pc) => { const k = chaveOrigem(origemDe(pc)); return num(s + (valoresOrigem[k] != null ? num(valoresOrigem[k]) : pc.valor)); }, 0);
+        const faltam = parcs.filter(pc => !feitas.includes(pc));
+        const resto = Math.max(0, num(total - somaFeitas));
+        let acum = 0;
+        faltam.forEach((pc, k) => { pc.valor = k === faltam.length - 1 ? num(resto - acum) : Math.floor(resto / faltam.length * 100) / 100; acum = num(acum + pc.valor); });
+      }
+      parcs.forEach(pc => {
+        const origem = origemDe(pc);
+        const recebidoAqui = Math.min(jaRec, pc.valor); jaRec = num(jaRec - recebidoAqui);
+        if (ja.has(chaveOrigem(origem))) return;
+        if (!(pc.valor > 0.004)) return;
+        out.push({ origem, tipo_receber: 'venda', empresa_nome: v.cliente || p.cliente || '', documento: docBase + (pc.de > 1 ? ` · parcela ${pc.n}/${pc.de}` : ''), valor: pc.valor, vencimento: pc.vencimento,
+          prazo, prazo_incerto: !!pc.incerto, ja_recebido: recebidoAqui, recebido_em: recebidoAqui > 0 ? iso(v.recebido_em) : null,
+          valor_nf: valorNF, juros, adiantamento_abatido: abate, total_venda: total });
+      });
     });
     return out;
   }
 
-  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso, filtroJsonbContem, TIPOS_DOC_CUSTO, linhasCustoDocumento, planoCustosDocumento };
+  // ── Faturas dentro do processo (aba Faturas, 21/10/2026) ────────────────
+  // Processos de uma fatura: os das taxas (itens) e o da origem (a receber
+  // gerado de parcela de câmbio / venda, que não tem itens).
+  function processosDaFatura(f) {
+    const ids = new Set();
+    (Array.isArray(f && f.itens) ? f.itens : []).forEach(it => { if (it && it.processo_id) ids.add(String(it.processo_id)); });
+    if (f && f.origem && f.origem.processo_id) ids.add(String(f.origem.processo_id));
+    return [...ids];
+  }
+  // Parte da fatura que é deste processo. Fatura de vários processos (a
+  // mesma nota do despachante ou do agente cobrando 2 BLs) entra em cada um
+  // só com as taxas dele: fracao = taxas deste processo / todas as taxas.
+  function parteDoProcesso(f, pid) {
+    if (!f || pid == null) return { fracao: 0, valor: 0, outros: [] };
+    const total = num(f.valor);
+    if (f.origem && String(f.origem.processo_id) === String(pid)) return { fracao: 1, valor: total, outros: [] };
+    const itens = (Array.isArray(f.itens) ? f.itens : []).filter(Boolean);
+    const deste = itens.filter(it => String(it.processo_id) === String(pid));
+    if (!deste.length) return { fracao: 0, valor: 0, outros: [] };
+    const somaTodos = itens.reduce((s, it) => s + num(it.valor), 0);
+    const somaDeste = deste.reduce((s, it) => s + num(it.valor), 0);
+    const fracao = somaTodos > 0 ? Math.min(1, somaDeste / somaTodos) : 1;
+    const outros = [...new Set(itens.filter(it => it.processo_id && String(it.processo_id) !== String(pid)).map(it => it.referencia || String(it.processo_id)))];
+    return { fracao, valor: num(total * fracao), outros };
+  }
+
+  // Etapas da fatura a pagar, cada uma com quem faz:
+  //   Recebida (documento da cobrança anexado) → Conferida (bate com os Custos
+  //   Reais) → Aprovada (gerente) → Paga (financeiro dá a baixa).
+  const ETAPAS_PAGAR = [
+    { id: 'recebida', label: 'Recebida', quem: 'Operacional', dica: 'documento da cobrança anexado' },
+    { id: 'conferida', label: 'Conferida', quem: 'Operacional', dica: 'conferida com os Custos Reais' },
+    { id: 'aprovada', label: 'Aprovada', quem: 'Gerente', dica: 'pagamento aprovado' },
+    { id: 'paga', label: 'Paga', quem: 'Financeiro', dica: 'baixa registrada' },
+  ];
+  const temDocumentoAnexado = f => (Array.isArray(f && f.anexos) ? f.anexos : []).some(a => a && a.tipo !== 'comprovante');
+  // Diferenças de verdade numa conferência salva: erro, ou aviso de valor,
+  // duplicidade, soma, empresa ou taxa já faturada. Aviso de câmbio, de
+  // cotado, de datas ou de processo fechado não conta (não muda o que pagar).
+  const TIPOS_DIFERENCA = ['valor', 'duplicidade', 'soma', 'empresa', 'taxa_faturada'];
+  function divergenciasConferencia(conf) {
+    if (!conf || typeof conf !== 'object') return 0;
+    const checks = Array.isArray(conf.checks) ? conf.checks : [];
+    if (!checks.length) return Math.round(num(conf.resumo && conf.resumo.erro));
+    return checks.filter(c => c && (c.nivel === 'erro' || (c.nivel === 'aviso' && TIPOS_DIFERENCA.includes(c.tipo)))).length;
+  }
+  // Etapa atual. A pagar: prevista (sem o documento ainda) → recebida →
+  // conferida (ou divergente) → aprovada → paga. A receber: a_receber →
+  // parcial → paga.
+  function etapaFatura(f) {
+    if (!f) return 'prevista';
+    if (f.status === 'cancelada') return 'cancelada';
+    if (f.status === 'paga') return 'paga';
+    if (f.tipo === 'receber') return num(f.valor_pago) > 0 ? 'parcial' : 'a_receber';
+    if (f.aprovacao) return 'aprovada';
+    if (f.conferencia) return divergenciasConferencia(f.conferencia) > 0 ? 'divergente' : 'conferida';
+    return temDocumentoAnexado(f) ? 'recebida' : 'prevista';
+  }
+  // Os 4 passos pra tela: feito / atual / alerta (conferida com diferença) /
+  // pulado (passo que não foi registrado, mas a fatura já passou dele) / pendente.
+  function passosFatura(f) {
+    f = f || {};
+    const doc = temDocumentoAnexado(f), conf = f.conferencia, div = conf ? divergenciasConferencia(conf) : 0;
+    const paga = f.status === 'paga', aprov = !!f.aprovacao, parcial = num(f.valor_pago) > 0;
+    return ETAPAS_PAGAR.map(e => {
+      let estado = 'pendente';
+      if (e.id === 'recebida') estado = doc ? 'feito' : (paga || aprov || conf ? 'pulado' : 'atual');
+      else if (e.id === 'conferida') estado = conf ? (div ? 'alerta' : 'feito') : (paga || aprov ? 'pulado' : (doc ? 'atual' : 'pendente'));
+      else if (e.id === 'aprovada') estado = aprov ? 'feito' : (paga ? 'pulado' : (conf && !div ? 'atual' : 'pendente'));
+      else if (e.id === 'paga') estado = paga ? 'feito' : (parcial || aprov ? 'atual' : 'pendente');
+      return { ...e, estado, divergencias: e.id === 'conferida' ? div : 0 };
+    });
+  }
+
+  // Resumo por processo pro selo da lista de processos: quantas faturas
+  // abertas, vencidas, com diferença na conferência e pagas.
+  function resumoPorProcesso(lista, hoje) {
+    const out = {};
+    (lista || []).forEach(f => {
+      if (!f || f.status === 'cancelada') return;
+      const sit = situacao(f, hoje), et = etapaFatura(f);
+      processosDaFatura(f).forEach(pid => {
+        const r = out[pid] || (out[pid] = { qtd: 0, abertas: 0, vencidas: 0, divergentes: 0, pagas: 0, pagar_abertas: 0, receber_abertas: 0 });
+        r.qtd++;
+        if (f.status === 'paga') r.pagas++;
+        else {
+          r.abertas++;
+          if (f.tipo === 'pagar') r.pagar_abertas++; else r.receber_abertas++;
+          if (sit === 'vencida') r.vencidas++;
+          if (et === 'divergente') r.divergentes++;
+        }
+      });
+    });
+    return out;
+  }
+  // Selo: vermelho (vencida ou com diferença), amarelo (em aberto), verde
+  // (tudo pago). Processo sem fatura não tem selo.
+  function seloProcesso(r) {
+    if (!r || !r.qtd) return null;
+    const s = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+    const titulo = `${s(r.qtd, 'fatura', 'faturas')}: ${s(r.pagar_abertas, 'a pagar em aberto', 'a pagar em aberto')}, ${s(r.receber_abertas, 'a receber em aberto', 'a receber em aberto')}, ${s(r.pagas, 'paga', 'pagas')}` + (r.vencidas ? `, ${s(r.vencidas, 'vencida', 'vencidas')}` : '') + (r.divergentes ? `, ${s(r.divergentes, 'com diferença na conferência', 'com diferença na conferência')}` : '');
+    const partes = [];
+    if (r.vencidas) partes.push(s(r.vencidas, 'vencida', 'vencidas'));
+    if (r.divergentes) partes.push(s(r.divergentes, 'diferença', 'diferenças'));
+    if (partes.length) return { nivel: 'erro', texto: partes.join(' · '), titulo };
+    if (r.abertas) return { nivel: 'aviso', texto: s(r.abertas, 'em aberto', 'em aberto'), titulo };
+    return { nivel: 'ok', texto: 'Tudo pago', titulo };
+  }
+
+  // ── Extrato do processo (21/10/2026) ─────────────────────────────────────
+  // O dinheiro do processo em ordem de data, como um extrato de banco: o que
+  // já entrou/saiu (realizado) e o que ainda vai entrar/sair (previsto), com
+  // o saldo acumulado.
+  //   input.faturas = as do processo: cada baixa é realizado (na data dela) e
+  //     o saldo em aberto é previsto (no vencimento). Fatura de vários
+  //     processos entra só com a parte deste (parteDoProcesso).
+  //   input.outros = o que não é fatura e quem chama monta: câmbio do
+  //     fornecedor, a receber que ainda não virou fatura, custos lançados
+  //     sem fatura... [{data, descricao, valor (R$), sentido:'entrada'|'saida',
+  //     realizado, grupo}].
+  // Compensação (encontro de contas, ex.: acerto do despachante pago com o
+  // numerário) não é caixa: aparece, mas não mexe no saldo. Linha sem data
+  // vai para "sem data" (fora do saldo acumulado).
+  function extratoProcesso(input, hoje, cambio) {
+    const inp = input || {};
+    const pid = inp.processo_id;
+    const linhas = [], semData = [];
+    const add = l => {
+      if (!l || !(l.sentido === 'entrada' || l.sentido === 'saida')) return;
+      l.valor = num(l.valor);
+      if (!(l.valor > 0.004) && !l.compensacao) return;
+      l.data = iso(l.data);
+      (l.data ? linhas : semData).push(l);
+    };
+    (inp.faturas || []).forEach(f => {
+      if (!f || f.status === 'cancelada') return;
+      const parte = parteDoProcesso(f, pid);
+      if (!(parte.fracao > 0)) return;
+      const sentido = f.tipo === 'receber' ? 'entrada' : 'saida';
+      const desc = (f.tipo === 'receber' ? 'Recebimento' : 'Pagamento') + ' · ' + (f.empresa_nome || '') + (f.documento ? ' · ' + f.documento : '');
+      const pags = pagamentosValidos(f);
+      pags.forEach(pg => {
+        const comp = pg.forma === 'compensacao';
+        const v = num(caixaBrlPagamento(pg, f, cambio) * parte.fracao);
+        add({ data: pg.data, descricao: desc + (comp ? ' (compensação, sem movimento de caixa)' : ''), valor: comp ? 0 : v, valor_compensado: comp ? v : null, compensacao: comp, sentido, realizado: true, grupo: 'fatura', fatura_id: f.id });
+      });
+      if (f.status === 'paga' && !pags.length) {
+        add({ data: f.pago_em, descricao: desc, valor: num(f.valor_pago != null ? f.valor_pago : f.valor) * fatorBRL(f, cambio) * parte.fracao, sentido, realizado: true, grupo: 'fatura', fatura_id: f.id });
+      }
+      if (f.status === 'aberta') {
+        const s = saldoFatura(f) * fatorBRL(f, cambio) * parte.fracao;
+        const venc = iso(f.vencimento);
+        add({ data: venc, descricao: desc + ' (em aberto)', valor: s, sentido, realizado: false, vencida: !!(venc && hoje && venc < hoje), grupo: 'fatura', fatura_id: f.id, sem_cambio: !fatorBRL(f, cambio) });
+      }
+    });
+    (inp.outros || []).forEach(l => add({ ...l, realizado: !!(l && l.realizado) }));
+    linhas.sort((a, b) => a.data < b.data ? -1 : a.data > b.data ? 1 : (a.realizado === b.realizado ? 0 : (a.realizado ? -1 : 1)));
+    const tot = { realizado: { entradas: 0, saidas: 0, saldo: 0 }, previsto: { entradas: 0, saidas: 0 }, sem_data: { entradas: 0, saidas: 0 }, saldo_com_previsto: 0, saldo_final: 0 };
+    let saldo = 0;
+    linhas.forEach(l => {
+      const sinal = l.sentido === 'entrada' ? 1 : -1;
+      saldo = num(saldo + sinal * l.valor);
+      l.saldo = saldo;
+      const g = l.realizado ? tot.realizado : tot.previsto;
+      if (l.sentido === 'entrada') g.entradas = num(g.entradas + l.valor); else g.saidas = num(g.saidas + l.valor);
+    });
+    semData.forEach(l => { if (l.sentido === 'entrada') tot.sem_data.entradas = num(tot.sem_data.entradas + l.valor); else tot.sem_data.saidas = num(tot.sem_data.saidas + l.valor); });
+    tot.realizado.saldo = num(tot.realizado.entradas - tot.realizado.saidas);
+    tot.saldo_com_previsto = saldo;
+    tot.saldo_final = num(saldo + tot.sem_data.entradas - tot.sem_data.saidas);
+    return { linhas, sem_data: semData, totais: tot };
+  }
+
+  const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso, filtroJsonbContem, TIPOS_DOC_CUSTO, linhasCustoDocumento, planoCustosDocumento,
+    clienteAdiantaCambio, cambiosDoProcesso, parcelasDaVenda, processosDaFatura, parteDoProcesso, ETAPAS_PAGAR, etapaFatura, passosFatura, divergenciasConferencia, resumoPorProcesso, seloProcesso, extratoProcesso, pagamentosValidos };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();

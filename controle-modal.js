@@ -115,6 +115,7 @@ function renderModal(){
     {id:'fechamento',    label:'📐 Fechamento'},
     {id:'custosreais',   label:'💵 Custos Reais'},
     {id:'vendas',        label:'🧾 Vendas'},
+    {id:'faturas',       label:'💳 Faturas'},
     {id:'logistica',     label:'🚢 Logística'},
     {id:'demurrage',    label:'⚓ Demurrage'},
     {id:'documentos',    label:'📋 Documentos'},
@@ -872,6 +873,12 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         }
       </div>
     </div>
+    </div>
+    <!-- ABA: FATURAS (21/10/2026, controle-faturas-processo.js) — fora da
+         trava de processo fechado: fatura que chega ou é paga depois do
+         fechamento continua podendo ser registrada. -->
+    <div class="tab-pane" id="pane-faturas">
+      <div id="pane-faturas-conteudo"><div style="font-size:11px;color:var(--dim);">${isNovo ? 'Salve o processo para ver as faturas dele.' : 'Carregando faturas...'}</div></div>
     </div>
   `;
 
@@ -2675,6 +2682,7 @@ function trocarAba(id){
   if(tab)  tab.classList.add('active');
   if(pane) pane.classList.add('active');
   if(id==='agenda' && typeof renderAgendaProcesso==='function' && _editando && _editando.id) renderAgendaProcesso(_editando);
+  if(id==='faturas' && typeof renderFaturasProcesso==='function' && _editando) renderFaturasProcesso(_editando);
   if(id==='fechamento') atualizarFechamentoAoVivo();
 }
 
