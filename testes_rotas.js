@@ -286,6 +286,37 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     verdadeiroRota(/immutable/.test(c.headers['cache-control'] || ''), c.headers['cache-control']);
   });
 
+  console.log('\n── E-mails: logo visível e respostas no suporte@ (22/10/2026) ──');
+  await teste('imagem de /assets pode aparecer dentro de e-mail (CORP cross-origin)', async () => {
+    const r = await request(app).get('/assets/logo-email-impak.png');
+    iguais(r.status, 200);
+    iguais(r.headers['cross-origin-resource-policy'], 'cross-origin');
+  });
+  await teste('o resto continua same-origin (helmet)', async () => {
+    const r = await request(app).get('/controle-core.js');
+    iguais(r.headers['cross-origin-resource-policy'], 'same-origin');
+  });
+  await teste('todo e-mail sai com resposta para o suporte@; o remetente pode ser trocado', async () => {
+    const fetchOriginal = global.fetch, chaveOriginal = process.env.RESEND_API_KEY;
+    const corpos = [];
+    global.fetch = async (url, init) => {
+      if (String(url).includes('api.resend.com')) { corpos.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ id: 'teste' }) }; }
+      return fetchOriginal(url, init);
+    };
+    process.env.RESEND_API_KEY = 'chave-de-teste-ficticia';
+    try {
+      await I.enviarEmail('fulano@impak.com.br', 'Teste', '<p>x</p>', { alerta: true });
+      await I.enviarEmail('fulano@impak.com.br', 'Teste', '<p>x</p>', { alerta: true, from: 'Suporte IMPAK <suporte@impak.com.br>' });
+    } finally {
+      global.fetch = fetchOriginal;
+      if (chaveOriginal === undefined) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = chaveOriginal;
+    }
+    iguais(corpos.length, 2);
+    iguais(corpos[0].reply_to, 'suporte@impak.com.br');
+    iguais(corpos[1].reply_to, 'suporte@impak.com.br');
+    iguais(corpos[1].from, 'Suporte IMPAK <suporte@impak.com.br>');
+  });
+
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
   process.exit(passaram === total ? 0 : 1);

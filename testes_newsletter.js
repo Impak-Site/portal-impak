@@ -38,6 +38,18 @@ teste('quarta 6h → edição de câmbio', () => igual(N.edicaoDoMomento('2026-1
 teste('terça → nada', () => igual(N.edicaoDoMomento('2026-10-20T12:00:00Z'), null));
 teste('domingo 23h UTC é domingo 20h em Brasília (fuso certo)', () => igual(N.agoraSP('2026-10-25T23:00:00Z').diaSemana, 0));
 teste('data por extenso', () => igual(N.dataExtenso('2026-10-21'), 'Quarta-feira, 21 de outubro de 2026'));
+// Bug de 21/10: o controle "1x por dia" contava o dia em UTC, que vira às 21h
+// de Brasília, e o Radar de quarta saiu às 6h e de novo às 21h23.
+teste('6h e 21h23 de quarta (Brasília) caem no mesmo dia do controle', () => {
+  const ini = '2026-10-21T03:00:00.000Z'; // 00:00 de 21/10 em Brasília
+  igual(N.inicioDiaSP('2026-10-21T09:00:00Z').toISOString(), ini);
+  igual(N.inicioDiaSP('2026-10-22T00:23:00Z').toISOString(), ini, '21h23 de 21/10 em Brasília');
+  igual(N.inicioDiaSP('2026-10-22T02:59:00Z').toISOString(), ini, '23h59 de 21/10 em Brasília');
+});
+teste('meia-noite de Brasília abre o dia seguinte do controle', () => {
+  igual(N.inicioDiaSP('2026-10-22T03:00:00Z').toISOString(), '2026-10-22T03:00:00.000Z');
+  igual(N.edicaoDoMomento('2026-10-22T00:23:00Z'), 'cambio', 'às 21h23 ainda é quarta em Brasília — por isso o controle precisa do dia de Brasília');
+});
 
 console.log('\nFollow-up semanal na segunda, depois da importação');
 const seg = (h) => ({ diaSemana: 1, hora: h, dataISO: '2026-10-26' });

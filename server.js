@@ -724,6 +724,16 @@ app.use((req, res, next) => {
   }
   next();
 });
+// Imagens de /assets entram nos e-mails (logo do Radar IMPAK). O helmet manda
+// Cross-Origin-Resource-Policy: same-origin, e o Apple Mail (WebKit) respeita:
+// a logo aparecia quebrada ("?") no Radar de 21/10. Só imagens de /assets
+// podem ser exibidas em outro endereço; o resto continua same-origin.
+app.use((req, res, next) => {
+  if ((req.method === 'GET' || req.method === 'HEAD') && /^\/assets\/[^/]+\.(png|jpe?g|gif|svg|ico|webp)$/i.test(req.path)) {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+  next();
+});
 app.use(express.static(__dirname));
 // Necessário para o Express reconhecer conexões como HTTPS mesmo estando
 // atrás do proxy do Railway (que termina o SSL antes do container) — sem
@@ -1262,11 +1272,15 @@ async function enviarEmail(destinatario, assunto, html, opts){
   opts = opts || {};
   const apiKey = process.env.RESEND_API_KEY;
   if(!apiKey) throw new Error('RESEND_API_KEY não configurada no Railway');
-  const from = process.env.RESEND_FROM || 'IMPAK Portal <onboarding@resend.dev>';
+  const from = opts.from || process.env.RESEND_FROM || 'IMPAK Portal <onboarding@resend.dev>';
   // destinatario: um e-mail ou uma lista (20/10/2026: o e-mail de carregamento
   // vai para mais de uma pessoa numa mensagem só).
   let lista = (Array.isArray(destinatario) ? destinatario : [destinatario]).map(d => String(d || '').trim()).filter(Boolean);
   const corpo = { from, to: lista, subject: assunto, html };
+  // Respostas vão para o suporte@ (22/10/2026): o remetente padrão
+  // (RESEND_FROM, sistema@) não é uma caixa de e-mail — quem respondia um
+  // alerta ou o Radar IMPAK recebia "endereço não encontrado".
+  corpo.reply_to = opts.replyTo || ALERTA_COPIA;
   if (opts.alerta) {
     const fora = lista.filter(d => !destinoAlertaPermitido(d));
     if (fora.length) console.warn(`[email] alerta "${assunto}" NÃO enviado para: ${fora.join(', ')} (fora de ${ALERTA_DOMINIO})`);
@@ -7100,9 +7114,15 @@ As datas de chegada (ETA) informadas sao previsoes e podem sofrer alteracoes ou 
 // eram dois passos separados — com dois servidores no ar ao mesmo tempo
 // (deploy sobreposto) os dois podiam enviar o mesmo e-mail. Agora é uma
 // "reserva" atômica: só quem consegue gravar a data de hoje primeiro envia.
-async function reivindicarJobHoje(jobName) {
+async function reivindicarJobHoje(jobName, opts) {
   const agora = new Date();
-  const inicioHoje = new Date(agora); inicioHoje.setHours(0, 0, 0, 0);
+  // Dia do controle: UTC por padrão (o servidor roda em UTC; o dia vira às
+  // 21h de Brasília). Jobs presos a um dia da semana de Brasília passam
+  // { diaBR: true } — com o dia UTC eles "renasciam" às 21h e saíam de novo
+  // (Radar IMPAK de quarta 21/10: 6h e de novo 21h23).
+  let inicioHoje;
+  if (opts && opts.diaBR) inicioHoje = Newsletter.inicioDiaSP(agora);
+  else { inicioHoje = new Date(agora); inicioHoje.setHours(0, 0, 0, 0); }
   const { data, error } = await sb().from('app_job_runs')
     .update({ last_run_at: agora.toISOString() })
     .eq('job_name', jobName).lt('last_run_at', inicioHoje.toISOString())
@@ -7116,7 +7136,9 @@ async function reivindicarJobHoje(jobName) {
 }
 
 async function jaEnviouFollowUpHoje(){
-  return !(await reivindicarJobHoje('followup_semanal'));
+  // dia de Brasília: o follow-up é da segunda de Brasília (sem isto, às 21h
+  // de segunda o dia UTC virava e ele sairia de novo para os clientes)
+  return !(await reivindicarJobHoje('followup_semanal', { diaBR: true }));
   const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'followup_semanal').maybeSingle();
   if (error) {
     // Falha ao consultar (tabela ausente, permissão, etc): assume que JÁ
@@ -7208,10 +7230,13 @@ const NEWSLETTER_PARA = (process.env.NEWSLETTER_PARA || 'narcelio@impak.com.br')
 function urlLogoNewsletter() {
   return (process.env.APP_URL || 'https://portal-impak-production.up.railway.app').replace(/\/+$/, '') + '/assets/logo-email-impak.png';
 }
+// Sai em nome do suporte@ (pedido Ayslan 22/10/2026): o Narcélio responde o
+// e-mail de revisão, e a resposta precisa chegar numa caixa de verdade.
+const NEWSLETTER_REMETENTE = 'Suporte IMPAK <' + ALERTA_COPIA + '>';
 async function enviarNewsletter(tipo, para) {
   const ed = await Newsletter.prepararEdicao(tipo, { logoUrl: urlLogoNewsletter() });
   for (const dest of (para || NEWSLETTER_PARA)) {
-    await enviarEmail(dest, ed.assunto, ed.html, { alerta: true });
+    await enviarEmail(dest, ed.assunto, ed.html, { alerta: true, from: NEWSLETTER_REMETENTE });
     await new Promise(r => setTimeout(r, 700));
   }
   return { assunto: ed.assunto, avisos: ed.avisos, buscas: ed.buscas, para: para || NEWSLETTER_PARA };
@@ -7232,7 +7257,7 @@ function checarNewsletter() {
   if (Newsletter.agoraSP().dataISO < NEWSLETTER_DESDE) return;
   const tipo = Newsletter.edicaoDoMomento();
   if (!tipo) return;
-  reivindicarJobHoje('newsletter_' + tipo).then(ok => {
+  reivindicarJobHoje('newsletter_' + tipo, { diaBR: true }).then(ok => {
     if (!ok) return;
     enviarNewsletter(tipo)
       .then(r => console.log(`✓ Radar IMPAK (${tipo}) enviado para revisão: ${r.assunto} | ${r.buscas} buscas | avisos: ${r.avisos.length}`))
@@ -7362,8 +7387,8 @@ return total;
 // próprio por alerta, mesma tabela/mecanismo já usado).
 // ════════════════════════════════════════════════════════════════
 
-async function jaEnviouJobHoje(jobName){
-  return !(await reivindicarJobHoje(jobName));
+async function jaEnviouJobHoje(jobName, opts){
+  return !(await reivindicarJobHoje(jobName, opts));
   const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', jobName).maybeSingle();
   if (error) {
     console.error(`jaEnviouJobHoje(${jobName}): erro ao consultar app_job_runs, assumindo já enviado por segurança:`, error.message);
@@ -7703,7 +7728,7 @@ function agendarBackupSemanal(){
       const hBrt = (agora.getUTCHours() - 3 + 24) % 24;
       const diaSemanaBrt = new Date(agora.getTime() - 3*3600*1000).getUTCDay(); // 1 = segunda
       if (diaSemanaBrt !== 1 || hBrt < 3) return;
-      if (await jaEnviouJobHoje('backup_semanal')) return;
+      if (await jaEnviouJobHoje('backup_semanal', { diaBR: true })) return; // segunda de Brasília (não refaz às 21h)
       await executarBackup();
       await marcarJobEnviadoHoje('backup_semanal');
     } catch (e) { console.error('agendarBackupSemanal:', e.message); }
@@ -8312,7 +8337,7 @@ module.exports = app;
 module.exports._interno = {
   auth, versaoSessaoAtual, bloqueado2FA, registrarFalha2FA, limparFalhas2FA, versionarHtml,
   quemSalvouNoMeio, atualizarRegrasConferenciaAntiga,
-  conferirConexosIdRepetido, ehErroConexosRepetido,
+  conferirConexosIdRepetido, ehErroConexosRepetido, enviarEmail,
   definirCacheUsuarios(lista, carregado) {
     _usuariosCache = new Map((lista || []).map(u => [u.usuario, u]));
     _usuariosCacheCarregadoEm = carregado ? Date.now() : 0;
