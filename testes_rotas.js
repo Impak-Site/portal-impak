@@ -317,6 +317,109 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     iguais(corpos[1].from, 'Suporte IMPAK <suporte@impak.com.br>');
   });
 
+  console.log('\n── Troca da chave do 2FA (TOTP_ENC_KEY) e SENHA_* (22/10/2026) ──');
+  {
+    // Chaves e segredos fictícios — só para o teste.
+    const A = 'chave-ficticia-A-0123456789', B = 'chave-ficticia-B-0123456789', C = 'chave-ficticia-C-0123456789';
+    const envAntes = { k: process.env.TOTP_ENC_KEY, a: process.env.TOTP_ENC_KEY_ANTERIOR };
+    const usarChaves = (atual, anterior) => {
+      if (atual === undefined) delete process.env.TOTP_ENC_KEY; else process.env.TOTP_ENC_KEY = atual;
+      if (anterior === undefined) delete process.env.TOTP_ENC_KEY_ANTERIOR; else process.env.TOTP_ENC_KEY_ANTERIOR = anterior;
+    };
+    const silenciar = async (fn) => { const e = console.error; console.error = () => {}; try { return await fn(); } finally { console.error = e; } };
+    try {
+      usarChaves(A);
+      const cifradoA = I.cifrarSegredo2FA('SEGREDOFICTICIO1');
+      usarChaves(C);
+      const cifradoC = I.cifrarSegredo2FA('SEGREDOFICTICIO4');
+      usarChaves(B);
+      const cifradoB = I.cifrarSegredo2FA('SEGREDOFICTICIO2');
+
+      await teste('chave atual abre o que ela mesma cifrou', async () => {
+        usarChaves(B);
+        verdadeiroRota(cifradoB.startsWith('enc:v1:'), 'deveria sair cifrado');
+        iguais(I.decifrarSegredo2FA(cifradoB), 'SEGREDOFICTICIO2');
+        iguais(I.chaveDoSegredo2FA(cifradoB), 'atual');
+      });
+      await teste('durante a troca: chave nova + TOTP_ENC_KEY_ANTERIOR abre o segredo antigo', async () => {
+        usarChaves(B, A);
+        iguais(I.decifrarSegredo2FA(cifradoA), 'SEGREDOFICTICIO1');
+        iguais(I.chaveDoSegredo2FA(cifradoA), 'anterior');
+        iguais(I.chaveDoSegredo2FA('SEGREDOEMTEXTO'), 'texto');
+        iguais(I.chaveDoSegredo2FA(null), 'vazio');
+      });
+      await teste('sem a chave anterior o segredo antigo não abre (e não derruba nada)', async () => {
+        usarChaves(B);
+        iguais(await silenciar(() => I.decifrarSegredo2FA(cifradoA)), null);
+        iguais(I.chaveDoSegredo2FA(cifradoA), 'nenhuma');
+      });
+      await teste('recifrar regrava anterior e texto na chave atual, com update condicional', async () => {
+        usarChaves(B, A);
+        const linhas = [
+          { usuario: 'u1', totp_secret: cifradoA },
+          { usuario: 'u2', totp_secret: cifradoB },
+          { usuario: 'u3', totp_secret: 'SEGREDOEMTEXTO' },
+          { usuario: 'u4', totp_secret: cifradoC },
+        ];
+        const filtrosUsados = [];
+        const db = {
+          from() {
+            return {
+              select() { return { not: async () => ({ data: linhas.map(l => ({ ...l })), error: null }) }; },
+              update(valores) {
+                const f = [];
+                const q = { eq(c, v) {
+                  f.push([c, v]);
+                  if (f.length < 2) return q;
+                  filtrosUsados.push(f.map(x => x[0]).join('+'));
+                  const l = linhas.find(x => x.usuario === f[0][1] && x.totp_secret === f[1][1]);
+                  if (l) Object.assign(l, valores);
+                  return Promise.resolve({ error: null });
+                } };
+                return q;
+              },
+            };
+          },
+        };
+        const r = await I.recifrarSegredos2FA(db);
+        iguais(r.ok, true);
+        iguais(r.total, 4);
+        iguais(r.ja_na_atual, 1);
+        iguais(r.recifrados, 1);
+        iguais(r.cifrados_texto, 1);
+        iguais(JSON.stringify(r.nao_abrem), '["u4"]');
+        iguais(filtrosUsados.join(','), 'usuario+totp_secret,usuario+totp_secret');
+        usarChaves(B); // sem a anterior: u1 e u3 já abrem só com a chave nova
+        iguais(I.decifrarSegredo2FA(linhas[0].totp_secret), 'SEGREDOFICTICIO1');
+        iguais(I.decifrarSegredo2FA(linhas[2].totp_secret), 'SEGREDOEMTEXTO');
+        iguais(linhas[3].totp_secret, cifradoC, 'quem não abre fica como estava');
+      });
+      await teste('situação do 2FA: só contagens e nomes, e diz quando pode apagar a anterior', async () => {
+        usarChaves(B, A);
+        const s1 = I.situacaoSegredos2FA([{ usuario: 'u1', totp_secret: cifradoA }, { usuario: 'u2', totp_secret: cifradoB }, { usuario: 'u5', totp_secret: null }]);
+        iguais(s1.com_2fa, 2); iguais(s1.atual, 1); iguais(s1.anterior, 1);
+        iguais(s1.pode_apagar_anterior, false);
+        iguais(s1.chave_anterior_configurada, true);
+        verdadeiroRota(!JSON.stringify(s1).includes('SEGREDO') && !JSON.stringify(s1).includes('enc:v1:'), 'não pode expor segredo');
+        const s2 = I.situacaoSegredos2FA([{ usuario: 'u2', totp_secret: cifradoB }]);
+        iguais(s2.pode_apagar_anterior, true);
+      });
+      await teste('SENHA_* ausente não gera aviso falso de "login vai falhar"', async () => {
+        const e = console.error; let avisos = 0; console.error = () => { avisos++; };
+        try { iguais(I.envSenhaHash('SENHA_QUE_NAO_EXISTE_TESTE'), null); } finally { console.error = e; }
+        iguais(avisos, 0);
+      });
+      for (const [metodo, rota] of [['get', '/api/admin/2fa/situacao'], ['post', '/api/admin/2fa/recifrar']]) {
+        await teste(`${metodo.toUpperCase()} ${rota} sem sessão → 401`, async () => {
+          const r = await request(app)[metodo](rota).send({});
+          iguais(r.status, 401);
+        });
+      }
+    } finally {
+      usarChaves(envAntes.k, envAntes.a);
+    }
+  }
+
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total - passaram} falharam`);
   process.exit(passaram === total ? 0 : 1);

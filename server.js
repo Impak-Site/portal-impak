@@ -4,12 +4,14 @@
  *
  * Variáveis Railway obrigatórias:
  *   SUPABASE_URL  → URL do projeto Supabase
- *   SUPABASE_KEY  → service_role key
+ *   SUPABASE_KEY  → chave secreta do Supabase (sb_secret_…; a antiga service_role também funciona)
  *
  * Variáveis Railway opcionais:
  *   ANTHROPIC_API_KEY → chave da API Anthropic
  *   SESSION_SECRET    → segredo da sessão (fixo — se não tiver, sessão morre a cada deploy)
- *   SENHA_*           → senhas dos usuários
+ *   TOTP_ENC_KEY      → cifra o segredo do 2FA gravado no banco
+ *   TOTP_ENC_KEY_ANTERIOR → só durante a troca da TOTP_ENC_KEY (ver _chave2FAAnterior)
+ *   SENHA_*           → senha inicial de usuário NOVO (quem já existe no banco não usa)
  *
  * Tabela extra necessária no Supabase (sessão persistente, sobrevive a deploy):
  *   create table if not exists app_sessions (
@@ -59,11 +61,20 @@ async function verificarCodigo2FA(secret, codigoDigitado, usuario, ip) {
     return false;
   }
 }
-function _chave2FA() {
-  const k = (process.env.TOTP_ENC_KEY || '').trim();
+// Troca da TOTP_ENC_KEY (22/10/2026, depois do incidente de segurança do
+// Railway): a chave nova vai em TOTP_ENC_KEY e a antiga, só durante a troca,
+// em TOTP_ENC_KEY_ANTERIOR. O segredo é lido com a chave atual e, se não
+// abrir, com a anterior; na subida do servidor recifrarSegredos2FA() regrava
+// todos com a chave atual. Quando GET /api/admin/2fa/situacao mostrar todos
+// na chave atual, a TOTP_ENC_KEY_ANTERIOR pode ser apagada do Railway.
+// Sem isso, trocar a TOTP_ENC_KEY travaria o 2FA de todo mundo.
+function _derivarChave2FA(k) {
+  k = String(k || '').trim();
   if (k.length < 16) return null;
   return require('crypto').createHash('sha256').update(k).digest();
 }
+function _chave2FA() { return _derivarChave2FA(process.env.TOTP_ENC_KEY); }
+function _chave2FAAnterior() { return _derivarChave2FA(process.env.TOTP_ENC_KEY_ANTERIOR); }
 function cifrarSegredo2FA(segredo) {
   const chave = _chave2FA();
   if (!chave || !segredo) return segredo;
@@ -73,15 +84,75 @@ function cifrarSegredo2FA(segredo) {
   const enc = Buffer.concat([c.update(String(segredo), 'utf8'), c.final()]);
   return 'enc:v1:' + Buffer.concat([iv, c.getAuthTag(), enc]).toString('base64');
 }
-function decifrarSegredo2FA(valor) {
-  if (!valor || !String(valor).startsWith('enc:v1:')) return valor;
-  const chave = _chave2FA();
-  if (!chave) { console.error('2FA: segredo cifrado mas TOTP_ENC_KEY ausente'); return null; }
+function _abrirSegredo2FA(chave, valor) {
   const crypto = require('crypto');
   const buf = Buffer.from(String(valor).slice(7), 'base64');
   const d = crypto.createDecipheriv('aes-256-gcm', chave, buf.subarray(0, 12));
   d.setAuthTag(buf.subarray(12, 28));
   return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8');
+}
+// Qual chave abre o segredo gravado: 'vazio', 'texto' (antigo, sem cifra),
+// 'atual', 'anterior' ou 'nenhuma'. Nunca devolve o segredo.
+function chaveDoSegredo2FA(valor) {
+  if (!valor) return 'vazio';
+  if (!String(valor).startsWith('enc:v1:')) return 'texto';
+  for (const [nome, chave] of [['atual', _chave2FA()], ['anterior', _chave2FAAnterior()]]) {
+    if (!chave) continue;
+    try { _abrirSegredo2FA(chave, valor); return nome; } catch (e) { /* tenta a próxima */ }
+  }
+  return 'nenhuma';
+}
+function decifrarSegredo2FA(valor) {
+  if (!valor || !String(valor).startsWith('enc:v1:')) return valor;
+  const atual = _chave2FA(), anterior = _chave2FAAnterior();
+  if (!atual && !anterior) { console.error('2FA: segredo cifrado mas TOTP_ENC_KEY ausente'); return null; }
+  for (const chave of [atual, anterior]) {
+    if (!chave) continue;
+    try { return _abrirSegredo2FA(chave, valor); } catch (e) { /* tenta a próxima */ }
+  }
+  console.error('2FA: segredo cifrado com outra chave — confira TOTP_ENC_KEY e TOTP_ENC_KEY_ANTERIOR no Railway');
+  return null;
+}
+// Regrava com a chave atual os segredos que ainda estão na chave anterior ou
+// em texto puro. Update condicional (só grava se o valor não mudou no meio do
+// caminho) e não mexe em quem não abre com nenhuma das duas chaves.
+// `cliente` só existe para os testes (banco de mentira).
+async function recifrarSegredos2FA(cliente) {
+  if (!_chave2FA()) return { ok: false, motivo: 'TOTP_ENC_KEY ausente' };
+  const db = cliente || sb();
+  const { data, error } = await db.from('usuarios').select('usuario, totp_secret').not('totp_secret', 'is', null);
+  if (error) throw new Error(error.message || String(error));
+  const r = { ok: true, total: 0, ja_na_atual: 0, recifrados: 0, cifrados_texto: 0, nao_abrem: [] };
+  for (const u of data || []) {
+    const tipo = chaveDoSegredo2FA(u.totp_secret);
+    if (tipo === 'vazio') continue;
+    r.total++;
+    if (tipo === 'atual') { r.ja_na_atual++; continue; }
+    if (tipo === 'nenhuma') { r.nao_abrem.push(u.usuario); continue; }
+    const segredo = decifrarSegredo2FA(u.totp_secret);
+    if (!segredo) { r.nao_abrem.push(u.usuario); continue; }
+    const { error: e2 } = await db.from('usuarios').update({ totp_secret: cifrarSegredo2FA(segredo) })
+      .eq('usuario', u.usuario).eq('totp_secret', u.totp_secret);
+    if (e2) { console.error(`2FA: não regravou ${u.usuario}:`, e2.message || e2); continue; }
+    if (tipo === 'texto') r.cifrados_texto++; else r.recifrados++;
+  }
+  if (!cliente && (r.recifrados || r.cifrados_texto)) await recarregarCacheUsuarios();
+  return r;
+}
+// Resumo para o gerente conferir a troca da chave — só contagens e nomes de
+// usuário, nunca o segredo.
+function situacaoSegredos2FA(lista) {
+  const s = { com_2fa: 0, atual: 0, anterior: 0, texto: 0, nenhuma: 0,
+    chave_atual_configurada: !!_chave2FA(), chave_anterior_configurada: !!_chave2FAAnterior(), nao_abrem: [] };
+  for (const u of lista || []) {
+    if (!u || !u.totp_secret) continue;
+    s.com_2fa++;
+    const t = chaveDoSegredo2FA(u.totp_secret);
+    s[t] = (s[t] || 0) + 1;
+    if (t === 'nenhuma') s.nao_abrem.push(u.usuario);
+  }
+  s.pode_apagar_anterior = s.com_2fa > 0 && s.atual === s.com_2fa;
+  return s;
 }
 const session = require('express-session');
 const path    = require('path');
@@ -391,10 +462,11 @@ setInterval(() => {
 // Railway. Na subida do servidor, sincronizarUsuarios() garante que cada
 // usuário exista no Supabase — usando a senha do env var SÓ NA PRIMEIRA VEZ
 // (se a pessoa já resetou a própria senha depois, isso nunca é sobrescrito).
+// 22/10/2026: as SENHA_* do Railway podem ser apagadas — só servem para criar
+// um usuário que ainda não existe no banco. O aviso de "sem senha" sai de
+// sincronizarUsuarios(), e só quando falta senha de verdade.
 function envSenhaHash(key) {
-  const v = process.env[key];
-  if (!v) console.error(`⚠️  ${key} não configurada no Railway — login deste usuário vai falhar.`);
-  return v || null;
+  return process.env[key] || null;
 }
 
 const USUARIOS = [
@@ -1415,6 +1487,19 @@ app.post('/api/usuarios/:usuario/resetar-2fa', rateLimitLogin, auth(), requireGe
     console.error('Erro ao resetar 2FA:', e.message);
     res.status(500).json({ ok: false, erro: 'Erro interno.' });
   }
+});
+
+// Troca da TOTP_ENC_KEY (22/10/2026): situação da cifra do 2FA (só contagens)
+// e regravação sob demanda (a subida do servidor já regrava sozinha).
+app.get('/api/admin/2fa/situacao', auth(), requireGerente, async (req, res) => {
+  try {
+    await recarregarCacheUsuarios();
+    res.json({ ok: true, ...situacaoSegredos2FA([..._usuariosCache.values()]) });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/admin/2fa/recifrar', rateLimitLogin, auth(), requireGerente, async (req, res) => {
+  try { res.json(await recifrarSegredos2FA()); }
+  catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
 // Recarrega o cache de usuários (_usuariosCache) sob demanda. Necessário
@@ -8338,6 +8423,7 @@ module.exports._interno = {
   auth, versaoSessaoAtual, bloqueado2FA, registrarFalha2FA, limparFalhas2FA, versionarHtml,
   quemSalvouNoMeio, atualizarRegrasConferenciaAntiga,
   conferirConexosIdRepetido, ehErroConexosRepetido, enviarEmail,
+  cifrarSegredo2FA, decifrarSegredo2FA, chaveDoSegredo2FA, recifrarSegredos2FA, situacaoSegredos2FA, envSenhaHash,
   definirCacheUsuarios(lista, carregado) {
     _usuariosCache = new Map((lista || []).map(u => [u.usuario, u]));
     _usuariosCacheCarregadoEm = carregado ? Date.now() : 0;
@@ -8356,7 +8442,10 @@ if (require.main === module) Promise.race([
   agendarAlertasSeparados();
   agendarBackupSemanal();
   agendarBackupDropbox();
-sincronizarUsuarios().catch(e => console.error('Erro ao sincronizar usuários no boot:', e.message));
+sincronizarUsuarios()
+  .then(() => recifrarSegredos2FA())
+  .then(r => { if (r && r.ok && (r.recifrados || r.cifrados_texto || r.nao_abrem.length)) console.log('[2FA] chave do 2FA na subida:', JSON.stringify(r)); })
+  .catch(e => console.error('Erro ao sincronizar usuários/2FA no boot:', e.message));
   // Cadastro de usuários sempre atual (permissões/forçar logout feitos
   // direto no banco valem em até 5 min) e, se o boot pegou o banco fora,
   // tenta de novo a cada 20 s — enquanto não carregar, auth() responde 503.
