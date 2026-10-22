@@ -374,8 +374,16 @@
     return null;
   })();
   const verificacaoDados = () => _vd || (typeof window !== 'undefined' ? window.VerificacaoDados : null) || null;
+  // "como" = a condição que encerra a tarefa (a tela mostra "Some sozinha quando: …").
+  const COMO_DADOS = {
+    D01: 'HBL e MBL diferentes',
+    D02: 'CE Master e CE House diferentes',
+    D03: 'Taxa do dólar e total da DI preenchidos',
+    D04: 'Custo da mercadoria lançado nos Custos Reais',
+    D05: 'CI e PI com diferença de até 5%',
+  };
   ['D01', 'D02', 'D03', 'D04', 'D05'].forEach(cod => {
-    ATIVIDADES[cod] = { auto: true, como: 'Some sozinha quando o dado é corrigido no processo',
+    ATIVIDADES[cod] = { auto: true, como: COMO_DADOS[cod],
       instancias: p => {
         const vd = verificacaoDados();
         if (!vd) return [];
