@@ -146,7 +146,7 @@ async function atualizarHistorico(ctx, opts) {
   const abertasPorChave = new Map(abertas.map(t => [t.chave, t]));
   const concl = new Map(conclusoes.map(c => [c.chave, c]));
 
-  const { data: existentes, error } = await sb().from('agenda_historico').select('chave,prazo,funcao,fechada_em');
+  const { data: existentes, error } = await sb().from('agenda_historico').select('chave,prazo,funcao,fechada_em,aberta_em');
   if (error) throw new Error('agenda_historico: ' + error.message);
   const porChave = new Map((existentes || []).map(r => [r.chave, r]));
 
@@ -156,9 +156,14 @@ async function atualizarHistorico(ctx, opts) {
     const ex = porChave.get(t.chave);
     const linha = { chave: t.chave, codigo: t.codigo, processo_id: t.processoId || null, referencia: t.referencia || null,
       funcao: t.funcao || null, atividade: t.nome || null, prazo: t.prazo || null, atualizado_em: new Date().toISOString() };
+    // aberta_em vai em TODAS as linhas do upsert (22/10/2026): no upsert em lote
+    // o PostgREST usa as mesmas colunas para todas as linhas, e a linha já
+    // existente sem aberta_em ia como null (coluna NOT NULL) — o lote inteiro
+    // falhava quando misturava tarefa nova com tarefa que mudou de prazo.
     if (!ex) Object.assign(linha, { aberta_em: hoje, fechada_em: null, tipo: null });
-    else if (ex.fechada_em) Object.assign(linha, { fechada_em: null, tipo: null }); // reaberta
+    else if (ex.fechada_em) Object.assign(linha, { aberta_em: ex.aberta_em || hoje, fechada_em: null, tipo: null }); // reaberta
     else if (ex.prazo === (t.prazo || null) && ex.funcao === (t.funcao || null)) return; // nada mudou
+    else Object.assign(linha, { aberta_em: ex.aberta_em || hoje });
     upserts.push(linha);
   });
   // (b) estavam abertas e sumiram: fecha hoje
