@@ -1499,6 +1499,19 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       notasDatasLidas.push(`Data de Chegada lida ${dataBR(cheg)} (futura) ${extracted.eta === cheg ? 'foi para o ETA' : 'não usada'}`);
       delete extracted.data_chegada;
     }
+    // CE Mercante: a "Data Embarque (CE)" e a Data de Embarque efetiva são a
+    // mesma data do documento (22/10/2026, Emanuelly: a leitura do CE às vezes
+    // devolvia só uma das duas e a "Data Embarque (CE)" ficava vazia). Uma
+    // completa a outra; a conferência de datas logo abaixo vale para as duas.
+    if(ehCeMercante && !pareceDiOuDuimp){
+      if(!extracted.ce_data_embarque && extracted.data_embarque){
+        extracted.ce_data_embarque = extracted.data_embarque;
+        if(semTrocaTexto.has('data_embarque')) semTrocaTexto.add('ce_data_embarque');
+      } else if(extracted.ce_data_embarque && !extracted.data_embarque){
+        extracted.data_embarque = extracted.ce_data_embarque;
+        if(semTrocaTexto.has('ce_data_embarque')) semTrocaTexto.add('data_embarque');
+      }
+    }
     // Data EFETIVA de embarque (TVN2511A, 20/10/2026: a leitura nunca
     // preenchia — o embarque da DI ia para o ETD e o do CE só para
     // "Data embarque (CE)"). Só vale de documento que comprova o embarque:
