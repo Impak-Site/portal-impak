@@ -93,6 +93,9 @@ teste('pendência vira tarefa da Agenda sem prazo, com o responsável da Lista',
   assert.strictEqual(d[0].prazo, null);
   assert.strictEqual(d[0].funcao, 'IMPORTACAO');
   assert.ok(/HBL e MBL/.test(d[0].detalhe));
+  // a tela mostra "Some sozinha quando: <como>" — o texto não pode repetir o prefixo
+  assert.strictEqual(d[0].como, 'HBL e MBL diferentes');
+  ['D01', 'D02', 'D03', 'D04', 'D05'].forEach(c => assert.ok(A.ATIVIDADES[c].como && !/some sozinha/i.test(A.ATIVIDADES[c].como), c));
 });
 teste('"Não se aplica" tira a tarefa; processo fechado não gera D', () => {
   const p = { id: 'a2', referencia: 'TESTE-A-2', created_at: '2025-01-10', fase: 'FINALIZADO' };
