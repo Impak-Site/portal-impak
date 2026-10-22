@@ -150,6 +150,12 @@
     _a('A33','Mensal','Exportar e enviar a Pendências de DI ao banco','FINANCEIRO','MEDIA',33),
     _a('A34','Mensal','Enviar a planilha de averbação de seguro','ADMINISTRATIVO','MEDIA',34),
     _a('A35','Trimestral','Enviar a relação de reciclagem aos clientes','ADMINISTRATIVO','BAIXA',35),
+    // Dados para conferir (verificação diária, 22/10/2026 — verificacao-dados.js)
+    _a('D01','Dados','Conferir HBL e MBL (estão iguais)','IMPORTACAO','BAIXA',40.1),
+    _a('D02','Dados','Conferir CE Master e CE House (estão iguais)','IMPORTACAO','BAIXA',40.2),
+    _a('D03','Dados','Ler a DUIMP para preencher a taxa do dólar e o total da DI','IMPORTACAO','BAIXA',40.3),
+    _a('D04','Dados','Lançar o custo da mercadoria do processo finalizado','FINANCEIRO','MEDIA',40.4),
+    _a('D05','Dados','Conferir o valor da CI × PI (diferença acima de 5%)','IMPORTACAO','MEDIA',40.5),
   ];
 
   const CATEGORIAS = {

@@ -59,7 +59,9 @@ function carregarMotor() {
       calcularFechamento: sb.calcularFechamento, calcularVendasResumo: sb.calcularVendasResumo, parseVendas: sb.parseVendas,
       // Mesmas contas da tela Resultado/Análises (19/10/2026): partes por cliente, data da NF de venda.
       nfsSaidaVenda: sb.nfsSaidaVenda, dataNfSaidaProcesso: sb.dataNfSaidaProcesso, partesClienteProcesso: sb.partesClienteProcesso,
-      fechamentoDaParte: sb.fechamentoDaParte, linhasResultadoPeriodo: sb.linhasResultadoPeriodo, paisDoProcesso: sb.paisDoProcesso };
+      fechamentoDaParte: sb.fechamentoDaParte, linhasResultadoPeriodo: sb.linhasResultadoPeriodo, paisDoProcesso: sb.paisDoProcesso,
+      // Verificação diária dos dados (22/10/2026): mesma regra do Salvar.
+      clienteDaVendaDoProcesso: sb.clienteDaVendaDoProcesso };
   } catch (e) {
     _motorErro = e;
     console.error('[agenda-servidor] não consegui carregar o motor do front:', e.message);

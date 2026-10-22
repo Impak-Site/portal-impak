@@ -365,6 +365,23 @@
       instancias: (p, h, ctx) => pagamentosDe(p, ctx).filter(pg => grupoParcela(pg) === cod && pg.parcela !== 'indefinido').map(pg => ({
         chave: String(pg.parcela), detalhe: nomeParcela(pg), prazo: iso(pg.vencimento), feito: !!pg.pago })) };
   });
+  // Dados para conferir (verificação diária, 22/10/2026 — ver
+  // verificacao-dados.js): HBL = MBL, CE Master = CE House, DUIMP sem taxa/
+  // total, finalizado sem custo da mercadoria, CI × PI muito diferentes.
+  // Sem prazo; some sozinha quando o dado é corrigido ("Não se aplica" tira).
+  const _vd = (function () {
+    try { if (typeof module !== 'undefined' && module.exports && typeof require === 'function') return require('./verificacao-dados.js'); } catch (e) { /* navegador */ }
+    return null;
+  })();
+  const verificacaoDados = () => _vd || (typeof window !== 'undefined' ? window.VerificacaoDados : null) || null;
+  ['D01', 'D02', 'D03', 'D04', 'D05'].forEach(cod => {
+    ATIVIDADES[cod] = { auto: true, como: 'Some sozinha quando o dado é corrigido no processo',
+      instancias: p => {
+        const vd = verificacaoDados();
+        if (!vd) return [];
+        return vd.pendenciasDados(p).filter(x => x.codigo === cod).map(x => ({ chave: '', detalhe: x.detalhe, prazo: null, semPrazoOk: true, feito: false }));
+      } };
+  });
   // Recorrentes (não são de um processo).
   const RECORRENTES = {
     A33: { como: 'Manual (Controle Cambial → Exportar Pendências de DI)', periodo: 'mes', diaPrazo: 5 },
