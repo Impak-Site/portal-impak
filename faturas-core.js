@@ -1343,6 +1343,10 @@
   //   devolução: fatura a receber, origem {tipo:'devolucao_numerario', numerario_id}
   const ehNumerario = f => !!(f && f.origem && f.origem.tipo === 'numerario');
   const ehDevolucaoNumerario = f => !!(f && f.origem && f.origem.tipo === 'devolucao_numerario');
+  // A receber DO CLIENTE (22/10/2026): devolução de numerário é a receber do
+  // despachante, não do cliente — fica fora dos cartões "A receber do cliente"
+  // e "Recebido" da aba Faturas do processo.
+  const ehReceberDoCliente = f => !!(f && f.tipo === 'receber' && !ehDevolucaoNumerario(f));
   // Quanto do numerário já foi usado (abatido em acertos ou devolvido) e
   // quanto sobra. "Pago" = o que entrou no numerário (dinheiro + crédito de
   // outro numerário abatido nele); só o pago pode ser abatido.
@@ -1464,7 +1468,7 @@
   }
 
   const FaturasCore = { STATUS, TIPOS, MOEDAS, agruparLinhasEmFaturas, validarFatura, situacao, resumoFaturas, fatorBRL, proximoNumero, taxaPorDescricao, acharProcesso, faturasParaAlerta, fluxoMensalFaturas, conferirFatura, valorRealPorMoeda, valorCotado, aplicarPagamentos, saldoFatura, validarPagamento, sugerirFaturasParaComprovante, abatidoPagamento, caixaBrlPagamento, variacaoCambial, darfRetencoes, distribuirLote, RETENCOES, ehMigracao, parseOFX, parseExtratoCSV, conciliarExtrato, idLancamento, chaveOrigem, receberDoProcesso, filtroJsonbContem, TIPOS_DOC_CUSTO, linhasCustoDocumento, planoCustosDocumento,
-    clienteAdiantaCambio, cambiosDoProcesso, parcelasDaVenda, processosDaFatura, parteDoProcesso, ETAPAS_PAGAR, etapaFatura, passosFatura, divergenciasConferencia, TIPOS_DIFERENCA, ehDiferenca, chaveCheck, decisaoCheck, contagemConferencia, mesclarDecisoes, decidirDiferenca, textoContestacao, ehCompensacao, caixaEfetivoPagamento, ehNumerario, ehDevolucaoNumerario, usoNumerario, numerariosComSaldo, validarAbatimentoNumerario, OPERADORAS, ehOperadora, taxaOperadoraPadrao, operadoraDaVenda, resumoPorProcesso, seloProcesso, extratoProcesso, pagamentosValidos, faturasParaAgenda };
+    clienteAdiantaCambio, cambiosDoProcesso, parcelasDaVenda, processosDaFatura, parteDoProcesso, ETAPAS_PAGAR, etapaFatura, passosFatura, divergenciasConferencia, TIPOS_DIFERENCA, ehDiferenca, chaveCheck, decisaoCheck, contagemConferencia, mesclarDecisoes, decidirDiferenca, textoContestacao, ehCompensacao, caixaEfetivoPagamento, ehNumerario, ehDevolucaoNumerario, ehReceberDoCliente, usoNumerario, numerariosComSaldo, validarAbatimentoNumerario, OPERADORAS, ehOperadora, taxaOperadoraPadrao, operadoraDaVenda, resumoPorProcesso, seloProcesso, extratoProcesso, pagamentosValidos, faturasParaAgenda };
   if (typeof module !== 'undefined' && module.exports) module.exports = FaturasCore;
   if (typeof window !== 'undefined') window.FaturasCore = FaturasCore;
 })();
