@@ -273,6 +273,38 @@ async function exportarDREExcel(dre, p){
       cell.alignment = {horizontal:'right'};
     };
 
+    // Cabeçalho "CHECK-LIST FECHAMENTO IMPORTAÇÃO" (21/10/2026, pedido do
+    // Ayslan) — o mesmo bloco da planilha de fechamento, logo abaixo do título:
+    // DI/DA, Processo, Fornecedor, NF Entrada/Qtde, Taxa DI/Frete e FOB US$/R$.
+    if(dre.cabecalho && typeof linhasCabecalhoChecklist === 'function'){
+      const FILL_VALOR = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFBE5D6'} };
+      const FILL_FOB = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDBEAF5'} };
+      const FILL_BRANCO = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFFFFF'} };
+      const fina = { style:'thin', color:{argb:CORES.BORDA} };
+      const bordaFina = { top:fina, bottom:fina, left:fina, right:fina };
+      ws.mergeCells(r, 1, r, numCols);
+      const tit = ws.getCell(r, 1);
+      tit.value = 'CHECK-LIST FECHAMENTO IMPORTAÇÃO';
+      tit.font = { bold:true }; tit.alignment = { horizontal:'center' }; tit.border = bordaFina; tit.fill = FILL_BRANCO;
+      r++;
+      linhasCabecalhoChecklist(dre.cabecalho).forEach(l => {
+        const row = ws.getRow(r);
+        const vals = l.destaque ? ['', l.rotulo, l.valor, l.valor2] : [l.rotulo, l.valor, l.rotulo2, l.valor2];
+        vals.forEach((v, i) => {
+          const cell = row.getCell(i + 1);
+          cell.value = v || '';
+          cell.border = bordaFina;
+          const ehRotulo = l.destaque ? i === 1 : (i === 0 || i === 2);
+          if(ehRotulo) cell.font = { bold:true };
+          if(l.destaque) cell.fill = FILL_FOB;
+          else if(!ehRotulo && v && (i === 1 || (i === 3 && l.rotulo2))) cell.fill = FILL_VALOR;
+          else cell.fill = FILL_BRANCO;
+          if((l.destaque && i >= 2) || (!l.destaque && i === 3 && l.rotulo2 === 'QTDE')) cell.alignment = { horizontal:'right' };
+        });
+        r++;
+      });
+      r++;
+    }
     if(dre.avisoCustos){
       const avisoRow = linha('⚠ ' + dre.avisoCustos, null, null, null);
       avisoRow.font = {italic:true, color:{argb:'FF92400E'}};
@@ -496,6 +528,40 @@ async function exportarDREPDF(dre, p){
     const agora = new Date();
     doc.text(`Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`, 40, 62);
 
+    // Cabeçalho "CHECK-LIST FECHAMENTO IMPORTAÇÃO" (21/10/2026) — mesmo bloco
+    // da planilha de fechamento e do Excel, acima da tabela do DRE.
+    let inicioCorpo = 74;
+    if(dre.cabecalho && typeof linhasCabecalhoChecklist === 'function'){
+      const SALMAO = [251,229,214], AZULCLARO = [219,234,245], BORDA = [203,213,225];
+      const cabBody = [[{ content:'CHECK-LIST FECHAMENTO IMPORTAÇÃO', colSpan:4, styles:{ halign:'center', fontStyle:'bold' } }]];
+      linhasCabecalhoChecklist(dre.cabecalho).forEach(l => {
+        if(l.destaque){
+          cabBody.push([
+            { content:'', styles:{ fillColor:AZULCLARO } },
+            { content:l.rotulo, styles:{ fontStyle:'bold', fillColor:AZULCLARO } },
+            { content:l.valor || '—', styles:{ halign:'right', fillColor:AZULCLARO } },
+            { content:l.valor2 || '—', styles:{ halign:'right', fillColor:AZULCLARO } },
+          ]);
+        } else {
+          cabBody.push([
+            { content:l.rotulo, styles:{ fontStyle:'bold' } },
+            { content:l.valor || '', styles: l.valor ? { fillColor:SALMAO } : {} },
+            { content:l.rotulo2 || '', styles:{ fontStyle:'bold' } },
+            { content:l.valor2 || '', styles: (l.rotulo2 && l.valor2) ? Object.assign({ fillColor:SALMAO }, l.rotulo2 === 'QTDE' ? { halign:'right' } : {}) : {} },
+          ]);
+        }
+      });
+      doc.autoTable({
+        startY: 72,
+        body: cabBody,
+        theme: 'grid',
+        styles: { fontSize:7.5, cellPadding:{top:1.8,bottom:1.8,left:4,right:4}, textColor:[30,41,59], lineColor:BORDA, lineWidth:0.4 },
+        columnStyles: { 0:{cellWidth:90}, 1:{cellWidth:215}, 2:{cellWidth:90}, 3:{cellWidth:120} },
+        margin: { left:40, right:40 },
+      });
+      inicioCorpo = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : 150) + 10;
+    }
+
     // Body: 1 tabela de 4 colunas (Descrição / Ref. NFe / Créd. entrada / Valor)
     // -- mesmas colunas que a tela e o Excel usam pras linhas de Diferenças
     // de Impostos; nas demais linhas as 2 colunas do meio ficam vazias.
@@ -601,7 +667,7 @@ async function exportarDREPDF(dre, p){
     // 08/09/2026: "o pdf deve vir na mesma formatacao do excel").
     const CORBORDA = [210,218,230];
     doc.autoTable({
-      startY: 74,
+      startY: inicioCorpo,
       body,
       theme: 'plain',
       styles: { fontSize:7, cellPadding:{top:1.6,bottom:1.6,left:3,right:3}, valign:'middle', textColor:[30,41,59], lineWidth:{bottom:0.4}, lineColor:CORBORDA },
