@@ -64,6 +64,7 @@ function copiarReferencia(){
 }
 
 function fecharModal(){
+  if(typeof fecharDRE === 'function') fecharDRE(); // DRE fica no <body>; fecha junto com o painel
   _editando = null;
   _painelDirty = false;
   document.getElementById('modal-bg').classList.remove('open');
@@ -458,14 +459,13 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
         processo esta fechado, #modal-body-lockwrap trava TODO o conteudo
         com pointer-events:none (pra impedir edicao), o que sem isso tambem
         bloqueava clicar em "Ver / Exportar DRE" e no modal do DRE que abre
-        dentro do dre-overlay. Pedido do Ayslan (08/09/2026): "eu nao
+        no dre-overlay (hoje no <body>, ver abrirDRE). Pedido do Ayslan (08/09/2026): "eu nao
         consigo clicar para ver o DRE" quando fechado, "preciso exportar o
         DRE mesmo depois de fechado" -- so ver/exportar o DRE, sem editar
         nada, entao fica de fora da trava. -->
         <div style="margin-top:14px;pointer-events:auto;">
           <button type="button" class="btn btn-outline" style="pointer-events:auto;" onclick="abrirDRE()">📊 Ver / Exportar DRE</button>
         </div>
-        <div id="dre-overlay" style="pointer-events:auto;"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-outline" onclick="fecharModalComAviso()">Cancelar</button>
@@ -1009,10 +1009,18 @@ function igualarCobradoPago(itemId, idx){ var suf = (idx === undefined || idx ==
 // reorganiza os MESMOS lancamentos ja feitos na aba Custos Reais
 // (real_json) — abre pelo botao na aba Fechamento; exportar pra Excel
 // fica dentro do proprio modal (exportarDREExcel, controle-export.js).
+// O DRE abre num container direto no <body> (22/10/2026). Antes ficava dentro
+// da aba Fechamento; em processo FECHADO o #modal-body-lockwrap tem
+// opacity:.85, e opacidade não se desfaz nos filhos — a janela do DRE abria
+// meio transparente, com as abas do processo aparecendo por trás.
+function _dreOverlayEl(){
+  let el = document.getElementById('dre-overlay');
+  if(!el){ el = document.createElement('div'); el.id = 'dre-overlay'; document.body.appendChild(el); }
+  return el;
+}
 function abrirDRE(){
   const dre = montarDRE(_editando);
-  const overlay = document.getElementById('dre-overlay');
-  if(overlay) overlay.innerHTML = renderDREModalHtml(dre);
+  _dreOverlayEl().innerHTML = renderDREModalHtml(dre);
 }
 function fecharDRE(){
   const overlay = document.getElementById('dre-overlay');
