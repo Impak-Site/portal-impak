@@ -644,6 +644,17 @@ function telaComIA(respostaIA) {
     await t.ler();
     iguais([t.els.f_data_embarque.value, t.els.f_ce_data_embarque.value], ['2026-01-19', '2026-01-19']);
   });
+  // 22/10/2026 (Emanuelly): leitura do CE que devolve só uma das duas datas.
+  await testeAsync('CE Mercante só com a Data de Embarque: preenche também a Data Embarque (CE)', async () => {
+    const t = telaComIA({ ce_master: '182600000000006', ce_house: '182600000000007', data_embarque: '2026-01-21' });
+    await t.ler();
+    iguais([t.els.f_data_embarque.value, t.els.f_ce_data_embarque.value], ['2026-01-21', '2026-01-21']);
+  });
+  await testeAsync('CE Mercante só com a Data Embarque (CE): preenche também a Data de Embarque efetiva', async () => {
+    const t = telaComIA({ ce_master: '182600000000008', ce_house: '182600000000009', ce_data_embarque: '2026-01-22' });
+    await t.ler();
+    iguais([t.els.f_data_embarque.value, t.els.f_ce_data_embarque.value], ['2026-01-22', '2026-01-22']);
+  });
   await testeAsync('PI com data de embarque: é previsão — vai para o ETD e a efetiva fica vazia', async () => {
     const t = telaComIA({ pi_numero: 'PI-TESTE-1', pi_data: '2026-01-02', data_embarque: '2026-02-10' });
     await t.ler();

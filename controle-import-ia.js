@@ -727,7 +727,7 @@ Se o documento for uma Nota Fiscal (NF-e brasileira):
 Se o documento for um CE Mercante (Conhecimento Eletrônico de Carga, emitido pela Receita Federal/Siscomex):
 - extrair ce_master (CE do armador/linha de navegação) e/ou ce_house (CE do agente de carga/consolidador) — um CE Mercante pode ter só um dos dois ou os dois, dependendo se a carga é consolidada. Preencher cada campo apenas se aquele número aparecer no documento.
 - na consulta de um CE de carga consolidada ("Tipo de Conhecimento: Filhote (HBL)"), o número ao lado de "CE-MERCANTE FILHOTE" (em "Identificação Única do Conhecimento") é o ce_house, e o número de "CE-Mercante do Master" (no bloco "Dados de seu Master") é o ce_master. Se o conhecimento for o próprio master ou BL único (sem filhote), o número dele é o ce_master e ce_house fica vazio. NUNCA repita o mesmo número em ce_master e ce_house.
-- extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem — repita a mesma data em "data_embarque": o CE registra o embarque efetivo) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
+- extrair também "eta" (data de chegada/atracação no porto brasileiro segundo o CE — isso ainda é só previsão até a DI ser registrada, então usar "eta", NUNCA "data_chegada"), ce_data_embarque (data de embarque na origem — repita a mesma data em "data_embarque": o CE registra o embarque efetivo; a consulta do CE do Siscomex muitas vezes NÃO tem um campo chamado "data de embarque" — nesse caso use a "Data de Emissão" de "Dados Gerais do Conhecimento" (a do próprio conhecimento/BL, não a de encerramento do manifesto nem a data/hora da consulta) e preencha ce_data_embarque e data_embarque com ela) e "armador" (transportador/armador conforme o CE — mesmo campo usado pra BL, o CE Mercante é a fonte mais confiável quando os dois documentos existem).
 - o campo "navio" deve refletir o navio de CHEGADA informado no CE — se houver transbordo/baldeação no exterior, use o navio de conexão (o último navio que trouxe a carga até o porto de destino), não o navio do embarque original.
 Se o documento for um Comprovante de Câmbio (operação de câmbio bancária — compra de moeda estrangeira para pagamento ao exterior):
 - NUNCA preencha o campo "referencia" (o de nível superior, fora de "cambio_referencias") a partir deste tipo de documento — deixe-o sempre "". A referência de cada processo/invoice coberto pela operação vai DENTRO de cada item de "cambio_referencias" (campo "referencia" de cada item), nunca no campo solto. Em especial, NUNCA use a "Referência Interna" do banco, o número do Contrato de Câmbio/código BACEN, ou qualquer identificador interno da instituição financeira para preencher o campo "referencia" solto — esses números não identificam nenhum processo da IMPAK, mesmo parecendo uma referência.
@@ -1498,6 +1498,19 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
       avisosDatasLidas.push(`Data de Chegada lida como ${dataBR(cheg)} ainda não aconteceu (DI/DUIMP registrada antes da atracação) — ${extracted.eta === cheg ? 'preenchi o ETA (previsão de chegada)' : 'não preenchi'}. Se a carga já chegou, confira a data no documento.`);
       notasDatasLidas.push(`Data de Chegada lida ${dataBR(cheg)} (futura) ${extracted.eta === cheg ? 'foi para o ETA' : 'não usada'}`);
       delete extracted.data_chegada;
+    }
+    // CE Mercante: a "Data Embarque (CE)" e a Data de Embarque efetiva são a
+    // mesma data do documento (22/10/2026, Emanuelly: a leitura do CE às vezes
+    // devolvia só uma das duas e a "Data Embarque (CE)" ficava vazia). Uma
+    // completa a outra; a conferência de datas logo abaixo vale para as duas.
+    if(ehCeMercante && !pareceDiOuDuimp){
+      if(!extracted.ce_data_embarque && extracted.data_embarque){
+        extracted.ce_data_embarque = extracted.data_embarque;
+        if(semTrocaTexto.has('data_embarque')) semTrocaTexto.add('ce_data_embarque');
+      } else if(extracted.ce_data_embarque && !extracted.data_embarque){
+        extracted.data_embarque = extracted.ce_data_embarque;
+        if(semTrocaTexto.has('ce_data_embarque')) semTrocaTexto.add('data_embarque');
+      }
     }
     // Data EFETIVA de embarque (TVN2511A, 20/10/2026: a leitura nunca
     // preenchia — o embarque da DI ia para o ETD e o do CE só para
