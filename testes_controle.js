@@ -57,6 +57,8 @@ const MODULOS_JS = [
   'destinatarios-core.js',
   // 21/10/2026: "ID no Conexos" nunca repetido.
   'conexos-id.js',
+  // 21/10/2026: Nº DUIMP nas parcelas com câmbio fechado depois da DUIMP.
+  'duimp-parcelas.js',
   'controle-core.js',
   'controle-modal.js',
   'controle-campos.js',
@@ -1055,6 +1057,98 @@ await testeAsync('ID no Conexos: o próprio número do processo (sem mudar) não
   } finally {
     sandbox.salvarProcesso = salvarOriginal;
     sandbox.document.getElementById('f_obs').value = '';
+    limparPainel();
+  }
+});
+
+// ── Nº DUIMP nas parcelas (duimp-parcelas.js, 21/10/2026) ──
+// Caso real: a DUIMP foi lida às 10:53 (preencheu as 2 parcelas que já tinham
+// câmbio) e o câmbio da parcela Final foi fechado às 12:00 — ela ficou sem o
+// número e a tarefa A22 da Agenda não sumia. Valores fictícios.
+const DP = require('./duimp-parcelas.js');
+teste('duimp-parcelas: formato da DUIMP (com ou sem hífen); DI antiga não conta', () => {
+  verdadeiro(DP.ehNumeroDuimp('26BR0000000001-1') && DP.ehNumeroDuimp('26BR00000000011') && DP.ehNumeroDuimp(' 26br0000000001-1 '));
+  verdadeiro(!DP.ehNumeroDuimp('26/1234567-8') && !DP.ehNumeroDuimp('') && !DP.ehNumeroDuimp('26BR123'));
+});
+teste('duimp-parcelas: parcela com câmbio fechado e sem número recebe a DUIMP das outras (e a Chave única)', () => {
+  const parcelas = [
+    { label: 'Inicial', cambio_fechado: '5.1000', duimp_numero: '26BR0000000001-1', duimp_protocolo: 'CHAVE-TESTE-1' },
+    { label: 'Pré-embarque', cambio_fechado: '5.1100', duimp_numero: '26BR0000000001-1', duimp_protocolo: 'CHAVE-TESTE-1' },
+    { label: 'Final', cambio_fechado: '5.0200', duimp_numero: '', duimp_protocolo: '' },
+    { label: 'Ajuste de câmbio', cambio_fechado: '', duimp_numero: '' },
+  ];
+  const r = DP.completarParcelas({ numero_di: '26BR0000000001-1' }, parcelas);
+  iguais(JSON.stringify(r.preenchidas), JSON.stringify([{ idx: 2, label: 'Final' }]));
+  iguais(r.parcelas[2].duimp_numero, '26BR0000000001-1'); iguais(r.parcelas[2].duimp_protocolo, 'CHAVE-TESTE-1');
+  iguais(r.parcelas[3].duimp_numero, '', 'sem câmbio fechado continua vazia');
+  iguais(parcelas[2].duimp_numero, '', 'não muda o array recebido');
+});
+teste('duimp-parcelas: sem número nas parcelas usa o Nº DI/DUIMP do processo; DI antiga ou duas DUIMPs não preenchem', () => {
+  const fechadas = () => [{ label: 'Inicial', cambio_fechado: '5.1' }, { label: 'Final', cambio_fechado: '5.2', duimp_numero: '' }];
+  iguais(DP.completarParcelas({ numero_di: '26BR0000000003-3' }, fechadas()).preenchidas.length, 2);
+  iguais(DP.completarParcelas({ numero_di: '26/1234567-8' }, fechadas()).preenchidas.length, 0, 'DI antiga: não adivinha');
+  const duas = [{ cambio_fechado: '5.1', duimp_numero: '26BR0000000004-4' }, { cambio_fechado: '5.2', duimp_numero: '26BR0000000005-5' }, { cambio_fechado: '5.3', duimp_numero: '' }];
+  iguais(DP.completarParcelas({ numero_di: '' }, duas).preenchidas.length, 0, 'duas DUIMPs nas parcelas');
+  const outra = [{ cambio_fechado: '5.1', duimp_numero: '26BR0000000004-4' }, { cambio_fechado: '5.2', duimp_numero: '' }];
+  iguais(DP.completarParcelas({ numero_di: '26BR0000000006-6' }, outra).preenchidas.length, 0, 'parcelas com uma DUIMP e o processo com outra');
+  const digitado = [{ cambio_fechado: '5.1', duimp_numero: '26BR0000000007-7' }];
+  iguais(DP.completarParcelas({ numero_di: '26BR0000000007-7' }, digitado).preenchidas.length, 0, 'número já digitado não muda');
+});
+teste('duimp-parcelas: pagamento único e o processo inteiro (completar)', () => {
+  iguais(DP.duimpPagamentoUnico({ pi_pagamento: 'VISTA', pi_cambio_fechado: 5.3, numero_di: '26BR0000000008-8' }), '26BR0000000008-8');
+  iguais(DP.duimpPagamentoUnico({ pi_pagamento: 'ENTRADA_SALDO', pi_cambio_entrada: 5.3, numero_di: '26BR0000000008-8' }), '26BR0000000008-8');
+  iguais(DP.duimpPagamentoUnico({ pi_pagamento: 'PRAZO', numero_di: '26BR0000000008-8' }), '', 'sem câmbio fechado');
+  iguais(DP.duimpPagamentoUnico({ pi_pagamento: 'VISTA', pi_cambio_fechado: 5.3, numero_di: '26BR0000000008-8', pi_duimp_numero: 'JA-TEM' }), '');
+  const parc = DP.completar({ pi_pagamento: 'PARCELADO', numero_di: '26BR0000000009-9', pi_parcelas_json: JSON.stringify([{ label: 'Final', cambio_fechado: '5.0' }]) });
+  iguais(parc.campo, 'pi_parcelas_json'); iguais(parc.parcelas[0].duimp_numero, '26BR0000000009-9');
+  iguais(DP.completar({ pi_pagamento: 'VISTA', pi_cambio_fechado: 5, numero_di: '26BR0000000009-9' }).campo, 'pi_duimp_numero');
+  iguais(DP.completar({ pi_pagamento: 'VISTA', pi_cambio_fechado: 5, numero_di: '26BR0000000009-9', cancelado: true }), null, 'cancelado fica de fora');
+});
+
+await testeAsync('Salvar (Parcelado): a parcela com câmbio fechado depois da DUIMP recebe o Nº DUIMP e vai no Salvar', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  const toasts = []; const toastOriginal = sandbox.showToast; sandbox.showToast = (m, t) => toasts.push([String(m), t]);
+  let gravado = null, campos = null;
+  const parcelas = [
+    { label: 'Inicial', valor_usd: '1000', cambio_fechado: '5.1000', duimp_numero: '26BR0000000001-1', duimp_protocolo: 'CHAVE-TESTE-1' },
+    { label: 'Final', valor_usd: '2000', cambio_fechado: '5.0200', duimp_numero: '', duimp_protocolo: '' },
+  ];
+  try {
+    sandbox.salvarProcesso = async (p, pf) => { gravado = p; campos = pf; return true; };
+    prepararPainel({ id: 'du-a', referencia: 'TESTE-DUIMP-A', pi_pagamento: 'PARCELADO', numero_di: '26BR0000000001-1', pi_parcelas_json: JSON.stringify(parcelas), log: [] }, []);
+    sandbox.document.getElementById('f_pi_pagamento').value = 'PARCELADO';
+    sandbox.document.getElementById('f_numero_di').value = '26BR0000000001-1';
+    vm.runInContext(`_parcelas = ${JSON.stringify(parcelas)};`, sandbox);
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    verdadeiro(gravado && Array.isArray(campos) && campos.includes('pi_parcelas_json'), JSON.stringify(campos));
+    const final = JSON.parse(gravado.pi_parcelas_json)[1];
+    iguais(final.duimp_numero, '26BR0000000001-1'); iguais(final.duimp_protocolo, 'CHAVE-TESTE-1');
+    verdadeiro(toasts.some(([m]) => /Nº DUIMP 26BR0000000001-1 preenchido na parcela Final/.test(m)), JSON.stringify(toasts));
+  } finally {
+    sandbox.salvarProcesso = salvarOriginal; sandbox.showToast = toastOriginal;
+    vm.runInContext(`_parcelas = [];`, sandbox);
+    ['f_pi_pagamento', 'f_numero_di', 'f_pi_parcelas_json'].forEach(id => { sandbox.document.getElementById(id).value = ''; });
+    limparPainel();
+  }
+});
+
+await testeAsync('Salvar (pagamento único): câmbio fechado + DUIMP do processo preenchem o Nº DUIMP do pagamento', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  let gravado = null;
+  try {
+    sandbox.salvarProcesso = async (p) => { gravado = p; return true; };
+    prepararPainel({ id: 'du-b', referencia: 'TESTE-DUIMP-B', pi_pagamento: 'VISTA', numero_di: '26BR0000000002-2', pi_cambio_fechado: 5.3, log: [] }, []);
+    sandbox.document.getElementById('f_pi_pagamento').value = 'VISTA';
+    sandbox.document.getElementById('f_pi_cambio_fechado').value = '5.3';
+    sandbox.document.getElementById('f_numero_di').value = '26BR0000000002-2';
+    sandbox.document.getElementById('f_pi_duimp_numero').value = '';
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    iguais(gravado && gravado.pi_duimp_numero, '26BR0000000002-2');
+  } finally {
+    sandbox.salvarProcesso = salvarOriginal;
+    ['f_pi_pagamento', 'f_pi_cambio_fechado', 'f_numero_di', 'f_pi_duimp_numero'].forEach(id => { sandbox.document.getElementById(id).value = ''; });
     limparPainel();
   }
 });

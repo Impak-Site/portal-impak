@@ -217,6 +217,7 @@ function coletarESalvar(opts){
   // parcela sem valor virar um "USD 0,00" silencioso no Financeiro.
   if(document.getElementById('f_pi_pagamento')?.value === 'PARCELADO'){
     completarSaldoParcelas();
+    preencherDuimpNasParcelas(); // parcela com câmbio fechado depois da leitura da DUIMP (21/10/2026)
     sincronizarParcelasLegado();
     // Bloqueia só o caso perigoso: câmbio fechado SEM valor (viraria US$ 0
     // no Financeiro). Parcelas totalmente em branco podem ser salvas (ex.:
@@ -228,6 +229,8 @@ function coletarESalvar(opts){
       showToast('A parcela ' + nomes + ' tem Câmbio Fechado mas está sem Valor USD. Preencha o valor ou apague o câmbio (ou use "Limpar parcelas").','err');
       return;
     }
+  } else {
+    preencherDuimpPagamentoUnico(); // À Vista / 100% a Prazo / Entrada+Saldo: Nº DUIMP do processo (21/10/2026)
   }
 
   // Validação das vendas multi-cliente ANTES de gravar qualquer coisa — sem
@@ -1683,7 +1686,7 @@ function renderParcelas(){
         <div>${lblParcela('Data Vencimento')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.data_vencimento||'')}"
           oninput="_parcelas[${i}].data_vencimento=this.value;sincronizarParcelasLegado()"></div>
         <div>${lblParcela('Câmbio Fechado')}<input class="form-input" type="number" step="0.0001" placeholder="5,0000" value="${pc.cambio_fechado!=null?pc.cambio_fechado:''}"
-          oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()"
+          oninput="_parcelas[${i}].cambio_fechado=this.value;sincronizarParcelasLegado();renderPagamentoInfoLive()" onchange="preencherDuimpNasParcelas()"
           onchange="if(this.value&&!_parcelas[${i}].data_fechamento_cambio)_parcelas[${i}].data_fechamento_cambio=new Date().toISOString().slice(0,10);calcularCustoOperacaoAuto(${i});renderParcelas();renderPagamentoInfoLive();atualizarVencimentoSaldoPorETA()"></div>
         ${_parcelas.length>1
           ? `<button type="button" onclick="removerParcela(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px;padding:0 0 9px;">✕</button>`
@@ -1716,9 +1719,9 @@ function renderParcelas(){
       ${secao({cols:'1fr 1fr 1fr 32px', html:`
         <div>${lblParcela('Venc. DI/DUIMP')}<input class="form-input" type="date" onpaste="colarData(event,this)" value="${esc(pc.venc_di||'')}" title="Prazo p/ comprovar DI/DUIMP ao banco (padrão: 180 dias do câmbio fechado)"
           oninput="_parcelas[${i}].venc_di=this.value;sincronizarParcelasLegado()"></div>
-        <div>${lblParcela('Nº DUIMP')}<input class="form-input" placeholder="Nº DUIMP" value="${esc(pc.duimp_numero||'')}"
+        <div>${lblParcela('Nº DUIMP')}<input class="form-input" placeholder="Nº DUIMP" data-parcela-duimp="${i}" value="${esc(pc.duimp_numero||'')}"
           oninput="_parcelas[${i}].duimp_numero=this.value;sincronizarParcelasLegado()"></div>
-        <div>${lblParcela('Protocolo / Chave de Acesso')}<input class="form-input" placeholder="Protocolo / Chave de Acesso" value="${esc(pc.duimp_protocolo||'')}"
+        <div>${lblParcela('Protocolo / Chave de Acesso')}<input class="form-input" placeholder="Protocolo / Chave de Acesso" data-parcela-protocolo="${i}" value="${esc(pc.duimp_protocolo||'')}"
           oninput="_parcelas[${i}].duimp_protocolo=this.value;sincronizarParcelasLegado()"></div>
         <button type="button" title="Recalcular prazo (180 dias do câmbio fechado)" onclick="_parcelas[${i}].venc_di=calcularVencimentoDI(_parcelas[${i}].data_vencimento);sincronizarParcelasLegado();renderParcelas()"
           style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--ac);cursor:pointer;font-size:13px;padding:0;height:36px;">↻</button>
@@ -1766,6 +1769,52 @@ function removerParcela(i){
 function sincronizarParcelasLegado(){
   const input = document.getElementById('f_pi_parcelas_json');
   if(input) input.value = JSON.stringify(_parcelas);
+}
+
+// Nº DUIMP nas parcelas (duimp-parcelas.js, 21/10/2026 — QD-IMK-LPL-2605-1738,
+// Ayslan): a leitura da DUIMP só preenche as parcelas que JÁ têm câmbio
+// fechado; a parcela que fecha o câmbio depois ficava sem o número e a tarefa
+// "Informar Nº DUIMP nas parcelas" não sumia da Agenda. Aqui ela recebe a
+// mesma DUIMP do processo — ao fechar o câmbio (digitado ou pelo comprovante)
+// e ao salvar. Atualiza os campos na tela sem redesenhar (não tira o foco).
+function preencherDuimpNasParcelas(opts){
+  if(typeof DuimpParcelas === 'undefined' || !Array.isArray(_parcelas) || !_parcelas.length) return 0;
+  const numeroDi = String(document.getElementById('f_numero_di')?.value || (_editando && _editando.numero_di) || '').trim();
+  const r = DuimpParcelas.completarParcelas({ numero_di: numeroDi }, _parcelas);
+  if(!r.preenchidas.length) return 0;
+  r.preenchidas.forEach(({ idx }) => {
+    _parcelas[idx].duimp_numero = r.parcelas[idx].duimp_numero;
+    _parcelas[idx].duimp_protocolo = r.parcelas[idx].duimp_protocolo || '';
+    const elNum = document.querySelector('[data-parcela-duimp="' + idx + '"]');
+    if(elNum) elNum.value = _parcelas[idx].duimp_numero;
+    const elProt = document.querySelector('[data-parcela-protocolo="' + idx + '"]');
+    if(elProt) elProt.value = _parcelas[idx].duimp_protocolo;
+  });
+  sincronizarParcelasLegado();
+  _painelDirty = true;
+  if(!(opts && opts.silencioso)){
+    showToast('Nº DUIMP ' + r.duimp.numero + ' preenchido na parcela ' + r.preenchidas.map(x => x.label).join(', ') + ' — a mesma DUIMP do processo.', 'ok');
+  }
+  return r.preenchidas.length;
+}
+
+// Pagamento único (À Vista / 100% a Prazo / Entrada+Saldo): o Nº DUIMP fica
+// no processo (pi_duimp_numero). Câmbio fechado + Nº DI/DUIMP do processo que
+// é uma DUIMP e o campo vazio → preenche com ele.
+function preencherDuimpPagamentoUnico(){
+  if(typeof DuimpParcelas === 'undefined') return '';
+  const el = document.getElementById('f_pi_duimp_numero');
+  if(!el) return '';
+  const val = id => document.getElementById(id)?.value || '';
+  const numero = DuimpParcelas.duimpPagamentoUnico({
+    pi_pagamento: val('f_pi_pagamento'), pi_duimp_numero: el.value,
+    pi_cambio_fechado: val('f_pi_cambio_fechado'), pi_cambio_entrada: val('f_pi_cambio_entrada'),
+    numero_di: val('f_numero_di'),
+  });
+  if(!numero) return '';
+  el.value = numero;
+  showToast('Nº DUIMP ' + numero + ' preenchido no pagamento — a DUIMP do processo.', 'ok');
+  return numero;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2152,6 +2201,7 @@ function confirmarCambioParcela(idx){
       showToast('% Entrada (PI) ajustado para ' + Math.round(pctReal) + '% conforme o comprovante','ok');
     }
   }
+  preencherDuimpNasParcelas({ silencioso: true }); // câmbio fechado depois da DUIMP (21/10/2026)
   renderParcelas();
   renderPagamentoInfoLive();
   const label = _parcelas[idx].label || ('Parcela ' + (idx+1));
@@ -2237,6 +2287,7 @@ function aplicarCambioNaParcelaPendente(taxa){
   }
   if(valorMudouP2==='corrigido') ajustarSaldoAposCorrecao(idx);
   else if(valorMudouP2) calcularParcelaResidualAuto();
+  preencherDuimpNasParcelas({ silencioso: true }); // câmbio fechado depois da DUIMP (21/10/2026)
   renderParcelas();
   renderPagamentoInfoLive();
   return idx;
