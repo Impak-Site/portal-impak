@@ -348,7 +348,7 @@ function _pfEtapaPill(f){
 }
 // Totais do processo em R$ (parte deste processo de cada fatura)
 function _pfTotais(p, pendentes, semFat, cambio){
-  const t = { pagar_aberto: 0, pago: 0, receber_aberto: 0, recebido: 0, sem_cambio: 0, vencidas: 0 };
+  const t = { pagar_aberto: 0, pago: 0, receber_aberto: 0, recebido: 0, outros_aberto: 0, outros_recebido: 0, sem_cambio: 0, vencidas: 0 };
   const hoje = _ftHoje();
   _pfFaturas.forEach(f => {
     if(f.status === 'cancelada') return;
@@ -361,7 +361,8 @@ function _pfTotais(p, pendentes, semFat, cambio){
     if(f.status === 'paga' && !pags.length) pagoBrl = _pfN(f.valor_pago != null ? f.valor_pago : f.valor) * fx;
     const aberto = FaturasCore.saldoFatura(f) * fx;
     if(f.tipo === 'pagar'){ t.pago += pagoBrl * parte; t.pagar_aberto += aberto * parte; }
-    else { t.recebido += pagoBrl * parte; t.receber_aberto += aberto * parte; }
+    else if (FaturasCore.ehReceberDoCliente(f)) { t.recebido += pagoBrl * parte; t.receber_aberto += aberto * parte; }
+    else { t.outros_recebido += pagoBrl * parte; t.outros_aberto += aberto * parte; } // ex.: devolução de numerário (do despachante)
     if(f.status === 'aberta' && FaturasCore.situacao(f, hoje) === 'vencida') t.vencidas++;
   });
   pendentes.forEach(x => { t.receber_aberto += Math.max(0, _pfN(x.valor) - _pfN(x.ja_recebido)); t.recebido += _pfN(x.ja_recebido); });
@@ -382,14 +383,14 @@ function _pfHtml(p){
   const t = _pfTotais(p, pendentes, semFat, cambio);
   const fin = _pfPodeFinanceiro();
   const vivas = _pfFaturas.filter(f => f.status !== 'cancelada');
-  const pagar = vivas.filter(f => f.tipo === 'pagar'), receber = vivas.filter(f => f.tipo === 'receber');
+  const pagar = vivas.filter(f => f.tipo === 'pagar'), receber = vivas.filter(f => FaturasCore.ehReceberDoCliente(f));
   const canceladas = _pfFaturas.length - vivas.length;
 
   const cards = `<div class="pf-cards">
     <div class="pf-card"><div class="pf-card-l">A pagar (em aberto)</div><div class="pf-card-v">${_pfR(t.pagar_aberto)}</div><div class="pf-card-s">${pagar.filter(f => f.status === 'aberta').length} fatura(s)${t.vencidas ? ` · <span class="pf-neg">${t.vencidas} vencida(s)</span>` : ''}</div></div>
     <div class="pf-card"><div class="pf-card-l">Pago</div><div class="pf-card-v">${_pfR(t.pago)}</div><div class="pf-card-s">baixas registradas</div></div>
-    <div class="pf-card"><div class="pf-card-l">A receber do cliente</div><div class="pf-card-v">${_pfR(t.receber_aberto)}</div><div class="pf-card-s">${receber.filter(f => f.status === 'aberta').length} fatura(s)${pendentes.length ? ` + ${pendentes.length} sem fatura` : ''}</div></div>
-    <div class="pf-card"><div class="pf-card-l">Recebido</div><div class="pf-card-v">${_pfR(t.recebido)}</div><div class="pf-card-s">do cliente</div></div>
+    <div class="pf-card"><div class="pf-card-l">A receber do cliente</div><div class="pf-card-v">${_pfR(t.receber_aberto)}</div><div class="pf-card-s">${receber.filter(f => f.status === 'aberta').length} fatura(s)${pendentes.length ? ` + ${pendentes.length} sem fatura` : ''}${t.outros_aberto > 0 ? `<br>fora daqui: ${_pfR(t.outros_aberto)} a receber de outros (devolução de numerário)` : ''}</div></div>
+    <div class="pf-card"><div class="pf-card-l">Recebido</div><div class="pf-card-v">${_pfR(t.recebido)}</div><div class="pf-card-s">do cliente${t.outros_recebido > 0 ? ` · + ${_pfR(t.outros_recebido)} de outros` : ''}</div></div>
     <div class="pf-card"><div class="pf-card-l">Custos sem fatura</div><div class="pf-card-v" style="${t.sem_fatura_qtd ? 'color:var(--warn);' : ''}">${t.sem_fatura_qtd} taxa${t.sem_fatura_qtd === 1 ? '' : 's'}</div><div class="pf-card-s">${_pfR(t.sem_fatura_valor)} lançados nos Custos Reais${t.sem_fatura_estimados ? ` · + ${t.sem_fatura_estimados} só estimada${t.sem_fatura_estimados === 1 ? '' : 's'} (cotação)` : ''}</div></div>
   </div>${t.sem_cambio ? `<div class="pf-dica" style="color:var(--warn);">⚠ ${t.sem_cambio} fatura(s) em moeda estrangeira sem câmbio — ficaram fora dos totais em R$. Abra e informe o câmbio.</div>` : ''}`;
 

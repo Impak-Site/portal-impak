@@ -4349,6 +4349,20 @@ console.log('\n🏢 Cadastros — documento com máscara e corrigido');
     verdadeiro(/fatura também de TST-FAT-2/.test(html), 'aviso de outro processo');
     verdadeiro(/US\$ 1\.000,00/.test(html), 'parte deste processo (1.000 de 1.200)');
   });
+  teste('devolução de numerário (do despachante) não entra em "A receber do cliente" nem em "Recebido"', () => {
+    const dev = { id: 'ft-dev', numero: '000003/26', tipo: 'receber', status: 'aberta', empresa_nome: 'Despachante Exemplo', documento: 'devolução', moeda: 'BRL', cambio: 1, valor: 2000, valor_pago: 0, vencimento: '2026-11-10',
+      origem: { tipo: 'devolucao_numerario', processo_id: 'pf-1', referencia: 'TST-FAT-1', numerario_id: 'ft-num' }, itens: [] };
+    const antes = sandbox._pfTotais(procFat, [], { pagar: [], receber: [] }, {});
+    vm.runInContext(`_pfFaturas = _pfFaturas.concat([${JSON.stringify(dev)}]);`, sandbox);
+    const depois = sandbox._pfTotais(procFat, [], { pagar: [], receber: [] }, {});
+    const h = sandbox._pfHtml(procFat);
+    vm.runInContext(`_pfFaturas = _pfFaturas.filter(f => f.id !== 'ft-dev');`, sandbox);
+    iguais(depois.receber_aberto, antes.receber_aberto, 'a receber do cliente não muda');
+    iguais(depois.recebido, antes.recebido, 'recebido do cliente não muda');
+    iguais(depois.outros_aberto, 2000, 'devolução fica em "outros"');
+    verdadeiro(/a receber de outros \(devolução de numerário\)/.test(h), 'cartão mostra a devolução à parte');
+    verdadeiro(sandbox.FaturasCore.ehReceberDoCliente({ tipo: 'receber', origem: { tipo: 'venda' } }) && !sandbox.FaturasCore.ehReceberDoCliente(dev), 'regra do core');
+  });
   teste('detalhe: taxas com fator, convertido, sistema, cotado da cotação e diferença; etapas com quem faz', () => {
     verdadeiro(/Cotação vinculada \(Calculador\)">Cotado</.test(html), 'coluna Cotado (cotação vinculada)');
     verdadeiro(/4\.800,00/.test(html), 'valor cotado do frete');
