@@ -64,6 +64,10 @@ const MODULOS_JS = [
   'controle-contatos.js',
   'controle-import-ia.js',
   'controle-dashboards.js',
+  // 21/10/2026: aba Faturas do processo (mesma ordem do controle_v2.html).
+  'faturas-core.js',
+  'controle-faturas.js',
+  'controle-faturas-processo.js',
 ];
 const jsReal = MODULOS_JS.map(nome => {
   const caminho = path.join(__dirname, nome);
@@ -4094,6 +4098,97 @@ console.log('\n🏢 Cadastros — documento com máscara e corrigido');
     sandbox.editarContato('emp-4');
     iguais(el('ce_documento').value, '11.222.333/0001-81');
     verdadeiro(/Receita para completar/.test(el('ce_cnpj_status').textContent), el('ce_cnpj_status').textContent);
+  });
+}
+
+// ── Aba Faturas do processo (21/10/2026) — valores fictícios ──────────────
+{
+  console.log('\n── Aba Faturas do processo ──');
+  const procFat = {
+    id: 'pf-1', referencia: 'TST-FAT-1', cliente: 'Cliente Exemplo', finalidade: 'ENCOMENDA', fase: 'DESEMBARCADO',
+    pi_valor_usd: 3000, pi_pagamento: 'PARCELADO', pi_cambio: 5,
+    pi_parcelas_json: JSON.stringify([
+      { label: 'Inicial', valor_usd: 1000, cambio_fechado: '5', data_fechamento_cambio: '2026-09-01', valor_recebido_cliente: '5000', data_recebimento: '2026-08-30' },
+      { label: 'Final', valor_usd: 2000, cambio_fechado: '', data_vencimento: '2026-11-20' }]),
+    vendas_json: JSON.stringify([{ cliente: 'Cliente Exemplo', nf_saida_numero: '7001', nf_saida_valor: '40000', nf_saida_data: '2026-10-15', forma_pagamento: 'prazo', prazo_texto: '30/60', juros_valor: '200', juros_fora_nf: true }]),
+    real_json: {
+      frete: { valor: 5000, moeda: 'BRL' }, ii: { valor: 3000, moeda: 'BRL' }, despachante: { valor: 800, moeda: 'BRL' },
+      siscomex_cobrado: { valor: 300, moeda: 'BRL' }, despachante_cobrado: { valor: 900, moeda: 'BRL' },
+      _conf: { frete: { por: 'teste', em: '2026-10-01', origem: 'digitado' }, despachante: { por: 'teste', em: '2026-10-01', origem: 'digitado' } },
+      _meta: { frete: { fatura_id: 'ft-1', para: 'Agente Exemplo' }, despachante: { para: 'Despachante Exemplo', doc: 'ND 55', de: 'Cliente Exemplo' } },
+    },
+    estimativa_json: { custos_cotados_json: { containers: 1, compra: { frete: 4800 } }, cenarios: { com_st: { faturamento_total: 41000 } }, prazo_texto: '30/60' },
+  };
+  const fats = [
+    { id: 'ft-1', numero: '000001/26', tipo: 'pagar', status: 'aberta', empresa_nome: 'Agente Exemplo', documento: 'ND 1', moeda: 'USD', cambio: 5, valor: 1200, valor_pago: 0, vencimento: '2026-11-05',
+      itens: [{ processo_id: 'pf-1', referencia: 'TST-FAT-1', taxa: 'frete', label: 'Frete Internacional', valor: 1000 }, { processo_id: 'pf-2', referencia: 'TST-FAT-2', taxa: 'frete', label: 'Frete Internacional', valor: 200 }],
+      anexos: [{ tipo: 'fatura', nome: 'nd.pdf', path: 'faturas/ft-1/nd.pdf' }],
+      conferencia: { em: '2026-10-20T10:00:00Z', por: 'teste', checks: [{ nivel: 'aviso', tipo: 'valor', msg: 'Frete: diferença fictícia', item: 0 }] } },
+    { id: 'ft-2', numero: '000002/26', tipo: 'receber', status: 'paga', pago_em: '2026-08-30', empresa_nome: 'Cliente Exemplo', documento: 'TST-FAT-1 · câmbio Inicial', moeda: 'BRL', cambio: 1, valor: 5000, valor_pago: 5000,
+      origem: { tipo: 'parcela_cambio', processo_id: 'pf-1', referencia: 'TST-FAT-1', idx: 0 }, itens: [], pagamentos: [{ data: '2026-08-30', valor: 5000, forma: 'pix' }] },
+  ];
+  sandbox.coletarCustosReaisDoForm = () => JSON.parse(JSON.stringify(procFat.real_json));
+  vm.runInContext(`_user = { usuario: 'teste@exemplo.com', role: 'gerente', modulos: ['controle', 'financeiro'] };
+    _vendas = ${procFat.vendas_json}; _parcelas = []; _pfFaturas = ${JSON.stringify(fats)}; _pfAberta = 'ft-1'; _pfVerPrevisto = true;`, sandbox);
+  let html = '';
+  teste('aba Faturas monta sem erro com faturas, a receber, custos sem fatura e extrato', () => {
+    html = sandbox._pfHtml(procFat);
+    verdadeiro(/Faturas \(2\)/.test(html), 'lista das 2 faturas');
+    verdadeiro(/A receber do cliente/.test(html) && /Custos lançados sem fatura/.test(html) && /Extrato do processo/.test(html), 'as 4 seções');
+  });
+  teste('fatura de dois processos: mostra só a parte deste e de quem é o resto', () => {
+    verdadeiro(/fatura também de TST-FAT-2/.test(html), 'aviso de outro processo');
+    verdadeiro(/US\$ 1\.000,00/.test(html), 'parte deste processo (1.000 de 1.200)');
+  });
+  teste('detalhe: taxas com fator, convertido, sistema, cotado da cotação e diferença; etapas com quem faz', () => {
+    verdadeiro(/Cotação vinculada \(Calculador\)">Cotado</.test(html), 'coluna Cotado (cotação vinculada)');
+    verdadeiro(/4\.800,00/.test(html), 'valor cotado do frete');
+    verdadeiro(/5,0000/.test(html) && /5\.000,00/.test(html), 'fator e convertido');
+    verdadeiro(/✓ bate/.test(html), 'frete 1.000 × 5 = 5.000 bate com o sistema');
+    verdadeiro(/Operacional/.test(html) && /Gerente/.test(html) && /Financeiro/.test(html), 'quem faz cada etapa');
+    verdadeiro(/1 diferença/.test(html), 'conferência guardada com diferença');
+  });
+  teste('a receber: NF + juros do boleto − adiantamentos, nas parcelas do prazo; o já faturado não repete', () => {
+    // adiantamento faturado 5.000 (parcela Inicial) — a Final não tem câmbio fechado
+    // NF 40.000 + juros 200 − 5.000 = 35.200 → 30/60 = 17.600 + 17.600
+    verdadeiro(/parcela 1\/2/.test(html) && /parcela 2\/2/.test(html), 'duas parcelas da venda');
+    verdadeiro(/17\.600,00/.test(html), 'valor de cada parcela');
+    verdadeiro(/− adiantamentos 5\.000,00/.test(html), 'mostra o desconto do adiantamento');
+    const pend = sandbox._pfReceberPendentes(procFat);
+    iguais(pend.filter(x => x.tipo_receber === 'adiantamento').length, 0, 'adiantamento já faturado (e o sem câmbio fechado) não aparecem como pendentes');
+    iguais(pend.map(x => x.valor).join('|'), '17600|17600');
+  });
+  teste('custos sem fatura: lançado x estimado da cotação; cobrado da cotação sem "Receber de" não vira a receber', () => {
+    verdadeiro(/Despachante Exemplo/.test(html), 'despachante (lançado, sem fatura)');
+    verdadeiro(/estimado \(cotação\)/.test(html), 'II só da cotação (sem conferência) = estimado');
+    verdadeiro(!/>Frete Internacional<div class="cr-muted"[^>]*>Compra e Frete/.test(html), 'frete já está na fatura ft-1');
+    verdadeiro(/cobrado à parte/.test(html), 'despachante cobrado à parte (tem Receber de)');
+    verdadeiro(!/Siscomex <span class="pf-pill pf-in">cobrado à parte/.test(html), 'siscomex cobrado sem Receber de fica fora');
+  });
+  teste('extrato: câmbio pago ao fornecedor e recebimento do adiantamento no realizado', () => {
+    verdadeiro(/Câmbio ao fornecedor · Inicial/.test(html), 'câmbio da parcela Inicial');
+    verdadeiro(/Recebimento · Cliente Exemplo/.test(html), 'baixa da fatura a receber');
+    verdadeiro(/Realizado até hoje/.test(html));
+  });
+  teste('sem a cotação ter NF ainda: mostra o faturamento previsto na cotação só como informação', () => {
+    const semNF = { ...procFat, vendas_json: '[]' };
+    vm.runInContext('_vendas = [];', sandbox);
+    const h = sandbox._pfHtml(semNF);
+    verdadeiro(/Previsto na cotação/.test(h) && /41\.000,00/.test(h), 'faturamento previsto (cenário com ST)');
+    vm.runInContext(`_vendas = ${procFat.vendas_json};`, sandbox);
+  });
+  teste('selo da lista: vermelho com diferença, verde tudo pago, nada sem fatura', () => {
+    vm.runInContext(`_faturasResumo = { 'pf-1': { qtd: 2, abertas: 1, vencidas: 0, divergentes: 1, pagas: 1, pagar_abertas: 1, receber_abertas: 0 }, 'pf-3': { qtd: 1, abertas: 0, vencidas: 0, divergentes: 0, pagas: 1, pagar_abertas: 0, receber_abertas: 0 } };`, sandbox);
+    verdadeiro(/1 diferença/.test(sandbox.seloFaturasHtml({ id: 'pf-1' })));
+    verdadeiro(/Tudo pago/.test(sandbox.seloFaturasHtml({ id: 'pf-3' })));
+    iguais(sandbox.seloFaturasHtml({ id: 'pf-9' }), '');
+  });
+  teste('usuário sem Financeiro não vê "Dar baixa" (o servidor também recusa)', () => {
+    vm.runInContext(`_user = { usuario: 'op@exemplo.com', role: 'analista', modulos: ['controle'] };`, sandbox);
+    const h = sandbox._pfHtml(procFat);
+    verdadeiro(!/💰 Dar baixa/.test(h), 'sem botão de baixa');
+    verdadeiro(/Conferir de novo|Conferir com o sistema/.test(h), 'conferir continua disponível');
+    vm.runInContext(`_user = { usuario: 'teste@exemplo.com', role: 'gerente', modulos: ['controle', 'financeiro'] };`, sandbox);
   });
 }
 

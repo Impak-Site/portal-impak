@@ -91,6 +91,50 @@
   }
   const nomeParcela = pg => ({ entrada: 'Entrada', saldo: 'Saldo', unico: 'Pagamento único', indefinido: 'Sem forma de pagamento' }[pg.parcela] || pg.parcela);
 
+  // ── faturas (Faturas fase 2, 21/10/2026) ─────────────────────────────
+  // ctx.faturasDe(p) = as faturas cujo "dono" é o processo, no formato de
+  // FaturasCore.faturasParaAgenda (etapa, contagens da conferência, datas).
+  const faturasDe = (ctx, p) => (ctx && typeof ctx.faturasDe === 'function' ? ctx.faturasDe(p) : null) || [];
+  const ehNumerarioF = f => !!(f && f.origem && f.origem.tipo === 'numerario');
+  // venda a prazo / parcelada / cartão com NF: é a A26 que cobra o recebimento
+  const vendaNaA26 = v => !!v && !CFOP_SEM_VENDA.test(String(v.nf_saida_cfop || '').replace(/\D/g, '')) && tem(v.nf_saida_numero) && !!v.forma_pagamento && v.forma_pagamento !== 'avista';
+  function fmtValor(v, moeda) {
+    const n = Math.round((+v || 0) * 100) / 100;
+    const [i, d] = Math.abs(n).toFixed(2).split('.');
+    return ({ USD: 'US$ ', EUR: '€ ' }[moeda] || 'R$ ') + (n < 0 ? '-' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + d;
+  }
+  const dataCurta = s => { s = iso(s); return s ? s.slice(8, 10) + '/' + s.slice(5, 7) : ''; };
+  const rotuloFatura = f => [f.numero || 'fatura', f.empresa_nome, f.documento ? 'doc ' + f.documento : ''].filter(Boolean).join(' · ');
+  const vencTxt = f => (f.vencimento ? ' · venc. ' + dataCurta(f.vencimento) : '');
+  const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+  // Prazo de tarefa de fatura: vencimento + dias (a Lista pode trocar os
+  // dias). Piso: 1 dia útil depois do fato que fez a tarefa nascer — fatura
+  // que chega em cima do vencimento não nasce atrasada.
+  function prazoFatura(f, dias, desde) {
+    const piso = iso(desde) ? somaUteis(desde, 1) : null;
+    const v = iso(f.vencimento);
+    const out = { _fatura: true, _piso: piso, semPrazoOk: !!(iso(f.criada_em) && iso(f.criada_em) >= AGENDA_CORTE) };
+    if (v) { out.prazo = somaDias(v, dias); out._baseParaOverride = v; } else out.prazo = piso;
+    return out;
+  }
+  function estadoPagar(f) {
+    const partes = [{ aprovada: 'aprovada', numerario: 'numerário (adiantamento)', divergente: 'com diferença na conferência', conferida: 'aguardando aprovação', recebida: 'aguardando conferência', prevista: 'sem documento' }[f.etapa] || f.etapa];
+    if (f.valor_pago > 0) partes.push(fmtValor(f.valor_pago, f.moeda) + ' já pago');
+    if (f.numerario_disponivel > 0) partes.push('numerário de ' + fmtValor(f.numerario_disponivel, 'BRL') + ' pra abater');
+    return partes.filter(Boolean).join(' · ');
+  }
+  function tipoReceber(f) {
+    const o = f.origem || {};
+    if (o.tipo === 'parcela_cambio') return 'adiantamento do câmbio';
+    if (o.tipo === 'devolucao_numerario') return 'devolução de numerário';
+    if (o.operadora) {
+      const op = o.operadora === 'cartao' ? 'cartão REDE' : 'Trademaster';
+      return f.status === 'paga' ? op : `${op} — líquido ${fmtValor(Math.max(0, (+f.saldo || 0) - (+f.taxa_restante || 0)), f.moeda)}`;
+    }
+    if (o.tipo === 'venda') return o.de > 1 ? `venda · parcela ${o.parcela}/${o.de}` : 'venda';
+    return 'a receber';
+  }
+
   // ── definição das atividades (por código; nome/função/prioridade vêm da Lista)
   // instancias(p, h, ctx) → [{ chave, detalhe, prazo, feito }]  (vazio = não nasceu)
   // base(p): data-marco; dias/uteis: prazo padrão em relação ao marco.
@@ -195,12 +239,32 @@
         const sem = vs.filter(v => !tem(v.nf_saida_numero)).length;
         return um(!sem, { detalhe: sem ? `${sem} venda(s) sem NF` : '' });
       } },
-    A26: { auto: false, como: 'Manual (por venda)', semAcomp: true,
-      instancias: p => vendasReais(p).filter(v => tem(v.nf_saida_numero) && v.forma_pagamento && v.forma_pagamento !== 'avista').map(v => {
-        const nums = String(v.prazo_texto || '').match(/\d+/g) || [];
-        const dias = nums.length ? Math.max.apply(null, nums.map(Number)) : 30;
-        return { chave: String(v.nf_saida_numero).replace(/\D/g, ''), detalhe: `NF ${v.nf_saida_numero} · ${v.cliente || ''}${v.prazo_texto ? ' · ' + v.prazo_texto : ''}`, prazo: somaDias(v.nf_saida_data, dias), feito: false };
-      }) },
+    // Com fatura a receber gerada pra venda (aba Faturas), conclui sozinha
+    // quando todas as faturas dela foram recebidas e o prazo passa a ser o
+    // vencimento da próxima (Faturas fase 2, 21/10/2026). Sem fatura: manual.
+    A26: { auto: false, como: 'Manual (por venda)', semAcomp: true, mesmoFechado: 'faturas',
+      instancias: (p, h, ctx) => {
+        const fats = faturasDe(ctx, p).filter(f => f.tipo === 'receber' && f.origem && f.origem.tipo === 'venda');
+        return jsonArr(p.vendas_json).map((v, i) => ({ v, i })).filter(x => vendaNaA26(x.v)).map(({ v, i }) => {
+          // cartão (REDE) / Trademaster: a operadora paga em poucos dias (padrão 1)
+          const operadora = v.forma_pagamento === 'cartao' || v.forma_pagamento === 'trademaster';
+          const nums = String(v.prazo_texto || '').match(/\d+/g) || [];
+          const dOp = parseInt(v.dias_recebimento, 10);
+          const dias = operadora ? (dOp >= 0 ? dOp : 1) : (nums.length ? Math.max.apply(null, nums.map(Number)) : 30);
+          const forma = operadora ? `${v.forma_pagamento === 'cartao' ? 'cartão REDE' : 'Trademaster'} ${Math.min(6, Math.max(1, parseInt(v.cartao_parcelas, 10) || 1))}x` : (v.prazo_texto || '');
+          const inst = { chave: String(v.nf_saida_numero).replace(/\D/g, ''), detalhe: `NF ${v.nf_saida_numero} · ${v.cliente || ''}${forma ? ' · ' + forma : ''}`, prazo: somaDias(v.nf_saida_data, dias), feito: false };
+          const fv = fats.filter(f => String(f.origem.idx) === String(i));
+          if (!fv.length) return inst;
+          const abertas = fv.filter(f => f.status !== 'paga');
+          const vencs = (abertas.length ? abertas : fv).map(f => iso(f.vencimento)).filter(Boolean).sort();
+          const saldo = abertas.reduce((s, f) => s + (+f.saldo || 0), 0);
+          const pagas = fv.length - abertas.length;
+          return Object.assign(inst, {
+            detalhe: `${inst.detalhe} · ${pagas} de ${plural(fv.length, 'parcela recebida', 'parcelas recebidas')}${abertas.length ? ' · saldo ' + fmtValor(saldo, abertas[0].moeda) : ''}`,
+            prazo: (abertas.length ? vencs[0] : vencs[vencs.length - 1]) || inst.prazo,
+            feito: !abertas.length, auto: true, como: 'Baixa das faturas a receber da venda (aba Faturas)', _fatura: true });
+        });
+      } },
     A27: { auto: true, como: 'Data de Agendamento + Transportadora preenchidas',
       base: p => maxData(p.data_liberacao || p.data_parametrizacao, p.data_chegada || p.data_presenca), dias: 1, uteis: true,
       instancias: (p, h) => liberado(p) && chegou(p, h) ? um((tem(p.data_agendamento) && tem(p.transportadora)) || tem(p.data_carregamento)) : [] },
@@ -238,6 +302,62 @@
     A32: { auto: true, como: 'Processo marcado como Fechado', semAcomp: true,
       base: p => p.data_devolucao_vazio || p.data_carregamento, dias: 15,
       instancias: (p, h, ctx) => (ctx.fase(p) === 'FINALIZADO' && temCustosReais(p)) ? um(!!p.fechado) : [] },
+
+    // ── Faturas (fase 2, 21/10/2026): cada fatura do processo, por quem faz.
+    // A pagar: conferir e decidir as diferenças (Importação) → aprovar
+    // (Gerência) → pagar (Financeiro); numerário: acertar no acerto do
+    // despachante. A receber: receber (Financeiro). Nascem e somem sozinhas
+    // pela etapa da fatura (aba Faturas do processo) e valem também em
+    // processo fechado — dinheiro em aberto continua sendo tarefa.
+    A37: { auto: true, como: 'Conferência salva na fatura (aba Faturas → Conferir)', mesmoFechado: true,
+      instancias: (p, h, ctx) => faturasDe(ctx, p).filter(f => f.tipo === 'pagar' && !ehNumerarioF(f) && (f.doc_em || f.conf || f.aprovada)).map(f => Object.assign(
+        prazoFatura(f, -3, f.doc_em), { chave: f.id, detalhe: rotuloFatura(f) + ' · ' + fmtValor(f.valor, f.moeda) + vencTxt(f), feito: !!f.conf || !!f.aprovada || f.status === 'paga' })) },
+    A38: { auto: true, como: 'Cada diferença aceita ou contestada (aba Faturas); contestada fica "em andamento" até o fornecedor mandar a fatura corrigida', mesmoFechado: true,
+      instancias: (p, h, ctx) => faturasDe(ctx, p).filter(f => f.tipo === 'pagar' && f.conf && f.conf.total > 0).map(f => {
+        const c = f.conf;
+        const resolvida = c.total - c.aceitas <= 0 || !!f.aprovada || f.status === 'paga';
+        const det = resolvida ? plural(c.total, 'diferença resolvida', 'diferenças resolvidas')
+          : c.abertas > 0 ? plural(c.abertas, 'diferença sem decisão', 'diferenças sem decisão') + (c.contestadas ? ` (+${plural(c.contestadas, 'contestada', 'contestadas')})` : '')
+            : plural(c.contestadas, 'contestada', 'contestadas') + ' — aguardando a fatura corrigida do fornecedor';
+        return Object.assign(prazoFatura(f, -2, c.em), { chave: f.id, detalhe: det + ' · ' + rotuloFatura(f), feito: resolvida, andamento: !resolvida && !(c.abertas > 0) });
+      }) },
+    A39: { auto: true, como: 'Pagamento aprovado na fatura (gerente)', mesmoFechado: true,
+      instancias: (p, h, ctx) => faturasDe(ctx, p).filter(f => f.tipo === 'pagar' && (f.etapa === 'conferida' || f.etapa === 'numerario' || f.aprovada)).map(f => Object.assign(
+        prazoFatura(f, -1, (f.conf && f.conf.em) || (ehNumerarioF(f) ? f.criada_em : null)),
+        { chave: f.id, detalhe: rotuloFatura(f) + ' · ' + fmtValor(f.valor, f.moeda) + vencTxt(f) + (ehNumerarioF(f) ? ' · numerário (adiantamento)' : '')
+            + (f.conf && f.conf.aceitas ? ' · ' + plural(f.conf.aceitas, 'diferença aceita', 'diferenças aceitas') : ''),
+          feito: !!f.aprovada || f.status === 'paga' })) },
+    A40: { auto: true, como: 'Baixa (pagamento) registrada na fatura', mesmoFechado: true,
+      instancias: (p, h, ctx) => faturasDe(ctx, p).filter(f => f.tipo === 'pagar' && (f.status === 'paga' ? !!(f.doc_em || f.conf || f.aprovada || ehNumerarioF(f)) : (f.etapa !== 'prevista' || f.valor_pago > 0))).map(f => Object.assign(
+        prazoFatura(f, 0, null),
+        { chave: f.id, detalhe: rotuloFatura(f) + ' · ' + (f.status === 'paga' ? 'paga' : `saldo ${fmtValor(f.saldo, f.moeda)}${vencTxt(f)} · ${estadoPagar(f)}`), feito: f.status === 'paga' })) },
+    A41: { auto: true, como: 'Numerário todo abatido no acerto do despachante (ou devolvido)', mesmoFechado: true,
+      instancias: (p, h, ctx) => faturasDe(ctx, p).filter(f => f.numerario && f.numerario.pago > 0 && ((f.numerario.acertos_abertos || []).length || f.numerario.acertos_pagos)).map(f => {
+        const n = f.numerario, ab = n.acertos_abertos || [];
+        const feito = !(n.disponivel > 0.009);
+        const nomeNum = f.numero ? ' ' + f.numero : '';
+        // dá pra abater até o saldo dos acertos em aberto; o resto é sobra (devolução)
+        const abater = Math.min(n.disponivel, ab.reduce((s, a) => s + (+a.saldo || 0), 0));
+        const sobra = Math.round((n.disponivel - abater) * 100) / 100;
+        const det = feito ? `Numerário${nomeNum} acertado`
+          : abater > 0.009 ? `Abater ${fmtValor(abater, 'BRL')} do numerário${nomeNum} no acerto ${ab[0].numero || ab[0].documento || ''}`.trim() + (sobra > 0.009 ? ` (sobram ${fmtValor(sobra, 'BRL')} pra devolver)` : '')
+            : `Sobra de ${fmtValor(n.disponivel, 'BRL')} do numerário${nomeNum}: lançar a devolução (ou deixar de crédito pro próximo acerto)`;
+        // acerto em aberto: até o vencimento dele; sobra: 5 dias depois do acerto pago
+        const comAcerto = abater > 0.009;
+        const base = comAcerto ? (ab.map(a => iso(a.vencimento)).filter(Boolean).sort()[0] || null) : iso(n.ultimo_acerto_pago);
+        const out = { chave: f.id, detalhe: det + (f.empresa_nome ? ' · ' + f.empresa_nome : ''), feito, _fatura: true, semPrazoOk: true, prazo: base ? somaDias(base, comAcerto ? 0 : 5) : null };
+        if (base) out._baseParaOverride = base;
+        return out;
+      }) },
+    A42: { auto: true, como: 'Baixa (recebimento) registrada na fatura a receber', mesmoFechado: true,
+      instancias: (p, h, ctx) => {
+        // venda a prazo / parcelada / cartão já é cobrada pela A26 (uma tarefa por venda)
+        const vendas = jsonArr(p.vendas_json);
+        const pelaA26 = f => f.origem && f.origem.tipo === 'venda' && f.origem.idx != null && vendaNaA26(vendas[f.origem.idx])
+          && !ehAcomp(p) && (!ctx || typeof ctx.ativa !== 'function' || ctx.ativa('A26'));
+        return faturasDe(ctx, p).filter(f => f.tipo === 'receber' && !pelaA26(f)).map(f => Object.assign(prazoFatura(f, 0, null), {
+          chave: f.id, detalhe: rotuloFatura(f) + ' · ' + (f.status === 'paga' ? 'recebida' : `saldo ${fmtValor(f.saldo, f.moeda)}${vencTxt(f)}`) + ' · ' + tipoReceber(f), feito: f.status === 'paga' }));
+      } },
   };
   // Câmbio (A06/A13/A15): uma tarefa por parcela, conforme o nome da parcela.
   ['A06', 'A13', 'A15'].forEach(cod => {
@@ -284,7 +404,8 @@
   }
 
   // ── geração ──────────────────────────────────────────────────────────
-  // opts: { hoje, listas, conclusoes:[{chave,tipo,usuario,em,obs}], fase(p), listarPagamentosPI, incluirFeitas, corte }
+  // opts: { hoje, listas, conclusoes:[{chave,tipo,usuario,em,obs}], fase(p), listarPagamentosPI, incluirFeitas, corte,
+  //         faturas: FaturasCore.faturasParaAgenda(...) (opcional) }
   function chaveTarefa(codigo, procId, inst) { return [codigo, procId || '-', inst || ''].join('|'); }
   function gerarTarefas(processos, opts) {
     opts = opts || {};
@@ -293,7 +414,18 @@
     const cfg = opts.cfg || montarConfig(opts.listas);
     const concl = {};
     (opts.conclusoes || []).forEach(c => { if (c && c.chave) concl[c.chave] = c; });
-    const ctx = { fase: opts.fase || (p => p.fase || ''), listarPagamentosPI: opts.listarPagamentosPI };
+    // cada fatura entra só no processo "dono" (processos[0] = o de maior parte)
+    const fatPorProc = new Map();
+    (opts.faturas || []).forEach(f => {
+      const dono = f && Array.isArray(f.processos) && f.processos[0] && f.processos[0].id;
+      if (!dono) return;
+      const k = String(dono);
+      if (!fatPorProc.has(k)) fatPorProc.set(k, []);
+      fatPorProc.get(k).push(f);
+    });
+    const ctx = { fase: opts.fase || (p => p.fase || ''), listarPagamentosPI: opts.listarPagamentosPI,
+      faturasDe: p => fatPorProc.get(String(p && p.id)) || [],
+      ativa: c => !!(cfg.atividades[c] && cfg.atividades[c].ativo) };
     const out = [];
     const push = (codigo, p, inst, base) => {
       const a = cfg.atividades[codigo]; if (!a || !a.ativo) return;
@@ -312,19 +444,25 @@
         responsaveis: f.usuarios, substitutos: f.substitutos, prioridade: a.prioridade,
         processoId: p ? p.id : null, referencia: p ? p.referencia : null, cliente: p ? p.cliente : null,
         detalhe: inst.detalhe || '', prazo, atraso: prazo ? diasEntre(prazo, hoje) : null,
-        auto: def.auto !== false && !RECORRENTES[codigo], como: def.como || '',
+        // a instância pode dizer que é automática (ex.: A26 com fatura a receber)
+        auto: inst.auto != null ? !!inst.auto : (def.auto !== false && !RECORRENTES[codigo]), como: inst.como || def.como || '',
         status, conclusao: c || null, automatica: !!inst.feito, andamento: !!inst.andamento,
+        aba: inst._fatura ? 'faturas' : null, // onde resolver (link do processo abre nessa aba)
       });
     };
     (processos || []).forEach(p => {
-      if (!p || p.cancelado || p.fechado && !opts.incluirFeitas) return;
+      if (!p || p.cancelado) return;
+      // Processo fechado: só o que é dinheiro em aberto (faturas) continua.
+      const soFaturas = !!p.fechado && !opts.incluirFeitas;
       Object.keys(ATIVIDADES).forEach(codigo => {
         const def = ATIVIDADES[codigo];
+        if (soFaturas && !def.mesmoFechado) return;
         if (def.semAcomp && ehAcomp(p)) return;
         if (def.aplica && !def.aplica(p)) return;
         const a = cfg.atividades[codigo]; if (!a || !a.ativo) return;
         let insts = [];
         try { insts = def.instancias(p, hoje, ctx) || []; } catch (e) { insts = []; }
+        if (soFaturas && def.mesmoFechado === 'faturas') insts = insts.filter(i => i && i._fatura);
         insts.forEach(inst => {
           let prazo = inst.prazo;
           if (prazo === undefined && def.base) {
@@ -334,6 +472,7 @@
           } else if (prazo && a.prazoDias != null && inst._baseParaOverride) {
             prazo = somaDias(inst._baseParaOverride, a.prazoDias);
           }
+          if (prazo && inst._piso && prazo < inst._piso) prazo = inst._piso;
           push(codigo, p, Object.assign({}, inst, { prazo }), def);
         });
       });

@@ -2736,6 +2736,7 @@ const CUSTOS_REAIS_CONFIG = [
     { id:'dif_seguro',                label:'Diferença de Seguro',                       unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'timp',                      label:'Timp',                                      unidade:'BRL', apenasPago:true, cotado:c=>null },
     { id:'trademaster',               label:'Trademaster',                               unidade:'BRL', apenasPago:true, cotado:c=>null },
+    { id:'taxa_cartao',               label:'Taxa do cartão (REDE)',                      unidade:'BRL', apenasPago:true, cotado:c=>null },
   ]},
 ];
 
@@ -4151,6 +4152,11 @@ function calcularVencimentoVenda(venda){
   }
   if(venda.forma_pagamento === 'prazo'){
     return { formaPagamento: 'prazo', texto: (venda.prazo_texto||'').trim() };
+  }
+  // cartão (REDE) / Trademaster (Faturas fase 2): a operadora paga, antecipado
+  if(venda.forma_pagamento === 'cartao' || venda.forma_pagamento === 'trademaster'){
+    const n = Math.min(6, Math.max(1, parseInt(venda.cartao_parcelas, 10) || 1));
+    return { formaPagamento: 'prazo', texto: `${venda.forma_pagamento === 'cartao' ? 'cartão REDE' : 'Trademaster'} ${n}x` };
   }
   // Compat: registros antigos gravados enquanto o campo ainda era estruturado
   // (dias/parcelas) — nunca chegou a ir pra produção, mas mantém a leitura
@@ -6297,7 +6303,7 @@ function linhaProcessoHtml(p){
   return `<div class="table-row" onclick="abrirProcesso('${p.id}')" style="${p.cancelado?'opacity:.6;':''}">
         <div class="td td-ref" data-label="">
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;row-gap:2px;">
-            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}${canceladoBadge}${solicitacaoCancelamentoBadge}
+            <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}${canceladoBadge}${solicitacaoCancelamentoBadge}${typeof seloFaturasHtml === 'function' ? seloFaturasHtml(p) : ''}
           </div>
         </div>
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>

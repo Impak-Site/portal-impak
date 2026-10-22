@@ -520,5 +520,331 @@ teste('Faturas: fatura em R$ com linhas em US$ usa o valor em reais de cada linh
   assert.strictEqual(f.itens[0].referencia, 'TST2601-1');
 });
 
+console.log('\n── a receber: quem adianta o câmbio e a NF com o valor total (21/10/2026) ──');
+const PROC_AR = (o) => Object.assign({ id: 'p9', referencia: 'TST-AR-1', cliente: 'Cliente Ficticio', pi_pagamento: 'PARCELADO',
+  pi_parcelas_json: JSON.stringify([{ label: 'Inicial', valor_usd: 1000, cambio_fechado: 5 }, { label: 'Final', valor_usd: 2000, cambio_fechado: '5,5' }]),
+  vendas_json: JSON.stringify([{ cliente: 'Cliente Ficticio', nf_saida_numero: '900', nf_saida_valor: 30000, nf_saida_data: '2026-10-10', forma_pagamento: 'prazo', prazo_texto: '30/60/90' }]) }, o);
+teste('encomenda: adiantamento de cada câmbio + NF menos os adiantamentos, em 3 parcelas', () => {
+  const r = F.receberDoProcesso(PROC_AR({ finalidade: 'ENCOMENDA' }), []);
+  const ad = r.filter(x => x.tipo_receber === 'adiantamento'), vd = r.filter(x => x.tipo_receber === 'venda');
+  assert.deepStrictEqual(ad.map(x => x.valor), [5000, 11000]);
+  assert.strictEqual(vd.length, 3);
+  assert.deepStrictEqual(vd.map(x => x.valor), [4666.66, 4666.66, 4666.68]);
+  assert.deepStrictEqual(vd.map(x => x.vencimento), ['2026-11-09', '2026-12-09', '2027-01-08']);
+  assert.deepStrictEqual(vd.map(x => x.origem.parcela + '/' + x.origem.de), ['1/3', '2/3', '3/3']);
+  assert.strictEqual(vd[0].adiantamento_abatido, 16000);
+  const soma = r.reduce((s, x) => s + x.valor, 0);
+  assert.ok(Math.abs(soma - 30000) < 0.005, 'a soma do a receber é o valor da NF: ' + soma);
+});
+teste('conta e ordem também abate; importação própria não gera a receber do câmbio; acompanhamento não gera nada', () => {
+  assert.strictEqual(F.receberDoProcesso(PROC_AR({ finalidade: 'CONTA_E_ORDEM' }), []).filter(x => x.tipo_receber === 'adiantamento').length, 2);
+  const prop = F.receberDoProcesso(PROC_AR({ finalidade: 'IMPORTACAO_DIRETA' }), []);
+  assert.ok(prop.every(x => x.tipo_receber === 'venda'));
+  assert.deepStrictEqual(prop.map(x => x.valor), [10000, 10000, 10000]);
+  assert.deepStrictEqual(F.receberDoProcesso(PROC_AR({ finalidade: 'ACOMPANHAMENTO' }), []), []);
+});
+teste('adiantamento só abate a venda do encomendante; juros do boleto (fora da NF) entram no a receber', () => {
+  const p = PROC_AR({ finalidade: 'ENCOMENDA', vendas_json: [
+    { cliente: 'Revenda Exemplo', nf_saida_numero: '901', nf_saida_valor: 2000, nf_saida_data: '2026-10-10' },
+    { cliente: 'Cliente Ficticio', nf_saida_numero: '902', nf_saida_valor: 20000, juros_valor: 300, juros_fora_nf: true, nf_saida_data: '2026-10-10' },
+    { cliente: 'Cliente Ficticio', nf_saida_numero: '905', nf_saida_valor: 1000, juros_valor: 50, nf_saida_data: '2026-10-10' },
+  ] });
+  const vd = F.receberDoProcesso(p, []).filter(x => x.tipo_receber === 'venda');
+  assert.deepStrictEqual(vd.map(x => x.documento + ':' + x.valor), ['NF 901:2000', 'NF 902:4300', 'NF 905:1000'], 'juros só somam quando estão fora da NF');
+});
+teste('venda toda coberta pelo adiantamento não gera a receber; remessa (CFOP 5905) não é venda', () => {
+  const p = PROC_AR({ finalidade: 'ENCOMENDA', vendas_json: [{ cliente: 'Cliente Ficticio', nf_saida_numero: '903', nf_saida_valor: 16000, nf_saida_data: '2026-10-10' }, { nf_saida_numero: '904', nf_saida_cfop: '5905', nf_saida_valor: 50000, nf_saida_data: '2026-10-10' }] });
+  assert.strictEqual(F.receberDoProcesso(p, []).filter(x => x.tipo_receber === 'venda').length, 0);
+});
+teste('parcela já faturada fica com o valor dela; o resto da venda se divide entre as que faltam', () => {
+  const p = PROC_AR({ finalidade: 'IMPORTACAO_DIRETA' });
+  const r = F.receberDoProcesso(p, ['venda:p9:0:1'], { valoresOrigem: { 'venda:p9:0:1': 12000 } });
+  assert.deepStrictEqual(r.map(x => x.documento + ':' + x.valor), ['NF 900 · parcela 2/3:9000', 'NF 900 · parcela 3/3:9000']);
+  assert.deepStrictEqual(F.receberDoProcesso(p, ['venda:p9:0']), [], 'venda com fatura única: não parcela de novo');
+});
+teste('à vista / a prazo e entrada + saldo também viram adiantamento do cliente (encomenda)', () => {
+  const vista = F.receberDoProcesso({ id: 'p8', referencia: 'TST-AR-2', cliente: 'Cliente Ficticio', finalidade: 'ENCOMENDA', pi_pagamento: 'PRAZO', pi_valor_usd: 1000, ci_valor_usd: 1100, pi_cambio_fechado: 5, pi_data_saldo: '2026-11-01', pi_valor_recebido_cliente: 100 }, []);
+  assert.deepStrictEqual(vista.map(x => [x.origem.idx, x.valor, x.vencimento, x.ja_recebido]), [[-1, 5500, '2026-11-01', 100]]);
+  const es = F.receberDoProcesso({ id: 'p7', referencia: 'TST-AR-3', finalidade: 'ENCOMENDA', pi_pagamento: 'ENTRADA_SALDO', pi_valor_usd: 1000, pi_entrada_pct: 30, pi_cambio_entrada: 5, pi_cambio_saldo: '' }, []);
+  assert.deepStrictEqual(es.map(x => [x.origem.idx, x.valor]), [[-2, 1500]], 'saldo sem câmbio fechado ainda não tem valor');
+});
+teste('parcelas do prazo: dias, datas escritas e prazo que não dá pra entender', () => {
+  const venc = (txt, data, forma) => F.parcelasDaVenda({ forma_pagamento: forma || 'prazo', prazo_texto: txt, nf_saida_data: data || '2026-10-10' }, 900).map(x => x.vencimento);
+  assert.deepStrictEqual(venc('30 / 60 / 90 DD'), ['2026-11-09', '2026-12-09', '2027-01-08']);
+  assert.deepStrictEqual(venc('3 boletos: 17/10, 17/11 e 17/12/2026'), ['2026-10-17', '2026-11-17', '2026-12-17']);
+  assert.deepStrictEqual(venc('15/12, 15/01', '2026-12-01'), ['2026-12-15', '2027-01-15'], 'o ano vira quando o mês volta');
+  assert.deepStrictEqual(venc('28 DDL'), ['2026-11-07']);
+  assert.deepStrictEqual(venc('', '2026-10-10', 'avista'), ['2026-10-10']);
+  const inc = F.parcelasDaVenda({ forma_pagamento: 'prazo', prazo_texto: 'a combinar', nf_saida_data: '2026-10-10' }, 900);
+  assert.strictEqual(inc.length, 1); assert.strictEqual(inc[0].incerto, true);
+  assert.deepStrictEqual(F.parcelasDaVenda({ forma_pagamento: 'parcelado', parcelas: [{ dias: 30, percentual: 40 }, { dias: 60, percentual: 60 }], nf_saida_data: '2026-10-10' }, 1000).map(x => x.valor), [400, 600]);
+});
+teste('chave e validação da origem com parcela (só venda em 2+ parcelas)', () => {
+  assert.strictEqual(F.chaveOrigem({ tipo: 'venda', processo_id: 'p', idx: 0 }), 'venda:p:0');
+  assert.strictEqual(F.chaveOrigem({ tipo: 'venda', processo_id: 'p', idx: 0, parcela: 2, de: 3 }), 'venda:p:0:2');
+  const v = F.validarFatura({ tipo: 'receber', empresa_nome: 'Cliente Ficticio', valor: 10, origem: { tipo: 'venda', processo_id: 'p', idx: 0, parcela: 2, de: 3 } });
+  assert.deepStrictEqual([v.fatura.origem.parcela, v.fatura.origem.de], [2, 3]);
+  const w = F.validarFatura({ tipo: 'receber', empresa_nome: 'Cliente Ficticio', valor: 10, origem: { tipo: 'parcela_cambio', processo_id: 'p', idx: -1, parcela: 2, de: 3 } });
+  assert.strictEqual(w.fatura.origem.idx, -1); assert.strictEqual(w.fatura.origem.parcela, undefined);
+});
+
+console.log('\n── conferência: tipo de cada checagem e diferença de câmbio ──');
+teste('diferença pequena em outra moeda é aviso de câmbio (não conta como diferença); grande é de valor', () => {
+  const procs = { p1: { id: 'p1', referencia: 'TST-C-1', real_json: { frete: { valor: 5300, moeda: 'BRL' }, handling: { valor: 1040, moeda: 'BRL' } } } };
+  const fat = { tipo: 'pagar', empresa_nome: 'Agente Ficticio', documento: 'ND 1', moeda: 'USD', cambio: 5.4, valor: 1200,
+    itens: [{ processo_id: 'p1', referencia: 'TST-C-1', taxa: 'frete', valor: 1000 }, { processo_id: 'p1', referencia: 'TST-C-1', taxa: 'handling', valor: 200 }] };
+  const r = F.conferirFatura(fat, procs, [], { hoje: '2026-10-21' });
+  const frete = r.checks.find(c => c.item === 0 && (c.tipo === 'cambio' || c.tipo === 'valor'));
+  assert.strictEqual(frete.tipo, 'cambio', '5.400 × 5.300 (1,9%) é câmbio');
+  const hand = r.checks.find(c => c.item === 1 && (c.tipo === 'cambio' || c.tipo === 'valor'));
+  assert.strictEqual(hand.tipo, 'valor'); assert.strictEqual(hand.nivel, 'aviso', '1.080 × 1.040 (3,8%): diferença de valor');
+  assert.strictEqual(F.divergenciasConferencia({ checks: r.checks }), 1);
+  assert.ok(r.checks.every(c => c.tipo), 'toda checagem tem tipo');
+});
+teste('divergências: erro conta; aviso de cotado/datas não; conferência antiga sem checks usa o resumo', () => {
+  assert.strictEqual(F.divergenciasConferencia({ checks: [{ nivel: 'erro', tipo: 'processo' }, { nivel: 'aviso', tipo: 'cotado' }, { nivel: 'aviso', tipo: 'datas' }, { nivel: 'aviso', tipo: 'duplicidade' }] }), 2);
+  assert.strictEqual(F.divergenciasConferencia({ resumo: { erro: 3 } }), 3);
+  assert.strictEqual(F.divergenciasConferencia(null), 0);
+});
+
+console.log('\n── etapas da fatura, parte do processo, selo e extrato ──');
+teste('etapa: prevista → recebida → conferida/divergente → aprovada → paga', () => {
+  const base = { tipo: 'pagar', status: 'aberta', valor: 100 };
+  assert.strictEqual(F.etapaFatura(base), 'prevista');
+  assert.strictEqual(F.etapaFatura({ ...base, anexos: [{ tipo: 'fatura' }] }), 'recebida');
+  assert.strictEqual(F.etapaFatura({ ...base, anexos: [{ tipo: 'comprovante' }] }), 'prevista', 'comprovante não é o documento da cobrança');
+  assert.strictEqual(F.etapaFatura({ ...base, conferencia: { checks: [{ nivel: 'ok', tipo: 'valor' }] } }), 'conferida');
+  assert.strictEqual(F.etapaFatura({ ...base, conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] } }), 'divergente');
+  assert.strictEqual(F.etapaFatura({ ...base, conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] }, aprovacao: { por: 'gerente@exemplo.com' } }), 'aprovada');
+  assert.strictEqual(F.etapaFatura({ ...base, status: 'paga' }), 'paga');
+  assert.strictEqual(F.etapaFatura({ tipo: 'receber', status: 'aberta', valor: 100, valor_pago: 40 }), 'parcial');
+  const passos = F.passosFatura({ ...base, anexos: [{ tipo: 'fatura' }], conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] } });
+  assert.deepStrictEqual(passos.map(x => x.estado), ['feito', 'alerta', 'pendente', 'pendente']);
+  assert.deepStrictEqual(F.passosFatura({ ...base, status: 'paga' }).map(x => x.estado), ['pulado', 'pulado', 'pulado', 'feito']);
+});
+teste('fatura de dois processos entra em cada um só com a parte dele', () => {
+  const f = { valor: 1000, itens: [{ processo_id: 'a', referencia: 'TST-A', valor: 750 }, { processo_id: 'b', referencia: 'TST-B', valor: 250 }] };
+  assert.deepStrictEqual(F.processosDaFatura(f), ['a', 'b']);
+  const pa = F.parteDoProcesso(f, 'a');
+  assert.strictEqual(pa.valor, 750); assert.deepStrictEqual(pa.outros, ['TST-B']);
+  assert.strictEqual(F.parteDoProcesso(f, 'c').fracao, 0);
+  assert.strictEqual(F.parteDoProcesso({ valor: 500, itens: [], origem: { tipo: 'venda', processo_id: 'c', idx: 0 } }, 'c').valor, 500);
+});
+teste('selo: vermelho (vencida/diferença), amarelo (em aberto), verde (tudo pago), nada sem fatura', () => {
+  const res = F.resumoPorProcesso([
+    { id: '1', tipo: 'pagar', status: 'aberta', valor: 10, vencimento: '2026-10-01', itens: [{ processo_id: 'x', valor: 10 }] },
+    { id: '2', tipo: 'receber', status: 'aberta', valor: 10, vencimento: '2026-12-01', origem: { tipo: 'venda', processo_id: 'y', idx: 0 } },
+    { id: '3', tipo: 'pagar', status: 'paga', valor: 10, itens: [{ processo_id: 'z', valor: 10 }] },
+    { id: '4', tipo: 'pagar', status: 'cancelada', valor: 10, itens: [{ processo_id: 'w', valor: 10 }] },
+    { id: '5', tipo: 'pagar', status: 'aberta', valor: 10, vencimento: '2026-12-01', conferencia: { checks: [{ nivel: 'erro', tipo: 'valor' }] }, itens: [{ processo_id: 'v', valor: 10 }] },
+  ], '2026-10-21');
+  assert.strictEqual(F.seloProcesso(res.x).nivel, 'erro'); assert.strictEqual(F.seloProcesso(res.x).texto, '1 vencida');
+  assert.strictEqual(F.seloProcesso(res.y).nivel, 'aviso');
+  assert.strictEqual(F.seloProcesso(res.z).texto, 'Tudo pago');
+  assert.strictEqual(res.w, undefined); assert.strictEqual(F.seloProcesso(res.w), null);
+  assert.strictEqual(F.seloProcesso(res.v).texto, '1 diferença');
+});
+teste('extrato: baixas realizadas, saldo previsto no vencimento, parte do processo, compensação fora do caixa', () => {
+  const faturas = [
+    { id: 'f1', tipo: 'pagar', status: 'aberta', moeda: 'BRL', valor: 1000, valor_pago: 400, vencimento: '2026-11-05', empresa_nome: 'Despachante Ficticio',
+      itens: [{ processo_id: 'p', valor: 1000 }], pagamentos: [{ data: '2026-10-10', valor: 400, forma: 'pix' }] },
+    { id: 'f2', tipo: 'pagar', status: 'paga', moeda: 'USD', cambio: 5, valor: 100, empresa_nome: 'Agente Ficticio',
+      itens: [{ processo_id: 'p', valor: 50 }, { processo_id: 'q', valor: 50 }], pagamentos: [{ data: '2026-10-12', valor: 100, pago_brl: 520, forma: 'cambio' }] },
+    { id: 'f3', tipo: 'pagar', status: 'paga', moeda: 'BRL', valor: 300, empresa_nome: 'Despachante Ficticio', itens: [{ processo_id: 'p', valor: 300 }], pagamentos: [{ data: '2026-10-15', valor: 300, forma: 'compensacao' }] },
+    { id: 'f4', tipo: 'receber', status: 'cancelada', valor: 999, origem: { processo_id: 'p' } },
+  ];
+  const outros = [{ data: '2026-10-01', descricao: 'Câmbio ao fornecedor', valor: 5000, sentido: 'saida', realizado: true },
+    { data: '2026-10-20', descricao: 'Adiantamento do cliente', valor: 6000, sentido: 'entrada', realizado: true },
+    { data: null, descricao: 'Custo sem fatura', valor: 200, sentido: 'saida', realizado: false }];
+  const ex = F.extratoProcesso({ processo_id: 'p', faturas, outros }, '2026-10-21', {});
+  assert.deepStrictEqual(ex.linhas.map(l => l.data), ['2026-10-01', '2026-10-10', '2026-10-12', '2026-10-15', '2026-10-20', '2026-11-05']);
+  assert.strictEqual(ex.linhas[2].valor, 260, 'metade da fatura do agente, pelo que saiu em R$');
+  assert.strictEqual(ex.linhas[3].valor, 0); assert.strictEqual(ex.linhas[3].compensacao, true);
+  assert.strictEqual(ex.totais.realizado.saidas, 5660); assert.strictEqual(ex.totais.realizado.entradas, 6000);
+  assert.strictEqual(ex.totais.realizado.saldo, 340);
+  assert.strictEqual(ex.linhas[5].realizado, false); assert.strictEqual(ex.linhas[5].valor, 600);
+  assert.strictEqual(ex.totais.saldo_com_previsto, -260);
+  assert.strictEqual(ex.sem_data.length, 1); assert.strictEqual(ex.totais.saldo_final, -460);
+});
+
+// ── Fase 2 (21/10/2026): aceitar / contestar diferença da conferência ──
+teste('decisão: aceita deixa de contar, contestada continua, desfazer volta', () => {
+  const checks = [
+    { nivel: 'erro', tipo: 'valor', item: 0, msg: 'REF-TESTE · Frete: fatura US$ 1.200,00 × sistema US$ 1.000,00 — diferença +200,00.' },
+    { nivel: 'aviso', tipo: 'empresa', item: 1, msg: 'REF-TESTE · THC: no processo está "pagar para Agente A", mas a fatura é de Agente B.' },
+    { nivel: 'aviso', tipo: 'datas', item: null, msg: 'Vencimento 01/10/2026 já passou.' },
+    { nivel: 'ok', tipo: 'duplicidade', item: null, msg: 'Documento ND-0001 ainda não foi lançado.' },
+  ];
+  const conf = { em: '2026-10-21T10:00:00Z', checks };
+  assert.deepStrictEqual(F.contagemConferencia(conf), { total: 2, aceitas: 0, contestadas: 0, abertas: 2 });
+  const kValor = F.chaveCheck(checks[0]), kEmp = F.chaveCheck(checks[1]);
+  assert.notStrictEqual(kValor, kEmp);
+  assert.strictEqual(F.chaveCheck(checks[0]), kValor, 'chave estável');
+  // aceitar sem motivo: recusa
+  assert.ok(F.decidirDiferenca(conf, kValor, 'aceita', '  ', {}).erro);
+  // checagem que não é diferença (datas) não pode ser decidida
+  assert.ok(F.decidirDiferenca(conf, F.chaveCheck(checks[2]), 'aceita', 'x', {}).erro);
+  assert.ok(F.decidirDiferenca(conf, kValor, 'ignorar', 'x', {}).erro, 'ação inválida');
+  assert.ok(F.decidirDiferenca(null, kValor, 'aceita', 'x', {}).erro, 'sem conferência');
+  const r1 = F.decidirDiferenca(conf, kValor, 'aceita', 'Diferença combinada com o fornecedor', { por: 'usuario.teste', nome: 'Usuário Teste', em: '2026-10-21T11:00:00Z' });
+  assert.ok(!r1.erro);
+  assert.strictEqual(r1.conferencia.divergencias, 1);
+  assert.strictEqual(r1.conferencia.decisoes[kValor].acao, 'aceita');
+  assert.strictEqual(r1.conferencia.decisoes[kValor].nome, 'Usuário Teste');
+  assert.ok(!conf.decisoes, 'não muda a conferência original');
+  const r2 = F.decidirDiferenca(r1.conferencia, kEmp, 'contestada', '', { por: 'usuario.teste' });
+  assert.deepStrictEqual(F.contagemConferencia(r2.conferencia), { total: 2, aceitas: 1, contestadas: 1, abertas: 0 });
+  assert.strictEqual(F.divergenciasConferencia(r2.conferencia), 1, 'contestada ainda conta');
+  const f = { tipo: 'pagar', status: 'aberta', anexos: [{ tipo: 'fatura' }], conferencia: r2.conferencia };
+  assert.strictEqual(F.etapaFatura(f), 'divergente');
+  const ps = F.passosFatura(f).find(x => x.id === 'conferida');
+  assert.strictEqual(ps.contestadas, 1); assert.strictEqual(ps.aceitas, 1); assert.strictEqual(ps.estado, 'alerta');
+  // aceitando a contestada, a fatura fica conferida e o próximo passo é aprovar
+  const r3 = F.decidirDiferenca(r2.conferencia, kEmp, 'aceita', 'Fornecedor corrigiu o cadastro', {});
+  assert.strictEqual(F.etapaFatura({ ...f, conferencia: r3.conferencia }), 'conferida');
+  assert.strictEqual(F.passosFatura({ ...f, conferencia: r3.conferencia }).find(x => x.id === 'aprovada').estado, 'atual');
+  // desfazer
+  const r4 = F.decidirDiferenca(r3.conferencia, kValor, '', '', {});
+  assert.strictEqual(r4.conferencia.decisoes[kValor], undefined);
+  assert.strictEqual(r4.conferencia.divergencias, 1);
+  // resumo por processo conta só o que sobrou
+  const res = F.resumoPorProcesso([{ id: 'a', tipo: 'pagar', status: 'aberta', valor: 1, itens: [{ processo_id: 'p' }], conferencia: r3.conferencia }], '2026-10-21');
+  assert.strictEqual(res.p.divergentes, 0);
+});
+teste('decisão: conferir de novo mantém a decisão só se a diferença for a mesma', () => {
+  const c1 = { nivel: 'erro', tipo: 'valor', item: 0, msg: 'REF-TESTE · Frete: fatura US$ 1.200,00 × sistema US$ 1.000,00 — diferença +200,00.' };
+  const c2 = { nivel: 'aviso', tipo: 'soma', item: null, msg: 'Soma das taxas (US$ 1.150,00) não bate com o total do documento (US$ 1.200,00) — diferença US$ 50,00.' };
+  let conf = { checks: [c1, c2] };
+  conf = F.decidirDiferenca(conf, F.chaveCheck(c1), 'aceita', 'ok', {}).conferencia;
+  conf = F.decidirDiferenca(conf, F.chaveCheck(c2), 'contestada', 'pedi correção', {}).conferencia;
+  // nova conferência: c1 igual, c2 mudou de valor
+  const c2b = { ...c2, msg: 'Soma das taxas (US$ 1.180,00) não bate com o total do documento (US$ 1.200,00) — diferença US$ 20,00.' };
+  const nova = { checks: [c1, c2b] };
+  const dec = F.mesclarDecisoes(nova, conf);
+  assert.deepStrictEqual(Object.keys(dec), [F.chaveCheck(c1)]);
+  assert.strictEqual(F.divergenciasConferencia({ ...nova, decisoes: dec }), 1);
+  assert.deepStrictEqual(F.mesclarDecisoes(nova, null), {});
+  assert.deepStrictEqual(F.mesclarDecisoes(nova, { checks: [] }), {});
+  // mesma mensagem em outra linha da fatura = outra diferença
+  assert.notStrictEqual(F.chaveCheck({ ...c1, item: 1 }), F.chaveCheck(c1));
+});
+teste('decisão: texto de contestação pro fornecedor', () => {
+  const f = { empresa_nome: 'Agente Ficticio Ltda', documento: 'ND-0001', vencimento: '2026-11-05' };
+  const t = F.textoContestacao(f, [
+    { msg: 'REF-TESTE · Frete: fatura US$ 1.200,00 × sistema US$ 1.000,00 — diferença +200,00.' },
+    { msg: 'REF-TESTE · THC: bate com o lançado no sistema (R$ 500,00).' },
+  ], 'REF-TESTE');
+  assert.ok(/^Olá, Agente Ficticio Ltda\./.test(t));
+  assert.ok(t.includes('ND-0001') && t.includes('REF-TESTE') && t.includes('05/11/2026'));
+  assert.ok(t.includes('× esperado US$ 1.000,00'), 'troca "sistema" por "esperado"');
+  assert.ok(!/sistema/.test(t), 'não fala em "sistema" pro fornecedor');
+  assert.ok(t.includes('estas diferenças'));
+  assert.ok(F.textoContestacao({}, [{ msg: 'x' }]).includes('esta diferença'));
+});
+
+// ── Fase 2 (21/10/2026): numerário do despachante ──────────────────────
+const NUM = { id: 'n1', numero: '000100/26', tipo: 'pagar', status: 'paga', moeda: 'BRL', valor: 10000, valor_pago: 10000, empresa_id: 'desp-1', empresa_nome: 'Despachante Ficticio',
+  vencimento: '2026-10-01', origem: { tipo: 'numerario', processo_id: 'p', referencia: 'REF-TESTE' }, itens: [{ processo_id: 'p', valor: 10000 }],
+  pagamentos: [{ id: 'pg1', data: '2026-10-01', valor: 10000, forma: 'pix' }] };
+const ACERTO = { id: 'a1', numero: '000101/26', tipo: 'pagar', status: 'aberta', moeda: 'BRL', valor: 12500, valor_pago: 0, empresa_id: 'desp-1', empresa_nome: 'Despachante Ficticio',
+  vencimento: '2026-10-20', itens: [{ processo_id: 'p', taxa: 'ii', valor: 8000 }, { processo_id: 'p', taxa: 'despachante', valor: 4500 }] };
+teste('numerário: validarFatura aceita a origem (R$, a pagar) e a devolução (a receber)', () => {
+  const v = F.validarFatura({ tipo: 'pagar', empresa_nome: 'Despachante Ficticio', moeda: 'BRL', valor: 1000, itens: [{ processo_id: 'p', valor: 1000 }], origem: { tipo: 'numerario', processo_id: 'p', referencia: 'REF-TESTE' } });
+  assert.ok(v.ok); assert.strictEqual(v.fatura.origem.tipo, 'numerario'); assert.strictEqual(v.fatura.origem.processo_id, 'p');
+  assert.ok(!F.validarFatura({ tipo: 'pagar', empresa_nome: 'X', moeda: 'USD', valor: 1, origem: { tipo: 'numerario', processo_id: 'p' } }).ok, 'numerário só em R$');
+  assert.ok(!F.validarFatura({ tipo: 'receber', empresa_nome: 'X', valor: 1, origem: { tipo: 'numerario', processo_id: 'p' } }).ok, 'numerário é a pagar');
+  assert.ok(!F.validarFatura({ tipo: 'receber', empresa_nome: 'X', valor: 1, origem: { tipo: 'devolucao_numerario', processo_id: 'p' } }).ok, 'devolução precisa do numerário');
+  const d = F.validarFatura({ tipo: 'receber', empresa_nome: 'X', valor: 1, origem: { tipo: 'devolucao_numerario', processo_id: 'p', numerario_id: 'n1' } });
+  assert.ok(d.ok); assert.strictEqual(d.fatura.origem.numerario_id, 'n1');
+  assert.strictEqual(F.chaveOrigem(v.fatura.origem), null, 'numerário não entra no "a receber pendente"');
+});
+teste('numerário: uso (pago, abatido, devolvido, disponível) e abatimento validado', () => {
+  let u = F.usoNumerario(NUM, []);
+  assert.deepStrictEqual([u.pago, u.usado, u.devolvido, u.disponivel], [10000, 0, 0, 10000]);
+  // não pago ainda: nada a abater
+  const aberto = { ...NUM, status: 'aberta', valor_pago: 0, pagamentos: [] };
+  assert.strictEqual(F.usoNumerario(aberto, []).a_pagar, 10000);
+  assert.ok(/ainda não foi pago/.test(F.validarAbatimentoNumerario(ACERTO, aberto, null, []).erro));
+  // abater o máximo: limita ao disponível (10.000), sobra 2.500 do acerto
+  const v = F.validarAbatimentoNumerario(ACERTO, NUM, null, []);
+  assert.ok(v.ok); assert.strictEqual(v.valor, 10000);
+  assert.ok(/só tem R\$ 10000,00/.test(F.validarAbatimentoNumerario(ACERTO, NUM, 10500, []).erro));
+  assert.ok(/mesmo despachante/.test(F.validarAbatimentoNumerario({ ...ACERTO, empresa_id: 'outro', empresa_nome: 'Agente Ficticio' }, NUM, null, []).erro));
+  assert.ok(/em R\$/.test(F.validarAbatimentoNumerario({ ...ACERTO, moeda: 'USD' }, NUM, null, []).erro));
+  assert.ok(F.validarAbatimentoNumerario(ACERTO, ACERTO, null, []).erro, 'precisa ser numerário');
+  // depois do abatimento: usado 10.000, nada disponível
+  const acertoComp = { ...ACERTO, pagamentos: [{ id: 'c1', data: '2026-10-21', valor: 10000, forma: 'compensacao', compensa: { tipo: 'numerario', fatura_id: 'n1' } }] };
+  u = F.usoNumerario(NUM, [acertoComp]);
+  assert.deepStrictEqual([u.usado, u.disponivel], [10000, 0]); assert.strictEqual(u.usos[0].fatura_id, 'a1');
+  assert.strictEqual(F.aplicarPagamentos(acertoComp).saldo, 2500, 'compensação abate o saldo');
+  // estornado ou fatura cancelada: libera o numerário
+  assert.strictEqual(F.usoNumerario(NUM, [{ ...acertoComp, pagamentos: [{ ...acertoComp.pagamentos[0], estornado: { em: 'x' } }] }]).disponivel, 10000);
+  assert.strictEqual(F.usoNumerario(NUM, [{ ...acertoComp, status: 'cancelada' }]).disponivel, 10000);
+  // acerto menor (7.000): sobra 3.000 → devolução
+  const menor = { ...ACERTO, valor: 7000, pagamentos: [{ id: 'c2', data: '2026-10-21', valor: 7000, forma: 'compensacao', compensa: { tipo: 'numerario', fatura_id: 'n1' } }] };
+  const dev = { id: 'd1', tipo: 'receber', status: 'aberta', valor: 3000, origem: { tipo: 'devolucao_numerario', processo_id: 'p', numerario_id: 'n1' } };
+  u = F.usoNumerario(NUM, [menor, dev]);
+  assert.deepStrictEqual([u.usado, u.devolvido, u.disponivel], [7000, 3000, 0]);
+  assert.strictEqual(F.numerariosComSaldo({ empresa_id: 'desp-1' }, [NUM], [menor]).length, 1);
+  assert.strictEqual(F.numerariosComSaldo({ empresa_id: 'desp-1' }, [NUM], [menor, dev]).length, 0);
+});
+teste('numerário: etapa própria (não se confere taxa a taxa) e aprovação direto', () => {
+  const n = { ...NUM, status: 'aberta', valor_pago: 0, pagamentos: [] };
+  assert.strictEqual(F.etapaFatura(n), 'numerario');
+  const ps = F.passosFatura(n);
+  assert.strictEqual(ps.find(x => x.id === 'conferida').estado, 'pulado');
+  assert.strictEqual(ps.find(x => x.id === 'aprovada').estado, 'atual');
+  assert.strictEqual(F.etapaFatura(NUM), 'paga');
+});
+teste('numerário: compensação não é caixa (resumo do mês, fluxo, extrato sem dupla contagem)', () => {
+  const acertoComp = { ...ACERTO, valor_pago: 12500, status: 'paga', pagamentos: [
+    { id: 'c1', data: '2026-10-21', valor: 10000, forma: 'compensacao', compensa: { tipo: 'numerario', fatura_id: 'n1' } },
+    { id: 'c3', data: '2026-10-21', valor: 2500, forma: 'pix' }] };
+  const r = F.resumoFaturas([NUM, acertoComp], '2026-10-21', {});
+  assert.strictEqual(r.pago_mes, 12500, 'saiu 10.000 (numerário) + 2.500 (saldo), não 22.500');
+  const fl = F.fluxoMensalFaturas([NUM, acertoComp], ['2026-10'], '2026-10-21', {});
+  assert.strictEqual(fl.meses['2026-10'].pagar_pago, 12500);
+  const ex = F.extratoProcesso({ processo_id: 'p', faturas: [NUM, acertoComp] }, '2026-10-21', {});
+  assert.strictEqual(ex.totais.realizado.saidas, 12500);
+  assert.ok(ex.linhas.some(l => /^Numerário/.test(l.descricao)), 'linha do numerário identificada');
+  // previsto: acerto em aberto com numerário a abater não sai de novo
+  const ex2 = F.extratoProcesso({ processo_id: 'p', faturas: [NUM, ACERTO], abater: { a1: 10000 } }, '2026-10-15', {});
+  assert.strictEqual(ex2.totais.saldo_com_previsto, -12500);
+  assert.ok(ex2.linhas.some(l => /a abater do numerário/.test(l.descricao)));
+});
+
+// ── Fase 2 (21/10/2026): venda no cartão (REDE) / Trademaster ──────────
+teste('operadora: taxa da tabela do Calculador (REDE + antecipação; Trademaster) ou a informada', () => {
+  assert.ok(Math.abs(F.taxaOperadoraPadrao('cartao', 1) - (0.0291 + 0.018)) < 1e-9);
+  assert.ok(Math.abs(F.taxaOperadoraPadrao('cartao', 3) - (0.0327 + 0.036)) < 1e-9);
+  assert.ok(Math.abs(F.taxaOperadoraPadrao('trademaster', 6) - 0.0928600832612018) < 1e-12);
+  assert.strictEqual(F.taxaOperadoraPadrao('prazo', 2), 0);
+  const op = F.operadoraDaVenda({ forma_pagamento: 'cartao', cartao_parcelas: 3 }, 10000);
+  assert.strictEqual(op.taxa_valor, 687); assert.strictEqual(op.liquido, 9313); assert.strictEqual(op.dias, 1); assert.strictEqual(op.nome, 'REDE (cartão)');
+  const inf = F.operadoraDaVenda({ forma_pagamento: 'trademaster', cartao_parcelas: 2, taxa_operadora_pct: '3,5', dias_recebimento: '2' }, 10000);
+  assert.strictEqual(inf.taxa_valor, 350); assert.strictEqual(inf.dias, 2); assert.strictEqual(inf.label, 'Trademaster 2x');
+  assert.strictEqual(F.operadoraDaVenda({ forma_pagamento: 'avista' }, 100), null);
+});
+teste('operadora: a receber da venda no cartão sai contra a operadora, valor cheio, vence em D+1, com a taxa na origem', () => {
+  const p = { id: 'p1', referencia: 'REF-TESTE', cliente: 'Cliente Ficticio', finalidade: 'IMPORTACAO_DIRETA',
+    vendas_json: JSON.stringify([{ cliente: 'Cliente Ficticio', nf_saida_numero: '123', nf_saida_data: '2026-10-10', nf_saida_valor: '10000', forma_pagamento: 'cartao', cartao_parcelas: 3 }]) };
+  const pend = F.receberDoProcesso(p, []);
+  assert.strictEqual(pend.length, 1);
+  const x = pend[0];
+  assert.strictEqual(x.empresa_nome, 'REDE (cartão)'); assert.strictEqual(x.cliente, 'Cliente Ficticio');
+  assert.strictEqual(x.valor, 10000); assert.strictEqual(x.vencimento, '2026-10-11');
+  assert.strictEqual(x.origem.operadora, 'cartao'); assert.strictEqual(x.origem.taxa_operadora, 687);
+  assert.strictEqual(F.chaveOrigem(x.origem), 'venda:p1:0', 'mesma chave de antes (não duplica)');
+  assert.strictEqual(F.receberDoProcesso(p, ['venda:p1:0']).length, 0);
+  const v = F.validarFatura({ tipo: 'receber', empresa_nome: x.empresa_nome, valor: x.valor, origem: x.origem });
+  assert.ok(v.ok); assert.strictEqual(v.fatura.origem.taxa_operadora, 687); assert.strictEqual(v.fatura.origem.operadora, 'cartao');
+  // extrato: previsto entra pelo líquido; recebido com a taxa no desconto quita
+  const f = { id: 'r1', ...v.fatura, status: 'aberta', valor_pago: 0, vencimento: '2026-10-11', pagamentos: [] };
+  const ex = F.extratoProcesso({ processo_id: 'p1', faturas: [f] }, '2026-10-10', {});
+  assert.strictEqual(ex.totais.saldo_com_previsto, 9313);
+  const pago = { ...f, pagamentos: [{ id: 'x', data: '2026-10-11', valor: 9313, desconto: 687, forma: 'pix' }] };
+  assert.strictEqual(F.aplicarPagamentos(pago).status, 'paga');
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);

@@ -172,6 +172,56 @@ const CENARIOS = [
       return p;
     },
   },
+  // Aba Faturas do processo (21/10/2026): faturas do processo com a
+  // conferência, a receber do cliente, custos sem fatura e o extrato; o
+  // detalhe de uma fatura aberto (taxas x sistema x cotado, etapas).
+  {
+    nome: '/controle + aba Faturas do processo', rota: '/controle',
+    acao: async page => {
+      await page.evaluate(() => abrirProcesso('teste-3'));
+      await page.waitForTimeout(900);
+      await page.evaluate(() => trocarAba('faturas'));
+      await page.waitForTimeout(700);
+      await page.evaluate(() => pfAbrirFatura('fat-teste-1'));
+      await page.waitForTimeout(300);
+    },
+    conferir: () => {
+      const p = [];
+      const box = document.getElementById('pane-faturas-conteudo');
+      const txt = box ? box.textContent : '';
+      if (!box || !box.querySelector('.pf-sec')) p.push('a aba Faturas não montou as seções');
+      if (!/Faturas \(3\)/.test(txt)) p.push('a lista não mostrou as 3 faturas do processo');
+      if (!/A receber do cliente/.test(txt) || !/Extrato do processo/.test(txt)) p.push('faltou a seção A receber ou o Extrato');
+      const det = box && box.querySelector('.pf-det');
+      if (!det || !/Frete Internacional/.test(det.textContent)) p.push('o detalhe da fatura (taxas) não abriu');
+      if (det && !det.querySelector('.pf-passos')) p.push('o detalhe não mostrou as etapas (quem faz cada uma)');
+      return p;
+    },
+  },
+  // Faturas fase 2: aceitar uma diferença da conferência (motivo obrigatório)
+  {
+    nome: '/controle + aba Faturas: aceitar diferença da conferência', rota: '/controle',
+    acao: async page => {
+      await page.evaluate(() => abrirProcesso('teste-3'));
+      await page.waitForTimeout(900);
+      await page.evaluate(() => trocarAba('faturas'));
+      await page.waitForTimeout(700);
+      await page.evaluate(() => pfAbrirFatura('fat-teste-1'));
+      await page.waitForTimeout(300);
+      await page.evaluate(() => { const b = document.querySelector('#pane-faturas-conteudo .pf-dif .pf-mini'); if (b) b.click(); });
+      await page.waitForTimeout(200);
+      await page.evaluate(() => { const t = document.getElementById('pf_dec_motivo'); if (t) t.value = 'Diferença combinada com o fornecedor'; const ok = document.getElementById('pf_dec_ok'); if (ok) ok.click(); });
+      await page.waitForTimeout(600);
+    },
+    conferir: () => {
+      const p = [];
+      const dif = document.querySelector('#pane-faturas-conteudo .pf-dif');
+      if (!dif) p.push('a diferença da conferência não apareceu com os botões Aceitar/Contestar');
+      else if (!dif.classList.contains('aceita')) p.push('aceitar a diferença não marcou como aceita');
+      if (document.getElementById('pf_dec_motivo')) p.push('a janela do motivo não fechou depois de aceitar');
+      return p;
+    },
+  },
   {
     nome: '/cambio: pedir adiantamento aos clientes', rota: '/cambio',
     acao: async page => { await page.evaluate(() => abrirPedidoAdiantamento()); await page.waitForTimeout(400); },
@@ -207,9 +257,22 @@ function servidorFalso() {
   app.use(express.json({ limit: '5mb' }));
   const todas = Object.assign({}, TELAS, SO_RELATORIO);
   Object.entries(todas).forEach(([rota, arq]) => app.get(rota, (req, res) => res.sendFile(path.join(RAIZ, arq))));
+  // Aceitar/contestar diferença da conferência (Faturas fase 2): responde
+  // como o servidor de verdade, sem gravar nada — a mesma fatura fictícia
+  // vale pros dois tamanhos de tela.
+  app.post(/^\/api\/faturas\/([^/]+)\/conferencia\/decisao$/, (req, res) => {
+    const FaturasCore = require('../../faturas-core.js');
+    const lista = ((respostas['/api/faturas']({ query: { processo_id: 'teste-3' } }) || {}).faturas) || [];
+    const f = lista.find(x => x.id === req.params[0]);
+    const b = req.body || {};
+    const r = f ? FaturasCore.decidirDiferenca(f.conferencia, b.chave, b.acao, b.motivo, { por: 'teste', nome: 'Pessoa Teste' }) : { erro: 'Fatura não encontrada.' };
+    res.json(r.erro ? { ok: false, erro: r.erro } : { ok: true, conferencia: r.conferencia });
+  });
   app.all(/^\/api\//, (req, res) => {
     if (req.method !== 'GET') return res.json({ ok: true });
-    res.json(respostas[req.path] || vazio);
+    // resposta pode depender da consulta (ex.: /api/faturas?processo_id=)
+    const r = respostas[req.path];
+    res.json((typeof r === 'function' ? r(req) : r) || vazio);
   });
   app.use(express.static(RAIZ));
   return new Promise(ok => { const s = app.listen(0, '127.0.0.1', () => ok(s)); });

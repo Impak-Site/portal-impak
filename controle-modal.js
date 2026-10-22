@@ -115,6 +115,7 @@ function renderModal(){
     {id:'fechamento',    label:'📐 Fechamento'},
     {id:'custosreais',   label:'💵 Custos Reais'},
     {id:'vendas',        label:'🧾 Vendas'},
+    {id:'faturas',       label:'💳 Faturas'},
     {id:'logistica',     label:'🚢 Logística'},
     {id:'demurrage',    label:'⚓ Demurrage'},
     {id:'documentos',    label:'📋 Documentos'},
@@ -873,6 +874,12 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       </div>
     </div>
     </div>
+    <!-- ABA: FATURAS (21/10/2026, controle-faturas-processo.js) — fora da
+         trava de processo fechado: fatura que chega ou é paga depois do
+         fechamento continua podendo ser registrada. -->
+    <div class="tab-pane" id="pane-faturas">
+      <div id="pane-faturas-conteudo"><div style="font-size:11px;color:var(--dim);">${isNovo ? 'Salve o processo para ver as faturas dele.' : 'Carregando faturas...'}</div></div>
+    </div>
   `;
 
   renderPagamentoCampos();
@@ -1185,7 +1192,7 @@ const CR_PAGAR_PARA_PADRAO = {
   comissao_br:'Representante', comissao_china:'Agente China', comissao_boss:'Boss/Lopes',
   siscomex:'Receita Federal', marinha:'Marinha (AFRMM)', armazenagem:'Terminal / porto', emissao_li:'Despachante', baixa_patio:'Terminal', capatazia:'Terminal / armador', liberacao_bl:'Armador / agente', despachante:'Despachante', sda:'Despachante', lavacao:'Depot', administrativo:'Despachante', agente:'Agente de carga', custos_diversos:'—', armazenagem_rf:'Armazém geral', seguro_venda:'Seguradora',
   handling:'Agente de carga', additional_costs:'Agente de carga', import_logistics:'Agente de carga', trs:'Agente de carga', tsc:'Agente de carga', drop_off:'Armador', isps:'Armador / terminal', iof:'Banco / corretora', desconsolidacao:'Agente de carga', reciclagem:'Reciclagem (Reciclanip)', icms_saida:'Sefaz',
-  adiantamento_porto:'Despachante', agente_frete:'Agente de carga', marjoracao:'Sefaz', comissao_vendedor:'Vendedor', timp:'Timp', trademaster:'Trademaster', dif_seguro:'Seguradora',
+  adiantamento_porto:'Despachante', agente_frete:'Agente de carga', marjoracao:'Sefaz', comissao_vendedor:'Vendedor', timp:'Timp', trademaster:'Trademaster', taxa_cartao:'Operadora do cartão (REDE)', dif_seguro:'Seguradora',
 };
 function crDatalistPagarPara(p){
   const nomes = [p.fornecedor, p.armador, p.agente, p.despachante, p.transportadora, p.armazem, 'Receita Federal (DI)', 'Sefaz', 'Marinha (AFRMM)', 'Banco / corretora de câmbio', 'Representante', 'Reciclanip']
@@ -2675,6 +2682,7 @@ function trocarAba(id){
   if(tab)  tab.classList.add('active');
   if(pane) pane.classList.add('active');
   if(id==='agenda' && typeof renderAgendaProcesso==='function' && _editando && _editando.id) renderAgendaProcesso(_editando);
+  if(id==='faturas' && typeof renderFaturasProcesso==='function' && _editando) renderFaturasProcesso(_editando);
   if(id==='fechamento') atualizarFechamentoAoVivo();
 }
 

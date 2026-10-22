@@ -33,11 +33,24 @@ async function _agListas(){
   if(typeof _listasCompletas !== 'undefined' && _listasCompletas) return _listasCompletas;
   try{ const r = await fetch('/api/listas').then(x=>x.json()); return r.listas || null; }catch(e){ return null; }
 }
+// Faturas pra agenda (Faturas fase 2, 21/10/2026): resumo enxuto vindo do
+// servidor (/api/agenda/faturas), guardado 60 s. Qualquer mudança numa
+// fatura (aba Faturas, tela /faturas) chama _agInvalidarFaturas().
+let _agFaturas = null; // { ts, lista }
+function _agInvalidarFaturas(){ _agFaturas = null; }
+async function _agCarregarFaturas(){
+  if(_agFaturas && Date.now() - _agFaturas.ts < 60000) return _agFaturas.lista;
+  try{
+    const r = await fetch('/api/agenda/faturas').then(x => x.json());
+    _agFaturas = { ts: Date.now(), lista: (r && r.ok && Array.isArray(r.faturas)) ? r.faturas : [] };
+  }catch(e){ _agFaturas = { ts: Date.now(), lista: (_agFaturas && _agFaturas.lista) || [] }; }
+  return _agFaturas.lista;
+}
 async function _agGerar(processos, incluirFeitas){
-  const [listas] = await Promise.all([_agListas(), _agCarregarConclusoes()]);
+  const [listas, , faturas] = await Promise.all([_agListas(), _agCarregarConclusoes(), _agCarregarFaturas()]);
   const cfg = AgendaCore.montarConfig(listas);
   const tarefas = AgendaCore.gerarTarefas(processos, {
-    hoje: _agHoje(), cfg, conclusoes: _agConclusoes, incluirFeitas,
+    hoje: _agHoje(), cfg, conclusoes: _agConclusoes, incluirFeitas, faturas,
     fase: p => (typeof calcularFase === 'function' ? calcularFase(p) : p.fase),
     listarPagamentosPI: (typeof listarPagamentosPI === 'function') ? listarPagamentosPI : null,
   });
@@ -65,10 +78,11 @@ async function agendaMarcar(chave, tipo){
   }catch(e){ showToast('Erro de rede ao salvar a agenda', 'err'); }
 }
 
-function _agAbrirProcesso(id){
+// aba: onde a tarefa se resolve (as de fatura abrem direto na aba Faturas)
+function _agAbrirProcesso(id, aba){
   if(!id || typeof abrirProcesso !== 'function') return;
   abrirProcesso(id);
-  setTimeout(() => trocarAba('agenda'), 60);
+  setTimeout(() => trocarAba(aba === 'faturas' ? 'faturas' : 'agenda'), 60);
 }
 
 const _AG_COR = { atrasada:['#fee2e2','#b91c1c'], hoje:['#fef3c7','#b45309'], semana:['#dbeafe','#1d4ed8'], futura:['#f1f5f9','#475569'], sem_prazo:['#f1f5f9','#64748b'], andamento:['#ede9fe','#6d28d9'], concluida:['#dcfce7','#15803d'] };
@@ -90,13 +104,15 @@ function _agLinha(t, hoje, opts){
   const aberta = t.status === 'aberta';
   const prio = t.prioridade === 'ALTA' ? '<span title="Prioridade alta" style="color:#b91c1c;font-weight:800;margin-right:4px;">●</span>' : '';
   const proc = t.referencia
-    ? `<a href="javascript:void(0)" onclick="_agAbrirProcesso('${_agEsc(t.processoId)}')" style="font-weight:700;color:var(--accent,#2563eb);text-decoration:none;">${_agEsc(t.referencia)}</a>${t.cliente ? ` <span style="color:var(--muted);font-size:11px;">${_agEsc(t.cliente)}</span>` : ''}`
+    ? `<a href="javascript:void(0)" onclick="_agAbrirProcesso('${_agEsc(t.processoId)}','${t.aba === 'faturas' ? 'faturas' : 'agenda'}')" ${t.aba === 'faturas' ? 'title="Abrir o processo na aba Faturas"' : ''} style="font-weight:700;color:var(--accent,#2563eb);text-decoration:none;">${_agEsc(t.referencia)}</a>${t.cliente ? ` <span style="color:var(--muted);font-size:11px;">${_agEsc(t.cliente)}</span>` : ''}`
     : '<span style="color:var(--muted);font-size:11px;">Rotina</span>';
   const comoTxt = t.auto ? `Some sozinha quando: ${t.como}` : 'Atividade manual — clique em Feito ao concluir';
-  const botoes = aberta
+  // dentro do processo: tarefa de fatura leva direto pra aba Faturas
+  const irFaturas = (opts.semProc && t.aba === 'faturas' && aberta) ? `<button class="btn btn-outline" style="padding:3px 8px;font-size:11px;" title="Resolver na aba Faturas do processo" onclick="trocarAba('faturas')">Abrir Faturas</button>` : '';
+  const botoes = irFaturas + (aberta
     ? `${!t.auto ? `<button class="btn btn-primary" style="padding:3px 10px;font-size:11px;" onclick="agendaMarcar('${_agEsc(t.chave)}','feita')">✓ Feito</button>` : ''}
        <button class="btn btn-outline" style="padding:3px 8px;font-size:11px;" title="Esta atividade não vale para este caso" onclick="agendaMarcar('${_agEsc(t.chave)}','nao_aplica')">Não se aplica</button>`
-    : (t.conclusao ? `<span style="font-size:11px;color:var(--muted);">${_agEsc(t.conclusao.usuario||'')} · ${_agDataBR(t.conclusao.em)}</span> <button class="btn btn-outline" style="padding:2px 8px;font-size:11px;" onclick="agendaMarcar('${_agEsc(t.chave)}','reaberta')">Reabrir</button>` : '<span style="font-size:11px;color:#15803d;">concluída automaticamente</span>');
+    : (t.conclusao ? `<span style="font-size:11px;color:var(--muted);">${_agEsc(t.conclusao.usuario||'')} · ${_agDataBR(t.conclusao.em)}</span> <button class="btn btn-outline" style="padding:2px 8px;font-size:11px;" onclick="agendaMarcar('${_agEsc(t.chave)}','reaberta')">Reabrir</button>` : '<span style="font-size:11px;color:#15803d;">concluída automaticamente</span>'));
   return `<div class="ag-linha" style="display:grid;grid-template-columns:110px minmax(0,1fr) ${opts.semProc?'':'minmax(120px,240px) '}150px 210px;gap:10px;align-items:center;padding:8px 10px;border-top:1px solid var(--border);">
     <div>${_agBadgePrazo(t, hoje)}</div>
     <div style="min-width:0;">

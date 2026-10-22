@@ -161,5 +161,36 @@ teste('transferência entre contas vai para o arquivo do contador', () => {
   assert.deepStrictEqual(l.map(x => [x.debito, x.credito, x.valor]), [['1.1.2.02', '1.1.2.01', 1000]]);
 });
 
+// ── Numerário do despachante (Faturas fase 2, 21/10/2026) ──────────────
+console.log('\n── numerário do despachante ──');
+const NUM_F = { id: 'n1', numero: '000100/26', tipo: 'pagar', status: 'paga', moeda: 'BRL', valor: 10000, valor_pago: 10000, empresa_nome: 'Despachante Ficticio', emissao: '2026-10-01',
+  origem: { tipo: 'numerario', processo_id: 'p' }, itens: [{ processo_id: 'p', valor: 10000 }], pagamentos: [{ id: 'pg1', data: '2026-10-01', valor: 10000, forma: 'pix', banco_id: 'b1' }] };
+const ACERTO_F = { id: 'a1', numero: '000101/26', tipo: 'pagar', status: 'paga', moeda: 'BRL', valor: 12500, valor_pago: 12500, empresa_nome: 'Despachante Ficticio', emissao: '2026-10-20',
+  itens: [{ processo_id: 'p', taxa: 'ii', valor: 8000 }, { processo_id: 'p', taxa: 'despachante', valor: 4500 }],
+  pagamentos: [{ id: 'c1', data: '2026-10-21', valor: 10000, forma: 'compensacao', compensa: { tipo: 'numerario', fatura_id: 'n1', numero: '000100/26' } }, { id: 'c2', data: '2026-10-21', valor: 2500, forma: 'pix', banco_id: 'b1' }] };
+teste('numerário: DRE (caixa e competência) conta só o acerto; numerário fica fora do resultado', () => {
+  const caixa = F.dreEmpresa([NUM_F, ACERTO_F], CONTAS, { de: '2026-10-01', ate: '2026-10-31', regime: 'caixa' });
+  const custo = caixa.grupos.find(g => g.id === 'custo').total;
+  assert.strictEqual(custo, 12500, 'custo = acerto (compensado + pago), não 22.500');
+  assert.ok(caixa.grupos.find(g => g.id === 'neutra').contas.some(c => c.codigo === '9.1.05'), 'numerário em "não entra no DRE"');
+  const comp = F.dreEmpresa([NUM_F, ACERTO_F], CONTAS, { de: '2026-10-01', ate: '2026-10-31', regime: 'competencia' });
+  assert.strictEqual(comp.grupos.find(g => g.id === 'custo').total, 12500);
+  // conta 9.1.05 ainda não cadastrada no banco: continua fora do resultado
+  const semConta = F.dreEmpresa([NUM_F], CONTAS.filter(c => c.codigo !== '9.1.05'), { de: '2026-10-01', ate: '2026-10-31', regime: 'caixa' });
+  assert.strictEqual(semConta.resultadoLiquido, 0);
+});
+teste('numerário: saldo do banco e lançamentos contábeis sem dupla saída', () => {
+  const bancos = [{ id: 'b1', nome: 'Banco Exemplo', moeda: 'BRL', saldo_inicial: 50000, saldo_inicial_em: '2026-09-30' }];
+  const s = F.saldosBancarios(bancos, [NUM_F, ACERTO_F], [], {});
+  assert.strictEqual(s.contas.find(c => c.id === 'b1').saidas, 12500, 'saiu do banco 10.000 + 2.500');
+  assert.strictEqual(s.semBanco.qtd, 0, 'compensação não conta como movimento sem banco');
+  const l = F.lancamentosContabeis([NUM_F, ACERTO_F], CONTAS, bancos, { de: '2026-10-01', ate: '2026-10-31' });
+  const credBanco = l.filter(x => /BANCO/.test(x.credito)).reduce((t, x) => t + x.valor, 0);
+  assert.strictEqual(credBanco, 12500);
+  assert.ok(l.some(x => x.debito === '9.1.05' && /BANCO/.test(x.credito) && x.valor === 10000), 'numerário: D adiantamento / C banco');
+  assert.strictEqual(l.filter(x => x.credito === '9.1.05').reduce((t, x) => t + x.valor, 0), 10000, 'acerto abatido: C adiantamento');
+  assert.ok(l.some(x => /abatido do numerário 000100\/26/.test(x.historico)));
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);

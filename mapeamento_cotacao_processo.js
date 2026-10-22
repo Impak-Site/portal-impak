@@ -311,17 +311,23 @@ function mapearCotacaoParaProcesso(dadosCotacao, cliente, opts = {}) {
   // continua sem venda (fluxo antigo, cliente único via campos de topo).
   const jurosBoleto = opts.resumo && parseFloat(opts.resumo.juros_boleto);
   const prazoTexto = (opts.resumo && opts.resumo.prazo_texto) || '';
-  if ((jurosBoleto > 0) || prazoTexto) {
-    processo.vendas_json = JSON.stringify([{
+  // cartão (REDE) / Trademaster cotado (Faturas fase 2, 21/10/2026): a venda
+  // já nasce com a forma e as parcelas — o a receber sai contra a operadora
+  const formaCF = (opts.resumo && opts.resumo.forma_custo_fin) || d.forma_custo_fin || '';
+  const operadora = formaCF === 'cartao' || formaCF === 'trademaster' ? formaCF : '';
+  if ((jurosBoleto > 0) || prazoTexto || operadora) {
+    const venda = {
       cliente: cliente || '',
       itens: produtosJson.map(it => ({ descricao: it.descricao, quantidade: it.quantidade != null ? String(it.quantidade) : '' })),
       nf_saida_numero: '', nf_saida_data: '', nf_saida_valor: '', nf_saida_cfop: '',
       custos_diretos: [], obs: 'Criada a partir da cotação (prazo/juros cotados — confira na NF).',
-      forma_pagamento: prazoTexto ? 'prazo' : 'avista',
-      prazo_texto: prazoTexto,
+      forma_pagamento: operadora || (prazoTexto ? 'prazo' : 'avista'),
+      prazo_texto: operadora ? '' : prazoTexto,
       juros_valor: jurosBoleto > 0 ? String(Math.round(jurosBoleto * 100) / 100) : '',
       juros_fora_nf: jurosBoleto > 0,
-    }]);
+    };
+    if (operadora) venda.cartao_parcelas = Math.min(6, Math.max(1, parseInt(d.cf_parcelas, 10) || 1));
+    processo.vendas_json = JSON.stringify([venda]);
   }
 
   return processo;

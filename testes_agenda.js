@@ -16,7 +16,7 @@ teste('somaUteis negativo', () => assert.strictEqual(A.somaUteis('2026-10-19', -
 
 console.log('\n── configuração ──');
 const cfg = A.montarConfig(null);
-teste('36 atividades padrão e 8 funções', () => { assert.strictEqual(Object.keys(cfg.atividades).length, 36); assert.strictEqual(Object.keys(cfg.funcoes).length, 8); });
+teste('42 atividades padrão (36 + 6 de faturas) e 8 funções', () => { assert.strictEqual(Object.keys(cfg.atividades).length, 42); assert.strictEqual(Object.keys(cfg.funcoes).length, 8); });
 teste('funções do usuário vêm da lista (Importação + Logística)', () => assert.deepStrictEqual(A.funcoesDoUsuario(cfg, 'emanuelly').sort(), ['IMPORTACAO', 'LOGISTICA']));
 teste('override da Lista troca função e prazo só da atividade editada', () => {
   const c = A.montarConfig({ agenda_atividade: [{ codigo: 'A03', nome: 'X', dados: { funcao: 'FISCAL', prazo_dias: 5 } }] });
@@ -107,8 +107,9 @@ teste('motor do front carrega no sandbox (calcularFase/listarPagamentosPI)', () 
 function sbFalso(estado) {
   const q = (tabela) => {
     const api = { _f: [] };
-    api.select = () => api; api.order = () => api; api.gte = () => api; api.eq = (c, v) => { api._f.push([c, v]); return api; };
-    api.then = (res) => res({ data: (estado[tabela] || []).filter(r => api._f.every(([c, v]) => r[c] === v)), error: null });
+    api.select = () => api; api.order = () => api; api.gte = () => api; api.range = () => api; api.eq = (c, v) => { api._f.push([c, v]); return api; };
+    api.neq = (c, v) => { api._f.push([c, x => x !== v]); return api; };
+    api.then = (res) => res({ data: (estado[tabela] || []).filter(r => api._f.every(([c, v]) => typeof v === 'function' ? v(r[c]) : r[c] === v)), error: null });
     api.upsert = (rows) => { (Array.isArray(rows) ? rows : [rows]).forEach(r => { const i = (estado[tabela] = estado[tabela] || []).findIndex(x => x.chave === r.chave); if (i >= 0) Object.assign(estado[tabela][i], r); else estado[tabela].push(Object.assign({}, r)); }); return { then: (res) => res({ error: null }) }; };
     api.update = (patch) => ({ eq: (c, v) => { (estado[tabela] || []).filter(r => r[c] === v).forEach(r => Object.assign(r, patch)); return { then: (res) => res({ error: null }) }; } });
     return api;
@@ -171,6 +172,165 @@ teste('Confirmar booking (A08) conclui com Nº Booking + ETD, sem exigir navio (
   const p = { id: '91', referencia: 'PY', created_at: '2026-09-01', data_prontidao: '2026-09-29', booking_numero: 'BK1', etd: '2026-11-10' };
   const t = gerar([p], { incluirFeitas: true }).find(x => x.codigo === 'A08');
   assert.ok(t); assert.strictEqual(t.status, 'feita');
+});
+
+// ── Faturas na agenda (fase 2, 21/10/2026) — valores fictícios ──────────
+console.log('\n── faturas: tarefas por responsável ──');
+const FC = require('./faturas-core.js');
+const HF = '2026-10-21'; // quarta
+const PF = { id: 'pf1', referencia: 'TESTE-FAT-1', cliente: 'CLIENTE FICTICIO LTDA', created_at: '2026-10-01', pi_data: '2026-10-01' };
+const DESP = 'DESPACHANTE FICTICIO LTDA';
+const fat = (x) => Object.assign({ tipo: 'pagar', status: 'aberta', moeda: 'BRL', empresa_nome: 'AGENTE FICTICIO SA', created_at: '2026-10-15T12:00:00Z',
+  itens: [{ processo_id: 'pf1', referencia: 'TESTE-FAT-1', taxa: 'frete', valor: x.valor || 1000 }], anexos: [], pagamentos: [] }, x);
+const doc = em => [{ id: 'ax', tipo: 'fatura', em }];
+const chk = { nivel: 'erro', tipo: 'valor', item: 0, msg: 'Frete: R$ 1.000,00 × sistema R$ 900,00' };
+const gerarF = (faturas, extra, procs) => A.gerarTarefas(procs || [PF], Object.assign({ hoje: HF, faturas: FC.faturasParaAgenda(faturas) }, extra || {}));
+const deF = (ts, cod) => ts.filter(t => t.codigo === cod);
+
+teste('faturasParaAgenda: dono = processo com a maior parte; sem processo e cancelada ficam fora', () => {
+  const s = FC.faturasParaAgenda([
+    fat({ id: 'm1', itens: [{ processo_id: 'pA', valor: 100 }, { processo_id: 'pB', valor: 300 }] }),
+    fat({ id: 'g1', itens: [] }), // despesa geral, sem processo
+    fat({ id: 'c1', status: 'cancelada' }),
+  ]);
+  assert.deepStrictEqual(s.map(f => f.id), ['m1']);
+  assert.strictEqual(s[0].processos[0].id, 'pB');
+  assert.ok(!('itens' in s[0]) && !('pagamentos' in s[0]), 'sai enxuto');
+});
+teste('fatura recebida (documento anexado): Importação confere (venc − 3) e o Financeiro vê "aguardando conferência"', () => {
+  const ts = gerarF([fat({ id: 'f1', numero: '000001/26', vencimento: '2026-10-30', anexos: doc('2026-10-16T10:00:00Z') })]);
+  const c = deF(ts, 'A37')[0];
+  assert.ok(c && c.funcao === 'IMPORTACAO' && c.prazo === '2026-10-27' && c.aba === 'faturas');
+  const p = deF(ts, 'A40')[0];
+  assert.ok(p && p.funcao === 'FINANCEIRO' && p.prazo === '2026-10-30' && /aguardando conferência/.test(p.detalhe));
+  assert.strictEqual(deF(ts, 'A39').length, 0, 'gerente só aprova depois de conferida');
+});
+teste('fatura que chega em cima do vencimento não nasce atrasada (piso: 1 dia útil depois do documento)', () => {
+  const c = deF(gerarF([fat({ id: 'f2', vencimento: '2026-10-22', anexos: doc('2026-10-21T09:00:00Z') })]), 'A37')[0];
+  assert.strictEqual(c.prazo, '2026-10-22');
+  assert.notStrictEqual(A.classificar(c, HF), 'atrasada');
+});
+teste('fatura prevista (sem documento): nenhuma tarefa ainda', () => {
+  const ts = gerarF([fat({ id: 'f3', vencimento: '2026-10-30' })]);
+  assert.strictEqual(ts.filter(t => /^A(37|38|39|40)$/.test(t.codigo)).length, 0);
+});
+teste('conferida sem diferença: conferência sai e o gerente aprova (venc − 1)', () => {
+  const ts = gerarF([fat({ id: 'f4', vencimento: '2026-10-30', anexos: doc('2026-10-16T10:00:00Z'), conferencia: { em: '2026-10-17T10:00:00Z', checks: [{ nivel: 'ok', tipo: 'valor', msg: 'ok' }] } })]);
+  assert.strictEqual(deF(ts, 'A37').length, 0);
+  const a = deF(ts, 'A39')[0];
+  assert.ok(a && a.funcao === 'GERENCIA' && a.prazo === '2026-10-29');
+  assert.ok(/aguardando aprovação/.test(deF(ts, 'A40')[0].detalhe));
+});
+teste('diferença sem decisão: Importação decide (sem tarefa de aprovar)', () => {
+  const ts = gerarF([fat({ id: 'f5', vencimento: '2026-10-30', anexos: doc('2026-10-16T10:00:00Z'), conferencia: { em: '2026-10-17T10:00:00Z', checks: [chk] } })]);
+  const d = deF(ts, 'A38')[0];
+  assert.ok(d && d.funcao === 'IMPORTACAO' && /1 diferença sem decisão/.test(d.detalhe) && !d.andamento);
+  assert.strictEqual(deF(ts, 'A39').length, 0);
+});
+teste('diferença contestada: fica "em andamento" (aguardando o fornecedor), não atrasada', () => {
+  const conf = { em: '2026-10-10T10:00:00Z', checks: [chk], decisoes: { [FC.chaveCheck(chk)]: { acao: 'contestada' } } };
+  const d = deF(gerarF([fat({ id: 'f6', vencimento: '2026-10-15', anexos: doc('2026-10-09T10:00:00Z'), conferencia: conf })]), 'A38')[0];
+  assert.ok(d && d.andamento && /aguardando a fatura corrigida/.test(d.detalhe));
+  assert.strictEqual(A.classificar(d, HF), 'andamento');
+});
+teste('diferença aceita: decisão some e vai pra aprovação', () => {
+  const conf = { em: '2026-10-17T10:00:00Z', checks: [chk], decisoes: { [FC.chaveCheck(chk)]: { acao: 'aceita', motivo: 'combinado' } } };
+  const ts = gerarF([fat({ id: 'f7', vencimento: '2026-10-30', anexos: doc('2026-10-16T10:00:00Z'), conferencia: conf })]);
+  assert.strictEqual(deF(ts, 'A38').length, 0);
+  assert.ok(/1 diferença aceita/.test(deF(ts, 'A39')[0].detalhe));
+});
+teste('aprovada: só o pagamento continua (Financeiro, "aprovada")', () => {
+  const ts = gerarF([fat({ id: 'f8', vencimento: '2026-10-30', anexos: doc('2026-10-16T10:00:00Z'), conferencia: { em: '2026-10-17', checks: [] }, aprovacao: { por: 'gerente.teste', em: '2026-10-18T10:00:00Z' } })]);
+  assert.deepStrictEqual(ts.filter(t => /^A(37|38|39|40)$/.test(t.codigo)).map(t => t.codigo), ['A40']);
+  assert.ok(/aprovada/.test(deF(ts, 'A40')[0].detalhe));
+});
+teste('paga: nada em aberto; na aba do processo aparece como concluída automaticamente', () => {
+  const f = fat({ id: 'f9', status: 'paga', valor_pago: 1000, vencimento: '2026-10-20', anexos: doc('2026-10-16T10:00:00Z'), aprovacao: { em: '2026-10-18' }, pagamentos: [{ id: 'p', data: '2026-10-20', valor: 1000 }] });
+  assert.strictEqual(gerarF([f]).filter(t => /^A(37|38|39|40)$/.test(t.codigo)).length, 0);
+  const t = deF(gerarF([f], { incluirFeitas: true }), 'A40')[0];
+  assert.ok(t && t.status === 'feita' && t.automatica);
+});
+
+// numerário: pago, acerto do mesmo despachante em aberto → abater; acerto pago → sobra
+const numer = (x) => fat(Object.assign({ id: 'n1', numero: '000010/26', empresa_nome: DESP, itens: [], origem: { tipo: 'numerario', processo_id: 'pf1', referencia: 'TESTE-FAT-1' },
+  valor: 5000, status: 'paga', valor_pago: 5000, vencimento: '2026-10-10', pagamentos: [{ id: 'pn', data: '2026-10-10', valor: 5000 }] }, x || {}));
+const acerto = (x) => fat(Object.assign({ id: 'ac1', numero: '000011/26', empresa_nome: DESP, valor: 4200, vencimento: '2026-10-28', anexos: doc('2026-10-20T10:00:00Z'),
+  itens: [{ processo_id: 'pf1', referencia: 'TESTE-FAT-1', taxa: 'honorarios', valor: 4200 }] }, x || {}));
+teste('numerário pago + acerto em aberto: Financeiro abate (até o vencimento do acerto) e o acerto avisa que dá pra abater', () => {
+  const ts = gerarF([numer(), acerto()]);
+  const t = deF(ts, 'A41')[0];
+  assert.ok(t && t.funcao === 'FINANCEIRO' && t.prazo === '2026-10-28');
+  assert.ok(/Abater R\$ 4\.200,00 do numerário 000010\/26 no acerto 000011\/26 \(sobram R\$ 800,00 pra devolver\)/.test(t.detalhe), t.detalhe);
+  assert.ok(/numerário de R\$ 5\.000,00 pra abater/.test(deF(ts, 'A40').find(x => x.detalhe.includes('000011/26')).detalhe));
+});
+teste('acerto quitado por compensação e sobrou numerário: pede a devolução (5 dias depois do acerto)', () => {
+  const ac = acerto({ status: 'paga', valor_pago: 4200, pagamentos: [{ id: 'pc', data: '2026-10-20', valor: 4200, forma: 'compensacao', compensa: { tipo: 'numerario', fatura_id: 'n1' } }] });
+  const t = deF(gerarF([numer(), ac]), 'A41')[0];
+  assert.ok(t && /Sobra de R\$ 800,00/.test(t.detalhe) && t.prazo === '2026-10-25');
+});
+teste('devolução lançada: numerário acertado e a devolução vira "Receber" do Financeiro', () => {
+  const ac = acerto({ status: 'paga', valor_pago: 4200, pagamentos: [{ id: 'pc', data: '2026-10-20', valor: 4200, forma: 'compensacao', compensa: { tipo: 'numerario', fatura_id: 'n1' } }] });
+  const dev = fat({ id: 'd1', tipo: 'receber', empresa_nome: DESP, itens: [], valor: 800, vencimento: '2026-10-30', origem: { tipo: 'devolucao_numerario', processo_id: 'pf1', numerario_id: 'n1' } });
+  const ts = gerarF([numer(), ac, dev]);
+  assert.strictEqual(deF(ts, 'A41').length, 0);
+  const r = deF(ts, 'A42')[0];
+  assert.ok(r && r.funcao === 'FINANCEIRO' && /devolução de numerário/.test(r.detalhe) && r.prazo === '2026-10-30');
+});
+teste('numerário: gerente aprova antes de pagar; sem acerto ainda, não cobra o acerto', () => {
+  const ts = gerarF([numer({ status: 'aberta', valor_pago: 0, pagamentos: [], vencimento: '2026-10-24' })]);
+  assert.ok(deF(ts, 'A39')[0] && /numerário/.test(deF(ts, 'A39')[0].detalhe));
+  assert.ok(deF(ts, 'A40')[0] && /numerário \(adiantamento\)/.test(deF(ts, 'A40')[0].detalhe));
+  assert.strictEqual(deF(ts, 'A37').length, 0, 'numerário não se confere taxa a taxa');
+  assert.strictEqual(deF(ts, 'A41').length, 0);
+});
+
+// a receber: venda a prazo é da A26 (vira automática), adiantamento de câmbio é da A42
+const PV = Object.assign({}, PF, { vendas_json: JSON.stringify([{ cliente: 'CLIENTE FICTICIO LTDA', nf_saida_numero: '9001', nf_saida_data: '2026-10-10', nf_saida_valor: 2000, forma_pagamento: 'parcelado', prazo_texto: '30/60' }]) });
+const recVenda = (n, venc, extra) => fat(Object.assign({ id: 'rv' + n, numero: '00002' + n + '/26', tipo: 'receber', empresa_nome: 'CLIENTE FICTICIO LTDA', itens: [], valor: 1000, vencimento: venc,
+  origem: { tipo: 'venda', processo_id: 'pf1', referencia: 'TESTE-FAT-1', idx: 0, parcela: n, de: 2 } }, extra || {}));
+teste('venda parcelada com faturas a receber: A26 fica automática, prazo = próxima parcela, sem tarefa duplicada', () => {
+  const ts = gerarF([recVenda(1, '2026-11-09'), recVenda(2, '2026-12-09')], null, [PV]);
+  const t = deF(ts, 'A26')[0];
+  assert.ok(t && t.auto && t.prazo === '2026-11-09' && /0 de 2 parcelas recebidas/.test(t.detalhe), t && t.detalhe);
+  assert.strictEqual(deF(ts, 'A42').length, 0);
+});
+teste('todas as parcelas recebidas: A26 conclui sozinha', () => {
+  const pago = { status: 'paga', valor_pago: 1000, pagamentos: [{ id: 'x', data: '2026-10-20', valor: 1000 }] };
+  const ts = gerarF([recVenda(1, '2026-11-09', pago), recVenda(2, '2026-12-09', pago)], { incluirFeitas: true }, [PV]);
+  const t = deF(ts, 'A26')[0];
+  assert.ok(t && t.status === 'feita' && t.automatica);
+});
+teste('venda sem fatura a receber: A26 continua manual como antes (prazo = NF + maior prazo)', () => {
+  const t = deF(gerarF([], null, [PV]), 'A26')[0];
+  assert.ok(t && !t.auto && t.prazo === '2026-12-09');
+});
+teste('adiantamento do câmbio a receber: tarefa A42 do Financeiro no vencimento', () => {
+  const r = fat({ id: 'rc1', tipo: 'receber', empresa_nome: 'CLIENTE FICTICIO LTDA', itens: [], valor: 5400, vencimento: '2026-10-23', origem: { tipo: 'parcela_cambio', processo_id: 'pf1', idx: -1 } });
+  const t = deF(gerarF([r]), 'A42')[0];
+  assert.ok(t && t.prazo === '2026-10-23' && /adiantamento do câmbio/.test(t.detalhe) && /R\$ 5\.400,00/.test(t.detalhe));
+});
+teste('processo FECHADO: dinheiro em aberto continua na agenda, o resto não', () => {
+  const ts = gerarF([fat({ id: 'f10', vencimento: '2026-10-30', anexos: doc('2026-10-16T10:00:00Z'), aprovacao: { em: '2026-10-18' } })], null, [Object.assign({}, PF, { fechado: true })]);
+  assert.deepStrictEqual([...new Set(ts.filter(t => t.processoId).map(t => t.codigo))], ['A40']);
+});
+teste('fatura de 2 processos: a tarefa aparece só no processo dono (maior parte)', () => {
+  const f = fat({ id: 'f11', vencimento: '2026-10-30', anexos: doc('2026-10-16T10:00:00Z'), itens: [{ processo_id: 'pf1', valor: 100 }, { processo_id: 'pf2', valor: 900 }] });
+  const ts = gerarF([f], null, [PF, { id: 'pf2', referencia: 'TESTE-FAT-2', created_at: '2026-10-01' }]);
+  assert.deepStrictEqual(deF(ts, 'A37').map(t => t.referencia), ['TESTE-FAT-2']);
+});
+teste('prazo da Lista (dias em relação ao vencimento) vale pras tarefas de fatura', () => {
+  const c = A.montarConfig({ agenda_atividade: [{ codigo: 'A40', nome: 'Pagar', dados: { funcao: 'FINANCEIRO', prazo_dias: -2 } }] });
+  const t = deF(A.gerarTarefas([PF], { hoje: HF, cfg: c, faturas: FC.faturasParaAgenda([fat({ id: 'f12', vencimento: '2026-10-30', anexos: doc('2026-10-16') })]) }), 'A40')[0];
+  assert.strictEqual(t.prazo, '2026-10-28');
+});
+teste('servidor: carregarFaturasAgenda lê a tabela (sem canceladas) e o histórico registra a tarefa de pagar', async () => {
+  const estado = { controle_processos: [PF], agenda_conclusoes: [], agenda_historico: [],
+    faturas: [fat({ id: 'f13', vencimento: '2026-10-30', anexos: doc('2026-10-16'), aprovacao: { em: '2026-10-18' } }), fat({ id: 'f14', status: 'cancelada', vencimento: '2026-10-30' })] };
+  const sb = sbFalso(estado);
+  const r = await S.carregarFaturasAgenda(sb);
+  assert.deepStrictEqual(r.faturas.map(f => f.id), ['f13']);
+  await S.atualizarHistorico({ sb, carregarListas: async () => ({ listas: null }) }, { hoje: HF });
+  assert.ok(estado.agenda_historico.some(h => h.codigo === 'A40' && h.chave === A.chaveTarefa('A40', 'pf1', 'f13')));
 });
 
 setTimeout(() => {

@@ -13,6 +13,38 @@ let _ftSel = new Set(); // faturas marcadas pra baixa em lote
 let _crFaturas = {};   // fatura_id → fatura (do processo aberto) pra badge na grade
 
 function _ftHoje(){ return new Date().toISOString().slice(0, 10); }
+// A mesma fatura pode estar na tela Faturas (_ftLista) ou na aba Faturas do
+// processo aberto (_pfFaturas, controle-faturas-processo.js): os modais de
+// baixa / edição / aprovação procuram nas duas e, depois da ação, atualizam
+// a que estiver na tela (21/10/2026).
+function _ftAcharFatura(id){
+  return (_ftLista || []).find(x => x.id === id) || ((typeof _pfFaturas !== 'undefined' && _pfFaturas) || []).find(x => x.id === id) || null;
+}
+function _ftAtualizarLocal(f){
+  if(!f || !f.id) return;
+  const i = (_ftLista || []).findIndex(x => x.id === f.id); if(i >= 0) _ftLista[i] = f;
+  if(typeof _pfFaturas !== 'undefined' && Array.isArray(_pfFaturas)){ const j = _pfFaturas.findIndex(x => x.id === f.id); if(j >= 0) _pfFaturas[j] = f; }
+}
+function _ftAposMudanca(){
+  const dash = document.getElementById('dash-faturas');
+  if(dash && dash.style.display !== 'none' && typeof renderDashFaturas === 'function') renderDashFaturas();
+  if(typeof pfRecarregar === 'function') pfRecarregar();
+  // selo de faturas na lista de processos (só onde a lista aparece)
+  if(typeof carregarResumoFaturas === 'function' && document.getElementById('table-body')) carregarResumoFaturas(true);
+}
+// Confere uma fatura gravada e guarda o resultado nela (etapa Conferida /
+// com diferença, selo da lista). Silencioso: quem chama mostra o recado.
+async function _ftRegistrarConferencia(id){
+  if(!id) return null;
+  const labels = {};
+  if(typeof custosReaisItensFlat === 'function') custosReaisItensFlat().forEach(it => { labels[it.id] = it.label; labels[it.id + '_cobrado'] = it.label + ' (cobrado)'; });
+  try{
+    const r = await fetch('/api/faturas/' + encodeURIComponent(id) + '/conferencia', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ labels, cambio: (typeof cambioParaTotais === 'function') ? cambioParaTotais() : {} }) });
+    const d = await r.json();
+    if(!d.ok && d.erro && !d.semColuna) showToast('Não consegui conferir: ' + d.erro, 'warn');
+    return d;
+  }catch(e){ return null; }
+}
 function _ftFmt(v){ return (parseFloat(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function _ftSimb(m){ return m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'R$'; }
 function _ftData(s){ if(!s) return '—'; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? `${m[3]}/${m[2]}/${m[1]}` : s; }
@@ -21,7 +53,7 @@ function _ftOverlay(){
   if(!el){ el = document.createElement('div'); el.id = 'faturas-overlay'; document.body.appendChild(el); }
   return el;
 }
-function ftFecharModal(){ const el = document.getElementById('faturas-overlay'); if(el) el.innerHTML = ''; }
+function ftFecharModal(){ const el = document.getElementById('faturas-overlay'); if(el) el.innerHTML = ''; window._ftProcessoContexto = null; }
 document.addEventListener('keydown', e => { if(e.key === 'Escape'){ const el = document.getElementById('faturas-overlay'); if(el && el.innerHTML.trim()){ ftFecharModal(); e.stopImmediatePropagation(); } } }, true);
 
 // ── 1. Gerar faturas a partir da aba Custos Reais ──────────────────────
@@ -287,8 +319,16 @@ async function ftAbrirArquivo(faturaId, path){
 
 // Modal da baixa: histórico de pagamentos + anexos + nova baixa
 function ftBaixa(id, pre){
-  const f = _ftLista.find(x => x.id === id); if(!f) return;
+  const f = _ftAcharFatura(id); if(!f) return;
   pre = pre || {};
+  // venda no cartão / Trademaster (fase 2): a operadora paga o líquido; a
+  // taxa já vem no campo Desconto (despesa financeira no DRE)
+  const txOp = f.tipo === 'receber' && f.status === 'aberta' && f.origem && parseFloat(f.origem.taxa_operadora) > 0 && !FaturasCore.pagamentosValidos(f).length ? Math.round(parseFloat(f.origem.taxa_operadora) * 100) / 100 : 0;
+  if(txOp > 0 && pre.valor == null && pre.desconto == null){
+    const sd = FaturasCore.saldoFatura(f);
+    pre = { ...pre, valor: Math.max(0, Math.round((sd - txOp) * 100) / 100), desconto: txOp, forma: pre.forma || 'outro',
+      aviso: (pre.aviso || '') + `<div class="cr-muted" style="background:var(--info-bg);border-radius:6px;padding:6px 8px;">💳 Recebimento da operadora (${esc(f.origem.operadora === 'cartao' ? 'REDE' : 'Trademaster')}): valor líquido + taxa de R$ ${_ftFmt(txOp)} no campo Desconto. Ajuste se o extrato da operadora vier diferente.</div>` };
+  }
   _ftBaixaArquivo = pre.arquivo || null;
   const saldo = FaturasCore.saldoFatura(f);
   const FORMA = Object.fromEntries(_FT_FORMAS);
@@ -334,7 +374,7 @@ function ftBaixa(id, pre){
         <details style="margin-top:6px;" ${pre.juros || pre.desconto || pre.retencoes ? 'open' : ''}><summary class="cr-link" style="cursor:pointer;font-size:12px;">➕ Juros/multa, desconto e retenções de impostos</summary>
           <div class="ft-cand-campos" style="margin-top:6px;">
             <label>Juros/multa pagos <input class="form-input" id="ft_bx_juros" inputmode="decimal" placeholder="0,00" oninput="ftBxResumo()"></label>
-            <label>Desconto obtido <input class="form-input" id="ft_bx_desc" inputmode="decimal" placeholder="0,00" oninput="ftBxResumo()"></label>
+            <label>${f.tipo === 'receber' ? 'Desconto concedido / taxa' : 'Desconto obtido'} <input class="form-input" id="ft_bx_desc" inputmode="decimal" placeholder="0,00" value="${pre.desconto ? _ftFmt(pre.desconto) : ''}" oninput="ftBxResumo()"></label>
           </div>
           <div class="cr-muted" style="font-size:11px;margin:6px 0 2px;">Impostos retidos na fonte (abatem o saldo; a empresa recebe o líquido):</div>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">${FaturasCore.RETENCOES.map(k => `<label style="font-size:11px;">${k === 'outros' ? 'Outros' : k.toUpperCase()}<input class="form-input ft-bx-ret" data-k="${k}" inputmode="decimal" placeholder="0,00" style="padding:4px 6px;" oninput="ftBxResumo()"></label>`).join('')}</div>
@@ -362,7 +402,7 @@ function ftEscolherComprovante(id){
     const box = document.getElementById('ft_bx_ia'); if(box) box.innerHTML = '<span class="cr-muted">🧾 Lendo o comprovante com a IA…</span>';
     const r = await _ftLerComprovante(arq, id);
     if(!r){ if(box) box.innerHTML = '<span class="cr-muted">Não consegui ler — preencha os campos e registre assim mesmo (o arquivo vai junto).</span>'; return; }
-    const f = _ftLista.find(x => x.id === id);
+    const f = _ftAcharFatura(id);
     const x = r.dados || {};
     if(x.data_pagamento) document.getElementById('ft_bx_data').value = x.data_pagamento;
     if(parseFloat(x.valor) > 0) document.getElementById('ft_bx_valor').value = _ftFmt(x.valor);
@@ -399,7 +439,7 @@ function _ftAvisosComprovante(x, f){
   return `<div style="background:${cor};border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11.5px;">${['<b>Comprovante lido pela IA</b>' + (x.banco ? ' · ' + esc(x.banco) : '')].concat(av, ok).join('<br>')}</div>`;
 }
 async function ftRegistrarBaixa(id, confirmarRepetido){
-  const fat = _ftLista.find(x => x.id === id) || {};
+  const fat = _ftAcharFatura(id) || {};
   if(!confirmarRepetido && fat.tipo === 'pagar' && !fat.aprovacao && !confirm('Este pagamento ainda não foi aprovado por um gerente. Registrar a baixa mesmo assim?')) return;
   const body = { data: document.getElementById('ft_bx_data').value, valor: parseValorMoeda(document.getElementById('ft_bx_valor').value), forma: document.getElementById('ft_bx_forma').value, identificador: document.getElementById('ft_bx_ident').value.trim(), obs: document.getElementById('ft_bx_obs').value.trim(), confirmar_repetido: !!confirmarRepetido, ..._ftBxExtras() };
   if(_ftBaixaArquivo){ body.arquivo_base64 = await _ftB64(_ftBaixaArquivo); body.nome_arquivo = _ftBaixaArquivo.name; body.media_type = _ftTipoArq(_ftBaixaArquivo); }
@@ -410,13 +450,14 @@ async function ftRegistrarBaixa(id, confirmarRepetido){
       if(d.repetido && confirm(d.erro + '\n\nRegistrar mesmo assim?')) return ftRegistrarBaixa(id, true);
       if(!d.repetido) showToast(d.erro || 'Erro na baixa', 'err');
       // Fatura mudou no meio (outra baixa/estorno/pessoa): recarrega pra conferir.
-      if(d.conflito){ ftFecharModal(); renderDashFaturas(); }
+      if(d.conflito){ ftFecharModal(); _ftAposMudanca(); }
       return;
     }
     _ftBaixaArquivo = null;
+    _ftAtualizarLocal(d.fatura);
     ftFecharModal();
     showToast((d.fatura.status === 'paga' ? 'Baixa registrada — fatura quitada.' : `Baixa parcial registrada — saldo ${_ftSimb(d.fatura.moeda)} ${_ftFmt(d.saldo)}.`) + (d.darf ? ` DARF das retenções lançado (${d.darf.numero}, vence ${_ftData(d.darf.vencimento)}).` : '') + (d.aviso ? ' ' + d.aviso : ''), 'ok');
-    renderDashFaturas();
+    _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 async function ftEstornar(faturaId, pagamentoId){
@@ -425,15 +466,15 @@ async function ftEstornar(faturaId, pagamentoId){
   try{
     const d = await (await fetch('/api/faturas/' + encodeURIComponent(faturaId) + '/estornar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pagamento_id: pagamentoId, motivo }) })).json();
     if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
-    const i = _ftLista.findIndex(x => x.id === faturaId); if(i >= 0) _ftLista[i] = d.fatura;
-    showToast('Pagamento estornado.', 'ok'); ftBaixa(faturaId); renderDashFaturas();
+    _ftAtualizarLocal(d.fatura);
+    showToast('Pagamento estornado.', 'ok'); ftBaixa(faturaId); _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 function ftAnexarDoc(faturaId){
   _ftEscolherArquivo(async arq => {
     try{
       const nova = await _ftEnviarAnexo(faturaId, arq, 'outro');
-      const i = _ftLista.findIndex(x => x.id === faturaId); if(i >= 0) _ftLista[i] = nova;
+      _ftAtualizarLocal(nova);
       showToast('Documento anexado.', 'ok'); ftBaixa(faturaId);
     }catch(e){ showToast('Não anexou: ' + e.message, 'err'); }
   });
@@ -524,15 +565,26 @@ function ftSelecionar(id, marcado){
   if(b){ b.disabled = !_ftSel.size; b.textContent = '💰 Baixa em lote' + (_ftSel.size ? ` (${_ftSel.size})` : ''); }
 }
 async function ftAprovar(id, desfazer){
+  // aprovar com diferença sem decisão ou contestada: pergunta antes (fase 2)
+  const fa = !desfazer ? _ftAcharFatura(id) : null;
+  if(fa && fa.conferencia && typeof FaturasCore !== 'undefined' && FaturasCore.contagemConferencia){
+    const n = FaturasCore.contagemConferencia(fa.conferencia);
+    if(n.abertas || n.contestadas){
+      const partes = [n.abertas ? `${n.abertas} sem decisão` : '', n.contestadas ? `${n.contestadas} contestada${n.contestadas === 1 ? '' : 's'} com o fornecedor` : ''].filter(Boolean).join(' e ');
+      if(!confirm(`A conferência desta fatura tem diferença(s): ${partes}.\n\nAprovar o pagamento mesmo assim?`)) return;
+    }
+  }
   try{
     const d = await (await fetch('/api/faturas/' + encodeURIComponent(id) + '/aprovacao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ desfazer: !!desfazer }) })).json();
     if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
-    const i = _ftLista.findIndex(x => x.id === id); if(i >= 0) _ftLista[i] = d.fatura;
-    showToast(desfazer ? 'Aprovação desfeita.' : 'Pagamento aprovado.', 'ok'); ftBaixa(id); renderDashFaturas();
+    _ftAtualizarLocal(d.fatura);
+    showToast(desfazer ? 'Aprovação desfeita.' : 'Pagamento aprovado.', 'ok');
+    if(document.getElementById('ft_bx_data') || (document.getElementById('faturas-overlay') || {}).innerHTML) ftBaixa(id);
+    _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 async function ftAplicarCustosReais(id){
-  const f = _ftLista.find(x => x.id === id); if(!f) return;
+  const f = _ftAcharFatura(id); if(!f) return;
   const refs = [...new Set((f.itens || []).map(it => it.referencia).filter(Boolean))].join(', ');
   if(!confirm(`Gravar os valores das ${(f.itens || []).length} taxa(s) desta fatura na aba Custos Reais de ${refs || 'processo'}?\n\nIsso muda o custo real (e o lucro apurado) desses processos. Processos fechados e taxas lançadas por container não são alterados.`)) return;
   try{
@@ -541,6 +593,12 @@ async function ftAplicarCustosReais(id){
     const fmtM = o => Object.entries(o || {}).map(([m, v]) => _ftSimb(m) + ' ' + _ftFmt(v)).join(' + ') || 'vazio';
     const linhas = (d.feitos || []).map(x => `• ${x.ref} · ${x.taxa}: ${fmtM(x.antes)} → ${fmtM(x.depois)}`).concat((d.pulados || []).map(x => `• (não alterado) ${x.ref}${x.taxa ? ' · ' + x.taxa : ''}: ${x.motivo}`));
     alert((d.feitos || []).length ? `Custos Reais atualizados:\n\n${linhas.join('\n')}` : `Nada a alterar — os valores já batem.${linhas.length ? '\n\n' + linhas.join('\n') : ''}`);
+    // processo aberto é um dos alterados: recarrega a grade de Custos Reais dele
+    if((d.feitos || []).length && typeof _editando !== 'undefined' && _editando && _editando.id && (f.itens || []).some(it => String(it.processo_id) === String(_editando.id))){
+      try{ const rp = await fetch('/api/controle/v2/processo/' + encodeURIComponent(_editando.id)); const dp = await rp.json(); const p = dp.processo || dp; if(p && p.real_json){ _editando.real_json = p.real_json; const i = (_processos || []).findIndex(x => x.id === p.id); if(i >= 0) _processos[i].real_json = p.real_json; if(typeof crRerender === 'function') crRerender(); } }catch(e){}
+      showToast('Custos Reais do processo atualizados — o Histórico registra a mudança no próximo salvamento.', 'ok');
+    }
+    _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 
@@ -726,7 +784,7 @@ async function ftCriarReceber(){
         if(r.ok) baixas++;
       }
     }
-    ftFecharModal(); showToast(`${d.faturas.length} fatura(s) a receber criada(s)` + (baixas ? `, ${baixas} já com o recebido lançado` : '') + '.', 'ok'); renderDashFaturas();
+    ftFecharModal(); showToast(`${d.faturas.length} fatura(s) a receber criada(s)` + (baixas ? `, ${baixas} já com o recebido lançado` : '') + '.', 'ok'); _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 
@@ -756,9 +814,10 @@ async function ftAcao(id, acao, body){
     const r = await fetch('/api/faturas/' + encodeURIComponent(id) + '/' + acao, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     const d = await r.json();
     if(!d.ok){ showToast(d.erro || 'Erro', 'err'); return; }
+    _ftAtualizarLocal(d.fatura);
     ftFecharModal();
     showToast(acao === 'pagar' ? 'Fatura marcada como paga.' : acao === 'reabrir' ? 'Fatura reaberta.' : 'Fatura cancelada.', 'ok');
-    renderDashFaturas();
+    _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 // Editar (documento, vencimento, valor, obs) ou criar uma fatura avulsa
@@ -794,9 +853,10 @@ function ftSomarItens(){
 
 // pre = dados vindos da IA (ou outro pré-preenchimento) pra fatura nova
 function ftEditar(id, pre){
-  const f = id ? _ftLista.find(x => x.id === id) : Object.assign({ tipo: 'pagar', empresa_nome: '', documento: '', moeda: 'BRL', valor: '', vencimento: '', emissao: '', obs: '', itens: [] }, pre || {});
+  const f = id ? _ftAcharFatura(id) : Object.assign({ tipo: 'pagar', empresa_nome: '', documento: '', moeda: 'BRL', valor: '', vencimento: '', emissao: '', obs: '', itens: [] }, pre || {});
   if(!f) return;
   _ftItensEdit = id ? [] : (f.itens || []).map(it => ({ ...it }));
+  window._ftOrigemNova = !id && pre && pre.origem ? pre.origem : null;
   const ov = _ftOverlay();
   ov.innerHTML = `<div class="ft-modal-bg" onclick="if(event.target===this) ftFecharModal()"><div class="ft-modal" style="max-width:${id ? 560 : 820}px;">
     <div class="ft-modal-head"><span>${id ? 'Editar fatura' : (pre && pre._ia ? '🧾 Fatura lida pela IA — confira antes de salvar' : 'Fatura avulsa')}</span><button class="btn btn-outline" onclick="ftFecharModal()">✕</button></div>
@@ -835,7 +895,7 @@ function ftEditar(id, pre){
     <div class="ft-modal-foot"><button class="btn btn-outline" onclick="ftConferir(${id ? `'${id}'` : 'null'})">🔍 Conferir</button><button class="btn btn-outline" onclick="ftFecharModal()">Cancelar</button><button class="btn btn-primary" onclick="ftSalvarEdicao(${id ? `'${id}'` : 'null'})">Salvar</button></div>
   </div></div>`;
   // fatura lida pela IA ou já existente: confere sozinho ao abrir
-  if(id || (pre && pre._ia)) ftConferir(id || null);
+  if((id || (pre && pre._ia)) && !FaturasCore.ehNumerario(id ? f : pre)) ftConferir(id || null);
   if(!id) ftSugerirConta();
 }
 // Sugere a classificação pelo texto (empresa, documento, observação) enquanto
@@ -851,11 +911,12 @@ function ftSugerirConta(){
 }
 // Monta o corpo da fatura a partir do modal (usado no Salvar e na Conferência).
 function _ftCorpoModal(id){
-  const f = id ? _ftLista.find(x => x.id === id) : {};
+  const f = id ? (_ftAcharFatura(id) || {}) : {};
   const moeda = document.getElementById('ft_e_moeda').value;
   const cx = parseFloat((document.getElementById('ft_e_cambio').value || '').replace(',', '.'));
   const body = { ...f, id: id || undefined, tipo: document.getElementById('ft_e_tipo').value, empresa_nome: document.getElementById('ft_e_empresa').value.trim(), documento: document.getElementById('ft_e_doc').value.trim(), moeda, valor: parseValorMoeda(document.getElementById('ft_e_valor').value), emissao: document.getElementById('ft_e_emissao').value || null, vencimento: document.getElementById('ft_e_venc').value || null, obs: document.getElementById('ft_e_obs').value.trim(), conta_id: (document.getElementById('ft_e_conta') || {}).value || null, centro_custo_id: (document.getElementById('ft_e_centro') || {}).value || null };
   body.cambio = moeda === 'BRL' ? 1 : (cx > 0 ? cx : ((typeof cambioDoDia === 'function' && cambioDoDia(moeda)) || null));
+  if(!id && window._ftOrigemNova) body.origem = window._ftOrigemNova;
   if(id && f && f.empresa_nome !== body.empresa_nome) body.empresa_id = null;
   const semProc = [];
   if(!id){
@@ -871,6 +932,12 @@ function _ftCorpoModal(id){
       const cfg = (typeof custosReaisItensFlat === 'function') ? custosReaisItensFlat().find(x => x.id === it.taxa) : null;
       return { processo_id: p ? p.id : null, referencia: p ? p.referencia : (it.referencia || null), taxa: it.taxa || null, label: cfg ? cfg.label : (it.descricao || it.label || 'Taxa'), valor: parseFloat(it.valor) || 0 };
     });
+    // numerário lido pela IA: o processo é o da linha (pode ter sido trocado)
+    if(body.origem && body.origem.tipo === 'numerario'){
+      const comProc = body.itens.find(it => it.processo_id);
+      if(comProc) body.origem = { ...body.origem, processo_id: comProc.processo_id, referencia: comProc.referencia };
+      else delete body.origem;
+    }
   }
   return { body, semProc };
 }
@@ -948,7 +1015,11 @@ async function ftSalvarEdicao(id){
       const arq = _ftArquivoIA; _ftArquivoIA = null;
       try{ await _ftEnviarAnexo(d.faturas[0].id, arq, 'fatura'); }catch(e){ showToast('Fatura salva, mas o PDF não foi anexado: ' + e.message, 'warn'); }
     }
-    ftFecharModal(); if(!freq) showToast('Fatura salva' + (d.faturas && d.faturas[0] && d.faturas[0].numero ? ' — nº ' + d.faturas[0].numero : '') + '.', 'ok'); renderDashFaturas();
+    ftFecharModal(); if(!freq) showToast('Fatura salva' + (d.faturas && d.faturas[0] && d.faturas[0].numero ? ' — nº ' + d.faturas[0].numero : '') + '.', 'ok');
+    // conferência guardada na fatura (etapa "Conferida" / "com diferença")
+    window._ftOrigemNova = null;
+    if(!freq) for(const fs of (d.faturas || []).filter(x => x && x.tipo === 'pagar' && !FaturasCore.ehNumerario(x)).slice(0, 5)) await _ftRegistrarConferencia(fs.id);
+    _ftAposMudanca();
   }catch(e){ showToast('Erro de rede', 'err'); }
 }
 
@@ -980,20 +1051,43 @@ async function ftEnviarDocumento(arq){
 function ftMontarDaIA(x, nomeArq){
   x = x || {};
   const procs = (typeof _processos !== 'undefined' && _processos) || [];
-  const proc = FaturasCore.acharProcesso(x.pistas_processo || [], procs);
+  let proc = FaturasCore.acharProcesso(x.pistas_processo || [], procs);
+  // lida a partir da aba Faturas de um processo: sem pista de outro processo,
+  // a fatura fica ligada ao processo aberto (21/10/2026)
+  const ctx = window._ftProcessoContexto;
+  const ctxProc = ctx && typeof _editando !== 'undefined' && _editando && _editando.id === ctx.id ? (procs.find(p => p.id === ctx.id) || _editando) : null;
+  let avisoCtx = '';
+  if(ctxProc){
+    if(!proc){ proc = ctxProc; avisoCtx = `Ligada ao processo aberto <b>${esc(ctxProc.referencia || '')}</b> (o documento não cita outro).`; }
+    else if(proc.id !== ctxProc.id) avisoCtx = `⚠ O documento cita o processo <b>${esc(proc.referencia || '')}</b>, não o ${esc(ctxProc.referencia || '')} que está aberto — confira antes de salvar.`;
+  }
   const moeda = ['BRL','USD','EUR'].includes(x.moeda) ? x.moeda : 'BRL';
   // Fatura em R$ com linhas em US$ (nota de débito do agente de carga: cada
   // linha traz o valor em dólar e o valor em reais): o item da fatura vai
   // no valor em reais impresso — antes os US$ 15 de ISPS entravam como R$ 15.
   const valorItem = it => (moeda === 'BRL' && it.moeda && it.moeda !== 'BRL' && parseFloat(it.valor_brl) > 0) ? parseFloat(it.valor_brl) : (parseFloat(it.valor) || 0);
-  const itens = (x.itens || []).filter(it => it && parseFloat(it.valor) > 0).map(it => ({
+  // adiantamento/numerário já pago e o saldo do acerto não são cobrança (fase 2)
+  const RE_NAO_COBRANCA = /adiantamento|numer[aá]rio|\bsaldo\b|a\s+favor\s+d[aoe]\b/i;
+  const numerario = x.tipo_documento === 'numerario';
+  let itens = (x.itens || []).filter(it => it && parseFloat(it.valor) > 0 && (numerario || !RE_NAO_COBRANCA.test(it.descricao || ''))).map(it => ({
     descricao: it.descricao || '', taxa: FaturasCore.taxaPorDescricao(it.descricao) || '', referencia: proc ? proc.referencia : '', valor: valorItem(it),
   }));
   const avisos = [];
+  if(avisoCtx) avisos.push(avisoCtx);
+  // pedido de numerário: entra como adiantamento ao despachante (não é custo
+  // taxa a taxa — quem lança o custo é o acerto, que abate este numerário)
+  let origem = null;
+  if(numerario){
+    const total = parseFloat(x.valor_total) || itens.reduce((s, i) => s + i.valor, 0);
+    itens = [{ descricao: 'Numerário (adiantamento ao despachante)', taxa: '', referencia: proc ? proc.referencia : '', valor: total }];
+    origem = { tipo: 'numerario', processo_id: proc ? proc.id : null, referencia: proc ? (proc.referencia || null) : null };
+    avisos.push('💵 <b>Pedido de numerário</b>: entra como adiantamento ao despachante (não é custo). Quando chegar o acerto dele, use <b>💵 Abater</b> na fatura do acerto.' + (proc ? '' : ' Informe o processo antes de salvar.'));
+  }
+  if(!numerario && parseFloat(x.adiantamento_brl) > 0) avisos.push(`💵 O documento desconta <b>R$ ${_ftFmt(x.adiantamento_brl)}</b> de numerário/adiantamento. Salve a fatura com o total das despesas e, na aba Faturas do processo, use <b>💵 Abater</b> (o numerário precisa estar lançado e pago).`);
   if(!proc && (x.pistas_processo || []).length) avisos.push(`Não achei o processo pelas pistas do documento (${esc((x.pistas_processo || []).slice(0, 3).join(', '))}) — informe a referência nas taxas.`);
-  if(proc) avisos.push(`Processo identificado: <b>${esc(proc.referencia)}</b>.`);
+  if(proc && !avisoCtx) avisos.push(`Processo identificado: <b>${esc(proc.referencia)}</b>.`);
   if(!x.empresa_id) avisos.push('Empresa não encontrada no Cadastro — confira o nome ou cadastre.');
-  const semTaxa = itens.filter(i => !i.taxa).length;
+  const semTaxa = numerario ? 0 : itens.filter(i => !i.taxa).length;
   if(semTaxa) avisos.push(`${semTaxa} linha${semTaxa === 1 ? '' : 's'} sem taxa reconhecida — escolha na lista.`);
   if(x.observacao) avisos.push('Obs. da IA: ' + esc(x.observacao));
   const tipo = /impak/i.test(x.emitente || '') ? 'receber' : 'pagar';
@@ -1003,6 +1097,6 @@ function ftMontarDaIA(x, nomeArq){
     documento: x.documento || '', emissao: x.emissao || '', vencimento: x.vencimento || '', moeda,
     valor: parseFloat(x.valor_total) || itens.reduce((s, i) => s + i.valor, 0) || '',
     obs: [x.linha_digitavel ? 'Linha digitável: ' + x.linha_digitavel : '', 'Lido de ' + (nomeArq || 'arquivo')].filter(Boolean).join(' · '),
-    itens,
+    itens, origem,
   };
 }
