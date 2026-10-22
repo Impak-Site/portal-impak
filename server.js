@@ -8038,6 +8038,57 @@ const _agendaCtx = () => ({ sb, carregarListas, log: (m) => console.log(m) });
 async function atualizarHistoricoAgenda(){
   return AgendaServidor.atualizarHistorico(_agendaCtx());
 }
+
+// ── Verificação diária dos dados (22/10/2026, pedido Ayslan) ─────────────
+// Processos antigos não podem ficar para trás quando entra uma regra nova
+// (ver verificacao-dados.js). Todo dia: aplica nos processos abertos (não
+// fechados/cancelados) as regras que só rodavam no Salvar — cliente pela NF
+// de venda e Nº da DUIMP nas parcelas —, com linha no Histórico em nome de
+// "verificacao-diaria". O que precisa de gente vira tarefa na Agenda
+// (D01–D05). Update condicional ao updated_at lido: se alguém salvou o
+// processo no meio, a correção fica para o dia seguinte.
+const VerificacaoDados = require('./verificacao-dados.js');
+const DuimpParcelasServidor = require('./duimp-parcelas.js');
+async function rodarVerificacaoDados(opts){
+  const aplicar = !!(opts && opts.aplicar);
+  const motor = AgendaServidor.carregarMotor();
+  if (!motor || typeof motor.clienteDaVendaDoProcesso !== 'function') throw new Error('motor do Controle indisponível no servidor');
+  const { data: procs, error } = await buscarTodosProcessos('*');
+  if (error) throw new Error(error.message);
+  const resumo = VerificacaoDados.resumir(procs, motor, DuimpParcelasServidor);
+  const aplicadas = [], falhas = [];
+  if (aplicar && resumo.correcoes.length) {
+    let indice = null;
+    try { indice = await obterIndiceCadastros(); } catch (e) { indice = null; }
+    const ids = new Set(resumo.correcoes.map(c => c.id));
+    for (const p of procs) {
+      if (!ids.has(p.id)) continue;
+      const cs = VerificacaoDados.correcoesAutomaticas(p, motor, DuimpParcelasServidor);
+      if (!cs.length) continue;
+      const patch = Object.assign({}, ...cs.map(c => c.patch));
+      // cliente novo: acerta o cliente_id (e o nome canônico) pelo cadastro, igual ao Salvar
+      if ('cliente' in patch && indice) { try { CadastrosNormalizar.normalizarProcesso(patch, indice); } catch (e) { /* segue sem id */ } }
+      patch.updated_at = new Date().toISOString();
+      patch.updated_by = 'verificacao-diaria';
+      const { data: upd, error: e2 } = await sb().from('controle_processos').update(patch).eq('id', p.id).eq('updated_at', p.updated_at).select('id');
+      if (e2 || !upd || !upd.length) { falhas.push({ referencia: p.referencia, motivo: e2 ? e2.message : 'alterado por alguém durante a verificação — fica para a próxima' }); continue; }
+      await registrarLogProcesso(p.id, 'verificacao-diaria', cs.flatMap(c => c.log.map(l => ({ campo: l.campo + ' (verificação diária: ' + c.titulo + ')', valor_antes: l.valor_antes, valor_depois: l.valor_depois }))));
+      cs.forEach(c => aplicadas.push({ referencia: p.referencia, regra: c.regra, titulo: c.titulo }));
+    }
+  }
+  return { processos: procs.length, aplicar, correcoes: resumo.correcoes.map(c => ({ referencia: c.referencia, regra: c.regra, titulo: c.titulo, log: c.log })),
+    aplicadas, falhas, pendencias: resumo.pendencias.map(x => ({ codigo: x.codigo, nome: x.nome, total: x.processos.length, processos: x.processos.slice(0, 200) })) };
+}
+// Gerente: prévia (o que seria corrigido + dados para conferir), sem gravar.
+app.get('/api/admin/verificacao-dados', auth(), requireGerente, async (req, res) => {
+  try { res.json({ ok: true, ...(await rodarVerificacaoDados({ aplicar: false })) }); }
+  catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+// Gerente: roda agora (aplica as correções seguras), sem esperar o job.
+app.post('/api/admin/verificacao-dados/rodar', auth(), requireGerente, async (req, res) => {
+  try { res.json({ ok: true, ...(await rodarVerificacaoDados({ aplicar: true })) }); }
+  catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
 function _destinatariosResumoAgenda(){
   const env = process.env.AGENDA_RESUMO_PARA;
   if (env) return [...new Set(env.split(',').map(s => s.trim()).filter(Boolean))];
@@ -8159,6 +8210,7 @@ app.get('/api/admin/auditoria-datas/previa', auth(), requireGerente, async (req,
 
 function agendarAlertasSeparados(){
   const ALERTAS_SEPARADOS = [
+    { nome:'verificacao-dados', jobName:'verificacao_dados_diaria', fn:() => rodarVerificacaoDados({ aplicar: true }).then(r => r.aplicadas.length) },
     { nome:'agenda-historico', jobName:'agenda_historico_diario', fn:() => atualizarHistoricoAgenda().then(r => r.fechadas) },
     { nome:'agenda-resumo', jobName:'agenda_resumo_semanal', fn:() => enviarResumoSemanalAgenda().then(r => r.enviados), diaSemana:1 }, // só segunda-feira
     { nome:'demurrage', jobName:'alerta_demurrage', fn:verificarAlertaDemurrage },

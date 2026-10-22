@@ -16,7 +16,7 @@ teste('somaUteis negativo', () => assert.strictEqual(A.somaUteis('2026-10-19', -
 
 console.log('\n── configuração ──');
 const cfg = A.montarConfig(null);
-teste('42 atividades padrão (36 + 6 de faturas) e 8 funções', () => { assert.strictEqual(Object.keys(cfg.atividades).length, 42); assert.strictEqual(Object.keys(cfg.funcoes).length, 8); });
+teste('47 atividades padrão (36 + 6 de faturas + 5 de dados para conferir) e 8 funções', () => { assert.strictEqual(Object.keys(cfg.atividades).length, 47); assert.strictEqual(Object.keys(cfg.funcoes).length, 8); });
 teste('funções do usuário vêm da lista (Importação + Logística)', () => assert.deepStrictEqual(A.funcoesDoUsuario(cfg, 'emanuelly').sort(), ['IMPORTACAO', 'LOGISTICA']));
 teste('override da Lista troca função e prazo só da atividade editada', () => {
   const c = A.montarConfig({ agenda_atividade: [{ codigo: 'A03', nome: 'X', dados: { funcao: 'FISCAL', prazo_dias: 5 } }] });
