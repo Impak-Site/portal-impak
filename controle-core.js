@@ -1355,6 +1355,13 @@ async function _salvarProcessoAgora(proc, patchFields){
       // (X, X+1,...,X+20 = 21 dias), não X+21.
       inicioDemur.setDate(inicioDemur.getDate() + parseInt(proc.free_time||0) - 1);
       proc.demurrage_vencimento = inicioDemur.toISOString().split('T')[0];
+    } else if(!baseDemurrage && patchTocaCampos(['data_chegada','data_presenca']) && !patchTocaCampos(['demurrage_vencimento'])){
+      // Chegada/Presença apagada nesta edição (ex.: data digitada no campo
+      // errado e corrigida logo depois): o vencimento calculado a partir dela
+      // sai junto. Antes ele ficava gravado e aparecia dias depois no painel
+      // de Devolução do Vazio com o navio ainda em águas (José/Emanuelly,
+      // 22/10/2026). Vencimento digitado à mão nesta mesma edição é mantido.
+      proc.demurrage_vencimento = null;
     }
   }
 

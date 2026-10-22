@@ -799,6 +799,20 @@ await testeAsync('salvarProcesso: editar Presença de Carga recalcula fase/demur
   verdadeiro(!!proc.demurrage_vencimento, 'demurrage_vencimento deveria ter sido calculada — free_time + data_presenca presentes e data_presenca mudou');
 });
 
+await testeAsync('salvarProcesso: apagar a Data de Chegada (digitada por engano) limpa o vencimento do demurrage', async () => {
+  sandbox.fetch = (url, opts) => Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
+  const proc = { id: 'chegada-apagada', referencia: 'TESTE-DEM-1', fase: 'EMBARCADO', data_embarque: '2026-10-04',
+    data_chegada: '', data_presenca: '', free_time: 21, demurrage_vencimento: '2026-10-27' };
+  await sandbox.salvarProcesso(proc, ['data_chegada']);
+  iguais(proc.demurrage_vencimento, null, 'sem chegada nem presença o vencimento calculado antes não pode ficar');
+  const manual = { id: 'dem-manual', referencia: 'TESTE-DEM-2', fase: 'EMBARCADO', data_chegada: '', data_presenca: '', free_time: 21, demurrage_vencimento: '2026-11-30' };
+  await sandbox.salvarProcesso(manual, ['data_chegada', 'demurrage_vencimento']);
+  iguais(manual.demurrage_vencimento, '2026-11-30', 'vencimento digitado à mão na mesma edição fica');
+  const outro = { id: 'dem-outro', referencia: 'TESTE-DEM-3', fase: 'EMBARCADO', data_chegada: '', free_time: 21, demurrage_vencimento: '2026-11-30' };
+  await sandbox.salvarProcesso(outro, ['qtd_containers_prevista']);
+  iguais(outro.demurrage_vencimento, '2026-11-30', 'editar outro campo não mexe no vencimento');
+});
+
 await testeAsync('salvarProcesso: sem patchFields (chamada antiga/processo novo) continua recalculando tudo, igual sempre', async () => {
   sandbox.fetch = (url, opts) => Promise.resolve({ json: () => Promise.resolve({ ok: true }) });
   const proc = {
