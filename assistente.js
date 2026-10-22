@@ -23,6 +23,7 @@ const MODELO = 'claude-sonnet-5-5';
 const MODELO_RESERVA = 'claude-sonnet-4-6';
 const MAX_RODADAS = 6;        // no máximo N chamadas de ferramenta por pergunta
 const MAX_LINHAS = 60;        // linhas por resultado (a IA pede mais filtro se precisar)
+const LIM_CHEGADAS = 120;     // chegadas_por_periodo: um mês cheio cabe inteiro na lista
 
 // ── util ──────────────────────────────────────────────────────────────
 const hojeISO = () => AgendaServidor.hojeISO();
@@ -32,6 +33,17 @@ function parseJson(v, dflt) { if (!v) return dflt; if (typeof v === 'object') re
 function dataOk(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')); }
 function temModulo(sessao, ...mods) { const m = (sessao && sessao.modulos) || []; return mods.some(x => m.includes(x)); }
 function ehGerente(sessao) { return sessao && (sessao.role === 'gerente' || sessao.role === 'dono'); }
+// Data AAAA-MM-DD de um campo (aceita timestamp); vazio = null.
+function dataIso(v) { const s = String(v || '').slice(0, 10); return dataOk(s) ? s : null; }
+// A MESMA data da coluna "ETA / Chegada" do Controle (controle-core.js,
+// COLUNAS_TABELA campo 'eta'): a data de chegada lançada; sem ela, o ETA.
+function dataChegadaOuEta(p) { return dataIso(p.data_chegada) || dataIso(p.eta); }
+// Ids de fase de calcularFase (controle-core.js) e os nomes que a IA pode mandar
+// (antes a descrição listava ids que não existiam — PI_RECEBIDA, CHEGOU,
+// LIBERADO... — e o filtro voltava vazio). 21/10/2026.
+const ALIAS_FASE = { PI_RECEBIDA: 'PI', AG_EMBARQUE: 'AGUARDANDO_EMBARQUE', AGUARDANDO: 'AGUARDANDO_EMBARQUE',
+  REGISTRO_DI_DUIMP: 'REGISTRO_DI', REGISTRO_DUIMP: 'REGISTRO_DI', DEV_VAZIO: 'DEVOLUCAO_VAZIO', DEVOLUCAO: 'DEVOLUCAO_VAZIO' };
+function ehCancelado(p) { return !!(p && (p.cancelado || p._fase === 'CANCELADO' || p.fase === 'CANCELADO')); }
 
 // Campos "públicos" de um processo (sem nada financeiro) — o que Operacional/
 // Comercial já vê na tabela do Controle.
@@ -72,24 +84,34 @@ const FERRAMENTAS = [
   {
     nome: 'buscar_processos',
     modulos: ['controle', 'conferencia', 'financeiro', 'resultado', 'narcelio', 'cambio', 'analises', 'tyredesk'],
-    descricao: 'Lista processos de importação (embarques) com filtros. Use pra "quais processos do cliente X", "o que está em águas", "processos atrasados", "processos no porto Y". Devolve referência, cliente, fornecedor, fase, datas (embarque/ETA/chegada/liberação/carregamento) e porto. Fases: PI_RECEBIDA, AG_EMBARQUE, EMBARCADO, CHEGOU, DESEMBARACADO, LIBERADO, CARREGADO, FINALIZADO, CANCELADO.',
+    descricao: 'Lista processos de importação (embarques) com filtros. Use pra "quais processos do cliente X", "o que está em águas", "processos atrasados", "processos no porto Y". Devolve referência, cliente, fornecedor, fase, datas (embarque/ETA/chegada/liberação/carregamento) e porto. Fases (id → nome na tela): PI → PI Recebida, AGUARDANDO_EMBARQUE → Ag. Embarque, EMBARCADO, DESEMBARCADO, REGISTRO_DI → Registro DI/DUIMP, PARAMETRIZACAO, FATURAMENTO, CARREGAMENTO, DEVOLUCAO_VAZIO → Dev. Vazio, FINALIZADO; e as marcas FECHADO e CANCELADO.',
     schema: { type: 'object', properties: {
       cliente: { type: 'string', description: 'Parte do nome do cliente' },
       fornecedor: { type: 'string', description: 'Parte do nome do fornecedor ou da marca' },
       porto: { type: 'string', description: 'Porto de destino (ITJ, NVT, IOA, BRIBB...)' },
-      fase: { type: 'string', description: 'Fase exata ou "ATIVOS" (tudo que não é FINALIZADO/CANCELADO)' },
+      fase: { type: 'string', description: 'Id da fase (lista acima), "ATIVOS" (tudo que não é finalizado, fechado nem cancelado), "FECHADO" ou "CANCELADO"' },
       texto: { type: 'string', description: 'Busca livre em referência/cliente/fornecedor/navio/container' },
-      eta_de: { type: 'string', description: 'ETA a partir de (AAAA-MM-DD)' }, eta_ate: { type: 'string', description: 'ETA até (AAAA-MM-DD)' },
+      eta_de: { type: 'string', description: 'ETA/Chegada a partir de (AAAA-MM-DD) — mesma data da coluna "ETA / Chegada" do Controle: a data de chegada lançada; sem ela, o ETA' },
+      eta_ate: { type: 'string', description: 'ETA/Chegada até (AAAA-MM-DD), mesma regra do eta_de' },
       limite: { type: 'integer', description: 'Máximo de linhas (padrão 40, máx 60)' },
     } },
     async executar(input, ctx) {
       let r = filtrar(await ctx.processos(), input);
       if (input.fase) {
-        const f = norm(input.fase);
-        r = f === 'ATIVOS' ? r.filter(p => !['FINALIZADO', 'CANCELADO'].includes(p._fase)) : r.filter(p => p._fase === f);
+        // Cancelado e fechado são marcas do processo (p.cancelado / p.fechado),
+        // não fases calculadas — calcularFase nunca devolve CANCELADO (21/10/2026).
+        const f0 = norm(input.fase).replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+        const f = ALIAS_FASE[f0] || f0;
+        r = f === 'ATIVOS' ? r.filter(p => !ehCancelado(p) && p._fase !== 'FINALIZADO' && !p.fechado)
+          : f === 'CANCELADO' ? r.filter(ehCancelado)
+          : f === 'FECHADO' ? r.filter(p => !!p.fechado)
+          : r.filter(p => p._fase === f && !ehCancelado(p) && !p.fechado); // fechado fica na aba Fechado, como na tela
       }
-      if (dataOk(input.eta_de)) r = r.filter(p => p.eta && p.eta >= input.eta_de);
-      if (dataOk(input.eta_ate)) r = r.filter(p => p.eta && p.eta <= input.eta_ate);
+      // 21/10/2026: a data é a da coluna "ETA / Chegada" do Controle (chegada
+      // lançada; sem ela, o ETA) — antes olhava só o ETA e não batia com o
+      // filtro da tela quando a chegada real foi em outro dia.
+      if (dataOk(input.eta_de)) r = r.filter(p => { const d = dataChegadaOuEta(p); return d && d >= input.eta_de; });
+      if (dataOk(input.eta_ate)) r = r.filter(p => { const d = dataChegadaOuEta(p); return d && d <= input.eta_ate; });
       const total = r.length;
       const lim = Math.min(MAX_LINHAS, parseInt(input.limite, 10) || 40);
       return { total, mostrando: Math.min(total, lim), processos: r.slice(0, lim).map(p => resumoProcesso(p, p._fase)) };
@@ -127,23 +149,47 @@ const FERRAMENTAS = [
   {
     nome: 'chegadas_por_periodo',
     modulos: ['controle', 'conferencia', 'financeiro', 'resultado', 'narcelio', 'cambio', 'analises'],
-    descricao: 'Processos com chegada (ETA ou data de chegada) num período, agrupados por porto e cliente. Use pra "o que chega este mês/próximo mês". Sem datas = mês atual e o próximo.',
-    schema: { type: 'object', properties: { de: { type: 'string', description: 'AAAA-MM-DD' }, ate: { type: 'string', description: 'AAAA-MM-DD' } } },
+    descricao: 'Processos que CHEGARAM ou VÃO CHEGAR num período, pela mesma data da coluna "ETA / Chegada" do Controle (a data de chegada lançada; sem ela, o ETA). Conta TODAS as fases, inclusive FINALIZADO e fechados — só cancelado fica de fora. Separa os que já chegaram (data de chegada lançada) dos que só têm ETA (previsão). Use pra "quantos processos chegaram em setembro", "o que chega este mês/próximo mês", "chegadas do cliente X no trimestre". Sem datas = mês atual e o próximo.',
+    schema: { type: 'object', properties: {
+      de: { type: 'string', description: 'AAAA-MM-DD' }, ate: { type: 'string', description: 'AAAA-MM-DD' },
+      situacao: { type: 'string', description: '"chegaram" (só os com data de chegada lançada), "previstos" (só ETA, ainda sem chegada) ou "todos" (padrão)' },
+      porto: { type: 'string', description: 'Porto de destino (ITJ, NVT, IOA...)' },
+      cliente: { type: 'string', description: 'Parte do nome do cliente' },
+      fornecedor: { type: 'string', description: 'Parte do nome do fornecedor ou da marca' },
+    } },
     async executar(input, ctx) {
       const hoje = hojeISO();
       const de = dataOk(input.de) ? input.de : hoje.slice(0, 8) + '01';
       let ate = input.ate;
       if (!dataOk(ate)) { const d = new Date(de + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 2); d.setUTCDate(0); ate = d.toISOString().slice(0, 10); }
-      const r = (await ctx.processos()).filter(p => !['FINALIZADO', 'CANCELADO'].includes(p._fase)).map(p => ({ p, dt: p.data_chegada || p.eta })).filter(x => x.dt && x.dt >= de && x.dt <= ate);
-      const porPorto = {};
-      r.forEach(({ p, dt }) => { const k = p.porto_destino || '(sem porto)'; (porPorto[k] = porPorto[k] || []).push({ referencia: p.referencia, cliente: p.cliente, fornecedor: p.fornecedor, data: dt, chegou: !!p.data_chegada, containers: p.qtd_containers_prevista || null, fase: p._fase }); });
-      Object.values(porPorto).forEach(l => l.sort((a, b) => a.data.localeCompare(b.data)));
-      // Totais já contados aqui (por porto e por cliente) pra IA não estimar
+      // 21/10/2026 (Ayslan): "quantos chegaram em setembro" voltava 5 e o
+      // filtro do Controle mostrava 26 — a ferramenta deixava de fora os
+      // FINALIZADOS (tinha sido feita só pra "o que vai chegar"). Agora conta
+      // todas as fases; só cancelado sai, e separa chegou × só previsão.
+      let r = filtrar(await ctx.processos(), { porto: input.porto, cliente: input.cliente, fornecedor: input.fornecedor })
+        .filter(p => !ehCancelado(p))
+        .map(p => { const ch = dataIso(p.data_chegada); return { p, dt: dataChegadaOuEta(p), chegou: !!(ch && ch <= hoje) }; })
+        .filter(x => x.dt && x.dt >= de && x.dt <= ate);
+      const sit = norm(input.situacao);
+      if (sit.startsWith('CHEG')) r = r.filter(x => x.chegou);
+      else if (sit.startsWith('PREV')) r = r.filter(x => !x.chegou);
+      r.sort((a, b) => a.dt.localeCompare(b.dt) || String(a.p.referencia || '').localeCompare(String(b.p.referencia || '')));
+      const faseDe = p => p.fechado ? 'FECHADO' : (p._fase || p.fase || '(sem fase)');
+      // Totais já contados aqui (por porto, cliente e fase) pra IA não estimar
       // ("~47") contando linha a linha — 15/10/2026.
-      const porCliente = {}, totalPorPorto = {};
-      r.forEach(({ p }) => { const c = p.cliente || '(sem cliente)'; porCliente[c] = (porCliente[c] || 0) + 1; const k = p.porto_destino || '(sem porto)'; totalPorPorto[k] = (totalPorPorto[k] || 0) + 1; });
-      const totais_por_cliente = Object.entries(porCliente).sort((a, b) => b[1] - a[1]).map(([cliente, processos]) => ({ cliente, processos }));
-      return { periodo: { de, ate }, total: r.length, containers_total: r.reduce((s, x) => s + (parseInt(x.p.qtd_containers_prevista, 10) || 0), 0), totais_por_porto: totalPorPorto, totais_por_cliente, por_porto: porPorto, aviso: 'Use os totais exatos de totais_por_cliente/totais_por_porto; não estime.' };
+      const conta = chave => { const o = {}; r.forEach(x => { const k = chave(x.p); o[k] = (o[k] || 0) + 1; }); return o; };
+      const totais_por_cliente = Object.entries(conta(p => p.cliente || '(sem cliente)')).sort((a, b) => b[1] - a[1]).map(([cliente, processos]) => ({ cliente, processos }));
+      // A lista vai até LIM_CHEGADAS linhas (os totais acima são sempre de todos).
+      const linhas = r.slice(0, LIM_CHEGADAS);
+      const porPorto = {};
+      linhas.forEach(({ p, dt, chegou }) => { const k = p.porto_destino || '(sem porto)'; (porPorto[k] = porPorto[k] || []).push({ referencia: p.referencia, cliente: p.cliente, fornecedor: p.fornecedor, data: dt, chegou, containers: p.qtd_containers_prevista || null, fase: faseDe(p) }); });
+      return { periodo: { de, ate },
+        criterio: 'Data da coluna "ETA / Chegada" do Controle (data de chegada lançada; sem ela, o ETA). Todas as fases, inclusive finalizados e fechados; cancelados ficam de fora.',
+        total: r.length, ja_chegaram: r.filter(x => x.chegou).length, so_previsao: r.filter(x => !x.chegou).length,
+        containers_total: r.reduce((s, x) => s + (parseInt(x.p.qtd_containers_prevista, 10) || 0), 0),
+        totais_por_porto: conta(p => p.porto_destino || '(sem porto)'), totais_por_fase: conta(faseDe), totais_por_cliente,
+        mostrando: linhas.length, por_porto: porPorto,
+        aviso: 'Use os totais exatos (total, ja_chegaram, so_previsao, totais_por_*); não estime.' + (r.length > linhas.length ? ` A lista mostra só os ${linhas.length} primeiros por data — para ver o resto, peça um período menor ou filtre por porto/cliente.` : '') };
     },
   },
   {
@@ -376,12 +422,28 @@ REGRAS
 - Formato: respostas curtas. Listas de processos em tabela Markdown (Referência | Cliente | Fase | Data...). Valores em R$ com separador brasileiro (R$ 12.345,67) e US$ em dólar. Datas em dd/mm/aaaa.
 - Quando houver muitos resultados, resuma (totais por porto/cliente) e ofereça detalhar.
 - Contagens e totais sempre exatos, como vieram da ferramenta. Nunca use "~", "cerca de" ou estimativa em número de processos/containers/valores.
+- Perguntas sobre um período (ex.: "quantos chegaram em setembro") contam todos os processos do período, inclusive FINALIZADO e fechados — igual ao filtro da tela do Controle. Em chegadas, diga quantos já têm a chegada lançada e quantos só têm ETA (previsão).
 - A conversa tem histórico: use as mensagens anteriores como contexto (ex.: "e desse porto?" se refere ao porto citado antes).
 - Nunca mostre percentuais de comissão de vendedores nem nomes de comissionados.
 - Lucro e faturamento: use as ferramentas faturamento (rankings e períodos, agrupando por cliente/fornecedor/marca/país/mês/processo e ordenando por faturamento/lucro/margem) e resultado_processo (um processo, com o resultado por cliente e por NF quando tem vários clientes). São os mesmos números da tela Resultado. Ao responder lucro de cliente em processo com vários clientes, diga em uma linha como foi calculado (custo rateado pela quantidade de pneus, como na aba Vendas).
 - Se vier processos_para_conferir ou "atencao" (margem alta demais), avise que provavelmente faltam Custos Reais lançados e que isso infla o lucro.
 - "Mais lucro" = maior lucro em R$; "melhor margem" = maior lucro ÷ faturamento. Se a pessoa não disser o período, use o ano corrente e diga isso.
 - Ferramentas disponíveis para este usuário: ${ferramentas.map(f => f.nome).join(', ')}.`;
+}
+
+// Todos os processos, com a fase calculada pelo mesmo motor do Controle.
+// Paginado (21/10/2026): o Supabase devolve no máximo 1000 linhas por
+// consulta — com mais processos que isso, as contagens sairiam cortadas.
+async function carregarProcessos(sb, motor) {
+  const todos = [];
+  for (let ini = 0; ini < 20000; ini += 1000) {
+    const { data, error } = await sb().from('controle_processos').select('*')
+      .order('updated_at', { ascending: false }).order('id', { ascending: true }).range(ini, ini + 999);
+    if (error) throw new Error(error.message);
+    todos.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return todos.map(p => { let f = p.fase; try { f = motor ? motor.calcularFase(p) : p.fase; } catch (e) {} return Object.assign({ _fase: f }, p); });
 }
 
 // mensagens: [{role:'user'|'assistant', content: string}] (histórico simples, texto)
@@ -399,9 +461,7 @@ async function responder({ sessao, mensagens, ctx }) {
     sb: ctx.sb, sessao, motor, carregarListas: ctx.carregarListas,
     processos: async () => {
       if (_procs) return _procs;
-      const { data, error } = await ctx.sb().from('controle_processos').select('*').order('updated_at', { ascending: false });
-      if (error) throw new Error(error.message);
-      _procs = (data || []).map(p => { let f = p.fase; try { f = motor ? motor.calcularFase(p) : p.fase; } catch (e) {} return Object.assign({ _fase: f }, p); });
+      _procs = await carregarProcessos(ctx.sb, motor);
       return _procs;
     },
   };
@@ -446,4 +506,4 @@ async function responder({ sessao, mensagens, ctx }) {
   return { texto: texto || 'Não consegui montar uma resposta.', ferramentas: usadas, tokens };
 }
 
-module.exports = { responder, ferramentasPara, FERRAMENTAS, systemPrompt, resumoProcesso, filtrar };
+module.exports = { responder, ferramentasPara, FERRAMENTAS, systemPrompt, resumoProcesso, filtrar, carregarProcessos, dataChegadaOuEta };
