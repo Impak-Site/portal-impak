@@ -131,6 +131,19 @@ teste('histórico: dia 1 abre, dia 2 (campo preenchido) fecha com data e tipo au
   const r3 = await S.atualizarHistorico(ctx, { hoje: '2026-10-14' }); // idempotente
   assert.strictEqual(r3.novas, 0); assert.strictEqual(r3.fechadas, 0);
 });
+teste('histórico: lote com tarefa nova + tarefa que mudou de prazo não manda aberta_em vazio (NOT NULL)', async () => {
+  const estado = { controle_processos: [{ id: 'p1', referencia: 'P1', pi_data: '2026-10-09', created_at: '2026-10-09' }], agenda_conclusoes: [], agenda_historico: [] };
+  const sbBase = sbFalso(estado);
+  // como o PostgREST: no lote, coluna presente em alguma linha e ausente/nula em outra = null → viola NOT NULL
+  const sbNotNull = () => { const c = sbBase(); return { from: (t) => { const q = c.from(t); const up = q.upsert; q.upsert = (rows) => { const arr = Array.isArray(rows) ? rows : [rows]; if (t === 'agenda_historico' && arr.some(r => r.aberta_em == null)) return { then: (res) => res({ error: { message: 'null value in column "aberta_em" violates not-null constraint' } }) }; return up(rows); }; return q; } }; };
+  const ctx = { sb: sbNotNull, carregarListas: async () => ({ listas: null }) };
+  await S.atualizarHistorico(ctx, { hoje: '2026-10-13' });
+  const h = estado.agenda_historico[0]; h.prazo = '2000-01-01'; // força "mudou de prazo"
+  estado.controle_processos.push({ id: 'p2', referencia: 'P2', pi_data: '2026-10-14', created_at: '2026-10-14' }); // tarefas novas
+  const r = await S.atualizarHistorico(ctx, { hoje: '2026-10-14' });
+  assert.ok(r.novas > 0, 'tarefas novas gravadas');
+  assert.strictEqual(estado.agenda_historico.find(x => x.chave === h.chave).aberta_em, '2026-10-13', 'mantém a data em que abriu');
+});
 teste('histórico: marcada "Não se aplica" fecha com tipo nao_aplica', async () => {
   const estado = { controle_processos: [{ id: 'p1', referencia: 'P1', pi_data: '2026-10-09', created_at: '2026-10-09' }], agenda_conclusoes: [], agenda_historico: [] };
   const ctx = { sb: sbFalso(estado), carregarListas: async () => ({ listas: null }) };
