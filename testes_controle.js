@@ -1197,6 +1197,62 @@ await testeAsync('servidor recusa o ID no Conexos repetido (400): marca o campo,
   }
 });
 
+// ── Cliente da importação própria pela NF de venda (21/10/2026, Jean) ──
+// Processo Direto aberto sem cliente ficava "IMPAK" na lista mesmo com a NF
+// de venda toda para um cliente só. Valores fictícios.
+const PROD10 = JSON.stringify([{ descricao:'PNEU 295/80R22.5 MODELO X', quantidade:10 }]);
+let _nfSeqCli = 9100;
+const vendaCli = (cli, q, cfop) => ({ cliente: cli, nf_saida_numero: String(_nfSeqCli++), nf_saida_cfop: cfop || '5102', itens:[{ descricao:'PNEU 295/80R22.5 MODELO X', quantidade:q }] });
+teste('cliente pela NF de venda: IMPAK (ou vazio) + venda toda para um cliente só → vira esse cliente', () => {
+  const f = sandbox.clienteDaVendaDoProcesso;
+  iguais(f({ cliente:'IMPAK COMERCIAL E IMPORTADORA LTDA', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('CLIENTE EXEMPLO LTDA', 10)]) }).nome, 'CLIENTE EXEMPLO LTDA');
+  iguais(f({ cliente:'', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('CLIENTE EXEMPLO LTDA', 10)]) }).nome, 'CLIENTE EXEMPLO LTDA');
+  iguais(f({ cliente:'Impak', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('Cliente Exemplo Ltda', 4), vendaCli('CLIENTE EXEMPLO LTDA.', 6)]) }).nome, 'Cliente Exemplo Ltda', 'duas NFs do mesmo cliente (escrita diferente)');
+  iguais(f({ cliente:'IMPAK', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('ARMAZEM EXEMPLO LTDA', 10, '5905'), vendaCli('CLIENTE EXEMPLO LTDA', 10)]) }).nome, 'CLIENTE EXEMPLO LTDA', 'remessa para armazém não conta');
+  iguais(f({ cliente:'IMPAK', vendas_json: JSON.stringify([vendaCli('CLIENTE EXEMPLO LTDA', 10)]) }).nome, 'CLIENTE EXEMPLO LTDA', 'sem produtos cadastrados vale a venda');
+});
+teste('cliente pela NF de venda: fica como está quando não é a venda toda para um cliente só', () => {
+  const f = sandbox.clienteDaVendaDoProcesso;
+  iguais(f({ cliente:'IMPAK', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('CLIENTE A LTDA', 5), vendaCli('CLIENTE B LTDA', 5)]) }), null, 'dois clientes: fica IMPAK (+1)');
+  iguais(f({ cliente:'IMPAK', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('CLIENTE EXEMPLO LTDA', 8)]) }), null, 'sobrou pneu sem venda (estoque)');
+  iguais(f({ cliente:'IMPAK', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('IMPAK FILIAL', 2), vendaCli('CLIENTE EXEMPLO LTDA', 8)]) }), null, 'parte foi para a própria IMPAK');
+  iguais(f({ cliente:'IMPAK', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('ARMAZEM EXEMPLO LTDA', 10, '5905')]) }), null, 'só remessa: é estoque');
+  iguais(f({ cliente:'OUTRO CLIENTE LTDA', produtos_json: PROD10, vendas_json: JSON.stringify([vendaCli('CLIENTE EXEMPLO LTDA', 10)]) }), null, 'cliente de verdade no processo não é trocado');
+  iguais(f({ cliente:'IMPAK', produtos_json: PROD10, vendas_json: '[]' }), null, 'sem venda');
+});
+await testeAsync('Salvar: processo IMPAK com a NF de venda toda para um cliente → Cliente do processo vira o da NF (com Histórico)', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  let enviado = null, campos = null;
+  const vendas = JSON.stringify([vendaCli('CLIENTE EXEMPLO LTDA', 10)]);
+  try {
+    sandbox.salvarProcesso = async (p, pf) => { enviado = p; campos = pf; return true; };
+    prepararPainel({ id:'cv-a', referencia:'TESTE-CV-A', cliente:'IMPAK COMERCIAL E IMPORTADORA LTDA', produtos_json: PROD10, vendas_json: vendas, log:[] }, [{ id:'cv-a', referencia:'TESTE-CV-A' }]);
+    sandbox.document.getElementById('f_cliente').value = 'IMPAK COMERCIAL E IMPORTADORA LTDA';
+    vm.runInContext(`_produtos = ${PROD10}; _vendas = ${vendas};`, sandbox);
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    iguais(enviado && enviado.cliente, 'CLIENTE EXEMPLO LTDA');
+    verdadeiro(Array.isArray(campos) && campos.includes('cliente'), JSON.stringify(campos));
+    verdadeiro((enviado.log || []).some(l => l.campo === 'cliente' && /IMPAK/.test(l.valor_antes) && l.valor_depois === 'CLIENTE EXEMPLO LTDA'), JSON.stringify(enviado.log));
+    // dois clientes: não mexe
+    enviado = null;
+    const vendas2 = JSON.stringify([vendaCli('CLIENTE A LTDA', 5), vendaCli('CLIENTE B LTDA', 5)]);
+    prepararPainel({ id:'cv-b', referencia:'TESTE-CV-B', cliente:'IMPAK COMERCIAL E IMPORTADORA LTDA', produtos_json: PROD10, vendas_json: vendas2, obs:'', log:[] }, [{ id:'cv-b', referencia:'TESTE-CV-B' }]);
+    sandbox.document.getElementById('f_cliente').value = 'IMPAK COMERCIAL E IMPORTADORA LTDA';
+    sandbox.document.getElementById('f_obs').value = 'nota';
+    vm.runInContext(`_produtos = ${PROD10}; _vendas = ${vendas2};`, sandbox);
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await esperarSalvar();
+    iguais(enviado && enviado.cliente, 'IMPAK COMERCIAL E IMPORTADORA LTDA');
+  } finally {
+    sandbox.salvarProcesso = salvarOriginal;
+    sandbox.document.getElementById('f_cliente').value = '';
+    sandbox.document.getElementById('f_obs').value = '';
+    vm.runInContext(`_produtos = []; _vendas = [];`, sandbox);
+    limparPainel();
+  }
+});
+
 await testeAsync('câmbio do dia só vira pi_cambio quando a cotação carregou de verdade (antes gravava 1,00)', async () => {
   const corpos = [];
   sandbox.fetch = (url, opts) => { if (opts && opts.method === 'POST') corpos.push(JSON.parse(opts.body).processo); return Promise.resolve({ status: 200, json: () => Promise.resolve({ ok:true }) }); };

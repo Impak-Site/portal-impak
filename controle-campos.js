@@ -268,6 +268,18 @@ function coletarESalvar(opts){
     }
   }
 
+  // Importação própria vendida inteira para um cliente só: o Cliente do
+  // processo passa a ser quem comprou (21/10/2026, Jean — HK70038 aparecia
+  // como IMPAK; ver clienteDaVendaDoProcesso em controle-core.js).
+  if(typeof clienteDaVendaDoProcesso === 'function'){
+    const elCli = document.getElementById('f_cliente');
+    const cv = elCli ? clienteDaVendaDoProcesso({ cliente: elCli.value, vendas_json: JSON.stringify(_vendas || []), produtos_json: JSON.stringify(_produtos || []) }) : null;
+    if(cv){
+      elCli.value = cv.nome;
+      showToast('Cliente do processo: ' + cv.nome + ' — a NF de venda é toda dele (importação própria).', 'ok');
+    }
+  }
+
   const antigo = {...(_editando||{})};
   const campos = [
     'referencia','finalidade','fornecedor','brand','conexos_id','qtd_containers_prevista','cliente','produto','obs',

@@ -3849,6 +3849,32 @@ function vendaEhRetorno(v){ return !!v && ehCfopRetornoRemessa(v.nf_saida_cfop);
 function vendaEhRemessa(v){ return !!v && ehCfopRemessaEstoque(v.nf_saida_cfop); }
 function vendasReaisDoProcesso(p){ return parseVendas(p).filter(v => !ehCfopSemVenda(v && v.nf_saida_cfop)); }
 
+// ── Cliente da importação própria pela NF de venda (21/10/2026, Jean) ──
+// Processo Direto (importação própria) aberto sem cliente ficava "IMPAK +1"
+// na lista mesmo com a NF de saída inteira para um cliente só (ex.: HK70038):
+// o Cliente do processo nunca era trocado pelo de quem comprou.
+// Regra: cliente do processo vazio ou IMPAK + todas as vendas (NF de venda;
+// remessa, retorno e baixa não contam) para UM cliente só + nada sobrando sem
+// venda (quando dá pra saber a quantidade) → o cliente do processo passa a ser
+// esse. Vendido para vários clientes, ou ainda com pneu sem venda (estoque),
+// continua IMPAK (a lista mostra "+N"). Usado ao salvar (controle-campos.js).
+function ehClienteImpak(nome){ return /\bIMPAK\b/i.test(String(nome || '')); }
+function clienteDaVendaDoProcesso(p){
+  if(!p) return null;
+  const atual = String(p.cliente || '').trim();
+  if(atual && !ehClienteImpak(atual)) return null; // já tem cliente de verdade
+  const chave = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const vendas = vendasReaisDoProcesso(p).filter(v => v && String(v.cliente || '').trim() && !ehClienteImpak(v.cliente));
+  if(!vendas.length) return null;
+  if(new Set(vendas.map(v => chave(v.cliente))).size !== 1) return null;
+  const total = totalQuantidadeProdutos(p);
+  if(total > 0){
+    const vendido = vendas.reduce((s, v) => s + quantidadeVenda(v), 0);
+    if(vendido < total) return null; // ainda tem pneu sem venda (estoque)
+  }
+  return { nome: String(vendas[0].cliente).trim(), cliente_id: vendas[0].cliente_id || null };
+}
+
 // ── NCMs da DI/DUIMP com quebra de quantidade/peso (pedido Emanuelly
 // 28/09/2026: reciclagem precisa de qtd e peso SEPARADOS por NCM). Guardado
 // no próprio campo di_ncms (texto), sem migration:
