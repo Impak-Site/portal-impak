@@ -423,6 +423,22 @@ teste('Devolução do vazio + Status RIC Termo (não isento) COM data de pagamen
 teste('Devolução do vazio + data de pagamento da lavagem preenchida mesmo sem Status RIC definido -> finaliza', () => {
   iguais(sandbox.calcularFase({ data_devolucao_vazio: '2026-06-30', data_pagamento_lavagem: '2026-07-02' }), 'FINALIZADO');
 });
+// Finalizados antes da regra do RIC (04/09/2026) continuam finalizados —
+// editar uma data/NF num deles não pode fazer a fase voltar (22/10/2026).
+teste('Finalizado antes da regra do RIC (sem Status RIC) continua FINALIZADO ao recalcular a fase', () => {
+  iguais(sandbox.calcularFase({ fase:'FINALIZADO', data_carregamento:'2026-07-20', data_devolucao_vazio:'2026-07-28' }), 'FINALIZADO', 'devolução antes de 04/09');
+  iguais(sandbox.calcularFase({ fase:'FINALIZADO', data_liberacao:'2025-08-10', nf_entrada_numero:'1' }), 'FINALIZADO', 'processo antigo sem data de carregamento/devolução');
+  iguais(sandbox.calcularFase({ fase:'FINALIZADO', nf_entrada_numero:'1' }), 'FINALIZADO', 'sem nenhuma data de fim');
+});
+teste('Finalizado antigo: preencher o Status RIC (ou a lavagem) volta a aplicar a regra nova', () => {
+  iguais(sandbox.calcularFase({ fase:'FINALIZADO', data_devolucao_vazio:'2026-07-28', ric_status:'Termo' }), 'DEVOLUCAO_VAZIO');
+  iguais(sandbox.calcularFase({ fase:'FINALIZADO', data_devolucao_vazio:'2026-07-28', ric_status:'Isento' }), 'FINALIZADO');
+});
+teste('Regra do RIC vale para quem terminou depois de 04/09 e para quem ainda não estava FINALIZADO', () => {
+  iguais(sandbox.calcularFase({ fase:'FINALIZADO', data_devolucao_vazio:'2026-09-20' }), 'DEVOLUCAO_VAZIO', 'devolução depois da regra');
+  iguais(sandbox.calcularFase({ fase:'DEVOLUCAO_VAZIO', data_devolucao_vazio:'2026-07-28' }), 'DEVOLUCAO_VAZIO', 'não estava finalizado');
+  iguais(sandbox.calcularFase({ fase:'FINALIZADO', cancelado:true, data_devolucao_vazio:'2026-07-28' }), 'DEVOLUCAO_VAZIO', 'cancelado não entra na trava');
+});
 teste('Devolução do vazio tem prioridade MÁXIMA mesmo com tudo preenchido (mas ainda depende de RIC/Lavagem pra finalizar)', () => {
   iguais(sandbox.calcularFase({
     etd:'2026-01-01', hbl:'X', data_chegada:'2026-02-01', numero_di:'1',

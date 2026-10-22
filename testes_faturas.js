@@ -117,6 +117,13 @@ teste('taxaPorDescricao reconhece as linhas comuns das faturas de armador/agente
   assert.strictEqual(F.taxaPorDescricao('TERMINAL SECURITY CHARGE'), 'tsc', 'TSC é taxa própria (o catálogo tem "TSC - Terminal Sec. Charge")');
   assert.strictEqual(F.taxaPorDescricao('ISPS - TERMINAL'), 'isps');
   assert.strictEqual(F.taxaPorDescricao('EQUIPMENT LOGISTIC FEE'), 'import_logistics');
+  // nota de débito do agente (22/10/2026): Costs at Origin = Additional Costs, Container Logistics Fee = CRS, Bunker = frete
+  assert.strictEqual(F.taxaPorDescricao('Costs at Origin'), 'additional_costs');
+  assert.strictEqual(F.taxaPorDescricao('Additional Costs'), 'additional_costs');
+  assert.strictEqual(F.taxaPorDescricao('Container Logistics Fee'), 'trs');
+  assert.strictEqual(F.taxaPorDescricao('Import Logistics Fee'), 'import_logistics', 'continua na linha própria');
+  assert.strictEqual(F.taxaPorDescricao('Bunker of Origin'), 'frete');
+  assert.strictEqual(F.taxaPorDescricao('Ocean Freight (carrier fees included)'), 'frete');
   assert.strictEqual(F.taxaPorDescricao('Honorários despachante'), 'despachante');
   assert.strictEqual(F.taxaPorDescricao('LOW WATER SURCHARGE'), null);
   assert.strictEqual(F.taxaPorDescricao(''), null);
