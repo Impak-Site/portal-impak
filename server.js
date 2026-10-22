@@ -3733,7 +3733,11 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
       // Exceção (25/09/2026): peso/NCM da DI/DUIMP são dados da Reciclagem
       // (relação trimestral pro cliente) e não mexem em nada financeiro —
       // podem ser completados mesmo com o processo fechado.
-      const soDadosReciclagem = Object.keys(processo).every(k => ['id','di_peso_liquido','di_ncms'].includes(k));
+      // + taxa do dólar e total em R$ da DI (21/10/2026): só informativos, saem
+      // no cabeçalho do DRE (Check-list Fechamento Importação). "log" e
+      // "_base_updated_at" podem vir junto pra mudança aparecer no Histórico.
+      const soDadosReciclagem = Object.keys(processo).every(k => ['id','di_peso_liquido','di_ncms','di_taxa_cambio','di_valor_aduaneiro','log','_base_updated_at'].includes(k))
+        && Object.keys(processo).some(k => ['di_peso_liquido','di_ncms','di_taxa_cambio','di_valor_aduaneiro'].includes(k));
       // Exceção (29/09/2026): CFOP das NFs de saída é só classificação fiscal
       // (não muda valor nenhum). Em processo fechado, aceita um vendas_json
       // que seja IDÊNTICO ao salvo exceto pelo nf_saida_cfop de cada venda.

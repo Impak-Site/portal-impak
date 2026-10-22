@@ -3386,6 +3386,49 @@ function custosReaisIncompletos(p){
 // as outras linhas continuam fixas (com 0,00) como na planilha.
 function dreLinhasVisiveis(itens){ return (itens||[]).filter(i => !(i.pacote && !(Math.abs(i.valor||0) >= 0.005))); }
 
+// Cabeçalho "CHECK-LIST FECHAMENTO IMPORTAÇÃO" do DRE do processo (pedido do
+// Ayslan, 21/10/2026 — o mesmo bloco da planilha de fechamento que vai pro
+// contador): DI, DA (data de registro da DI), Processo, Fornecedor, NF de
+// Entrada, Qtde, Taxa DI, Frete (incoterm) e FOB em US$ e em R$. O R$ é o da
+// planilha: o TOTAL da DI em reais (FOB + frete + seguro na taxa da DI, o
+// valor aduaneiro — "TOTAL: USD ... - BRL ..." nas informações complementares
+// da DUIMP); sem ele, FOB × Taxa DI. Função pura (sem DOM).
+function cabecalhoChecklistFechamento(p){
+  p = p || {};
+  const num = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
+  let parcelas = [];
+  try{ const x = typeof p.pi_parcelas_json === 'string' ? JSON.parse(p.pi_parcelas_json || '[]') : (p.pi_parcelas_json || []); if(Array.isArray(x)) parcelas = x; }catch(e){ parcelas = []; }
+  const duimpParcela = (parcelas.find(pc => pc && pc.duimp_numero) || {}).duimp_numero || '';
+  const di = String(p.numero_di || p.pi_duimp_numero || duimpParcela || '').trim();
+  const qtde = typeof totalQuantidadeProdutos === 'function' ? (totalQuantidadeProdutos(p) || null) : null;
+  const taxaDi = num(p.di_taxa_cambio);
+  const fobUsd = num(p.ci_valor_usd) || num(p.pi_valor_usd);
+  const aduaneiro = num(p.di_valor_aduaneiro);
+  const fobBrl = aduaneiro != null ? aduaneiro
+    : (fobUsd != null && taxaDi != null ? Math.round(fobUsd * taxaDi * 100) / 100 : null);
+  return {
+    di, da: p.data_registro_di ? String(p.data_registro_di).slice(0, 10) : '',
+    processo: p.referencia || '', fornecedor: p.fornecedor || '',
+    nfEntrada: p.nf_entrada_numero ? String(p.nf_entrada_numero) : '',
+    qtde, taxaDi, frete: p.pi_incoterm || '',
+    fobUsd, fobBrl, fobBrlOrigem: aduaneiro != null ? 'di' : (fobBrl != null ? 'fob_x_taxa' : ''),
+  };
+}
+// Linhas do cabeçalho, na ordem da planilha (tela, Excel e PDF usam a mesma).
+function linhasCabecalhoChecklist(c){
+  c = c || {};
+  const dataBR = s => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(8, 10) + '/' + String(s).slice(5, 7) + '/' + String(s).slice(0, 4) : '';
+  const fmt = (v, casas) => v == null ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+  return [
+    { rotulo: 'DI', valor: c.di || '', rotulo2: 'DA', valor2: dataBR(c.da) },
+    { rotulo: 'Processo', valor: c.processo || '', rotulo2: '', valor2: '' },
+    { rotulo: 'Fornecedor', valor: c.fornecedor || '', rotulo2: '', valor2: '' },
+    { rotulo: 'NF Entrada', valor: c.nfEntrada || '', rotulo2: 'QTDE', valor2: c.qtde != null ? fmt(c.qtde, 0) : '' },
+    { rotulo: 'Taxa DI', valor: c.taxaDi != null ? fmt(c.taxaDi, 4) : '', rotulo2: 'FRETE', valor2: c.frete || '' },
+    { rotulo: 'FOB', valor: c.fobUsd != null ? 'US$ ' + fmt(c.fobUsd, 2) : '', rotulo2: '', valor2: c.fobBrl != null ? 'R$ ' + fmt(c.fobBrl, 2) : '', destaque: true },
+  ];
+}
+
 function montarDRE(p){
   const v = id => valorRealItemBRL(p, id);
 
@@ -3522,6 +3565,7 @@ function montarDRE(p){
 
   return {
     referencia: p.referencia || '',
+    cabecalho: cabecalhoChecklistFechamento(p),
     nfSaidaNumero,
     nfSaidaValor, jurosCobrado, totalReceita,
     fob, adiantamentoItens, totalAdiantamento,

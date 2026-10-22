@@ -2254,6 +2254,35 @@ teste('montarDRE: Emissão L.I. (valor pago) aparece como linha no Adiantamento'
   iguais(li.valor, 850, 'deveria usar o valor PAGO, não o cobrado');
 });
 
+// Pedido do Ayslan (21/10/2026): cabeçalho "CHECK-LIST FECHAMENTO IMPORTAÇÃO"
+// no DRE do processo (valores fictícios).
+teste('montarDRE: cabeçalho do check-list com DI, DA, NF, Qtde, Taxa DI, Frete e FOB US$/R$ (total da DI)', () => {
+  const dre = sandbox.montarDRE({
+    referencia: 'TESTE-001', fornecedor: 'EXPORTADORA EXEMPLO LTD', numero_di: '26BR0000000001-0', data_registro_di: '2026-03-05',
+    nf_entrada_numero: '1234', pi_incoterm: 'FOB', ci_valor_usd: 10000, pi_valor_usd: 10500,
+    produtos_json: JSON.stringify([{ descricao: 'A', quantidade: 100 }, { descricao: 'B', quantidade: 20 }]),
+    di_taxa_cambio: 5.1234, di_valor_aduaneiro: 55000.5, real_json: {},
+  });
+  const c = dre.cabecalho;
+  iguais(c.di, '26BR0000000001-0'); iguais(c.da, '2026-03-05'); iguais(c.processo, 'TESTE-001');
+  iguais(c.fornecedor, 'EXPORTADORA EXEMPLO LTD'); iguais(c.nfEntrada, '1234'); iguais(c.qtde, 120);
+  iguais(c.taxaDi, 5.1234); iguais(c.frete, 'FOB');
+  iguais(c.fobUsd, 10000, 'FOB em US$ = valor da CI (antes da PI)');
+  iguais(c.fobBrl, 55000.5, 'R$ = total da DI quando informado'); iguais(c.fobBrlOrigem, 'di');
+  const linhas = sandbox.linhasCabecalhoChecklist(c);
+  iguais(linhas.map(l => l.rotulo).join('|'), 'DI|Processo|Fornecedor|NF Entrada|Taxa DI|FOB');
+  iguais(linhas[0].valor2, '05/03/2026'); iguais(linhas[3].valor2, '120'); iguais(linhas[4].valor, '5,1234');
+  iguais(linhas[5].valor, 'US$ 10.000,00'); iguais(linhas[5].valor2, 'R$ 55.000,50');
+});
+teste('cabeçalho do check-list: sem o total da DI usa FOB × Taxa DI; sem taxa fica em branco; Nº DUIMP da parcela se faltar o da DI', () => {
+  const a = sandbox.cabecalhoChecklistFechamento({ pi_valor_usd: 2000, di_taxa_cambio: 5.5 });
+  iguais(a.fobUsd, 2000); iguais(a.fobBrl, 11000); iguais(a.fobBrlOrigem, 'fob_x_taxa');
+  const b = sandbox.cabecalhoChecklistFechamento({ pi_valor_usd: 2000, pi_parcelas_json: JSON.stringify([{ duimp_numero: '' }, { duimp_numero: '26BR0000000002-0' }]) });
+  iguais(b.fobBrl, null); iguais(b.taxaDi, null); iguais(b.di, '26BR0000000002-0');
+  const linhas = sandbox.linhasCabecalhoChecklist(b);
+  iguais(linhas[4].valor, ''); iguais(linhas[5].valor2, '');
+});
+
 // ── TESTES: montarDREConsolidado() — DRE Consolidado (11/09/2026) ─
 // Pedido do Ayslan: "fizemos um DRE por processo. tem como fazermos um
 // DRE consolidado por semana, mes, ano... por cliente e alguns outros

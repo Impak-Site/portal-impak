@@ -768,6 +768,10 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
             <input class="form-input" id="f_di_peso_liquido" inputmode="decimal" value="${p.di_peso_liquido!=null&&p.di_peso_liquido!==''?esc(String(p.di_peso_liquido).replace('.',',')):''}" placeholder="ex: 15780,76 — usado na Reciclagem (70%)"></div>
           <div class="form-group"><label class="form-label">NCM(s) da DI/DUIMP</label>
             <input class="form-input" id="f_di_ncms" value="${esc(p.di_ncms||'')}" placeholder="ex: 4011.20.90"></div>
+          <div class="form-group"><label class="form-label">Taxa do dólar da DI/DUIMP</label>
+            <input class="form-input" type="number" step="0.0001" id="f_di_taxa_cambio" value="${p.di_taxa_cambio!=null&&p.di_taxa_cambio!==''?esc(String(p.di_taxa_cambio)):''}" placeholder="ex: 5,0908 (TAXA USD da declaração)"></div>
+          <div class="form-group"><label class="form-label">Total da DI/DUIMP em R$</label>
+            <input class="form-input" type="text" inputmode="decimal" id="f_di_valor_aduaneiro" value="${exibirMoeda(p.di_valor_aduaneiro)}" placeholder="FOB + frete + seguro na taxa da DI" oninput="formatarMoedaInput(this)"></div>
           <div class="form-group"><label class="form-label">Canal</label>
             <select class="form-input" id="f_canal" onchange="aplicarRegraParametrizacaoVerde();atualizarFaseEmTempoReal()">
               <option value="">—</option>
@@ -1042,6 +1046,22 @@ function renderDREModalHtml(dre){
   const avisoCustos = dre.avisoCustos
     ? `<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;">⚠ ${esc(dre.avisoCustos)}</div>`
     : '';
+  // Cabeçalho "Check-list Fechamento Importação" (21/10/2026) — o mesmo
+  // bloco da planilha de fechamento, com os dados do processo.
+  const cab = dre.cabecalho || {};
+  const tdR = 'padding:4px 8px;border:1px solid #cbd5e1;font-weight:600;white-space:nowrap;';
+  const tdV = 'padding:4px 8px;border:1px solid #cbd5e1;background:#fbe5d6;';
+  const tdVazio = 'padding:4px 8px;border:1px solid #cbd5e1;';
+  const notaFob = cab.fobBrlOrigem === 'di' ? 'Total da DI em R$ (FOB + frete + seguro na taxa da DI)'
+    : cab.fobBrlOrigem === 'fob_x_taxa' ? 'FOB × Taxa DI (sem o total da DI em R$ no processo)' : '';
+  const cabecalhoHtml = `
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:14px;" aria-label="Check-list Fechamento Importação">
+        <tr><td colspan="4" style="padding:6px 8px;border:1px solid #cbd5e1;text-align:center;font-weight:700;letter-spacing:.02em;">CHECK-LIST FECHAMENTO IMPORTAÇÃO</td></tr>
+        ${linhasCabecalhoChecklist(cab).map(l => l.destaque
+          ? `<tr style="background:#dbeaf5;"><td style="${tdVazio}"></td><td style="${tdR}">${esc(l.rotulo)}</td><td style="${tdVazio}text-align:right;font-family:'JetBrains Mono',monospace;">${esc(l.valor) || '—'}</td><td style="${tdVazio}text-align:right;font-family:'JetBrains Mono',monospace;" title="${esc(notaFob)}">${esc(l.valor2) || '—'}</td></tr>`
+          : `<tr><td style="${tdR}">${esc(l.rotulo)}</td><td style="${l.valor ? tdV : tdVazio}">${esc(l.valor) || '<span style="color:var(--muted);">—</span>'}</td><td style="${tdR}">${esc(l.rotulo2)}</td><td style="${l.rotulo2 ? (l.valor2 ? tdV : tdVazio) : tdVazio}${/^(QTDE)$/.test(l.rotulo2) ? 'text-align:right;' : ''}">${l.rotulo2 ? (esc(l.valor2) || '<span style="color:var(--muted);">—</span>') : ''}</td></tr>`).join('')}
+      </table>
+      ${notaFob ? `<div style="font-size:11px;color:var(--muted);margin:-10px 0 12px;">FOB em R$: ${esc(notaFob)}.</div>` : ''}`;
 
   return `
   <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this) fecharDRE()">
@@ -1050,6 +1070,7 @@ function renderDREModalHtml(dre){
         <h3 style="margin:0;">📊 DRE — Processo ${esc(dre.referencia)}</h3>
         <button class="btn btn-outline" onclick="fecharDRE()">✕</button>
       </div>
+      ${cabecalhoHtml}
       ${avisoCustos}
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <tr><td style="padding:5px 8px;font-weight:600;">Nota fiscal de Saída${dre.nfSaidaNumero?' — Nfe '+esc(dre.nfSaidaNumero):''}</td>
@@ -2377,6 +2398,7 @@ const LABELS_CAMPOS_IA = {
   peso_bruto:'Peso bruto', volumes:'Volumes', data_chegada:'Data de chegada', data_presenca:'Data de presença de carga',
   demurrage_vencimento:'Vencimento Demurrage', armazenagem_vencimento:'Vencimento Armazenagem',
   data_registro_di:'Data de Registro da DI/DUIMP', di_peso_liquido:'Peso Total da DI/DUIMP', di_ncms:'NCM(s) da DI/DUIMP', numero_di:'Nº DI/DUIMP', canal:'Canal',
+  di_taxa_cambio:'Taxa do dólar da DI/DUIMP', di_valor_aduaneiro:'Total da DI/DUIMP em R$',
   data_parametrizacao:'Data de Parametrização da DI/DUIMP', data_liberacao:'Data liberação',
   ci_numero:'Nº CI', ci_data:'Data CI', ci_valor_usd:'Valor CI (USD)',
   ce_master:'CE Master', ce_house:'CE House', ce_data_embarque:'Data embarque (CE)', pendencia_revisao:'Pendência/Revisão',

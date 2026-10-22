@@ -671,6 +671,8 @@ async function extrairComIA_umArquivo(input){
   "data_registro_di": "YYYY-MM-DD",  // "DATA DO REGISTRO" no Comprovante de Importação/Extrato da DI. Se for uma DUIMP, usar a data do evento "Declaração registrada" no histórico/timeline do documento (ex: "27/07/2026, 19:13" → "2026-07-27").
   "di_tributos": {},  // SOMENTE para DI/DUIMP: tributos federais da declaração em R$ (valor A RECOLHER / RECOLHIDO, não o "calculado" nem o "suspenso"), TOTAL da declaração (somando todos os itens/adições): {"ii":0,"ipi":0,"pis":0,"cofins":0,"siscomex":0,"antidumping":0,"afrmm":0}. "siscomex" = Taxa de Utilização do Siscomex; "afrmm" = AFRMM (Marinha Mercante) quando o documento trouxer o valor. Use 0 para o que não aparecer. Deixar {} para outros documentos.
   "canal": "VERDE|AMARELO|VERMELHO",  // "CANAL DE CONFERENCIA ADUANEIRA" no Comprovante de Importação/Extrato da DI
+  "di_taxa_cambio": 0,  // SOMENTE para DI/DUIMP: taxa do dólar (USD) usada na declaração — ex.: "TAXA USD: 5,0908" nas Informações Complementares, ou a taxa de câmbio do USD nos dados da declaração. Copie com todas as casas impressas (ex.: 5.0908). 0 para outros documentos.
+  "di_valor_aduaneiro": 0,  // SOMENTE para DI/DUIMP: valor TOTAL da declaração em R$ — FOB + frete + seguro na taxa da DI (ex.: "TOTAL: USD 36.253,03 - BRL 184.556,93" → 184556.93; ou o "Valor Aduaneiro"/"VMLD" em R$). 0 para outros documentos.
   "data_liberacao": "YYYY-MM-DD",  // "DATA DO DESEMBARAÇO" no Comprovante de Importação (CI) — é a liberação da carga, não a data de emissão do documento. Na consulta do Portal Siscomex ("Relatório de Pesquisa Direta de Declarações de Importação") é a "Data/Hora" da linha cuja "Situação Atual" é DESEMBARAÇADA. Na DUIMP, a data do evento de desembaraço no histórico ("Desembaraço", "Desembaraçada", "Carga liberada"). O Extrato da DI comum NÃO traz essa data — se o documento não mostrar o desembaraço, deixe vazio.
   "ci_numero": "",  // número da CI (Commercial Invoice/Fatura Comercial) — extrair de rótulos como "Invoice No", "Invoice Number", "INV. NO", "INV NO", "INV. NO:", "CI No", "Commercial Invoice No" (aceitar variações de pontuação/abreviação do rótulo, ex: com ou sem ponto, com ou sem dois-pontos)
   "ci_valor_usd": 0,  // valor total da Commercial Invoice — "Total Amount", "Total Value", "Grand Total", "Total USD"
@@ -874,6 +876,15 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     if(extracted.nf_entrada_valor) extracted.nf_entrada_valor = normNum(extracted.nf_entrada_valor);
     if(extracted.nf_saida_valor)   extracted.nf_saida_valor   = normNum(extracted.nf_saida_valor);
     if(extracted.di_peso_liquido)  extracted.di_peso_liquido  = normNum(extracted.di_peso_liquido);
+    // Taxa do dólar e total em R$ da DI (21/10/2026, cabeçalho "Check-list
+    // Fechamento Importação" do DRE): só valem de DI/DUIMP.
+    {
+      const ehDiDoc = !!(extracted.numero_di || extracted.data_registro_di || extracted.canal);
+      const taxa = parseFloat(String(extracted.di_taxa_cambio ?? '').replace(',', '.'));
+      const total = normNum(extracted.di_valor_aduaneiro);
+      if(ehDiDoc && taxa > 1 && taxa < 20) extracted.di_taxa_cambio = Math.round(taxa * 10000) / 10000; else delete extracted.di_taxa_cambio;
+      if(ehDiDoc && total > 0) extracted.di_valor_aduaneiro = total; else delete extracted.di_valor_aduaneiro;
+    }
     // Quebra por NCM (qtd/peso de cada item da DI/DUIMP) → vai pro próprio
     // di_ncms no formato "4011.80.90: 48 un, 2227.68 kg; ..." (Reciclagem).
     let _ncmsDet = '';
@@ -1524,7 +1535,7 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     delete extracted.pi_adiantamento_pct;
 
     // Preencher campos do formulário
-    const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','di_peso_liquido'];
+    const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','di_peso_liquido','di_valor_aduaneiro'];
     const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
     // camposIA (ver abrirNovo/abrirProcesso) guarda quais campos a última
     // leitura de IA preencheu NESTA sessão — se o campo já tiver um valor mas
