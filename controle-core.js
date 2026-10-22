@@ -1355,6 +1355,13 @@ async function _salvarProcessoAgora(proc, patchFields){
       // (X, X+1,...,X+20 = 21 dias), não X+21.
       inicioDemur.setDate(inicioDemur.getDate() + parseInt(proc.free_time||0) - 1);
       proc.demurrage_vencimento = inicioDemur.toISOString().split('T')[0];
+    } else if(!baseDemurrage && patchTocaCampos(['data_chegada','data_presenca']) && !patchTocaCampos(['demurrage_vencimento'])){
+      // Chegada/Presença apagada nesta edição (ex.: data digitada no campo
+      // errado e corrigida logo depois): o vencimento calculado a partir dela
+      // sai junto. Antes ele ficava gravado e aparecia dias depois no painel
+      // de Devolução do Vazio com o navio ainda em águas (José/Emanuelly,
+      // 22/10/2026). Vencimento digitado à mão nesta mesma edição é mantido.
+      proc.demurrage_vencimento = null;
     }
   }
 
@@ -1564,6 +1571,19 @@ async function excluirProcesso(id){
 // FASE AUTOMÁTICA
 // ── Trava de validação antes de FINALIZADO (14/10/2026) ─────────────
 const VALIDACAO_FINALIZACAO_DESDE = '2026-10-15';
+// Regra do RIC (Emanuelly 04/09/2026): Finalizado só com RIC Isento ou
+// lavagem paga. Processos que já estavam FINALIZADOS antes dela (sem Status
+// RIC e sem pagamento de lavagem, com a última etapa antes dessa data) não
+// passam pela regra nova — senão editar uma data, NF ou container num deles
+// fazia a fase voltar para Dev. Vazio ou Carregamento (66 processos em
+// 22/10/2026). Preencher o Status RIC ou a lavagem volta a aplicar a regra.
+const RIC_REGRA_DESDE = '2026-09-04';
+function finalizadoAntesDaRegraRic(p){
+  if(!p || p.fase !== 'FINALIZADO' || p.cancelado) return false;
+  if(p.ric_status || p.data_pagamento_lavagem) return false;
+  const gatilho = String(p.data_devolucao_vazio || p.data_carregamento || p.data_liberacao || '').slice(0, 10);
+  return !gatilho || gatilho < RIC_REGRA_DESDE;
+}
 // Condições de término (as mesmas que sempre levaram a FINALIZADO).
 function prontoParaFinalizar(p, chegadaPassada, presencaPassada){
   if(!p) return false;
@@ -1634,6 +1654,9 @@ async function validarFinalizacao(id, desfazer){
 
 // ════════════════════════════════════════════════════════════════
 function calcularFase(p){
+  // Finalizado antes da regra do RIC continua finalizado (ver
+  // finalizadoAntesDaRegraRic, acima).
+  if(finalizadoAntesDaRegraRic(p)) return 'FINALIZADO';
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   // "Data Chegada", "Data Presença" e "Data de Embarque" só contam pra
   // avançar a fase se já aconteceram de fato. Se alguém preencher uma data

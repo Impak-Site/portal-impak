@@ -607,10 +607,10 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         </div>
         <div class="form-row">
           <div class="form-group"><label>Baixa Pátio (R$ por container)</label><input type="number" id="tx_baixa_patio" step="0.01" value="500" title="Padrão R$ 500 por container. A armazenagem no RF (pós-nacionalização) é calculada à parte, em Vendas previstas RF."></div>
-          <div class="form-group"><label>Capatazia/THC (R$)</label><input type="number" id="tx_capatazia" onchange="onAutoTaxaDepChange()" step="0.01" value="1100"></div>
+          <div class="form-group"><label>Capatazia/THC (R$)</label><input type="number" id="tx_capatazia" onchange="onAutoTaxaDepChange()" step="0.01" value="1190"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Liberação BL (R$)</label><input type="number" id="tx_liberacao_bl" onchange="onAutoTaxaDepChange()" step="0.01" value="650"></div>
+          <div class="form-group"><label>Liberação BL (R$)</label><input type="number" id="tx_liberacao_bl" onchange="onAutoTaxaDepChange()" step="0.01" value="620"></div>
           <div class="form-group"><label>Despachante (R$)</label><input type="number" id="tx_despachante" step="0.01" value="1650"></div>
         </div>
         <div class="form-row">
@@ -1047,8 +1047,8 @@ const TAXAS_FIXAS_CONTAINER = {
   armazenagem:   2088,
   emissao_li:    153.53,
   baixa_patio:   500,
-  capatazia:     1100,
-  liberacao_bl:  650,
+  capatazia:     1190, // Royal (tabela nova enviada pelo Ayslan em 22/10/2026; antes 1100)
+  liberacao_bl:  620,  // idem (antes 650)
   despachante:   1650,
   sda:           650,
   lavacao:       550,

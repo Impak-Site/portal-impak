@@ -206,9 +206,17 @@
     [/drop ?off|devolu[cç][aã]o.*vazio/i, 'drop_off'],
     [/\biof\b/i, 'iof'],
     [/handling|disbursement/i, 'handling'],
+    // 22/10/2026 (aprovado pelo Ayslan, conferido com as notas de débito da
+    // Royal e as planilhas): "Container Logistics Fee" (R$ fixo por
+    // embarque) é a linha CRS; "Costs at Origin" (US$ 95) é a Additional
+    // Costs do Calculador; "Bunker of Origin" (sobretaxa de combustível
+    // cobrada junto do frete) é frete internacional. Antes da regra do
+    // import logistics, senão "Container Logistics" cairia nela.
+    [/container\s+logistics/i, 'trs'],
     [/\btrs\b|\bcrs\b|cost recovery/i, 'trs'],
     [/logistic fee|import logistics|equipment logistic/i, 'import_logistics'],
-    [/additional cost/i, 'additional_costs'],
+    [/additional cost|costs?\s+at\s+origin|origin\s+(costs?|charges?)/i, 'additional_costs'],
+    [/\bbunker\b|\bbaf\b/i, 'frete'],
     [/baixa.*p[aá]tio|pátio/i, 'baixa_patio'],
     [/anti-?dumping/i, 'antidumping'],
     [/marjora[cç]/i, 'marjoracao'],
