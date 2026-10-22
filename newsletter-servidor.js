@@ -38,6 +38,14 @@ function agoraSP(d) {
   const iso = br.getFullYear() + '-' + String(br.getMonth() + 1).padStart(2, '0') + '-' + String(br.getDate()).padStart(2, '0');
   return { diaSemana: br.getDay(), hora: br.getHours(), minuto: br.getMinutes(), dataISO: iso, data: br };
 }
+// 00:00 de Brasília do dia do instante d (Date em UTC). O controle "1x por
+// dia" dos jobs (app_job_runs) contava o dia em UTC, que vira às 21h de
+// Brasília: o Radar de quarta 21/10 saiu às 6h e de novo às 21h23. Jobs
+// presos a um dia da semana de Brasília usam este início de dia.
+// Brasília é UTC-3 o ano todo (sem horário de verão desde 2019).
+function inicioDiaSP(d) {
+  return new Date(agoraSP(d).dataISO + 'T00:00:00-03:00');
+}
 function dataExtenso(iso) {
   const [a, m, d] = iso.split('-').map(Number);
   const dt = new Date(Date.UTC(a, m - 1, d));
@@ -432,6 +440,6 @@ async function prepararEdicao(tipo, opts) {
 }
 
 module.exports = {
-  agoraSP, dataExtenso, edicaoDoMomento, decidirFollowUp, comCitacoes, montarHtml, minutosLeitura,
+  agoraSP, inicioDiaSP, dataExtenso, edicaoDoMomento, decidirFollowUp, comCitacoes, montarHtml, minutosLeitura,
   validarConteudo, extrairJson, pedido, gerarConteudo, conferirFontes, prepararEdicao, EDICOES,
 };
