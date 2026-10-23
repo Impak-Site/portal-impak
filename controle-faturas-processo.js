@@ -411,7 +411,141 @@ function _pfHtml(p){
     ${_pfSecReceber(p, receber, pendentes, cambio, hoje)}
     ${_pfSecSemFatura(semFat)}
     ${_pfSecExtrato(p, snap, pendentes, semFat, cambio, hoje)}
+    ${_pfSecConferencia(p, snap, cambio)}
   </div>`;
+}
+
+// ── Seção: conferência de fechamento (22/10/2026) ──────────────────────────
+// A planilha "Check-list Fechamento Importação" do Financeiro dentro do
+// sistema: Débitos (Custos Reais) × Créditos (adiantamentos pagos nas
+// faturas) por grupo, câmbio da DI × fechado e como lançar as notas.
+// Regras puras em conferencia-fechamento.js (testes em testes_faturas.js).
+let _pfConfManuais = {};     // valor do Conexos digitado (não é gravado)
+let _pfConfManuaisDe = null; // de qual processo
+const _PF_CONF_ROTULOS = { frete_di: 'Frete da DI (US$ × taxa DI)', variacao_frete: 'Variação cambial do frete', nf_agente: 'NF de serviço do agente de carga' };
+function _pfConfDados(p, snap, cambio){
+  const CF = window.ConferenciaFechamento;
+  const labels = {}, custos = {};
+  const ids = new Set(CF.INFORMATIVOS);
+  CF.GRUPOS.forEach(g => { g.taxas.forEach(t => ids.add(t)); if(g.pacote) ids.add(g.pacote); });
+  try{ custosReaisItensFlat().forEach(it => { labels[it.id] = it.label; }); }catch(e){}
+  ids.forEach(t => { const v = _pfValorSistema(snap, t); if(v) custos[t] = v; });
+  let fechados = [];
+  try{
+    const pags = listarPagamentosPI([{ ...snap, fase: snap.fase === 'FINALIZADO' ? 'FATURAMENTO' : snap.fase }]);
+    fechados = pags.filter(pg => pg.cambioFechado).map(pg => ({ usd: pg.valorUsd, taxa: pg.cambioFechado, data: pg.vencimento || '', rotulo: pg.parcela === 'unico' ? 'pagamento único' : pg.parcela }));
+  }catch(e){}
+  if(_pfConfManuaisDe !== p.id){ _pfConfManuais = {}; _pfConfManuaisDe = p.id; }
+  return { custos, labels, creditos: CF.creditosDasFaturas(_pfFaturas, p.id, cambio, FaturasCore), manuais: _pfConfManuais, processo: snap, cambiosFechados: fechados };
+}
+function _pfConfRotulo(conf, taxa, labels){ return _PF_CONF_ROTULOS[taxa] || (labels && labels[taxa]) || taxa; }
+function _pfSecConferencia(p, snap, cambio){
+  if(typeof window === 'undefined' || !window.ConferenciaFechamento) return '';
+  let dados, c;
+  try{ dados = _pfConfDados(p, snap, cambio); c = window.ConferenciaFechamento.montarConferencia(dados); }
+  catch(e){ console.warn('conferência de fechamento:', e); return ''; }
+  if(!c.grupos.length && !c.cambio.usd) return '';
+  const R = v => (v < 0 ? '−' : '') + _ftFmt(Math.abs(v));
+  const pill = c.status === 'ok' ? '<span class="pf-pill pf-ok">✓ fecha (Débitos = Créditos)</span>'
+    : c.status === 'diferenca' ? `<span class="pf-pill pf-er">diferença R$ ${R(c.diferenca)}</span>`
+    : '<span class="pf-pill pf-av">falta lançar adiantamento</span>';
+  const linhasGrupos = c.grupos.map(g => {
+    const dif = g.diferenca;
+    const cor = dif == null ? '' : Math.abs(dif) <= c.tolerancia ? 'pf-pos' : 'pf-neg';
+    const det = g.debitos.map(d => `<div class="cr-muted" style="font-size:11px;">${_pfE(_pfConfRotulo(c, d.taxa, dados.labels))} · ${_ftFmt(d.valor)}</div>`).join('');
+    const cr = g.creditos.map(x => `<div class="cr-muted" style="font-size:11px;">${_pfE(x.descricao)} · ${R(x.valor)}</div>`).join('');
+    return `<tr>
+      <td><b>${_pfE(g.label)}</b><details style="margin-top:2px;"><summary class="cr-link" style="cursor:pointer;font-size:11px;">ver taxas</summary>${det || '<div class="cr-muted" style="font-size:11px;">—</div>'}</details></td>
+      <td class="n">${_ftFmt(g.debito)}</td>
+      <td class="n">${g.tem_credito ? R(g.credito) : '<span class="cr-muted">—</span>'}${g.manual != null ? '<div class="cr-muted" style="font-size:10.5px;">digitado</div>' : ''}${cr ? `<details><summary class="cr-link" style="cursor:pointer;font-size:11px;">faturas</summary>${cr}</details>` : ''}
+        <div><input class="form-input" style="width:104px;padding:2px 6px;font-size:11px;text-align:right;margin-top:3px;" inputmode="decimal" placeholder="valor Conexos" title="Valor do adiantamento no Conexos (Adiantamento de Títulos Diversos) — só para conferir aqui, não é gravado" value="${g.manual != null ? _ftFmt(g.manual) : ''}" onchange="pfConfManual('${g.id}', this.value)"></div></td>
+      <td class="n ${cor}">${dif == null ? '' : R(dif)}</td></tr>`;
+  }).join('');
+  const nota = (arr) => arr.map(x => `<tr><td>${_pfE(_pfConfRotulo(c, x.taxa, dados.labels))}${x.itens ? `<div class="cr-muted" style="font-size:10.5px;">${x.itens.map(i => _pfE(_pfConfRotulo(c, i.taxa, dados.labels))).join(', ')}</div>` : ''}</td><td class="n">${_ftFmt(x.valor)}</td></tr>`).join('');
+  const n = c.notas, cx = c.cambio;
+  const tx4 = v => v ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—';
+  const cambioHtml = cx.usd ? `<table class="pf-tab" style="margin-top:4px;"><thead><tr><th></th><th class="n">US$</th><th class="n">Taxa</th><th class="n">R$</th></tr></thead><tbody>
+      <tr><td>DI/DUIMP</td><td class="n">${_ftFmt(cx.usd)}</td><td class="n">${tx4(cx.taxa_di)}</td><td class="n">${cx.brl_di != null ? _ftFmt(cx.brl_di) : '—'}</td></tr>
+      ${cx.fechados.map(f => `<tr><td>Câmbio fechado${f.rotulo ? ' · ' + _pfE(f.rotulo) : ''}${f.data ? ` <span class="cr-muted">${_ftData(f.data)}</span>` : ''}</td><td class="n">${_ftFmt(f.usd)}</td><td class="n">${tx4(f.taxa)}</td><td class="n">${_ftFmt(f.brl)}</td></tr>`).join('')}
+      <tr><td><b>Variação cambial</b> <span class="cr-muted">${cx.variacao == null ? '' : cx.variacao >= 0 ? '(positiva — ganho)' : '(negativa — perda)'}</span></td><td></td><td></td><td class="n ${cx.variacao == null ? '' : cx.variacao >= 0 ? 'pf-pos' : 'pf-neg'}"><b>${cx.variacao == null ? '—' : R(cx.variacao)}</b></td></tr>
+    </tbody></table>` : '<div class="pf-dica">Sem valor da mercadoria em US$.</div>';
+  return `<details class="pf-sec" open><summary><span>✅ Conferência de fechamento</span><span>${pill}</span></summary>
+    <div class="pf-sec-corpo">
+      <div class="pf-dica">A planilha "Check-list Fechamento Importação" aqui: os <b>débitos</b> são os Custos Reais do processo, os <b>créditos</b> são os adiantamentos pagos nas faturas (numerário do despachante, fatura do agente, seguro). Ainda sem fatura? Digite o valor do Conexos (Adiantamento de Títulos Diversos) para conferir — não é gravado.</div>
+      <div class="pf-rolar"><table class="pf-tab pf-compacta" style="table-layout:fixed;"><colgroup><col><col style="width:96px;"><col style="width:124px;"><col style="width:90px;"></colgroup>
+        <thead><tr><th>Grupo</th><th class="n">Débitos</th><th class="n">Créditos</th><th class="n">Diferença</th></tr></thead>
+        <tbody>${linhasGrupos}<tr><td><b>Total</b></td><td class="n"><b>${_ftFmt(c.total_debitos)}</b></td><td class="n"><b>${_ftFmt(c.total_creditos)}</b></td><td class="n ${Math.abs(c.diferenca) <= c.tolerancia ? 'pf-pos' : 'pf-neg'}"><b>${R(c.diferenca)}</b></td></tr></tbody></table></div>
+      ${c.frete.frete_di != null ? `<div class="pf-dica" style="margin-top:6px;">Frete: US$ ${_ftFmt(c.frete.usd)} × ${tx4(dados.processo.di_taxa_cambio)} = <b>R$ ${_ftFmt(c.frete.frete_di)}</b> na DI · pago R$ ${_ftFmt(c.frete.frete_real || 0)} · variação do frete <b>R$ ${R(c.frete.variacao || 0)}</b></div>` : ''}
+      ${c.informativos.length ? `<div class="pf-dica">Fora da conta (2026, só destaque na DUIMP): ${c.informativos.map(i => `${_pfE(_pfConfRotulo(c, i.taxa, dados.labels))} R$ ${_ftFmt(i.valor)}`).join(' · ')}</div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:8px;">
+        <div><div style="font-weight:600;font-size:12px;">Câmbio da mercadoria</div>${cambioHtml}</div>
+        <div><div style="font-weight:600;font-size:12px;">Como lançar as notas</div>
+          <table class="pf-tab" style="margin-top:4px;"><tbody>
+            <tr><td colspan="2" class="cr-muted" style="font-size:10.5px;">NF complementar de importação</td></tr>${nota(n.nf_importacao)}
+            ${n.agrega_custo.length ? `<tr><td colspan="2" class="cr-muted" style="font-size:10.5px;">Agrega custo (sem NF)</td></tr>${nota(n.agrega_custo)}` : ''}
+            <tr><td><b>Total NF-e de importação</b></td><td class="n"><b>${_ftFmt(n.total_nf_importacao + n.total_agrega_custo)}</b></td></tr>
+            ${n.fornecedores.length ? `<tr><td colspan="2" class="cr-muted" style="font-size:10.5px;">Notas de fornecedores</td></tr>${nota(n.fornecedores)}<tr><td><b>Total notas de fornecedores</b></td><td class="n"><b>${_ftFmt(n.total_fornecedores)}</b></td></tr>` : ''}
+            <tr><td><b>Total (= débitos)</b></td><td class="n"><b>${_ftFmt(n.total)}</b></td></tr>
+          </tbody></table></div>
+      </div>
+      ${c.pendencias.length ? `<div style="margin-top:8px;font-size:11.5px;color:var(--warn);">${c.pendencias.map(x => '⚠ ' + _pfE(x)).join('<br>')}</div>` : ''}
+      <div class="pf-acoes"><button type="button" class="btn btn-outline" onclick="pfImprimirConferencia()" title="Folha para imprimir/PDF com campos de visto">🖨 Imprimir conferência</button></div>
+    </div></details>`;
+}
+function pfConfManual(grupo, txt){
+  const s = String(txt || '').trim();
+  if(!s) delete _pfConfManuais[grupo];
+  else{
+    const v = parseFloat(s.replace(/\s|R\$/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+    if(isFinite(v)) _pfConfManuais[grupo] = v; else { showToast('Valor inválido.', 'warn'); return; }
+  }
+  pfRedesenhar();
+}
+function pfImprimirConferencia(){
+  if(!_editando || !window.ConferenciaFechamento) return;
+  const p = _editando, snap = _pfSnapshot(p), cambio = _pfCambio();
+  const dados = _pfConfDados(p, snap, cambio);
+  const c = window.ConferenciaFechamento.montarConferencia(dados);
+  const E = v => _pfE(v), F = v => (v < 0 ? '−' : '') + _ftFmt(Math.abs(v));
+  const tx4 = v => v ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—';
+  const rot = t => _pfConfRotulo(c, t, dados.labels);
+  const grupos = c.grupos.map(g => `<tr class="g"><td>${E(g.label)}</td><td class="n">${_ftFmt(g.debito)}</td><td class="n">${g.tem_credito ? F(g.credito) : '—'}</td><td class="n">${g.diferenca == null ? '' : F(g.diferenca)}</td></tr>`
+    + g.debitos.map(d => `<tr><td class="i">${E(rot(d.taxa))}</td><td class="n">${_ftFmt(d.valor)}</td><td></td><td></td></tr>`).join('')
+    + g.creditos.map(x => `<tr><td class="i">↳ ${E(x.descricao)}</td><td></td><td class="n">${F(x.valor)}</td><td></td></tr>`).join('')).join('');
+  const nota = arr => arr.map(x => `<tr><td class="i">${E(rot(x.taxa))}</td><td class="n">${_ftFmt(x.valor)}</td></tr>`).join('');
+  const n = c.notas, cx = c.cambio;
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Conferência de fechamento ${E(p.referencia || '')}</title><style>
+    body{font-family:Inter,Arial,sans-serif;font-size:11px;color:#111;margin:18px;} h1{font-size:15px;margin:0 0 4px;} .sub{color:#555;margin-bottom:10px;}
+    table{width:100%;border-collapse:collapse;margin-bottom:10px;} th,td{border:1px solid #bbb;padding:3px 6px;} th{background:#eef2f7;text-align:left;} .n{text-align:right;white-space:nowrap;}
+    tr.g td{font-weight:700;background:#f7f7f7;} td.i{padding-left:16px;color:#333;} .cols{display:flex;gap:14px;} .cols > div{flex:1;}
+    .vistos{display:flex;gap:24px;margin-top:28px;} .vistos div{flex:1;border-top:1px solid #333;padding-top:4px;text-align:center;}
+    .ok{color:#15803d;font-weight:700;} .er{color:#b91c1c;font-weight:700;} @page{size:A4;margin:12mm;}
+  </style></head><body>
+    <h1>CHECK-LIST FECHAMENTO IMPORTAÇÃO — ${E(p.referencia || '')}</h1>
+    <div class="sub">DI/DUIMP ${E(p.numero_di || p.pi_duimp_numero || '—')} · Fornecedor ${E(p.fornecedor || '—')} · NF entrada ${E(p.nf_entrada_numero || '—')} · Taxa DI ${tx4(p.di_taxa_cambio)} · emitido em ${hoje}</div>
+    <table><thead><tr><th>Débitos × Créditos</th><th class="n">Débitos</th><th class="n">Créditos</th><th class="n">Diferença</th></tr></thead><tbody>${grupos}
+      <tr class="g"><td>TOTAL</td><td class="n">${_ftFmt(c.total_debitos)}</td><td class="n">${_ftFmt(c.total_creditos)}</td><td class="n ${Math.abs(c.diferenca) <= c.tolerancia && c.status === 'ok' ? 'ok' : 'er'}">CONF ${F(c.diferenca)}</td></tr></tbody></table>
+    <div class="cols"><div>
+      <table><thead><tr><th>Câmbio</th><th class="n">US$</th><th class="n">Taxa</th><th class="n">R$</th></tr></thead><tbody>
+        <tr><td>DI/DUIMP</td><td class="n">${_ftFmt(cx.usd)}</td><td class="n">${tx4(cx.taxa_di)}</td><td class="n">${cx.brl_di != null ? _ftFmt(cx.brl_di) : '—'}</td></tr>
+        ${cx.fechados.map(f => `<tr><td>Fechado ${E(f.rotulo || '')} ${f.data ? _ftData(f.data) : ''}</td><td class="n">${_ftFmt(f.usd)}</td><td class="n">${tx4(f.taxa)}</td><td class="n">${_ftFmt(f.brl)}</td></tr>`).join('')}
+        <tr class="g"><td>Variação cambial</td><td></td><td></td><td class="n">${cx.variacao == null ? '—' : F(cx.variacao)}</td></tr></tbody></table>
+      ${c.frete.frete_di != null ? `<table><tbody><tr><td>Frete da DI (US$ ${_ftFmt(c.frete.usd)} × ${tx4(p.di_taxa_cambio)})</td><td class="n">${_ftFmt(c.frete.frete_di)}</td></tr><tr><td>Frete pago</td><td class="n">${_ftFmt(c.frete.frete_real || 0)}</td></tr><tr><td>Variação do frete</td><td class="n">${F(c.frete.variacao || 0)}</td></tr></tbody></table>` : ''}
+    </div><div>
+      <table><thead><tr><th>Lançamento das notas</th><th class="n">R$</th></tr></thead><tbody>
+        <tr class="g"><td>NF complementar de importação</td><td></td></tr>${nota(n.nf_importacao)}
+        ${n.agrega_custo.length ? `<tr class="g"><td>Agrega custo (sem NF)</td><td></td></tr>${nota(n.agrega_custo)}` : ''}
+        <tr class="g"><td>Total NF-e de importação</td><td class="n">${_ftFmt(n.total_nf_importacao + n.total_agrega_custo)}</td></tr>
+        ${n.fornecedores.length ? `<tr class="g"><td>Notas de fornecedores</td><td></td></tr>${nota(n.fornecedores)}<tr class="g"><td>Total notas de fornecedores</td><td class="n">${_ftFmt(n.total_fornecedores)}</td></tr>` : ''}
+        <tr class="g"><td>Total (= débitos)</td><td class="n">${_ftFmt(n.total)}</td></tr></tbody></table>
+    </div></div>
+    ${c.pendencias.length ? `<div style="margin-top:4px;"><b>Pendências</b><br>${c.pendencias.map(x => '• ' + E(x)).join('<br>')}</div>` : ''}
+    <div class="vistos"><div>Conferido por (Financeiro) — data</div><div>Visto Operacional — data</div><div>Visto Gerência — data</div></div>
+    <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  const w = window.open('', '_blank');
+  if(!w){ showToast('O navegador bloqueou a janela de impressão — libere pop-ups para o portal.', 'warn'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 
 // ── Seção: faturas do processo ─────────────────────────────────────────────

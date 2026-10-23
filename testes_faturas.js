@@ -853,5 +853,63 @@ teste('operadora: a receber da venda no cartão sai contra a operadora, valor ch
   assert.strictEqual(F.aplicarPagamentos(pago).status, 'paga');
 });
 
+// ── Conferência de fechamento (conferencia-fechamento.js, 22/10/2026) ──
+console.log('\n── conferência de fechamento ──');
+const CF = require('./conferencia-fechamento.js');
+// Processo fictício: DI US$ 10.000 × 5,0000; frete US$ 1.000; câmbio fechado 4,9500
+const CUSTOS_CF = { ii: 8000, ipi: 500, pis: 1100, cofins: 5000, siscomex: 150, marinha: 400, icms: 1200, armazenagem: 900,
+  frete: 5100, capatazia: 800, iof: 100, agente: 300, isps: 50, liberacao_bl: 250, seguro: 60, lavacao: 300, ibs: 50, cbs: 450 };
+const PROC_CF = { di_taxa_cambio: 5, valor_frete: 1000, moeda_frete: 'USD', pi_valor_usd: 10000 };
+teste('conferência: débitos por grupo, frete da DI × variação, notas e câmbio DI × fechado', () => {
+  const c = CF.montarConferencia({ custos: CUSTOS_CF, processo: PROC_CF, cambiosFechados: [{ usd: 10000, taxa: 4.95 }] });
+  const g = id => c.grupos.find(x => x.id === id);
+  assert.strictEqual(g('despachante').debito, 17250);
+  assert.strictEqual(g('agente').debito, 6600);
+  assert.strictEqual(g('seguro').debito, 60);
+  assert.strictEqual(g('outros').debito, 300);
+  assert.strictEqual(c.total_debitos, 24210, 'IBS/CBS ficam fora (2026: só destaque)');
+  assert.deepStrictEqual(c.informativos.map(i => i.taxa), ['ibs', 'cbs']);
+  assert.strictEqual(c.frete.frete_di, 5000); assert.strictEqual(c.frete.variacao, 100);
+  assert.strictEqual(c.notas.total_nf_importacao, 20210, 'II+IPI+PIS+COFINS+Siscomex+AFRMM + frete DI + seguro');
+  assert.strictEqual(c.notas.total_agrega_custo, 2200, 'ICMS + capatazia + IOF + variação do frete');
+  assert.strictEqual(c.notas.total_fornecedores, 1800, 'armazenagem + NF do agente (agente+ISPS+liberação) + lavação');
+  assert.strictEqual(c.notas.total, c.total_debitos, 'as notas somam os débitos');
+  assert.strictEqual(c.cambio.brl_di, 50000); assert.strictEqual(c.cambio.brl_fechado, 49500); assert.strictEqual(c.cambio.variacao, 500);
+  assert.strictEqual(c.status, 'sem_creditos');
+});
+teste('conferência: créditos pelas faturas pagas — numerário, devolução, agente com retenção; compensação não conta', () => {
+  const pid = 'p-cf';
+  const fat = [
+    { id: 'n1', tipo: 'pagar', moeda: 'BRL', valor: 17300, status: 'paga', origem: { tipo: 'numerario', processo_id: pid }, pagamentos: [{ id: 'a', data: '2026-08-01', valor: 17300, forma: 'pix' }] },
+    { id: 'd1', tipo: 'receber', moeda: 'BRL', valor: 50, status: 'paga', origem: { tipo: 'devolucao_numerario', processo_id: pid, numerario_id: 'n1' }, pagamentos: [{ id: 'b', data: '2026-08-20', valor: 50, forma: 'pix' }] },
+    { id: 'ac', tipo: 'pagar', moeda: 'BRL', valor: 17250, status: 'paga', itens: [{ processo_id: pid, taxa: 'ii', valor: 8000 }, { processo_id: pid, taxa: 'cofins', valor: 9250 }], pagamentos: [{ id: 'c', data: '2026-08-20', valor: 17250, forma: 'compensacao' }] },
+    { id: 'ag', tipo: 'pagar', moeda: 'BRL', valor: 6600, status: 'paga', itens: [{ processo_id: pid, taxa: 'frete', valor: 5100 }, { processo_id: pid, taxa: 'capatazia', valor: 1500 }], pagamentos: [{ id: 'd', data: '2026-08-05', valor: 6580, retencoes: 20, forma: 'pix' }] },
+    { id: 'sg', tipo: 'pagar', moeda: 'BRL', valor: 60, status: 'aberta', itens: [{ processo_id: pid, taxa: 'seguro', valor: 60 }], pagamentos: [] },
+    { id: 'x', tipo: 'pagar', moeda: 'BRL', valor: 999, status: 'cancelada', origem: { tipo: 'numerario', processo_id: pid }, pagamentos: [{ id: 'e', valor: 999 }] },
+  ];
+  const cr = CF.creditosDasFaturas(fat, pid, {}, F);
+  const soma = l => Math.round(l.reduce((s, x) => s + x.valor, 0) * 100) / 100;
+  assert.strictEqual(soma(cr.despachante), 17250, 'numerário − devolução; o acerto compensado não conta de novo');
+  assert.strictEqual(soma(cr.agente), 6600, 'pago + retenção (IR)');
+  assert.strictEqual(cr.seguro.length, 0, 'fatura em aberto não é crédito');
+  const c = CF.montarConferencia({ custos: CUSTOS_CF, processo: PROC_CF, creditos: cr, manuais: { seguro: 60, outros: '300' }, cambiosFechados: [{ usd: 10000, taxa: 4.95 }] });
+  assert.strictEqual(c.total_creditos, 24210);
+  assert.strictEqual(c.diferenca, 0);
+  assert.strictEqual(c.status, 'ok');
+  assert.strictEqual(c.grupos.find(x => x.id === 'seguro').manual, 60, 'valor digitado (Conexos) vale para o grupo');
+});
+teste('conferência: diferença acima de R$ 1,00 aparece; câmbio parcial não calcula variação; pacote só sem taxas soltas', () => {
+  const c = CF.montarConferencia({ custos: { ii: 1000, adiantamento_porto: 5000 }, processo: { pi_valor_usd: 2000, di_taxa_cambio: 5 }, manuais: { despachante: 990 }, cambiosFechados: [{ usd: 1000, taxa: 5.1 }] });
+  assert.strictEqual(c.grupos[0].debito, 1000, 'pacote do despachante não soma com as taxas soltas');
+  assert.strictEqual(c.grupos[0].diferenca, -10);
+  assert.strictEqual(c.status, 'diferenca');
+  assert.strictEqual(c.cambio.variacao, null);
+  assert.ok(c.pendencias.some(p => /não fechado/.test(p)));
+  const so = CF.montarConferencia({ custos: { adiantamento_porto: 5000 }, processo: {} });
+  assert.strictEqual(so.grupos[0].debito, 5000);
+  assert.strictEqual(CF.grupoDaTaxa('frete_cobrado'), 'agente');
+  assert.strictEqual(CF.grupoDaTaxa('fob'), null);
+});
+
 console.log(`\n──────────────────────────────────────────────────\nTotal: ${ok + falhas} testes, ${ok} passaram, ${falhas} falharam`);
 if (falhas) process.exit(1);

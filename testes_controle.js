@@ -69,6 +69,8 @@ const MODULOS_JS = [
   // 21/10/2026: aba Faturas do processo (mesma ordem do controle_v2.html).
   'faturas-core.js',
   'controle-faturas.js',
+  // 22/10/2026: conferência de fechamento (seção da aba Faturas).
+  'conferencia-fechamento.js',
   'controle-faturas-processo.js',
 ];
 const jsReal = MODULOS_JS.map(nome => {
