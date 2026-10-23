@@ -93,6 +93,13 @@ let _editando = null; // processo sendo editado
 // só no que de fato editou). Agora só os campos realmente alterados nesta
 // sessão são enviados — os demais ficam intocados no banco.
 let _editandoOriginal = null;
+// Processo (não cancelado) que já usa esta referência, ignorando maiúsculas e
+// espaços (23/10/2026, UD26-099 duplicado). O servidor confere de novo.
+function referenciaJaExiste(ref, ignorarId){
+  const alvo = String(ref || '').trim().toLowerCase();
+  if(!alvo || typeof _processos === 'undefined' || !Array.isArray(_processos)) return null;
+  return _processos.find(p => p && !p.cancelado && p.id !== ignorarId && String(p.referencia || '').trim().toLowerCase() === alvo) || null;
+}
 // Rastreia se o usuário alterou algo no painel do processo desde que ele
 // abriu (input/change delegado, ver listener em INIT) — usado pelo ESC (ver
 // mesmo bloco) pra perguntar se quer salvar antes de fechar, em vez de

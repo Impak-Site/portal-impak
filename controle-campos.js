@@ -208,9 +208,20 @@ function voltarPortoLista(tipo){
 function coletarESalvar(opts){
   const fecharAoSalvar = !(opts && opts.fecharAoSalvar === false);
   if(window._salvandoProcesso) return;
-  const eraNovo = !(_editando && _editando.id);
+  // Painel já fechado (23/10/2026, UD26-099 duplicado — José): uma gravação
+  // que chegou depois de fechar o painel (ex.: leitura automática da
+  // Conferência terminando) achava _editando vazio e criava um processo NOVO
+  // com os campos que ainda estavam no formulário. Sem painel aberto, não grava.
+  const _modalAberto = document.getElementById('modal-bg')?.classList.contains('open');
+  if(!_editando || !_modalAberto){ console.warn('coletarESalvar: painel fechado — nada foi gravado'); return; }
+  const eraNovo = !_editando.id;
   const ref = document.getElementById('f_referencia')?.value?.trim();
   if(!ref){ showToast('Informe a Referência','err'); return; }
+  // Processo novo com referência que já existe: avisa e não cria outro.
+  if(eraNovo && typeof referenciaJaExiste === 'function'){
+    const existente = referenciaJaExiste(ref);
+    if(existente){ showToast('Já existe um processo com a referência ' + existente.referencia + ' — abra o existente em vez de criar outro.', 'err', 9000); return; }
+  }
 
   // Validação das parcelas do pagamento "Parcelado" — mesma ideia da
   // validação de vendas logo abaixo: barrar ANTES de gravar, não deixar

@@ -4263,6 +4263,21 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
     // de controle/auditoria só o servidor define. Processo NOVO não nasce
     // fechado/cancelado nem com autor forjado; vínculo com cotação
     // (cotacao_id/estimativa_json) só pelos fluxos próprios do Calculador.
+    // Processo NOVO com referência que já existe (23/10/2026, UD26-099
+    // duplicado): não cria outro — quem salvou abre o existente.
+    if (!processoExistente && processo.referencia) {
+      const refNova = String(processo.referencia).trim();
+      const { data: mesmos } = await sb().from('controle_processos')
+        .select('id, referencia, cancelado')
+        .ilike('referencia', refNova.replace(/[%_\\]/g, m => '\\' + m))
+        .limit(10);
+      const jaExiste = (mesmos || []).find(x => !x.cancelado && String(x.referencia || '').trim().toLowerCase() === refNova.toLowerCase());
+      if (jaExiste) {
+        return res.status(400).json({ ok: false, referencia_repetida: true, campos: ['referencia'],
+          erro: `Já existe um processo com a referência ${jaExiste.referencia} — nada foi criado. Abra o processo existente.` });
+      }
+    }
+
     if (!processoExistente) {
       ['fechado','fechado_em','fechado_por','cancelado','cancelado_em','cancelado_por','cancelado_motivo',
        'cancelamento_solicitado','cancelamento_solicitado_em','cancelamento_solicitado_por']

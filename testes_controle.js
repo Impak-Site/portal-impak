@@ -711,6 +711,54 @@ teste('data no passado no campo efetivo NÃO é mexida (é uma data efetiva leg�
 // exatamente o que seria mandado pro servidor.
 console.log('\n📋 salvarProcesso() — patch de concorrência');
 vm.runInContext("_user = {usuario:'teste'}; _cambio = {USD:5.5};", sandbox);
+// Painel do processo aberto (coletarESalvar não grava com o painel fechado).
+let _painelAbertoTeste = true;
+sandbox.document.getElementById('modal-bg').classList.contains = (c) => c === 'open' && _painelAbertoTeste;
+
+// ── Processo duplicado ao fechar o painel (23/10/2026) — valores fictícios ──
+await testeAsync('coletarESalvar com o painel FECHADO (ex.: leitura automática terminando depois) não grava nem cria processo novo', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  let chamadas = 0;
+  try {
+    sandbox.salvarProcesso = async () => { chamadas++; return true; };
+    sandbox.document.getElementById('f_referencia').value = 'TESTE-DUP-1';
+    // painel já fechado: fecharModal zera _editando
+    vm.runInContext(`_editando = null; _editandoOriginal = { id:'teste-dup-1', referencia:'TESTE-DUP-1' }; window._salvandoProcesso = false;`, sandbox);
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await new Promise(r => setTimeout(r, 20));
+    iguais(chamadas, 0, '_editando nulo: não pode gravar');
+    // _editando ainda preenchido mas o painel não está aberto
+    _painelAbertoTeste = false;
+    vm.runInContext(`_editando = { referencia:'TESTE-DUP-1', log:[] }; window._salvandoProcesso = false;`, sandbox);
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await new Promise(r => setTimeout(r, 20));
+    iguais(chamadas, 0, 'painel fechado: não pode gravar');
+  } finally {
+    _painelAbertoTeste = true;
+    sandbox.salvarProcesso = salvarOriginal;
+    vm.runInContext(`_editando = null; _editandoOriginal = null; window._salvandoProcesso = false;`, sandbox);
+    sandbox.document.getElementById('f_referencia').value = '';
+  }
+});
+await testeAsync('processo NOVO com referência que já existe (maiúsc./espaços) não é criado; cancelado não conta', async () => {
+  const salvarOriginal = sandbox.salvarProcesso;
+  let chamadas = 0;
+  try {
+    sandbox.salvarProcesso = async () => { chamadas++; return true; };
+    vm.runInContext(`_processos = [{ id:'teste-dup-a', referencia:'TESTE-DUP-2' }, { id:'teste-dup-b', referencia:'TESTE-DUP-3', cancelado:true }];
+      _editando = { fase:'PI', free_time:21, _camposIA:{} }; _editandoOriginal = {}; window._salvandoProcesso = false;`, sandbox);
+    sandbox.document.getElementById('f_referencia').value = ' teste-dup-2 ';
+    sandbox.coletarESalvar({ fecharAoSalvar: false });
+    await new Promise(r => setTimeout(r, 20));
+    iguais(chamadas, 0, 'referência repetida: não cria');
+    iguais(!!sandbox.referenciaJaExiste('TESTE-DUP-3'), false, 'processo cancelado não bloqueia');
+    iguais(!!sandbox.referenciaJaExiste('TESTE-DUP-2', 'teste-dup-a'), false, 'o próprio processo não conta');
+  } finally {
+    sandbox.salvarProcesso = salvarOriginal;
+    vm.runInContext(`_processos = []; _editando = null; _editandoOriginal = null; window._salvandoProcesso = false;`, sandbox);
+    sandbox.document.getElementById('f_referencia').value = '';
+  }
+});
 
 await testeAsync('coletarESalvar com o painel aberto: depois de salvar, fechar não acusa "alterações não salvas"; se falhar, continua acusando', async () => {
   const salvarOriginal = sandbox.salvarProcesso;

@@ -522,6 +522,10 @@ async function _confTentarPreencherAutomatico(p, analise){
   showToast('Nenhuma pendência — lendo ' + (aLer.length === 1 ? 'o documento novo' : 'os ' + aLer.length + ' documentos novos') + ' pra preencher o processo automaticamente...', 'ok');
   try{
     await processarFilaIA(aLer.map(x => x.file));
+    // Painel fechado ou outro processo aberto durante a leitura (23/10/2026,
+    // UD26-099 duplicado): não grava nada — o que foi lido fica para a
+    // próxima vez que o processo for aberto.
+    if(typeof _editando === 'undefined' || !_editando || _editando.id !== p.id) return;
     analise.docsExtraidos = [...jaLidos, ...aLer.map(x => x.arquivo_id).filter(Boolean)];
     // fecharAoSalvar:false -- ver comentário em coletarESalvar() (controle-campos.js):
     // isso roda sozinho depois da última divergência aceita, sem o usuário clicar
