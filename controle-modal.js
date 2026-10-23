@@ -66,6 +66,7 @@ function copiarReferencia(){
 function fecharModal(){
   if(typeof fecharDRE === 'function') fecharDRE(); // DRE fica no <body>; fecha junto com o painel
   _editando = null;
+  _editandoOriginal = null; // 23/10/2026: não sobra o "original" de um processo fechado para a próxima gravação
   _painelDirty = false;
   document.getElementById('modal-bg').classList.remove('open');
   // Volta a URL pra tela de baixo (/controle ou /financeiro) sem recarregar a pÃÂÃÂ¡gina.

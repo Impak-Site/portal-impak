@@ -3489,6 +3489,8 @@ function htmlFolhaFaturamento(f){
   const R = v => 'R$ ' + fmt(v);
   const U = v => 'US$ ' + fmt(v);
   const n2 = v => fmt(v);
+  // Valor unitário da NF-e com 6 casas (23/10/2026, Jean: o Conexos usa 6 casas no unitário).
+  const n6 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 6, maximumFractionDigits: 6 });
   const c4 = v => (Number(v) || 0).toFixed(4).replace('.', ',');
   const dt = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '—'; };
   const p = v => v != null ? (Number(v) * 100).toFixed(2).replace('.', ',') + '%' : '—';
@@ -3499,9 +3501,9 @@ function htmlFolhaFaturamento(f){
     <div class="ff-nota">
       <div class="ff-nota-tit">Nota ${esc(n.rotulo)} — ${n.qtdTotal} un</div>
       <table class="ff-tab">
-        <thead><tr><th>Cód. Conexos</th><th>Medida</th><th>Pattern</th><th>Qtd</th><th>Peso un. (kg)</th><th>Peso total</th><th>FOB un. US$</th><th>Total FOB US$</th><th>US$ un.</th><th>Total US$</th><th>R$ un.</th><th>Total R$</th><th class="ff-y">VALOR UNIT NF-e</th></tr></thead>
-        <tbody>${n.linhas.map(l => `<tr><td class="ff-cx">${esc(l.codigo_conexos || '—')}</td><td>${esc(l.medida)}</td><td>${esc(l.pat || '—')}</td><td class="n">${l.qtd}</td><td class="n">${l.peso_un ? n2(l.peso_un) : '—'}</td><td class="n">${l.peso_total ? n2(l.peso_total) : '—'}</td><td class="n">${n2(l.fob_un)}</td><td class="n">${n2(l.fob_total)}</td><td class="n">${n2(l.usd_un)}</td><td class="n">${n2(l.usd_total)}</td><td class="n">${n2(l.brl_un)}</td><td class="n">${n2(l.brl_total)}</td><td class="n ff-y"><b>${n2(l.vunit_nfe)}</b></td></tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="3">Total</td><td class="n">${n.qtdTotal}</td><td></td><td class="n">${n.pesoTotal ? n2(n.pesoTotal) : '—'}</td><td></td><td class="n">${n2(n.fobTotal)}</td><td></td><td class="n">${n2(n.linhas.reduce((s, l) => s + l.usd_total, 0))}</td><td></td><td class="n">${n2(n.totalBrl)}</td><td></td></tr></tfoot>
+        <thead><tr><th>Cód. Conexos</th><th>Medida</th><th>Qtd</th><th>Peso un. (kg)</th><th>Peso total</th><th>FOB un. US$</th><th>Total FOB US$</th><th>US$ un.</th><th>Total US$</th><th>R$ un.</th><th>Total R$</th><th class="ff-y">VALOR UNIT NF-e</th></tr></thead>
+        <tbody>${n.linhas.map(l => `<tr><td class="ff-cx">${esc(l.codigo_conexos || '—')}</td><td>${esc(l.medida)}</td><td class="n">${l.qtd}</td><td class="n">${l.peso_un ? n2(l.peso_un) : '—'}</td><td class="n">${l.peso_total ? n2(l.peso_total) : '—'}</td><td class="n">${n2(l.fob_un)}</td><td class="n">${n2(l.fob_total)}</td><td class="n">${n2(l.usd_un)}</td><td class="n">${n2(l.usd_total)}</td><td class="n">${n2(l.brl_un)}</td><td class="n">${n2(l.brl_total)}</td><td class="n ff-y"><b>${n6(l.vunit_nfe)}</b></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td class="n">${n.qtdTotal}</td><td></td><td class="n">${n.pesoTotal ? n2(n.pesoTotal) : '—'}</td><td></td><td class="n">${n2(n.fobTotal)}</td><td></td><td class="n">${n2(n.linhas.reduce((s, l) => s + l.usd_total, 0))}</td><td></td><td class="n">${n2(n.totalBrl)}</td><td></td></tr></tfoot>
       </table>
       <div class="ff-grid2">
         <table class="ff-tab ff-resumo">
