@@ -230,6 +230,7 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
 <!-- Catálogo único de Taxas Operacionais (base_rateio: processo/container),
      compartilhado com o Controle — ver taxas-catalogo.js -->
 <script src="taxas-catalogo.js"></script>
+<script src="conexos-cadastro.js"></script>
 </head>
 <body>
 
@@ -3452,8 +3453,26 @@ function montarFolhaFaturamento(r, opts){
   const diasTotal = dd(pedido, chegada);
   const datas = { pedido, embarque, chegada, rota: dd(embarque, chegada), total: diasTotal, meses: diasTotal != null ? r2(diasTotal / 30) : null };
 
+  // Cód. do Conexos de cada item (pedido do Jean, 23/10/2026): o digitado no
+  // produto do processo vinculado; senão o do Catálogo de Produtos pela
+  // descrição (medida + pattern) — regra em conexos-cadastro.js.
+  const CC = (typeof window !== 'undefined' && window.ConexosCadastro) || null;
+  let prodProc = [];
+  try{ const pj = proc && proc.produtos_json; prodProc = (typeof pj === 'string' ? JSON.parse(pj || '[]') : (pj || [])).filter(x => x && x.codigo_conexos != null && String(x.codigo_conexos).trim() !== ''); }catch(e){ prodProc = []; }
+  const catalogo = Array.isArray(info.catalogo) ? info.catalogo : [];
+  notas.forEach(n => n.linhas.forEach(l => {
+    const it = itensMix[l.idx] || {};
+    if(it.codigo_conexos != null && String(it.codigo_conexos).trim() !== ''){ l.codigo_conexos = String(it.codigo_conexos).trim(); return; }
+    if(!CC || l.semMix){ l.codigo_conexos = ''; return; }
+    const desc = [l.medida, l.pat].filter(Boolean).join(' ');
+    const doProc = prodProc.length ? CC.acharProduto(desc, prodProc.map(x => ({ descricao: x.descricao, codigo_conexos: String(x.codigo_conexos).trim() }))) : null;
+    const achado = (doProc && doProc.produto) ? doProc : CC.acharProduto(desc, catalogo);
+    l.codigo_conexos = achado && achado.produto ? String(achado.produto.codigo_conexos) : '';
+  }));
+
   const contato = info.contato || null;
   return {
+    conexos_id: (proc && proc.conexos_id) ? String(proc.conexos_id) : '',
     referencia: (proc && proc.referencia) || (info.referencia) || '',
     cliente: (contato && contato.razao_social) || (r && r.cliente) || '',
     cnpj: (contato && (contato.cnpj || contato.documento)) || '',
@@ -3480,14 +3499,9 @@ function htmlFolhaFaturamento(f){
     <div class="ff-nota">
       <div class="ff-nota-tit">Nota ${esc(n.rotulo)} — ${n.qtdTotal} un</div>
       <table class="ff-tab">
-        <thead><tr><th>Medida</th><th>Pattern</th><th>Qtd</th><th>Peso un. (kg)</th><th>Peso total</th><th>FOB un. US$</th><th>Total FOB US$</th><th>US$ un.</th><th>Total US$</th><th>R$ un.</th><th>Total R$</th><th class="ff-y">VALOR UNIT NF-e</th></tr></thead>
-        <tbody>${n.linhas.map(l => `<tr><td>${esc(l.medida)}</td><td>${esc(l.pat || '—')}</td><td class="n">${l.qtd}</td><td class="n">${l.peso_un ? n2(l.peso_un) : '—'}</td><td class="n">${l.peso_total ? n2(l.peso_total) : '—'}</td><td class="n">${n2(l.fob_un)}</td><td class="n">${n2(l.fob_total)}</td><td class="n">${n2(l.usd_un)}</td><td class="n">${n2(l.usd_total)}</td><td class="n">${n2(l.brl_un)}</td><td class="n">${n2(l.brl_total)}</td><td class="n ff-y"><b>${n2(l.vunit_nfe)}</b></td></tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="2">Total</td><td class="n">${n.qtdTotal}</td><td></td><td class="n">${n.pesoTotal ? n2(n.pesoTotal) : '—'}</td><td></td><td class="n">${n2(n.fobTotal)}</td><td></td><td class="n">${n2(n.linhas.reduce((s, l) => s + l.usd_total, 0))}</td><td></td><td class="n">${n2(n.totalBrl)}</td><td></td></tr></tfoot>
-      </table>
-      <div class="ff-sub">Itens na NF-e (conferência com o Conexos)</div>
-      <table class="ff-tab">
-        <thead><tr><th>Medida</th><th>Qtd</th><th class="ff-y">Valor unit.</th><th>Valor produtos</th><th>IPI</th><th>ICMS</th>${n.tem_st ? '<th>ICMS S.T</th>' : ''}<th>Total item NF-e</th></tr></thead>
-        <tbody>${n.linhas.map(l => `<tr><td>${esc(l.medida)}</td><td class="n">${l.qtd}</td><td class="n ff-y"><b>${n2(l.vunit_nfe)}</b></td><td class="n">${n2(l.vlr_produto)}</td><td class="n">${n2(l.ipi)}</td><td class="n">${n2(l.icms)}</td>${n.tem_st ? `<td class="n">${n2(l.icms_st)}</td>` : ''}<td class="n">${n2(l.total_nfe)}</td></tr>`).join('')}</tbody>
+        <thead><tr><th>Cód. Conexos</th><th>Medida</th><th>Pattern</th><th>Qtd</th><th>Peso un. (kg)</th><th>Peso total</th><th>FOB un. US$</th><th>Total FOB US$</th><th>US$ un.</th><th>Total US$</th><th>R$ un.</th><th>Total R$</th><th class="ff-y">VALOR UNIT NF-e</th></tr></thead>
+        <tbody>${n.linhas.map(l => `<tr><td class="ff-cx">${esc(l.codigo_conexos || '—')}</td><td>${esc(l.medida)}</td><td>${esc(l.pat || '—')}</td><td class="n">${l.qtd}</td><td class="n">${l.peso_un ? n2(l.peso_un) : '—'}</td><td class="n">${l.peso_total ? n2(l.peso_total) : '—'}</td><td class="n">${n2(l.fob_un)}</td><td class="n">${n2(l.fob_total)}</td><td class="n">${n2(l.usd_un)}</td><td class="n">${n2(l.usd_total)}</td><td class="n">${n2(l.brl_un)}</td><td class="n">${n2(l.brl_total)}</td><td class="n ff-y"><b>${n2(l.vunit_nfe)}</b></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="3">Total</td><td class="n">${n.qtdTotal}</td><td></td><td class="n">${n.pesoTotal ? n2(n.pesoTotal) : '—'}</td><td></td><td class="n">${n2(n.fobTotal)}</td><td></td><td class="n">${n2(n.linhas.reduce((s, l) => s + l.usd_total, 0))}</td><td></td><td class="n">${n2(n.totalBrl)}</td><td></td></tr></tfoot>
       </table>
       <div class="ff-grid2">
         <table class="ff-tab ff-resumo">
@@ -3513,7 +3527,7 @@ function htmlFolhaFaturamento(f){
   <div class="ff">
     <div class="ff-cab">
       <div><b>${cnpjFmt ? cnpjFmt + ' — ' : ''}${esc(f.cliente || '—')}${f.cidade ? ' — ' + esc(f.cidade) : ''}</b></div>
-      <div>Processo <b>${esc(f.referencia || '—')}</b> · ${new Date().toLocaleDateString('pt-BR')} · Frete marítimo ${U(f.frete_usd)} · Dólar médio <b>${c4(f.dolarMedio)}</b> · Câmbio D.I. ${c4(f.cambioDI)}</div>
+      <div>Processo <b>${esc(f.referencia || '—')}</b>${f.conexos_id ? ` · Cód. Conexos <b>${esc(f.conexos_id)}</b>` : ''} · ${new Date().toLocaleDateString('pt-BR')} · Frete marítimo ${U(f.frete_usd)} · Dólar médio <b>${c4(f.dolarMedio)}</b> · Câmbio D.I. ${c4(f.cambioDI)}</div>
       <div>Total da operação: <b>${R(f.totalOperacao)}</b> · ${f.notas.map(n => esc(n.rotulo)).join(' + ') || '—'}</div>
     </div>
     ${f.notas.map(nota).join('')}
@@ -3567,6 +3581,7 @@ const FOLHA_FATURAMENTO_CSS = `
 .ff-nota{margin-bottom:12px;}
 .ff-nota-tit{font-weight:800;font-size:12px;margin:6px 0 4px;}
 .ff-sub{font-weight:700;margin:8px 0 3px;color:#334155;}
+.ff-cx{font-family:"JetBrains Mono",monospace;text-align:center;white-space:nowrap;}
 .ff-tab{border-collapse:collapse;width:100%;}
 .ff-tab th,.ff-tab td{border:1px solid #cbd5e1;padding:3px 5px;}
 .ff-tab th{background:#e2e8f0;font-weight:700;text-align:left;}
@@ -3605,6 +3620,14 @@ async function carregarInfoFaturamento(){
     }
   }catch(e){}
   try{
+    if(!_estado.catalogoConexos){
+      const r = await fetch('/api/catalogo-produtos?limit=2000');
+      const d = await r.json();
+      _estado.catalogoConexos = (d && d.ok && Array.isArray(d.produtos)) ? d.produtos : [];
+    }
+    info.catalogo = _estado.catalogoConexos;
+  }catch(e){}
+  try{
     if(cliente.length >= 2){
       const r = await fetch('/api/contatos?tipo=CLIENTE&q=' + encodeURIComponent(cliente));
       const d = await r.json();
@@ -3641,7 +3664,7 @@ function imprimirFolhaFaturamento(){
   const f = montarFolhaFaturamento(r, { parcelas: _estado.parcelas, info: _infoFaturamentoAtual() });
   const w = window.open('', '_blank');
   if(!w){ showToast('O navegador bloqueou a janela de impressão — libere pop-ups deste site', 'warn'); return; }
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Faturamento ${esc(f.referencia || '')}</title><style>${FOLHA_FATURAMENTO_CSS}@page{size:A4 landscape;margin:8mm}body{margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h3 style="font-family:Inter,Arial,sans-serif;margin:0 0 8px;">IMPAK — Faturamento ${esc(f.referencia || '')}</h3>${htmlFolhaFaturamento(f)}</body></html>`);
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>IMPAK - Faturamento Processo ${esc(f.referencia || '')}${f.conexos_id ? ' - ' + esc(f.conexos_id) : ''}</title><style>${FOLHA_FATURAMENTO_CSS}@page{size:A4 landscape;margin:8mm}body{margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h3 style="font-family:Inter,Arial,sans-serif;margin:0 0 8px;">IMPAK - Faturamento Processo ${esc(f.referencia || '')}${f.conexos_id ? ' - ' + esc(f.conexos_id) : ''}</h3>${htmlFolhaFaturamento(f)}</body></html>`);
   w.document.close();
   w.focus();
   setTimeout(() => { try { w.print(); } catch(e){} }, 300);

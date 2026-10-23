@@ -6227,6 +6227,92 @@ app.post('/api/catalogo-produtos/importar', auth('tyredesk'), async (req, res) =
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
 });
 
+// ── CÓDIGOS DO CONEXOS (23/10/2026, pedido do Jean) ──────────────────────
+// Sobe a planilha que o Conexos exporta — Processos (CadProcessos: "Cód.
+// Processo" × "Referência Externa") ou Produtos (CadProdutos: "Produto" ×
+// "Descrição Produto" × "Cód. Externo") — e atualiza o ID no Conexos dos
+// processos ou o Catálogo de Produtos. Sempre em 2 passos: prévia (não grava
+// nada) e aplicar (grava o mesmo plano). Regras em conexos-cadastro.js.
+const ConexosCadastro = require('./conexos-cadastro.js');
+async function planoCadastroConexos(arquivo_base64) {
+  if (!arquivo_base64) return { erro: 'Nenhum arquivo enviado.' };
+  const lido = await lerPlanilhaIsolada('lerCadastroConexos', Buffer.from(arquivo_base64, 'base64'));
+  if (!lido || lido.erro || !lido.tipo) return { erro: (lido && lido.erro) || 'Planilha não reconhecida.' };
+  if (lido.tipo === 'processos') {
+    const { data: processos, error } = await buscarTodosProcessos('id, referencia, conexos_id, fechado, cancelado');
+    if (error) throw new Error(error.message);
+    return { tipo: 'processos', linhas: lido.itens.length, plano: ConexosCadastro.planoProcessos(lido.itens, processos || [], RefProcesso) };
+  }
+  const catalogo = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sb().from('catalogo_produtos').select('id, descricao, codigo_interno, codigo_conexos').order('id').range(offset, offset + 999);
+    if (error) throw new Error(error.message);
+    catalogo.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return { tipo: 'produtos', linhas: lido.itens.length, plano: ConexosCadastro.planoProdutos(lido.itens, catalogo) };
+}
+function resumoPlanoConexos(r) {
+  const p = r.plano, corta = (l, n) => (l || []).slice(0, n || 300);
+  if (r.tipo === 'processos') return { tipo: r.tipo, linhas: r.linhas,
+    contagem: { mudar: p.mudar.length, iguais: p.iguais.length, nao_encontrados: p.nao_encontrados.length, ambiguos: p.ambiguos.length, conflitos: p.conflitos.length },
+    mudar: corta(p.mudar), conflitos: corta(p.conflitos), ambiguos: corta(p.ambiguos, 100), nao_encontrados: corta(p.nao_encontrados, 100) };
+  return { tipo: r.tipo, linhas: r.linhas,
+    contagem: { inserir: p.inserir.length, atualizar: p.atualizar.length, iguais: p.iguais.length, avisos: p.avisos.length },
+    inserir: corta(p.inserir, 100), atualizar: corta(p.atualizar, 200), avisos: corta(p.avisos, 100) };
+}
+app.post('/api/conexos/cadastro/previa', auth('tyredesk', 'controle'), async (req, res) => {
+  try {
+    const r = await planoCadastroConexos(req.body && req.body.arquivo_base64);
+    if (r.erro) return res.status(400).json({ ok: false, erro: r.erro });
+    res.json({ ok: true, ...resumoPlanoConexos(r) });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/conexos/cadastro/aplicar', auth('tyredesk', 'controle'), async (req, res) => {
+  try {
+    const r = await planoCadastroConexos(req.body && req.body.arquivo_base64);
+    if (r.erro) return res.status(400).json({ ok: false, erro: r.erro });
+    const agora = new Date().toISOString();
+    const usuario = req.session.usuario;
+    const falhas = [];
+    let gravados = 0;
+    if (r.tipo === 'processos') {
+      const mudar = r.plano.mudar;
+      // 1º limpa quem vai trocar (o banco não deixa o mesmo código em dois
+      // processos nem por um instante), depois grava o código novo.
+      const trocar = mudar.filter(m => m.de);
+      for (let i = 0; i < trocar.length; i += 100) {
+        const ids = trocar.slice(i, i + 100).map(m => m.id);
+        const { error } = await sb().from('controle_processos').update({ conexos_id: null }).in('id', ids);
+        if (error) throw new Error(error.message);
+      }
+      const logs = [];
+      for (const m of mudar) {
+        const { error } = await sb().from('controle_processos').update({ conexos_id: m.para, updated_at: agora, updated_by: usuario }).eq('id', m.id);
+        if (error) { falhas.push({ referencia: m.referencia, erro: error.message }); continue; }
+        gravados++;
+        logs.push({ processo_id: m.id, usuario, campo: 'conexos_id (planilha do Conexos)', valor_antes: m.de || '', valor_depois: m.para, created_at: agora });
+      }
+      for (let i = 0; i < logs.length; i += 200) {
+        try { await sb().from('controle_log').insert(logs.slice(i, i + 200)); } catch (e) { console.warn('log conexos_id:', e.message); }
+      }
+    } else {
+      const { inserir, atualizar } = r.plano;
+      for (const u of atualizar) {
+        const { error } = await sb().from('catalogo_produtos').update({ ...u.campos, ativo: true, updated_at: agora }).eq('id', u.id);
+        if (error) falhas.push({ produto: u.campos.descricao || u.antes.descricao, erro: error.message }); else gravados++;
+      }
+      for (let i = 0; i < inserir.length; i += 200) {
+        const lote = inserir.slice(i, i + 200).map(x => ({ ...x, ativo: true }));
+        const { error } = await sb().from('catalogo_produtos').insert(lote);
+        if (error) falhas.push({ produto: `lote ${i / 200 + 1}`, erro: error.message }); else gravados += lote.length;
+      }
+    }
+    console.log(`conexos/cadastro/aplicar (${r.tipo}): ${gravados} gravados, ${falhas.length} falha(s), por ${usuario}`);
+    res.json({ ok: true, ...resumoPlanoConexos(r), gravados, falhas });
+  } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.post('/api/calculador/importar-planilha', auth('tyredesk'), async (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = await lerPlanilhaIsolada('importarPlanilhaBase', buffer); res.json({ ok: true, campos: resultado.campos, mix: resultado.mix }); } catch (e) { console.error('Erro ao importar planilha:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
 app.post('/api/controle/importar-fechamento', auth('controle','financeiro','resultado','tv','narcelio'), async (req, res) => { try { const { arquivo_base64 } = req.body; if (!arquivo_base64) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' }); const buffer = Buffer.from(arquivo_base64, 'base64'); const resultado = await lerPlanilhaIsolada('importarFechamentoBase', buffer); res.json({ ok: true, datas: resultado.datas, real_json: resultado.real_json, moedas: resultado.moedas, avisos: resultado.avisos, resumo: resultado.resumo || null }); } catch (e) { console.error('Erro ao importar fechamento:', e.message); res.status(400).json({ ok: false, erro: e.message }); } });
 // ── CALCULADOR: COTAÇÕES SALVAS ──────────────────────────────────

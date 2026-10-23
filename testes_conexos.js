@@ -85,6 +85,74 @@ function sbFake(){
     iguais(c.statusIntegracao().configurado, false);
   });
 
+  // ── Planilhas do Conexos: códigos de processos e produtos (23/10/2026) ──
+  console.log('\n── conexos-cadastro (CadProcessos / CadProdutos) ──');
+  const CC = require('./conexos-cadastro.js');
+  const RP = require('./referencia-processo.js');
+  teste('lerPlanilha reconhece CadProcessos e CadProdutos pelo cabeçalho; outra planilha dá erro', () => {
+    const pr = CC.lerPlanilha([['Benefício Fiscal', 'Cód. Processo', 'Referência Externa', 'Situação'], [null, 11, 'TST-001', 'ABERTO'], [null, 12, '', 'ABERTO'], [null, 'x', 'TST-9', '']]);
+    iguais(pr.tipo, 'processos'); iguais(pr.itens.length, 1); iguais(pr.itens[0].codigo_conexos, 11); iguais(pr.itens[0].referencia, 'TST-001');
+    const pd = CC.lerPlanilha([['Produto', 'Descrição Produto', 'NCM', 'Cód. Externo'], [7, 'PNEU TESTE 100/50R10 80H AB1', '40111000', 'TT0007'], [8, 'PNEU TESTE 10.0-20 120A6 XY9', '40112090', '']]);
+    iguais(pd.tipo, 'produtos'); iguais(pd.itens.map(i => [i.codigo_conexos, i.codigo_interno]), [[7, 'TT0007'], [8, null]]);
+    iguais(CC.lerPlanilha([['A', 'B'], [1, 2]]).tipo, null);
+  });
+  teste('planoProcessos: novo, troca, igual, sem prefixo IMPAK-, código de outro processo vira conflito, não achado', () => {
+    const procs = [
+      { id: 'a', referencia: 'TST-001', conexos_id: null },
+      { id: 'b', referencia: 'TST-002', conexos_id: '50' },
+      { id: 'c', referencia: 'TST-003', conexos_id: '60' },
+      { id: 'd', referencia: 'IMPAK-TST-004', conexos_id: null },
+      { id: 'e', referencia: 'TST-005', conexos_id: '99' },
+    ];
+    const itens = [
+      { codigo_conexos: 10, referencia: 'TST-001' }, { codigo_conexos: 51, referencia: 'TST-002' },
+      { codigo_conexos: 60, referencia: 'TST-003' }, { codigo_conexos: 40, referencia: 'TST-004' },
+      { codigo_conexos: 99, referencia: 'TST-006' }, { codigo_conexos: 70, referencia: 'NAO-EXISTE' },
+    ];
+    const p = CC.planoProcessos(itens, procs, RP);
+    iguais(p.mudar.map(m => [m.referencia, m.de, m.para]), [['TST-001', null, '10'], ['TST-002', '50', '51'], ['IMPAK-TST-004', null, '40']]);
+    iguais(p.iguais.map(x => x.referencia), ['TST-003']);
+    iguais(p.nao_encontrados.map(x => x.referencia), ['TST-006', 'NAO-EXISTE']);
+    // troca de código entre dois processos (A tinha 5, B passa a ter 5): os dois mudam, sem conflito
+    const q = CC.planoProcessos([{ codigo_conexos: 5, referencia: 'TST-002' }, { codigo_conexos: 6, referencia: 'TST-001' }], [{ id: 'a', referencia: 'TST-001', conexos_id: '5' }, { id: 'b', referencia: 'TST-002', conexos_id: '6' }], RP);
+    iguais(q.mudar.length, 2); iguais(q.conflitos.length, 0);
+    // código que fica com um processo que não muda → conflito
+    const r = CC.planoProcessos([{ codigo_conexos: 50, referencia: 'TST-001' }], procs, RP);
+    iguais(r.mudar.length, 0); iguais(r.conflitos.length, 1);
+  });
+  teste('planoProdutos: atualiza pelo código do Conexos, completa o código pelo Cód. Externo, insere o novo, não repete Cód. Externo', () => {
+    const cat = [
+      { id: 1, descricao: 'PNEU TESTE ANTIGO', codigo_interno: 'TT0001', codigo_conexos: 1 },
+      { id: 2, descricao: 'PNEU TESTE DOIS', codigo_interno: 'TT0002', codigo_conexos: null },
+      { id: 3, descricao: 'PNEU TESTE TRES', codigo_interno: 'TT0003', codigo_conexos: 3 },
+    ];
+    const p = CC.planoProdutos([
+      { codigo_conexos: 1, descricao: 'PNEU TESTE NOVO NOME', codigo_interno: 'TT0001' },
+      { codigo_conexos: 2, descricao: 'PNEU TESTE DOIS', codigo_interno: 'TT0002' },
+      { codigo_conexos: 3, descricao: 'PNEU TESTE TRES', codigo_interno: 'TT0003' },
+      { codigo_conexos: 4, descricao: 'PNEU TESTE QUATRO', codigo_interno: 'TT0003' },
+      { codigo_conexos: 5, descricao: 'PNEU TESTE CINCO', codigo_interno: null },
+    ], cat);
+    iguais(p.atualizar.map(u => [u.id, Object.keys(u.campos).sort().join(',')]), [[1, 'descricao'], [2, 'codigo_conexos']]);
+    iguais(p.iguais, ['3']);
+    iguais(p.inserir.map(x => [x.codigo_conexos, x.codigo_interno]), [[4, null], [5, null]]);
+    iguais(p.avisos.length, 1);
+  });
+  teste('acharProduto: medida + pattern + índice de carga; empate não escolhe; sem medida não chuta', () => {
+    const cat = [
+      { codigo_conexos: 101, descricao: 'PNEU MARCA 12.4-24 128A6 PT01' },
+      { codigo_conexos: 102, descricao: 'PNEU MARCA 18.4-34 151A6 12PR PT01' },
+      { codigo_conexos: 103, descricao: 'PNEU MARCA 295/80R22.5 18PR 154/149L PT02' },
+      { codigo_conexos: 104, descricao: 'PNEU MARCA 295/80R22.5 18PR 152/149M PT02' },
+    ];
+    iguais(CC.acharProduto('12.4-24 PT01 128A6 12 PLY RATIN G', cat).produto.codigo_conexos, 101);
+    iguais(CC.acharProduto('18.4-34 PT01 151A6 12 PLY RATING', cat).produto.codigo_conexos, 102);
+    iguais(CC.acharProduto('295/80 R22.5 18PR 152/149M PT02', cat).produto.codigo_conexos, 104);
+    iguais(CC.acharProduto('295/80R22.5 PT02', cat).produto, null, 'empate entre 103 e 104');
+    iguais(CC.acharProduto('PNEU PT01', cat).produto, null);
+    iguais(CC.acharProduto('12.4-24', cat).produto, null, 'só a medida não basta');
+  });
+
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total-passaram} falharam`);
   process.exit(passaram===total?0:1);
