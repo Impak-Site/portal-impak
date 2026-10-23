@@ -906,6 +906,61 @@ teste('autosave guarda a cotação aberta (atualizar a página continua a MESMA 
   verdadeiro(salvo.cotacao_atual_id === 'cot-teste-7', JSON.stringify(salvo.cotacao_atual_id));
 });
 
+// ── Folha de Faturamento + TTD (Jean 22/10/2026) — valores fictícios ──
+function _sbCalc(prep){
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  if (prep) vm.runInContext(prep, sb);
+  sb.calcular();
+  return sb;
+}
+const _mixFat = "_estado.mix = { itens: [{medida:'AAA',qtd:100,preco:100,peso_kg:10},{medida:'BBB',qtd:100,preco:178.1296,peso_kg:12}], fob_total: 27812.96 };";
+teste('folha de faturamento (TTD): só a nota SEM S.T; valor unit = custo do item × fator NF-e; soma bate com o cenário', () => {
+  const sb = _sbCalc(_mixFat + "setToggleTTD('SIM');");
+  const r = vm.runInContext('_estado.ultimoResultado', sb);
+  verdadeiro(r.so_sem_st === true, 'TTD=SIM marca so_sem_st');
+  const f = vm.runInContext('montarFolhaFaturamento(_estado.ultimoResultado, { parcelas: [] })', sb);
+  verdadeiro(f.notas.length === 1 && f.notas[0].chave === 'sem_st', JSON.stringify(f.notas.map(n => n.chave)));
+  const c = r.cenarios.sem_st;
+  aproxIgual(f.notas[0].linhas[0].vunit_nfe, c.mix[0].custo_unit_brl * c.fatorNfe, 1e-9);
+  aproxIgual(f.notas[0].resumo.vlr_produto, c.vlr_produto, 0.01);
+  aproxIgual(f.notas[0].resumo.total_nfe, c.vlr_total_nfe, 0.01);
+  aproxIgual(f.notas[0].resumo.ipi, c.IPI_s, 0.01);
+  aproxIgual(f.notas[0].resumo.pis + f.notas[0].resumo.cofins, c.PIS_s + c.COFINS_s, 0.01);
+  aproxIgual(f.totalOperacao, c.faturamento_total, 0.05);
+  // TTD: nada de COM S.T, mesmo com split gravado
+  vm.runInContext("splitSet(_estado.ultimoResultado.mix_result[0], 40)", sb);
+  verdadeiro(vm.runInContext('qtdComStItem(_estado.ultimoResultado.mix_result[0], _estado.ultimoResultado)', sb) === 0, 'TTD: qtd COM ST = 0');
+});
+teste('folha de faturamento (sem TTD): o split do Mix divide os itens entre a nota COM S.T e a SEM S.T', () => {
+  const sb = _sbCalc(_mixFat + "setToggleTTD('NAO');");
+  vm.runInContext("splitSet(_estado.ultimoResultado.mix_result[0], 40); splitSet(_estado.ultimoResultado.mix_result[1], 100);", sb);
+  const f = vm.runInContext('montarFolhaFaturamento(_estado.ultimoResultado, { parcelas: [] })', sb);
+  const com = f.notas.find(n => n.chave === 'com_st'), sem = f.notas.find(n => n.chave === 'sem_st');
+  verdadeiro(com && sem, 'duas notas');
+  verdadeiro(com.qtdTotal === 140 && sem.qtdTotal === 60, `${com.qtdTotal}/${sem.qtdTotal}`);
+  verdadeiro(sem.linhas.length === 1 && sem.linhas[0].medida === 'AAA', 'BBB vai inteiro na COM S.T');
+  verdadeiro(com.resumo.icms_st > 0 && sem.resumo.icms_st === 0, 'ST só na nota COM S.T');
+});
+teste('folha de faturamento: dólar médio = antecipação no câmbio da parcela + restante no câmbio da D.I.', () => {
+  const sb = _sbCalc(_mixFat + "setToggleTTD('SIM');");
+  const r = vm.runInContext('_estado.ultimoResultado', sb);
+  const f = vm.runInContext("montarFolhaFaturamento(_estado.ultimoResultado, { parcelas: [{ valor_usd:'', cambio_fechado:'5', data_vencimento:'2026-01-10' }], info: { processo: { pi_data:'2026-01-01', data_embarque:'2026-02-01', data_chegada:'2026-03-31', pi_data_recebimento:'2026-01-05' } } })", sb);
+  aproxIgual(f.anteUsd, r.fob_usd, 1e-9);                 // parcela única sem valor cobre o FOB inteiro
+  aproxIgual(f.anteBrl, r.fob_usd * 5, 1e-6);
+  const libUsd = (f.totalOperacao - f.anteBrl) / r.cambio;
+  aproxIgual(f.dolarMedio, f.totalOperacao / (r.fob_usd + libUsd), 1e-9);
+  aproxIgual(f.saldo.saldo, f.totalNfe - f.anteBrl, 1e-6);
+  verdadeiro(f.antecipacoes[0].data === '2026-01-05', 'data do recebimento do processo');
+  verdadeiro(f.datas.rota === 58 && f.datas.total === 89, JSON.stringify(f.datas));
+});
+teste('TTD=SIM: a margem fica num campo só (a margem SEM S.T própria passa pro 1º campo)', () => {
+  const sb = criarSandbox(); carregarNoSandbox(sb);
+  sb.document.getElementById('cenario_valor').value = '4';
+  sb.document.getElementById('cenario_valor_sem_st').value = '2.5';
+  vm.runInContext("setToggleTTD('SIM')", sb);
+  verdadeiro(sb.document.getElementById('cenario_valor').value === '2.5' && sb.document.getElementById('cenario_valor_sem_st').value === '', 'margem SEM S.T preservada');
+});
+
 // ── RESUMO ───────────────────────────────────────────────────────
 Promise.all(_pendentesAsync).then(() => {
   console.log(`\n${'─'.repeat(50)}`);
