@@ -800,17 +800,17 @@ table.calc-table tr.destaque-row td{background:var(--ac-soft);font-weight:700;co
         <button class="cenario-btn" id="cen-5" onclick="setCenario(5)" title="Fator NFe fixo, igual à célula L11 da planilha">Fator<br>NFe</button>
       </div>
       <div class="form-group" id="cenario-input-group">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div id="cenario-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div>
-            <label><span id="cenario-label">Lucro Bruto %</span> — COM S.T</label>
+            <label><span id="cenario-label">Lucro Bruto %</span> — <span id="cenario-label-st">COM S.T</span></label>
             <input type="number" id="cenario_valor" step="0.01" value="4" placeholder="ex: 4">
           </div>
-          <div>
+          <div id="cenario-box-sem">
             <label><span id="cenario-label-sem">Lucro Bruto %</span> — SEM S.T</label>
             <input type="number" id="cenario_valor_sem_st" step="0.01" value="" placeholder="igual ao COM S.T">
           </div>
         </div>
-        <div style="font-size:10px;color:var(--dim);margin-top:2px;"><span id="cenario-hint">% sobre o faturamento total</span> · SEM S.T em branco = usa a mesma margem do COM S.T</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:2px;"><span id="cenario-hint">% sobre o faturamento total</span><span id="cenario-hint-st"> · SEM S.T em branco = usa a mesma margem do COM S.T</span></div>
         <div id="meta-lucro-info" style="display:none;font-size:11px;color:var(--muted);margin-top:3px;"></div>
       </div>
     </div>
@@ -2097,7 +2097,27 @@ function setToggleTTD(val) {
   if(sim) sim.className = 'toggle-btn' + (val==='SIM' ? ' active-sim' : '');
   if(nao) nao.className = 'toggle-btn' + (val==='NAO' ? ' active-nao' : '');
   const info = document.getElementById('ttd-st-info');
-  if(info) info.textContent = val==='SIM' ? 'Com TTD → calcula SEM ICMS ST' : 'Sem TTD → calcula COM ICMS ST';
+  if(info) info.textContent = val==='SIM' ? 'Com TTD → só SEM S.T (o COM S.T não aparece)' : 'Sem TTD → mostra COM S.T e SEM S.T';
+  aplicarTTDNaTela();
+}
+
+// Cliente com TTD (Jean 22/10/2026): só existe o cálculo SEM S.T. A margem
+// fica num campo só (o primeiro), rotulado SEM S.T. Se a cotação tinha uma
+// margem SEM S.T própria no 2º campo, ela passa pro 1º (o resultado SEM S.T
+// não muda) e o 2º some — assim a meta do cliente e o que o usuário digita
+// valem para a nota que realmente sai.
+function aplicarTTDNaTela(){
+  const so = _estado.toggles && _estado.toggles.ttd === 'SIM';
+  const box = document.getElementById('cenario-box-sem');
+  const grid = document.getElementById('cenario-grid');
+  const lab = document.getElementById('cenario-label-st');
+  const hint = document.getElementById('cenario-hint-st');
+  const v1 = document.getElementById('cenario_valor'), v2 = document.getElementById('cenario_valor_sem_st');
+  if(so && v1 && v2 && String(v2.value).trim() !== ''){ v1.value = v2.value; v2.value = ''; }
+  if(box) box.style.display = so ? 'none' : '';
+  if(grid) grid.style.gridTemplateColumns = so ? '1fr' : '1fr 1fr';
+  if(lab) lab.textContent = so ? 'SEM S.T (cliente com TTD)' : 'COM S.T';
+  if(hint) hint.style.display = so ? 'none' : '';
 }
 
 function setToggleInner(key, val) {
@@ -2308,6 +2328,15 @@ function splitSet(it, v){
   if (_estado.splitST[it.medida] !== undefined) delete _estado.splitST[it.medida];
   _estado.splitST[_splitKey(it)] = v;
 }
+// Quantas unidades do item saem na nota COM S.T (o resto vai na SEM S.T).
+// Cliente com TTD: sempre 0 — só existe a nota SEM S.T. Sem split gravado:
+// tudo COM S.T quando o toggle de ST está ligado, senão tudo SEM S.T.
+function qtdComStItem(it, r){
+  if(r && r.so_sem_st) return 0;
+  const s = splitGet(it);
+  if(s !== undefined) return Math.max(0, Math.min(Number(s) || 0, it.qtd));
+  return (r && r.tem_st) ? it.qtd : 0;
+}
 
 // ── MIX ──────────────────────────────────────────────────
 // Lista do Mix na lateral, com o peso por pneu (editável) e o critério do rateio
@@ -2391,7 +2420,7 @@ function atualizarSplitST(idx){
   let totalGeral = 0;
   r.mix_result.forEach((item, i) => {
     const cs = r.cenarios.com_st.mix[i], ss = r.cenarios.sem_st.mix[i];
-    const qcs = splitGet(item) ?? item.qtd;
+    const qcs = qtdComStItem(item, r);
     const qss = item.qtd - qcs;
     totalGeral += qcs*cs.vlr_unit_brl + qss*ss.vlr_unit_brl;
   });
@@ -2403,10 +2432,7 @@ function atualizarSplitST(idx){
   // quando o split muda aqui no Mix de Produtos.
   const cs2 = r.cenarios.com_st, ss2 = r.cenarios.sem_st;
   const qtdTotalMix2 = r.mix_result.reduce((a, item) => a + item.qtd, 0);
-  const qtdComStMix2 = r.mix_result.reduce((a, item) => {
-    const s = splitGet(item);
-    return a + (s !== undefined ? Math.min(s, item.qtd) : (r.tem_st ? item.qtd : 0));
-  }, 0);
+  const qtdComStMix2 = r.mix_result.reduce((a, item) => a + qtdComStItem(item, r), 0);
   const temSplit2 = qtdTotalMix2 > 0;
   const qtdPorCenario2 = { com_st: qtdComStMix2, sem_st: qtdTotalMix2 - qtdComStMix2 };
   ['com_st', 'sem_st'].forEach(chave => {
@@ -2436,6 +2462,7 @@ function calcular(opts) {
   // pra cima (Ayslan 13/10/2026).
   const _autoCalc = !!(opts && opts.auto);
   const _scrollAntes = _autoCalc ? window.scrollY : null;
+  aplicarTTDNaTela(); // TTD=SIM: margem num campo só (ver aplicarTTDNaTela)
   const cambio   = parseFloat(document.getElementById('cambio_usd').value) || 0;
   const fob_usd  = parseFloat(document.getElementById('fob_usd').value) || 0;
   const frete_usd= parseFloat(document.getElementById('frete_usd').value) || 0;
@@ -3040,6 +3067,9 @@ const base_imp_brl = (fob_usd + frete_usd + taxa_ce + seguro_compra_usd) * cambi
     lucro_bruto, pct_lucro, fator,
     lucro_real, pct_lucro_real, diferenca_taxas_real, detalhe_diferenca_real,
     tem_st: tem_st_toggle, mix_result,
+    // Cliente com TTD (Jean 22/10/2026): só existe a nota SEM S.T — o COM S.T
+    // não aparece em lugar nenhum (tela, Capa, Excel, folha de faturamento).
+    so_sem_st: _estado.toggles.ttd === 'SIM',
     mix_rateio: mix_itens.length ? { por_peso: rateioMix.porPeso, faltam_peso: rateioMix.faltamPeso, peso_total: rateioMix.peso_total } : null,
     por_uf,
     cenarios: {
@@ -3216,9 +3246,9 @@ function renderCapaHtml(r) {
     <div class="detail-section">
       <div class="detail-title">Valor Unitario por Produto + Servico</div>
       <div style="overflow-x:auto;"><table class="mix-result-table">
-        <thead><tr><th>Medida</th><th>Qtd</th><th>Preco Unit. COM S.T</th><th>Preco Unit. SEM S.T</th></tr></thead>
+        <thead><tr><th>Medida</th><th>Qtd</th>${r.so_sem_st ? '' : '<th>Preco Unit. COM S.T</th>'}<th>Preco Unit. SEM S.T</th></tr></thead>
         <tbody>
-          ${r.mix_result.map((it, idx) => `<tr><td>${it.medida}</td><td class="num">${it.qtd}</td><td class="num">${fmtR(d.cst.mix[idx].vlr_unit_brl)}</td><td class="num">${fmtR(d.sst.mix[idx].vlr_unit_brl)}</td></tr>`).join('')}
+          ${r.mix_result.map((it, idx) => `<tr><td>${it.medida}</td><td class="num">${it.qtd}</td>${r.so_sem_st ? '' : `<td class="num">${fmtR(d.cst.mix[idx].vlr_unit_brl)}</td>`}<td class="num">${fmtR(d.sst.mix[idx].vlr_unit_brl)}</td></tr>`).join('')}
         </tbody>
       </table></div>
       ${notaRateioMixHtml(r)}
@@ -3295,17 +3325,326 @@ function renderCapaHtml(r) {
         <tr class="total-row" style="font-size:14px;"><td>CUSTO TOTAL</td><td class="num">${fmtUsdCapa(r.custo_total/(r.cambio||1))} · ${fmtR(r.custo_total)}</td></tr>
       </table>
 
-      ${blocoCenarioCapa('COM S.T', d.cst)}
+      ${r.so_sem_st ? '' : blocoCenarioCapa('COM S.T', d.cst)}
       ${blocoCenarioCapa('SEM S.T', d.sst)}
 
       ${mixHtmlCapa}
 
-      ${porUfHtmlCapa(r, fmtR)}
+      ${r.so_sem_st ? '' : porUfHtmlCapa(r, fmtR)}
 
       <div style="font-size:10px;color:var(--dim);margin-top:6px;">Dolar do fechamento do processo: ${r.cambio}</div>
     </div>
   </div>
   `;
+}
+
+// ── FOLHA DE FATURAMENTO (igual às abas COM S.T / SEM S.T da planilha) ──
+// Jean 22/10/2026: na hora de mandar para faturamento as meninas usam a
+// coluna Y ("VALOR UNIT") de cada item para emitir a NF-e no Conexos, mais o
+// resumo da NF-e para conferir, e a folha impressa leva o quadro de Vistos.
+// Planilha: Y = custo do item (MIX CB) × fator NF-e (CD7) ÷ qtd — no sistema,
+// custo_unit_brl × fatorNfe do cenário. Os impostos da nota (IPI, ICMS, ST,
+// PIS, COFINS, IBS, CBS) são lineares no valor dos produtos, então cada item
+// leva a sua fração do total do cenário. Cliente com TTD: só a nota SEM S.T.
+// Sem TTD: nota COM S.T e/ou SEM S.T conforme o "Qtd COM ST" do Mix.
+// Função pura (testada em testes_calculador.js).
+function montarFolhaFaturamento(r, opts){
+  opts = opts || {};
+  const info = opts.info || {};
+  const proc = info.processo || null;
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+  const r2 = v => Math.round(v * 100) / 100;
+  const cambioDI = num(r && r.cambio);
+  const itensMix = (r && r.mix_result) || [];
+  const cen = (r && r.cenarios) || {};
+  const notas = [];
+  const montarNota = (chave, rotulo, qtdDe) => {
+    const c = cen[chave];
+    if(!c) return;
+    const linhas = [];
+    if(itensMix.length){
+      itensMix.forEach((it, i) => {
+        const q = qtdDe(it);
+        if(!(q > 0)) return;
+        const m = (c.mix && c.mix[i]) || {};
+        const vunit = num(m.custo_unit_brl) * num(c.fatorNfe);
+        linhas.push({ idx: i, medida: it.medida || '', pat: it.pat || '', qtd: q,
+          peso_un: num(it.peso_kg), fob_un: num(it.preco), brl_un: num(m.vlr_unit_brl), vunit_nfe: vunit });
+      });
+    } else {
+      linhas.push({ idx: 0, medida: (r && r.tipo) || 'Produto', pat: '', qtd: 1, peso_un: 0, fob_un: num(r && r.fob_usd),
+        brl_un: num(c.faturamento_total), vunit_nfe: num(c.vlr_produto), semMix: true });
+    }
+    if(!linhas.length) return;
+    const vpTotal = num(c.vlr_produto);
+    const parte = vp => vpTotal > 0 ? vp / vpTotal : 0;
+    const resumo = { vlr_produto:0, ipi:0, base_icms:0, icms:0, base_st:0, icms_st:0, total_nfe:0, pis:0, cofins:0, ibs:0, cbs:0 };
+    let totalBrl = 0, qtdTotal = 0, pesoTotal = 0, fobTotal = 0;
+    linhas.forEach(l => {
+      l.vlr_produto = l.vunit_nfe * l.qtd;
+      const f = parte(l.vlr_produto);
+      l.ipi = num(c.IPI_s) * f;
+      l.icms = num(c.ICMS_nfe) * f;
+      l.icms_st = num(c.icms_st) * f;
+      l.total_nfe = l.vlr_produto + l.ipi + l.icms_st;
+      l.peso_total = l.peso_un * l.qtd;
+      l.fob_total = l.fob_un * l.qtd;
+      l.brl_total = l.brl_un * l.qtd;
+      resumo.vlr_produto += l.vlr_produto; resumo.ipi += l.ipi; resumo.icms += l.icms; resumo.icms_st += l.icms_st;
+      resumo.total_nfe += l.total_nfe;
+      resumo.base_icms += num(c.baseIcmsNormal) * f; resumo.base_st += num(c.base_st) * f;
+      resumo.pis += num(c.PIS_s) * f; resumo.cofins += num(c.COFINS_s) * f; resumo.ibs += num(c.IBS_s) * f; resumo.cbs += num(c.CBS_s) * f;
+      totalBrl += l.brl_total; qtdTotal += l.qtd; pesoTotal += l.peso_total; fobTotal += l.fob_total;
+    });
+    notas.push({ chave, rotulo, tem_st: !!c.tem_st, linhas, resumo, totalBrl, qtdTotal, pesoTotal, fobTotal, semMix: !itensMix.length });
+  };
+  if(r && r.so_sem_st){
+    montarNota('sem_st', 'SEM S.T', it => it.qtd);
+  } else {
+    const qCom = it => (typeof qtdComStItem === 'function') ? qtdComStItem(it, r) : (r && r.tem_st ? it.qtd : 0);
+    if(itensMix.length){
+      montarNota('com_st', 'COM S.T', qCom);
+      montarNota('sem_st', 'SEM S.T', it => it.qtd - qCom(it));
+    } else {
+      montarNota((r && r.tem_st) ? 'com_st' : 'sem_st', (r && r.tem_st) ? 'COM S.T' : 'SEM S.T', () => 1);
+    }
+  }
+  const totalOperacao = notas.reduce((a, n) => a + n.totalBrl, 0);
+  const totalNfe = notas.reduce((a, n) => a + n.resumo.total_nfe, 0);
+
+  // Antecipações (depósito do cliente para o câmbio): cada parcela com câmbio
+  // fechado. Valor US$ da parcela; parcela sem valor (única) cobre o resto do
+  // FOB — mesma regra de fobBrlPelasParcelas. Se o cliente pagou um valor
+  // diferente (Valor recebido do cliente), vale o que ele pagou.
+  const fobUsd = num(r && r.fob_usd);
+  const parcelas = (opts.parcelas || []).filter(p => num(p && p.cambio_fechado) > 0);
+  const comValor = parcelas.filter(p => num(p.valor_usd) > 0 && !(typeof valorParcelaPareceCambio === 'function' && valorParcelaPareceCambio(num(p.valor_usd), num(p.cambio_fechado), fobUsd)));
+  const semValor = parcelas.filter(p => !comValor.includes(p));
+  const usdComValor = comValor.reduce((a, p) => a + num(p.valor_usd), 0);
+  const antecipacoes = [];
+  parcelas.forEach(p => {
+    let usd = comValor.includes(p) ? num(p.valor_usd) : (semValor.length === 1 ? Math.max(0, fobUsd - usdComValor) : 0);
+    if(!(usd > 0)) return;
+    const cambio = num(p.cambio_fechado);
+    const recebido = num(p.valor_recebido_cliente);
+    const data = p.data_recebimento || (parcelas.length === 1 && proc && proc.pi_data_recebimento) || p.data_vencimento || '';
+    antecipacoes.push({ data, usd, cambio, brl: recebido > 0 ? recebido : usd * cambio, label: p.label || '' });
+  });
+  const anteBrl = antecipacoes.reduce((a, x) => a + x.brl, 0);
+  const anteUsd = antecipacoes.reduce((a, x) => a + x.usd, 0);
+  // Cálc. Dólar Médio (planilha N41:Q48): o que já foi pago no câmbio das
+  // parcelas; o restante do total da operação no câmbio da D.I. (liberação).
+  const restanteBrl = totalOperacao - anteBrl;
+  const liberacao = { usd: cambioDI > 0 ? restanteBrl / cambioDI : 0, cambio: cambioDI, brl: restanteBrl };
+  const totalUsd = anteUsd + liberacao.usd;
+  const dolarMedio = totalUsd > 0 ? totalOperacao / totalUsd : cambioDI;
+  notas.forEach(n => n.linhas.forEach(l => {
+    l.usd_un = dolarMedio > 0 ? l.brl_un / dolarMedio : 0;
+    l.usd_total = l.usd_un * l.qtd;
+  }));
+
+  // Datas do processo vinculado (planilha B48:C54).
+  const dia = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? Date.UTC(+m[1], +m[2]-1, +m[3]) : null; };
+  const pedido = proc && (proc.pi_data || proc.data_pi) || '';
+  const embarque = proc && (proc.data_embarque || proc.etd) || '';
+  const chegada = proc && (proc.data_chegada || proc.eta) || '';
+  const dd = (a, b) => (dia(a) != null && dia(b) != null) ? Math.round((dia(b) - dia(a)) / 86400000) : null;
+  const diasTotal = dd(pedido, chegada);
+  const datas = { pedido, embarque, chegada, rota: dd(embarque, chegada), total: diasTotal, meses: diasTotal != null ? r2(diasTotal / 30) : null };
+
+  const contato = info.contato || null;
+  return {
+    referencia: (proc && proc.referencia) || (info.referencia) || '',
+    cliente: (contato && contato.razao_social) || (r && r.cliente) || '',
+    cnpj: (contato && (contato.cnpj || contato.documento)) || '',
+    cidade: contato ? [contato.cidade, contato.uf].filter(Boolean).join('/') : '',
+    frete_usd: num(r && r.frete_usd), cambioDI, dolarMedio,
+    notas, totalOperacao, totalNfe,
+    antecipacoes, anteBrl, anteUsd, liberacao, totalUsd,
+    saldo: { nf: totalNfe, adiantamentos: anteBrl, saldo: totalNfe - anteBrl },
+    datas, aliq: (r && r.t) || {},
+  };
+}
+
+function htmlFolhaFaturamento(f){
+  const R = v => 'R$ ' + fmt(v);
+  const U = v => 'US$ ' + fmt(v);
+  const n2 = v => fmt(v);
+  const c4 = v => (Number(v) || 0).toFixed(4).replace('.', ',');
+  const dt = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '—'; };
+  const p = v => v != null ? (Number(v) * 100).toFixed(2).replace('.', ',') + '%' : '—';
+  const cnpj = String(f.cnpj || '').replace(/\D/g, '');
+  const cnpjFmt = cnpj.length === 14 ? cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : esc(f.cnpj || '');
+  const a = f.aliq || {};
+  const nota = n => `
+    <div class="ff-nota">
+      <div class="ff-nota-tit">Nota ${esc(n.rotulo)} — ${n.qtdTotal} un</div>
+      <table class="ff-tab">
+        <thead><tr><th>Medida</th><th>Pattern</th><th>Qtd</th><th>Peso un. (kg)</th><th>Peso total</th><th>FOB un. US$</th><th>Total FOB US$</th><th>US$ un.</th><th>Total US$</th><th>R$ un.</th><th>Total R$</th><th class="ff-y">VALOR UNIT NF-e</th></tr></thead>
+        <tbody>${n.linhas.map(l => `<tr><td>${esc(l.medida)}</td><td>${esc(l.pat || '—')}</td><td class="n">${l.qtd}</td><td class="n">${l.peso_un ? n2(l.peso_un) : '—'}</td><td class="n">${l.peso_total ? n2(l.peso_total) : '—'}</td><td class="n">${n2(l.fob_un)}</td><td class="n">${n2(l.fob_total)}</td><td class="n">${n2(l.usd_un)}</td><td class="n">${n2(l.usd_total)}</td><td class="n">${n2(l.brl_un)}</td><td class="n">${n2(l.brl_total)}</td><td class="n ff-y"><b>${n2(l.vunit_nfe)}</b></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td class="n">${n.qtdTotal}</td><td></td><td class="n">${n.pesoTotal ? n2(n.pesoTotal) : '—'}</td><td></td><td class="n">${n2(n.fobTotal)}</td><td></td><td class="n">${n2(n.linhas.reduce((s, l) => s + l.usd_total, 0))}</td><td></td><td class="n">${n2(n.totalBrl)}</td><td></td></tr></tfoot>
+      </table>
+      <div class="ff-sub">Itens na NF-e (conferência com o Conexos)</div>
+      <table class="ff-tab">
+        <thead><tr><th>Medida</th><th>Qtd</th><th class="ff-y">Valor unit.</th><th>Valor produtos</th><th>IPI</th><th>ICMS</th>${n.tem_st ? '<th>ICMS S.T</th>' : ''}<th>Total item NF-e</th></tr></thead>
+        <tbody>${n.linhas.map(l => `<tr><td>${esc(l.medida)}</td><td class="n">${l.qtd}</td><td class="n ff-y"><b>${n2(l.vunit_nfe)}</b></td><td class="n">${n2(l.vlr_produto)}</td><td class="n">${n2(l.ipi)}</td><td class="n">${n2(l.icms)}</td>${n.tem_st ? `<td class="n">${n2(l.icms_st)}</td>` : ''}<td class="n">${n2(l.total_nfe)}</td></tr>`).join('')}</tbody>
+      </table>
+      <div class="ff-grid2">
+        <table class="ff-tab ff-resumo">
+          <thead><tr><th colspan="3">Resumo da NF-e ${esc(n.rotulo)}</th></tr></thead>
+          <tbody>
+            <tr><td>Vlr. Produto</td><td></td><td class="n">${R(n.resumo.vlr_produto)}</td></tr>
+            <tr><td>IPI</td><td class="n">${p(a.ipi)}</td><td class="n">${R(n.resumo.ipi)}</td></tr>
+            <tr><td>Base ICMS</td><td></td><td class="n">${R(n.resumo.base_icms)}</td></tr>
+            <tr><td>ICMS NF-e</td><td class="n">${p(a.aliq_inter)}</td><td class="n">${R(n.resumo.icms)}</td></tr>
+            <tr><td>Base ICMS S.T</td><td></td><td class="n">${R(n.resumo.base_st)}</td></tr>
+            <tr><td>ICMS S.T</td><td></td><td class="n">${R(n.resumo.icms_st)}</td></tr>
+            <tr class="ff-tot"><td>Vlr. Total NF-e</td><td></td><td class="n">${R(n.resumo.total_nfe)}</td></tr>
+            <tr><td>PIS</td><td class="n">${p(a.pis_s)}</td><td class="n">${R(n.resumo.pis)}</td></tr>
+            <tr><td>COFINS</td><td class="n">${p(a.cofins_s)}</td><td class="n">${R(n.resumo.cofins)}</td></tr>
+            <tr><td>IBS</td><td class="n">${p(a.ibs)}</td><td class="n">${R(n.resumo.ibs)}</td></tr>
+            <tr><td>CBS</td><td class="n">${p(a.cbs)}</td><td class="n">${R(n.resumo.cbs)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  const d = f.datas || {};
+  return `
+  <div class="ff">
+    <div class="ff-cab">
+      <div><b>${cnpjFmt ? cnpjFmt + ' — ' : ''}${esc(f.cliente || '—')}${f.cidade ? ' — ' + esc(f.cidade) : ''}</b></div>
+      <div>Processo <b>${esc(f.referencia || '—')}</b> · ${new Date().toLocaleDateString('pt-BR')} · Frete marítimo ${U(f.frete_usd)} · Dólar médio <b>${c4(f.dolarMedio)}</b> · Câmbio D.I. ${c4(f.cambioDI)}</div>
+      <div>Total da operação: <b>${R(f.totalOperacao)}</b> · ${f.notas.map(n => esc(n.rotulo)).join(' + ') || '—'}</div>
+    </div>
+    ${f.notas.map(nota).join('')}
+    <div class="ff-grid3">
+      <table class="ff-tab">
+        <thead><tr><th colspan="2">Datas</th></tr></thead>
+        <tbody>
+          <tr><td>Data do pedido</td><td class="n">${dt(d.pedido)}</td></tr>
+          <tr><td>Embarque</td><td class="n">${dt(d.embarque)}</td></tr>
+          <tr><td>Chegada porto</td><td class="n">${dt(d.chegada)}</td></tr>
+          <tr><td>Tempo rota (dias)</td><td class="n">${d.rota != null ? d.rota : '—'}</td></tr>
+          <tr><td>Tempo total (dias)</td><td class="n">${d.total != null ? d.total : '—'}</td></tr>
+          <tr><td>Meses</td><td class="n">${d.meses != null ? String(d.meses).replace('.', ',') : '—'}</td></tr>
+        </tbody>
+      </table>
+      <table class="ff-tab">
+        <thead><tr><th colspan="4">Cálc. Dólar Médio</th></tr><tr><th>Data</th><th>Câmbio US$</th><th>Dólar</th><th>Total R$</th></tr></thead>
+        <tbody>
+          ${f.antecipacoes.map(x => `<tr><td>${dt(x.data)}</td><td class="n">${n2(x.usd)}</td><td class="n">${c4(x.cambio)}</td><td class="n">${n2(x.brl)}</td></tr>`).join('')}
+          <tr><td>Liberação</td><td class="n">${n2(f.liberacao.usd)}</td><td class="n">${c4(f.liberacao.cambio)}</td><td class="n">${n2(f.liberacao.brl)}</td></tr>
+          <tr class="ff-tot"><td>Total</td><td class="n">${n2(f.totalUsd)}</td><td class="n">${c4(f.dolarMedio)}</td><td class="n">${n2(f.totalOperacao)}</td></tr>
+        </tbody>
+      </table>
+      <table class="ff-tab">
+        <thead><tr><th colspan="2">Antecipações e saldo</th></tr></thead>
+        <tbody>
+          ${f.antecipacoes.length ? f.antecipacoes.map(x => `<tr><td>Depósito câmbio + taxa${x.data ? ' — ' + dt(x.data) : ''}</td><td class="n">${R(x.brl)}</td></tr>`).join('') : '<tr><td>Sem câmbio fechado nas parcelas</td><td class="n">—</td></tr>'}
+          <tr class="ff-tot"><td>Total pago para este processo</td><td class="n">${R(f.anteBrl)}</td></tr>
+          <tr><td>Valor da(s) NF-e Impak</td><td class="n">${R(f.saldo.nf)}</td></tr>
+          <tr><td>Valor dos adiantamentos</td><td class="n">${R(f.saldo.adiantamentos)}</td></tr>
+          <tr class="ff-tot"><td>Saldo a pagar para a Impak</td><td class="n">${R(f.saldo.saldo)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <table class="ff-tab ff-vistos">
+      <thead><tr><th>Faturamento</th><th>Visto</th><th>E-mail cliente</th><th>Visto</th><th>Anexos</th><th>Visto</th></tr></thead>
+      <tbody>
+        <tr><td>Impak</td><td></td><td>Impak</td><td></td><td>Boletos</td><td></td></tr>
+        <tr><td>Serviços</td><td></td><td>Serviços</td><td></td><td>Fechamento</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="ff-assin">
+      <div>1. Conferência Fiscal</div><div>2. Logística / Agendamento</div><div>3. CP / CR / Comissões / Serviços</div><div>4. Diretoria Financeira</div><div>5. Fechamento de Processo</div>
+    </div>
+  </div>`;
+}
+
+const FOLHA_FATURAMENTO_CSS = `
+.ff{font-family:Inter,Arial,sans-serif;font-size:11px;color:#111;}
+.ff-cab{border:1px solid #cbd5e1;border-radius:6px;padding:8px 10px;margin-bottom:10px;line-height:1.6;background:#f8fafc;}
+.ff-nota{margin-bottom:12px;}
+.ff-nota-tit{font-weight:800;font-size:12px;margin:6px 0 4px;}
+.ff-sub{font-weight:700;margin:8px 0 3px;color:#334155;}
+.ff-tab{border-collapse:collapse;width:100%;}
+.ff-tab th,.ff-tab td{border:1px solid #cbd5e1;padding:3px 5px;}
+.ff-tab th{background:#e2e8f0;font-weight:700;text-align:left;}
+.ff-tab .n{text-align:right;white-space:nowrap;}
+.ff-tab tfoot td,.ff-tab .ff-tot td{font-weight:700;background:#f1f5f9;}
+.ff-y{background:#fef9c3 !important;}
+.ff-grid2{display:grid;grid-template-columns:minmax(260px,420px);margin-top:8px;}
+.ff-grid3{display:grid;grid-template-columns:1fr 1.3fr 1.3fr;gap:10px;margin:10px 0;align-items:start;}
+.ff-vistos td{height:22px;}
+.ff-assin{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:34px;}
+.ff-assin div{border-top:1px solid #111;padding-top:4px;text-align:center;font-size:10px;}
+`;
+
+// Dados do processo vinculado (datas, pagamento recebido) e do cadastro do
+// cliente (CNPJ, cidade). Busca 1x por cotação; sem acesso ao Controle, a
+// folha sai sem as datas (o resto vem da própria cotação).
+function _chaveInfoFaturamento(){
+  const v = _estado.cotacaoVinculo;
+  const cliente = (document.getElementById('cliente') || {}).value || '';
+  return (v && v.id || '') + '|' + cliente;
+}
+function _infoFaturamentoAtual(){
+  return (_estado.fatInfo && _estado.fatInfo.chave === _chaveInfoFaturamento()) ? _estado.fatInfo : {};
+}
+async function carregarInfoFaturamento(){
+  const v = _estado.cotacaoVinculo;
+  const cliente = (document.getElementById('cliente') || {}).value || '';
+  const chave = _chaveInfoFaturamento();
+  if(_estado.fatInfo && _estado.fatInfo.chave === chave) return;
+  const info = { chave, processo: null, contato: null, referencia: (v && v.referencia) || (_estado.mix && _estado.mix.referencia) || '' };
+  _estado.fatInfo = info;
+  try{
+    if(v && v.id){
+      const r = await fetch('/api/controle/v2/processo/' + encodeURIComponent(v.id));
+      if(r.ok){ const d = await r.json(); info.processo = d.processo || null; }
+    }
+  }catch(e){}
+  try{
+    if(cliente.length >= 2){
+      const r = await fetch('/api/contatos?tipo=CLIENTE&q=' + encodeURIComponent(cliente));
+      const d = await r.json();
+      const lista = (d && d.contatos) || [];
+      info.contato = lista.find(c => String(c.razao_social || '').trim().toUpperCase() === cliente.trim().toUpperCase()) || null;
+    }
+  }catch(e){}
+  if(_estado.fatInfo !== info) return;
+  const alvo = document.getElementById('fat-folha-corpo');
+  if(alvo && _estado.ultimoResultado) alvo.innerHTML = htmlFolhaFaturamento(montarFolhaFaturamento(_estado.ultimoResultado, { parcelas: _estado.parcelas, info }));
+}
+
+function renderFaturamentoSecaoHtml(r){
+  if(!r || !r.cenarios) return '';
+  const f = montarFolhaFaturamento(r, { parcelas: _estado.parcelas, info: _infoFaturamentoAtual() });
+  if(typeof setTimeout === 'function') setTimeout(() => { carregarInfoFaturamento(); }, 0);
+  return `
+  <style>${FOLHA_FATURAMENTO_CSS}</style>
+  <div class="resultado" style="margin-bottom:16px;" id="fat-secao">
+    <div class="resultado-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <h2>🧾 Faturamento — folha para emissão da NF-e (${r.so_sem_st ? 'SEM S.T · cliente com TTD' : 'COM S.T / SEM S.T'})</h2>
+      <button type="button" onclick="imprimirFolhaFaturamento()" style="font-size:12px;font-weight:700;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;">🖨️ Imprimir folha</button>
+    </div>
+    <div class="resultado-body">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">A coluna amarela (VALOR UNIT NF-e) é o valor de cada item na nota — o mesmo da coluna Y da aba ${r.so_sem_st ? 'SEM S.T' : 'COM S.T / SEM S.T'} da planilha. O resumo de cada nota serve para conferir com o Conexos.</div>
+      <div id="fat-folha-corpo" style="overflow-x:auto;">${htmlFolhaFaturamento(f)}</div>
+    </div>
+  </div>`;
+}
+
+function imprimirFolhaFaturamento(){
+  const r = _estado.ultimoResultado;
+  if(!r){ showToast('Calcule primeiro', 'warn'); return; }
+  const f = montarFolhaFaturamento(r, { parcelas: _estado.parcelas, info: _infoFaturamentoAtual() });
+  const w = window.open('', '_blank');
+  if(!w){ showToast('O navegador bloqueou a janela de impressão — libere pop-ups deste site', 'warn'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Faturamento ${esc(f.referencia || '')}</title><style>${FOLHA_FATURAMENTO_CSS}@page{size:A4 landscape;margin:8mm}body{margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h3 style="font-family:Inter,Arial,sans-serif;margin:0 0 8px;">IMPAK — Faturamento ${esc(f.referencia || '')}</h3>${htmlFolhaFaturamento(f)}</body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { try { w.print(); } catch(e){} }, 300);
 }
 
 // ── RENDER RESULTADO ──────────────────────────────────────
@@ -3348,10 +3687,7 @@ function renderResultado(r) {
     const cs = r.cenarios.com_st, ss = r.cenarios.sem_st;
     const temBoss = cs.boss_fora_val > 0 || ss.boss_fora_val > 0;
     const qtdTotalMix = (r.mix_result || []).reduce((a, it) => a + it.qtd, 0);
-    const qtdComStMix = (r.mix_result || []).reduce((a, it) => {
-      const s = splitGet(it);
-      return a + (s !== undefined ? Math.min(s, it.qtd) : (r.tem_st ? it.qtd : 0));
-    }, 0);
+    const qtdComStMix = (r.mix_result || []).reduce((a, it) => a + qtdComStItem(it, r), 0);
     const temSplit = !!(r.mix_result && r.mix_result.length && qtdTotalMix > 0);
     const qtdPorCenario = { com_st: qtdComStMix, sem_st: qtdTotalMix - qtdComStMix };
     const linha = (label, c, chave) => {
@@ -3370,7 +3706,7 @@ function renderResultado(r) {
     };
     return `
     <div class="detail-section">
-      <div class="detail-title">🔀 Resumo por Cenário — COM S.T. × SEM S.T.</div>
+      <div class="detail-title">🔀 ${r.so_sem_st ? 'Resumo — SEM S.T. (cliente com TTD)' : 'Resumo por Cenário — COM S.T. × SEM S.T.'}</div>
       <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
         Total da operação em cada cenário, já separando quanto é Comissão China (nota de serviço, fora do preço) e quanto fica pra Impak.
       </div>
@@ -3379,14 +3715,27 @@ function renderResultado(r) {
           <th></th><th>Total Operação</th><th>Comissão China</th>${temBoss ? '<th>Comissão Boss/Lopes</th>' : ''}<th>Valor Impak</th>
         </tr></thead>
         <tbody>
-          ${linha('COM S.T.', cs, 'com_st')}
+          ${r.so_sem_st ? '' : linha('COM S.T.', cs, 'com_st')}
           ${linha('SEM S.T.', ss, 'sem_st')}
         </tbody>
       </table>
     </div>`;
   })() : '';
 
-  const mix_html = r.mix_result && r.mix_result.length && r.cenarios ? `
+  const mix_html = (r.mix_result && r.mix_result.length && r.cenarios && r.so_sem_st) ? `
+    <div class="detail-section">
+      <div class="detail-title">📦 Mix de Produtos — Preço Unitário (SEM ST · cliente com TTD)</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">Cliente com TTD: a nota sai toda SEM S.T (o cálculo COM S.T fica escondido pra não gerar erro).</div>
+      <div style="overflow-x:auto;"><table class="mix-result-table">
+        <thead><tr><th>Medida</th><th>Pattern</th><th>Qtd</th><th>Preço SEM ST</th><th>Total (R$)</th></tr></thead>
+        <tbody>
+          ${r.mix_result.map((it, idx) => { const ss = r.cenarios.sem_st.mix[idx]; return `<tr><td>${it.medida}</td><td>${it.pat||'—'}</td><td class="num">${it.qtd}</td><td class="num">${fmtR(ss.vlr_unit_brl)}</td><td class="num">${fmtR(ss.vlr_unit_brl*it.qtd)}</td></tr>`; }).join('')}
+        </tbody>
+        <tfoot><tr style="font-weight:700;background:var(--bg);"><td colspan="4" style="text-align:right;padding:8px;">Total</td><td class="num" style="padding:8px;">${fmtR(r.mix_result.reduce((a,it,idx)=>a + r.cenarios.sem_st.mix[idx].vlr_unit_brl*it.qtd, 0))}</td></tr></tfoot>
+      </table></div>
+      ${notaRateioMixHtml(r)}
+    </div>
+  ` : r.mix_result && r.mix_result.length && r.cenarios ? `
     <div class="detail-section">
       <div class="detail-title">📦 Mix de Produtos — Preço Unitário (COM ST × SEM ST)</div>
       <div style="font-size:11px;color:var(--dim);margin-bottom:8px;">
@@ -3403,10 +3752,10 @@ function renderResultado(r) {
           ${r.mix_result.map((it, idx) => {
             const comSt = r.cenarios.com_st.mix[idx];
             const semSt = r.cenarios.sem_st.mix[idx];
-            const qComSt = (splitGet(it) !== undefined) ? Math.min(splitGet(it), it.qtd) : (r.tem_st ? it.qtd : 0);
+            const qComSt = qtdComStItem(it, r);
             const qSemSt = it.qtd - qComSt;
             const totalRow = qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
-            splitSet(it, qComSt); // fixa default calculado, se ainda não existia
+            if(!r.so_sem_st) splitSet(it, qComSt); // fixa default calculado, se ainda não existia
             return `<tr>
               <td>${it.medida}</td><td>${it.pat||'—'}</td>
               <td class="num">${it.qtd}</td>
@@ -3425,7 +3774,7 @@ function renderResultado(r) {
             <td colspan="7" style="text-align:right;padding:8px;">Faturamento combinado (conforme o split acima)</td>
             <td class="num" id="split-total-geral" style="padding:8px;">${fmtR(r.mix_result.reduce((acc,it,idx)=>{
               const comSt=r.cenarios.com_st.mix[idx], semSt=r.cenarios.sem_st.mix[idx];
-              const qComSt=splitGet(it)??0, qSemSt=it.qtd-qComSt;
+              const qComSt=qtdComStItem(it, r), qSemSt=it.qtd-qComSt;
               return acc + qComSt*comSt.vlr_unit_brl + qSemSt*semSt.vlr_unit_brl;
             },0))}</td>
           </tr>
@@ -3485,6 +3834,7 @@ function renderResultado(r) {
     </div>
 
     ${renderCapaHtml(r)}
+    ${renderFaturamentoSecaoHtml(r)}
 <!-- DETALHES CIF E IMPOSTOS ENTRADA -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
       <div class="resultado">
@@ -3892,7 +4242,7 @@ async function exportarExcel() {
         add('totalGrande', 'TOTAL DO PROCESSO', '', '', fmtR(c.faturamento_total));
         add('blank');
       }
-      blocoPrecoVenda('COM S.T', cst);
+      if(!r.so_sem_st) blocoPrecoVenda('COM S.T', cst);
       blocoPrecoVenda('SEM S.T', sst);
 
       if(r.detalhe_diferenca_real && r.detalhe_diferenca_real.length){
@@ -3906,11 +4256,19 @@ async function exportarExcel() {
       }
 
       if(r.mix_result && r.mix_result.length){
+        if(r.so_sem_st){
+          add('secao', 'VALOR UNITÁRIO POR PRODUTO — SEM S.T (cliente com TTD)');
+          add('cabecalhoTabela', 'Medida','Pattern','Qtd Total','Preço SEM ST (R$)','Total (R$)');
+          r.mix_result.forEach((it, idx) => {
+            add('linhaTabela', it.medida, it.pat||'—', it.qtd, fmtR(sst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl*it.qtd));
+          });
+        } else {
         add('secao', 'VALOR UNITÁRIO POR PRODUTO — COM S.T x SEM S.T');
         add('cabecalhoTabela', 'Medida','Pattern','Qtd Total','Preço COM ST (R$)','Preço SEM ST (R$)');
         r.mix_result.forEach((it, idx) => {
           add('linhaTabela', it.medida, it.pat||'—', it.qtd, fmtR(cst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl));
         });
+        }
       }
 
       const wsD = wb.addWorksheet('Demonstrativo');
@@ -4041,7 +4399,7 @@ async function exportarExcel() {
 
       let rowIdx = 5, totalGeral = 0, count = 0;
       (r.mix_result||[]).forEach((it, idx) => {
-        const qComSt = splitGet(it) ?? it.qtd;
+        const qComSt = qtdComStItem(it, r);
         const qSemSt = it.qtd - qComSt;
         const linhasItem = [];
         if(qComSt > 0){
@@ -4194,16 +4552,23 @@ async function exportarExcel() {
       addCapa('totalGrande', 'TOTAL DO PROCESSO', '', '', fmtR(c.faturamento_total));
       addCapa('blank');
     }
-    blocoCapaPrecoVenda('COM S.T', cst);
+    if(!r.so_sem_st) blocoCapaPrecoVenda('COM S.T', cst);
     blocoCapaPrecoVenda('SEM S.T', sst);
     addCapa('info', 'Dolar do fechamento do processo:', r.cambio, '', '');
     addCapa('blank');
     if(r.mix_result && r.mix_result.length){
       addCapa('secao', 'VALOR UNITARIO POR PRODUTO + SERVICO');
+      if(r.so_sem_st){
+        addCapa('cabecalhoTabela', 'Medida','Pattern','Qtd Total','Preco SEM ST (R$)','Total (R$)');
+        r.mix_result.forEach((it, idx) => {
+          addCapa('linhaTabela', it.medida, it.pat||'—', it.qtd, fmtR(sst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl*it.qtd));
+        });
+      } else {
       addCapa('cabecalhoTabela', 'Medida','Pattern','Qtd Total','Preco COM ST (R$)','Preco SEM ST (R$)');
       r.mix_result.forEach((it, idx) => {
         addCapa('linhaTabela', it.medida, it.pat||'—', it.qtd, fmtR(cst.mix[idx].vlr_unit_brl), fmtR(sst.mix[idx].vlr_unit_brl));
       });
+      }
     } else {
       addCapa('secao', 'VALOR DO PRODUTO');
       addCapa('dado', 'Produto unico — total conforme TOTAL DA NFe acima', '', '', '');
