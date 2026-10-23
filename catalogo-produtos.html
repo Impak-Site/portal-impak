@@ -58,6 +58,18 @@ td.col-conexos input, td.col-interno input{text-align:center;}
 #importModal p{font-size:13px;color:var(--muted);line-height:1.5;}
 #importModal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
 #importResultado{margin-top:12px;font-size:13px;}
+#conexosModal{display:none;position:fixed;inset:0;background:rgba(16,24,40,.5);z-index:1000;align-items:center;justify-content:center;}
+#conexosModal .box{background:#fff;border-radius:var(--r-lg);padding:24px;max-width:760px;width:94%;max-height:88vh;overflow:auto;box-shadow:var(--shadow-md);}
+#conexosModal h3{margin:0 0 10px;}
+#conexosModal p{font-size:13px;color:var(--muted);line-height:1.5;margin:6px 0;}
+#conexosModal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
+#cxResultado{margin-top:12px;font-size:12.5px;}
+#cxResultado table{font-size:12px;margin-top:6px;}
+#cxResultado td,#cxResultado th{padding:4px 6px;}
+.cx-cards{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;}
+.cx-card{border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:#fafbfd;}
+.cx-card b{display:block;font-size:16px;}
+.cx-lista{max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;}
 </style>
 </head>
 <body>
@@ -66,6 +78,7 @@ td.col-conexos input, td.col-interno input{text-align:center;}
   <p class="sub">Produtos vinculados ao Conexos (Cod.Conexos = código do item no ERP, Código = código interno UD00xx usado nas planilhas de fechamento). Edita direto na tabela — salva sozinho.</p>
   <div class="toolbar">
     <input type="text" id="busca" aria-label="Buscar produto por descrição ou código" placeholder="Buscar por descrição ou código...">
+    <button class="btn" id="btnConexos" title="Planilha exportada do Conexos: CadProdutos (atualiza este catálogo) ou CadProcessos (atualiza o ID no Conexos de cada processo)">⬆ Atualizar pelo Conexos</button>
     <button class="btn" id="btnImportar">📥 Importar de planilha</button>
     <button class="btn primary" id="btnNovo">+ Novo produto</button>
   </div>
@@ -89,6 +102,22 @@ td.col-conexos input, td.col-interno input{text-align:center;}
   </div>
 </div>
 
+<div id="conexosModal">
+  <div class="box">
+    <h3>⬆ Atualizar pelo Conexos</h3>
+    <p>Exporte do Conexos e envie aqui a planilha de <b>Produtos</b> (CadProdutos — colunas Produto, Descrição Produto, Cód. Externo) ou a de <b>Processos</b> (CadProcessos — colunas Cód. Processo, Referência Externa). O sistema reconhece qual é.</p>
+    <p>Primeiro aparece a <b>prévia</b> do que vai mudar — nada é gravado. Só depois de conferir, clique em <b>Aplicar</b>.<br>
+    • Produtos: cada código do Conexos entra no catálogo ou atualiza a descrição/código interno do que já existe (nada é apagado).<br>
+    • Processos: o "ID no Conexos" de cada processo passa a ser o Cód. Processo da planilha, casando pela referência (com ou sem "IMPAK-"). A mudança vai para o Histórico do processo.</p>
+    <input type="file" id="cxArquivo" accept=".xlsx,.xls,.xlsm">
+    <div id="cxResultado"></div>
+    <div class="actions">
+      <button class="btn" id="cxFechar">Fechar</button>
+      <button class="btn" id="cxPrevia">Ver prévia</button>
+      <button class="btn primary" id="cxAplicar" disabled>Aplicar</button>
+    </div>
+  </div>
+</div>
 <script>
 function escapeHtml(s){
   return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -236,6 +265,61 @@ document.getElementById('btnConfirmarImport').addEventListener('click', async ()
   }catch(e){
     resultDiv.innerHTML = '<span style="color:var(--err)">Erro de rede ao importar.</span>';
   }
+});
+
+// ── Atualizar pelo Conexos (23/10/2026) ──
+let _cxBase64 = null;
+function _cxLer(file){
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = reject; r.readAsDataURL(file); });
+}
+function _cxHtml(d, aplicado){
+  const E = escapeHtml, c = d.contagem || {};
+  const card = (n, l) => `<div class="cx-card"><b>${n}</b>${l}</div>`;
+  let h = '';
+  if(d.tipo === 'processos'){
+    h += `<div><b>Planilha de Processos</b> — ${d.linhas} linha(s)${aplicado ? ` · <span style="color:var(--ok)">${d.gravados} processo(s) atualizado(s)</span>` : ''}</div>`;
+    h += `<div class="cx-cards">${card(c.mudar, aplicado ? 'atualizados' : 'vão receber/trocar o código')}${card(c.iguais, 'já estão iguais')}${card(c.nao_encontrados, 'não achados no ImpakOS')}${card(c.conflitos + c.ambiguos, 'conflitos (não mexe)')}</div>`;
+    if((d.mudar || []).length) h += `<div class="cx-lista"><table><thead><tr><th>Processo</th><th>Hoje</th><th>Fica</th><th></th></tr></thead><tbody>${d.mudar.map(m => `<tr><td>${E(m.referencia)}${m.referencia_planilha ? ` <span style="color:var(--muted)">(${E(m.referencia_planilha)})</span>` : ''}</td><td>${E(m.de || '—')}</td><td><b>${E(m.para)}</b></td><td style="color:var(--muted)">${m.de ? 'troca' : 'novo'}${m.fechado ? ' · fechado' : ''}${m.cancelado ? ' · cancelado' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    const conf = (d.conflitos || []).map(x => `${E(x.referencia)}: ${E(x.motivo)}`).concat((d.ambiguos || []).map(x => `${E(x.referencia)} (Conexos ${E(x.codigo)}): referência parecida com mais de um processo — ${E((x.candidatos || []).join(', '))}`));
+    if(conf.length) h += `<p style="color:var(--warn)">Não mexi nestes:<br>${conf.slice(0, 50).join('<br>')}</p>`;
+    if((d.nao_encontrados || []).length) h += `<details style="margin-top:6px;"><summary style="cursor:pointer;color:var(--muted)">Processos do Conexos que não existem no ImpakOS (${c.nao_encontrados})</summary><p>${d.nao_encontrados.map(x => `${E(x.referencia)} (${E(x.codigo)})`).join(' · ')}</p></details>`;
+  } else {
+    h += `<div><b>Planilha de Produtos</b> — ${d.linhas} linha(s)${aplicado ? ` · <span style="color:var(--ok)">${d.gravados} gravado(s)</span>` : ''}</div>`;
+    h += `<div class="cx-cards">${card(c.inserir, aplicado ? 'adicionados' : 'novos no catálogo')}${card(c.atualizar, aplicado ? 'atualizados' : 'vão ser atualizados')}${card(c.iguais, 'já estão iguais')}</div>`;
+    if((d.atualizar || []).length) h += `<div class="cx-lista"><table><thead><tr><th>Cód. Conexos</th><th>Hoje</th><th>Fica</th></tr></thead><tbody>${d.atualizar.map(u => `<tr><td>${E(u.campos.codigo_conexos != null ? u.campos.codigo_conexos : u.antes.codigo_conexos)}</td><td>${E(u.antes.descricao)}${u.antes.codigo_interno ? ' · ' + E(u.antes.codigo_interno) : ''}</td><td>${E(u.campos.descricao || u.antes.descricao)}${(u.campos.codigo_interno || u.antes.codigo_interno) ? ' · ' + E(u.campos.codigo_interno || u.antes.codigo_interno) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    if((d.avisos || []).length) h += `<p style="color:var(--warn)">${d.avisos.slice(0, 30).map(E).join('<br>')}</p>`;
+  }
+  if(aplicado && (d.falhas || []).length) h += `<p style="color:var(--err)">Falharam: ${d.falhas.slice(0, 20).map(f => E((f.referencia || f.produto) + ' — ' + f.erro)).join('<br>')}</p>`;
+  return h;
+}
+async function _cxEnviar(rota){
+  const res = document.getElementById('cxResultado');
+  const input = document.getElementById('cxArquivo');
+  if(!input.files.length){ res.innerHTML = '<span style="color:var(--err)">Escolha o arquivo exportado do Conexos.</span>'; return null; }
+  if(!_cxBase64) _cxBase64 = await _cxLer(input.files[0]);
+  res.textContent = rota === 'aplicar' ? 'Gravando…' : 'Lendo a planilha…';
+  try{
+    const r = await fetch('/api/conexos/cadastro/' + rota, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo_base64: _cxBase64 }) });
+    const d = await r.json();
+    if(!r.ok || !d.ok){ res.innerHTML = '<span style="color:var(--err)">' + escapeHtml(d.erro || 'Erro.') + '</span>'; return null; }
+    res.innerHTML = _cxHtml(d, rota === 'aplicar');
+    return d;
+  }catch(e){ res.innerHTML = '<span style="color:var(--err)">Erro de rede.</span>'; return null; }
+}
+document.getElementById('btnConexos').addEventListener('click', () => { document.getElementById('conexosModal').style.display = 'flex'; });
+document.getElementById('cxFechar').addEventListener('click', () => { document.getElementById('conexosModal').style.display = 'none'; });
+document.getElementById('cxArquivo').addEventListener('change', () => { _cxBase64 = null; document.getElementById('cxAplicar').disabled = true; document.getElementById('cxResultado').innerHTML = ''; });
+document.getElementById('cxPrevia').addEventListener('click', async () => {
+  const d = await _cxEnviar('previa');
+  const n = d ? (d.tipo === 'processos' ? d.contagem.mudar : d.contagem.inserir + d.contagem.atualizar) : 0;
+  document.getElementById('cxAplicar').disabled = !(n > 0);
+});
+document.getElementById('cxAplicar').addEventListener('click', async () => {
+  const btn = document.getElementById('cxAplicar');
+  btn.disabled = true;
+  const d = await _cxEnviar('aplicar');
+  if(d && d.tipo === 'produtos') carregar();
+  if(d) mostrarToast('Atualizado pelo Conexos.');
 });
 
 carregar();

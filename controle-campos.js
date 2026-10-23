@@ -860,8 +860,14 @@ function renderMultiProdutos(){
   lista.innerHTML = _produtos.map((it,i)=>{
     const tipoAuto = (typeof detectarTipoArmazenagem === 'function') ? detectarTipoArmazenagem(it.descricao) : 'PCR';
     const tipos = (typeof ARMAZENAGEM_RF_TIPOS !== 'undefined') ? ARMAZENAGEM_RF_TIPOS : ['PCR','SUV','TBR','RODAS','METAIS'];
+    const cxAuto = codigoConexosSugerido(it.descricao);
+    const cxVal = it.codigo_conexos != null && it.codigo_conexos !== '' ? String(it.codigo_conexos) : '';
     return `
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) 84px 96px 112px 32px;gap:6px;align-items:center;">
+    <div style="display:grid;grid-template-columns:78px minmax(0,1fr) 84px 96px 112px 32px;gap:6px;align-items:center;">
+      <input class="form-input" inputmode="numeric" placeholder="${cxAuto ? esc(cxAuto.codigo) : 'Cód. Conexos'}" value="${esc(cxVal)}"
+        title="${cxVal ? 'Cód. do produto no Conexos (digitado)' : cxAuto ? 'Cód. do Conexos sugerido pelo Catálogo de Produtos: ' + esc(cxAuto.descricao) + ' — digite outro se não for este' : 'Cód. do produto no Conexos — não achei no Catálogo de Produtos pela descrição; digite se souber'}"
+        aria-label="Código do produto no Conexos" style="font-family:'JetBrains Mono',monospace;font-size:12px;text-align:center;${!cxVal && cxAuto ? 'color:var(--muted);' : ''}"
+        oninput="_produtos[${i}].codigo_conexos=this.value.trim();sincronizarProdutoLegado()">
       <input class="form-input" placeholder="Descrição (ex: PNEU TBR 295/80R22.5)" value="${esc(it.descricao||'')}"
         oninput="_produtos[${i}].descricao=this.value;sincronizarProdutoLegado()" onchange="renderMultiProdutos()">
       <input class="form-input" type="number" placeholder="Qtde" value="${it.quantidade!=null?it.quantidade:''}"
@@ -880,6 +886,27 @@ function renderMultiProdutos(){
   `;}).join('') + '<div id="produtos-soma-fob" style="font-size:11px;color:var(--muted);"></div>';
   sincronizarProdutoLegado();
   atualizarSomaFobProdutos();
+}
+
+// Cód. do Conexos de cada produto (pedido do Jean, 23/10/2026): sugerido
+// pelo Catálogo de Produtos (TyreDesk › Catálogo, atualizado pela planilha
+// CadProdutos do Conexos) casando a descrição — regra em conexos-cadastro.js.
+// O sugerido aparece em cinza; o digitado fica salvo no produto.
+let _catalogoConexos = null, _catalogoConexosPromise = null;
+function carregarCatalogoConexos(){
+  if(_catalogoConexos || _catalogoConexosPromise) return _catalogoConexosPromise;
+  if(typeof fetch !== 'function'){ _catalogoConexos = []; return null; }
+  _catalogoConexosPromise = fetch('/api/catalogo-produtos?limit=2000').then(r => r.json()).then(d => {
+    _catalogoConexos = (d && d.ok && Array.isArray(d.produtos)) ? d.produtos : [];
+    if(document.getElementById('multi-produtos-list')) renderMultiProdutos();
+  }).catch(() => { _catalogoConexos = []; });
+  return _catalogoConexosPromise;
+}
+function codigoConexosSugerido(descricao){
+  if(!String(descricao || '').trim() || typeof window === 'undefined' || !window.ConexosCadastro) return null;
+  if(!_catalogoConexos){ carregarCatalogoConexos(); return null; }
+  const r = window.ConexosCadastro.acharProduto(descricao, _catalogoConexos);
+  return r && r.produto ? { codigo: String(r.produto.codigo_conexos), descricao: r.produto.descricao } : null;
 }
 
 // Soma dos itens pelo US$/un × Qtde, comparada com o valor da CI — ajuda a

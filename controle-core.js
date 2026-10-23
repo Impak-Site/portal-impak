@@ -6399,6 +6399,7 @@ function linhaProcessoHtml(p){
             <span>${esc(p.referencia)||'—'}</span>${finalidadeBadge}${pendenciaBadge}${canceladoBadge}${solicitacaoCancelamentoBadge}${typeof seloFaturasHtml === 'function' ? seloFaturasHtml(p) : ''}
           </div>
         </div>
+        <div class="td td-conexos" data-label="Ref. Conexos" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);">${p.conexos_id ? esc(p.conexos_id) : '—'}</div>
         <div class="td td-forn" data-label="Fornecedor">${esc(p.fornecedor)||'—'}</div>
         <div class="td td-forn" data-label="Cliente">${clienteDisplay}</div>
         <div class="td" data-label="Fase" onclick="event.stopPropagation()" style="min-width:0;">

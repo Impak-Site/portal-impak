@@ -1182,6 +1182,17 @@ function importarCatalogoProdutos(buffer) {
     return { itens: itens };
 }
 
-module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase, importarManuBase: importarManuBase, importarCatalogoProdutos: importarCatalogoProdutos,
+// ── PLANILHAS EXPORTADAS DO CONEXOS (CadProcessos / CadProdutos, 23/10/2026) ──
+// Lê a 1ª aba e entrega as linhas para conexos-cadastro.js reconhecer qual é.
+function lerCadastroConexos(buffer) {
+    validarBufferPlanilha(buffer);
+    var wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    if (!ws) return { tipo: null, itens: [], erro: 'Planilha vazia' };
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    return require('./conexos-cadastro.js').lerPlanilha(rows);
+}
+
+module.exports = { importarPlanilhaBase: importarPlanilhaBase, importarFechamentoBase: importarFechamentoBase, importarDespachanteBase: importarDespachanteBase, importarManuBase: importarManuBase, importarCatalogoProdutos: importarCatalogoProdutos, lerCadastroConexos: lerCadastroConexos,
     // Só para os testes (testes_planilha.js).
     _parseDataCI: parseDataCI, _acharColunaDataCI: acharColunaDataCI };

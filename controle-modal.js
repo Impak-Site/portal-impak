@@ -97,6 +97,9 @@ function renderModal(){
   document.getElementById('modal-title').textContent = isNovo ? 'Novo Processo' : p.referencia;
   const btnCopiarRef = document.getElementById('btn-copiar-ref');
   if(btnCopiarRef) btnCopiarRef.style.display = isNovo ? 'none' : '';
+  // Ref. do Conexos ao lado da referência (pedido do Jean, 23/10/2026)
+  const conexosRef = document.getElementById('modal-conexos-ref');
+  if(conexosRef){ const c = !isNovo && p.conexos_id ? String(p.conexos_id) : ''; conexosRef.textContent = c ? 'Conexos ' + c : ''; conexosRef.style.display = c ? '' : 'none'; }
   const btnEmailsProc = document.getElementById('btn-emails-proc');
   if(btnEmailsProc) btnEmailsProc.style.display = isNovo ? 'none' : '';
   const _origem = (!isNovo && typeof origemProcesso === 'function') ? origemProcesso(p) : null;
@@ -317,7 +320,7 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
 <div id="notify-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:500;max-height:220px;overflow-y:auto;"></div>
 </div>
           <div class="form-group full">
-            <label class="form-label">Produtos</label>
+            <label class="form-label">Produtos <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);">· 1ª coluna: Cód. Conexos (em cinza = sugerido pelo Catálogo)</span></label>
             <div id="multi-produtos-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
             <button type="button" onclick="adicionarProdutoItem()" style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:6px 14px;font-size:12px;color:var(--ac);cursor:pointer;font-weight:600;">+ Adicionar Item</button>
             <input type="hidden" id="f_produtos_json">
