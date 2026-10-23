@@ -3513,7 +3513,7 @@ function htmlFolhaFaturamento(f){
   <div class="ff">
     <div class="ff-cab">
       <div><b>${cnpjFmt ? cnpjFmt + ' — ' : ''}${esc(f.cliente || '—')}${f.cidade ? ' — ' + esc(f.cidade) : ''}</b></div>
-      <div>Processo <b>${esc(f.referencia || '—')}</b> · ${dt(new Date().toISOString())} · Frete marítimo ${U(f.frete_usd)} · Dólar médio <b>${c4(f.dolarMedio)}</b> · Câmbio D.I. ${c4(f.cambioDI)}</div>
+      <div>Processo <b>${esc(f.referencia || '—')}</b> · ${new Date().toLocaleDateString('pt-BR')} · Frete marítimo ${U(f.frete_usd)} · Dólar médio <b>${c4(f.dolarMedio)}</b> · Câmbio D.I. ${c4(f.cambioDI)}</div>
       <div>Total da operação: <b>${R(f.totalOperacao)}</b> · ${f.notas.map(n => esc(n.rotulo)).join(' + ') || '—'}</div>
     </div>
     ${f.notas.map(nota).join('')}
