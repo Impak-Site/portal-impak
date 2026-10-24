@@ -87,6 +87,27 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
       .forEach(x => verdadeiroRota(rotas.includes(x), x));
     verdadeiroRota(rotas.indexOf('POST /api/faturas/:id/:acao') > rotas.indexOf('POST /api/faturas/:id/baixa'), 'rota genérica :acao continua depois das específicas');
   });
+  for (const [metodo, rota] of [['post', '/api/controle/v2/importar-despachante'], ['post', '/api/controle/v2/importar-manu'], ['post', '/api/controle/importar'],
+    ['post', '/api/controle/v2/processo/abc/comissoes'], ['get', '/api/controle/v2/processo/abc/log'], ['get', '/api/controle/v2/notificacoes'],
+    ['get', '/api/controle/index'], ['get', '/api/controle/carregar']]) {
+    await teste(`${metodo.toUpperCase()} ${rota} sem sessão → 401 (lib/rotas-processo.js)`, async () => {
+      const r = await request(app)[metodo](rota).send({});
+      iguais(r.status, 401, rota);
+    });
+  }
+  await teste('lib/rotas-processo.js: registrar() registra as rotas sem ler o que o server.js declara depois', async () => {
+    const rotas = [], lidas = [];
+    const reg = m => (c) => rotas.push(m + ' ' + c);
+    const appFalso = { get: reg('GET'), post: reg('POST'), delete: reg('DELETE'), use: reg('USE') };
+    require('./lib/rotas-processo.js').registrar(appFalso, new Proxy({ auth: () => () => {},
+      conexosSvc: () => { lidas.push('conexos'); return {}; }, gedBucket: () => { lidas.push('ged'); return 'x'; },
+      usuariosCache: () => { lidas.push('usuarios'); return new Map(); } },
+      { get: (t, k) => (k in t ? t[k] : () => '') }));
+    iguais(lidas.length, 0, 'leu na hora de registrar: ' + lidas.join(','));
+    ['POST /api/controle/v2/importar-despachante', 'POST /api/controle/v2/processo', 'DELETE /api/controle/v2/processo/:id', 'GET /api/controle/carregar']
+      .forEach(x => verdadeiroRota(rotas.includes(x), x));
+    verdadeiroRota(rotas.indexOf('POST /api/controle/v2/importar-despachante') < rotas.indexOf('POST /api/controle/v2/processo'), 'ordem das rotas mantida');
+  });
   await teste('lib/jobs-backup.js: registrar() devolve os agendadores e registra as rotas', async () => {
     const rotas = [];
     const appFalso = { get: (c) => rotas.push('GET ' + c), post: (c) => rotas.push('POST ' + c) };
