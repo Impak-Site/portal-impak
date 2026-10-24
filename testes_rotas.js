@@ -34,6 +34,8 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     '/api/faturas/abc/conferencia/decisao',
     // Numerário do despachante (fase 2)
     '/api/faturas/numerarios', '/api/faturas/abc/abater-numerario', '/api/faturas/abc/devolucao-numerario',
+    // Atualizar pelo Conexos (Catálogo, 23/10/2026)
+    '/api/conexos/cadastro/previa', '/api/conexos/cadastro/aplicar',
   ];
   for (const rota of protegidasPost) {
     await teste(`POST ${rota} sem sessão → 401`, async () => {
