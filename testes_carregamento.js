@@ -93,7 +93,8 @@ teste('sem transportadora e chegando (chegou ou ETA em até 15 dias)', () => {
   assert.strictEqual(C.precisaTransportadora({ data_chegada: '2030-05-09', data_agendamento: '2030-05-12', agendamento_cancelado: false }, hoje), false);
 });
 teste('servidor: a busca não pede coluna que não existe (qtd_containers → erro 500 em 20/10/2026)', () => {
-  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+  // e-mails automáticos saíram para lib/jobs-email.js (24/10/2026)
+  const src = ['server.js', 'lib/jobs-email.js'].map(f => require('fs').readFileSync(require('path').join(__dirname, f), 'utf8')).join('\n');
   const ini = src.indexOf('async function montarPedidosTransportadora');
   assert.ok(ini > 0, 'função não encontrada');
   const sel = (src.slice(ini, ini + 1500).match(/\.select\('([^']+)'\)/) || [])[1] || '';
