@@ -3271,6 +3271,15 @@ function _emailsProcFechar(){
   document.getElementById('emails-proc-overlay')?.remove();
   if(_emailsProc && _emailsProc.onEsc) window.removeEventListener('keydown', _emailsProc.onEsc, true);
 }
+// Troca de processo no painel (ver aoTrocarProcessoNoPainel em controle-core.js):
+// fecha o que estava aberto em cima do processo anterior — documento de custo em
+// revisão e a janela de e-mails — para nada dele ser aplicado no processo novo.
+if(typeof aoTrocarProcessoNoPainel === 'function') aoTrocarProcessoNoPainel(() => {
+  _crDocSeq++; _crDocFila.length = 0; // leitura de custos em andamento: a resposta é ignorada
+  if(_crDoc) crDocFechar();
+  if(_emailsProc){ _emailsProcFechar(); _emailsProc = null; }
+  _cotacoesParaVincular = [];
+});
 
 async function abrirEmailsProcesso(qual){
   const p = _editando;

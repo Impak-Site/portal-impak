@@ -616,6 +616,11 @@ async function extrairComIA_umArquivo(input){
 
   const status = document.getElementById('ia-status');
   if(status) status.textContent = '⏳ Analisando documento...';
+  // A leitura pode levar minutos. Se nesse meio tempo o painel for fechado ou
+  // outro processo for aberto, o resultado NÃO pode cair no processo errado
+  // (24/10/2026 — mesma família do UD26-099).
+  const _versaoPainelNaLeitura = typeof versaoDoPainel === 'function' ? versaoDoPainel() : null;
+  const painelTrocouNaLeitura = () => _versaoPainelNaLeitura !== null && versaoDoPainel() !== _versaoPainelNaLeitura;
 
   try{
     // Converter para base64
@@ -828,6 +833,11 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     }
 
     const d = await chamarAnalise(1);
+    if(painelTrocouNaLeitura()){
+      if(status) status.textContent = '';
+      showToast(`A leitura de ${file.name} terminou depois que o processo foi fechado ou trocado — nada foi preenchido. Abra o processo e leia o documento de novo.`, 'warn', 10000);
+      return;
+    }
 
     const raw = (d.data.content||[]).map(c=>c.text||'').join('');
     let extracted;
@@ -1547,6 +1557,14 @@ Retorne apenas JSON válido, sem texto adicional. Deixe em branco ("") os campos
     const pctAdiantamentoDoc = extracted.pi_adiantamento_pct || 0;
     delete extracted.pi_adiantamento_pct;
 
+    // Conferência final antes de mexer no formulário (houve outras esperas acima:
+    // cadastro do fornecedor, contato pelo CNPJ).
+    if(painelTrocouNaLeitura()){
+      if(status) status.textContent = '';
+      showToast(`A leitura de ${file.name} terminou depois que o processo foi fechado ou trocado — nada foi preenchido.`, 'warn', 10000);
+      return;
+    }
+
     // Preencher campos do formulário
     const camposMoedaIA = ['pi_valor_usd','ci_valor_usd','demurrage_valor','nf_entrada_valor','nf_saida_valor','valor_frete','di_peso_liquido','di_valor_aduaneiro'];
     const camposContainerTratadosSeparado = ['container','lacre']; // ver bloco de _containers abaixo
@@ -2034,7 +2052,12 @@ async function processarFilaIA(arquivos){
   if(pulados.length){
     showToast(`⚠️ ${pulados.length} arquivo(s) de outro processo não foram lidos: ${pulados.join('; ')}. Este processo é ${refAtual}.`, 'warn');
   }
+  const versaoFila = typeof versaoDoPainel === 'function' ? versaoDoPainel() : null;
   for(const arquivo of arquivos){
+    if(versaoFila !== null && versaoDoPainel() !== versaoFila){
+      showToast('O processo foi fechado ou trocado — os documentos restantes da fila não foram lidos.', 'warn', 8000);
+      break;
+    }
     try{
       await extrairComIA_umArquivo({ files: [arquivo], set value(v){} });
     }catch(e){
@@ -2157,6 +2180,12 @@ function extrairJsonRespostaIA(raw){
 }
 
 let _conflitosIAPendentes = [];
+// Troca de processo no painel: os conflitos pendentes eram do processo
+// anterior — fecha a janela para ninguém aplicá-los no processo novo.
+if(typeof aoTrocarProcessoNoPainel === 'function') aoTrocarProcessoNoPainel(() => {
+  if(_conflitosIAPendentes.length && typeof document !== 'undefined') document.getElementById('modal-conflitos-ia-bg')?.remove();
+  _conflitosIAPendentes = [];
+});
 
 // ── CI (Commercial Invoice) = dados finais — 06/10/2026 ──
 // Documento é CI quando a IA leu Nº ou Valor da CI e NÃO é uma DI/DUIMP

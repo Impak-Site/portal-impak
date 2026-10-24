@@ -562,6 +562,37 @@ function telaComIA(respostaIA) {
     ok((t.els['ia-status'].filhos || []).some(f => /Datas conferidas/.test(f.innerHTML) && /Usei 02\/04\/2026/.test(f.innerHTML)), 'caixa de aviso na tela');
     ok(t.rodar('_editando.log').some(l => /, Datas conferidas: .* lida 04\/02\/2026 → usada 02\/04\/2026 \(dia e mês trocados\)$/.test(l.valor_depois)), JSON.stringify(t.rodar('_editando.log')));
   });
+  await testeAsync('Leitura por IA: se o processo é trocado enquanto a IA lê, nada é preenchido no processo novo (24/10/2026)', async () => {
+    const t = telaComIA({ nf_entrada_numero: '999', nf_entrada_data: '2026-03-02', nf_entrada_valor: 1000, fornecedor: 'FORNECEDOR TESTE' });
+    const leitura = t.ler();
+    t.rodar(`definirProcessoNoPainel({ id: 'teste-outro', referencia: 'TESTE-OUTRO', log: [] });`); // abriu outro no meio da leitura
+    await leitura;
+    iguais([t.els.f_nf_entrada_numero ? t.els.f_nf_entrada_numero.value : '', t.els.f_fornecedor ? t.els.f_fornecedor.value : ''], ['', '']);
+    ok(t.toasts.some(x => x[0] === 'warn' && /fechado ou trocado/.test(x[1])), JSON.stringify(t.toasts));
+    iguais(t.rodar('(_editando.log || []).length'), 0, 'nada no Histórico do outro processo');
+  });
+  await testeAsync('Leitura por IA: painel fechado durante a leitura também descarta o resultado', async () => {
+    const t = telaComIA({ nf_entrada_numero: '998', nf_entrada_data: '2026-03-02', nf_entrada_valor: 1000 });
+    const leitura = t.ler();
+    t.rodar('limparProcessoDoPainel();');
+    await leitura;
+    iguais(t.els.f_nf_entrada_numero ? t.els.f_nf_entrada_numero.value : '', '');
+    ok(t.toasts.some(x => /fechado ou trocado/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Leitura por IA: sem troca de processo, o mesmo documento preenche normalmente', async () => {
+    const t = telaComIA({ nf_entrada_numero: '997', nf_entrada_data: '2026-03-02', nf_entrada_valor: 1000 });
+    await t.ler();
+    iguais(t.els.f_nf_entrada_numero.value, '997');
+    ok(!t.toasts.some(x => /fechado ou trocado/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Fila de documentos: para quando o processo é trocado no meio', async () => {
+    const t = telaComIA({ nf_entrada_numero: '996', nf_entrada_data: '2026-03-02', nf_entrada_valor: 1000 });
+    t.rodar(`_editando.referencia = 'TESTE-FILA'; window.__lidos = 0; const _orig = extrairComIA_umArquivo;
+      extrairComIA_umArquivo = async (inp) => { window.__lidos++; if(window.__lidos === 1) definirProcessoNoPainel({ id: 'teste-outro-2', referencia: 'TESTE-OUTRO-2' }); };`);
+    await t.rodar(`processarFilaIA([{ name: 'a.pdf' }, { name: 'b.pdf' }, { name: 'c.pdf' }])`);
+    iguais(t.rodar('window.__lidos'), 1);
+    ok(t.toasts.some(x => /restantes da fila não foram lidos/.test(x[1])), JSON.stringify(t.toasts));
+  });
   await testeAsync('RIC (2 containers): a data trocada vai para o container certo', async () => {
     const t = telaComIA({ eh_ric: true, containers: [{ numero: 'TSTU0000002', lacre: '' }], data_devolucao_vazio: '2026-02-04', depot: 'DEPOT TESTE' });
     t.tela('f_data_chegada', '2026-03-20');
@@ -685,6 +716,15 @@ function telaComIA(respostaIA) {
     await t.rodar(`importarNFSaidaProcessoArquivo({ name: 'nf-teste.pdf', type: 'application/pdf' })`);
     iguais(t.els.f_nf_entrada_data.value, '2026-04-02');
     ok(t.toasts.some(x => /Usei 02\/04\/2026/.test(x[1])), JSON.stringify(t.toasts));
+  });
+  await testeAsync('Extrator de NF: processo trocado durante a leitura — a NF não entra no outro processo', async () => {
+    const t = telaComIA({ tipo: 'ENTRADA', nf_numero: '556', nf_data: '2026-04-04', nf_valor: 100, cfop: '3102', itens: [] });
+    t.rodar(`_editando = { id: 'p-teste', _camposIA: {}, log: [] };`);
+    const leitura = t.rodar(`importarNFSaidaProcessoArquivo({ name: 'nf-teste.pdf', type: 'application/pdf' })`);
+    t.rodar(`definirProcessoNoPainel({ id: 'p-outro', referencia: 'TESTE-OUTRO' });`);
+    const r = await leitura;
+    iguais([r.ok, t.els.f_nf_entrada_numero ? t.els.f_nf_entrada_numero.value : ''], [false, '']);
+    ok(/fechado ou trocado/.test(r.mensagem), r.mensagem);
   });
   await testeAsync('Extrator de NF com XML: a data do XML é exata e não passa pela troca', async () => {
     const t = telaComIA({});

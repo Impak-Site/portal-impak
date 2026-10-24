@@ -96,22 +96,52 @@ let _editandoOriginal = null;
 // ── Processo aberto no painel: um lugar só para trocar (24/10/2026) ──────
 // Antes, cada tela montava _editando/_editandoOriginal do seu jeito (11
 // lugares) e um esquecimento deixava os dois desencontrados — foi assim que
-// o UD26-099 virou processo duplicado. Use sempre estas três funções.
+// o UD26-099 virou processo duplicado. Use sempre estas funções.
+//
+// Etapa 2 (24/10/2026): cada tela que guarda coisas do processo aberto
+// (parcelas, containers, vendas, conflitos da leitura por IA...) registra aqui
+// a sua limpeza com aoTrocarProcessoNoPainel(fn) — quando OUTRO processo entra
+// no painel (ou ele fecha), tudo é zerado de uma vez, no mesmo lugar.
+// versaoDoPainel() muda a cada troca: quem espera uma resposta demorada (ex.:
+// leitura de documento pela IA) guarda a versão no começo e, se ela mudou na
+// volta, descarta o resultado em vez de preencher o processo errado.
+let _painelVersao = 0;
+const _limpezasDoPainel = [];
+function aoTrocarProcessoNoPainel(fn){ if(typeof fn === 'function') _limpezasDoPainel.push(fn); }
+function versaoDoPainel(){ return _painelVersao; }
+function _trocouProcessoNoPainel(){
+  _painelVersao++;
+  for(const fn of _limpezasDoPainel){
+    try{ fn(); }catch(e){ console.warn('limpeza do painel falhou:', e && e.message); }
+  }
+}
 function definirProcessoNoPainel(proc){
-  // Outro processo: as parcelas em memória são do anterior — recarrega.
-  if(typeof _parcelas !== 'undefined' && (!_editando || _editando.id !== proc.id)) _parcelas = [];
+  // Outro processo: o que estava em memória é do anterior — zera tudo.
+  // Mesmo processo recarregado (depois de salvar/vincular): mantém.
+  if(!_editando || _editando.id !== proc.id) _trocouProcessoNoPainel();
   _editando = { ...proc, _camposIA: {} };
   _editandoOriginal = { ...proc };
 }
 function iniciarProcessoNovoNoPainel(){
-  if(typeof _parcelas !== 'undefined') _parcelas = [];
+  _trocouProcessoNoPainel();
   _editando = { fase: 'PI', free_time: 21, _camposIA: {} };
   _editandoOriginal = {};
 }
 function limparProcessoDoPainel(){
+  _trocouProcessoNoPainel();
   _editando = null;
   _editandoOriginal = null;
 }
+// Mesmo processo, dados novos (formulário coletado na hora de salvar, ou a
+// versão juntada com a de outra pessoa). Não zera nada nem muda a versão.
+function atualizarProcessoNoPainel(proc, tambemOriginal){
+  _editando = proc;
+  if(tambemOriginal){
+    _editandoOriginal = Object.assign({}, proc);
+    delete _editandoOriginal._mesclado;
+  }
+}
+function marcarPainelAlterado(){ _painelDirty = true; }
 // Processo (não cancelado) que já usa esta referência, ignorando maiúsculas e
 // espaços (23/10/2026, UD26-099 duplicado). O servidor confere de novo.
 function referenciaJaExiste(ref, ignorarId){
@@ -1574,9 +1604,7 @@ async function _juntarEdicaoSimultanea(proc, patchFields, d){
     }
     if(doPainel){
       mesclado._mesclado = true;
-      _editando = mesclado;
-      _editandoOriginal = Object.assign({}, mesclado);
-      delete _editandoOriginal._mesclado;
+      atualizarProcessoNoPainel(mesclado, true);
     }
   }
   return ok;
