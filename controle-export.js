@@ -87,7 +87,7 @@ async function exportarExcel(){
     const linhas = lista.map(p=>{
     // Vendas multi-cliente: quando o processo foi vendido a mais de um
     // cliente, o campo legado NF Saída não representa mais o processo
-    // inteiro â troca pelo resumo (soma das NFs) e sinaliza quantos
+    // inteiro — troca pelo resumo (soma das NFs) e sinaliza quantos
     // clientes levaram parte deste processo, em vez de mostrar um valor
     // vazio ou de uma venda só.
     let vendasResumoExport = null;
@@ -164,7 +164,7 @@ async function exportarExcel(){
   }
 }
 
-// ââ MODAL: "Exportar p/ Cliente" â confirmar status + ordenar por chegada ââ
+// ── MODAL: "Exportar p/ Cliente" — confirmar status + ordenar por chegada ──
 // Pedido: antes de gerar a planilha de follow-up, deixar o usuário confirmar
 // quais status/fases entram (PI Recebida, Ag. Embarque, Embarcado etc), e
 // garantir que o resultado saia ordenado por Data de Chegada. Em vez de
@@ -730,7 +730,7 @@ function montarLinhasFollowUpCliente(statusSelecionados){
     // `new Date()` direto) pra não reintroduzir o bug de UTC×local já
     // corrigido no resto do sistema.
     // Data Chegada (real) tem prioridade; processos que ainda não chegaram
-    // (ex.: Ag. Embarque, PI Recebida) usam a ETA (estimada) no lugar â mesma
+    // (ex.: Ag. Embarque, PI Recebida) usam a ETA (estimada) no lugar — mesma
     // regra da coluna "ETA / Chegada" da tela principal (ver dataDisplay em
     // render(), controle-core.js: `chegadaDate || etaDate`). Sem esse
     // fallback, todo processo ainda não chegado ficava jogado pro fim da
@@ -743,13 +743,13 @@ function montarLinhasFollowUpCliente(statusSelecionados){
       return da - db;
     });
 
-    // Toggle manual (checkbox dentro do popup) â decide se a coluna "Valor
+    // Toggle manual (checkbox dentro do popup) — decide se a coluna "Valor
     // do Frete" entra ou não nesse export. Fica marcado só quando o usuário
     // realmente quer que o cliente veja esse valor (ex: negociação FOB onde
     // o frete é por conta do cliente); por padrão vem desmarcado/oculto.
     const incluirFrete = !!document.getElementById('exportcliente-incluir-frete')?.checked;
 
-    // Nome do cliente selecionado no filtro da tela (se houver) â usado no
+    // Nome do cliente selecionado no filtro da tela (se houver) — usado no
     // título da planilha e no nome do arquivo, pra deixar claro pra quem é
     // esse follow-up quando for reenviado por e-mail.
     const clienteFiltro = document.getElementById('filtro-cliente')?.value || '';
@@ -757,7 +757,7 @@ function montarLinhasFollowUpCliente(statusSelecionados){
     // Montar 1 linha por produto. Quando o processo tem vendas cadastradas
     // (aba Vendas, vendas_json) e mais de uma delas tem cliente preenchido,
     // cada linha nasce a partir dos itens DA VENDA (venda.itens) — não de
-    // produtos_json â e carrega o cliente daquela venda especificamente
+    // produtos_json — e carrega o cliente daquela venda especificamente
     // (pedido: "quando fizermos o follow up/exportar para cliente, tem que
     // puxar os dados de cada pedido separado por cliente da aba vendas").
     // Processos sem vendas cadastradas (ou com só 1 venda) continuam usando
@@ -782,7 +782,7 @@ function montarLinhasFollowUpCliente(statusSelecionados){
         const linha = {
           // Pedido: na planilha de follow-up, mostrar a MARCA do produto
           // (ex: "Maxam") em vez do Fornecedor (ex: "Sailun Group", quem
-          // efetivamente fatura/exporta) quando a marca estiver preenchida â
+          // efetivamente fatura/exporta) quando a marca estiver preenchida —
           // são coisas diferentes e o cliente final reconhece a marca, não
           // necessariamente o nome do fornecedor real. Sem marca preenchida,
           // cai no fornecedor, como sempre foi.
@@ -877,7 +877,7 @@ async function exportarFormatoCliente(statusSelecionados){
       });
 
       // Paleta/bordas/estilização compartilhadas com calculador.html e
-      // tyredesk.html â ver excel-styles.js (window.ExcelStyles).
+      // tyredesk.html — ver excel-styles.js (window.ExcelStyles).
       const wb = new ExcelJS.Workbook();
       wb.creator = 'IMPAK';
       wb.created = new Date();
@@ -969,7 +969,7 @@ ws.getRow(3).height = 26;
         }
       });
 
-      // Linha final â resumo
+      // Linha final — resumo
       ws.mergeCells(rowIdx,1,rowIdx,numCols);
       const totalCell = ws.getCell(rowIdx,1);
       totalCell.value = `Total: ${linhasCliente.length} item(ns) em ${Object.keys(porForn).length} fornecedor(es)`;
