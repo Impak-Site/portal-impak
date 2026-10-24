@@ -493,7 +493,7 @@ function coletarESalvar(opts){
     }
     if(avisosDatas.length && !confirm('Confira as datas antes de salvar:\n\n' + avisosDatas.map(a => '• ' + a.msg).join('\n') + '\n\nSalvar mesmo assim?')) return;
   }
-  _editando = proc;
+  atualizarProcessoNoPainel(proc);
 
   window._salvandoProcesso = true;
   const btnsSalvar = document.querySelectorAll('.btn-primary[onclick^="coletarESalvar("]');
@@ -1907,6 +1907,13 @@ function colarData(ev, el){
 
 // ── COMPROVANTE DE CÂMBIO (confirmação manual Entrada/Saldo/Único) ──
 let _cambioPendente = null;
+// Troca de processo no painel: zera o que é do processo anterior (ver
+// aoTrocarProcessoNoPainel em controle-core.js). renderModal() recarrega
+// containers/produtos/vendas/parcelas do processo novo.
+if(typeof aoTrocarProcessoNoPainel === 'function') aoTrocarProcessoNoPainel(() => {
+  _parcelas = []; _containers = []; _produtos = []; _vendas = [];
+  _cambioPendente = null;
+});
 
 // Taxa do câmbio pendente: a do documento ou, se não veio (câmbio futuro
 // com anotação ilegível), a digitada no campo do modal.

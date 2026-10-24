@@ -508,9 +508,14 @@ async function importarNFSaidaProcessoArquivo(file, opts){
   const fim = (msg, extra) => { if(status) status.textContent = msg; res.mensagem = msg; Object.assign(res, extra || {}); return res; };
   const rotulo = c => (typeof LABELS_CAMPOS_IA !== 'undefined' && LABELS_CAMPOS_IA[c]) || c;
 
+  // A leitura pode demorar: se o painel trocar de processo nesse meio tempo, a
+  // NF não entra no processo errado (24/10/2026, ver versaoDoPainel).
+  const versaoPainel = typeof versaoDoPainel === 'function' ? versaoDoPainel() : null;
   try{
     const dados = isXml ? await parseNFeXml(file) : await extrairNFComIA(file);
     if(!dados) return fim('Nao foi possivel extrair dados desse arquivo.');
+    if(versaoPainel !== null && versaoDoPainel() !== versaoPainel)
+      return fim('O processo foi fechado ou trocado durante a leitura — a NF não foi lançada. Abra o processo e leia de novo.');
 
     // Retorno (simbólico) da remessa do armazém (CFOP 5907/6907/1907/2907/
     // 5906/6906/1906/2906 — Jean, 25/09/2026): não é NF de Entrada da

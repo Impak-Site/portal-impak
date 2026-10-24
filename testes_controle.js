@@ -734,6 +734,30 @@ await testeAsync('definirProcessoNoPainel: cópias independentes, _camposIA novo
   }
 });
 
+await testeAsync('trocar de processo no painel zera o que era do anterior (containers, produtos, vendas, câmbio pendente) e muda a versão; recarregar o mesmo não', async () => {
+  try {
+    vm.runInContext(`limparProcessoDoPainel(); definirProcessoNoPainel({ id: 'teste-a', referencia: 'TESTE-A' });
+      _containers = [{ numero: 'TSTU0000001' }]; _produtos = [{ descricao: 'X' }]; _vendas = [{ cliente: 'C' }]; _cambioPendente = { x: 1 };
+      globalThis.__v1 = versaoDoPainel();
+      definirProcessoNoPainel({ id: 'teste-a', referencia: 'TESTE-A' });`, sandbox);
+    iguais(vm.runInContext('versaoDoPainel() === __v1 && _containers.length === 1 && _vendas.length === 1 && !!_cambioPendente', sandbox), true, 'mesmo processo: mantém');
+    vm.runInContext(`definirProcessoNoPainel({ id: 'teste-b', referencia: 'TESTE-B' });`, sandbox);
+    iguais(vm.runInContext('versaoDoPainel() > __v1 && _containers.length === 0 && _produtos.length === 0 && _vendas.length === 0 && _cambioPendente === null', sandbox), true, 'outro processo: zera');
+    vm.runInContext(`globalThis.__v2 = versaoDoPainel(); atualizarProcessoNoPainel({ id: 'teste-b', referencia: 'TESTE-B', fase: 'PI' }, true);`, sandbox);
+    iguais(vm.runInContext('versaoDoPainel() === __v2 && _editandoOriginal.fase === "PI" && _editandoOriginal !== _editando', sandbox), true, 'atualizar não é troca');
+    vm.runInContext('limparProcessoDoPainel();', sandbox);
+    iguais(vm.runInContext('versaoDoPainel() > __v2', sandbox), true, 'fechar o painel também conta como troca');
+  } finally {
+    vm.runInContext('limparProcessoDoPainel();', sandbox);
+  }
+});
+await testeAsync('uma limpeza registrada que falha não impede as outras nem a troca', async () => {
+  vm.runInContext(`globalThis.__depois = 0; aoTrocarProcessoNoPainel(() => { throw new Error('falha de teste'); }); aoTrocarProcessoNoPainel(() => { __depois++; });
+    definirProcessoNoPainel({ id: 'teste-c' });`, sandbox);
+  iguais(vm.runInContext('__depois === 1 && _editando.id === "teste-c"', sandbox), true);
+  vm.runInContext('limparProcessoDoPainel();', sandbox);
+});
+
 // ── Processo duplicado ao fechar o painel (23/10/2026) — valores fictícios ──
 await testeAsync('coletarESalvar com o painel FECHADO (ex.: leitura automática terminando depois) não grava nem cria processo novo', async () => {
   const salvarOriginal = sandbox.salvarProcesso;
