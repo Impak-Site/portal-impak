@@ -304,7 +304,27 @@ async function _cxEnviar(rota){
     if(!r.ok || !d.ok){ res.innerHTML = '<span style="color:var(--err)">' + escapeHtml(d.erro || 'Erro.') + '</span>'; return null; }
     res.innerHTML = _cxHtml(d, rota === 'aplicar');
     return d;
-  }catch(e){ res.innerHTML = '<span style="color:var(--err)">Erro de rede.</span>'; return null; }
+  }catch(e){
+    // Conexão caiu no meio do Aplicar (24/10/2026): o servidor pode ter gravado
+    // tudo mesmo assim. Confere sozinho com uma prévia nova em vez de só dizer
+    // "Erro de rede".
+    if(rota === 'aplicar'){
+      res.textContent = 'A conexão caiu durante a gravação — conferindo o que foi gravado…';
+      try{
+        const r2 = await fetch('/api/conexos/cadastro/previa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo_base64: _cxBase64 }) });
+        const d2 = await r2.json();
+        if(r2.ok && d2.ok){
+          const pend = d2.tipo === 'processos' ? d2.contagem.mudar : d2.contagem.inserir + d2.contagem.atualizar;
+          res.innerHTML = '<div style="margin-bottom:8px;font-weight:600;color:' + (pend ? 'var(--err)' : 'var(--ok,#15803d)') + '">' +
+            (pend ? 'A conexão caiu e ' + pend + ' item(ns) ainda não foram gravados — clique em Aplicar de novo.' : 'A conexão caiu, mas tudo foi gravado.') + '</div>' + _cxHtml(d2, false);
+          document.getElementById('cxAplicar').disabled = !(pend > 0);
+          if(!pend && d2.tipo === 'produtos') carregar();
+          return null;
+        }
+      }catch(e2){ /* cai no aviso abaixo */ }
+    }
+    res.innerHTML = '<span style="color:var(--err)">Erro de rede. Clique em "Ver prévia" para conferir o que foi gravado.</span>'; return null;
+  }
 }
 document.getElementById('btnConexos').addEventListener('click', () => { document.getElementById('conexosModal').style.display = 'flex'; });
 document.getElementById('cxFechar').addEventListener('click', () => { document.getElementById('conexosModal').style.display = 'none'; });

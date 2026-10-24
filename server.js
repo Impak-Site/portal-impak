@@ -3407,6 +3407,8 @@ const { CAMPOS_FINANCEIROS_PROCESSO, removerCamposFinanceiros } = require('./lib
 const ConferenciaChave = require('./conferencia-chave');
 const ValidacaoDatas = require('./validacao-datas.js');
 const ConexosId = require('./conexos-id.js');
+const ConexosAplicar = require('./lib/conexos-aplicar.js');
+const ReferenciaUnica = require('./lib/referencia-unica.js');
 
 // "ID no Conexos" nunca repetido entre processos (21/10/2026, Emanuelly) —
 // regra em conexos-id.js; o banco tem a mesma trava (migration 0057).
@@ -3756,6 +3758,16 @@ async function enviarRelatorioImportDespachante(resumo, usuario) {
 
 // Busca todas as linhas de controle_processos (paginado — o Supabase
 // devolve no máximo 1000 por consulta).
+// Processos com referência parecida (sem diferenciar maiúsculas) — usado para
+// não criar processo novo com referência repetida (lib/referencia-unica.js).
+async function buscarProcessosPorReferencia(ref) {
+  const { data, error } = await sb().from('controle_processos')
+    .select('id, referencia, cancelado')
+    .ilike('referencia', String(ref).replace(/[%_\\]/g, m => '\\' + m))
+    .limit(10);
+  if (error) throw new Error(error.message);
+  return data || [];
+}
 async function buscarTodosProcessos(colunas){
   const todos = [];
   for (let offset = 0; ; offset += 1000) {
@@ -4259,25 +4271,20 @@ app.post('/api/controle/v2/processo', auth('controle','financeiro'), async (req,
       }
     }
 
-    // Relatório de segurança (23/09/2026, item 5 — mass assignment): campos
-    // de controle/auditoria só o servidor define. Processo NOVO não nasce
-    // fechado/cancelado nem com autor forjado; vínculo com cotação
-    // (cotacao_id/estimativa_json) só pelos fluxos próprios do Calculador.
     // Processo NOVO com referência que já existe (23/10/2026, UD26-099
     // duplicado): não cria outro — quem salvou abre o existente.
     if (!processoExistente && processo.referencia) {
-      const refNova = String(processo.referencia).trim();
-      const { data: mesmos } = await sb().from('controle_processos')
-        .select('id, referencia, cancelado')
-        .ilike('referencia', refNova.replace(/[%_\\]/g, m => '\\' + m))
-        .limit(10);
-      const jaExiste = (mesmos || []).find(x => !x.cancelado && String(x.referencia || '').trim().toLowerCase() === refNova.toLowerCase());
+      const jaExiste = await ReferenciaUnica.referenciaJaUsada(processo.referencia, buscarProcessosPorReferencia);
       if (jaExiste) {
         return res.status(400).json({ ok: false, referencia_repetida: true, campos: ['referencia'],
           erro: `Já existe um processo com a referência ${jaExiste.referencia} — nada foi criado. Abra o processo existente.` });
       }
     }
 
+    // Relatório de segurança (23/09/2026, item 5 — mass assignment): campos
+    // de controle/auditoria só o servidor define. Processo NOVO não nasce
+    // fechado/cancelado nem com autor forjado; vínculo com cotação
+    // (cotacao_id/estimativa_json) só pelos fluxos próprios do Calculador.
     if (!processoExistente) {
       ['fechado','fechado_em','fechado_por','cancelado','cancelado_em','cancelado_por','cancelado_motivo',
        'cancelamento_solicitado','cancelamento_solicitado_em','cancelamento_solicitado_por']
@@ -6249,6 +6256,16 @@ app.post('/api/catalogo-produtos/importar', auth('tyredesk'), async (req, res) =
 // processos ou o Catálogo de Produtos. Sempre em 2 passos: prévia (não grava
 // nada) e aplicar (grava o mesmo plano). Regras em conexos-cadastro.js.
 const ConexosCadastro = require('./conexos-cadastro.js');
+// O "banco" que lib/conexos-aplicar.js usa — aqui, o Supabase.
+function dbConexos() {
+  return {
+    limparConexos: ids => sb().from('controle_processos').update({ conexos_id: null }).in('id', ids),
+    atualizarProcesso: (id, campos) => sb().from('controle_processos').update(campos).eq('id', id),
+    inserirLogs: linhas => sb().from('controle_log').insert(linhas),
+    atualizarProduto: (id, campos) => sb().from('catalogo_produtos').update(campos).eq('id', id),
+    inserirProdutos: lote => sb().from('catalogo_produtos').insert(lote),
+  };
+}
 async function planoCadastroConexos(arquivo_base64) {
   if (!arquivo_base64) return { erro: 'Nenhum arquivo enviado.' };
   const lido = await lerPlanilhaIsolada('lerCadastroConexos', Buffer.from(arquivo_base64, 'base64'));
@@ -6287,42 +6304,9 @@ app.post('/api/conexos/cadastro/aplicar', auth('tyredesk', 'controle'), async (r
   try {
     const r = await planoCadastroConexos(req.body && req.body.arquivo_base64);
     if (r.erro) return res.status(400).json({ ok: false, erro: r.erro });
-    const agora = new Date().toISOString();
     const usuario = req.session.usuario;
-    const falhas = [];
-    let gravados = 0;
-    if (r.tipo === 'processos') {
-      const mudar = r.plano.mudar;
-      // 1º limpa quem vai trocar (o banco não deixa o mesmo código em dois
-      // processos nem por um instante), depois grava o código novo.
-      const trocar = mudar.filter(m => m.de);
-      for (let i = 0; i < trocar.length; i += 100) {
-        const ids = trocar.slice(i, i + 100).map(m => m.id);
-        const { error } = await sb().from('controle_processos').update({ conexos_id: null }).in('id', ids);
-        if (error) throw new Error(error.message);
-      }
-      const logs = [];
-      for (const m of mudar) {
-        const { error } = await sb().from('controle_processos').update({ conexos_id: m.para, updated_at: agora, updated_by: usuario }).eq('id', m.id);
-        if (error) { falhas.push({ referencia: m.referencia, erro: error.message }); continue; }
-        gravados++;
-        logs.push({ processo_id: m.id, usuario, campo: 'conexos_id (planilha do Conexos)', valor_antes: m.de || '', valor_depois: m.para, created_at: agora });
-      }
-      for (let i = 0; i < logs.length; i += 200) {
-        try { await sb().from('controle_log').insert(logs.slice(i, i + 200)); } catch (e) { console.warn('log conexos_id:', e.message); }
-      }
-    } else {
-      const { inserir, atualizar } = r.plano;
-      for (const u of atualizar) {
-        const { error } = await sb().from('catalogo_produtos').update({ ...u.campos, ativo: true, updated_at: agora }).eq('id', u.id);
-        if (error) falhas.push({ produto: u.campos.descricao || u.antes.descricao, erro: error.message }); else gravados++;
-      }
-      for (let i = 0; i < inserir.length; i += 200) {
-        const lote = inserir.slice(i, i + 200).map(x => ({ ...x, ativo: true }));
-        const { error } = await sb().from('catalogo_produtos').insert(lote);
-        if (error) falhas.push({ produto: `lote ${i / 200 + 1}`, erro: error.message }); else gravados += lote.length;
-      }
-    }
+    // Gravação em lib/conexos-aplicar.js (paralelo, testada com banco de mentira).
+    const { gravados, falhas } = await ConexosAplicar.aplicarPlanoConexos(r, dbConexos(), { usuario });
     console.log(`conexos/cadastro/aplicar (${r.tipo}): ${gravados} gravados, ${falhas.length} falha(s), por ${usuario}`);
     res.json({ ok: true, ...resumoPlanoConexos(r), gravados, falhas });
   } catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
@@ -7325,18 +7309,6 @@ async function jaEnviouFollowUpHoje(){
   // dia de Brasília: o follow-up é da segunda de Brasília (sem isto, às 21h
   // de segunda o dia UTC virava e ele sairia de novo para os clientes)
   return !(await reivindicarJobHoje('followup_semanal', { diaBR: true }));
-  const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'followup_semanal').maybeSingle();
-  if (error) {
-    // Falha ao consultar (tabela ausente, permissão, etc): assume que JÁ
-    // enviou hoje (fail-closed) pra nunca disparar em loop por causa de um
-    // erro de infraestrutura. O erro fica visível no log do Railway.
-    console.error('jaEnviouFollowUpHoje: erro ao consultar app_job_runs, assumindo já enviado por segurança:', error.message);
-    return true;
-  }
-  if (!data || !data.last_run_at) return false;
-  const ultima = new Date(data.last_run_at);
-  const hoje = new Date();
-  return ultima.getFullYear() === hoje.getFullYear() && ultima.getMonth() === hoje.getMonth() && ultima.getDate() === hoje.getDate();
 }
 
 async function marcarFollowUpEnviadoHoje(){
@@ -7468,19 +7440,7 @@ app.post('/api/admin/newsletter/:tipo', auth(), requireGerente, (req, res) => {
 
 // ── ALERTAS DIÁRIOS (demurrage crítico, ETA vencido, ETA na semana, PI vencida) ──
 async function jaEnviouAlertasHoje(){
-return !(await reivindicarJobHoje('alertas_diarios'));
-const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', 'alertas_diarios').maybeSingle();
-if (error) {
-  // Mesmo raciocínio do jaEnviouFollowUpHoje: se a consulta falhar, assume
-  // que já foi enviado hoje (fail-closed) em vez de deixar o job repetir
-  // a cada 30min indefinidamente. Erro visível no log do Railway.
-  console.error('jaEnviouAlertasHoje: erro ao consultar app_job_runs, assumindo já enviado por segurança:', error.message);
-  return true;
-}
-if (!data || !data.last_run_at) return false;
-const ultima = new Date(data.last_run_at);
-const hoje = new Date();
-return ultima.getFullYear() === hoje.getFullYear() && ultima.getMonth() === hoje.getMonth() && ultima.getDate() === hoje.getDate();
+  return !(await reivindicarJobHoje('alertas_diarios'));
 }
 
 async function marcarAlertasEnviadosHoje(){
@@ -7575,15 +7535,6 @@ return total;
 
 async function jaEnviouJobHoje(jobName, opts){
   return !(await reivindicarJobHoje(jobName, opts));
-  const { data, error } = await sb().from('app_job_runs').select('last_run_at').eq('job_name', jobName).maybeSingle();
-  if (error) {
-    console.error(`jaEnviouJobHoje(${jobName}): erro ao consultar app_job_runs, assumindo já enviado por segurança:`, error.message);
-    return true;
-  }
-  if (!data || !data.last_run_at) return false;
-  const ultima = new Date(data.last_run_at);
-  const hoje = new Date();
-  return ultima.getFullYear() === hoje.getFullYear() && ultima.getMonth() === hoje.getMonth() && ultima.getDate() === hoje.getDate();
 }
 
 async function marcarJobEnviadoHoje(jobName){

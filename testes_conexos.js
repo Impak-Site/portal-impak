@@ -153,6 +153,57 @@ function sbFake(){
     iguais(CC.acharProduto('12.4-24', cat).produto, null, 'só a medida não basta');
   });
 
+  // ── Gravação do "Atualizar pelo Conexos" (lib/conexos-aplicar.js, 24/10/2026) ──
+  // Banco de mentira; valores fictícios.
+  console.log('\n── aplicarPlanoConexos / emParalelo / referenciaJaUsada ──');
+  const CA = require('./lib/conexos-aplicar.js');
+  const RU = require('./lib/referencia-unica.js');
+  function dbFake(opts){
+    const o = opts || {}, st = { ordem: [], processos: {}, produtos: {}, logs: [], novos: [], aoMesmoTempo: 0, maxAoMesmoTempo: 0 };
+    const espera = async () => { st.aoMesmoTempo++; st.maxAoMesmoTempo = Math.max(st.maxAoMesmoTempo, st.aoMesmoTempo); await new Promise(r => setTimeout(r, 2)); st.aoMesmoTempo--; };
+    return { st, db: {
+      limparConexos: async ids => { st.ordem.push('limpar:' + ids.join(',')); ids.forEach(id => { st.processos[id] = { ...(st.processos[id] || {}), conexos_id: null }; }); return {}; },
+      atualizarProcesso: async (id, c) => { await espera(); if ((o.falhar || []).includes(id)) return { error: { message: 'falhou' } }; st.ordem.push('proc:' + id); st.processos[id] = { ...(st.processos[id] || {}), ...c }; return {}; },
+      inserirLogs: async l => { st.logs.push(...l); return {}; },
+      atualizarProduto: async (id, c) => { await espera(); st.produtos[id] = c; return {}; },
+      inserirProdutos: async l => { st.novos.push(...l); return {}; },
+    } };
+  }
+  await teste('processos: limpa primeiro quem troca de código, grava todos, Histórico só dos gravados', async () => {
+    const { st, db } = dbFake({ falhar: ['p3'] });
+    const plano = { mudar: [
+      { id: 'p1', referencia: 'TESTE-1', de: '10', para: '20' },
+      { id: 'p2', referencia: 'TESTE-2', de: '20', para: '10' },
+      { id: 'p3', referencia: 'TESTE-3', de: null, para: '30' },
+    ] };
+    const r = await CA.aplicarPlanoConexos({ tipo: 'processos', plano }, db, { usuario: 'teste', agora: '2026-01-01T00:00:00.000Z' });
+    iguais(st.ordem[0], 'limpar:p1,p2', 'limpa antes de gravar');
+    iguais(r.gravados, 2); iguais(r.falhas.map(f => f.referencia), ['TESTE-3']);
+    iguais(st.processos.p1.conexos_id, '20'); iguais(st.processos.p2.conexos_id, '10');
+    iguais(st.logs.map(l => l.processo_id + ':' + l.valor_antes + '>' + l.valor_depois).sort(), ['p1:10>20', 'p2:20>10']);
+  });
+  await teste('produtos: atualiza em paralelo (no máx. 10 ao mesmo tempo), insere em lotes, marca ativo e nunca apaga', async () => {
+    const { st, db } = dbFake();
+    const atualizar = Array.from({ length: 35 }, (_, i) => ({ id: 'x' + i, campos: { descricao: 'PNEU TESTE ' + i }, antes: {} }));
+    const inserir = Array.from({ length: 450 }, (_, i) => ({ codigo_conexos: 9000 + i, descricao: 'NOVO ' + i }));
+    const r = await CA.aplicarPlanoConexos({ tipo: 'produtos', plano: { atualizar, inserir } }, db, { paralelo: 10 });
+    iguais(r.gravados, 485); iguais(r.falhas, []);
+    iguais(st.maxAoMesmoTempo <= 10 && st.maxAoMesmoTempo > 1, true, 'paralelo limitado: ' + st.maxAoMesmoTempo);
+    iguais(st.produtos.x7.ativo, true); iguais(st.novos.length, 450); iguais(st.novos.every(n => n.ativo === true), true);
+    iguais(typeof db.apagar, 'undefined', 'o db nem tem como apagar');
+  });
+  await teste('emParalelo devolve na ordem e lista vazia não quebra', async () => {
+    iguais(await CA.emParalelo([3, 1, 2], 2, async n => { await new Promise(r => setTimeout(r, n)); return n * 10; }), [30, 10, 20]);
+    iguais(await CA.emParalelo([], 5, async () => 1), []);
+  });
+  await teste('referência repetida: ignora maiúsculas/espaços e processo cancelado', async () => {
+    const buscar = async () => [{ id: 'a', referencia: 'TESTE-REF-1 ' }, { id: 'b', referencia: 'TESTE-REF-2', cancelado: true }];
+    iguais((await RU.referenciaJaUsada(' teste-ref-1', buscar)).id, 'a');
+    iguais(await RU.referenciaJaUsada('TESTE-REF-2', buscar), null, 'cancelado não conta');
+    iguais(await RU.referenciaJaUsada('TESTE-REF-9', buscar), null);
+    iguais(await RU.referenciaJaUsada('  ', buscar), null, 'vazia');
+  });
+
   console.log('\n──────────────────────────────────────────────────');
   console.log(`Total: ${total} testes, ${passaram} passaram, ${total-passaram} falharam`);
   process.exit(passaram===total?0:1);

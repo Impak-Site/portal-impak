@@ -181,7 +181,7 @@ function _finBaixar(conteudo, nome, tipo){ const a = document.createElement('a')
 // ── Plano de contas e centros de custo ──────────────────────────────
 function _finHtmlPlano(){
   const grupos = _fin.grupos && _fin.grupos.length ? _fin.grupos : FinCore.GRUPOS;
-  const linhas = _fin.contas.map(c => `<tr style="${c.ativo === false ? 'opacity:.5;' : ''}"><td style="font-family:'JetBrains Mono',monospace;">${esc(c.codigo)}</td><td>${esc(c.nome)}</td><td class="cr-muted">${esc((grupos.find(g => g[0] === c.grupo) || [, c.grupo])[1])}</td><td class="cr-muted">${esc(c.conta_contabil || '—')}</td><td>${c.ativo === false ? 'inativa' : ''}</td><td><a class="cr-link" onclick="finEditarConta('${c.id}')">editar</a></td></tr>`).join('');
+  const linhas = _fin.contas.map(c => `<tr style="${c.ativo === false ? 'opacity:.5;' : ''}"><td style="font-family:'JetBrains Mono',monospace;">${esc(c.codigo)}</td><td>${esc(c.nome)}</td><td class="cr-muted">${esc((grupos.find(g => g[0] === c.grupo) || [null, c.grupo])[1])}</td><td class="cr-muted">${esc(c.conta_contabil || '—')}</td><td>${c.ativo === false ? 'inativa' : ''}</td><td><a class="cr-link" onclick="finEditarConta('${c.id}')">editar</a></td></tr>`).join('');
   const centros = _fin.centros.map(c => `<tr style="${c.ativo === false ? 'opacity:.5;' : ''}"><td>${esc(c.codigo || '')}</td><td>${esc(c.nome)}</td><td>${c.ativo === false ? 'inativo' : ''}</td><td><a class="cr-link" onclick="finEditarCentro('${c.id}')">editar</a></td></tr>`).join('');
   return `<div style="display:grid;grid-template-columns:2fr 1fr;gap:18px;align-items:start;">
     <div><div class="ft-filtros"><b style="font-size:13px;">Plano de contas (gerencial)</b><button class="btn btn-primary" onclick="finEditarConta()">+ Conta</button></div>
@@ -371,7 +371,7 @@ async function _finHtmlRecorrentes(){
   if(!d.ok) return `<div class="empty">${d.semTabela ? 'Recorrências ainda não ativadas no banco (migration 0054).' : esc(d.erro || 'Erro')}</div>`;
   _finRecs = d.recorrencias || [];
   const nomeConta = id => { const c = (_fin.contas || []).find(x => x.id === id); return c ? c.nome : '—'; };
-  const freq = k => (FinCore.FREQUENCIAS[k] || [, k])[1];
+  const freq = k => (FinCore.FREQUENCIAS[k] || [null, k])[1];
   const ativas = _finRecs.filter(r => r.ativo);
   const totMes = ativas.filter(r => r.tipo === 'pagar' && r.moeda === 'BRL').reduce((s, r) => s + (parseFloat(r.valor) || 0) / FinCore.FREQUENCIAS[r.frequencia || 'mensal'][0], 0);
   const linhas = _finRecs.map(r => `<tr style="${r.ativo ? '' : 'opacity:.55;'}">
