@@ -486,7 +486,8 @@ teste('textoLista: "Nome <email>; email" para mostrar Para/Cópia', () => {
   assert.strictEqual(Dest.textoLista(null), '');
 });
 teste('servidor: follow-up e pedido de transportadora usam os flags (FOLLOWUP/TRANSPORTE) e o despachante do processo vai em cópia', () => {
-  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf-8');
+  // e-mails automáticos saíram para lib/jobs-email.js (24/10/2026)
+  const src = ['server.js', 'lib/jobs-email.js'].map(f => require('fs').readFileSync(require('path').join(__dirname, f), 'utf8')).join('\n');
   assert.ok(/destinatariosDoAssunto\('FOLLOWUP', empId \? \[empId\] : \[\], \{ fallbackPrincipal: true \}\)/.test(src), 'follow-up');
   assert.ok(/destinatariosDoAssunto\('TRANSPORTE', empId \? \[empId\] : \[\], \{ fallbackPrincipal: true, empresasCopia: despachantes \}\)/.test(src), 'transportadora');
   const i = src.indexOf('async function destinatariosDoAssunto');

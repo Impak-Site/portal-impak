@@ -36,7 +36,30 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     '/api/faturas/numerarios', '/api/faturas/abc/abater-numerario', '/api/faturas/abc/devolucao-numerario',
     // Atualizar pelo Conexos (Catálogo, 23/10/2026)
     '/api/conexos/cadastro/previa', '/api/conexos/cadastro/aplicar',
+    // E-mails automáticos (lib/jobs-email.js, 24/10/2026)
+    '/api/admin/newsletter/teste', '/api/carregamento/pedir-transportadora/enviar-teste',
+    '/api/admin/verificacao-dados/rodar',
   ];
+  for (const rota of ['/api/carregamento/pedir-transportadora/previa', '/api/carregamento/pedir-transportadora/ultimo-envio',
+    '/api/admin/verificacao-dados', '/api/admin/auditoria-datas/previa']) {
+    await teste(`GET ${rota} sem sessão → 401 (lib/jobs-email.js)`, async () => {
+      const r = await request(app).get(rota);
+      iguais(r.status, 401, rota);
+    });
+  }
+  await teste('lib/jobs-email.js: registrar() devolve as funções que o server.js usa', async () => {
+    const rotas = [];
+    const appFalso = { get: (c) => rotas.push('GET ' + c), post: (c) => rotas.push('POST ' + c) };
+    const r = require('./lib/jobs-email.js').registrar(appFalso, new Proxy(
+      { usuariosCache: () => new Map(), Newsletter: require('./newsletter-servidor.js'), auth: () => () => {} },
+      { get: (t, k) => (k in t ? t[k] : () => '') }));  // dependências que não importam aqui viram função vazia
+    ['reivindicarJobHoje', 'jaEnviouJobHoje', 'marcarJobEnviadoHoje', 'decidirFollowUp', 'dispararFollowUp', 'ehLCLServidor',
+      'atualizarHistoricoAgenda', 'enviarResumoSemanalAgenda', 'agendarAlertasDiarios', 'agendarAlertasSeparados']
+      .forEach(n => iguais(typeof r[n], 'function', n));
+    iguais(r.ehLCLServidor({ tipo_container: 'lcl' }), true);
+    iguais(r.ehLCLServidor({ tipo_container: 'FCL' }), false);
+    verdadeiroRota(rotas.includes('POST /api/admin/alertas-diarios') && rotas.includes('POST /api/admin/followup-semanal'), rotas.join(', '));
+  });
   for (const rota of protegidasPost) {
     await teste(`POST ${rota} sem sessão → 401`, async () => {
       const r = await request(app).post(rota).send({});
