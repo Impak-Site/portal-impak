@@ -353,7 +353,7 @@ teste('no supabase-js o filtro vira cs.[{...}] (jsonb) — o array cru virava cs
   assert.strictEqual(ruim.url.searchParams.get('itens'), 'cs.{[object Object]}', 'o formato antigo (bug) continua inválido');
 });
 teste('server.js não usa mais .contains() com array de objetos em itens/pagamentos', () => {
-  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+  const src = ['server.js', 'lib/rotas-faturas.js'].map(f => require('fs').readFileSync(require('path').join(__dirname, f), 'utf8')).join('\n') /* faturas saíram para lib/rotas-faturas.js (24/10/2026) */;
   const ruins = src.match(/\.contains\(\s*'(itens|pagamentos)'\s*,\s*\[/g) || [];
   assert.strictEqual(ruins.length, 0, 'achou: ' + ruins.join(' | '));
   assert.ok((src.match(/filtroJsonbContem\(/g) || []).length >= 5, 'as 5 buscas usam o filtro novo');
@@ -508,7 +508,7 @@ teste('planoCustosDocumento: linha sem valor em R$ vai na moeda dela; moedas mis
   assert.ok(r2.itens[0].erro);
 });
 teste('servidor: leitura em modo custos usa o prompt próprio (linhas com valor em R$, IR retido, saldo)', () => {
-  const src = require('fs').readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+  const src = ['server.js', 'lib/rotas-faturas.js'].map(f => require('fs').readFileSync(require('path').join(__dirname, f), 'utf8')).join('\n') /* faturas saíram para lib/rotas-faturas.js (24/10/2026) */;
   assert.ok(/const PROMPT_LER_CUSTOS = `/.test(src));
   assert.ok(/modo === 'custos'/.test(src));
   ['ir_retido_brl', 'valor_brl', 'saldo_a_favor', 'acerto_despachante', 'nota_debito_agente', 'fatura_terminal'].forEach(k => assert.ok(src.indexOf(k) > 0, k));
